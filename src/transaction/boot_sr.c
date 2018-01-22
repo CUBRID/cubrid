@@ -2909,6 +2909,11 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
       boot_decoy_entries_finalize ();
 #endif
     }
+
+#if defined (SERVER_MODE)
+  delete_master_hostname();
+#endif
+
   return true;
 }
 

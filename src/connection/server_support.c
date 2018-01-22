@@ -111,6 +111,8 @@ static int ha_Server_num_of_hosts = 0;
 /* current server state (slave, master, replica) sent in by the cub_master process */
 static HB_NODE_STATE_TYPE heartbeat_Node_state = HB_NSTATE_UNKNOWN;
 
+static char *ha_Server_master_hostname = NULL;
+
 typedef struct job_queue JOB_QUEUE;
 struct job_queue
 {
@@ -1004,6 +1006,7 @@ css_process_master_request (SOCKET master_fd)
       break;
     case SERVER_CHANGE_HB_NODE_TYPE:
       {
+
 	int rc;
 	const char *last_state, *current_state;
 
@@ -1024,16 +1027,18 @@ css_process_master_request (SOCKET master_fd)
 
         switch (css_get_hb_node_state ())
           {
-            HB_NSTATE_SLAVE:
+            case HB_NSTATE_SLAVE:
+              assert (ha_Server_master_hostname != NULL);
+
               master_replication_channel::reset_singleton ();
               slave_replication_channel::reset_singleton ();
-              slave_replication_channel::init (hb_Cluster->master->host_name, css_Master_server_name, css_Master_port_id);
+              slave_replication_channel::init (ha_Server_master_hostname, css_Master_server_name, css_Master_port_id);
 
               rc = slave_replication_channel::get_channel ()->connect_to_master ();
               assert (rc == NO_ERRORS);
 
               break;
-            HB_NSTATE_MASTER:
+            case HB_NSTATE_MASTER:
               master_replication_channel::reset_singleton ();
               slave_replication_channel::reset_singleton ();
 
@@ -1268,7 +1273,28 @@ css_refresh_hb_node_state_from_master ()
       return error;
     }
 
-  assert (state > HB_NSTATE_UNKNOWN && state < HB_NSTATE_MAX);
+  assert (state >= HB_NSTATE_UNKNOWN && state < HB_NSTATE_MAX);
+
+  if (state == HB_NSTATE_SLAVE)
+    {
+      int hostname_length;
+
+      delete_master_hostname ();
+
+      error = css_receive_heartbeat_data (css_Master_conn, (char *) &hostname_length, sizeof (int));
+      if (error != NO_ERRORS)
+        {
+          return error;
+        }
+
+      ha_Server_master_hostname = (char *) malloc (hostname_length+1);
+      error = css_receive_heartbeat_data (css_Master_conn, ha_Server_master_hostname, hostname_length);
+      if (error != NO_ERRORS)
+        {
+          return error;
+        }
+      ha_Server_master_hostname[hostname_length] = '\0';
+    }
 
   heartbeat_Node_state = state;
   return NO_ERRORS;
@@ -3476,4 +3502,22 @@ css_process_new_slave (SOCKET master_fd)
           master_replication_channel::get_channel () != NULL);
   
   master_replication_channel::get_channel ()->add_slave_connection (new_fd);
+}
+
+void init_master_hostname()
+{
+  ha_Server_master_hostname = NULL;
+}
+
+void delete_master_hostname()
+{
+  if (ha_Server_master_hostname != NULL)
+    {
+      free (ha_Server_master_hostname);
+    }
+}
+
+const char *get_master_hostname()
+{
+  return ha_Server_master_hostname;
 }

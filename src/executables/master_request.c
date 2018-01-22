@@ -2082,5 +2082,22 @@ css_send_to_my_server_hb_state ()
       return ER_FAILED;
     }
 
+  if (hb_Cluster->state == HB_NSTATE_SLAVE)
+    {
+      int master_hostname_length = hb_Cluster->master != NULL ? strlen (hb_Cluster->master->host_name) : 0;
+
+      assert (master_hostname_length != 0);
+      char master_hostname[sizeof (int) + master_hostname_length];
+
+      *((int *) master_hostname) = master_hostname_length;
+      memcpy (master_hostname + sizeof (int), hb_Cluster->master->host_name, master_hostname_length);
+
+      rc = css_send_heartbeat_data (entry->conn_ptr, master_hostname, sizeof (int) + master_hostname_length);
+      if (rc != NO_ERRORS)
+        {
+          return ER_FAILED;
+        }
+    }
+
   return NO_ERROR;
 }

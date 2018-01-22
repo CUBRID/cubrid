@@ -838,6 +838,8 @@ net_server_init (void)
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_redistribute_partition_data;
   req_p->name = "NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA";
+
+  init_master_hostname();
 }
 
 #if defined(CUBRID_DEBUG)
@@ -1345,16 +1347,6 @@ net_server_start (const char *server_name)
       packed_name = css_pack_server_name (server_name, &name_length);
       css_init_job_queue ();
 
-#if 0
-      if (strcmp (server_name, "send") == 0)
-	{
-	  remzi_listen_and_send ();
-	}
-      else if (strcmp (server_name, "recv") == 0)
-	{
-	  remzi_connect_and_recv ();
-	}
-#endif
       r = css_init (packed_name, name_length, prm_get_integer_value (PRM_ID_TCP_PORT_ID));
       free_and_init (packed_name);
 
