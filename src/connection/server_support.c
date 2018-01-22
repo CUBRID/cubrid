@@ -1004,6 +1004,7 @@ css_process_master_request (SOCKET master_fd)
     case SERVER_GET_EOF:
       css_process_get_eof_request (master_fd);
       break;
+#if 0
     case SERVER_CHANGE_HB_NODE_TYPE:
       {
 
@@ -1052,6 +1053,7 @@ css_process_master_request (SOCKET master_fd)
     case SERVER_CONNECT_NEW_SLAVE:
       css_process_new_slave (master_fd);
       break;
+#endif
 #endif
     default:
       /* master do not respond */

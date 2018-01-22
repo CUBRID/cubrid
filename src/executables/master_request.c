@@ -2054,8 +2054,9 @@ css_process_heartbeat_request (CSS_CONN_ENTRY * conn)
 int
 css_send_to_my_server_hb_state ()
 {
+#if 0
   SOCKET_QUEUE_ENTRY *entry = NULL;
-  int rc = NO_ERRORS;
+  int rc = NO_ERROR;
 
   for (entry = css_Master_socket_anchor; entry; entry = entry->next)
     {
@@ -2098,6 +2099,6 @@ css_send_to_my_server_hb_state ()
           return ER_FAILED;
         }
     }
-
+#endif
   return NO_ERROR;
 }
