@@ -1059,10 +1059,10 @@ css_process_master_request (SOCKET master_fd)
 #endif
       }
       break;
-#if 0
+#if 1
     case SERVER_CONNECT_NEW_SLAVE:
       er_log_debug (ARG_FILE_LINE, "css_process_master_request:" "received new slave\n");
-      css_process_new_slave (master_fd);
+      //css_process_new_slave (master_fd);
       break;
 #endif
 #endif
