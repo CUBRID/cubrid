@@ -2054,7 +2054,7 @@ css_process_heartbeat_request (CSS_CONN_ENTRY * conn)
 int
 css_send_to_my_server_hb_state ()
 {
-#if 0
+#if 1
   SOCKET_QUEUE_ENTRY *entry = NULL;
   int rc = NO_ERROR;
 

@@ -1004,7 +1004,7 @@ css_process_master_request (SOCKET master_fd)
     case SERVER_GET_EOF:
       css_process_get_eof_request (master_fd);
       break;
-#if 0
+#if 1
     case SERVER_CHANGE_HB_NODE_TYPE:
       {
 
@@ -1037,6 +1037,8 @@ css_process_master_request (SOCKET master_fd)
 
               rc = slave_replication_channel::get_channel ()->connect_to_master ();
               assert (rc == NO_ERRORS);
+              
+              er_log_debug (ARG_FILE_LINE, "css_process_master_request:" "master_hostname:%s\n", ha_Server_master_hostname);
 
               break;
             case HB_NSTATE_MASTER:
@@ -1051,6 +1053,7 @@ css_process_master_request (SOCKET master_fd)
       }
       break;
     case SERVER_CONNECT_NEW_SLAVE:
+      er_log_debug (ARG_FILE_LINE, "css_process_master_request:" "received new slave\n");
       css_process_new_slave (master_fd);
       break;
 #endif
