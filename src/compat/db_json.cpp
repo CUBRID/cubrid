@@ -90,16 +90,8 @@ class JSON_PRIVATE_ALLOCATOR
 typedef rapidjson::UTF8 <> JSON_ENCODING;
 typedef rapidjson::MemoryPoolAllocator <JSON_PRIVATE_ALLOCATOR> JSON_PRIVATE_MEMPOOL;
 typedef rapidjson::GenericValue <JSON_ENCODING, JSON_PRIVATE_MEMPOOL> JSON_VALUE;
+typedef rapidjson::GenericPointer <JSON_VALUE> JSON_POINTER;
 typedef rapidjson::GenericStringBuffer<JSON_ENCODING, JSON_PRIVATE_ALLOCATOR> JSON_STRING_BUFFER;
-
-class JSON_POINTER: public rapidjson::GenericPointer <JSON_VALUE>
-{
-  public:
-    JSON_POINTER (const char *pointer_path);
-    const JSON_POINTER CreateParent();
-  private:
-    std::string pointer_path_string;
-};
 
 class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_MEMPOOL>
 {
@@ -174,21 +166,6 @@ STATIC_INLINE void db_json_replace_token_special_chars (std::string &token,
     const std::unordered_map<std::string, std::string> &special_chars);
 
 STATIC_INLINE JSON_VALUE *db_json_doc_to_value (const JSON_DOC *doc);
-
-JSON_POINTER::JSON_POINTER (const char *pointer_path) : rapidjson::GenericPointer<JSON_VALUE> (pointer_path),
-  pointer_path_string (pointer_path) {};
-
-const JSON_POINTER JSON_POINTER::CreateParent()
-{
-  std::string parent_pointer_path_string;
-  int path_length = pointer_path_string.length();
-  std::size_t found = pointer_path_string.find_last_of ("/");
-
-  parent_pointer_path_string = pointer_path_string.substr (0, found);
-  const JSON_POINTER pointer_parent (parent_pointer_path_string.c_str());
-
-  return pointer_parent;
-}
 
 JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw) : m_schema (NULL),
   m_validator (NULL),
@@ -792,7 +769,13 @@ db_json_insert_func (JSON_DOC *value, JSON_DOC *doc, char *raw_path)
       return NO_ERROR;
     }
 
-  const JSON_POINTER pointer_parent = p.CreateParent();
+  std::size_t found = json_pointer_string.find_last_of ("/");
+  if (found == std::string::npos)
+    {
+      assert (false);
+    }
+
+  const JSON_POINTER pointer_parent (json_pointer_string.substr (0, found).c_str());
   if (!pointer_parent.IsValid ())
     {
       /* this shouldn't happen */
@@ -889,7 +872,13 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC *doc, const char *raw_path)
       return NO_ERROR;
     }
 
-  const JSON_POINTER pointer_parent = p.CreateParent();
+  std::size_t found = json_pointer_string.find_last_of ("/");
+  if (found == std::string::npos)
+    {
+      assert (false);
+    }
+
+  const JSON_POINTER pointer_parent (json_pointer_string.substr (0, found).c_str());
 
   if (!pointer_parent.IsValid())
     {
