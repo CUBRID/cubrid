@@ -2086,7 +2086,7 @@ css_send_to_my_server_hb_state ()
       assert (false);
       return ER_FAILED;
     }
-    
+#if 1
   master_current_hostname = hb_find_host_name_of_master_server ();
 
   if (hb_Cluster->state == HB_NSTATE_SLAVE && master_current_hostname != NULL)
@@ -2117,6 +2117,7 @@ css_send_to_my_server_hb_state ()
           return ER_FAILED;
         }
     }
+#endif
 #endif
   return NO_ERROR;
 }

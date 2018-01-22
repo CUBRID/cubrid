@@ -1290,8 +1290,8 @@ css_refresh_hb_node_state_from_master ()
   assert (state >= HB_NSTATE_UNKNOWN && state < HB_NSTATE_MAX);
 
 #if 1
-  if (state == HB_NSTATE_SLAVE)
-    {
+  //if (state == HB_NSTATE_SLAVE)
+  //  {
       int hostname_length;
 
       delete_master_hostname ();
@@ -1309,7 +1309,7 @@ css_refresh_hb_node_state_from_master ()
           return error;
         }
       ha_Server_master_hostname[hostname_length] = '\0';
-    }
+   // }
 #endif
   heartbeat_Node_state = state;
   return NO_ERRORS;
