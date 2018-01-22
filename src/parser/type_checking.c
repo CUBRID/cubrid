@@ -11811,7 +11811,7 @@ pt_common_type_op (PT_TYPE_ENUM t1, PT_OP_TYPE op, PT_TYPE_ENUM t2)
     }
 
   if (pt_is_comp_op (op) && ((PT_IS_NUMERIC_TYPE (t1) && t2 == PT_TYPE_JSON)
-      || (t1 == PT_TYPE_JSON && PT_IS_NUMERIC_TYPE (t2))))
+			     || (t1 == PT_TYPE_JSON && PT_IS_NUMERIC_TYPE (t2))))
     {
       result_type = PT_TYPE_JSON;
     }
