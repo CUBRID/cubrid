@@ -6747,3 +6747,19 @@ hb_is_hang_process (int sfd)
 
   return false;
 }
+
+char *
+hb_find_host_name_of_master_server()
+{
+  HB_NODE_ENTRY *node;
+  
+  for (node = hb_Cluster->nodes; node; node = node->next)
+    {
+      if (node->state == HB_NSTATE_MASTER)
+	{
+	  return node->host_name;
+	}
+    }
+    
+  return NULL;
+}

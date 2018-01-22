@@ -415,5 +415,6 @@ extern void hb_disable_er_log (int reason, const char *msg_fmt, ...);
 
 extern int hb_return_proc_state_by_fd (int sfd);
 extern bool hb_is_hang_process (int sfd);
+char *hb_find_host_name_of_master_server();
 
 #endif /* _MASTER_HEARTBEAT_H_ */

@@ -2057,6 +2057,7 @@ css_send_to_my_server_hb_state ()
 #if 1
   SOCKET_QUEUE_ENTRY *entry = NULL;
   int rc = NO_ERROR;
+  char *master_current_hostname;
 
   for (entry = css_Master_socket_anchor; entry; entry = entry->next)
     {
@@ -2082,16 +2083,18 @@ css_send_to_my_server_hb_state ()
     {
       return ER_FAILED;
     }
+    
+  master_current_hostname = hb_find_host_name_of_master_server ();
 
-  if (hb_Cluster->state == HB_NSTATE_SLAVE && hb_Cluster->master != NULL)
+  if (hb_Cluster->state == HB_NSTATE_SLAVE && master_current_hostname != NULL)
     {
-      int master_hostname_length = strlen (hb_Cluster->master->host_name);
+      int master_hostname_length = strlen (master_current_hostname);
 
       assert (master_hostname_length != 0);
       char master_hostname[sizeof (int) + master_hostname_length];
 
       *((int *) master_hostname) = master_hostname_length;
-      memcpy (master_hostname + sizeof (int), hb_Cluster->master->host_name, master_hostname_length);
+      memcpy (master_hostname + sizeof (int), master_current_hostname, master_hostname_length);
 
       rc = css_send_heartbeat_data (entry->conn_ptr, master_hostname, sizeof (int) + master_hostname_length);
       if (rc != NO_ERRORS)
