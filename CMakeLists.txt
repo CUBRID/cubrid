@@ -1090,7 +1090,7 @@ if(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
   install(DIRECTORY ${INSTALL_DIR}/
     DESTINATION ${CUBRID_PREFIXDIR} COMPONENT Manager
     USE_SOURCE_PERMISSIONS)
-endif(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager)
+endif(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
 
 
 # create empty directories
