@@ -1025,7 +1025,7 @@ css_process_master_request (SOCKET master_fd)
         assert (strcmp (current_state, last_state) != 0);
 	er_log_debug (ARG_FILE_LINE, "css_process_master_request:" "server promoted/demoted from %s to %s\n",
 		      last_state, current_state);
-
+#if 0
         switch (css_get_hb_node_state ())
           {
             case HB_NSTATE_SLAVE:
@@ -1050,6 +1050,7 @@ css_process_master_request (SOCKET master_fd)
             default:
               break;
           }
+#endif
       }
       break;
     case SERVER_CONNECT_NEW_SLAVE:
