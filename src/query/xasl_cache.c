@@ -734,9 +734,32 @@ xcache_hash_key (void *key, int hash_table_size)
  * search_mode(in)    : search mode (for prepare or generic)
  * xcache_entry (out) : XASL cache entry if found.
  * rt_check (out)     : True if recompile is needed (due to recompile threshold).
+ *
+ *  Note:
+ *
+ * The scenario flow for XASL recompile is as follows :
+ *  1. Client (CAS) executes a query (execute_query)
+ *  2. Server searches for XASL (xcache_find_sha1 with XASL_CACHE_SEARCH_FOR_EXECUTE);
+ *     it detects that XASL needs recompile, sets the XCACHE_ENTRY_RECOMPILED_REQUESTED flag
+ *     and returns error ER_QPROC_INVALID_XASLNODE to client
+ *     [ While this flag is set, the XASL is still valid and is still being used ]
+ *  3. Client handles this error by performing a prepare_query (without XASL generation)
+ *  4. Server receives the first prepare_query (but still recompile_xasl == false)
+ *     It searches using xcache_find_sha1 with XASL_CACHE_SEARCH_FOR_PREPARE mode, and detects that
+ *     a recompile is needed (XCACHE_ENTRY_RECOMPILED_REQUESTED) : returns the XASL entry and sets the output
+ *     parameter *rt_check = true; The recompile_xasl is set and returned to client
+ *  5. On client (do_prepare_select), the recompile_xasl flag is detected : the query is recompiled
+ *     (XASL is regenerated) and send again to server (2nd prepare_query)
+ *  6. Server receives the second prepare_query (this time with recompile_xasl == true);
+ *     A new XASL cache entry is created and is attempted to be added.
+ *     Since it finds the existing one (having XCACHE_ENTRY_RECOMPILED_REQUESTED flag), the first insert fails,
+ *     which is marked as XCACHE_ENTRY_TO_BE_RECOMPILED (the flag XCACHE_ENTRY_RECOMPILED_REQUESTED is cleared).
+ *     The xcache_insert loop then proceeds to inserts the new recompiled entry (xcache_find_sha1 ignores the
+ *     existing entry), and afterwards marks the old entry as XCACHE_ENTRY_WAS_RECOMPILED.
+ *     After last unfix, the state is translated to XCACHE_ENTRY_MARK_DELETED, and then deleted.
  */
 int
-xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const int search_mode,
+xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const XASL_CACHE_SEARCH_MODE search_mode,
 		  XASL_CACHE_ENTRY ** xcache_entry, bool * rt_check)
 {
   XASL_ID lookup_key;
@@ -794,6 +817,10 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const int sear
       if (search_mode == XASL_CACHE_SEARCH_FOR_PREPARE
 	  && ((*xcache_entry)->xasl_id.cache_flag & XCACHE_ENTRY_RECOMPILED_REQUESTED) != 0)
 	{
+          /* this is first prepare_query request after an execute_query detected the recompile case 
+           * (the same client which received the execute_query error ER_QPROC_INVALID_XASLNODE, sends this request)
+           * We need to re-ask client to also send the recompiled XASL (this coresponds to step 3 in Notes).
+           */
 	  *rt_check = true;
 	}
       else
