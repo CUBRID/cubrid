@@ -68,7 +68,8 @@
 #include "tz_support.h"
 #include "filter_pred_cache.h"
 #include "slotted_page.h"
-
+#include "thread.h"
+#include "thread_manager.hpp"
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
 #include "server_support.h"
@@ -1699,6 +1700,16 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       log_npages = 10;
     }
 
+  /* *INDENT-OFF* */
+  cubthread::initialize (thread_p);
+  error_code = cubthread::initialize_thread_entries ();
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit_on_error;
+    }
+  /* *INDENT-ON* */
+
   /* 
    * get the database directory information in write mode.
    */
@@ -1975,12 +1986,13 @@ exit_on_error:
 static int
 boot_make_session_server_key (void)
 {
+  int err;
   UINT32 t;
   unsigned char ip[4];
 
   t = (UINT32) time (NULL);
   memcpy (boot_Server_session_key, &t, sizeof (UINT32));
-  int err = css_hostname_to_ip (boot_Host_name, ip);
+  err = css_hostname_to_ip (boot_Host_name, ip);
   if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -2216,13 +2228,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  /* reinitialize thread mgr to reflect # of active requests */
-  if (thread_initialize_manager () != NO_ERROR)
-    {
-      error_code = ER_FAILED;
-      goto error;
-    }
-
   /* note that thread entry was re-initialized */
   thread_p = thread_get_thread_entry_info ();
   assert (thread_p != NULL);
@@ -2259,7 +2264,23 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   /* Initialize tsc-timer */
   tsc_init ();
+#endif /* !SERVER_MODE */
 
+  /* *INDENT-OFF* */
+#if defined (SA_MODE)
+  // thread_manager was not initialized
+  assert (thread_p == NULL);
+  cubthread::initialize (thread_p);
+  assert (thread_p == thread_get_thread_entry_info ());
+#endif // SA_MODE
+  error_code = cubthread::initialize_thread_entries ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+  /* *INDENT-ON* */
+
+#if defined (SERVER_MODE)
 #if defined(DIAG_DEVEL)
   init_diag_mgr (server_name, thread_num_worker_threads (), NULL);
 #endif /* DIAG_DEVEL */
@@ -2418,23 +2439,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, from_backup, r_args);
 
-  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
+  // after recovery we can boot vacuum
+  error_code = vacuum_boot (thread_p);
+  if (error_code != NO_ERROR)
     {
-      /* load and recovery vacuum data and dropped files */
-      error_code = vacuum_data_load_and_recover (thread_p);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto error;
-	}
-      error_code = vacuum_load_dropped_files_from_disk (thread_p);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto error;
-	}
+      ASSERT_ERROR ();
+      goto error;
     }
-
 
   /* 
    * Initialize the catalog manager, the query evaluator, and install meta
@@ -2739,6 +2750,7 @@ error:
   session_states_finalize (thread_p);
   logtb_finalize_global_unique_stats_table (thread_p);
 
+  vacuum_stop (thread_p);
   log_final (thread_p);
   fpcache_finalize (thread_p);
   qfile_finalize_list_cache (thread_p);
@@ -2751,6 +2763,10 @@ error:
   er_stack_push ();
   boot_server_all_finalize (thread_p, ER_THREAD_FINAL, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
   er_stack_pop ();
+
+#if defined (SA_MODE)
+  cubthread::finalize ();
+#endif /* SA_MODE */
 
   return error_code;
 }
@@ -2862,6 +2878,7 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
       /* Shutdown the system with the system transaction */
       logtb_set_to_system_tran_index (thread_p);
       log_abort_all_active_transaction (thread_p);
+      vacuum_stop (thread_p);
 
       /* before removing temp vols */
       (void) logtb_reflect_global_unique_stats_to_btree (thread_p);
@@ -4428,6 +4445,17 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
 
       er_clear ();
     }
+
+  /* *INDENT-OFF* */
+  cubthread::initialize (thread_p);
+  error_code = cubthread::initialize_thread_entries ();
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  /* *INDENT-ON* */
+
   error_code = perfmon_initialize (1);	/* 1 transaction for SA_MDOE */
   if (error_code != NO_ERROR)
     {
@@ -5073,6 +5101,16 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
       error_code = ER_BO_UNKNOWN_DATABASE;
       goto error_exit;
     }
+
+  /* *INDENT-OFF* */
+  cubthread::initialize (thread_p);
+  error_code = cubthread::initialize_thread_entries ();
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error_exit;
+    }
+  /* *INDENT-ON* */
 
   /* 
    * Compose the full name of the database and find location of logs

@@ -738,7 +738,7 @@ help_print_info (const char *command, FILE * fpp)
  *   value(in) : value to print
  */
 void
-help_fprint_value (thread_entry * thread_p, FILE * fp, const DB_VALUE * value)
+help_fprint_value (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value)
 {
 /* *INDENT-OFF* */
   db_private_allocator<char> private_allocator{thread_p};

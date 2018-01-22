@@ -36,7 +36,6 @@
 
 #include "fetch.h"
 
-#include "thread.h"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "storage_common.h"
@@ -50,6 +49,10 @@
 #include "db_date.h"
 #include "xasl.h"
 #include "query_executor.h"
+#include "thread_compat.hpp"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "thread.h"
+#endif // SERVER_MODE or SA_MODE
 
 /* this must be the last header file included!!! */
 #include "dbval.h"

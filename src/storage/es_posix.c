@@ -39,11 +39,14 @@
 #endif /* !WINDOWS */
 
 #include "porting.h"
-#include "thread.h"
+#include "thread_compat.hpp"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "error_code.h"
 #include "es_posix.h"
+#if defined (SERVER_MODE)
+#include "thread.h"
+#endif // SERVER_MODE
 
 #if defined (SA_MODE) || defined (SERVER_MODE)
 /* es_posix_base_dir - */

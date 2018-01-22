@@ -84,17 +84,18 @@ class string_buffer: public mem::block_ext //collect formatted text (printf-like
 
     size_t len () const
     {
-      return m_len; //current content length
+      // current content length, not including ending '\0' (similar with strlen(...))
+      return m_len;
     }
 
     inline void operator+= (const char ch);                       //add a single char
 
     void add_bytes (size_t len, void *bytes);                     //add "len" bytes (can have '\0' in the middle)
 
-    template<typename... Args> inline void operator() (Args &&... args); //add with printf format
+    template<typename... Args> inline int operator() (Args &&... args); //add with printf format
 
   private:
-    size_t m_len;                                                 //current content length
+    size_t m_len;                                                 //current content length not including ending '\0'
 
     string_buffer (const string_buffer &) = delete;               //copy ctor
     string_buffer (string_buffer &&) = delete;                    //move ctor
@@ -106,15 +107,26 @@ class string_buffer: public mem::block_ext //collect formatted text (printf-like
 
 void string_buffer::operator+= (const char ch)
 {
-  if (dim < m_len + 2)
+  if (dim == 0)
     {
-      extend (1);
+      extend (2); // 2 new bytes needed: ch + '\0'
     }
+  else
+    {
+      assert (ptr[m_len] == '\0');
+
+      // (m_len + 1) is the current number of chars including ending '\0'
+      if (dim <= m_len + 1)
+	{
+	  extend (1);
+	}
+    }
+
   ptr[m_len] = ch;
   ptr[++m_len] = '\0';
 }
 
-template<typename... Args> void string_buffer::operator() (Args &&... args)
+template<typename... Args> int string_buffer::operator() (Args &&... args)
 {
   int len = snprintf (NULL, 0, std::forward<Args> (args)...);
 
@@ -127,6 +139,8 @@ template<typename... Args> void string_buffer::operator() (Args &&... args)
 
   snprintf (ptr + m_len, dim - m_len, std::forward<Args> (args)...);
   m_len += len;
+
+  return len;
 }
 
 #endif /* _STRING_BUFFER_HPP_ */

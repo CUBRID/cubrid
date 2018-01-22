@@ -6956,6 +6956,7 @@ db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest)
 	    ASSERT_ERROR ();
 	    return error_code;
 	  }
+	dest->need_clear = true;
 	break;
       }
     case DB_JSON_NULL:

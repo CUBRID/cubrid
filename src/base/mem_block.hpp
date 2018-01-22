@@ -43,7 +43,8 @@ namespace mem
       block ()
 	: dim {0}
 	, ptr {NULL}
-      {}
+      {
+      }
 
       block (block &&b)             //move ctor
 	: dim {b.dim}
@@ -67,8 +68,15 @@ namespace mem
 
       block (size_t dim, void *ptr)
 	: dim {dim}
-	, ptr { (char *)ptr}
-      {}
+	, ptr { (char *) ptr}
+      {
+      }
+
+      virtual ~block ()
+      {
+	dim = 0;
+	ptr = NULL;
+      }
 
       bool is_valid ()
       {
@@ -101,14 +109,14 @@ namespace mem
     block x{dim, new char[dim]};
     memcpy (x.ptr, b.ptr, b.dim);
 
-    delete b.ptr;
+    delete [] b.ptr;
 
     b = std::move (x);
   }
 
   inline void default_dealloc (block &b)
   {
-    delete b.ptr;
+    delete [] b.ptr;
     b = {};
   }
 

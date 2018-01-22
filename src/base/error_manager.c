@@ -79,11 +79,10 @@
 #include "transaction_cl.h"
 #endif /* !SERVER_MODE */
 #include "stack_dump.h"
-
 #if defined (LINUX)
 #include "memory_hash.h"
 #endif /* defined (LINUX) */
-
+#include "thread_compat.hpp"
 #if defined (WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
@@ -1160,7 +1159,11 @@ er_final (ER_FINAL_CODE do_global_final)
   ER_MSG *er_entry_p;
   int i;
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
 
   er_entry_p = er_get_er_entry (thread_p);
   if (er_entry_p != NULL)
@@ -1251,7 +1254,11 @@ er_clear (void)
   ER_MSG *er_entry_p;
   char *buf;
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
 
   er_entry_p = er_get_er_entry (thread_p);
   if (er_entry_p == NULL)
@@ -1418,7 +1425,12 @@ er_print_callstack (const char *file_name, const int line_no, const char *fmt, .
   ER_MSG *er_entry_p;
   static bool doing_er_start = false;
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
+
   er_entry_p = er_get_er_entry (thread_p);
   if (er_entry_p == NULL)
     {
@@ -1526,7 +1538,12 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
       return ER_FAILED;
     }
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
+
   er_entry_p = er_get_er_entry (thread_p);
 
   /* 
@@ -2256,7 +2273,12 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
       return;
     }
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
+
   er_entry_p = er_get_er_entry (thread_p);
   if (er_entry_p == NULL)
     {
@@ -2314,7 +2336,12 @@ _er_log_debug_internal (const char *file_name, const int line_no, const char *fm
       return;
     }
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
+
   er_entry_p = er_get_er_entry (thread_p);
 
   out = (er_Msglog_fh != NULL) ? er_Msglog_fh : stderr;
@@ -2344,17 +2371,29 @@ _er_log_debug_internal (const char *file_name, const int line_no, const char *fm
 }
 
 /*
+ * er_get_ermsg_from_area_error -
+ *   return: ermsg string from the flatten error area
+ *   buffer(in): flatten error area
+ */
+char *
+er_get_ermsg_from_area_error (char *buffer)
+{
+  assert (buffer != NULL);
+
+  return buffer + (OR_INT_SIZE * 3);
+}
+
+/*
  * er_get_area_error - Flatten error information into an area
  *   return: packed error information that can be transmitted to the client
  *   length(out): length of the flatten area (set as a side effect)
  *
- * Note: The returned area must be freed by the caller using free_and_init.
- *       This function is used for Client/Server transfering of errors.
+ * Note: This function is used for Client/Server transfering of errors.
  */
-void *
-er_get_area_error (void *buffer, int *length)
+char *
+er_get_area_error (char *buffer, int *length)
 {
-  int len;
+  int len, max_msglen;
   char *ptr;
   const char *msg;
   ER_MSG *er_entry_p;
@@ -2370,19 +2409,26 @@ er_get_area_error (void *buffer, int *length)
 
   /* Now copy the information */
   msg = er_entry_p->msg_area ? er_entry_p->msg_area : "(null)";
-  len = (OR_INT_SIZE * 3) + strlen (msg) + 1;
-  *length = len = (*length > len) ? len : *length;
 
-  ptr = (char *) buffer;
+  len = (OR_INT_SIZE * 3) + strlen (msg) + 1;
+  len = MIN (len, *length);
+  *length = len;
+  max_msglen = len - (OR_INT_SIZE * 3) - 1;
+
+  ptr = buffer;
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   OR_PUT_INT (ptr, (int) (er_entry_p->err_id));
   ptr += OR_INT_SIZE;
+
   OR_PUT_INT (ptr, (int) (er_entry_p->severity));
   ptr += OR_INT_SIZE;
+
   OR_PUT_INT (ptr, len);
   ptr += OR_INT_SIZE;
-  len -= OR_INT_SIZE * 3;
-  strncpy (ptr, msg, --len /* <= strlen(msg) */ );
-  *(ptr + len) = '\0';		/* bullet proofing */
+
+  strncpy (ptr, msg, max_msglen);
+  *(ptr + max_msglen) = '\0';	/* bullet proofing */
 
   return buffer;
 }
@@ -2396,14 +2442,18 @@ er_get_area_error (void *buffer, int *length)
  *       which is the last error found in the server.
  */
 int
-er_set_area_error (void *server_area)
+er_set_area_error (char *server_area)
 {
   char *ptr;
   int err_id, severity, length, r;
   THREAD_ENTRY *thread_p;
   ER_MSG *er_entry_p;
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
 
   er_entry_p = er_get_er_entry (thread_p);
   if (er_entry_p == NULL)
@@ -2418,13 +2468,20 @@ er_set_area_error (void *server_area)
       return NO_ERROR;
     }
 
-  ptr = (char *) server_area;
+  ptr = server_area;
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
   err_id = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
+  assert (err_id <= NO_ERROR && ER_LAST_ERROR < err_id);
+
   severity = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
+  assert (ER_FATAL_ERROR_SEVERITY <= severity && severity <= ER_MAX_SEVERITY);
+
   length = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
+  assert (0 <= length);
 
   er_entry_p->err_id = ((err_id >= 0 || err_id <= ER_LAST_ERROR) ? -1 : err_id);
   er_entry_p->severity = severity;
@@ -2511,7 +2568,11 @@ er_stack_push (void)
   THREAD_ENTRY *thread_p;
   ER_MSG *er_entry_p;
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
 
   er_entry_p = er_get_er_entry (thread_p);
   if (er_entry_p == NULL)
@@ -2536,7 +2597,11 @@ er_stack_push_if_exists (void)
   THREAD_ENTRY *thread_p;
   ER_MSG *er_entry_p;
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
 
   er_entry_p = er_get_er_entry (thread_p);
   if (er_entry_p == NULL)
@@ -2569,7 +2634,11 @@ er_stack_pop (void)
   ER_MSG *popped_er_entry_p;
   ER_MSG *er_entry_p;
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
 
   er_entry_p = er_get_er_entry (thread_p);
 
@@ -2607,7 +2676,11 @@ er_stack_clear (void)
   ER_MSG *save_stack;
   ER_MSG *er_entry_p, *er_entry_buffer_p;
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
 
   er_entry_p = er_get_er_entry (thread_p);
   er_entry_buffer_p = er_get_er_entry_buffer_ptr (thread_p);
@@ -2649,7 +2722,11 @@ er_restore_last_error (void)
   THREAD_ENTRY *thread_p;
   ER_MSG *er_entry_p;
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
 
   er_entry_p = er_get_er_entry (thread_p);
   if (er_entry_p == NULL || er_entry_p->stack == NULL)
@@ -2680,7 +2757,11 @@ er_stack_clearall (void)
   THREAD_ENTRY *thread_p;
   ER_MSG *er_entry_p;
 
+#if defined (SERVER_MODE)
   thread_p = thread_get_thread_entry_info ();
+#else // not SERVER_MODE
+  thread_p = NULL;
+#endif // not SERVER_MODE
 
   for (er_entry_p = er_get_er_entry (thread_p); er_entry_p != NULL && er_entry_p->stack != NULL;
        er_entry_p = er_get_er_entry (thread_p))
@@ -3308,10 +3389,12 @@ er_emergency (THREAD_ENTRY * thread_p, const char *file, int line, const char *f
   char buf[32];
   ER_MSG *er_entry_p;
 
+#if defined (SERVER_MODE)
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
+#endif // SERVER_MODE
 
   er_entry_p = er_get_er_entry (thread_p);
   if (er_entry_p == NULL)
