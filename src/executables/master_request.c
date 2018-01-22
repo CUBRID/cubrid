@@ -2099,6 +2099,16 @@ css_send_to_my_server_hb_state ()
           return ER_FAILED;
         }
     }
+  else
+    {
+      int zero = 0;
+      
+      rc = css_send_heartbeat_data (entry->conn_ptr, (char *) &zero, sizeof (int));
+      if (rc != NO_ERRORS)
+        {
+          return ER_FAILED;
+        }
+    }
 #endif
   return NO_ERROR;
 }

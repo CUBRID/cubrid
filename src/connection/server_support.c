@@ -1025,6 +1025,12 @@ css_process_master_request (SOCKET master_fd)
         assert (strcmp (current_state, last_state) != 0);
 	er_log_debug (ARG_FILE_LINE, "css_process_master_request:" "server promoted/demoted from %s to %s\n",
 		      last_state, current_state);
+        
+        if (css_get_hb_node_state() == HB_NSTATE_SLAVE)
+          {
+            er_log_debug (ARG_FILE_LINE, "css_process_master_request:" "master hostname is %s\n",
+		      ha_Server_master_hostname);
+          }
 #if 0
         switch (css_get_hb_node_state ())
           {
@@ -1281,7 +1287,7 @@ css_refresh_hb_node_state_from_master ()
 
   assert (state >= HB_NSTATE_UNKNOWN && state < HB_NSTATE_MAX);
 
-#if 0
+#if 1
   if (state == HB_NSTATE_SLAVE)
     {
       int hostname_length;
