@@ -249,9 +249,17 @@ db_init (const char *program, int print_version, const char *dbname, const char 
   db_path_info.db_host = (char *) host_name;
   db_path_info.db_comments = (char *) comments;
 
-  error =
-    boot_initialize_client (&client_credential, &db_path_info, (bool) overwrite, addmore_vols_file, npages,
-			    (PGLENGTH) desired_pagesize, log_npages, (PGLENGTH) desired_log_page_size, lang_charset);
+#if defined (SA_MODE)
+  error = session_states_init (NULL);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+#endif /* SA_MODE */
+
+  error = boot_initialize_client (&client_credential, &db_path_info, (bool) overwrite, addmore_vols_file, npages,
+				  (PGLENGTH) desired_pagesize, log_npages, (PGLENGTH) desired_log_page_size,
+				  lang_charset);
 
   if (more_vol_info_file != NULL)
     {

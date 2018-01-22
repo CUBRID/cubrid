@@ -28,7 +28,6 @@
 
 #ident "$Id$"
 
-#include "thread.h"
 #include "connection_defs.h"
 
 #if defined(WINDOWS)

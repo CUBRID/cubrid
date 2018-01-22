@@ -42,6 +42,7 @@
 #include "locator_sr.h"
 #include "object_primitive.h"
 #include "query_opfunc.h"
+#include "thread.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"

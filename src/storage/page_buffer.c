@@ -1201,6 +1201,9 @@ STATIC_INLINE bool pgbuf_is_hit_ratio_low (void);
 static void pgbuf_flags_mask_sanity_check (void);
 static void pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru);
 
+// TODO: find a better place for this, but not log_impl.h
+STATIC_INLINE int pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+
 /*
  * pgbuf_hash_func_mirror () - Hash VPID into hash anchor
  *   return: hash value
@@ -1803,7 +1806,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
     {
       /* Check the wait_msecs of current transaction. If the wait_msecs is zero wait that means no wait, change current 
        * request as a conditional request. */
-      wait_msecs = logtb_find_current_wait_msecs (thread_p);
+      wait_msecs = pgbuf_find_current_wait_msecs (thread_p);
 
       if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
 	{
@@ -6555,7 +6558,7 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * t
   thread_lock_entry (thrd_entry);
   PGBUF_BCB_UNLOCK (bufptr);
 
-  old_wait_msecs = wait_secs = logtb_find_current_wait_msecs (thread_p);
+  old_wait_msecs = wait_secs = pgbuf_find_current_wait_msecs (thread_p);
 
   assert (wait_secs == LK_INFINITE_WAIT || wait_secs == LK_ZERO_WAIT || wait_secs == LK_FORCE_ZERO_WAIT
 	  || wait_secs > 0);
@@ -11709,7 +11712,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	  goto exit;
 	}
 
-      wait_msecs = logtb_find_current_wait_msecs (thread_p);
+      wait_msecs = pgbuf_find_current_wait_msecs (thread_p);
       if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
 	{
 	  /* attempts to unfix-refix old page may fail since CONDITIONAL latch will be enforced; just return page
@@ -15808,4 +15811,30 @@ pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru)
 	}
     }
 #endif /* !NDEBUG */
+}
+
+// TODO: find a better place for this, but not log_impl.h
+/*
+ * pgbuf_find_current_wait_msecs - find waiting times for current transaction
+ *
+ * return : wait_msecs...
+ *
+ * Note: Find the waiting time for the current transaction.
+ */
+STATIC_INLINE int
+pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes;		/* Transaction descriptor */
+  int tran_index;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes != NULL)
+    {
+      return tdes->wait_msecs;
+    }
+  else
+    {
+      return 0;
+    }
 }

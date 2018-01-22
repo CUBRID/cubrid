@@ -32,7 +32,6 @@
 #if !defined (SERVER_MODE)
 #else /* SERVER_MODE */
 #include "connection_defs.h"
-#include "thread.h"
 #endif /* SERVER_MODE */
 #include "lock_free.h"
 

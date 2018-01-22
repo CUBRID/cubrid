@@ -159,9 +159,11 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
   LOG_TDES *tdes;
   int errid;
   bool flag_abort = false;
-  void *area;
-  char buffer[1024];
+  char *area;
+  OR_ALIGNED_BUF (1024) a_buffer;
+  char *buffer;
   int length = 1024;
+
   CSS_CONN_ENTRY *conn;
 
   assert (thread_p != NULL);
@@ -193,11 +195,12 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
       conn->reset_on_commit = true;
     }
 
+  buffer = OR_ALIGNED_BUF_START (a_buffer);
   area = er_get_area_error (buffer, &length);
   if (area != NULL)
     {
       conn->db_error = errid;
-      css_send_error_to_client (conn, rid, (char *) area, length);
+      css_send_error_to_client (conn, rid, area, length);
       conn->db_error = 0;
     }
 

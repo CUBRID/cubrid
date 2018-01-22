@@ -16,8 +16,6 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-message("======== cubrid/CMakeLists.txt")
-
 set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnv.c
   ${COMPAT_DIR}/cnvlex.c
@@ -32,6 +30,24 @@ set(COMPAT_SOURCES
 set(THREAD_SOURCES
   ${THREAD_DIR}/thread.c
   ${THREAD_DIR}/critical_section.c
+  ${THREAD_DIR}/thread_daemon.cpp
+  ${THREAD_DIR}/thread_entry.cpp
+  ${THREAD_DIR}/thread_entry_task.cpp
+  ${THREAD_DIR}/thread_looper.cpp
+  ${THREAD_DIR}/thread_manager.cpp
+  ${THREAD_DIR}/thread_waiter.cpp
+  ${THREAD_DIR}/thread_worker_pool.cpp
+  )
+set(THREAD_HEADERS
+  ${THREAD_DIR}/thread_compat.hpp
+  ${THREAD_DIR}/thread_daemon.hpp
+  ${THREAD_DIR}/thread_entry.hpp
+  ${THREAD_DIR}/thread_entry_task.hpp
+  ${THREAD_DIR}/thread_task.hpp
+  ${THREAD_DIR}/thread_looper.hpp
+  ${THREAD_DIR}/thread_manager.hpp
+  ${THREAD_DIR}/thread_waiter.hpp
+  ${THREAD_DIR}/thread_worker_pool.hpp
   )
 
 set(BASE_SOURCES
@@ -259,6 +275,7 @@ set (CUBRID_LIB_SOURCES
   )
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
+  ${THREAD_HEADERS}
   )
 
 add_library(cubrid SHARED
@@ -293,7 +310,6 @@ endif(UNIX)
 add_dependencies(cubrid ${EP_TARGETS})
 
 if(AT_LEAST_ONE_UNIT_TEST)
-  message("    ==== add cubrid static libs for unit tests (WIN only)")
   if (WIN32)
   # in order to avoid adding all the functions used by unit tests in def file, it is more convenient to build a static
   # lib too. more compile time, but less head-ache

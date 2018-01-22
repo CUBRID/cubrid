@@ -216,6 +216,17 @@ set(JSP_SOURCES
   ${JSP_DIR}/jsp_sr.c
   )
 
+set(THREAD_SOURCES
+  ${THREAD_DIR}/thread_entry.cpp
+  ${THREAD_DIR}/thread_entry_task.cpp
+  ${THREAD_DIR}/thread_manager.cpp
+  )
+set(THREAD_HEADERS
+  ${THREAD_DIR}/thread_compat.hpp
+  ${THREAD_DIR}/thread_entry.hpp
+  ${THREAD_DIR}/thread_manager.hpp
+  )
+
 set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_compress.c
   ${TRANSACTION_DIR}/boot_cl.c
@@ -335,6 +346,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${JSP_SOURCES}
+  ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
@@ -367,6 +379,7 @@ add_library(cubridsa SHARED
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${JSP_SOURCES}
+  ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
