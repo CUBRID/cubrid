@@ -186,6 +186,9 @@ static LF_ENTRY_DESCRIPTOR xcache_Entry_descriptor = {
 #define XCACHE_RT_TIMEDIFF_IN_SEC	360	/* 10 minutes */
 #define XCACHE_RT_MAX_THRESHOLD		10000	/* 10k pages */
 #define XCACHE_RT_FACTOR		10	/* 10x or 0.1x cardinal change */
+#define XCACHE_RT_CLASS_STAT_NEED_UPDATE(class_pages,heap_pages) \
+  (((heap_pages) < 100 && (((class_pages) < (heap_pages) / 2) || ((class_pages) > (heap_pages) / 2))) \
+   || ((class_pages) < (heap_pages) * 0.8f) || ((class_pages) > (heap_pages) * 0.8f / 2))
 
 /* Logging macro's */
 #define xcache_check_logging() (xcache_Log = prm_get_bool_value (PRM_ID_XASL_CACHE_LOGGING))
@@ -2332,8 +2335,9 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
 	  catalog_free_class_info_and_init (cls_info_p);
 	  return false;
 	}
-      if (npages > XCACHE_RT_FACTOR * xcache_entry->related_objects[relobj].tcard
-	  || npages < xcache_entry->related_objects[relobj].tcard / XCACHE_RT_FACTOR)
+      if ((npages > XCACHE_RT_FACTOR * xcache_entry->related_objects[relobj].tcard
+	   || npages < xcache_entry->related_objects[relobj].tcard / XCACHE_RT_FACTOR)
+	  && XCACHE_RT_CLASS_STAT_NEED_UPDATE (cls_info_p->ci_tot_pages, npages))
 	{
 	  cls_info_p->ci_time_stamp = stats_get_time_stamp ();
 	  if (catalog_update_class_info (thread_p, &xcache_entry->related_objects[relobj].oid, cls_info_p, NULL, true)
