@@ -2069,18 +2069,21 @@ css_send_to_my_server_hb_state ()
 
   if (entry == NULL || IS_INVALID_SOCKET (entry->fd))
     {
+      assert (false);
       return ER_FAILED;
     }
 
   rc = css_send_heartbeat_request (entry->conn_ptr, SERVER_CHANGE_HB_NODE_TYPE);
   if (rc != NO_ERRORS)
     {
+      assert (false);
       return ER_FAILED;
     }
 
   rc = css_send_heartbeat_data (entry->conn_ptr, (char *) &hb_Cluster->state, sizeof (HB_NODE_STATE_TYPE));
   if (rc != NO_ERRORS)
     {
+      assert (false);
       return ER_FAILED;
     }
     
@@ -2099,6 +2102,7 @@ css_send_to_my_server_hb_state ()
       rc = css_send_heartbeat_data (entry->conn_ptr, master_hostname, sizeof (int) + master_hostname_length);
       if (rc != NO_ERRORS)
         {
+          assert (false);
           return ER_FAILED;
         }
     }
@@ -2109,6 +2113,7 @@ css_send_to_my_server_hb_state ()
       rc = css_send_heartbeat_data (entry->conn_ptr, (char *) &zero, sizeof (int));
       if (rc != NO_ERRORS)
         {
+          assert (false);
           return ER_FAILED;
         }
     }
