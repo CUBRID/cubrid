@@ -1281,6 +1281,7 @@ css_refresh_hb_node_state_from_master ()
 
   assert (state >= HB_NSTATE_UNKNOWN && state < HB_NSTATE_MAX);
 
+#if 0
   if (state == HB_NSTATE_SLAVE)
     {
       int hostname_length;
@@ -1301,7 +1302,7 @@ css_refresh_hb_node_state_from_master ()
         }
       ha_Server_master_hostname[hostname_length] = '\0';
     }
-
+#endif
   heartbeat_Node_state = state;
   return NO_ERRORS;
 #endif
