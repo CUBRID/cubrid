@@ -817,10 +817,10 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const XASL_CAC
       if (search_mode == XASL_CACHE_SEARCH_FOR_PREPARE
 	  && ((*xcache_entry)->xasl_id.cache_flag & XCACHE_ENTRY_RECOMPILED_REQUESTED) != 0)
 	{
-          /* this is first prepare_query request after an execute_query detected the recompile case 
-           * (the same client which received the execute_query error ER_QPROC_INVALID_XASLNODE, sends this request)
-           * We need to re-ask client to also send the recompiled XASL (this coresponds to step 3 in Notes).
-           */
+	  /* this is first prepare_query request after an execute_query detected the recompile case 
+	   * (the same client which received the execute_query error ER_QPROC_INVALID_XASLNODE, sends this request)
+	   * We need to re-ask client to also send the recompiled XASL (this coresponds to step 3 in Notes).
+	   */
 	  *rt_check = true;
 	}
       else
