@@ -75,6 +75,7 @@ enum HB_RESOURCE_JOB
   HB_RJOB_DEMOTE_CONFIRM_SHUTDOWN = 6,
   HB_RJOB_CLEANUP_ALL = 7,
   HB_RJOB_CONFIRM_CLEANUP_ALL = 8,
+  HB_RJOB_UPDATE_SERVER_STATE = 9,
   HB_RJOB_MAX
 };
 
@@ -235,6 +236,7 @@ struct hb_cluster
 
   SOCKET sfd;
 
+  HB_NODE_STATE_TYPE last_state; /* to know whether to update the state of server or not */
   HB_NODE_STATE_TYPE state;
   char group_id[HB_MAX_GROUP_ID_LEN];
   char host_name[MAXHOSTNAMELEN];

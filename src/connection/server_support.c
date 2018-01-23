@@ -1007,7 +1007,6 @@ css_process_master_request (SOCKET master_fd)
 #if 1
     case SERVER_CHANGE_HB_NODE_TYPE:
       {
-
 	int rc;
 	const char *last_state, *current_state;
 

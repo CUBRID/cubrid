@@ -166,6 +166,7 @@ static void hb_resource_job_demote_start_shutdown (HB_JOB_ARG * arg);
 static void hb_resource_job_demote_confirm_shutdown (HB_JOB_ARG * arg);
 static void hb_resource_job_cleanup_all (HB_JOB_ARG * arg);
 static void hb_resource_job_confirm_cleanup_all (HB_JOB_ARG * arg);
+static void hb_resource_job_update_server_state (HB_JOB_ARG * arg);
 
 static void hb_resource_demote_start_shutdown_server_proc (void);
 static bool hb_resource_demote_confirm_shutdown_server_proc (void);
@@ -271,6 +272,7 @@ static HB_JOB_FUNC hb_resource_jobs[] = {
   hb_resource_job_demote_confirm_shutdown,
   hb_resource_job_cleanup_all,
   hb_resource_job_confirm_cleanup_all,
+  hb_resource_job_update_server_state,
   NULL
 };
 
@@ -872,6 +874,7 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
   if ((hb_Cluster->state == HB_NSTATE_SLAVE)
       && (hb_Cluster->master && hb_Cluster->myself && hb_Cluster->master->priority == hb_Cluster->myself->priority))
     {
+      hb_Cluster->last_state = hb_Cluster->state;
       hb_Cluster->state = HB_NSTATE_TO_BE_MASTER;
       hb_cluster_request_heartbeat_to_all ();
 
@@ -911,9 +914,6 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
 	{
 	  free_and_init (arg);
 	}
-
-      rv = css_send_to_my_server_hb_state ();
-      assert (rv == NO_ERROR);
 
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "sent hb state to server. (state=%d). \n", hb_Cluster->state);
 
@@ -1058,12 +1058,8 @@ ping_check_cancel:
   if (hb_Cluster->state != HB_NSTATE_MASTER)
     {
       MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, "Failover cancelled by ping check");
+      hb_Cluster->last_state = hb_Cluster->state;
       hb_Cluster->state = HB_NSTATE_SLAVE;
-
-      rv = css_send_to_my_server_hb_state ();
-      assert (rv == NO_ERROR);
-
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "sent hb state to server. (state=%d). \n", hb_Cluster->state);
     }
   hb_cluster_request_heartbeat_to_all ();
 
@@ -1107,6 +1103,7 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
   if (hb_Cluster->master && hb_Cluster->myself && hb_Cluster->master->priority == hb_Cluster->myself->priority)
     {
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, "Failover completed");
+      hb_Cluster->last_state = hb_Cluster->state;
       hb_Cluster->state = HB_NSTATE_MASTER;
       hb_Resource->state = HB_NSTATE_MASTER;
 
@@ -1116,6 +1113,7 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
   else
     {
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, "Failover cancelled");
+      hb_Cluster->last_state = hb_Cluster->state;
       hb_Cluster->state = HB_NSTATE_SLAVE;
     }
 
@@ -1134,11 +1132,6 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
   error =
     hb_cluster_job_queue (HB_CJOB_CALC_SCORE, NULL, prm_get_integer_value (PRM_ID_HA_CALC_SCORE_INTERVAL_IN_MSECS));
   assert (error == NO_ERROR);
-
-  rv = css_send_to_my_server_hb_state ();
-  assert (rv == NO_ERROR);
-
-  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "sent hb state to server. (state=%d). \n", hb_Cluster->state);
 
   if (arg)
     {
@@ -1180,6 +1173,7 @@ hb_cluster_job_demote (HB_JOB_ARG * arg)
       assert (hb_Resource->state == HB_NSTATE_SLAVE);
 
       /* send state (HB_NSTATE_UNKNOWN) to other nodes for making other node be master */
+      hb_Cluster->last_state = hb_Cluster->state;
       hb_Cluster->state = HB_NSTATE_UNKNOWN;
       hb_cluster_request_heartbeat_to_all ();
 
@@ -1188,6 +1182,7 @@ hb_cluster_job_demote (HB_JOB_ARG * arg)
     }
 
   hb_Cluster->hide_to_demote = true;
+  hb_Cluster->last_state = hb_Cluster->state;
   hb_Cluster->state = HB_NSTATE_SLAVE;
   hb_Cluster->myself->state = hb_Cluster->state;
 
@@ -1245,11 +1240,6 @@ hb_cluster_job_demote (HB_JOB_ARG * arg)
       free_and_init (arg);
     }
 
-  rv = css_send_to_my_server_hb_state ();
-  assert (rv == NO_ERROR);
-
-  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "sent hb state to server. (state=%d). \n", hb_Cluster->state);
-
   return;
 }
 
@@ -1279,6 +1269,7 @@ hb_cluster_job_failback (HB_JOB_ARG * arg)
 
   pthread_mutex_lock (&hb_Cluster->lock);
 
+  hb_Cluster->last_state = hb_Cluster->state;
   hb_Cluster->state = HB_NSTATE_SLAVE;
   hb_Cluster->myself->state = hb_Cluster->state;
 
@@ -1359,11 +1350,6 @@ hb_cluster_job_failback (HB_JOB_ARG * arg)
     {
       free_and_init (arg);
     }
-
-  error = css_send_to_my_server_hb_state ();
-  assert (error == NO_ERROR);
-
-  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "sent hb state to server. (state=%d). \n", hb_Cluster->state);
 
   return;
 }
@@ -2502,6 +2488,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 	      if (strcmp (node->host_name, hb_Cluster->host_name) == 0)
 		{
 		  hb_Cluster->myself = node;
+                  hb_Cluster->last_state = hb_Cluster->state;
 		  hb_Cluster->state = HB_NSTATE_REPLICA;
 		}
 	    }
@@ -3567,6 +3554,42 @@ hb_resource_job_shutdown (void)
   return hb_job_shutdown (resource_Jobs);
 }
 
+static void
+hb_resource_job_update_server_state (HB_JOB_ARG * arg)
+{
+  int error, rv;
+
+  rv = pthread_mutex_lock (&hb_Cluster->lock);
+  if (hb_Cluster->last_state != hb_Cluster->state)
+    {
+      hb_Cluster->last_state = hb_Cluster->state;
+
+      if (hb_Cluster->state == HB_NSTATE_MASTER)
+        {
+          css_send_to_my_server_hb_state (NULL);
+        }
+      else
+        {
+          const char *hostname = hb_find_host_name_of_master_server ();
+          if (hostname != NULL)
+            {
+              css_send_to_my_server_hb_state (hostname);
+            }
+        }
+    }
+  pthread_mutex_unlock (&hb_Resource->lock);
+
+  error =
+    hb_resource_job_queue (HB_RJOB_UPDATE_SERVER_STATE, NULL, prm_get_integer_value (PRM_ID_HA_CHANGEMODE_INTERVAL_IN_MSECS)); /* TODO put other interval */
+  assert (error == NO_ERROR);
+
+  if (arg)
+    {
+      free_and_init (arg);
+    }
+  return;
+}
+
 /*
  * resource process
  */
@@ -4143,6 +4166,7 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
 
     case HA_SERVER_STATE_STANDBY:
       proc->state = HB_PSTATE_REGISTERED_AND_STANDBY;
+      hb_Cluster->last_state = hb_Cluster->state;
       hb_Cluster->state = HB_NSTATE_SLAVE;
       hb_Resource->state = HB_NSTATE_SLAVE;
       break;
@@ -4599,6 +4623,7 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
   hb_Cluster->sfd = INVALID_SOCKET;
   strncpy (hb_Cluster->host_name, host_name, sizeof (hb_Cluster->host_name) - 1);
   hb_Cluster->host_name[sizeof (hb_Cluster->host_name) - 1] = '\0';
+  hb_Cluster->last_state = hb_Cluster->state;
   if (HA_GET_MODE () == HA_MODE_REPLICA)
     {
       hb_Cluster->state = HB_NSTATE_REPLICA;
@@ -4661,10 +4686,6 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
 
   pthread_mutex_unlock (&hb_Cluster->lock);
 
-#if 0
-  rv = css_send_to_my_server_hb_state ();
-  assert (rv == NO_ERROR);
-#endif
   return NO_ERROR;
 }
 
@@ -4733,6 +4754,13 @@ hb_resource_job_initialize ()
     hb_resource_job_queue (HB_RJOB_CHANGE_MODE, NULL,
 			   prm_get_integer_value (PRM_ID_HA_INIT_TIMER_IN_MSECS) +
 			   prm_get_integer_value (PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS));
+  if (error != NO_ERROR)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  error = hb_cluster_job_queue (HB_RJOB_UPDATE_SERVER_STATE, NULL, HB_JOB_TIMER_IMMEDIATELY);
   if (error != NO_ERROR)
     {
       assert (false);
@@ -5055,11 +5083,7 @@ hb_cluster_cleanup (void)
 
   rv = pthread_mutex_lock (&hb_Cluster->lock);
   hb_Cluster->state = HB_NSTATE_UNKNOWN;
-
-#if 0
-  rv = css_send_to_my_server_hb_state ();
-  assert (rv == NO_ERROR);
-#endif
+  hb_Cluster->last_state = HB_NSTATE_UNKNOWN;
 
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
