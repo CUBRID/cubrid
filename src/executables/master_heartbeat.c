@@ -4776,7 +4776,7 @@ hb_resource_job_initialize ()
       return ER_FAILED;
     }
 
-  error = hb_resource_job_queue (HB_RJOB_UPDATE_SERVER_STATE, NULL, HB_JOB_TIMER_IMMEDIATELY);
+  error = hb_resource_job_queue (HB_RJOB_UPDATE_SERVER_STATE, NULL, prm_get_integer_value (PRM_ID_HA_UPDATE_SERVER_STATE_INTERVAL_IN_MSECS));
   if (error != NO_ERROR)
     {
       assert (false);
