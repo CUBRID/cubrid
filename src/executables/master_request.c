@@ -2056,9 +2056,10 @@ css_send_to_my_server_hb_state (const char *master_current_hostname)
 {
 #if 1
   SOCKET_QUEUE_ENTRY *entry = NULL;
-  int rc = NO_ERROR;
+  int rc = NO_ERROR, rv;
   int master_hostname_length = master_current_hostname == NULL ? 0 : strlen (master_current_hostname);
 
+  rv = pthread_mutex_lock (&css_Master_socket_anchor_lock);
   for (entry = css_Master_socket_anchor; entry; entry = entry->next)
     {
       if (entry->name && (IS_MASTER_CONN_NAME_HA_SERVER (entry->name)))
@@ -2066,8 +2067,14 @@ css_send_to_my_server_hb_state (const char *master_current_hostname)
 	  break;
 	}
     }
+  pthread_mutex_unlock (&css_Master_socket_anchor_lock);
 
-  if (entry == NULL || IS_INVALID_SOCKET (entry->fd))
+  if (entry == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (IS_INVALID_SOCKET (entry->fd))
     {
       assert (false);
       return ER_FAILED;
