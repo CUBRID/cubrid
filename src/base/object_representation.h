@@ -1121,10 +1121,10 @@ struct db_reference
   int attribute;
 };
 
-  /*
-   * SETOBJ
-   *    This is the primitive set object header.
-   */
+/*
+ * SETOBJ
+ *    This is the primitive set object header.
+ */
 typedef struct setobj SETOBJ;
 
 typedef struct db_set SETREF;
@@ -1210,11 +1210,11 @@ struct or_buf
   int error_abort;
 };
 
-  /*
-   * struct setobj
-   * The internal structure of a setobj data struct is private to this module.
-   * all access to this structure should be encapsulated via function calls.
-   */
+/*
+ * struct setobj
+ * The internal structure of a setobj data struct is private to this module.
+ * all access to this structure should be encapsulated via function calls.
+ */
 typedef SETOBJ COL;
 
 /* TODO: LP64 check DB_INT32_MAX */
