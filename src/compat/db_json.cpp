@@ -164,6 +164,8 @@ STATIC_INLINE bool db_json_sql_path_is_valid (const std::string &sql_path);
 STATIC_INLINE int db_json_er_set_path_does_not_exist (const std::string &path, const JSON_DOC *doc);
 STATIC_INLINE void db_json_replace_token_special_chars (std::string &token,
     const std::unordered_map<std::string, std::string> &special_chars);
+static bool db_json_path_is_token_valid_array_index (const std::string &str, std::size_t start = 0,
+    std::size_t end = 0);
 
 STATIC_INLINE JSON_VALUE *db_json_doc_to_value (const JSON_DOC *doc);
 
@@ -570,8 +572,8 @@ db_json_add_member_to_object (JSON_DOC *doc, const char *name, const char *value
       doc->SetObject ();
     }
 
-  key.SetString (name, strlen (name), doc->GetAllocator ());
-  val.SetString (value, strlen (value), doc->GetAllocator ());
+  key.SetString (name, (rapidjson::SizeType) strlen (name), doc->GetAllocator ());
+  val.SetString (value, (rapidjson::SizeType) strlen (value), doc->GetAllocator ());
   doc->AddMember (key, val, doc->GetAllocator ());
 }
 
@@ -626,7 +628,7 @@ db_json_add_member_to_object (JSON_DOC *doc, char *name, double value)
    * so when key gets out of scope, the string wouldn't be freed
    * the memory will be freed only when doc is deleted
    */
-  key.SetString (name, strlen (name), doc->GetAllocator ());
+  key.SetString (name, (rapidjson::SizeType) strlen (name), doc->GetAllocator ());
   doc->AddMember (key, JSON_VALUE ().SetDouble (value), doc->GetAllocator ());
 }
 
@@ -645,7 +647,7 @@ db_json_add_element_to_array (JSON_DOC *doc, char *value)
    * so when v gets out of scope, the string wouldn't be freed
    * the memory will be freed only when doc is deleted
    */
-  v.SetString (value, strlen (value), doc->GetAllocator ());
+  v.SetString (value, (rapidjson::SizeType) strlen (value), doc->GetAllocator ());
   doc->PushBack (v, doc->GetAllocator ());
 }
 
@@ -1417,8 +1419,8 @@ STATIC_INLINE std::vector<std::string>
 db_json_split_path_by_delimiters (const std::string &path, const std::string &delim)
 {
   std::vector<std::string> tokens;
-  auto start = 0;
-  auto end = path.find_first_of (delim, start);
+  std::size_t start = 0;
+  std::size_t end = path.find_first_of (delim, start);
 
   while (end != std::string::npos)
     {
@@ -1450,17 +1452,23 @@ db_json_sql_path_is_valid (const std::string &sql_path)
 {
   // skip leading white spaces
   auto first_non_space = std::find_if_not (sql_path.begin(), sql_path.end(), db_json_isspace);
-  unsigned int start = std::distance (sql_path.begin(), first_non_space);
-
-  if (start == sql_path.length() || sql_path[start] != '$')
+  if (first_non_space == sql_path.cend ())
     {
+      // empty
       return false;
     }
 
+  std::size_t start = std::distance (sql_path.begin(), first_non_space);
+
+  if (sql_path[start] != '$')
+    {
+      // first character should always be '$'
+      return false;
+    }
   // skip dollar sign
   start++;
 
-  for (unsigned int i = start; i < sql_path.length(); ++i)
+  for (std::size_t i = start; i < sql_path.length(); ++i)
     {
       // to begin a next token we have only 2 possibilities:
       // with dot we start an object name
@@ -1468,21 +1476,23 @@ db_json_sql_path_is_valid (const std::string &sql_path)
       switch (sql_path[i])
 	{
 	case '[':
-	  i++;
-	  while (i < sql_path.length() && sql_path[i] != ']')
+	{
+	  std::size_t end_bracket_offset = sql_path.find_first_of (']', ++i);
+	  if (end_bracket_offset == sql_path.npos)
 	    {
-	      // we can not have a character inside a number
-	      if (!std::isdigit (sql_path[i++]))
-		{
-		  return false;
-		}
-	    }
-
-	  if (i == sql_path.length())
-	    {
+	      // unacceptable
+	      assert (false);
 	      return false;
 	    }
-	  break;
+	  if (!db_json_path_is_token_valid_array_index (sql_path, i, end_bracket_offset))
+	    {
+	      // expecting a valid index
+	      return false;
+	    }
+	  // move after ']'
+	  i = end_bracket_offset + 1;
+	}
+	break;
 
 	case '.':
 	  i++;
@@ -1600,20 +1610,9 @@ db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_
 
   for (unsigned int i = 0; i < tokens.size(); ++i)
     {
-      bool is_number = true;
       std::string &token = tokens[i];
 
-      // check if token is an index or an object name
-      for (int j = 0; j < token.length(); ++j)
-	{
-	  if (!std::isdigit (token[j]))
-	    {
-	      is_number = false;
-	      break;
-	    }
-	}
-
-      if (is_number)
+      if (db_json_path_is_token_valid_array_index (token))
 	{
 	  sql_path_out += "[";
 	  sql_path_out += token;
@@ -1968,7 +1967,37 @@ bool db_json_doc_is_uncomparable (const JSON_DOC *doc)
   return (type == DB_JSON_ARRAY || type == DB_JSON_OBJECT);
 }
 
-/* end of C functions */
+/*
+ * db_json_path_is_token_valid_array_index () - verify if token is a valid array index. token can be a substring of
+ *                                              first argument (by default the entire argument).
+ *
+ * return     : true if all token characters are digits (valid index)
+ * str (in)   : token or the string that token belong to
+ * start (in) : start of token; default is start of string
+ * end (in)   : end of token; default is end of string; 0 is considered default value
+ */
+static bool
+db_json_path_is_token_valid_array_index (const std::string &str, std::size_t start, std::size_t end)
+{
+  if (end == 0)
+    {
+      // default is end of string
+      end = str.length ();
+    }
+  for (auto it = str.cbegin () + start; it < str.cbegin () + end; it++)
+    {
+      if (!std::isdigit (*it))
+	{
+	  return false;
+	}
+    }
+  // all are digits; this is a valid array index
+  return true;
+}
+
+/************************************************************************/
+/* JSON_DOC implementation                                              */
+/************************************************************************/
 
 bool JSON_DOC::IsLeaf ()
 {
