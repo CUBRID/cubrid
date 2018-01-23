@@ -2335,17 +2335,22 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
 	  catalog_free_class_info_and_init (cls_info_p);
 	  return false;
 	}
-      if ((npages > XCACHE_RT_FACTOR * xcache_entry->related_objects[relobj].tcard
-	   || npages < xcache_entry->related_objects[relobj].tcard / XCACHE_RT_FACTOR)
-	  && XCACHE_RT_CLASS_STAT_NEED_UPDATE (cls_info_p->ci_tot_pages, npages))
+      if (npages > XCACHE_RT_FACTOR * xcache_entry->related_objects[relobj].tcard
+	  || npages < xcache_entry->related_objects[relobj].tcard / XCACHE_RT_FACTOR)
 	{
-	  cls_info_p->ci_time_stamp = stats_get_time_stamp ();
-	  if (catalog_update_class_info (thread_p, &xcache_entry->related_objects[relobj].oid, cls_info_p, NULL, true)
-	      == NULL)
+	  bool try_recompile = true;
+
+	  if (XCACHE_RT_CLASS_STAT_NEED_UPDATE (cls_info_p->ci_tot_pages, npages))
 	    {
-	      /* Failed?? */
+	      cls_info_p->ci_time_stamp = stats_get_time_stamp ();
+	      if (catalog_update_class_info
+		  (thread_p, &xcache_entry->related_objects[relobj].oid, cls_info_p, NULL, true) == NULL)
+		{
+		  try_recompile = false;
+		}
 	    }
-	  else
+
+	  if (try_recompile)
 	    {
 	      /* mark the entry as requst recompile, the client will request a prepare */
 	      if (xcache_entry_set_request_recompile_flag (thread_p, xcache_entry, true))
