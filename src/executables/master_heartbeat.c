@@ -3562,10 +3562,9 @@ hb_resource_job_update_server_state (HB_JOB_ARG * arg)
   rv = pthread_mutex_lock (&hb_Cluster->lock);
   if (hb_Cluster->last_state != hb_Cluster->state)
     {
-      hb_Cluster->last_state = hb_Cluster->state;
-
       if (hb_Cluster->state == HB_NSTATE_MASTER)
         {
+          hb_Cluster->last_state = hb_Cluster->state;
           css_send_to_my_server_hb_state (NULL);
         }
       else
@@ -3573,6 +3572,7 @@ hb_resource_job_update_server_state (HB_JOB_ARG * arg)
           const char *hostname = hb_find_host_name_of_master_server ();
           if (hostname != NULL)
             {
+              hb_Cluster->last_state = hb_Cluster->state;
               css_send_to_my_server_hb_state (hostname);
             }
         }
