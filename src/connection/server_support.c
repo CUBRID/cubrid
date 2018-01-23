@@ -1030,11 +1030,11 @@ css_process_master_request (SOCKET master_fd)
             er_log_debug (ARG_FILE_LINE, "css_process_master_request:" "master hostname is %s\n",
 		      ha_Server_master_hostname);
           }
-#if 0
+#if 1
         switch (css_get_hb_node_state ())
           {
             case HB_NSTATE_SLAVE:
-              assert (ha_Server_master_hostname != NULL);
+              assert (ha_Server_master_hostname != NULL && strlen (ha_Server_master_hostname) > 0);
 
               master_replication_channel::reset_singleton ();
               slave_replication_channel::reset_singleton ();
@@ -1061,7 +1061,7 @@ css_process_master_request (SOCKET master_fd)
 #if 1
     case SERVER_CONNECT_NEW_SLAVE:
       er_log_debug (ARG_FILE_LINE, "css_process_master_request:" "received new slave\n");
-      //css_process_new_slave (master_fd);
+      css_process_new_slave (master_fd);
       break;
 #endif
 #endif
