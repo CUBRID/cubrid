@@ -282,7 +282,9 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
   int i;
   bool usable = false;
 
-  static_assert (QMGR_MAX_QUERY_ENTRY_PER_TRAN < SHRT_MAX, "Bad query entry count");
+#if (SHRT_MAX <= QMGR_MAX_QUERY_ENTRY_PER_TRAN)
+#error "Bad query entry count"
+#endif
 
   query_p = tran_entry_p->free_query_entry_list_p;
 
