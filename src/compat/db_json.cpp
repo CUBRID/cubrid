@@ -167,7 +167,8 @@ STATIC_INLINE void db_json_replace_token_special_chars (std::string &token,
 static bool db_json_path_is_token_valid_array_index (const std::string &str, std::size_t start = 0,
     std::size_t end = 0);
 
-STATIC_INLINE JSON_VALUE *db_json_doc_to_value (const JSON_DOC *doc);
+STATIC_INLINE JSON_VALUE &db_json_doc_to_value (JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const JSON_VALUE &db_json_doc_to_value (const JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
 
 JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw) : m_schema (NULL),
   m_validator (NULL),
@@ -353,13 +354,17 @@ JSON_PRIVATE_ALLOCATOR::Free (void *ptr)
 * Yet JSON_DOC and JSON_VALUE are two different classes because they are templatized and their type is not known
 * at compile time
 */
-STATIC_INLINE JSON_VALUE *
-db_json_doc_to_value (const JSON_DOC *doc)
+static JSON_VALUE &
+db_json_doc_to_value (JSON_DOC &doc)
 {
-  return const_cast<JSON_VALUE *> (reinterpret_cast<const JSON_VALUE *> (doc));
+  return reinterpret_cast<JSON_VALUE &> (doc);
 }
 
-/* C functions */
+static const JSON_VALUE &
+db_json_doc_to_value (const JSON_DOC &doc)
+{
+  return reinterpret_cast<const JSON_VALUE &> (doc);
+}
 
 bool
 db_json_is_valid (const char *json_str)
@@ -741,14 +746,24 @@ db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src)
     }
 }
 
+/*
+ * db_json_insert_func () - Insert a document into destination document at given path
+ *
+ * return                  : error code
+ * doc_to_be_inserted (in) : document to be inserted
+ * doc_destination (in)    : destination document
+ * raw_path (in)           : insertion path
+ */
 int
-db_json_insert_func (JSON_DOC *value, JSON_DOC *doc, char *raw_path)
+db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destination, const char *raw_path)
 {
   int error_code = NO_ERROR;
   std::string json_pointer_string;
 
-  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
+  // todo: handle NULL doc_to_be_inserted properly
 
+  // path must be JSON pointer
+  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR();
@@ -756,7 +771,7 @@ db_json_insert_func (JSON_DOC *value, JSON_DOC *doc, char *raw_path)
     }
 
   JSON_POINTER p (json_pointer_string.c_str());
-  JSON_VALUE *resulting_json, *resulting_json_parent;
+  JSON_VALUE *json_parent_p;
 
   if (!p.IsValid ())
     {
@@ -764,46 +779,57 @@ db_json_insert_func (JSON_DOC *value, JSON_DOC *doc, char *raw_path)
       return ER_JSON_INVALID_PATH;
     }
 
-  resulting_json = p.Get (*doc);
-
-  if (resulting_json != NULL)
+  if (p.Get (doc_destination) != NULL)
     {
+      // if it exists, just ignore
+      // todo: is this a good behavior?
       return NO_ERROR;
     }
 
+  // get parent path
   std::size_t found = json_pointer_string.find_last_of ("/");
   if (found == std::string::npos)
     {
+      // unexpected
       assert (false);
+      return ER_FAILED;
     }
 
+  // parent pointer
   const JSON_POINTER pointer_parent (json_pointer_string.substr (0, found).c_str());
   if (!pointer_parent.IsValid ())
     {
       /* this shouldn't happen */
       assert (false);
+      return ER_FAILED;
     }
-  resulting_json_parent = pointer_parent.Get (*doc);
 
-  if (resulting_json_parent != NULL)
+  json_parent_p = pointer_parent.Get (doc_destination);
+  if (json_parent_p != NULL)
     {
-      if (resulting_json_parent->IsObject ())
+      if (json_parent_p->IsObject ())
 	{
-	  p.Set (*doc, *value, doc->GetAllocator ());
+	  p.Set (doc_destination, *doc_to_be_inserted, doc_destination.GetAllocator ());
 	}
-      else if (resulting_json_parent->IsArray ())
+      else if (json_parent_p->IsArray ())
 	{
-	  resulting_json_parent->PushBack (*value, doc->GetAllocator ());
+	  // since PushBack does not guarantee its argument is not modified, we are forced to copy here. Hopefully,
+	  // it doesn't do another copy inside.
+	  JSON_VALUE copy_to_be_ins (db_json_doc_to_value (*doc_to_be_inserted), doc_destination.GetAllocator ());
+	  json_parent_p->PushBack (copy_to_be_ins, doc_destination.GetAllocator ());
 	}
       else
 	{
 	  JSON_VALUE value_aux;
 
 	  value_aux.SetArray ();
-	  value_aux.PushBack (*resulting_json_parent, doc->GetAllocator ());
-	  resulting_json_parent->Swap (value_aux);
+	  value_aux.PushBack (*json_parent_p, doc_destination.GetAllocator ());
+	  json_parent_p->Swap (value_aux);
 
-	  resulting_json_parent->PushBack (*value, doc->GetAllocator ());
+	  // since PushBack does not guarantee its argument is not modified, we are forced to copy here. Hopefully,
+	  // it doesn't do another copy inside.
+	  JSON_VALUE copy_to_be_ins (db_json_doc_to_value (*doc_to_be_inserted), doc_destination.GetAllocator ());
+	  json_parent_p->PushBack (copy_to_be_ins, doc_destination.GetAllocator ());
 	}
     }
 
@@ -1080,6 +1106,8 @@ db_json_merge_two_json_arrays (JSON_DOC &array1, const JSON_DOC *array2)
     }
 }
 
+// todo: proper description for this function
+//
 void
 db_json_merge_two_json_by_array_wrapping (JSON_DOC &j1, const JSON_DOC *j2)
 {
@@ -1089,22 +1117,24 @@ db_json_merge_two_json_by_array_wrapping (JSON_DOC &j1, const JSON_DOC *j2)
 
       value.SetArray ();
       value.PushBack (j1, j1.GetAllocator ());
-      ((JSON_VALUE *) &j1)->Swap (value);
+
+      db_json_doc_to_value (j1).Swap (value);
     }
 
   if (db_json_get_type (j2) != DB_JSON_ARRAY)
     {
-      JSON_VALUE value;
-      JSON_DOC *j2_copy = db_json_allocate_doc ();
+      // create an array with a single member as j2, then call db_json_merge_two_json_arrays
+      JSON_DOC j2_as_array;
+      j2_as_array.SetArray ();
 
-      db_json_copy_doc (*j2_copy, j2);
+      // need a json value clone of j2, because PushBack does not guarantee the const restriction
+      JSON_VALUE j2_as_value (db_json_doc_to_value (*j2), j2_as_array.GetAllocator ());
+      j2_as_array.PushBack (j2_as_value, j2_as_array.GetAllocator ());
 
-      value.SetArray ();
-      value.PushBack (*j2_copy, j1.GetAllocator ());
-      ((JSON_VALUE *)j2_copy)->Swap (value);
+      // merge arrays
+      db_json_merge_two_json_arrays (j1, &j2_as_array);
 
-      db_json_merge_two_json_arrays (j1, j2_copy);
-      db_json_delete_doc (j2_copy);
+      // todo: we do some memory allocation and copying; maybe we can improve
     }
   else
     {

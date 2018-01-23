@@ -3226,14 +3226,14 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
 	  error_code = db_json_convert_string_and_call (DB_PULL_STRING (arg[i + 1]),
-							db_json_insert_func, new_doc, DB_PULL_STRING (arg[i]));
+							db_json_insert_func, *new_doc, DB_PULL_STRING (arg[i]));
 	  break;
 
 	case DB_TYPE_JSON:
-	  error_code = db_json_insert_func (arg[i + 1]->data.json.document, new_doc, DB_PULL_STRING (arg[i]));
+	  error_code = db_json_insert_func (arg[i + 1]->data.json.document, *new_doc, DB_PULL_STRING (arg[i]));
 	  break;
 	case DB_TYPE_NULL:
-	  error_code = db_json_insert_func ((JSON_DOC *) NULL, new_doc, DB_PULL_STRING (arg[i]));
+	  error_code = db_json_insert_func ((JSON_DOC *) NULL, *new_doc, DB_PULL_STRING (arg[i]));
 	  break;
 	default:
 	  db_json_delete_doc (new_doc);
@@ -3428,7 +3428,7 @@ db_json_set (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 int
 db_json_keys (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
-  int i, error_code = NO_ERROR;
+  int error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
   JSON_DOC *result_json = NULL;
   std::string path;
