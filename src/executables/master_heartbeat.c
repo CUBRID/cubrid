@@ -3577,10 +3577,10 @@ hb_resource_job_update_server_state (HB_JOB_ARG * arg)
             }
         }
     }
-  pthread_mutex_unlock (&hb_Resource->lock);
+  pthread_mutex_unlock (&hb_Cluster->lock);
 
   error =
-    hb_resource_job_queue (HB_RJOB_UPDATE_SERVER_STATE, NULL, prm_get_integer_value (PRM_ID_HA_CHANGEMODE_INTERVAL_IN_MSECS)); /* TODO put other interval */
+    hb_resource_job_queue (HB_RJOB_UPDATE_SERVER_STATE, NULL, HB_JOB_TIMER_WAIT_A_SECOND); /* TODO put other interval */
   assert (error == NO_ERROR);
 
   if (arg)
@@ -4760,7 +4760,7 @@ hb_resource_job_initialize ()
       return ER_FAILED;
     }
 
-  error = hb_cluster_job_queue (HB_RJOB_UPDATE_SERVER_STATE, NULL, HB_JOB_TIMER_IMMEDIATELY);
+  error = hb_resource_job_queue (HB_RJOB_UPDATE_SERVER_STATE, NULL, HB_JOB_TIMER_IMMEDIATELY);
   if (error != NO_ERROR)
     {
       assert (false);
