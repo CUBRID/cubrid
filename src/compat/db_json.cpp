@@ -166,6 +166,8 @@ STATIC_INLINE void db_json_replace_token_special_chars (std::string &token,
     const std::unordered_map<std::string, std::string> &special_chars);
 static bool db_json_path_is_token_valid_array_index (const std::string &str, std::size_t start = 0,
     std::size_t end = 0);
+static void db_json_doc_wrap_as_array (JSON_DOC &doc);
+static void db_json_value_wrap_as_array (JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &allocator);
 
 STATIC_INLINE JSON_VALUE &db_json_doc_to_value (JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const JSON_VALUE &db_json_doc_to_value (const JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
@@ -820,11 +822,7 @@ db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destinati
 	}
       else
 	{
-	  JSON_VALUE value_aux;
-
-	  value_aux.SetArray ();
-	  value_aux.PushBack (*json_parent_p, doc_destination.GetAllocator ());
-	  json_parent_p->Swap (value_aux);
+	  db_json_value_wrap_as_array (*json_parent_p, doc_destination.GetAllocator ());
 
 	  // since PushBack does not guarantee its argument is not modified, we are forced to copy here. Hopefully,
 	  // it doesn't do another copy inside.
@@ -960,7 +958,7 @@ db_json_remove_func (JSON_DOC *doc, char *raw_path)
 }
 
 int
-db_json_array_append_func (JSON_DOC *value, JSON_DOC *doc, const char *raw_path)
+db_json_array_append_func (const JSON_DOC *value, JSON_DOC *doc, const char *raw_path)
 {
   int error_code = NO_ERROR;
   std::string json_pointer_string;
@@ -991,17 +989,15 @@ db_json_array_append_func (JSON_DOC *value, JSON_DOC *doc, const char *raw_path)
 
   if (resulting_json->IsArray())
     {
-      resulting_json->PushBack (*value, doc->GetAllocator());
+      JSON_VALUE value_copy (*value, doc->GetAllocator ());
+      resulting_json->PushBack (value_copy, doc->GetAllocator());
     }
   else
     {
-      JSON_VALUE value_aux;
+      db_json_value_wrap_as_array (*resulting_json, doc->GetAllocator ());
 
-      value_aux.SetArray();
-      value_aux.PushBack (*resulting_json, doc->GetAllocator());
-      resulting_json->Swap (value_aux);
-
-      resulting_json->PushBack (*value, doc->GetAllocator());
+      JSON_VALUE value_copy (*value, doc->GetAllocator ());
+      resulting_json->PushBack (value_copy, doc->GetAllocator());
     }
 
   return NO_ERROR;
@@ -1075,11 +1071,7 @@ db_json_merge_two_json_objects (JSON_DOC &obj1, const JSON_DOC *obj2)
 	    }
 	  else
 	    {
-	      JSON_VALUE value;
-
-	      value.SetArray ();
-	      value.PushBack (obj1 [name], obj1.GetAllocator ());
-	      obj1 [name].Swap (value);
+	      db_json_value_wrap_as_array (obj1[name], obj1.GetAllocator ());
 	      obj1 [name].PushBack (itr->value, obj1.GetAllocator ());
 	    }
 	}
@@ -1113,12 +1105,7 @@ db_json_merge_two_json_by_array_wrapping (JSON_DOC &j1, const JSON_DOC *j2)
 {
   if (db_json_get_type (&j1) != DB_JSON_ARRAY)
     {
-      JSON_VALUE value;
-
-      value.SetArray ();
-      value.PushBack (j1, j1.GetAllocator ());
-
-      db_json_doc_to_value (j1).Swap (value);
+      db_json_doc_wrap_as_array (j1);
     }
 
   if (db_json_get_type (j2) != DB_JSON_ARRAY)
@@ -2030,4 +2017,20 @@ db_json_path_is_token_valid_array_index (const std::string &str, std::size_t sta
 bool JSON_DOC::IsLeaf ()
 {
   return !IsArray () && !IsObject ();
+}
+
+static void
+db_json_value_wrap_as_array (JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &allocator)
+{
+  JSON_VALUE swap_value;
+
+  swap_value.SetArray ();
+  swap_value.PushBack (value, allocator);
+  swap_value.Swap (value);
+}
+
+static void
+db_json_doc_wrap_as_array (JSON_DOC &doc)
+{
+  return db_json_value_wrap_as_array (doc, doc.GetAllocator ());
 }

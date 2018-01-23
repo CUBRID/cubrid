@@ -3684,7 +3684,7 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 int
 db_json_get_all_paths (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
-  int i, error_code = NO_ERROR;
+  int error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
   JSON_DOC *result_json = NULL;
   char *str;
