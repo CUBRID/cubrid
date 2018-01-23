@@ -3564,11 +3564,15 @@ hb_resource_job_update_server_state (HB_JOB_ARG * arg)
     {
       if (hb_Cluster->state == HB_NSTATE_MASTER)
         {
-          hb_Cluster->last_state = hb_Cluster->state;
           error = css_send_to_my_server_hb_state (NULL);
           if (error == ER_FAILED)
             {
-              fprintf (stderr, "send failed, will retry after one sec\n");
+              MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "state send failed, will retry. (state=%d). \n", hb_Cluster->state);
+            }
+          else if (error == NO_ERROR)
+            {
+              /* successful, don't resend until next update */
+              hb_Cluster->last_state = hb_Cluster->state;
             }
         }
       else
@@ -3576,11 +3580,15 @@ hb_resource_job_update_server_state (HB_JOB_ARG * arg)
           const char *hostname = hb_find_host_name_of_master_server ();
           if (hostname != NULL)
             {
-              hb_Cluster->last_state = hb_Cluster->state;
               error = css_send_to_my_server_hb_state (hostname);
               if (error == ER_FAILED)
                 {
-                  fprintf (stderr, "send failed, will retry after one sec\n");
+                  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "state send failed, will retry. (state=%d). \n", hb_Cluster->state);
+                }
+              else if (error == NO_ERROR)
+                {
+                  /* successful, don't resend until next update */
+                  hb_Cluster->last_state = hb_Cluster->state;
                 }
             }
         }
