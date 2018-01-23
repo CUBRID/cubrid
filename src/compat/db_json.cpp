@@ -160,7 +160,7 @@ STATIC_INLINE void db_json_build_path_special_chars (const JSON_PATH_TYPE &json_
     std::unordered_map<std::string, std::string> &special_chars);
 STATIC_INLINE std::vector<std::string> db_json_split_path_by_delimiters (const std::string &path,
     const std::string &delim);
-STATIC_INLINE bool db_json_sql_path_is_valid (const std::string &sql_path);
+STATIC_INLINE bool db_json_sql_path_is_valid (std::string &sql_path);
 STATIC_INLINE int db_json_er_set_path_does_not_exist (const std::string &path, const JSON_DOC *doc);
 STATIC_INLINE void db_json_replace_token_special_chars (std::string &token,
     const std::unordered_map<std::string, std::string> &special_chars);
@@ -587,7 +587,7 @@ db_json_add_member_to_object (JSON_DOC *doc, char *name, int value)
       doc->SetObject ();
     }
 
-  key.SetString (name, strlen (name), doc->GetAllocator ());
+  key.SetString (name, (rapidjson::SizeType) strlen (name), doc->GetAllocator ());
   doc->AddMember (key, JSON_VALUE ().SetInt (value), doc->GetAllocator ());
 }
 
@@ -601,7 +601,7 @@ db_json_add_member_to_object (JSON_DOC *doc, char *name, const JSON_DOC *value)
       doc->SetObject ();
     }
 
-  key.SetString (name, strlen (name), doc->GetAllocator ());
+  key.SetString (name, (rapidjson::SizeType) strlen (name), doc->GetAllocator ());
   if (value != NULL)
     {
       val.CopyFrom (*value, doc->GetAllocator ());
@@ -1413,7 +1413,7 @@ db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_type,
 * db_json_split_path_by_delimiters ()
 * path (in)
 * delim (in) supports multiple delimiters
-* returns a vector with tokens splited by delimiters from the given string
+* returns a vector with tokens split by delimiters from the given string
 */
 STATIC_INLINE std::vector<std::string>
 db_json_split_path_by_delimiters (const std::string &path, const std::string &delim)
@@ -1424,6 +1424,7 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
 
   while (end != std::string::npos)
     {
+      // do not tokenize on escaped quotes
       if (path[end] != '"' || path[end - 1] != '\\')
 	{
 	  const std::string &substring = path.substr (start, end - start);
@@ -1448,27 +1449,23 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
 }
 
 STATIC_INLINE bool
-db_json_sql_path_is_valid (const std::string &sql_path)
+db_json_sql_path_is_valid (std::string &sql_path)
 {
   // skip leading white spaces
-  auto first_non_space = std::find_if_not (sql_path.begin(), sql_path.end(), db_json_isspace);
-  if (first_non_space == sql_path.cend ())
+  db_json_normalize_path (sql_path);
+  if (sql_path.empty ())
     {
       // empty
       return false;
     }
 
-  std::size_t start = std::distance (sql_path.begin(), first_non_space);
-
-  if (sql_path[start] != '$')
+  if (sql_path[0] != '$')
     {
       // first character should always be '$'
       return false;
     }
-  // skip dollar sign
-  start++;
-
-  for (std::size_t i = start; i < sql_path.length(); ++i)
+  // start parsing path string by skipping dollar character
+  for (std::size_t i = 1; i < sql_path.length(); ++i)
     {
       // to begin a next token we have only 2 possibilities:
       // with dot we start an object name
@@ -1608,7 +1605,7 @@ db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_
   // first we need to split into tokens
   std::vector<std::string> tokens = db_json_split_path_by_delimiters (pointer_path_string, "/");
 
-  for (unsigned int i = 0; i < tokens.size(); ++i)
+  for (std::size_t i = 0; i < tokens.size(); ++i)
     {
       std::string &token = tokens[i];
 
@@ -1673,13 +1670,14 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
     }
 
   std::unordered_map<std::string, std::string> special_chars;
-  json_pointer_out = "";
 
   db_json_build_path_special_chars (json_path_type, special_chars);
 
   // first we need to split into tokens
   std::vector<std::string> tokens = db_json_split_path_by_delimiters (sql_path_string, "$.[]\"");
 
+  // build json pointer
+  json_pointer_out = "";
   for (unsigned int i = 0; i < tokens.size(); ++i)
     {
       json_pointer_out += "/" + tokens[i];
