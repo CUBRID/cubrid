@@ -30,7 +30,7 @@ namespace cubthread
   daemon::~daemon ()
   {
     // thread must be stopped
-    stop ();
+    stop_execution ();
   }
 
   void
@@ -40,20 +40,19 @@ namespace cubthread
   }
 
   void
-  daemon::stop (void)
+  daemon::stop_execution (void)
   {
     // note: this must not be called concurrently
 
-    if (m_looper.is_stopped ())
+    if (m_looper.stop ())
       {
 	// already stopped
 	return;
       }
 
-    // first signal stop
-    m_looper.stop ();
     // make sure thread will wakeup
     wakeup ();
+
     // then wait for thread to finish
     m_thread.join ();
   }
