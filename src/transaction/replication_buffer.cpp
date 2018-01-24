@@ -24,6 +24,7 @@
 #ident "$Id$"
 
 #include "replication_buffer.hpp"
+#include "object_representation.h"
 
 replication_buffer::replication_buffer (const size_t req_capacity)
 {
@@ -35,15 +36,15 @@ replication_buffer::replication_buffer (const size_t req_capacity)
 
 int replication_buffer::init (const size_t req_capacity)
 {
-  storage = malloc (req_capacity);
+  storage = (BUFFER_UNIT *) malloc (req_capacity);
   if (storage == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  curr_append_ptr = storage;
+  curr_append_pos = 0;
   end_ptr = storage + req_capacity;
-  curr_read_ptr = storage;
+  curr_read_pos = 0;
 
   return NO_ERROR;
 }
@@ -56,23 +57,24 @@ replication_buffer::~replication_buffer ()
 }
 
 
-unsigned char* serial_buffer::reserve (const size_t amount)
+BUFFER_UNIT * serial_buffer::reserve (const size_t amount)
 {
-  unsigned char *ptr;
+  BUFFER_UNIT *ptr;
+  int error;
 
-  ptr = buf->get_curr_append_pos ();
-  error = buf->check_space (ptr, OR_INT_SIZE);
+  ptr = get_curr_append_ptr ();
+  error = check_space (ptr, OR_INT_SIZE);
 
   if (error == NO_ERROR)
     {
-    ptr = buf->curr_append_ptr.fetch_add (1, SERIAL_BUFF_MEMORY_ORDER);
-    if ((error = buf->check_space (ptr, OR_INT_SIZE)) != NO_ERROR)
-      {
-      return NULL;
-      }
+      ptr = storage + curr_append_pos.fetch_add (amount, SERIAL_BUFF_MEMORY_ORDER);
+      if ((error = check_space (ptr, OR_INT_SIZE)) != NO_ERROR)
+        {
+          return NULL;
+        }
 
-    return curr_append_ptr;
-
+      return storage + curr_append_pos;
     }
+
   return NULL;
 }

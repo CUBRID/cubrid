@@ -38,7 +38,7 @@ int test_replication_buffer (void)
     ptr = rpl_buffer.reserve (BUFFER_TEST_SIZE);
     if (ptr != rpl_buffer.get_buffer ())
       {
-        
+         std::cout << "  ERROR: reserve,  = " <<  xarr_buf.get_size (); 
       }
 
 

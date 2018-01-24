@@ -26,13 +26,16 @@
 #ifndef _REPLICATION_ENTRY_HPP_
 #define _REPLICATION_ENTRY_HPP_
 
+#include <vector>
 #include "dbtype.h"
 
-enum class REPL_ENTRY_TYPE;
+
+typedef enum repl_entry_type REPL_ENTRY_TYPE;
+enum repl_entry_type
 {
-    UPDATE = 0,
-    INSERT,
-    DELETE
+  REPL_UPDATE = 0,
+  REPL_INSERT,
+  REPL_DELETE
 };
 
 class replication_entry
@@ -50,7 +53,7 @@ private:
   std::vector <DB_VALUE> new_values;
   REPL_ENTRY_TYPE type;
 public:
-  virtual void encode(void);
+  virtual int encode(void);
 };
 
 #endif /* _REPLICATION_ENTRY_HPP_ */

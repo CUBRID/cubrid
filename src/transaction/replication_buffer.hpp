@@ -26,32 +26,38 @@
 #ifndef _REPLICATION_BUFFER_HPP_
 #define _REPLICATION_BUFFER_HPP_
 
+#include <atomic>
 #include "dbtype.h"
+
+typedef unsigned char BUFFER_UNIT;
 
 class serial_buffer
 {
 public:
-  const enum memory_order SERIAL_BUFF_MEMORY_ORDER = memory_order_relaxed;
+  const enum std::memory_order SERIAL_BUFF_MEMORY_ORDER = std::memory_order_relaxed;
 
-  serial_buffer (const size_t req_capacity) = 0;
+  serial_buffer (const size_t req_capacity = 0) {};
 
-  int init (const size_t req_capacity) = 0;
+  virtual ~serial_buffer () = 0;
 
-  virtual unsigned char * reserve (const size_t amount) = 0;
-  virtual int add (const char *ptr, const size_t size) = 0;
-  virtual int read (char *ptr, const size_t read_pos, const size_t size) = 0;
-  virtual int check_space(const unsigned char *ptr, const size_t amount) = 0;
+  virtual int init (const size_t req_capacity) = 0;
 
-  const char * get_buffer (void) { return storage; }
+  virtual BUFFER_UNIT * reserve (const size_t amount) = 0;
+  virtual BUFFER_UNIT * get_curr_append_ptr () = 0;
+  virtual int add (BUFFER_UNIT *ptr, const size_t size) = 0;
+  virtual int read (const BUFFER_UNIT *ptr, const size_t read_pos, const size_t size) = 0;
+  virtual int check_space (const BUFFER_UNIT *ptr, const size_t amount) = 0;
+
+  const BUFFER_UNIT * get_buffer (void) { return storage; }
 
 
-private:
+protected:
   size_t capacity;
 
-  unsigned char *storage;
-  std::atomic <char *> curr_append_ptr;
-  unsigned char *end_ptr;
-  std::atomic <char *> curr_read_ptr;
+  BUFFER_UNIT *storage;
+  std::atomic_size_t curr_append_pos;
+  BUFFER_UNIT *end_ptr;
+  std::atomic_size_t curr_read_pos;
 };
 
 class replication_buffer : public serial_buffer
@@ -59,13 +65,15 @@ class replication_buffer : public serial_buffer
 public:
   replication_buffer (const size_t req_capacity);
 
-  int init (const size_t req_capacity);
-  unsigned char *get_curr_append_pos ();
+  ~replication_buffer (void);
 
-  unsigned char * reserve (size_t amount);
-  int add (const char *ptr, size_t size);
-  int read (char *ptr, size_t read_pos, size_t size);
-  int check_space (const unsigned char *ptr, size_t amount);
+  int init (const size_t req_capacity);
+  BUFFER_UNIT *get_curr_append_ptr () { return (storage + curr_append_pos); }
+
+  BUFFER_UNIT * reserve (size_t amount);
+  int add (const BUFFER_UNIT *ptr, size_t size);
+  int read (BUFFER_UNIT *ptr, size_t read_pos, size_t size);
+  int check_space (const BUFFER_UNIT *ptr, size_t amount);
 };
 
 

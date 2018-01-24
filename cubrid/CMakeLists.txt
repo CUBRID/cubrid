@@ -162,6 +162,8 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/wait_for_graph.c
   ${TRANSACTION_DIR}/log_writer.c
   ${TRANSACTION_DIR}/mvcc.c
+  ${TRANSACTION_DIR}/replication_buffer.cpp
+  ${TRANSACTION_DIR}/replication_serialization.cpp
   )
 
 set(STORAGE_SOURCES

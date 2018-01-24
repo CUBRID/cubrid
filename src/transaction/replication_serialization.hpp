@@ -30,12 +30,11 @@
 
 class serial_buffer;
 
-class repl_serialization
+class replication_serialization
 {
 public:
-  repl_serialization (serial_buffer *buf) : buffer (buf)
-    {
-    };
+  replication_serialization (serial_buffer *buf) : buffer (buf) {  };
+  ~replication_serialization();
 
   int pack_int (const int &value);
   int pack_db_value (const DB_VALUE &value);
