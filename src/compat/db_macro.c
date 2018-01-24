@@ -3495,7 +3495,7 @@ db_value_print (const DB_VALUE * value)
 
   if (value != NULL)
     {
-      help_fprint_value (stdout, value);
+      help_fprint_value (NULL, stdout, value);
     }
 
 }
@@ -3513,7 +3513,7 @@ db_value_fprint (FILE * fp, const DB_VALUE * value)
 
   if (fp != NULL && value != NULL)
     {
-      help_fprint_value (fp, value);
+      help_fprint_value (NULL, fp, value);
     }
 
 }
@@ -6373,7 +6373,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	  break;
 
 	case DB_TYPE_NUMERIC:
-	  buffer_p = valcnv_append_string (buffer_p, numeric_db_value_print ((DB_VALUE *) value_p, line));
+	  buffer_p = valcnv_append_string (buffer_p, numeric_db_value_print (value_p, line));
 	  break;
 
 	case DB_TYPE_BIT:
@@ -6945,6 +6945,18 @@ db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest)
       {
 	double val = db_json_get_double_from_document (doc);
 	DB_MAKE_DOUBLE (dest, val);
+	break;
+      }
+    case DB_JSON_BOOL:
+      {
+	char *str = db_json_get_bool_as_str_from_document (doc);
+	int error_code = DB_MAKE_STRING (dest, str);
+	if (error_code != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    return error_code;
+	  }
+	dest->need_clear = true;
 	break;
       }
     case DB_JSON_NULL:

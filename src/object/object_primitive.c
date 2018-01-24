@@ -32,7 +32,9 @@
 #include <string.h>
 #include <assert.h>
 
+#include "mem_block.hpp"
 #include "object_primitive.h"
+#include "string_buffer.hpp"
 
 #include "system_parameter.h"
 #include "set_object.h"
@@ -42,6 +44,8 @@
 #include "tz_support.h"
 #include "file_io.h"
 #include "db_json.hpp"
+#include "db_private_allocator.hpp"
+#include <utility>
 
 #if !defined (SERVER_MODE)
 #include "work_space.h"
@@ -8518,7 +8522,16 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 	      /* val 1 bound, val 2 unbound */
 	      if (mul2->min_max_val.position == i)
 		{
-		  c = mul2->min_max_val.type == MIN_COLUMN ? DB_GT : DB_LT;
+		  /* safeguard */
+		  assert (mul2->min_max_val.type == MIN_COLUMN || mul2->min_max_val.type == MAX_COLUMN);
+		  if (mul2->min_max_val.type == MIN_COLUMN)
+		    {
+		      c = DB_GT;
+		    }
+		  else
+		    {
+		      c = DB_LT;
+		    }
 		}
 	      else
 		{
@@ -8530,7 +8543,16 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 	      /* val 1 unbound, val 2 bound */
 	      if (mul1->min_max_val.position == i)
 		{
-		  c = mul1->min_max_val.type == MIN_COLUMN ? DB_LT : DB_GT;
+		  /* safeguard */
+		  assert (mul1->min_max_val.type == MIN_COLUMN || mul1->min_max_val.type == MAX_COLUMN);
+		  if (mul1->min_max_val.type == MIN_COLUMN)
+		    {
+		      c = DB_LT;
+		    }
+		  else
+		    {
+		      c = DB_GT;
+		    }
 		}
 	      else
 		{
@@ -8562,12 +8584,28 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 		    }
 		  else
 		    {
-		      c = DB_GT;
+		      assert (mul1->min_max_val.type == MIN_COLUMN || mul1->min_max_val.type == MAX_COLUMN);
+		      if (mul1->min_max_val.type == MIN_COLUMN)
+			{
+			  c = DB_LT;
+			}
+		      else
+			{
+			  c = DB_GT;
+			}
 		    }
 		}
 	      else if (mul2->min_max_val.position == i)
 		{
-		  c = DB_LT;
+		  assert (mul2->min_max_val.type == MIN_COLUMN || mul2->min_max_val.type == MAX_COLUMN);
+		  if (mul2->min_max_val.type == MIN_COLUMN)
+		    {
+		      c = DB_GT;
+		    }
+		  else
+		    {
+		      c = DB_LT;
+		    }
 		}
 	      else
 		{
@@ -10405,101 +10443,67 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
  */
 
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * pr_valstring - Take the value and formats it using the sptrfunc member of
  * the pr_type vector for the appropriate type.
- *    return: a freshly-malloc'ed string with a printed rep of "val" in it
+ *    return: a freshly db_private_realloc()'ed string with a printed rep of "val" in it
  *    val(in): some DB_VALUE
  * Note:
- *    The caller is responsible for eventually freeing the memory via free_and_init.
+ *    The caller is responsible for eventually freeing the memory using db_private_free()
  *
  *    This is really just a debugging helper; it probably doesn't do enough
  *    serious formatting for external use.  Use it to get printed DB_VALUE
  *    representations into error messages and the like.
  */
 char *
-pr_valstring (DB_VALUE * val)
+pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
 {
-  int str_size;
-  char *str;
-  PR_TYPE *pr_type;
-  DB_TYPE dbval_type;
-
-  const char null_str[] = "(null)";
-  const char NULL_str[] = "NULL";
+/* *INDENT-OFF* */
+#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
+  string_buffer sb {
+    [&threade] (mem::block &block, size_t len)
+    {
+      block.ptr = (char *) db_private_realloc (threade, block.ptr, block.dim + len);
+      block.dim += len;
+    },
+    [&threade] (mem::block &block)
+    {
+      db_private_free (threade, block.ptr);
+      block = {};
+    }
+  };
+#else
+  string_buffer sb {&mem::private_realloc, &mem::private_dealloc};
+#endif
+/* *INDENT-ON* */
 
   if (val == NULL)
     {
       /* space with terminating NULL */
-      str = (char *) malloc (sizeof (null_str) + 1);
-      if (str)
-	{
-	  strcpy (str, null_str);
-	}
-      return str;
+      sb ("(null)");
+      return sb.move_ptr ();
     }
 
   if (DB_IS_NULL (val))
     {
       /* space with terminating NULL */
-      str = (char *) malloc (sizeof (NULL_str) + 1);
-      if (str)
-	{
-	  strcpy (str, NULL_str);
-	}
-      return str;
+      sb ("NULL");
+      return sb.move_ptr ();
     }
 
-  dbval_type = DB_VALUE_DOMAIN_TYPE (val);
-  pr_type = PR_TYPE_FROM_ID (dbval_type);
+  DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (val);
+  PR_TYPE *pr_type = PR_TYPE_FROM_ID (dbval_type);
 
   if (pr_type == NULL)
     {
       return NULL;
     }
 
-  /* 
-   * Guess a size; if we're wrong, we'll learn about it later and be told
-   * how big to make the actual buffer.  Most things are pretty small, so
-   * don't worry about this too much.
-   */
-  str_size = 32;
-
-  str = (char *) malloc (str_size);
-  if (str == NULL)
-    {
-      return NULL;
-    }
-
-  str_size = (*(pr_type->sptrfunc)) (val, str, str_size);
-  if (str_size < 0)
-    {
-      /* 
-       * We didn't allocate enough slop.  However, the sprintf function
-       * was kind enough to tell us how much room we really needed, so
-       * we can reallocate and try again.
-       */
-      char *old_str;
-      old_str = str;
-      str_size = -str_size;
-      str_size++;		/* for terminating NULL */
-      str = (char *) realloc (str, str_size);
-      if (str == NULL)
-	{
-	  free_and_init (old_str);
-	  return NULL;
-	}
-      if ((*pr_type->sptrfunc) (val, str, str_size) < 0)
-	{
-	  free_and_init (str);
-	  return NULL;
-	}
-
-      str[str_size - 1] = 0;	/* set terminating NULL */
-    }
-
-  return str;
+  (*(pr_type->sptrfunc)) (val, sb);
+  return sb.move_ptr ();	//caller should use db_private_free() to deallocate it
 }
+#endif //defined (SERVER_MODE) || defined (SA_MODE)
 
 /*
  * pr_complete_enum_value - Sets both index and string of a enum value in case
@@ -17258,7 +17262,6 @@ static void
 mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 {
   DB_VALUE json_body, schema_raw;
-  const char *schema_str;
   DB_JSON *json;
 
   json = (DB_JSON *) memptr;

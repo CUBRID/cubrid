@@ -46,17 +46,18 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_admin.c
   ${COMPAT_DIR}/db_class.c
   ${COMPAT_DIR}/db_date.c
-  ${COMPAT_DIR}/db_info.c
   ${COMPAT_DIR}/db_elo.c 
+  ${COMPAT_DIR}/db_info.c
+  ${COMPAT_DIR}/db_json.cpp
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_obj.c
   ${COMPAT_DIR}/db_old.c
   ${COMPAT_DIR}/db_query.c
   ${COMPAT_DIR}/db_set.c
   ${COMPAT_DIR}/db_temp.c
+  ${COMPAT_DIR}/db_value_printer.cpp
   ${COMPAT_DIR}/db_vdb.c
   ${COMPAT_DIR}/db_virt.c
-  ${COMPAT_DIR}/db_json.cpp
   )
 
 set(BASE_SOURCES
@@ -95,6 +96,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/intl_support.c
   ${BASE_DIR}/environment_variable.c
   ${BASE_DIR}/misc_string.c
+  ${BASE_DIR}/string_buffer.cpp
   ${BASE_DIR}/variable_string.c
   ${BASE_DIR}/cubrid_getopt_long.c
   ${BASE_DIR}/binaryheap.c
@@ -184,29 +186,44 @@ set(QUERY_SOURCES
   )
 
 set(OBJECT_SOURCES
-  ${OBJECT_DIR}/elo.c
   ${OBJECT_DIR}/authenticate.c
-  ${OBJECT_DIR}/object_print.c
-  ${OBJECT_DIR}/object_accessor.c
-  ${OBJECT_DIR}/object_template.c
-  ${OBJECT_DIR}/set_object.c
-  ${OBJECT_DIR}/trigger_manager.c
-  ${OBJECT_DIR}/virtual_object.c
+  ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c
+  ${OBJECT_DIR}/elo.c
+  ${OBJECT_DIR}/object_description.cpp
+  ${OBJECT_DIR}/object_domain.c
+  ${OBJECT_DIR}/object_accessor.c
+  ${OBJECT_DIR}/object_primitive.c
+  ${OBJECT_DIR}/object_print.c
+  ${OBJECT_DIR}/object_printer.cpp
+  ${OBJECT_DIR}/object_print_util.cpp
+  ${OBJECT_DIR}/object_representation.c
+  ${OBJECT_DIR}/object_template.c
+  ${OBJECT_DIR}/quick_fit.c
   ${OBJECT_DIR}/schema_manager.c
   ${OBJECT_DIR}/schema_template.c
-  ${OBJECT_DIR}/object_representation.c
-  ${OBJECT_DIR}/object_primitive.c
-  ${OBJECT_DIR}/quick_fit.c
-  ${OBJECT_DIR}/transform_cl.c
+  ${OBJECT_DIR}/set_object.c
   ${OBJECT_DIR}/transform.c
-  ${OBJECT_DIR}/object_domain.c
+  ${OBJECT_DIR}/transform_cl.c
+  ${OBJECT_DIR}/trigger_description.cpp
+  ${OBJECT_DIR}/trigger_manager.c
+  ${OBJECT_DIR}/virtual_object.c
   ${OBJECT_DIR}/work_space.c
   )
 
 set(JSP_SOURCES
   ${JSP_DIR}/jsp_cl.c
   ${JSP_DIR}/jsp_sr.c
+  )
+
+set(THREAD_SOURCES
+  ${THREAD_DIR}/thread_entry.cpp
+  ${THREAD_DIR}/thread_manager.cpp
+  )
+set(THREAD_HEADERS
+  ${THREAD_DIR}/thread_compat.hpp
+  ${THREAD_DIR}/thread_entry.hpp
+  ${THREAD_DIR}/thread_manager.hpp
   )
 
 set(TRANSACTION_SOURCES
@@ -328,6 +345,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${JSP_SOURCES}
+  ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
@@ -360,6 +378,7 @@ add_library(cubridsa SHARED
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${JSP_SOURCES}
+  ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
   ${STORAGE_SOURCES}
   ${ES_SOURCES}

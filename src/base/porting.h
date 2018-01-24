@@ -548,6 +548,7 @@ extern int rand_r (unsigned int *seedp);
 extern double round (double d);
 #endif /* !_MSC_VER || _MSC_VER < 1800 */
 
+/* Maybe replace this with std::mutex */
 typedef struct
 {
   CRITICAL_SECTION cs;
@@ -836,7 +837,7 @@ template <typename T, typename V> inline T ATOMIC_INC_64 (volatile T *ptr, V amo
 {
   static_assert (sizeof (T) == sizeof (UINT64), "Not 64bit");
 #if defined (_WIN64)
-  return InterlockedExchangeAdd64 (reinterpret_cast <volatile INT64 *>(ptr), amount) + amount;
+  return (T) InterlockedExchangeAdd64 (reinterpret_cast <volatile INT64 *>(ptr), amount) + amount;
 #elif defined(WINDOWS)
   return win32_exchange_add64 (reinterpret_cast <volatile UINT64 *>(ptr), amount) + amount;
 #else
@@ -860,7 +861,7 @@ template <typename T, typename V> inline T ATOMIC_TAS_64 (volatile T *ptr, V amo
 {
   static_assert (sizeof (T) == sizeof (UINT64), "Not 64bit");
 #if defined (_WIN64)
-  return InterlockedExchange64 (reinterpret_cast <volatile INT64 *>(ptr), amount);
+  return (T) InterlockedExchange64 (reinterpret_cast <volatile INT64 *>(ptr), (__int64) amount);
 #elif defined(WINDOWS)
   return win32_exchange64 (reinterpret_cast <volatile UINT64 *>(ptr), amount);
 #else
@@ -896,6 +897,16 @@ namespace dispatch
     {
       return ATOMIC_TAS_32 (ptr, amount);
     }
+
+  template <typename T, typename V> inline T atomic_inc (volatile T *ptr, V amount, Bool2Type <true> /*_is_64_bit*/ )
+    {
+      return ATOMIC_INC_64 (ptr, amount);
+    }
+
+  template <typename T, typename V> inline T atomic_inc (volatile T * ptr, V amount, Bool2Type <false> /*_is_64_bit*/ )
+    {
+      return ATOMIC_INC_32 (ptr, amount);
+    }
 }				/* namespace dispatch */
 
 template <typename T, typename V> inline T ATOMIC_TAS (volatile T *ptr, V amount)
@@ -925,6 +936,22 @@ template <typename T> inline bool ATOMIC_CAS_ADDR (T * volatile *ptr, T *cmp_val
   return __sync_bool_compare_and_swap (ptr, cmp_val, swap_val);
 #endif
 }
+
+template <typename T, typename V> inline T ATOMIC_INC (volatile T *ptr, V amount)
+{
+  return dispatch::atomic_inc (ptr, amount, dispatch::Bool2Type <sizeof (T) == sizeof (UINT64)> ());
+}
+
+template <typename T> inline T ATOMIC_LOAD (volatile T *ptr)
+{
+  return ATOMIC_INC (ptr, 0);
+}
+
+template <typename T, typename V> inline void ATOMIC_STORE (volatile T *ptr, V amount)
+{
+  (void) ATOMIC_TAS (ptr, amount);
+}
+
 /* *INDENT-ON* */
 
 #define ATOMIC_LOAD_64(ptr) ATOMIC_INC_64(ptr, 0)

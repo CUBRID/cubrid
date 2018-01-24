@@ -29,6 +29,9 @@
 
 #include "config.h"
 
+#include "dbtype.h"
+#include "thread_compat.hpp"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
@@ -38,9 +41,6 @@
 #if !defined(WINDOWS)
 #include <stdint.h>
 #endif
-
-#include "thread.h"
-#include "dbtype.h"
 
 /* Ceiling of positive division */
 #define CEIL_PTVDIV(dividend, divisor) \

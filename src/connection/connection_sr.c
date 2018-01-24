@@ -143,6 +143,14 @@ CSS_THREAD_FN css_Request_handler = NULL;
 /* This will handle closed connection errors */
 CSS_THREAD_FN css_Connection_error_handler = NULL;
 
+#define CSS_CONN_IDX(conn_arg) ((conn_arg) - css_Conn_array)
+
+#define CSS_FREE_CONN_MSG "Free count = %d, head = %d"
+#define CSS_FREE_CONN_ARGS css_Num_free_conn, CSS_CONN_IDX (css_Free_conn_anchor)
+
+#define CSS_ACTIVE_CONN_MSG "Active count = %d, head = %d"
+#define CSS_ACTIVE_CONN_ARGS css_Num_active_conn, CSS_CONN_IDX (css_Active_conn_anchor)
+
 static int css_get_next_client_id (void);
 static CSS_CONN_ENTRY *css_common_connect (CSS_CONN_ENTRY * conn,
 					   unsigned short *rid,
@@ -584,6 +592,7 @@ css_make_conn (SOCKET fd)
       css_Num_free_conn--;
       assert (css_Num_free_conn >= 0);
     }
+  CSS_LOG_STACK ("css_make_conn: conn = %d, " CSS_FREE_CONN_MSG, CSS_CONN_IDX (conn), CSS_FREE_CONN_ARGS);
 
   END_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
 
@@ -612,6 +621,9 @@ css_insert_into_active_conn_list (CSS_CONN_ENTRY * conn)
   int r;
 
   START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
+
+  CSS_LOG_STACK ("css_insert_into_active_conn_list conn = %d, prev " CSS_ACTIVE_CONN_MSG, CSS_CONN_IDX (conn),
+		 CSS_ACTIVE_CONN_ARGS);
 
   conn->next = css_Active_conn_anchor;
   css_Active_conn_anchor = conn;
@@ -646,6 +658,8 @@ css_dealloc_conn (CSS_CONN_ENTRY * conn)
   int r;
 
   START_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
+
+  CSS_LOG_STACK ("css_dealloc_conn conn = %d, prev " CSS_FREE_CONN_MSG, CSS_CONN_IDX (conn), CSS_FREE_CONN_ARGS);
 
   conn->next = css_Free_conn_anchor;
   css_Free_conn_anchor = conn;
@@ -889,10 +903,18 @@ css_free_conn (CSS_CONN_ENTRY * conn)
 	  assert (css_Num_active_conn >= 0);
 	  assert (css_Num_active_conn < css_Num_max_conn);
 
+	  CSS_LOG_STACK ("css_free_conn - removed conn = %d from " CSS_ACTIVE_CONN_MSG, CSS_CONN_IDX (conn),
+			 CSS_ACTIVE_CONN_ARGS);
+
 	  break;
 	}
 
       prev = p;
+    }
+
+  if (p == NULL)
+    {
+      CSS_LOG_STACK ("css_free_conn - not found conn = %p in " CSS_ACTIVE_CONN_MSG, conn, CSS_ACTIVE_CONN_ARGS);
     }
 
   css_shutdown_conn (conn);

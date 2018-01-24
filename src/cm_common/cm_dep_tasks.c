@@ -39,6 +39,7 @@
 #include "cm_portable.h"
 #include "cm_execute_sa.h"
 #include "cm_defines.h"
+#include "numeric_opfunc.h"
 #include "perf_monitor.h"
 #include "dbi.h"
 #include "utility.h"
@@ -2268,7 +2269,6 @@ _op_get_value_string (DB_VALUE * value)
   DB_TIMETZ *timetz_v;
   char str_buf[NUMERIC_MAX_STRING_SIZE];
 
-  extern char *numeric_db_value_print (DB_VALUE *, char *str_buf);
   extern int db_get_string_length (const DB_VALUE * value);
   extern int db_bit_string (const DB_VALUE * the_db_bit, const char *bit_format, char *string, int max_size);
 
@@ -2321,7 +2321,7 @@ _op_get_value_string (DB_VALUE * value)
       snprintf (result, result_size, "%f", fv);
       break;
     case DB_TYPE_NUMERIC:
-      snprintf (result, result_size, "%s", numeric_db_value_print ((DB_VALUE *) value, str_buf));
+      snprintf (result, result_size, "%s", numeric_db_value_print (value, str_buf));
       break;
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:

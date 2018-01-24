@@ -67,6 +67,9 @@
 #if defined (SA_MODE)
 #include "connection_support.h"
 #endif /* defined (SA_MODE) */
+#include "db_value_printer.hpp"
+#include "mem_block.hpp"
+#include "string_buffer.hpp"
 
 #if !defined(SERVER_MODE)
 
@@ -2024,11 +2027,11 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  if (VACUUM_IS_THREAD_VACUUM (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p) && vacuum_worker_state_is_topop (thread_p))
     {
       /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
        * instead of system tdes. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      tdes = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -2149,11 +2152,11 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p) && vacuum_worker_state_is_topop (thread_p))
     {
       /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
        * instead of system tdes. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      tdes = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -2287,11 +2290,11 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p) && vacuum_worker_state_is_topop (thread_p))
     {
       /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
        * instead of system tdes. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      tdes = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -2696,9 +2699,9 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
     {
       /* Vacuum worker */
       /* Must be under a system operation, otherwise postpone records will not work. */
-      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p));
+      assert (vacuum_worker_state_is_topop (thread_p));
       /* Use reserved transaction descriptor instead of system tdes. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      tdes = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -2829,9 +2832,9 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
     {
       /* Vacuum worker */
       /* Must be at the end of a system operation or during recovery. */
-      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p) || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
+      assert (vacuum_worker_state_is_topop (thread_p) || vacuum_worker_state_is_recovery (thread_p));
       /* Use reserved transaction descriptor instead of system tdes. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      tdes = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -3059,9 +3062,9 @@ log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec_type, LOG_D
     {
       /* Vacuum worker */
       /* Must be under a system operation, otherwise postpone records will not work. */
-      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p));
+      assert (vacuum_worker_state_is_topop (thread_p));
       /* Use reserved transaction descriptor instead of system tdes. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      tdes = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -3537,21 +3540,21 @@ log_sysop_start (THREAD_ENTRY * thread_p)
     {
       /* System operations must be isolated and allow undo. It is impossible to use system tdes for more than one
        * thread, so vacuum workers use a reserved tdes instead. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      tdes = vacuum_get_worker_tdes (thread_p);
 
       /* Vacuum worker state should be either VACUUM_WORKER_STATE_EXECUTE or VACUUM_WORKER_STATE_TOPOP (or
        * VACUUM_WORKER_STATE_RECOVERY during database recovery phase). */
-      assert (VACUUM_WORKER_STATE_IS_EXECUTE (thread_p) || VACUUM_WORKER_STATE_IS_TOPOP (thread_p)
-	      || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
+      assert (vacuum_worker_state_is_execute (thread_p) || vacuum_worker_state_is_topop (thread_p)
+	      || vacuum_worker_state_is_recovery (thread_p));
 
       vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
 		     "Start system operation. Current worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
 		     "tdes->tail_lsa=(%lld, %d). Worker state=%d.", tdes->trid, tdes->topops.last,
 		     (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
-		     VACUUM_GET_WORKER_STATE (thread_p));
+		     vacuum_get_worker_state (thread_p));
 
       /* Change worker state to VACUUM_WORKER_STATE_TOPOP */
-      VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_TOPOP);
+      vacuum_set_worker_state (thread_p, VACUUM_WORKER_STATE_TOPOP);
 
       if (tdes->topops.last < 0)
 	{
@@ -3603,7 +3606,7 @@ log_sysop_start (THREAD_ENTRY * thread_p)
 	      /* Restore state */
 	      if (tdes->topops.last < 0)
 		{
-		  VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_EXECUTE);
+		  vacuum_set_worker_state (thread_p, VACUUM_WORKER_STATE_EXECUTE);
 		}
 	      /* Else */
 	      /* Leave state as VACUUM_WORKER_STATE_TOPOP */
@@ -3753,12 +3756,12 @@ log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  if (LOG_ISRESTARTED ())
 	    {
 	      /* Change the worker state back to VACUUM_WORKER_STATE_EXECUTE. */
-	      VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_EXECUTE);
+	      vacuum_set_worker_state (thread_p, VACUUM_WORKER_STATE_EXECUTE);
 	    }
 	  else
 	    {
 	      /* Change the worker state back to VACUUM_WORKER_STATE_RECOVERY. */
-	      VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_RECOVERY);
+	      vacuum_set_worker_state (thread_p, VACUUM_WORKER_STATE_RECOVERY);
 	    }
 
 	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS,
@@ -3769,7 +3772,7 @@ log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 			 (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
 			 (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset,
 			 (long long int) tdes->tail_topresult_lsa.pageid, (int) tdes->tail_topresult_lsa.offset,
-			 VACUUM_GET_WORKER_STATE (thread_p));
+			 vacuum_get_worker_state (thread_p));
 
 	  /* Vacuum workers/master don't have a parent transaction that is committed. Different system operations that
 	   * are not nested shouldn't be linked between them. Otherwise, undo recovery, in the attempt to find log
@@ -4154,8 +4157,8 @@ log_sysop_get_tran_index_and_tdes (THREAD_ENTRY * thread_p, int *tran_index_out,
 
   if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
-      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p) || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
-      *tdes_out = VACUUM_GET_WORKER_TDES (thread_p);
+      assert (vacuum_worker_state_is_topop (thread_p) || vacuum_worker_state_is_recovery (thread_p));
+      *tdes_out = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -4184,8 +4187,8 @@ log_check_system_op_is_started (THREAD_ENTRY * thread_p)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
-      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p) || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      assert (vacuum_worker_state_is_topop (thread_p) || vacuum_worker_state_is_recovery (thread_p));
+      tdes = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -4303,7 +4306,7 @@ log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const
       return false;
     }
 
-  if (VACUUM_IS_SKIP_UNDO_ALLOWED (thread_p))
+  if (vacuum_is_skip_undo_allowed (thread_p))
     {
       /* If vacuum worker has not started a system operation, it can skip using undo logging. */
       return true;
@@ -6405,27 +6408,19 @@ log_hexa_dump (FILE * out_fp, int length, void *data)
 static void
 log_repl_data_dump (FILE * out_fp, int length, void *data)
 {
-#if 0
-  /* fixme */
-  char *ptr;
+  char *ptr = (char *) data;
   char *class_name;
   DB_VALUE value;
-  PARSER_VARCHAR *buf;
-  PARSER_CONTEXT *parser;
 
-  ptr = (char *) data;
   ptr = or_unpack_string_nocopy (ptr, &class_name);
   ptr = or_unpack_mem_value (ptr, &value);
 
-  parser = parser_create_parser ();
-  if (parser != NULL)
-    {
-      buf = describe_value (parser, NULL, &value);
-      fprintf (out_fp, "C[%s] K[%s]\n", class_name, pt_get_varchar_bytes (buf));
-      parser_free_parser (parser);
-    }
+  string_buffer sb;
+  db_value_printer printer (sb);
+
+  printer.describe_value (&value);
+  fprintf (out_fp, "C[%s] K[%s]\n", class_name, sb.get_buffer ());
   pr_clear_value (&value);
-#endif
 }
 
 static void

@@ -31,6 +31,7 @@
 #define TZ_GENERIC_NAME_SIZE	  40
 #define TZ_MAX_FORMAT_SIZE	  32
 #define TZ_WINDOWS_ZONE_NAME_SIZE 70
+#define TZ_CHECKSUM_SIZE          32
 
 /*
  * The defines below are types of the data representation for the "ON" column

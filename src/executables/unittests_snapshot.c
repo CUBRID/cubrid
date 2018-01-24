@@ -22,6 +22,8 @@
  */
 
 #include "porting.h"
+#include "thread.h"
+
 #include <stdio.h>
 #include <pthread.h>
 #include <log_impl.h>

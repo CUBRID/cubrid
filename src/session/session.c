@@ -46,6 +46,7 @@
 #include "lock_free.h"
 #include "object_primitive.h"
 #include "dbtype.h"
+#include "thread.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
