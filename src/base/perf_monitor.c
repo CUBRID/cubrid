@@ -456,6 +456,11 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_ALLOC_BCB_PRIORITIZE_VACUUM, "Num_alloc_bcb_prioritize_vacuum"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_USE_INVALID_BCB, "Num_victim_use_invalid_bcb"),
   /* direct assignments */
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS,
+				     "alloc_bcb_get_victim_search_own_private_list"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_VICTIM_SEARCH_OTHERS_PRIVATE_LISTS,
+				     "alloc_bcb_get_victim_search_others_private_list"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_VICTIM_SEARCH_SHARED_LISTS, "alloc_bcb_get_victim_search_shared_list"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM_VOID, "Num_victim_assign_direct_vacuum_void"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM_LRU, "Num_victim_assign_direct_vacuum_lru"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH, "Num_victim_assign_direct_flush"),

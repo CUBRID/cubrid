@@ -436,6 +436,7 @@ extern bool lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE * queue
 extern LOCK_FREE_CIRCULAR_QUEUE *lf_circular_queue_create (unsigned int capacity, int data_size);
 extern void lf_circular_queue_destroy (LOCK_FREE_CIRCULAR_QUEUE * queue);
 extern void lf_circular_queue_async_reset (LOCK_FREE_CIRCULAR_QUEUE * queue);
+extern UINT64 lf_circular_queue_get_consumer_cursor (LOCK_FREE_CIRCULAR_QUEUE * queue);
 
 /* lock free bitmap */
 extern int lf_bitmap_init (LF_BITMAP * bitmap, LF_BITMAP_STYLE style, int entries_cnt, float usage_threshold);

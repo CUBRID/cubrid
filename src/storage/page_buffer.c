@@ -8166,11 +8166,12 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
   PGBUF_BCB *victim = NULL;
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
   bool has_flush_thread = thread_is_page_flush_thread_available ();
-  int nloops = 0;		/* used as safe-guard against infinite loops */
   int private_lru_idx;
   PGBUF_LRU_LIST *lru_list = NULL;
   bool restrict_other = false;
   bool searched_own = false;
+  UINT64 initial_consume_cursor, current_consume_cursor;
+  PERF_UTIME_TRACKER perf_tracker = PERF_UTIME_TRACKER_INITIALIZER;
 
   ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_cnt, 1);
 
@@ -8207,14 +8208,26 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
       if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list)
 	  || (PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list) && lru_list->count_vict_cand > 0))
 	{
+	  if (detailed_perf)
+	    {
+	      PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
+	    }
 	  victim = pgbuf_get_victim_from_lru_list (thread_p, private_lru_idx);
 	  if (victim != NULL)
 	    {
 	      PERF (PSTAT_PB_OWN_VICTIM_PRIVATE_LRU_SUCCESS);
+	      if (detailed_perf)
+		{
+		  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS);
+		}
 	      return victim;
 	    }
 	  /* failed */
 	  PERF (PSTAT_PB_VICTIM_OWN_PRIVATE_LRU_FAIL);
+	  if (detailed_perf)
+	    {
+	      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS);
+	    }
 
 	  /* if over quota, we are not allowed to search in other lru lists. we'll wait for victim.
 	   * note: except vacuum threads who ignore unfixes and have no quota. */
@@ -8236,10 +8249,22 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
    */
   if (PGBUF_PAGE_QUOTA_IS_ENABLED && has_flush_thread)
     {
+      if (detailed_perf)
+	{
+	  PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
+	}
       victim = pgbuf_lfcq_get_victim_from_private_lru (thread_p, restrict_other);
       if (victim != NULL)
 	{
+	  if (detailed_perf)
+	    {
+	      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_OTHERS_PRIVATE_LISTS);
+	    }
 	  return victim;
+	}
+      if (detailed_perf)
+	{
+	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_OTHERS_PRIVATE_LISTS);
 	}
     }
 
@@ -8252,23 +8277,35 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
    * we'd like to avoid looping infinitely (if there's a bug), so we use the nloops safe-guard. Each shared list should
    * be removed after a failed search, so the maximum accepted number of loops is pgbuf_Pool.num_LRU_list.
    */
+
+  if (detailed_perf)
+    {
+      PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
+    }
+  initial_consume_cursor = lf_circular_queue_get_consumer_cursor (pgbuf_Pool.shared_lrus_with_victims);
   do
     {
       /* 3. search a shared list. */
       victim = pgbuf_lfcq_get_victim_from_shared_lru (thread_p, has_flush_thread);
       if (victim != NULL)
 	{
+	  if (detailed_perf)
+	    {
+	      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_SHARED_LISTS);
+	    }
 	  return victim;
 	}
+      current_consume_cursor = lf_circular_queue_get_consumer_cursor (pgbuf_Pool.shared_lrus_with_victims);
     }
   while (!has_flush_thread && !lf_circular_queue_is_empty (pgbuf_Pool.shared_lrus_with_victims)
-	 && ++nloops <= pgbuf_Pool.num_LRU_list);
+	 && (current_consume_cursor - initial_consume_cursor <= pgbuf_Pool.num_LRU_list));
   /* todo: maybe we can find a less complicated condition of looping */
+  if (detailed_perf)
+    {
+      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_SHARED_LISTS);
+    }
 
   /* no victim found... */
-
-  /* safe-guard to detect infinite loops when no flush thread is available. */
-  assert (has_flush_thread || nloops <= pgbuf_Pool.num_LRU_list);
   assert (victim == NULL);
 
   PERF (PSTAT_PB_VICTIM_ALL_LRU_FAIL);

@@ -2934,6 +2934,19 @@ lf_circular_queue_async_reset (LOCK_FREE_CIRCULAR_QUEUE * queue)
 }
 
 /*
+* lf_circular_queue_get_consumer_cursor () - Get consumer cursor.
+*
+* return     : consumer cursor.
+* queue (in) : Lock-free circular queue.
+*/
+UINT64
+lf_circular_queue_get_consumer_cursor (LOCK_FREE_CIRCULAR_QUEUE * queue)
+{
+  assert (queue != NULL);
+  return queue->consume_cursor;
+}
+
+/*
  * lf_bitmap_init () - initialize lock free bitmap
  *   returns: error code or NO_ERROR
  *   bitmap(out): bitmap to initialize
