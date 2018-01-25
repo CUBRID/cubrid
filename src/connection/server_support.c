@@ -3513,7 +3513,8 @@ css_process_new_slave (SOCKET master_fd)
     {
       return;
     }
-  
+  er_log_debug (ARG_FILE_LINE, "css_process_new_slave:" "received new slave fd from master fd=%d, current_state=%d\n", new_fd, css_get_hb_node_state());
+
   assert (css_get_hb_node_state () == HB_NSTATE_MASTER &&
           master_replication_channel::get_channel () != NULL);
   
