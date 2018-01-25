@@ -20,7 +20,9 @@ class slave_dummy_send_msg : public cubthread::entry_task
     {
       if (!IS_INVALID_SOCKET (channel->get_master_conn_entry()->fd))
         {
-          channel->send (channel->get_master_conn_entry()->fd, "hello", replication_channel::get_max_timeout());
+          int rc = channel->send (channel->get_master_conn_entry()->fd, "hello", replication_channel::get_max_timeout());
+          assert (rc != NO_ERRORS);
+          _er_log_debug (ARG_FILE_LINE, "slave::execute:" "sent:hello\n");
         }
     }
 

@@ -4,6 +4,7 @@
 #include "thread_manager.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_looper.hpp"
+#include "system_parameter.h"
 
 master_replication_channel *master_replication_channel::singleton = NULL;
 
@@ -32,7 +33,7 @@ class master_server_loop : public cubthread::entry_task
                 rc = channel->recv (channel->get_poll_fd_of_slave(i).fd, buffer, recv_length, replication_channel::get_max_timeout());
                 assert (rc == NO_ERRORS);
                 buffer[recv_length] = '\0';
-                fprintf (stderr, "received=%s\n", buffer);
+                _er_log_debug (ARG_FILE_LINE, "master::execute:" "received=%s\n", buffer);
               #undef MAX_LENGTH
             }
         }
