@@ -1176,6 +1176,15 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER, 1, "Cannot change server HA mode");
 	}
+      else if (css_ha_server_state () == HA_SERVER_STATE_ACTIVE)
+        {
+          master_replication_channel::reset_singleton ();
+          slave_replication_channel::reset_singleton ();
+
+          master_replication_channel::init ();
+
+          _er_log_debug (ARG_FILE_LINE, "init master_replication_channel \n");
+        }
     }
   else
     {
@@ -1183,16 +1192,6 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
     }
 
   state = (HA_SERVER_STATE) htonl ((int) css_ha_server_state ());
-
-  if (css_ha_server_state () == HA_SERVER_STATE_ACTIVE)
-    {
-      master_replication_channel::reset_singleton ();
-      slave_replication_channel::reset_singleton ();
-
-      master_replication_channel::init ();
-
-      _er_log_debug (ARG_FILE_LINE, "init master_replication_channel \n");
-    }
 
   css_send_heartbeat_request (css_Master_conn, SERVER_CHANGE_HA_MODE);
   css_send_heartbeat_data (css_Master_conn, (char *) &state, sizeof (state));
@@ -3475,8 +3474,7 @@ css_process_new_slave (SOCKET master_fd)
     }
   _er_log_debug (ARG_FILE_LINE, "css_process_new_slave:" "received new slave fd from master fd=%d, current_state=%d\n", new_fd, css_get_hb_node_state());
 
-  assert (css_ha_server_state () == HA_SERVER_STATE_ACTIVE &&
-          master_replication_channel::get_channel () != NULL);
+  assert (master_replication_channel::get_channel () != NULL);
 
   master_replication_channel::get_channel ()->add_slave_connection (new_fd);
 }
