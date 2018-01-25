@@ -2141,9 +2141,9 @@ bool PRM_ENABLE_DWB_FLUSH_THREAD = true;
 static bool prm_enable_dwb_flush_thread_default = true;
 static unsigned int prm_enable_dwb_flush_thread_flag = 0;
 
-unsigned int PRM_DWB_CHECKSUM_THREADS = 2;
+unsigned int PRM_DWB_CHECKSUM_THREADS = 1;
 static unsigned int prm_dwb_checksum_threads_flag = 0;
-static unsigned int prm_dwb_checksum_threads_default = 2;
+static unsigned int prm_dwb_checksum_threads_default = 1;
 static unsigned int prm_dwb_checksum_threads_upper = 2;
 static unsigned int prm_dwb_checksum_threads_lower = 0;
 
