@@ -1258,7 +1258,7 @@ css_process_master_hostname ()
   error = slave_replication_channel::get_channel ()->start_daemon ();
   assert (error == NO_ERROR);
 
-  er_log_debug (ARG_FILE_LINE, "css_process_master_request:" "master_hostname:%s\n", ha_Server_master_hostname);
+  er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "master_hostname:%s\n", ha_Server_master_hostname);
 
   return NO_ERRORS;
 #endif

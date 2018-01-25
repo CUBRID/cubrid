@@ -5,6 +5,7 @@
 #include "thread_manager.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_looper.hpp"
+#include "system_parameter.h"
 
 slave_replication_channel *slave_replication_channel::singleton = NULL;
 
@@ -62,6 +63,8 @@ int slave_replication_channel::connect_to_master()
       assert (false);
       return REQUEST_REFUSED;
     }
+
+  er_log_debug (ARG_FILE_LINE, "connect_to_master:" "connected to master_hostname:%s\n", master_hostname.c_str ());
 
   return NO_ERRORS;
 }
