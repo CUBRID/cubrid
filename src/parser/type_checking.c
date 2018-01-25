@@ -12993,6 +12993,71 @@ std::vector<int(*)(parser_context*, parser_node*&)> func_type_transitions[] = {
 };
 #undef X
 
+
+/*
+ * pt_eval_function_type_agg () - evaluate function type for aggregate functions
+ *   return: returns a node of the same type.
+ *   parser(in): parser global context info for reentrancy
+ *   node(in): a parse tree node of type PT_FUNCTION denoting an
+ *             an expression with aggregate functions.
+ */
+PT_NODE * pt_eval_function_type_agg(PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  assert(pt_is_aggregate_function (parser, node));
+  bool check_agg_single_arg = false;
+  FUNC_TYPE fcode = node->info.function.function_type;
+  switch(fcode)
+    {
+    case PT_MIN:
+      break;
+    case PT_MAX:
+      break;
+    case PT_SUM:
+      break;
+    case PT_AVG:
+      break;
+    case PT_STDDEV:
+      break;
+    case PT_VARIANCE:
+      break;
+    case PT_STDDEV_POP:
+      break;
+    case PT_VAR_POP:
+      break;
+    case PT_STDDEV_SAMP:
+      break;
+    case PT_VAR_SAMP:
+      break;
+    case PT_COUNT:
+      break;
+    case PT_COUNT_STAR:
+      break;
+    case PT_GROUPBY_NUM:
+      break;
+    case PT_AGG_BIT_AND:
+      break;
+    case PT_AGG_BIT_OR:
+      break;
+    case PT_AGG_BIT_XOR:
+      break;
+    case PT_GROUP_CONCAT:
+      break;
+    case PT_ROW_NUMBER:
+      break;
+    case PT_RANK:
+      break;
+    case PT_DENSE_RANK:
+      break;
+    case PT_NTILE:
+      break;
+    case PT_TOP_AGG_FUNC:
+      break;
+    default:
+      assert(false && "forgot aggregate FUNC_TYPE?");
+    }
+  return NULL;
+}
+
 /*
  * pt_eval_function_type () -
  *   return: returns a node of the same type.
@@ -13007,12 +13072,10 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *arg_list;
   PT_TYPE_ENUM arg_type;
   FUNC_TYPE fcode;
-  bool check_agg_single_arg = false;
-  bool is_agg_function = false;
+  bool is_agg_function = pt_is_aggregate_function (parser, node);
   PT_NODE *prev = NULL;
   PT_NODE *arg = NULL;
 
-  is_agg_function = pt_is_aggregate_function (parser, node);
   arg_list = node->info.function.arg_list;
   fcode = node->info.function.function_type;
   printf("fcode=%d %s\n", fcode, func_type_str[fcode-PT_MIN]);
@@ -13060,12 +13123,11 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
    * Should only get one arg to function; set to 0 if the function
    * accepts more than one.
    */
-  check_agg_single_arg = true;
+  bool check_agg_single_arg = true;
   arg_type = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
 
   /* by default f(x) has same type as x */
   node->type_enum = arg_type;
-  node->data_type = parser_copy_tree_list (parser, arg_list->data_type);
 
   switch (fcode)
     {
@@ -13148,6 +13210,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_VAR_POP:
     case PT_VAR_SAMP:
     case PT_AVG:
+      assert(arg_list && !arg_list->next && "expect only one argument");
       if (arg_type != PT_TYPE_MAYBE && arg_type != PT_TYPE_NULL && arg_type != PT_TYPE_NA)
 	{
 	  if (!PT_IS_NUMERIC_TYPE (arg_type))
@@ -13160,9 +13223,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  node->info.function.arg_list = arg_list;
 	}
-
-      arg_type = PT_TYPE_DOUBLE;
-      node->type_enum = arg_type;
+      node->type_enum = PT_TYPE_DOUBLE;
       node->data_type = NULL;
       break;
 
@@ -13178,13 +13239,13 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      return node;
 	    }
-	  arg_type = PT_TYPE_BIGINT;
 	  node->info.function.arg_list = arg_list;
 	}
       node->type_enum = PT_TYPE_BIGINT;
       break;
 
     case PT_SUM:
+      assert(arg_list && !arg_list->next && "expect only one argument");
       if (!PT_IS_NUMERIC_TYPE (arg_type) && arg_type != PT_TYPE_MAYBE && arg_type != PT_TYPE_NULL
 	  && arg_type != PT_TYPE_NA && !pt_is_set_type (arg_list))
 	{
@@ -13213,6 +13274,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_FIRST_VALUE:
     case PT_LAST_VALUE:
     case PT_NTH_VALUE:
+      assert(arg_list && !arg_list->next && "expect only one argument");
       if (!PT_IS_NUMERIC_TYPE (arg_type) && !PT_IS_STRING_TYPE (arg_type) && !PT_IS_DATE_TIME_TYPE (arg_type)
 	  && arg_type != PT_TYPE_ENUMERATION && arg_type != PT_TYPE_MAYBE && arg_type != PT_TYPE_NULL
 	  && arg_type != PT_TYPE_NA)
@@ -14031,11 +14093,12 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     }
 
-  if (is_agg_function && check_agg_single_arg && arg_list->next)
+  if (is_agg_function && check_agg_single_arg && arg_list && arg_list->next)// bSolo: this should be an assert?
     {
       PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AGG_FUN_WANT_1_ARG,
 		  pt_short_print (parser, node));
     }
+  assert(node->type_enum != PT_TYPE_NONE || node->data_type != NULL);
 
   /* collation checking */
   arg_list = node->info.function.arg_list;
@@ -25288,8 +25351,6 @@ pt_check_function_collation (PARSER_CONTEXT * parser, PT_NODE * node)
   bool need_arg_coerc = false;
   TP_DOMAIN_COLL_ACTION res_collation_flag = TP_DOMAIN_COLL_LEAVE;
   FUNC_TYPE fcode;
-
-  assert (node != NULL);
 
   assert (node != NULL);
   assert (node->node_type == PT_FUNCTION);
