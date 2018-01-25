@@ -1184,12 +1184,14 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
 
   state = (HA_SERVER_STATE) htonl ((int) css_ha_server_state ());
 
-  if (state == HA_SERVER_STATE_ACTIVE)
+  if (css_ha_server_state () == HA_SERVER_STATE_ACTIVE)
     {
       master_replication_channel::reset_singleton ();
       slave_replication_channel::reset_singleton ();
 
       master_replication_channel::init ();
+
+      er_log_debug (ARG_FILE_LINE, "init master_replication_channel \n");
     }
 
   css_send_heartbeat_request (css_Master_conn, SERVER_CHANGE_HA_MODE);
