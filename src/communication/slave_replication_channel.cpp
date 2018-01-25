@@ -66,7 +66,7 @@ int slave_replication_channel::connect_to_master()
       return REQUEST_REFUSED;
     }
 
-  er_log_debug (ARG_FILE_LINE, "connect_to_master:" "connected to master_hostname:%s\n", master_hostname.c_str ());
+  _er_log_debug (ARG_FILE_LINE, "connect_to_master:" "connected to master_hostname:%s\n", master_hostname.c_str ());
 
   return NO_ERRORS;
 }

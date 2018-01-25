@@ -6773,6 +6773,7 @@ hb_find_host_name_of_master_server()
     {
       if (node->state == HB_NSTATE_MASTER)
 	{
+          pthread_mutex_unlock (&hb_Cluster->lock);
 	  return node->host_name;
 	}
     }

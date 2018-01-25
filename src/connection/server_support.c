@@ -1243,6 +1243,15 @@ css_process_master_hostname ()
       return error;
     }
 
+  if (hostname_length == 0)
+    {
+      return NO_ERRORS;
+    }
+  else if (hostname_length < 0)
+    {
+      return ER_FAILED;
+    }
+
   ha_Server_master_hostname = (char *) malloc (hostname_length+1);
   error = css_receive_heartbeat_data (css_Master_conn, ha_Server_master_hostname, hostname_length);
   if (error != NO_ERRORS)
