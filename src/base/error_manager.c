@@ -1009,9 +1009,15 @@ er_file_backup (FILE * fp, const char *path)
  * er_final - Terminate the error message module
  *   return: none
  *   do_global_final(in):
+ *   need_csect(in): server_mode only; if true, get ENTER_LOG_FILE critical section
  */
 void
-er_final (ER_FINAL_CODE do_global_final)
+er_final (ER_FINAL_CODE do_global_final
+#if defined (SERVER_MODE)
+	  , bool need_csect	// todo: do we really need critical section on log file?
+	  //       isn't a mutex more suited for this?
+#endif				// SERVER_MODE
+  )
 {
   FILE *fh = NULL;
   int i = 0;
@@ -1025,7 +1031,7 @@ er_final (ER_FINAL_CODE do_global_final)
   if (do_global_final == ER_ALL_FINAL)
     {
 #if defined (SERVER_MODE)
-      if (ER_CSECT_ENTER_LOG_FILE () != NO_ERROR)
+      if (need_csect && ER_CSECT_ENTER_LOG_FILE () != NO_ERROR)
 	{
 	  assert (false);
 	  return;
@@ -1076,7 +1082,10 @@ er_final (ER_FINAL_CODE do_global_final)
 
       er_Hasalready_initiated = false;
 #if defined (SERVER_MODE)
-      ER_CSECT_EXIT_LOG_FILE ();
+      if (need_csect)
+	{
+	  ER_CSECT_EXIT_LOG_FILE ();
+	}
 #endif
     }
   else
