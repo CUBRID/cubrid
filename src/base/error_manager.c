@@ -307,9 +307,6 @@ static ER_FMT er_Fmt_list[(-ER_LAST_ERROR) + 1];
 static int er_Fmt_msg_fail_count = -ER_LAST_ERROR;
 static int er_Errid_not_initialized = 0;
 #if !defined (SERVER_MODE)
-static ER_MSG ermsg_Buf;
-static ER_MSG *er_Msg = NULL;
-static char er_emergency_buf[ER_EMERGENCY_BUF_SIZE];	/* message when all else fails */
 static er_log_handler_t er_Handler = NULL;
 #endif /* !SERVER_MODE */
 static unsigned int er_Eid = 0;
@@ -2751,10 +2748,7 @@ er_emergency (const char *file, int line, const char *fmt, ...)
   crt_error.file_name = file;
   crt_error.line_no = line;
 
-  /* 
-   * Assumes that er_emergency_buf is at least big enough to hold this
-   * stuff.
-   */
+  /* it is assumed that default message buffer is big enough to hold this */
   sprintf (crt_error.msg_area, er_Cached_msg[ER_ER_HEADER], line);
   limit = crt_error.msg_area_size - (int) strlen (crt_error.msg_area) - 1;
 
