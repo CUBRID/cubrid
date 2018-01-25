@@ -13126,9 +13126,6 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
   bool check_agg_single_arg = true;
   arg_type = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
 
-  /* by default f(x) has same type as x */
-  node->type_enum = arg_type;
-
   switch (fcode)
     {
     case PT_COUNT_STAR:
@@ -13153,9 +13150,11 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     case PT_TOP_AGG_FUNC:
       check_agg_single_arg = false;
+      node->type_enum = arg_type; // by default f(x) has same type as x
       break;
     case PT_GENERIC:
       check_agg_single_arg = false;
+      node->type_enum = arg_type; // by default f(x) has same type as x
       break;
     case F_TABLE_SET:
       check_agg_single_arg = false;
@@ -13174,9 +13173,11 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     case F_TOP_TABLE_FUNC:
       check_agg_single_arg = false;
+      node->type_enum = arg_type; // by default f(x) has same type as x
       break;
     case F_MIDXKEY:
       check_agg_single_arg = false;
+      node->type_enum = arg_type; // by default f(x) has same type as x
       break;
     case F_SET:
       check_agg_single_arg = false;
@@ -13195,12 +13196,15 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     case F_VID:
       check_agg_single_arg = false;
+      node->type_enum = arg_type; // by default f(x) has same type as x
       break;
     case F_GENERIC:
       check_agg_single_arg = false;
+      node->type_enum = arg_type; // by default f(x) has same type as x
       break;
     case F_CLASS_OF:
       check_agg_single_arg = false;
+      node->type_enum = arg_type; // by default f(x) has same type as x
       break;
 
     case PT_STDDEV:
@@ -13282,6 +13286,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_OPDS,
 		       pt_show_function (fcode), pt_show_type_enum (arg_type));
 	}
+      node->type_enum = arg_list->type_enum;
+      node->data_type = parser_copy_tree_list (parser, arg_list->data_type);
       break;
 
     case PT_LEAD:
@@ -14098,6 +14104,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AGG_FUN_WANT_1_ARG,
 		  pt_short_print (parser, node));
     }
+
   assert(node->type_enum != PT_TYPE_NONE || node->data_type != NULL);
 
   /* collation checking */
