@@ -1184,7 +1184,8 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
 
   state = (HA_SERVER_STATE) htonl ((int) css_ha_server_state ());
 
-  if (css_ha_server_state () == HA_SERVER_STATE_ACTIVE)
+  if (css_ha_server_state () == HA_SERVER_STATE_ACTIVE ||
+      css_ha_server_state () == HA_SERVER_STATE_TO_BE_ACTIVE)
     {
       master_replication_channel::reset_singleton ();
       slave_replication_channel::reset_singleton ();
