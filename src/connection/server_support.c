@@ -1176,7 +1176,7 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER, 1, "Cannot change server HA mode");
 	}
-      else if (css_ha_server_state () == HA_SERVER_STATE_ACTIVE)
+      else if (state == HA_SERVER_STATE_ACTIVE)
         {
           master_replication_channel::reset_singleton ();
           slave_replication_channel::reset_singleton ();
