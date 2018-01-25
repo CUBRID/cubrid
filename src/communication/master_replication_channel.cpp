@@ -29,7 +29,7 @@ class master_server_loop : public cubthread::entry_task
             {
               #define MAX_LENGTH 100
                 char buffer [MAX_LENGTH];
-                int recv_length = 0;
+                int recv_length = MAX_LENGTH;
                 rc = channel->recv (channel->get_poll_fd_of_slave(i).fd, buffer, recv_length, replication_channel::get_max_timeout());
                 assert (rc == NO_ERRORS);
                 buffer[recv_length] = '\0';
