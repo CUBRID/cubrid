@@ -53,7 +53,7 @@ er_message::er_message (const bool &logging)
   , msg_buffer {'\0'}
   , m_logging (logging)
 {
-  ERMSG_LOG ("constructed ", *this);
+  //
 }
 
 er_message::~er_message ()
