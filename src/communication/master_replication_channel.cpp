@@ -29,7 +29,8 @@ class master_server_loop : public cubthread::entry_task
               #define MAX_LENGTH 100
                 char buffer [MAX_LENGTH];
                 int recv_length;
-                channel->recv (channel->get_poll_fd_of_slave(i).fd, buffer, recv_length, replication_channel::get_max_timeout());
+                rc = channel->recv (channel->get_poll_fd_of_slave(i).fd, buffer, recv_length, replication_channel::get_max_timeout());
+                assert (rc == NO_ERRORS);
                 buffer[recv_length] = '\0';
                 fprintf (stderr, "received=%s\n", buffer);
               #undef MAX_LENGTH
