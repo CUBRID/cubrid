@@ -1042,7 +1042,9 @@ css_process_master_request (SOCKET master_fd)
 
               rc = slave_replication_channel::get_channel ()->connect_to_master ();
               assert (rc == NO_ERRORS);
-              
+              rc = slave_replication_channel::get_channel ()->start_daemon ();
+              assert (rc == NO_ERROR);
+
               er_log_debug (ARG_FILE_LINE, "css_process_master_request:" "master_hostname:%s\n", ha_Server_master_hostname);
 
               break;

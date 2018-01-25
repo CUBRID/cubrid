@@ -15,6 +15,7 @@ public:
 
   int connect_to_master ();
   CSS_CONN_ENTRY *get_master_conn_entry ();
+  int start_daemon ();
   
   static void init (const std::string &hostname, const std::string &server_name, int port);
   static void reset_singleton();

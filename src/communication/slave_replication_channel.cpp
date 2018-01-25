@@ -17,7 +17,10 @@ class slave_dummy_send_msg : public cubthread::entry_task
 
     void execute (cubthread::entry &context)
     {
-      channel->send (channel->get_master_conn_entry()->fd, "hello", replication_channel::get_max_timeout());
+      if (!IS_INVALID_SOCKET (channel->get_master_conn_entry()->fd))
+        {
+          channel->send (channel->get_master_conn_entry()->fd, "hello", replication_channel::get_max_timeout());
+        }
     }
 
     void retire ()
@@ -32,17 +35,13 @@ slave_replication_channel::slave_replication_channel(const std::string& hostname
                                                                                                                                      master_server_name (master_server_name),
                                                                                                                                      master_port (port)
 {
-  cubthread::manager *session_manager = cubthread::get_manager ();
-  
   master_conn_entry = css_make_conn (-1);
   request_id = -1;
-  
-  slave_dummy = session_manager->create_daemon (cubthread::looper (std::chrono::seconds (1)),
-		       new slave_dummy_send_msg (this));
 }
 
 slave_replication_channel::~slave_replication_channel()
 {
+  cubthread::get_manager()->destroy_daemon (slave_dummy);
   css_free_conn (master_conn_entry);
 }
 
@@ -93,4 +92,18 @@ void slave_replication_channel::reset_singleton ()
 slave_replication_channel *slave_replication_channel::get_channel ()
 {
   return singleton;
+}
+
+int slave_replication_channel::start_daemon ()
+{
+  cubthread::manager *session_manager = cubthread::get_manager ();
+  slave_dummy = session_manager->create_daemon (cubthread::looper (std::chrono::seconds (1)),
+		       new slave_dummy_send_msg (this));
+
+  if (slave_dummy == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
 }
