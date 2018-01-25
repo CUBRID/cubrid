@@ -32,7 +32,7 @@
 
 #include <cstring>
 
-const bool LOG_ME = true; // todo: set false
+const bool LOG_ME = false; // todo: set false
 
 #define ERROR_CONTEXT_LOG(...) if (m_logging) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
 
@@ -90,7 +90,7 @@ void er_message::swap (er_message &other)
       std::swap (this->msg_area, other.msg_area);
       std::swap (this->msg_area_size, other.msg_area_size);
     }
-  else if (this->msg_area_size > bufsize)
+  else if (this->msg_area_size <= bufsize)
     {
       assert (this->msg_area_size == bufsize);
       assert (other.msg_area_size > bufsize);
