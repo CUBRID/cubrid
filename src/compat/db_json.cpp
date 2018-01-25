@@ -133,6 +133,8 @@ static std::vector<std::pair<std::string, std::string> > uri_fragment_conversion
   std::make_pair ("/", "~1"),
   std::make_pair (" ", "%20")
 };
+static const char *db_Json_pointer_delimiters = "/";
+static const char *db_Json_sql_path_delimiters = "$.[]\"";
 
 static unsigned int db_json_value_get_depth (const JSON_VALUE *doc);
 static int db_json_value_is_contained_in_doc_helper (const JSON_VALUE *doc, const JSON_VALUE *value, bool &result);
@@ -1565,8 +1567,13 @@ db_json_er_set_path_does_not_exist (const std::string &path, const JSON_DOC *doc
       return error_code;
     }
 
+  char *raw_json = db_json_get_raw_json_body_from_document (doc);
+
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_PATH_DOES_NOT_EXIST, 2,
-	  sql_path_string.c_str(), db_json_get_raw_json_body_from_document (doc));
+	  sql_path_string.c_str(), raw_json);
+
+  db_private_free (NULL, raw_json);
+
   return ER_JSON_PATH_DOES_NOT_EXIST;
 }
 
@@ -1620,7 +1627,7 @@ db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_
 
   // starting the conversion of path
   // first we need to split into tokens
-  std::vector<std::string> tokens = db_json_split_path_by_delimiters (pointer_path_string, "/");
+  std::vector<std::string> tokens = db_json_split_path_by_delimiters (pointer_path_string, db_Json_pointer_delimiters);
 
   for (std::size_t i = 0; i < tokens.size(); ++i)
     {
@@ -1691,7 +1698,7 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
   db_json_build_path_special_chars (json_path_type, special_chars);
 
   // first we need to split into tokens
-  std::vector<std::string> tokens = db_json_split_path_by_delimiters (sql_path_string, "$.[]\"");
+  std::vector<std::string> tokens = db_json_split_path_by_delimiters (sql_path_string, db_Json_sql_path_delimiters);
 
   // build json pointer
   json_pointer_out = "";
