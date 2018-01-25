@@ -2067,6 +2067,7 @@ css_send_to_my_server_the_master_hostname (const char *master_current_hostname)
 	{
           if (proc->knows_master_hostname)
             {
+              pthread_mutex_unlock (&hb_Resource->lock);
               return NO_ERROR;
             }
 
