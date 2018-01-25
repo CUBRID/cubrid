@@ -20,6 +20,7 @@ class master_server_loop : public cubthread::entry_task
 
       num_of_fds = channel->get_number_of_slaves ();
       rc = channel->poll_for_requests();
+      assert (rc >= 0);
 
       for (int i = 0; i < num_of_fds; i++)
         {
