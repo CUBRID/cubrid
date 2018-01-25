@@ -153,10 +153,6 @@ namespace cubthread
 
       css_conn_entry *conn_entry;	/* conn entry ptr */
 
-      ER_MSG ermsg;			/* error msg area */
-      ER_MSG *er_Msg;		/* last error */
-      char er_emergency_buf[ER_EMERGENCY_BUF_SIZE];	/* error msg buffer for emergency */
-
       void *xasl_unpack_info_ptr;	/* XASL_UNPACK_INFO * */
       int xasl_errcode;		/* xasl errorcode */
       int xasl_recursion_depth;

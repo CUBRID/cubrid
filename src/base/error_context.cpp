@@ -32,16 +32,16 @@
 
 #include <cstring>
 
-#define LOG_ME true
+const bool LOG_ME = true; // todo: set false
 
-#define ERROR_CONTEXT_LOG(...) if (LOG_ME) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
+#define ERROR_CONTEXT_LOG(...) if (m_logging) er_print_callstack (ARG_FILE_LINE, __VA_ARGS__)
 
 #define ERMSG_MSG "{ %p: errid=%d, sev=%d, fname=%s, line=%d, msg_area=%p(%s)_size=%zu, msgbuf=%p(%s), args=%p_n=%d }"
 #define ERMSG_ARGS(em) &(em), (em).err_id, (em).severity, (em).file_name, (em).line_no, (em).msg_area, (em).msg_area, \
                        (em).msg_area_size, (em).msg_buffer, (em).msg_buffer, (em).args, (em).nargs
 #define ERMSG_LOG(text, var) ERROR_CONTEXT_LOG (text #var " = " ERMSG_MSG, ERMSG_ARGS (var))
 
-er_message::er_message ()
+er_message::er_message (const bool &logging)
   : err_id (NO_ERROR)
   , severity (ER_WARNING_SEVERITY)
   , file_name (NULL)
@@ -51,16 +51,15 @@ er_message::er_message ()
   , args (NULL)
   , nargs (0)
   , msg_buffer {'\0'}
+  , m_logging (logging)
 {
-  //
-  // ERMSG_LOG ("constructed ", *this);
+  ERMSG_LOG ("constructed ", *this);
 }
 
 er_message::~er_message ()
 {
+  ERMSG_LOG ("destruct ", *this);
   clear_msg_area ();
-
-  // free args
 }
 
 void er_message::swap (er_message &other)
@@ -196,10 +195,12 @@ namespace cuberr
 {
   thread_local context *tl_Context_p = NULL;
 
-  context::context (bool automatic_registation)
-    : m_base_level ()
+  context::context (bool automatic_registation, bool logging)
+    : m_base_level (m_logging)
     , m_stack ()
     , m_automatic_registration (automatic_registation)
+    , m_logging (LOG_ME && logging)
+    , m_destroyed (false)
   {
     if (automatic_registation)
       {
@@ -209,6 +210,10 @@ namespace cuberr
 
   context::~context (void)
   {
+    // safe-guard: don't destroy twice
+    assert (!m_destroyed);
+    m_destroyed = true;
+
     if (tl_Context_p == this)
       {
 	assert (m_automatic_registration);
@@ -253,11 +258,10 @@ namespace cuberr
     get_current_error_level ().clear_error ();
   }
 
-  er_message &
+  void
   context::push_error_stack (void)
   {
-    m_stack.emplace ();
-    return get_current_error_level ();
+    m_stack.emplace (m_logging);
   }
 
   void
@@ -272,10 +276,25 @@ namespace cuberr
     m_stack.pop ();
   }
 
+  void
+  context::pop_error_stack_and_destroy (void)
+  {
+    er_message temp (m_logging);
+    pop_error_stack (temp);
+
+    // popped memory is freed
+  }
+
   bool
   context::has_error_stack (void)
   {
     return !m_stack.empty ();
+  }
+
+  const bool &
+  context::get_logging (void)
+  {
+    return m_logging;
   }
 
   void
@@ -299,7 +318,7 @@ namespace cuberr
     if (tl_Context_p == NULL)
       {
 	assert (false);
-	static context emergency_context;
+	static context emergency_context (false, false);
 #if defined (SERVER_MODE)
 	auto thread_mgr_p = cubthread::get_manager ();
 	if (thread_mgr_p != NULL)

@@ -46,7 +46,7 @@ typedef struct er_message ER_MSG;
 struct er_message
 {
   public:
-    er_message ();
+    er_message (const bool &logging);
     ~er_message ();
 
     void swap (er_message &other);
@@ -69,6 +69,8 @@ struct er_message
   private:
     // not copy constructible
     er_message (er_message &);
+
+    const bool &m_logging; // reference to context logging
 };
 
 namespace cuberr
@@ -76,7 +78,7 @@ namespace cuberr
   class context
   {
     public:
-      context (bool automatic_registation = false);
+      context (bool automatic_registation = false, bool logging = true);
 
       ~context ();
 
@@ -86,9 +88,12 @@ namespace cuberr
       void deregister_thread_local (void);
 
       void clear_current_error_level (void);
-      er_message &push_error_stack (void);
+      void push_error_stack (void);
       void pop_error_stack (er_message &popped);  // caller will destroy popped
+      void pop_error_stack_and_destroy (void);
       bool has_error_stack (void);
+
+      const bool &get_logging (void);
 
       static context &get_thread_local_context (void);
       static er_message &get_thread_local_error (void);
@@ -100,6 +105,8 @@ namespace cuberr
       er_message m_base_level;
       std::stack<er_message> m_stack;
       bool m_automatic_registration;
+      bool m_logging;                               // activate logging
+      bool m_destroyed;                             // set to true on destruction
   };
 } // namespace cuberr
 

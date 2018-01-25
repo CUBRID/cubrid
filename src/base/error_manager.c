@@ -1311,7 +1311,6 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
     }
 
   context & tl_context = context::get_thread_local_context ();
-  er_message & crt_error = tl_context.get_current_error_level ();
 
   /* 
    * Get the UNIX error message if needed. We need to get this as soon
@@ -1324,12 +1323,15 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
   // should force error stacking? yes if:
   // 1. this is a notification and an error was already set
   // 2. current error is interrupted error.
-  if ((severity == ER_NOTIFICATION_SEVERITY && crt_error.err_id != NO_ERROR) || (crt_error.err_id == ER_INTERRUPTED))
+  er_message & prev_err = tl_context.get_current_error_level ();
+  if ((severity == ER_NOTIFICATION_SEVERITY && prev_err.err_id != NO_ERROR) || (prev_err.err_id == ER_INTERRUPTED))
     {
-      crt_error = tl_context.push_error_stack ();
-
+      tl_context.push_error_stack ();
       need_stack_pop = true;
     }
+
+  // get current error reference
+  er_message & crt_error = tl_context.get_current_error_level ();
 
   /* Initialize the area... */
   crt_error.set_error (err_id, severity, file_name, line_no);
@@ -1433,8 +1435,7 @@ end:
 
   if (need_stack_pop)
     {
-      er_message temp;
-      tl_context.pop_error_stack (temp);
+      tl_context.pop_error_stack_and_destroy ();
     }
 
   return ret_val;
@@ -2081,9 +2082,7 @@ er_stack_push_if_exists (void)
 void
 er_stack_pop (void)
 {
-  // pop error stack and let it be destroyed
-  er_message temp;
-  context::get_thread_local_context ().pop_error_stack (temp);
+  context::get_thread_local_context ().pop_error_stack_and_destroy ();
 }
 
 /*
@@ -2095,7 +2094,7 @@ void
 er_stack_pop_and_keep_error (void)
 {
   context & tl_context = context::get_thread_local_context ();
-  er_message top;
+  er_message top (tl_context.get_logging ());
 
   if (!tl_context.has_error_stack ())
     {
