@@ -1207,13 +1207,13 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
 }
 
 /*
-* xcache_entry_set_request_recompile_flag () - Mark XASL cache entry as "request recompile".
-*
-* return	    : True if the flag was successfuly set (or cleared).
-* thread_p (in)     : Thread entry.
-* xcache_entry (in) : XASL cache entry.
-* set_flag(in)      : true if flag should be set, false if should be cleared
-*/
+ * xcache_entry_set_request_recompile_flag () - Mark XASL cache entry as "request recompile".
+ *
+ * return	     : True if the flag was successfuly set (or cleared).
+ * thread_p (in)     : Thread entry.
+ * xcache_entry (in) : XASL cache entry.
+ * set_flag (in)     : true if flag should be set, false if should be cleared
+ */
 static bool
 xcache_entry_set_request_recompile_flag (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, bool set_flag)
 {
