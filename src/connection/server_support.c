@@ -3476,7 +3476,7 @@ css_process_new_slave (SOCKET master_fd)
   _er_log_debug (ARG_FILE_LINE, "css_process_new_slave:" "received new slave fd from master fd=%d, current_state=%d\n", new_fd, css_get_hb_node_state());
 
   assert ((css_ha_server_state () == HA_SERVER_STATE_ACTIVE ||
-          css_ha_server_state () == HA_SERVER_TO_BE_ACTIVE) &&
+          css_ha_server_state () == HA_SERVER_STATE_TO_BE_ACTIVE) &&
           master_replication_channel::get_channel () != NULL);
 
   master_replication_channel::get_channel ()->add_slave_connection (new_fd);
