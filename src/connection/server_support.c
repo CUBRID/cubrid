@@ -1004,69 +1004,13 @@ css_process_master_request (SOCKET master_fd)
     case SERVER_GET_EOF:
       css_process_get_eof_request (master_fd);
       break;
-#if 1
-    case SERVER_CHANGE_HB_NODE_TYPE:
-      {
-	int rc;
-	const char *last_state, *current_state;
-
-	last_state = hb_node_state_string (css_get_hb_node_state ());
-
-	rc = css_refresh_hb_node_state_from_master ();
-	if (rc != NO_ERRORS)
-	  {
-	    assert (false);
-	    return 0;
-	  }
-
-	current_state = hb_node_state_string (css_get_hb_node_state ());
-
-        assert (strcmp (current_state, last_state) != 0);
-	er_log_debug (ARG_FILE_LINE, "css_process_master_request:" "server promoted/demoted from %s to %s\n",
-		      last_state, current_state);
-        
-        if (css_get_hb_node_state() == HB_NSTATE_SLAVE)
-          {
-            er_log_debug (ARG_FILE_LINE, "css_process_master_request:" "master hostname is %s\n",
-		      ha_Server_master_hostname);
-          }
-#if 1
-        switch (css_get_hb_node_state ())
-          {
-            case HB_NSTATE_SLAVE:
-              assert (ha_Server_master_hostname != NULL && strlen (ha_Server_master_hostname) > 0);
-
-              master_replication_channel::reset_singleton ();
-              slave_replication_channel::reset_singleton ();
-              slave_replication_channel::init (ha_Server_master_hostname, css_Master_server_name, css_Master_port_id);
-
-              rc = slave_replication_channel::get_channel ()->connect_to_master ();
-              assert (rc == NO_ERRORS);
-              rc = slave_replication_channel::get_channel ()->start_daemon ();
-              assert (rc == NO_ERROR);
-
-              er_log_debug (ARG_FILE_LINE, "css_process_master_request:" "master_hostname:%s\n", ha_Server_master_hostname);
-
-              break;
-            case HB_NSTATE_MASTER:
-              master_replication_channel::reset_singleton ();
-              slave_replication_channel::reset_singleton ();
-
-              master_replication_channel::init ();
-              break;
-            default:
-              break;
-          }
-#endif
-      }
+    case SERVER_RECEIVE_MASTER_HOSTNAME:
+      css_process_master_hostname ();
       break;
-#if 1
     case SERVER_CONNECT_NEW_SLAVE:
       er_log_debug (ARG_FILE_LINE, "css_process_master_request:" "received new slave\n");
       css_process_new_slave (master_fd);
       break;
-#endif
-#endif
 #endif
     default:
       /* master do not respond */
@@ -1240,6 +1184,14 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
 
   state = (HA_SERVER_STATE) htonl ((int) css_ha_server_state ());
 
+  if (state == HA_SERVER_STATE_ACTIVE)
+    {
+      master_replication_channel::reset_singleton ();
+      slave_replication_channel::reset_singleton ();
+
+      master_replication_channel::init ();
+    }
+
   css_send_heartbeat_request (css_Master_conn, SERVER_CHANGE_HA_MODE);
   css_send_heartbeat_data (css_Master_conn, (char *) &state, sizeof (state));
 #endif
@@ -1276,43 +1228,38 @@ css_process_get_eof_request (SOCKET master_fd)
 }
 
 int
-css_refresh_hb_node_state_from_master ()
+css_process_master_hostname ()
 {
 #if !defined (WINDOWS)
-  HB_NODE_STATE_TYPE state = HB_NSTATE_UNKNOWN;
-  int error = NO_ERRORS;
+  int hostname_length, error;
 
-  error = css_receive_heartbeat_data (css_Master_conn, (char *) &state, sizeof (HB_NODE_STATE_TYPE));
+  delete_master_hostname ();
+
+  error = css_receive_heartbeat_data (css_Master_conn, (char *) &hostname_length, sizeof (int));
   if (error != NO_ERRORS)
     {
       return error;
     }
 
-  assert (state >= HB_NSTATE_UNKNOWN && state < HB_NSTATE_MAX);
+  ha_Server_master_hostname = (char *) malloc (hostname_length+1);
+  error = css_receive_heartbeat_data (css_Master_conn, ha_Server_master_hostname, hostname_length);
+  if (error != NO_ERRORS)
+    {
+      return error;
+    }
+  ha_Server_master_hostname[hostname_length] = '\0';
 
-#if 1
-  //if (state == HB_NSTATE_SLAVE)
-  //  {
-      int hostname_length;
+  master_replication_channel::reset_singleton ();
+  slave_replication_channel::reset_singleton ();
+  slave_replication_channel::init (ha_Server_master_hostname, css_Master_server_name, css_Master_port_id);
 
-      delete_master_hostname ();
+  error = slave_replication_channel::get_channel ()->connect_to_master ();
+  assert (error == NO_ERRORS);
+  error = slave_replication_channel::get_channel ()->start_daemon ();
+  assert (error == NO_ERROR);
 
-      error = css_receive_heartbeat_data (css_Master_conn, (char *) &hostname_length, sizeof (int));
-      if (error != NO_ERRORS)
-        {
-          return error;
-        }
+  er_log_debug (ARG_FILE_LINE, "css_process_master_request:" "master_hostname:%s\n", ha_Server_master_hostname);
 
-      ha_Server_master_hostname = (char *) malloc (hostname_length+1);
-      error = css_receive_heartbeat_data (css_Master_conn, ha_Server_master_hostname, hostname_length);
-      if (error != NO_ERRORS)
-        {
-          return error;
-        }
-      ha_Server_master_hostname[hostname_length] = '\0';
-   // }
-#endif
-  heartbeat_Node_state = state;
   return NO_ERRORS;
 #endif
 }

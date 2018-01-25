@@ -86,7 +86,7 @@ extern int css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE 
 				       bool heartbeat);
 extern int css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE state);
 HB_NODE_STATE_TYPE css_get_hb_node_state (void);
-int css_refresh_hb_node_state_from_master (void);
+int css_process_master_hostname (void);
 
 extern void init_master_hostname();
 extern void delete_master_hostname();

@@ -75,7 +75,7 @@ enum HB_RESOURCE_JOB
   HB_RJOB_DEMOTE_CONFIRM_SHUTDOWN = 6,
   HB_RJOB_CLEANUP_ALL = 7,
   HB_RJOB_CONFIRM_CLEANUP_ALL = 8,
-  HB_RJOB_UPDATE_SERVER_STATE = 9,
+  HB_RJOB_SEND_MASTER_HOSTNAME = 9,
   HB_RJOB_MAX
 };
 
@@ -292,6 +292,7 @@ struct hb_proc_entry
 
   bool being_shutdown;		/* whether the proc is being shut down */
   bool server_hang;
+  bool knows_master_hostname; /* intended for cub_server process */
 };
 
 /* heartbeat resources */

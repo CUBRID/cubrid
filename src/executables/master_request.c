@@ -2052,48 +2052,44 @@ css_process_heartbeat_request (CSS_CONN_ENTRY * conn)
 }
 
 int
-css_send_to_my_server_hb_state (const char *master_current_hostname)
+css_send_to_my_server_the_master_hostname (const char *master_current_hostname)
 {
-#if 1
-  SOCKET_QUEUE_ENTRY *entry = NULL;
+  CSS_CONN_ENTRY *conn = NULL;
   int rc = NO_ERROR, rv;
   int master_hostname_length = master_current_hostname == NULL ? 0 : strlen (master_current_hostname);
+  HB_PROC_ENTRY *proc = NULL;
 
-  rv = pthread_mutex_lock (&css_Master_socket_anchor_lock);
-  for (entry = css_Master_socket_anchor; entry; entry = entry->next)
+  rv = pthread_mutex_lock (&hb_Resource->lock);
+  proc = hb_Resource->procs;
+  while (proc)
     {
-      if (entry->name && (IS_MASTER_CONN_NAME_HA_SERVER (entry->name)))
+      if (proc->type != HB_PTYPE_SERVER)
 	{
-	  break;
+	  proc = proc->next;
+	  continue;
 	}
-    }
-  pthread_mutex_unlock (&css_Master_socket_anchor_lock);
 
-  if (entry == NULL)
-    {
-      return ER_FAILED;
-    }
+      if (proc->knows_master_hostname)
+        {
+          return NO_ERROR;
+        }
 
-  if (IS_INVALID_SOCKET (entry->fd))
+      conn = proc->conn;
+    }
+  pthread_mutex_unlock (&hb_Resource->lock);
+
+  if (conn == NULL && IS_INVALID_SOCKET (conn->fd))
     {
       assert (false);
       return ER_FAILED;
     }
 
-  rc = css_send_heartbeat_request (entry->conn_ptr, SERVER_CHANGE_HB_NODE_TYPE);
+  rc = css_send_heartbeat_request (conn, SERVER_RECEIVE_MASTER_HOSTNAME);
   if (rc != NO_ERRORS)
     {
       assert (false);
       return ER_FAILED;
     }
-
-  rc = css_send_heartbeat_data (entry->conn_ptr, (char *) &hb_Cluster->state, sizeof (HB_NODE_STATE_TYPE));
-  if (rc != NO_ERRORS)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-#if 1
 
   if (master_current_hostname != NULL)
     {
@@ -2103,23 +2099,25 @@ css_send_to_my_server_hb_state (const char *master_current_hostname)
       *((int *) master_hostname) = master_hostname_length;
       memcpy (master_hostname + sizeof (int), master_current_hostname, master_hostname_length);
 
-      rc = css_send_heartbeat_data (entry->conn_ptr, master_hostname, sizeof (int) + master_hostname_length);
+      rc = css_send_heartbeat_data (conn, master_hostname, sizeof (int) + master_hostname_length);
       if (rc != NO_ERRORS)
         {
           assert (false);
           return ER_FAILED;
         }
+
+      proc->knows_master_hostname = true;
     }
   else
     {
-      rc = css_send_heartbeat_data (entry->conn_ptr, (char *) &master_hostname_length, sizeof (int));
+      rc = css_send_heartbeat_data (conn, (char *) &master_hostname_length, sizeof (int));
       if (rc != NO_ERRORS)
         {
           assert (false);
           return ER_FAILED;
         }
+      proc->knows_master_hostname = false;
     }
-#endif
-#endif
+
   return NO_ERROR;
 }

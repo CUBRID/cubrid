@@ -166,7 +166,7 @@ static void hb_resource_job_demote_start_shutdown (HB_JOB_ARG * arg);
 static void hb_resource_job_demote_confirm_shutdown (HB_JOB_ARG * arg);
 static void hb_resource_job_cleanup_all (HB_JOB_ARG * arg);
 static void hb_resource_job_confirm_cleanup_all (HB_JOB_ARG * arg);
-static void hb_resource_job_update_server_state (HB_JOB_ARG * arg);
+static void hb_resource_job_send_master_hostname (HB_JOB_ARG * arg);
 
 static void hb_resource_demote_start_shutdown_server_proc (void);
 static bool hb_resource_demote_confirm_shutdown_server_proc (void);
@@ -272,7 +272,7 @@ static HB_JOB_FUNC hb_resource_jobs[] = {
   hb_resource_job_demote_confirm_shutdown,
   hb_resource_job_cleanup_all,
   hb_resource_job_confirm_cleanup_all,
-  hb_resource_job_update_server_state,
+  hb_resource_job_send_master_hostname,
   NULL
 };
 
@@ -3457,6 +3457,7 @@ hb_resource_job_change_mode (HB_JOB_ARG * arg)
 	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "send change-mode request. " "(node_state:%d, pid:%d, proc_state:%d). \n",
 			       hb_Resource->state, proc->pid, proc->state);
 
+
 	  error = hb_resource_send_changemode (proc);
 	  if (NO_ERROR != error)
 	    {
@@ -3554,49 +3555,21 @@ hb_resource_job_shutdown (void)
   return hb_job_shutdown (resource_Jobs);
 }
 
-static void
-hb_resource_job_update_server_state (HB_JOB_ARG * arg)
-{
-  int error, rv;
+/*
+ * resource process
+ */
 
-  rv = pthread_mutex_lock (&hb_Cluster->lock);
-  if (hb_Cluster->last_state != hb_Cluster->state)
-    {
-      if (hb_Cluster->state == HB_NSTATE_MASTER)
-        {
-          error = css_send_to_my_server_hb_state (NULL);
-          if (error == ER_FAILED)
-            {
-              MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "state send failed, will retry. (state=%d). \n", hb_Cluster->state);
-            }
-          else if (error == NO_ERROR)
-            {
-              /* successful, don't resend until next update */
-              hb_Cluster->last_state = hb_Cluster->state;
-            }
-        }
-      else
-        {
-          const char *hostname = hb_find_host_name_of_master_server ();
-          if (hostname != NULL)
-            {
-              error = css_send_to_my_server_hb_state (hostname);
-              if (error == ER_FAILED)
-                {
-                  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "state send failed, will retry. (state=%d). \n", hb_Cluster->state);
-                }
-              else if (error == NO_ERROR)
-                {
-                  /* successful, don't resend until next update */
-                  hb_Cluster->last_state = hb_Cluster->state;
-                }
-            }
-        }
-    }
-  pthread_mutex_unlock (&hb_Cluster->lock);
+static void
+hb_resource_job_send_master_hostname (HB_JOB_ARG * arg)
+{
+  const char *hostname = hb_find_host_name_of_master_server ();
+  int error;
+
+  error = css_send_to_my_server_the_master_hostname (hostname);
+  assert (error == NO_ERROR);
 
   error =
-    hb_resource_job_queue (HB_RJOB_UPDATE_SERVER_STATE, NULL, HB_JOB_TIMER_WAIT_A_SECOND); /* TODO put other interval */
+    hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL, prm_get_integer_value (PRM_ID_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS)); /* TODO put other interval */
   assert (error == NO_ERROR);
 
   if (arg)
@@ -3605,10 +3578,6 @@ hb_resource_job_update_server_state (HB_JOB_ARG * arg)
     }
   return;
 }
-
-/*
- * resource process
- */
 
 /*
  * hb_alloc_new_proc() -
@@ -3630,6 +3599,7 @@ hb_alloc_new_proc (void)
       p->prev = NULL;
       p->being_shutdown = false;
       p->server_hang = false;
+      p->knows_master_hostname = false;
       LSA_SET_NULL (&p->prev_eof);
       LSA_SET_NULL (&p->curr_eof);
 
@@ -4088,16 +4058,19 @@ hb_resource_send_changemode (HB_PROC_ENTRY * proc)
     case HB_NSTATE_MASTER:
       {
 	state = HA_SERVER_STATE_ACTIVE;
+        proc->knows_master_hostname = true;
       }
       break;
     case HB_NSTATE_TO_BE_SLAVE:
       {
 	state = HA_SERVER_STATE_STANDBY;
+        proc->knows_master_hostname = false;
       }
       break;
     case HB_NSTATE_SLAVE:
     default:
       {
+        proc->knows_master_hostname = false;
 	return ER_FAILED;
       }
       break;
@@ -4776,7 +4749,8 @@ hb_resource_job_initialize ()
       return ER_FAILED;
     }
 
-  error = hb_resource_job_queue (HB_RJOB_UPDATE_SERVER_STATE, NULL, prm_get_integer_value (PRM_ID_HA_UPDATE_SERVER_STATE_INTERVAL_IN_MSECS));
+  error =
+    hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL, HB_JOB_TIMER_IMMEDIATELY); /* TODO put other interval */
   if (error != NO_ERROR)
     {
       assert (false);
