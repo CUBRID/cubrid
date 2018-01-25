@@ -1008,7 +1008,7 @@ css_process_master_request (SOCKET master_fd)
       css_process_master_hostname ();
       break;
     case SERVER_CONNECT_NEW_SLAVE:
-      er_log_debug (ARG_FILE_LINE, "css_process_master_request:" "received new slave\n");
+      _er_log_debug (ARG_FILE_LINE, "css_process_master_request:" "received new slave\n");
       css_process_new_slave (master_fd);
       break;
 #endif
@@ -1191,7 +1191,7 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
 
       master_replication_channel::init ();
 
-      er_log_debug (ARG_FILE_LINE, "init master_replication_channel \n");
+      _er_log_debug (ARG_FILE_LINE, "init master_replication_channel \n");
     }
 
   css_send_heartbeat_request (css_Master_conn, SERVER_CHANGE_HA_MODE);
@@ -1260,7 +1260,8 @@ css_process_master_hostname ()
   error = slave_replication_channel::get_channel ()->start_daemon ();
   assert (error == NO_ERROR);
 
-  er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "master_hostname:%s\n", ha_Server_master_hostname);
+  _er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "init slave\n");
+  _er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n", ha_Server_master_hostname);
 
   return NO_ERRORS;
 #endif
@@ -3051,7 +3052,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
   HA_SERVER_STATE orig_state;
   int i;
 
-  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: ha_Server_state %s " "state %s force %c heartbeat %c\n",
+ _er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: ha_Server_state %s " "state %s force %c heartbeat %c\n",
 		css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state), (force ? 't' : 'f'),
 		(heartbeat ? 't' : 'f'));
 
