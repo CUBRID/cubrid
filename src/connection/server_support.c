@@ -3511,6 +3511,7 @@ css_process_new_slave (SOCKET master_fd)
   new_fd = css_open_new_socket_from_master (master_fd, &rid);
   if (IS_INVALID_SOCKET (new_fd))
     {
+      assert (false);
       return;
     }
   er_log_debug (ARG_FILE_LINE, "css_process_new_slave:" "received new slave fd from master fd=%d, current_state=%d\n", new_fd, css_get_hb_node_state());
