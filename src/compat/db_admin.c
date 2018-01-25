@@ -255,6 +255,7 @@ db_init (const char *program, int print_version, const char *dbname, const char 
     {
       return error;
     }
+  (void) db_find_or_create_session (client_credential.db_user, client_credential.program_name);
 #endif /* SA_MODE */
 
   error = boot_initialize_client (&client_credential, &db_path_info, (bool) overwrite, addmore_vols_file, npages,

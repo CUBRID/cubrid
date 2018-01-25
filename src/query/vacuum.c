@@ -23,6 +23,7 @@
  */
 #include "vacuum.h"
 
+#include "base_flag.hpp"
 #include "boot_sr.h"
 #include "btree.h"
 #include "dbtype.h"
@@ -46,6 +47,8 @@
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
 #include "util_func.h"
+
+#include <atomic>
 
 /* The maximum number of slots in a page if all of them are empty.
  * IO_MAX_PAGE_SIZE is used for page size and any headers are ignored (it
@@ -254,9 +257,10 @@ struct vacuum_data
   int log_block_npages;		/* The number of pages in a log block. */
 
   bool is_loaded;		/* True if vacuum data is loaded. */
-  bool shutdown_requested;	/* Set to true when shutdown is requested. It stops vacuum from generating or executing
-				 * new jobs.
-				 */
+  /* *INDENT-OFF*/
+  std::atomic<bool> shutdown_requested;	/* Set to true when shutdown is requested. It stops vacuum from generating or
+                                         * executing new jobs. */
+  /* INDENT-ON* */
   bool is_archive_removal_safe;	/* Set to true after keep_from_log_pageid is updated. */
 
   /* Job cursor for vacuum master to avoid going again through jobs already generated */
@@ -270,26 +274,31 @@ struct vacuum_data
 #if defined (SA_MODE)
   bool is_vacuum_complete;
 #endif				/* SA_MODE */
-};
-static VACUUM_DATA vacuum_Data = {
-  VFID_INITIALIZER,		/* vacuum_data_file */
-  VACUUM_NULL_LOG_BLOCKID,	/* last_blockid */
-  NULL_PAGEID,			/* keep_from_log_pageid */
-  MVCCID_NULL,			/* oldest_unvacuumed_mvccid */
-  NULL,				/* first_page */
-  NULL,				/* last_page */
-  0,				/* page_data_max_count */
-  0,				/* log_block_npages */
-  false,			/* is_loaded */
-  false,			/* shutdown_requested */
-  false,			/* is_archive_removal_safe */
-  VPID_INITIALIZER,		/* vpid_job_cursor */
-  0,				/* blockid_job_cursor */
-  LSA_INITIALIZER		/* recovery_lsa */
+
+  /* *INDENT-OFF* */
+  vacuum_data ()
+    : vacuum_data_file (VFID_INITIALIZER)
+    , last_blockid (VACUUM_NULL_LOG_BLOCKID)
+    , keep_from_log_pageid (NULL_PAGEID)
+    , oldest_unvacuumed_mvccid (MVCCID_NULL)
+    , first_page (NULL)
+    , last_page (NULL)
+    , page_data_max_count (0)
+    , log_block_npages (0)
+    , is_loaded (false)
+    , shutdown_requested (false)
+    , is_archive_removal_safe (false)
+    , vpid_job_cursor (VPID_INITIALIZER)
+    , blockid_job_cursor (0)
+    , recovery_lsa (LSA_INITIALIZER)
 #if defined (SA_MODE)
-    , false			/* is_vacuum_complete. */
-#endif /* SA_MODE */
+    , is_vacuum_complete (false)
+#endif // SA_MODE
+  {
+  }
+  /* *INDENT-ON* */
 };
+static VACUUM_DATA vacuum_Data;
 
 /* vacuum data load */
 typedef struct vacuum_data_load VACUUM_DATA_LOAD;
@@ -1099,10 +1108,18 @@ vacuum_boot (THREAD_ENTRY * thread_p)
   // get thread manager
   auto thread_manager = cubthread::get_manager ();
 
+  // get logging flag for vacuum worker pool
+  /* *INDENT-OFF* */
+  bool log_vacuum_worker_pool =
+    flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_THREAD_LOGGING_FLAG), THREAD_LOG_WORKER_POOL_VACUUM)
+    || flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_ER_LOG_VACUUM), VACUUM_ER_LOG_WORKER);
+  /* *INDENT-ON* */
+
   // create thread pool
   vacuum_Worker_threads =
     thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT),
-					VACUUM_JOB_QUEUE_CAPACITY, vacuum_Worker_context_manager);
+					VACUUM_JOB_QUEUE_CAPACITY,
+					vacuum_Worker_context_manager, log_vacuum_worker_pool);
   assert (vacuum_Worker_threads != NULL);
 
   // create vacuum master thread
@@ -2754,6 +2771,11 @@ vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
   vacuum_convert_thread_to_worker (thread_p, worker_p, save_type);
   assert (save_type == THREAD_TYPE::TT_VACUUM_MASTER);
 #endif // SA_MODE
+  if (vacuum_Data.shutdown_requested)
+    {
+      // stop pushing tasks; worker pool may be stopped already
+      return;
+    }
   cubthread::get_manager ()->push_task (*thread_p, vacuum_Worker_threads,
 					new vacuum_worker_task (data_entry, log_buffer, is_partial_block));
 #if defined (SA_MODE)
@@ -2919,7 +2941,7 @@ restart:
   vacuum_er_log (VACUUM_ER_LOG_MASTER, "Start searching jobs in page %d|%d from index %d.",
 		 vacuum_Data.vpid_job_cursor.volid, vacuum_Data.vpid_job_cursor.pageid, data_index);
 
-  while (!cubthread::get_manager ()->is_pool_full (vacuum_Worker_threads))
+  while (!cubthread::get_manager ()->is_pool_full (vacuum_Worker_threads) && !vacuum_Data.shutdown_requested)
     {
       assert (data_index >= 0);
       if (data_index >= data_page->index_free)
@@ -7935,7 +7957,7 @@ vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker
   save_type = thread_p->type;
   thread_p->type = TT_VACUUM_WORKER;
   thread_p->vacuum_worker = worker;
-  if (vacuum_worker_allocate_resources (thread_p, thread_p->vacuum_worker) != NULL)
+  if (vacuum_worker_allocate_resources (thread_p, thread_p->vacuum_worker) != NO_ERROR)
     {
       assert_release (false);
     }
