@@ -1030,7 +1030,12 @@ er_final (ER_FINAL_CODE do_global_final)
 	  assert (false);
 	  return;
 	}
-#endif
+#else // not SERVER_MODE
+      // destroy singleton context
+      er_Singleton_context_p->deregister_thread_local ();
+      delete er_Singleton_context_p;
+      er_Singleton_context_p = NULL;
+#endif // not SERVER_MODE
 
       er_event_final ();
 
@@ -1073,12 +1078,6 @@ er_final (ER_FINAL_CODE do_global_final)
 #if defined (SERVER_MODE)
       ER_CSECT_EXIT_LOG_FILE ();
 #endif
-
-#if !defined (SERVER_MODE)
-      er_Singleton_context_p->deregister_thread_local ();
-      delete er_Singleton_context_p;
-      er_Singleton_context_p = NULL;
-#endif // not SERVER_MODE
     }
   else
     {
@@ -1227,8 +1226,9 @@ er_print_callstack (const char *file_name, const int line_no, const char *fmt, .
   _er_log_debug_internal (file_name, line_no, fmt, &ap);
   va_end (ap);
 
-  er_dump_call_stack (er_Msglog_fh);
-  fprintf (er_Msglog_fh, "\n");
+  FILE *out = (er_Msglog_fh != NULL) ? er_Msglog_fh : stderr;
+  er_dump_call_stack (out);
+  fprintf (out, "\n");
 
   ER_CSECT_EXIT_LOG_FILE ();
 }
