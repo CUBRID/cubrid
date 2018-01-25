@@ -34,7 +34,7 @@
 
 const bool LOG_ME = true; // todo: set false
 
-#define ERROR_CONTEXT_LOG(...) if (m_logging) er_print_callstack (ARG_FILE_LINE, __VA_ARGS__)
+#define ERROR_CONTEXT_LOG(...) if (m_logging) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
 
 #define ERMSG_MSG "{ %p: errid=%d, sev=%d, fname=%s, line=%d, msg_area=%p(%s)_size=%zu, msgbuf=%p(%s), args=%p_n=%d }"
 #define ERMSG_ARGS(em) &(em), (em).err_id, (em).severity, (em).file_name, (em).line_no, (em).msg_area, (em).msg_area, \
