@@ -121,4 +121,9 @@ master_replication_channel *master_replication_channel::get_channel ()
 master_replication_channel::~master_replication_channel ()
 {
   cubthread::get_manager()->destroy_daemon (master_loop_daemon);
+
+  for (int i = 0; i < m_current_number_of_connected_slaves; i++)
+    {
+      close (slave_fds[i].fd);
+    }
 }
