@@ -2063,20 +2063,25 @@ css_send_to_my_server_the_master_hostname (const char *master_current_hostname)
   proc = hb_Resource->procs;
   while (proc)
     {
-      if (proc->type != HB_PTYPE_SERVER)
+      if (proc->type == HB_PTYPE_SERVER)
 	{
-	  proc = proc->next;
-	  continue;
+          if (proc->knows_master_hostname)
+            {
+              return NO_ERROR;
+            }
+
+          conn = proc->conn;
+          break;
 	}
-
-      if (proc->knows_master_hostname)
-        {
-          return NO_ERROR;
-        }
-
-      conn = proc->conn;
+      proc = proc->next;
     }
   pthread_mutex_unlock (&hb_Resource->lock);
+
+  if (master_current_hostname == NULL || strlen (master_current_hostname) == 0)
+    {
+      proc->knows_master_hostname = false;
+      return NO_ERROR;
+    }
 
   if (conn == NULL && IS_INVALID_SOCKET (conn->fd))
     {
@@ -2091,33 +2096,20 @@ css_send_to_my_server_the_master_hostname (const char *master_current_hostname)
       return ER_FAILED;
     }
 
-  if (master_current_hostname != NULL)
+  assert (master_hostname_length != 0);
+  char master_hostname[sizeof (int) + master_hostname_length];
+
+  *((int *) master_hostname) = master_hostname_length;
+  memcpy (master_hostname + sizeof (int), master_current_hostname, master_hostname_length);
+
+  rc = css_send_heartbeat_data (conn, master_hostname, sizeof (int) + master_hostname_length);
+  if (rc != NO_ERRORS)
     {
-      assert (master_hostname_length != 0);
-      char master_hostname[sizeof (int) + master_hostname_length];
-
-      *((int *) master_hostname) = master_hostname_length;
-      memcpy (master_hostname + sizeof (int), master_current_hostname, master_hostname_length);
-
-      rc = css_send_heartbeat_data (conn, master_hostname, sizeof (int) + master_hostname_length);
-      if (rc != NO_ERRORS)
-        {
-          assert (false);
-          return ER_FAILED;
-        }
-
-      proc->knows_master_hostname = true;
+      assert (false);
+      return ER_FAILED;
     }
-  else
-    {
-      rc = css_send_heartbeat_data (conn, (char *) &master_hostname_length, sizeof (int));
-      if (rc != NO_ERRORS)
-        {
-          assert (false);
-          return ER_FAILED;
-        }
-      proc->knows_master_hostname = false;
-    }
+
+  proc->knows_master_hostname = true;
 
   return NO_ERROR;
 }

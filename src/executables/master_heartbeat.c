@@ -4748,15 +4748,16 @@ hb_resource_job_initialize ()
       assert (false);
       return ER_FAILED;
     }
-
+#if 1
   error =
-    hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL, HB_JOB_TIMER_IMMEDIATELY); /* TODO put other interval */
+    hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL, prm_get_integer_value (PRM_ID_HA_INIT_TIMER_IN_MSECS) +
+                                                               prm_get_integer_value (PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS));
   if (error != NO_ERROR)
     {
       assert (false);
       return ER_FAILED;
     }
-
+#endif
   return NO_ERROR;
 }
 
@@ -6766,7 +6767,8 @@ char *
 hb_find_host_name_of_master_server()
 {
   HB_NODE_ENTRY *node;
-  
+
+  int rv = pthread_mutex_lock (&hb_Cluster->lock);
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
       if (node->state == HB_NSTATE_MASTER)
@@ -6774,6 +6776,7 @@ hb_find_host_name_of_master_server()
 	  return node->host_name;
 	}
     }
-    
+  pthread_mutex_unlock (&hb_Cluster->lock);
+
   return NULL;
 }
