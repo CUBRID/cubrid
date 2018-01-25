@@ -8405,7 +8405,6 @@ STATIC_INLINE PGBUF_BCB *
 pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 {
 #define PERF(pstatid) if (perf_tracking) perfmon_inc_stat (thread_p, pstatid)
-#define MAX_DEPTH 1000
 
   PGBUF_BCB *bufptr;
   int found_victim_cnt = 0;
@@ -8415,8 +8414,10 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   PGBUF_BCB *bufptr_victimizable = NULL;
   PGBUF_BCB *bufptr_start = NULL;
   PGBUF_BCB *victim_hint = NULL;
+  int max_depth;
 
   bool perf_tracking = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
+  max_depth = prm_get_integer_value (PRM_ID_PB_MAX_DEPTH_OF_SEARCHING_VICTIMS_IN_LRU_LIST);
 
   lru_list = &pgbuf_Pool.buf_LRU_list[lru_idx];
 
@@ -8484,7 +8485,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       bufptr_start = victim_hint;
     }
 
-  for (bufptr = bufptr_start; bufptr != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) && search_cnt < MAX_DEPTH;
+  for (bufptr = bufptr_start; bufptr != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) && search_cnt < max_depth;
        bufptr = bufptr->prev_BCB, search_cnt++)
     {
       /* must not be any other case that invalidates a victim: is flushing, direct victim */
@@ -8611,11 +8612,10 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   /* failed finding victim in single-threaded, although the number of victim candidates is positive? impossible!
    * note: not really impossible. the thread may have the victimizable fixed. but bufptr_victimizable must not be
    * NULL. */
-  assert (thread_is_page_flush_thread_available () || bufptr_victimizable != NULL || search_cnt == MAX_DEPTH);
+  assert (thread_is_page_flush_thread_available () || bufptr_victimizable != NULL || search_cnt == max_depth);
   return NULL;
 
 #undef PERF
-#undef MAX_DEPTH
 }
 
 #if defined (SERVER_MODE)
@@ -8630,13 +8630,14 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 static int
 pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb_start)
 {
-#define MAX_DEPTH 1000
   PGBUF_BCB *bcb = NULL;
   int n_assigned = 0;
   int count = 0;
+  int max_depth;
 
   /* statistics shows not useful */
 
+  max_depth = prm_get_integer_value (PRM_ID_PB_MAX_DEPTH_OF_SEARCHING_VICTIMS_IN_LRU_LIST);
   if (bcb_start == NULL)
     {
       return 0;
@@ -8646,7 +8647,7 @@ pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_L
   /* panic victimization function */
 
   for (bcb = bcb_start;
-       bcb != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb) && lru_list->count_vict_cand > 0 && count < MAX_DEPTH;
+       bcb != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb) && lru_list->count_vict_cand > 0 && count < max_depth;
        bcb = bcb->prev_BCB, count++)
     {
       assert (pgbuf_bcb_get_lru_index (bcb) == lru_list->index);
@@ -8681,8 +8682,6 @@ pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_L
     }
 
   return n_assigned;
-
-#undef MAX_DEPTH
 }
 
 /*

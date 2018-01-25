@@ -627,6 +627,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PB_NUM_PRIVATE_CHAINS "num_private_chains"
 #define PRM_NAME_PB_MONITOR_LOCKS "pgbuf_monitor_locks"
+#define PRM_NAME_PB_MAX_DEPTH_OF_SEARCHING_FOR_VICTIMS_IN_LRU_LIST "max_depth_of_searching_for_victims_in_lru_list"
 
 #define PRM_NAME_CTE_MAX_RECURSIONS "cte_max_recursions"
 #define PRM_NAME_DWB_SIZE "double_write_buffer_size"
@@ -2114,6 +2115,12 @@ static int prm_pb_num_private_chains_default = -1;
 static int prm_pb_num_private_chains_upper = CSS_MAX_CLIENT_COUNT + VACUUM_MAX_WORKER_COUNT;
 static int prm_pb_num_private_chains_lower = -1;
 static unsigned int prm_pb_num_private_chains_flag = 0;
+
+int PRM_PB_MAX_DEPTH_OF_SEARCHING_VICTIMS_IN_LRU_LIST = 20;
+static int prm_pb_max_depth_of_searching_for_victims_in_lru_list_default = 20;
+static int prm_pb_max_depth_of_searching_for_victims_in_lru_list_upper = 1000;
+static int prm_pb_max_depth_of_searching_for_victims_in_lru_list_lower = 1;
+static unsigned int prm_pb_max_depth_of_searching_for_victims_in_lru_list_flag = 0;
 
 bool PRM_PB_MONITOR_LOCKS = false;
 static bool prm_pb_monitor_locks_default = false;
@@ -5383,6 +5390,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_PB_NUM_PRIVATE_CHAINS,
    (void *) &prm_pb_num_private_chains_upper,
    (void *) &prm_pb_num_private_chains_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PB_MAX_DEPTH_OF_SEARCHING_VICTIMS_IN_LRU_LIST,
+   PRM_NAME_PB_MAX_DEPTH_OF_SEARCHING_FOR_VICTIMS_IN_LRU_LIST,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_pb_max_depth_of_searching_for_victims_in_lru_list_flag,
+   (void *) &prm_pb_max_depth_of_searching_for_victims_in_lru_list_default,
+   (void *) &PRM_PB_MAX_DEPTH_OF_SEARCHING_VICTIMS_IN_LRU_LIST,
+   (void *) &prm_pb_max_depth_of_searching_for_victims_in_lru_list_upper,
+   (void *) &prm_pb_max_depth_of_searching_for_victims_in_lru_list_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
