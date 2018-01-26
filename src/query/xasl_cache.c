@@ -2343,8 +2343,8 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
 	  if (XCACHE_RT_CLASS_STAT_NEED_UPDATE (cls_info_p->ci_tot_pages, npages))
 	    {
 	      cls_info_p->ci_time_stamp = stats_get_time_stamp ();
-	      if (catalog_update_class_info
-		  (thread_p, &xcache_entry->related_objects[relobj].oid, cls_info_p, NULL, true) == NULL)
+	      if (catalog_update_class_info (thread_p, &xcache_entry->related_objects[relobj].oid, cls_info_p, NULL,
+					     true) == NULL)
 		{
 		  try_recompile = false;
 		}
