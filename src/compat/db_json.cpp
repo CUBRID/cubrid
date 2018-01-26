@@ -769,7 +769,12 @@ db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destinati
   int error_code = NO_ERROR;
   std::string json_pointer_string;
 
-  // todo: handle NULL doc_to_be_inserted properly
+  if (doc_to_be_inserted == NULL)
+    {
+      // unexpected
+      assert (false);
+      return ER_FAILED;
+    }
 
   // path must be JSON pointer
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
@@ -850,10 +855,17 @@ db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destinati
 * raw_path (in)           : specified path
 */
 int
-db_json_replace_func (const JSON_DOC *new_value, JSON_DOC *doc, const char *raw_path)
+db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_path)
 {
   int error_code = NO_ERROR;
   std::string json_pointer_string;
+
+  if (new_value == NULL)
+    {
+      // unexpected
+      assert (false);
+      return ER_FAILED;
+    }
 
   // path must be JSON pointer
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
@@ -872,15 +884,15 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC *doc, const char *raw_
       return ER_JSON_INVALID_PATH;
     }
 
-  if (p.Get (*doc) == NULL)
+  if (p.Get (doc) == NULL)
     {
       // if the path does not exist, raise an error
       // the user should know that the command will have no effect
-      return db_json_er_set_path_does_not_exist (json_pointer_string, doc);
+      return db_json_er_set_path_does_not_exist (json_pointer_string, &doc);
     }
 
   // replace the value from the specified path with the new value
-  p.Set (*doc, *new_value, doc->GetAllocator());
+  p.Set (doc, *new_value, doc.GetAllocator());
 
   return NO_ERROR;
 }
@@ -894,10 +906,17 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC *doc, const char *raw_
 * raw_path (in)           : specified path
 */
 int
-db_json_set_func (const JSON_DOC *value, JSON_DOC *doc, const char *raw_path)
+db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
 {
   int error_code = NO_ERROR;
   std::string json_pointer_string;
+
+  if (value == NULL)
+    {
+      // unexpected
+      assert (false);
+      return ER_FAILED;
+    }
 
   // path must be JSON pointer
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
@@ -917,12 +936,12 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC *doc, const char *raw_path)
       return ER_JSON_INVALID_PATH;
     }
 
-  resulting_json = p.Get (*doc);
+  resulting_json = p.Get (doc);
 
   if (resulting_json != NULL)
     {
       // replace the old value with the new one if the path exists
-      p.Set (*doc, *value, doc->GetAllocator());
+      p.Set (doc, *value, doc.GetAllocator());
       return NO_ERROR;
     }
 
@@ -938,6 +957,7 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC *doc, const char *raw_path)
   if (found == std::string::npos)
     {
       assert (false);
+      return ER_FAILED;
     }
 
   // parent pointer
@@ -947,20 +967,21 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC *doc, const char *raw_path)
     {
       /* this shouldn't happen */
       assert (false);
+      return ER_FAILED;
     }
 
-  resulting_json_parent = pointer_parent.Get (*doc);
+  resulting_json_parent = pointer_parent.Get (doc);
 
   // the parent does not exist
   if (resulting_json_parent == NULL)
     {
       // we can only create a child value, not both parent and child
-      return db_json_er_set_path_does_not_exist (json_pointer_string, doc);
+      return db_json_er_set_path_does_not_exist (json_pointer_string, &doc);
     }
 
   // create and insert the value to the specified path
-  p.Create (*doc);
-  p.Set (*doc, *value, doc->GetAllocator());
+  p.Create (doc);
+  p.Set (doc, *value, doc.GetAllocator());
 
   return NO_ERROR;
 }
@@ -973,7 +994,7 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC *doc, const char *raw_path)
 * raw_path (in)           : specified path
 */
 int
-db_json_remove_func (JSON_DOC *doc, char *raw_path)
+db_json_remove_func (JSON_DOC &doc, const char *raw_path)
 {
   int error_code = NO_ERROR;
   std::string json_pointer_string;
@@ -996,13 +1017,13 @@ db_json_remove_func (JSON_DOC *doc, char *raw_path)
     }
 
   // if the path does not exist, the user should know that the path has no effect
-  if (p.Get (*doc) == NULL)
+  if (p.Get (doc) == NULL)
     {
-      return db_json_er_set_path_does_not_exist (json_pointer_string, doc);
+      return db_json_er_set_path_does_not_exist (json_pointer_string, &doc);
     }
 
   // erase the value from the specified path
-  p.Erase (*doc);
+  p.Erase (doc);
   return NO_ERROR;
 }
 
@@ -1015,10 +1036,17 @@ db_json_remove_func (JSON_DOC *doc, char *raw_path)
 * raw_path (in)           : specified path
 */
 int
-db_json_array_append_func (const JSON_DOC *value, JSON_DOC *doc, const char *raw_path)
+db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
 {
   int error_code = NO_ERROR;
   std::string json_pointer_string;
+
+  if (value == NULL)
+    {
+      // unexpected
+      assert (false);
+      return ER_FAILED;
+    }
 
   // path must be JSON pointer
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
@@ -1038,11 +1066,11 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC *doc, const char *raw
       return ER_JSON_INVALID_PATH;
     }
 
-  resulting_json = p.Get (*doc);
+  resulting_json = p.Get (doc);
 
   if (resulting_json == NULL)
     {
-      return db_json_er_set_path_does_not_exist (json_pointer_string, doc);
+      return db_json_er_set_path_does_not_exist (json_pointer_string, &doc);
     }
 
   // the specified path is not an array
@@ -1051,12 +1079,12 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC *doc, const char *raw
     {
       // we need to create an array with the value from the specified path
       // example: for json {"a" : "b"} and path '/a' --> {"a" : ["b"]}
-      db_json_value_wrap_as_array (*resulting_json, doc->GetAllocator());
+      db_json_value_wrap_as_array (*resulting_json, doc.GetAllocator());
     }
 
   // add the value at the end of the array
-  JSON_VALUE value_copy (*value, doc->GetAllocator ());
-  resulting_json->PushBack (value_copy, doc->GetAllocator());
+  JSON_VALUE value_copy (*value, doc.GetAllocator ());
+  resulting_json->PushBack (value_copy, doc.GetAllocator());
 
   return NO_ERROR;
 }
