@@ -28,57 +28,59 @@
 
 #include <stack>
 
-const std::size_t ER_EMERGENCY_BUF_SIZE = 256;
-
-// legacy structures
-typedef union er_va_arg ER_VA_ARG;
-union er_va_arg
-{
-  int int_value;		/* holders for the values that we actually */
-  void *pointer_value;		/* retrieve from the va_list. */
-  double double_value;
-  long double longdouble_value;
-  const char *string_value;
-  long long longlong_value;
-};
-
-typedef struct er_message ER_MSG;
-struct er_message
-{
-  public:
-    er_message (const bool &logging);
-    ~er_message ();
-
-    void swap (er_message &other);
-
-    void clear_error (void);
-    void set_error (int error_id, int error_severity, const char *filename, int line_no);
-    void reserve (std::size_t size);
-    void clear_msg_area (void);
-
-    int err_id;			/* Error identifier of the current message */
-    int severity;			/* Warning, Error, FATAL Error, etc... */
-    const char *file_name;	/* File where the error is set */
-    int line_no;			/* Line in the file where the error is set */
-    std::size_t msg_area_size;		/* Size of the message area */
-    char *msg_area;		/* Pointer to message area */
-    ER_VA_ARG *args;		/* Array of va_list entries */
-    int nargs;			/* Length of array */
-    char msg_buffer[ER_EMERGENCY_BUF_SIZE];   // message buffer
-
-  private:
-    // not copy constructible
-    er_message (er_message &);
-
-    const bool &m_logging; // reference to context logging
-};
-
 namespace cuberr
 {
+  const std::size_t ER_EMERGENCY_BUF_SIZE = 256;
+
+  // legacy structures
+  union er_va_arg
+  {
+    int int_value;		/* holders for the values that we actually */
+    void *pointer_value;		/* retrieve from the va_list. */
+    double double_value;
+    long double longdouble_value;
+    const char *string_value;
+    long long longlong_value;
+  };
+
+  struct er_message
+  {
+    public:
+      er_message (const bool &logging);
+      ~er_message ();
+
+      void swap (er_message &other);
+
+      void clear_error (void);            // clear error and message
+      void set_error (int error_id, int error_severity, const char *filename, int line_no);  // set error
+      void reserve_message_area (std::size_t size);
+      void clear_message_area (void);
+
+      int err_id;			/* Error identifier of the current message */
+      int severity;			/* Warning, Error, FATAL Error, etc... */
+      const char *file_name;	/* File where the error is set */
+      int line_no;			/* Line in the file where the error is set */
+      std::size_t msg_area_size;		/* Size of the message area */
+      char *msg_area;		/* Pointer to message area */
+      er_va_arg *args;		/* Array of va_list entries */
+      int nargs;			/* Length of array */
+      char msg_buffer[ER_EMERGENCY_BUF_SIZE];   // message buffer
+
+    private:
+      // not copy constructible
+      er_message (er_message &);
+
+      const bool &m_logging; // reference to context logging
+  };
+
   class context
   {
     public:
-      context (bool automatic_registation = false, bool logging = true);
+
+      // constructor
+      // automatic_registration - if true, registration/deregistration is handled during construct/destruct
+      // logging -
+      context (bool automatic_registration = false, bool logging = true);
 
       ~context ();
 
