@@ -8840,6 +8840,11 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  ASSERT_ERROR_AND_SET (err);
 		}
+	      else if (contextp->recompile_xasl == true)
+		{
+		  /* recompile requested by server */
+		  stream.xasl_id = NULL;
+		}
 	    }
 
 	  if (stream.xasl_id == NULL && err == NO_ERROR)
@@ -8893,6 +8898,10 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		    {
 		      assert (er_errid () != NO_ERROR);
 		      err = er_errid ();
+		    }
+		  else
+		    {
+		      assert (contextp->recompile_xasl == false);
 		    }
 		}
 
@@ -10110,6 +10119,11 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		{
 		  ASSERT_ERROR_AND_SET (err);
 		}
+	      else if (contextp->recompile_xasl == true)
+		{
+		  /* recompile requested by server */
+		  stream.xasl_id = NULL;
+		}
 	    }
 	  if (stream.xasl_id == NULL && err == NO_ERROR)
 	    {
@@ -10151,6 +10165,10 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		    {
 		      assert (er_errid () != NO_ERROR);
 		      err = er_errid ();
+		    }
+		  else
+		    {
+		      assert (contextp->recompile_xasl == false);
 		    }
 		}
 
@@ -10718,6 +10736,11 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  ASSERT_ERROR_AND_SET (error);
 	}
+      else if (contextp->recompile_xasl == true)
+	{
+	  /* recompile requested by server */
+	  stream.xasl_id = NULL;
+	}
     }
 
   if (stream.xasl_id == NULL && error == NO_ERROR)
@@ -10752,6 +10775,10 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
+	    }
+	  else
+	    {
+	      assert (contextp->recompile_xasl == false);
 	    }
 	}
 
@@ -13946,13 +13973,18 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  ASSERT_ERROR_AND_SET (err);
 	}
+      else if (contextp->recompile_xasl == true)
+	{
+	  /* recompile flag was returned by server */
+	  stream.xasl_id = NULL;
+	}
       else if (stream.xasl_id != NULL)
 	{
 	  /* check xasl header */
 	  /* TODO: we can treat the different cases of MRO by hacking query string. */
 	  if (pt_recompile_for_limit_optimizations (parser, statement, stream.xasl_header->xasl_flag))
 	    {
-	      contextp->recompile_xasl = 1;
+	      contextp->recompile_xasl = true;
 	      stream.xasl_id = NULL;
 	    }
 	}
@@ -13999,6 +14031,10 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      err = er_errid ();
+	    }
+	  else
+	    {
+	      assert (contextp->recompile_xasl == false);
 	    }
 	}
 
@@ -15692,6 +15728,11 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      ASSERT_ERROR_AND_SET (err);
 	    }
+	  else if (contextp->recompile_xasl == true)
+	    {
+	      /* recompile requested by server */
+	      stream.xasl_id = NULL;
+	    }
 	}
 
       if (stream.xasl_id == NULL && err == NO_ERROR)
@@ -15761,6 +15802,10 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  err = er_errid ();
+		}
+	      else
+		{
+		  assert (contextp->recompile_xasl == false);
 		}
 	    }
 
