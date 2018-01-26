@@ -145,7 +145,7 @@ static double db_json_get_double_from_value (const JSON_VALUE *doc);
 static const char *db_json_get_string_from_value (const JSON_VALUE *doc);
 static char *db_json_copy_string_from_value (const JSON_VALUE *doc);
 static char *db_json_get_bool_as_str_from_value (const JSON_VALUE *doc);
-STATIC_INLINE char *db_json_bool_to_string (bool b);
+static char *db_json_bool_to_string (bool b);
 static void db_json_merge_two_json_objects (JSON_DOC &first, const JSON_DOC *second);
 static void db_json_merge_two_json_arrays (JSON_DOC &array1, const JSON_DOC *array2);
 static void db_json_merge_two_json_by_array_wrapping (JSON_DOC &j1, const JSON_DOC *j2);
@@ -158,13 +158,13 @@ static bool db_json_isspace (const unsigned char &ch);
 static int db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_path_out);
 static int db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_pointer_out);
 static JSON_PATH_TYPE db_json_get_path_type (std::string &path_string);
-STATIC_INLINE void db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_type,
+static void db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_type,
     std::unordered_map<std::string, std::string> &special_chars);
-STATIC_INLINE std::vector<std::string> db_json_split_path_by_delimiters (const std::string &path,
+static std::vector<std::string> db_json_split_path_by_delimiters (const std::string &path,
     const std::string &delim);
-STATIC_INLINE bool db_json_sql_path_is_valid (std::string &sql_path);
-STATIC_INLINE int db_json_er_set_path_does_not_exist (const std::string &path, const JSON_DOC *doc);
-STATIC_INLINE void db_json_replace_token_special_chars (std::string &token,
+static bool db_json_sql_path_is_valid (std::string &sql_path);
+static int db_json_er_set_path_does_not_exist (const std::string &path, const JSON_DOC *doc);
+static void db_json_replace_token_special_chars (std::string &token,
     const std::unordered_map<std::string, std::string> &special_chars);
 static bool db_json_path_is_token_valid_array_index (const std::string &str, std::size_t start = 0,
     std::size_t end = 0);
@@ -1449,7 +1449,7 @@ db_json_copy_string_from_value (const JSON_VALUE *doc)
   return db_private_strdup (NULL, doc->GetString());
 }
 
-STATIC_INLINE char *
+static char *
 db_json_bool_to_string (bool b)
 {
   return b ? db_private_strdup (NULL, "true") : db_private_strdup (NULL, "false");
@@ -1496,7 +1496,7 @@ db_json_get_path_type (std::string &path_string)
 * we need a map in order to know how to escape special characters
 * example from sql_path to pointer_path: $."/a" -> #/~1a
 */
-STATIC_INLINE void
+static void
 db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_type,
 				  std::unordered_map<std::string, std::string> &special_chars)
 {
@@ -1519,7 +1519,7 @@ db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_type,
 * delim (in) supports multiple delimiters
 * returns a vector with tokens split by delimiters from the given string
 */
-STATIC_INLINE std::vector<std::string>
+static std::vector<std::string>
 db_json_split_path_by_delimiters (const std::string &path, const std::string &delim)
 {
   std::vector<std::string> tokens;
@@ -1558,7 +1558,7 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
 * return                  : true/false
 * sql_path (in)           : path to be checked
 */
-STATIC_INLINE bool
+static bool
 db_json_sql_path_is_valid (std::string &sql_path)
 {
   // skip leading white spaces
@@ -1653,7 +1653,7 @@ db_json_sql_path_is_valid (std::string &sql_path)
 * path (in)               : path that does not exist
 * doc (in)                : json document
 */
-STATIC_INLINE int
+static int
 db_json_er_set_path_does_not_exist (const std::string &path, const JSON_DOC *doc)
 {
   std::string sql_path_string;
@@ -1686,7 +1686,7 @@ db_json_er_set_path_does_not_exist (const std::string &path, const JSON_DOC *doc
 * this function does the special characters replacements in a token based on mapper
 * Example: object~1name -> object/name
 */
-STATIC_INLINE void
+static void
 db_json_replace_token_special_chars (std::string &token,
 				     const std::unordered_map<std::string, std::string> &special_chars)
 {
