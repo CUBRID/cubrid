@@ -12336,7 +12336,7 @@ int
 pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 {
   PT_NODE *select_list, *order_by, *col, *r, *temp, *order, *match;
-  int n, i, select_list_len;
+  int n, i, select_list_len, select_list_full_len;
   bool ordbynum_flag;
   char *r_str = NULL;
   int error;
@@ -12487,7 +12487,12 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
     }
 
   /* save original length of select_list */
+  select_list_len = 0;
+  select_list_full_len = pt_length_of_select_list (select_list, INCLUDE_HIDDEN_COLUMNS);
+#if !defined (NDEBUG)
   select_list_len = pt_length_of_select_list (select_list, EXCLUDE_HIDDEN_COLUMNS);
+#endif /* !NDEBUG */
+
   for (order = order_by; order; order = order->next)
     {
       /* get the EXPR */
@@ -12504,7 +12509,7 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 	    {
 	      n = r->info.value.data_value.i;
 	      /* check size of the integer */
-	      if (n > select_list_len || n < 1)
+	      if (select_list_full_len < n || n < 1)
 		{
 		  error = MSGCAT_SEMANTIC_SORT_SPEC_RANGE_ERR;
 		  PT_ERRORmf (parser, r, MSGCAT_SET_PARSER_SEMANTIC, error, n);
@@ -12517,6 +12522,9 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 		    {
 		      col = col->next;
 		    }
+
+		  /* sorting node should be either an existing select node or an hidden column added by system */
+		  assert (n <= select_list_len || col->is_hidden_column);
 
 		  if (col->node_type == PT_EXPR && col->info.expr.op == PT_ORDERBY_NUM)
 		    {
