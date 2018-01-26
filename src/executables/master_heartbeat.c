@@ -6771,8 +6771,9 @@ hb_find_host_name_of_master_server()
   int rv = pthread_mutex_lock (&hb_Cluster->lock);
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
-      if (node->state == HB_NSTATE_MASTER)
+      if (node->state == HB_NSTATE_MASTER && hb_Cluster->master == node)
 	{
+          assert (strcmp (node->host_name, hb_Cluster->master->host_name) == 0);
           pthread_mutex_unlock (&hb_Cluster->lock);
 	  return node->host_name;
 	}
