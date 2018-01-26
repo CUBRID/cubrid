@@ -8899,6 +8899,10 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      assert (er_errid () != NO_ERROR);
 		      err = er_errid ();
 		    }
+		  else
+		    {
+		      assert (contextp->recompile_xasl == false);
+		    }
 		}
 
 	      /* mark the end of another level of xasl packing */
@@ -10162,6 +10166,10 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		      assert (er_errid () != NO_ERROR);
 		      err = er_errid ();
 		    }
+		  else
+		    {
+		      assert (contextp->recompile_xasl == false);
+		    }
 		}
 
 	      /* mark the end of another level of xasl packing */
@@ -10767,6 +10775,10 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
+	    }
+	  else
+	    {
+	      assert (contextp->recompile_xasl == false);
 	    }
 	}
 
@@ -14020,6 +14032,10 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      assert (er_errid () != NO_ERROR);
 	      err = er_errid ();
 	    }
+	  else
+	    {
+	      assert (contextp->recompile_xasl == false);
+	    }
 	}
 
       /* mark the end of another level of xasl packing */
@@ -15786,6 +15802,10 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  err = er_errid ();
+		}
+	      else
+		{
+		  assert (contextp->recompile_xasl == false);
 		}
 	    }
 
