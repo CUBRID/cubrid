@@ -44,9 +44,10 @@ namespace cubthread
   class daemon;
   class entry;
   class entry_task;
+  class entry_manager;
 
   // alias for worker_pool<entry>
-  typedef worker_pool<entry> entry_workpool;
+  using entry_workpool = worker_pool<entry>;
 
   // cubthread::manager
   //
@@ -102,7 +103,8 @@ namespace cubthread
 
       // create a entry_workpool with pool_size number of threads
       // note: if there are not pool_size number of entries available, worker pool is not created and NULL is returned
-      entry_workpool *create_worker_pool (size_t pool_size, size_t work_queue_size);
+      entry_workpool *create_worker_pool (size_t pool_size, size_t work_queue_size,
+					  entry_manager *context_manager = NULL, bool debug_logging = false);
 
       // destroy worker pool
       void destroy_worker_pool (entry_workpool *&worker_pool_arg);
@@ -130,7 +132,8 @@ namespace cubthread
       //////////////////////////////////////////////////////////////////////////
 
       // create daemon thread
-      daemon *create_daemon (const looper &looper_arg, entry_task *exec_p);
+      daemon *create_daemon (const looper &looper_arg, entry_task *exec_p,
+			     entry_manager *context_manager = NULL);
 
       // destroy daemon thread
       void destroy_daemon (daemon *&daemon_arg);
@@ -164,12 +167,12 @@ namespace cubthread
     private:
 
       // define friend classes/functions to access claim_entry/retire_entry functions
-      friend class entry_task;
+      friend class entry_manager;
       friend void initialize (entry *&my_entry);
       friend void finalize (void);
 
       // private type aliases
-      typedef resource_shared_pool<entry> entry_dispatcher;
+      using entry_dispatcher = resource_shared_pool<entry>;
 
       // claim/retire entries
       entry *claim_entry (void);
@@ -201,6 +204,7 @@ namespace cubthread
       entry_dispatcher *m_entry_dispatcher;
       // available entries count
       std::size_t m_available_entries_count;
+      entry_manager *m_entry_manager;
   };
 
   //////////////////////////////////////////////////////////////////////////

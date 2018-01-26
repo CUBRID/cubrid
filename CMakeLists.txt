@@ -997,15 +997,11 @@ if(WIN32)
 endif(WIN32)
 
 # rapidjson
-ExternalProject_Add(rapidjson
-
+externalproject_add(rapidjson
   # tried URL but archive gets downloaded every time. URL_MD5 may help
-  GIT_REPOSITORY "https://github.com/miloyip/rapidjson.git"
-  GIT_TAG "v1.1.0"
-
+  URL https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz
   # don't install
   INSTALL_COMMAND ""
-
   # don't build test, doc and examples
   CMAKE_CACHE_ARGS -DRAPIDJSON_BUILD_TESTS:string=off
                    -DRAPIDJSON_BUILD_DOC:string=off
@@ -1049,7 +1045,7 @@ if(WIN32)
   add_subdirectory(win)
 endif(WIN32)
 
-if(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager)
+if(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
   get_target_property(CCI_PUBLIC_HEADERS cascci PUBLIC_HEADER)
   get_target_property(CMDEP_PUBLIC_HEADERS cmdep PUBLIC_HEADER)
   get_target_property(CMSTAT_PUBLIC_HEADERS cmstat PUBLIC_HEADER)
@@ -1094,7 +1090,7 @@ if(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager)
   install(DIRECTORY ${INSTALL_DIR}/
     DESTINATION ${CUBRID_PREFIXDIR} COMPONENT Manager
     USE_SOURCE_PERMISSIONS)
-endif(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager)
+endif(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
 
 
 # create empty directories

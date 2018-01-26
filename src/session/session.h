@@ -65,6 +65,7 @@ extern void session_store_query_entry_info (THREAD_ENTRY * thread_p, QMGR_QUERY_
 extern int session_load_query_entry_info (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qentry_p);
 extern int session_remove_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_id);
 extern int session_clear_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_id);
+extern bool session_is_queryid_idle (THREAD_ENTRY * thread_p, const QUERY_ID query_id, QUERY_ID * max_query_id_uses);
 
 extern int session_get_exec_stats_and_clear (THREAD_ENTRY * thread_p, const DB_VALUE * name, DB_VALUE * result);
 extern SESSION_PARAM *session_get_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id);

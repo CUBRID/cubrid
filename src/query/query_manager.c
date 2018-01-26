@@ -272,6 +272,11 @@ static QMGR_QUERY_ENTRY *
 qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry_p)
 {
   QMGR_QUERY_ENTRY *query_p;
+  QUERY_ID hint_query_id;
+  int i;
+  bool usable = false;
+
+  static_assert (QMGR_MAX_QUERY_ENTRY_PER_TRAN < SHRT_MAX, "Bad query entry count");
 
   query_p = tran_entry_p->free_query_entry_list_p;
 
@@ -281,6 +286,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
     }
   else if (QMGR_MAX_QUERY_ENTRY_PER_TRAN < tran_entry_p->num_query_entries)
     {
+      assert (QMGR_MAX_QUERY_ENTRY_PER_TRAN >= tran_entry_p->num_query_entries);
       return NULL;
     }
   else
@@ -298,11 +304,32 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
     }
 
   /* assign query id */
-  if (tran_entry_p->query_id_generator >= SHRT_MAX - 2)	/* overflow happened */
+  hint_query_id = 0;
+  for (i = 0; i < QMGR_MAX_QUERY_ENTRY_PER_TRAN; i++)
     {
-      tran_entry_p->query_id_generator = 0;
+      if (tran_entry_p->query_id_generator >= SHRT_MAX - 2)	/* overflow happened */
+	{
+	  tran_entry_p->query_id_generator = 0;
+	}
+      query_p->query_id = ++tran_entry_p->query_id_generator;
+
+      usable = session_is_queryid_idle (thread_p, query_p->query_id, &hint_query_id);
+      if (usable == true)
+	{
+	  /* it is usable */
+	  break;
+	}
+
+      if (i == 0)
+	{
+	  /* optimization: The second try uses the current max query_id as hint. 
+	   * This may help us to quickly locate an available id.
+	   */
+	  assert (hint_query_id != 0);
+	  tran_entry_p->query_id_generator = hint_query_id;
+	}
     }
-  query_p->query_id = ++tran_entry_p->query_id_generator;
+  assert (usable == true);
 
   /* initialize per query temp file VFID structure */
   query_p->next = NULL;
@@ -318,6 +345,15 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
   query_p->query_flag = 0;
   query_p->is_holdable = false;
   query_p->is_preserved = false;
+
+#if defined (NDEBUG)
+  /* just a safe guard for a release build. I don't expect it will be hit. */
+  if (usable == false)
+    {
+      qmgr_free_query_entry (thread_p, tran_entry_p, query_p);
+      return NULL;
+    }
+#endif /* NDEBUG */
 
   return query_p;
 }
