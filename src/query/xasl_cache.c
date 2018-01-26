@@ -188,7 +188,7 @@ static LF_ENTRY_DESCRIPTOR xcache_Entry_descriptor = {
 #define XCACHE_RT_FACTOR		10	/* 10x or 0.1x cardinal change */
 #define XCACHE_RT_CLASS_STAT_NEED_UPDATE(class_pages,heap_pages) \
   (((class_pages) < 100 && (((heap_pages) * 2 < (class_pages)) || ((heap_pages) > (class_pages) * 2))) \
-   || ((heap_pages) < (class_pages) - 100) || ((heap_pages) > (class_pages) + 100))
+   || ((heap_pages) < (class_pages) * 0.8f) || ((heap_pages) > (class_pages) * 1.2f))
 
 /* Logging macro's */
 #define xcache_check_logging() (xcache_Log = prm_get_bool_value (PRM_ID_XASL_CACHE_LOGGING))
