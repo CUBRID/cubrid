@@ -14,13 +14,19 @@ class slave_dummy_send_msg : public cubthread::entry_task
   public:
     slave_dummy_send_msg (slave_replication_channel *ch) : channel (ch)
     {
+      if (GETHOSTNAME (this_hostname, MAXHOSTNAMELEN) != 0)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "unable to find this computer's hostname\n");
+          strcpy (this_hostname, "unknown");
+	}
+      this_hostname[MAXHOSTNAMELEN-1] = '\0';
     }
 
     void execute (cubthread::entry &context)
     {
       if (!IS_INVALID_SOCKET (channel->get_master_conn_entry()->fd))
         {
-          int rc = channel->send (channel->get_master_conn_entry()->fd, "hello", replication_channel::get_max_timeout());
+          int rc = channel->send (channel->get_master_conn_entry()->fd, std::string ("hello from ") + this_hostname, replication_channel::get_max_timeout());
           assert (rc == NO_ERRORS);
           _er_log_debug (ARG_FILE_LINE, "slave::execute:" "sent:hello\n");
         }
@@ -32,6 +38,7 @@ class slave_dummy_send_msg : public cubthread::entry_task
     }
   private:
     slave_replication_channel *channel;
+    char this_hostname[MAXHOSTNAMELEN];
 };
 
 slave_replication_channel::slave_replication_channel(const std::string& hostname, const std::string &master_server_name, int port) : master_hostname (hostname),
