@@ -8901,7 +8901,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		    }
 		  else
 		    {
-		      assert (contextp->recompile_xasl == false);
+		      assert (statement->recompile == 1 || contextp->recompile_xasl == false);
 		    }
 		}
 
@@ -10168,7 +10168,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		    }
 		  else
 		    {
-		      assert (contextp->recompile_xasl == false);
+		      assert (statement->recompile == 1 || contextp->recompile_xasl == false);
 		    }
 		}
 
@@ -10778,7 +10778,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
-	      assert (contextp->recompile_xasl == false);
+	      assert (statement->recompile == 1 || contextp->recompile_xasl == false);
 	    }
 	}
 
@@ -14034,7 +14034,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
-	      assert (contextp->recompile_xasl == false);
+	      assert (statement->recompile == 1 || contextp->recompile_xasl == false);
 	    }
 	}
 
@@ -15805,7 +15805,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 	      else
 		{
-		  assert (contextp->recompile_xasl == false);
+		  assert (statement->recompile == 1 || contextp->recompile_xasl == false);
 		}
 	    }
 
