@@ -4147,10 +4147,12 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
     {
     case HA_SERVER_STATE_ACTIVE:
       proc->state = HB_PSTATE_REGISTERED_AND_ACTIVE;
+      proc->knows_master_hostname = true;
       break;
 
     case HA_SERVER_STATE_TO_BE_ACTIVE:
       proc->state = HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE;
+      proc->knows_master_hostname = true;
       break;
 
     case HA_SERVER_STATE_STANDBY:
@@ -4158,10 +4160,12 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
       hb_Cluster->last_state = hb_Cluster->state;
       hb_Cluster->state = HB_NSTATE_SLAVE;
       hb_Resource->state = HB_NSTATE_SLAVE;
+      proc->knows_master_hostname = false;
       break;
 
     case HA_SERVER_STATE_TO_BE_STANDBY:
       proc->state = HB_PSTATE_REGISTERED_AND_TO_BE_STANDBY;
+      proc->knows_master_hostname = false;
       break;
 
     default:
