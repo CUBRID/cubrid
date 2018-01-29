@@ -57,12 +57,15 @@ namespace cubthread
     , m_all_entries (NULL)
     , m_entry_dispatcher (NULL)
     , m_available_entries_count (max_threads)
+    , m_entry_manager (NULL)
   {
     if (m_max_threads > 0)
       {
 	m_all_entries = new entry[m_max_threads];
 	m_entry_dispatcher = new entry_dispatcher (m_all_entries, m_max_threads);
       }
+
+    m_entry_manager = new entry_manager ();
   }
 
   manager::~manager ()
@@ -75,6 +78,7 @@ namespace cubthread
 
     delete m_entry_dispatcher;
     delete [] m_all_entries;
+    delete m_entry_manager;
   }
 
   template<typename Res>
