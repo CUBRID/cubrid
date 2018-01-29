@@ -1507,6 +1507,13 @@ boot_shutdown_client_at_exit (void)
     {
       /* Avoid infinite looping if someone calls exit during shutdown */
       boot_Process_id++;
+
+      if (!er_is_initialized ())
+	{
+	  // we need error manager initialized
+	  er_init (NULL, ER_NEVER_EXIT);
+	}
+
       (void) boot_shutdown_client (true);
     }
 }

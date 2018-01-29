@@ -181,6 +181,7 @@ extern "C"
 
   extern const char *er_get_msglog_filename (void);
   extern int er_init (const char *msglog_filename, int exit_ask);
+  extern bool er_is_initialized (void);
   extern int er_init_access_log (void);
   extern void er_set_print_property (int print_console);
 

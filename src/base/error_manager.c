@@ -907,6 +907,18 @@ er_init (const char *msglog_filename, int exit_ask)
 }
 
 /*
+ * er_is_initialized () - return if error manager was initialized.
+ *
+ * return :
+ * void (in) :
+ */
+bool
+er_is_initialized (void)
+{
+  return er_Hasalready_initiated;
+}
+
+/*
  * er_set_print_property -
  *   return: void
  *   print_console(in):
