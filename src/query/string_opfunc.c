@@ -3077,12 +3077,15 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_VARNCHAR:
 	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), DB_PULL_STRING (arg[i + 1]));
 	  break;
+
 	case DB_TYPE_INTEGER:
 	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), DB_GET_INT (arg[i + 1]));
 	  break;
+
 	case DB_TYPE_DOUBLE:
 	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), DB_GET_DOUBLE (arg[i + 1]));
 	  break;
+
 	case DB_TYPE_NUMERIC:
 	  {
 	    DB_VALUE double_value;
@@ -3092,12 +3095,15 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	    pr_clear_value (&double_value);
 	  }
 	  break;
+
 	case DB_TYPE_JSON:
 	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), arg[i + 1]->data.json.document);
 	  break;
+
 	case DB_TYPE_NULL:
 	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), (JSON_DOC *) NULL);
 	  break;
+
 	default:
 	  db_json_delete_doc (new_doc);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
@@ -3143,12 +3149,15 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_VARNCHAR:
 	  db_json_add_element_to_array (new_doc, DB_PULL_STRING (arg[i]));
 	  break;
+
 	case DB_TYPE_INTEGER:
 	  db_json_add_element_to_array (new_doc, DB_GET_INT (arg[i]));
 	  break;
+
 	case DB_TYPE_DOUBLE:
 	  db_json_add_element_to_array (new_doc, DB_GET_DOUBLE (arg[i]));
 	  break;
+
 	case DB_TYPE_NUMERIC:
 	  {
 	    DB_VALUE double_value;
@@ -3158,12 +3167,15 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	    pr_clear_value (&double_value);
 	  }
 	  break;
+
 	case DB_TYPE_JSON:
 	  db_json_add_element_to_array (new_doc, arg[i]->data.json.document);
 	  break;
+
 	case DB_TYPE_NULL:
 	  db_json_add_element_to_array (new_doc, (JSON_DOC *) NULL);
 	  break;
+
 	default:
 	  db_json_delete_doc (new_doc);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
@@ -3225,9 +3237,11 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_JSON:
 	  error_code = db_json_insert_func (arg[i + 1]->data.json.document, *new_doc, DB_PULL_STRING (arg[i]));
 	  break;
+
 	case DB_TYPE_NULL:
 	  db_json_delete_doc (new_doc);
 	  return DB_MAKE_NULL (result);
+
 	default:
 	  db_json_delete_doc (new_doc);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
@@ -3296,9 +3310,11 @@ db_json_replace (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_JSON:
 	  error_code = db_json_replace_func (arg[i + 1]->data.json.document, *new_doc, DB_PULL_STRING (arg[i]));
 	  break;
+
 	case DB_TYPE_NULL:
 	  db_json_delete_doc (new_doc);
 	  return DB_MAKE_NULL (result);
+
 	default:
 	  db_json_delete_doc (new_doc);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
@@ -3366,9 +3382,11 @@ db_json_set (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_JSON:
 	  error_code = db_json_set_func (arg[i + 1]->data.json.document, *new_doc, DB_PULL_STRING (arg[i]));
 	  break;
+
 	case DB_TYPE_NULL:
 	  db_json_delete_doc (new_doc);
 	  return DB_MAKE_NULL (result);
+
 	default:
 	  db_json_delete_doc (new_doc);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
@@ -3541,6 +3559,7 @@ db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_NULL:
 	  db_json_delete_doc (new_doc);
 	  return DB_MAKE_NULL (result);
+
 	default:
 	  db_json_delete_doc (new_doc);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
@@ -3597,16 +3616,19 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_JSON:
 	  error_code = db_json_merge_func (arg[i]->data.json.document, accumulator);
 	  break;
+
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
 	  error_code = db_json_convert_string_and_call (DB_GET_STRING (arg[i]), db_json_merge_func, accumulator);
 	  break;
+
 	case DB_TYPE_NULL:
 	  // todo: isn't this too supposed to be NULL?
 	  error_code = db_json_merge_func (NULL, accumulator);
 	  break;
+
 	default:
 	  db_json_delete_doc (accumulator);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);

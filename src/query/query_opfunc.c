@@ -218,9 +218,8 @@ static int qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_D
 
 static int
 qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
-					  OID * obj_oid_p, QFILE_TUPLE tuple, int (*function_to_call) (DB_VALUE *,
-												       DB_VALUE **,
-												       int const));
+					  OID * obj_oid_p, QFILE_TUPLE tuple,
+					  int (*function_to_call) (DB_VALUE *, DB_VALUE **, int const));
 
 static int
 qdata_json_object (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
@@ -10583,9 +10582,8 @@ error_exit:
 
 static int
 qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
-					  OID * obj_oid_p, QFILE_TUPLE tuple, int (*function_to_call) (DB_VALUE *,
-												       DB_VALUE **,
-												       int const))
+					  OID * obj_oid_p, QFILE_TUPLE tuple,
+					  int (*function_to_call) (DB_VALUE *, DB_VALUE **, int const))
 {
   DB_VALUE *key, *value;
   REGU_VARIABLE_LIST operand;
