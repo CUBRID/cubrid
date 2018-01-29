@@ -32,6 +32,7 @@ set(THREAD_SOURCES
   ${THREAD_DIR}/critical_section.c
   ${THREAD_DIR}/thread_daemon.cpp
   ${THREAD_DIR}/thread_entry.cpp
+  ${THREAD_DIR}/thread_entry_task.cpp
   ${THREAD_DIR}/thread_looper.cpp
   ${THREAD_DIR}/thread_manager.cpp
   ${THREAD_DIR}/thread_waiter.cpp

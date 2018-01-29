@@ -634,6 +634,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_CONNECTION_LOGGING "connection_logging"
 
+#define PRM_NAME_THREAD_LOGGING_FLAG "thread_logging_flag"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2112,6 +2114,10 @@ static unsigned int prm_json_log_allocations_flag = 0;
 bool PRM_CONNECTION_LOGGING = false;
 static bool prm_connection_logging_default = false;
 static unsigned int prm_connection_logging_flag = 0;
+
+int PRM_THREAD_LOGGING_FLAG = 0;
+static int prm_thread_logging_flag_default = 0;
+static unsigned int prm_thread_logging_flag_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5349,6 +5355,17 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_connection_logging_flag,
    (void *) &prm_connection_logging_default,
    (void *) &PRM_CONNECTION_LOGGING,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_THREAD_LOGGING_FLAG,
+   PRM_NAME_THREAD_LOGGING_FLAG,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_thread_logging_flag_flag,
+   (void *) &prm_thread_logging_flag_default,
+   (void *) &PRM_THREAD_LOGGING_FLAG,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

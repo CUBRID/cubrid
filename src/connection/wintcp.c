@@ -816,6 +816,14 @@ int
 css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 {
   unsigned int in_addr;
+  int err = NO_ERROR;
+
+#if !defined(SERVER_MODE)
+  if (css_windows_startup () < 0)
+    {
+      return ER_CSS_WINSOCK_STARTUP;
+    }
+#endif /* not SERVER_MODE */
 
   /* 
    * First try to convert to the host name as a dotted-decimal number.
@@ -825,7 +833,6 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
   if (in_addr != INADDR_NONE)
     {
       memcpy ((void *) ip_addr, (void *) &in_addr, sizeof (in_addr));
-      return NO_ERROR;
     }
   else
     {
@@ -835,10 +842,17 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       if (hp == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTNAME, 1, WSAGetLastError ());
-	  return ER_CSS_WINSOCK_HOSTNAME;
+	  err = ER_CSS_WINSOCK_HOSTNAME;
 	}
-      memcpy ((void *) ip_addr, (void *) hp->h_addr, hp->h_length);
+      else
+	{
+	  memcpy ((void *) ip_addr, (void *) hp->h_addr, hp->h_length);
+	}
     }
 
-  return NO_ERROR;
+#if !defined(SERVER_MODE)
+  css_windows_shutdown ();
+#endif /* not SERVER_MODE */
+
+  return err;
 }
