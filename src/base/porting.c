@@ -1902,7 +1902,7 @@ pthread_exit (THREAD_RET_T ptr)
 pthread_t
 pthread_self ()
 {
-  return GetCurrentThread ();
+  return (pthread_t) GetCurrentThreadId ();
 }
 
 int
