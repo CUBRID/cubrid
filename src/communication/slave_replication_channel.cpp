@@ -55,6 +55,8 @@ slave_replication_channel::slave_replication_channel(const std::string& hostname
                                                                                                                                      master_port (port)
 {
   master_conn_entry = css_make_conn (-1);
+  int rc = rmutex_initialize (&master_conn_entry->rmutex, "MASTER_CONN_ENTRY");
+  assert (rc == NO_ERROR);
   request_id = -1;
 
   _er_log_debug (ARG_FILE_LINE, "init slave_replication_channel \n");
