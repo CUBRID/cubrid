@@ -87,7 +87,7 @@ namespace cubthread
       using context_manager_type = context_manager<Context>;
 
       worker_pool (std::size_t pool_size, std::size_t work_queue_size, context_manager_type *context_mgr,
-                   bool debug_logging = false);
+		   bool debug_logging = false);
       ~worker_pool ();
 
       // try to execute task; executes only if there is an available thread; otherwise returns false
@@ -115,7 +115,7 @@ namespace cubthread
       std::size_t get_max_count (void) const;
 
     private:
-      using atomic_context_ptr = std::atomic<context_type*>;
+      using atomic_context_ptr = std::atomic<context_type *>;
 
       // function executed by worker; executes first task and then continues with any task it finds in queue
       static void run (worker_pool<Context> &pool, std::thread &thread_arg, task_type *work_arg);
@@ -157,7 +157,7 @@ namespace cubthread
       resource_shared_pool<std::thread> m_thread_dispatcher;
 
       // contexts being used, one for each thread. thread <-> context matching based on index
-      atomic_context_ptr* m_context_pointers;
+      atomic_context_ptr *m_context_pointers;
 
       // set to true when stopped
       std::atomic<bool> m_stopped;
@@ -197,7 +197,7 @@ namespace cubthread
     m_context_pointers = new atomic_context_ptr [m_max_workers];
     for (std::size_t i = 0; i < m_max_workers; ++i)
       {
-        m_context_pointers[i] = NULL;
+	m_context_pointers[i] = NULL;
       }
   }
 
@@ -217,7 +217,7 @@ namespace cubthread
   {
     if (m_stopped)
       {
-        return false;
+	return false;
       }
     std::thread *thread_p = register_worker ();
     if (thread_p != NULL)
@@ -226,7 +226,7 @@ namespace cubthread
       }
     else
       {
-        THREAD_WP_LOG ("try_execute", "drop task = %p", work_arg);
+	THREAD_WP_LOG ("try_execute", "drop task = %p", work_arg);
       }
     return false;
   }
@@ -242,10 +242,10 @@ namespace cubthread
       }
     else if (m_stopped)
       {
-        // do not accept other new requests
-        assert (false);
-        work_arg->retire ();
-        return;
+	// do not accept other new requests
+	assert (false);
+	work_arg->retire ();
+	return;
       }
     else if (!m_work_queue.produce (work_arg))
       {
@@ -271,15 +271,15 @@ namespace cubthread
   void
   worker_pool<Context>::stop_all_contexts (void)
   {
-    context_type* context_p = NULL;
+    context_type *context_p = NULL;
     for (std::size_t i = 0; i < m_max_workers; ++i)
       {
-        context_p = m_context_pointers[i];
-        if (context_p != NULL)
-          {
-            // indicate execution context to stop
-            context_p->interrupt_execution ();
-          }
+	context_p = m_context_pointers[i];
+	if (context_p != NULL)
+	  {
+	    // indicate execution context to stop
+	    context_p->interrupt_execution ();
+	  }
       }
   }
 
@@ -290,12 +290,12 @@ namespace cubthread
     if (m_stopped.exchange (true))
       {
 	// already stopped
-        THREAD_WP_LOG ("stop", "stop was %s", "true");
+	THREAD_WP_LOG ("stop", "stop was %s", "true");
 	return;
       }
     else
       {
-        THREAD_WP_LOG ("stop", "stop was %s", "false");
+	THREAD_WP_LOG ("stop", "stop was %s", "false");
 	// I am responsible with stopping threads
       }
 
@@ -309,39 +309,39 @@ namespace cubthread
     auto timeout = std::chrono::system_clock::now () + time_wait_to_thread_stop; // timeout time
 
     // spin until all threads are registered.
-    std::thread* thread_p;
+    std::thread *thread_p;
     std::size_t stop_count = 0;
     while (stop_count < m_max_workers && std::chrono::system_clock::now () < timeout)
       {
-        thread_p = register_worker ();
-        if (thread_p == NULL)
-          {
-            // in case new threads have started, tell them to stop
-            stop_all_contexts ();
+	thread_p = register_worker ();
+	if (thread_p == NULL)
+	  {
+	    // in case new threads have started, tell them to stop
+	    stop_all_contexts ();
 
-            // sleep for 10 milliseconds to give running threads a chance to finish
-            std::this_thread::sleep_for (time_spin_sleep);
-          }
-        else
-          {
-            ++stop_count;
-          }
+	    // sleep for 10 milliseconds to give running threads a chance to finish
+	    std::this_thread::sleep_for (time_spin_sleep);
+	  }
+	else
+	  {
+	    ++stop_count;
+	  }
       }
 
     if (stop_count < m_max_workers)
       {
-        assert (false);
+	assert (false);
       }
     else
       {
-        // all threads are joined
+	// all threads are joined
       }
 
     // retire all tasks that have not been executed; at this point, no new tasks are produced
     task_type *task = NULL;
     while (m_work_queue.consume (task))
       {
-        THREAD_WP_LOG ("stop", "retire without execution task = %p", task);
+	THREAD_WP_LOG ("stop", "retire without execution task = %p", task);
 	task->retire ();
       }
   }
@@ -386,6 +386,13 @@ namespace cubthread
   {
 #define THREAD_WP_STATIC_LOG(msg, ...) if (pool.m_log) _er_log_debug (ARG_FILE_LINE, "run: " msg, __VA_ARGS__)
 
+    if (!pool.is_running())
+      {
+	// task must not be executed if it was pushed for execution after worker pool was stopped
+	task_arg->retire();
+	return;
+      }
+
     // create context for task execution
     std::size_t thread_index = pool.get_thread_index (thread_arg);
     Context &context = pool.m_context_manager.create_context ();
@@ -394,14 +401,11 @@ namespace cubthread
     // save to pool contexts too
     pool.m_context_pointers[thread_index] = &context;
 
-    // this thread should not start after pool is stopped
-    assert (pool.is_running ());
-
     // loop as long as pool is running and there are tasks in queue
     task_type *task_p = task_arg;
     do
       {
-        THREAD_WP_STATIC_LOG ("loop on thread = %zu, context = %p, task = %p", thread_index, &context, task_p);
+	THREAD_WP_STATIC_LOG ("loop on thread = %zu, context = %p, task = %p", thread_index, &context, task_p);
 
 	if (!first_loop)
 	  {
@@ -441,7 +445,7 @@ namespace cubthread
     if (thread_p == NULL)
       {
 	// no threads available
-        THREAD_WP_LOG ("register_worker", "thread_p = %p", NULL);
+	THREAD_WP_LOG ("register_worker", "thread_p = %p", NULL);
 	return NULL;
       }
 
@@ -477,7 +481,7 @@ namespace cubthread
 
   template<typename Context>
   inline size_t
-  cubthread::worker_pool<Context>::get_thread_index (std::thread & thread_arg)
+  cubthread::worker_pool<Context>::get_thread_index (std::thread &thread_arg)
   {
     size_t index = &thread_arg - m_threads;
     assert (index >= 0 && index < m_max_workers);
