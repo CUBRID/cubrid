@@ -110,7 +110,7 @@ int slave_replication_channel::start_daemon ()
 {
   cubthread::manager *session_manager = cubthread::get_manager ();
   slave_dummy = session_manager->create_daemon (cubthread::looper (std::chrono::seconds (1)),
-		       new slave_dummy_send_msg (this), new cubthread::entry_manager());
+		       new slave_dummy_send_msg (this));
 
   if (slave_dummy == NULL)
     {

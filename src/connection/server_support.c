@@ -1250,6 +1250,8 @@ css_process_master_hostname ()
     }
   ha_Server_master_hostname[hostname_length] = '\0';
 
+  assert (hostname_length > 0 && ha_Server_state == HA_SERVER_STATE_STANDBY);
+
   master_replication_channel::reset_singleton ();
   slave_replication_channel::reset_singleton ();
   slave_replication_channel::init (ha_Server_master_hostname, css_Master_server_name, css_Master_port_id);
@@ -3062,9 +3064,6 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
       || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY && state == HA_SERVER_STATE_STANDBY))
     {
       //TODO is this really the intended behaviour?
-      slave_replication_channel::reset_singleton ();
-      master_replication_channel::init ();
-
       return NO_ERROR;
     }
 
@@ -3121,6 +3120,8 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_enable_update() \n");
 	  logtb_enable_update (thread_p);
 	}
+      slave_replication_channel::reset_singleton ();
+      master_replication_channel::init ();
       break;
 
     case HA_SERVER_STATE_STANDBY:
@@ -3469,7 +3470,9 @@ css_process_new_slave (SOCKET master_fd)
     }
   _er_log_debug (ARG_FILE_LINE, "css_process_new_slave:" "received new slave fd from master fd=%d, current_state=%d\n", new_fd, css_get_hb_node_state());
 
-  assert (master_replication_channel::get_channel () != NULL);
+  assert (master_replication_channel::get_channel () != NULL &&
+          ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE ||
+          ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
   master_replication_channel::get_channel ()->add_slave_connection (new_fd);
 }
