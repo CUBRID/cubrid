@@ -56,12 +56,16 @@ slave_replication_channel::slave_replication_channel(const std::string& hostname
 {
   master_conn_entry = css_make_conn (-1);
   request_id = -1;
+
+  _er_log_debug (ARG_FILE_LINE, "init slave_replication_channel \n");
 }
 
 slave_replication_channel::~slave_replication_channel()
 {
   cubthread::get_manager()->destroy_daemon (slave_dummy);
   css_free_conn (master_conn_entry);
+
+  _er_log_debug (ARG_FILE_LINE, "destroy slave_replication_channel \n");
 }
 
 int slave_replication_channel::connect_to_master()

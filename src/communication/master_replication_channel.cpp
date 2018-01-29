@@ -149,4 +149,6 @@ master_replication_channel::~master_replication_channel ()
     {
       close (slave_fds[i].fd);
     }
+
+  _er_log_debug (ARG_FILE_LINE, "destroy master_replication_channel \n");
 }

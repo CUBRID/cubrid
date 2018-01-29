@@ -1261,7 +1261,6 @@ css_process_master_hostname ()
   error = slave_replication_channel::get_channel ()->start_daemon ();
   assert (error == NO_ERROR);
 
-  _er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "init slave\n");
   _er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n", ha_Server_master_hostname);
 
   return NO_ERRORS;
