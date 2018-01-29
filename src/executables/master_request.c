@@ -2052,42 +2052,22 @@ css_process_heartbeat_request (CSS_CONN_ENTRY * conn)
 }
 
 int
-css_send_to_my_server_the_master_hostname (const char *master_current_hostname)
+css_send_to_my_server_the_master_hostname (const char *master_current_hostname, HB_PROC_ENTRY *proc, CSS_CONN_ENTRY *conn)
 {
-  CSS_CONN_ENTRY *conn = NULL;
   int rc = NO_ERROR, rv;
   int master_hostname_length = master_current_hostname == NULL ? 0 : strlen (master_current_hostname);
-  HB_PROC_ENTRY *proc = NULL;
 
-  rv = pthread_mutex_lock (&hb_Resource->lock);
-  proc = hb_Resource->procs;
-  while (proc)
+  if (proc == NULL || conn == NULL || IS_INVALID_SOCKET (conn->fd))
     {
-      if (proc->type == HB_PTYPE_SERVER)
-	{
-          if (proc->knows_master_hostname)
-            {
-              pthread_mutex_unlock (&hb_Resource->lock);
-              return NO_ERROR;
-            }
-
-          conn = proc->conn;
-          break;
-	}
-      proc = proc->next;
+      /* smth went terribly wrong */
+      assert (false);
+      return ER_FAILED;
     }
-  pthread_mutex_unlock (&hb_Resource->lock);
 
   if (master_current_hostname == NULL || strlen (master_current_hostname) == 0)
     {
       proc->knows_master_hostname = false;
       return NO_ERROR;
-    }
-
-  if (conn == NULL && IS_INVALID_SOCKET (conn->fd))
-    {
-      assert (false);
-      return ER_FAILED;
     }
 
   rc = css_send_heartbeat_request (conn, SERVER_RECEIVE_MASTER_HOSTNAME);

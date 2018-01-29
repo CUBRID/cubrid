@@ -27,7 +27,16 @@ class slave_dummy_send_msg : public cubthread::entry_task
       if (!IS_INVALID_SOCKET (channel->get_master_conn_entry()->fd))
         {
           int rc = channel->send (channel->get_master_conn_entry()->fd, std::string ("hello from ") + this_hostname, replication_channel::get_max_timeout());
-          assert (rc == NO_ERRORS);
+          if (rc == ERROR_ON_WRITE)
+            {
+              /* this probably means that the connection was closed */
+              css_free_conn (channel->get_master_conn_entry());
+              slave_replication_channel::reset_singleton();
+            }
+          else if (rc != NO_ERRORS)
+            {
+              assert (false);
+            }
           _er_log_debug (ARG_FILE_LINE, "slave::execute:" "sent:hello\n");
         }
     }

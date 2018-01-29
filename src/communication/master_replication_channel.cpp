@@ -31,7 +31,17 @@ class master_server_loop : public cubthread::entry_task
                 char buffer [MAX_LENGTH];
                 int recv_length = MAX_LENGTH;
                 rc = channel->recv (channel->get_poll_fd_of_slave(i).fd, buffer, recv_length, replication_channel::get_max_timeout());
-                assert (rc == NO_ERRORS);
+                if (rc == ERROR_WHEN_READING_SIZE || rc == ERROR_ON_READ)
+                  {
+                    /* this usually means that the connection is closed 
+                     TODO maybe add this case to recv to know for sure ?
+                    */
+                    channel->remove_slave_by_index (i);
+                  }
+                else if (rc != NO_ERRORS)
+                  {
+                    assert (false);
+                  }
                 buffer[recv_length] = '\0';
                 _er_log_debug (ARG_FILE_LINE, "master::execute:" "received=%s\n", buffer);
               #undef MAX_LENGTH
@@ -95,6 +105,17 @@ POLL_FD &master_replication_channel::get_poll_fd_of_slave (int slave_index)
   assert (slave_index >= 0 && slave_index < m_current_number_of_connected_slaves);
 
   return slave_fds[slave_index];
+}
+
+void master_replication_channel::remove_slave_by_index (int slave_index)
+{
+  assert (slave_index >= 0 && slave_index < m_current_number_of_connected_slaves);
+
+  close (slave_fds[slave_index].fd);
+  for (int i = slave_index; i < m_current_number_of_connected_slaves-1; i++)
+    {
+      slave_fds[i] = slave_fds[i+1];
+    }
 }
 
 void master_replication_channel::init ()

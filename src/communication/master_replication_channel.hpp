@@ -21,6 +21,7 @@ class master_replication_channel : public replication_channel
     int get_number_of_slaves ();
     short test_for_events (int slave_index, short flag);
     POLL_FD &get_poll_fd_of_slave (int slave_index);
+    void remove_slave_by_index (int slave_index);
 
     static void init ();
     static void reset_singleton ();

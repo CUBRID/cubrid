@@ -260,8 +260,7 @@ struct hb_cluster
 };
 
 /* heartbeat processs entries */
-typedef struct hb_proc_entry HB_PROC_ENTRY;
-struct hb_proc_entry
+struct HB_PROC_ENTRY
 {
   HB_PROC_ENTRY *next;
   HB_PROC_ENTRY **prev;

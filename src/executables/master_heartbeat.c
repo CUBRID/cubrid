@@ -247,6 +247,7 @@ static char hb_Nolog_event_msg[LINE_MAX] = "";
 static HB_DEACTIVATE_INFO hb_Deactivate_info = { NULL, 0, false };
 
 static bool hb_Is_activated = true;
+static char *current_master_hostname = NULL;
 
 /* cluster jobs */
 static HB_JOB_FUNC hb_cluster_jobs[] = {
@@ -3562,10 +3563,52 @@ hb_resource_job_shutdown (void)
 static void
 hb_resource_job_send_master_hostname (HB_JOB_ARG * arg)
 {
-  const char *hostname = hb_find_host_name_of_master_server ();
-  int error;
+  char *hostname = hb_find_host_name_of_master_server ();
+  int error, rv;
+  HB_PROC_ENTRY *proc = NULL;
+  CSS_CONN_ENTRY *conn = NULL;
 
-  error = css_send_to_my_server_the_master_hostname (hostname);
+  rv = pthread_mutex_lock (&hb_Resource->lock);
+  proc = hb_Resource->procs;
+  while (proc)
+    {
+      if (proc->type == HB_PTYPE_SERVER)
+	{
+          if (proc->knows_master_hostname)
+            {
+              pthread_mutex_unlock (&hb_Resource->lock);
+              return;
+            }
+
+          conn = proc->conn;
+          break;
+	}
+      proc = proc->next;
+    }
+  pthread_mutex_unlock (&hb_Resource->lock);
+
+  if (hostname == NULL)
+    {
+      proc->knows_master_hostname = false;
+      current_master_hostname = NULL;
+      return;
+    }
+
+  if (current_master_hostname == NULL)
+    {
+      current_master_hostname = hostname;
+      proc->knows_master_hostname = false;
+    }
+  else if (current_master_hostname == hostname && proc->knows_master_hostname == true)
+    {
+      return;
+    }
+  else if (current_master_hostname != hostname)
+    {
+      proc->knows_master_hostname = false;
+    }
+
+  error = css_send_to_my_server_the_master_hostname (hostname, proc, conn);
   assert (error == NO_ERROR);
 
   error =

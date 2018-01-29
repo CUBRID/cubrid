@@ -30,6 +30,8 @@
 #include "connection_defs.h"
 #include "master_util.h"
 
+struct HB_PROC_ENTRY;
+
 extern SOCKET css_Master_socket_fd[2];
 extern struct timeval *css_Master_timeout;
 extern int css_Master_timeout_value_in_seconds;
@@ -60,6 +62,6 @@ extern SOCKET_QUEUE_ENTRY *css_add_request_to_socket_queue (CSS_CONN_ENTRY * con
 extern SOCKET_QUEUE_ENTRY *css_return_entry_by_conn (CSS_CONN_ENTRY * conn_p, SOCKET_QUEUE_ENTRY ** anchor_p);
 
 int
-css_send_to_my_server_the_master_hostname (const char *master_hostname);
+css_send_to_my_server_the_master_hostname (const char *master_hostname, HB_PROC_ENTRY *proc, CSS_CONN_ENTRY *conn);
 
 #endif /* _MASTER_REQUEST_H_ */
