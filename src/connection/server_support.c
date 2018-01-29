@@ -1184,16 +1184,6 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
 
   state = (HA_SERVER_STATE) htonl ((int) css_ha_server_state ());
 
-  if (css_ha_server_state () == HA_SERVER_STATE_ACTIVE)
-    {
-      master_replication_channel::reset_singleton ();
-      slave_replication_channel::reset_singleton ();
-
-      master_replication_channel::init ();
-
-      _er_log_debug (ARG_FILE_LINE, "init master_replication_channel \n");
-    }
-
   css_send_heartbeat_request (css_Master_conn, SERVER_CHANGE_HA_MODE);
   css_send_heartbeat_data (css_Master_conn, (char *) &state, sizeof (state));
 #endif
@@ -3072,6 +3062,9 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
       || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY && state == HA_SERVER_STATE_STANDBY))
     {
       //TODO is this really the intended behaviour?
+      slave_replication_channel::reset_singleton ();
+      master_replication_channel::init ();
+
       return NO_ERROR;
     }
 
