@@ -54,7 +54,7 @@ master_replication_channel::master_replication_channel () : m_current_number_of_
   cubthread::manager *session_manager = cubthread::get_manager ();
 
   master_loop_daemon = session_manager->create_daemon (cubthread::looper (std::chrono::seconds (0)),
-		       new master_server_loop (this));
+		       new master_server_loop (this), new cubthread::entry_manager());
 
   _er_log_debug (ARG_FILE_LINE, "init master_replication_channel \n");
 }
