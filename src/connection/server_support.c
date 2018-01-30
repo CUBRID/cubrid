@@ -3475,8 +3475,8 @@ css_process_new_slave (SOCKET master_fd)
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE ||
           ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
-  master_replication_channel new_channel (new_fd);
-  new_channel.add_daemon_thread (RECEIVE_FROM_SLAVE, cubthread::looper (std::chrono::seconds (0)), new receive_from_slave_daemon (new_channel));
+  master_replication_channel_entry new_channel (new_fd);
+  new_channel.add_daemon (RECEIVE_FROM_SLAVE, cubthread::looper (std::chrono::seconds (0)), new receive_from_slave_daemon (new_channel.get_replication_channel()));
   master_replication_channel_manager::add_master_replication_channel (std::move (new_channel));
 }
 
