@@ -47,6 +47,11 @@
 #include "db_elo.h"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
+#include "db_json.hpp"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define DB_NUMBER_ZERO	    0
 
@@ -303,6 +308,12 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
       value->domain.char_info.collation_id = LANG_SYS_COLLATION;
       break;
 
+    case DB_TYPE_JSON:
+      value->data.json.json_body = NULL;
+      value->data.json.document = NULL;
+      value->data.json.schema_raw = NULL;
+      break;
+
     case DB_TYPE_NULL:
     case DB_TYPE_INTEGER:
     case DB_TYPE_BIGINT:
@@ -505,6 +516,11 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       db_make_enumeration (value, 0, NULL, 0, codeset, collation_id);
       break;
       /* case DB_TYPE_TABLE: internal use only */
+    case DB_TYPE_JSON:
+      value->domain.general_info.is_null = 1;
+      value->need_clear = false;
+      value->data.json.json_body = NULL;
+      break;
     default:
       error = ER_UCI_INVALID_DATA_TYPE;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_UCI_INVALID_DATA_TYPE, 0);
@@ -676,13 +692,16 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       else
 	{
 	  db_make_enumeration (value, enumeration->count,
-			       enumeration->elements[enumeration->count -
-						     1].str_val.medium.buf,
-			       enumeration->elements[enumeration->count -
-						     1].str_val.medium.size, (unsigned char) codeset, collation_id);
+			       enumeration->elements[enumeration->count - 1].str_val.medium.buf,
+			       enumeration->elements[enumeration->count - 1].str_val.medium.size,
+			       (unsigned char) codeset, collation_id);
 	}
       break;
       /* case DB_TYPE_TABLE: internal use only */
+    case DB_TYPE_JSON:
+      value->domain.general_info.is_null = 1;
+      value->data.json.json_body = NULL;
+      value->need_clear = false;
     default:
       error = ER_UCI_INVALID_DATA_TYPE;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_UCI_INVALID_DATA_TYPE, 0);
@@ -3476,7 +3495,7 @@ db_value_print (const DB_VALUE * value)
 
   if (value != NULL)
     {
-      help_fprint_value (stdout, value);
+      help_fprint_value (NULL, stdout, value);
     }
 
 }
@@ -3494,7 +3513,7 @@ db_value_fprint (FILE * fp, const DB_VALUE * value)
 
   if (fp != NULL && value != NULL)
     {
-      help_fprint_value (fp, value);
+      help_fprint_value (NULL, fp, value);
     }
 
 }
@@ -3555,6 +3574,7 @@ db_type_to_db_domain (const DB_TYPE type)
     case DB_TYPE_CLOB:
     case DB_TYPE_ENUMERATION:
     case DB_TYPE_ELO:
+    case DB_TYPE_JSON:
       result = tp_domain_resolve_default (type);
       break;
     case DB_TYPE_SUB:
@@ -5971,6 +5991,17 @@ db_domain_collation_id (const DB_DOMAIN * domain)
   return (collation_id);
 }
 
+const char *
+db_domain_raw_json_schema (const DB_DOMAIN * domain)
+{
+  if (domain == NULL || domain->json_validator == NULL)
+    {
+      return NULL;
+    }
+
+  return db_json_get_schema_raw_from_validator (domain->json_validator);
+}
+
 /*
  * db_string_put_cs_and_collation() - Set the charset and collation.
  * return	   : error code
@@ -6342,7 +6373,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	  break;
 
 	case DB_TYPE_NUMERIC:
-	  buffer_p = valcnv_append_string (buffer_p, numeric_db_value_print ((DB_VALUE *) value_p, line));
+	  buffer_p = valcnv_append_string (buffer_p, numeric_db_value_print (value_p, line));
 	  break;
 
 	case DB_TYPE_BIT:
@@ -6789,53 +6820,6 @@ db_set_connect_status (int status)
 }
 
 /*
- *  db_set_compressed_string()	    :- Sets the compressed string, its size and its need for clear in the DB_VALUE
- *
- *  value(in/out)		    :- The DB_VALUE
- *  compressed_string(in)	    :-
- *  compressed_size(in)		    :-
- *  compressed_need_clear(in)	    :-
- */
-void
-db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compressed_size, bool compressed_need_clear)
-{
-  DB_TYPE type;
-
-  if (value == NULL || DB_IS_NULL (value))
-    {
-      return;
-    }
-  type = DB_VALUE_DOMAIN_TYPE (value);
-
-  /* Preliminary check */
-  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
-
-  value->data.ch.medium.compressed_buf = compressed_string;
-  value->data.ch.medium.compressed_size = compressed_size;
-  value->data.ch.info.compressed_need_clear = compressed_need_clear;
-
-  return;
-}
-
-int
-db_get_compressed_size (DB_VALUE * value)
-{
-  DB_TYPE type;
-
-  if (value == NULL || DB_IS_NULL (value))
-    {
-      return 0;
-    }
-
-  type = DB_VALUE_DOMAIN_TYPE (value);
-
-  /* Preliminary check */
-  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
-
-  return value->data.ch.medium.compressed_size;
-}
-
-/*
  * db_default_expression_string() - 
  * return : string opcode of default expression
  * default_expr_type(in):
@@ -6872,4 +6856,116 @@ db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type)
     default:
       return NULL;
     }
+}
+
+JSON_DOC *
+db_get_json_document (const DB_VALUE * value)
+{
+  CHECK_1ARG_ZERO (value);
+
+  assert (value->domain.general_info.type == DB_TYPE_JSON);
+
+  return value->data.json.document;
+}
+
+int
+db_get_deep_copy_of_json (const DB_JSON * src, DB_JSON * dst)
+{
+  char *raw_json_body = NULL, *raw_schema_body = NULL;
+  JSON_DOC *doc_copy = NULL;
+
+  CHECK_2ARGS_ERROR (src, dst);
+
+  assert (dst->document == NULL && dst->json_body == NULL && dst->schema_raw == NULL);
+
+  raw_json_body = db_private_strdup (NULL, src->json_body);
+  if (raw_json_body == NULL && src->json_body != NULL)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
+
+  raw_schema_body = db_private_strdup (NULL, src->schema_raw);
+  if (raw_schema_body == NULL && src->schema_raw != NULL)
+    {
+      ASSERT_ERROR ();
+      db_private_free (NULL, raw_json_body);
+      return er_errid ();
+    }
+
+  doc_copy = db_json_get_copy_of_doc (src->document);
+
+  dst->schema_raw = raw_schema_body;
+  dst->json_body = raw_json_body;
+  dst->document = doc_copy;
+
+  return NO_ERROR;
+}
+
+int
+db_init_db_json_pointers (DB_JSON * val)
+{
+  CHECK_1ARG_ERROR (val);
+
+  val->schema_raw = NULL;
+  val->document = NULL;
+  val->json_body = NULL;
+
+  return NO_ERROR;
+}
+
+int
+db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest)
+{
+  CHECK_2ARGS_ERROR (src, dest);
+  JSON_DOC *doc = DB_GET_JSON_DOCUMENT (src);
+
+  assert (doc != NULL);
+
+  switch (db_json_get_type (doc))
+    {
+    case DB_JSON_STRING:
+      {
+	const char *str = db_json_get_string_from_document (doc);
+	int error_code = DB_MAKE_STRING (dest, str);
+	if (error_code != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    return error_code;
+	  }
+	break;
+      }
+    case DB_JSON_INT:
+      {
+	int val = db_json_get_int_from_document (doc);
+	DB_MAKE_INTEGER (dest, val);
+	break;
+      }
+    case DB_JSON_DOUBLE:
+      {
+	double val = db_json_get_double_from_document (doc);
+	DB_MAKE_DOUBLE (dest, val);
+	break;
+      }
+    case DB_JSON_BOOL:
+      {
+	char *str = db_json_get_bool_as_str_from_document (doc);
+	int error_code = DB_MAKE_STRING (dest, str);
+	if (error_code != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    return error_code;
+	  }
+	dest->need_clear = true;
+	break;
+      }
+    case DB_JSON_NULL:
+      DB_MAKE_NULL (dest);
+      break;
+    default:
+      assert (false);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
 }

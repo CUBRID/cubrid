@@ -36,7 +36,6 @@
 
 #include "fetch.h"
 
-#include "thread.h"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "storage_common.h"
@@ -50,6 +49,10 @@
 #include "db_date.h"
 #include "xasl.h"
 #include "query_executor.h"
+#include "thread_compat.hpp"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "thread.h"
+#endif // SERVER_MODE or SA_MODE
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -203,6 +206,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TIMEDIFF:
     case T_CURRENT_VALUE:
     case T_CHR:
+    case T_JSON_EXTRACT:
       /* fetch lhs and rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
 	{
@@ -650,6 +654,49 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	}
       break;
 
+    case T_JSON_TYPE:
+    case T_JSON_VALID:
+    case T_JSON_DEPTH:
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_JSON_SEARCH:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "JSON_SEARCH");
+      goto error;
+
+    case T_JSON_CONTAINS:
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (arithptr->thirdptr)
+	{
+	  if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tpl, &peek_third) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+    case T_JSON_LENGTH:
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (arithptr->rightptr)
+	{
+	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       goto error;
@@ -2044,8 +2091,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
 	t_source = tz_get_system_timezone ();
 	t_dest = tz_get_session_local_timezone ();
-	len_source = strlen (t_source);
-	len_dest = strlen (t_dest);
+	len_source = (int) strlen (t_source);
+	len_dest = (int) strlen (t_dest);
 	db_time = vd->sys_datetime.time / 1000;
 
 	err_status = tz_conv_tz_time_w_zone_name (&db_time, t_source, len_source, t_dest, len_dest, &cur_time);
@@ -2587,6 +2634,50 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	}
       break;
 
+    case T_JSON_CONTAINS:
+      if (qdata_json_contains_dbval (peek_left, peek_right, (arithptr->thirdptr == NULL ? NULL : peek_third),
+				     arithptr->value, regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_JSON_TYPE:
+      if (qdata_json_type_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_JSON_EXTRACT:
+      if (qdata_json_extract_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_JSON_VALID:
+      if (qdata_json_valid_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_JSON_LENGTH:
+      if (qdata_json_length_dbval (peek_left, (arithptr->rightptr == NULL ? NULL : peek_right), arithptr->value,
+				   regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_JSON_DEPTH:
+      if (qdata_json_depth_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
     case T_CONCAT:
       if (arithptr->rightptr != NULL)
 	{
@@ -3086,35 +3177,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
     case T_LEAST:
       {
-	int cmp_result;
+	int error;
 	TP_DOMAIN *target_domain;
-	bool can_compare = false;
 
-	cmp_result = tp_value_compare_with_error (peek_left, peek_right, 1, 0, &can_compare);
-	if (cmp_result == DB_EQ || cmp_result == DB_LT)
-	  {
-	    pr_clone_value (peek_left, arithptr->value);
-	  }
-	else if (cmp_result == DB_GT)
-	  {
-	    pr_clone_value (peek_right, arithptr->value);
-	  }
-	else if (cmp_result == DB_UNK && can_compare == false)
+	error = db_least_or_greatest (peek_left, peek_right, arithptr->value, true);
+	if (error != NO_ERROR)
 	  {
 	    goto error;
-	  }
-	else
-	  {
-	    if (DB_IS_NULL (peek_right) || DB_IS_NULL (peek_left))
-	      {
-		pr_clear_value (arithptr->value);
-		PRIM_SET_NULL (arithptr->value);
-	      }
-	    else
-	      {
-		assert_release (false);
-	      }
-	    break;
 	  }
 
 	target_domain = regu_var->domain;
@@ -3139,35 +3208,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
     case T_GREATEST:
       {
-	int cmp_result;
+	int error;
 	TP_DOMAIN *target_domain;
-	bool can_compare = false;
 
-	cmp_result = tp_value_compare_with_error (peek_left, peek_right, 1, 0, &can_compare);
-	if (cmp_result == DB_EQ || cmp_result == DB_GT)
-	  {
-	    pr_clone_value (peek_left, arithptr->value);
-	  }
-	else if (cmp_result == DB_LT)
-	  {
-	    pr_clone_value (peek_right, arithptr->value);
-	  }
-	else if (cmp_result == DB_UNK && can_compare == false)
+	error = db_least_or_greatest (peek_left, peek_right, arithptr->value, false);
+	if (error != NO_ERROR)
 	  {
 	    goto error;
-	  }
-	else
-	  {
-	    if (DB_IS_NULL (peek_right) || DB_IS_NULL (peek_left))
-	      {
-		pr_clear_value (arithptr->value);
-		PRIM_SET_NULL (arithptr->value);
-	      }
-	    else
-	      {
-		assert_release (false);
-	      }
-	    break;
 	  }
 
 	target_domain = regu_var->domain;
@@ -4001,6 +4048,28 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
 	  switch (funcp->ftype)
 	    {
+	    case F_JSON_ARRAY:
+	    case F_JSON_OBJECT:
+	    case F_JSON_INSERT:
+	    case F_JSON_REMOVE:
+	    case F_JSON_MERGE:
+	      {
+		REGU_VARIABLE_LIST operand;
+
+		operand = funcp->operand;
+
+		while (operand != NULL)
+		  {
+		    if (!REGU_VARIABLE_IS_FLAGED (&(operand->value), REGU_VARIABLE_FETCH_ALL_CONST))
+		      {
+			not_const++;
+			break;
+		      }
+		    operand = operand->next;
+		  }
+	      }
+	      break;
+
 	    case F_INSERT_SUBSTRING:
 	      /* should sync with qdata_insert_substring_function () */
 	      {
@@ -4166,6 +4235,11 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
 	case F_INSERT_SUBSTRING:
 	case F_ELT:
+	case F_JSON_OBJECT:
+	case F_JSON_ARRAY:
+	case F_JSON_INSERT:
+	case F_JSON_REMOVE:
+	case F_JSON_MERGE:
 	  break;
 
 	default:

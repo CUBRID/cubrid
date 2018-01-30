@@ -92,7 +92,7 @@ typedef struct css_wait_queue_entry
   char **buffer;
   int *size;
   int *rc;
-  struct thread_entry *thrd_entry;	/* thread waiting for data */
+  THREAD_ENTRY *thrd_entry;	/* thread waiting for data */
   struct css_wait_queue_entry *next;
   unsigned int key;
 } CSS_WAIT_QUEUE_ENTRY;
@@ -142,6 +142,14 @@ CSS_THREAD_FN css_Request_handler = NULL;
 
 /* This will handle closed connection errors */
 CSS_THREAD_FN css_Connection_error_handler = NULL;
+
+#define CSS_CONN_IDX(conn_arg) ((conn_arg) - css_Conn_array)
+
+#define CSS_FREE_CONN_MSG "Free count = %d, head = %d"
+#define CSS_FREE_CONN_ARGS css_Num_free_conn, CSS_CONN_IDX (css_Free_conn_anchor)
+
+#define CSS_ACTIVE_CONN_MSG "Active count = %d, head = %d"
+#define CSS_ACTIVE_CONN_ARGS css_Num_active_conn, CSS_CONN_IDX (css_Active_conn_anchor)
 
 static int css_get_next_client_id (void);
 static CSS_CONN_ENTRY *css_common_connect (CSS_CONN_ENTRY * conn,
@@ -279,9 +287,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->ignore_repl_delay = false;
   conn->stop_phase = THREAD_STOP_WORKERS_EXCEPT_LOGWR;
   conn->version_string = NULL;
-  conn->prefetcher_thread_count = 0;
   /* ignore connection handler thread */
-  conn->prefetchlogdb_max_thread_count = prm_get_integer_value (PRM_ID_HA_PREFETCHLOGDB_MAX_THREAD_COUNT) + 1;
   conn->free_queue_list = NULL;
   conn->free_queue_count = 0;
   conn->free_wait_queue_list = NULL;
@@ -586,6 +592,7 @@ css_make_conn (SOCKET fd)
       css_Num_free_conn--;
       assert (css_Num_free_conn >= 0);
     }
+  CSS_LOG_STACK ("css_make_conn: conn = %d, " CSS_FREE_CONN_MSG, CSS_CONN_IDX (conn), CSS_FREE_CONN_ARGS);
 
   END_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
 
@@ -614,6 +621,9 @@ css_insert_into_active_conn_list (CSS_CONN_ENTRY * conn)
   int r;
 
   START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
+
+  CSS_LOG_STACK ("css_insert_into_active_conn_list conn = %d, prev " CSS_ACTIVE_CONN_MSG, CSS_CONN_IDX (conn),
+		 CSS_ACTIVE_CONN_ARGS);
 
   conn->next = css_Active_conn_anchor;
   css_Active_conn_anchor = conn;
@@ -648,6 +658,8 @@ css_dealloc_conn (CSS_CONN_ENTRY * conn)
   int r;
 
   START_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
+
+  CSS_LOG_STACK ("css_dealloc_conn conn = %d, prev " CSS_FREE_CONN_MSG, CSS_CONN_IDX (conn), CSS_FREE_CONN_ARGS);
 
   conn->next = css_Free_conn_anchor;
   css_Free_conn_anchor = conn;
@@ -891,10 +903,18 @@ css_free_conn (CSS_CONN_ENTRY * conn)
 	  assert (css_Num_active_conn >= 0);
 	  assert (css_Num_active_conn < css_Num_max_conn);
 
+	  CSS_LOG_STACK ("css_free_conn - removed conn = %d from " CSS_ACTIVE_CONN_MSG, CSS_CONN_IDX (conn),
+			 CSS_ACTIVE_CONN_ARGS);
+
 	  break;
 	}
 
       prev = p;
+    }
+
+  if (p == NULL)
+    {
+      CSS_LOG_STACK ("css_free_conn - not found conn = %p in " CSS_ACTIVE_CONN_MSG, conn, CSS_ACTIVE_CONN_ARGS);
     }
 
   css_shutdown_conn (conn);
@@ -902,45 +922,6 @@ css_free_conn (CSS_CONN_ENTRY * conn)
   css_decrement_num_conn (conn->client_type);
 
   END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
-}
-
-void
-css_inc_prefetcher_thread_count (THREAD_ENTRY * thread_entry)
-{
-  int r;
-  CSS_CONN_ENTRY *conn = thread_entry->conn_entry;
-  assert (conn);
-  assert (conn->client_type == BOOT_CLIENT_LOG_PREFETCHER);
-
-  r = rmutex_lock (thread_entry, &conn->rmutex);
-  assert (r == NO_ERROR);
-
-  conn->prefetcher_thread_count++;
-  assert (conn->prefetcher_thread_count <= conn->prefetchlogdb_max_thread_count);
-
-  r = rmutex_unlock (thread_entry, &conn->rmutex);
-  assert (r == NO_ERROR);
-}
-
-void
-css_dec_prefetcher_thread_count (THREAD_ENTRY * thread_entry)
-{
-  CSS_CONN_ENTRY *conn = thread_entry->conn_entry;
-  int r;
-  assert (conn);
-  assert (conn->client_type == BOOT_CLIENT_LOG_PREFETCHER);
-
-  r = rmutex_lock (thread_entry, &conn->rmutex);
-  assert (r == NO_ERROR);
-
-  conn->prefetcher_thread_count--;
-  if (conn->prefetcher_thread_count < 0)
-    {
-      conn->prefetcher_thread_count = 0;
-    }
-
-  r = rmutex_unlock (thread_entry, &conn->rmutex);
-  assert (r == NO_ERROR);
 }
 
 /*

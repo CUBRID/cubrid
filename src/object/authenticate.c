@@ -71,6 +71,10 @@
 #include "network_interface_cl.h"
 #include "dbval.h"		/* this must be the last header file included */
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #if defined(SA_MODE)
 extern bool catcls_Enable;
 #endif /* SA_MODE */
@@ -5345,7 +5349,7 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial,
   MOP serial_class_mop;
   DB_IDENTIFIER serial_obj_id;
   char *serial_name, *owner_name;
-  int error = NO_ERROR, found = 0;
+  int error = NO_ERROR;
 
   db_make_null (returnval);
 

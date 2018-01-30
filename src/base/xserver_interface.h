@@ -37,17 +37,17 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
-#include "error_manager.h"
-#include "storage_common.h"
 #include "boot.h"
+#include "error_manager.h"
+#include "file_io.h"
 #include "locator.h"
 #include "log_comm.h"
-#include "perf_monitor.h"
 #include "query_list.h"
-#include "file_io.h"
-#include "thread.h"
-#include "replication.h"
 #include "query_manager.h"
+#include "perf_monitor.h"
+#include "replication.h"
+#include "storage_common.h"
+#include "thread_compat.hpp"
 
 extern int xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL * client_credential,
 				    BOOT_DB_PATH_INFO * db_path_info, bool db_overwrite, const char *file_addmore_vols,
@@ -119,10 +119,6 @@ extern int xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * oid,
 
 extern int xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
 				       int n_attrs, int *attr_ids, OID * pk_cls_oid, BTID * pk_btid, char *fk_name);
-extern int xlocator_prefetch_repl_insert (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes,
-					  bool update_last_reprid);
-extern int xlocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid,
-						    DB_VALUE * key_value);
 extern LOG_LSA *xrepl_log_get_append_lsa (void);
 extern int xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info);
 

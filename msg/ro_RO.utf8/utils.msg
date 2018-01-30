@@ -1082,18 +1082,6 @@ opţiuni valide:\n\
       --sort-key=NUMAR_COLOANA numărul coloanei de sortare\n\
       --reverse                inversează rezultatul sortării\n
 
-$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
-22 Serverul nu a fost configurat pentru HA.\n
-23 Funcţionalitatea de prefetch este dezactivată.\n
-58 HA nu este suportat pe această platformă.\n
-59 prefetchlogdb nu poate rula în modul de execuţie independent.\n
-60 \
-prefetchlogdb: Pre-citirea paginilor de log de la server.\n\
-utilizare: %1$s prefetchlogdb [OPTION] nume-bază-de-date\n\
-\n\
-opțiuni valide:\n\
-  -L, --log-path=CALE         calea către directorul pentru volume de log copiate\n
-
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
 59 Modul de generare introdus este invalid.\n
 60 Folder-ul input este invalid sau corupt.\n

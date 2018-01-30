@@ -47,11 +47,17 @@
 #include "cnvlex.h"
 #include "cnverr.h"
 #if defined(SERVER_MODE)
-#include "thread.h"
 #include "critical_section.h"
 #endif
 #include "db_date.h"
 #include "dbval.h"		/* this must be the last header file included!!! */
+#if defined (SERVER_MODE)
+#include "thread.h"
+#endif // SERVER_MODE
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define BITS_IN_BYTE		8
 #define HEX_IN_BYTE		2
@@ -3858,8 +3864,9 @@ fmt_weekday_date (int month, int day, int year, int weekday)
 static const char *
 fmt_time_string (const DB_TIME * the_time, const char *descriptor)
 {
+#if defined (ENABLE_UNUSED_FUNCTION)
   static char time_string[FMT_MAX_TIME_STRING * MB_LEN_MAX + 1];
-
+#endif
   const char *string = NULL;
 
   assert (mbs_eql (descriptor, "R") || mbs_eql (descriptor, "r") || mbs_eql (descriptor, "T")

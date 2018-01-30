@@ -59,7 +59,6 @@ void la_print_log_header (const char *database_name, LOG_HEADER * hdr, bool verb
 void la_print_log_arv_header (const char *database_name, LOG_ARV_HEADER * hdr, bool verbose);
 void la_print_delay_info (LOG_LSA working_lsa, LOG_LSA target_lsa, float process_rate);
 
-extern int lp_prefetch_log_file (const char *database_name, const char *log_path);
 extern bool la_force_shutdown (void);
 #endif /* CS_MODE */
 

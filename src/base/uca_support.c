@@ -33,6 +33,10 @@
 #include "uca_support.h"
 #include "unicode_support.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define DUCET_FILE "ducet.txt"
 
 #define MAX_WEIGHT_LEVELS 4
@@ -659,7 +663,6 @@ static int
 destroy_uca_instance (void)
 {
   int i;
-  int err_status = NO_ERROR;
 
   if (curr_uca.coll_cp != NULL)
     {
@@ -1622,7 +1625,6 @@ create_opt_weights (LOCALE_COLLATION * lc)
   unsigned int current_weight;
   int err_status = NO_ERROR;
   UCA_COLL_KEY *prev_key = NULL;
-  UCA_COLL_KEY *curr_key = NULL;
   UCA_COLL_KEY max_cp_key;
   UCA_COLL_CE_LIST *prev_ce_list = NULL;
 

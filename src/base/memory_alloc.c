@@ -35,11 +35,13 @@
 #include "util_func.h"
 #include "error_manager.h"
 #include "intl_support.h"
-#include "thread.h"
 #include "customheaps.h"
 #if !defined (SERVER_MODE)
 #include "quick_fit.h"
 #endif /* SERVER_MODE */
+#if defined (SERVER_MODE)
+#include "thread.h"
+#endif // SERVER_MODE
 
 #define DEFAULT_OBSTACK_CHUNK_SIZE      32768	/* 1024 x 32 */
 
@@ -425,7 +427,10 @@ void *
 db_private_alloc_release (void *thrd, size_t size, bool rc_track)
 #endif				/* NDEBUG */
 {
+#if !defined (CS_MODE)
   void *ptr = NULL;
+#endif /* !CS_MODE */
+
 #if defined (SERVER_MODE)
   HL_HEAPID heap_id;
 #endif
@@ -543,7 +548,10 @@ void *
 db_private_realloc_release (void *thrd, void *ptr, size_t size, bool rc_track)
 #endif				/* NDEBUG */
 {
+#if !defined (CS_MODE)
   void *new_ptr = NULL;
+#endif /* !CS_MODE */
+
 #if defined (SERVER_MODE)
   HL_HEAPID heap_id;
 #endif
@@ -664,7 +672,7 @@ db_private_strdup (void *thrd, const char *s)
       return NULL;
     }
 
-  len = strlen (s);
+  len = (int) strlen (s);
   cp = (char *) db_private_alloc (thrd, len + 1);
 
   if (cp != NULL)

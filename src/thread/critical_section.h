@@ -27,12 +27,12 @@
 
 #ident "$Id$"
 
+#include "dbtype.h"
+#include "thread_compat.hpp"
+
 #if !defined(WINDOWS)
 #include <pthread.h>
 #endif /* !WINDOWS */
-
-#include "thread.h"
-#include "dbtype.h"
 
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
 #error critical_section.h belongs to server or stand-alone modules.

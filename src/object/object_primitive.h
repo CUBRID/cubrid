@@ -36,6 +36,11 @@
 #if !defined (SERVER_MODE)
 #include "work_space.h"
 #endif
+#include "thread_compat.hpp"
+
+#ifdef __cplusplus
+class string_buffer;
+#endif
 
 /*
  * PR_TYPE
@@ -52,9 +57,14 @@ typedef struct pr_type
   int disksize;
   int alignment;
   /* print dbvalue to file */
-  void (*fptrfunc) (FILE * fp, const DB_VALUE * value);
+  void (*fptrfunc) (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value);
   /* print dbvalue to buffer */
-  int (*sptrfunc) (const DB_VALUE * value, char *buffer, int buflen);
+#ifdef __cplusplus
+  void (*sptrfunc) (const DB_VALUE * value, string_buffer & sb);
+#else
+  void *sptrfunc;
+#endif
+
   /* initialize memory */
   void (*initmem) (void *memptr, struct tp_domain * domain);
   /* initialize DB_VALUE */
@@ -146,6 +156,7 @@ extern PR_TYPE tp_Datetimetz;
 extern PR_TYPE tp_Datetimeltz;
 extern PR_TYPE tp_Timetz;
 extern PR_TYPE tp_Timeltz;
+extern PR_TYPE tp_Json;
 
 extern PR_TYPE *tp_Type_null;
 extern PR_TYPE *tp_Type_integer;
@@ -180,6 +191,7 @@ extern PR_TYPE *tp_Type_resultset;
 extern PR_TYPE *tp_Type_midxkey;
 extern PR_TYPE *tp_Type_bigint;
 extern PR_TYPE *tp_Type_datetime;
+extern PR_TYPE *tp_Type_json;
 
 extern PR_TYPE *tp_Type_id_map[];
 
@@ -346,8 +358,10 @@ extern char *pr_copy_string (const char *str);
 extern void pr_free_string (char *str);
 #endif
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /* Helper function for DB_VALUE printing; caller must free_and_init result. */
-extern char *pr_valstring (DB_VALUE *);
+extern char *pr_valstring (THREAD_ENTRY *, DB_VALUE *);
+#endif //defined (SERVER_MODE) || defined (SA_MODE)
 
 /* area init */
 extern int pr_area_init (void);
@@ -362,9 +376,6 @@ extern int pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB
 extern int pr_data_compress_string (char *string, int str_length, char *compressed_string, int *compressed_length);
 extern int pr_clear_compressed_string (DB_VALUE * value);
 extern int pr_do_db_value_string_compression (DB_VALUE * value);
-
-/* Because of the VARNCHAR and STRING encoding, this one could not be changed for over 255, just lower. */
-#define PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION 255
 
 #define PRIM_TEMPORARY_DISK_SIZE 256
 #define PRIM_COMPRESSION_LENGTH_OFFSET 4

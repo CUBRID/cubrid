@@ -45,12 +45,14 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_date.c
   ${COMPAT_DIR}/db_elo.c
   ${COMPAT_DIR}/db_info.c
+  ${COMPAT_DIR}/db_json.cpp
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_obj.c
   ${COMPAT_DIR}/db_old.c
   ${COMPAT_DIR}/db_query.c
   ${COMPAT_DIR}/db_set.c
   ${COMPAT_DIR}/db_temp.c
+  ${COMPAT_DIR}/db_value_printer.cpp
   ${COMPAT_DIR}/db_vdb.c
   ${COMPAT_DIR}/db_virt.c
   )
@@ -69,7 +71,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/error_manager.c
   ${BASE_DIR}/fault_injection.c
   ${BASE_DIR}/fixed_alloc.c
-  ${BASE_DIR}/getopt_long.c
+  ${BASE_DIR}/cubrid_getopt_long.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
   ${BASE_DIR}/language_support.c
@@ -87,6 +89,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/release_string.c
   ${BASE_DIR}/sha1.c
   ${BASE_DIR}/stack_dump.c
+  ${BASE_DIR}/string_buffer.cpp
   ${BASE_DIR}/system_parameter.c
   ${BASE_DIR}/tsc_timer.c
   ${BASE_DIR}/tz_support.c
@@ -162,23 +165,28 @@ set(QUERY_SOURCES
   )
 
 set(OBJECT_SOURCES
-  ${OBJECT_DIR}/elo.c
   ${OBJECT_DIR}/authenticate.c
-  ${OBJECT_DIR}/object_print.c
-  ${OBJECT_DIR}/object_accessor.c
-  ${OBJECT_DIR}/object_template.c
-  ${OBJECT_DIR}/set_object.c
-  ${OBJECT_DIR}/trigger_manager.c
-  ${OBJECT_DIR}/virtual_object.c
+  ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c
+  ${OBJECT_DIR}/elo.c
+  ${OBJECT_DIR}/object_accessor.c
+  ${OBJECT_DIR}/object_description.cpp
+  ${OBJECT_DIR}/object_domain.c
+  ${OBJECT_DIR}/object_primitive.c
+  ${OBJECT_DIR}/object_print.c
+  ${OBJECT_DIR}/object_printer.cpp
+  ${OBJECT_DIR}/object_print_util.cpp
+  ${OBJECT_DIR}/object_representation.c
+  ${OBJECT_DIR}/object_template.c
+  ${OBJECT_DIR}/quick_fit.c
   ${OBJECT_DIR}/schema_manager.c
   ${OBJECT_DIR}/schema_template.c
-  ${OBJECT_DIR}/object_representation.c
-  ${OBJECT_DIR}/object_primitive.c
-  ${OBJECT_DIR}/quick_fit.c
-  ${OBJECT_DIR}/transform_cl.c
+  ${OBJECT_DIR}/set_object.c
   ${OBJECT_DIR}/transform.c
-  ${OBJECT_DIR}/object_domain.c
+  ${OBJECT_DIR}/transform_cl.c
+  ${OBJECT_DIR}/trigger_description.cpp
+  ${OBJECT_DIR}/trigger_manager.c
+  ${OBJECT_DIR}/virtual_object.c
   ${OBJECT_DIR}/work_space.c
   )
 
@@ -230,6 +238,10 @@ set_source_files_properties(${FLEX_csql_lexer_OUTPUTS} PROPERTIES GENERATED true
 set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
+
+if(UNIX)
+set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+endif(UNIX)
 
 SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/compactdb_cl.c
@@ -346,9 +358,7 @@ endif(UNIX)
 
 add_dependencies(cubridcs gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
 
-if(UNIX)
-  add_dependencies(cubridcs ${EP_TARGETS})
-endif(UNIX)
+add_dependencies(cubridcs ${EP_TARGETS})
 
 if(ENABLE_SYSTEMTAP)
   target_include_directories(cubridcs PRIVATE ${CMAKE_BINARY_DIR})

@@ -87,6 +87,9 @@
 
 #include "fault_injection.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define ER_LOG_FILE_DIR	"server"
 #if !defined (CS_MODE)
@@ -561,11 +564,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_PB_LRU_HOT_RATIO "lru_hot_ratio"
 #define PRM_NAME_PB_LRU_BUFFER_RATIO "lru_buffer_ratio"
 
-#define PRM_NAME_HA_PREFETCHLOGDB_ENABLE "ha_prefetchlogdb_enable"
-#define PRM_NAME_HA_PREFETCHLOGDB_MAX_THREAD_COUNT "ha_prefetchlogdb_max_thread_count"
-#define PRM_NAME_HA_PREFETCHLOGDB_PAGE_DISTANCE "ha_prefetchlogdb_page_distance"
-#define PRM_NAME_HA_PREFETCHLOGDB_MAX_PAGE_COUNT "ha_prefetchlogdb_max_page_count"
-
 #define PRM_NAME_VACUUM_MASTER_WAKEUP_INTERVAL "vacuum_master_interval_in_msecs"
 
 #define PRM_NAME_VACUUM_LOG_BLOCK_PAGES "vacuum_log_block_pages"
@@ -636,6 +634,12 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_ENABLE_LOG_PAGE_CHECKSUM "enable_log_page_checksum"
 #define PRM_NAME_DWB_CHECKSUM_THREADS "double_write_buffer_checksum_threads"
 #define PRM_NAME_DWB_ENABLE_LOG "double_write_buffer_enable_log"
+
+#define PRM_NAME_JSON_LOG_ALLOCATIONS "json_log_allocations"
+
+#define PRM_NAME_CONNECTION_LOGGING "connection_logging"
+
+#define PRM_NAME_THREAD_LOGGING_FLAG "thread_logging_flag"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -1925,28 +1929,6 @@ static float prm_pb_lru_buffer_ratio_upper = 0.90f;
 static float prm_pb_lru_buffer_ratio_lower = 0.05f;
 static unsigned int prm_pb_lru_buffer_ratio_flag = 0;
 
-bool PRM_HA_PREFETCHLOGDB_ENABLE = false;
-static unsigned int prm_ha_prefetchlogdb_enable_flag = 0;
-static unsigned int prm_ha_prefetchlogdb_enable_default = false;
-
-unsigned int PRM_HA_PREFETCHLOGDB_MAX_THREAD_COUNT = 4;
-static unsigned int prm_ha_prefetchlogdb_max_thread_count_flag = 0;
-static unsigned int prm_ha_prefetchlogdb_max_thread_count_default = 4;
-static unsigned int prm_ha_prefetchlogdb_max_thread_count_lower = 1;
-static unsigned int prm_ha_prefetchlogdb_max_thread_count_upper = INT_MAX;
-
-unsigned int PRM_HA_PREFETCHLOGDB_PAGE_DISTANCE = 200;
-static unsigned int prm_ha_prefetchlogdb_page_distance_flag = 0;
-static unsigned int prm_ha_prefetchlogdb_page_distance_default = 200;
-static unsigned int prm_ha_prefetchlogdb_page_distance_lower = 50;
-static unsigned int prm_ha_prefetchlogdb_page_distance_upper = INT_MAX;
-
-unsigned int PRM_HA_PREFETCHLOGDB_MAX_PAGE_COUNT = 1000;
-static unsigned int prm_ha_prefetchlogdb_max_page_count_flag = 0;
-static unsigned int prm_ha_prefetchlogdb_max_page_count_default = 1000;
-static unsigned int prm_ha_prefetchlogdb_max_page_count_lower = 0;
-static unsigned int prm_ha_prefetchlogdb_max_page_count_upper = INT_MAX;
-
 int PRM_VACUUM_MASTER_WAKEUP_INTERVAL = 10;
 static int prm_vacuum_master_wakeup_interval_default = 10;
 static int prm_vacuum_master_wakeup_interval_lower = 1;
@@ -2132,6 +2114,17 @@ static int prm_cte_max_recursions_upper = 1000000;
 static int prm_cte_max_recursions_lower = 2;
 static unsigned int prm_cte_max_recursions_flag = 0;
 
+bool PRM_JSON_LOG_ALLOCATIONS = false;
+static bool prm_json_log_allocations_default = false;
+static unsigned int prm_json_log_allocations_flag = 0;
+
+bool PRM_CONNECTION_LOGGING = false;
+static bool prm_connection_logging_default = false;
+static unsigned int prm_connection_logging_flag = 0;
+
+int PRM_THREAD_LOGGING_FLAG = 0;
+static int prm_thread_logging_flag_default = 0;
+static unsigned int prm_thread_logging_flag_flag = 0;
 unsigned int PRM_DWB_SIZE = 2 * 1024 * 1024;	/* 2M */
 static unsigned int prm_dwb_size_flag = 0;
 static unsigned int prm_dwb_size_default = (2 * 1024 * 1024);	/* 2M */
@@ -4943,54 +4936,6 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_HA_PREFETCHLOGDB_ENABLE,
-   PRM_NAME_HA_PREFETCHLOGDB_ENABLE,
-   (PRM_FOR_HA | PRM_FOR_CLIENT),
-   PRM_BOOLEAN,
-   &prm_ha_prefetchlogdb_enable_flag,
-   (void *) &prm_ha_prefetchlogdb_enable_default,
-   (void *) &PRM_HA_PREFETCHLOGDB_ENABLE,
-   (void *) NULL,
-   (void *) NULL,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_HA_PREFETCHLOGDB_MAX_THREAD_COUNT,
-   PRM_NAME_HA_PREFETCHLOGDB_MAX_THREAD_COUNT,
-   (PRM_FOR_HA | PRM_FOR_SERVER),
-   PRM_INTEGER,
-   &prm_ha_prefetchlogdb_max_thread_count_flag,
-   (void *) &prm_ha_prefetchlogdb_max_thread_count_default,
-   (void *) &PRM_HA_PREFETCHLOGDB_MAX_THREAD_COUNT,
-   (void *) &prm_ha_prefetchlogdb_max_thread_count_upper,
-   (void *) &prm_ha_prefetchlogdb_max_thread_count_lower,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_HA_PREFETCHLOGDB_PAGE_DISTANCE,
-   PRM_NAME_HA_PREFETCHLOGDB_PAGE_DISTANCE,
-   (PRM_FOR_HA | PRM_FOR_CLIENT | PRM_HIDDEN),
-   PRM_INTEGER,
-   &prm_ha_prefetchlogdb_page_distance_flag,
-   (void *) &prm_ha_prefetchlogdb_page_distance_default,
-   (void *) &PRM_HA_PREFETCHLOGDB_PAGE_DISTANCE,
-   (void *) &prm_ha_prefetchlogdb_page_distance_upper,
-   (void *) &prm_ha_prefetchlogdb_page_distance_lower,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_HA_PREFETCHLOGDB_MAX_PAGE_COUNT,
-   PRM_NAME_HA_PREFETCHLOGDB_MAX_PAGE_COUNT,
-   (PRM_FOR_HA | PRM_FOR_CLIENT),
-   PRM_INTEGER,
-   &prm_ha_prefetchlogdb_max_page_count_flag,
-   (void *) &prm_ha_prefetchlogdb_max_page_count_default,
-   (void *) &PRM_HA_PREFETCHLOGDB_MAX_PAGE_COUNT,
-   (void *) &prm_ha_prefetchlogdb_max_page_count_upper,
-   (void *) &prm_ha_prefetchlogdb_max_page_count_lower,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
   {PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL,
    PRM_NAME_VACUUM_MASTER_WAKEUP_INTERVAL,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
@@ -5429,6 +5374,39 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_JSON_LOG_ALLOCATIONS,
+   PRM_NAME_JSON_LOG_ALLOCATIONS,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_json_log_allocations_flag,
+   (void *) &prm_json_log_allocations_default,
+   (void *) &PRM_JSON_LOG_ALLOCATIONS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CONNECTION_LOGGING,
+   PRM_NAME_CONNECTION_LOGGING,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_connection_logging_flag,
+   (void *) &prm_connection_logging_default,
+   (void *) &PRM_CONNECTION_LOGGING,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_THREAD_LOGGING_FLAG,
+   PRM_NAME_THREAD_LOGGING_FLAG,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_thread_logging_flag_flag,
+   (void *) &prm_thread_logging_flag_default,
+   (void *) &PRM_THREAD_LOGGING_FLAG,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_DWB_SIZE,
    PRM_NAME_DWB_SIZE,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
@@ -5804,8 +5782,6 @@ typedef enum
   PRM_PRINT_DEFAULT_VAL
 } PRM_PRINT_VALUE_MODE;
 
-static void prm_the_file_has_been_loaded (const char *path);
-static int prm_print_value (const SYSPRM_PARAM * prm, char *buf, size_t len);
 static int prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print_mode,
 		      PRM_PRINT_VALUE_MODE print_value_mode);
 static int sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool reload,
@@ -9811,7 +9787,6 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *max_log_archives_prm;
   SYSPRM_PARAM *force_remove_log_archives_prm;
   SYSPRM_PARAM *call_stack_dump_activation_prm;
-  SYSPRM_PARAM *ha_prefetchlogdb_enable_prm;
   SYSPRM_PARAM *fault_injection_ids_prm;
   SYSPRM_PARAM *fault_injection_test_prm;
   SYSPRM_PARAM *test_mode_prm;
@@ -9851,7 +9826,6 @@ prm_tune_parameters (void)
   ha_node_list_prm = prm_find (PRM_NAME_HA_NODE_LIST, NULL);
   max_log_archives_prm = prm_find (PRM_NAME_LOG_MAX_ARCHIVES, NULL);
   force_remove_log_archives_prm = prm_find (PRM_NAME_FORCE_REMOVE_LOG_ARCHIVES, NULL);
-  ha_prefetchlogdb_enable_prm = prm_find (PRM_NAME_HA_PREFETCHLOGDB_ENABLE, NULL);
 
   /* Check that max clients has been set */
   assert (max_clients_prm != NULL);
@@ -9970,7 +9944,6 @@ prm_tune_parameters (void)
     }
 #endif /* !SA_MODE && !WINDOWS */
   /* disable them temporarily */
-  prm_set (ha_prefetchlogdb_enable_prm, "no", false);
 
   if (ha_node_list_prm == NULL || PRM_DEFAULT_VAL_USED (*ha_node_list_prm->dynamic_flag))
     {
@@ -10064,7 +10037,6 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *shutdown_wait_time_in_secs_prm;
   SYSPRM_PARAM *ha_copy_log_timeout_prm;
   SYSPRM_PARAM *ha_check_disk_failure_interval_prm;
-  SYSPRM_PARAM *ha_prefetchlogdb_enable_prm;
   SYSPRM_PARAM *test_mode_prm;
   SYSPRM_PARAM *tz_leap_second_support_prm;
 
@@ -10081,7 +10053,6 @@ prm_tune_parameters (void)
   shutdown_wait_time_in_secs_prm = prm_find (PRM_NAME_SHUTDOWN_WAIT_TIME_IN_SECS, NULL);
   ha_copy_log_timeout_prm = prm_find (PRM_NAME_HA_COPY_LOG_TIMEOUT, NULL);
   ha_check_disk_failure_interval_prm = prm_find (PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS, NULL);
-  ha_prefetchlogdb_enable_prm = prm_find (PRM_NAME_HA_PREFETCHLOGDB_ENABLE, NULL);
   test_mode_prm = prm_find (PRM_NAME_TEST_MODE, NULL);
   tz_leap_second_support_prm = prm_find (PRM_NAME_TZ_LEAP_SECOND_SUPPORT, NULL);
 
@@ -10125,7 +10096,6 @@ prm_tune_parameters (void)
     }
 
   /* disable them temporarily */
-  prm_set (ha_prefetchlogdb_enable_prm, "no", false);
 
   if (ha_node_list_prm == NULL || PRM_DEFAULT_VAL_USED (*ha_node_list_prm->dynamic_flag))
     {
@@ -11426,7 +11396,7 @@ sysprm_session_init_session_parameters (SESSION_PARAM ** session_parameters_ptr,
 {
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
   int error_code = NO_ERROR;
-  SESSION_PARAM *session_params = NULL, *prm = NULL;
+  SESSION_PARAM *session_params = NULL;
 
   assert (found_session_parameters != NULL);
   *found_session_parameters = 0;
@@ -11471,9 +11441,6 @@ sysprm_session_init_session_parameters (SESSION_PARAM ** session_parameters_ptr,
 static SYSPRM_ERR
 sysprm_set_session_parameter_value (SESSION_PARAM * session_parameter, int id, SYSPRM_VALUE value)
 {
-  char *end = NULL;
-  SYSPRM_PARAM *prm = &prm_Def[id];
-
   switch (session_parameter->datatype)
     {
     case PRM_INTEGER:

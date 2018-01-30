@@ -23,18 +23,11 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
 #include <assert.h>
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#else
-#include "getopt.h"
-#endif
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -61,6 +54,7 @@
 #include "utility.h"
 #include "util_support.h"
 #include "porting.h"
+#include "cubrid_getopt.h"
 
 #define COMMDB_CMD_ALLOWED_ON_REMOTE() \
   ((commdb_Arg_deact_stop_all == true) \
@@ -94,7 +88,6 @@ static void process_master_kill (CSS_CONN_ENTRY * conn);
 static void process_master_stop_shutdown (CSS_CONN_ENTRY * conn);
 static void process_master_shutdown (CSS_CONN_ENTRY * conn, int minutes);
 static void process_slave_kill (CSS_CONN_ENTRY * conn, char *slave_name, int minutes, int pid);
-static void process_immediate_kill (CSS_CONN_ENTRY * conn, char *slave_name);
 static int process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server, int server_type);
 static void process_ha_server_mode (CSS_CONN_ENTRY * conn, char *server_name);
 static void process_ha_node_info_query (CSS_CONN_ENTRY * conn, int verbose_yn);
@@ -447,7 +440,7 @@ process_slave_kill (CSS_CONN_ENTRY * conn, char *slave_name, int minutes, int pi
 
   net_minutes = htonl (minutes);
   rid =
-    send_request_two_args (conn, KILL_SLAVE_SERVER, slave_name, strlen (slave_name) + 1, (char *) &net_minutes,
+    send_request_two_args (conn, KILL_SLAVE_SERVER, slave_name, (int) strlen (slave_name) + 1, (char *) &net_minutes,
 			   sizeof (int));
   return_string (conn, rid, &reply_buffer, &size);
   if (size)
@@ -478,7 +471,7 @@ process_ha_server_mode (CSS_CONN_ENTRY * conn, char *server_name)
   int size = 0;
   unsigned short rid;
 
-  rid = send_request_one_arg (conn, GET_SERVER_HA_MODE, server_name, strlen (server_name) + 1);
+  rid = send_request_one_arg (conn, GET_SERVER_HA_MODE, server_name, (int) strlen (server_name) + 1);
   return_string (conn, rid, &reply_buffer, &size);
 
   if (size)

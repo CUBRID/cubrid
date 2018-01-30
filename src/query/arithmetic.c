@@ -42,9 +42,14 @@
 #include "crypt_opfunc.h"
 #include "string_opfunc.h"
 #include "db_date.h"
+#include "db_json.hpp"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 static int db_mod_short (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
 static int db_mod_int (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
@@ -5114,4 +5119,246 @@ error:
 	}
       return error_status;
     }
+}
+
+int
+db_json_contains_dbval (const DB_VALUE * json, const DB_VALUE * value, const DB_VALUE * path, DB_VALUE * result)
+{
+  int error_code = NO_ERROR;
+  JSON_DOC *result_doc = NULL;
+  JSON_DOC *this_doc;
+  bool doc_needs_clear = false;
+
+  if (DB_IS_NULL (json) || DB_IS_NULL (value) || (path != NULL && DB_IS_NULL (path)))
+    {
+      return DB_MAKE_NULL (result);
+    }
+
+  this_doc = DB_GET_JSON_DOCUMENT (json);
+
+  if (path != NULL)
+    {
+      const char *raw_path = db_get_string (path);
+
+      error_code = db_json_extract_document_from_path (this_doc, raw_path, result_doc);
+      if (error_code != NO_ERROR)
+	{
+	  assert (result_doc == NULL);
+	  return error_code;
+	}
+      doc_needs_clear = true;
+    }
+  else
+    {
+      result_doc = DB_GET_JSON_DOCUMENT (json);
+    }
+
+  if (result_doc != NULL)
+    {
+      int error_code;
+      bool has_member = false;
+
+      assert (value->domain.general_info.type == DB_TYPE_JSON);
+
+      error_code = db_json_value_is_contained_in_doc (result_doc, DB_GET_JSON_DOCUMENT (value), has_member);
+      if (doc_needs_clear)
+	{
+	  db_json_delete_doc (result_doc);
+	}
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+      return DB_MAKE_INT (result, has_member ? 1 : 0);
+    }
+  else
+    {
+      return DB_MAKE_NULL (result);
+    }
+}
+
+int
+db_json_type_dbval (const DB_VALUE * json, DB_VALUE * type_res)
+{
+  if (DB_IS_NULL (json))
+    {
+      return DB_MAKE_NULL (type_res);
+    }
+  else
+    {
+      const char *type;
+      unsigned int length;
+
+      assert (DB_GET_JSON_RAW_BODY (json) != NULL);
+
+      type = db_json_get_type_as_str (DB_GET_JSON_DOCUMENT (json));
+      length = strlen (type);
+
+      return DB_MAKE_CHAR (type_res, length, type, length, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+    }
+}
+
+int
+db_json_valid_dbval (const DB_VALUE * json, DB_VALUE * type_res)
+{
+  if (DB_IS_NULL (json))
+    {
+      return DB_MAKE_NULL (type_res);
+    }
+  else
+    {
+      bool valid = db_json_is_valid (DB_PULL_STRING (json));
+
+      return DB_MAKE_INT (type_res, (int) valid);
+    }
+}
+
+int
+db_json_length_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * res)
+{
+  JSON_DOC *this_doc = NULL;
+  int error_code;
+  bool doc_needs_clear = false;
+
+  if (DB_IS_NULL (json) || (path != NULL && DB_IS_NULL (path)))
+    {
+      return DB_MAKE_NULL (res);
+    }
+  else
+    {
+      unsigned int length;
+
+      if (path != NULL)
+	{
+	  const char *raw_path = db_get_string (path);
+
+	  error_code = db_json_extract_document_from_path (DB_GET_JSON_DOCUMENT (json), raw_path, this_doc);
+	  if (error_code != NO_ERROR)
+	    {
+	      assert (this_doc == NULL);
+	      return error_code;
+	    }
+	  doc_needs_clear = true;
+	}
+      else
+	{
+	  this_doc = DB_GET_JSON_DOCUMENT (json);
+	}
+
+      if (this_doc != NULL)
+	{
+	  length = db_json_get_length (this_doc);
+
+	  if (doc_needs_clear)
+	    {
+	      db_json_delete_doc (this_doc);
+	    }
+	  return DB_MAKE_INT (res, length);
+	}
+      else
+	{
+	  return DB_MAKE_NULL (res);
+	}
+    }
+}
+
+int
+db_json_depth_dbval (DB_VALUE * json, DB_VALUE * res)
+{
+  if (DB_IS_NULL (json))
+    {
+      return DB_MAKE_NULL (res);
+    }
+  else
+    {
+      unsigned int depth = db_json_get_depth (DB_GET_JSON_DOCUMENT (json));
+
+      return DB_MAKE_INT (res, depth);
+    }
+}
+
+int
+db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res)
+{
+  JSON_DOC *this_doc;
+  const char *raw_path;
+  char *json_body;
+  JSON_DOC *result_doc = NULL;
+  int error_code;
+
+  if (DB_IS_NULL (json) || DB_IS_NULL (path))
+    {
+      return DB_MAKE_NULL (json_res);
+    }
+
+  this_doc = DB_GET_JSON_DOCUMENT (json);
+  raw_path = DB_PULL_STRING (path);
+
+  error_code = db_json_extract_document_from_path (this_doc, raw_path, result_doc);
+  if (error_code != NO_ERROR)
+    {
+      assert (result_doc == NULL);
+      return error_code;
+    }
+
+  if (result_doc != NULL)
+    {
+      json_body = db_json_get_raw_json_body_from_document (result_doc);
+      db_make_json (json_res, json_body, result_doc, true);
+    }
+  else
+    {
+      DB_MAKE_NULL (json_res);
+    }
+
+  return NO_ERROR;
+}
+
+int
+db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool least)
+{
+  int error_code = NO_ERROR;
+  bool can_compare = false;
+  DB_VALUE_COMPARE_RESULT cmp_result = DB_UNK;
+
+  cmp_result = tp_value_compare_with_error (arg1, arg2, 1, 0, &can_compare);
+
+  if (cmp_result == DB_EQ)
+    {
+      pr_clone_value (arg1, result);
+    }
+  else if (cmp_result == DB_GT)
+    {
+      if (least)
+	{
+	  pr_clone_value (arg2, result);
+	}
+      else
+	{
+	  pr_clone_value (arg1, result);
+	}
+    }
+  else if (cmp_result == DB_LT)
+    {
+      if (least)
+	{
+	  pr_clone_value (arg1, result);
+	}
+      else
+	{
+	  pr_clone_value (arg2, result);
+	}
+    }
+  else if (cmp_result == DB_UNK && can_compare == false)
+    {
+      return ER_FAILED;
+    }
+  else
+    {
+      assert_release (DB_IS_NULL (arg1) || DB_IS_NULL (arg2));
+      db_make_null (result);
+      return NO_ERROR;
+    }
+
+  return error_code;
 }

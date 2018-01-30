@@ -55,14 +55,6 @@
  */
 
 #if !defined(SERVER_MODE)
-#define pthread_mutex_init(a, b)
-#define pthread_mutex_destroy(a)
-#define pthread_mutex_lock(b) 0
-#define pthread_mutex_unlock(a)
-static int rv;
-#endif
-
-#if !defined(SERVER_MODE)
 extern unsigned int db_on_server;
 #endif /* !SERVER_MODE */
 
@@ -4716,7 +4708,10 @@ swizzle_value (DB_VALUE * val, int input)
 static int
 assign_set_value (COL * set, DB_VALUE * src, DB_VALUE * dest, bool implicit_coercion)
 {
-  int error = NO_ERROR, is_ref = 0;
+#if !defined (SERVER_MODE)
+  int is_ref = 0;
+#endif /* !SERVER_MODE */
+  int error = NO_ERROR;
   TP_DOMAIN_STATUS status;
   TP_DOMAIN *domain;
   DB_VALUE temp;
@@ -6121,7 +6116,7 @@ setobj_print (FILE * fp, COL * col)
   fprintf (fp, "{");
   for (i = 0; i < col->size; i++)
     {
-      help_fprint_value (fp, INDEX (col, i));
+      help_fprint_value (NULL, fp, INDEX (col, i));
       if (i < col->size - 1)
 	{
 	  fprintf (fp, ", ");

@@ -46,6 +46,11 @@
 #include "intl_support.h"
 #include "virtual_object.h"
 #include "object_template.h"
+#include "db_json.hpp"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define SET_PARSER_ERROR_AND_FREE_NODE(parser, result, default_msg_id)	      \
   do {									      \
@@ -623,9 +628,38 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
     case DB_TYPE_DOUBLE:
       result->info.value.data_value.d = DB_GET_DOUBLE (val);
       break;
-
+    case DB_TYPE_JSON:
+      result->data_type = parser_new_node (parser, PT_DATA_TYPE);
+      if (result->data_type == NULL)
+	{
+	  parser_free_node (parser, result);
+	  result = NULL;
+	}
+      else
+	{
+	  result->data_type->type_enum = result->type_enum;
+	  result->info.value.data_value.str =
+	    pt_append_nulstring (parser, (PARSER_VARCHAR *) NULL, DB_GET_JSON_RAW_BODY (val));
+	  if (db_get_json_schema (val) != NULL)
+	    {
+	      /* check valid schema */
+	      if (db_json_validate_json (db_get_json_schema (val)) != NO_ERROR)
+		{
+		  assert (false);
+		  parser_free_node (parser, result);
+		  PT_INTERNAL_ERROR (parser, "invalid json schema");
+		  result = NULL;
+		}
+	      else
+		{
+		  result->data_type->info.data_type.json_schema =
+		    pt_append_bytes (parser, NULL, db_get_json_schema (val), strlen (db_get_json_schema (val)));
+		}
+	    }
+	}
+      break;
     case DB_TYPE_NUMERIC:
-      numeric_db_value_print ((DB_VALUE *) val, buf);
+      numeric_db_value_print (val, buf);
       result->info.value.data_value.str = pt_append_nulstring (parser, (PARSER_VARCHAR *) NULL, (const char *) buf);
       result->data_type = parser_new_node (parser, PT_DATA_TYPE);
       if (result->data_type == NULL)
@@ -677,7 +711,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       {
 	int max_length = 0;
 	char *printed_bit = NULL;
-	char *result_string = NULL;
+
 	size = 0;
 	bytes = DB_GET_BIT (val, &size);
 	max_length = ((size + 3) / 4) + 4;
@@ -1457,6 +1491,9 @@ pt_type_enum_to_db_domain_name (const PT_TYPE_ENUM t)
     case PT_TYPE_ENUMERATION:
       name = "enum";
       break;
+    case PT_TYPE_JSON:
+      name = "json";
+      break;
     }
 
   return name;
@@ -1531,6 +1568,7 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_SEQUENCE:
     case DB_TYPE_MIDXKEY:
     case DB_TYPE_ENUMERATION:
+    case DB_TYPE_JSON:
       retval = tp_domain_construct (domain_type, (DB_OBJECT *) 0, 0, 0, (TP_DOMAIN *) 0);
       break;
 
@@ -1611,7 +1649,6 @@ static int
 pt_get_enumeration_from_data_type (PARSER_CONTEXT * parser, PT_NODE * dt, DB_ENUMERATION * enumeration)
 {
   int err = NO_ERROR;
-  TP_DOMAIN *domain = NULL;
   PT_NODE *node = NULL;
   DB_ENUM_ELEMENT *db_enum = NULL, *enum_elements = NULL;
   char *str_val = NULL;
@@ -1737,6 +1774,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
   DB_ENUMERATION enumeration;
   int collation_id = 0;
   TP_DOMAIN_COLL_ACTION collation_flag = TP_DOMAIN_COLL_NORMAL;
+  JSON_VALIDATOR *validator = NULL;
 
   if (dt == NULL)
     {
@@ -1773,6 +1811,24 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
     case DB_TYPE_OID:
     case DB_TYPE_BIGINT:
       return pt_type_enum_to_db_domain (dt->type_enum);
+
+    case DB_TYPE_JSON:
+      if (dt->info.data_type.json_schema)
+	{
+	  int error_code;
+
+	  error_code = db_json_load_validator ((const char *) dt->info.data_type.json_schema->bytes, validator);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return NULL;
+	    }
+	  break;
+	}
+      else
+	{
+	  return pt_type_enum_to_db_domain (dt->type_enum);
+	}
 
     case DB_TYPE_OBJECT:
       /* first check if its a VOBJ */
@@ -1897,6 +1953,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
       retval->enumeration.collation_id = collation_id;
       DOM_SET_ENUM_ELEMENTS (retval, enumeration.elements);
       DOM_SET_ENUM_ELEMS_COUNT (retval, enumeration.count);
+      retval->json_validator = validator;
     }
   else
     {
@@ -1945,6 +2002,8 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
   DB_ENUMERATION enumeration;
   int error = NO_ERROR;
   TP_DOMAIN_COLL_ACTION collation_flag;
+  char *raw_schema = NULL;
+  JSON_VALIDATOR *validator = NULL;
 
   if (dt == NULL)
     {
@@ -1983,6 +2042,34 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
     case DB_TYPE_MIDXKEY:
     case DB_TYPE_BIGINT:
       return pt_type_enum_to_db_domain (type);
+
+    case DB_TYPE_JSON:
+      if (dt->info.data_type.json_schema)
+	{
+	  int error_code;
+
+	  raw_schema = (char *) malloc (dt->info.data_type.json_schema->length + 1);
+	  if (raw_schema == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, raw_schema);
+	      return NULL;
+	    }
+
+	  strcpy (raw_schema, (const char *) dt->info.data_type.json_schema->bytes);
+	  error_code = db_json_load_validator (raw_schema, validator);
+	  free (raw_schema);
+
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return NULL;
+	    }
+	  break;
+	}
+      else
+	{
+	  return pt_type_enum_to_db_domain (dt->type_enum);
+	}
 
     case DB_TYPE_OBJECT:
       /* first check if its a VOBJ */
@@ -2083,6 +2170,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
       retval->collation_id = collation_id;
       retval->collation_flag = collation_flag;
       retval->enumeration.collation_id = collation_id;
+      retval->json_validator = validator;
       DOM_SET_ENUM_ELEMENTS (retval, enumeration.elements);
       DOM_SET_ENUM_ELEMS_COUNT (retval, enumeration.count);
     }
@@ -2259,6 +2347,10 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
       break;
     case PT_TYPE_VARCHAR:
       db_type = DB_TYPE_VARCHAR;
+      break;
+
+    case PT_TYPE_JSON:
+      db_type = DB_TYPE_JSON;
       break;
 
     case PT_TYPE_OBJECT:
@@ -2528,7 +2620,6 @@ pt_db_to_type_enum (const DB_TYPE t)
     case DB_TYPE_TIMESTAMPLTZ:
       pt_type = PT_TYPE_TIMESTAMPLTZ;
       break;
-
     case DB_TYPE_DATETIME:
       pt_type = PT_TYPE_DATETIME;
       break;
@@ -2592,6 +2683,9 @@ pt_db_to_type_enum (const DB_TYPE t)
       break;
     case DB_TYPE_VARIABLE:
       pt_type = PT_TYPE_MAYBE;
+      break;
+    case DB_TYPE_JSON:
+      pt_type = PT_TYPE_JSON;
       break;
 
       /* these guys should not get encountered */
@@ -2813,6 +2907,28 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
 
     case DB_TYPE_OBJECT:
       dt = pt_get_object_data_type (parser, val);
+      break;
+
+    case DB_TYPE_JSON:
+      dt = parser_new_node (parser, PT_DATA_TYPE);
+      if (dt)
+	{
+	  if (db_json_validate_json (val->data.json.json_body) != NO_ERROR)
+	    {
+	      assert (false);
+	      parser_free_node (parser, dt);
+	      /* TODO: set a real error. */
+	      PT_INTERNAL_ERROR (parser, "json validation failed");
+	      return NULL;
+	    }
+	  /* valid schema */
+
+	  dt->type_enum = node->type_enum;
+
+	  /* save raw schema */
+	  dt->info.data_type.json_schema =
+	    pt_append_bytes (parser, NULL, val->data.json.json_body, strlen (val->data.json.json_body));
+	}
       break;
 
     default:
@@ -3369,6 +3485,32 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       db_make_varchar (db_value, TP_FLOATING_PRECISION_VALUE, (DB_C_CHAR) value->info.value.data_value.str->bytes,
 		       value->info.value.data_value.str->length, codeset, collation_id);
       value->info.value.db_value_is_in_workspace = false;
+      *more_type_info_needed = (value->data_type == NULL);
+      break;
+
+    case PT_TYPE_JSON:
+      db_value->domain.general_info.type = DB_TYPE_JSON;
+      db_value->domain.general_info.is_null = 0;
+      db_value->data.json.json_body = db_private_strdup (NULL, (const char *) value->info.value.data_value.str->bytes);
+      if (db_json_get_json_from_str (db_value->data.json.json_body, db_value->data.json.document) != NO_ERROR)
+	{
+	  db_private_free (NULL, db_value->data.json.json_body);
+	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_INVALID_JSON,
+		      value->info.value.data_value.str->bytes);
+	  return (DB_VALUE *) NULL;
+	}
+
+      value->info.value.db_value_is_in_workspace = false;
+      db_value->need_clear = true;
+      if (value->info.data_type.json_schema)
+	{
+	  db_value->data.json.schema_raw =
+	    db_private_strdup (NULL, (const char *) value->info.data_type.json_schema->bytes);
+	}
+      else
+	{
+	  db_value->data.json.schema_raw = NULL;
+	}
       *more_type_info_needed = (value->data_type == NULL);
       break;
 

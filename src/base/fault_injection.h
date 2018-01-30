@@ -29,8 +29,7 @@
 #ident "$Id$"
 
 #include "error_manager.h"
-
-#include "thread.h"
+#include "thread_compat.hpp"
 
 #if !defined(NDEBUG)
 #define FI_INSERTED(code) 		fi_test_on(code)
@@ -49,16 +48,23 @@
 
 typedef enum
 {
+  /* todo: if we want to do regression tests with fault-injection, we shouldn't set codes in system parameter.
+   *       it's better to have a string that we can parse and offers us more flexibility into changing/extending
+   *       functionality without worrying of backward compatibility.
+   */
+
   FI_TEST_NONE = 0,
 
   /* common */
   FI_TEST_HANG = 1,
 
-  /* DISK MANAGER */
-  FI_TEST_DISK_MANAGER_UNDO_FORMAT = 100000,
+  /* IO & DISK MANAGER */
+  FI_TEST_FILE_IO_FORMAT = 100000,
+  FI_TEST_DISK_MANAGER_VOLUME_ADD = 100001,
+  FI_TEST_DISK_MANAGER_VOLUME_EXPAND = 100002,
 
   /* FILE MANAGER */
-  FI_TEST_FILE_MANAGER_UNDO_TRACKER_REGISTER = 200000,
+  FI_TEST_FILE_MANAGER_UNDO_TRACKER_REGISTER = 200000,	/* unused */
 
   /* BTREE MANAGER */
   FI_TEST_BTREE_MANAGER_RANDOM_EXIT = 300000,

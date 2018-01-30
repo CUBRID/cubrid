@@ -281,5 +281,4 @@ extern int btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * k
 
 extern int btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid, int col_idx, int *asc_desc);
 
-extern void btree_dump_key (FILE * fp, DB_VALUE * key);
 #endif /* _BTREE_LOAD_H_ */

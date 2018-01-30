@@ -26,6 +26,7 @@
 #include <assert.h>
 #include <math.h>
 
+#include "system_parameter.h"
 #include "double_write_buffer.h"
 #include "thread.h"
 #include "log_impl.h"

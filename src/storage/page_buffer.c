@@ -1135,8 +1135,6 @@ static void pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority);
 STATIC_INLINE bool pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_is_bcb_fixed_by_any (PGBUF_BCB * bcb, bool has_mutex_lock) __attribute__ ((ALWAYS_INLINE));
 
-STATIC_INLINE void pgbuf_lru_update_victims_on_flush (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
-  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   __attribute__ ((ALWAYS_INLINE));
 #if defined (SERVER_MODE)
@@ -1203,6 +1201,9 @@ STATIC_INLINE bool pgbuf_is_hit_ratio_low (void);
 
 static void pgbuf_flags_mask_sanity_check (void);
 static void pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru);
+
+// TODO: find a better place for this, but not log_impl.h
+STATIC_INLINE int pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 
 /*
  * pgbuf_hash_func_mirror () - Hash VPID into hash anchor
@@ -1806,7 +1807,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
     {
       /* Check the wait_msecs of current transaction. If the wait_msecs is zero wait that means no wait, change current 
        * request as a conditional request. */
-      wait_msecs = logtb_find_current_wait_msecs (thread_p);
+      wait_msecs = pgbuf_find_current_wait_msecs (thread_p);
 
       if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
 	{
@@ -3200,12 +3201,12 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   float lru_sum_flush_priority;
   int count_need_wal = 0;
   LOG_LSA lsa_need_wal = LSA_INITIALIZER;
-  LOG_LSA save_lsa_need_wal = LSA_INITIALIZER;
 #if defined(SERVER_MODE)
+  LOG_LSA save_lsa_need_wal = LSA_INITIALIZER;
   static THREAD_ENTRY *page_flush_thread = NULL;
+  bool repeated = false;
 #endif /* SERVER_MODE */
   bool is_bcb_locked = false;
-  bool repeated = false;
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
   bool assigned_directly = false;
 #if !defined (NDEBUG) && defined (SERVER_MODE)
@@ -3570,9 +3571,6 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
   PGBUF_VICTIM_CANDIDATE_LIST *f_list;
   int collected_bcbs;
   int error = NO_ERROR;
-#if defined(SERVER_MODE)
-  struct timeval cur_time = { 0, 0 };
-#endif /* SERVER_MODE */
 
   er_log_debug (ARG_FILE_LINE, "pgbuf_flush_checkpoint start : flush_upto_LSA:%d, prev_chkpt_redo_LSA:%d\n",
 		flush_upto_lsa->pageid, (prev_chkpt_redo_lsa ? prev_chkpt_redo_lsa->pageid : -1));
@@ -3808,11 +3806,13 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 		      const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * chkpt_smallest_lsa, int *time_rem)
 {
   PGBUF_BCB *bufptr;
-  double sleep_msecs = 0;
   PGBUF_VICTIM_CANDIDATE_LIST *f_list;
   int error = NO_ERROR;
   int avail_time_msec = 0, time_rem_msec = 0;
+#if defined (SERVER_MODE)
+  double sleep_msecs = 0;
   struct timeval cur_time = { 0, 0 };
+#endif /* SERVER_MODE */
   int flush_per_interval;
   int cnt_writes;
   int dropped_pages;
@@ -6015,7 +6015,6 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
        * performance. */
       if (pgbuf_bcb_should_be_moved_to_bottom_lru (bufptr))
 	{
-	  assert (!pgbuf_is_exist_blocked_reader_writer (bufptr));
 	  pgbuf_move_bcb_to_bottom_lru (thread_p, bufptr);
 	}
       else if (pgbuf_is_exist_blocked_reader_writer (bufptr) == false)
@@ -6560,7 +6559,7 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * t
   thread_lock_entry (thrd_entry);
   PGBUF_BCB_UNLOCK (bufptr);
 
-  old_wait_msecs = wait_secs = logtb_find_current_wait_msecs (thread_p);
+  old_wait_msecs = wait_secs = pgbuf_find_current_wait_msecs (thread_p);
 
   assert (wait_secs == LK_INFINITE_WAIT || wait_secs == LK_ZERO_WAIT || wait_secs == LK_FORCE_ZERO_WAIT
 	  || wait_secs > 0);
@@ -9906,7 +9905,10 @@ copy_unflushed_lsa:
   else
     {
       /* if page was changed, the change was not logged. this is a rare case, but can happen. */
-      er_log_debug (ARG_FILE_LINE, "flushing page %d|%d to disk without logging.\n", VPID_AS_ARGS (&bufptr->vpid));
+      if (!pgbuf_is_temporary_volume (bufptr->vpid.volid))
+	{
+	  er_log_debug (ARG_FILE_LINE, "flushing page %d|%d to disk without logging.\n", VPID_AS_ARGS (&bufptr->vpid));
+	}
     }
 
 #if defined(ENABLE_SYSTEMTAP)
@@ -10970,7 +10972,7 @@ pgbuf_add_fixed_at (PGBUF_HOLDER * holder, const char *caller_file, int caller_l
   if (reset)
     {
       sprintf (holder->fixed_at, "%s:%d ", p, caller_line);
-      holder->fixed_at_size = strlen (holder->fixed_at);
+      holder->fixed_at_size = (int) strlen (holder->fixed_at);
     }
   else
     {
@@ -10978,7 +10980,7 @@ pgbuf_add_fixed_at (PGBUF_HOLDER * holder, const char *caller_file, int caller_l
       if (strstr (holder->fixed_at, buf) == NULL)
 	{
 	  strcat (holder->fixed_at, buf);
-	  holder->fixed_at_size += strlen (buf);
+	  holder->fixed_at_size += (int) strlen (buf);
 	  assert (holder->fixed_at_size < (64 * 1024));
 	}
     }
@@ -11115,7 +11117,6 @@ bool
 pgbuf_has_perm_pages_fixed (THREAD_ENTRY * thread_p)
 {
   int thrd_idx = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
-  int count = 0;
   PGBUF_HOLDER *holder = NULL;
 
   if (pgbuf_Pool.thrd_holder_info[thrd_idx].num_hold_cnt == 0)
@@ -11546,9 +11547,6 @@ STATIC_INLINE int
 pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * expected_vpid, bool * flushed)
 {
   int error = NO_ERROR;
-#if defined (SERVER_MODE)
-  int rv = 0;
-#endif /* SERVER_MODE */
   bool is_bcb_locked = true;
 
   assert (bufptr != NULL);
@@ -11815,7 +11813,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	  goto exit;
 	}
 
-      wait_msecs = logtb_find_current_wait_msecs (thread_p);
+      wait_msecs = pgbuf_find_current_wait_msecs (thread_p);
       if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
 	{
 	  /* attempts to unfix-refix old page may fail since CONDITIONAL latch will be enforced; just return page
@@ -14239,7 +14237,6 @@ pgbuf_rv_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 void
 pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
 {
-  PGBUF_BUFFER_HASH *hash_anchor = NULL;
   PGBUF_BCB *bcb = NULL;
   PAGE_TYPE ptype;
   int holder_status;
@@ -14474,7 +14471,6 @@ bool
 pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
 {
   PGBUF_BCB *bcb_flushed = NULL;
-  THREAD_ENTRY *thrd_blocked = NULL;
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
   bool not_empty = false;
   /* invalidation flag for direct victim assignment: any flag invalidating victim candidates, except is flushing flag */
@@ -15916,4 +15912,30 @@ pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru)
 	}
     }
 #endif /* !NDEBUG */
+}
+
+// TODO: find a better place for this, but not log_impl.h
+/*
+ * pgbuf_find_current_wait_msecs - find waiting times for current transaction
+ *
+ * return : wait_msecs...
+ *
+ * Note: Find the waiting time for the current transaction.
+ */
+STATIC_INLINE int
+pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes;		/* Transaction descriptor */
+  int tran_index;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes != NULL)
+    {
+      return tdes->wait_msecs;
+    }
+  else
+    {
+      return 0;
+    }
 }

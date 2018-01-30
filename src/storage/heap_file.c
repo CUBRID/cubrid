@@ -62,7 +62,7 @@
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
-
+#include "thread.h"
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
@@ -733,8 +733,6 @@ static int heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * c
 					  ATTR_ID * values_id);
 static int heap_get_class_subclasses (THREAD_ENTRY * thread_p, const OID * class_oid, int *count, OID ** subclasses);
 
-static void heap_stats_dump_bestspace_information (FILE * out_fp);
-static int heap_stats_print_hash_entry (FILE * outfp, const void *key, void *ent, void *ignore);
 static unsigned int heap_hash_vpid (const void *key_vpid, unsigned int htsize);
 static int heap_compare_vpid (const void *key_vpid1, const void *key_vpid2);
 static unsigned int heap_hash_hfid (const void *key_hfid, unsigned int htsize);
@@ -921,47 +919,6 @@ heap_compare_hfid (const void *key_hfid1, const void *key_hfid2)
   const HFID *hfid2 = (HFID *) key_hfid2;
 
   return HFID_EQ (hfid1, hfid2);
-}
-
-/*
- * heap_stats_dump_bestspace_information () -
- *   return:
- *
- *     out_fp(in/out):
- */
-static void
-heap_stats_dump_bestspace_information (FILE * out_fp)
-{
-  int rc;
-
-  rc = pthread_mutex_lock (&heap_Bestspace->bestspace_mutex);
-
-  mht_dump (out_fp, heap_Bestspace->hfid_ht, false, heap_stats_print_hash_entry, NULL);
-  mht_dump (out_fp, heap_Bestspace->vpid_ht, false, heap_stats_print_hash_entry, NULL);
-
-  pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
-}
-
-/*
- * heap_stats_print_hash_entry()- Print the entry
- *                              Will be used by mht_dump() function
- *  return:
- *
- *   outfp(in):
- *   key(in):
- *   ent(in):
- *   ignore(in):
- */
-static int
-heap_stats_print_hash_entry (FILE * outfp, const void *key, void *ent, void *ignore)
-{
-  HEAP_STATS_ENTRY *entry = (HEAP_STATS_ENTRY *) ent;
-
-  fprintf (outfp, "HFID:Volid = %6d, Fileid = %6d, Header-pageid = %6d,VPID = %4d|%4d, freespace = %6d\n",
-	   entry->hfid.vfid.volid, entry->hfid.vfid.fileid, entry->hfid.hpgid, entry->best.vpid.volid,
-	   entry->best.vpid.pageid, entry->best.freespace);
-
-  return true;
 }
 
 /*
@@ -6619,7 +6576,6 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 			       const OID * class_oid, int cache_last_fix_page, bool is_queryscan, int is_indexscan,
 			       MVCC_SNAPSHOT * mvcc_snapshot)
 {
-  LOCK class_lock = NULL_LOCK;
   int ret = NO_ERROR;
 
   if (class_oid != NULL)
@@ -7321,7 +7277,9 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, b
   int try_count = 0;
   int try_max = 1;
   int ret;
+#if defined (SA_MODE)
   bool is_system_class = false;
+#endif /* SA_MODE */
 
   assert (context->oid_p != NULL);
 
@@ -7641,7 +7599,6 @@ heap_get_mvcc_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, MVCC_
 SCAN_CODE
 heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 {
-  SCAN_CODE scan = S_SUCCESS;
   HEAP_SCANCACHE *scan_cache_p = context->scan_cache;
 
   /* We have everything set up to get record data. */
@@ -7718,7 +7675,6 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
   RECDES forward_recdes;
   SCAN_CODE scan = S_ERROR;
   int get_rec_info = cache_recordinfo != NULL;
-  bool check_snapshot = false;
   bool is_null_recdata;
   PGBUF_WATCHER curr_page_watcher;
   PGBUF_WATCHER old_page_watcher;
@@ -10183,10 +10139,8 @@ static int
 heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, HEAP_CACHE_ATTRINFO * attr_info)
 {
   char *disk_data = NULL;
-  int disk_bound = false;
   bool found = true;		/* Does attribute(att) exist in this disk representation? */
   int i;
-  int error = NO_ERROR;
 
   /* Initialize disk value information */
   disk_data = NULL;
@@ -10737,7 +10691,6 @@ cleanup:
 static int
 heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * cls_oid, ATTR_ID * type_id, ATTR_ID * values_id)
 {
-  int idx_cache = -1;
   RECDES recdes;
   HEAP_SCANCACHE scan;
   HEAP_CACHE_ATTRINFO attr_info;
@@ -10849,7 +10802,6 @@ heap_get_partitions_from_subclasses (THREAD_ENTRY * thread_p, const OID * subcla
 {
   int part_idx = 0, i;
   int error = NO_ERROR;
-  OR_PARTITION *part_info = NULL;
   HFID part_hfid;
   REPR_ID repr_id;
   int has_partition_info = 0;
@@ -12811,8 +12763,6 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
        *  Return a pointer to the attributes DB_VALUE.
        */
 
-      PR_TYPE *pr_type = NULL;
-
       /* Find the matching attribute identified by the attribute ID */
       if (fi_res)
 	{
@@ -12996,7 +12946,6 @@ int
 heap_get_index_with_name (THREAD_ENTRY * thread_p, OID * class_oid, const char *index_name, BTID * btid)
 {
   OR_CLASSREP *classrep = NULL;
-  OR_INDEX *indexp = NULL;
   int idx_in_cache, i;
   int error = NO_ERROR;
 
@@ -13685,7 +13634,6 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
   RECDES hdr_recdes;		/* Header record descriptor */
   DISK_ISVALID valid_pg = DISK_VALID;
   DISK_ISVALID valid = DISK_VALID;
-  DISK_ISVALID tmp_valid_pg = DISK_VALID;
   INT32 npages = 0;
   int i;
   HEAP_CHKALL_RELOCOIDS chk;
@@ -13715,6 +13663,8 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
     }
   if (file_numpages != -1 && file_numpages != npages)
     {
+      DISK_ISVALID tmp_valid_pg = DISK_VALID;
+
       assert (false);
       if (chk_objs != NULL)
 	{
@@ -16665,7 +16615,6 @@ heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid)
   VPID vpid;
   VPID next_vpid;
   LOG_DATA_ADDR addr;
-  int lock_timeout = 2000;
   HFID hfid;
   PGBUF_WATCHER pg_watcher;
   PGBUF_WATCHER old_pg_watcher;
@@ -16921,7 +16870,6 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 			    OID * oid, const ATTR_ID att_id)
 {
   int i = 0, error = NO_ERROR;
-  int updated_flag = 0;
   HEAP_ATTRVALUE *value = NULL;
   int force_count = 0, updated_n_attrs_id = 0;
   ATTR_ID atts_id[1] = { 0 };
@@ -18130,7 +18078,7 @@ heap_bestspace_to_string (char *buf, int buf_size, const HEAP_BESTSPACE * hb)
 static int
 fill_string_to_buffer (char **start, char *end, const char *str)
 {
-  int len = strlen (str);
+  int len = (int) strlen (str);
 
   if (*start + len >= end)
     {
@@ -18350,7 +18298,6 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
 {
   SPAGE_SLOT *slot_p = NULL;
   SCAN_CODE scan = S_SUCCESS;
-  OID *peek_oid = NULL;
   OID forward_oid;
   MVCC_REC_HEADER mvcc_header;
 
@@ -22221,7 +22168,6 @@ heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, R
 {
   int scancode;
   INT16 old_record_type;
-  int error_code = NO_ERROR;
 
   /* check input */
   assert (page_p != NULL);

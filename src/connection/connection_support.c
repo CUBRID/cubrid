@@ -129,6 +129,7 @@ CSS_CHECK_SERVER_ALIVE_FN css_check_server_alive_fn = css_default_check_server_a
 static char *css_Vector_buffer = NULL;
 static char *css_Vector_buffer_piece[CSS_NUM_INTERNAL_VECTOR_BUF] = { 0 };
 static int css_Vector_buffer_occupied_flag[CSS_NUM_INTERNAL_VECTOR_BUF] = { 0 };
+
 static pthread_mutex_t css_Vector_buffer_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t css_Vector_buffer_cond = PTHREAD_COND_INITIALIZER;
 #else /* SERVER_MODE */
@@ -2482,9 +2483,9 @@ css_user_access_status_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE *
   const int default_num_tuple = 10;
   OID *class_oid;
   SHOWSTMT_ARRAY_CONTEXT *ctx;
-  LAST_ACCESS_STATUS *access_status = NULL;
   LAST_ACCESS_STATUS **access_status_array = NULL;
 #if defined(SERVER_MODE)
+  LAST_ACCESS_STATUS *access_status = NULL;
   DB_VALUE *vals;
   DB_DATETIME access_time;
 #endif

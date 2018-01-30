@@ -3803,7 +3803,6 @@ xts_save_odku_info (const ODKU_INFO * odku_info)
   int offset, return_offset;
   int size;
   char *ptr = NULL, *buf = NULL;
-  int error = NO_ERROR;
 
   if (odku_info == NULL)
     {
@@ -6170,7 +6169,6 @@ static int
 xts_sizeof_pred (const PRED * pred)
 {
   int size = 0;
-  int tmp_size = 0;
   PRED_EXPR *rhs;
 
   size += (PTR_SIZE		/* lhs */

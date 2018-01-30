@@ -67,6 +67,9 @@
 #if defined (SA_MODE)
 #include "connection_support.h"
 #endif /* defined (SA_MODE) */
+#include "db_value_printer.hpp"
+#include "mem_block.hpp"
+#include "string_buffer.hpp"
 
 #if !defined(SERVER_MODE)
 
@@ -978,6 +981,11 @@ void
 log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath, const char *prefix_logname,
 		const char *dwbpath, const char *prefix_dwbname, int ismedia_crash, BO_RESTART_ARG * r_args)
 {
+  er_log_debug (ARG_FILE_LINE, "LOG INITIALIZE\n" "\tdb_fullname = %s \n" "\tlogpath = %s \n"
+		"\tprefix_logname = %s \n" "\tismedia_crash = %d \n",
+		db_fullname != NULL ? db_fullname : "(UNKNOWN)",
+		logpath != NULL ? logpath : "(UNKNOWN)",
+		prefix_logname != NULL ? prefix_logname : "(UNKNOWN)", ismedia_crash);
   (void) log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, dwbpath, prefix_dwbname,
 				  ismedia_crash, r_args, false);
 
@@ -1300,7 +1308,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     {
       if (init_emergency == true && log_Gl.hdr.is_shutdown == false)
 	{
-	  if (LSA_GT (&log_Gl.hdr.append_lsa, &log_Gl.hdr.eof_lsa))
+	  if (!LSA_ISNULL (&log_Gl.hdr.eof_lsa) && LSA_GT (&log_Gl.hdr.append_lsa, &log_Gl.hdr.eof_lsa))
 	    {
 	      /* We cannot believe in append_lsa for this case. It points to an unflushed log page. Since we are
 	       * going to skip recovery for emergency startup, just replace it with eof_lsa. */
@@ -1383,7 +1391,6 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
   if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
-      int vdes = NULL_VOLDES;
       BACKGROUND_ARCHIVING_INFO *bg_arv_info;
 
       bg_arv_info = &log_Gl.bg_archive_info;
@@ -2028,11 +2035,11 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  if (VACUUM_IS_THREAD_VACUUM (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p) && vacuum_worker_state_is_topop (thread_p))
     {
       /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
        * instead of system tdes. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      tdes = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -2127,7 +2134,6 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
-  int i = 0;
   int error_code = NO_ERROR;
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
@@ -2154,11 +2160,11 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p) && vacuum_worker_state_is_topop (thread_p))
     {
       /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
        * instead of system tdes. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      tdes = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -2202,6 +2208,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
   node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, num_crumbs, crumbs, 0, NULL);
   if (node == NULL)
     {
+      assert (false);
       return;
     }
 
@@ -2291,11 +2298,11 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p) && vacuum_worker_state_is_topop (thread_p))
     {
       /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
        * instead of system tdes. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      tdes = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -2700,9 +2707,9 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
     {
       /* Vacuum worker */
       /* Must be under a system operation, otherwise postpone records will not work. */
-      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p));
+      assert (vacuum_worker_state_is_topop (thread_p));
       /* Use reserved transaction descriptor instead of system tdes. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      tdes = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -2833,9 +2840,9 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
     {
       /* Vacuum worker */
       /* Must be at the end of a system operation or during recovery. */
-      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p) || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
+      assert (vacuum_worker_state_is_topop (thread_p) || vacuum_worker_state_is_recovery (thread_p));
       /* Use reserved transaction descriptor instead of system tdes. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      tdes = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -3063,9 +3070,9 @@ log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec_type, LOG_D
     {
       /* Vacuum worker */
       /* Must be under a system operation, otherwise postpone records will not work. */
-      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p));
+      assert (vacuum_worker_state_is_topop (thread_p));
       /* Use reserved transaction descriptor instead of system tdes. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      tdes = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -3335,7 +3342,7 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
       return NULL;
     }
 
-  length = strlen (savept_name) + 1;
+  length = (int) strlen (savept_name) + 1;
 
   node =
     prior_lsa_alloc_and_copy_data (thread_p, LOG_SAVEPOINT, RV_NOT_DEFINED, NULL, length, (char *) savept_name, 0,
@@ -3541,21 +3548,21 @@ log_sysop_start (THREAD_ENTRY * thread_p)
     {
       /* System operations must be isolated and allow undo. It is impossible to use system tdes for more than one
        * thread, so vacuum workers use a reserved tdes instead. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      tdes = vacuum_get_worker_tdes (thread_p);
 
       /* Vacuum worker state should be either VACUUM_WORKER_STATE_EXECUTE or VACUUM_WORKER_STATE_TOPOP (or
        * VACUUM_WORKER_STATE_RECOVERY during database recovery phase). */
-      assert (VACUUM_WORKER_STATE_IS_EXECUTE (thread_p) || VACUUM_WORKER_STATE_IS_TOPOP (thread_p)
-	      || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
+      assert (vacuum_worker_state_is_execute (thread_p) || vacuum_worker_state_is_topop (thread_p)
+	      || vacuum_worker_state_is_recovery (thread_p));
 
       vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
 		     "Start system operation. Current worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
 		     "tdes->tail_lsa=(%lld, %d). Worker state=%d.", tdes->trid, tdes->topops.last,
 		     (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
-		     VACUUM_GET_WORKER_STATE (thread_p));
+		     vacuum_get_worker_state (thread_p));
 
       /* Change worker state to VACUUM_WORKER_STATE_TOPOP */
-      VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_TOPOP);
+      vacuum_set_worker_state (thread_p, VACUUM_WORKER_STATE_TOPOP);
 
       if (tdes->topops.last < 0)
 	{
@@ -3607,7 +3614,7 @@ log_sysop_start (THREAD_ENTRY * thread_p)
 	      /* Restore state */
 	      if (tdes->topops.last < 0)
 		{
-		  VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_EXECUTE);
+		  vacuum_set_worker_state (thread_p, VACUUM_WORKER_STATE_EXECUTE);
 		}
 	      /* Else */
 	      /* Leave state as VACUUM_WORKER_STATE_TOPOP */
@@ -3757,12 +3764,12 @@ log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  if (LOG_ISRESTARTED ())
 	    {
 	      /* Change the worker state back to VACUUM_WORKER_STATE_EXECUTE. */
-	      VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_EXECUTE);
+	      vacuum_set_worker_state (thread_p, VACUUM_WORKER_STATE_EXECUTE);
 	    }
 	  else
 	    {
 	      /* Change the worker state back to VACUUM_WORKER_STATE_RECOVERY. */
-	      VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_RECOVERY);
+	      vacuum_set_worker_state (thread_p, VACUUM_WORKER_STATE_RECOVERY);
 	    }
 
 	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS,
@@ -3773,7 +3780,7 @@ log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 			 (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
 			 (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset,
 			 (long long int) tdes->tail_topresult_lsa.pageid, (int) tdes->tail_topresult_lsa.offset,
-			 VACUUM_GET_WORKER_STATE (thread_p));
+			 vacuum_get_worker_state (thread_p));
 
 	  /* Vacuum workers/master don't have a parent transaction that is committed. Different system operations that
 	   * are not nested shouldn't be linked between them. Otherwise, undo recovery, in the attempt to find log
@@ -3836,8 +3843,6 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
     }
   else
     {
-      LOG_PRIOR_NODE *node = NULL;
-
       /* we are here because either system operation is not empty, or this is the end of a logical system operation.
        * we don't actually allow empty logical system operation because it might hide a logic flaw. however, there are
        * unusual cases when a logical operation does not really require logging (see RVPGBUF_FLUSH_PAGE). if you create
@@ -4042,7 +4047,6 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
     }
   else
     {
-      LOG_PRIOR_NODE *node = NULL;
       TRAN_STATE save_state;
 
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
@@ -4161,8 +4165,8 @@ log_sysop_get_tran_index_and_tdes (THREAD_ENTRY * thread_p, int *tran_index_out,
 
   if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
-      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p) || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
-      *tdes_out = VACUUM_GET_WORKER_TDES (thread_p);
+      assert (vacuum_worker_state_is_topop (thread_p) || vacuum_worker_state_is_recovery (thread_p));
+      *tdes_out = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -4191,8 +4195,8 @@ log_check_system_op_is_started (THREAD_ENTRY * thread_p)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
-      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p) || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      assert (vacuum_worker_state_is_topop (thread_p) || vacuum_worker_state_is_recovery (thread_p));
+      tdes = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -4310,7 +4314,7 @@ log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const
       return false;
     }
 
-  if (VACUUM_IS_SKIP_UNDO_ALLOWED (thread_p))
+  if (vacuum_is_skip_undo_allowed (thread_p))
     {
       /* If vacuum worker has not started a system operation, it can skip using undo logging. */
       return true;
@@ -5048,7 +5052,7 @@ xlog_add_lob_locator (THREAD_ENTRY * thread_p, const char *locator, LOB_LOCATOR_
   LOB_LOCATOR_ENTRY *entry;
   LOB_SAVEPOINT_ENTRY *savept;
   char *key;
-  int key_len;
+  size_t key_len;
 
   assert (log_is_valid_locator (locator));
 
@@ -5233,6 +5237,30 @@ log_free_lob_locator (LOB_LOCATOR_ENTRY * entry)
   free_and_init (entry);
 }
 
+#if 0
+static const char *
+lob_state_to_string (LOB_LOCATOR_STATE state)
+{
+  switch (state)
+    {
+    case LOB_TRANSIENT_CREATED:
+      return "LOB_TRANSIENT_CREATED";
+
+    case LOB_TRANSIENT_DELETED:
+      return "LOB_TRANSIENT_DELETED";
+
+    case LOB_PERMANENT_CREATED:
+      return "LOB_PERMANENT_CREATED";
+
+    case LOB_PERMANENT_DELETED:
+      return "LOB_PERMANENT_DELETED";
+
+    default:
+      return "LOB_UNKNOWN";
+    }
+}
+#endif
+
 /*
  * log_clear_lob_locator_list -
  *
@@ -5263,17 +5291,8 @@ log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool at_co
     {
 #if 0
       er_log_debug (ARG_FILE_LINE, "   locator=%s, state=%s\n, savept_lsa=(%d,%d)", entry->key,
-		    (entry->top->state ==
-		     LOB_TRANSIENT_CREATED) ? "LOB_TRANSIENT_CREATED" : ((entry->top->state ==
-									  LOB_TRANSIENT_DELETED) ?
-									 "LOB_TRANSIENT_DELETED"
-									 : ((entry->top->state ==
-									     LOB_PERMANENT_CREATED) ?
-									    "LOB_PERMANENT_CREATED" : (entry->
-												       top->state ==
-												       LOB_PERMANENT_DELETED)
-									    ? "LOB_PERMANENT_DELETED" : "LOB_UNKNOWN")),
-		    entry->top->savept_lsa.pageid, entry->top->savept_lsa.offset);
+		    lob_state_to_string (entry->top->state), entry->top->savept_lsa.pageid,
+		    entry->top->savept_lsa.offset);
 #endif
       /* setup next link before destroy */
       next = RB_NEXT (lob_rb_root, &tdes->lob_locator_root, entry);
@@ -6397,27 +6416,19 @@ log_hexa_dump (FILE * out_fp, int length, void *data)
 static void
 log_repl_data_dump (FILE * out_fp, int length, void *data)
 {
-#if 0
-  /* fixme */
-  char *ptr;
+  char *ptr = (char *) data;
   char *class_name;
   DB_VALUE value;
-  PARSER_VARCHAR *buf;
-  PARSER_CONTEXT *parser;
 
-  ptr = (char *) data;
   ptr = or_unpack_string_nocopy (ptr, &class_name);
   ptr = or_unpack_mem_value (ptr, &value);
 
-  parser = parser_create_parser ();
-  if (parser != NULL)
-    {
-      buf = describe_value (parser, NULL, &value);
-      fprintf (out_fp, "C[%s] K[%s]\n", class_name, pt_get_varchar_bytes (buf));
-      parser_free_parser (parser);
-    }
+  string_buffer sb;
+  db_value_printer printer (sb);
+
+  printer.describe_value (&value);
+  fprintf (out_fp, "C[%s] K[%s]\n", class_name, sb.get_buffer ());
   pr_clear_value (&value);
-#endif
 }
 
 static void
@@ -7370,7 +7381,6 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
   LOG_CS_ENTER (thread_p);
 
   xlogtb_dump_trantable (thread_p, out_fp);
-  logpb_dump (thread_p, out_fp);
   logpb_flush_pages_direct (thread_p);
   logpb_flush_header (thread_p);
 
@@ -8736,7 +8746,6 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 {
   LOG_LSA ref_lsa;		/* The address of a postpone record */
   LOG_REC_REDO redo;		/* A redo log record */
-  int rcv_length = 0;
   char *rcv_data = NULL;
   char *area = NULL;
 
@@ -9373,7 +9382,6 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
 				  void **ptr)
 {
   int error = NO_ERROR;
-  int idx_val = 0;
   const char *path;
   int fd = -1;
   ACTIVE_LOG_HEADER_SCAN_CTX *ctx = NULL;
@@ -9732,7 +9740,7 @@ int
 log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt,
 				   void **ptr)
 {
-  int idx = 0, error = NO_ERROR;
+  int error = NO_ERROR;
   const char *path;
   int fd;
   char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];

@@ -40,6 +40,7 @@
 #include "object_print.h"
 #include "stream_to_xasl.h"
 #include "query_opfunc.h"
+#include "thread.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -260,7 +261,7 @@ static int qfile_compare_equal_db_value_array (const void *key1, const void *key
 static int qfile_assign_list_cache (void);
 static QFILE_LIST_CACHE_ENTRY *qfile_allocate_list_cache_entry (int req_size);
 static int qfile_free_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args);
-static int qfile_print_list_cache_entry (FILE * fp, const void *key, void *data, void *args);
+static int qfile_print_list_cache_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key, void *data, void *args);
 static void qfile_add_uncommitted_list_cache_entry (int tran_index, QFILE_LIST_CACHE_ENTRY * lent);
 static void qfile_delete_uncommitted_list_cache_entry (int tran_index, QFILE_LIST_CACHE_ENTRY * lent);
 static int qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args);
@@ -761,9 +762,10 @@ qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p)
 	{
 	  if (type2 != DB_TYPE_NULL && (list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i]))
 	    {
-	      if (type1 == type2 && pr_is_string_type (type1) && pr_is_variable_type (type1))
+	      if (type1 == type2
+		  && ((pr_is_string_type (type1) && pr_is_variable_type (type1)) || (type1 == DB_TYPE_JSON)))
 		{
-		  /* OK for variable string types with different precision */
+		  /* OK for variable string types with different precision or json types */
 		}
 	      else
 		{
@@ -893,7 +895,7 @@ qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_TUPLE tuple)
 	  or_init (&buf, tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
 	  (*(pr_type_p->readval)) (&buf, &dbval, type_list_p->domp[i], -1, true, NULL, 0);
 
-	  (*(pr_type_p->fptrfunc)) (stdout, &dbval);
+	  (*(pr_type_p->fptrfunc)) (NULL, stdout, &dbval);
 	  if (pr_is_set_type (pr_type_p->id))
 	    {
 	      pr_clear_value (&dbval);
@@ -1649,7 +1651,7 @@ qfile_generate_tuple_into_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
 {
   QFILE_TUPLE_DESCRIPTOR *tuple_descr_p;
   PAGE_PTR cur_page_p;
-  int tuple_length, offset;
+  int tuple_length;
   char *page_p;
 
   if (list_id_p == NULL)
@@ -1701,7 +1703,7 @@ int
 qfile_fast_intint_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, int v1, int v2)
 {
   PAGE_PTR cur_page_p;
-  int tuple_length, tuple_value_length, tuple_value_size, offset;
+  int tuple_length, tuple_value_length, tuple_value_size;
   char *page_p, *tuple_p;
 
   if (list_id_p == NULL)
@@ -1762,7 +1764,7 @@ qfile_fast_intval_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 {
   PAGE_PTR cur_page_p;
   int tuple_length, tuple_int_value_size, tuple_int_value_length;
-  int tuple_value_size, tuple_value_length, offset;
+  int tuple_value_size, tuple_value_length;
   char *page_p, *tuple_p;
 
   if (list_id_p == NULL)
@@ -1849,7 +1851,7 @@ qfile_fast_val_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p
 {
   PAGE_PTR cur_page_p;
   int tuple_length;
-  int tuple_value_size, tuple_value_length, offset;
+  int tuple_value_size, tuple_value_length;
   char *page_p, *tuple_p;
 
   if (list_id_p == NULL)
@@ -5193,7 +5195,7 @@ qfile_free_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
  *   args(in)   :
  */
 static int
-qfile_print_list_cache_entry (FILE * fp, const void *key, void *data, void *args)
+qfile_print_list_cache_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *key, void *data, void *args)
 {
   QFILE_LIST_CACHE_ENTRY *ent = (QFILE_LIST_CACHE_ENTRY *) data;
   int i;
@@ -5217,7 +5219,7 @@ qfile_print_list_cache_entry (FILE * fp, const void *key, void *data, void *args
   for (i = 0; i < ent->param_values.size; i++)
     {
       fprintf (fp, " ");
-      help_fprint_value (fp, &ent->param_values.vals[i]);
+      help_fprint_value (thread_p, fp, &ent->param_values.vals[i]);
     }
 
   fprintf (fp, " ]\n");
@@ -5314,7 +5316,7 @@ qfile_dump_list_cache_internal (THREAD_ENTRY * thread_p, FILE * fp)
       if (mht_count (qfile_List_cache.list_hts[i]) > 0)
 	{
 	  fprintf (fp, "\nlist_hts[%d] %p\n", i, (void *) qfile_List_cache.list_hts[i]);
-	  (void) mht_dump (fp, qfile_List_cache.list_hts[i], true, qfile_print_list_cache_entry, NULL);
+	  (void) mht_dump (thread_p, fp, qfile_List_cache.list_hts[i], true, qfile_print_list_cache_entry, NULL);
 	}
     }
 
@@ -5494,7 +5496,7 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
 
 	      if (lent->param_values.size > 0)
 		{
-		  s = pr_valstring (&lent->param_values.vals[0]);
+		  s = pr_valstring (thread_p, &lent->param_values.vals[0]);
 		}
 
 	      er_log_debug (ARG_FILE_LINE,
@@ -5502,7 +5504,7 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
 			    lent->param_values.size, s ? s : "(null)");
 	      if (s)
 		{
-		  free_and_init (s);
+		  db_private_free (thread_p, s);
 		}
 	    }
 	}
@@ -6115,12 +6117,12 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
     {
       char *s;
 
-      s = ((lent->param_values.size > 0) ? pr_valstring (&lent->param_values.vals[0]) : NULL);
+      s = ((lent->param_values.size > 0) ? pr_valstring (thread_p, &lent->param_values.vals[0]) : NULL);
       er_log_debug (ARG_FILE_LINE, "ls_update_list_cache_ent: mht_rem failed for param_values { %d %s ...}\n",
 		    lent->param_values.size, s ? s : "(null)");
       if (s)
 	{
-	  free_and_init (s);
+	  db_private_free (thread_p, s);
 	}
       (void) qfile_delete_list_cache_entry (thread_p, lent, &tran_index);
       lent = NULL;

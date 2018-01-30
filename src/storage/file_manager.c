@@ -51,12 +51,12 @@
 #include "heap_file.h"
 #include "bit.h"
 #include "util_func.h"
-
+#include "vacuum.h"
 #include "critical_section.h"
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */
-
+#include "thread.h"
 #if !defined (SERVER_MODE)
 #include "transaction_cl.h"
 #endif
@@ -1643,7 +1643,6 @@ STATIC_INLINE void
 file_extdata_merge_ordered (const FILE_EXTENSIBLE_DATA * extdata_src, FILE_EXTENSIBLE_DATA * extdata_dest,
 			    int (*compare_func) (const void *, const void *))
 {
-  int n_merged = 0;
   char *dest_ptr;
   char *dest_end_ptr;
   const char *src_ptr;
@@ -5011,8 +5010,6 @@ file_perm_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
   if (file_extdata_is_empty (extdata_part_ftab))
     {
       /* we know we have free pages, so we should have partial sectors in other table pages */
-      PAGE_PTR page_ftab_free = NULL;
-
       error_code = file_table_move_partial_sectors_to_header (thread_p, page_fhead, alloc_type, vpid_alloc_out);
       if (error_code != NO_ERROR)
 	{
@@ -5803,7 +5800,6 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
   VSID vsid_dealloc;
   bool is_empty = false;
   bool was_full = false;
-  bool is_ftab = (alloc_type == FILE_ALLOC_TABLE_PAGE);
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
   int offset_to_dealloc_bit;
   PAGE_PTR page_dealloc = NULL;
@@ -6109,7 +6105,6 @@ file_rv_dealloc_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool compensat
   int offset = 0;
   FILE_HEADER *fhead = NULL;
   bool is_sysop_started = false;
-  PAGE_PTR page_dealloc = NULL;
   int error_code = NO_ERROR;
 
   /* how it works:
@@ -8049,7 +8044,6 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
   FILE_EXTENSIBLE_DATA *extdata_part_ftab = NULL;
   PAGE_PTR page_ftab = NULL;
   FILE_PARTIAL_SECTOR *partsect = NULL;
-  PAGE_PTR page_extdata = NULL;
   bool was_empty = false;
   bool is_full = false;
   /* we don't have rollback, so don't interrupt */
@@ -9579,7 +9573,6 @@ file_tracker_apply_to_file (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LA
   bool for_write = (mode == PGBUF_LATCH_WRITE);
   bool found = false;
   int pos = -1;
-  FILE_TRACK_ITEM *item_in_page = NULL;
   int error_code = NO_ERROR;
 
   assert (func != NULL);
@@ -10034,9 +10027,6 @@ file_tracker_reclaim_marked_deleted (THREAD_ENTRY * thread_p)
   VPID vpid_next;
   VFID vfid;
   int idx_item;
-
-  VPID vpid_merged = VPID_INITIALIZER;
-
   int error_code = NO_ERROR;
 
   assert (!VPID_ISNULL (&file_Tracker_vpid));
@@ -10657,14 +10647,6 @@ file_tracker_item_dump_heap_capacity (THREAD_ENTRY * thread_p, PAGE_PTR page_of_
   FILE_TRACK_ITEM *item;
   HFID hfid;
   FILE *fp = (FILE *) args;
-  INT64 num_recs = 0;
-  INT64 num_recs_relocated = 0;
-  INT64 num_recs_inovf = 0;
-  INT64 num_pages = 0;
-  int avg_freespace = 0;
-  int avg_freespace_nolast = 0;
-  int avg_reclength = 0;
-  int avg_overhead = 0;
   int error_code = NO_ERROR;
 
   item = (FILE_TRACK_ITEM *) file_extdata_at (extdata, index_item);

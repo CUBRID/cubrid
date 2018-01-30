@@ -33,17 +33,16 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "config.h"
+#include "disk_manager.h"
+#include "error_manager.h"
+#include "file_io.h"
+#include "log_comm.h"
+#include "log_impl.h"
+#include "recovery.h"
+#include "storage_common.h"
+#include "thread_compat.hpp"
 
 #include <time.h>
-
-#include "log_impl.h"
-#include "error_manager.h"
-#include "storage_common.h"
-#include "log_comm.h"
-#include "recovery.h"
-#include "disk_manager.h"
-#include "file_io.h"
-#include "thread.h"
 
 #define LOG_TOPOP_STACK_INIT_SIZE 1024
 

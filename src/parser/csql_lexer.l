@@ -34,6 +34,10 @@
 #include "system_parameter.h"
 #include "message_catalog.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define CSQL_MAXNAME	256
 
 static int parser_yyinput_single_line (char *buff, int max_size);
@@ -217,6 +221,11 @@ int yybuffer_pos;
 										return COST; 
 									}
 [cC][oO][uU][nN][tT]							{ begin_token(yytext);   return COUNT; }
+[jJ][sS][oO][nN][_][oO][bB][jJ][eE][cC][tT]                             { begin_token(yytext);   return FUN_JSON_OBJECT;}
+[jJ][sS][oO][nN][_][aA][rR][rR][aA][yY]                                 { begin_token(yytext);   return FUN_JSON_ARRAY;}
+[jJ][sS][oO][nN][_][iI][nN][sS][eE][rR][tT]                             { begin_token(yytext);   return FUN_JSON_INSERT;}
+[jJ][sS][oO][nN][_][rR][eE][mM][oO][vV][eE]                             { begin_token(yytext);   return FUN_JSON_REMOVE;}
+[jJ][sS][oO][nN][_][mM][eE][rR][gG][eE]                                 { begin_token(yytext);   return FUN_JSON_MERGE;}
 [cC][rR][eE][aA][tT][eE]						{ begin_token(yytext);   return CREATE; }
 [cC][rR][oO][sS][sS]							{ begin_token(yytext);   return CROSS; }
 [cC][rR][iI][tT][iI][cC][aA][lL]					{ begin_token(yytext);
@@ -429,7 +438,6 @@ int yybuffer_pos;
 										csql_yylval.cptr = pt_makename(yytext);
 										return JOB; }
 [jJ][sS][oO][nN]							{ begin_token(yytext);   
-										csql_yylval.cptr = pt_makename(yytext);
 										return JSON; }
 [kK][eE][yY]								{ begin_token(yytext);   return KEY; }
 [kK][eE][yY][sS]							{ begin_token(yytext);   

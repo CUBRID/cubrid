@@ -27,11 +27,11 @@
 
 #ident "$Id$"
 
-#include <stdio.h>
-
-#include "log_comm.h"
 #include "error_manager.h"
-#include "thread.h"
+#include "log_comm.h"
+#include "thread_compat.hpp"
+
+#include <stdio.h>
 
 typedef enum
 {
@@ -46,7 +46,7 @@ typedef enum
   RVDK_CHANGE_CREATION = 3,
   RVDK_RESET_BOOT_HFID = 4,
   RVDK_LINK_PERM_VOLEXT = 5,
-  RVDK_INIT_PAGES = 6,
+  RVDK_EXPAND_VOLUME = 6,
   RVDK_RESERVE_SECTORS = 7,
   RVDK_UNRESERVE_SECTORS = 8,
   RVDK_VOLHEAD_EXPAND = 9,

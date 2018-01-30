@@ -116,6 +116,10 @@ extern int yybuffer_pos;
 #include "memory_alloc.h"
 #include "db_elo.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 /* Bit mask to be used to check constraints of a column.
  * COLUMN_CONSTRAINT_SHARED_DEFAULT_AI is special-purpose mask
  * to identify duplication of SHARED, DEFAULT and AUTO_INCREMENT.
@@ -303,7 +307,14 @@ static FUNCTION_MAP functions[] = {
   {"utc_timestamp", PT_UTC_TIMESTAMP},
   {"crc32", PT_CRC32},
   {"schema_def", PT_SCHEMA_DEF},
-  {"conv_tz", PT_CONV_TZ}
+  {"conv_tz", PT_CONV_TZ},
+  {"json_contains", PT_JSON_CONTAINS},
+  {"json_type", PT_JSON_TYPE},
+  {"json_extract", PT_JSON_EXTRACT},
+  {"json_valid", PT_JSON_VALID},
+  {"json_length", PT_JSON_LENGTH},
+  {"json_depth", PT_JSON_DEPTH},
+  {"json_search", PT_JSON_SEARCH},
 };
 
 
@@ -521,6 +532,8 @@ static PT_NODE * pt_create_char_string_literal (PARSER_CONTEXT *parser,
 						const INTL_CODESET codeset);
 static PT_NODE * pt_create_date_value (PARSER_CONTEXT *parser,
 				       const PT_TYPE_ENUM type,
+				       const char *str);
+static PT_NODE * pt_create_json_value (PARSER_CONTEXT *parser,
 				       const char *str);
 static void pt_value_set_charset_coll (PARSER_CONTEXT *parser,
 				       PT_NODE *node,
@@ -914,6 +927,7 @@ int g_original_buffer_len;
 %type <node> unsigned_real
 %type <node> monetary_literal
 %type <node> date_or_time_literal
+%type <node> json_literal
 %type <node> partition_clause
 %type <node> partition_def_list
 %type <node> partition_def
@@ -1015,6 +1029,7 @@ int g_original_buffer_len;
 %type <cptr> uint_text
 %type <cptr> of_integer_real_literal
 %type <cptr> integer_text
+%type <cptr> json_schema
 /*}}}*/
 
 /* define rule type (container) */
@@ -1186,6 +1201,11 @@ int g_original_buffer_len;
 %token FROM
 %token FULL
 %token FUNCTION
+%token FUN_JSON_ARRAY
+%token FUN_JSON_OBJECT
+%token FUN_JSON_MERGE
+%token FUN_JSON_INSERT
+%token FUN_JSON_REMOVE
 %token GENERAL
 %token GET
 %token GLOBAL
@@ -1420,6 +1440,7 @@ int g_original_buffer_len;
 %token YEAR_
 %token YEAR_MONTH
 %token ZONE
+%token JSON
 
 %token YEN_SIGN
 %token DOLLAR_SIGN
@@ -1512,7 +1533,6 @@ int g_original_buffer_len;
 %token <cptr> KILL
 %token <cptr> JAVA
 %token <cptr> JOB
-%token <cptr> JSON
 %token <cptr> LAG
 %token <cptr> LAST_VALUE
 %token <cptr> LCASE
@@ -14611,7 +14631,7 @@ pseudo_column
 
 
 reserved_func
-	: COUNT '(' '*' ')'
+        : COUNT '(' '*' ')'
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
@@ -15944,6 +15964,101 @@ reserved_func
 			$$ = parser_make_expression (this_parser, PT_INDEX_PREFIX, $4, $6, $8);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
+		DBG_PRINT}}
+        | FUN_JSON_OBJECT '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_OBJECT, args_list);
+		    if (len < 1 || len % 2 != 0)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_object");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+        | FUN_JSON_ARRAY '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_ARRAY, args_list);
+		    if (len < 1)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_array");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+        | FUN_JSON_MERGE '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_MERGE, args_list);
+		    if (len < 2)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_merge");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+        | FUN_JSON_INSERT '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_INSERT, args_list);
+		    if (len < 3 || len % 2 != 1)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_insert");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+        | FUN_JSON_REMOVE '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_REMOVE, args_list);
+		    if (len < 2)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_remove");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	;
 
@@ -18676,6 +18791,21 @@ opt_varying
 		DBG_PRINT}}
 	;
 
+json_schema
+		: /* empty */
+			{{
+
+				$$ = 0;
+
+			DBG_PRINT}}
+		| '(' CHAR_STRING ')'
+			{{
+
+				$$ = $2;
+
+			DBG_PRINT}}
+		;
+
 primitive_type
 	: INTEGER opt_padding
 		{{
@@ -18829,9 +18959,31 @@ primitive_type
 			$$ = ctn;
 
 		DBG_PRINT}}
+	| JSON json_schema
+	    {{
+			const char * json_schema_str = $2;
+			container_2 ctn;
+			PT_TYPE_ENUM type = PT_TYPE_JSON;
+			PT_NODE * dt = parser_new_node (this_parser, PT_DATA_TYPE);
+
+			if (dt && json_schema_str)
+				{
+					dt->type_enum = type;
+					dt->info.data_type.json_schema = pt_append_bytes (this_parser,
+                                                                                          NULL,
+                                                                                          json_schema_str,
+                                                                                          strlen (json_schema_str));
+					SET_CONTAINER_2 (ctn, FROM_NUMBER (type), dt);
+				}
+			else
+				{
+					SET_CONTAINER_2 (ctn, FROM_NUMBER (type), NULL);
+				}
+
+			$$ = ctn;
+		DBG_PRINT}}
 	| OBJECT
 		{{
-
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_OBJECT), NULL);
 			$$ = ctn;
@@ -19942,6 +20094,12 @@ literal_w_o_param
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| json_literal
+		{{
+			
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
 	;
 
 boolean
@@ -20660,15 +20818,7 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| JSON
-		{{
 
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-
-		DBG_PRINT}}
 	| KEYS
 		{{
 
@@ -22551,7 +22701,16 @@ date_or_time_literal
 
 		DBG_PRINT}}
 	;
-
+	
+json_literal
+        : JSON CHAR_STRING
+                {{
+                	PT_NODE *val;
+			val = pt_create_json_value (this_parser, $2);
+			$$ = val;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)	
+                
+                DBG_PRINT}};
 create_as_clause
 	: opt_replace AS csql_query
 		{{
@@ -25256,6 +25415,17 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
       node = parser_make_expression (this_parser, key->op, a1, a2, a3);
       return node;
+    case PT_JSON_EXTRACT:
+      if (c != 2)
+	return NULL;
+
+      a1 = args;
+      a2 = a1->next;
+      a1->next = NULL;
+      a2->next = NULL;
+
+      node = parser_make_expression (this_parser, key->op, a1, a2, NULL);
+      return node;
 
 	case PT_DISK_SIZE:
  		if (c != 1)
@@ -25264,7 +25434,31 @@ parser_keyword_func (const char *name, PT_NODE * args)
        a1 = args;
        node = parser_make_expression (this_parser, key->op, a1, NULL, NULL);
        return node;
-	   
+    case PT_JSON_TYPE:
+    case PT_JSON_VALID:
+    case PT_JSON_LENGTH:
+    case PT_JSON_DEPTH:
+      if (c != 1)
+        return NULL;
+
+      a1 = args;
+      a1->next = NULL;
+
+      node = parser_make_expression (this_parser, key->op, a1, NULL, NULL);
+      return node;
+    case PT_JSON_SEARCH:
+      if (c != 3)
+	return NULL;
+
+      a1 = args;
+      a2 = a1->next;
+      a3 = a2->next;
+      a1->next = NULL;
+      a2->next = NULL;
+      a3->next = NULL;
+
+      node = parser_make_expression (this_parser, key->op, a1, a2, a3);
+      return node;
     case PT_STRCMP:
       if (c != 2)
 	return NULL;
@@ -25332,6 +25526,22 @@ parser_keyword_func (const char *name, PT_NODE * args)
           node->do_not_fold = 1;
         }
       
+      return node;
+
+    case PT_JSON_CONTAINS:
+      if (c != 3 && c != 2)
+          return NULL;
+
+        a1 = args;
+        a2 = a1->next;
+        a3 = a2->next;
+        a1->next = NULL;
+        a2->next = NULL;
+        if (a3)
+          {
+            a3->next = NULL;
+          }
+      node = parser_make_expression (this_parser, key->op, a1, a2, a3);
       return node;
 
     default:
@@ -25826,6 +26036,24 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
 	  node = cast_expr;
 	  PT_SET_NODE_COLL_MODIFIER (cast_expr, lang_coll->coll.coll_id);
 	}
+    }
+
+  return node;
+}
+
+static PT_NODE *
+pt_create_json_value (PARSER_CONTEXT *parser, const char *str)
+{
+  PT_NODE *node = NULL;
+
+  node = parser_new_node (parser, PT_VALUE);
+
+  if (node)
+    {
+      node->type_enum = PT_TYPE_JSON;
+
+      node->info.value.data_value.str = pt_append_bytes (parser, NULL, str, strlen (str));
+      PT_NODE_PRINT_VALUE_TO_TEXT (parser, node);
     }
 
   return node;

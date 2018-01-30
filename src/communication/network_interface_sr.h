@@ -31,9 +31,9 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
-#include "thread.h"
-#include "xasl.h"
 #include "list_file.h"
+#include "thread_compat.hpp"
+#include "xasl.h"
 
 extern void return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid);
 extern int server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -207,9 +207,6 @@ extern void ssession_set_session_variables (THREAD_ENTRY * thread_p, unsigned in
 extern void ssession_get_session_variable (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void ssession_drop_session_variables (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sboot_get_locales_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void slocator_prefetch_repl_insert (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void slocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
-						     int reqlen);
 extern void svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void stran_lock_rep_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

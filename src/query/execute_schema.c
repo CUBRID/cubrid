@@ -60,6 +60,10 @@
 /* this must be the last header file included!!! */
 #include "dbval.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define UNIQUE_SAVEPOINT_ADD_ATTR_MTHD "aDDaTTRmTHD"
 #define UNIQUE_SAVEPOINT_CREATE_ENTITY "cREATEeNTITY"
 #define UNIQUE_SAVEPOINT_DROP_ENTITY "dROPeNTITY"
@@ -406,14 +410,12 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   PT_NODE *node, *nodelist;
   PT_NODE *data_type, *data_default, *path;
   PT_NODE *slist;
-  PT_NODE *tmp_node = NULL;
   PT_TYPE_ENUM pt_desired_type;
   PT_NODE *temp_val, *def_val, *initial_def_val = NULL;
 #if 0
   HFID *hfid;
 #endif
   SM_PARTITION_ALTER_INFO pinfo;
-  SM_CLASS_CONSTRAINT *sm_constraint = NULL;
   bool partition_savepoint = false;
   const PT_ALTER_CODE alter_code = alter->info.alter.code;
 #if defined (ENABLE_RENAME_CONSTRAINT)
@@ -1131,13 +1133,17 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	   * class_attr, since for our purpose we don't need it */
 
 	case PT_FILE_RENAME:
-	  old_name =
-	    (char *) alter->info.alter.alter_clause.rename.old_name->info.file_path.string->info.value.data_value.str->
-	    bytes;
-	  new_name =
-	    (char *) alter->info.alter.alter_clause.rename.new_name->info.file_path.string->info.value.data_value.str->
-	    bytes;
-	  error = dbt_rename_method_file (ctemplate, old_name, new_name);
+	  {
+	    PT_NODE *old_name_node, *new_name_node;
+
+	    old_name_node = alter->info.alter.alter_clause.rename.old_name;
+	    new_name_node = alter->info.alter.alter_clause.rename.new_name;
+
+	    old_name = (char *) old_name_node->info.file_path.string->info.value.data_value.str->bytes;
+	    new_name = (char *) new_name_node->info.file_path.string->info.value.data_value.str->bytes;
+
+	    error = dbt_rename_method_file (ctemplate, old_name, new_name);
+	  }
 	  break;
 
 	default:
@@ -1541,7 +1547,6 @@ do_alter_change_auto_increment (PARSER_CONTEXT * const parser, PT_NODE * const a
   DB_OBJECT *class_obj = NULL;
   DB_ATTRIBUTE *cur_attr = NULL;
   MOP ai_serial = NULL;
-  unsigned int curval = 0, newval = 0;
   int error = NO_ERROR;
   int au_save = 0;
 
@@ -2697,7 +2702,6 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
   bool mysql_index_name = false;
   bool free_packing_buff = false;
   PRED_EXPR_WITH_CONTEXT *filter_predicate = NULL;
-  int stream_size = 0;
   SM_PREDICATE_INFO pred_index_info = { NULL, NULL, 0, NULL, 0 };
   SM_PREDICATE_INFO *p_pred_index_info = NULL;
   SM_FUNCTION_INFO *func_index_info = NULL;
@@ -2930,10 +2934,7 @@ do_create_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   PT_NODE *cls;
   DB_OBJECT *obj;
   const char *index_name = NULL;
-  char *stream = NULL;
-  bool have_where = false;
   int error = NO_ERROR;
-  int stream_size = 0;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -5222,7 +5223,7 @@ do_create_partition_constraints (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PA
 {
   SM_CLASS *smclass = NULL;
   SM_CLASS_CONSTRAINT *cons = NULL;
-  int error = NO_ERROR, i = 0;
+  int error = NO_ERROR;
 
   /* sanity check */
   assert (parser != NULL && alter != NULL && pinfo != NULL);
@@ -5658,9 +5659,6 @@ do_alter_partitioning_post (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITI
   PT_ALTER_CODE alter_op;
   int error = NO_ERROR;
   const char *entity_name = NULL;
-  const char *keyname = NULL;
-  char **names = NULL;
-  int names_count = 0;
 
   assert (parser != NULL && alter != NULL && pinfo != NULL);
   CHECK_3ARGS_ERROR (parser, alter, pinfo);
@@ -5756,8 +5754,7 @@ do_remove_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_
   DB_OBJLIST *obj = NULL, *obj_next = NULL;
   int error;
   char **names = NULL;
-  int names_count = 0, allocated = 0, i = 0, au_save = 0;
-  DB_CTMPL *class_tmpl = NULL;
+  int names_count = 0, allocated = 0, i = 0;
 
   /* sanity checks */
   assert (parser && alter && pinfo);
@@ -6542,7 +6539,6 @@ do_promote_partition_list (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITIO
     {
       /* All partitions were promoted so mark this class as not being partitioned. Through the pinfo object, we have
        * access to the root class template on which an edit operation was started. We can use it to perform the update. */
-      int au_save = 0;
       assert (pinfo->root_tmpl != NULL);
       classobj_free_partition_info (pinfo->root_tmpl->partition);
       pinfo->root_tmpl->partition = NULL;
@@ -6635,7 +6631,7 @@ static int
 do_promote_partition (SM_CLASS * class_)
 {
   MOP subclass_mop = NULL;
-  int error = NO_ERROR, au_save = 0;
+  int error = NO_ERROR;
   SM_CLASS *current = NULL;
   DB_CTMPL *ctemplate = NULL;
   SM_ATTRIBUTE *smattr = NULL;
@@ -6784,7 +6780,6 @@ validate_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attribute, const b
 	  if (dtyp)
 	    {
 	      int p = attribute->data_type->info.data_type.precision;
-	      int s = attribute->data_type->info.data_type.dec_precision;
 
 	      switch (attribute->type_enum)
 		{
@@ -6906,8 +6901,8 @@ get_attr_name (PT_NODE * attribute)
 {
   /* First try the derived name and then the original name. For example: create view a_view as select a av1, a av2, b
    * bv from a_tbl; */
-  return attribute->info.attr_def.attr_name->alias_print ? attribute->info.attr_def.attr_name->alias_print : attribute->
-    info.attr_def.attr_name->info.name.original;
+  return (attribute->info.attr_def.attr_name->alias_print
+	  ? attribute->info.attr_def.attr_name->alias_print : attribute->info.attr_def.attr_name->info.name.original);
 }
 
 /*
@@ -6930,7 +6925,6 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
   int meta, shared;
   DB_VALUE stack_value;
   DB_VALUE *default_value = &stack_value;
-  PT_NODE *default_info = NULL, *default_info_expr_node = NULL, *default_expr_format_node = NULL;
   int error = NO_ERROR;
   TP_DOMAIN *attr_db_domain;
   MOP auto_increment_obj = NULL;
@@ -7038,7 +7032,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
 
   error =
     smt_add_attribute_w_dflt_w_order (ctemplate, attr_name, NULL, attr_db_domain, default_value, name_space, add_first,
-				      add_after_attr, &default_expr);
+				      add_after_attr, &default_expr, NULL);
 
   db_value_clear (&stack_value);
 
@@ -7166,8 +7160,8 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
 	}
     }
 
-  error =
-    smt_add_attribute_w_dflt (ctemplate, attr_name, NULL, column->domain, &default_value, ID_ATTRIBUTE, default_expr);
+  error = smt_add_attribute_w_dflt (ctemplate, attr_name, NULL, column->domain, &default_value, ID_ATTRIBUTE,
+				    default_expr, NULL);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -8746,6 +8740,14 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      reuse_oid = true;
 	    }
+	  if (source_class->comment)
+	    {
+	      error = sm_set_class_comment (class_obj, source_class->comment);
+	      if (error != NO_ERROR)
+		{
+		  break;
+		}
+	    }
 	}
       if (locator_create_heap_if_needed (class_obj, reuse_oid) == NULL)
 	{
@@ -9738,7 +9740,6 @@ do_alter_change_default_cs_coll (PARSER_CONTEXT * const parser, PT_NODE * const 
   PT_ALTER_INFO *alter_info;
   bool tran_saved = false;
   MOP class_mop = NULL;
-  int user_count = 0;
   OID class_oid;
   bool is_chg_needed = false;
   int i, collation_id = -1, is_partition = -1;
@@ -11986,7 +11987,6 @@ check_att_chg_allowed (const char *att_name, const PT_TYPE_ENUM t, const SM_ATTR
   const int ER_ALTER_CHANGE_TYPE_WITH_M_UNIQUE = ER_ALTER_CHANGE_TYPE_WITH_INDEX;
   const int ER_ALTER_CHANGE_TYPE_WITH_S_UNIQUE = ER_ALTER_CHANGE_TYPE_WITH_INDEX;
   const int ER_ALTER_CHANGE_TYPE_WITH_PK = ER_ALTER_CHANGE_TYPE_WITH_INDEX;
-  const int ER_ALTER_CHANGE_GAIN_PK = ER_ALTER_CHANGE_GAIN_CONSTRAINT;
 
   /* by default we advise new attempt */
   *new_attempt = true;
@@ -12646,7 +12646,7 @@ get_hard_default_for_type (PT_TYPE_ENUM type)
   static const char *empty_dt_tz = "DATETIMETZ '01/01/0001 00:00 +00:00'";
   static const char *empty_dt_ltz = "DATETIMELTZ '01/01/0001 00:00 +00:00'";
   static const char *empty_timetz = "TIMETZ '00:00 +00:00'";
-  static const char *empty_timeltz = "TIMELTZ '00:00 +00:00'";
+  static const char *empty_json = "null";
 
   /* TODO : use db_value_domain_default instead, but make sure that db_value_domain_default is not using NULL DB_VALUE
    * as default for any type */
@@ -12719,6 +12719,8 @@ get_hard_default_for_type (PT_TYPE_ENUM type)
     case PT_TYPE_CLOB:
     case PT_TYPE_ELO:
       return NULL;
+    case PT_TYPE_JSON:
+      return empty_json;
 
     default:
       return NULL;
@@ -13065,7 +13067,7 @@ do_update_new_cols_with_default_expression (PARSER_CONTEXT * parser, PT_NODE * a
   PT_NODE *relevant_attrs = NULL;
   int error = NO_ERROR;
   int attr_count = 0;
-  PT_NODE *pt_data_default = NULL, *pt_default_expr = NULL;
+  PT_NODE *pt_data_default = NULL;
   PT_NODE *attr = NULL;
   PT_NODE *save = NULL;
   PT_NODE *copy = NULL;
@@ -13258,7 +13260,6 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE *
 			PT_NODE ** pointer_constraints, SM_ATTR_PROP_CHG * attr_chg_prop, SM_ATTR_CHG_SOL * change_mode)
 {
   SM_NAME_SPACE name_space = ID_NULL;
-  SM_CONSTRAINT_INFO *constr_info = NULL;
   int meta = 0, shared = 0;
   int error = NO_ERROR;
   const char *old_name = NULL;
@@ -13593,8 +13594,6 @@ save_constraint_info_from_pt_node (SM_CONSTRAINT_INFO ** save_info, const PT_NOD
   int error_code = NO_ERROR;
   SM_CONSTRAINT_INFO *new_constraint = NULL;
   PT_NODE *constr_att_name = NULL;
-  int num_atts = 0;
-  int i = 0;
 
   assert (pt_constr->node_type == PT_CONSTRAINT);
 
@@ -13899,7 +13898,6 @@ end:
 static SM_FUNCTION_INFO *
 pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, DO_INDEX do_index)
 {
-  int nr_const = 0, nr_attrs = 0, i = 0, k = 0;
   SM_FUNCTION_INFO *func_index_info;
   FUNC_PRED *func_pred;
   PT_NODE *expr = NULL;
@@ -14007,8 +14005,6 @@ do_recreate_func_index_constr (PARSER_CONTEXT * parser, SM_CONSTRAINT_INFO * con
   const char *class_name = NULL;
   char *query_str = NULL;
   size_t query_str_len = 0;
-  char *expr_str = NULL;
-  int expr_str_len = 0;
   int saved_func_index_pos = -1, saved_attr_index_start = -1;
   bool free_packing_buff = false;
   bool free_parser = false;

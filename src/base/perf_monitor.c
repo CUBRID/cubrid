@@ -67,6 +67,7 @@
 #include "system_parameter.h"
 #include "xserver_interface.h"
 #include "heap_file.h"
+#include "vacuum.h"
 #include "xasl_cache.h"
 
 #if defined (SERVER_MODE)
@@ -555,7 +556,9 @@ STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STA
 static void perfmon_server_calc_stats (UINT64 * stats);
 
 STATIC_INLINE const char *perfmon_stat_module_name (const int module) __attribute__ ((ALWAYS_INLINE));
+#if defined (SERVER_MODE) || defined (SA_MODE)
 STATIC_INLINE int perfmon_get_module_type (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+#endif
 STATIC_INLINE const char *perfmon_stat_page_type_name (const int page_type) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_page_mode_name (const int page_mode) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_holder_latch_name (const int holder_latch) __attribute__ ((ALWAYS_INLINE));
@@ -2806,46 +2809,25 @@ perfmon_stat_module_name (const int module)
 STATIC_INLINE int
 perfmon_get_module_type (THREAD_ENTRY * thread_p)
 {
-  int thread_index;
-  int module_type;
-  static int first_vacuum_worker_idx = 0;
-  static int num_worker_threads = 0;
-
 #if defined (SERVER_MODE)
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
 
-  thread_index = thread_p->index;
-
-  if (first_vacuum_worker_idx == 0)
+  switch (thread_p->type)
     {
-      first_vacuum_worker_idx = thread_first_vacuum_worker_thread_index ();
-    }
-  if (num_worker_threads == 0)
-    {
-      num_worker_threads = thread_num_worker_threads ();
+    case TT_WORKER:
+      return PERF_MODULE_USER;
+    case TT_VACUUM_WORKER:
+    case TT_VACUUM_MASTER:
+      return PERF_MODULE_VACUUM;
+    default:
+      return PERF_MODULE_SYSTEM;
     }
 #else
-  thread_index = 0;
-  first_vacuum_worker_idx = 100;
+  return PERF_MODULE_USER;
 #endif
-
-  if (thread_index >= 1 && thread_index <= num_worker_threads)
-    {
-      module_type = PERF_MODULE_USER;
-    }
-  else if (thread_index >= first_vacuum_worker_idx && thread_index < first_vacuum_worker_idx + VACUUM_MAX_WORKER_COUNT)
-    {
-      module_type = PERF_MODULE_VACUUM;
-    }
-  else
-    {
-      module_type = PERF_MODULE_SYSTEM;
-    }
-
-  return module_type;
 }
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
@@ -3974,7 +3956,9 @@ int
 perfmon_initialize (int num_trans)
 {
   int idx = 0;
+#if defined (SERVER_MODE) || defined (SA_MODE)
   int memsize = 0;
+#endif
 
   pstat_Global.n_stat_values = 0;
   pstat_Global.global_stats = NULL;

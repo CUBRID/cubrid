@@ -28,10 +28,10 @@
 
 #ident "$Id$"
 
-#include "storage_common.h"
-#include "oid.h"
 #include "object_representation.h"
-#include "thread.h"
+#include "oid.h"
+#include "storage_common.h"
+#include "thread_compat.hpp"
 
 #define LC_AREA_ONEOBJ_PACKED_SIZE (OR_INT_SIZE * 4 + \
                                     OR_HFID_SIZE + \

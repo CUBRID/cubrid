@@ -1263,8 +1263,13 @@ $ LOADDB
 1194 Çünkü %3$d|%4$d|%5$d sınıfı kilidi hemen verilmez, %1$d|%2$d dosyası kontrol edilemez.
 1195 CTE'nin özyinelemeli kısmı, GROUP BY yan tümcesi olmayan toplama işlevlerini içermemelidir.
 1196 CTE yürütme azami özyinelemeli iterasyonlara ulaştı: %1$d.
-1197 Double Write Buffer is disabled.
-1198 Son Hata
+1197 Invalid json: %1$s (%2$d)
+1198 A json object must be provided
+1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
+1200 Invalid JSON path
+1201 Json object name cannot be NULL.
+1202 Double Write Buffer is disabled.
+1203 Son Hata
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
 2 Uygun hata mesajı bulunmamakta.

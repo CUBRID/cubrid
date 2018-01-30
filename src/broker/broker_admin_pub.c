@@ -44,7 +44,6 @@
 #include <process.h>
 #include <io.h>
 #else /* WINDOWS */
-#include <unistd.h>
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -73,6 +72,7 @@
 #include "cas_sql_log2.h"
 #include "broker_acl.h"
 #include "chartype.h"
+#include "cubrid_getopt.h"
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "dbdef.h"
@@ -1233,7 +1233,7 @@ key_isdigit (const char *value)
 static int
 make_sp_value (SP_VALUE * value_p, char *shard_key)
 {
-  int length = strlen (shard_key);
+  int length = (int) strlen (shard_key);
   char *end;
 
   if (key_isdigit (shard_key))
@@ -1534,8 +1534,6 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_BROKER_INFO *br_info_p = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
-  T_PROXY_INFO *proxy_info_p = NULL;
-  T_SHARD_USER *user_p = NULL;
   char path_org[BROKER_PATH_MAX] = { 0, };
   char path_new[BROKER_PATH_MAX] = { 0, };
 
@@ -2186,7 +2184,7 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
   else if (strcasecmp (conf_name, "PREFERRED_HOSTS") == 0)
     {
       char *host_name = (char *) conf_value;
-      int host_name_len = 0;
+      size_t host_name_len = 0;
 
       host_name_len = strlen (host_name);
 
@@ -2262,7 +2260,7 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
   else if (strcasecmp (conf_name, "ERROR_LOG_DIR") == 0)
     {
       char *err_log_dir = (char *) conf_value;
-      int err_log_dir_len = 0;
+      size_t err_log_dir_len = 0;
 
       err_log_dir_len = strlen (err_log_dir);
 
@@ -2310,7 +2308,7 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
   else if (strcasecmp (conf_name, "LOG_DIR") == 0)
     {
       char *log_dir = (char *) conf_value;
-      int log_dir_len = 0;
+      size_t log_dir_len = 0;
 
       log_dir_len = strlen (log_dir);
 
@@ -2358,7 +2356,7 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
   else if (strcasecmp (conf_name, "SLOW_LOG_DIR") == 0)
     {
       char *slow_log_dir = (char *) conf_value;
-      int slow_log_dir_len = 0;
+      size_t slow_log_dir_len = 0;
 
       slow_log_dir_len = strlen (slow_log_dir);
 

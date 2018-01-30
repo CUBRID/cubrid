@@ -28,9 +28,21 @@
 
 #ident "$Id$"
 
-#include <stdio.h>
+#include "boot.h"
+#if defined(SERVER_MODE)
+#include "connection_list_sr.h"
+#include "critical_section.h"
+#endif
+#include "error_manager.h"
+#include "memory_alloc.h"
+#include "porting.h"
+#include "thread_compat.hpp"
+
 #if defined(WINDOWS)
 #include <dos.h>
+#endif // WINDOWS
+#include <stdio.h>
+#if defined(WINDOWS)
 #include <process.h>
 #else
 #include <poll.h>
@@ -38,16 +50,6 @@
 #if !defined(WINDOWS) && defined(SERVER_MODE)
 #include <pthread.h>
 #endif /* !WINDOWS && SERVER_MODE */
-
-#include "porting.h"
-#include "memory_alloc.h"
-#include "error_manager.h"
-#if defined(SERVER_MODE)
-#include "connection_list_sr.h"
-#include "critical_section.h"
-#endif
-#include "thread.h"
-#include "boot.h"
 
 #define NUM_MASTER_CHANNEL 1
 
@@ -434,8 +436,6 @@ struct css_conn_entry
 
   char *version_string;		/* client version string */
 
-  int prefetcher_thread_count;	/* number of active thread */
-  int prefetchlogdb_max_thread_count;	/* max number of active thread */
   CSS_QUEUE_ENTRY *free_queue_list;
   struct css_wait_queue_entry *free_wait_queue_list;
   char *free_net_header_list;

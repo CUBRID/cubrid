@@ -30,6 +30,10 @@
 %{/*%CODE_PROVIDES_START%*/
 #include "esql_scanner_support.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define START 		0
 #define ECHO_mode START
 #define CSQL_mode	1
@@ -299,12 +303,7 @@ extern int esql_yylineno;
 #include <fcntl.h>
 #include <errno.h>
 
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#else
-#include "getopt.h"
-#endif
-
+#include "cubrid_getopt.h"
 #include "language_support.h"
 #include "message_catalog.h"
 #include "variable_string.h"

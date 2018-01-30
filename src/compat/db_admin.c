@@ -251,9 +251,18 @@ db_init (const char *program, int print_version, const char *dbname, const char 
   db_path_info.db_host = (char *) host_name;
   db_path_info.db_comments = (char *) comments;
 
-  error =
-    boot_initialize_client (&client_credential, &db_path_info, (bool) overwrite, addmore_vols_file, npages,
-			    (PGLENGTH) desired_pagesize, log_npages, (PGLENGTH) desired_log_page_size, lang_charset);
+#if defined (SA_MODE)
+  error = session_states_init (NULL);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  (void) db_find_or_create_session (client_credential.db_user, client_credential.program_name);
+#endif /* SA_MODE */
+
+  error = boot_initialize_client (&client_credential, &db_path_info, (bool) overwrite, addmore_vols_file, npages,
+				  (PGLENGTH) desired_pagesize, log_npages, (PGLENGTH) desired_log_page_size,
+				  lang_charset);
 
   if (more_vol_info_file != NULL)
     {
@@ -634,7 +643,6 @@ db_add_host_status (char *hostname, int status)
 void
 db_set_host_status (char *hostname, int status)
 {
-  bool found = false;
   DB_HOST_STATUS *host_status;
 
   host_status = db_find_host_status (hostname);
@@ -1935,7 +1943,7 @@ db_get_user_and_host_name (void)
       return NULL;
     }
 
-  len = strlen (hostname) + strlen (username) + 2;
+  len = (int) strlen (hostname) + (int) strlen (username) + 2;
   user = (char *) db_private_alloc (NULL, len);
   if (!user)
     {

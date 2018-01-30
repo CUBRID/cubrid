@@ -35,6 +35,7 @@
 #include "boot_sr.h"
 #include "partition_sr.h"
 #include "object_primitive.h"
+#include "thread.h"
 
 #define SQUARE(n) ((n)*(n))
 
@@ -1093,6 +1094,10 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 	  fprintf (fpp, "DB_TYPE_SET \n");
 	  break;
 
+	case DB_TYPE_JSON:
+	  fprintf (fpp, "DB_TYPE_JSON \n");
+	  break;
+
 	case DB_TYPE_MULTISET:
 	  fprintf (fpp, "DB_TYPE_MULTISET \n");
 	  break;
@@ -1258,7 +1263,6 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
   REPR_ID repr_id = NULL_REPRID, subcls_repr_id = NULL_REPRID;
   DISK_ATTR *disk_attr_p = NULL, *subcls_attr_p = NULL;
   BTREE_STATS *btree_stats_p = NULL;
-  BTREE_STATS *computed_stats = NULL;
   int n_btrees = 0;
   PARTITION_STATS_ACUMULATOR *mean = NULL, *stddev = NULL;
   OR_CLASSREP *cls_rep = NULL;
@@ -1556,7 +1560,6 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
   for (i = 0; i < partitions_count; i++)
     {
       OID part_dir_oid;
-      bool part_need_unlock = false;
 
       /* clean subclass loaded in previous iteration */
       if (subcls_disk_rep != NULL)

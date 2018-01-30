@@ -46,6 +46,7 @@
 #include "lock_free.h"
 #include "object_primitive.h"
 #include "dbtype.h"
+#include "thread.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -948,7 +949,7 @@ exit_on_end:
 static int
 session_check_timeout (SESSION_STATE * session_p, SESSION_TIMEOUT_INFO * timeout_info, bool * remove)
 {
-  int err = NO_ERROR, i = 0;
+  int err = NO_ERROR;
 
   (*remove) = false;
 
@@ -956,6 +957,8 @@ session_check_timeout (SESSION_STATE * session_p, SESSION_TIMEOUT_INFO * timeout
       prm_get_integer_value (PRM_ID_SESSION_STATE_TIMEOUT))
     {
 #if defined(SERVER_MODE)
+      int i;
+
       /* first see if we still have an active connection */
       if (timeout_info->count == -1)
 	{
@@ -1039,8 +1042,8 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name, DB_VALUE *
 {
   SESSION_VARIABLE *var = NULL;
   SESSION_VARIABLE *current = NULL;
-  DB_VALUE *val = NULL;
-  int len = 0, count = 0;
+  int count = 0;
+  size_t len;
   const char *name_str;
 
   assert (DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR);
@@ -1107,7 +1110,7 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name, DB_VALUE *
   var->name = (char *) malloc (len + 1);
   if (var->name == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (len + 1));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, len + 1);
       goto error;
     }
 
@@ -1149,7 +1152,6 @@ db_value_alloc_and_copy (const DB_VALUE * src)
   TP_DOMAIN *domain = NULL;
   DB_VALUE *dest = NULL;
   DB_VALUE conv;
-  bool use_conv = false;
   int length = 0, precision = 0, scale = 0;
   char *str = NULL;
   const char *src_str;
@@ -1273,8 +1275,6 @@ static int
 session_drop_variable (SESSION_STATE * state_p, const DB_VALUE * name)
 {
   SESSION_VARIABLE *current = NULL, *prev = NULL;
-  DB_VALUE *val = NULL;
-  int count = 0;
   const char *name_str;
 
   if (state_p->session_variables == NULL)
@@ -1822,7 +1822,7 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char 
     }
 
   *xasl_entry = NULL;
-  err = xcache_find_sha1 (thread_p, &stmt_p->sha1, xasl_entry, NULL);
+  err = xcache_find_sha1 (thread_p, &stmt_p->sha1, XASL_CACHE_SEARCH_GENERIC, xasl_entry, NULL);
   if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1843,7 +1843,6 @@ session_delete_prepared_statement (THREAD_ENTRY * thread_p, const char *name)
 {
   SESSION_STATE *state_p = NULL;
   PREPARED_STATEMENT *stmt_p = NULL, *prev = NULL;
-  int err = NO_ERROR;
   bool found = false;
 
   state_p = session_get_session_state (thread_p);
@@ -2011,7 +2010,7 @@ session_get_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name, DB_VALUE *
     {
       /* we didn't find it, set error and exit */
       char *var_name = NULL;
-      int name_len = strlen (name_str);
+      size_t name_len = strlen (name_str);
 
       var_name = (char *) malloc (name_len + 1);
       if (var_name != NULL)
@@ -2049,7 +2048,7 @@ session_get_variable_no_copy (THREAD_ENTRY * thread_p, const DB_VALUE * name, DB
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
   SESSION_ID id;
   SESSION_STATE *state_p = NULL;
-  int name_len;
+  size_t name_len;
   const char *name_str;
   SESSION_VARIABLE *var;
   int ret;
@@ -2353,9 +2352,6 @@ qentry_to_sentry (QMGR_QUERY_ENTRY * qentry_p)
 static int
 session_preserve_temporary_files (THREAD_ENTRY * thread_p, SESSION_QUERY_ENTRY * qentry_p)
 {
-  VFID *vfids = NULL;
-  int count = 0;
-  int i = 0;
   QMGR_TEMP_FILE *tfile_vfid_p = NULL, *temp = NULL;
 
   if (qentry_p == NULL)
@@ -2535,8 +2531,7 @@ session_load_query_entry_info (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qentr
 }
 
 /*
- * session_remove_query_entry_info () - remove a query entry from the holdable
- *					queries list
+ * session_remove_query_entry_info () - remove a query entry from the holdable queries list
  * return : error code or NO_ERROR
  * thread_p (in) : active thread
  * query_id (in) : query id
@@ -2546,6 +2541,7 @@ session_remove_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_i
 {
   SESSION_STATE *state_p = NULL;
   SESSION_QUERY_ENTRY *sentry_p = NULL, *prev = NULL;
+
   state_p = session_get_session_state (thread_p);
   if (state_p == NULL)
     {
@@ -2579,9 +2575,8 @@ session_remove_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_i
 }
 
 /*
- * session_remove_query_entry_info () - remove a query entry from the holdable
- *					queries list but do not close the
- *					associated list files
+ * session_clear_query_entry_info () - remove a query entry from the holdable queries list but do not close the
+ *				       associated list files
  * return : error code or NO_ERROR
  * thread_p (in) : active thread
  * query_id (in) : query id
@@ -2623,6 +2618,43 @@ session_clear_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_id
     }
 
   return NO_ERROR;
+}
+
+/*
+ * session_is_queryid_idle () - search for a idle query entry among the holable results
+ * return : true if the given query_id is idle, false otherwise
+ * thread_p (in) :
+ * query_id (in) : query id
+ * max_query_id_uses (out): max query id among the active ones. caller may use it as a hint
+ */
+bool
+session_is_queryid_idle (THREAD_ENTRY * thread_p, const QUERY_ID query_id, QUERY_ID * max_query_id_uses)
+{
+  SESSION_STATE *state_p = NULL;
+  SESSION_QUERY_ENTRY *sentry_p = NULL;
+
+  *max_query_id_uses = 0;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return true;
+    }
+
+  for (sentry_p = state_p->queries; sentry_p != NULL; sentry_p = sentry_p->next)
+    {
+      if (*max_query_id_uses < sentry_p->query_id)
+	{
+	  *max_query_id_uses = sentry_p->query_id;
+	}
+
+      if (sentry_p->query_id == query_id)
+	{
+	  return false;
+	}
+    }
+
+  return true;
 }
 
 /*

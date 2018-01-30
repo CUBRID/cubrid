@@ -980,6 +980,7 @@ enum pt_type_enum
   PT_TYPE_VARBIT,
   PT_TYPE_LOGICAL,
   PT_TYPE_MAYBE,
+  PT_TYPE_JSON,
 
   /* special values */
   PT_TYPE_NA,			/* in SELECT NA */
@@ -1531,6 +1532,13 @@ typedef enum
   PT_CRC32,
   PT_SCHEMA_DEF,
   PT_CONV_TZ,
+  PT_JSON_CONTAINS,
+  PT_JSON_TYPE,
+  PT_JSON_EXTRACT,
+  PT_JSON_VALID,
+  PT_JSON_LENGTH,
+  PT_JSON_DEPTH,
+  PT_JSON_SEARCH,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
@@ -2111,6 +2119,7 @@ struct pt_data_type_info
   bool has_cs_spec;		/* this is used only when defining collatable types: true if charset was explicitly
 				 * set, false otherwise (charset defaulted to that of the system) */
   PT_MISC_TYPE inout;		/* input or output method parameter */
+  PARSER_VARCHAR *json_schema;
 };
 
 
@@ -3700,6 +3709,10 @@ extern "C"
 {
 #endif
   void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align);
+  bool pt_is_json_value_type (PT_TYPE_ENUM type);
+  bool pt_is_json_doc_type (PT_TYPE_ENUM type);
+  bool pt_is_json_object_name (PT_TYPE_ENUM type);
+  bool pt_is_json_path (PT_TYPE_ENUM type);
 #ifdef __cplusplus
 }
 #endif

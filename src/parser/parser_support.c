@@ -40,6 +40,7 @@
 #include "chartype.h"
 #include "parser.h"
 #include "parser_message.h"
+#include "mem_block.hpp"
 #include "memory_alloc.h"
 #include "intl_support.h"
 #include "error_manager.h"
@@ -57,6 +58,12 @@
 #include "object_print.h"
 #include "show_meta.h"
 #include "db.h"
+#include "object_printer.hpp"
+#include "string_buffer.hpp"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define DEFAULT_VAR "."
 
@@ -169,7 +176,7 @@ static PT_NODE *pt_make_sort_spec_with_number (PARSER_CONTEXT * parser, const in
 static PT_NODE *pt_make_collection_type_subquery_node (PARSER_CONTEXT * parser, const char *table_name);
 static PT_NODE *pt_make_dummy_query_check_table (PARSER_CONTEXT * parser, const char *table_name);
 static PT_NODE *pt_make_query_user_groups (PARSER_CONTEXT * parser, const char *user_name);
-static char *pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name);
+static void pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name, string_buffer & strbuf);
 static int pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE * orderby_for, DB_VALUE * upper_limit,
 						bool * has_limit);
 static int pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALUE * limit_val);
@@ -710,7 +717,9 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
   if (node->node_type == PT_FUNCTION)
     {
       function_type = node->info.function.function_type;
-      if (function_type == F_INSERT_SUBSTRING || function_type == F_ELT)
+      if (function_type == F_INSERT_SUBSTRING || function_type == F_ELT || function_type == F_JSON_OBJECT
+	  || function_type == F_JSON_ARRAY || function_type == F_JSON_INSERT || function_type == F_JSON_REMOVE
+	  || function_type == F_JSON_MERGE)
 	{
 	  return true;
 	}
@@ -2498,7 +2507,7 @@ void
 pt_split_join_preds (PARSER_CONTEXT * parser, PT_NODE * predicates, PT_NODE ** join_part, PT_NODE ** after_cb_filter)
 {
   PT_NODE *current_conj, *current_pred;
-  PT_NODE *next_conj = NULL, *next_pred = NULL;
+  PT_NODE *next_conj = NULL;
 
   for (current_conj = predicates; current_conj != NULL; current_conj = next_conj)
     {
@@ -6697,7 +6706,6 @@ int
 pt_get_select_query_columns (PARSER_CONTEXT * parser, PT_NODE * create_select, DB_QUERY_TYPE ** query_columns)
 {
   PT_NODE *temp_copy = NULL;
-  DB_QUERY_TYPE *temp_qtype = NULL;
   DB_QUERY_TYPE *qtype = NULL;
   int error = NO_ERROR;
 
@@ -7109,8 +7117,6 @@ static PT_NODE *
 pt_make_pred_with_identifiers (PARSER_CONTEXT * parser, PT_OP_TYPE op_type, const char *lhs_identifier,
 			       const char *rhs_identifier)
 {
-  PT_NODE *dot1 = NULL;
-  PT_NODE *dot2 = NULL;
   PT_NODE *pred_rhs = NULL;
   PT_NODE *pred_lhs = NULL;
   PT_NODE *pred = NULL;
@@ -7284,10 +7290,8 @@ pt_make_outer_select_for_show_columns (PARSER_CONTEXT * parser, PT_NODE * inner_
 				       int is_show_full, PT_NODE ** outer_node)
 {
   /* SELECT * from ( SELECT .... ) <select_alias>; */
-  PT_NODE *val_node = NULL;
   PT_NODE *alias_subquery = NULL;
   PT_NODE *from_item = NULL;
-  PT_NODE *val_list = NULL;
   PT_NODE *query = NULL;
   int i, error = NO_ERROR;
 
@@ -7759,7 +7763,6 @@ pt_make_field_extra_expr_node (PARSER_CONTEXT * parser)
   PT_NODE *where_item1 = NULL;
   PT_NODE *where_item2 = NULL;
   PT_NODE *from_item = NULL;
-  PT_NODE *sel_item = NULL;
   PT_NODE *query = NULL;
   PT_NODE *extra_node = NULL;
   PT_NODE *pred = NULL;
@@ -8032,7 +8035,6 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
       /* IF (mul_count > 0 , 'MUL', '' */
       PT_NODE *pred_rhs = NULL;
       PT_NODE *pred = NULL;
-      PT_NODE *string1_node = NULL;
 
       pred_rhs = pt_make_integer_value (parser, 0);
 
@@ -8274,7 +8276,6 @@ pt_make_dummy_query_check_table (PARSER_CONTEXT * parser, const char *table_name
 {
   PT_NODE *limit_item = NULL;
   PT_NODE *from_item = NULL;
-  PT_NODE *sel_item = NULL;
   PT_NODE *query = NULL;
 
   assert (table_name != NULL);
@@ -8997,16 +8998,14 @@ error:
 
 /*
  * pt_help_show_create_table() help to generate create table string.
- * return string of create table.
- * parser(in) : Parser context
+ * parser(in)    : Parser context
  * table_name(in): table name node
+ * strbuf(out)   : string of create table.
  */
-static char *
-pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
+static void
+pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name, string_buffer & strbuf)
 {
   DB_OBJECT *class_op;
-  CLASS_HELP *class_schema = NULL;
-  PARSER_VARCHAR *buffer;
   int is_class = 0;
 
   /* look up class in all schema's */
@@ -9017,7 +9016,7 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 	{
 	  PT_ERRORc (parser, table_name, er_msg ());
 	}
-      return NULL;
+      return;
     }
 
   is_class = db_is_class (class_op);
@@ -9027,22 +9026,23 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 	{
 	  PT_ERRORc (parser, table_name, er_msg ());
 	}
-      return NULL;
+      return;
     }
-  if (!is_class)
+  else if (!is_class)
     {
       PT_ERRORmf2 (parser, table_name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A,
 		   table_name->info.name.original, pt_show_misc_type (PT_CLASS));
     }
 
-  class_schema = obj_print_help_class (class_op, OBJ_PRINT_SHOW_CREATE_TABLE);
-  if (class_schema == NULL)
-    {
-      int error;
+  object_printer obj_print (strbuf);
+  obj_print.describe_class (class_op);
 
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
+  if (strbuf.len () == 0)
+    {
+      int error = er_errid ();
+
       assert (error != NO_ERROR);
+
       if (error == ER_AU_SELECT_FAILURE)
 	{
 	  PT_ERRORmf2 (parser, table_name, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON, "select",
@@ -9052,16 +9052,7 @@ pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 	{
 	  PT_ERRORc (parser, table_name, er_msg ());
 	}
-      return NULL;
     }
-
-  buffer = obj_print_describe_class (parser, class_schema, class_op);
-
-  if (class_schema != NULL)
-    {
-      obj_print_help_free_class (class_schema);
-    }
-  return ((char *) pt_get_varchar_bytes (buffer));
 }
 
 /*
@@ -9079,13 +9070,34 @@ PT_NODE *
 pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 {
   PT_NODE *select;
-  char *create_str;
 
   assert (table_name != NULL);
   assert (table_name->node_type == PT_NAME);
 
-  create_str = pt_help_show_create_table (parser, table_name);
-  if (create_str == NULL)
+/* *INDENT-OFF* */
+#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
+  string_buffer strbuf {
+    [&parser] (mem::block& block, size_t len)
+    {
+      size_t dim = block.dim ? block.dim : 1;
+
+      // calc next power of 2 >= b.dim
+      for (; dim < block.dim + len; dim *= 2)
+        ;
+
+      mem::block b{dim, (char *) parser_alloc (parser, block.dim + len)};
+      memcpy (b.ptr, block.ptr, block.dim);
+      block = std::move (b);
+    },
+    [](mem::block& block){} //no need to deallocate for parser_context
+  };
+#else
+  string_buffer strbuf;
+#endif
+/* *INDENT-ON* */
+
+  pt_help_show_create_table (parser, table_name, strbuf);
+  if (strbuf.len () == 0)
     {
       return NULL;
     }
@@ -9103,7 +9115,7 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
    *      FROM db_root
    */
   pt_add_string_col_to_sel_list (parser, select, table_name->info.name.original, "TABLE");
-  pt_add_string_col_to_sel_list (parser, select, create_str, "CREATE TABLE");
+  pt_add_string_col_to_sel_list (parser, select, strbuf.get_buffer (), "CREATE TABLE");
 
   (void) pt_add_table_name_to_from_list (parser, select, "db_root", NULL, DB_AUTH_SELECT);
   return select;
@@ -9509,7 +9521,6 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
   PT_NODE *concat_node = NULL;
   PT_NODE *group_by_item = NULL;
   char user_name[SM_MAX_IDENTIFIER_LENGTH];
-  int i = 0;
 
   assert (original_user_name != NULL);
   assert (strlen (original_user_name) < SM_MAX_IDENTIFIER_LENGTH);
@@ -9773,7 +9784,7 @@ pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, 
 static PT_NODE *
 pt_create_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * target_class)
 {
-  PT_NODE *delete_stmt = NULL, *node = NULL;
+  PT_NODE *delete_stmt = NULL;
 
   assert (spec != NULL && spec->node_type == PT_SPEC);
 
@@ -11723,7 +11734,6 @@ pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt)
   TP_DOMAIN *domain = NULL;
   int pad_size = 0, trimmed_length = 0, trimmed_size = 0;
   int char_count = 0;
-  int codeset = LANG_SYS_CODESET, collation = LANG_SYS_COLLATION;
   unsigned char pad[2];
 
   if (dt == NULL || dt->node_type != PT_DATA_TYPE || dt->type_enum != PT_TYPE_ENUMERATION)
@@ -11840,7 +11850,6 @@ bool
 pt_recompile_for_limit_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag)
 {
   DB_VALUE limit_val;
-  bool can_use = false;
   DB_BIGINT val = 0;
   int limit_opt_flag = (MRO_CANDIDATE | MRO_IS_USED | SORT_LIMIT_CANDIDATE | SORT_LIMIT_USED);
 

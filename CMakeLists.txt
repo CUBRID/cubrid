@@ -15,8 +15,20 @@
 #  along with this program; if not, write to the Free Software
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
-
 cmake_minimum_required(VERSION 2.8)
+
+function(with_unit_tests res) # checks for -DUNIT_TESTS=ON or -DUNIT_TEST_???=ON
+  get_cmake_property(vars VARIABLES)
+  foreach(var ${vars})
+    if(var MATCHES "^(UNIT_TESTS|UNIT_TEST_.*)$")
+      if(${${var}} STREQUAL "ON")
+        set(${res} 1 PARENT_SCOPE)  #at least one unit test was requested
+      endif()
+    endif()
+  endforeach()
+endfunction(with_unit_tests)
+
+with_unit_tests(AT_LEAST_ONE_UNIT_TEST)
 
 #also searches for modules onto cubrid/cmake
 # add other Find[LIBRARY].cmake scripts in cubrid/cmake
@@ -48,6 +60,7 @@ option(USE_DUMA "Use Detect Unintended Memory Access library" OFF)
 option(USE_CUBRID_ENV "Use CUBRID environment variables" ON)
 option(WITH_JDBC "Build JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
+option(UNIT_TESTS "Unit tests" OFF)
 
 # options for external libraries (BUNDLED or path)
 
@@ -92,10 +105,19 @@ if(VERSION_MATCHES_LENGTH GREATER 3)
 else(VERSION_MATCHES_LENGTH GREATER 3)
   find_package(Git)
   if(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
-    execute_process(COMMAND ${GIT_EXECUTABLE} rev-list --count HEAD
-      OUTPUT_VARIABLE commit_count RESULT_VARIABLE git_result
-      ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
-      WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+    if(GIT_VERSION VERSION_GREATER 1.7.6)
+      execute_process(COMMAND ${GIT_EXECUTABLE} rev-list --count HEAD
+        OUTPUT_VARIABLE commit_count RESULT_VARIABLE git_result
+        ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+    else(GIT_VERSION VERSION_GREATER 1.7.6)
+      # TODO: Below wc command could be failed on Windows platform
+      execute_process(COMMAND ${GIT_EXECUTABLE} log --oneline
+        COMMAND wc -l
+        OUTPUT_VARIABLE commit_count RESULT_VARIABLE git_result
+        ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+    endif(GIT_VERSION VERSION_GREATER 1.7.6)
     if(git_result)
       message(FATAL_ERROR "Could not get count information from Git")
     endif(git_result)
@@ -142,12 +164,16 @@ if(UNIX)
       message(FATAL_ERROR "4.3.4 or higher version is required. (ref. https://gcc.gnu.org/bugzilla/show_bug.cgi?id=16185)")
     endif(ENABLE_32BIT AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.3.4)
     
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4.7)
+      message(SEND_ERROR "Cannot compile with gcc version ${CMAKE_CXX_COMPILER_VERSION}. Require at least 4.4.7.")
+    endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4.7)
+
     set(CMAKE_C_FLAGS_DEBUG "-ggdb -fno-inline -fno-omit-frame-pointer")
-    set(CMAKE_CXX_FLAGS_DEBUG "-Wall -ggdb -fno-inline -fno-omit-frame-pointer")
-    set(CMAKE_C_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")
-    set(CMAKE_CXX_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")
-    set(CMAKE_C_FLAGS_RELWITHDEBINFO "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")
-    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer")
+    set(CMAKE_CXX_FLAGS_DEBUG "-Wall -ggdb -fno-inline -fno-omit-frame-pointer -std=c++0x")
+    set(CMAKE_C_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
+    set(CMAKE_CXX_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
+    set(CMAKE_C_FLAGS_RELWITHDEBINFO "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
+    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
 
     # set has-style
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--hash-style=both")
@@ -230,7 +256,7 @@ else(BISON_FOUND)
 endif(BISON_FOUND)
 
 include(FindFLEX)
-find_package(FLEX)
+find_package(FLEX 2.5.34 REQUIRED)
 
 if(USE_BISON_NEWDIRECTIVE)
   # replace old bison directives with new ones
@@ -319,7 +345,7 @@ find_package(Java 1.5 COMPONENTS Development)
 
 # Build types
 if(CMAKE_BUILD_TYPE MATCHES "Coverage")
-  set(CMAKE_CXX_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage"
+  set(CMAKE_CXX_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage -std=c++0x"
     CACHE STRING "Flags used by the c++ compiler during coverage build." FORCE)
   set(CMAKE_C_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage"
     CACHE STRING "Flags used by the c compiler during coverage build." FORCE)
@@ -336,7 +362,7 @@ if(CMAKE_BUILD_TYPE MATCHES "Coverage")
 endif(CMAKE_BUILD_TYPE MATCHES "Coverage")
 
 if(CMAKE_BUILD_TYPE MATCHES "Profile")
-  set(CMAKE_CXX_FLAGS_PROFILE "-g -pg"
+  set(CMAKE_CXX_FLAGS_PROFILE "-g -pg -std=c++0x"
     CACHE STRING "Flags used by the c++ compiler during profile build." FORCE)
   set(CMAKE_C_FLAGS_PROFILE "-g -pg"
     CACHE STRING "Flags used by the c compiler during profile build." FORCE)
@@ -409,6 +435,10 @@ check_function_exists(getopt_long HAVE_GETOPT_LONG)
 check_function_exists(open_memstream HAVE_OPEN_MEMSTREAM)
 check_function_exists(strdup HAVE_STRDUP)
 check_function_exists(strlcpy HAVE_STRLCPY)
+
+if(WIN32)
+  set(NOMINMAX 1)
+endif(WIN32)
 
 include(CheckIncludeFile)
 check_include_file(err.h HAVE_ERR_H)
@@ -532,6 +562,17 @@ endif(GCRYPT_LIBRARIES)
 if(UNIX)
   include(FindCurses)
   find_package(Curses REQUIRED)
+  include(CheckLibraryExists)
+  CHECK_LIBRARY_EXISTS("${CURSES_LIBRARIES}" wtimeout "" CURSES_HAS_WTIMEOUT)
+  if(NOT CURSES_HAS_WTIMEOUT)
+    find_library(TINFO_LIBRARY NAMES tinfo)
+    if(TINFO_LIBRARY)
+      CHECK_LIBRARY_EXISTS("${TINFO_LIBRARY}" wtimeout "" TINFO_HAS_WTIMEOUT)
+      if(TINFO_HAS_WTIMEOUT)
+        set(CURSES_LIBRARIES ${CURSES_LIBRARIES} ${TINFO_LIBRARY})
+      endif(TINFO_HAS_WTIMEOUT)
+    endif(TINFO_LIBRARY)
+  endif(NOT CURSES_HAS_WTIMEOUT)
   include(FindThreads)
 endif(UNIX)
 
@@ -545,7 +586,8 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   # Definitions for system
   add_definitions(-DGCC -DLINUX -D_GNU_SOURCE -DI386 -DX86)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused -Wno-unused-parameter")
+
   if(SIZEOF_OFF64_T)
     add_definitions( -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64)
   endif(SIZEOF_OFF64_T)
@@ -589,7 +631,6 @@ endif(CMAKE_SYSTEM_NAME MATCHES "Linux")
 
 # common definitions
 set(COMMON_DEFS SYSV MAXPATHLEN=1024 -D_REENTRANT)
-
 
 # For systemtap options
 if(ENABLE_SYSTEMTAP)
@@ -809,8 +850,8 @@ if(WITH_LIBEDIT STREQUAL "BUNDLED")
   if(UNIX)
     set(LIBEDIT_TARGET libedit)
     externalproject_add(${LIBEDIT_TARGET}
-      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libedit-20120601-3.0
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --enable-widec
+      URL http://thrysoee.dk/editline/libedit-20170329-3.1.tar.gz
+      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
@@ -825,7 +866,7 @@ endif(WITH_LIBEDIT STREQUAL "BUNDLED")
 
 # WITH_LIBLZO can have multiple values with different meanings
 # on Linux:
-# * "BUNDLED" - (default) builds lzo library from cubrid/external/lzo-2.03 and
+# * "BUNDLED" - (default) builds lzo library from cubrid/external/lzo-2.10 and
 #               uses the library created by the build
 # * "BUNDLEDsome_name" - (e.g. BUNDLEDlzo-2.10) builds lzo library from 
 #               cubrid/external/some_name and  uses the library created by the build
@@ -844,7 +885,7 @@ if(WITH_LIBLZO MATCHES "^BUNDLED")
   string(SUBSTRING "${WITH_LIBLZO}" 7 -1 LZO_PATH)
   
   if(LZO_PATH STREQUAL "")
-    set(LZO_PATH "lzo-2.03")
+    set(LZO_PATH "lzo-2.10")
   endif()
   
   if(UNIX)
@@ -955,6 +996,21 @@ if(WIN32)
   list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
 endif(WIN32)
 
+# rapidjson
+externalproject_add(rapidjson
+  # tried URL but archive gets downloaded every time. URL_MD5 may help
+  URL https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz
+  # don't install
+  INSTALL_COMMAND ""
+  # don't build test, doc and examples
+  CMAKE_CACHE_ARGS -DRAPIDJSON_BUILD_TESTS:string=off
+                   -DRAPIDJSON_BUILD_DOC:string=off
+                   -DRAPIDJSON_BUILD_EXAMPLES:string=off
+)
+# add to include directories
+include_directories(${CMAKE_BINARY_DIR}/external/Source/rapidjson/include)
+# add to external project targets
+list(APPEND EP_TARGETS rapidjson)
 
 # include subdirectories
 add_subdirectory(cas)
@@ -972,6 +1028,9 @@ add_subdirectory(contrib)
 add_subdirectory(tools)
 add_subdirectory(locales)
 add_subdirectory(timezones)
+if(AT_LEAST_ONE_UNIT_TEST)
+  add_subdirectory(unit_tests)
+endif()
 
 if(WITH_JDBC)
   find_program(ANT ant PATHS $ENV{ANT_HOME} ENV PATH)
@@ -986,7 +1045,7 @@ if(WIN32)
   add_subdirectory(win)
 endif(WIN32)
 
-if(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager)
+if(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
   get_target_property(CCI_PUBLIC_HEADERS cascci PUBLIC_HEADER)
   get_target_property(CMDEP_PUBLIC_HEADERS cmdep PUBLIC_HEADER)
   get_target_property(CMSTAT_PUBLIC_HEADERS cmstat PUBLIC_HEADER)
@@ -1031,7 +1090,7 @@ if(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager)
   install(DIRECTORY ${INSTALL_DIR}/
     DESTINATION ${CUBRID_PREFIXDIR} COMPONENT Manager
     USE_SOURCE_PERMISSIONS)
-endif(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager)
+endif(WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
 
 
 # create empty directories
@@ -1103,6 +1162,8 @@ if(WIN32)
       set(WIX_VCREDIST_MSM Microsoft_VC90_CRT_x86.msm)
     elseif(MSVC10)
       set(WIX_VCREDIST_MSM Microsoft_VC100_CRT_x86.msm)
+    elseif(MSVC_VERSION GREATER_EQUAL 1910)
+      set(WIX_VCREDIST_MSM Microsoft_VC141_CRT_x86.msm)
     else()
       message(WARNING "Cannot generate MSI installer with unsupported compiler version")
     endif()
@@ -1114,6 +1175,8 @@ if(WIN32)
       set(WIX_VCREDIST_MSM Microsoft_VC90_CRT_x86_x64.msm)
     elseif(MSVC10)
       set(WIX_VCREDIST_MSM Microsoft_VC100_CRT_x64.msm)
+    elseif(MSVC_VERSION GREATER_EQUAL 1910) # ref. https://cmake.org/cmake/help/v3.9/variable/MSVC_VERSION.html
+      set(WIX_VCREDIST_MSM Microsoft_VC141_CRT_x64.msm)
     else()
       message(WARNING "Cannot generate MSI installer with unsupported compiler version")
     endif()

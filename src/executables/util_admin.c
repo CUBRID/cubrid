@@ -25,12 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "config.h"
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#else
-#include "getopt.h"
-#endif
+#include "cubrid_getopt.h"
 #include "utility.h"
 #include "error_code.h"
 #include "util_support.h"
@@ -445,17 +440,6 @@ static GETOPT_LONG ua_Tranlist_Option[] = {
   {TRANLIST_SUMMARY_L, 0, 0, TRANLIST_SUMMARY_S},
   {TRANLIST_SORT_KEY_L, 1, 0, TRANLIST_SORT_KEY_S},
   {TRANLIST_REVERSE_L, 0, 0, TRANLIST_REVERSE_S},
-  {0, 0, 0, 0}
-};
-
-static UTIL_ARG_MAP ua_Prefetchlogdb_Option_Map[] = {
-  {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
-  {PREFETCH_LOG_PATH_S, {ARG_STRING}, {0}},
-  {0, {0}, {0}}
-};
-
-static GETOPT_LONG ua_Prefetchlogdb_Option[] = {
-  {PREFETCH_LOG_PATH_L, 1, 0, PREFETCH_LOG_PATH_S},
   {0, 0, 0, 0}
 };
 
@@ -896,8 +880,6 @@ static UTIL_MAP ua_Utility_Map[] = {
    ua_SyncCollDB_Option, ua_SyncCollDB_Map},
   {TRANLIST, CS_ONLY, 1, UTIL_OPTION_TRANLIST, "tranlist",
    ua_Tranlist_Option, ua_Tranlist_Option_Map},
-  {PREFETCHLOGDB, CS_ONLY, 1, UTIL_OPTION_PREFETCHLOGDB, "prefetchlogdb",
-   ua_Prefetchlogdb_Option, ua_Prefetchlogdb_Option_Map},
   {GEN_TZ, SA_ONLY, 1, UTIL_OPTION_GEN_TZ, "gen_tz",
    ua_GenTz_Option, ua_GenTz_Map},
   {DUMP_TZ, SA_ONLY, 1, UTIL_OPTION_DUMP_TZ, "dump_tz",

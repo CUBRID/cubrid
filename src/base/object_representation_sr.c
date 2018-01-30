@@ -1168,13 +1168,7 @@ or_get_domain_internal (char *ptr)
       new_ = tp_domain_new (typeid_);
       if (new_ == NULL)
 	{
-	  while (domain != NULL)
-	    {
-	      TP_DOMAIN *next = domain->next;
-	      tp_domain_free (domain);
-	      domain = next;
-	    }
-	  return NULL;
+	  goto error_cleanup;
 	}
 
       if (last == NULL)
@@ -1225,18 +1219,35 @@ or_get_domain_internal (char *ptr)
 	  error = or_get_enumeration (&buf, &DOM_GET_ENUMERATION (new_));
 	  if (error != NO_ERROR)
 	    {
-	      while (domain != NULL)
-		{
-		  TP_DOMAIN *next = domain->next;
-		  tp_domain_free (domain);
-		  domain = next;
-		}
-	      return NULL;
+	      goto error_cleanup;
+	    }
+	}
+
+      if (OR_VAR_TABLE_ELEMENT_LENGTH (dstart, ORC_DOMAIN_SCHEMA_JSON_OFFSET) != 0)
+	{
+	  OR_BUF buf;
+
+	  offset = OR_VAR_TABLE_ELEMENT_OFFSET (dstart, ORC_DOMAIN_SCHEMA_JSON_OFFSET);
+	  or_init (&buf, dstart + offset, 0);
+
+	  error = or_get_json_validator (&buf, domain->json_validator);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_cleanup;
 	    }
 	}
     }
 
   return domain;
+
+error_cleanup:
+  while (domain != NULL)
+    {
+      TP_DOMAIN *next = domain->next;
+      tp_domain_free (domain);
+      domain = next;
+    }
+  return NULL;
 }
 
 /*
@@ -1678,8 +1689,6 @@ or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
 {
   DB_VALUE val1, val2;
   int error = NO_ERROR;
-  char *pred_stream = NULL;
-  char *pred_string = NULL;
   int buffer_len = 0;
   char *buffer = NULL;
   OR_PREDICATE *filter_predicate = NULL;
@@ -2815,7 +2824,6 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
   char *repset, *disk_rep, *attset, *repatt, *dptr;
   int rep_count, i, n_fixed, n_variable, offset, start, id;
   char *fixed = NULL;
-  int has_partition_info = 0;
 
   if (repid == NULL_REPRID)
     {
@@ -3019,7 +3027,6 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
   OR_CLASSREP *rep, **rep_arr = NULL;
   char *repset = NULL, *disk_rep, *attset, *repatt, *dptr, *fixed = NULL;
   int old_rep_count = 0, i, j, offset, start, n_variable, n_fixed;
-  int has_partition_info = 0;
 
   if (count)
     {
@@ -3332,7 +3339,6 @@ or_classrep_load_indexes (OR_CLASSREP * rep, RECDES * record)
 int
 or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info, REPR_ID * repr_id, int *has_partition_info)
 {
-  int error = NO_ERROR;
   char *partition_ptr = NULL, *ptr = NULL;
   OR_BUF buf;
   DB_VALUE val;
@@ -3801,7 +3807,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
   int offset = 0, offset_next = 0;
   unsigned char len = 0;
   OR_BUF buffer;
-  int compressed_length = 0, decompressed_length = 0, net_charlen = 0, rc = NO_ERROR;
+  int compressed_length = 0, decompressed_length = 0, rc = NO_ERROR;
 
   assert (*alloced_string == 0);
 

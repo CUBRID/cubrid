@@ -279,8 +279,6 @@ hb_thread_master_reader (void *arg)
 static HBP_PROC_REGISTER *
 hb_make_set_hbp_register (int type)
 {
-  int error;
-
   HBP_PROC_REGISTER *hbp_register;
   char *p, *last;
   int argc;
@@ -429,10 +427,6 @@ hb_type_to_str (HB_PROC_TYPE type)
     {
       return "applylogdb";
     }
-  else if (type == HB_PTYPE_PREFETCHLOGDB)
-    {
-      return "prefetchlogdb";
-    }
   else
     {
       return "";
@@ -550,10 +544,6 @@ hb_pack_server_name (const char *server_name, int *name_length, const char *log_
 	{
 	  packed_name[0] = '%';
 	}
-      else if (type == HB_PTYPE_PREFETCHLOGDB)
-	{
-	  packed_name[0] = '_';
-	}
       else
 	{
 	  assert (0);
@@ -585,7 +575,6 @@ static CSS_CONN_ENTRY *
 hb_connect_to_master (const char *server_name, const char *log_path, HB_PROC_TYPE type)
 {
   CSS_CONN_ENTRY *conn;
-  int error = NO_ERROR;
   char *packed_name;
   int name_length = 0;
 
@@ -684,10 +673,10 @@ hb_create_master_reader (void)
 int
 hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE type)
 {
+#if !defined(SERVER_MODE)
   int error;
   static bool is_first = true;
 
-#if !defined(SERVER_MODE)
   if (is_first == false)
     {
       return (NO_ERROR);
@@ -722,8 +711,9 @@ hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE typ
 
   is_first = false;
   return (NO_ERROR);
-#endif
+#else
   return (ER_FAILED);
+#endif
 }
 
 

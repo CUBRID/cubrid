@@ -95,6 +95,10 @@
 #include "wintcp.h"
 #endif /* WINDOWS */
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 /* TODO : Move .h */
 #if defined(SA_MODE)
 extern bool catcls_Enable;
@@ -772,10 +776,10 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   int i, optional_cap;
   char *ha_node_list = NULL;
   bool check_capabilities;
-#endif /* CS_MODE */
-  bool is_db_user_alloced = false;
   bool skip_preferred_hosts = false;
   bool skip_db_info = false;
+#endif /* CS_MODE */
+  bool is_db_user_alloced = false;
 
   assert (client_credential != NULL);
 
@@ -2192,6 +2196,12 @@ boot_define_domain (MOP class_mop)
   sprintf (domain_string, "sequence of %s", CT_DOMAIN_NAME);
 
   error_code = smt_add_attribute (def, "set_domains", domain_string, NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = smt_add_attribute (def, "json_schema", "string", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3836,7 +3846,6 @@ boot_add_charsets (MOP class_mop)
 {
   int i;
   int count_collations;
-  int found_coll = 0;
 
   count_collations = lang_collation_count ();
 

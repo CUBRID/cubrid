@@ -839,11 +839,8 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
 		    {
 		      /* Try to handle simple expressions so we don't choke on things like negative numbers */
 		      if (pt_is_value_node (val->info.expr.arg1)
-			  && (!val->info.expr.arg2 || pt_is_value_node (val->info.expr.arg2)) && (!val->info.expr.arg3
-												  ||
-												  pt_is_value_node
-												  (val->info.expr.
-												   arg3)))
+			  && (!val->info.expr.arg2 || pt_is_value_node (val->info.expr.arg2))
+			  && (!val->info.expr.arg3 || pt_is_value_node (val->info.expr.arg3)))
 			{
 			  pt_evaluate_tree_having_serial (parser, val, &tmp_val, 1);
 			  if (!parser->error_msgs)
@@ -1719,7 +1716,7 @@ uci_put_value (DB_INDICATOR * indicator, DB_TYPE type, int precision, int scale,
    */
   if (ctype == DB_TYPE_C_CHAR || ctype == DB_TYPE_C_NCHAR || ctype == DB_TYPE_C_VARCHAR || ctype == DB_TYPE_C_VARNCHAR)
     {
-      int tmp_len = strlen ((char *) buf);
+      int tmp_len = (int) strlen ((char *) buf);
       if (precision == 0)
 	{
 	  precision = (tmp_len ? tmp_len : DB_DEFAULT_PRECISION);
@@ -2671,7 +2668,7 @@ set_sqlca_err (void)
   msg = er_msg ();
   strncpy (SQLERRMC, (msg == NULL) ? "" : msg, sizeof (SQLERRMC) - 1);
   SQLERRMC[sizeof (SQLERRMC) - 1] = '\0';
-  SQLERRML = strlen (SQLERRMC);
+  SQLERRML = (int) strlen (SQLERRMC);
 }
 
 /*

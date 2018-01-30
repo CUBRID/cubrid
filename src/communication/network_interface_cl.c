@@ -3517,7 +3517,6 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
   int tran_index = NULL_TRAN_INDEX;
   int request_size, area_size, req_error, temp_int;
   char *request, *reply, *area, *ptr;
-  int row_count = DB_ROW_COUNT_NOT_SET;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -3595,9 +3594,7 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 
   return tran_index;
 #else /* CS_MODE */
-  int err_code = NO_ERROR;
   int tran_index = NULL_TRAN_INDEX;
-  int row_count = DB_ROW_COUNT_NOT_SET;
 
   ENTER_SERVER ();
 
@@ -4567,7 +4564,7 @@ cleanup:
   char *local_name = NULL;
   char *local_alias_print = NULL;
   char *local_stmt_info = NULL;
-  int len = 0;
+  size_t len = 0;
   SHA1Hash alias_sha1 = SHA1_HASH_INITIALIZER;
 
   ENTER_SERVER ();
@@ -4581,7 +4578,7 @@ cleanup:
       local_name = (char *) malloc (len + 1);
       if (local_name == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) len + 1);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, len + 1);
 	  result = ER_FAILED;
 	  goto error;
 	}
@@ -4596,7 +4593,7 @@ cleanup:
       local_alias_print = (char *) malloc (len + 1);
       if (local_alias_print == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) len + 1);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, len + 1);
 	  result = ER_FAILED;
 	  goto error;
 	}
@@ -4881,7 +4878,7 @@ csession_set_session_variables (DB_VALUE * variables, const int count)
 #if defined (CS_MODE)
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
-  char *request = NULL, *reply = NULL, *data_request = NULL, *ptr = NULL;
+  char *request = NULL, *data_request = NULL, *ptr = NULL;
   int req_size = 0, i = 0, err = NO_ERROR;
 
   request = OR_ALIGNED_BUF_START (a_request);
@@ -4950,7 +4947,7 @@ csession_drop_session_variables (DB_VALUE * variables, const int count)
 #if defined (CS_MODE)
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
-  char *request = NULL, *reply = NULL, *data_request = NULL, *ptr = NULL;
+  char *request = NULL, *data_request = NULL, *ptr = NULL;
   int req_size = 0, i = 0, err = NO_ERROR;
 
   request = OR_ALIGNED_BUF_START (a_request);
@@ -5019,7 +5016,7 @@ csession_get_variable (DB_VALUE * name, DB_VALUE * value)
 #if defined (CS_MODE)
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *request = NULL, *reply = NULL, *ptr = NULL;
-  int req_size = 0, i = 0, err = NO_ERROR, reply_size = 0;
+  int req_size = 0, err = NO_ERROR, reply_size = 0;
 
   assert (value != NULL);
 
@@ -6244,6 +6241,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
 	{
 	  /* NULL XASL_ID will be returned when cache not found */
 	  OR_UNPACK_XASL_ID (ptr, stream->xasl_id);
+	  context->recompile_xasl = false;
 
 	  if (reply_buffer != NULL && reply_buffer_size != 0)
 	    {
@@ -8499,104 +8497,6 @@ locator_check_fk_validity (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type, int
 
   EXIT_SERVER ();
   return error;
-#endif /* !CS_MODE */
-}
-
-
-int
-locator_prefetch_repl_insert (OID * class_oid, RECDES * recdes)
-{
-  int error = NO_ERROR;
-#if defined (CS_MODE)
-  char *ptr = NULL;
-  char *request = NULL;
-  int req_error, request_size;
-  char *reply = NULL;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  request_size = OR_OID_SIZE + or_packed_recdesc_length (recdes->length);
-  request = (char *) malloc (request_size);
-  if (request == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  ptr = or_pack_oid (request, class_oid);
-  ptr = or_pack_recdes (ptr, recdes);
-
-  req_error =
-    net_client_request (NET_SERVER_LC_PREFETCH_REPL_INSERT, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-			NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      ptr = or_unpack_int (reply, &error);
-    }
-
-  free_and_init (request);
-#else /* CS_MODE */
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "log prefetcher");
-  error = ER_NOT_IN_STANDALONE;
-#endif /* !CS_MODE */
-  return error;
-}
-
-int
-locator_prefetch_repl_update_or_delete (OID * class_oid, BTID * btid, DB_VALUE * key_value)
-{
-#if defined (CS_MODE)
-  int error = NO_ERROR;
-  int req_error, request_size, key_size;
-  char *ptr = NULL;
-  char *request = NULL;
-  char *reply = NULL;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-
-  if (btid == NULL || class_oid == NULL || key_value == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      return ER_OBJ_INVALID_ARGUMENTS;
-    }
-
-  reply = OR_ALIGNED_BUF_START (a_reply);
-  key_size = OR_VALUE_ALIGNED_SIZE (key_value);
-  request_size = (OR_BTID_ALIGNED_SIZE	/* btid */
-		  + OR_OID_SIZE	/* class_oid */
-		  + key_size /* key_value */ );
-
-  request = (char *) malloc (request_size);
-  if (request == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  ptr = or_pack_btid (request, btid);
-  ptr = or_pack_oid (ptr, class_oid);
-  ptr = or_pack_mem_value (ptr, key_value, NULL);
-  if (ptr == NULL)
-    {
-      goto free_and_return;
-    }
-
-  request_size = CAST_BUFLEN (ptr - request);
-
-  req_error =
-    net_client_request (NET_SERVER_LC_PREFETCH_REPL_UPDATE_OR_DELETE, request, request_size, reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      ptr = or_unpack_int (reply, &error);
-    }
-
-free_and_return:
-  free_and_init (request);
-  return error;
-#else /* CS_MODE */
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "log prefetcher");
-  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
 

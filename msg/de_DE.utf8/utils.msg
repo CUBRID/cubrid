@@ -1059,18 +1059,6 @@ gültige Optionen:\n\
       --sort-key=SPALTENNUMMER Spalte zu sortieren\n\
       --reverse                Ergebnisse umgekehrt sortieren\n
 
-$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
-22 Der Server war nicht für HA konfiguriert.\n
-23 Vorababruf ist deaktiviert.\n
-58 HA wird in dieser Plattform nicht unterstützt.\n
-59 prefetchlogdb nicht ausführen können als Stand-Alone-Modus.\n
-60 \
-prefetchlogdb: Vorauslese Protokollseiten vom Server.\n\
-verwendung: %1$s prefetchlogdb [OPTION] database-name\n\
-\n\
-gültigen Optionen:\n\
-  -L, --log-path=PATH         Verzeichnispfad für Protokolldatenträger kopiert\n
-
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
 59 Erzeugungsmodus Ungültig geliefert.\n
 60 Ungültige oder Eingangsordner beschädigte.\n

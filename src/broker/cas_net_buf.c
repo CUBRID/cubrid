@@ -415,8 +415,8 @@ net_buf_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec, ch
       else
 	{
 	  ut_trim (tmp_str);
-	  net_buf_cp_int (net_buf, strlen (tmp_str) + 1, NULL);
-	  net_buf_cp_str (net_buf, tmp_str, strlen (tmp_str) + 1);
+	  net_buf_cp_int (net_buf, (int) strlen (tmp_str) + 1, NULL);
+	  net_buf_cp_str (net_buf, tmp_str, (int) strlen (tmp_str) + 1);
 	  FREE_MEM (tmp_str);
 	}
     }

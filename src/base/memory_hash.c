@@ -1158,8 +1158,9 @@ mht_clear (MHT_TABLE * ht, int (*rem_func) (const void *key, void *data, void *a
  *       print this information
  */
 int
-mht_dump (FILE * out_fp, const MHT_TABLE * ht, const int print_id_opt,
-	  int (*print_func) (FILE * fp, const void *key, void *data, void *args), void *func_args)
+mht_dump (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_TABLE * ht, const int print_id_opt,
+	  int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *key, void *data, void *args),
+	  void *func_args)
 {
   HENTRY_PTR *hvector;		/* Entries of hash table */
   HENTRY_PTR hentry;		/* A hash table entry. linked list */
@@ -1188,7 +1189,7 @@ mht_dump (FILE * out_fp, const MHT_TABLE * ht, const int print_id_opt,
 	      /* Go over the linked list */
 	      for (hentry = *hvector; cont == TRUE && hentry != NULL; hentry = hentry->next)
 		{
-		  cont = (*print_func) (out_fp, hentry->key, hentry->data, func_args);
+		  cont = (*print_func) (thread_p, out_fp, hentry->key, hentry->data, func_args);
 		}
 	    }
 	}
@@ -1198,7 +1199,7 @@ mht_dump (FILE * out_fp, const MHT_TABLE * ht, const int print_id_opt,
       /* Quick scan by following only the active entries */
       for (hentry = ht->act_head; cont == TRUE && hentry != NULL; hentry = hentry->act_next)
 	{
-	  cont = (*print_func) (out_fp, hentry->key, hentry->data, func_args);
+	  cont = (*print_func) (thread_p, out_fp, hentry->key, hentry->data, func_args);
 	}
     }
 
@@ -2126,7 +2127,7 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	      len = db_get_string_size (val);
 	      if (len < 0)
 		{
-		  len = strlen (ptr);
+		  len = (int) strlen (ptr);
 		}
 
 	      i = len;
@@ -2170,7 +2171,25 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	case DB_TYPE_ENUMERATION:
 	  hashcode = mht_get_shiftmult32 (val->data.enumeration.short_val, ht_size);
 	  break;
+	case DB_TYPE_JSON:
+	  {
+	    char *json_body = NULL;
 
+	    json_body = DB_GET_JSON_RAW_BODY (val);
+
+	    if (json_body == NULL)
+	      {
+		hashcode = 0;
+	      }
+	    else
+	      {
+		len = (int) strlen (json_body);
+
+		hashcode = MHT2STR_COLL (LANG_COLL_BINARY, (unsigned char *) json_body, len);
+		hashcode %= ht_size;
+	      }
+	  }
+	  break;
 	default:		/* impossible */
 	  /* 
 	   * TODO this is actually possible. See the QA scenario:

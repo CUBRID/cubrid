@@ -1263,7 +1263,12 @@ $ LOADDB
 1194 Die Datei konnte nicht überprüft werden %1$d|%2$d Weil Sperre auf class %3$d|%4$d|%5$d Wird nicht sofort gewährt.
 1195 Der rekursive Teil eines CTE sollte keine aggregierten Funktionen ohne GROUP BY-Klausel enthalten.
 1196 Maximale Rekursionen %1$d erreichte die Ausführung von CTE.
-1197 Letzter Fehler
+1197 Invalid json: %1$s (%2$d)
+1198 A json object must be provided
+1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
+1200 Invalid JSON path
+1201 Json object name cannot be NULL.
+1202 Letzter Fehler
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
 2 Keine Fehlermeldung vorhanden.

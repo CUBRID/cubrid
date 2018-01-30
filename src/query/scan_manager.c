@@ -42,6 +42,7 @@
 #include "locator_sr.h"
 #include "object_primitive.h"
 #include "query_opfunc.h"
+#include "thread.h"
 
 /* this must be the last header file included!!! */
 #include "dbval.h"
@@ -1267,7 +1268,6 @@ compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2, in
 static int
 key_val_compare (const void *p1, const void *p2)
 {
-  int rc = DB_UNK;
   int p1_num_index_term, p2_num_index_term;
   DB_VALUE *p1_key, *p2_key;
 

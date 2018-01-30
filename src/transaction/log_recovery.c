@@ -42,6 +42,7 @@
 #include "locator_sr.h"
 #include "page_buffer.h"
 #include "log_compress.h"
+#include "thread.h"
 
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
@@ -154,7 +155,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
   TRAN_STATE save_state;	/* The current state of the transaction. Must be returned to this state */
   bool is_zip = false;
   int error_code = NO_ERROR;
-  int save_thread_type = 0;
+  THREAD_TYPE save_thread_type = THREAD_TYPE::TT_NONE;
 
   if (thread_p == NULL)
     {
@@ -165,7 +166,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
   if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
     {
       /* Convert thread to a vacuum worker. */
-      VACUUM_CONVERT_THREAD_TO_VACUUM (thread_p, vacuum_rv_get_worker_by_trid (thread_p, tdes->trid), save_thread_type);
+      vacuum_rv_convert_thread_to_vacuum (thread_p, tdes->trid, save_thread_type);
 
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
 		     "Log undo (%lld, %d), rcvindex=%d for tdes: tdes->trid=%d.",
@@ -402,7 +403,7 @@ end:
   /* Convert thread back to system transaction. */
   if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
     {
-      VACUUM_RESTORE_THREAD (thread_p, (THREAD_TYPE) save_thread_type);
+      vacuum_restore_thread (thread_p, (THREAD_TYPE) save_thread_type);
     }
   else
     {
@@ -685,6 +686,9 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery:LOG_HAS_LOGGING_BEEN_IGNORED");
       log_Gl.hdr.has_logging_been_skipped = false;
     }
+
+  er_log_debug (ARG_FILE_LINE, "RECOVERY: start with %lld|%d and stop at %lld", LSA_AS_ARGS (&log_Gl.hdr.chkpt_lsa),
+		stopat != NULL ? *stopat : -1);
 
   /* Find the starting LSA for the analysis phase */
 
@@ -3144,8 +3148,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	      if (redo->data.rcvindex == RVVAC_COMPLETE)
 		{
-		  LOG_LSA null_lsa = LSA_INITIALIZER;
-
 		  /* Reset log header MVCC info */
 		  logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
 		}
@@ -4034,7 +4036,7 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
 {
   int i;
   int save_tran_index;
-  int save_thread_type = 0;
+  THREAD_TYPE save_thread_type = THREAD_TYPE::TT_NONE;
   TRANID trid;
   LOG_TDES *tdes = NULL;	/* Transaction descriptor */
   VACUUM_WORKER *worker = NULL;
@@ -4064,7 +4066,7 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
 	  /* Nothing to do */
 	  continue;
 	}
-      VACUUM_CONVERT_THREAD_TO_VACUUM (thread_p, worker, save_thread_type);
+      vacuum_rv_convert_thread_to_vacuum (thread_p, trid, save_thread_type);
       tdes = worker->tdes;
 
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
@@ -4074,7 +4076,7 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
       log_recovery_finish_postpone (thread_p, tdes);
 
       /* Restore thread */
-      VACUUM_RESTORE_THREAD (thread_p, (THREAD_TYPE) save_thread_type);
+      vacuum_restore_thread (thread_p, save_thread_type);
     }
 }
 
@@ -4089,7 +4091,7 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
 {
   int i;
   int save_tran_index;
-  int save_thread_type = 0;
+  THREAD_TYPE save_thread_type = THREAD_TYPE::TT_NONE;
   TRANID trid;
   LOG_TDES *tdes = NULL;	/* Transaction descriptor */
   VACUUM_WORKER *worker = NULL;
@@ -4119,7 +4121,7 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
 	  /* Nothing to do */
 	  continue;
 	}
-      VACUUM_CONVERT_THREAD_TO_VACUUM (thread_p, worker, save_thread_type);
+      vacuum_rv_convert_thread_to_vacuum (thread_p, trid, save_thread_type);
       tdes = worker->tdes;
 
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
@@ -4130,7 +4132,7 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
       worker->state = VACUUM_WORKER_STATE_RECOVERY;
 
       /* Restore thread */
-      VACUUM_RESTORE_THREAD (thread_p, (THREAD_TYPE) save_thread_type);
+      vacuum_restore_thread (thread_p, save_thread_type);
     }
 }
 
@@ -5545,9 +5547,6 @@ log_recovery_find_first_postpone (THREAD_ENTRY * thread_p, LOG_LSA * ret_lsa, LO
   int nxtop_count = 0;
   bool start_postpone_lsa_wasapplied = false;
 
-  LOG_REC_SYSOP_END *topop_result = NULL;
-  bool found_commit_with_postpone = false;
-
   assert (ret_lsa && start_postpone_lsa && tdes);
 
   LSA_SET_NULL (ret_lsa);
@@ -5946,7 +5945,6 @@ log_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_u
   PGSLOTID slotid = rcv->offset & (~LOG_RV_RECORD_MODIFY_MASK);
   RECDES record;
   char data_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  INT16 rec_type = REC_UNKNOWN;
   char *ptr = NULL;
   int error_code = NO_ERROR;
 

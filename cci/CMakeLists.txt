@@ -56,9 +56,8 @@ if(WIN32)
   set_target_properties(cascci PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cascci/cascci.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
   target_link_libraries(cascci LINK_PRIVATE ws2_32)
 endif(WIN32)
-if(UNIX)
-  add_dependencies(cascci ${EP_TARGETS})
-endif(UNIX)
+
+add_dependencies(cascci ${EP_TARGETS})
 
 install(TARGETS cascci
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT CCI

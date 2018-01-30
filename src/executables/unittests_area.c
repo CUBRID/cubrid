@@ -30,6 +30,8 @@
 #include <sys/time.h>
 #include <assert.h>
 
+#define strlen(s1) ((int) strlen(s1))
+
 #undef SERVER_MODE
 /* suppress SERVER_MODE while including client module headers */
 #include "class_object.h"

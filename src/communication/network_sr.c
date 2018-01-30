@@ -56,6 +56,7 @@
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
+#include "thread_manager.hpp"
 
 enum net_req_act
 {
@@ -791,14 +792,6 @@ net_server_init (void)
   req_p->processing_function = sbtree_find_multi_uniques;
   req_p->name = "NET_SERVER_FIND_MULTI_UNIQUES";
 
-  req_p = &net_Requests[NET_SERVER_LC_PREFETCH_REPL_INSERT];
-  req_p->processing_function = slocator_prefetch_repl_insert;
-  req_p->name = "NET_SERVER_LC_PREFETCH_PAGE_REPL_INSERT";
-
-  req_p = &net_Requests[NET_SERVER_LC_PREFETCH_REPL_UPDATE_OR_DELETE];
-  req_p->processing_function = slocator_prefetch_repl_update_or_delete;
-  req_p->name = "NET_SERVER_LC_PREFETCH_PAGE_REPL_UPDATE_OR_DELETE";
-
   req_p = &net_Requests[NET_SERVER_CSS_KILL_OR_INTERRUPT_TRANSACTION];
   req_p->processing_function = sthread_kill_or_interrupt_tran;
   req_p->name = "NET_SERVER_CSS_KILL_OR_INTERRUPT_TRANSACTION";
@@ -1050,6 +1043,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 	{
 	  assert_release (false);
 	}
+      assert (thread_p->count_private_allocators == 0);
 #endif
 
       /* defence code: let other threads continue. */
@@ -1254,6 +1248,7 @@ net_server_start (const char *server_name)
   char *packed_name;
   int r, status = 0;
   CHECK_ARGS check_coll_and_timezone = { true, true };
+  THREAD_ENTRY *thread_p = NULL;
 
 #if defined(WINDOWS)
   if (css_windows_startup () < 0)
@@ -1293,12 +1288,9 @@ net_server_start (const char *server_name)
       status = -1;
       goto end;
     }
-  if (thread_initialize_manager () != NO_ERROR)
-    {
-      PRINT_AND_LOG_ERR_MSG ("Failed to initialize thread manager\n");
-      status = -1;
-      goto end;
-    }
+
+  cubthread::initialize (thread_p);
+  assert (thread_p == thread_get_thread_entry_info ());
 
   if (er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
     {
@@ -1313,8 +1305,7 @@ net_server_start (const char *server_name)
   net_server_init ();
   css_initialize_server_interfaces (net_server_request, net_server_conn_down);
 
-  if (boot_restart_server (thread_get_thread_entry_info (), true, server_name, false, &check_coll_and_timezone,
-			   NULL) != NO_ERROR)
+  if (boot_restart_server (thread_p, true, server_name, false, &check_coll_and_timezone, NULL) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -1362,7 +1353,7 @@ net_server_start (const char *server_name)
       status = 2;
     }
 
-  thread_final_manager ();
+  cubthread::finalize ();
   csect_finalize_static_critical_sections ();
   (void) sync_finalize_sync_stats ();
 

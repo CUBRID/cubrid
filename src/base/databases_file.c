@@ -1363,7 +1363,7 @@ cfg_host_exists (char *host_list, char *hostname, int num_items)
   char *next_sep;
   int i = 0, len, hostname_len;
 
-  hostname_len = strlen (hostname);
+  hostname_len = (int) strlen (hostname);
 
   current_host = host_list;
   while ((current_host != NULL) && (i < num_items))
@@ -1493,19 +1493,19 @@ cfg_create_host_list (const char *primary_host_name, bool include_local_host, in
 	}
 #else
       strcpy (local_host, "localhost");
-      host_list_length += strlen (local_host) + 1;
+      host_list_length += (int) strlen (local_host) + 1;
 #endif
     }
   /* check the given primary hosts list */
   if (primary_host_name != NULL && *primary_host_name != '\0')
     {
-      host_list_length += strlen (primary_host_name) + 1;
+      host_list_length += (int) strlen (primary_host_name) + 1;
     }
 
   /* get the hosts list from parameters */
   if (prm_get_string_value (PRM_ID_CFG_DB_HOSTS) != NULL && *prm_get_string_value (PRM_ID_CFG_DB_HOSTS) != '\0')
     {
-      host_list_length += strlen (prm_get_string_value (PRM_ID_CFG_DB_HOSTS)) + 1;
+      host_list_length += (int) strlen (prm_get_string_value (PRM_ID_CFG_DB_HOSTS)) + 1;
     }
 
   /* 
