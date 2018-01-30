@@ -2,9 +2,7 @@
 
 #include <utility>
 
-#define MAX_NUMBER_OF_SLAVES 16
-
-std::vector <master_replication_channel> master_replication_channel_Manager::master_channels (MAX_NUMBER_OF_SLAVES);
+std::vector <master_replication_channel> master_replication_channel_Manager::master_channels;
 
 void master_replication_channel_Manager::add_master_replication_channel(master_replication_channel &&channel)
 {

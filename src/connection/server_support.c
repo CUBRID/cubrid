@@ -1254,7 +1254,7 @@ css_process_master_hostname ()
 
   assert (hostname_length > 0 && ha_Server_state == HA_SERVER_STATE_STANDBY);
 
-  master_replication_channel_Manager::reset ();
+  master_replication_channel_manager::reset ();
   slave_replication_channel::reset_singleton ();
   slave_replication_channel::init (ha_Server_master_hostname, css_Master_server_name, css_Master_port_id);
 
@@ -3122,7 +3122,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  logtb_enable_update (thread_p);
 	}
       slave_replication_channel::reset_singleton ();
-      master_replication_channel_Manager::reset();
+      master_replication_channel_manager::reset();
       //master_replication_channel::init ();
       break;
 
@@ -3477,7 +3477,7 @@ css_process_new_slave (SOCKET master_fd)
 
   master_replication_channel new_channel (new_fd);
   new_channel.add_daemon_thread (RECEIVE_FROM_SLAVE, cubthread::looper (std::chrono::seconds (0)), new receive_from_slave_daemon (new_channel));
-  master_replication_channel_Manager::add_master_replication_channel (std::move (new_channel));
+  master_replication_channel_manager::add_master_replication_channel (std::move (new_channel));
 }
 
 void init_master_hostname()
