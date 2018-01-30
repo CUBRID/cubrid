@@ -116,6 +116,8 @@ void master_replication_channel::remove_slave_by_index (int slave_index)
     {
       slave_fds[i] = slave_fds[i+1];
     }
+
+  m_current_number_of_connected_slaves--;
 }
 
 void master_replication_channel::init ()
