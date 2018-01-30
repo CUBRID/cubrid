@@ -18,7 +18,6 @@ class communication_channel
     static const int &get_max_timeout ();
   protected:
     static const int TCP_MAX_TIMEOUT_IN_MS;
-    static std::mutex singleton_mutex; /* TODO REMOVE ME */
   private:
 };
 

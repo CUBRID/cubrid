@@ -8,6 +8,7 @@
 #include "system_parameter.h"
 
 slave_replication_channel *slave_replication_channel::singleton = NULL;
+std::mutex slave_replication_channel::singleton_mutex;
 
 class slave_dummy_send_msg : public cubthread::entry_task
 {
@@ -102,7 +103,7 @@ void slave_replication_channel::init (const std::string &hostname, const std::st
 {
   if (singleton == NULL)
     {
-      std::lock_guard<std::mutex> guard (communication_channel::singleton_mutex);
+      std::lock_guard<std::mutex> guard (singleton_mutex);
       if (singleton == NULL)
         {
           singleton = new slave_replication_channel (hostname, server_name, port);
@@ -115,7 +116,7 @@ void slave_replication_channel::reset_singleton ()
   delete singleton;
   singleton = NULL;
 }
- 
+
 slave_replication_channel *slave_replication_channel::get_channel ()
 {
   return singleton;

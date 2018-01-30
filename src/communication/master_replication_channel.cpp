@@ -1,11 +1,7 @@
 #include "master_replication_channel.hpp"
-
-#include "connection_defs.h"
 #include "thread_manager.hpp"
-#include "thread_entry_task.hpp"
-#include "thread_looper.hpp"
-#include "system_parameter.h"
 
+#if 0
 master_replication_channel *master_replication_channel::singleton = NULL;
 
 class master_server_loop : public cubthread::entry_task
@@ -57,18 +53,87 @@ class master_server_loop : public cubthread::entry_task
   private:
     master_replication_channel *channel;
 };
+#endif
 
-master_replication_channel::master_replication_channel () : m_current_number_of_connected_slaves (0)
+master_replication_channel::master_replication_channel (int slave_fd) : m_slave_fd (slave_fd)
 {
   /* start communication daemon thread */
+#if 0
   cubthread::manager *session_manager = cubthread::get_manager ();
 
   master_loop_daemon = session_manager->create_daemon (cubthread::looper (std::chrono::seconds (0)),
 		       new master_server_loop (this));
 
   _er_log_debug (ARG_FILE_LINE, "init master_replication_channel \n");
+#endif
+  for (int i = 0; i < NUM_OF_MASTER_DAEMON_THREADS; i++)
+    {
+      m_master_daemon_threads[i] = NULL;
+    }
 }
 
+master_replication_channel &master_replication_channel::add_daemon_thread (MASTER_DAEMON_THREADS daemon_index, const cubthread::looper &loop_rule, cubthread::entry_task *task)
+{
+  if (m_master_daemon_threads[daemon_index] != NULL)
+    {
+      cubthread::get_manager()->destroy_daemon (m_master_daemon_threads[daemon_index]);
+    }
+
+  m_master_daemon_threads[daemon_index] = cubthread::get_manager ()->create_daemon (loop_rule, task);
+
+  return *this;
+}
+
+master_replication_channel::master_replication_channel (master_replication_channel &&channel)
+{
+  this->m_slave_fd = channel.m_slave_fd;
+  channel.m_slave_fd = -1;
+
+  for (int i = 0; i < NUM_OF_MASTER_DAEMON_THREADS; i++)
+    {
+      this->m_master_daemon_threads[i] = channel.m_master_daemon_threads[i];
+      channel.m_master_daemon_threads[i] = NULL;
+    }
+}
+
+master_replication_channel::master_replication_channel (const master_replication_channel &channel)
+{
+  this->m_slave_fd = channel.m_slave_fd;
+
+  for (int i = 0; i < NUM_OF_MASTER_DAEMON_THREADS; i++)
+    {
+      this->m_master_daemon_threads[i] = channel.m_master_daemon_threads[i];
+    }
+}
+
+master_replication_channel &master_replication_channel::operator= (master_replication_channel &&channel)
+{
+  this->~master_replication_channel();
+  new (this) master_replication_channel();
+
+  this->m_slave_fd = channel.m_slave_fd;
+  channel.m_slave_fd = -1;
+
+  for (int i = 0; i < NUM_OF_MASTER_DAEMON_THREADS; i++)
+    {
+      this->m_master_daemon_threads[i] = channel.m_master_daemon_threads[i];
+      channel.m_master_daemon_threads[i] = NULL;
+    }
+}
+
+master_replication_channel &master_replication_channel::operator= (const master_replication_channel &channel)
+{
+  this->~master_replication_channel();
+  new (this) master_replication_channel();
+
+  this->m_slave_fd = channel.m_slave_fd;
+  for (int i = 0; i < NUM_OF_MASTER_DAEMON_THREADS; i++)
+    {
+      this->m_master_daemon_threads[i] = channel.m_master_daemon_threads[i];
+    }
+}
+
+#if 0
 int master_replication_channel::add_slave_connection (int sock_fd)
 {
   if (m_current_number_of_connected_slaves >= MAX_SLAVE_CONNECTIONS)
@@ -142,15 +207,18 @@ master_replication_channel *master_replication_channel::get_channel ()
 {
   return singleton;
 }
+#endif
 
 master_replication_channel::~master_replication_channel ()
 {
-  cubthread::get_manager()->destroy_daemon (master_loop_daemon);
-
-  for (int i = 0; i < m_current_number_of_connected_slaves; i++)
+  for (int i = 0; i < NUM_OF_MASTER_DAEMON_THREADS; i++)
     {
-      close (slave_fds[i].fd);
+      if (m_master_daemon_threads[i] != NULL)
+        {
+          cubthread::get_manager()->destroy_daemon (m_master_daemon_threads[i]);
+        }
     }
 
-  _er_log_debug (ARG_FILE_LINE, "destroy master_replication_channel \n");
+  _er_log_debug (ARG_FILE_LINE, "destroy master_replication_channel slave_fd=%d\n", m_slave_fd);
+  close (m_slave_fd);
 }

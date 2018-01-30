@@ -1385,7 +1385,7 @@ net_server_start (const char *server_name)
       status = 2;
     }
 
-  master_replication_channel::reset_singleton();
+  master_replication_channel_Manager::reset();
   slave_replication_channel::reset_singleton();
   cubthread::finalize ();
   csect_finalize_static_critical_sections ();
