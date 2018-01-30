@@ -1368,6 +1368,9 @@ net_server_start (const char *server_name)
 	  (void) xboot_shutdown_server (thread_get_thread_entry_info (), ER_ALL_FINAL);
 	}
 
+      master_replication_channel_manager::reset();
+      slave_replication_channel::reset_singleton();
+
 #if defined(CUBRID_DEBUG)
       net_server_histo_print ();
 #endif /* CUBRID_DEBUG */
@@ -1385,8 +1388,6 @@ net_server_start (const char *server_name)
       status = 2;
     }
 
-  master_replication_channel_manager::reset();
-  slave_replication_channel::reset_singleton();
   cubthread::finalize ();
   csect_finalize_static_critical_sections ();
   (void) sync_finalize_sync_stats ();
