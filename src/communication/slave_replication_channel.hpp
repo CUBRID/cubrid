@@ -1,7 +1,7 @@
 #ifndef _SLAVE_REPLICATION_CHANNEL_HPP
 #define _SLAVE_REPLICATION_CHANNEL_HPP
 
-#include "replication_channel.hpp"
+#include "communication_channel.hpp"
 #include "connection_defs.h"
 
 namespace cubthread
@@ -9,7 +9,7 @@ namespace cubthread
   class daemon;
 };
 
-class slave_replication_channel : public replication_channel
+class slave_replication_channel : public communication_channel
 {
 public:
 

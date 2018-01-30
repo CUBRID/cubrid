@@ -1,4 +1,4 @@
-#include "replication_channel.hpp"
+#include "communication_channel.hpp"
 
 #include "connection_support.h"
 #include "system_parameter.h"
@@ -13,18 +13,18 @@
 
 #define MAX_CHANNEL_THREADS 16 /* TODO set this accordingly, maybe make it dynamic */
 
-const int replication_channel::TCP_MAX_TIMEOUT_IN_MS = prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000;
-std::mutex replication_channel::singleton_mutex;
+const int communication_channel::TCP_MAX_TIMEOUT_IN_MS = prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000;
+std::mutex communication_channel::singleton_mutex;
 
-replication_channel::replication_channel ()
+communication_channel::communication_channel ()
 {
 }
 
-replication_channel::~replication_channel ()
+communication_channel::~communication_channel ()
 {
 }
 
-int replication_channel::send (int sock_fd, const char *message, int message_length, int timeout)
+int communication_channel::send (int sock_fd, const char *message, int message_length, int timeout)
 {
   CSS_CONN_ENTRY entry;
 
@@ -32,7 +32,7 @@ int replication_channel::send (int sock_fd, const char *message, int message_len
   return css_net_send (&entry, message, message_length, timeout);
 }
 
-int replication_channel::send (int sock_fd, const std::string &message, int timeout)
+int communication_channel::send (int sock_fd, const std::string &message, int timeout)
 {
   CSS_CONN_ENTRY entry;
 
@@ -40,12 +40,12 @@ int replication_channel::send (int sock_fd, const std::string &message, int time
   return css_net_send (&entry, message.c_str(), message.length(), timeout);
 }
 
-int replication_channel::recv (int sock_fd, char *buffer, int &received_length, int timeout)
+int communication_channel::recv (int sock_fd, char *buffer, int &received_length, int timeout)
 {
   return css_net_recv (sock_fd, buffer, &received_length, timeout);
 }
 
-int replication_channel::connect_to (const char *host_name, int port)
+int communication_channel::connect_to (const char *host_name, int port)
 {
   SOCKET fd = INVALID_SOCKET;
 
@@ -59,7 +59,7 @@ int replication_channel::connect_to (const char *host_name, int port)
   return fd;
 }
 
-const int &replication_channel::get_max_timeout ()
+const int &communication_channel::get_max_timeout ()
 {
   return TCP_MAX_TIMEOUT_IN_MS;
 }

@@ -1,7 +1,7 @@
 #ifndef _MASTER_REPLICATION_CHANNEL_HPP
 #define _MASTER_REPLICATION_CHANNEL_HPP
 
-#include "replication_channel.hpp"
+#include "communication_channel.hpp"
 #include <sys/poll.h>
 
 /* TODO check if this is ok */
@@ -13,7 +13,7 @@ namespace cubthread
   class daemon;
 };
 
-class master_replication_channel : public replication_channel
+class master_replication_channel : public communication_channel
 {
   public:
     int add_slave_connection (int sock_fd);

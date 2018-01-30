@@ -26,7 +26,7 @@ class slave_dummy_send_msg : public cubthread::entry_task
     {
       if (!IS_INVALID_SOCKET (channel->get_master_conn_entry()->fd))
         {
-          int rc = channel->send (channel->get_master_conn_entry()->fd, std::string ("hello from ") + this_hostname, replication_channel::get_max_timeout());
+          int rc = channel->send (channel->get_master_conn_entry()->fd, std::string ("hello from ") + this_hostname, communication_channel::get_max_timeout());
           if (rc == ERROR_ON_WRITE)
             {
               /* this probably means that the connection was closed */
@@ -102,7 +102,7 @@ void slave_replication_channel::init (const std::string &hostname, const std::st
 {
   if (singleton == NULL)
     {
-      std::lock_guard<std::mutex> guard (replication_channel::singleton_mutex);
+      std::lock_guard<std::mutex> guard (communication_channel::singleton_mutex);
       if (singleton == NULL)
         {
           singleton = new slave_replication_channel (hostname, server_name, port);

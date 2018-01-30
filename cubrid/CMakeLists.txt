@@ -122,7 +122,7 @@ set(CONNECTION_SOURCES
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
-  ${COMMUNICATION_DIR}/replication_channel.cpp
+  ${COMMUNICATION_DIR}/communication_channel.cpp
   ${COMMUNICATION_DIR}/master_replication_channel.cpp
   ${COMMUNICATION_DIR}/slave_replication_channel.cpp
   )

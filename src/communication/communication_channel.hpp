@@ -1,19 +1,14 @@
-#ifndef _REPLICATION_CHANNEL_HPP
-#define _REPLICATION_CHANNEL_HPP
+#ifndef _COMMUNICATION_CHANNEL_HPP
+#define _COMMUNICATION_CHANNEL_HPP
 
 #include <string>
 #include <mutex>
 
-enum class slave_requests
-{
-
-};
-
-class replication_channel
+class communication_channel
 {
   public:
-    replication_channel ();
-    virtual ~replication_channel ();
+    communication_channel ();
+    virtual ~communication_channel ();
 
     int send (int sock_fd, const std::string &message, int timeout);
     int send (int sock_fd, const char *message, int message_length, int timeout);
@@ -23,7 +18,7 @@ class replication_channel
     static const int &get_max_timeout ();
   protected:
     static const int TCP_MAX_TIMEOUT_IN_MS;
-    static std::mutex singleton_mutex;
+    static std::mutex singleton_mutex; /* TODO REMOVE ME */
   private:
 };
 

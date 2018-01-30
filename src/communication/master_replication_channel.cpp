@@ -30,7 +30,7 @@ class master_server_loop : public cubthread::entry_task
               #define MAX_LENGTH 100
                 char buffer [MAX_LENGTH];
                 int recv_length = MAX_LENGTH;
-                rc = channel->recv (channel->get_poll_fd_of_slave(i).fd, buffer, recv_length, replication_channel::get_max_timeout());
+                rc = channel->recv (channel->get_poll_fd_of_slave(i).fd, buffer, recv_length, communication_channel::get_max_timeout());
                 if (rc == ERROR_WHEN_READING_SIZE || rc == ERROR_ON_READ)
                   {
                     /* this usually means that the connection is closed 
@@ -124,7 +124,7 @@ void master_replication_channel::init ()
 {
   if (singleton == NULL)
     {
-      std::lock_guard<std::mutex> guard (replication_channel::singleton_mutex);
+      std::lock_guard<std::mutex> guard (communication_channel::singleton_mutex);
       if (singleton == NULL)
         {
           singleton = new master_replication_channel ();
