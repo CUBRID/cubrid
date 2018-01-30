@@ -55,7 +55,7 @@ class master_server_loop : public cubthread::entry_task
 };
 #endif
 
-master_replication_channel::master_replication_channel (int slave_fd) : m_slave_fd (slave_fd)
+master_replication_channel::master_replication_channel (int slave_fd)
 {
   /* start communication daemon thread */
 #if 0
@@ -63,16 +63,19 @@ master_replication_channel::master_replication_channel (int slave_fd) : m_slave_
 
   master_loop_daemon = session_manager->create_daemon (cubthread::looper (std::chrono::seconds (0)),
 		       new master_server_loop (this));
-
-  _er_log_debug (ARG_FILE_LINE, "init master_replication_channel \n");
 #endif
   for (int i = 0; i < NUM_OF_MASTER_DAEMON_THREADS; i++)
     {
       m_master_daemon_threads[i] = NULL;
     }
+
+  m_slave_fd.fd = slave_fd;
+  m_slave_fd.events = POLLIN;
+
+  _er_log_debug (ARG_FILE_LINE, "init master_replication_channel slave_fd=%d\n", m_slave_fd);
 }
 
-master_replication_channel &master_replication_channel::add_daemon_thread (MASTER_DAEMON_THREADS daemon_index, const cubthread::looper &loop_rule, cubthread::entry_task *task)
+void master_replication_channel::add_daemon_thread (MASTER_DAEMON_THREADS daemon_index, const cubthread::looper &loop_rule, cubthread::entry_task *task)
 {
   if (m_master_daemon_threads[daemon_index] != NULL)
     {
@@ -80,14 +83,12 @@ master_replication_channel &master_replication_channel::add_daemon_thread (MASTE
     }
 
   m_master_daemon_threads[daemon_index] = cubthread::get_manager ()->create_daemon (loop_rule, task);
-
-  return *this;
 }
 
 master_replication_channel::master_replication_channel (master_replication_channel &&channel)
 {
   this->m_slave_fd = channel.m_slave_fd;
-  channel.m_slave_fd = -1;
+  channel.m_slave_fd.fd = -1;
 
   for (int i = 0; i < NUM_OF_MASTER_DAEMON_THREADS; i++)
     {
@@ -112,7 +113,7 @@ master_replication_channel &master_replication_channel::operator= (master_replic
   new (this) master_replication_channel();
 
   this->m_slave_fd = channel.m_slave_fd;
-  channel.m_slave_fd = -1;
+  channel.m_slave_fd.fd = -1;
 
   for (int i = 0; i < NUM_OF_MASTER_DAEMON_THREADS; i++)
     {
@@ -219,6 +220,6 @@ master_replication_channel::~master_replication_channel ()
         }
     }
 
-  _er_log_debug (ARG_FILE_LINE, "destroy master_replication_channel slave_fd=%d\n", m_slave_fd);
-  close (m_slave_fd);
+  _er_log_debug (ARG_FILE_LINE, "destroy master_replication_channel slave_fd=%d\n", m_slave_fd.fd);
+  close (m_slave_fd.fd);
 }

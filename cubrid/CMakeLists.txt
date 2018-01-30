@@ -125,7 +125,7 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/communication_channel.cpp
   ${COMMUNICATION_DIR}/master_replication_channel.cpp
   ${COMMUNICATION_DIR}/slave_replication_channel.cpp
-  ${COMMUNICATION_DIR}/master_replication_channel_Manager.cpp
+  ${COMMUNICATION_DIR}/master_replication_channel_manager.cpp
   )
 
 set(QUERY_SOURCES

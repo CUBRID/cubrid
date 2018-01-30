@@ -4,7 +4,7 @@
 #include <vector>
 #include "master_replication_channel.hpp"
 
-class master_replication_channel_Manager
+class master_replication_channel_manager
 {
 public:
 
@@ -12,8 +12,8 @@ public:
   static void reset ();
 
 private:
-  master_replication_channel_Manager ();
-  ~master_replication_channel_Manager ();
+  master_replication_channel_manager ();
+  ~master_replication_channel_manager ();
 
   static std::vector <master_replication_channel> master_channels;
 };

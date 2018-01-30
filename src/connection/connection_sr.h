@@ -34,7 +34,7 @@
 #include "porting.h"
 #include "thread_compat.hpp"
 
-#include "master_replication_channel_Manager.hpp"
+#include "master_replication_channel_manager.hpp"
 #include "slave_replication_channel.hpp"
 
 #include <assert.h>

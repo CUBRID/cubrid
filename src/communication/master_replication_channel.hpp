@@ -34,7 +34,7 @@ class master_replication_channel : public communication_channel
     master_replication_channel &operator= (const master_replication_channel &channel);
     master_replication_channel &operator= (master_replication_channel &&channel);
 
-    master_replication_channel &add_daemon_thread (MASTER_DAEMON_THREADS daemon_index, const cubthread::looper &loop_rule, cubthread::entry_task *task);
+    void add_daemon_thread (MASTER_DAEMON_THREADS daemon_index, const cubthread::looper &loop_rule, cubthread::entry_task *task);
 
 #if 0
     int add_slave_connection (int sock_fd);
@@ -46,7 +46,7 @@ class master_replication_channel : public communication_channel
 #endif
   private:
     cubthread::daemon *m_master_daemon_threads[NUM_OF_MASTER_DAEMON_THREADS];
-    int m_slave_fd;
+    POLL_FD m_slave_fd;
 
 #if 0
     POLL_FD slave_fds [MAX_SLAVE_CONNECTIONS];
@@ -72,14 +72,22 @@ class receive_from_slave_daemon : public cubthread::entry_task
       #define MAX_LENGTH 100
       char buffer [MAX_LENGTH];
       int recv_length = MAX_LENGTH;
-      rc = channel.recv (channel.m_slave_fd, buffer, recv_length, communication_channel::get_max_timeout());
+
+      rc = poll (&channel.m_slave_fd, 1, -1);
+      if (rc < 0)
+        {
+          /* add logic to close this daemon */
+          assert (false);
+        }
+
+      rc = channel.recv (channel.m_slave_fd.fd, buffer, recv_length, communication_channel::get_max_timeout());
       if (rc == ERROR_WHEN_READING_SIZE || rc == ERROR_ON_READ)
         {
           /* this usually means that the connection is closed 
             TODO maybe add this case to recv to know for sure ?
           */
           /* TODO add logic for slave disconnect */
-          close (channel.m_slave_fd);
+          assert (false);
         }
       else if (rc != NO_ERRORS)
         {
