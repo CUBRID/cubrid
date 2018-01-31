@@ -12241,6 +12241,10 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 
 	  if (*otemplate != NULL)
 	    {
+	      bool wants_obj;
+
+	      wants_obj = (parser->return_generated_keys && (*otemplate)->is_autoincrement_set);
+
 	      obj = dbt_finish_object (*otemplate);
 	      if (obj == NULL)
 		{
@@ -12252,7 +12256,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 		}
 	      else
 		{
-		  if (parser->return_generated_keys && (*otemplate)->is_autoincrement_set > 0)
+		  if (wants_obj == true)
 		    {
 		      db_make_object (&db_value, obj);
 		      error = set_put_element (seq, obj_count, &db_value);
@@ -12267,15 +12271,6 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 	      if (error >= NO_ERROR)
 		{
 		  error = mq_evaluate_check_option (parser, statement->info.insert.where, obj, class_);
-		}
-	    }
-
-	  if (error < NO_ERROR)
-	    {
-	      if (*otemplate != NULL)
-		{
-		  dbt_abort_object (*otemplate);
-		  *otemplate = NULL;
 		}
 	    }
 
