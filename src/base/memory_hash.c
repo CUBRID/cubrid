@@ -2123,7 +2123,6 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	  ptr = db_get_string (val);
 	  if (ptr)
 	    {
-
 	      len = db_get_string_size (val);
 	      if (len < 0)
 		{
@@ -2131,7 +2130,7 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 		}
 
 	      i = len;
-	      for (i--; i && ptr[i]; i--)
+	      for (i--; 0 <= i && ptr[i]; i--)
 		{
 		  /* only the trailing ASCII space is ignored; the hashing for other characters depend on collation */
 		  if (ptr[i] != 0x20)
