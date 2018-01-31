@@ -2,6 +2,8 @@
 #define _MASTER_REPLICATION_CHANNEL_MANAGER_HPP
 
 #include <vector>
+#include <algorithm>
+
 #include "master_replication_channel.hpp"
 
 namespace cubthread
@@ -40,14 +42,42 @@ public:
 class master_replication_channel_manager
 {
 public:
+  static void init ();
   static void add_master_replication_channel (master_replication_channel_entry &&channel);
   static void reset ();
 
 private:
+  class master_channels_supervisor_task : public cubthread::entry_task
+    {
+      public:
+        master_channels_supervisor_task (std::vector <master_replication_channel_entry> &channels) : m_channels (channels)
+        {
+        }
+
+        void execute (cubthread::entry &context)
+        {
+          std::remove_if (m_channels.begin(), m_channels.end(),
+                          [](master_replication_channel_entry &entry)
+                          {
+                            return !entry.get_replication_channel()->is_connected();
+                          });
+        }
+
+        void retire ()
+        {
+
+        }
+      private:
+        std::vector <master_replication_channel_entry> &m_channels;
+    };
+
   master_replication_channel_manager ();
   ~master_replication_channel_manager ();
 
   static std::vector <master_replication_channel_entry> master_channels;
+  static cubthread::daemon *master_channels_supervisor_daemon;
+  static bool is_initialized;
+  static std::mutex mutex_for_singleton;
 };
 
 #endif /* _MASTER_REPLICATION_CHANNEL_MANAGER_HPP */

@@ -3123,7 +3123,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	}
       slave_replication_channel::reset_singleton ();
       master_replication_channel_manager::reset();
-      //master_replication_channel::init ();
+      master_replication_channel_manager::init();
       break;
 
     case HA_SERVER_STATE_STANDBY:

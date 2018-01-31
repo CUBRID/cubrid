@@ -5,6 +5,23 @@
 #include "thread_daemon.hpp"
 
 std::vector <master_replication_channel_entry> master_replication_channel_manager::master_channels;
+cubthread::daemon *master_replication_channel_manager::master_channels_supervisor_daemon = NULL;
+bool master_replication_channel_manager::is_initialized = false;
+std::mutex master_replication_channel_manager::mutex_for_singleton;
+
+void master_replication_channel_manager::init ()
+{
+  if (is_initialized == false)
+    {
+      std::lock_guard<std::mutex> guard (mutex_for_singleton);
+      if (is_initialized == false)
+        {
+          master_channels_supervisor_daemon = cubthread::get_manager ()->create_daemon (std::chrono::seconds (5), new master_channels_supervisor_task (master_channels));
+          master_channels.clear ();
+          is_initialized = true;
+        }
+    }
+}
 
 void master_replication_channel_manager::add_master_replication_channel (master_replication_channel_entry &&channel)
 {
@@ -13,10 +30,23 @@ void master_replication_channel_manager::add_master_replication_channel (master_
 
 void master_replication_channel_manager::reset ()
 {
-  master_channels.clear ();
+  if (is_initialized == true)
+    {
+      std::lock_guard<std::mutex> guard (mutex_for_singleton);
+      if (is_initialized == true)
+        {
+          master_channels.clear ();
+          if (master_channels_supervisor_daemon != NULL)
+            {
+              cubthread::get_manager ()->destroy_daemon (master_channels_supervisor_daemon);
+              master_channels_supervisor_daemon = NULL;
+            }
+          is_initialized = false;
+        }
+    }
 }
 
-master_replication_channel_entry *master_replication_channel_entry::add_daemon(MASTER_DAEMON_THREADS daemon_index, const cubthread::looper &loop_rule, cubthread::entry_task *task)
+master_replication_channel_entry *master_replication_channel_entry::add_daemon (MASTER_DAEMON_THREADS daemon_index, const cubthread::looper &loop_rule, cubthread::entry_task *task)
 {
   if (m_master_daemon_threads[daemon_index] != NULL)
     {

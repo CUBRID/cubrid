@@ -5,12 +5,9 @@
 #include <sys/poll.h>
 #include "thread_entry_task.hpp"
 #include "connection_defs.h"
-
-/* TODO check if this is ok */
-#define MAX_SLAVE_CONNECTIONS 32
+#include <atomic>
 
 typedef struct pollfd POLL_FD;
-
 
 class master_replication_channel : public communication_channel
 {
@@ -18,8 +15,12 @@ class master_replication_channel : public communication_channel
     friend class receive_from_slave_daemon;
     master_replication_channel (int slave_fd = -1);
     ~master_replication_channel ();
+
+    std::atomic_bool &is_connected();
+    void set_is_connected (bool flag);
   private:
     POLL_FD m_slave_fd;
+    std::atomic_bool is_connection_alive;
 };
 
 class receive_from_slave_daemon : public cubthread::entry_task
@@ -36,11 +37,18 @@ class receive_from_slave_daemon : public cubthread::entry_task
       char buffer [MAX_LENGTH];
       int recv_length = MAX_LENGTH;
 
+      if (IS_INVALID_SOCKET (channel->m_slave_fd.fd) || !channel->is_connected ())
+        {
+          /* don't go any further, wait for the manager supervisor to destroy it */
+          return;
+        }
+
       rc = poll (&channel->m_slave_fd, 1, -1);
       if (rc < 0)
         {
-          /*TODO[arnia] add logic to close this daemon */
-          assert (false);
+          /* smth went wrong with the connection, destroy it */
+          channel->set_is_connected (false);
+          return;
         }
 
       if ((channel->m_slave_fd.revents & POLLIN) != 0)
@@ -51,12 +59,13 @@ class receive_from_slave_daemon : public cubthread::entry_task
               /* this usually means that the connection is closed 
                 TODO[arnia] maybe add this case to recv to know for sure ?
               */
-              /* TODO[arnia] add logic for slave disconnect */
-              assert (false);
+              channel->set_is_connected (false);
+              return;
             }
           else if (rc != NO_ERRORS)
             {
               assert (false);
+              return;
             }
           buffer[recv_length] = '\0';
           _er_log_debug (ARG_FILE_LINE, "master::execute:" "received=%s\n", buffer);
