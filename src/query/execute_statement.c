@@ -12257,8 +12257,6 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 		}
 	      else
 		{
-		  *otemplate = NULL;	/* already cleared */
-
 		  if (wants_obj == true)
 		    {
 		      db_make_object (&db_value, obj);
