@@ -1,6 +1,9 @@
 #ifndef _FUNC_TYPE_HPP_
 #define _FUNC_TYPE_HPP_
 
+#include "parse_type.hpp"
+#include <vector>
+
 struct parser_context;
 struct parser_node;
 
@@ -23,5 +26,18 @@ namespace JsonArr //json_array(val[, ...]) specific functions
   int f0(parser_context* parser_ctx, parser_node*& arg); //expect val
 }
 
+
+struct func_type
+{
+  parse_type ret;                            //return type
+  std::vector<std::vector<parse_type>> fix;  //fixed
+  std::vector<std::vector<parse_type>> rep;  //repetitive
+};
+
+namespace sig
+{
+  extern func_type json_key_val;
+  extern func_type json_val;
+}
 
 #endif
