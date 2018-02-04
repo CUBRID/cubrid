@@ -18,22 +18,23 @@
  */
 
 /*
- * log_generator.hpp
+ * stream_provider.hpp
  */
 
 #ident "$Id$"
 
-#ifndef _LOG_GENERATOR_HPP_
-#define _LOG_GENERATOR_HPP_
+#ifndef _STREAM_PROVIDER_HPP_
+#define _STREAM_PROVIDER_HPP_
 
-class replication_entry;
+class serial_buffer;
 
-class log_generator
+class stream_provider
 {
 private:
-  long long position;
-  std::vector<replication_entry*> entries;
 public:
+  int fetch_for_read (serial_buffer *existing_buffer, const size_t amount) = 0;
+  int extend_for_write (serial_buffer **existing_buffer, const size_t amount) = 0;
 };
 
-#endif /* _LOG_GENERATOR_HPP_ */
+
+#endif /* _STREAM_PROVIDER_HPP_ */

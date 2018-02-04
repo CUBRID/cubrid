@@ -27,28 +27,45 @@
 #define _REPLICATION_BUFFER_HPP_
 
 #include <atomic>
+#include <list>
 #include "dbtype.h"
 
-typedef unsigned char BUFFER_UNIT;
 
-class serial_buffer
+class file_cache;
+class pinnable;
+
+/*
+ * This should serve as storage for streams
+ * Each buffer has a storage_producer (the one which decides when to create or scrap a buffer)
+ * log_generator uses it to add replication entries
+ *   - in such case, log_generator should be  responsible for triggering memory allocation
+ * Also, it should be used as storage for decoding replication entries, either from file or network buffers
+ *   - in this case, the log_consumer is providing new content
+ */
+class serial_buffer : public pinnable
 {
 public:
   const enum std::memory_order SERIAL_BUFF_MEMORY_ORDER = std::memory_order_relaxed;
 
-  serial_buffer (const size_t req_capacity = 0) {};
-
-  virtual ~serial_buffer () = 0;
+  serial_buffer (const size_t req_capacity = 0) { mapped_cache = NULL; storage = NULL; };
 
   virtual int init (const size_t req_capacity) = 0;
 
   virtual BUFFER_UNIT * reserve (const size_t amount) = 0;
   virtual BUFFER_UNIT * get_curr_append_ptr () = 0;
-  virtual int add (BUFFER_UNIT *ptr, const size_t size) = 0;
-  virtual int read (const BUFFER_UNIT *ptr, const size_t read_pos, const size_t size) = 0;
-  virtual int check_space (const BUFFER_UNIT *ptr, const size_t amount) = 0;
+  // obsolete :virtual int add (BUFFER_UNIT *ptr, const size_t size) = 0;
+  // obsolete :virtual int read (const BUFFER_UNIT *ptr, const size_t read_pos, const size_t size) = 0;
+  // obsolete :virtual int check_space (const BUFFER_UNIT *ptr, const size_t amount) = 0;
 
   const BUFFER_UNIT * get_buffer (void) { return storage; }
+
+  const BUFFER_UNIT * get_curr_append_ptr (void) { return storage + curr_append_pos; }
+
+  size_t get_buffer_size (void) { return end_ptr - storage; }
+
+  /* mapping methods : a memory already exists, just instruct buffer to use it */
+  int map_buffer (BUFFER_UNIT *ptr, const size_t count);
+  int map_buffer_with_pin (serial_buffer *ref_buffer, pinner *referencer);
 
 
 protected:
@@ -58,6 +75,8 @@ protected:
   std::atomic_size_t curr_append_pos;
   BUFFER_UNIT *end_ptr;
   std::atomic_size_t curr_read_pos;
+
+  file_cache *mapped_cache;
 };
 
 class replication_buffer : public serial_buffer
@@ -70,10 +89,10 @@ public:
   int init (const size_t req_capacity);
   BUFFER_UNIT *get_curr_append_ptr () { return (storage + curr_append_pos); }
 
-  BUFFER_UNIT * reserve (size_t amount);
-  int add (const BUFFER_UNIT *ptr, size_t size);
-  int read (BUFFER_UNIT *ptr, size_t read_pos, size_t size);
-  int check_space (const BUFFER_UNIT *ptr, size_t amount);
+  // obsolete : BUFFER_UNIT * reserve (size_t amount);
+  // obsolete : int check_space (const BUFFER_UNIT *ptr, size_t amount);
+  // obsolete : int add (const BUFFER_UNIT *ptr, size_t size);
+  // obsolete : int read (BUFFER_UNIT *ptr, size_t read_pos, size_t size);
 };
 
 

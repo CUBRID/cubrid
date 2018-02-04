@@ -28,7 +28,9 @@
 
 #include <vector>
 #include "dbtype.h"
+#include "storage_common.h"
 
+class replication_serialization;
 
 typedef enum repl_entry_type REPL_ENTRY_TYPE;
 enum repl_entry_type
@@ -40,20 +42,28 @@ enum repl_entry_type
 
 class replication_entry
 {
+private:
+  size_t packed_size;
 public:
-  virtual int encode (void);
-  virtual int decode (void);
+  virtual int pack (const replication_serialization *serializator) = 0;
+  virtual size_t get_packed_size (const replication_serialization *serializator) = 0;
+
+  static const size_t UNDEFINED_SIZE = -1;
 };
 
 class single_row_repl_entry : public replication_entry
 {
 private:
   DB_VALUE key_value;
+  char class_name [SM_MAX_IDENTIFIER_LENGTH];
   std::vector <int> changed_attributes;
   std::vector <DB_VALUE> new_values;
   REPL_ENTRY_TYPE type;
+
 public:
-  virtual int encode(void);
+  single_row_repl_entry () { packed_size = -1; };
+  virtual size_t get_packed_size (const replication_serialization *serializator) = 0;
+  int pack (const replication_serialization *serializator);
 };
 
 #endif /* _REPLICATION_ENTRY_HPP_ */

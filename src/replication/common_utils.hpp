@@ -18,32 +18,51 @@
  */
 
 /*
- * replication_serialization.hpp
+ * common_utils.hpp
  */
 
 #ident "$Id$"
 
-#ifndef _REPLICATION_SERIALIZATION_HPP_
-#define _REPLICATION_SERIALIZATION_HPP_
+#ifndef _COMMON_UTILS_HPP_
+#define _COMMON_UTILS_HPP_
 
-#include "dbtype.h"
+#define NOT_IMPLEMENTED() \
+  do \
+    { \
+      throw ("Not implemented"); \
+    }
 
-class serial_buffer;
+typedef unsigned char BUFFER_UNIT;
 
-class replication_serialization
+class pinnable;
+
+class pinner
 {
 public:
-  replication_serialization (serial_buffer *buf) : buffer (buf) {  };
-  ~replication_serialization();
+  int pin (pinnable &reference);
+  int unpin (pinnable &reference);
 
-  int pack_int (const int &value);
-  int pack_db_value (const DB_VALUE &value);
+  int unpin_all (void);
 
-  int unpack_int (int &value);
-  int unpack_db_value (DB_VALUE &value);
+  ~pinner () { assert (references.size() == 0); }
+
 private:
-  serial_buffer *buffer;
+  list <pinnable*> references;
+};
+
+class pinnable
+{
+public:
+  int add_pinner (pinner *referencer) { pinners.push_back (referencer); return NO_ERROR; }
+  int remove_pinner (pinner *referencer) { pinners.remove (referencer); return NO_ERROR; }
+  int get_pin_count (void) { return pinners.size(); }
+
+  ~pinnable () { assert (pinners.size() == 0); }
+
+private:
+  list <pinner*> pinners;
+
 };
 
 
-#endif /* _REPLICATION_SERIALIZATION_HPP_ */
+#endif /* _COMMON_UTILS_HPP_ */

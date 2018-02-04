@@ -26,6 +26,32 @@
 #include "replication_buffer.hpp"
 #include "object_representation.h"
 
+
+int serial_buffer::map_buffer (BUFFER_UNIT *ptr, const size_t count)
+{
+  assert (storage == NULL && capacity == 0);
+
+  storage = ptr;
+  capacity = count;
+
+  return NO_ERROR;
+}
+
+int serial_buffer::map_buffer_with_pin (serial_buffer *ref_buffer, pinner *referencer)
+{
+  int error = NO_ERROR;
+  
+  error = map_buffer (ref_buffer->get_buffer (), ref_buffer->get_buffer_size ());
+  if (error != NO_ERROR)
+    {
+      error = add_pinner (referencer);
+    }
+
+  return error;
+}
+
+/* ---------------------------------------------------------------- */
+
 replication_buffer::replication_buffer (const size_t req_capacity)
 {
   if (init (req_capacity) != NO_ERROR)
@@ -49,15 +75,14 @@ int replication_buffer::init (const size_t req_capacity)
   return NO_ERROR;
 }
 
-
 replication_buffer::~replication_buffer ()
 {
   free (storage);
   storage = NULL;
 }
 
-
-BUFFER_UNIT * serial_buffer::reserve (const size_t amount)
+#if 0
+BUFFER_UNIT * replication_buffer::reserve (const size_t amount)
 {
   BUFFER_UNIT *ptr;
   int error;
@@ -78,3 +103,13 @@ BUFFER_UNIT * serial_buffer::reserve (const size_t amount)
 
   return NULL;
 }
+
+int replication_buffer::check_space (const BUFFER_UNIT *ptr, size_t amount)
+{
+  if (ptr + amount < end_ptr)
+    {
+      return NO_ERROR;
+    }
+  return ER_FAILED;
+}
+#endif

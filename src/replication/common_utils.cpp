@@ -18,60 +18,42 @@
  */
 
 /*
- * replication_serialization.cpp
+ * common_utils.cpp
  */
 
 #ident "$Id$"
 
-#ifndef _REPLICATION_SERIALIZATION_CPP_
-#define _REPLICATION_SERIALIZATION_CPP_
 
-#include "replication_serialization.hpp"
-#include "replication_entry.hpp"
-#include "replication_buffer.hpp"
-#include "object_representation.h"
-
-int replication_serialization::pack_int (const int &value)
+int pinner::pin (pinnable &reference)
 {
-  BUFFER_UNIT *ptr;
-  ptr = buffer->reserve (OR_INT_SIZE);
-
-  if (ptr != NULL)
+  if (reference.add_pinner (this) != NO_ERORR)
     {
-      OR_PUT_INT (ptr, value);
+      references.push_back (&reference);
+      return NO_ERROR; 
     }
 
   return NO_ERROR;
 }
 
-int replication_serialization::unpack_int (int &value)
+int pinner::unpin (pinnable &reference)
 {
-  BUFFER_UNIT *ptr;
-
-  ptr = buffer->reserve (OR_INT_SIZE);
-
-  if (ptr != NULL)
+  if (reference.remove_pinner (this) != NO_ERROR)
     {
-      value = OR_GET_INT (ptr);
+      references.remove(reference);
+      return NO_ERROR;
+    }
+  
+  return NO_ERROR;
+}
+
+int pinner::unpin_all (void)
+{
+  auto it = references.first ();
+
+  for (;it != references.end(); it.next())
+    {
+      unpin (it);
     }
 
   return NO_ERROR;
 }
-
-int replication_serialization::pack_db_value (const DB_VALUE &value)
-{
-  BUFFER_UNIT *ptr;
-
-  size_t value_size = or_packed_value_size ((DB_VALUE *)&value, 1, 0, 0);
-
-  ptr = buffer->reserve (value_size);
-
-  if (ptr != NULL)
-    {
-      or_pack_value ((char *) ptr, (DB_VALUE *) &value);
-    }
-
-  return NO_ERROR;
-}
-
-#endif /* _REPLICATION_SERIALIZATION_CPP_ */
