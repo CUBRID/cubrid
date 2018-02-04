@@ -72,6 +72,10 @@ public:
   int pack_stream_entries (cubthread::entry *th_entry);
 
   static int new_instance (cubthread::entry *th_entry, const stream_position start_position);
+
+  /* stream_provider methods : */
+  int fetch_for_read (serial_buffer *existing_buffer, const size_t amount) { NOT_IMPLEMENTED(); return NO_ERROR; }
+  int extend_for_write (serial_buffer **existing_buffer, const size_t amount);
 };
 
 #endif /* _LOG_GENERATOR_HPP_ */

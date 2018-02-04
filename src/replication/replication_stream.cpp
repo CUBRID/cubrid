@@ -30,13 +30,13 @@
 
 int stream_entry::pack (replication_serialization *serializator)
 {
-  size_t total_stream_size;
+  size_t total_stream_entry_size;
   unsigned int data_size = (unsigned int) get_entries_size ();
   BUFFER_UNIT *stream_start_ptr;
 
-  total_stream_size = get_header_size () + data_size;
+  total_stream_entry_size = get_header_size () + data_size;
 
-  stream_start_ptr = serializator->reserve_range (total_stream_size, my_buffered_range);
+  stream_start_ptr = serializator->reserve_range (total_stream_entry_size, my_buffered_range);
   header.data_size = data_size;
 
   serializator->pack_stream_entry_header (&header);
@@ -89,8 +89,8 @@ int replication_stream::init (stream_position start_position)
   return NO_ERROR;
 }
 
-int replication_stream::add_buffer (serial_buffer *new_buffer, const stream_position &first_pos,
-                                    const stream_position &last_pos, buffered_range **granted_range)
+int replication_stream::add_buffer_mapping (serial_buffer *new_buffer, const stream_position &first_pos,
+                                            const stream_position &last_pos, buffered_range **granted_range)
 {
   buffered_range mapped_range;
 
@@ -110,11 +110,13 @@ int replication_stream::add_buffer (serial_buffer *new_buffer, const stream_posi
 
   total_buffered_size += new_buffer->get_buffer_size ();
 
-  new_buffer->pin (this);
+  new_buffer->attach_to_stream (this, first_pos);
 }
 
-int replication_stream::remove_mapped_buffer (serial_buffer *new_buffer, buffered_range &mapped_range)
+int replication_stream::remove_buffer_mapping (serial_buffer *new_buffer, buffered_range &mapped_range)
 {
+  new_buffer->dettach_from_stream (this);
+
   buffered_ranges.remove (mapped_range);
 }
 
@@ -148,16 +150,24 @@ int replication_stream::update_last_flushed_pos (stream_position filled_pos)
 BUFFER_UNIT * replication_stream::reserve_with_buffer (const size_t amount, buffered_range **granted_range)
 {
   int i;
-
+  /* this is my current position in stream */
   stream_position start_pos = reserve_no_buffer (amount);
+
   /* check if any buffer covers the current range */
   for (i = 0; i < buffered_ranges.size(); i++)
     {
-      if (buffered_ranges[i].first_pos <= start_pos
-          && buffered_ranges[i].last_pos >= start_pos + amount)
+      if (buffered_ranges[i].last_pos < start_pos
+            && buffered_ranges[i].buffer->check_stream_append_contiguity (this, start_pos) != NO_ERROR)
         {
-          *granted_range = &(buffered_ranges[i]);
-          return buffered_ranges[i].buffer->get_storage() + (start_pos - buffered_ranges[i].first_pos);
+          BUFFER_UNIT * ptr = buffered_ranges[i].buffer->reserve (amount);
+
+          err = add_buffer_mapping (buffered_ranges[i].buffer, start_pos, start_pos + amount, granted_range);
+          if (err != NO_ERROR)
+            {
+              return NULL;
+            }
+
+          return ptr;
         }
     }
 
@@ -165,14 +175,14 @@ BUFFER_UNIT * replication_stream::reserve_with_buffer (const size_t amount, buff
     {
       start_deffer_buffers_to_file ();
     }
-  serial_buffer *new_buffer;
+  serial_buffer *new_buffer = NULL;
   err = provider->extend_for_write (&new_buffer, amount);
   if (err != NO_ERROR)
     {
       return NULL;
     }
   
-  err = add_buffer (new_buffer, start_pos, start_pos + new_buffer->get_buffer_size (), buffered_ranges);
+  err = add_buffer_mapping (new_buffer, start_pos, start_pos + new_buffer->get_buffer_size (), buffered_ranges);
   if (err != NO_ERROR)
     {
       return NULL;
@@ -194,7 +204,7 @@ int replication_stream::start_deffer_buffers_to_file (void)
           if (buffered_ranges[i]->mapped_buffer->get_pin_count () == 0)
             {
               buffered_range mapped_range = buffered_ranges[i];
-              remove_mapped_buffer (mapped_range);
+              remove_buffer_mapping (mapped_range);
 
 
             }

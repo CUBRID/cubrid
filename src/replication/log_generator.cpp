@@ -31,6 +31,8 @@ static log_generator * log_generator::global_log_generator = NULL;
 
 static int log_generator::new_instance (cubthread::entry *th_entry, stream_position start_position)
 {
+  int error_code = NO_ERROR;
+
   log_generator *new_lg = new log_generator ();
   new_lg->curr_position = start_position;
 
@@ -47,13 +49,19 @@ static int log_generator::new_instance (cubthread::entry *th_entry, stream_posit
     {
       /* TODO[arnia] : set instance per thread  */
     }
-  new_lg->buffer = new replication_buffer ();
-  new_lg->buffer->init (LG_GLOBAL_INSTANCE_BUFFER_CAPACITY);
 
   new_lg->stream = new replication_stream (this);
   new_lg->stream->init (new_lg->curr_position);
 
-  serializator = new replication_serialization (new_lg->buffer);
+  error_code = extend_for_write (&new_lg->buffer, LG_GLOBAL_INSTANCE_BUFFER_CAPACITY);
+  if (error_code != NO_ERROR)
+    {
+      return NO_ERROR;
+    }
+
+  new_lg->stream->add_buffer_mapping (new_lg->buffer, first_pos, last_pos, granted_range);
+
+  serializator = new replication_serialization (new_lg->stream);
 
   return NO_ERROR;
 }
@@ -69,6 +77,8 @@ int log_generator::append_entry (cubthread::entry *th_entry, replication_entry *
   stream_entry *my_stream_entry = get_stream_entry (th_entry);
 
   my_stream_entry.add_repl_entry (entry);
+
+  return NO_ERROR;
 }
 
 int log_generator::pack_stream_entries (cubthread::entry *th_entry)
@@ -88,6 +98,25 @@ int log_generator::pack_stream_entries (cubthread::entry *th_entry)
       stream_entry *my_stream_entry = get_stream_entry (th_entry);
       my_stream_entry->pack (serializator);
     }
+
+  return NO_ERROR;
+}
+
+
+int log_generator::extend_for_write (serial_buffer **existing_buffer, const size_t amount)
+{
+  if (*existing_buffer != NULL)
+    {
+      /* TODO[arnia] : to extend an existing buffer with an amount : 
+       * I am not sure we want to do that
+       */
+      NOT_IMPLEMENTED();
+    }
+
+  replication_buffer *my_new_buffer = new replication_buffer (amount);
+  my_new_buffer->init (amount);
+
+  *existing_buffer = my_new_buffer;
 
   return NO_ERROR;
 }

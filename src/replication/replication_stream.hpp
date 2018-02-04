@@ -95,6 +95,14 @@ class replication_stream
 private:
   stream_provider *provider;
 
+  /* a buffered range is a chunk of stream mapped onto a buffer (memory) 
+   * a buffer can have multiple mappings (but contiguous) from the a stream (but only the same stream)
+   * when we flush (disk or network) a chunk of stream, we just sort the buffered_range object by position
+   * and send/flush individually each buffer; pre-processing may used to concatenate adiacent ranges mapped
+   * onto the same buffer;
+   * different ranges can be filled at different speeds, concatenation of ranges should be done only on filled buffers
+   */
+
   /* TODO : maybe these should be moved as sub-object for each serial_buffer mapped onto the stream */
   vector<buffered_range> buffered_ranges;
 
@@ -122,10 +130,10 @@ public:
 
   int init (stream_position start_position = 0);
 
-  int add_buffer (serial_buffer *new_buffer, const stream_position &first_pos,
-                  const stream_position &last_pos, buffered_range **granted_range);
+  int add_buffer_mapping (serial_buffer *new_buffer, const stream_position &first_pos,
+                          const stream_position &last_pos, buffered_range **granted_range);
 
-  int remove_mapped_buffer (serial_buffer *new_buffer, buffered_range &mapped_range);
+  int remove_buffer_mapping (serial_buffer *new_buffer, buffered_range &mapped_range);
 
   int update_last_flushed_pos (stream_position filled_pos);
 
@@ -136,9 +144,6 @@ public:
   BUFFER_UNIT * check_space_and_advance (const size_t amount);
   
   BUFFER_UNIT * check_space_and_advance_with_ptr (BUFFER_UNIT *ptr, const size_t amount);
-
-  int add_buffer (serial_buffer *new_buffer, const stream_position &first_pos, const stream_position &last_pos,
-                  buffered_range **granted_range);
 };
 
 

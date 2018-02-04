@@ -68,7 +68,7 @@ BUFFER_UNIT *replication_serialization::reserve_range (const size_t amount, buff
 
       replication_buffer *buffer = new replication_buffer (amount);
 
-      stream->add_buffer (buffer, first_pos, last_pos, granted_range);
+      stream->add_buffer_mapping (buffer, first_pos, last_pos, granted_range);
 
       ptr = buffer->get_curr_append_ptr ();
 

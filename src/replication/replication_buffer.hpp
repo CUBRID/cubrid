@@ -31,12 +31,17 @@
 #include "dbtype.h"
 
 
-class file_cache;
 class pinnable;
+class replication_stream;
 
 /*
- * This should serve as storage for streams
- * Each buffer has a storage_producer (the one which decides when to create or scrap a buffer)
+ * This should serve as storage for streams.
+ * This is not intended to be used as character stream, but as buld operations: users of it
+ * reserve / allocate parts of it; there are objects which deal of byte level operations (see : serializator)
+ *
+ * Each buffer has a storage producer - we call it stream_provider 
+ * (the one which decides when to create or scrap a buffer)
+ * 
  * log_generator uses it to add replication entries
  *   - in such case, log_generator should be  responsible for triggering memory allocation
  * Also, it should be used as storage for decoding replication entries, either from file or network buffers
@@ -47,36 +52,47 @@ class serial_buffer : public pinnable
 public:
   const enum std::memory_order SERIAL_BUFF_MEMORY_ORDER = std::memory_order_relaxed;
 
-  serial_buffer (const size_t req_capacity = 0) { mapped_cache = NULL; storage = NULL; };
+  serial_buffer (const size_t req_capacity = 0) { storage = NULL; attached_stream = NULL; };
 
   virtual int init (const size_t req_capacity) = 0;
 
-  virtual BUFFER_UNIT * reserve (const size_t amount) = 0;
+  BUFFER_UNIT * reserve (const size_t amount);
   virtual BUFFER_UNIT * get_curr_append_ptr () = 0;
-  // obsolete :virtual int add (BUFFER_UNIT *ptr, const size_t size) = 0;
-  // obsolete :virtual int read (const BUFFER_UNIT *ptr, const size_t read_pos, const size_t size) = 0;
-  // obsolete :virtual int check_space (const BUFFER_UNIT *ptr, const size_t amount) = 0;
 
-  const BUFFER_UNIT * get_buffer (void) { return storage; }
+  const BUFFER_UNIT * get_buffer (void) { return storage; };
 
-  const BUFFER_UNIT * get_curr_append_ptr (void) { return storage + curr_append_pos; }
+  const BUFFER_UNIT * get_curr_append_ptr (void) { return storage + curr_append_pos; };
 
-  size_t get_buffer_size (void) { return end_ptr - storage; }
+  size_t get_buffer_size (void) { return end_ptr - storage; };
 
   /* mapping methods : a memory already exists, just instruct buffer to use it */
   int map_buffer (BUFFER_UNIT *ptr, const size_t count);
   int map_buffer_with_pin (serial_buffer *ref_buffer, pinner *referencer);
 
+  int attach_to_stream (replication_stream *stream, const stream_position &stream_start);
+  int dettach_from_stream (replication_stream *stream);
+  
+  int check_stream_append_contiguity (replication_stream *stream, const stream_position &req_pos);
+
 
 protected:
   size_t capacity;
 
+  /* start of allocated memory */
   BUFFER_UNIT *storage;
-  std::atomic_size_t curr_append_pos;
+  /* end of allocated memory */
   BUFFER_UNIT *end_ptr;
+
+  /* position relative to buffer storage (0 - based) */
+  std::atomic_size_t curr_append_pos;
   std::atomic_size_t curr_read_pos;
 
-  file_cache *mapped_cache;
+  /* mapping of buffer to a stream : start of stream,
+   * multiple attachements from the same stream may be performed, but exact mapping and contiguity
+   * between stream and buffer must be kept */
+  stream_position attached_stream_start_pos;
+  
+  replication_stream *attached_stream;
 };
 
 class replication_buffer : public serial_buffer
@@ -87,12 +103,6 @@ public:
   ~replication_buffer (void);
 
   int init (const size_t req_capacity);
-  BUFFER_UNIT *get_curr_append_ptr () { return (storage + curr_append_pos); }
-
-  // obsolete : BUFFER_UNIT * reserve (size_t amount);
-  // obsolete : int check_space (const BUFFER_UNIT *ptr, size_t amount);
-  // obsolete : int add (const BUFFER_UNIT *ptr, size_t size);
-  // obsolete : int read (BUFFER_UNIT *ptr, size_t read_pos, size_t size);
 };
 
 

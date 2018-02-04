@@ -27,6 +27,19 @@
 #include "object_representation.h"
 
 
+BUFFER_UNIT * serial_buffer::reserve (const size_t amount)
+{
+  if (storage + curr_append_pos + amount < end_ptr)
+    {
+      BUFFER_UNIT *ptr = storage + curr_append_pos;
+      curr_append_pos += amount;
+
+      return ptr;
+    }
+
+  return NULL;
+}
+
 int serial_buffer::map_buffer (BUFFER_UNIT *ptr, const size_t count)
 {
   assert (storage == NULL && capacity == 0);
@@ -48,6 +61,41 @@ int serial_buffer::map_buffer_with_pin (serial_buffer *ref_buffer, pinner *refer
     }
 
   return error;
+}
+
+int serial_buffer::attach_to_stream (replication_stream *stream, const stream_position &stream_start)
+{
+  attached_stream = stream;
+  attached_stream_start_pos = stream_start;
+
+  add_pinner (stream);
+  
+  return NO_ERROR;
+}
+
+int serial_buffer::dettach_from_stream (replication_stream *stream)
+{
+  attached_stream = NULL;
+  attached_stream_start_pos = -1;
+
+  remove_pinner (stream);
+  
+  return NO_ERROR;
+}
+
+int serial_buffer::check_stream_append_contiguity (replication_stream *stream, const stream_position &req_pos)
+{
+  if (stream != attached_stream)
+    {
+      /* not my stream !*/
+      return ER_FAILED;
+    }
+  if (req_pos == attached_stream_start_pos + curr_append_pos)
+    {
+      return NO_ERROR;
+    }
+
+  return ER_FAILED;
 }
 
 /* ---------------------------------------------------------------- */
@@ -80,36 +128,3 @@ replication_buffer::~replication_buffer ()
   free (storage);
   storage = NULL;
 }
-
-#if 0
-BUFFER_UNIT * replication_buffer::reserve (const size_t amount)
-{
-  BUFFER_UNIT *ptr;
-  int error;
-
-  ptr = get_curr_append_ptr ();
-  error = check_space (ptr, OR_INT_SIZE);
-
-  if (error == NO_ERROR)
-    {
-      ptr = storage + curr_append_pos.fetch_add (amount, SERIAL_BUFF_MEMORY_ORDER);
-      if ((error = check_space (ptr, OR_INT_SIZE)) != NO_ERROR)
-        {
-          return NULL;
-        }
-
-      return storage + curr_append_pos;
-    }
-
-  return NULL;
-}
-
-int replication_buffer::check_space (const BUFFER_UNIT *ptr, size_t amount)
-{
-  if (ptr + amount < end_ptr)
-    {
-      return NO_ERROR;
-    }
-  return ER_FAILED;
-}
-#endif

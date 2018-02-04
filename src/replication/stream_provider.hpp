@@ -32,8 +32,8 @@ class stream_provider
 {
 private:
 public:
-  int fetch_for_read (serial_buffer *existing_buffer, const size_t amount) = 0;
-  int extend_for_write (serial_buffer **existing_buffer, const size_t amount) = 0;
+  virtual int fetch_for_read (serial_buffer *existing_buffer, const size_t amount) = 0;
+  virtual int extend_for_write (serial_buffer **existing_buffer, const size_t amount) = 0;
 };
 
 
