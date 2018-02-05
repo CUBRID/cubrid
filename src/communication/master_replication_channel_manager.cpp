@@ -16,7 +16,7 @@ void master_replication_channel_manager::init ()
       std::lock_guard<std::mutex> guard (mutex_for_singleton);
       if (is_initialized == false)
         {
-          master_channels_supervisor_daemon = cubthread::get_manager ()->create_daemon (std::chrono::seconds (5), new master_channels_supervisor_task (master_channels));
+          master_channels_supervisor_daemon = cubthread::get_manager ()->create_daemon (std::chrono::seconds (5), new master_channels_supervisor_task ());
           master_channels.clear ();
           is_initialized = true;
         }
@@ -44,6 +44,11 @@ void master_replication_channel_manager::reset ()
           is_initialized = false;
         }
     }
+}
+
+unsigned int master_replication_channel_manager::get_number_of_channels ()
+{
+  return is_initialized ? master_channels.size () : 0;
 }
 
 master_replication_channel_entry *master_replication_channel_entry::add_daemon (MASTER_DAEMON_THREADS daemon_index, const cubthread::looper &loop_rule, cubthread::entry_task *task)

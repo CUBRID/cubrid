@@ -10,50 +10,10 @@
 slave_replication_channel *slave_replication_channel::singleton = NULL;
 std::mutex slave_replication_channel::singleton_mutex;
 
-class slave_dummy_send_msg : public cubthread::entry_task
-{
-  public:
-    slave_dummy_send_msg (slave_replication_channel *ch) : channel (ch)
-    {
-      if (GETHOSTNAME (this_hostname, MAXHOSTNAMELEN) != 0)
-	{
-	  _er_log_debug (ARG_FILE_LINE, "unable to find this computer's hostname\n");
-          strcpy (this_hostname, "unknown");
-	}
-      this_hostname[MAXHOSTNAMELEN-1] = '\0';
-    }
-
-    void execute (cubthread::entry &context)
-    {
-      if (!IS_INVALID_SOCKET (channel->get_master_conn_entry()->fd))
-        {
-          int rc = channel->send (channel->get_master_conn_entry()->fd, std::string ("hello from ") + this_hostname, communication_channel::get_max_timeout());
-          if (rc == ERROR_ON_WRITE)
-            {
-              /* this probably means that the connection was closed */
-              css_free_conn (channel->get_master_conn_entry());
-              slave_replication_channel::reset_singleton();
-            }
-          else if (rc != NO_ERRORS)
-            {
-              assert (false);
-            }
-          _er_log_debug (ARG_FILE_LINE, "slave::execute:" "sent:hello\n");
-        }
-    }
-
-    void retire ()
-    {
-
-    }
-  private:
-    slave_replication_channel *channel;
-    char this_hostname[MAXHOSTNAMELEN];
-};
-
 slave_replication_channel::slave_replication_channel(const std::string& hostname, const std::string &master_server_name, int port) : master_hostname (hostname),
                                                                                                                                      master_server_name (master_server_name),
-                                                                                                                                     master_port (port)
+                                                                                                                                     master_port (port),
+                                                                                                                                     slave_daemon (NULL)
 {
   master_conn_entry = css_make_conn (-1);
   int rc = rmutex_initialize (&master_conn_entry->rmutex, "MASTER_CONN_ENTRY");
@@ -65,8 +25,7 @@ slave_replication_channel::slave_replication_channel(const std::string& hostname
 
 slave_replication_channel::~slave_replication_channel()
 {
-  cubthread::get_manager()->destroy_daemon (slave_dummy);
-  css_free_conn (master_conn_entry);
+  cubthread::get_manager()->destroy_daemon (slave_daemon);
 
   _er_log_debug (ARG_FILE_LINE, "destroy slave_replication_channel \n");
 }
@@ -113,6 +72,12 @@ void slave_replication_channel::init (const std::string &hostname, const std::st
 
 void slave_replication_channel::reset_singleton ()
 {
+  if (singleton == NULL)
+    {
+      return;
+    }
+
+  css_free_conn (singleton->get_master_conn_entry ());
   delete singleton;
   singleton = NULL;
 }
@@ -122,16 +87,56 @@ slave_replication_channel *slave_replication_channel::get_channel ()
   return singleton;
 }
 
-int slave_replication_channel::start_daemon ()
+int slave_replication_channel::start_daemon (const cubthread::looper &loop, cubthread::entry_task *task)
 {
   cubthread::manager *session_manager = cubthread::get_manager ();
-  slave_dummy = session_manager->create_daemon (cubthread::looper (std::chrono::seconds (1)),
-		       new slave_dummy_send_msg (this));
 
-  if (slave_dummy == NULL)
+  if (slave_daemon != NULL)
+    {
+      session_manager->destroy_daemon (slave_daemon);
+      slave_daemon = NULL;
+    }
+
+  slave_daemon = session_manager->create_daemon (loop, task);
+
+  if (slave_daemon == NULL)
     {
       return ER_FAILED;
     }
 
   return NO_ERROR;
+}
+
+void slave_replication_channel::close_master_conn ()
+{
+  css_free_conn (master_conn_entry);
+}
+
+slave_dummy_send_msg::slave_dummy_send_msg (slave_replication_channel *ch) : channel (ch)
+{
+  if (GETHOSTNAME (this_hostname, MAXHOSTNAMELEN) != 0)
+    {
+      _er_log_debug (ARG_FILE_LINE, "unable to find this computer's hostname\n");
+      strcpy (this_hostname, "unknown");
+    }
+  this_hostname[MAXHOSTNAMELEN-1] = '\0';
+}
+
+void slave_dummy_send_msg::execute (cubthread::entry &context)
+{
+  if (!IS_INVALID_SOCKET (channel->get_master_conn_entry()->fd))
+    {
+      int rc = channel->send (channel->get_master_conn_entry(), std::string ("hello from ") + this_hostname, communication_channel::get_max_timeout());
+      if (rc == ERROR_ON_WRITE || rc == ERROR_WHEN_READING_SIZE)
+        {
+          /* this probably means that the connection was closed */
+          //css_free_conn (channel->get_master_conn_entry());
+          slave_replication_channel::reset_singleton();
+        }
+      else if (rc != NO_ERRORS)
+        {
+          assert (false);
+        }
+      _er_log_debug (ARG_FILE_LINE, "slave::execute:" "sent:hello\n");
+    }
 }

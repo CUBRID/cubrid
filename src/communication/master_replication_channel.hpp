@@ -12,15 +12,16 @@ typedef struct pollfd POLL_FD;
 class master_replication_channel : public communication_channel
 {
   public:
-    friend class receive_from_slave_daemon;
     master_replication_channel (int slave_fd = -1);
     ~master_replication_channel ();
+
+    POLL_FD &get_slave_fd ();
 
     std::atomic_bool &is_connected();
     void set_is_connected (bool flag);
   private:
     POLL_FD m_slave_fd;
-    std::atomic_bool is_connection_alive;
+    std::atomic_bool m_is_connection_alive;
 };
 
 class receive_from_slave_daemon : public cubthread::entry_task
@@ -37,13 +38,13 @@ class receive_from_slave_daemon : public cubthread::entry_task
       char buffer [MAX_LENGTH];
       int recv_length = MAX_LENGTH;
 
-      if (IS_INVALID_SOCKET (channel->m_slave_fd.fd) || !channel->is_connected ())
+      if (IS_INVALID_SOCKET (channel->get_slave_fd ().fd) || !channel->is_connected ())
         {
           /* don't go any further, wait for the manager supervisor to destroy it */
           return;
         }
 
-      rc = poll (&channel->m_slave_fd, 1, -1);
+      rc = poll (&channel->get_slave_fd (), 1, -1);
       if (rc < 0)
         {
           /* smth went wrong with the connection, destroy it */
@@ -51,9 +52,9 @@ class receive_from_slave_daemon : public cubthread::entry_task
           return;
         }
 
-      if ((channel->m_slave_fd.revents & POLLIN) != 0)
+      if ((channel->get_slave_fd ().revents & POLLIN) != 0)
         {
-          rc = channel->recv (channel->m_slave_fd.fd, buffer, recv_length, communication_channel::get_max_timeout());
+          rc = channel->recv (channel->get_slave_fd ().fd, buffer, recv_length, communication_channel::get_max_timeout());
           if (rc == ERROR_WHEN_READING_SIZE || rc == ERROR_ON_READ)
             {
               /* this usually means that the connection is closed 

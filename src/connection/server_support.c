@@ -1260,7 +1260,9 @@ css_process_master_hostname ()
 
   error = slave_replication_channel::get_channel ()->connect_to_master ();
   assert (error == NO_ERRORS);
-  error = slave_replication_channel::get_channel ()->start_daemon ();
+  /* TODO[arnia] add possibility of adding multiple daemons to slaves */
+  error = slave_replication_channel::get_channel ()->start_daemon (cubthread::looper (std::chrono::seconds (1)),
+                                                                   new slave_dummy_send_msg (slave_replication_channel::get_channel ()));
   assert (error == NO_ERROR);
 
   _er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n", ha_Server_master_hostname);

@@ -11,9 +11,14 @@
 #include "tcp.h"
 #endif /* WINDOWS */
 
-#define MAX_CHANNEL_THREADS 16 /* TODO set this accordingly, maybe make it dynamic */
-
 const int communication_channel::TCP_MAX_TIMEOUT_IN_MS = prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000;
+
+/* TODO[arnia]
+ * this class shouldn't be used with inheritence, but
+ * rather with composition by slave and master chn
+ * to have more than one comm chns.
+ * this class should also contains a CSS_CONN_ENTRY obj
+ */
 
 communication_channel::communication_channel ()
 {
@@ -28,7 +33,8 @@ int communication_channel::send (int sock_fd, const char *message, int message_l
   CSS_CONN_ENTRY entry;
 
   entry.fd = sock_fd;
-  return css_net_send (&entry, message, message_length, timeout);
+  /* TODO[arnia] not OK because CSS_CONN_ENTRY needs a little more initializing steps */
+  return send (&entry, message, message_length, timeout);
 }
 
 int communication_channel::send (int sock_fd, const std::string &message, int timeout)
@@ -36,7 +42,18 @@ int communication_channel::send (int sock_fd, const std::string &message, int ti
   CSS_CONN_ENTRY entry;
 
   entry.fd = sock_fd;
-  return css_net_send (&entry, message.c_str(), message.length(), timeout);
+  /* TODO[arnia] not OK because CSS_CONN_ENTRY needs a little more initializing steps */
+  return send (&entry, message.c_str(), message.length(), timeout);
+}
+
+int communication_channel::send (CSS_CONN_ENTRY *entry, const char *message, int message_length, int timeout)
+{
+  return css_net_send (entry, message, message_length, timeout);
+}
+
+int communication_channel::send (CSS_CONN_ENTRY *entry, const std::string &message, int timeout)
+{
+  return css_net_send (entry, message.c_str (), message.length (), timeout);
 }
 
 int communication_channel::recv (int sock_fd, char *buffer, int &received_length, int timeout)

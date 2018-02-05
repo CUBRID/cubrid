@@ -44,31 +44,31 @@ class master_replication_channel_manager
 public:
   static void init ();
   static void add_master_replication_channel (master_replication_channel_entry &&channel);
+  static unsigned int get_number_of_channels ();
   static void reset ();
 
 private:
   class master_channels_supervisor_task : public cubthread::entry_task
     {
       public:
-        master_channels_supervisor_task (std::vector <master_replication_channel_entry> &channels) : m_channels (channels)
+        master_channels_supervisor_task ()
         {
         }
 
         void execute (cubthread::entry &context)
         {
-          std::remove_if (m_channels.begin(), m_channels.end(),
+          auto new_end = std::remove_if (master_channels.begin(), master_channels.end(),
                           [](master_replication_channel_entry &entry)
                           {
                             return !entry.get_replication_channel()->is_connected();
                           });
+          master_channels.erase (new_end, master_channels.end());
         }
 
         void retire ()
         {
 
         }
-      private:
-        std::vector <master_replication_channel_entry> &m_channels;
     };
 
   master_replication_channel_manager ();
