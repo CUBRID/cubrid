@@ -13092,6 +13092,84 @@ PT_NODE * pt_eval_function_type_agg(PARSER_CONTEXT * parser, PT_NODE * node)
   return NULL;
 }
 
+#include "string_buffer.hpp"
+
+/*
+ * match_types_exact () - checks if the types of nodes from list match the signature
+ *   return:
+ *   list(in): list of nodes
+ *   signature(in): function signature
+ */
+bool match_types_exact (parser_node* list, func_type& signature)
+{
+  parser_node* arg = list;
+  int arg_pos = 0;
+  for(auto v: signature.fix) //iterate nodes in parallel with sets of fixed types
+    {
+      if(arg == NULL)
+        {
+          printf("ERR\n");
+        }
+      bool matched = false;
+      for(auto t: v) //compare arg's type with each type from set
+        {
+          if(t.type == parse_type::NORMAL && t.normal == arg->type_enum)
+            {
+              matched = true;
+              break; //exact match
+            }
+        }
+      if(!matched)
+        {
+          string_buffer sb;
+          for(auto t: v)
+            {
+              sb("%d ", t.normal);
+            }
+          printf("ERR func=%s arg#%d type=%d requiredType(s)={%s}\n", func_type_str, arg_pos, arg->type_enum, sb);
+          return false;
+        }
+      ++arg_pos;
+      arg = arg->next;
+    }
+  return true;
+}
+
+/*
+ * match_types_cast () - checks if the types of nodes from list match the signature
+ *   return:
+ *   list(in): list of nodes
+ *   signature(in): function signature
+ */
+bool match_types_cast(parser_node* list, func_type& signature)
+{
+  parser_node* arg = list;
+  bool fail = false;
+  for(auto v: signature.fix)
+    {
+      if(arg == NULL)
+        {
+          printf("ERR\n");
+        }
+      for(auto t: v)
+        {
+          if(arg->type_enum != t.normal)
+            {
+              //try to cast and ERR if fail
+              fail = true;
+              break;
+            }
+        }
+      if(fail)
+        {
+          printf("ERR on arg#?\n");
+          break;
+        }
+      arg = arg->next;
+    }
+  return true;
+}
+
 /*
  * pt_eval_function_type () -
  *   return: returns a node of the same type.
@@ -13099,7 +13177,6 @@ PT_NODE * pt_eval_function_type_agg(PARSER_CONTEXT * parser, PT_NODE * node)
  *   node(in): a parse tree node of type PT_FUNCTION denoting an
  *             an expression with aggregate functions.
  */
-
 static PT_NODE *
 pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 {
@@ -13459,42 +13536,6 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case F_JSON_OBJECT:
       {
 	PT_NODE *arg = arg_list;
-#if 0 //original code
-	PT_TYPE_ENUM unsupported_type;
-	unsigned int index = 0;
-	bool is_supported = false;
-	while (arg)
-	  {
-	    if (index % 2 == 0)
-	      {
-		is_supported = pt_is_json_object_name (arg->type_enum);
-	      }
-	    else
-	      {
-		is_supported = pt_is_json_value_type (arg->type_enum);
-	      }
-
-	    if (!is_supported)
-	      {
-		unsupported_type = arg->type_enum;
-		break;
-	      }
-
-	    arg = arg->next;
-	    index++;
-	  }
-
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
-	  }
-	else
-	  {
-	    arg_type = PT_TYPE_JSON;
-	  }
-#else //new code
         printf("%s\n", parser_print_tree_list(parser, arg_list));
         func_type& ft = *func_types[fcode-PT_MIN];
 
@@ -13516,32 +13557,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
           }
           node->data_type = NULL;//???
         }
-        {//arguments type
-          parser_node* arg = arg_list;
-          bool fail = false;
-          for(auto v: ft.fix)
-            {
-              if(arg == NULL)
-                {
-                  printf("ERR\n");
-                }
-              for(auto t: v)
-                {
-                  if(arg->type_enum != t.normal)
-                    {
-                      //try to cast and ERR if fail
-                      fail = true;
-                      break;
-                    }
-                }
-              if(fail)
-                {
-                  printf("ERR on arg#?\n");
-                  break;
-                }
-            }
-        }
-#endif
+        match_types_exact(arg_list, ft);//try exact match for arguments types
+        //match_types_cast(arg_list, ft);
       }
       break;
 
