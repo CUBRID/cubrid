@@ -58,7 +58,7 @@
 #include "show_scan.h"
 #include "boot_sr.h"
 #include "db_date.h"
-
+#include "thread.h"
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
@@ -2631,7 +2631,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 	  if (!XASL_ID_IS_NULL (&tdes->xasl_id))
 	    {
 	      /* retrieve query statement in the xasl_cache entry */
-	      error_code = xcache_find_sha1 (thread_p, &tdes->xasl_id.sha1, &ent, NULL);
+	      error_code = xcache_find_sha1 (thread_p, &tdes->xasl_id.sha1, XASL_CACHE_SEARCH_GENERIC, &ent, NULL);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();

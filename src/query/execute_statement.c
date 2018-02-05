@@ -8840,6 +8840,11 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  ASSERT_ERROR_AND_SET (err);
 		}
+	      else if (contextp->recompile_xasl == true)
+		{
+		  /* recompile requested by server */
+		  stream.xasl_id = NULL;
+		}
 	    }
 
 	  if (stream.xasl_id == NULL && err == NO_ERROR)
@@ -10110,6 +10115,11 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		{
 		  ASSERT_ERROR_AND_SET (err);
 		}
+	      else if (contextp->recompile_xasl == true)
+		{
+		  /* recompile requested by server */
+		  stream.xasl_id = NULL;
+		}
 	    }
 	  if (stream.xasl_id == NULL && err == NO_ERROR)
 	    {
@@ -10717,6 +10727,11 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (error);
+	}
+      else if (contextp->recompile_xasl == true)
+	{
+	  /* recompile requested by server */
+	  stream.xasl_id = NULL;
 	}
     }
 
@@ -12227,18 +12242,25 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 
 	  if (*otemplate != NULL)
 	    {
+	      obt_retain_after_finish (*otemplate);
+
 	      obj = dbt_finish_object (*otemplate);
 	      if (obj == NULL)
 		{
-		  assert (er_errid () != NO_ERROR);
-		  error = er_errid ();
-		  /* On error, the template must be freed. */
+		  ASSERT_ERROR_AND_SET (error);
+
 		  dbt_abort_object (*otemplate);
 		  *otemplate = NULL;
 		}
 	      else
 		{
-		  if (parser->return_generated_keys && (*otemplate)->is_autoincrement_set > 0)
+		  bool include_new_obj;
+
+		  include_new_obj = (parser->return_generated_keys && (*otemplate)->is_autoincrement_set);
+
+		  obt_quit (*otemplate);	/* free template */
+
+		  if (include_new_obj == true)
 		    {
 		      db_make_object (&db_value, obj);
 		      error = set_put_element (seq, obj_count, &db_value);
@@ -12253,15 +12275,6 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 	      if (error >= NO_ERROR)
 		{
 		  error = mq_evaluate_check_option (parser, statement->info.insert.where, obj, class_);
-		}
-	    }
-
-	  if (error < NO_ERROR)
-	    {
-	      if (*otemplate != NULL)
-		{
-		  dbt_abort_object (*otemplate);
-		  *otemplate = NULL;
 		}
 	    }
 
@@ -12709,9 +12722,17 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 		  if (otemplate != NULL)
 		    {
 		      /* apply the object template */
-		      obj = dbt_finish_object (otemplate);
+		      bool include_new_obj;
 
-		      if (obj && parser->return_generated_keys && otemplate->is_autoincrement_set > 0)
+		      obt_retain_after_finish (otemplate);
+
+		      obj = dbt_finish_object (otemplate);	/* flush template */
+
+		      include_new_obj = (obj && parser->return_generated_keys && otemplate->is_autoincrement_set);
+
+		      obt_quit (otemplate);	/* free template */
+
+		      if (include_new_obj == true)
 			{
 			  db_make_object (&db_value, obj);
 			  error = set_put_element (seq, obj_count, &db_value);
@@ -13946,13 +13967,18 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  ASSERT_ERROR_AND_SET (err);
 	}
+      else if (contextp->recompile_xasl == true)
+	{
+	  /* recompile flag was returned by server */
+	  stream.xasl_id = NULL;
+	}
       else if (stream.xasl_id != NULL)
 	{
 	  /* check xasl header */
 	  /* TODO: we can treat the different cases of MRO by hacking query string. */
 	  if (pt_recompile_for_limit_optimizations (parser, statement, stream.xasl_header->xasl_flag))
 	    {
-	      contextp->recompile_xasl = 1;
+	      contextp->recompile_xasl = true;
 	      stream.xasl_id = NULL;
 	    }
 	}
@@ -15692,6 +15718,11 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      ASSERT_ERROR_AND_SET (err);
 	    }
+	  else if (contextp->recompile_xasl == true)
+	    {
+	      /* recompile requested by server */
+	      stream.xasl_id = NULL;
+	    }
 	}
 
       if (stream.xasl_id == NULL && err == NO_ERROR)
@@ -16596,6 +16627,7 @@ do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 		      PT_ERRORmf (parser, val, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
 				  pt_short_print (parser, val));
 		    }
+		  parser_free_tree (parser, result);
 		  val->next = save_next;
 		  goto end_error;
 		}
@@ -16623,16 +16655,15 @@ do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
   return NO_ERROR;
 
 end_error:
+  pr_clear_value (&eval_value);
   if (temp != NULL && free_temp)
     {
-      /* free temp */
       parser_free_tree (parser, temp);
     }
   if (er_errid () != NO_ERROR)
     {
       return er_errid ();
     }
-  pr_clear_value (&eval_value);
   return ER_FAILED;
 }
 

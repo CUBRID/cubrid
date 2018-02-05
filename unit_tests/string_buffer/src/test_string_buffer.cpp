@@ -16,25 +16,15 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 #include "allocator_affix.hpp"
-#include "allocator_block.hpp"
 #include "allocator_stack.hpp"
+#include "mem_block.hpp"
 #include "string_buffer.hpp"
-
 #include <assert.h>
-
-#if !defined (_MSC_VER) || (_MSC_VER >= 1700)
-#include <chrono>
-#endif /* !_MSC_VER || _MSC_VER >= 1700 */
-
-#if defined (LINUX)
-#include <stddef.h> //size_t on Linux
-#endif /* LUNUX */
-
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#define N 8192
+#include <chrono>
 
 #define ERR(format, ...) printf ("ERR " format "\n", __VA_ARGS__)
 #define WRN(format, ...) printf ("WRN " format "\n", __VA_ARGS__)
@@ -56,28 +46,58 @@ struct suffix
   }
 };
 
+#define N 8192
+
+char stack_buf[sizeof (prefix) + N + sizeof (suffix)]; // working buffer
+allocator::stack stack_allocator (stack_buf, sizeof (stack_buf));
+allocator::affix<allocator::stack, prefix, suffix> affix_allocator (stack_allocator);
+
+#if 1 //bSolo: temporary until evolve above gcc 4.4.7
+void temp_extend (mem::block& block, size_t len)
+{
+  mem::block b = affix_allocator.allocate (block.dim + len);
+  memcpy (b.ptr, block.ptr, block.dim);
+  affix_allocator.deallocate (std::move(block));
+  block = std::move(b);
+}
+
+void temp_dealloc (mem::block& block)
+{
+  affix_allocator.deallocate(std::move(block));
+}
+#endif
+
+
 class test_string_buffer
 {
   private:
-    char m_buf[sizeof (prefix) + N + sizeof (suffix)]; // working buffer
     size_t m_dim;                                      //_ref[_dim]
-    size_t m_len;                                      // sizeof(_ref)
+    size_t m_len;                                      // strlen(_ref)
     char *m_ref;                                       // reference buffer
-    allocator::stack m_stack_allocator;
-    allocator::affix<allocator::stack, prefix, suffix> m_affix_allocator;
-    allocator::block m_block;
     string_buffer m_sb;
 
   public:
     test_string_buffer ()
-      : m_buf ()
-      , m_dim (1024)
+      : m_dim (8192)
       , m_len (0)
       , m_ref ((char *) calloc (m_dim, 1))
-      , m_stack_allocator (m_buf, sizeof (m_buf))
-      , m_affix_allocator (m_stack_allocator)
-      , m_block ()
-      , m_sb ()
+#if 0 //bSolo: temporary until evolve above gcc 4.4.7
+      , m_sb{
+          [] (mem::block& block, size_t len)
+          {
+            mem::block b = affix_allocator.allocate (block.dim + len);
+            memcpy (b.ptr, block.ptr, block.dim);
+            affix_allocator.deallocate (std::move(block));
+            block = std::move(b);
+          },
+          [](mem::block& block)
+          {
+            affix_allocator.deallocate(std::move(block));
+          }
+        }
+#else
+      , m_sb{&temp_extend, &temp_dealloc}
+#endif
     {
     }
 
@@ -90,79 +110,84 @@ class test_string_buffer
 	}
     }
 
-    void operator() (size_t size) // prepare for a test with a buffer of <size> bytes
+    void check_resize (size_t len) //check internal buffer and resize it to fit additional len bytes
     {
-      if (m_dim < size) // adjust internal buffer is necessary
+      if (m_dim < m_len + len) // calc next power of 2
 	{
 	  do
 	    {
 	      m_dim *= 2;
 	    }
-	  while (m_dim < size);
+	  while (m_dim < m_len + len);
 	  m_ref = (char *) realloc (m_ref, m_dim);
 	}
-      m_len = 0;
-      m_stack_allocator.~stack ();
-      m_block = m_affix_allocator.allocate (size);
-      m_sb.set_buffer (size, m_block.ptr);
     }
 
-    template<size_t Size, typename... Args>
-    void operator() (const char *file, int line, const char (&format)[Size], Args &&... args)
+    void operator() (size_t size) // prepare for a test with a buffer of <size> bytes
     {
-      int len = snprintf (m_ref + m_len, m_len < m_block.dim ? m_block.dim - m_len : 0, format, args...);
+      m_len = 0;
+      stack_allocator.~stack ();
+      m_sb.clear();
+    }
+
+    template<typename... Args> void format (const char *file, int line, Args &&... args)
+    {
+      int len = snprintf (NULL, 0, args...);
       if (len < 0)
 	{
-	  ERR ("[%s(%d)] StrBuf([%zu]) snprintf()=%d", file, line, m_block.dim, len);
+	  ERR ("[%s(%d)] StrBuf() snprintf()=%d", file, line, len);
 	  return;
 	}
       else
 	{
+	  check_resize (len);
+	  len = snprintf (m_ref + m_len, m_dim - m_len, args...);
 	  m_len += len;
 	}
-      m_sb (format, args...);
-      if (m_sb.len () != m_len)
+      m_sb (args...);
+      if (m_sb.len () != m_len)//check length
 	{
-	  ERR ("[%s(%d)] StrBuf([%zu]) len()=%zu expect %zu", file, line, m_block.dim, m_sb.len (), m_len);
+	  ERR ("[%s(%d)] StrBuf() len()=%zu expect %zu", file, line, m_sb.len (), m_len);
 	  return;
 	}
-      if (strcmp (m_block.ptr, m_ref))
+      if (strcmp (m_sb.get_buffer(), m_ref))//check content
 	{
-	  ERR ("[%s(%d)] StrBuf([%zu]) {\"%s\"} expect{\"%s\"}", file, line, m_block.dim, m_block.ptr, m_ref);
+	  ERR ("[%s(%d)] StrBuf() {\"%s\"} expect{\"%s\"}", file, line, m_sb.get_buffer(), m_ref);
 	  return;
 	}
-      if (m_affix_allocator.check (m_block))
+      if (affix_allocator.check (m_sb))//check overflow
 	{
-	  ERR ("[%s(%d)] StrBuf(buf[%zu]) memory corruption", file, line, m_block.dim);
+	  ERR ("[%s(%d)] StrBuf() memory corruption", file, line);
 	  return;
 	}
     }
 
-    void operator() (const char *file, int line, char ch)
+    void character (const char *file, int line, const char ch)
     {
-      if (m_len + 1 < m_block.dim) // include also ending '\0'
-	{
-	  m_ref[m_len] = ch;
-	  m_ref[m_len + 1] = '\0';
-	}
-      ++m_len;
+      check_resize (1);
+      m_ref[m_len] = ch;
+      m_ref[++m_len] = '\0';
 
       m_sb += ch;
-      if (strcmp (m_block.ptr, m_ref) != 0)
+      if (m_sb.len () != m_len)//check length
 	{
-	  ERR ("[%s(%d)] StrBuf([%zu]) {\"%s\"} expect {\"%s\"}", file, line, m_block.dim, m_block.ptr, m_ref);
+	  ERR ("[%s(%d)] StrBuf() len()=%zu expect %zu", file, line, m_sb.len (), m_len);
 	  return;
 	}
-      if (m_affix_allocator.check (m_block))
+      if (strcmp (m_sb.get_buffer(), m_ref) != 0)//check content
 	{
-	  ERR ("[%s(%d)] StrBuf([%zu]) memory corruption", file, line, m_block.dim);
+	  ERR ("[%s(%d)] StrBuf() {\"%s\"} expect {\"%s\"}", file, line, m_sb.get_buffer(), m_ref);
+	  return;
+	}
+      if (affix_allocator.check (m_sb))
+	{
+	  ERR ("[%s(%d)] StrBuf() memory corruption", file, line);
 	}
     }
 };
 test_string_buffer test;
-
-#define SB_FORMAT(format, ...) test (__FILE__, __LINE__, format, ##__VA_ARGS__)
-#define SB_CHAR(ch) test (__FILE__, __LINE__, ch)
+#define SB_FORMAT(frmt, ...) test.format (__FILE__, __LINE__, frmt, ##__VA_ARGS__)
+#define SB_CHAR(ch) test.character (__FILE__, __LINE__, ch)
 
 int main (int argc, char **argv)
 {
@@ -203,10 +228,7 @@ int main (int argc, char **argv)
 	}
     }
 
-#if !defined (_MSC_VER) || (_MSC_VER >= 1700)
   auto t0 = std::chrono::high_resolution_clock::now ();
-#endif
-
   for (size_t n = 1; n < N; ++n)
     {
       test (n);
@@ -218,15 +240,12 @@ int main (int argc, char **argv)
       SB_FORMAT ("%1$04d-%2$02d-%3$02d.", 1973, 11, 28);
       SB_FORMAT ("%3$02d.%2$02d.%1$04d.", 1973, 11, 28);
     }
-
-#if !defined (_MSC_VER) || (_MSC_VER >= 1700)
   auto t1 = std::chrono::high_resolution_clock::now ();
-#endif
 
 #if !defined (_MSC_VER) || (_MSC_VER >= 1700)
   if (flags & FL_TIME)
     {
-      printf ("%.9lf ms\n", std::chrono::duration<double, std::milli> (t1 - t0).count ());
+      printf ("%.9lf ms (iterations: %d)\n", std::chrono::duration<double, std::milli> (t1 - t0).count (), N);
     }
 #endif
 

@@ -659,7 +659,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	}
       break;
     case DB_TYPE_NUMERIC:
-      numeric_db_value_print ((DB_VALUE *) val, buf);
+      numeric_db_value_print (val, buf);
       result->info.value.data_value.str = pt_append_nulstring (parser, (PARSER_VARCHAR *) NULL, (const char *) buf);
       result->data_type = parser_new_node (parser, PT_DATA_TYPE);
       if (result->data_type == NULL)
@@ -1568,6 +1568,7 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_SEQUENCE:
     case DB_TYPE_MIDXKEY:
     case DB_TYPE_ENUMERATION:
+    case DB_TYPE_JSON:
       retval = tp_domain_construct (domain_type, (DB_OBJECT *) 0, 0, 0, (TP_DOMAIN *) 0);
       break;
 
@@ -1602,10 +1603,6 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_ELO:
       /* obsolete. */
       assert (false);
-      break;
-
-    case DB_TYPE_JSON:
-      retval = &tp_Json_domain;
       break;
     }
 
