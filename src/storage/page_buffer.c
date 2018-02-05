@@ -8165,6 +8165,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
   PGBUF_BCB *victim = NULL;
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
   bool has_flush_thread = thread_is_page_flush_thread_available ();
+  int nloops = 0;		/* used as safe-guard against infinite loops */
   int private_lru_idx;
   PGBUF_LRU_LIST *lru_list = NULL;
   bool restrict_other = false;
@@ -8297,8 +8298,9 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
       current_consume_cursor = lf_circular_queue_get_consumer_cursor (pgbuf_Pool.shared_lrus_with_victims);
     }
   while (!has_flush_thread && !lf_circular_queue_is_empty (pgbuf_Pool.shared_lrus_with_victims)
-	 && (current_consume_cursor - initial_consume_cursor <= pgbuf_Pool.num_LRU_list));
-  /* todo: maybe we can find a less complicated condition of looping */
+	 && ((current_consume_cursor - initial_consume_cursor) <= pgbuf_Pool.num_LRU_list)
+	 && (++nloops <= pgbuf_Pool.num_LRU_list));
+  /* todo: maybe we can find a less complicated condition of looping. Probably no need to use nloops <= pgbuf_Pool.num_LRU_list. */
   if (detailed_perf)
     {
       PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_SHARED_LISTS);

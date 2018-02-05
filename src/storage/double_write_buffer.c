@@ -2800,13 +2800,6 @@ retry:
 	}
 #endif
 
-      if (ATOMIC_INC_32 (&block->wait_queue.count, 0) != 0)
-	{
-	  assert (double_Write_Buffer.helper_flush_block != NULL);
-	  /* Let the helper thread to flush volumes since other threads are waiting for me. */
-	  break;
-	}
-
       if (!ATOMIC_CAS_32
 	  (&block->flush_volumes_info[i].flushed_status, VOLUME_NOT_FLUSHED, VOLUME_FLUSHED_BY_DWB_FLUSH_THREAD))
 	{

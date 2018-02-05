@@ -2098,8 +2098,8 @@ static int prm_pb_num_private_chains_upper = CSS_MAX_CLIENT_COUNT + VACUUM_MAX_W
 static int prm_pb_num_private_chains_lower = -1;
 static unsigned int prm_pb_num_private_chains_flag = 0;
 
-int PRM_PB_MAX_DEPTH_OF_SEARCHING_VICTIMS_IN_LRU_LIST = 20;
-static int prm_pb_max_depth_of_searching_for_victims_in_lru_list_default = 20;
+int PRM_PB_MAX_DEPTH_OF_SEARCHING_VICTIMS_IN_LRU_LIST = 1000;
+static int prm_pb_max_depth_of_searching_for_victims_in_lru_list_default = 1000;
 static int prm_pb_max_depth_of_searching_for_victims_in_lru_list_upper = 1000;
 static int prm_pb_max_depth_of_searching_for_victims_in_lru_list_lower = 1;
 static unsigned int prm_pb_max_depth_of_searching_for_victims_in_lru_list_flag = 0;
