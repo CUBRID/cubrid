@@ -14710,6 +14710,8 @@ pgbuf_lru_remove_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru
       /* we cannot remove an entry from lock-free circular queue easily. we just hope that this does not happen too
        * often. do nothing here. */
     }
+
+  ATOMIC_CAS_ADDR (&lru_list->victim_hint, bcb, (PGBUF_BCB *) NULL);
 }
 
 /*
