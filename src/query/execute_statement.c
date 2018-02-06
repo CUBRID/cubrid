@@ -12406,7 +12406,6 @@ cleanup:
 
       if (db_val != NULL)
 	{
-	  assert (DB_VALUE_DOMAIN_TYPE (db_val) == DB_TYPE_OBJECT);
 	  DB_MAKE_OBJECT (db_val, (DB_OBJECT *) NULL);
 	}
     }
