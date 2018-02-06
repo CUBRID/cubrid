@@ -3552,8 +3552,7 @@ db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  break;
 
 	case DB_TYPE_JSON:
-	  error_code =
-	    db_json_array_append_func (arg[i + 1]->data.json.document, *new_doc, DB_PULL_STRING (arg[i + 1]));
+	  error_code = db_json_array_append_func (arg[i + 1]->data.json.document, *new_doc, DB_PULL_STRING (arg[i]));
 	  break;
 
 	case DB_TYPE_NULL:
