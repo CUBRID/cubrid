@@ -8425,7 +8425,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   PERF (PSTAT_PB_VICTIM_GET_FROM_LRU);
 
   /* check if LRU list is empty */
-  if (lru_list->count_vict_cand == 0)
+  if (ATOMIC_INC_32 (&lru_list->count_vict_cand, 0) <= 0)
     {
       PERF (PSTAT_PB_VICTIM_GET_FROM_LRU_LIST_WAS_EMPTY);
       return NULL;
