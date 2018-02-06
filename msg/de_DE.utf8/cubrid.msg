@@ -922,7 +922,7 @@ $ LOADDB
 853 Für ein Objekt (%1$d|%2$d|%3$d), Transaktion (%4$d) der Uncommitted-Read verursachte die Störabschaltung (%5$s).
 854 WARNING: Kein Sperrhalter, jedoch Sperrwarter existieren. Beziehen Sie sich auf %1$s.
 855 WARNING: Zwei oder mehrere Threads sperrwarten für eine Transaktion (%1$d).
-856 WARNING: Seltsamer LOCKWAIT Status (%1$d|%2$d), Thread (%3$d|%4$d) und Transaktion (%5$d).
+856 WARNING: Seltsamer LOCKWAIT Status (%1$d|%2$d), Thread (%3$d|%4$lld) und Transaktion (%5$d).
 857 Ein I/O-Fehler ist beim Abschneiden der Seite %1$d des Datenträgers "%2$s" aufgetreten.
 858 Datenträger "%1$s" ist unbekannt nach Serverneustart.
 859 LATCH ON PAGE(%1$d|%2$d) ABORTED

@@ -4989,7 +4989,7 @@ tz_get_server_tz_region_session (void)
 
   if (session_tz_region == NULL)
     {
-      if (thread_p->emulate_tid != ((pthread_t) 0))
+      if (thread_p->emulate_tid != thread_id_t ())
 	{
 	  worker_thread_p = thread_find_entry_by_tid (thread_p->emulate_tid);
 	  if (worker_thread_p != NULL)

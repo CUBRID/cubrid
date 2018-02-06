@@ -590,7 +590,8 @@ thread_start_workers (void)
 	}
 
       /* If win32, then "thread_attr" is ignored, else "p->thread_handle". */
-      r = pthread_create (&thread_p->tid, &thread_attr, thread_worker, thread_p);
+      pthread_t tid = 0;	// thread id is registered in thread_worker function, so do nothing with tid
+      r = pthread_create (&tid, &thread_attr, thread_worker, thread_p);
       if (r != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_CREATE, 0);
@@ -619,7 +620,8 @@ thread_start_workers (void)
 	}
 
       /* If win32, then "thread_attr" is ignored, else "p->thread_handle". */
-      r = pthread_create (&thread_p->tid, &thread_attr, thread_Daemons[i].daemon_function, thread_p);
+      pthread_t tid = 0;	// thread id is registered in daemon_function, so do nothing with tid
+      r = pthread_create (&tid, &thread_attr, thread_Daemons[i].daemon_function, thread_p);
       if (r != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_CREATE, 0);
@@ -1022,8 +1024,8 @@ thread_return_all_transactions_entries (void)
 void
 thread_print_entry_info (THREAD_ENTRY * thread_p)
 {
-  fprintf (stderr, "THREAD_ENTRY(tid(%lld),client_id(%d),tran_index(%d),rid(%d),status(%d))\n",
-	   (long long) thread_p->tid, thread_p->client_id, thread_p->tran_index, thread_p->rid, thread_p->status);
+  fprintf (stderr, "THREAD_ENTRY(tid(%ld),client_id(%d),tran_index(%d),rid(%d),status(%d))\n",
+	   thread_p->get_posix_id (), thread_p->client_id, thread_p->tran_index, thread_p->rid, thread_p->status);
 
   if (thread_p->conn_entry != NULL)
     {
@@ -1047,11 +1049,9 @@ thread_print_entry_info (THREAD_ENTRY * thread_p)
 THREAD_ENTRY *
 thread_find_entry_by_tran_index_except_me (int tran_index)
 {
-  pthread_t me = pthread_self ();
-
   for (THREAD_ENTRY * thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
     {
-      if (thread_p->tran_index == tran_index && thread_p->tid != me)
+      if (thread_p->tran_index == tran_index && !thread_p->is_on_current_thread ())
 	{
 	  return thread_p;
 	}
@@ -1665,7 +1665,7 @@ thread_belongs_to (THREAD_ENTRY * thread_p, int tran_index, int client_id)
   bool does_belong = false;
 
   (void) pthread_mutex_lock (&thread_p->tran_index_lock);
-  if (thread_p->tid != pthread_self () && thread_p->status != TS_DEAD && thread_p->status != TS_FREE
+  if (!thread_p->is_on_current_thread () && thread_p->status != TS_DEAD && thread_p->status != TS_FREE
       && thread_p->status != TS_CHECK)
     {
       conn_p = thread_p->conn_entry;
@@ -1791,8 +1791,8 @@ thread_dump_threads (void)
 
   for (thread_p = thread_iterate (cubthread::get_main_entry ()); thread_p != NULL; thread_p = thread_iterate (thread_p))
     {
-      fprintf (stderr, "thread %d(tid(%lld),client_id(%d),tran_index(%d),rid(%d),status(%s),interrupt(%d))\n",
-	       thread_p->index, (long long) thread_p->tid, thread_p->client_id, thread_p->tran_index, thread_p->rid,
+      fprintf (stderr, "thread %d(tid(%ld),client_id(%d),tran_index(%d),rid(%d),status(%s),interrupt(%d))\n",
+	       thread_p->index, thread_p->get_posix_id (), thread_p->client_id, thread_p->tran_index, thread_p->rid,
 	       status[thread_p->status], thread_p->interrupted);
 
       (void) thread_rc_track_dump_all (thread_p, stderr);
@@ -2024,6 +2024,7 @@ thread_worker (void *arg_p)
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_WORKER;	/* not defined yet */
   tsd_ptr->status = TS_FREE;	/* set thread stat as free */
+  tsd_ptr->register_id ();
 
   /* during server is active */
   while (!tsd_ptr->shutdown)
@@ -2086,6 +2087,7 @@ thread_worker (void *arg_p)
   tsd_ptr->conn_entry = NULL;
   tsd_ptr->tran_index = -1;
   tsd_ptr->status = TS_DEAD;
+  tsd_ptr->unregister_id ();
 
   return (THREAD_RET_T) 0;
 }
@@ -2149,6 +2151,7 @@ thread_deadlock_detect_thread (void *arg_p)
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+  tsd_ptr->register_id ();
 
   thread_Deadlock_detect_thread.is_available = true;
   thread_Deadlock_detect_thread.is_running = true;
@@ -2217,6 +2220,7 @@ thread_deadlock_detect_thread (void *arg_p)
 
   er_final (ER_THREAD_FINAL);
   tsd_ptr->status = TS_DEAD;
+  tsd_ptr->unregister_id ();
 
   return (THREAD_RET_T) 0;
 }
@@ -2259,6 +2263,7 @@ thread_session_control_thread (void *arg_p)
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+  tsd_ptr->register_id ();
   thread_Session_control_thread.is_available = true;
   thread_Session_control_thread.is_running = true;
 
@@ -2289,6 +2294,7 @@ thread_session_control_thread (void *arg_p)
 
   er_final (ER_THREAD_FINAL);
   tsd_ptr->status = TS_DEAD;
+  tsd_ptr->unregister_id ();
 
   return (THREAD_RET_T) 0;
 }
@@ -2333,6 +2339,7 @@ thread_checkpoint_thread (void *arg_p)
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+  tsd_ptr->register_id ();
   thread_Checkpoint_thread.is_available = true;
   thread_Checkpoint_thread.is_running = true;
 
@@ -2363,6 +2370,7 @@ thread_checkpoint_thread (void *arg_p)
 
   er_final (ER_THREAD_FINAL);
   tsd_ptr->status = TS_DEAD;
+  tsd_ptr->unregister_id ();
 
   return (THREAD_RET_T) 0;
 }
@@ -2407,6 +2415,7 @@ thread_purge_archive_logs_thread (void *arg_p)
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+  tsd_ptr->register_id ();
 
   thread_Purge_archive_logs_thread.is_available = true;
   thread_Purge_archive_logs_thread.is_running = true;
@@ -2475,6 +2484,7 @@ thread_purge_archive_logs_thread (void *arg_p)
 
   er_final (ER_THREAD_FINAL);
   tsd_ptr->status = TS_DEAD;
+  tsd_ptr->unregister_id ();
 
   return (THREAD_RET_T) 0;
 }
@@ -2504,7 +2514,7 @@ thread_wakeup_oob_handler_thread (void)
   THREAD_ENTRY *thread_p;
 
   thread_p = &thread_Manager.thread_array[thread_Oob_thread.thread_index];
-  pthread_kill (thread_p->tid, SIGURG);
+  pthread_kill (thread_p->get_posix_id (), SIGURG);
 #endif /* !WINDOWS */
 }
 
@@ -2543,6 +2553,7 @@ thread_check_ha_delay_info_thread (void *arg_p)
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;	/* daemon thread */
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+  tsd_ptr->register_id ();
 
   thread_Check_ha_delay_info_thread.is_running = true;
   thread_Check_ha_delay_info_thread.is_available = true;
@@ -2661,6 +2672,7 @@ thread_check_ha_delay_info_thread (void *arg_p)
 
   er_final (ER_THREAD_FINAL);
   tsd_ptr->status = TS_DEAD;
+  tsd_ptr->unregister_id ();
 
   return (THREAD_RET_T) 0;
 }
@@ -2925,6 +2937,7 @@ thread_flush_control_thread (void *arg_p)
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;	/* daemon thread */
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+  tsd_ptr->register_id ();
 
   thread_Flush_control_thread.is_available = true;
   thread_Flush_control_thread.is_running = true;
@@ -2984,6 +2997,7 @@ thread_flush_control_thread (void *arg_p)
 
 error:
   tsd_ptr->status = TS_DEAD;
+  tsd_ptr->unregister_id ();
 
   thread_Flush_control_thread.is_running = false;
 
@@ -3037,6 +3051,7 @@ thread_log_flush_thread (void *arg_p)
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;	/* daemon thread */
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+  tsd_ptr->register_id ();
 
   thread_Log_flush_thread.is_available = true;
   thread_Log_flush_thread.is_running = true;
@@ -3130,6 +3145,7 @@ thread_log_flush_thread (void *arg_p)
 
   er_final (ER_THREAD_FINAL);
   tsd_ptr->status = TS_DEAD;
+  tsd_ptr->unregister_id ();
 
 #if defined(CUBRID_DEBUG)
   er_log_debug (ARG_FILE_LINE, "css_log_flush_thread: [%d]end \n", (int) THREAD_ID ());
@@ -3202,6 +3218,7 @@ thread_log_clock_thread (void *arg_p)
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+  tsd_ptr->register_id ();
   thread_Log_clock_thread.is_available = true;
   thread_Log_clock_thread.is_running = true;
 
@@ -3253,6 +3270,7 @@ thread_log_clock_thread (void *arg_p)
 
   er_final (ER_THREAD_FINAL);
   tsd_ptr->status = TS_DEAD;
+  tsd_ptr->unregister_id ();
 
   return (THREAD_RET_T) 0;
 }
@@ -3281,6 +3299,7 @@ thread_auto_volume_expansion_thread (void *arg_p)
   thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
   tsd_ptr->type = TT_DAEMON;
   tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
+  tsd_ptr->register_id ();
 
   thread_Auto_volume_expansion_thread.is_available = true;
 
@@ -3311,6 +3330,7 @@ thread_auto_volume_expansion_thread (void *arg_p)
   er_final (ER_THREAD_FINAL);
   thread_Auto_volume_expansion_thread.is_available = false;
   tsd_ptr->status = TS_DEAD;
+  tsd_ptr->unregister_id ();
 
   return (THREAD_RET_T) 0;
 #undef THREAD_AUTO_VOL_WAKEUP_TIME_SEC
@@ -3632,11 +3652,11 @@ thread_find_entry_by_index (int thread_index)
  *   tid(in)
  */
 THREAD_ENTRY *
-thread_find_entry_by_tid (pthread_t tid)
+thread_find_entry_by_tid (thread_id_t tid)
 {
   for (THREAD_ENTRY * thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
     {
-      if (thread_p->tid == tid)
+      if (thread_p->get_id () == tid)
 	{
 	  return thread_p;
 	}
@@ -5412,6 +5432,7 @@ thread_daemon_start (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p, TH
   thread_set_thread_entry_info (thread_p);	/* save TSD */
   thread_p->type = thread_type;	/* daemon thread */
   thread_p->status = TS_RUN;	/* set thread stat as RUN */
+  thread_p->register_id ();
 
   daemon->is_running = true;
   daemon->is_available = true;
@@ -5436,6 +5457,7 @@ thread_daemon_stop (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p)
 
   er_final (ER_THREAD_FINAL);
   thread_p->status = TS_DEAD;
+  thread_p->unregister_id ();
 }
 
 /*

@@ -113,7 +113,7 @@ typedef struct sync_critical_section
   pthread_cond_t readers_ok;	/* start waiting readers */
   THREAD_ENTRY *waiting_writers_queue;	/* queue of waiting writers */
   THREAD_ENTRY *waiting_promoters_queue;	/* queue of waiting promoters */
-  pthread_t owner;		/* CS owner writer */
+  thread_id_t owner;		/* CS owner writer */
   int tran_index;		/* transaction id acquiring CS */
   SYNC_STATS *stats;
 } SYNC_CRITICAL_SECTION;
@@ -131,7 +131,7 @@ typedef struct sync_rmutex
 {
   const char *name;
   pthread_mutex_t lock;		/* mutex */
-  pthread_t owner;		/* owner thread id */
+  thread_id_t owner;		/* owner thread id */
   int lock_cnt;			/* # of times that owner enters */
   SYNC_STATS *stats;
 } SYNC_RMUTEX;

@@ -92,7 +92,6 @@
 #include "db.h"			/* for db_Connect_status */
 #include "log_compress.h"
 #include "event_log.h"
-#include "thread.h"
 #include "tsc_timer.h"
 #include "vacuum.h"
 

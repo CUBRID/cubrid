@@ -52,7 +52,6 @@
 #include "environment_variable.h"
 #include "error_manager.h"
 #include "job_queue.h"
-#include "thread.h"
 #include "connection_error.h"
 #include "message_catalog.h"
 #include "critical_section.h"
@@ -1640,6 +1639,7 @@ css_oob_handler_thread (void *arg)
 
   thread_set_thread_entry_info (thrd_entry);
   thrd_entry->status = TS_RUN;
+  thrd_entry->register_id ();
 
 #if !defined(WINDOWS)
   sigemptyset (&sigurg_mask);
@@ -1663,6 +1663,7 @@ css_oob_handler_thread (void *arg)
 #endif /* WINDOWS */
     }
   thrd_entry->status = TS_DEAD;
+  thrd_entry->unregister_id ();
 
 #if defined(WINDOWS)
   return 0;
