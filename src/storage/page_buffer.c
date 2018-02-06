@@ -3495,7 +3495,7 @@ end:
 	    {
 	      continue;
 	    }
-	  if (lru_list->count_vict_cand > 0)
+	  if (ATOMIC_INC_32 (&lru_list->count_vict_cand, 0) > 0)
 	    {
 	      if (pgbuf_is_any_thread_waiting_for_direct_victim () == false)
 		{
@@ -3530,7 +3530,7 @@ end:
 	    (int) (pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[lru_idx] * (float) check_count_lru
 		   / lru_sum_flush_priority);
 	  lru_list = PGBUF_GET_LRU_LIST (lru_idx);
-	  if (lru_list->count_vict_cand < count_check_this_lru)
+	  if (ATOMIC_INC_32 (&lru_list->count_vict_cand, 0) < count_check_this_lru)
 	    {
 	      assert (false);
 	    }
@@ -8206,7 +8206,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 
       /* don't victimize from own list if it is under quota */
       if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list)
-	  || (PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list) && lru_list->count_vict_cand > 0))
+	  || (PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list) && ATOMIC_INC_32 (&lru_list->count_vict_cand, 0) > 0))
 	{
 	  if (detailed_perf)
 	    {
@@ -8648,8 +8648,8 @@ pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_L
   /* panic victimization function */
 
   for (bcb = bcb_start;
-       bcb != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb) && lru_list->count_vict_cand > 0 && count < max_depth;
-       bcb = bcb->prev_BCB, count++)
+       bcb != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb) && ATOMIC_INC_32 (&lru_list->count_vict_cand, 0) > 0
+       && count < max_depth; bcb = bcb->prev_BCB, count++)
     {
       assert (pgbuf_bcb_get_lru_index (bcb) == lru_list->index);
       if (!pgbuf_is_bcb_victimizable (bcb, false))
@@ -8744,7 +8744,7 @@ pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, int lru_idx, int *nas
   int nassigned = 0;
 
   lru_list = PGBUF_GET_LRU_LIST (lru_idx);
-  if (lru_list->count_vict_cand > 0)
+  if (ATOMIC_INC_32 (&lru_list->count_vict_cand, 0) > 0)
     {
       pthread_mutex_lock (&lru_list->mutex);
       victim_hint = lru_list->victim_hint;
@@ -13407,7 +13407,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 	}
 
       lru_list = PGBUF_GET_LRU_LIST (i);
-      total_victims += lru_list->count_vict_cand;
+      total_victims += ATOMIC_INC_32 (&lru_list->count_vict_cand, 0);
     }
 
   /* compute private ratio */
@@ -13453,7 +13453,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 	      pthread_mutex_unlock (&lru_list->mutex);
 	      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	    }
-	  if (lru_list->count_vict_cand > 0 && PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
+	  if (ATOMIC_INC_32 (&lru_list->count_vict_cand, 0) > 0 && PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
 	    {
 	      /* make sure this is added to victim list */
 	      if (pgbuf_lfcq_add_lru_with_victims (lru_list)
@@ -13499,7 +13499,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 
 	      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	    }
-	  if (lru_list->count_vict_cand > 0 && PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
+	  if (ATOMIC_INC_32 (&lru_list->count_vict_cand, 0) > 0 && PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
 	    {
 	      /* make sure this is added to victim list */
 	      if (pgbuf_lfcq_add_lru_with_victims (lru_list)
@@ -14737,8 +14737,10 @@ pgbuf_lru_advance_victim_hint (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_lis
   new_victim_hint = (bcb_new_hint != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb_new_hint)) ? bcb_new_hint : NULL;
 
   /* restart from bottom if hint is NULL but we have victim candidates */
-  new_victim_hint = ((new_victim_hint == NULL && lru_list->count_vict_cand > (was_vict_count_updated ? 0 : 1))
-		     ? lru_list->bottom : new_victim_hint);
+  new_victim_hint =
+    ((new_victim_hint == NULL
+      && (ATOMIC_INC_32 (&lru_list->count_vict_cand, 0) >
+	  (was_vict_count_updated ? 0 : 1))) ? lru_list->bottom : new_victim_hint);
 
   new_victim_hint = ((new_victim_hint != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (new_victim_hint))
 		     ? new_victim_hint : NULL);
@@ -15436,7 +15438,7 @@ pgbuf_lfcq_get_victim_from_private_lru (THREAD_ENTRY * thread_p, bool restricted
 
   lru_list = PGBUF_GET_LRU_LIST (lru_idx);
   if (PGBUF_LRU_LIST_COUNT (lru_list) > PBGUF_BIG_PRIVATE_MIN_SIZE
-      && PGBUF_LRU_LIST_COUNT (lru_list) > 2 * lru_list->quota && lru_list->count_vict_cand > 1)
+      && PGBUF_LRU_LIST_COUNT (lru_list) > 2 * lru_list->quota && ATOMIC_INC_32 (&lru_list->count_vict_cand, 0) > 1)
     {
       /* add big private lists back immediately */
       if (lf_circular_queue_produce (pgbuf_Pool.big_private_lrus_with_victims, &lru_idx))
@@ -15455,7 +15457,7 @@ pgbuf_lfcq_get_victim_from_private_lru (THREAD_ENTRY * thread_p, bool restricted
       return victim;
     }
 
-  if (lru_list->count_vict_cand > 0 && PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
+  if (ATOMIC_INC_32 (&lru_list->count_vict_cand, 0) > 0 && PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
     {
       if (lf_circular_queue_produce (pgbuf_Pool.private_lrus_with_victims, &lru_idx))
 	{
@@ -15513,13 +15515,13 @@ pgbuf_lfcq_get_victim_from_shared_lru (THREAD_ENTRY * thread_p, bool multi_threa
   PERF (victim != NULL ? PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS : PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
 
   /* no victim found in first step, but flush thread ran and candidates can be found, try again */
-  if (victim == NULL && multi_threaded == false && lru_list->count_vict_cand > 0)
+  if (victim == NULL && multi_threaded == false && (ATOMIC_INC_32 (&lru_list->count_vict_cand, 0) > 0))
     {
       victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx);
       PERF (victim != NULL ? PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS : PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
     }
 
-  if ((multi_threaded || victim != NULL) && lru_list->count_vict_cand > 0)
+  if ((multi_threaded || victim != NULL) && ATOMIC_INC_32 (&lru_list->count_vict_cand, 0) > 0)
     {
       /* add lru list back to queue */
       if (lf_circular_queue_produce (pgbuf_Pool.shared_lrus_with_victims, &lru_idx))
