@@ -954,7 +954,9 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
   XASL_ID_SET_NULL (stream->xasl_id);
   if (!context->recompile_xasl)
     {
-      error_code = xcache_find_sha1 (thread_p, &context->sha1, &cache_entry_p, &recompile_due_to_threshold);
+      error_code =
+	xcache_find_sha1 (thread_p, &context->sha1, XASL_CACHE_SEARCH_FOR_PREPARE, &cache_entry_p,
+			  &recompile_due_to_threshold);
       if (error_code != NO_ERROR)
 	{
 	  assert (false);
@@ -962,15 +964,25 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
 	}
       if (cache_entry_p != NULL)
 	{
-	  /* Found entry. */
-	  XASL_ID_COPY (stream->xasl_id, &cache_entry_p->xasl_id);
-	  if (stream->buffer == NULL && stream->xasl_header != NULL)
+	  if (recompile_due_to_threshold)
 	    {
-	      /* also header was requested. */
-	      qfile_load_xasl_node_header (thread_p, stream->buffer, stream->xasl_header);
+	      XASL_ID_COPY (stream->xasl_id, &cache_entry_p->xasl_id);
+	      xcache_unfix (thread_p, cache_entry_p);
+	      context->recompile_xasl = true;
+	      return NO_ERROR;
 	    }
-	  xcache_unfix (thread_p, cache_entry_p);
-	  goto exit_on_end;
+	  else
+	    {
+	      /* Found entry. */
+	      XASL_ID_COPY (stream->xasl_id, &cache_entry_p->xasl_id);
+	      if (stream->buffer == NULL && stream->xasl_header != NULL)
+		{
+		  /* also header was requested. */
+		  qfile_load_xasl_node_header (thread_p, stream->buffer, stream->xasl_header);
+		}
+	      xcache_unfix (thread_p, cache_entry_p);
+	      goto exit_on_end;
+	    }
 	}
       if (stream->buffer == NULL)
 	{

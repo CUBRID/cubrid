@@ -40,7 +40,7 @@ namespace cubthread
     entry &context = *get_manager ()->claim_entry ();
 
     // for backward compatibility
-    context.tid = pthread_self ();
+    context.register_id ();
     context.type = TT_WORKER;
 
     context.get_error_context ().register_thread_local ();
@@ -59,10 +59,8 @@ namespace cubthread
     // clear error messages
     context.get_error_context ().deregister_thread_local ();
 
-    // for backward compatibility
-    context.tid = (pthread_t) 0;
-
     // todo: here we should do more operations to clear thread entry before being reused
+    context.unregister_id ();
     context.tran_index = -1;
     context.check_interrupt = true;
 #if defined (SERVER_MODE)
@@ -76,6 +74,8 @@ namespace cubthread
   entry_manager::recycle_context (entry &context)
   {
     er_clear ();
+
+    context.unregister_id ();
 
     on_recycle (context);
   }

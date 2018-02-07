@@ -32,9 +32,10 @@
 #include "thread.h"
 
 #include <cstring>
+#include <sstream>
 
 #if !defined (WINDOWS)
-#include "pthread.h"
+#include <pthread.h>
 #endif // WINDOWS
 
 namespace cubthread
@@ -43,8 +44,7 @@ namespace cubthread
   entry::entry ()
     : index (-1)
     , type (TT_WORKER)
-    , tid (0)
-    , emulate_tid (0)
+    , emulate_tid ()
     , client_id (-1)
     , tran_index (-1)
     , private_lru_index (-1)
@@ -97,6 +97,7 @@ namespace cubthread
     , fi_test_array (NULL)
     , count_private_allocators (0)
 #endif /* DEBUG */
+    , m_id ()
     , m_error ()
     , m_cleared (false)
   {
@@ -235,6 +236,48 @@ namespace cubthread
 #endif // DEBUG
 
     m_cleared = true;
+  }
+
+  thread_id_t
+  entry::get_id ()
+  {
+    return m_id;
+  }
+
+  pthread_t
+  entry::get_posix_id ()
+  {
+    pthread_t thread_id = 0;
+
+    if (m_id != thread_id_t ())
+      {
+	std::ostringstream oss;
+	oss << m_id;
+	thread_id = (pthread_t) std::stoul (oss.str ());
+      }
+
+    return thread_id;
+  }
+
+  void
+  entry::register_id ()
+  {
+    m_id = std::this_thread::get_id ();
+
+    // native thread identifier must be equal to identifier of std::this_thread
+    assert (get_posix_id () == pthread_self ());
+  }
+
+  void
+  entry::unregister_id ()
+  {
+    m_id = thread_id_t ();
+  }
+
+  bool
+  entry::is_on_current_thread ()
+  {
+    return m_id == std::this_thread::get_id ();
   }
 
 } // namespace cubthread
