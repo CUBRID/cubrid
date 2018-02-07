@@ -254,7 +254,7 @@ namespace cubthread
       {
 	std::ostringstream oss;
 	oss << m_id;
-	thread_id = (pthread_t) std::stoul (oss.str());;
+	thread_id = (pthread_t) std::stoul (oss.str ());
       }
 
     return thread_id;
@@ -266,7 +266,7 @@ namespace cubthread
     m_id = std::this_thread::get_id ();
 
     // native thread identifier must be equal to identifier of std::this_thread
-    assert (get_posix_id() == pthread_self());
+    assert (get_posix_id () == pthread_self ());
   }
 
   void
