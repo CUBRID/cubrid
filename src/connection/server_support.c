@@ -1616,63 +1616,6 @@ ctrl_sig_handler (DWORD ctrl_event)
 #endif /* WINDOWS */
 
 /*
- * css_oob_handler_thread() -
- *   return:
- *   arg(in):
- */
-THREAD_RET_T THREAD_CALLING_CONVENTION
-css_oob_handler_thread (void *arg)
-{
-  THREAD_ENTRY *thrd_entry;
-  int r;
-#if !defined(WINDOWS)
-  int sig;
-  sigset_t sigurg_mask;
-  struct sigaction act;
-#endif /* !WINDOWS */
-
-  thrd_entry = (THREAD_ENTRY *) arg;
-
-  /* wait until THREAD_CREATE finish */
-  r = pthread_mutex_lock (&thrd_entry->th_entry_lock);
-  pthread_mutex_unlock (&thrd_entry->th_entry_lock);
-
-  thread_set_thread_entry_info (thrd_entry);
-  thrd_entry->status = TS_RUN;
-  thrd_entry->register_id ();
-
-#if !defined(WINDOWS)
-  sigemptyset (&sigurg_mask);
-  sigaddset (&sigurg_mask, SIGURG);
-
-  memset (&act, 0, sizeof (act));
-  act.sa_handler = dummy_sigurg_handler;
-  sigaction (SIGURG, &act, NULL);
-
-  pthread_sigmask (SIG_UNBLOCK, &sigurg_mask, NULL);
-#else /* !WINDOWS */
-  SetConsoleCtrlHandler (ctrl_sig_handler, TRUE);
-#endif /* !WINDOWS */
-
-  while (!thrd_entry->shutdown)
-    {
-#if !defined(WINDOWS)
-      r = sigwait (&sigurg_mask, &sig);
-#else /* WINDOWS */
-      Sleep (1000);
-#endif /* WINDOWS */
-    }
-  thrd_entry->status = TS_DEAD;
-  thrd_entry->unregister_id ();
-
-#if defined(WINDOWS)
-  return 0;
-#else /* WINDOWS */
-  return NULL;
-#endif /* WINDOWS */
-}
-
-/*
  * css_block_all_active_conn() - Before shutdown, stop all server thread
  *   return:
  *

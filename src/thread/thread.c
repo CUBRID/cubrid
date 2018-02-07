@@ -116,7 +116,6 @@ static THREAD_MANAGER thread_Manager;
 static DAEMON_THREAD_MONITOR thread_Deadlock_detect_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Checkpoint_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Purge_archive_logs_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static DAEMON_THREAD_MONITOR thread_Oob_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Page_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Flush_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Session_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
@@ -127,7 +126,6 @@ static DAEMON_THREAD_MONITOR thread_Log_clock_thread = DAEMON_THREAD_MONITOR_INI
 static DAEMON_THREAD_MONITOR thread_Page_maintenance_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Page_post_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 
-static void thread_stop_oob_handler_thread (void);
 static void thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor);
 static void thread_wakeup_daemon_thread (DAEMON_THREAD_MONITOR * daemon_monitor);
 static int thread_compare_shutdown_sequence_of_daemon (const void *p1, const void *p2);
@@ -148,7 +146,6 @@ static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_post_flush_thread (voi
 typedef enum
 {
   /* All the single threads */
-  THREAD_DAEMON_CSS_OOB_HANDLER,
   THREAD_DAEMON_DEADLOCK_DETECT,
   THREAD_DAEMON_PURGE_ARCHIVE_LOGS,
   THREAD_DAEMON_CHECKPOINT,
@@ -349,8 +346,7 @@ thread_get_thread_entry_info (void)
  * Thread Manager related functions
  *
  * Global thread manager, thread_mgr, related functions. It creates/destroys
- * TSD and takes control over actual threads, for example master, worker,
- * oob-handler.
+ * TSD and takes control over actual threads, for example master, worker.
  */
 
 /*
@@ -395,12 +391,6 @@ thread_initialize_manager (size_t & total_thread_count)
   /* IMPORTANT NOTE: Daemons are shutdown in the same order as they are created here. */
   daemon_index = 0;
   shutdown_sequence = 0;
-
-  /* Initialize CSS OOB Handler daemon */
-  thread_Daemons[daemon_index].type = THREAD_DAEMON_CSS_OOB_HANDLER;
-  thread_Daemons[daemon_index].daemon_monitor = &thread_Oob_thread;
-  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-  thread_Daemons[daemon_index++].daemon_function = css_oob_handler_thread;
 
   /* Initialize deadlock detect daemon */
   thread_Daemons[daemon_index].type = THREAD_DAEMON_DEADLOCK_DETECT;
@@ -497,7 +487,7 @@ thread_initialize_manager (size_t & total_thread_count)
   /* allocate threads */
   thread_Manager.thread_array = new THREAD_ENTRY[thread_Manager.num_total];
 
-  /* init worker/deadlock-detection/checkpoint daemon/audit-flush oob-handler thread/page flush thread/log flush thread
+  /* init worker/deadlock-detection/checkpoint daemon/page flush thread/log flush thread
    * thread_mgr.thread_array[0] is used for main thread */
   for (i = 0; i < thread_Manager.num_total; i++)
     {
@@ -828,31 +818,6 @@ thread_compare_shutdown_sequence_of_daemon (const void *p1, const void *p2)
 }
 
 /*
- * thread_stop_oob_handler_thread () -
- */
-static void
-thread_stop_oob_handler_thread (void)
-{
-  THREAD_ENTRY *thread_p;
-
-  thread_p = &thread_Manager.thread_array[thread_Oob_thread.thread_index];
-  thread_p->shutdown = true;
-
-  while (thread_p->status != TS_DEAD)
-    {
-      thread_wakeup_oob_handler_thread ();
-
-      if (css_is_shutdown_timeout_expired ())
-	{
-	  er_log_debug (ARG_FILE_LINE, "thread_stop_oob_handler_thread: _exit(0)\n");
-	  /* exit process after some tries */
-	  _exit (0);
-	}
-      thread_sleep (10);	/* 10 msec */
-    }
-}
-
-/*
  * thread_stop_active_daemons() - Stop deadlock detector/checkpoint threads
  *   return: NO_ERROR
  */
@@ -860,8 +825,6 @@ int
 thread_stop_active_daemons (void)
 {
   int i;
-
-  thread_stop_oob_handler_thread ();
 
   for (i = 0; i < thread_Manager.num_daemons; i++)
     {
@@ -2501,21 +2464,6 @@ thread_wakeup_purge_archive_logs_thread (void)
   rv = pthread_mutex_lock (&thread_Purge_archive_logs_thread.lock);
   pthread_cond_signal (&thread_Purge_archive_logs_thread.cond);
   pthread_mutex_unlock (&thread_Purge_archive_logs_thread.lock);
-}
-
-/*
- * thread_wakeup_oob_handler_thread() -
- *  return:
- */
-void
-thread_wakeup_oob_handler_thread (void)
-{
-#if !defined(WINDOWS)
-  THREAD_ENTRY *thread_p;
-
-  thread_p = &thread_Manager.thread_array[thread_Oob_thread.thread_index];
-  pthread_kill (thread_p->get_posix_id (), SIGURG);
-#endif /* !WINDOWS */
 }
 
 /*

@@ -933,7 +933,6 @@ net_client_get_server_host (void)
  *
  * return: error status
  *
- *   send_by_oob(in): flag, if true, to send request via oob mesasge.
  *   request(in): server request id
  *   argbuf(in): argument buffer (small)
  *   argsize(in): byte size of argbuf
