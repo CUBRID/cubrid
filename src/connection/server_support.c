@@ -91,9 +91,6 @@ static struct timeval css_Shutdown_timeout = { 0, 0 };
 static char *css_Master_server_name = NULL;	/* database identifier */
 static int css_Master_port_id;
 static CSS_CONN_ENTRY *css_Master_conn;
-#if defined(WINDOWS)
-static int css_Win_kill_signaled = 0;
-#endif /* WINDOWS */
 static IP_INFO *css_Server_accessible_ip_info;
 static char *ip_list_file_name = NULL;
 static char ip_file_real_path[PATH_MAX];
