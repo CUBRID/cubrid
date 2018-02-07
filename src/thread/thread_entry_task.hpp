@@ -76,7 +76,7 @@ namespace cubthread
   //
   //  how to use:
   //    create a context manager derived from entry manager and override on_create, on_retire and on_recycle functions.
-  //    create worker pools or daemons using derived context manager
+  //    create worker pools using derived context manager
   //
   class entry_manager : public context_manager<entry>
   {
@@ -100,6 +100,44 @@ namespace cubthread
       virtual void on_recycle (entry &)   // manipulate entry between execution cycles
       {
 	// does nothing by default
+      }
+  };
+
+  // cubthread::daemon_entry_manager
+  //
+  //  description:
+  //    daemon_entry_manager is derived from entry_manager and adds extra logic specific for deamon threads
+  //    initialization and destruction. for more details see entry_manager description.
+  //
+  //  how to use:
+  //    create a demon_entry_manager derived from entry_manager and override on_daemon_create and on on_daemon_retire
+  //    functions if daemon require custom logic on initialization or destruction.
+  //    create deamon threads using daemon_entry_manager class
+  //
+  class daemon_entry_manager : public entry_manager
+  {
+    public:
+      daemon_entry_manager () = default;
+      ~daemon_entry_manager () = default;
+
+    protected:
+      virtual void on_daemon_create (entry &)
+      {
+	// does nothing by default
+      }
+
+      void on_create (entry &) final;
+
+      virtual void on_daemon_retire (entry &)
+      {
+	// does nothing by default
+      }
+
+      void on_retire (entry &) final;
+
+      void on_recycle (entry &) final
+      {
+	// daemon threads are not recycled
       }
   };
 

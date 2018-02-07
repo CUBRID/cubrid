@@ -45,6 +45,7 @@ namespace cubthread
   class entry;
   class entry_task;
   class entry_manager;
+  class daemon_entry_manager;
 
   // alias for worker_pool<entry>
   using entry_workpool = worker_pool<entry>;
@@ -205,6 +206,7 @@ namespace cubthread
       // available entries count
       std::size_t m_available_entries_count;
       entry_manager *m_entry_manager;
+      daemon_entry_manager *m_daemon_entry_manager;
   };
 
   //////////////////////////////////////////////////////////////////////////
