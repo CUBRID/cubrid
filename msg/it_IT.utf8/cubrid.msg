@@ -922,7 +922,7 @@ $ LOADDB
 853 Per un oggetto (%1$d|%2$d|%3$d), transazione (%4$d) di una lettura non commessa stava tenendo uno blocco diffetoso (%5$s).
 854 ATTENZIONE: Nessun possessore di blocco, ma waiters di blocco esistono. Fare riferimento a %1$s.
 855 ATTENZIONE: Due o più dei threads sono in attesa di blocco per una operazione (%1$d).
-856 ATTENZIONE: Strano stato di lockwait (%1$d|%2$d), thread (%3$d|%4$d) e transazione (%5$d).
+856 ATTENZIONE: Strano stato di lockwait (%1$d|%2$d), thread (%3$d|%4$lld) e transazione (%5$d).
 857 Un errore I/O durante il troncamento della pagina %1$d di volume "%2$s".
 858 Volume "%1$s" è sconosciuto al riavvio del server.
 859 Blocco sulla pagina (%1$d|%2$d) è annulatto.

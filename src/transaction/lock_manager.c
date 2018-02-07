@@ -137,11 +137,11 @@ extern LOCK_COMPATIBILITY lock_Comp[11][11];
   do \
     { \
       THREAD_ENTRY *locked_thread_entry_p; \
-      assert ((th)->emulate_tid == ((pthread_t) 0)); \
+      assert ((th)->emulate_tid == thread_id_t ()); \
       locked_thread_entry_p = thread_find_entry_by_tran_index ((lock_entry)->tran_index); \
       if (locked_thread_entry_p != NULL) \
 	{ \
-	  (th)->emulate_tid = locked_thread_entry_p->tid; \
+	  (th)->emulate_tid = locked_thread_entry_p->get_id (); \
 	} \
     } \
    while (0)
@@ -149,7 +149,7 @@ extern LOCK_COMPATIBILITY lock_Comp[11][11];
 #define CLEAR_EMULATE_THREAD(th) \
   do \
     { \
-      (th)->emulate_tid = ((pthread_t) 0); \
+      (th)->emulate_tid = thread_id_t (); \
     } \
    while (0)
 
@@ -2357,7 +2357,7 @@ lock_wakeup_deadlock_victim_timeout (int tran_index)
 	    {
 	      /* some strange lock wait state.. */
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, thrd_ptr->lockwait,
-		      thrd_ptr->lockwait_state, thrd_ptr->index, thrd_ptr->tid, thrd_ptr->tran_index);
+		      thrd_ptr->lockwait_state, thrd_ptr->index, thrd_ptr->get_posix_id (), thrd_ptr->tran_index);
 	    }
 	  /* The current thread has already been waken up by other threads. The current thread might be granted the
 	   * lock. or with any other reason....... even if it is a thread of the deadlock victim. */
@@ -2421,7 +2421,7 @@ lock_wakeup_deadlock_victim_aborted (int tran_index)
 	    {
 	      /* some strange lock wait state.. */
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, thrd_ptr->lockwait,
-		      thrd_ptr->lockwait_state, thrd_ptr->index, thrd_ptr->tid, thrd_ptr->tran_index);
+		      thrd_ptr->lockwait_state, thrd_ptr->index, thrd_ptr->get_posix_id (), thrd_ptr->tran_index);
 	    }
 	  /* The current thread has already been waken up by other threads. The current thread might have held the
 	   * lock. or with any other reason....... even if it is a thread of the deadlock victim. */
@@ -2539,7 +2539,7 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	    {
 	      /* some strange lock wait state.. */
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, check->thrd_entry->lockwait,
-		      check->thrd_entry->lockwait_state, check->thrd_entry->index, check->thrd_entry->tid,
+		      check->thrd_entry->lockwait_state, check->thrd_entry->index, check->thrd_entry->get_posix_id (),
 		      check->thrd_entry->tran_index);
 	    }
 	  /* The thread is not waiting for a lock, currently. That is, the thread has already been waked up by timeout,
@@ -2652,7 +2652,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	    {
 	      /* some strange lock wait state.. */
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, check->thrd_entry->lockwait,
-		      check->thrd_entry->lockwait_state, check->thrd_entry->index, check->thrd_entry->tid,
+		      check->thrd_entry->lockwait_state, check->thrd_entry->index, check->thrd_entry->get_posix_id (),
 		      check->thrd_entry->tran_index);
 	      error_code = ER_LK_STRANGE_LOCK_WAIT;
 	    }
@@ -2804,7 +2804,7 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
 	    {
 	      /* some strange lock wait state.. */
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, check->thrd_entry->lockwait,
-		      check->thrd_entry->lockwait_state, check->thrd_entry->index, check->thrd_entry->tid,
+		      check->thrd_entry->lockwait_state, check->thrd_entry->index, check->thrd_entry->get_posix_id (),
 		      check->thrd_entry->tran_index);
 	    }
 	  /* The thread is not waiting on the lock. That is, the thread has already been waken up by lock timeout,
@@ -7332,7 +7332,7 @@ lock_is_waiting_transaction (int tran_index)
 	    {
 	      /* some strange lock wait state.. */
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, thrd_ptr->lockwait,
-		      thrd_ptr->lockwait_state, thrd_ptr->index, thrd_ptr->tid, thrd_ptr->tran_index);
+		      thrd_ptr->lockwait_state, thrd_ptr->index, thrd_ptr->get_posix_id (), thrd_ptr->tran_index);
 	    }
 	}
       (void) thread_unlock_entry (thrd_ptr);
@@ -7439,7 +7439,7 @@ lock_force_timeout_lock_wait_transactions (unsigned short stop_phase)
 	    {
 	      /* some strange lock wait state.. */
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, thrd->lockwait,
-		      thrd->lockwait_state, thrd->index, thrd->tid, thrd->tran_index);
+		      thrd->lockwait_state, thrd->index, thrd->get_posix_id (), thrd->tran_index);
 	    }
 	  /* release the thread entry mutex */
 	  (void) thread_unlock_entry (thrd);
@@ -7508,7 +7508,7 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
 	    {
 	      /* some strange lock wait state.. */
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, thrd->lockwait,
-		      thrd->lockwait_state, thrd->index, thrd->tid, thrd->tran_index);
+		      thrd->lockwait_state, thrd->index, thrd->get_posix_id (), thrd->tran_index);
 	    }
 	  /* release the thread entry mutex */
 	  (void) thread_unlock_entry (thrd);
@@ -7545,7 +7545,7 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
 		{
 		  /* some strange lock wait state.. */
 		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, thrd->lockwait,
-			  thrd->lockwait_state, thrd->index, thrd->tid, thrd->tran_index);
+			  thrd->lockwait_state, thrd->index, thrd->get_posix_id (), thrd->tran_index);
 		}
 	      /* release the thread entry mutex */
 	      (void) thread_unlock_entry (thrd);

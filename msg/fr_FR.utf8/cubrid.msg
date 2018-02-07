@@ -922,7 +922,7 @@ $ LOADDB
 853 Pour un objet(%1$d|%2$d|%3$d), tran(%4$d) d'une lecture pas enregistrée a détenu un verrou de faute(%5$s).
 854 ATTENTION: Titulaire de verrou manquant, mais il y a des attendeurs du verrou. Reportez-vous à %1$s.
 855 ATTENTION: Deux ou plusieurs fils d'exécution sont en attente de verrouillage pour une transaction(%1$d).
-856 ATTENTION: Etrange lockwait état(%1$d|%2$d), fil d'exécution(%3$d|%4$d) et transaction(%5$d).
+856 ATTENTION: Etrange lockwait état(%1$d|%2$d), fil d'exécution(%3$d|%4$lld) et transaction(%5$d).
 857 Une erreur d'E/S s'est produite lors de tronquer la page %1$d de volume "%2$s".
 858 Volume "%1$s" est inconnu au redémarrage du serveur.
 859 LATCH ON PAGE(%1$d|%2$d) ANNULÉ

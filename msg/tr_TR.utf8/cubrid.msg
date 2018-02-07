@@ -922,7 +922,7 @@ $ LOADDB
 853 Bir nesne için (%1$d|%2$d|%3$d), okuma kaydedilmemiş düzenlenen arıza kilidi (%5$s) tran (%4$d).
 854 UYARI: kilit sahibi bulunmamaktadır, ama kilit bekleyenler mevcut. %1$s e başvurun.
 855 UYARI: İki veya daha fazla iş parçacığı kilit bekleyen bir işlem (%1$d) içindir.
-856 UYARI: Garip LOCKWAIT durumu (%1$d|%2$d), iplik (%3$d|%4$d) ve işlemler (%5$d).
+856 UYARI: Garip LOCKWAIT durumu (%1$d|%2$d), iplik (%3$d|%4$lld) ve işlemler (%5$d).
 857 Sayfa %1$d yoğunluk "%2$s" kesilmesi sırasında başka bir I/O hata oluştu.
 858 Cilt "%1$s" sunucu yeniden başlatma sırasında bilinmiyor.
 859 SAYFASINDA LATCH (%1$d|%2$d) BAŞARISISZLIĞA UĞRAMIŞ
