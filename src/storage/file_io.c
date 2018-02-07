@@ -3827,7 +3827,7 @@ fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * i
   skip_flush = dwb_is_created ();
   if (skip_flush)
     {
-      FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (false);
+      FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (NULL);
 
       arg.vdes = vol_fd;
       vol_info_p = fileio_traverse_permanent_volume (thread_p, fileio_is_volume_descriptor_equal, &arg);
