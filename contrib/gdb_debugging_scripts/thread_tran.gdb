@@ -32,7 +32,7 @@ define thread_find_by_tid
   set $i = 0
   set $arg1 = 0
   while $i < thread_Manager.num_total
-    if thread_Manager.thread_array[$i]->get_posix_id () == $arg0
+    if thread_Manager.thread_array[$i]->m_id._M_thread == $arg0
       set $arg1 = thread_Manager.thread_array[$i]
       loop_break
 	end
