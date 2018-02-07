@@ -231,7 +231,6 @@ static int css_check_accessibility (SOCKET new_fd);
 
 #if defined(WINDOWS)
 static int css_process_new_connection_request (void);
-static BOOL WINAPI ctrl_sig_handler (DWORD ctrl_event);
 #endif /* WINDOWS */
 
 static bool css_check_ha_log_applier_done (void);
@@ -1592,28 +1591,6 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 
   return 0;
 }
-
-#if defined(WINDOWS)
-/*
- * ctrl_sig_handler () -
- *   return:
- *   ctrl_event(in):
- */
-static BOOL WINAPI
-ctrl_sig_handler (DWORD ctrl_event)
-{
-  if (ctrl_event == CTRL_BREAK_EVENT)
-    {
-      ;
-    }
-  else
-    {
-      css_Win_kill_signaled = 1;
-    }
-
-  return TRUE;			/* Continue */
-}
-#endif /* WINDOWS */
 
 /*
  * css_block_all_active_conn() - Before shutdown, stop all server thread
