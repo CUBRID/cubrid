@@ -1587,14 +1587,9 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
       // do not tokenize on escaped quotes
       if (path[end] != '"' || path[end - 1] != '\\')
 	{
-	  std::string &substring = path.substr (start, end - start);
+	  const std::string &substring = path.substr (start, end - start);
 	  if (!substring.empty ())
 	    {
-	      if (db_json_path_is_token_valid_array_index (substring))
-		{
-		  db_json_remove_leading_zeros_index (substring);
-		}
-
 	      tokens.push_back (substring);
 	    }
 
@@ -1604,14 +1599,18 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
       end = path.find_first_of (delim, end + 1);
     }
 
-  std::string &substring = path.substr (start, end);
+  const std::string &substring = path.substr (start, end);
   if (!substring.empty ())
     {
-      if (db_json_path_is_token_valid_array_index (substring))
-	{
-	  db_json_remove_leading_zeros_index (substring);
-	}
       tokens.push_back (substring);
+    }
+
+  for (int i = 0; i < tokens.size(); i++)
+    {
+      if (db_json_path_is_token_valid_array_index (tokens[i]))
+	{
+	  db_json_remove_leading_zeros_index (tokens[i]);
+	}
     }
 
   return tokens;
