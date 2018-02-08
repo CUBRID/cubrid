@@ -110,10 +110,9 @@ static pthread_key_t thread_Thread_key;
 static THREAD_MANAGER thread_Manager;
 
 /*
- * For special Purpose Threads: deadlock detector, checkpoint daemon
+ * For special Purpose Threads: checkpoint daemon etc.
  *    Under the win32-threads system, *_cond variables are an auto-reset event
  */
-static DAEMON_THREAD_MONITOR thread_Deadlock_detect_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Checkpoint_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Purge_archive_logs_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Page_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
@@ -130,7 +129,6 @@ static void thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor);
 static void thread_wakeup_daemon_thread (DAEMON_THREAD_MONITOR * daemon_monitor);
 static int thread_compare_shutdown_sequence_of_daemon (const void *p1, const void *p2);
 
-static THREAD_RET_T THREAD_CALLING_CONVENTION thread_deadlock_detect_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_checkpoint_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_purge_archive_logs_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_flush_thread (void *);
@@ -146,7 +144,6 @@ static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_post_flush_thread (voi
 typedef enum
 {
   /* All the single threads */
-  THREAD_DAEMON_DEADLOCK_DETECT,
   THREAD_DAEMON_PURGE_ARCHIVE_LOGS,
   THREAD_DAEMON_CHECKPOINT,
   THREAD_DAEMON_SESSION_CONTROL,
@@ -363,9 +360,8 @@ thread_is_manager_initialized (void)
  * thread_initialize_manager() - Create and initialize all necessary threads.
  *   return: 0 if no error, or error code
  *
- * Note: It includes a main thread, service handler, a deadlock detector
- *       and a checkpoint daemon. Some other threads like signal handler
- *       might be needed later.
+ * Note: It includes a main thread, service handler and a checkpoint daemon.
+ *       Some other threads like signal handler might be needed later.
  */
 int
 thread_initialize_manager (size_t & total_thread_count)
@@ -391,12 +387,6 @@ thread_initialize_manager (size_t & total_thread_count)
   /* IMPORTANT NOTE: Daemons are shutdown in the same order as they are created here. */
   daemon_index = 0;
   shutdown_sequence = 0;
-
-  /* Initialize deadlock detect daemon */
-  thread_Daemons[daemon_index].type = THREAD_DAEMON_DEADLOCK_DETECT;
-  thread_Daemons[daemon_index].daemon_monitor = &thread_Deadlock_detect_thread;
-  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-  thread_Daemons[daemon_index++].daemon_function = thread_deadlock_detect_thread;
 
   /* Initialize purge archive logs daemon */
   thread_Daemons[daemon_index].type = THREAD_DAEMON_PURGE_ARCHIVE_LOGS;
@@ -487,7 +477,7 @@ thread_initialize_manager (size_t & total_thread_count)
   /* allocate threads */
   thread_Manager.thread_array = new THREAD_ENTRY[thread_Manager.num_total];
 
-  /* init worker/deadlock-detection/checkpoint daemon/page flush thread/log flush thread
+  /* init worker/checkpoint daemon/page flush thread/log flush thread
    * thread_mgr.thread_array[0] is used for main thread */
   for (i = 0; i < thread_Manager.num_total; i++)
     {
@@ -818,7 +808,7 @@ thread_compare_shutdown_sequence_of_daemon (const void *p1, const void *p2)
 }
 
 /*
- * thread_stop_active_daemons() - Stop deadlock detector/checkpoint threads
+ * thread_stop_active_daemons() - Stop active daemon threads
  *   return: NO_ERROR
  */
 int
@@ -2056,8 +2046,8 @@ thread_worker (void *arg_p)
 }
 
 /* Special Purpose Threads
-   deadlock detector, check point daemon */
-
+ * check point daemon
+ */
 #if defined(WINDOWS)
 /*
  * thread_initialize_sync_object() -
@@ -2089,121 +2079,6 @@ thread_initialize_sync_object (void)
   return r;
 }
 #endif /* WINDOWS */
-
-/*
- * thread_deadlock_detect_thread() -
- *   return:
- */
-static THREAD_RET_T THREAD_CALLING_CONVENTION
-thread_deadlock_detect_thread (void *arg_p)
-{
-#if !defined(HPUX)
-  THREAD_ENTRY *tsd_ptr;
-#endif /* !HPUX */
-  int rv;
-  THREAD_ENTRY *thread_p;
-  int thrd_index;
-  bool state;
-  int lockwait_count;
-
-  tsd_ptr = (THREAD_ENTRY *) arg_p;
-  /* wait until THREAD_CREATE() finish */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
-
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  tsd_ptr->register_id ();
-
-  thread_Deadlock_detect_thread.is_available = true;
-  thread_Deadlock_detect_thread.is_running = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
-
-  /* during server is active */
-  while (!tsd_ptr->shutdown)
-    {
-      thread_sleep (100);	/* 100 msec */
-      if (!lock_check_local_deadlock_detection ())
-	{
-	  continue;
-	}
-
-      er_clear ();
-
-      /* check if the lock-wait thread exists */
-      thread_p = thread_find_first_lockwait_entry (&thrd_index);
-      if (thread_p == (THREAD_ENTRY *) NULL)
-	{
-	  /* none is lock-waiting */
-	  rv = pthread_mutex_lock (&thread_Deadlock_detect_thread.lock);
-	  thread_Deadlock_detect_thread.is_running = false;
-
-	  if (tsd_ptr->shutdown)
-	    {
-	      pthread_mutex_unlock (&thread_Deadlock_detect_thread.lock);
-	      break;
-	    }
-	  pthread_cond_wait (&thread_Deadlock_detect_thread.cond, &thread_Deadlock_detect_thread.lock);
-
-	  thread_Deadlock_detect_thread.is_running = true;
-
-	  pthread_mutex_unlock (&thread_Deadlock_detect_thread.lock);
-	  continue;
-	}
-
-      /* One or more threads are lock-waiting */
-      lockwait_count = 0;
-      while (thread_p != (THREAD_ENTRY *) NULL)
-	{
-	  /* 
-	   * The transaction, for which the current thread is working,
-	   * might be interrupted. The interrupt checking is also performed
-	   * within lock_force_timeout_expired_wait_transactions().
-	   */
-	  state = lock_force_timeout_expired_wait_transactions (thread_p);
-	  if (state == false)
-	    {
-	      lockwait_count++;
-	    }
-	  thread_p = thread_find_next_lockwait_entry (&thrd_index);
-	}
-
-      if (lockwait_count >= 2)
-	{
-	  (void) lock_detect_local_deadlock (tsd_ptr);
-	}
-    }
-
-  rv = pthread_mutex_lock (&thread_Deadlock_detect_thread.lock);
-  thread_Deadlock_detect_thread.is_running = false;
-  thread_Deadlock_detect_thread.is_available = false;
-  pthread_mutex_unlock (&thread_Deadlock_detect_thread.lock);
-
-  er_final (ER_THREAD_FINAL);
-  tsd_ptr->status = TS_DEAD;
-  tsd_ptr->unregister_id ();
-
-  return (THREAD_RET_T) 0;
-}
-
-/*
- * thread_wakeup_deadlock_detect_thread() -
- *   return:
- */
-void
-thread_wakeup_deadlock_detect_thread (void)
-{
-  int rv;
-
-  rv = pthread_mutex_lock (&thread_Deadlock_detect_thread.lock);
-  if (thread_Deadlock_detect_thread.is_running == false)
-    {
-      pthread_cond_signal (&thread_Deadlock_detect_thread.cond);
-    }
-  pthread_mutex_unlock (&thread_Deadlock_detect_thread.lock);
-}
 
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 thread_session_control_thread (void *arg_p)

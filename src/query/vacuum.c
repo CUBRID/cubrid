@@ -688,15 +688,13 @@ static void vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p);
 
 /* *INDENT-OFF* */
 void
-vacuum_init_thread_context (cubthread::entry & context, THREAD_TYPE type, VACUUM_WORKER * worker)
+vacuum_init_thread_context (cubthread::entry &context, THREAD_TYPE type, VACUUM_WORKER *worker)
 {
   assert (worker != NULL);
 
   context.type = type;
   context.vacuum_worker = worker;
-  context.tran_index = 0;
   context.check_interrupt = false;
-  context.status = TS_RUN;
 }
 
 // class vacuum_master_context_manager
@@ -704,14 +702,10 @@ vacuum_init_thread_context (cubthread::entry & context, THREAD_TYPE type, VACUUM
 //  description:
 //    extend entry_manager to override context custruction and retirement
 //
-class vacuum_master_context_manager : public cubthread::entry_manager
+class vacuum_master_context_manager : public cubthread::daemon_entry_manager
 {
-public:
-  vacuum_master_context_manager () = default;
-  ~vacuum_master_context_manager() = default;
-
 private:
-  void on_create (cubthread::entry & context) final
+  void on_daemon_create (cubthread::entry &context) final
   {
     // set vacuum master in execute state
     assert (vacuum_Master.state == VACUUM_WORKER_STATE_RECOVERY || vacuum_Master.state == VACUUM_WORKER_STATE_EXECUTE);
@@ -720,7 +714,7 @@ private:
     vacuum_init_thread_context (context, TT_VACUUM_MASTER, &vacuum_Master);
   }
 
-  void on_retire (cubthread::entry & context) final
+  void on_daemon_retire (cubthread::entry &context) final
   {
     vacuum_finalize (&context);    // todo: is this the rightful place?
 
@@ -733,10 +727,6 @@ private:
       {
         assert (false);
       }
-  }
-
-  void on_recycle (cubthread::entry &) final
-  {
   }
 };
 
@@ -767,13 +757,13 @@ public:
 class vacuum_worker_context_manager : public cubthread::entry_manager
 {
 public:
-  vacuum_worker_context_manager (void)
+  vacuum_worker_context_manager ()
     : cubthread::entry_manager ()
   {
     m_pool = new resource_shared_pool<VACUUM_WORKER> (vacuum_Workers, VACUUM_MAX_WORKER_COUNT);
   }
 
-  ~vacuum_worker_context_manager (void)
+  ~vacuum_worker_context_manager ()
   {
     delete m_pool;
   }
@@ -785,8 +775,11 @@ private:
                                 const BLOCK_LOG_BUFFER & log_buffer, bool is_partial_block);
 #endif // SA_MODE
 
-  void on_create (cubthread::entry & context) final
+  void on_create (cubthread::entry &context) final
   {
+    context.tran_index = 0;
+    context.status = TS_RUN;
+
     vacuum_init_thread_context (context, TT_VACUUM_WORKER, m_pool->claim ());
 
     if (vacuum_worker_allocate_resources (&context, context.vacuum_worker) != NO_ERROR)
@@ -795,7 +788,7 @@ private:
       }
   }
 
-  void on_retire (cubthread::entry & context) final
+  void on_retire (cubthread::entry &context) final
   {
     if (context.vacuum_worker != NULL)
       {

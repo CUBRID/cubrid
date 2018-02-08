@@ -316,7 +316,6 @@ extern int thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client
 extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 
 /* wakeup functions */
-extern void thread_wakeup_deadlock_detect_thread (void);
 extern void thread_wakeup_log_flush_thread (void);
 extern void thread_wakeup_page_flush_thread (void);
 extern void thread_try_wakeup_page_flush_thread (void);
