@@ -154,7 +154,9 @@ static void db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src);
 static void db_json_get_paths_helper (const JSON_VALUE &obj, const std::string &sql_path,
 				      std::vector<std::string> &paths);
 static void db_json_normalize_path (std::string &path_string);
+static void db_json_remove_leading_zeros_index (std::string &index);
 static bool db_json_isspace (const unsigned char &ch);
+static bool db_json_iszero (const unsigned char &ch);
 static int db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_path_out);
 static int db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_pointer_out);
 static JSON_PATH_TYPE db_json_get_path_type (std::string &path_string);
@@ -979,9 +981,34 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
       return db_json_er_set_path_does_not_exist (json_pointer_string, &doc);
     }
 
-  // create and insert the value to the specified path
-  p.Create (doc);
-  p.Set (doc, *value, doc.GetAllocator ());
+  const std::string &last_token = json_pointer_string.substr (found + 1);
+
+  if (db_json_path_is_token_valid_array_index (last_token))
+    {
+      // for zero index we just replace the value
+      if (last_token == "0")
+	{
+	  pointer_parent.Set (doc, *value, doc.GetAllocator());
+	  return NO_ERROR;
+	}
+
+      // we have a valid array index, but the object has only one element
+      // example: for json {"a" : "b"} and path /a/2
+      // first, we wrap the object's value as array -> {"a" : ["b"]}
+      if (!resulting_json_parent->IsArray())
+	{
+	  db_json_value_wrap_as_array (*resulting_json_parent, doc.GetAllocator());
+	}
+
+      // second, we add the value at the end of the array
+      JSON_VALUE value_copy (*value, doc.GetAllocator());
+      resulting_json_parent->PushBack (value_copy, doc.GetAllocator());
+    }
+  else
+    {
+      // insert the value to the specified path
+      p.Set (doc, *value, doc.GetAllocator());
+    }
 
   return NO_ERROR;
 }
@@ -1560,9 +1587,14 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
       // do not tokenize on escaped quotes
       if (path[end] != '"' || path[end - 1] != '\\')
 	{
-	  const std::string &substring = path.substr (start, end - start);
+	  std::string &substring = path.substr (start, end - start);
 	  if (!substring.empty ())
 	    {
+	      if (db_json_path_is_token_valid_array_index (substring))
+		{
+		  db_json_remove_leading_zeros_index (substring);
+		}
+
 	      tokens.push_back (substring);
 	    }
 
@@ -1572,9 +1604,13 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
       end = path.find_first_of (delim, end + 1);
     }
 
-  const std::string &substring = path.substr (start, end);
+  std::string &substring = path.substr (start, end);
   if (!substring.empty ())
     {
+      if (db_json_path_is_token_valid_array_index (substring))
+	{
+	  db_json_remove_leading_zeros_index (substring);
+	}
       tokens.push_back (substring);
     }
 
@@ -1795,6 +1831,25 @@ db_json_normalize_path (std::string &path_string)
   // trim leading spaces
   auto first_non_space = std::find_if_not (path_string.begin (), path_string.end (), db_json_isspace);
   path_string.erase (path_string.begin (), first_non_space);
+}
+
+static bool
+db_json_iszero (const unsigned char &ch)
+{
+  return ch == '0';
+}
+
+static void
+db_json_remove_leading_zeros_index (std::string &index)
+{
+  // trim leading zeros
+  auto first_non_zero = std::find_if_not (index.begin(), index.end(), db_json_iszero);
+  index.erase (index.begin(), first_non_zero);
+
+  if (index.empty())
+    {
+      index = "0";
+    }
 }
 
 /*
