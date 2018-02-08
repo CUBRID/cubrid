@@ -38,7 +38,6 @@ extern void css_block_all_active_conn (unsigned short stop_phase);
 extern void css_broadcast_shutdown_thread (void);
 
 extern THREAD_RET_T THREAD_CALLING_CONVENTION css_master_thread (void);
-extern THREAD_RET_T THREAD_CALLING_CONVENTION css_oob_handler_thread (void *);
 
 extern unsigned int css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size);
 #if defined (ENABLE_UNUSED_FUNCTION)

@@ -922,7 +922,7 @@ $ LOADDB
 853 Pentru un obiect(%1$d|%2$d|%3$d), tranzacţia(%4$d) de tip Uncommitted Read deţine un lock defect(%5$s).
 854 AVERTISMENT: Nu există niciun lock holder, dar există lock waiters. Consultaţi fişierul %1$s.
 855 AVERTISMENT: Unul sau mai multe fire de execuţie se află în starea de lock-waiting pentru o tranzacţie(%1$d).
-856 AVERTISMENT: Stare lockwait(%1$d|%2$d), fir de execuţie(%3$d|%4$d) şi tranzacţie(%5$d) neobişnuite.
+856 AVERTISMENT: Stare lockwait(%1$d|%2$d), fir de execuţie(%3$d|%4$lld) şi tranzacţie(%5$d) neobişnuite.
 857 O eroare I/O s-a produs la trunchierea paginii %1$d din volumul "%2$s".
 858 Volumul "%1$s" nu este cunoscut la repornirea serverului.
 859 Latch-ul pe pagina(%1$d|%2$d) a fost anulat.
