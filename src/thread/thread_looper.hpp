@@ -31,6 +31,8 @@
 #include <cassert>
 #include <cstdint>
 
+#define MAX_PERIODS 3 // for increasing period pattern
+
 // cubthread::looper
 //
 // description
@@ -63,8 +65,6 @@
 //      }
 //    // loop is stopped calling looper_shared_variable->stop ();
 //
-
-#define MAX_PERIODS 3 // for increasing period pattern
 
 namespace cubthread
 {

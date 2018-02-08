@@ -5944,6 +5944,9 @@ public:
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
+/*
+ * lock_deadlock_detect_daemon_init () - initialize deadlock detect daemon thread
+ */
 void
 lock_deadlock_detect_daemon_init ()
 {
@@ -5959,6 +5962,9 @@ lock_deadlock_detect_daemon_init ()
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
+/*
+ * lock_deadlock_detect_daemon_destroy () - destroy deadlock detect daemon thread
+ */
 void
 lock_deadlock_detect_daemon_destroy ()
 {

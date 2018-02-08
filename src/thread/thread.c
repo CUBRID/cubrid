@@ -110,7 +110,7 @@ static pthread_key_t thread_Thread_key;
 static THREAD_MANAGER thread_Manager;
 
 /*
- * For special Purpose Threads: deadlock detector, checkpoint daemon
+ * For special Purpose Threads: checkpoint daemon etc.
  *    Under the win32-threads system, *_cond variables are an auto-reset event
  */
 static DAEMON_THREAD_MONITOR thread_Checkpoint_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
@@ -360,9 +360,8 @@ thread_is_manager_initialized (void)
  * thread_initialize_manager() - Create and initialize all necessary threads.
  *   return: 0 if no error, or error code
  *
- * Note: It includes a main thread, service handler, a deadlock detector
- *       and a checkpoint daemon. Some other threads like signal handler
- *       might be needed later.
+ * Note: It includes a main thread, service handler and a checkpoint daemon.
+ *       Some other threads like signal handler might be needed later.
  */
 int
 thread_initialize_manager (size_t & total_thread_count)
@@ -478,7 +477,7 @@ thread_initialize_manager (size_t & total_thread_count)
   /* allocate threads */
   thread_Manager.thread_array = new THREAD_ENTRY[thread_Manager.num_total];
 
-  /* init worker/deadlock-detection/checkpoint daemon/page flush thread/log flush thread
+  /* init worker/checkpoint daemon/page flush thread/log flush thread
    * thread_mgr.thread_array[0] is used for main thread */
   for (i = 0; i < thread_Manager.num_total; i++)
     {
@@ -809,7 +808,7 @@ thread_compare_shutdown_sequence_of_daemon (const void *p1, const void *p2)
 }
 
 /*
- * thread_stop_active_daemons() - Stop deadlock detector/checkpoint threads
+ * thread_stop_active_daemons() - Stop active daemon threads
  *   return: NO_ERROR
  */
 int
@@ -2047,8 +2046,8 @@ thread_worker (void *arg_p)
 }
 
 /* Special Purpose Threads
-   deadlock detector, check point daemon */
-
+ * check point daemon
+ */
 #if defined(WINDOWS)
 /*
  * thread_initialize_sync_object() -
