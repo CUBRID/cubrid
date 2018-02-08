@@ -8431,7 +8431,24 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       return NULL;
     }
 
+#if defined (SERVER_MODE)
+  if (lru_idx != PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p)))
+    {
+      if (pthread_mutex_trylock (&lru_list->mutex) != 0)
+	{
+	  /* Do not wait, to avoid contention. */
+	  return NULL;
+	}
+      /* Mutex acquired. */
+    }
+  else
+    {
+      pthread_mutex_lock (&lru_list->mutex);
+    }
+#else
   pthread_mutex_lock (&lru_list->mutex);
+#endif
+
   if (lru_list->bottom == NULL || !PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom))
     {
       /* no zone 3 */
