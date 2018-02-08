@@ -106,13 +106,13 @@ namespace cubthread
   // cubthread::daemon_entry_manager
   //
   //  description:
-  //    daemon_entry_manager is derived from entry_manager and adds extra logic specific for deamon threads
+  //    daemon_entry_manager is derived from entry_manager and adds extra logic specific for daemon threads
   //    initialization and destruction. for more details see entry_manager description.
   //
   //  how to use:
-  //    create a demon_entry_manager derived from entry_manager and override on_daemon_create and on on_daemon_retire
+  //    create a daemon_entry_manager derived from entry_manager and override on_daemon_create and on on_daemon_retire
   //    functions if daemon require custom logic on initialization or destruction.
-  //    create deamon threads using daemon_entry_manager class
+  //    create daemon threads using daemon_entry_manager class
   //
   class daemon_entry_manager : public entry_manager
   {
