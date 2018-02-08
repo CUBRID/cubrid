@@ -35,12 +35,13 @@ void master_replication_channel_manager::reset ()
       std::lock_guard<std::mutex> guard (mutex_for_singleton);
       if (is_initialized == true)
         {
-          master_channels.clear ();
           if (master_channels_supervisor_daemon != NULL)
             {
               cubthread::get_manager ()->destroy_daemon (master_channels_supervisor_daemon);
               master_channels_supervisor_daemon = NULL;
             }
+
+          master_channels.clear ();
           is_initialized = false;
         }
     }
@@ -59,6 +60,8 @@ master_replication_channel_entry *master_replication_channel_entry::add_daemon (
     }
 
   m_master_daemon_threads[daemon_index] = cubthread::get_manager ()->create_daemon (loop_rule, task);
+
+  return this;
 }
 
 master_replication_channel_entry::master_replication_channel_entry (int sock_fd)
@@ -72,8 +75,6 @@ master_replication_channel_entry::master_replication_channel_entry (int sock_fd)
 
 master_replication_channel_entry::~master_replication_channel_entry ()
 {
-  delete m_channel;
-
   for (int i = 0; i < NUM_OF_MASTER_DAEMON_THREADS; i++)
     {
       if (m_master_daemon_threads[i] != NULL)
@@ -81,6 +82,8 @@ master_replication_channel_entry::~master_replication_channel_entry ()
           cubthread::get_manager()->destroy_daemon (m_master_daemon_threads[i]);
         }
     }
+
+  delete m_channel;
 }
 
 master_replication_channel_entry::master_replication_channel_entry (master_replication_channel_entry &&entry)

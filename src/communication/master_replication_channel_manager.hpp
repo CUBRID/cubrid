@@ -22,6 +22,8 @@ enum MASTER_DAEMON_THREADS
 class master_replication_channel_entry
 {
 private:
+  friend class master_replication_channel_manager;
+
   master_replication_channel *m_channel;
   cubthread::daemon *m_master_daemon_threads[NUM_OF_MASTER_DAEMON_THREADS];
 

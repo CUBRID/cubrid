@@ -1235,36 +1235,6 @@ loop:
   return NO_ERROR;
 }
 
-void
-remzi_listen_and_send ()
-{
-  int listen_sockfd, error_code, sock;
-  char message[] = "HELLO";
-  CSS_CONN_ENTRY *conn;
-
-  error_code = css_tcp_master_open (15015, &listen_sockfd);
-  assert (error_code == NO_ERROR);
-
-  sock = css_master_accept (listen_sockfd);
-  conn = css_make_conn (sock);
-
-  css_net_send (conn, (char *) &message, sizeof (message), -1);
-  printf ("sent=%s\n", message);
-}
-
-void
-remzi_connect_and_recv ()
-{
-  int sock = css_tcp_client_open ("localhost", 15015), rc;
-  char buffer[1024];
-  int size = 1024;
-
-  rc = css_net_recv (sock, buffer, &size, 5000);
-  assert (rc == NO_ERRORS);
-
-  printf ("received=%s\n", buffer);
-}
-
 /*
  * net_server_start () - Starts the operation of a CUBRID server
  *   return: error status

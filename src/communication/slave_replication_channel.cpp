@@ -77,7 +77,7 @@ void slave_replication_channel::reset_singleton ()
       return;
     }
 
-  css_free_conn (singleton->get_master_conn_entry ());
+  singleton->close_master_conn();
   delete singleton;
   singleton = NULL;
 }
