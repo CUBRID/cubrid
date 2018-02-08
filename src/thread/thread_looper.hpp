@@ -116,7 +116,7 @@ namespace cubthread
 	INFINITE_WAITS,               // always infinite waits
       };
 
-      static constexpr std::size_t const &MAX_PERIODS = 3; // for increasing period pattern
+      static const std::size_t MAX_PERIODS = 3; // for increasing period pattern
 
       wait_pattern m_wait_pattern;          // wait pattern type
       std::size_t m_periods_count;          // the period count
