@@ -1839,6 +1839,11 @@ db_json_iszero (const unsigned char &ch)
   return ch == '0';
 }
 
+/* db_json_remove_leading_zeros_index () - Erase leading zeros from sql path index
+*
+* index (in)                : current object
+* example: $[000123] -> $[123]
+*/
 static void
 db_json_remove_leading_zeros_index (std::string &index)
 {
