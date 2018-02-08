@@ -265,8 +265,10 @@ namespace cubthread
   {
     m_id = std::this_thread::get_id ();
 
+#if defined (SERVER_MODE)
     // native thread identifier must be equal to identifier of std::this_thread
     assert (get_posix_id () == pthread_self ());
+#endif /* SERVER_MODE */
   }
 
   void
