@@ -64,6 +64,8 @@
 //    // loop is stopped calling looper_shared_variable->stop ();
 //
 
+#define MAX_PERIODS 3 // for increasing period pattern
+
 namespace cubthread
 {
 
@@ -116,8 +118,6 @@ namespace cubthread
 	INFINITE_WAITS,               // always infinite waits
       };
 
-      static const std::size_t MAX_PERIODS = 3; // for increasing period pattern
-
       wait_pattern m_wait_pattern;          // wait pattern type
       std::size_t m_periods_count;          // the period count
       delta_time m_periods[MAX_PERIODS];    // period array
@@ -157,7 +157,7 @@ namespace cubthread
     , m_stop (false)
   {
     static_assert (Count <= MAX_PERIODS, "Count template cannot exceed MAX_PERIODS=3");
-    m_periods_count = std::min (Count, MAX_PERIODS);
+    m_periods_count = std::min (Count, (std::size_t) MAX_PERIODS);
 
     // wait increasing period on timeouts
     for (std::size_t i = 0; i < m_periods_count; i++)

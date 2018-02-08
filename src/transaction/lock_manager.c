@@ -5920,7 +5920,7 @@ public:
     int lock_wait_count = 0;
 
     /* One or more threads are lock-waiting */
-    while (lock_wait_entry != NULL)
+    while (lock_wait_entry != NULL && lock_wait_count < 2)
       {
 	/*
 	 * The transaction, for which the current thread is working,
