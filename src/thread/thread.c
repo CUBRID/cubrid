@@ -110,10 +110,9 @@ static pthread_key_t thread_Thread_key;
 static THREAD_MANAGER thread_Manager;
 
 /*
- * For special Purpose Threads: checkpoint daemon etc.
- *    Under the win32-threads system, *_cond variables are an auto-reset event
+ * For special Purpose Threads
+ * Under the win32-threads system, *_cond variables are an auto-reset event
  */
-static DAEMON_THREAD_MONITOR thread_Checkpoint_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Purge_archive_logs_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Page_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Flush_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
@@ -129,7 +128,6 @@ static void thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor);
 static void thread_wakeup_daemon_thread (DAEMON_THREAD_MONITOR * daemon_monitor);
 static int thread_compare_shutdown_sequence_of_daemon (const void *p1, const void *p2);
 
-static THREAD_RET_T THREAD_CALLING_CONVENTION thread_checkpoint_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_purge_archive_logs_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_flush_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_flush_control_thread (void *);
@@ -145,7 +143,6 @@ typedef enum
 {
   /* All the single threads */
   THREAD_DAEMON_PURGE_ARCHIVE_LOGS,
-  THREAD_DAEMON_CHECKPOINT,
   THREAD_DAEMON_SESSION_CONTROL,
   THREAD_DAEMON_CHECK_HA_DELAY_INFO,
   THREAD_DAEMON_AUTO_VOLUME_EXPANSION,
@@ -360,7 +357,7 @@ thread_is_manager_initialized (void)
  * thread_initialize_manager() - Create and initialize all necessary threads.
  *   return: 0 if no error, or error code
  *
- * Note: It includes a main thread, service handler and a checkpoint daemon.
+ * Note: It includes a main thread, service handler etc.
  *       Some other threads like signal handler might be needed later.
  */
 int
@@ -393,12 +390,6 @@ thread_initialize_manager (size_t & total_thread_count)
   thread_Daemons[daemon_index].daemon_monitor = &thread_Purge_archive_logs_thread;
   thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
   thread_Daemons[daemon_index++].daemon_function = thread_purge_archive_logs_thread;
-
-  /* Initialize checkpoint daemon */
-  thread_Daemons[daemon_index].type = THREAD_DAEMON_CHECKPOINT;
-  thread_Daemons[daemon_index].daemon_monitor = &thread_Checkpoint_thread;
-  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-  thread_Daemons[daemon_index++].daemon_function = thread_checkpoint_thread;
 
   /* Initialize session control daemon */
   thread_Daemons[daemon_index].type = THREAD_DAEMON_SESSION_CONTROL;
@@ -477,7 +468,7 @@ thread_initialize_manager (size_t & total_thread_count)
   /* allocate threads */
   thread_Manager.thread_array = new THREAD_ENTRY[thread_Manager.num_total];
 
-  /* init worker/checkpoint daemon/page flush thread/log flush thread
+  /* init worker/page flush thread/log flush thread
    * thread_mgr.thread_array[0] is used for main thread */
   for (i = 0; i < thread_Manager.num_total; i++)
     {
@@ -2150,82 +2141,6 @@ thread_wakeup_session_control_thread (void)
   pthread_mutex_unlock (&thread_Session_control_thread.lock);
 }
 #endif
-
-/*
- * thread_checkpoint_thread() -
- *   return:
- *   arg_p(in):
- */
-
-static THREAD_RET_T THREAD_CALLING_CONVENTION
-thread_checkpoint_thread (void *arg_p)
-{
-#if !defined(HPUX)
-  THREAD_ENTRY *tsd_ptr;
-#endif /* !HPUX */
-  int rv;
-
-  struct timespec to = {
-    0, 0
-  };
-
-  tsd_ptr = (THREAD_ENTRY *) arg_p;
-  /* wait until THREAD_CREATE() finish */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
-
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  tsd_ptr->register_id ();
-  thread_Checkpoint_thread.is_available = true;
-  thread_Checkpoint_thread.is_running = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
-
-  /* during server is active */
-  while (!tsd_ptr->shutdown)
-    {
-      er_clear ();
-
-      to.tv_sec = (int) (time (NULL) + prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_INTERVAL_SECS));
-
-      rv = pthread_mutex_lock (&thread_Checkpoint_thread.lock);
-      pthread_cond_timedwait (&thread_Checkpoint_thread.cond, &thread_Checkpoint_thread.lock, &to);
-      pthread_mutex_unlock (&thread_Checkpoint_thread.lock);
-      if (tsd_ptr->shutdown)
-	{
-	  break;
-	}
-
-      logpb_checkpoint (tsd_ptr);
-    }
-
-  rv = pthread_mutex_lock (&thread_Checkpoint_thread.lock);
-  thread_Checkpoint_thread.is_available = false;
-  thread_Checkpoint_thread.is_running = false;
-  pthread_mutex_unlock (&thread_Checkpoint_thread.lock);
-
-  er_final (ER_THREAD_FINAL);
-  tsd_ptr->status = TS_DEAD;
-  tsd_ptr->unregister_id ();
-
-  return (THREAD_RET_T) 0;
-}
-
-/*
- * thread_wakeup_checkpoint_thread() -
- *   return:
- */
-void
-thread_wakeup_checkpoint_thread (void)
-{
-  int rv;
-
-  rv = pthread_mutex_lock (&thread_Checkpoint_thread.lock);
-  pthread_cond_signal (&thread_Checkpoint_thread.cond);
-  pthread_mutex_unlock (&thread_Checkpoint_thread.lock);
-}
 
 /*
  * thread_purge_archive_logs_thread() -

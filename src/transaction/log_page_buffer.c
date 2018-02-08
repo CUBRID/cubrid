@@ -54,6 +54,9 @@
 #include "porting.h"
 #include "connection_defs.h"
 #include "thread.h"
+#include "thread_daemon.hpp"
+#include "thread_entry_task.hpp"
+#include "thread_manager.hpp"
 #include "log_impl.h"
 #include "log_manager.h"
 #include "log_comm.h"
@@ -411,6 +414,16 @@ static int logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, 
 STATIC_INLINE LOG_BUFFER *logpb_get_log_buffer (LOG_PAGE * log_pg) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int logpb_get_log_buffer_index (LOG_PAGEID log_pageid) __attribute__ ((ALWAYS_INLINE));
 
+#if defined(SERVER_MODE)
+// *INDENT-OFF*
+static bool logpb_Checkpoint_daemon_is_initialized = false;
+static cubthread::daemon *logpb_Checkpoint_daemon = NULL;
+
+static void logpb_checkpoint_daemon_init ();
+static void logpb_checkpoint_daemon_destroy ();
+// *INDENT-ON*
+#endif /* SERVER_MODE */
+
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
  *
@@ -625,6 +638,10 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
 
   writer_info->is_init = true;
 
+#if defined(SERVER_MODE)
+  logpb_checkpoint_daemon_init ();
+#endif // SERVER_MODE
+
   return error_code;
 
 error:
@@ -683,6 +700,10 @@ logpb_finalize_pool (THREAD_ENTRY * thread_p)
   pthread_cond_destroy (&log_Gl.group_commit_info.gc_cond);
 
   logpb_finalize_writer_info ();
+
+#if defined(SERVER_MODE)
+  logpb_checkpoint_daemon_destroy ();
+#endif // SERVER_MODE
 
   if (log_zip_support)
     {
@@ -7520,6 +7541,66 @@ logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *l
   return fileio_is_volume_exist (log_Name_active);
 }
 
+// *INDENT-OFF*
+#if defined(SERVER_MODE)
+// class checkpoint_daemon_task
+//
+//  description:
+//    checkpoint daemon task
+//
+class checkpoint_daemon_task : public cubthread::entry_task
+{
+  public:
+    void execute (cubthread::entry & thread_ref) override
+    {
+      if (!BO_IS_SERVER_RESTARTED ())
+	{
+	  // wait for boot to finish
+	  return;
+	}
+
+      logpb_checkpoint (&thread_ref);
+    }
+};
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * logpb_checkpoint_daemon_init () - initialize checkpoint daemon thread
+ */
+void
+logpb_checkpoint_daemon_init ()
+{
+  assert (!logpb_Checkpoint_daemon_is_initialized);
+
+  // create checkpoint daemon thread
+  std::chrono::seconds interval_time = std::chrono::seconds (prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_INTERVAL_SECS));
+  logpb_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (interval_time),
+			    new checkpoint_daemon_task ());
+
+  logpb_Checkpoint_daemon_is_initialized = true;
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * logpb_checkpoint_daemon_destroy () - destroy checkpoint daemon thread
+ */
+void
+logpb_checkpoint_daemon_destroy ()
+{
+  if (!logpb_Checkpoint_daemon_is_initialized)
+    {
+      return;
+    }
+
+  cubthread::get_manager ()->destroy_daemon (logpb_Checkpoint_daemon);
+
+  logpb_Checkpoint_daemon_is_initialized = false;
+}
+#endif /* SERVER_MODE */
+// *INDENT-ON*
+
 #if defined(SERVER_MODE)
 /*
  * logpb_do_checkpoint -
@@ -7531,7 +7612,7 @@ logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *l
 void
 logpb_do_checkpoint (void)
 {
-  thread_wakeup_checkpoint_thread ();
+  logpb_Checkpoint_daemon->wakeup ();
 }
 #endif /* SERVER_MODE */
 
