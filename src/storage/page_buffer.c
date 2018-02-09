@@ -13334,6 +13334,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
   const INT64 tensec_usec = 10 * onesec_usec;
   int total_victims = 0;
   bool low_overall_activity = false;
+  int rv;
 
   PGBUF_LRU_LIST *lru_list;
 
@@ -13463,7 +13464,13 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 	  lru_list->threshold_lru2 = 0;
 	  if (lru_list->count_lru1 + lru_list->count_lru2 > 0)
 	    {
-	      pthread_mutex_lock (&lru_list->mutex);
+	      rv = pthread_mutex_trylock (&lru_list->mutex);
+	      if (rv != 0)
+		{
+		  /* Do not wait, to avoid contention. */
+		  continue;
+		}
+
 	      pgbuf_lru_adjust_zones (thread_p, lru_list, false);
 	      pthread_mutex_unlock (&lru_list->mutex);
 	      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
@@ -13508,7 +13515,13 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 
 	  if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list))
 	    {
-	      pthread_mutex_lock (&lru_list->mutex);
+	      rv = pthread_mutex_trylock (&lru_list->mutex);
+	      if (rv != 0)
+		{
+		  /* Do not wait, to avoid contention. */
+		  continue;
+		}
+
 	      pgbuf_lru_adjust_zones (thread_p, lru_list, false);
 	      pthread_mutex_unlock (&lru_list->mutex);
 
@@ -13539,7 +13552,12 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 
       if (PGBUF_LRU_ARE_ZONES_ONE_TWO_OVER_THRESHOLD (lru_list))
 	{
-	  pthread_mutex_lock (&lru_list->mutex);
+	  rv = pthread_mutex_trylock (&lru_list->mutex);
+	  if (rv != 0)
+	    {
+	      /* Do not wait, to avoid contention. */
+	      continue;
+	    }
 	  pgbuf_lru_adjust_zones (thread_p, lru_list, false);
 	  pthread_mutex_unlock (&lru_list->mutex);
 	}
