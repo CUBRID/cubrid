@@ -8432,21 +8432,14 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       return NULL;
     }
 
-  if (lru_idx != PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p)))
+  rv = pthread_mutex_trylock (&lru_list->mutex);
+  if (rv != 0)
     {
-      rv = pthread_mutex_trylock (&lru_list->mutex);
-      if (rv != 0)
-	{
-	  /* Do not wait, to avoid contention. */
-	  return NULL;
-	}
-      /* Mutex acquired. */
-    }
-  else
-    {
-      pthread_mutex_lock (&lru_list->mutex);
+      /* Do not wait, to avoid contention. */
+      return NULL;
     }
 
+  /* Mutex acquired. */
   if (lru_list->bottom == NULL || !PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom))
     {
       /* no zone 3 */
@@ -13334,7 +13327,6 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
   const INT64 tensec_usec = 10 * onesec_usec;
   int total_victims = 0;
   bool low_overall_activity = false;
-  int rv;
 
   PGBUF_LRU_LIST *lru_list;
 
@@ -13464,13 +13456,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 	  lru_list->threshold_lru2 = 0;
 	  if (lru_list->count_lru1 + lru_list->count_lru2 > 0)
 	    {
-	      rv = pthread_mutex_trylock (&lru_list->mutex);
-	      if (rv != 0)
-		{
-		  /* Do not wait, to avoid contention. */
-		  continue;
-		}
-
+	      pthread_mutex_lock (&lru_list->mutex);
 	      pgbuf_lru_adjust_zones (thread_p, lru_list, false);
 	      pthread_mutex_unlock (&lru_list->mutex);
 	      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
@@ -13515,13 +13501,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 
 	  if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list))
 	    {
-	      rv = pthread_mutex_trylock (&lru_list->mutex);
-	      if (rv != 0)
-		{
-		  /* Do not wait, to avoid contention. */
-		  continue;
-		}
-
+	      pthread_mutex_lock (&lru_list->mutex);
 	      pgbuf_lru_adjust_zones (thread_p, lru_list, false);
 	      pthread_mutex_unlock (&lru_list->mutex);
 
@@ -13552,12 +13532,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 
       if (PGBUF_LRU_ARE_ZONES_ONE_TWO_OVER_THRESHOLD (lru_list))
 	{
-	  rv = pthread_mutex_trylock (&lru_list->mutex);
-	  if (rv != 0)
-	    {
-	      /* Do not wait, to avoid contention. */
-	      continue;
-	    }
+	  pthread_mutex_lock (&lru_list->mutex);
 	  pgbuf_lru_adjust_zones (thread_p, lru_list, false);
 	  pthread_mutex_unlock (&lru_list->mutex);
 	}
