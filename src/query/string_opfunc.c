@@ -285,6 +285,7 @@ static int print_string_date_token (const STRING_DATE_TOKEN token_type, const IN
 				    int *token_size);
 static void convert_locale_number (char *sz, const int size, const INTL_LANG src_locale, const INTL_LANG dst_locale);
 static int parse_tzd (const char *str, const int max_expect_len);
+static int db_value_to_json_doc (const DB_VALUE & value, REFPTR (JSON_DOC, json));
 
 #define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
 #define WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
@@ -3034,18 +3035,24 @@ int
 db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i;
-  JSON_DOC *new_doc;
-  char *str;
+  JSON_DOC *new_doc = NULL;
+  char *str = NULL;
+
+  DB_MAKE_NULL (result);
 
   if (num_args <= 0)
     {
-      DB_MAKE_NULL (result);
+      // is this acceptable?
       return NO_ERROR;
     }
 
-  new_doc = db_json_allocate_doc ();
+  if (num_args % 2 != 0)
+    {
+      assert (false);		// should be caught earlier
+      return ER_FAILED;
+    }
 
-  assert (num_args % 2 == 0);
+  new_doc = db_json_allocate_doc ();
 
   for (i = 0; i < num_args; i += 2)
     {
@@ -3070,12 +3077,15 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_VARNCHAR:
 	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), DB_PULL_STRING (arg[i + 1]));
 	  break;
+
 	case DB_TYPE_INTEGER:
 	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), DB_GET_INT (arg[i + 1]));
 	  break;
+
 	case DB_TYPE_DOUBLE:
 	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), DB_GET_DOUBLE (arg[i + 1]));
 	  break;
+
 	case DB_TYPE_NUMERIC:
 	  {
 	    DB_VALUE double_value;
@@ -3085,12 +3095,15 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	    pr_clear_value (&double_value);
 	  }
 	  break;
+
 	case DB_TYPE_JSON:
 	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), arg[i + 1]->data.json.document);
 	  break;
+
 	case DB_TYPE_NULL:
 	  db_json_add_member_to_object (new_doc, DB_PULL_STRING (arg[i]), (JSON_DOC *) NULL);
 	  break;
+
 	default:
 	  db_json_delete_doc (new_doc);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
@@ -3107,12 +3120,14 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 int
 db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
-  JSON_DOC *new_doc;
-  char *str;
+  JSON_DOC *new_doc = NULL;
+  char *str = NULL;
+
+  DB_MAKE_NULL (result);
 
   if (num_args <= 0)
     {
-      DB_MAKE_NULL (result);
+      // is this acceptable?
       return NO_ERROR;
     }
 
@@ -3134,12 +3149,15 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_VARNCHAR:
 	  db_json_add_element_to_array (new_doc, DB_PULL_STRING (arg[i]));
 	  break;
+
 	case DB_TYPE_INTEGER:
 	  db_json_add_element_to_array (new_doc, DB_GET_INT (arg[i]));
 	  break;
+
 	case DB_TYPE_DOUBLE:
 	  db_json_add_element_to_array (new_doc, DB_GET_DOUBLE (arg[i]));
 	  break;
+
 	case DB_TYPE_NUMERIC:
 	  {
 	    DB_VALUE double_value;
@@ -3149,12 +3167,15 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	    pr_clear_value (&double_value);
 	  }
 	  break;
+
 	case DB_TYPE_JSON:
 	  db_json_add_element_to_array (new_doc, arg[i]->data.json.document);
 	  break;
+
 	case DB_TYPE_NULL:
 	  db_json_add_element_to_array (new_doc, (JSON_DOC *) NULL);
 	  break;
+
 	default:
 	  db_json_delete_doc (new_doc);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
@@ -3173,11 +3194,14 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
-  char *str;
+  char *str = NULL;
 
-  if (num_args < 3)
+  DB_MAKE_NULL (result);
+
+  if (num_args < 3 || num_args % 2 == 0)
     {
-      return DB_MAKE_NULL (result);
+      assert (false);
+      return ER_FAILED;
     }
 
   if (DB_IS_NULL (arg[0]))
@@ -3185,30 +3209,11 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       return DB_MAKE_NULL (result);
     }
 
-  switch (DB_VALUE_DOMAIN_TYPE (arg[0]))
+  error_code = db_value_to_json_doc (*arg[0], new_doc);
+  if (error_code != NO_ERROR)
     {
-    case DB_TYPE_CHAR:
-    case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      error_code = db_json_get_json_from_str (DB_PULL_STRING (arg[0]), new_doc);
-      if (error_code != NO_ERROR)
-	{
-	  assert (new_doc == NULL);
-	  return error_code;
-	}
-      break;
-
-    case DB_TYPE_JSON:
-      new_doc = db_json_get_copy_of_doc (arg[0]->data.json.document);
-      break;
-    case DB_TYPE_NULL:
-      new_doc = db_json_allocate_doc ();
-      break;
-
-    default:
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-      return ER_QSTR_INVALID_DATA_TYPE;
+      ASSERT_ERROR ();
+      return error_code;
     }
 
   for (i = 1; i < num_args; i += 2)
@@ -3226,15 +3231,90 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
 	  error_code = db_json_convert_string_and_call (DB_PULL_STRING (arg[i + 1]),
-							db_json_insert_func, new_doc, DB_PULL_STRING (arg[i]));
+							db_json_insert_func, *new_doc, DB_PULL_STRING (arg[i]));
 	  break;
 
 	case DB_TYPE_JSON:
-	  error_code = db_json_insert_func (arg[i + 1]->data.json.document, new_doc, DB_PULL_STRING (arg[i]));
+	  error_code = db_json_insert_func (arg[i + 1]->data.json.document, *new_doc, DB_PULL_STRING (arg[i]));
 	  break;
+
 	case DB_TYPE_NULL:
-	  error_code = db_json_insert_func ((JSON_DOC *) NULL, new_doc, DB_PULL_STRING (arg[i]));
+	  db_json_delete_doc (new_doc);
+	  return DB_MAKE_NULL (result);
+
+	default:
+	  db_json_delete_doc (new_doc);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+	  return ER_QSTR_INVALID_DATA_TYPE;
+	}
+
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_json_delete_doc (new_doc);
+	  return error_code;
+	}
+    }
+
+  str = db_json_get_raw_json_body_from_document (new_doc);
+  db_make_json (result, str, new_doc, true);
+
+  return NO_ERROR;
+}
+
+int
+db_json_replace (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  int i, error_code = NO_ERROR;
+  JSON_DOC *new_doc = NULL;
+  char *str;
+
+  DB_MAKE_NULL (result);
+
+  if (num_args < 3 || num_args % 2 == 0)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  if (DB_IS_NULL (arg[0]))
+    {
+      return NO_ERROR;
+    }
+
+  error_code = db_value_to_json_doc (*arg[0], new_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  for (i = 1; i < num_args; i += 2)
+    {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  db_json_delete_doc (new_doc);
+	  return DB_MAKE_NULL (result);
+	}
+
+      switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
+	{
+	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARNCHAR:
+	  error_code = db_json_convert_string_and_call (DB_PULL_STRING (arg[i + 1]),
+							db_json_replace_func, *new_doc, DB_PULL_STRING (arg[i]));
 	  break;
+
+	case DB_TYPE_JSON:
+	  error_code = db_json_replace_func (arg[i + 1]->data.json.document, *new_doc, DB_PULL_STRING (arg[i]));
+	  break;
+
+	case DB_TYPE_NULL:
+	  db_json_delete_doc (new_doc);
+	  return DB_MAKE_NULL (result);
+
 	default:
 	  db_json_delete_doc (new_doc);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
@@ -3255,46 +3335,155 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 }
 
 int
+db_json_set (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  int i, error_code = NO_ERROR;
+  JSON_DOC *new_doc = NULL;
+  char *str;
+
+  DB_MAKE_NULL (result);
+
+  if (num_args < 3 || num_args % 2 == 0)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  if (DB_IS_NULL (arg[0]))
+    {
+      return NO_ERROR;
+    }
+
+  error_code = db_value_to_json_doc (*arg[0], new_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  for (i = 1; i < num_args; i += 2)
+    {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  db_json_delete_doc (new_doc);
+	  return DB_MAKE_NULL (result);
+	}
+
+      switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
+	{
+	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARNCHAR:
+	  error_code = db_json_convert_string_and_call (DB_PULL_STRING (arg[i + 1]),
+							db_json_set_func, *new_doc, DB_PULL_STRING (arg[i]));
+	  break;
+
+	case DB_TYPE_JSON:
+	  error_code = db_json_set_func (arg[i + 1]->data.json.document, *new_doc, DB_PULL_STRING (arg[i]));
+	  break;
+
+	case DB_TYPE_NULL:
+	  db_json_delete_doc (new_doc);
+	  return DB_MAKE_NULL (result);
+
+	default:
+	  db_json_delete_doc (new_doc);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+	  return ER_QSTR_INVALID_DATA_TYPE;
+	}
+
+      if (error_code != NO_ERROR)
+	{
+	  db_json_delete_doc (new_doc);
+	  return error_code;
+	}
+    }
+
+  str = db_json_get_raw_json_body_from_document (new_doc);
+  db_make_json (result, str, new_doc, true);
+
+  return NO_ERROR;
+}
+
+int
+db_json_keys (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  int error_code = NO_ERROR;
+  JSON_DOC *new_doc = NULL;
+  JSON_DOC *result_json = NULL;
+  std::string path;
+  char *str = NULL;
+
+  DB_MAKE_NULL (result);
+
+  if (num_args > 2)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  if (DB_IS_NULL (arg[0]))
+    {
+      return NO_ERROR;
+    }
+
+  error_code = db_value_to_json_doc (*arg[0], new_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  if (num_args == 1 || DB_IS_NULL (arg[1]))
+    {
+      path = "";
+    }
+  else
+    {
+      path = DB_PULL_STRING (arg[1]);
+    }
+
+  result_json = db_json_allocate_doc ();
+  error_code = db_json_keys_func (*new_doc, result_json, path.c_str ());
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      db_json_delete_doc (result_json);
+      return error_code;
+    }
+
+  str = db_json_get_raw_json_body_from_document (result_json);
+  db_make_json (result, str, result_json, true);
+
+  return NO_ERROR;
+}
+
+int
 db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i, error_code;
   JSON_DOC *new_doc = NULL;
   char *str;
 
+  DB_MAKE_NULL (result);
+
   if (num_args < 2)
     {
-      DB_MAKE_NULL (result);
-      return NO_ERROR;
+      assert (false);
+      return ER_FAILED;
     }
 
   if (DB_IS_NULL (arg[0]))
     {
-      return DB_MAKE_NULL (result);
+      return NO_ERROR;
     }
 
-  switch (DB_VALUE_DOMAIN_TYPE (arg[0]))
+  error_code = db_value_to_json_doc (*arg[0], new_doc);
+  if (error_code != NO_ERROR)
     {
-    case DB_TYPE_CHAR:
-    case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      error_code = db_json_get_json_from_str (DB_PULL_STRING (arg[0]), new_doc);
-      if (error_code != NO_ERROR)
-	{
-	  assert (new_doc == NULL);
-	  return error_code;
-	}
-      break;
-
-    case DB_TYPE_JSON:
-      new_doc = db_json_get_copy_of_doc (arg[0]->data.json.document);
-      break;
-    case DB_TYPE_NULL:
-      new_doc = db_json_allocate_doc ();
-      break;
-    default:
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-      return ER_QSTR_INVALID_DATA_TYPE;
+      ASSERT_ERROR ();
+      return error_code;
     }
 
   for (i = 1; i < num_args; i++)
@@ -3305,7 +3494,77 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  return DB_MAKE_NULL (result);
 	}
 
-      error_code = db_json_remove_func (new_doc, DB_PULL_STRING (arg[i]));
+      error_code = db_json_remove_func (*new_doc, DB_PULL_STRING (arg[i]));
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_json_delete_doc (new_doc);
+	  return error_code;
+	}
+    }
+
+  str = db_json_get_raw_json_body_from_document (new_doc);
+  db_make_json (result, str, new_doc, true);
+
+  return NO_ERROR;
+}
+
+int
+db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  int i, error_code = NO_ERROR;
+  JSON_DOC *new_doc = NULL;
+  char *str = NULL;
+
+  DB_MAKE_NULL (result);
+
+  if (num_args < 3 || num_args % 2 == 0)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (DB_IS_NULL (arg[0]))
+    {
+      return NO_ERROR;
+    }
+
+  error_code = db_value_to_json_doc (*arg[0], new_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  for (i = 1; i < num_args; i += 2)
+    {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  db_json_delete_doc (new_doc);
+	  return DB_MAKE_NULL (result);
+	}
+
+      switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
+	{
+	case DB_TYPE_CHAR:
+	  error_code = db_json_convert_string_and_call (DB_PULL_STRING (arg[i + 1]),
+							db_json_array_append_func, *new_doc, DB_PULL_STRING (arg[i]));
+	  break;
+
+	case DB_TYPE_JSON:
+	  error_code = db_json_array_append_func (arg[i + 1]->data.json.document, *new_doc, DB_PULL_STRING (arg[i]));
+	  break;
+
+	case DB_TYPE_NULL:
+	  db_json_delete_doc (new_doc);
+	  return DB_MAKE_NULL (result);
+
+	default:
+	  db_json_delete_doc (new_doc);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+	  return ER_QSTR_INVALID_DATA_TYPE;
+	}
+
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -3356,15 +3615,19 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_JSON:
 	  error_code = db_json_merge_func (arg[i]->data.json.document, accumulator);
 	  break;
+
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
 	  error_code = db_json_convert_string_and_call (DB_GET_STRING (arg[i]), db_json_merge_func, accumulator);
 	  break;
+
 	case DB_TYPE_NULL:
-	  error_code = db_json_merge_func ((JSON_DOC *) NULL, accumulator);
+	  // todo: isn't this too supposed to be NULL?
+	  error_code = db_json_merge_func (NULL, accumulator);
 	  break;
+
 	default:
 	  db_json_delete_doc (accumulator);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
@@ -3380,6 +3643,46 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   str = db_json_get_raw_json_body_from_document (accumulator);
   db_make_json (result, str, accumulator, true);
+
+  return NO_ERROR;
+}
+
+int
+db_json_get_all_paths (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  int error_code = NO_ERROR;
+  JSON_DOC *new_doc = NULL;
+  JSON_DOC *result_json = NULL;
+  char *str = NULL;
+
+  DB_MAKE_NULL (result);
+
+  if (num_args != 1)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (DB_IS_NULL (arg[0]))
+    {
+      return NO_ERROR;
+    }
+
+  error_code = db_value_to_json_doc (*arg[0], new_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  result_json = db_json_allocate_doc ();
+  error_code = db_json_get_all_paths_func (*new_doc, result_json);
+
+  str = db_json_get_raw_json_body_from_document (result_json);
+  db_make_json (result, str, result_json, true);
+
+  // delete new_doc
+  db_json_delete_doc (new_doc);
 
   return NO_ERROR;
 }
@@ -28422,4 +28725,45 @@ db_conv_tz (DB_VALUE * time_val, DB_VALUE * result_time)
     }
 
   return error;
+}
+
+/* db_value_to_json_doc - create a JSON_DOC from db_value.
+ *
+ * return     : error code
+ * value (in) : input db_value
+ * json (out) : output JSON_DOC pointer
+ */
+static int
+db_value_to_json_doc (const DB_VALUE & value, REFPTR (JSON_DOC, json))
+{
+  int error_code = NO_ERROR;
+
+  json = NULL;
+  switch (DB_VALUE_DOMAIN_TYPE (&value))
+    {
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
+      error_code = db_json_get_json_from_str (DB_PULL_STRING (&value), json);
+      if (error_code != NO_ERROR)
+	{
+	  assert (json == NULL);
+	  ASSERT_ERROR ();
+	}
+      return error_code;
+
+    case DB_TYPE_JSON:
+      json = db_json_get_copy_of_doc (value.data.json.document);
+      return NO_ERROR;
+
+    case DB_TYPE_NULL:
+      json = db_json_allocate_doc ();
+      return NO_ERROR;
+
+    default:
+      // todo: more specific error
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      return ER_QSTR_INVALID_DATA_TYPE;
+    }
 }

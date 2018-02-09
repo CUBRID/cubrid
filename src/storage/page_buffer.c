@@ -10924,7 +10924,8 @@ pgbuf_wakeup (THREAD_ENTRY * thread_p)
     }
   else
     {
-      er_log_debug (ARG_FILE_LINE, "thread_entry (%d, %ld) already timedout\n", thread_p->tran_index, thread_p->tid);
+      er_log_debug (ARG_FILE_LINE, "thread_entry (%d, %ld) already timedout\n", thread_p->tran_index,
+		    thread_p->get_posix_id ());
     }
 
   r = thread_unlock_entry (thread_p);
