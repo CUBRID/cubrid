@@ -1605,7 +1605,8 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
       tokens.push_back (substring);
     }
 
-  for (int i = 0; i < tokens.size(); i++)
+  unsigned int tokens_size = tokens.size();
+  for (unsigned int i = 0; i < tokens_size; i++)
     {
       if (db_json_path_is_token_valid_array_index (tokens[i]))
 	{
