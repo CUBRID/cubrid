@@ -29,10 +29,10 @@
 
 BUFFER_UNIT * serial_buffer::reserve (const size_t amount)
 {
-  if (storage + curr_append_pos + amount < end_ptr)
+  if (storage + write_stream_reference.stream_curr_pos + amount < end_ptr)
     {
-      BUFFER_UNIT *ptr = storage + curr_append_pos;
-      curr_append_pos += amount;
+      BUFFER_UNIT *ptr = storage + write_stream_reference.stream_curr_pos;
+      write_stream_reference.stream_curr_pos += amount;
 
       return ptr;
     }
@@ -63,34 +63,74 @@ int serial_buffer::map_buffer_with_pin (serial_buffer *ref_buffer, pinner *refer
   return error;
 }
 
-int serial_buffer::attach_to_stream (replication_stream *stream, const stream_position &stream_start)
+int serial_buffer::attach_stream (replication_stream *stream, const STREAM_MODE stream_mode,
+                                  const stream_position &stream_start)
 {
-  attached_stream = stream;
-  attached_stream_start_pos = stream_start;
+  if (stream_mode == WRITE_STREAM)
+    {
+      assert (write_stream_reference.stream == NULL);
+
+      write_stream_reference.stream = stream;
+      write_stream_reference.stream_start_pos = stream_start;
+    }
+  else
+    {
+      stream_reference new_stream_ref;
+
+      new_stream_ref.stream = stream;
+      new_stream_ref.stream_start_pos = stream_start;
+
+      read_stream_references.push_back (new_stream_ref);
+    }
 
   add_pinner (stream);
   
   return NO_ERROR;
 }
 
-int serial_buffer::dettach_from_stream (replication_stream *stream)
+int serial_buffer::dettach_stream (replication_stream *stream, const STREAM_MODE stream_mode)
 {
-  attached_stream = NULL;
-  attached_stream_start_pos = -1;
+  if (stream_mode == WRITE_STREAM)
+    {
+      assert (write_stream_reference.stream != NULL);
+
+      write_stream_reference.stream = NULL;
+    }
+  else
+    {
+      int i;
+      bool found = false;
+
+      for (i = 0; i < read_stream_references.size (); i++)
+        {
+          if (read_stream_references[i].stream == stream)
+            {
+              found = true;
+            }
+        }
+
+      if (!found)
+        {
+          return ER_FAILED;
+        }
+
+      read_stream_references.erase (read_stream_references.begin() + i);
+    }
 
   remove_pinner (stream);
   
   return NO_ERROR;
 }
 
-int serial_buffer::check_stream_append_contiguity (replication_stream *stream, const stream_position &req_pos)
+int serial_buffer::check_stream_append_contiguity (const replication_stream *stream, const stream_position &req_pos)
 {
-  if (stream != attached_stream)
+  if (stream != write_stream_reference.stream)
     {
-      /* not my stream !*/
+      /* not my write stream !*/
       return ER_FAILED;
     }
-  if (req_pos == attached_stream_start_pos + curr_append_pos)
+
+  if (req_pos == write_stream_reference.stream_curr_pos)
     {
       return NO_ERROR;
     }
@@ -116,9 +156,8 @@ int replication_buffer::init (const size_t req_capacity)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  curr_append_pos = 0;
+  write_stream_reference.curr_append_pos = 0;
   end_ptr = storage + req_capacity;
-  curr_read_pos = 0;
 
   return NO_ERROR;
 }

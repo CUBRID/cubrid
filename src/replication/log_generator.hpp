@@ -53,7 +53,7 @@ private:
   replication_stream *stream;
 
   /* current append position to be assigned to a new entry */
-  stream_position curr_position;
+  stream_position append_position;
 
   static log_generator *global_log_generator;
 
@@ -73,9 +73,14 @@ public:
 
   static int new_instance (cubthread::entry *th_entry, const stream_position start_position);
 
+  int flush_ready_stream (void);
+
   /* stream_provider methods : */
-  int fetch_for_read (serial_buffer *existing_buffer, const size_t amount) { NOT_IMPLEMENTED(); return NO_ERROR; }
+  int fetch_for_read (serial_buffer *existing_buffer, const size_t amount);
   int extend_for_write (serial_buffer **existing_buffer, const size_t amount);
+  int flush_ready_stream (void);
+  
+  replication_stream * get_write_stream (void);
 };
 
 #endif /* _LOG_GENERATOR_HPP_ */

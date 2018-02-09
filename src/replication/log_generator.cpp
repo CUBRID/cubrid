@@ -59,7 +59,7 @@ static int log_generator::new_instance (cubthread::entry *th_entry, stream_posit
       return NO_ERROR;
     }
 
-  new_lg->stream->add_buffer_mapping (new_lg->buffer, first_pos, last_pos, granted_range);
+  new_lg->stream->add_buffer_mapping (new_lg->buffer, WRITE_STREAM, first_pos, last_pos, granted_range);
 
   serializator = new replication_serialization (new_lg->stream);
 
@@ -102,6 +102,12 @@ int log_generator::pack_stream_entries (cubthread::entry *th_entry)
   return NO_ERROR;
 }
 
+int log_generator::fetch_for_read (serial_buffer *existing_buffer, const size_t amount)
+{
+  /* data is pushed to log_generator, we don't ask for it */
+  assert (false);
+  return NO_ERROR;
+}
 
 int log_generator::extend_for_write (serial_buffer **existing_buffer, const size_t amount)
 {
@@ -119,4 +125,26 @@ int log_generator::extend_for_write (serial_buffer **existing_buffer, const size
   *existing_buffer = my_new_buffer;
 
   return NO_ERROR;
+}
+
+int log_generator::flush_ready_stream (void)
+{
+  /* detach filled buffers from write stream and send them to MRC_Manager */
+  vector <serial_buffer *> ready_buffers;
+
+  error_code = stream->detach_written_buffers (ready_buffers);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* re-attach the buffers to MRC_Manager */
+  master_replication_channel_manager::get_instance()->add_buffers (ready_buffers);
+
+  return error_code;
+}
+
+replication_stream * log_generator::get_write_stream (void)
+{
+  return stream;
 }

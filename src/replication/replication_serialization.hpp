@@ -52,6 +52,7 @@ public:
   ~replication_serialization();
 
   BUFFER_UNIT *reserve_range (const size_t amount, buffered_range **granted_range);
+  int serialization_completed (void);
 
   int pack_int (const int value);
   int unpack_int (int &value);
@@ -77,6 +78,8 @@ private:
   replication_stream *stream;
   BUFFER_UNIT *ptr;         /* current pointer of serialization */
   BUFFER_UNIT *end_ptr;     /* end of avaialable serialization scope */
+
+  stream_position end_stream_serialization_scope;
 };
 
 

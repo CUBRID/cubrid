@@ -33,7 +33,12 @@ class stream_provider
 private:
 public:
   virtual int fetch_for_read (serial_buffer *existing_buffer, const size_t amount) = 0;
+  
   virtual int extend_for_write (serial_buffer **existing_buffer, const size_t amount) = 0;
+
+  virtual int flush_ready_stream (void) = 0;
+
+  virtual replication_stream * get_write_stream (void) = 0;
 };
 
 

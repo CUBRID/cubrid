@@ -35,6 +35,8 @@
 typedef unsigned char BUFFER_UNIT;
 
 class pinnable;
+class replication_stream;
+class serial_buffer;
 
 class pinner
 {
@@ -64,5 +66,35 @@ private:
 
 };
 
+
+typedef enum stream_mode STREAM_MODE;
+enum stream_mode
+{
+  WRITE_STREAM = 0,
+  READ_STREAM
+};
+
+class buffered_range
+{
+public:
+  buffered_range() : mapped_buffer (NULL) {};
+  stream_position first_pos;
+  stream_position last_pos;
+  serial_buffer *mapped_buffer;
+  size_t written_bytes;
+  int is_filled;
+};
+
+class stream_reference
+{
+public:
+  stream_reference() : stream(NULL) {};
+
+  replication_stream *stream;
+  size_t start_pos;
+  size_t end_pos;
+  stream_position stream_start_pos;
+  stream_position stream_curr_pos;
+};
 
 #endif /* _COMMON_UTILS_HPP_ */

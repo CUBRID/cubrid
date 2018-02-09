@@ -58,6 +58,7 @@ BUFFER_UNIT *replication_serialization::reserve_range (const size_t amount, buff
   if (ptr != NULL)
     {
       end_ptr = ptr + amount;
+      end_stream_serialization_scope = (*granted_range)->last_pos;
       return ptr;
     }
   else
@@ -66,9 +67,11 @@ BUFFER_UNIT *replication_serialization::reserve_range (const size_t amount, buff
       stream_position first_pos = stream->reserve_no_buffer (amount);
       stream_position last_pos = mapped_range.first_pos + amount - 1;
 
+      end_stream_serialization_scope = last_pos;
+
       replication_buffer *buffer = new replication_buffer (amount);
 
-      stream->add_buffer_mapping (buffer, first_pos, last_pos, granted_range);
+      stream->add_buffer_mapping (buffer, WRITE_STREAM, first_pos, last_pos, granted_range);
 
       ptr = buffer->get_curr_append_ptr ();
 
@@ -76,6 +79,13 @@ BUFFER_UNIT *replication_serialization::reserve_range (const size_t amount, buff
     }
 
   return NULL;
+}
+
+int replication_serialization::serialization_completed (void)
+{
+  stream->update_contiguous_filled_pos (end_stream_serialization_scope);
+
+  return NO_ERROR;
 }
 
 int replication_serialization::pack_int (const int value)

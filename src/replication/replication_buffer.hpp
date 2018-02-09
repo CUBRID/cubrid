@@ -69,10 +69,11 @@ public:
   int map_buffer (BUFFER_UNIT *ptr, const size_t count);
   int map_buffer_with_pin (serial_buffer *ref_buffer, pinner *referencer);
 
-  int attach_to_stream (replication_stream *stream, const stream_position &stream_start);
-  int dettach_from_stream (replication_stream *stream);
+  /* TODO[arnia] : STREAM_MODE should be property of replication_stream (and called STREAM_TYPE instead ) ? */
+  int attach_stream (replication_stream *stream, const STREAM_MODE stream_mode, const stream_position &stream_start);
+  int dettach_stream (replication_stream *stream, const STREAM_MODE stream_mode);
   
-  int check_stream_append_contiguity (replication_stream *stream, const stream_position &req_pos);
+  int check_stream_append_contiguity (const replication_stream *stream, const stream_position &req_pos);
 
 
 protected:
@@ -83,14 +84,11 @@ protected:
   /* end of allocated memory */
   BUFFER_UNIT *end_ptr;
 
-  /* position relative to buffer storage (0 - based) */
-  std::atomic_size_t curr_append_pos;
-  std::atomic_size_t curr_read_pos;
-
-  /* mapping of buffer to a stream : start of stream,
-   * multiple attachements from the same stream may be performed, but exact mapping and contiguity
-   * between stream and buffer must be kept */
-  stream_position attached_stream_start_pos;
+  /* mapping of buffer to streams :
+   * several read streams can be attached to buffer, only one write stream
+   */
+  stream_reference write_stream_reference;
+  vector<stream_reference> read_stream_references;
   
   replication_stream *attached_stream;
 };

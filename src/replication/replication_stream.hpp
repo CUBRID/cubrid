@@ -28,22 +28,12 @@
 
 typdef size_t stream_position;
 
-class buffered_range
-{
-public:
-  stream_position first_pos;
-  stream_position last_pos;
-  serial_buffer *mapped_buffer;
-  size_t written_bytes;
-  int is_filled;
-};
-
 struct stream_entry_header
 {
   stream_position prev_record;
   MVCCID mvccid;
   unsinged short count_replication_entries;
-  unsigned int data_size;
+  size_t data_size;
 
   stream_entry_header () : prev_record (0), mvccid (-1), count_replication_entries (0) {};
 };
@@ -73,6 +63,8 @@ public:
   ~stream_entry();
 
   int pack (replication_serialization *serializator);
+
+  int unpack (replication_serialization *serializator);
 
   size_t get_entries_size (void);
 
@@ -107,12 +99,12 @@ private:
   vector<buffered_range> buffered_ranges;
 
   /* current stream position not allocated yet to a replication generator */
-  stream_position curr_position;
+  stream_position append_position;
+  /* contiguosly filled position (all mapped buffers up to this position are filled) */
+  stream_position contiguous_filled_position;
 
-  //stream_position last_send_pos;
-  
-  /* last position completed and requested to be send to slave */
-  stream_position last_request_to_send_pos;
+  /* last position reported to be ready (filled) to MRC_M */
+  stream_position last_reported_ready_pos;
 
   stream_positon max_buffered_position;
 
@@ -128,18 +120,21 @@ public:
   replication_stream (const stream_provider *my_provider);
   ~replication_stream ();
 
-  int init (stream_position start_position = 0);
+  int init (const stream_position &start_position = 0);
 
-  int add_buffer_mapping (serial_buffer *new_buffer, const stream_position &first_pos,
+  int add_buffer_mapping (  *new_buffer, const STREAM_MODE stream_mode, const stream_position &first_pos,
                           const stream_position &last_pos, buffered_range **granted_range);
 
-  int remove_buffer_mapping (serial_buffer *new_buffer, buffered_range &mapped_range);
+  int remove_buffer_mapping (const STREAM_MODE stream_mode, buffered_range &mapped_range);
 
-  int update_last_flushed_pos (stream_position filled_pos);
+  /* should be called when serialization of a stream entry ends */
+  int update_contiguous_filled_pos (const stream_position &filled_pos);
 
   stream_position reserve_no_buffer (const size_t amount);
 
   BUFFER_UNIT * reserve_with_buffer (const size_t amount, buffered_range **granted_range);
+
+  int detach_written_buffers (vector <serial_buffer> &buffers);
 
   BUFFER_UNIT * check_space_and_advance (const size_t amount);
   
