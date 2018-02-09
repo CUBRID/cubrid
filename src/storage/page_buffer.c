@@ -86,6 +86,7 @@ const VPID vpid_Null_vpid = { NULL_PAGEID, NULL_VOLID };
 #define pthread_mutex_init(a, b)
 #define pthread_mutex_destroy(a)
 #define pthread_mutex_lock(a)	0
+#define pthread_mutex_trylock(a)  0
 #define pthread_mutex_unlock(a)
 static int rv;
 #endif /* !SERVER_MODE */
@@ -8415,7 +8416,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   PGBUF_BCB *bufptr_victimizable = NULL;
   PGBUF_BCB *bufptr_start = NULL;
   PGBUF_BCB *victim_hint = NULL;
-  int max_depth;
+  int max_depth, rv;
 
   bool perf_tracking = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
   max_depth = prm_get_integer_value (PRM_ID_PB_MAX_DEPTH_OF_SEARCHING_VICTIMS_IN_LRU_LIST);
@@ -8431,10 +8432,10 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       return NULL;
     }
 
-#if defined (SERVER_MODE)
   if (lru_idx != PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p)))
     {
-      if (pthread_mutex_trylock (&lru_list->mutex) != 0)
+      rv = pthread_mutex_trylock (&lru_list->mutex);
+      if (rv != 0)
 	{
 	  /* Do not wait, to avoid contention. */
 	  return NULL;
@@ -8445,9 +8446,6 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
     {
       pthread_mutex_lock (&lru_list->mutex);
     }
-#else
-  pthread_mutex_lock (&lru_list->mutex);
-#endif
 
   if (lru_list->bottom == NULL || !PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom))
     {
