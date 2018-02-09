@@ -322,7 +322,6 @@ extern void thread_try_wakeup_page_flush_thread (void);
 extern void thread_wakeup_page_buffer_maintenance_thread (void);
 extern void thread_wakeup_page_post_flush_thread (void);
 extern void thread_wakeup_flush_control_thread (void);
-extern void thread_wakeup_purge_archive_logs_thread (void);
 extern void thread_wakeup_auto_volume_expansion_thread (void);
 
 /* is available functions */
