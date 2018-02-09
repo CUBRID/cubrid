@@ -615,6 +615,7 @@ struct pgbuf_lru_list
   volatile int flags;		/* LRU list flags */
 
   int index;			/* LRU list index */
+  volatile int intensive_computation_started;	/* True, when intensive computaion is started. */
 };
 
 /* buffer invalid BCB list : single linked list */
@@ -5083,6 +5084,7 @@ pgbuf_initialize_lru_list (void)
       pgbuf_Pool.buf_LRU_list[i].quota = 0;
 
       pgbuf_Pool.buf_LRU_list[i].flags = 0;
+      pgbuf_Pool.buf_LRU_list[i].intensive_computation_started = 0;
     }
 
   return NO_ERROR;
@@ -8432,11 +8434,20 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       return NULL;
     }
 
-  rv = pthread_mutex_trylock (&lru_list->mutex);
-  if (rv != 0)
+  if ((lru_idx != PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p)))
+      || (lru_list->intensive_computation_started != 0))
     {
-      /* Do not wait, to avoid contention. */
-      return NULL;
+      rv = pthread_mutex_trylock (&lru_list->mutex);
+      if (rv != 0)
+	{
+	  /* Do not wait, to avoid contention. */
+	  return NULL;
+	}
+      /* Mutex acquired. */
+    }
+  else
+    {
+      pthread_mutex_lock (&lru_list->mutex);
     }
 
   /* Mutex acquired. */
@@ -8450,8 +8461,11 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 
   if (PGBUF_IS_PRIVATE_LRU_ONE_TWO_OVER_QUOTA (lru_idx))
     {
+
       /* first adjust lru1 zone */
+      lru_list->intensive_computation_started++;
       pgbuf_lru_adjust_zones (thread_p, lru_list, false);
+      lru_list->intensive_computation_started--;
     }
 
   /* search for non dirty bcb */
@@ -8754,7 +8768,21 @@ pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, int lru_idx, int *nas
   lru_list = PGBUF_GET_LRU_LIST (lru_idx);
   if (ATOMIC_INC_32 (&lru_list->count_vict_cand, 0) > 0)
     {
-      pthread_mutex_lock (&lru_list->mutex);
+      if (lru_list->intensive_computation_started != 0)
+	{
+	  if (pthread_mutex_trylock (&lru_list->mutex) != 0)
+	    {
+	      /* Failed. Intensive computation started in list. Do not wait, but search for other lists. */
+	      return;
+	    }
+
+	  /* Mutex acquired. */
+	}
+      else
+	{
+	  pthread_mutex_lock (&lru_list->mutex);
+	}
+
       victim_hint = lru_list->victim_hint;
       nassigned = pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, victim_hint);
       if (nassigned == 0 && lru_list->count_vict_cand > 0 && pgbuf_is_any_thread_waiting_for_direct_victim ())
@@ -9256,6 +9284,7 @@ pgbuf_lru_boost_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
     }
 
   /* lock list */
+  lru_list->intensive_computation_started++;
   pthread_mutex_lock (&lru_list->mutex);
 
   /* remove from current position */
@@ -9279,6 +9308,7 @@ pgbuf_lru_boost_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 
   /* unlock list */
   pthread_mutex_unlock (&lru_list->mutex);
+  lru_list->intensive_computation_started--;
 }
 
 /*
@@ -9299,6 +9329,7 @@ pgbuf_lru_add_new_bcb_to_top (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_
 
   /* lock list */
   lru_list = &pgbuf_Pool.buf_LRU_list[lru_idx];
+  lru_list->intensive_computation_started++;
   pthread_mutex_lock (&lru_list->mutex);
 
   /* add to top */
@@ -9315,6 +9346,7 @@ pgbuf_lru_add_new_bcb_to_top (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int lru_
 
   /* unlock list */
   pthread_mutex_unlock (&lru_list->mutex);
+  lru_list->intensive_computation_started--;
 }
 
 /*
@@ -9334,6 +9366,7 @@ pgbuf_lru_add_new_bcb_to_middle (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int l
   assert (!PGBUF_IS_BCB_IN_LRU (bcb));
 
   lru_list = &pgbuf_Pool.buf_LRU_list[lru_idx];
+  lru_list->intensive_computation_started++;
   pthread_mutex_lock (&lru_list->mutex);
 
   bcb->tick_lru_list = lru_list->tick_list;
@@ -9347,6 +9380,7 @@ pgbuf_lru_add_new_bcb_to_middle (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, int l
   pgbuf_lru_sanity_check (lru_list);
 
   pthread_mutex_unlock (&lru_list->mutex);
+  lru_list->intensive_computation_started--;
 }
 
 /*
@@ -13456,9 +13490,11 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 	  lru_list->threshold_lru2 = 0;
 	  if (lru_list->count_lru1 + lru_list->count_lru2 > 0)
 	    {
+	      lru_list->intensive_computation_started++;
 	      pthread_mutex_lock (&lru_list->mutex);
 	      pgbuf_lru_adjust_zones (thread_p, lru_list, false);
 	      pthread_mutex_unlock (&lru_list->mutex);
+	      lru_list->intensive_computation_started--;
 	      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	    }
 	  if (ATOMIC_INC_32 (&lru_list->count_vict_cand, 0) > 0 && PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
@@ -13501,9 +13537,11 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 
 	  if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list))
 	    {
+	      lru_list->intensive_computation_started++;
 	      pthread_mutex_lock (&lru_list->mutex);
 	      pgbuf_lru_adjust_zones (thread_p, lru_list, false);
 	      pthread_mutex_unlock (&lru_list->mutex);
+	      lru_list->intensive_computation_started--;
 
 	      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	    }
@@ -13532,9 +13570,11 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 
       if (PGBUF_LRU_ARE_ZONES_ONE_TWO_OVER_THRESHOLD (lru_list))
 	{
+	  lru_list->intensive_computation_started++;
 	  pthread_mutex_lock (&lru_list->mutex);
 	  pgbuf_lru_adjust_zones (thread_p, lru_list, false);
 	  pthread_mutex_unlock (&lru_list->mutex);
+	  lru_list->intensive_computation_started--;
 	}
 
       if (lru_list->count_vict_cand > 0)
