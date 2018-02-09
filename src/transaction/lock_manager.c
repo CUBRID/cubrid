@@ -5894,52 +5894,52 @@ error:
 //
 class deadlock_detect_task : public cubthread::entry_task
 {
-public:
-  void execute (cubthread::entry & thread_ref) override
-  {
-    if (!BO_IS_SERVER_RESTARTED ())
-      {
-	// wait for boot to finish
-	return;
-      }
-
-    if (!lock_check_local_deadlock_detection ())
-      {
-	return;
-      }
-
-    /* check if the lock-wait thread exists */
-    int thread_index;
-    THREAD_ENTRY *lock_wait_entry = thread_find_first_lockwait_entry (&thread_index);
-
-    if (lock_wait_entry == NULL)
+  public:
+    void execute (cubthread::entry & thread_ref) override
     {
-      return;
+      if (!BO_IS_SERVER_RESTARTED ())
+	{
+	  // wait for boot to finish
+	  return;
+	}
+
+      if (!lock_check_local_deadlock_detection ())
+	{
+	  return;
+	}
+
+      /* check if the lock-wait thread exists */
+      int thread_index;
+      THREAD_ENTRY *lock_wait_entry = thread_find_first_lockwait_entry (&thread_index);
+
+      if (lock_wait_entry == NULL)
+	{
+	  return;
+	}
+
+      int lock_wait_count = 0;
+
+      /* One or more threads are lock-waiting */
+      while (lock_wait_entry != NULL && lock_wait_count < 2)
+	{
+	  /*
+	   * The transaction, for which the current thread is working,
+	   * might be interrupted. The interrupt checking is also performed
+	   * within lock_force_timeout_expired_wait_transactions().
+	   */
+	  bool state = lock_force_timeout_expired_wait_transactions (lock_wait_entry);
+	  if (!state)
+	    {
+	      lock_wait_count++;
+	    }
+	  lock_wait_entry = thread_find_next_lockwait_entry (&thread_index);
+	}
+
+      if (lock_wait_count >= 2)
+	{
+	  lock_detect_local_deadlock (&thread_ref);
+	}
     }
-
-    int lock_wait_count = 0;
-
-    /* One or more threads are lock-waiting */
-    while (lock_wait_entry != NULL && lock_wait_count < 2)
-      {
-	/*
-	 * The transaction, for which the current thread is working,
-	 * might be interrupted. The interrupt checking is also performed
-	 * within lock_force_timeout_expired_wait_transactions().
-	 */
-	bool state = lock_force_timeout_expired_wait_transactions (lock_wait_entry);
-	if (!state)
-	  {
-	    lock_wait_count++;
-	  }
-	lock_wait_entry = thread_find_next_lockwait_entry (&thread_index);
-      }
-
-    if (lock_wait_count >= 2)
-      {
-	lock_detect_local_deadlock (&thread_ref);
-      }
-  }
 };
 #endif /* SERVER_MODE */
 

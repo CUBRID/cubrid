@@ -704,30 +704,30 @@ vacuum_init_thread_context (cubthread::entry &context, THREAD_TYPE type, VACUUM_
 //
 class vacuum_master_context_manager : public cubthread::daemon_entry_manager
 {
-private:
-  void on_daemon_create (cubthread::entry &context) final
-  {
-    // set vacuum master in execute state
-    assert (vacuum_Master.state == VACUUM_WORKER_STATE_RECOVERY || vacuum_Master.state == VACUUM_WORKER_STATE_EXECUTE);
-    vacuum_Master.state = VACUUM_WORKER_STATE_EXECUTE;
+  private:
+    void on_daemon_create (cubthread::entry &context) final
+    {
+      // set vacuum master in execute state
+      assert (vacuum_Master.state == VACUUM_WORKER_STATE_RECOVERY || vacuum_Master.state == VACUUM_WORKER_STATE_EXECUTE);
+      vacuum_Master.state = VACUUM_WORKER_STATE_EXECUTE;
 
-    vacuum_init_thread_context (context, TT_VACUUM_MASTER, &vacuum_Master);
-  }
+      vacuum_init_thread_context (context, TT_VACUUM_MASTER, &vacuum_Master);
+    }
 
-  void on_daemon_retire (cubthread::entry &context) final
-  {
-    vacuum_finalize (&context);    // todo: is this the rightful place?
+    void on_daemon_retire (cubthread::entry &context) final
+    {
+      vacuum_finalize (&context);    // todo: is this the rightful place?
 
-    if (context.vacuum_worker != NULL)
-      {
-        assert (context.vacuum_worker == &vacuum_Master);
-        context.vacuum_worker = NULL;
-      }
-    else
-      {
-        assert (false);
-      }
-  }
+      if (context.vacuum_worker != NULL)
+	{
+	  assert (context.vacuum_worker == &vacuum_Master);
+	  context.vacuum_worker = NULL;
+	}
+      else
+	{
+	  assert (false);
+	}
+    }
 };
 
 // class vacuum_master_task
@@ -737,16 +737,16 @@ private:
 //
 class vacuum_master_task : public cubthread::entry_task
 {
-public:
-  void execute (cubthread::entry & thread_ref) final
-  {
-    if (!BO_IS_SERVER_RESTARTED ())
-      {
-        // wait for boot to finish
-        return;
-      }
-    vacuum_process_vacuum_data (&thread_ref);
-  }
+  public:
+    void execute (cubthread::entry & thread_ref) final
+    {
+      if (!BO_IS_SERVER_RESTARTED ())
+	{
+	  // wait for boot to finish
+	  return;
+	}
+      vacuum_process_vacuum_data (&thread_ref);
+    }
 };
 
 // class vacuum_worker_context_manager
@@ -756,59 +756,58 @@ public:
 //
 class vacuum_worker_context_manager : public cubthread::entry_manager
 {
-public:
-  vacuum_worker_context_manager ()
-    : cubthread::entry_manager ()
-  {
-    m_pool = new resource_shared_pool<VACUUM_WORKER> (vacuum_Workers, VACUUM_MAX_WORKER_COUNT);
-  }
+  public:
+    vacuum_worker_context_manager () : cubthread::entry_manager ()
+    {
+      m_pool = new resource_shared_pool<VACUUM_WORKER> (vacuum_Workers, VACUUM_MAX_WORKER_COUNT);
+    }
 
-  ~vacuum_worker_context_manager ()
-  {
-    delete m_pool;
-  }
+    ~vacuum_worker_context_manager ()
+    {
+      delete m_pool;
+    }
   
-private:
+  private:
 #if defined (SA_MODE)
-  // find a proper way to do this; SA_MODE claim vacuum worker
-  friend void vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
-                                const BLOCK_LOG_BUFFER & log_buffer, bool is_partial_block);
+    // find a proper way to do this; SA_MODE claim vacuum worker
+    friend void vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
+				  const BLOCK_LOG_BUFFER & log_buffer, bool is_partial_block);
 #endif // SA_MODE
 
-  void on_create (cubthread::entry &context) final
-  {
-    context.tran_index = 0;
-    context.status = TS_RUN;
+    void on_create (cubthread::entry &context) final
+    {
+      context.tran_index = 0;
+      context.status = TS_RUN;
 
-    vacuum_init_thread_context (context, TT_VACUUM_WORKER, m_pool->claim ());
+      vacuum_init_thread_context (context, TT_VACUUM_WORKER, m_pool->claim ());
 
-    if (vacuum_worker_allocate_resources (&context, context.vacuum_worker) != NO_ERROR)
-      {
-        assert (false);
-      }
-  }
+      if (vacuum_worker_allocate_resources (&context, context.vacuum_worker) != NO_ERROR)
+	{
+	  assert (false);
+	}
+    }
 
-  void on_retire (cubthread::entry &context) final
-  {
-    if (context.vacuum_worker != NULL)
-      {
-        context.vacuum_worker->state = VACUUM_WORKER_STATE::VACUUM_WORKER_STATE_INACTIVE;
-        m_pool->retire (*context.vacuum_worker);
-        context.vacuum_worker = NULL;
-      }
-    else
-      {
-        assert (false);
-      }
-  }
+    void on_retire (cubthread::entry &context) final
+    {
+      if (context.vacuum_worker != NULL)
+	{
+	  context.vacuum_worker->state = VACUUM_WORKER_STATE::VACUUM_WORKER_STATE_INACTIVE;
+	  m_pool->retire (*context.vacuum_worker);
+	  context.vacuum_worker = NULL;
+	}
+      else
+	{
+	  assert (false);
+	}
+    }
 
-  void on_recycle (cubthread::entry & entry) final
-  {
-    // nothing for now
-  }
+    void on_recycle (cubthread::entry & entry) final
+    {
+      // nothing for now
+    }
 
-  // members
-  resource_shared_pool<VACUUM_WORKER>* m_pool;
+    // members
+    resource_shared_pool<VACUUM_WORKER>* m_pool;
 };
 
 // class vacuum_worker_task
@@ -818,30 +817,30 @@ private:
 //
 class vacuum_worker_task : public cubthread::entry_task
 {
-public:
-  vacuum_worker_task (const VACUUM_DATA_ENTRY & entry_ref, const BLOCK_LOG_BUFFER & log_buffer_ref,
-                      bool is_partial_block)
-    : m_data (entry_ref)
-    , m_block_log_buffer (log_buffer_ref)
-    , m_partial_block (is_partial_block)
-  {
-  }
+  public:
+    vacuum_worker_task (const VACUUM_DATA_ENTRY & entry_ref, const BLOCK_LOG_BUFFER & log_buffer_ref,
+			bool is_partial_block)
+      : m_data (entry_ref)
+      , m_block_log_buffer (log_buffer_ref)
+      , m_partial_block (is_partial_block)
+    {
+    }
 
-  void execute (cubthread::entry & thread_ref) final
-  {
+    void execute (cubthread::entry & thread_ref) final
+    {
 #if defined (SERVER_MODE)
-    // safe-guard - check interrupt is always false
-    assert (!thread_ref.check_interrupt);
+      // safe-guard - check interrupt is always false
+      assert (!thread_ref.check_interrupt);
 #endif // SERVER_MODE
-    vacuum_process_log_block (&thread_ref, &m_data, &m_block_log_buffer, m_partial_block);
-  }
+      vacuum_process_log_block (&thread_ref, &m_data, &m_block_log_buffer, m_partial_block);
+    }
 
-private:
-  vacuum_worker_task ();
+  private:
+    vacuum_worker_task ();
 
-  VACUUM_DATA_ENTRY m_data;
-  BLOCK_LOG_BUFFER m_block_log_buffer;
-  bool m_partial_block;
+    VACUUM_DATA_ENTRY m_data;
+    BLOCK_LOG_BUFFER m_block_log_buffer;
+    bool m_partial_block;
 };
 
 // vacuum master globals
@@ -849,8 +848,8 @@ static cubthread::daemon *vacuum_Master_daemon = NULL;                       // 
 static vacuum_master_context_manager *vacuum_Master_context_manager = NULL;  // context manager
 
 // vacuum worker globals
-static cubthread::entry_workpool *vacuum_Worker_threads = NULL;                // thread pool
-static vacuum_worker_context_manager *vacuum_Worker_context_manager = NULL;    // context manager
+static cubthread::entry_workpool *vacuum_Worker_threads = NULL;              // thread pool
+static vacuum_worker_context_manager *vacuum_Worker_context_manager = NULL;  // context manager
 
 /* *INDENT-ON* */
 
