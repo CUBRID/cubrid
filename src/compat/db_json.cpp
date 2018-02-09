@@ -1625,8 +1625,8 @@ db_json_sql_path_is_valid (std::string &sql_path)
 	      // expecting a valid index
 	      return false;
 	    }
-	  // move after ']'
-	  i = end_bracket_offset + 1;
+	  // move to ']'. i will be incremented.
+	  i = end_bracket_offset;
 	}
 	break;
 
