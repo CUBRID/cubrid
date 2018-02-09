@@ -113,7 +113,6 @@ static THREAD_MANAGER thread_Manager;
  * For special Purpose Threads
  * Under the win32-threads system, *_cond variables are an auto-reset event
  */
-static DAEMON_THREAD_MONITOR thread_Purge_archive_logs_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Page_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Flush_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Session_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
@@ -128,7 +127,6 @@ static void thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor);
 static void thread_wakeup_daemon_thread (DAEMON_THREAD_MONITOR * daemon_monitor);
 static int thread_compare_shutdown_sequence_of_daemon (const void *p1, const void *p2);
 
-static THREAD_RET_T THREAD_CALLING_CONVENTION thread_purge_archive_logs_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_flush_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_flush_control_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_log_flush_thread (void *);
@@ -142,7 +140,6 @@ static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_post_flush_thread (voi
 typedef enum
 {
   /* All the single threads */
-  THREAD_DAEMON_PURGE_ARCHIVE_LOGS,
   THREAD_DAEMON_SESSION_CONTROL,
   THREAD_DAEMON_CHECK_HA_DELAY_INFO,
   THREAD_DAEMON_AUTO_VOLUME_EXPANSION,
@@ -384,12 +381,6 @@ thread_initialize_manager (size_t & total_thread_count)
   /* IMPORTANT NOTE: Daemons are shutdown in the same order as they are created here. */
   daemon_index = 0;
   shutdown_sequence = 0;
-
-  /* Initialize purge archive logs daemon */
-  thread_Daemons[daemon_index].type = THREAD_DAEMON_PURGE_ARCHIVE_LOGS;
-  thread_Daemons[daemon_index].daemon_monitor = &thread_Purge_archive_logs_thread;
-  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-  thread_Daemons[daemon_index++].daemon_function = thread_purge_archive_logs_thread;
 
   /* Initialize session control daemon */
   thread_Daemons[daemon_index].type = THREAD_DAEMON_SESSION_CONTROL;
@@ -2141,120 +2132,6 @@ thread_wakeup_session_control_thread (void)
   pthread_mutex_unlock (&thread_Session_control_thread.lock);
 }
 #endif
-
-/*
- * thread_purge_archive_logs_thread() -
- *   return:
- *   arg_p(in):
- */
-
-static THREAD_RET_T THREAD_CALLING_CONVENTION
-thread_purge_archive_logs_thread (void *arg_p)
-{
-#if !defined(HPUX)
-  THREAD_ENTRY *tsd_ptr;
-#endif /* !HPUX */
-  int rv;
-  time_t cur_time, last_deleted_time = 0;
-  struct timespec to = {
-    0, 0
-  };
-
-  tsd_ptr = (THREAD_ENTRY *) arg_p;
-  /* wait until THREAD_CREATE() finish */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
-
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  tsd_ptr->register_id ();
-
-  thread_Purge_archive_logs_thread.is_available = true;
-  thread_Purge_archive_logs_thread.is_running = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
-
-  /* during server is active */
-  while (!tsd_ptr->shutdown)
-    {
-      er_clear ();
-
-      if (prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL) > 0)
-	{
-	  to.tv_sec = (int) time (NULL);
-	  if (to.tv_sec > last_deleted_time + prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL))
-	    {
-	      to.tv_sec += prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
-	    }
-	  else
-	    {
-	      to.tv_sec = (int) (last_deleted_time + prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL));
-	    }
-	}
-
-      rv = pthread_mutex_lock (&thread_Purge_archive_logs_thread.lock);
-      if (prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL) > 0)
-	{
-	  pthread_cond_timedwait (&thread_Purge_archive_logs_thread.cond, &thread_Purge_archive_logs_thread.lock, &to);
-	}
-      else
-	{
-	  pthread_cond_wait (&thread_Purge_archive_logs_thread.cond, &thread_Purge_archive_logs_thread.lock);
-	}
-      pthread_mutex_unlock (&thread_Purge_archive_logs_thread.lock);
-      if (tsd_ptr->shutdown)
-	{
-	  break;
-	}
-
-      if (prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL) > 0)
-	{
-	  cur_time = time (NULL);
-	  if (cur_time - last_deleted_time < prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL))
-	    {
-	      /* do not delete logs. wait more time */
-	      continue;
-	    }
-	  /* remove a log */
-	  if (logpb_remove_archive_logs_exceed_limit (tsd_ptr, 1) > 0)
-	    {
-	      /* A log was deleted */
-	      last_deleted_time = time (NULL);
-	    }
-	}
-      else
-	{
-	  /* remove all unnecessary logs */
-	  logpb_remove_archive_logs_exceed_limit (tsd_ptr, 0);
-	}
-
-    }
-  rv = pthread_mutex_lock (&thread_Purge_archive_logs_thread.lock);
-  thread_Purge_archive_logs_thread.is_available = false;
-  thread_Purge_archive_logs_thread.is_running = false;
-  pthread_mutex_unlock (&thread_Purge_archive_logs_thread.lock);
-
-  er_final (ER_THREAD_FINAL);
-  tsd_ptr->status = TS_DEAD;
-  tsd_ptr->unregister_id ();
-
-  return (THREAD_RET_T) 0;
-}
-
-/*
- * thread_wakeup_purge_archive_logs_thread() -
- *   return:
- */
-void
-thread_wakeup_purge_archive_logs_thread (void)
-{
-  int rv;
-
-  rv = pthread_mutex_lock (&thread_Purge_archive_logs_thread.lock);
-  pthread_cond_signal (&thread_Purge_archive_logs_thread.cond);
-  pthread_mutex_unlock (&thread_Purge_archive_logs_thread.lock);
-}
 
 /*
  * thread_check_ha_delay_info_thread() -
