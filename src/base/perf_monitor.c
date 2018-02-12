@@ -459,6 +459,10 @@ PSTAT_METADATA pstat_Metadata[] = {
   /* direct assignments */
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS,
 				     "alloc_bcb_get_victim_search_own_private_list"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS_ADJUST_ZONES,
+				     "alloc_bcb_get_victim_search_own_private_list_adjust_zones"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS_CANDIDATE,
+				     "alloc_bcb_get_victim_search_own_private_list_candidate"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_VICTIM_SEARCH_OTHERS_PRIVATE_LISTS,
 				     "alloc_bcb_get_victim_search_others_private_list"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_VICTIM_SEARCH_SHARED_LISTS, "alloc_bcb_get_victim_search_shared_list"),

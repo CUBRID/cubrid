@@ -8417,6 +8417,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   PGBUF_BCB *bufptr_start = NULL;
   PGBUF_BCB *victim_hint = NULL;
   int max_depth, rv;
+  bool is_own_private_perf_tracking = false;
+  PERF_UTIME_TRACKER perf_tracker = PERF_UTIME_TRACKER_INITIALIZER;
 
   bool perf_tracking = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
   max_depth = prm_get_integer_value (PRM_ID_PB_MAX_DEPTH_OF_SEARCHING_VICTIMS_IN_LRU_LIST);
@@ -8432,9 +8434,19 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       return NULL;
     }
 
+  if (perf_tracking && (lru_idx == PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p))))
+    {
+      PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
+      is_own_private_perf_tracking = true;
+    }
+
   rv = pthread_mutex_trylock (&lru_list->mutex);
   if (rv != 0)
     {
+      if (is_own_private_perf_tracking)
+	{
+	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS_CANDIDATE);
+	}
       /* Do not wait, to avoid contention. */
       return NULL;
     }
@@ -8445,6 +8457,11 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       /* no zone 3 */
       PERF (PSTAT_PB_VICTIM_GET_FROM_LRU_LIST_WAS_EMPTY);
       pthread_mutex_unlock (&lru_list->mutex);
+
+      if (is_own_private_perf_tracking)
+	{
+	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS_CANDIDATE);
+	}
       return NULL;
     }
 
@@ -8452,6 +8469,10 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
     {
       /* first adjust lru1 zone */
       pgbuf_lru_adjust_zones (thread_p, lru_list, false);
+      if (is_own_private_perf_tracking)
+	{
+	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS_ADJUST_ZONES);
+	}
     }
 
   /* search for non dirty bcb */
@@ -8462,6 +8483,12 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       PERF (PSTAT_PB_VICTIM_GET_FROM_LRU_LIST_WAS_EMPTY);
       assert (lru_victim_cnt == 0);
       pthread_mutex_unlock (&lru_list->mutex);
+
+      if (is_own_private_perf_tracking)
+	{
+	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS_CANDIDATE);
+	}
+
       return NULL;
     }
 
@@ -8563,6 +8590,11 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 
 	      pgbuf_add_vpid_to_aout_list (thread_p, &bufptr->vpid, lru_idx);
 
+	      if (is_own_private_perf_tracking)
+		{
+		  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS_CANDIDATE);
+		}
+
 	      return bufptr;
 	    }
 	  else
@@ -8615,6 +8647,10 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
     }
 
   pthread_mutex_unlock (&lru_list->mutex);
+  if (is_own_private_perf_tracking)
+    {
+      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS_CANDIDATE);
+    }
 
   /* we need more victims */
   pgbuf_wakeup_flush_thread (thread_p);
