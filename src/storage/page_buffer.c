@@ -13363,6 +13363,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
   const INT64 tensec_usec = 10 * onesec_usec;
   int total_victims = 0;
   bool low_overall_activity = false;
+  int count_lrus = 0, threshold_lrus = 0;
 
   PGBUF_LRU_LIST *lru_list;
 
@@ -13487,16 +13488,22 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 	{
 	  lru_list = PGBUF_GET_LRU_LIST (i);
 
+	  count_lrus = PGBUF_LRU_ZONE_ONE_TWO_COUNT (lru_list);
+	  if (count_lrus > 0)
+	    {
+	      pthread_mutex_lock (&lru_list->mutex);
+	    }
+
 	  lru_list->quota = 0;
 	  lru_list->threshold_lru1 = 0;
 	  lru_list->threshold_lru2 = 0;
-	  if (lru_list->count_lru1 + lru_list->count_lru2 > 0)
+	  if (count_lrus > 0)
 	    {
-	      pthread_mutex_lock (&lru_list->mutex);
 	      pgbuf_lru_adjust_zones (thread_p, lru_list, false);
 	      pthread_mutex_unlock (&lru_list->mutex);
 	      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	    }
+
 	  if (ATOMIC_INC_32 (&lru_list->count_vict_cand, 0) > 0 && PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
 	    {
 	      /* make sure this is added to victim list */
@@ -13531,18 +13538,24 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
 	  new_quota = MIN (new_quota, pgbuf_Pool.num_buffers / 2);
 
 	  lru_list = PGBUF_GET_LRU_LIST (i);
+
+	  count_lrus = PGBUF_LRU_ZONE_ONE_TWO_COUNT (lru_list);
+	  if (count_lrus > new_quota)
+	    {
+	      pthread_mutex_lock (&lru_list->mutex);
+	    }
+
 	  lru_list->quota = new_quota;
 	  lru_list->threshold_lru1 = (int) (new_quota * PGBUF_LRU_ZONE_MIN_RATIO);
 	  lru_list->threshold_lru2 = (int) (new_quota * PGBUF_LRU_ZONE_MIN_RATIO);
 
-	  if (PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (lru_list))
+	  if (count_lrus > new_quota)
 	    {
-	      pthread_mutex_lock (&lru_list->mutex);
 	      pgbuf_lru_adjust_zones (thread_p, lru_list, false);
 	      pthread_mutex_unlock (&lru_list->mutex);
-
 	      PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	    }
+
 	  if (ATOMIC_INC_32 (&lru_list->count_vict_cand, 0) > 0 && PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
 	    {
 	      /* make sure this is added to victim list */
@@ -13563,12 +13576,19 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
   for (i = 0; i < PGBUF_SHARED_LRU_COUNT; i++)
     {
       lru_list = PGBUF_GET_LRU_LIST (i);
+      count_lrus = PGBUF_LRU_ZONE_ONE_TWO_COUNT (lru_list);
+      threshold_lrus = shared_threshold_lru1 + shared_threshold_lru2;
+
+      if (count_lrus > threshold_lrus)
+	{
+	  pthread_mutex_lock (&lru_list->mutex);
+	}
+
       lru_list->threshold_lru1 = shared_threshold_lru1;
       lru_list->threshold_lru2 = shared_threshold_lru2;
 
-      if (PGBUF_LRU_ARE_ZONES_ONE_TWO_OVER_THRESHOLD (lru_list))
+      if (count_lrus > threshold_lrus)
 	{
-	  pthread_mutex_lock (&lru_list->mutex);
 	  pgbuf_lru_adjust_zones (thread_p, lru_list, false);
 	  pthread_mutex_unlock (&lru_list->mutex);
 	}
