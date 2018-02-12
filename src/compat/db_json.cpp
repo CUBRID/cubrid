@@ -1921,7 +1921,6 @@ db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_p
 {
   int error_code = NO_ERROR;
   std::string json_pointer_string;
-  JSON_DOC curent;
 
   // path must be JSON pointer
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
