@@ -5920,14 +5920,13 @@ class deadlock_detect_task : public cubthread::entry_task
       int lock_wait_count = 0;
 
       /* One or more threads are lock-waiting */
-      while (lock_wait_entry != NULL && lock_wait_count < 2)
+      while (lock_wait_entry != NULL)
 	{
-	  /*
-	   * The transaction, for which the current thread is working,
-	   * might be interrupted. The interrupt checking is also performed
-	   * within lock_force_timeout_expired_wait_transactions().
+	  /* The transaction, for which the current thread is working, might be interrupted.
+	   * lock_force_timeout_expired_wait_transactions() performs not only interrupt but timeout checking.
 	   */
 	  bool state = lock_force_timeout_expired_wait_transactions (lock_wait_entry);
+
 	  if (!state)
 	    {
 	      lock_wait_count++;
@@ -5953,7 +5952,7 @@ lock_deadlock_detect_daemon_init ()
   assert (!lock_Deadlock_detect_daemon_is_initialized);
 
   // create deadlock detect daemon thread
-  std::array<std::chrono::milliseconds, 1> interval_time = {{ std::chrono::milliseconds (100) }};
+  auto interval_time = std::chrono::milliseconds (100);
   lock_Deadlock_detect_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (interval_time),
 				new deadlock_detect_task ());
 
