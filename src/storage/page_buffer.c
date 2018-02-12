@@ -318,7 +318,7 @@ typedef enum
 #define PGBUF_IS_PRIVATE_LRU_ONE_TWO_OVER_QUOTA(lru_idx) \
   (PGBUF_IS_PRIVATE_LRU_INDEX (lru_idx) && PGBUF_LRU_LIST_IS_ONE_TWO_OVER_QUOTA (PGBUF_GET_LRU_LIST (lru_idx)))
 
-#define PGBUF_OVER_QUOTA_BUFFER(quota) MAX (10, (int) (quota * 0.01f))
+#define PGBUF_OVER_QUOTA_BUFFER(quota) MAX (10, (int) ((quota) * 0.01f))
 #define PGBUF_LRU_LIST_IS_OVER_QUOTA_WITH_BUFFER(list) \
   (PGBUF_LRU_LIST_COUNT (list) > (list)->quota + PGBUF_OVER_QUOTA_BUFFER ((list)->quota))
 
@@ -8465,7 +8465,8 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       return NULL;
     }
 
-  if (PGBUF_IS_PRIVATE_LRU_ONE_TWO_OVER_QUOTA (lru_idx))
+  if (PGBUF_IS_PRIVATE_LRU_ONE_TWO_OVER_QUOTA (lru_idx)
+      && (PGBUF_LRU_ZONE_ONE_TWO_COUNT (lru_list) > (lru_list->quota + PGBUF_OVER_QUOTA_BUFFER (lru_list->quota))))
     {
       /* first adjust lru1 zone */
       pgbuf_lru_adjust_zones (thread_p, lru_list, false);
