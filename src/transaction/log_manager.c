@@ -1641,7 +1641,9 @@ log_final (THREAD_ENTRY * thread_p)
   bool anyloose_ends = false;
   int error_code = NO_ERROR;
 
+#if defined(SERVER_MODE)
   logpb_daemons_destroy ();
+#endif /* SERVER_MODE */
 
   LOG_CS_ENTER (thread_p);
 
