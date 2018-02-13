@@ -7642,7 +7642,10 @@ logpb_remove_log_archive_daemon_init ()
 void
 logpb_daemons_init ()
 {
-  assert (!logpb_Daemons_are_initialized);
+  if (logpb_Daemons_are_initialized)
+    {
+      return;
+    }
 
   logpb_checkpoint_daemon_init ();
   logpb_remove_log_archive_daemon_init ();
