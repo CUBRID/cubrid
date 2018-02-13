@@ -3552,7 +3552,7 @@ db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   for (i = 1; i < num_args; i += 2)
     {
-      if (DB_IS_NULL (arg[i]))
+      if (DB_IS_NULL (arg[i]) || DB_IS_NULL (arg[i + 1]))
 	{
 	  db_json_delete_doc (new_doc);
 	  return DB_MAKE_NULL (result);
