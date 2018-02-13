@@ -8536,6 +8536,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       if (pgbuf_is_bcb_fixed_by_any (bufptr, false))
 	{
 	  /* this bcb cannot be used now, but it is a valid victim candidate. maybe we should update victim hint */
+#if 0
 	  if (bufptr_victimizable == NULL)
 	    {
 	      bufptr_victimizable = bufptr;
@@ -8549,6 +8550,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 
 	      assert (lru_list->victim_hint == NULL || PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
 	    }
+#endif
 
 	  found_victim_cnt++;
 	  if (found_victim_cnt >= lru_victim_cnt)
@@ -8579,10 +8581,11 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 		{
 		  pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, bufptr->prev_BCB);
 
-                  if (is_own_private_perf_tracking)
-                    {
-                      PERF_UTIME_TRACKER_TIME(thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS_ASSIGN_DIRECT);
-                    }
+		  if (is_own_private_perf_tracking)
+		    {
+		      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker,
+					       PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS_ASSIGN_DIRECT);
+		    }
 		}
 #endif /* SERVER_MODE */
 
@@ -8621,10 +8624,20 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	      if (bufptr != victim_hint && ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, bufptr_victimizable))
 		{
 		  /* modified hint */
+		  if (pgbuf_bcb_avoid_victim (bufptr_victimizable)
+		      || (pgbuf_is_bcb_fixed_by_any (bufptr_victimizable, false)))
+		    {
+		      /* Restore victim, since others accessed the buffer meanwhile. */
+		      if (ATOMIC_CAS_ADDR (&lru_list->victim_hint, bufptr_victimizable, victim_hint))
+			{
+			  bufptr_victimizable = NULL;
+			}
+		    }
 		}
 
 	      assert (lru_list->victim_hint == NULL || PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->victim_hint));
 	    }
+
 	  found_victim_cnt++;
 	  if (found_victim_cnt >= lru_victim_cnt)
 	    {
