@@ -420,9 +420,6 @@ static cubthread::daemon *logpb_Checkpoint_daemon = NULL;
 static cubthread::daemon *logpb_Remove_log_archive_daemon = NULL;
 
 static bool logpb_Daemons_are_initialized = false;
-
-static void logpb_daemons_init ();
-static void logpb_daemons_destroy ();
 // *INDENT-ON*
 #endif /* SERVER_MODE */
 
@@ -702,10 +699,6 @@ logpb_finalize_pool (THREAD_ENTRY * thread_p)
   pthread_cond_destroy (&log_Gl.group_commit_info.gc_cond);
 
   logpb_finalize_writer_info ();
-
-#if defined(SERVER_MODE)
-  logpb_daemons_destroy ();
-#endif // SERVER_MODE
 
   if (log_zip_support)
     {
@@ -7649,7 +7642,10 @@ logpb_remove_log_archive_daemon_init ()
 void
 logpb_daemons_init ()
 {
-  assert (!logpb_Daemons_are_initialized);
+  if (logpb_Daemons_are_initialized)
+    {
+      return;
+    }
 
   logpb_checkpoint_daemon_init ();
   logpb_remove_log_archive_daemon_init ();
