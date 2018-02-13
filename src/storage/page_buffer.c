@@ -8572,16 +8572,19 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 		}
 	      pgbuf_remove_from_lru_list (thread_p, bufptr, lru_list);
 
-#if 0
 #if defined (SERVER_MODE)
 	      /* todo: this is a hack */
 	      if (lf_circular_queue_approx_size (pgbuf_Pool.direct_victims.waiter_threads_low_priority)
 		  >= (5 + (thread_num_worker_threads () / 20)))
 		{
 		  pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, bufptr->prev_BCB);
+
+                  if (is_own_private_perf_tracking)
+                    {
+                      PERF_UTIME_TRACKER_TIME(thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS_ASSIGN_DIRECT);
+                    }
 		}
 #endif /* SERVER_MODE */
-#endif
 
 	      if (lru_list->bottom != NULL && pgbuf_bcb_is_dirty (lru_list->bottom)
 		  && thread_is_page_flush_thread_available ())
