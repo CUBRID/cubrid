@@ -1641,6 +1641,8 @@ log_final (THREAD_ENTRY * thread_p)
   bool anyloose_ends = false;
   int error_code = NO_ERROR;
 
+  logpb_daemons_destroy ();
+
   LOG_CS_ENTER (thread_p);
 
   /* reset log_Gl.rcv_phase */
