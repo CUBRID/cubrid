@@ -64,7 +64,7 @@ int stream_entry::unpack (replication_serialization *serializator)
   size_t data_size;
   BUFFER_UNIT *stream_start_ptr;
 
-    stream_start_ptr = serializator->reserve_range (total_stream_entry_size, my_buffered_range);
+  stream_start_ptr = serializator->reserve_range (total_stream_entry_size, my_buffered_range);
   header.data_size = data_size;
 
 

@@ -42,6 +42,7 @@ private:
   /* file attached to log_generator (only for global instance) */
   log_file *file;
 
+  /* why we need a stream attached to the consumer ? */
   replication_stream *stream;
 
   /* current append position to be assigned to a new entry */
@@ -49,11 +50,11 @@ private:
 
 public:
 
-  log_consumer () { file = NULL; }
+  log_consumer () { file = NULL; };
 
   int append_entry (stream_entry *entry);
 
-  int new_instance (void);
+  log_consumer* new_instance (void);
 };
 
 #endif /* _LOG_CONSUMER_HPP_ */
