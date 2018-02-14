@@ -1579,6 +1579,8 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
 	  if (index_of_closing_quote == std::string::npos)
 	    {
 	      assert (false);
+	      tokens.clear ();
+	      return tokens;
 	      /* this should have been catched earlier */
 	    }
 	  else
