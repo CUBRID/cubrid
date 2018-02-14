@@ -15,23 +15,11 @@ enum FUNC_TYPE2: int
 };
 #undef X
 
-namespace JsonObj // json_object(key, val[, key, val...]) specific functions
-{
-  int f0(parser_context* parser_ctx, parser_node*& arg); //expect key
-  int f1(parser_context* parser_ctx, parser_node*& arg); //expect val
-}
-
-namespace JsonArr //json_array(val[, ...]) specific functions
-{
-  int f0(parser_context* parser_ctx, parser_node*& arg); //expect val
-}
-
-
 struct func_type
 {
   parse_type ret;                            //return type
-  std::vector<std::vector<parse_type>> fix;  //fixed
-  std::vector<std::vector<parse_type>> rep;  //repetitive
+  std::vector<std::vector<parse_type>> fix;  //fixed types for arguments
+  std::vector<std::vector<parse_type>> rep;  //repetitive types for arguments
 };
 
 namespace sig

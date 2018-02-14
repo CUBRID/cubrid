@@ -13099,42 +13099,86 @@ PT_NODE * pt_eval_function_type_agg(PARSER_CONTEXT * parser, PT_NODE * node)
 #include "string_buffer.hpp"
 
 /*
+ * is_in () - checks if a type is in a vector
+ */
+bool is_in(pt_type_enum type, std::vector<parse_type> vect)
+{
+  bool found = false;
+  for(auto t: vect)
+    {
+      if(t.type == parse_type::NORMAL && t.normal == type)
+        {
+          found = true;
+          break;
+        }
+    }
+  return found;
+}
+
+/*
+ * is_castable_to () - checks if a type is castable to any of the types in vector
+ */
+bool is_castable_to(pt_type_enum type, std::vector<parse_type> vect)
+{
+  bool found = false;
+  for(auto t: vect)
+    {
+      if(t.type == parse_type::NORMAL && t.normal == type)
+        {
+          found = true;
+          break;
+        }
+    }
+  return found;
+}
+
+/*
  * match_types_exact () - checks if the types of nodes from list match the signature
  *   return:
  *   list(in): list of nodes
  *   signature(in): function signature
  */
-bool match_types_exact (parser_node* list, func_type& signature)
+bool match_types_exact (FUNC_TYPE fcode, parser_node* list, func_type& signature)
 {
   parser_node* arg = list;
   int arg_pos = 0;
-  for(auto v: signature.fix) //iterate nodes in parallel with sets of fixed types
+  for(auto v: signature.fix) //check fixed part of the function signature
     {
       if(arg == NULL)
         {
           printf("ERR\n");
         }
-      bool matched = false;
-      for(auto t: v) //compare arg's type with each type from set
-        {
-          if(t.type == parse_type::NORMAL && t.normal == arg->type_enum)
-            {
-              matched = true;
-              break; //exact match
-            }
-        }
-      if(!matched)
+      if(!is_in(arg->type_enum, v))
         {
           string_buffer sb;
           for(auto t: v)
             {
               sb("%d ", t.normal);
             }
-          printf("ERR func=%s arg#%d type=%d requiredType(s)={%s}\n", func_type_str, arg_pos, arg->type_enum, sb.get_buffer());
+          printf("ERR func=%s arg#%d type=%d requiredType(s)={%s}\n", func_type_str[fcode-PT_MIN], arg_pos, arg->type_enum, sb.get_buffer());
           return false;
         }
       ++arg_pos;
       arg = arg->next;
+    }
+
+  int index = 0;
+  for(; arg; arg=arg->next, index=(index+1)%signature.rep.size()) //check repetitive part of the function signature
+    {
+      if(!is_in(arg->type_enum, signature.rep[index]))
+        {
+          string_buffer sb;
+          for(auto t: signature.rep[index])
+            {
+              sb("%d ", t.normal);
+            }
+          printf("ERR func=%s arg#%d type=%d requiredType(s)={%s}\n", func_type_str[fcode-PT_MIN], arg_pos+index, arg->type_enum, sb.get_buffer());
+          return false;
+        }
+    }
+  if(index)
+    {
+      printf("ERR index=%d\n", index);
     }
   return true;
 }
@@ -13145,7 +13189,7 @@ bool match_types_exact (parser_node* list, func_type& signature)
  *   list(in): list of nodes
  *   signature(in): function signature
  */
-bool match_types_cast(parser_node* list, func_type& signature)
+bool match_types_cast(FUNC_TYPE fcode, parser_node* list, func_type& signature)
 {
   parser_node* arg = list;
   bool fail = false;
@@ -13539,7 +13583,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case F_JSON_OBJECT:
       {
-	PT_NODE *arg = arg_list;
+	    PT_NODE *arg = arg_list;
         printf("%s\n", parser_print_tree_list(parser, arg_list));
         func_type& ft = *func_types[fcode-PT_MIN];
 
@@ -13561,8 +13605,16 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
           }
           node->data_type = NULL;//???
         }
-        match_types_exact(arg_list, ft);//try exact match for arguments types
-        //match_types_cast(arg_list, ft);
+        if(!match_types_exact(fcode, arg_list, ft))
+          {
+            if(!match_types_cast(fcode, arg_list, ft))
+              {
+                printf("ERR match_types_cast() = false\n");
+              }
+            else //wrap with cast
+              {
+              }
+          }
       }
       break;
 
