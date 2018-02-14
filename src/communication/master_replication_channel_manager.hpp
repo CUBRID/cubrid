@@ -27,8 +27,6 @@ private:
   master_replication_channel *m_channel;
   cubthread::daemon *m_master_daemon_threads[NUM_OF_MASTER_DAEMON_THREADS];
 
-  master_replication_channel_entry (const master_replication_channel_entry &entry);
-  master_replication_channel_entry &operator= (const master_replication_channel_entry &entry);
 public:
   master_replication_channel_entry *add_daemon(MASTER_DAEMON_THREADS daemon_index, const cubthread::looper &loop_rule, cubthread::entry_task *task);
   master_replication_channel_entry (int sock_fd);
@@ -39,6 +37,8 @@ public:
 
   master_replication_channel_entry (master_replication_channel_entry &&entry);
   master_replication_channel_entry &operator= (master_replication_channel_entry &&entry);
+  master_replication_channel_entry (const master_replication_channel_entry &entry) = delete;
+  master_replication_channel_entry &operator= (const master_replication_channel_entry &entry) = delete;
 };
 
 class master_replication_channel_manager

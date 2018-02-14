@@ -101,16 +101,7 @@ master_replication_channel_entry::master_replication_channel_entry (master_repli
 master_replication_channel_entry &master_replication_channel_entry::operator= (master_replication_channel_entry &&entry)
 {
   this->~master_replication_channel_entry();
-  new (this) master_replication_channel_entry();
-
-  this->m_channel = entry.m_channel;
-  entry.m_channel = NULL;
-
-  for (int i = 0; i < NUM_OF_MASTER_DAEMON_THREADS; i++)
-    {
-      this->m_master_daemon_threads[i] = entry.m_master_daemon_threads[i];
-      entry.m_master_daemon_threads[i] = NULL;
-    }
+  new (this) master_replication_channel_entry (std::forward<master_replication_channel_entry> (entry));
 
   return *this;
 }
