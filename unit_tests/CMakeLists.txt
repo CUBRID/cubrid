@@ -31,6 +31,7 @@ option (UNIT_TEST_MEMORY_ALLOC  "Unit testing for memory allocation")
 option (UNIT_TEST_STRING_BUFFER "Unit testing: string buffer with format")
 option (UNIT_TEST_LOCKFREE "Unit testing: lockfree module")
 option (UNIT_TEST_THREAD "Unit testing: thread module")
+option (UNIT_TEST_REPLICATION "Unit testing: replication module")
 
 message("  unit_tests/...")
 
@@ -58,3 +59,8 @@ if (UNIT_TESTS OR UNIT_TEST_THREAD)
   message("    thread")
   add_subdirectory(thread)
 endif(UNIT_TESTS OR UNIT_TEST_THREAD)
+
+if (UNIT_TESTS OR UNIT_TEST_REPLICATION)
+  message("    replicaiton")
+  add_subdirectory(replication)
+endif(UNIT_TESTS OR UNIT_TEST_REPLICATION)
