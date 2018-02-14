@@ -719,10 +719,10 @@ db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc)
       return NO_ERROR;
     }
 
-  if (doc.Parse (json_raw).HasParseError())
+  if (doc.Parse (json_raw).HasParseError ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
-	      rapidjson::GetParseError_En (doc.GetParseError()), doc.GetErrorOffset());
+	      rapidjson::GetParseError_En (doc.GetParseError ()), doc.GetErrorOffset ());
       error_code = ER_INVALID_JSON;
     }
 
@@ -732,10 +732,20 @@ db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc)
 int
 db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc)
 {
+  int err;
+
   assert (doc == NULL);
+
   doc = db_json_allocate_doc ();
 
-  return db_json_get_json_from_str (json_raw, *doc);
+  err = db_json_get_json_from_str (json_raw, *doc);
+  if (err != NO_ERROR)
+    {
+      delete doc;
+      doc = NULL;
+    }
+
+  return err;
 }
 
 JSON_DOC *
