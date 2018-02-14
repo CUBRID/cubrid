@@ -3139,7 +3139,15 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
 
       i = check_count_this_lru;
 
-      (void) pthread_mutex_lock (&pgbuf_Pool.buf_LRU_list[lru_idx].mutex);
+      rv = pthread_mutex_trylock (&pgbuf_Pool.buf_LRU_list[lru_idx].mutex);
+      if (rv != 0)
+	{
+	  /*
+	   * Failed. Go to the next list. This is a critical thread, that should finish as fast as possible.
+	   * Otherwise, the whole system slow down.
+	   */
+	  continue;
+	}
 
       for (bufptr = pgbuf_Pool.buf_LRU_list[lru_idx].bottom;
 	   bufptr != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) && i > 0; bufptr = bufptr->prev_BCB, i--)
