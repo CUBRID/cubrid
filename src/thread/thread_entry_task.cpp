@@ -24,6 +24,7 @@
 #include "thread_entry_task.hpp"
 
 #include "error_manager.h"
+#include "log_impl.h"
 #include "porting.h"
 #if defined (SERVER_MODE)
 #include "thread.h"
@@ -39,10 +40,8 @@ namespace cubthread
   {
     entry &context = *get_manager ()->claim_entry ();
     // for backward compatibility
-    context.tid = pthread_self ();
+    context.register_id ();
     context.type = TT_WORKER;
-
-    // TODO: daemon type
 
     on_create (context);
     return context;
@@ -56,10 +55,8 @@ namespace cubthread
     // clear error messages
     er_clear ();
 
-    // for backward compatibility
-    context.tid = (pthread_t) 0;
-
     // todo: here we should do more operations to clear thread entry before being reused
+    context.unregister_id ();
     context.tran_index = -1;
     context.check_interrupt = true;
 #if defined (SERVER_MODE)
@@ -74,8 +71,31 @@ namespace cubthread
   {
     er_clear ();
 
+    context.unregister_id ();
+
     on_recycle (context);
   }
 
+  void
+  daemon_entry_manager::on_create (entry &context)
+  {
+#if defined (SERVER_MODE)
+    context.status = TS_RUN;
+#endif // SERVER_MODE
+    context.type = TT_DAEMON;
+    context.tran_index = LOG_SYSTEM_TRAN_INDEX;
+
+    on_daemon_create (context);
+  }
+
+  void
+  daemon_entry_manager::on_retire (entry &context)
+  {
+#if defined (SERVER_MODE)
+    context.status = TS_DEAD;
+#endif // SERVER_MODE
+
+    on_daemon_retire (context);
+  }
 
 } // namespace cubthread

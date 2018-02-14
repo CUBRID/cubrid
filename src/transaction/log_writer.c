@@ -2196,8 +2196,8 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
       /* In case that a non-ASYNC mode client internally uses ASYNC mode */
       orig_mode = MAX (mode, orig_mode);
 
-      er_log_debug (ARG_FILE_LINE, "[tid:%ld] xlogwr_get_log_pages, fpageid(%lld), mode(%s)\n", thread_p->tid,
-		    first_pageid,
+      er_log_debug (ARG_FILE_LINE, "[tid:%ld] xlogwr_get_log_pages, fpageid(%lld), mode(%s)\n",
+		    thread_p->get_posix_id (), first_pageid,
 		    (mode == LOGWR_MODE_SYNC ? "sync" : (mode == LOGWR_MODE_ASYNC ? "async" : "semisync")));
 
       /* Register the writer at the list and wait until LFT start to work */
@@ -2397,7 +2397,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
 
 error:
 
-  er_log_debug (ARG_FILE_LINE, "[tid:%ld] xlogwr_get_log_pages, error(%d)\n", thread_p->tid, error_code);
+  er_log_debug (ARG_FILE_LINE, "[tid:%ld] xlogwr_get_log_pages, error(%d)\n", thread_p->get_posix_id (), error_code);
 
   logwr_cs_exit (thread_p, &check_cs_own);
   logwr_write_end (thread_p, writer_info, entry, status);

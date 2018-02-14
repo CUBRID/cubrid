@@ -922,7 +922,7 @@ $ LOADDB
 853 Para un objeto (%1$d|%2$d|%3$d), transaccion (%4$d) de tipo Uncomitted Read, contenia un error de "lock" (%5$s).
 854 ADVERTENCIA: Ningun holder de bloqueo existente, en cambio hay waiters de bloqueo. Referir a %1$s.
 855 ADVERTENCIA: Dos o mas hilos estan en la espera de bloqueo para una transaccion (%1$d).
-856 ADVERTENCIA: Estado (%1$d|%2$d) extrano de espera de bloqueo, hilo (%3$d|%4$d) y transaccion (%5$d).
+856 ADVERTENCIA: Estado (%1$d|%2$d) extrano de espera de bloqueo, hilo (%3$d|%4$lld) y transaccion (%5$d).
 857 Un error de E/S ha ocurrido mientras truncando pagina %1$d del volumen "%2$s".
 858 Volumen "%1$s" es desconocido al reinicio del servidor.
 859 Pestillo en la pagina (%1$d|%2$d) abortado.
