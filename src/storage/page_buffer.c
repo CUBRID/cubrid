@@ -3116,6 +3116,7 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
   int check_count_this_lru;
   float victim_flush_priority_this_lru;
   int count_checked_lists = 0;
+  int rv;
 #if defined (SERVER_MODE)
   /* as part of handling a rare case when there are rare direct victim waiters although there are plenty victims, flush
    * thread assigns one bcb per iteration directly. this will add only a little overhead in general cases. */
