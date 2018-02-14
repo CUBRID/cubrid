@@ -5715,8 +5715,7 @@ catalog_rv_ovf_page_logical_insert_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv
 }
 
 /*
- * catalog_get_dir_oid_from_cache () - Get directory OID from cache
- *				       or class record
+ * catalog_get_dir_oid_from_cache () - Get directory OID from cache or class record
  *   return: error status
  *   class_id_p(in): Class identifier
  *   dir_oid_p(out): directory OID
@@ -5808,8 +5807,7 @@ catalog_get_dir_oid_from_cache (THREAD_ENTRY * thread_p, const OID * class_id_p,
 }
 
 /*
- * catalog_start_access_with_dir_oid () - starts an access on catalog using
- *					  directory OID for locking purpose
+ * catalog_start_access_with_dir_oid () - starts an access on catalog using directory OID for locking purpose
  *   return: error code
  *   catalog_access_info(in/out): catalog access helper structure
  *   lock_mode(in): should be X_LOCK for update on catalog and S_LOCK for read
@@ -5916,8 +5914,7 @@ error:
 }
 
 /*
- * catalog_end_access_with_dir_oid () - ends access on catalog using directory
- *					OID
+ * catalog_end_access_with_dir_oid () - ends access on catalog using directory OID
  *   return: error code
  *   catalog_access_info(in/out): catalog access helper structure
  *   error(in): error code
