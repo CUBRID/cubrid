@@ -3847,7 +3847,7 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
     }
 
   /* Retrieve raw decimal string */
-  numeric_coerce_num_to_dec_str (db_get_numeric ((DB_VALUE *) val), temp);	// todo: without cast?
+  numeric_coerce_num_to_dec_str (db_get_numeric (val), temp);
 
   /* Remove the extra padded zeroes and add the decimal point */
   nbuf = 0;
@@ -3907,7 +3907,7 @@ numeric_db_value_is_zero (const DB_VALUE * arg)
     }
   else
     {
-      return (numeric_is_zero ((DB_C_NUMERIC) db_get_numeric (arg)));
+      return (numeric_is_zero (db_get_numeric (arg)));
     }
 }
 
@@ -3928,7 +3928,7 @@ numeric_db_value_increase (DB_VALUE * arg)
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  numeric_increase ((DB_C_NUMERIC) db_get_numeric (arg));
+  numeric_increase (db_get_numeric (arg));
 
   return NO_ERROR;
 }

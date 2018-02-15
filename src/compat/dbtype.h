@@ -393,13 +393,6 @@ extern "C"
   extern int db_value_put_monetary_amount_as_double (DB_VALUE * value, const double amount);
   extern int db_value_alter_type (DB_VALUE * value, DB_TYPE type);
 
-/*
- * DB_MAKE_ value constructors.
- * These macros are provided to make the construction of DB_VALUE
- * structures easier.  They will fill in the fields from the supplied
- * arguments. It is not necessary to use these macros but is usually more
- * convenient.
- */
   extern int db_value_put_encoded_time (DB_VALUE * value, const DB_TIME * time_value);
   extern int db_value_put_encoded_date (DB_VALUE * value, const DB_DATE * date_value);
   extern int db_value_put_numeric (DB_VALUE * value, DB_C_NUMERIC num);
@@ -412,7 +405,7 @@ extern "C"
 
   extern DB_CURRENCY db_get_currency_default (void);
 
-/* Collection functions */
+  /* Collection functions */
   extern DB_COLLECTION *db_col_create (DB_TYPE type, int size, DB_DOMAIN * domain);
   extern DB_COLLECTION *db_col_copy (DB_COLLECTION * col);
   extern int db_col_filter (DB_COLLECTION * col);
@@ -438,9 +431,9 @@ extern "C"
   extern int db_col_print (DB_COLLECTION * col);
   extern int db_col_fprint (FILE * fp, DB_COLLECTION * col);
 
-/* Set and sequence functions.
-   These are now obsolete. Please use the generic collection functions
-   "db_col*" instead */
+  /* Set and sequence functions.
+   * These are now obsolete. Please use the generic collection functions "db_col*" instead.
+   */
   extern int db_set_compare (const DB_VALUE * value1, const DB_VALUE * value2);
   extern DB_COLLECTION *db_set_create (DB_OBJECT * classobj, const char *name);
   extern DB_COLLECTION *db_set_create_basic (DB_OBJECT * classobj, const char *name);
@@ -482,6 +475,7 @@ extern "C"
 
 /* Use the inline version of the functions. */
 #include "dbtype_function.i"
+
 #ifdef __cplusplus
 }
 #endif

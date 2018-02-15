@@ -185,44 +185,30 @@ extern "C"
   ((DB_AUTH) (DB_AUTH_SELECT | DB_AUTH_INSERT | DB_AUTH_UPDATE | DB_AUTH_DELETE | \
    DB_AUTH_ALTER  | DB_AUTH_INDEX  | DB_AUTH_EXECUTE))
 
-/* It is strongly advised that applications use these macros for access
-   to the fields of the DB_QUERY_ERROR structure */
-
+/* It is strongly advised that applications use these macros for access to the fields of the DB_QUERY_ERROR structure */
 #define DB_QUERY_ERROR_LINE(error) ((error)->err_lineno)
 #define DB_QUERY_ERROR_CHAR(error) ((error)->err_posno)
 
-/*  These are the status codes that can be returned by
-    the functions that iterate over statement results. */
+/* These are the status codes that can be returned by the functions that iterate over statement results. */
 #define DB_CURSOR_SUCCESS      0
 #define DB_CURSOR_END          1
 #define DB_CURSOR_ERROR       -1
 
 #define DB_IS_CONSTRAINT_UNIQUE_FAMILY(c) \
-                                    ( ((c) == DB_CONSTRAINT_UNIQUE          || \
-                                       (c) == DB_CONSTRAINT_REVERSE_UNIQUE  || \
-                                       (c) == DB_CONSTRAINT_PRIMARY_KEY)       \
-                                      ? true : false )
+  ( ((c) == DB_CONSTRAINT_UNIQUE || (c) == DB_CONSTRAINT_REVERSE_UNIQUE || (c) == DB_CONSTRAINT_PRIMARY_KEY) ? true : false )
 
 #define DB_IS_CONSTRAINT_INDEX_FAMILY(c) \
-                                    ( (DB_IS_CONSTRAINT_UNIQUE_FAMILY(c)    || \
-                                       (c) == DB_CONSTRAINT_INDEX           || \
-                                       (c) == DB_CONSTRAINT_REVERSE_INDEX   || \
-                                       (c) == DB_CONSTRAINT_FOREIGN_KEY)     \
-                                      ? true : false )
+  ( (DB_IS_CONSTRAINT_UNIQUE_FAMILY(c) || (c) == DB_CONSTRAINT_INDEX || (c) == DB_CONSTRAINT_REVERSE_INDEX \
+     || (c) == DB_CONSTRAINT_FOREIGN_KEY) ? true : false )
 
 #define DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY(c) \
-                                    ( ((DB_CONSTRAINT_TYPE) (c) == DB_CONSTRAINT_REVERSE_UNIQUE  || \
-                                       (DB_CONSTRAINT_TYPE) (c) == DB_CONSTRAINT_REVERSE_INDEX)     \
-                                      ? true : false )
+  ( ((DB_CONSTRAINT_TYPE) (c) == DB_CONSTRAINT_REVERSE_UNIQUE || (DB_CONSTRAINT_TYPE) (c) == DB_CONSTRAINT_REVERSE_INDEX) \
+    ? true : false )
 
 #define DB_IS_CONSTRAINT_FAMILY(c) \
-                                    ( (DB_IS_CONSTRAINT_UNIQUE_FAMILY(c)    || \
-                                       (c) == DB_CONSTRAINT_NOT_NULL        || \
-                                       (c) == DB_CONSTRAINT_FOREIGN_KEY)       \
-                                      ? true : false )
+  ( (DB_IS_CONSTRAINT_UNIQUE_FAMILY(c) || (c) == DB_CONSTRAINT_NOT_NULL || (c) == DB_CONSTRAINT_FOREIGN_KEY) ? true : false )
 
-/* Volume purposes constants.  These are intended for use by the
-   db_add_volext API function. */
+  /* Volume purposes constants.  These are intended for use by the db_add_volext API function. */
   typedef enum
   {
     DB_PERMANENT_DATA_PURPOSE = 0,
@@ -236,7 +222,7 @@ extern "C"
     DB_TEMPORARY_VOLTYPE
   } DB_VOLTYPE;
 
-/* These are the status codes that can be returned by db_value_compare. */
+  /* These are the status codes that can be returned by db_value_compare. */
   typedef enum
   {
 
@@ -250,9 +236,9 @@ extern "C"
   } DB_VALUE_COMPARE_RESULT;
 #define DB_INT_TO_COMPARE_RESULT(c) ((c) == 0 ? DB_EQ : ((c) > 0 ? DB_GT : DB_LT))
 
-/* Object fetch and locking constants.  These are used to specify
-   a lock mode when fetching objects using of the explicit fetch and
-   lock functions. */
+  /* Object fetch and locking constants.
+   * These are used to specify a lock mode when fetching objects using of the explicit fetch and lock functions.
+   */
   typedef enum
   {
     DB_FETCH_READ = 0,		/* Read an object (class or instance) */
@@ -274,9 +260,9 @@ extern "C"
 				 * the actual access happens later. This is for loading an index. INTERNAL USE ONLY */
   } DB_FETCH_MODE;
 
-/* Authorization type identifier constants.  The numeric values of these
-   are defined such that they can be used with the bitwise or operator
-    "|" in order to specify more than one authorization type. */
+  /* Authorization type identifier constants.  The numeric values of these are defined such that they can be used
+   * with the bitwise or operator "|" in order to specify more than one authorization type.
+   */
   typedef enum
   {
     DB_AUTH_NONE = 0,
@@ -293,21 +279,20 @@ extern "C"
     DB_AUTH_EXECUTE = 64
   } DB_AUTH;
 
-/* object_id type constants used in a db_register_ldb api call to specify
-   whether a local database supports intrinsic object identity or user-
-   defined object identity. */
+  /* object_id type constants used in a db_register_ldb api call to specify whether a local database supports intrinsic object 
+   * identity or user-defined object identity.
+   */
   typedef enum
   {
     DB_OID_INTRINSIC = 1,
     DB_OID_USER_DEFINED
   } DB_OBJECT_ID_TYPE;
 
-/* These are abstract data type pointers used by the functions
-   that issue SQL statements and return their results. */
+  /* These are abstract data type pointers used by the functions that issue SQL statements and return their results. */
   typedef struct db_query_result DB_QUERY_RESULT;
   typedef struct db_query_type DB_QUERY_TYPE;
 
-/* Type of the column in SELECT list within DB_QUERY_TYPE structure */
+  /* Type of the column in SELECT list within DB_QUERY_TYPE structure */
   typedef enum
   {
     DB_COL_EXPR,
@@ -325,17 +310,16 @@ extern "C"
     DB_CLASS_MODIFIED,
     DB_CLASS_ERROR
   } DB_CLASS_MODIFICATION_STATUS;
-/* Structure used to contain information about the position of
-   an error detected while compiling a statement. */
+
+  /* Structure used to contain information about the position of an error detected while compiling a statement. */
   typedef struct db_query_error DB_QUERY_ERROR;
   struct db_query_error
   {
-
     int err_lineno;		/* Line number where error occurred */
     int err_posno;		/* Position number where error occurred */
   };
 
-/* ESQL/CSQL/API INTERFACE */
+  /* ESQL/CSQL/API INTERFACE */
   typedef struct db_session DB_SESSION;
   typedef struct parser_node DB_NODE;
   typedef DB_NODE DB_SESSION_ERROR;
@@ -344,14 +328,11 @@ extern "C"
   typedef DB_NODE DB_MARKER;
   typedef int STATEMENT_ID;
 
-/* These are abstract data type pointers used by the "browsing" functions.
- * Currently they map directly onto internal unpublished data
- * structures but that are subject to change. API programs are
- * allowed to use them only for those API functions that
- * return them or accept them as arguments. API functions cannot
- * make direct structure references or make any assumptions about
- * the actual definition of these structures.
- */
+  /* These are abstract data type pointers used by the "browsing" functions.
+   * Currently they map directly onto internal unpublished data structures but that are subject to change. API programs are
+   * allowed to use them only for those API functions that return them or accept them as arguments. API functions cannot
+   * make direct structure references or make any assumptions about the actual definition of these structures.
+   */
   typedef struct sm_attribute DB_ATTRIBUTE;
   typedef struct sm_method DB_METHOD;
   typedef struct sm_method_argument DB_METHARG;
@@ -360,59 +341,47 @@ extern "C"
   typedef struct sm_query_spec DB_QUERY_SPEC;
   typedef struct tp_domain DB_DOMAIN;
 
-/* These are handles to attribute and method descriptors that can
-   be used for optimized lookup during repeated operations.
-   They are NOT the same as the DB_ATTRIBUTE and DB_METHOD handles. */
+  /* These are handles to attribute and method descriptors that can be used for optimized lookup during repeated operations.
+   * They are NOT the same as the DB_ATTRIBUTE and DB_METHOD handles.
+   */
   typedef struct sm_descriptor DB_ATTDESC;
   typedef struct sm_descriptor DB_METHDESC;
 
-/* These structures are used for building editing templates on classes
- * and objects.  Templates allow the specification of multiple
- * operations to the object that are treated as an atomic unit.  If any
- * of the operations in the template fail, none of the operations
- * will be applied to the object.
- * They are defined as abstract data types on top of internal
- * data structures, API programs are not allowed to make assumptions
- * about the contents of these structures.
- */
-
+  /* These structures are used for building editing templates on classes and objects. Templates allow the specification of 
+   * multiple operations to the object that are treated as an atomic unit. If any of the operations in the template fail, 
+   * none of the operations will be applied to the object. They are defined as abstract data types on top of internal data 
+   * structures, API programs are not allowed to make assumptions about the contents of these structures.
+   */
   typedef struct sm_template DB_CTMPL;
   typedef struct obj_template DB_OTMPL;
 
-/* Structure used to define statically linked methods. */
+  /* Structure used to define statically linked methods. */
   typedef void (*METHOD_LINK_FUNCTION) ();
   typedef struct db_method_link DB_METHOD_LINK;
   struct db_method_link
   {
-
     const char *method;
     METHOD_LINK_FUNCTION function;
-
   };
 
-/* Used to indicate the status of a trigger.
- * If a trigger is ACTIVE, it will be raised when its event is
- * detected.  If it is INACTIVE, it will not be raised.  If it is
- * INVALID, it indicates that the class associated with the trigger
- * has been deleted.
- */
+  /* Used to indicate the status of a trigger.
+   * If a trigger is ACTIVE, it will be raised when its event is detected. If it is INACTIVE, it will not be raised. If it is
+   * INVALID, it indicates that the class associated with the trigger has been deleted.
+   */
   typedef enum
   {
-
     TR_STATUS_INVALID = 0,
     TR_STATUS_INACTIVE = 1,
     TR_STATUS_ACTIVE = 2
   } DB_TRIGGER_STATUS;
 
 
-/* These define the possible trigger event types.
- * The system depends on the numeric order of these constants, do not
- * modify this definition without understanding the trigger manager
- * source.
- */
+  /* These define the possible trigger event types.
+   * The system depends on the numeric order of these constants, do not modify this definition without understanding the trigger
+   * manager source.
+   */
   typedef enum
   {
-
     /* common to both class cache & attribute cache */
     TR_EVENT_UPDATE = 0,
     TR_EVENT_STATEMENT_UPDATE = 1,
@@ -440,10 +409,9 @@ extern "C"
     TR_EVENT_ALL = 13
   } DB_TRIGGER_EVENT;
 
-/* These define the possible trigger activity times. Numeric order is
- * important here, don't change without understanding
- * the trigger manager source.
- */
+  /* These define the possible trigger activity times. Numeric order is important here, don't change without understanding
+   * the trigger manager source.
+   */
   typedef enum
   {
     TR_TIME_NULL = 0,
@@ -452,7 +420,7 @@ extern "C"
     TR_TIME_DEFERRED = 3
   } DB_TRIGGER_TIME;
 
-/* These define the possible trigger action types. */
+  /* These define the possible trigger action types. */
   typedef enum
   {
     TR_ACT_NULL = 0,		/* no action */
@@ -462,42 +430,37 @@ extern "C"
     TR_ACT_PRINT = 4		/* PRINT action */
   } DB_TRIGGER_ACTION;
 
-/* This is the generic pointer to database objects.  An object may be
- * either an instance or a class.  The actual structure is defined
- * elsewhere and it is not necessary for database applications to
- * understand its contents.
- */
+  /* This is the generic pointer to database objects. An object may be either an instance or a class. The actual structure is 
+   * defined elsewhere and it is not necessary for database applications to understand its contents.
+   */
   typedef struct db_object DB_OBJECT, *MOP;
 
-/* Structure defining the common list link header used by the general
- * list routines.  Any structure in the db_ layer that are linked in
- * lists will follow this convention.
- */
+  /* Structure defining the common list link header used by the general list routines. Any structure in the db_ layer that 
+   * are linked in lists will follow this convention.
+   */
   typedef struct db_list DB_LIST;
   struct db_list
   {
-
     struct db_list *next;
-
   };
 
-/* List structure with an additional name field.
- * Used by: obsolete browsing functions
- *  pt_find_labels
- *  db_get_savepoints
- *  "object id" functions in SQL/M
- */
+  /* List structure with an additional name field.
+   * Used by: obsolete browsing functions
+   *  pt_find_labels
+   *  db_get_savepoints
+   *  "object id" functions
+   */
   typedef struct db_namelist DB_NAMELIST;
 
   struct db_namelist
   {
     struct db_namelist *next;
     const char *name;
-
   };
 
-/* List structure with additional object pointer field.
-   Might belong in dbtype.h but we rarely use object lists on the server. */
+  /* List structure with additional object pointer field.
+   * Might belong in dbtype.h but we rarely use object lists on the server.
+   */
   typedef struct db_objlist DB_OBJLIST;
   typedef struct db_objlist *MOPLIST;
 
@@ -505,14 +468,14 @@ extern "C"
   {
     struct db_objlist *next;
     struct db_object *op;
-
   };
 
   typedef struct sm_class_constraint DB_CONSTRAINT;
   typedef struct sm_function_index_info DB_FUNCTION_INDEX_INFO;
 
-/* Types of constraints that may be applied to attributes.  This type
-   is used by the db_add_constraint()/db_drop_constraint() API functions. */
+  /* Types of constraints that may be applied to attributes. This type is used by the db_add_constraint()/db_drop_constraint() 
+   * API functions.
+   */
   typedef enum
   {
     DB_CONSTRAINT_NONE = -1,
@@ -540,22 +503,21 @@ extern "C"
     DB_INSTANCE_OF_NONUPDATABLE_OBJECT = 'e'
   } DB_OBJECT_TYPE;
 
-/* session state id */
+  /* session state id */
   typedef unsigned int SESSION_ID;
+
 /* uninitialized value for session id */
 #define DB_EMPTY_SESSION			0
+
 /* uninitialized value for row count */
 #define DB_ROW_COUNT_NOT_SET			-2
 
   /******************************************/
   /*
    * DB_MAX_IDENTIFIER_LENGTH -
-   * This constant defines the maximum length of an identifier
-   * in the database.  An identifier is anything that is passed as a string
-   * to the db_ functions (other than user attribute values).  This
-   * includes such things as class names, attribute names etc.  This
-   * isn't strictly enforced right now but applications must be aware that
-   * this will be a requirement.
+   * This constant defines the maximum length of an identifier in the database. An identifier is anything that is passed as
+   * a string to the db_ functions (other than user attribute values). This includes such things as class names, attribute names
+   * etc. This isn't strictly enforced right now but applications must be aware that this will be a requirement.
    */
 #define DB_MAX_IDENTIFIER_LENGTH 255
 
@@ -577,12 +539,10 @@ extern "C"
 /* Maximum allowable comment length */
 #define DB_MAX_COMMENT_LENGTH    1024
 
-/* This constant defines the maximum length of a character
-   string that can be used as the value of an attribute. */
+/* This constant defines the maximum length of a character string that can be used as the value of an attribute. */
 #define DB_MAX_STRING_LENGTH	0x3fffffff
 
-/* This constant defines the maximum length of a bit string
-   that can be used as the value of an attribute. */
+/* This constant defines the maximum length of a bit string that can be used as the value of an attribute. */
 #define DB_MAX_BIT_LENGTH 0x3fffffff
 
 /* The maximum precision that can be specified for a numeric domain. */
@@ -597,40 +557,32 @@ extern "C"
 /* The maximum precision that can be specified for a CHAR(n) domain. */
 #define DB_MAX_CHAR_PRECISION DB_MAX_STRING_LENGTH
 
-/* The maximum precision that can be specified
-   for a CHARACTER VARYING domain.*/
+/* The maximum precision that can be specified for a CHARACTER VARYING domain.*/
 #define DB_MAX_VARCHAR_PRECISION DB_MAX_STRING_LENGTH
 
-/* The maximum precision that can be specified for a NATIONAL CHAR(n)
-   domain.
-   This probably isn't restrictive enough.  We may need to define
-   this functionally as the maximum precision will depend on the size
-   multiplier of the codeset.*/
+/* The maximum precision that can be specified for a NATIONAL CHAR(n) domain. This probably isn't restrictive enough.
+ * We may need to define this functionally as the maximum precision will depend on the size multiplier of the codeset.
+ */
 #define DB_MAX_NCHAR_PRECISION (DB_MAX_STRING_LENGTH/2)
 
-/* The maximum precision that can be specified for a NATIONAL CHARACTER
-   VARYING domain.
-   This probably isn't restrictive enough.  We may need to define
-   this functionally as the maximum precision will depend on the size
-   multiplier of the codeset. */
+/* The maximum precision that can be specified for a NATIONAL CHARACTER VARYING domain. This probably isn't restrictive enough.
+ * We may need to define this functionally as the maximum precision will depend on the size multiplier of the codeset.
+ */
 #define DB_MAX_VARNCHAR_PRECISION DB_MAX_NCHAR_PRECISION
 
-/*  The maximum precision that can be specified for a BIT domain. */
+/* The maximum precision that can be specified for a BIT domain. */
 #define DB_MAX_BIT_PRECISION DB_MAX_BIT_LENGTH
 
 /* The maximum precision that can be specified for a BIT VARYING domain. */
 #define DB_MAX_VARBIT_PRECISION DB_MAX_BIT_PRECISION
 
-/* This constant indicates that the system defined default for
-   determining the length of a string is to be used for a DB_VALUE. */
+/* This constant indicates that the system defined default for determining the length of a string is to be used for a DB_VALUE. */
 #define DB_DEFAULT_STRING_LENGTH -1
 
-/* This constant indicates that the system defined default for
-   precision is to be used for a DB_VALUE. */
+/* This constant indicates that the system defined default for precision is to be used for a DB_VALUE. */
 #define DB_DEFAULT_PRECISION -1
 
-/* This constant indicates that the system defined default for
-   scale is to be used for a DB_VALUE. */
+/* This constant indicates that the system defined default for scale is to be used for a DB_VALUE. */
 #define DB_DEFAULT_SCALE -1
 
 /* This constant defines the default precision of DB_TYPE_NUMERIC. */
@@ -639,8 +591,7 @@ extern "C"
 /* This constant defines the default scale of DB_TYPE_NUMERIC. */
 #define DB_DEFAULT_NUMERIC_SCALE 0
 
-/* This constant defines the default scale of result
-   of numeric division operation */
+/* This constant defines the default scale of result of numeric division operation */
 #define DB_DEFAULT_NUMERIC_DIVISION_SCALE 9
 
 /* These constants define the size of buffers within a DB_VALUE. */
@@ -721,8 +672,7 @@ extern "C"
 /* special ENUM index for PT_TO_ENUMERATION_VALUE function */
 #define DB_ENUM_OVERFLOW_VAL  0xFFFF
 
-/* DB_DATE_MIN and DB_DATE_MAX are calculated by julian_encode function
-   with arguments (1,1,1) and (12,31,9999) respectively. */
+/* DB_DATE_MIN and DB_DATE_MAX are calculated by julian_encode function with arguments (1,1,1) and (12,31,9999) respectively. */
 #define DB_DATE_ZERO       DB_UINT32_MIN	/* 0 means zero date */
 #define DB_DATE_MIN        1721424
 #define DB_DATE_MAX        5373484
@@ -742,9 +692,9 @@ extern "C"
     (v) == DB_DEFAULT_UNIX_TIMESTAMP || (v) == DB_DEFAULT_CURRENTDATETIME || \
     (v) == DB_DEFAULT_CURRENTTIMESTAMP || (v) == DB_DEFAULT_SYSTIME)
 
-/* This defines the basic type identifier constants.  These are used in
-   the domain specifications of attributes and method arguments and
-   as value type tags in the DB_VALUE structures. */
+  /* This defines the basic type identifier constants. These are used in the domain specifications of attributes and method
+   * arguments and as value type tags in the DB_VALUE structures.
+   */
   typedef enum
   {
     DB_TYPE_FIRST = 0,		/* first for iteration */
@@ -758,8 +708,7 @@ extern "C"
     DB_TYPE_SET = 6,
     DB_TYPE_MULTISET = 7,
     DB_TYPE_SEQUENCE = 8,
-    DB_TYPE_ELO = 9,		/* obsolete... keep for backward compatibility. maybe we can replace with something else
-				 */
+    DB_TYPE_ELO = 9,		/* obsolete... keep for backward compatibility. maybe we can replace with something else */
     DB_TYPE_TIME = 10,
     DB_TYPE_TIMESTAMP = 11,
     DB_TYPE_DATE = 12,
@@ -803,7 +752,7 @@ extern "C"
     DB_TYPE_LAST = DB_TYPE_JSON
   } DB_TYPE;
 
-/* Domain information stored in DB_VALUE structures. */
+  /* Domain information stored in DB_VALUE structures. */
   typedef union db_domain_info DB_DOMAIN_INFO;
   union db_domain_info
   {
@@ -828,10 +777,10 @@ extern "C"
     } char_info;
   };
 
-/* types used for the representation of bigint values. */
+  /* types used for the representation of bigint values. */
   typedef int64_t DB_BIGINT;
 
-/* Structure used for the representation of time values. */
+  /* Structure used for the representation of time values. */
   typedef unsigned int DB_TIME;
 
   typedef unsigned int TZ_ID;
@@ -842,8 +791,7 @@ extern "C"
     TZ_ID tz_id;		/* zone id */
   };
 
-/* Structure used for the representation of universal times.
-   These are compatible with the Unix time_t definition. */
+  /* Structure used for the representation of universal times. These are compatible with the Unix time_t definition. */
   typedef unsigned int DB_TIMESTAMP;
 
   typedef DB_TIMESTAMP DB_UTIME;
@@ -855,7 +803,7 @@ extern "C"
     TZ_ID tz_id;		/* zone id */
   };
 
-/* Structure used for the representation of date values. */
+  /* Structure used for the representation of date values. */
   typedef unsigned int DB_DATE;
 
   typedef struct db_datetime DB_DATETIME;
@@ -872,7 +820,7 @@ extern "C"
     TZ_ID tz_id;		/* zone id */
   };
 
-/* Structure used for the representation of numeric values. */
+  /* Structure used for the representation of numeric values. */
   typedef struct db_numeric DB_NUMERIC;
   struct db_numeric
   {
@@ -883,7 +831,7 @@ extern "C"
     } d;
   };
 
-/* Structure used for the representation of monetary amounts. */
+  /* Structure used for the representation of monetary amounts. */
   typedef enum
   {
     DB_CURRENCY_DOLLAR,
@@ -920,14 +868,11 @@ extern "C"
     DB_CURRENCY type;
   };
 
-/* Definition for the collection descriptor structure. The structures for
- * the collection descriptors and the sequence descriptors are identical
- * internally but not all db_collection functions can be used with sequences
- * and no db_seq functions can be used with sets. It is advisable to
- * recognize the type of set being used, type it appropriately and only
- * call those db_ functions defined for that type.
- */
-
+  /* Definition for the collection descriptor structure. The structures for the collection descriptors and the sequence 
+   * descriptors are identical internally but not all db_collection functions can be used with sequences and no db_seq functions
+   * can be used with sets. It is advisable to recognize the type of set being used, type it appropriately and only call those
+   * db_ functions defined for that type.
+   */
   typedef struct db_set DB_COLLECTION;
   typedef DB_COLLECTION DB_MULTISET;
   typedef DB_COLLECTION DB_SEQ;
@@ -940,9 +885,7 @@ extern "C"
   };
   typedef enum special_column_type MIN_MAX_COLUMN_TYPE;
 
-/* Used in btree_coerce_key and btree_ils_adjust_range to represent
- * min or max values, necessary in index search comparisons
- */
+  /* Used in btree_coerce_key and btree_ils_adjust_range to represent min or max values, necessary in index search comparisons */
   typedef struct special_column MIN_MAX_COLUMN_INFO;
   struct special_column
   {
@@ -960,12 +903,11 @@ extern "C"
     MIN_MAX_COLUMN_INFO min_max_val;	/* info about coerced column */
   };
 
-/*
- * DB_ELO
- * This is the run-time state structure for an ELO. The ELO is part of
- * the implementation of large object type and not intended to be used
- * directly by the API.
- */
+  /*
+   * DB_ELO
+   * This is the run-time state structure for an ELO. The ELO is part of the implementation of large object type and not intended
+   * to be used directly by the API.
+   */
 
   typedef struct vpid VPID;	/* REAL PAGE IDENTIFIER */
   struct vpid
@@ -980,6 +922,7 @@ extern "C"
     int32_t fileid;		/* File identifier */
     short volid;		/* Volume identifier where the file resides */
   };
+
 #define VFID_INITIALIZER \
   { NULL_FILEID, NULL_VOLID }
 
@@ -1042,14 +985,11 @@ extern "C"
     int es_type;
   };
 
-/* This is the memory representation of an internal object
- * identifier.  It is in the API only for a few functions that
- * are not intended for general use.
- * An object identifier is NOT a fixed identifier; it cannot be used
- * reliably as an object identifier across database sessions or even
- * across transaction boundaries.  API programs are not allowed
- * to make assumptions about the contents of this structure.
- */
+  /* This is the memory representation of an internal object identifier. It is in the API only for a few functions that are not
+   * intended for general use. An object identifier is NOT a fixed identifier; it cannot be used reliably as an object
+   * identifier across database sessions or even across transaction boundaries. API programs are not allowed to make assumptions
+   * about the contents of this structure.
+   */
   typedef struct db_identifier DB_IDENTIFIER;
   struct db_identifier
   {
@@ -1060,11 +1000,10 @@ extern "C"
 
   typedef DB_IDENTIFIER OID;
 
-/* Structure used for the representation of char, nchar and bit values. */
+  /* Structure used for the representation of char, nchar and bit values. */
   typedef struct db_large_string DB_LARGE_STRING;
 
-/* db_char.sm was formerly db_char.small.  small is an (undocumented)
- * reserved word on NT. */
+  /* db_char.sm was formerly db_char.small.  small is an (undocumented) reserved word on NT. */
 
   typedef union db_char DB_CHAR;
   union db_char
@@ -1111,7 +1050,7 @@ extern "C"
 
   typedef int DB_RESULTSET;
 
-/* Structure for an ENUMERATION element */
+  /* Structure for an ENUMERATION element */
   typedef struct db_enum_element DB_ENUM_ELEMENT;
   struct db_enum_element
   {
@@ -1119,7 +1058,7 @@ extern "C"
     DB_CHAR str_val;		/* element string */
   };
 
-/* Structure for an ENUMERATION */
+  /* Structure for an ENUMERATION */
   typedef struct db_enumeration DB_ENUMERATION;
   struct db_enumeration
   {
@@ -1136,11 +1075,9 @@ extern "C"
     JSON_DOC *document;
   };
 
-/* A union of all of the possible basic type values.  This is used in the
- * definition of the DB_VALUE which is the fundamental structure used
- * in passing data in and out of the db_ function layer.
- */
-
+  /* A union of all of the possible basic type values. This is used in the definition of the DB_VALUE which is the fundamental
+   * structure used in passing data in and out of the db_ function layer.
+   */
   typedef union db_data DB_DATA;
   union db_data
   {
@@ -1172,11 +1109,9 @@ extern "C"
     DB_JSON json;
   };
 
-/* This is the primary structure used for passing values in and out of
- * the db_ function layer. Values are always tagged with a datatype
- * so that they can be identified and type checking can be performed.
- */
-
+  /* This is the primary structure used for passing values in and out of the db_ function layer. Values are always tagged with
+   * a datatype so that they can be identified and type checking can be performed.
+   */
   typedef struct db_value DB_VALUE;
   struct db_value
   {
@@ -1185,7 +1120,7 @@ extern "C"
     need_clear_type need_clear;
   };
 
-/* This is used to chain DB_VALUEs into a list. */
+  /* This is used to chain DB_VALUEs into a list. */
   typedef struct db_value_list DB_VALUE_LIST;
   struct db_value_list
   {
@@ -1193,8 +1128,7 @@ extern "C"
     DB_VALUE val;
   };
 
-/* This is used to chain DB_VALUEs into a list.  It is used as an argument
-   to db_send_arglist. */
+  /* This is used to chain DB_VALUEs into a list. It is used as an argument to db_send_arglist. */
   typedef struct db_value_array DB_VALUE_ARRAY;
   struct db_value_array
   {
@@ -1202,10 +1136,9 @@ extern "C"
     DB_VALUE *vals;
   };
 
-/* This is used to gather stats about the workspace.
- * It contains the number of object descriptors used and
- * total number of object descriptors allocated
- */
+  /* This is used to gather stats about the workspace.
+   * It contains the number of object descriptors used and total number of object descriptors allocated.
+   */
   typedef struct db_workspace_stats DB_WORKSPACE_STATS;
   struct db_workspace_stats
   {
@@ -1213,10 +1146,9 @@ extern "C"
     int obj_desc_total;		/* total # of object descriptors allocated */
   };
 
-/* This defines the C language type identifier constants.
- * These are used to describe the types of values used for setting
- * DB_VALUE contents or used to get DB_VALUE contents into.
- */
+  /* This defines the C language type identifier constants.
+   * These are used to describe the types of values used for setting DB_VALUE contents or used to get DB_VALUE contents into.
+   */
   typedef enum
   {
     DB_TYPE_C_DEFAULT = 0,
@@ -1278,7 +1210,7 @@ extern "C"
     int day;
   };
 
-/* identifiers for the default expression */
+  /* identifiers for the default expression */
   typedef enum
   {
     DB_DEFAULT_NONE = 0,
@@ -1296,10 +1228,9 @@ extern "C"
     DB_DEFAULT_FORMATTED_SYSDATE = 12,
   } DB_DEFAULT_EXPR_TYPE;
 
-/*
- * An attribute having valid default expression, must have NULL default value. Currently, we allow simple expressions
- * like SYS_DATE, CURRENT_TIME. Also we allow to_char expression.
- */
+  /* An attribute having valid default expression, must have NULL default value. Currently, we allow simple expressions
+   * like SYS_DATE, CURRENT_TIME. Also we allow to_char expression.
+   */
   typedef struct db_default_expr DB_DEFAULT_EXPR;
   struct db_default_expr
   {
