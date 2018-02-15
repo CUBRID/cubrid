@@ -541,7 +541,7 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
       idx++;
 
       /* Thread_id */
-      db_make_bigint (&vals[idx], (DB_BIGINT) thrd->tid);
+      db_make_bigint (&vals[idx], (DB_BIGINT) thrd->get_posix_id ());
       idx++;
 
       /* Tran_index */

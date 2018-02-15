@@ -24,6 +24,7 @@
 #include "system.h"
 #include "vacuum.h"
 
+#include "base_flag.hpp"
 #include "boot_sr.h"
 #include "btree.h"
 #include "dbtype.h"
@@ -47,6 +48,8 @@
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
 #include "util_func.h"
+
+#include <atomic>
 
 /* The maximum number of slots in a page if all of them are empty.
  * IO_MAX_PAGE_SIZE is used for page size and any headers are ignored (it
@@ -255,9 +258,10 @@ struct vacuum_data
   int log_block_npages;		/* The number of pages in a log block. */
 
   bool is_loaded;		/* True if vacuum data is loaded. */
-  bool shutdown_requested;	/* Set to true when shutdown is requested. It stops vacuum from generating or executing
-				 * new jobs.
-				 */
+  /* *INDENT-OFF*/
+  std::atomic<bool> shutdown_requested;	/* Set to true when shutdown is requested. It stops vacuum from generating or
+                                         * executing new jobs. */
+  /* INDENT-ON* */
   bool is_archive_removal_safe;	/* Set to true after keep_from_log_pageid is updated. */
 
   /* Job cursor for vacuum master to avoid going again through jobs already generated */
@@ -271,26 +275,31 @@ struct vacuum_data
 #if defined (SA_MODE)
   bool is_vacuum_complete;
 #endif				/* SA_MODE */
-};
-static VACUUM_DATA vacuum_Data = {
-  VFID_INITIALIZER,		/* vacuum_data_file */
-  VACUUM_NULL_LOG_BLOCKID,	/* last_blockid */
-  NULL_PAGEID,			/* keep_from_log_pageid */
-  MVCCID_NULL,			/* oldest_unvacuumed_mvccid */
-  NULL,				/* first_page */
-  NULL,				/* last_page */
-  0,				/* page_data_max_count */
-  0,				/* log_block_npages */
-  false,			/* is_loaded */
-  false,			/* shutdown_requested */
-  false,			/* is_archive_removal_safe */
-  VPID_INITIALIZER,		/* vpid_job_cursor */
-  0,				/* blockid_job_cursor */
-  LSA_INITIALIZER		/* recovery_lsa */
+
+  /* *INDENT-OFF* */
+  vacuum_data ()
+    : vacuum_data_file (VFID_INITIALIZER)
+    , last_blockid (VACUUM_NULL_LOG_BLOCKID)
+    , keep_from_log_pageid (NULL_PAGEID)
+    , oldest_unvacuumed_mvccid (MVCCID_NULL)
+    , first_page (NULL)
+    , last_page (NULL)
+    , page_data_max_count (0)
+    , log_block_npages (0)
+    , is_loaded (false)
+    , shutdown_requested (false)
+    , is_archive_removal_safe (false)
+    , vpid_job_cursor (VPID_INITIALIZER)
+    , blockid_job_cursor (0)
+    , recovery_lsa (LSA_INITIALIZER)
 #if defined (SA_MODE)
-    , false			/* is_vacuum_complete. */
-#endif /* SA_MODE */
+    , is_vacuum_complete (false)
+#endif // SA_MODE
+  {
+  }
+  /* *INDENT-ON* */
 };
+static VACUUM_DATA vacuum_Data;
 
 /* vacuum data load */
 typedef struct vacuum_data_load VACUUM_DATA_LOAD;
@@ -680,15 +689,13 @@ static void vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p);
 
 /* *INDENT-OFF* */
 void
-vacuum_init_thread_context (cubthread::entry & context, THREAD_TYPE type, VACUUM_WORKER * worker)
+vacuum_init_thread_context (cubthread::entry &context, THREAD_TYPE type, VACUUM_WORKER *worker)
 {
   assert (worker != NULL);
 
   context.type = type;
   context.vacuum_worker = worker;
-  context.tran_index = 0;
   context.check_interrupt = false;
-  context.status = TS_RUN;
 }
 
 // class vacuum_master_context_manager
@@ -696,40 +703,32 @@ vacuum_init_thread_context (cubthread::entry & context, THREAD_TYPE type, VACUUM
 //  description:
 //    extend entry_manager to override context custruction and retirement
 //
-class vacuum_master_context_manager : public cubthread::entry_manager
+class vacuum_master_context_manager : public cubthread::daemon_entry_manager
 {
-public:
-  vacuum_master_context_manager () = default;
-  ~vacuum_master_context_manager() = default;
+  private:
+    void on_daemon_create (cubthread::entry &context) final
+    {
+      // set vacuum master in execute state
+      assert (vacuum_Master.state == VACUUM_WORKER_STATE_RECOVERY || vacuum_Master.state == VACUUM_WORKER_STATE_EXECUTE);
+      vacuum_Master.state = VACUUM_WORKER_STATE_EXECUTE;
 
-private:
-  void on_create (cubthread::entry & context) final
-  {
-    // set vacuum master in execute state
-    assert (vacuum_Master.state == VACUUM_WORKER_STATE_RECOVERY || vacuum_Master.state == VACUUM_WORKER_STATE_EXECUTE);
-    vacuum_Master.state = VACUUM_WORKER_STATE_EXECUTE;
+      vacuum_init_thread_context (context, TT_VACUUM_MASTER, &vacuum_Master);
+    }
 
-    vacuum_init_thread_context (context, TT_VACUUM_MASTER, &vacuum_Master);
-  }
+    void on_daemon_retire (cubthread::entry &context) final
+    {
+      vacuum_finalize (&context);    // todo: is this the rightful place?
 
-  void on_retire (cubthread::entry & context) final
-  {
-    vacuum_finalize (&context);    // todo: is this the rightful place?
-
-    if (context.vacuum_worker != NULL)
-      {
-        assert (context.vacuum_worker == &vacuum_Master);
-        context.vacuum_worker = NULL;
-      }
-    else
-      {
-        assert (false);
-      }
-  }
-
-  void on_recycle (cubthread::entry &) final
-  {
-  }
+      if (context.vacuum_worker != NULL)
+	{
+	  assert (context.vacuum_worker == &vacuum_Master);
+	  context.vacuum_worker = NULL;
+	}
+      else
+	{
+	  assert (false);
+	}
+    }
 };
 
 // class vacuum_master_task
@@ -739,16 +738,16 @@ private:
 //
 class vacuum_master_task : public cubthread::entry_task
 {
-public:
-  void execute (cubthread::entry & thread_ref) final
-  {
-    if (!BO_IS_SERVER_RESTARTED ())
-      {
-        // wait for boot to finish
-        return;
-      }
-    vacuum_process_vacuum_data (&thread_ref);
-  }
+  public:
+    void execute (cubthread::entry & thread_ref) final
+    {
+      if (!BO_IS_SERVER_RESTARTED ())
+	{
+	  // wait for boot to finish
+	  return;
+	}
+      vacuum_process_vacuum_data (&thread_ref);
+    }
 };
 
 // class vacuum_worker_context_manager
@@ -758,56 +757,58 @@ public:
 //
 class vacuum_worker_context_manager : public cubthread::entry_manager
 {
-public:
-  vacuum_worker_context_manager (void)
-    : cubthread::entry_manager ()
-  {
-    m_pool = new resource_shared_pool<VACUUM_WORKER> (vacuum_Workers, VACUUM_MAX_WORKER_COUNT);
-  }
+  public:
+    vacuum_worker_context_manager () : cubthread::entry_manager ()
+    {
+      m_pool = new resource_shared_pool<VACUUM_WORKER> (vacuum_Workers, VACUUM_MAX_WORKER_COUNT);
+    }
 
-  ~vacuum_worker_context_manager (void)
-  {
-    delete m_pool;
-  }
+    ~vacuum_worker_context_manager ()
+    {
+      delete m_pool;
+    }
   
-private:
+  private:
 #if defined (SA_MODE)
-  // find a proper way to do this; SA_MODE claim vacuum worker
-  friend void vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
-                                const BLOCK_LOG_BUFFER & log_buffer, bool is_partial_block);
+    // find a proper way to do this; SA_MODE claim vacuum worker
+    friend void vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
+				  const BLOCK_LOG_BUFFER & log_buffer, bool is_partial_block);
 #endif // SA_MODE
 
-  void on_create (cubthread::entry & context) final
-  {
-    vacuum_init_thread_context (context, TT_VACUUM_WORKER, m_pool->claim ());
+    void on_create (cubthread::entry &context) final
+    {
+      context.tran_index = 0;
+      context.status = TS_RUN;
 
-    if (vacuum_worker_allocate_resources (&context, context.vacuum_worker) != NO_ERROR)
-      {
-        assert (false);
-      }
-  }
+      vacuum_init_thread_context (context, TT_VACUUM_WORKER, m_pool->claim ());
 
-  void on_retire (cubthread::entry & context) final
-  {
-    if (context.vacuum_worker != NULL)
-      {
-        context.vacuum_worker->state = VACUUM_WORKER_STATE::VACUUM_WORKER_STATE_INACTIVE;
-        m_pool->retire (*context.vacuum_worker);
-        context.vacuum_worker = NULL;
-      }
-    else
-      {
-        assert (false);
-      }
-  }
+      if (vacuum_worker_allocate_resources (&context, context.vacuum_worker) != NO_ERROR)
+	{
+	  assert (false);
+	}
+    }
 
-  void on_recycle (cubthread::entry & entry) final
-  {
-    // nothing for now
-  }
+    void on_retire (cubthread::entry &context) final
+    {
+      if (context.vacuum_worker != NULL)
+	{
+	  context.vacuum_worker->state = VACUUM_WORKER_STATE::VACUUM_WORKER_STATE_INACTIVE;
+	  m_pool->retire (*context.vacuum_worker);
+	  context.vacuum_worker = NULL;
+	}
+      else
+	{
+	  assert (false);
+	}
+    }
 
-  // members
-  resource_shared_pool<VACUUM_WORKER>* m_pool;
+    void on_recycle (cubthread::entry & entry) final
+    {
+      // nothing for now
+    }
+
+    // members
+    resource_shared_pool<VACUUM_WORKER>* m_pool;
 };
 
 // class vacuum_worker_task
@@ -817,30 +818,30 @@ private:
 //
 class vacuum_worker_task : public cubthread::entry_task
 {
-public:
-  vacuum_worker_task (const VACUUM_DATA_ENTRY & entry_ref, const BLOCK_LOG_BUFFER & log_buffer_ref,
-                      bool is_partial_block)
-    : m_data (entry_ref)
-    , m_block_log_buffer (log_buffer_ref)
-    , m_partial_block (is_partial_block)
-  {
-  }
+  public:
+    vacuum_worker_task (const VACUUM_DATA_ENTRY & entry_ref, const BLOCK_LOG_BUFFER & log_buffer_ref,
+			bool is_partial_block)
+      : m_data (entry_ref)
+      , m_block_log_buffer (log_buffer_ref)
+      , m_partial_block (is_partial_block)
+    {
+    }
 
-  void execute (cubthread::entry & thread_ref) final
-  {
+    void execute (cubthread::entry & thread_ref) final
+    {
 #if defined (SERVER_MODE)
-    // safe-guard - check interrupt is always false
-    assert (!thread_ref.check_interrupt);
+      // safe-guard - check interrupt is always false
+      assert (!thread_ref.check_interrupt);
 #endif // SERVER_MODE
-    vacuum_process_log_block (&thread_ref, &m_data, &m_block_log_buffer, m_partial_block);
-  }
+      vacuum_process_log_block (&thread_ref, &m_data, &m_block_log_buffer, m_partial_block);
+    }
 
-private:
-  vacuum_worker_task ();
+  private:
+    vacuum_worker_task ();
 
-  VACUUM_DATA_ENTRY m_data;
-  BLOCK_LOG_BUFFER m_block_log_buffer;
-  bool m_partial_block;
+    VACUUM_DATA_ENTRY m_data;
+    BLOCK_LOG_BUFFER m_block_log_buffer;
+    bool m_partial_block;
 };
 
 // vacuum master globals
@@ -848,8 +849,8 @@ static cubthread::daemon *vacuum_Master_daemon = NULL;                       // 
 static vacuum_master_context_manager *vacuum_Master_context_manager = NULL;  // context manager
 
 // vacuum worker globals
-static cubthread::entry_workpool *vacuum_Worker_threads = NULL;                // thread pool
-static vacuum_worker_context_manager *vacuum_Worker_context_manager = NULL;    // context manager
+static cubthread::entry_workpool *vacuum_Worker_threads = NULL;              // thread pool
+static vacuum_worker_context_manager *vacuum_Worker_context_manager = NULL;  // context manager
 
 /* *INDENT-ON* */
 
@@ -1100,10 +1101,18 @@ vacuum_boot (THREAD_ENTRY * thread_p)
   // get thread manager
   auto thread_manager = cubthread::get_manager ();
 
+  // get logging flag for vacuum worker pool
+  /* *INDENT-OFF* */
+  bool log_vacuum_worker_pool =
+    flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_THREAD_LOGGING_FLAG), THREAD_LOG_WORKER_POOL_VACUUM)
+    || flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_ER_LOG_VACUUM), VACUUM_ER_LOG_WORKER);
+  /* *INDENT-ON* */
+
   // create thread pool
   vacuum_Worker_threads =
     thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT),
-					VACUUM_JOB_QUEUE_CAPACITY, vacuum_Worker_context_manager);
+					VACUUM_JOB_QUEUE_CAPACITY,
+					vacuum_Worker_context_manager, log_vacuum_worker_pool);
   assert (vacuum_Worker_threads != NULL);
 
   // create vacuum master thread
@@ -2755,6 +2764,11 @@ vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
   vacuum_convert_thread_to_worker (thread_p, worker_p, save_type);
   assert (save_type == THREAD_TYPE::TT_VACUUM_MASTER);
 #endif // SA_MODE
+  if (vacuum_Data.shutdown_requested)
+    {
+      // stop pushing tasks; worker pool may be stopped already
+      return;
+    }
   cubthread::get_manager ()->push_task (*thread_p, vacuum_Worker_threads,
 					new vacuum_worker_task (data_entry, log_buffer, is_partial_block));
 #if defined (SA_MODE)
@@ -2920,7 +2934,7 @@ restart:
   vacuum_er_log (VACUUM_ER_LOG_MASTER, "Start searching jobs in page %d|%d from index %d.",
 		 vacuum_Data.vpid_job_cursor.volid, vacuum_Data.vpid_job_cursor.pageid, data_index);
 
-  while (!cubthread::get_manager ()->is_pool_full (vacuum_Worker_threads))
+  while (!cubthread::get_manager ()->is_pool_full (vacuum_Worker_threads) && !vacuum_Data.shutdown_requested)
     {
       assert (data_index >= 0);
       if (data_index >= data_page->index_free)
@@ -7936,7 +7950,7 @@ vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker
   save_type = thread_p->type;
   thread_p->type = TT_VACUUM_WORKER;
   thread_p->vacuum_worker = worker;
-  if (vacuum_worker_allocate_resources (thread_p, thread_p->vacuum_worker) != NULL)
+  if (vacuum_worker_allocate_resources (thread_p, thread_p->vacuum_worker) != NO_ERROR)
     {
       assert_release (false);
     }

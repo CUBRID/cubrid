@@ -52,7 +52,6 @@
 #include "environment_variable.h"
 #include "error_manager.h"
 #include "job_queue.h"
-#include "thread.h"
 #include "connection_error.h"
 #include "message_catalog.h"
 #include "critical_section.h"
@@ -91,9 +90,6 @@ static struct timeval css_Shutdown_timeout = { 0, 0 };
 static char *css_Master_server_name = NULL;	/* database identifier */
 static int css_Master_port_id;
 static CSS_CONN_ENTRY *css_Master_conn;
-#if defined(WINDOWS)
-static int css_Win_kill_signaled = 0;
-#endif /* WINDOWS */
 static IP_INFO *css_Server_accessible_ip_info;
 static char *ip_list_file_name = NULL;
 static char ip_file_real_path[PATH_MAX];
@@ -231,7 +227,6 @@ static int css_check_accessibility (SOCKET new_fd);
 
 #if defined(WINDOWS)
 static int css_process_new_connection_request (void);
-static BOOL WINAPI ctrl_sig_handler (DWORD ctrl_event);
 #endif /* WINDOWS */
 
 static bool css_check_ha_log_applier_done (void);
@@ -1591,83 +1586,6 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
   thread_p->type = TT_WORKER;
 
   return 0;
-}
-
-#if defined(WINDOWS)
-/*
- * ctrl_sig_handler () -
- *   return:
- *   ctrl_event(in):
- */
-static BOOL WINAPI
-ctrl_sig_handler (DWORD ctrl_event)
-{
-  if (ctrl_event == CTRL_BREAK_EVENT)
-    {
-      ;
-    }
-  else
-    {
-      css_Win_kill_signaled = 1;
-    }
-
-  return TRUE;			/* Continue */
-}
-#endif /* WINDOWS */
-
-/*
- * css_oob_handler_thread() -
- *   return:
- *   arg(in):
- */
-THREAD_RET_T THREAD_CALLING_CONVENTION
-css_oob_handler_thread (void *arg)
-{
-  THREAD_ENTRY *thrd_entry;
-  int r;
-#if !defined(WINDOWS)
-  int sig;
-  sigset_t sigurg_mask;
-  struct sigaction act;
-#endif /* !WINDOWS */
-
-  thrd_entry = (THREAD_ENTRY *) arg;
-
-  /* wait until THREAD_CREATE finish */
-  r = pthread_mutex_lock (&thrd_entry->th_entry_lock);
-  pthread_mutex_unlock (&thrd_entry->th_entry_lock);
-
-  thread_set_thread_entry_info (thrd_entry);
-  thrd_entry->status = TS_RUN;
-
-#if !defined(WINDOWS)
-  sigemptyset (&sigurg_mask);
-  sigaddset (&sigurg_mask, SIGURG);
-
-  memset (&act, 0, sizeof (act));
-  act.sa_handler = dummy_sigurg_handler;
-  sigaction (SIGURG, &act, NULL);
-
-  pthread_sigmask (SIG_UNBLOCK, &sigurg_mask, NULL);
-#else /* !WINDOWS */
-  SetConsoleCtrlHandler (ctrl_sig_handler, TRUE);
-#endif /* !WINDOWS */
-
-  while (!thrd_entry->shutdown)
-    {
-#if !defined(WINDOWS)
-      r = sigwait (&sigurg_mask, &sig);
-#else /* WINDOWS */
-      Sleep (1000);
-#endif /* WINDOWS */
-    }
-  thrd_entry->status = TS_DEAD;
-
-#if defined(WINDOWS)
-  return 0;
-#else /* WINDOWS */
-  return NULL;
-#endif /* WINDOWS */
 }
 
 /*

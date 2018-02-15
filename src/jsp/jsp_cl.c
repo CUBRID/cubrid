@@ -1199,7 +1199,7 @@ drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
   if (real_type != jsp_map_pt_misc_to_sp_type (expected_type))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_TYPE, 2, name,
-	      real_type == PT_SP_FUNCTION ? "FUNCTION" : "PROCEDURE");
+	      real_type == SP_TYPE_FUNCTION ? "FUNCTION" : "PROCEDURE");
 
       err = er_errid ();
       goto error;

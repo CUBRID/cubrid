@@ -1544,8 +1544,9 @@
 #define ER_JSON_INVALIDATED_BY_SCHEMA               -1199
 #define ER_JSON_INVALID_PATH                        -1200
 #define ER_JSON_OBJECT_NAME_IS_NULL                 -1201
+#define ER_JSON_PATH_DOES_NOT_EXIST                 -1202
 
-#define ER_LAST_ERROR                               -1202
+#define ER_LAST_ERROR                               -1203
 
 /*
  * CAUTION!

@@ -25,10 +25,13 @@
 #define _THREAD_LOOPER_HPP_
 
 #include <array>
+#include <atomic>
 #include <chrono>
 
 #include <cassert>
 #include <cstdint>
+
+#define MAX_PERIODS 3 // for increasing period pattern
 
 // cubthread::looper
 //
@@ -86,7 +89,7 @@ namespace cubthread
       //
       // the sleep time is increased according to periods for each sleep that times out
       // sleep timer is reset when sleep doesn't time out
-      template<class Rep, class Period, size_t Count>
+      template<class Rep, class Period, std::size_t Count>
       looper (const std::array<std::chrono::duration<Rep, Period>, Count> periods);
 
       // copy other loop pattern
@@ -99,7 +102,7 @@ namespace cubthread
       void reset (void);
 
       // stop looping; no waits after this
-      void stop (void);
+      bool stop (void);
 
       // is looper stopped
       bool is_stopped (void) const;
@@ -115,14 +118,12 @@ namespace cubthread
 	INFINITE_WAITS,               // always infinite waits
       };
 
-      static const size_t MAX_PERIODS = 3; // for increasing period pattern
-
       wait_pattern m_wait_pattern;          // wait pattern type
       std::size_t m_periods_count;          // the period count
       delta_time m_periods[MAX_PERIODS];    // period array
 
       std::size_t m_period_index;           // current period index
-      bool m_stop;                          // when true, loop is stopped; no waits
+      std::atomic<bool> m_stop;             // when true, loop is stopped; no waits
   };
 
   /************************************************************************/
@@ -147,7 +148,7 @@ namespace cubthread
 #endif
   }
 
-  template<class Rep, class Period, size_t Count>
+  template<class Rep, class Period, std::size_t Count>
   looper::looper (const std::array<std::chrono::duration<Rep, Period>, Count> periods)
     : m_wait_pattern (wait_pattern::INCREASING_PERIODS)
     , m_periods_count (Count)
@@ -156,10 +157,10 @@ namespace cubthread
     , m_stop (false)
   {
     static_assert (Count <= MAX_PERIODS, "Count template cannot exceed MAX_PERIODS=3");
-    m_periods_count = std::min (Count, MAX_PERIODS);
+    m_periods_count = std::min (Count, (std::size_t) MAX_PERIODS);
 
     // wait increasing period on timeouts
-    for (size_t i = 0; i < m_periods_count; i++)
+    for (std::size_t i = 0; i < m_periods_count; i++)
       {
 	m_periods[i] = periods[i];
 	// check increasing periods

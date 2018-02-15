@@ -25,41 +25,45 @@
 
 #include "config.h"
 
-#include <stdio.h>
-#include <string.h>
-#include <time.h>
+#include <array>
 #include <assert.h>
 #if defined(SOLARIS)
 #include <netdb.h>
 #endif /* SOLARIS */
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
 
-#include "porting.h"
-#include "xserver_interface.h"
-#include "lock_manager.h"
-#include "system_parameter.h"
-#include "memory_alloc.h"
-#include "oid.h"
-#include "storage_common.h"
-#include "log_manager.h"
-#include "transaction_sr.h"
-#include "wait_for_graph.h"
+#include "boot_sr.h"
 #include "critical_section.h"
-#include "memory_hash.h"
-#include "locator.h"
-#include "perf_monitor.h"
-#include "page_buffer.h"
-#include "message_catalog.h"
 #include "environment_variable.h"
+#include "event_log.h"
+#include "locator.h"
+#include "lock_free.h"
+#include "lock_manager.h"
 #include "log_impl.h"
-#include "thread.h"
-#include "query_manager.h"
+#include "log_manager.h"
+#include "memory_alloc.h"
+#include "memory_hash.h"
+#include "message_catalog.h"
+#include "oid.h"
+#include "page_buffer.h"
+#include "perf_monitor.h"
+#include "porting.h"
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
-#include "event_log.h"
+#include "query_manager.h"
+#include "storage_common.h"
+#include "system_parameter.h"
+#include "thread.h"
+#include "thread_daemon.hpp"
+#include "thread_entry_task.hpp"
+#include "thread_manager.hpp"
+#include "transaction_sr.h"
 #include "tsc_timer.h"
-#include "lock_free.h"
-
+#include "wait_for_graph.h"
+#include "xserver_interface.h"
 
 extern LOCK_COMPATIBILITY lock_Comp[11][11];
 
@@ -137,11 +141,11 @@ extern LOCK_COMPATIBILITY lock_Comp[11][11];
   do \
     { \
       THREAD_ENTRY *locked_thread_entry_p; \
-      assert ((th)->emulate_tid == ((pthread_t) 0)); \
+      assert ((th)->emulate_tid == thread_id_t ()); \
       locked_thread_entry_p = thread_find_entry_by_tran_index ((lock_entry)->tran_index); \
       if (locked_thread_entry_p != NULL) \
 	{ \
-	  (th)->emulate_tid = locked_thread_entry_p->tid; \
+	  (th)->emulate_tid = locked_thread_entry_p->get_id (); \
 	} \
     } \
    while (0)
@@ -149,7 +153,7 @@ extern LOCK_COMPATIBILITY lock_Comp[11][11];
 #define CLEAR_EMULATE_THREAD(th) \
   do \
     { \
-      (th)->emulate_tid = ((pthread_t) 0); \
+      (th)->emulate_tid = thread_id_t (); \
     } \
    while (0)
 
@@ -513,6 +517,14 @@ static bool lock_is_safe_lock_with_page (THREAD_ENTRY * thread_p, LK_ENTRY * ent
 
 static LK_ENTRY *lock_get_new_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist);
 static void lock_free_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, LK_ENTRY * lock_entry);
+
+// *INDENT-OFF*
+static bool lock_Deadlock_detect_daemon_is_initialized = false;
+static cubthread::daemon *lock_Deadlock_detect_daemon = NULL;
+
+static void lock_deadlock_detect_daemon_init ();
+static void lock_deadlock_detect_daemon_destroy ();
+// *INDENT-ON*
 
 /* object lock entry */
 static void *lock_alloc_entry (void);
@@ -1176,7 +1188,7 @@ lock_remove_resource (LK_RES * res_ptr)
   rc = lf_hash_delete_already_locked (t_entry, &lk_Gl.obj_hash_table, (void *) &res_ptr->key, res_ptr, &success);
   if (!success)
     {
-      /* this should not happen, as the hash entry is mutex protected and no clear operations are performed on the hash 
+      /* this should not happen, as the hash entry is mutex protected and no clear operations are performed on the hash
        * table */
       pthread_mutex_unlock (&res_ptr->res_mutex);
       assert_release (false);
@@ -2137,7 +2149,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   lk_Gl.TWFG_node[entry_ptr->tran_index].thrd_wait_stime = entry_ptr->thrd_entry->lockwait_stime;
 
   /* wakeup the dealock detect thread */
-  thread_wakeup_deadlock_detect_thread ();
+  lock_Deadlock_detect_daemon->wakeup ();
 
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
@@ -2192,8 +2204,8 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   thread_unlock_entry (entry_ptr->thrd_entry);
 
   /* The thread has been awaken Before waking up the thread, the waker cleared the lockwait field of the thread entry
-   * and set lockwait_state field of it to the resumed state while holding the thread entry mutex. After the wakeup, no 
-   * one can update the lockwait releated fields of the thread entry. Therefore, waken-up thread can read the values of 
+   * and set lockwait_state field of it to the resumed state while holding the thread entry mutex. After the wakeup, no
+   * one can update the lockwait releated fields of the thread entry. Therefore, waken-up thread can read the values of
    * lockwait related fields of its own thread entry without holding thread entry mutex. */
 
   switch ((LOCK_WAIT_STATE) (entry_ptr->thrd_entry->lockwait_state))
@@ -2357,7 +2369,7 @@ lock_wakeup_deadlock_victim_timeout (int tran_index)
 	    {
 	      /* some strange lock wait state.. */
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, thrd_ptr->lockwait,
-		      thrd_ptr->lockwait_state, thrd_ptr->index, thrd_ptr->tid, thrd_ptr->tran_index);
+		      thrd_ptr->lockwait_state, thrd_ptr->index, thrd_ptr->get_posix_id (), thrd_ptr->tran_index);
 	    }
 	  /* The current thread has already been waken up by other threads. The current thread might be granted the
 	   * lock. or with any other reason....... even if it is a thread of the deadlock victim. */
@@ -2421,7 +2433,7 @@ lock_wakeup_deadlock_victim_aborted (int tran_index)
 	    {
 	      /* some strange lock wait state.. */
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, thrd_ptr->lockwait,
-		      thrd_ptr->lockwait_state, thrd_ptr->index, thrd_ptr->tid, thrd_ptr->tran_index);
+		      thrd_ptr->lockwait_state, thrd_ptr->index, thrd_ptr->get_posix_id (), thrd_ptr->tran_index);
 	    }
 	  /* The current thread has already been waken up by other threads. The current thread might have held the
 	   * lock. or with any other reason....... even if it is a thread of the deadlock victim. */
@@ -2539,7 +2551,7 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	    {
 	      /* some strange lock wait state.. */
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, check->thrd_entry->lockwait,
-		      check->thrd_entry->lockwait_state, check->thrd_entry->index, check->thrd_entry->tid,
+		      check->thrd_entry->lockwait_state, check->thrd_entry->index, check->thrd_entry->get_posix_id (),
 		      check->thrd_entry->tran_index);
 	    }
 	  /* The thread is not waiting for a lock, currently. That is, the thread has already been waked up by timeout,
@@ -2652,7 +2664,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	    {
 	      /* some strange lock wait state.. */
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, check->thrd_entry->lockwait,
-		      check->thrd_entry->lockwait_state, check->thrd_entry->index, check->thrd_entry->tid,
+		      check->thrd_entry->lockwait_state, check->thrd_entry->index, check->thrd_entry->get_posix_id (),
 		      check->thrd_entry->tran_index);
 	      error_code = ER_LK_STRANGE_LOCK_WAIT;
 	    }
@@ -2804,11 +2816,11 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
 	    {
 	      /* some strange lock wait state.. */
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, check->thrd_entry->lockwait,
-		      check->thrd_entry->lockwait_state, check->thrd_entry->index, check->thrd_entry->tid,
+		      check->thrd_entry->lockwait_state, check->thrd_entry->index, check->thrd_entry->get_posix_id (),
 		      check->thrd_entry->tran_index);
 	    }
 	  /* The thread is not waiting on the lock. That is, the thread has already been waken up by lock timeout,
-	   * deadlock victim or interrupt. In this case, we have nothing to do since the thread itself will remove this 
+	   * deadlock victim or interrupt. In this case, we have nothing to do since the thread itself will remove this
 	   * lock entry. */
 	  (void) thread_unlock_entry (check->thrd_entry);
 
@@ -2975,7 +2987,7 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tr
 
   if (max_class_lock != NULL_LOCK)
     {
-      /* 
+      /*
        * lock escalation is performed
        * 1. hold a lock on the class with the escalated lock mode
        */
@@ -3610,7 +3622,7 @@ lock_tran_lk_entry:
 	  if ((lock >= IX_LOCK && (entry_ptr->instant_lock_count == 0 && entry_ptr->granted_mode >= IX_LOCK))
 	      && compat1 != LOCK_COMPAT_YES)
 	    {
-	      /* if the lock is already acquired with incompatible mode by current transaction, remove instant instance 
+	      /* if the lock is already acquired with incompatible mode by current transaction, remove instant instance
 	       * locks */
 	      lock_stop_instant_lock_mode (thread_p, tran_index, false);
 	    }
@@ -4462,7 +4474,7 @@ lock_remove_non2pl (LK_ENTRY * non2pl, int tran_index)
   LK_ENTRY *prev, *curr;
   int rv;
 
-  /* The given non2pl entry has already been removed from the transaction non2pl list. Therefore, This function removes 
+  /* The given non2pl entry has already been removed from the transaction non2pl list. Therefore, This function removes
    * the given non2pl entry from the resource non2pl list and then frees the entry. */
 
   res_ptr = non2pl->res_head;
@@ -4662,7 +4674,7 @@ lock_add_WFG_edge (int from_tran_index, int to_tran_index, int holder_flag, INT6
     }
 
   /* NOTE the following description.. According to the above code, whenever it is identified that a transaction has
-   * been terminated during deadlock detection, the transaction is checked again as a new transaction. And, the current 
+   * been terminated during deadlock detection, the transaction is checked again as a new transaction. And, the current
    * edge is based on the current active transactions. */
 
   if (lk_Gl.TWFG_free_edge_idx == -1)
@@ -4770,7 +4782,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
   TWFG_node = lk_Gl.TWFG_node;
   TWFG_edge = lk_Gl.TWFG_edge;
 
-  /* 
+  /*
    * check if current deadlock cycle is false deadlock cycle
    */
   tot_WFG_nodes = 0;
@@ -4857,7 +4869,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
       return;
     }
 
-  /* 
+  /*
    * Victim Selection Strategy 1) Must be lock holder. 2) Must be active transaction. 3) Prefer a transaction does not
    * have victim priority. 4) Prefer a transaction has written less log records. 5) Prefer a transaction with a closer
    * timeout. 6) Prefer the youngest transaction. */
@@ -5008,7 +5020,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 		    }
 		  else
 		    {
-		      /* 
+		      /*
 		       *  Prefer a transaction with a closer timeout.
 		       *  Prefer the youngest transaction.
 		       */
@@ -5863,6 +5875,8 @@ lock_initialize (void)
     }
 #endif /* LK_DUMP */
 
+  lock_deadlock_detect_daemon_init ();
+
   return error_code;
 
 error:
@@ -5870,6 +5884,100 @@ error:
   return error_code;
 #endif /* !SERVER_MODE */
 }
+
+// *INDENT-OFF*
+#if defined(SERVER_MODE)
+// class deadlock_detect_task
+//
+//  description:
+//    deadlock detect daemon task
+//
+class deadlock_detect_task : public cubthread::entry_task
+{
+  public:
+    void execute (cubthread::entry & thread_ref) override
+    {
+      if (!BO_IS_SERVER_RESTARTED ())
+	{
+	  // wait for boot to finish
+	  return;
+	}
+
+      if (!lock_check_local_deadlock_detection ())
+	{
+	  return;
+	}
+
+      /* check if the lock-wait thread exists */
+      int thread_index;
+      THREAD_ENTRY *lock_wait_entry = thread_find_first_lockwait_entry (&thread_index);
+
+      if (lock_wait_entry == NULL)
+	{
+	  return;
+	}
+
+      int lock_wait_count = 0;
+
+      /* One or more threads are lock-waiting */
+      while (lock_wait_entry != NULL)
+	{
+	  /* The transaction, for which the current thread is working, might be interrupted.
+	   * lock_force_timeout_expired_wait_transactions() performs not only interrupt but timeout checking.
+	   */
+	  bool state = lock_force_timeout_expired_wait_transactions (lock_wait_entry);
+
+	  if (!state)
+	    {
+	      lock_wait_count++;
+	    }
+	  lock_wait_entry = thread_find_next_lockwait_entry (&thread_index);
+	}
+
+      if (lock_wait_count >= 2)
+	{
+	  lock_detect_local_deadlock (&thread_ref);
+	}
+    }
+};
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_deadlock_detect_daemon_init () - initialize deadlock detect daemon thread
+ */
+void
+lock_deadlock_detect_daemon_init ()
+{
+  assert (!lock_Deadlock_detect_daemon_is_initialized);
+
+  // create deadlock detect daemon thread
+  auto interval_time = std::chrono::milliseconds (100);
+  lock_Deadlock_detect_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (interval_time),
+				new deadlock_detect_task ());
+
+  lock_Deadlock_detect_daemon_is_initialized = true;
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_deadlock_detect_daemon_destroy () - destroy deadlock detect daemon thread
+ */
+void
+lock_deadlock_detect_daemon_destroy ()
+{
+  if (!lock_Deadlock_detect_daemon_is_initialized)
+    {
+      return;
+    }
+
+  cubthread::get_manager ()->destroy_daemon (lock_Deadlock_detect_daemon);
+
+  lock_Deadlock_detect_daemon_is_initialized = false;
+}
+#endif /* SERVER_MODE */
+// *INDENT-ON*
 
 /*
  * lock_finalize - Finalize the lock manager
@@ -5926,6 +6034,8 @@ lock_finalize (void)
   lf_hash_destroy (&lk_Gl.obj_hash_table);
   lf_freelist_destroy (&lk_Gl.obj_free_entry_list);
   lf_freelist_destroy (&lk_Gl.obj_free_res_list);
+
+  lock_deadlock_detect_daemon_destroy ();
 #endif /* !SERVER_MODE */
 }
 
@@ -7042,7 +7152,7 @@ lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index)
   /* get a pointer to transaction lock info entry */
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
 
-  /* 
+  /*
    * case 1: root class lock
    */
   /* get the granted lock mode acquired on the root class oid */
@@ -7057,7 +7167,7 @@ lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index)
       return lock_mode;		/* might be NULL_LOCK */
     }
 
-  /* 
+  /*
    * case 2: general class lock
    */
   /* get the granted lock mode acquired on the given class oid */
@@ -7145,7 +7255,7 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index,
   /* get a pointer to transaction lock info entry */
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
 
-  /* 
+  /*
    * case 1: root class lock
    */
   /* get the granted lock mode acquired on the root class oid */
@@ -7160,7 +7270,7 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index,
       return (lock_Conv[lock][granted_lock_mode] == granted_lock_mode);
     }
 
-  /* 
+  /*
    * case 2: general class lock
    */
   /* get the granted lock mode acquired on the given class oid */
@@ -7184,7 +7294,7 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index,
 	}
     }
 
-  /* 
+  /*
    * case 3: object lock
    */
   /* get the granted lock mode acquired on the given instance/pseudo oid */
@@ -7219,9 +7329,9 @@ lock_has_xlock (THREAD_ENTRY * thread_p)
   LK_ENTRY *entry_ptr;
   int rv;
 
-  /* 
+  /*
    * Exclusive locks in this context mean IX_LOCK, SIX_LOCK, X_LOCK and
-   * SCH_M_LOCK. NOTE that U_LOCK are excluded from exclusive locks. 
+   * SCH_M_LOCK. NOTE that U_LOCK are excluded from exclusive locks.
    * Because U_LOCK is currently for reading the object.
    */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -7332,7 +7442,7 @@ lock_is_waiting_transaction (int tran_index)
 	    {
 	      /* some strange lock wait state.. */
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, thrd_ptr->lockwait,
-		      thrd_ptr->lockwait_state, thrd_ptr->index, thrd_ptr->tid, thrd_ptr->tran_index);
+		      thrd_ptr->lockwait_state, thrd_ptr->index, thrd_ptr->get_posix_id (), thrd_ptr->tran_index);
 	    }
 	}
       (void) thread_unlock_entry (thrd_ptr);
@@ -7439,7 +7549,7 @@ lock_force_timeout_lock_wait_transactions (unsigned short stop_phase)
 	    {
 	      /* some strange lock wait state.. */
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, thrd->lockwait,
-		      thrd->lockwait_state, thrd->index, thrd->tid, thrd->tran_index);
+		      thrd->lockwait_state, thrd->index, thrd->get_posix_id (), thrd->tran_index);
 	    }
 	  /* release the thread entry mutex */
 	  (void) thread_unlock_entry (thrd);
@@ -7508,7 +7618,7 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
 	    {
 	      /* some strange lock wait state.. */
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, thrd->lockwait,
-		      thrd->lockwait_state, thrd->index, thrd->tid, thrd->tran_index);
+		      thrd->lockwait_state, thrd->index, thrd->get_posix_id (), thrd->tran_index);
 	    }
 	  /* release the thread entry mutex */
 	  (void) thread_unlock_entry (thrd);
@@ -7545,7 +7655,7 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
 		{
 		  /* some strange lock wait state.. */
 		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, thrd->lockwait,
-			  thrd->lockwait_state, thrd->index, thrd->tid, thrd->tran_index);
+			  thrd->lockwait_state, thrd->index, thrd->get_posix_id (), thrd->tran_index);
 		}
 	      /* release the thread entry mutex */
 	      (void) thread_unlock_entry (thrd);
@@ -7716,7 +7826,7 @@ lock_check_local_deadlock_detection (void)
  *     First, allocate heaps for WFG table from local memory.
  *     Check whether deadlock(s) have been occurred or not.
  *
- *     Deadlock detection is peformed via exhaustive loop construction
+ *     Deadlock detection is performed via exhaustive loop construction
  *     which indicates the wait-for-relationship.
  *     If deadlock is detected,
  *     the first transaction which enables a cycle
@@ -7746,7 +7856,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 
   /* initialize deadlock detection related structures */
 
-  /* initialize transaction WFG node table.. The current transaction might be old deadlock victim. And, the transaction 
+  /* initialize transaction WFG node table.. The current transaction might be old deadlock victim. And, the transaction
    * may have not been aborted, until now. Even if the transaction(old deadlock victim) has not been aborted, set
    * checked_by_deadlock_detector of the transaction to true. */
   for (i = 1; i < lk_Gl.num_trans; i++)
@@ -7893,7 +8003,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
   TWFG_node = lk_Gl.TWFG_node;
   TWFG_edge = lk_Gl.TWFG_edge;
 
-  /* 
+  /*
    * deadlock detection and victim selection
    */
 
@@ -8192,7 +8302,7 @@ lk_global_deadlock_detection (void)
 		       * process), select the new candidate as the victim. */
 		      ok = 0;
 
-		      /* 
+		      /*
 		       * never consider the unactive one as a victim
 		       */
 		      if (logtb_is_active (tranid) == false)
@@ -8333,7 +8443,7 @@ lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlock
   /* reacquire given exclusive locks on behalf of the transaction */
   for (i = 0; i < acqlocks->nobj_locks; i++)
     {
-      /* 
+      /*
        * lock wait duration       : LK_INFINITE_WAIT
        * conditional lock request : false
        */
@@ -8826,7 +8936,7 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_lock,
 	  COPY_OID (&lockcomp_class->inst_oid_space[lockcomp_class->num_inst_oids], oid);
 	  lockcomp_class->num_inst_oids++;
 	}
-      /* else, lockcomp_class->max_inst_oids equals PRM_LK_ESCALATION_AT. lock escalation will be performed. so no more 
+      /* else, lockcomp_class->max_inst_oids equals PRM_LK_ESCALATION_AT. lock escalation will be performed. so no more
        * instance OID is stored. */
     }
 
@@ -9511,7 +9621,7 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int wa
 }
 
 /*
- * lock_wait_state_to_string () - Translate lock wait state into string 
+ * lock_wait_state_to_string () - Translate lock wait state into string
  *                                representation
  *   return:
  *   state(in): lock wait state
@@ -10014,7 +10124,7 @@ lock_free_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freel
 
 #if defined (SERVER_MODE)
 /*
- * lock_unlock_object_by_isolation - No lock is unlocked/demoted for MVCC tables. 
+ * lock_unlock_object_by_isolation - No lock is unlocked/demoted for MVCC tables.
  *			             Shared instance lock on non-MVCC table is unlocked for TRAN_READ_COMMITTED.
  *
  * return : nothing
@@ -10052,8 +10162,8 @@ lock_unlock_object_by_isolation (THREAD_ENTRY * thread_p, int tran_index, TRAN_I
 }
 
 /*
- * lock_unlock_inst_locks_of_class_by_isolation - No lock is unlocked/demoted for MVCC tables. 
- *						  Shared instance locks on non-MVCC table is unlocked for 
+ * lock_unlock_inst_locks_of_class_by_isolation - No lock is unlocked/demoted for MVCC tables.
+ *						  Shared instance locks on non-MVCC table is unlocked for
  *						  TRAN_READ_COMMITTED.
  *
  * return : nothing

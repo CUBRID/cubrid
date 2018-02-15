@@ -125,7 +125,6 @@ static int check_constraints (SM_ATTRIBUTE * att, DB_VALUE * value, unsigned for
 static int quick_validate (SM_VALIDATION * valid, DB_VALUE * value);
 static void cache_validation (SM_VALIDATION * valid, DB_VALUE * value);
 static void begin_template_traversal (void);
-static void reset_template (OBJ_TEMPLATE * template_ptr);
 static OBJ_TEMPLATE *make_template (MOP object, MOP classobj);
 static int validate_template (OBJ_TEMPLATE * temp);
 static OBJ_TEMPASSIGN *obt_make_assignment (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att);
@@ -729,39 +728,6 @@ begin_template_traversal (void)
     {
       obj_Template_traversal++;
     }
-}
-
-
-/*
- * reset_template -
- *    return: none
- *    template(in):
- *
- */
-
-static void
-reset_template (OBJ_TEMPLATE * template_ptr)
-{
-  template_ptr->object = NULL;
-  template_ptr->base_object = NULL;
-  template_ptr->traversal = 0;
-  template_ptr->traversed = 0;
-  template_ptr->is_old_template = 0;
-  if (TM_TRAN_ISOLATION () >= TRAN_REPEATABLE_READ)
-    {
-      template_ptr->check_serializable_conflict = 1;
-    }
-  else
-    {
-      template_ptr->check_serializable_conflict = 0;
-    }
-  template_ptr->uniques_were_modified = 0;
-  template_ptr->shared_was_modified = 0;
-  template_ptr->fkeys_were_modified = 0;
-  template_ptr->force_flush = 0;
-  template_ptr->force_check_not_null = 0;
-  template_ptr->function_key_modified = 0;
-  template_ptr->is_autoincrement_set = 0;
 }
 
 /*
@@ -2868,7 +2834,6 @@ obt_reset_force_flush (OBJ_TEMPLATE * template_ptr)
   template_ptr->force_flush = 0;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * obt_retain_after_finish
  *    return: none
@@ -2878,12 +2843,10 @@ obt_reset_force_flush (OBJ_TEMPLATE * template_ptr)
 void
 obt_retain_after_finish (OBJ_TEMPLATE * template_ptr)
 {
-  if (template_ptr)
-    {
-      template_ptr->discard_on_finish = 0;
-    }
+  assert (template_ptr != NULL);
+
+  template_ptr->discard_on_finish = 0;
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * obt_update_internal
@@ -2893,7 +2856,6 @@ obt_retain_after_finish (OBJ_TEMPLATE * template_ptr)
  *    check_non_null(in): set if this is an internally defined template
  *
  */
-
 int
 obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj, int check_non_null)
 {
@@ -2951,13 +2913,10 @@ obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj, int check_non_nu
 		      *newobj = template_ptr->object;
 		    }
 
+		  /* When discard_on_finish is false, caller should explictly free template */
 		  if (template_ptr->discard_on_finish)
 		    {
 		      obt_free_template (template_ptr);
-		    }
-		  else
-		    {
-		      reset_template (template_ptr);
 		    }
 		}
 	    }

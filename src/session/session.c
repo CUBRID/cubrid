@@ -1822,7 +1822,7 @@ session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char 
     }
 
   *xasl_entry = NULL;
-  err = xcache_find_sha1 (thread_p, &stmt_p->sha1, xasl_entry, NULL);
+  err = xcache_find_sha1 (thread_p, &stmt_p->sha1, XASL_CACHE_SEARCH_GENERIC, xasl_entry, NULL);
   if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -2531,8 +2531,7 @@ session_load_query_entry_info (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qentr
 }
 
 /*
- * session_remove_query_entry_info () - remove a query entry from the holdable
- *					queries list
+ * session_remove_query_entry_info () - remove a query entry from the holdable queries list
  * return : error code or NO_ERROR
  * thread_p (in) : active thread
  * query_id (in) : query id
@@ -2542,6 +2541,7 @@ session_remove_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_i
 {
   SESSION_STATE *state_p = NULL;
   SESSION_QUERY_ENTRY *sentry_p = NULL, *prev = NULL;
+
   state_p = session_get_session_state (thread_p);
   if (state_p == NULL)
     {
@@ -2575,9 +2575,8 @@ session_remove_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_i
 }
 
 /*
- * session_remove_query_entry_info () - remove a query entry from the holdable
- *					queries list but do not close the
- *					associated list files
+ * session_clear_query_entry_info () - remove a query entry from the holdable queries list but do not close the
+ *				       associated list files
  * return : error code or NO_ERROR
  * thread_p (in) : active thread
  * query_id (in) : query id
@@ -2619,6 +2618,43 @@ session_clear_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_id
     }
 
   return NO_ERROR;
+}
+
+/*
+ * session_is_queryid_idle () - search for a idle query entry among the holable results
+ * return : true if the given query_id is idle, false otherwise
+ * thread_p (in) :
+ * query_id (in) : query id
+ * max_query_id_uses (out): max query id among the active ones. caller may use it as a hint
+ */
+bool
+session_is_queryid_idle (THREAD_ENTRY * thread_p, const QUERY_ID query_id, QUERY_ID * max_query_id_uses)
+{
+  SESSION_STATE *state_p = NULL;
+  SESSION_QUERY_ENTRY *sentry_p = NULL;
+
+  *max_query_id_uses = 0;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return true;
+    }
+
+  for (sentry_p = state_p->queries; sentry_p != NULL; sentry_p = sentry_p->next)
+    {
+      if (*max_query_id_uses < sentry_p->query_id)
+	{
+	  *max_query_id_uses = sentry_p->query_id;
+	}
+
+      if (sentry_p->query_id == query_id)
+	{
+	  return false;
+	}
+    }
+
+  return true;
 }
 
 /*
