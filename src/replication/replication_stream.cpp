@@ -36,7 +36,7 @@ int stream_entry::pack (replication_serialization *serializator)
 
   total_stream_entry_size = get_header_size () + data_size;
 
-  stream_start_ptr = serializator->reserve_range (total_stream_entry_size, my_buffered_range);
+  stream_start_ptr = serializator->start_packing_range (total_stream_entry_size, my_buffered_range);
   header.data_size = data_size;
 
   serializator->pack_stream_entry_header (&header);
@@ -52,7 +52,7 @@ int stream_entry::pack (replication_serialization *serializator)
     }
 
   /* set last packed stream position */
-  serializator->serialization_completed ();
+  serializator->packing_completed ();
 
   return NO_ERROR;
 }
@@ -64,7 +64,7 @@ int stream_entry::unpack (replication_serialization *serializator)
   size_t data_size;
   BUFFER_UNIT *stream_start_ptr;
 
-  stream_start_ptr = serializator->reserve_range (total_stream_entry_size, my_buffered_range);
+  stream_start_ptr = serializator->start_unpacking_range (total_stream_entry_size, my_buffered_range);
   header.data_size = data_size;
 
 

@@ -51,8 +51,13 @@ public:
   replication_serialization (replication_stream *stream_arg);
   ~replication_serialization();
 
-  BUFFER_UNIT *reserve_range (const size_t amount, buffered_range **granted_range);
-  int serialization_completed (void);
+  /* method for starting a packing context */
+  BUFFER_UNIT *start_packing_range (const size_t amount, buffered_range **granted_range);
+
+  /* method for starting an unpacking context */
+  BUFFER_UNIT *start_unpacking_range (const size_t amount, buffered_range **granted_range);
+
+  int packing_completed (void);
 
   int pack_int (const int value);
   int unpack_int (int &value);

@@ -52,7 +52,7 @@ replication_serialization::replication_serialization (replication_stream *stream
   end_ptr = ptr;
 }
 
-BUFFER_UNIT *replication_serialization::reserve_range (const size_t amount, buffered_range **granted_range)
+BUFFER_UNIT *replication_serialization::start_packing_range (const size_t amount, buffered_range **granted_range)
 {
   ptr = stream->reserve_with_buffer (amount, granted_range);
   if (ptr != NULL)
@@ -81,12 +81,44 @@ BUFFER_UNIT *replication_serialization::reserve_range (const size_t amount, buff
   return NULL;
 }
 
-int replication_serialization::serialization_completed (void)
+int replication_serialization::packing_completed (void)
 {
   stream->update_contiguous_filled_pos (end_stream_serialization_scope);
 
   return NO_ERROR;
 }
+
+
+BUFFER_UNIT *replication_serialization::start_unpacking_range (const size_t amount, buffered_range **granted_range)
+{
+  /* TODO[arnia] */
+  ptr = stream->reserve_with_buffer (amount, granted_range);
+  if (ptr != NULL)
+    {
+      end_ptr = ptr + amount;
+      end_stream_serialization_scope = (*granted_range)->last_pos;
+      return ptr;
+    }
+  else
+    {
+      /* no global buffer available, create a new one */
+      stream_position first_pos = stream->reserve_no_buffer (amount);
+      stream_position last_pos = mapped_range.first_pos + amount - 1;
+
+      end_stream_serialization_scope = last_pos;
+
+      replication_buffer *buffer = new replication_buffer (amount);
+
+      stream->add_buffer_mapping (buffer, WRITE_STREAM, first_pos, last_pos, granted_range);
+
+      ptr = buffer->get_curr_append_ptr ();
+
+      return ptr;
+    }
+
+  return NULL;
+}
+
 
 int replication_serialization::pack_int (const int value)
 {
