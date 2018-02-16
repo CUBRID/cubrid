@@ -413,9 +413,9 @@ static void logpb_set_nxio_lsa (LOG_LSA * lsa);
 static int logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_HEADER * from_hdr);
 STATIC_INLINE LOG_BUFFER *logpb_get_log_buffer (LOG_PAGE * log_pg) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int logpb_get_log_buffer_index (LOG_PAGEID log_pageid) __attribute__ ((ALWAYS_INLINE));
-static int logpb_fetch_header_from_active_archive (THREAD_ENTRY * thread_p, const char *db_fullname,
-						   const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
-						   LOG_PAGE * log_pgptr);
+static int logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_fullname,
+					       const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
+					       LOG_PAGE * log_pgptr);
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -1502,7 +1502,7 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_P
 }
 
 /*
- * logpb_fetch_header_from_active_archive - Fetch log header directly from active archive
+ * logpb_fetch_header_from_active_log - Fetch log header directly from active log file
  *
  * return: error code
  *
@@ -1512,8 +1512,8 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_P
  * NOTE: Should be used only during boot sequence.
  */
 static int
-logpb_fetch_header_from_active_archive (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-					const char *prefix_logname, LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
+logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
+				    const char *prefix_logname, LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
 {
   LOG_HEADER *log_hdr;		/* The log header */
   LOG_PHY_PAGEID phy_pageid;
@@ -2173,8 +2173,7 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
     {
       log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
-      error_code = logpb_fetch_header_from_active_archive (thread_p, db_fullname, logpath, prefix_logname, &hdr,
-							   log_pgptr);
+      error_code = logpb_fetch_header_from_active_log (thread_p, db_fullname, logpath, prefix_logname, &hdr, log_pgptr);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
