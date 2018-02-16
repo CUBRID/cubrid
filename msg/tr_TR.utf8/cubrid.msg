@@ -922,7 +922,7 @@ $ LOADDB
 853 Bir nesne için (%1$d|%2$d|%3$d), okuma kaydedilmemiş düzenlenen arıza kilidi (%5$s) tran (%4$d).
 854 UYARI: kilit sahibi bulunmamaktadır, ama kilit bekleyenler mevcut. %1$s e başvurun.
 855 UYARI: İki veya daha fazla iş parçacığı kilit bekleyen bir işlem (%1$d) içindir.
-856 UYARI: Garip LOCKWAIT durumu (%1$d|%2$d), iplik (%3$d|%4$d) ve işlemler (%5$d).
+856 UYARI: Garip LOCKWAIT durumu (%1$d|%2$d), iplik (%3$d|%4$lld) ve işlemler (%5$d).
 857 Sayfa %1$d yoğunluk "%2$s" kesilmesi sırasında başka bir I/O hata oluştu.
 858 Cilt "%1$s" sunucu yeniden başlatma sırasında bilinmiyor.
 859 SAYFASINDA LATCH (%1$d|%2$d) BAŞARISISZLIĞA UĞRAMIŞ
@@ -1268,7 +1268,8 @@ $ LOADDB
 1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
 1200 Invalid JSON path
 1201 Json object name cannot be NULL.
-1202 Son Hata
+1202 Json PATH "%1$s" does not exist in %2$s
+1203 Son Hata
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
 2 Uygun hata mesajı bulunmamakta.

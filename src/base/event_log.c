@@ -367,7 +367,7 @@ event_log_sql_string (THREAD_ENTRY * thread_p, FILE * log_fp, XASL_ID * xasl_id,
       return;
     }
 
-  if (xcache_find_sha1 (thread_p, &xasl_id->sha1, &ent, NULL) != NO_ERROR)
+  if (xcache_find_sha1 (thread_p, &xasl_id->sha1, XASL_CACHE_SEARCH_GENERIC, &ent, NULL) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return;

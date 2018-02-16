@@ -317,9 +317,6 @@ main (int argc, char **argv)
 {
   char *binary_name;
   int ret_val = 0;
-#if !defined(WINDOWS)
-  sigset_t sigurg_mask;
-#endif
 
 #if defined(WINDOWS)
   FreeConsole ();
@@ -339,13 +336,6 @@ main (int argc, char **argv)
 #endif /* WINDOWS */
 
   {				/* to make indent happy */
-#if !defined(WINDOWS)
-    /* Block SIGURG signal except oob-handler thread */
-    sigemptyset (&sigurg_mask);
-    sigaddset (&sigurg_mask, SIGURG);
-    sigprocmask (SIG_BLOCK, &sigurg_mask, NULL);
-#endif /* !WINDOWS */
-
     if (argc < 2)
       {
 	PRINT_AND_LOG_ERR_MSG ("Usage: server databasename\n");

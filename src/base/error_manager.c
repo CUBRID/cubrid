@@ -355,7 +355,7 @@ static void er_clear_fmt (ER_FMT * fmt);
 static void er_internal_msg (ER_FMT * fmt, int code, int msg_num);
 static void *er_malloc_helper (std::size_t size, const char *file, int line);
 static void er_emergency (const char *file, int line, const char *fmt, ...);
-static int er_vsprintf (ER_MSG * er_entry_p, ER_FMT * fmt, va_list * ap);
+static int er_vsprintf (er_message * er_entry_p, ER_FMT * fmt, va_list * ap);
 
 static int er_call_stack_init (void);
 static int er_fname_free (const void *key, void *data, void *args);
@@ -1383,7 +1383,7 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
     }
 
   /* Do any necessary allocation for the buffer. */
-  crt_error.reserve (new_size + 1);
+  crt_error.reserve_message_area (new_size + 1);
 
   /* And now format the silly thing. */
   if (er_vsprintf (&crt_error, er_fmt, ap_ptr) == ER_FAILED)
@@ -2022,7 +2022,7 @@ er_set_area_error (char *server_area)
    * don't really need to be sending this. Use the actual string length in the memcpy here! */
   length = strlen (ptr) + 1;
 
-  crt_error.reserve (length);
+  crt_error.reserve_message_area (length);
   memcpy (crt_error.msg_area, ptr, length);
 
   /* Call the logging function if any */
@@ -2848,7 +2848,7 @@ er_emergency (const char *file, int line, const char *fmt, ...)
  *   ap(in):
  */
 static int
-er_vsprintf (ER_MSG * er_entry_p, ER_FMT * fmt, va_list * ap)
+er_vsprintf (er_message * er_entry_p, ER_FMT * fmt, va_list * ap)
 {
   const char *p;		/* The start of the current non-spec part of fmt */
   const char *q;		/* The start of the next conversion spec */
@@ -2856,6 +2856,8 @@ er_vsprintf (ER_MSG * er_entry_p, ER_FMT * fmt, va_list * ap)
   int n;			/* The va_list position of the current arg */
   int i;
   va_list args;
+
+  assert (er_entry_p != NULL);
 
   /* 
    *                  *** WARNING ***
@@ -2865,7 +2867,6 @@ er_vsprintf (ER_MSG * er_entry_p, ER_FMT * fmt, va_list * ap)
    * homework with er_estimate_size() before calling this, you may be
    * in for a bruising.
    */
-
 
   /* 
    * If there was trouble with the format for some reason, print out
@@ -2896,8 +2897,8 @@ er_vsprintf (ER_MSG * er_entry_p, ER_FMT * fmt, va_list * ap)
 	  free_and_init (er_entry_p->args);
 	}
 
-      size = fmt->nspecs * sizeof (ER_VA_ARG);
-      er_entry_p->args = (ER_VA_ARG *) ER_MALLOC (size);
+      size = fmt->nspecs * sizeof (er_va_arg);
+      er_entry_p->args = (er_va_arg *) ER_MALLOC (size);
       if (er_entry_p->args == NULL)
 	{
 	  return ER_FAILED;

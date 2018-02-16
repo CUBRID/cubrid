@@ -29,12 +29,14 @@
 
 // forward definition for THREAD_ENTRY
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
+#include <thread>
 #ifndef _THREAD_ENTRY_HPP_
 namespace cubthread
 {
   class entry;
 } // namespace cubthread
 typedef cubthread::entry THREAD_ENTRY;
+typedef std::thread::id thread_id_t;
 #endif // _THREAD_ENTRY_HPP_
 
 // system parameter flags for thread logging
@@ -51,6 +53,7 @@ const int THREAD_LOG_DAEMON_ALL = 0xFFFF0000;     // reserved for thread daemons
 #else // not SERVER_MODE and not SA_MODE-C++
 // client or SA_MODE annoying grammars
 typedef void THREAD_ENTRY;
+typedef unsigned long int thread_id_t;
 #endif // not SERVER_MODE and not SA_MODE
 
 #endif // _THREAD_COMPAT_HPP_
