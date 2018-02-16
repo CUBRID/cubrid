@@ -1006,8 +1006,8 @@ STATIC_INLINE int pgbuf_get_shared_lru_index_for_add (void) __attribute__ ((ALWA
 static int pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count,
 						 float lru_sum_flush_priority, bool * assigned_directly);
 static PGBUF_BCB *pgbuf_get_victim (THREAD_ENTRY * thread_p);
-STATIC_INLINE PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
-  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx,
+							 bool use_conditional_lock) __attribute__ ((ALWAYS_INLINE));
 #if defined (SERVER_MODE)
 static int pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list,
 						       PGBUF_BCB * bcb_start);
@@ -8222,7 +8222,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 	    {
 	      PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 	    }
-	  victim = pgbuf_get_victim_from_lru_list (thread_p, private_lru_idx);
+	  victim = pgbuf_get_victim_from_lru_list (thread_p, private_lru_idx, true);
 	  if (victim != NULL)
 	    {
 	      PERF (PSTAT_PB_OWN_VICTIM_PRIVATE_LRU_SUCCESS);
@@ -8327,7 +8327,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
       private_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
       lru_list = PGBUF_GET_LRU_LIST (private_lru_idx);
 
-      victim = pgbuf_get_victim_from_lru_list (thread_p, private_lru_idx);
+      victim = pgbuf_get_victim_from_lru_list (thread_p, private_lru_idx, true);
       if (victim != NULL)
 	{
 	  PERF (PSTAT_PB_OWN_VICTIM_PRIVATE_LRU_SUCCESS);
@@ -8407,13 +8407,14 @@ pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock)
  * pgbuf_get_victim_from_lru_list () - Get victim BCB from the bottom of LRU list
  *   return: If success, BCB, otherwise NULL
  *   lru_idx (in)     : index of LRU list
+ *   use_conditional_lock(in)  : true, if uses conditional lock
  *
  * Note: This function disconnects BCB from the bottom of the LRU list and returns it if its fcnt == 0. 
  *       If its fcnt != 0, makes bufptr->PrevBCB bottom and retry. 
  *       While this processing, the caller must be the holder of the LRU list.
  */
 STATIC_INLINE PGBUF_BCB *
-pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
+pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, bool use_conditional_lock)
 {
 #define PERF(pstatid) if (perf_tracking) perfmon_inc_stat (thread_p, pstatid)
 
@@ -8449,15 +8450,22 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       is_own_private_perf_tracking = true;
     }
 
-  rv = pthread_mutex_trylock (&lru_list->mutex);
-  if (rv != 0)
+  if (use_conditional_lock)
     {
-      if (is_own_private_perf_tracking)
+      rv = pthread_mutex_trylock (&lru_list->mutex);
+      if (rv != 0)
 	{
-	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS_CANDIDATE);
+	  if (is_own_private_perf_tracking)
+	    {
+	      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS_CANDIDATE);
+	    }
+	  /* Do not wait, to avoid contention. */
+	  return NULL;
 	}
-      /* Do not wait, to avoid contention. */
-      return NULL;
+    }
+  else
+    {
+      pthread_mutex_lock (&lru_list->mutex);
     }
 
   /* Mutex acquired. */
@@ -15542,7 +15550,7 @@ pgbuf_lfcq_get_victim_from_private_lru (THREAD_ENTRY * thread_p, bool restricted
     }
 
   /* get victim from list */
-  victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx);
+  victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx, !added_back);
   PERF (victim != NULL ? PSTAT_PB_VICTIM_OTHER_PRIVATE_LRU_SUCCESS : PSTAT_PB_VICTIM_OTHER_PRIVATE_LRU_FAIL);
 
   if (added_back)
@@ -15605,13 +15613,13 @@ pgbuf_lfcq_get_victim_from_shared_lru (THREAD_ENTRY * thread_p, bool multi_threa
   assert (PGBUF_IS_SHARED_LRU_INDEX (lru_idx));
 
   lru_list = PGBUF_GET_LRU_LIST (lru_idx);
-  victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx);
+  victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx, true);
   PERF (victim != NULL ? PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS : PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
 
   /* no victim found in first step, but flush thread ran and candidates can be found, try again */
   if (victim == NULL && multi_threaded == false && (ATOMIC_INC_32 (&lru_list->count_vict_cand, 0) > 0))
     {
-      victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx);
+      victim = pgbuf_get_victim_from_lru_list (thread_p, lru_idx, true);
       PERF (victim != NULL ? PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS : PSTAT_PB_VICTIM_SHARED_LRU_FAIL);
     }
 
