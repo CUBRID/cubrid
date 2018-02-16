@@ -243,7 +243,7 @@ boot_server_status (BOOT_SERVER_STATUS status)
 
 #if defined(SERVER_MODE)
 /*
- * bo_shutdown_server_atexit () - make sure that the server is shutdown at exit
+ * bo_shutdown_server_at_exit () - make sure that the server is shutdown at exit
  *
  * return : nothing
  *

@@ -2400,5 +2400,8 @@ extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HE
 
 extern VACUUM_LOG_BLOCKID logpb_last_complete_blockid (void);
 
+extern void logpb_daemons_init ();
+extern void logpb_daemons_destroy ();
+
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #endif /* _LOG_IMPL_H_ */
