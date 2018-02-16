@@ -687,6 +687,11 @@ struct pgbuf_seq_flusher
 typedef struct pgbuf_page_monitor PGBUF_PAGE_MONITOR;
 struct pgbuf_page_monitor
 {
+  volatile unsigned int count_victims_private_lru_success;	/* Number of victims found in private lru. */
+  volatile unsigned int count_victims_private_lru_fail;	/* Number of victims not found in private lru. */
+  volatile unsigned int count_victims_shared_lru_success;	/* Number of victims found in shared lru. */
+  volatile unsigned int count_victims_shared_lru_fail;	/* Number of victims not found in shared lru. */
+
   INT64 dirties_cnt;		/* Number of dirty buffers. */
 
   int *lru_hits;		/* Current hits in LRU1 per LRU */
@@ -3426,8 +3431,15 @@ repeat:
 	  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: error during flush");
 	  goto end;
 	}
+
       total_flushed_count += flushed_pages;
     }
+
+  /* Resets count success/fail victims for private/shared. */
+  pgbuf_Pool.monitor.count_victims_private_lru_success = 0;
+  pgbuf_Pool.monitor.count_victims_private_lru_fail = 0;
+  pgbuf_Pool.monitor.count_victims_shared_lru_success = 0;
+  pgbuf_Pool.monitor.count_victims_shared_lru_fail = 0;
 
   if (perf_tracker->is_perf_tracking)
     {
@@ -8182,6 +8194,9 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
   bool searched_own = false;
   UINT64 initial_consume_cursor, current_consume_cursor;
   PERF_UTIME_TRACKER perf_tracker = PERF_UTIME_TRACKER_INITIALIZER;
+  unsigned int count_victims_private_lru_success, count_victims_private_lru_fail,
+    count_victims_shared_lru_success, count_victims_shared_lru_fail;
+  bool skip_victim_search_in_private_lru;
 
   ATOMIC_INC_32 (&pgbuf_Pool.monitor.lru_victim_req_cnt, 1);
 
@@ -8207,9 +8222,19 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
    *       shared lists had no lru 3 zone and nothing could be victimized or flushed.
    */
 
+  skip_victim_search_in_private_lru = false;
+  count_victims_private_lru_success = pgbuf_Pool.monitor.count_victims_private_lru_success;
+  count_victims_private_lru_fail = pgbuf_Pool.monitor.count_victims_private_lru_fail;
+  if (count_victims_private_lru_success > 0 && count_victims_private_lru_fail > 2
+      && (count_victims_private_lru_success < count_victims_private_lru_fail * 2))
+    {
+      skip_victim_search_in_private_lru = true;
+      goto search_shared_lru;
+    }
+
   /* 1. search own private list */
   if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
-    {
+    {      
       /* first try my own private list */
       private_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
       lru_list = PGBUF_GET_LRU_LIST (private_lru_idx);
@@ -8230,6 +8255,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 		{
 		  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS);
 		}
+	      ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_success, 1);
 	      return victim;
 	    }
 	  /* failed */
@@ -8270,6 +8296,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 	    {
 	      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_OTHERS_PRIVATE_LISTS);
 	    }
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_success, 1);
 	  return victim;
 	}
       if (detailed_perf)
@@ -8277,6 +8304,9 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_OTHERS_PRIVATE_LISTS);
 	}
     }
+
+  /* Increments private fails before shared. */
+  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_fail, 1);
 
   /* loop:
    *
@@ -8287,6 +8317,14 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
    * we'd like to avoid looping infinitely (if there's a bug), so we use the nloops safe-guard. Each shared list should
    * be removed after a failed search, so the maximum accepted number of loops is pgbuf_Pool.num_LRU_list.
    */
+search_shared_lru:
+  count_victims_shared_lru_success = pgbuf_Pool.monitor.count_victims_shared_lru_success;
+  count_victims_shared_lru_fail = pgbuf_Pool.monitor.count_victims_shared_lru_fail;
+  if (count_victims_shared_lru_success > 0 && count_victims_shared_lru_fail > 2
+      && count_victims_shared_lru_success < (count_victims_shared_lru_fail * 2))
+    {
+      goto search_private_under_quota;
+    }
 
   if (detailed_perf)
     {
@@ -8299,6 +8337,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
       victim = pgbuf_lfcq_get_victim_from_shared_lru (thread_p, has_flush_thread);
       if (victim != NULL)
 	{
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_shared_lru_success, 1);
 	  if (detailed_perf)
 	    {
 	      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_SHARED_LISTS);
@@ -8311,6 +8350,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 	 && ((current_consume_cursor - initial_consume_cursor) <= pgbuf_Pool.num_LRU_list)
 	 && (++nloops <= pgbuf_Pool.num_LRU_list));
   /* todo: maybe we can find a less complicated condition of looping. Probably no need to use nloops <= pgbuf_Pool.num_LRU_list. */
+  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_shared_lru_fail, 1);
   if (detailed_perf)
     {
       PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_SHARED_LISTS);
@@ -8319,9 +8359,9 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
   /* no victim found... */
   assert (victim == NULL);
 
+search_private_under_quota:
   PERF (PSTAT_PB_VICTIM_ALL_LRU_FAIL);
-
-  if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p) && !searched_own)
+  if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p) && !searched_own && !skip_victim_search_in_private_lru)
     {
       /* try on own private even if it is under quota. */
       private_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
@@ -8330,6 +8370,9 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
       victim = pgbuf_get_victim_from_lru_list (thread_p, private_lru_idx, true);
       if (victim != NULL)
 	{
+	  /* Restore fails and increments success. */
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_fail, -1);
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_success, 1);
 	  PERF (PSTAT_PB_OWN_VICTIM_PRIVATE_LRU_SUCCESS);
 	  return victim;
 	}
@@ -9899,6 +9942,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
   DWB_SLOT *dwb_slot = NULL;
   LOG_LSA lsa;
   bool skip_flush;
+  PGBUF_LRU_LIST *lru_list;
 
   PGBUF_BCB_CHECK_OWN (bufptr);
 
@@ -10073,6 +10117,7 @@ copy_unflushed_lsa:
   else
 #endif /* SERVER_MODE */
     {
+      lru_list = pgbuf_lru_list_from_bcb (bufptr);
       PGBUF_BCB_LOCK (bufptr);
       *is_bcb_locked = true;
       pgbuf_bcb_mark_was_flushed (thread_p, bufptr);
@@ -10081,6 +10126,16 @@ copy_unflushed_lsa:
       if (bufptr->next_wait_thrd != NULL)
 	{
 	  pgbuf_wake_flush_waiters (thread_p, bufptr);
+	}
+      else if (PGBUF_IS_SHARED_LRU_INDEX (lru_list->index))
+	{
+	  /* Give a chance to worker threads to find victims in shared lists. */
+          ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_shared_lru_fails, -1);	  
+	}
+      else
+	{
+	  /* Give a chance to worker threads to find victims in private lists. */
+          ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_fails, -1);
 	}
 #endif
     }
@@ -13208,6 +13263,10 @@ pgbuf_initialize_page_monitor (void)
       monitor->lru_activity[i] = 0;
     }
 
+  monitor->count_victims_private_lru_success = 0;
+  monitor->count_victims_private_lru_fail = 0;
+  monitor->count_victims_shared_lru_success = 0;
+  monitor->count_victims_shared_lru_fail = 0;
   monitor->lru_victim_req_cnt = 0;
   monitor->fix_req_cnt = 0;
   monitor->pg_unfix_cnt = 0;
