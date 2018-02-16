@@ -414,8 +414,8 @@ static int logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, 
 STATIC_INLINE LOG_BUFFER *logpb_get_log_buffer (LOG_PAGE * log_pg) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int logpb_get_log_buffer_index (LOG_PAGEID log_pageid) __attribute__ ((ALWAYS_INLINE));
 static int logpb_fetch_header_from_active_archive (THREAD_ENTRY * thread_p, const char *db_fullname,
-                                                   const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
-                                                   LOG_PAGE * log_pgptr);
+						   const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
+						   LOG_PAGE * log_pgptr);
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -1513,7 +1513,7 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_P
  */
 static int
 logpb_fetch_header_from_active_archive (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-			                const char *prefix_logname, LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
+					const char *prefix_logname, LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
 {
   LOG_HEADER *log_hdr;		/* The log header */
   LOG_PHY_PAGEID phy_pageid;
@@ -1551,7 +1551,7 @@ logpb_fetch_header_from_active_archive (THREAD_ENTRY * thread_p, const char *db_
   if (fileio_read (thread_p, log_Gl.append.vdes, log_pgptr, phy_pageid, LOG_PAGESIZE) == NULL)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, LOGPB_HEADER_PAGE_ID, phy_pageid,
-              log_Name_active);
+	      log_Name_active);
       error_code = ER_LOG_READ;
       goto error;
     }
@@ -1561,16 +1561,15 @@ logpb_fetch_header_from_active_archive (THREAD_ENTRY * thread_p, const char *db_
 
   /* keep active log mounted : this prevents other process to access/change DB parameters */
 
-  if (log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID
-      || log_pgptr->hdr.offset == NULL_OFFSET)
+  if (log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID || log_pgptr->hdr.offset == NULL_OFFSET)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, phy_pageid);
       error_code = ER_LOG_PAGE_CORRUPTED;
-      goto error;      
+      goto error;
     }
 
 error:
-  return NO_ERROR;
+  return error_code;
 }
 
 /*
@@ -2125,7 +2124,7 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
 			      const char *prefix_logname, PGLENGTH * io_page_size, PGLENGTH * log_page_size,
 			      INT64 * creation_time, float *db_compatibility, int *db_charset)
 {
-  static LOG_HEADER hdr;		/* Log header */
+  static LOG_HEADER hdr;	/* Log header */
   static bool is_header_read_from_file = false;
   static bool is_log_header_validated = false;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
@@ -2175,14 +2174,14 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
       log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
       error_code = logpb_fetch_header_from_active_archive (thread_p, db_fullname, logpath, prefix_logname, &hdr,
-                                                           log_pgptr);
+							   log_pgptr);
       if (error_code != NO_ERROR)
-        {
-          goto error;
-        }
+	{
+	  goto error;
+	}
       is_header_read_from_file = true;
     }
-  
+
   *io_page_size = hdr.db_iopagesize;
   *log_page_size = hdr.db_logpagesize;
   *creation_time = hdr.db_creation;

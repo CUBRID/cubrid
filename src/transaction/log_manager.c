@@ -9189,32 +9189,32 @@ log_get_io_page_size (THREAD_ENTRY * thread_p, const char *db_fullname, const ch
 	{
 	  if (db_set_page_size (db_iopagesize, log_page_size) != NO_ERROR)
 	    {
-              LOG_CS_EXIT (thread_p);
+	      LOG_CS_EXIT (thread_p);
 	      return -1;
 	    }
-          else
-            {
+	  else
+	    {
 	      if (sysprm_reload_and_init (NULL, NULL) != NO_ERROR)
-	        {
-                  LOG_CS_EXIT (thread_p);
-	          return -1;
-	        }
+		{
+		  LOG_CS_EXIT (thread_p);
+		  return -1;
+		}
 
-              /* page size changed, reinit tran tables only if previously initialized */
-              if (log_Gl.trantable.area == NULL)
-                {
-                  LOG_CS_EXIT (thread_p);
-	          return db_iopagesize; 
-                }
+	      /* page size changed, reinit tran tables only if previously initialized */
+	      if (log_Gl.trantable.area == NULL)
+		{
+		  LOG_CS_EXIT (thread_p);
+		  return db_iopagesize;
+		}
 
 	      if (logtb_define_trantable_log_latch (thread_p, log_Gl.trantable.num_total_indices) != NO_ERROR)
-	        {
-                  LOG_CS_EXIT (thread_p);
-	          return -1;
-	        }
-            }
+		{
+		  LOG_CS_EXIT (thread_p);
+		  return -1;
+		}
+	    }
 
-        }
+	}
 
       LOG_CS_EXIT (thread_p);
 
