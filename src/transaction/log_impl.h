@@ -2150,7 +2150,7 @@ extern int logpb_initialize_log_names (THREAD_ENTRY * thread_p, const char *db_f
 extern bool logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 			     const char *prefix_logname);
 #if defined(SERVER_MODE)
-extern void logpb_do_checkpoint (void);
+extern void logpb_wakeup_checkpoint_daemon (void);
 #endif /* SERVER_MODE */
 extern LOG_PAGEID logpb_checkpoint (THREAD_ENTRY * thread_p);
 extern void logpb_dump_checkpoint_trans (FILE * out_fp, int length, void *data);

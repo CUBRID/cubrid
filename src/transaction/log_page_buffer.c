@@ -420,6 +420,8 @@ static cubthread::daemon *logpb_Checkpoint_daemon = NULL;
 static cubthread::daemon *logpb_Remove_log_archive_daemon = NULL;
 
 static bool logpb_Daemons_are_initialized = false;
+
+static void logpb_wakeup_remove_log_archive_daemon ();
 // *INDENT-ON*
 #endif /* SERVER_MODE */
 
@@ -6515,7 +6517,6 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
   return log_pgptr;
 }
 
-
 /*
  * logpb_archive_active_log - Archive the active portion of the log
  *
@@ -6547,7 +6548,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
 #if defined(SERVER_MODE)
-  logpb_Remove_log_archive_daemon->wakeup ();
+  logpb_wakeup_remove_log_archive_daemon ();
 #else
   logpb_remove_archive_logs_exceed_limit (thread_p, 0);
 #endif
@@ -7676,14 +7677,27 @@ logpb_daemons_destroy ()
 
 #if defined(SERVER_MODE)
 /*
- * logpb_do_checkpoint -
- *
- * return:
- *
- * NOTE:
+ * logpb_wakeup_remove_log_archive_daemon () - wake up remove log archive daemon
  */
 void
-logpb_do_checkpoint (void)
+logpb_wakeup_remove_log_archive_daemon ()
+{
+  if (prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL) == 0)
+    {
+      // If PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL is 0 (zero) it means that daemon is sleeping
+      // and on wakeup it will do his job,
+      // otherwise daemon will be awakened every PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL seconds
+      logpb_Remove_log_archive_daemon->wakeup ();
+    }
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * logpb_wakeup_checkpoint_daemon () - wake up checkpoint daemon
+ */
+void
+logpb_wakeup_checkpoint_daemon (void)
 {
   logpb_Checkpoint_daemon->wakeup ();
 }

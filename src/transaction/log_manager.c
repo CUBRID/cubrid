@@ -3795,7 +3795,7 @@ log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   if (LOG_ISCHECKPOINT_TIME ())
     {
 #if defined(SERVER_MODE)
-      logpb_do_checkpoint ();
+      logpb_wakeup_checkpoint_daemon ();
 #else /* SERVER_MODE */
       (void) logpb_checkpoint (thread_p);
 #endif /* SERVER_MODE */
@@ -6032,7 +6032,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
   if (LOG_ISCHECKPOINT_TIME ())
     {
 #if defined(SERVER_MODE)
-      logpb_do_checkpoint ();
+      logpb_wakeup_checkpoint_daemon ();
 #else /* SERVER_MODE */
       (void) logpb_checkpoint (thread_p);
 #endif /* SERVER_MODE */
@@ -6195,7 +6195,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	      if (LOG_ISCHECKPOINT_TIME ())
 		{
 #if defined(SERVER_MODE)
-		  logpb_do_checkpoint ();
+		  logpb_wakeup_checkpoint_daemon ();
 #else /* SERVER_MODE */
 		  (void) logpb_checkpoint (thread_p);
 #endif /* SERVER_MODE */
@@ -6345,7 +6345,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
   if (LOG_ISCHECKPOINT_TIME ())
     {
 #if defined(SERVER_MODE)
-      logpb_do_checkpoint ();
+      logpb_wakeup_checkpoint_daemon ();
 #else /* SERVER_MODE */
       (void) logpb_checkpoint (thread_p);
 #endif /* SERVER_MODE */
