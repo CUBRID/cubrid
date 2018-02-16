@@ -364,7 +364,9 @@ struct lk_global_data
   /* miscellaneous things */
   short no_victim_case_count;
   bool verbose_mode;
-    std::atomic_int deadlock_and_timeout_detector;
+  // *INDENT-OFF*
+  std::atomic_int deadlock_and_timeout_detector;
+  // *INDENT-ON*
 #if defined(LK_DUMP)
   bool dump_level;
 #endif				/* LK_DUMP */
