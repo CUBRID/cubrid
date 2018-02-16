@@ -1255,6 +1255,9 @@ net_server_start (const char *server_name)
       goto end;
     }
 
+  cubthread::initialize (thread_p);
+  assert (thread_p == thread_get_thread_entry_info ());
+
 #if defined(WINDOWS)
   if (css_windows_startup () < 0)
     {
@@ -1293,9 +1296,6 @@ net_server_start (const char *server_name)
       status = -1;
       goto end;
     }
-
-  cubthread::initialize (thread_p);
-  assert (thread_p == thread_get_thread_entry_info ());
 
   // we already initialize er_init with default values, we'll reload again after loading database parameters
   // this call looks unnecessary.
