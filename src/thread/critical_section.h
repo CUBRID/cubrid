@@ -50,9 +50,7 @@ enum
  */
 enum
 {
-  CSECT_ER_LOG_FILE = 0,	/* Latch for error msg log file */
-  CSECT_ER_MSG_CACHE,		/* Latch for error msg cache */
-  CSECT_WFG,			/* Latch for wait-for-graph */
+  CSECT_WFG = 0,		/* Latch for wait-for-graph */
   CSECT_LOG,			/* Latch for log manager */
   CSECT_LOCATOR_SR_CLASSNAME_TABLE,	/* Latch for classname to classOID entries */
   CSECT_QPROC_QUERY_TABLE,	/* Latch for query manager table */

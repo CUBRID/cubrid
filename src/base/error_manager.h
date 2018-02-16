@@ -184,12 +184,7 @@ extern "C"
   extern bool er_is_initialized (void);
   extern int er_init_access_log (void);
   extern void er_set_print_property (int print_console);
-
-#if defined (SERVER_MODE)
-  extern void er_final (ER_FINAL_CODE do_global_final, bool need_csect = true);
-#else				// not SERVER_MODE
   extern void er_final (ER_FINAL_CODE do_global_final);
-#endif				// not SERVER_MODE
   extern void er_clear (void);
   extern void er_set (int severity, const char *file_name, const int line_no, int err_id, int num_args, ...);
   extern void er_set_with_file (int severity, const char *file_name, const int line_no, int err_id, FILE * fp,

@@ -4284,22 +4284,6 @@ thread_rc_track_meter_assert_csect_dependency (THREAD_ENTRY * thread_p, THREAD_R
 	  THREAD_RC_TRACK_METER_ASSERT (thread_p, stderr, meter, meter->m_hold_buf[CSECT_CT_OID_TABLE] == 0);
 	  break;
 
-	  /* CSECT_ER_LOG_FILE -> X_CS -> [Y_CS] -> CSECT_ER_LOG_FILE is NOK */
-	  /* X_CS -> CSECT_ER_LOG_FILE -> [Y_CS] -> CSECT_ER_LOG_FILE is NOK */
-	case CSECT_ER_LOG_FILE:
-	  if (meter->m_hold_buf[CSECT_ER_LOG_FILE] > 1)
-	    {
-	      for (i = 0; i < meter->m_hold_buf_size && i < CRITICAL_SECTION_COUNT; i++)
-		{
-		  if (i == cs_idx)
-		    {
-		      continue;	/* skip myself */
-		    }
-		  THREAD_RC_TRACK_METER_ASSERT (thread_p, stderr, meter, meter->m_hold_buf[i] == 0);
-		}
-	    }
-	  break;
-
 	default:
 	  break;
 	}

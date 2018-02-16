@@ -31,9 +31,6 @@
 #include "error_manager.h"
 
 #include "chartype.h"
-#if defined (SERVER_MODE)
-#include "critical_section.h"
-#endif /* !SERVER_MODE */
 #include "error_context.hpp"
 #include "environment_variable.h"
 #include "memory_alloc.h"
@@ -94,6 +91,8 @@
 #include "thread.h"
 #endif // SERVER_MODE
 
+#include <mutex>
+
 /*
  * Definition of error message structure. One structure is defined for each
  * thread of execution. Note message areas are stored in the structure for
@@ -142,18 +141,10 @@ syslog (long priority, const char *message, ...)
 }
 #endif
 
-#if defined (SERVER_MODE)
-#define ER_CSECT_ENTER_LOG_FILE() (csect_enter (NULL, CSECT_ER_LOG_FILE, INF_WAIT))
-#define ER_CSECT_EXIT_LOG_FILE() (csect_exit (NULL, CSECT_ER_LOG_FILE))
-#else /* SA_MODE || CS_MODE */
-#define ER_CSECT_ENTER_LOG_FILE() NO_ERROR
-#define ER_CSECT_EXIT_LOG_FILE()
-#endif
-
-#if !defined (SERVER_MODE)
-#define csect_enter(a,b,c) NO_ERROR
-#define csect_exit(a,b)
-#endif /* !defined (SERVER_MODE) */
+// *INDENT-OFF*
+std::mutex er_Log_file_mutex;
+std::mutex er_Message_cache_mutex;
+// *INDENT-ON*
 
 /*
  * These are done via complied constants rather than the message catalog, because they must be available if the message
@@ -667,7 +658,6 @@ int
 er_init (const char *msglog_filename, int exit_ask)
 {
   int i;
-  int r;
   const char *msg;
   MSG_CATD msg_catd;
 
@@ -675,6 +665,11 @@ er_init (const char *msglog_filename, int exit_ask)
     {
       er_final (ER_ALL_FINAL);
     }
+
+  // *INDENT-OFF*
+  // protect log file mutex
+  std::unique_lock<std::mutex> log_file_lock (er_Log_file_mutex); // mutex is released on destructor
+  // *INDENT-ON*
 
   for (i = 0; i < (int) DIM (er_Builtin_msg); i++)
     {
@@ -716,12 +711,6 @@ er_init (const char *msglog_filename, int exit_ask)
   else
     {
       er_Fmt_msg_fail_count = abs (ER_LAST_ERROR) - 2;
-    }
-
-  r = ER_CSECT_ENTER_LOG_FILE ();
-  if (r != NO_ERROR)
-    {
-      return ER_FAILED;
     }
 
   er_Hasalready_initiated = true;
@@ -901,8 +890,6 @@ er_init (const char *msglog_filename, int exit_ask)
       status = ER_FAILED;
     }
 
-  ER_CSECT_EXIT_LOG_FILE ();
-
   return NO_ERROR;
 }
 
@@ -1024,12 +1011,7 @@ er_file_backup (FILE * fp, const char *path)
  *   need_csect(in): server_mode only; if true, get ENTER_LOG_FILE critical section
  */
 void
-er_final (ER_FINAL_CODE do_global_final
-#if defined (SERVER_MODE)
-	  , bool need_csect	// todo: do we really need critical section on log file?
-	  //       isn't a mutex more suited for this?
-#endif				// SERVER_MODE
-  )
+er_final (ER_FINAL_CODE do_global_final)
 {
   FILE *fh = NULL;
   int i = 0;
@@ -1042,13 +1024,12 @@ er_final (ER_FINAL_CODE do_global_final
 
   if (do_global_final == ER_ALL_FINAL)
     {
-#if defined (SERVER_MODE)
-      if (need_csect && ER_CSECT_ENTER_LOG_FILE () != NO_ERROR)
-	{
-	  assert (false);
-	  return;
-	}
-#else // not SERVER_MODE
+      // *INDENT-OFF*
+      // protect log file mutex
+      std::unique_lock<std::mutex> log_file_lock (er_Log_file_mutex); // mutex is released on destructor
+      // *INDENT-ON*
+
+#if !defined (SERVER_MODE)
       // destroy singleton context
       er_Singleton_context_p->deregister_thread_local ();
       delete er_Singleton_context_p;
@@ -1093,12 +1074,6 @@ er_final (ER_FINAL_CODE do_global_final
       er_call_stack_final ();
 
       er_Hasalready_initiated = false;
-#if defined (SERVER_MODE)
-      if (need_csect)
-	{
-	  ER_CSECT_EXIT_LOG_FILE ();
-	}
-#endif
     }
   else
     {
@@ -1237,11 +1212,10 @@ er_print_callstack (const char *file_name, const int line_no, const char *fmt, .
   va_list ap;
   int r = NO_ERROR;
 
-  r = ER_CSECT_ENTER_LOG_FILE ();
-  if (r != NO_ERROR)
-    {
-      return;
-    }
+  // *INDENT-OFF*
+  // protect log file mutex
+  std::unique_lock<std::mutex> log_file_lock (er_Log_file_mutex); // mutex is released on destructor
+  // *INDENT-ON*
 
   va_start (ap, fmt);
   _er_log_debug_internal (file_name, line_no, fmt, &ap);
@@ -1250,8 +1224,6 @@ er_print_callstack (const char *file_name, const int line_no, const char *fmt, .
   FILE *out = (er_Msglog_fh != NULL) ? er_Msglog_fh : stderr;
   er_dump_call_stack (out);
   fprintf (out, "\n");
-
-  ER_CSECT_EXIT_LOG_FILE ();
 }
 
 /*
@@ -1307,7 +1279,6 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
   const char *os_error;
   std::size_t new_size;
   ER_FMT *er_fmt = NULL;
-  int r;
   int ret_val = NO_ERROR;
   bool need_stack_pop = false;
 
@@ -1402,32 +1373,33 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
       && !(prm_get_bool_value (PRM_ID_ER_LOG_WARNING) == false && severity == ER_WARNING_SEVERITY)
       && er_Fnlog[severity] != NULL)
     {
-      r = ER_CSECT_ENTER_LOG_FILE ();
-      if (r == NO_ERROR)
+      // *INDENT-OFF*
+      // protect log file mutex
+      std::unique_lock<std::mutex> log_file_lock (er_Log_file_mutex); // mutex is released on destructor
+      // *INDENT-ON*
+      (*er_Fnlog[severity]) (err_id);
+
+      /* call stack dump */
+      er_call_stack_dump_on_error (severity, err_id);
+
+      /* event handler */
+      er_notify_event_on_error (err_id);
+
+      if (fp != NULL)
 	{
-	  (*er_Fnlog[severity]) (err_id);
-
-	  /* call stack dump */
-	  er_call_stack_dump_on_error (severity, err_id);
-
-	  /* event handler */
-	  er_notify_event_on_error (err_id);
-
-	  if (fp != NULL)
+	  /* print file contents */
+	  if (fseek (fp, 0L, SEEK_SET) == 0)
 	    {
-	      /* print file contents */
-	      if (fseek (fp, 0L, SEEK_SET) == 0)
+	      char buf[MAX_LINE];
+	      while (fgets (buf, MAX_LINE, fp) != NULL)
 		{
-		  char buf[MAX_LINE];
-		  while (fgets (buf, MAX_LINE, fp) != NULL)
-		    {
-		      fprintf (er_Msglog_fh, "%s", buf);
-		    }
-		  (void) fflush (er_Msglog_fh);
+		  fprintf (er_Msglog_fh, "%s", buf);
 		}
+	      (void) fflush (er_Msglog_fh);
 	    }
-	  ER_CSECT_EXIT_LOG_FILE ();
 	}
+
+      log_file_lock.release ();
 
       if (er_Print_to_console && severity <= ER_ERROR_SEVERITY && crt_error.msg_area)
 	{
@@ -1857,17 +1829,14 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 
   assert (er_Hasalready_initiated);
 
-  r = ER_CSECT_ENTER_LOG_FILE ();
-  if (r != NO_ERROR)
-    {
-      return;
-    }
+  // *INDENT-OFF*
+  // protect log file mutex
+  std::unique_lock<std::mutex> log_file_lock (er_Log_file_mutex); // mutex is released on destructor
+  // *INDENT-ON*
 
   va_start (ap, fmt);
   _er_log_debug_internal (file_name, line_no, fmt, &ap);
   va_end (ap);
-
-  ER_CSECT_EXIT_LOG_FILE ();
 }
 
 /*
@@ -1988,7 +1957,7 @@ int
 er_set_area_error (char *server_area)
 {
   char *ptr;
-  int err_id, severity, r;
+  int err_id, severity;
   std::size_t length = 0;
 
   if (server_area == NULL)
@@ -2030,12 +1999,13 @@ er_set_area_error (char *server_area)
       && !(prm_get_bool_value (PRM_ID_ER_LOG_WARNING) == false && severity == ER_WARNING_SEVERITY)
       && er_Fnlog[severity] != NULL)
     {
-      r = ER_CSECT_ENTER_LOG_FILE ();
-      if (r == NO_ERROR)
-	{
-	  (*er_Fnlog[severity]) (err_id);
-	  ER_CSECT_EXIT_LOG_FILE ();
-	}
+      // *INDENT-OFF*
+      // protect log file mutex
+      std::unique_lock<std::mutex> log_file_lock (er_Log_file_mutex); // mutex is released on destructor
+      // *INDENT-ON*
+
+      (*er_Fnlog[severity]) (err_id);
+      log_file_lock.release ();
 
       if (er_Print_to_console && severity <= ER_ERROR_SEVERITY && crt_error.msg_area)
 	{
@@ -2569,8 +2539,12 @@ er_find_fmt (int err_id, int num_args)
 {
   const char *msg;
   ER_FMT *fmt;
-  int r;
-  bool entered_critical_section = false;
+
+  // *INDENT-OFF*
+  // protect log file mutex
+  std::unique_lock<std::mutex> log_msg_cache (er_Message_cache_mutex, std::defer_lock); // mutex is released on
+                                                                                        // destructor
+  // *INDENT-ON*
 
   if (err_id < ER_FAILED && err_id > ER_LAST_ERROR)
     {
@@ -2584,12 +2558,7 @@ er_find_fmt (int err_id, int num_args)
 
   if (er_Fmt_msg_fail_count > 0)
     {
-      r = csect_enter (NULL, CSECT_ER_MSG_CACHE, INF_WAIT);
-      if (r != NO_ERROR)
-	{
-	  return NULL;
-	}
-      entered_critical_section = true;
+      log_msg_cache.lock ();
     }
 
   if (fmt->fmt == NULL)
@@ -2623,11 +2592,6 @@ er_find_fmt (int err_id, int num_args)
 	    }
 	}
       er_Fmt_msg_fail_count--;
-    }
-
-  if (entered_critical_section == true)
-    {
-      csect_exit (NULL, CSECT_ER_MSG_CACHE);
     }
 
   return fmt;
@@ -2771,7 +2735,7 @@ er_emergency (const char *file, int line, const char *fmt, ...)
 
   /* it is assumed that default message buffer is big enough to hold this */
   sprintf (crt_error.msg_area, er_Cached_msg[ER_ER_HEADER], line);
-  limit = crt_error.msg_area_size - (int) strlen (crt_error.msg_area) - 1;
+  limit = (int) (crt_error.msg_area_size - strlen (crt_error.msg_area) - 1);
 
   va_start (args, fmt);
 
