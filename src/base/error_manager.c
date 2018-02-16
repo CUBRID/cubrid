@@ -890,7 +890,7 @@ er_init (const char *msglog_filename, int exit_ask)
       status = ER_FAILED;
     }
 
-  return NO_ERROR;
+  return status;
 }
 
 /*
@@ -1399,7 +1399,7 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
 	    }
 	}
 
-      log_file_lock.release ();
+      log_file_lock.unlock ();
 
       if (er_Print_to_console && severity <= ER_ERROR_SEVERITY && crt_error.msg_area)
 	{
@@ -2005,7 +2005,7 @@ er_set_area_error (char *server_area)
       // *INDENT-ON*
 
       (*er_Fnlog[severity]) (err_id);
-      log_file_lock.release ();
+      log_file_lock.unlock ();
 
       if (er_Print_to_console && severity <= ER_ERROR_SEVERITY && crt_error.msg_area)
 	{
