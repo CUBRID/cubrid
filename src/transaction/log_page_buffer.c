@@ -1561,7 +1561,7 @@ logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_full
 
   /* keep active log mounted : this prevents other process to access/change DB parameters */
 
-  if (log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID || log_pgptr->hdr.offset == NULL_OFFSET)
+  if (log_pgptr->hdr.logical_pageid != LOGPB_HEADER_PAGE_ID || log_pgptr->hdr.offset != NULL_OFFSET)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, phy_pageid);
       error_code = ER_LOG_PAGE_CORRUPTED;
