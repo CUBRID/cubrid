@@ -49,8 +49,6 @@ extern "C"
 {
 #endif
 
-#define ER_JSON_PATH_DOES_NOT_EXIST                 -1202
-#define ER_LAST_ERROR                               -1202
 #define DB_TRUE 1
 #define DB_FALSE 0
 
