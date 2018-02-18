@@ -1378,8 +1378,8 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 
       if (DB_VALUE_TYPE (&default_expr) == DB_TYPE_SEQUENCE)
 	{
-	  assert (set_size (DB_PULL_SEQUENCE (&default_expr)) == 3);
-	  def_expr_seq = DB_PULL_SEQUENCE (&default_expr);
+	  assert (set_size (DB_GET_SEQUENCE (&default_expr)) == 3);
+	  def_expr_seq = DB_GET_SEQUENCE (&default_expr);
 
 	  error = set_get_element_nocopy (def_expr_seq, 0, &db_value_default_expr_op);
 	  if (error != NO_ERROR)

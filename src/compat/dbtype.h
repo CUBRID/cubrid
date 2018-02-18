@@ -305,8 +305,6 @@
 #define DB_SET_ENUM_ELEM_STRING_SIZE(elem, sz) \
       ((elem)->str_val.medium.size = (sz))
 
-#define DB_PULL_SEQUENCE(v) db_get_set(v)
-
 #define DB_GET_STRING_SAFE(v) \
       ((DB_IS_NULL (v) \
 	|| DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_ERROR) ? "" \

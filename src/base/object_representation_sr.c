@@ -1553,7 +1553,7 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	  return;
 	}
 
-      fk_seq = DB_PULL_SEQUENCE (&fkval);
+      fk_seq = DB_GET_SEQUENCE (&fkval);
 
       fk = (OR_FOREIGN_KEY *) malloc (sizeof (OR_FOREIGN_KEY));
       if (fk == NULL)
@@ -1903,7 +1903,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
     {
       if (set_get_element_nocopy (constraint_seq, seq_size - 2, &att_val) == NO_ERROR)
 	{
-	  or_install_btids_foreign_key (cons_name, DB_PULL_SEQUENCE (&att_val), index);
+	  or_install_btids_foreign_key (cons_name, DB_GET_SEQUENCE (&att_val), index);
 	}
     }
   else if (type == BTREE_PRIMARY_KEY)
@@ -2272,7 +2272,7 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
 		{
 		  if (DB_VALUE_TYPE (&ids_val) == DB_TYPE_SEQUENCE)
 		    {
-		      ids_seq = DB_PULL_SEQUENCE (&ids_val);
+		      ids_seq = DB_GET_SEQUENCE (&ids_val);
 		      or_install_btids_constraint (rep, ids_seq, property_vars[i].type, cons_name);
 		    }
 		}
@@ -2514,9 +2514,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		   */
 
 		  /* Currently, we allow only (T_TO_CHAR(int), default_expr(int), default_expr_format(string)) */
-		  assert (set_size (DB_PULL_SEQUENCE (&def_expr)) == 3);
+		  assert (set_size (DB_GET_SEQUENCE (&def_expr)) == 3);
 
-		  def_expr_set = DB_PULL_SEQUENCE (&def_expr);
+		  def_expr_set = DB_GET_SEQUENCE (&def_expr);
 
 		  /* get and cache default expression operator - op of expr */
 		  if (set_get_element_nocopy (def_expr_set, 0, &def_expr_op) != NO_ERROR)
@@ -3454,7 +3454,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
       /* this sequence is an alternating pair of constraint name & info sequence, as by: { name, { BTID, [att_name,
        * asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, comment}, name, { BTID, [att_name, asc_dsc],
        * {fk_info | pk_info | prefix_length}, filter_predicate, comment}, ... } */
-      props = DB_PULL_SEQUENCE (&value);
+      props = DB_GET_SEQUENCE (&value);
       len = set_size (props);
       for (j = 0; j < len; j += 2)
 	{
@@ -3480,7 +3480,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	      goto error_exit;
 	    }
 
-	  info = DB_PULL_SEQUENCE (&uvalue);
+	  info = DB_GET_SEQUENCE (&uvalue);
 	  info_len = set_size (info);
 
 	  if (set_get_element_nocopy (info, info_len - 1, &cvalue) || DB_IS_NULL (&cvalue))

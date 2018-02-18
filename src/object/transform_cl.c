@@ -3044,9 +3044,9 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 		  DB_VALUE def_expr_op, def_expr_type, def_expr_format;
 		  char *def_expr_format_str;
 
-		  assert (set_size (DB_PULL_SEQUENCE (&value)) == 3);
+		  assert (set_size (DB_GET_SEQUENCE (&value)) == 3);
 
-		  def_expr_seq = DB_PULL_SEQUENCE (&value);
+		  def_expr_seq = DB_GET_SEQUENCE (&value);
 
 		  /* get default expression operator (op of expr) */
 		  if (set_get_element_nocopy (def_expr_seq, 0, &def_expr_op) != NO_ERROR)
