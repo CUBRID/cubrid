@@ -2140,13 +2140,13 @@ db_get_compressed_size (DB_VALUE * value)
 }
 
 /*
-*  db_set_compressed_string() - Sets the compressed string, its size and its need for clear in the DB_VALUE
-*
-*  value(in/out)             : The DB_VALUE
-*  compressed_string(in)     :
-*  compressed_size(in)       :
-*  compressed_need_clear(in) :
-*/
+ *  db_set_compressed_string() - Sets the compressed string, its size and its need for clear in the DB_VALUE
+ *
+ *  value(in/out)             : The DB_VALUE
+ *  compressed_string(in)     :
+ *  compressed_size(in)       :
+ *  compressed_need_clear(in) :
+ */
 void
 db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compressed_size, bool compressed_need_clear)
 {
@@ -2169,10 +2169,10 @@ db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compres
 }
 
 /*
-* db_value_is_null() -
-* return :
-* value(in) :
-*/
+ * db_value_is_null() -
+ * return :
+ * value(in) :
+ */
 bool
 db_value_is_null (const DB_VALUE * value)
 {
@@ -2189,10 +2189,10 @@ db_value_is_null (const DB_VALUE * value)
 }
 
 /*
-* db_value_domain_type() - get the type of value's domain.
-* return     : DB_TYPE of value's domain
-* value(in)  : Pointer to a DB_VALUE
-*/
+ * db_value_domain_type() - get the type of value's domain.
+ * return     : DB_TYPE of value's domain
+ * value(in)  : Pointer to a DB_VALUE
+ */
 DB_TYPE
 db_value_domain_type (const DB_VALUE * value)
 {
