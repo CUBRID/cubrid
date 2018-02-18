@@ -1573,8 +1573,25 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
 
   while (end != std::string::npos)
     {
+      if (path[end] == '"')
+	{
+	  std::size_t index_of_closing_quote = path.find_first_of ("\"", end+1);
+	  if (index_of_closing_quote == std::string::npos)
+	    {
+	      assert (false);
+	      tokens.clear ();
+	      return tokens;
+	      /* this should have been catched earlier */
+	    }
+	  else
+	    {
+	      tokens.push_back (path.substr (end + 1, index_of_closing_quote - end - 1));
+	      end = index_of_closing_quote;
+	      start = end + 1;
+	    }
+	}
       // do not tokenize on escaped quotes
-      if (path[end] != '"' || path[end - 1] != '\\')
+      else if (path[end] != '"' || ((end >= 1) && path[end - 1] != '\\'))
 	{
 	  const std::string &substring = path.substr (start, end - start);
 	  if (!substring.empty ())
