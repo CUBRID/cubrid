@@ -7611,7 +7611,7 @@ class remove_log_archive_daemon_task : public cubthread::entry_task
     explicit remove_log_archive_daemon_task (int archive_logs_to_delete)
     {
       this->m_archive_logs_to_delete = archive_logs_to_delete;
-    };
+    }
 
     void execute (cubthread::entry & thread_ref) override
     {
