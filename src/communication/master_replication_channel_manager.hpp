@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <algorithm>
+#include <memory>
 
 #include "master_replication_channel.hpp"
 
@@ -24,16 +25,16 @@ class master_replication_channel_entry
 private:
   friend class master_replication_channel_manager;
 
-  master_replication_channel *m_channel;
+  std::shared_ptr<master_replication_channel> m_channel;
   cubthread::daemon *m_master_daemon_threads[NUM_OF_MASTER_DAEMON_THREADS];
 
 public:
-  master_replication_channel_entry *add_daemon(MASTER_DAEMON_THREADS daemon_index, const cubthread::looper &loop_rule, cubthread::entry_task *task);
+  master_replication_channel_entry &add_daemon(MASTER_DAEMON_THREADS daemon_index, const cubthread::looper &loop_rule, cubthread::entry_task *task);
   master_replication_channel_entry (int sock_fd);
   master_replication_channel_entry ();
   ~master_replication_channel_entry ();
 
-  master_replication_channel *get_replication_channel();
+  std::shared_ptr<master_replication_channel> &get_replication_channel();
 
   master_replication_channel_entry (master_replication_channel_entry &&entry);
   master_replication_channel_entry &operator= (master_replication_channel_entry &&entry);

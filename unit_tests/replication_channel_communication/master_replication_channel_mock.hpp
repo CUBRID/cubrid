@@ -3,6 +3,7 @@
 
 #define SERVER_MODE
 #include "master_replication_channel_manager.hpp"
+#include <memory>
 
 #define NUM_OF_MSG_SENT 5
 
@@ -15,11 +16,11 @@ namespace master
 	class receive_from_slave_daemon_mock : public cubthread::entry_task
 	{
 		public:
-		  receive_from_slave_daemon_mock (master_replication_channel *ch);
+		  receive_from_slave_daemon_mock (std::shared_ptr<master_replication_channel> ch);
 			void execute (cubthread::entry &context);
 
 		private:
-		  master_replication_channel *channel;
+		  std::shared_ptr<master_replication_channel> channel;
 			int num_of_received_messages;
 	};
 

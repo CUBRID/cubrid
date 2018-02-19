@@ -31,7 +31,7 @@ namespace master
 		master_replication_channel_manager::reset();
 	}
 
- 	receive_from_slave_daemon_mock::receive_from_slave_daemon_mock (master_replication_channel *ch) : channel (ch)
+	receive_from_slave_daemon_mock::receive_from_slave_daemon_mock (std::shared_ptr<master_replication_channel> ch) : channel (ch)
     {
 			num_of_received_messages = 0;
     }

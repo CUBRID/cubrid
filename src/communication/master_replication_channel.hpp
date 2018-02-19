@@ -27,7 +27,7 @@ class master_replication_channel : public communication_channel
 class receive_from_slave_daemon : public cubthread::entry_task
 {
   public:
-    receive_from_slave_daemon (master_replication_channel *ch) : channel (ch)
+    receive_from_slave_daemon (std::shared_ptr<master_replication_channel> ch) : channel (ch)
     {
     }
 
@@ -79,7 +79,7 @@ class receive_from_slave_daemon : public cubthread::entry_task
 
     }
   private:
-    master_replication_channel *channel;
+    std::shared_ptr<master_replication_channel> channel;
 };
 
 #endif /* _MASTER_REPLICATION_CHANNEL_HPP */

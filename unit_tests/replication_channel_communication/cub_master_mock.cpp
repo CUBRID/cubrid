@@ -79,7 +79,7 @@ class cub_master_daemon_task : public cubthread::entry_task
 						css_free_conn (conn);
 
 						master_replication_channel_entry new_channel (new_sockfd);
-						new_channel.add_daemon (RECEIVE_FROM_SLAVE, std::chrono::seconds (0), new master::receive_from_slave_daemon_mock (new_channel.get_replication_channel()));
+						new_channel.add_daemon (RECEIVE_FROM_SLAVE, std::chrono::milliseconds (10), new master::receive_from_slave_daemon_mock (new_channel.get_replication_channel()));
 						master_replication_channel_manager::add_master_replication_channel (std::move (new_channel));
 					}
       }
