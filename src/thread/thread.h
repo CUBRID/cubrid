@@ -36,7 +36,7 @@
 
 #if defined(SERVER_MODE)
 #include "adjustable_array.h"
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "error_manager.h"
 #include "log_compress.h"
 #include "porting.h"

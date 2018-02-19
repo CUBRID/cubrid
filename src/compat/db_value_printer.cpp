@@ -25,7 +25,6 @@
 
 #include "db_date.h"
 #include "dbtype.h"
-#include "dbval.h"
 #include "intl_support.h"
 #include "language_support.h"
 #include "numeric_opfunc.h"
@@ -172,7 +171,7 @@ void db_value_printer::describe_value (const db_value *value)
 	      /* print enumerations as strings */
 	      if (tp_enumeration_to_varchar (value, &varchar_val) == NO_ERROR)
 		{
-		  codeset = DB_GET_ENUM_CODESET (value);
+		  codeset = (INTL_CODESET) DB_GET_ENUM_CODESET (value);
 		  if (codeset != LANG_SYS_CODESET)
 		    {
 		      m_buf ("%s", lang_charset_introducer (codeset));
@@ -404,7 +403,7 @@ void db_value_printer::describe_data (const db_value *value)
       set = db_get_set (value);
       if (set != NULL)
 	{
-	  describe_set (set);
+	  describe_set ((const db_collection *) set);
 	}
       else
 	{

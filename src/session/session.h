@@ -27,7 +27,7 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "query_list.h"
 #include "query_manager.h"
 #include "thread_compat.hpp"

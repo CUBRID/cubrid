@@ -55,6 +55,17 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_value_printer.cpp
   ${COMPAT_DIR}/db_vdb.c
   ${COMPAT_DIR}/db_virt.c
+  ${COMPAT_DIR}/dbtype_function.c 
+  )
+
+set(COMPAT_SOURCES_C
+  ${COMPAT_DIR}/dbtype_function.c
+  )
+  
+set (COMPAT_HEADERS  
+  ${COMPAT_DIR}/dbtype_def.h
+  ${COMPAT_DIR}/dbtype_function.h
+  ${COMPAT_DIR}/dbtype_function.i
   )
 
 set(BASE_SOURCES
@@ -301,13 +312,15 @@ SET_SOURCE_FILES_PROPERTIES(
   ${CSQL_LEXER_OUTPUT}
   ${LOADER_LEXER_OUTPUT}
   ${ESQL_GRAMMAR_OUTPUT}
-  ${ESQL_LEXER_OUTPUT}
+  ${ESQL_LEXER_OUTPUT} 
+  ${COMPAT_SOURCES_C}
   PROPERTIES LANGUAGE C
   )
 
 add_library(cubridcs SHARED
   ${EXECUTABLE_SOURCES}
   ${COMPAT_SOURCES}
+  ${COMPAT_SOURCES_C}
   ${BASE_SOURCES}
   ${HEAPLAYER_SOURCES}
   ${CONNECTION_SOURCES}

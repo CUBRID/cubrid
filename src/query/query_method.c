@@ -33,9 +33,7 @@
 #include "object_representation.h"
 #include "network.h"
 #include "network_interface_cl.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 static int method_initialize_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer, unsigned int rc, char *host,
 					    char *server_name);

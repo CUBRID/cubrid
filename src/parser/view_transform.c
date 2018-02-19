@@ -37,6 +37,7 @@
 #include "object_accessor.h"
 #include "locator_cl.h"
 #include "virtual_object.h"
+#include "dbtype.h"
 
 #define MAX_STACK_OBJECTS 500
 

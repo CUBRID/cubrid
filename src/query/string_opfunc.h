@@ -30,7 +30,7 @@
 /* todo(rem) this doesn't belong to query module */
 
 #include "config.h"
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "intl_support.h"
 #include "language_support.h"
 #include "numeric_opfunc.h"

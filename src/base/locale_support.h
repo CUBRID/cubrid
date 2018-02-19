@@ -30,7 +30,7 @@
 
 #include <stddef.h>
 #include "porting.h"
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "locale_lib_common.h"
 
 /* Maximum Unicode characters

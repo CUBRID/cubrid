@@ -31,7 +31,6 @@
 
 #include <stdio.h>
 #include "error_manager.h"
-#include "dbtype.h"
 #include "dbdef.h"
 #include "intl_support.h"
 #include "db_date.h"
@@ -44,6 +43,7 @@
 #include "parser.h"
 #endif
 #include "log_comm.h"
+#include "dbtype_def.h"
 
 /* GLOBAL STATE */
 #define DB_CONNECTION_STATUS_NOT_CONNECTED      0
@@ -164,7 +164,6 @@ extern char db_Program_name[];
 #endif /* !SA_MODE */
 #endif /* CHECK_MODIFICATION_NO_RETURN */
 
-/* Argument checking macros */
 #define CHECK_1ARG_RETURN_EXPR(obj, expr)                                      \
   do {                                                                         \
     if((obj) == NULL) {                                                        \
@@ -261,17 +260,11 @@ extern int db_error_code_test (void);
 
 extern const char *db_error_string_test (int level);
 
-#if !defined(_DBTYPE_H_)
-extern int db_value_put_encoded_time (DB_VALUE * value, const DB_TIME * time);
-extern int db_value_put_encoded_date (DB_VALUE * value, const DB_DATE * date);
-#endif
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void *db_value_eh_key (DB_VALUE * value);
 extern int db_value_put_db_data (DB_VALUE * value, const DB_DATA * data);
 #endif
 extern DB_DATA *db_value_get_db_data (DB_VALUE * value);
-extern int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, const char *str,
-			    const int size);
 
 extern DB_OBJECT *db_create_internal (DB_OBJECT * obj);
 extern DB_OBJECT *db_create_by_name_internal (const char *name);

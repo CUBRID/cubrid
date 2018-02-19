@@ -72,6 +72,7 @@
 #include <locale>
 #include "memory_alloc.h"
 #include "system_parameter.h"
+#include "dbtype.h"
 
 #if defined GetObject
 /* stupid windows and their definitions; GetObject is defined as GetObjectW or GetObjectA */

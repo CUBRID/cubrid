@@ -31,6 +31,7 @@
 #include "object_primitive.h"
 #include "db.h"
 #include "db_elo.h"
+#include "dbtype.h"
 
 /*
  * db_elo.c - DB_API for ELO layer

@@ -71,6 +71,8 @@
 #include "mem_block.hpp"
 #include "string_buffer.hpp"
 
+#include "dbtype.h"
+
 #if !defined(SERVER_MODE)
 
 #define pthread_mutex_init(a, b)
