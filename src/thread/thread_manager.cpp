@@ -36,7 +36,9 @@
 
 // project includes
 #include "error_manager.h"
+#include "log_impl.h"
 #include "resource_shared_pool.hpp"
+#include "system_parameter.h"
 
 #include <cassert>
 
@@ -49,23 +51,17 @@ namespace cubthread
   __thread entry *tl_Entry_p = NULL;
 #endif // GCC 4.4
 
-  manager::manager (std::size_t max_threads)
-    : m_max_threads (max_threads)
+  manager::manager (void)
+    : m_max_threads (0)
     , m_entries_mutex ()
     , m_worker_pools ()
     , m_daemons ()
     , m_all_entries (NULL)
     , m_entry_dispatcher (NULL)
-    , m_available_entries_count (max_threads)
+    , m_available_entries_count (0)
     , m_entry_manager (NULL)
     , m_daemon_entry_manager (NULL)
   {
-    if (m_max_threads > 0)
-      {
-	m_all_entries = new entry[m_max_threads];
-	m_entry_dispatcher = new entry_dispatcher (m_all_entries, m_max_threads);
-      }
-
     m_entry_manager = new entry_manager ();
     m_daemon_entry_manager = new daemon_entry_manager();
   }
@@ -82,6 +78,40 @@ namespace cubthread
     delete [] m_all_entries;
     delete m_entry_manager;
     delete m_daemon_entry_manager;
+  }
+
+  void
+  manager::init_entries (std::size_t starting_index)
+  {
+#if defined (SA_MODE)
+    assert (false);
+    return;
+#else // not SA_MODE = SERVER_MODE
+
+    // todo: is there a better way to decide on the maximum number of thread entries?
+    std::size_t max_active_workers = NUM_NON_SYSTEM_TRANS;  // one per each connection
+    std::size_t max_conn_workers = NUM_NON_SYSTEM_TRANS;    // one per each connection
+    std::size_t max_vacuum_workers = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT);
+    std::size_t max_daemons = 128;  // magic number to cover predictable requirements; not cool
+
+    // note: thread entry initialization is slow, that is why we keep a static pool initialized from the beginning to
+    //       quickly claim entries. in my opinion, it would be better to have thread contexts that can be quickly
+    //       generated at "runtime" (after thread starts its task). however, with current thread entry design, that is
+    //       rather unlikely.
+
+    m_max_threads = max_active_workers + max_conn_workers + max_vacuum_workers + max_daemons;
+    m_available_entries_count = m_max_threads;
+
+    m_all_entries = new entry[m_max_threads];
+    m_entry_dispatcher = new entry_dispatcher (m_all_entries, m_max_threads);
+
+    // initialize thread indexes and lock-free resources
+    for (std::size_t it = 0; it < m_max_threads; it++)
+      {
+	m_all_entries[it].index = (int) (it + starting_index);
+	m_all_entries[it].request_lock_free_transactions ();
+      }
+#endif // not SA_MODE = SERVER_MODE
   }
 
   template<typename Res>
@@ -386,9 +416,6 @@ namespace cubthread
   static manager *Manager = NULL;
   static entry *Main_entry_p = NULL;
 
-  // TODO: a configurable value
-  static const size_t MAX_THREADS = Is_single_thread ? 0 : 128;
-
   void
   initialize (entry *&my_entry)
   {
@@ -396,7 +423,7 @@ namespace cubthread
 
     if (Manager == NULL)
       {
-	Manager = new manager (MAX_THREADS);
+	Manager = new manager ();
       }
 
 #if defined (SERVER_MODE)
@@ -452,16 +479,10 @@ namespace cubthread
 
     Main_entry_p->request_lock_free_transactions ();
 
-    // set indices
-    entry *entries = Manager->get_all_entries ();
-    for (std::size_t idx = 0; idx < Manager->get_max_thread_count (); idx++)
-      {
-	entries[idx].index = (int) (idx + old_manager_thread_count + 1);
-	entries[idx].request_lock_free_transactions ();
-      }
-
+    Manager->init_entries (old_manager_thread_count);
 #endif // SERVER_MODE
-    return error_code;
+
+    return NO_ERROR;
   }
 
   entry *
@@ -483,8 +504,8 @@ namespace cubthread
   std::size_t
   get_max_thread_count (void)
   {
-    // MAX_THREADS + system thread
-    return MAX_THREADS + 1;
+    // system thread + managed threads
+    return 1 + (Manager != NULL ? Manager->get_max_thread_count() : 0);
   }
 
   bool
