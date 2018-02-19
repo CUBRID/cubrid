@@ -132,7 +132,7 @@ struct session_state
   SESSION_VARIABLE *session_variables;
   PREPARED_STATEMENT *statements;
   SESSION_QUERY_ENTRY *queries;
-  time_t session_timeout;
+  time_t active_time;
   SESSION_PARAM *session_parameters;
   char *trace_stats;
   char *plan_string;
@@ -177,7 +177,7 @@ static ACTIVE_SESSIONS sessions = { LF_HASH_TABLE_INITIALIZER, LF_FREELIST_INITI
 
 static int session_remove_expired_sessions ();
 
-static int session_check_timeout (SESSION_STATE * session_p, SESSION_INFO * timeout_info, bool * remove);
+static int session_check_timeout (SESSION_STATE * session_p, SESSION_INFO * active_sessions, bool * remove);
 
 static void session_free_prepared_statement (PREPARED_STATEMENT * stmt_p);
 
@@ -699,8 +699,8 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
    */
   ATOMIC_CAS_32 (&sessions.last_session_id, next_session_id, *id);
 
-  /* initialize the timeout */
-  session_p->session_timeout = time (NULL);
+  /* initialize session active time */
+  session_p->active_time = time (NULL);
 
 #if defined (SERVER_MODE)
 #if !defined (NDEBUG)
@@ -883,8 +883,8 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
       return ER_SES_SESSION_EXPIRED;
     }
 
-  /* update the timeout */
-  session_p->session_timeout = time (NULL);
+  /* update session active time */
+  session_p->active_time = time (NULL);
 
 #if defined (SERVER_MODE)
 #if !defined (NDEBUG)
@@ -907,7 +907,7 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
  * session_remove_expired_sessions () - remove expired sessions
  *   return      : NO_ERROR or error code
  */
-int
+static int
 session_remove_expired_sessions ()
 {
 #define EXPIRED_SESSION_BUFFER_SIZE 1024
@@ -916,14 +916,14 @@ session_remove_expired_sessions ()
   SESSION_STATE *state = NULL;
   int err = NO_ERROR, success = 0;
   bool is_expired = false;
-  SESSION_INFO timeout_info;
+  SESSION_INFO active_sessions;
   SESSION_ID expired_sid_buffer[EXPIRED_SESSION_BUFFER_SIZE];
   int n_expired_sids = 0;
   int sid_index;
   bool finished = false;
 
-  timeout_info.count = -1;
-  timeout_info.session_ids = NULL;
+  active_sessions.count = -1;
+  active_sessions.session_ids = NULL;
 
   /* Loop until all expired sessions are removed.
    * NOTE: We cannot call lf_hash_delete while iterating... lf_hash_delete may have to retry, which also resets the
@@ -942,7 +942,7 @@ session_remove_expired_sessions ()
 	    }
 
 	  /* iterate next. the mutex lock of the current state will be released */
-	  if (session_check_timeout (state, &timeout_info, &is_expired) != NO_ERROR)
+	  if (session_check_timeout (state, &active_sessions, &is_expired) != NO_ERROR)
 	    {
 	      pthread_mutex_unlock (&state->mutex);
 	      err = ER_FAILED;
@@ -988,10 +988,10 @@ session_remove_expired_sessions ()
     }
 
 exit_on_end:
-  if (timeout_info.session_ids != NULL)
+  if (active_sessions.session_ids != NULL)
     {
-      assert (timeout_info.count > 0);
-      free_and_init (timeout_info.session_ids);
+      assert (active_sessions.count > 0);
+      free_and_init (active_sessions.session_ids);
     }
 
   return err;
@@ -1000,42 +1000,41 @@ exit_on_end:
 }
 
 /*
- * session_check_timeout  () - verify if a session timeout and remove it if
- *			       the timeout expired
- *   return  : NO_ERROR or error code
- *   key(in) : session id
- *   data(in): session state data
- *   args(in): timeout
+ * session_check_timeout  () - verify if a session timeout expired
+ *   return              : NO_ERROR or error code
+ *   session_p(in)       : session id
+ *   active_sessions(in) : array of the active sessions info
+ *   remove(out)         : true if session timeout expired and it doesn't have an active connection, false otherwise
  */
 static int
-session_check_timeout (SESSION_STATE * session_p, SESSION_INFO * timeout_info, bool * remove)
+session_check_timeout (SESSION_STATE * session_p, SESSION_INFO * active_sessions, bool * remove)
 {
   int err = NO_ERROR;
   time_t curr_time = time (NULL);
 
   (*remove) = false;
 
-  if ((curr_time - session_p->session_timeout) >= prm_get_integer_value (PRM_ID_SESSION_STATE_TIMEOUT))
+  if ((curr_time - session_p->active_time) >= prm_get_integer_value (PRM_ID_SESSION_STATE_TIMEOUT))
     {
 #if defined (SERVER_MODE)
       int i;
 
       /* first see if we still have an active connection */
-      if (timeout_info->count == -1)
+      if (active_sessions->count == -1)
 	{
 	  /* we need to get the active connection list */
-	  err = css_get_session_ids_for_active_connections (&timeout_info->session_ids, &timeout_info->count);
+	  err = css_get_session_ids_for_active_connections (&active_sessions->session_ids, &active_sessions->count);
 	  if (err != NO_ERROR)
 	    {
 	      return err;
 	    }
 	}
-      for (i = 0; i < timeout_info->count; i++)
+      for (i = 0; i < active_sessions->count; i++)
 	{
-	  if (timeout_info->session_ids[i] == session_p->id)
+	  if (active_sessions->session_ids[i] == session_p->id)
 	    {
-	      /* also update timeout */
-	      session_p->session_timeout = time (NULL);
+	      /* also update session active time */
+	      session_p->active_time = time (NULL);
 	      return err;
 	    }
 	}
