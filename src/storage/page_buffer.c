@@ -8223,18 +8223,20 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
    */
 
   skip_victim_search_in_private_lru = false;
-  count_victims_private_lru_success = pgbuf_Pool.monitor.count_victims_private_lru_success;
-  count_victims_private_lru_fail = pgbuf_Pool.monitor.count_victims_private_lru_fail;
-  if (count_victims_private_lru_success > 0 && count_victims_private_lru_fail > 2
-      && (count_victims_private_lru_success < count_victims_private_lru_fail * 2))
-    {
-      skip_victim_search_in_private_lru = true;
-      goto search_shared_lru;
-    }
-
   /* 1. search own private list */
   if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
-    {      
+    {
+      count_victims_private_lru_success = pgbuf_Pool.monitor.count_victims_private_lru_success;
+      assert (count_victims_private_lru_success >= 0);
+      count_victims_private_lru_fail = pgbuf_Pool.monitor.count_victims_private_lru_fail;
+      if ((count_victims_private_lru_fail > 2)
+	  && (count_victims_private_lru_success < count_victims_private_lru_fail * 2))
+	{
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_fail, 1);
+	  skip_victim_search_in_private_lru = true;
+	  goto search_shared_lru;
+	}
+
       /* first try my own private list */
       private_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
       lru_list = PGBUF_GET_LRU_LIST (private_lru_idx);
@@ -8250,14 +8252,15 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 	  victim = pgbuf_get_victim_from_lru_list (thread_p, private_lru_idx, true);
 	  if (victim != NULL)
 	    {
+	      ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_success, 1);
 	      PERF (PSTAT_PB_OWN_VICTIM_PRIVATE_LRU_SUCCESS);
 	      if (detailed_perf)
 		{
 		  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS);
 		}
-	      ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_success, 1);
 	      return victim;
 	    }
+
 	  /* failed */
 	  PERF (PSTAT_PB_VICTIM_OWN_PRIVATE_LRU_FAIL);
 	  if (detailed_perf)
@@ -8274,6 +8277,9 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 	       * becomes relevant. */
 	      restrict_other = PGBUF_LRU_LIST_IS_OVER_QUOTA_WITH_BUFFER (lru_list);
 	    }
+
+	  /* Increments private fails. */
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_fail, 1);
 	  searched_own = true;
 	}
     }
@@ -8283,30 +8289,37 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
    * note: in single-thread context, the only list is mine. no point in trying to victimize again
    * note: if restrict_other is true, only other big private lists can be used for victimization
    */
+  assert (skip_victim_search_in_private_lru == false);
   if (PGBUF_PAGE_QUOTA_IS_ENABLED && has_flush_thread)
     {
       if (detailed_perf)
 	{
 	  PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 	}
+
       victim = pgbuf_lfcq_get_victim_from_private_lru (thread_p, restrict_other);
       if (victim != NULL)
 	{
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_success, 1);
 	  if (detailed_perf)
 	    {
 	      PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_OTHERS_PRIVATE_LISTS);
 	    }
-	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_success, 1);
 	  return victim;
 	}
+
+      /* Increment private fails only once / function call. */
+      if (searched_own == false)
+	{
+	  /* Increments private fails. */
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_fail, 1);
+	}
+
       if (detailed_perf)
 	{
 	  PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_VICTIM_SEARCH_OTHERS_PRIVATE_LISTS);
 	}
     }
-
-  /* Increments private fails before shared. */
-  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_fail, 1);
 
   /* loop:
    *
@@ -8319,10 +8332,11 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
    */
 search_shared_lru:
   count_victims_shared_lru_success = pgbuf_Pool.monitor.count_victims_shared_lru_success;
+  assert (count_victims_shared_lru_success >= 0);
   count_victims_shared_lru_fail = pgbuf_Pool.monitor.count_victims_shared_lru_fail;
-  if (count_victims_shared_lru_success > 0 && count_victims_shared_lru_fail > 2
-      && count_victims_shared_lru_success < (count_victims_shared_lru_fail * 2))
+  if ((count_victims_shared_lru_fail > 2) && (count_victims_shared_lru_success < count_victims_shared_lru_fail * 2))
     {
+      ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_shared_lru_fail, 1);
       goto search_private_under_quota;
     }
 
@@ -8370,11 +8384,21 @@ search_private_under_quota:
       victim = pgbuf_get_victim_from_lru_list (thread_p, private_lru_idx, true);
       if (victim != NULL)
 	{
-	  /* Restore fails and increments success. */
-	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_fail, -1);
-	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_success, 1);
+	  if (has_flush_thread)
+	    {
+	      /* Private fails already incremented. Restore fails and increments success. */
+	      ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_fail, -1);
+	      ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_success, 1);
+	    }
+
 	  PERF (PSTAT_PB_OWN_VICTIM_PRIVATE_LRU_SUCCESS);
 	  return victim;
+	}
+
+      /* Increment private fails only once / function call. */
+      if (!has_flush_thread)
+	{
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_fail, 1);
 	}
       /* failed */
       if (detailed_perf)
@@ -10130,12 +10154,12 @@ copy_unflushed_lsa:
       else if (PGBUF_IS_SHARED_LRU_INDEX (lru_list->index))
 	{
 	  /* Give a chance to worker threads to find victims in shared lists. */
-          ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_shared_lru_fails, -1);	  
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_shared_lru_fail, -1);
 	}
       else
 	{
 	  /* Give a chance to worker threads to find victims in private lists. */
-          ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_fails, -1);
+	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_fail, -1);
 	}
 #endif
     }
