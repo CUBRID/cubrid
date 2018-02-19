@@ -13103,117 +13103,85 @@ PT_NODE * pt_eval_function_type_agg(PARSER_CONTEXT * parser, PT_NODE * node)
  */
 bool is_in(pt_type_enum type, std::vector<parse_type> vect)
 {
-  bool found = false;
   for(auto t: vect)
     {
       if(t.type == parse_type::NORMAL && t.normal == type)
         {
-          found = true;
-          break;
+          return true;
         }
     }
-  return found;
+  return false;
 }
 
 /*
- * is_castable_to () - checks if a type is castable to any of the types in vector
- */
-bool is_castable_to(pt_type_enum type, std::vector<parse_type> vect)
-{
-  bool found = false;
-  for(auto t: vect)
-    {
-      if(t.type == parse_type::NORMAL && t.normal == type)
-        {
-          found = true;
-          break;
-        }
-    }
-  return found;
-}
-
-/*
- * match_types_exact () - checks if the types of nodes from list match the signature
+ * match_types () - checks if the types of nodes from list match the signature or can be casted to it
  *   return:
  *   list(in): list of nodes
  *   signature(in): function signature
  */
-bool match_types_exact (FUNC_TYPE fcode, parser_node* list, func_type& signature)
+bool match_types (parser_context* parser, parser_node* node, func_type& signature)
 {
-  parser_node* arg = list;
+  FUNC_TYPE func_type = node->info.function.function_type;
+  parser_node* arg = node->info.function.arg_list;
+  parser_node* prev = NULL;
   int arg_pos = 0;
   for(auto v: signature.fix) //check fixed part of the function signature
     {
       if(arg == NULL)
         {
-          printf("ERR\n");
+          printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
+          break;
         }
       if(!is_in(arg->type_enum, v))
         {
-          string_buffer sb;
-          for(auto t: v)
+          arg = pt_wrap_with_cast_op(parser, arg, v[0].normal, 0, 0, NULL);
+          if(arg == NULL)
             {
-              sb("%d ", t.normal);
+              printf("ERR [%s()] arg#%d doesn't match type and cast failed (%d -> %d)\n", __func__, arg_pos, arg->type_enum, v[0].normal);
             }
-          printf("ERR func=%s arg#%d type=%d requiredType(s)={%s}\n", func_type_str[fcode-PT_MIN], arg_pos, arg->type_enum, sb.get_buffer());
-          return false;
+            if (prev != NULL)
+              {
+                prev->next = arg;
+              }
+            else
+              {
+                node->info.function.arg_list = arg;
+              }
         }
       ++arg_pos;
+      prev = arg;
       arg = arg->next;
     }
 
+  if(arg!=NULL && signature.rep.size()==0)
+    {
+      printf("ERR invalid number or arguments\n");
+      return false;
+    }
   int index = 0;
   for(; arg; arg=arg->next, index=(index+1)%signature.rep.size()) //check repetitive part of the function signature
     {
-      if(!is_in(arg->type_enum, signature.rep[index]))
+      auto& v = signature.rep[index];
+      if(!is_in(arg->type_enum, v))
         {
-          string_buffer sb;
-          for(auto t: signature.rep[index])
+          arg = pt_wrap_with_cast_op(parser, arg, v[0].normal, 0, 0, NULL);
+          if(arg == NULL)
             {
-              sb("%d ", t.normal);
+              printf("ERR [%s()] arg#%d doesn't match type and cast failed (%d -> %d)\n", __func__, arg_pos, arg->type_enum, v[0].normal);
             }
-          printf("ERR func=%s arg#%d type=%d requiredType(s)={%s}\n", func_type_str[fcode-PT_MIN], arg_pos+index, arg->type_enum, sb.get_buffer());
-          return false;
+            if (prev != NULL)
+              {
+                prev->next = arg;
+              }
+            else
+              {
+                node->info.function.arg_list = arg;
+              }
         }
     }
   if(index)
     {
-      printf("ERR index=%d\n", index);
-    }
-  return true;
-}
-
-/*
- * match_types_cast () - checks if the types of nodes from list match the signature
- *   return:
- *   list(in): list of nodes
- *   signature(in): function signature
- */
-bool match_types_cast(FUNC_TYPE fcode, parser_node* list, func_type& signature)
-{
-  parser_node* arg = list;
-  bool fail = false;
-  for(auto v: signature.fix)
-    {
-      if(arg == NULL)
-        {
-          printf("ERR\n");
-        }
-      for(auto t: v)
-        {
-          if(arg->type_enum != t.normal)
-            {
-              //try to cast and ERR if fail
-              fail = true;
-              break;
-            }
-        }
-      if(fail)
-        {
-          printf("ERR on arg#?\n");
-          break;
-        }
-      arg = arg->next;
+      printf("ERR invaid number of arguments (index=%d)\n", index);
     }
   return true;
 }
@@ -13237,7 +13205,6 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
   arg_list = node->info.function.arg_list;
   fcode = node->info.function.function_type;
-  printf("fcode=%d %s\n", fcode, func_type_str[fcode-PT_MIN]);
 
   if (!arg_list && fcode != PT_COUNT_STAR && fcode != PT_GROUPBY_NUM && fcode != PT_ROW_NUMBER && fcode != PT_RANK
       && fcode != PT_DENSE_RANK && fcode != PT_CUME_DIST && fcode != PT_PERCENT_RANK)
@@ -13287,33 +13254,15 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
   switch (fcode)
     {
-    case PT_COUNT_STAR:
-      check_agg_single_arg = false;
-      node->type_enum = PT_TYPE_INTEGER;
-      break;
-    case PT_GROUPBY_NUM:
-      check_agg_single_arg = false;
-      node->type_enum = PT_TYPE_BIGINT;
-      break;
-    case PT_ROW_NUMBER:
-      check_agg_single_arg = false;
-      node->type_enum = PT_TYPE_INTEGER;
-      break;
-    case PT_RANK:
-      check_agg_single_arg = false;
-      node->type_enum = PT_TYPE_INTEGER;
-      break;
-    case PT_DENSE_RANK:
-      check_agg_single_arg = false;
-      node->type_enum = PT_TYPE_INTEGER;
-      break;
     case PT_TOP_AGG_FUNC:
       check_agg_single_arg = false;
       node->type_enum = arg_type; // by default f(x) has same type as x
+      assert(false);
       break;
     case PT_GENERIC:
       check_agg_single_arg = false;
       node->type_enum = arg_type; // by default f(x) has same type as x
+      assert(false);
       break;
     case F_TABLE_SET:
       check_agg_single_arg = false;
@@ -13333,10 +13282,12 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case F_TOP_TABLE_FUNC:
       check_agg_single_arg = false;
       node->type_enum = arg_type; // by default f(x) has same type as x
+      assert(false);
       break;
     case F_MIDXKEY:
       check_agg_single_arg = false;
       node->type_enum = arg_type; // by default f(x) has same type as x
+      assert(false);
       break;
     case F_SET:
       check_agg_single_arg = false;
@@ -13356,6 +13307,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case F_VID:
       check_agg_single_arg = false;
       node->type_enum = arg_type; // by default f(x) has same type as x
+      assert(false);//???
       break;
     case F_GENERIC:
       check_agg_single_arg = false;
@@ -13366,111 +13318,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       node->type_enum = arg_type; // by default f(x) has same type as x
       break;
 
-    case PT_STDDEV:
-    case PT_STDDEV_POP:
-    case PT_STDDEV_SAMP:
-    case PT_VARIANCE:
-    case PT_VAR_POP:
-    case PT_VAR_SAMP:
-    case PT_AVG:
-      assert(arg_list && !arg_list->next && "expect only one argument");
-      if (arg_type != PT_TYPE_MAYBE && arg_type != PT_TYPE_NULL && arg_type != PT_TYPE_NA)
-	{
-	  if (!PT_IS_NUMERIC_TYPE (arg_type))
-	    {
-	      arg_list = pt_wrap_with_cast_op (parser, arg_list, PT_TYPE_DOUBLE, TP_FLOATING_PRECISION_VALUE, 0, NULL);
-	      if (arg_list == NULL)
-		{
-		  return node;
-		}
-	    }
-	  node->info.function.arg_list = arg_list;
-	}
-      node->type_enum = PT_TYPE_DOUBLE;
-      node->data_type = NULL;
-      break;
-
-    case PT_AGG_BIT_AND:
-    case PT_AGG_BIT_OR:
-    case PT_AGG_BIT_XOR:
-      if (!PT_IS_DISCRETE_NUMBER_TYPE (arg_type) && arg_type != PT_TYPE_MAYBE && arg_type != PT_TYPE_NULL
-	  && arg_type != PT_TYPE_NA)
-	{
-	  /* cast arg_list to bigint */
-	  arg_list = pt_wrap_with_cast_op (parser, arg_list, PT_TYPE_BIGINT, 0, 0, NULL);
-	  if (arg_list == NULL)
-	    {
-	      return node;
-	    }
-	  node->info.function.arg_list = arg_list;
-	}
-      node->type_enum = PT_TYPE_BIGINT;
-      break;
-
-    case PT_SUM:
-      assert(arg_list && !arg_list->next && "expect only one argument");
-      if (!PT_IS_NUMERIC_TYPE (arg_type) && arg_type != PT_TYPE_MAYBE && arg_type != PT_TYPE_NULL
-	  && arg_type != PT_TYPE_NA && !pt_is_set_type (arg_list))
-	{
-	  /* To display the sum as integer and not scientific */
-	  PT_TYPE_ENUM cast_type = (arg_type == PT_TYPE_ENUMERATION ? PT_TYPE_INTEGER : PT_TYPE_DOUBLE);
-
-	  /* cast arg_list to double or integer */
-	  arg_list = pt_wrap_with_cast_op (parser, arg_list, cast_type, 0, 0, NULL);
-	  if (arg_list == NULL)
-	    {
-	      return node;
-	    }
-	  arg_type = cast_type;
-	  node->info.function.arg_list = arg_list;
-	}
-      node->type_enum = arg_type;
-      node->data_type = parser_copy_tree_list (parser, arg_list->data_type);
-      if (arg_type == PT_TYPE_NUMERIC && node->data_type)
-	{
-	  node->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
-	}
-      break;
-
-    case PT_MAX:
-    case PT_MIN:
-    case PT_FIRST_VALUE:
-    case PT_LAST_VALUE:
-    case PT_NTH_VALUE:
-      assert(arg_list && !arg_list->next && "expect only one argument");
-      if (!PT_IS_NUMERIC_TYPE (arg_type) && !PT_IS_STRING_TYPE (arg_type) && !PT_IS_DATE_TIME_TYPE (arg_type)
-	  && arg_type != PT_TYPE_ENUMERATION && arg_type != PT_TYPE_MAYBE && arg_type != PT_TYPE_NULL
-	  && arg_type != PT_TYPE_NA)
-	{
-	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_OPDS,
-		       pt_show_function (fcode), pt_show_type_enum (arg_type));
-	}
-      node->type_enum = arg_list->type_enum;
-      node->data_type = parser_copy_tree_list (parser, arg_list->data_type);
-      break;
-
-    case PT_LEAD:
-      break;
-    case PT_LAG:
-      break;
-    case PT_COUNT:
-      /* do special constant folding; COUNT(1), COUNT(?), COUNT(:x), ... -> COUNT(*) */
-      /* TODO does this belong to type checking or constant folding? */
-      if (pt_is_const (arg_list))
-	{
-	  PT_MISC_TYPE all_or_distinct;
-	  all_or_distinct = node->info.function.all_or_distinct;
-	  if (fcode == PT_COUNT && all_or_distinct != PT_DISTINCT)
-	    {
-	      fcode = node->info.function.function_type = PT_COUNT_STAR;
-	      parser_free_tree (parser, arg_list);
-	      arg_list = node->info.function.arg_list = NULL;
-	    }
-	}
-      node->type_enum = PT_TYPE_INTEGER;
-      break;
-
     case PT_GROUP_CONCAT:
+#if 0
       {
 	PT_TYPE_ENUM sep_type;
 	sep_type = (arg_list->next) ? arg_list->next->type_enum : PT_TYPE_NONE;
@@ -13559,278 +13408,104 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  }
       }
       break;
-
-    case PT_CUME_DIST:
-    case PT_PERCENT_RANK:
-      check_agg_single_arg = false;
-      node->type_enum = PT_TYPE_DOUBLE;
-      break;
-
-    case PT_NTILE:
-      if (!PT_IS_DISCRETE_NUMBER_TYPE (arg_type) && arg_type != PT_TYPE_MAYBE && arg_type != PT_TYPE_NULL
+#endif
+    case PT_MAX:
+    case PT_MIN:
+    case PT_FIRST_VALUE:
+    case PT_LAST_VALUE:
+    case PT_NTH_VALUE:
+#if 0
+      assert(arg_list && !arg_list->next && "expect only one argument");
+      if (!PT_IS_NUMERIC_TYPE (arg_type) && !PT_IS_STRING_TYPE (arg_type) && !PT_IS_DATE_TIME_TYPE (arg_type)
+	  && arg_type != PT_TYPE_ENUMERATION && arg_type != PT_TYPE_MAYBE && arg_type != PT_TYPE_NULL
 	  && arg_type != PT_TYPE_NA)
 	{
-	  /* cast arg_list to double */
-	  arg_list = pt_wrap_with_cast_op (parser, arg_list, PT_TYPE_DOUBLE, 0, 0, NULL);
+	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_OPDS,
+		       pt_show_function (fcode), pt_show_type_enum (arg_type));
+	}
+      node->type_enum = arg_list->type_enum;
+      node->data_type = parser_copy_tree_list (parser, arg_list->data_type);
+      break;
+#endif
+    case PT_MEDIAN:
+    case PT_PERCENTILE_CONT:
+    case PT_PERCENTILE_DISC:
+    case PT_GROUPBY_NUM:
+    case PT_ROW_NUMBER:
+    case PT_RANK:
+    case PT_DENSE_RANK:
+    case PT_AGG_BIT_AND:
+    case PT_AGG_BIT_OR:
+    case PT_AGG_BIT_XOR:
+    case PT_STDDEV:
+    case PT_STDDEV_POP:
+    case PT_STDDEV_SAMP:
+    case PT_VARIANCE:
+    case PT_VAR_POP:
+    case PT_VAR_SAMP:
+    case PT_AVG:
+    case PT_COUNT_STAR:
+    case PT_COUNT:
+#if 0
+      /* do special constant folding; COUNT(1), COUNT(?), COUNT(:x), ... -> COUNT(*) */
+      /* TODO does this belong to type checking or constant folding? */
+      if (pt_is_const (arg_list))
+	{
+	  PT_MISC_TYPE all_or_distinct;
+	  all_or_distinct = node->info.function.all_or_distinct;
+	  if (fcode == PT_COUNT && all_or_distinct != PT_DISTINCT)
+	    {
+	      fcode = node->info.function.function_type = PT_COUNT_STAR;
+	      parser_free_tree (parser, arg_list);
+	      arg_list = node->info.function.arg_list = NULL;
+	    }
+	}
+      node->type_enum = PT_TYPE_INTEGER;
+      break;
+#endif
+      case PT_SUM:
+#if 0
+      assert(arg_list && !arg_list->next && "expect only one argument");
+      if (!PT_IS_NUMERIC_TYPE (arg_type) && arg_type != PT_TYPE_MAYBE && arg_type != PT_TYPE_NULL
+	  && arg_type != PT_TYPE_NA && !pt_is_set_type (arg_list))
+	{
+	  /* To display the sum as integer and not scientific */
+	  PT_TYPE_ENUM cast_type = (arg_type == PT_TYPE_ENUMERATION ? PT_TYPE_INTEGER : PT_TYPE_DOUBLE);
+
+	  /* cast arg_list to double or integer */
+	  arg_list = pt_wrap_with_cast_op (parser, arg_list, cast_type, 0, 0, NULL);
 	  if (arg_list == NULL)
 	    {
 	      return node;
 	    }
+	  arg_type = cast_type;
 	  node->info.function.arg_list = arg_list;
 	}
-      node->type_enum = PT_TYPE_INTEGER;
+      node->type_enum = arg_type;
+      node->data_type = parser_copy_tree_list (parser, arg_list->data_type);
+      if (arg_type == PT_TYPE_NUMERIC && node->data_type)
+	{
+	  node->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
+	}
       break;
-
+#endif
+    case PT_LEAD:
+    case PT_LAG:
+    case PT_CUME_DIST:
+    case PT_PERCENT_RANK:
+    case PT_NTILE:
     case F_JSON_OBJECT:
-      {
-	    PT_NODE *arg = arg_list;
-        printf("%s\n", parser_print_tree_list(parser, arg_list));
-        func_type& ft = *func_types[fcode-PT_MIN];
-
-        arg_type = PT_TYPE_JSON;
-
-        {//return type
-          //node->type_enum = PT_TYPE_JSON;
-          switch(ft.ret.type)
-          {
-          case parse_type::NORMAL:
-            node->type_enum = ft.ret.normal;
-            break;
-          case parse_type::GENERIC:
-            assert(false);
-            break;
-          case parse_type::INDEX:
-            assert(false);
-            break;
-          }
-          node->data_type = NULL;//???
-        }
-        if(!match_types_exact(fcode, arg_list, ft))
-          {
-            if(!match_types_cast(fcode, arg_list, ft))
-              {
-                printf("ERR match_types_cast() = false\n");
-              }
-            else //wrap with cast
-              {
-              }
-          }
-      }
-      break;
-
     case F_JSON_ARRAY:
-      {
-	PT_TYPE_ENUM unsupported_type;
-	bool is_supported = false;
-
-	PT_NODE *arg = arg_list;
-
-	while (arg)
-	  {
-	    is_supported = pt_is_json_value_type (arg->type_enum);
-
-	    if (!is_supported)
-	      {
-		unsupported_type = arg->type_enum;
-		break;
-	      }
-	    arg = arg->next;
-	  }
-
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
-	  }
-	else
-	  {
-	    arg_type = PT_TYPE_JSON;
-	  }
-        node->type_enum = PT_TYPE_JSON;
-      }
-      break;
-
     case F_JSON_MERGE:
-      {
-	PT_TYPE_ENUM unsupported_type;
-	bool is_supported;
-
-	PT_NODE *arg = arg_list;
-
-	while (arg)
-	  {
-	    is_supported = pt_is_json_doc_type (arg->type_enum);
-
-	    if (!is_supported)
-	      {
-		unsupported_type = arg->type_enum;
-		break;
-	      }
-	    arg = arg->next;
-	  }
-
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
-	  }
-	else
-	  {
-	    arg_type = PT_TYPE_JSON;
-	  }
-        node->type_enum = PT_TYPE_JSON;
-      }
-      break;
-
     case F_JSON_REPLACE:
     case F_JSON_SET:
     case F_JSON_ARRAY_APPEND:
     case F_JSON_INSERT:
-	{
-	PT_TYPE_ENUM unsupported_type;
-	unsigned int index = 0;
-	bool is_supported = false;
-	PT_NODE *arg = arg_list;
-
-	is_supported = pt_is_json_doc_type (arg->type_enum);
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (arg->type_enum));
-	    break;
-	  }
-
-	arg = arg->next;
-	while (arg)
-	  {
-	    if (index % 2 == 0)
-	      {
-		is_supported = pt_is_json_path (arg->type_enum);
-	      }
-	    else
-	      {
-		is_supported = pt_is_json_doc_type (arg->type_enum);
-	      }
-
-	    if (!is_supported)
-	      {
-		unsupported_type = arg->type_enum;
-		break;
-	      }
-
-	    arg = arg->next;
-	    index++;
-	  }
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
-	  }
-        node->type_enum = PT_TYPE_JSON;
-      }
-      break;
-
     case F_JSON_REMOVE:
-      {
-	PT_TYPE_ENUM unsupported_type;
-	bool is_supported = false;
-	PT_NODE *arg = arg_list;
-
-	is_supported = pt_is_json_doc_type (arg->type_enum);
-
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (arg->type_enum));
-	    break;
-	  }
-
-	arg = arg->next;
-	while (arg)
-	  {
-	    is_supported = pt_is_json_path (arg->type_enum);
-
-	    if (!is_supported)
-	      {
-		unsupported_type = arg->type_enum;
-		break;
-	      }
-
-	    arg = arg->next;
-	  }
-
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
-	  }
-        node->type_enum = PT_TYPE_JSON;
-      }
-      break;
-
     case F_JSON_GET_ALL_PATHS:
-      {
-	PT_NODE *arg = arg_list;
-        node->type_enum = PT_TYPE_JSON;
-	bool is_supported = false;
-
-	is_supported = pt_is_json_doc_type (arg->type_enum);
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (arg->type_enum));
-	  }
-      }
-      break;
-
     case F_JSON_KEYS:
-      {
-        node->type_enum = PT_TYPE_JSON;
-	// should have maximum 2 parameters
-	PT_NODE *arg = arg_list;
-	PT_TYPE_ENUM unsupported_type;
-	unsigned int index = 0;
-	bool is_supported = false;
-
-	while (arg)
-	  {
-	    switch (index)
-	      {
-	      case 0:
-		is_supported = pt_is_json_doc_type (arg->type_enum);
-		break;
-	      case 1:
-		is_supported = pt_is_json_path (arg->type_enum);;
-		break;
-	      default:
-		/* Should not happen */
-		assert (false);
-		break;
-	      }
-
-	    if (!is_supported)
-	      {
-		unsupported_type = arg->type_enum;
-		arg_type = PT_TYPE_NONE;
-		PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			     pt_show_function (fcode), pt_show_type_enum (unsupported_type));
-		break;
-	      }
-
-	    index++;
-	    arg = arg->next;
-	  }
-      }
-      break;
-
     case F_ELT:
+#if 0
       {
 	/* all types used in the arguments list */
 	bool has_arg_type[PT_TYPE_MAX - PT_TYPE_MIN] = { false };
@@ -14065,8 +13740,9 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  }
       }
       break;
-
+#endif
     case F_INSERT_SUBSTRING:
+#if 0
       {
 	PT_TYPE_ENUM arg1_type = PT_TYPE_NONE, arg2_type = PT_TYPE_NONE, arg3_type = PT_TYPE_NONE, arg4_type =
 	  PT_TYPE_NONE;
@@ -14261,32 +13937,42 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  }
       }
       break;
-
-    case PT_MEDIAN:
-    case PT_PERCENTILE_CONT:
-    case PT_PERCENTILE_DISC:
-      if (arg_type != PT_TYPE_NULL && arg_type != PT_TYPE_NA && !PT_IS_NUMERIC_TYPE (arg_type)
-	  && !PT_IS_STRING_TYPE (arg_type) && !PT_IS_DATE_TIME_TYPE (arg_type) && arg_type != PT_TYPE_MAYBE)
-	{
-	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_OPDS,
-		       pt_show_function (fcode), pt_show_type_enum (arg_type));
-	}
-
-      /* let calculation decide the type */
-      node->type_enum = PT_TYPE_MAYBE;
-      node->data_type = NULL;
-      break;
+#endif
+      {
+        PT_NODE *arg = arg_list;
+        printf("fcode=%d(%s) args: %s\n", fcode, func_type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
+        func_type& ft = *func_types[fcode-PT_MIN];
+        match_types(parser, node, ft);
+        {//return type
+          switch(ft.ret.type)
+          {
+            case parse_type::NORMAL:
+                node->type_enum = ft.ret.normal;
+                break;
+            case parse_type::GENERIC:
+                assert(false);
+                break;
+            case parse_type::INDEX:
+                int index = 0;
+                for(auto p=arg_list; p; p=p->next, ++index)
+                  {
+                    if(index == ft.ret.index)
+                      {
+                        node->type_enum = p->type_enum;
+                        break;
+                      }
+                  }
+                break;
+          }
+          node->data_type = NULL;//???
+        }
+        break;
+      }
 
     default:
       check_agg_single_arg = false;
       assert(false && "for all possible FUNC_TYPE enum values should be a case in switch!");
       break;
-    }
-
-  if (is_agg_function && check_agg_single_arg && arg_list && arg_list->next)// bSolo: this should be an assert?
-    {
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AGG_FUN_WANT_1_ARG,
-		  pt_short_print (parser, node));
     }
 
   assert(node->type_enum != PT_TYPE_NONE || node->data_type != NULL);
