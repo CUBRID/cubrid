@@ -2477,12 +2477,15 @@ class disk_auto_expansion_daemon_task : public cubthread::entry_task
 static void
 disk_auto_volume_expansion_daemon_init ()
 {
+  // disk auto volume expansion is not yet implemented, uncomment below code when functionality will be available
+  // see disk_auto_expand (THREAD_ENTRY *) function for more details
+  /*
   assert (disk_Auto_volume_expansion_daemon == NULL);
 
-  // create session control daemon thread
   std::chrono::seconds interval_time = std::chrono::seconds (60);
   disk_Auto_volume_expansion_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (interval_time),
 				      new disk_auto_expansion_daemon_task ());
+  */
 }
 #endif /* SERVER_MODE */
 
@@ -2493,10 +2496,14 @@ disk_auto_volume_expansion_daemon_init ()
 static void
 disk_auto_volume_expansion_daemon_destroy ()
 {
+  // disk auto volume expansion is not yet implemented, uncomment below code when functionality will be available
+  // see disk_auto_expand (THREAD_ENTRY *) function for more details
+  /*
   if (disk_Auto_volume_expansion_daemon != NULL)
     {
       cubthread::get_manager ()->destroy_daemon (disk_Auto_volume_expansion_daemon);
     }
+  */
 }
 #endif /* SERVER_MODE */
 // *INDENT-ON*
