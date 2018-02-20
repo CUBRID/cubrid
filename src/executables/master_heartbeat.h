@@ -236,7 +236,6 @@ struct hb_cluster
 
   SOCKET sfd;
 
-  HB_NODE_STATE_TYPE last_state; /* to know whether to update the state of server or not */
   HB_NODE_STATE_TYPE state;
   char group_id[HB_MAX_GROUP_ID_LEN];
   char host_name[MAXHOSTNAMELEN];
