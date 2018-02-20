@@ -112,4 +112,4 @@ namespace cuberr
   };
 } // namespace cuberr
 
-#endif // _ERROR_CONTEXT_HPP_s
+#endif // _ERROR_CONTEXT_HPP_

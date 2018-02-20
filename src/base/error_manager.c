@@ -107,8 +107,6 @@ struct er_copy_area
   char area[1];			/* actually, more than one */
 };
 
-
-
 typedef struct er_spec ER_SPEC;
 struct er_spec
 {
