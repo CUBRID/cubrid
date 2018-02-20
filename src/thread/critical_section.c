@@ -41,6 +41,7 @@
 #include "tsc_timer.h"
 #include "show_scan.h"
 #include "numeric_opfunc.h"
+#include "dbtype.h"
 
 #undef csect_initialize_critical_section
 #undef csect_finalize_critical_section
@@ -162,7 +163,7 @@ csect_initialize_critical_section (SYNC_CRITICAL_SECTION * csect, const char *na
 
   csect->name = name;
   csect->rwlock = 0;
-  csect->owner = ((pthread_t) 0);
+  csect->owner = thread_id_t ();
   csect->tran_index = -1;
   csect->waiting_readers = 0;
   csect->waiting_writers = 0;
@@ -207,7 +208,7 @@ csect_finalize_critical_section (SYNC_CRITICAL_SECTION * csect)
 
   csect->name = NULL;
   csect->rwlock = 0;
-  csect->owner = ((pthread_t) 0);
+  csect->owner = thread_id_t ();
   csect->tran_index = -1;
   csect->waiting_readers = 0;
   csect->waiting_writers = 0;
@@ -489,9 +490,9 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
       return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
 
-  while (csect->rwlock != 0 || csect->owner != ((pthread_t) 0))
+  while (csect->rwlock != 0 || csect->owner != thread_id_t ())
     {
-      if (csect->rwlock < 0 && csect->owner == thread_p->tid)
+      if (csect->rwlock < 0 && csect->owner == thread_p->get_id ())
 	{
 	  /* 
 	   * I am holding the csect, and reenter it again as writer.
@@ -534,7 +535,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
 		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_WAIT, 0);
 		  return ER_CSS_PTHREAD_COND_WAIT;
 		}
-	      if (csect->owner != ((pthread_t) 0) && csect->waiting_writers > 0)
+	      if (csect->owner != thread_id_t () && csect->waiting_writers > 0)
 		{
 		  /* 
 		   * There's one waiting to be promoted.
@@ -617,7 +618,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
   csect->rwlock--;
 
   /* record that I am the writer of the csect. */
-  csect->owner = thread_p->tid;
+  csect->owner = thread_p->get_id ();
   csect->tran_index = thread_p->tran_index;
 
   tsc_getticks (&end_tick);
@@ -715,7 +716,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_S
       return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
 
-  if (csect->rwlock < 0 && csect->owner == thread_p->tid)
+  if (csect->rwlock < 0 && csect->owner == thread_p->get_id ())
     {
       /* writer reenters the csect as a reader. treat as writer. */
       csect->rwlock--;
@@ -724,7 +725,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_S
   else
     {
       /* reader can enter this csect without waiting writer(s) when the csect had been demoted by the other */
-      while (csect->rwlock < 0 || (csect->waiting_writers > 0 && csect->owner == ((pthread_t) 0)))
+      while (csect->rwlock < 0 || (csect->waiting_writers > 0 && csect->owner == thread_id_t ()))
 	{
 	  /* reader should wait writer(s). */
 	  if (wait_secs == INF_WAIT)
@@ -937,7 +938,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * 
       return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
 
-  if (csect->rwlock < 0 && csect->owner == thread_p->tid)
+  if (csect->rwlock < 0 && csect->owner == thread_p->get_id ())
     {
       /* 
        * I have write lock. I was entered before as a writer.
@@ -960,7 +961,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * 
 	  /* rwlock == 0 */
 	  csect->rwlock++;	/* entering as a reader */
 #if 0
-	  csect->owner = (pthread_t) 0;
+	  csect->owner = thread_id_t ();
 	  csect->tran_index = -1;
 #endif
 	}
@@ -1215,7 +1216,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION *
   while (csect->rwlock != 0)
     {
       /* There's another readers. So I have to wait as a writer. */
-      if (csect->rwlock < 0 && csect->owner == thread_p->tid)
+      if (csect->rwlock < 0 && csect->owner == thread_p->get_id ())
 	{
 	  /* 
 	   * I am holding the csect, and reenter it again as writer.
@@ -1315,7 +1316,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION *
   /* rwlock will be < 0. It denotes that a writer owns the csect. */
   csect->rwlock--;
   /* record that I am the writer of the csect. */
-  csect->owner = thread_p->tid;
+  csect->owner = thread_p->get_id ();
   csect->tran_index = thread_p->tran_index;
 
   tsc_getticks (&end_tick);
@@ -1416,7 +1417,7 @@ csect_exit_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs
       else
 	{
 	  assert (csect->rwlock == 0);
-	  csect->owner = ((pthread_t) 0);
+	  csect->owner = thread_id_t ();
 	  csect->tran_index = -1;
 	}
     }
@@ -1444,8 +1445,8 @@ csect_exit_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs
    * Keep flags that show if there are waiting readers or writers
    * so that we can wake them up outside the monitor lock.
    */
-  ww = (csect->waiting_writers > 0 && csect->rwlock == 0 && csect->owner == ((pthread_t) 0));
-  wp = (csect->waiting_writers > 0 && csect->rwlock == 0 && csect->owner != ((pthread_t) 0));
+  ww = (csect->waiting_writers > 0 && csect->rwlock == 0 && csect->owner == thread_id_t ());
+  wp = (csect->waiting_writers > 0 && csect->rwlock == 0 && csect->owner != thread_id_t ());
   wr = (csect->waiting_writers == 0);
 
   /* wakeup a waiting writer first. Otherwise wakeup all readers. */
@@ -1587,7 +1588,7 @@ csect_check_own_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION
       return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
 
-  if (csect->rwlock < 0 && csect->owner == thread_p->tid)
+  if (csect->rwlock < 0 && csect->owner == thread_p->get_id ())
     {
       /* has the write lock */
       return_code = 1;
@@ -1635,7 +1636,7 @@ csect_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values
   double msec;
   DB_VALUE db_val;
   DB_DATA_STATUS data_status;
-  pthread_t owner_tid;
+  thread_id_t owner_tid;
   int ival;
   THREAD_ENTRY *thread_entry = NULL;
   int num_cols = 12;
@@ -1700,7 +1701,7 @@ csect_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values
 
       /* The thread index of CS owner writer, NULL if no owner */
       owner_tid = csect->owner;
-      if (owner_tid == 0)
+      if (owner_tid == thread_id_t ())
 	{
 	  db_make_null (&vals[idx]);
 	}
@@ -2110,7 +2111,7 @@ rmutex_initialize (SYNC_RMUTEX * rmutex, const char *name)
       return ER_CSS_PTHREAD_MUTEX_INIT;
     }
 
-  rmutex->owner = (pthread_t) 0;
+  rmutex->owner = thread_id_t ();
   rmutex->lock_cnt = 0;
 
   rmutex->stats = sync_allocate_sync_stats (SYNC_TYPE_RMUTEX, name);
@@ -2176,7 +2177,7 @@ rmutex_lock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
       thread_p = thread_get_thread_entry_info ();
     }
 
-  if (rmutex->owner == thread_p->tid)
+  if (rmutex->owner == thread_p->get_id ())
     {
       assert (rmutex->lock_cnt > 0);
       rmutex->lock_cnt++;
@@ -2205,7 +2206,7 @@ rmutex_lock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
       assert (rmutex->lock_cnt == 0);
       rmutex->lock_cnt++;
 
-      rmutex->owner = thread_p->tid;
+      rmutex->owner = thread_p->get_id ();
     }
 
   return NO_ERROR;
@@ -2233,13 +2234,13 @@ rmutex_unlock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
       thread_p = thread_get_thread_entry_info ();
     }
 
-  assert (rmutex->owner == thread_p->tid);
+  assert (rmutex->owner == thread_p->get_id ());
 
   rmutex->lock_cnt--;
 
   if (rmutex->lock_cnt == 0)
     {
-      rmutex->owner = (pthread_t) 0;
+      rmutex->owner = thread_id_t ();
 
       pthread_mutex_unlock (&rmutex->lock);
     }

@@ -71,6 +71,8 @@
 #include "mem_block.hpp"
 #include "string_buffer.hpp"
 
+#include "dbtype.h"
+
 #if !defined(SERVER_MODE)
 
 #define pthread_mutex_init(a, b)
@@ -1640,6 +1642,10 @@ log_final (THREAD_ENTRY * thread_p)
   int save_tran_index;
   bool anyloose_ends = false;
   int error_code = NO_ERROR;
+
+#if defined(SERVER_MODE)
+  logpb_daemons_destroy ();
+#endif /* SERVER_MODE */
 
   LOG_CS_ENTER (thread_p);
 
@@ -9158,14 +9164,14 @@ PGLENGTH
 log_get_io_page_size (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath, const char *prefix_logname)
 {
   PGLENGTH db_iopagesize;
-  PGLENGTH ignore_log_page_size;
+  PGLENGTH log_page_size;
   INT64 ignore_dbcreation;
   float ignore_dbcomp;
   int dummy;
 
   LOG_CS_ENTER (thread_p);
   if (logpb_find_header_parameters (thread_p, db_fullname, logpath, prefix_logname, &db_iopagesize,
-				    &ignore_log_page_size, &ignore_dbcreation, &ignore_dbcomp, &dummy) == -1)
+				    &log_page_size, &ignore_dbcreation, &ignore_dbcomp, &dummy) == -1)
     {
       /* 
        * For case where active log could not be found, user still needs
@@ -9181,7 +9187,39 @@ log_get_io_page_size (THREAD_ENTRY * thread_p, const char *db_fullname, const ch
     }
   else
     {
+      if (IO_PAGESIZE != db_iopagesize || LOG_PAGESIZE != log_page_size)
+	{
+	  if (db_set_page_size (db_iopagesize, log_page_size) != NO_ERROR)
+	    {
+	      LOG_CS_EXIT (thread_p);
+	      return -1;
+	    }
+	  else
+	    {
+	      if (sysprm_reload_and_init (NULL, NULL) != NO_ERROR)
+		{
+		  LOG_CS_EXIT (thread_p);
+		  return -1;
+		}
+
+	      /* page size changed, reinit tran tables only if previously initialized */
+	      if (log_Gl.trantable.area == NULL)
+		{
+		  LOG_CS_EXIT (thread_p);
+		  return db_iopagesize;
+		}
+
+	      if (logtb_define_trantable_log_latch (thread_p, log_Gl.trantable.num_total_indices) != NO_ERROR)
+		{
+		  LOG_CS_EXIT (thread_p);
+		  return -1;
+		}
+	    }
+
+	}
+
       LOG_CS_EXIT (thread_p);
+
       return db_iopagesize;
     }
 }

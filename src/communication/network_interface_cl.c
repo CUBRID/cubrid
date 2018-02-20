@@ -61,6 +61,7 @@
 #include "es.h"
 #include "db.h"
 #include "db_query.h"
+#include "dbtype.h"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
@@ -6211,6 +6212,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
 	{
 	  /* NULL XASL_ID will be returned when cache not found */
 	  OR_UNPACK_XASL_ID (ptr, stream->xasl_id);
+	  context->recompile_xasl = false;
 
 	  if (reply_buffer != NULL && reply_buffer_size != 0)
 	    {

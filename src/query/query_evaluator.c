@@ -39,9 +39,7 @@
 #include "dbtype.h"
 #include "query_executor.h"
 #include "thread.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #define UNKNOWN_CARD   -2	/* Unknown cardinality of a set member */
 
@@ -2164,7 +2162,7 @@ eval_pred_comp1 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
     }
 
   if (DB_VALUE_DOMAIN_TYPE (peek_val1) == DB_TYPE_OID
-      && !heap_is_object_not_null (thread_p, (OID *) NULL, DB_PULL_OID (peek_val1)))
+      && !heap_is_object_not_null (thread_p, (OID *) NULL, db_get_oid (peek_val1)))
     {
       return V_TRUE;
     }

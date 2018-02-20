@@ -31,7 +31,7 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "regu_var.h"
 #ifndef SERVER_MODE
 #include "work_space.h"

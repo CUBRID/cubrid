@@ -57,12 +57,17 @@ namespace cubthread
     , m_all_entries (NULL)
     , m_entry_dispatcher (NULL)
     , m_available_entries_count (max_threads)
+    , m_entry_manager (NULL)
+    , m_daemon_entry_manager (NULL)
   {
     if (m_max_threads > 0)
       {
 	m_all_entries = new entry[m_max_threads];
 	m_entry_dispatcher = new entry_dispatcher (m_all_entries, m_max_threads);
       }
+
+    m_entry_manager = new entry_manager ();
+    m_daemon_entry_manager = new daemon_entry_manager();
   }
 
   manager::~manager ()
@@ -75,6 +80,8 @@ namespace cubthread
 
     delete m_entry_dispatcher;
     delete [] m_all_entries;
+    delete m_entry_manager;
+    delete m_daemon_entry_manager;
   }
 
   template<typename Res>
@@ -85,7 +92,7 @@ namespace cubthread
 #if defined (SERVER_MODE)
     for (auto iter = tracker.begin (); iter != tracker.end (); iter = tracker.erase (iter))
       {
-	(*iter)->stop ();
+	(*iter)->stop_execution ();
 	delete *iter;
       }
 #endif // SERVER_MODE
@@ -112,7 +119,8 @@ namespace cubthread
   }
 
   entry_workpool *
-  manager::create_worker_pool (size_t pool_size, size_t work_queue_size)
+  manager::create_worker_pool (size_t pool_size, size_t work_queue_size, entry_manager *context_manager,
+			       bool debug_logging)
   {
 #if defined (SERVER_MODE)
     if (is_single_thread ())
@@ -121,7 +129,12 @@ namespace cubthread
       }
     else
       {
-	return create_and_track_resource (m_worker_pools, pool_size, pool_size, work_queue_size);
+	if (context_manager == NULL)
+	  {
+	    context_manager = m_entry_manager;
+	  }
+	return create_and_track_resource (m_worker_pools, pool_size, pool_size, work_queue_size, context_manager,
+					  debug_logging);
       }
 #else // not SERVER_MODE = SA_MODE
     return NULL;
@@ -129,7 +142,7 @@ namespace cubthread
   }
 
   daemon *
-  manager::create_daemon (const looper &looper_arg, entry_task *exec_p)
+  manager::create_daemon (const looper &looper_arg, entry_task *exec_p, entry_manager *context_manager)
   {
 #if defined (SERVER_MODE)
     if (is_single_thread ())
@@ -139,8 +152,11 @@ namespace cubthread
       }
     else
       {
-	exec_p->set_manager (this);
-	return create_and_track_resource (m_daemons, 1, looper_arg, exec_p);
+	if (context_manager == NULL)
+	  {
+	    context_manager = m_daemon_entry_manager;
+	  }
+	return create_and_track_resource (m_daemons, 1, looper_arg, context_manager, exec_p);
       }
 #else // not SERVER_MODE = SA_MODE
     assert (false);
@@ -163,7 +179,7 @@ namespace cubthread
 	    (void) tracker.erase (iter);
 
 	    // stop resource and delete
-	    res->stop ();
+	    res->stop_execution ();
 	    delete res;
 	    res = NULL;
 
@@ -220,7 +236,6 @@ namespace cubthread
       {
 #if defined (SERVER_MODE)
 	check_not_single_thread ();
-	exec_p->set_manager (this);
 	worker_pool_arg->execute (exec_p);
 #else // not SERVER_MODE = SA_MODE
 	assert (false);
@@ -245,7 +260,6 @@ namespace cubthread
       {
 #if defined (SERVER_MODE)
 	check_not_single_thread ();
-	exec_p->set_manager (this);
 	return worker_pool_arg->try_execute (exec_p);
 #else // not SERVER_MODE = SA_MODE
 	assert (false);
@@ -294,12 +308,6 @@ namespace cubthread
   {
     tl_Entry_p = m_entry_dispatcher->claim ();
 
-    // for backward compatibility
-    tl_Entry_p->tid = pthread_self ();
-    tl_Entry_p->type = TT_WORKER;
-
-    // TODO: daemon type
-
     return tl_Entry_p;
   }
 
@@ -307,16 +315,6 @@ namespace cubthread
   manager::retire_entry (entry &entry_p)
   {
     assert (tl_Entry_p == &entry_p);
-
-    // for backward compatibility
-    entry_p.tid = (pthread_t) 0;
-
-    // todo: here we should do more operations to clear thread entry before being reused
-    entry_p.tran_index = -1;
-    entry_p.check_interrupt = true;
-#if defined (SERVER_MODE)
-    entry_p.status = TS_FREE;
-#endif // SERVER_MODE
 
     tl_Entry_p = NULL;
     m_entry_dispatcher->retire (entry_p);
@@ -408,8 +406,7 @@ namespace cubthread
     // init main entry
     Main_entry_p = new entry ();
     Main_entry_p->index = 0;
-    Main_entry_p->tid = pthread_self ();
-    Main_entry_p->emulate_tid = ((pthread_t) 0);
+    Main_entry_p->register_id ();
     Main_entry_p->status = TS_RUN;
     Main_entry_p->resume_status = THREAD_RESUME_NONE;
     Main_entry_p->tran_index = 0;	/* system transaction */

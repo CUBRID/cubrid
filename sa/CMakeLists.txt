@@ -58,6 +58,10 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_value_printer.cpp
   ${COMPAT_DIR}/db_vdb.c
   ${COMPAT_DIR}/db_virt.c
+  ${COMPAT_DIR}/dbtype_function.c
+  )
+set(COMPAT_SOURCES_C
+  ${COMPAT_DIR}/dbtype_function.c
   )
 
 set(BASE_SOURCES
@@ -218,6 +222,7 @@ set(JSP_SOURCES
 
 set(THREAD_SOURCES
   ${THREAD_DIR}/thread_entry.cpp
+  ${THREAD_DIR}/thread_entry_task.cpp
   ${THREAD_DIR}/thread_manager.cpp
   )
 set(THREAD_HEADERS
@@ -362,6 +367,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${LOADER_LEXER_OUTPUT}
   ${ESQL_GRAMMAR_OUTPUT}
   ${ESQL_LEXER_OUTPUT}
+  ${COMPAT_SOURCES_C}
   PROPERTIES LANGUAGE C
   )
 
@@ -384,6 +390,7 @@ add_library(cubridsa SHARED
   ${ES_SOURCES}
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
+  ${COMPAT_SOURCES_C}
   )
 set_target_properties(cubridsa PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 

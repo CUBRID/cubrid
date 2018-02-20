@@ -26,12 +26,18 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_set.c
   ${COMPAT_DIR}/db_value_printer.cpp
   )
+set (COMPAT_HEADERS  
+  ${COMPAT_DIR}/dbtype_def.h
+  ${COMPAT_DIR}/dbtype_function.i
+  ${COMPAT_DIR}/dbtype_function.h
+  )
 
 set(THREAD_SOURCES
   ${THREAD_DIR}/thread.c
   ${THREAD_DIR}/critical_section.c
   ${THREAD_DIR}/thread_daemon.cpp
   ${THREAD_DIR}/thread_entry.cpp
+  ${THREAD_DIR}/thread_entry_task.cpp
   ${THREAD_DIR}/thread_looper.cpp
   ${THREAD_DIR}/thread_manager.cpp
   ${THREAD_DIR}/thread_waiter.cpp
@@ -274,6 +280,7 @@ set (CUBRID_LIB_SOURCES
   )
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
+  ${COMPAT_HEADERS}
   ${THREAD_HEADERS}
   )
 
@@ -352,9 +359,18 @@ install(TARGETS cubrid
 
 install(FILES
   ${COMPAT_DIR}/dbi_compat.h
-  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
   RENAME dbi.h
   )
+install(FILES
+  ${COMPAT_DIR}/dbtype_def.h
+  ${COMPAT_DIR}/dbtype_function.h
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
+  )
+install(FILES
+  ${BASE_DIR}/error_code.h
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
+  )  
 
 # install pdb files for debugging on windows
 if(WIN32)

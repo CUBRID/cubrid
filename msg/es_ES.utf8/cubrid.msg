@@ -922,7 +922,7 @@ $ LOADDB
 853 Para un objeto (%1$d|%2$d|%3$d), transaccion (%4$d) de tipo Uncomitted Read, contenia un error de "lock" (%5$s).
 854 ADVERTENCIA: Ningun holder de bloqueo existente, en cambio hay waiters de bloqueo. Referir a %1$s.
 855 ADVERTENCIA: Dos o mas hilos estan en la espera de bloqueo para una transaccion (%1$d).
-856 ADVERTENCIA: Estado (%1$d|%2$d) extrano de espera de bloqueo, hilo (%3$d|%4$d) y transaccion (%5$d).
+856 ADVERTENCIA: Estado (%1$d|%2$d) extrano de espera de bloqueo, hilo (%3$d|%4$lld) y transaccion (%5$d).
 857 Un error de E/S ha ocurrido mientras truncando pagina %1$d del volumen "%2$s".
 858 Volumen "%1$s" es desconocido al reinicio del servidor.
 859 Pestillo en la pagina (%1$d|%2$d) abortado.
@@ -1268,7 +1268,8 @@ $ LOADDB
 1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
 1200 Invalid JSON path
 1201 Json object name cannot be NULL.
-1202 Ultimo error
+1202 Json PATH "%1$s" does not exist in %2$s
+1203 Ultimo error
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):
 2 Ningun mensaje de error disponible.

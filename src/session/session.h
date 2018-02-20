@@ -27,7 +27,7 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "query_list.h"
 #include "query_manager.h"
 #include "thread_compat.hpp"
@@ -38,7 +38,6 @@ extern void session_states_finalize (THREAD_ENTRY * thread_p);
 extern int session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id);
 extern int session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id);
 extern int session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id);
-extern int session_remove_expired_sessions (struct timeval *timeout);
 extern int session_get_session_id (THREAD_ENTRY * thread_p, SESSION_ID * id);
 extern int session_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value, bool update_last_insert_id);
 extern int session_set_cur_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value, bool force);
@@ -65,6 +64,7 @@ extern void session_store_query_entry_info (THREAD_ENTRY * thread_p, QMGR_QUERY_
 extern int session_load_query_entry_info (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qentry_p);
 extern int session_remove_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_id);
 extern int session_clear_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_id);
+extern bool session_is_queryid_idle (THREAD_ENTRY * thread_p, const QUERY_ID query_id, QUERY_ID * max_query_id_uses);
 
 extern int session_get_exec_stats_and_clear (THREAD_ENTRY * thread_p, const DB_VALUE * name, DB_VALUE * result);
 extern SESSION_PARAM *session_get_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id);

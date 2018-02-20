@@ -40,6 +40,7 @@ output_dir=""
 build_args="all"
 default_packages="all"
 packages=""
+print_version_only=0
 
 # variables
 product_name="CUBRID"

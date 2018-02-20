@@ -45,6 +45,7 @@
 #include "db.h"
 #endif /* !defined (SERVER_MODE) */
 #include "boot_sr.h"
+#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -2425,6 +2426,7 @@ tz_str_read_time (const char *str, const char *str_end, bool need_minutes, bool 
   *hour = *min = *sec = 0;
   str_cursor = str;
 
+  /* read hour part */
   if (tz_str_read_number (str_cursor, str_end, true, false, &val_read, str_next) != NO_ERROR)
     {
       return ER_FAILED;
@@ -2445,7 +2447,10 @@ tz_str_read_time (const char *str, const char *str_end, bool need_minutes, bool 
       /* invalid text representation for time */
       return ER_FAILED;
     }
-  str_cursor++;
+
+  str_cursor++;			/* skip colon between hour and minute part */
+
+  /* read minute part */
   if (str_cursor >= str_end || IS_EMPTY_STR (str_cursor))
     {
       /* missing minute token */
@@ -2461,7 +2466,18 @@ tz_str_read_time (const char *str, const char *str_end, bool need_minutes, bool 
     }
   *min = val_read;
 
+  /* read second part if exists */
   str_cursor = *str_next;
+
+  assert (str_cursor <= str_end);
+  if (str_cursor == str_end)
+    {
+      /* reaches end of the given string. This means it does not have second part */
+      assert (*sec == 0);
+      return NO_ERROR;
+    }
+
+  assert (str_cursor < str_end);
   if (*str_cursor == ':')
     {
       /* if there is a token for seconds, read it */
@@ -4974,7 +4990,7 @@ tz_get_server_tz_region_session (void)
 
   if (session_tz_region == NULL)
     {
-      if (thread_p->emulate_tid != ((pthread_t) 0))
+      if (thread_p->emulate_tid != thread_id_t ())
 	{
 	  worker_thread_p = thread_find_entry_by_tid (thread_p->emulate_tid);
 	  if (worker_thread_p != NULL)

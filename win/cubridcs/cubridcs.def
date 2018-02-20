@@ -950,3 +950,7 @@ EXPORTS
   mht_1strhash
   mht_compare_strings_are_equal
   mht_rem
+;
+; other
+;
+  setobj_type

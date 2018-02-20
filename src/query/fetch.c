@@ -54,8 +54,7 @@
 #include "thread.h"
 #endif // SERVER_MODE or SA_MODE
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 static int fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd, OID * obj_oid,
 			     QFILE_TUPLE tpl, DB_VALUE ** peek_dbval);
@@ -4051,8 +4050,13 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	    case F_JSON_ARRAY:
 	    case F_JSON_OBJECT:
 	    case F_JSON_INSERT:
+	    case F_JSON_REPLACE:
+	    case F_JSON_SET:
+	    case F_JSON_KEYS:
 	    case F_JSON_REMOVE:
+	    case F_JSON_ARRAY_APPEND:
 	    case F_JSON_MERGE:
+	    case F_JSON_GET_ALL_PATHS:
 	      {
 		REGU_VARIABLE_LIST operand;
 
@@ -4238,8 +4242,13 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	case F_JSON_OBJECT:
 	case F_JSON_ARRAY:
 	case F_JSON_INSERT:
+	case F_JSON_REPLACE:
+	case F_JSON_SET:
+	case F_JSON_KEYS:
 	case F_JSON_REMOVE:
+	case F_JSON_ARRAY_APPEND:
 	case F_JSON_MERGE:
+	case F_JSON_GET_ALL_PATHS:
 	  break;
 
 	default:

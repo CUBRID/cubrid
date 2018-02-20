@@ -63,6 +63,7 @@
 
 #include "porting.h"
 #include "server_support.h"
+#include "dbtype.h"
 
 typedef SCAN_CODE (*NEXT_SCAN_FUNC) (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_values, int out_cnt,
 				     void *ctx);
@@ -540,7 +541,7 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
       idx++;
 
       /* Thread_id */
-      db_make_bigint (&vals[idx], (DB_BIGINT) thrd->tid);
+      db_make_bigint (&vals[idx], (DB_BIGINT) thrd->get_posix_id ());
       idx++;
 
       /* Tran_index */

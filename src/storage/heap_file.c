@@ -63,8 +63,7 @@
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
 #include "thread.h"
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -17028,7 +17027,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 		case DB_TYPE_NCHAR:
 		case DB_TYPE_VARNCHAR:
 		  {
-		    char *str = DB_PULL_STRING (&(value->dbvalue));
+		    char *str = DB_GET_STRING (&(value->dbvalue));
 		    char *str_end = str + DB_GET_STRING_LENGTH (&(value->dbvalue));
 		    char *p = NULL;
 

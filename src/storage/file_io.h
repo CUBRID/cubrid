@@ -29,7 +29,7 @@
 #ident "$Id$"
 
 #include "config.h"
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "lzo/lzoconf.h"
 #include "lzo/lzo1x.h"
 #include "memory_hash.h"

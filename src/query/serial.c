@@ -36,6 +36,7 @@
 #include "server_interface.h"
 #include "xserver_interface.h"
 #include "slotted_page.h"
+#include "dbtype.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

@@ -47,6 +47,8 @@
 #endif /* SERVER_MODE */
 #include "thread.h"
 
+#include "dbtype.h"
+
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
 #define pthread_mutex_destroy(a)
