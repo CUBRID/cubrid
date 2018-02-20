@@ -419,6 +419,7 @@ static int logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const ch
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
+static cubthread::daemon *logpb_Log_clock_daemon = NULL;
 static cubthread::daemon *logpb_Checkpoint_daemon = NULL;
 static cubthread::daemon *logpb_Remove_log_archive_daemon = NULL;
 
@@ -7627,6 +7628,31 @@ class remove_log_archive_daemon_task : public cubthread::entry_task
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
+// class log_clock_daemon_task
+//
+//  description:
+//    log clock daemon task
+//
+class log_clock_daemon_task : public cubthread::entry_task
+{
+  public:
+    void execute (cubthread::entry & thread_ref) override
+    {
+      if (!BO_IS_SERVER_RESTARTED ())
+	{
+	  // wait for boot to finish
+	  return;
+	}
+
+      struct timeval now;
+      gettimeofday (&now, NULL);
+
+      log_Clock_msec = (now.tv_sec * 1000LL) + (now.tv_usec / 1000LL);
+    }
+};
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
 /*
  * logpb_checkpoint_daemon_init () - initialize checkpoint daemon
  */
@@ -7669,6 +7695,19 @@ logpb_remove_log_archive_daemon_init ()
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
+void
+/*
+ * logpb_log_clock_daemon_init () - initialize log clock daemon
+ */
+logpb_log_clock_daemon_init ()
+{
+  std::chrono::milliseconds looper_interval = std::chrono::milliseconds (200);
+  logpb_Log_clock_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (looper_interval),
+			   new log_clock_daemon_task ());
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
 /*
  * logpb_daemons_init () - initialize daemon threads
  */
@@ -7682,6 +7721,7 @@ logpb_daemons_init ()
 
   logpb_checkpoint_daemon_init ();
   logpb_remove_log_archive_daemon_init ();
+  logpb_log_clock_daemon_init ();
 
   logpb_Daemons_are_initialized = true;
 }
@@ -7699,8 +7739,9 @@ logpb_daemons_destroy ()
       return;
     }
 
-  cubthread::get_manager ()->destroy_daemon (logpb_Checkpoint_daemon);
+  cubthread::get_manager ()->destroy_daemon (logpb_Log_clock_daemon);
   cubthread::get_manager ()->destroy_daemon (logpb_Remove_log_archive_daemon);
+  cubthread::get_manager ()->destroy_daemon (logpb_Checkpoint_daemon);
 
   logpb_Daemons_are_initialized = false;
 }

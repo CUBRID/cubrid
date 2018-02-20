@@ -106,10 +106,12 @@ LOG_GLOBAL log_Gl = {
   GLOBAL_UNIQUE_STATS_TABLE_INITIALIZER
 };
 
-#if defined(HAVE_ATOMIC_BUILTINS)
+#if defined (SERVER_MODE)
 /* Current time in milliseconds */
-UINT64 log_Clock_msec = 0;
-#endif /* HAVE_ATOMIC_BUILTINS */
+// *INDENT-OFF*
+std::atomic_uint64_t log_Clock_msec = {0};
+// *INDENT-ON*
+#endif /* SERVER_MODE */
 
 /* Name of the database and logs */
 char log_Path[PATH_MAX];

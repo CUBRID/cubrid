@@ -60,6 +60,9 @@
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
 #endif /* SOLARIS */
 #include <signal.h>
+#if defined (SERVER_MODE)
+#include <atomic>
+#endif /* SERVER_MODE */
 
 /************************************************************************/
 /* Section shared with client... TODO: remove any code accessing log    */
@@ -2027,10 +2030,12 @@ extern LOG_GLOBAL log_Gl;
 
 extern LOG_LOGGING_STAT log_Stat;
 
-#if defined(HAVE_ATOMIC_BUILTINS)
-/* Current time in seconds */
-extern UINT64 log_Clock_msec;
-#endif /* HAVE_ATOMIC_BUILTINS */
+#if defined (SERVER_MODE)
+/* Current time in milliseconds */
+// *INDENT-OFF*
+extern std::atomic_uint64_t log_Clock_msec;
+// *INDENT-ON*
+#endif /* SERVER_MODE */
 
 /* Name of the database and logs */
 extern char log_Path[];
