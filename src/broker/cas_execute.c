@@ -1083,7 +1083,7 @@ ux_get_last_insert_id (T_NET_BUF * net_buf)
   int err = NO_ERROR;
   DB_VALUE lid;
 
-  DB_MAKE_NULL (&lid);
+  db_make_null (&lid);
 
   err = db_get_last_insert_id (&lid);
   if (err != NO_ERROR)
@@ -3739,8 +3739,8 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_VARNCHAR:
       {
-	int def_size = DB_GET_STRING_SIZE (def);
-	char *def_str_p = DB_GET_STRING (def);
+	int def_size = db_get_string_size (def);
+	char *def_str_p = db_get_string (def);
 	if (def_str_p)
 	  {
 	    default_value_string = (char *) malloc (def_size + 3);
@@ -3763,8 +3763,8 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
 	err = db_value_coerce (def, &tmp_val, db_type_to_db_domain (DB_TYPE_VARCHAR));
 	if (err == NO_ERROR)
 	  {
-	    int def_size = DB_GET_STRING_SIZE (&tmp_val);
-	    char *def_str_p = DB_GET_STRING (&tmp_val);
+	    int def_size = db_get_string_size (&tmp_val);
+	    char *def_str_p = db_get_string (&tmp_val);
 
 	    default_value_string = (char *) malloc (def_size + 1);
 	    if (default_value_string != NULL)
@@ -4506,13 +4506,13 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	bool need_decomp = false;
 
 	str = db_get_char (val, &dummy);
-	bytes_size = DB_GET_STRING_SIZE (val);
+	bytes_size = db_get_string_size (val);
 	if (max_col_size > 0)
 	  {
 	    bytes_size = MIN (bytes_size, max_col_size);
 	  }
 
-	if (DB_GET_STRING_CODESET (val) == INTL_CODESET_UTF8)
+	if (db_get_string_codeset (val) == INTL_CODESET_UTF8)
 	  {
 	    need_decomp =
 	      unicode_string_need_decompose (str, bytes_size, &decomp_size, lang_get_generic_unicode_norm ());
@@ -4537,7 +4537,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	      }
 	  }
 
-	add_res_data_string (net_buf, str, bytes_size, ext_col_type, DB_GET_STRING_CODESET (val), &data_size);
+	add_res_data_string (net_buf, str, bytes_size, ext_col_type, db_get_string_codeset (val), &data_size);
 
 	if (decomposed != NULL)
 	  {
@@ -4557,13 +4557,13 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	bool need_decomp = false;
 
 	nchar = db_get_nchar (val, &dummy);
-	bytes_size = DB_GET_STRING_SIZE (val);
+	bytes_size = db_get_string_size (val);
 	if (max_col_size > 0)
 	  {
 	    bytes_size = MIN (bytes_size, max_col_size);
 	  }
 
-	if (DB_GET_STRING_CODESET (val) == INTL_CODESET_UTF8)
+	if (db_get_string_codeset (val) == INTL_CODESET_UTF8)
 	  {
 	    need_decomp =
 	      unicode_string_need_decompose (nchar, bytes_size, &decomp_size, lang_get_generic_unicode_norm ());
@@ -4588,7 +4588,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	      }
 	  }
 
-	add_res_data_string (net_buf, nchar, bytes_size, ext_col_type, DB_GET_STRING_CODESET (val), &data_size);
+	add_res_data_string (net_buf, nchar, bytes_size, ext_col_type, db_get_string_codeset (val), &data_size);
 
 	if (decomposed != NULL)
 	  {
@@ -4636,7 +4636,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	      }
 	  }
 
-	add_res_data_string (net_buf, str, bytes_size, ext_col_type, DB_GET_ENUM_CODESET (val), &data_size);
+	add_res_data_string (net_buf, str, bytes_size, ext_col_type, db_get_enum_codeset (val), &data_size);
 
 	if (decomposed != NULL)
 	  {
@@ -7338,7 +7338,7 @@ execute_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, T_BROKER_VERSI
 		    {
 		      /* result of a GET_GENERATED_KEYS request, client insert */
 		      DB_VALUE value;
-		      DB_SEQ *seq = DB_GET_SEQUENCE (&val);
+		      DB_SEQ *seq = db_get_set (&val);
 
 		      if (seq != NULL && db_col_size (seq) == 1)
 			{
@@ -9363,7 +9363,7 @@ ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_
 
   if (DB_VALUE_DOMAIN_TYPE (qres->res.c.val_ptr) == DB_TYPE_SEQUENCE)
     {
-      seq = DB_GET_SEQUENCE (qres->res.c.val_ptr);
+      seq = db_get_set (qres->res.c.val_ptr);
       if (seq == NULL)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
@@ -9376,7 +9376,7 @@ ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_
     {
       /* the default result, when the generated keys have not been requested */
       tuple_count = 1;
-      db_make_object (&oid_val, DB_GET_OBJECT (qres->res.c.val_ptr));
+      db_make_object (&oid_val, db_get_object (qres->res.c.val_ptr));
     }
   else
     {

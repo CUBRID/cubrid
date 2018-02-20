@@ -50,25 +50,25 @@
 
 #define OBJ_FORCE_NULL_TO_UNBOUND(dbvalue) \
   if ((DB_VALUE_TYPE(dbvalue) == DB_TYPE_STRING && \
-       DB_GET_STRING(dbvalue) == NULL) || \
+       db_get_string(dbvalue) == NULL) || \
       (TP_IS_SET_TYPE (DB_VALUE_TYPE(dbvalue)) && \
-       DB_GET_SET(dbvalue) == NULL) || \
+       db_get_set(dbvalue) == NULL) || \
       (DB_VALUE_TYPE(dbvalue) == DB_TYPE_OBJECT && \
-       DB_GET_OBJECT(dbvalue) == NULL) || \
+       db_get_object(dbvalue) == NULL) || \
       (DB_VALUE_TYPE(dbvalue) == DB_TYPE_BLOB && \
-       DB_GET_ELO(dbvalue) == NULL) || \
+       db_get_elo(dbvalue) == NULL) || \
       (DB_VALUE_TYPE(dbvalue) == DB_TYPE_CLOB && \
-       DB_GET_ELO(dbvalue) == NULL) || \
+       db_get_elo(dbvalue) == NULL) || \
       (DB_VALUE_TYPE(dbvalue) == DB_TYPE_ELO && \
-       DB_GET_ELO(dbvalue) == NULL)) \
-  DB_MAKE_NULL(dbvalue);
+       db_get_elo(dbvalue) == NULL)) \
+  db_make_null(dbvalue);
 
 
 
 #define OBJ_FORCE_SIMPLE_NULL_TO_UNBOUND(dbvalue) \
   if ((DB_VALUE_TYPE(dbvalue) == DB_TYPE_STRING) && \
-      (DB_GET_STRING(dbvalue) == NULL)) \
-  DB_MAKE_NULL(dbvalue);
+      (db_get_string(dbvalue) == NULL)) \
+  db_make_null(dbvalue);
 
 
 /*

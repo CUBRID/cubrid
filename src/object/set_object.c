@@ -1156,7 +1156,7 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 	  if (col->sorted && col->coltype != DB_TYPE_SEQUENCE && DB_VALUE_TYPE (val) == DB_TYPE_OBJECT)
 	    {
 
-	      DB_OBJECT *obj = DB_GET_OBJECT (val);
+	      DB_OBJECT *obj = db_get_object (val);
 	      if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
 		{
 		  /* we're inserting a temp OID, must force the collection to become unsorted */
@@ -1304,7 +1304,7 @@ col_put (COL * col, long colindex, DB_VALUE * val)
 	  assert_release (false);
 	  return ER_FAILED;
 #else /* !defined (SERVER_MODE) */
-	  DB_OBJECT *obj = DB_GET_OBJECT (val);
+	  DB_OBJECT *obj = db_get_object (val);
 	  if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
 	    {
 	      col->may_have_temporary_oids = 1;
@@ -1444,7 +1444,7 @@ col_insert (COL * col, long colindex, DB_VALUE * val)
 	  assert_release (false);
 	  return ER_FAILED;
 #else /* !defined (SERVER_MODE) */
-	  DB_OBJECT *obj = DB_GET_OBJECT (val);
+	  DB_OBJECT *obj = db_get_object (val);
 	  if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
 	    {
 	      col->may_have_temporary_oids = 1;
@@ -1801,7 +1801,7 @@ col_permanent_oids (COL * col)
 
 	      if (DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_OBJECT)
 		{
-		  obj = DB_GET_OBJECT (val);
+		  obj = db_get_object (val);
 		  if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
 		    {
 		      tcount++;
@@ -1816,7 +1816,7 @@ col_permanent_oids (COL * col)
 	      else if (DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_SET || DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_MULTISET)
 		{
 		  /* recurse and make sure any nested set is also assigned permanent oids and sorted */
-		  set_optimize (DB_GET_SET (val));
+		  set_optimize (db_get_set (val));
 		}
 	    }
 
@@ -4491,7 +4491,7 @@ setobj_find_temporary_oids (SETOBJ * col, LC_OIDSET * oidset)
 	  type = DB_VALUE_TYPE (val);
 	  if (type == DB_TYPE_OBJECT)
 	    {
-	      obj = DB_GET_OBJECT (val);
+	      obj = db_get_object (val);
 	      if (obj != NULL && OBJECT_HAS_TEMP_OID (obj))
 		{
 		  tempoids++;
@@ -4506,7 +4506,7 @@ setobj_find_temporary_oids (SETOBJ * col, LC_OIDSET * oidset)
 	    {
 	      /* its a nested set, recurse, since we must already be pinned don't have to worry about pinning the
 	       * nested set. */
-	      ref = DB_GET_SET (val);
+	      ref = db_get_set (val);
 	      if (ref && ref->set != NULL)
 		{
 		  error = setobj_find_temporary_oids (ref->set, oidset);
@@ -4680,7 +4680,7 @@ swizzle_value (DB_VALUE * val, int input)
 	  DB_OBJECT *mop;
 	  mop = ws_mop (oid, NULL);
 	  db_value_domain_init (val, DB_TYPE_OBJECT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	  DB_MAKE_OBJECT (val, mop);
+	  db_make_object (val, mop);
 	}
 #endif /* !SERVER_MODE */
     }
@@ -4801,7 +4801,7 @@ check_set_object (DB_VALUE * var, int *removed_ptr)
     {
       goto end;
     }
-  mop = DB_GET_OBJECT (var);
+  mop = db_get_object (var);
   if (mop == NULL)
     {
       goto end;
@@ -4833,7 +4833,7 @@ check_set_object (DB_VALUE * var, int *removed_ptr)
     }
 
   removed = 1;
-  DB_MAKE_NULL (var);
+  db_make_null (var);
 
 end:
 #endif /* !SERVER_MODE */
@@ -5666,13 +5666,13 @@ setobj_convert_oids_to_objects (COL * col)
 	    {
 	      pr_clear_value (var);
 	      db_value_domain_init (var, DB_TYPE_OBJECT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	      DB_MAKE_OBJECT (var, mop);
+	      db_make_object (var, mop);
 	    }
 	  break;
 	case DB_TYPE_SET:
 	case DB_TYPE_MULTISET:
 	case DB_TYPE_SEQUENCE:
-	  error = set_convert_oids_to_objects (DB_GET_SET (var));
+	  error = set_convert_oids_to_objects (db_get_set (var));
 	  break;
 	default:
 	  break;
@@ -5736,7 +5736,7 @@ setobj_get_element (COL * set, int index, DB_VALUE * value)
   DB_VALUE *element;
 
   /* should this be pr_clear_value instead? */
-  DB_MAKE_NULL (value);
+  db_make_null (value);
 
   error = setobj_get_element_ptr (set, index, &element);
 
@@ -5770,7 +5770,7 @@ setobj_add_element (COL * col, DB_VALUE * value)
   DB_VALUE temp;
   int error = NO_ERROR;
 
-  DB_MAKE_NULL (&temp);
+  db_make_null (&temp);
   CHECKNULL_ERR (col);
   CHECKNULL_ERR (value);
 
@@ -5812,7 +5812,7 @@ setobj_put_element (COL * col, int index, DB_VALUE * value)
   int error = NO_ERROR;
   DB_VALUE temp;
 
-  DB_MAKE_NULL (&temp);
+  db_make_null (&temp);
   CHECKNULL_ERR (col);
   CHECKNULL_ERR (value);
 

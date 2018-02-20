@@ -76,7 +76,7 @@ STATIC_INLINE DB_C_CHAR db_get_enum_string (const DB_VALUE * value) __attribute_
 STATIC_INLINE int db_get_enum_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_CHAR db_get_method_error_msg (void) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_RESULTSET db_get_resultset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_get_string_codeset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE INTL_CODESET db_get_string_codeset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_get_string_collation (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_get_enum_codeset (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_get_enum_collation (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -814,14 +814,14 @@ db_get_resultset (const DB_VALUE * value)
  * return :
  * value(in):
  */
-int
+INTL_CODESET
 db_get_string_codeset (const DB_VALUE * value)
 {
 #if defined (API_ACTIVE_CHECKS)
   CHECK_1ARG_ZERO_WITH_TYPE (value, INTL_CODESET);
 #endif
 
-  return (int) value->data.ch.info.codeset;
+  return (INTL_CODESET) value->data.ch.info.codeset;
 }
 
 /*
@@ -1888,6 +1888,12 @@ db_make_oid (DB_VALUE * value, const OID * oid)
 #if defined (API_ACTIVE_CHECKS)
   CHECK_2ARGS_ERROR (value, oid);
 #endif
+
+  if (oid == NULL)
+    {
+      value->domain.general_info.is_null = 1;
+      return NO_ERROR;
+    }
 
   value->domain.general_info.type = DB_TYPE_OID;
   value->data.oid.pageid = oid->pageid;

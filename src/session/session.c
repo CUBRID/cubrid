@@ -266,8 +266,8 @@ session_state_init (void *st)
     }
 
   /* initialize fields */
-  DB_MAKE_NULL (&session_p->cur_insert_id);
-  DB_MAKE_NULL (&session_p->last_insert_id);
+  db_make_null (&session_p->cur_insert_id);
+  db_make_null (&session_p->last_insert_id);
   session_p->is_trigger_involved = false;
   session_p->is_last_insert_id_generated = false;
   session_p->row_count = -1;
@@ -1105,20 +1105,20 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name, DB_VALUE *
 
   assert (DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR);
 
-  name_str = DB_GET_STRING (name);
+  name_str = db_get_string (name);
 
   assert (name_str != NULL);
 
-  len = DB_GET_STRING_SIZE (name);
+  len = db_get_string_size (name);
   len = MAX (len, strlen ("collect_exec_stats"));
 
   if (strncasecmp (name_str, "collect_exec_stats", len) == 0)
     {
-      if (DB_GET_INT (value) == 1)
+      if (db_get_int (value) == 1)
 	{
 	  perfmon_start_watch (NULL);
 	}
-      else if (DB_GET_INT (value) == 0)
+      else if (db_get_int (value) == 0)
 	{
 	  perfmon_stop_watch (NULL);
 	}
@@ -1130,7 +1130,7 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name, DB_VALUE *
 	  free_and_init (state_p->plan_string);
 	}
 
-      state_p->plan_string = strdup (DB_GET_STRING (value));
+      state_p->plan_string = strdup (db_get_string (value));
     }
 
   current = state_p->session_variables;
@@ -1163,7 +1163,7 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name, DB_VALUE *
       return ER_FAILED;
     }
 
-  len = DB_GET_STRING_SIZE (name);
+  len = db_get_string_size (name);
   var->name = (char *) malloc (len + 1);
   if (var->name == NULL)
     {
@@ -1223,7 +1223,7 @@ db_value_alloc_and_copy (const DB_VALUE * src)
   src_dbtype = DB_VALUE_DOMAIN_TYPE (src);
   if (DB_IS_NULL (src))
     {
-      DB_MAKE_NULL (dest);
+      db_make_null (dest);
       return dest;
     }
 
@@ -1236,13 +1236,13 @@ db_value_alloc_and_copy (const DB_VALUE * src)
   if (!QSTR_IS_ANY_CHAR_OR_BIT (src_dbtype))
     {
       /* attempt to convert to varchar */
-      DB_MAKE_NULL (&conv);
+      db_make_null (&conv);
       domain = db_type_to_db_domain (DB_TYPE_VARCHAR);
       domain->precision = TP_FLOATING_PRECISION_VALUE;
 
       if (tp_value_cast (src, &conv, domain, false) != DOMAIN_COMPATIBLE)
 	{
-	  DB_MAKE_NULL (dest);
+	  db_make_null (dest);
 	  return dest;
 	}
 
@@ -1254,7 +1254,7 @@ db_value_alloc_and_copy (const DB_VALUE * src)
       return dest;
     }
 
-  length = DB_GET_STRING_SIZE (src);
+  length = db_get_string_size (src);
   scale = 0;
   str = (char *) malloc (length + 1);
   if (str == NULL)
@@ -1263,7 +1263,7 @@ db_value_alloc_and_copy (const DB_VALUE * src)
       return NULL;
     }
 
-  src_str = DB_GET_STRING (src);
+  src_str = db_get_string (src);
   if (src_str != NULL)
     {
       memcpy (str, src_str, length);
@@ -1275,22 +1275,22 @@ db_value_alloc_and_copy (const DB_VALUE * src)
   switch (src_dbtype)
     {
     case DB_TYPE_CHAR:
-      DB_MAKE_CHAR (dest, precision, str, length, DB_GET_STRING_CODESET (src), DB_GET_STRING_COLLATION (src));
+      db_make_char (dest, precision, str, length, db_get_string_codeset (src), db_get_string_collation (src));
       break;
     case DB_TYPE_NCHAR:
-      DB_MAKE_NCHAR (dest, precision, str, length, DB_GET_STRING_CODESET (src), DB_GET_STRING_COLLATION (src));
+      db_make_nchar (dest, precision, str, length, db_get_string_codeset (src), db_get_string_collation (src));
       break;
     case DB_TYPE_VARCHAR:
-      DB_MAKE_VARCHAR (dest, precision, str, length, DB_GET_STRING_CODESET (src), DB_GET_STRING_COLLATION (src));
+      db_make_varchar (dest, precision, str, length, db_get_string_codeset (src), db_get_string_collation (src));
       break;
     case DB_TYPE_VARNCHAR:
-      DB_MAKE_VARNCHAR (dest, precision, str, length, DB_GET_STRING_CODESET (src), DB_GET_STRING_COLLATION (src));
+      db_make_varnchar (dest, precision, str, length, db_get_string_codeset (src), db_get_string_collation (src));
       break;
     case DB_TYPE_BIT:
-      DB_MAKE_BIT (dest, precision, str, length);
+      db_make_bit (dest, precision, str, length);
       break;
     case DB_TYPE_VARBIT:
-      DB_MAKE_VARBIT (dest, precision, str, length);
+      db_make_varbit (dest, precision, str, length);
       break;
     default:
       assert (false);
@@ -1340,7 +1340,7 @@ session_drop_variable (SESSION_STATE * state_p, const DB_VALUE * name)
     }
 
   assert (DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR);
-  name_str = DB_GET_STRING (name);
+  name_str = db_get_string (name);
 
   assert (name_str != NULL);
 
@@ -2020,7 +2020,7 @@ session_define_variable (THREAD_ENTRY * thread_p, DB_VALUE * name, DB_VALUE * va
     }
   else
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
     }
 
   return err;
@@ -2042,7 +2042,7 @@ session_get_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name, DB_VALUE *
 
   assert (DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR);
 
-  name_str = DB_GET_STRING (name);
+  name_str = db_get_string (name);
   assert (name_str != NULL);
   state_p = session_get_session_state (thread_p);
   if (state_p == NULL)
@@ -2120,7 +2120,7 @@ session_get_variable_no_copy (THREAD_ENTRY * thread_p, const DB_VALUE * name, DB
   assert (DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR);
   assert (result != NULL);
 
-  name_str = DB_GET_STRING (name);
+  name_str = db_get_string (name);
   name_len = (name_str != NULL) ? strlen (name_str) : 0;
 
   if (session_get_session_id (thread_p, &id) != NO_ERROR)
@@ -2231,10 +2231,10 @@ session_get_exec_stats_and_clear (THREAD_ENTRY * thread_p, const DB_VALUE * name
 
   assert (DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR);
 
-  name_str = DB_GET_STRING (name);
+  name_str = db_get_string (name);
 
   stat_val = perfmon_get_stats_and_clear (thread_p, name_str);
-  DB_MAKE_BIGINT (result, stat_val);
+  db_make_bigint (result, stat_val);
 
   return NO_ERROR;
 }
@@ -2284,7 +2284,7 @@ session_dump_session (SESSION_STATE * session)
   fprintf (stdout, "SESSION ID = %d\n", session->id);
 
   db_value_coerce (&session->last_insert_id, &v, db_type_to_db_domain (DB_TYPE_VARCHAR));
-  fprintf (stdout, "\tLAST_INSERT_ID = %s\n", DB_GET_STRING (&v));
+  fprintf (stdout, "\tLAST_INSERT_ID = %s\n", db_get_string (&v));
   db_value_clear (&v);
 
   fprintf (stdout, "\tROW_COUNT = %d\n", session->row_count);
@@ -2334,7 +2334,7 @@ session_dump_variable (SESSION_VARIABLE * var)
   if (var->value != NULL)
     {
       db_value_coerce (var->value, &v, db_type_to_db_domain (DB_TYPE_VARCHAR));
-      fprintf (stdout, "%s\n", DB_GET_STRING (&v));
+      fprintf (stdout, "%s\n", db_get_string (&v));
       db_value_clear (&v);
     }
 }
@@ -2859,7 +2859,7 @@ session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result)
 
   if (state_p->plan_string == NULL && state_p->trace_stats == NULL)
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       return NO_ERROR;
     }
 
@@ -2911,13 +2911,13 @@ session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result)
 
   if (trace_str != NULL)
     {
-      DB_MAKE_STRING (&temp_result, trace_str);
+      db_make_string (&temp_result, trace_str);
       pr_clone_value (&temp_result, result);
       free_and_init (trace_str);
     }
   else
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
     }
 
   thread_set_clear_trace (thread_p, true);

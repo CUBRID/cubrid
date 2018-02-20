@@ -50,18 +50,18 @@
 
 #define SET_FIX_VALUE(value) \
   if ((DB_VALUE_TYPE(value) == DB_TYPE_STRING && \
-       DB_GET_STRING(value) == NULL) || \
+       db_get_string(value) == NULL) || \
       (TP_IS_SET_TYPE (DB_VALUE_TYPE(value)) && \
-       DB_GET_SET(value) == NULL) || \
+       db_get_set(value) == NULL) || \
       (DB_VALUE_TYPE(value) == DB_TYPE_OBJECT && \
-       DB_GET_OBJECT(value) == NULL) || \
+       db_get_object(value) == NULL) || \
       (DB_VALUE_TYPE(value) == DB_TYPE_BLOB && \
-       DB_GET_ELO(value) == NULL) || \
+       db_get_elo(value) == NULL) || \
       (DB_VALUE_TYPE(value) == DB_TYPE_CLOB && \
-       DB_GET_ELO(value) == NULL) || \
+       db_get_elo(value) == NULL) || \
       (DB_VALUE_TYPE(value) == DB_TYPE_ELO && \
-       DB_GET_ELO(value) == NULL)) \
-    DB_MAKE_NULL(value);
+       db_get_elo(value) == NULL)) \
+    db_make_null(value);
 
 #define COL_BLOCK_SIZE (64)
 

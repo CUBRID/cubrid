@@ -128,7 +128,7 @@ void db_value_printer::describe_value (const db_value *value)
 	{
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  codeset = DB_GET_STRING_CODESET (value);
+	  codeset = db_get_string_codeset (value);
 	  if (codeset != LANG_SYS_CODESET)
 	    {
 	      m_buf ("%s", lang_charset_introducer (codeset));
@@ -139,17 +139,17 @@ void db_value_printer::describe_value (const db_value *value)
 	  break;
 
 	case DB_TYPE_ENUMERATION:
-	  if (DB_GET_ENUM_STRING (value) == NULL && DB_GET_ENUM_SHORT (value) != 0)
+	  if (db_get_enum_string (value) == NULL && db_get_enum_short (value) != 0)
 	    {
 #if defined(SERVER_MODE)
 	      /* to print enum index as int */
-	      m_buf ("%d", (int)DB_GET_ENUM_SHORT (value));
+	      m_buf ("%d", (int)db_get_enum_short (value));
 	      break;
 #elif defined(SA_MODE)
 	      if (db_on_server)
 		{
 		  /* to print enum index as int */
-		  m_buf ("%d", (int)DB_GET_ENUM_SHORT (value));
+		  m_buf ("%d", (int)db_get_enum_short (value));
 		  break;
 		}
 	      else
@@ -171,7 +171,7 @@ void db_value_printer::describe_value (const db_value *value)
 	      /* print enumerations as strings */
 	      if (tp_enumeration_to_varchar (value, &varchar_val) == NO_ERROR)
 		{
-		  codeset = (INTL_CODESET) DB_GET_ENUM_CODESET (value);
+		  codeset = (INTL_CODESET) db_get_enum_codeset (value);
 		  if (codeset != LANG_SYS_CODESET)
 		    {
 		      m_buf ("%s", lang_charset_introducer (codeset));
@@ -415,7 +415,7 @@ void db_value_printer::describe_data (const db_value *value)
       m_buf ("%s", value->data.json.json_body);
       break;
     case DB_TYPE_MIDXKEY:
-      midxkey = DB_GET_MIDXKEY (value);
+      midxkey = db_get_midxkey (value);
       if (midxkey != NULL)
 	{
 	  describe_midxkey (midxkey);
@@ -469,18 +469,18 @@ void db_value_printer::describe_data (const db_value *value)
     {
       DB_TIMETZ *time_tz;
 
-      time_tz = DB_GET_TIMETZ (value);
+      time_tz = db_get_timetz (value);
       (void) db_timetz_to_string (line, TOO_BIG_TO_MATTER, &time_tz->time, &time_tz->tz_id);
       m_buf (line);
     }
     break;
 
     case DB_TYPE_UTIME:
-      (void) db_utime_to_string (line, TOO_BIG_TO_MATTER, DB_GET_UTIME (value));
+      (void) db_utime_to_string (line, TOO_BIG_TO_MATTER, db_get_utime (value));
       m_buf (line);
       break;
     case DB_TYPE_TIMESTAMPLTZ:
-      (void) db_timestampltz_to_string (line, TOO_BIG_TO_MATTER, DB_GET_UTIME (value));
+      (void) db_timestampltz_to_string (line, TOO_BIG_TO_MATTER, db_get_utime (value));
       m_buf (line);
       break;
 
@@ -488,18 +488,18 @@ void db_value_printer::describe_data (const db_value *value)
     {
       DB_TIMESTAMPTZ *ts_tz;
 
-      ts_tz = DB_GET_TIMESTAMPTZ (value);
+      ts_tz = db_get_timestamptz (value);
       (void) db_timestamptz_to_string (line, TOO_BIG_TO_MATTER, & (ts_tz->timestamp), & (ts_tz->tz_id));
       m_buf (line);
     }
     break;
 
     case DB_TYPE_DATETIME:
-      (void) db_datetime_to_string (line, TOO_BIG_TO_MATTER, DB_GET_DATETIME (value));
+      (void) db_datetime_to_string (line, TOO_BIG_TO_MATTER, db_get_datetime (value));
       m_buf (line);
       break;
     case DB_TYPE_DATETIMELTZ:
-      (void) db_datetimeltz_to_string (line, TOO_BIG_TO_MATTER, DB_GET_DATETIME (value));
+      (void) db_datetimeltz_to_string (line, TOO_BIG_TO_MATTER, db_get_datetime (value));
       m_buf (line);
       break;
 
@@ -507,7 +507,7 @@ void db_value_printer::describe_data (const db_value *value)
     {
       DB_DATETIMETZ *dt_tz;
 
-      dt_tz = DB_GET_DATETIMETZ (value);
+      dt_tz = db_get_datetimetz (value);
       (void) db_datetimetz_to_string (line, TOO_BIG_TO_MATTER, & (dt_tz->datetime), & (dt_tz->tz_id));
       m_buf (line);
     }

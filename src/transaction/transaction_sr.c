@@ -671,7 +671,7 @@ xtran_get_local_transaction_id (THREAD_ENTRY * thread_p, DB_VALUE * trid)
   error_code = db_value_domain_init (trid, DB_TYPE_INTEGER, 0, 0);
   if (error_code == NO_ERROR)
     {
-      DB_MAKE_INTEGER (trid, logtb_find_current_tranid (thread_p));
+      db_make_int (trid, logtb_find_current_tranid (thread_p));
     }
 
   return error_code;

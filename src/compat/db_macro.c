@@ -977,10 +977,10 @@ db_string_truncate (DB_VALUE * value, const int precision)
   switch (DB_VALUE_TYPE (value))
     {
     case DB_TYPE_STRING:
-      val_str = DB_GET_STRING (value);
-      if (val_str != NULL && DB_GET_STRING_LENGTH (value) > precision)
+      val_str = db_get_string (value);
+      if (val_str != NULL && db_get_string_length (value) > precision)
 	{
-	  intl_char_size ((unsigned char *) val_str, precision, DB_GET_STRING_CODESET (value), &byte_size);
+	  intl_char_size ((unsigned char *) val_str, precision, db_get_string_codeset (value), &byte_size);
 	  string = (char *) db_private_alloc (NULL, byte_size + 1);
 	  if (string == NULL)
 	    {
@@ -988,11 +988,11 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	      break;
 	    }
 
-	  assert (byte_size < DB_GET_STRING_SIZE (value));
+	  assert (byte_size < db_get_string_size (value));
 	  strncpy (string, val_str, byte_size);
 	  string[byte_size] = '\0';
 	  db_make_varchar (&src_value, precision, string, byte_size,
-			   DB_GET_STRING_CODESET (value), DB_GET_STRING_COLLATION (value));
+			   db_get_string_codeset (value), db_get_string_collation (value));
 
 	  pr_clear_value (value);
 	  (*(tp_String.setval)) (value, &src_value, true);
@@ -1002,10 +1002,10 @@ db_string_truncate (DB_VALUE * value, const int precision)
       break;
 
     case DB_TYPE_CHAR:
-      val_str = DB_GET_CHAR (value, &length);
+      val_str = db_get_char (value, &length);
       if (val_str != NULL && length > precision)
 	{
-	  intl_char_size ((unsigned char *) val_str, precision, DB_GET_STRING_CODESET (value), &byte_size);
+	  intl_char_size ((unsigned char *) val_str, precision, db_get_string_codeset (value), &byte_size);
 	  string = (char *) db_private_alloc (NULL, byte_size + 1);
 	  if (string == NULL)
 	    {
@@ -1013,11 +1013,11 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	      break;
 	    }
 
-	  assert (byte_size < DB_GET_STRING_SIZE (value));
+	  assert (byte_size < db_get_string_size (value));
 	  strncpy (string, val_str, byte_size);
 	  string[byte_size] = '\0';
 	  db_make_char (&src_value, precision, string, byte_size,
-			DB_GET_STRING_CODESET (value), DB_GET_STRING_COLLATION (value));
+			db_get_string_codeset (value), db_get_string_collation (value));
 
 	  pr_clear_value (value);
 	  (*(tp_Char.setval)) (value, &src_value, true);
@@ -1028,10 +1028,10 @@ db_string_truncate (DB_VALUE * value, const int precision)
       break;
 
     case DB_TYPE_VARNCHAR:
-      val_str = DB_GET_NCHAR (value, &length);
+      val_str = db_get_nchar (value, &length);
       if (val_str != NULL && length > precision)
 	{
-	  intl_char_size ((unsigned char *) val_str, precision, DB_GET_STRING_CODESET (value), &byte_size);
+	  intl_char_size ((unsigned char *) val_str, precision, db_get_string_codeset (value), &byte_size);
 	  string = (char *) db_private_alloc (NULL, byte_size + 1);
 	  if (string == NULL)
 	    {
@@ -1039,11 +1039,11 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	      break;
 	    }
 
-	  assert (byte_size < DB_GET_STRING_SIZE (value));
+	  assert (byte_size < db_get_string_size (value));
 	  strncpy (string, val_str, byte_size);
 	  string[byte_size] = '\0';
 	  db_make_varnchar (&src_value, precision, string, byte_size,
-			    DB_GET_STRING_CODESET (value), DB_GET_STRING_COLLATION (value));
+			    db_get_string_codeset (value), db_get_string_collation (value));
 
 	  pr_clear_value (value);
 	  (*(tp_VarNChar.setval)) (value, &src_value, true);
@@ -1053,10 +1053,10 @@ db_string_truncate (DB_VALUE * value, const int precision)
       break;
 
     case DB_TYPE_NCHAR:
-      val_str = DB_GET_NCHAR (value, &length);
+      val_str = db_get_nchar (value, &length);
       if (val_str != NULL && length > precision)
 	{
-	  intl_char_size ((unsigned char *) val_str, precision, DB_GET_STRING_CODESET (value), &byte_size);
+	  intl_char_size ((unsigned char *) val_str, precision, db_get_string_codeset (value), &byte_size);
 	  string = (char *) db_private_alloc (NULL, byte_size + 1);
 	  if (string == NULL)
 	    {
@@ -1064,11 +1064,11 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	      break;
 	    }
 
-	  assert (byte_size < DB_GET_STRING_SIZE (value));
+	  assert (byte_size < db_get_string_size (value));
 	  strncpy (string, val_str, byte_size);
 	  string[byte_size] = '\0';
 	  db_make_nchar (&src_value, precision, string, byte_size,
-			 DB_GET_STRING_CODESET (value), DB_GET_STRING_COLLATION (value));
+			 db_get_string_codeset (value), db_get_string_collation (value));
 
 	  pr_clear_value (value);
 	  (*(tp_NChar.setval)) (value, &src_value, true);
@@ -1079,7 +1079,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
       break;
 
     case DB_TYPE_BIT:
-      val_str = DB_GET_BIT (value, &length);
+      val_str = db_get_bit (value, &length);
       length = (length + 7) >> 3;
       if (val_str != NULL && length > precision)
 	{
@@ -1101,7 +1101,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
       break;
 
     case DB_TYPE_VARBIT:
-      val_str = DB_GET_BIT (value, &length);
+      val_str = db_get_bit (value, &length);
       length = (length >> 3) + ((length & 7) ? 1 : 0);
       if (val_str != NULL && length > precision)
 	{
@@ -1176,9 +1176,9 @@ db_value_eh_key (DB_VALUE * value)
   switch (value->domain.general_info.type)
     {
     case DB_TYPE_STRING:
-      return DB_GET_STRING (value);
+      return db_get_string (value);
     case DB_TYPE_OBJECT:
-      obj = DB_GET_OBJECT (value);
+      obj = db_get_object (value);
       if (obj == NULL)
 	{
 	  return NULL;
@@ -2002,19 +2002,19 @@ transfer_bit_string (char *buf, int *xflen, int *outlen, const int buflen, const
   error_code = db_bit_string_coerce (src, &tmp_value, &data_status);
   if (error_code == NO_ERROR)
     {
-      *xflen = DB_GET_STRING_LENGTH (&tmp_value);
+      *xflen = db_get_string_length (&tmp_value);
       if (data_status == DATA_STATUS_TRUNCATED)
 	{
 	  if (outlen != NULL)
 	    {
-	      *outlen = DB_GET_STRING_LENGTH (src);
+	      *outlen = db_get_string_length (src);
 	    }
 	}
 
-      tmp_val_str = DB_GET_STRING (&tmp_value);
+      tmp_val_str = db_get_string (&tmp_value);
       if (tmp_val_str != NULL)
 	{
-	  memcpy (buf, tmp_val_str, DB_GET_STRING_SIZE (&tmp_value));
+	  memcpy (buf, tmp_val_str, db_get_string_size (&tmp_value));
 	}
 
       error_code = db_value_clear (&tmp_value);
@@ -2138,7 +2138,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
     {
     case DB_TYPE_INTEGER:
       {
-	int i = DB_GET_INT (value);
+	int i = db_get_int (value);
 
 	switch (c_type)
 	  {
@@ -2188,7 +2188,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 
     case DB_TYPE_SMALLINT:
       {
-	short s = DB_GET_SMALLINT (value);
+	short s = db_get_short (value);
 
 	switch (c_type)
 	  {
@@ -2248,7 +2248,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 
     case DB_TYPE_BIGINT:
       {
-	DB_BIGINT bigint = DB_GET_BIGINT (value);
+	DB_BIGINT bigint = db_get_bigint (value);
 
 	switch (c_type)
 	  {
@@ -2302,7 +2302,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 
     case DB_TYPE_FLOAT:
       {
-	float f = DB_GET_FLOAT (value);
+	float f = db_get_float (value);
 
 	switch (c_type)
 	  {
@@ -2362,7 +2362,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 
     case DB_TYPE_DOUBLE:
       {
-	double d = DB_GET_DOUBLE (value);
+	double d = db_get_double (value);
 
 	switch (c_type)
 	  {
@@ -2422,7 +2422,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 
     case DB_TYPE_MONETARY:
       {
-	DB_MONETARY *money = DB_GET_MONETARY (value);
+	DB_MONETARY *money = db_get_monetary (value);
 	double d = money->amount;
 
 	switch (c_type)
@@ -2497,8 +2497,8 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_NCHAR:
       {
-	const char *s = DB_GET_STRING (value);
-	int n = DB_GET_STRING_SIZE (value);
+	const char *s = db_get_string (value);
+	int n = db_get_string_size (value);
 
 	if (s == NULL)
 	  {
@@ -2598,7 +2598,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	  {
 	  case DB_TYPE_C_OBJECT:
 	    {
-	      *(DB_OBJECT **) buf = (DB_OBJECT *) DB_GET_OBJECT (value);
+	      *(DB_OBJECT **) buf = (DB_OBJECT *) db_get_object (value);
 	      *xflen = sizeof (DB_OBJECT *);
 	    }
 	    break;
@@ -2616,7 +2616,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	  {
 	  case DB_TYPE_C_SET:
 	    {
-	      *(DB_SET **) buf = (DB_SET *) DB_GET_SET (value);
+	      *(DB_SET **) buf = (DB_SET *) db_get_set (value);
 	      *xflen = sizeof (DB_SET *);
 	    }
 	    break;
@@ -2632,7 +2632,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	  {
 	  case DB_TYPE_C_TIME:
 	    {
-	      *(DB_TIME *) buf = *(DB_GET_TIME (value));
+	      *(DB_TIME *) buf = *(db_get_time (value));
 	      *xflen = sizeof (DB_TIME);
 	    }
 	    break;
@@ -2641,7 +2641,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	    {
 	      int n;
 	      char tmp[TIME_BUF_SIZE];
-	      n = db_time_to_string (tmp, sizeof (tmp), DB_GET_TIME (value));
+	      n = db_time_to_string (tmp, sizeof (tmp), db_get_time (value));
 	      if (n < 0)
 		{
 		  goto invalid_args;
@@ -2655,7 +2655,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	    {
 	      int n;
 	      char tmp[TIME_BUF_SIZE];
-	      n = db_time_to_string (tmp, sizeof (tmp), DB_GET_TIME (value));
+	      n = db_time_to_string (tmp, sizeof (tmp), db_get_time (value));
 	      if (n < 0)
 		{
 		  goto invalid_args;
@@ -2676,7 +2676,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	  {
 	  case DB_TYPE_C_TIMESTAMP:
 	    {
-	      *(DB_TIMESTAMP *) buf = *(DB_GET_TIMESTAMP (value));
+	      *(DB_TIMESTAMP *) buf = *(db_get_timestamp (value));
 	      *xflen = sizeof (DB_TIMESTAMP);
 	    }
 	    break;
@@ -2685,7 +2685,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	    {
 	      int n;
 	      char tmp[TIMESTAMP_BUF_SIZE];
-	      n = db_timestamp_to_string (tmp, sizeof (tmp), DB_GET_TIMESTAMP (value));
+	      n = db_timestamp_to_string (tmp, sizeof (tmp), db_get_timestamp (value));
 	      if (n < 0)
 		{
 		  goto invalid_args;
@@ -2700,7 +2700,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	    {
 	      int n;
 	      char tmp[TIMESTAMP_BUF_SIZE];
-	      n = db_timestamp_to_string (tmp, sizeof (tmp), DB_GET_TIMESTAMP (value));
+	      n = db_timestamp_to_string (tmp, sizeof (tmp), db_get_timestamp (value));
 	      if (n < 0)
 		{
 		  goto invalid_args;
@@ -2721,7 +2721,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	  {
 	  case DB_TYPE_C_DATETIME:
 	    {
-	      *(DB_DATETIME *) buf = *(DB_GET_DATETIME (value));
+	      *(DB_DATETIME *) buf = *(db_get_datetime (value));
 	      *xflen = sizeof (DB_DATETIME);
 	    }
 	    break;
@@ -2730,7 +2730,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	    {
 	      int n;
 	      char tmp[DATETIME_BUF_SIZE];
-	      n = db_datetime_to_string (tmp, sizeof (tmp), DB_GET_DATETIME (value));
+	      n = db_datetime_to_string (tmp, sizeof (tmp), db_get_datetime (value));
 	      if (n < 0)
 		{
 		  goto invalid_args;
@@ -2745,7 +2745,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	    {
 	      int n;
 	      char tmp[DATETIME_BUF_SIZE];
-	      n = db_datetime_to_string (tmp, sizeof (tmp), DB_GET_DATETIME (value));
+	      n = db_datetime_to_string (tmp, sizeof (tmp), db_get_datetime (value));
 	      if (n < 0)
 		{
 		  goto invalid_args;
@@ -2765,7 +2765,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	  {
 	  case DB_TYPE_C_DATE:
 	    {
-	      *(DB_DATE *) buf = *(DB_GET_DATE (value));
+	      *(DB_DATE *) buf = *(db_get_date (value));
 	      *xflen = sizeof (DB_DATE);
 	    }
 	    break;
@@ -2774,7 +2774,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	    {
 	      int n;
 	      char tmp[DATE_BUF_SIZE];
-	      n = db_date_to_string (tmp, sizeof (tmp), DB_GET_DATE (value));
+	      n = db_date_to_string (tmp, sizeof (tmp), db_get_date (value));
 	      if (n < 0)
 		{
 		  goto invalid_args;
@@ -2788,7 +2788,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	    {
 	      int n;
 	      char tmp[DATE_BUF_SIZE];
-	      n = db_date_to_string (tmp, sizeof (tmp), DB_GET_DATE (value));
+	      n = db_date_to_string (tmp, sizeof (tmp), db_get_date (value));
 	      if (n < 0)
 		{
 		  goto invalid_args;
@@ -2879,7 +2879,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	    {
 	      int truncated;
 	      qstr_bit_to_hex_coerce ((char *) buf, buflen,
-				      DB_GET_STRING (value), DB_GET_STRING_LENGTH (value), true, xflen, &truncated);
+				      db_get_string (value), db_get_string_length (value), true, xflen, &truncated);
 	      if (truncated > 0)
 		{
 		  if (outlen)
@@ -2899,7 +2899,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	    {
 	      int truncated;
 	      qstr_bit_to_hex_coerce ((char *) buf, buflen,
-				      DB_GET_STRING (value), DB_GET_STRING_LENGTH (value), false, xflen, &truncated);
+				      db_get_string (value), db_get_string_length (value), false, xflen, &truncated);
 	      if (truncated > 0)
 		{
 		  if (outlen)
@@ -3084,7 +3084,7 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	     */
 	    if (DB_VALUE_PRECISION (value) == TP_FLOATING_PRECISION_VALUE)
 	      {
-		db_value_domain_init (value, db_type, DB_GET_STRING_LENGTH (&tmp_value), DB_DEFAULT_SCALE);
+		db_value_domain_init (value, db_type, db_get_string_length (&tmp_value), DB_DEFAULT_SCALE);
 	      }
 
 	    (void) db_bit_string_coerce (&tmp_value, value, &data_status);
@@ -3642,7 +3642,7 @@ coerce_date_to_dbvalue (DB_VALUE * value, char *buf)
 		length = 1;
 	      }
 
-	    DB_MAKE_NULL (&tmp_value);
+	    db_make_null (&tmp_value);
 	    qstr_make_typed_string (db_type, &tmp_value, length, tmp, length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
 	    /* 
@@ -3723,7 +3723,7 @@ coerce_time_to_dbvalue (DB_VALUE * value, char *buf)
 		length = 1;
 	      }
 
-	    DB_MAKE_NULL (&tmp_value);
+	    db_make_null (&tmp_value);
 	    qstr_make_typed_string (db_type, &tmp_value, length, tmp, length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
 	    /* 
@@ -3802,7 +3802,7 @@ coerce_timestamp_to_dbvalue (DB_VALUE * value, char *buf)
 		length = 1;
 	      }
 
-	    DB_MAKE_NULL (&tmp_value);
+	    db_make_null (&tmp_value);
 	    qstr_make_typed_string (db_type, &tmp_value, length, tmp, length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
 	    /* 
@@ -3907,7 +3907,7 @@ coerce_datetime_to_dbvalue (DB_VALUE * value, char *buf)
 		length = 1;
 	      }
 
-	    DB_MAKE_NULL (&tmp_value);
+	    db_make_null (&tmp_value);
 	    qstr_make_typed_string (db_type, &tmp_value, length, tmp, length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
 	    /* 
@@ -4357,8 +4357,8 @@ valcnv_convert_bit_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_p
   int nibble_len, nibbles, count;
   char tbuf[10];
 
-  bit_string_p = (unsigned char *) DB_GET_STRING (value_p);
-  nibble_len = (DB_GET_STRING_LENGTH (value_p) + 3) / 4;
+  bit_string_p = (unsigned char *) db_get_string (value_p);
+  nibble_len = (db_get_string_length (value_p) + 3) / 4;
 
   for (nibbles = 0, count = 0; nibbles < nibble_len - 1; count++, nibbles += 2)
     {
@@ -4521,26 +4521,26 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
       switch (DB_VALUE_TYPE (value_p))
 	{
 	case DB_TYPE_INTEGER:
-	  sprintf (line, "%d", DB_GET_INTEGER (value_p));
+	  sprintf (line, "%d", db_get_int (value_p));
 	  buffer_p = valcnv_append_string (buffer_p, line);
 	  break;
 
 	case DB_TYPE_BIGINT:
-	  sprintf (line, "%lld", (long long) DB_GET_BIGINT (value_p));
+	  sprintf (line, "%lld", (long long) db_get_bigint (value_p));
 	  buffer_p = valcnv_append_string (buffer_p, line);
 	  break;
 
 	case DB_TYPE_SHORT:
-	  sprintf (line, "%d", (int) DB_GET_SHORT (value_p));
+	  sprintf (line, "%d", (int) db_get_short (value_p));
 	  buffer_p = valcnv_append_string (buffer_p, line);
 	  break;
 
 	case DB_TYPE_FLOAT:
-	  buffer_p = valcnv_convert_float_to_string (buffer_p, DB_GET_FLOAT (value_p));
+	  buffer_p = valcnv_convert_float_to_string (buffer_p, db_get_float (value_p));
 	  break;
 
 	case DB_TYPE_DOUBLE:
-	  buffer_p = valcnv_convert_double_to_string (buffer_p, DB_GET_DOUBLE (value_p));
+	  buffer_p = valcnv_convert_double_to_string (buffer_p, db_get_double (value_p));
 	  break;
 
 	case DB_TYPE_NUMERIC:
@@ -4556,15 +4556,15 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARNCHAR:
-	  src_p = DB_GET_STRING (value_p);
+	  src_p = db_get_string (value_p);
 
-	  if (src_p != NULL && DB_GET_STRING_SIZE (value_p) == 0)
+	  if (src_p != NULL && db_get_string_size (value_p) == 0)
 	    {
 	      buffer_p = valcnv_append_string (buffer_p, "");
 	      return buffer_p;
 	    }
 
-	  end_p = src_p + DB_GET_STRING_SIZE (value_p);
+	  end_p = src_p + db_get_string_size (value_p);
 	  while (src_p < end_p)
 	    {
 	      for (p = src_p; p < end_p && *p != '\''; p++)
@@ -4655,7 +4655,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 
 	case DB_TYPE_BLOB:
 	case DB_TYPE_CLOB:
-	  elo_p = DB_GET_ELO (value_p);
+	  elo_p = db_get_elo (value_p);
 	  if (elo_p == NULL)
 	    {
 	      buffer_p = valcnv_append_string (buffer_p, "NULL");
@@ -4676,7 +4676,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	  break;
 
 	case DB_TYPE_TIME:
-	  cnt = db_time_to_string (line, VALCNV_TOO_BIG_TO_MATTER, DB_GET_TIME (value_p));
+	  cnt = db_time_to_string (line, VALCNV_TOO_BIG_TO_MATTER, db_get_time (value_p));
 	  if (cnt == 0)
 	    {
 	      return NULL;
@@ -4688,7 +4688,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	  {
 	    DB_TIMETZ *time_tz;
 
-	    time_tz = DB_GET_TIMETZ (value_p);
+	    time_tz = db_get_timetz (value_p);
 	    cnt = db_timetz_to_string (line, VALCNV_TOO_BIG_TO_MATTER, &time_tz->time, &time_tz->tz_id);
 	    if (cnt == 0)
 	      {
@@ -4703,7 +4703,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	    TZ_ID tz_id;
 	    DB_TIME *time;
 
-	    time = DB_GET_TIME (value_p);
+	    time = db_get_time (value_p);
 	    if (tz_create_session_tzid_for_time (time, true, &tz_id) != NO_ERROR)
 	      {
 		return NULL;
@@ -4718,7 +4718,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	  }
 
 	case DB_TYPE_TIMESTAMP:
-	  cnt = db_timestamp_to_string (line, VALCNV_TOO_BIG_TO_MATTER, DB_GET_TIMESTAMP (value_p));
+	  cnt = db_timestamp_to_string (line, VALCNV_TOO_BIG_TO_MATTER, db_get_timestamp (value_p));
 	  if (cnt == 0)
 	    {
 	      return NULL;
@@ -4728,7 +4728,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 
 	case DB_TYPE_TIMESTAMPTZ:
 	  {
-	    DB_TIMESTAMPTZ *ts_tz = DB_GET_TIMESTAMPTZ (value_p);
+	    DB_TIMESTAMPTZ *ts_tz = db_get_timestamptz (value_p);
 
 	    cnt = db_timestamptz_to_string (line, VALCNV_TOO_BIG_TO_MATTER, &(ts_tz->timestamp), &(ts_tz->tz_id));
 	    if (cnt == 0)
@@ -4744,7 +4744,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	    TZ_ID tz_id;
 	    DB_TIMESTAMP *utime;
 
-	    utime = DB_GET_TIMESTAMP (value_p);
+	    utime = db_get_timestamp (value_p);
 	    if (tz_create_session_tzid_for_timestamp (utime, &tz_id) != NO_ERROR)
 	      {
 		return NULL;
@@ -4759,7 +4759,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	  break;
 
 	case DB_TYPE_DATETIME:
-	  cnt = db_datetime_to_string (line, VALCNV_TOO_BIG_TO_MATTER, DB_GET_DATETIME (value_p));
+	  cnt = db_datetime_to_string (line, VALCNV_TOO_BIG_TO_MATTER, db_get_datetime (value_p));
 	  if (cnt == 0)
 	    {
 	      return NULL;
@@ -4770,7 +4770,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 
 	case DB_TYPE_DATETIMETZ:
 	  {
-	    DB_DATETIMETZ *dt_tz = DB_GET_DATETIMETZ (value_p);
+	    DB_DATETIMETZ *dt_tz = db_get_datetimetz (value_p);
 
 	    cnt = db_datetimetz_to_string (line, VALCNV_TOO_BIG_TO_MATTER, &(dt_tz->datetime), &(dt_tz->tz_id));
 	    if (cnt == 0)
@@ -4787,7 +4787,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	    TZ_ID tz_id;
 	    DB_DATETIME *dt;
 
-	    dt = DB_GET_DATETIME (value_p);
+	    dt = db_get_datetime (value_p);
 	    if (tz_create_session_tzid_for_datetime (dt, true, &tz_id) != NO_ERROR)
 	      {
 		return NULL;
@@ -4804,7 +4804,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	  break;
 
 	case DB_TYPE_DATE:
-	  cnt = db_date_to_string (line, VALCNV_TOO_BIG_TO_MATTER, DB_GET_DATE (value_p));
+	  cnt = db_date_to_string (line, VALCNV_TOO_BIG_TO_MATTER, db_get_date (value_p));
 	  if (cnt == 0)
 	    {
 	      return NULL;
@@ -4813,7 +4813,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	  break;
 
 	case DB_TYPE_MONETARY:
-	  money_p = DB_GET_MONETARY (value_p);
+	  money_p = db_get_monetary (value_p);
 	  OR_MOVE_DOUBLE (&money_p->amount, &amount);
 	  money_string_p = valcnv_convert_money_to_string (amount);
 	  if (money_string_p == NULL)
@@ -4841,7 +4841,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	    }
 	  else if (db_get_enum_string_size (value_p) > 0)
 	    {
-	      DB_MAKE_STRING (&dbval, db_get_enum_string (value_p));
+	      db_make_string (&dbval, db_get_enum_string (value_p));
 
 	      buffer_p = valcnv_convert_data_to_string (buffer_p, &dbval);
 	    }
@@ -4965,7 +4965,7 @@ valcnv_convert_value_to_string (DB_VALUE * value_p)
 	  return ER_FAILED;
 	}
 
-      DB_MAKE_VARCHAR (&src_value, DB_MAX_STRING_LENGTH,
+      db_make_varchar (&src_value, DB_MAX_STRING_LENGTH,
 		       (char *) buf_p->bytes, CAST_STRLEN (buf_p->length), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
       pr_clear_value (value_p);
@@ -5033,7 +5033,7 @@ int
 db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest)
 {
   CHECK_2ARGS_ERROR (src, dest);
-  JSON_DOC *doc = DB_GET_JSON_DOCUMENT (src);
+  JSON_DOC *doc = db_get_json_document (src);
 
   assert (doc != NULL);
 
@@ -5042,7 +5042,7 @@ db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest)
     case DB_JSON_STRING:
       {
 	const char *str = db_json_get_string_from_document (doc);
-	int error_code = DB_MAKE_STRING (dest, str);
+	int error_code = db_make_string (dest, str);
 	if (error_code != NO_ERROR)
 	  {
 	    ASSERT_ERROR ();
@@ -5053,19 +5053,19 @@ db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest)
     case DB_JSON_INT:
       {
 	int val = db_json_get_int_from_document (doc);
-	DB_MAKE_INTEGER (dest, val);
+	db_make_int (dest, val);
 	break;
       }
     case DB_JSON_DOUBLE:
       {
 	double val = db_json_get_double_from_document (doc);
-	DB_MAKE_DOUBLE (dest, val);
+	db_make_double (dest, val);
 	break;
       }
     case DB_JSON_BOOL:
       {
 	char *str = db_json_get_bool_as_str_from_document (doc);
-	int error_code = DB_MAKE_STRING (dest, str);
+	int error_code = db_make_string (dest, str);
 	if (error_code != NO_ERROR)
 	  {
 	    ASSERT_ERROR ();
@@ -5075,7 +5075,7 @@ db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest)
 	break;
       }
     case DB_JSON_NULL:
-      DB_MAKE_NULL (dest);
+      db_make_null (dest);
       break;
     default:
       assert (false);

@@ -492,7 +492,7 @@ process_value (DB_VALUE * value)
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
       {
-	return_value = process_set (DB_GET_SET (value));
+	return_value = process_set (db_get_set (value));
 	break;
       }
 
