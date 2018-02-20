@@ -59,7 +59,6 @@
 #include "boot_sr.h"
 #include "db_date.h"
 #include "dbtype.h"
-#include "thread.h"
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
@@ -2569,7 +2568,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
   LOG_TDES *tdes;		/* Transaction descriptor */
   int num_total_indices;
 #if defined(SERVER_MODE)
-  UINT64 current_msec = 0;
+  INT64 current_msec = 0;
   TRAN_QUERY_EXEC_INFO *query_exec_info = NULL;
   XASL_CACHE_ENTRY *ent = NULL;
 #endif
@@ -2591,7 +2590,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 	  goto error;
 	}
 
-      current_msec = thread_get_log_clock_msec ();
+      current_msec = log_get_clock_msec ();
     }
 #endif
 
@@ -3185,7 +3184,7 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
       /* In order to prevent performance degradation, we use log_Clock_msec set by thread_log_clock_thread instead of
        * calling gettimeofday here if the system supports atomic built-ins. */
 #if defined(SERVER_MODE)
-      now = thread_get_log_clock_msec ();
+      now = log_get_clock_msec ();
 #else /* SERVER_MODE */
       gettimeofday (&tv, NULL);
       now = (tv.tv_sec * 1000LL) + (tv.tv_usec / 1000LL);

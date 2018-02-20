@@ -329,7 +329,7 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
-static cubthread::daemon *log_Log_clock_daemon = NULL;
+static cubthread::daemon *log_Clock_daemon = NULL;
 static cubthread::daemon *log_Checkpoint_daemon = NULL;
 static cubthread::daemon *log_Remove_log_archive_daemon = NULL;
 
@@ -10402,7 +10402,7 @@ void
 log_clock_daemon_init ()
 {
   std::chrono::milliseconds looper_interval = std::chrono::milliseconds (200);
-  log_Log_clock_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (looper_interval),
+  log_Clock_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (looper_interval),
 			 new log_clock_daemon_task ());
 }
 #endif /* SERVER_MODE */
@@ -10411,7 +10411,7 @@ log_clock_daemon_init ()
 /*
  * log_daemons_init () - initialize daemon threads
  */
-void
+static void
 log_daemons_init ()
 {
   if (log_Daemons_are_initialized)
@@ -10431,7 +10431,7 @@ log_daemons_init ()
 /*
  * log_daemons_destroy () - destroy daemon threads
  */
-void
+static void
 log_daemons_destroy ()
 {
   if (!log_Daemons_are_initialized)
@@ -10439,7 +10439,7 @@ log_daemons_destroy ()
       return;
     }
 
-  cubthread::get_manager ()->destroy_daemon (log_Log_clock_daemon);
+  cubthread::get_manager ()->destroy_daemon (log_Clock_daemon);
   cubthread::get_manager ()->destroy_daemon (log_Remove_log_archive_daemon);
   cubthread::get_manager ()->destroy_daemon (log_Checkpoint_daemon);
 
@@ -10447,3 +10447,23 @@ log_daemons_destroy ()
 }
 #endif /* SERVER_MODE */
 // *INDENT-ON*
+
+/*
+ * log_get_clock_msec () - get current system time in milliseconds.
+ *   return cached value by log_Clock_daemon if SERVER_MODE is defined
+ */
+INT64
+log_get_clock_msec (void)
+{
+#if defined (SERVER_MODE)
+    if (log_Clock_msec > 0)
+    {
+	return log_Clock_msec;
+    }
+#endif /* SERVER_MODE */
+
+    struct timeval now;
+    gettimeofday (&now, NULL);
+
+    return (now.tv_sec * 1000LL) + (now.tv_usec / 1000LL);
+}

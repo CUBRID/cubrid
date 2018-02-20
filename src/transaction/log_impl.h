@@ -2033,7 +2033,7 @@ extern LOG_LOGGING_STAT log_Stat;
 #if defined (SERVER_MODE)
 /* Current time in milliseconds */
 // *INDENT-OFF*
-extern std::atomic_uint64_t log_Clock_msec;
+extern std::atomic<INT64> log_Clock_msec;
 // *INDENT-ON*
 #endif /* SERVER_MODE */
 

@@ -2636,22 +2636,6 @@ thread_is_log_flush_thread_available (void)
   return thread_Log_flush_thread.is_available;
 }
 
-INT64
-thread_get_log_clock_msec (void)
-{
-#if defined (SERVER_MODE)
-  if (log_Clock_msec > 0)
-    {
-      return log_Clock_msec;
-    }
-#endif /* SERVER_MODE */
-
-  struct timeval now;
-  gettimeofday (&now, NULL);
-
-  return (now.tv_sec * 1000LL) + (now.tv_usec / 1000LL);
-}
-
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * thread_wakeup_check_ha_delay_info_thread() -

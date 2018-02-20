@@ -109,7 +109,7 @@ LOG_GLOBAL log_Gl = {
 #if defined (SERVER_MODE)
 /* Current time in milliseconds */
 // *INDENT-OFF*
-std::atomic_uint64_t log_Clock_msec = {0};
+std::atomic<INT64> log_Clock_msec = {0};
 // *INDENT-ON*
 #endif /* SERVER_MODE */
 

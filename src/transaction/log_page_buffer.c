@@ -4270,7 +4270,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
       if (thread_p != NULL && thread_p->event_stats.trace_log_flush_time > 0)
 	{
-	  flush_start_time = thread_get_log_clock_msec ();
+	  flush_start_time = log_get_clock_msec ();
 
 	  memset (&writer_info->last_writer_client_info, 0, sizeof (LOG_CLIENTIDS));
 
@@ -4607,7 +4607,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
       if (thread_p != NULL && thread_p->event_stats.trace_log_flush_time > 0)
 	{
-	  flush_completed_time = thread_get_log_clock_msec ();
+	  flush_completed_time = log_get_clock_msec ();
 	}
 
       writer_info->flush_completed = true;
@@ -4640,7 +4640,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
       if (thread_p != NULL && thread_p->event_stats.trace_log_flush_time > 0)
 	{
-	  all_writer_thr_end_time = thread_get_log_clock_msec ();
+	  all_writer_thr_end_time = log_get_clock_msec ();
 
 	  if (all_writer_thr_end_time - flush_start_time > thread_p->event_stats.trace_log_flush_time)
 	    {
