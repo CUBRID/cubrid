@@ -105,10 +105,6 @@ static HA_SERVER_STATE ha_Server_state = HA_SERVER_STATE_IDLE;
 static bool ha_Repl_delay_detected = false;
 
 static int ha_Server_num_of_hosts = 0;
-
-/* current server state (slave, master, replica) sent in by the cub_master process */
-static HB_NODE_STATE_TYPE heartbeat_Node_state = HB_NSTATE_UNKNOWN;
-
 static char *ha_Server_master_hostname = NULL;
 
 typedef struct job_queue JOB_QUEUE;
@@ -220,7 +216,6 @@ static void css_process_new_client (SOCKET master_fd);
 static void css_process_get_server_ha_mode_request (SOCKET master_fd);
 static void css_process_change_server_ha_mode_request (SOCKET master_fd);
 static void css_process_get_eof_request (SOCKET master_fd);
-static void css_get_hb_node_state_from_master ();
 
 static void css_close_connection_to_master (void);
 static int css_reestablish_connection_to_master (void);
@@ -2745,12 +2740,6 @@ css_unset_ha_repl_delayed (void)
   ha_Repl_delay_detected = false;
 }
 
-HB_NODE_STATE_TYPE
-css_get_hb_node_state (void)
-{
-  return heartbeat_Node_state;
-}
-
 /*
  * css_transit_ha_server_state - request to transit the current HA server
  *                               state to the required state
@@ -3392,7 +3381,7 @@ css_process_new_slave (SOCKET master_fd)
       return;
     }
   _er_log_debug (ARG_FILE_LINE, "css_process_new_slave:" "received new slave fd from master fd=%d, current_state=%d\n",
-		 new_fd, css_get_hb_node_state ());
+		 new_fd, ha_Server_state);
 
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
