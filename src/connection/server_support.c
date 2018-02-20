@@ -24,6 +24,9 @@
 #ident "$Id$"
 
 #include "config.h"
+#include "session.h"
+#include "thread_entry_task.hpp"
+#include "thread_manager.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -74,6 +77,8 @@
 #include "heartbeat.h"
 #endif
 #include "dbtype.h"
+
+
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"
 
@@ -200,6 +205,11 @@ static HA_LOG_APPLIER_STATE_TABLE ha_Log_applier_state[HA_LOG_APPLIER_STATE_TABL
 
 static int ha_Log_applier_state_num = 0;
 
+// *INDENT-OFF*
+static cubthread::entry_workpool* css_Server_request_worker_pool = NULL;
+static cubthread::entry_workpool* css_Connection_worker_pool = NULL;
+// *INDENT-ON*
+
 static int css_free_job_entry_func (void *data, void *dummy);
 static void css_empty_job_queue (void);
 static void css_setup_server_loop (void);
@@ -218,7 +228,7 @@ static int css_reestablish_connection_to_master (void);
 static void dummy_sigurg_handler (int sig);
 static int css_connection_handler_thread (THREAD_ENTRY * thrd, CSS_CONN_ENTRY * conn);
 static int css_internal_connection_handler (CSS_CONN_ENTRY * conn);
-static int css_internal_request_handler (THREAD_ENTRY * thrd, CSS_THREAD_ARG arg);
+static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
 static int css_wait_worker_thread_on_jobq (THREAD_ENTRY * thrd, int jobq_index);
 static bool css_can_occupy_worker_thread_on_jobq (int jobq_index);
@@ -388,6 +398,16 @@ css_init_job_queue (void)
       jobq_idx = thrd_idx % CSS_NUM_JOB_QUEUE;
 
       css_Job_queue[jobq_idx].num_total_workers++;
+    }
+
+  const std::size_t MAX_WORKERS = NUM_NON_SYSTEM_TRANS;
+  const std::size_t JOB_QUEUE_SIZE = NUM_NON_SYSTEM_TRANS;
+
+  css_Server_request_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, JOB_QUEUE_SIZE);
+  if (css_Server_request_worker_pool == NULL)
+    {
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
     }
 }
 
@@ -1668,9 +1688,8 @@ css_internal_connection_handler (CSS_CONN_ENTRY * conn)
  *       thread that is blocking for data.
  */
 static int
-css_internal_request_handler (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
+css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
 {
-  CSS_CONN_ENTRY *conn;
   unsigned short rid;
   unsigned int eid;
   int request, rc, size = 0;
@@ -1678,48 +1697,42 @@ css_internal_request_handler (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
   int local_tran_index;
   int status = CSS_UNPLANNED_SHUTDOWN;
 
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
+  assert (thread_ref.conn_entry == &conn_ref);
 
-  local_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  local_tran_index = LOG_FIND_THREAD_TRAN_INDEX (&thread_ref);
 
-  conn = (CSS_CONN_ENTRY *) arg;
-  assert (conn != NULL);
-
-  rc = css_receive_request (conn, &rid, &request, &size);
+  rc = css_receive_request (&conn_ref, &rid, &request, &size);
   if (rc == NO_ERRORS)
     {
       /* 1. change thread's transaction id to this connection's */
-      thread_p->tran_index = conn->transaction_id;
+      thread_ref.tran_index = conn_ref.transaction_id;
 
-      pthread_mutex_unlock (&thread_p->tran_index_lock);
+      pthread_mutex_unlock (&thread_ref.tran_index_lock);
 
       if (size)
 	{
-	  rc = css_receive_data (conn, rid, &buffer, &size, -1);
+	  rc = css_receive_data (&conn_ref, rid, &buffer, &size, -1);
 	  if (rc != NO_ERRORS)
 	    {
 	      return status;
 	    }
 	}
 
-      conn->db_error = 0;	/* This will reset the error indicator */
+      conn_ref.db_error = 0;	/* This will reset the error indicator */
 
-      eid = css_return_eid_from_conn (conn, rid);
+      eid = css_return_eid_from_conn (&conn_ref, rid);
       /* 2. change thread's client, rid, tran_index for this request */
-      thread_set_info (thread_p, conn->client_id, eid, conn->transaction_id, request);
+      thread_set_info (&thread_ref, conn_ref.client_id, eid, conn_ref.transaction_id, request);
 
       /* 3. Call server_request() function */
-      status = (*css_Server_request_handler) (thread_p, eid, request, size, buffer);
+      status = css_Server_request_handler (&thread_ref, eid, request, size, buffer);
 
       /* 4. reset thread transaction id(may be NULL_TRAN_INDEX) */
-      thread_set_info (thread_p, -1, 0, local_tran_index, -1);
+      thread_set_info (&thread_ref, -1, 0, local_tran_index, -1);
     }
   else
     {
-      pthread_mutex_unlock (&thread_p->tran_index_lock);
+      pthread_mutex_unlock (&thread_ref.tran_index_lock);
 
       if (rc == ERROR_WHEN_READING_SIZE || rc == NO_DATA_AVAILABLE)
 	{
@@ -1746,8 +1759,7 @@ css_initialize_server_interfaces (int (*request_handler) (THREAD_ENTRY * thrd, u
 				  CSS_THREAD_FN connection_error_function)
 {
   css_Server_request_handler = request_handler;
-  css_register_handler_routines (css_internal_connection_handler, css_internal_request_handler,
-				 connection_error_function);
+  css_register_handler_routines (css_internal_connection_handler, NULL /* disabled */ , connection_error_function);
 }
 
 /*
@@ -1830,6 +1842,8 @@ css_init (char *server_name, int name_length, int port_id)
 #if !defined(WINDOWS)
 shutdown:
 #endif
+
+  // todo: stop connection worker pool
   /* stop threads */
   thread_stop_active_workers (THREAD_STOP_WORKERS_EXCEPT_LOGWR);
 
@@ -1865,6 +1879,9 @@ shutdown:
   LOG_CS_EXIT (thread_p);
 
   thread_stop_active_workers (THREAD_STOP_LOGWR);
+
+  // stop request worker pool
+  cubthread::get_manager ()->destroy_worker_pool (css_Server_request_worker_pool);
 
   if (!HA_DISABLED ())
     {
@@ -3297,3 +3314,40 @@ xacl_reload (THREAD_ENTRY * thread_p)
   return css_set_accessible_ip_info ();
 }
 #endif
+
+// *INDENT-OFF*
+
+class css_server_task : public cubthread::entry_task
+{
+public:
+
+  css_server_task (void) = delete;
+
+  css_server_task (CSS_CONN_ENTRY & conn)
+  : m_conn (conn)
+  {
+  }
+
+  void
+  execute (context_type & thread_ref) final
+  {
+    thread_ref.conn_entry = &m_conn;
+    if (thread_ref.conn_entry->session_p != NULL)
+      {
+        thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
+      }
+    else
+      {
+        assert (thread_ref.private_lru_index == -1);
+      }
+
+    (void) css_internal_request_handler (thread_ref, m_conn);
+
+    thread_ref.private_lru_index = -1;
+    thread_ref.conn_entry = NULL;
+  }
+
+private:
+  CSS_CONN_ENTRY & m_conn;
+};
+// *INDENT-ON*

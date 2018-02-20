@@ -38,7 +38,6 @@ extern void session_states_finalize (THREAD_ENTRY * thread_p);
 extern int session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id);
 extern int session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id);
 extern int session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id);
-extern int session_remove_expired_sessions (struct timeval *timeout);
 extern int session_get_session_id (THREAD_ENTRY * thread_p, SESSION_ID * id);
 extern int session_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value, bool update_last_insert_id);
 extern int session_set_cur_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value, bool force);
