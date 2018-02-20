@@ -33,6 +33,7 @@
 #include "string_buffer.hpp"
 #include "transaction_cl.h"
 #include "work_space.h"
+#include "dbtype.h"
 
 object_description::object_description ()
   : classname (0)

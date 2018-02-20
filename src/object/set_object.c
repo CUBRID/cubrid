@@ -34,6 +34,7 @@
 #include "error_manager.h"
 #include "object_primitive.h"
 #include "object_print.h"
+#include "dbtype.h"
 
 
 #if !defined(SERVER_MODE)
@@ -44,9 +45,6 @@
 #include "parser.h"
 #else /* !SERVER_MODE */
 #endif
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
 
 
 /* If this is the server stub out ws_pin.

@@ -37,10 +37,10 @@
 
 #include "porting.h"
 #include "dbdef.h"
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "sha1.h"
 
-/* LIMITS AND NULL VALUES ON DISK RELATED DATATYPES */
+  /* LIMITS AND NULL VALUES ON DISK RELATED DATATYPES */
 
 #define NULL_VOLID  (-1)	/* Value of an invalid volume identifier */
 #define NULL_SECTID (-1)	/* Value of an invalid sector identifier */

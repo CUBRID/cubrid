@@ -51,6 +51,7 @@
 #include "api_compat.h"
 #include "network_interface_cl.h"
 #include "transaction_cl.h"
+#include "dbtype.h"
 
 #define BUF_SIZE 1024
 

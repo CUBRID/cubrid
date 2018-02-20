@@ -36,7 +36,7 @@
 
 #if defined(SERVER_MODE)
 #include "adjustable_array.h"
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "error_manager.h"
 #include "log_compress.h"
 #include "porting.h"
@@ -308,7 +308,6 @@ extern int thread_get_current_tran_index (void);
 extern void thread_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void thread_set_tran_index (THREAD_ENTRY * thread_p, int tran_index);
-extern void thread_wakeup_session_control_thread (void);
 extern void thread_wakeup_check_ha_delay_info_thread (void);
 #endif
 extern struct css_conn_entry *thread_get_current_conn_entry (void);

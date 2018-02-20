@@ -56,9 +56,7 @@
 #include "view_transform.h"
 #include "xasl_to_stream.h"
 #include "parser_support.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -5076,7 +5074,7 @@ do_get_partition_keycol (char *keycol, MOP class_)
       return error;
     }
 
-  keyname_str = DB_PULL_STRING (&keyname);
+  keyname_str = db_get_string (&keyname);
   strncpy (keycol, keyname_str, DB_MAX_IDENTIFIER_LENGTH);
   error = NO_ERROR;
 

@@ -30,6 +30,7 @@
 #include "parser.h"
 #include "parser_message.h"
 #include "view_transform.h"
+#include "dbtype.h"
 
 typedef struct meth_lambda METH_LAMBDA;
 struct meth_lambda

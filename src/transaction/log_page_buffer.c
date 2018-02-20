@@ -413,6 +413,9 @@ static void logpb_set_nxio_lsa (LOG_LSA * lsa);
 static int logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_HEADER * from_hdr);
 STATIC_INLINE LOG_BUFFER *logpb_get_log_buffer (LOG_PAGE * log_pg) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int logpb_get_log_buffer_index (LOG_PAGEID log_pageid) __attribute__ ((ALWAYS_INLINE));
+static int logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_fullname,
+					       const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
+					       LOG_PAGE * log_pgptr);
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -1499,6 +1502,77 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_P
 }
 
 /*
+ * logpb_fetch_header_from_active_log - Fetch log header directly from active log file
+ *
+ * return: error code
+ *
+ *   hdr(in/out): Pointer where log header is stored
+ *   log_pgptr(in/out): log page buffer ptr
+ *
+ * NOTE: Should be used only during boot sequence.
+ */
+static int
+logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
+				    const char *prefix_logname, LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
+{
+  LOG_HEADER *log_hdr;		/* The log header */
+  LOG_PHY_PAGEID phy_pageid;
+  int error_code = NO_ERROR;
+
+  assert (db_fullname != NULL);
+  assert (logpath != NULL);
+  assert (prefix_logname != NULL);
+  assert (hdr != NULL);
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+  assert (log_pgptr != NULL);
+
+  error_code = logpb_initialize_log_names (thread_p, db_fullname, logpath, prefix_logname);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  if (fileio_is_volume_exist (log_Name_active) == false)
+    {
+      error_code = ER_FAILED;
+      goto error;
+    }
+
+  log_Gl.append.vdes = fileio_mount (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false);
+  if (log_Gl.append.vdes == NULL_VOLDES)
+    {
+      error_code = ER_FAILED;
+      goto error;
+    }
+
+  phy_pageid = logpb_to_physical_pageid (LOGPB_HEADER_PAGE_ID);
+  logpb_log ("reading from active log:%s, physical page is : %lld\n", log_Name_active, (long long int) phy_pageid);
+
+  if (fileio_read (thread_p, log_Gl.append.vdes, log_pgptr, phy_pageid, LOG_PAGESIZE) == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, LOGPB_HEADER_PAGE_ID, phy_pageid,
+	      log_Name_active);
+      error_code = ER_LOG_READ;
+      goto error;
+    }
+
+  log_hdr = (LOG_HEADER *) (log_pgptr->area);
+  *hdr = *log_hdr;
+
+  /* keep active log mounted : this prevents other process to access/change DB parameters */
+
+  if (log_pgptr->hdr.logical_pageid != LOGPB_HEADER_PAGE_ID || log_pgptr->hdr.offset != NULL_OFFSET)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, phy_pageid);
+      error_code = ER_LOG_PAGE_CORRUPTED;
+      goto error;
+    }
+
+error:
+  return error_code;
+}
+
+/*
  * logpb_flush_header - Flush log header
  *
  * return: nothing
@@ -2050,7 +2124,9 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
 			      const char *prefix_logname, PGLENGTH * io_page_size, PGLENGTH * log_page_size,
 			      INT64 * creation_time, float *db_compatibility, int *db_charset)
 {
-  LOG_HEADER hdr;		/* Log header */
+  static LOG_HEADER hdr;	/* Log header */
+  static bool is_header_read_from_file = false;
+  static bool is_log_header_validated = false;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
   int error_code = NO_ERROR;
@@ -2093,50 +2169,28 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
       return *io_page_size;
     }
 
-  /* System is not restarted. Read the header from disk */
-
-  error_code = logpb_initialize_log_names (thread_p, db_fullname, logpath, prefix_logname);
-  if (error_code != NO_ERROR)
+  if (!is_header_read_from_file)
     {
-      goto error;
+      log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+
+      error_code = logpb_fetch_header_from_active_log (thread_p, db_fullname, logpath, prefix_logname, &hdr, log_pgptr);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+      is_header_read_from_file = true;
     }
-
-  /* 
-   * Avoid setting errors at this moment related to existance of files.
-   */
-
-  if (fileio_is_volume_exist (log_Name_active) == false)
-    {
-      error_code = ER_FAILED;
-      goto error;
-    }
-
-  log_Gl.append.vdes = fileio_mount (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false);
-  if (log_Gl.append.vdes == NULL_VOLDES)
-    {
-      error_code = ER_FAILED;
-      goto error;
-    }
-
-  error_code = logpb_initialize_pool (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
-  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
-
-  logpb_fetch_header_with_buffer (thread_p, &hdr, log_pgptr);
-  logpb_finalize_pool (thread_p);
-
-  fileio_dismount (thread_p, log_Gl.append.vdes);
-  log_Gl.append.vdes = NULL_VOLDES;
 
   *io_page_size = hdr.db_iopagesize;
   *log_page_size = hdr.db_logpagesize;
   *creation_time = hdr.db_creation;
   *db_compatibility = hdr.db_compatibility;
   *db_charset = (int) hdr.db_charset;
+
+  if (is_log_header_validated)
+    {
+      return *io_page_size;
+    }
 
   /* 
    * Make sure that the log is a log file and that it is compatible with the
@@ -2166,28 +2220,7 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
       goto error;
     }
 
-  if (IO_PAGESIZE != *io_page_size || LOG_PAGESIZE != *log_page_size)
-    {
-      if (db_set_page_size (*io_page_size, *log_page_size) != NO_ERROR)
-	{
-	  error_code = ER_FAILED;
-	  goto error;
-	}
-      else
-	{
-	  error_code = sysprm_reload_and_init (NULL, NULL);
-	  if (error_code != NO_ERROR)
-	    {
-	      goto error;
-	    }
-
-	  error_code = logtb_define_trantable_log_latch (thread_p, log_Gl.trantable.num_total_indices);
-	  if (error_code != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	}
-    }
+  is_log_header_validated = true;
 
   return *io_page_size;
 
@@ -7578,7 +7611,7 @@ class remove_log_archive_daemon_task : public cubthread::entry_task
     explicit remove_log_archive_daemon_task (int archive_logs_to_delete)
     {
       this->m_archive_logs_to_delete = archive_logs_to_delete;
-    };
+    }
 
     void execute (cubthread::entry & thread_ref) override
     {

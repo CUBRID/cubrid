@@ -41,6 +41,7 @@
 #include "tsc_timer.h"
 #include "show_scan.h"
 #include "numeric_opfunc.h"
+#include "dbtype.h"
 
 #undef csect_initialize_critical_section
 #undef csect_finalize_critical_section

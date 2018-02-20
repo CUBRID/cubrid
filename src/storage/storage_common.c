@@ -36,6 +36,7 @@
 #include "environment_variable.h"
 #include "file_io.h"
 #include "db_date.h"
+#include "dbtype.h"
 
 
 /* RESERVED_SIZE_IN_PAGE should be aligned */

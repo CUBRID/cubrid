@@ -33,7 +33,7 @@
 
 #include "parser.h"
 #include "object_domain.h"
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "optimizer.h"
 
 #define MATCH_ALL       1

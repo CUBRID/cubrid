@@ -62,6 +62,7 @@
 #include "network_interface_cl.h"
 #include "utility.h"
 #include "tsc_timer.h"
+#include "dbtype.h"
 
 #if defined(WINDOWS)
 #include "file_io.h"		/* needed for _wyield() */

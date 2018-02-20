@@ -60,8 +60,7 @@
 #include "execute_statement.h"
 #include "network_interface_cl.h"
 
-/* Include this last; it redefines some macros! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #define OBJ_INTERNAL_SAVEPOINT_NAME "*template-unique*"
 
@@ -1031,7 +1030,7 @@ obt_free_assignment (OBJ_TEMPASSIGN * assign)
 	  else if (TP_IS_SET_TYPE (av_type) && DB_GET_SET (assign->variable) != NULL)
 	    {
 	      /* must go through and free any elements that may be template pointers */
-	      setref = DB_PULL_SET (assign->variable);
+	      setref = db_get_set (assign->variable);
 	      if (setref->set != NULL)
 		{
 		  set_size = setobj_size (setref->set);

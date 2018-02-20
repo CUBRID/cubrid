@@ -56,6 +56,8 @@
 #include "dmalloc.h"
 #endif /* DMALLOC */
 
+#include "dbtype.h"
+
 /* TODO : remove */
 extern bool catcls_Enable;
 

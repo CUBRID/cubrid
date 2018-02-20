@@ -29,7 +29,7 @@
 
 #include "config.h"
 
-#include "dbtype.h"
+#include "dbtype_def.h"
 
 typedef struct db_gadget DB_GADGET;
 typedef struct attr_val ATTR_VAL;

@@ -83,6 +83,7 @@
 #include "tsc_timer.h"
 #include "show_meta.h"
 #include "tz_support.h"
+#include "dbtype.h"
 
 
 #if defined(CS_MODE)

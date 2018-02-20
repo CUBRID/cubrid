@@ -17,23 +17,16 @@
  *
  */
 
-/*
- * log_applier_sql_log.h - Definitions for log applier's SQL logging module
- */
+#include <stdio.h>
 
-#ifndef LOG_APPLIER_SQL_LOG_H_
-#define LOG_APPLIER_SQL_LOG_H_
+#define API_ACTIVE_CHECKS
 
-#ident "$Id$"
-
-#include "dbdef.h"
-#include "dbtype_def.h"
-#include "work_space.h"
-
-extern int sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *ddl, char *ha_sys_prm);
-extern int sl_write_insert_sql (DB_OTMPL * inst_tp, DB_VALUE * key);
-extern int sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key);
-extern int sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key);
-extern int sl_init (const char *db_name, const char *repl_log_path);
-
-#endif /* LOG_APPLIER_SQL_LOG_H_ */
+#include "system_parameter.h"
+#include "db.h"
+#include "dbtype_function.h"
+#include "error_manager.h"
+#include "elo.h"
+#include "set_object.h"
+#include "language_support.h"
+#include "intl_support.h"
+#include "dbtype_function.i"

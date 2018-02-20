@@ -76,6 +76,7 @@
 #include "broker_process_size.h"
 #include "cas_sql_log2.h"
 #include "broker_acl.h"
+#include "dbtype.h"
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "environment_variable.h"
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */

@@ -49,6 +49,7 @@
 #include "db_value_printer.hpp"
 #include "mem_block.hpp"
 #include "string_buffer.hpp"
+#include "dbtype.h"
 
 #define CHKSUM_DEFAULT_LIST_SIZE	10
 #define CHKSUM_MIN_CHUNK_SIZE		100

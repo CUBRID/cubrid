@@ -28,7 +28,7 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "disk_manager.h"
 #include "log_impl.h"
 #include "recovery.h"

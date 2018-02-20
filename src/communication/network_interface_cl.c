@@ -61,6 +61,7 @@
 #include "es.h"
 #include "db.h"
 #include "db_query.h"
+#include "dbtype.h"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap

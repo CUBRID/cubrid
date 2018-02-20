@@ -50,6 +50,8 @@
 #include "set_object.h"
 #include "dbi.h"
 #include "string_buffer.hpp"
+#include "dbtype.h"
+
 #include <malloc.h>
 
 #if defined (SUPPRESS_STRLEN_WARNING)
