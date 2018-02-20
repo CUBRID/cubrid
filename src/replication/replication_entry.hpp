@@ -42,13 +42,26 @@ enum repl_entry_type
 
 class replication_entry
 {
-private:
+protected:
   size_t packed_size;
 public:
-  virtual int pack (const replication_serialization *serializator) = 0;
-  virtual size_t get_packed_size (const replication_serialization *serializator) = 0;
+  virtual int pack (replication_serialization *serializator) = 0;
+  virtual int unpack (replication_serialization *serializator) = 0;
+  virtual size_t get_packed_size (replication_serialization *serializator) = 0;
 
   static const size_t UNDEFINED_SIZE = -1;
+};
+
+class sbr_repl_entry : public replication_entry
+{
+private:
+  std::string statement;
+
+public:
+  sbr_repl_entry () { packed_size = -1; };
+  virtual size_t get_packed_size (replication_serialization *serializator) = 0;
+  int pack (replication_serialization *serializator);
+  int unpack (replication_serialization *serializator);
 };
 
 class single_row_repl_entry : public replication_entry
@@ -58,12 +71,13 @@ private:
   char class_name [SM_MAX_IDENTIFIER_LENGTH];
   std::vector <int> changed_attributes;
   std::vector <DB_VALUE> new_values;
-  REPL_ENTRY_TYPE type;
+  REPL_ENTRY_TYPE m_type;
 
 public:
   single_row_repl_entry () { packed_size = -1; };
-  virtual size_t get_packed_size (const replication_serialization *serializator) = 0;
-  int pack (const replication_serialization *serializator);
+  virtual size_t get_packed_size (replication_serialization *serializator) = 0;
+  int pack (replication_serialization *serializator);
+  int unpack (replication_serialization *serializator);
 };
 
 #endif /* _REPLICATION_ENTRY_HPP_ */

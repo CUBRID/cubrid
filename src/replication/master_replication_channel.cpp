@@ -18,43 +18,29 @@
  */
 
 /*
- * common_utils.cpp
+ * master_replication_channel.cpp
  */
 
 #ident "$Id$"
 
+#include "master_replication_channel.hpp"
 #include "common_utils.hpp"
 
 
-int pinner::pin (pinnable &reference)
+master_replication_channel_manager *master_replication_channel_manager::get_instance (void)
 {
-  if (reference.add_pinner (this) != NO_ERROR)
-    {
-      references.insert (&reference);
-      return NO_ERROR; 
-    }
+  NOT_IMPLEMENTED ();
 
-  return NO_ERROR;
+  return NULL;
 }
 
-int pinner::unpin (pinnable *reference)
+int master_replication_channel_manager::add_buffers (std::vector <buffered_range> bufferred_ranges)
 {
-  if (reference->remove_pinner (this) != NO_ERROR)
-    {
-      references.erase (reference);
-      return NO_ERROR;
-    }
-  
-  return NO_ERROR;
-}
+  std::vector<buffered_range>::iterator it;
 
-int pinner::unpin_all (void)
-{
-  auto it = references.begin ();
-
-  for (;it != references.end(); it++)
+  for (it = bufferred_ranges.begin (); it != bufferred_ranges.end (); it++)
     {
-      unpin (*it);
+      //add_buffer (it->buffer);
     }
 
   return NO_ERROR;

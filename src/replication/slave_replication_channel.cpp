@@ -18,44 +18,25 @@
  */
 
 /*
- * common_utils.cpp
+ * slave_replication_channel.cpp
  */
 
 #ident "$Id$"
 
-#include "common_utils.hpp"
+#include "slave_replication_channel.hpp"
+#include "replication_stream.hpp"
 
-
-int pinner::pin (pinnable &reference)
+int slave_replication_channel::init (void)
 {
-  if (reference.add_pinner (this) != NO_ERROR)
-    {
-      references.insert (&reference);
-      return NO_ERROR; 
-    }
+  return NO_ERROR;
+}
+
+
+int slave_replication_channel::receive_stream_entry_header (stream_entry_header &se_header)
+{
+
+  // receive (socket_id, &stream_entry_header, sizeof (stream_entry_header));
 
   return NO_ERROR;
 }
 
-int pinner::unpin (pinnable *reference)
-{
-  if (reference->remove_pinner (this) != NO_ERROR)
-    {
-      references.erase (reference);
-      return NO_ERROR;
-    }
-  
-  return NO_ERROR;
-}
-
-int pinner::unpin_all (void)
-{
-  auto it = references.begin ();
-
-  for (;it != references.end(); it++)
-    {
-      unpin (*it);
-    }
-
-  return NO_ERROR;
-}

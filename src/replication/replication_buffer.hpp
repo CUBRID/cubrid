@@ -27,8 +27,9 @@
 #define _REPLICATION_BUFFER_HPP_
 
 #include <atomic>
-#include <list>
+#include <vector>
 #include "dbtype.h"
+#include "common_utils.hpp"
 
 
 class pinnable;
@@ -57,11 +58,10 @@ public:
   virtual int init (const size_t req_capacity) = 0;
 
   BUFFER_UNIT * reserve (const size_t amount);
-  virtual BUFFER_UNIT * get_curr_append_ptr () = 0;
 
-  const BUFFER_UNIT * get_buffer (void) { return storage; };
+  BUFFER_UNIT * get_buffer (void) { return storage; };
 
-  const BUFFER_UNIT * get_curr_append_ptr (void) { return storage + curr_append_pos; };
+  BUFFER_UNIT * get_curr_append_ptr (void) { return storage + write_stream_reference.stream_curr_pos - write_stream_reference.start_pos; };
 
   size_t get_buffer_size (void) { return end_ptr - storage; };
 
@@ -88,7 +88,7 @@ protected:
    * several read streams can be attached to buffer, only one write stream
    */
   stream_reference write_stream_reference;
-  vector<stream_reference> read_stream_references;
+  std::vector<stream_reference> read_stream_references;
   
   replication_stream *attached_stream;
 };

@@ -30,9 +30,16 @@
 #define LG_GLOBAL_INSTANCE_BUFFER_CAPACITY  (1 * 1024 * 1024)
 
 #include "thread_entry.hpp"
+#include "common_utils.hpp"
+#include "stream_provider.hpp"
+#include <vector>
 
 class replication_entry;
+class stream_entry;
 class log_file;
+class replication_serialization;
+class replication_stream;
+class serial_buffer;
 
 /* 
  * main class for producing log replication entries
@@ -45,7 +52,7 @@ class log_file;
 class log_generator : public stream_provider
 {
 private:
-  vector<stream_entry*> stream_entries;
+  std::vector<stream_entry*> stream_entries;
 
   /* file attached to log_generator (only for global instance) */
   log_file *file; 
@@ -57,7 +64,7 @@ private:
 
   static log_generator *global_log_generator;
 
-  replication_serialization *serializator;
+  replication_serialization *m_serializator;
 
 public:
 
@@ -65,15 +72,13 @@ public:
 
   int append_repl_entry (cubthread::entry *th_entry, replication_entry *repl_entry);
 
-  replication_serialization *get_serializator(void) { return serializator; };
+  replication_serialization *get_serializator (void) { return m_serializator; };
 
   stream_entry* get_stream_entry (cubthread::entry *th_entry);
 
   int pack_stream_entries (cubthread::entry *th_entry);
 
   static int new_instance (cubthread::entry *th_entry, const stream_position start_position);
-
-  int flush_ready_stream (void);
 
   /* stream_provider methods : */
   int fetch_for_read (serial_buffer *existing_buffer, const size_t amount);

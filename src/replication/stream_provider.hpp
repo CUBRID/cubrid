@@ -26,11 +26,21 @@
 #ifndef _STREAM_PROVIDER_HPP_
 #define _STREAM_PROVIDER_HPP_
 
+#include "error_code.h"
+#include <vector>
 class serial_buffer;
+class replication_stream;
 
+/*
+ * an object of this type provides stream range (with content or empty stream, ready to be filled)
+ * it also can allocate buffers as storage support for the stream
+ */
 class stream_provider
 {
 private:
+  /* a stream provider may allocate several buffers */
+  std::vector<serial_buffer*> my_buffers;
+
 public:
   virtual int fetch_for_read (serial_buffer *existing_buffer, const size_t amount) = 0;
   
@@ -39,6 +49,8 @@ public:
   virtual int flush_ready_stream (void) = 0;
 
   virtual replication_stream * get_write_stream (void) = 0;
+
+  virtual int add_buffer (serial_buffer *existing_buffer) { my_buffers.push_back (existing_buffer); return NO_ERROR; };
 };
 
 

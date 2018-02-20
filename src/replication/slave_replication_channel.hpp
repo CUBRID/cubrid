@@ -18,44 +18,36 @@
  */
 
 /*
- * common_utils.cpp
+ * slave_replication_channel.hpp
  */
 
 #ident "$Id$"
 
-#include "common_utils.hpp"
+#ifndef _SLAVE_REPLICATION_CHANNEL_HPP_
+#define _SLAVE_REPLICATION_CHANNEL_HPP_
+
+#include "stream_provider.hpp"
 
 
-int pinner::pin (pinnable &reference)
+struct stream_entry_header;
+class replication_stream;
+class serial_buffer;
+
+class slave_replication_channel
 {
-  if (reference.add_pinner (this) != NO_ERROR)
-    {
-      references.insert (&reference);
-      return NO_ERROR; 
-    }
+public:
+  int init (void);
 
-  return NO_ERROR;
-}
+  int receive_stream_entry_header (stream_entry_header &se_header);
 
-int pinner::unpin (pinnable *reference)
-{
-  if (reference->remove_pinner (this) != NO_ERROR)
-    {
-      references.erase (reference);
-      return NO_ERROR;
-    }
-  
-  return NO_ERROR;
-}
+  replication_stream * get_write_stream (void) { return receiving_stream; };
 
-int pinner::unpin_all (void)
-{
-  auto it = references.begin ();
 
-  for (;it != references.end(); it++)
-    {
-      unpin (*it);
-    }
+private:
 
-  return NO_ERROR;
-}
+  replication_stream *receiving_stream;
+
+};
+
+
+#endif /* _SLAVE_REPLICATION_CHANNEL_HPP_ */

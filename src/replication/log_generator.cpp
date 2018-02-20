@@ -26,15 +26,20 @@
 #include "log_generator.hpp"
 #include "replication_stream.hpp"
 #include "replication_buffer.hpp"
+#include "replication_serialization.hpp"
+#include "log_file.hpp"
+#include "master_replication_channel.hpp"
 
-static log_generator * log_generator::global_log_generator = NULL;
+log_generator * log_generator::global_log_generator = NULL;
 
-static int log_generator::new_instance (cubthread::entry *th_entry, stream_position start_position)
+int log_generator::new_instance (cubthread::entry *th_entry, stream_position start_position)
 {
   int error_code = NO_ERROR;
+  serial_buffer *first_buffer = NULL;
+  buffered_range *granted_range;
 
   log_generator *new_lg = new log_generator ();
-  new_lg->curr_position = start_position;
+  new_lg->append_position = start_position;
 
   if (th_entry == NULL)
     {
@@ -42,7 +47,7 @@ static int log_generator::new_instance (cubthread::entry *th_entry, stream_posit
       global_log_generator = new_lg;
 
       /* attach a log_file */
-      new_lg->file = new log_file();
+      new_lg->file = new log_file ();
       new_lg->file->open_file (log_file::get_filename (start_position));
     }
   else
@@ -50,18 +55,18 @@ static int log_generator::new_instance (cubthread::entry *th_entry, stream_posit
       /* TODO[arnia] : set instance per thread  */
     }
 
-  new_lg->stream = new replication_stream (this);
-  new_lg->stream->init (new_lg->curr_position);
+  new_lg->stream = new replication_stream (new_lg);
+  new_lg->stream->init (new_lg->append_position);
 
-  error_code = extend_for_write (&new_lg->buffer, LG_GLOBAL_INSTANCE_BUFFER_CAPACITY);
+  error_code = new_lg->extend_for_write (&first_buffer, LG_GLOBAL_INSTANCE_BUFFER_CAPACITY);
   if (error_code != NO_ERROR)
     {
       return NO_ERROR;
     }
 
-  new_lg->stream->add_buffer_mapping (new_lg->buffer, WRITE_STREAM, first_pos, last_pos, granted_range);
+  new_lg->stream->add_buffer_mapping (first_buffer, WRITE_STREAM, granted_range->first_pos, granted_range->last_pos, &granted_range);
 
-  serializator = new replication_serialization (new_lg->stream);
+  new_lg->m_serializator = new replication_serialization (new_lg->stream);
 
   return NO_ERROR;
 }
@@ -72,11 +77,11 @@ stream_entry* log_generator::get_stream_entry (cubthread::entry *th_entry)
   return my_stream_entry;
 }
 
-int log_generator::append_entry (cubthread::entry *th_entry, replication_entry *repl_entry)
+int log_generator::append_repl_entry (cubthread::entry *th_entry, replication_entry *repl_entry)
 {
   stream_entry *my_stream_entry = get_stream_entry (th_entry);
 
-  my_stream_entry.add_repl_entry (entry);
+  my_stream_entry->add_repl_entry (repl_entry);
 
   return NO_ERROR;
 }
@@ -88,15 +93,15 @@ int log_generator::pack_stream_entries (cubthread::entry *th_entry)
 
   if (th_entry == NULL)
     {
-      for (i = 0; i < entries.size (); i++)
+      for (i = 0; i < stream_entries.size (); i++)
         {
-          stream_entries[i]->pack (serializator);
+          stream_entries[i]->pack (m_serializator);
         }
     }
   else
     {
       stream_entry *my_stream_entry = get_stream_entry (th_entry);
-      my_stream_entry->pack (serializator);
+      my_stream_entry->pack (m_serializator);
     }
 
   return NO_ERROR;
@@ -119,8 +124,11 @@ int log_generator::extend_for_write (serial_buffer **existing_buffer, const size
       NOT_IMPLEMENTED();
     }
 
+
   replication_buffer *my_new_buffer = new replication_buffer (amount);
   my_new_buffer->init (amount);
+
+  add_buffer (my_new_buffer);
 
   *existing_buffer = my_new_buffer;
 
@@ -129,8 +137,9 @@ int log_generator::extend_for_write (serial_buffer **existing_buffer, const size
 
 int log_generator::flush_ready_stream (void)
 {
+  int error_code;
   /* detach filled buffers from write stream and send them to MRC_Manager */
-  vector <serial_buffer *> ready_buffers;
+  std::vector <buffered_range> ready_buffers;
 
   error_code = stream->detach_written_buffers (ready_buffers);
   if (error_code != NO_ERROR)

@@ -25,10 +25,12 @@
 
 
 #include "log_file.hpp"
+#include "replication_stream.hpp"
+#include "replication_buffer.hpp"
 
-bool file_cache::is_in_cache (const file_post_t start_pos, const size_t count)
+bool file_cache::is_in_cache (const file_pos_t start_pos, const size_t count)
 {
-  if (start_pos >= cached_range.start_pos && file_post_t + count <= cached_range.end_pos)
+  if (start_pos >= cached_range.start_pos && start_pos + count <= cached_range.end_pos)
     {
       return true;
     }
@@ -50,14 +52,6 @@ int file_cache::release (void)
 
   return ER_FAILED;
 }
-///////////////////////////////////////////////////////
-
-
-int stream_entry::pack (serial_buffer *buffer)
-{
-  buffer->reserve (get_header_size ());
-  buffer->
-}
 
 ///////////////////////////////////////////////////////
 
@@ -72,12 +66,16 @@ log_file::log_file (const char *file_path)
 
 int log_file::open_file (const char *file_path)
 {
+#if defined (LINUX)
   fd = open (file_path, O_RDWR);
   if (fd == -1)
     {
       /* TODO[arnia] : error */
       return ER_FAILED;
     }
+#else
+  NOT_IMPLEMENTED ();
+#endif
 
   return NO_ERROR;
 }
@@ -94,28 +92,27 @@ file_cache *log_file::new_cache (void)
   /* TODO[arnia] */
   file_cache *my_cache;
 
-  my_cache = new new_cache;
+  my_cache = new file_cache;
 
   return my_cache;
 }
 
 
-int log_file::append_entry (stream_entry *entry)
+int log_file::write_buffer (serial_buffer *buffer)
 {
-  file_pos_t buffer_size = entry->buffer->get_buffer_size();
-  if (entry->written_bytes >= buffer_size)
-    {
-      assert (written_bytes == buffer_size);
-      return NO_ERROR;
-    }
+  file_pos_t buffer_size = buffer->get_buffer_size();
 
   /* TODO[arnia] : atomic write  */
   /* TODO[arnia] : incremental write not supported yet */
-  if (pwrite (fd, entry->buffer->get_buffer(), buffer_size, curr_append_position) != buffer_size)
+#if defined (LINUX)
+  if (pwrite (fd, buffer->get_buffer(), buffer_size, curr_append_position) != buffer_size)
     {
       /* TODO[arnia] : error */
       return ER_FAILED;
     }
+#else
+  NOT_IMPLEMENTED ();
+#endif
   curr_append_position += buffer_size;
 
   return NO_ERROR;
@@ -129,8 +126,12 @@ int log_file::read_no_cache (BUFFER_UNIT *storage, const size_t count, file_pos_
     {
       start_pos = curr_read_position;
     }
-  
+
+#if defined (LINUX)  
   actual_read = pread (fd, storage, count, start_post);
+#else
+  NOT_IMPLEMENTED ();
+#endif
 
   if (actual_read < 0)
     {
@@ -138,10 +139,10 @@ int log_file::read_no_cache (BUFFER_UNIT *storage, const size_t count, file_pos_
       return ER_FAILED;
     }
 
-  return actual_read;
+  return (int) actual_read;
 }
 
-int log_file::read_with_cache (stream_entry *entry, const size_t count, file_pos_t start_pos)
+int log_file::read_with_cache (BUFFER_UNIT *storage, const size_t count, file_pos_t start_pos)
 {
   int i;
   bool found_in_cache = false;
@@ -157,9 +158,8 @@ int log_file::read_with_cache (stream_entry *entry, const size_t count, file_pos
       if (caches[i].is_in_cache (start_pos, count))
         {
           serial_buffer *cache_buffer = caches[i].get_buffer();
-          serial_buffer *entry_buffer = entry->get_buffer ();
 
-          entry_buffer->map_buffer_with_pin (cache_buffer, entry);
+          cache_buffer->map_buffer_with_pin (cache_buffer, this);
           found_in_cache = true;
           break;
         }
@@ -175,17 +175,45 @@ int log_file::read_with_cache (stream_entry *entry, const size_t count, file_pos
           return ER_FAILED;
         }
 
-      my_cache->
+      NOT_IMPLEMENTED ();
     }
   /* 2. adjust buffer starting position to a an entry start */
-  NOT_IMPLEMENTED();
+  NOT_IMPLEMENTED ();
 
   return NO_ERROR;
 }
 
-static char *log_file::get_filename (const stream_position &start_position)
+char *log_file::get_filename (const stream_position &start_position)
 {
   /* TODO[arnia]:*/
   NOT_IMPLEMENTED();
   return NULL;
+}
+
+int log_file::fetch_for_read (serial_buffer *existing_buffer, const size_t amount)
+{
+  NOT_IMPLEMENTED ();
+
+  return NO_ERROR;
+}
+  
+int log_file::extend_for_write (serial_buffer **existing_buffer, const size_t amount)
+{
+  NOT_IMPLEMENTED ();
+
+  return NO_ERROR;
+}
+
+int log_file::flush_ready_stream (void)
+{
+  NOT_IMPLEMENTED ();
+
+  return NO_ERROR;
+}
+
+replication_stream * log_file::get_write_stream (void)
+{
+  NOT_IMPLEMENTED ();
+
+  return NO_ERROR;
 }

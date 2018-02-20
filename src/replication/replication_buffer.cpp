@@ -82,8 +82,6 @@ int serial_buffer::attach_stream (replication_stream *stream, const STREAM_MODE 
 
       read_stream_references.push_back (new_stream_ref);
     }
-
-  add_pinner (stream);
   
   return NO_ERROR;
 }
@@ -116,8 +114,6 @@ int serial_buffer::dettach_stream (replication_stream *stream, const STREAM_MODE
 
       read_stream_references.erase (read_stream_references.begin() + i);
     }
-
-  remove_pinner (stream);
   
   return NO_ERROR;
 }
@@ -156,7 +152,7 @@ int replication_buffer::init (const size_t req_capacity)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  write_stream_reference.curr_append_pos = 0;
+  write_stream_reference.stream_curr_pos = 0;
   end_ptr = storage + req_capacity;
 
   return NO_ERROR;

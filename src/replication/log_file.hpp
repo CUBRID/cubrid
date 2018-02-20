@@ -26,16 +26,21 @@
 #ifndef _LOG_FILE_HPP_
 #define _LOG_FILE_HPP_
 
+#include "common_utils.hpp"
+#include "stream_provider.hpp"
+#include <vector>
+
 typedef size_t file_pos_t;
 
-class pinner;
-class pinnable;
 class replication_entry;
 class serial_buffer;
+class log_file;
+class stream_entry;
+
 
 enum
 {
-  CURRENT_POSITION = -1;
+  CURRENT_POSITION = -1
 };
 
 struct file_range
@@ -58,21 +63,20 @@ private:
 public:
   const size_t FILE_CACHE_ONE_BUFFFER_SIZE = 16 * 1024;
 
-  file_cache() { buffer = NULL; owner = NULL; storage = new BUFFER_UNIT[FILE_CACHE_ONE_BUFFFER_SIZE]; }
-  ~file_cache();
+  file_cache() { buffer = NULL; owner = NULL; storage = new BUFFER_UNIT[FILE_CACHE_ONE_BUFFFER_SIZE]; };
 
-  serial_buffer *get_buffer (void) { return buffer; } 
-  log_file *get_owner (void) { return owner; }
+  serial_buffer *get_buffer (void) { return buffer; };
+  log_file *get_owner (void) { return owner; };
 
-  BUFFER_UNIT *get_storage (void) { return storage; }
+  BUFFER_UNIT *get_storage (void) { return storage; };
 
   int release (void);
 
-  bool is_in_cache (const file_post_t start_pos, const size_t count);
+  bool is_in_cache (const file_pos_t start_pos, const size_t count);
 
 };
 
-class log_file : public pinner
+class log_file : public pinner, public stream_provider
 {
 private:
   replication_stream *stream;
@@ -80,30 +84,40 @@ private:
   file_pos_t curr_append_position;
   file_pos_t curr_read_position;
 
-  vector<file_cache> caches;
+  std::vector<file_cache> caches;
 
   /* TODO[arnia] : split into read and write file_entries ? */
-  vector<stream_entry> file_chunks;
+  std::vector<stream_entry> file_chunks;
 
   int fd;
 
 public:
   const int MAX_FILE_CACHES = 32;
 
+  log_file () { fd = -1; };
+  log_file (const char *file_path);
+
   file_cache *new_cache (void);
   file_cache *get_cache (void);
 
   int open_file (const char *file_path);
-  // obsolete : int append_entry (stream_entry *entry);
-  int read_with_cache (const size_t count, file_pos_t start_pos = CURRENT_POSITION);
+
   int read_no_cache (BUFFER_UNIT *storage, const size_t count, file_pos_t start_pos = CURRENT_POSITION);
+  int read_with_cache (BUFFER_UNIT *storage, const size_t count, file_pos_t start_pos);
 
-  int add_buffer (serial_buffer *new_buffer, const stream_position &first_pos,
-                  const stream_position &last_pos);
-
-  int flush_buffer (serial_buffer *buffer);
+  int write_buffer (serial_buffer *buffer);
 
   static char *get_filename (const stream_position &start_position);
+
+
+  int fetch_for_read (serial_buffer *existing_buffer, const size_t amount);
+  
+  int extend_for_write (serial_buffer **existing_buffer, const size_t amount);
+
+  int flush_ready_stream (void);
+
+  replication_stream * get_write_stream (void);
+
 };
 
 #endif /* _LOG_FILE_HPP_ */

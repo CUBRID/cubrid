@@ -26,13 +26,19 @@
 #ifndef _REPLICATION_STREAM_HPP_
 #define _REPLICATION_STREAM_HPP_
 
-typdef size_t stream_position;
+#include <vector>
+#include "common_utils.hpp"
+#include "storage_common.h"
+
+class replication_serialization;
+class stream_provider;
+class replication_entry;
 
 struct stream_entry_header
 {
   stream_position prev_record;
   MVCCID mvccid;
-  unsinged short count_replication_entries;
+  unsigned short count_replication_entries;
   size_t data_size;
 
   stream_entry_header () : prev_record (0), mvccid (-1), count_replication_entries (0) {};
@@ -50,25 +56,26 @@ class stream_entry : public pinner
 private:
   const size_t STREAM_ENTRY_HEADER_SIZE = sizeof (stream_entry_header);
 
-  vector <replication_entry *> repl_entries;
+  std::vector <replication_entry *> m_repl_entries;
 
-  stream_entry_header header;
+  stream_entry_header m_header;
 
   int stream_entry_id;
 
-  buffered_range *my_buffered_range;
+  buffered_range *m_buffered_range;
 
 public:
-  stream_entry() { buffer = NULL; written_bytes = 0; }
-  ~stream_entry();
+  stream_entry() { m_buffered_range = NULL; };
 
   int pack (replication_serialization *serializator);
 
+  int receive (replication_serialization *serializator);
+  
   int unpack (replication_serialization *serializator);
 
-  size_t get_entries_size (void);
+  size_t get_entries_size (replication_serialization *serializator);
 
-  int add_repl_entry (replication_entry *repl_entry) { repl_entries.push_back (repl_entry); };
+  int add_repl_entry (replication_entry *repl_entry);
 
   size_t get_header_size (void) { return STREAM_ENTRY_HEADER_SIZE; } ;
 };
@@ -85,7 +92,7 @@ public:
 class replication_stream
 {
 private:
-  stream_provider *provider;
+  stream_provider *m_stream_provider;
 
   /* a buffered range is a chunk of stream mapped onto a buffer (memory) 
    * a buffer can have multiple mappings (but contiguous) from the a stream (but only the same stream)
@@ -96,7 +103,7 @@ private:
    */
 
   /* TODO : maybe these should be moved as sub-object for each serial_buffer mapped onto the stream */
-  vector<buffered_range> buffered_ranges;
+  std::vector<buffered_range> m_buffered_ranges;
 
   /* current stream position not allocated yet to a replication generator */
   stream_position append_position;
@@ -106,7 +113,7 @@ private:
   /* last position reported to be ready (filled) to MRC_M */
   stream_position last_reported_ready_pos;
 
-  stream_positon max_buffered_position;
+  stream_position max_buffered_position;
 
   /* size of all active buffers attached to this stream */
   size_t total_buffered_size;
@@ -118,11 +125,10 @@ private:
   
 public:
   replication_stream (const stream_provider *my_provider);
-  ~replication_stream ();
 
   int init (const stream_position &start_position = 0);
 
-  int add_buffer_mapping (  *new_buffer, const STREAM_MODE stream_mode, const stream_position &first_pos,
+  int add_buffer_mapping (serial_buffer *new_buffer, const STREAM_MODE stream_mode, const stream_position &first_pos,
                           const stream_position &last_pos, buffered_range **granted_range);
 
   int remove_buffer_mapping (const STREAM_MODE stream_mode, buffered_range &mapped_range);
@@ -134,11 +140,13 @@ public:
 
   BUFFER_UNIT * reserve_with_buffer (const size_t amount, buffered_range **granted_range);
 
-  int detach_written_buffers (vector <serial_buffer> &buffers);
+  int detach_written_buffers (std::vector <buffered_range> &buffered_ranges);
+
 
   BUFFER_UNIT * check_space_and_advance (const size_t amount);
   
   BUFFER_UNIT * check_space_and_advance_with_ptr (BUFFER_UNIT *ptr, const size_t amount);
+
 };
 
 

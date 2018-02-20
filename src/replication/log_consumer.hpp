@@ -26,24 +26,42 @@
 #ifndef _LOG_CONSUMER_HPP_
 #define _LOG_CONSUMER_HPP_
 
+#include "stream_provider.hpp"
+#include "common_utils.hpp"
+
 class stream_entry;
 class replication_stream;
 class log_file;
+class replication_serialization;
+class slave_replication_channel;
+
+typedef enum consumer_type CONSUMER_TYPE;
+enum consumer_type
+{
+  REPLICATION_DATA_APPLIER = 0,
+  DATABASE_COPY,
+  REPLICATION_DATA_DUMP
+};
 
 /* 
  * main class for consuming log replication entries
  * it should be created only as a global instance
  */
-class log_consumer
+class log_consumer : public stream_provider
 {
-private:
+protected:
+  CONSUMER_TYPE m_type;
+
   std::vector<stream_entry*> stream_entries;
 
   /* file attached to log_generator (only for global instance) */
   log_file *file;
 
-  /* why we need a stream attached to the consumer ? */
-  replication_stream *stream;
+  replication_stream *consume_stream;
+
+  replication_serialization *serializator;
+
+  slave_replication_channel *m_src;
 
   /* current append position to be assigned to a new entry */
   stream_position curr_position;
@@ -54,7 +72,17 @@ public:
 
   int append_entry (stream_entry *entry);
 
-  log_consumer* new_instance (void);
+  int consume_thread (void);
+
+  log_consumer* new_instance (const CONSUMER_TYPE req_type, const stream_position &start_position);
+
+  int extend_for_write (serial_buffer **existing_buffer, const size_t amount);
+
+  int fetch_for_read (serial_buffer *existing_buffer, const size_t amount);
+  
+  int flush_ready_stream (void);
+
+  replication_stream * get_write_stream (void);
 };
 
 #endif /* _LOG_CONSUMER_HPP_ */

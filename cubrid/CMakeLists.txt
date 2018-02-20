@@ -149,8 +149,16 @@ set(QUERY_SOURCES
   )
 
 set(REPLICATION_SOURCES
-  ${REPLICATION_DIR}/replication_serialization.cpp
+  ${REPLICATION_DIR}/common_utils.cpp
+  ${REPLICATION_DIR}/log_consumer.cpp
+  ${REPLICATION_DIR}/log_file.cpp
+  ${REPLICATION_DIR}/log_generator.cpp
   ${REPLICATION_DIR}/replication_buffer.cpp
+  ${REPLICATION_DIR}/replication_entry.cpp
+  ${REPLICATION_DIR}/replication_serialization.cpp
+  ${REPLICATION_DIR}/replication_stream.cpp
+  ${REPLICATION_DIR}/slave_replication_channel.cpp
+  ${REPLICATION_DIR}/master_replication_channel.cpp
   )
 
 set(OBJECT_SOURCES

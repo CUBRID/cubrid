@@ -33,6 +33,8 @@
 #include "replication_stream.hpp"
 #include "object_representation.h"
 
+#include <vector>
+
 #define CHECK_RANGE(ptr, endptr, amount) \
   do \
     { \
@@ -41,14 +43,15 @@
         { \
           throw ("serialization range not properly initialized"); \
         } \
-    }
+    }\
+  while (0);
 
 /* TODO[arnia] : error codes and mesages for ER_FAILED return codes */
 
 replication_serialization::replication_serialization (replication_stream *stream_arg)
 {
   stream = stream_arg;
-  ptr = stream_arg->get_curr_ptr ();
+  ptr = NULL;
   end_ptr = ptr;
 }
 
@@ -65,7 +68,7 @@ BUFFER_UNIT *replication_serialization::start_packing_range (const size_t amount
     {
       /* no global buffer available, create a new one */
       stream_position first_pos = stream->reserve_no_buffer (amount);
-      stream_position last_pos = mapped_range.first_pos + amount - 1;
+      stream_position last_pos = (*granted_range)->first_pos + amount - 1;
 
       end_stream_serialization_scope = last_pos;
 
@@ -73,7 +76,7 @@ BUFFER_UNIT *replication_serialization::start_packing_range (const size_t amount
 
       stream->add_buffer_mapping (buffer, WRITE_STREAM, first_pos, last_pos, granted_range);
 
-      ptr = buffer->get_curr_append_ptr ();
+      ptr = (BUFFER_UNIT *) buffer->get_curr_append_ptr ();
 
       return ptr;
     }
@@ -103,7 +106,7 @@ BUFFER_UNIT *replication_serialization::start_unpacking_range (const size_t amou
     {
       /* no global buffer available, create a new one */
       stream_position first_pos = stream->reserve_no_buffer (amount);
-      stream_position last_pos = mapped_range.first_pos + amount - 1;
+      stream_position last_pos = (*granted_range)->first_pos + amount - 1;
 
       end_stream_serialization_scope = last_pos;
 
@@ -111,7 +114,7 @@ BUFFER_UNIT *replication_serialization::start_unpacking_range (const size_t amou
 
       stream->add_buffer_mapping (buffer, WRITE_STREAM, first_pos, last_pos, granted_range);
 
-      ptr = buffer->get_curr_append_ptr ();
+      ptr = (BUFFER_UNIT *) buffer->get_curr_append_ptr ();
 
       return ptr;
     }
@@ -119,6 +122,36 @@ BUFFER_UNIT *replication_serialization::start_unpacking_range (const size_t amou
   return NULL;
 }
 
+BUFFER_UNIT *replication_serialization::extend_unpacking_range (const size_t amount, buffered_range **granted_range)
+{
+  /* TODO[arnia] : try to extend withing the current buffer;
+   * if required amount is not available, allocate a new buffer which fits both existing range and the extended range */
+  ptr = stream->reserve_with_buffer (amount, granted_range);
+  if (ptr != NULL)
+    {
+      end_ptr = ptr + amount;
+      end_stream_serialization_scope = (*granted_range)->last_pos;
+      return ptr;
+    }
+  else
+    {
+      /* no global buffer available, create a new one */
+      stream_position first_pos = stream->reserve_no_buffer (amount);
+      stream_position last_pos = (*granted_range)->first_pos + amount - 1;
+
+      end_stream_serialization_scope = last_pos;
+
+      replication_buffer *buffer = new replication_buffer (amount);
+
+      stream->add_buffer_mapping (buffer, WRITE_STREAM, first_pos, last_pos, granted_range);
+
+      ptr = (BUFFER_UNIT *) buffer->get_curr_append_ptr ();
+
+      return ptr;
+    }
+
+  return NULL;
+}
 
 int replication_serialization::pack_int (const int value)
 {
@@ -197,10 +230,9 @@ int replication_serialization::unpack_int_array (int *array, int &count)
   return NO_ERROR;
 }
 
-int replication_serialization::pack_int_vector (const vector<int> &array)
+int replication_serialization::pack_int_vector (const std::vector<int> &array)
 {
-  BUFFER_UNIT *ptr;
-  const int count = array.size();
+  const int count = (const int) array.size();
   int i;
 
   CHECK_RANGE (ptr, end_ptr, (OR_INT_SIZE * (count + 1)));
@@ -216,7 +248,7 @@ int replication_serialization::pack_int_vector (const vector<int> &array)
   return NO_ERROR;
 }
 
-int replication_serialization::unpack_int_vector (vector<int> &array)
+int replication_serialization::unpack_int_vector (std::vector<int> &array)
 {
   BUFFER_UNIT *ptr;
   int i;
@@ -254,7 +286,7 @@ int replication_serialization::pack_db_value (const DB_VALUE &value)
 
   CHECK_RANGE (ptr, end_ptr, value_size);
 
-  ptr = or_pack_value ((char *) ptr, (DB_VALUE *) &value);
+  ptr = (BUFFER_UNIT *) or_pack_value ((char *) ptr, (DB_VALUE *) &value);
 
   assert (old_ptr + value_size == ptr);
 
@@ -263,18 +295,14 @@ int replication_serialization::pack_db_value (const DB_VALUE &value)
 
 int replication_serialization::unpack_db_value (DB_VALUE *value)
 {
-  BUFFER_UNIT *ptr;
-
   /* TODO[arnia] */
-  ptr = or_unpack_value ((char *) ptr, (DB_VALUE *) value);
+  ptr = (BUFFER_UNIT *) or_unpack_value ((char *) ptr, (DB_VALUE *) value);
 
   return NO_ERROR;
 }
 
 int replication_serialization::pack_small_string (const char *string)
 {
-  BUFFER_UNIT *ptr;
-
   size_t len;
   
   len = strlen (string);

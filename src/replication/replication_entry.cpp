@@ -24,12 +24,16 @@
 #ident "$Id$"
 
 #include "replication_serialization.hpp"
+#include "replication_entry.hpp"
+#include "object_representation.h"
 
 
 const size_t replication_entry::UNDEFINED_SIZE;
 
-size_t single_row_repl_entry::get_packed_size (const replication_serialization *serializator)
+size_t single_row_repl_entry::get_packed_size (replication_serialization *serializator)
 {
+  int i;
+
   if (packed_size != UNDEFINED_SIZE)
     {
       return packed_size;
@@ -43,7 +47,7 @@ size_t single_row_repl_entry::get_packed_size (const replication_serialization *
 
   for (i = 0; i < new_values.size() ; i++)
     {
-      entry_size += or_db_value_size (new_values[i]);
+      entry_size += or_db_value_size (&new_values[i]);
     }
 
   packed_size = entry_size;
@@ -51,15 +55,58 @@ size_t single_row_repl_entry::get_packed_size (const replication_serialization *
   return packed_size;
 }
 
-int single_row_repl_entry::pack (const replication_serialization *serializator)
+int single_row_repl_entry::pack (replication_serialization *serializator)
 {
-  serializator->pack_int (type);
+  int i;
+
+  serializator->pack_int ((int) m_type);
   serializator->pack_small_string (class_name);
   serializator->pack_int_vector (changed_attributes);
   serializator->pack_int (new_values.size());
-  for (i = 0; i < new_values.size())
+  for (i = 0; i < new_values.size(); i++)
     {
       serializator->pack_db_value (new_values[i]);
     }
+  return NO_ERROR;
+}
+
+
+int single_row_repl_entry::unpack (replication_serialization *serializator)
+{
+  int count_new_values = 0;
+  int i;
+  int int_val;
+
+  serializator->unpack_int (int_val);
+  m_type = (REPL_ENTRY_TYPE) int_val;
+  serializator->unpack_small_string (class_name, sizeof (class_name) - 1);
+  serializator->unpack_int_vector (changed_attributes);
+  
+  serializator->unpack_int (count_new_values);
+  for (i = 0; i < count_new_values; i++)
+    {
+      DB_VALUE val;
+
+      /* this copies the DB_VALUE to contains, should we avoid this ? */
+      new_values.push_back (val);
+      serializator->unpack_db_value (&val);
+    }
+  return NO_ERROR;
+}
+
+/////////////////////////////////
+
+size_t sbr_repl_entry::get_packed_size (replication_serialization *serializator)
+{
+  return statement.size () + 1;
+}
+
+int sbr_repl_entry::pack (replication_serialization *serializator)
+{
+  return NO_ERROR;
+}
+
+int sbr_repl_entry::unpack (replication_serialization *serializator)
+{
   return NO_ERROR;
 }

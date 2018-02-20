@@ -27,8 +27,11 @@
 #define _REPLICATION_SERIALIZATION_HPP_
 
 #include "dbtype.h"
+#include "common_utils.hpp"
+#include <vector>
 
 class serial_buffer;
+struct stream_entry_header;
 
 /* 
  * the serialization packs or unpacks objects from/into a stream 
@@ -49,13 +52,13 @@ class replication_serialization
 {
 public:
   replication_serialization (replication_stream *stream_arg);
-  ~replication_serialization();
 
   /* method for starting a packing context */
   BUFFER_UNIT *start_packing_range (const size_t amount, buffered_range **granted_range);
 
   /* method for starting an unpacking context */
   BUFFER_UNIT *start_unpacking_range (const size_t amount, buffered_range **granted_range);
+  BUFFER_UNIT *extend_unpacking_range (const size_t amount, buffered_range **granted_range);
 
   int packing_completed (void);
 
@@ -65,8 +68,8 @@ public:
   int pack_int_array (const int *array, const int count);
   int unpack_int_array (int *array, int &count);
 
-  int pack_int_vector (const vector<int> &array);
-  int unpack_int_vector (vector <int> &array);
+  int pack_int_vector (const std::vector<int> &array);
+  int unpack_int_vector (std::vector <int> &array);
 
   int pack_db_value (const DB_VALUE &value);
   int unpack_db_value (DB_VALUE *value);

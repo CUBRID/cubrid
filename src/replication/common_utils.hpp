@@ -26,13 +26,19 @@
 #ifndef _COMMON_UTILS_HPP_
 #define _COMMON_UTILS_HPP_
 
+#include <set>
+#include <assert.h>
+#include "error_code.h"
+
 #define NOT_IMPLEMENTED() \
   do \
     { \
       throw ("Not implemented"); \
-    }
+    } \
+  while (0)
 
 typedef unsigned char BUFFER_UNIT;
+typedef size_t stream_position;
 
 class pinnable;
 class replication_stream;
@@ -42,27 +48,27 @@ class pinner
 {
 public:
   int pin (pinnable &reference);
-  int unpin (pinnable &reference);
+  int unpin (pinnable *reference);
 
   int unpin_all (void);
 
   ~pinner () { assert (references.size() == 0); }
 
 private:
-  list <pinnable*> references;
+  std::set <pinnable*> references;
 };
 
 class pinnable
 {
 public:
-  int add_pinner (pinner *referencer) { pinners.push_back (referencer); return NO_ERROR; }
-  int remove_pinner (pinner *referencer) { pinners.remove (referencer); return NO_ERROR; }
-  int get_pin_count (void) { return pinners.size(); }
+  int add_pinner (pinner *referencer) { pinners.insert (referencer); return NO_ERROR; }
+  int remove_pinner (pinner *referencer) { pinners.erase (referencer); return NO_ERROR; }
+  int get_pin_count (void) { return (int) pinners.size(); }
 
   ~pinnable () { assert (pinners.size() == 0); }
 
 private:
-  list <pinner*> pinners;
+  std::set <pinner*> pinners;
 
 };
 
@@ -83,6 +89,12 @@ public:
   serial_buffer *mapped_buffer;
   size_t written_bytes;
   int is_filled;
+
+  bool operator== (const buffered_range &rhs) const
+    {
+      return mapped_buffer == rhs.mapped_buffer;
+    };
+
 };
 
 class stream_reference
