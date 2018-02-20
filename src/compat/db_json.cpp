@@ -67,6 +67,7 @@
 #include <sstream>
 #include <vector>
 #include <unordered_map>
+#include <queue>
 #include <algorithm>
 #include <cctype>
 #include <locale>
@@ -171,10 +172,13 @@ static bool db_json_path_is_token_valid_array_index (const std::string &str, std
     std::size_t end = 0);
 static void db_json_doc_wrap_as_array (JSON_DOC &doc);
 static void db_json_value_wrap_as_array (JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &allocator);
+static bool db_json_contains_duplicate_keys (const JSON_DOC &doc, std::string &duplicate_key);
+static int db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_path);
 
 STATIC_INLINE JSON_VALUE &db_json_doc_to_value (JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const JSON_VALUE &db_json_doc_to_value (const JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
 static int db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc);
+static int db_json_add_json_value_to_object (JSON_DOC &doc, JSON_VALUE &key, JSON_VALUE &value);
 
 JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw) : m_schema (NULL),
   m_validator (NULL),
@@ -578,44 +582,50 @@ db_json_get_raw_json_body_from_document (const JSON_DOC *doc)
   return json_body;
 }
 
-void
+static int
+db_json_add_json_value_to_object (JSON_DOC &doc, JSON_VALUE &key, JSON_VALUE &value)
+{
+  if (!doc.IsObject())
+    {
+      doc.SetObject();
+    }
+
+  if (doc.HasMember (key.GetString()))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_DUPLICATE_KEY, 1, key.GetString());
+      return ER_JSON_DUPLICATE_KEY;
+    }
+
+  doc.AddMember (key, value, doc.GetAllocator());
+  return NO_ERROR;
+}
+
+int
 db_json_add_member_to_object (JSON_DOC *doc, const char *name, const char *value)
 {
   JSON_VALUE key, val;
 
-  if (!doc->IsObject ())
-    {
-      doc->SetObject ();
-    }
-
   key.SetString (name, (rapidjson::SizeType) strlen (name), doc->GetAllocator ());
   val.SetString (value, (rapidjson::SizeType) strlen (value), doc->GetAllocator ());
-  doc->AddMember (key, val, doc->GetAllocator ());
+
+  return db_json_add_json_value_to_object (*doc, key, val);
 }
 
-void
-db_json_add_member_to_object (JSON_DOC *doc, char *name, int value)
-{
-  JSON_VALUE key;
-
-  if (!doc->IsObject ())
-    {
-      doc->SetObject ();
-    }
-
-  key.SetString (name, (rapidjson::SizeType) strlen (name), doc->GetAllocator ());
-  doc->AddMember (key, JSON_VALUE ().SetInt (value), doc->GetAllocator ());
-}
-
-void
-db_json_add_member_to_object (JSON_DOC *doc, char *name, const JSON_DOC *value)
+int
+db_json_add_member_to_object (JSON_DOC *doc, const char *name, int value)
 {
   JSON_VALUE key, val;
 
-  if (!doc->IsObject ())
-    {
-      doc->SetObject ();
-    }
+  key.SetString (name, (rapidjson::SizeType) strlen (name), doc->GetAllocator ());
+  val.SetInt (value);
+
+  return db_json_add_json_value_to_object (*doc, key, val);
+}
+
+int
+db_json_add_member_to_object (JSON_DOC *doc, const char *name, const JSON_DOC *value)
+{
+  JSON_VALUE key, val;
 
   key.SetString (name, (rapidjson::SizeType) strlen (name), doc->GetAllocator ());
   if (value != NULL)
@@ -626,26 +636,19 @@ db_json_add_member_to_object (JSON_DOC *doc, char *name, const JSON_DOC *value)
     {
       val.SetNull ();
     }
-  doc->AddMember (key, val, doc->GetAllocator ());
+
+  return db_json_add_json_value_to_object (*doc, key, val);
 }
 
-void
-db_json_add_member_to_object (JSON_DOC *doc, char *name, double value)
+int
+db_json_add_member_to_object (JSON_DOC *doc, const char *name, double value)
 {
-  JSON_VALUE key;
+  JSON_VALUE key, val;
 
-  if (!doc->IsObject ())
-    {
-      doc->SetObject ();
-    }
-
-  /*
-   * JSON_VALUE uses a MemoryPoolAllocator which doesn't free memory,
-   * so when key gets out of scope, the string wouldn't be freed
-   * the memory will be freed only when doc is deleted
-   */
   key.SetString (name, (rapidjson::SizeType) strlen (name), doc->GetAllocator ());
-  doc->AddMember (key, JSON_VALUE ().SetDouble (value), doc->GetAllocator ());
+  val.SetDouble (value);
+
+  return db_json_add_json_value_to_object (*doc, key, val);
 }
 
 void
@@ -710,11 +713,63 @@ db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value)
   doc->PushBack (new_doc, doc->GetAllocator ());
 }
 
+static bool
+db_json_contains_duplicate_keys (const JSON_DOC &doc, std::string &duplicate_key)
+{
+  duplicate_key = "";
+  JSON_POINTER p ("");
+  const JSON_VALUE *head = p.Get (doc);
+  // we will iterate through json document and check if the object has duplicate keys
+  std::queue<const JSON_VALUE *> mqueue;
+  std::vector<const char *> inserted_keys;
+
+  // add the head first
+  mqueue.push (head);
+
+  while (!mqueue.empty())
+    {
+      // get the current element
+      const JSON_VALUE *current = mqueue.front();
+      mqueue.pop();
+
+      // iterate through the array or object and push elements into queue
+      if (current->IsArray())
+	{
+	  for (auto it = current->GetArray().begin(); it != current->GetArray().end(); ++it)
+	    {
+	      mqueue.push (it);
+	    }
+	}
+      else if (current->IsObject())
+	{
+	  // we need to clear the set because we check only keys from the same object (on the same level)
+	  inserted_keys.clear();
+	  // iterate through object`s keys and verify if it has duplicate keys
+	  for (auto it = current->MemberBegin(); it != current->MemberEnd(); ++it)
+	    {
+	      const char *key = it->name.GetString();
+	      for (unsigned int i = 0; i < inserted_keys.size(); i++)
+		{
+		  if (strcmp (key, inserted_keys[i]) == 0)
+		    {
+		      // we found a duplicate key
+		      duplicate_key = key;
+		      return true;
+		    }
+		}
+
+	      inserted_keys.push_back (key);
+	      mqueue.push (&it->value);
+	    }
+	}
+    }
+
+  return false;
+}
+
 static int
 db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc)
 {
-  int error_code = NO_ERROR;
-
   if (json_raw == NULL)
     {
       return NO_ERROR;
@@ -724,10 +779,17 @@ db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
 	      rapidjson::GetParseError_En (doc.GetParseError ()), doc.GetErrorOffset ());
-      error_code = ER_INVALID_JSON;
+      return ER_INVALID_JSON;
     }
 
-  return error_code;
+  std::string duplicate_key;
+  if (db_json_contains_duplicate_keys (doc, duplicate_key))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_DUPLICATE_KEY, 1, duplicate_key.c_str());
+      return ER_JSON_DUPLICATE_KEY;
+    }
+
+  return NO_ERROR;
 }
 
 int
@@ -836,28 +898,31 @@ db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destinati
     }
 
   json_parent_p = pointer_parent.Get (doc_destination);
-  if (json_parent_p != NULL)
+  if (json_parent_p == NULL)
     {
-      if (json_parent_p->IsObject ())
-	{
-	  p.Set (doc_destination, *doc_to_be_inserted, doc_destination.GetAllocator ());
-	}
-      else if (json_parent_p->IsArray ())
-	{
-	  // since PushBack does not guarantee its argument is not modified, we are forced to copy here. Hopefully,
-	  // it doesn't do another copy inside.
-	  JSON_VALUE copy_to_be_ins (db_json_doc_to_value (*doc_to_be_inserted), doc_destination.GetAllocator ());
-	  json_parent_p->PushBack (copy_to_be_ins, doc_destination.GetAllocator ());
-	}
-      else
-	{
-	  db_json_value_wrap_as_array (*json_parent_p, doc_destination.GetAllocator ());
+      // we cannot insert to a non existing path
+      return db_json_er_set_path_does_not_exist (json_pointer_string.substr (0, found), &doc_destination);
+    }
 
-	  // since PushBack does not guarantee its argument is not modified, we are forced to copy here. Hopefully,
-	  // it doesn't do another copy inside.
-	  JSON_VALUE copy_to_be_ins (db_json_doc_to_value (*doc_to_be_inserted), doc_destination.GetAllocator ());
-	  json_parent_p->PushBack (copy_to_be_ins, doc_destination.GetAllocator ());
-	}
+  if (json_parent_p->IsObject ())
+    {
+      p.Set (doc_destination, *doc_to_be_inserted, doc_destination.GetAllocator ());
+    }
+  else if (json_parent_p->IsArray ())
+    {
+      // since PushBack does not guarantee its argument is not modified, we are forced to copy here. Hopefully,
+      // it doesn't do another copy inside.
+      JSON_VALUE copy_to_be_ins (db_json_doc_to_value (*doc_to_be_inserted), doc_destination.GetAllocator ());
+      json_parent_p->PushBack (copy_to_be_ins, doc_destination.GetAllocator ());
+    }
+  else
+    {
+      db_json_value_wrap_as_array (*json_parent_p, doc_destination.GetAllocator ());
+
+      // since PushBack does not guarantee its argument is not modified, we are forced to copy here. Hopefully,
+      // it doesn't do another copy inside.
+      JSON_VALUE copy_to_be_ins (db_json_doc_to_value (*doc_to_be_inserted), doc_destination.GetAllocator ());
+      json_parent_p->PushBack (copy_to_be_ins, doc_destination.GetAllocator ());
     }
 
   return NO_ERROR;
@@ -993,7 +1058,7 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
   if (resulting_json_parent == NULL)
     {
       // we can only create a child value, not both parent and child
-      return db_json_er_set_path_does_not_exist (json_pointer_string, &doc);
+      return db_json_er_set_path_does_not_exist (json_pointer_string.substr (0, found), &doc);
     }
 
   // create and insert the value to the specified path
@@ -1944,7 +2009,7 @@ db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json)
  * result_json (in)        : a json array that contains all the paths
  * raw_path (in)           : specified path
  */
-int
+static int
 db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_path)
 {
   int error_code = NO_ERROR;
@@ -1968,7 +2033,6 @@ db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_p
     }
 
   const JSON_VALUE *head = p.Get (doc);
-  std::string key;
 
   // the specified path does not exist in the current JSON document
   if (head == NULL)
@@ -1983,8 +2047,7 @@ db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_p
 	{
 	  JSON_VALUE val;
 
-	  key = it->name.GetString ();
-	  val.SetString (key.c_str (), result_json.GetAllocator ());
+	  val.SetString (it->name.GetString(), result_json.GetAllocator ());
 	  result_json.PushBack (val, result_json.GetAllocator ());
 	}
     }
@@ -1993,10 +2056,22 @@ db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_p
 }
 
 int
-db_json_keys_func (const char *json_raw, JSON_DOC &result_json, const char *raw_path)
+db_json_keys_func (const JSON_DOC &doc, JSON_DOC *&result_json, const char *raw_path)
+{
+  assert (result_json == NULL);
+  result_json = db_json_allocate_doc();
+
+  return db_json_keys_func (doc, result_json, raw_path);
+}
+
+int
+db_json_keys_func (const char *json_raw, JSON_DOC *&result_json, const char *raw_path)
 {
   JSON_DOC doc;
   db_json_get_json_from_str (json_raw, doc);
+
+  assert (result_json == NULL);
+  result_json = db_json_allocate_doc();
 
   return db_json_keys_func (doc, result_json, raw_path);
 }

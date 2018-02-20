@@ -1269,7 +1269,8 @@ $ LOADDB
 1200 Invalid JSON path
 1201 Json object name cannot be NULL.
 1202 Json PATH "%1$s" does not exist in %2$s
-1203 Dernière erreur
+1203 Json KEY "%1$s" is duplicate
+1204 Dernière erreur
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
 2 Aucun message d'erreur disponible.

@@ -1269,7 +1269,8 @@ $ LOADDB
 1200 Invalid JSON path
 1201 Json object name cannot be NULL.
 1202 Json PATH "%1$s" does not exist in %2$s
-1203 Son Hata
+1203 Json KEY "%1$s" is duplicate
+1204 Son Hata
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
 2 Uygun hata mesajı bulunmamakta.
