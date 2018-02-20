@@ -244,4 +244,6 @@ namespace cubthread
 
 } // namespace cubthread
 
+#define THREAD_GET_MANAGER() cubthread::get_manager ()
+
 #endif  // _THREAD_MANAGER_HPP_

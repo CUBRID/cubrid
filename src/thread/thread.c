@@ -1624,10 +1624,9 @@ thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id)
 {
   int n = 0;
 
-  for (THREAD_ENTRY * thread_p = thread_Manager.thread_array;
-       thread_p < thread_Manager.thread_array + thread_Manager.num_workers; thread_p++)
+  for (THREAD_ENTRY * thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
     {
-      if (thread_p == caller)
+      if (thread_p == caller || thread_p->type != TT_WORKER)
 	{
 	  continue;
 	}

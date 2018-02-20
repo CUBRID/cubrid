@@ -33,6 +33,12 @@
 
 #define CSS_NUM_JOB_QUEUE 10	/* # of job queues */
 
+// forward definitions
+namespace cubthread
+{
+  class entry_task;
+}				// namespace cubthread
+
 extern void css_block_all_active_conn (unsigned short stop_phase);
 extern void css_broadcast_shutdown_thread (void);
 
@@ -83,5 +89,7 @@ extern int css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int wh
 extern int css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool force, int timeout,
 				       bool heartbeat);
 extern int css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE state);
+
+extern void css_push_external_task (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY * conn, cubthread::entry_task * task);
 
 #endif /* _SERVER_SUPPORT_H_ */

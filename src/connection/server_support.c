@@ -208,6 +208,54 @@ static int ha_Log_applier_state_num = 0;
 // *INDENT-OFF*
 static cubthread::entry_workpool* css_Server_request_worker_pool = NULL;
 static cubthread::entry_workpool* css_Connection_worker_pool = NULL;
+
+class css_server_task : public cubthread::entry_task
+{
+public:
+
+  css_server_task (void) = delete;
+
+  css_server_task (CSS_CONN_ENTRY & conn)
+  : m_conn (conn)
+  {
+  }
+
+  void execute (context_type & thread_ref) override final;
+
+  // retire not overwritten; task is automatically deleted
+
+private:
+  CSS_CONN_ENTRY &m_conn;
+};
+
+// css_server_external_task - class used for legacy desgin; external modules may push tasks on css worker pool and we
+//                            need to make sure conn_entry is properly initialized.
+//
+// todo: remove me
+class css_server_external_task : public cubthread::entry_task
+{
+public:
+  css_server_external_task (void) = delete;
+
+  css_server_external_task (CSS_CONN_ENTRY * conn, cubthread::entry_task * task)
+  : m_conn (conn)
+  , m_task (task)
+  {
+  }
+
+  ~css_server_external_task (void)
+  {
+    m_task->retire ();
+  }
+
+  void execute (context_type & thread_ref) override final;
+
+  // retire not overwritten; task is automatically deleted
+
+private:
+  CSS_CONN_ENTRY *m_conn;
+  cubthread::entry_task *m_task;
+};
 // *INDENT-ON*
 
 static int css_free_job_entry_func (void *data, void *dummy);
@@ -241,6 +289,8 @@ static int css_process_new_connection_request (void);
 
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
+
+static void css_push_server_task (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 
 /*
  * css_make_job_entry () -
@@ -1453,7 +1503,6 @@ dummy_sigurg_handler (int sig)
 static int
 css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 {
-  CSS_JOB_ENTRY *job;
   int n, type, rv, status;
   volatile int conn_status;
   int css_peer_alive_timeout, poll_timeout;
@@ -1578,11 +1627,8 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	      /* if new command request has arrived, make new job and add it to job queue */
 	      if (type == COMMAND_TYPE)
 		{
-		  job = css_make_job_entry (conn, css_Request_handler, (CSS_THREAD_ARG) conn, -1);
-		  if (job)
-		    {
-		      css_add_to_job_queue (job);
-		    }
+		  // push new task
+
 		}
 	    }
 	}
@@ -3315,39 +3361,64 @@ xacl_reload (THREAD_ENTRY * thread_p)
 }
 #endif
 
-// *INDENT-OFF*
-
-class css_server_task : public cubthread::entry_task
+/*
+ * css_push_server_task () - push a task on server request worker pool
+ *
+ * return          : void
+ * thread_ref (in) : thread context
+ * task (in)       : task to execute
+ *
+ * todo: this is also used externally due to legacy design; should be internalized completely
+ */
+static void
+css_push_server_task (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
 {
-public:
+  THREAD_GET_MANAGER ()->push_task (thread_ref, css_Server_request_worker_pool, new css_server_task (conn_ref));
+}
 
-  css_server_task (void) = delete;
+void
+css_push_external_task (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY * conn, cubthread::entry_task * task)
+{
+  THREAD_GET_MANAGER ()->push_task (thread_ref,
+				    css_Server_request_worker_pool, new css_server_external_task (conn, task));
+}
 
-  css_server_task (CSS_CONN_ENTRY & conn)
-  : m_conn (conn)
-  {
-  }
+// *INDENT-OFF*
+void
+css_server_task::execute (context_type & thread_ref)
+{
+  thread_ref.conn_entry = &m_conn;
+  if (thread_ref.conn_entry->session_p != NULL)
+    {
+      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
+    }
+  else
+    {
+      assert (thread_ref.private_lru_index == -1);
+    }
 
-  void
-  execute (context_type & thread_ref) final
-  {
-    thread_ref.conn_entry = &m_conn;
-    if (thread_ref.conn_entry->session_p != NULL)
-      {
-        thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
-      }
-    else
-      {
-        assert (thread_ref.private_lru_index == -1);
-      }
+  (void) css_internal_request_handler (thread_ref, m_conn);
 
-    (void) css_internal_request_handler (thread_ref, m_conn);
+  thread_ref.private_lru_index = -1;
+  thread_ref.conn_entry = NULL;
+}
 
-    thread_ref.private_lru_index = -1;
-    thread_ref.conn_entry = NULL;
-  }
+void
+css_server_external_task::execute (context_type & thread_ref)
+{
+  thread_ref.conn_entry = m_conn;
+  if (thread_ref.conn_entry != NULL && thread_ref.conn_entry->session_p != NULL)
+    {
+      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
+    }
+  else
+    {
+      assert (thread_ref.private_lru_index == -1);
+    }
 
-private:
-  CSS_CONN_ENTRY & m_conn;
-};
+  m_task->execute (thread_ref);
+
+  thread_ref.private_lru_index = -1;
+  thread_ref.conn_entry = NULL;
+}
 // *INDENT-ON*
