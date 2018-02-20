@@ -118,6 +118,7 @@ static DAEMON_THREAD_MONITOR thread_Deadlock_detect_thread = DAEMON_THREAD_MONIT
 static DAEMON_THREAD_MONITOR thread_Checkpoint_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Purge_archive_logs_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Oob_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
+static DAEMON_THREAD_MONITOR thread_Page_find_victim_candidates_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Page_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Flush_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Session_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
@@ -139,6 +140,7 @@ static int thread_compare_shutdown_sequence_of_daemon (const void *p1, const voi
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_deadlock_detect_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_checkpoint_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_purge_archive_logs_thread (void *);
+static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_find_victim_candidates_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_flush_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_flush_control_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_log_flush_thread (void *);
@@ -163,6 +165,7 @@ typedef enum
   THREAD_DAEMON_CHECK_HA_DELAY_INFO,
   THREAD_DAEMON_AUTO_VOLUME_EXPANSION,
   THREAD_DAEMON_LOG_CLOCK,
+  THREAD_DAEMON_PAGE_FIND_VICTIM_CANDIDATE,
   THREAD_DAEMON_PAGE_FLUSH,
   THREAD_DAEMON_FLUSH_CONTROL,
   THREAD_DAEMON_LOG_FLUSH,
@@ -293,8 +296,8 @@ thread_get_thread_entry_info ()
     }
   else
     {
-  return tsd_ptr;
-}
+      return tsd_ptr;
+    }
 }
 #else /* HPUX */
 /*
@@ -392,123 +395,129 @@ thread_initialize_manager (size_t & total_thread_count)
   assert (NUM_NORMAL_TRANS >= 10);
   assert (thread_Manager.initialized == false);
 
-      /* Initialize daemons */
-      thread_Manager.num_daemons = THREAD_DAEMON_NUM_SINGLE_THREADS;
-      size = thread_Manager.num_daemons * sizeof (THREAD_DAEMON);
-      thread_Daemons = (THREAD_DAEMON *) malloc (size);
-      if (thread_Daemons == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
+  /* Initialize daemons */
+  thread_Manager.num_daemons = THREAD_DAEMON_NUM_SINGLE_THREADS;
+  size = thread_Manager.num_daemons * sizeof (THREAD_DAEMON);
+  thread_Daemons = (THREAD_DAEMON *) malloc (size);
+  if (thread_Daemons == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
 
-      /* IMPORTANT NOTE: Daemons are shutdown in the same order as they are created here. */
-      daemon_index = 0;
-      shutdown_sequence = 0;
+  /* IMPORTANT NOTE: Daemons are shutdown in the same order as they are created here. */
+  daemon_index = 0;
+  shutdown_sequence = 0;
 
-      /* Initialize CSS OOB Handler daemon */
-      thread_Daemons[daemon_index].type = THREAD_DAEMON_CSS_OOB_HANDLER;
-      thread_Daemons[daemon_index].daemon_monitor = &thread_Oob_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-      thread_Daemons[daemon_index++].daemon_function = css_oob_handler_thread;
+  /* Initialize CSS OOB Handler daemon */
+  thread_Daemons[daemon_index].type = THREAD_DAEMON_CSS_OOB_HANDLER;
+  thread_Daemons[daemon_index].daemon_monitor = &thread_Oob_thread;
+  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
+  thread_Daemons[daemon_index++].daemon_function = css_oob_handler_thread;
 
-      /* Initialize deadlock detect daemon */
-      thread_Daemons[daemon_index].type = THREAD_DAEMON_DEADLOCK_DETECT;
-      thread_Daemons[daemon_index].daemon_monitor = &thread_Deadlock_detect_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-      thread_Daemons[daemon_index++].daemon_function = thread_deadlock_detect_thread;
+  /* Initialize deadlock detect daemon */
+  thread_Daemons[daemon_index].type = THREAD_DAEMON_DEADLOCK_DETECT;
+  thread_Daemons[daemon_index].daemon_monitor = &thread_Deadlock_detect_thread;
+  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
+  thread_Daemons[daemon_index++].daemon_function = thread_deadlock_detect_thread;
 
-      /* Initialize purge archive logs daemon */
-      thread_Daemons[daemon_index].type = THREAD_DAEMON_PURGE_ARCHIVE_LOGS;
-      thread_Daemons[daemon_index].daemon_monitor = &thread_Purge_archive_logs_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-      thread_Daemons[daemon_index++].daemon_function = thread_purge_archive_logs_thread;
+  /* Initialize purge archive logs daemon */
+  thread_Daemons[daemon_index].type = THREAD_DAEMON_PURGE_ARCHIVE_LOGS;
+  thread_Daemons[daemon_index].daemon_monitor = &thread_Purge_archive_logs_thread;
+  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
+  thread_Daemons[daemon_index++].daemon_function = thread_purge_archive_logs_thread;
 
-      /* Initialize checkpoint daemon */
-      thread_Daemons[daemon_index].type = THREAD_DAEMON_CHECKPOINT;
-      thread_Daemons[daemon_index].daemon_monitor = &thread_Checkpoint_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-      thread_Daemons[daemon_index++].daemon_function = thread_checkpoint_thread;
+  /* Initialize checkpoint daemon */
+  thread_Daemons[daemon_index].type = THREAD_DAEMON_CHECKPOINT;
+  thread_Daemons[daemon_index].daemon_monitor = &thread_Checkpoint_thread;
+  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
+  thread_Daemons[daemon_index++].daemon_function = thread_checkpoint_thread;
 
-      /* Initialize session control daemon */
-      thread_Daemons[daemon_index].type = THREAD_DAEMON_SESSION_CONTROL;
-      thread_Daemons[daemon_index].daemon_monitor = &thread_Session_control_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-      thread_Daemons[daemon_index++].daemon_function = thread_session_control_thread;
+  /* Initialize session control daemon */
+  thread_Daemons[daemon_index].type = THREAD_DAEMON_SESSION_CONTROL;
+  thread_Daemons[daemon_index].daemon_monitor = &thread_Session_control_thread;
+  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
+  thread_Daemons[daemon_index++].daemon_function = thread_session_control_thread;
 
-      /* Initialize check HA delay info daemon */
-      thread_Daemons[daemon_index].type = THREAD_DAEMON_CHECK_HA_DELAY_INFO;
-      thread_Daemons[daemon_index].daemon_monitor = &thread_Check_ha_delay_info_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-      thread_Daemons[daemon_index++].daemon_function = thread_check_ha_delay_info_thread;
+  /* Initialize check HA delay info daemon */
+  thread_Daemons[daemon_index].type = THREAD_DAEMON_CHECK_HA_DELAY_INFO;
+  thread_Daemons[daemon_index].daemon_monitor = &thread_Check_ha_delay_info_thread;
+  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
+  thread_Daemons[daemon_index++].daemon_function = thread_check_ha_delay_info_thread;
 
-      /* Initialize auto volume expansion daemon */
-      thread_Daemons[daemon_index].type = THREAD_DAEMON_AUTO_VOLUME_EXPANSION;
-      thread_Daemons[daemon_index].daemon_monitor = &thread_Auto_volume_expansion_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-      thread_Daemons[daemon_index++].daemon_function = thread_auto_volume_expansion_thread;
+  /* Initialize auto volume expansion daemon */
+  thread_Daemons[daemon_index].type = THREAD_DAEMON_AUTO_VOLUME_EXPANSION;
+  thread_Daemons[daemon_index].daemon_monitor = &thread_Auto_volume_expansion_thread;
+  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
+  thread_Daemons[daemon_index++].daemon_function = thread_auto_volume_expansion_thread;
 
-      /* Initialize log clock daemon */
-      thread_Daemons[daemon_index].type = THREAD_DAEMON_LOG_CLOCK;
-      thread_Daemons[daemon_index].daemon_monitor = &thread_Log_clock_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-      thread_Daemons[daemon_index++].daemon_function = thread_log_clock_thread;
+  /* Initialize log clock daemon */
+  thread_Daemons[daemon_index].type = THREAD_DAEMON_LOG_CLOCK;
+  thread_Daemons[daemon_index].daemon_monitor = &thread_Log_clock_thread;
+  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
+  thread_Daemons[daemon_index++].daemon_function = thread_log_clock_thread;
 
   /* Leave these five daemons at the end. These are to be shutdown latest */
-      /* Initialize page buffer maintenance daemon */
-      thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_MAINTENANCE;
-      thread_Daemons[daemon_index].daemon_monitor = &thread_Page_maintenance_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 7;
-      thread_Daemons[daemon_index++].daemon_function = thread_page_buffer_maintenance_thread;
+  /* Initialize page buffer maintenance daemon */
+  thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_MAINTENANCE;
+  thread_Daemons[daemon_index].daemon_monitor = &thread_Page_maintenance_thread;
+  thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 8;
+  thread_Daemons[daemon_index++].daemon_function = thread_page_buffer_maintenance_thread;
 
-      /* Initialize page flush daemon */
-      thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_FLUSH;
-      thread_Daemons[daemon_index].daemon_monitor = &thread_Page_flush_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 6;
-      thread_Daemons[daemon_index++].daemon_function = thread_page_flush_thread;
+  /* Initialize find victim candidate daemon. */
+  thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_FIND_VICTIM_CANDIDATE;
+  thread_Daemons[daemon_index].daemon_monitor = &thread_Page_find_victim_candidates_thread;
+  thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 7;
+  thread_Daemons[daemon_index++].daemon_function = thread_page_find_victim_candidates_thread;
 
-      /* Initialize page post flush daemon */
-      thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_POST_FLUSH;
-      thread_Daemons[daemon_index].daemon_monitor = &thread_Page_post_flush_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 5;
-      thread_Daemons[daemon_index++].daemon_function = thread_page_post_flush_thread;
+  /* Initialize page flush daemon */
+  thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_FLUSH;
+  thread_Daemons[daemon_index].daemon_monitor = &thread_Page_flush_thread;
+  thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 6;
+  thread_Daemons[daemon_index++].daemon_function = thread_page_flush_thread;
 
-      /* Initialize flush control daemon */
-      thread_Daemons[daemon_index].type = THREAD_DAEMON_FLUSH_CONTROL;
-      thread_Daemons[daemon_index].daemon_monitor = &thread_Flush_control_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 4;
-      thread_Daemons[daemon_index++].daemon_function = thread_flush_control_thread;
+  /* Initialize page post flush daemon */
+  thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_POST_FLUSH;
+  thread_Daemons[daemon_index].daemon_monitor = &thread_Page_post_flush_thread;
+  thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 5;
+  thread_Daemons[daemon_index++].daemon_function = thread_page_post_flush_thread;
 
-      /* Initialize DWB checksum computation daemon */
-      thread_Daemons[daemon_index].type = THREAD_DAEMON_DWB_CHECKSUM_COMPUTATION;
-      thread_Daemons[daemon_index].daemon_monitor = &thread_Dwb_checkum_computation_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 3;
-      thread_Daemons[daemon_index++].daemon_function = thread_dwb_checksum_computation_thread;
+  /* Initialize flush control daemon */
+  thread_Daemons[daemon_index].type = THREAD_DAEMON_FLUSH_CONTROL;
+  thread_Daemons[daemon_index].daemon_monitor = &thread_Flush_control_thread;
+  thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 4;
+  thread_Daemons[daemon_index++].daemon_function = thread_flush_control_thread;
 
-      /* Initialize DWB flush block daemon */
-      thread_Daemons[daemon_index].type = THREAD_DAEMON_DWB_FLUSH_BLOCK;
-      thread_Daemons[daemon_index].daemon_monitor = &thread_Dwb_flush_block_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 2;
-      thread_Daemons[daemon_index++].daemon_function = thread_dwb_flush_block_thread;
+  /* Initialize DWB checksum computation daemon */
+  thread_Daemons[daemon_index].type = THREAD_DAEMON_DWB_CHECKSUM_COMPUTATION;
+  thread_Daemons[daemon_index].daemon_monitor = &thread_Dwb_checkum_computation_thread;
+  thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 3;
+  thread_Daemons[daemon_index++].daemon_function = thread_dwb_checksum_computation_thread;
 
-      /* Initialize DWB flush block daemon */
-      thread_Daemons[daemon_index].type = THREAD_DAEMON_DWB_FLUSH_BLOCK_HELPER;
-      thread_Daemons[daemon_index].daemon_monitor = &thread_Dwb_flush_block_helper_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 1;
-      thread_Daemons[daemon_index++].daemon_function = thread_dwb_flush_block_helper_thread;
+  /* Initialize DWB flush block daemon */
+  thread_Daemons[daemon_index].type = THREAD_DAEMON_DWB_FLUSH_BLOCK;
+  thread_Daemons[daemon_index].daemon_monitor = &thread_Dwb_flush_block_thread;
+  thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 2;
+  thread_Daemons[daemon_index++].daemon_function = thread_dwb_flush_block_thread;
 
-      /* Initialize log flush daemon */
-      thread_Daemons[daemon_index].type = THREAD_DAEMON_LOG_FLUSH;
-      thread_Daemons[daemon_index].daemon_monitor = &thread_Log_flush_thread;
-      thread_Daemons[daemon_index].shutdown_sequence = INT_MAX;
-      thread_Daemons[daemon_index++].daemon_function = thread_log_flush_thread;
+  /* Initialize DWB flush block daemon */
+  thread_Daemons[daemon_index].type = THREAD_DAEMON_DWB_FLUSH_BLOCK_HELPER;
+  thread_Daemons[daemon_index].daemon_monitor = &thread_Dwb_flush_block_helper_thread;
+  thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 1;
+  thread_Daemons[daemon_index++].daemon_function = thread_dwb_flush_block_helper_thread;
 
-      /* Add new daemons before page flush daemon */
+  /* Initialize log flush daemon */
+  thread_Daemons[daemon_index].type = THREAD_DAEMON_LOG_FLUSH;
+  thread_Daemons[daemon_index].daemon_monitor = &thread_Log_flush_thread;
+  thread_Daemons[daemon_index].shutdown_sequence = INT_MAX;
+  thread_Daemons[daemon_index++].daemon_function = thread_log_flush_thread;
 
-      assert (daemon_index == thread_Manager.num_daemons);
+  /* Add new daemons before page flush daemon */
+
+  assert (daemon_index == thread_Manager.num_daemons);
 
 #if defined(WINDOWS)
-      thread_initialize_sync_object ();
+  thread_initialize_sync_object ();
 #endif /* WINDOWS */
 
   thread_Manager.num_workers = NUM_NON_SYSTEM_TRANS * 2;
@@ -531,7 +540,7 @@ thread_initialize_manager (size_t & total_thread_count)
     {
       thread_Manager.thread_array[i].index = i + 1;
       thread_Manager.thread_array[i].request_lock_free_transactions ();
-	}
+    }
 
   thread_Manager.initialized = true;
 
@@ -1736,9 +1745,9 @@ thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id)
 	}
       if (thread_belongs_to (thread_p, tran_index, client_id))
 	{
-	      n++;
-	    }
-	    }
+	  n++;
+	}
+    }
 
   return n;
 }
@@ -2692,6 +2701,82 @@ thread_check_ha_delay_info_thread (void *arg_p)
   tsd_ptr->status = TS_DEAD;
 
   return (THREAD_RET_T) 0;
+}
+
+/*
+ * thread_page_find_victim_candidates_thread() - Find victim candidates thread.
+ *   return:
+ *   arg_p(in):
+*/
+static THREAD_RET_T THREAD_CALLING_CONVENTION
+thread_page_find_victim_candidates_thread (void *arg_p)
+{
+#define THREAD_FIND_VICTIM_CANDIDATES_WAKEUP_TIME_MSEC 100
+#if !defined(HPUX)
+  THREAD_ENTRY *tsd_ptr;
+#endif /* !HPUX */
+  bool needs_victim_candidates = false;
+  bool stop_iteration = false;
+
+  tsd_ptr = (THREAD_ENTRY *) arg_p;
+  thread_daemon_start (&thread_Page_find_victim_candidates_thread, tsd_ptr, TT_DAEMON);
+  needs_victim_candidates = pgbuf_keep_victim_flush_thread_running ();
+  while (!tsd_ptr->shutdown)
+    {
+      while (!tsd_ptr->shutdown && needs_victim_candidates)
+	{
+	  pgbuf_produce_victim_candidates (tsd_ptr, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO),
+					   &stop_iteration);
+	  if (stop_iteration)
+	    {
+	      needs_victim_candidates = false;
+	      break;
+	    }
+	  needs_victim_candidates = pgbuf_keep_victim_flush_thread_running ();
+	}
+
+      assert (needs_victim_candidates == false);
+      if (!thread_daemon_timedwait (&thread_Page_find_victim_candidates_thread,
+				    THREAD_FIND_VICTIM_CANDIDATES_WAKEUP_TIME_MSEC))
+	{
+	  /* Did not timeout, someone requested victim candidates. Run again. */
+	  needs_victim_candidates = true;
+	}
+      else
+	{
+	  needs_victim_candidates = pgbuf_keep_victim_flush_thread_running ();
+	}
+    }
+  thread_daemon_stop (&thread_Page_find_victim_candidates_thread, tsd_ptr);
+
+  return (THREAD_RET_T) 0;
+#undef THREAD_FIND_VICTIM_CANDIDATES_WAKEUP_TIME_MSEC
+}
+
+/*
+* thread_wakeup_find_victim_candidates_thread() - wakeup the thread that find victim candidates
+*/
+void
+thread_wakeup_find_victim_candidates_thread (void)
+{
+  thread_daemon_wakeup (&thread_Page_find_victim_candidates_thread);
+}
+
+/*
+* thread_is_find_victim_candidates_thread_available() -
+*   return:
+*/
+bool
+thread_is_find_victim_candidates_thread_available (void)
+{
+  int rv;
+  bool is_available;
+
+  rv = pthread_mutex_lock (&thread_Page_find_victim_candidates_thread.lock);
+  is_available = thread_Page_find_victim_candidates_thread.is_available;
+  pthread_mutex_unlock (&thread_Page_find_victim_candidates_thread.lock);
+
+  return is_available;
 }
 
 /*
@@ -3918,7 +4003,7 @@ thread_find_entry_by_index (int thread_index)
   if (thread_index == 0)
     {
       return cubthread::get_main_entry ();
-}
+    }
   else if (thread_index <= thread_Manager.num_total)
     {
       return (&thread_Manager.thread_array[thread_index - 1]);
