@@ -23,6 +23,7 @@
 
 #ident "$Id$"
 
+#include "system.h"
 #include "dbi.h"
 #include "db.h"
 #include "config.h"
@@ -51,7 +52,7 @@
 #include "esql_gadget.h"
 #include "environment_variable.h"
 #include "authenticate.h"
-#include "dbval.h"		/* this must be the last header file included!!! */
+#include "dbtype.h"
 
 #define UCI_OPT_UNSAFE_NULL     0x0001
 

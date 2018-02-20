@@ -73,8 +73,7 @@
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
-#include "dbval.h"		/* this must be the last header file included */
-
+#include "dbtype.h"
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
 
@@ -242,8 +241,7 @@ static int css_process_new_connection_request (void);
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
 
-static void
-css_process_new_slave (SOCKET master_fd);
+static void css_process_new_slave (SOCKET master_fd);
 
 /*
  * css_make_job_entry () -
@@ -1240,7 +1238,7 @@ css_process_master_hostname ()
       return ER_FAILED;
     }
 
-  ha_Server_master_hostname = (char *) malloc (hostname_length+1);
+  ha_Server_master_hostname = (char *) malloc (hostname_length + 1);
   error = css_receive_heartbeat_data (css_Master_conn, ha_Server_master_hostname, hostname_length);
   if (error != NO_ERRORS)
     {
@@ -1258,10 +1256,12 @@ css_process_master_hostname ()
   assert (error == NO_ERRORS);
   /* TODO[arnia] add possibility of adding multiple daemons to slaves */
   error = slave_replication_channel::get_channel ()->start_daemon (cubthread::looper (std::chrono::seconds (1)),
-                                                                   new slave_dummy_send_msg (slave_replication_channel::get_channel ()));
+								   new slave_dummy_send_msg (slave_replication_channel::
+											     get_channel ()));
   assert (error == NO_ERROR);
 
-  _er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n", ha_Server_master_hostname);
+  _er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
+		 ha_Server_master_hostname);
 
   return NO_ERRORS;
 #endif
@@ -2975,9 +2975,9 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
   HA_SERVER_STATE orig_state;
   int i;
 
- _er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: ha_Server_state %s " "state %s force %c heartbeat %c\n",
-		css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state), (force ? 't' : 'f'),
-		(heartbeat ? 't' : 'f'));
+  _er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: ha_Server_state %s " "state %s force %c heartbeat %c\n",
+		 css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state), (force ? 't' : 'f'),
+		 (heartbeat ? 't' : 'f'));
 
   assert (state >= HA_SERVER_STATE_IDLE && state <= HA_SERVER_STATE_DEAD);
 
@@ -3043,8 +3043,8 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  logtb_enable_update (thread_p);
 	}
       slave_replication_channel::reset_singleton ();
-      master_replication_channel_manager::reset();
-      master_replication_channel_manager::init();
+      master_replication_channel_manager::reset ();
+      master_replication_channel_manager::init ();
       break;
 
     case HA_SERVER_STATE_STANDBY:
@@ -3391,20 +3391,24 @@ css_process_new_slave (SOCKET master_fd)
       assert (false);
       return;
     }
-  _er_log_debug (ARG_FILE_LINE, "css_process_new_slave:" "received new slave fd from master fd=%d, current_state=%d\n", new_fd, css_get_hb_node_state());
+  _er_log_debug (ARG_FILE_LINE, "css_process_new_slave:" "received new slave fd from master fd=%d, current_state=%d\n",
+		 new_fd, css_get_hb_node_state ());
 
-  assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE ||
-          ha_Server_state == HA_SERVER_STATE_ACTIVE);
+  assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
-  master_replication_channel_manager::add_master_replication_channel (master_replication_channel_entry (new_fd, RECEIVE_FROM_SLAVE, new receive_from_slave_daemon ()));
+  master_replication_channel_manager::
+    add_master_replication_channel (master_replication_channel_entry
+				    (new_fd, RECEIVE_FROM_SLAVE, new receive_from_slave_daemon ()));
 }
 
-void init_master_hostname()
+void
+init_master_hostname ()
 {
   ha_Server_master_hostname = NULL;
 }
 
-void delete_master_hostname()
+void
+delete_master_hostname ()
 {
   if (ha_Server_master_hostname != NULL)
     {
@@ -3412,7 +3416,8 @@ void delete_master_hostname()
     }
 }
 
-const char *get_master_hostname()
+const char *
+get_master_hostname ()
 {
   return ha_Server_master_hostname;
 }

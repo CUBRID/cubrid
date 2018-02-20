@@ -28,7 +28,7 @@
 #ident "$Id$"
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-#include "dbtype.h"
+#include "dbtype_def.h"
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 #include "cas_net_buf.h"
 

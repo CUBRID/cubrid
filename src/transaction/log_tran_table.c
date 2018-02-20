@@ -58,6 +58,7 @@
 #include "show_scan.h"
 #include "boot_sr.h"
 #include "db_date.h"
+#include "dbtype.h"
 #include "thread.h"
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */

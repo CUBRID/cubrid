@@ -31,6 +31,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "dbtype.h"
 #include "error_manager.h"
 #include "stream_to_xasl.h"
 #include "thread.h"

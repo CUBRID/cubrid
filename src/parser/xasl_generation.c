@@ -62,8 +62,7 @@
 #include "wintcp.h"
 #endif /* WINDOWS */
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 extern void qo_plan_lite_print (QO_PLAN * plan, FILE * f, int howfar);
 
@@ -5713,7 +5712,7 @@ pt_make_regu_constant (PARSER_CONTEXT * parser, DB_VALUE * db_value, const DB_TY
 	    }
 	  else if (typ == DB_TYPE_OBJECT)
 	    {
-	      if (DB_PULL_OBJECT (db_value) && WS_ISVID (DB_PULL_OBJECT (db_value)))
+	      if (db_get_object (db_value) && WS_ISVID (db_get_object (db_value)))
 		{
 		  if (regu_make_constant_vid (db_value, &dbvalptr) != NO_ERROR)
 		    {

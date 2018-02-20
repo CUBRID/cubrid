@@ -1121,10 +1121,16 @@ struct db_reference
   int attribute;
 };
 
+/*
+ * SETOBJ
+ *    This is the primitive set object header.
+ */
+typedef struct setobj SETOBJ;
+
 typedef struct db_set SETREF;
 struct db_set
 {
-  /* 
+  /*
    * a garbage collector ticket is not required for the "owner" field as
    * the entire set references area is registered for scanning in area_grow.
    */
@@ -1136,19 +1142,12 @@ struct db_set
   int attribute;
   int ref_count;
   int disk_size;
-  bool need_clear;
+  need_clear_type need_clear;
 };
 
 #if defined (__cplusplus)
 class JSON_VALIDATOR;
 #endif
-
-/*
- * SETOBJ
- *    This is the primitive set object header.
- */
-typedef struct setobj SETOBJ;
-
 /*
  * OR_TYPE_SIZE
  *    Returns the byte size of the disk representation of a particular
@@ -1211,6 +1210,13 @@ struct or_buf
   int error_abort;
 };
 
+/*
+ * struct setobj
+ * The internal structure of a setobj data struct is private to this module.
+ * all access to this structure should be encapsulated via function calls.
+ */
+typedef SETOBJ COL;
+
 /* TODO: LP64 check DB_INT32_MAX */
 
 #define OR_BUF_INIT(buf, data, size) \
@@ -1238,6 +1244,22 @@ struct or_buf
                   (o), (n))
 
 #define ASSERT_ALIGN(ptr, alignment) (assert (PTR_ALIGN (ptr, alignment) == ptr))
+
+#if defined __cplusplus
+extern "C"
+{
+#endif
+
+  extern int db_string_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
+  extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
+
+  extern int valcnv_convert_value_to_string (DB_VALUE * value);
+
+  extern DB_TYPE setobj_type (COL * set);
+
+#if defined __cplusplus
+}
+#endif
 
 extern int or_rep_id (RECDES * record);
 extern int or_set_rep_id (RECDES * record, int repid);

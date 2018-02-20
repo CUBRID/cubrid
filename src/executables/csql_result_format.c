@@ -34,8 +34,7 @@
 #include "string_opfunc.h"
 #include "unicode_support.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1537,7 +1536,8 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       {
 	char *leading_str = NULL;
 	char *trailing_str = NULL;
-	DB_CURRENCY currency = ((DB_GET_MONETARY (value))->type);
+	DB_MONETARY *monetary_val = DB_GET_MONETARY (value);
+	DB_CURRENCY currency = monetary_val->type;
 
 	if (default_monetary_profile.currency_symbol)
 	  {
@@ -1552,7 +1552,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	  }
 
 	result =
-	  (DB_GET_MONETARY (value) == NULL) ? NULL : double_to_string ((DB_GET_MONETARY (value))->amount,
+	  (DB_GET_MONETARY (value) == NULL) ? NULL : double_to_string (monetary_val->amount,
 								       default_monetary_profile.fieldwidth,
 								       default_monetary_profile.decimalplaces,
 								       default_monetary_profile.leadingsign,

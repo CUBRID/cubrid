@@ -58,6 +58,7 @@ namespace cubthread
     , m_entry_dispatcher (NULL)
     , m_available_entries_count (max_threads)
     , m_entry_manager (NULL)
+    , m_daemon_entry_manager (NULL)
   {
     if (m_max_threads > 0)
       {
@@ -66,6 +67,7 @@ namespace cubthread
       }
 
     m_entry_manager = new entry_manager ();
+    m_daemon_entry_manager = new daemon_entry_manager();
   }
 
   manager::~manager ()
@@ -79,6 +81,7 @@ namespace cubthread
     delete m_entry_dispatcher;
     delete [] m_all_entries;
     delete m_entry_manager;
+    delete m_daemon_entry_manager;
   }
 
   template<typename Res>
@@ -151,7 +154,7 @@ namespace cubthread
       {
 	if (context_manager == NULL)
 	  {
-	    context_manager = m_entry_manager;
+	    context_manager = m_daemon_entry_manager;
 	  }
 	return create_and_track_resource (m_daemons, 1, looper_arg, context_manager, exec_p);
       }
