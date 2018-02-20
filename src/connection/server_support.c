@@ -76,6 +76,7 @@
 #include "dbval.h"		/* this must be the last header file included */
 
 #include "thread_looper.hpp"
+#include "thread_manager.hpp"
 
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"
@@ -3395,9 +3396,7 @@ css_process_new_slave (SOCKET master_fd)
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE ||
           ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
-  master_replication_channel_entry new_channel (new_fd);
-  new_channel.add_daemon (RECEIVE_FROM_SLAVE, cubthread::looper (std::chrono::seconds (0)), new receive_from_slave_daemon (new_channel.get_replication_channel()));
-  master_replication_channel_manager::add_master_replication_channel (std::move (new_channel));
+  master_replication_channel_manager::add_master_replication_channel (master_replication_channel_entry (new_fd, RECEIVE_FROM_SLAVE, new receive_from_slave_daemon ()));
 }
 
 void init_master_hostname()

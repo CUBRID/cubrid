@@ -10,10 +10,11 @@
 slave_replication_channel *slave_replication_channel::singleton = NULL;
 std::mutex slave_replication_channel::singleton_mutex;
 
-slave_replication_channel::slave_replication_channel(const std::string& hostname, const std::string &master_server_name, int port) : master_hostname (hostname),
-                                                                                                                                     master_server_name (master_server_name),
-                                                                                                                                     master_port (port),
-                                                                                                                                     slave_daemon (NULL)
+slave_replication_channel::slave_replication_channel (const std::string &hostname,
+    const std::string &master_server_name, int port) : master_hostname (hostname),
+  master_server_name (master_server_name),
+  master_port (port),
+  slave_daemon (NULL)
 {
   master_conn_entry = css_make_conn (-1);
   int rc = rmutex_initialize (&master_conn_entry->rmutex, "MASTER_CONN_ENTRY");
@@ -42,7 +43,7 @@ int slave_replication_channel::connect_to_master()
   length = master_server_name.length ();
 
   if (css_common_connect (master_conn_entry, &request_id, master_hostname.c_str (),
-                          SERVER_REQUEST_CONNECT_NEW_SLAVE, master_server_name.c_str (), length, master_port) == NULL)
+			  SERVER_REQUEST_CONNECT_NEW_SLAVE, master_server_name.c_str (), length, master_port) == NULL)
     {
       assert (false);
       return REQUEST_REFUSED;
@@ -64,9 +65,9 @@ void slave_replication_channel::init (const std::string &hostname, const std::st
     {
       std::lock_guard<std::mutex> guard (singleton_mutex);
       if (singleton == NULL)
-        {
-          singleton = new slave_replication_channel (hostname, server_name, port);
-        }
+	{
+	  singleton = new slave_replication_channel (hostname, server_name, port);
+	}
     }
 }
 
@@ -126,17 +127,18 @@ void slave_dummy_send_msg::execute (cubthread::entry &context)
 {
   if (!IS_INVALID_SOCKET (channel->get_master_conn_entry()->fd))
     {
-      int rc = channel->send (channel->get_master_conn_entry(), std::string ("hello from ") + this_hostname, communication_channel::get_max_timeout());
+      int rc = channel->send (channel->get_master_conn_entry(), std::string ("hello from ") + this_hostname,
+			      communication_channel::get_max_timeout());
       if (rc == ERROR_ON_WRITE || rc == ERROR_WHEN_READING_SIZE)
-        {
-          /* this probably means that the connection was closed */
-          //css_free_conn (channel->get_master_conn_entry());
-          slave_replication_channel::reset_singleton();
-        }
+	{
+	  /* this probably means that the connection was closed */
+	  //css_free_conn (channel->get_master_conn_entry());
+	  slave_replication_channel::reset_singleton();
+	}
       else if (rc != NO_ERRORS)
-        {
-          assert (false);
-        }
+	{
+	  assert (false);
+	}
       _er_log_debug (ARG_FILE_LINE, "slave::execute:" "sent:hello\n");
     }
 }

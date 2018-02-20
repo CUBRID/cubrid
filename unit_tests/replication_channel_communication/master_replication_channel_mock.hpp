@@ -10,19 +10,37 @@
 namespace master
 {
 
-	void init ();
-	void finish ();
+  void init ();
+  void finish ();
 
-	class receive_from_slave_daemon_mock : public cubthread::entry_task
-	{
-		public:
-		  receive_from_slave_daemon_mock (std::shared_ptr<master_replication_channel> ch);
-			void execute (cubthread::entry &context);
+  class receive_from_slave_daemon_mock : public cubthread::entry_task
+  {
+    public:
+      receive_from_slave_daemon_mock ();
+      receive_from_slave_daemon_mock (std::shared_ptr<master_replication_channel> ch);
+      void execute (cubthread::entry &context);
 
-		private:
-		  std::shared_ptr<master_replication_channel> channel;
-			int num_of_received_messages;
-	};
+      void set_channel (std::shared_ptr<master_replication_channel> ch);
+
+    private:
+      std::shared_ptr<master_replication_channel> channel;
+      int num_of_received_messages;
+  };
+
+  class dummy_print_daemon : public cubthread::entry_task
+  {
+    public:
+      dummy_print_daemon ();
+      dummy_print_daemon (std::shared_ptr<master_replication_channel> ch);
+      void execute (cubthread::entry &context);
+
+      void set_channel (std::shared_ptr<master_replication_channel> ch);
+      void retire ();
+
+    private:
+      std::shared_ptr<master_replication_channel> channel;
+      int num_of_loops;
+  };
 
 }
 
