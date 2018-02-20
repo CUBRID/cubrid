@@ -23,7 +23,7 @@
 #ifndef _TZ_SUPPORT_H_
 #define _TZ_SUPPORT_H_
 
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "thread_compat.hpp"
 #include "timezone_lib_common.h"
 

@@ -31,10 +31,10 @@
 #include <stdio.h>
 #include "oid.h"
 #include "storage_common.h"
-#include "dbtype.h"
 #include "dbdef.h"
 #include "quick_fit.h"
 #include "locator.h"
+#include "dbtype_def.h"
 
 /*
  * VID_INFO

@@ -50,7 +50,7 @@
 #include "critical_section.h"
 #endif
 #include "db_date.h"
-#include "dbval.h"		/* this must be the last header file included!!! */
+#include "dbtype.h"
 #if defined (SERVER_MODE)
 #include "thread.h"
 #endif // SERVER_MODE

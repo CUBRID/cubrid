@@ -62,8 +62,7 @@
 #if !defined(CS_MODE)
 #include "session.h"
 #endif
-
-#include "dbval.h"		/* this must be the last header file included!!! */
+#include "dbtype.h"
 
 #if !defined(WINDOWS)
 void (*prev_sigfpe_handler) (int) = SIG_DFL;

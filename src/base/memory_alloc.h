@@ -29,7 +29,7 @@
 
 #include "config.h"
 
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "thread_compat.hpp"
 
 #include <stdio.h>

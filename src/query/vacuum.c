@@ -21,6 +21,7 @@
  * vacuum.c - Vacuuming system implementation.
  *
  */
+#include "system.h"
 #include "vacuum.h"
 
 #include "base_flag.hpp"

@@ -115,7 +115,6 @@ static THREAD_MANAGER thread_Manager;
  */
 static DAEMON_THREAD_MONITOR thread_Page_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Flush_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static DAEMON_THREAD_MONITOR thread_Session_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 DAEMON_THREAD_MONITOR thread_Log_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Check_ha_delay_info_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Auto_volume_expansion_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
@@ -130,7 +129,6 @@ static int thread_compare_shutdown_sequence_of_daemon (const void *p1, const voi
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_flush_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_flush_control_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_log_flush_thread (void *);
-static THREAD_RET_T THREAD_CALLING_CONVENTION thread_session_control_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_check_ha_delay_info_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_auto_volume_expansion_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_log_clock_thread (void *);
@@ -140,7 +138,6 @@ static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_post_flush_thread (voi
 typedef enum
 {
   /* All the single threads */
-  THREAD_DAEMON_SESSION_CONTROL,
   THREAD_DAEMON_CHECK_HA_DELAY_INFO,
   THREAD_DAEMON_AUTO_VOLUME_EXPANSION,
   THREAD_DAEMON_LOG_CLOCK,
@@ -382,12 +379,6 @@ thread_initialize_manager (size_t & total_thread_count)
   /* IMPORTANT NOTE: Daemons are shutdown in the same order as they are created here. */
   daemon_index = 0;
   shutdown_sequence = 0;
-
-  /* Initialize session control daemon */
-  thread_Daemons[daemon_index].type = THREAD_DAEMON_SESSION_CONTROL;
-  thread_Daemons[daemon_index].daemon_monitor = &thread_Session_control_thread;
-  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-  thread_Daemons[daemon_index++].daemon_function = thread_session_control_thread;
 
   /* Initialize check HA delay info daemon */
   thread_Daemons[daemon_index].type = THREAD_DAEMON_CHECK_HA_DELAY_INFO;
@@ -2064,66 +2055,6 @@ thread_initialize_sync_object (void)
   return r;
 }
 #endif /* WINDOWS */
-
-static THREAD_RET_T THREAD_CALLING_CONVENTION
-thread_session_control_thread (void *arg_p)
-{
-#if !defined(HPUX)
-  THREAD_ENTRY *tsd_ptr = NULL;
-#endif /* !HPUX */
-  struct timeval timeout;
-  struct timespec to = {
-    0, 0
-  };
-  int rv = 0;
-
-  tsd_ptr = (THREAD_ENTRY *) arg_p;
-
-  thread_daemon_start (&thread_Session_control_thread, tsd_ptr, TT_DAEMON);
-
-  while (!tsd_ptr->shutdown)
-    {
-      er_clear ();
-
-      gettimeofday (&timeout, NULL);
-      to.tv_sec = timeout.tv_sec + 60;
-
-      rv = pthread_mutex_lock (&thread_Session_control_thread.lock);
-      pthread_cond_timedwait (&thread_Session_control_thread.cond, &thread_Session_control_thread.lock, &to);
-      pthread_mutex_unlock (&thread_Session_control_thread.lock);
-
-      if (tsd_ptr->shutdown)
-	{
-	  break;
-	}
-
-      session_remove_expired_sessions (&timeout);
-    }
-  rv = pthread_mutex_lock (&thread_Session_control_thread.lock);
-  thread_Session_control_thread.is_available = false;
-  thread_Session_control_thread.is_running = false;
-  pthread_mutex_unlock (&thread_Session_control_thread.lock);
-
-  er_final (ER_THREAD_FINAL);
-  tsd_ptr->status = TS_DEAD;
-  tsd_ptr->unregister_id ();
-
-  return (THREAD_RET_T) 0;
-}
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * thread_wakeup_session_control_thread() -
- *   return:
- */
-void
-thread_wakeup_session_control_thread (void)
-{
-  pthread_mutex_lock (&thread_Session_control_thread.lock);
-  pthread_cond_signal (&thread_Session_control_thread.cond);
-  pthread_mutex_unlock (&thread_Session_control_thread.lock);
-}
-#endif
 
 /*
  * thread_check_ha_delay_info_thread() -

@@ -71,8 +71,7 @@
 	result = NULL;							      \
     } while (0)
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 static PT_NODE *pt_get_object_data_type (PARSER_CONTEXT * parser, const DB_VALUE * val);
 

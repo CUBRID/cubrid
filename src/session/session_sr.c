@@ -23,6 +23,7 @@
 
 #include "xserver_interface.h"
 #include "session.h"
+#include "dbtype.h"
 
 /*
  *  xsession_create_new () - create a new session

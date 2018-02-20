@@ -29,7 +29,6 @@
 
 #include <time.h>
 
-#include "dbtype.h"
 #include "tz_support.h"
 
 #define db_utime_to_string db_timestamp_to_string
@@ -48,8 +47,6 @@ enum
 extern void db_date_locale_init (void);
 
 /* DB_DATE functions */
-extern int db_date_encode (DB_DATE * date, int month, int day, int year);
-extern void db_date_decode (const DB_DATE * date, int *monthp, int *dayp, int *yearp);
 extern int db_date_weekday (DB_DATE * date);
 extern int db_date_to_string (char *buf, int bufsize, DB_DATE * date);
 extern bool db_string_check_explicit_date (const char *str, int str_len);
@@ -103,8 +100,6 @@ extern int db_string_to_timestampltz (const char *str, DB_TIMESTAMP * ts);
 extern int db_string_to_timestampltz_ex (const char *str, int str_len, DB_TIMESTAMP * ts);
 
 /* DB_TIME functions */
-extern int db_time_encode (DB_TIME * timeval, int hour, int minute, int second);
-extern void db_time_decode (DB_TIME * timeval, int *hourp, int *minutep, int *secondp);
 extern int db_time_to_string (char *buf, int bufsize, DB_TIME * dbtime);
 extern int db_timetz_to_string (char *buf, int bufsize, DB_TIME * dbtime, const TZ_ID * tz_id);
 extern int db_timeltz_to_string (char *buf, int bufsize, DB_TIME * time);

@@ -26,7 +26,9 @@
 
 #ident "$Id$"
 
-#include "dbtype.h"
+#include <stdio.h>
+
+#include "dbtype_def.h"
 #include "thread_compat.hpp"
 
 #if !defined (SERVER_MODE)

@@ -26,6 +26,7 @@
 #define _DB_PRIVATE_ALLOCATOR_HPP_
 
 #include "memory_alloc.h"
+#include "porting.h"
 
 /* db_private_allocator -
  *
@@ -85,7 +86,7 @@ class db_private_allocator
 
     /* memory allocation */
     inline pointer allocate (size_type count);
-    inline void deallocate (pointer p, size_type UNUSED (ingored) = 0);
+    inline void deallocate (pointer p, size_type UNUSED (ignored) = 0);
 
     /* maximum number of allocations */
     size_type max_size () const;

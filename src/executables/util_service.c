@@ -540,7 +540,7 @@ main (int argc, char *argv[])
 	}
     }
 
-  /* validate the number of arguments to avoid clockwork's error message */
+  /* validate the number of arguments to avoid Klockwork's error message */
   if (argc < 2 || argc > 1024)
     {
       util_type = -1;

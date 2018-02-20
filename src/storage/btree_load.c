@@ -40,7 +40,7 @@
 #include "query_executor.h"
 #include "partition_sr.h"
 #include "partition.h"
-#include "dbval.h"
+#include "dbtype.h"
 #include "thread.h"
 
 typedef struct sort_args SORT_ARGS;

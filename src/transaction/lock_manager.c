@@ -364,6 +364,9 @@ struct lk_global_data
   /* miscellaneous things */
   short no_victim_case_count;
   bool verbose_mode;
+  // *INDENT-OFF*
+  std::atomic_int deadlock_and_timeout_detector;
+  // *INDENT-ON*
 #if defined(LK_DUMP)
   bool dump_level;
 #endif				/* LK_DUMP */
@@ -373,9 +376,9 @@ LK_GLOBAL_DATA lk_Gl = {
   0, LF_HASH_TABLE_INITIALIZER,
   LF_FREELIST_INITIALIZER, LF_FREELIST_INITIALIZER,
   0, NULL, PTHREAD_MUTEX_INITIALIZER, {0, 0},
-  NULL, NULL, 0, 0, 0, 0, false
+  NULL, NULL, 0, 0, 0, 0, false, {0}
 #if defined(LK_DUMP)
-    , 0
+  , 0
 #endif /* LK_DUMP */
 };
 
@@ -519,7 +522,6 @@ static LK_ENTRY *lock_get_new_entry (int tran_index, LF_TRAN_ENTRY * tran_entry,
 static void lock_free_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, LK_ENTRY * lock_entry);
 
 // *INDENT-OFF*
-static bool lock_Deadlock_detect_daemon_is_initialized = false;
 static cubthread::daemon *lock_Deadlock_detect_daemon = NULL;
 
 static void lock_deadlock_detect_daemon_init ();
@@ -2122,7 +2124,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 
   /* The caller is holding the thread entry mutex */
 
-  if (lk_Gl.verbose_mode == true)
+  if (lk_Gl.verbose_mode)
     {
       char *__client_prog_name;	/* Client program name for transaction */
       char *__client_user_name;	/* Client user name for transaction */
@@ -2147,6 +2149,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   entry_ptr->thrd_entry->lockwait_state = (int) LOCK_SUSPENDED;
 
   lk_Gl.TWFG_node[entry_ptr->tran_index].thrd_wait_stime = entry_ptr->thrd_entry->lockwait_stime;
+  lk_Gl.deadlock_and_timeout_detector++;
 
   /* wakeup the dealock detect thread */
   lock_Deadlock_detect_daemon->wakeup ();
@@ -2166,6 +2169,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   /* suspend the worker thread (transaction) */
   thread_suspend_wakeup_and_unlock_entry (entry_ptr->thrd_entry, THREAD_LOCK_SUSPENDED);
 
+  lk_Gl.deadlock_and_timeout_detector--;
   lk_Gl.TWFG_node[entry_ptr->tran_index].thrd_wait_stime = 0;
 
   if (tdes)
@@ -2184,7 +2188,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   else if (entry_ptr->thrd_entry->resume_status != THREAD_LOCK_RESUMED)
     {
       /* wake up with other reason */
-      assert (0);
+      assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
       return LOCK_RESUMED_INTERRUPT;
     }
@@ -2217,7 +2221,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
     case LOCK_RESUMED_ABORTED_FIRST:
       /* The lock entry does exist within the blocked holder list or blocked waiter list. Therefore, current thread
        * must disconnect it from the list. */
-      if (logtb_is_current_active (thread_p) == true)
+      if (logtb_is_current_active (thread_p))
 	{
 	  /* set error code */
 	  lock_set_error_for_aborted (entry_ptr, TRAN_ABORT_DUE_DEADLOCK);
@@ -2227,7 +2231,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 	  if (thread_has_threads (thread_p, entry_ptr->tran_index, thread_get_client_id (thread_p)) >= 1)
 	    {
 	      logtb_set_tran_index_interrupt (thread_p, entry_ptr->tran_index, true);
-	      while (1)
+	      while (true)
 		{
 		  thread_sleep (10);	/* sleep 10 msec */
 		  thread_wakeup_with_tran_index (entry_ptr->tran_index, THREAD_RESUME_DUE_TO_INTERRUPT);
@@ -5903,8 +5907,9 @@ class deadlock_detect_task : public cubthread::entry_task
 	  return;
 	}
 
-      if (!lock_check_local_deadlock_detection ())
+      if (lk_Gl.deadlock_and_timeout_detector == 0)
 	{
+	  // if none of the threads were suspended then just return
 	  return;
 	}
 
@@ -5949,14 +5954,12 @@ class deadlock_detect_task : public cubthread::entry_task
 void
 lock_deadlock_detect_daemon_init ()
 {
-  assert (!lock_Deadlock_detect_daemon_is_initialized);
+  assert (lock_Deadlock_detect_daemon == NULL);
 
   // create deadlock detect daemon thread
   auto interval_time = std::chrono::milliseconds (100);
   lock_Deadlock_detect_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (interval_time),
 				new deadlock_detect_task ());
-
-  lock_Deadlock_detect_daemon_is_initialized = true;
 }
 #endif /* SERVER_MODE */
 
@@ -5967,14 +5970,10 @@ lock_deadlock_detect_daemon_init ()
 void
 lock_deadlock_detect_daemon_destroy ()
 {
-  if (!lock_Deadlock_detect_daemon_is_initialized)
+  if (lock_Deadlock_detect_daemon != NULL)
     {
-      return;
+      cubthread::get_manager ()->destroy_daemon (lock_Deadlock_detect_daemon);
     }
-
-  cubthread::get_manager ()->destroy_daemon (lock_Deadlock_detect_daemon);
-
-  lock_Deadlock_detect_daemon_is_initialized = false;
 }
 #endif /* SERVER_MODE */
 // *INDENT-ON*
@@ -7777,38 +7776,6 @@ end:
     }
 
   return;
-#endif /* !SERVER_MODE */
-}
-
-/*
- * lock_check_local_deadlock_detection - Check local deadlock detection interval
- *
- * return:
- *
- * Note:check if the local deadlock detection should be performed.
- */
-bool
-lock_check_local_deadlock_detection (void)
-{
-#if !defined (SERVER_MODE)
-  return false;
-#else /* !SERVER_MODE */
-  struct timeval now, elapsed;
-  double elapsed_sec;
-
-  /* check deadlock detection interval */
-  gettimeofday (&now, NULL);
-  DIFF_TIMEVAL (lk_Gl.last_deadlock_run, now, elapsed);
-  /* add 0.01 for the processing time by deadlock detection */
-  elapsed_sec = elapsed.tv_sec + (elapsed.tv_usec / 1000) + 0.01;
-  if (elapsed_sec <= prm_get_float_value (PRM_ID_LK_RUN_DEADLOCK_INTERVAL))
-    {
-      return false;
-    }
-  else
-    {
-      return true;
-    }
 #endif /* !SERVER_MODE */
 }
 

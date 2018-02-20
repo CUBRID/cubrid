@@ -297,7 +297,18 @@ extern int pr_value_mem_size (DB_VALUE * value);
 
 extern DB_VALUE *pr_make_value (void);
 extern DB_VALUE *pr_copy_value (DB_VALUE * var);
-extern int pr_clone_value (const DB_VALUE * src, DB_VALUE * dest);
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+  extern int pr_clone_value (const DB_VALUE * src, DB_VALUE * dest);
+
+#ifdef __cplusplus
+}
+#endif
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int pr_share_value (DB_VALUE * src, DB_VALUE * dest);
 #endif

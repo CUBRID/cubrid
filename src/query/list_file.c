@@ -41,9 +41,7 @@
 #include "stream_to_xasl.h"
 #include "query_opfunc.h"
 #include "thread.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 /* TODO */
 #if !defined (SERVER_MODE)

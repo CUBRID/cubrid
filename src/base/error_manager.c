@@ -107,8 +107,6 @@ struct er_copy_area
   char area[1];			/* actually, more than one */
 };
 
-
-
 typedef struct er_spec ER_SPEC;
 struct er_spec
 {
@@ -1299,7 +1297,9 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
       return ER_FAILED;
     }
 
-  context & tl_context = context::get_thread_local_context ();
+  // *INDENT-OFF*
+  context &tl_context = context::get_thread_local_context ();
+  // *INDENT-ON*
 
   /* 
    * Get the UNIX error message if needed. We need to get this as soon
@@ -1309,18 +1309,23 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
 
   memcpy (&ap, ap_ptr, sizeof (ap));
 
+  // *INDENT-OFF*
   // should force error stacking? yes if:
   // 1. this is a notification and an error was already set
   // 2. current error is interrupted error.
-  er_message & prev_err = tl_context.get_current_error_level ();
+  er_message &prev_err = tl_context.get_current_error_level ();
+  // *INDENT-ON*
+
   if ((severity == ER_NOTIFICATION_SEVERITY && prev_err.err_id != NO_ERROR) || (prev_err.err_id == ER_INTERRUPTED))
     {
       tl_context.push_error_stack ();
       need_stack_pop = true;
     }
 
+  // *INDENT-OFF*
   // get current error reference
-  er_message & crt_error = tl_context.get_current_error_level ();
+  er_message &crt_error = tl_context.get_current_error_level ();
+  // *INDENT-ON*
 
   /* Initialize the area... */
   crt_error.set_error (err_id, severity, file_name, line_no);
@@ -1408,8 +1413,7 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
     }
 
   /* 
-   * Do we want to stop the system on this error ... for debugging
-   * purposes?
+   * Do we want to stop the system on this error ... for debugging purposes?
    */
   if (prm_get_integer_value (PRM_ID_ER_STOP_ON_ERROR) == err_id)
     {
@@ -1513,10 +1517,8 @@ er_log (int err_id)
   er_all (&err_id, &severity, &nlevels, &line_no, &file_name, &msg);
 
   /* 
-   * Don't let the file of log messages get very long. Backup or go back to the
-   * top if need be.
+   * Don't let the file of log messages get very long. Backup or go back to the top if need be.
    */
-
   if (*log_fh != stderr && *log_fh != stdout && ftell (*log_fh) > (int) prm_get_integer_value (PRM_ID_ER_LOG_SIZE))
     {
       (void) fflush (*log_fh);
@@ -1572,24 +1574,22 @@ er_log (int err_id)
     }
 
 #if defined (SERVER_MODE)
-  do
-    {
-      char *prog_name = NULL;
-      char *user_name = NULL;
-      char *host_name = NULL;
-      int pid = 0;
+  {
+    char *prog_name = NULL;
+    char *user_name = NULL;
+    char *host_name = NULL;
+    int pid = 0;
 
-      if (logtb_find_client_tran_name_host_pid (tran_index, &prog_name, &user_name, &host_name, &pid) == NO_ERROR)
-	{
-	  ret = snprintf (more_info, sizeof (more_info), ", CLIENT = %s:%s(%d), EID = %u",
-			  host_name ? host_name : "unknown", prog_name ? prog_name : "unknown", pid, er_Eid);
-	  if (ret > 0)
-	    {
-	      more_info_p = &more_info[0];
-	    }
-	}
-    }
-  while (0);
+    if (logtb_find_client_tran_name_host_pid (tran_index, &prog_name, &user_name, &host_name, &pid) == NO_ERROR)
+      {
+	ret = snprintf (more_info, sizeof (more_info), ", CLIENT = %s:%s(%d), EID = %u",
+			host_name ? host_name : "unknown", prog_name ? prog_name : "unknown", pid, er_Eid);
+	if (ret > 0)
+	  {
+	    more_info_p = &more_info[0];
+	  }
+      }
+  }
 #else /* SERVER_MODE */
   tran_index = TM_TRAN_INDEX ();
   ret = snprintf (more_info, sizeof (more_info), ", EID = %u", er_Eid);
@@ -1709,7 +1709,10 @@ er_errid (void)
 int
 er_errid_if_has_error (void)
 {
-  er_message & crt_error = context::get_thread_local_error ();
+  // *INDENT-OFF*
+  er_message &crt_error = context::get_thread_local_error ();
+  // *INDENT-ON*
+
   return er_is_error_severity ((er_severity) crt_error.severity) ? crt_error.err_id : NO_ERROR;
 }
 
@@ -1722,6 +1725,7 @@ er_clearid (void)
 {
   // todo: is this necessary?
   assert (er_Hasalready_initiated);
+
   context::get_thread_local_error ().err_id = NO_ERROR;
 }
 
@@ -1735,6 +1739,7 @@ er_setid (int err_id)
 {
   // todo: is this necessary?
   assert (er_Hasalready_initiated);
+
   context::get_thread_local_error ().err_id = err_id;
 }
 
@@ -1776,7 +1781,9 @@ er_msg (void)
       return "Not available";	// todo: is this safe?
     }
 
-  er_message & crt_error = context::get_thread_local_error ();
+  // *INDENT-OFF*
+  er_message &crt_error = context::get_thread_local_error ();
+  // *INDENT-ON*
 
   if (crt_error.msg_area[0] == '\0')
     {
@@ -1802,7 +1809,9 @@ er_msg (void)
 void
 er_all (int *err_id, int *severity, int *n_levels, int *line_no, const char **file_name, const char **error_msg)
 {
-  er_message & crt_error = context::get_thread_local_error ();
+  // *INDENT-OFF*
+  er_message &crt_error = context::get_thread_local_error ();
+  // *INDENT-ON*
 
   *err_id = crt_error.err_id;
   *severity = crt_error.severity;
@@ -1917,7 +1926,9 @@ er_get_area_error (char *buffer, int *length)
 
   assert (*length > OR_INT_SIZE * 3);
 
-  er_message & crt_error = context::get_thread_local_error ();
+  // *INDENT-OFF*
+  er_message &crt_error = context::get_thread_local_error ();
+  // *INDENT-ON*
 
   /* Now copy the information */
   msg = strlen (crt_error.msg_area) != 0 ? crt_error.msg_area : "(null)";
@@ -1966,7 +1977,9 @@ er_set_area_error (char *server_area)
       return NO_ERROR;
     }
 
-  er_message & crt_error = context::get_thread_local_error ();
+  // *INDENT-OFF*
+  er_message &crt_error = context::get_thread_local_error ();
+  // *INDENT-ON*
 
   ptr = server_area;
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
@@ -2046,7 +2059,9 @@ er_stack_push (void)
 void
 er_stack_push_if_exists (void)
 {
-  context & tl_context = context::get_thread_local_context ();
+  // *INDENT-OFF*
+  context &tl_context = context::get_thread_local_context ();
+  // *INDENT-ON*
 
   if (tl_context.get_current_error_level ().err_id == NO_ERROR && !tl_context.has_error_stack ())
     {
@@ -2081,7 +2096,9 @@ er_stack_pop (void)
 void
 er_stack_pop_and_keep_error (void)
 {
-  context & tl_context = context::get_thread_local_context ();
+  // *INDENT-OFF*
+  context &tl_context = context::get_thread_local_context ();
+  // *INDENT-ON*
   er_message top (tl_context.get_logging ());
 
   if (!tl_context.has_error_stack ())
@@ -2117,7 +2134,9 @@ er_stack_pop_and_keep_error (void)
 void
 er_restore_last_error (void)
 {
-  context & tl_context = context::get_thread_local_context ();
+  // *INDENT-OFF*
+  context &tl_context = context::get_thread_local_context ();
+  // *INDENT-ON*
 
   if (!tl_context.has_error_stack ())
     {
@@ -2135,7 +2154,9 @@ er_restore_last_error (void)
 void
 er_stack_clearall (void)
 {
-  context & tl_context = context::get_thread_local_context ();
+  // *INDENT-OFF*
+  context &tl_context = context::get_thread_local_context ();
+  // *INDENT-ON*
 
   // remove all stacks, but keep last error
   while (tl_context.has_error_stack ())
@@ -2457,7 +2478,6 @@ er_estimate_size (ER_FMT * fmt, va_list * ap)
       return strlen (er_Cached_msg[ER_ER_SUBSTITUTE_MSG]);
     }
 
-
   memcpy (&args, ap, sizeof (args));
 
   len = fmt->fmt_length;
@@ -2726,7 +2746,9 @@ er_emergency (const char *file, int line, const char *fmt, ...)
   int limit, span;
   char buf[32];
 
-  er_message & crt_error = context::get_thread_local_error ();
+  // *INDENT-OFF*
+  er_message &crt_error = context::get_thread_local_error ();
+  // *INDENT-ON*
 
   crt_error.err_id = ER_GENERIC_ERROR;
   crt_error.severity = ER_ERROR_SEVERITY;

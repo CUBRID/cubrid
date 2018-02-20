@@ -28,7 +28,7 @@
 #include "replication.h"
 #include "object_primitive.h"
 #include "heap_file.h"
-
+#include "dbtype.h"
 /*
  * EXTERN TO ALL SERVER RECOVERY FUNCTION CODED SOMEWHERE ELSE
  */
