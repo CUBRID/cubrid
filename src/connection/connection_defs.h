@@ -65,7 +65,7 @@ enum css_command_type
   SERVER_REQUEST = 3,		/* let new server attach */
   MSQL_REQUEST = 4,		/* A request to start a new M driver. */
   SERVER_REQUEST_NEW = 5,	/* new-style server request */
-  SERVER_REQUEST_CONNECT_NEW_SLAVE = 6 /* slave server wants to connect to master server */
+  SERVER_REQUEST_CONNECT_NEW_SLAVE = 6	/* slave server wants to connect to master server */
 };
 
 /*

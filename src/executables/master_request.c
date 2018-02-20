@@ -2052,7 +2052,8 @@ css_process_heartbeat_request (CSS_CONN_ENTRY * conn)
 }
 
 int
-css_send_to_my_server_the_master_hostname (const char *master_current_hostname, HB_PROC_ENTRY *proc, CSS_CONN_ENTRY *conn)
+css_send_to_my_server_the_master_hostname (const char *master_current_hostname, HB_PROC_ENTRY * proc,
+					   CSS_CONN_ENTRY * conn)
 {
   int rc = NO_ERROR, rv;
   int master_hostname_length = master_current_hostname == NULL ? 0 : strlen (master_current_hostname);

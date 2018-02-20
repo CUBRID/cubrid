@@ -839,7 +839,7 @@ net_server_init (void)
   req_p->processing_function = slocator_redistribute_partition_data;
   req_p->name = "NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA";
 
-  init_master_hostname();
+  init_master_hostname ();
 }
 
 #if defined(CUBRID_DEBUG)
@@ -1338,8 +1338,8 @@ net_server_start (const char *server_name)
 	  (void) xboot_shutdown_server (thread_get_thread_entry_info (), ER_ALL_FINAL);
 	}
 
-      master_replication_channel_manager::reset();
-      slave_replication_channel::reset_singleton();
+      master_replication_channel_manager::reset ();
+      slave_replication_channel::reset_singleton ();
 
 #if defined(CUBRID_DEBUG)
       net_server_histo_print ();

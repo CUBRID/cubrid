@@ -88,7 +88,8 @@ static void css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, S
 				    char *server_name, int server_name_length);
 static void css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid);
 static void css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid);
-static bool css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SERVER_REQUEST request);
+static bool css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid,
+					    CSS_SERVER_REQUEST request);
 static void css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERVER_REQUEST request);
 static void css_process_new_connection (SOCKET fd);
 static int css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
@@ -763,10 +764,10 @@ css_process_new_connection (SOCKET fd)
 	  /* here the server wants to manage its own connection port */
 	  css_register_new_server2 (conn, rid);
 	  break;
-        case SERVER_REQUEST_CONNECT_NEW_SLAVE:
-          MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "css_process_new_connection. " "received NEW_SLAVE_REQUEST \n");
-          css_send_to_existing_server (conn, rid, SERVER_CONNECT_NEW_SLAVE);
-          break;
+	case SERVER_REQUEST_CONNECT_NEW_SLAVE:
+	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "css_process_new_connection. " "received NEW_SLAVE_REQUEST \n");
+	  css_send_to_existing_server (conn, rid, SERVER_CONNECT_NEW_SLAVE);
+	  break;
 	default:
 	  css_free_conn (conn);
 	  break;
