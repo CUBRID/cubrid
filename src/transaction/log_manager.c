@@ -10456,14 +10456,14 @@ INT64
 log_get_clock_msec (void)
 {
 #if defined (SERVER_MODE)
-    if (log_Clock_msec > 0)
+  if (log_Clock_msec > 0)
     {
-	return log_Clock_msec;
+      return log_Clock_msec;
     }
 #endif /* SERVER_MODE */
 
-    struct timeval now;
-    gettimeofday (&now, NULL);
+  struct timeval now;
+  gettimeofday (&now, NULL);
 
-    return (now.tv_sec * 1000LL) + (now.tv_usec / 1000LL);
+  return (now.tv_sec * 1000LL) + (now.tv_usec / 1000LL);
 }
