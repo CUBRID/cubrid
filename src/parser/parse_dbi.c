@@ -798,8 +798,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	  }
       }
       break;
-    case DB_TYPE_UTIME:
-      if (db_utime_to_string (buf, sizeof (buf), db_get_utime (val)) == 0)
+    case DB_TYPE_TIMESTAMP:
+      if (db_utime_to_string (buf, sizeof (buf), db_get_timestamp (val)) == 0)
 	{
 	  SET_PARSER_ERROR_AND_FREE_NODE (parser, result, MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
 	}
@@ -809,7 +809,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	}
       break;
     case DB_TYPE_TIMESTAMPLTZ:
-      if (db_timestampltz_to_string (buf, sizeof (buf), db_get_utime (val)) == 0)
+      if (db_timestampltz_to_string (buf, sizeof (buf), db_get_timestamp (val)) == 0)
 	{
 	  SET_PARSER_ERROR_AND_FREE_NODE (parser, result, MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
 	}
@@ -1541,7 +1541,7 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
       retval = tp_domain_construct (domain_type, NULL, DB_DATE_PRECISION, 0, NULL);
       break;
     case DB_TYPE_TIMESTAMPLTZ:
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       retval = tp_domain_construct (domain_type, NULL, DB_TIMESTAMP_PRECISION, 0, NULL);
       break;
     case DB_TYPE_TIMESTAMPTZ:
@@ -1794,7 +1794,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
     case DB_TYPE_TIME:
     case DB_TYPE_TIMETZ:
     case DB_TYPE_TIMELTZ:
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_DATETIME:
@@ -2024,7 +2024,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
     case DB_TYPE_TIME:
     case DB_TYPE_TIMETZ:
     case DB_TYPE_TIMELTZ:
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_DATETIME:
@@ -2319,7 +2319,7 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
       db_type = DB_TYPE_TIMELTZ;
       break;
     case PT_TYPE_TIMESTAMP:
-      db_type = DB_TYPE_UTIME;
+      db_type = DB_TYPE_TIMESTAMP;
       break;
     case PT_TYPE_TIMESTAMPTZ:
       db_type = DB_TYPE_TIMESTAMPTZ;
@@ -2610,7 +2610,7 @@ pt_db_to_type_enum (const DB_TYPE t)
     case DB_TYPE_TIMELTZ:
       pt_type = PT_TYPE_TIMELTZ;
       break;
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       pt_type = PT_TYPE_TIMESTAMP;
       break;
     case DB_TYPE_TIMESTAMPTZ:
@@ -2824,7 +2824,7 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
     case DB_TYPE_TIME:
     case DB_TYPE_TIMETZ:
     case DB_TYPE_TIMELTZ:
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_DATE:

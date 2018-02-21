@@ -189,7 +189,7 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 	case DB_TYPE_TIME:
 	case DB_TYPE_TIMETZ:
 	case DB_TYPE_TIMELTZ:
-	case DB_TYPE_UTIME:
+	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPTZ:
 	case DB_TYPE_TIMESTAMPLTZ:
 	case DB_TYPE_DATETIME:

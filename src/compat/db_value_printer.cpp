@@ -212,7 +212,7 @@ void db_value_printer::describe_value (const db_value *value)
 	  describe_data (value);
 	  m_buf += '\'';
 	  break;
-	case DB_TYPE_UTIME:
+	case DB_TYPE_TIMESTAMP:
 	  m_buf ("timestamp '");
 	  describe_data (value);
 	  m_buf += '\'';
@@ -475,12 +475,12 @@ void db_value_printer::describe_data (const db_value *value)
     }
     break;
 
-    case DB_TYPE_UTIME:
-      (void) db_utime_to_string (line, TOO_BIG_TO_MATTER, db_get_utime (value));
+    case DB_TYPE_TIMESTAMP:
+      (void) db_utime_to_string (line, TOO_BIG_TO_MATTER, db_get_timestamp (value));
       m_buf (line);
       break;
     case DB_TYPE_TIMESTAMPLTZ:
-      (void) db_timestampltz_to_string (line, TOO_BIG_TO_MATTER, db_get_utime (value));
+      (void) db_timestampltz_to_string (line, TOO_BIG_TO_MATTER, db_get_timestamp (value));
       m_buf (line);
       break;
 

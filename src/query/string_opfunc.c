@@ -28234,9 +28234,9 @@ db_string_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval_p, DB
       db_date_decode (&date, &extvar[MONTH], &extvar[DAY], &extvar[YEAR]);
       break;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
-      utime = db_get_utime (dbval_p);
+      utime = db_get_timestamp (dbval_p);
       (void) db_timestamp_decode_ses (utime, &date, &time);
 
       if (extr_operand == YEAR || extr_operand == MONTH || extr_operand == DAY)

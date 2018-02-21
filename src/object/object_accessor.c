@@ -2292,7 +2292,8 @@ argstate_from_list (ARGSTATE * state, DB_VALUE_LIST * arglist)
   state->overflow = arg;
   state->free_overflow = 0;
   state->save_overflow = NULL;
-  for (i = 0; arg != NULL; arg = arg->next, i++);
+  for (i = 0; arg != NULL; arg = arg->next, i++)
+    ;
   state->noverflow = i;
 }
 
@@ -2327,7 +2328,8 @@ argstate_from_array (ARGSTATE * state, DB_VALUE ** argarray)
 	}
       state->nargs = i;
       /* need to handle overflow arguments ! */
-      for (j = 0; argarray[i] != NULL; i++, j++);
+      for (j = 0; argarray[i] != NULL; i++, j++)
+	;
       state->noverflow = j;
     }
 }
@@ -2431,7 +2433,10 @@ call_method (METHOD_FUNCTION method, MOP obj, DB_VALUE * returnval, int nargs, D
     }
 
   if (!forge_flag_pat)
-    db_make_null (returnval);
+    {
+      db_make_null (returnval);
+    }
+
   switch (nargs)
     {
     case 0:

@@ -15928,21 +15928,21 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 	      break;
 
-	    case DB_TYPE_UTIME:
+	    case DB_TYPE_TIMESTAMP:
 	    case DB_TYPE_TIMESTAMPLTZ:
 	      {
 		DB_UTIME *utime, result_utime;
 		DB_VALUE *other;
 		DB_BIGINT bi;
 
-		if (DB_VALUE_TYPE (arg1) == DB_TYPE_UTIME || DB_VALUE_TYPE (arg1) == DB_TYPE_TIMESTAMPLTZ)
+		if (DB_VALUE_TYPE (arg1) == DB_TYPE_TIMESTAMP || DB_VALUE_TYPE (arg1) == DB_TYPE_TIMESTAMPLTZ)
 		  {
-		    utime = db_get_utime (arg1);
+		    utime = db_get_timestamp (arg1);
 		    other = arg2;
 		  }
 		else
 		  {
-		    utime = db_get_utime (arg2);
+		    utime = db_get_timestamp (arg2);
 		    other = arg1;
 		  }
 
@@ -16665,7 +16665,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 	      break;
 
-	    case DB_TYPE_UTIME:
+	    case DB_TYPE_TIMESTAMP:
 	    case DB_TYPE_TIMESTAMPLTZ:
 	    case DB_TYPE_TIMESTAMPTZ:
 	      {
@@ -16697,7 +16697,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  }
 		else
 		  {
-		    utime = *db_get_utime (arg1);
+		    utime = *db_get_timestamp (arg1);
 		  }
 
 		if (utime == 0)

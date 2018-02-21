@@ -316,7 +316,7 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result, DB_QUERY
 	case DB_TYPE_TIMELTZ:
 	  attr_lengths[i] = -MAX (MAX_TIMETZ_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
-	case DB_TYPE_UTIME:
+	case DB_TYPE_TIMESTAMP:
 	  attr_lengths[i] = -MAX (MAX_UTIME_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
 	case DB_TYPE_TIMESTAMPTZ:

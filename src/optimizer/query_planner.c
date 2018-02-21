@@ -392,7 +392,7 @@ unsigned char qo_type_qualifiers[] = {
   0,				/* DB_TYPE_SEQUENCE */
   0,				/* DB_TYPE_ELO */
   _INT + _NUM,			/* DB_TYPE_TIME */
-  _INT + _NUM,			/* DB_TYPE_UTIME */
+  _INT + _NUM,			/* DB_TYPE_TIMESTAMP */
   _INT + _NUM,			/* DB_TYPE_DATE */
   _NUM,				/* DB_TYPE_MONETARY */
   0,				/* DB_TYPE_VARIABLE */

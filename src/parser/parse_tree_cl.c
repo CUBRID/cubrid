@@ -2601,7 +2601,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
       printer.describe_value (val);
       break;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
       /* everyone else gets csql's utime format */

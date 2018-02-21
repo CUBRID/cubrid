@@ -1551,16 +1551,18 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	      }
 	  }
 
-	result =
-	  (db_get_monetary (value) == NULL) ? NULL : double_to_string (monetary_val->amount,
-								       default_monetary_profile.fieldwidth,
-								       default_monetary_profile.decimalplaces,
-								       default_monetary_profile.leadingsign,
-								       leading_str, trailing_str,
-								       default_monetary_profile.leadingzeros,
-								       default_monetary_profile.trailingzeros,
-								       default_monetary_profile.commas,
-								       DOUBLE_FORMAT_DECIMAL);
+	if (db_get_monetary (value) == NULL)
+	  {
+	    result = NULL;
+	  }
+	else
+	  {
+	    result = double_to_string (monetary_val->amount, default_monetary_profile.fieldwidth,
+				       default_monetary_profile.decimalplaces, default_monetary_profile.leadingsign,
+				       leading_str, trailing_str, default_monetary_profile.leadingzeros,
+				       default_monetary_profile.trailingzeros, default_monetary_profile.commas,
+				       DOUBLE_FORMAT_DECIMAL);
+	  }
 
 	if (result)
 	  {
@@ -1576,10 +1578,10 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	  len = strlen (result);
 	}
       break;
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       {
 	char buf[TIMESTAMP_BUF_SIZE];
-	if (db_utime_to_string (buf, sizeof (buf), db_get_utime (value)))
+	if (db_utime_to_string (buf, sizeof (buf), db_get_timestamp (value)))
 	  {
 	    result = duplicate_string (buf);
 	  }
@@ -1609,7 +1611,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       {
 	char buf[TIMESTAMPTZ_BUF_SIZE];
 
-	if (db_timestampltz_to_string (buf, sizeof (buf), db_get_utime (value)))
+	if (db_timestampltz_to_string (buf, sizeof (buf), db_get_timestamp (value)))
 	  {
 	    result = duplicate_string (buf);
 	  }

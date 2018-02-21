@@ -1464,12 +1464,12 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       break;
 
     case DB_TYPE_TIMESTAMP:
-      db_timestamp_to_string (buf, MAX_DISPLAY_COLUMN, db_get_utime (value));
+      db_timestamp_to_string (buf, MAX_DISPLAY_COLUMN, db_get_timestamp (value));
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timestamp '%s'", buf));
       break;
 
     case DB_TYPE_TIMESTAMPLTZ:
-      db_timestampltz_to_string (buf, MAX_DISPLAY_COLUMN, db_get_utime (value));
+      db_timestampltz_to_string (buf, MAX_DISPLAY_COLUMN, db_get_timestamp (value));
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timestampltz '%s'", buf));
       break;
 
@@ -1498,9 +1498,9 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
     case DB_TYPE_MONETARY:
       /* Always print symbol before value, even if for turkish lira the user format is after value :
        * intl_get_currency_symbol_position */
-      CHECK_PRINT_ERROR (text_print
-			 (tout, NULL, 0, "%s%.*f", intl_get_money_esc_ISO_symbol (db_get_monetary (value)->type), 2,
-			  db_get_monetary (value)->amount));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%s%.*f",
+				     intl_get_money_esc_ISO_symbol (db_get_monetary (value)->type), 2,
+				     db_get_monetary (value)->amount));
       break;
 
     case DB_TYPE_NCHAR:

@@ -1160,7 +1160,7 @@ PR_TYPE tp_Timeltz = {
 PR_TYPE *tp_Type_timeltz = &tp_Timeltz;
 
 PR_TYPE tp_Utime = {
-  "timestamp", DB_TYPE_UTIME, 0, sizeof (DB_UTIME), OR_UTIME_SIZE, 4,
+  "timestamp", DB_TYPE_TIMESTAMP, 0, sizeof (DB_UTIME), OR_UTIME_SIZE, 4,
   help_fprint_value,
   help_sprint_value,
   mr_initmem_utime,
@@ -4049,7 +4049,7 @@ mr_setmem_utime (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
   if (value == NULL)
     mr_initmem_utime (mem, domain);
   else
-    *(DB_UTIME *) mem = *db_get_utime (value);
+    *(DB_UTIME *) mem = *db_get_timestamp (value);
 
   return NO_ERROR;
 }
@@ -4114,11 +4114,11 @@ mr_setval_utime (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 
   if (DB_IS_NULL (src))
     {
-      error = db_value_domain_init (dest, DB_TYPE_UTIME, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      error = db_value_domain_init (dest, DB_TYPE_TIMESTAMP, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
     }
   else
     {
-      error = db_make_utime (dest, *db_get_utime (src));
+      error = db_make_utime (dest, *db_get_timestamp (src));
     }
   return error;
 }
@@ -4134,7 +4134,7 @@ mr_setval_timestampltz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     }
   else
     {
-      error = db_make_timestampltz (dest, *db_get_utime (src));
+      error = db_make_timestampltz (dest, *db_get_timestamp (src));
     }
   return error;
 }
@@ -4142,7 +4142,7 @@ mr_setval_timestampltz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 static int
 mr_data_writeval_utime (OR_BUF * buf, DB_VALUE * value)
 {
-  return or_put_utime (buf, db_get_utime (value));
+  return or_put_utime (buf, db_get_timestamp (value));
 }
 
 static int
@@ -4193,7 +4193,7 @@ mr_index_writeval_utime (OR_BUF * buf, DB_VALUE * value)
 {
   DB_UTIME *utm;
 
-  utm = db_get_utime (value);
+  utm = db_get_timestamp (value);
 
   return or_put_data (buf, (char *) utm, tp_Utime.disksize);
 }
@@ -4277,8 +4277,8 @@ mr_cmpval_utime (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
 {
   const DB_TIMESTAMP *ts1, *ts2;
 
-  ts1 = db_get_utime (value1);
-  ts2 = db_get_utime (value2);
+  ts1 = db_get_timestamp (value1);
+  ts2 = db_get_timestamp (value2);
 
   return MR_CMP (*ts1, *ts2);
 }

@@ -5478,7 +5478,7 @@ qo_data_compare (DB_DATA * data1, DB_DATA * data2, DB_TYPE type)
       break;
 
     case DB_TYPE_TIMESTAMPLTZ:
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       result = ((data1->utime < data2->utime) ? -1 : ((data1->utime > data2->utime) ? 1 : 0));
       break;
     case DB_TYPE_TIMESTAMPTZ:
