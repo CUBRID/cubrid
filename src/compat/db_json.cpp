@@ -56,24 +56,31 @@
 
 #include "db_json.hpp"
 
-#include "rapidjson/stringbuffer.h"
+#include "dbtype.h"
+#include "memory_alloc.h"
+#include "system_parameter.h"
+
+// we define COPY in storage_common.h, but so does rapidjson in its headers. We don't need the definition from storage
+// common, so thankfully we can undef it here. But we should really consider remove that definition
+#undef COPY
+
+#include "rapidjson/allocators.h"
 #include "rapidjson/error/en.h"
-#include "rapidjson/schema.h"
 #include "rapidjson/document.h"
 #include "rapidjson/encodings.h"
-#include "rapidjson/allocators.h"
+#include "rapidjson/schema.h"
+#include "rapidjson/stringbuffer.h"
 #include "rapidjson/writer.h"
 
 #include <sstream>
-#include <vector>
-#include <unordered_map>
-#include <queue>
+
 #include <algorithm>
-#include <cctype>
 #include <locale>
-#include "memory_alloc.h"
-#include "system_parameter.h"
-#include "dbtype.h"
+#include <queue>
+#include <unordered_map>
+#include <vector>
+
+#include <cctype>
 
 #if defined GetObject
 /* stupid windows and their definitions; GetObject is defined as GetObjectW or GetObjectA */
@@ -127,17 +134,17 @@ class JSON_VALIDATOR
 };
 
 /*
-* JSON_BASE_WALKER - This class acts like a rapidjson Handler
+* JSON_BASE_HANDLER - This class acts like a rapidjson Handler
 *
 * The Handler is used by the json document to make checks on all of its nodes
 * It is applied recursively by the Accept function and acts like a map functions
 * You should inherit this class each time you want a specific function to apply to all the nodes in the json document
 * and override only the methods that apply to the desired types of nodes
 */
-class JSON_BASE_WALKER
+class JSON_BASE_HANDLER
 {
   public:
-    JSON_BASE_WALKER() {};
+    JSON_BASE_HANDLER() {};
     typedef typename JSON_DOC::Ch Ch;
     typedef unsigned SizeType;
 
@@ -199,13 +206,49 @@ class JSON_BASE_WALKER
     }
 };
 
+// JSON WALKER
+//
+// Unlike handler, the walker can call two functions before and after walking/advancing in the JSON "tree".
+// JSON Objects and JSON Arrays are considered tree children.
+//
+// How to use: extend this walker by implementing CallBefore and/or CallAfter functions. By default, they are empty
+//
+class JSON_WALKER
+{
+public:
+  JSON_WALKER () = delete;
+  ~JSON_WALKER () = delete;
+
+  int WalkDocument (JSON_DOC & document);
+
+protected:
+  virtual int
+  CallBefore (JSON_VALUE & value)
+  {
+    // do nothing
+    return NO_ERROR;
+  }
+
+  virtual int
+  CallAfter (JSON_VALUE & value)
+  {
+    // do nothing
+    return NO_ERROR;
+  }
+
+private:
+  int WalkValue (JSON_VALUE & value);
+};
+
 /*
-* JSON_DUPLICATE_KEYS_CHECKER - This class extends JSON_BASE_WALKER
+* JSON_DUPLICATE_KEYS_CHECKER - This class extends JSON_BASE_HANDLER
 *
 * It is a handler used to check if the json document has duplicate keys in an object
 * We override only the StartObject method because we need to check the keys from the same level in the tree
+*
+* TODO: Extend walker instead of handler
 */
-class JSON_DUPLICATE_KEYS_CHECKER : public JSON_BASE_WALKER
+class JSON_DUPLICATE_KEYS_CHECKER : public JSON_BASE_HANDLER
 {
   public:
     JSON_DUPLICATE_KEYS_CHECKER (const JSON_DOC *doc) : doc (doc) {}
@@ -2402,4 +2445,57 @@ static void
 db_json_doc_wrap_as_array (JSON_DOC &doc)
 {
   return db_json_value_wrap_as_array (doc, doc.GetAllocator ());
+}
+
+int
+JSON_WALKER::WalkDocument (JSON_DOC & document)
+{
+  return WalkValue (db_json_doc_to_value (document));
+}
+
+int
+JSON_WALKER::WalkValue (JSON_VALUE & value)
+{
+  int error_code = NO_ERROR;
+
+  error_code = CallBefore (value);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  if (value.IsObject ())
+    {
+      for (auto it = value.MemberBegin (); it != value.MemberEnd (); ++it)
+        {
+          error_code = WalkValue (it->value);
+          if (error_code != NO_ERROR)
+            {
+              ASSERT_ERROR ();
+              return error_code;
+            }
+        }
+    }
+  else if (value.IsArray ())
+    {
+      for (JSON_VALUE *it = value.Begin (); it != value.End (); ++it)
+        {
+          error_code = WalkValue (*it);
+          if (error_code != NO_ERROR)
+            {
+              ASSERT_ERROR ();
+              return error_code;
+            }
+        }
+    }
+
+  error_code = CallAfter (value);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  return NO_ERROR;
 }
