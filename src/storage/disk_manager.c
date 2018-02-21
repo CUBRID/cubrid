@@ -49,6 +49,9 @@
 #include "vacuum.h"
 #include "dbtype.h"
 #include "thread.h"
+#include "thread_daemon.hpp"
+#include "thread_entry_task.hpp"
+#include "thread_manager.hpp"
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
@@ -464,6 +467,13 @@ STATIC_INLINE bool disk_compatible_type_and_purpose (DB_VOLTYPE type, DB_VOLPURP
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void disk_check_own_reserve_for_purpose (DB_VOLPURPOSE purpose) __attribute__ ((ALWAYS_INLINE));
 static DISK_ISVALID disk_check_volume (THREAD_ENTRY * thread_p, INT16 volid, bool repair);
+
+// *INDENT-OFF*
+static cubthread::daemon *disk_Auto_volume_expansion_daemon = NULL;
+
+static void disk_auto_volume_expansion_daemon_init ();
+static void disk_auto_volume_expansion_daemon_destroy ();
+// *INDENT-ON*
 
 /************************************************************************/
 /* End of static functions                                              */
@@ -2436,6 +2446,67 @@ disk_auto_expand (THREAD_ENTRY * thread_p)
   return error_code;
 }
 #endif /* SERVER_MODE */
+
+// *INDENT-OFF*
+#if defined (SERVER_MODE)
+// class disk_auto_expansion_daemon_task
+//
+//  description:
+//    disk auto expansion daemon task
+//
+class disk_auto_expansion_daemon_task : public cubthread::entry_task
+{
+  public:
+    void execute (cubthread::entry & thread_ref) override
+    {
+      if (!BO_IS_SERVER_RESTARTED ())
+	{
+	  // wait for boot to finish
+	  return;
+	}
+
+      disk_auto_expand (&thread_ref);
+    }
+};
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+/*
+ * disk_auto_volume_expansion_daemon_init () - initialize disk auto volume expansion daemon
+ */
+static void
+disk_auto_volume_expansion_daemon_init ()
+{
+  // disk auto volume expansion is not yet implemented, uncomment below code when functionality will be available
+  // see disk_auto_expand (THREAD_ENTRY *) function for more details
+  /*
+  assert (disk_Auto_volume_expansion_daemon == NULL);
+
+  std::chrono::seconds interval_time = std::chrono::seconds (60);
+  disk_Auto_volume_expansion_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (interval_time),
+				      new disk_auto_expansion_daemon_task ());
+  */
+}
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+/*
+ * disk_auto_volume_expansion_daemon_destroy () - destroy disk auto volume expansion daemon
+ */
+static void
+disk_auto_volume_expansion_daemon_destroy ()
+{
+  // disk auto volume expansion is not yet implemented, uncomment below code when functionality will be available
+  // see disk_auto_expand (THREAD_ENTRY *) function for more details
+  /*
+  if (disk_Auto_volume_expansion_daemon != NULL)
+    {
+      cubthread::get_manager ()->destroy_daemon (disk_Auto_volume_expansion_daemon);
+    }
+  */
+}
+#endif /* SERVER_MODE */
+// *INDENT-ON*
 
 /************************************************************************/
 /* Disk cache section                                                   */
@@ -4882,6 +4953,11 @@ disk_manager_init (THREAD_ENTRY * thread_p, bool load_from_disk)
       disk_manager_final ();
       return error_code;
     }
+
+#if defined (SERVER_MODE)
+  disk_auto_volume_expansion_daemon_init ();
+#endif /* SERVER_MODE */
+
   return NO_ERROR;
 }
 
@@ -4891,6 +4967,10 @@ disk_manager_init (THREAD_ENTRY * thread_p, bool load_from_disk)
 void
 disk_manager_final (void)
 {
+#if defined (SERVER_MODE)
+  disk_auto_volume_expansion_daemon_destroy ();
+#endif /* SERVER_MODE */
+
   disk_cache_final ();
 }
 

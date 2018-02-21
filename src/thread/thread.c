@@ -30,6 +30,7 @@
 
 #include "config.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,33 +45,12 @@
 #include <sys/time.h>
 #include <unistd.h>
 #endif /* WINDOWS */
-#include <assert.h>
 
-#include "porting.h"
-#include "connection_error.h"
 #include "job_queue.h"
 #include "thread.h"
-#include "critical_section.h"
-#include "system_parameter.h"
-#include "memory_alloc.h"
-#include "environment_variable.h"
-#include "connection_defs.h"
-#include "storage_common.h"
-#include "page_buffer.h"
-#include "lock_manager.h"
-#include "log_impl.h"
-#include "log_manager.h"
 #include "boot_sr.h"
-#include "transaction_sr.h"
-#include "boot_sr.h"
-#include "connection_sr.h"
 #include "server_support.h"
-#include "log_compress.h"
-#include "perf_monitor.h"
 #include "session.h"
-#include "show_scan.h"
-#include "network.h"
-#include "db_date.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */
@@ -81,10 +61,6 @@
 #if defined(WINDOWS)
 #include "heartbeat.h"
 #endif
-
-#include "tsc_timer.h"
-
-#include "fault_injection.h"
 
 #include "thread_manager.hpp"
 
@@ -117,7 +93,6 @@ static DAEMON_THREAD_MONITOR thread_Page_flush_thread = DAEMON_THREAD_MONITOR_IN
 static DAEMON_THREAD_MONITOR thread_Flush_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 DAEMON_THREAD_MONITOR thread_Log_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Check_ha_delay_info_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static DAEMON_THREAD_MONITOR thread_Auto_volume_expansion_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Log_clock_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Page_maintenance_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Page_post_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
@@ -130,7 +105,6 @@ static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_flush_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_flush_control_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_log_flush_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_check_ha_delay_info_thread (void *);
-static THREAD_RET_T THREAD_CALLING_CONVENTION thread_auto_volume_expansion_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_log_clock_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_buffer_maintenance_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_post_flush_thread (void *);
@@ -139,7 +113,6 @@ typedef enum
 {
   /* All the single threads */
   THREAD_DAEMON_CHECK_HA_DELAY_INFO,
-  THREAD_DAEMON_AUTO_VOLUME_EXPANSION,
   THREAD_DAEMON_LOG_CLOCK,
   THREAD_DAEMON_PAGE_FLUSH,
   THREAD_DAEMON_FLUSH_CONTROL,
@@ -385,12 +358,6 @@ thread_initialize_manager (size_t & total_thread_count)
   thread_Daemons[daemon_index].daemon_monitor = &thread_Check_ha_delay_info_thread;
   thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
   thread_Daemons[daemon_index++].daemon_function = thread_check_ha_delay_info_thread;
-
-  /* Initialize auto volume expansion daemon */
-  thread_Daemons[daemon_index].type = THREAD_DAEMON_AUTO_VOLUME_EXPANSION;
-  thread_Daemons[daemon_index].daemon_monitor = &thread_Auto_volume_expansion_thread;
-  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-  thread_Daemons[daemon_index++].daemon_function = thread_auto_volume_expansion_thread;
 
   /* Initialize log clock daemon */
   thread_Daemons[daemon_index].type = THREAD_DAEMON_LOG_CLOCK;
@@ -2768,105 +2735,6 @@ thread_log_clock_thread (void *arg_p)
   tsd_ptr->unregister_id ();
 
   return (THREAD_RET_T) 0;
-}
-
-/*
- * thread_auto_volume_expansion_thread() -
- *   return:
- */
-static THREAD_RET_T THREAD_CALLING_CONVENTION
-thread_auto_volume_expansion_thread (void *arg_p)
-{
-#define THREAD_AUTO_VOL_WAKEUP_TIME_SEC     60
-#if !defined(HPUX)
-  THREAD_ENTRY *tsd_ptr;
-#endif /* !HPUX */
-  int rv;
-
-  struct timeval time_crt;
-  struct timespec to = { 0, 0 };
-
-  tsd_ptr = (THREAD_ENTRY *) arg_p;
-
-  thread_daemon_start (&thread_Auto_volume_expansion_thread, tsd_ptr, TT_DAEMON);
-
-  while (!tsd_ptr->shutdown)
-    {
-      gettimeofday (&time_crt, NULL);
-      to.tv_sec = time_crt.tv_sec + THREAD_AUTO_VOL_WAKEUP_TIME_SEC;
-
-      rv = pthread_mutex_lock (&thread_Auto_volume_expansion_thread.lock);
-      thread_Auto_volume_expansion_thread.is_running = false;
-      pthread_cond_timedwait (&thread_Auto_volume_expansion_thread.cond, &thread_Auto_volume_expansion_thread.lock,
-			      &to);
-
-      if (tsd_ptr->shutdown)
-	{
-	  pthread_mutex_unlock (&thread_Auto_volume_expansion_thread.lock);
-	  break;
-	}
-
-      thread_Auto_volume_expansion_thread.is_running = true;
-      pthread_mutex_unlock (&thread_Auto_volume_expansion_thread.lock);
-
-      (void) disk_auto_expand (tsd_ptr);
-    }
-
-  er_final (ER_THREAD_FINAL);
-  thread_Auto_volume_expansion_thread.is_available = false;
-  tsd_ptr->status = TS_DEAD;
-  tsd_ptr->unregister_id ();
-
-  return (THREAD_RET_T) 0;
-#undef THREAD_AUTO_VOL_WAKEUP_TIME_SEC
-}
-
-/*
- * thread_auto_volume_expansion_thread_is_running () -
- *   return:
- */
-bool
-thread_auto_volume_expansion_thread_is_running (void)
-{
-  int rv;
-  bool ret;
-
-  rv = pthread_mutex_lock (&thread_Auto_volume_expansion_thread.lock);
-  ret = thread_Auto_volume_expansion_thread.is_running;
-  pthread_mutex_unlock (&thread_Auto_volume_expansion_thread.lock);
-
-  return ret;
-}
-
-/*
- * thread_is_auto_volume_expansion_thread_available () -
- *   return:
- *
- *   NOTE: This is used in boot_add_auto_volume_extension()
- *         to tell whether the thread is working or not.
- *         When restart server, in log_recovery phase, the thread may be unavailable.
- */
-bool
-thread_is_auto_volume_expansion_thread_available (void)
-{
-  return thread_Auto_volume_expansion_thread.is_available;
-}
-
-/*
- *  thread_wakeup_auto_volume_expansion_thread() -
- *   return:
- */
-void
-thread_wakeup_auto_volume_expansion_thread (void)
-{
-  int rv;
-
-  rv = pthread_mutex_lock (&thread_Auto_volume_expansion_thread.lock);
-  if (!thread_Auto_volume_expansion_thread.is_running)
-    {
-      pthread_cond_signal (&thread_Auto_volume_expansion_thread.cond);
-    }
-  pthread_mutex_unlock (&thread_Auto_volume_expansion_thread.lock);
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
