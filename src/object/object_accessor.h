@@ -40,38 +40,6 @@
 #include "authenticate.h"
 
 /*
- * OBJ_FORCE_NULL_TO_UNBOUND
- *
- * Note:
- *    Macro to convert a DB_VALUE structure that contains a logical NULL
- *    value into one with DB_TYPE_NULL.
- *
- */
-
-#define OBJ_FORCE_NULL_TO_UNBOUND(dbvalue) \
-  if ((DB_VALUE_TYPE(dbvalue) == DB_TYPE_STRING && \
-       db_get_string(dbvalue) == NULL) || \
-      (TP_IS_SET_TYPE (DB_VALUE_TYPE(dbvalue)) && \
-       db_get_set(dbvalue) == NULL) || \
-      (DB_VALUE_TYPE(dbvalue) == DB_TYPE_OBJECT && \
-       db_get_object(dbvalue) == NULL) || \
-      (DB_VALUE_TYPE(dbvalue) == DB_TYPE_BLOB && \
-       db_get_elo(dbvalue) == NULL) || \
-      (DB_VALUE_TYPE(dbvalue) == DB_TYPE_CLOB && \
-       db_get_elo(dbvalue) == NULL) || \
-      (DB_VALUE_TYPE(dbvalue) == DB_TYPE_ELO && \
-       db_get_elo(dbvalue) == NULL)) \
-  db_make_null(dbvalue);
-
-
-
-#define OBJ_FORCE_SIMPLE_NULL_TO_UNBOUND(dbvalue) \
-  if ((DB_VALUE_TYPE(dbvalue) == DB_TYPE_STRING) && \
-      (db_get_string(dbvalue) == NULL)) \
-  db_make_null(dbvalue);
-
-
-/*
  *
  *       		      OBJECT HEADER FIELDS
  *

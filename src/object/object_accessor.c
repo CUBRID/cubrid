@@ -1347,17 +1347,17 @@ obj_get_value (MOP op, SM_ATTRIBUTE * att, void *mem, DB_VALUE * source, DB_VALU
 	  if (mem != NULL)
 	    {
 	      error = PRIM_GETMEM (att->domain->type, att->domain, mem, dest);
-	      if (!error)
-		{
-		  OBJ_FORCE_SIMPLE_NULL_TO_UNBOUND (dest);
-		}
 	    }
 	  else
 	    {
 	      error = pr_clone_value (source, dest);
-	      if (!error)
+	    }
+
+	  if (error == NO_ERROR)
+	    {
+	      if (DB_VALUE_TYPE (dest) == DB_TYPE_STRING && db_get_string (dest) == NULL)
 		{
-		  OBJ_FORCE_SIMPLE_NULL_TO_UNBOUND (dest);
+		  db_make_null (dest);
 		}
 	    }
 	}
