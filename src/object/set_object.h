@@ -44,25 +44,6 @@
 #define SET_DUPLICATE_VALUE (1)
 #define IMPLICIT (1)
 
-/* Quick set argument check */
-
-/* this needs to go into the pr_ level */
-
-#define SET_FIX_VALUE(value) \
-  if ((DB_VALUE_TYPE(value) == DB_TYPE_STRING && \
-       db_get_string(value) == NULL) || \
-      (TP_IS_SET_TYPE (DB_VALUE_TYPE(value)) && \
-       db_get_set(value) == NULL) || \
-      (DB_VALUE_TYPE(value) == DB_TYPE_OBJECT && \
-       db_get_object(value) == NULL) || \
-      (DB_VALUE_TYPE(value) == DB_TYPE_BLOB && \
-       db_get_elo(value) == NULL) || \
-      (DB_VALUE_TYPE(value) == DB_TYPE_CLOB && \
-       db_get_elo(value) == NULL) || \
-      (DB_VALUE_TYPE(value) == DB_TYPE_ELO && \
-       db_get_elo(value) == NULL)) \
-    db_make_null(value);
-
 #define COL_BLOCK_SIZE (64)
 
 /* Is there some compelling reason to keep the value array larger than necessary?

@@ -5734,6 +5734,7 @@ setobj_get_element (COL * set, int index, DB_VALUE * value)
 {
   int error = NO_ERROR;
   DB_VALUE *element;
+  DB_TYPE db_type;
 
   /* should this be pr_clear_value instead? */
   db_make_null (value);
@@ -5745,7 +5746,17 @@ setobj_get_element (COL * set, int index, DB_VALUE * value)
       swizzle_value (element, 0);
       error = pr_clone_value (element, value);
       /* kludge, should be part of pr_ level */
-      SET_FIX_VALUE (value);
+
+      db_type = DB_VALUE_TYPE (value);
+      if (db_type == DB_TYPE_STRING && db_get_string (value) == NULL
+	  || TP_IS_SET_TYPE (db_type) && db_get_set (value) == NULL
+	  || db_type == DB_TYPE_OBJECT && db_get_object (value) == NULL
+	  || db_type == DB_TYPE_BLOB && db_get_elo (value) == NULL
+	  || db_type == DB_TYPE_CLOB && db_get_elo (value) == NULL
+	  || db_type == DB_TYPE_ELO && db_get_elo (value) == NULL)
+	{
+	  db_make_null (value);
+	}
     }
 
   return error;
