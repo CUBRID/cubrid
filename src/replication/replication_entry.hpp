@@ -27,18 +27,19 @@
 #define _REPLICATION_ENTRY_HPP_
 
 #include <vector>
+#include <string>
 #include "dbtype.h"
 #include "storage_common.h"
 
 class replication_serialization;
 
-typedef enum repl_entry_type REPL_ENTRY_TYPE;
 enum repl_entry_type
 {
   REPL_UPDATE = 0,
   REPL_INSERT,
   REPL_DELETE
 };
+typedef enum repl_entry_type REPL_ENTRY_TYPE;
 
 class replication_entry
 {
@@ -55,7 +56,7 @@ public:
 class sbr_repl_entry : public replication_entry
 {
 private:
-  std::string statement;
+  std::string m_statement;
 
 public:
   sbr_repl_entry () { packed_size = -1; };

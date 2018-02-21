@@ -28,6 +28,7 @@
 
 #include "stream_provider.hpp"
 #include "common_utils.hpp"
+#include <cstddef>
 
 class stream_entry;
 class replication_stream;
@@ -35,13 +36,13 @@ class log_file;
 class replication_serialization;
 class slave_replication_channel;
 
-typedef enum consumer_type CONSUMER_TYPE;
 enum consumer_type
 {
   REPLICATION_DATA_APPLIER = 0,
   DATABASE_COPY,
   REPLICATION_DATA_DUMP
 };
+typedef enum consumer_type CONSUMER_TYPE;
 
 /* 
  * main class for consuming log replication entries

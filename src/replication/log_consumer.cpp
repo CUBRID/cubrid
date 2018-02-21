@@ -112,4 +112,3 @@ replication_stream * log_consumer::get_write_stream (void)
 {
   return consume_stream;
 }
-

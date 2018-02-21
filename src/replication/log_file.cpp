@@ -27,6 +27,11 @@
 #include "log_file.hpp"
 #include "replication_stream.hpp"
 #include "replication_buffer.hpp"
+#if defined (LINUX)
+#include <sys/stat.h>
+#include <fcntl.h>
+#endif
+
 
 bool file_cache::is_in_cache (const file_pos_t start_pos, const size_t count)
 {
@@ -128,7 +133,7 @@ int log_file::read_no_cache (BUFFER_UNIT *storage, const size_t count, file_pos_
     }
 
 #if defined (LINUX)  
-  actual_read = pread (fd, storage, count, start_post);
+  actual_read = pread (fd, storage, count, start_pos);
 #else
   NOT_IMPLEMENTED ();
 #endif

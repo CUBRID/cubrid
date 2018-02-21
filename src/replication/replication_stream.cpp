@@ -30,6 +30,7 @@
 #include "replication_buffer.hpp"
 #include "replication_serialization.hpp"
 #include "stream_provider.hpp"
+#include <algorithm>
 
 
 int stream_entry::pack (replication_serialization *serializator)
@@ -195,7 +196,7 @@ int replication_stream::remove_buffer_mapping (const STREAM_MODE stream_mode, bu
       return error_code;
     }
 
-  std::vector<buffered_range>::iterator it = find (m_buffered_ranges.begin(), m_buffered_ranges.end(), mapped_range);
+  std::vector<buffered_range>::iterator it = std::find (m_buffered_ranges.begin(), m_buffered_ranges.end(), mapped_range);
 
   if (it != m_buffered_ranges.end())
     {

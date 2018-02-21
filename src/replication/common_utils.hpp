@@ -28,6 +28,7 @@
 
 #include <set>
 #include <assert.h>
+#include <cstddef>
 #include "error_code.h"
 
 #define NOT_IMPLEMENTED() \
@@ -72,13 +73,12 @@ private:
 
 };
 
-
-typedef enum stream_mode STREAM_MODE;
 enum stream_mode
 {
   WRITE_STREAM = 0,
   READ_STREAM
 };
+typedef enum stream_mode STREAM_MODE;
 
 class buffered_range
 {

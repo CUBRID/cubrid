@@ -28,6 +28,8 @@
 
 #include "error_code.h"
 #include <vector>
+#include <cstddef>
+
 class serial_buffer;
 class replication_stream;
 

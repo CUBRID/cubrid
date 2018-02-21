@@ -98,7 +98,7 @@ int single_row_repl_entry::unpack (replication_serialization *serializator)
 
 size_t sbr_repl_entry::get_packed_size (replication_serialization *serializator)
 {
-  return statement.size () + 1;
+  return m_statement.size () + 1;
 }
 
 int sbr_repl_entry::pack (replication_serialization *serializator)
