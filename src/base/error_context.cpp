@@ -65,6 +65,7 @@ namespace cuberr
   {
     ERMSG_LOG ("destruct ", *this);
     clear_message_area ();
+    clear_args ();
   }
 
   void er_message::swap (er_message &other)
@@ -170,6 +171,16 @@ namespace cuberr
 	msg_area = msg_buffer;
 	msg_area_size = sizeof (msg_buffer);
       }
+  }
+
+  void
+  er_message::clear_args (void)
+  {
+    if (args != NULL)
+      {
+	free_and_init (args);
+      }
+    nargs = 0;
   }
 
   void

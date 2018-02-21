@@ -2878,10 +2878,7 @@ er_vsprintf (er_message * er_entry_p, ER_FMT * fmt, va_list * ap)
     {
       int size;
 
-      if (er_entry_p->args)
-	{
-	  free_and_init (er_entry_p->args);
-	}
+      er_entry_p->clear_args ();
 
       size = fmt->nspecs * sizeof (er_va_arg);
       er_entry_p->args = (er_va_arg *) ER_MALLOC (size);

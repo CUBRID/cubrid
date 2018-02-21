@@ -55,6 +55,7 @@ namespace cuberr
       void set_error (int error_id, int error_severity, const char *filename, int line_no);  // set error
       void reserve_message_area (std::size_t size);
       void clear_message_area (void);
+      void clear_args (void);
 
       int err_id;			/* Error identifier of the current message */
       int severity;			/* Warning, Error, FATAL Error, etc... */
