@@ -7667,10 +7667,9 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	}
 
       /* make sure at least flush will feed us with bcb's. */
-      if (!PGBUF_IS_VICTIM_CAND_LIST_IS_EMPTY (&pgbuf_Pool.victim_cand_info)
-	  && thread_is_page_flush_thread_available ())
+      if (!PGBUF_IS_VICTIM_CAND_LIST_IS_EMPTY (&pgbuf_Pool.victim_cand_info))
 	{
-	  thread_wakeup_page_flush_thread ();
+	  pgbuf_wakeup_flush_thread (thread_p);
 	}
       else
 	{
@@ -8878,11 +8877,17 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, bool
 		}
 #endif /* SERVER_MODE */
 
-	      if (lru_list->bottom != NULL && pgbuf_bcb_is_dirty (lru_list->bottom)
-		  && thread_is_page_flush_thread_available ())
+	      if (lru_list->bottom != NULL && pgbuf_bcb_is_dirty (lru_list->bottom))
 		{
 		  /* new bottom is dirty... make sure that flush will wake up */
-		  pgbuf_wakeup_flush_thread (thread_p);
+		  if (!PGBUF_IS_VICTIM_CAND_LIST_IS_EMPTY (&pgbuf_Pool.victim_cand_info))
+		    {
+		      pgbuf_wakeup_flush_thread (thread_p);
+		    }
+		  else
+		    {
+		      pgbuf_wakeup_find_victim_candidates_thread (thread_p);
+		    }
 		}
 	      pthread_mutex_unlock (&lru_list->mutex);
 
@@ -8961,7 +8966,14 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx, bool
     }
 
   /* we need more victims */
-  pgbuf_wakeup_flush_thread (thread_p);
+  if (!PGBUF_IS_VICTIM_CAND_LIST_IS_EMPTY (&pgbuf_Pool.victim_cand_info))
+    {
+      pgbuf_wakeup_flush_thread (thread_p);
+    }
+  else
+    {
+      pgbuf_wakeup_find_victim_candidates_thread (thread_p);
+    }
   /* failed finding victim in single-threaded, although the number of victim candidates is positive? impossible!
    * note: not really impossible. the thread may have the victimizable fixed. but bufptr_victimizable must not be
    * NULL. */
