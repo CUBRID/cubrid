@@ -677,7 +677,7 @@ dbt_put_internal (DB_OTMPL * def, const char *name, DB_VALUE * value)
 
   if ((value != NULL) && (DB_VALUE_TYPE (value) == DB_TYPE_POINTER))
     {
-      error = obt_set_obt (def, name, (OBJ_TEMPLATE *) DB_GET_POINTER (value));
+      error = obt_set_obt (def, name, (OBJ_TEMPLATE *) db_get_pointer (value));
     }
   else
     {

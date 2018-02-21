@@ -616,16 +616,16 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       break;
 
     case DB_TYPE_INTEGER:
-      result->info.value.data_value.i = DB_GET_INT (val);
+      result->info.value.data_value.i = db_get_int (val);
       break;
     case DB_TYPE_BIGINT:
-      result->info.value.data_value.bigint = DB_GET_BIGINT (val);
+      result->info.value.data_value.bigint = db_get_bigint (val);
       break;
     case DB_TYPE_FLOAT:
-      result->info.value.data_value.f = DB_GET_FLOAT (val);
+      result->info.value.data_value.f = db_get_float (val);
       break;
     case DB_TYPE_DOUBLE:
-      result->info.value.data_value.d = DB_GET_DOUBLE (val);
+      result->info.value.data_value.d = db_get_double (val);
       break;
     case DB_TYPE_JSON:
       result->data_type = parser_new_node (parser, PT_DATA_TYPE);
@@ -638,7 +638,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	{
 	  result->data_type->type_enum = result->type_enum;
 	  result->info.value.data_value.str =
-	    pt_append_nulstring (parser, (PARSER_VARCHAR *) NULL, DB_GET_JSON_RAW_BODY (val));
+	    pt_append_nulstring (parser, (PARSER_VARCHAR *) NULL, db_get_json_raw_body (val));
 	  if (db_get_json_schema (val) != NULL)
 	    {
 	      /* check valid schema */
@@ -712,7 +712,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	char *printed_bit = NULL;
 
 	size = 0;
-	bytes = DB_GET_BIT (val, &size);
+	bytes = db_get_bit (val, &size);
 	max_length = ((size + 3) / 4) + 4;
 	printed_bit = (char *) db_private_alloc (NULL, max_length);
 	if (printed_bit == NULL)
@@ -757,7 +757,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	break;
       }
     case DB_TYPE_OBJECT:
-      result->info.value.data_value.op = DB_GET_OBJECT (val);
+      result->info.value.data_value.op = db_get_object (val);
       result->data_type = pt_get_object_data_type (parser, val);
       if (result->data_type == NULL)
 	{
@@ -766,7 +766,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	}
       break;
     case DB_TYPE_TIME:
-      if (db_time_to_string (buf, sizeof (buf), DB_GET_TIME (val)) == 0)
+      if (db_time_to_string (buf, sizeof (buf), db_get_time (val)) == 0)
 	{
 	  SET_PARSER_ERROR_AND_FREE_NODE (parser, result, MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
 	}
@@ -776,7 +776,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	}
       break;
     case DB_TYPE_TIMELTZ:
-      if (db_timeltz_to_string (buf, sizeof (buf), DB_GET_TIME (val)) == 0)
+      if (db_timeltz_to_string (buf, sizeof (buf), db_get_time (val)) == 0)
 	{
 	  SET_PARSER_ERROR_AND_FREE_NODE (parser, result, MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
 	}
@@ -787,7 +787,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       break;
     case DB_TYPE_TIMETZ:
       {
-	DB_TIMETZ *time_tz = DB_GET_TIMETZ (val);
+	DB_TIMETZ *time_tz = db_get_timetz (val);
 	if (db_timetz_to_string (buf, sizeof (buf), &time_tz->time, &time_tz->tz_id) == 0)
 	  {
 	    SET_PARSER_ERROR_AND_FREE_NODE (parser, result, MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
@@ -798,8 +798,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	  }
       }
       break;
-    case DB_TYPE_UTIME:
-      if (db_utime_to_string (buf, sizeof (buf), DB_GET_UTIME (val)) == 0)
+    case DB_TYPE_TIMESTAMP:
+      if (db_utime_to_string (buf, sizeof (buf), db_get_timestamp (val)) == 0)
 	{
 	  SET_PARSER_ERROR_AND_FREE_NODE (parser, result, MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
 	}
@@ -809,7 +809,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	}
       break;
     case DB_TYPE_TIMESTAMPLTZ:
-      if (db_timestampltz_to_string (buf, sizeof (buf), DB_GET_UTIME (val)) == 0)
+      if (db_timestampltz_to_string (buf, sizeof (buf), db_get_timestamp (val)) == 0)
 	{
 	  SET_PARSER_ERROR_AND_FREE_NODE (parser, result, MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
 	}
@@ -820,7 +820,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       break;
     case DB_TYPE_TIMESTAMPTZ:
       {
-	DB_TIMESTAMPTZ *ts_tz = DB_GET_TIMESTAMPTZ (val);
+	DB_TIMESTAMPTZ *ts_tz = db_get_timestamptz (val);
 
 	if (db_timestamptz_to_string (buf, sizeof (buf), &ts_tz->timestamp, &ts_tz->tz_id) == 0)
 	  {
@@ -833,7 +833,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       }
       break;
     case DB_TYPE_DATETIME:
-      if (db_datetime_to_string (buf, sizeof (buf), DB_GET_DATETIME (val)) == 0)
+      if (db_datetime_to_string (buf, sizeof (buf), db_get_datetime (val)) == 0)
 	{
 	  SET_PARSER_ERROR_AND_FREE_NODE (parser, result, MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
 	}
@@ -843,7 +843,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	}
       break;
     case DB_TYPE_DATETIMELTZ:
-      if (db_datetimeltz_to_string (buf, sizeof (buf), DB_GET_DATETIME (val)) == 0)
+      if (db_datetimeltz_to_string (buf, sizeof (buf), db_get_datetime (val)) == 0)
 	{
 	  SET_PARSER_ERROR_AND_FREE_NODE (parser, result, MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
 	}
@@ -854,7 +854,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       break;
     case DB_TYPE_DATETIMETZ:
       {
-	DB_DATETIMETZ *dt_tz = DB_GET_DATETIMETZ (val);
+	DB_DATETIMETZ *dt_tz = db_get_datetimetz (val);
 
 	if (db_datetimetz_to_string (buf, sizeof (buf), &dt_tz->datetime, &(dt_tz->tz_id)) == 0)
 	  {
@@ -867,7 +867,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       }
       break;
     case DB_TYPE_DATE:
-      if (db_date_to_string (buf, sizeof (buf), DB_GET_DATE (val)) == 0)
+      if (db_date_to_string (buf, sizeof (buf), db_get_date (val)) == 0)
 	{
 	  SET_PARSER_ERROR_AND_FREE_NODE (parser, result, MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
 	}
@@ -877,8 +877,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	}
       break;
     case DB_TYPE_MONETARY:
-      result->info.value.data_value.money.type = (PT_CURRENCY) DB_GET_MONETARY (val)->type;
-      result->info.value.data_value.money.amount = DB_GET_MONETARY (val)->amount;
+      result->info.value.data_value.money.type = (PT_CURRENCY) db_get_monetary (val)->type;
+      result->info.value.data_value.money.amount = db_get_monetary (val)->amount;
       result->data_type = parser_new_node (parser, PT_DATA_TYPE);
       if (result->data_type == NULL)
 	{
@@ -892,7 +892,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	}
       break;
     case DB_TYPE_SHORT:
-      result->info.value.data_value.i = DB_GET_SHORT (val);
+      result->info.value.data_value.i = db_get_short (val);
       break;
 
     case DB_TYPE_VOBJ:
@@ -953,10 +953,10 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       break;
 
     case DB_TYPE_ENUMERATION:
-      bytes = DB_GET_ENUM_STRING (val);
-      size = DB_GET_ENUM_STRING_SIZE (val);
-      result->info.value.data_value.enumeration.short_val = DB_GET_ENUM_SHORT (val);
-      if (DB_GET_ENUM_SHORT (val) != 0)
+      bytes = db_get_enum_string (val);
+      size = db_get_enum_string_size (val);
+      result->info.value.data_value.enumeration.short_val = db_get_enum_short (val);
+      if (db_get_enum_short (val) != 0)
 	{
 	  result->info.value.data_value.enumeration.str_val = pt_append_bytes (parser, NULL, bytes, size);
 	  result->info.value.text = (const char *) result->info.value.data_value.enumeration.str_val->bytes;
@@ -1011,7 +1011,7 @@ pt_seq_value_to_db (PARSER_CONTEXT * parser, PT_NODE * values, DB_VALUE * db_val
       pt_evaluate_tree (parser, element, &e_val, 1);
       if (!pt_has_error (parser))
 	{
-	  if (db_seq_put (DB_GET_SEQUENCE (db_value), indx, &e_val) != NO_ERROR)
+	  if (db_seq_put (db_get_set (db_value), indx, &e_val) != NO_ERROR)
 	    {
 	      PT_ERRORc (parser, element, db_error_string (3));
 	      pr_clear_value (&e_val);
@@ -1070,7 +1070,7 @@ pt_set_value_to_db (PARSER_CONTEXT * parser, PT_NODE ** values, DB_VALUE * db_va
 
 	      if (DB_VALUE_TYPE (&e_val) == DB_TYPE_POINTER)
 		{
-		  obt_quit ((OBJ_TEMPLATE *) DB_GET_POINTER (&e_val));
+		  obt_quit ((OBJ_TEMPLATE *) db_get_pointer (&e_val));
 		}
 	      return NULL;
 	    }
@@ -1541,7 +1541,7 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
       retval = tp_domain_construct (domain_type, NULL, DB_DATE_PRECISION, 0, NULL);
       break;
     case DB_TYPE_TIMESTAMPLTZ:
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       retval = tp_domain_construct (domain_type, NULL, DB_TIMESTAMP_PRECISION, 0, NULL);
       break;
     case DB_TYPE_TIMESTAMPTZ:
@@ -1794,7 +1794,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
     case DB_TYPE_TIME:
     case DB_TYPE_TIMETZ:
     case DB_TYPE_TIMELTZ:
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_DATETIME:
@@ -2024,7 +2024,7 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
     case DB_TYPE_TIME:
     case DB_TYPE_TIMETZ:
     case DB_TYPE_TIMELTZ:
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_DATETIME:
@@ -2319,7 +2319,7 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
       db_type = DB_TYPE_TIMELTZ;
       break;
     case PT_TYPE_TIMESTAMP:
-      db_type = DB_TYPE_UTIME;
+      db_type = DB_TYPE_TIMESTAMP;
       break;
     case PT_TYPE_TIMESTAMPTZ:
       db_type = DB_TYPE_TIMESTAMPTZ;
@@ -2610,7 +2610,7 @@ pt_db_to_type_enum (const DB_TYPE t)
     case DB_TYPE_TIMELTZ:
       pt_type = PT_TYPE_TIMELTZ;
       break;
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       pt_type = PT_TYPE_TIMESTAMP;
       break;
     case DB_TYPE_TIMESTAMPTZ:
@@ -2824,7 +2824,7 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
     case DB_TYPE_TIME:
     case DB_TYPE_TIMETZ:
     case DB_TYPE_TIMELTZ:
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_DATE:
@@ -2973,7 +2973,7 @@ pt_bind_set_type (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *
 
   assert (node != NULL && val != NULL);
 
-  iterator = set_iterate (DB_GET_SET (val));
+  iterator = set_iterate (db_get_set (val));
   if (iterator == NULL)
     {
       goto error;
@@ -3390,7 +3390,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 
     case PT_TYPE_MONETARY:
       /* 
-       * Don't use DB_MAKE_MONETARY here, since it doesn't preserve the
+       * Don't use db_make_monetary here, since it doesn't preserve the
        * currency info.
        */
       db_make_monetary (db_value, (DB_CURRENCY) value->info.value.data_value.money.type,

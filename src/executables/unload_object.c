@@ -1537,7 +1537,7 @@ process_value (DB_VALUE * value)
 
 	if (DB_VALUE_TYPE (value) == DB_TYPE_OID)
 	  {
-	    ref_oid = DB_GET_OID (value);
+	    ref_oid = db_get_oid (value);
 	  }
 	else
 	  {
@@ -1669,7 +1669,7 @@ process_value (DB_VALUE * value)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-      CHECK_PRINT_ERROR (process_set (DB_GET_SET (value)));
+      CHECK_PRINT_ERROR (process_set (db_get_set (value)));
       break;
 
     case DB_TYPE_BLOB:

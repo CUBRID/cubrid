@@ -238,7 +238,7 @@ db_print_data (DB_TYPE type, DB_DATA * data, FILE * fd)
       fprintf (fd, "%d:%d:%d Z:%X", hour, minute, second, data->timetz.tz_id);
       break;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
       fprintf (fd, "%d", data->utime);
       break;
