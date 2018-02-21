@@ -540,10 +540,7 @@ session_control_daemon_init ()
 void
 session_control_daemon_destroy ()
 {
-  if (session_Control_daemon != NULL)
-    {
-      cubthread::get_manager ()->destroy_daemon (session_Control_daemon);
-    }
+  cubthread::get_manager ()->destroy_daemon (session_Control_daemon);
 }
 #endif /* SERVER_MODE */
 // *INDENT-ON*

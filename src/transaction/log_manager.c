@@ -333,8 +333,6 @@ static cubthread::daemon *log_Clock_daemon = NULL;
 static cubthread::daemon *log_Checkpoint_daemon = NULL;
 static cubthread::daemon *log_Remove_log_archive_daemon = NULL;
 
-static bool log_Daemons_are_initialized = false;
-
 static void log_daemons_init ();
 static void log_daemons_destroy ();
 // *INDENT-ON*
@@ -10359,10 +10357,11 @@ class log_clock_daemon_task : public cubthread::entry_task
 void
 log_checkpoint_daemon_init ()
 {
+  assert (log_Checkpoint_daemon == NULL);
+
   // create checkpoint daemon thread
-  std::chrono::seconds checkpoint_looper_interval =
-	  std::chrono::seconds (prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_INTERVAL_SECS));
-  log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (checkpoint_looper_interval),
+  auto looper_interval = std::chrono::seconds (prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_INTERVAL_SECS));
+  log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (looper_interval),
 			  new checkpoint_daemon_task ());
 }
 #endif /* SERVER_MODE */
@@ -10374,6 +10373,8 @@ log_checkpoint_daemon_init ()
 void
 log_remove_log_archive_daemon_init ()
 {
+  assert (log_Remove_log_archive_daemon == NULL);
+
   // get remove log archive interval in seconds system parameter
   int remove_log_archive_interval = prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
 
@@ -10401,7 +10402,9 @@ void
  */
 log_clock_daemon_init ()
 {
-  std::chrono::milliseconds looper_interval = std::chrono::milliseconds (200);
+  assert (log_Clock_daemon == NULL);
+
+  auto looper_interval = std::chrono::milliseconds (200);
   log_Clock_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (looper_interval),
 			 new log_clock_daemon_task ());
 }
@@ -10414,16 +10417,9 @@ log_clock_daemon_init ()
 static void
 log_daemons_init ()
 {
-  if (log_Daemons_are_initialized)
-    {
-      return;
-    }
-
   log_checkpoint_daemon_init ();
   log_remove_log_archive_daemon_init ();
   log_clock_daemon_init ();
-
-  log_Daemons_are_initialized = true;
 }
 #endif /* SERVER_MODE */
 
@@ -10434,16 +10430,9 @@ log_daemons_init ()
 static void
 log_daemons_destroy ()
 {
-  if (!log_Daemons_are_initialized)
-    {
-      return;
-    }
-
   cubthread::get_manager ()->destroy_daemon (log_Clock_daemon);
   cubthread::get_manager ()->destroy_daemon (log_Remove_log_archive_daemon);
   cubthread::get_manager ()->destroy_daemon (log_Checkpoint_daemon);
-
-  log_Daemons_are_initialized = false;
 }
 #endif /* SERVER_MODE */
 // *INDENT-ON*
