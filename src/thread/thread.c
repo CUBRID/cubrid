@@ -93,19 +93,16 @@ static DAEMON_THREAD_MONITOR thread_Page_flush_thread = DAEMON_THREAD_MONITOR_IN
 static DAEMON_THREAD_MONITOR thread_Flush_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 DAEMON_THREAD_MONITOR thread_Log_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Check_ha_delay_info_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static DAEMON_THREAD_MONITOR thread_Log_clock_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Page_maintenance_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Page_post_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 
 static void thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor);
 static void thread_wakeup_daemon_thread (DAEMON_THREAD_MONITOR * daemon_monitor);
-static int thread_compare_shutdown_sequence_of_daemon (const void *p1, const void *p2);
 
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_flush_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_flush_control_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_log_flush_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_check_ha_delay_info_thread (void *);
-static THREAD_RET_T THREAD_CALLING_CONVENTION thread_log_clock_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_buffer_maintenance_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_post_flush_thread (void *);
 
@@ -113,7 +110,6 @@ typedef enum
 {
   /* All the single threads */
   THREAD_DAEMON_CHECK_HA_DELAY_INFO,
-  THREAD_DAEMON_LOG_CLOCK,
   THREAD_DAEMON_PAGE_FLUSH,
   THREAD_DAEMON_FLUSH_CONTROL,
   THREAD_DAEMON_LOG_FLUSH,
@@ -175,7 +171,6 @@ static THREAD_DAEMON *thread_Daemons = NULL;
 static int thread_initialize_sync_object (void);
 #endif /* WINDOWS */
 static int thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason, bool had_mutex);
-static void thread_initialize_daemon_monitor (DAEMON_THREAD_MONITOR * monitor);
 
 static void thread_rc_track_clear_all (THREAD_ENTRY * thread_p);
 static int thread_rc_track_meter_check (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, THREAD_RC_METER * prev_meter);
@@ -357,12 +352,6 @@ thread_initialize_manager (size_t & total_thread_count)
   thread_Daemons[daemon_index].daemon_monitor = &thread_Check_ha_delay_info_thread;
   thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
   thread_Daemons[daemon_index++].daemon_function = thread_check_ha_delay_info_thread;
-
-  /* Initialize log clock daemon */
-  thread_Daemons[daemon_index].type = THREAD_DAEMON_LOG_CLOCK;
-  thread_Daemons[daemon_index].daemon_monitor = &thread_Log_clock_thread;
-  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-  thread_Daemons[daemon_index++].daemon_function = thread_log_clock_thread;
 
   /* Leave these five daemons at the end. These are to be shutdown latest */
   /* Initialize page buffer maintenance daemon */
@@ -731,23 +720,6 @@ thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor)
 }
 
 /*
- * thread_compare_shutdown_sequence_of_daemon () -
- *   return: p1 - p2
- *   p1(in): daemon thread 1
- *   p2(in): daemon thread 2
- */
-static int
-thread_compare_shutdown_sequence_of_daemon (const void *p1, const void *p2)
-{
-  THREAD_DAEMON *daemon1, *daemon2;
-
-  daemon1 = (THREAD_DAEMON *) p1;
-  daemon2 = (THREAD_DAEMON *) p2;
-
-  return daemon1->shutdown_sequence - daemon2->shutdown_sequence;
-}
-
-/*
  * thread_stop_active_daemons() - Stop active daemon threads
  *   return: NO_ERROR
  */
@@ -842,19 +814,6 @@ thread_final_manager (void)
 #ifndef HPUX
   pthread_key_delete (thread_Thread_key);
 #endif /* not HPUX */
-}
-
-static void
-thread_initialize_daemon_monitor (DAEMON_THREAD_MONITOR * monitor)
-{
-  assert (monitor != NULL);
-
-  monitor->thread_index = 0;
-  monitor->is_available = false;
-  monitor->is_running = false;
-  monitor->nrequestors = 0;
-  pthread_mutex_init (&monitor->lock, NULL);
-  pthread_cond_init (&monitor->cond, NULL);
 }
 
 /*
@@ -2675,106 +2634,6 @@ bool
 thread_is_log_flush_thread_available (void)
 {
   return thread_Log_flush_thread.is_available;
-}
-
-INT64
-thread_get_log_clock_msec (void)
-{
-  struct timeval tv;
-#if defined(HAVE_ATOMIC_BUILTINS)
-
-  if (thread_Log_clock_thread.is_available == true)
-    {
-      return log_Clock_msec;
-    }
-#endif
-  gettimeofday (&tv, NULL);
-
-  return (tv.tv_sec * 1000LL) + (tv.tv_usec / 1000LL);
-}
-
-/*
- * thread_log_clock_thread() - set time for every 500 ms
- *   return:
- *   arg(in) : thread entry information
- *
- */
-static THREAD_RET_T THREAD_CALLING_CONVENTION
-thread_log_clock_thread (void *arg_p)
-{
-#if !defined(HPUX)
-  THREAD_ENTRY *tsd_ptr = NULL;
-#endif /* !HPUX */
-  int rv = 0;
-  struct timeval now;
-
-#if defined(HAVE_ATOMIC_BUILTINS)
-  assert (sizeof (log_Clock_msec) >= sizeof (now.tv_sec));
-#endif /* HAVE_ATOMIC_BUILTINS */
-  tsd_ptr = (THREAD_ENTRY *) arg_p;
-
-  /* wait until THREAD_CREATE() finishes */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
-
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  tsd_ptr->register_id ();
-  thread_Log_clock_thread.is_available = true;
-  thread_Log_clock_thread.is_running = true;
-
-  while (!tsd_ptr->shutdown)
-    {
-#if defined(HAVE_ATOMIC_BUILTINS)
-      INT64 clock_milli_sec;
-      er_clear ();
-
-      /* set time for every 200 ms */
-      gettimeofday (&now, NULL);
-      clock_milli_sec = (now.tv_sec * 1000LL) + (now.tv_usec / 1000LL);
-      ATOMIC_TAS_64 (&log_Clock_msec, clock_milli_sec);
-      thread_sleep (200);	/* 200 msec */
-#else /* HAVE_ATOMIC_BUILTINS */
-      int wakeup_interval = 1000;
-      struct timespec wakeup_time;
-      INT64 tmp_usec;
-
-      er_clear ();
-      gettimeofday (&now, NULL);
-      wakeup_time.tv_sec = now.tv_sec + (wakeup_interval / 1000);
-      tmp_usec = now.tv_usec + (wakeup_interval % 1000) * 1000;
-
-      if (tmp_usec >= 1000000)
-	{
-	  wakeup_time.tv_sec += 1;
-	  tmp_usec -= 1000000;
-	}
-      wakeup_time.tv_nsec = tmp_usec * 1000;
-
-      rv = pthread_mutex_lock (&thread_Log_clock_thread.lock);
-      thread_Log_clock_thread.is_running = false;
-
-      do
-	{
-	  rv = pthread_cond_timedwait (&thread_Log_clock_thread.cond, &thread_Log_clock_thread.lock, &wakeup_time);
-	}
-      while (rv == 0 && tsd_ptr->shutdown == false);
-
-      thread_Log_clock_thread.is_running = true;
-
-      pthread_mutex_unlock (&thread_Log_clock_thread.lock);
-#endif /* HAVE_ATOMIC_BUILTINS */
-    }
-
-  thread_Log_clock_thread.is_available = false;
-  thread_Log_clock_thread.is_running = false;
-
-  er_final (ER_THREAD_FINAL);
-  tsd_ptr->status = TS_DEAD;
-  tsd_ptr->unregister_id ();
-
-  return (THREAD_RET_T) 0;
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)

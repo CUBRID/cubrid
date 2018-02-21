@@ -2499,10 +2499,7 @@ disk_auto_volume_expansion_daemon_destroy ()
   // disk auto volume expansion is not yet implemented, uncomment below code when functionality will be available
   // see disk_auto_expand (THREAD_ENTRY *) function for more details
   /*
-  if (disk_Auto_volume_expansion_daemon != NULL)
-    {
-      cubthread::get_manager ()->destroy_daemon (disk_Auto_volume_expansion_daemon);
-    }
+    cubthread::get_manager ()->destroy_daemon (disk_Auto_volume_expansion_daemon);
   */
 }
 #endif /* SERVER_MODE */

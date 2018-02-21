@@ -1629,7 +1629,7 @@ slog_checkpoint (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  logpb_do_checkpoint ();
+  log_wakeup_checkpoint_daemon ();
 
   /* just send back a dummy message */
   (void) or_pack_errcode (reply, error);

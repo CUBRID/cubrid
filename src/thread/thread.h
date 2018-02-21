@@ -377,8 +377,6 @@ extern void thread_inc_recursion_depth (THREAD_ENTRY * thread_p);
 extern void thread_dec_recursion_depth (THREAD_ENTRY * thread_p);
 extern void thread_clear_recursion_depth (THREAD_ENTRY * thread_p);
 
-extern INT64 thread_get_log_clock_msec (void);
-
 extern const char *thread_type_to_string (int type);
 extern const char *thread_status_to_string (int status);
 extern const char *thread_resume_status_to_string (int resume_status);

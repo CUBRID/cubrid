@@ -3289,7 +3289,7 @@ qmgr_set_query_exec_info_to_tdes (int tran_index, int query_timeout, const XASL_
   if (tdes_p != NULL)
     {
       /* We use log_Clock_msec instead of calling gettimeofday if the system supports atomic built-ins. */
-      tdes_p->query_start_time = thread_get_log_clock_msec ();
+      tdes_p->query_start_time = log_get_clock_msec ();
 
       if (query_timeout > 0)
 	{
