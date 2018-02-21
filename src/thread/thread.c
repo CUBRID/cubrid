@@ -998,21 +998,6 @@ thread_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index)
   thread_p->tran_index = tran_index;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-void
-thread_set_tran_index (THREAD_ENTRY * thread_p, int tran_index)
-{
-  if (thread_p == NULL)
-    {
-      thread_set_current_tran_index (thread_p, tran_index);
-    }
-  else
-    {
-      thread_p->tran_index = tran_index;
-    }
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
 /*
  * thread_get_current_conn_entry() -
  *   return:
@@ -1425,21 +1410,6 @@ thread_sleep (double milliseconds)
 #endif /* WINDOWS */
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * thread_exit() - The program will exit.
- *   return: void
- *   exit_id(in): an integer argument to be returned as the exit value.
- */
-void
-thread_exit (int exit_id)
-{
-  UINTPTR thread_exit_id = exit_id;
-
-  THREAD_EXIT (thread_exit_id);
-}
-#endif
-
 /*
  * thread_get_client_id() - returns the unique client identifier
  *   return: returns the unique client identifier, on error, returns -1
@@ -1488,27 +1458,6 @@ thread_get_comm_request_id (THREAD_ENTRY * thread_p)
 
   return thread_p->rid;
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * thread_set_comm_request_id() - sets the comm system request id to the client request
-  *                     that started the thread
- *   return: void
- *   request_id(in): the comm request id to save for thread_get_comm_request_id
- *
- * Note: WARN: this function doesn't lock on thread_entry
- */
-void
-thread_set_comm_request_id (unsigned int request_id)
-{
-  THREAD_ENTRY *thread_p;
-
-  thread_p = thread_get_thread_entry_info ();
-  assert (thread_p != NULL);
-
-  thread_p->rid = request_id;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 bool
 thread_belongs_to (THREAD_ENTRY * thread_p, int tran_index, int client_id)
@@ -2635,25 +2584,6 @@ thread_is_log_flush_thread_available (void)
 {
   return thread_Log_flush_thread.is_available;
 }
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * thread_wakeup_check_ha_delay_info_thread() -
- *   return:
- */
-void
-thread_wakeup_check_ha_delay_info_thread (void)
-{
-  int rv;
-
-  rv = pthread_mutex_lock (&thread_Check_ha_delay_info_thread.lock);
-  if (!thread_Check_ha_delay_info_thread.is_running)
-    {
-      pthread_cond_signal (&thread_Check_ha_delay_info_thread.cond);
-    }
-  pthread_mutex_unlock (&thread_Check_ha_delay_info_thread.lock);
-}
-#endif
 
 /*
  * thread_slam_tran_index() -
