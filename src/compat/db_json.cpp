@@ -126,6 +126,120 @@ class JSON_VALIDATOR
     bool m_is_loaded;
 };
 
+/*
+* JSON_BASE_WALKER - This class acts like a rapidjson Handler
+*
+* The Handler is used by the json document to make checks on all of its nodes
+* It is applied recursively by the Accept function and acts like a map functions
+* You should inherit this class each time you want a specific function to apply to all the nodes in the json document
+* and override only the methods that apply to the desired types of nodes
+*/
+class JSON_BASE_WALKER
+{
+  public:
+    JSON_BASE_WALKER() {};
+    typedef typename JSON_DOC::Ch Ch;
+    typedef unsigned SizeType;
+
+    bool Null()
+    {
+      return true;
+    }
+    bool Bool (bool b)
+    {
+      return true;
+    }
+    bool Int (int i)
+    {
+      return true;
+    }
+    bool Uint (unsigned i)
+    {
+      return true;
+    }
+    bool Int64 (int64_t i)
+    {
+      return true;
+    }
+    bool Uint64 (uint64_t i)
+    {
+      return true;
+    }
+    bool Double (double d)
+    {
+      return true;
+    }
+    bool RawNumber (const Ch *str, SizeType length, bool copy)
+    {
+      return true;
+    }
+    bool String (const Ch *str, SizeType length, bool copy)
+    {
+      return true;
+    }
+    bool StartObject()
+    {
+      return true;
+    }
+    bool Key (const Ch *str, SizeType length, bool copy)
+    {
+      return true;
+    }
+    bool EndObject (SizeType memberCount)
+    {
+      return true;
+    }
+    bool StartArray()
+    {
+      return true;
+    }
+    bool EndArray (SizeType elementCount)
+    {
+      return true;
+    }
+};
+
+/*
+* JSON_DUPLICATE_KEYS_CHECKER - This class extends JSON_BASE_WALKER
+*
+* It is a handler used to check if the json document has duplicate keys in an object
+* We override only the StartObject method because we need to check the keys from the same level in the tree
+*/
+class JSON_DUPLICATE_KEYS_CHECKER : public JSON_BASE_WALKER
+{
+  public:
+    JSON_DUPLICATE_KEYS_CHECKER (const JSON_DOC *doc) : doc (doc) {}
+    bool StartObject()
+    {
+      std::vector<const char *> inserted_keys;
+
+      for (auto it = doc->MemberBegin(); it != doc->MemberEnd(); ++it)
+	{
+	  for (unsigned int i = 0; i < inserted_keys.size(); i++)
+	    {
+	      if (strcmp (it->name.GetString(), inserted_keys[i]) == 0)
+		{
+		  duplicate_key = it->name.GetString();
+		  return false;
+		}
+	    }
+
+	  inserted_keys.push_back (it->name.GetString());
+	}
+
+      return true;
+    }
+
+    const char *GetDuplicateKey()
+    {
+      return duplicate_key;
+    }
+
+  private:
+    const JSON_DOC *doc;
+    const char *duplicate_key = NULL;
+};
+
 const bool JSON_PRIVATE_ALLOCATOR::kNeedFree = true;
 const int JSON_DOC::MAX_CHUNK_SIZE = 64 * 1024; /* TODO does 64K serve our needs? */
 
@@ -713,55 +827,24 @@ db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value)
   doc->PushBack (new_doc, doc->GetAllocator ());
 }
 
+/*
+* db_json_contains_duplicate_keys () - Checks at parse time if a json document has duplicate keys
+*
+* return                  : true/false
+* doc (in)                : json document
+* duplicate_key (in)      : if the function returns true, we will store the duplicate key, otherwise it will be empty
+*/
 static bool
 db_json_contains_duplicate_keys (const JSON_DOC &doc, std::string &duplicate_key)
 {
+  JSON_DUPLICATE_KEYS_CHECKER dup_keys_checker (&doc);
   duplicate_key = "";
-  JSON_POINTER p ("");
-  const JSON_VALUE *head = p.Get (doc);
-  // we will iterate through json document and check if the object has duplicate keys
-  std::queue<const JSON_VALUE *> mqueue;
-  std::vector<const char *> inserted_keys;
 
-  // add the head first
-  mqueue.push (head);
-
-  while (!mqueue.empty())
+  // check recursively for duplicate keys in json document
+  if (!doc.Accept (dup_keys_checker))
     {
-      // get the current element
-      const JSON_VALUE *current = mqueue.front();
-      mqueue.pop();
-
-      // iterate through the array or object and push elements into queue
-      if (current->IsArray())
-	{
-	  for (auto it = current->GetArray().begin(); it != current->GetArray().end(); ++it)
-	    {
-	      mqueue.push (it);
-	    }
-	}
-      else if (current->IsObject())
-	{
-	  // we need to clear the set because we check only keys from the same object (on the same level)
-	  inserted_keys.clear();
-	  // iterate through object`s keys and verify if it has duplicate keys
-	  for (auto it = current->MemberBegin(); it != current->MemberEnd(); ++it)
-	    {
-	      const char *key = it->name.GetString();
-	      for (unsigned int i = 0; i < inserted_keys.size(); i++)
-		{
-		  if (strcmp (key, inserted_keys[i]) == 0)
-		    {
-		      // we found a duplicate key
-		      duplicate_key = key;
-		      return true;
-		    }
-		}
-
-	      inserted_keys.push_back (key);
-	      mqueue.push (&it->value);
-	    }
-	}
+      duplicate_key = dup_keys_checker.GetDuplicateKey();
+      return true;
     }
 
   return false;
@@ -2061,19 +2144,26 @@ db_json_keys_func (const JSON_DOC &doc, JSON_DOC *&result_json, const char *raw_
   assert (result_json == NULL);
   result_json = db_json_allocate_doc();
 
-  return db_json_keys_func (doc, result_json, raw_path);
+  return db_json_keys_func (doc, *result_json, raw_path);
 }
 
 int
 db_json_keys_func (const char *json_raw, JSON_DOC *&result_json, const char *raw_path)
 {
   JSON_DOC doc;
-  db_json_get_json_from_str (json_raw, doc);
+  int error_code = NO_ERROR;
+  error_code = db_json_get_json_from_str (json_raw, doc);
+
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR();
+      return error_code;
+    }
 
   assert (result_json == NULL);
   result_json = db_json_allocate_doc();
 
-  return db_json_keys_func (doc, result_json, raw_path);
+  return db_json_keys_func (doc, *result_json, raw_path);
 }
 
 bool
