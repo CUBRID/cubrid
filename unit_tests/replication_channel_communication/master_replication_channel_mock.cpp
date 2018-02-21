@@ -8,7 +8,7 @@
 #include "wintcp.h"
 #endif
 #include "error_code.h"
-#include <sys/poll.h>
+#include "connection_support.h"
 #include "thread_manager.hpp"
 #include <assert.h>
 #include "test_output.hpp"
@@ -58,7 +58,7 @@ namespace master
 	return;
       }
 
-    rc = poll (&channel->get_slave_fd (), 1, 100);
+    rc = css_platform_independent_poll (&channel->get_slave_fd (), 1, 100);
     if (rc < 0)
       {
 	/* smth went wrong with the connection, destroy it */

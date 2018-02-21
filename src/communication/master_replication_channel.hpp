@@ -2,7 +2,7 @@
 #define _MASTER_REPLICATION_CHANNEL_HPP
 
 #include "communication_channel.hpp"
-#include <sys/poll.h>
+#include "connection_support.h"
 #include "thread_entry_task.hpp"
 #include "connection_defs.h"
 #include <atomic>
@@ -49,7 +49,7 @@ class receive_from_slave_daemon : public cubthread::entry_task
 	  return;
 	}
 
-      rc = poll (&channel->get_slave_fd (), 1, -1);
+      rc = css_platform_independent_poll (&channel->get_slave_fd (), 1, -1);
       if (rc < 0)
 	{
 	  /* smth went wrong with the connection, destroy it */

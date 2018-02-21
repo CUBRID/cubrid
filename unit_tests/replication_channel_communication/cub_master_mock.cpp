@@ -26,7 +26,7 @@ namespace cub_master_mock
 
       void execute (cubthread::entry &context)
       {
-	int rc = poll (&listen_poll_fd, 1, 3000);
+	int rc = css_platform_independent_poll (&listen_poll_fd, 1, 3000);
 	assert (rc >= 0);
 
 	if (rc == 0)

@@ -29,6 +29,17 @@
 
 #include "connection_defs.h"
 
+#if defined (WINDOWS)
+#include <winsock2.h>
+typedef WSAPOLLFD POLL_FD;
+#define POLLIN POLLRDNORM
+#define POLLOUT POLLWRNORM
+#define POLLRDHUP POLLHUP
+#else
+#include <sys/poll.h>
+typedef struct pollfd POLL_FD;
+#endif
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int css_net_send_no_block (SOCKET fd, const char *buffer, int size);
 #endif
@@ -102,4 +113,5 @@ extern int css_check_magic (CSS_CONN_ENTRY * conn);
 
 extern int css_user_access_status_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt,
 					      void **ptr);
+extern int css_platform_independent_poll (POLL_FD * fds, int num_of_fds, int timeout);
 #endif /* _CONNECTION_SUPPORT_H_ */

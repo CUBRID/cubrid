@@ -3566,14 +3566,14 @@ hb_resource_job_send_master_hostname (HB_JOB_ARG * arg)
     {
       if (proc->type == HB_PTYPE_SERVER)
 	{
-          if (proc->knows_master_hostname)
-            {
-              pthread_mutex_unlock (&hb_Resource->lock);
-              return;
-            }
+	  if (proc->knows_master_hostname)
+	    {
+	      pthread_mutex_unlock (&hb_Resource->lock);
+	      return;
+	    }
 
-          conn = proc->conn;
-          break;
+	  conn = proc->conn;
+	  break;
 	}
       proc = proc->next;
     }
@@ -3603,8 +3603,7 @@ hb_resource_job_send_master_hostname (HB_JOB_ARG * arg)
   error = css_send_to_my_server_the_master_hostname (hostname, proc, conn);
   assert (error == NO_ERROR);
 
-  error =
-    hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL, prm_get_integer_value (PRM_ID_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS)); /* TODO put other interval */
+  error = hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL, prm_get_integer_value (PRM_ID_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS));	/* TODO put other interval */
   assert (error == NO_ERROR);
 
   if (arg)
@@ -4093,19 +4092,19 @@ hb_resource_send_changemode (HB_PROC_ENTRY * proc)
     case HB_NSTATE_MASTER:
       {
 	state = HA_SERVER_STATE_ACTIVE;
-        proc->knows_master_hostname = true;
+	proc->knows_master_hostname = true;
       }
       break;
     case HB_NSTATE_TO_BE_SLAVE:
       {
 	state = HA_SERVER_STATE_STANDBY;
-        proc->knows_master_hostname = false;
+	proc->knows_master_hostname = false;
       }
       break;
     case HB_NSTATE_SLAVE:
     default:
       {
-        proc->knows_master_hostname = false;
+	proc->knows_master_hostname = false;
 	return ER_FAILED;
       }
       break;
@@ -4788,7 +4787,7 @@ hb_resource_job_initialize ()
 #if 1
   error =
     hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL, prm_get_integer_value (PRM_ID_HA_INIT_TIMER_IN_MSECS) +
-                                                               prm_get_integer_value (PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS));
+			   prm_get_integer_value (PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS));
   if (error != NO_ERROR)
     {
       assert (false);
@@ -6800,7 +6799,7 @@ hb_is_hang_process (int sfd)
 }
 
 char *
-hb_find_host_name_of_master_server()
+hb_find_host_name_of_master_server ()
 {
   HB_NODE_ENTRY *node;
 
@@ -6809,8 +6808,8 @@ hb_find_host_name_of_master_server()
     {
       if (node->state == HB_NSTATE_MASTER && hb_Cluster->master == node)
 	{
-          assert (strcmp (node->host_name, hb_Cluster->master->host_name) == 0);
-          pthread_mutex_unlock (&hb_Cluster->lock);
+	  assert (strcmp (node->host_name, hb_Cluster->master->host_name) == 0);
+	  pthread_mutex_unlock (&hb_Cluster->lock);
 	  return node->host_name;
 	}
     }
