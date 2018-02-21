@@ -3851,8 +3851,7 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 			      switch (flag)
 				{
 				case 0x01:
-				  new_->filter_predicate =
-				    classobj_make_index_filter_pred_info (db_get_set (&avalue));
+				  new_->filter_predicate = classobj_make_index_filter_pred_info (db_get_set (&avalue));
 				  break;
 
 				case 0x02:
