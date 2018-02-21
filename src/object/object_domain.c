@@ -4280,7 +4280,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
       int val_idx, dom_size, val_size;
       char *dom_str = NULL, *val_str = NULL;
 
-      if ((db_get_enum_short (value) == 0 && db_get_enum_string (value) != NULL))
+      if (db_get_enum_short (value) == 0 && db_get_enum_string (value) != NULL)
 	{
 	  /* An enumeration should be NULL or should at least have an index */
 	  assert (false);
@@ -8177,7 +8177,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  if (status == DOMAIN_COMPATIBLE)
 	    {
 	      int tmpint;
-	      if ((tmpint = db_get_int (target)) >= 0)
+	      tmpint = db_get_int (target);
+	      if (tmpint >= 0)
 		{
 		  db_make_timestamp (target, (DB_UTIME) tmpint);
 		}
@@ -8425,7 +8426,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  if (status == DOMAIN_COMPATIBLE)
 	    {
 	      int tmpint;
-	      if ((tmpint = db_get_int (target)) >= 0)
+	      tmpint = db_get_int (target);
+	      if (tmpint >= 0)
 		{
 		  db_make_timestampltz (target, (DB_UTIME) tmpint);
 		}
