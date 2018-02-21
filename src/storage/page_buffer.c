@@ -822,7 +822,7 @@ struct pgbuf_buffer_pool
   PGBUF_AOUT_LIST buf_AOUT_list;	/* Aout list */
   PGBUF_INVALID_LIST buf_invalid_list;	/* buffer invalid BCB list */
 
-  PGBUF_VICTIM_CANDIDATE_INFO victim_cand_info;  
+  PGBUF_VICTIM_CANDIDATE_INFO victim_cand_info;
 
   PGBUF_SEQ_FLUSHER seq_chkpt_flusher;
 
@@ -7610,7 +7610,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
     }
 
 #if defined (SERVER_MODE)
-  if (thread_is_page_flush_thread_available () && thread_is_find_victim_candidates_thread_available ())
+  if (thread_is_find_victim_candidates_thread_available ())
     {
     retry:
       high_priority = high_priority || VACUUM_IS_THREAD_VACUUM (thread_p) || pgbuf_is_thread_high_priority (thread_p);
@@ -7667,8 +7667,15 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	}
 
       /* make sure at least flush will feed us with bcb's. */
-      thread_try_wakeup_page_flush_thread ();
-      pgbuf_wakeup_find_victim_candidates_thread (thread_p);
+      if (!PGBUF_IS_VICTIM_CAND_LIST_IS_EMPTY (&pgbuf_Pool.victim_cand_info)
+	  && thread_is_page_flush_thread_available ())
+	{
+	  thread_wakeup_page_flush_thread ();
+	}
+      else
+	{
+	  pgbuf_wakeup_find_victim_candidates_thread (thread_p);
+	}
 
       r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_ALLOC_BCB_SUSPENDED);
 
