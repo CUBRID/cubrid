@@ -87,7 +87,7 @@ STATIC_INLINE int db_value_scale (const DB_VALUE * value) __attribute__ ((ALWAYS
 STATIC_INLINE JSON_DOC *db_get_json_document (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE char *db_get_json_raw_body (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 
-STATIC_INLINE int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, const char *str,
+STATIC_INLINE int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, char *str,
 				   const int size) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int db_make_null (DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -136,7 +136,7 @@ STATIC_INLINE int db_make_enumeration (DB_VALUE * value, unsigned short index, D
 				       unsigned char codeset, const int collation_id) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle) __attribute__ ((ALWAYS_INLINE));
 
-STATIC_INLINE int db_make_string (DB_VALUE * value, const char *str) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_make_string (DB_VALUE * value, char *str) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_string_copy (DB_VALUE * value, const char *str) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int db_make_oid (DB_VALUE * value, const OID * oid) __attribute__ ((ALWAYS_INLINE));
@@ -1043,7 +1043,7 @@ db_get_json_raw_body (const DB_VALUE * value)
  * size(in):
  */
 int
-db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, const char *str, const int size)
+db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, char *str, const int size)
 {
 #if defined (API_ACTIVE_CHECKS)
   CHECK_1ARG_ERROR (value);
@@ -1912,7 +1912,7 @@ db_make_oid (DB_VALUE * value, const OID * oid)
  * str(in):
  */
 int
-db_make_string (DB_VALUE * value, const char *str)
+db_make_string (DB_VALUE * value, char *str)
 {
   int error;
   int size;
@@ -1947,6 +1947,32 @@ db_make_string (DB_VALUE * value, const char *str)
 int
 db_make_string_copy (DB_VALUE * value, const char *str)
 {
+//  int error = NO_ERROR;
+//  char *copy_str = NULL;
+//  size_t src_length;
+//
+//#if defined (API_ACTIVE_CHECKS)
+//  CHECK_1ARG_ERROR (value);
+//#endif
+//
+//  src_length = strlen(str);
+//
+//  str = (char *)db_private_alloc(NULL, src_length + 1);
+//  if (str == NULL)
+//    {
+//      er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, src_length);
+//      error = ER_OUT_OF_VIRTUAL_MEMORY;
+//      return error;
+//    }
+//
+//  assert(str != NULL);
+//
+//  error = db_make_string (value, copy_str);
+//  /* Set need_clear to true. */
+//  value->need_clear = true;
+//
+//  return error;
+
   int error;
   DB_VALUE tmp_value;
 
@@ -1954,7 +1980,7 @@ db_make_string_copy (DB_VALUE * value, const char *str)
   CHECK_1ARG_ERROR (value);
 #endif
 
-  error = db_make_string (&tmp_value, str);
+  error = db_make_string (&tmp_value, (char *) str);
   if (error == NO_ERROR)
     {
       error = pr_clone_value (&tmp_value, value);

@@ -22308,9 +22308,8 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       pset_result = &set_result;
 
       db_make_string (&comma, ",");
-      db_make_string (&set_of, set_of_string);
+      db_make_string_copy (pset_result, set_of_string);
 
-      pr_clone_value (&set_of, pset_result);
       for (setdomain = domain->setdomain, i = 0; setdomain; setdomain = setdomain->next, i++)
 	{
 	  pset_temp = pset_arg1;
@@ -22369,9 +22368,8 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       db_make_string (&comma, ",");
       db_make_string (&bracket1, "(");
       db_make_string (&bracket2, ")");
-      db_make_string (&db_name, name);
+      db_make_string_copy (pprec_scale_arg1, name);
 
-      pr_clone_value (&db_name, pprec_scale_arg1);
       if ((db_string_concatenate (pprec_scale_arg1, &bracket1, pprec_scale_result, &data_stat) != NO_ERROR)
 	  || (data_stat != DATA_STATUS_OK))
 	{
@@ -22450,9 +22448,8 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 
       if (db_json_get_schema_raw_from_validator (validator) != NULL)
 	{
-	  db_make_string (&db_name, name);
-	  pr_clone_value (&db_name, result);
-	  db_make_string (&schema, db_json_get_schema_raw_from_validator (validator));
+	  db_make_string_copy (result, name);
+	  db_make_string_copy (&schema, db_json_get_schema_raw_from_validator (validator));
 	  db_make_string (&bracket1, "(\'");
 	  db_make_string (&bracket2, "\')");
 
@@ -22479,8 +22476,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 
   {
     DB_VALUE db_name;
-    db_make_string (&db_name, name);
-    pr_clone_value (&db_name, result);
+    db_make_string_copy (result, name);
   }
 
   return NO_ERROR;
@@ -22642,7 +22638,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		case DB_TYPE_NCHAR:
 		case DB_TYPE_VARNCHAR:
 		case DB_TYPE_ENUMERATION:
-		  db_make_string (out_values[idx_val], lang_get_collation_name (attrepr->domain->collation_id));
+		  db_make_string_copy (out_values[idx_val], lang_get_collation_name (attrepr->domain->collation_id));
 		  break;
 		default:
 		  db_make_null (out_values[idx_val]);
@@ -22749,14 +22745,14 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
 		  strcat (default_value_string, ")");
 
-		  db_make_string (out_values[idx_val], default_value_string);
+		  db_make_string_copy (out_values[idx_val], default_value_string);
 		  out_values[idx_val]->need_clear = true;
 		}
 	      else
 		{
 		  if (default_expr_type_string)
 		    {
-		      db_make_string (out_values[idx_val], default_expr_type_string);
+		      db_make_string_copy (out_values[idx_val], default_expr_type_string);
 		    }
 		}
 	      idx_val++;

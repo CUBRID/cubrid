@@ -5042,7 +5042,7 @@ db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest)
     case DB_JSON_STRING:
       {
 	const char *str = db_json_get_string_from_document (doc);
-	int error_code = db_make_string (dest, str);
+	int error_code = db_make_string_copy (dest, str);
 	if (error_code != NO_ERROR)
 	  {
 	    ASSERT_ERROR ();

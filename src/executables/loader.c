@@ -2177,7 +2177,7 @@ error_exit:
 static int
 ldr_str_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
-  db_make_string (val, str);
+  db_make_string_copy (val, str);
   return NO_ERROR;
 }
 
@@ -2337,7 +2337,7 @@ ldr_str_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUT
 {
   DB_VALUE val;
 
-  db_make_string (&val, str);
+  db_make_string_copy (&val, str);
   return ldr_generic (context, &val);
 }
 

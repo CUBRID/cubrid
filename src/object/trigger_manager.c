@@ -1114,7 +1114,7 @@ trigger_to_object (TR_TRIGGER * trigger)
 	  goto error;
 	}
 
-      db_make_string (&value, trigger->action->source);
+      db_make_string_copy (&value, trigger->action->source);
       if (dbt_put_internal (obt_p, TR_ATT_ACTION, &value))
 	{
 	  /* hack, try old name before aborting */
@@ -1125,7 +1125,7 @@ trigger_to_object (TR_TRIGGER * trigger)
 	}
     }
 
-  db_make_string (&value, trigger->comment);
+  db_make_string_copy (&value, trigger->comment);
   if (dbt_put_internal (obt_p, TR_ATT_COMMENT, &value))
     {
       goto error;
@@ -3079,7 +3079,7 @@ trigger_table_add (const char *name, DB_OBJECT * trigger)
     }
   max = set_size (table);
 
-  db_make_string (&value, name);
+  db_make_string_copy (&value, name);
   error = set_put_element (table, max, &value);
   if (error == NO_ERROR)
     {
@@ -3286,7 +3286,7 @@ trigger_table_rename (DB_OBJECT * trigger_object, const char *newname)
   else
     {
       /* the name is the kept in the element immediately preceeding this one */
-      db_make_string (&value, newname);
+      db_make_string_copy (&value, newname);
       error = set_put_element (table, found - 1, &value);
     }
 
@@ -7287,7 +7287,7 @@ tr_set_comment (DB_OBJECT * trigger_object, const char *comment, bool call_from_
 	}
       else
 	{
-	  db_make_string (&value, comment);
+	  db_make_string_copy (&value, comment);
 	  if (db_put_internal (trigger_object, TR_ATT_COMMENT, &value))
 	    {
 	      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;

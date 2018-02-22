@@ -4847,7 +4847,7 @@ qo_set_cost (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * plan, DB_VALUE * 
    */
   if ((plan_string = qo_plan_set_cost_fn (plan_string, cost_string[0])) != NULL)
     {
-      db_make_string (result, plan_string);
+      db_make_string_copy (result, plan_string);
     }
   else
     {
