@@ -1947,32 +1947,6 @@ db_make_string (DB_VALUE * value, char *str)
 int
 db_make_string_copy (DB_VALUE * value, const char *str)
 {
-//  int error = NO_ERROR;
-//  char *copy_str = NULL;
-//  size_t src_length;
-//
-//#if defined (API_ACTIVE_CHECKS)
-//  CHECK_1ARG_ERROR (value);
-//#endif
-//
-//  src_length = strlen(str);
-//
-//  str = (char *)db_private_alloc(NULL, src_length + 1);
-//  if (str == NULL)
-//    {
-//      er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, src_length);
-//      error = ER_OUT_OF_VIRTUAL_MEMORY;
-//      return error;
-//    }
-//
-//  assert(str != NULL);
-//
-//  error = db_make_string (value, copy_str);
-//  /* Set need_clear to true. */
-//  value->need_clear = true;
-//
-//  return error;
-
   int error;
   DB_VALUE tmp_value;
 
