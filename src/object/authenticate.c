@@ -3808,11 +3808,7 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 
   *grant_ptr = NULL;
 
-  error = er_stack_push ();
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
+  er_stack_push ();
 
   need_pop_er_stack = true;
 
@@ -3966,11 +3962,11 @@ end:
     {
       if (error == NO_ERROR)
 	{
-	  (void) er_stack_pop ();
+	  er_stack_pop ();
 	}
       else
 	{
-	  er_stack_clear ();
+	  er_stack_pop_and_keep_error ();
 	}
     }
 
@@ -4044,11 +4040,7 @@ update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
    */
   AU_DISABLE (save);
 
-  error = er_stack_push ();
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
+  er_stack_push ();
 
   need_pop_er_stack = true;
 
@@ -4179,11 +4171,11 @@ end:
     {
       if (error == NO_ERROR)
 	{
-	  (void) er_stack_pop ();
+	  er_stack_pop ();
 	}
       else
 	{
-	  er_stack_clear ();
+	  er_stack_pop_and_keep_error ();
 	}
     }
 

@@ -2516,6 +2516,18 @@ logtb_find_client_name_host_pid (int tran_index, char **client_prog_name, char *
   return NO_ERROR;
 }
 
+#if defined (SERVER_MODE)
+/* logtb_find_client_tran_name_host_pid - same as logtb_find_client_name_host_pid, but also gets tran_index.
+ */
+int
+logtb_find_client_tran_name_host_pid (int &tran_index, char **client_prog_name, char **client_user_name,
+				      char **client_host_name, int *client_pid)
+{
+  tran_index = thread_get_current_tran_index ();
+  return logtb_find_client_name_host_pid (tran_index, client_prog_name, client_user_name, client_host_name, client_pid);
+}
+#endif // SERVER_MODE
+
 /*
  * logtb_find_client_ids - find client identifiers OF TRANSACTION INDEX
  *

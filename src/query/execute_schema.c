@@ -8693,7 +8693,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       goto error_exit;
     }
 
-  if (er_errid () == ER_LC_UNKNOWN_CLASSNAME && er_severity () == ER_WARNING_SEVERITY)
+  if (er_errid () == ER_LC_UNKNOWN_CLASSNAME && er_get_severity () == ER_WARNING_SEVERITY)
     {
       /* Because the class is still inexistent, normally, here we will have to encounter some errors/warnings like
        * ER_LC_UNKNOWN_CLASSNAME which is unuseful for current context indeed and may disturb other subsequent

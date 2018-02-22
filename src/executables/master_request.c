@@ -654,6 +654,8 @@ css_process_kill_master (void)
     }
 #endif
 
+  er_final (ER_ALL_FINAL);
+
   exit (1);
 }
 
