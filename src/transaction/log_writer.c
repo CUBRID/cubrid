@@ -2091,7 +2091,7 @@ logwr_write_end (THREAD_ENTRY * thread_p, LOGWR_INFO * writer_info, LOGWR_ENTRY 
       if (prev_status == LOGWR_STATUS_FETCH && writer_info->trace_last_writer == true)
 	{
 	  assert (saved_start_time > 0);
-	  writer_info->last_writer_elapsed_time = thread_get_log_clock_msec () - saved_start_time;
+	  writer_info->last_writer_elapsed_time = log_get_clock_msec () - saved_start_time;
 
 	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 	  logtb_get_client_ids (tran_index, &writer_info->last_writer_client_info);
@@ -2321,7 +2321,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
       if (entry->status == LOGWR_STATUS_FETCH)
 	{
 	  rv = pthread_mutex_lock (&writer_info->wr_list_mutex);
-	  entry->start_copy_time = thread_get_log_clock_msec ();
+	  entry->start_copy_time = log_get_clock_msec ();
 	  pthread_mutex_unlock (&writer_info->wr_list_mutex);
 	}
 

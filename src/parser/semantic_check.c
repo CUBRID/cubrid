@@ -4147,7 +4147,7 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int defa
 		    }
 		  else if (elem->info.value.db_value_is_initialized)
 		    {
-		      dt->info.data_type.precision = DB_GET_STRING_SIZE (&(elem->info.value.db_value));
+		      dt->info.data_type.precision = db_get_string_size (&(elem->info.value.db_value));
 		    }
 		}
 
@@ -6102,7 +6102,7 @@ partition_range_min_max (DB_VALUE ** dest, DB_VALUE * inval, int min_max)
 
   if (inval == NULL)
     {
-      DB_MAKE_NULL (&nullval);
+      db_make_null (&nullval);
       inval = &nullval;
     }
 
@@ -6172,7 +6172,7 @@ db_value_list_add (DB_VALUE_PLIST ** ptail, DB_VALUE * val)
 
   if (val == NULL)
     {
-      DB_MAKE_NULL (&nullval);
+      db_make_null (&nullval);
       chkval = &nullval;
     }
   else
@@ -6221,7 +6221,7 @@ db_value_list_find (const DB_VALUE_PLIST * phead, const DB_VALUE * val)
 
   if (val == NULL)
     {
-      DB_MAKE_NULL (&nullval);
+      db_make_null (&nullval);
       chkval = &nullval;
     }
   else
@@ -6259,7 +6259,7 @@ db_value_list_finddel (DB_VALUE_PLIST ** phead, DB_VALUE * val)
 
   if (val == NULL)
     {
-      DB_MAKE_NULL (&nullval);
+      db_make_null (&nullval);
       chkval = &nullval;
     }
   else
@@ -6337,9 +6337,9 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
       return;
     }
 
-  DB_MAKE_NULL (&minele);
-  DB_MAKE_NULL (&maxele);
-  DB_MAKE_NULL (&null_val);
+  db_make_null (&minele);
+  db_make_null (&maxele);
+  db_make_null (&null_val);
 
   class_name = (char *) stmt->info.alter.entity_name->info.name.original;
   cmd = stmt->info.alter.code;
@@ -6517,7 +6517,7 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
       goto check_end;
     }
 
-  DB_MAKE_NULL (&null_val);
+  db_make_null (&null_val);
   for (objs = smclass->users; objs; objs = objs->next)
     {
       if (au_fetch_class (objs->op, &subcls, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
@@ -6533,8 +6533,8 @@ pt_check_alter_partition (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 
       orig_cnt++;
 
-      DB_MAKE_NULL (&minele);
-      DB_MAKE_NULL (&maxele);
+      db_make_null (&minele);
+      db_make_null (&maxele);
 
       if (psize == NULL)
 	{			/* RANGE or LIST */
@@ -8936,7 +8936,7 @@ pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node)
 
   assert (node != NULL && node->info.method_call.method_name != NULL);
 
-  DB_MAKE_NULL (&val);
+  db_make_null (&val);
 
   /* check if call has a target */
   target = node->info.method_call.on_call_target;
@@ -8993,7 +8993,7 @@ pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node)
 	   * if we are not already doing this. Also we probably shouldn't get PT_VALUES here now that parameters are
 	   * not bound until runtime (but we'll guard against them anyway). */
 	  if (((target->node_type != PT_NAME) || (target->info.name.meta_class != PT_PARAMETER)
-	       || !pt_eval_path_expr (parser, target, &val) || db_is_instance (DB_GET_OBJECT (&val)) <= 0)
+	       || !pt_eval_path_expr (parser, target, &val) || db_is_instance (db_get_object (&val)) <= 0)
 	      && target->node_type != PT_VALUE
 	      && (target->data_type->info.data_type.entity->info.name.meta_class != PT_META_CLASS))
 	    {
@@ -9009,7 +9009,7 @@ pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node)
        * if we are not already doing this. Also we probably shouldn't get PT_VALUES here now that parameters are not
        * bound until runtime (but we'll guard against them anyway). */
       if (((target->node_type != PT_NAME) || (target->info.name.meta_class != PT_PARAMETER)
-	   || !pt_eval_path_expr (parser, target, &val) || db_is_instance (DB_GET_OBJECT (&val)) <= 0)
+	   || !pt_eval_path_expr (parser, target, &val) || db_is_instance (db_get_object (&val)) <= 0)
 	  && target->node_type != PT_VALUE
 	  && (target->data_type->info.data_type.entity->info.name.meta_class != PT_CLASS))
 	{
@@ -15210,7 +15210,7 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	{
 	  if (node->info.value.db_value_is_initialized && DB_VALUE_TYPE (&node->info.value.db_value) == DB_TYPE_INTEGER)
 	    {
-	      if (DB_GET_INT (&node->info.value.db_value) == 0)
+	      if (db_get_int (&node->info.value.db_value) == 0)
 		{
 		  info->is_valid_expr = false;
 		}
@@ -15650,7 +15650,7 @@ pt_check_range_partition_strict_increasing (PARSER_CONTEXT * parser, PT_NODE * s
 		      || (pt_val1->data_type->info.data_type.collation_id ==
 			  column_dt->info.data_type.collation_id)))));
 
-  DB_MAKE_NULL (&null_val);
+  db_make_null (&null_val);
 
   /* next value */
   if (part_next != NULL)

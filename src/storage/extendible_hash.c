@@ -799,7 +799,7 @@ eh_dump_key (DB_TYPE key_type, void *key, OID * value_ptr)
       fprintf (stdout, "key:%d", ((DB_TIMETZ *) key)->time, ((DB_TIMETZ *) key)->tz_id);
       break;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
       fprintf (stdout, "key:%d", *(DB_UTIME *) key);
       break;
@@ -925,7 +925,7 @@ ehash_get_key_size (DB_TYPE key_type)
       key_size = sizeof (DB_TIME);
       break;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       key_size = sizeof (DB_UTIME);
       break;
 
@@ -2123,7 +2123,7 @@ ehash_write_key_to_record (RECDES * recdes_p, DB_TYPE key_type, void *key_p, sho
       *(DB_TIME *) record_p = *(DB_TIME *) key_p;
       break;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       *(DB_UTIME *) record_p = *(DB_UTIME *) key_p;
       break;
 
@@ -2339,7 +2339,7 @@ ehash_compare_key (THREAD_ENTRY * thread_p, char *bucket_record_p, DB_TYPE key_t
       compare_result = *(DB_TIME *) key_p - *(DB_TIME *) bucket_record_p;
       break;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       compare_result = *(DB_UTIME *) key_p - *(DB_UTIME *) bucket_record_p;
       break;
 
@@ -4362,7 +4362,7 @@ ehash_hash (void *original_key_p, DB_TYPE key_type)
     case DB_TYPE_FLOAT:
     case DB_TYPE_DATE:
     case DB_TYPE_TIME:
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_DATETIME:
     case DB_TYPE_INTEGER:
       hash_key = ehash_hash_four_bytes_type (key);
@@ -4729,7 +4729,7 @@ ehash_apply_each (THREAD_ENTRY * thread_p, EHID * ehid_p, RECDES * recdes_p, DB_
       *((DB_TIME *) (&next_key)) = *(DB_TIME *) bucket_record_p;
       break;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       *((DB_UTIME *) (&next_key)) = *(DB_UTIME *) bucket_record_p;
       break;
 
@@ -4946,7 +4946,7 @@ ehash_dump (THREAD_ENTRY * thread_p, EHID * ehid_p)
       printf (" time                                   *\n");
       break;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       printf (" utime                                  *\n");
       break;
 
@@ -5224,7 +5224,7 @@ ehash_dump_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p, DB_TYPE key_
 	  fprintf (stdout, "      %2d:%2d:%2d               ", hour, minute, second);
 	  break;
 
-	case DB_TYPE_UTIME:
+	case DB_TYPE_TIMESTAMP:
 	  {
 	    DB_DATE tmp_date;
 	    DB_TIME tmp_time;

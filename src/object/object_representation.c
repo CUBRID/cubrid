@@ -156,13 +156,13 @@ classobj_get_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
 	  continue;
 	}
 
-      if (DB_VALUE_TYPE (&value) != DB_TYPE_STRING || DB_GET_STRING (&value) == NULL)
+      if (DB_VALUE_TYPE (&value) != DB_TYPE_STRING || db_get_string (&value) == NULL)
 	{
 	  error = ER_SM_INVALID_PROPERTY;
 	}
       else
 	{
-	  tmp_str = DB_GET_STRING (&value);
+	  tmp_str = db_get_string (&value);
 	  if (tmp_str && strcmp (name, tmp_str) == 0)
 	    {
 	      if ((i + 1) >= max)
@@ -7682,7 +7682,7 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
   int str_size = 0;
   LANG_COLLATION *lc;
 
-  DB_MAKE_NULL (&value);
+  db_make_null (&value);
 
   if (enumeration == NULL)
     {
@@ -8725,7 +8725,7 @@ or_get_json_schema (OR_BUF * buf, REFPTR (char, schema))
       return rc;
     }
 
-  if (DB_GET_STRING_SIZE (&schema_value) == 0)
+  if (db_get_string_size (&schema_value) == 0)
     {
       schema = NULL;
     }

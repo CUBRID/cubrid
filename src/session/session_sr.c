@@ -130,7 +130,7 @@ xsession_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value, bool upd
   err = session_get_last_insert_id (thread_p, value, update_last_insert_id);
   if (err != NO_ERROR)
     {
-      DB_MAKE_NULL (value);
+      db_make_null (value);
     }
   return err;
 }

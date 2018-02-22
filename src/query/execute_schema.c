@@ -4379,7 +4379,7 @@ do_is_partitioned_subclass (int *is_partitioned, const char *classname, char *ke
 	  keyattr[0] = 0;
 
 	  if (set_get_element_nocopy (smclass->partition->values, 0, &attrname) == NO_ERROR && !DB_IS_NULL (&attrname)
-	      && (p = DB_GET_STRING (&attrname)))
+	      && (p = db_get_string (&attrname)))
 	    {
 	      strncpy (keyattr, p, DB_MAX_IDENTIFIER_LENGTH);
 	      if (strlen (p) < DB_MAX_IDENTIFIER_LENGTH)
@@ -6934,7 +6934,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
   DB_DEFAULT_EXPR default_expr;
   PARSER_VARCHAR *comment_str = NULL;
 
-  DB_MAKE_NULL (&stack_value);
+  db_make_null (&stack_value);
   attr_name = get_attr_name (attribute);
 
   meta = (attribute->info.attr_def.attr_type == PT_META_ATTR);
@@ -7109,7 +7109,7 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
   MOP class_obj = NULL;
   DB_DEFAULT_EXPR *default_expr = NULL;
 
-  DB_MAKE_NULL (&default_value);
+  db_make_null (&default_value);
 
   if (column == NULL || column->domain == NULL)
     {
@@ -9715,7 +9715,7 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
 
   if (DB_VALUE_TYPE (&returnval) == DB_TYPE_ERROR)
     {
-      error = DB_GET_ERROR (&returnval);
+      error = db_get_error (&returnval);
     }
 
   return error;
@@ -10021,7 +10021,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
   assert (attribute->node_type == PT_ATTR_DEF);
 
-  DB_MAKE_NULL (&stack_value);
+  db_make_null (&stack_value);
 
   attr_name = get_attr_name (attribute);
 
@@ -12523,7 +12523,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	  DB_VALUE src;
 	  PT_NODE *temp_val;
 
-	  DB_MAKE_NULL (&src);
+	  db_make_null (&src);
 
 	  def_val = pt_semantic_type (parser, def_val, NULL);
 	  if (pt_has_error (parser) || def_val == NULL)
@@ -13276,7 +13276,7 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE *
 
   *change_mode = SM_ATTR_CHG_ONLY_SCHEMA;
 
-  DB_MAKE_NULL (&def_value);
+  db_make_null (&def_value);
 
   attr_name = get_attr_name (attribute);
 
@@ -13695,7 +13695,7 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
   assert (has_nulls != NULL);
 
   *has_nulls = false;
-  DB_MAKE_NULL (&count);
+  db_make_null (&count);
 
   class_name = db_get_class_name (class_mop);
   if (class_name == NULL)
@@ -13775,7 +13775,7 @@ do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls)
   assert (!DB_IS_NULL (&count));
   assert (DB_VALUE_DOMAIN_TYPE (&count) == DB_TYPE_INTEGER);
 
-  if (DB_GET_INTEGER (&count) > 0)
+  if (db_get_int (&count) > 0)
     {
       *has_nulls = true;
     }

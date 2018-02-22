@@ -1522,10 +1522,10 @@ or_install_btids_foreign_key (const char *fkname, DB_SEQ * fk_seq, OR_INDEX * in
   index->fk->ref_class_pk_btid.vfid.fileid = (FILEID) fileid;
 
   set_get_element_nocopy (fk_seq, 2, &val);
-  index->fk->del_action = DB_GET_INT (&val);
+  index->fk->del_action = db_get_int (&val);
 
   set_get_element_nocopy (fk_seq, 3, &val);
-  index->fk->upd_action = DB_GET_INT (&val);
+  index->fk->upd_action = db_get_int (&val);
 }
 
 /*
@@ -1553,7 +1553,7 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	  return;
 	}
 
-      fk_seq = DB_GET_SEQUENCE (&fkval);
+      fk_seq = db_get_set (&fkval);
 
       fk = (OR_FOREIGN_KEY *) malloc (sizeof (OR_FOREIGN_KEY));
       if (fk == NULL)
@@ -1605,14 +1605,14 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	  free_and_init (fk);
 	  return;
 	}
-      fk->del_action = DB_GET_INT (&val);
+      fk->del_action = db_get_int (&val);
 
       if (set_get_element_nocopy (fk_seq, 3, &val) != NO_ERROR)
 	{
 	  free_and_init (fk);
 	  return;
 	}
-      fk->upd_action = DB_GET_INT (&val);
+      fk->upd_action = db_get_int (&val);
 
       if (set_get_element_nocopy (fk_seq, 4, &val) != NO_ERROR)
 	{
@@ -1672,7 +1672,7 @@ or_install_btids_prefix_length (DB_SEQ * prefix_seq, OR_INDEX * index, int num_a
 	  return;
 	}
 
-      index->attrs_prefix_length[i] = DB_GET_INT (&val);
+      index->attrs_prefix_length[i] = db_get_int (&val);
     }
 }
 
@@ -1755,7 +1755,7 @@ or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
     }
 
   buffer = db_get_string (&val2);
-  buffer_len = DB_GET_STRING_SIZE (&val2);
+  buffer_len = db_get_string_size (&val2);
   filter_predicate->pred_stream = (char *) malloc (buffer_len * sizeof (char));
   if (filter_predicate->pred_stream == NULL)
     {
@@ -1877,7 +1877,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 	      break;
 	    }
 
-	  att_id = DB_GET_INTEGER (&att_val);
+	  att_id = db_get_int (&att_val);
 
 	  for (j = 0, att = rep->attributes, ptr = NULL; j < rep->n_attributes && ptr == NULL; j++, att++)
 	    {
@@ -1894,7 +1894,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
       /* asc_desc info */
       if (set_get_element_nocopy (constraint_seq, e++, &att_val) == NO_ERROR)
 	{
-	  index->asc_desc[i] = DB_GET_INTEGER (&att_val);
+	  index->asc_desc[i] = db_get_int (&att_val);
 	}
     }
   index->btname = strdup (cons_name);
@@ -1903,7 +1903,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
     {
       if (set_get_element_nocopy (constraint_seq, seq_size - 2, &att_val) == NO_ERROR)
 	{
-	  or_install_btids_foreign_key (cons_name, DB_GET_SEQUENCE (&att_val), index);
+	  or_install_btids_foreign_key (cons_name, db_get_set (&att_val), index);
 	}
     }
   else if (type == BTREE_PRIMARY_KEY)
@@ -1912,7 +1912,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
 	    {
-	      or_install_btids_foreign_key_ref (DB_GET_SEQUENCE (&att_val), index);
+	      or_install_btids_foreign_key_ref (db_get_set (&att_val), index);
 	    }
 	}
     }
@@ -1922,19 +1922,19 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
 	    {
-	      DB_SEQ *seq = DB_GET_SEQUENCE (&att_val);
+	      DB_SEQ *seq = db_get_set (&att_val);
 	      DB_VALUE val;
 
 	      if (set_get_element_nocopy (seq, 0, &val) == NO_ERROR)
 		{
 		  if (DB_VALUE_TYPE (&val) == DB_TYPE_INTEGER)
 		    {
-		      or_install_btids_prefix_length (DB_GET_SEQUENCE (&att_val), index, att_cnt);
+		      or_install_btids_prefix_length (db_get_set (&att_val), index, att_cnt);
 		    }
 		  else if (DB_VALUE_TYPE (&val) == DB_TYPE_SEQUENCE)
 		    {
 		      DB_VALUE avalue;
-		      DB_SET *child_seq = DB_GET_SEQUENCE (&val);
+		      DB_SET *child_seq = db_get_set (&val);
 		      int seq_size = set_size (seq);
 		      int flag;
 
@@ -1978,15 +1978,15 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 			  switch (flag)
 			    {
 			    case 0x01:
-			      or_install_btids_filter_pred (DB_GET_SEQUENCE (&avalue), index);
+			      or_install_btids_filter_pred (db_get_set (&avalue), index);
 			      break;
 
 			    case 0x02:
-			      or_install_btids_function_info (DB_GET_SEQUENCE (&avalue), index);
+			      or_install_btids_function_info (db_get_set (&avalue), index);
 			      break;
 
 			    case 0x03:
-			      or_install_btids_prefix_length (DB_GET_SEQUENCE (&avalue), index, att_cnt);
+			      or_install_btids_prefix_length (db_get_set (&avalue), index, att_cnt);
 			      break;
 
 			    default:
@@ -2010,7 +2010,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 			      continue;
 			    }
 
-			  child_seq = DB_GET_SEQUENCE (&val);
+			  child_seq = db_get_set (&val);
 			}
 
 		      if (index->func_index_info)
@@ -2176,7 +2176,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
   if (set_get_element_nocopy (constraint_seq, i, &att_val) == NO_ERROR)
     {
       assert (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER);
-      att_id = DB_GET_INTEGER (&att_val);	/* The first attrID */
+      att_id = db_get_int (&att_val);	/* The first attrID */
       (void) or_install_btids_attribute (rep, att_id, &id);
     }
 
@@ -2223,7 +2223,7 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
 	{
 	  if (DB_VALUE_TYPE (&vals[i]) == DB_TYPE_SEQUENCE)
 	    {
-	      property_vars[i].seq = DB_GET_SEQUENCE (&vals[i]);
+	      property_vars[i].seq = db_get_set (&vals[i]);
 	    }
 
 	  if (property_vars[i].seq)
@@ -2272,7 +2272,7 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
 		{
 		  if (DB_VALUE_TYPE (&ids_val) == DB_TYPE_SEQUENCE)
 		    {
-		      ids_seq = DB_GET_SEQUENCE (&ids_val);
+		      ids_seq = db_get_set (&ids_val);
 		      or_install_btids_constraint (rep, ids_seq, property_vars[i].type, cons_name);
 		    }
 		}
@@ -2497,7 +2497,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	  db_make_null (&def_expr_format);
 
 	  or_get_value (&buf, &properties_val, tp_domain_resolve_default (DB_TYPE_SEQUENCE), properties_val_len, true);
-	  att_props = DB_GET_SEQUENCE (&properties_val);
+	  att_props = db_get_set (&properties_val);
 
 	  if (att_props != NULL && classobj_get_prop (att_props, "default_expr", &def_expr) > 0)
 	    {
@@ -2514,9 +2514,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		   */
 
 		  /* Currently, we allow only (T_TO_CHAR(int), default_expr(int), default_expr_format(string)) */
-		  assert (set_size (DB_GET_SEQUENCE (&def_expr)) == 3);
+		  assert (set_size (db_get_set (&def_expr)) == 3);
 
-		  def_expr_set = DB_GET_SEQUENCE (&def_expr);
+		  def_expr_set = db_get_set (&def_expr);
 
 		  /* get and cache default expression operator - op of expr */
 		  if (set_get_element_nocopy (def_expr_set, 0, &def_expr_op) != NO_ERROR)
@@ -2527,9 +2527,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		      goto error_cleanup;
 		    }
 		  assert (DB_VALUE_TYPE (&def_expr_op) == DB_TYPE_INTEGER
-			  && DB_GET_INT (&def_expr_op) == (int) T_TO_CHAR);
-		  att->default_value.default_expr.default_expr_op = DB_GET_INT (&def_expr_op);
-		  att->current_default_value.default_expr.default_expr_op = DB_GET_INT (&def_expr_op);
+			  && db_get_int (&def_expr_op) == (int) T_TO_CHAR);
+		  att->default_value.default_expr.default_expr_op = db_get_int (&def_expr_op);
+		  att->current_default_value.default_expr.default_expr_op = db_get_int (&def_expr_op);
 
 		  /* get and cache default expression type - arg1 of expr */
 		  if (set_get_element_nocopy (def_expr_set, 1, &def_expr_type) != NO_ERROR)
@@ -2541,9 +2541,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		    }
 		  assert (DB_VALUE_TYPE (&def_expr_type) == DB_TYPE_INTEGER);
 		  att->default_value.default_expr.default_expr_type =
-		    (DB_DEFAULT_EXPR_TYPE) DB_GET_INT (&def_expr_type);
+		    (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr_type);
 		  att->current_default_value.default_expr.default_expr_type =
-		    (DB_DEFAULT_EXPR_TYPE) DB_GET_INT (&def_expr_type);
+		    (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr_type);
 
 		  /* get and cache default expression format - arg2 of expr */
 		  if (set_get_element_nocopy (def_expr_set, 2, &def_expr_format) != NO_ERROR)
@@ -2570,9 +2570,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		  /* simple expressions like SYS_DATE */
 		  assert (DB_VALUE_TYPE (&def_expr) == DB_TYPE_INTEGER);
 
-		  att->default_value.default_expr.default_expr_type = (DB_DEFAULT_EXPR_TYPE) DB_GET_INT (&def_expr);
+		  att->default_value.default_expr.default_expr_type = (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr);
 		  att->current_default_value.default_expr.default_expr_type =
-		    (DB_DEFAULT_EXPR_TYPE) DB_GET_INT (&def_expr);
+		    (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr);
 		}
 	    }
 
@@ -3369,7 +3369,7 @@ or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info, REP
     {
       return ER_FAILED;
     }
-  partition_info->values = db_seq_copy (DB_GET_SEQUENCE (&val));
+  partition_info->values = db_seq_copy (db_get_set (&val));
   if (partition_info->values == NULL)
     {
       pr_clear_value (&val);
@@ -3454,7 +3454,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
       /* this sequence is an alternating pair of constraint name & info sequence, as by: { name, { BTID, [att_name,
        * asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, comment}, name, { BTID, [att_name, asc_dsc],
        * {fk_info | pk_info | prefix_length}, filter_predicate, comment}, ... } */
-      props = DB_GET_SEQUENCE (&value);
+      props = db_get_set (&value);
       len = set_size (props);
       for (j = 0; j < len; j += 2)
 	{
@@ -3480,7 +3480,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	      goto error_exit;
 	    }
 
-	  info = DB_GET_SEQUENCE (&uvalue);
+	  info = db_get_set (&uvalue);
 	  info_len = set_size (info);
 
 	  if (set_get_element_nocopy (info, info_len - 1, &cvalue) || DB_IS_NULL (&cvalue))
@@ -4003,7 +4003,7 @@ or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
     }
 
   buffer = db_get_string (&val);
-  fi_info->expr_stream_size = DB_GET_STRING_SIZE (&val);
+  fi_info->expr_stream_size = db_get_string_size (&val);
   fi_info->expr_stream = (char *) malloc (fi_info->expr_stream_size);
   if (fi_info->expr_stream == NULL)
     {
@@ -4017,14 +4017,14 @@ or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
       goto error;
     }
-  fi_info->col_id = DB_GET_INT (&val);
+  fi_info->col_id = db_get_int (&val);
 
   if (set_get_element_nocopy (fi_seq, 3, &val) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
       goto error;
     }
-  fi_info->attr_index_start = DB_GET_INT (&val);
+  fi_info->attr_index_start = db_get_int (&val);
 
   index->func_index_info = fi_info;
   return;

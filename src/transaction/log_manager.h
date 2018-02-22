@@ -199,4 +199,10 @@ extern int log_read_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log
 					  int *undo_buffer_size, char **undo_buffer, int *undo_size, char **undo_data);
 
 extern const char *log_sysop_end_type_string (LOG_SYSOP_END_TYPE end_type);
+
+extern INT64 log_get_clock_msec (void);
+
+extern void log_wakeup_remove_log_archive_daemon ();
+extern void log_wakeup_checkpoint_daemon ();
+
 #endif /* _LOG_MANAGER_H_ */

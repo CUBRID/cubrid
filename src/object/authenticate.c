@@ -8662,7 +8662,7 @@ au_check_serial_authorization (MOP serial_object)
       return ret_val;
     }
 
-  creator = DB_GET_OBJECT (&creator_val);
+  creator = db_get_object (&creator_val);
 
   ret_val = ER_QPROC_CANNOT_UPDATE_SERIAL;
 

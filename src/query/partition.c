@@ -1100,7 +1100,7 @@ partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNI
 		return MATCH_NOT_FOUND;
 	      }
 
-	    val_collection = DB_GET_COLLECTION (val);
+	    val_collection = db_get_set (val);
 	    for (j = 0; j < size; j++)
 	      {
 		db_set_get (part_collection, j, &col);
@@ -1135,7 +1135,7 @@ partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNI
 		status = MATCH_NOT_FOUND;
 	      }
 
-	    val_collection = DB_GET_COLLECTION (val);
+	    val_collection = db_get_set (val);
 	    for (j = 0; j < size; j++)
 	      {
 		db_set_get (part_collection, j, &col);
@@ -1210,7 +1210,7 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p, const PRU
   DB_VALUE val;
   MATCH_STATUS status = MATCH_NOT_FOUND;
 
-  DB_MAKE_NULL (&val);
+  db_make_null (&val);
 
   col_domain = pinfo->partition_pred->func_regu->domain;
   switch (op)
@@ -1254,7 +1254,7 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p, const PRU
 	    goto cleanup;
 	  }
 
-	values = DB_GET_COLLECTION (val_p);
+	values = db_get_set (val_p);
 	size = db_set_size (values);
 	if (size < 0)
 	  {
@@ -1330,8 +1330,8 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
   int rmin = DB_UNK, rmax = DB_UNK;
   MATCH_STATUS status;
 
-  DB_MAKE_NULL (&min);
-  DB_MAKE_NULL (&max);
+  db_make_null (&min);
+  db_make_null (&max);
 
   for (i = 0; i < PARTITIONS_COUNT (pinfo); i++)
     {
@@ -1518,7 +1518,7 @@ partition_prune (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * arg, const PRUNI
 
   if (op == PO_IS_NULL)
     {
-      DB_MAKE_NULL (&val);
+      db_make_null (&val);
       is_value = true;
     }
   else if (partition_get_value_from_regu_var (pinfo, arg, &val, &is_value) != NO_ERROR)
@@ -1586,7 +1586,7 @@ partition_get_value_from_regu_var (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 	if (regu->value.funcp->ftype != F_MIDXKEY)
 	  {
 	    *is_value = false;
-	    DB_MAKE_NULL (value_p);
+	    db_make_null (value_p);
 	    return NO_ERROR;
 	  }
 	if (partition_get_value_from_key (pinfo, regu, value_p, is_value) != NO_ERROR)
@@ -1607,7 +1607,7 @@ partition_get_value_from_regu_var (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
       break;
 
     default:
-      DB_MAKE_NULL (value_p);
+      db_make_null (value_p);
       *is_value = false;
       return NO_ERROR;
     }
@@ -1615,7 +1615,7 @@ partition_get_value_from_regu_var (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
   return NO_ERROR;
 
 error:
-  DB_MAKE_NULL (value_p);
+  db_make_null (value_p);
   *is_value = false;
 
   return ER_FAILED;
@@ -1724,7 +1724,7 @@ partition_get_value_from_key (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key
 
 	if (regu_list == NULL)
 	  {
-	    DB_MAKE_NULL (attr_key);
+	    db_make_null (attr_key);
 	    error = NO_ERROR;
 
 	    *is_present = false;
@@ -1743,7 +1743,7 @@ partition_get_value_from_key (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key
     case TYPE_CONSTANT:
       /* TYPE_CONSTANT comes from an index join. Since we haven't actually scanned anything yet, this value is not set
        * so we cannot use it here */
-      DB_MAKE_NULL (attr_key);
+      db_make_null (attr_key);
       error = NO_ERROR;
       *is_present = false;
       break;
@@ -1751,7 +1751,7 @@ partition_get_value_from_key (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key
     default:
       assert (false);
 
-      DB_MAKE_NULL (attr_key);
+      db_make_null (attr_key);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       error = ER_FAILED;
@@ -1785,7 +1785,7 @@ partition_get_value_from_inarith (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE *
   assert_release (src->type == TYPE_INARITH);
 
   *is_value = false;
-  DB_MAKE_NULL (value_p);
+  db_make_null (value_p);
 
   if (!partition_is_reguvar_const (src))
     {
@@ -2443,7 +2443,7 @@ partition_load_partition_predicate (PRUNING_CONTEXT * pinfo, OR_PARTITION * mast
 
   assert (DB_VALUE_TYPE (&val) == DB_TYPE_CHAR);
   expr_stream = db_get_string (&val);
-  stream_len = DB_GET_STRING_SIZE (&val);
+  stream_len = db_get_string_size (&val);
 
   /* unpack partition expression */
   error =

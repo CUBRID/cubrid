@@ -1538,7 +1538,7 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY
 	  strncpy (ha_apply_info->copied_log_path, log_path, sizeof (ha_apply_info->copied_log_path) - 1);
 
 	  /* 2. creation time */
-	  db_time = DB_GET_DATETIME (&out_value[out_value_idx++]);
+	  db_time = db_get_datetime (&out_value[out_value_idx++]);
 	  ha_apply_info->creation_time.date = db_time->date;
 	  ha_apply_info->creation_time.time = db_time->time;
 
@@ -1550,8 +1550,8 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY
 	    }
 	  else
 	    {
-	      ha_apply_info->committed_lsa.pageid = DB_GET_BIGINT (&out_value[out_value_idx++]);
-	      ha_apply_info->committed_lsa.offset = DB_GET_INTEGER (&out_value[out_value_idx++]);
+	      ha_apply_info->committed_lsa.pageid = db_get_bigint (&out_value[out_value_idx++]);
+	      ha_apply_info->committed_lsa.offset = db_get_int (&out_value[out_value_idx++]);
 	    }
 
 	  /* 6 ~ 7. committed_rep_lsa */
@@ -1562,17 +1562,17 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY
 	    }
 	  else
 	    {
-	      ha_apply_info->committed_rep_lsa.pageid = DB_GET_BIGINT (&out_value[out_value_idx++]);
-	      ha_apply_info->committed_rep_lsa.offset = DB_GET_INTEGER (&out_value[out_value_idx++]);
+	      ha_apply_info->committed_rep_lsa.pageid = db_get_bigint (&out_value[out_value_idx++]);
+	      ha_apply_info->committed_rep_lsa.offset = db_get_int (&out_value[out_value_idx++]);
 	    }
 
 	  /* 8 ~ 9. append_lsa */
-	  ha_apply_info->append_lsa.pageid = DB_GET_BIGINT (&out_value[out_value_idx++]);
-	  ha_apply_info->append_lsa.offset = DB_GET_INTEGER (&out_value[out_value_idx++]);
+	  ha_apply_info->append_lsa.pageid = db_get_bigint (&out_value[out_value_idx++]);
+	  ha_apply_info->append_lsa.offset = db_get_int (&out_value[out_value_idx++]);
 
 	  /* 10 ~ 11. eof_lsa */
-	  ha_apply_info->eof_lsa.pageid = DB_GET_BIGINT (&out_value[out_value_idx++]);
-	  ha_apply_info->eof_lsa.offset = DB_GET_INTEGER (&out_value[out_value_idx++]);
+	  ha_apply_info->eof_lsa.pageid = db_get_bigint (&out_value[out_value_idx++]);
+	  ha_apply_info->eof_lsa.offset = db_get_int (&out_value[out_value_idx++]);
 
 	  /* 12 ~ 13. final_lsa */
 	  if (DB_IS_NULL (&out_value[out_value_idx]) || DB_IS_NULL (&out_value[out_value_idx + 1]))
@@ -1582,8 +1582,8 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY
 	    }
 	  else
 	    {
-	      ha_apply_info->final_lsa.pageid = DB_GET_BIGINT (&out_value[out_value_idx++]);
-	      ha_apply_info->final_lsa.offset = DB_GET_INTEGER (&out_value[out_value_idx++]);
+	      ha_apply_info->final_lsa.pageid = db_get_bigint (&out_value[out_value_idx++]);
+	      ha_apply_info->final_lsa.offset = db_get_int (&out_value[out_value_idx++]);
 	    }
 
 	  /* 14 ~ 15. required_lsa */
@@ -1594,22 +1594,22 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY
 	    }
 	  else
 	    {
-	      ha_apply_info->required_lsa.pageid = DB_GET_BIGINT (&out_value[out_value_idx++]);
-	      ha_apply_info->required_lsa.offset = DB_GET_INTEGER (&out_value[out_value_idx++]);
+	      ha_apply_info->required_lsa.pageid = db_get_bigint (&out_value[out_value_idx++]);
+	      ha_apply_info->required_lsa.offset = db_get_int (&out_value[out_value_idx++]);
 	    }
 
 	  /* 16. log_record_time */
-	  db_time = DB_GET_DATETIME (&out_value[out_value_idx++]);
+	  db_time = db_get_datetime (&out_value[out_value_idx++]);
 	  ha_apply_info->log_record_time.date = db_time->date;
 	  ha_apply_info->log_record_time.time = db_time->time;
 
 	  /* 17. log_commit_time */
-	  db_time = DB_GET_DATETIME (&out_value[out_value_idx++]);
+	  db_time = db_get_datetime (&out_value[out_value_idx++]);
 	  ha_apply_info->log_commit_time.date = db_time->date;
 	  ha_apply_info->log_commit_time.time = db_time->time;
 
 	  /* 18. last_access_time */
-	  db_time = DB_GET_DATETIME (&out_value[out_value_idx++]);
+	  db_time = db_get_datetime (&out_value[out_value_idx++]);
 	  ha_apply_info->last_access_time.date = db_time->date;
 	  ha_apply_info->last_access_time.time = db_time->time;
 
@@ -1617,15 +1617,15 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY
 	  ha_apply_info->status = LA_STATUS_IDLE;
 
 	  /* 19 ~ 24. statistics */
-	  ha_apply_info->insert_counter = DB_GET_BIGINT (&out_value[out_value_idx++]);
-	  ha_apply_info->update_counter = DB_GET_BIGINT (&out_value[out_value_idx++]);
-	  ha_apply_info->delete_counter = DB_GET_BIGINT (&out_value[out_value_idx++]);
-	  ha_apply_info->schema_counter = DB_GET_BIGINT (&out_value[out_value_idx++]);
-	  ha_apply_info->commit_counter = DB_GET_BIGINT (&out_value[out_value_idx++]);
-	  ha_apply_info->fail_counter = DB_GET_BIGINT (&out_value[out_value_idx++]);
+	  ha_apply_info->insert_counter = db_get_bigint (&out_value[out_value_idx++]);
+	  ha_apply_info->update_counter = db_get_bigint (&out_value[out_value_idx++]);
+	  ha_apply_info->delete_counter = db_get_bigint (&out_value[out_value_idx++]);
+	  ha_apply_info->schema_counter = db_get_bigint (&out_value[out_value_idx++]);
+	  ha_apply_info->commit_counter = db_get_bigint (&out_value[out_value_idx++]);
+	  ha_apply_info->fail_counter = db_get_bigint (&out_value[out_value_idx++]);
 
 	  /* 25. start_time */
-	  db_time = DB_GET_DATETIME (&out_value[out_value_idx++]);
+	  db_time = db_get_datetime (&out_value[out_value_idx++]);
 	  ha_apply_info->start_time.date = db_time->date;
 	  ha_apply_info->start_time.time = db_time->time;
 
@@ -2963,7 +2963,7 @@ la_new_repl_item (LOG_LSA * lsa, LOG_LSA * target_lsa)
   LSA_COPY (&item->lsa, lsa);
   LSA_COPY (&item->target_lsa, target_lsa);
 
-  DB_MAKE_NULL (&item->key);
+  db_make_null (&item->key);
   item->packed_key_value_length = 0;
   item->packed_key_value = NULL;
 
