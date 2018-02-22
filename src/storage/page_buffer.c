@@ -3350,6 +3350,12 @@ pgbuf_produce_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, boo
 
   if (PGBUF_IS_VICTIM_CAND_LIST_IS_FULL (victim_candidate_info))
     {
+#if defined(SERVER_MODE)
+      if (thread_is_page_flush_thread_available ())
+	{
+	  thread_wakeup_page_flush_thread ();
+	}
+#endif
       /* Wait for consume. */
       PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_PB_FLUSH_COLLECT);
       *stop = true;
@@ -3519,6 +3525,13 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
 
   if (PGBUF_IS_VICTIM_CAND_LIST_IS_EMPTY (victim_candidate_info))
     {
+#if defined(SERVER_MODE)
+      if (thread_is_find_victim_candidates_thread_available ())
+	{
+	  thread_wakeup_find_victim_candidates_thread ();
+	}
+#endif
+
       /* Nothing to consume. */
       PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, perf_tracker, PSTAT_PB_FLUSH_FLUSH);
       *stop = true;
