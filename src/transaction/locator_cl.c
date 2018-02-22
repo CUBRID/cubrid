@@ -252,11 +252,7 @@ locator_is_class (MOP mop, DB_FETCH_MODE hint_purpose)
 
       if (er_errid () != NO_ERROR)
 	{
-	  error = er_stack_push ();
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
+	  er_stack_push ();
 	  error_saved = true;
 	}
       /* 
@@ -271,15 +267,11 @@ locator_is_class (MOP mop, DB_FETCH_MODE hint_purpose)
 	{
 	  if (error == NO_ERROR)
 	    {
-	      error = er_stack_pop ();
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
+	      er_stack_pop ();
 	    }
 	  else
 	    {
-	      er_stack_clear ();
+	      er_stack_pop_and_keep_error ();
 	    }
 	}
       if (error != NO_ERROR)

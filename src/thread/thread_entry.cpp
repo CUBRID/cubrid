@@ -24,6 +24,7 @@
 #include "thread_entry.hpp"
 
 #include "adjustable_array.h"
+#include "error_manager.h"
 #include "fault_injection.h"
 #include "log_compress.h"
 #include "memory_alloc.h"
@@ -55,9 +56,6 @@ namespace cubthread
     , private_heap_id (0)
     , cnv_adj_buffer ()
     , conn_entry (NULL)
-    , ermsg ()
-    , er_Msg (NULL)
-    , er_emergency_buf ()
     , xasl_unpack_info_ptr (NULL)
     , xasl_errcode (0)
     , xasl_recursion_depth (0)
@@ -100,6 +98,7 @@ namespace cubthread
     , count_private_allocators (0)
 #endif /* DEBUG */
     , m_id ()
+    , m_error ()
     , m_cleared (false)
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)

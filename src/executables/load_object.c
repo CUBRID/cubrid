@@ -1785,7 +1785,7 @@ er_filter_fileset (FILE * ef)
   return set_count;
 }
 
-
+// TODO: this is specific to loader. I don't think it belongs here.
 /*
  * er_filter_errid - check for ignorable errid
  *    return: NO_ERROR if ignorable errid. otherwise, error-code clear
@@ -1815,7 +1815,7 @@ er_filter_errid (bool ignore_warning)
 
   if (filter_ignore_errors[0])
     {
-      if (ignore_warning && er_severity () == ER_WARNING_SEVERITY)
+      if (ignore_warning && er_get_severity () == ER_WARNING_SEVERITY)
 	{
 	  goto clear_errid;
 	}

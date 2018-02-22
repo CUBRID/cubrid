@@ -70,8 +70,6 @@
 SYNC_CRITICAL_SECTION csectgl_Critical_sections[CRITICAL_SECTION_COUNT];
 
 static const char *csect_Names[] = {
-  "ER_LOG_FILE",
-  "ER_MSG_CACHE",
   "WFG",
   "LOG",
   "LOCATOR_CLASSNAME_TABLE",

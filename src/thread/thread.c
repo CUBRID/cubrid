@@ -274,6 +274,7 @@ thread_set_thread_entry_info (THREAD_ENTRY * entry_p)
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_SETSPECIFIC, 0);
       return ER_CSS_PTHREAD_SETSPECIFIC;
     }
+
   return r;
 }
 
@@ -1878,6 +1879,8 @@ thread_worker (void *arg_p)
   tsd_ptr->status = TS_FREE;	/* set thread stat as free */
   tsd_ptr->register_id ();
 
+  tsd_ptr->get_error_context ().register_thread_local ();
+
   /* during server is active */
   while (!tsd_ptr->shutdown)
     {
@@ -2007,19 +2010,8 @@ thread_check_ha_delay_info_thread (void *arg_p)
 #endif
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
-  /* wait until THREAD_CREATE() finishes */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
 
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;	/* daemon thread */
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  tsd_ptr->register_id ();
-
-  thread_Check_ha_delay_info_thread.is_running = true;
-  thread_Check_ha_delay_info_thread.is_available = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
+  thread_daemon_start (&thread_Check_ha_delay_info_thread, tsd_ptr, TT_DAEMON);
 
   while (!tsd_ptr->shutdown)
     {
@@ -2391,19 +2383,7 @@ thread_flush_control_thread (void *arg_p)
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
 
-  /* wait until THREAD_CREATE() finishes */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
-
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;	/* daemon thread */
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  tsd_ptr->register_id ();
-
-  thread_Flush_control_thread.is_available = true;
-  thread_Flush_control_thread.is_running = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
+  thread_daemon_start (&thread_Flush_control_thread, tsd_ptr, TT_DAEMON);
 
   rv = fileio_flush_control_initialize ();
   if (rv != NO_ERROR)
@@ -2505,19 +2485,8 @@ thread_log_flush_thread (void *arg_p)
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
-  /* wait until THREAD_CREATE() finishes */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
 
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;	/* daemon thread */
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  tsd_ptr->register_id ();
-
-  thread_Log_flush_thread.is_available = true;
-  thread_Log_flush_thread.is_running = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
+  thread_daemon_start (&thread_Log_flush_thread, tsd_ptr, TT_DAEMON);
 
   gettimeofday (&wakeup_time, NULL);
   total_elapsed_time = 0;
@@ -3681,22 +3650,6 @@ thread_rc_track_meter_assert_csect_dependency (THREAD_ENTRY * thread_p, THREAD_R
 	  THREAD_RC_TRACK_METER_ASSERT (thread_p, stderr, meter, meter->m_hold_buf[CSECT_CT_OID_TABLE] == 0);
 	  break;
 
-	  /* CSECT_ER_LOG_FILE -> X_CS -> [Y_CS] -> CSECT_ER_LOG_FILE is NOK */
-	  /* X_CS -> CSECT_ER_LOG_FILE -> [Y_CS] -> CSECT_ER_LOG_FILE is NOK */
-	case CSECT_ER_LOG_FILE:
-	  if (meter->m_hold_buf[CSECT_ER_LOG_FILE] > 1)
-	    {
-	      for (i = 0; i < meter->m_hold_buf_size && i < CRITICAL_SECTION_COUNT; i++)
-		{
-		  if (i == cs_idx)
-		    {
-		      continue;	/* skip myself */
-		    }
-		  THREAD_RC_TRACK_METER_ASSERT (thread_p, stderr, meter, meter->m_hold_buf[i] == 0);
-		}
-	    }
-	  break;
-
 	default:
 	  break;
 	}
@@ -4685,6 +4638,7 @@ thread_daemon_start (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p, TH
   thread_p->type = thread_type;	/* daemon thread */
   thread_p->status = TS_RUN;	/* set thread stat as RUN */
   thread_p->register_id ();
+  thread_p->get_error_context ().register_thread_local ();
 
   daemon->is_running = true;
   daemon->is_available = true;
