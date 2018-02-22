@@ -25,6 +25,7 @@
 
 #include "error_code.h"
 #include "error_manager.h"
+#include "memory_alloc.h"
 #if defined (SERVER_MODE)
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
