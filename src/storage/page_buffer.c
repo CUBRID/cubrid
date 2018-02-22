@@ -10371,7 +10371,6 @@ copy_unflushed_lsa:
   else
 #endif /* SERVER_MODE */
     {
-      lru_list = pgbuf_lru_list_from_bcb (bufptr);
       PGBUF_BCB_LOCK (bufptr);
       *is_bcb_locked = true;
       pgbuf_bcb_mark_was_flushed (thread_p, bufptr);
@@ -10381,15 +10380,19 @@ copy_unflushed_lsa:
 	{
 	  pgbuf_wake_flush_waiters (thread_p, bufptr);
 	}
-      else if (PGBUF_IS_SHARED_LRU_INDEX (lru_list->index))
-	{
-	  /* Give a chance to worker threads to find victims in shared lists. */
-	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_shared_lru_fail, -1);
-	}
       else
 	{
-	  /* Give a chance to worker threads to find victims in private lists. */
-	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_fail, -1);
+	  lru_list = pgbuf_lru_list_from_bcb (bufptr);
+	  if (PGBUF_IS_SHARED_LRU_INDEX (lru_list->index))
+	    {
+	      /* Give a chance to worker threads to find victims in shared lists. */
+	      ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_shared_lru_fail, -1);
+	    }
+	  else
+	    {
+	      /* Give a chance to worker threads to find victims in private lists. */
+	      ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_fail, -1);
+	    }
 	}
 #endif
     }
