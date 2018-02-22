@@ -60,9 +60,6 @@
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
 #endif /* SOLARIS */
 #include <signal.h>
-#if defined (SERVER_MODE)
-#include <atomic>
-#endif /* SERVER_MODE */
 
 /************************************************************************/
 /* Section shared with client... TODO: remove any code accessing log    */
@@ -2029,13 +2026,6 @@ extern int log_Tran_index;	/* Index onto transaction table for current thread of
 extern LOG_GLOBAL log_Gl;
 
 extern LOG_LOGGING_STAT log_Stat;
-
-#if defined (SERVER_MODE)
-/* Current time in milliseconds */
-// *INDENT-OFF*
-extern std::atomic<INT64> log_Clock_msec;
-// *INDENT-ON*
-#endif /* SERVER_MODE */
 
 /* Name of the database and logs */
 extern char log_Path[];

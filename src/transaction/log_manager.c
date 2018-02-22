@@ -43,6 +43,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include <cstdint>
+
 #include "log_manager.h"
 
 #include "recovery.h"
@@ -202,6 +204,13 @@ extern INT32 vacuum_Global_oldest_active_blockers_counter;
 #define LOG_TDES_LAST_SYSOP(tdes) (&(tdes)->topops.stack[(tdes)->topops.last])
 #define LOG_TDES_LAST_SYSOP_PARENT_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->lastparent_lsa)
 #define LOG_TDES_LAST_SYSOP_POSP_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->posp_lsa)
+
+#if defined (SERVER_MODE)
+/* Current time in milliseconds */
+// *INDENT-OFF*
+std::atomic<std::int64_t> log_Clock_msec = {0};
+// *INDENT-ON*
+#endif /* SERVER_MODE */
 
 static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_dbcreation);
 static int log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -5371,7 +5380,7 @@ log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool at_co
 #if defined (SERVER_MODE)
 	  if (at_commit && entry->top->state == LOB_PERMANENT_DELETED)
 	    {
-	      es_notify_vacuum_for_delete (thread_p, entry->top->locator);
+	      vacuum_notify_es_deleted (thread_p, entry->top->locator);
 	    }
 	  else
 	    {
