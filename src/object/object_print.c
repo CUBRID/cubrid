@@ -412,7 +412,7 @@ help_class_names (const char *qualifier)
 		  buffer[0] = '\0';
 		  if (!requested_owner && db_get (owner, "name", &owner_name) >= 0)
 		    {
-		      tmp = DB_GET_STRING (&owner_name);
+		      tmp = db_get_string (&owner_name);
 		      if (tmp)
 			{
 			  snprintf (buffer, sizeof (buffer) - 1, "%s.%s", tmp, cname);

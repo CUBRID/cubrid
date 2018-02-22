@@ -271,7 +271,7 @@ pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * val)
   int is_class = 0;
 
   assert (parser != NULL);
-  DB_MAKE_NULL (&val1);
+  db_make_null (&val1);
 
   if (tree == NULL || val == NULL)
     {
@@ -294,7 +294,7 @@ pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * val)
 	    {
 	      result = true;
 	    }
-	  else if (DB_VALUE_TYPE (&val1) == DB_TYPE_OBJECT && (obj1 = DB_GET_OBJECT (&val1)) != NULL)
+	  else if (DB_VALUE_TYPE (&val1) == DB_TYPE_OBJECT && (obj1 = db_get_object (&val1)) != NULL)
 	    {
 	      int error;
 
@@ -633,7 +633,7 @@ pt_is_reference_to_reusable_oid (DB_VALUE * val)
 
   if (vtype == DB_TYPE_OBJECT)
     {
-      DB_OBJECT *obj = DB_GET_OBJECT (val);
+      DB_OBJECT *obj = db_get_object (val);
       int is_class = 0;
 
       if (obj == NULL)
@@ -659,7 +659,7 @@ pt_is_reference_to_reusable_oid (DB_VALUE * val)
     }
   else if (vtype == DB_TYPE_POINTER)
     {
-      DB_OTMPL *obj_tmpl = (DB_OTMPL *) DB_GET_POINTER (val);
+      DB_OTMPL *obj_tmpl = (DB_OTMPL *) db_get_pointer (val);
 
       if (obj_tmpl == NULL)
 	{
@@ -1100,7 +1100,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 			  int num_alloc;
 
 			  val = pt_value_to_db (parser, arg2);
-			  num_alloc = DB_GET_INTEGER (val);
+			  num_alloc = db_get_int (val);
 			  if (num_alloc < 1)
 			    {
 			      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
@@ -1170,8 +1170,8 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 	    }
 	  else
 	    {
-	      INTL_CODESET opd1_cs = DB_IS_NULL (&opd1) ? LANG_SYS_CODESET : DB_GET_STRING_CODESET (&opd1);
-	      int opd1_coll = DB_IS_NULL (&opd1) ? LANG_SYS_COLLATION : DB_GET_STRING_COLLATION (&opd1);
+	      INTL_CODESET opd1_cs = DB_IS_NULL (&opd1) ? LANG_SYS_CODESET : db_get_string_codeset (&opd1);
+	      int opd1_coll = DB_IS_NULL (&opd1) ? LANG_SYS_COLLATION : db_get_string_collation (&opd1);
 
 	      switch (op)
 		{
@@ -1205,8 +1205,8 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 	    }
 	  else
 	    {
-	      INTL_CODESET opd1_cs = DB_IS_NULL (&opd1) ? LANG_SYS_CODESET : DB_GET_STRING_CODESET (&opd1);
-	      int opd1_coll = DB_IS_NULL (&opd1) ? LANG_SYS_COLLATION : DB_GET_STRING_COLLATION (&opd1);
+	      INTL_CODESET opd1_cs = DB_IS_NULL (&opd1) ? LANG_SYS_CODESET : db_get_string_codeset (&opd1);
+	      int opd1_coll = DB_IS_NULL (&opd1) ? LANG_SYS_COLLATION : db_get_string_collation (&opd1);
 
 	      switch (op)
 		{

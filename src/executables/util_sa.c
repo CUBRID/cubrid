@@ -2849,15 +2849,15 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 		  assert (DB_VALUE_TYPE (&class_name) == DB_TYPE_STRING);
 		  assert (DB_VALUE_TYPE (&ct) == DB_TYPE_INTEGER);
 
-		  if (DB_GET_INTEGER (&ct) != 0)
+		  if (db_get_int (&ct) != 0)
 		    {
 		      continue;
 		    }
-		  fprintf (stdout, "%s\n", DB_GET_STRING (&class_name));
+		  fprintf (stdout, "%s\n", db_get_string (&class_name));
 
 		  /* output query to fix schema */
 		  snprintf (query, sizeof (query) - 1, "ALTER TABLE [%s] " "COLLATE utf8_bin;",
-			    DB_GET_STRING (&class_name));
+			    db_get_string (&class_name));
 		  fprintf (f_stmt, "%s\n", query);
 		  need_manual_sync = true;
 		}
@@ -2910,9 +2910,9 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 		    }
 		  assert (DB_VALUE_TYPE (&class_name) == DB_TYPE_STRING);
 		  assert (DB_VALUE_TYPE (&index_name) == DB_TYPE_STRING);
-		  fprintf (stdout, "%s | %s\n", DB_GET_STRING (&class_name), DB_GET_STRING (&index_name));
+		  fprintf (stdout, "%s | %s\n", db_get_string (&class_name), db_get_string (&index_name));
 		  snprintf (query, sizeof (query) - 1, "ALTER TABLE [%s] DROP FOREIGN KEY [%s];",
-			    DB_GET_STRING (&class_name), DB_GET_STRING (&index_name));
+			    db_get_string (&class_name), db_get_string (&index_name));
 		  fprintf (f_stmt, "%s\n", query);
 		  need_manual_sync = true;
 		}
@@ -2985,26 +2985,26 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 		  assert (DB_VALUE_TYPE (&attr_data_type) == DB_TYPE_STRING);
 		  assert (DB_VALUE_TYPE (&has_part) == DB_TYPE_INTEGER);
 
-		  fprintf (stdout, "%s | %s %s\n", DB_GET_STRING (&class_name), DB_GET_STRING (&attr),
-			   DB_GET_STRING (&attr_data_type));
+		  fprintf (stdout, "%s | %s %s\n", db_get_string (&class_name), db_get_string (&attr),
+			   db_get_string (&attr_data_type));
 
 		  /* output query to fix schema */
-		  if (DB_GET_INTEGER (&ct) == 0)
+		  if (db_get_int (&ct) == 0)
 		    {
-		      if (DB_GET_INTEGER (&has_part) == 1)
+		      if (db_get_int (&has_part) == 1)
 			{
 			  /* class is partitioned, remove partition; we cannot change the collation of an attribute
 			   * having partitions */
-			  fprintf (f_stmt, "ALTER TABLE [%s] REMOVE PARTITIONING;\n", DB_GET_STRING (&class_name));
+			  fprintf (f_stmt, "ALTER TABLE [%s] REMOVE PARTITIONING;\n", db_get_string (&class_name));
 			  add_to_part_tables = true;
 			}
 
 		      snprintf (query, sizeof (query) - 1, "ALTER TABLE [%s] " "MODIFY [%s] %s COLLATE utf8_bin;",
-				DB_GET_STRING (&class_name), DB_GET_STRING (&attr), DB_GET_STRING (&attr_data_type));
+				db_get_string (&class_name), db_get_string (&attr), db_get_string (&attr_data_type));
 		    }
 		  else
 		    {
-		      snprintf (query, sizeof (query) - 1, "DROP VIEW [%s];", DB_GET_STRING (&class_name));
+		      snprintf (query, sizeof (query) - 1, "DROP VIEW [%s];", db_get_string (&class_name));
 
 		      if (vclass_names == NULL || vclass_names_alloced <= vclass_names_used)
 			{
@@ -3022,9 +3022,9 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 			  vclass_names_alloced *= 2;
 			}
 
-		      memcpy (vclass_names + vclass_names_used, DB_GET_STRING (&class_name),
-			      DB_GET_STRING_SIZE (&class_name));
-		      vclass_names_used += DB_GET_STRING_SIZE (&class_name);
+		      memcpy (vclass_names + vclass_names_used, db_get_string (&class_name),
+			      db_get_string_size (&class_name));
+		      vclass_names_used += db_get_string_size (&class_name);
 		      memcpy (vclass_names + vclass_names_used, "\0", 1);
 		      vclass_names_used += 1;
 		    }
@@ -3049,9 +3049,9 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 			  part_tables_alloced *= 2;
 			}
 
-		      memcpy (part_tables + part_tables_used, DB_GET_STRING (&class_name),
-			      DB_GET_STRING_SIZE (&class_name));
-		      part_tables_used += DB_GET_STRING_SIZE (&class_name);
+		      memcpy (part_tables + part_tables_used, db_get_string (&class_name),
+			      db_get_string_size (&class_name));
+		      part_tables_used += db_get_string_size (&class_name);
 		      memcpy (part_tables + part_tables_used, "\0", 1);
 		      part_tables_used += 1;
 		    }
@@ -3123,18 +3123,18 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 		  assert (DB_VALUE_TYPE (&view) == DB_TYPE_STRING);
 		  assert (DB_VALUE_TYPE (&query_spec) == DB_TYPE_STRING);
 
-		  fprintf (stdout, "%s | %s\n", DB_GET_STRING (&view), DB_GET_STRING (&query_spec));
+		  fprintf (stdout, "%s | %s\n", db_get_string (&view), db_get_string (&query_spec));
 
 		  /* output query to fix schema */
 		  if (vclass_names != NULL)
 		    {
 		      char *search = vclass_names;
-		      int view_name_size = DB_GET_STRING_SIZE (&view);
+		      int view_name_size = db_get_string_size (&view);
 
 		      /* search if the view was already put in .SQL file */
 		      while (search + view_name_size < vclass_names + vclass_names_used)
 			{
-			  if (memcmp (search, DB_GET_STRING (&view), view_name_size) == 0
+			  if (memcmp (search, db_get_string (&view), view_name_size) == 0
 			      && *(search + view_name_size) == '\0')
 			    {
 			      already_dropped = true;
@@ -3150,7 +3150,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 
 		  if (!already_dropped)
 		    {
-		      snprintf (query, sizeof (query) - 1, "DROP VIEW [%s];", DB_GET_STRING (&view));
+		      snprintf (query, sizeof (query) - 1, "DROP VIEW [%s];", db_get_string (&view));
 		      fprintf (f_stmt, "%s\n", query);
 		    }
 		  need_manual_sync = true;
@@ -3199,10 +3199,10 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 		  assert (DB_VALUE_TYPE (&trig_name) == DB_TYPE_STRING);
 		  assert (DB_VALUE_TYPE (&trig_cond) == DB_TYPE_STRING);
 
-		  fprintf (stdout, "%s | %s\n", DB_GET_STRING (&trig_name), DB_GET_STRING (&trig_cond));
+		  fprintf (stdout, "%s | %s\n", db_get_string (&trig_name), db_get_string (&trig_cond));
 
 		  /* output query to fix schema */
-		  snprintf (query, sizeof (query) - 1, "DROP TRIGGER [%s];", DB_GET_STRING (&trig_name));
+		  snprintf (query, sizeof (query) - 1, "DROP TRIGGER [%s];", db_get_string (&trig_name));
 		  fprintf (f_stmt, "%s\n", query);
 		  need_manual_sync = true;
 		}
@@ -3258,12 +3258,12 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 		  assert (DB_VALUE_TYPE (&func_expr) == DB_TYPE_STRING);
 		  assert (DB_VALUE_TYPE (&class_name) == DB_TYPE_STRING);
 
-		  fprintf (stdout, "%s | %s | %s\n", DB_GET_STRING (&class_name), DB_GET_STRING (&index_name),
-			   DB_GET_STRING (&func_expr));
+		  fprintf (stdout, "%s | %s | %s\n", db_get_string (&class_name), db_get_string (&index_name),
+			   db_get_string (&func_expr));
 
 		  /* output query to fix schema */
 		  snprintf (query, sizeof (query) - 1, "ALTER TABLE [%s] " "DROP INDEX [%s];",
-			    DB_GET_STRING (&class_name), DB_GET_STRING (&index_name));
+			    db_get_string (&class_name), db_get_string (&index_name));
 		  fprintf (f_stmt, "%s\n", query);
 		  need_manual_sync = true;
 		}

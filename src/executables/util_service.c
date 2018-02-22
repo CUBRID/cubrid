@@ -40,6 +40,7 @@
 #include "porting.h"
 #include "utility.h"
 #include "error_code.h"
+#include "error_manager.h"
 #include "system_parameter.h"
 #include "connection_cl.h"
 #include "util_func.h"
@@ -527,6 +528,8 @@ main (int argc, char *argv[])
   sprintf (env_buf, "%d", pid);
   envvar_set (UTIL_PID_ENVVAR_NAME, env_buf);
 
+  ER_SAFE_INIT (NULL, ER_NEVER_EXIT);
+
   Argv = (const char **) argv;
   if (argc == 2)
     {
@@ -537,7 +540,7 @@ main (int argc, char *argv[])
 	}
     }
 
-  /* validate the number of arguments to avoid klocwork's error message */
+  /* validate the number of arguments to avoid Klockwork's error message */
   if (argc < 2 || argc > 1024)
     {
       util_type = -1;

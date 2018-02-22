@@ -458,8 +458,8 @@ db_calculate_current_server_time (PARSER_CONTEXT * parser)
 			      c_time_struct->tm_year + 1900, c_time_struct->tm_hour, c_time_struct->tm_min,
 			      c_time_struct->tm_sec, curr_server_timeb.millitm);
 
-	  DB_MAKE_DATETIME (&parser->sys_datetime, &datetime);
-	  DB_MAKE_TIMESTAMP (&parser->sys_epochtime, (DB_TIMESTAMP) curr_server_timeb.time);
+	  db_make_datetime (&parser->sys_datetime, &datetime);
+	  db_make_timestamp (&parser->sys_epochtime, (DB_TIMESTAMP) curr_server_timeb.time);
 	}
     }
 }
@@ -2075,7 +2075,7 @@ values_list_to_values_array (PARSER_CONTEXT * parser, PT_NODE * values_list, DB_
 	  assert (current_value->info.expr.arg1->node_type == PT_VALUE);
 
 	  name = pt_value_to_db (parser, current_value->info.expr.arg1);
-	  DB_MAKE_NULL (&val);
+	  db_make_null (&val);
 	  if (db_get_variable (name, &val) != NO_ERROR)
 	    {
 	      assert (er_errid () != NO_ERROR);
