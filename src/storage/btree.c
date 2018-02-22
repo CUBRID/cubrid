@@ -20108,7 +20108,7 @@ btree_get_next_node_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_NODE_SCAN 
 
   /* Get node type */
   pr_clear_value (node_info[BTREE_NODE_INFO_NODE_TYPE]);
-  db_make_string (node_info[BTREE_NODE_INFO_NODE_TYPE], (node_type == BTREE_NON_LEAF_NODE) ? "non-leaf" : "leaf");
+  db_make_string_copy (node_info[BTREE_NODE_INFO_NODE_TYPE], (node_type == BTREE_NON_LEAF_NODE) ? "non-leaf" : "leaf");
 
   /* Get key count */
   db_make_int (node_info[BTREE_NODE_INFO_KEY_COUNT], key_cnt);
