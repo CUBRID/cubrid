@@ -1664,7 +1664,7 @@ csect_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values
       idx++;
 
       /* The name of the critical section */
-      db_make_string (&vals[idx], CSECT_NAME (csect));
+      db_make_string_copy (&vals[idx], CSECT_NAME (csect));
       idx++;
 
       /* 'N readers', '1 writer', 'none' */
