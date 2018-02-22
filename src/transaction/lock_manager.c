@@ -5970,10 +5970,7 @@ lock_deadlock_detect_daemon_init ()
 void
 lock_deadlock_detect_daemon_destroy ()
 {
-  if (lock_Deadlock_detect_daemon != NULL)
-    {
-      cubthread::get_manager ()->destroy_daemon (lock_Deadlock_detect_daemon);
-    }
+  cubthread::get_manager ()->destroy_daemon (lock_Deadlock_detect_daemon);
 }
 #endif /* SERVER_MODE */
 // *INDENT-ON*

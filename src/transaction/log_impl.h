@@ -60,6 +60,9 @@
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
 #endif /* SOLARIS */
 #include <signal.h>
+#if defined (SERVER_MODE)
+#include <atomic>
+#endif /* SERVER_MODE */
 
 /************************************************************************/
 /* Section shared with client... TODO: remove any code accessing log    */
@@ -2027,10 +2030,12 @@ extern LOG_GLOBAL log_Gl;
 
 extern LOG_LOGGING_STAT log_Stat;
 
-#if defined(HAVE_ATOMIC_BUILTINS)
-/* Current time in seconds */
-extern UINT64 log_Clock_msec;
-#endif /* HAVE_ATOMIC_BUILTINS */
+#if defined (SERVER_MODE)
+/* Current time in milliseconds */
+// *INDENT-OFF*
+extern std::atomic<INT64> log_Clock_msec;
+// *INDENT-ON*
+#endif /* SERVER_MODE */
 
 /* Name of the database and logs */
 extern char log_Path[];
@@ -2149,9 +2154,6 @@ extern int logpb_initialize_log_names (THREAD_ENTRY * thread_p, const char *db_f
 				       const char *prefix_logname);
 extern bool logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 			     const char *prefix_logname);
-#if defined(SERVER_MODE)
-extern void logpb_do_checkpoint (void);
-#endif /* SERVER_MODE */
 extern LOG_PAGEID logpb_checkpoint (THREAD_ENTRY * thread_p);
 extern void logpb_dump_checkpoint_trans (FILE * out_fp, int length, void *data);
 extern int logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_path,
@@ -2287,6 +2289,10 @@ extern char *logtb_find_client_hostname (int tran_index);
 extern void logtb_set_current_user_active (THREAD_ENTRY * thread_p, bool is_user_active);
 extern int logtb_find_client_name_host_pid (int tran_index, char **client_prog_name, char **client_user_name,
 					    char **client_host_name, int *client_pid);
+#if defined (SERVER_MODE)
+extern int logtb_find_client_tran_name_host_pid (int &tran_index, char **client_prog_name, char **client_user_name,
+						 char **client_host_name, int *client_pid);
+#endif // SERVER_MODE
 extern int logtb_find_current_client_name_host_pid (char **client_prog_name, char **client_user_name,
 						    char **client_host_name, int *client_pid);
 extern int logtb_get_client_ids (int tran_index, LOG_CLIENTIDS * client_info);
@@ -2395,9 +2401,6 @@ extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr);
 
 extern VACUUM_LOG_BLOCKID logpb_last_complete_blockid (void);
-
-extern void logpb_daemons_init ();
-extern void logpb_daemons_destroy ();
 
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #endif /* _LOG_IMPL_H_ */

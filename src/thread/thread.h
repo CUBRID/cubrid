@@ -321,15 +321,11 @@ extern void thread_try_wakeup_page_flush_thread (void);
 extern void thread_wakeup_page_buffer_maintenance_thread (void);
 extern void thread_wakeup_page_post_flush_thread (void);
 extern void thread_wakeup_flush_control_thread (void);
-extern void thread_wakeup_auto_volume_expansion_thread (void);
 
 /* is available functions */
 extern bool thread_is_page_flush_thread_available (void);
 extern bool thread_is_page_post_flush_thread_available (void);
 extern bool thread_is_log_flush_thread_available (void);
-
-/* is running tunfions */
-extern bool thread_auto_volume_expansion_thread_is_running (void);
 
 extern THREAD_ENTRY *thread_find_first_lockwait_entry (int *thrd_index);
 extern THREAD_ENTRY *thread_find_next_lockwait_entry (int *thrd_index);
@@ -381,8 +377,6 @@ extern void thread_inc_recursion_depth (THREAD_ENTRY * thread_p);
 extern void thread_dec_recursion_depth (THREAD_ENTRY * thread_p);
 extern void thread_clear_recursion_depth (THREAD_ENTRY * thread_p);
 
-extern INT64 thread_get_log_clock_msec (void);
-
 extern const char *thread_type_to_string (int type);
 extern const char *thread_status_to_string (int status);
 extern const char *thread_resume_status_to_string (int resume_status);
@@ -398,8 +392,6 @@ extern pthread_mutex_t css_Internal_mutex_for_mutex_initialize;
 #else /* WINDOWS */
 extern void *thread_worker (void *);
 #endif /* !WINDOWS */
-
-extern bool thread_is_auto_volume_expansion_thread_available (void);
 
 extern THREAD_ENTRY *thread_iterate (THREAD_ENTRY * thread_p);
 

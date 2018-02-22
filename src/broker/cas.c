@@ -80,6 +80,7 @@
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "environment_variable.h"
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#include "error_manager.h"
 
 static const int DEFAULT_CHECK_INTERVAL = 1;
 
@@ -861,6 +862,9 @@ cas_main (void)
 
   stripped_column_name = shm_appl->stripped_column_name;
 
+  // init error manager with default arguments; should be reinitialized later
+  er_init (NULL, ER_NEVER_EXIT);
+
 #if defined(WINDOWS)
   __try
   {
@@ -948,7 +952,7 @@ cas_main (void)
 	    set_cubrid_file (FID_CUBRID_ERR_DIR, shm_appl->err_log_dir);
 
 	    as_db_err_log_set (broker_name, shm_proxy_id, shm_shard_id, shm_shard_cas_id, shm_as_index, cas_shard_flag);
-	    er_final (ER_ALL_FINAL);
+	    er_final (ER_ALL_FINAL);	// final & no reinit? is this safe?
 	    as_info->cas_err_log_reset = 0;
 	  }
 #endif
@@ -1501,6 +1505,7 @@ cas_final (void)
   cas_free (false);
   as_info->pid = 0;
   as_info->uts_status = UTS_STATUS_RESTART;
+  er_final (ER_ALL_FINAL);
   exit (0);
 }
 

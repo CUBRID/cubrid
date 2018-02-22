@@ -2681,7 +2681,7 @@ sm_rename_class (MOP op, const char *new_name)
 			  break;
 			}
 
-		      class_name = DB_GET_STRING (&name_val);
+		      class_name = db_get_string (&name_val);
 		      if (class_name != NULL && (strcmp (current, class_name) == 0))
 			{
 			  int save;
@@ -3127,7 +3127,7 @@ sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type, char *keyat
 	  char *p = NULL;
 
 	  keyattr[0] = 0;
-	  if (DB_IS_NULL (&attrname) || (p = DB_GET_STRING (&attrname)) == NULL)
+	  if (DB_IS_NULL (&attrname) || (p = db_get_string (&attrname)) == NULL)
 	    {
 	      goto partition_failed;
 	    }
@@ -9041,7 +9041,7 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 		      int cnstr_exists = 0;
 
 		      /* Does the constraint exist in the subclass ? */
-		      DB_MAKE_NULL (&cnstr_val);
+		      db_make_null (&cnstr_val);
 		      cnstr_exists =
 			classobj_find_prop_constraint (flat->properties, classobj_map_constraint_to_property (c->type),
 						       c->name, &cnstr_val);
@@ -9053,8 +9053,8 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			  int is_global_index = 0;
 
 			  /* Get the BTID from the local constraint */
-			  DB_MAKE_NULL (&btid_val);
-			  local_property = DB_GET_SEQ (&cnstr_val);
+			  db_make_null (&btid_val);
+			  local_property = db_get_set (&cnstr_val);
 			  if (set_get_element (local_property, 0, &btid_val))
 			    {
 			      pr_clear_value (&cnstr_val);
@@ -13054,7 +13054,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 	  error = db_get (att->auto_increment, "class_name", &name_val);
 	  if (error == NO_ERROR)
 	    {
-	      class_name = DB_GET_STRING (&name_val);
+	      class_name = db_get_string (&name_val);
 	      if (class_name != NULL && (strcmp (sm_ch_name ((MOBJ) class_), class_name) == 0))
 		{
 		  int save;
@@ -15551,8 +15551,8 @@ filter_local_constraints (SM_TEMPLATE * template_, SM_CLASS * super_class)
       return NO_ERROR;
     }
 
-  DB_MAKE_NULL (&oldval);
-  DB_MAKE_NULL (&newval);
+  db_make_null (&oldval);
+  db_make_null (&newval);
 
   /* get old constraints */
   error = classobj_make_class_constraints (super_class->properties, super_class->attributes, &old_constraints);
@@ -15604,7 +15604,7 @@ filter_local_constraints (SM_TEMPLATE * template_, SM_CLASS * super_class)
 	      goto cleanup;
 	    }
 
-	  seq = DB_GET_SEQ (&oldval);
+	  seq = db_get_set (&oldval);
 	  found = classobj_drop_prop (seq, c->name);
 	  if (found == 0)
 	    {
@@ -15615,7 +15615,7 @@ filter_local_constraints (SM_TEMPLATE * template_, SM_CLASS * super_class)
 		}
 	    }
 
-	  DB_MAKE_SEQ (&newval, seq);
+	  db_make_sequence (&newval, seq);
 
 	  classobj_put_prop (template_->properties, classobj_map_constraint_to_property (c->type), &newval);
 
