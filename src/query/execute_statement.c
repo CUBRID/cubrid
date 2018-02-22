@@ -8841,7 +8841,10 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      else if (contextp->recompile_xasl == true)
 		{
 		  /* recompile requested by server */
-		  stream.xasl_id = NULL;
+		  if (stream.xasl_id != NULL)
+		    {
+		      free_and_init (stream.xasl_id);
+		    }
 		}
 	    }
 
@@ -10116,7 +10119,10 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	      else if (contextp->recompile_xasl == true)
 		{
 		  /* recompile requested by server */
-		  stream.xasl_id = NULL;
+		  if (stream.xasl_id != NULL)
+		    {
+		      free_and_init (stream.xasl_id);
+		    }
 		}
 	    }
 	  if (stream.xasl_id == NULL && err == NO_ERROR)
@@ -10729,7 +10735,10 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
       else if (contextp->recompile_xasl == true)
 	{
 	  /* recompile requested by server */
-	  stream.xasl_id = NULL;
+	  if (stream.xasl_id != NULL)
+	    {
+	      free_and_init (stream.xasl_id);
+	    }
 	}
     }
 
@@ -13967,7 +13976,10 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       else if (contextp->recompile_xasl == true)
 	{
 	  /* recompile flag was returned by server */
-	  stream.xasl_id = NULL;
+	  if (stream.xasl_id != NULL)
+	    {
+	      free_and_init (stream.xasl_id);
+	    }
 	}
       else if (stream.xasl_id != NULL)
 	{
@@ -13976,7 +13988,10 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (pt_recompile_for_limit_optimizations (parser, statement, stream.xasl_header->xasl_flag))
 	    {
 	      contextp->recompile_xasl = true;
-	      stream.xasl_id = NULL;
+	      if (stream.xasl_id != NULL)
+		{
+		  free_and_init (stream.xasl_id);
+		}
 	    }
 	}
     }
@@ -15718,7 +15733,10 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  else if (contextp->recompile_xasl == true)
 	    {
 	      /* recompile requested by server */
-	      stream.xasl_id = NULL;
+	      if (stream.xasl_id != NULL)
+		{
+		  free_and_init (stream.xasl_id);
+		}
 	    }
 	}
 
