@@ -17251,8 +17251,8 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 
 	  schema_raw_length = mr_data_lengthval_string (&schema_raw_value, disk);
 
-          pr_clear_value(&schema_raw_value);
-          pr_clear_value(&json_body_value);
+	  pr_clear_value (&schema_raw_value);
+	  pr_clear_value (&json_body_value);
 
 	  return json_body_length + schema_raw_length;
 	}

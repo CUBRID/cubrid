@@ -5641,7 +5641,7 @@ mq_set_non_updatable_oid (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * vir
 
 	  select_list->data_type->info.data_type.virt_object = virt_entity->info.name.db_object;
 
-          pr_clear_value(&vid);
+	  pr_clear_value (&vid);
 	}
       break;
     case PT_UNION:

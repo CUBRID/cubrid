@@ -1946,7 +1946,7 @@ db_make_string (DB_VALUE * value, char *str)
  */
 int
 db_make_string_copy (DB_VALUE * value, const char *str)
-{
+{ 
   int error;
   DB_VALUE tmp_value;
 

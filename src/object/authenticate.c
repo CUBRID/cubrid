@@ -1551,7 +1551,7 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
   if (db_class_inst == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      pr_clear_value(&class_name_val);
+      pr_clear_value (&class_name_val);
       return er_errid ();
     }
 
@@ -1569,8 +1569,7 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
   db_make_int (&value, (int) grant_option);
   obj_set (au_obj, "is_grantable", &value);
 
-  pr_clear_value(&class_name_val);
-
+  pr_clear_value (&class_name_val);
   return NO_ERROR;
 }
 
@@ -2844,7 +2843,7 @@ au_set_user_comment (MOP user, const char *comment)
     }
   AU_RESTORE (save);
 
-  pr_clear_value(&value);
+  pr_clear_value (&value);
   return error;
 }
 

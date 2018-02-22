@@ -561,18 +561,18 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
       idx++;
 
       /* Status */
-      db_make_string_copy(&vals[idx], thread_status_to_string (thrd->status));
+      db_make_string_copy (&vals[idx], thread_status_to_string (thrd->status));
       idx++;
 
       /* Resume_status */
-      db_make_string_copy(&vals[idx], thread_resume_status_to_string (thrd->resume_status));
+      db_make_string_copy (&vals[idx], thread_resume_status_to_string (thrd->resume_status));
       idx++;
 
       /* Net_request */
       ival = thrd->net_request_index;
       if (ival != -1)
 	{
-        db_make_string_copy(&vals[idx], net_server_request_name (ival));
+	  db_make_string_copy (&vals[idx], net_server_request_name (ival));
 	}
       else
 	{
