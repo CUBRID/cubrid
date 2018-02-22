@@ -215,72 +215,48 @@ class JSON_BASE_HANDLER
 //
 class JSON_WALKER
 {
-public:
-  JSON_WALKER () = delete;
-  ~JSON_WALKER () = delete;
-
-  int WalkDocument (JSON_DOC & document);
-
-protected:
-  virtual int
-  CallBefore (JSON_VALUE & value)
-  {
-    // do nothing
-    return NO_ERROR;
-  }
-
-  virtual int
-  CallAfter (JSON_VALUE & value)
-  {
-    // do nothing
-    return NO_ERROR;
-  }
-
-private:
-  int WalkValue (JSON_VALUE & value);
-};
-
-/*
-* JSON_DUPLICATE_KEYS_CHECKER - This class extends JSON_BASE_HANDLER
-*
-* It is a handler used to check if the json document has duplicate keys in an object
-* We override only the StartObject method because we need to check the keys from the same level in the tree
-*
-* TODO: Extend walker instead of handler
-*/
-class JSON_DUPLICATE_KEYS_CHECKER : public JSON_BASE_HANDLER
-{
   public:
-    JSON_DUPLICATE_KEYS_CHECKER (const JSON_DOC *doc) : doc (doc) {}
-    bool StartObject()
+    JSON_WALKER() {}
+    virtual ~JSON_WALKER() = 0;
+
+    int WalkDocument (JSON_DOC &document);
+
+  protected:
+    virtual int
+    CallBefore (JSON_VALUE &value)
     {
-      std::vector<const char *> inserted_keys;
-
-      for (auto it = doc->MemberBegin(); it != doc->MemberEnd(); ++it)
-	{
-	  for (unsigned int i = 0; i < inserted_keys.size(); i++)
-	    {
-	      if (strcmp (it->name.GetString(), inserted_keys[i]) == 0)
-		{
-		  duplicate_key = it->name.GetString();
-		  return false;
-		}
-	    }
-
-	  inserted_keys.push_back (it->name.GetString());
-	}
-
-      return true;
+      // do nothing
+      return NO_ERROR;
     }
 
-    const char *GetDuplicateKey()
+    virtual int
+    CallAfter (JSON_VALUE &value)
     {
-      return duplicate_key;
+      // do nothing
+      return NO_ERROR;
     }
 
   private:
-    const JSON_DOC *doc;
-    const char *duplicate_key = NULL;
+    int WalkValue (JSON_VALUE &value);
+};
+
+JSON_WALKER::~JSON_WALKER() {}
+
+/*
+* JSON_DUPLICATE_KEYS_CHECKER - This class extends JSON_WALKER
+*
+* We use the WalkDocument function to iterate recursively through the json "tree"
+* For each node we will call two functions (Before and After) to apply a logic to that node
+* In this case, we will check in the CallBefore function if the current node has duplicate keys
+*/
+class JSON_DUPLICATE_KEYS_CHECKER : public JSON_WALKER
+{
+  public:
+    JSON_DUPLICATE_KEYS_CHECKER () {}
+    ~JSON_DUPLICATE_KEYS_CHECKER() {}
+
+  private:
+    int CallBefore (JSON_VALUE &value);
 };
 
 const bool JSON_PRIVATE_ALLOCATOR::kNeedFree = true;
@@ -329,13 +305,39 @@ static bool db_json_path_is_token_valid_array_index (const std::string &str, std
     std::size_t end = 0);
 static void db_json_doc_wrap_as_array (JSON_DOC &doc);
 static void db_json_value_wrap_as_array (JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &allocator);
-static bool db_json_contains_duplicate_keys (const JSON_DOC &doc, std::string &duplicate_key);
+static int db_json_contains_duplicate_keys (JSON_DOC &doc);
 static int db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_path);
 
 STATIC_INLINE JSON_VALUE &db_json_doc_to_value (JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const JSON_VALUE &db_json_doc_to_value (const JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
 static int db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc);
 static int db_json_add_json_value_to_object (JSON_DOC &doc, JSON_VALUE &key, JSON_VALUE &value);
+
+int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
+{
+  std::vector<const char *> inserted_keys;
+
+  if (value.IsObject())
+    {
+      for (auto it = value.MemberBegin(); it != value.MemberEnd(); ++it)
+	{
+	  const char *current_key = it->name.GetString();
+
+	  for (unsigned int i = 0; i < inserted_keys.size(); i++)
+	    {
+	      if (strcmp (current_key, inserted_keys[i]) == 0)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_DUPLICATE_KEY, 1, current_key);
+		  return ER_JSON_DUPLICATE_KEY;
+		}
+	    }
+
+	  inserted_keys.push_back (current_key);
+	}
+    }
+
+  return NO_ERROR;
+}
 
 JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw) : m_schema (NULL),
   m_validator (NULL),
@@ -873,29 +875,29 @@ db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value)
 /*
 * db_json_contains_duplicate_keys () - Checks at parse time if a json document has duplicate keys
 *
-* return                  : true/false
+* return                  : error_code
 * doc (in)                : json document
-* duplicate_key (in)      : if the function returns true, we will store the duplicate key, otherwise it will be empty
 */
-static bool
-db_json_contains_duplicate_keys (const JSON_DOC &doc, std::string &duplicate_key)
+static int
+db_json_contains_duplicate_keys (JSON_DOC &doc)
 {
-  JSON_DUPLICATE_KEYS_CHECKER dup_keys_checker (&doc);
-  duplicate_key = "";
+  JSON_DUPLICATE_KEYS_CHECKER dup_keys_checker;
+  int error_code = NO_ERROR;
 
-  // check recursively for duplicate keys in json document
-  if (!doc.Accept (dup_keys_checker))
+  // check recursively for duplicate keys in the json document
+  error_code = dup_keys_checker.WalkDocument (doc);
+  if (error_code != NO_ERROR)
     {
-      duplicate_key = dup_keys_checker.GetDuplicateKey();
-      return true;
+      ASSERT_ERROR();
     }
 
-  return false;
+  return error_code;
 }
 
 static int
 db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc)
 {
+  int error_code = NO_ERROR;
   if (json_raw == NULL)
     {
       return NO_ERROR;
@@ -908,11 +910,11 @@ db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc)
       return ER_INVALID_JSON;
     }
 
-  std::string duplicate_key;
-  if (db_json_contains_duplicate_keys (doc, duplicate_key))
+  error_code = db_json_contains_duplicate_keys (doc);
+  if (error_code != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_DUPLICATE_KEY, 1, duplicate_key.c_str());
-      return ER_JSON_DUPLICATE_KEY;
+      ASSERT_ERROR();
+      return error_code;
     }
 
   return NO_ERROR;
@@ -2448,13 +2450,13 @@ db_json_doc_wrap_as_array (JSON_DOC &doc)
 }
 
 int
-JSON_WALKER::WalkDocument (JSON_DOC & document)
+JSON_WALKER::WalkDocument (JSON_DOC &document)
 {
   return WalkValue (db_json_doc_to_value (document));
 }
 
 int
-JSON_WALKER::WalkValue (JSON_VALUE & value)
+JSON_WALKER::WalkValue (JSON_VALUE &value)
 {
   int error_code = NO_ERROR;
 
@@ -2468,26 +2470,26 @@ JSON_WALKER::WalkValue (JSON_VALUE & value)
   if (value.IsObject ())
     {
       for (auto it = value.MemberBegin (); it != value.MemberEnd (); ++it)
-        {
-          error_code = WalkValue (it->value);
-          if (error_code != NO_ERROR)
-            {
-              ASSERT_ERROR ();
-              return error_code;
-            }
-        }
+	{
+	  error_code = WalkValue (it->value);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	}
     }
   else if (value.IsArray ())
     {
       for (JSON_VALUE *it = value.Begin (); it != value.End (); ++it)
-        {
-          error_code = WalkValue (*it);
-          if (error_code != NO_ERROR)
-            {
-              ASSERT_ERROR ();
-              return error_code;
-            }
-        }
+	{
+	  error_code = WalkValue (*it);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	}
     }
 
   error_code = CallAfter (value);
