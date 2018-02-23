@@ -31,6 +31,7 @@
 #include <float.h>
 #include <math.h>
 #include <limits.h>
+#include <vector>
 
 #if defined(WINDOWS)
 #include "porting.h"
@@ -161,68 +162,6 @@ static COMPARE_BETWEEN_OPERATOR pt_Compare_between_operator_table[] = {
 
 /* maximum number of overloads for an expression */
 #define MAX_OVERLOADS 16
-
-/* expression argument type description */
-union pt_arg_type_val
-{
-  PT_TYPE_ENUM type;
-  PT_GENERIC_TYPE_ENUM generic_type;
-  size_t index; //index type
-
-  pt_arg_type_val(pt_type_enum type)
-    : type(type)
-  {}
-
-  pt_arg_type_val(pt_generic_type_enum enum_val)
-    : generic_type(enum_val)
-  {}
-
-  pt_arg_type_val(size_t index)
-    : index(index)
-  {}
-};
-typedef pt_arg_type_val PT_ARG_TYPE_VAL;
-
-/* expression argument type */
-struct pt_arg_type
-{
-  enum {NORMAL, GENERIC, INDEX} type;
-  PT_ARG_TYPE_VAL val;
-
-  pt_arg_type(pt_type_enum type=PT_TYPE_NONE)
-    : type(NORMAL)
-    , val(type)
-  {}
-
-  pt_arg_type(pt_generic_type_enum generic_type)
-    : type(GENERIC)
-    , val(generic_type)
-  {}
-
-  pt_arg_type(size_t index)
-    : type(INDEX)
-    , val(index)
-  {}
-
-  void operator()(pt_type_enum normal_type)
-  {
-    type = NORMAL;
-    val.type = normal_type;
-  }
-
-  void operator()(pt_generic_type_enum generic_type)
-  {
-    type = GENERIC;
-    val.generic_type = generic_type;
-  }
-
-  void operator()(size_t index)
-  {
-    type = INDEX;
-    val.index = index;
-  }
-};
-typedef pt_arg_type PT_ARG_TYPE;
 
 /* SQL expression signature */
 typedef struct expression_signature
@@ -5563,6 +5502,15 @@ pt_are_equivalent_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type)
 	  return true;
 	}
       break;
+
+    case PT_GENERIC_TYPE_JSON_VAL:
+      return pt_is_json_value_type(op_type);
+
+    case PT_GENERIC_TYPE_JSON_DOC:
+      return pt_is_json_doc_type(op_type);
+
+    case PT_GENERIC_TYPE_JSON_PATH:
+      return pt_is_json_path(op_type);
 
     default:
       return false;
@@ -13010,135 +12958,141 @@ pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coerce_type)
 }
 
 #include "func_type.hpp"
+#include "string_buffer.hpp"
 #include <vector>
 
-#define X(id, ...) #id,
-char* func_type_str[] = {
-  #include "func_type.x"
-};
-#undef X
-
-#if 0
-#define X(id, ...) { __VA_ARGS__ },
-std::vector<int(*)(parser_context*, parser_node*&)> func_type_transitions[] = {
-  #include "func_type.x"
-};
-#undef X
-#else
-#define X(id, signature) signature,
-func_type* func_types[] = {
-  #include "func_type.x"
-};
-#undef X
-#endif
-
-/*
- * pt_eval_function_type_agg () - evaluate function type for aggregate functions
- *   return: returns a node of the same type.
- *   parser(in): parser global context info for reentrancy
- *   node(in): a parse tree node of type PT_FUNCTION denoting an
- *             an expression with aggregate functions.
- */
-PT_NODE * pt_eval_function_type_agg(PARSER_CONTEXT * parser, PT_NODE * node)
+namespace Func
 {
-  assert(pt_is_aggregate_function (parser, node));
-  bool check_agg_single_arg = false;
-  FUNC_TYPE fcode = node->info.function.function_type;
-  switch(fcode)
-    {
-    case PT_MIN:
-      break;
-    case PT_MAX:
-      break;
-    case PT_SUM:
-      break;
-    case PT_AVG:
-      break;
-    case PT_STDDEV:
-      break;
-    case PT_VARIANCE:
-      break;
-    case PT_STDDEV_POP:
-      break;
-    case PT_VAR_POP:
-      break;
-    case PT_STDDEV_SAMP:
-      break;
-    case PT_VAR_SAMP:
-      break;
-    case PT_COUNT:
-      break;
-    case PT_COUNT_STAR:
-      break;
-    case PT_GROUPBY_NUM:
-      break;
-    case PT_AGG_BIT_AND:
-      break;
-    case PT_AGG_BIT_OR:
-      break;
-    case PT_AGG_BIT_XOR:
-      break;
-    case PT_GROUP_CONCAT:
-      break;
-    case PT_ROW_NUMBER:
-      break;
-    case PT_RANK:
-      break;
-    case PT_DENSE_RANK:
-      break;
-    case PT_NTILE:
-      break;
-    case PT_TOP_AGG_FUNC:
-      break;
-    default:
-      assert(false && "forgot aggregate FUNC_TYPE?");
-    }
-  return NULL;
-}
+  #define X(id, ...) #id,
+  char* type_str[] = {
+    #include "func_type.x"
+  };
+  #undef X
 
-#include "string_buffer.hpp"
+  #define X(id, signatures) signatures,
+  std::vector<func_signature>* types[] = {
+    #include "func_type.x"
+  };
+  #undef X
 
-/*
- * is_in () - checks if a type is in a vector
- */
-bool is_in(pt_type_enum type, std::vector<parse_type> vect)
-{
-  for(auto t: vect)
-    {
-      if(t.type == parse_type::NORMAL && t.normal == type)
-        {
-          return true;
-        }
-    }
-  return false;
-}
+  /*
+   * is_type_in () - checks if a type enum is in a vector of types
+   */
+  bool is_type_in (pt_type_enum type, std::vector<pt_arg_type> vect)
+  {
+    for(auto t: vect)
+      {
+        if(t.type == parse_type::NORMAL && t.val.type == type)
+          {
+            return true;
+          }
+      }
+    return false;
+  }
 
-/*
- * match_types () - checks if the types of nodes from list match the signature or can be casted to it
- *   return:
- *   list(in): list of nodes
- *   signature(in): function signature
- */
-bool match_types (parser_context* parser, parser_node* node, func_type& signature)
-{
-  FUNC_TYPE func_type = node->info.function.function_type;
-  parser_node* arg = node->info.function.arg_list;
-  parser_node* prev = NULL;
-  int arg_pos = 0;
-  for(auto v: signature.fix) //check fixed part of the function signature
-    {
-      if(arg == NULL)
-        {
-          printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
-          break;
-        }
-      if(!is_in(arg->type_enum, v))
-        {
-          arg = pt_wrap_with_cast_op(parser, arg, v[0].normal, 0, 0, NULL);
-          if(arg == NULL)
-            {
-              printf("ERR [%s()] arg#%d doesn't match type and cast failed (%d -> %d)\n", __func__, arg_pos, arg->type_enum, v[0].normal);
-            }
+  /*
+   * is_equivalent_type_in ()
+   */
+  int is_equivalent_type_in (pt_type_enum type, std::vector<pt_arg_type> vect)
+  {
+    for(auto t: vect)
+      {
+        if(t.type == parse_type::GENERIC && pt_are_equivalent_types(t.val.generic_type, type))
+          {
+            return true;
+          }
+      }
+    return false;
+  }
+
+  bool cmp_types_normal(const pt_arg_type& type, pt_type_enum type_enum)
+  {
+    return (type.type == pt_arg_type::NORMAL && type.val.type == type_enum);
+  }
+
+  bool cmp_types_generic(const pt_arg_type& type, pt_type_enum type_enum)
+  {
+    return (type.type == pt_arg_type::GENERIC && pt_are_equivalent_types(type.val.generic_type, type_enum));
+  }
+
+  func_signature* get_signature (parser_node* node, std::vector<func_signature>& signatures, bool(*cmp_types)(const pt_arg_type&, pt_type_enum))
+  {
+    for(auto& sig: signatures)
+      {
+        parser_node* arg = node->info.function.arg_list;
+        bool match = true;
+
+        //check fixed part of the function signature
+        for(auto& fix: sig.fix)
+          {
+            if(arg == NULL)
+              {
+                printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
+                break;
+              }
+              if(!cmp_types(fix, arg->type_enum))
+                {
+                  match = false;//current arg doesn't match coresponding type => try next signature
+                  break;
+                }
+            arg = arg->next;
+          }
+        if(!match)
+          {
+            continue;
+          }
+
+        if(arg!=NULL && sig.rep.size()==0)
+          {
+            printf("ERR invalid number or arguments\n");
+            return NULL;
+          }
+        //check repetitive args
+        int index = 0;
+        for(; arg; arg=arg->next, index=(index+1)%sig.rep.size())
+          {
+            auto& rep = sig.rep[index];
+            if(!cmp_types(rep, arg->type_enum))
+              {
+                match = false;//current arg doesn't match coresponding type => try next signature
+                break;
+              }
+          }
+        if(match)
+          {
+            return &sig;
+          }
+      }
+    return NULL;
+  }
+
+  /*
+   * match_signature () - match function signature with casts if necessary
+   *   return:
+   *   list(in): list of nodes
+   *   signature(in): function signature
+   */
+  bool match_signature (parser_context* parser, parser_node* node, func_signature& signature)
+  {
+    FUNC_TYPE func_type = node->info.function.function_type;
+    parser_node* arg = node->info.function.arg_list;
+    parser_node* prev = NULL;
+    int arg_pos = 0;
+    for(auto type: signature.fix) //check fixed part of the function signature
+      {
+        if(arg == NULL)
+          {
+            printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
+            break;
+          }
+        pt_type_enum equivalent_type = pt_get_equivalent_type(type, arg->type_enum);
+        if(equivalent_type != arg->type_enum)
+          {
+            arg = pt_wrap_with_cast_op(parser, arg, equivalent_type, 0, 0, NULL);
+            if(arg == NULL)
+              {
+                printf("ERR [%s()] arg#%d doesn't match type and cast failed (%d -> %d)\n", __func__, arg_pos, arg->type_enum, equivalent_type);
+              }
             if (prev != NULL)
               {
                 prev->next = arg;
@@ -13147,28 +13101,29 @@ bool match_types (parser_context* parser, parser_node* node, func_type& signatur
               {
                 node->info.function.arg_list = arg;
               }
-        }
-      ++arg_pos;
-      prev = arg;
-      arg = arg->next;
-    }
+          }
+        ++arg_pos;
+        prev = arg;
+        arg = arg->next;
+      }
 
-  if(arg!=NULL && signature.rep.size()==0)
-    {
-      printf("ERR invalid number or arguments\n");
-      return false;
-    }
-  int index = 0;
-  for(; arg; arg=arg->next, index=(index+1)%signature.rep.size()) //check repetitive part of the function signature
-    {
-      auto& v = signature.rep[index];
-      if(!is_in(arg->type_enum, v))
-        {
-          arg = pt_wrap_with_cast_op(parser, arg, v[0].normal, 0, 0, NULL);
-          if(arg == NULL)
-            {
-              printf("ERR [%s()] arg#%d doesn't match type and cast failed (%d -> %d)\n", __func__, arg_pos, arg->type_enum, v[0].normal);
-            }
+    if(arg!=NULL && signature.rep.size()==0)
+      {
+        printf("ERR invalid number or arguments\n");
+        return false;
+      }
+    int index = 0;
+    for(; arg; arg=arg->next, index=(index+1)%signature.rep.size()) //check repetitive part of the function signature
+      {
+        auto& type = signature.rep[index];
+        pt_type_enum equivalent_type = pt_get_equivalent_type(type, arg->type_enum);
+        if(equivalent_type != arg->type_enum)
+          {
+            arg = pt_wrap_with_cast_op(parser, arg, equivalent_type, 0, 0, NULL);
+            if(arg == NULL)
+              {
+                printf("ERR [%s()] arg#%d doesn't match type and cast failed (%d -> %d)\n", __func__, arg_pos, arg->type_enum, equivalent_type);
+              }
             if (prev != NULL)
               {
                 prev->next = arg;
@@ -13177,13 +13132,14 @@ bool match_types (parser_context* parser, parser_node* node, func_type& signatur
               {
                 node->info.function.arg_list = arg;
               }
-        }
-    }
-  if(index)
-    {
-      printf("ERR invaid number of arguments (index=%d)\n", index);
-    }
-  return true;
+          }
+      }
+    if(index)
+      {
+        printf("ERR invaid number of arguments (index=%d)\n", index);
+      }
+    return true;
+  }
 }
 
 /*
@@ -13446,7 +13402,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_AVG:
     case PT_COUNT_STAR:
     case PT_COUNT:
-#if 0
+#if 0//to be moved in constant folding
       /* do special constant folding; COUNT(1), COUNT(?), COUNT(:x), ... -> COUNT(*) */
       /* TODO does this belong to type checking or constant folding? */
       if (pt_is_const (arg_list))
@@ -13463,7 +13419,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       node->type_enum = PT_TYPE_INTEGER;
       break;
 #endif
-      case PT_SUM:
+    case PT_SUM:
 #if 0
       assert(arg_list && !arg_list->next && "expect only one argument");
       if (!PT_IS_NUMERIC_TYPE (arg_type) && arg_type != PT_TYPE_MAYBE && arg_type != PT_TYPE_NULL
@@ -13940,23 +13896,32 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 #endif
       {
         PT_NODE *arg = arg_list;
-        printf("fcode=%d(%s) args: %s\n", fcode, func_type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
-        func_type& ft = *func_types[fcode-PT_MIN];
-        match_types(parser, node, ft);
-        {//return type
-          switch(ft.ret.type)
+        printf("fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
+        std::vector<func_signature>& func_sigs = *Func::types[fcode-PT_MIN];
+        func_signature* func_sig = Func::get_signature(node, func_sigs, &Func::cmp_types_normal);
+        if(func_sig == NULL)
           {
-            case parse_type::NORMAL:
-                node->type_enum = ft.ret.normal;
+            func_sig = Func::get_signature(node, func_sigs, &Func::cmp_types_generic);
+          }
+        if(func_sig == NULL)
+          {
+            func_sig = &func_sigs[0];
+          }
+        Func::match_signature(parser, node, *func_sig);
+        {//return type
+          switch(func_sig->ret.type)
+          {
+            case pt_arg_type::NORMAL:
+                node->type_enum = func_sig->ret.val.type;
                 break;
-            case parse_type::GENERIC:
+            case pt_arg_type::GENERIC:
                 assert(false);
                 break;
-            case parse_type::INDEX:
+            case pt_arg_type::INDEX:
                 int index = 0;
                 for(auto p=arg_list; p; p=p->next, ++index)
                   {
-                    if(index == ft.ret.index)
+                    if(index == func_sig->ret.val.index)
                       {
                         node->type_enum = p->type_enum;
                         break;

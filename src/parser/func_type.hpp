@@ -15,39 +15,43 @@ enum FUNC_TYPE2: int
 };
 #undef X
 
-struct func_type
+struct func_signature
 {
+#if 0
   parse_type ret;                            //return type
   std::vector<std::vector<parse_type>> fix;  //fixed types for arguments
   std::vector<std::vector<parse_type>> rep;  //repetitive types for arguments
+#else
+  pt_arg_type ret;              //return type
+  std::vector<pt_arg_type> fix; //fixed arguments types
+  std::vector<pt_arg_type> rep; //repetitive arguments types
+#endif
+
+  //signatures
+  static std::vector<func_signature> bigint;                 //return bigint, no args
+  static std::vector<func_signature> integer;                //return integer, no args
+  static std::vector<func_signature> double_double01;        //return double, arg in [0,1]
+  static std::vector<func_signature> bigint_discrete;        //return bigint, arg: discrete
+  static std::vector<func_signature> double_number;          //return double, arg: any number type number
+  static std::vector<func_signature> count_star;
+  static std::vector<func_signature> count;
+  static std::vector<func_signature> sum;
+  static std::vector<func_signature> cume_dist;
+  static std::vector<func_signature> ntile;
+  static std::vector<func_signature> median;
+  static std::vector<func_signature> type0_nr_or_str;//return same type as argument, arg is numeric or string
+  static std::vector<func_signature> type0_nr_or_str_discrete;
+  static std::vector<func_signature> group_concat;
+  static std::vector<func_signature> lead_lag;
+  static std::vector<func_signature> elt;
+  static std::vector<func_signature> insert;
+  static std::vector<func_signature> json_key_val_r_key_val;
+  static std::vector<func_signature> json_val_r_val;
+  static std::vector<func_signature> json_doc;
+  static std::vector<func_signature> json_doc_r_doc;
+  static std::vector<func_signature> json_doc_path;
+  static std::vector<func_signature> json_doc_path_r_path;
+  static std::vector<func_signature> json_doc_path_doc_r_path_doc;
 };
-
-namespace sig
-{
-  extern func_type bigint;//return bigint, no args
-  extern func_type integer;//return integer, no args
-  extern func_type discrete_cast_to_bigint;
-  extern func_type numeric_cast_to_double;
-  extern func_type count_star;
-  extern func_type count;
-  extern func_type sum;
-  extern func_type cume_dist;
-  extern func_type ntile;
-  extern func_type double_01;//return double, arg in [0,1]
-  extern func_type median;
-  extern func_type type0_nr_or_str;//return same type as argument, arg is numeric or string
-  extern func_type group_concat;
-  extern func_type lead_lag;
-  extern func_type elt;
-  extern func_type insert;
-
-  extern func_type json_key_val_r_key_val;
-  extern func_type json_val_r_val;
-  extern func_type json_doc;
-  extern func_type json_doc_r_doc;
-  extern func_type json_doc_path;
-  extern func_type json_doc_path_r_path;
-  extern func_type json_doc_path_doc_r_path_doc;
-}
 
 #endif
