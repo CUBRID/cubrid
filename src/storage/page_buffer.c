@@ -8447,7 +8447,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
       assert (count_victims_private_lru_success >= 0);
       count_victims_private_lru_fail = pgbuf_Pool.monitor.count_victims_private_lru_fail;
       if ((count_victims_private_lru_fail > 2)
-	  && (count_victims_private_lru_success < count_victims_private_lru_fail * 2))
+	  && (count_victims_private_lru_success * 2 < count_victims_private_lru_fail))
 	{
 	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_fail, 1);
 	  skip_victim_search_in_private_lru = true;
@@ -8551,7 +8551,7 @@ search_shared_lru:
   count_victims_shared_lru_success = pgbuf_Pool.monitor.count_victims_shared_lru_success;
   assert (count_victims_shared_lru_success >= 0);
   count_victims_shared_lru_fail = pgbuf_Pool.monitor.count_victims_shared_lru_fail;
-  if ((count_victims_shared_lru_fail > 2) && (count_victims_shared_lru_success < count_victims_shared_lru_fail * 2))
+  if ((count_victims_shared_lru_fail > 2) && (count_victims_shared_lru_success * 2 < count_victims_shared_lru_fail))
     {
       ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_shared_lru_fail, 1);
       goto search_private_under_quota;
