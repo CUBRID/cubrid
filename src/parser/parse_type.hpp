@@ -27,31 +27,29 @@ typedef enum pt_generic_type_enum
 } PT_GENERIC_TYPE_ENUM;
 
 
-/* expression argument type description */
-union pt_arg_type_val
-{
-  PT_TYPE_ENUM type;
-  PT_GENERIC_TYPE_ENUM generic_type;
-  size_t index; //index type
-
-  pt_arg_type_val(pt_type_enum type)
-    : type(type)
-  {}
-
-  pt_arg_type_val(pt_generic_type_enum enum_val)
-    : generic_type(enum_val)
-  {}
-
-  pt_arg_type_val(size_t index)
-    : index(index)
-  {}
-};
-
 /* expression argument type */
 struct pt_arg_type
 {
   enum {NORMAL, GENERIC, INDEX} type;
-  pt_arg_type_val val;
+
+  union pt_arg_type_val
+  {
+    PT_TYPE_ENUM type;
+    PT_GENERIC_TYPE_ENUM generic_type;
+    size_t index; //index type
+
+    pt_arg_type_val(pt_type_enum type)
+      : type(type)
+    {}
+
+    pt_arg_type_val(pt_generic_type_enum enum_val)
+      : generic_type(enum_val)
+    {}
+
+    pt_arg_type_val(size_t index)
+      : index(index)
+    {}
+  } val;
 
   pt_arg_type(pt_type_enum type=PT_TYPE_NONE)
     : type(NORMAL)
@@ -87,56 +85,5 @@ struct pt_arg_type
   }
 };
 typedef pt_arg_type PT_ARG_TYPE;
-
-struct parse_type //duplicate for pt_arg_type+pt_arg_type_val
-{
-  enum {NORMAL, GENERIC, INDEX} type;
-  union
-  {
-    pt_type_enum normal;
-    PT_GENERIC_TYPE_ENUM generic;
-    size_t index;
-  };
-
-  parse_type(pt_type_enum type=PT_TYPE_NONE)
-    : type(NORMAL)
-    , normal(type)
-  {}
-
-  parse_type(pt_generic_type_enum generic_type)
-    : type(GENERIC)
-    , generic(generic_type)
-  {}
-
-  parse_type(size_t index)
-    : type(INDEX)
-    , index(index)
-  {}
-
-  void operator()(pt_type_enum normal_type)
-  {
-    type = NORMAL;
-    normal = normal_type;
-  }
-
-  void operator()(pt_generic_type_enum generic_type)
-  {
-    type = GENERIC;
-    generic = generic_type;
-  }
-
-  void operator()(size_t index_type)
-  {
-    type = INDEX;
-    index = index_type;
-  }
-
-  void operator=(pt_type_enum normal_type)
-  {
-    type = NORMAL;
-    normal = normal_type;
-  }
-
-};
 
 #endif // _PARSER_TYPE_HPP_

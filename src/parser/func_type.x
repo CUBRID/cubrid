@@ -1,5 +1,28 @@
 #ifndef X
-#   pragma message(__FILE__ "("  "): warning: X-macro should be defined before including this header")
+#pragma message(__FILE__ "("  "): warning: X-macro should be defined before including this header")
+e.g.:
+    //enum
+    #define X(id, ...) FT_##id,
+    enum FUNC_TYPE: int
+    {
+        _0 = 899, //start value
+        #include "func_type.x"
+    };
+    #undef X
+
+    //coresponding string for each enum value
+    #define X(id, ...) #id,
+    char* type_str[] = {
+        #include "func_type.x"
+    };
+    #undef X
+
+    //coresponding signature for each enum value
+    #define X(id, signatures) signatures,
+    std::vector<func_signature>* types[] = {
+        #include "func_type.x"
+    };
+    #undef X
 #endif
 
 /* aggregate functions */

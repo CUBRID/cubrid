@@ -17,15 +17,9 @@ enum FUNC_TYPE2: int
 
 struct func_signature
 {
-#if 0
-  parse_type ret;                            //return type
-  std::vector<std::vector<parse_type>> fix;  //fixed types for arguments
-  std::vector<std::vector<parse_type>> rep;  //repetitive types for arguments
-#else
   pt_arg_type ret;              //return type
   std::vector<pt_arg_type> fix; //fixed arguments types
   std::vector<pt_arg_type> rep; //repetitive arguments types
-#endif
 
   //signatures
   static std::vector<func_signature> bigint;                 //return bigint, no args
@@ -39,7 +33,7 @@ struct func_signature
   static std::vector<func_signature> cume_dist;
   static std::vector<func_signature> ntile;
   static std::vector<func_signature> median;
-  static std::vector<func_signature> type0_nr_or_str;//return same type as argument, arg is numeric or string
+  static std::vector<func_signature> type0_nr_or_str;//return same type as argument 0, arg is numeric or string
   static std::vector<func_signature> type0_nr_or_str_discrete;
   static std::vector<func_signature> group_concat;
   static std::vector<func_signature> lead_lag;
