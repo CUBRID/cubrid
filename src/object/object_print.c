@@ -59,7 +59,7 @@
 #include "work_space.h"
 #endif /* !defined (SERVER_MODE) */
 #include "string_buffer.hpp"
-#include "dbval.h"		/* this must be the last header file included!!! */
+#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -412,7 +412,7 @@ help_class_names (const char *qualifier)
 		  buffer[0] = '\0';
 		  if (!requested_owner && db_get (owner, "name", &owner_name) >= 0)
 		    {
-		      tmp = DB_GET_STRING (&owner_name);
+		      tmp = db_get_string (&owner_name);
 		      if (tmp)
 			{
 			  snprintf (buffer, sizeof (buffer) - 1, "%s.%s", tmp, cname);

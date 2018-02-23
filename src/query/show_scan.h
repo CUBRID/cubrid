@@ -26,7 +26,7 @@
 
 #ident "$Id$"
 
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "thread_compat.hpp"
 
 typedef struct showstmt_array_context SHOWSTMT_ARRAY_CONTEXT;

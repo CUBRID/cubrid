@@ -57,8 +57,7 @@
 #include "intl_support.h"
 #include "log_impl.h"
 #include "object_primitive.h"
-/* this must be the last header file included! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #if __WORDSIZE == 32
 #define GET_PTR_FOR_HASH(key) ((unsigned int)(key))
@@ -619,22 +618,25 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  hash = (unsigned int) db_get_double (val);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  hash = mht_1str_pseudo_key (db_pull_numeric (val), -1);
+	  hash = mht_1str_pseudo_key (db_get_numeric (val), -1);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARNCHAR:
-	  hash = mht_1str_pseudo_key (db_pull_string (val), DB_GET_STRING_SIZE (val));
+	  hash = mht_1str_pseudo_key (db_get_string (val), db_get_string_size (val));
 	  break;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
-	  hash = mht_1str_pseudo_key (db_pull_bit (val, &t_n), -1);
+	  hash = mht_1str_pseudo_key (db_get_bit (val, &t_n), -1);
 	  break;
 	case DB_TYPE_TIME:
 	case DB_TYPE_TIMELTZ:
-	  hash = (unsigned int) *(db_get_time (val));
-	  break;
+	  {
+	    unsigned int *time = db_get_time (val);
+	    hash = (unsigned int) (*time);
+	    break;
+	  }
 	case DB_TYPE_TIMETZ:
 	  {
 	    DB_TIMETZ *time_tz = db_get_timetz (val);
@@ -643,8 +645,11 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  break;
 	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPLTZ:
-	  hash = (unsigned int) *(db_get_timestamp (val));
-	  break;
+	  {
+	    DB_TIMESTAMP *time_st = db_get_timestamp (val);
+	    hash = (unsigned int) (*time_st);
+	    break;
+	  }
 	case DB_TYPE_TIMESTAMPTZ:
 	  {
 	    DB_TIMESTAMPTZ *ts_tz = db_get_timestamptz (val);
@@ -667,11 +672,17 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  }
 	  break;
 	case DB_TYPE_DATE:
-	  hash = (unsigned int) *(db_get_date (val));
-	  break;
+	  {
+	    DB_DATE *date = db_get_date (val);
+	    hash = (unsigned int) (*date);
+	    break;
+	  }
 	case DB_TYPE_MONETARY:
-	  hash = (unsigned int) db_get_monetary (val)->amount;
-	  break;
+	  {
+	    DB_MONETARY *mon = db_get_monetary (val);
+	    hash = (unsigned int) mon->amount;
+	    break;
+	  }
 	case DB_TYPE_SET:
 	case DB_TYPE_MULTISET:
 	case DB_TYPE_SEQUENCE:
@@ -696,13 +707,13 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  hash = GET_PTR_FOR_HASH (db_get_object (val));
 	  break;
 	case DB_TYPE_OID:
-	  hash = (unsigned int) OID_PSEUDO_KEY (db_pull_oid (val));
+	  hash = (unsigned int) OID_PSEUDO_KEY (db_get_oid (val));
 	  break;
 	case DB_TYPE_MIDXKEY:
 	  db_make_null (&t_val);
 	  {
 	    DB_MIDXKEY *midxkey;
-	    midxkey = db_pull_midxkey (val);
+	    midxkey = db_get_midxkey (val);
 	    if (pr_midxkey_get_element_nocopy (midxkey, 0, &t_val, NULL, NULL) == NO_ERROR)
 	      {
 		hash = mht_valhash (&t_val, ht_size);
@@ -2174,7 +2185,7 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	  {
 	    char *json_body = NULL;
 
-	    json_body = DB_GET_JSON_RAW_BODY (val);
+	    json_body = db_get_json_raw_body (val);
 
 	    if (json_body == NULL)
 	      {

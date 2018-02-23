@@ -1047,6 +1047,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   (void) db_shutdown ();
 
   free_ignoreclasslist ();
+
   return (status);
 
 error_return:

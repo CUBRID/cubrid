@@ -51,8 +51,7 @@
 #include "authenticate.h"
 #include "transaction_cl.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 static int class_objects = 0;
 static int total_objects = 0;
@@ -454,11 +453,11 @@ process_value (DB_VALUE * value)
 
 	if (DB_VALUE_TYPE (value) == DB_TYPE_OID)
 	  {
-	    ref_oid = DB_PULL_OID (value);
+	    ref_oid = db_get_oid (value);
 	  }
 	else
 	  {
-	    ref_oid = WS_OID (DB_PULL_OBJECT (value));
+	    ref_oid = WS_OID (db_get_object (value));
 	  }
 
 	if (OID_ISNULL (ref_oid))
@@ -493,7 +492,7 @@ process_value (DB_VALUE * value)
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
       {
-	return_value = process_set (DB_GET_SET (value));
+	return_value = process_set (db_get_set (value));
 	break;
       }
 

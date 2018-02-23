@@ -39,6 +39,7 @@
 #include "shard_parser.h"
 #include "shard_key_func.h"
 #include "system_parameter.h"
+#include "dbtype.h"
 
 extern T_SHM_SHARD_KEY *shm_key_p;
 extern T_PROXY_INFO *proxy_info_p;

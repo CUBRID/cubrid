@@ -39,9 +39,7 @@
 #include "dbtype.h"
 #include "query_executor.h"
 #include "thread.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #define UNKNOWN_CARD   -2	/* Unknown cardinality of a set member */
 
@@ -1591,7 +1589,7 @@ eval_set_list_cmp (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * et_comp, VAL_DESCR 
       else
 	{
 	  /* compare list file and set */
-	  return eval_sort_list_to_multi_set (thread_p, lhs_srlist_id->list_id, DB_GET_SET (dbval2), et_comp->rel_op);
+	  return eval_sort_list_to_multi_set (thread_p, lhs_srlist_id->list_id, db_get_set (dbval2), et_comp->rel_op);
 	}
     }
   else if (et_comp->rhs->type == TYPE_LIST_ID)
@@ -1622,7 +1620,7 @@ eval_set_list_cmp (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * et_comp, VAL_DESCR 
 	}
 
       /* lhs must be a set value, compare set and list */
-      return eval_multi_set_to_sort_list (thread_p, DB_GET_SET (dbval1), rhs_srlist_id->list_id, et_comp->rel_op);
+      return eval_multi_set_to_sort_list (thread_p, db_get_set (dbval1), rhs_srlist_id->list_id, et_comp->rel_op);
     }
 
   return V_UNKNOWN;
@@ -1858,7 +1856,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oi
 		      goto exit;
 		    }
 
-		  result = ((db_set_size (DB_GET_SET (peek_val1)) > 0) ? V_TRUE : V_FALSE);
+		  result = ((db_set_size (db_get_set (peek_val1)) > 0) ? V_TRUE : V_FALSE);
 		}
 	      break;
 	    }
@@ -1943,7 +1941,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oi
 
 		rhs_type = DB_VALUE_TYPE (peek_val2);
 		rhs_is_set = TP_IS_SET_TYPE (rhs_type);
-		if (rhs_is_set && set_size (DB_GET_SET (peek_val2)) == 0)
+		if (rhs_is_set && set_size (db_get_set (peek_val2)) == 0)
 		  {
 		    /* empty set */
 		    result = (et_alsm->eq_flag == F_ALL) ? V_TRUE : V_FALSE;
@@ -2001,11 +1999,11 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oi
 		/* rhs value is a set, use set evaluation routines */
 		if (et_alsm->eq_flag == F_ALL)
 		  {
-		    result = eval_all_eval (peek_val1, DB_GET_SET (peek_val2), et_alsm->rel_op);
+		    result = eval_all_eval (peek_val1, db_get_set (peek_val2), et_alsm->rel_op);
 		  }
 		else
 		  {
-		    result = eval_some_eval (peek_val1, DB_GET_SET (peek_val2), et_alsm->rel_op);
+		    result = eval_some_eval (peek_val1, db_get_set (peek_val2), et_alsm->rel_op);
 		  }
 	      }
 	    else
@@ -2164,7 +2162,7 @@ eval_pred_comp1 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
     }
 
   if (DB_VALUE_DOMAIN_TYPE (peek_val1) == DB_TYPE_OID
-      && !heap_is_object_not_null (thread_p, (OID *) NULL, DB_PULL_OID (peek_val1)))
+      && !heap_is_object_not_null (thread_p, (OID *) NULL, db_get_oid (peek_val1)))
     {
       return V_TRUE;
     }
@@ -2227,7 +2225,7 @@ eval_pred_comp2 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
 	  return V_ERROR;
 	}
 
-      return (set_size (DB_GET_SET (peek_val1)) > 0) ? V_TRUE : V_FALSE;
+      return (set_size (db_get_set (peek_val1)) > 0) ? V_TRUE : V_FALSE;
     }
 }
 
@@ -2328,7 +2326,7 @@ eval_pred_alsm4 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
       return V_ERROR;
     }
 
-  if (set_size (DB_GET_SET (peek_val2)) == 0)
+  if (set_size (db_get_set (peek_val2)) == 0)
     {
       /* empty set */
       return ((et_alsm->eq_flag == F_ALL) ? V_TRUE : V_FALSE);
@@ -2347,11 +2345,11 @@ eval_pred_alsm4 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
   /* rhs value is a set, use set evaluation routines */
   if (et_alsm->eq_flag == F_ALL)
     {
-      return eval_all_eval (peek_val1, DB_GET_SET (peek_val2), et_alsm->rel_op);
+      return eval_all_eval (peek_val1, db_get_set (peek_val2), et_alsm->rel_op);
     }
   else
     {
-      return eval_some_eval (peek_val1, DB_GET_SET (peek_val2), et_alsm->rel_op);
+      return eval_some_eval (peek_val1, db_get_set (peek_val2), et_alsm->rel_op);
     }
 }
 
@@ -2862,7 +2860,7 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
     {
       if (DB_VALUE_TYPE (value) == DB_TYPE_MIDXKEY)
 	{
-	  midxkey = DB_GET_MIDXKEY (value);
+	  midxkey = db_get_midxkey (value);
 
 	  if (filterp->btree_num_attrs <= 0 || !filterp->btree_attr_ids || !midxkey)
 	    {
@@ -2942,7 +2940,7 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 		   */
 		  DB_VALUE null;
 
-		  DB_MAKE_NULL (&null);
+		  db_make_null (&null);
 		  if (heap_attrinfo_set (NULL, scan_attrsp->attr_ids[i], &null, scan_attrsp->attr_cache) != NO_ERROR)
 		    {
 		      return V_ERROR;

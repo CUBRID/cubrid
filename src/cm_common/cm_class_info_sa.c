@@ -39,6 +39,7 @@
 #include "dbi.h"
 #include "cm_portable.h"
 #include "cm_execute_sa.h"
+#include "dbtype.h"
 
 #define MSGFMT	"%s %s\n"
 

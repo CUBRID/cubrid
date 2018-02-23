@@ -29,6 +29,7 @@
 #include "query_dump.h"
 #include "object_primitive.h"
 #include "system_parameter.h"
+#include "dbtype.h"
 
 #define foutput stdout
 

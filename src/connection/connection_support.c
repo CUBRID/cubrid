@@ -85,7 +85,7 @@
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "heap_file.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
-#include "dbval.h"
+#include "dbtype.h"
 #include "db_date.h"
 #include "show_scan.h"
 
@@ -2706,7 +2706,7 @@ css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid, LAS
 	    {
 	      if (heap_value->attrid == attr_idx)
 		{
-		  user_name = DB_GET_STRING (&heap_value->dbvalue);
+		  user_name = db_get_string (&heap_value->dbvalue);
 		}
 	    }
 	}

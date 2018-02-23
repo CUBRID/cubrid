@@ -62,6 +62,7 @@
 #include "network_interface_cl.h"
 #include "utility.h"
 #include "tsc_timer.h"
+#include "dbtype.h"
 
 #if defined(WINDOWS)
 #include "file_io.h"		/* needed for _wyield() */
@@ -210,6 +211,7 @@ static void csql_exit_session (int error);
 
 static int csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *stream, int line_no);
 
+static char *csql_get_external_command (SESSION_CMD cmd_no);
 static int csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg);
 static void csql_set_trace (const char *arg_str);
 static void csql_display_trace (void);
@@ -757,6 +759,24 @@ fatal_error:
   csql_exit (EXIT_FAILURE);
 }
 
+static char *
+csql_get_external_command (SESSION_CMD cmd_no)
+{
+  switch (cmd_no)
+    {
+    case S_CMD_SHELL_CMD:
+      return csql_Shell_cmd;
+    case S_CMD_EDIT_CMD:
+      return csql_Editor_cmd;
+    case S_CMD_PRINT_CMD:
+      return csql_Print_cmd;
+    case S_CMD_PAGER_CMD:
+      return csql_Pager_cmd;
+    default:
+      assert (false);
+      return NULL;
+    }
+}
 
 static int
 csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
@@ -979,9 +999,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	  db_shutdown ();
 	}
       er_init ("./csql.err", ER_NEVER_EXIT);
-      if (db_restart_ex
-	  (UTIL_CSQL_NAME, csql_arg->db_name, csql_arg->user_name, csql_arg->passwd, NULL,
-	   db_get_client_type ()) != NO_ERROR)
+      if (db_restart_ex (UTIL_CSQL_NAME, csql_arg->db_name, csql_arg->user_name, csql_arg->passwd, NULL,
+			 db_get_client_type ()) != NO_ERROR)
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  csql_display_csql_err (0, 0);
@@ -1011,18 +1030,11 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
     case S_CMD_PAGER_CMD:
       if (*argument == '\0')
 	{
-	  fprintf (csql_Output_fp, "\n\t%s\n\n",
-		   (cmd_no == S_CMD_SHELL_CMD) ? csql_Shell_cmd : (cmd_no ==
-								   S_CMD_EDIT_CMD) ? csql_Editor_cmd : (cmd_no ==
-													S_CMD_PRINT_CMD)
-		   ? csql_Print_cmd : csql_Pager_cmd);
+	  fprintf (csql_Output_fp, "\n\t%s\n\n", csql_get_external_command ((SESSION_CMD) cmd_no));
 	}
       else
 	{
-	  strncpy ((cmd_no == S_CMD_SHELL_CMD) ? csql_Shell_cmd : (cmd_no ==
-								   S_CMD_EDIT_CMD) ? csql_Editor_cmd : (cmd_no ==
-													S_CMD_PRINT_CMD)
-		   ? csql_Print_cmd : csql_Pager_cmd, argument, PATH_MAX - 1);
+	  strncpy (csql_get_external_command ((SESSION_CMD) cmd_no), argument, PATH_MAX - 1);
 	}
       break;
 
@@ -2779,6 +2791,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
 error:
   nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+  er_final (ER_ALL_FINAL);
   csql_exit (EXIT_FAILURE);
   return EXIT_FAILURE;		/* won't get here really */
 }

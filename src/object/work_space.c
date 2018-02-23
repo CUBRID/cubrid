@@ -53,9 +53,7 @@
 #include "object_template.h"
 #include "server_interface.h"
 #include "view_transform.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 extern unsigned int db_on_server;
 
@@ -963,16 +961,16 @@ ws_rehash_vmop (MOP mop, MOBJ classobj, DB_VALUE * newkey)
 	{
 	  if ((att->flags & SM_ATTFLAG_VID) && (classobj_get_prop (att->properties, SM_PROPERTY_VID_KEY, &val)))
 	    {
-	      att_seq_val = DB_GET_INTEGER (&val);
+	      att_seq_val = db_get_int (&val);
 	      if (att_seq_val == key_index)
 		{
 		  /* Sets won't work as key components */
 		  mem = inst + att->offset;
 		  db_value_domain_init (&val, att->type->id, att->domain->precision, att->domain->scale);
 		  PRIM_GETMEM (att->type, att->domain, mem, &val);
-		  if ((DB_VALUE_TYPE (value) == DB_TYPE_STRING) && (DB_GET_STRING (value) == NULL))
+		  if ((DB_VALUE_TYPE (value) == DB_TYPE_STRING) && (db_get_string (value) == NULL))
 		    {
-		      DB_MAKE_NULL (value);
+		      db_make_null (value);
 		    }
 
 		  if (no_keys > 1)

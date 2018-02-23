@@ -115,6 +115,7 @@ extern int yybuffer_pos;
 #endif /* WINDOWS */
 #include "memory_alloc.h"
 #include "db_elo.h"
+#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -15290,7 +15291,7 @@ reserved_func
 			arg2 = parser_new_node(this_parser, PT_VALUE);
 			if (arg2)
 			  {
-			    DB_MAKE_INT(&arg2->info.value.db_value, 0);
+			    db_make_int(&arg2->info.value.db_value, 0);
 			    arg2->type_enum = PT_TYPE_INTEGER;
 			  }
 			node = parser_make_expression (this_parser, PT_TIMESTAMP, $4, arg2, NULL); /* will call timestamp(arg1, 0) */
@@ -24305,7 +24306,7 @@ parser_main (PARSER_CONTEXT * parser)
 	    }
 	  for (i = 0; i < parser->host_var_count; i++)
 	    {
-	      DB_MAKE_NULL (&parser->host_variables[i]);
+	      db_make_null (&parser->host_variables[i]);
 	    }
 	}
     }

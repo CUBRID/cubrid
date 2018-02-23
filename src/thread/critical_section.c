@@ -41,6 +41,7 @@
 #include "tsc_timer.h"
 #include "show_scan.h"
 #include "numeric_opfunc.h"
+#include "dbtype.h"
 
 #undef csect_initialize_critical_section
 #undef csect_finalize_critical_section
@@ -69,8 +70,6 @@
 SYNC_CRITICAL_SECTION csectgl_Critical_sections[CRITICAL_SECTION_COUNT];
 
 static const char *csect_Names[] = {
-  "ER_LOG_FILE",
-  "ER_MSG_CACHE",
   "WFG",
   "LOG",
   "LOCATOR_CLASSNAME_TABLE",

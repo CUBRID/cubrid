@@ -71,8 +71,7 @@
 #include "db_json.hpp"
 #include "thread.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #define GOTO_EXIT_ON_ERROR \
   do \
@@ -812,7 +811,7 @@ qexec_add_composite_lock (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST reg_var_li
 	  if (typ == DB_TYPE_VOBJ)
 	    {
 	      /* grab the real oid */
-	      ret = db_seq_get (DB_GET_SEQUENCE (dbval), 2, &element);
+	      ret = db_seq_get (db_get_set (dbval), 2, &element);
 	      if (ret != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
@@ -826,7 +825,7 @@ qexec_add_composite_lock (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST reg_var_li
 	      GOTO_EXIT_ON_ERROR;
 	    }
 
-	  SAFE_COPY_OID (&instance_oid, DB_GET_OID (dbval));
+	  SAFE_COPY_OID (&instance_oid, db_get_oid (dbval));
 
 	  if (default_cls_oid != NULL)
 	    {
@@ -844,7 +843,7 @@ qexec_add_composite_lock (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST reg_var_li
 	      if (typ == DB_TYPE_VOBJ)
 		{
 		  /* grab the real oid */
-		  ret = db_seq_get (DB_GET_SEQUENCE (dbval), 2, &element);
+		  ret = db_seq_get (db_get_set (dbval), 2, &element);
 		  if (ret != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
@@ -858,7 +857,7 @@ qexec_add_composite_lock (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST reg_var_li
 		  GOTO_EXIT_ON_ERROR;
 		}
 
-	      SAFE_COPY_OID (&class_oid, DB_GET_OID (dbval));
+	      SAFE_COPY_OID (&class_oid, db_get_oid (dbval));
 	    }
 
 	  ret = lock_add_composite_lock (thread_p, composite_lock, &instance_oid, &class_oid);
@@ -1001,7 +1000,7 @@ qexec_upddel_add_unique_oid_to_ehid (THREAD_ENTRY * thread_p, XASL_NODE * xasl, 
 	  if (typ == DB_TYPE_VOBJ)
 	    {
 	      /* grab the real oid */
-	      ret = db_seq_get (DB_GET_SEQUENCE (dbval), 2, &element);
+	      ret = db_seq_get (db_get_set (dbval), 2, &element);
 	      if (ret != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
@@ -1019,7 +1018,7 @@ qexec_upddel_add_unique_oid_to_ehid (THREAD_ENTRY * thread_p, XASL_NODE * xasl, 
 	  /* Get the appropriate hash file and check if the OID exists in the file */
 	  ehid = &xasl->proc.buildlist.upddel_oid_locator_ehids[idx];
 
-	  SAFE_COPY_OID (&key_oid, DB_GET_OID (dbval));
+	  SAFE_COPY_OID (&key_oid, db_get_oid (dbval));
 
 	  eh_search = ehash_search (thread_p, ehid, &key_oid, &oid);
 	  switch (eh_search)
@@ -2830,7 +2829,7 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	  if (ordby_info->ordbynum_flag & XASL_ORDBYNUM_FLAG_SCAN_STOP)
 	    {
 	      /* reset ordbynum_val for next use */
-	      DB_MAKE_BIGINT (ordby_info->ordbynum_val, 0);
+	      db_make_bigint (ordby_info->ordbynum_val, 0);
 	      /* setting SORT_PUT_STOP will make 'sr_in_sort()' stop processing; the caller, 'qexec_gby_put_next()',
 	       * returns 'gbstate->state' */
 	      return SORT_PUT_STOP;
@@ -3037,7 +3036,7 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
 	}
     }
 
-  *limit_ptr = DB_GET_INTEGER (dbvalp);
+  *limit_ptr = db_get_int (dbvalp);
   if (*limit_ptr < 0)
     {
       /* If the limit is below 0, set it to 0 and still return success. */
@@ -4348,7 +4347,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
   /* initialize groupby_num() value */
   if (buildlist->g_grbynum_val && DB_IS_NULL (buildlist->g_grbynum_val))
     {
-      DB_MAKE_BIGINT (buildlist->g_grbynum_val, 0);
+      db_make_bigint (buildlist->g_grbynum_val, 0);
     }
 
   /* clear group by limit flags when skip group by is not used */
@@ -8790,7 +8789,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		}
 	      else
 		{
-		  should_delete = DB_GET_INT (valp);
+		  should_delete = db_get_int (valp);
 		}
 
 	      if (should_delete)
@@ -8835,7 +8834,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		  internal_class->oid = NULL;
 		  continue;
 		}
-	      internal_class->oid = DB_GET_OID (valp);
+	      internal_class->oid = db_get_oid (valp);
 	      if (mvcc_reev_class != NULL)
 		{
 		  mvcc_reev_class->inst_oid = internal_class->oid;
@@ -8851,7 +8850,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		{
 		  continue;
 		}
-	      class_oid = DB_GET_OID (valp);
+	      class_oid = db_get_oid (valp);
 
 	      /* class has changed to a new subclass */
 	      if (class_oid
@@ -9007,7 +9006,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
-	      /* FIXME: Function version of DB_GET_OID returns (probably) NULL_OID when the value is NULL,
+	      /* FIXME: Function version of db_get_oid returns (probably) NULL_OID when the value is NULL,
 	       * while macro version returns NULL pointer. This may cause different behavior.
 	       * As a quick fix, I'm going to add DB_IS_NULL block to keep the existing behavior.
 	       * We need to investigate and get rid of differences of two implementation.
@@ -9019,7 +9018,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		}
 	      else
 		{
-		  mvcc_reev_class->inst_oid = DB_GET_OID (valp);
+		  mvcc_reev_class->inst_oid = db_get_oid (valp);
 		}
 
 	      /* class OID */
@@ -9036,7 +9035,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		}
 	      else
 		{
-		  class_oid = DB_GET_OID (valp);
+		  class_oid = db_get_oid (valp);
 		}
 
 	      /* class has changed to a new subclass */
@@ -9698,7 +9697,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		    }
 		  continue;
 		}
-	      oid = DB_GET_OID (valp);
+	      oid = db_get_oid (valp);
 
 	      /* class OID */
 	      valp = val_list->next->val;
@@ -9714,7 +9713,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		    }
 		  continue;
 		}
-	      class_oid = DB_GET_OID (valp);
+	      class_oid = db_get_oid (valp);
 
 	      if (class_oid_idx < class_oid_cnt)
 		{
@@ -10186,7 +10185,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 
   *removed_count = 0;
 
-  DB_MAKE_NULL (&dbvalue);
+  db_make_null (&dbvalue);
 
   if (heap_attrinfo_clear_dbvalues (index_attr_info) != NO_ERROR)
     {
@@ -10410,7 +10409,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 
   assert (pruned_partition_scan_cache != NULL);
 
-  DB_MAKE_NULL (&dbvalue);
+  db_make_null (&dbvalue);
   OID_SET_NULL (unique_oid_p);
   OID_SET_NULL (&unique_oid);
 
@@ -10894,7 +10893,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       num_default_expr = 0;
     }
 
-  DB_MAKE_NULL (&insert_val);
+  db_make_null (&insert_val);
   for (k = 0; k < num_default_expr; k++)
     {
       OR_ATTRIBUTE *attr;
@@ -10912,7 +10911,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
-      DB_MAKE_NULL (new_val);
+      db_make_null (new_val);
       insert->vals[k] = new_val;
 
       switch (attr->current_default_value.default_expr.default_expr_type)
@@ -10934,7 +10933,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	    len_dest = (int) strlen (t_dest);
 	    db_time = xasl_state->vd.sys_datetime.time / 1000;
 	    error = tz_conv_tz_time_w_zone_name (&db_time, t_source, len_source, t_dest, len_dest, &cur_time);
-	    DB_MAKE_ENCODED_TIME (&insert_val, &cur_time);
+	    db_value_put_encoded_time (&insert_val, &cur_time);
 	  }
 	  break;
 
@@ -10953,16 +10952,16 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	    error =
 	      tz_conv_tz_datetime_w_region (&xasl_state->vd.sys_datetime, &system_tz_region, &session_tz_region,
 					    &dest_dt, NULL, NULL);
-	    DB_MAKE_ENCODED_DATE (&insert_val, &dest_dt.date);
+	    db_value_put_encoded_date (&insert_val, &dest_dt.date);
 	  }
 	  break;
 
 	case DB_DEFAULT_SYSDATETIME:
-	  DB_MAKE_DATETIME (&insert_val, &xasl_state->vd.sys_datetime);
+	  db_make_datetime (&insert_val, &xasl_state->vd.sys_datetime);
 	  break;
 
 	case DB_DEFAULT_SYSTIMESTAMP:
-	  DB_MAKE_DATETIME (&insert_val, &xasl_state->vd.sys_datetime);
+	  db_make_datetime (&insert_val, &xasl_state->vd.sys_datetime);
 	  error = db_datetime_to_timestamp (&insert_val, &insert_val);
 	  break;
 
@@ -10976,7 +10975,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	    error =
 	      tz_conv_tz_datetime_w_region (&xasl_state->vd.sys_datetime, &system_tz_region, &session_tz_region,
 					    &dest_dt, NULL, NULL);
-	    DB_MAKE_DATETIME (&insert_val, &dest_dt);
+	    db_make_datetime (&insert_val, &dest_dt);
 	  }
 	  break;
 
@@ -10994,7 +10993,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  break;
 
 	case DB_DEFAULT_UNIX_TIMESTAMP:
-	  DB_MAKE_DATETIME (&insert_val, &xasl_state->vd.sys_datetime);
+	  db_make_datetime (&insert_val, &xasl_state->vd.sys_datetime);
 	  error = db_unix_timestamp (&insert_val, &insert_val);
 	  break;
 
@@ -11022,7 +11021,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  }
 	      }
 
-	    DB_MAKE_STRING (&insert_val, temp);
+	    db_make_string (&insert_val, temp);
 	    insert_val.need_clear = true;
 	  }
 	  break;
@@ -11038,7 +11037,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      {
 		temp = tdes->client.db_user;
 	      }
-	    DB_MAKE_STRING (&insert_val, temp);
+	    db_make_string (&insert_val, temp);
 	  }
 	  break;
 
@@ -11719,20 +11718,20 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       /* check for virtual objects */
       if (DB_VALUE_DOMAIN_TYPE (fetch->arg) != DB_TYPE_VOBJ)
 	{
-	  SAFE_COPY_OID (&dbvaloid, DB_GET_OID (fetch->arg));
+	  SAFE_COPY_OID (&dbvaloid, db_get_oid (fetch->arg));
 	}
       else
 	{
-	  DB_SET *setp = DB_GET_SET (fetch->arg);
+	  DB_SET *setp = db_get_set (fetch->arg);
 	  DB_VALUE dbval, dbval1;
 
 	  if ((db_set_size (setp) == 3) && (db_set_get (setp, 1, &dbval) == NO_ERROR)
 	      && (db_set_get (setp, 2, &dbval1) == NO_ERROR)
 	      && (DB_IS_NULL (&dbval)
-		  || ((DB_VALUE_DOMAIN_TYPE (&dbval) == DB_TYPE_OID) && OID_ISNULL (DB_GET_OID (&dbval))))
+		  || ((DB_VALUE_DOMAIN_TYPE (&dbval) == DB_TYPE_OID) && OID_ISNULL (db_get_oid (&dbval))))
 	      && (DB_VALUE_DOMAIN_TYPE (&dbval1) == DB_TYPE_OID))
 	    {
-	      SAFE_COPY_OID (&dbvaloid, DB_GET_OID (&dbval1));
+	      SAFE_COPY_OID (&dbvaloid, db_get_oid (&dbval1));
 	    }
 	  else
 	    {
@@ -12348,7 +12347,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	  /* get oid and attrid to be fetched last at scan */
 	  rightvalp = varptr->value.arithptr->value;
 
-	  oid = DB_GET_OID (rightvalp);
+	  oid = db_get_oid (rightvalp);
 	  if (oid == NULL)
 	    {
 	      /* Probably this would be INCR(NULL). When the source value is NULL, INCR/DECR expression is also NULL. */
@@ -12371,7 +12370,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	    {
 	      goto exit_on_error;
 	    }
-	  attrid = DB_GET_INTEGER (thirdvalp);
+	  attrid = db_get_int (thirdvalp);
 
 	  n_increment = (varptr->value.arithptr->opcode == T_INCR ? 1 : -1);
 
@@ -12640,11 +12639,11 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * 
   TP_DOMAIN_STATUS dom_status;
 
   assert (xasl && xasl->instnum_val);
-  DB_MAKE_BIGINT (xasl->instnum_val, 0);
+  db_make_bigint (xasl->instnum_val, 0);
 
   if (xasl->save_instnum_val)
     {
-      DB_MAKE_BIGINT (xasl->save_instnum_val, 0);
+      db_make_bigint (xasl->save_instnum_val, 0);
     }
 
   /* Single table, index scan, with keylimit that has lower value */
@@ -12780,7 +12779,7 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	/* initialize groupby_num() value for BUILDLIST_PROC */
 	if (buildlist->g_grbynum_val)
 	  {
-	    DB_MAKE_BIGINT (buildlist->g_grbynum_val, 0);
+	    db_make_bigint (buildlist->g_grbynum_val, 0);
 	  }
 
 	if (xasl->list_id->type_list.type_cnt == 0)
@@ -12895,7 +12894,7 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	/* set groupby_num() value as 1 for BUILDVALUE_PROC */
 	if (buildvalue->grbynum_val)
 	  {
-	    DB_MAKE_BIGINT (buildvalue->grbynum_val, 1);
+	    db_make_bigint (buildvalue->grbynum_val, 1);
 	  }
 
 	/* initialize aggregation list */
@@ -12929,7 +12928,7 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   /* initialize orderby_num() value */
   if (xasl->ordbynum_val)
     {
-      DB_MAKE_BIGINT (xasl->ordbynum_val, 0);
+      db_make_bigint (xasl->ordbynum_val, 0);
     }
 
   if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
@@ -12937,17 +12936,17 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       /* initialize level_val value */
       if (xasl->level_val)
 	{
-	  DB_MAKE_INT (xasl->level_val, 0);
+	  db_make_int (xasl->level_val, 0);
 	}
       /* initialize isleaf_val value */
       if (xasl->isleaf_val)
 	{
-	  DB_MAKE_INT (xasl->isleaf_val, 0);
+	  db_make_int (xasl->isleaf_val, 0);
 	}
       /* initialize iscycle_val value */
       if (xasl->iscycle_val)
 	{
-	  DB_MAKE_INT (xasl->iscycle_val, 0);
+	  db_make_int (xasl->iscycle_val, 0);
 	}
     }
 
@@ -13377,7 +13376,7 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   /* init output */
   *empty_result = false;
 
-  DB_MAKE_INT (&zero_val, 0);
+  db_make_int (&zero_val, 0);
 
   if (xasl->limit_offset != NULL)
     {
@@ -15043,7 +15042,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
       /* calculate LEVEL pseudocolumn value */
       level_value++;
-      DB_MAKE_INT (level_valp, level_value);
+      db_make_int (level_valp, level_value);
 
       /* start parents list scanner */
       if (qfile_open_list_scan (listfile1, &lfscan_id) != NO_ERROR)
@@ -15065,7 +15064,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  parent_tuple_added = false;
 
 	  /* reset parent tuple position pseudocolumn value */
-	  DB_MAKE_BIT (parent_pos_valp, DB_DEFAULT_PRECISION, NULL, 8);
+	  db_make_bit (parent_pos_valp, DB_DEFAULT_PRECISION, NULL, 8);
 
 	  /* fetch regu_variable values from parent tuple; obs: prior_regu_list was split into pred and rest for
 	   * possible future optimizations. */
@@ -15178,7 +15177,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		  if (xasl->level_val)
 		    {
 		      /* set level_val to children's level */
-		      DB_MAKE_INT (xasl->level_val, level_value + 1);
+		      db_make_int (xasl->level_val, level_value + 1);
 		    }
 		  ev_res = eval_pred (thread_p, xasl->if_pred, &xasl_state->vd, NULL);
 		  if (ev_res == V_ERROR)
@@ -15228,12 +15227,12 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 			    }
 
 			  /* set index string pseudocolumn value to tuples from START WITH list */
-			  DB_MAKE_STRING (index_valp, father_index);
+			  db_make_string (index_valp, father_index);
 			}
 
 		      /* set CONNECT_BY_ISLEAF pseudocolumn value; this is only for completion, we don't know its final
 		       * value yet */
-		      DB_MAKE_INT (isleaf_valp, isleaf_value);
+		      db_make_int (isleaf_valp, isleaf_value);
 
 		      /* preserve the parent position pseudocolumn value */
 		      if (qexec_get_tuple_column_value (tuple_rec.tpl,
@@ -15259,7 +15258,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 			}
 
 		      /* set parent tuple position pseudocolumn value */
-		      DB_MAKE_BIT (parent_pos_valp, DB_DEFAULT_PRECISION, (void *) &parent_pos,
+		      db_make_bit (parent_pos_valp, DB_DEFAULT_PRECISION, (const DB_C_BIT) (&parent_pos),
 				   sizeof (parent_pos) * 8);
 
 		      parent_tuple_added = true;
@@ -15291,7 +15290,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 			      pr_clear_value (index_valp);
 			    }
 
-			  DB_MAKE_STRING (index_valp, son_index);
+			  db_make_string (index_valp, son_index);
 
 			  if (qexec_insert_tuple_into_list (thread_p, listfile2, xasl->outptr_list, &xasl_state->vd,
 							    tplrec) != NO_ERROR)
@@ -15345,10 +15344,10 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		      pr_clear_value (index_valp);
 		    }
 
-		  DB_MAKE_STRING (index_valp, father_index);
+		  db_make_string (index_valp, father_index);
 		}
 
-	      DB_MAKE_INT (isleaf_valp, isleaf_value);
+	      db_make_int (isleaf_valp, isleaf_value);
 
 	      if (qexec_get_tuple_column_value (tuple_rec.tpl,
 						(xasl->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET),
@@ -15372,7 +15371,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	    }
 
 	  /* set CONNECT_BY_ISCYCLE pseudocolumn value */
-	  DB_MAKE_INT (iscycle_valp, iscycle_value);
+	  db_make_int (iscycle_valp, iscycle_value);
 	  /* it is fixed size data, so we can set it in this fashion */
 	  if (qfile_set_tuple_column_value (thread_p, listfile0, NULL, &parent_pos.vpid, parent_pos.tpl,
 					    (xasl->outptr_list->valptr_cnt - PCOL_ISCYCLE_TUPLE_OFFSET), iscycle_valp,
@@ -15382,7 +15381,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	    }
 
 	  /* set CONNECT_BY_ISLEAF pseudocolumn value */
-	  DB_MAKE_INT (isleaf_valp, isleaf_value);
+	  db_make_int (isleaf_valp, isleaf_value);
 	  if (qfile_set_tuple_column_value (thread_p, listfile0, NULL, &parent_pos.vpid, parent_pos.tpl,
 					    (xasl->outptr_list->valptr_cnt - PCOL_ISLEAF_TUPLE_OFFSET), isleaf_valp,
 					    &tp_Integer_domain) != NO_ERROR)
@@ -15426,7 +15425,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		      pr_clear_value (index_valp);
 		    }
 
-		  DB_MAKE_STRING (index_valp, son_index);
+		  db_make_string (index_valp, son_index);
 
 		  if (fetch_val_list (thread_p, connect_by->prior_regu_list_pred, &xasl_state->vd, NULL, NULL,
 				      tpl_lst2tmp.tpl, PEEK) != NO_ERROR)
@@ -16189,7 +16188,7 @@ qexec_get_tuple_column_value (QFILE_TUPLE tpl, int index, DB_VALUE * valp, TP_DO
     }
   else
     {
-      DB_MAKE_NULL (valp);
+      db_make_null (valp);
     }
 
   return NO_ERROR;
@@ -16245,7 +16244,7 @@ qexec_check_for_cycle (THREAD_ENTRY * thread_p, OUTPTR_LIST * outptr_list, QFILE
 	  return ER_FAILED;
 	}
 
-      bitval = (QFILE_TUPLE_POSITION *) DB_GET_BIT (&p_pos_dbval, &length);
+      bitval = (QFILE_TUPLE_POSITION *) db_get_bit (&p_pos_dbval, &length);
 
       if (bitval)
 	{
@@ -16609,17 +16608,17 @@ qexec_set_pseudocolumns_val_pointers (XASL_NODE * xasl, DB_VALUE ** level_valp, 
       if (i == n - PCOL_ISLEAF_TUPLE_OFFSET)
 	{
 	  *isleaf_valp = regulist->value.value.dbvalptr;
-	  DB_MAKE_INT (*isleaf_valp, 0);
+	  db_make_int (*isleaf_valp, 0);
 	}
       if (i == n - PCOL_ISCYCLE_TUPLE_OFFSET)
 	{
 	  *iscycle_valp = regulist->value.value.dbvalptr;
-	  DB_MAKE_INT (*iscycle_valp, 0);
+	  db_make_int (*iscycle_valp, 0);
 	}
       if (i == n - PCOL_INDEX_STRING_TUPLE_OFFSET)
 	{
 	  *index_valp = regulist->value.value.dbvalptr;
-	  DB_MAKE_INT (*index_valp, 0);
+	  db_make_int (*index_valp, 0);
 	}
       regulist = regulist->next;
       i++;
@@ -16791,7 +16790,7 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 	  goto exit_on_error;
 	}
 
-      level = DB_GET_INTEGER (&level_dbval);
+      level = db_get_int (&level_dbval);
 
       if (level == prev_level)
 	{
@@ -16805,7 +16804,7 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 	  if (level > 1)
 	    {
 	      /* set parent position pseudocolumn value */
-	      DB_MAKE_BIT (&parent_pos_dbval, DB_DEFAULT_PRECISION, (void *) &pos_info_p->tpl_pos,
+	      db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, (const DB_C_BIT) &pos_info_p->tpl_pos,
 			   sizeof (pos_info_p->tpl_pos) * 8);
 
 	      if (qfile_set_tuple_column_value (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,
@@ -16836,7 +16835,7 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 
 	  qfile_save_current_scan_tuple_position (&prev_s_id, &pos_info_p->tpl_pos);
 
-	  DB_MAKE_BIT (&parent_pos_dbval, DB_DEFAULT_PRECISION, (void *) &pos_info_p->tpl_pos,
+	  db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, (const DB_C_BIT) &pos_info_p->tpl_pos,
 		       sizeof (pos_info_p->tpl_pos) * 8);
 
 	  if (qfile_set_tuple_column_value (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,
@@ -16871,7 +16870,7 @@ qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID *
 
 	  if (level > 1)
 	    {
-	      DB_MAKE_BIT (&parent_pos_dbval, DB_DEFAULT_PRECISION, (void *) &pos_info_p->tpl_pos,
+	      db_make_bit (&parent_pos_dbval, DB_DEFAULT_PRECISION, (const DB_C_BIT) &pos_info_p->tpl_pos,
 			   sizeof (pos_info_p->tpl_pos) * 8);
 
 	      if (qfile_set_tuple_column_value (thread_p, list_id_p, s_id.curr_pgptr, &s_id.curr_vpid, tuple_rec.tpl,
@@ -17291,7 +17290,7 @@ qexec_gby_finalize_group_val_list (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbst
 	  if (i >= N - 1)
 	    {
 	      (void) pr_clear_value (gby_vallist->val);
-	      DB_MAKE_NULL (gby_vallist->val);
+	      db_make_null (gby_vallist->val);
 	    }
 	  i++;
 	  gby_vallist = gby_vallist->next;
@@ -17446,7 +17445,7 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
 		{
 		  pr_clear_value (g_outp->accumulator.value);
 		  *g_outp->accumulator.value = *d_aggp->accumulator.value;
-		  /* Don't use DB_MAKE_NULL here to preserve the type information. */
+		  /* Don't use db_make_null here to preserve the type information. */
 
 		  PRIM_SET_NULL (d_aggp->accumulator.value);
 		}
@@ -17509,7 +17508,7 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
       if (gbstate->grbynum_flag & XASL_G_GRBYNUM_FLAG_SCAN_STOP)
 	{
 	  /* reset grbynum_val for next use */
-	  DB_MAKE_BIGINT (gbstate->grbynum_val, 0);
+	  db_make_bigint (gbstate->grbynum_val, 0);
 	  /* setting SORT_PUT_STOP will make 'sr_in_sort()' stop processing; the caller, 'qexec_gby_put_next()',
 	   * returns 'gbstate->state' */
 	  gbstate->state = SORT_PUT_STOP;
@@ -18089,15 +18088,15 @@ bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 {
   unsigned char *string1, *string2;
 
-  string1 = (unsigned char *) DB_GET_STRING (value1);
-  string2 = (unsigned char *) DB_GET_STRING (value2);
+  string1 = (unsigned char *) db_get_string (value1);
+  string2 = (unsigned char *) db_get_string (value2);
 
   if (string1 == NULL || string2 == NULL)
     {
       return DB_UNK;
     }
 
-  return bf2df_str_compare (string1, (int) DB_GET_STRING_SIZE (value1), string2, (int) DB_GET_STRING_SIZE (value2));
+  return bf2df_str_compare (string1, (int) db_get_string_size (value1), string2, (int) db_get_string_size (value2));
 }
 
 /*
@@ -18707,7 +18706,7 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
 
-  DB_MAKE_NULL (&val);
+  db_make_null (&val);
 
   if (buildlist->groupby_list == NULL)
     {
@@ -19425,9 +19424,9 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
   func_state->value_tplrec.tpl = NULL;
 
   /* initialize dbvals */
-  DB_MAKE_NULL (&func_state->csktc_dbval);
-  DB_MAKE_NULL (&func_state->cgtc_dbval);
-  DB_MAKE_NULL (&func_state->cgtc_nn_dbval);
+  db_make_null (&func_state->csktc_dbval);
+  db_make_null (&func_state->cgtc_dbval);
+  db_make_null (&func_state->cgtc_nn_dbval);
 
   /* initialize group header listfile */
   group_type_list.type_cnt = 2;
@@ -20046,9 +20045,9 @@ qexec_analytic_finalize_group (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
     }
 
   /* write current counts to dbvalues */
-  DB_MAKE_INT (&func_state->cgtc_dbval, func_state->curr_group_tuple_count);
-  DB_MAKE_INT (&func_state->cgtc_nn_dbval, func_state->curr_group_tuple_count_nn);
-  DB_MAKE_INT (&func_state->csktc_dbval, func_state->curr_sort_key_tuple_count);
+  db_make_int (&func_state->cgtc_dbval, func_state->curr_group_tuple_count);
+  db_make_int (&func_state->cgtc_nn_dbval, func_state->curr_group_tuple_count_nn);
+  db_make_int (&func_state->csktc_dbval, func_state->curr_sort_key_tuple_count);
 
   /* dump group */
   if (!is_same_group)
@@ -20270,12 +20269,12 @@ qexec_analytic_evaluate_ntile_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTI
       if (recs_in_bucket == 0)
 	{
 	  /* more buckets than tuples, this is identity */
-	  DB_MAKE_INT (func_state->func_p->value, func_state->group_tuple_position + 1);
+	  db_make_int (func_state->func_p->value, func_state->group_tuple_position + 1);
 	}
       else if (compensate == 0)
 	{
 	  /* perfect division, straightforward */
-	  DB_MAKE_INT (func_state->func_p->value, func_state->group_tuple_position / recs_in_bucket + 1);
+	  db_make_int (func_state->func_p->value, func_state->group_tuple_position / recs_in_bucket + 1);
 	}
       else
 	{
@@ -20284,11 +20283,11 @@ qexec_analytic_evaluate_ntile_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTI
 	  /* account for remainder */
 	  if (func_state->group_tuple_position < xcount)
 	    {
-	      DB_MAKE_INT (func_state->func_p->value, func_state->group_tuple_position / (recs_in_bucket + 1) + 1);
+	      db_make_int (func_state->func_p->value, func_state->group_tuple_position / (recs_in_bucket + 1) + 1);
 	    }
 	  else
 	    {
-	      DB_MAKE_INT (func_state->func_p->value,
+	      db_make_int (func_state->func_p->value,
 			   (func_state->group_tuple_position - compensate) / recs_in_bucket + 1);
 	    }
 	}
@@ -20296,7 +20295,7 @@ qexec_analytic_evaluate_ntile_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTI
   else
     {
       /* null output */
-      DB_MAKE_NULL (func_state->func_p->value);
+      db_make_null (func_state->func_p->value);
     }
 
   /* all ok */
@@ -20427,7 +20426,7 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCT
 	  return ER_FAILED;
 	}
 
-      nth_idx = DB_GET_DOUBLE (&offset_val);
+      nth_idx = db_get_double (&offset_val);
 
       if (nth_idx < 1.0 || nth_idx > DB_INT32_MAX)
 	{
@@ -20542,17 +20541,17 @@ qexec_analytic_evaluate_cume_dist_percent_rank_function (THREAD_ENTRY * thread_p
   switch (func_state->func_p->function)
     {
     case PT_CUME_DIST:
-      DB_MAKE_DOUBLE (func_state->func_p->value, (double) end_of_group / func_state->curr_group_tuple_count);
+      db_make_double (func_state->func_p->value, (double) end_of_group / func_state->curr_group_tuple_count);
       break;
 
     case PT_PERCENT_RANK:
       if (func_state->curr_group_tuple_count <= 1)
 	{
-	  DB_MAKE_DOUBLE (func_state->func_p->value, 0.0f);
+	  db_make_double (func_state->func_p->value, 0.0f);
 	}
       else
 	{
-	  DB_MAKE_DOUBLE (func_state->func_p->value,
+	  db_make_double (func_state->func_p->value,
 			  (double) start_of_group / (func_state->curr_group_tuple_count - 1));
 	}
       break;
@@ -20622,7 +20621,7 @@ qexec_analytic_evaluate_interpolation_function (THREAD_ENTRY * thread_p, ANALYTI
 
       assert (DB_VALUE_TYPE (peek_value_p) == DB_TYPE_DOUBLE);
 
-      percentile_d = DB_GET_DOUBLE (peek_value_p);
+      percentile_d = db_get_double (peek_value_p);
 
       if (func_p->function == PT_PERCENTILE_DISC)
 	{
@@ -20663,8 +20662,8 @@ qexec_analytic_evaluate_interpolation_function (THREAD_ENTRY * thread_p, ANALYTI
   else
     {
       DB_VALUE c_value, f_value;
-      DB_MAKE_NULL (&c_value);
-      DB_MAKE_NULL (&f_value);
+      db_make_null (&c_value);
+      db_make_null (&f_value);
 
       if (qexec_analytic_value_lookup (thread_p, func_state, (int) f_row_num_d, true) != NO_ERROR)
 	{
@@ -20790,7 +20789,7 @@ qexec_analytic_sort_key_header_load (ANALYTIC_FUNCTION_STATE * func_state, bool 
     }
   else
     {
-      DB_MAKE_NULL (func_state->func_p->value);
+      db_make_null (func_state->func_p->value);
     }
 
   /* all ok */
@@ -22360,7 +22359,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       DB_DATA_STATUS data_stat;
 
       db_make_int (&db_int_precision, precision);
-      DB_MAKE_NULL (&db_str_precision);
+      db_make_null (&db_str_precision);
       if (tp_value_cast (&db_int_precision, &db_str_precision, &tp_String_domain, false) != DOMAIN_COMPATIBLE)
 	{
 	  goto exit_on_error;
@@ -22396,7 +22395,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       if (scale >= 0)
 	{
 	  db_make_int (&db_int_scale, scale);
-	  DB_MAKE_NULL (&db_str_scale);
+	  db_make_null (&db_str_scale);
 	  if (tp_value_cast (&db_int_scale, &db_str_scale, &tp_String_domain, false) != DOMAIN_COMPATIBLE)
 	    {
 	      pr_clear_value (pprec_scale_result);
@@ -23800,7 +23799,7 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
       return NO_ERROR;
     }
 
-  DB_MAKE_NULL (&ubound_val);
+  db_make_null (&ubound_val);
   error = qexec_get_orderbynum_upper_bound (thread_p, xasl->ordbynum_pred, vd, &ubound_val);
   if (error != NO_ERROR)
     {
@@ -23821,7 +23820,7 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
 	}
     }
 
-  ubound = DB_GET_INT (&ubound_val);
+  ubound = db_get_int (&ubound_val);
   pr_clear_value (&ubound_val);
 
   if (ubound == 0)
@@ -24162,7 +24161,7 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
   ordby_info.ordbynum_flag = xasl->ordbynum_flag;
   ordby_info.ordbynum_pos_cnt = 0;
   ordby_info.ordbynum_val = xasl->ordbynum_val;
-  DB_MAKE_BIGINT (ordby_info.ordbynum_val, 0);
+  db_make_bigint (ordby_info.ordbynum_val, 0);
 
   list_id = xasl->list_id;
   topn = xasl->topn_items;
@@ -24303,7 +24302,7 @@ cleanup:
     {
       /* reset ORDERBY_NUM value */
       assert (DB_VALUE_TYPE (xasl->ordbynum_val) == DB_TYPE_BIGINT);
-      DB_MAKE_BIGINT (xasl->ordbynum_val, 0);
+      db_make_bigint (xasl->ordbynum_val, 0);
     }
   return error;
 }
@@ -24357,9 +24356,9 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
   assert_release (pred != NULL);
   assert_release (ubound != NULL);
 
-  DB_MAKE_NULL (ubound);
-  DB_MAKE_NULL (&left_bound);
-  DB_MAKE_NULL (&right_bound);
+  db_make_null (ubound);
+  db_make_null (&left_bound);
+  db_make_null (&right_bound);
 
   if (pred->type == T_PRED && pred->pe.pred.bool_op == B_AND)
     {
@@ -24459,7 +24458,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	{
 	  /* add 1 so we can use R_LE */
 	  DB_VALUE one_val;
-	  DB_MAKE_INT (&one_val, 1);
+	  db_make_int (&one_val, 1);
 	  error = qdata_subtract_dbval (val, &one_val, ubound, rhs->domain);
 	}
       else
@@ -24477,7 +24476,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
   return error;
 
 error_return:
-  DB_MAKE_NULL (ubound);
+  db_make_null (ubound);
 
 cleanup:
   pr_clear_value (&left_bound);
