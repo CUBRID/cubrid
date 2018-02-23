@@ -1248,6 +1248,16 @@ net_server_start (const char *server_name)
   CHECK_ARGS check_coll_and_timezone = { true, true };
   THREAD_ENTRY *thread_p = NULL;
 
+  if (er_init (NULL, ER_NEVER_EXIT) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("Failed to initialize error manager\n");
+      status = -1;
+      goto end;
+    }
+
+  cubthread::initialize (thread_p);
+  assert (thread_p == thread_get_thread_entry_info ());
+
 #if defined(WINDOWS)
   if (css_windows_startup () < 0)
     {
@@ -1287,9 +1297,10 @@ net_server_start (const char *server_name)
       goto end;
     }
 
-  cubthread::initialize (thread_p);
-  assert (thread_p == thread_get_thread_entry_info ());
-
+  // we already initialize er_init with default values, we'll reload again after loading database parameters
+  // this call looks unnecessary.
+  // we can either remove this completely, or we can add an er_update to check if parameters are changed and do
+  // whatever is necessary
   if (er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("Failed to initialize error manager\n");
@@ -1331,7 +1342,7 @@ net_server_start (const char *server_name)
 	}
       else
 	{
-	  (void) xboot_shutdown_server (thread_get_thread_entry_info (), ER_ALL_FINAL);
+	  (void) xboot_shutdown_server (thread_get_thread_entry_info (), ER_THREAD_FINAL);
 	}
 
 #if defined(CUBRID_DEBUG)
@@ -1352,6 +1363,7 @@ net_server_start (const char *server_name)
     }
 
   cubthread::finalize ();
+  er_final (ER_ALL_FINAL);
   csect_finalize_static_critical_sections ();
   (void) sync_finalize_sync_stats ();
 

@@ -48,6 +48,7 @@
 #include "intl_support.h"
 #include "language_support.h"
 #include "system_parameter.h"
+#include "dbtype.h"
 
 extern int set_size (DB_COLLECTION * set);
 extern int set_get_element (DB_COLLECTION * set, int index, DB_VALUE * value);
@@ -2467,7 +2468,7 @@ _op_get_set_value (DB_VALUE * val)
       snprintf (result, result_size, "%s%s%s", "time '", return_result, "'");
       break;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       snprintf (result, result_size, "%s%s%s", "timestamp '", return_result, "'");
       break;
 

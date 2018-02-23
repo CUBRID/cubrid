@@ -28,7 +28,7 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "disk_manager.h"
 #include "log_impl.h"
 #include "recovery.h"
@@ -380,4 +380,9 @@ extern void vacuum_log_last_blockid (THREAD_ENTRY * thread_p);
 
 extern void vacuum_rv_convert_thread_to_vacuum (THREAD_ENTRY * thread_p, TRANID trid, THREAD_TYPE & save_type);
 extern void vacuum_restore_thread (THREAD_ENTRY * thread_p, THREAD_TYPE save_type);
+
+extern int vacuum_rv_es_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+#if defined (SERVER_MODE)
+extern void vacuum_notify_es_deleted (THREAD_ENTRY * thread_p, const char *uri);
+#endif /* SERVER_MODE */
 #endif /* _VACUUM_H_ */

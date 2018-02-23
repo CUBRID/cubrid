@@ -63,8 +63,7 @@
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
 #include "thread.h"
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -11162,7 +11161,7 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
 	  ret = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, attr_val, value->last_attrepr->domain);
 	  assert (er_errid () != NO_ERROR);
 
-	  DB_MAKE_NULL (&value->dbvalue);
+	  db_make_null (&value->dbvalue);
 	}
     }
 
@@ -12584,7 +12583,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 
       (void) pr_clear_value (db_valuep);
 
-      DB_MAKE_MIDXKEY (db_valuep, &midxkey);
+      db_make_midxkey (db_valuep, &midxkey);
 
       if (midxkey_size > DBVAL_BUFSIZE)
 	{
@@ -12747,7 +12746,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 
       (void) pr_clear_value (db_value);
 
-      DB_MAKE_MIDXKEY (db_value, &midxkey);
+      db_make_midxkey (db_value, &midxkey);
 
       if (midxkey_size > DBVAL_BUFSIZE)
 	{
@@ -16875,7 +16874,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
   ATTR_ID atts_id[1] = { 0 };
   DB_VALUE orig_value;
 
-  DB_MAKE_NULL (&orig_value);
+  db_make_null (&orig_value);
 
   if (upd_scancache == NULL || attr_info == NULL || oid == NULL)
     {
@@ -16903,17 +16902,17 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 
       if (QSTR_IS_BIT (src_type))
 	{
-	  curr_prec = DB_GET_STRING_LENGTH (&(value->dbvalue));
+	  curr_prec = db_get_string_length (&(value->dbvalue));
 	}
       else if (QSTR_IS_ANY_CHAR (src_type))
 	{
 	  if (TP_DOMAIN_CODESET (dest_dom) == INTL_CODESET_RAW_BYTES)
 	    {
-	      curr_prec = DB_GET_STRING_SIZE (&(value->dbvalue));
+	      curr_prec = db_get_string_size (&(value->dbvalue));
 	    }
 	  else if (!DB_IS_NULL (&(value->dbvalue)))
 	    {
-	      curr_prec = DB_GET_STRING_LENGTH (&(value->dbvalue));
+	      curr_prec = db_get_string_length (&(value->dbvalue));
 	    }
 	  else
 	    {
@@ -17002,25 +17001,25 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 	      switch (src_type)
 		{
 		case DB_TYPE_INTEGER:
-		  is_positive = ((DB_GET_INTEGER (&value->dbvalue) >= 0) ? 1 : 0);
+		  is_positive = ((db_get_int (&value->dbvalue) >= 0) ? 1 : 0);
 		  break;
 		case DB_TYPE_SMALLINT:
-		  is_positive = ((DB_GET_SHORT (&value->dbvalue) >= 0) ? 1 : 0);
+		  is_positive = ((db_get_short (&value->dbvalue) >= 0) ? 1 : 0);
 		  break;
 		case DB_TYPE_BIGINT:
-		  is_positive = ((DB_GET_BIGINT (&value->dbvalue) >= 0) ? 1 : 0);
+		  is_positive = ((db_get_bigint (&value->dbvalue) >= 0) ? 1 : 0);
 		  break;
 		case DB_TYPE_FLOAT:
-		  is_positive = ((DB_GET_FLOAT (&value->dbvalue) >= 0) ? 1 : 0);
+		  is_positive = ((db_get_float (&value->dbvalue) >= 0) ? 1 : 0);
 		  break;
 		case DB_TYPE_DOUBLE:
-		  is_positive = ((DB_GET_DOUBLE (&value->dbvalue) >= 0) ? 1 : 0);
+		  is_positive = ((db_get_double (&value->dbvalue) >= 0) ? 1 : 0);
 		  break;
 		case DB_TYPE_NUMERIC:
 		  is_positive = numeric_db_value_is_positive (&value->dbvalue);
 		  break;
 		case DB_TYPE_MONETARY:
-		  is_positive = ((DB_GET_MONETARY (&value->dbvalue)->amount >= 0) ? 1 : 0);
+		  is_positive = ((db_get_monetary (&value->dbvalue)->amount >= 0) ? 1 : 0);
 		  break;
 
 		case DB_TYPE_CHAR:
@@ -17028,8 +17027,8 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 		case DB_TYPE_NCHAR:
 		case DB_TYPE_VARNCHAR:
 		  {
-		    char *str = DB_PULL_STRING (&(value->dbvalue));
-		    char *str_end = str + DB_GET_STRING_LENGTH (&(value->dbvalue));
+		    char *str = db_get_string (&(value->dbvalue));
+		    char *str_end = str + db_get_string_length (&(value->dbvalue));
 		    char *p = NULL;
 
 		    /* get the sign in the source string; look directly into the buffer string, no copy */
@@ -18121,19 +18120,19 @@ heap_get_page_info (THREAD_ENTRY * thread_p, const OID * cls_oid, const HFID * h
       return S_ERROR;
     }
 
-  DB_MAKE_OID (page_info[HEAP_PAGE_INFO_CLASS_OID], cls_oid);
+  db_make_oid (page_info[HEAP_PAGE_INFO_CLASS_OID], cls_oid);
 
   if (hfid->hpgid == vpid->pageid && hfid->vfid.volid == vpid->volid)
     {
       HEAP_HDR_STATS *hdr_stats = (HEAP_HDR_STATS *) recdes.data;
-      DB_MAKE_NULL (page_info[HEAP_PAGE_INFO_PREV_PAGE]);
-      DB_MAKE_INT (page_info[HEAP_PAGE_INFO_NEXT_PAGE], hdr_stats->next_vpid.pageid);
+      db_make_null (page_info[HEAP_PAGE_INFO_PREV_PAGE]);
+      db_make_int (page_info[HEAP_PAGE_INFO_NEXT_PAGE], hdr_stats->next_vpid.pageid);
     }
   else
     {
       HEAP_CHAIN *chain = (HEAP_CHAIN *) recdes.data;
-      DB_MAKE_INT (page_info[HEAP_PAGE_INFO_PREV_PAGE], chain->prev_vpid.pageid);
-      DB_MAKE_INT (page_info[HEAP_PAGE_INFO_NEXT_PAGE], chain->next_vpid.pageid);
+      db_make_int (page_info[HEAP_PAGE_INFO_PREV_PAGE], chain->prev_vpid.pageid);
+      db_make_int (page_info[HEAP_PAGE_INFO_NEXT_PAGE], chain->next_vpid.pageid);
     }
 
   /* Obtain information from spage header */
@@ -18306,9 +18305,9 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
   assert (recdes != NULL);
 
   /* careful adding values in the right order */
-  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_VOLUMEID], oid.volid);
-  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_PAGEID], oid.pageid);
-  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_SLOTID], oid.slotid);
+  db_make_int (record_info[HEAP_RECORD_INFO_T_VOLUMEID], oid.volid);
+  db_make_int (record_info[HEAP_RECORD_INFO_T_PAGEID], oid.pageid);
+  db_make_int (record_info[HEAP_RECORD_INFO_T_SLOTID], oid.slotid);
 
   /* get slot info */
   slot_p = spage_get_slot (page_watcher->pgptr, oid.slotid);
@@ -18316,9 +18315,9 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
     {
       assert (0);
     }
-  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_OFFSET], slot_p->offset_to_record);
-  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_LENGTH], slot_p->record_length);
-  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_REC_TYPE], slot_p->record_type);
+  db_make_int (record_info[HEAP_RECORD_INFO_T_OFFSET], slot_p->offset_to_record);
+  db_make_int (record_info[HEAP_RECORD_INFO_T_LENGTH], slot_p->record_length);
+  db_make_int (record_info[HEAP_RECORD_INFO_T_REC_TYPE], slot_p->record_type);
 
   /* get record info */
   switch (slot_p->record_type)
@@ -18355,27 +18354,27 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
 	  scan = spage_get_record (thread_p, page_watcher->pgptr, oid.slotid, recdes, COPY);
 	  pgbuf_ordered_unfix (thread_p, page_watcher);
 	}
-      DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_REPRID], or_rep_id (recdes));
-      DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_REPRID], or_chn (recdes));
+      db_make_int (record_info[HEAP_RECORD_INFO_T_REPRID], or_rep_id (recdes));
+      db_make_int (record_info[HEAP_RECORD_INFO_T_REPRID], or_chn (recdes));
       or_mvcc_get_header (recdes, &mvcc_header);
-      DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_INSID], MVCC_GET_INSID (&mvcc_header));
+      db_make_bigint (record_info[HEAP_RECORD_INFO_T_MVCC_INSID], MVCC_GET_INSID (&mvcc_header));
       if (MVCC_IS_HEADER_DELID_VALID (&mvcc_header))
 	{
-	  DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_DELID], MVCC_GET_DELID (&mvcc_header));
+	  db_make_bigint (record_info[HEAP_RECORD_INFO_T_MVCC_DELID], MVCC_GET_DELID (&mvcc_header));
 	}
       else
 	{
-	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_DELID]);
+	  db_make_null (record_info[HEAP_RECORD_INFO_T_MVCC_DELID]);
 	}
-      DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_MVCC_CHN (&mvcc_header));
-      DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS], MVCC_GET_FLAG (&mvcc_header));
+      db_make_int (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_MVCC_CHN (&mvcc_header));
+      db_make_int (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS], MVCC_GET_FLAG (&mvcc_header));
       if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_PREV_VERSION))
 	{
-	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_PREV_VERSION], 1);
+	  db_make_int (record_info[HEAP_RECORD_INFO_T_MVCC_PREV_VERSION], 1);
 	}
       else
 	{
-	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_PREV_VERSION], 0);
+	  db_make_int (record_info[HEAP_RECORD_INFO_T_MVCC_PREV_VERSION], 0);
 	}
       break;
 
@@ -18431,28 +18430,28 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
 	{
 	  return S_ERROR;
 	}
-      DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_REPRID], or_rep_id (recdes));
-      DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_REPRID], or_chn (recdes));
+      db_make_int (record_info[HEAP_RECORD_INFO_T_REPRID], or_rep_id (recdes));
+      db_make_int (record_info[HEAP_RECORD_INFO_T_REPRID], or_chn (recdes));
 
       or_mvcc_get_header (recdes, &mvcc_header);
-      DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_INSID], MVCC_GET_INSID (&mvcc_header));
+      db_make_bigint (record_info[HEAP_RECORD_INFO_T_MVCC_INSID], MVCC_GET_INSID (&mvcc_header));
       if (MVCC_IS_HEADER_DELID_VALID (&mvcc_header))
 	{
-	  DB_MAKE_BIGINT (record_info[HEAP_RECORD_INFO_T_MVCC_DELID], MVCC_GET_DELID (&mvcc_header));
+	  db_make_bigint (record_info[HEAP_RECORD_INFO_T_MVCC_DELID], MVCC_GET_DELID (&mvcc_header));
 	}
       else
 	{
-	  DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_DELID]);
+	  db_make_null (record_info[HEAP_RECORD_INFO_T_MVCC_DELID]);
 	}
-      DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_MVCC_CHN (&mvcc_header));
-      DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS], MVCC_GET_FLAG (&mvcc_header));
+      db_make_int (record_info[HEAP_RECORD_INFO_T_CHN], OR_GET_MVCC_CHN (&mvcc_header));
+      db_make_int (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS], MVCC_GET_FLAG (&mvcc_header));
       if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_PREV_VERSION))
 	{
-	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_PREV_VERSION], 1);
+	  db_make_int (record_info[HEAP_RECORD_INFO_T_MVCC_PREV_VERSION], 1);
 	}
       else
 	{
-	  DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_PREV_VERSION], 0);
+	  db_make_int (record_info[HEAP_RECORD_INFO_T_MVCC_PREV_VERSION], 0);
 	}
       break;
     case REC_RELOCATION:
@@ -18461,13 +18460,13 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
     case REC_ASSIGN_ADDRESS:
     case REC_UNKNOWN:
     default:
-      DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_REPRID]);
-      DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_CHN]);
-      DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_INSID]);
-      DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_DELID]);
-      DB_MAKE_NULL (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS]);
+      db_make_null (record_info[HEAP_RECORD_INFO_T_REPRID]);
+      db_make_null (record_info[HEAP_RECORD_INFO_T_CHN]);
+      db_make_null (record_info[HEAP_RECORD_INFO_T_MVCC_INSID]);
+      db_make_null (record_info[HEAP_RECORD_INFO_T_MVCC_DELID]);
+      db_make_null (record_info[HEAP_RECORD_INFO_T_MVCC_FLAGS]);
 
-      DB_MAKE_INT (record_info[HEAP_RECORD_INFO_T_MVCC_PREV_VERSION], 0);
+      db_make_int (record_info[HEAP_RECORD_INFO_T_MVCC_PREV_VERSION], 0);
 
       recdes->area_size = -1;
       recdes->data = NULL;

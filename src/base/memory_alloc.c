@@ -29,7 +29,9 @@
 #include <string.h>
 #include <assert.h>
 
+#include "set_object.h"
 #include "misc_string.h"
+#include "object_domain.h"
 #include "dbtype.h"
 #include "memory_alloc.h"
 #include "util_func.h"

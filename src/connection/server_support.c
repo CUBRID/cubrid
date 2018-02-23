@@ -73,8 +73,7 @@
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
-#include "dbval.h"		/* this must be the last header file included */
-
+#include "dbtype.h"
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"
 

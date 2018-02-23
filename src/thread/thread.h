@@ -36,7 +36,7 @@
 
 #if defined(SERVER_MODE)
 #include "adjustable_array.h"
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "error_manager.h"
 #include "log_compress.h"
 #include "porting.h"
@@ -308,7 +308,6 @@ extern int thread_get_current_tran_index (void);
 extern void thread_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void thread_set_tran_index (THREAD_ENTRY * thread_p, int tran_index);
-extern void thread_wakeup_session_control_thread (void);
 extern void thread_wakeup_check_ha_delay_info_thread (void);
 #endif
 extern struct css_conn_entry *thread_get_current_conn_entry (void);
@@ -316,24 +315,17 @@ extern int thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client
 extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 
 /* wakeup functions */
-extern void thread_wakeup_deadlock_detect_thread (void);
 extern void thread_wakeup_log_flush_thread (void);
 extern void thread_wakeup_page_flush_thread (void);
 extern void thread_try_wakeup_page_flush_thread (void);
 extern void thread_wakeup_page_buffer_maintenance_thread (void);
 extern void thread_wakeup_page_post_flush_thread (void);
 extern void thread_wakeup_flush_control_thread (void);
-extern void thread_wakeup_checkpoint_thread (void);
-extern void thread_wakeup_purge_archive_logs_thread (void);
-extern void thread_wakeup_auto_volume_expansion_thread (void);
 
 /* is available functions */
 extern bool thread_is_page_flush_thread_available (void);
 extern bool thread_is_page_post_flush_thread_available (void);
 extern bool thread_is_log_flush_thread_available (void);
-
-/* is running tunfions */
-extern bool thread_auto_volume_expansion_thread_is_running (void);
 
 extern THREAD_ENTRY *thread_find_first_lockwait_entry (int *thrd_index);
 extern THREAD_ENTRY *thread_find_next_lockwait_entry (int *thrd_index);
@@ -385,8 +377,6 @@ extern void thread_inc_recursion_depth (THREAD_ENTRY * thread_p);
 extern void thread_dec_recursion_depth (THREAD_ENTRY * thread_p);
 extern void thread_clear_recursion_depth (THREAD_ENTRY * thread_p);
 
-extern INT64 thread_get_log_clock_msec (void);
-
 extern const char *thread_type_to_string (int type);
 extern const char *thread_status_to_string (int status);
 extern const char *thread_resume_status_to_string (int resume_status);
@@ -402,8 +392,6 @@ extern pthread_mutex_t css_Internal_mutex_for_mutex_initialize;
 #else /* WINDOWS */
 extern void *thread_worker (void *);
 #endif /* !WINDOWS */
-
-extern bool thread_is_auto_volume_expansion_thread_available (void);
 
 extern THREAD_ENTRY *thread_iterate (THREAD_ENTRY * thread_p);
 

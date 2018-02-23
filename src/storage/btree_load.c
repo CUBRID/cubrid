@@ -40,7 +40,7 @@
 #include "query_executor.h"
 #include "partition_sr.h"
 #include "partition.h"
-#include "dbval.h"
+#include "dbtype.h"
 #include "thread.h"
 
 typedef struct sort_args SORT_ARGS;
@@ -830,7 +830,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   /** Initialize the fields of loading argument structures **/
   load_args->btid = &btid_int;
   load_args->bt_name = bt_name;
-  DB_MAKE_NULL (&load_args->current_key);
+  db_make_null (&load_args->current_key);
   VPID_SET_NULL (&load_args->nleaf.vpid);
   load_args->nleaf.pgptr = NULL;
   VPID_SET_NULL (&load_args->leaf.vpid);
@@ -1425,9 +1425,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   rec.area_size = DB_PAGESIZE;
   rec.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
 
-  DB_MAKE_NULL (&last_key);
-  DB_MAKE_NULL (&first_key);
-  DB_MAKE_NULL (&prefix_key);
+  db_make_null (&last_key);
+  db_make_null (&first_key);
+  db_make_null (&prefix_key);
 
   temp_data = (char *) os_malloc (DB_PAGESIZE);
   if (temp_data == NULL)
@@ -1462,7 +1462,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   load_args->push_list = NULL;
   load_args->pop_list = NULL;
 
-  DB_MAKE_NULL (&last_key);
+  db_make_null (&last_key);
 
   /* While there are some leaf pages do */
   load_args->leaf.vpid = load_args->vpid_first_leaf;
@@ -2909,7 +2909,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
   MVCC_SNAPSHOT mvcc_snapshot_dirty;
   MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_dirty_satisfied;
 
-  DB_MAKE_NULL (&dbvalue);
+  db_make_null (&dbvalue);
 
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
 
@@ -3746,8 +3746,8 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   BTREE_SCAN_PART partitions[MAX_PARTITIONS];
   bool has_nulls = false;
 
-  DB_MAKE_NULL (&fk_key);
-  DB_MAKE_NULL (&pk_key);
+  db_make_null (&fk_key);
+  db_make_null (&pk_key);
 
   mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
 

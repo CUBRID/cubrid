@@ -243,7 +243,7 @@ boot_server_status (BOOT_SERVER_STATUS status)
 
 #if defined(SERVER_MODE)
 /*
- * bo_shutdown_server_atexit () - make sure that the server is shutdown at exit
+ * bo_shutdown_server_at_exit () - make sure that the server is shutdown at exit
  *
  * return : nothing
  *
@@ -4604,7 +4604,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
   /* Shutdown the server */
   if (error_code == NO_ERROR)
     {
-      boot_server_all_finalize (thread_p, ER_ALL_FINAL, shutdown_common_modules);
+      boot_server_all_finalize (thread_p, ER_THREAD_FINAL, shutdown_common_modules);
     }
   else
     {

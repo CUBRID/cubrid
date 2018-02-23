@@ -27,7 +27,7 @@
 #ident "$Id$"
 
 #include "dbdef.h"
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "work_space.h"
 
 extern int sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *ddl, char *ha_sys_prm);

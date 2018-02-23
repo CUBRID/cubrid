@@ -56,6 +56,8 @@
 #include "dmalloc.h"
 #endif /* DMALLOC */
 
+#include "dbtype.h"
+
 /* TODO : remove */
 extern bool catcls_Enable;
 
@@ -4027,7 +4029,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
   int classrepr_cacheindex = -1;
   BTREE_SEARCH ret;
 
-  DB_MAKE_NULL (&dbvalue);
+  db_make_null (&dbvalue);
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
@@ -7668,7 +7670,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
   assert_release (!OID_ISNULL (class_oid));
 
   key_dbvalue = NULL;
-  DB_MAKE_NULL (&dbvalue);
+  db_make_null (&dbvalue);
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
@@ -8194,8 +8196,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 
   LSA_SET_NULL (&preserved_repl_lsa);
 
-  DB_MAKE_NULL (&new_dbvalue);
-  DB_MAKE_NULL (&old_dbvalue);
+  db_make_null (&new_dbvalue);
+  db_make_null (&old_dbvalue);
 
   aligned_newbuf = PTR_ALIGN (newbuf, MAX_ALIGNMENT);
   aligned_oldbuf = PTR_ALIGN (oldbuf, MAX_ALIGNMENT);
@@ -8793,7 +8795,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 	}
     }
 
-  DB_MAKE_NULL (&dbvalue);
+  db_make_null (&dbvalue);
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
@@ -9248,7 +9250,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
     {
       return DISK_ERROR;
     }
-  DB_MAKE_NULL (&dbvalue);
+  db_make_null (&dbvalue);
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
@@ -9672,7 +9674,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
     {
       return DISK_ERROR;
     }
-  DB_MAKE_NULL (&dbvalue);
+  db_make_null (&dbvalue);
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
@@ -11638,7 +11640,7 @@ xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
       return (error_code == NO_ERROR ? ER_FAILED : error_code);
     }
 
-  DB_MAKE_NULL (&tmpval);
+  db_make_null (&tmpval);
 
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
 
