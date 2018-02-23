@@ -80,8 +80,11 @@ namespace cuberr
 
       // constructor
       // automatic_registration - if true, registration/deregistration is handled during construct/destruct
-      // logging -
-      context (bool automatic_registration = false, bool logging = true);
+      // logging - if true, extensive logging is activated.
+      //           NOTE: "nested" logging is possible and er_Log_file_mutex may be locked twice causing a hang.
+      //                 fix this if you want to use the error context logging.
+      //
+      context (bool automatic_registration = false, bool logging = false);
 
       ~context ();
 
