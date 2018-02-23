@@ -309,6 +309,7 @@ static SIGNAL_HANDLER_FUNCTION saved_Sig_handler;
 /* Other supporting global variables */
 static bool er_Logfile_opened = false;
 static bool er_Hasalready_initiated = false;
+static bool er_Has_sticky_init = false;
 static bool er_Isa_null_device = false;
 static int er_Exit_ask = ER_EXIT_DEFAULT;
 static int er_Print_to_console = ER_DO_NOT_PRINT;
@@ -659,6 +660,13 @@ er_init (const char *msglog_filename, int exit_ask)
   const char *msg;
   MSG_CATD msg_catd;
 
+  if (er_Has_sticky_init)
+    {
+      assert (er_Hasalready_initiated);
+      // do not reinitialize
+      return NO_ERROR;
+    }
+
   if (er_Hasalready_initiated)
     {
       er_final (ER_ALL_FINAL);
@@ -707,6 +715,14 @@ er_init (const char *msglog_filename, int exit_ask)
     }
 
   er_Hasalready_initiated = true;
+  // quick-fix for reloading error manager issues. the broker generated cas client need to reload error manager with
+  // update file name parameter. however, csql and other utilities should keep their initial file name.
+  // we need to treat this case properly. for now, I just consider "sticky" initialization when a specific file name
+  // is provided as argument. error manager is not reloaded after.
+  // for cas case, error manager is first initialized without a specific filename, so it won't be "sticky". It is
+  // reloaded during boot_register_client.
+  er_Has_sticky_init = (msglog_filename != NULL);
+
 #if !defined (SERVER_MODE)
   // we need to register a context
   er_Singleton_context_p = new context ();
@@ -1073,6 +1089,7 @@ er_final (ER_FINAL_CODE do_global_final)
       er_call_stack_final ();
 
       er_Hasalready_initiated = false;
+      er_Has_sticky_init = false;
     }
   else
     {
