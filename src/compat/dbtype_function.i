@@ -1948,17 +1948,30 @@ int
 db_make_string_copy (DB_VALUE * value, const char *str)
 { 
   int error;
-  DB_VALUE tmp_value;
+  char *copy_str;
 
 #if defined (API_ACTIVE_CHECKS)
   CHECK_1ARG_ERROR (value);
 #endif
 
-  error = db_make_string (&tmp_value, (char *) str);
-  if (error == NO_ERROR)
+  copy_str = db_private_strdup (NULL, str);
+
+  if (copy_str == NULL)
     {
-      error = pr_clone_value (&tmp_value, value);
+      er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen(str) + 1);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+
+  error = db_make_string (value, copy_str);
+
+  if (error != NO_ERROR)
+    {
+      pr_clear_value (value);
+      return error;
+    }
+
+  /* Set need_clear to true. */
+  value->need_clear = true;
 
   return error;
 }
