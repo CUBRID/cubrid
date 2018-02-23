@@ -172,6 +172,10 @@ static bool db_json_path_is_token_valid_array_index (const std::string &str, std
     std::size_t end = 0);
 static void db_json_doc_wrap_as_array (JSON_DOC &doc);
 static void db_json_value_wrap_as_array (JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &allocator);
+static const char *db_json_get_json_type_as_str (const DB_JSON_TYPE &json_type);
+static int db_json_er_set_expected_other_type (const std::string &path, const DB_JSON_TYPE &found_type,
+    const DB_JSON_TYPE &expected_type, const DB_JSON_TYPE &expected_type_optional = DB_JSON_NULL);
+static int db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path);
 
 STATIC_INLINE JSON_VALUE &db_json_doc_to_value (JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const JSON_VALUE &db_json_doc_to_value (const JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
@@ -416,6 +420,32 @@ db_json_get_type_as_str (const JSON_DOC *document)
     }
   else
     {
+      /* we shouldn't get here */
+      assert (false);
+      return "UNKNOWN";
+    }
+}
+
+static const char *
+db_json_get_json_type_as_str (const DB_JSON_TYPE &json_type)
+{
+  switch (json_type)
+    {
+    case DB_JSON_ARRAY:
+      return "JSON_ARRAY";
+    case DB_JSON_OBJECT:
+      return "JSON_OBJECT";
+    case DB_JSON_INT:
+      return "INTEGER";
+    case DB_JSON_DOUBLE:
+      return "DOUBLE";
+    case DB_JSON_STRING:
+      return "STRING";
+    case DB_JSON_NULL:
+      return "JSON_NULL";
+    case DB_JSON_BOOL:
+      return "BOOLEAN";
+    default:
       /* we shouldn't get here */
       assert (false);
       return "UNKNOWN";
@@ -757,6 +787,71 @@ db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src)
     }
 }
 
+static int
+db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path)
+{
+  std::size_t found = path.find_last_of ("/");
+  if (found == std::string::npos)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  // parent pointer
+  const JSON_POINTER pointer_parent (path.substr (0, found).c_str());
+  if (!pointer_parent.IsValid())
+    {
+      /* this shouldn't happen */
+      assert (false);
+      return ER_FAILED;
+    }
+
+  JSON_VALUE *resulting_json_parent = pointer_parent.Get (doc);
+  // the parent does not exist
+  if (resulting_json_parent == NULL)
+    {
+      // we can only create a child value, not both parent and child
+      return db_json_er_set_path_does_not_exist (path.substr (0, found), &doc);
+    }
+
+  const std::string &last_token = path.substr (found + 1);
+  bool token_is_valid_index = db_json_path_is_token_valid_array_index (last_token);
+  // found type of parent
+  DB_JSON_TYPE parent_json_type = db_json_get_type_of_value (resulting_json_parent);
+  // what we expected to have instead of what we found there
+  DB_JSON_TYPE expected_type = DB_JSON_NULL;
+  DB_JSON_TYPE expected_type_second = DB_JSON_NULL;
+
+  switch (parent_json_type)
+    {
+    case DB_JSON_ARRAY:
+      if (!token_is_valid_index)
+	{
+	  expected_type = DB_JSON_OBJECT;
+	}
+      break;
+    case DB_JSON_OBJECT:
+      if (token_is_valid_index)
+	{
+	  expected_type = DB_JSON_ARRAY;
+	}
+      break;
+    default:
+      expected_type = DB_JSON_OBJECT;
+      expected_type_second = DB_JSON_ARRAY;
+    }
+
+  if (expected_type != DB_JSON_NULL)
+    {
+      return db_json_er_set_expected_other_type (path, parent_json_type,
+	     expected_type, expected_type_second);
+    }
+
+  // put the value at the specified path
+  p.Set (doc, *value, doc.GetAllocator());
+  return NO_ERROR;
+}
+
 /*
  * db_json_insert_func () - Insert a document into destination document at given path
  *
@@ -802,50 +897,7 @@ db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destinati
       return NO_ERROR;
     }
 
-  // get parent path
-  std::size_t found = json_pointer_string.find_last_of ("/");
-  if (found == std::string::npos)
-    {
-      // unexpected
-      assert (false);
-      return ER_FAILED;
-    }
-
-  // parent pointer
-  const JSON_POINTER pointer_parent (json_pointer_string.substr (0, found).c_str ());
-  if (!pointer_parent.IsValid ())
-    {
-      /* this shouldn't happen */
-      assert (false);
-      return ER_FAILED;
-    }
-
-  json_parent_p = pointer_parent.Get (doc_destination);
-  if (json_parent_p != NULL)
-    {
-      if (json_parent_p->IsObject ())
-	{
-	  p.Set (doc_destination, *doc_to_be_inserted, doc_destination.GetAllocator ());
-	}
-      else if (json_parent_p->IsArray ())
-	{
-	  // since PushBack does not guarantee its argument is not modified, we are forced to copy here. Hopefully,
-	  // it doesn't do another copy inside.
-	  JSON_VALUE copy_to_be_ins (db_json_doc_to_value (*doc_to_be_inserted), doc_destination.GetAllocator ());
-	  json_parent_p->PushBack (copy_to_be_ins, doc_destination.GetAllocator ());
-	}
-      else
-	{
-	  db_json_value_wrap_as_array (*json_parent_p, doc_destination.GetAllocator ());
-
-	  // since PushBack does not guarantee its argument is not modified, we are forced to copy here. Hopefully,
-	  // it doesn't do another copy inside.
-	  JSON_VALUE copy_to_be_ins (db_json_doc_to_value (*doc_to_be_inserted), doc_destination.GetAllocator ());
-	  json_parent_p->PushBack (copy_to_be_ins, doc_destination.GetAllocator ());
-	}
-    }
-
-  return NO_ERROR;
+  return db_json_insert_helper (doc_to_be_inserted, doc_destination, p, json_pointer_string);
 }
 
 /*
@@ -948,69 +1000,7 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
     }
 
   // here starts the INSERTION part
-  // this means that the specified path does not exists in the JSON document and we need to insert that value
-  // we will extend the array with the given value if the parent is an array
-  // or we will add the member to the object and associate it with the new value
-
-  // in case that the parent does not exist either we will raise an error
-
-  // get parent pointer path
-  std::size_t found = json_pointer_string.find_last_of ("/");
-  if (found == std::string::npos)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  // parent pointer
-  const JSON_POINTER pointer_parent (json_pointer_string.substr (0, found).c_str ());
-
-  if (!pointer_parent.IsValid ())
-    {
-      /* this shouldn't happen */
-      assert (false);
-      return ER_FAILED;
-    }
-
-  resulting_json_parent = pointer_parent.Get (doc);
-
-  // the parent does not exist
-  if (resulting_json_parent == NULL)
-    {
-      // we can only create a child value, not both parent and child
-      return db_json_er_set_path_does_not_exist (json_pointer_string, &doc);
-    }
-
-  const std::string &last_token = json_pointer_string.substr (found + 1);
-
-  if (db_json_path_is_token_valid_array_index (last_token))
-    {
-      // for zero index we just replace the value
-      if (last_token == "0")
-	{
-	  pointer_parent.Set (doc, *value, doc.GetAllocator());
-	  return NO_ERROR;
-	}
-
-      // we have a valid array index, but the object has only one element
-      // example: for json {"a" : "b"} and path /a/2
-      // first, we wrap the object's value as array -> {"a" : ["b"]}
-      if (!resulting_json_parent->IsArray())
-	{
-	  db_json_value_wrap_as_array (*resulting_json_parent, doc.GetAllocator());
-	}
-
-      // second, we add the value at the end of the array
-      JSON_VALUE value_copy (*value, doc.GetAllocator());
-      resulting_json_parent->PushBack (value_copy, doc.GetAllocator());
-    }
-  else
-    {
-      // insert the value to the specified path
-      p.Set (doc, *value, doc.GetAllocator());
-    }
-
-  return NO_ERROR;
+  return db_json_insert_helper (value, doc, p, json_pointer_string);
 }
 
 /*
@@ -1742,6 +1732,36 @@ db_json_er_set_path_does_not_exist (const std::string &path, const JSON_DOC *doc
   db_private_free (NULL, raw_json_body);
 
   return ER_JSON_PATH_DOES_NOT_EXIST;
+}
+
+static int
+db_json_er_set_expected_other_type (const std::string &path, const DB_JSON_TYPE &found_type,
+				    const DB_JSON_TYPE &expected_type, const DB_JSON_TYPE &expected_type_optional)
+{
+  std::string sql_path_string;
+  int error_code = NO_ERROR;
+
+  // the path must be SQL path
+  error_code = db_json_convert_pointer_to_sql_path (path.c_str(), sql_path_string);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR();
+      return error_code;
+    }
+
+  const char *found_type_str = db_json_get_json_type_as_str (found_type);
+  std::string expected_type_str = db_json_get_json_type_as_str (expected_type);
+
+  if (expected_type_optional != DB_JSON_NULL)
+    {
+      expected_type_str += " or ";
+      expected_type_str += db_json_get_json_type_as_str (expected_type_optional);
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_EXPECTED_OTHER_TYPE, 3,
+	  sql_path_string.c_str(), expected_type_str.c_str(), found_type_str);
+
+  return ER_JSON_EXPECTED_OTHER_TYPE;
 }
 
 /*
