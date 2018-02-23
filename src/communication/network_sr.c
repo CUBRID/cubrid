@@ -1301,7 +1301,7 @@ net_server_start (const char *server_name)
   // this call looks unnecessary.
   // we can either remove this completely, or we can add an er_update to check if parameters are changed and do
   // whatever is necessary
-  if (er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
+  if (er_init (NULL, prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("Failed to initialize error manager\n");
       status = -1;
