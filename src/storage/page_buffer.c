@@ -152,11 +152,15 @@ static int rv;
 /* check whether the given volume is auxiliary volume */
 #define PGBUF_IS_AUXILIARY_VOLUME(volid) ((volid) < LOG_DBFIRST_VOLID ? true : false)
 
-#define PGBUF_VICTIM_CANDIDATE_LISTS_CAPACITY 10
+#define PGBUF_VICTIM_CANDIDATE_LISTS_CAPACITY 3
 
 #define PGBUF_IS_VICTIM_CAND_LIST_IS_FULL(victim_cand_info) \
   ((ATOMIC_INC_64 (&(victim_cand_info)->victim_cand_lists_consumer_position, 0ULL) + (victim_cand_info)->capacity) \
     <= ATOMIC_INC_64 (&(victim_cand_info)->victim_cand_lists_producer_position, 0ULL))
+
+#define PGBUF_GET_VICTIM_CAND_NUM_LISTS(victim_cand_info) \
+  (ATOMIC_INC_64 (&(victim_cand_info)->victim_cand_lists_producer_position, 0ULL) \
+   - ATOMIC_INC_64 (&(victim_cand_info)->victim_cand_lists_consumer_position, 0ULL))
 
 #define PGBUF_IS_VICTIM_CAND_LIST_IS_EMPTY(victim_cand_info)  \
     ((ATOMIC_INC_64 (&(victim_cand_info)->victim_cand_lists_consumer_position, 0ULL)) \
@@ -3191,7 +3195,6 @@ pgbuf_get_victim_or_assign_candidates_from_lru (THREAD_ENTRY * thread_p, int che
 #endif
 #endif /* SERVER_MODE */
 
-
   assert (victim_candidate_list != NULL && assigned_directly != NULL && latest_lru_index != NULL);
 #if !defined (NDEBUG) && defined (SERVER_MODE)
   empty_flushed_bcb_queue = lf_circular_queue_is_empty (pgbuf_Pool.flushed_bcbs);
@@ -3216,7 +3219,6 @@ pgbuf_get_victim_or_assign_candidates_from_lru (THREAD_ENTRY * thread_p, int che
 
       i = check_count_this_lru;
 
-      /* TO DO - skipped candidates */
       rv = pthread_mutex_trylock (&pgbuf_Pool.buf_LRU_list[lru_idx].mutex);
       if (rv != 0)
 	{
@@ -3240,7 +3242,6 @@ pgbuf_get_victim_or_assign_candidates_from_lru (THREAD_ENTRY * thread_p, int che
 	      if (victim_cand_count == victim_candidate_list->capacity)
 		{
 		  /* The current list is full. */
-		  *latest_lru_index = lru_idx;
 		  pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].mutex);
 		  goto end;
 		}
@@ -3264,6 +3265,7 @@ pgbuf_get_victim_or_assign_candidates_from_lru (THREAD_ENTRY * thread_p, int che
     }
 
 end:
+  *latest_lru_index = lru_idx;
   er_log_debug (ARG_FILE_LINE,
 		"pgbuf_flush_victim_candidates: pgbuf_get_victim_or_assign_candidates_from_lru %d candidates in %d lists \n",
 		victim_cand_count, count_checked_lists);
@@ -3337,7 +3339,7 @@ pgbuf_produce_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, boo
   bool direct_victim_waiters = false;
 #endif /* DEBUG && SERVER_MODE */
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
-  int latest_lru_index, iter;
+  int latest_lru_index, saved_lru_index, iter;
   UINT64 victim_cand_lists_producer_position;
   PGBUF_VICTIM_CANDIDATE_INFO *victim_candidate_info = &pgbuf_Pool.victim_cand_info;
   PGBUF_VICTIM_CANDIDATE_LIST *victim_candidate_list;
@@ -3413,10 +3415,12 @@ pgbuf_produce_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, boo
 	    ATOMIC_INC_64 (&victim_candidate_info->victim_cand_lists_producer_position, 0ULL);
 	  victim_candidate_list =
 	    &victim_candidate_info->lists[victim_cand_lists_producer_position % victim_candidate_info->capacity];
+	  saved_lru_index = latest_lru_index;
 	  victim_count =
 	    pgbuf_get_victim_or_assign_candidates_from_lru (thread_p, check_count_lru, lru_sum_flush_priority,
 							    victim_candidate_list, &assigned_directly,
 							    &latest_lru_index);
+	  assert (latest_lru_index > saved_lru_index);
 	  if (victim_count > 0)
 	    {
 	      pgbuf_prepare_victim_list_for_flush (thread_p, victim_candidate_list);
