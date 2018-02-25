@@ -18,43 +18,22 @@
  */
 
 /*
- * common_utils.cpp
+ * packing_buffer.cpp
  */
 
 #ident "$Id$"
 
-#include "common_utils.hpp"
+#include "packing_buffer.hpp"
 
-
-int pinner::pin (pinnable *reference)
+int packing_buffer::init (BUFFER_UNIT *ptr, const size_t buf_size, pinner *referencer)
 {
-  if (reference->add_pinner (this) != NO_ERROR)
+  assert (storage == NULL);
+
+  storage = ptr;
+
+  if (referencer != NULL)
     {
-      references.insert (reference);
-      return NO_ERROR; 
-    }
-
-  return NO_ERROR;
-}
-
-int pinner::unpin (pinnable *reference)
-{
-  if (reference->remove_pinner (this) != NO_ERROR)
-    {
-      references.erase (reference);
-      return NO_ERROR;
-    }
-  
-  return NO_ERROR;
-}
-
-int pinner::unpin_all (void)
-{
-  auto it = references.begin ();
-
-  for (;it != references.end(); it++)
-    {
-      unpin (*it);
+      referencer->pin (this);
     }
 
   return NO_ERROR;

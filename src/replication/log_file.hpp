@@ -33,7 +33,7 @@
 typedef size_t file_pos_t;
 
 class replication_entry;
-class serial_buffer;
+class packing_stream_buffer;
 class log_file;
 class stream_entry;
 
@@ -54,7 +54,7 @@ struct file_range
 class file_cache : public pinner
 {
 private:
-  serial_buffer *buffer;
+  packing_stream_buffer *buffer;
   file_range cached_range;
   log_file *owner;
 
@@ -65,7 +65,7 @@ public:
 
   file_cache() { buffer = NULL; owner = NULL; storage = new BUFFER_UNIT[FILE_CACHE_ONE_BUFFFER_SIZE]; };
 
-  serial_buffer *get_buffer (void) { return buffer; };
+  packing_stream_buffer *get_buffer (void) { return buffer; };
   log_file *get_owner (void) { return owner; };
 
   BUFFER_UNIT *get_storage (void) { return storage; };
@@ -76,10 +76,10 @@ public:
 
 };
 
-class log_file : public pinner, public stream_provider
+class log_file : public stream_provider
 {
 private:
-  replication_stream *stream;
+  packing_stream *stream;
 
   file_pos_t curr_append_position;
   file_pos_t curr_read_position;
@@ -103,20 +103,19 @@ public:
   int open_file (const char *file_path);
 
   int read_no_cache (BUFFER_UNIT *storage, const size_t count, file_pos_t start_pos = CURRENT_POSITION);
-  int read_with_cache (BUFFER_UNIT *storage, const size_t count, file_pos_t start_pos);
 
-  int write_buffer (serial_buffer *buffer);
+  int write_buffer (packing_stream_buffer *buffer);
 
   static char *get_filename (const stream_position &start_position);
 
 
-  int fetch_for_read (serial_buffer *existing_buffer, const size_t amount);
+  int fetch_for_read (packing_stream_buffer *existing_buffer, const size_t &amount);
   
-  int extend_for_write (serial_buffer **existing_buffer, const size_t amount);
+  int extend_buffer (packing_stream_buffer **existing_buffer, const size_t &amount);
 
   int flush_ready_stream (void);
 
-  replication_stream * get_write_stream (void);
+  packing_stream * get_write_stream (void);
 
 };
 

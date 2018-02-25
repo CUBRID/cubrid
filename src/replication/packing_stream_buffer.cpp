@@ -18,21 +18,19 @@
  */
 
 /*
- * replication_buffer.cpp
+ * packing_stream_buffer.cpp
  */
 
 #ident "$Id$"
 
-#include "replication_buffer.hpp"
-#include "object_representation.h"
+#include "packing_stream_buffer.hpp"
 
-
-BUFFER_UNIT * serial_buffer::reserve (const size_t amount)
+BUFFER_UNIT * packing_stream_buffer::reserve (const size_t amount)
 {
-  if (storage + write_stream_reference.stream_curr_pos + amount < end_ptr)
+  if (storage + write_stream_reference.buf_end_offset + amount < end_ptr)
     {
-      BUFFER_UNIT *ptr = storage + write_stream_reference.stream_curr_pos;
-      write_stream_reference.stream_curr_pos += amount;
+      BUFFER_UNIT *ptr = storage + write_stream_reference.buf_end_offset;
+      write_stream_reference.buf_end_offset += amount;
 
       return ptr;
     }
@@ -40,45 +38,33 @@ BUFFER_UNIT * serial_buffer::reserve (const size_t amount)
   return NULL;
 }
 
-int serial_buffer::map_buffer (BUFFER_UNIT *ptr, const size_t count)
-{
-  assert (storage == NULL && capacity == 0);
-
-  storage = ptr;
-  capacity = count;
-
-  return NO_ERROR;
-}
-
-int serial_buffer::map_buffer_with_pin (serial_buffer *ref_buffer, pinner *referencer)
-{
-  int error = NO_ERROR;
-  
-  error = map_buffer (ref_buffer->get_buffer (), ref_buffer->get_buffer_size ());
-  if (error != NO_ERROR)
-    {
-      error = add_pinner (referencer);
-    }
-
-  return error;
-}
-
-int serial_buffer::attach_stream (replication_stream *stream, const STREAM_MODE stream_mode,
-                                  const stream_position &stream_start)
+int packing_stream_buffer::attach_stream (packing_stream *stream, const STREAM_MODE stream_mode,
+                                          const stream_position &stream_start, const stream_position &stream_end,
+                                          const size_t &buffer_start_offset)
 {
   if (stream_mode == WRITE_STREAM)
     {
       assert (write_stream_reference.stream == NULL);
 
       write_stream_reference.stream = stream;
+
+      write_stream_reference.buf_start_offset = buffer_start_offset;
+      write_stream_reference.buf_end_offset = buffer_start_offset + stream_end - stream_start;
+      
       write_stream_reference.stream_start_pos = stream_start;
+      write_stream_reference.stream_end_pos = stream_end;
     }
   else
     {
       stream_reference new_stream_ref;
 
       new_stream_ref.stream = stream;
+
+      new_stream_ref.buf_start_offset = buffer_start_offset;
+      new_stream_ref.buf_end_offset = buffer_start_offset + stream_end - stream_start;
+      
       new_stream_ref.stream_start_pos = stream_start;
+      new_stream_ref.stream_end_pos = stream_end;
 
       read_stream_references.push_back (new_stream_ref);
     }
@@ -86,7 +72,7 @@ int serial_buffer::attach_stream (replication_stream *stream, const STREAM_MODE 
   return NO_ERROR;
 }
 
-int serial_buffer::dettach_stream (replication_stream *stream, const STREAM_MODE stream_mode)
+int packing_stream_buffer::dettach_stream (packing_stream *stream, const STREAM_MODE stream_mode)
 {
   if (stream_mode == WRITE_STREAM)
     {
@@ -118,7 +104,8 @@ int serial_buffer::dettach_stream (replication_stream *stream, const STREAM_MODE
   return NO_ERROR;
 }
 
-int serial_buffer::check_stream_append_contiguity (const replication_stream *stream, const stream_position &req_pos)
+int packing_stream_buffer::check_stream_append_contiguity (const packing_stream *stream,
+                                                           const stream_position &req_pos)
 {
   if (stream != write_stream_reference.stream)
     {
@@ -126,7 +113,7 @@ int serial_buffer::check_stream_append_contiguity (const replication_stream *str
       return ER_FAILED;
     }
 
-  if (req_pos == write_stream_reference.stream_curr_pos)
+  if (req_pos == write_stream_reference.stream_end_pos)
     {
       return NO_ERROR;
     }
@@ -134,32 +121,3 @@ int serial_buffer::check_stream_append_contiguity (const replication_stream *str
   return ER_FAILED;
 }
 
-/* ---------------------------------------------------------------- */
-
-replication_buffer::replication_buffer (const size_t req_capacity)
-{
-  if (init (req_capacity) != NO_ERROR)
-    {
-      throw ("low memory");
-    }
-}
-
-int replication_buffer::init (const size_t req_capacity)
-{
-  storage = (BUFFER_UNIT *) malloc (req_capacity);
-  if (storage == NULL)
-    {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  write_stream_reference.stream_curr_pos = 0;
-  end_ptr = storage + req_capacity;
-
-  return NO_ERROR;
-}
-
-replication_buffer::~replication_buffer ()
-{
-  free (storage);
-  storage = NULL;
-}

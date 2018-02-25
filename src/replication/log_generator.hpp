@@ -37,9 +37,10 @@
 class replication_entry;
 class stream_entry;
 class log_file;
-class replication_serialization;
-class replication_stream;
-class serial_buffer;
+class stream_packer;
+class packing_stream;
+class packing_stream_buffer;
+class packable_object;
 
 /* 
  * main class for producing log replication entries
@@ -57,35 +58,34 @@ private:
   /* file attached to log_generator (only for global instance) */
   log_file *file; 
 
-  replication_stream *stream;
+  packing_stream *stream;
 
   /* current append position to be assigned to a new entry */
   stream_position append_position;
 
   static log_generator *global_log_generator;
 
-  replication_serialization *m_serializator;
+  stream_packer *m_serializator;
 
 public:
 
   log_generator () { file = NULL; stream = NULL; };
 
-  int append_repl_entry (cubthread::entry *th_entry, replication_entry *repl_entry);
+  int append_repl_entry (cubthread::entry *th_entry, packable_object *repl_entry);
 
-  replication_serialization *get_serializator (void) { return m_serializator; };
+  stream_packer *get_serializator (void) { return m_serializator; };
 
   stream_entry* get_stream_entry (cubthread::entry *th_entry);
 
   int pack_stream_entries (cubthread::entry *th_entry);
 
-  static int new_instance (cubthread::entry *th_entry, const stream_position start_position);
+  static int new_instance (cubthread::entry *th_entry, const stream_position &start_position);
 
   /* stream_provider methods : */
-  int fetch_for_read (serial_buffer *existing_buffer, const size_t amount);
-  int extend_for_write (serial_buffer **existing_buffer, const size_t amount);
+  int fetch_for_read (packing_stream_buffer *existing_buffer, const size_t &amount);
   int flush_ready_stream (void);
-  
-  replication_stream * get_write_stream (void);
+
+  packing_stream * get_write_stream (void) { return stream; };
 };
 
 #endif /* _LOG_GENERATOR_HPP_ */

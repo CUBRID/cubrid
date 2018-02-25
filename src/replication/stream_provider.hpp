@@ -27,32 +27,51 @@
 #define _STREAM_PROVIDER_HPP_
 
 #include "error_code.h"
+#include "common_utils.hpp"
 #include <vector>
 #include <cstddef>
 
-class serial_buffer;
-class replication_stream;
+class packing_stream_buffer;
+class packing_stream;
 
 /*
  * an object of this type provides stream range (with content or empty stream, ready to be filled)
  * it also can allocate buffers as storage support for the stream
+ *
+ * TODO : maybe should be split into :
+ * storage_provider : an object which only deals with memory allocation, and
+ * content_provider : an object which provides data into stream (by recv from socket, read from file,
+ *                    depending on stream input)
  */
-class stream_provider
+class stream_provider : public pinner
 {
 private:
   /* a stream provider may allocate several buffers */
-  std::vector<serial_buffer*> my_buffers;
+  std::vector<packing_stream_buffer*> m_buffers;
+
+protected:
+  size_t min_alloc_size;
+  size_t max_alloc_size;
 
 public:
-  virtual int fetch_for_read (serial_buffer *existing_buffer, const size_t amount) = 0;
+
+  stream_provider () { min_alloc_size = 512 * 1024; max_alloc_size = 100 * 1024 * 1024; };
+
+  ~stream_provider () { unpin_all (); free_all_buffers (); };
+
+  virtual int allocate_buffer (packing_stream_buffer **new_buffer, const size_t &amount);
+
+  virtual int free_all_buffers (void);
+
+  virtual int fetch_for_read (packing_stream_buffer *existing_buffer, const size_t &amount) = 0;
   
-  virtual int extend_for_write (serial_buffer **existing_buffer, const size_t amount) = 0;
+  virtual int extend_buffer (packing_stream_buffer **existing_buffer, const size_t &amount);
 
   virtual int flush_ready_stream (void) = 0;
 
-  virtual replication_stream * get_write_stream (void) = 0;
+  virtual packing_stream * get_write_stream (void) = 0;
 
-  virtual int add_buffer (serial_buffer *existing_buffer) { my_buffers.push_back (existing_buffer); return NO_ERROR; };
+  virtual int add_buffer (packing_stream_buffer *new_buffer) { m_buffers.push_back (new_buffer); return NO_ERROR; };
 };
 
 

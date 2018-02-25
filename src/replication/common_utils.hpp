@@ -39,16 +39,16 @@
   while (0)
 
 typedef unsigned char BUFFER_UNIT;
-typedef size_t stream_position;
+typedef unsigned long long stream_position;
 
 class pinnable;
-class replication_stream;
-class serial_buffer;
+class packing_stream;
+class packing_stream_buffer;
 
 class pinner
 {
 public:
-  int pin (pinnable &reference);
+  int pin (pinnable *reference);
   int unpin (pinnable *reference);
 
   int unpin_all (void);
@@ -80,13 +80,15 @@ enum stream_mode
 };
 typedef enum stream_mode STREAM_MODE;
 
+/* this is stored in packing_stream */
 class buffered_range
 {
 public:
   buffered_range() : mapped_buffer (NULL) {};
+  /* range of stream position reserved */
   stream_position first_pos;
   stream_position last_pos;
-  serial_buffer *mapped_buffer;
+  packing_stream_buffer *mapped_buffer;
   size_t written_bytes;
   int is_filled;
 
@@ -97,16 +99,24 @@ public:
 
 };
 
+/* this is stored in packing_stream_buffer */
 class stream_reference
 {
 public:
   stream_reference() : stream(NULL) {};
 
-  replication_stream *stream;
-  size_t start_pos;
-  size_t end_pos;
+  packing_stream *stream;
+
+  /*
+   * currently mapped start and end offset relative to buffer start 
+   * for write streams, the start_offset should always be zero
+   */
+  size_t buf_start_offset;
+  size_t buf_end_offset;
+
+  /* first and last position mapped to the stream (these are stream positions) */
   stream_position stream_start_pos;
-  stream_position stream_curr_pos;
+  stream_position stream_end_pos;
 };
 
 #endif /* _COMMON_UTILS_HPP_ */

@@ -30,17 +30,17 @@
 
 #include "common_utils.hpp"
 
-class replication_stream;
-class replication_buffer;
+class packing_stream;
+class packing_stream_buffer;
 
 class master_replication_channel_manager
 {
 public:
   int add_buffers (std::vector <buffered_range> bufferred_ranges);
 
-  int update_last_read_pos(void);
+  int update_last_read_pos (void);
 
-  int deffer_buffers_to_log_file(void);
+  int deffer_buffers_to_log_file (void);
 
 
   static master_replication_channel_manager *get_instance (void);
@@ -57,11 +57,11 @@ private:
    * After buffers are flushed to disk, MRC_M is no longer concerned with old stream data
    * Each MRC is responsible to read using its own stream from disk
    */
-  replication_stream *generator_stream;
+  packing_stream *generator_stream;
 
-  std::vector<serial_buffer*> send_pending_buffers;
+  std::vector<packing_stream_buffer*> send_pending_buffers;
 
-  std::vector<serial_buffer*> flush_pending_buffers;
+  std::vector<packing_stream_buffer*> flush_pending_buffers;
 };
 
 

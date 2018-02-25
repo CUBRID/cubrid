@@ -30,10 +30,11 @@
 #include "common_utils.hpp"
 #include <cstddef>
 
-class stream_entry;
-class replication_stream;
+class replication_stream_entry;
+class packing_stream_buffer;
+class packing_stream;
 class log_file;
-class replication_serialization;
+class stream_packer;
 class slave_replication_channel;
 
 enum consumer_type
@@ -53,14 +54,14 @@ class log_consumer : public stream_provider
 protected:
   CONSUMER_TYPE m_type;
 
-  std::vector<stream_entry*> stream_entries;
+  std::vector<replication_stream_entry*> stream_entries;
 
   /* file attached to log_generator (only for global instance) */
   log_file *file;
 
-  replication_stream *consume_stream;
+  packing_stream *consume_stream;
 
-  replication_serialization *serializator;
+  stream_packer *serializator;
 
   slave_replication_channel *m_src;
 
@@ -71,19 +72,17 @@ public:
 
   log_consumer () { file = NULL; };
 
-  int append_entry (stream_entry *entry);
+  int append_entry (replication_stream_entry *entry);
 
   int consume_thread (void);
 
   log_consumer* new_instance (const CONSUMER_TYPE req_type, const stream_position &start_position);
 
-  int extend_for_write (serial_buffer **existing_buffer, const size_t amount);
-
-  int fetch_for_read (serial_buffer *existing_buffer, const size_t amount);
+  int fetch_for_read (packing_stream_buffer *existing_buffer, const size_t &amount);
   
   int flush_ready_stream (void);
 
-  replication_stream * get_write_stream (void);
+  packing_stream * get_write_stream (void);
 };
 
 #endif /* _LOG_CONSUMER_HPP_ */

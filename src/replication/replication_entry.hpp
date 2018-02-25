@@ -28,10 +28,18 @@
 
 #include <vector>
 #include <string>
+#include "packable_object.hpp"
 #include "dbtype.h"
 #include "storage_common.h"
 
+
+/* TODO[arnia] : change these as constants */
+#define STREAM_ENTRY_RBR 0
+#define STREAM_ENTRY_SBR 1
+
 class replication_serialization;
+class packer;
+
 
 enum repl_entry_type
 {
@@ -41,44 +49,45 @@ enum repl_entry_type
 };
 typedef enum repl_entry_type REPL_ENTRY_TYPE;
 
-class replication_entry
-{
-protected:
-  size_t packed_size;
-public:
-  virtual int pack (replication_serialization *serializator) = 0;
-  virtual int unpack (replication_serialization *serializator) = 0;
-  virtual size_t get_packed_size (replication_serialization *serializator) = 0;
-
-  static const size_t UNDEFINED_SIZE = -1;
-};
-
-class sbr_repl_entry : public replication_entry
+class sbr_repl_entry : public packable_object, public self_creating_object
 {
 private:
   std::string m_statement;
 
 public:
-  sbr_repl_entry () { packed_size = -1; };
-  virtual size_t get_packed_size (replication_serialization *serializator) = 0;
-  int pack (replication_serialization *serializator);
-  int unpack (replication_serialization *serializator);
+  int get_create_id (void) { return STREAM_ENTRY_SBR; };
+  self_creating_object *create (void) { return new sbr_repl_entry (); };
+
+  int pack (packer *serializator);
+  int unpack (packer *serializator);
+
+  size_t get_packed_size (packer *serializator);
 };
 
-class single_row_repl_entry : public replication_entry
+class single_row_repl_entry : public packable_object,  public self_creating_object
 {
 private:
+  REPL_ENTRY_TYPE m_type;
   DB_VALUE key_value;
   char class_name [SM_MAX_IDENTIFIER_LENGTH];
   std::vector <int> changed_attributes;
   std::vector <DB_VALUE> new_values;
-  REPL_ENTRY_TYPE m_type;
 
 public:
-  single_row_repl_entry () { packed_size = -1; };
-  virtual size_t get_packed_size (replication_serialization *serializator) = 0;
-  int pack (replication_serialization *serializator);
-  int unpack (replication_serialization *serializator);
+  int get_create_id (void) { return STREAM_ENTRY_RBR; };
+  self_creating_object *create (void) { return new single_row_repl_entry (); };
+  
+  int pack (packer *serializator);
+  int unpack (packer *serializator);
+
+  size_t get_packed_size (packer *serializator);
+};
+
+
+class replication_object_builder : public object_builder
+{
+public:
+  replication_object_builder::replication_object_builder ();
 };
 
 #endif /* _REPLICATION_ENTRY_HPP_ */
