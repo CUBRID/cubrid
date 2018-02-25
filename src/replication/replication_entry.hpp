@@ -87,7 +87,7 @@ public:
 class replication_object_builder : public object_builder
 {
 public:
-  replication_object_builder::replication_object_builder ();
+  replication_object_builder ();
 };
 
 #endif /* _REPLICATION_ENTRY_HPP_ */
