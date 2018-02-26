@@ -14,6 +14,20 @@
 #endif
 #include "connection_cl.h"
 
+#if defined (WINDOWS)
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
+typedef CSS_CONN_ENTRY *(*MAKE_CONN_ENTRY_FP) (SOCKET fd);
+typedef void (*FREE_CONN_ENTRY_FP) (CSS_CONN_ENTRY * conn);
+
+static void *cubridcs_lib = NULL;
+static MAKE_CONN_ENTRY_FP make_conn_entry_fp = NULL;
+static FREE_CONN_ENTRY_FP free_conn_entry_fp = NULL;
+
+
 namespace cub_master_mock
 {
 
@@ -39,7 +53,7 @@ namespace cub_master_mock
 	if ((listen_poll_fd.revents & POLLIN) != 0)
 	  {
 	    int new_sockfd = css_master_accept (listen_poll_fd.fd);
-	    CSS_CONN_ENTRY *conn;
+	    CSS_CONN_ENTRY *conn = NULL;
 	    int function_code;
 	    int buffer_size;
 	    unsigned short rid;
@@ -51,7 +65,7 @@ namespace cub_master_mock
 		return;
 	      }
 
-	    conn = css_make_conn (new_sockfd);
+	    conn = make_conn_entry_fp (new_sockfd);
 	    if (conn == NULL)
 	      {
 		return;
@@ -59,7 +73,7 @@ namespace cub_master_mock
 
 	    if (css_check_magic (conn) != NO_ERRORS)
 	      {
-		css_free_conn (conn);
+		free_conn_entry_fp (conn);
 		return;
 	      }
 
@@ -71,13 +85,13 @@ namespace cub_master_mock
 
 	    if (function_code != SERVER_REQUEST_CONNECT_NEW_SLAVE)
 	      {
-		css_free_conn (conn);
+		free_conn_entry_fp (conn);
 		assert (false);
 		return;
 	      }
 
 	    conn->fd = INVALID_SOCKET;
-	    css_free_conn (conn);
+	    free_conn_entry_fp (conn);
 
 	    master_replication_channel_manager::add_master_replication_channel (master_replication_channel_entry (new_sockfd,
 		RECEIVE_FROM_SLAVE, new master::receive_from_slave_daemon_mock (), ANOTHER_DAEMON_FOR_TESTING,
@@ -88,16 +102,46 @@ namespace cub_master_mock
 
   int init ()
   {
+    #if defined (WINDOWS)
+    cubridcs_lib = LoadLibrary ("cubridcs.dll");
+
+    if (cubridcs_lib != NULL)
+      {
+        make_conn_entry_fp = (MAKE_CONN_ENTRY_FP) GetProcAddress (cubridcs_lib, "_Z13css_make_conni");
+        free_conn_entry_fp = (FREE_CONN_ENTRY_FP) GetProcAddress (cubridcs_lib, "_Z13css_free_connP14css_conn_entry");
+
+        assert (make_conn_entry_fp != NULL && free_conn_entry_fp != NULL);
+      }
+    else
+      {
+        assert (false);
+      }
+    #else
+    cubridcs_lib = dlopen ("libcubridcs.so", RTLD_NOW | RTLD_GLOBAL);
+
+    if (cubridcs_lib != NULL)
+      {
+        make_conn_entry_fp = (MAKE_CONN_ENTRY_FP) dlsym (cubridcs_lib, "_Z13css_make_conni");
+        free_conn_entry_fp = (FREE_CONN_ENTRY_FP) dlsym (cubridcs_lib, "_Z13css_free_connP14css_conn_entry");
+
+        assert (make_conn_entry_fp != NULL && free_conn_entry_fp != NULL);
+      }
+    else
+      {
+        assert (false);
+      }
+    #endif
+
     int rc = css_tcp_master_open (LISTENING_PORT, listen_fd);
     if (rc != NO_ERROR)
       {
 	return rc;
       }
-#if !defined (WINDOWS)
+    #if !defined (WINDOWS)
     listen_poll_fd.fd = listen_fd[1];
-#else
-	listen_poll_fd.fd = listen_fd[0];
-#endif
+    #else
+    listen_poll_fd.fd = listen_fd[0];
+    #endif
     listen_poll_fd.events = POLLIN;
 
     cub_master_daemon = new cubthread::daemon (std::chrono::seconds (0), new cubthread::daemon_entry_manager (), new cub_master_daemon_task ());

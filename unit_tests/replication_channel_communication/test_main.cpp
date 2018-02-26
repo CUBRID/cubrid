@@ -60,6 +60,12 @@ static int init ()
 #if !defined (WINDOWS)
   signal (SIGPIPE, SIG_IGN);
 #endif
+  error_code = er_init ("replication_mock.log", ER_EXIT_DONT_ASK);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   error_code = init_thread_system ();
   if (error_code != NO_ERROR)
     {
@@ -99,6 +105,8 @@ static int finish ()
   css_final_conn_list();
   lf_destroy_transaction_systems ();
   cubthread::finalize ();
+
+  er_final (ER_ALL_FINAL);
 
   return NO_ERROR;
 }
