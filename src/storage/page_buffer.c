@@ -234,6 +234,8 @@ typedef enum
 #define PGBUF_BCB_TO_VACUUM_FLAG            ((int) 0x04000000)
 /* flag for asynchronous flush request */
 #define PGBUF_BCB_ASYNC_FLUSH_REQ           ((int) 0x02000000)
+/* flag for bcb included in victim candidate list */
+#define PGBUF_BCB_SELECTED  ((int) 0x01000000)
 
 /* add all flags here */
 #define PGBUF_BCB_FLAGS_MASK \
@@ -243,7 +245,8 @@ typedef enum
    | PGBUF_BCB_INVALIDATE_DIRECT_VICTIM_FLAG \
    | PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG \
    | PGBUF_BCB_TO_VACUUM_FLAG \
-   | PGBUF_BCB_ASYNC_FLUSH_REQ)
+   | PGBUF_BCB_ASYNC_FLUSH_REQ \
+   | PGBUF_BCB_SELECTED)
 
 /* add flags that invalidate a victim candidate here */
 /* 1. dirty bcb's cannot be victimized.
@@ -1231,6 +1234,9 @@ STATIC_INLINE bool pgbuf_bcb_should_be_moved_to_bottom_lru (const PGBUF_BCB * bc
 STATIC_INLINE bool pgbuf_bcb_avoid_victim (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_set_dirty (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_clear_dirty (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_bcb_is_selected (const PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));;
+STATIC_INLINE void pgbuf_bcb_set_selected (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_bcb_clear_selected (PGBUF_BCB * bcb) __attribute__ ((ALWAYS_INLINE));;
 STATIC_INLINE void pgbuf_bcb_mark_was_flushed (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_bcb_mark_was_not_flushed (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb, bool mark_dirty)
@@ -3230,11 +3236,18 @@ pgbuf_get_victim_or_assign_candidates_from_lru (THREAD_ENTRY * thread_p, int che
 	}
 
       for (bufptr = pgbuf_Pool.buf_LRU_list[lru_idx].bottom;
-	   bufptr != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) && i > 0; bufptr = bufptr->prev_BCB, i--)
+	   bufptr != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr) && i > 0; bufptr = bufptr->prev_BCB)
 	{
 	  if (pgbuf_bcb_is_dirty (bufptr))
 	    {
 	      /* save victim candidate information temporarily. */
+	      if (pgbuf_bcb_is_selected (bufptr))
+		{
+		  /* Skip already added victim candidate. */
+		  continue;
+		}
+
+	      pgbuf_bcb_set_selected (bufptr);
 	      victim_candidate_list->elements[victim_cand_count].bufptr = bufptr;
 	      victim_candidate_list->elements[victim_cand_count].vpid = bufptr->vpid;
 	      victim_cand_count++;
@@ -3260,6 +3273,7 @@ pgbuf_get_victim_or_assign_candidates_from_lru (THREAD_ENTRY * thread_p, int che
 	      PGBUF_BCB_UNLOCK (bufptr);
 	    }
 #endif /* SERVER_MODE */
+	  i--;
 	}
       pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].mutex);
     }
@@ -3569,7 +3583,7 @@ repeat:
       bufptr = victim_cand_elements[i].bufptr;
 
       PGBUF_BCB_LOCK (bufptr);
-
+      pgbuf_bcb_clear_selected (bufptr);
       /* check flush conditions */
 
       if (!VPID_EQ (&bufptr->vpid, &victim_cand_elements[i].vpid) || !pgbuf_bcb_is_dirty (bufptr)
@@ -15657,6 +15671,45 @@ STATIC_INLINE bool
 pgbuf_bcb_is_async_flush_request (const PGBUF_BCB * bcb)
 {
   return (bcb->flags & PGBUF_BCB_ASYNC_FLUSH_REQ) != 0;
+}
+
+/*
+* pgbuf_bcb_is_selected () - is bcb included in victim candidate list?
+*
+* return   : true/false
+* bcb (in) : bcb
+*/
+STATIC_INLINE bool
+pgbuf_bcb_is_selected (const PGBUF_BCB * bcb)
+{
+  assert (bcb != NULL);
+  return (bcb->flags & PGBUF_BCB_SELECTED) != 0;
+}
+
+/*
+* pgbuf_bcb_set_selected () - set selected flag to bcb
+*
+* return   : void
+* bcb (in) : bcb
+*/
+STATIC_INLINE void
+pgbuf_bcb_set_selected (PGBUF_BCB * bcb)
+{
+  assert (bcb != NULL);
+  bcb->flags |= PGBUF_BCB_SELECTED;
+}
+
+/*
+* pgbuf_bcb_clear_selected () - clear selected
+*
+* return   : void
+* bcb (in) : bcb
+*/
+STATIC_INLINE void
+pgbuf_bcb_clear_selected (PGBUF_BCB * bcb)
+{
+  assert (bcb != NULL);
+  bcb->flags &= ~PGBUF_BCB_SELECTED;
 }
 
 /*
