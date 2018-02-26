@@ -654,6 +654,8 @@ css_process_kill_master (void)
     }
 #endif
 
+  er_final (ER_ALL_FINAL);
+
   exit (1);
 }
 
@@ -2058,7 +2060,7 @@ css_send_to_my_server_the_master_hostname (const char *master_current_hostname, 
 #if !defined (WINDOWS)
   int rc = NO_ERROR, rv;
   int master_hostname_length = master_current_hostname == NULL ? 0 : strlen (master_current_hostname);
-  char master_hostname[sizeof(int) + MAXHOSTNAMELEN];
+  char master_hostname[sizeof (int) + MAXHOSTNAMELEN];
 
   if (proc == NULL || conn == NULL || IS_INVALID_SOCKET (conn->fd))
     {

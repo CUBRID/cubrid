@@ -59,6 +59,7 @@
 #endif /* SOLARIS || LINUX */
 
 #include "environment_variable.h"
+#include "error_context.hpp"
 #include "porting.h"
 #if !defined (WINDOWS)
 #include "log_impl.h"
@@ -256,6 +257,10 @@ hb_thread_master_reader (void *arg)
 {
 #if !defined (WINDOWS)
   int error;
+
+  /* *INDENT-OFF* */
+  cuberr::context er_context (true);
+  /* *INDENT-ON* */
 
   error = hb_process_master_request ();
   if (error != NO_ERROR)

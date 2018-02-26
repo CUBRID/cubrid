@@ -2706,7 +2706,7 @@ css_make_access_status_exist_user (THREAD_ENTRY * thread_p, OID * class_oid, LAS
 	    {
 	      if (heap_value->attrid == attr_idx)
 		{
-		  user_name = DB_GET_STRING (&heap_value->dbvalue);
+		  user_name = db_get_string (&heap_value->dbvalue);
 		}
 	    }
 	}
@@ -2831,15 +2831,15 @@ css_get_unused_access_status (LAST_ACCESS_STATUS ** access_status_array, int num
 #endif /* CS_MODE */
 
 int
-css_platform_independent_poll(POLL_FD * fds, int num_of_fds, int timeout)
+css_platform_independent_poll (POLL_FD * fds, int num_of_fds, int timeout)
 {
-	int rc = 0;
+  int rc = 0;
 
 #if defined (WINDOWS)
-	rc = WSAPoll(fds, num_of_fds, timeout);
+  rc = WSAPoll (fds, num_of_fds, timeout);
 #else
-	rc = poll(fds, num_of_fds, timeout);
+  rc = poll (fds, num_of_fds, timeout);
 #endif
 
-	return rc;
+  return rc;
 }

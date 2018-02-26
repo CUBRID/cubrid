@@ -1607,7 +1607,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		      *wherep = save_where_next;
 		      continue;	/* give up */
 		    }
-		  DB_MAKE_NULL (&dbval_res);
+		  db_make_null (&dbval_res);
 		  if (tp_value_cast (dbval, &dbval_res, dom, false) != DOMAIN_COMPATIBLE)
 		    {
 		      PT_ERRORmf2 (parser, arg2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
@@ -2672,7 +2672,7 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	      truefalse = (node->info.expr.op == PT_IS_NOT_NULL);
 	    }
 
-	  DB_MAKE_INTEGER (&value, truefalse);
+	  db_make_int (&value, truefalse);
 	  fold = pt_dbval_to_value (parser, &value);
 	  if (fold == NULL)
 	    {
@@ -3038,7 +3038,7 @@ qo_find_like_rewrite_bound (PARSER_CONTEXT * const parser, PT_NODE * const patte
   PT_NODE *bound;
   DB_VALUE tmp_result;
 
-  DB_MAKE_NULL (&tmp_result);
+  db_make_null (&tmp_result);
 
   assert (parser != NULL);
   if (parser == NULL)
@@ -3070,15 +3070,15 @@ qo_find_like_rewrite_bound (PARSER_CONTEXT * const parser, PT_NODE * const patte
       bound->data_type = parser_copy_tree (parser, pattern->data_type);
     }
   bound->info.value.data_value.str =
-    pt_append_bytes (parser, NULL, DB_GET_STRING (&tmp_result), DB_GET_STRING_SIZE (&tmp_result));
+    pt_append_bytes (parser, NULL, db_get_string (&tmp_result), db_get_string_size (&tmp_result));
   PT_NODE_PRINT_VALUE_TO_TEXT (parser, bound);
   (void) pt_value_to_db (parser, bound);
 
   assert (bound->info.value.db_value_is_initialized);
   assert (PT_HAS_COLLATION (pattern->type_enum));
 
-  db_string_put_cs_and_collation (&(bound->info.value.db_value), DB_GET_STRING_CODESET (&tmp_result),
-				  DB_GET_STRING_COLLATION (&tmp_result));
+  db_string_put_cs_and_collation (&(bound->info.value.db_value), db_get_string_codeset (&tmp_result),
+				  db_get_string_collation (&tmp_result));
 
   db_value_clear (&tmp_result);
   return bound;
@@ -3134,7 +3134,7 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like, P
   int collation_id;
   INTL_CODESET codeset;
 
-  DB_MAKE_NULL (&compressed_pattern);
+  db_make_null (&compressed_pattern);
 
   *perform_generic_rewrite = false;
 
@@ -3146,8 +3146,8 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like, P
 
   assert (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (&pattern->info.value.db_value)));
 
-  collation_id = DB_GET_STRING_COLLATION (&pattern->info.value.db_value);
-  codeset = DB_GET_STRING_CODESET (&pattern->info.value.db_value);
+  collation_id = db_get_string_collation (&pattern->info.value.db_value);
+  codeset = db_get_string_codeset (&pattern->info.value.db_value);
 
   if (escape != NULL)
     {
@@ -3195,7 +3195,7 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like, P
     }
 
   pattern->info.value.data_value.str =
-    pt_append_bytes (parser, NULL, DB_GET_STRING (&compressed_pattern), DB_GET_STRING_SIZE (&compressed_pattern));
+    pt_append_bytes (parser, NULL, db_get_string (&compressed_pattern), db_get_string_size (&compressed_pattern));
   pattern_str = (char *) pattern->info.value.data_value.str->bytes;
   pattern_size = pattern->info.value.data_value.str->length;
   intl_char_count ((unsigned char *) pattern_str, pattern_size, codeset, &pattern_length);
@@ -4718,7 +4718,7 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 		      DB_VALUE db_zero;
 		      parser_free_tree (parser, dnf_node->info.expr.arg1);
 		      parser_free_tree (parser, dnf_node->info.expr.arg2);
-		      DB_MAKE_INT (&db_zero, 0);
+		      db_make_int (&db_zero, 0);
 
 		      dnf_node->info.expr.arg1 = pt_dbval_to_value (parser, &db_zero);
 		      dnf_node->info.expr.arg2 = pt_dbval_to_value (parser, &db_zero);

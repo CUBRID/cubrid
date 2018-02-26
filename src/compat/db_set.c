@@ -1145,7 +1145,7 @@ db_col_drop_nulls (DB_COLLECTION * col)
       CHECK_MODIFICATION_ERROR ();
     }
 
-  DB_MAKE_NULL (&value);
+  db_make_null (&value);
 
   error = set_drop_element (col, &value, true);
 

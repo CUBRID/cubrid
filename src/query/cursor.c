@@ -230,7 +230,7 @@ cursor_fixup_set_vobjs (DB_VALUE * value_p)
       return ER_FAILED;
     }
 
-  set = DB_GET_SET (value_p);
+  set = db_get_set (value_p);
   size = db_set_size (set);
 
   if (cursor_has_set_vobjs (set) == false)
@@ -289,13 +289,13 @@ cursor_fixup_set_vobjs (DB_VALUE * value_p)
   switch (type)
     {
     case DB_TYPE_SET:
-      DB_MAKE_SET (value_p, new_set);
+      db_make_set (value_p, new_set);
       break;
     case DB_TYPE_MULTISET:
-      DB_MAKE_MULTISET (value_p, new_set);
+      db_make_multiset (value_p, new_set);
       break;
     case DB_TYPE_SEQUENCE:
-      DB_MAKE_SEQUENCE (value_p, new_set);
+      db_make_sequence (value_p, new_set);
       break;
     default:
       db_set_free (new_set);
@@ -323,7 +323,7 @@ cursor_fixup_vobjs (DB_VALUE * value_p)
     {
     case DB_TYPE_OID:
       rc = vid_oid_to_object (value_p, &obj);
-      DB_MAKE_OBJECT (value_p, obj);
+      db_make_object (value_p, obj);
       break;
 
     case DB_TYPE_VOBJ:
@@ -337,7 +337,7 @@ cursor_fixup_vobjs (DB_VALUE * value_p)
 	{
 	  rc = vid_vobj_to_object (value_p, &obj);
 	  pr_clear_value (value_p);
-	  DB_MAKE_OBJECT (value_p, obj);
+	  db_make_object (value_p, obj);
 	}
       break;
 
@@ -389,7 +389,7 @@ cursor_copy_vobj_to_dbvalue (OR_BUF * buffer_p, DB_VALUE * value_p)
 
   /* convert the vobj into a vmop */
   rc = vid_vobj_to_object (&vobj_dbval, &object_p);
-  DB_MAKE_OBJECT (value_p, object_p);
+  db_make_object (value_p, object_p);
   pr_clear_value (&vobj_dbval);
 
   return rc;
@@ -632,11 +632,11 @@ cursor_get_oid_from_vobj (OID * current_oid_p, int length)
   vobject_p = (char *) current_oid_p;
   current_oid_p = NULL;
   or_init (&buffer, vobject_p, length);
-  DB_MAKE_NULL (&value);
+  db_make_null (&value);
 
   if (cursor_copy_vobj_to_dbvalue (&buffer, &value) == NO_ERROR)
     {
-      tmp_object_p = DB_GET_OBJECT (&value);
+      tmp_object_p = db_get_object (&value);
 
       if (vid_is_updatable (tmp_object_p) == true)
 	{
@@ -1147,7 +1147,7 @@ cursor_print_list (QUERY_ID query_id, QFILE_LIST_ID * list_id_p)
 
 	  if (TP_IS_SET_TYPE (DB_VALUE_TYPE (value_p)) || DB_VALUE_TYPE (value_p) == DB_TYPE_VOBJ)
 	    {
-	      db_set_print (DB_GET_SET (value_p));
+	      db_set_print (db_get_set (value_p));
 	    }
 	  else
 	    {

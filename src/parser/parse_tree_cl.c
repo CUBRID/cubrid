@@ -2580,7 +2580,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
 
     case DB_TYPE_MONETARY:
       /* This is handled explicitly because describe_value will add a currency symbol, and it isn't needed here. */
-      printer.describe_money (DB_GET_MONETARY ((DB_VALUE *) val));
+      printer.describe_money (db_get_monetary ((DB_VALUE *) val));
       break;
 
     case DB_TYPE_BIT:
@@ -2601,7 +2601,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
       printer.describe_value (val);
       break;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
       /* everyone else gets csql's utime format */
@@ -17454,7 +17454,7 @@ static PT_NODE *
 pt_init_insert_value (PT_NODE * p)
 {
   p->info.insert_value.original_node = NULL;
-  DB_MAKE_NULL (&p->info.insert_value.value);
+  db_make_null (&p->info.insert_value.value);
   p->info.insert_value.is_evaluated = false;
   p->info.insert_value.replace_names = false;
 

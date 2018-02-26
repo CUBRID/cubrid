@@ -53,10 +53,6 @@
 
 #include "porting.h"
 #include "connection_defs.h"
-#include "thread.h"
-#include "thread_daemon.hpp"
-#include "thread_entry_task.hpp"
-#include "thread_manager.hpp"
 #include "log_impl.h"
 #include "log_manager.h"
 #include "log_comm.h"
@@ -417,15 +413,6 @@ static int logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const ch
 					       const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
 					       LOG_PAGE * log_pgptr);
 
-#if defined(SERVER_MODE)
-// *INDENT-OFF*
-static cubthread::daemon *logpb_Checkpoint_daemon = NULL;
-static cubthread::daemon *logpb_Remove_log_archive_daemon = NULL;
-
-static bool logpb_Daemons_are_initialized = false;
-// *INDENT-ON*
-#endif /* SERVER_MODE */
-
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
  *
@@ -639,10 +626,6 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   pthread_mutex_init (&writer_info->flush_end_mutex, NULL);
 
   writer_info->is_init = true;
-
-#if defined(SERVER_MODE)
-  logpb_daemons_init ();
-#endif // SERVER_MODE
 
   return error_code;
 
@@ -4287,7 +4270,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
       if (thread_p != NULL && thread_p->event_stats.trace_log_flush_time > 0)
 	{
-	  flush_start_time = thread_get_log_clock_msec ();
+	  flush_start_time = log_get_clock_msec ();
 
 	  memset (&writer_info->last_writer_client_info, 0, sizeof (LOG_CLIENTIDS));
 
@@ -4624,7 +4607,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
       if (thread_p != NULL && thread_p->event_stats.trace_log_flush_time > 0)
 	{
-	  flush_completed_time = thread_get_log_clock_msec ();
+	  flush_completed_time = log_get_clock_msec ();
 	}
 
       writer_info->flush_completed = true;
@@ -4657,7 +4640,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
       if (thread_p != NULL && thread_p->event_stats.trace_log_flush_time > 0)
 	{
-	  all_writer_thr_end_time = thread_get_log_clock_msec ();
+	  all_writer_thr_end_time = log_get_clock_msec ();
 
 	  if (all_writer_thr_end_time - flush_start_time > thread_p->event_stats.trace_log_flush_time)
 	    {
@@ -6580,7 +6563,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
 #if defined(SERVER_MODE)
-  logpb_Remove_log_archive_daemon->wakeup ();
+  log_wakeup_remove_log_archive_daemon ();
 #else
   logpb_remove_archive_logs_exceed_limit (thread_p, 0);
 #endif
@@ -7568,159 +7551,6 @@ logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *l
 
   return fileio_is_volume_exist (log_Name_active);
 }
-
-// *INDENT-OFF*
-#if defined(SERVER_MODE)
-// class checkpoint_daemon_task
-//
-//  description:
-//    checkpoint daemon task
-//
-class checkpoint_daemon_task : public cubthread::entry_task
-{
-  public:
-    void execute (cubthread::entry & thread_ref) override
-    {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
-
-      logpb_checkpoint (&thread_ref);
-    }
-};
-#endif /* SERVER_MODE */
-
-#if defined(SERVER_MODE)
-// class remove_log_archive_daemon_task
-//
-//  constructor args:
-//    archive_logs_to_delete : represents number of how many archive logs should be deleted by daemon task,
-//                             which must be dependent of PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL param value
-//
-//  description:
-//    purge archive logs daemon task
-//
-class remove_log_archive_daemon_task : public cubthread::entry_task
-{
-  private:
-    int m_archive_logs_to_delete;
-
-  public:
-    explicit remove_log_archive_daemon_task (int archive_logs_to_delete)
-    {
-      this->m_archive_logs_to_delete = archive_logs_to_delete;
-    }
-
-    void execute (cubthread::entry & thread_ref) override
-    {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
-
-	logpb_remove_archive_logs_exceed_limit (&thread_ref, m_archive_logs_to_delete);
-    }
-};
-#endif /* SERVER_MODE */
-
-#if defined(SERVER_MODE)
-/*
- * logpb_checkpoint_daemon_init () - initialize checkpoint daemon
- */
-void
-logpb_checkpoint_daemon_init ()
-{
-  // create checkpoint daemon thread
-  std::chrono::seconds checkpoint_looper_interval =
-	  std::chrono::seconds (prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_INTERVAL_SECS));
-  logpb_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (checkpoint_looper_interval),
-			    new checkpoint_daemon_task ());
-}
-#endif /* SERVER_MODE */
-
-#if defined(SERVER_MODE)
-/*
- * logpb_remove_log_archive_daemon_init () - initialize remove log archive daemon
- */
-void
-logpb_remove_log_archive_daemon_init ()
-{
-  // get remove log archive interval in seconds system parameter
-  int remove_log_archive_interval = prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
-
-  // create log archive remover daemon thread
-  if (remove_log_archive_interval > 0)
-    {
-      // if interval is greater than 0 (zero) then on every loop remove one log archive
-      logpb_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (
-	  cubthread::looper (std::chrono::seconds (remove_log_archive_interval)),
-	  new remove_log_archive_daemon_task (1));
-    }
-  else
-    {
-      // if interval is equal to 0 (zero) then on wakeup remove all log archive records
-      logpb_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (),
-					new remove_log_archive_daemon_task (0));
-    }
-}
-#endif /* SERVER_MODE */
-
-#if defined(SERVER_MODE)
-/*
- * logpb_daemons_init () - initialize daemon threads
- */
-void
-logpb_daemons_init ()
-{
-  if (logpb_Daemons_are_initialized)
-    {
-      return;
-    }
-
-  logpb_checkpoint_daemon_init ();
-  logpb_remove_log_archive_daemon_init ();
-
-  logpb_Daemons_are_initialized = true;
-}
-#endif /* SERVER_MODE */
-
-#if defined(SERVER_MODE)
-/*
- * logpb_daemons_destroy () - destroy daemon threads
- */
-void
-logpb_daemons_destroy ()
-{
-  if (!logpb_Daemons_are_initialized)
-    {
-      return;
-    }
-
-  cubthread::get_manager ()->destroy_daemon (logpb_Checkpoint_daemon);
-  cubthread::get_manager ()->destroy_daemon (logpb_Remove_log_archive_daemon);
-
-  logpb_Daemons_are_initialized = false;
-}
-#endif /* SERVER_MODE */
-// *INDENT-ON*
-
-#if defined(SERVER_MODE)
-/*
- * logpb_do_checkpoint -
- *
- * return:
- *
- * NOTE:
- */
-void
-logpb_do_checkpoint (void)
-{
-  logpb_Checkpoint_daemon->wakeup ();
-}
-#endif /* SERVER_MODE */
 
 /*
  * logpb_checkpoint - Execute a fuzzy checkpoint
