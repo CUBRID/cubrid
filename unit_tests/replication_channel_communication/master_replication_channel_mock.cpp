@@ -2,7 +2,7 @@
 
 #define SERVER_MODE
 #include "master_replication_channel_manager.hpp"
-#if defined (WINDOWS)
+#if !defined (WINDOWS)
 #include "tcp.h"
 #else
 #include "wintcp.h"
