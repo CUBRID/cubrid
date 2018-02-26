@@ -311,7 +311,7 @@ static int db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const 
 STATIC_INLINE JSON_VALUE &db_json_doc_to_value (JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const JSON_VALUE &db_json_doc_to_value (const JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
 static int db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc);
-static int db_json_add_json_value_to_object (JSON_DOC &doc, JSON_VALUE &key, JSON_VALUE &value);
+static int db_json_add_json_value_to_object (JSON_DOC &doc, const char *name, JSON_VALUE &value);
 
 int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
 {
@@ -742,19 +742,22 @@ db_json_get_raw_json_body_from_document (const JSON_DOC *doc)
 }
 
 static int
-db_json_add_json_value_to_object (JSON_DOC &doc, JSON_VALUE &key, JSON_VALUE &value)
+db_json_add_json_value_to_object (JSON_DOC &doc, const char *name, JSON_VALUE &value)
 {
+  JSON_VALUE key;
+
   if (!doc.IsObject())
     {
       doc.SetObject();
     }
 
-  if (doc.HasMember (key.GetString()))
+  if (doc.HasMember (name))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_DUPLICATE_KEY, 1, key.GetString());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_DUPLICATE_KEY, 1, name);
       return ER_JSON_DUPLICATE_KEY;
     }
 
+  key.SetString (name, (rapidjson::SizeType) strlen (name), doc.GetAllocator());
   doc.AddMember (key, value, doc.GetAllocator());
   return NO_ERROR;
 }
@@ -762,31 +765,26 @@ db_json_add_json_value_to_object (JSON_DOC &doc, JSON_VALUE &key, JSON_VALUE &va
 int
 db_json_add_member_to_object (JSON_DOC *doc, const char *name, const char *value)
 {
-  JSON_VALUE key, val;
-
-  key.SetString (name, (rapidjson::SizeType) strlen (name), doc->GetAllocator ());
+  JSON_VALUE val;
   val.SetString (value, (rapidjson::SizeType) strlen (value), doc->GetAllocator ());
 
-  return db_json_add_json_value_to_object (*doc, key, val);
+  return db_json_add_json_value_to_object (*doc, name, val);
 }
 
 int
 db_json_add_member_to_object (JSON_DOC *doc, const char *name, int value)
 {
-  JSON_VALUE key, val;
-
-  key.SetString (name, (rapidjson::SizeType) strlen (name), doc->GetAllocator ());
+  JSON_VALUE val;
   val.SetInt (value);
 
-  return db_json_add_json_value_to_object (*doc, key, val);
+  return db_json_add_json_value_to_object (*doc, name, val);
 }
 
 int
 db_json_add_member_to_object (JSON_DOC *doc, const char *name, const JSON_DOC *value)
 {
-  JSON_VALUE key, val;
+  JSON_VALUE val;
 
-  key.SetString (name, (rapidjson::SizeType) strlen (name), doc->GetAllocator ());
   if (value != NULL)
     {
       val.CopyFrom (*value, doc->GetAllocator ());
@@ -796,18 +794,16 @@ db_json_add_member_to_object (JSON_DOC *doc, const char *name, const JSON_DOC *v
       val.SetNull ();
     }
 
-  return db_json_add_json_value_to_object (*doc, key, val);
+  return db_json_add_json_value_to_object (*doc, name, val);
 }
 
 int
 db_json_add_member_to_object (JSON_DOC *doc, const char *name, double value)
 {
-  JSON_VALUE key, val;
-
-  key.SetString (name, (rapidjson::SizeType) strlen (name), doc->GetAllocator ());
+  JSON_VALUE val;
   val.SetDouble (value);
 
-  return db_json_add_json_value_to_object (*doc, key, val);
+  return db_json_add_json_value_to_object (*doc, name, val);
 }
 
 void
