@@ -2072,6 +2072,8 @@ release:
     }
 
 exit:
+  pr_clear_value (&val);
+
   AU_ENABLE (save);
 
   return error;

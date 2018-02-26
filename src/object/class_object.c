@@ -370,6 +370,9 @@ classobj_put_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
     }
 
 error:
+
+  pr_clear_value (&value);
+
   if (error)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -1017,6 +1020,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 
       db_make_string_copy (&value, pbuf);
       set_put_element (constraint, e++, &value);
+      pr_clear_value (&value);
 
       if (pbuf && pbuf != &(buf[0]))
 	{
@@ -1029,6 +1033,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 	  /* name */
 	  db_make_string_copy (&value, atts[i]->header.name);
 	  set_put_element (constraint, e++, &value);
+	  pr_clear_value (&value);
 	  /* asc_desc */
 	  db_make_int (&value, asc_desc ? asc_desc[i] : 0);
 	  set_put_element (constraint, e++, &value);
@@ -1236,6 +1241,9 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
     {
       pr_clear_value (&pvalue);
     }
+
+  /* Just to be sure. */
+  pr_clear_value (&value);
 
   return NO_ERROR;
 

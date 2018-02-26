@@ -870,8 +870,10 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
     }
 
   /* class name */
+  pr_clear_value (&value);
   db_make_string_copy (&value, class_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CLASS_NAME, &value);
+  pr_clear_value (&value);
   if (error < 0)
     {
       goto update_auto_increment_error;
@@ -880,6 +882,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
   /* att name */
   db_make_string_copy (&value, att_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATT_NAME, &value);
+  pr_clear_value (&value);
   if (error < 0)
     {
       goto update_auto_increment_error;

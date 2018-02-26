@@ -17237,7 +17237,7 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 	      assert (json->document == NULL);
 	      return 0;
 	    }
-	  db_make_string_copy (&json_body_value, json->json_body);
+	  db_make_string (&json_body_value, json->json_body);
 	  json_body_length = mr_data_lengthval_string (&json_body_value, disk);
 
 	  if (json->schema_raw != NULL)
@@ -17446,7 +17446,7 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
 
   if (value->data.json.json_body != NULL)
     {
-      db_make_string_copy (&json_body, value->data.json.json_body);
+      db_make_string (&json_body, value->data.json.json_body);
     }
   else
     {

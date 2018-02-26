@@ -1125,11 +1125,15 @@ trigger_to_object (TR_TRIGGER * trigger)
 	}
     }
 
+  pr_clear_value (&value);
+
   db_make_string_copy (&value, trigger->comment);
   if (dbt_put_internal (obt_p, TR_ATT_COMMENT, &value))
     {
       goto error;
     }
+
+  pr_clear_value (&value);
 
   object_p = dbt_finish_object (obt_p);
   if (object_p != NULL)
@@ -3081,6 +3085,7 @@ trigger_table_add (const char *name, DB_OBJECT * trigger)
 
   db_make_string_copy (&value, name);
   error = set_put_element (table, max, &value);
+  pr_clear_value (&value);
   if (error == NO_ERROR)
     {
       db_make_object (&value, trigger);
@@ -3288,6 +3293,7 @@ trigger_table_rename (DB_OBJECT * trigger_object, const char *newname)
       /* the name is the kept in the element immediately preceeding this one */
       db_make_string_copy (&value, newname);
       error = set_put_element (table, found - 1, &value);
+      pr_clear_value (&value);
     }
 
   set_free (table);
@@ -7300,6 +7306,7 @@ tr_set_comment (DB_OBJECT * trigger_object, const char *comment, bool call_from_
 		  free_and_init (oldcomment);
 		}
 	    }
+	  pr_clear_value (&value);
 	}
     }
 

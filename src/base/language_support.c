@@ -2640,6 +2640,8 @@ lang_db_put_charset (void)
       assert (false);
     }
 
+  pr_clear_value (&value);
+
   db_make_int (&value, (int) server_codeset);
   if (db_put_internal (Au_root, "charset", &value) != NO_ERROR)
     {
