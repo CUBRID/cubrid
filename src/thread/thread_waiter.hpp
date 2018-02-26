@@ -66,8 +66,7 @@ namespace cubthread
       // returns true if woke up before timeout
       template< class Clock, class Duration >
       bool wait_until (std::chrono::time_point<Clock, Duration> &timeout_time); // wait until time or until wakeup
-      // returns true if woke up before
-      // timeout
+      // returns true if woke up before timeout
 
     private:
 

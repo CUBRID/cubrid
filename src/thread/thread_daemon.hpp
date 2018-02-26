@@ -85,9 +85,14 @@ namespace cubthread
 	      task<Context> *exec);
       ~daemon();
 
-      void wakeup (void);     // wakeup daemon thread
-      void stop_execution (void);       // stop_execution daemon thread from looping and join it
+      void wakeup (void);         // wakeup daemon thread
+      void stop_execution (void); // stop_execution daemon thread from looping and join it
       // note: this must not be called concurrently
+
+      bool woke_up (void);        // return true if daemon woke up before time out
+
+      void reset_looper (void);   // reset looper
+      // note: this applies only if looper wait pattern is of type INCREASING_PERIODS
 
     private:
       template <typename Context>

@@ -62,4 +62,16 @@ namespace cubthread
     m_looper.put_to_sleep (m_waiter);
   }
 
+  bool
+  daemon::woke_up (void)
+  {
+    return m_looper.woke_up ();
+  }
+
+  void
+  daemon::reset_looper (void)
+  {
+    m_looper.reset ();
+  }
+
 } // namespace cubthread
