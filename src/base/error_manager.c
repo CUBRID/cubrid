@@ -278,6 +278,7 @@ static const char *er_Builtin_msg[] = {
   /* ER_EVENT_HANDLER */
   "er_init: cannot install event handler \"%s\""
 };
+
 static char *er_Cached_msg[sizeof (er_Builtin_msg) / sizeof (const char *)];
 static bool er_Is_cached_msg = false;
 
