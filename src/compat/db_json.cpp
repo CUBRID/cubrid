@@ -216,12 +216,13 @@ class JSON_BASE_HANDLER
 class JSON_WALKER
 {
   public:
-    JSON_WALKER() {}
-    virtual ~JSON_WALKER() = 0;
-
     int WalkDocument (JSON_DOC &document);
 
   protected:
+    // we should not instantiate this class, but extend it
+    JSON_WALKER() {}
+    virtual ~JSON_WALKER() {}
+
     virtual int
     CallBefore (JSON_VALUE &value)
     {
@@ -239,8 +240,6 @@ class JSON_WALKER
   private:
     int WalkValue (JSON_VALUE &value);
 };
-
-JSON_WALKER::~JSON_WALKER() {}
 
 /*
 * JSON_DUPLICATE_KEYS_CHECKER - This class extends JSON_WALKER
