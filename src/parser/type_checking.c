@@ -13312,7 +13312,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
                     assert(false);
                     break;
                 case pt_arg_type::INDEX:
-                    int index = 0;
+                    size_t index = 0;
                     for(auto p=arg_list; p; p=p->next, ++index)
                       {
                         if(index == func_sig->ret.val.index)
