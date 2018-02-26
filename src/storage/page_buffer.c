@@ -158,10 +158,6 @@ static int rv;
   ((ATOMIC_INC_64 (&(victim_cand_info)->victim_cand_lists_consumer_position, 0ULL) + (victim_cand_info)->capacity) \
     <= ATOMIC_INC_64 (&(victim_cand_info)->victim_cand_lists_producer_position, 0ULL))
 
-#define PGBUF_GET_VICTIM_CAND_NUM_LISTS(victim_cand_info) \
-  (ATOMIC_INC_64 (&(victim_cand_info)->victim_cand_lists_producer_position, 0ULL) \
-   - ATOMIC_INC_64 (&(victim_cand_info)->victim_cand_lists_consumer_position, 0ULL))
-
 #define PGBUF_IS_VICTIM_CAND_LIST_IS_EMPTY(victim_cand_info)  \
     ((ATOMIC_INC_64 (&(victim_cand_info)->victim_cand_lists_consumer_position, 0ULL)) \
       >= ATOMIC_INC_64 (&(victim_cand_info)->victim_cand_lists_producer_position, 0ULL))
@@ -8465,9 +8461,8 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
       assert (count_victims_private_lru_success >= 0);
       count_victims_private_lru_fail = pgbuf_Pool.monitor.count_victims_private_lru_fail;
       if ((count_victims_private_lru_fail > 2)
-	  && (count_victims_private_lru_success * 2 < count_victims_private_lru_fail))
+	  && (count_victims_private_lru_success < count_victims_private_lru_fail * 2))
 	{
-	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_fail, 1);
 	  skip_victim_search_in_private_lru = true;
 	  goto search_shared_lru;
 	}
@@ -8569,9 +8564,8 @@ search_shared_lru:
   count_victims_shared_lru_success = pgbuf_Pool.monitor.count_victims_shared_lru_success;
   assert (count_victims_shared_lru_success >= 0);
   count_victims_shared_lru_fail = pgbuf_Pool.monitor.count_victims_shared_lru_fail;
-  if ((count_victims_shared_lru_fail > 2) && (count_victims_shared_lru_success * 2 < count_victims_shared_lru_fail))
+  if ((count_victims_shared_lru_fail > 2) && (count_victims_shared_lru_success < count_victims_shared_lru_fail * 2))
     {
-      ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_shared_lru_fail, 1);
       goto search_private_under_quota;
     }
 
@@ -10214,7 +10208,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
   DWB_SLOT *dwb_slot = NULL;
   LOG_LSA lsa;
   bool skip_flush;
-  PGBUF_LRU_LIST *lru_list;
+  bool update_shared_lru_fails = false, update_private_lru_fails = false;
 
   PGBUF_BCB_CHECK_OWN (bufptr);
 
@@ -10290,6 +10284,18 @@ copy_unflushed_lsa:
   LSA_COPY (&lsa, &(bufptr->iopage_buffer->iopage.prv.lsa));
   LSA_COPY (&oldest_unflush_lsa, &bufptr->oldest_unflush_lsa);
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
+
+  if (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bufptr))
+    {
+      if (PGBUF_IS_SHARED_LRU_INDEX (pgbuf_bcb_get_lru_index (bufptr)))
+	{
+	  update_shared_lru_fails = true;
+	}
+      else
+	{
+	  update_private_lru_fails = true;
+	}
+    }
 
   PGBUF_BCB_UNLOCK (bufptr);
   *is_bcb_locked = false;
@@ -10400,13 +10406,12 @@ copy_unflushed_lsa:
 	}
       else
 	{
-	  lru_list = pgbuf_lru_list_from_bcb (bufptr);
-	  if (PGBUF_IS_SHARED_LRU_INDEX (lru_list->index))
+	  if (update_shared_lru_fails && (pgbuf_Pool.monitor.count_victims_shared_lru_fail > 0))
 	    {
 	      /* Give a chance to worker threads to find victims in shared lists. */
 	      ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_shared_lru_fail, -1);
 	    }
-	  else
+	  else if (update_private_lru_fails && (pgbuf_Pool.monitor.count_victims_private_lru_fail > 0))
 	    {
 	      /* Give a chance to worker threads to find victims in private lists. */
 	      ATOMIC_INC_32 (&pgbuf_Pool.monitor.count_victims_private_lru_fail, -1);
