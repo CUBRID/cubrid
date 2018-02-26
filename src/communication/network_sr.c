@@ -53,9 +53,11 @@
 #include "event_log.h"
 #include "util_func.h"
 #include "tz_support.h"
-//#if defined(WINDOWS)
+#if !defined(WINDOWS)
 #include "tcp.h"
-//#endif /* WINDOWS */
+#else /* WINDOWS */
+#include "wintcp.h"
+#endif
 #include "thread_manager.hpp"
 
 enum net_req_act

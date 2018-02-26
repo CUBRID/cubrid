@@ -32,6 +32,10 @@
 #include "master_util.h"
 #include "heartbeat.h"
 
+#if defined(WINDOWS)
+typedef int pid_t;
+#endif
+
 /* ping result */
 enum HB_PING_RESULT
 {

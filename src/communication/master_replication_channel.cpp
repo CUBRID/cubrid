@@ -19,7 +19,11 @@ master_replication_channel::master_replication_channel (int slave_fd)
 master_replication_channel::~master_replication_channel ()
 {
   _er_log_debug (ARG_FILE_LINE, "destroy master_replication_channel slave_fd=%d\n", m_slave_fd.fd);
+#if !defined (WINDOWS)
   close (m_slave_fd.fd);
+#else
+  closesocket (m_slave_fd.fd);
+#endif
   m_is_connection_alive = false;
 }
 

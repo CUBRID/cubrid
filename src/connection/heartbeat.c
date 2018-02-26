@@ -60,7 +60,10 @@
 
 #include "environment_variable.h"
 #include "porting.h"
+#if !defined (WINDOWS)
 #include "log_impl.h"
+#endif
+#include "release_string.h"
 #include "system_parameter.h"
 #include "error_manager.h"
 #include "connection_defs.h"
@@ -251,6 +254,7 @@ css_receive_heartbeat_data (CSS_CONN_ENTRY * conn, char *data, int size)
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 hb_thread_master_reader (void *arg)
 {
+#if !defined (WINDOWS)
   int error;
 
   error = hb_process_master_request ();
@@ -265,7 +269,7 @@ hb_thread_master_reader (void *arg)
       /* is it ok? */
       kill (getpid (), SIGTERM);
     }
-
+#endif
   return (THREAD_RET_T) 0;
 }
 
@@ -456,7 +460,7 @@ hb_process_master_request (void)
     {
       po[0].fd = hb_Conn->fd;
       po[0].events = POLLIN;
-      r = poll (po, 1, (prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000));
+      r = css_platform_independent_poll (po, 1, (prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000));
 
       switch (r)
 	{
@@ -604,6 +608,7 @@ hb_connect_to_master (const char *server_name, const char *log_path, HB_PROC_TYP
 static int
 hb_create_master_reader (void)
 {
+#if !defined (WINDOWS)
   int rv;
   pthread_attr_t thread_attr;
   size_t ts_size;
@@ -658,7 +663,7 @@ hb_create_master_reader (void)
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_CREATE, 0);
       return ER_CSS_PTHREAD_CREATE;
     }
-
+#endif
   return (NO_ERROR);
 }
 

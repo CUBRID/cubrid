@@ -65,7 +65,7 @@ elseif(WIN32)
     cubrid-win-lib
     )
   target_link_libraries(test_replication_channel_comm PRIVATE
-    cubridcs-win-lib
+    cubridcs
     )
 else()
   message( SEND_ERROR "Replication channel unit testing is for unix/windows")

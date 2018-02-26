@@ -72,7 +72,7 @@ typedef enum hb_proc_type HB_PROC_TYPE;
 #define HB_PTYPE_APPLYLOGDB_STR         "HA-applylogdb"
 #define HB_PTYPE_STR_SZ                 (16)
 
-#if !defined(WINDOWS)
+//#if !defined(WINDOWS)
 enum HBP_CLUSTER_MESSAGE
 {
   HBP_CLUSTER_HEARTBEAT = 0,
@@ -169,6 +169,6 @@ extern const char *hb_node_state_string (HB_NODE_STATE_TYPE nstate);
 
 extern bool hb_Proc_shutdown;
 
-#endif /* !WINDOWS */
+//#endif /* !WINDOWS */
 
 #endif /* _HEARTBEAT_H_ */

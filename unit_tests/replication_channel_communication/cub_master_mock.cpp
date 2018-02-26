@@ -1,4 +1,4 @@
-#define SERVER_MODE
+#define CS_MODE
 
 #include "cub_master_mock.hpp"
 
@@ -6,7 +6,8 @@
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 #include "thread_looper.hpp"
-#if defined (WINDOWS)
+#include "thread_daemon.hpp"
+#if !defined (WINDOWS)
 #include "tcp.h"
 #else
 #include "wintcp.h"
@@ -17,7 +18,7 @@ namespace cub_master_mock
 {
 
   static cubthread::daemon *cub_master_daemon = NULL;
-  static int listen_fd[2];
+  static SOCKET listen_fd[2];
   static POLL_FD listen_poll_fd;
 
   class cub_master_daemon_task : public cubthread::entry_task
@@ -92,18 +93,27 @@ namespace cub_master_mock
       {
 	return rc;
       }
-
+#if !defined (WINDOWS)
     listen_poll_fd.fd = listen_fd[1];
+#else
+	listen_poll_fd.fd = listen_fd[0];
+#endif
     listen_poll_fd.events = POLLIN;
 
-    cub_master_daemon = cubthread::get_manager()->create_daemon (std::chrono::seconds (0), new cub_master_daemon_task ());
+    cub_master_daemon = new cubthread::daemon (std::chrono::seconds (0), new cubthread::daemon_entry_manager (), new cub_master_daemon_task ());
 
     return NO_ERROR;
   }
 
   int finish ()
   {
-    cubthread::get_manager()->destroy_daemon (cub_master_daemon);
+    cub_master_daemon->stop_execution();
+    delete cub_master_daemon;
+    cub_master_daemon = NULL;
+#if !defined (WINDOWS)
     return close (listen_poll_fd.fd);
+#else
+	return closesocket (listen_poll_fd.fd);
+#endif
   }
 }

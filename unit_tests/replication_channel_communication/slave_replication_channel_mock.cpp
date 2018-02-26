@@ -7,6 +7,10 @@
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
 
+#if defined(WINDOWS)
+#include "wintcp.h"
+#endif
+
 static cubthread::entry_workpool *workpool = NULL;
 static std::vector <slave_replication_channel_mock *> slaves;
 static std::mutex slave_vector_mutex;

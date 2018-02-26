@@ -1213,7 +1213,7 @@ css_process_get_eof_request (SOCKET master_fd)
 int
 css_process_master_hostname ()
 {
-#if !defined (WINDOWS)
+#//if !defined (WINDOWS)
   int hostname_length, error;
 
   delete_master_hostname ();
@@ -1259,7 +1259,7 @@ css_process_master_hostname ()
 		 ha_Server_master_hostname);
 
   return NO_ERRORS;
-#endif
+//#endif
 }
 
 /*

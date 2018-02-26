@@ -32,9 +32,6 @@
 #if defined (WINDOWS)
 #include <winsock2.h>
 typedef WSAPOLLFD POLL_FD;
-#define POLLIN POLLRDNORM
-#define POLLOUT POLLWRNORM
-#define POLLRDHUP POLLHUP
 #else
 #include <sys/poll.h>
 typedef struct pollfd POLL_FD;

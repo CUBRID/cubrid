@@ -57,9 +57,9 @@
 #include "master_util.h"
 #include "master_request.h"
 
-#if !defined(WINDOWS)
+//#if !defined(WINDOWS)
 #include "master_heartbeat.h"
-#endif
+//#endif
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -2055,8 +2055,10 @@ int
 css_send_to_my_server_the_master_hostname (const char *master_current_hostname, HB_PROC_ENTRY * proc,
 					   CSS_CONN_ENTRY * conn)
 {
+#if !defined (WINDOWS)
   int rc = NO_ERROR, rv;
   int master_hostname_length = master_current_hostname == NULL ? 0 : strlen (master_current_hostname);
+  char master_hostname[sizeof(int) + MAXHOSTNAMELEN];
 
   if (proc == NULL || conn == NULL || IS_INVALID_SOCKET (conn->fd))
     {
@@ -2079,7 +2081,6 @@ css_send_to_my_server_the_master_hostname (const char *master_current_hostname, 
     }
 
   assert (master_hostname_length != 0);
-  char master_hostname[sizeof (int) + master_hostname_length];
 
   *((int *) master_hostname) = master_hostname_length;
   memcpy (master_hostname + sizeof (int), master_current_hostname, master_hostname_length);
@@ -2092,6 +2093,6 @@ css_send_to_my_server_the_master_hostname (const char *master_current_hostname, 
     }
 
   proc->knows_master_hostname = true;
-
+#endif
   return NO_ERROR;
 }
