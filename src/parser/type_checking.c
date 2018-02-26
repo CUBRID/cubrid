@@ -12960,7 +12960,7 @@ pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coerce_type)
 namespace Func
 {
   #define X(id, ...) #id,
-  char* type_str[] = {
+  const char* type_str[] = {
     #include "func_type.x"
   };
   #undef X
