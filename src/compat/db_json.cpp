@@ -2278,6 +2278,14 @@ bool db_json_doc_is_uncomparable (const JSON_DOC *doc)
 static bool
 db_json_path_is_token_valid_array_index (const std::string &str, std::size_t start, std::size_t end)
 {
+  // json pointer will corespond the symbol '-' to JSON_ARRAY length
+  // so if we have the json {"A":[1,2,3]} and the path /A/-
+  // this will point to the 4th element of the array (zero indexed)
+  if (str.compare ("-") == 0)
+    {
+      return true;
+    }
+
   if (end == 0)
     {
       // default is end of string
