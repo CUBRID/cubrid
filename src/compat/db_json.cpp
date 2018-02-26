@@ -831,37 +831,25 @@ db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, co
       return db_json_er_set_path_does_not_exist (path.substr (0, found), &doc);
     }
 
-  const std::string &last_token = path.substr (found + 1);
-  bool token_is_valid_index = db_json_path_is_token_valid_array_index (last_token);
   // found type of parent
   DB_JSON_TYPE parent_json_type = db_json_get_type_of_value (resulting_json_parent);
-  // what we expected to have instead of what we found there
-  DB_JSON_TYPE expected_type = DB_JSON_NULL;
-  DB_JSON_TYPE expected_type_second = DB_JSON_NULL;
 
-  switch (parent_json_type)
+  // we can insert only in JSON_OBJECT or JSON_ARRAY, else throw an error
+  if (parent_json_type != DB_JSON_OBJECT && parent_json_type != DB_JSON_ARRAY)
     {
-    case DB_JSON_ARRAY:
-      if (!token_is_valid_index)
-	{
-	  expected_type = DB_JSON_OBJECT;
-	}
-      break;
-    case DB_JSON_OBJECT:
-      if (token_is_valid_index)
-	{
-	  expected_type = DB_JSON_ARRAY;
-	}
-      break;
-    default:
-      expected_type = DB_JSON_OBJECT;
-      expected_type_second = DB_JSON_ARRAY;
+      return db_json_er_set_expected_other_type (path, parent_json_type, DB_JSON_OBJECT, DB_JSON_ARRAY);
     }
 
-  if (expected_type != DB_JSON_NULL)
+  const std::string &last_token = path.substr (found + 1);
+  bool token_is_valid_index = db_json_path_is_token_valid_array_index (last_token);
+
+  if (parent_json_type == DB_JSON_ARRAY && !token_is_valid_index)
     {
-      return db_json_er_set_expected_other_type (path, parent_json_type,
-	     expected_type, expected_type_second);
+      return db_json_er_set_expected_other_type (path, parent_json_type, DB_JSON_OBJECT);
+    }
+  if (parent_json_type == DB_JSON_OBJECT && token_is_valid_index)
+    {
+      return db_json_er_set_expected_other_type (path, parent_json_type, DB_JSON_ARRAY);
     }
 
   // put the value at the specified path
