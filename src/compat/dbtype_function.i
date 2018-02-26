@@ -1954,6 +1954,12 @@ db_make_string_copy (DB_VALUE * value, const char *str)
   CHECK_1ARG_ERROR (value);
 #endif
 
+  if (str == NULL)
+    {
+      db_make_null(value);
+      return NO_ERROR;
+    }
+
   copy_str = db_private_strdup (NULL, str);
 
   if (copy_str == NULL)
