@@ -436,7 +436,7 @@ thread_initialize_manager (size_t & total_thread_count)
   thread_initialize_sync_object ();
 #endif /* WINDOWS */
 
-  thread_Manager.num_workers = NUM_NON_SYSTEM_TRANS * 2;
+  thread_Manager.num_workers = NUM_NON_SYSTEM_TRANS;
 
   thread_Manager.num_total = (thread_Manager.num_workers + thread_Manager.num_daemons);
 

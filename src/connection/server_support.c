@@ -27,6 +27,7 @@
 #include "session.h"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
+#include "thread_worker_pool.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -291,6 +292,11 @@ static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
 
 static void css_push_server_task (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
+static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, THREAD_ENTRY & stopper_thread_ref);
+static void css_stop_log_writer (THREAD_ENTRY & thread_ref);
+static void css_find_not_stopped (THREAD_ENTRY & thread_ref, bool is_log_writer, bool & found);
+static bool css_is_log_writer (const THREAD_ENTRY & thread_arg);
+static void css_stop_all_workers (THREAD_ENTRY & thread_ref, thread_stop_type stop_phase);
 
 /*
  * css_make_job_entry () -
@@ -448,16 +454,6 @@ css_init_job_queue (void)
       jobq_idx = thrd_idx % CSS_NUM_JOB_QUEUE;
 
       css_Job_queue[jobq_idx].num_total_workers++;
-    }
-
-  const std::size_t MAX_WORKERS = NUM_NON_SYSTEM_TRANS;
-  const std::size_t JOB_QUEUE_SIZE = NUM_NON_SYSTEM_TRANS;
-
-  css_Server_request_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, JOB_QUEUE_SIZE);
-  if (css_Server_request_worker_pool == NULL)
-    {
-      assert (false);
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
     }
 }
 
@@ -1811,6 +1807,7 @@ css_initialize_server_interfaces (int (*request_handler) (THREAD_ENTRY * thrd, u
 /*
  * css_init() -
  *   return:
+ *   thread_p(in):
  *   server_name(in):
  *   name_length(in):
  *   port_id(in):
@@ -1821,9 +1818,8 @@ css_initialize_server_interfaces (int (*request_handler) (THREAD_ENTRY * thrd, u
  *       css_initialize_server_interfaces before calling this function.
  */
 int
-css_init (char *server_name, int name_length, int port_id)
+css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_id)
 {
-  THREAD_ENTRY *thread_p;
   CSS_CONN_ENTRY *conn;
   int status = ER_FAILED;
 
@@ -1839,6 +1835,17 @@ css_init (char *server_name, int name_length, int port_id)
       return ER_FAILED;
     }
 #endif /* WINDOWS */
+
+  // initialize worker pool for server requests
+  const std::size_t MAX_WORKERS = NUM_NON_SYSTEM_TRANS;
+  const std::size_t JOB_QUEUE_SIZE = NUM_NON_SYSTEM_TRANS;
+  css_Server_request_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, JOB_QUEUE_SIZE);
+  if (css_Server_request_worker_pool == NULL)
+    {
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
 
   /* startup worker/daemon threads */
   status = thread_start_workers ();
@@ -1892,14 +1899,12 @@ shutdown:
   // todo: stop connection worker pool
   /* stop threads */
   thread_stop_active_workers (THREAD_STOP_WORKERS_EXCEPT_LOGWR);
-
-  /* we should flush all append pages before stop log writer */
-  thread_p = thread_get_thread_entry_info ();
-  assert_release (thread_p != NULL);
+  css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
 
   /* stop vacuum threads. */
   vacuum_stop (thread_p);
 
+  /* we should flush all append pages before stop log writer */
   LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);
 
@@ -1925,9 +1930,10 @@ shutdown:
   LOG_CS_EXIT (thread_p);
 
   thread_stop_active_workers (THREAD_STOP_LOGWR);
+  css_stop_all_workers (*thread_p, THREAD_STOP_LOGWR);
 
-  // stop request worker pool
-  cubthread::get_manager ()->destroy_worker_pool (css_Server_request_worker_pool);
+  // destroy request worker pool
+  THREAD_GET_MANAGER ()->destroy_worker_pool (css_Server_request_worker_pool);
 
   if (!HA_DISABLED ())
     {
@@ -3420,5 +3426,148 @@ css_server_external_task::execute (context_type & thread_ref)
 
   thread_ref.private_lru_index = -1;
   thread_ref.conn_entry = NULL;
+}
+
+static void
+css_stop_non_log_writer (THREAD_ENTRY & thread_ref, THREAD_ENTRY & stopper_thread_ref)
+{
+  // porting of legacy code
+
+  if (css_is_log_writer (thread_ref))
+    {
+      // not log writer
+      return;
+    }
+  if (thread_ref.tran_index == -1)
+    {
+      // no transaction, no stop
+      return;
+    }
+
+  (void) logtb_set_tran_index_interrupt (&stopper_thread_ref, thread_ref.tran_index, true);
+
+  if (thread_ref.status == TS_WAIT && logtb_is_current_active (&thread_ref))
+    {
+      thread_lock_entry (&thread_ref);
+
+      if (thread_ref.tran_index != -1 && thread_ref.status == TS_WAIT && thread_ref.lockwait == NULL
+          && thread_ref.check_interrupt)
+        {
+          thread_ref.interrupted = true;
+          thread_wakeup_already_had_mutex (&thread_ref, THREAD_RESUME_DUE_TO_INTERRUPT);
+        }
+      thread_unlock_entry (&thread_ref);
+    }
+}
+
+static void
+css_stop_log_writer (THREAD_ENTRY & thread_ref)
+{
+  if (!css_is_log_writer (thread_ref))
+    {
+      // this is not log writer
+      return;
+    }
+  if (thread_ref.tran_index != -1)
+    {
+      // no transaction, no stop
+      return;
+    }
+  if (thread_ref.status == TS_WAIT && logtb_is_current_active (&thread_ref))
+    {
+      if (thread_check_suspend_reason_and_wakeup (&thread_ref, THREAD_RESUME_DUE_TO_INTERRUPT, THREAD_LOGWR_SUSPENDED)
+          == NO_ERROR)
+        {
+          thread_ref.interrupted = true;
+        }
+    }
+}
+
+static void
+css_find_not_stopped (THREAD_ENTRY & thread_ref, bool is_log_writer, bool & found)
+{
+  if (is_log_writer != css_is_log_writer (thread_ref))
+    {
+      // don't care
+      return;
+    }
+  if (thread_ref.status != TS_FREE)
+    {
+      found = true;
+    }
+}
+
+static bool
+css_is_log_writer (const THREAD_ENTRY & thread_arg)
+{
+  return thread_arg.conn_entry != NULL && thread_arg.conn_entry->stop_phase == THREAD_STOP_LOGWR;
+}
+
+static void
+css_stop_all_workers (THREAD_ENTRY & thread_ref, thread_stop_type stop_phase)
+{
+  bool is_not_stopped;
+
+  if (css_Server_request_worker_pool == NULL)
+    {
+      // nothing to stop
+      return;
+    }
+
+  // note: this is legacy code ported from thread.c; the whole log writer management seems complicated, but hopefully
+  //       it can be removed after HA refactoring.
+  //
+  // question: is it possible to have more than one log writer thread?
+  //
+
+  if (stop_phase == THREAD_STOP_WORKERS_EXCEPT_LOGWR)
+    {
+      // first block all connections
+      css_block_all_active_conn (stop_phase);
+    }
+
+  // loop until all are stopped
+  while (true)
+    {
+      // tell all to stop
+      css_Server_request_worker_pool->map_running_contexts (css_stop_non_log_writer, thread_ref);
+
+      // make sure none is blocked in lock waits
+      lock_force_timeout_lock_wait_transactions (stop_phase);
+
+      // sleep for 50 milliseconds
+      std::this_thread::sleep_for (std::chrono::milliseconds (50));
+
+      is_not_stopped = false;
+      css_Server_request_worker_pool->map_running_contexts (css_find_not_stopped, stop_phase == THREAD_STOP_LOGWR,
+                                                            is_not_stopped);
+
+      if (!is_not_stopped)
+        {
+          break;
+        }
+
+      if (css_is_shutdown_timeout_expired ())
+        {
+          er_log_debug (ARG_FILE_LINE, "could not stop all active workers");
+          _exit (0);
+        }
+    }
+
+  // we must not block active connection before terminating log writer thread
+  if (stop_phase == THREAD_STOP_LOGWR)
+    {
+      css_block_all_active_conn (stop_phase);
+    }
+}
+
+static void
+css_stop_all_log_writer (THREAD_ENTRY & thread_ref)
+{
+  if (css_Server_request_worker_pool == NULL)
+    {
+      // nothing to stop
+      return;
+    }
 }
 // *INDENT-ON*

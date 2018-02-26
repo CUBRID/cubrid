@@ -143,8 +143,11 @@ thread_get_thread_entry_info (void)
 #define thread_set_thread_entry_info(entry)
 #endif /* HPUX */
 
-enum
-{ THREAD_STOP_WORKERS_EXCEPT_LOGWR, THREAD_STOP_LOGWR };
+enum thread_stop_type
+{
+  THREAD_STOP_WORKERS_EXCEPT_LOGWR,
+  THREAD_STOP_LOGWR
+};
 
 /*
  * thread resource track info matrix: thread_p->track.meter[RC][MGR]
