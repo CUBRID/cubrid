@@ -13297,31 +13297,34 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
           }
         if(func_sig == NULL)
           {
-            func_sig = &func_sigs[0];
+            //func_sig = &func_sigs[0];
           }
-        Func::match_signature(parser, node, *func_sig);
-        {//return type
-          switch(func_sig->ret.type)
+        if(func_sig != NULL)
           {
-            case pt_arg_type::NORMAL:
-                node->type_enum = func_sig->ret.val.type;
-                break;
-            case pt_arg_type::GENERIC:
-                assert(false);
-                break;
-            case pt_arg_type::INDEX:
-                int index = 0;
-                for(auto p=arg_list; p; p=p->next, ++index)
-                  {
-                    if(index == func_sig->ret.val.index)
+            Func::match_signature(parser, node, *func_sig);
+            {//return type
+              switch(func_sig->ret.type)
+              {
+                case pt_arg_type::NORMAL:
+                    node->type_enum = func_sig->ret.val.type;
+                    break;
+                case pt_arg_type::GENERIC:
+                    assert(false);
+                    break;
+                case pt_arg_type::INDEX:
+                    int index = 0;
+                    for(auto p=arg_list; p; p=p->next, ++index)
                       {
-                        node->type_enum = p->type_enum;
-                        break;
+                        if(index == func_sig->ret.val.index)
+                          {
+                            node->type_enum = p->type_enum;
+                            break;
+                          }
                       }
-                  }
-                break;
+                    break;
+              }
+              node->data_type = NULL;//???
           }
-          node->data_type = NULL;//???
         }
         break;
       }
