@@ -491,8 +491,4 @@ struct last_access_status
   LAST_ACCESS_STATUS *next;
 };
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern void css_shutdown (int exit_reason);
-#endif
-
 #endif /* _CONNECTION_DEFS_H_ */

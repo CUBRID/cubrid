@@ -278,6 +278,7 @@ static const char *er_Builtin_msg[] = {
   /* ER_EVENT_HANDLER */
   "er_init: cannot install event handler \"%s\""
 };
+
 static char *er_Cached_msg[sizeof (er_Builtin_msg) / sizeof (const char *)];
 static bool er_Is_cached_msg = false;
 
@@ -309,6 +310,7 @@ static SIGNAL_HANDLER_FUNCTION saved_Sig_handler;
 /* Other supporting global variables */
 static bool er_Logfile_opened = false;
 static bool er_Hasalready_initiated = false;
+static bool er_Has_sticky_init = false;
 static bool er_Isa_null_device = false;
 static int er_Exit_ask = ER_EXIT_DEFAULT;
 static int er_Print_to_console = ER_DO_NOT_PRINT;
@@ -659,15 +661,17 @@ er_init (const char *msglog_filename, int exit_ask)
   const char *msg;
   MSG_CATD msg_catd;
 
+  if (er_Has_sticky_init)
+    {
+      assert (er_Hasalready_initiated);
+      // do not reinitialize
+      return NO_ERROR;
+    }
+
   if (er_Hasalready_initiated)
     {
       er_final (ER_ALL_FINAL);
     }
-
-  // *INDENT-OFF*
-  // protect log file mutex
-  std::unique_lock<std::mutex> log_file_lock (er_Log_file_mutex); // mutex is released on destructor
-  // *INDENT-ON*
 
   for (i = 0; i < (int) DIM (er_Builtin_msg); i++)
     {
@@ -712,6 +716,14 @@ er_init (const char *msglog_filename, int exit_ask)
     }
 
   er_Hasalready_initiated = true;
+  // quick-fix for reloading error manager issues. the broker generated cas client need to reload error manager with
+  // update file name parameter. however, csql and other utilities should keep their initial file name.
+  // we need to treat this case properly. for now, I just consider "sticky" initialization when a specific file name
+  // is provided as argument. error manager is not reloaded after.
+  // for cas case, error manager is first initialized without a specific filename, so it won't be "sticky". It is
+  // reloaded during boot_register_client.
+  er_Has_sticky_init = (msglog_filename != NULL);
+
 #if !defined (SERVER_MODE)
   // we need to register a context
   er_Singleton_context_p = new context ();
@@ -736,6 +748,17 @@ er_init (const char *msglog_filename, int exit_ask)
     }
 
   /* 
+   * Install event handler
+   */
+  if (prm_get_string_value (PRM_ID_EVENT_HANDLER) != NULL && *prm_get_string_value (PRM_ID_EVENT_HANDLER) != '\0')
+    {
+      if (er_event_init () != NO_ERROR)
+	{
+	  er_log_debug (ARG_FILE_LINE, er_Cached_msg[ER_EVENT_HANDLER], prm_get_string_value (PRM_ID_EVENT_HANDLER));
+	}
+    }
+
+  /* 
    * Remember the name of the message log file
    */
   if (msglog_filename == NULL)
@@ -745,6 +768,11 @@ er_init (const char *msglog_filename, int exit_ask)
 	  msglog_filename = prm_get_string_value (PRM_ID_ER_LOG_FILE);
 	}
     }
+
+  // *INDENT-OFF*
+  // protect log file mutex
+  std::unique_lock<std::mutex> log_file_lock (er_Log_file_mutex); // mutex is released on destructor
+  // *INDENT-ON*
 
   if (msglog_filename != NULL)
     {
@@ -763,19 +791,6 @@ er_init (const char *msglog_filename, int exit_ask)
   else
     {
       er_Msglog_filename = NULL;
-    }
-
-
-
-  /* 
-   * Install event handler
-   */
-  if (prm_get_string_value (PRM_ID_EVENT_HANDLER) != NULL && *prm_get_string_value (PRM_ID_EVENT_HANDLER) != '\0')
-    {
-      if (er_event_init () != NO_ERROR)
-	{
-	  er_log_debug (ARG_FILE_LINE, er_Cached_msg[ER_EVENT_HANDLER], prm_get_string_value (PRM_ID_EVENT_HANDLER));
-	}
     }
 
   /* Define message log file */
@@ -841,6 +856,8 @@ er_init (const char *msglog_filename, int exit_ask)
 
       er_Logfile_opened = true;
     }
+
+  log_file_lock.unlock ();
 
   /* 
    * Message catalog may be initialized by msgcat_init() during bootstrap.
@@ -1022,11 +1039,6 @@ er_final (ER_FINAL_CODE do_global_final)
 
   if (do_global_final == ER_ALL_FINAL)
     {
-      // *INDENT-OFF*
-      // protect log file mutex
-      std::unique_lock<std::mutex> log_file_lock (er_Log_file_mutex); // mutex is released on destructor
-      // *INDENT-ON*
-
 #if !defined (SERVER_MODE)
       // destroy singleton context
       er_Singleton_context_p->deregister_thread_local ();
@@ -1035,6 +1047,11 @@ er_final (ER_FINAL_CODE do_global_final)
 #endif // not SERVER_MODE
 
       er_event_final ();
+
+      // *INDENT-OFF*
+      // protect log file mutex
+      std::unique_lock<std::mutex> log_file_lock (er_Log_file_mutex); // mutex is released on destructor
+      // *INDENT-ON*
 
       if (er_Logfile_opened == true)
 	{
@@ -1052,8 +1069,9 @@ er_final (ER_FINAL_CODE do_global_final)
 	      er_Accesslog_fh = NULL;
 	      (void) fclose (fh);
 	    }
-
 	}
+
+      log_file_lock.unlock ();
 
       for (i = 0; i < (int) DIM (er_Fmt_list); i++)
 	{
@@ -1072,6 +1090,7 @@ er_final (ER_FINAL_CODE do_global_final)
       er_call_stack_final ();
 
       er_Hasalready_initiated = false;
+      er_Has_sticky_init = false;
     }
   else
     {

@@ -43,6 +43,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include <cstdint>
+
 #include "log_manager.h"
 
 #include "recovery.h"
@@ -203,6 +205,13 @@ extern INT32 vacuum_Global_oldest_active_blockers_counter;
 #define LOG_TDES_LAST_SYSOP_PARENT_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->lastparent_lsa)
 #define LOG_TDES_LAST_SYSOP_POSP_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->posp_lsa)
 
+#if defined (SERVER_MODE)
+/* Current time in milliseconds */
+// *INDENT-OFF*
+std::atomic<std::int64_t> log_Clock_msec = {0};
+// *INDENT-ON*
+#endif /* SERVER_MODE */
+
 static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_dbcreation);
 static int log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				const char *prefix_logname, DKNPAGES npages, INT64 * db_creation);
@@ -332,10 +341,14 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 static cubthread::daemon *log_Clock_daemon = NULL;
 static cubthread::daemon *log_Checkpoint_daemon = NULL;
 static cubthread::daemon *log_Remove_log_archive_daemon = NULL;
+static cubthread::daemon *log_Check_ha_delay_info_daemon = NULL;
+// *INDENT-ON*
 
 static void log_daemons_init ();
 static void log_daemons_destroy ();
-// *INDENT-ON*
+
+// used by log_Check_ha_delay_info_daemon
+extern int catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_record_time);
 #endif /* SERVER_MODE */
 
 /*
@@ -5371,7 +5384,7 @@ log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool at_co
 #if defined (SERVER_MODE)
 	  if (at_commit && entry->top->state == LOB_PERMANENT_DELETED)
 	    {
-	      es_notify_vacuum_for_delete (thread_p, entry->top->locator);
+	      vacuum_notify_es_deleted (thread_p, entry->top->locator);
 	    }
 	  else
 	    {
@@ -10351,6 +10364,100 @@ class log_clock_daemon_task : public cubthread::entry_task
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
+// class log_check_ha_delay_info_daemon_task
+//
+//  description:
+//    log check ha delay info daemon_task
+//
+class log_check_ha_delay_info_daemon_task : public cubthread::entry_task
+{
+  public:
+    void execute (cubthread::entry &thread_ref) override
+    {
+#if defined(WINDOWS)
+      return;
+#endif /* WINDOWS */
+
+      if (!BO_IS_SERVER_RESTARTED ())
+	{
+	  // wait for boot to finish
+	  return;
+	}
+
+      time_t log_record_time = 0;
+      int error_code;
+      int delay_limit_in_secs;
+      int acceptable_delay_in_secs;
+      int curr_delay_in_secs;
+      HA_SERVER_STATE server_state;
+
+      csect_enter (&thread_ref, CSECT_HA_SERVER_STATE, INF_WAIT);
+
+      server_state = css_ha_server_state ();
+
+      if (server_state == HA_SERVER_STATE_ACTIVE || server_state == HA_SERVER_STATE_TO_BE_STANDBY)
+	{
+	  css_unset_ha_repl_delayed ();
+	  perfmon_set_stat (&thread_ref, PSTAT_HA_REPL_DELAY, 0, true);
+
+	  log_append_ha_server_state (&thread_ref, server_state);
+
+	  csect_exit (&thread_ref, CSECT_HA_SERVER_STATE);
+	}
+      else
+	{
+	  csect_exit (&thread_ref, CSECT_HA_SERVER_STATE);
+
+	  delay_limit_in_secs = prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_IN_SECS);
+	  acceptable_delay_in_secs = delay_limit_in_secs - prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_DELTA_IN_SECS);
+
+	  if (acceptable_delay_in_secs < 0)
+	    {
+	      acceptable_delay_in_secs = 0;
+	    }
+
+	  error_code = catcls_get_apply_info_log_record_time (&thread_ref, &log_record_time);
+
+	  if (error_code == NO_ERROR && log_record_time > 0)
+	    {
+	      curr_delay_in_secs = time (NULL) - log_record_time;
+	      if (curr_delay_in_secs > 0)
+		{
+		  curr_delay_in_secs -= HA_DELAY_ERR_CORRECTION;
+		}
+
+	      if (delay_limit_in_secs > 0)
+		{
+		  if (curr_delay_in_secs > delay_limit_in_secs)
+		    {
+		      if (!css_is_ha_repl_delayed ())
+			{
+			  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_DELAY_DETECTED, 2,
+				  curr_delay_in_secs, delay_limit_in_secs);
+
+			  css_set_ha_repl_delayed ();
+			}
+		    }
+		  else if (curr_delay_in_secs <= acceptable_delay_in_secs)
+		    {
+		      if (css_is_ha_repl_delayed ())
+			{
+			  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_DELAY_RESOLVED, 2,
+				  curr_delay_in_secs, acceptable_delay_in_secs);
+
+			  css_unset_ha_repl_delayed ();
+			}
+		    }
+		}
+
+	      perfmon_set_stat (&thread_ref, PSTAT_HA_REPL_DELAY, curr_delay_in_secs, true);
+	    }
+	}
+    }
+};
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
 /*
  * log_checkpoint_daemon_init () - initialize checkpoint daemon
  */
@@ -10396,10 +10503,10 @@ log_remove_log_archive_daemon_init ()
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
-void
 /*
  * log_clock_daemon_init () - initialize log clock daemon
  */
+void
 log_clock_daemon_init ()
 {
   assert (log_Clock_daemon == NULL);
@@ -10412,13 +10519,29 @@ log_clock_daemon_init ()
 
 #if defined(SERVER_MODE)
 /*
+ * log_check_ha_delay_info_daemon_init () - initialize check ha delay info daemon
+ */
+void
+log_check_ha_delay_info_daemon_init ()
+{
+  assert (log_Check_ha_delay_info_daemon == NULL);
+
+  auto looper_interval = std::chrono::seconds (1);
+  log_Check_ha_delay_info_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (looper_interval),
+				   new log_check_ha_delay_info_daemon_task ());
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
  * log_daemons_init () - initialize daemon threads
  */
 static void
 log_daemons_init ()
 {
-  log_checkpoint_daemon_init ();
   log_remove_log_archive_daemon_init ();
+  log_checkpoint_daemon_init ();
+  log_check_ha_delay_info_daemon_init ();
   log_clock_daemon_init ();
 }
 #endif /* SERVER_MODE */
@@ -10430,9 +10553,10 @@ log_daemons_init ()
 static void
 log_daemons_destroy ()
 {
-  cubthread::get_manager ()->destroy_daemon (log_Clock_daemon);
   cubthread::get_manager ()->destroy_daemon (log_Remove_log_archive_daemon);
   cubthread::get_manager ()->destroy_daemon (log_Checkpoint_daemon);
+  cubthread::get_manager ()->destroy_daemon (log_Check_ha_delay_info_daemon);
+  cubthread::get_manager ()->destroy_daemon (log_Clock_daemon);
 }
 #endif /* SERVER_MODE */
 // *INDENT-ON*

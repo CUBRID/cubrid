@@ -165,8 +165,6 @@ namespace cuberr
   {
     if (msg_area != msg_buffer)
       {
-	_er_log_debug (ARG_FILE_LINE, "clear_message_area - delete msg_area = %p, size = %d", msg_area, msg_area_size);
-
 	delete [] msg_area;
 
 	msg_area = msg_buffer;
