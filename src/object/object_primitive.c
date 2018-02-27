@@ -17292,6 +17292,7 @@ mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
   pr_clear_value (&json_body);
   pr_clear_value (&schema_raw);
 }
+
 static void
 mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 {

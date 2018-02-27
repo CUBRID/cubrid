@@ -278,6 +278,7 @@ static const char *er_Builtin_msg[] = {
   /* ER_EVENT_HANDLER */
   "er_init: cannot install event handler \"%s\""
 };
+
 static char *er_Cached_msg[sizeof (er_Builtin_msg) / sizeof (const char *)];
 static bool er_Is_cached_msg = false;
 
@@ -1109,6 +1110,11 @@ er_final (ER_FINAL_CODE do_global_final)
 void
 er_clear (void)
 {
+  if (!er_is_initialized ())
+    {
+      // ignore
+      return;
+    }
   context::get_thread_local_context ().clear_current_error_level ();
 }
 

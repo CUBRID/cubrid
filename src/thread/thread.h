@@ -280,9 +280,6 @@ extern int thread_wakeup_with_tran_index (int tran_index, int resume_reason);
 extern ADJ_ARRAY *css_get_cnv_adj_buffer (int idx);
 extern void css_set_cnv_adj_buffer (int idx, ADJ_ARRAY * buffer);
 extern int thread_is_manager_initialized (void);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern void thread_exit (int exit_code);
-#endif
 #ifdef __cplusplus
 extern "C"
 {
@@ -297,19 +294,12 @@ extern int thread_num_worker_threads (void);
 extern int thread_num_total_threads (void);
 extern int thread_get_client_id (THREAD_ENTRY * thread_p);
 extern unsigned int thread_get_comm_request_id (THREAD_ENTRY * thread_p);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern void thread_set_comm_request_id (unsigned int rid);
-#endif
 extern THREAD_ENTRY *thread_find_entry_by_tran_index (int tran_index);
 extern THREAD_ENTRY *thread_find_entry_by_tran_index_except_me (int tran_index);
 extern int thread_get_current_entry_index (void);
 extern unsigned int thread_get_current_session_id (void);
 extern int thread_get_current_tran_index (void);
 extern void thread_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern void thread_set_tran_index (THREAD_ENTRY * thread_p, int tran_index);
-extern void thread_wakeup_check_ha_delay_info_thread (void);
-#endif
 extern struct css_conn_entry *thread_get_current_conn_entry (void);
 extern int thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id);
 extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);

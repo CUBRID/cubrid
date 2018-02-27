@@ -1269,7 +1269,8 @@ $ LOADDB
 1200 Cale de JSON invalida
 1201 Numele unei valori dintr-un JSON Object nu poate fi NULL.
 1202 Calea "%1$s" nu exista in %2$s
-1203 Ultima eroare
+1203 Tipul JSON-ului de la calea %1$s este invalid. Expected %2$s, dar am gasit %3$s.
+1204 Ultima eroare
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
 2 Niciun mesaj de eroare disponibil.
