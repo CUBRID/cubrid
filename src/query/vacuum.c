@@ -778,7 +778,6 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
     void on_create (cubthread::entry &context) final
     {
       context.tran_index = 0;
-      context.status = TS_RUN;
 
       vacuum_init_thread_context (context, TT_VACUUM_WORKER, m_pool->claim ());
 

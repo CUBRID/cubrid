@@ -45,6 +45,9 @@ namespace cubthread
     // for backward compatibility
     context.register_id ();
     context.type = TT_WORKER;
+#if defined (SERVER_MODE)
+    context.status = TS_RUN;
+#endif // SERVER_MODE
 
     context.get_error_context ().register_thread_local ();
 
@@ -86,9 +89,6 @@ namespace cubthread
   void
   daemon_entry_manager::on_create (entry &context)
   {
-#if defined (SERVER_MODE)
-    context.status = TS_RUN;
-#endif // SERVER_MODE
     context.type = TT_DAEMON;
     context.tran_index = LOG_SYSTEM_TRAN_INDEX;
 
