@@ -1545,9 +1545,10 @@
 #define ER_JSON_INVALID_PATH                        -1200
 #define ER_JSON_OBJECT_NAME_IS_NULL                 -1201
 #define ER_JSON_PATH_DOES_NOT_EXIST                 -1202
-#define ER_JSON_DUPLICATE_KEY                       -1203
+#define ER_JSON_EXPECTED_OTHER_TYPE                 -1203
+#define ER_JSON_DUPLICATE_KEY                       -1204
 
-#define ER_LAST_ERROR                               -1204
+#define ER_LAST_ERROR                               -1205
 
 /*
  * CAUTION!

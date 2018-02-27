@@ -1110,6 +1110,11 @@ er_final (ER_FINAL_CODE do_global_final)
 void
 er_clear (void)
 {
+  if (!er_is_initialized ())
+    {
+      // ignore
+      return;
+    }
   context::get_thread_local_context ().clear_current_error_level ();
 }
 
