@@ -166,7 +166,8 @@ static void db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_ty
 static std::vector<std::string> db_json_split_path_by_delimiters (const std::string &path,
     const std::string &delim);
 static bool db_json_sql_path_is_valid (std::string &sql_path);
-static int db_json_er_set_path_does_not_exist (const std::string &path, const JSON_DOC *doc);
+static int db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, const std::string &path,
+    const JSON_DOC *doc);
 static void db_json_replace_token_special_chars (std::string &token,
     const std::unordered_map<std::string, std::string> &special_chars);
 static bool db_json_path_is_token_valid_array_index (const std::string &str, std::size_t start = 0,
@@ -174,8 +175,9 @@ static bool db_json_path_is_token_valid_array_index (const std::string &str, std
 static void db_json_doc_wrap_as_array (JSON_DOC &doc);
 static void db_json_value_wrap_as_array (JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &allocator);
 static const char *db_json_get_json_type_as_str (const DB_JSON_TYPE &json_type);
-static int db_json_er_set_expected_other_type (const std::string &path, const DB_JSON_TYPE &found_type,
-    const DB_JSON_TYPE &expected_type, const DB_JSON_TYPE &expected_type_optional = DB_JSON_NULL);
+static int db_json_er_set_expected_other_type (const char *file_name, const int line_no, const std::string &path,
+    const DB_JSON_TYPE &found_type, const DB_JSON_TYPE &expected_type,
+    const DB_JSON_TYPE &expected_type_optional = DB_JSON_NULL);
 static int db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path);
 
 STATIC_INLINE JSON_VALUE &db_json_doc_to_value (JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
@@ -828,7 +830,7 @@ db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, co
   if (resulting_json_parent == NULL)
     {
       // we can only create a child value, not both parent and child
-      return db_json_er_set_path_does_not_exist (path.substr (0, found), &doc);
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, path.substr (0, found), &doc);
     }
 
   // found type of parent
@@ -837,7 +839,7 @@ db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, co
   // we can insert only in JSON_OBJECT or JSON_ARRAY, else throw an error
   if (parent_json_type != DB_JSON_OBJECT && parent_json_type != DB_JSON_ARRAY)
     {
-      return db_json_er_set_expected_other_type (path, parent_json_type, DB_JSON_OBJECT, DB_JSON_ARRAY);
+      return db_json_er_set_expected_other_type (ARG_FILE_LINE, path, parent_json_type, DB_JSON_OBJECT, DB_JSON_ARRAY);
     }
 
   const std::string &last_token = path.substr (found + 1);
@@ -845,11 +847,11 @@ db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, co
 
   if (parent_json_type == DB_JSON_ARRAY && !token_is_valid_index)
     {
-      return db_json_er_set_expected_other_type (path, parent_json_type, DB_JSON_OBJECT);
+      return db_json_er_set_expected_other_type (ARG_FILE_LINE, path, parent_json_type, DB_JSON_OBJECT);
     }
   if (parent_json_type == DB_JSON_OBJECT && token_is_valid_index)
     {
-      return db_json_er_set_expected_other_type (path, parent_json_type, DB_JSON_ARRAY);
+      return db_json_er_set_expected_other_type (ARG_FILE_LINE, path, parent_json_type, DB_JSON_ARRAY);
     }
 
   // put the value at the specified path
@@ -947,7 +949,7 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_
     {
       // if the path does not exist, raise an error
       // the user should know that the command will have no effect
-      return db_json_er_set_path_does_not_exist (json_pointer_string, &doc);
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, json_pointer_string, &doc);
     }
 
   // replace the value from the specified path with the new value
@@ -1041,7 +1043,7 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
   // if the path does not exist, the user should know that the path has no effect
   if (p.Get (doc) == NULL)
     {
-      return db_json_er_set_path_does_not_exist (json_pointer_string, &doc);
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, json_pointer_string, &doc);
     }
 
   // erase the value from the specified path
@@ -1093,7 +1095,7 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
 
   if (resulting_json == NULL)
     {
-      return db_json_er_set_path_does_not_exist (json_pointer_string, &doc);
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, json_pointer_string, &doc);
     }
 
   // the specified path is not an array
@@ -1731,7 +1733,8 @@ db_json_sql_path_is_valid (std::string &sql_path)
  * doc (in)                : json document
  */
 static int
-db_json_er_set_path_does_not_exist (const std::string &path, const JSON_DOC *doc)
+db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, const std::string &path,
+				    const JSON_DOC *doc)
 {
   std::string sql_path_string;
   int error_code;
@@ -1747,7 +1750,7 @@ db_json_er_set_path_does_not_exist (const std::string &path, const JSON_DOC *doc
   // get the json body
   char *raw_json_body = db_json_get_raw_json_body_from_document (doc);
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_PATH_DOES_NOT_EXIST, 2,
+  er_set (ER_ERROR_SEVERITY, file_name, line_no, ER_JSON_PATH_DOES_NOT_EXIST, 2,
 	  sql_path_string.c_str (), raw_json_body);
 
   // we need to free json body in order to avoid mem leak
@@ -1757,8 +1760,8 @@ db_json_er_set_path_does_not_exist (const std::string &path, const JSON_DOC *doc
 }
 
 static int
-db_json_er_set_expected_other_type (const std::string &path, const DB_JSON_TYPE &found_type,
-				    const DB_JSON_TYPE &expected_type, const DB_JSON_TYPE &expected_type_optional)
+db_json_er_set_expected_other_type (const char *file_name, const int line_no, const std::string &path,
+				    const DB_JSON_TYPE &found_type, const DB_JSON_TYPE &expected_type, const DB_JSON_TYPE &expected_type_optional)
 {
   std::string sql_path_string;
   int error_code = NO_ERROR;
@@ -1780,7 +1783,7 @@ db_json_er_set_expected_other_type (const std::string &path, const DB_JSON_TYPE 
       expected_type_str += db_json_get_json_type_as_str (expected_type_optional);
     }
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_EXPECTED_OTHER_TYPE, 3,
+  er_set (ER_ERROR_SEVERITY, file_name, line_no, ER_JSON_EXPECTED_OTHER_TYPE, 3,
 	  sql_path_string.c_str(), expected_type_str.c_str(), found_type_str);
 
   return ER_JSON_EXPECTED_OTHER_TYPE;
@@ -2041,7 +2044,7 @@ db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_p
   // the specified path does not exist in the current JSON document
   if (head == NULL)
     {
-      return db_json_er_set_path_does_not_exist (json_pointer_string, &doc);
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, json_pointer_string, &doc);
     }
   else if (head->IsObject ())
     {
