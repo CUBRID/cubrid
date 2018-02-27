@@ -15119,7 +15119,7 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
   assert (pgbuf_bcb_is_direct_victim (bcb));
 
   /* clear direct victim flag */
-  pgbuf_bcb_update_flags (thread_p, bcb, 0, PGBUF_BCB_VICTIM_DIRECT_FLAG);
+  bcb->flags &= ~PGBUF_BCB_VICTIM_DIRECT_FLAG;
 
   if (!pgbuf_is_bcb_victimizable (bcb, true))
     {
