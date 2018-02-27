@@ -1624,7 +1624,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	      if (type == COMMAND_TYPE)
 		{
 		  // push new task
-
+		  css_push_server_task (*thread_p, *conn);
 		}
 	    }
 	}
