@@ -104,6 +104,7 @@ namespace cubthread
 
     m_all_entries = new entry[m_max_threads];
     m_entry_dispatcher = new entry_dispatcher (m_all_entries, m_max_threads);
+#endif // not SA_MODE = SERVER_MODE
   }
 
   void
@@ -112,10 +113,9 @@ namespace cubthread
     // initialize thread indexes and lock-free resources
     for (std::size_t it = 0; it < m_max_threads; it++)
       {
-	m_all_entries[it].index = (int) (it + starting_index);
+	m_all_entries[it].index = (int) (it + starting_index + 1);
 	m_all_entries[it].request_lock_free_transactions ();
       }
-#endif // not SA_MODE = SERVER_MODE
   }
 
   template<typename Res>

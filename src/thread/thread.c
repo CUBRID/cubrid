@@ -2203,18 +2203,23 @@ THREAD_ENTRY *
 thread_find_entry_by_index (int thread_index)
 {
   assert (thread_index >= 0 && thread_index < thread_num_total_threads ());
+
+  THREAD_ENTRY *thread_p;
   if (thread_index == 0)
     {
-      return cubthread::get_main_entry ();
+      thread_p = cubthread::get_main_entry ();
     }
   else if (thread_index <= thread_Manager.num_total)
     {
-      return (&thread_Manager.thread_array[thread_index - 1]);
+      thread_p = (&thread_Manager.thread_array[thread_index - 1]);
     }
   else
     {
-      return &(cubthread::get_manager ()->get_all_entries ()[thread_index - thread_Manager.num_total - 1]);
+      thread_p = &(cubthread::get_manager ()->get_all_entries ()[thread_index - thread_Manager.num_total - 1]);
     }
+  assert (thread_p->index == thread_index);
+
+  return thread_p;
 }
 
 /*
