@@ -213,6 +213,7 @@ std::atomic<std::int64_t> log_Clock_msec = {0};
 #endif /* SERVER_MODE */
 
 // *INDENT-OFF*
+#if defined (SERVER_MODE)
 class log_abort_task : public cubthread::entry_task
 {
 public:
