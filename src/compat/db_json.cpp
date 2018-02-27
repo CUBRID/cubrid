@@ -56,23 +56,30 @@
 
 #include "db_json.hpp"
 
-#include "rapidjson/stringbuffer.h"
+#include "dbtype.h"
+#include "memory_alloc.h"
+#include "system_parameter.h"
+
+// we define COPY in storage_common.h, but so does rapidjson in its headers. We don't need the definition from storage
+// common, so thankfully we can undef it here. But we should really consider remove that definition
+#undef COPY
+
+#include "rapidjson/allocators.h"
 #include "rapidjson/error/en.h"
-#include "rapidjson/schema.h"
 #include "rapidjson/document.h"
 #include "rapidjson/encodings.h"
-#include "rapidjson/allocators.h"
+#include "rapidjson/schema.h"
+#include "rapidjson/stringbuffer.h"
 #include "rapidjson/writer.h"
 
 #include <sstream>
-#include <vector>
-#include <unordered_map>
+
 #include <algorithm>
-#include <cctype>
 #include <locale>
-#include "memory_alloc.h"
-#include "system_parameter.h"
-#include "dbtype.h"
+#include <unordered_map>
+#include <vector>
+
+#include <cctype>
 
 #if defined GetObject
 /* stupid windows and their definitions; GetObject is defined as GetObjectW or GetObjectA */
@@ -123,6 +130,131 @@ class JSON_VALIDATOR
     rapidjson::SchemaValidator *m_validator;
     char *m_schema_raw;
     bool m_is_loaded;
+};
+
+/*
+* JSON_BASE_HANDLER - This class acts like a rapidjson Handler
+*
+* The Handler is used by the json document to make checks on all of its nodes
+* It is applied recursively by the Accept function and acts like a map functions
+* You should inherit this class each time you want a specific function to apply to all the nodes in the json document
+* and override only the methods that apply to the desired types of nodes
+*/
+class JSON_BASE_HANDLER
+{
+  public:
+    JSON_BASE_HANDLER() {};
+    typedef typename JSON_DOC::Ch Ch;
+    typedef unsigned SizeType;
+
+    bool Null()
+    {
+      return true;
+    }
+    bool Bool (bool b)
+    {
+      return true;
+    }
+    bool Int (int i)
+    {
+      return true;
+    }
+    bool Uint (unsigned i)
+    {
+      return true;
+    }
+    bool Int64 (int64_t i)
+    {
+      return true;
+    }
+    bool Uint64 (uint64_t i)
+    {
+      return true;
+    }
+    bool Double (double d)
+    {
+      return true;
+    }
+    bool RawNumber (const Ch *str, SizeType length, bool copy)
+    {
+      return true;
+    }
+    bool String (const Ch *str, SizeType length, bool copy)
+    {
+      return true;
+    }
+    bool StartObject()
+    {
+      return true;
+    }
+    bool Key (const Ch *str, SizeType length, bool copy)
+    {
+      return true;
+    }
+    bool EndObject (SizeType memberCount)
+    {
+      return true;
+    }
+    bool StartArray()
+    {
+      return true;
+    }
+    bool EndArray (SizeType elementCount)
+    {
+      return true;
+    }
+};
+
+// JSON WALKER
+//
+// Unlike handler, the walker can call two functions before and after walking/advancing in the JSON "tree".
+// JSON Objects and JSON Arrays are considered tree children.
+//
+// How to use: extend this walker by implementing CallBefore and/or CallAfter functions. By default, they are empty
+//
+class JSON_WALKER
+{
+  public:
+    int WalkDocument (JSON_DOC &document);
+
+  protected:
+    // we should not instantiate this class, but extend it
+    JSON_WALKER() {}
+    virtual ~JSON_WALKER() {}
+
+    virtual int
+    CallBefore (JSON_VALUE &value)
+    {
+      // do nothing
+      return NO_ERROR;
+    }
+
+    virtual int
+    CallAfter (JSON_VALUE &value)
+    {
+      // do nothing
+      return NO_ERROR;
+    }
+
+  private:
+    int WalkValue (JSON_VALUE &value);
+};
+
+/*
+* JSON_DUPLICATE_KEYS_CHECKER - This class extends JSON_WALKER
+*
+* We use the WalkDocument function to iterate recursively through the json "tree"
+* For each node we will call two functions (Before and After) to apply a logic to that node
+* In this case, we will check in the CallBefore function if the current node has duplicate keys
+*/
+class JSON_DUPLICATE_KEYS_CHECKER : public JSON_WALKER
+{
+  public:
+    JSON_DUPLICATE_KEYS_CHECKER () {}
+    ~JSON_DUPLICATE_KEYS_CHECKER() {}
+
+  private:
+    int CallBefore (JSON_VALUE &value);
 };
 
 const bool JSON_PRIVATE_ALLOCATOR::kNeedFree = true;
@@ -179,10 +311,39 @@ static int db_json_er_set_expected_other_type (const char *file_name, const int 
     const DB_JSON_TYPE &found_type, const DB_JSON_TYPE &expected_type,
     const DB_JSON_TYPE &expected_type_optional = DB_JSON_NULL);
 static int db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path);
+static int db_json_contains_duplicate_keys (JSON_DOC &doc);
+static int db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_path);
 
 STATIC_INLINE JSON_VALUE &db_json_doc_to_value (JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const JSON_VALUE &db_json_doc_to_value (const JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
 static int db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc);
+static int db_json_add_json_value_to_object (JSON_DOC &doc, const char *name, JSON_VALUE &value);
+
+int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
+{
+  std::vector<const char *> inserted_keys;
+
+  if (value.IsObject())
+    {
+      for (auto it = value.MemberBegin(); it != value.MemberEnd(); ++it)
+	{
+	  const char *current_key = it->name.GetString();
+
+	  for (unsigned int i = 0; i < inserted_keys.size(); i++)
+	    {
+	      if (strcmp (current_key, inserted_keys[i]) == 0)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_DUPLICATE_KEY, 1, current_key);
+		  return ER_JSON_DUPLICATE_KEY;
+		}
+	    }
+
+	  inserted_keys.push_back (current_key);
+	}
+    }
+
+  return NO_ERROR;
+}
 
 JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw) : m_schema (NULL),
   m_validator (NULL),
@@ -612,46 +773,50 @@ db_json_get_raw_json_body_from_document (const JSON_DOC *doc)
   return json_body;
 }
 
-void
-db_json_add_member_to_object (JSON_DOC *doc, const char *name, const char *value)
-{
-  JSON_VALUE key, val;
-
-  if (!doc->IsObject ())
-    {
-      doc->SetObject ();
-    }
-
-  key.SetString (name, (rapidjson::SizeType) strlen (name), doc->GetAllocator ());
-  val.SetString (value, (rapidjson::SizeType) strlen (value), doc->GetAllocator ());
-  doc->AddMember (key, val, doc->GetAllocator ());
-}
-
-void
-db_json_add_member_to_object (JSON_DOC *doc, char *name, int value)
+static int
+db_json_add_json_value_to_object (JSON_DOC &doc, const char *name, JSON_VALUE &value)
 {
   JSON_VALUE key;
 
-  if (!doc->IsObject ())
+  if (!doc.IsObject())
     {
-      doc->SetObject ();
+      doc.SetObject();
     }
 
-  key.SetString (name, (rapidjson::SizeType) strlen (name), doc->GetAllocator ());
-  doc->AddMember (key, JSON_VALUE ().SetInt (value), doc->GetAllocator ());
+  if (doc.HasMember (name))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_DUPLICATE_KEY, 1, name);
+      return ER_JSON_DUPLICATE_KEY;
+    }
+
+  key.SetString (name, (rapidjson::SizeType) strlen (name), doc.GetAllocator());
+  doc.AddMember (key, value, doc.GetAllocator());
+  return NO_ERROR;
 }
 
-void
-db_json_add_member_to_object (JSON_DOC *doc, char *name, const JSON_DOC *value)
+int
+db_json_add_member_to_object (JSON_DOC *doc, const char *name, const char *value)
 {
-  JSON_VALUE key, val;
+  JSON_VALUE val;
+  val.SetString (value, (rapidjson::SizeType) strlen (value), doc->GetAllocator ());
 
-  if (!doc->IsObject ())
-    {
-      doc->SetObject ();
-    }
+  return db_json_add_json_value_to_object (*doc, name, val);
+}
 
-  key.SetString (name, (rapidjson::SizeType) strlen (name), doc->GetAllocator ());
+int
+db_json_add_member_to_object (JSON_DOC *doc, const char *name, int value)
+{
+  JSON_VALUE val;
+  val.SetInt (value);
+
+  return db_json_add_json_value_to_object (*doc, name, val);
+}
+
+int
+db_json_add_member_to_object (JSON_DOC *doc, const char *name, const JSON_DOC *value)
+{
+  JSON_VALUE val;
+
   if (value != NULL)
     {
       val.CopyFrom (*value, doc->GetAllocator ());
@@ -660,26 +825,17 @@ db_json_add_member_to_object (JSON_DOC *doc, char *name, const JSON_DOC *value)
     {
       val.SetNull ();
     }
-  doc->AddMember (key, val, doc->GetAllocator ());
+
+  return db_json_add_json_value_to_object (*doc, name, val);
 }
 
-void
-db_json_add_member_to_object (JSON_DOC *doc, char *name, double value)
+int
+db_json_add_member_to_object (JSON_DOC *doc, const char *name, double value)
 {
-  JSON_VALUE key;
+  JSON_VALUE val;
+  val.SetDouble (value);
 
-  if (!doc->IsObject ())
-    {
-      doc->SetObject ();
-    }
-
-  /*
-   * JSON_VALUE uses a MemoryPoolAllocator which doesn't free memory,
-   * so when key gets out of scope, the string wouldn't be freed
-   * the memory will be freed only when doc is deleted
-   */
-  key.SetString (name, (rapidjson::SizeType) strlen (name), doc->GetAllocator ());
-  doc->AddMember (key, JSON_VALUE ().SetDouble (value), doc->GetAllocator ());
+  return db_json_add_json_value_to_object (*doc, name, val);
 }
 
 void
@@ -744,11 +900,32 @@ db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value)
   doc->PushBack (new_doc, doc->GetAllocator ());
 }
 
+/*
+* db_json_contains_duplicate_keys () - Checks at parse time if a json document has duplicate keys
+*
+* return                  : error_code
+* doc (in)                : json document
+*/
+static int
+db_json_contains_duplicate_keys (JSON_DOC &doc)
+{
+  JSON_DUPLICATE_KEYS_CHECKER dup_keys_checker;
+  int error_code = NO_ERROR;
+
+  // check recursively for duplicate keys in the json document
+  error_code = dup_keys_checker.WalkDocument (doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR();
+    }
+
+  return error_code;
+}
+
 static int
 db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc)
 {
   int error_code = NO_ERROR;
-
   if (json_raw == NULL)
     {
       return NO_ERROR;
@@ -758,10 +935,17 @@ db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
 	      rapidjson::GetParseError_En (doc.GetParseError ()), doc.GetErrorOffset ());
-      error_code = ER_INVALID_JSON;
+      return ER_INVALID_JSON;
     }
 
-  return error_code;
+  error_code = db_json_contains_duplicate_keys (doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR();
+      return error_code;
+    }
+
+  return NO_ERROR;
 }
 
 int
@@ -2015,7 +2199,7 @@ db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json)
  * result_json (in)        : a json array that contains all the paths
  * raw_path (in)           : specified path
  */
-int
+static int
 db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_path)
 {
   int error_code = NO_ERROR;
@@ -2039,7 +2223,6 @@ db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_p
     }
 
   const JSON_VALUE *head = p.Get (doc);
-  std::string key;
 
   // the specified path does not exist in the current JSON document
   if (head == NULL)
@@ -2054,8 +2237,7 @@ db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_p
 	{
 	  JSON_VALUE val;
 
-	  key = it->name.GetString ();
-	  val.SetString (key.c_str (), result_json.GetAllocator ());
+	  val.SetString (it->name.GetString(), result_json.GetAllocator ());
 	  result_json.PushBack (val, result_json.GetAllocator ());
 	}
     }
@@ -2064,12 +2246,31 @@ db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_p
 }
 
 int
-db_json_keys_func (const char *json_raw, JSON_DOC &result_json, const char *raw_path)
+db_json_keys_func (const JSON_DOC &doc, JSON_DOC *&result_json, const char *raw_path)
+{
+  assert (result_json == NULL);
+  result_json = db_json_allocate_doc();
+
+  return db_json_keys_func (doc, *result_json, raw_path);
+}
+
+int
+db_json_keys_func (const char *json_raw, JSON_DOC *&result_json, const char *raw_path)
 {
   JSON_DOC doc;
-  db_json_get_json_from_str (json_raw, doc);
+  int error_code = NO_ERROR;
+  error_code = db_json_get_json_from_str (json_raw, doc);
 
-  return db_json_keys_func (doc, result_json, raw_path);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR();
+      return error_code;
+    }
+
+  assert (result_json == NULL);
+  result_json = db_json_allocate_doc();
+
+  return db_json_keys_func (doc, *result_json, raw_path);
 }
 
 bool
@@ -2316,4 +2517,57 @@ static void
 db_json_doc_wrap_as_array (JSON_DOC &doc)
 {
   return db_json_value_wrap_as_array (doc, doc.GetAllocator ());
+}
+
+int
+JSON_WALKER::WalkDocument (JSON_DOC &document)
+{
+  return WalkValue (db_json_doc_to_value (document));
+}
+
+int
+JSON_WALKER::WalkValue (JSON_VALUE &value)
+{
+  int error_code = NO_ERROR;
+
+  error_code = CallBefore (value);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  if (value.IsObject ())
+    {
+      for (auto it = value.MemberBegin (); it != value.MemberEnd (); ++it)
+	{
+	  error_code = WalkValue (it->value);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	}
+    }
+  else if (value.IsArray ())
+    {
+      for (JSON_VALUE *it = value.Begin (); it != value.End (); ++it)
+	{
+	  error_code = WalkValue (*it);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	}
+    }
+
+  error_code = CallAfter (value);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  return NO_ERROR;
 }

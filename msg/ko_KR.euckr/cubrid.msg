@@ -1270,7 +1270,8 @@ $ LOADDB
 1201 Json object name cannot be NULL.
 1202 Json PATH "%1$s" does not exist in %2$s
 1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
-1204 마지막 에러
+1204 Json KEY "%1$s" is duplicate
+1205 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
