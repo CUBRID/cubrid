@@ -111,6 +111,7 @@ typedef struct
 } SP_ARGS;
 
 static SOCKET sock_fds[MAX_CALL_COUNT] = { INVALID_SOCKET };
+
 static int call_cnt = 0;
 static bool is_prepare_call[MAX_CALL_COUNT];
 
