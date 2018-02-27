@@ -28,6 +28,7 @@
 #include <math.h>
 #include <time.h>
 
+#include "system.h"
 #include "db_date.h"
 
 #include <assert.h>
@@ -37,6 +38,7 @@
 #include "tz_support.h"
 #include "numeric_opfunc.h"
 #include "object_representation.h"
+#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

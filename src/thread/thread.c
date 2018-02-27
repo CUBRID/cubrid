@@ -30,6 +30,7 @@
 
 #include "config.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,33 +45,12 @@
 #include <sys/time.h>
 #include <unistd.h>
 #endif /* WINDOWS */
-#include <assert.h>
 
-#include "porting.h"
-#include "connection_error.h"
 #include "job_queue.h"
 #include "thread.h"
-#include "critical_section.h"
-#include "system_parameter.h"
-#include "memory_alloc.h"
-#include "environment_variable.h"
-#include "connection_defs.h"
-#include "storage_common.h"
-#include "page_buffer.h"
-#include "lock_manager.h"
-#include "log_impl.h"
-#include "log_manager.h"
 #include "boot_sr.h"
-#include "transaction_sr.h"
-#include "boot_sr.h"
-#include "connection_sr.h"
 #include "server_support.h"
-#include "log_compress.h"
-#include "perf_monitor.h"
 #include "session.h"
-#include "show_scan.h"
-#include "network.h"
-#include "db_date.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */
@@ -81,10 +61,6 @@
 #if defined(WINDOWS)
 #include "heartbeat.h"
 #endif
-
-#include "tsc_timer.h"
-
-#include "fault_injection.h"
 
 #include "thread_manager.hpp"
 
@@ -115,35 +91,22 @@ static THREAD_MANAGER thread_Manager;
  */
 static DAEMON_THREAD_MONITOR thread_Page_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Flush_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static DAEMON_THREAD_MONITOR thread_Session_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 DAEMON_THREAD_MONITOR thread_Log_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static DAEMON_THREAD_MONITOR thread_Check_ha_delay_info_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static DAEMON_THREAD_MONITOR thread_Auto_volume_expansion_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static DAEMON_THREAD_MONITOR thread_Log_clock_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Page_maintenance_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Page_post_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 
 static void thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor);
 static void thread_wakeup_daemon_thread (DAEMON_THREAD_MONITOR * daemon_monitor);
-static int thread_compare_shutdown_sequence_of_daemon (const void *p1, const void *p2);
 
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_flush_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_flush_control_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_log_flush_thread (void *);
-static THREAD_RET_T THREAD_CALLING_CONVENTION thread_session_control_thread (void *);
-static THREAD_RET_T THREAD_CALLING_CONVENTION thread_check_ha_delay_info_thread (void *);
-static THREAD_RET_T THREAD_CALLING_CONVENTION thread_auto_volume_expansion_thread (void *);
-static THREAD_RET_T THREAD_CALLING_CONVENTION thread_log_clock_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_buffer_maintenance_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_post_flush_thread (void *);
 
 typedef enum
 {
   /* All the single threads */
-  THREAD_DAEMON_SESSION_CONTROL,
-  THREAD_DAEMON_CHECK_HA_DELAY_INFO,
-  THREAD_DAEMON_AUTO_VOLUME_EXPANSION,
-  THREAD_DAEMON_LOG_CLOCK,
   THREAD_DAEMON_PAGE_FLUSH,
   THREAD_DAEMON_FLUSH_CONTROL,
   THREAD_DAEMON_LOG_FLUSH,
@@ -205,7 +168,6 @@ static THREAD_DAEMON *thread_Daemons = NULL;
 static int thread_initialize_sync_object (void);
 #endif /* WINDOWS */
 static int thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason, bool had_mutex);
-static void thread_initialize_daemon_monitor (DAEMON_THREAD_MONITOR * monitor);
 
 static void thread_rc_track_clear_all (THREAD_ENTRY * thread_p);
 static int thread_rc_track_meter_check (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, THREAD_RC_METER * prev_meter);
@@ -240,8 +202,6 @@ static void thread_rc_track_meter_assert_csect_dependency (THREAD_ENTRY * thread
 static void thread_rc_track_meter_assert_csect_usage (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, int enter_mode,
 						      void *ptr);
 #endif /* !NDEBUG */
-
-extern int catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_record_time);
 
 /*
  * Thread Specific Data management
@@ -309,6 +269,7 @@ thread_set_thread_entry_info (THREAD_ENTRY * entry_p)
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_SETSPECIFIC, 0);
       return ER_CSS_PTHREAD_SETSPECIFIC;
     }
+
   return r;
 }
 
@@ -362,7 +323,6 @@ thread_initialize_manager (size_t & total_thread_count)
 {
   int i, r;
   int daemon_index;
-  int shutdown_sequence;
   size_t size;
 
   assert (NUM_NORMAL_TRANS >= 10);
@@ -380,31 +340,6 @@ thread_initialize_manager (size_t & total_thread_count)
 
   /* IMPORTANT NOTE: Daemons are shutdown in the same order as they are created here. */
   daemon_index = 0;
-  shutdown_sequence = 0;
-
-  /* Initialize session control daemon */
-  thread_Daemons[daemon_index].type = THREAD_DAEMON_SESSION_CONTROL;
-  thread_Daemons[daemon_index].daemon_monitor = &thread_Session_control_thread;
-  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-  thread_Daemons[daemon_index++].daemon_function = thread_session_control_thread;
-
-  /* Initialize check HA delay info daemon */
-  thread_Daemons[daemon_index].type = THREAD_DAEMON_CHECK_HA_DELAY_INFO;
-  thread_Daemons[daemon_index].daemon_monitor = &thread_Check_ha_delay_info_thread;
-  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-  thread_Daemons[daemon_index++].daemon_function = thread_check_ha_delay_info_thread;
-
-  /* Initialize auto volume expansion daemon */
-  thread_Daemons[daemon_index].type = THREAD_DAEMON_AUTO_VOLUME_EXPANSION;
-  thread_Daemons[daemon_index].daemon_monitor = &thread_Auto_volume_expansion_thread;
-  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-  thread_Daemons[daemon_index++].daemon_function = thread_auto_volume_expansion_thread;
-
-  /* Initialize log clock daemon */
-  thread_Daemons[daemon_index].type = THREAD_DAEMON_LOG_CLOCK;
-  thread_Daemons[daemon_index].daemon_monitor = &thread_Log_clock_thread;
-  thread_Daemons[daemon_index].shutdown_sequence = shutdown_sequence++;
-  thread_Daemons[daemon_index++].daemon_function = thread_log_clock_thread;
 
   /* Leave these five daemons at the end. These are to be shutdown latest */
   /* Initialize page buffer maintenance daemon */
@@ -773,23 +708,6 @@ thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor)
 }
 
 /*
- * thread_compare_shutdown_sequence_of_daemon () -
- *   return: p1 - p2
- *   p1(in): daemon thread 1
- *   p2(in): daemon thread 2
- */
-static int
-thread_compare_shutdown_sequence_of_daemon (const void *p1, const void *p2)
-{
-  THREAD_DAEMON *daemon1, *daemon2;
-
-  daemon1 = (THREAD_DAEMON *) p1;
-  daemon2 = (THREAD_DAEMON *) p2;
-
-  return daemon1->shutdown_sequence - daemon2->shutdown_sequence;
-}
-
-/*
  * thread_stop_active_daemons() - Stop active daemon threads
  *   return: NO_ERROR
  */
@@ -884,19 +802,6 @@ thread_final_manager (void)
 #ifndef HPUX
   pthread_key_delete (thread_Thread_key);
 #endif /* not HPUX */
-}
-
-static void
-thread_initialize_daemon_monitor (DAEMON_THREAD_MONITOR * monitor)
-{
-  assert (monitor != NULL);
-
-  monitor->thread_index = 0;
-  monitor->is_available = false;
-  monitor->is_running = false;
-  monitor->nrequestors = 0;
-  pthread_mutex_init (&monitor->lock, NULL);
-  pthread_cond_init (&monitor->cond, NULL);
 }
 
 /*
@@ -1080,21 +985,6 @@ thread_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 
   thread_p->tran_index = tran_index;
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-void
-thread_set_tran_index (THREAD_ENTRY * thread_p, int tran_index)
-{
-  if (thread_p == NULL)
-    {
-      thread_set_current_tran_index (thread_p, tran_index);
-    }
-  else
-    {
-      thread_p->tran_index = tran_index;
-    }
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * thread_get_current_conn_entry() -
@@ -1508,21 +1398,6 @@ thread_sleep (double milliseconds)
 #endif /* WINDOWS */
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * thread_exit() - The program will exit.
- *   return: void
- *   exit_id(in): an integer argument to be returned as the exit value.
- */
-void
-thread_exit (int exit_id)
-{
-  UINTPTR thread_exit_id = exit_id;
-
-  THREAD_EXIT (thread_exit_id);
-}
-#endif
-
 /*
  * thread_get_client_id() - returns the unique client identifier
  *   return: returns the unique client identifier, on error, returns -1
@@ -1571,27 +1446,6 @@ thread_get_comm_request_id (THREAD_ENTRY * thread_p)
 
   return thread_p->rid;
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * thread_set_comm_request_id() - sets the comm system request id to the client request
-  *                     that started the thread
- *   return: void
- *   request_id(in): the comm request id to save for thread_get_comm_request_id
- *
- * Note: WARN: this function doesn't lock on thread_entry
- */
-void
-thread_set_comm_request_id (unsigned int request_id)
-{
-  THREAD_ENTRY *thread_p;
-
-  thread_p = thread_get_thread_entry_info ();
-  assert (thread_p != NULL);
-
-  thread_p->rid = request_id;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 bool
 thread_belongs_to (THREAD_ENTRY * thread_p, int tran_index, int client_id)
@@ -1961,6 +1815,8 @@ thread_worker (void *arg_p)
   tsd_ptr->status = TS_FREE;	/* set thread stat as free */
   tsd_ptr->register_id ();
 
+  tsd_ptr->get_error_context ().register_thread_local ();
+
   /* during server is active */
   while (!tsd_ptr->shutdown)
     {
@@ -2061,236 +1917,6 @@ thread_initialize_sync_object (void)
   return r;
 }
 #endif /* WINDOWS */
-
-static THREAD_RET_T THREAD_CALLING_CONVENTION
-thread_session_control_thread (void *arg_p)
-{
-#if !defined(HPUX)
-  THREAD_ENTRY *tsd_ptr = NULL;
-#endif /* !HPUX */
-  struct timeval timeout;
-  struct timespec to = {
-    0, 0
-  };
-  int rv = 0;
-
-  tsd_ptr = (THREAD_ENTRY *) arg_p;
-
-  /* wait until THREAD_CREATE() finishes */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
-
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  tsd_ptr->register_id ();
-  thread_Session_control_thread.is_available = true;
-  thread_Session_control_thread.is_running = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
-
-  while (!tsd_ptr->shutdown)
-    {
-      er_clear ();
-
-      gettimeofday (&timeout, NULL);
-      to.tv_sec = timeout.tv_sec + 60;
-
-      rv = pthread_mutex_lock (&thread_Session_control_thread.lock);
-      pthread_cond_timedwait (&thread_Session_control_thread.cond, &thread_Session_control_thread.lock, &to);
-      pthread_mutex_unlock (&thread_Session_control_thread.lock);
-
-      if (tsd_ptr->shutdown)
-	{
-	  break;
-	}
-
-      session_remove_expired_sessions (&timeout);
-    }
-  rv = pthread_mutex_lock (&thread_Session_control_thread.lock);
-  thread_Session_control_thread.is_available = false;
-  thread_Session_control_thread.is_running = false;
-  pthread_mutex_unlock (&thread_Session_control_thread.lock);
-
-  er_final (ER_THREAD_FINAL);
-  tsd_ptr->status = TS_DEAD;
-  tsd_ptr->unregister_id ();
-
-  return (THREAD_RET_T) 0;
-}
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * thread_wakeup_session_control_thread() -
- *   return:
- */
-void
-thread_wakeup_session_control_thread (void)
-{
-  pthread_mutex_lock (&thread_Session_control_thread.lock);
-  pthread_cond_signal (&thread_Session_control_thread.cond);
-  pthread_mutex_unlock (&thread_Session_control_thread.lock);
-}
-#endif
-
-/*
- * thread_check_ha_delay_info_thread() -
- *   return:
- *   arg_p(in):
- */
-
-static THREAD_RET_T THREAD_CALLING_CONVENTION
-thread_check_ha_delay_info_thread (void *arg_p)
-{
-#if !defined(HPUX)
-  THREAD_ENTRY *tsd_ptr;
-#endif /* !HPUX */
-  struct timeval cur_time = { 0, 0 };
-  struct timespec wakeup_time = { 0, 0 };
-
-  int rv;
-  INT64 tmp_usec;
-  int wakeup_interval = 1000;
-#if !defined(WINDOWS)
-  time_t log_record_time = 0;
-  int error_code;
-  int delay_limit_in_secs;
-  int acceptable_delay_in_secs;
-  int curr_delay_in_secs;
-  HA_SERVER_STATE server_state;
-#endif
-
-  tsd_ptr = (THREAD_ENTRY *) arg_p;
-  /* wait until THREAD_CREATE() finishes */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
-
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;	/* daemon thread */
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  tsd_ptr->register_id ();
-
-  thread_Check_ha_delay_info_thread.is_running = true;
-  thread_Check_ha_delay_info_thread.is_available = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
-
-  while (!tsd_ptr->shutdown)
-    {
-      er_clear ();
-
-      gettimeofday (&cur_time, NULL);
-      wakeup_time.tv_sec = cur_time.tv_sec + (wakeup_interval / 1000);
-      tmp_usec = cur_time.tv_usec + (wakeup_interval % 1000) * 1000;
-
-      if (tmp_usec >= 1000000)
-	{
-	  wakeup_time.tv_sec += 1;
-	  tmp_usec -= 1000000;
-	}
-      wakeup_time.tv_nsec = ((int) tmp_usec) * 1000;
-
-      rv = pthread_mutex_lock (&thread_Check_ha_delay_info_thread.lock);
-      thread_Check_ha_delay_info_thread.is_running = false;
-
-      do
-	{
-	  rv =
-	    pthread_cond_timedwait (&thread_Check_ha_delay_info_thread.cond, &thread_Check_ha_delay_info_thread.lock,
-				    &wakeup_time);
-	}
-      while (rv == 0 && tsd_ptr->shutdown == false);
-
-      thread_Check_ha_delay_info_thread.is_running = true;
-
-      pthread_mutex_unlock (&thread_Check_ha_delay_info_thread.lock);
-
-      if (tsd_ptr->shutdown == true)
-	{
-	  break;
-	}
-
-#if defined(WINDOWS)
-      continue;
-#else /* WINDOWS */
-
-      /* do its job */
-      csect_enter (tsd_ptr, CSECT_HA_SERVER_STATE, INF_WAIT);
-
-      server_state = css_ha_server_state ();
-
-      if (server_state == HA_SERVER_STATE_ACTIVE || server_state == HA_SERVER_STATE_TO_BE_STANDBY)
-	{
-	  css_unset_ha_repl_delayed ();
-	  perfmon_set_stat (tsd_ptr, PSTAT_HA_REPL_DELAY, 0, true);
-
-	  log_append_ha_server_state (tsd_ptr, server_state);
-
-	  csect_exit (tsd_ptr, CSECT_HA_SERVER_STATE);
-	}
-      else
-	{
-	  csect_exit (tsd_ptr, CSECT_HA_SERVER_STATE);
-
-	  delay_limit_in_secs = prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_IN_SECS);
-	  acceptable_delay_in_secs = delay_limit_in_secs - prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_DELTA_IN_SECS);
-
-	  if (acceptable_delay_in_secs < 0)
-	    {
-	      acceptable_delay_in_secs = 0;
-	    }
-
-	  error_code = catcls_get_apply_info_log_record_time (tsd_ptr, &log_record_time);
-
-	  if (error_code == NO_ERROR && log_record_time > 0)
-	    {
-	      curr_delay_in_secs = time (NULL) - log_record_time;
-	      if (curr_delay_in_secs > 0)
-		{
-		  curr_delay_in_secs -= HA_DELAY_ERR_CORRECTION;
-		}
-
-	      if (delay_limit_in_secs > 0)
-		{
-		  if (curr_delay_in_secs > delay_limit_in_secs)
-		    {
-		      if (!css_is_ha_repl_delayed ())
-			{
-			  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_DELAY_DETECTED, 2,
-				  curr_delay_in_secs, delay_limit_in_secs);
-
-			  css_set_ha_repl_delayed ();
-			}
-		    }
-		  else if (curr_delay_in_secs <= acceptable_delay_in_secs)
-		    {
-		      if (css_is_ha_repl_delayed ())
-			{
-			  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_DELAY_RESOLVED, 2,
-				  curr_delay_in_secs, acceptable_delay_in_secs);
-
-			  css_unset_ha_repl_delayed ();
-			}
-		    }
-		}
-
-	      perfmon_set_stat (tsd_ptr, PSTAT_HA_REPL_DELAY, curr_delay_in_secs, true);
-	    }
-	}
-#endif /* WINDOWS */
-    }
-
-  rv = pthread_mutex_lock (&thread_Check_ha_delay_info_thread.lock);
-  thread_Check_ha_delay_info_thread.is_running = false;
-  thread_Check_ha_delay_info_thread.is_available = false;
-  pthread_mutex_unlock (&thread_Check_ha_delay_info_thread.lock);
-
-  er_final (ER_THREAD_FINAL);
-  tsd_ptr->status = TS_DEAD;
-  tsd_ptr->unregister_id ();
-
-  return (THREAD_RET_T) 0;
-}
 
 /*
  * thread_page_flush_thread() -
@@ -2545,19 +2171,7 @@ thread_flush_control_thread (void *arg_p)
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
 
-  /* wait until THREAD_CREATE() finishes */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
-
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;	/* daemon thread */
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  tsd_ptr->register_id ();
-
-  thread_Flush_control_thread.is_available = true;
-  thread_Flush_control_thread.is_running = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
+  thread_daemon_start (&thread_Flush_control_thread, tsd_ptr, TT_DAEMON);
 
   rv = fileio_flush_control_initialize ();
   if (rv != NO_ERROR)
@@ -2659,19 +2273,8 @@ thread_log_flush_thread (void *arg_p)
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
 
   tsd_ptr = (THREAD_ENTRY *) arg_p;
-  /* wait until THREAD_CREATE() finishes */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
 
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;	/* daemon thread */
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  tsd_ptr->register_id ();
-
-  thread_Log_flush_thread.is_available = true;
-  thread_Log_flush_thread.is_running = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
+  thread_daemon_start (&thread_Log_flush_thread, tsd_ptr, TT_DAEMON);
 
   gettimeofday (&wakeup_time, NULL);
   total_elapsed_time = 0;
@@ -2789,234 +2392,6 @@ thread_is_log_flush_thread_available (void)
 {
   return thread_Log_flush_thread.is_available;
 }
-
-INT64
-thread_get_log_clock_msec (void)
-{
-  struct timeval tv;
-#if defined(HAVE_ATOMIC_BUILTINS)
-
-  if (thread_Log_clock_thread.is_available == true)
-    {
-      return log_Clock_msec;
-    }
-#endif
-  gettimeofday (&tv, NULL);
-
-  return (tv.tv_sec * 1000LL) + (tv.tv_usec / 1000LL);
-}
-
-/*
- * thread_log_clock_thread() - set time for every 500 ms
- *   return:
- *   arg(in) : thread entry information
- *
- */
-static THREAD_RET_T THREAD_CALLING_CONVENTION
-thread_log_clock_thread (void *arg_p)
-{
-#if !defined(HPUX)
-  THREAD_ENTRY *tsd_ptr = NULL;
-#endif /* !HPUX */
-  int rv = 0;
-  struct timeval now;
-
-#if defined(HAVE_ATOMIC_BUILTINS)
-  assert (sizeof (log_Clock_msec) >= sizeof (now.tv_sec));
-#endif /* HAVE_ATOMIC_BUILTINS */
-  tsd_ptr = (THREAD_ENTRY *) arg_p;
-
-  /* wait until THREAD_CREATE() finishes */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
-
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  tsd_ptr->register_id ();
-  thread_Log_clock_thread.is_available = true;
-  thread_Log_clock_thread.is_running = true;
-
-  while (!tsd_ptr->shutdown)
-    {
-#if defined(HAVE_ATOMIC_BUILTINS)
-      INT64 clock_milli_sec;
-      er_clear ();
-
-      /* set time for every 200 ms */
-      gettimeofday (&now, NULL);
-      clock_milli_sec = (now.tv_sec * 1000LL) + (now.tv_usec / 1000LL);
-      ATOMIC_TAS_64 (&log_Clock_msec, clock_milli_sec);
-      thread_sleep (200);	/* 200 msec */
-#else /* HAVE_ATOMIC_BUILTINS */
-      int wakeup_interval = 1000;
-      struct timespec wakeup_time;
-      INT64 tmp_usec;
-
-      er_clear ();
-      gettimeofday (&now, NULL);
-      wakeup_time.tv_sec = now.tv_sec + (wakeup_interval / 1000);
-      tmp_usec = now.tv_usec + (wakeup_interval % 1000) * 1000;
-
-      if (tmp_usec >= 1000000)
-	{
-	  wakeup_time.tv_sec += 1;
-	  tmp_usec -= 1000000;
-	}
-      wakeup_time.tv_nsec = tmp_usec * 1000;
-
-      rv = pthread_mutex_lock (&thread_Log_clock_thread.lock);
-      thread_Log_clock_thread.is_running = false;
-
-      do
-	{
-	  rv = pthread_cond_timedwait (&thread_Log_clock_thread.cond, &thread_Log_clock_thread.lock, &wakeup_time);
-	}
-      while (rv == 0 && tsd_ptr->shutdown == false);
-
-      thread_Log_clock_thread.is_running = true;
-
-      pthread_mutex_unlock (&thread_Log_clock_thread.lock);
-#endif /* HAVE_ATOMIC_BUILTINS */
-    }
-
-  thread_Log_clock_thread.is_available = false;
-  thread_Log_clock_thread.is_running = false;
-
-  er_final (ER_THREAD_FINAL);
-  tsd_ptr->status = TS_DEAD;
-  tsd_ptr->unregister_id ();
-
-  return (THREAD_RET_T) 0;
-}
-
-/*
- * thread_auto_volume_expansion_thread() -
- *   return:
- */
-static THREAD_RET_T THREAD_CALLING_CONVENTION
-thread_auto_volume_expansion_thread (void *arg_p)
-{
-#define THREAD_AUTO_VOL_WAKEUP_TIME_SEC     60
-#if !defined(HPUX)
-  THREAD_ENTRY *tsd_ptr;
-#endif /* !HPUX */
-  int rv;
-
-  struct timeval time_crt;
-  struct timespec to = { 0, 0 };
-
-  tsd_ptr = (THREAD_ENTRY *) arg_p;
-  /* wait until THREAD_CREATE() finish */
-  rv = pthread_mutex_lock (&tsd_ptr->th_entry_lock);
-  pthread_mutex_unlock (&tsd_ptr->th_entry_lock);
-
-  thread_set_thread_entry_info (tsd_ptr);	/* save TSD */
-  tsd_ptr->type = TT_DAEMON;
-  tsd_ptr->status = TS_RUN;	/* set thread stat as RUN */
-  tsd_ptr->register_id ();
-
-  thread_Auto_volume_expansion_thread.is_available = true;
-
-  thread_set_current_tran_index (tsd_ptr, LOG_SYSTEM_TRAN_INDEX);
-
-  while (!tsd_ptr->shutdown)
-    {
-      gettimeofday (&time_crt, NULL);
-      to.tv_sec = time_crt.tv_sec + THREAD_AUTO_VOL_WAKEUP_TIME_SEC;
-
-      rv = pthread_mutex_lock (&thread_Auto_volume_expansion_thread.lock);
-      thread_Auto_volume_expansion_thread.is_running = false;
-      pthread_cond_timedwait (&thread_Auto_volume_expansion_thread.cond, &thread_Auto_volume_expansion_thread.lock,
-			      &to);
-
-      if (tsd_ptr->shutdown)
-	{
-	  pthread_mutex_unlock (&thread_Auto_volume_expansion_thread.lock);
-	  break;
-	}
-
-      thread_Auto_volume_expansion_thread.is_running = true;
-      pthread_mutex_unlock (&thread_Auto_volume_expansion_thread.lock);
-
-      (void) disk_auto_expand (tsd_ptr);
-    }
-
-  er_final (ER_THREAD_FINAL);
-  thread_Auto_volume_expansion_thread.is_available = false;
-  tsd_ptr->status = TS_DEAD;
-  tsd_ptr->unregister_id ();
-
-  return (THREAD_RET_T) 0;
-#undef THREAD_AUTO_VOL_WAKEUP_TIME_SEC
-}
-
-/*
- * thread_auto_volume_expansion_thread_is_running () -
- *   return:
- */
-bool
-thread_auto_volume_expansion_thread_is_running (void)
-{
-  int rv;
-  bool ret;
-
-  rv = pthread_mutex_lock (&thread_Auto_volume_expansion_thread.lock);
-  ret = thread_Auto_volume_expansion_thread.is_running;
-  pthread_mutex_unlock (&thread_Auto_volume_expansion_thread.lock);
-
-  return ret;
-}
-
-/*
- * thread_is_auto_volume_expansion_thread_available () -
- *   return:
- *
- *   NOTE: This is used in boot_add_auto_volume_extension()
- *         to tell whether the thread is working or not.
- *         When restart server, in log_recovery phase, the thread may be unavailable.
- */
-bool
-thread_is_auto_volume_expansion_thread_available (void)
-{
-  return thread_Auto_volume_expansion_thread.is_available;
-}
-
-/*
- *  thread_wakeup_auto_volume_expansion_thread() -
- *   return:
- */
-void
-thread_wakeup_auto_volume_expansion_thread (void)
-{
-  int rv;
-
-  rv = pthread_mutex_lock (&thread_Auto_volume_expansion_thread.lock);
-  if (!thread_Auto_volume_expansion_thread.is_running)
-    {
-      pthread_cond_signal (&thread_Auto_volume_expansion_thread.cond);
-    }
-  pthread_mutex_unlock (&thread_Auto_volume_expansion_thread.lock);
-}
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * thread_wakeup_check_ha_delay_info_thread() -
- *   return:
- */
-void
-thread_wakeup_check_ha_delay_info_thread (void)
-{
-  int rv;
-
-  rv = pthread_mutex_lock (&thread_Check_ha_delay_info_thread.lock);
-  if (!thread_Check_ha_delay_info_thread.is_running)
-    {
-      pthread_cond_signal (&thread_Check_ha_delay_info_thread.cond);
-    }
-  pthread_mutex_unlock (&thread_Check_ha_delay_info_thread.lock);
-}
-#endif
 
 /*
  * thread_slam_tran_index() -
@@ -4044,22 +3419,6 @@ thread_rc_track_meter_assert_csect_dependency (THREAD_ENTRY * thread_p, THREAD_R
 	  THREAD_RC_TRACK_METER_ASSERT (thread_p, stderr, meter, meter->m_hold_buf[CSECT_CT_OID_TABLE] == 0);
 	  break;
 
-	  /* CSECT_ER_LOG_FILE -> X_CS -> [Y_CS] -> CSECT_ER_LOG_FILE is NOK */
-	  /* X_CS -> CSECT_ER_LOG_FILE -> [Y_CS] -> CSECT_ER_LOG_FILE is NOK */
-	case CSECT_ER_LOG_FILE:
-	  if (meter->m_hold_buf[CSECT_ER_LOG_FILE] > 1)
-	    {
-	      for (i = 0; i < meter->m_hold_buf_size && i < CRITICAL_SECTION_COUNT; i++)
-		{
-		  if (i == cs_idx)
-		    {
-		      continue;	/* skip myself */
-		    }
-		  THREAD_RC_TRACK_METER_ASSERT (thread_p, stderr, meter, meter->m_hold_buf[i] == 0);
-		}
-	    }
-	  break;
-
 	default:
 	  break;
 	}
@@ -5048,6 +4407,7 @@ thread_daemon_start (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p, TH
   thread_p->type = thread_type;	/* daemon thread */
   thread_p->status = TS_RUN;	/* set thread stat as RUN */
   thread_p->register_id ();
+  thread_p->get_error_context ().register_thread_local ();
 
   daemon->is_running = true;
   daemon->is_available = true;

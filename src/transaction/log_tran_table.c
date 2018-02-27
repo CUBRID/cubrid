@@ -58,7 +58,7 @@
 #include "show_scan.h"
 #include "boot_sr.h"
 #include "db_date.h"
-#include "thread.h"
+#include "dbtype.h"
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
@@ -2516,6 +2516,18 @@ logtb_find_client_name_host_pid (int tran_index, char **client_prog_name, char *
   return NO_ERROR;
 }
 
+#if defined (SERVER_MODE)
+/* logtb_find_client_tran_name_host_pid - same as logtb_find_client_name_host_pid, but also gets tran_index.
+ */
+int
+logtb_find_client_tran_name_host_pid (int &tran_index, char **client_prog_name, char **client_user_name,
+				      char **client_host_name, int *client_pid)
+{
+  tran_index = thread_get_current_tran_index ();
+  return logtb_find_client_name_host_pid (tran_index, client_prog_name, client_user_name, client_host_name, client_pid);
+}
+#endif // SERVER_MODE
+
 /*
  * logtb_find_client_ids - find client identifiers OF TRANSACTION INDEX
  *
@@ -2568,7 +2580,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
   LOG_TDES *tdes;		/* Transaction descriptor */
   int num_total_indices;
 #if defined(SERVER_MODE)
-  UINT64 current_msec = 0;
+  INT64 current_msec = 0;
   TRAN_QUERY_EXEC_INFO *query_exec_info = NULL;
   XASL_CACHE_ENTRY *ent = NULL;
 #endif
@@ -2590,7 +2602,7 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 	  goto error;
 	}
 
-      current_msec = thread_get_log_clock_msec ();
+      current_msec = log_get_clock_msec ();
     }
 #endif
 
@@ -3184,7 +3196,7 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
       /* In order to prevent performance degradation, we use log_Clock_msec set by thread_log_clock_thread instead of
        * calling gettimeofday here if the system supports atomic built-ins. */
 #if defined(SERVER_MODE)
-      now = thread_get_log_clock_msec ();
+      now = log_get_clock_msec ();
 #else /* SERVER_MODE */
       gettimeofday (&tv, NULL);
       now = (tv.tv_sec * 1000LL) + (tv.tv_usec / 1000LL);

@@ -67,8 +67,7 @@
 #include "locator_cl.h"
 #include "db_json.hpp"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1704,7 +1703,7 @@ error_exit:
 static int
 ldr_null_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
-  DB_MAKE_NULL (val);
+  db_make_null (val);
   return NO_ERROR;
 }
 
@@ -2178,7 +2177,7 @@ error_exit:
 static int
 ldr_str_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
-  DB_MAKE_STRING (val, str);
+  db_make_string (val, str);
   return NO_ERROR;
 }
 
@@ -2338,7 +2337,7 @@ ldr_str_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUT
 {
   DB_VALUE val;
 
-  DB_MAKE_STRING (&val, str);
+  db_make_string (&val, str);
   return ldr_generic (context, &val);
 }
 
@@ -2371,7 +2370,7 @@ ldr_bstr_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
       CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
     }
 
-  DB_MAKE_VARBIT (&temp, TP_FLOATING_PRECISION_VALUE, bstring, len);
+  db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, len);
   temp.need_clear = true;
 
   GET_DOMAIN (context, domain);
@@ -2440,7 +2439,7 @@ ldr_xstr_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
   DB_VALUE temp;
   TP_DOMAIN *domain_ptr, temp_domain;
 
-  DB_MAKE_NULL (&temp);
+  db_make_null (&temp);
 
   dest_size = (len + 1) / 2;
 
@@ -2452,7 +2451,7 @@ ldr_xstr_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
       CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
     }
 
-  DB_MAKE_VARBIT (&temp, TP_FLOATING_PRECISION_VALUE, bstring, len * 4);
+  db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, len * 4);
   temp.need_clear = true;
 
   /* temp takes ownership of this piece of memory */
@@ -2522,7 +2521,8 @@ static int
 ldr_nstr_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
 
-  DB_MAKE_VARNCHAR (val, TP_FLOATING_PRECISION_VALUE, str, len, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) (str), len, LANG_SYS_CODESET,
+		    LANG_SYS_COLLATION);
   return NO_ERROR;
 }
 
@@ -3907,7 +3907,7 @@ ldr_class_oid_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * 
     }
 
   CHECK_ERR (err, check_class_domain (context));
-  DB_MAKE_OBJECT (val, context->attrs[context->next_attr].ref_class);
+  db_make_object (val, context->attrs[context->next_attr].ref_class);
 
 error_exit:
   return err;
@@ -3973,7 +3973,7 @@ ldr_oid_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
   err = find_instance (context, actual_class, &oid, context->attrs[context->next_attr].instance_id);
   if (err == ER_LDR_INTERNAL_REFERENCE)
     {
-      DB_MAKE_NULL (val);
+      db_make_null (val);
     }
   else
     {
@@ -3989,7 +3989,7 @@ ldr_oid_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 	  CHECK_ERR (err, err);
 	}
 
-      DB_MAKE_OBJECT (val, mop);
+      db_make_object (val, mop);
     }
 
 error_exit:
@@ -4165,7 +4165,7 @@ ldr_collection_db_collection (LDR_CONTEXT * context, const char *str, int len, S
        */
       DB_VALUE tmp;
 
-      DB_MAKE_COLLECTION (&tmp, context->collection);
+      db_make_collection (&tmp, context->collection);
 
       context->collection = NULL;
       context->set_domain = NULL;
@@ -5368,7 +5368,7 @@ construct_instance (LDR_CONTEXT * context)
 
   if (!err && DB_VALUE_TYPE (&retval) == DB_TYPE_OBJECT)
     {
-      obj = DB_GET_OBJECT (&retval);
+      obj = db_get_object (&retval);
       context->obj = obj;
       err = au_fetch_instance (context->obj, &context->mobj, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE);
       if (err == NO_ERROR)

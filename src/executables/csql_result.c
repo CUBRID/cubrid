@@ -34,8 +34,7 @@
 #include "porting.h"
 #include "transaction_cl.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -317,7 +316,7 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result, DB_QUERY
 	case DB_TYPE_TIMELTZ:
 	  attr_lengths[i] = -MAX (MAX_TIMETZ_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
-	case DB_TYPE_UTIME:
+	case DB_TYPE_TIMESTAMP:
 	  attr_lengths[i] = -MAX (MAX_UTIME_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
 	case DB_TYPE_TIMESTAMPTZ:
@@ -504,7 +503,7 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool pla
   DB_QUERY_RESULT *result = result_info->query_result;
   int num_attrs = result_info->num_attrs;
 
-  DB_MAKE_NULL (&db_value);
+  db_make_null (&db_value);
 
   val = (char **) malloc (sizeof (char *) * num_attrs);
   if (val == NULL)
@@ -575,7 +574,7 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool pla
 	      csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
 	      goto error;
 	    }
-	  sprintf (val[i], "pointer value (%p)", (void *) DB_GET_POINTER (&db_value));
+	  sprintf (val[i], "pointer value (%p)", (void *) db_get_pointer (&db_value));
 	  break;
 
 	case DB_TYPE_ERROR:	/* error type */
@@ -585,7 +584,7 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool pla
 	      csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
 	      goto error;
 	    }
-	  sprintf (val[i], "error code (%d)", DB_GET_ERROR (&db_value));
+	  sprintf (val[i], "error code (%d)", db_get_error (&db_value));
 	  break;
 
 	default:		/* other types */
@@ -599,8 +598,8 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool pla
 	    {
 	      int async_ws, iso_lvl;
 
-	      async_ws = DB_GET_INTEGER (&db_value) & TRAN_ASYNC_WS_BIT;
-	      iso_lvl = DB_GET_INTEGER (&db_value) & TRAN_ISO_LVL_BITS;
+	      async_ws = db_get_int (&db_value) & TRAN_ASYNC_WS_BIT;
+	      iso_lvl = db_get_int (&db_value) & TRAN_ISO_LVL_BITS;
 
 	      val[i] = (char *) malloc (128);
 	      if (val[i] == NULL)
@@ -617,7 +616,7 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool pla
 
 	      sprintf (val[i], "%s%s", csql_Isolation_level_string[iso_lvl], (async_ws ? ", ASYNC WORKSPACE" : ""));
 	    }
-	  else if ((stmt_type == CUBRID_STMT_GET_TIMEOUT) && (DB_GET_FLOAT (&db_value) == -1.0))
+	  else if ((stmt_type == CUBRID_STMT_GET_TIMEOUT) && (db_get_float (&db_value) == -1.0))
 	    {
 	      val[i] = (char *) malloc (9);
 	      if (val[i] == NULL)

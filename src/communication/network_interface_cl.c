@@ -61,6 +61,7 @@
 #include "es.h"
 #include "db.h"
 #include "db_query.h"
+#include "dbtype.h"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
@@ -4394,7 +4395,7 @@ csession_get_last_insert_id (DB_VALUE * value, bool update_last_insert_id)
   char *data_reply = NULL;
   int data_size = 0;
 
-  DB_MAKE_NULL (value);
+  db_make_null (value);
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -4406,7 +4407,7 @@ csession_get_last_insert_id (DB_VALUE * value, bool update_last_insert_id)
 			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_size);
   if (req_error != NO_ERROR)
     {
-      DB_MAKE_NULL (value);
+      db_make_null (value);
       req_error = ER_FAILED;
       goto cleanup;
     }
@@ -5075,7 +5076,7 @@ cleanup:
     }
   else
     {
-      DB_MAKE_NULL (value);
+      db_make_null (value);
     }
   return err;
 #endif
@@ -6463,7 +6464,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	}
       for (i = 0; i < dbval_cnt; i++)
 	{
-	  DB_MAKE_NULL (&server_db_values[i]);
+	  db_make_null (&server_db_values[i]);
 	}
       for (i = 0; i < dbval_cnt; i++)
 	{
@@ -6471,10 +6472,10 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	    {
 	    case DB_TYPE_OBJECT:
 	      /* server cannot handle objects, convert to OID instead */
-	      oid = ws_identifier (DB_GET_OBJECT (&dbvals[i]));
+	      oid = ws_identifier (db_get_object (&dbvals[i]));
 	      if (oid != NULL)
 		{
-		  DB_MAKE_OID (&server_db_values[i], oid);
+		  db_make_oid (&server_db_values[i], oid);
 		}
 	      break;
 
@@ -7864,7 +7865,7 @@ db_local_transaction_id (DB_VALUE * result_trid)
       ptr = or_unpack_int (ptr, &trid);
     }
 
-  DB_MAKE_INTEGER (result_trid, trid);
+  db_make_int (result_trid, trid);
   return success;
 #else /* CS_MODE */
   int success;

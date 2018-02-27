@@ -64,9 +64,7 @@
 #include "execute_schema.h"
 #include "network_interface_cl.h"
 #include "transaction_cl.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #define MARK_CLASS_REQUESTED(cl_no) \
   (class_requested[cl_no / 8] |= 1 << cl_no % 8)
@@ -1539,11 +1537,11 @@ process_value (DB_VALUE * value)
 
 	if (DB_VALUE_TYPE (value) == DB_TYPE_OID)
 	  {
-	    ref_oid = DB_GET_OID (value);
+	    ref_oid = db_get_oid (value);
 	  }
 	else
 	  {
-	    ref_oid = WS_OID (DB_PULL_OBJECT (value));
+	    ref_oid = WS_OID (db_get_object (value));
 	  }
 
 	if (required_class_only || (ref_oid == (OID *) 0) || (OID_EQ (ref_oid, &null_oid)) || datafile_per_class)
@@ -1671,7 +1669,7 @@ process_value (DB_VALUE * value)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-      CHECK_PRINT_ERROR (process_set (DB_GET_SET (value)));
+      CHECK_PRINT_ERROR (process_set (db_get_set (value)));
       break;
 
     case DB_TYPE_BLOB:

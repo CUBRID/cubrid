@@ -64,6 +64,8 @@ static bool util_is_replica_node (void);
 int
 utility_initialize ()
 {
+  er_init (NULL, ER_NEVER_EXIT);
+
   if (msgcat_init () != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("Unable to access system message catalog.\n");

@@ -50,7 +50,7 @@
 #include "critical_section.h"
 #endif
 #include "db_date.h"
-#include "dbval.h"		/* this must be the last header file included!!! */
+#include "dbtype.h"
 #if defined (SERVER_MODE)
 #include "thread.h"
 #endif // SERVER_MODE
@@ -5949,7 +5949,7 @@ bfmt_print (BIT_STRING_FORMAT * bfmt, const DB_VALUE * the_db_bit, char *string,
   };
 
   /* Get the buffer and the length from the_db_bit */
-  bstring = DB_GET_BIT (the_db_bit, &length);
+  bstring = db_get_bit (the_db_bit, &length);
 
   switch (*bfmt)
     {
@@ -6608,7 +6608,7 @@ db_string_value (const char *string, int str_size, const char *format, DB_VALUE 
 	    {
 	      return NULL;
 	    }
-	  next = db_string_monetary (string, format, DB_GET_MONETARY (value));
+	  next = db_string_monetary (string, format, db_get_monetary (value));
 	  csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 	  break;
 
@@ -6835,7 +6835,7 @@ db_value_string (const DB_VALUE * value, const char *format, char *string, int m
   switch (DB_VALUE_TYPE (value))
     {
     case DB_TYPE_DATE:
-      error = db_date_string (DB_GET_DATE (value), format, string, max_size);
+      error = db_date_string (db_get_date (value), format, string, max_size);
       break;
 
     case DB_TYPE_NUMERIC:
@@ -6843,22 +6843,22 @@ db_value_string (const DB_VALUE * value, const char *format, char *string, int m
       break;
 
     case DB_TYPE_DOUBLE:
-      error = db_double_string (DB_GET_DOUBLE (value), format, string, max_size);
+      error = db_double_string (db_get_double (value), format, string, max_size);
       break;
 
     case DB_TYPE_FLOAT:
-      error = db_float_string (DB_GET_FLOAT (value), format, string, max_size);
+      error = db_float_string (db_get_float (value), format, string, max_size);
       break;
 
     case DB_TYPE_INTEGER:
-      error = db_integer_string (DB_GET_INTEGER (value), format, string, max_size);
+      error = db_integer_string (db_get_int (value), format, string, max_size);
       break;
     case DB_TYPE_BIGINT:
-      error = db_bigint_string (DB_GET_BIGINT (value), format, string, max_size);
+      error = db_bigint_string (db_get_bigint (value), format, string, max_size);
       break;
 
     case DB_TYPE_MONETARY:
-      error = db_monetary_string (DB_GET_MONETARY (value), format, string, max_size);
+      error = db_monetary_string (db_get_monetary (value), format, string, max_size);
       break;
 
     case DB_TYPE_NULL:
@@ -6866,7 +6866,7 @@ db_value_string (const DB_VALUE * value, const char *format, char *string, int m
       break;
 
     case DB_TYPE_SHORT:
-      error = db_short_string (DB_GET_SHORT (value), format, string, max_size);
+      error = db_short_string (db_get_short (value), format, string, max_size);
       break;
 
     case DB_TYPE_VARCHAR:
@@ -6891,7 +6891,7 @@ db_value_string (const DB_VALUE * value, const char *format, char *string, int m
 
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_NCHAR:
-      p = DB_GET_NCHAR (value, &dummy);
+      p = db_get_nchar (value, &dummy);
       if (p != NULL)
 	{
 	  if ((int) strlen (p) + 1 > max_size)
@@ -6907,15 +6907,15 @@ db_value_string (const DB_VALUE * value, const char *format, char *string, int m
       break;
 
     case DB_TYPE_TIME:
-      error = db_time_string (DB_GET_TIME (value), format, string, max_size);
+      error = db_time_string (db_get_time (value), format, string, max_size);
       break;
 
     case DB_TYPE_TIMESTAMP:
-      error = db_timestamp_string (DB_GET_TIMESTAMP (value), format, string, max_size);
+      error = db_timestamp_string (db_get_timestamp (value), format, string, max_size);
       break;
 
     case DB_TYPE_DATETIME:
-      error = db_datetime_string (DB_GET_DATETIME (value), format, string, max_size);
+      error = db_datetime_string (db_get_datetime (value), format, string, max_size);
       break;
     case DB_TYPE_VARBIT:
     case DB_TYPE_BIT:

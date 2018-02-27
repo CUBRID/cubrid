@@ -43,8 +43,7 @@
 #include "query_list.h"
 #include "db_json.hpp"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -157,13 +156,13 @@ classobj_get_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
 	  continue;
 	}
 
-      if (DB_VALUE_TYPE (&value) != DB_TYPE_STRING || DB_GET_STRING (&value) == NULL)
+      if (DB_VALUE_TYPE (&value) != DB_TYPE_STRING || db_get_string (&value) == NULL)
 	{
 	  error = ER_SM_INVALID_PROPERTY;
 	}
       else
 	{
-	  tmp_str = DB_GET_STRING (&value);
+	  tmp_str = db_get_string (&value);
 	  if (tmp_str && strcmp (name, tmp_str) == 0)
 	    {
 	      if ((i + 1) >= max)
@@ -7683,7 +7682,7 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
   int str_size = 0;
   LANG_COLLATION *lc;
 
-  DB_MAKE_NULL (&value);
+  db_make_null (&value);
 
   if (enumeration == NULL)
     {
@@ -8726,13 +8725,13 @@ or_get_json_schema (OR_BUF * buf, REFPTR (char, schema))
       return rc;
     }
 
-  if (DB_GET_STRING_SIZE (&schema_value) == 0)
+  if (db_get_string_size (&schema_value) == 0)
     {
       schema = NULL;
     }
   else
     {
-      schema = db_private_strdup (NULL, DB_PULL_STRING (&schema_value));
+      schema = db_private_strdup (NULL, db_get_string (&schema_value));
     }
 
   pr_clear_value (&schema_value);

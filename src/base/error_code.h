@@ -1545,8 +1545,9 @@
 #define ER_JSON_INVALID_PATH                        -1200
 #define ER_JSON_OBJECT_NAME_IS_NULL                 -1201
 #define ER_JSON_PATH_DOES_NOT_EXIST                 -1202
+#define ER_JSON_EXPECTED_OTHER_TYPE                 -1203
 
-#define ER_LAST_ERROR                               -1203
+#define ER_LAST_ERROR                               -1204
 
 /*
  * CAUTION!
@@ -1554,7 +1555,6 @@
  * When an entry is added here please ensure that the msg/<locale>/cubrid.msg
  * files are updated with matching error strings. See message_catalog.c for
  * details.
- * The error codes must also be added to compat/dbi_compat.h
  * ER_LAST_ERROR must also be updated.
  */
 

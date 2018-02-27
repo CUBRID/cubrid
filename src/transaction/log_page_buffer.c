@@ -53,10 +53,6 @@
 
 #include "porting.h"
 #include "connection_defs.h"
-#include "thread.h"
-#include "thread_daemon.hpp"
-#include "thread_entry_task.hpp"
-#include "thread_manager.hpp"
 #include "log_impl.h"
 #include "log_manager.h"
 #include "log_comm.h"
@@ -413,17 +409,9 @@ static void logpb_set_nxio_lsa (LOG_LSA * lsa);
 static int logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_HEADER * from_hdr);
 STATIC_INLINE LOG_BUFFER *logpb_get_log_buffer (LOG_PAGE * log_pg) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int logpb_get_log_buffer_index (LOG_PAGEID log_pageid) __attribute__ ((ALWAYS_INLINE));
-
-#if defined(SERVER_MODE)
-// *INDENT-OFF*
-static cubthread::daemon *logpb_Checkpoint_daemon = NULL;
-static cubthread::daemon *logpb_Remove_log_archive_daemon = NULL;
-
-static bool logpb_Daemons_are_initialized = false;
-
-static void logpb_wakeup_remove_log_archive_daemon ();
-// *INDENT-ON*
-#endif /* SERVER_MODE */
+static int logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_fullname,
+					       const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
+					       LOG_PAGE * log_pgptr);
 
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
@@ -638,10 +626,6 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   pthread_mutex_init (&writer_info->flush_end_mutex, NULL);
 
   writer_info->is_init = true;
-
-#if defined(SERVER_MODE)
-  logpb_daemons_init ();
-#endif // SERVER_MODE
 
   return error_code;
 
@@ -1501,6 +1485,77 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_P
 }
 
 /*
+ * logpb_fetch_header_from_active_log - Fetch log header directly from active log file
+ *
+ * return: error code
+ *
+ *   hdr(in/out): Pointer where log header is stored
+ *   log_pgptr(in/out): log page buffer ptr
+ *
+ * NOTE: Should be used only during boot sequence.
+ */
+static int
+logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
+				    const char *prefix_logname, LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
+{
+  LOG_HEADER *log_hdr;		/* The log header */
+  LOG_PHY_PAGEID phy_pageid;
+  int error_code = NO_ERROR;
+
+  assert (db_fullname != NULL);
+  assert (logpath != NULL);
+  assert (prefix_logname != NULL);
+  assert (hdr != NULL);
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+  assert (log_pgptr != NULL);
+
+  error_code = logpb_initialize_log_names (thread_p, db_fullname, logpath, prefix_logname);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  if (fileio_is_volume_exist (log_Name_active) == false)
+    {
+      error_code = ER_FAILED;
+      goto error;
+    }
+
+  log_Gl.append.vdes = fileio_mount (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false);
+  if (log_Gl.append.vdes == NULL_VOLDES)
+    {
+      error_code = ER_FAILED;
+      goto error;
+    }
+
+  phy_pageid = logpb_to_physical_pageid (LOGPB_HEADER_PAGE_ID);
+  logpb_log ("reading from active log:%s, physical page is : %lld\n", log_Name_active, (long long int) phy_pageid);
+
+  if (fileio_read (thread_p, log_Gl.append.vdes, log_pgptr, phy_pageid, LOG_PAGESIZE) == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, LOGPB_HEADER_PAGE_ID, phy_pageid,
+	      log_Name_active);
+      error_code = ER_LOG_READ;
+      goto error;
+    }
+
+  log_hdr = (LOG_HEADER *) (log_pgptr->area);
+  *hdr = *log_hdr;
+
+  /* keep active log mounted : this prevents other process to access/change DB parameters */
+
+  if (log_pgptr->hdr.logical_pageid != LOGPB_HEADER_PAGE_ID || log_pgptr->hdr.offset != NULL_OFFSET)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, phy_pageid);
+      error_code = ER_LOG_PAGE_CORRUPTED;
+      goto error;
+    }
+
+error:
+  return error_code;
+}
+
+/*
  * logpb_flush_header - Flush log header
  *
  * return: nothing
@@ -2052,7 +2107,9 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
 			      const char *prefix_logname, PGLENGTH * io_page_size, PGLENGTH * log_page_size,
 			      INT64 * creation_time, float *db_compatibility, int *db_charset)
 {
-  LOG_HEADER hdr;		/* Log header */
+  static LOG_HEADER hdr;	/* Log header */
+  static bool is_header_read_from_file = false;
+  static bool is_log_header_validated = false;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
   int error_code = NO_ERROR;
@@ -2095,44 +2152,17 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
       return *io_page_size;
     }
 
-  /* System is not restarted. Read the header from disk */
-
-  error_code = logpb_initialize_log_names (thread_p, db_fullname, logpath, prefix_logname);
-  if (error_code != NO_ERROR)
+  if (!is_header_read_from_file)
     {
-      goto error;
+      log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+
+      error_code = logpb_fetch_header_from_active_log (thread_p, db_fullname, logpath, prefix_logname, &hdr, log_pgptr);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+      is_header_read_from_file = true;
     }
-
-  /* 
-   * Avoid setting errors at this moment related to existance of files.
-   */
-
-  if (fileio_is_volume_exist (log_Name_active) == false)
-    {
-      error_code = ER_FAILED;
-      goto error;
-    }
-
-  log_Gl.append.vdes = fileio_mount (thread_p, db_fullname, log_Name_active, LOG_DBLOG_ACTIVE_VOLID, true, false);
-  if (log_Gl.append.vdes == NULL_VOLDES)
-    {
-      error_code = ER_FAILED;
-      goto error;
-    }
-
-  error_code = logpb_initialize_pool (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
-  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
-
-  logpb_fetch_header_with_buffer (thread_p, &hdr, log_pgptr);
-  logpb_finalize_pool (thread_p);
-
-  fileio_dismount (thread_p, log_Gl.append.vdes);
-  log_Gl.append.vdes = NULL_VOLDES;
 
   *io_page_size = hdr.db_iopagesize;
   *log_page_size = hdr.db_logpagesize;
@@ -2140,7 +2170,12 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
   *db_compatibility = hdr.db_compatibility;
   *db_charset = (int) hdr.db_charset;
 
-  /* 
+  if (is_log_header_validated)
+    {
+      return *io_page_size;
+    }
+
+  /*
    * Make sure that the log is a log file and that it is compatible with the
    * running database and system
    */
@@ -2168,28 +2203,7 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
       goto error;
     }
 
-  if (IO_PAGESIZE != *io_page_size || LOG_PAGESIZE != *log_page_size)
-    {
-      if (db_set_page_size (*io_page_size, *log_page_size) != NO_ERROR)
-	{
-	  error_code = ER_FAILED;
-	  goto error;
-	}
-      else
-	{
-	  error_code = sysprm_reload_and_init (NULL, NULL);
-	  if (error_code != NO_ERROR)
-	    {
-	      goto error;
-	    }
-
-	  error_code = logtb_define_trantable_log_latch (thread_p, log_Gl.trantable.num_total_indices);
-	  if (error_code != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	}
-    }
+  is_log_header_validated = true;
 
   return *io_page_size;
 
@@ -4256,7 +4270,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
       if (thread_p != NULL && thread_p->event_stats.trace_log_flush_time > 0)
 	{
-	  flush_start_time = thread_get_log_clock_msec ();
+	  flush_start_time = log_get_clock_msec ();
 
 	  memset (&writer_info->last_writer_client_info, 0, sizeof (LOG_CLIENTIDS));
 
@@ -4593,7 +4607,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
       if (thread_p != NULL && thread_p->event_stats.trace_log_flush_time > 0)
 	{
-	  flush_completed_time = thread_get_log_clock_msec ();
+	  flush_completed_time = log_get_clock_msec ();
 	}
 
       writer_info->flush_completed = true;
@@ -4626,7 +4640,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
       if (thread_p != NULL && thread_p->event_stats.trace_log_flush_time > 0)
 	{
-	  all_writer_thr_end_time = thread_get_log_clock_msec ();
+	  all_writer_thr_end_time = log_get_clock_msec ();
 
 	  if (all_writer_thr_end_time - flush_start_time > thread_p->event_stats.trace_log_flush_time)
 	    {
@@ -6548,7 +6562,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
 #if defined(SERVER_MODE)
-  logpb_wakeup_remove_log_archive_daemon ();
+  log_wakeup_remove_log_archive_daemon ();
 #else
   logpb_remove_archive_logs_exceed_limit (thread_p, 0);
 #endif
@@ -7536,172 +7550,6 @@ logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *l
 
   return fileio_is_volume_exist (log_Name_active);
 }
-
-// *INDENT-OFF*
-#if defined(SERVER_MODE)
-// class checkpoint_daemon_task
-//
-//  description:
-//    checkpoint daemon task
-//
-class checkpoint_daemon_task : public cubthread::entry_task
-{
-  public:
-    void execute (cubthread::entry & thread_ref) override
-    {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
-
-      logpb_checkpoint (&thread_ref);
-    }
-};
-#endif /* SERVER_MODE */
-
-#if defined(SERVER_MODE)
-// class remove_log_archive_daemon_task
-//
-//  constructor args:
-//    archive_logs_to_delete : represents number of how many archive logs should be deleted by daemon task,
-//                             which must be dependent of PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL param value
-//
-//  description:
-//    purge archive logs daemon task
-//
-class remove_log_archive_daemon_task : public cubthread::entry_task
-{
-  private:
-    int m_archive_logs_to_delete;
-
-  public:
-    explicit remove_log_archive_daemon_task (int archive_logs_to_delete)
-    {
-      this->m_archive_logs_to_delete = archive_logs_to_delete;
-    };
-
-    void execute (cubthread::entry & thread_ref) override
-    {
-      if (!BO_IS_SERVER_RESTARTED ())
-	{
-	  // wait for boot to finish
-	  return;
-	}
-
-	logpb_remove_archive_logs_exceed_limit (&thread_ref, m_archive_logs_to_delete);
-    }
-};
-#endif /* SERVER_MODE */
-
-#if defined(SERVER_MODE)
-/*
- * logpb_checkpoint_daemon_init () - initialize checkpoint daemon
- */
-void
-logpb_checkpoint_daemon_init ()
-{
-  // create checkpoint daemon thread
-  std::chrono::seconds checkpoint_looper_interval =
-	  std::chrono::seconds (prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_INTERVAL_SECS));
-  logpb_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (checkpoint_looper_interval),
-			    new checkpoint_daemon_task ());
-}
-#endif /* SERVER_MODE */
-
-#if defined(SERVER_MODE)
-/*
- * logpb_remove_log_archive_daemon_init () - initialize remove log archive daemon
- */
-void
-logpb_remove_log_archive_daemon_init ()
-{
-  // get remove log archive interval in seconds system parameter
-  int remove_log_archive_interval = prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
-
-  // create log archive remover daemon thread
-  if (remove_log_archive_interval > 0)
-    {
-      // if interval is greater than 0 (zero) then on every loop remove one log archive
-      logpb_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (
-	  cubthread::looper (std::chrono::seconds (remove_log_archive_interval)),
-	  new remove_log_archive_daemon_task (1));
-    }
-  else
-    {
-      // if interval is equal to 0 (zero) then on wakeup remove all log archive records
-      logpb_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (),
-					new remove_log_archive_daemon_task (0));
-    }
-}
-#endif /* SERVER_MODE */
-
-#if defined(SERVER_MODE)
-/*
- * logpb_daemons_init () - initialize daemon threads
- */
-void
-logpb_daemons_init ()
-{
-  if (logpb_Daemons_are_initialized)
-    {
-      return;
-    }
-
-  logpb_checkpoint_daemon_init ();
-  logpb_remove_log_archive_daemon_init ();
-
-  logpb_Daemons_are_initialized = true;
-}
-#endif /* SERVER_MODE */
-
-#if defined(SERVER_MODE)
-/*
- * logpb_daemons_destroy () - destroy daemon threads
- */
-void
-logpb_daemons_destroy ()
-{
-  if (!logpb_Daemons_are_initialized)
-    {
-      return;
-    }
-
-  cubthread::get_manager ()->destroy_daemon (logpb_Checkpoint_daemon);
-  cubthread::get_manager ()->destroy_daemon (logpb_Remove_log_archive_daemon);
-
-  logpb_Daemons_are_initialized = false;
-}
-#endif /* SERVER_MODE */
-// *INDENT-ON*
-
-#if defined(SERVER_MODE)
-/*
- * logpb_wakeup_remove_log_archive_daemon () - wake up remove log archive daemon
- */
-void
-logpb_wakeup_remove_log_archive_daemon ()
-{
-  if (prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL) == 0)
-    {
-      // If PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL is 0 (zero) it means that daemon is sleeping
-      // and on wakeup it will do his job,
-      // otherwise daemon will be awakened every PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL seconds
-      logpb_Remove_log_archive_daemon->wakeup ();
-    }
-}
-#endif /* SERVER_MODE */
-
-#if defined(SERVER_MODE)
-/*
- * logpb_wakeup_checkpoint_daemon () - wake up checkpoint daemon
- */
-void
-logpb_wakeup_checkpoint_daemon (void)
-{
-  logpb_Checkpoint_daemon->wakeup ();
-}
-#endif /* SERVER_MODE */
 
 /*
  * logpb_checkpoint - Execute a fuzzy checkpoint

@@ -29,7 +29,8 @@
 
 #include <stdio.h>
 #include <stdarg.h>
-#include "dbtype.h"
+#include "system.h"
+#include "dbtype_def.h"
 #include "dbdef.h"
 #include "parse_tree.h"
 

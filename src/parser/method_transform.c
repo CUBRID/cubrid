@@ -30,6 +30,7 @@
 #include "parser.h"
 #include "parser_message.h"
 #include "view_transform.h"
+#include "dbtype.h"
 
 typedef struct meth_lambda METH_LAMBDA;
 struct meth_lambda
@@ -628,7 +629,7 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg, in
       PT_NODE *arg, *set;
 
       /* not derived-table spec and not meta class spec */
-      DB_MAKE_INTEGER (&val, true);
+      db_make_int (&val, true);
       arg = pt_dbval_to_value (parser, &val);
 
       set = parser_new_node (parser, PT_FUNCTION);

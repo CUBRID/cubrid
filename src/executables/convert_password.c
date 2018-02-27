@@ -22,7 +22,9 @@
  */
 
 #include <stdio.h>
+#include "system.h"
 #include "db.h"
+#include "dbtype.h"
 
 #define  CRYPT_BYTE(x)    ((x) & 0xff)
 #define PASSWORD_ENCRYPTION_OLD_KEY        "U9a$y1@zw~a0%"

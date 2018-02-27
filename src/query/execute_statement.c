@@ -86,9 +86,7 @@
 #include "xasl_to_stream.h"
 #include "query_cl.h"
 #include "parser_support.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -228,7 +226,7 @@ check_serial_invariants (SERIAL_INVARIANT * invariants, int num_invariants, int 
 	  return error;
 	}
 
-      c = DB_GET_INT (&cmp_result);
+      c = db_get_int (&cmp_result);
       switch (invariants[i].cmp_op)
 	{
 	case PT_GT:
@@ -435,7 +433,7 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 		}
 	      else
 		{
-		  db_datetime_decode ((DB_DATETIME *) DB_GET_DATETIME (&parser->sys_datetime), &month, &day, &year,
+		  db_datetime_decode ((DB_DATETIME *) db_get_datetime (&parser->sys_datetime), &month, &day, &year,
 				      &hour, &minute, &second, &millisecond);
 		  db_make_time (&default_value, hour, minute, second);
 		}
@@ -451,13 +449,13 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 		  const char *t_source, *t_dest;
 		  DB_DATETIME *datetime;
 
-		  datetime = DB_GET_DATETIME (&parser->sys_datetime);
+		  datetime = db_get_datetime (&parser->sys_datetime);
 		  t_source = tz_get_system_timezone ();
 		  t_dest = tz_get_session_local_timezone ();
 		  db_time = datetime->time / 1000;
 		  error = tz_conv_tz_time_w_zone_name (&db_time, t_source, strlen (t_source), t_dest,
 						       strlen (t_dest), &cur_time);
-		  DB_MAKE_ENCODED_TIME (&default_value, &cur_time);
+		  db_value_put_encoded_time (&default_value, &cur_time);
 		}
 	      break;
 	    case DB_DEFAULT_SYSDATE:
@@ -467,7 +465,7 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 		}
 	      else
 		{
-		  datetime = DB_GET_DATETIME (&parser->sys_datetime);
+		  datetime = db_get_datetime (&parser->sys_datetime);
 		  error = db_value_put_encoded_date (&default_value, &datetime->date);
 		}
 	      break;
@@ -487,7 +485,7 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 	      break;
 	    case DB_DEFAULT_CURR_USER:
 	      user_name = db_get_user_name ();
-	      error = DB_MAKE_STRING (&default_value, user_name);
+	      error = db_make_string (&default_value, user_name);
 	      default_value.need_clear = true;
 	      break;
 	    case DB_DEFAULT_CURRENTDATE:
@@ -502,18 +500,18 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 		  DB_DATETIME dest_dt;
 		  DB_DATETIME *src_dt;
 
-		  src_dt = DB_GET_DATETIME (&parser->sys_datetime);
+		  src_dt = db_get_datetime (&parser->sys_datetime);
 		  tz_get_system_tz_region (&system_tz_region);
 		  tz_get_session_tz_region (&session_tz_region);
 		  error =
 		    tz_conv_tz_datetime_w_region (src_dt, &system_tz_region, &session_tz_region, &dest_dt, NULL, NULL);
 		  if (att->default_value.default_expr.default_expr_type == DB_DEFAULT_CURRENTDATE)
 		    {
-		      DB_MAKE_ENCODED_DATE (&default_value, &dest_dt.date);
+		      db_value_put_encoded_date (&default_value, &dest_dt.date);
 		    }
 		  else
 		    {
-		      DB_MAKE_DATETIME (&default_value, &dest_dt);
+		      db_make_datetime (&default_value, &dest_dt);
 		    }
 		}
 	      break;
@@ -529,7 +527,7 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 		  DB_TIMESTAMP tmp_timestamp;
 		  DB_DATETIME *sys_datetime;
 
-		  sys_datetime = DB_GET_DATETIME (&parser->sys_datetime);
+		  sys_datetime = db_get_datetime (&parser->sys_datetime);
 		  tmp_date = sys_datetime->date;
 		  tmp_time = sys_datetime->time / 1000;
 		  db_timestamp_encode_sys (&tmp_date, &tmp_time, &tmp_timestamp, NULL);
@@ -762,7 +760,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
   /* cached num */
   if (cached_num > 0)
     {
-      DB_MAKE_INT (&value, cached_num);
+      db_make_int (&value, cached_num);
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CACHED_NUM, &value);
       pr_clear_value (&value);
       if (error < 0)
@@ -1084,7 +1082,7 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
       goto error_exit;
     }
 
-  cmp = DB_GET_INT (&cmp_result);
+  cmp = db_get_int (&cmp_result);
   if (cmp >= 0)
     {
       error_code = ER_AUTO_INCREMENT_NEWVAL_MUST_LT_MAXVAL;
@@ -1252,7 +1250,7 @@ do_get_serial_cached_num (int *cached_num, MOP serial_obj)
 
   assert (DB_VALUE_TYPE (&cached_num_val) == DB_TYPE_INTEGER);
 
-  *cached_num = DB_GET_INT (&cached_num_val);
+  *cached_num = db_get_int (&cached_num_val);
 
   return NO_ERROR;
 }
@@ -1392,7 +1390,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto end;
 	}
 
-      inc_val_flag = DB_GET_INT (&cmp_result);
+      inc_val_flag = db_get_int (&cmp_result);
       if (inc_val_flag == 0)
 	{
 	  error = ER_INVALID_SERIAL_VALUE;
@@ -1671,7 +1669,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       pr_clear_value (&tmp_val2);
 
       numeric_coerce_int_to_num (cached_num, num);
-      DB_MAKE_NUMERIC (&cached_num_val, num, DB_MAX_NUMERIC_PRECISION, 0);
+      db_make_numeric (&cached_num_val, num, DB_MAX_NUMERIC_PRECISION, 0);
 
       /* 
        * must holds: cached_num_val <= result_val
@@ -1869,7 +1867,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
 	  goto end;
 	}
 
-      if (DB_GET_INT (&cmp_result) <= 0)
+      if (db_get_int (&cmp_result) <= 0)
 	{
 	  error = ER_INCREMENT_VALUE_CANNOT_BE_ZERO;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -2368,7 +2366,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      cached_num = DB_GET_INT (&old_cached_num);
+      cached_num = db_get_int (&old_cached_num);
     }
 
   /* Now, get new values from node */
@@ -2405,7 +2403,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto end;
 	}
 
-      new_inc_val_flag = DB_GET_INT (&cmp_result);
+      new_inc_val_flag = db_get_int (&cmp_result);
       /* new_inc_val == 0 */
       if (new_inc_val_flag == 0)
 	{
@@ -2425,7 +2423,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto end;
 	}
 
-      new_inc_val_flag = DB_GET_INT (&cmp_result);
+      new_inc_val_flag = db_get_int (&cmp_result);
     }
 
   /* start_val */
@@ -2645,7 +2643,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       pr_clear_value (&tmp_val2);
 
       numeric_coerce_int_to_num (cached_num, num);
-      DB_MAKE_NUMERIC (&cached_num_val, num, DB_MAX_NUMERIC_PRECISION, 0);
+      db_make_numeric (&cached_num_val, num, DB_MAX_NUMERIC_PRECISION, 0);
 
       /* 
        * must holds: cached_num_val <= result_val
@@ -2699,7 +2697,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto end;
 	}
       /* reset started flag because current_val changed */
-      DB_MAKE_INT (&value, 0);
+      db_make_int (&value, 0);
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_STARTED, &value);
       if (error < 0)
 	{
@@ -2767,7 +2765,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	}
 
-      DB_MAKE_INT (&value, cached_num);
+      db_make_int (&value, cached_num);
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CACHED_NUM, &value);
       if (error < 0)
 	{
@@ -4311,7 +4309,7 @@ do_get_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_VALUE *ret_val, db_val;
   int error;
 
-  DB_MAKE_NULL (&db_val);
+  db_make_null (&db_val);
 
   cls = statement->info.get_stats.class_;
   arg = statement->info.get_stats.args;
@@ -4343,7 +4341,7 @@ do_get_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  error = make_cst_item_value (obj, DB_PULL_STRING (&db_val), ret_val);
+  error = make_cst_item_value (obj, db_get_string (&db_val), ret_val);
   pr_clear_value (&db_val);
   if (error != NO_ERROR)
     {
@@ -4447,7 +4445,7 @@ do_rollback (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *name;
   DB_VALUE val;
 
-  DB_MAKE_NULL (&val);
+  db_make_null (&val);
 
   name = statement->info.rollback_work.save_name;
   if (name == NULL)
@@ -4499,7 +4497,7 @@ do_savepoint (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *name;
   DB_VALUE val;
 
-  DB_MAKE_NULL (&val);
+  db_make_null (&val);
 
   name = statement->info.savepoint.save_name;
   if (name == NULL)
@@ -4663,7 +4661,7 @@ do_set_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
   bool async_ws;
   float wait_secs;
 
-  DB_MAKE_NULL (&val);
+  db_make_null (&val);
 
   while ((error == NO_ERROR) && (mode != NULL))
     {
@@ -4712,7 +4710,7 @@ do_set_xaction (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
-	      wait_secs = DB_GET_FLOAT (&val);
+	      wait_secs = db_get_float (&val);
 	      if (wait_secs > 0)
 		{
 		  wait_secs *= 1000;
@@ -4768,7 +4766,7 @@ do_get_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
       {
 	DB_VALUE plan;
 
-	DB_MAKE_NULL (&plan);
+	db_make_null (&plan);
 
 	pt_evaluate_tree (parser, statement->info.get_opt_lvl.args, &plan, 1);
 	if (pt_has_error (parser))
@@ -4784,7 +4782,7 @@ do_get_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    return ER_OUT_OF_VIRTUAL_MEMORY;
 	  }
 
-	qo_get_optimization_param (cost, QO_PARAM_COST, DB_GET_STRING (&plan));
+	qo_get_optimization_param (cost, QO_PARAM_COST, db_get_string (&plan));
 	pr_clear_value (&plan);
 	db_make_string (val, cost);
 	val->need_clear = true;
@@ -4845,10 +4843,10 @@ do_set_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
   switch (statement->info.set_opt_lvl.option)
     {
     case PT_OPT_LVL:
-      qo_set_optimization_param (NULL, QO_PARAM_LEVEL, (int) DB_GET_INTEGER (&val1));
+      qo_set_optimization_param (NULL, QO_PARAM_LEVEL, (int) db_get_int (&val1));
       break;
     case PT_OPT_COST:
-      plan = DB_GET_STRING (&val1);
+      plan = db_get_string (&val1);
       p2 = p1->next;
       pt_evaluate_tree (parser, p2, &val2, 1);
       if (pt_has_error (parser))
@@ -4860,13 +4858,13 @@ do_set_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
       switch (DB_VALUE_TYPE (&val2))
 	{
 	case DB_TYPE_INTEGER:
-	  qo_set_optimization_param (NULL, QO_PARAM_COST, plan, DB_GET_INT (&val2));
+	  qo_set_optimization_param (NULL, QO_PARAM_COST, plan, db_get_int (&val2));
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARNCHAR:
-	  cost = DB_PULL_STRING (&val2);
+	  cost = db_get_string (&val2);
 	  qo_set_optimization_param (NULL, QO_PARAM_COST, plan, (int) cost[0]);
 	  break;
 	default:
@@ -4903,7 +4901,7 @@ do_set_sys_params (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_VALUE db_val;
   int error = NO_ERROR;
 
-  DB_MAKE_NULL (&db_val);
+  db_make_null (&db_val);
 
   val = statement->info.set_sys_params.val;
   if (val == NULL)
@@ -4922,7 +4920,7 @@ do_set_sys_params (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else
 	{
-	  error = db_set_system_parameters (DB_GET_STRING (&db_val));
+	  error = db_set_system_parameters (db_get_string (&db_val));
 	}
 
       pr_clear_value (&db_val);
@@ -5014,8 +5012,8 @@ set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool
 	       const DB_VALUE * level)
 {
   int error = NO_ERROR;
-  int isolvl = DB_GET_INTEGER (level) & 0x0F;
-  *async_ws = (DB_GET_INTEGER (level) & 0xF0) ? true : false;
+  int isolvl = db_get_int (level) & 0x0F;
+  *async_ws = (db_get_int (level) & 0xF0) ? true : false;
 
   /* translate to the enumerated type */
   switch (isolvl)
@@ -5080,7 +5078,7 @@ check_timeout_value (PARSER_CONTEXT * parser, PT_NODE * statement, DB_VALUE * va
 
   if (db_value_coerce (val, val, &tp_Float_domain) == DOMAIN_COMPATIBLE)
     {
-      timeout = DB_GET_FLOAT (val);
+      timeout = db_get_float (val);
       if ((timeout == -1) || (timeout >= 0))
 	{
 	  return NO_ERROR;
@@ -5490,7 +5488,7 @@ get_priority (PARSER_CONTEXT * parser, PT_NODE * node)
   src = pt_value_to_db (parser, node);
   if (src != NULL && (tp_value_coerce (src, &value, &tp_Double_domain) == DOMAIN_COMPATIBLE))
     {
-      priority = DB_GET_DOUBLE (&value);
+      priority = db_get_double (&value);
     }
   /* else, should be setting some kind of error */
 
@@ -6475,7 +6473,7 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 		  if (DB_VALUE_TYPE (&returnval) == DB_TYPE_ERROR)
 		    {
-		      error = DB_GET_ERROR (&returnval);
+		      error = db_get_error (&returnval);
 		      break;
 		    }
 
@@ -6642,8 +6640,8 @@ do_set_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_VALUE src, dst;
   TP_DOMAIN_STATUS dom_status;
 
-  DB_MAKE_NULL (&src);
-  DB_MAKE_NULL (&dst);
+  db_make_null (&src);
+  db_make_null (&dst);
 
   pt_evaluate_tree (parser, statement->info.set_trigger.val, &src, 1);
   if (pt_has_error (parser))
@@ -6675,7 +6673,7 @@ do_set_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
       int v;
 
       option = statement->info.set_trigger.option;
-      v = DB_GET_INT (&dst);
+      v = db_get_int (&dst);
 
       if (option == PT_TRIGGER_TRACE)
 	{
@@ -6966,7 +6964,7 @@ update_object_tuple (PARSER_CONTEXT * parser, CLIENT_UPDATE_INFO * assigns, int 
 	  continue;
 	}
 
-      object = DB_GET_OBJECT (cls_info->oid);
+      object = db_get_object (cls_info->oid);
       error = db_is_deleted (object);
       if (error < 0)
 	{
@@ -7216,7 +7214,7 @@ update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement, UPDATE_TYPE 
 
       if (error == NO_ERROR)
 	{
-	  DB_MAKE_OBJECT (&dbvals[0], oid);
+	  db_make_object (&dbvals[0], oid);
 
 	  /* iterate through assignments and evaluate right side of each assignment */
 	  i = 0;
@@ -7498,7 +7496,7 @@ init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE_IN
 
   for (i = 0; i < assign_cnt + upd_cls_cnt + has_delete; i++)
     {
-      DB_MAKE_NULL (&dbvals[i]);
+      db_make_null (&dbvals[i]);
     }
 
   /* initialize classes info array */
@@ -7786,7 +7784,7 @@ update_objs_for_list_file (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id, PT_
 	    }
 	  else
 	    {
-	      should_delete = DB_GET_INT (&dbvals[upd_cls_cnt]);
+	      should_delete = db_get_int (&dbvals[upd_cls_cnt]);
 	    }
 	}
 
@@ -8843,7 +8841,10 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      else if (contextp->recompile_xasl == true)
 		{
 		  /* recompile requested by server */
-		  stream.xasl_id = NULL;
+		  if (stream.xasl_id != NULL)
+		    {
+		      free_and_init (stream.xasl_id);
+		    }
 		}
 	    }
 
@@ -9534,7 +9535,7 @@ delete_list_by_oids (PARSER_CONTEXT * parser, PT_NODE * statement, QFILE_LIST_ID
 	      continue;
 	    }
 
-	  mop = DB_GET_OBJECT (&oids[idx]);
+	  mop = db_get_object (&oids[idx]);
 
 	  error = db_is_deleted (mop);
 	  if (error < 0)
@@ -10118,7 +10119,10 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	      else if (contextp->recompile_xasl == true)
 		{
 		  /* recompile requested by server */
-		  stream.xasl_id = NULL;
+		  if (stream.xasl_id != NULL)
+		    {
+		      free_and_init (stream.xasl_id);
+		    }
 		}
 	    }
 	  if (stream.xasl_id == NULL && err == NO_ERROR)
@@ -10731,7 +10735,10 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
       else if (contextp->recompile_xasl == true)
 	{
 	  /* recompile requested by server */
-	  stream.xasl_id = NULL;
+	  if (stream.xasl_id != NULL)
+	    {
+	      free_and_init (stream.xasl_id);
+	    }
 	}
     }
 
@@ -11626,7 +11633,7 @@ do_find_unique_constraint_violations (DB_OTMPL * tmpl, bool for_update, OID ** o
 	  continue;
 	}
       BTID_COPY (&unique_btids[key_cnt], &constraint->index_btid);
-      DB_MAKE_NULL (&unique_keys[key_cnt]);
+      db_make_null (&unique_keys[key_cnt]);
       attr_count = 0;
       for (attr = constraint->attributes; *attr != NULL; attr++)
 	{
@@ -11961,7 +11968,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 	  error = er_errid ();
 	  goto cleanup;
 	}
-      DB_MAKE_OBJECT (ins_val, (DB_OBJECT *) NULL);
+      db_make_object (ins_val, (DB_OBJECT *) NULL);
     }
 
   if (TM_TRAN_ISOLATION () >= TRAN_REP_READ && statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
@@ -12006,7 +12013,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 	      val = (DB_VALUE *) statement->etc;
 	      if (val != NULL)
 		{
-		  DB_MAKE_OBJECT (ins_val, DB_GET_OBJECT (val));
+		  db_make_object (ins_val, db_get_object (val));
 		}
 	      if (into_label != NULL)
 		{
@@ -12407,7 +12414,7 @@ cleanup:
 
       if (db_val != NULL)
 	{
-	  DB_MAKE_OBJECT (db_val, (DB_OBJECT *) NULL);
+	  db_make_object (db_val, (DB_OBJECT *) NULL);
 	}
     }
 
@@ -12569,7 +12576,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 
 	  for (i = 0; i < degree; i++)
 	    {
-	      DB_MAKE_NULL (&vals[i]);
+	      db_make_null (&vals[i]);
 	    }
 
 	  /* allocate attribute descriptor array */
@@ -12949,7 +12956,7 @@ make_vmops (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_wa
       val = pt_find_value_of_label (into_label);
       if (val != NULL)
 	{
-	  obj = DB_GET_OBJECT (val);
+	  obj = db_get_object (val);
 	  *vobj = vid_build_virtual_mop (obj, vclass_mop);
 	  /* change the label to point to the newly created vmop, we don't need to call pt_associate_label_with_value
 	   * here because we've directly modified the value that has been installed in the table. */
@@ -13492,7 +13499,7 @@ call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       if (DB_VALUE_TYPE (&target_value) == DB_TYPE_OBJECT)
 	{
-	  obj = DB_GET_OBJECT ((&target_value));
+	  obj = db_get_object ((&target_value));
 	}
 
       if (obj == NULL || pt_has_error (parser))
@@ -13969,7 +13976,10 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       else if (contextp->recompile_xasl == true)
 	{
 	  /* recompile flag was returned by server */
-	  stream.xasl_id = NULL;
+	  if (stream.xasl_id != NULL)
+	    {
+	      free_and_init (stream.xasl_id);
+	    }
 	}
       else if (stream.xasl_id != NULL)
 	{
@@ -13978,7 +13988,10 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (pt_recompile_for_limit_optimizations (parser, statement, stream.xasl_header->xasl_flag))
 	    {
 	      contextp->recompile_xasl = true;
-	      stream.xasl_id = NULL;
+	      if (stream.xasl_id != NULL)
+		{
+		  free_and_init (stream.xasl_id);
+		}
 	    }
 	}
     }
@@ -14815,7 +14828,7 @@ do_set_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* initialize variables in case we need to exit with error */
   for (i = 0; i < count * 2; i++)
     {
-      DB_MAKE_NULL (&variables[i]);
+      db_make_null (&variables[i]);
     }
 
   for (i = 0, assignment = statement->info.set_variables.assignments; assignment; i += 2, assignment = assignment->next)
@@ -15720,7 +15733,10 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  else if (contextp->recompile_xasl == true)
 	    {
 	      /* recompile requested by server */
-	      stream.xasl_id = NULL;
+	      if (stream.xasl_id != NULL)
+		{
+		  free_and_init (stream.xasl_id);
+		}
 	    }
 	}
 
@@ -16469,7 +16485,7 @@ do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
   eval.replace_names = false;
   eval.crt_attr_index = 0;
 
-  DB_MAKE_NULL (&eval_value);
+  db_make_null (&eval_value);
 
   /* evaluate lists of values */
   for (value_list = value_clause; value_list != NULL; value_list = value_list->next)
@@ -16703,7 +16719,7 @@ do_clear_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 	      /* prepare node for reevaluation */
 	      value->info.insert_value.is_evaluated = false;
 	      db_value_clear (&value->info.insert_value.value);
-	      DB_MAKE_NULL (&value->info.insert_value.value);
+	      db_make_null (&value->info.insert_value.value);
 	    }
 	}
     }
@@ -16860,7 +16876,7 @@ do_replace_names_for_insert_values_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 			      pt_short_print (parser, node));
 		  return node;
 		}
-	      DB_MAKE_OBJECT (&db_value, obj);
+	      db_make_object (&db_value, obj);
 	      break;
 	    case PT_PARAMETER:
 	      pt_evaluate_tree_having_serial (parser, node, &db_value, 1);
@@ -16872,13 +16888,13 @@ do_replace_names_for_insert_values_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 		      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
 				  pt_short_print (parser, node));
 		    }
-		  DB_MAKE_OBJECT (&db_value, obj);
+		  db_make_object (&db_value, obj);
 		}
 	      else if (DB_VALUE_TYPE (&db_value) == DB_TYPE_OBJECT)
 		{
-		  obj = DB_GET_OBJECT (&db_value);
+		  obj = db_get_object (&db_value);
 		  obj = db_real_instance (obj);
-		  DB_MAKE_OBJECT (&db_value, obj);
+		  db_make_object (&db_value, obj);
 		}
 	      break;
 	    default:
@@ -17223,8 +17239,8 @@ do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
 
   if (plan_str != NULL)
     {
-      DB_MAKE_CHAR (&var[0], 10, "trace_plan", 10, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
-      DB_MAKE_STRING (&var[1], plan_str);
+      db_make_char (&var[0], 10, "trace_plan", 10, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+      db_make_string (&var[1], plan_str);
 
       csession_set_session_variables (var, 2);
       free_and_init (plan_str);
