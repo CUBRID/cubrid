@@ -13324,7 +13324,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
                     break;
               }
               //node->data_type = NULL;//???
-              node->data_type = parser_copy_tree_list (parser, arg_list->data_type);
+              node->data_type =(arg_list ? parser_copy_tree_list (parser, arg_list->data_type) : NULL);
           }
         }
         break;
