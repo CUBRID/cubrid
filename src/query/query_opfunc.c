@@ -10585,7 +10585,7 @@ qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE
 					  OID * obj_oid_p, QFILE_TUPLE tuple,
 					  int (*function_to_call) (DB_VALUE *, DB_VALUE **, int const))
 {
-  DB_VALUE *key, *value;
+  DB_VALUE *value;
   REGU_VARIABLE_LIST operand;
   int error_status = NO_ERROR;
   int no_args = 0, index = 0;
