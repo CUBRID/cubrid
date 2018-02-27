@@ -44,6 +44,9 @@
 #include "perf_monitor.h"
 #include "environment_variable.h"
 #include "thread.h"
+#include "thread_daemon.hpp"
+#include "thread_entry_task.hpp"
+#include "thread_manager.hpp"
 #include "list_file.h"
 #include "tsc_timer.h"
 #include "query_manager.h"
@@ -1094,7 +1097,7 @@ STATIC_INLINE int pgbuf_wakeup_uncond (THREAD_ENTRY * thread_p) __attribute__ ((
 STATIC_INLINE void pgbuf_set_dirty_buffer_ptr (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_compare_victim_list (const void *p1, const void *p2);
-static void pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p);
+static void pgbuf_wakeup_page_flush_daemon (THREAD_ENTRY * thread_p);
 STATIC_INLINE bool pgbuf_check_page_ptype_internal (PAGE_PTR pgptr, PAGE_TYPE ptype, bool no_error)
   __attribute__ ((ALWAYS_INLINE));
 #if defined (SERVER_MODE)
@@ -1203,6 +1206,17 @@ static void pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru);
 
 // TODO: find a better place for this, but not log_impl.h
 STATIC_INLINE int pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+
+#if defined (SERVER_MODE)
+// *INDENT-OFF*
+static cubthread::daemon *pgbuf_Page_maintenance_daemon = NULL;
+static cubthread::daemon *pgbuf_Page_flush_daemon = NULL;
+static cubthread::daemon *pgbuf_Page_post_flush_daemon = NULL;
+static cubthread::daemon *pgbuf_Flush_control_daemon = NULL;
+// *INDENT-ON*
+#endif /* SERVER_MODE */
+
+static bool pgbuf_is_page_flush_daemon_available ();
 
 /*
  * pgbuf_hash_func_mirror () - Hash VPID into hash anchor
@@ -3217,7 +3231,7 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: start flush victim candidates\n");
 
 #if !defined(NDEBUG) && defined(SERVER_MODE)
-  if (thread_is_page_flush_thread_available ())
+  if (pgbuf_is_page_flush_daemon_available ())
     {
       if (page_flush_thread == NULL)
 	{
@@ -7390,7 +7404,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
     }
 
 #if defined (SERVER_MODE)
-  if (thread_is_page_flush_thread_available ())
+  if (pgbuf_is_page_flush_daemon_available ())
     {
     retry:
       high_priority = high_priority || VACUUM_IS_THREAD_VACUUM (thread_p) || pgbuf_is_thread_high_priority (thread_p);
@@ -7447,7 +7461,8 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 	}
 
       /* make sure at least flush will feed us with bcb's. */
-      thread_try_wakeup_page_flush_thread ();
+      // before migration of the page_flush_daemon it was a try_wakeup, check if still needed
+      pgbuf_wakeup_page_flush_daemon (thread_p);
 
       r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_ALLOC_BCB_SUSPENDED);
 
@@ -7498,7 +7513,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   else
     {
       /* flush */
-      pgbuf_wakeup_flush_thread (thread_p);
+      pgbuf_wakeup_page_flush_daemon (thread_p);
 
       /* search lru lists again */
       bufptr = pgbuf_get_victim (thread_p);
@@ -8151,7 +8166,7 @@ pgbuf_get_victim (THREAD_ENTRY * thread_p)
 
   PGBUF_BCB *victim = NULL;
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION);
-  bool has_flush_thread = thread_is_page_flush_thread_available ();
+  bool has_flush_thread = pgbuf_is_page_flush_daemon_available ();
   int nloops = 0;		/* used as safe-guard against infinite loops */
   int private_lru_idx;
   PGBUF_LRU_LIST *lru_list = NULL;
@@ -8493,10 +8508,10 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 #endif /* SERVER_MODE */
 
 	      if (lru_list->bottom != NULL && pgbuf_bcb_is_dirty (lru_list->bottom)
-		  && thread_is_page_flush_thread_available ())
+		  && pgbuf_is_page_flush_daemon_available ())
 		{
 		  /* new bottom is dirty... make sure that flush will wake up */
-		  pgbuf_wakeup_flush_thread (thread_p);
+		  pgbuf_wakeup_page_flush_daemon (thread_p);
 		}
 	      pthread_mutex_unlock (&lru_list->mutex);
 
@@ -8512,7 +8527,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
       else
 	{
 	  /* failed try lock in single-threaded? impossible */
-	  assert (thread_is_page_flush_thread_available ());
+	  assert (pgbuf_is_page_flush_daemon_available ());
 
 	  /* save the avoid victim bufptr. maybe it will be reset until we finish the search */
 	  if (bufptr_victimizable == NULL)
@@ -8556,11 +8571,11 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
   pthread_mutex_unlock (&lru_list->mutex);
 
   /* we need more victims */
-  pgbuf_wakeup_flush_thread (thread_p);
+  pgbuf_wakeup_page_flush_daemon (thread_p);
   /* failed finding victim in single-threaded, although the number of victim candidates is positive? impossible!
    * note: not really impossible. the thread may have the victimizable fixed. but bufptr_victimizable must not be
    * NULL. */
-  assert (thread_is_page_flush_thread_available () || bufptr_victimizable != NULL || search_cnt == MAX_DEPTH);
+  assert (pgbuf_is_page_flush_daemon_available () || (bufptr_victimizable != NULL) || (search_cnt == MAX_DEPTH));
   return NULL;
 
 #undef PERF
@@ -9887,12 +9902,12 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
 
 #if defined (SERVER_MODE)
   /* if the flush thread is under pressure, we'll move some of the workload to post-flush thread. */
-  if (is_page_flush_thread && thread_is_page_post_flush_thread_available ()
+  if (is_page_flush_thread && (pgbuf_Page_post_flush_daemon != NULL)
       && pgbuf_is_any_thread_waiting_for_direct_victim ()
       && lf_circular_queue_produce (pgbuf_Pool.flushed_bcbs, &bufptr))
     {
       /* page buffer maintenance thread will try to assign this bcb directly as victim. */
-      thread_wakeup_page_post_flush_thread ();
+      pgbuf_Page_post_flush_daemon->wakeup ();
       if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_PB_VICTIMIZATION))
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_PB_FLUSH_SEND_DIRTY_TO_POST_FLUSH);
@@ -10980,24 +10995,24 @@ pgbuf_set_dirty_buffer_ptr (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 }
 
 /*
- * pgbuf_wakeup_flush_thread () - Wakeup the flushing thread to flush some
+ * pgbuf_wakeup_page_flush_daemon () - Wakeup the flushing daemon thread to flush some
  *				  of the dirty pages in buffer pool to disk
  * return : void
  * thread_p (in) :
  */
 static void
-pgbuf_wakeup_flush_thread (THREAD_ENTRY * thread_p)
+pgbuf_wakeup_page_flush_daemon (THREAD_ENTRY * thread_p)
 {
-  PERF_UTIME_TRACKER dummy_time_tracker;
-  bool stop = false;
-
-#if defined(SERVER_MODE)
-  if (thread_is_page_flush_thread_available ())
+#if defined (SERVER_MODE)
+  if (pgbuf_is_page_flush_daemon_available ())
     {
-      thread_wakeup_page_flush_thread ();
+      pgbuf_Page_flush_daemon->wakeup ();
       return;
     }
 #endif
+
+  PERF_UTIME_TRACKER dummy_time_tracker;
+  bool stop = false;
 
   /* single-threaded environment. do flush on our own. */
   dummy_time_tracker.is_perf_tracking = false;
@@ -15838,4 +15853,307 @@ pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p)
     {
       return 0;
     }
+}
+
+// *INDENT-OFF*
+#if defined (SERVER_MODE)
+// class pgbuf_page_maintenance_daemon_task
+//
+//  description:
+//    page maintenance daemon task
+//
+class pgbuf_page_maintenance_daemon_task : public cubthread::entry_task
+{
+  public:
+    void execute (cubthread::entry & thread_ref) override
+    {
+      if (!BO_IS_SERVER_RESTARTED ())
+	{
+	  // wait for boot to finish
+	  return;
+	}
+
+      /* page buffer maintenance thread adjust quota's based on thread activity. */
+      pgbuf_adjust_quotas (&thread_ref);
+
+      /* search lists and assign victims directly */
+      pgbuf_direct_victims_maintenance (&thread_ref);
+    }
+};
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+// class pgbuf_page_flush_daemon_task
+//
+//  description:
+//    page flush daemon task
+//
+class pgbuf_page_flush_daemon_task : public cubthread::entry_task
+{
+  private:
+    bool m_force_one_run;
+    bool m_stop_iteration;
+    PERF_UTIME_TRACKER m_perf_track;
+
+  public:
+    pgbuf_page_flush_daemon_task ()
+      : m_force_one_run (false)
+      , m_stop_iteration (false)
+    {
+      PERF_UTIME_TRACKER_START (NULL, &m_perf_track);
+    }
+
+    void execute (cubthread::entry & thread_ref) override
+    {
+      if (!BO_IS_SERVER_RESTARTED ())
+	{
+	  // wait for boot to finish
+	  return;
+	}
+
+      /* did not timeout, someone requested flush... run at least once */
+      m_force_one_run = pgbuf_Page_flush_daemon->was_woken_up ();
+
+      /* flush pages as long as necessary */
+      while (m_force_one_run || pgbuf_keep_victim_flush_thread_running ())
+	{
+	  pgbuf_flush_victim_candidates (&thread_ref, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO), &m_perf_track,
+					 &m_stop_iteration);
+	  m_force_one_run = false;
+	  if (m_stop_iteration)
+	    {
+	      break;
+	    }
+	}
+
+      /* performance tracking */
+      if (m_perf_track.is_perf_tracking)
+	{
+	  /* register sleep time. */
+	  PERF_UTIME_TRACKER_TIME_AND_RESTART (&thread_ref, &m_perf_track, PSTAT_PB_FLUSH_SLEEP);
+
+	  /* update is_perf_tracking */
+	  m_perf_track.is_perf_tracking = perfmon_is_perf_tracking ();
+	}
+      else
+	{
+	  /* update is_perf_tracking and start timer if it became true */
+	  PERF_UTIME_TRACKER_START (&thread_ref, &m_perf_track);
+	}
+    }
+};
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+// class pgbuf_page_post_flush_daemon_task
+//
+//  description:
+//    page post flush daemon task
+//
+class pgbuf_page_post_flush_daemon_task : public cubthread::entry_task
+{
+  public:
+    void execute (cubthread::entry & thread_ref) override
+    {
+      if (!BO_IS_SERVER_RESTARTED ())
+	{
+	  // wait for boot to finish
+	  return;
+	}
+
+      /* assign flushed pages */
+      if (pgbuf_assign_flushed_pages (&thread_ref))
+	{
+	  /* reset daemon looper and be prepared to start over */
+	  pgbuf_Page_post_flush_daemon->reset_looper ();
+	}
+    }
+};
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+// class pgbuf_flush_control_daemon_task
+//
+//  description:
+//    flush control daemon task
+//
+class pgbuf_flush_control_daemon_task : public cubthread::entry_task
+{
+  private:
+    struct timeval m_end;
+    bool m_first_run;
+
+  public:
+    pgbuf_flush_control_daemon_task ()
+      : m_end ({0, 0})
+      , m_first_run (true)
+    {
+    }
+
+    int initialize ()
+    {
+      return fileio_flush_control_initialize ();
+    }
+
+    void execute (cubthread::entry & thread_ref) override
+    {
+      if (!BO_IS_SERVER_RESTARTED ())
+	{
+	  // wait for boot to finish
+	  return;
+	}
+
+      if (m_first_run)
+	{
+	  gettimeofday (&m_end, NULL);
+	  m_first_run = false;
+	  return;
+	}
+      else
+	{
+	  struct timeval begin, diff;
+	  int token_gen, token_consumed;
+
+	  gettimeofday (&begin, NULL);
+	  DIFF_TIMEVAL (m_end, begin, diff);
+
+	  int64_t diff_usec = diff.tv_sec * 1000000LL + diff.tv_usec;
+
+	  fileio_flush_control_add_tokens (&thread_ref, diff_usec, &token_gen, &token_consumed);
+
+	  gettimeofday (&m_end, NULL);
+	}
+    }
+
+    void retire (void) override
+    {
+      fileio_flush_control_finalize ();
+      delete this;
+    }
+};
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+/*
+ * pgbuf_page_maintenance_daemon_init () - initialize page maintenance daemon thread
+ */
+void
+pgbuf_page_maintenance_daemon_init ()
+{
+  assert (pgbuf_Page_maintenance_daemon == NULL);
+
+  auto looper_interval = std::chrono::milliseconds (100);
+  pgbuf_Page_maintenance_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (looper_interval),
+				  new pgbuf_page_maintenance_daemon_task ());
+}
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+/*
+ * pgbuf_page_flush_daemon_init () - initialize page flush daemon thread
+ */
+void
+pgbuf_page_flush_daemon_init ()
+{
+  assert (pgbuf_Page_flush_daemon == NULL);
+
+  int page_bg_flush_interval_msecs = prm_get_integer_value (PRM_ID_PAGE_BG_FLUSH_INTERVAL_MSECS);
+
+  if (page_bg_flush_interval_msecs > 0)
+    {
+      auto looper_interval = std::chrono::milliseconds (page_bg_flush_interval_msecs);
+      pgbuf_Page_flush_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (looper_interval),
+				new pgbuf_page_flush_daemon_task ());
+    }
+  else
+    {
+      pgbuf_Page_flush_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (),
+				new pgbuf_page_flush_daemon_task ());
+    }
+}
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+/*
+ * pgbuf_page_post_flush_daemon_init () - initialize page post flush daemon thread
+ */
+void
+pgbuf_page_post_flush_daemon_init ()
+{
+  assert (pgbuf_Page_post_flush_daemon == NULL);
+
+  std::array<std::chrono::milliseconds, 3> looper_interval {{
+      std::chrono::milliseconds (1),
+      std::chrono::milliseconds (10),
+      std::chrono::milliseconds (100)
+    }};
+
+  pgbuf_Page_post_flush_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (looper_interval),
+				  new pgbuf_page_post_flush_daemon_task ());
+}
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+/*
+ * pgbuf_flush_control_daemon_init () - initialize flush control daemon thread
+ */
+void
+pgbuf_flush_control_daemon_init ()
+{
+  assert (pgbuf_Flush_control_daemon == NULL);
+
+  auto daemon_task = new pgbuf_flush_control_daemon_task ();
+
+  if (daemon_task->initialize () != NO_ERROR)
+    {
+      delete daemon_task;
+      return;
+    }
+
+  auto looper_interval = std::chrono::milliseconds (50);
+  pgbuf_Flush_control_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (looper_interval), daemon_task);
+}
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+/*
+ * pgbuf_daemons_init () - initialize page buffer daemon threads
+ */
+void
+pgbuf_daemons_init ()
+{
+  pgbuf_page_maintenance_daemon_init ();
+  pgbuf_page_flush_daemon_init ();
+  pgbuf_page_post_flush_daemon_init ();
+  pgbuf_flush_control_daemon_init ();
+}
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+/*
+ * pgbuf_daemons_destroy () - destroy page buffer daemon threads
+ */
+void
+pgbuf_daemons_destroy ()
+{
+  cubthread::get_manager ()->destroy_daemon (pgbuf_Page_maintenance_daemon);
+  cubthread::get_manager ()->destroy_daemon (pgbuf_Page_flush_daemon);
+  cubthread::get_manager ()->destroy_daemon (pgbuf_Page_post_flush_daemon);
+  cubthread::get_manager ()->destroy_daemon (pgbuf_Flush_control_daemon);
+}
+#endif /* SERVER_MODE */
+// *INDENT-OFF*
+
+/*
+ * pgbuf_is_page_flush_daemon_available () - check if page flush daemon is available
+ * return: true if page flush daemon is available, false otherwise
+ */
+static bool
+pgbuf_is_page_flush_daemon_available ()
+{
+#if defined (SERVER_MODE)
+  return pgbuf_Page_flush_daemon != NULL;
+#else
+  return false;
+#endif
 }
