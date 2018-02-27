@@ -90,4 +90,11 @@ int stream_provider::extend_buffer (packing_stream_buffer **existing_buffer, con
   return NO_ERROR;
 }
 
+int stream_provider::add_buffer (packing_stream_buffer *new_buffer)
+{
+  m_buffers.push_back (new_buffer);
 
+  pin (new_buffer);
+  
+  return NO_ERROR;
+};

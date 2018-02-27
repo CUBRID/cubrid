@@ -24,8 +24,20 @@
 #ident "$Id$"
 
 #include "master_replication_channel.hpp"
-#include "common_utils.hpp"
+#include "log_file.hpp"
 
+master_replication_channel_manager::master_replication_channel_manager (const stream_position &start_position)
+{
+  init (start_position);
+}
+
+int master_replication_channel_manager::init (const stream_position &start_position)
+{
+  /* attach a log_file */
+  m_file = new log_file ();
+  m_file->open_file (log_file::get_filename (start_position));
+  return NO_ERROR;
+}
 
 master_replication_channel_manager *master_replication_channel_manager::get_instance (void)
 {
@@ -34,14 +46,24 @@ master_replication_channel_manager *master_replication_channel_manager::get_inst
   return NULL;
 }
 
-int master_replication_channel_manager::add_buffers (std::vector <buffered_range> bufferred_ranges)
+int master_replication_channel_manager::add_buffers (std::vector <buffered_range> &bufferred_ranges)
 {
   std::vector<buffered_range>::iterator it;
 
   for (it = bufferred_ranges.begin (); it != bufferred_ranges.end (); it++)
     {
-      //add_buffer (it->buffer);
+      add_buffer (it->mapped_buffer);
     }
+  
+  return NO_ERROR;
+}
 
+int master_replication_channel_manager::fetch_for_read (packing_stream_buffer *existing_buffer, const size_t &amount)
+{
+  return NO_ERROR;
+}
+  
+int master_replication_channel_manager::flush_ready_stream (void)
+{
   return NO_ERROR;
 }

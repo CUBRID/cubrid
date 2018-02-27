@@ -36,7 +36,6 @@
 
 class replication_entry;
 class stream_entry;
-class log_file;
 class stream_packer;
 class packing_stream;
 class packing_stream_buffer;
@@ -53,10 +52,7 @@ class packable_object;
 class log_generator : public stream_provider
 {
 private:
-  std::vector<stream_entry*> stream_entries;
-
-  /* file attached to log_generator (only for global instance) */
-  log_file *file; 
+  std::vector<stream_entry*> m_stream_entries;
 
   packing_stream *stream;
 
@@ -69,7 +65,9 @@ private:
 
 public:
 
-  log_generator () { file = NULL; stream = NULL; };
+  log_generator () { stream = NULL; };
+
+  ~log_generator ();
 
   int append_repl_entry (cubthread::entry *th_entry, packable_object *repl_entry);
 

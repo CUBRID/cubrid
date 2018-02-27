@@ -91,7 +91,7 @@ private:
    * different ranges can be filled at different speeds, concatenation of ranges should be done only on filled buffers
    */
 
-  /* TODO : maybe these should be moved as sub-object for each serial_buffer mapped onto the stream */
+  /* TODO : maybe these should be moved as sub-object for each packing_stream_buffer mapped onto the stream */
   std::vector<buffered_range> m_buffered_ranges;
 
   /* current stream position not allocated yet to a replication generator */

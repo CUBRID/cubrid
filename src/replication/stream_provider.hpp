@@ -71,7 +71,7 @@ public:
 
   virtual packing_stream * get_write_stream (void) = 0;
 
-  virtual int add_buffer (packing_stream_buffer *new_buffer) { m_buffers.push_back (new_buffer); return NO_ERROR; };
+  virtual int add_buffer (packing_stream_buffer *new_buffer);
 };
 
 

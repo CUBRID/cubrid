@@ -32,6 +32,17 @@
 
 log_generator * log_generator::global_log_generator = NULL;
 
+log_generator::~log_generator()
+{
+  if (this == global_log_generator)
+    {
+      delete stream;
+      delete m_serializator;
+      log_generator::global_log_generator = NULL;
+    }
+}
+
+
 int log_generator::new_instance (cubthread::entry *th_entry, const stream_position &start_position)
 {
   int error_code = NO_ERROR;
@@ -43,11 +54,8 @@ int log_generator::new_instance (cubthread::entry *th_entry, const stream_positi
   if (th_entry == NULL)
     {
       /* this is the global instance */
+      assert (global_log_generator == NULL);
       global_log_generator = new_lg;
-
-      /* attach a log_file */
-      new_lg->file = new log_file ();
-      new_lg->file->open_file (log_file::get_filename (start_position));
     }
   else
     {
@@ -66,7 +74,7 @@ int log_generator::new_instance (cubthread::entry *th_entry, const stream_positi
 
 stream_entry* log_generator::get_stream_entry (cubthread::entry *th_entry)
 {
-  stream_entry *my_stream_entry = stream_entries[th_entry->index];
+  stream_entry *my_stream_entry = m_stream_entries[th_entry->index];
   return my_stream_entry;
 }
 
@@ -86,9 +94,9 @@ int log_generator::pack_stream_entries (cubthread::entry *th_entry)
 
   if (th_entry == NULL)
     {
-      for (i = 0; i < stream_entries.size (); i++)
+      for (i = 0; i < m_stream_entries.size (); i++)
         {
-          stream_entries[i]->pack (m_serializator);
+          m_stream_entries[i]->pack (m_serializator);
         }
     }
   else

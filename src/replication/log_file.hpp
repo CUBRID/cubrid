@@ -28,6 +28,7 @@
 
 #include "common_utils.hpp"
 #include "stream_provider.hpp"
+#include "packing_stream.hpp"
 #include <vector>
 
 typedef size_t file_pos_t;
@@ -85,9 +86,6 @@ private:
   file_pos_t curr_read_position;
 
   std::vector<file_cache> caches;
-
-  /* TODO[arnia] : split into read and write file_entries ? */
-  std::vector<stream_entry> file_chunks;
 
   int fd;
 

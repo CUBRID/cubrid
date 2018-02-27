@@ -54,14 +54,14 @@ class log_consumer : public stream_provider
 protected:
   CONSUMER_TYPE m_type;
 
-  std::vector<replication_stream_entry*> stream_entries;
+  std::vector<replication_stream_entry*> m_stream_entries;
 
   /* file attached to log_generator (only for global instance) */
   log_file *file;
 
   packing_stream *consume_stream;
 
-  stream_packer *serializator;
+  stream_packer *m_serializator;
 
   slave_replication_channel *m_src;
 
