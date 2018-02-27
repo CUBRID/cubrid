@@ -132,8 +132,6 @@ thread_get_thread_entry_info (void)
 
 #define thread_get_tran_entry(thread_p, entry_idx)  (&thread_ts_decoy_entries[entry_idx])
 
-#define thread_is_page_flush_thread_available()	(false)
-
 #else /* !SERVER_MODE */
 
 #define THREAD_GET_CURRENT_ENTRY_INDEX(thrd) \
@@ -304,17 +302,7 @@ extern struct css_conn_entry *thread_get_current_conn_entry (void);
 extern int thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id);
 extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 
-/* wakeup functions */
 extern void thread_wakeup_log_flush_thread (void);
-extern void thread_wakeup_page_flush_thread (void);
-extern void thread_try_wakeup_page_flush_thread (void);
-extern void thread_wakeup_page_buffer_maintenance_thread (void);
-extern void thread_wakeup_page_post_flush_thread (void);
-extern void thread_wakeup_flush_control_thread (void);
-
-/* is available functions */
-extern bool thread_is_page_flush_thread_available (void);
-extern bool thread_is_page_post_flush_thread_available (void);
 extern bool thread_is_log_flush_thread_available (void);
 
 extern THREAD_ENTRY *thread_find_first_lockwait_entry (int *thrd_index);
@@ -323,12 +311,9 @@ extern THREAD_ENTRY *thread_find_entry_by_index (int thrd_index);
 extern THREAD_ENTRY *thread_find_entry_by_tid (thread_id_t thrd_id);
 extern int thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** array);
 
-
 extern int thread_suspend_with_other_mutex (THREAD_ENTRY * p, pthread_mutex_t * mutexp, int timeout,
 					    struct timespec *to, int suspended_reason);
-extern void thread_print_entry_info (THREAD_ENTRY * p);
 extern int thread_return_all_transactions_entries (void);
-extern void thread_dump_threads (void);
 extern bool thread_get_check_interrupt (THREAD_ENTRY * thread_p);
 
 extern int xthread_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user, char *kill_host,
