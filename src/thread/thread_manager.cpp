@@ -81,7 +81,7 @@ namespace cubthread
   }
 
   void
-  manager::init_entries (std::size_t starting_index)
+  manager::alloc_entries (void)
   {
 #if defined (SA_MODE)
     assert (false);
@@ -104,7 +104,11 @@ namespace cubthread
 
     m_all_entries = new entry[m_max_threads];
     m_entry_dispatcher = new entry_dispatcher (m_all_entries, m_max_threads);
+  }
 
+  void
+  manager::init_entries (std::size_t starting_index)
+  {
     // initialize thread indexes and lock-free resources
     for (std::size_t it = 0; it < m_max_threads; it++)
       {
@@ -476,6 +480,8 @@ namespace cubthread
     int error_code = NO_ERROR;
 #if defined (SERVER_MODE)
     size_t old_manager_thread_count = 0;
+
+    Manager->alloc_entries ();
 
     error_code = thread_initialize_manager (old_manager_thread_count);
     if (error_code != NO_ERROR)
