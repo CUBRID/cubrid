@@ -624,7 +624,7 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARNCHAR:
-	  hash = mht_1str_pseudo_key (db_get_string (val), DB_GET_STRING_SIZE (val));
+	  hash = mht_1str_pseudo_key (db_get_string (val), db_get_string_size (val));
 	  break;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
@@ -2185,7 +2185,7 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	  {
 	    char *json_body = NULL;
 
-	    json_body = DB_GET_JSON_RAW_BODY (val);
+	    json_body = db_get_json_raw_body (val);
 
 	    if (json_body == NULL)
 	      {

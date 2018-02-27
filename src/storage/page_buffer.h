@@ -438,4 +438,10 @@ extern bool pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p);
 
 extern void pgbuf_notify_vacuum_follows (THREAD_ENTRY * thread_p, PAGE_PTR page);
 extern bool pgbuf_is_io_stressful (void);
+
+#if defined (SERVER_MODE)
+extern void pgbuf_daemons_init ();
+extern void pgbuf_daemons_destroy ();
+#endif /* SERVER_MODE */
+
 #endif /* _PAGE_BUFFER_H_ */

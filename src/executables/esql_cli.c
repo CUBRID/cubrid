@@ -1197,7 +1197,7 @@ uci_delete_cs (int cs_no)
   e = db_query_get_tuple_oid (cs->result, &oid);
   CHECK_DBI (e < 0, return);
 
-  e = db_drop (DB_GET_OBJECT (&oid));
+  e = db_drop (db_get_object (&oid));
   CHECK_DBI (e < 0, return);
 }
 

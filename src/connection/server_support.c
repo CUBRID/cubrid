@@ -1956,21 +1956,6 @@ shutdown:
   return status;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * css_shutdown() - Shuts down the communication interface
- *   return:
- *   exit_reason(in):
- *
- * Note: This is the routine to call when the server is going down
- */
-void
-css_shutdown (int exit_reason)
-{
-  thread_exit (exit_reason);
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
 /*
  * css_send_data_to_client() - send a data buffer to the server
  *   return:

@@ -2468,7 +2468,7 @@ _op_get_set_value (DB_VALUE * val)
       snprintf (result, result_size, "%s%s%s", "time '", return_result, "'");
       break;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       snprintf (result, result_size, "%s%s%s", "timestamp '", return_result, "'");
       break;
 

@@ -39,9 +39,12 @@ namespace cubthread
   entry_manager::create_context (void)
   {
     entry &context = *get_manager ()->claim_entry ();
+
     // for backward compatibility
     context.register_id ();
     context.type = TT_WORKER;
+
+    context.get_error_context ().register_thread_local ();
 
     on_create (context);
     return context;
@@ -53,7 +56,7 @@ namespace cubthread
     on_retire (context);
 
     // clear error messages
-    er_clear ();
+    context.get_error_context ().deregister_thread_local ();
 
     // todo: here we should do more operations to clear thread entry before being reused
     context.unregister_id ();
