@@ -13059,7 +13059,7 @@ namespace Func
         pt_type_enum equivalent_type = pt_get_equivalent_type(type, arg->type_enum);
         if(equivalent_type != arg->type_enum)
           {
-            arg = pt_wrap_with_cast_op(parser, arg, equivalent_type, 0, 0, NULL);
+            arg = pt_wrap_with_cast_op(parser, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
             if(arg == NULL)
               {
                 printf("ERR [%s()] arg#%d doesn't match type and cast failed (%d -> %d)\n", __func__, arg_pos, arg->type_enum, equivalent_type);
@@ -13090,7 +13090,7 @@ namespace Func
         pt_type_enum equivalent_type = pt_get_equivalent_type(type, arg->type_enum);
         if(equivalent_type != arg->type_enum)
           {
-            arg = pt_wrap_with_cast_op(parser, arg, equivalent_type, 0, 0, NULL);
+            arg = pt_wrap_with_cast_op(parser, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
             if(arg == NULL)
               {
                 printf("ERR [%s()] arg#%d doesn't match type and cast failed (%d -> %d)\n", __func__, arg_pos, arg->type_enum, equivalent_type);
@@ -13325,8 +13325,16 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
               }
           }
         }
-        //node->data_type = NULL;//???
-        node->data_type =(arg_list ? parser_copy_tree_list (parser, arg_list->data_type) : NULL);
+        //some functions need NULL and some need parser_copy_tree_list() !?
+        switch(fcode)
+          {
+          case PT_MAX:
+          case PT_SUM:
+            node->data_type = (arg_list ? parser_copy_tree_list (parser, arg_list->data_type) : NULL);
+            break;
+          default:
+            node->data_type = NULL;
+          }
         break;
       }
 
