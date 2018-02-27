@@ -1214,9 +1214,6 @@ static cubthread::daemon *pgbuf_Page_flush_daemon = NULL;
 static cubthread::daemon *pgbuf_Page_post_flush_daemon = NULL;
 static cubthread::daemon *pgbuf_Flush_control_daemon = NULL;
 // *INDENT-ON*
-
-static void pgbuf_daemons_init ();
-static void pgbuf_daemons_destroy ();
 #endif /* SERVER_MODE */
 
 static bool pgbuf_is_page_flush_daemon_available ();
@@ -1486,10 +1483,6 @@ pgbuf_initialize (void)
       goto error;
     }
 
-#if defined (SERVER_MODE)
-  pgbuf_daemons_init ();
-#endif /* SERVER_MODE */
-
   return NO_ERROR;
 
 error:
@@ -1512,10 +1505,6 @@ pgbuf_finalize (void)
   PGBUF_HOLDER_SET *holder_set;
   int i;
   size_t hash_size, j;
-
-#if defined (SERVER_MODE)
-  pgbuf_daemons_destroy ();
-#endif /* SERVER_MODE */
 
 #if defined(CUBRID_DEBUG)
   pgbuf_dump_if_any_fixed ();
@@ -15922,6 +15911,9 @@ class pgbuf_page_flush_daemon_task : public cubthread::entry_task
 	  return;
 	}
 
+      /* did not timeout, someone requested flush... run at least once */
+      m_force_one_run = pgbuf_Page_flush_daemon->was_woken_up ();
+
       /* flush pages as long as necessary */
       while (m_force_one_run || pgbuf_keep_victim_flush_thread_running ())
 	{
@@ -15933,9 +15925,6 @@ class pgbuf_page_flush_daemon_task : public cubthread::entry_task
 	      break;
 	    }
 	}
-
-      /* did not timeout, someone requested flush... run at least once */
-      m_force_one_run = pgbuf_Page_flush_daemon->woke_up ();
 
       /* performance tracking */
       if (m_perf_track.is_perf_tracking)
@@ -16130,7 +16119,7 @@ pgbuf_flush_control_daemon_init ()
 /*
  * pgbuf_daemons_init () - initialize page buffer daemon threads
  */
-static void
+void
 pgbuf_daemons_init ()
 {
   pgbuf_page_maintenance_daemon_init ();
@@ -16144,7 +16133,7 @@ pgbuf_daemons_init ()
 /*
  * pgbuf_daemons_destroy () - destroy page buffer daemon threads
  */
-static void
+void
 pgbuf_daemons_destroy ()
 {
   cubthread::get_manager ()->destroy_daemon (pgbuf_Page_maintenance_daemon);

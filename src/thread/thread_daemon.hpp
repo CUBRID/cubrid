@@ -89,7 +89,7 @@ namespace cubthread
       void stop_execution (void); // stop_execution daemon thread from looping and join it
       // note: this must not be called concurrently
 
-      bool woke_up (void);        // return true if daemon woke up before time out
+      bool was_woken_up (void);   // return true if daemon was woken up before timeout
 
       void reset_looper (void);   // reset looper
       // note: this applies only if looper wait pattern is of type INCREASING_PERIODS

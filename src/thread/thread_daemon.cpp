@@ -63,9 +63,9 @@ namespace cubthread
   }
 
   bool
-  daemon::woke_up (void)
+  daemon::was_woken_up (void)
   {
-    return m_looper.woke_up ();
+    return m_looper.was_woken_up ();
   }
 
   void

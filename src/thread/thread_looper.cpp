@@ -35,7 +35,7 @@ namespace cubthread
     , m_periods_count (0)
     , m_period_index (0)
     , m_stop (false)
-    , m_woke_up (false)
+    , m_was_woken_up (false)
   {
     // infinite waits
   }
@@ -46,7 +46,7 @@ namespace cubthread
     , m_periods ()
     , m_period_index (0)
     , m_stop (false)
-    , m_woke_up (false)
+    , m_was_woken_up (false)
   {
     for (std::size_t i = 0; i < m_periods_count; i++)
       {
@@ -57,8 +57,6 @@ namespace cubthread
   void
   looper::put_to_sleep (waiter &waiter_arg)
   {
-    m_woke_up = false;
-
     if (is_stopped ())
       {
 	// stopped; don't put to sleep
@@ -69,18 +67,18 @@ namespace cubthread
       {
 	assert (m_period_index == m_periods_count);
 	waiter_arg.wait_inf ();
-	m_woke_up = true;
+	m_was_woken_up = true;
       }
     else
       {
-	m_woke_up = waiter_arg.wait_for (m_periods[m_period_index]);
+	m_was_woken_up = waiter_arg.wait_for (m_periods[m_period_index]);
       }
     if (m_wait_pattern == wait_pattern::FIXED_PERIODS || m_wait_pattern == wait_pattern::INFINITE_WAITS)
       {
 	assert (m_period_index == 0);
 	return;
       }
-    if (!m_woke_up)
+    if (!m_was_woken_up)
       {
 	/* increment */
 	++m_period_index;
@@ -112,9 +110,9 @@ namespace cubthread
   }
 
   bool
-  looper::woke_up (void) const
+  looper::was_woken_up (void) const
   {
-    return m_woke_up;
+    return m_was_woken_up;
   }
 
 } // namespace cubthread
