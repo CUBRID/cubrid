@@ -1956,7 +1956,7 @@ db_make_string_copy (DB_VALUE * value, const char *str)
 
   if (str == NULL)
     {
-      db_make_null(value);
+      db_make_null (value);
       return NO_ERROR;
     }
 
@@ -1964,7 +1964,7 @@ db_make_string_copy (DB_VALUE * value, const char *str)
 
   if (copy_str == NULL)
     {
-      er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen(str) + 1);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen(str) + 1);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
