@@ -32,6 +32,8 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 
+#include <cstring>
+
 namespace cubthread
 {
 
