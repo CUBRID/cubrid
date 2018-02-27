@@ -10283,12 +10283,12 @@ log_wakeup_checkpoint_daemon ()
 
 // *INDENT-OFF*
 #if defined(SERVER_MODE)
-// class checkpoint_daemon_task
+// class log_checkpoint_daemon_task
 //
 //  description:
-//    checkpoint daemon task
+//    log checkpoint daemon task
 //
-class checkpoint_daemon_task : public cubthread::entry_task
+class log_checkpoint_daemon_task : public cubthread::entry_task
 {
   public:
     void execute (cubthread::entry & thread_ref) override
@@ -10305,22 +10305,22 @@ class checkpoint_daemon_task : public cubthread::entry_task
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
-// class remove_log_archive_daemon_task
+// class log_remove_log_archive_daemon_task
 //
 //  constructor args:
 //    archive_logs_to_delete : represents number of how many archive logs should be deleted by daemon task,
 //                             which must be dependent of PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL param value
 //
 //  description:
-//    purge archive logs daemon task
+//    remove archive logs daemon task
 //
-class remove_log_archive_daemon_task : public cubthread::entry_task
+class log_remove_log_archive_daemon_task : public cubthread::entry_task
 {
   private:
     int m_archive_logs_to_delete;
 
   public:
-    explicit remove_log_archive_daemon_task (int archive_logs_to_delete)
+    explicit log_remove_log_archive_daemon_task (int archive_logs_to_delete)
     {
       this->m_archive_logs_to_delete = archive_logs_to_delete;
     }
@@ -10469,7 +10469,7 @@ log_checkpoint_daemon_init ()
   // create checkpoint daemon thread
   auto looper_interval = std::chrono::seconds (prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_INTERVAL_SECS));
   log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (looper_interval),
-			  new checkpoint_daemon_task ());
+			  new log_checkpoint_daemon_task ());
 }
 #endif /* SERVER_MODE */
 
@@ -10491,13 +10491,13 @@ log_remove_log_archive_daemon_init ()
       // if interval is greater than 0 (zero) then on every loop remove one log archive
       log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (
 					      cubthread::looper (std::chrono::seconds (remove_log_archive_interval)),
-					      new remove_log_archive_daemon_task (1));
+					      new log_remove_log_archive_daemon_task (1));
     }
   else
     {
       // if interval is equal to 0 (zero) then on wakeup remove all log archive records
       log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (),
-				      new remove_log_archive_daemon_task (0));
+				      new log_remove_log_archive_daemon_task (0));
     }
 }
 #endif /* SERVER_MODE */

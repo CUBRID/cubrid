@@ -3032,6 +3032,7 @@ int
 db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i;
+  int error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
   char *str = NULL;
 
@@ -3062,7 +3063,13 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
       if (DB_IS_NULL (arg[i + 1]))
 	{
-	  db_json_add_member_to_object (new_doc, db_get_string (arg[i]), (JSON_DOC *) NULL);
+	  error_code = db_json_add_member_to_object (new_doc, db_get_string (arg[i]), (JSON_DOC *) NULL);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      db_json_delete_doc (new_doc);
+	      return error_code;
+	    }
 	  continue;
 	}
 
@@ -3072,15 +3079,15 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
-	  db_json_add_member_to_object (new_doc, db_get_string (arg[i]), db_get_string (arg[i + 1]));
+	  error_code = db_json_add_member_to_object (new_doc, db_get_string (arg[i]), db_get_string (arg[i + 1]));
 	  break;
 
 	case DB_TYPE_INTEGER:
-	  db_json_add_member_to_object (new_doc, db_get_string (arg[i]), db_get_int (arg[i + 1]));
+	  error_code = db_json_add_member_to_object (new_doc, db_get_string (arg[i]), db_get_int (arg[i + 1]));
 	  break;
 
 	case DB_TYPE_DOUBLE:
-	  db_json_add_member_to_object (new_doc, db_get_string (arg[i]), db_get_double (arg[i + 1]));
+	  error_code = db_json_add_member_to_object (new_doc, db_get_string (arg[i]), db_get_double (arg[i + 1]));
 	  break;
 
 	case DB_TYPE_NUMERIC:
@@ -3088,23 +3095,30 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	    DB_VALUE double_value;
 
 	    db_value_coerce (arg[i + 1], &double_value, db_type_to_db_domain (DB_TYPE_DOUBLE));
-	    db_json_add_member_to_object (new_doc, db_get_string (arg[i]), db_get_double (&double_value));
+	    error_code = db_json_add_member_to_object (new_doc, db_get_string (arg[i]), db_get_double (&double_value));
 	    pr_clear_value (&double_value);
 	  }
 	  break;
 
 	case DB_TYPE_JSON:
-	  db_json_add_member_to_object (new_doc, db_get_string (arg[i]), arg[i + 1]->data.json.document);
+	  error_code = db_json_add_member_to_object (new_doc, db_get_string (arg[i]), arg[i + 1]->data.json.document);
 	  break;
 
 	case DB_TYPE_NULL:
-	  db_json_add_member_to_object (new_doc, db_get_string (arg[i]), (JSON_DOC *) NULL);
+	  error_code = db_json_add_member_to_object (new_doc, db_get_string (arg[i]), (JSON_DOC *) NULL);
 	  break;
 
 	default:
 	  db_json_delete_doc (new_doc);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
 	  return ER_QSTR_INVALID_DATA_TYPE;
+	}
+
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_json_delete_doc (new_doc);
+	  return error_code;
 	}
     }
 
@@ -3434,18 +3448,16 @@ db_json_keys (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       path = db_get_string (arg[1]);
     }
 
-  result_json = db_json_allocate_doc ();
-
   switch (DB_VALUE_DOMAIN_TYPE (arg[0]))
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      error_code = db_json_keys_func (db_get_string (arg[0]), *result_json, path.c_str ());
+      error_code = db_json_keys_func (db_get_string (arg[0]), result_json, path.c_str ());
       break;
     case DB_TYPE_JSON:
-      error_code = db_json_keys_func (*(db_get_json_document (arg[0])), *result_json, path.c_str ());
+      error_code = db_json_keys_func (*(db_get_json_document (arg[0])), result_json, path.c_str ());
       break;
     case DB_TYPE_NULL:
       db_json_delete_doc (result_json);
