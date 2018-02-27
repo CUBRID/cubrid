@@ -76,6 +76,7 @@
 
 #include <algorithm>
 #include <locale>
+#include <unordered_map>
 #include <vector>
 
 #include <cctype>
