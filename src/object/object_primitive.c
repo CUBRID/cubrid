@@ -54,8 +54,7 @@
 #include "dbi.h"
 #endif /* !defined (SERVER_MODE) */
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1161,7 +1160,7 @@ PR_TYPE tp_Timeltz = {
 PR_TYPE *tp_Type_timeltz = &tp_Timeltz;
 
 PR_TYPE tp_Utime = {
-  "timestamp", DB_TYPE_UTIME, 0, sizeof (DB_UTIME), OR_UTIME_SIZE, 4,
+  "timestamp", DB_TYPE_TIMESTAMP, 0, sizeof (DB_UTIME), OR_UTIME_SIZE, 4,
   help_fprint_value,
   help_sprint_value,
   mr_initmem_utime,
@@ -2159,12 +2158,13 @@ pr_clear_value (DB_VALUE * value)
     case DB_TYPE_ENUMERATION:
       if (value->need_clear)
 	{
-	  if (DB_GET_ENUM_STRING (value) != NULL)
+	  char *temp = db_get_enum_string (value);
+	  if (temp != NULL)
 	    {
-	      db_private_free_and_init (NULL, DB_GET_ENUM_STRING (value));
+	      db_private_free_and_init (NULL, temp);
 	    }
 	}
-      db_make_enumeration (value, 0, NULL, 0, DB_GET_ENUM_CODESET (value), DB_GET_ENUM_COLLATION (value));
+      db_make_enumeration (value, 0, NULL, 0, db_get_enum_codeset (value), db_get_enum_collation (value));
       break;
 
     default:
@@ -2706,8 +2706,8 @@ mr_cmpval_int (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_
 {
   int i1, i2;
 
-  i1 = DB_GET_INT (value1);
-  i2 = DB_GET_INT (value2);
+  i1 = db_get_int (value1);
+  i2 = db_get_int (value2);
 
   return MR_CMP (i1, i2);
 }
@@ -2879,8 +2879,8 @@ mr_cmpval_short (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
 {
   short s1, s2;
 
-  s1 = DB_GET_SHORT (value1);
-  s2 = DB_GET_SHORT (value2);
+  s1 = db_get_short (value1);
+  s2 = db_get_short (value2);
 
   return MR_CMP (s1, s2);
 }
@@ -3051,8 +3051,8 @@ mr_cmpval_bigint (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 {
   DB_BIGINT i1, i2;
 
-  i1 = DB_GET_BIGINT (value1);
-  i2 = DB_GET_BIGINT (value2);
+  i1 = db_get_bigint (value1);
+  i2 = db_get_bigint (value2);
 
   return MR_CMP (i1, i2);
 }
@@ -3225,8 +3225,8 @@ mr_cmpval_float (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
 {
   float f1, f2;
 
-  f1 = DB_GET_FLOAT (value1);
-  f2 = DB_GET_FLOAT (value2);
+  f1 = db_get_float (value1);
+  f2 = db_get_float (value2);
 
   return MR_CMP (f1, f2);
 }
@@ -3417,8 +3417,8 @@ mr_cmpval_double (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 {
   double d1, d2;
 
-  d1 = DB_GET_DOUBLE (value1);
-  d2 = DB_GET_DOUBLE (value2);
+  d1 = db_get_double (value1);
+  d2 = db_get_double (value2);
 
   return MR_CMP (d1, d2);
 }
@@ -3730,8 +3730,8 @@ mr_cmpval_timeltz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int to
   DB_TIME t1_local, t2_local;
   int error = NO_ERROR;
 
-  t1 = DB_GET_TIME (value1);
-  t2 = DB_GET_TIME (value2);
+  t1 = db_get_time (value1);
+  t2 = db_get_time (value2);
 
   error = tz_create_session_tzid_for_time (t1, true, &ses_tz_id1);
   if (error != NO_ERROR)
@@ -3791,8 +3791,8 @@ mr_cmpval_time (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 {
   const DB_TIME *t1, *t2;
 
-  t1 = DB_GET_TIME (value1);
-  t2 = DB_GET_TIME (value2);
+  t1 = db_get_time (value1);
+  t2 = db_get_time (value2);
 
   return MR_CMP (*t1, *t2);
 }
@@ -4007,8 +4007,8 @@ mr_cmpval_timetz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
   DB_VALUE_COMPARE_RESULT ret_cmp;
   int day1, day2;
 
-  t1 = DB_GET_TIMETZ (value1);
-  t2 = DB_GET_TIMETZ (value2);
+  t1 = db_get_timetz (value1);
+  t2 = db_get_timetz (value2);
 
   /* TIME with TZ compares as what point in time comes first relative to the current day */
 
@@ -4049,7 +4049,7 @@ mr_setmem_utime (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
   if (value == NULL)
     mr_initmem_utime (mem, domain);
   else
-    *(DB_UTIME *) mem = *db_get_utime (value);
+    *(DB_UTIME *) mem = *db_get_timestamp (value);
 
   return NO_ERROR;
 }
@@ -4114,11 +4114,11 @@ mr_setval_utime (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 
   if (DB_IS_NULL (src))
     {
-      error = db_value_domain_init (dest, DB_TYPE_UTIME, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      error = db_value_domain_init (dest, DB_TYPE_TIMESTAMP, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
     }
   else
     {
-      error = db_make_utime (dest, *db_get_utime (src));
+      error = db_make_utime (dest, *db_get_timestamp (src));
     }
   return error;
 }
@@ -4134,7 +4134,7 @@ mr_setval_timestampltz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     }
   else
     {
-      error = db_make_timestampltz (dest, *db_get_utime (src));
+      error = db_make_timestampltz (dest, *db_get_timestamp (src));
     }
   return error;
 }
@@ -4142,7 +4142,7 @@ mr_setval_timestampltz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 static int
 mr_data_writeval_utime (OR_BUF * buf, DB_VALUE * value)
 {
-  return or_put_utime (buf, db_get_utime (value));
+  return or_put_utime (buf, db_get_timestamp (value));
 }
 
 static int
@@ -4193,7 +4193,7 @@ mr_index_writeval_utime (OR_BUF * buf, DB_VALUE * value)
 {
   DB_UTIME *utm;
 
-  utm = db_get_utime (value);
+  utm = db_get_timestamp (value);
 
   return or_put_data (buf, (char *) utm, tp_Utime.disksize);
 }
@@ -4277,8 +4277,8 @@ mr_cmpval_utime (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
 {
   const DB_TIMESTAMP *ts1, *ts2;
 
-  ts1 = DB_GET_UTIME (value1);
-  ts2 = DB_GET_UTIME (value2);
+  ts1 = db_get_timestamp (value1);
+  ts2 = db_get_timestamp (value2);
 
   return MR_CMP (*ts1, *ts2);
 }
@@ -4474,8 +4474,8 @@ mr_cmpval_timestamptz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, in
 
   /* TIMESTAMP with TZ compares the same as TIMESTAMP (zone is not taken into account); the first component of
    * TIMESTAMPTZ is a TIMESTAMP, it is safe to use the TIMESTAMP part of DB_DATA union to read it */
-  ts_tz1 = DB_GET_TIMESTAMPTZ (value1);
-  ts_tz2 = DB_GET_TIMESTAMPTZ (value2);
+  ts_tz1 = db_get_timestamptz (value1);
+  ts_tz2 = db_get_timestamptz (value2);
 
 #if defined (SA_MODE)
   if (tz_Compare_timestamptz_tz_id == true && ts_tz1->tz_id != ts_tz2->tz_id)
@@ -4824,8 +4824,8 @@ mr_cmpval_datetime (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
   const DB_DATETIME *dt1, *dt2;
   DB_VALUE_COMPARE_RESULT c;
 
-  dt1 = DB_GET_DATETIME (value1);
-  dt2 = DB_GET_DATETIME (value2);
+  dt1 = db_get_datetime (value1);
+  dt2 = db_get_datetime (value2);
 
   if (dt1->date < dt2->date)
     {
@@ -5041,8 +5041,8 @@ mr_cmpval_datetimetz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int
   const DB_DATETIME *dt1, *dt2;
   DB_VALUE_COMPARE_RESULT c;
 
-  dt_tz1 = DB_GET_DATETIMETZ (value1);
-  dt_tz2 = DB_GET_DATETIMETZ (value2);
+  dt_tz1 = db_get_datetimetz (value1);
+  dt_tz2 = db_get_datetimetz (value2);
 
   dt1 = &(dt_tz1->datetime);
   dt2 = &(dt_tz2->datetime);
@@ -5283,8 +5283,8 @@ mr_cmpval_money (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
 {
   const DB_MONETARY *m1, *m2;
 
-  m1 = DB_GET_MONETARY (value1);
-  m2 = DB_GET_MONETARY (value2);
+  m1 = db_get_monetary (value1);
+  m2 = db_get_monetary (value2);
 
   return MR_CMP (m1->amount, m2->amount);
 }
@@ -5454,8 +5454,8 @@ mr_cmpval_date (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 {
   const DB_DATE *d1, *d2;
 
-  d1 = DB_GET_DATE (value1);
-  d2 = DB_GET_DATE (value2);
+  d1 = db_get_date (value1);
+  d2 = db_get_date (value2);
 
   return MR_CMP (*d1, *d2);
 }
@@ -5648,7 +5648,7 @@ mr_setval_object (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	{
 	  DB_OBJECT *obj;
 	  /* what should this do for ISVID mops? */
-	  obj = db_pull_object (src);
+	  obj = db_get_object (src);
 	  db_value_domain_init (dest, DB_TYPE_OID, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  oid = WS_OID (obj);
 	  error = db_make_oid (dest, oid);
@@ -6019,7 +6019,7 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
    */
   if (DB_VALUE_DOMAIN_TYPE (value1) == DB_TYPE_OID)
     {
-      o1 = DB_PULL_OID (value1);
+      o1 = db_get_oid (value1);
     }
   else
     {
@@ -6029,7 +6029,7 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 
   if (DB_VALUE_DOMAIN_TYPE (value2) == DB_TYPE_OID)
     {
-      o2 = DB_PULL_OID (value2);
+      o2 = db_get_oid (value2);
     }
   else
     {
@@ -6054,11 +6054,11 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
    */
   if (DB_VALUE_DOMAIN_TYPE (value1) == DB_TYPE_OID)
     {
-      o1 = DB_PULL_OID (value1);
+      o1 = db_get_oid (value1);
     }
   else
     {
-      mop1 = DB_PULL_OBJECT (value1);
+      mop1 = db_get_object (value1);
       if (WS_ISVID (mop1))
 	{
 	  if (db_is_updatable_object (mop1))
@@ -6095,11 +6095,11 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 
   if (DB_VALUE_DOMAIN_TYPE (value2) == DB_TYPE_OID)
     {
-      o2 = DB_PULL_OID (value2);
+      o2 = db_get_oid (value2);
     }
   else
     {
-      mop2 = DB_PULL_OBJECT (value2);
+      mop2 = db_get_object (value2);
       if (WS_ISVID (mop2))
 	{
 	  if (db_is_updatable_object (mop2))
@@ -6718,8 +6718,8 @@ mr_cmpval_elo (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_
 {
   DB_ELO *elo1, *elo2;
 
-  elo1 = DB_GET_ELO (value1);
-  elo2 = DB_GET_ELO (value2);
+  elo1 = db_get_elo (value1);
+  elo2 = db_get_elo (value2);
 
   /* use address for collating sequence */
   return MR_CMP ((UINTPTR) elo1, (UINTPTR) elo2);
@@ -7007,8 +7007,8 @@ mr_cmpval_ptr (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_
 {
   void *p1, *p2;
 
-  p1 = DB_GET_POINTER (value1);
-  p2 = DB_GET_POINTER (value2);
+  p1 = db_get_pointer (value1);
+  p2 = db_get_pointer (value2);
 
   /* use address for collating sequence */
   return MR_CMP ((UINTPTR) p1, (UINTPTR) p2);
@@ -7140,8 +7140,8 @@ mr_cmpval_error (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
 {
   int e1, e2;
 
-  e1 = DB_GET_ERROR (value1);
-  e2 = DB_GET_ERROR (value2);
+  e1 = db_get_error (value1);
+  e2 = db_get_error (value2);
 
   return MR_CMP (e1, e2);
 }
@@ -7393,8 +7393,8 @@ mr_cmpval_oid (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_
   OID *oid1, *oid2;
   int oidc;
 
-  oid1 = DB_GET_OID (value1);
-  oid2 = DB_GET_OID (value2);
+  oid1 = db_get_oid (value1);
+  oid2 = db_get_oid (value2);
 
   if (oid1 == NULL || oid2 == NULL)
     {
@@ -8149,7 +8149,7 @@ mr_setval_midxkey (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     }
 
   /* Get information from the value. */
-  src_idx = DB_GET_MIDXKEY (src);
+  src_idx = db_get_midxkey (src);
   src_precision = db_value_precision (src);
   if (src_idx == NULL)
     {
@@ -8211,7 +8211,7 @@ mr_index_writeval_midxkey (OR_BUF * buf, DB_VALUE * value)
   DB_MIDXKEY *midxkey;
   int rc;
 
-  midxkey = DB_GET_MIDXKEY (value);
+  midxkey = db_get_midxkey (value);
   if (midxkey == NULL)
     {
       return ER_FAILED;
@@ -8339,8 +8339,8 @@ pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN * dom1, TP_DOMAIN 
   OR_BUF_INIT (buf_val1, mem1, -1);
   OR_BUF_INIT (buf_val2, mem2, -1);
 
-  DB_MAKE_NULL (&val1);
-  DB_MAKE_NULL (&val2);
+  db_make_null (&val1);
+  db_make_null (&val2);
 
   if ((*(dom1->type->index_readval)) (&buf_val1, &val1, dom1, -1, false, NULL, 0) != NO_ERROR)
     {
@@ -8690,8 +8690,8 @@ mr_cmpval_midxkey (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int to
   int dummy_size1, dummy_size2, dummy_diff_column;
   bool dummy_dom_is_desc, dummy_next_dom_is_desc;
 
-  midxkey1 = DB_GET_MIDXKEY (value1);
-  midxkey2 = DB_GET_MIDXKEY (value2);
+  midxkey1 = db_get_midxkey (value1);
+  midxkey2 = db_get_midxkey (value2);
 
   if (midxkey1 == NULL || midxkey2 == NULL)
     {
@@ -8987,7 +8987,7 @@ mr_setmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
     }
   else
     {
-      src_num = DB_GET_NUMERIC (value);
+      src_num = db_get_numeric (value);
 
       src_precision = db_value_precision (value);
       src_scale = db_value_scale (value);
@@ -9110,7 +9110,7 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     {
       src_precision = db_value_precision (src);
       src_scale = db_value_scale (src);
-      src_numeric = (DB_C_NUMERIC) DB_GET_NUMERIC (src);
+      src_numeric = (DB_C_NUMERIC) db_get_numeric (src);
 
       if (DB_IS_NULL (src) || src_numeric == NULL)
 	{
@@ -9172,7 +9172,7 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
 
   if (value != NULL)
     {
-      numeric = DB_GET_NUMERIC (value);
+      numeric = db_get_numeric (value);
       if (numeric != NULL)
 	{
 	  precision = db_value_precision (value);
@@ -9275,7 +9275,7 @@ mr_data_cmpdisk_numeric (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coer
       return DB_UNK;
     }
 
-  c = MR_CMP_RETURN_CODE (DB_GET_INT (&answer));
+  c = MR_CMP_RETURN_CODE (db_get_int (&answer));
 
   return c;
 }
@@ -9292,13 +9292,13 @@ mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int to
       return DB_UNK;
     }
 
-  if (DB_GET_INT (&answer) < 0)
+  if (db_get_int (&answer) < 0)
     {
       c = DB_LT;
     }
   else
     {
-      if (DB_GET_INT (&answer) > 0)
+      if (db_get_int (&answer) > 0)
 	{
 	  c = DB_GT;
 	}
@@ -9823,8 +9823,8 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
   assert (DB_VALUE_TYPE (prefix) == DB_TYPE_MIDXKEY);
   assert (DB_VALUE_TYPE (postfix) == DB_TYPE_MIDXKEY);
 
-  midx_prefix = DB_PULL_MIDXKEY (prefix);
-  midx_postfix = DB_PULL_MIDXKEY (postfix);
+  midx_prefix = db_get_midxkey (prefix);
+  midx_postfix = db_get_midxkey (postfix);
 
   offset_prefix = pr_midxkey_get_element_offset (midx_prefix, n_prefix);
   offset_postfix = pr_midxkey_get_element_offset (midx_postfix, n_prefix);
@@ -9859,7 +9859,7 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
 
   midx_result.min_max_val.position = -1;
   midx_result.min_max_val.type = MIN_COLUMN;
-  DB_MAKE_MIDXKEY (result, &midx_result);
+  db_make_midxkey (result, &midx_result);
   result->need_clear = true;
 
   return NO_ERROR;
@@ -9878,7 +9878,7 @@ pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
   DB_MIDXKEY *midx_key;
   int i, start, offset;
 
-  midx_key = DB_PULL_MIDXKEY (key);
+  midx_key = db_get_midxkey (key);
 
   start = pr_midxkey_get_element_offset (midx_key, 0);
   offset = pr_midxkey_get_element_offset (midx_key, prefix);
@@ -9914,8 +9914,8 @@ pr_midxkey_common_prefix (DB_VALUE * key1, DB_VALUE * key2)
 
   diff_column = 0;		/* init */
 
-  midx_lf_key = DB_PULL_MIDXKEY (key1);
-  midx_uf_key = DB_PULL_MIDXKEY (key2);
+  midx_lf_key = db_get_midxkey (key1);
+  midx_uf_key = db_get_midxkey (key2);
 
   ret = pr_midxkey_compare (midx_lf_key, midx_uf_key, 0, 1, -1, NULL, &size1, &size2, &diff_column, &dom_is_desc,
 			    &next_dom_is_desc);
@@ -9992,7 +9992,7 @@ pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey, int index, DB_VALUE
 
   if (OR_MULTI_ATT_IS_UNBOUND (bitptr, index))
     {
-      DB_MAKE_NULL (value);
+      db_make_null (value);
     }
   else
     {
@@ -10105,8 +10105,8 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midx
   assert (db_midxkey2 != (DB_VALUE *) NULL);
   assert (db_result != (DB_VALUE *) NULL);
 
-  midxkey1 = DB_PULL_MIDXKEY (db_midxkey1);
-  midxkey2 = DB_PULL_MIDXKEY (db_midxkey2);
+  midxkey1 = db_get_midxkey (db_midxkey1);
+  midxkey2 = db_get_midxkey (db_midxkey2);
 
   assert (midxkey1->size != -1);
   assert (midxkey2->size != -1);
@@ -10169,7 +10169,7 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midx
 
       result_midxkey.min_max_val.position = -1;
       result_midxkey.min_max_val.type = MIN_COLUMN;
-      DB_MAKE_MIDXKEY (db_result, &result_midxkey);
+      db_make_midxkey (db_result, &result_midxkey);
 
       db_result->need_clear = true;
 
@@ -10266,7 +10266,7 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, T
   OR_BUF buf;
 
   /* phase 1: find old */
-  midxkey = DB_GET_MIDXKEY (keyval);
+  midxkey = db_get_midxkey (keyval);
   if (midxkey == NULL)
     {
       return ER_FAILED;
@@ -10530,9 +10530,9 @@ pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain)
       return ER_FAILED;
     }
 
-  short_val = DB_GET_ENUM_SHORT (value);
-  str_val = DB_GET_ENUM_STRING (value);
-  str_val_size = DB_GET_ENUM_STRING_SIZE (value);
+  short_val = db_get_enum_short (value);
+  str_val = db_get_enum_string (value);
+  str_val_size = db_get_enum_string_size (value);
   enum_count = DOM_GET_ENUM_ELEMS_COUNT (domain);
   if (short_val > enum_count)
     {
@@ -10545,8 +10545,8 @@ pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain)
       if (str_val != NULL && DB_GET_ENUM_ELEM_STRING_SIZE (db_elem) == str_val_size
 	  && !memcmp (str_val, DB_GET_ENUM_ELEM_STRING (db_elem), str_val_size))
 	{
-	  DB_MAKE_ENUMERATION (value, short_val, str_val, str_val_size, DB_GET_ENUM_ELEM_CODESET (db_elem),
-			       DB_GET_ENUM_COLLATION (value));
+	  db_make_enumeration (value, short_val, str_val, str_val_size, DB_GET_ENUM_ELEM_CODESET (db_elem),
+			       db_get_enum_collation (value));
 	  return NO_ERROR;
 	}
       pr_clear_value (value);
@@ -10559,8 +10559,8 @@ pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain)
 	}
       memcpy (str_val, DB_GET_ENUM_ELEM_STRING (db_elem), str_val_size);
       str_val[str_val_size] = 0;
-      DB_MAKE_ENUMERATION (value, short_val, str_val, str_val_size, DB_GET_ENUM_ELEM_CODESET (db_elem),
-			   DB_GET_ENUM_COLLATION (value));
+      db_make_enumeration (value, short_val, str_val, str_val_size, DB_GET_ENUM_ELEM_CODESET (db_elem),
+			   db_get_enum_collation (value));
       value->need_clear = true;
 
       return NO_ERROR;
@@ -10577,8 +10577,8 @@ pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain)
       if (DB_GET_ENUM_ELEM_STRING_SIZE (db_elem) == str_val_size
 	  && !memcmp (DB_GET_ENUM_ELEM_STRING (db_elem), str_val, str_val_size))
 	{
-	  DB_MAKE_ENUMERATION (value, DB_GET_ENUM_ELEM_SHORT (db_elem), str_val, str_val_size,
-			       DB_GET_ENUM_ELEM_CODESET (db_elem), DB_GET_ENUM_COLLATION (value));
+	  db_make_enumeration (value, DB_GET_ENUM_ELEM_SHORT (db_elem), str_val, str_val_size,
+			       DB_GET_ENUM_ELEM_CODESET (db_elem), db_get_enum_collation (value));
 	  break;
 	}
     }
@@ -10706,8 +10706,8 @@ mr_cmpval_resultset (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int 
 {
   int i1, i2;
 
-  i1 = DB_GET_RESULTSET (value1);
-  i2 = DB_GET_RESULTSET (value2);
+  i1 = db_get_resultset (value1);
+  i2 = db_get_resultset (value2);
 
   return MR_CMP (i1, i2);
 }
@@ -10740,7 +10740,7 @@ mr_setmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
   mem = (char **) memptr;
   cur = *mem;
 
-  if (value == NULL || (src = DB_GET_STRING (value)) == NULL)
+  if (value == NULL || (src = db_get_string (value)) == NULL)
     {
       /* remove the current value */
       if (cur != NULL)
@@ -10757,7 +10757,7 @@ mr_setmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
        * Whether or not the value "fits" should have been checked by now.
        */
       src_precision = DB_GET_STRING_PRECISION (value);
-      src_length = DB_GET_STRING_SIZE (value);	/* size in bytes */
+      src_length = db_get_string_size (value);	/* size in bytes */
 
       if (src_length < 0)
 	{
@@ -11094,9 +11094,9 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	{
 	  dest->data.ch.info.is_max_string = true;
 	  dest->domain.general_info.is_null = 0;
-	  dest->domain.char_info.collation_id = DB_GET_STRING_COLLATION (src);
+	  dest->domain.char_info.collation_id = db_get_string_collation (src);
 	  dest->data.ch.medium.compressed_buf = NULL;
-	  dest->data.ch.medium.codeset = DB_GET_STRING_CODESET (src);
+	  dest->data.ch.medium.codeset = db_get_string_codeset (src);
 	  dest->data.ch.medium.compressed_size = DB_UNCOMPRESSABLE;
 	  dest->data.ch.info.compressed_need_clear = false;
 	}
@@ -11115,8 +11115,8 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       if (!copy)
 	{
 	  error =
-	    db_make_varchar (dest, src_precision, src_str, src_length, DB_GET_STRING_CODESET (src),
-			     DB_GET_STRING_COLLATION (src));
+	    db_make_varchar (dest, src_precision, src_str, src_length, db_get_string_codeset (src),
+			     db_get_string_collation (src));
 	  dest->data.ch.medium.compressed_buf = src->data.ch.medium.compressed_buf;
 	  dest->data.ch.info.compressed_need_clear = false;
 	}
@@ -11133,8 +11133,8 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    {
 	      memcpy (new_, src_str, src_length);
 	      new_[src_length] = '\0';
-	      db_make_varchar (dest, src_precision, new_, src_length, DB_GET_STRING_CODESET (src),
-			       DB_GET_STRING_COLLATION (src));
+	      db_make_varchar (dest, src_precision, new_, src_length, db_get_string_codeset (src),
+			       db_get_string_collation (src));
 	      dest->need_clear = true;
 	    }
 
@@ -11247,7 +11247,7 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
 	  rc = pr_do_db_value_string_compression (value);
 	}
       /* We are now sure that the value has been through the process of compression */
-      compressed_size = DB_GET_COMPRESSED_SIZE (value);
+      compressed_size = db_get_compressed_size (value);
 
       /* If the compression was successful, then we use the compression size value */
       if (compressed_size > 0)
@@ -11319,7 +11319,7 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	  return rc;
 	}
 
-      compressed_size = DB_GET_COMPRESSED_SIZE (value);
+      compressed_size = db_get_compressed_size (value);
       compressed_string = DB_GET_COMPRESSED_STRING (value);
 
       if (compressed_size == DB_UNCOMPRESSABLE && src_length < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
@@ -11832,8 +11832,8 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
   int size1, size2;
   int strc;
 
-  string1 = (unsigned char *) DB_GET_STRING (value1);
-  string2 = (unsigned char *) DB_GET_STRING (value2);
+  string1 = (unsigned char *) db_get_string (value1);
+  string2 = (unsigned char *) db_get_string (value2);
 
 
   /*
@@ -11860,13 +11860,13 @@ mr_cmpval_string (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 	}
     }
 
-  if (string1 == NULL || string2 == NULL || DB_GET_STRING_CODESET (value1) != DB_GET_STRING_CODESET (value1))
+  if (string1 == NULL || string2 == NULL || db_get_string_codeset (value1) != db_get_string_codeset (value1))
     {
       return DB_UNK;
     }
 
-  size1 = (int) DB_GET_STRING_SIZE (value1);
-  size2 = (int) DB_GET_STRING_SIZE (value2);
+  size1 = (int) db_get_string_size (value1);
+  size2 = (int) db_get_string_size (value2);
 
   if (size1 < 0)
     {
@@ -11898,17 +11898,17 @@ mr_cmpval_string2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coer
   unsigned char *string1, *string2;
   int len1, len2, string_size;
 
-  string1 = (unsigned char *) DB_GET_STRING (value1);
-  string2 = (unsigned char *) DB_GET_STRING (value2);
+  string1 = (unsigned char *) db_get_string (value1);
+  string2 = (unsigned char *) db_get_string (value2);
 
   if (string1 == NULL || string2 == NULL)
     {
       return DB_UNK;
     }
 
-  string_size = (int) DB_GET_STRING_SIZE (value1);
+  string_size = (int) db_get_string_size (value1);
   len1 = MIN (string_size, length);
-  string_size = (int) DB_GET_STRING_SIZE (value2);
+  string_size = (int) db_get_string_size (value2);
   len2 = MIN (string_size, length);
 
   c = QSTR_COMPARE (string1, len1, string2, len2);
@@ -11992,9 +11992,9 @@ mr_setmem_char (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
     }
 
   /* Get information from the value */
-  src = DB_GET_STRING (value);
+  src = db_get_string (value);
   src_precision = DB_GET_STRING_PRECISION (value);
-  src_length = DB_GET_STRING_SIZE (value);	/* size in bytes */
+  src_length = db_get_string_size (value);	/* size in bytes */
 
   if (src == NULL)
     {
@@ -12223,16 +12223,16 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	}
       DB_DOMAIN_INIT_CHAR (dest, src_precision);
       /* Get information from the value */
-      src_string = DB_GET_STRING (src);
-      src_length = DB_GET_STRING_SIZE (src);	/* size in bytes */
+      src_string = db_get_string (src);
+      src_length = db_get_string_size (src);	/* size in bytes */
 
       /* shouldn't see a NULL string at this point, treat as NULL */
       if (src_string != NULL)
 	{
 	  if (!copy)
 	    {
-	      db_make_char (dest, src_precision, src_string, src_length, DB_GET_STRING_CODESET (src),
-			    DB_GET_STRING_COLLATION (src));
+	      db_make_char (dest, src_precision, src_string, src_length, db_get_string_codeset (src),
+			    db_get_string_collation (src));
 	    }
 	  else
 	    {
@@ -12253,8 +12253,8 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 		{
 		  memcpy (new_, src_string, src_length);
 		  new_[src_length] = '\0';
-		  db_make_char (dest, src_precision, new_, src_length, DB_GET_STRING_CODESET (src),
-				DB_GET_STRING_COLLATION (src));
+		  db_make_char (dest, src_precision, new_, src_length, db_get_string_codeset (src),
+				db_get_string_collation (src));
 		  dest->need_clear = true;
 		}
 	    }
@@ -12287,7 +12287,7 @@ mr_data_lengthval_char (DB_VALUE * value, int disk)
   src_precision = db_value_precision (value);
   if (!IS_FLOATING_PRECISION (src_precision))
     {
-      packed_length = STR_SIZE (src_precision, DB_GET_STRING_CODESET (value));
+      packed_length = STR_SIZE (src_precision, db_get_string_codeset (value));
     }
   else
     {
@@ -12358,7 +12358,7 @@ mr_writeval_char_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	  src_length = strlen (src);
 	}
 
-      packed_length = STR_SIZE (src_precision, DB_GET_STRING_CODESET (value));
+      packed_length = STR_SIZE (src_precision, db_get_string_codeset (value));
 
       if (packed_length < src_length)
 	{
@@ -12683,8 +12683,8 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   unsigned char *string1, *string2;
   int strc;
 
-  string1 = (unsigned char *) DB_GET_STRING (value1);
-  string2 = (unsigned char *) DB_GET_STRING (value2);
+  string1 = (unsigned char *) db_get_string (value1);
+  string2 = (unsigned char *) db_get_string (value2);
 
   /*
    *  Check if the is_max_string flag set for each DB_VALUE.
@@ -12710,7 +12710,7 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 	}
     }
 
-  if (string1 == NULL || string2 == NULL || DB_GET_STRING_CODESET (value1) != DB_GET_STRING_CODESET (value1))
+  if (string1 == NULL || string2 == NULL || db_get_string_codeset (value1) != db_get_string_codeset (value1))
     {
       return DB_UNK;
     }
@@ -12721,8 +12721,8 @@ mr_cmpval_char (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
       return DB_UNK;
     }
 
-  strc = QSTR_CHAR_COMPARE (collation, string1, (int) DB_GET_STRING_SIZE (value1), string2,
-			    (int) DB_GET_STRING_SIZE (value2));
+  strc = QSTR_CHAR_COMPARE (collation, string1, (int) db_get_string_size (value1), string2,
+			    (int) db_get_string_size (value2));
   c = MR_CMP_RETURN_CODE (strc);
 
   return c;
@@ -12736,17 +12736,17 @@ mr_cmpval_char2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coerci
   unsigned char *string1, *string2;
   int len1, len2, string_size;
 
-  string1 = (unsigned char *) DB_GET_STRING (value1);
-  string2 = (unsigned char *) DB_GET_STRING (value2);
+  string1 = (unsigned char *) db_get_string (value1);
+  string2 = (unsigned char *) db_get_string (value2);
 
   if (string1 == NULL || string2 == NULL)
     {
       return DB_UNK;
     }
 
-  string_size = (int) DB_GET_STRING_SIZE (value1);
+  string_size = (int) db_get_string_size (value1);
   len1 = MIN (string_size, length);
-  string_size = (int) DB_GET_STRING_SIZE (value2);
+  string_size = (int) db_get_string_size (value2);
   len2 = MIN (string_size, length);
 
   c = QSTR_CHAR_COMPARE (string1, len1, string2, len2);
@@ -13070,8 +13070,8 @@ mr_setval_nchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	{
 	  if (!copy)
 	    {
-	      db_make_nchar (dest, src_precision, src_string, src_length, DB_GET_STRING_CODESET (src),
-			     DB_GET_STRING_COLLATION (src));
+	      db_make_nchar (dest, src_precision, src_string, src_length, db_get_string_codeset (src),
+			     db_get_string_collation (src));
 	    }
 	  else
 	    {
@@ -13092,8 +13092,8 @@ mr_setval_nchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 		{
 		  memcpy (new_, src_string, src_length);
 		  new_[src_length] = '\0';
-		  db_make_nchar (dest, src_precision, new_, src_length, DB_GET_STRING_CODESET (src),
-				 DB_GET_STRING_COLLATION (src));
+		  db_make_nchar (dest, src_precision, new_, src_length, db_get_string_codeset (src),
+				 db_get_string_collation (src));
 		  dest->need_clear = true;
 		}
 	    }
@@ -13602,10 +13602,10 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
   unsigned char *string1, *string2;
   int strc;
 
-  string1 = (unsigned char *) DB_GET_STRING (value1);
-  string2 = (unsigned char *) DB_GET_STRING (value2);
+  string1 = (unsigned char *) db_get_string (value1);
+  string2 = (unsigned char *) db_get_string (value2);
 
-  if (string1 == NULL || string2 == NULL || DB_GET_STRING_CODESET (value1) != DB_GET_STRING_CODESET (value2))
+  if (string1 == NULL || string2 == NULL || db_get_string_codeset (value1) != db_get_string_codeset (value2))
     {
       return DB_UNK;
     }
@@ -13616,8 +13616,8 @@ mr_cmpval_nchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
       return DB_UNK;
     }
 
-  strc = QSTR_NCHAR_COMPARE (collation, string1, (int) DB_GET_STRING_SIZE (value1), string2,
-			     (int) DB_GET_STRING_SIZE (value2), DB_GET_STRING_CODESET (value2));
+  strc = QSTR_NCHAR_COMPARE (collation, string1, (int) db_get_string_size (value1), string2,
+			     (int) db_get_string_size (value2), db_get_string_codeset (value2));
   c = MR_CMP_RETURN_CODE (strc);
 
   return c;
@@ -13631,20 +13631,20 @@ mr_cmpval_nchar2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coerc
   unsigned char *string1, *string2;
   int len1, len2, string_size;
 
-  string1 = (unsigned char *) DB_GET_STRING (value1);
-  string2 = (unsigned char *) DB_GET_STRING (value2);
+  string1 = (unsigned char *) db_get_string (value1);
+  string2 = (unsigned char *) db_get_string (value2);
 
   if (string1 == NULL || string2 == NULL)
     {
       return DB_UNK;
     }
 
-  string_size = (int) DB_GET_STRING_SIZE (value1);
+  string_size = (int) db_get_string_size (value1);
   len1 = MIN (string_size, length);
-  string_size = (int) DB_GET_STRING_SIZE (value2);
+  string_size = (int) db_get_string_size (value2);
   len2 = MIN (string_size, length);
 
-  c = nchar_compare (string1, len1, string2, len2, DB_GET_STRING_CODESET (value2));
+  c = nchar_compare (string1, len1, string2, len2, db_get_string_codeset (value2));
   c = MR_CMP_RETURN_CODE (c);
 
   return c;
@@ -13942,8 +13942,8 @@ mr_setval_varnchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       /* should we be paying attention to this? it is extremely dangerous */
       if (!copy)
 	{
-	  error = db_make_varnchar (dest, src_precision, src_str, src_length, DB_GET_STRING_CODESET (src),
-				    DB_GET_STRING_COLLATION (src));
+	  error = db_make_varnchar (dest, src_precision, src_str, src_length, db_get_string_codeset (src),
+				    db_get_string_collation (src));
 	}
       else
 	{
@@ -13958,8 +13958,8 @@ mr_setval_varnchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    {
 	      memcpy (new_, src_str, src_length);
 	      new_[src_length] = '\0';
-	      db_make_varnchar (dest, src_precision, new_, src_length, DB_GET_STRING_CODESET (src),
-				DB_GET_STRING_COLLATION (src));
+	      db_make_varnchar (dest, src_precision, new_, src_length, db_get_string_codeset (src),
+				db_get_string_collation (src));
 	      dest->need_clear = true;
 	    }
 	}
@@ -14038,7 +14038,7 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
 	  rc = pr_do_db_value_string_compression (value);
 	}
       /* We are now sure that the value has been through the process of compression */
-      compressed_size = DB_GET_COMPRESSED_SIZE (value);
+      compressed_size = db_get_compressed_size (value);
       /* If the compression was successful, then we use the compression size value */
       if (compressed_size > 0)
 	{
@@ -14155,7 +14155,7 @@ mr_writeval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	  return rc;
 	}
 
-      compressed_size = DB_GET_COMPRESSED_SIZE (value);
+      compressed_size = db_get_compressed_size (value);
       compressed_string = DB_GET_COMPRESSED_STRING (value);
 
       if (compressed_size == DB_UNCOMPRESSABLE && src_size < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
@@ -14701,10 +14701,10 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
   unsigned char *string1, *string2;
   int strc;
 
-  string1 = (unsigned char *) DB_GET_STRING (value1);
-  string2 = (unsigned char *) DB_GET_STRING (value2);
+  string1 = (unsigned char *) db_get_string (value1);
+  string2 = (unsigned char *) db_get_string (value2);
 
-  if (string1 == NULL || string2 == NULL || DB_GET_STRING_CODESET (value1) != DB_GET_STRING_CODESET (value1))
+  if (string1 == NULL || string2 == NULL || db_get_string_codeset (value1) != db_get_string_codeset (value1))
     {
       return DB_UNK;
     }
@@ -14715,8 +14715,8 @@ mr_cmpval_varnchar (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int t
       return DB_UNK;
     }
 
-  strc = QSTR_NCHAR_COMPARE (collation, string1, (int) DB_GET_STRING_SIZE (value1), string2,
-			     (int) DB_GET_STRING_SIZE (value2), DB_GET_STRING_CODESET (value2));
+  strc = QSTR_NCHAR_COMPARE (collation, string1, (int) db_get_string_size (value1), string2,
+			     (int) db_get_string_size (value2), db_get_string_codeset (value2));
   c = MR_CMP_RETURN_CODE (strc);
 
   return c;
@@ -14731,20 +14731,20 @@ mr_cmpval_varnchar2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_co
   unsigned char *string1, *string2;
   int len1, len2, string_size;
 
-  string1 = (unsigned char *) DB_GET_STRING (value1);
-  string2 = (unsigned char *) DB_GET_STRING (value2);
+  string1 = (unsigned char *) db_get_string (value1);
+  string2 = (unsigned char *) db_get_string (value2);
 
   if (string1 == NULL || string2 == NULL)
     {
       return DB_UNK;
     }
 
-  string_size = (int) DB_GET_STRING_SIZE (value1);
+  string_size = (int) db_get_string_size (value1);
   len1 = MIN (string_size, length);
-  string_size = (int) DB_GET_STRING_SIZE (value2);
+  string_size = (int) db_get_string_size (value2);
   len2 = MIN (string_size, length);
 
-  c = varnchar_compare (string1, len1, string2, len2, DB_GET_STRING_CODESET (value2));
+  c = varnchar_compare (string1, len1, string2, len2, db_get_string_codeset (value2));
   c = MR_CMP_RETURN_CODE (c);
 
   return c;
@@ -15444,15 +15444,15 @@ mr_cmpval_bit (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_
   unsigned char *string1, *string2;
   int bitc;
 
-  string1 = (unsigned char *) DB_GET_STRING (value1);
-  string2 = (unsigned char *) DB_GET_STRING (value2);
+  string1 = (unsigned char *) db_get_string (value1);
+  string2 = (unsigned char *) db_get_string (value2);
 
   if (string1 == NULL || string2 == NULL)
     {
       return DB_UNK;
     }
 
-  bitc = bit_compare (string1, (int) DB_GET_STRING_SIZE (value1), string2, (int) DB_GET_STRING_SIZE (value2));
+  bitc = bit_compare (string1, (int) db_get_string_size (value1), string2, (int) db_get_string_size (value2));
   c = MR_CMP_RETURN_CODE (bitc);
 
   return c;
@@ -15466,17 +15466,17 @@ mr_cmpval_bit2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercio
   int len1, len2, string_size;
   int bitc;
 
-  string1 = (unsigned char *) DB_GET_STRING (value1);
-  string2 = (unsigned char *) DB_GET_STRING (value2);
+  string1 = (unsigned char *) db_get_string (value1);
+  string2 = (unsigned char *) db_get_string (value2);
 
   if (string1 == NULL || string2 == NULL)
     {
       return DB_UNK;
     }
 
-  string_size = (int) DB_GET_STRING_SIZE (value1);
+  string_size = (int) db_get_string_size (value1);
   len1 = MIN (string_size, length);
-  string_size = (int) DB_GET_STRING_SIZE (value2);
+  string_size = (int) db_get_string_size (value2);
   len2 = MIN (string_size, length);
 
   bitc = bit_compare (string1, len1, string2, len2);
@@ -16138,15 +16138,15 @@ mr_cmpval_varbit (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
   unsigned char *string1, *string2;
   int bitc;
 
-  string1 = (unsigned char *) DB_GET_STRING (value1);
-  string2 = (unsigned char *) DB_GET_STRING (value2);
+  string1 = (unsigned char *) db_get_string (value1);
+  string2 = (unsigned char *) db_get_string (value2);
 
   if (string1 == NULL || string2 == NULL)
     {
       return DB_UNK;
     }
 
-  bitc = varbit_compare (string1, (int) DB_GET_STRING_SIZE (value1), string2, (int) DB_GET_STRING_SIZE (value2));
+  bitc = varbit_compare (string1, (int) db_get_string_size (value1), string2, (int) db_get_string_size (value2));
   c = MR_CMP_RETURN_CODE (bitc);
 
   return c;
@@ -16160,17 +16160,17 @@ mr_cmpval_varbit2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coer
   int len1, len2, string_size;
   int bitc;
 
-  string1 = (unsigned char *) DB_GET_STRING (value1);
-  string2 = (unsigned char *) DB_GET_STRING (value2);
+  string1 = (unsigned char *) db_get_string (value1);
+  string2 = (unsigned char *) db_get_string (value2);
 
   if (string1 == NULL || string2 == NULL)
     {
       return DB_UNK;
     }
 
-  string_size = (int) DB_GET_STRING_SIZE (value1);
+  string_size = (int) db_get_string_size (value1);
   len1 = MIN (string_size, length);
-  string_size = (int) DB_GET_STRING_SIZE (value2);
+  string_size = (int) db_get_string_size (value2);
   len2 = MIN (string_size, length);
 
   bitc = varbit_compare (string1, len1, string2, len2);
@@ -16230,7 +16230,7 @@ mr_setmem_enumeration (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
     }
   else
     {
-      *(unsigned short *) mem = DB_GET_ENUM_SHORT (value);
+      *(unsigned short *) mem = db_get_enum_short (value);
     }
 
   return NO_ERROR;
@@ -16257,29 +16257,29 @@ mr_setval_enumeration (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       return db_value_domain_init (dest, DB_TYPE_ENUMERATION, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
     }
 
-  if (DB_GET_ENUM_STRING (src) != NULL)
+  if (db_get_enum_string (src) != NULL)
     {
       if (copy)
 	{
-	  str = (char *) db_private_alloc (NULL, DB_GET_ENUM_STRING_SIZE (src) + 1);
+	  str = (char *) db_private_alloc (NULL, db_get_enum_string_size (src) + 1);
 	  if (str == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
-	  memcpy (str, DB_GET_ENUM_STRING (src), DB_GET_ENUM_STRING_SIZE (src));
-	  str[DB_GET_ENUM_STRING_SIZE (src)] = 0;
+	  memcpy (str, db_get_enum_string (src), db_get_enum_string_size (src));
+	  str[db_get_enum_string_size (src)] = 0;
 	  need_clear = true;
 	}
       else
 	{
-	  str = DB_GET_ENUM_STRING (src);
+	  str = db_get_enum_string (src);
 	}
     }
 
   /* get proper codeset from src */
-  db_make_enumeration (dest, DB_GET_ENUM_SHORT (src), str, DB_GET_ENUM_STRING_SIZE (src), DB_GET_ENUM_CODESET (src),
-		       DB_GET_ENUM_COLLATION (src));
+  db_make_enumeration (dest, db_get_enum_short (src), str, db_get_enum_string_size (src), db_get_enum_codeset (src),
+		       db_get_enum_collation (src));
   dest->need_clear = need_clear;
 
   return NO_ERROR;
@@ -16399,13 +16399,13 @@ mr_data_readval_enumeration (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain,
 static int
 mr_data_writeval_enumeration (OR_BUF * buf, DB_VALUE * value)
 {
-  return or_put_short (buf, DB_GET_ENUM_SHORT (value));
+  return or_put_short (buf, db_get_enum_short (value));
 }
 
 static int
 mr_index_writeval_enumeration (OR_BUF * buf, DB_VALUE * value)
 {
-  unsigned short s = DB_GET_ENUM_SHORT (value);
+  unsigned short s = db_get_enum_short (value);
 
   return or_put_data (buf, (char *) (&s), tp_Enumeration.disksize);
 }
@@ -16466,8 +16466,8 @@ mr_cmpval_enumeration (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, in
 {
   unsigned short s1, s2;
 
-  s1 = DB_GET_ENUM_SHORT (value1);
-  s2 = DB_GET_ENUM_SHORT (value2);
+  s1 = db_get_enum_short (value1);
+  s2 = db_get_enum_short (value2);
 
   return MR_CMP (s1, s2);
 }
@@ -16628,13 +16628,13 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
 
   /* Checks to be sure that we have the correct input */
   assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_VARNCHAR || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_STRING);
-  assert (DB_GET_STRING_SIZE (value) >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
+  assert (db_get_string_size (value) >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
 
   save_error_abort = buf->error_abort;
   buf->error_abort = 0;
 
-  string = DB_GET_STRING (value);
-  str_length = DB_GET_STRING_SIZE (value);
+  string = db_get_string (value);
+  str_length = db_get_string_size (value);
   *val_size = 0;
 
   if (!pr_Enable_string_compression)	/* compression is not set */
@@ -17154,7 +17154,7 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       assert (false);
     }
 
-  if (value != NULL && (DB_GET_JSON_RAW_BODY (value) != NULL) && (DB_GET_JSON_DOCUMENT (value) != NULL))
+  if (value != NULL && (db_get_json_raw_body (value) != NULL) && (db_get_json_document (value) != NULL))
     {
       error = db_get_deep_copy_of_json (&value->data.json, json);
       if (error != NO_ERROR)
@@ -17179,7 +17179,7 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 
   if (json == NULL)
     {
-      DB_MAKE_NULL (value);
+      db_make_null (value);
       db_value_domain_init (value, DB_TYPE_JSON, domain->precision, 0);
       value->need_clear = false;
       return NO_ERROR;
@@ -17299,8 +17299,8 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
   DB_JSON *json;
   int rc;
 
-  DB_MAKE_NULL (&json_body);
-  DB_MAKE_NULL (&schema_raw);
+  db_make_null (&json_body);
+  db_make_null (&schema_raw);
   json = (DB_JSON *) memptr;
 
   if (json == NULL)
@@ -17327,8 +17327,8 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
   (*(tp_String.data_readval)) (buf, &json_body, NULL, -1, false, NULL, 0);
   (*(tp_String.data_readval)) (buf, &schema_raw, NULL, -1, false, NULL, 0);
 
-  json_body_length = DB_GET_STRING_SIZE (&json_body);
-  schema_length = DB_GET_STRING_SIZE (&schema_raw);
+  json_body_length = db_get_string_size (&json_body);
+  schema_length = db_get_string_size (&schema_raw);
 
   if (json_body_length <= 0)
     {
@@ -17337,12 +17337,12 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
     }
   else
     {
-      json_body_str = DB_PULL_STRING (&json_body);
+      json_body_str = db_get_string (&json_body);
     }
 
   if (schema_length > 0)
     {
-      schema_str = DB_PULL_STRING (&schema_raw);
+      schema_str = db_get_string (&schema_raw);
     }
 
   json->json_body = db_private_strdup (NULL, json_body_str);
@@ -17538,9 +17538,9 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
   const char *json_raw = NULL;
   char *json_raw_copy = NULL;
 
-  DB_MAKE_NULL (value);
-  DB_MAKE_NULL (&json_body);
-  DB_MAKE_NULL (&schema_raw);
+  db_make_null (value);
+  db_make_null (&json_body);
+  db_make_null (&schema_raw);
 
   if (size == 0)
     {
@@ -17562,7 +17562,7 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 
   assert (!DB_IS_NULL (&json_body));
 
-  json_raw = DB_PULL_STRING (&json_body);
+  json_raw = db_get_string (&json_body);
 
   rc = db_json_get_json_from_str (json_raw, doc);
   if (rc != NO_ERROR)
@@ -17573,9 +17573,9 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
   json_raw_copy = db_private_strdup (NULL, json_raw);
   db_make_json (value, json_raw_copy, doc, true);
 
-  if (DB_GET_STRING_SIZE (&schema_raw) > 0)
+  if (db_get_string_size (&schema_raw) > 0)
     {
-      value->data.json.schema_raw = db_private_strdup (NULL, DB_PULL_STRING (&schema_raw));
+      value->data.json.schema_raw = db_private_strdup (NULL, db_get_string (&schema_raw));
     }
   else
     {
@@ -17668,8 +17668,8 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   bool is_value1_null = true, is_value2_null = true;
   int error_code;
 
-  doc1 = DB_GET_JSON_DOCUMENT (value1);
-  doc2 = DB_GET_JSON_DOCUMENT (value2);
+  doc1 = db_get_json_document (value1);
+  doc2 = db_get_json_document (value2);
 
   is_value1_null = DB_IS_NULL (value1) || ((type1 = db_json_get_type (doc1)) == DB_JSON_NULL);
   is_value2_null = DB_IS_NULL (value2) || ((type2 = db_json_get_type (doc2)) == DB_JSON_NULL);
@@ -17692,8 +17692,8 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   /* db_json_get_type shouldn't return DB_JSON_UNKNOWN, this represents a bug */
   assert (type1 != DB_JSON_UNKNOWN && type2 != DB_JSON_UNKNOWN);
 
-  DB_MAKE_NULL (&scalar_value1);
-  DB_MAKE_NULL (&scalar_value2);
+  db_make_null (&scalar_value1);
+  db_make_null (&scalar_value2);
 
   if (db_json_doc_is_uncomparable (doc1) || db_json_doc_is_uncomparable (doc2))
     {
@@ -17703,8 +17703,8 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
       str1 = db_json_get_raw_json_body_from_document (doc1);
       str2 = db_json_get_raw_json_body_from_document (doc2);
 
-      DB_MAKE_STRING (&scalar_value1, str1);
-      DB_MAKE_STRING (&scalar_value2, str2);
+      db_make_string (&scalar_value1, str1);
+      db_make_string (&scalar_value2, str2);
       scalar_value1.need_clear = true;
       scalar_value2.need_clear = true;
     }

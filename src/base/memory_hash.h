@@ -27,7 +27,7 @@
 
 #ident "$Id$"
 
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "memory_alloc.h"
 #include "thread_compat.hpp"
 

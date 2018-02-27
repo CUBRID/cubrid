@@ -31,8 +31,6 @@
 #include <cassert>
 #include <cstdint>
 
-#define MAX_PERIODS 3 // for increasing period pattern
-
 // cubthread::looper
 //
 // description
@@ -68,6 +66,9 @@
 
 namespace cubthread
 {
+
+  // for increasing period pattern
+  const std::size_t MAX_LOOPER_PERIODS = 3;
 
   // forward def
   class waiter;
@@ -118,9 +119,9 @@ namespace cubthread
 	INFINITE_WAITS,               // always infinite waits
       };
 
-      wait_pattern m_wait_pattern;          // wait pattern type
-      std::size_t m_periods_count;          // the period count
-      delta_time m_periods[MAX_PERIODS];    // period array
+      wait_pattern m_wait_pattern;              // wait pattern type
+      std::size_t m_periods_count;              // the period count
+      delta_time m_periods[MAX_LOOPER_PERIODS]; // period array
 
       std::size_t m_period_index;           // current period index
       std::atomic<bool> m_stop;             // when true, loop is stopped; no waits
@@ -156,8 +157,8 @@ namespace cubthread
     , m_period_index (0)
     , m_stop (false)
   {
-    static_assert (Count <= MAX_PERIODS, "Count template cannot exceed MAX_PERIODS=3");
-    m_periods_count = std::min (Count, (std::size_t) MAX_PERIODS);
+    static_assert (Count <= MAX_LOOPER_PERIODS, "Count template cannot exceed MAX_LOOPER_PERIODS=3");
+    m_periods_count = std::min (Count, MAX_LOOPER_PERIODS);
 
     // wait increasing period on timeouts
     for (std::size_t i = 0; i < m_periods_count; i++)

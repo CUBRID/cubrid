@@ -26,6 +26,11 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_set.c
   ${COMPAT_DIR}/db_value_printer.cpp
   )
+set (COMPAT_HEADERS  
+  ${COMPAT_DIR}/dbtype_def.h
+  ${COMPAT_DIR}/dbtype_function.i
+  ${COMPAT_DIR}/dbtype_function.h
+  )
 
 set(THREAD_SOURCES
   ${THREAD_DIR}/thread.c
@@ -63,6 +68,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/dynamic_array.c	
   ${BASE_DIR}/encryption.c
   ${BASE_DIR}/environment_variable.c
+  ${BASE_DIR}/error_context.cpp
   ${BASE_DIR}/error_manager.c
   ${BASE_DIR}/event_log.c
   ${BASE_DIR}/fault_injection.c
@@ -97,6 +103,9 @@ set(BASE_SOURCES
 set (BASE_HEADERS
   ${BASE_DIR}/contiguous_memory_buffer.hpp
   ${BASE_DIR}/db_private_allocator.hpp
+  ${BASE_DIR}/error_code.h
+  ${BASE_DIR}/error_context.hpp
+  ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/string_buffer.hpp
@@ -294,6 +303,7 @@ set (CUBRID_LIB_SOURCES
   )
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
+  ${COMPAT_HEADERS}
   ${THREAD_HEADERS}
   )
 
@@ -372,9 +382,18 @@ install(TARGETS cubrid
 
 install(FILES
   ${COMPAT_DIR}/dbi_compat.h
-  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
   RENAME dbi.h
   )
+install(FILES
+  ${COMPAT_DIR}/dbtype_def.h
+  ${COMPAT_DIR}/dbtype_function.h
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
+  )
+install(FILES
+  ${BASE_DIR}/error_code.h
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
+  )  
 
 # install pdb files for debugging on windows
 if(WIN32)

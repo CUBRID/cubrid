@@ -58,6 +58,7 @@
 #include "locator_cl.h"
 #include "object_domain.h"
 #include "network_interface_cl.h"
+#include "dbtype.h"
 
 /* figure out how many bytes a QO_USING_INDEX struct with n entries requires */
 #define SIZEOF_USING_INDEX(n) \
@@ -5477,7 +5478,7 @@ qo_data_compare (DB_DATA * data1, DB_DATA * data2, DB_TYPE type)
       break;
 
     case DB_TYPE_TIMESTAMPLTZ:
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       result = ((data1->utime < data2->utime) ? -1 : ((data1->utime > data2->utime) ? 1 : 0));
       break;
     case DB_TYPE_TIMESTAMPTZ:
@@ -5611,7 +5612,7 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   env->dump_enable = prm_get_bool_value (PRM_ID_QO_DUMP);
   bitset_init (&(env->fake_terms), env);
   bitset_init (&QO_ENV_SORT_LIMIT_NODES (env), env);
-  DB_MAKE_NULL (&QO_ENV_LIMIT_VALUE (env));
+  db_make_null (&QO_ENV_LIMIT_VALUE (env));
 
   assert (query->node_type == PT_SELECT);
   if (PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_INFO_COLS_SCHEMA)
@@ -8486,7 +8487,7 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
       goto abandon_stop_limit;
     }
 
-  if ((DB_BIGINT) limit_max_count < DB_GET_BIGINT (&QO_ENV_LIMIT_VALUE (env)))
+  if ((DB_BIGINT) limit_max_count < db_get_bigint (&QO_ENV_LIMIT_VALUE (env)))
     {
       /* Limit too large to apply this optimization. Mark it as candidate but do not generate SORT-LIMIT plans at this
        * time. 

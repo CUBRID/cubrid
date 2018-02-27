@@ -31,6 +31,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "dbtype.h"
 #include "error_manager.h"
 #include "stream_to_xasl.h"
 #include "thread.h"
@@ -6924,7 +6925,7 @@ stx_init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic)
   analytic->is_first_exec_time = true;
 
   /* part_value */
-  DB_MAKE_NULL (&analytic->part_value);
+  db_make_null (&analytic->part_value);
 
   /* curr_cnt */
   analytic->curr_cnt = 0;

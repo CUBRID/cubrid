@@ -29,6 +29,8 @@
 
 #include "config.h"
 
+
+#include "dbtype_def.h"
 #include "error_manager.h"
 #include "object_representation.h"
 #include "object_domain.h"	/* for TP_DOMAIN */
@@ -41,25 +43,6 @@
 
 #define SET_DUPLICATE_VALUE (1)
 #define IMPLICIT (1)
-
-/* Quick set argument check */
-
-/* this needs to go into the pr_ level */
-
-#define SET_FIX_VALUE(value) \
-  if ((DB_VALUE_TYPE(value) == DB_TYPE_STRING && \
-       DB_GET_STRING(value) == NULL) || \
-      (TP_IS_SET_TYPE (DB_VALUE_TYPE(value)) && \
-       DB_GET_SET(value) == NULL) || \
-      (DB_VALUE_TYPE(value) == DB_TYPE_OBJECT && \
-       DB_GET_OBJECT(value) == NULL) || \
-      (DB_VALUE_TYPE(value) == DB_TYPE_BLOB && \
-       DB_GET_ELO(value) == NULL) || \
-      (DB_VALUE_TYPE(value) == DB_TYPE_CLOB && \
-       DB_GET_ELO(value) == NULL) || \
-      (DB_VALUE_TYPE(value) == DB_TYPE_ELO && \
-       DB_GET_ELO(value) == NULL)) \
-    DB_MAKE_NULL(value);
 
 #define COL_BLOCK_SIZE (64)
 
@@ -74,7 +57,7 @@
 #define OFFSET(collection_index) ((int) ((collection_index)%COL_BLOCK_SIZE))
 #define INDEX(collection,index) (&(collection->array[BLOCK(index)][OFFSET(index)]))
 #define BLOCKING_LESS1 (COL_BLOCK_SIZE -1)
-#define VALUETOP(col) ((col->topblock*COL_BLOCK_SIZE)+col->topblockcount)
+#define VALUETOP(col) ((col->topblock * COL_BLOCK_SIZE) + col->topblockcount)
 #define COLBLOCKSIZE(n) (sizeof(COL_BLOCK) + (n * sizeof(DB_VALUE)))
 #define BLOCK_START(block)      ((COL_BLOCK *) \
             ((char *)block - offsetof(struct collect_block, val)))
@@ -97,13 +80,7 @@ typedef struct set_iterator
   int position;			/* current element index */
 } SET_ITERATOR;
 
-/*
- * struct setobj
- * The internal structure of a setobj data struct is private to this module.
- * all access to this structure should be encapsulated via function calls.
- */
-typedef SETOBJ COL;
-
+  /* From set_object.h */
 struct setobj
 {
 
@@ -112,12 +89,12 @@ struct setobj
 				 * collection */
   int lastinsert;		/* the last value insertion point 0 to size. */
   int topblock;			/* maximum index of an allocated block. This is the maximum non-NULL db_value pointer
-				 * index of array. array[topblock] should be non-NULL. array[topblock+1] will be a NULL 
+				 * index of array. array[topblock] should be non-NULL. array[topblock+1] will be a NULL
 				 * pointer for future expansion. */
   int arraytop;			/* maximum indexable pointer in array the valid indexes for array are 0 to arraytop
 				 * inclusive Generally this may be greater than topblock */
-  int topblockcount;		/* This is the max index of the top block Since it may be shorter than a standard sized 
-				 * block for space efficicency. */
+  int topblockcount;		/* This is the max index of the top block Since it may be shorter than a standard sized
+				 * block for space efficiency. */
   DB_VALUE **array;
 
   /* not stored on disk, attached at run time by the schema */
@@ -126,10 +103,10 @@ struct setobj
   /* external reference list */
   DB_COLLECTION *references;
 
-  /* clear if we can't guarentee sort order, always on for sequences */
+  /* clear if we can't guarantee sort order, always on for sequences */
   unsigned sorted:1;
 
-  /* set if we can't guarentee that there are no temporary OID's in here */
+  /* set if we can't guarantee that there are no temporary OID's in here */
   unsigned may_have_temporary_oids:1;
 };
 
@@ -299,7 +276,6 @@ extern int setobj_drop_seq_element (COL * col, int index);
 extern int setobj_find_seq_element (COL * col, DB_VALUE * value, int index);
 extern COL *setobj_coerce (COL * col, TP_DOMAIN * domain, bool implicit_coercion);
 extern void setobj_print (FILE * fp, COL * col);
-extern DB_TYPE setobj_type (COL * set);
 extern TP_DOMAIN *setobj_domain (COL * set);
 extern void setobj_put_domain (COL * set, TP_DOMAIN * domain);
 extern int setobj_put_value (COL * col, int index, DB_VALUE * value);

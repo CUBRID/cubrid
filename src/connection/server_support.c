@@ -73,8 +73,7 @@
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
-#include "dbval.h"		/* this must be the last header file included */
-
+#include "dbtype.h"
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"
 
@@ -1887,21 +1886,6 @@ shutdown:
 
   return status;
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * css_shutdown() - Shuts down the communication interface
- *   return:
- *   exit_reason(in):
- *
- * Note: This is the routine to call when the server is going down
- */
-void
-css_shutdown (int exit_reason)
-{
-  thread_exit (exit_reason);
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * css_send_data_to_client() - send a data buffer to the server

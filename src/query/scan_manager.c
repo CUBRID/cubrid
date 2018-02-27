@@ -43,9 +43,7 @@
 #include "object_primitive.h"
 #include "query_opfunc.h"
 #include "thread.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -255,7 +253,7 @@ scan_init_iss (INDX_SCAN_ID * isidp)
   if (!DB_IS_NULL (last_key))
     {
       pr_clear_value (last_key);
-      DB_MAKE_NULL (last_key);
+      db_make_null (last_key);
     }
 
   return NO_ERROR;
@@ -451,7 +449,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_I
 	  if (DB_IS_NULL (last_key))
 	    {
 	      pr_clear_value (last_key);
-	      DB_MAKE_NULL (last_key);
+	      db_make_null (last_key);
 
 	      return S_END;
 	    }
@@ -833,7 +831,7 @@ scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_IN
 	}
       else
 	{
-	  isidp->key_limit_lower = DB_GET_BIGINT (dbvalp);
+	  isidp->key_limit_lower = db_get_bigint (dbvalp);
 	}
 
       if (isidp->key_limit_lower < 0)
@@ -884,7 +882,7 @@ scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_IN
 	}
       else
 	{
-	  isidp->key_limit_upper = DB_GET_BIGINT (dbvalp);
+	  isidp->key_limit_upper = db_get_bigint (dbvalp);
 	}
 
       if (isidp->key_limit_upper < 0)
@@ -1167,7 +1165,7 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term)
       if (key_type == DB_TYPE_MIDXKEY)
 	{
 	  rc =
-	    pr_midxkey_compare (DB_GET_MIDXKEY (val1), DB_GET_MIDXKEY (val2), 1, 1, num_index_term, NULL, &dummy_size1,
+	    pr_midxkey_compare (db_get_midxkey (val1), db_get_midxkey (val2), 1, 1, num_index_term, NULL, &dummy_size1,
 				&dummy_size2, &dummy_diff_column, &dummy_dom_is_desc, &dummy_next_dom_is_desc);
 	}
       else
@@ -1400,7 +1398,7 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
 	    {
 	      pr_clear_value (&curp->key1);
 	      curp->key1 = nextp->key1;	/* bitwise copy */
-	      DB_MAKE_NULL (&nextp->key1);
+	      db_make_null (&nextp->key1);
 	      cur_op1 = next_op1;
 	    }
 	  else
@@ -1413,7 +1411,7 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt)
 	    {
 	      pr_clear_value (&curp->key2);
 	      curp->key2 = nextp->key2;	/* bitwise copy */
-	      DB_MAKE_NULL (&nextp->key2);
+	      db_make_null (&nextp->key2);
 	      cur_op2 = next_op2;
 	    }
 	  else
@@ -2218,8 +2216,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	{
 	  /* initialize DB_VALUE first for error case */
 	  key_vals[i].range = NA_NA;
-	  DB_MAKE_NULL (&key_vals[i].key1);
-	  DB_MAKE_NULL (&key_vals[i].key2);
+	  db_make_null (&key_vals[i].key1);
+	  db_make_null (&key_vals[i].key2);
 	  key_vals[i].is_truncated = false;
 	  key_vals[i].num_index_term = 0;
 	}
@@ -3951,7 +3949,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      /* initialize cache_recordinfo values */
 	      for (i = 0; i < HEAP_RECORD_INFO_COUNT; i++)
 		{
-		  DB_MAKE_NULL (hsidp->cache_recordinfo[i]);
+		  db_make_null (hsidp->cache_recordinfo[i]);
 		}
 	    }
 	  hsidp->caches_inited = true;
@@ -4083,7 +4081,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  for (i = 0; i < BTREE_KEY_INFO_COUNT; i++)
 	    {
-	      DB_MAKE_NULL (isidp->key_info_values[i]);
+	      db_make_null (isidp->key_info_values[i]);
 	    }
 	}
       isidp->caches_inited = true;
@@ -4099,7 +4097,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  for (i = 0; i < BTREE_NODE_INFO_COUNT; i++)
 	    {
-	      DB_MAKE_NULL (insidp->node_info_values[i]);
+	      db_make_null (insidp->node_info_values[i]);
 	    }
 	  insidp->caches_inited = true;
 	}
@@ -4142,7 +4140,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_SET_SCAN:
       ssidp = &scan_id->s.ssid;
-      DB_MAKE_NULL (&ssidp->set);
+      db_make_null (&ssidp->set);
       break;
 
     case S_METHOD_SCAN:

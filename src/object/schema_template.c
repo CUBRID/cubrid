@@ -51,6 +51,8 @@
 #include "misc_string.h"
 #endif
 
+#include "dbtype.h"
+
 #define DOWNCASE_NAME(a, b) \
   do { \
     sm_downcase_name(a, b, SM_MAX_IDENTIFIER_LENGTH); \
@@ -1479,21 +1481,21 @@ smt_drop_constraint_from_property (SM_TEMPLATE * template_, const char *constrai
       return NO_ERROR;
     }
 
-  DB_MAKE_NULL (&oldval);
-  DB_MAKE_NULL (&newval);
+  db_make_null (&oldval);
+  db_make_null (&newval);
 
   prop_type = SM_MAP_CONSTRAINT_ATTFAG_TO_PROPERTY (constraint);
 
   if (classobj_get_prop (template_->properties, prop_type, &oldval) > 0)
     {
-      seq = DB_GET_SEQ (&oldval);
+      seq = db_get_set (&oldval);
 
       if (!classobj_drop_prop (seq, constraint_name))
 	{
 	  ERROR1 (error, ER_SM_CONSTRAINT_NOT_FOUND, constraint_name);
 	}
 
-      DB_MAKE_SEQUENCE (&newval, seq);
+      db_make_sequence (&newval, seq);
       classobj_put_prop (template_->properties, prop_type, &newval);
     }
   else
@@ -1533,7 +1535,7 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
   DB_VALUE cnstr_val;
   const char *constraint = classobj_map_constraint_to_property (type);
 
-  DB_MAKE_NULL (&cnstr_val);
+  db_make_null (&cnstr_val);
 
   /* 
    *  Check if the constraint already exists

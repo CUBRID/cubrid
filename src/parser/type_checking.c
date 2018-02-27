@@ -55,8 +55,7 @@
 #include "object_template.h"
 #include "db.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #define SET_EXPECTED_DOMAIN(node, dom) \
   do \
@@ -12640,13 +12639,13 @@ pt_check_and_coerce_to_time (PARSER_CONTEXT * parser, PT_NODE * src)
       return ER_TIME_CONVERSION;
     }
 
-  if (DB_GET_STRING (db_src) == NULL)
+  if (db_get_string (db_src) == NULL)
     {
       return ER_TIME_CONVERSION;
     }
 
-  cp = DB_GET_STRING (db_src);
-  cp_len = DB_GET_STRING_SIZE (db_src);
+  cp = db_get_string (db_src);
+  cp_len = db_get_string_size (db_src);
   if (db_string_check_explicit_time (cp, cp_len) == false)
     {
       return ER_TIME_CONVERSION;
@@ -12682,13 +12681,13 @@ pt_check_and_coerce_to_date (PARSER_CONTEXT * parser, PT_NODE * src)
       return ER_DATE_CONVERSION;
     }
 
-  if (DB_GET_STRING (db_src) == NULL)
+  if (db_get_string (db_src) == NULL)
     {
       return ER_DATE_CONVERSION;
     }
 
-  str = DB_GET_STRING (db_src);
-  str_len = DB_GET_STRING_SIZE (db_src);
+  str = db_get_string (db_src);
+  str_len = db_get_string_size (db_src);
   if (!db_string_check_explicit_date (str, str_len))
     {
       return ER_DATE_CONVERSION;
@@ -14450,7 +14449,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	{
 	  db_make_null (result);	/* not NULL = NULL */
 	}
-      else if (DB_GET_INTEGER (arg1))
+      else if (db_get_int (arg1))
 	{
 	  db_make_int (result, false);	/* not true = false */
 	}
@@ -14480,15 +14479,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  break;
 
 	case DB_TYPE_INTEGER:
-	  db_make_bigint (result, ~((DB_BIGINT) DB_GET_INTEGER (arg1)));
+	  db_make_bigint (result, ~((DB_BIGINT) db_get_int (arg1)));
 	  break;
 
 	case DB_TYPE_BIGINT:
-	  db_make_bigint (result, ~DB_GET_BIGINT (arg1));
+	  db_make_bigint (result, ~db_get_bigint (arg1));
 	  break;
 
 	case DB_TYPE_SHORT:
-	  db_make_bigint (result, ~((DB_BIGINT) DB_GET_SHORT (arg1)));
+	  db_make_bigint (result, ~((DB_BIGINT) db_get_short (arg1)));
 	  break;
 
 	default:
@@ -14517,15 +14516,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		break;
 
 	      case DB_TYPE_INTEGER:
-		bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
+		bi[i] = (DB_BIGINT) db_get_int (dbval[i]);
 		break;
 
 	      case DB_TYPE_BIGINT:
-		bi[i] = DB_GET_BIGINT (dbval[i]);
+		bi[i] = db_get_bigint (dbval[i]);
 		break;
 
 	      case DB_TYPE_SHORT:
-		bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
+		bi[i] = (DB_BIGINT) db_get_short (dbval[i]);
 		break;
 
 	      default:
@@ -14561,15 +14560,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		break;
 
 	      case DB_TYPE_INTEGER:
-		bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
+		bi[i] = (DB_BIGINT) db_get_int (dbval[i]);
 		break;
 
 	      case DB_TYPE_BIGINT:
-		bi[i] = DB_GET_BIGINT (dbval[i]);
+		bi[i] = db_get_bigint (dbval[i]);
 		break;
 
 	      case DB_TYPE_SHORT:
-		bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
+		bi[i] = (DB_BIGINT) db_get_short (dbval[i]);
 		break;
 
 	      default:
@@ -14605,15 +14604,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		break;
 
 	      case DB_TYPE_INTEGER:
-		bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
+		bi[i] = (DB_BIGINT) db_get_int (dbval[i]);
 		break;
 
 	      case DB_TYPE_BIGINT:
-		bi[i] = DB_GET_BIGINT (dbval[i]);
+		bi[i] = db_get_bigint (dbval[i]);
 		break;
 
 	      case DB_TYPE_SHORT:
-		bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
+		bi[i] = (DB_BIGINT) db_get_short (dbval[i]);
 		break;
 
 	      default:
@@ -14650,15 +14649,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		break;
 
 	      case DB_TYPE_INTEGER:
-		bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
+		bi[i] = (DB_BIGINT) db_get_int (dbval[i]);
 		break;
 
 	      case DB_TYPE_BIGINT:
-		bi[i] = DB_GET_BIGINT (dbval[i]);
+		bi[i] = db_get_bigint (dbval[i]);
 		break;
 
 	      case DB_TYPE_SHORT:
-		bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
+		bi[i] = (DB_BIGINT) db_get_short (dbval[i]);
 		break;
 
 	      default:
@@ -14709,15 +14708,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		break;
 
 	      case DB_TYPE_INTEGER:
-		bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
+		bi[i] = (DB_BIGINT) db_get_int (dbval[i]);
 		break;
 
 	      case DB_TYPE_BIGINT:
-		bi[i] = DB_GET_BIGINT (dbval[i]);
+		bi[i] = db_get_bigint (dbval[i]);
 		break;
 
 	      case DB_TYPE_SHORT:
-		bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
+		bi[i] = (DB_BIGINT) db_get_short (dbval[i]);
 		break;
 
 	      default:
@@ -14792,7 +14791,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  }
 	else
 	  {
-	    if (DB_GET_INTEGER (arg1))
+	    if (db_get_int (arg1))
 	      {
 		if (db_value_clone (arg2, result) != NO_ERROR)
 		  {
@@ -14919,44 +14918,44 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  break;
 
 	case DB_TYPE_INTEGER:
-	  if (DB_GET_INTEGER (arg1) == DB_INT32_MIN)
+	  if (db_get_int (arg1) == DB_INT32_MIN)
 	    {
 	      goto overflow;
 	    }
 	  else
 	    {
-	      db_make_int (result, -DB_GET_INTEGER (arg1));
+	      db_make_int (result, -db_get_int (arg1));
 	    }
 	  break;
 
 	case DB_TYPE_BIGINT:
-	  if (DB_GET_BIGINT (arg1) == DB_BIGINT_MIN)
+	  if (db_get_bigint (arg1) == DB_BIGINT_MIN)
 	    {
 	      goto overflow;
 	    }
 	  else
 	    {
-	      db_make_bigint (result, -DB_GET_BIGINT (arg1));
+	      db_make_bigint (result, -db_get_bigint (arg1));
 	    }
 	  break;
 
 	case DB_TYPE_SHORT:
-	  if (DB_GET_SHORT (arg1) == DB_INT16_MIN)
+	  if (db_get_short (arg1) == DB_INT16_MIN)
 	    {
 	      goto overflow;
 	    }
 	  else
 	    {
-	      db_make_short (result, -DB_GET_SHORT (arg1));
+	      db_make_short (result, -db_get_short (arg1));
 	    }
 	  break;
 
 	case DB_TYPE_FLOAT:
-	  db_make_float (result, -DB_GET_FLOAT (arg1));
+	  db_make_float (result, -db_get_float (arg1));
 	  break;
 
 	case DB_TYPE_DOUBLE:
-	  db_make_double (result, -DB_GET_DOUBLE (arg1));
+	  db_make_double (result, -db_get_double (arg1));
 	  break;
 
 	case DB_TYPE_NUMERIC:
@@ -14966,11 +14965,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      return 0;
 	    }
 
-	  db_make_numeric (result, DB_GET_NUMERIC (arg1), DB_VALUE_PRECISION (arg1), DB_VALUE_SCALE (arg1));
+	  db_make_numeric (result, db_get_numeric (arg1), DB_VALUE_PRECISION (arg1), DB_VALUE_SCALE (arg1));
 	  break;
 
 	case DB_TYPE_MONETARY:
-	  DB_MAKE_MONETARY (result, -DB_GET_MONETARY (arg1)->amount);
+	  db_make_monetary (result, DB_CURRENCY_DEFAULT, -db_get_monetary (arg1)->amount);
 	  break;
 
 	case DB_TYPE_CHAR:
@@ -14999,7 +14998,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    {
 	      pr_clear_value (arg1);
 	      *arg1 = tmp_val;
-	      db_make_double (result, -DB_GET_DOUBLE (arg1));
+	      db_make_double (result, -db_get_double (arg1));
 	    }
 	  break;
 
@@ -15061,7 +15060,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 	    else
 	      {
-		if (DB_GET_INTEGER (arg1) == DB_GET_INTEGER (arg2))
+		if (db_get_int (arg1) == db_get_int (arg2))
 		  {
 		    db_make_int (result, _true);
 		  }
@@ -15570,12 +15569,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       break;
 
     case PT_AND:
-      if ((typ1 == DB_TYPE_NULL && typ2 == DB_TYPE_NULL) || (typ1 == DB_TYPE_NULL && DB_GET_INTEGER (arg2))
-	  || (typ2 == DB_TYPE_NULL && DB_GET_INTEGER (arg1)))
+      if ((typ1 == DB_TYPE_NULL && typ2 == DB_TYPE_NULL) || (typ1 == DB_TYPE_NULL && db_get_int (arg2))
+	  || (typ2 == DB_TYPE_NULL && db_get_int (arg1)))
 	{
 	  db_make_null (result);
 	}
-      else if (typ1 != DB_TYPE_NULL && DB_GET_INTEGER (arg1) && typ2 != DB_TYPE_NULL && DB_GET_INTEGER (arg2))
+      else if (typ1 != DB_TYPE_NULL && db_get_int (arg1) && typ2 != DB_TYPE_NULL && db_get_int (arg2))
 	{
 	  db_make_int (result, true);
 	}
@@ -15586,12 +15585,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       break;
 
     case PT_OR:
-      if ((typ1 == DB_TYPE_NULL && typ2 == DB_TYPE_NULL) || (typ1 == DB_TYPE_NULL && !DB_GET_INTEGER (arg2))
-	  || (typ2 == DB_TYPE_NULL && !DB_GET_INTEGER (arg1)))
+      if ((typ1 == DB_TYPE_NULL && typ2 == DB_TYPE_NULL) || (typ1 == DB_TYPE_NULL && !db_get_int (arg2))
+	  || (typ2 == DB_TYPE_NULL && !db_get_int (arg1)))
 	{
 	  db_make_null (result);
 	}
-      else if (typ1 != DB_TYPE_NULL && !DB_GET_INTEGER (arg1) && typ2 != DB_TYPE_NULL && !DB_GET_INTEGER (arg2))
+      else if (typ1 != DB_TYPE_NULL && !db_get_int (arg1) && typ2 != DB_TYPE_NULL && !db_get_int (arg2))
 	{
 	  db_make_int (result, false);
 	}
@@ -15606,7 +15605,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	{
 	  db_make_null (result);
 	}
-      else if ((!DB_GET_INTEGER (arg1) && !DB_GET_INTEGER (arg2)) || (DB_GET_INTEGER (arg1) && DB_GET_INTEGER (arg2)))
+      else if ((!db_get_int (arg1) && !db_get_int (arg2)) || (db_get_int (arg1) && db_get_int (arg2)))
 	{
 	  db_make_int (result, false);
 	}
@@ -15725,8 +15724,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      {
 		int i1, i2, itmp;
 
-		i1 = DB_GET_INT (arg1);
-		i2 = DB_GET_INT (arg2);
+		i1 = db_get_int (arg1);
+		i2 = db_get_int (arg2);
 		itmp = i1 + i2;
 		if (OR_CHECK_ADD_OVERFLOW (i1, i2, itmp))
 		  goto overflow;
@@ -15739,8 +15738,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      {
 		DB_BIGINT bi1, bi2, bitmp;
 
-		bi1 = DB_GET_BIGINT (arg1);
-		bi2 = DB_GET_BIGINT (arg2);
+		bi1 = db_get_bigint (arg1);
+		bi2 = db_get_bigint (arg2);
 		bitmp = bi1 + bi2;
 		if (OR_CHECK_ADD_OVERFLOW (bi1, bi2, bitmp))
 		  goto overflow;
@@ -15753,8 +15752,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      {
 		short s1, s2, stmp;
 
-		s1 = DB_GET_SHORT (arg1);
-		s2 = DB_GET_SHORT (arg2);
+		s1 = db_get_short (arg1);
+		s2 = db_get_short (arg2);
 		stmp = s1 + s2;
 		if (OR_CHECK_ADD_OVERFLOW (s1, s2, stmp))
 		  goto overflow;
@@ -15767,7 +15766,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      {
 		float ftmp;
 
-		ftmp = DB_GET_FLOAT (arg1) + DB_GET_FLOAT (arg2);
+		ftmp = db_get_float (arg1) + db_get_float (arg2);
 		if (OR_CHECK_FLOAT_OVERFLOW (ftmp))
 		  goto overflow;
 		else
@@ -15779,7 +15778,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      {
 		double dtmp;
 
-		dtmp = DB_GET_DOUBLE (arg1) + DB_GET_DOUBLE (arg2);
+		dtmp = db_get_double (arg1) + db_get_double (arg2);
 		if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
 		  goto overflow;
 		else
@@ -15806,11 +15805,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      {
 		double dtmp;
 
-		dtmp = (DB_GET_MONETARY (arg1)->amount + DB_GET_MONETARY (arg2)->amount);
+		dtmp = (db_get_monetary (arg1)->amount + db_get_monetary (arg2)->amount);
 		if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
 		  goto overflow;
 		else
-		  DB_MAKE_MONETARY (result, dtmp);
+		  db_make_monetary (result, DB_CURRENCY_DEFAULT, dtmp);
 		break;
 	      }
 
@@ -15824,25 +15823,25 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		if (DB_VALUE_TYPE (arg1) == DB_TYPE_TIME || DB_VALUE_TYPE (arg1) == DB_TYPE_TIMELTZ)
 		  {
-		    time = *DB_GET_TIME (arg1);
+		    time = *db_get_time (arg1);
 		    other = arg2;
 		  }
 		else
 		  {
-		    time = *DB_GET_TIME (arg2);
+		    time = *db_get_time (arg2);
 		    other = arg1;
 		  }
 
 		switch (DB_VALUE_TYPE (other))
 		  {
 		  case DB_TYPE_INTEGER:
-		    itmp = DB_GET_INTEGER (other);	/* SECONDS_OF_ONE_DAY */
+		    itmp = db_get_int (other);	/* SECONDS_OF_ONE_DAY */
 		    break;
 		  case DB_TYPE_SMALLINT:
-		    itmp = DB_GET_SHORT (other);	/* SECONDS_OF_ONE_DAY */
+		    itmp = db_get_short (other);	/* SECONDS_OF_ONE_DAY */
 		    break;
 		  case DB_TYPE_BIGINT:
-		    itmp = DB_GET_BIGINT (other);	/* SECONDS_OF_ONE_DAY */
+		    itmp = db_get_bigint (other);	/* SECONDS_OF_ONE_DAY */
 		    break;
 		  default:
 		    return 0;
@@ -15881,25 +15880,25 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		if (DB_VALUE_TYPE (arg1) == DB_TYPE_TIMETZ)
 		  {
-		    time_tz_p = DB_GET_TIMETZ (arg1);
+		    time_tz_p = db_get_timetz (arg1);
 		    other = arg2;
 		  }
 		else
 		  {
-		    time_tz_p = DB_GET_TIMETZ (arg2);
+		    time_tz_p = db_get_timetz (arg2);
 		    other = arg1;
 		  }
 
 		switch (DB_VALUE_TYPE (other))
 		  {
 		  case DB_TYPE_INTEGER:
-		    itmp = DB_GET_INTEGER (other);	/* SECONDS_OF_ONE_DAY */
+		    itmp = db_get_int (other);	/* SECONDS_OF_ONE_DAY */
 		    break;
 		  case DB_TYPE_SMALLINT:
-		    itmp = DB_GET_SHORT (other);	/* SECONDS_OF_ONE_DAY */
+		    itmp = db_get_short (other);	/* SECONDS_OF_ONE_DAY */
 		    break;
 		  case DB_TYPE_BIGINT:
-		    itmp = DB_GET_BIGINT (other);	/* SECONDS_OF_ONE_DAY */
+		    itmp = db_get_bigint (other);	/* SECONDS_OF_ONE_DAY */
 		    break;
 		  default:
 		    return 0;
@@ -15929,28 +15928,28 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 	      break;
 
-	    case DB_TYPE_UTIME:
+	    case DB_TYPE_TIMESTAMP:
 	    case DB_TYPE_TIMESTAMPLTZ:
 	      {
 		DB_UTIME *utime, result_utime;
 		DB_VALUE *other;
 		DB_BIGINT bi;
 
-		if (DB_VALUE_TYPE (arg1) == DB_TYPE_UTIME || DB_VALUE_TYPE (arg1) == DB_TYPE_TIMESTAMPLTZ)
+		if (DB_VALUE_TYPE (arg1) == DB_TYPE_TIMESTAMP || DB_VALUE_TYPE (arg1) == DB_TYPE_TIMESTAMPLTZ)
 		  {
-		    utime = DB_GET_UTIME (arg1);
+		    utime = db_get_timestamp (arg1);
 		    other = arg2;
 		  }
 		else
 		  {
-		    utime = DB_GET_UTIME (arg2);
+		    utime = db_get_timestamp (arg2);
 		    other = arg1;
 		  }
 
 		if (*utime == 0)
 		  {
 		    /* operation with zero date returns null */
-		    DB_MAKE_NULL (result);
+		    db_make_null (result);
 		    if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		      {
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
@@ -15962,13 +15961,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		switch (DB_VALUE_TYPE (other))
 		  {
 		  case DB_TYPE_INTEGER:
-		    bi = DB_GET_INTEGER (other);
+		    bi = db_get_int (other);
 		    break;
 		  case DB_TYPE_SMALLINT:
-		    bi = DB_GET_SHORT (other);
+		    bi = db_get_short (other);
 		    break;
 		  case DB_TYPE_BIGINT:
-		    bi = DB_GET_BIGINT (other);
+		    bi = db_get_bigint (other);
 		    break;
 		  default:
 		    return 0;
@@ -16023,12 +16022,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		if (DB_VALUE_TYPE (arg1) == DB_TYPE_TIMESTAMPTZ)
 		  {
-		    ts_tz_p = DB_GET_TIMESTAMPTZ (arg1);
+		    ts_tz_p = db_get_timestamptz (arg1);
 		    other = arg2;
 		  }
 		else
 		  {
-		    ts_tz_p = DB_GET_TIMESTAMPTZ (arg2);
+		    ts_tz_p = db_get_timestamptz (arg2);
 		    other = arg1;
 		  }
 
@@ -16037,7 +16036,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		if (utime == 0)
 		  {
 		    /* operation with zero date returns null */
-		    DB_MAKE_NULL (result);
+		    db_make_null (result);
 		    if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		      {
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
@@ -16049,13 +16048,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		switch (DB_VALUE_TYPE (other))
 		  {
 		  case DB_TYPE_INTEGER:
-		    bi = DB_GET_INTEGER (other);
+		    bi = db_get_int (other);
 		    break;
 		  case DB_TYPE_SMALLINT:
-		    bi = DB_GET_SHORT (other);
+		    bi = db_get_short (other);
 		    break;
 		  case DB_TYPE_BIGINT:
-		    bi = DB_GET_BIGINT (other);
+		    bi = db_get_bigint (other);
 		    break;
 		  default:
 		    return 0;
@@ -16111,19 +16110,19 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		if (DB_VALUE_TYPE (arg1) == DB_TYPE_DATETIME || DB_VALUE_TYPE (arg1) == DB_TYPE_DATETIMELTZ)
 		  {
-		    datetime = DB_GET_DATETIME (arg1);
+		    datetime = db_get_datetime (arg1);
 		    other = arg2;
 		  }
 		else
 		  {
-		    datetime = DB_GET_DATETIME (arg2);
+		    datetime = db_get_datetime (arg2);
 		    other = arg1;
 		  }
 
 		if (datetime->date == 0 && datetime->time == 0)
 		  {
 		    /* operation with zero date returns null */
-		    DB_MAKE_NULL (result);
+		    db_make_null (result);
 		    if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		      {
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
@@ -16135,13 +16134,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		switch (DB_VALUE_TYPE (other))
 		  {
 		  case DB_TYPE_SMALLINT:
-		    bi2 = (DB_BIGINT) DB_GET_SHORT (other);
+		    bi2 = (DB_BIGINT) db_get_short (other);
 		    break;
 		  case DB_TYPE_INTEGER:
-		    bi2 = (DB_BIGINT) DB_GET_INTEGER (other);
+		    bi2 = (DB_BIGINT) db_get_int (other);
 		    break;
 		  default:
-		    bi2 = (DB_BIGINT) DB_GET_BIGINT (other);
+		    bi2 = (DB_BIGINT) db_get_bigint (other);
 		    break;
 		  }
 
@@ -16196,12 +16195,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		if (DB_VALUE_TYPE (arg1) == DB_TYPE_DATETIMETZ)
 		  {
-		    dt_tz_p = DB_GET_DATETIMETZ (arg1);
+		    dt_tz_p = db_get_datetimetz (arg1);
 		    other = arg2;
 		  }
 		else
 		  {
-		    dt_tz_p = DB_GET_DATETIMETZ (arg2);
+		    dt_tz_p = db_get_datetimetz (arg2);
 		    other = arg1;
 		  }
 
@@ -16210,7 +16209,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		if (datetime.date == 0 && datetime.time == 0)
 		  {
 		    /* operation with zero date returns null */
-		    DB_MAKE_NULL (result);
+		    db_make_null (result);
 		    if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		      {
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
@@ -16222,13 +16221,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		switch (DB_VALUE_TYPE (other))
 		  {
 		  case DB_TYPE_SMALLINT:
-		    bi2 = (DB_BIGINT) DB_GET_SHORT (other);
+		    bi2 = (DB_BIGINT) db_get_short (other);
 		    break;
 		  case DB_TYPE_INTEGER:
-		    bi2 = (DB_BIGINT) DB_GET_INTEGER (other);
+		    bi2 = (DB_BIGINT) db_get_int (other);
 		    break;
 		  default:
-		    bi2 = (DB_BIGINT) DB_GET_BIGINT (other);
+		    bi2 = (DB_BIGINT) db_get_bigint (other);
 		    break;
 		  }
 
@@ -16281,19 +16280,19 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		if (DB_VALUE_TYPE (arg1) == DB_TYPE_DATE)
 		  {
-		    date = DB_GET_DATE (arg1);
+		    date = db_get_date (arg1);
 		    other = arg2;
 		  }
 		else
 		  {
-		    date = DB_GET_DATE (arg2);
+		    date = db_get_date (arg2);
 		    other = arg1;
 		  }
 
 		if (*date == 0)
 		  {
 		    /* operation with zero date returns null */
-		    DB_MAKE_NULL (result);
+		    db_make_null (result);
 		    if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		      {
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
@@ -16305,13 +16304,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		switch (DB_VALUE_TYPE (other))
 		  {
 		  case DB_TYPE_INTEGER:
-		    bi = DB_GET_INTEGER (other);
+		    bi = db_get_int (other);
 		    break;
 		  case DB_TYPE_SMALLINT:
-		    bi = DB_GET_SHORT (other);
+		    bi = db_get_short (other);
 		    break;
 		  case DB_TYPE_BIGINT:
-		    bi = DB_GET_BIGINT (other);
+		    bi = db_get_bigint (other);
 		    break;
 		  default:
 		    return 0;
@@ -16365,8 +16364,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      {
 		int i1, i2, itmp;
 
-		i1 = DB_GET_INT (arg1);
-		i2 = DB_GET_INT (arg2);
+		i1 = db_get_int (arg1);
+		i2 = db_get_int (arg2);
 		itmp = i1 - i2;
 		if (OR_CHECK_SUB_UNDERFLOW (i1, i2, itmp))
 		  goto overflow;
@@ -16384,7 +16383,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  {
 		    assert (false);
 
-		    DB_MAKE_NULL (result);
+		    db_make_null (result);
 		    break;
 		  }
 
@@ -16392,8 +16391,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  {
 		    DB_DATETIME *dt1, *dt2;
 
-		    dt1 = DB_GET_DATETIME (arg1);
-		    dt2 = DB_GET_DATETIME (arg2);
+		    dt1 = db_get_datetime (arg1);
+		    dt2 = db_get_datetime (arg2);
 
 		    bi1 = (((DB_BIGINT) dt1->date) * MILLISECONDS_OF_ONE_DAY + dt1->time);
 		    bi2 = (((DB_BIGINT) dt2->date) * MILLISECONDS_OF_ONE_DAY + dt2->time);
@@ -16402,8 +16401,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  {
 		    DB_DATETIMETZ *dt_tz1, *dt_tz2;
 
-		    dt_tz1 = DB_GET_DATETIMETZ (arg1);
-		    dt_tz2 = DB_GET_DATETIMETZ (arg2);
+		    dt_tz1 = db_get_datetimetz (arg1);
+		    dt_tz2 = db_get_datetimetz (arg2);
 
 		    bi1 = (((DB_BIGINT) dt_tz1->datetime.date) * MILLISECONDS_OF_ONE_DAY + dt_tz1->datetime.time);
 		    bi2 = (((DB_BIGINT) dt_tz2->datetime.date) * MILLISECONDS_OF_ONE_DAY + dt_tz2->datetime.time);
@@ -16412,8 +16411,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  {
 		    DB_DATE *d1, *d2;
 
-		    d1 = DB_GET_DATE (arg1);
-		    d2 = DB_GET_DATE (arg2);
+		    d1 = db_get_date (arg1);
+		    d2 = db_get_date (arg2);
 
 		    bi1 = (DB_BIGINT) (*d1);
 		    bi2 = (DB_BIGINT) (*d2);
@@ -16422,8 +16421,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  {
 		    DB_TIME *t1, *t2;
 
-		    t1 = DB_GET_TIME (arg1);
-		    t2 = DB_GET_TIME (arg2);
+		    t1 = db_get_time (arg1);
+		    t2 = db_get_time (arg2);
 
 		    if (typ1 == DB_TYPE_TIMELTZ)
 		      {
@@ -16468,8 +16467,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		    DB_TIMETZ *t_tz1, *t_tz2;
 		    int day1, day2;
 
-		    t_tz1 = DB_GET_TIMETZ (arg1);
-		    t_tz2 = DB_GET_TIMETZ (arg2);
+		    t_tz1 = db_get_timetz (arg1);
+		    t_tz2 = db_get_timetz (arg2);
 
 		    day1 = get_day_from_timetz (t_tz1);
 		    day2 = get_day_from_timetz (t_tz2);
@@ -16481,8 +16480,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  {
 		    DB_TIMESTAMP *ts1, *ts2;
 
-		    ts1 = DB_GET_TIMESTAMP (arg1);
-		    ts2 = DB_GET_TIMESTAMP (arg2);
+		    ts1 = db_get_timestamp (arg1);
+		    ts2 = db_get_timestamp (arg2);
 
 		    bi1 = (DB_BIGINT) (*ts1);
 		    bi2 = (DB_BIGINT) (*ts2);
@@ -16491,29 +16490,29 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  {
 		    DB_TIMESTAMPTZ *ts_tz1, *ts_tz2;
 
-		    ts_tz1 = DB_GET_TIMESTAMPTZ (arg1);
-		    ts_tz2 = DB_GET_TIMESTAMPTZ (arg2);
+		    ts_tz1 = db_get_timestamptz (arg1);
+		    ts_tz2 = db_get_timestamptz (arg2);
 
 		    bi1 = (DB_BIGINT) (ts_tz1->timestamp);
 		    bi2 = (DB_BIGINT) (ts_tz2->timestamp);
 		  }
 		else if (typ1 == DB_TYPE_BIGINT)
 		  {
-		    bi1 = DB_GET_BIGINT (arg1);
-		    bi2 = DB_GET_BIGINT (arg2);
+		    bi1 = db_get_bigint (arg1);
+		    bi2 = db_get_bigint (arg2);
 		  }
 		else
 		  {
 		    assert (false);
 
-		    DB_MAKE_NULL (result);
+		    db_make_null (result);
 		    break;
 		  }
 
 		if ((TP_IS_DATE_TYPE (typ1) && bi1 == 0) || (TP_IS_DATE_TYPE (typ2) && bi2 == 0))
 		  {
 		    /* operation with zero date returns null */
-		    DB_MAKE_NULL (result);
+		    db_make_null (result);
 		    if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		      {
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
@@ -16538,8 +16537,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      {
 		short s1, s2, stmp;
 
-		s1 = DB_GET_SHORT (arg1);
-		s2 = DB_GET_SHORT (arg2);
+		s1 = db_get_short (arg1);
+		s2 = db_get_short (arg2);
 		stmp = s1 - s2;
 		if (OR_CHECK_SUB_UNDERFLOW (s1, s2, stmp))
 		  goto overflow;
@@ -16552,7 +16551,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      {
 		float ftmp;
 
-		ftmp = DB_GET_FLOAT (arg1) - DB_GET_FLOAT (arg2);
+		ftmp = db_get_float (arg1) - db_get_float (arg2);
 		if (OR_CHECK_FLOAT_OVERFLOW (ftmp))
 		  goto overflow;
 		else
@@ -16564,7 +16563,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      {
 		double dtmp;
 
-		dtmp = DB_GET_DOUBLE (arg1) - DB_GET_DOUBLE (arg2);
+		dtmp = db_get_double (arg1) - db_get_double (arg2);
 		if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
 		  goto overflow;
 		else
@@ -16590,11 +16589,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      {
 		double dtmp;
 
-		dtmp = DB_GET_MONETARY (arg1)->amount - DB_GET_MONETARY (arg2)->amount;
+		dtmp = db_get_monetary (arg1)->amount - db_get_monetary (arg2)->amount;
 		if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
 		  goto overflow;
 		else
-		  DB_MAKE_MONETARY (result, dtmp);
+		  db_make_monetary (result, DB_CURRENCY_DEFAULT, dtmp);
 		break;
 	      }
 
@@ -16610,13 +16609,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		switch (DB_VALUE_TYPE (arg2))
 		  {
 		  case DB_TYPE_SHORT:
-		    bi = DB_GET_SHORT (arg2);
+		    bi = db_get_short (arg2);
 		    break;
 		  case DB_TYPE_INTEGER:
-		    bi = DB_GET_INT (arg2);
+		    bi = db_get_int (arg2);
 		    break;
 		  case DB_TYPE_BIGINT:
-		    bi = DB_GET_BIGINT (arg2);
+		    bi = db_get_bigint (arg2);
 		    break;
 		  default:
 		    assert (false);
@@ -16628,12 +16627,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		if (typ == DB_TYPE_TIMETZ)
 		  {
-		    time_tz = *DB_GET_TIMETZ (arg1);
+		    time_tz = *db_get_timetz (arg1);
 		    time = time_tz.time;
 		  }
 		else
 		  {
-		    time = *DB_GET_TIME (arg1);
+		    time = *db_get_time (arg1);
 		  }
 
 		if (time < (DB_TIME) (ubi % 86400))
@@ -16666,7 +16665,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 	      break;
 
-	    case DB_TYPE_UTIME:
+	    case DB_TYPE_TIMESTAMP:
 	    case DB_TYPE_TIMESTAMPLTZ:
 	    case DB_TYPE_TIMESTAMPTZ:
 	      {
@@ -16677,13 +16676,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		switch (DB_VALUE_TYPE (arg2))
 		  {
 		  case DB_TYPE_SHORT:
-		    bi = DB_GET_SHORT (arg2);
+		    bi = db_get_short (arg2);
 		    break;
 		  case DB_TYPE_INTEGER:
-		    bi = DB_GET_INT (arg2);
+		    bi = db_get_int (arg2);
 		    break;
 		  case DB_TYPE_BIGINT:
-		    bi = DB_GET_BIGINT (arg2);
+		    bi = db_get_bigint (arg2);
 		    break;
 		  default:
 		    assert (false);
@@ -16693,18 +16692,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		assert (typ == DB_VALUE_TYPE (arg1));
 		if (typ == DB_TYPE_TIMESTAMPTZ)
 		  {
-		    ts_tz = *DB_GET_TIMESTAMPTZ (arg1);
+		    ts_tz = *db_get_timestamptz (arg1);
 		    utime = ts_tz.timestamp;
 		  }
 		else
 		  {
-		    utime = *DB_GET_UTIME (arg1);
+		    utime = *db_get_timestamp (arg1);
 		  }
 
 		if (utime == 0)
 		  {
 		    /* operation with zero date returns null */
-		    DB_MAKE_NULL (result);
+		    db_make_null (result);
 		    if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		      {
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
@@ -16762,13 +16761,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		switch (DB_VALUE_TYPE (arg2))
 		  {
 		  case DB_TYPE_SHORT:
-		    bi = DB_GET_SHORT (arg2);
+		    bi = db_get_short (arg2);
 		    break;
 		  case DB_TYPE_INTEGER:
-		    bi = DB_GET_INT (arg2);
+		    bi = db_get_int (arg2);
 		    break;
 		  case DB_TYPE_BIGINT:
-		    bi = DB_GET_BIGINT (arg2);
+		    bi = db_get_bigint (arg2);
 		    break;
 		  default:
 		    assert (false);
@@ -16777,18 +16776,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		if (typ == DB_TYPE_DATETIMETZ)
 		  {
-		    dt_tz = *DB_GET_DATETIMETZ (arg1);
+		    dt_tz = *db_get_datetimetz (arg1);
 		    datetime = dt_tz.datetime;
 		  }
 		else
 		  {
-		    datetime = *DB_GET_DATETIME (arg1);
+		    datetime = *db_get_datetime (arg1);
 		  }
 
 		if (datetime.date == 0 && datetime.time == 0)
 		  {
 		    /* operation with zero date returns null */
-		    DB_MAKE_NULL (result);
+		    db_make_null (result);
 		    if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		      {
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
@@ -16833,24 +16832,24 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		switch (DB_VALUE_TYPE (arg2))
 		  {
 		  case DB_TYPE_SHORT:
-		    bi = DB_GET_SHORT (arg2);
+		    bi = db_get_short (arg2);
 		    break;
 		  case DB_TYPE_INTEGER:
-		    bi = DB_GET_INT (arg2);
+		    bi = db_get_int (arg2);
 		    break;
 		  case DB_TYPE_BIGINT:
-		    bi = DB_GET_BIGINT (arg2);
+		    bi = db_get_bigint (arg2);
 		    break;
 		  default:
 		    assert (false);
 		    break;
 		  }
-		date = DB_GET_DATE (arg1);
+		date = db_get_date (arg1);
 
 		if (*date == 0)
 		  {
 		    /* operation with zero date returns null */
-		    DB_MAKE_NULL (result);
+		    db_make_null (result);
 		    if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 		      {
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
@@ -16906,8 +16905,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		 */
 		volatile int i1, i2, itmp;
 
-		i1 = DB_GET_INT (arg1);
-		i2 = DB_GET_INT (arg2);
+		i1 = db_get_int (arg1);
+		i2 = db_get_int (arg2);
 		itmp = i1 * i2;
 		if (OR_CHECK_MULT_OVERFLOW (i1, i2, itmp))
 		  {
@@ -16927,8 +16926,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		 */
 		volatile DB_BIGINT bi1, bi2, bitmp;
 
-		bi1 = DB_GET_BIGINT (arg1);
-		bi2 = DB_GET_BIGINT (arg2);
+		bi1 = db_get_bigint (arg1);
+		bi2 = db_get_bigint (arg2);
 		bitmp = bi1 * bi2;
 		if (OR_CHECK_MULT_OVERFLOW (bi1, bi2, bitmp))
 		  {
@@ -16948,8 +16947,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		 */
 		volatile short s1, s2, stmp;
 
-		s1 = DB_GET_SHORT (arg1);
-		s2 = DB_GET_SHORT (arg2);
+		s1 = db_get_short (arg1);
+		s2 = db_get_short (arg2);
 		stmp = s1 * s2;
 		if (OR_CHECK_MULT_OVERFLOW (s1, s2, stmp))
 		  {
@@ -16966,7 +16965,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      {
 		float ftmp;
 
-		ftmp = DB_GET_FLOAT (arg1) * DB_GET_FLOAT (arg2);
+		ftmp = db_get_float (arg1) * db_get_float (arg2);
 		if (OR_CHECK_FLOAT_OVERFLOW (ftmp))
 		  {
 		    goto overflow;
@@ -16982,7 +16981,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      {
 		double dtmp;
 
-		dtmp = DB_GET_DOUBLE (arg1) * DB_GET_DOUBLE (arg2);
+		dtmp = db_get_double (arg1) * db_get_double (arg2);
 		if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
 		  {
 		    goto overflow;
@@ -17017,14 +17016,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      {
 		double dtmp;
 
-		dtmp = DB_GET_MONETARY (arg1)->amount * DB_GET_MONETARY (arg2)->amount;
+		dtmp = db_get_monetary (arg1)->amount * db_get_monetary (arg2)->amount;
 		if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
 		  {
 		    goto overflow;
 		  }
 		else
 		  {
-		    DB_MAKE_MONETARY (result, dtmp);
+		    db_make_monetary (result, DB_CURRENCY_DEFAULT, dtmp);
 		  }
 		break;
 	      }
@@ -17039,33 +17038,33 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  switch (typ)
 	    {
 	    case DB_TYPE_SHORT:
-	      if (DB_GET_SHORT (arg2) != 0)
+	      if (db_get_short (arg2) != 0)
 		{
-		  db_make_short (result, DB_GET_SHORT (arg1) / DB_GET_SHORT (arg2));
+		  db_make_short (result, db_get_short (arg1) / db_get_short (arg2));
 		  return 1;
 		}
 	      break;
 
 	    case DB_TYPE_INTEGER:
-	      if (DB_GET_INTEGER (arg2) != 0)
+	      if (db_get_int (arg2) != 0)
 		{
-		  db_make_int (result, (DB_GET_INTEGER (arg1) / DB_GET_INTEGER (arg2)));
+		  db_make_int (result, (db_get_int (arg1) / db_get_int (arg2)));
 		  return 1;
 		}
 	      break;
 	    case DB_TYPE_BIGINT:
-	      if (DB_GET_BIGINT (arg2) != 0)
+	      if (db_get_bigint (arg2) != 0)
 		{
-		  db_make_bigint (result, (DB_GET_BIGINT (arg1) / DB_GET_BIGINT (arg2)));
+		  db_make_bigint (result, (db_get_bigint (arg1) / db_get_bigint (arg2)));
 		  return 1;
 		}
 	      break;
 	    case DB_TYPE_FLOAT:
-	      if (fabs (DB_GET_FLOAT (arg2)) > FLT_EPSILON)
+	      if (fabs (db_get_float (arg2)) > FLT_EPSILON)
 		{
 		  float ftmp;
 
-		  ftmp = DB_GET_FLOAT (arg1) / DB_GET_FLOAT (arg2);
+		  ftmp = db_get_float (arg1) / db_get_float (arg2);
 		  if (OR_CHECK_FLOAT_OVERFLOW (ftmp))
 		    {
 		      goto overflow;
@@ -17079,11 +17078,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      break;
 
 	    case DB_TYPE_DOUBLE:
-	      if (fabs (DB_GET_DOUBLE (arg2)) > DBL_EPSILON)
+	      if (fabs (db_get_double (arg2)) > DBL_EPSILON)
 		{
 		  double dtmp;
 
-		  dtmp = DB_GET_DOUBLE (arg1) / DB_GET_DOUBLE (arg2);
+		  dtmp = db_get_double (arg1) / db_get_double (arg2);
 		  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
 		    {
 		      goto overflow;
@@ -17122,18 +17121,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      break;
 
 	    case DB_TYPE_MONETARY:
-	      if (fabs (DB_GET_MONETARY (arg2)->amount) > DBL_EPSILON)
+	      if (fabs (db_get_monetary (arg2)->amount) > DBL_EPSILON)
 		{
 		  double dtmp;
 
-		  dtmp = DB_GET_MONETARY (arg1)->amount / DB_GET_MONETARY (arg2)->amount;
+		  dtmp = db_get_monetary (arg1)->amount / db_get_monetary (arg2)->amount;
 		  if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
 		    {
 		      goto overflow;
 		    }
 		  else
 		    {
-		      DB_MAKE_MONETARY (result, dtmp);
+		      db_make_monetary (result, DB_CURRENCY_DEFAULT, dtmp);
 		      return 1;	/* success */
 		    }
 		}
@@ -17213,7 +17212,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
       else
 	{
-	  srand48 (DB_GET_INT (arg1));
+	  srand48 (db_get_int (arg1));
 	  db_make_int (result, lrand48 ());
 	}
       break;
@@ -17225,7 +17224,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
       else
 	{
-	  srand48 (DB_GET_INT (arg1));
+	  srand48 (db_get_int (arg1));
 	  db_make_double (result, drand48 ());
 	}
       break;
@@ -17242,7 +17241,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
       else
 	{
-	  srand48 (DB_GET_INT (arg1));
+	  srand48 (db_get_int (arg1));
 	}
       db_make_int (result, lrand48 ());
       break;
@@ -17256,7 +17255,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
       else
 	{
-	  srand48 (DB_GET_INT (arg1));
+	  srand48 (db_get_int (arg1));
 	}
       db_make_double (result, drand48 ());
       break;
@@ -17622,7 +17621,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
     case PT_SUBSTRING:
       if (DB_IS_NULL (arg1) || DB_IS_NULL (arg2) || (o3 && DB_IS_NULL (arg3)))
 	{
-	  DB_MAKE_NULL (result);
+	  db_make_null (result);
 	  return 1;
 	}
 
@@ -17738,7 +17737,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
       if (PT_IS_CHAR_STRING_TYPE (o1->type_enum))
 	{
-	  db_make_int (result, 8 * DB_GET_STRING_SIZE (arg1));
+	  db_make_int (result, 8 * db_get_string_size (arg1));
 	}
       else
 	{
@@ -17760,7 +17759,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	{
 	  return 0;
 	}
-      db_make_int (result, DB_GET_STRING_LENGTH (arg1));
+      db_make_int (result, db_get_string_length (arg1));
       return 1;
 
     case PT_LOWER:
@@ -18486,7 +18485,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	timestamp = db_get_timestamp (&parser->sys_epochtime);
 	tz_timestamp_decode_no_leap_sec (*timestamp, &year, &month, &day, &hour, &minute, &second);
 	date = julian_encode (month + 1, day, year);
-	DB_MAKE_ENCODED_DATE (result, &date);
+	db_value_put_encoded_date (result, &date);
 	return 1;
       }
 
@@ -18519,7 +18518,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	tmp_datetime = db_get_timestamp (&parser->sys_epochtime);
 	db_time = (DB_TIME) (*tmp_datetime % SECONDS_OF_ONE_DAY);
-	DB_MAKE_ENCODED_TIME (result, &db_time);
+	db_value_put_encoded_time (result, &db_time);
 	return 1;
       }
 
@@ -18934,7 +18933,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
     case PT_DECODE:
       /* If arg3 = NULL, then arg2 = NULL and arg1 != NULL.  For this case, we've already finished checking
        * case_search_condition. */
-      if (arg3 && (DB_VALUE_TYPE (arg3) == DB_TYPE_INTEGER && DB_GET_INT (arg3) != 0))
+      if (arg3 && (DB_VALUE_TYPE (arg3) == DB_TYPE_INTEGER && db_get_int (arg3) != 0))
 	{
 	  if (tp_value_coerce (arg1, result, domain) != DOMAIN_COMPATIBLE)
 	    {
@@ -19202,19 +19201,19 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	    if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false && DB_IS_NULL (esc_char))
 	      {
-		INTL_CODESET arg1_cs = DB_IS_NULL (arg1) ? LANG_SYS_CODESET : DB_GET_STRING_CODESET (arg1);
-		int arg1_coll = DB_IS_NULL (arg1) ? LANG_SYS_COLLATION : DB_GET_STRING_COLLATION (arg1);
+		INTL_CODESET arg1_cs = DB_IS_NULL (arg1) ? LANG_SYS_CODESET : db_get_string_codeset (arg1);
+		int arg1_coll = DB_IS_NULL (arg1) ? LANG_SYS_COLLATION : db_get_string_collation (arg1);
 		/* when compat_mode=mysql, the slash '\\' is an escape character for LIKE pattern, unless user
 		 * explicitly specifies otherwise. */
 		esc_char = &slash_char;
 		if (arg1->domain.general_info.type == DB_TYPE_NCHAR
 		    || arg1->domain.general_info.type == DB_TYPE_VARNCHAR)
 		  {
-		    DB_MAKE_NCHAR (esc_char, 1, slash_str, 1, arg1_cs, arg1_coll);
+		    db_make_nchar (esc_char, 1, (const DB_C_NCHAR) slash_str, 1, arg1_cs, arg1_coll);
 		  }
 		else
 		  {
-		    DB_MAKE_CHAR (esc_char, 1, slash_str, 1, arg1_cs, arg1_coll);
+		    db_make_char (esc_char, 1, (const DB_C_CHAR) slash_str, 1, arg1_cs, arg1_coll);
 		  }
 
 		esc_char->need_clear = false;
@@ -19367,7 +19366,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  }
 	else
 	  {
-	    if (DB_GET_ENUM_SHORT (result) == DB_ENUM_OVERFLOW_VAL)
+	    if (db_get_enum_short (result) == DB_ENUM_OVERFLOW_VAL)
 	      {
 		/* To avoid coercing result to enumeration type later on, we consider that this expression cannot be
 		 * folded */
@@ -19500,7 +19499,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	tmp_datetime = db_get_datetime (&parser->sys_datetime);
 	db_sys_timezone (&timezone);
-	timezone_milis = DB_GET_INT (&timezone) * 60000;
+	timezone_milis = db_get_int (&timezone) * 60000;
 	db_add_int_to_datetime (tmp_datetime, timezone_milis, &utc_datetime);
 
 	if (DB_IS_NULL (arg1))
@@ -19582,7 +19581,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	date = julian_encode (month + 1, day, year);
 	db_time_encode (&time, hour, minute, second);
 	db_timestamp_encode_ses (&date, &time, &timestamp, NULL);
-	DB_MAKE_TIMESTAMP (result, timestamp);
+	db_make_timestamp (result, timestamp);
 	return 1;
       }
 
@@ -19790,7 +19789,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  db_get_row_count (&row_count);
 	  db_update_row_count_cache (row_count);
 	}
-      DB_MAKE_INT (&dbval_res, row_count);
+      db_make_int (&dbval_res, row_count);
       result = pt_dbval_to_value (parser, &dbval_res);
       goto end;
     }
@@ -19803,11 +19802,11 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  if (coll_infer.coerc_level >= PT_COLLATION_L2_COERC && coll_infer.coerc_level <= PT_COLLATION_L2_BIN_COERC
 	      && coll_infer.can_force_cs == true)
 	    {
-	      DB_MAKE_INT (&dbval_res, -1);
+	      db_make_int (&dbval_res, -1);
 	    }
 	  else
 	    {
-	      DB_MAKE_INT (&dbval_res, (int) (coll_infer.coerc_level));
+	      db_make_int (&dbval_res, (int) (coll_infer.coerc_level));
 	    }
 	}
       else
@@ -19815,7 +19814,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	    {
 	      er_clear ();
-	      DB_MAKE_NULL (&dbval_res);
+	      db_make_null (&dbval_res);
 	    }
 	  else
 	    {
@@ -19940,7 +19939,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
        * () and qo_optimize_queries () */
       tmp_value->type_enum = PT_TYPE_OBJECT;
       OID_SET_NULL (&null_oid);
-      DB_MAKE_OID (&tmp_value->info.value.db_value, &null_oid);
+      db_make_oid (&tmp_value->info.value.db_value, &null_oid);
       tmp_value->info.value.db_value_is_initialized = true;
       tmp_value->data_type = parser_copy_tree (parser, expr->data_type);
       if (tmp_value->data_type == NULL)
@@ -20220,7 +20219,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
    * a possible call of pt_evaluate_db_val_expr. */
   if ((op == PT_CASE || op == PT_DECODE) && opd3 && opd3->node_type == PT_VALUE)
     {
-      if (arg3 && (DB_VALUE_TYPE (arg3) == DB_TYPE_INTEGER && DB_GET_INT (arg3)))
+      if (arg3 && (DB_VALUE_TYPE (arg3) == DB_TYPE_INTEGER && db_get_int (arg3)))
 	{
 	  opd2 = NULL;
 	}
@@ -20342,7 +20341,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    {
 	      result = val;
 	    }
-	  else if (db_value && DB_GET_INTEGER (db_value) == 1)
+	  else if (db_value && db_get_int (db_value) == 1)
 	    {
 	      result = other;
 	    }
@@ -20357,7 +20356,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    {
 	      result = other;
 	    }
-	  else if (db_value && DB_GET_INTEGER (db_value) == 1)
+	  else if (db_value && db_get_int (db_value) == 1)
 	    {
 	      result = val;
 	    }
@@ -20447,7 +20446,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		{
 		  result = other;
 		}
-	      else if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_INTEGER && DB_GET_INTEGER (db_value) == 1)
+	      else if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_INTEGER && db_get_int (db_value) == 1)
 		{
 		  parser_free_tree (parser, result->or_next);
 		  result->or_next = NULL;
@@ -20487,7 +20486,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    {
 	      result = other;
 	    }
-	  else if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_INTEGER && DB_GET_INTEGER (db_value) == 1)
+	  else if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_INTEGER && db_get_int (db_value) == 1)
 	    {
 	      parser_free_tree (parser, result->or_next);
 	      result->or_next = NULL;
@@ -20530,7 +20529,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  if ((op == PT_GT && rvalue <= 0) || (op == PT_GE && rvalue <= 1))
 	    {
 	      /* always true */
-	      DB_MAKE_INTEGER (&dbval_res, 1);
+	      db_make_int (&dbval_res, 1);
 	      result = pt_dbval_to_value (parser, &dbval_res);
 	    }
 	}
@@ -21595,28 +21594,28 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
       switch (rhs_type)
 	{
 	case PT_TYPE_INTEGER:
-	  if (DB_GET_INTEGER (rhs_val) > DB_INT16_MAX)
+	  if (db_get_int (rhs_val) > DB_INT16_MAX)
 	    lhs_less = true;
-	  else if (DB_GET_INTEGER (rhs_val) < DB_INT16_MIN)
+	  else if (db_get_int (rhs_val) < DB_INT16_MIN)
 	    lhs_greater = true;
 	  break;
 	case PT_TYPE_BIGINT:
-	  if (DB_GET_BIGINT (rhs_val) > DB_INT16_MAX)
+	  if (db_get_bigint (rhs_val) > DB_INT16_MAX)
 	    lhs_less = true;
-	  else if (DB_GET_BIGINT (rhs_val) < DB_INT16_MIN)
+	  else if (db_get_bigint (rhs_val) < DB_INT16_MIN)
 	    lhs_greater = true;
 	  break;
 	case PT_TYPE_FLOAT:
-	  if (DB_GET_FLOAT (rhs_val) > DB_INT16_MAX)
+	  if (db_get_float (rhs_val) > DB_INT16_MAX)
 	    lhs_less = true;
-	  else if (DB_GET_FLOAT (rhs_val) < DB_INT16_MIN)
+	  else if (db_get_float (rhs_val) < DB_INT16_MIN)
 	    lhs_greater = true;
 	  break;
 
 	case PT_TYPE_DOUBLE:
-	  if (DB_GET_DOUBLE (rhs_val) > DB_INT16_MAX)
+	  if (db_get_double (rhs_val) > DB_INT16_MAX)
 	    lhs_less = true;
-	  else if (DB_GET_DOUBLE (rhs_val) < DB_INT16_MIN)
+	  else if (db_get_double (rhs_val) < DB_INT16_MIN)
 	    lhs_greater = true;
 	  break;
 
@@ -21629,7 +21628,7 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
 	  break;
 
 	case PT_TYPE_MONETARY:
-	  dtmp = (DB_GET_MONETARY (rhs_val))->amount;
+	  dtmp = (db_get_monetary (rhs_val))->amount;
 	  if (dtmp > DB_INT16_MAX)
 	    lhs_less = true;
 	  else if (dtmp < DB_INT16_MIN)
@@ -21645,22 +21644,22 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
       switch (rhs_type)
 	{
 	case PT_TYPE_BIGINT:
-	  if (DB_GET_BIGINT (rhs_val) > DB_INT32_MAX)
+	  if (db_get_bigint (rhs_val) > DB_INT32_MAX)
 	    lhs_less = true;
-	  else if (DB_GET_BIGINT (rhs_val) < DB_INT32_MIN)
+	  else if (db_get_bigint (rhs_val) < DB_INT32_MIN)
 	    lhs_greater = true;
 	  break;
 	case PT_TYPE_FLOAT:
-	  if (DB_GET_FLOAT (rhs_val) > DB_INT32_MAX)
+	  if (db_get_float (rhs_val) > DB_INT32_MAX)
 	    lhs_less = true;
-	  else if (DB_GET_FLOAT (rhs_val) < DB_INT32_MIN)
+	  else if (db_get_float (rhs_val) < DB_INT32_MIN)
 	    lhs_greater = true;
 	  break;
 
 	case PT_TYPE_DOUBLE:
-	  if (DB_GET_DOUBLE (rhs_val) > DB_INT32_MAX)
+	  if (db_get_double (rhs_val) > DB_INT32_MAX)
 	    lhs_less = true;
-	  else if (DB_GET_DOUBLE (rhs_val) < DB_INT32_MIN)
+	  else if (db_get_double (rhs_val) < DB_INT32_MIN)
 	    lhs_greater = true;
 	  break;
 
@@ -21673,7 +21672,7 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
 	  break;
 
 	case PT_TYPE_MONETARY:
-	  dtmp = (DB_GET_MONETARY (rhs_val))->amount;
+	  dtmp = (db_get_monetary (rhs_val))->amount;
 	  if (dtmp > DB_INT32_MAX)
 	    lhs_less = true;
 	  else if (dtmp < DB_INT32_MIN)
@@ -21688,15 +21687,15 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
       switch (rhs_type)
 	{
 	case PT_TYPE_FLOAT:
-	  if (DB_GET_FLOAT (rhs_val) > DB_BIGINT_MAX)
+	  if (db_get_float (rhs_val) > DB_BIGINT_MAX)
 	    lhs_less = true;
-	  else if (DB_GET_FLOAT (rhs_val) < DB_BIGINT_MIN)
+	  else if (db_get_float (rhs_val) < DB_BIGINT_MIN)
 	    lhs_greater = true;
 	  break;
 	case PT_TYPE_DOUBLE:
-	  if (DB_GET_DOUBLE (rhs_val) > DB_BIGINT_MAX)
+	  if (db_get_double (rhs_val) > DB_BIGINT_MAX)
 	    lhs_less = true;
-	  else if (DB_GET_DOUBLE (rhs_val) < DB_BIGINT_MIN)
+	  else if (db_get_double (rhs_val) < DB_BIGINT_MIN)
 	    lhs_greater = true;
 	  break;
 	case PT_TYPE_NUMERIC:
@@ -21707,7 +21706,7 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
 	    lhs_greater = true;
 	  break;
 	case PT_TYPE_MONETARY:
-	  dtmp = (DB_GET_MONETARY (rhs_val))->amount;
+	  dtmp = (db_get_monetary (rhs_val))->amount;
 	  if (dtmp > DB_BIGINT_MAX)
 	    lhs_less = true;
 	  else if (dtmp < DB_BIGINT_MIN)
@@ -21722,9 +21721,9 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
       switch (rhs_type)
 	{
 	case PT_TYPE_DOUBLE:
-	  if (DB_GET_DOUBLE (rhs_val) > FLT_MAX)
+	  if (db_get_double (rhs_val) > FLT_MAX)
 	    lhs_less = true;
-	  else if (DB_GET_DOUBLE (rhs_val) < -(FLT_MAX))
+	  else if (db_get_double (rhs_val) < -(FLT_MAX))
 	    lhs_greater = true;
 	  break;
 
@@ -21737,7 +21736,7 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
 	  break;
 
 	case PT_TYPE_MONETARY:
-	  dtmp = (DB_GET_MONETARY (rhs_val))->amount;
+	  dtmp = (db_get_monetary (rhs_val))->amount;
 	  if (dtmp > FLT_MAX)
 	    lhs_less = true;
 	  else if (dtmp < -(FLT_MAX))
@@ -22268,7 +22267,7 @@ pt_check_const_fold_op_w_args (PT_OP_TYPE op, DB_VALUE * arg1, DB_VALUE * arg2, 
     case PT_SPACE:
       if (DB_VALUE_DOMAIN_TYPE (arg1) == DB_TYPE_INTEGER)
 	{
-	  int count_i = DB_GET_INTEGER (arg1);
+	  int count_i = db_get_int (arg1);
 	  if (count_i > MAX_RESULT_SIZE_ON_CONST_FOLDING)
 	    {
 	      return false;
@@ -22276,7 +22275,7 @@ pt_check_const_fold_op_w_args (PT_OP_TYPE op, DB_VALUE * arg1, DB_VALUE * arg2, 
 	}
       else if (DB_VALUE_DOMAIN_TYPE (arg1) == DB_TYPE_SHORT)
 	{
-	  short count_sh = DB_GET_SHORT (arg1);
+	  short count_sh = db_get_short (arg1);
 	  if (count_sh > MAX_RESULT_SIZE_ON_CONST_FOLDING)
 	    {
 	      return false;
@@ -22284,7 +22283,7 @@ pt_check_const_fold_op_w_args (PT_OP_TYPE op, DB_VALUE * arg1, DB_VALUE * arg2, 
 	}
       else if (DB_VALUE_DOMAIN_TYPE (arg1) == DB_TYPE_BIGINT)
 	{
-	  DB_BIGINT count_b = DB_GET_BIGINT (arg1);
+	  DB_BIGINT count_b = db_get_bigint (arg1);
 	  if (count_b > MAX_RESULT_SIZE_ON_CONST_FOLDING)
 	    {
 	      return false;
@@ -22295,10 +22294,10 @@ pt_check_const_fold_op_w_args (PT_OP_TYPE op, DB_VALUE * arg1, DB_VALUE * arg2, 
     case PT_REPEAT:
       if (DB_VALUE_DOMAIN_TYPE (arg2) == DB_TYPE_INTEGER)
 	{
-	  int count_i = DB_GET_INTEGER (arg2);
+	  int count_i = db_get_int (arg2);
 	  if (QSTR_IS_ANY_CHAR (DB_VALUE_DOMAIN_TYPE (arg1)))
 	    {
-	      int arg1_len = DB_GET_STRING_SIZE (arg1);
+	      int arg1_len = db_get_string_size (arg1);
 
 	      if (arg1_len * count_i > MAX_RESULT_SIZE_ON_CONST_FOLDING)
 		{
@@ -22313,10 +22312,10 @@ pt_check_const_fold_op_w_args (PT_OP_TYPE op, DB_VALUE * arg1, DB_VALUE * arg2, 
       /* check if constant folding is OK */
       if (DB_VALUE_DOMAIN_TYPE (arg2) == DB_TYPE_INTEGER)
 	{
-	  int count_i = DB_GET_INTEGER (arg2);
+	  int count_i = db_get_int (arg2);
 	  if (arg3 != NULL && QSTR_IS_ANY_CHAR (DB_VALUE_DOMAIN_TYPE (arg3)))
 	    {
-	      int arg3_len = DB_GET_STRING_SIZE (arg3);
+	      int arg3_len = db_get_string_size (arg3);
 
 	      if (arg3_len * count_i > MAX_RESULT_SIZE_ON_CONST_FOLDING)
 		{
@@ -23370,7 +23369,7 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node, const int col
 		    }
 		  else if (node->info.value.db_value_is_initialized)
 		    {
-		      wrap_dt->info.data_type.precision = DB_GET_STRING_SIZE (&(node->info.value.db_value));
+		      wrap_dt->info.data_type.precision = db_get_string_size (&(node->info.value.db_value));
 		    }
 		}
 
@@ -23567,7 +23566,7 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node, const int col
 	    {
 	      int i;
 	      DB_VALUE *sub_value = NULL;
-	      SETREF *setref = DB_PULL_SET (&(node->info.value.db_value));
+	      SETREF *setref = db_get_set (&(node->info.value.db_value));
 	      int set_size = setobj_size (setref->set);
 
 	      for (i = 0; i < set_size; i++)
@@ -24921,8 +24920,8 @@ pt_fix_enumeration_comparison (PARSER_CONTEXT * parser, PT_NODE * expr)
 	      return NULL;
 	    }
 	  if (dbval != NULL
-	      && ((DB_GET_ENUM_STRING (dbval) == NULL && DB_GET_ENUM_SHORT (dbval) == 0)
-		  || ((DB_GET_ENUM_STRING (dbval) != NULL && DB_GET_ENUM_SHORT (dbval) > 0)
+	      && ((db_get_enum_string (dbval) == NULL && db_get_enum_short (dbval) == 0)
+		  || ((db_get_enum_string (dbval) != NULL && db_get_enum_short (dbval) > 0)
 		      && tp_domain_select (domain, dbval, 0, TP_EXACT_MATCH) != NULL)))
 	    {
 	      return expr;

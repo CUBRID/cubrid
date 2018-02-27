@@ -29,7 +29,7 @@
 
 #if defined (SERVER_MODE)
 #include "connection_defs.h"
-#include "dbtype.h"
+#include "dbtype_def.h"
 #endif /* SERVER_MODE */
 #include "memory_alloc.h"
 #include "storage_common.h"

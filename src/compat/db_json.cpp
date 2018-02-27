@@ -72,6 +72,7 @@
 #include <locale>
 #include "memory_alloc.h"
 #include "system_parameter.h"
+#include "dbtype.h"
 
 #if defined GetObject
 /* stupid windows and their definitions; GetObject is defined as GetObjectW or GetObjectA */
@@ -173,6 +174,7 @@ static void db_json_value_wrap_as_array (JSON_VALUE &value, JSON_PRIVATE_MEMPOOL
 
 STATIC_INLINE JSON_VALUE &db_json_doc_to_value (JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const JSON_VALUE &db_json_doc_to_value (const JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
+static int db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc);
 
 JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw) : m_schema (NULL),
   m_validator (NULL),
@@ -708,28 +710,43 @@ db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value)
   doc->PushBack (new_doc, doc->GetAllocator ());
 }
 
-int
-db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc)
+static int
+db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc)
 {
   int error_code = NO_ERROR;
-
-  doc = db_json_allocate_doc ();
 
   if (json_raw == NULL)
     {
       return NO_ERROR;
     }
 
-  if (doc->Parse (json_raw).HasParseError ())
+  if (doc.Parse (json_raw).HasParseError ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
-	      rapidjson::GetParseError_En (doc->GetParseError ()), doc->GetErrorOffset ());
-      delete doc;
-      doc = NULL;
+	      rapidjson::GetParseError_En (doc.GetParseError ()), doc.GetErrorOffset ());
       error_code = ER_INVALID_JSON;
     }
 
   return error_code;
+}
+
+int
+db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc)
+{
+  int err;
+
+  assert (doc == NULL);
+
+  doc = db_json_allocate_doc ();
+
+  err = db_json_get_json_from_str (json_raw, *doc);
+  if (err != NO_ERROR)
+    {
+      delete doc;
+      doc = NULL;
+    }
+
+  return err;
 }
 
 JSON_DOC *
@@ -1557,8 +1574,25 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
 
   while (end != std::string::npos)
     {
+      if (path[end] == '"')
+	{
+	  std::size_t index_of_closing_quote = path.find_first_of ("\"", end+1);
+	  if (index_of_closing_quote == std::string::npos)
+	    {
+	      assert (false);
+	      tokens.clear ();
+	      return tokens;
+	      /* this should have been catched earlier */
+	    }
+	  else
+	    {
+	      tokens.push_back (path.substr (end + 1, index_of_closing_quote - end - 1));
+	      end = index_of_closing_quote;
+	      start = end + 1;
+	    }
+	}
       // do not tokenize on escaped quotes
-      if (path[end] != '"' || path[end - 1] != '\\')
+      else if (path[end] != '"' || ((end >= 1) && path[end - 1] != '\\'))
 	{
 	  const std::string &substring = path.substr (start, end - start);
 	  if (!substring.empty ())
@@ -1911,7 +1945,7 @@ db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json)
  * raw_path (in)           : specified path
  */
 int
-db_json_keys_func (const JSON_DOC &doc, JSON_DOC *&result_json, const char *raw_path)
+db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_path)
 {
   int error_code = NO_ERROR;
   std::string json_pointer_string;
@@ -1943,19 +1977,28 @@ db_json_keys_func (const JSON_DOC &doc, JSON_DOC *&result_json, const char *raw_
     }
   else if (head->IsObject ())
     {
-      result_json->SetArray ();
+      result_json.SetArray ();
 
       for (auto it = head->MemberBegin (); it != head->MemberEnd (); ++it)
 	{
 	  JSON_VALUE val;
 
 	  key = it->name.GetString ();
-	  val.SetString (key.c_str (), result_json->GetAllocator ());
-	  result_json->PushBack (val, result_json->GetAllocator ());
+	  val.SetString (key.c_str (), result_json.GetAllocator ());
+	  result_json.PushBack (val, result_json.GetAllocator ());
 	}
     }
 
   return NO_ERROR;
+}
+
+int
+db_json_keys_func (const char *json_raw, JSON_DOC &result_json, const char *raw_path)
+{
+  JSON_DOC doc;
+  db_json_get_json_from_str (json_raw, doc);
+
+  return db_json_keys_func (doc, result_json, raw_path);
 }
 
 bool

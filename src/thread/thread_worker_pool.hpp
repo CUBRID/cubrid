@@ -390,6 +390,9 @@ namespace cubthread
       {
 	// task must not be executed if it was pushed for execution after worker pool was stopped
 	task_arg->retire();
+
+	// deregister worker
+	pool.deregister_worker (thread_arg);
 	return;
       }
 

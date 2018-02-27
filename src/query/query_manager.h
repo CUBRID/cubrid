@@ -31,13 +31,12 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "file_manager.h"
 #include "list_file.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 #include "xasl_cache.h"
-
 
 #define qmgr_free_old_page_and_init(thread_p, page_p, tfile_vfidp) \
   do \

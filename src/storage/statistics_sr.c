@@ -985,7 +985,7 @@ stats_compare_data (DB_DATA * data1_p, DB_DATA * data2_p, DB_TYPE type)
       status = stats_compare_time (&data1_p->timetz.time, &data2_p->timetz.time);
       break;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
       status = stats_compare_utime (&data1_p->utime, &data2_p->utime);
       break;
@@ -1118,8 +1118,8 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 	  fprintf (fpp, "DB_TYPE_TIMETZ \n");
 	  break;
 
-	case DB_TYPE_UTIME:
-	  fprintf (fpp, "DB_TYPE_UTIME \n");
+	case DB_TYPE_TIMESTAMP:
+	  fprintf (fpp, "DB_TYPE_TIMESTAMP \n");
 	  break;
 
 	case DB_TYPE_TIMESTAMPLTZ:
@@ -1230,8 +1230,7 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 #endif /* CUBRID_DEBUG */
 
 /*
- * stats_update_partitioned_statistics () - compute statistics for a
- *						  partitioned class
+ * stats_update_partitioned_statistics () - compute statistics for a partitioned class
  * return : error code or NO_ERROR
  * thread_p (in) :
  * class_id_p (in) : oid of the partitioned class
@@ -1466,8 +1465,8 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 	  goto cleanup;
 	}
 
-      subcls_disk_rep =
-	catalog_get_representation (thread_p, &partitions[i], subcls_repr_id, &part_catalog_access_info);
+      subcls_disk_rep = catalog_get_representation (thread_p, &partitions[i], subcls_repr_id,
+						    &part_catalog_access_info);
       if (subcls_disk_rep == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
@@ -1511,9 +1510,10 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 
 	  for (k = 0, btree_stats_p = disk_attr_p->bt_stats; k < disk_attr_p->n_btstats; k++, btree_stats_p++)
 	    {
-	      const BTREE_STATS *subcls_stats = stats_find_inherited_index_stats (cls_rep, subcls_rep,
-										  subcls_attr_p,
-										  &btree_stats_p->btid);
+	      const BTREE_STATS *subcls_stats;
+
+	      subcls_stats = stats_find_inherited_index_stats (cls_rep, subcls_rep, subcls_attr_p,
+							       &btree_stats_p->btid);
 	      if (subcls_stats == NULL)
 		{
 		  error = ER_FAILED;
@@ -1592,8 +1592,8 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 	  goto cleanup;
 	}
 
-      subcls_disk_rep =
-	catalog_get_representation (thread_p, &partitions[i], subcls_repr_id, &part_catalog_access_info);
+      subcls_disk_rep = catalog_get_representation (thread_p, &partitions[i], subcls_repr_id,
+						    &part_catalog_access_info);
       if (subcls_disk_rep == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
@@ -1636,9 +1636,10 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 
 	  for (k = 0, btree_stats_p = disk_attr_p->bt_stats; k < disk_attr_p->n_btstats; k++, btree_stats_p++)
 	    {
-	      const BTREE_STATS *subcls_stats = stats_find_inherited_index_stats (cls_rep, subcls_rep,
-										  subcls_attr_p,
-										  &btree_stats_p->btid);
+	      const BTREE_STATS *subcls_stats;
+
+	      subcls_stats = stats_find_inherited_index_stats (cls_rep, subcls_rep, subcls_attr_p,
+							       &btree_stats_p->btid);
 	      if (subcls_stats == NULL)
 		{
 		  error = ER_FAILED;
@@ -1738,9 +1739,8 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 
   /* replace the current disk representation structure/information in the catalog with the newly computed statistics */
   assert (!OID_ISNULL (&(cls_info_p->ci_rep_dir)));
-  error =
-    catalog_add_representation (thread_p, class_id_p, repr_id, disk_repr_p, &(cls_info_p->ci_rep_dir),
-				&catalog_access_info);
+  error = catalog_add_representation (thread_p, class_id_p, repr_id, disk_repr_p, &(cls_info_p->ci_rep_dir),
+				      &catalog_access_info);
   if (error != NO_ERROR)
     {
       goto cleanup;
@@ -1805,9 +1805,7 @@ cleanup:
 }
 
 /*
- * stats_find_inherited_index_stats () - find the btree statistics
- *					 corresponding to an index in a
- *					 subclass
+ * stats_find_inherited_index_stats () - find the btree statistics corresponding to an index in a subclass
  * return : btree statistics
  * cls_rep (in)	   : superclass representation
  * subcls_rep (in) : subclass representation

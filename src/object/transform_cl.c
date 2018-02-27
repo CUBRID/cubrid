@@ -50,8 +50,7 @@
 #include "execute_statement.h"
 #include "db_json.hpp"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1481,7 +1480,8 @@ string_disk_size (const char *string)
       str_length = 0;
     }
 
-  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) string, str_length, LANG_SYS_CODESET,
+		    LANG_SYS_COLLATION);
   length = (*(tp_VarNChar.data_lengthval)) (&value, 1);
 
   /* Clear the compressed_string of DB_VALUE */
@@ -1567,7 +1567,8 @@ put_string (OR_BUF * buf, const char *string)
       str_length = 0;
     }
 
-  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, string, str_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) string, str_length, LANG_SYS_CODESET,
+		    LANG_SYS_COLLATION);
   (*(tp_VarNChar.data_writeval)) (buf, &value);
   pr_clear_value (&value);
 }
@@ -3043,9 +3044,9 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 		  DB_VALUE def_expr_op, def_expr_type, def_expr_format;
 		  char *def_expr_format_str;
 
-		  assert (set_size (DB_PULL_SEQUENCE (&value)) == 3);
+		  assert (set_size (db_get_set (&value)) == 3);
 
-		  def_expr_seq = DB_PULL_SEQUENCE (&value);
+		  def_expr_seq = db_get_set (&value);
 
 		  /* get default expression operator (op of expr) */
 		  if (set_get_element_nocopy (def_expr_seq, 0, &def_expr_op) != NO_ERROR)
@@ -3053,8 +3054,8 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 		      assert (false);
 		    }
 		  assert (DB_VALUE_TYPE (&def_expr_op) == DB_TYPE_INTEGER
-			  && DB_GET_INT (&def_expr_op) == (int) T_TO_CHAR);
-		  att->default_value.default_expr.default_expr_op = DB_GET_INT (&def_expr_op);
+			  && db_get_int (&def_expr_op) == (int) T_TO_CHAR);
+		  att->default_value.default_expr.default_expr_op = db_get_int (&def_expr_op);
 
 		  /* get default expression type (arg1 of expr) */
 		  if (set_get_element_nocopy (def_expr_seq, 1, &def_expr_type) != NO_ERROR)
@@ -3063,7 +3064,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 		    }
 		  assert (DB_VALUE_TYPE (&def_expr_type) == DB_TYPE_INTEGER);
 		  att->default_value.default_expr.default_expr_type =
-		    (DB_DEFAULT_EXPR_TYPE) DB_GET_INT (&def_expr_type);
+		    (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr_type);
 
 		  /* get default expression format (arg2 of expr) */
 		  if (set_get_element_nocopy (def_expr_seq, 2, &def_expr_format) != NO_ERROR)
@@ -3073,13 +3074,13 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 
 #if !defined (NDEBUG)
 		  {
-		    DB_TYPE db_value_type = db_value_type (&def_expr_format);
-		    assert (db_value_type == DB_TYPE_NULL || TP_IS_CHAR_TYPE (db_value_type));
+		    DB_TYPE db_value_type_local = db_value_type (&def_expr_format);
+		    assert (db_value_type_local == DB_TYPE_NULL || TP_IS_CHAR_TYPE (db_value_type_local));
 		  }
 #endif
 		  if (!db_value_is_null (&def_expr_format))
 		    {
-		      def_expr_format_str = DB_GET_STRING (&def_expr_format);
+		      def_expr_format_str = db_get_string (&def_expr_format);
 		      att->default_value.default_expr.default_expr_format = ws_copy_string (def_expr_format_str);
 		      if (att->default_value.default_expr.default_expr_format == NULL)
 			{
@@ -3089,7 +3090,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 		}
 	      else
 		{
-		  att->default_value.default_expr.default_expr_type = (DB_DEFAULT_EXPR_TYPE) DB_GET_INT (&value);
+		  att->default_value.default_expr.default_expr_type = (DB_DEFAULT_EXPR_TYPE) db_get_int (&value);
 		}
 
 	      pr_clear_value (&value);
@@ -4879,7 +4880,7 @@ disk_to_partition_info (OR_BUF * buf)
 	  classobj_free_partition_info (partition_info);
 	  return NULL;
 	}
-      partition_info->values = db_seq_copy (DB_GET_SEQUENCE (&val));
+      partition_info->values = db_seq_copy (db_get_set (&val));
       if (partition_info->values == NULL)
 	{
 	  free_var_table (vars);

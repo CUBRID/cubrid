@@ -49,8 +49,7 @@
 #include "schema_manager.h"
 #include "network_interface_cl.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #define INDENT_INCR		4
 #define INDENT_FMT		"%*c"
@@ -393,7 +392,7 @@ unsigned char qo_type_qualifiers[] = {
   0,				/* DB_TYPE_SEQUENCE */
   0,				/* DB_TYPE_ELO */
   _INT + _NUM,			/* DB_TYPE_TIME */
-  _INT + _NUM,			/* DB_TYPE_UTIME */
+  _INT + _NUM,			/* DB_TYPE_TIMESTAMP */
   _INT + _NUM,			/* DB_TYPE_DATE */
   _NUM,				/* DB_TYPE_MONETARY */
   0,				/* DB_TYPE_VARIABLE */
@@ -3058,7 +3057,7 @@ qo_nljoin_cost (QO_PLAN * planp)
   if (outer->plan_type == QO_PLANTYPE_SORT && outer->plan_un.sort.sort_type == SORT_LIMIT)
     {
       /* cardinality of a SORT_LIMIT plan is given by the value of the query limit */
-      guessed_result_cardinality = (double) DB_GET_BIGINT (&QO_ENV_LIMIT_VALUE (outer->info->env));
+      guessed_result_cardinality = (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (outer->info->env));
     }
   else
     {
@@ -3235,7 +3234,7 @@ qo_mjoin_cost (QO_PLAN * planp)
   env = outer->info->env;
   if (outer->has_sort_limit)
     {
-      outer_cardinality = (double) DB_GET_BIGINT (&QO_ENV_LIMIT_VALUE (env));
+      outer_cardinality = (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (env));
     }
   else
     {
@@ -3244,7 +3243,7 @@ qo_mjoin_cost (QO_PLAN * planp)
 
   if (inner->has_sort_limit)
     {
-      inner_cardinality = (double) DB_GET_BIGINT (&QO_ENV_LIMIT_VALUE (env));
+      inner_cardinality = (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (env));
     }
   else
     {
@@ -4822,7 +4821,7 @@ qo_set_cost (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * plan, DB_VALUE * 
     case DB_TYPE_STRING:
     case DB_TYPE_CHAR:
     case DB_TYPE_NCHAR:
-      plan_string = DB_PULL_STRING (plan);
+      plan_string = db_get_string (plan);
       break;
     default:
       plan_string = "unknown";
@@ -4834,7 +4833,7 @@ qo_set_cost (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * plan, DB_VALUE * 
     case DB_TYPE_STRING:
     case DB_TYPE_CHAR:
     case DB_TYPE_NCHAR:
-      cost_string = DB_PULL_STRING (cost);
+      cost_string = db_get_string (cost);
       break;
     default:
       cost_string = "d";
@@ -4848,12 +4847,12 @@ qo_set_cost (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * plan, DB_VALUE * 
    */
   if ((plan_string = qo_plan_set_cost_fn (plan_string, cost_string[0])) != NULL)
     {
-      DB_MAKE_STRING (result, plan_string);
+      db_make_string (result, plan_string);
     }
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      DB_MAKE_ERROR (result, ER_GENERIC_ERROR);
+      db_make_error (result, ER_GENERIC_ERROR);
     }
 }
 

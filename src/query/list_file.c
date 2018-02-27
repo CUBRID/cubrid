@@ -41,9 +41,7 @@
 #include "stream_to_xasl.h"
 #include "query_opfunc.h"
 #include "thread.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 /* TODO */
 #if !defined (SERVER_MODE)
@@ -6662,8 +6660,8 @@ qfile_compare_with_interpolation_domain (char *fp0, char *fp1, SUBKEY_INFO * sub
 
   assert (fp0 != NULL && fp1 != NULL && subkey != NULL && key_info != NULL);
 
-  DB_MAKE_NULL (&val0);
-  DB_MAKE_NULL (&val1);
+  db_make_null (&val0);
+  db_make_null (&val1);
 
   d0 = fp0 + QFILE_TUPLE_VALUE_HEADER_LENGTH;
   d1 = fp1 + QFILE_TUPLE_VALUE_HEADER_LENGTH;

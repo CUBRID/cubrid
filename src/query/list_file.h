@@ -32,7 +32,7 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "config.h"
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "external_sort.h"
 #include "log_comm.h"
 #include "object_domain.h"
