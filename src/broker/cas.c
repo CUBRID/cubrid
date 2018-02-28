@@ -952,7 +952,10 @@ cas_main (void)
 	    set_cubrid_file (FID_CUBRID_ERR_DIR, shm_appl->err_log_dir);
 
 	    as_db_err_log_set (broker_name, shm_proxy_id, shm_shard_id, shm_shard_cas_id, shm_as_index, cas_shard_flag);
-	    er_init (NULL, ER_NEVER_EXIT);	// reload error manager
+
+	    // reload error manager; call er_final first to make sure even sticky error manager is reloaded
+	    er_final (ER_ALL_FINAL);
+	    er_init (NULL, ER_NEVER_EXIT);
 	    as_info->cas_err_log_reset = 0;
 	  }
 #endif
