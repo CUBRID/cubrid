@@ -75,6 +75,7 @@ void master_listening_thread_func (std::vector <test_communication_channel> &cha
   int rc = css_tcp_master_open (LISTENING_PORT, listen_fd);
   if (rc != NO_ERROR)
     {
+      is_listening.store (true); /* unblock main, the error will be caught */
       assert (false);
       return;
     }
