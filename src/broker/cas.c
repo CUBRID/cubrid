@@ -952,7 +952,7 @@ cas_main (void)
 	    set_cubrid_file (FID_CUBRID_ERR_DIR, shm_appl->err_log_dir);
 
 	    as_db_err_log_set (broker_name, shm_proxy_id, shm_shard_id, shm_shard_cas_id, shm_as_index, cas_shard_flag);
-	    er_final (ER_ALL_FINAL);	// final & no reinit? is this safe?
+	    er_init (NULL, ER_NEVER_EXIT);	// reload error manager
 	    as_info->cas_err_log_reset = 0;
 	  }
 #endif
