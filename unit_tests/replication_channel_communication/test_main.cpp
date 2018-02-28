@@ -29,11 +29,6 @@ static int init_thread_system ();
 static int init_thread_system ()
 {
   int error_code;
-  int count = 0;
-  while (count <= 20) {
-	  std::this_thread::sleep_for(std::chrono::seconds(1));
-	  count++;
-  }
   lf_initialize_transaction_systems (MAX_THREADS);
 
   if (csect_initialize_static_critical_sections () != NO_ERROR)
