@@ -105,15 +105,6 @@ master_replication_channel_entry &master_replication_channel_entry::operator= (m
   return *this;
 }
 
-/*master_replication_channel_entry::master_replication_channel_entry ()
-{
-  this->m_channel = NULL;
-  for (int i = 0; i < NUM_OF_MASTER_DAEMON_THREADS; i++)
-    {
-      this->m_master_daemon_threads[i] = NULL;
-    }
-}*/
-
 std::shared_ptr<master_replication_channel> &master_replication_channel_entry::get_replication_channel()
 {
   return m_channel;

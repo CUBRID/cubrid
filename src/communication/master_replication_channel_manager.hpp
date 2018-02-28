@@ -80,12 +80,12 @@ class master_replication_channel_manager
 
 	void execute (cubthread::entry &context)
 	{
-	  auto new_end = std::remove_if (master_channels.begin(), master_channels.end(),
+	  auto new_end = std::remove_if (master_channels.begin (), master_channels.end (),
 					 [] (master_replication_channel_entry &entry)
 	  {
-	    return !entry.get_replication_channel()->is_connected();
+	    return !entry.get_replication_channel ()->is_connected ();
 	  });
-	  master_channels.erase (new_end, master_channels.end());
+	  master_channels.erase (new_end, master_channels.end ());
 	}
     };
 

@@ -1247,11 +1247,11 @@ css_process_master_hostname ()
   slave_replication_channel::reset_singleton ();
   slave_replication_channel::init (ha_Server_master_hostname, css_Master_server_name, css_Master_port_id);
 
-  error = slave_replication_channel::get_channel ()->connect_to_master ();
+  error = slave_replication_channel::get_channel ().connect_to_cub_server_master ();
   assert (error == NO_ERRORS);
   /* TODO[arnia] add possibility of adding multiple daemons to slaves */
-  error = slave_replication_channel::get_channel ()->start_daemon (cubthread::looper (std::chrono::seconds (1)),
-								   new slave_dummy_send_msg (slave_replication_channel::
+  error = slave_replication_channel::get_channel ().start_daemon (cubthread::looper (std::chrono::seconds (1)),
+								   new slave_dummy_send_msg (&slave_replication_channel::
 											     get_channel ()));
   assert (error == NO_ERROR);
 

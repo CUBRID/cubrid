@@ -15,15 +15,14 @@ slave_replication_channel *slave_replication_channel::singleton = NULL;
 std::mutex slave_replication_channel::singleton_mutex;
 
 slave_replication_channel::slave_replication_channel (const std::string &hostname,
-    const std::string &master_server_name, int port) : master_hostname (hostname),
-  master_server_name (master_server_name),
-  master_port (port),
-  slave_daemon (NULL)
+    const std::string &master_server_name, int port) :
+                                                      slave_daemon (NULL),
+                                                      cub_server_master_channel (hostname.c_str (),
+                                                                                 port,
+                                                                                 SERVER_REQUEST_CONNECT_NEW_SLAVE,
+                                                                                 master_server_name.c_str ())
 {
-  master_conn_entry = css_make_conn (-1);
-  request_id = -1;
-
-  _er_log_debug (ARG_FILE_LINE, "init slave_replication_channel \n");
+  _er_log_debug (ARG_FILE_LINE, "init slave_replication_channel hostname=%s\n", hostname.c_str ());
 }
 
 slave_replication_channel::~slave_replication_channel()
@@ -33,32 +32,18 @@ slave_replication_channel::~slave_replication_channel()
   _er_log_debug (ARG_FILE_LINE, "destroy slave_replication_channel \n");
 }
 
-int slave_replication_channel::connect_to_master()
+int slave_replication_channel::connect_to_cub_server_master ()
 {
-  int length = 0;
+  int rc = NO_ERRORS;
 
-  if (master_conn_entry == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  length = master_server_name.length ();
-
-  if (css_common_connect (master_conn_entry, &request_id, master_hostname.c_str (),
-			  SERVER_REQUEST_CONNECT_NEW_SLAVE, master_server_name.c_str (), length, master_port) == NULL)
+  rc = cub_server_master_channel.connect ();
+  if (rc != NO_ERRORS)
     {
       assert (false);
-      return REQUEST_REFUSED;
+      return rc;
     }
 
-  _er_log_debug (ARG_FILE_LINE, "connect_to_master:" "connected to master_hostname:%s\n", master_hostname.c_str ());
-
   return NO_ERRORS;
-}
-
-CSS_CONN_ENTRY *slave_replication_channel::get_master_conn_entry ()
-{
-  return master_conn_entry;
 }
 
 void slave_replication_channel::init (const std::string &hostname, const std::string &server_name, int port)
@@ -80,14 +65,13 @@ void slave_replication_channel::reset_singleton ()
       return;
     }
 
-  singleton->close_master_conn();
   delete singleton;
   singleton = NULL;
 }
 
-slave_replication_channel *slave_replication_channel::get_channel ()
+slave_replication_channel &slave_replication_channel::get_channel ()
 {
-  return singleton;
+  return *singleton;
 }
 
 int slave_replication_channel::start_daemon (const cubthread::looper &loop, cubthread::entry_task *task)
@@ -110,9 +94,9 @@ int slave_replication_channel::start_daemon (const cubthread::looper &loop, cubt
   return NO_ERROR;
 }
 
-void slave_replication_channel::close_master_conn ()
+communication_channel &slave_replication_channel::get_cub_server_master_channel ()
 {
-  css_free_conn (master_conn_entry);
+  return cub_server_master_channel;
 }
 
 slave_dummy_send_msg::slave_dummy_send_msg (slave_replication_channel *ch) : channel (ch)
@@ -127,14 +111,12 @@ slave_dummy_send_msg::slave_dummy_send_msg (slave_replication_channel *ch) : cha
 
 void slave_dummy_send_msg::execute (cubthread::entry &context)
 {
-  if (!IS_INVALID_SOCKET (channel->get_master_conn_entry()->fd))
+  if (channel->get_cub_server_master_channel ().is_connection_alive ())
     {
-      int rc = channel->send (channel->get_master_conn_entry(), std::string ("hello from ") + this_hostname,
-			      communication_channel::get_max_timeout());
+      int rc = channel->get_cub_server_master_channel ().send (std::string ("hello from ") + this_hostname);
       if (rc == ERROR_ON_WRITE || rc == ERROR_WHEN_READING_SIZE)
 	{
 	  /* this probably means that the connection was closed */
-	  //css_free_conn (channel->get_master_conn_entry());
 	  slave_replication_channel::reset_singleton();
 	}
       else if (rc != NO_ERRORS)

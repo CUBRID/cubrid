@@ -29,14 +29,13 @@ class slave_mock_send_msg : public cubthread::entry_task
 
     void execute (cubthread::entry &context)
     {
-      if (!IS_INVALID_SOCKET (channel->get_master_conn_entry()->fd))
+      if (channel->get_cub_server_master_channel ().is_connection_alive ())
 	{
-	  int rc = channel->send (channel->get_master_conn_entry(), std::string ("test"),
-				  communication_channel::get_max_timeout());
+	  int rc = channel->get_cub_server_master_channel ().send (std::string ("test"));
 	  if (rc == ERROR_ON_WRITE)
 	    {
 	      /* this probably means that the connection was closed by master*/
-	      channel->close_master_conn();
+	      channel->get_cub_server_master_channel ().close_connection ();
 	      return;
 	    }
 	  else if (rc != NO_ERRORS)
@@ -60,7 +59,7 @@ int slave_replication_channel_mock::init ()
 {
   int rc;
 
-  rc = slave_channel.connect_to_master();
+  rc = slave_channel.connect_to_cub_server_master ();
   if (rc != NO_ERRORS)
     {
       return rc;

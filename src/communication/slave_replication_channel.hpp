@@ -11,30 +11,27 @@ namespace cubthread
   class looper;
 };
 
-class slave_replication_channel : public communication_channel
+class slave_replication_channel
 {
   public:
     /* for testing purposes */
     friend class slave_replication_channel_mock;
 
-    int connect_to_master ();
-    CSS_CONN_ENTRY *get_master_conn_entry ();
+    int connect_to_cub_server_master ();
     int start_daemon (const cubthread::looper &loop, cubthread::entry_task *task);
-    void close_master_conn ();
+    communication_channel &get_cub_server_master_channel ();
 
     static void init (const std::string &hostname, const std::string &server_name, int port);
     static void reset_singleton();
-    static slave_replication_channel *get_channel ();
+    static slave_replication_channel &get_channel ();
 
   private:
-    std::string master_hostname, master_server_name;
-    int master_port;
-    unsigned short request_id;
-    CSS_CONN_ENTRY *master_conn_entry;
     cubthread::daemon *slave_daemon;
 
     slave_replication_channel (const std::string &hostname, const std::string &server_name, int port);
     ~slave_replication_channel ();
+
+    communication_channel cub_server_master_channel;
 
     static std::mutex singleton_mutex;
     static slave_replication_channel *singleton;
@@ -44,7 +41,7 @@ class slave_dummy_send_msg : public cubthread::entry_task
 {
     /* TODO[arnia] temporary slave task. remove it in the future */
   public:
-    slave_dummy_send_msg (slave_replication_channel *ch);
+    slave_dummy_send_msg (slave_replication_channel * ch);
 
     void execute (cubthread::entry &context);
   private:

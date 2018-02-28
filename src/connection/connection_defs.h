@@ -60,13 +60,16 @@
  */
 enum css_command_type
 {
+  NULL_REQUEST = 0,
   INFO_REQUEST = 1,		/* get runtime info from the master server */
   DATA_REQUEST = 2,		/* get data from the database server */
   SERVER_REQUEST = 3,		/* let new server attach */
   MSQL_REQUEST = 4,		/* A request to start a new M driver. */
   SERVER_REQUEST_NEW = 5,	/* new-style server request */
-  SERVER_REQUEST_CONNECT_NEW_SLAVE = 6	/* slave server wants to connect to master server */
+  SERVER_REQUEST_CONNECT_NEW_SLAVE = 6,	/* slave server wants to connect to master server */
+  MAX_REQUEST
 };
+typedef enum css_command_type CSS_COMMAND_TYPE;
 
 /*
  * These are the responses from the master to a server

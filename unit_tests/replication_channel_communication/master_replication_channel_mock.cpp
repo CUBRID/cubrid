@@ -51,27 +51,28 @@ namespace master
 #define MAX_LENGTH 100
     char buffer [MAX_LENGTH];
     int recv_length = MAX_LENGTH;
+    unsigned short int revents;
 
-    if (IS_INVALID_SOCKET (channel->get_slave_fd ().fd) || !channel->is_connected ())
+    if (!channel->get_cub_server_slave_channel ().is_connection_alive ())
       {
 	/* don't go any further, wait for the manager supervisor to destroy it */
 	return;
       }
 
-    rc = css_platform_independent_poll (&channel->get_slave_fd (), 1, 100);
+    rc = channel->get_cub_server_slave_channel ().wait_for (POLLIN, revents);
     if (rc < 0)
       {
 	/* smth went wrong with the connection, destroy it */
-	channel->set_is_connected (false);
+	channel->get_cub_server_slave_channel ().close_connection ();
 	return;
       }
 
-    if ((channel->get_slave_fd ().revents & POLLIN) != 0)
+    if ((revents & POLLIN) != 0)
       {
-	rc = channel->recv (channel->get_slave_fd ().fd, buffer, recv_length, communication_channel::get_max_timeout());
+	rc = channel->get_cub_server_slave_channel ().recv (buffer, recv_length);
 	if (rc == ERROR_WHEN_READING_SIZE || rc == ERROR_ON_READ)
 	  {
-	    channel->set_is_connected (false);
+	    channel->get_cub_server_slave_channel ().close_connection ();
 	    return;
 	  }
 	else if (rc != NO_ERRORS)
@@ -87,7 +88,7 @@ namespace master
 
 	if (num_of_received_messages >= NUM_OF_MSG_SENT)
 	  {
-	    channel->set_is_connected (false);
+	    channel->get_cub_server_slave_channel ().close_connection ();
 	  }
       }
 #undef MAX_LENGTH

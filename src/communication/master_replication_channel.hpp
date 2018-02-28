@@ -1,27 +1,22 @@
 #ifndef _MASTER_REPLICATION_CHANNEL_HPP
 #define _MASTER_REPLICATION_CHANNEL_HPP
 
-#include "communication_channel.hpp"
 #include "connection_support.h"
 #include "thread_entry_task.hpp"
 #include "connection_defs.h"
-#include <atomic>
+#include "communication_channel.hpp"
 
-typedef struct pollfd POLL_FD;
-
-class master_replication_channel : public communication_channel
+class master_replication_channel
 {
   public:
     master_replication_channel (int slave_fd = -1);
     ~master_replication_channel ();
 
-    POLL_FD &get_slave_fd ();
+    communication_channel &get_cub_server_slave_channel ();
 
-    std::atomic_bool &is_connected();
-    void set_is_connected (bool flag);
+    bool is_connected ();
   private:
-    POLL_FD m_slave_fd;
-    std::atomic_bool m_is_connection_alive;
+    communication_channel cub_server_slave_channel;
 };
 
 class receive_from_slave_daemon : public cubthread::entry_task
@@ -42,30 +37,31 @@ class receive_from_slave_daemon : public cubthread::entry_task
 #define MAX_LENGTH 100
       char buffer [MAX_LENGTH];
       int recv_length = MAX_LENGTH;
+      unsigned short int revents = 0;
 
-      if (IS_INVALID_SOCKET (channel->get_slave_fd ().fd) || !channel->is_connected ())
+      if (!channel->is_connected ())
 	{
 	  /* don't go any further, wait for the manager supervisor to destroy it */
 	  return;
 	}
 
-      rc = css_platform_independent_poll (&channel->get_slave_fd (), 1, -1);
+      rc = channel->get_cub_server_slave_channel ().wait_for (POLLIN, revents);
       if (rc < 0)
 	{
 	  /* smth went wrong with the connection, destroy it */
-	  channel->set_is_connected (false);
+	  channel->get_cub_server_slave_channel ().close_connection ();
 	  return;
 	}
 
-      if ((channel->get_slave_fd ().revents & POLLIN) != 0)
+      if ((revents & POLLIN) != 0)
 	{
-	  rc = channel->recv (channel->get_slave_fd ().fd, buffer, recv_length, communication_channel::get_max_timeout());
+	  rc = channel->get_cub_server_slave_channel ().recv (buffer, recv_length);
 	  if (rc == ERROR_WHEN_READING_SIZE || rc == ERROR_ON_READ)
 	    {
 	      /* this usually means that the connection is closed
 	        TODO[arnia] maybe add this case to recv to know for sure ?
 	      */
-	      channel->set_is_connected (false);
+	      channel->get_cub_server_slave_channel ().close_connection ();
 	      return;
 	    }
 	  else if (rc != NO_ERRORS)
