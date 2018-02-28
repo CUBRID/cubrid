@@ -2841,11 +2841,11 @@ au_set_user_comment (MOP user, const char *comment)
 	{
 	  db_make_string_copy (&value, comment);
 	  error = obj_set (user, "comment", &value);
+	  pr_clear_value (&value);
 	}
     }
   AU_RESTORE (save);
 
-  pr_clear_value (&value);
   return error;
 }
 
