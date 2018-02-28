@@ -23,7 +23,7 @@
 
 #define MAX_THREADS 16
 
-#define LISTENING_PORT 7777
+#define LISTENING_PORT 2222
 #define SECRET_MSG "xaa123cxewf"
 #define MAX_MSG_LENGTH 32
 #define NUM_OF_INITIATORS 10
@@ -68,8 +68,8 @@ class test_communication_channel : public communication_channel
 void master_listening_thread_func (std::vector <test_communication_channel> &channels)
 {
   int num_of_conns = 0;
-  int listen_fd[2] = {0, 0};
-  int listen_fd_platf_ind = 0;
+  SOCKET listen_fd[2] = {0, 0};
+  SOCKET listen_fd_platf_ind = 0;
   int rc = css_tcp_master_open (LISTENING_PORT, listen_fd);
   if (rc != NO_ERROR)
     {
@@ -82,7 +82,7 @@ void master_listening_thread_func (std::vector <test_communication_channel> &cha
   listen_fd_platf_ind = listen_fd[0];
 #endif
 
-  test_communication_channel incom_conn (listen_fd_platf_ind, 500);
+  test_communication_channel incom_conn (listen_fd_platf_ind, 5000);
 
   while (num_of_conns < NUM_OF_INITIATORS)
     {
@@ -237,6 +237,7 @@ static int init ()
       return error_code;
     }
 
+
   error_code = init_thread_system ();
   if (error_code != NO_ERROR)
     {
@@ -248,9 +249,10 @@ static int init ()
   counters = (int *) calloc (NUM_OF_INITIATORS, sizeof (int));
 
   std::thread listening_thread (master_listening_thread_func, std::ref (channels));
+  std::this_thread::sleep_for (std::chrono::seconds (3)); /* let master enter listening state */
   for (unsigned int i = 0; i < NUM_OF_INITIATORS; i++)
     {
-      test_communication_channel chn ("localhost", LISTENING_PORT, MAX_TIMEOUT_IN_MS);
+      test_communication_channel chn ("127.0.0.1", LISTENING_PORT, MAX_TIMEOUT_IN_MS);
       error_code = chn.connect ();
       if (error_code != NO_ERRORS)
 	{
@@ -355,3 +357,4 @@ int main (int argc, char **argv)
 
   return 0;
 }
+
