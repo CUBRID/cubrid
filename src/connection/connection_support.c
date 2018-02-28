@@ -2828,3 +2828,17 @@ css_get_unused_access_status (LAST_ACCESS_STATUS ** access_status_array, int num
   return access_status;
 }
 #endif /* CS_MODE */
+
+int
+css_platform_independent_poll (POLL_FD * fds, int num_of_fds, int timeout)
+{
+  int rc = 0;
+
+#if defined (WINDOWS)
+  rc = WSAPoll (fds, num_of_fds, timeout);
+#else
+  rc = poll (fds, num_of_fds, timeout);
+#endif
+
+  return rc;
+}
