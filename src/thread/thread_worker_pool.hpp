@@ -26,7 +26,6 @@
 
 #include "error_manager.h"
 #include "lockfree_circular_queue.hpp"
-#include "resource_shared_pool.hpp"
 #include "thread_task.hpp"
 
 #include <atomic>
@@ -157,7 +156,7 @@ namespace cubthread
       std::thread *m_threads;
 
       // thread "dispatcher" - a pool of threads
-      resource_shared_pool<std::thread> m_thread_dispatcher;
+      lockfree::circular_queue<std::thread *> m_thread_dispatcher;
 
       // contexts being used, one for each thread. thread <-> context matching based on index
       atomic_context_ptr *m_context_pointers;
@@ -189,7 +188,7 @@ namespace cubthread
     , m_work_queue (work_queue_size)
     , m_context_manager (*context_mgr)
     , m_threads (new std::thread[m_max_workers])
-    , m_thread_dispatcher (m_threads, m_max_workers, true)
+    , m_thread_dispatcher (pool_size)
     , m_context_pointers (NULL)
     , m_stopped (false)
     , m_log (debug_log)
@@ -201,6 +200,15 @@ namespace cubthread
     for (std::size_t i = 0; i < m_max_workers; ++i)
       {
 	m_context_pointers[i] = NULL;
+      }
+
+    // m_thread_dispatcher - add all threads
+    for (std::size_t i = 0; i < m_max_workers; ++i)
+      {
+	if (!m_thread_dispatcher.produce (&m_threads[i]))
+	  {
+	    assert (false);
+	  }
       }
   }
 
@@ -447,8 +455,7 @@ namespace cubthread
     std::thread *thread_p;
 
     // claim a thread
-    thread_p = m_thread_dispatcher.claim ();
-    if (thread_p == NULL)
+    if (!m_thread_dispatcher.consume (thread_p))
       {
 	// no threads available
 	THREAD_WP_LOG ("register_worker", "thread_p = %p", NULL);
@@ -473,7 +480,7 @@ namespace cubthread
   {
     // THREAD_WP_LOG ("deregister_worker", "thread = %zu", get_thread_index (thread_arg));
     // no logging here; no thread & error context
-    m_thread_dispatcher.retire (thread_arg);
+    m_thread_dispatcher.force_produce (&thread_arg);
     --m_worker_count;
   }
 
