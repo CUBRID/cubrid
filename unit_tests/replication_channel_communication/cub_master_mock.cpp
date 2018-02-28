@@ -23,7 +23,11 @@
 typedef CSS_CONN_ENTRY *(*MAKE_CONN_ENTRY_FP) (SOCKET fd);
 typedef void (*FREE_CONN_ENTRY_FP) (CSS_CONN_ENTRY * conn);
 
+#if !defined (WINDOWS)
 static void *cubridcs_lib = NULL;
+#else
+static HINSTANCE cubridcs_lib;
+#endif
 static MAKE_CONN_ENTRY_FP make_conn_entry_fp = NULL;
 static FREE_CONN_ENTRY_FP free_conn_entry_fp = NULL;
 
@@ -107,8 +111,8 @@ namespace cub_master_mock
 
     if (cubridcs_lib != NULL)
       {
-        make_conn_entry_fp = (MAKE_CONN_ENTRY_FP) GetProcAddress (cubridcs_lib, "_Z13css_make_conni");
-        free_conn_entry_fp = (FREE_CONN_ENTRY_FP) GetProcAddress (cubridcs_lib, "_Z13css_free_connP14css_conn_entry");
+        make_conn_entry_fp = (MAKE_CONN_ENTRY_FP) GetProcAddress (cubridcs_lib, "css_make_conn");
+        free_conn_entry_fp = (FREE_CONN_ENTRY_FP) GetProcAddress (cubridcs_lib, "css_free_conn");
 
         assert (make_conn_entry_fp != NULL && free_conn_entry_fp != NULL);
       }
