@@ -35,6 +35,8 @@ static int *counters = NULL;
 static std::vector <cubthread::daemon *> initiator_daemons;
 static cubthread::daemon *listener_daemon;
 
+static std::atomic_bool is_listening;
+
 static int init ();
 static int finish ();
 static int run ();
@@ -83,7 +85,7 @@ void master_listening_thread_func (std::vector <test_communication_channel> &cha
 #endif
 
   test_communication_channel incom_conn (listen_fd_platf_ind, 5000);
-
+  is_listening.store (true);
   while (num_of_conns < NUM_OF_INITIATORS)
     {
       unsigned short int revents = 0;
@@ -248,8 +250,12 @@ static int init ()
   std::vector <cubthread::entry_task *> tasks;
   counters = (int *) calloc (NUM_OF_INITIATORS, sizeof (int));
 
+  is_listening.store (false);
   std::thread listening_thread (master_listening_thread_func, std::ref (channels));
-  std::this_thread::sleep_for (std::chrono::seconds (3)); /* let master enter listening state */
+  while (!is_listening)
+  {
+    std::this_thread::sleep_for (std::chrono::milliseconds (100));
+  }
   for (unsigned int i = 0; i < NUM_OF_INITIATORS; i++)
     {
       test_communication_channel chn ("127.0.0.1", LISTENING_PORT, MAX_TIMEOUT_IN_MS);
