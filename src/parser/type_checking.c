@@ -13288,7 +13288,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case F_INSERT_SUBSTRING:
       {
         PT_NODE *arg = arg_list;
-        //printf("fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
+        printf("fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
         std::vector<func_signature>& func_sigs = *Func::types[fcode-PT_MIN];
         const func_signature* func_sig = Func::get_signature(node, func_sigs, &Func::cmp_types_normal);
         if(func_sig == NULL)
