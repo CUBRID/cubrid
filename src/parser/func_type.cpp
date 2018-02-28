@@ -69,6 +69,7 @@ std::vector<func_signature> func_signature::type0_nr_or_str = {
   {0, {PT_GENERIC_TYPE_NUMBER}, {}},
   {0, {PT_GENERIC_TYPE_DATETIME}, {}},
   {0, {PT_GENERIC_TYPE_STRING}, {}},
+  {0, {PT_GENERIC_TYPE_BIT}, {}},
   {0, {PT_TYPE_ENUMERATION}, {}},
   {0, {PT_TYPE_MAYBE}, {}},
   {0, {PT_TYPE_NULL}, {}},

@@ -13329,6 +13329,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
         switch(fcode)
           {
           case PT_MAX:
+          case PT_MIN:
           case PT_SUM:
             node->data_type = (arg_list ? parser_copy_tree_list (parser, arg_list->data_type) : NULL);
             break;
