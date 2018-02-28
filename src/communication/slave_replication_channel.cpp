@@ -19,6 +19,7 @@ slave_replication_channel::slave_replication_channel (const std::string &hostnam
                                                       slave_daemon (NULL),
                                                       cub_server_master_channel (hostname.c_str (),
                                                                                  port,
+                                                                                 -1,
                                                                                  SERVER_REQUEST_CONNECT_NEW_SLAVE,
                                                                                  master_server_name.c_str ())
 {

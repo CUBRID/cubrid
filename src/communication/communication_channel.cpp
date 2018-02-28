@@ -13,33 +13,35 @@
 #endif /* WINDOWS */
 
 communication_channel::communication_channel (const char *hostname,
-                                              int port,
-                                              CSS_COMMAND_TYPE command_type,
-                                              const char *server_name,
-                                              int max_timeout_in_ms) : m_conn_entry (NULL),
-                                                                       m_max_timeout_in_ms (max_timeout_in_ms),
-                                                                       m_hostname (strdup (hostname)),
-                                                                       m_server_name (strdup (server_name)),
-                                                                       m_port (port),
-                                                                       m_request_id (0),
-                                                                       m_type (CHANNEL_TYPE::INITIATOR),
-                                                                       m_command_type (command_type)
+    int port,
+    int max_timeout_in_ms,
+    CSS_COMMAND_TYPE command_type,
+    const char *server_name) : m_conn_entry (NULL),
+  m_max_timeout_in_ms (max_timeout_in_ms),
+  m_hostname (hostname == NULL ? nullptr : strdup (hostname)),
+  m_server_name (server_name == NULL ? nullptr : strdup (server_name)),
+  m_port (port),
+  m_request_id (0),
+  m_type (CHANNEL_TYPE::INITIATOR),
+  m_command_type (command_type)
 {
   m_conn_entry = css_make_conn (-1);
 }
 
-communication_channel::communication_channel (int sock_fd, int max_timeout_in_ms) : m_max_timeout_in_ms (max_timeout_in_ms),
-                                                                                    m_hostname (nullptr),
-                                                                                    m_server_name (nullptr),
-                                                                                    m_port (-1),
-                                                                                    m_request_id (0),
-                                                                                    m_type (CHANNEL_TYPE::LISTENER),
-                                                                                    m_command_type (NULL_REQUEST)
+communication_channel::communication_channel (int sock_fd,
+    int max_timeout_in_ms) : m_max_timeout_in_ms (max_timeout_in_ms),
+  m_hostname (nullptr),
+  m_server_name (nullptr),
+  m_port (-1),
+  m_request_id (0),
+  m_type (CHANNEL_TYPE::LISTENER),
+  m_command_type (NULL_REQUEST)
 {
   m_conn_entry = css_make_conn (sock_fd);
 }
 
-communication_channel::communication_channel (communication_channel &&comm) : m_max_timeout_in_ms (comm.m_max_timeout_in_ms)
+communication_channel::communication_channel (communication_channel &&comm) : m_max_timeout_in_ms (
+    comm.m_max_timeout_in_ms)
 {
   m_hostname = std::move (comm.m_hostname);
   m_server_name = std::move (comm.m_server_name);

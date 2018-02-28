@@ -15,7 +15,8 @@ enum CHANNEL_TYPE
 class communication_channel
 {
   public:
-    communication_channel (const char *hostname, int port, CSS_COMMAND_TYPE command_type = NULL_REQUEST, const char *server_name = NULL, int max_timeout_in_ms = -1);
+    communication_channel (const char *hostname, int port, int max_timeout_in_ms = -1,
+			   CSS_COMMAND_TYPE command_type = NULL_REQUEST, const char *server_name = NULL);
     communication_channel (int sock_fd = -1, int max_timeout_in_ms = -1);
     virtual ~communication_channel ();
 
@@ -36,7 +37,7 @@ class communication_channel
     void set_command_type (CSS_COMMAND_TYPE cmd);
 
     const int &get_max_timeout_in_ms ();
-  private:
+  protected:
     CSS_CONN_ENTRY *m_conn_entry;
     const int m_max_timeout_in_ms;
     std::unique_ptr <char> m_hostname, m_server_name;
