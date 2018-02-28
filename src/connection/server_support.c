@@ -257,6 +257,25 @@ private:
   CSS_CONN_ENTRY *m_conn;
   cubthread::entry_task *m_task;
 };
+
+class css_connection_task : public cubthread::entry_task
+{
+public:
+
+  css_connection_task (void) = delete;
+
+  css_connection_task (CSS_CONN_ENTRY & conn)
+  : m_conn (conn)
+  {
+  }
+
+  void execute (context_type & thread_ref) override final;
+
+  // retire not overwritten; task is automatically deleted
+
+private:
+  CSS_CONN_ENTRY &m_conn;
+};
 // *INDENT-ON*
 
 static int css_free_job_entry_func (void *data, void *dummy);
@@ -292,9 +311,9 @@ static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
 
 static void css_push_server_task (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
-static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, THREAD_ENTRY & stopper_thread_ref);
-static void css_stop_log_writer (THREAD_ENTRY & thread_ref);
-static void css_find_not_stopped (THREAD_ENTRY & thread_ref, bool is_log_writer, bool & found);
+static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopper_thread_ref);
+static void css_stop_log_writer (THREAD_ENTRY & thread_ref, bool &);
+static void css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool is_log_writer, bool & found);
 static bool css_is_log_writer (const THREAD_ENTRY & thread_arg);
 static void css_stop_all_workers (THREAD_ENTRY & thread_ref, thread_stop_type stop_phase);
 
@@ -1846,6 +1865,13 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
     }
+  css_Connection_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, JOB_QUEUE_SIZE);
+  if (css_Connection_worker_pool == NULL)
+    {
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
 
   /* startup worker/daemon threads */
   status = thread_start_workers ();
@@ -1934,6 +1960,7 @@ shutdown:
 
   // destroy request worker pool
   THREAD_GET_MANAGER ()->destroy_worker_pool (css_Server_request_worker_pool);
+  THREAD_GET_MANAGER ()->destroy_worker_pool (css_Connection_worker_pool);
 
   if (!HA_DISABLED ())
     {
@@ -3416,8 +3443,21 @@ css_server_external_task::execute (context_type & thread_ref)
   thread_ref.conn_entry = NULL;
 }
 
+void
+css_connection_task::execute (context_type & thread_ref)
+{
+  thread_ref.conn_entry = &m_conn;
+
+  // todo: we lock tran_index_lock because css_connection_handler_thread expects it to be locked. however, I am not
+  //       convinced we really need this
+  pthread_mutex_lock (&thread_ref.tran_index_lock);
+  (void) css_connection_handler_thread (&thread_ref, &m_conn);
+
+  thread_ref.conn_entry = NULL;
+}
+
 static void
-css_stop_non_log_writer (THREAD_ENTRY & thread_ref, THREAD_ENTRY & stopper_thread_ref)
+css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopper_thread_ref)
 {
   // porting of legacy code
 
@@ -3449,7 +3489,7 @@ css_stop_non_log_writer (THREAD_ENTRY & thread_ref, THREAD_ENTRY & stopper_threa
 }
 
 static void
-css_stop_log_writer (THREAD_ENTRY & thread_ref)
+css_stop_log_writer (THREAD_ENTRY & thread_ref, bool &)
 {
   if (!css_is_log_writer (thread_ref))
     {
@@ -3472,7 +3512,7 @@ css_stop_log_writer (THREAD_ENTRY & thread_ref)
 }
 
 static void
-css_find_not_stopped (THREAD_ENTRY & thread_ref, bool is_log_writer, bool & found)
+css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool is_log_writer, bool & found)
 {
   if (is_log_writer != css_is_log_writer (thread_ref))
     {
@@ -3482,6 +3522,7 @@ css_find_not_stopped (THREAD_ENTRY & thread_ref, bool is_log_writer, bool & foun
   if (thread_ref.status != TS_FREE)
     {
       found = true;
+      stop = true;
     }
 }
 
@@ -3519,6 +3560,7 @@ css_stop_all_workers (THREAD_ENTRY & thread_ref, thread_stop_type stop_phase)
     {
       // tell all to stop
       css_Server_request_worker_pool->map_running_contexts (css_stop_non_log_writer, thread_ref);
+      css_Connection_worker_pool->map_running_contexts (css_stop_non_log_writer, thread_ref);
 
       // make sure none is blocked in lock waits
       lock_force_timeout_lock_wait_transactions (stop_phase);
@@ -3526,12 +3568,19 @@ css_stop_all_workers (THREAD_ENTRY & thread_ref, thread_stop_type stop_phase)
       // sleep for 50 milliseconds
       std::this_thread::sleep_for (std::chrono::milliseconds (50));
 
+      // check if any thread is not stopped
       is_not_stopped = false;
       css_Server_request_worker_pool->map_running_contexts (css_find_not_stopped, stop_phase == THREAD_STOP_LOGWR,
                                                             is_not_stopped);
-
       if (!is_not_stopped)
         {
+          // check connection threads too
+          css_Connection_worker_pool->map_running_contexts (css_find_not_stopped, stop_phase == THREAD_STOP_LOGWR,
+                                                            is_not_stopped);
+        }
+      if (!is_not_stopped)
+        {
+          // all threads are stopped, break loop
           break;
         }
 

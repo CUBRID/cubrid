@@ -118,6 +118,8 @@ namespace cubthread
       // context management
       //////////////////////////////////////////////////////////////////////////
 
+      // map function over all running contexts. the signature of function should be (context_type, bool&, Args...).
+      // bool& argument can be used to stop mapping.
       template <typename Func, typename ... Args>
       void map_running_contexts (Func &&func, Args &&... args);
 
@@ -492,12 +494,13 @@ namespace cubthread
   cubthread::worker_pool<Context>::map_running_contexts (Func &&func, Args &&... args)
   {
     context_type *ctx_p;
-    for (std::size_t it = 0; it < m_max_workers; it++)
+    bool stop = false;
+    for (std::size_t it = 0; it < m_max_workers && !stop; it++)
       {
 	ctx_p = m_context_pointers[it];
 	if (ctx_p != NULL)
 	  {
-	    func (*ctx_p, std::forward<Args> (args)...);
+	    func (*ctx_p, stop, std::forward<Args> (args)...);
 	  }
       }
   }
