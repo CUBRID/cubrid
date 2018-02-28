@@ -15116,18 +15116,7 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
       return NULL;
     }
 
-  assert (pgbuf_bcb_is_direct_victim (bcb));
-
-  /* clear direct victim flag */
-  bcb->flags &= ~PGBUF_BCB_VICTIM_DIRECT_FLAG;
-
-  if (!pgbuf_is_bcb_victimizable (bcb, true))
-    {
-      /* should not happen */
-      assert (false);
-      PGBUF_BCB_UNLOCK (bcb);
-      return NULL;
-    }
+  assert (bcb->flags & PGBUF_BCB_VICTIM_DIRECT_FLAG);
 
   switch (pgbuf_bcb_get_zone (bcb))
     {
@@ -15148,6 +15137,15 @@ pgbuf_get_direct_victim (THREAD_ENTRY * thread_p)
       /* add to AOUT */
       pgbuf_add_vpid_to_aout_list (thread_p, &bcb->vpid, lru_idx);
       break;
+    }
+
+  bcb->flags &= ~PGBUF_BCB_VICTIM_DIRECT_FLAG;
+  if (!pgbuf_is_bcb_victimizable (bcb, true))
+    {
+      /* should not happen */
+      assert (false);
+      PGBUF_BCB_UNLOCK (bcb);
+      return NULL;
     }
 
   assert (pgbuf_bcb_get_zone (bcb) == PGBUF_VOID_ZONE);
@@ -15236,6 +15234,7 @@ pgbuf_lru_remove_victim_candidate (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru
       /* we cannot remove an entry from lock-free circular queue easily. we just hope that this does not happen too
        * often. do nothing here. */
     }
+  assert (lru_list->count_vict_cand >= 0);
 
   ATOMIC_CAS_ADDR (&lru_list->victim_hint, bcb, (PGBUF_BCB *) NULL);
 }
