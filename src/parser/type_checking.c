@@ -13302,53 +13302,64 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
         if(func_sig != NULL)
           {
             Func::match_signature(parser, node, *func_sig);
-            {//return type
-              switch(func_sig->ret.type)
+            arg_list = node->info.function.arg_list;
+            
+            if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL) //return type
               {
-                case pt_arg_type::NORMAL:
-                    node->type_enum = func_sig->ret.val.type;
+                switch(func_sig->ret.type)
+                  {
+                  case pt_arg_type::NORMAL:
+                      node->type_enum = func_sig->ret.val.type;
+                      break;
+                  case pt_arg_type::GENERIC:
+                      assert(false);
+                      break;
+                  case pt_arg_type::INDEX:
+                      size_t index = 0;
+                      for(auto p=arg_list; p; p=p->next, ++index)
+                        {
+                          if(index == func_sig->ret.val.index)
+                            {
+                              node->type_enum = p->type_enum;
+                              break;
+                            }
+                        }
+                      break;
+                  }
+                //some functions need NULL and some need parser_copy_tree_list() !?
+                switch(fcode)
+                  {
+                  case PT_MAX:
+                  case PT_MIN:
+                    node->data_type = (arg_list ? parser_copy_tree_list (parser, arg_list->data_type) : NULL);
                     break;
-                case pt_arg_type::GENERIC:
-                    assert(false);
-                    break;
-                case pt_arg_type::INDEX:
-                    size_t index = 0;
-                    for(auto p=arg_list; p; p=p->next, ++index)
+                  case PT_SUM:
+                    node->data_type = (arg_list ? parser_copy_tree_list (parser, arg_list->data_type) : NULL);
+                    if(arg_list && arg_list->type_enum == PT_TYPE_NUMERIC && node->data_type)
                       {
-                        if(index == func_sig->ret.val.index)
-                          {
-                            node->type_enum = p->type_enum;
-                            break;
-                          }
+                        node->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
                       }
                     break;
+                  case F_ELT:
+                    node->data_type = pt_make_prim_data_type (parser, node->type_enum);
+	            if (node->data_type)
+	              {
+		        //node->data_type->info.data_type.precision = max_precision;
+		        node->data_type->info.data_type.dec_precision = 0;
+	              }
+                    break;
+                  default:
+                    node->data_type = NULL;
+                  }
               }
           }
-        }
-        //some functions need NULL and some need parser_copy_tree_list() !?
-        switch(fcode)
-          {
-          case PT_MAX:
-          case PT_MIN:
-            node->data_type = (arg_list ? parser_copy_tree_list (parser, arg_list->data_type) : NULL);
-            break;
-          case PT_SUM:
-            node->data_type = (arg_list ? parser_copy_tree_list (parser, arg_list->data_type) : NULL);
-            if(arg_list && arg_list->type_enum == PT_TYPE_NUMERIC && node->data_type)
-              {
-                node->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
-              }
-            break;
-          default:
-            node->data_type = NULL;
-          }
-        break;
       }
+      break;
 
     default:
       assert(false && "for all possible FUNC_TYPE enum values should be a case in switch!");
       break;
-    }
+  }
 
   assert(node->type_enum != PT_TYPE_NONE || node->data_type != NULL);
 
