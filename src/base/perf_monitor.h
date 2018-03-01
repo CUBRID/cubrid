@@ -62,7 +62,8 @@
 #define PERFMON_ACTIVE_LOCK_OBJECT                4
 #define PERFMON_ACTIVE_PB_HASH_ANCHOR             8
 #define PERFMON_ACTIVE_PB_VICTIMIZATION           16
-#define PERFMON_ACTIVE_MAX_VALUE                  31	/* must update when adding new conditions */
+#define PERFMON_ACTIVE_THREAD                     32
+#define PERFMON_ACTIVE_MAX_VALUE                  63	/* must update when adding new conditions */
 
 /* PERF_MODULE_TYPE x PERF_PAGE_TYPE x PAGE_FETCH_MODE x HOLDER_LATCH_MODE x COND_FIX_TYPE */
 #define PERF_PAGE_FIX_COUNTERS \
@@ -610,6 +611,7 @@ typedef enum
   PSTAT_PBX_FIX_TIME_COUNTERS,
   PSTAT_MVCC_SNAPSHOT_COUNTERS,
   PSTAT_OBJ_LOCK_TIME_COUNTERS,
+  PSTAT_THREAD_STATS,
 
   PSTAT_COUNT = PSTAT_OBJ_LOCK_TIME_COUNTERS + 1
 } PERF_STAT_ID;

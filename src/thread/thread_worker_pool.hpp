@@ -118,6 +118,8 @@ namespace cubthread
       std::size_t get_running_count (void) const;
       std::size_t get_max_count (void) const;
 
+      void get_stats (std::uint64_t *stats_out);
+
       //////////////////////////////////////////////////////////////////////////
       // context management
       //////////////////////////////////////////////////////////////////////////
@@ -524,6 +526,20 @@ namespace cubthread
   worker_pool<Context>::get_max_count (void) const
   {
     return m_max_workers;
+  }
+
+  template<typename Context>
+  void
+  worker_pool<Context>::get_stats (std::uint64_t *stats_out)
+  {
+    stats_out[0] = static_cast<std::uint64_t> (m_stat_worker_count);
+    stats_out[1] = static_cast<std::uint64_t> (m_stat_task_count);
+    stats_out[2] = static_cast<std::uint64_t> (m_stat_register_time);
+    stats_out[3] = static_cast<std::uint64_t> (m_stat_start_thread_time);
+    stats_out[4] = static_cast<std::uint64_t> (m_stat_claim_context_time);
+    stats_out[5] = static_cast<std::uint64_t> (m_stat_execute_time);
+    stats_out[6] = static_cast<std::uint64_t> (m_stat_retire_context_time);
+    stats_out[7] = static_cast<std::uint64_t> (m_stat_deregister_time);
   }
 
   template <typename Context>

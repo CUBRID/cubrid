@@ -3558,4 +3558,10 @@ css_stop_all_log_writer (THREAD_ENTRY & thread_ref)
       return;
     }
 }
+
+void
+css_get_thread_stats (UINT64 * stats_out)
+{
+  css_Server_request_worker_pool->get_stats (stats_out);
+}
 // *INDENT-ON*

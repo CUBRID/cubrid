@@ -64,6 +64,7 @@
 #include "session.h"
 #include "error_manager.h"
 #include "log_manager.h"
+#include "server_support.h"
 #include "system_parameter.h"
 #include "xserver_interface.h"
 #include "heap_file.h"
@@ -115,6 +116,7 @@ static int f_load_Count_get_snapshot_retry (void);
 static int f_load_Time_tran_complete_time (void);
 static int f_load_Time_get_oldest_mvcc_acquire_time (void);
 static int f_load_Count_get_oldest_mvcc_retry (void);
+static int f_load_thread_stats (void);
 
 static void f_dump_in_file_Num_data_page_fix_ext (FILE *, const UINT64 * stat_vals);
 static void f_dump_in_file_Num_data_page_promote_ext (FILE *, const UINT64 * stat_vals);
@@ -125,6 +127,7 @@ static void f_dump_in_file_Time_data_page_hold_acquire_time (FILE *, const UINT6
 static void f_dump_in_file_Time_data_page_fix_acquire_time (FILE *, const UINT64 * stat_vals);
 static void f_dump_in_file_Num_mvcc_snapshot_ext (FILE *, const UINT64 * stat_vals);
 static void f_dump_in_file_Time_obj_lock_acquire_time (FILE *, const UINT64 * stat_vals);
+static void f_dump_in_file_thread_stats (FILE * f, const UINT64 * stat_vals);
 
 static void f_dump_in_buffer_Num_data_page_fix_ext (char **, const UINT64 * stat_vals, int *remaining_size);
 static void f_dump_in_buffer_Num_data_page_promote_ext (char **, const UINT64 * stat_vals, int *remaining_size);
@@ -135,6 +138,7 @@ static void f_dump_in_buffer_Time_data_page_hold_acquire_time (char **, const UI
 static void f_dump_in_buffer_Time_data_page_fix_acquire_time (char **, const UINT64 * stat_vals, int *remaining_size);
 static void f_dump_in_buffer_Num_mvcc_snapshot_ext (char **, const UINT64 * stat_vals, int *remaining_size);
 static void f_dump_in_buffer_Time_obj_lock_acquire_time (char **, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_thread_stats (char **s, const UINT64 * stat_vals, int *remaining_size);
 
 static void perfmon_stat_dump_in_file_fix_page_array_stat (FILE *, const UINT64 * stats_ptr);
 static void perfmon_stat_dump_in_file_promote_page_array_stat (FILE *, const UINT64 * stats_ptr);
@@ -143,6 +147,7 @@ static void perfmon_stat_dump_in_file_page_lock_time_array_stat (FILE *, const U
 static void perfmon_stat_dump_in_file_page_hold_time_array_stat (FILE *, const UINT64 * stats_ptr);
 static void perfmon_stat_dump_in_file_page_fix_time_array_stat (FILE *, const UINT64 * stats_ptr);
 static void perfmon_stat_dump_in_file_snapshot_array_stat (FILE *, const UINT64 * stats_ptr);
+static void perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr);
 
 static void perfmon_stat_dump_in_buffer_fix_page_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
 static void perfmon_stat_dump_in_buffer_promote_page_array_stat (const UINT64 * stats_ptr, char **s,
@@ -155,8 +160,11 @@ static void perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 
 static void perfmon_stat_dump_in_buffer_page_fix_time_array_stat (const UINT64 * stats_ptr, char **s,
 								  int *remaining_size);
 static void perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
+static void perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, int *remaining_size);
 static void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr);
 static void perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size);
+
+STATIC_INLINE size_t thread_stats_count (void) __attribute__ ((ALWAYS_INLINE));
 
 PSTAT_GLOBAL pstat_Global;
 
@@ -523,7 +531,23 @@ PSTAT_METADATA pstat_Metadata[] = {
 			       &f_load_Num_mvcc_snapshot_ext),
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_OBJ_LOCK_TIME_COUNTERS, "Time_obj_lock_acquire_time",
 			       &f_dump_in_file_Time_obj_lock_acquire_time, &f_dump_in_buffer_Time_obj_lock_acquire_time,
-			       &f_load_Time_obj_lock_acquire_time)
+			       &f_load_Time_obj_lock_acquire_time),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_THREAD_STATS, "Thread_stats_counters_timers", &f_dump_in_file_thread_stats,
+			       &f_dump_in_buffer_thread_stats, &f_load_thread_stats)
+};
+
+// find a better place
+enum thread_stats
+{
+  THRS_TOTAL_WORKER_COUNT = 0,
+  THRS_TOTAL_TASK_COUNT,
+  THRS_WORKER_REGISTER_TIME,
+  THRS_THREAD_START_TIME,
+  THRS_THREAD_ENTRY_CLAIM_TIME,
+  THRS_EXECUTION_TIME,
+  THRS_THREAD_ENTRY_RETIRE_TIME,
+  THRS_WORKER_DEREGISTER_TIME,
+  THRS_COUNT
 };
 
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
@@ -4603,6 +4627,10 @@ perfmon_get_peek_stats (UINT64 * stats)
   stats[pstat_Metadata[PSTAT_HF_NUM_STATS_ENTRIES].start_offset] = heap_get_best_space_num_stats_entries ();
   stats[pstat_Metadata[PSTAT_QM_NUM_HOLDABLE_CURSORS].start_offset] = session_get_number_of_holdable_cursors ();
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+
+#if defined (SERVER_MODE)
+  css_get_thread_stats (&stats[pstat_Metadata[PSTAT_THREAD_STATS].start_offset]);
+#endif // SERVER_MODE
 }
 
 /*
@@ -4670,4 +4698,141 @@ perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int
 		  (unsigned long long) stats_ptr[PSTAT_COUNTER_TIMER_AVG_TIME_VALUE (offset)]);
   *remained_size -= ret;
   *s += ret;
+}
+
+size_t
+thread_stats_count (void)
+{
+  // INDENT-OFF
+  return (size_t) THRS_COUNT;
+}
+
+static int
+f_load_thread_stats (void)
+{
+  return (int) thread_stats_count ();
+}
+
+const char *
+perfmon_stat_thread_stat_name (size_t index)
+{
+  thread_stats thrs = (thread_stats) index;
+
+  switch (thrs)
+    {
+    case THRS_TOTAL_WORKER_COUNT:
+      return "thread_total_worker_count";
+    case THRS_TOTAL_TASK_COUNT:
+      return "thread_total_task_count";
+    case THRS_WORKER_REGISTER_TIME:
+      return "thread_worker_register_time";
+    case THRS_THREAD_START_TIME:
+      return "thread_start_time";
+    case THRS_THREAD_ENTRY_CLAIM_TIME:
+      return "thread_entry_claim_time";
+    case THRS_EXECUTION_TIME:
+      return "thread_execution_time";
+    case THRS_THREAD_ENTRY_RETIRE_TIME:
+      return "thread_entry_retire_time";
+    case THRS_WORKER_DEREGISTER_TIME:
+      return "thread_worker_deregister_time";
+    case THRS_COUNT:
+    default:
+      assert_release (false);
+      return "(UNKNOWN)";
+    }
+}
+
+/*
+ * f_dump_in_file_thread_stats () - Write in file the values for thread statistic
+ *
+ * f (out): File handle
+ * stat_vals (in): statistics buffer
+ * 
+ */
+void
+f_dump_in_file_thread_stats (FILE * f, const UINT64 * stat_vals)
+{
+  if ( /*pstat_Global.activation_flag & PERFMON_ACTIVE_THREAD */ true)
+    {
+      perfmon_stat_dump_in_file_obj_lock_array_stat (f, stat_vals);
+    }
+}
+
+/*
+ * perfmon_stat_dump_in_file_thread_stats () -
+ *
+ * stream(in): output file
+ * stats_ptr(in): start of array values
+ * 
+ */
+static void
+perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
+{
+  UINT64 value = 0;
+
+  assert (stream != NULL);
+
+  for (size_t it = 0; it < thread_stats_count (); it++)
+    {
+      value = stats_ptr[it];
+      if (value == 0)
+	{
+	  continue;
+	}
+      fprintf (stream, "%-10s = %16llu\n", perfmon_stat_thread_stat_name (it), (long long unsigned int) value);
+    }
+}
+
+/*
+ * f_dump_in_buffer_thread_stats () - Write to a buffer the values for Time_obj_lock_acquire_time
+ *						    statistic
+ * s (out): Buffer to write to
+ * stat_vals (in): statistics buffer
+ * remaining_size (in): size of input buffer
+ * 
+ */
+void
+f_dump_in_buffer_thread_stats (char **s, const UINT64 * stat_vals, int *remaining_size)
+{
+  if ( /*pstat_Global.activation_flag & PERFMON_ACTIVE_THREAD */ true)
+    {
+      perfmon_stat_dump_in_buffer_thread_stats (stat_vals, s, remaining_size);
+    }
+}
+
+/*
+ * perfmon_stat_dump_in_buffer_thread_stats () -
+ *
+ * stats_ptr(in): start of array values
+ * s(in/out): output string (NULL if not used)
+ * remaining_size(in/out): remaining size in string s (NULL if not used)
+ * 
+ */
+static void
+perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, int *remaining_size)
+{
+  UINT64 value = 0;
+  int ret;
+
+  assert (s != NULL);
+  assert (remaining_size != NULL);
+
+  for (size_t it = 0; it < thread_stats_count (); it++)
+    {
+      value = stats_ptr[it];
+      if (value == 0)
+	{
+	  continue;
+	}
+      ret = snprintf (*s, *remaining_size, "%-10s = %16llu\n", perfmon_stat_thread_stat_name (it),
+		      (long long unsigned int) value);
+
+      *remaining_size -= ret;
+      *s += ret;
+      if (*remaining_size <= 0)
+	{
+	  return;
+	}
+    }
 }
