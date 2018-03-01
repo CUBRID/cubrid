@@ -168,7 +168,7 @@ namespace cubthread
 
       // statistics
       using stat_time_unit = std::uint64_t;
-      using stat_count_type = std::atomic_uint64_t;
+      using stat_count_type = std::atomic<std::uint64_t>;
       using stat_time_type = std::atomic<stat_time_unit>;
 
       stat_count_type m_stat_worker_count;
@@ -339,6 +339,14 @@ namespace cubthread
     , m_workers (new worker[m_max_workers])
     , m_worker_dispatcher (pool_size)
     , m_context_pointers (NULL)
+    , m_stat_worker_count (0)
+    , m_stat_task_count (0)
+    , m_stat_register_time (0)
+    , m_stat_start_thread_time (0)
+    , m_stat_claim_context_time (0)
+    , m_stat_execute_time (0)
+    , m_stat_retire_context_time (0)
+    , m_stat_deregister_time (0)
     , m_stopped (false)
     , m_log (debug_log)
   {
@@ -532,14 +540,18 @@ namespace cubthread
   void
   worker_pool<Context>::get_stats (std::uint64_t *stats_out)
   {
+#define TO_MILLIS(val) static_cast<std::uint64_t> ((val) / 1000000)
+
     stats_out[0] = static_cast<std::uint64_t> (m_stat_worker_count);
     stats_out[1] = static_cast<std::uint64_t> (m_stat_task_count);
-    stats_out[2] = static_cast<std::uint64_t> (m_stat_register_time);
-    stats_out[3] = static_cast<std::uint64_t> (m_stat_start_thread_time);
-    stats_out[4] = static_cast<std::uint64_t> (m_stat_claim_context_time);
-    stats_out[5] = static_cast<std::uint64_t> (m_stat_execute_time);
-    stats_out[6] = static_cast<std::uint64_t> (m_stat_retire_context_time);
-    stats_out[7] = static_cast<std::uint64_t> (m_stat_deregister_time);
+    stats_out[2] = TO_MILLIS (m_stat_register_time);
+    stats_out[3] = TO_MILLIS (m_stat_start_thread_time);
+    stats_out[4] = TO_MILLIS (m_stat_claim_context_time);
+    stats_out[5] = TO_MILLIS (m_stat_execute_time);
+    stats_out[6] = TO_MILLIS (m_stat_retire_context_time);
+    stats_out[7] = TO_MILLIS (m_stat_deregister_time);
+
+#undef TO_MILLIS
   }
 
   template <typename Context>
