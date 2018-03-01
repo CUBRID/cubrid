@@ -51,7 +51,13 @@ class test_communication_channel : public communication_channel
     {
       SOCKET fd = -1;
 
-      if (m_conn_entry == NULL || m_type != CHANNEL_TYPE::INITIATOR)
+      if (is_connection_alive () || m_type != CHANNEL_TYPE::INITIATOR)
+	{
+	  return ER_FAILED;
+	}
+
+      m_conn_entry = css_make_conn (-1);
+      if (m_conn_entry == NULL)
 	{
 	  return ER_FAILED;
 	}
@@ -85,7 +91,14 @@ void master_listening_thread_func (std::vector <test_communication_channel> &cha
   listen_fd_platf_ind = listen_fd[0];
 #endif
 
-  test_communication_channel incom_conn (listen_fd_platf_ind, 5000);
+  test_communication_channel incom_conn (5000);
+  rc = incom_conn.accept (listen_fd_platf_ind);
+  if (rc != NO_ERROR)
+    {
+      is_listening.store (true);
+      assert (false);
+      return;
+    }
   is_listening.store (true);
   while (num_of_conns < NUM_OF_INITIATORS)
     {
@@ -99,7 +112,14 @@ void master_listening_thread_func (std::vector <test_communication_channel> &cha
       if ((revents & POLLIN) != 0)
 	{
 	  int new_sockfd = css_master_accept (listen_fd_platf_ind);
-	  channels.push_back (test_communication_channel (new_sockfd, MAX_TIMEOUT_IN_MS));
+	  test_communication_channel cc (MAX_TIMEOUT_IN_MS);
+	  rc = cc.accept (new_sockfd);
+	  if (rc != NO_ERROR)
+	    {
+	      assert (false);
+	      return;
+	    }
+	  channels.push_back (std::move (cc));
 	  num_of_conns++;
 	}
     }
@@ -254,12 +274,13 @@ static int init ()
   is_listening.store (false);
   std::thread listening_thread (master_listening_thread_func, std::ref (channels));
   while (!is_listening)
-  {
-    std::this_thread::sleep_for (std::chrono::milliseconds (100));
-  }
+    {
+      std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    }
   for (unsigned int i = 0; i < NUM_OF_INITIATORS; i++)
     {
-      test_communication_channel chn ("127.0.0.1", LISTENING_PORT, MAX_TIMEOUT_IN_MS);
+      test_communication_channel chn (MAX_TIMEOUT_IN_MS);
+      chn.create_initiator ("127.0.0.1", LISTENING_PORT);
       error_code = chn.connect ();
       if (error_code != NO_ERRORS)
 	{

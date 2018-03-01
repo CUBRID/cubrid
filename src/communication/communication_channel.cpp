@@ -36,32 +36,15 @@
 #include "tcp.h"
 #endif /* WINDOWS */
 
-communication_channel::communication_channel (const char *hostname,
-    int port,
-    int max_timeout_in_ms,
-    CSS_COMMAND_TYPE command_type,
-    const char *server_name) : m_conn_entry (NULL),
+communication_channel::communication_channel (int max_timeout_in_ms) : m_conn_entry (NULL),
   m_max_timeout_in_ms (max_timeout_in_ms),
-  m_hostname (hostname == NULL ? nullptr : strdup (hostname)),
-  m_server_name (server_name == NULL ? nullptr : strdup (server_name)),
-  m_port (port),
-  m_request_id (0),
-  m_type (CHANNEL_TYPE::INITIATOR),
-  m_command_type (command_type)
-{
-  m_conn_entry = css_make_conn (-1);
-}
-
-communication_channel::communication_channel (int sock_fd,
-    int max_timeout_in_ms) : m_max_timeout_in_ms (max_timeout_in_ms),
   m_hostname (nullptr),
   m_server_name (nullptr),
   m_port (-1),
-  m_request_id (0),
-  m_type (CHANNEL_TYPE::LISTENER),
+  m_request_id (-1),
+  m_type (CHANNEL_TYPE::DEFAULT),
   m_command_type (NULL_REQUEST)
 {
-  m_conn_entry = css_make_conn (sock_fd);
 }
 
 communication_channel::communication_channel (communication_channel &&comm) : m_max_timeout_in_ms (
@@ -114,7 +97,7 @@ int communication_channel::connect ()
   assert (m_type == CHANNEL_TYPE::INITIATOR);
   assert (m_command_type > NULL_REQUEST && m_command_type < MAX_REQUEST);
 
-  if (m_conn_entry == NULL || m_type != CHANNEL_TYPE::INITIATOR)
+  if (m_type != CHANNEL_TYPE::INITIATOR || is_connection_alive ())
     {
       return ER_FAILED;
     }
@@ -128,6 +111,12 @@ int communication_channel::connect ()
       length = strlen (m_server_name.get ());
     }
 
+  m_conn_entry = css_make_conn (-1);
+  if (m_conn_entry == NULL)
+    {
+      return ER_FAILED;
+    }
+
   if (css_common_connect (m_conn_entry, &m_request_id, m_hostname.get (),
 			  m_command_type, m_server_name.get (), length, m_port) == NULL)
     {
@@ -138,6 +127,47 @@ int communication_channel::connect ()
   _er_log_debug (ARG_FILE_LINE, "connect_to_master:" "connected to master_hostname:%s\n", m_hostname.get ());
 
   return NO_ERRORS;
+}
+
+int communication_channel::connect (const char *hostname, int port, CSS_COMMAND_TYPE command_type,
+				    const char *server_name)
+{
+  if (is_connection_alive ())
+    {
+      return ER_FAILED;
+    }
+
+  char *old_hostname = m_hostname.release ();
+  char *old_server_name = m_server_name.release ();
+
+  free (old_hostname);
+  free (old_server_name);
+
+  m_hostname = std::unique_ptr <char, communication_channel_c_free_deleter> (hostname == NULL? nullptr : strdup (
+		 hostname));
+  m_server_name = std::unique_ptr <char, communication_channel_c_free_deleter> (server_name == NULL ? nullptr : strdup (
+		    server_name));
+  m_port = port;
+  m_command_type = command_type;
+  m_request_id = -1;
+  m_type = INITIATOR;
+
+  m_conn_entry = css_make_conn (-1);
+
+  return communication_channel::connect ();
+}
+
+int communication_channel::accept (SOCKET socket)
+{
+  if (is_connection_alive ())
+    {
+      return ER_FAILED;
+    }
+
+  m_type = LISTENER;
+  m_conn_entry = css_make_conn (socket);
+
+  return m_conn_entry == NULL ? ER_FAILED : NO_ERROR;
 }
 
 void communication_channel::close_connection ()
@@ -194,3 +224,18 @@ CSS_CONN_ENTRY *communication_channel::get_conn_entry ()
 {
   return m_conn_entry;
 }
+
+void communication_channel::create_initiator (const char *hostname,
+    int port,
+    CSS_COMMAND_TYPE command_type,
+    const char *server_name)
+{
+  m_hostname = std::unique_ptr <char, communication_channel_c_free_deleter> (hostname == NULL ? nullptr : strdup (
+		 hostname));
+  m_server_name = std::unique_ptr <char, communication_channel_c_free_deleter> (server_name == NULL ? nullptr : strdup (
+		    server_name));
+  m_port = port;
+  m_command_type = command_type;
+  m_type = INITIATOR;
+}
+

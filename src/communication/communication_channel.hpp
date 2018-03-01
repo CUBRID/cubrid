@@ -31,23 +31,28 @@
 
 enum CHANNEL_TYPE
 {
-  INITIATOR = 0,
+  DEFAULT = 0,
+  INITIATOR,
   LISTENER
 };
+
+/* so that unique_ptr knows to "free (char *)" and not to "delete char *" */
+struct communication_channel_c_free_deleter
+{
+  void operator() (char *ptr)
+  {
+    if (ptr != NULL)
+      {
+	free (ptr);
+      }
+  }
+};
+
 
 class communication_channel
 {
   public:
-    /* this constructor makes an initiator type channel,
-     * it connects using the connect function and the
-     * provided information (hostname, port etc)
-     */
-    communication_channel (const char *hostname, int port, int max_timeout_in_ms = -1,
-			   CSS_COMMAND_TYPE command_type = NULL_REQUEST, const char *server_name = NULL);
-    /* this constructor creates a listener channel,
-     * it receives a socket created by an "accept" call
-     */
-    communication_channel (int sock_fd = -1, int max_timeout_in_ms = -1);
+    communication_channel (int max_timeout_in_ms = -1);
     virtual ~communication_channel ();
 
     /* only the move operation is permitted */
@@ -55,6 +60,10 @@ class communication_channel
     communication_channel &operator= (const communication_channel &comm) = delete;
     communication_channel (communication_channel &&comm);
     communication_channel &operator= (communication_channel &&comm);
+
+
+    void create_initiator (const char *hostname, int port, CSS_COMMAND_TYPE command_type = NULL_REQUEST,
+			   const char *server_name = NULL);
 
     /* receive/send functions that use the created CSS_CONN_ENTRY */
     int recv (char *buffer, int &received_length);
@@ -66,6 +75,13 @@ class communication_channel
      * and also sends a command to the endpoint (m_command_type)
      */
     virtual int connect ();
+
+    /* replaces existing information and connects */
+    int connect (const char *hostname, int port, CSS_COMMAND_TYPE command_type = NULL_REQUEST,
+		 const char *server_name = NULL);
+
+    /* creates a listener channel */
+    int accept (SOCKET socket);
 
     /* this function waits for events such as EPOLLIN, EPOLLOUT,
      * if (revents & EPOLLIN) != 0 it means that we have an "in" event
@@ -82,7 +98,7 @@ class communication_channel
   protected:
     CSS_CONN_ENTRY *m_conn_entry;
     const int m_max_timeout_in_ms;
-    std::unique_ptr <char> m_hostname, m_server_name;
+    std::unique_ptr <char, communication_channel_c_free_deleter> m_hostname, m_server_name;
     int m_port;
     unsigned short m_request_id;
     CHANNEL_TYPE m_type;
@@ -90,3 +106,4 @@ class communication_channel
 };
 
 #endif /* _COMMUNICATION_CHANNEL_HPP */
+
