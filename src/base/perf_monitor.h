@@ -613,7 +613,7 @@ typedef enum
   PSTAT_OBJ_LOCK_TIME_COUNTERS,
   PSTAT_THREAD_STATS,
 
-  PSTAT_COUNT = PSTAT_OBJ_LOCK_TIME_COUNTERS + 1
+  PSTAT_COUNT
 } PERF_STAT_ID;
 
 /* All globals on statistics will be here. */
