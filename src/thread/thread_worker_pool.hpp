@@ -137,6 +137,8 @@ namespace cubthread
       // register a new worker; return NULL if no worker is available
       worker *register_worker (void);
 
+      bool set_worker_available_for_new_work (worker &thread_arg);
+
       // deregister worker when it stops running
       void deregister_worker (worker &thread_arg);
 
@@ -162,6 +164,7 @@ namespace cubthread
 
       // thread "dispatcher" - a pool of threads
       lockfree::circular_queue<worker *> m_worker_dispatcher;
+      lockfree::circular_queue<worker *> m_sleepers;
 
       // contexts being used, one for each thread. thread <-> context matching based on index
       atomic_context_ptr *m_context_pointers;
@@ -207,6 +210,10 @@ namespace cubthread
       worker ()
 	: m_thread ()
 	, m_state (state::FREE_FOR_REGISTER)
+	, m_task_cv ()
+	, m_task_mutex ()
+	, m_task_p (NULL)
+	, m_waiting_assignment (false)
 	, m_push_time ()
 	, m_register_time ()
 	, m_run_time ()
@@ -274,8 +281,12 @@ namespace cubthread
       void
       set_free (void)
       {
-	assert (m_state == state::DEREGISTERING);
+	assert (m_state == state::DEREGISTERING || m_state == state::EXECUTING_TASKS);
 	m_free_time = clock_type::now ();
+	if (m_state == state::EXECUTING_TASKS)
+	  {
+	    m_retire_time = m_deregister_time = m_free_time;
+	  }
 
 	m_state = state::FREE_FOR_REGISTER;
       }
@@ -286,7 +297,14 @@ namespace cubthread
       {
 	assert (m_state == state::REGISTERED_FOR_RUNNING);
 
-	m_thread = std::thread (worker_pool<Context>::run, std::ref (pool_ref), std::ref (*this), work_p);
+	if (assign_task (work_p))
+	  {
+	    // thread is running and took the task
+	  }
+	else
+	  {
+	    std::thread (worker_pool<Context>::run, std::ref (pool_ref), std::ref (*this), work_p).detach ();
+	  }
       }
 
       void
@@ -304,6 +322,46 @@ namespace cubthread
 	delta_deregister = m_free_time - m_deregister_time;
       }
 
+      void *
+      wait_for_task (void)
+      {
+	std::unique_lock<std::mutex> ulock (m_task_mutex);
+	m_waiting_assignment = true;
+	m_task_cv.wait_for (ulock, std::chrono::seconds (60),
+			    [this] { return m_waiting_assignment && m_task_p != NULL; });
+	m_waiting_assignment = false;
+
+	return m_task_p;
+      }
+
+      void
+      stop_waiting (void)
+      {
+	{
+	  std::unique_lock<std::mutex> ulock (m_task_mutex);
+	  if (!m_waiting_assignment)
+	    {
+	      return;
+	    }
+	  m_waiting_assignment = false;
+	}
+	m_task_cv.notify_one ();
+      }
+
+      bool
+      assign_task (void *task_p)
+      {
+	{
+	  std::unique_lock<std::mutex> ulock (m_task_mutex);
+	  if (!m_waiting_assignment)
+	    {
+	      return false;
+	    }
+	  m_task_p = task_p;
+	}
+	m_task_cv.notify_one ();
+      }
+
     private:
 
       enum class state
@@ -318,6 +376,11 @@ namespace cubthread
 
       std::thread m_thread;
       state m_state;
+
+      std::condition_variable m_task_cv;
+      std::mutex m_task_mutex;
+      void *m_task_p;
+      bool m_waiting_assignment;
 
       // timers
       time_point_type m_push_time;
@@ -338,6 +401,7 @@ namespace cubthread
     , m_context_manager (*context_mgr)
     , m_workers (new worker[m_max_workers])
     , m_worker_dispatcher (pool_size)
+    , m_sleepers (pool_size)
     , m_context_pointers (NULL)
     , m_stat_worker_count (0)
     , m_stat_task_count (0)
@@ -359,10 +423,10 @@ namespace cubthread
 	m_context_pointers[i] = NULL;
       }
 
-    // m_worker_dispatcher - add all threads
+    // m_sleepers - add all threads
     for (std::size_t i = 0; i < m_max_workers; ++i)
       {
-	if (!m_worker_dispatcher.produce (&m_workers[i]))
+	if (!m_sleepers.produce (&m_workers[i]))
 	  {
 	    assert (false);
 	  }
@@ -480,6 +544,7 @@ namespace cubthread
 	  }
 	else
 	  {
+	    worker_p->stop_waiting ();
 	    ++stop_count;
 	  }
       }
@@ -584,26 +649,37 @@ namespace cubthread
     task_type *task_p = task_arg;
     unsigned int task_count = 0;
     worker_arg.set_executing ();
-    do
+    while (true)
       {
-	THREAD_WP_STATIC_LOG ("loop on thread = %zu, context = %p, task = %p", thread_index, &context, task_p);
-
-	if (!first_loop)
+	do
 	  {
-	    // make sure context can be reused
-	    pool.m_context_manager.recycle_context (context);
+	    THREAD_WP_STATIC_LOG ("loop on thread = %zu, context = %p, task = %p", thread_index, &context, task_p);
+
+	    if (!first_loop)
+	      {
+		// make sure context can be reused
+		pool.m_context_manager.recycle_context (context);
+	      }
+
+	    // execute current task
+	    task_p->execute (context);
+	    // and retire it
+	    task_p->retire ();
+
+	    ++task_count;
+
+	    // consume another task
 	  }
+	while (pool.is_running() && pool.m_work_queue.consume (task_p));
 
-	// execute current task
-	task_p->execute (context);
-	// and retire it
-	task_p->retire ();
-
-	++task_count;
-
-	// consume another task
+	// don't die just yet, wait for new tasks
+	task_p = pool.set_worker_available_for_new_work (worker_arg);
+	if (task_p == NULL)
+	  {
+	    // no new task, stop thread
+	    break;
+	  }
       }
-    while (pool.is_running() && pool.m_work_queue.consume (task_p));
 
     THREAD_WP_STATIC_LOG ("stop on thread = %zu, context = %p", thread_index, &context);
 
@@ -629,8 +705,17 @@ namespace cubthread
     worker *worker_p;
     auto push_time = worker::clock_type::now ();
 
-    // claim a thread
-    if (!m_worker_dispatcher.consume (worker_p))
+    // claim a running thread
+    if (m_worker_dispatcher.consume (worker_p))
+      {
+	// this is best option
+      }
+    // claim a sleeper thread
+    else if (m_sleepers.consume (worker_p))
+      {
+	// a thread will be spawned
+      }
+    else
       {
 	// no threads available
 	THREAD_WP_LOG ("register_worker", "worker_p = %p", NULL);
@@ -646,6 +731,18 @@ namespace cubthread
   }
 
   template <typename Context>
+  task<Context> *
+  worker_pool<Context>::set_worker_available_for_new_work (worker &worker_arg)
+  {
+    if (!m_worker_dispatcher.produce (&worker_arg))
+      {
+	return NULL;
+      }
+    worker_arg.set_free ();
+    return reinterpret_cast<task<Context>*> (worker_arg.wait_for_task ());
+  }
+
+  template <typename Context>
   void
   worker_pool<Context>::deregister_worker (worker &worker_arg)
   {
@@ -653,7 +750,7 @@ namespace cubthread
 
     // THREAD_WP_LOG ("deregister_worker", "thread = %zu", get_thread_index (thread_arg));
     // no logging here; no thread & error context
-    m_worker_dispatcher.force_produce (&worker_arg);
+    m_sleepers.force_produce (&worker_arg);
     --m_worker_count;
 
     worker_arg.set_free ();
