@@ -2745,6 +2745,8 @@ perfmon_server_calc_stats (UINT64 * stats)
 		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_BIG_PRV_NUM].start_offset]),
 		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_PRV_NUM].start_offset]),
 		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_SHR_NUM].start_offset]));
+
+  css_get_thread_stats (&stats[pstat_Metadata[PSTAT_THREAD_STATS].start_offset]);
 #endif
 
   for (i = 0; i < PSTAT_COUNT; i++)
@@ -4627,10 +4629,6 @@ perfmon_get_peek_stats (UINT64 * stats)
   stats[pstat_Metadata[PSTAT_HF_NUM_STATS_ENTRIES].start_offset] = heap_get_best_space_num_stats_entries ();
   stats[pstat_Metadata[PSTAT_QM_NUM_HOLDABLE_CURSORS].start_offset] = session_get_number_of_holdable_cursors ();
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
-
-#if defined (SERVER_MODE)
-  css_get_thread_stats (&stats[pstat_Metadata[PSTAT_THREAD_STATS].start_offset]);
-#endif // SERVER_MODE
 }
 
 /*
