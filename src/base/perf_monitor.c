@@ -4753,7 +4753,7 @@ f_dump_in_file_thread_stats (FILE * f, const UINT64 * stat_vals)
 {
   if ( /*pstat_Global.activation_flag & PERFMON_ACTIVE_THREAD */ true)
     {
-      perfmon_stat_dump_in_file_obj_lock_array_stat (f, stat_vals);
+      perfmon_stat_dump_in_file_thread_stats (f, stat_vals);
     }
 }
 
