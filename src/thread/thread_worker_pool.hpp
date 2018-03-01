@@ -30,6 +30,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <mutex>
 #include <thread>
 
@@ -137,7 +138,7 @@ namespace cubthread
       // register a new worker; return NULL if no worker is available
       worker *register_worker (void);
 
-      bool set_worker_available_for_new_work (worker &thread_arg);
+      task_type *set_worker_available_for_new_work (worker &thread_arg);
 
       // deregister worker when it stops running
       void deregister_worker (worker &thread_arg);
@@ -357,9 +358,14 @@ namespace cubthread
 	    {
 	      return false;
 	    }
+	  if (m_task_p != NULL)
+	    {
+	      abort ();
+	    }
 	  m_task_p = task_p;
 	}
 	m_task_cv.notify_one ();
+	return true;
       }
 
     private:
