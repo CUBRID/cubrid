@@ -332,7 +332,9 @@ namespace cubthread
 			    [this] { return m_waiting_assignment && m_task_p != NULL; });
 	m_waiting_assignment = false;
 
-	return m_task_p;
+	void *ret_p = m_task_p;
+	m_task_p = NULL;
+	return ret_p;
       }
 
       void
