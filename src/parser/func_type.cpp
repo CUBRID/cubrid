@@ -97,7 +97,7 @@ std::vector<func_signature> func_signature::lead_lag = {//original code doesn't 
 };
 
 std::vector<func_signature> func_signature::elt = {
-  {PT_TYPE_CHAR, {PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_STRING}, {PT_GENERIC_TYPE_STRING}},
+  {1, {PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_STRING}, {PT_GENERIC_TYPE_STRING}},
 };
 
 std::vector<func_signature> func_signature::insert = {
