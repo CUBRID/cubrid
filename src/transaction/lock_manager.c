@@ -5956,8 +5956,8 @@ lock_deadlock_detect_daemon_init ()
 {
   assert (lock_Deadlock_detect_daemon == NULL);
 
-  auto looper = cubthread::looper (std::chrono::milliseconds (100));
-  auto daemon_task = new deadlock_detect_task ();
+  cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (100));
+  deadlock_detect_task *daemon_task = new deadlock_detect_task ();
 
   // create deadlock detect daemon thread
   lock_Deadlock_detect_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);

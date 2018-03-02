@@ -10568,8 +10568,8 @@ log_checkpoint_daemon_init ()
 {
   assert (log_Checkpoint_daemon == NULL);
 
-  auto looper = cubthread::looper (log_get_checkpoint_interval_msec);
-  auto daemon_task = new log_checkpoint_daemon_task ();
+  cubthread::looper looper = cubthread::looper (log_get_checkpoint_interval_msec);
+  log_checkpoint_daemon_task *daemon_task = new log_checkpoint_daemon_task ();
 
   // create checkpoint daemon thread
   log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
@@ -10585,8 +10585,8 @@ log_remove_log_archive_daemon_init ()
 {
   assert (log_Remove_log_archive_daemon == NULL);
 
-  auto daemon_task = new log_remove_log_archive_daemon_task ();
-  auto looper = cubthread::looper (log_get_remove_log_archive_interval_msec);
+  log_remove_log_archive_daemon_task *daemon_task = new log_remove_log_archive_daemon_task ();
+  cubthread::looper looper = cubthread::looper (log_get_remove_log_archive_interval_msec);
 
   // create log archive remover daemon thread
   log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
@@ -10602,7 +10602,7 @@ log_clock_daemon_init ()
 {
   assert (log_Clock_daemon == NULL);
 
-  auto looper = cubthread::looper (std::chrono::milliseconds (200));
+  cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (200));
   log_Clock_daemon = cubthread::get_manager ()->create_daemon (looper, new log_clock_daemon_task ());
 }
 #endif /* SERVER_MODE */
@@ -10616,8 +10616,8 @@ log_check_ha_delay_info_daemon_init ()
 {
   assert (log_Check_ha_delay_info_daemon == NULL);
 
-  auto looper = cubthread::looper (std::chrono::seconds (1));
-  auto daemon_task = new log_check_ha_delay_info_daemon_task ();
+  cubthread::looper looper = cubthread::looper (std::chrono::seconds (1));
+  log_check_ha_delay_info_daemon_task *daemon_task = new log_check_ha_delay_info_daemon_task ();
 
   log_Check_ha_delay_info_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
 }
@@ -10632,8 +10632,8 @@ log_flush_daemon_init ()
 {
   assert (log_Flush_daemon == NULL);
 
-  auto daemon_task = new log_flush_daemon_task ();
-  auto looper = cubthread::looper (log_get_log_group_commit_interval_msec);
+  log_flush_daemon_task *daemon_task = new log_flush_daemon_task ();
+  cubthread::looper looper = cubthread::looper (log_get_log_group_commit_interval_msec);
 
   log_Flush_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (looper), daemon_task);
 }
