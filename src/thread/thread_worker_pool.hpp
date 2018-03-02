@@ -88,6 +88,34 @@ namespace cubthread
       using task_type = task<Context>;
       using context_manager_type = context_manager<Context>;
 
+      // statistics
+
+      class statistics
+      {
+	public:
+	  using stat_type = std::uint64_t;
+	  using clock_type = std::chrono::high_resolution_clock;
+	  using time_point_type = clock_type::time_point;
+	  using duration_type = std::chrono::nanoseconds;
+
+	  // see worker for details on timed phases
+	  enum
+	  {
+	    GET_WORKER_FROM_ACTIVE_QUEUE,
+	    GET_WORKER_FROM_INACTIVE_QUEUE,
+	    START_THREAD,
+	    CLAIM_CONTEXT,
+	    EXECUTE_TASK,
+	    FOUND_TASK_IN_QUEUE,
+	    NOT_FOUND_TASK_IN_QUEUE,
+
+	  };
+
+	private:
+	  // counters
+	  // timers
+      };
+
       worker_pool (std::size_t pool_size, std::size_t work_queue_size, context_manager_type *context_mgr,
 		   bool debug_logging = false);
       ~worker_pool ();
@@ -127,6 +155,10 @@ namespace cubthread
 
     private:
       using atomic_context_ptr = std::atomic<context_type *>;
+
+      // forward definition for worker class
+      // only visible to worker pool
+      // see more details on class definition
       class worker;
 
       // function executed by worker; executes first task and then continues with any task it finds in queue
@@ -167,11 +199,6 @@ namespace cubthread
       // contexts being used, one for each thread. thread <-> context matching based on index
       atomic_context_ptr *m_context_pointers;
 
-      // statistics
-      using stat_time_unit = std::uint64_t;
-      using stat_count_type = std::atomic<std::uint64_t>;
-      using stat_time_type = std::atomic<stat_time_unit>;
-
       stat_count_type m_stat_worker_count;
       stat_count_type m_stat_task_count;
       stat_time_type m_stat_register_time;
@@ -199,6 +226,56 @@ namespace cubthread
 
 namespace cubthread
 {
+  // worker_pool<Context>::worker
+  //
+  // description
+  //    the worker is a worker pool nested class and represents one instance of execution. its purpose is to store the
+  //    context, manage multiple task executions of a single thread and collect statistics.
+  //
+  // how it works
+  //    the worker is assigned a task and a new thread is started. when task is finished, the worker tries to execute
+  //    more tasks, either by consuming one from task queue or by waiting for one. if it waits too long and it is given
+  //    no task, the thread stops
+  //
+  //    there are two types of workers in regard with the thread status:
+  //
+  //      1. inactive worker (initial state), thread is not running and must be started before executing task
+  //      2. active worker, either executing task or waiting for a new task.
+  //
+  //    there are three ways task is executed:
+  //
+  //      1. by an inactive worker; it goes through next phases:
+  //          - claiming from inactive list of workers
+  //          - starting thread
+  //          - claiming context
+  //          - executing task
+  //
+  //      2. by an active worker (thread is running); it goes through next phases:
+  //          - claiming from active list of workers
+  //          - notifying and waking thread
+  //          - executing task
+  //
+  //      3. by being claimed from task queue; if no worker (active or inactive) is available, task is added to queue
+  //         to be executed when a worker finishes its current task; it goes through next phases
+  //          - adding task to queue
+  //          - claiming task from queue
+  //          - executing task
+  //
+  //    the [timed] phases of a worker
+  //
+  //      1. getting worker from active queue
+  //      2. getting worker from inactive queue
+  //      3. starting thread
+  //      4. claiming context
+  //      5. executing task
+  //      6. getting task from task queue
+  //      7. not finding task in task queue
+  //      8. waking up with a task assigned
+  //      9. retiring context [no task assigned]
+  //
+  // note
+  //    class is nested to worker pool and cannot be used outside it
+  //
   template <typename Context>
   class worker_pool<Context>::worker
   {
