@@ -10389,15 +10389,7 @@ class log_checkpoint_daemon_task : public cubthread::entry_task
 //
 class log_remove_log_archive_daemon_task : public cubthread::entry_task
 {
-  private:
-    int m_archive_logs_to_delete;
-
   public:
-    explicit log_remove_log_archive_daemon_task (int archive_logs_to_delete)
-    {
-      this->m_archive_logs_to_delete = archive_logs_to_delete;
-    }
-
     void execute (cubthread::entry & thread_ref) override
     {
       if (!BO_IS_SERVER_RESTARTED ())
@@ -10406,7 +10398,11 @@ class log_remove_log_archive_daemon_task : public cubthread::entry_task
 	  return;
 	}
 
-      logpb_remove_archive_logs_exceed_limit (&thread_ref, m_archive_logs_to_delete);
+      // if interval is greater than 0 (zero) then on every loop remove one log archive
+      // otherwise on wakeup remove all log archive records
+      int archive_logs_to_delete = log_get_remove_log_archive_interval_msec () > 0 ? 1 : 0;
+
+      logpb_remove_archive_logs_exceed_limit (&thread_ref, archive_logs_to_delete);
     }
 };
 #endif /* SERVER_MODE */
@@ -10589,11 +10585,7 @@ log_remove_log_archive_daemon_init ()
 {
   assert (log_Remove_log_archive_daemon == NULL);
 
-  // if interval is greater than 0 (zero) then on every loop remove one log archive
-  // otherwise on wakeup remove all log archive records
-  int archive_logs_to_delete = log_get_remove_log_archive_interval_msec () > 0 ? 1 : 0;
-
-  auto daemon_task = new log_remove_log_archive_daemon_task (archive_logs_to_delete);
+  auto daemon_task = new log_remove_log_archive_daemon_task ();
   auto looper = cubthread::looper (log_get_remove_log_archive_interval_msec);
 
   // create log archive remover daemon thread
