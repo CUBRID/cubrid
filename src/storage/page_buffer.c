@@ -364,7 +364,6 @@ typedef enum
 
 #define PGBUF_NEIGHBOR_POS(idx) (PGBUF_NEIGHBOR_PAGES - 1 + (idx))
 
-
 /* maximum number of simultaneous fixes a thread may have on the same page */
 #define PGBUF_MAX_PAGE_WATCHERS 64
 /* maximum number of simultaneous fixed pages from a single thread */
@@ -1397,7 +1396,6 @@ pgbuf_initialize (void)
 	      (pgbuf_Pool.num_buffers * sizeof (PGBUF_VICTIM_CANDIDATE_LIST)));
       goto error;
     }
-
 
 #if defined (SERVER_MODE)
   pgbuf_Pool.is_flushing_victims = false;
@@ -5279,7 +5277,6 @@ pgbuf_initialize_thrd_holder (void)
 	  pgbuf_Pool.thrd_reserved_holder[idx].first_watcher = NULL;
 	  pgbuf_Pool.thrd_reserved_holder[idx].last_watcher = NULL;
 	  pgbuf_Pool.thrd_reserved_holder[idx].watch_count = 0;
-
 
 	  if (j == (PGBUF_DEFAULT_FIX_COUNT - 1))
 	    {
@@ -12358,7 +12355,6 @@ exit:
 
   return er_status;
 }
-
 
 /*
  * pgbuf_get_groupid_and_unfix () - retrieves group identifier of page and performs unlatch if requested.
