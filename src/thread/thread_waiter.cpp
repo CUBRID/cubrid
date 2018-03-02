@@ -95,7 +95,7 @@ namespace cubthread
     goto_sleep ();
 
     // wait
-    m_condvar.wait (lock);
+    m_condvar.wait (lock, [this] { return m_status == AWAKENING; });
 
     run ();
 

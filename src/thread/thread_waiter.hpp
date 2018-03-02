@@ -110,11 +110,7 @@ namespace cubthread
     std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
     goto_sleep ();
 
-#if !defined (WINDOWS) && __cplusplus < 201103L
-    bool ret = m_condvar.wait_for (lock, delta);
-#else
-    bool ret = (m_condvar.wait_for (lock, delta) != std::cv_status::timeout);
-#endif
+    bool ret = m_condvar.wait_for (lock, delta, [this] { return m_status == AWAKENING; });
 
     run ();
 
@@ -129,11 +125,7 @@ namespace cubthread
     std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
     goto_sleep ();
 
-#if __cplusplus < 201103L
-    bool ret = m_condvar.wait_until (lock, timeout_time);
-#else
-    bool ret = (m_condvar.wait_until (lock, timeout_time) != std::cv_status::timeout);
-#endif
+    bool ret = m_condvar.wait_until (lock, timeout_time, [this] { return m_status == AWAKENING; });
 
     run ();
 

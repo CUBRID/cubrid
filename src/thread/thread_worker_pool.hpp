@@ -137,7 +137,7 @@ namespace cubthread
       // maximum number of concurrent workers
       const std::size_t m_max_workers;
 
-      volatile std::size_t m_worker_count;
+      std::atomic<std::size_t> m_worker_count;
 
       // work queue to store tasks that cannot be immediately executed
       lockfree::circular_queue<task_type *> m_work_queue;
@@ -453,7 +453,7 @@ namespace cubthread
 	thread_p->join ();
       }
 
-    (void) ATOMIC_INC (&m_worker_count, 1);
+    ++m_worker_count;
 
     THREAD_WP_LOG ("register_worker", "thread = %zu", get_thread_index (*thread_p));
     return thread_p;
@@ -466,7 +466,7 @@ namespace cubthread
     // THREAD_WP_LOG ("deregister_worker", "thread = %zu", get_thread_index (thread_arg));
     // no logging here; no thread & error context
     m_thread_dispatcher.retire (thread_arg);
-    (void) ATOMIC_INC (&m_worker_count, -1);
+    --m_worker_count;
   }
 
   template<typename Context>
