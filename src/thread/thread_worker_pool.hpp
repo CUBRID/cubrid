@@ -38,9 +38,6 @@
 
 namespace cubthread
 {
-  // forward definition
-  class worker;
-
   // cubtread::worker_pool<Context>
   //
   //  templates
@@ -130,7 +127,7 @@ namespace cubthread
 
     private:
       using atomic_context_ptr = std::atomic<context_type *>;
-      friend class worker;
+      class worker;
 
       // function executed by worker; executes first task and then continues with any task it finds in queue
       static void run (worker_pool<Context> &pool, worker &thread_arg, task_type *work_arg);
@@ -202,7 +199,8 @@ namespace cubthread
 
 namespace cubthread
 {
-  class worker
+  template <typename Context>
+  class worker_pool<Context>::worker
   {
     public:
       using clock_type = std::chrono::high_resolution_clock;
@@ -707,7 +705,7 @@ namespace cubthread
   }
 
   template <typename Context>
-  worker *
+  typename worker_pool<Context>::worker *
   worker_pool<Context>::register_worker (void)
   {
     worker *worker_p;
