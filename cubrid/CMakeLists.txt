@@ -131,6 +131,7 @@ set(CONNECTION_SOURCES
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
+  ${COMMUNICATION_DIR}/communication_channel.cpp
   )
 
 set(QUERY_SOURCES
