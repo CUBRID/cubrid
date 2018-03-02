@@ -13352,6 +13352,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
                     break;
                   case PT_GROUP_CONCAT:
                     node->data_type = pt_make_prim_data_type (parser, node->type_enum);
+                    node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
                     break;
                   default:
                     node->data_type = NULL;
