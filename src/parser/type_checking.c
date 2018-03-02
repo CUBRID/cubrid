@@ -13350,6 +13350,9 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		        node->data_type->info.data_type.dec_precision = 0;
 	              }
                     break;
+                  case PT_GROUP_CONCAT:
+                    node->data_type = pt_make_prim_data_type (parser, node->type_enum);
+                    break;
                   default:
                     node->data_type = NULL;
                   }
