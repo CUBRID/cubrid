@@ -1117,10 +1117,10 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 
   int vacuum_master_wakeup_interval_msec = prm_get_integer_value (PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL);
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (vacuum_master_wakeup_interval_msec));
-  vacuum_master_task *vacuum_master_task = new vacuum_master_task ();
 
   // create vacuum master thread
-  vacuum_Master_daemon = thread_manager->create_daemon (looper, vacuum_master_task, vacuum_Master_context_manager);
+  vacuum_Master_daemon =
+    thread_manager->create_daemon (looper, new vacuum_master_task (), vacuum_Master_context_manager);
 #endif /* SERVER_MODE */
 
   vacuum_Is_booted = true;
