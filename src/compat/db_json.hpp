@@ -62,6 +62,12 @@ enum class JSON_PATH_TYPE
   JSON_PATH_EMPTY
 };
 
+enum class JSON_SERIALIZE_ACTION
+{
+  JSON_SERIALIZE,
+  JSON_DESERIALIZE
+};
+
 /* C functions */
 bool db_json_is_valid (const char *json_str);
 const char *db_json_get_type_as_str (const JSON_DOC *document);
@@ -84,6 +90,9 @@ void db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value);
 
 int db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc);
 JSON_DOC *db_json_get_copy_of_doc (const JSON_DOC *doc);
+
+char *db_json_serialize (JSON_DOC &doc);
+JSON_DOC *db_json_deserialize (char *json_raw);
 
 int db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destination, const char *raw_path);
 int db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_path);
