@@ -30,7 +30,7 @@ struct func_signature
   static std::vector<func_signature> count_star;
   static std::vector<func_signature> count;
   static std::vector<func_signature> sum;
-  static std::vector<func_signature> cume_dist;
+  static std::vector<func_signature> double_r_any;
   static std::vector<func_signature> ntile;
   static std::vector<func_signature> median;
   static std::vector<func_signature> type0_nr_or_str;//return same type as argument 0, arg is numeric or string

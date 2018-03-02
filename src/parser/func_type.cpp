@@ -49,9 +49,8 @@ std::vector<func_signature> func_signature::sum = {
   {0, {PT_TYPE_SEQUENCE}, {}},
 };
 
-std::vector<func_signature> func_signature::cume_dist = {//original code doesn't check arguments!!!
-  {PT_TYPE_DOUBLE, {}, {PT_GENERIC_TYPE_STRING}}, //DATETIME should be casted to string or to number???
-  {PT_TYPE_DOUBLE, {}, {PT_GENERIC_TYPE_NUMBER}},
+std::vector<func_signature> func_signature::double_r_any = {//original code doesn't check arguments!!!
+  {PT_TYPE_DOUBLE, {}, {PT_GENERIC_TYPE_ANY}},
 };
 
 std::vector<func_signature> func_signature::ntile = {//why original code cast args to double???

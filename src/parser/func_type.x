@@ -92,7 +92,7 @@ X(NTH_VALUE             , &func_signature::type0_nr_or_str_discrete)
 
 /* aggregate and analytic functions */
 X(MEDIAN                , &func_signature::median)
-X(CUME_DIST             , &func_signature::cume_dist)
-X(PERCENT_RANK          , &func_signature::cume_dist)
+X(CUME_DIST             , &func_signature::double_r_any)
+X(PERCENT_RANK          , &func_signature::double_r_any)
 X(PERCENTILE_CONT       , &func_signature::double_double01)
 X(PERCENTILE_DIS        , &func_signature::double_double01)
