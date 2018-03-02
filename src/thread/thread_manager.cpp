@@ -43,11 +43,11 @@
 namespace cubthread
 {
 
-#if defined (NO_GCC_44) || defined (WINDOWS)
+#if defined (WINDOWS)
   thread_local entry *tl_Entry_p = NULL;
-#else // GCC 4.4
+#else // WINDOWS
   __thread entry *tl_Entry_p = NULL;
-#endif // GCC 4.4
+#endif // WINDOWS
 
   manager::manager (std::size_t max_threads)
     : m_max_threads (max_threads)

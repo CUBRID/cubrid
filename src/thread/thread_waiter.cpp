@@ -95,11 +95,7 @@ namespace cubthread
     goto_sleep ();
 
     // wait
-#if defined (NO_GCC_44)
-    m_condvar.wait (lock, [this] { return m_status == AWAKENING; });
-#else
     m_condvar.wait (lock);
-#endif
 
     run ();
 

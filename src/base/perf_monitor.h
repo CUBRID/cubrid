@@ -1375,30 +1375,31 @@ extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYP
 #endif /* DIAG_DEVEL */
 
 #ifndef DIFF_TIMEVAL
-#define DIFF_TIMEVAL(start, end, elapsed) \
-    do { \
-      (elapsed).tv_sec = (end).tv_sec - (start).tv_sec; \
+#define DIFF_TIMEVAL(start, end, elapsed)                  \
+    do {                                                   \
+      (elapsed).tv_sec = (end).tv_sec - (start).tv_sec;    \
       (elapsed).tv_usec = (end).tv_usec - (start).tv_usec; \
-      if ((elapsed).tv_usec < 0) \
-        { \
-          (elapsed).tv_sec--; \
-          (elapsed).tv_usec += 1000000; \
-        } \
+      if ((elapsed).tv_usec < 0)                           \
+        {                                                  \
+          (elapsed).tv_sec--;                              \
+          (elapsed).tv_usec += 1000000;                    \
+        }                                                  \
     } while (0)
 #endif
 
-#define ADD_TIMEVAL(total, start, end) do {     \
-  total.tv_usec +=                              \
-    (end.tv_usec - start.tv_usec) >= 0 ?        \
-      (end.tv_usec-start.tv_usec)               \
-    : (1000000 + (end.tv_usec-start.tv_usec));  \
-  total.tv_sec +=                               \
-    (end.tv_usec - start.tv_usec) >= 0 ?        \
-      (end.tv_sec-start.tv_sec)                 \
-    : (end.tv_sec-start.tv_sec-1);              \
-  total.tv_sec +=                               \
-    total.tv_usec/1000000;                      \
-  total.tv_usec %= 1000000;                     \
+#define ADD_TIMEVAL(total, start, end)                \
+do {                                                  \
+  (total).tv_usec +=                                  \
+    ((end).tv_usec - (start).tv_usec) >= 0 ?          \
+      ((end).tv_usec - (start).tv_usec)               \
+    : (1000000 + ((end).tv_usec - (start).tv_usec));  \
+  (total).tv_sec +=                                   \
+    ((end).tv_usec - (start).tv_usec) >= 0 ?          \
+      ((end).tv_sec - (start).tv_sec)                 \
+    : ((end).tv_sec - (start).tv_sec - 1);            \
+  (total).tv_sec +=                                   \
+    (total).tv_usec / 1000000;                        \
+  (total).tv_usec %= 1000000;                         \
 } while(0)
 
 #define TO_MSEC(elapsed) \
