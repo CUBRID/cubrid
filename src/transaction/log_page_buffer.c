@@ -2175,7 +2175,7 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
       return *io_page_size;
     }
 
-  /* 
+  /*
    * Make sure that the log is a log file and that it is compatible with the
    * running database and system
    */
@@ -6530,7 +6530,6 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 
   return log_pgptr;
 }
-
 
 /*
  * logpb_archive_active_log - Archive the active portion of the log
