@@ -94,6 +94,7 @@ std::vector<func_signature> func_signature::group_concat = {
 std::vector<func_signature> func_signature::lead_lag = {//original code doesn't do anything!!!
   {0, {PT_GENERIC_TYPE_NUMBER}, {}},
   {0, {PT_GENERIC_TYPE_STRING}, {}},
+  {0, {PT_GENERIC_TYPE_DATETIME}, {}},
 };
 
 std::vector<func_signature> func_signature::elt = {
