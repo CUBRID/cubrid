@@ -15851,6 +15851,18 @@ pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p)
     }
 }
 
+/*
+ * pgbuf_get_page_flush_interval_msecs () - fetch page flush interval in msec from system parameters
+ */
+int
+pgbuf_get_page_flush_interval_msecs ()
+{
+  int page_flush_interval_msecs = prm_get_integer_value (PRM_ID_PAGE_BG_FLUSH_INTERVAL_MSECS);
+
+  // if page_flush_interval_msecs > 0 (zero) then loop for fixed interval otherwise infinite wait
+  return page_flush_interval_msecs > 0 ? page_flush_interval_msecs : -1;
+}
+
 // *INDENT-OFF*
 #if defined (SERVER_MODE)
 // class pgbuf_page_maintenance_daemon_task
@@ -15887,27 +15899,12 @@ class pgbuf_page_maintenance_daemon_task : public cubthread::entry_task
 class pgbuf_page_flush_daemon_task : public cubthread::entry_task
 {
   private:
-    int m_page_flush_interval_msec;
     PERF_UTIME_TRACKER m_perf_track;
-
-    void refresh_page_flush_interval ()
-    {
-      int page_flush_interval_msecs = prm_get_integer_value (PRM_ID_PAGE_BG_FLUSH_INTERVAL_MSECS);
-
-      // if page_flush_interval_msecs > 0 (zero) then loop for fixed interval otherwise infinite wait
-      m_page_flush_interval_msec = page_flush_interval_msecs > 0 ? page_flush_interval_msecs : -1;
-    }
 
   public:
     pgbuf_page_flush_daemon_task ()
     {
-      refresh_page_flush_interval ();
       PERF_UTIME_TRACKER_START (NULL, &m_perf_track);
-    }
-
-    int get_page_flush_interval_msec ()
-    {
-      return m_page_flush_interval_msec;
     }
 
     void execute (cubthread::entry & thread_ref) override
@@ -15918,21 +15915,9 @@ class pgbuf_page_flush_daemon_task : public cubthread::entry_task
 	  return;
 	}
 
-      refresh_page_flush_interval ();
-
-      bool force_one_run;
+      // did not timeout, someone requested flush... run at least once
+      bool force_one_run = pgbuf_Page_flush_daemon->was_woken_up ();
       bool stop_iteration = false;
-
-      if (m_page_flush_interval_msec > 0)
-	{
-	  // time specified by m_page_flush_interval_msec expired ... run at least once
-	  force_one_run = !pgbuf_Page_flush_daemon->was_woken_up ();
-	}
-      else
-	{
-	  // infinite wait, someone requested flush ... run at least once
-	  force_one_run = pgbuf_Page_flush_daemon->was_woken_up ();
-	}
 
       /* flush pages as long as necessary */
       while (force_one_run || pgbuf_keep_victim_flush_thread_running ())
@@ -16076,7 +16061,7 @@ pgbuf_page_flush_daemon_init ()
   assert (pgbuf_Page_flush_daemon == NULL);
 
   pgbuf_page_flush_daemon_task *daemon_task = new pgbuf_page_flush_daemon_task ();
-  cubthread::looper looper = cubthread::looper (std::bind (&pgbuf_page_flush_daemon_task::get_page_flush_interval_msec, daemon_task));
+  cubthread::looper looper = cubthread::looper (pgbuf_get_page_flush_interval_msecs);
 
   pgbuf_Page_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
 }
