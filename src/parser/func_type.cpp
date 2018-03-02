@@ -102,7 +102,8 @@ std::vector<func_signature> func_signature::elt = {
 };
 
 std::vector<func_signature> func_signature::insert = {
-  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_STRING}, {}},
+//{PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_STRING}, {}},
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_STRING}, {}},
 };
 
 std::vector<func_signature> func_signature::json_key_val_r_key_val = {//(jsonKey, jsonVal[, jsonKey, jsonVal])
