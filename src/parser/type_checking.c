@@ -13204,16 +13204,25 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       assert(false);
       break;
     case F_SET:
-      node->type_enum = PT_TYPE_SET;
-      pt_add_type_to_set (parser, arg_list, &node->data_type);
+      if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL)
+        {
+          node->type_enum = PT_TYPE_SET;
+          pt_add_type_to_set (parser, arg_list, &node->data_type);
+        }
       break;
     case F_MULTISET:
-      node->type_enum = PT_TYPE_MULTISET;
-      pt_add_type_to_set (parser, arg_list, &node->data_type);
+      if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL)
+        {
+          node->type_enum = PT_TYPE_MULTISET;
+          pt_add_type_to_set (parser, arg_list, &node->data_type);
+        }
       break;
     case F_SEQUENCE:
-      node->type_enum = PT_TYPE_SEQUENCE;
-      pt_add_type_to_set (parser, arg_list, &node->data_type);
+      if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL)
+        {
+          node->type_enum = PT_TYPE_SEQUENCE;
+          pt_add_type_to_set (parser, arg_list, &node->data_type);
+        }
       break;
     case F_VID:
       node->type_enum = arg_type; // by default f(x) has same type as x
