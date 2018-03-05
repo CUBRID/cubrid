@@ -38,6 +38,137 @@
 
 namespace cubthread
 {
+  // wpstat - namespace for worker pool statistics
+  //
+  namespace wpstat
+  {
+    using stat_type = std::uint64_t;
+    using atomic_stat_type = std::atomic<stat_type>;
+    using clock_type = std::chrono::high_resolution_clock;
+    using time_point_type = clock_type::time_point;
+    using duration_type = std::chrono::nanoseconds;
+
+    enum class id
+    {
+      GET_WORKER_FROM_ACTIVE_QUEUE,
+      GET_WORKER_FROM_INACTIVE_QUEUE,
+      GET_WORKER_FAILED,
+      START_THREAD,
+      CLAIM_CONTEXT,
+      EXECUTE_TASK,
+      RETIRE_TASK,
+      SEARCH_TASK_IN_QUEUE,
+      RETIRE_CONTEXT,
+      COUNT
+    }
+    static const size_t STATS_COUNT = static_cast<size_t> (ids::COUNT);
+
+    inline const char *
+    get_id_name (id statid)
+    {
+      switch (statid)
+	{
+	case id::GET_WORKER_FROM_ACTIVE_QUEUE:
+	  return "GET_WORKER_FROM_ACTIVE_QUEUE";
+	case id::GET_WORKER_FROM_INACTIVE_QUEUE:
+	  return "GET_WORKER_FROM_INACTIVE_QUEUE";
+	case id::GET_WORKER_FAILED:
+	  return "GET_WORKER_FAILED";
+	case id::START_THREAD:
+	  return "START_THREAD";
+	case id::CLAIM_CONTEXT:
+	  return "CLAIM_CONTEXT";
+	case id::EXECUTE_TASK:
+	  return "EXECUTE_TASK";
+	case id::RETIRE_TASK:
+	  return "RETIRE_TASK";
+	case id::SEARCH_TASK_IN_QUEUE:
+	  return "SEARCH_TASK_IN_QUEUE";
+	case id::RETIRE_CONTEXT:
+	  return "RETIRE_CONTEXT";
+	case id::COUNT:
+	default:
+	  assert (false);
+	  return "UNKNOW";
+	}
+    }
+
+    inline size_t
+    to_index (id &statid)
+    {
+      return static_cast<size_t> (statid);
+    }
+
+    inline id
+    to_id (size_t index)
+    {
+      assert (index >= 0 && index < STATS_COUNT);
+      return static_cast<id> (index);
+    }
+
+    // statistics collector
+    struct collector
+    {
+      stat_type m_counters[STATS_COUNT];
+      stat_type m_timers[STATS_COUNT];
+    };
+
+    // atomic collection
+    struct atomic_collector
+    {
+      atomic_stat_type m_counters[STATS_COUNT];
+      atomic_stat_type m_timers[STATS_COUNT];
+
+      inline void operator+= (const collector &statcol)
+      {
+	for (size_t index = 0; index < STATS_COUNT; index++)
+	  {
+	    m_counters.fetch_add (statcol.m_counters[index]);
+	    m_timers.fetch_add (statcol.m_timers[index]);
+	  }
+      }
+    };
+
+    inline void
+    collect (id statid, duration_type delta, collector &statcol)
+    {
+      size_t index = to_index (statid);
+      statcol.m_counters[index]++;
+      statcol.m_timers[index] += delta.count ();
+    }
+
+    inline void
+    collect (id statid, time_point_type start, time_point_type end, collector &statcol)
+    {
+      collect (statid, end - start, statcol);
+    }
+
+    inline void
+    atomic_collect (id statid, duration_type delta, atomic_collector &statcol)
+    {
+      size_t index = to_index (statid);
+      statcol.m_counters[index]++;
+      statcol.m_timers[index] += delta.count ();
+    }
+
+    inline void
+    atomic_collect (id statid, time_point_type start, time_point_type end, atomic_collector &statcol)
+    {
+      atomic_collect (statid, end - start, statcol);
+    }
+
+    inline void
+    get_atomic_stats (const atomic_collector &atomic_col, collector &col_out)
+    {
+      for (size_t index = 0; index < STATS_COUNT; index++)
+	{
+	  col_out.m_counters[index] = atomic_col.m_counters[index];
+	  col_out.m_timers[index] = atomic_col.m_timers[index];
+	}
+    }
+
+  } // namespace wpstat
+
   // cubtread::worker_pool<Context>
   //
   //  templates
@@ -87,34 +218,6 @@ namespace cubthread
       using context_type = Context;
       using task_type = task<Context>;
       using context_manager_type = context_manager<Context>;
-
-      // statistics
-
-      class statistics
-      {
-	public:
-	  using stat_type = std::uint64_t;
-	  using clock_type = std::chrono::high_resolution_clock;
-	  using time_point_type = clock_type::time_point;
-	  using duration_type = std::chrono::nanoseconds;
-
-	  // see worker for details on timed phases
-	  enum
-	  {
-	    GET_WORKER_FROM_ACTIVE_QUEUE,
-	    GET_WORKER_FROM_INACTIVE_QUEUE,
-	    START_THREAD,
-	    CLAIM_CONTEXT,
-	    EXECUTE_TASK,
-	    FOUND_TASK_IN_QUEUE,
-	    NOT_FOUND_TASK_IN_QUEUE,
-
-	  };
-
-	private:
-	  // counters
-	  // timers
-      };
 
       worker_pool (std::size_t pool_size, std::size_t work_queue_size, context_manager_type *context_mgr,
 		   bool debug_logging = false);
