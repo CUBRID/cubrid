@@ -10251,15 +10251,18 @@ log_read_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_P
 }
 
 /*
- * log_get_log_group_commit_interval_msec () - fetch log group commit interval in msec from system parameters
+ * log_get_log_group_commit_interval () - setup flush daemon period based on system parameter
  */
-int
-log_get_log_group_commit_interval_msec ()
+void
+log_get_log_group_commit_interval (bool & is_timed_wait, cubthread::delta_time & period)
 {
+  is_timed_wait = true;
+
 #if defined (SERVER_MODE)
   if (log_Flush_has_been_requested)
     {
-      return 0;
+      period = std::chrono::milliseconds (0);
+      return;
     }
 #endif /* SERVER_MODE */
 
@@ -10268,31 +10271,60 @@ log_get_log_group_commit_interval_msec ()
 
   assert (log_group_commit_interval_msec >= 0);
 
-  return log_group_commit_interval_msec == 0 ? max_wait_time_msec : log_group_commit_interval_msec;
+  if (log_group_commit_interval_msec == 0)
+    {
+      period = std::chrono::milliseconds (max_wait_time_msec);
+    }
+  else
+    {
+      period = std::chrono::milliseconds (log_group_commit_interval_msec);
+    }
 }
 
 /*
- * log_get_checkpoint_interval_msec () - fetch log checkpoint interval in msec from system parameters
+ * log_get_checkpoint_interval () - setup log checkpoint daemon period based on system parameter
  */
-int
-log_get_checkpoint_interval_msec ()
+void
+log_get_checkpoint_interval (bool & is_timed_wait, cubthread::delta_time & period)
 {
   int log_checkpoint_interval_sec = prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_INTERVAL_SECS);
 
-  // if log_checkpoint_interval_sec > 0 (zero) then loop for fixed interval otherwise infinite wait
-  return log_checkpoint_interval_sec > 0 ? log_checkpoint_interval_sec * 1000 : -1;
+  assert (log_checkpoint_interval_sec >= 0);
+
+  if (log_checkpoint_interval_sec > 0)
+    {
+      // if log_checkpoint_interval_sec > 0 (zero) then loop for fixed interval
+      is_timed_wait = true;
+      period = std::chrono::seconds (log_checkpoint_interval_sec);
+    }
+  else
+    {
+      // infinite wait
+      is_timed_wait = false;
+    }
 }
 
 /*
- * log_get_remove_log_archive_interval_msec () - fetch remove log archive interval in msec from system parameters
+ * log_get_remove_log_archive_interval () - setup remove log archive daemon period based on system parameter
  */
-int
-log_get_remove_log_archive_interval_msec ()
+void
+log_get_remove_log_archive_interval (bool & is_timed_wait, cubthread::delta_time & period)
 {
   int remove_log_archive_interval_sec = prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
 
-  // if remove_log_archive_interval_sec > 0 (zero) then loop for fixed interval otherwise infinite wait
-  return remove_log_archive_interval_sec > 0 ? remove_log_archive_interval_sec * 1000 : -1;
+  assert (remove_log_archive_interval_sec >= 0);
+
+  if (remove_log_archive_interval_sec > 0)
+    {
+      // if remove_log_archive_interval_sec > 0 (zero) then loop for fixed interval
+      is_timed_wait = true;
+      period = std::chrono::seconds (remove_log_archive_interval_sec);
+    }
+  else
+    {
+      // infinite wait
+      is_timed_wait = false;
+    }
 }
 
 #if defined (SERVER_MODE)
@@ -10302,11 +10334,16 @@ log_get_remove_log_archive_interval_msec ()
 void
 log_wakeup_remove_log_archive_daemon ()
 {
-  if (log_Remove_log_archive_daemon != NULL && log_get_remove_log_archive_interval_msec () == -1)
+  bool is_timed_wait;
+  cubthread::delta_time period;
+
+  log_get_remove_log_archive_interval (is_timed_wait, period);
+
+  if (log_Remove_log_archive_daemon && !is_timed_wait)
     {
-      // if log_get_remove_log_archive_interval_msec returns -1 it means that daemon is sleeping
+      // if is_timed_wait is false it means that daemon is sleeping
       // and on wakeup it will do his job,
-      // otherwise daemon will be awakened every log_get_remove_log_archive_interval_msec seconds
+      // otherwise daemon will be awakened every PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL seconds
       log_Remove_log_archive_daemon->wakeup ();
     }
 }
@@ -10398,9 +10435,14 @@ class log_remove_log_archive_daemon_task : public cubthread::entry_task
 	  return;
 	}
 
-      // if interval is greater than 0 (zero) then on every loop remove one log archive
+      bool is_timed_wait;
+      cubthread::delta_time period;
+
+      log_get_remove_log_archive_interval (is_timed_wait, period);
+
+      // if is_timed_wait is true then on every loop remove one log archive
       // otherwise on wakeup remove all log archive records
-      int archive_logs_to_delete = log_get_remove_log_archive_interval_msec () > 0 ? 1 : 0;
+      int archive_logs_to_delete = is_timed_wait ? 1 : 0;
 
       logpb_remove_archive_logs_exceed_limit (&thread_ref, archive_logs_to_delete);
     }
@@ -10568,7 +10610,7 @@ log_checkpoint_daemon_init ()
 {
   assert (log_Checkpoint_daemon == NULL);
 
-  cubthread::looper looper = cubthread::looper (log_get_checkpoint_interval_msec);
+  cubthread::looper looper = cubthread::looper (log_get_checkpoint_interval);
   log_checkpoint_daemon_task *daemon_task = new log_checkpoint_daemon_task ();
 
   // create checkpoint daemon thread
@@ -10585,8 +10627,8 @@ log_remove_log_archive_daemon_init ()
 {
   assert (log_Remove_log_archive_daemon == NULL);
 
+  cubthread::looper looper = cubthread::looper (log_get_remove_log_archive_interval);
   log_remove_log_archive_daemon_task *daemon_task = new log_remove_log_archive_daemon_task ();
-  cubthread::looper looper = cubthread::looper (log_get_remove_log_archive_interval_msec);
 
   // create log archive remover daemon thread
   log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
@@ -10632,8 +10674,8 @@ log_flush_daemon_init ()
 {
   assert (log_Flush_daemon == NULL);
 
+  cubthread::looper looper = cubthread::looper (log_get_log_group_commit_interval);
   log_flush_daemon_task *daemon_task = new log_flush_daemon_task ();
-  cubthread::looper looper = cubthread::looper (log_get_log_group_commit_interval_msec);
 
   log_Flush_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (looper), daemon_task);
 }

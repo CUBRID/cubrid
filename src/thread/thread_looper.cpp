@@ -28,43 +28,38 @@ namespace cubthread
 {
 
   looper::looper ()
-    : m_wait_pattern (wait_pattern::INFINITE_WAITS)
-    , m_periods_count (0)
+    : m_periods_count (0)
     , m_periods ()
     , m_period_index (0)
     , m_stop (false)
     , m_was_woken_up (false)
-    , m_period_function ()
     , m_start_execution_time ()
   {
     // infinite waits
+    m_setup_period = std::bind (&looper::setup_infinite_wait, *this, std::placeholders::_1, std::placeholders::_2);
   }
 
   looper::looper (const looper &other)
-    : m_wait_pattern (other.m_wait_pattern)
-    , m_periods_count (other.m_periods_count)
+    : m_periods_count (other.m_periods_count)
     , m_periods ()
     , m_period_index (0)
     , m_stop (false)
     , m_was_woken_up (false)
-    , m_period_function (other.m_period_function)
+    , m_setup_period (other.m_setup_period)
     , m_start_execution_time (other.m_start_execution_time)
   {
-    for (std::size_t i = 0; i < m_periods_count; i++)
-      {
-	this->m_periods[i] = other.m_periods[i];
-      }
+    std::copy (std::begin (other.m_periods), std::end (other.m_periods), std::begin (m_periods));
   }
 
-  looper::looper (const std::function<int ()> &period_function)
-    : m_periods ()
+  looper::looper (const period_function &setup_period_function)
+    : m_periods_count (0)
+    , m_periods ()
     , m_period_index (0)
     , m_stop (false)
     , m_was_woken_up (false)
-    , m_period_function (period_function)
+    , m_setup_period (setup_period_function)
     , m_start_execution_time ()
   {
-    setup_period ();
   }
 
   void
@@ -76,34 +71,21 @@ namespace cubthread
 	return;
       }
 
-    // refresh period based on period function
-    setup_period ();
+    assert (m_setup_period);
 
-    if (m_period_index >= m_periods_count)
+    bool is_timed_wait = true;
+    delta_time duration = delta_time (0);
+
+    m_setup_period (is_timed_wait, duration);
+    if (is_timed_wait)
       {
-	assert (m_period_index == m_periods_count);
-	waiter_arg.wait_inf ();
-	m_was_woken_up = true;
-      }
-    else
-      {
-	delta_time delta = get_wait_for ();
+	delta_time delta = get_wait_for (duration);
 	m_was_woken_up = waiter_arg.wait_for (delta);
       }
-    if (m_wait_pattern == wait_pattern::FIXED_PERIODS || m_wait_pattern == wait_pattern::INFINITE_WAITS)
-      {
-	assert (m_period_index == 0);
-	return;
-      }
-    if (!m_was_woken_up)
-      {
-	/* increment */
-	++m_period_index;
-      }
     else
       {
-	/* reset */
-	m_period_index = 0;
+	waiter_arg.wait_inf ();
+	m_was_woken_up = true;
       }
 
     // register start of the task execution time
@@ -113,7 +95,6 @@ namespace cubthread
   void
   looper::reset (void)
   {
-    assert (m_wait_pattern == wait_pattern::INCREASING_PERIODS);
     m_period_index = 0;
   }
 
@@ -135,34 +116,21 @@ namespace cubthread
     return m_was_woken_up;
   }
 
-  looper::delta_time
-  looper::get_wait_for (void)
+  delta_time
+  looper::get_wait_for (delta_time &period)
   {
-    delta_time execution_time;
+    delta_time execution_time = delta_time (0);
+    delta_time wait_for = delta_time (0);
 
-    if (m_start_execution_time == std::chrono::system_clock::time_point ())
-      {
-	// assume execution_time is 0 (zero) for first run
-	// since m_start_execution_time is not yet registered
-	execution_time = delta_time (0);
-      }
-    else
+    if (m_start_execution_time != std::chrono::system_clock::time_point ())
       {
 	execution_time = std::chrono::system_clock::now () - m_start_execution_time;
       }
 
-    delta_time wait_for;
-    delta_time period = m_periods[m_period_index];
-
     // compute task execution time
-    if (execution_time < period)
+    if (period > execution_time)
       {
 	wait_for = period - execution_time;
-      }
-    else
-      {
-	// if execution_time is greater than the period then immediately execute task without sleeping
-	wait_for = delta_time (0);
       }
 
     assert (wait_for <= period);
@@ -171,32 +139,34 @@ namespace cubthread
   }
 
   void
-  looper::setup_period (void)
+  looper::setup_infinite_wait (bool &is_timed_wait, delta_time &period)
   {
-    if (!m_period_function || m_wait_pattern == wait_pattern::INCREASING_PERIODS)
-      {
-	// do nothing for increasing periods waiter or whether m_period_function has a valid callable target
-	return;
-      }
-
     assert (m_period_index == 0);
 
-    int new_period_msec = m_period_function ();
+    is_timed_wait = false;
+  }
 
-    // refresh period based on new interval value
-    if (new_period_msec < 0)
+  void
+  looper::setup_fixed_waits (bool &is_timed_wait, delta_time &period)
+  {
+    assert (m_period_index == 0);
+
+    is_timed_wait = true;
+    period = m_periods[m_period_index];
+  }
+
+  void
+  looper::setup_increasing_waits (bool &is_timed_wait, delta_time &period)
+  {
+    if (m_period_index < m_periods_count)
       {
-	// set members to reflect infinite wait
-	m_wait_pattern = wait_pattern::INFINITE_WAITS;
-	m_periods_count = 0;
-	m_periods[m_period_index] = delta_time (0);
+	is_timed_wait = true;
+	period = m_periods[m_period_index++];
       }
     else
       {
-	// set members to reflect fixed period
-	m_wait_pattern = wait_pattern::FIXED_PERIODS;
-	m_periods_count = 1;
-	m_periods[m_period_index] = std::chrono::milliseconds (new_period_msec);
+	is_timed_wait = false;
+	reset ();
       }
   }
 

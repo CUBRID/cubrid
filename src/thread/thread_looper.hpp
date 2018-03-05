@@ -68,6 +68,10 @@
 namespace cubthread
 {
 
+  // definitions
+  typedef std::chrono::duration<std::uint64_t, std::nano> delta_time;
+  typedef std::function<void (bool &, delta_time &)> period_function;
+
   // for increasing period pattern
   const std::size_t MAX_LOOPER_PERIODS = 3;
 
@@ -86,8 +90,8 @@ namespace cubthread
       // copy other loop pattern
       looper (const looper &other);
 
-      // loop and wait based on value provided by period_function
-      looper (const std::function<int ()> &period_function);
+      // loop and wait based on value provided by setup_period_function
+      looper (const period_function &setup_period_function);
 
       // loop and wait for a fixed period of time
       template<class Rep, class Period>
@@ -117,23 +121,14 @@ namespace cubthread
 
     private:
 
-      // definitions
-      typedef std::chrono::duration<std::uint64_t, std::nano> delta_time;
-      enum class wait_pattern
-      {
-	FIXED_PERIODS,                // fixed periods
-	INCREASING_PERIODS,           // increasing periods with each timeout
-	INFINITE_WAITS,               // always infinite waits
-      };
-
       // compute sleep time as difference between period interval and task execution time
-      delta_time get_wait_for (void);
+      delta_time get_wait_for (delta_time &period);
 
-      // initialize period based on period function
-      void setup_period (void);
+      void setup_infinite_wait (bool &is_timed_wait, delta_time &period);
+      void setup_fixed_waits (bool &is_timed_wait, delta_time &period);
+      void setup_increasing_waits (bool &is_timed_wait, delta_time &period);
 
-      wait_pattern m_wait_pattern;              // wait pattern type
-      std::size_t m_periods_count;              // the period count
+      std::size_t m_periods_count;              // the period count, used by increasing period pattern
       delta_time m_periods[MAX_LOOPER_PERIODS]; // period array
 
       std::atomic<std::size_t> m_period_index;  // current period index
@@ -141,7 +136,7 @@ namespace cubthread
       std::atomic<bool> m_was_woken_up;         // when true, waiter was woken up before timeout
 
       // function used to refresh period on every run
-      const std::function<int ()> m_period_function;
+      period_function m_setup_period;
 
       // a time point that represents the start of task execution
       // used by put_to_sleep function in order to sleep for difference between period interval and task execution time
@@ -154,26 +149,23 @@ namespace cubthread
 
   template<class Rep, class Period>
   looper::looper (const std::chrono::duration<Rep, Period> &fixed_period)
-    : m_wait_pattern (wait_pattern::FIXED_PERIODS)
-    , m_periods_count (1)
+    : m_periods_count (0)
     , m_periods {fixed_period}
     , m_period_index (0)
     , m_stop (false)
     , m_was_woken_up (false)
-    , m_period_function ()
     , m_start_execution_time ()
   {
+    m_setup_period = std::bind (&looper::setup_fixed_waits, *this, std::placeholders::_1, std::placeholders::_2);
   }
 
   template<class Rep, class Period, std::size_t Count>
   looper::looper (const std::array<std::chrono::duration<Rep, Period>, Count> periods)
-    : m_wait_pattern (wait_pattern::INCREASING_PERIODS)
-    , m_periods_count (Count)
+    : m_periods_count (Count)
     , m_periods {}
     , m_period_index (0)
     , m_stop (false)
     , m_was_woken_up (false)
-    , m_period_function ()
     , m_start_execution_time ()
   {
     static_assert (Count <= MAX_LOOPER_PERIODS, "Count template cannot exceed MAX_LOOPER_PERIODS=3");
@@ -186,6 +178,8 @@ namespace cubthread
 	// check increasing periods
 	assert (i == 0 || m_periods[i - 1] < m_periods[i]);
       }
+
+    m_setup_period = std::bind (&looper::setup_increasing_waits, *this, std::placeholders::_1, std::placeholders::_2);
   }
 
 } // namespace cubthread

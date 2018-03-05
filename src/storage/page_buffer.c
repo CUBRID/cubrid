@@ -15852,15 +15852,26 @@ pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p)
 }
 
 /*
- * pgbuf_get_page_flush_interval_msecs () - fetch page flush interval in msec from system parameters
+ * pgbuf_get_page_flush_interval () - setup page flush daemon period based on system parameter
  */
-int
-pgbuf_get_page_flush_interval_msecs ()
+void
+pgbuf_get_page_flush_interval (bool & is_timed_wait, cubthread::delta_time & period)
 {
   int page_flush_interval_msecs = prm_get_integer_value (PRM_ID_PAGE_BG_FLUSH_INTERVAL_MSECS);
 
-  // if page_flush_interval_msecs > 0 (zero) then loop for fixed interval otherwise infinite wait
-  return page_flush_interval_msecs > 0 ? page_flush_interval_msecs : -1;
+  assert (page_flush_interval_msecs >= 0);
+
+  if (page_flush_interval_msecs > 0)
+    {
+      // if page_flush_interval_msecs > 0 (zero) then loop for fixed interval
+      is_timed_wait = true;
+      period = std::chrono::milliseconds (page_flush_interval_msecs);
+    }
+  else
+    {
+      // infinite wait
+      is_timed_wait = false;
+    }
 }
 
 // *INDENT-OFF*
@@ -16060,8 +16071,8 @@ pgbuf_page_flush_daemon_init ()
 {
   assert (pgbuf_Page_flush_daemon == NULL);
 
+  cubthread::looper looper = cubthread::looper (pgbuf_get_page_flush_interval);
   pgbuf_page_flush_daemon_task *daemon_task = new pgbuf_page_flush_daemon_task ();
-  cubthread::looper looper = cubthread::looper (pgbuf_get_page_flush_interval_msecs);
 
   pgbuf_Page_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
 }
