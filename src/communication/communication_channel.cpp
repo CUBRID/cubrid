@@ -18,7 +18,7 @@
  */
 
 /*
- * communication_channel.cpp - wrapper for the CSS_CONN_ENTRY structure
+ * communication_channel.cpp - wrapper for communication primitives
  *                           - it can establish a connection, send/receive messages, wait for events and close the connection
  */
 

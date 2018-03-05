@@ -18,7 +18,7 @@
  */
 
 /*
- * communication_channel.hpp - wrapper for the CSS_CONN_ENTRY structure
+ * communication_channel.hpp - wrapper for communication primitives
  */
 
 #ifndef _COMMUNICATION_CHANNEL_HPP
@@ -70,7 +70,7 @@ class communication_channel
     void create_initiator (const char *hostname, int port, CSS_COMMAND_TYPE command_type = NULL_REQUEST,
 			   const char *server_name = NULL);
 
-    /* receive/send functions that use the created CSS_CONN_ENTRY */
+    /* receive/send functions that use the created m_socket */
     int recv (char *buffer, int &received_length);
     int send (const std::string &message);
 
