@@ -12978,7 +12978,7 @@ namespace Func
 
   bool cmp_types_generic(const pt_arg_type& type, pt_type_enum type_enum)
   {
-    return (type.type == pt_arg_type::GENERIC && pt_are_equivalent_types(type.val.generic_type, type_enum));
+    return pt_are_equivalent_types(type, type_enum);
   }
 
   /*
@@ -13015,8 +13015,9 @@ namespace Func
 
         if(arg!=NULL && sig.rep.size()==0)
           {
-            printf("ERR invalid number or arguments\n");
-            return NULL;
+            //printf("ERR invalid number or arguments\n");
+            //return NULL;
+          continue;
           }
         //check repetitive args
         int index = 0;
@@ -13083,8 +13084,10 @@ namespace Func
         printf("ERR invalid number or arguments\n");
         return false;
       }
+
+    //check repetitive part of the function signature
     int index = 0;
-    for(; arg; arg=arg->next, index=(index+1)%signature.rep.size()) //check repetitive part of the function signature
+    for(; arg; prev = arg, arg=arg->next, index=(index+1)%signature.rep.size(), ++arg_pos)
       {
         auto& type = signature.rep[index];
         pt_type_enum equivalent_type = pt_get_equivalent_type(type, arg->type_enum);
@@ -13297,7 +13300,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case F_INSERT_SUBSTRING:
       {
         PT_NODE *arg = arg_list;
-        //printf("fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
+        //printf("1: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
         std::vector<func_signature>& func_sigs = *Func::types[fcode-PT_MIN];
         const func_signature* func_sig = Func::get_signature(node, func_sigs, &Func::cmp_types_normal);
         if(func_sig == NULL)
@@ -13312,6 +13315,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
           {
             Func::match_signature(parser, node, *func_sig);
             arg_list = node->info.function.arg_list;
+            //printf("2: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
             
             if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL) //return type
               {
