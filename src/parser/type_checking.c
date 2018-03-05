@@ -13346,6 +13346,9 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
                   case PT_MIN:
                   case PT_LEAD:
                   case PT_LAG:
+                  case PT_FIRST_VALUE:
+                  case PT_LAST_VALUE:
+                  case PT_NTH_VALUE:
                     node->data_type = (arg_list ? parser_copy_tree_list (parser, arg_list->data_type) : NULL);
                     break;
                   case PT_SUM:
