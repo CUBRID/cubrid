@@ -121,11 +121,8 @@ namespace cubthread
 
     private:
 
-      // compute sleep time as difference between period interval and task execution time
-      delta_time get_wait_for (delta_time &period);
-
-      void setup_infinite_wait (bool &is_timed_wait, delta_time &period);
       void setup_fixed_waits (bool &is_timed_wait, delta_time &period);
+      void setup_infinite_wait (bool &is_timed_wait, delta_time &period);
       void setup_increasing_waits (bool &is_timed_wait, delta_time &period);
 
       std::size_t m_periods_count;              // the period count, used by increasing period pattern
@@ -135,8 +132,7 @@ namespace cubthread
       std::atomic<bool> m_stop;                 // when true, loop is stopped; no waits
       std::atomic<bool> m_was_woken_up;         // when true, waiter was woken up before timeout
 
-      // function used to refresh period on every run
-      period_function m_setup_period;
+      period_function m_setup_period;           // function used to refresh period on every run
 
       // a time point that represents the start of task execution
       // used by put_to_sleep function in order to sleep for difference between period interval and task execution time

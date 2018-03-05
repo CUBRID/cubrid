@@ -74,13 +74,27 @@ namespace cubthread
     assert (m_setup_period);
 
     bool is_timed_wait = true;
-    delta_time duration = delta_time (0);
+    delta_time period = delta_time (0);
 
-    m_setup_period (is_timed_wait, duration);
+    m_setup_period (is_timed_wait, period);
+
     if (is_timed_wait)
       {
-	delta_time delta = get_wait_for (duration);
-	m_was_woken_up = waiter_arg.wait_for (delta);
+	delta_time wait_time = delta_time (0);
+	delta_time execution_time = delta_time (0);
+
+	if (m_start_execution_time != std::chrono::system_clock::time_point ())
+	  {
+	    execution_time = std::chrono::system_clock::now () - m_start_execution_time;
+	  }
+
+	// compute task execution time
+	if (period > execution_time)
+	  {
+	    wait_time = period - execution_time;
+	  }
+
+	m_was_woken_up = waiter_arg.wait_for (wait_time);
       }
     else
       {
@@ -116,26 +130,13 @@ namespace cubthread
     return m_was_woken_up;
   }
 
-  delta_time
-  looper::get_wait_for (delta_time &period)
+  void
+  looper::setup_fixed_waits (bool &is_timed_wait, delta_time &period)
   {
-    delta_time execution_time = delta_time (0);
-    delta_time wait_for = delta_time (0);
+    assert (m_period_index == 0);
 
-    if (m_start_execution_time != std::chrono::system_clock::time_point ())
-      {
-	execution_time = std::chrono::system_clock::now () - m_start_execution_time;
-      }
-
-    // compute task execution time
-    if (period > execution_time)
-      {
-	wait_for = period - execution_time;
-      }
-
-    assert (wait_for <= period);
-
-    return wait_for;
+    is_timed_wait = true;
+    period = m_periods[m_period_index];
   }
 
   void
@@ -144,15 +145,6 @@ namespace cubthread
     assert (m_period_index == 0);
 
     is_timed_wait = false;
-  }
-
-  void
-  looper::setup_fixed_waits (bool &is_timed_wait, delta_time &period)
-  {
-    assert (m_period_index == 0);
-
-    is_timed_wait = true;
-    period = m_periods[m_period_index];
   }
 
   void
