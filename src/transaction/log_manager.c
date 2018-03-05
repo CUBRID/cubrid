@@ -10677,7 +10677,7 @@ log_flush_daemon_init ()
   cubthread::looper looper = cubthread::looper (log_get_log_group_commit_interval);
   log_flush_daemon_task *daemon_task = new log_flush_daemon_task ();
 
-  log_Flush_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (looper), daemon_task);
+  log_Flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
 }
 #endif /* SERVER_MODE */
 
