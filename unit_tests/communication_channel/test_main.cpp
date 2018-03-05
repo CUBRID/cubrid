@@ -49,23 +49,14 @@ class test_communication_channel : public communication_channel
 
     int connect () override
     {
-      SOCKET fd = -1;
-
       if (is_connection_alive () || m_type != CHANNEL_TYPE::INITIATOR)
 	{
 	  return ER_FAILED;
 	}
 
-      m_conn_entry = css_make_conn (-1);
-      if (m_conn_entry == NULL)
+      m_socket = css_tcp_client_open (m_hostname.get (), m_port);
+      if (!IS_INVALID_SOCKET (m_socket))
 	{
-	  return ER_FAILED;
-	}
-
-      fd = css_tcp_client_open (m_hostname.get (), m_port);
-      if (!IS_INVALID_SOCKET (fd))
-	{
-	  m_conn_entry->fd = fd;
 	  return NO_ERRORS;
 	}
 
@@ -186,7 +177,7 @@ class conn_listener_daemon_task : public cubthread::entry_task
 	{
 	  if (m_channels[i].is_connection_alive ())
 	    {
-	      fds[i].fd = m_channels[i].get_conn_entry ()->fd;
+	      fds[i].fd = m_channels[i].get_socket ();
 	      fds[i].events = POLLIN;
 	      fds[i].revents = 0;
 	    }

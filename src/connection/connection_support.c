@@ -139,8 +139,6 @@ static char css_Vector_buffer[CSS_VECTOR_SIZE];
 
 static int css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char **client_host_name,
 				     int *client_pid);
-static int css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, int timeout);
-static void css_set_io_vector (struct iovec *vec1_p, struct iovec *vec2_p, const char *buff, int len, int *templen);
 static int css_send_io_vector (CSS_CONN_ENTRY * conn, struct iovec *vec_p, ssize_t total_len, int vector_length,
 			       int timeout);
 
@@ -168,8 +166,6 @@ static int css_net_send8 (CSS_CONN_ENTRY * conn, const char *buff1, int len1, co
 static int css_net_send_large_data_with_arg (CSS_CONN_ENTRY * conn, const char *header_buffer, int header_len,
 					     NET_HEADER * header_array, const char **data_array, int num_array);
 #endif
-static void css_set_net_header (NET_HEADER * header_p, int type, short function_code, int request_id, int buffer_size,
-				int transaction_id, int invalidate_snapshot, int db_error);
 #if defined(SERVER_MODE)
 static char *css_trim_str (char *str);
 #endif
@@ -793,7 +789,7 @@ free_vector_buffer (int index)
  *       internally keep retrying the operation until all the data is written.
  *       That's what all the callers do anyway.
  */
-static int
+int
 css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, int timeout)
 {
   int i, total_size, available, amount, rc;
@@ -906,7 +902,7 @@ error:
  *   bytes_written(in):
  *   timeout(in): timeout value in milli-seconds
  */
-static int
+int
 css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, int timeout)
 {
   int i, n;
@@ -1007,7 +1003,7 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
 }
 #endif /* !WINDOWS */
 
-static void
+void
 css_set_io_vector (struct iovec *vec1_p, struct iovec *vec2_p, const char *buff, int len, int *templen)
 {
   *templen = htonl (len);
@@ -1459,7 +1455,7 @@ css_net_read_header (SOCKET fd, char *buffer, int *maxlen, int timeout)
   return css_net_recv (fd, buffer, maxlen, timeout);
 }
 
-static void
+void
 css_set_net_header (NET_HEADER * header_p, int type, short function_code, int request_id, int buffer_size,
 		    int transaction_id, int invalidate_snapshot, int db_error)
 {

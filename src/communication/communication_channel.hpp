@@ -29,9 +29,14 @@
 #include "connection_defs.h"
 #include <memory>
 
+#if !defined (WINDOWS)
+#include <sys/uio.h>
+#else
+#include <winsock2.h>
+#endif
 enum CHANNEL_TYPE
 {
-  DEFAULT = 0,
+  NO_TYPE = 0,
   INITIATOR,
   LISTENER
 };
@@ -67,8 +72,27 @@ class communication_channel
 
     /* receive/send functions that use the created CSS_CONN_ENTRY */
     int recv (char *buffer, int &received_length);
-    int send (const char *message, int message_length);
     int send (const std::string &message);
+
+    template<typename T_CONST_CHAR, typename T_INT, typename... Targs>
+    int send (T_CONST_CHAR message, T_INT message_length, Targs... args)
+    {
+      const int num_of_args = (2 + sizeof... (Targs));
+      int templen;
+
+      if (current_iov_size < num_of_args)
+	{
+	  iov_ptr = (struct iovec *) realloc (iov_ptr, sizeof (struct iovec) * num_of_args);
+	  current_iov_size = num_of_args;
+	  current_iov_pointer = 0;
+	}
+
+      css_set_io_vector (& (iov_ptr[current_iov_pointer]), & (iov_ptr[current_iov_pointer+1]), message, message_length,
+			 &templen);
+      current_iov_pointer += 2;
+
+      return send (args...);
+    }
 
     /* the non overridden connect function uses the
      * css_common_connect that connects to an endpoint
@@ -89,20 +113,26 @@ class communication_channel
     int wait_for (unsigned short int events, unsigned short int &revents);
 
     bool is_connection_alive ();
-    CSS_CONN_ENTRY *get_conn_entry ();
+    SOCKET get_socket ();
     void close_connection ();
 
     /* this is the command that the non overridden connect will send */
     void set_command_type (CSS_COMMAND_TYPE cmd);
     const int &get_max_timeout_in_ms ();
+
   protected:
-    CSS_CONN_ENTRY *m_conn_entry;
     const int m_max_timeout_in_ms;
     std::unique_ptr <char, communication_channel_c_free_deleter> m_hostname, m_server_name;
     int m_port;
     unsigned short m_request_id;
     CHANNEL_TYPE m_type;
     CSS_COMMAND_TYPE m_command_type;
+    SOCKET m_socket;
+    unsigned int current_iov_pointer, current_iov_size;
+    struct iovec *iov_ptr;
+
+  private:
+    int send ();
 };
 
 #endif /* _COMMUNICATION_CHANNEL_HPP */
