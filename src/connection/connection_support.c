@@ -101,14 +101,6 @@ static int rv;
 
 #if defined(WINDOWS)
 typedef char *caddr_t;
-
-/* Corresponds to the structure we set up on Unix platforms to pass to
-   readv & writev. */
-struct iovec
-{
-  char *iov_base;
-  long iov_len;
-};
 #endif /* WINDOWS */
 
 static const int CSS_TCP_MIN_NUM_RETRIES = 3;
