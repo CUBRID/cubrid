@@ -1070,7 +1070,6 @@ extern "C"
   typedef struct db_json DB_JSON;
   struct db_json
   {
-    char *json_body;
     const char *schema_raw;
     JSON_DOC *document;
   };

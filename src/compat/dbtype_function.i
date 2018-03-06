@@ -153,7 +153,7 @@ STATIC_INLINE int db_make_time (DB_VALUE * value, const int hour, const int minu
 STATIC_INLINE int db_make_date (DB_VALUE * value, const int month, const int day, const int year)
   __attribute__ ((ALWAYS_INLINE));
 
-STATIC_INLINE int db_make_json (DB_VALUE * value, char *json_body, JSON_DOC * json_document, bool need_clear)
+STATIC_INLINE int db_make_json (DB_VALUE * value, JSON_DOC * json_document, bool need_clear)
   __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int db_get_compressed_size (DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -2190,7 +2190,7 @@ db_make_date (DB_VALUE * value, const int mon, const int day, const int year)
 }
 
 int
-db_make_json (DB_VALUE * value, char *json_body, JSON_DOC * json_document, bool need_clear)
+db_make_json (DB_VALUE * value, JSON_DOC * json_document, bool need_clear)
 {
 #if defined (API_ACTIVE_CHECKS)
   CHECK_1ARG_ERROR (value);
@@ -2205,7 +2205,6 @@ db_make_json (DB_VALUE * value, char *json_body, JSON_DOC * json_document, bool 
 
   value->domain.general_info.type = DB_TYPE_JSON;
   value->domain.general_info.is_null = 0;
-  value->data.json.json_body = json_body;
   value->data.json.document = json_document;
   value->data.json.schema_raw = NULL;
   value->need_clear = need_clear;

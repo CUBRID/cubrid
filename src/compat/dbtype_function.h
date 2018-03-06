@@ -472,7 +472,7 @@ extern "C"
   extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 					int compressed_size, bool compressed_need_clear);
 
-  extern int db_make_json (DB_VALUE * value, char *json_body, JSON_DOC * json_document, bool need_clear);
+  extern int db_make_json (DB_VALUE * value, JSON_DOC * json_document, bool need_clear);
 
 #ifdef __cplusplus
 }

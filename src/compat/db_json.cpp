@@ -106,8 +106,19 @@ class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_M
   public:
     bool IsLeaf ();
 
+    const std::string &GetJsonBody() const
+    {
+      return json_body;
+    }
+
+    void SetJsonBody (const std::string &body)
+    {
+      json_body = body;
+    }
+
   private:
     static const int MAX_CHUNK_SIZE;
+    std::string json_body;
 };
 
 class JSON_VALIDATOR
@@ -1066,6 +1077,7 @@ db_json_get_copy_of_doc (const JSON_DOC *doc)
   JSON_DOC *new_doc = db_json_allocate_doc ();
 
   new_doc->CopyFrom (*doc, new_doc->GetAllocator ());
+  new_doc->SetJsonBody (doc->GetJsonBody());
 
   return new_doc;
 }
@@ -3003,6 +3015,9 @@ JSON_DOC *db_json_deserialize (char *json_raw)
   // create the document that we want to reconstruct
   JSON_DOC *doc = db_json_allocate_doc();
   db_json_deserialize_helper (json_raw, "", *doc, serial_types);
+
+  char *json_body_raw = db_json_get_raw_json_body_from_document (doc);
+  doc->SetJsonBody (json_body_raw);
 
   return doc;
 }

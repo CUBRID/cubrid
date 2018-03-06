@@ -2047,10 +2047,6 @@ pr_clear_value (DB_VALUE * value)
     case DB_TYPE_JSON:
       if (value->need_clear)
 	{
-	  if (value->data.json.json_body != NULL)
-	    {
-	      db_private_free_and_init (NULL, value->data.json.json_body);
-	    }
 	  if (value->data.json.document != NULL)
 	    {
 	      db_json_delete_doc (value->data.json.document);
@@ -2064,7 +2060,6 @@ pr_clear_value (DB_VALUE * value)
 	}
       else
 	{
-	  value->data.json.json_body = NULL;
 	  value->data.json.document = NULL;
 	  value->data.json.schema_raw = NULL;
 	}
@@ -17128,7 +17123,6 @@ mr_initmem_json (void *mem, TP_DOMAIN * domain)
   if (json != NULL)
     {
       json->document = NULL;
-      json->json_body = NULL;
       json->schema_raw = NULL;
     }
   else
@@ -17142,6 +17136,7 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 {
   int error = NO_ERROR;
   DB_JSON *json;
+  JSON_DOC *doc;
 
   json = (DB_JSON *) memptr;
 
@@ -17154,7 +17149,9 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       assert (false);
     }
 
-  if (value != NULL && (db_get_json_raw_body (value) != NULL) && (db_get_json_document (value) != NULL))
+  doc = db_get_json_document (value);
+
+  if (value != NULL && (doc != NULL))
     {
       error = db_get_deep_copy_of_json (&value->data.json, json);
       if (error != NO_ERROR)
@@ -17170,7 +17167,6 @@ static int
 mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 {
   int error = NO_ERROR;
-  char *json_raw_body = NULL;
   const char *json_schema = NULL;
   DB_JSON *json, json_copy;
   JSON_DOC *new_doc = NULL;
@@ -17187,7 +17183,6 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 
   if (!copy)
     {
-      json_raw_body = json->json_body;
       json_schema = json->schema_raw;
       new_doc = json->document;
     }
@@ -17203,12 +17198,13 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	{
 	  return error;
 	}
-      json_raw_body = json_copy.json_body;
       json_schema = json_copy.schema_raw;
       new_doc = json_copy.document;
     }
 
-  db_make_json (value, json_raw_body, new_doc, copy);
+  // TODO
+  // modify db_make_json to get json body directly from doc
+  db_make_json (value, new_doc, copy);
   db_get_json_schema (value) = json_schema;
 
   return error;
@@ -17230,15 +17226,18 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 	{
 	  DB_VALUE json_body_value, schema_raw_value;
 	  unsigned int json_body_length = 0, schema_raw_length = 0;
+	  char *json_serialized = NULL;
 
 	  json = (DB_JSON *) memptr;
-	  if (json->json_body == NULL)
+	  if (json->document == NULL)
 	    {
-	      assert (json->document == NULL);
 	      return 0;
 	    }
-	  db_make_string (&json_body_value, json->json_body);
+
+	  json_serialized = db_json_serialize (*json->document);
+	  db_make_string (&json_body_value, json_serialized);
 	  json_body_length = mr_data_lengthval_string (&json_body_value, disk);
+	  db_private_free (NULL, json_serialized);
 
 	  if (json->schema_raw != NULL)
 	    {
@@ -17272,7 +17271,9 @@ mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
     }
 
   /* json body can be null, but it is treated by writeval */
-  db_make_string (&json_body, json->json_body);
+  char *json_serialized = db_json_serialize (*json->document);
+  db_make_string (&json_body, json_serialized);
+  db_private_free (NULL, json_serialized);
 
   if (json->schema_raw != NULL)
     {
@@ -17345,10 +17346,10 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
       schema_str = db_get_string (&schema_raw);
     }
 
-  json->json_body = db_private_strdup (NULL, json_body_str);
   json->schema_raw = db_private_strdup (NULL, schema_str);
 
-  rc = db_json_get_json_from_str (json_body_str, json->document);
+  json->document = db_json_deserialize (json_body_str);
+  db_private_free (NULL, json_body_str);
   assert (rc == NO_ERROR);
 
 exit:
@@ -17365,10 +17366,6 @@ mr_freemem_json (void *memptr)
 
   if (cur != NULL)
     {
-      if (cur->json_body != NULL)
-	{
-	  db_private_free_and_init (NULL, cur->json_body);
-	}
       if (cur->schema_raw != NULL)
 	{
 	  db_private_free (NULL, const_cast < char *>(cur->schema_raw));
@@ -17410,14 +17407,12 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 
       if (copy)
 	{
-	  dest->data.json.json_body = db_private_strdup (NULL, src->data.json.json_body);
 	  dest->data.json.document = db_json_get_copy_of_doc (src->data.json.document);
 	  dest->data.json.schema_raw = db_private_strdup (NULL, src->data.json.schema_raw);
 	  dest->need_clear = true;
 	}
       else
 	{
-	  dest->data.json.json_body = src->data.json.json_body;
 	  dest->data.json.document = src->data.json.document;
 	  dest->data.json.schema_raw = src->data.json.schema_raw;
 	  dest->need_clear = false;
@@ -17442,9 +17437,11 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
       return tp_Json.size;
     }
 
-  if (value->data.json.json_body != NULL)
+  if (value->data.json.document != NULL)
     {
-      db_make_string (&json_body, value->data.json.json_body);
+      char *json_serialized = db_json_serialize (*value->data.json.document);
+      db_make_string (&json_body, json_serialized);
+      db_private_free (NULL, json_serialized);
     }
   else
     {
@@ -17477,7 +17474,7 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
   db_make_null (&json_body);
   db_make_null (&schema_raw);
 
-  if (value->data.json.json_body == NULL || DB_IS_NULL (value))
+  if (value->data.json.document == NULL || DB_IS_NULL (value))
     {
       assert (false);
       return ER_FAILED;
@@ -17497,7 +17494,9 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
 	}
     }
 
-  db_make_string (&json_body, value->data.json.json_body);
+  char *json_serialized = db_json_serialize (*value->data.json.document);
+  db_make_string (&json_body, db_json_serialize (*value->data.json.document));
+  db_private_free (NULL, json_serialized);
 
   if (value->data.json.schema_raw != NULL)
     {
@@ -17535,7 +17534,7 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
   int rc = NO_ERROR;
   DB_VALUE json_body, schema_raw;
   JSON_DOC *doc = NULL;
-  const char *json_raw = NULL;
+  char *json_raw = NULL;
   char *json_raw_copy = NULL;
 
   db_make_null (value);
@@ -17564,14 +17563,11 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 
   json_raw = db_get_string (&json_body);
 
-  rc = db_json_get_json_from_str (json_raw, doc);
-  if (rc != NO_ERROR)
-    {
-      assert (false);
-      goto exit;
-    }
-  json_raw_copy = db_private_strdup (NULL, json_raw);
-  db_make_json (value, json_raw_copy, doc, true);
+  doc = db_json_deserialize (json_raw);
+
+  // TODO
+  // modify make_json to get the body directly from doc
+  db_make_json (value, doc, true);
 
   if (db_get_string_size (&schema_raw) > 0)
     {
@@ -17627,13 +17623,11 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
       goto cleanup;
     }
 
-  rc = db_json_get_json_from_str (first_json_body, doc1);
-  assert (rc == NO_ERROR && doc1 != NULL);
-  rc = db_json_get_json_from_str (second_json_body, doc2);
-  assert (rc == NO_ERROR && doc2 != NULL);
+  doc1 = db_json_deserialize (first_json_body);
+  doc2 = db_json_deserialize (second_json_body);
 
-  db_make_json (&json1, first_json_body, doc1, true);
-  db_make_json (&json2, second_json_body, doc2, true);
+  db_make_json (&json1, doc1, true);
+  db_make_json (&json2, doc2, true);
 
   res = mr_cmpval_json (&json1, &json2, do_coercion, total_order, 0, 0);
   pr_clear_value (&json1);
@@ -17698,10 +17692,10 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   if (db_json_doc_is_uncomparable (doc1) || db_json_doc_is_uncomparable (doc2))
     {
       /* force string comp */
-      char *str1 = NULL, *str2 = NULL;
+      const char *str1 = NULL, *str2 = NULL;
 
-      str1 = db_json_get_raw_json_body_from_document (doc1);
-      str2 = db_json_get_raw_json_body_from_document (doc2);
+      str1 = doc1->GetJsonBody ().c_str ();
+      str2 = doc2->GetJsonBody ().c_str ();
 
       db_make_string (&scalar_value1, str1);
       db_make_string (&scalar_value2, str2);

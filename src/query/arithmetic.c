@@ -5302,8 +5302,7 @@ db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * 
 
   if (result_doc != NULL)
     {
-      json_body = db_json_get_raw_json_body_from_document (result_doc);
-      db_make_json (json_res, json_body, result_doc, true);
+      db_make_json (json_res, result_doc, true);
     }
   else
     {
