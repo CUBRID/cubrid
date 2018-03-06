@@ -16030,7 +16030,7 @@ class pgbuf_flush_control_daemon_task : public cubthread::entry_task
       int token_gen, token_consumed;
 
       gettimeofday (&begin, NULL);
-      DIFF_TIMEVAL (m_end, begin, &diff);
+      perfmon_diff_timeval (&diff, m_end, begin);
 
       int64_t diff_usec = diff.tv_sec * 1000000LL + diff.tv_usec;
       fileio_flush_control_add_tokens (&thread_ref, diff_usec, &token_gen, &token_consumed);

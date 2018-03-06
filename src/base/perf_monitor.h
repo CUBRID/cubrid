@@ -1375,7 +1375,7 @@ extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYP
 #endif /* DIAG_DEVEL */
 
 STATIC_INLINE void
-perfmon_diff_timeval (struct timeval start, struct timeval end, struct timeval *elapsed)
+perfmon_diff_timeval (struct timeval *elapsed, struct timeval start, struct timeval end)
 {
   elapsed->tv_sec = end.tv_sec - start.tv_sec;
   elapsed->tv_usec = end.tv_usec - start.tv_usec;
