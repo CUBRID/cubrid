@@ -665,7 +665,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
     }
 
   /* name */
-  db_make_string_copy (&value, serial_name);
+  db_make_string_by_const_str (&value, serial_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -729,7 +729,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
     }
 
   /* comment */
-  db_make_string_copy (&value, comment);
+  db_make_string_by_const_str (&value, comment);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_COMMENT, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -740,7 +740,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
   /* class name */
   if (class_name)
     {
-      db_make_string_copy (&value, class_name);
+      db_make_string_by_const_str (&value, class_name);
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CLASS_NAME, &value);
       pr_clear_value (&value);
       if (error != NO_ERROR)
@@ -752,7 +752,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
   /* att name */
   if (att_name)
     {
-      db_make_string_copy (&value, att_name);
+      db_make_string_by_const_str (&value, att_name);
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATT_NAME, &value);
       pr_clear_value (&value);
       if (error != NO_ERROR)
@@ -875,7 +875,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
 
   /* class name */
   pr_clear_value (&value);
-  db_make_string_copy (&value, class_name);
+  db_make_string_by_const_str (&value, class_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CLASS_NAME, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -884,7 +884,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
     }
 
   /* att name */
-  db_make_string_copy (&value, att_name);
+  db_make_string_by_const_str (&value, att_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATT_NAME, &value);
   pr_clear_value (&value);
   if (error != NO_ERROR)
@@ -2786,7 +2786,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       assert (statement->info.serial.comment->node_type == PT_VALUE);
       comment = (char *) PT_VALUE_GET_BYTES (statement->info.serial.comment);
-      db_make_string_copy (&value, comment);
+      db_make_string_by_const_str (&value, comment);
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_COMMENT, &value);
       pr_clear_value (&value);
       if (error < 0)
@@ -6470,8 +6470,8 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 		  db_make_null (&returnval);
 
-		  db_make_string_copy (&trigger_name_val, trigger_name->info.name.original);
-		  db_make_string_copy (&user_val, trigger_owner_name);
+		  db_make_string_by_const_str (&trigger_name_val, trigger_name->info.name.original);
+		  db_make_string_by_const_str (&user_val, trigger_owner_name);
 
 		  au_change_trigger_owner_method (t->op, &returnval, &trigger_name_val, &user_val);
 
@@ -13701,7 +13701,7 @@ dbmeth_class_name (DB_OBJECT * self, DB_VALUE * result)
    * course, this gives the responsibility for freeing the cloned
    * string to someone else; is anybody accepting it?
    */
-  db_make_string_copy (result, cname);
+  db_make_string_by_const_str (result, cname);
 }
 
 /*

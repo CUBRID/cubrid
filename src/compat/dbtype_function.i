@@ -139,6 +139,10 @@ STATIC_INLINE int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle
 STATIC_INLINE int db_make_string (DB_VALUE * value, char *str) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_string_copy (DB_VALUE * value, const char *str) __attribute__ ((ALWAYS_INLINE));
 
+// TODO: It is ugly but I would like to separate the existing usages of db_make_string_copy from those of const str.
+// In some day, we may need a way to make db_value without copying const str. Hope this helps for future refactoring.
+#define db_make_string_by_const_str db_make_string_copy
+
 STATIC_INLINE int db_make_oid (DB_VALUE * value, const OID * oid) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int db_make_set (DB_VALUE * value, DB_C_SET * set) __attribute__ ((ALWAYS_INLINE));

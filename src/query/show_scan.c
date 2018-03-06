@@ -557,22 +557,22 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
       idx++;
 
       /* Type */
-      db_make_string_copy (&vals[idx], thread_type_to_string (thrd->type));
+      db_make_string_by_const_str (&vals[idx], thread_type_to_string (thrd->type));
       idx++;
 
       /* Status */
-      db_make_string_copy (&vals[idx], thread_status_to_string (thrd->status));
+      db_make_string_by_const_str (&vals[idx], thread_status_to_string (thrd->status));
       idx++;
 
       /* Resume_status */
-      db_make_string_copy (&vals[idx], thread_resume_status_to_string (thrd->resume_status));
+      db_make_string_by_const_str (&vals[idx], thread_resume_status_to_string (thrd->resume_status));
       idx++;
 
       /* Net_request */
       ival = thrd->net_request_index;
       if (ival != -1)
 	{
-	  db_make_string_copy (&vals[idx], net_server_request_name (ival));
+	  db_make_string_by_const_str (&vals[idx], net_server_request_name (ival));
 	}
       else
 	{
@@ -735,7 +735,7 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
 	  idx++;
 
 	  /* Lockwait_state */
-	  db_make_string_copy (&vals[idx], lock_wait_state_to_string (thrd->lockwait_state));
+	  db_make_string_by_const_str (&vals[idx], lock_wait_state_to_string (thrd->lockwait_state));
 	  idx++;
 	}
       else

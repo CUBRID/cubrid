@@ -27897,12 +27897,12 @@ db_get_cs_coll_info (DB_VALUE * result, const DB_VALUE * val, const int mode)
 
       if (mode == 0)
 	{
-	  db_make_string_copy (result, lang_charset_cubrid_name ((INTL_CODESET) cs));
+	  db_make_string_by_const_str (result, lang_charset_cubrid_name ((INTL_CODESET) cs));
 	}
       else
 	{
 	  assert (mode == 1);
-	  db_make_string_copy (result, lang_get_collation_name (coll));
+	  db_make_string_by_const_str (result, lang_get_collation_name (coll));
 	}
     }
 

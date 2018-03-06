@@ -363,7 +363,7 @@ classobj_put_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
 	{
 	  /* start with the property value to avoid growing the array twice */
 	  set_put_element (properties, max + 1, pvalue);
-	  db_make_string_copy (&value, name);
+	  db_make_string_by_const_str (&value, name);
 	  set_put_element (properties, max, &value);
 	  pr_clear_value (&value);
 	}
@@ -1014,7 +1014,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 	    }
 	}
 
-      db_make_string_copy (&value, pbuf);
+      db_make_string_by_const_str (&value, pbuf);
       set_put_element (constraint, e++, &value);
       pr_clear_value (&value);
 
@@ -1027,7 +1027,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
       for (i = 0; atts[i] != NULL; i++)
 	{
 	  /* name */
-	  db_make_string_copy (&value, atts[i]->header.name);
+	  db_make_string_by_const_str (&value, atts[i]->header.name);
 	  set_put_element (constraint, e++, &value);
 	  pr_clear_value (&value);
 	  /* asc_desc */
@@ -1216,7 +1216,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 	}
 
       /* comment */
-      db_make_string_copy (&value, comment);
+      db_make_string_by_const_str (&value, comment);
       set_put_element (constraint, e++, &value);
       pr_clear_value (&value);
 
@@ -1650,7 +1650,7 @@ classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char
 	    }
 	}
 
-      db_make_string_copy (&value, comment);
+      db_make_string_by_const_str (&value, comment);
       set_put_element (constraint, e++, &value);
       pr_clear_value (&value);
 
@@ -2441,7 +2441,7 @@ classobj_change_constraint_comment (DB_SEQ * properties, const char *prop_type, 
       goto end;
     }
 
-  db_make_string_copy (&new_val, comment);
+  db_make_string_by_const_str (&new_val, comment);
   error = set_put_element (idx_seq, len - 1, &new_val);
   if (error != NO_ERROR)
     {
