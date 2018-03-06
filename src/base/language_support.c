@@ -2633,12 +2633,14 @@ lang_db_put_charset (void)
   server_lang = lang_id ();
 
   AU_DISABLE (au_save);
-  db_make_string (&value, lang_get_lang_name_from_id (server_lang));
+  db_make_string_copy (&value, lang_get_lang_name_from_id (server_lang));
   if (db_put_internal (Au_root, "lang", &value) != NO_ERROR)
     {
       /* Error Setting the language */
       assert (false);
     }
+
+  pr_clear_value (&value);
 
   db_make_int (&value, (int) server_codeset);
   if (db_put_internal (Au_root, "charset", &value) != NO_ERROR)

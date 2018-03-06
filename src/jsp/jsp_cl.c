@@ -704,7 +704,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* change the comment */
   if (sp_comment != NULL)
     {
-      db_make_string (&user_val, comment_str);
+      db_make_string_copy (&user_val, comment_str);
       err = obj_set (sp_mop, SP_ATTR_COMMENT, &user_val);
       if (err < 0)
 	{
@@ -831,7 +831,7 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char 
       goto error;
     }
 
-  db_make_string (&value, sp_name);
+  db_make_string_copy (&value, sp_name);
   err = dbt_put_internal (obt_p, SP_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -839,7 +839,7 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char 
       goto error;
     }
 
-  db_make_string (&value, arg_name);
+  db_make_string_copy (&value, arg_name);
   err = dbt_put_internal (obt_p, SP_ATTR_ARG_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -868,7 +868,7 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char 
       goto error;
     }
 
-  db_make_string (&value, arg_comment);
+  db_make_string_copy (&value, arg_comment);
   err = dbt_put_internal (obt_p, SP_ATTR_ARG_COMMENT, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -1078,7 +1078,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
       goto error;
     }
 
-  db_make_string (&value, java_method);
+  db_make_string_copy (&value, java_method);
   err = dbt_put_internal (obt_p, SP_ATTR_TARGET, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -1094,7 +1094,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
       goto error;
     }
 
-  db_make_string (&value, comment);
+  db_make_string_copy (&value, comment);
   err = dbt_put_internal (obt_p, SP_ATTR_COMMENT, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)

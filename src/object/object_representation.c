@@ -8752,7 +8752,7 @@ or_put_json_schema (OR_BUF * buf, const char *schema)
     }
   else
     {
-      db_make_string (&schema_raw, schema);
+      db_make_string_copy (&schema_raw, schema);
     }
 
   rc = (*(tp_String.data_writeval)) (buf, &schema_raw);

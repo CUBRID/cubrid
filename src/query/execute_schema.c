@@ -9705,8 +9705,8 @@ do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter)
 
   db_make_null (&returnval);
 
-  db_make_string (&class_val, class_->info.name.original);
-  db_make_string (&user_val, user->info.name.original);
+  db_make_string_copy (&class_val, class_->info.name.original);
+  db_make_string_copy (&user_val, user->info.name.original);
 
   au_change_owner_method (obj, &returnval, &class_val, &user_val);
 

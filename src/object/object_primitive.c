@@ -17242,14 +17242,17 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 
 	  if (json->schema_raw != NULL)
 	    {
-	      db_make_string (&schema_raw_value, json->schema_raw);
+	      db_make_string_copy (&schema_raw_value, json->schema_raw);
 	    }
 	  else
 	    {
-	      db_make_string (&schema_raw_value, "");
+	      db_make_string_copy (&schema_raw_value, "");
 	    }
 
 	  schema_raw_length = mr_data_lengthval_string (&schema_raw_value, disk);
+
+	  pr_clear_value (&schema_raw_value);
+	  pr_clear_value (&json_body_value);
 
 	  return json_body_length + schema_raw_length;
 	}
@@ -17276,11 +17279,11 @@ mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 
   if (json->schema_raw != NULL)
     {
-      db_make_string (&schema_raw, json->schema_raw);
+      db_make_string_copy (&schema_raw, json->schema_raw);
     }
   else
     {
-      db_make_string (&schema_raw, "");
+      db_make_string_copy (&schema_raw, "");
     }
 
   (*(tp_String.data_writeval)) (buf, &json_body);
@@ -17452,11 +17455,11 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
     }
   if (value->data.json.schema_raw != NULL)
     {
-      db_make_string (&schema_raw, value->data.json.schema_raw);
+      db_make_string_copy (&schema_raw, value->data.json.schema_raw);
     }
   else
     {
-      db_make_string (&schema_raw, "");
+      db_make_string_copy (&schema_raw, "");
     }
 
   json_body_length = mr_data_lengthval_string (&json_body, disk);
@@ -17501,11 +17504,11 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
 
   if (value->data.json.schema_raw != NULL)
     {
-      db_make_string (&schema_raw, value->data.json.schema_raw);
+      db_make_string_copy (&schema_raw, value->data.json.schema_raw);
     }
   else
     {
-      db_make_string (&schema_raw, "");
+      db_make_string_copy (&schema_raw, "");
     }
 
   rc = (*(tp_String.data_writeval)) (buf, &json_body);
@@ -17519,7 +17522,6 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
     {
       goto exit;
     }
-
 
 exit:
   pr_clear_value (&json_body);

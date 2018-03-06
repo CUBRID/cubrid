@@ -7287,7 +7287,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    const char *json_string = NULL;
 
 	    json_string = db_json_get_string_from_document (src_doc);
-	    db_make_string (&src_replacement, json_string);
+	    db_make_string_copy (&src_replacement, json_string);
 	  }
 	  break;
 	default:
@@ -7313,6 +7313,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  if (src != dest)
 	    {
 	      pr_clone_value ((DB_VALUE *) src, dest);
+	      pr_clear_value (&src_replacement);
 	    }
 	  return status;
 	}
@@ -7341,10 +7342,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      if (desired_domain->json_validator != NULL
 		  && db_json_validate_doc (desired_domain->json_validator, src->data.json.document) != NO_ERROR)
 		{
+		  pr_clear_value (&src_replacement);
 		  ASSERT_ERROR ();
 		  return DOMAIN_ERROR;
 		}
 	      pr_clone_value ((DB_VALUE *) src, dest);
+	      pr_clear_value (&src_replacement);
 	      return (status);
 	    default:
 	      /* pr_is_string_type(desired_type) - NEED MORE CONSIDERATION */
@@ -7373,6 +7376,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    {
 	      db_make_null (dest);
 	    }
+
+	  pr_clear_value (&src_replacement);
 	  return DOMAIN_INCOMPATIBLE;
 	}
     }
@@ -7457,6 +7462,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		{
 		  pr_clone_value ((DB_VALUE *) src, dest);
 		}
+
+	      pr_clear_value (&src_replacement);
 	      return DOMAIN_COMPATIBLE;
 	    }
 	  desired_type = TP_DOMAIN_TYPE (desired_domain);
@@ -10564,6 +10571,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       pr_clear_value (dest);
       *dest = temp;
     }
+
+  pr_clear_value (&src_replacement);
 
   return status;
 }
