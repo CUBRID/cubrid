@@ -3067,7 +3067,7 @@ lock_internal_hold_lock_object_instant (int tran_index, const OID * oid, const O
 #endif /* LK_DUMP */
 
 #if defined(SERVER_MODE) && defined(DIAG_DEVEL)
-  SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_LOCK_REQUEST, 1, DIAG_VAL_SETTYPE_INC, NULL);
+  perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_LOCK_REQUEST, 1, DIAG_VAL_SETTYPE_INC, NULL);
 #endif /* SERVER_MODE && DIAG_DEVEL */
   if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
     {
@@ -3276,7 +3276,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   *entry_addr_ptr = NULL;
 
 #if defined(SERVER_MODE) && defined(DIAG_DEVEL)
-  SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_LOCK_REQUEST, 1, DIAG_VAL_SETTYPE_INC, NULL);
+  perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_LOCK_REQUEST, 1, DIAG_VAL_SETTYPE_INC, NULL);
 #endif /* SERVER_MODE && DIAG_DEVEL */
 
   /* get current locking phase */
@@ -8073,7 +8073,7 @@ final_:
 #if defined(SERVER_MODE) && defined(DIAG_DEVEL)
   if (victim_count > 0)
     {
-      SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_LOCK_DEADLOCK, 1, DIAG_VAL_SETTYPE_INC, NULL);
+      perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_LOCK_DEADLOCK, 1, DIAG_VAL_SETTYPE_INC, NULL);
 #if 0				/* ACTIVITY PROFILE */
       ADD_ACTIVITY_DATA (diag_executediag, DIAG_EVENTCLASS_TYPE_SERVER_LOCK_DEADLOCK, "", "", victim_count);
 #endif

@@ -13955,7 +13955,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		      if (level == 0 && spec_level == 1)
 			{
 #if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-			  SET_DIAG_VALUE_FULL_SCAN (diag_executediag, 1, DIAG_VAL_SETTYPE_INC, NULL, xasl, specp);
+			  perfmon_diag_set_full_scan (diag_executediag, NULL, xasl, specp);
 #if 0				/* ACTIVITY PROFILE */
 			  ADD_ACTIVITY_DATA (diag_executediag, DIAG_EVENTCLASS_TYPE_SERVER_QUERY_FULL_SCAN,
 					     xasl->sql_hash_text, "", 0);
@@ -13987,7 +13987,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      iscan_oid_order = false;
 			    }
 #if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-			  SET_DIAG_VALUE_FULL_SCAN (diag_executediag, 1, DIAG_VAL_SETTYPE_INC, NULL, xasl, specp);
+			  perfmon_diag_set_full_scan (diag_executediag, NULL, xasl, specp);
 #if 0				/* ACTIVITY PROFILE */
 			  ADD_ACTIVITY_DATA (diag_executediag, DIAG_EVENTCLASS_TYPE_SERVER_QUERY_FULL_SCAN,
 					     xasl->sql_hash_text, "", 0);

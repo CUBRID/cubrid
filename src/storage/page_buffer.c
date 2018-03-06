@@ -7785,7 +7785,7 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   /* at this point, the caller is holding bufptr->mutex */
 
 #if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-  SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_QUERY_OPENED_PAGE, 1, DIAG_VAL_SETTYPE_INC, NULL);
+  perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_QUERY_OPENED_PAGE, 1, DIAG_VAL_SETTYPE_INC, NULL);
 #endif /* DIAG_DEVEL && SERVER_MODE */
 
   return NO_ERROR;
@@ -7847,7 +7847,7 @@ pgbuf_invalidate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       pgbuf_put_bcb_into_invalid_list (thread_p, bufptr);
 
 #if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-      SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_QUERY_OPENED_PAGE, 1, DIAG_VAL_SETTYPE_INC, NULL);
+      perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_QUERY_OPENED_PAGE, 1, DIAG_VAL_SETTYPE_INC, NULL);
 #endif /* DIAG_DEVEL && SERVER_MODE */
     }
   else
@@ -16030,7 +16030,7 @@ class pgbuf_flush_control_daemon_task : public cubthread::entry_task
       int token_gen, token_consumed;
 
       gettimeofday (&begin, NULL);
-      perfmon_diff_timeval (&diff, m_end, begin);
+      perfmon_diff_timeval (&diff, &m_end, &begin);
 
       int64_t diff_usec = diff.tv_sec * 1000000LL + diff.tv_usec;
       fileio_flush_control_add_tokens (&thread_ref, diff_usec, &token_gen, &token_consumed);
