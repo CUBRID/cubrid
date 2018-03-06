@@ -24,9 +24,16 @@ void master_replication_channel_manager::init ()
     }
 }
 
-void master_replication_channel_manager::add_master_replication_channel (master_replication_channel_entry &&channel)
+int master_replication_channel_manager::add_master_replication_channel (master_replication_channel_entry &&channel)
 {
+  int rc = channel.get_replication_channel ()->accept_slave ();
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
   master_channels.push_back (std::forward<master_replication_channel_entry> (channel));
+  return NO_ERROR;
 }
 
 void master_replication_channel_manager::reset ()

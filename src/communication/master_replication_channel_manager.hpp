@@ -66,7 +66,7 @@ class master_replication_channel_manager
 {
   public:
     static void init ();
-    static void add_master_replication_channel (master_replication_channel_entry &&channel);
+    static int add_master_replication_channel (master_replication_channel_entry &&channel);
     static unsigned int get_number_of_channels ();
     static void reset ();
 

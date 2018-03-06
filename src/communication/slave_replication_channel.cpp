@@ -16,13 +16,10 @@ std::mutex slave_replication_channel::singleton_mutex;
 
 slave_replication_channel::slave_replication_channel (const std::string &hostname,
     const std::string &master_server_name, int port) :
-                                                      slave_daemon (NULL),
-                                                      cub_server_master_channel (hostname.c_str (),
-                                                                                 port,
-                                                                                 -1,
-                                                                                 SERVER_REQUEST_CONNECT_NEW_SLAVE,
-                                                                                 master_server_name.c_str ())
+                                                      slave_daemon (NULL)
 {
+  cub_server_master_channel.create_initiator (hostname.c_str (), port, SERVER_REQUEST_CONNECT_NEW_SLAVE, master_server_name.c_str ());
+
   _er_log_debug (ARG_FILE_LINE, "init slave_replication_channel hostname=%s\n", hostname.c_str ());
 }
 

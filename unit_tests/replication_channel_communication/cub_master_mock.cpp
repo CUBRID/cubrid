@@ -94,12 +94,15 @@ namespace cub_master_mock
 		return;
 	      }
 
-	    conn->fd = INVALID_SOCKET;
-	    free_conn_entry_fp (conn);
-
-	    master_replication_channel_manager::add_master_replication_channel (master_replication_channel_entry (new_sockfd,
+	    rc = master_replication_channel_manager::add_master_replication_channel (master_replication_channel_entry (new_sockfd,
 		RECEIVE_FROM_SLAVE, new master::receive_from_slave_daemon_mock (), ANOTHER_DAEMON_FOR_TESTING,
 		new master::dummy_print_daemon ()));
+            if (rc == NO_ERROR)
+              {
+                conn->fd = INVALID_SOCKET;
+              }
+
+            free_conn_entry_fp (conn);
 	  }
       }
   };

@@ -9,14 +9,18 @@
 class master_replication_channel
 {
   public:
-    master_replication_channel (int slave_fd = -1);
+    master_replication_channel (SOCKET socket = INVALID_SOCKET);
     ~master_replication_channel ();
+
+    int accept_slave (SOCKET socket);
+    int accept_slave ();
 
     communication_channel &get_cub_server_slave_channel ();
 
     bool is_connected ();
   private:
     communication_channel cub_server_slave_channel;
+    SOCKET m_slave_socket;
 };
 
 class receive_from_slave_daemon : public cubthread::entry_task
