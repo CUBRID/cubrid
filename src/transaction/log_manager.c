@@ -10266,14 +10266,14 @@ log_get_log_group_commit_interval (bool & is_timed_wait, cubthread::delta_time &
     }
 #endif /* SERVER_MODE */
 
-  int max_wait_time_msec = 1000;
+  const int MAX_WAIT_TIME_MSEC = 1000;
   int log_group_commit_interval_msec = prm_get_integer_value (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS);
 
   assert (log_group_commit_interval_msec >= 0);
 
   if (log_group_commit_interval_msec == 0)
     {
-      period = std::chrono::milliseconds (max_wait_time_msec);
+      period = std::chrono::milliseconds (MAX_WAIT_TIME_MSEC);
     }
   else
     {

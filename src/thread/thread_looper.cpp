@@ -150,6 +150,11 @@ namespace cubthread
   void
   looper::setup_increasing_waits (bool &is_timed_wait, delta_time &period)
   {
+    if (m_was_woken_up)
+      {
+	reset ();
+      }
+
     if (m_period_index < m_periods_count)
       {
 	is_timed_wait = true;
