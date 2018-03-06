@@ -31,6 +31,9 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <forward_list>
+#include <list>
+#include <memory>
 #include <mutex>
 #include <thread>
 
@@ -43,7 +46,6 @@ namespace cubthread
   namespace wpstat
   {
     using stat_type = std::uint64_t;
-    using atomic_stat_type = std::atomic<stat_type>;
     using clock_type = std::chrono::high_resolution_clock;
     using time_point_type = clock_type::time_point;
     using duration_type = std::chrono::nanoseconds;
@@ -54,14 +56,16 @@ namespace cubthread
       GET_WORKER_FROM_INACTIVE_QUEUE,
       GET_WORKER_FAILED,
       START_THREAD,
-      CLAIM_CONTEXT,
+      CREATE_CONTEXT,
       EXECUTE_TASK,
       RETIRE_TASK,
       SEARCH_TASK_IN_QUEUE,
+      WAKEUP_WITH_TASK,
       RETIRE_CONTEXT,
+      DEACTIVATE_WORKER,
       COUNT
-    }
-    static const size_t STATS_COUNT = static_cast<size_t> (ids::COUNT);
+    };
+    static const std::size_t STATS_COUNT = static_cast<size_t> (id::COUNT);
 
     inline const char *
     get_id_name (id statid)
@@ -76,16 +80,20 @@ namespace cubthread
 	  return "GET_WORKER_FAILED";
 	case id::START_THREAD:
 	  return "START_THREAD";
-	case id::CLAIM_CONTEXT:
-	  return "CLAIM_CONTEXT";
+	case id::CREATE_CONTEXT:
+	  return "CREATE_CONTEXT";
 	case id::EXECUTE_TASK:
 	  return "EXECUTE_TASK";
 	case id::RETIRE_TASK:
 	  return "RETIRE_TASK";
 	case id::SEARCH_TASK_IN_QUEUE:
 	  return "SEARCH_TASK_IN_QUEUE";
+	case id::WAKEUP_WITH_TASK:
+	  return "WAKEUP_WITH_TASK";
 	case id::RETIRE_CONTEXT:
 	  return "RETIRE_CONTEXT";
+	case id::DEACTIVATE_WORKER:
+	  return "DEACTIVATE_WORKER";
 	case id::COUNT:
 	default:
 	  assert (false);
@@ -93,14 +101,14 @@ namespace cubthread
 	}
     }
 
-    inline size_t
+    inline std::size_t
     to_index (id &statid)
     {
       return static_cast<size_t> (statid);
     }
 
     inline id
-    to_id (size_t index)
+    to_id (std::size_t index)
     {
       assert (index >= 0 && index < STATS_COUNT);
       return static_cast<id> (index);
@@ -111,61 +119,46 @@ namespace cubthread
     {
       stat_type m_counters[STATS_COUNT];
       stat_type m_timers[STATS_COUNT];
-    };
 
-    // atomic collection
-    struct atomic_collector
-    {
-      atomic_stat_type m_counters[STATS_COUNT];
-      atomic_stat_type m_timers[STATS_COUNT];
-
-      inline void operator+= (const collector &statcol)
+      collector (void)
+	: m_counters { 0 }
+	, m_timers { 0 }
       {
-	for (size_t index = 0; index < STATS_COUNT; index++)
+	//
+      }
+
+      inline void
+      add (id statid, duration_type delta)
+      {
+	size_t index = to_index (statid);
+	m_counters[i]++;
+	m_timers[i] += delta.count ();
+      }
+
+      inline void
+      add (id statid, time_point_type start, time_point_type end)
+      {
+	add (statid, end - start);
+      }
+
+      inline void
+      add (const collector &col_arg)
+      {
+	for (std::size_t it = 0; it < STATS_COUNT; it++)
 	  {
-	    m_counters.fetch_add (statcol.m_counters[index]);
-	    m_timers.fetch_add (statcol.m_timers[index]);
+	    m_counters[it] += col_arg.m_counters[it];
+	    m_timers[it] += col_arg.m_timers[it];
 	  }
       }
+
+      inline void
+      register_now (id statid, time_point_type &start)
+      {
+	time_point_type nowpt = clock_type::now ();
+	add (statid, nowpt - start);
+	start = nowpt;
+      }
     };
-
-    inline void
-    collect (id statid, duration_type delta, collector &statcol)
-    {
-      size_t index = to_index (statid);
-      statcol.m_counters[index]++;
-      statcol.m_timers[index] += delta.count ();
-    }
-
-    inline void
-    collect (id statid, time_point_type start, time_point_type end, collector &statcol)
-    {
-      collect (statid, end - start, statcol);
-    }
-
-    inline void
-    atomic_collect (id statid, duration_type delta, atomic_collector &statcol)
-    {
-      size_t index = to_index (statid);
-      statcol.m_counters[index]++;
-      statcol.m_timers[index] += delta.count ();
-    }
-
-    inline void
-    atomic_collect (id statid, time_point_type start, time_point_type end, atomic_collector &statcol)
-    {
-      atomic_collect (statid, end - start, statcol);
-    }
-
-    inline void
-    get_atomic_stats (const atomic_collector &atomic_col, collector &col_out)
-    {
-      for (size_t index = 0; index < STATS_COUNT; index++)
-	{
-	  col_out.m_counters[index] = atomic_col.m_counters[index];
-	  col_out.m_timers[index] = atomic_col.m_timers[index];
-	}
-    }
 
   } // namespace wpstat
 
@@ -247,7 +240,7 @@ namespace cubthread
       std::size_t get_running_count (void) const;
       std::size_t get_max_count (void) const;
 
-      void get_stats (std::uint64_t *stats_out);
+      void get_stats (wpstat::collector &sum_out);
 
       //////////////////////////////////////////////////////////////////////////
       // context management
@@ -264,16 +257,13 @@ namespace cubthread
       // see more details on class definition
       class worker;
 
-      // function executed by worker; executes first task and then continues with any task it finds in queue
-      static void run (worker_pool<Context> &pool, worker &thread_arg, task_type *work_arg);
-
       // register a new worker; return NULL if no worker is available
       worker *register_worker (void);
 
       task_type *set_worker_available_for_new_work (worker &thread_arg);
 
       // deregister worker when it stops running
-      void deregister_worker (worker &thread_arg);
+      void deactivate_worker (worker &thread_arg);
 
       // thread index
       size_t get_thread_index (worker &thread_arg);
@@ -294,22 +284,13 @@ namespace cubthread
 
       // thread objects
       worker *m_workers;
-
-      // thread "dispatcher" - a pool of threads
-      lockfree::circular_queue<worker *> m_worker_dispatcher;
-      lockfree::circular_queue<worker *> m_sleepers;
+      // m_active_workers - worker is active (has running thread) and waits for new task
+      std::list<worker &> m_active_workers;
+      std::forward_list<worker &> m_inactive_workers;
+      std::mutex m_workers_mutex;
 
       // contexts being used, one for each thread. thread <-> context matching based on index
       atomic_context_ptr *m_context_pointers;
-
-      stat_count_type m_stat_worker_count;
-      stat_count_type m_stat_task_count;
-      stat_time_type m_stat_register_time;
-      stat_time_type m_stat_start_thread_time;
-      stat_time_type m_stat_claim_context_time;
-      stat_time_type m_stat_execute_time;
-      stat_time_type m_stat_retire_context_time;
-      stat_time_type m_stat_deregister_time;
 
       // set to true when stopped
       std::atomic<bool> m_stopped;
@@ -364,18 +345,6 @@ namespace cubthread
   //          - claiming task from queue
   //          - executing task
   //
-  //    the [timed] phases of a worker
-  //
-  //      1. getting worker from active queue
-  //      2. getting worker from inactive queue
-  //      3. starting thread
-  //      4. claiming context
-  //      5. executing task
-  //      6. getting task from task queue
-  //      7. not finding task in task queue
-  //      8. waking up with a task assigned
-  //      9. retiring context [no task assigned]
-  //
   // note
   //    class is nested to worker pool and cannot be used outside it
   //
@@ -383,135 +352,118 @@ namespace cubthread
   class worker_pool<Context>::worker
   {
     public:
-      using clock_type = std::chrono::high_resolution_clock;
-      using time_point_type = clock_type::time_point;
-
-      worker ()
-	: m_thread ()
-	, m_state (state::FREE_FOR_REGISTER)
+      worker (worker_pool<Context> &pool)
+	: m_pool_ref (pool)
+	, m_context_p (NULL)
+	, m_task_p (NULL)
 	, m_task_cv ()
 	, m_task_mutex ()
-	, m_task_p (NULL)
-	, m_waiting_assignment (false)
-	, m_push_time ()
-	, m_register_time ()
-	, m_run_time ()
-	, m_execute_time ()
-	, m_retire_time ()
-	, m_deregister_time ()
+	, m_waiting_task (false)
+	, m_statistics ()
       {
 	//
       }
 
-      void
-      set_registered (time_point_type &push_time)
+      void execute (task<Context> *work_p, wpstat::time_point_type push_time)
       {
-	assert (m_state == state::FREE_FOR_REGISTER);
-
-	if (m_thread.joinable ())
-	  {
-	    // need to join first; maybe it is still running
-	    m_thread.join ();
-	  }
-
-	// now it is safe to do other operations
 	m_push_time = push_time;
-	m_register_time = clock_type::now ();
-
-	m_state = state::REGISTERED_FOR_RUNNING;
-      }
-
-      void
-      set_running (void)
-      {
-	assert (m_state == state::REGISTERED_FOR_RUNNING);
-	m_run_time = clock_type::now ();
-
-	m_state = state::CLAIMING_CONTEXT;
-      }
-
-      void
-      set_executing (void)
-      {
-	assert (m_state == state::CLAIMING_CONTEXT);
-	m_execute_time = clock_type::now ();
-
-	m_state = state::EXECUTING_TASKS;
-      }
-
-      void
-      set_retiring (void)
-      {
-	assert (m_state == state::EXECUTING_TASKS || m_state == state::REGISTERED_FOR_RUNNING);
-	m_retire_time = clock_type::now ();
-
-	m_state = state::RETIRING_CONTEXT;
-      }
-
-      void
-      set_deregistering (void)
-      {
-	assert (m_state == state::RETIRING_CONTEXT);
-	m_deregister_time = clock_type::now ();
-
-	m_state = state::DEREGISTERING;
-      }
-
-      void
-      set_free (void)
-      {
-	assert (m_state == state::DEREGISTERING || m_state == state::EXECUTING_TASKS);
-	m_free_time = clock_type::now ();
-	if (m_state == state::EXECUTING_TASKS)
-	  {
-	    m_retire_time = m_deregister_time = m_free_time;
-	  }
-
-	m_state = state::FREE_FOR_REGISTER;
-      }
-
-      template <typename Context>
-      void
-      start_thread (worker_pool<Context> &pool_ref, task<Context> *work_p)
-      {
-	assert (m_state == state::REGISTERED_FOR_RUNNING);
-
 	if (assign_task (work_p))
 	  {
-	    // thread is running and took the task
+	    // assigned directly
 	  }
 	else
 	  {
-	    std::thread (worker_pool<Context>::run, std::ref (pool_ref), std::ref (*this), work_p).detach ();
+	    // need to start thread
+	    m_task_p = work_p;
+	    std::thread (worker::run, this).detach ();  // don't block
 	  }
       }
 
       void
-      get_stats (std::chrono::nanoseconds &delta_register, std::chrono::nanoseconds &delta_start_thread,
-		 std::chrono::nanoseconds &delta_register_context, std::chrono::nanoseconds &delta_execute,
-		 std::chrono::nanoseconds &delta_retire_context, std::chrono::nanoseconds &delta_deregister)
+      run ()
       {
-	assert (m_state == state::FREE_FOR_REGISTER);
+	// register start thread timer
+	wpstat::time_point_type timept = m_push_time;
+	m_statistics.register_now (wpstat::id::START_THREAD, timept);
 
-	delta_register = m_register_time - m_push_time;
-	delta_start_thread = m_run_time - m_register_time;
-	delta_register_context = m_execute_time - m_run_time;
-	delta_execute = m_retire_time - m_execute_time;
-	delta_retire_context = m_deregister_time - m_retire_time;
-	delta_deregister = m_free_time - m_deregister_time;
+	// get task
+	task<Context> *task_p = m_task_p->release ();
+
+
+	bool found_task = false;
+
+	// claim a context
+	m_context_p = &m_pool_ref.m_context_manager.create_context ();
+	m_statistics.register_now (wpstat::id::CREATE_CONTEXT, timept);
+
+	// loop and execute as many tasks as possible
+	while (true)
+	  {
+	    // check if pool was stopped meanwhile
+	    if (!m_pool_ref.is_running ())
+	      {
+		// task must not be executed if it was pushed for execution after worker pool was stopped
+		task_p->retire ();
+		m_statistics.register_now (wpstat::id::RETIRE_TASK, timept);
+
+		// stop
+		break;
+	      }
+
+	    // execute current task
+	    task_p->execute ();
+	    m_statistics.register_now (wpstat::id::EXECUTE_TASK, timept);
+	    // and retire it
+	    task_p->retire ();
+	    m_statistics.register_now (wpstat::id::RETIRE_TASK, timept);
+
+	    // try to get new task from queue
+	    found_task = m_pool_ref.m_work_queue.consume (task_p);
+	    m_statistics.register_now (wpstat::id::SEARCH_TASK_IN_QUEUE, timept);
+	    if (found_task)
+	      {
+		// execute task from queue
+		continue;
+	      }
+
+	    // try to wait for a task, it may come soon
+	    task_p = wait_for_task ();
+	    timept = wpstat::clock_type::now ();
+	    if (task_p == NULL)
+	      {
+		// no task found; stop
+		break;
+	      }
+	  }
+
+	// retire context; we must first reset m_context_p
+	Context &ctx_ref = *m_context_p;
+	m_context_p = NULL;
+	m_pool_ref.m_context_manager.retire_context (ctx_ref);
+	m_statistics.register_now (wpstat::id::RETIRE_CONTEXT, timept);
+
+	// worker becomes inactive
+	m_pool_ref.deactivate_worker (*this);
+	m_statistics.add (wpstat::id::DEACTIVATE_WORKER, timept, wpstat::clock_type::now ());
       }
 
-      void *
-      wait_for_task (void)
+      task<Context> *
+      wait_for_task (wpstat::time_point_type &timept_inout)
       {
 	std::unique_lock<std::mutex> ulock (m_task_mutex);
-	m_waiting_assignment = true;
+	m_waiting_task = true;
 	m_task_cv.wait_for (ulock, std::chrono::seconds (60),
-			    [this] { return m_waiting_assignment && m_task_p != NULL; });
-	m_waiting_assignment = false;
+			    [this] { return m_waiting_task && m_task_p != NULL; });
+	m_waiting_task = false;
 
-	void *ret_p = m_task_p;
+	task<Context> *ret_p = m_task_p;
 	m_task_p = NULL;
+
+	timept_inout = wpstat::clock_type::now ();
+	if (ret_p != NULL)
+	  {
+	    m_statistics.add (wpstat::id::WAKEUP_WITH_TASK, m_push_time, timept_inout);
+	  }
 	return ret_p;
       }
 
@@ -520,11 +472,11 @@ namespace cubthread
       {
 	{
 	  std::unique_lock<std::mutex> ulock (m_task_mutex);
-	  if (!m_waiting_assignment)
+	  if (!m_waiting_task)
 	    {
 	      return;
 	    }
-	  m_waiting_assignment = false;
+	  m_waiting_task = false;
 	}
 	m_task_cv.notify_one ();
       }
@@ -534,7 +486,7 @@ namespace cubthread
       {
 	{
 	  std::unique_lock<std::mutex> ulock (m_task_mutex);
-	  if (!m_waiting_assignment)
+	  if (!m_waiting_task)
 	    {
 	      return false;
 	    }
@@ -550,32 +502,21 @@ namespace cubthread
 
     private:
 
-      enum class state
-      {
-	FREE_FOR_REGISTER,
-	REGISTERED_FOR_RUNNING,
-	CLAIMING_CONTEXT,
-	EXECUTING_TASKS,
-	RETIRING_CONTEXT,
-	DEREGISTERING,
-      };
+      // the pool
+      worker_pool<Context> &m_pool_ref;
+      Context *m_context_p;
 
-      std::thread m_thread;
-      state m_state;
+      // assigned task
+      std::unique_ptr<task<Context>> m_task_p;
 
+      // synchronization on task wait
       std::condition_variable m_task_cv;
       std::mutex m_task_mutex;
-      void *m_task_p;
-      bool m_waiting_assignment;
+      bool m_waiting_task;
+      wpstat::time_point_type m_push_time;
 
-      // timers
-      time_point_type m_push_time;
-      time_point_type m_register_time;
-      time_point_type m_run_time;
-      time_point_type m_execute_time;
-      time_point_type m_retire_time;
-      time_point_type m_deregister_time;
-      time_point_type m_free_time;
+      // statistics
+      wpstat::collector m_statistics;
   };
 
   template <typename Context>
@@ -586,17 +527,10 @@ namespace cubthread
     , m_work_queue (work_queue_size)
     , m_context_manager (*context_mgr)
     , m_workers (new worker[m_max_workers])
-    , m_worker_dispatcher (pool_size)
-    , m_sleepers (pool_size)
+    , m_active_workers (pool_size)
+    , m_inactive_workers (pool_size)
+    , m_workers_mutex ()
     , m_context_pointers (NULL)
-    , m_stat_worker_count (0)
-    , m_stat_task_count (0)
-    , m_stat_register_time (0)
-    , m_stat_start_thread_time (0)
-    , m_stat_claim_context_time (0)
-    , m_stat_execute_time (0)
-    , m_stat_retire_context_time (0)
-    , m_stat_deregister_time (0)
     , m_stopped (false)
     , m_log (debug_log)
   {
@@ -612,7 +546,7 @@ namespace cubthread
     // m_sleepers - add all threads
     for (std::size_t i = 0; i < m_max_workers; ++i)
       {
-	if (!m_sleepers.produce (&m_workers[i]))
+	if (!m_inactive_workers.produce (&m_workers[i]))
 	  {
 	    assert (false);
 	  }
@@ -640,7 +574,7 @@ namespace cubthread
     worker *worker_p = register_worker ();
     if (worker_p != NULL)
       {
-	worker_p->start_thread (*this, work_arg);
+	worker_p->execute (*this, work_arg);
       }
     else
       {
@@ -656,7 +590,7 @@ namespace cubthread
     worker *worker_p = register_worker ();
     if (worker_p != NULL)
       {
-	worker_p->start_thread (*this, work_arg);
+	worker_p->execute (*this, work_arg);
       }
     else if (m_stopped)
       {
@@ -789,99 +723,12 @@ namespace cubthread
 
   template<typename Context>
   void
-  worker_pool<Context>::get_stats (std::uint64_t *stats_out)
+  worker_pool<Context>::get_stats (wpstat::collector &sum_out)
   {
-#define TO_MILLIS(val) static_cast<std::uint64_t> ((val) / 1000000)
-
-    stats_out[0] = static_cast<std::uint64_t> (m_stat_worker_count);
-    stats_out[1] = static_cast<std::uint64_t> (m_stat_task_count);
-    stats_out[2] = TO_MILLIS (m_stat_register_time);
-    stats_out[3] = TO_MILLIS (m_stat_start_thread_time);
-    stats_out[4] = TO_MILLIS (m_stat_claim_context_time);
-    stats_out[5] = TO_MILLIS (m_stat_execute_time);
-    stats_out[6] = TO_MILLIS (m_stat_retire_context_time);
-    stats_out[7] = TO_MILLIS (m_stat_deregister_time);
-
-#undef TO_MILLIS
-  }
-
-  template <typename Context>
-  void
-  worker_pool<Context>::run (worker_pool<Context> &pool, worker &worker_arg, task_type *task_arg)
-  {
-#define THREAD_WP_STATIC_LOG(msg, ...) if (pool.m_log) _er_log_debug (ARG_FILE_LINE, "run: " msg, __VA_ARGS__)
-
-    if (!pool.is_running())
+    for (std::size_t it = 0; it < m_max_workers; it++)
       {
-	// task must not be executed if it was pushed for execution after worker pool was stopped
-	task_arg->retire();
-
-	// deregister worker
-	pool.deregister_worker (worker_arg);
-	return;
+	sum_out.add (m_workers->m_statistics);
       }
-
-    worker_arg.set_running ();
-
-    // create context for task execution
-    std::size_t thread_index = pool.get_thread_index (worker_arg);
-    Context &context = pool.m_context_manager.create_context ();
-    bool first_loop = true;
-
-    // save to pool contexts too
-    pool.m_context_pointers[thread_index] = &context;
-
-    // loop as long as pool is running and there are tasks in queue
-    task_type *task_p = task_arg;
-    unsigned int task_count = 0;
-    worker_arg.set_executing ();
-    while (true)
-      {
-	do
-	  {
-	    THREAD_WP_STATIC_LOG ("loop on thread = %zu, context = %p, task = %p", thread_index, &context, task_p);
-
-	    if (!first_loop)
-	      {
-		// make sure context can be reused
-		pool.m_context_manager.recycle_context (context);
-	      }
-
-	    // execute current task
-	    task_p->execute (context);
-	    // and retire it
-	    task_p->retire ();
-
-	    ++task_count;
-
-	    // consume another task
-	  }
-	while (pool.is_running() && pool.m_work_queue.consume (task_p));
-
-	// don't die just yet, wait for new tasks
-	task_p = pool.set_worker_available_for_new_work (worker_arg);
-	if (task_p == NULL)
-	  {
-	    // no new task, stop thread
-	    break;
-	  }
-      }
-
-    THREAD_WP_STATIC_LOG ("stop on thread = %zu, context = %p", thread_index, &context);
-
-    pool.m_stat_worker_count++;
-    pool.m_stat_task_count++;
-
-    worker_arg.set_retiring ();
-
-    // remove context from pool and retire
-    pool.m_context_pointers[thread_index] = NULL;
-    pool.m_context_manager.retire_context (context);
-
-    // end of run; deregister worker
-    pool.deregister_worker (worker_arg);
-
-#undef THREAD_WP_STATIC_LOG
   }
 
   template <typename Context>
@@ -892,12 +739,12 @@ namespace cubthread
     auto push_time = worker::clock_type::now ();
 
     // claim a running thread
-    if (m_worker_dispatcher.consume (worker_p))
+    if (m_active_workers.consume (worker_p))
       {
 	// this is best option
       }
     // claim a sleeper thread
-    else if (m_sleepers.consume (worker_p))
+    else if (m_inactive_workers.consume (worker_p))
       {
 	// a thread will be spawned
       }
@@ -920,7 +767,7 @@ namespace cubthread
   task<Context> *
   worker_pool<Context>::set_worker_available_for_new_work (worker &worker_arg)
   {
-    if (!m_worker_dispatcher.produce (&worker_arg))
+    if (!m_active_workers.produce (&worker_arg))
       {
 	return NULL;
       }
@@ -930,33 +777,10 @@ namespace cubthread
 
   template <typename Context>
   void
-  worker_pool<Context>::deregister_worker (worker &worker_arg)
+  worker_pool<Context>::deactivate_worker (worker &worker_arg)
   {
-    worker_arg.set_deregistering ();
-
-    // THREAD_WP_LOG ("deregister_worker", "thread = %zu", get_thread_index (thread_arg));
-    // no logging here; no thread & error context
-    m_sleepers.force_produce (&worker_arg);
+    m_inactive_workers.force_produce (&worker_arg);
     --m_worker_count;
-
-    worker_arg.set_free ();
-
-    // get statistics
-    std::chrono::nanoseconds register_time;
-    std::chrono::nanoseconds start_thread_time;
-    std::chrono::nanoseconds claim_context_time;
-    std::chrono::nanoseconds execute_time;
-    std::chrono::nanoseconds retire_context_time;
-    std::chrono::nanoseconds deregister_time;
-
-    worker_arg.get_stats (register_time, start_thread_time, claim_context_time, execute_time, retire_context_time,
-			  deregister_time);
-    m_stat_register_time += register_time.count ();
-    m_stat_start_thread_time += start_thread_time.count ();
-    m_stat_claim_context_time += claim_context_time.count ();
-    m_stat_execute_time += execute_time.count ();
-    m_stat_retire_context_time += retire_context_time.count ();
-    m_stat_deregister_time += deregister_time.count ();
   }
 
   template<typename Context>
