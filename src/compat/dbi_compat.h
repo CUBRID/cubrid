@@ -43,6 +43,7 @@
 #include "dbtype_def.h"
 #include "error_code.h"
 #include "dbtype_function.h"
+#include "cas_cci_common.h"
 
 #ifdef __cplusplus
 extern "C"
