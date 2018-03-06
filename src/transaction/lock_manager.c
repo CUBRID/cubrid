@@ -5956,10 +5956,11 @@ lock_deadlock_detect_daemon_init ()
 {
   assert (lock_Deadlock_detect_daemon == NULL);
 
+  cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (100));
+  deadlock_detect_task *daemon_task = new deadlock_detect_task ();
+
   // create deadlock detect daemon thread
-  auto interval_time = std::chrono::milliseconds (100);
-  lock_Deadlock_detect_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (interval_time),
-				new deadlock_detect_task ());
+  lock_Deadlock_detect_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
 }
 #endif /* SERVER_MODE */
 
