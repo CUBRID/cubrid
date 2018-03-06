@@ -41,126 +41,10 @@
 
 namespace cubthread
 {
-  // wpstat - namespace for worker pool statistics
-  //
-  namespace wpstat
-  {
-    using stat_type = std::uint64_t;
-    using clock_type = std::chrono::high_resolution_clock;
-    using time_point_type = clock_type::time_point;
-    using duration_type = std::chrono::nanoseconds;
+  // forward definitions
 
-    enum class id
-    {
-      GET_WORKER_FROM_ACTIVE_QUEUE,
-      GET_WORKER_FROM_INACTIVE_QUEUE,
-      GET_WORKER_FAILED,
-      START_THREAD,
-      CREATE_CONTEXT,
-      EXECUTE_TASK,
-      RETIRE_TASK,
-      SEARCH_TASK_IN_QUEUE,
-      WAKEUP_WITH_TASK,
-      RETIRE_CONTEXT,
-      DEACTIVATE_WORKER,
-      COUNT
-    };
-    static const std::size_t STATS_COUNT = static_cast<size_t> (id::COUNT);
-
-    inline const char *
-    get_id_name (id statid)
-    {
-      switch (statid)
-	{
-	case id::GET_WORKER_FROM_ACTIVE_QUEUE:
-	  return "GET_WORKER_FROM_ACTIVE_QUEUE";
-	case id::GET_WORKER_FROM_INACTIVE_QUEUE:
-	  return "GET_WORKER_FROM_INACTIVE_QUEUE";
-	case id::GET_WORKER_FAILED:
-	  return "GET_WORKER_FAILED";
-	case id::START_THREAD:
-	  return "START_THREAD";
-	case id::CREATE_CONTEXT:
-	  return "CREATE_CONTEXT";
-	case id::EXECUTE_TASK:
-	  return "EXECUTE_TASK";
-	case id::RETIRE_TASK:
-	  return "RETIRE_TASK";
-	case id::SEARCH_TASK_IN_QUEUE:
-	  return "SEARCH_TASK_IN_QUEUE";
-	case id::WAKEUP_WITH_TASK:
-	  return "WAKEUP_WITH_TASK";
-	case id::RETIRE_CONTEXT:
-	  return "RETIRE_CONTEXT";
-	case id::DEACTIVATE_WORKER:
-	  return "DEACTIVATE_WORKER";
-	case id::COUNT:
-	default:
-	  assert (false);
-	  return "UNKNOW";
-	}
-    }
-
-    inline std::size_t
-    to_index (id &statid)
-    {
-      return static_cast<size_t> (statid);
-    }
-
-    inline id
-    to_id (std::size_t index)
-    {
-      assert (index >= 0 && index < STATS_COUNT);
-      return static_cast<id> (index);
-    }
-
-    // statistics collector
-    struct collector
-    {
-      stat_type m_counters[STATS_COUNT];
-      stat_type m_timers[STATS_COUNT];
-
-      collector (void)
-	: m_counters { 0 }
-	, m_timers { 0 }
-      {
-	//
-      }
-
-      inline void
-      add (id statid, duration_type delta)
-      {
-	size_t index = to_index (statid);
-	m_counters[i]++;
-	m_timers[i] += delta.count ();
-      }
-
-      inline void
-      add (id statid, time_point_type start, time_point_type end)
-      {
-	add (statid, end - start);
-      }
-
-      inline void
-      add (const collector &col_arg)
-      {
-	for (std::size_t it = 0; it < STATS_COUNT; it++)
-	  {
-	    m_counters[it] += col_arg.m_counters[it];
-	    m_timers[it] += col_arg.m_timers[it];
-	  }
-      }
-
-      inline void
-      register_now (id statid, time_point_type &start)
-      {
-	time_point_type nowpt = clock_type::now ();
-	add (statid, nowpt - start);
-	start = nowpt;
-      }
-    };
-
-  } // namespace wpstat
+  // wpstat - class used to collect worker pool statistics
+  class wpstat;
 
   // cubtread::worker_pool<Context>
   //
@@ -240,12 +124,20 @@ namespace cubthread
       std::size_t get_running_count (void) const;
       std::size_t get_max_count (void) const;
 
-      void get_stats (wpstat::collector &sum_out);
+      void get_stats (wpstat &sum_out);
 
       //////////////////////////////////////////////////////////////////////////
       // context management
       //////////////////////////////////////////////////////////////////////////
 
+      // map functions over all running contexts
+      //
+      // WARNING:
+      //    this is a dangerous functionality. please not that context retirement and mapping function is not
+      //    synchronized. mapped context may be retired or in process of retirement.
+      //
+      //    make sure your case is handled properly
+      //
       template <typename Func, typename ... Args>
       void map_running_contexts (Func &&func, Args &&... args);
 
@@ -310,6 +202,56 @@ namespace cubthread
 
 namespace cubthread
 {
+  // wpstat - class used to collect worker pool statistics
+  //
+  class wpstat
+  {
+    public:
+      // types
+      using stat_type = std::uint64_t;
+      using clock_type = std::chrono::high_resolution_clock;
+      using time_point_type = clock_type::time_point;
+      using duration_type = std::chrono::nanoseconds;
+
+      // ctor/dtor
+      wpstat (stat_type *stats_p = NULL);
+      ~wpstat (void);
+
+      enum class id
+      {
+	GET_WORKER_FROM_ACTIVE_QUEUE,
+	GET_WORKER_FROM_INACTIVE_QUEUE,
+	GET_WORKER_FAILED,
+	START_THREAD,
+	CREATE_CONTEXT,
+	EXECUTE_TASK,
+	RETIRE_TASK,
+	SEARCH_TASK_IN_QUEUE,
+	WAKEUP_WITH_TASK,
+	RETIRE_CONTEXT,
+	DEACTIVATE_WORKER,
+	COUNT
+      };
+
+      static const std::size_t STATS_COUNT = static_cast<size_t> (id::COUNT);
+
+      static const char *get_id_name (id statid);
+      static inline std::size_t to_index (id &statid);
+      static inline id to_id (std::size_t index);
+
+      inline void collect (id statid, duration_type delta);
+      inline void collect (id statid, time_point_type start, time_point_type end);
+      inline void collect_and_time (id statid, time_point_type &start);
+
+      void operator+= (const wpstat &other_stat);
+
+    private:
+
+      stat_type *m_counters;
+      stat_type *m_timers;
+      stat_type *m_own_stats;
+  };
+
   // worker_pool<Context>::worker
   //
   // description
@@ -384,7 +326,7 @@ namespace cubthread
       {
 	// register start thread timer
 	wpstat::time_point_type timept = m_push_time;
-	m_statistics.register_now (wpstat::id::START_THREAD, timept);
+	m_statistics.collect_and_time (wpstat::id::START_THREAD, timept);
 
 	// get task
 	task<Context> *task_p = m_task_p->release ();
@@ -394,7 +336,7 @@ namespace cubthread
 
 	// claim a context
 	m_context_p = &m_pool_ref.m_context_manager.create_context ();
-	m_statistics.register_now (wpstat::id::CREATE_CONTEXT, timept);
+	m_statistics.collect_and_time (wpstat::id::CREATE_CONTEXT, timept);
 
 	// loop and execute as many tasks as possible
 	while (true)
@@ -404,7 +346,7 @@ namespace cubthread
 	      {
 		// task must not be executed if it was pushed for execution after worker pool was stopped
 		task_p->retire ();
-		m_statistics.register_now (wpstat::id::RETIRE_TASK, timept);
+		m_statistics.collect_and_time (wpstat::id::RETIRE_TASK, timept);
 
 		// stop
 		break;
@@ -412,14 +354,14 @@ namespace cubthread
 
 	    // execute current task
 	    task_p->execute ();
-	    m_statistics.register_now (wpstat::id::EXECUTE_TASK, timept);
+	    m_statistics.collect_and_time (wpstat::id::EXECUTE_TASK, timept);
 	    // and retire it
 	    task_p->retire ();
-	    m_statistics.register_now (wpstat::id::RETIRE_TASK, timept);
+	    m_statistics.collect_and_time (wpstat::id::RETIRE_TASK, timept);
 
 	    // try to get new task from queue
 	    found_task = m_pool_ref.m_work_queue.consume (task_p);
-	    m_statistics.register_now (wpstat::id::SEARCH_TASK_IN_QUEUE, timept);
+	    m_statistics.collect_and_time (wpstat::id::SEARCH_TASK_IN_QUEUE, timept);
 	    if (found_task)
 	      {
 		// execute task from queue
@@ -440,7 +382,7 @@ namespace cubthread
 	Context &ctx_ref = *m_context_p;
 	m_context_p = NULL;
 	m_pool_ref.m_context_manager.retire_context (ctx_ref);
-	m_statistics.register_now (wpstat::id::RETIRE_CONTEXT, timept);
+	m_statistics.collect_and_time (wpstat::id::RETIRE_CONTEXT, timept);
 
 	// worker becomes inactive
 	m_pool_ref.deactivate_worker (*this);
@@ -450,6 +392,8 @@ namespace cubthread
       task<Context> *
       wait_for_task (wpstat::time_point_type &timept_inout)
       {
+	m_pool_ref.set_worker_available_for_new_work (*this);
+
 	std::unique_lock<std::mutex> ulock (m_task_mutex);
 	m_waiting_task = true;
 	m_task_cv.wait_for (ulock, std::chrono::seconds (60),
@@ -516,7 +460,7 @@ namespace cubthread
       wpstat::time_point_type m_push_time;
 
       // statistics
-      wpstat::collector m_statistics;
+      wpstat m_statistics;
   };
 
   template <typename Context>
@@ -723,11 +667,11 @@ namespace cubthread
 
   template<typename Context>
   void
-  worker_pool<Context>::get_stats (wpstat::collector &sum_out)
+  worker_pool<Context>::get_stats (wpstat &sum_out)
   {
     for (std::size_t it = 0; it < m_max_workers; it++)
       {
-	sum_out.add (m_workers->m_statistics);
+	sum_out += m_workers->m_statistics;
       }
   }
 
@@ -806,6 +750,45 @@ namespace cubthread
 	    func (*ctx_p, std::forward<Args> (args)...);
 	  }
       }
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // wpstat
+  //////////////////////////////////////////////////////////////////////////
+
+  std::size_t
+  wpstat::to_index (id &statid)
+  {
+    return static_cast<size_t> (statid);
+  }
+
+  wpstat::id
+  wpstat::to_id (std::size_t index)
+  {
+    assert (index >= 0 && index < STATS_COUNT);
+    return static_cast<id> (index);
+  }
+
+  void
+  wpstat::collect (id statid, duration_type delta)
+  {
+    size_t index = to_index (statid);
+    m_counters[index]++;
+    m_timers[index] += delta.count ();
+  }
+
+  void
+  wpstat::collect (id statid, time_point_type start, time_point_type end)
+  {
+    collect (statid, end - start);
+  }
+
+  void
+  wpstat::collect_and_time (id statid, time_point_type &start)
+  {
+    time_point_type nowpt = clock_type::now ();
+    collect (statid, nowpt - start);
+    start = nowpt;
   }
 
 #undef THREAD_WP_LOG

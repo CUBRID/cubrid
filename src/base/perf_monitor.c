@@ -38,6 +38,9 @@
 #include "memory_alloc.h"
 #include "server_interface.h"
 #endif /* !SERVER_MODE */
+#include "thread_worker_pool.hpp"
+
+#include <cstring>
 
 #if defined(SERVER_MODE)
 #include <string.h>
@@ -4698,11 +4701,11 @@ perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int
   *s += ret;
 }
 
-size_t
+// *INDENT-OFF*
+static size_t
 thread_stats_count (void)
 {
-  // INDENT-OFF
-  return (size_t) THRS_COUNT;
+  return cubthread::wpstat::STATS_COUNT * 2;
 }
 
 static int
@@ -4711,34 +4714,27 @@ f_load_thread_stats (void)
   return (int) thread_stats_count ();
 }
 
-const char *
-perfmon_stat_thread_stat_name (size_t index)
+static void
+perfmon_stat_thread_stat_name (size_t index, char * name_buf, size_t max_size)
 {
-  thread_stats thrs = (thread_stats) index;
-
-  switch (thrs)
+  cubthread::wpstat::id wpstat_id;
+  const char* prefixp;
+  const char* COUNTER_PREFIX = "Counter_";
+  const char* TIMER_PREFIX = "Timer_";
+  if (index < cubthread::wpstat::STATS_COUNT)
     {
-    case THRS_TOTAL_WORKER_COUNT:
-      return "thread_total_worker_count";
-    case THRS_TOTAL_TASK_COUNT:
-      return "thread_total_task_count";
-    case THRS_WORKER_REGISTER_TIME:
-      return "thread_worker_register_time";
-    case THRS_THREAD_START_TIME:
-      return "thread_start_time";
-    case THRS_THREAD_ENTRY_CLAIM_TIME:
-      return "thread_entry_claim_time";
-    case THRS_EXECUTION_TIME:
-      return "thread_execution_time";
-    case THRS_THREAD_ENTRY_RETIRE_TIME:
-      return "thread_entry_retire_time";
-    case THRS_WORKER_DEREGISTER_TIME:
-      return "thread_worker_deregister_time";
-    case THRS_COUNT:
-    default:
-      assert_release (false);
-      return "(UNKNOWN)";
+      wpstat_id = cubthread::wpstat::to_id (index);
+      prefixp = COUNTER_PREFIX;
     }
+  else
+    {
+      wpstat_id = cubthread::wpstat::to_id (index - cubthread::wpstat::STATS_COUNT);
+      prefixp = TIMER_PREFIX;
+    }
+  std::strncpy (name_buf, prefixp, max_size);
+  max_size -= std::strlen (prefixp);
+
+  std::strncat (name_buf, cubthread::wpstat::get_id_name (wpstat_id), max_size);
 }
 
 /*
@@ -4748,7 +4744,7 @@ perfmon_stat_thread_stat_name (size_t index)
  * stat_vals (in): statistics buffer
  * 
  */
-void
+static void
 f_dump_in_file_thread_stats (FILE * f, const UINT64 * stat_vals)
 {
   if ( /*pstat_Global.activation_flag & PERFMON_ACTIVE_THREAD */ true)
@@ -4768,6 +4764,8 @@ static void
 perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
 {
   UINT64 value = 0;
+  const size_t MAX_NAME_SIZE = 64;
+  char name_buf[MAX_NAME_SIZE];
 
   assert (stream != NULL);
 
@@ -4778,7 +4776,8 @@ perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
 	{
 	  continue;
 	}
-      fprintf (stream, "%-10s = %16llu\n", perfmon_stat_thread_stat_name (it), (long long unsigned int) value);
+      perfmon_stat_thread_stat_name (it, name_buf, MAX_NAME_SIZE);
+      fprintf (stream, "%-10s = %16llu\n", name_buf, (long long unsigned int) value);
     }
 }
 
@@ -4790,7 +4789,7 @@ perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
  * remaining_size (in): size of input buffer
  * 
  */
-void
+static void
 f_dump_in_buffer_thread_stats (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   if ( /*pstat_Global.activation_flag & PERFMON_ACTIVE_THREAD */ true)
@@ -4811,6 +4810,8 @@ static void
 perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, int *remaining_size)
 {
   UINT64 value = 0;
+  const size_t MAX_NAME_SIZE = 64;
+  char name_buf[MAX_NAME_SIZE];
   int ret;
 
   assert (s != NULL);
@@ -4823,8 +4824,8 @@ perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, in
 	{
 	  continue;
 	}
-      ret = snprintf (*s, *remaining_size, "%-10s = %16llu\n", perfmon_stat_thread_stat_name (it),
-		      (long long unsigned int) value);
+      perfmon_stat_thread_stat_name (it, name_buf, MAX_NAME_SIZE);
+      ret = snprintf (*s, *remaining_size, "%-10s = %16llu\n", name_buf, (long long unsigned int) value);
 
       *remaining_size -= ret;
       *s += ret;
@@ -4834,3 +4835,4 @@ perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, in
 	}
     }
 }
+// *INDENT-ON*

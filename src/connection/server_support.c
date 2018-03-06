@@ -3562,6 +3562,7 @@ css_stop_all_log_writer (THREAD_ENTRY & thread_ref)
 void
 css_get_thread_stats (UINT64 * stats_out)
 {
-  css_Server_request_worker_pool->get_stats (stats_out);
+  cubthread::wpstat allstats (stats_out);
+  css_Server_request_worker_pool->get_stats (allstats);
 }
 // *INDENT-ON*
