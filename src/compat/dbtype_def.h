@@ -1256,6 +1256,27 @@ extern "C"
     V_ERROR = -1
   } DB_LOGICAL;
 
+/********************************************************/
+  /* From tz_support.h */
+  enum tz_region_type
+  {
+    TZ_REGION_OFFSET = 0,
+    TZ_REGION_ZONE = 1
+  };
+  typedef enum tz_region_type TZ_REGION_TYPE;
+
+  typedef struct tz_region TZ_REGION;
+  struct tz_region
+  {
+    TZ_REGION_TYPE type;	/* 0 : offset ; 1 : zone */
+    union
+    {
+      int offset;		/* in seconds */
+      unsigned int zone_id;	/* geographical zone id */
+    };
+  };
+/********************************************************/
+
 #ifdef __cplusplus
 }
 #endif				/* __cplusplus */
