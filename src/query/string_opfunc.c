@@ -51,6 +51,7 @@
 #include "tz_support.h"
 #include "object_primitive.h"
 #include "dbtype.h"
+#include "elo.h"
 #include "db_elo.h"
 #include <vector>
 #if !defined (SERVER_MODE)

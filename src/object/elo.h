@@ -42,6 +42,11 @@ extern "C"
 }
 #endif
 
+#if defined (ENABLE_UNUSED_FUNCTION)
+extern int db_elo_get_meta (const DB_ELO * elo, const char *key, char *buf, int bufsz);
+extern int db_elo_set_meta (DB_ELO * elo, const char *key, const char *val);
+#endif
+
 extern int elo_create (DB_ELO * elo);
 
 extern int elo_copy_structure (const DB_ELO * elo, DB_ELO * dest);

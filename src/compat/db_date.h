@@ -29,17 +29,6 @@
 
 #include <time.h>
 
-enum
-{
-  TIME_SPECIFIER = 1,
-  DATE_SPECIFIER = 2,
-  DATETIME_SPECIFIER = 3,
-  TIMETZ_SPECIFIER = 4,
-  DATETIMETZ_SPECIFIER = 5
-};
-
-extern void db_date_locale_init (void);
-
 /* DB_DATE functions */
 extern int db_date_weekday (DB_DATE * date);
 extern int db_date_to_string (char *buf, int bufsize, DB_DATE * date);

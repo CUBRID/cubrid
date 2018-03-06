@@ -48,6 +48,7 @@
 #include "query_manager.h"
 #include "extendible_hash.h"
 #include "replication.h"
+#include "elo.h"
 #include "db_elo.h"
 #include "locator_sr.h"
 #include "xserver_interface.h"

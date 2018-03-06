@@ -45,6 +45,7 @@
 #include "dbtype_function.h"
 #include "cas_cci_common.h"
 #include "db_date.h"
+#include "db_elo.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -55,18 +56,6 @@ extern "C"
 #define DB_FALSE 0
 
 #define SQLX_CMD_TYPE CUBRID_STMT_TYPE
-
-/* DB_ELO function */
-  extern int db_create_fbo (DB_VALUE * value, DB_TYPE type);
-  extern int db_elo_copy_structure (const DB_ELO * src, DB_ELO * dest);
-  extern void db_elo_free_structure (DB_ELO * elo);
-
-  extern int db_elo_copy (const DB_ELO * src, DB_ELO * dest);
-  extern int db_elo_delete (DB_ELO * elo);
-
-  extern int64_t db_elo_size (DB_ELO * elo);
-  extern int db_elo_read (const DB_ELO * elo, int64_t pos, void *buf, size_t count);
-  extern int db_elo_write (DB_ELO * elo, int64_t pos, void *buf, size_t count);
 
 /* Unix-like functions */
   extern time_t db_mktime (DB_DATE * date, DB_TIME * timeval);

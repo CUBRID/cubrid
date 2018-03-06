@@ -26,9 +26,6 @@
 
 #ident "$Id$"
 
-#include "config.h"
-#include "elo.h"
-
 extern int db_create_fbo (DB_VALUE * value, DB_TYPE type);
 /* */
 extern int db_elo_copy_structure (const DB_ELO * src, DB_ELO * dest);
@@ -37,13 +34,8 @@ extern void db_elo_free_structure (DB_ELO * elo);
 extern int db_elo_copy (DB_ELO * src, DB_ELO * dest);
 extern int db_elo_delete (DB_ELO * elo);
 
-extern DB_BIGINT db_elo_size (DB_ELO * elo);
-extern int db_elo_read (const DB_ELO * elo, off_t pos, void *buf, size_t count, DB_BIGINT * read_bytes);
-extern int db_elo_write (DB_ELO * elo, off_t pos, void *buf, size_t count, DB_BIGINT * written_bytes);
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern int db_elo_get_meta (const DB_ELO * elo, const char *key, char *buf, int bufsz);
-extern int db_elo_set_meta (DB_ELO * elo, const char *key, const char *val);
-#endif
+extern int64_t db_elo_size (DB_ELO * elo);
+extern int db_elo_read (const DB_ELO * elo, int64_t pos, void *buf, size_t count, int64_t * read_bytes);
+extern int db_elo_write (DB_ELO * elo, int64_t pos, void *buf, size_t count, int64_t * written_bytes);
 
 #endif /* _DB_ELO_H_ */

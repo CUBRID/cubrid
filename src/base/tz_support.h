@@ -31,6 +31,16 @@
 #define db_string_to_utime db_string_to_timestamp
 #define db_date_parse_utime db_date_parse_timestamp
 
+enum
+{
+  TIME_SPECIFIER = 1,
+  DATE_SPECIFIER = 2,
+  DATETIME_SPECIFIER = 3,
+  TIMETZ_SPECIFIER = 4,
+  DATETIMETZ_SPECIFIER = 5
+};
+
+extern void db_date_locale_init (void);
 
 #define TZLIB_SYMBOL_NAME_SIZE 64
 #define MAX_LEN_OFFSET 10

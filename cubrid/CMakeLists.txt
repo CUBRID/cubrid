@@ -370,6 +370,7 @@ install(FILES
   ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/dbtype_function.h
   ${COMPAT_DIR}/db_date.h
+  ${COMPAT_DIR}/db_elo.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
   )
 install(FILES
