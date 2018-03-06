@@ -2771,6 +2771,8 @@ JSON_SERIALIZER::GetValuePackedSize (const JSON_VALUE &value)
 void
 JSON_SERIALIZER::InitPointers (const JSON_DOC &document)
 {
+  // we need to know the size of the buffer where we will store the serialized json document
+  // to do this, we need to precalculate the size
   int size = GetDocumentPackedSize (document) + 1;
   head = (char *) db_private_alloc (NULL, size);
   head[size - 1] = '\0';
@@ -2784,6 +2786,14 @@ JSON_SERIALIZER::WalkDocument (JSON_DOC &document)
   return JSON_WALKER::WalkDocument (document);
 }
 
+/*
+* Serialize_helper () - this is where the serialization actually happens
+*
+* return      : void
+* obj (in)    : current value from json "tree"
+* key (in)    : is only used when dealing with JSON_OBJECT, without this we can not access the key string
+* current (in): pointer of the current position of buffer
+*/
 void
 JSON_SERIALIZER::Serialize_helper (const JSON_VALUE &obj, JSON_VALUE *key, char *&current)
 {
@@ -2850,14 +2860,30 @@ int JSON_SERIALIZER::CallBefore (JSON_VALUE &value, JSON_VALUE *key)
   return NO_ERROR;
 }
 
+/*
+* db_json_serialize () - serialize a json document
+*
+* return     : buffer containg the json serialized
+* doc (in)   : the document that we want to serialize
+*/
 char *db_json_serialize (JSON_DOC &doc)
 {
   JSON_SERIALIZER js;
+  // we construct the buffer recursively using or_pack_<type> primitives
   js.WalkDocument (doc);
 
   return js.GetJsonSerialized();
 }
 
+/*
+* db_json_deserialize_helper () - this is where the deserialization actually happens
+*
+* return            : void
+* json_raw (in)     : pointer of the current position of buffer
+* path (in)         : the path is used at reconstruction
+* doc (in)          : the reconstructed document
+* serial_types (in) : map where we store the correspondence between internal types and serialization types
+*/
 static void
 db_json_deserialize_helper (char *&json_raw, const std::string &path, JSON_DOC &doc,
 			    const std::unordered_map<std::string, std::string> &serial_types)
@@ -2961,6 +2987,12 @@ db_json_deserialize_helper (char *&json_raw, const std::string &path, JSON_DOC &
     }
 }
 
+/*
+* db_json_deserialize () - desserialize a json reconstructing the object from a buffer
+*
+* return        : json document deserialized
+* json_raw (in) : buffer of the json serialized
+*/
 JSON_DOC *db_json_deserialize (char *json_raw)
 {
   std::unordered_map<std::string, std::string> serial_types;
