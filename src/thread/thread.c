@@ -2977,7 +2977,6 @@ static void
 thread_rc_track_meter_assert_csect_dependency (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, int amount, void *ptr)
 {
   int cs_idx;
-  int i;
 
   assert (meter != NULL);
   assert (amount != 0);

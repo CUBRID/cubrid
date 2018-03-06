@@ -10273,8 +10273,11 @@ log_read_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_P
 void
 log_wakeup_remove_log_archive_daemon ()
 {
-  if (log_Remove_log_archive_daemon)
+  if (log_Remove_log_archive_daemon != NULL && prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL) == 0)
     {
+      // If PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL is 0 (zero) it means that daemon is sleeping
+      // and on wakeup it will do his job,
+      // otherwise daemon will be awakened every PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL seconds
       log_Remove_log_archive_daemon->wakeup ();
     }
 }
