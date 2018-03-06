@@ -204,5 +204,8 @@ extern INT64 log_get_clock_msec (void);
 
 extern void log_wakeup_remove_log_archive_daemon ();
 extern void log_wakeup_checkpoint_daemon ();
+extern void log_wakeup_log_flush_daemon ();
+
+extern bool log_is_log_flush_daemon_available ();
 
 #endif /* _LOG_MANAGER_H_ */
