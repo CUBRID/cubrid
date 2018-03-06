@@ -668,7 +668,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
   db_make_string_copy (&value, serial_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_NAME, &value);
   pr_clear_value (&value);
-  if (error < 0)
+  if (error != NO_ERROR)
     {
       goto end;
     }
@@ -677,31 +677,35 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
   db_make_object (&value, Au_user);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_OWNER, &value);
   pr_clear_value (&value);
-  if (error < 0)
-    goto end;
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
 
   /* current_val */
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CURRENT_VAL, current_val);
-  if (error < 0)
+  if (error != NO_ERROR)
     {
       goto end;
     }
 
   /* increment_val */
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_INCREMENT_VAL, inc_val);
-  if (error < 0)
+  if (error != NO_ERROR)
     {
       goto end;
     }
 
   /* min_val */
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MIN_VAL, min_val);
-  if (error < 0)
-    goto end;
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
 
   /* max_val */
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MAX_VAL, max_val);
-  if (error < 0)
+  if (error != NO_ERROR)
     {
       goto end;
     }
@@ -710,7 +714,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
   db_make_int (&value, cyclic);	/* always false */
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CYCLIC, &value);
   pr_clear_value (&value);
-  if (error < 0)
+  if (error != NO_ERROR)
     {
       goto end;
     }
@@ -719,7 +723,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
   db_make_int (&value, started);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_STARTED, &value);
   pr_clear_value (&value);
-  if (error < 0)
+  if (error != NO_ERROR)
     {
       goto end;
     }
@@ -728,7 +732,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
   db_make_string_copy (&value, comment);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_COMMENT, &value);
   pr_clear_value (&value);
-  if (error < 0)
+  if (error != NO_ERROR)
     {
       goto end;
     }
@@ -739,7 +743,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
       db_make_string_copy (&value, class_name);
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CLASS_NAME, &value);
       pr_clear_value (&value);
-      if (error < 0)
+      if (error != NO_ERROR)
 	{
 	  goto end;
 	}
@@ -751,7 +755,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
       db_make_string_copy (&value, att_name);
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATT_NAME, &value);
       pr_clear_value (&value);
-      if (error < 0)
+      if (error != NO_ERROR)
 	{
 	  goto end;
 	}
@@ -763,7 +767,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
       db_make_int (&value, cached_num);
       error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CACHED_NUM, &value);
       pr_clear_value (&value);
-      if (error < 0)
+      if (error != NO_ERROR)
 	{
 	  goto end;
 	}
@@ -864,7 +868,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
   /* name */
   db_make_string (&value, serial_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_NAME, &value);
-  if (error < 0)
+  if (error != NO_ERROR)
     {
       goto update_auto_increment_error;
     }
@@ -874,7 +878,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
   db_make_string_copy (&value, class_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CLASS_NAME, &value);
   pr_clear_value (&value);
-  if (error < 0)
+  if (error != NO_ERROR)
     {
       goto update_auto_increment_error;
     }
@@ -883,7 +887,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
   db_make_string_copy (&value, att_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATT_NAME, &value);
   pr_clear_value (&value);
-  if (error < 0)
+  if (error != NO_ERROR)
     {
       goto update_auto_increment_error;
     }

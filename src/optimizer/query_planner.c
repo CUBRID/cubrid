@@ -4845,7 +4845,8 @@ qo_set_cost (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * plan, DB_VALUE * 
    * CONST string.  That way we don't need to dup it, and therefore we
    * won't leak it when the return value is discarded.
    */
-  if ((plan_string = qo_plan_set_cost_fn (plan_string, cost_string[0])) != NULL)
+  plan_string = qo_plan_set_cost_fn (plan_string, cost_string[0]);
+  if (plan_string != NULL)
     {
       db_make_string_copy (result, plan_string);
     }

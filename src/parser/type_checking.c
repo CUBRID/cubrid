@@ -18639,15 +18639,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	const char *username = au_user_name ();
 
 	error = db_make_string_copy (result, username);
+	db_string_free ((char *) username);
 	if (error < 0)
 	  {
-	    db_string_free ((char *) username);
 	    PT_ERRORc (parser, o1, er_msg ());
 	    return 0;
 	  }
 	else
 	  {
-	    result->need_clear = true;
 	    return 1;
 	  }
       }

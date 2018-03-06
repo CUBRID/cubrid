@@ -623,6 +623,8 @@ jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
       return ER_BLOCK_DDL_STMT;
     }
 
+  db_make_null (&user_val);
+
   type = PT_NODE_SP_TYPE (statement);
   sp_name = statement->info.sp.name;
   assert (sp_name != NULL);

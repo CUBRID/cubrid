@@ -318,10 +318,9 @@ classobj_put_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
   error = NO_ERROR;
   found = 0;
 
-
   if (properties == NULL || name == NULL || pvalue == NULL)
     {
-      goto error;
+      return found;
     }
 
   max = set_size (properties);
@@ -366,14 +365,11 @@ classobj_put_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
 	  set_put_element (properties, max + 1, pvalue);
 	  db_make_string_copy (&value, name);
 	  set_put_element (properties, max, &value);
+	  pr_clear_value (&value);
 	}
     }
 
-error:
-
-  pr_clear_value (&value);
-
-  if (error)
+  if (error != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
     }
