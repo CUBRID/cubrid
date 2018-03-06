@@ -35,6 +35,8 @@ static int *counters = NULL;
 static std::vector <cubthread::daemon *> initiator_daemons;
 static cubthread::daemon *listener_daemon;
 
+static std::atomic_bool is_listening;
+
 static int init ();
 static int finish ();
 static int run ();
@@ -47,17 +49,14 @@ class test_communication_channel : public communication_channel
 
     int connect () override
     {
-      SOCKET fd = -1;
-
-      if (m_conn_entry == NULL || m_type != CHANNEL_TYPE::INITIATOR)
+      if (is_connection_alive () || m_type != CHANNEL_TYPE::INITIATOR)
 	{
 	  return ER_FAILED;
 	}
 
-      fd = css_tcp_client_open (m_hostname.get (), m_port);
-      if (!IS_INVALID_SOCKET (fd))
+      m_socket = css_tcp_client_open (m_hostname.get (), m_port);
+      if (!IS_INVALID_SOCKET (m_socket))
 	{
-	  m_conn_entry->fd = fd;
 	  return NO_ERRORS;
 	}
 
@@ -68,11 +67,12 @@ class test_communication_channel : public communication_channel
 void master_listening_thread_func (std::vector <test_communication_channel> &channels)
 {
   int num_of_conns = 0;
-  int listen_fd[2] = {0, 0};
-  int listen_fd_platf_ind = 0;
+  SOCKET listen_fd[2] = {0, 0};
+  SOCKET listen_fd_platf_ind = 0;
   int rc = css_tcp_master_open (LISTENING_PORT, listen_fd);
   if (rc != NO_ERROR)
     {
+      is_listening.store (true); /* unblock main, the error will be caught */
       assert (false);
       return;
     }
@@ -82,8 +82,15 @@ void master_listening_thread_func (std::vector <test_communication_channel> &cha
   listen_fd_platf_ind = listen_fd[0];
 #endif
 
-  test_communication_channel incom_conn (listen_fd_platf_ind, 500);
-
+  test_communication_channel incom_conn (5000);
+  rc = incom_conn.accept (listen_fd_platf_ind);
+  if (rc != NO_ERROR)
+    {
+      is_listening.store (true);
+      assert (false);
+      return;
+    }
+  is_listening.store (true);
   while (num_of_conns < NUM_OF_INITIATORS)
     {
       unsigned short int revents = 0;
@@ -96,7 +103,14 @@ void master_listening_thread_func (std::vector <test_communication_channel> &cha
       if ((revents & POLLIN) != 0)
 	{
 	  int new_sockfd = css_master_accept (listen_fd_platf_ind);
-	  channels.push_back (test_communication_channel (new_sockfd, MAX_TIMEOUT_IN_MS));
+	  test_communication_channel cc (MAX_TIMEOUT_IN_MS);
+	  rc = cc.accept (new_sockfd);
+	  if (rc != NO_ERROR)
+	    {
+	      assert (false);
+	      return;
+	    }
+	  channels.push_back (std::move (cc));
 	  num_of_conns++;
 	}
     }
@@ -163,7 +177,7 @@ class conn_listener_daemon_task : public cubthread::entry_task
 	{
 	  if (m_channels[i].is_connection_alive ())
 	    {
-	      fds[i].fd = m_channels[i].get_conn_entry ()->fd;
+	      fds[i].fd = m_channels[i].get_socket ();
 	      fds[i].events = POLLIN;
 	      fds[i].revents = 0;
 	    }
@@ -237,6 +251,7 @@ static int init ()
       return error_code;
     }
 
+
   error_code = init_thread_system ();
   if (error_code != NO_ERROR)
     {
@@ -247,10 +262,16 @@ static int init ()
   std::vector <cubthread::entry_task *> tasks;
   counters = (int *) calloc (NUM_OF_INITIATORS, sizeof (int));
 
+  is_listening.store (false);
   std::thread listening_thread (master_listening_thread_func, std::ref (channels));
+  while (!is_listening)
+    {
+      std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    }
   for (unsigned int i = 0; i < NUM_OF_INITIATORS; i++)
     {
-      test_communication_channel chn ("localhost", LISTENING_PORT, MAX_TIMEOUT_IN_MS);
+      test_communication_channel chn (MAX_TIMEOUT_IN_MS);
+      chn.create_initiator ("127.0.0.1", LISTENING_PORT);
       error_code = chn.connect ();
       if (error_code != NO_ERRORS)
 	{
@@ -355,3 +376,4 @@ int main (int argc, char **argv)
 
   return 0;
 }
+

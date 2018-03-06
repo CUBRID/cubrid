@@ -71,6 +71,8 @@ enum css_command_type
 };
 typedef enum css_command_type CSS_COMMAND_TYPE;
 
+typedef enum css_command_type CSS_COMMAND_TYPE;
+
 /*
  * These are the responses from the master to a server
  * when it is trying to connect and register itself.
@@ -498,9 +500,5 @@ struct last_access_status
   char program_name[32];
   LAST_ACCESS_STATUS *next;
 };
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern void css_shutdown (int exit_reason);
-#endif
 
 #endif /* _CONNECTION_DEFS_H_ */

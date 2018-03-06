@@ -1213,7 +1213,7 @@ css_process_get_eof_request (SOCKET master_fd)
 int
 css_process_master_hostname ()
 {
-#//if !defined (WINDOWS)
+#				//if !defined (WINDOWS)
   int hostname_length, error;
 
   delete_master_hostname ();
@@ -1251,8 +1251,9 @@ css_process_master_hostname ()
   assert (error == NO_ERRORS);
   /* TODO[arnia] add possibility of adding multiple daemons to slaves */
   error = slave_replication_channel::get_channel ().start_daemon (cubthread::looper (std::chrono::seconds (1)),
-								   new slave_dummy_send_msg (&slave_replication_channel::
-											     get_channel ()));
+								  new
+								  slave_dummy_send_msg
+								  (&slave_replication_channel::get_channel ()));
   assert (error == NO_ERROR);
 
   _er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
@@ -1951,21 +1952,6 @@ shutdown:
 
   return status;
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * css_shutdown() - Shuts down the communication interface
- *   return:
- *   exit_reason(in):
- *
- * Note: This is the routine to call when the server is going down
- */
-void
-css_shutdown (int exit_reason)
-{
-  thread_exit (exit_reason);
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * css_send_data_to_client() - send a data buffer to the server
@@ -3385,9 +3371,9 @@ css_process_new_slave (SOCKET master_fd)
 
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
-  master_replication_channel_manager::
-    add_master_replication_channel (master_replication_channel_entry
-				    (new_fd, RECEIVE_FROM_SLAVE, new receive_from_slave_daemon ()));
+  master_replication_channel_manager::add_master_replication_channel (master_replication_channel_entry
+								      (new_fd, RECEIVE_FROM_SLAVE,
+								       new receive_from_slave_daemon ()));
 }
 
 void

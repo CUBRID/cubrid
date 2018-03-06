@@ -108,6 +108,9 @@ namespace cubthread
       // is looper stopped
       bool is_stopped (void) const;
 
+      // return true if waiter was woken up before timeout, for more details see put_to_sleep (waiter &)
+      bool was_woken_up (void) const;
+
     private:
 
       // definitions
@@ -123,8 +126,9 @@ namespace cubthread
       std::size_t m_periods_count;              // the period count
       delta_time m_periods[MAX_LOOPER_PERIODS]; // period array
 
-      std::size_t m_period_index;           // current period index
-      std::atomic<bool> m_stop;             // when true, loop is stopped; no waits
+      std::atomic<std::size_t> m_period_index;  // current period index
+      std::atomic<bool> m_stop;                 // when true, loop is stopped; no waits
+      std::atomic<bool> m_was_woken_up;         // when true, waiter was woken up before timeout
   };
 
   /************************************************************************/
@@ -142,6 +146,7 @@ namespace cubthread
 #endif
     , m_period_index (0)
     , m_stop (false)
+    , m_was_woken_up (false)
   {
     // fixed period waits
 #if !defined (NO_GCC_44)
@@ -156,6 +161,7 @@ namespace cubthread
     , m_periods {}
     , m_period_index (0)
     , m_stop (false)
+    , m_was_woken_up (false)
   {
     static_assert (Count <= MAX_LOOPER_PERIODS, "Count template cannot exceed MAX_LOOPER_PERIODS=3");
     m_periods_count = std::min (Count, MAX_LOOPER_PERIODS);

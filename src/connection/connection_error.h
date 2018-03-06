@@ -54,17 +54,6 @@
     } \
   while (0)
 
-#define CSS_CHECK_EXIT(r, e) \
-  do \
-    { \
-      if ((r) != 0) \
-	{ \
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, (e), 0); \
-	  THREAD_EXIT (-1); \
-	} \
-    } \
-  while (0)
-
 #define CSS_CHECK_RETURN(r, e) \
   do \
     { \
