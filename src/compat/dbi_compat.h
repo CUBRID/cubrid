@@ -44,7 +44,7 @@
 #include "error_code.h"
 #include "dbtype_function.h"
 #include "cas_cci_common.h"
-#include "date.h"
+#include "db_date.h"
 
 #ifdef __cplusplus
 extern "C"
