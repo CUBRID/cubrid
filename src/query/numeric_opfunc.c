@@ -35,6 +35,7 @@
 
 #include "mprec.h"
 #include "numeric_opfunc.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "memory_alloc.h"
 #include "system_parameter.h"

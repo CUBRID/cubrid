@@ -35,6 +35,7 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "file_io.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "dbtype.h"
 

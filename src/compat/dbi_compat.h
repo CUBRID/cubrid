@@ -44,6 +44,7 @@
 #include "error_code.h"
 #include "dbtype_function.h"
 #include "cas_cci_common.h"
+#include "date.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -54,24 +55,6 @@ extern "C"
 #define DB_FALSE 0
 
 #define SQLX_CMD_TYPE CUBRID_STMT_TYPE
-
-  enum tz_region_type
-  {
-    TZ_REGION_OFFSET = 0,
-    TZ_REGION_ZONE = 1
-  };
-  typedef enum tz_region_type TZ_REGION_TYPE;
-
-  typedef struct tz_region TZ_REGION;
-  struct tz_region
-  {
-    TZ_REGION_TYPE type;	/* 0 : offset ; 1 : zone */
-    union
-    {
-      int offset;		/* in seconds */
-      unsigned int zone_id;	/* geographical zone id */
-    };
-  };
 
   extern int db_date_weekday (DB_DATE * date);
   extern int db_date_to_string (char *buf, int bufsize, DB_DATE * date);

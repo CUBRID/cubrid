@@ -29,6 +29,7 @@
 #include <time.h>
 
 #include "system.h"
+#include "tz_support.h"
 #include "db_date.h"
 
 #include <assert.h>

@@ -41,6 +41,7 @@
 #include "numeric_opfunc.h"
 #include "crypt_opfunc.h"
 #include "string_opfunc.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "db_json.hpp"
 

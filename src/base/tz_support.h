@@ -27,6 +27,11 @@
 #include "thread_compat.hpp"
 #include "timezone_lib_common.h"
 
+#define db_utime_to_string db_timestamp_to_string
+#define db_string_to_utime db_string_to_timestamp
+#define db_date_parse_utime db_date_parse_timestamp
+
+
 #define TZLIB_SYMBOL_NAME_SIZE 64
 #define MAX_LEN_OFFSET 10
 

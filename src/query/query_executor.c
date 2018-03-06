@@ -53,6 +53,7 @@
 #include "xserver_interface.h"
 #include "tz_support.h"
 #include "session.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "btree_load.h"
 #include "query_dump.h"

@@ -42,6 +42,7 @@
 #include "system_parameter.h"
 #include "intl_support.h"
 #include "error_manager.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "misc_string.h"
 #include "md5.h"

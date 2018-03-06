@@ -57,6 +57,7 @@
 #include "broker_filename.h"
 #include "cas_sql_log2.h"
 
+#include "tz_support.h"
 #include "release_string.h"
 #include "perf_monitor.h"
 #include "intl_support.h"
