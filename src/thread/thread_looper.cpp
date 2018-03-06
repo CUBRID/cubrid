@@ -163,7 +163,6 @@ namespace cubthread
     else
       {
 	is_timed_wait = false;
-	reset ();
       }
   }
 
