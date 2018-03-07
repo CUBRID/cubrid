@@ -79,7 +79,7 @@
 #endif
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-#include "dbdef.h"
+#include "cubrid_api.h"
 #else /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 #define DB_EMPTY_SESSION        (0)
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */

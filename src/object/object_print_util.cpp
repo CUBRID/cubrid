@@ -23,7 +23,7 @@
 
 #include "object_print_util.hpp"
 
-#include "dbdef.h"
+#include "cubrid_api.h"
 #include "work_space.h"
 
 #include <assert.h>

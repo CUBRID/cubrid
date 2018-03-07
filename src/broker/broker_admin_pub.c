@@ -75,8 +75,8 @@
 #include "cubrid_getopt.h"
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-#include "dbdef.h"
-#else /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#include "cubrid_api.h"
+#else
 #define DB_EMPTY_SESSION        (0)
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 

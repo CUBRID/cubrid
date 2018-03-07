@@ -33,7 +33,7 @@
 #define JP_MAXNAME          256
 
 #include "parser.h"
-#include "dbdef.h"
+#include "cubrid_api.h"
 #include "chartype.h"
 #include "language_support.h"
 #include "intl_support.h"

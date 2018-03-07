@@ -44,7 +44,7 @@
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "dbtype.h"
-#include "dbdef.h"
+#include "cubrid_api.h"
 #include "parser.h"
 #include "object_domain.h"
 #include "db.h"

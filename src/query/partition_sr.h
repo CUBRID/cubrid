@@ -32,7 +32,6 @@
 #include "thread_compat.hpp"
 #include "xasl.h"
 
-
 /* object for caching objects used in multi row modify statements for each partition */
 typedef struct pruning_scan_cache PRUNING_SCAN_CACHE;
 struct pruning_scan_cache

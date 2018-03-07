@@ -32,7 +32,7 @@
 #include "config.h"
 
 #include "system_parameter.h"
-#include "dbdef.h"
+#include "cubrid_api.h"
 #include "error_manager.h"
 #include "system.h"
 #include "dbtype_def.h"
@@ -41,7 +41,6 @@
 #include "language_support.h"
 #include "intl_support.h"
 #include "object_primitive.h"
-
 
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 

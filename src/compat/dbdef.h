@@ -32,40 +32,6 @@
 
 /* TODO: find a better place for these stuff. This file has no clear purpose */
 
-#define SERVER_SESSION_KEY_SIZE			8
 
-typedef struct dbdef_vol_ext_info DBDEF_VOL_EXT_INFO;
-struct dbdef_vol_ext_info
-{
-  const char *path;		/* Directory where the volume extension is created.  If NULL, is given, it defaults to
-				 * the system parameter. */
-  const char *name;		/* Name of the volume extension If NULL, system generates one like "db".ext"volid"
-				 * where "db" is the database name and "volid" is the volume identifier to be assigned
-				 * to the volume extension. */
-  const char *comments;		/* Comments which are included in the volume extension header. */
-  int max_npages;		/* Maximum pages of this volume */
-  int extend_npages;		/* Number of pages to extend - used for generic volume only */
-  INT32 nsect_total;		/* DKNSECTS type, number of sectors for volume extension */
-  INT32 nsect_max;		/* DKNSECTS type, maximum number of sectors for volume extension */
-  int max_writesize_in_sec;	/* the amount of volume written per second */
-  DB_VOLPURPOSE purpose;	/* The purpose of the volume extension. One of the following: -
-				 * DB_PERMANENT_DATA_PURPOSE, DB_TEMPORARY_DATA_PURPOSE */
-  DB_VOLTYPE voltype;		/* Permanent of temporary volume type */
-  bool overwrite;
-};
-
-typedef enum
-{
-  DB_PARTITION_HASH = 0,
-  DB_PARTITION_RANGE,
-  DB_PARTITION_LIST
-} DB_PARTITION_TYPE;
-
-typedef enum
-{
-  DB_NOT_PARTITIONED_CLASS = 0,
-  DB_PARTITIONED_CLASS = 1,
-  DB_PARTITION_CLASS = 2
-} DB_CLASS_PARTITION_TYPE;
 
 #endif /* _DBDEF_H_ */

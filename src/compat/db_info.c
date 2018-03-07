@@ -30,7 +30,7 @@
 #include "boot_cl.h"
 #include "class_object.h"
 #include "db.h"
-#include "dbdef.h"
+#include "cubrid_api.h"
 #include "dbtype.h"
 #include "locator_cl.h"
 #include "mem_block.hpp"

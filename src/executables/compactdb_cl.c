@@ -27,7 +27,7 @@
 
 #include "porting.h"
 #include "dbtype.h"
-#include "dbdef.h"
+#include "cubrid_api.h"
 #include "load_object.h"
 #include "db.h"
 #include "locator_cl.h"
