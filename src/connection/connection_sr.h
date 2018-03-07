@@ -193,9 +193,7 @@ extern void css_set_user_access_status (const char *db_user, const char *host, c
 extern void css_get_user_access_status (int num_user, LAST_ACCESS_STATUS ** access_status_array);
 extern void css_free_user_access_status (void);
 
-extern CSS_CONN_ENTRY *css_common_connect (CSS_CONN_ENTRY * conn,
-					   unsigned short *rid,
-					   const char *host_name,
+extern CSS_CONN_ENTRY *css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid, const char *host_name,
 					   int connect_type, const char *server_name, int server_name_length, int port);
 
 #endif /* _CONNECTION_SR_H_ */
