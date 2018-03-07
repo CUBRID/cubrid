@@ -717,7 +717,7 @@ namespace cubthread
   }
 
   template <typename Context>
-  typename Context &
+  typename worker_pool<Context>::core::context_type &
   worker_pool<Context>::core::create_context (void)
   {
     return m_parent_pool->m_context_manager.create_context ();

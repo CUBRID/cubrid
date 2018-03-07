@@ -1741,7 +1741,7 @@ css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_r
 
   assert (thread_ref.conn_entry == &conn_ref);
 
-  local_tran_index = LOG_FIND_THREAD_TRAN_INDEX (&thread_ref);
+  local_tran_index = thread_ref.tran_index;
 
   rc = css_receive_request (&conn_ref, &rid, &request, &size);
   if (rc == NO_ERRORS)
