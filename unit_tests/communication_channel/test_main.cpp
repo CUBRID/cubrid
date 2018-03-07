@@ -62,7 +62,7 @@ void master_listening_thread_func (std::vector <communication_channel> &channels
 
   communication_channel incom_conn (5000);
   rc = incom_conn.accept (listen_fd_platf_ind);
-  if (rc != NO_ERROR)
+  if (rc != NO_ERRORS)
     {
       is_listening.store (true);
       assert (false);
@@ -83,7 +83,7 @@ void master_listening_thread_func (std::vector <communication_channel> &channels
 	  int new_sockfd = css_master_accept (listen_fd_platf_ind);
 	  communication_channel cc (MAX_TIMEOUT_IN_MS);
 	  rc = cc.accept (new_sockfd);
-	  if (rc != NO_ERROR)
+	  if (rc != NO_ERRORS)
 	    {
 	      assert (false);
 	      return;
@@ -104,7 +104,7 @@ class conn_initiator_daemon_task : public cubthread::entry_task
 
     void execute (cubthread::entry &context)
     {
-      int length = MAX_MSG_LENGTH;
+      std::size_t length = MAX_MSG_LENGTH;
       char buff[MAX_MSG_LENGTH];
       int rc = NO_ERRORS;
 
@@ -146,7 +146,7 @@ class conn_listener_daemon_task : public cubthread::entry_task
 
     void execute (cubthread::entry &context)
     {
-      int length = MAX_MSG_LENGTH;
+      std::size_t length = MAX_MSG_LENGTH;
       char buff[MAX_MSG_LENGTH];
       int rc = NO_ERRORS;
       POLL_FD fds[NUM_OF_INITIATORS];

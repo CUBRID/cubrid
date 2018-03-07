@@ -24,12 +24,12 @@
 #ifndef _COMMUNICATION_CHANNEL_HPP_
 #define _COMMUNICATION_CHANNEL_HPP_
 
-#include <string>
-#include <mutex>
 #include "connection_support.h"
 #include "connection_defs.h"
-#include <memory>
 
+#include <string>
+#include <mutex>
+#include <memory>
 #if !defined (WINDOWS)
 #include <sys/uio.h>
 #else
@@ -42,19 +42,6 @@ enum CHANNEL_TYPE
   INITIATOR,
   LISTENER
 };
-
-/* so that unique_ptr knows to "free (char *)" and not to "delete char *" */
-struct communication_channel_c_free_deleter
-{
-  void operator() (char *ptr)
-  {
-    if (ptr != NULL)
-      {
-	free (ptr);
-      }
-  }
-};
-
 
 class communication_channel
 {
@@ -69,15 +56,15 @@ class communication_channel
     communication_channel &operator= (communication_channel &&comm);
 
     /* receive/send functions that use the created m_socket */
-    int recv (char *buffer, int &received_length);
-    int send (const std::string &message);
-    int send (const char *buffer, int length);
+    css_error_code recv (char *buffer, std::size_t & maxlen_in_recvlen_out);
+    css_error_code send (const std::string &message);
+    css_error_code send (const char *buffer, std::size_t length);
 
     /* simple connect */
-    virtual int connect (const char *hostname, int port);
+    virtual css_error_code connect (const char *hostname, int port);
 
     /* creates a listener channel */
-    int accept (SOCKET socket);
+    css_error_code accept (SOCKET socket);
 
     /* this function waits for events such as EPOLLIN, EPOLLOUT,
      * if (revents & EPOLLIN) != 0 it means that we have an "in" event
@@ -89,7 +76,7 @@ class communication_channel
     void close_connection ();
 
     /* this is the command that the non overridden connect will send */
-    const int &get_max_timeout_in_ms ();
+    int get_max_timeout_in_ms ();
 
   protected:
     const int m_max_timeout_in_ms;

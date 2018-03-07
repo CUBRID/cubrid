@@ -69,8 +69,6 @@ enum css_command_type
   MAX_REQUEST
 };
 
-typedef enum css_command_type CSS_COMMAND_TYPE;
-
 /*
  * These are the responses from the master to a server
  * when it is trying to connect and register itself.
@@ -224,7 +222,8 @@ enum css_error_code
   INTERRUPTED_READ = 14,
   CANT_ALLOC_BUFFER = 15,
   OS_ERROR = 16,
-  TIMEDOUT_ON_QUEUE = 17
+  TIMEDOUT_ON_QUEUE = 17,
+  INTERNAL_CSS_ERROR = 18
 };
 
 /*

@@ -26,16 +26,17 @@
 
 #include "connection_support.h"
 #include "connection_globals.h"
-#include "system_parameter.h"
-#include "thread_manager.hpp"
-#include <string>
 #include "connection_sr.h"
 
+#include "system_parameter.h"
+#include "thread_manager.hpp"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */
 #include "tcp.h"
 #endif /* WINDOWS */
+
+#include <string>
 
 communication_channel::communication_channel (int max_timeout_in_ms) :
   m_max_timeout_in_ms (max_timeout_in_ms),
@@ -68,35 +69,41 @@ communication_channel::~communication_channel ()
   close_connection ();
 }
 
-int communication_channel::send (const std::string &message)
+css_error_code communication_channel::send (const std::string &message)
 {
   return communication_channel::send (message.c_str (), message.length ());
 }
 
-int communication_channel::recv (char *buffer, int &received_length)
+css_error_code communication_channel::recv (char *buffer, std::size_t & maxlen_in_recvlen_out)
 {
-  return css_net_recv (m_socket, buffer, &received_length, m_max_timeout_in_ms);
+  int copy_of_maxlen_in_recvlen_out = maxlen_in_recvlen_out;
+  int rc = NO_ERRORS;
+
+  rc = css_net_recv (m_socket, buffer, &copy_of_maxlen_in_recvlen_out, m_max_timeout_in_ms);
+  maxlen_in_recvlen_out = copy_of_maxlen_in_recvlen_out;
+  return (css_error_code) rc;
 }
 
-int communication_channel::send (const char *buffer, int length)
+css_error_code communication_channel::send (const char *buffer, std::size_t length)
 {
   int templen, vector_length = 2;
-  int total_len = 0;
+  int total_len = 0, rc = NO_ERRORS;
   struct iovec iov[2];
 
   css_set_io_vector (& (iov[0]), & (iov[1]), buffer, length,
                     &templen);
   total_len = sizeof (int) + length;
 
-  return css_send_io_vector_with_socket (m_socket, iov, total_len, vector_length, m_max_timeout_in_ms);
+  rc = css_send_io_vector_with_socket (m_socket, iov, total_len, vector_length, m_max_timeout_in_ms);
+  return (css_error_code) rc;
 }
 
-int communication_channel::connect (const char *hostname, int port)
+css_error_code communication_channel::connect (const char *hostname, int port)
 {
   if (is_connection_alive ())
     {
       assert (false);
-      return ER_FAILED;
+      return INTERNAL_CSS_ERROR;
     }
 
   m_type = CHANNEL_TYPE::INITIATOR;
@@ -105,17 +112,17 @@ int communication_channel::connect (const char *hostname, int port)
   return IS_INVALID_SOCKET (m_socket) ? REQUEST_REFUSED : NO_ERRORS;
 }
 
-int communication_channel::accept (SOCKET socket)
+css_error_code communication_channel::accept (SOCKET socket)
 {
   if (is_connection_alive () || IS_INVALID_SOCKET (socket))
     {
-      return ER_FAILED;
+      return INTERNAL_CSS_ERROR;
     }
 
   m_type = CHANNEL_TYPE::LISTENER;
   m_socket = socket;
 
-  return NO_ERROR;
+  return NO_ERRORS;
 }
 
 void communication_channel::close_connection ()
@@ -128,7 +135,7 @@ void communication_channel::close_connection ()
     }
 }
 
-const int &communication_channel::get_max_timeout_in_ms ()
+int communication_channel::get_max_timeout_in_ms ()
 {
   return m_max_timeout_in_ms;
 }
