@@ -853,6 +853,8 @@ namespace cubthread
       }
 
     // a new thread is required
+    // save task
+    m_task_p = work_p;
     std::thread (&worker::run, this).detach ();    // don't wait for it
   }
 
