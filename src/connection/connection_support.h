@@ -29,6 +29,21 @@
 
 #include "connection_defs.h"
 
+#if defined (WINDOWS)
+#include <winsock2.h>
+typedef WSAPOLLFD POLL_FD;
+/* Corresponds to the structure we set up on Unix platforms to pass to
+readv & writev. */
+struct iovec
+{
+  char *iov_base;
+  long iov_len;
+};
+#else
+#include <sys/poll.h>
+typedef struct pollfd POLL_FD;
+#endif
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int css_net_send_no_block (SOCKET fd, const char *buffer, int size);
 #endif
@@ -102,4 +117,9 @@ extern int css_check_magic (CSS_CONN_ENTRY * conn);
 
 extern int css_user_access_status_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt,
 					      void **ptr);
+extern int css_platform_independent_poll (POLL_FD * fds, int num_of_fds, int timeout);
+extern int css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, int timeout);
+extern void css_set_net_header (NET_HEADER * header_p, int type, short function_code, int request_id, int buffer_size,
+				int transaction_id, int invalidate_snapshot, int db_error);
+extern void css_set_io_vector (struct iovec *vec1_p, struct iovec *vec2_p, const char *buff, int len, int *templen);
 #endif /* _CONNECTION_SUPPORT_H_ */

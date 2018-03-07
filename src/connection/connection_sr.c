@@ -152,10 +152,6 @@ CSS_THREAD_FN css_Connection_error_handler = NULL;
 #define CSS_ACTIVE_CONN_ARGS css_Num_active_conn, CSS_CONN_IDX (css_Active_conn_anchor)
 
 static int css_get_next_client_id (void);
-static CSS_CONN_ENTRY *css_common_connect (CSS_CONN_ENTRY * conn,
-					   unsigned short *rid,
-					   const char *host_name,
-					   int connect_type, const char *server_name, int server_name_length, int port);
 
 static int css_abort_request (CSS_CONN_ENTRY * conn, unsigned short rid);
 static void css_dealloc_conn (CSS_CONN_ENTRY * conn);
@@ -1043,7 +1039,7 @@ css_register_handler_routines (int (*connect_handler) (CSS_CONN_ENTRY * conn),
  *   server_name_length(in):
  *   port(in):
  */
-static CSS_CONN_ENTRY *
+CSS_CONN_ENTRY *
 css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid,
 		    const char *host_name, int connect_type, const char *server_name, int server_name_length, int port)
 {
