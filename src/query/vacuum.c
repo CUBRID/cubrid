@@ -1110,9 +1110,8 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 
   // create thread pool
   vacuum_Worker_threads =
-    thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT),
-					VACUUM_JOB_QUEUE_CAPACITY,
-					vacuum_Worker_context_manager, log_vacuum_worker_pool);
+    thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT), VACUUM_JOB_QUEUE_CAPACITY,
+					vacuum_Worker_context_manager, 1, log_vacuum_worker_pool);
   assert (vacuum_Worker_threads != NULL);
 
   // create vacuum master thread

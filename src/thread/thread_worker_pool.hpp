@@ -364,6 +364,8 @@ namespace cubthread
       wpstat::time_point_type m_time_point;
   };
 
+  std::size_t system_core_count (void);
+
   /************************************************************************/
   /* Template/inline implementation                                       */
   /************************************************************************/
@@ -388,6 +390,11 @@ namespace cubthread
   {
     // initialize cores; we'll try to distribute pool evenly to all cores. if core count is not fully contained in
     // pool size, some cores will have one additional worker
+    if (m_core_count == 0)
+      {
+	assert (false);
+	m_core_count = 1;
+      }
     m_core_array = new core[m_core_count];
     std::size_t quotient = m_max_workers / m_core_count;
     std::size_t remainder = m_max_workers % m_core_count;

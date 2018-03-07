@@ -28,6 +28,10 @@
 namespace cubthread
 {
 
+  //////////////////////////////////////////////////////////////////////////
+  // wpstat
+  //////////////////////////////////////////////////////////////////////////
+
   wpstat::wpstat (stat_type *stats_p)
     : m_counters (NULL)
     , m_timers (NULL)
@@ -105,6 +109,21 @@ namespace cubthread
 	m_counters[it] += other_stat.m_counters[it];
 	m_timers[it] += other_stat.m_timers[it];
       }
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // functions
+  //////////////////////////////////////////////////////////////////////////
+
+  std::size_t
+  system_core_count (void)
+  {
+    std::size_t count = std::thread::hardware_concurrency ();
+    if (count == 0)
+      {
+	count = 1;
+      }
+    return count;
   }
 
 } // namespace cubthread

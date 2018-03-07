@@ -1839,7 +1839,9 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   // initialize worker pool for server requests
   const std::size_t MAX_WORKERS = NUM_NON_SYSTEM_TRANS;
   const std::size_t JOB_QUEUE_SIZE = NUM_NON_SYSTEM_TRANS;
-  css_Server_request_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, JOB_QUEUE_SIZE);
+  css_Server_request_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, JOB_QUEUE_SIZE, NULL,
+										  cubthread::system_core_count (),
+										  false);
   if (css_Server_request_worker_pool == NULL)
     {
       assert (false);
