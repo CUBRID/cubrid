@@ -21,11 +21,12 @@
  * communication_channel.hpp - wrapper for communication primitives
  */
 
-#ifndef _COMMUNICATION_CHANNEL_HPP
-#define _COMMUNICATION_CHANNEL_HPP
+#ifndef _COMMUNICATION_CHANNEL_HPP_
+#define _COMMUNICATION_CHANNEL_HPP_
 
 #include <string>
 #include <mutex>
+#include "connection_support.h"
 #include "connection_defs.h"
 #include <memory>
 
@@ -34,6 +35,7 @@
 #else
 #include <winsock2.h>
 #endif
+
 enum CHANNEL_TYPE
 {
   NO_TYPE = 0,
@@ -66,43 +68,13 @@ class communication_channel
     communication_channel (communication_channel &&comm);
     communication_channel &operator= (communication_channel &&comm);
 
-
-    void create_initiator (const char *hostname, int port, CSS_COMMAND_TYPE command_type = NULL_REQUEST,
-			   const char *server_name = NULL);
-
     /* receive/send functions that use the created m_socket */
     int recv (char *buffer, int &received_length);
     int send (const std::string &message);
+    int send (const char *buffer, int length);
 
-    template<typename T_CONST_CHAR, typename T_INT, typename... Targs>
-    int send (T_CONST_CHAR message, T_INT message_length, Targs... args)
-    {
-      const int num_of_args = (2 + sizeof... (Targs));
-      int templen;
-
-      if (current_iov_size < num_of_args)
-	{
-	  iov_ptr = (struct iovec *) realloc (iov_ptr, sizeof (struct iovec) * num_of_args);
-	  current_iov_size = num_of_args;
-	  current_iov_pointer = 0;
-	}
-
-      css_set_io_vector (& (iov_ptr[current_iov_pointer]), & (iov_ptr[current_iov_pointer+1]), message, message_length,
-			 &templen);
-      current_iov_pointer += 2;
-
-      return send (args...);
-    }
-
-    /* the non overridden connect function uses the
-     * css_common_connect that connects to an endpoint
-     * and also sends a command to the endpoint (m_command_type)
-     */
-    virtual int connect ();
-
-    /* replaces existing information and connects */
-    int connect (const char *hostname, int port, CSS_COMMAND_TYPE command_type = NULL_REQUEST,
-		 const char *server_name = NULL);
+    /* simple connect */
+    virtual int connect (const char *hostname, int port);
 
     /* creates a listener channel */
     int accept (SOCKET socket);
@@ -117,23 +89,13 @@ class communication_channel
     void close_connection ();
 
     /* this is the command that the non overridden connect will send */
-    void set_command_type (CSS_COMMAND_TYPE cmd);
     const int &get_max_timeout_in_ms ();
 
   protected:
     const int m_max_timeout_in_ms;
-    std::unique_ptr <char, communication_channel_c_free_deleter> m_hostname, m_server_name;
-    int m_port;
-    unsigned short m_request_id;
     CHANNEL_TYPE m_type;
-    CSS_COMMAND_TYPE m_command_type;
     SOCKET m_socket;
-    unsigned int current_iov_pointer, current_iov_size;
-    struct iovec *iov_ptr;
-
-  private:
-    int send ();
 };
 
-#endif /* _COMMUNICATION_CHANNEL_HPP */
+#endif /* _COMMUNICATION_CHANNEL_HPP_ */
 

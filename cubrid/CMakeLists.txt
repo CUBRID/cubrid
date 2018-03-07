@@ -134,6 +134,10 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/communication_channel.cpp
   )
 
+set(COMMUNICATION_HEADERS
+  ${COMMUNICATION_DIR}/communication_channel.hpp
+  )
+
 set(QUERY_SOURCES
   ${QUERY_DIR}/arithmetic.c
   ${QUERY_DIR}/crypt_opfunc.c
@@ -287,6 +291,7 @@ set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
   ${COMPAT_HEADERS}
   ${THREAD_HEADERS}
+  ${COMMUNICATION_HEADERS}
   )
 
 add_library(cubrid SHARED
