@@ -2174,8 +2174,7 @@ rmutex_lock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
     {
       thread_p = thread_get_thread_entry_info ();
     }
-
-  if (rmutex->owner == thread_p->get_id ())
+  assert (thread_p->get_id () != thread_id_t ())if (rmutex->owner == thread_p->get_id ())
     {
       assert (rmutex->lock_cnt > 0);
       rmutex->lock_cnt++;
