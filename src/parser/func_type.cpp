@@ -53,14 +53,14 @@ std::vector<func_signature> func_signature::double_r_any = {//original code does
   {PT_TYPE_DOUBLE, {}, {PT_GENERIC_TYPE_ANY}},
 };
 
-std::vector<func_signature> func_signature::ntile = {//why original code cast args to double???
+std::vector<func_signature> func_signature::ntile = {//why original code cast args to double instead int???
   {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
   {PT_TYPE_INTEGER, {PT_TYPE_MAYBE}, {}},
   {PT_TYPE_INTEGER, {PT_TYPE_NULL}, {}},
 };
 
 std::vector<func_signature> func_signature::median = {
-  {0,  {PT_GENERIC_TYPE_NUMBER}, {}},
+  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER}, {}},
   {0,  {PT_GENERIC_TYPE_DATETIME}, {}},
 };
 
