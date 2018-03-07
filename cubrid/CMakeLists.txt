@@ -371,6 +371,7 @@ install(FILES
   ${COMPAT_DIR}/dbtype_function.h
   ${COMPAT_DIR}/db_date.h
   ${COMPAT_DIR}/db_elo.h
+  ${COMPAT_DIR}/cache_time.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
   )
 install(FILES

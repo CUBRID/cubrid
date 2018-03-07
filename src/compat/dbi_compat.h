@@ -46,6 +46,7 @@
 #include "cas_cci_common.h"
 #include "db_date.h"
 #include "db_elo.h"
+#include "cache_time.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -56,64 +57,6 @@ extern "C"
 #define DB_FALSE 0
 
 #define SQLX_CMD_TYPE CUBRID_STMT_TYPE
-
-/* Unix-like functions */
-  extern time_t db_mktime (DB_DATE * date, DB_TIME * timeval);
-  extern int db_strftime (char *s, int smax, const char *fmt, DB_DATE * date, DB_TIME * timeval);
-  extern void db_localtime (time_t * epoch_time, DB_DATE * date, DB_TIME * timeval);
-
-/* generic calculation functions */
-  extern int db_tm_encode (struct tm *c_time_struct, DB_DATE * date, DB_TIME * timeval);
-
-
-
-  typedef struct cache_time CACHE_TIME;
-  struct cache_time
-  {
-    int sec;
-    int usec;
-  };
-
-#define CACHE_TIME_EQ(T1, T2)               \
-        (((T1)->sec != 0) &&                \
-         ((T1)->sec == (T2)->sec) &&        \
-         ((T1)->usec == (T2)->usec))
-
-#define CACHE_TIME_RESET(T)     \
-        do {                    \
-          (T)->sec = 0;         \
-          (T)->usec = 0;        \
-        } while (0)
-
-#define CACHE_TIME_MAKE(CT, TV)         \
-        do {                            \
-          (CT)->sec = (TV)->tv_sec;     \
-          (CT)->usec = (TV)->tv_usec;   \
-        } while (0)
-
-#define OR_CACHE_TIME_SIZE      (OR_INT_SIZE * 2)
-
-#define OR_PACK_CACHE_TIME(PTR, T)                      \
-        do {                                            \
-          if ((CACHE_TIME *) (T) != NULL) {                                      \
-            PTR = or_pack_int(PTR, (T)->sec);        \
-            PTR = or_pack_int(PTR, (T)->usec);       \
-          }                                             \
-          else {                                        \
-            PTR = or_pack_int(PTR, 0);                  \
-            PTR = or_pack_int(PTR, 0);                  \
-          }                                             \
-        } while (0)
-
-#define OR_UNPACK_CACHE_TIME(PTR, T)                    \
-        do {                                            \
-          if ((CACHE_TIME *) (T) != NULL) {                                      \
-            PTR = or_unpack_int(PTR, &((T)->sec));      \
-            PTR = or_unpack_int(PTR, &((T)->usec));     \
-          }                                             \
-        } while (0)
-
-
 
   extern bool db_is_client_cache_reusable (DB_QUERY_RESULT * result);
   extern int db_query_seek_tuple (DB_QUERY_RESULT * result, int offset, int seek_mode);

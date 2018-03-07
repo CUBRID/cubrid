@@ -39,6 +39,7 @@
 #include "dbdef.h"
 #include "dbtype_def.h"
 #include "sha1.h"
+#include "cache_time.h"
 
   /* LIMITS AND NULL VALUES ON DISK RELATED DATATYPES */
 
@@ -1107,66 +1108,6 @@ typedef enum
 /************************************************************************/
 /* QUERY                                                                */
 /************************************************************************/
-
-/*
- * CACHE TIME RELATED DEFINITIONS
- */
-typedef struct cache_time CACHE_TIME;
-struct cache_time
-{
-  int sec;
-  int usec;
-};
-
-#define CACHE_TIME_AS_ARGS(ct)	(ct)->sec, (ct)->usec
-
-#define CACHE_TIME_EQ(T1, T2) \
-  (((T1)->sec != 0) && ((T1)->sec == (T2)->sec) && ((T1)->usec == (T2)->usec))
-
-#define CACHE_TIME_RESET(T) \
-  do \
-    { \
-      (T)->sec = 0; \
-      (T)->usec = 0; \
-    } \
-  while (0)
-
-#define CACHE_TIME_MAKE(CT, TV) \
-  do \
-    { \
-      (CT)->sec = (TV)->tv_sec; \
-      (CT)->usec = (TV)->tv_usec; \
-    } \
-  while (0)
-
-#define OR_CACHE_TIME_SIZE (OR_INT_SIZE * 2)
-
-#define OR_PACK_CACHE_TIME(PTR, T) \
-  do \
-    { \
-      if ((CACHE_TIME *) (T) != NULL) \
-        { \
-          PTR = or_pack_int (PTR, (T)->sec); \
-          PTR = or_pack_int (PTR, (T)->usec); \
-        } \
-    else \
-      { \
-        PTR = or_pack_int (PTR, 0); \
-        PTR = or_pack_int (PTR, 0); \
-      } \
-    } \
-  while (0)
-
-#define OR_UNPACK_CACHE_TIME(PTR, T) \
-  do \
-    { \
-      if ((CACHE_TIME *) (T) != NULL) \
-        { \
-          PTR = or_unpack_int (PTR, &((T)->sec)); \
-          PTR = or_unpack_int (PTR, &((T)->usec)); \
-        } \
-    } \
-  while (0)
 
 /* XASL identifier */
 typedef struct xasl_id XASL_ID;
