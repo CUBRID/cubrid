@@ -243,7 +243,7 @@ namespace cubthread
       core ();
       ~core (void);
 
-      void init (worker_pool<Context> &parent, std::size_t worker_count);
+      void init_pool_and_workers (worker_pool<Context> &parent, std::size_t worker_count);
 
       // interface for worker pool
       // task management
@@ -326,7 +326,7 @@ namespace cubthread
 
       worker ();
 
-      void init (core_type &parent);
+      void init_core (core_type &parent);
 
       void start_execution (task<Context> *work_p, wpstat::time_point_type push_time);
       void stop_execution (void);
@@ -401,11 +401,11 @@ namespace cubthread
     std::size_t it = 0;
     for (; it < remainder; it++)
       {
-	m_core_array[it].init (*this, quotient + 1);
+	m_core_array[it].init_pool_and_workers (*this, quotient + 1);
       }
     for (; it < m_core_count; it++)
       {
-	m_core_array[it].init (*this, quotient);
+	m_core_array[it].init_pool_and_workers (*this, quotient);
       }
   }
 
@@ -635,7 +635,7 @@ namespace cubthread
 
   template <typename Context>
   void
-  worker_pool<Context>::core::init (worker_pool<Context> &parent, std::size_t worker_count)
+  worker_pool<Context>::core::init_pool_and_workers (worker_pool<Context> &parent, std::size_t worker_count)
   {
     m_parent_pool = &parent;
     m_max_workers = worker_count;
@@ -646,6 +646,7 @@ namespace cubthread
     // all workers are inactive
     for (std::size_t it = 0; it < m_max_workers; it++)
       {
+	m_worker_array[it].init_core (*this);
 	m_inactive_list.push_front (&m_worker_array[it]);
       }
   }
@@ -815,7 +816,7 @@ namespace cubthread
 
   template <typename Context>
   void
-  worker_pool<Context>::core::worker::init (core_type &parent)
+  worker_pool<Context>::core::worker::init_core (core_type &parent)
   {
     m_parent_core = &parent;
   }
