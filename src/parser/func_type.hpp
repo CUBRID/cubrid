@@ -39,6 +39,7 @@ struct func_signature
   static std::vector<func_signature> lead_lag;
   static std::vector<func_signature> elt;
   static std::vector<func_signature> insert;
+  static std::vector<func_signature> percentile_dis;
   static std::vector<func_signature> json_key_val_r_key_val;
   static std::vector<func_signature> json_val_r_val;
   static std::vector<func_signature> json_doc;

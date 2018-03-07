@@ -14,6 +14,10 @@ std::vector<func_signature> func_signature::double_double01 = {
   {PT_TYPE_DOUBLE, {PT_TYPE_DOUBLE}, {}},
 };
 
+std::vector<func_signature> func_signature::percentile_dis = {
+  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_ANY}, {}},
+};
+
 std::vector<func_signature> func_signature::bigint_discrete = {
   {PT_TYPE_BIGINT, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
   {PT_TYPE_BIGINT, {PT_TYPE_MAYBE}, {}},
