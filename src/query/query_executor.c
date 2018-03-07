@@ -21727,8 +21727,8 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  num_idx_att = index->func_index_info->attr_index_start;
 	}
 
-      index_position = 0;
       /* index attributes */
+      index_position = 0;
       for (j = 0; j < num_idx_att; j++)
 	{
 	  index_att = index->atts[j];
@@ -21800,6 +21800,10 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		  break;
 		}
 	    }
+
+	  /* clear alloced DB_VALUEs */
+	  pr_clear_value (out_values[5]);
+	  pr_clear_value (out_values[9]);
 
 	  index_position++;
 	}
