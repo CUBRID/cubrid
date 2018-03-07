@@ -776,7 +776,7 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
 				  const BLOCK_LOG_BUFFER & log_buffer, bool is_partial_block);
 #endif // SA_MODE
 
-    void on_create (cubthread::entry &context) final
+    void on_create (cubthread::entry & context) final
     {
       context.tran_index = 0;
 
@@ -788,7 +788,7 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
 	}
     }
 
-    void on_retire (cubthread::entry &context) final
+    void on_retire (cubthread::entry & context) final
     {
       if (context.vacuum_worker != NULL)
 	{
@@ -802,9 +802,10 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
 	}
     }
 
-    void on_recycle (cubthread::entry & entry) final
+    void on_recycle (cubthread::entry & context) final
     {
-      // nothing for now
+      // reset tran_index (it is recycled as -1)
+      context.tran_index = 0;
     }
 
     // members
