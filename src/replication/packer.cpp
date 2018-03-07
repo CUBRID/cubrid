@@ -104,7 +104,7 @@ int packer::pack_short (short *value)
   m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, SHORT_ALIGNMENT);
   CHECK_RANGE (m_ptr, m_end_ptr, OR_SHORT_SIZE);
    
-  OR_PUT_SHORT (m_ptr, value);
+  OR_PUT_SHORT (m_ptr, *value);
   m_ptr += OR_SHORT_SIZE;
   return NO_ERROR;
 }
