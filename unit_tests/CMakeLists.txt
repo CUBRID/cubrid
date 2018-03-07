@@ -32,6 +32,8 @@ option (UNIT_TEST_STRING_BUFFER "Unit testing: string buffer with format")
 option (UNIT_TEST_LOCKFREE "Unit testing: lockfree module")
 option (UNIT_TEST_THREAD "Unit testing: thread module")
 option (UNIT_TEST_REPLICATION "Unit testing: replication")
+option (UNIT_TEST_COMM_CHN "Unit testing: communication channel module")
+
 
 message("  unit_tests/...")
 
@@ -64,3 +66,9 @@ if (UNIT_TESTS OR UNIT_TEST_REPLICATION)
   message("    replication")
   add_subdirectory(replication)
 endif(UNIT_TESTS OR UNIT_TEST_REPLICATION)
+
+if (UNIT_TESTS OR UNIT_TEST_COMM_CHN)
+  message("    communication_channel")
+  add_subdirectory(communication_channel)
+endif(UNIT_TESTS OR UNIT_TEST_COMM_CHN)
+

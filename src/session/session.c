@@ -526,10 +526,11 @@ session_control_daemon_init ()
 {
   assert (session_Control_daemon == NULL);
 
+  cubthread::looper looper = cubthread::looper (std::chrono::seconds (60));
+  session_control_daemon_task *daemon_task = new session_control_daemon_task ();
+
   // create session control daemon thread
-  std::chrono::seconds interval_time = std::chrono::seconds (60);
-  session_Control_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (interval_time),
-			   new session_control_daemon_task ());
+  session_Control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
 }
 #endif /* SERVER_MODE */
 

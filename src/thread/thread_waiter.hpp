@@ -66,8 +66,7 @@ namespace cubthread
       // returns true if woke up before timeout
       template< class Clock, class Duration >
       bool wait_until (std::chrono::time_point<Clock, Duration> &timeout_time); // wait until time or until wakeup
-      // returns true if woke up before
-      // timeout
+      // returns true if woke up before timeout
 
     private:
 
@@ -105,25 +104,13 @@ namespace cubthread
   {
     if (delta == std::chrono::duration<Rep, Period> (0))
       {
-#if defined (NO_GCC_44)
-	// no wait, just yield
-	std::this_thread::yield ();
-#endif // not GCC 4.4
 	return true;
       }
 
     std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
     goto_sleep ();
 
-#if defined (NO_GCC_44)
     bool ret = m_condvar.wait_for (lock, delta, [this] { return m_status == AWAKENING; });
-#else // NO_GCC_44
-#if !defined (WINDOWS) && __cplusplus < 201103L
-    bool ret = m_condvar.wait_for (lock, delta);
-#else
-    bool ret = (m_condvar.wait_for (lock, delta) != std::cv_status::timeout);
-#endif
-#endif // MP_GCC_44
 
     run ();
 
@@ -138,15 +125,7 @@ namespace cubthread
     std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
     goto_sleep ();
 
-#if defined (NO_GCC_44)
     bool ret = m_condvar.wait_until (lock, timeout_time, [this] { return m_status == AWAKENING; });
-#else // GCC 4.4
-#if __cplusplus < 201103L
-    bool ret = m_condvar.wait_until (lock, timeout_time);
-#else
-    bool ret = (m_condvar.wait_until (lock, timeout_time) != std::cv_status::timeout);
-#endif
-#endif // GCC 4.4
 
     run ();
 

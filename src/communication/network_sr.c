@@ -1010,7 +1010,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 #if defined (DIAG_DEVEL)
   if (net_Requests[request].action_attribute & SET_DIAGNOSTICS_INFO)
     {
-      SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_CONN_CLI_REQUEST, 1, DIAG_VAL_SETTYPE_INC, NULL);
+      perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_CONN_CLI_REQUEST, 1, DIAG_VAL_SETTYPE_INC, NULL);
       gettimeofday (&diag_start_time, NULL);
     }
 #endif /* DIAG_DEVEL */
@@ -1055,10 +1055,10 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   if (net_Requests[request].action_attribute & SET_DIAGNOSTICS_INFO)
     {
       gettimeofday (&diag_end_time, NULL);
-      DIFF_TIMEVAL (diag_start_time, diag_end_time, diag_elapsed_time);
+      perfmon_diff_timeval (&diag_elapsed_time, &diag_start_time, &diag_end_time);
       if (request == NET_SERVER_QM_QUERY_EXECUTE || request == NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE)
 	{
-	  SET_DIAG_VALUE_SLOW_QUERY (diag_executediag, diag_start_time, diag_end_time, 1, DIAG_VAL_SETTYPE_INC, NULL);
+	  perfmon_diag_set_slow_query (diag_executediag, &diag_start_time, &diag_end_time, NULL);
 	}
     }
 #endif /* DIAG_DEVEL */

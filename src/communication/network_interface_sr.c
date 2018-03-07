@@ -3194,7 +3194,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   client_isolation = (TRAN_ISOLATION) xint;
 
 #if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-  SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_CONN_CONN_REQ, 1, DIAG_VAL_SETTYPE_INC, NULL);
+  perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_CONN_CONN_REQ, 1, DIAG_VAL_SETTYPE_INC, NULL);
 #endif
 
   tran_index = xboot_register_client (thread_p, &client_credential, client_lock_wait, client_isolation, &tran_state,
@@ -3202,7 +3202,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   if (tran_index == NULL_TRAN_INDEX)
     {
 #if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-      SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_CONN_CONN_REJECT, 1, DIAG_VAL_SETTYPE_INC, NULL);
+      perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_CONN_CONN_REJECT, 1, DIAG_VAL_SETTYPE_INC, NULL);
 #endif
       return_error_to_client (thread_p, rid);
       area = NULL;
