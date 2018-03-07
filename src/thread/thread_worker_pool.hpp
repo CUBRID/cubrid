@@ -716,7 +716,7 @@ namespace cubthread
   {
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
     m_inactive_list.push_front (&worker_arg);
-    assert (m_inactive_list.size () <= m_max_workers);
+    // assert (m_inactive_list.size () <= m_max_workers);  // forward_list has no size (); must be counted manually
   }
 
   template <typename Context>
@@ -728,7 +728,7 @@ namespace cubthread
     // waiting for task. system is not overloaded so it should not matter
     m_free_active_list.remove (&worker_arg);  // may or may not be there
     m_inactive_list.push_front (&worker_arg); // but we'll add to inactive list either way
-    assert (m_inactive_list.size () <= m_max_workers);
+    // assert (m_inactive_list.size () <= m_max_workers);  // forward_list has no size (); must be counted manually
   }
 
   template <typename Context>
