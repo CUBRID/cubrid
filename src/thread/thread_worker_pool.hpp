@@ -582,19 +582,6 @@ namespace cubthread
   // wpstat
   //////////////////////////////////////////////////////////////////////////
 
-  std::size_t
-  wpstat::to_index (id &statid)
-  {
-    return static_cast<size_t> (statid);
-  }
-
-  wpstat::id
-  wpstat::to_id (std::size_t index)
-  {
-    assert (index >= 0 && index < STATS_COUNT);
-    return static_cast<id> (index);
-  }
-
   void
   wpstat::collect (id statid, duration_type delta)
   {
@@ -719,21 +706,21 @@ namespace cubthread
   {
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
     m_free_active_list.remove (&worker_arg);
-    m_inactive_list.push_front (worker_arg);
+    m_inactive_list.push_front (&worker_arg);
   }
 
   template <typename Context>
   bool
   worker_pool<Context>::core::is_stopped (void) const
   {
-    return m_parent_pool->m_stop;
+    return m_parent_pool->m_stopped;
   }
 
   template <typename Context>
   typename Context &
   worker_pool<Context>::core::create_context (void)
   {
-    m_parent_pool->m_context_manager.create_context ();
+    return m_parent_pool->m_context_manager.create_context ();
   }
 
   template <typename Context>
@@ -757,7 +744,7 @@ namespace cubthread
   {
     for (std::size_t it = 0; it < m_max_workers; it++)
       {
-	m_worker_array[it].map_context (func, args);
+	m_worker_array[it].map_context (func, args...);
       }
   }
 
@@ -988,8 +975,6 @@ namespace cubthread
 	ulock.unlock ();
 
 	m_time_point = wpstat::clock_type::now ();
-
-	return false;
       }
     else
       {
@@ -998,8 +983,6 @@ namespace cubthread
 
 	m_time_point = m_push_time;
 	m_statistics.collect_and_time (wpstat::id::WAKEUP_WITH_TASK, m_time_point);
-
-	return true;
       }
   }
 
@@ -1034,7 +1017,7 @@ namespace cubthread
     Context *ctxp = m_context_p;
     if (ctxp != NULL)
       {
-	func (ctxp, args...);
+	func (*ctxp, args...);
       }
   }
 

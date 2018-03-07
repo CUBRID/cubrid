@@ -50,6 +50,19 @@ namespace cubthread
     delete m_own_stats;
   }
 
+  std::size_t
+  wpstat::to_index (id &statid)
+  {
+    return static_cast<size_t> (statid);
+  }
+
+  wpstat::id
+  wpstat::to_id (std::size_t index)
+  {
+    assert (index >= 0 && index < STATS_COUNT);
+    return static_cast<id> (index);
+  }
+
   const char *
   wpstat::get_id_name (id statid)
   {
