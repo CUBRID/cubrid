@@ -109,9 +109,11 @@ namespace cubthread
       //////////////////////////////////////////////////////////////////////////
 
       // create a entry_workpool with pool_size number of threads
-      // note: if there are not pool_size number of entries available, worker pool is not created and NULL is returned
-      entry_workpool *create_worker_pool (size_t pool_size, size_t work_queue_size,
-					  entry_manager *context_manager = NULL, bool debug_logging = false);
+      // notes: if there are not pool_size number of entries available, worker pool is not created and NULL is returned
+      //        signature emulates worker_pool constructor signature
+      entry_workpool *create_worker_pool (std::size_t pool_size, std::size_t work_queue_size,
+					  entry_manager *context_manager = NULL, std::size_t core_count = 1,
+					  bool debug_logging = false);
 
       // destroy worker pool
       void destroy_worker_pool (entry_workpool *&worker_pool_arg);
@@ -123,11 +125,6 @@ namespace cubthread
       // try to execute task if there are available thread in worker pool
       // if worker_pool_arg is NULL, the task is executed immediately
       bool try_task (entry &thread_p, entry_workpool *worker_pool_arg, entry_task *exec_p);
-
-      // return if pool is busy
-      // for SERVER_MODE see worker_pool::is_busy
-      // for SA_MODE it is always false
-      bool is_pool_busy (entry_workpool *worker_pool_arg);
 
       // return if pool is full
       // for SERVER_MODE see worker_pool::is_full
@@ -154,12 +151,6 @@ namespace cubthread
 
       // get the maximum thread count
       std::size_t get_max_thread_count (void) const;
-
-      // get currently running threads count
-      std::size_t get_running_thread_count (void);
-
-      // get currently available threads count
-      std::size_t get_free_thread_count (void);
 
       // verify all threads (workers and daemons) are killed
       void check_all_killed (void);
