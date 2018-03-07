@@ -340,8 +340,10 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 // *INDENT-OFF*
 static cubthread::daemon *log_Clock_daemon = NULL;
 static cubthread::daemon *log_Checkpoint_daemon = NULL;
-static cubthread::daemon *log_Remove_log_archive_daemon = NULL;
 static cubthread::daemon *log_Check_ha_delay_info_daemon = NULL;
+
+static cubthread::daemon *log_Remove_log_archive_daemon = NULL;
+static std::atomic_bool log_Remove_log_archive_daemon_force_wakeup = {false};
 
 static cubthread::daemon *log_Flush_daemon = NULL;
 static std::atomic_bool log_Flush_has_been_requested = {false};
@@ -10339,12 +10341,15 @@ log_wakeup_remove_log_archive_daemon ()
 
   log_get_remove_log_archive_interval (is_timed_wait, period);
 
-  if (log_Remove_log_archive_daemon && !is_timed_wait)
+  if (log_Remove_log_archive_daemon && (!is_timed_wait || log_Remove_log_archive_daemon_force_wakeup))
     {
       // if is_timed_wait is false it means that daemon is sleeping
       // and on wakeup it will do his job,
       // otherwise daemon will be awakened every PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL seconds
       log_Remove_log_archive_daemon->wakeup ();
+
+      // reset force wake up
+      log_Remove_log_archive_daemon_force_wakeup = false;
     }
 }
 #endif /* SERVER_MODE */
@@ -10442,9 +10447,13 @@ class log_remove_log_archive_daemon_task : public cubthread::entry_task
 
       // if is_timed_wait is true then on every loop remove one log archive
       // otherwise on wakeup remove all log archive records
-      int archive_logs_to_delete = is_timed_wait ? 1 : 0;
+      int log_archives_to_delete = is_timed_wait ? 1 : 0;
+      int deleted_count = logpb_remove_archive_logs_exceed_limit (&thread_ref, log_archives_to_delete);
 
-      logpb_remove_archive_logs_exceed_limit (&thread_ref, archive_logs_to_delete);
+      if (deleted_count == 0 && is_timed_wait)
+	{
+	  log_Remove_log_archive_daemon_force_wakeup = true;
+	}
     }
 };
 #endif /* SERVER_MODE */
