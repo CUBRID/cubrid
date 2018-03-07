@@ -59,6 +59,7 @@ int init_common_cubrid_modules (void)
       ASSERT_ERROR ();
       return res;
     }
+  return NO_ERROR;
 }
 
 int test_stream_packing (void)
@@ -118,7 +119,7 @@ int test_stream_packing (void)
 
   stream_packer local_serializator (lc_stream);
   lc->fetch_stream_entry (&se);
-  se->unpack (&local_serializator);
+  se->unpack ();
 
   res = se->is_equal (lg->get_stream_entry (NULL));
 

@@ -30,10 +30,15 @@
 
 stream_packer::stream_packer (packing_stream *stream_arg)
 {
-  m_stream = stream_arg;
+  set_stream (stream_arg);
   m_packer_start_ptr = NULL;
   m_stream_provider = NULL;
   init (NULL, 0);
+}
+
+void stream_packer::set_stream (packing_stream *stream_arg)
+{
+  m_stream = stream_arg;
 }
 
 BUFFER_UNIT *stream_packer::start_packing_range (const size_t amount, buffer_context **granted_range)

@@ -53,6 +53,8 @@ class stream_packer : public packer
 public:
   stream_packer (packing_stream *stream_arg);
 
+  void set_stream (packing_stream *stream_arg);
+
   /* method for starting a packing context */
   BUFFER_UNIT *start_packing_range (const size_t amount, buffer_context **granted_range);
 
@@ -85,6 +87,5 @@ private:
   /* currently mapped range (set when packing starts) */
   buffer_context *m_mapped_range;
 };
-
 
 #endif /* _STREAM_PACKER_HPP_ */

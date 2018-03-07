@@ -39,18 +39,25 @@ log_generator::~log_generator()
   if (this == global_log_generator)
     {
       delete stream;
-      delete m_serializator;
       log_generator::global_log_generator = NULL;
+    }
+
+  for (int i = 0; i < m_stream_entries.size (); i++)
+    {
+      delete m_stream_entries[i];
+      m_stream_entries[i] = NULL;
     }
 }
 
 log_generator* log_generator::new_instance (THREAD_ENTRY *th_entry, const stream_position &start_position)
 {
   int error_code = NO_ERROR;
-  buffer_context *granted_range;
 
   log_generator *new_lg = new log_generator ();
   new_lg->m_append_position = start_position;
+
+  new_lg->stream = new packing_stream (new_lg);
+  new_lg->stream->init (new_lg->m_append_position);
 
   if (th_entry == NULL)
     {
@@ -59,19 +66,19 @@ log_generator* log_generator::new_instance (THREAD_ENTRY *th_entry, const stream
       global_log_generator = new_lg;
       /* TODO[arnia] : actual number of transactions */
       new_lg->m_stream_entries.resize (100);
+      for (int i = 0; i < 100; i++)
+        {
+          new_lg->m_stream_entries[i] = new replication_stream_entry (new_lg->stream);
+        }
     }
   else
     {
       /* TODO[arnia] : set instance per thread  */
       new_lg->m_stream_entries.resize (1);
+      new_lg->m_stream_entries[0] = new replication_stream_entry (new_lg->stream);
     }
 
-  new_lg->stream = new packing_stream (new_lg);
-  new_lg->stream->init (new_lg->m_append_position);
-
   new_lg->stream->acquire_new_write_buffer (new_lg, new_lg->m_append_position, LG_GLOBAL_INSTANCE_BUFFER_CAPACITY, NULL);
-
-  new_lg->m_serializator = new stream_packer (new_lg->stream);
 
   return new_lg;
 }
@@ -88,7 +95,7 @@ replication_stream_entry* log_generator::get_stream_entry (THREAD_ENTRY *th_entr
     {
       stream_entry_idx = th_entry->tran_index;
     }
-  replication_stream_entry *my_stream_entry = &(m_stream_entries[stream_entry_idx]);
+  replication_stream_entry *my_stream_entry = m_stream_entries[stream_entry_idx];
   return my_stream_entry;
 }
 
@@ -109,7 +116,7 @@ void log_generator::set_ready_to_pack (THREAD_ENTRY *th_entry)
       /* TODO[arnia] : this should be used only for testing */
       for (i = 0; i < m_stream_entries.size (); i++)
         {
-          m_stream_entries[i].set_packable (true);
+          m_stream_entries[i]->set_packable (true);
         }
     }
   else
@@ -128,14 +135,14 @@ int log_generator::pack_stream_entries (THREAD_ENTRY *th_entry)
     {
       for (i = 0; i < m_stream_entries.size (); i++)
         {
-          m_stream_entries[i].pack (m_serializator);
-          m_stream_entries[i].reset ();
+          m_stream_entries[i]->pack ();
+          m_stream_entries[i]->reset ();
         }
     }
   else
     {
       stream_entry *my_stream_entry = get_stream_entry (th_entry);
-      my_stream_entry->pack (m_serializator);
+      my_stream_entry->pack ();
       my_stream_entry->reset ();
     }
 

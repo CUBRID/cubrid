@@ -62,22 +62,24 @@ protected:
 
 protected:
 
+  packing_stream *m_stream;
+
   stream_position m_data_start_position;
 
   virtual object_builder *get_builder () = 0;
 
 public:
-  stream_entry() { m_buffered_range = NULL;  m_data_start_position = 0; set_packable (false); };
+  stream_entry (packing_stream *stream);
 
-  int pack (stream_packer *serializator);
+  int pack (void);
 
-  int receive (stream_packer *serializator);
+  int receive (void);
   
-  int unpack (stream_packer *serializator);
+  int unpack (void);
 
   void reset (void) { set_packable (false); m_packable_entries.clear (); };
 
-  size_t get_entries_size (stream_packer *serializator);
+  size_t get_entries_size (void);
 
   int add_packable_entry (packable_object *entry);
 
@@ -88,11 +90,12 @@ public:
   std::vector <packable_object *>* get_packable_entries_ptr (void) { return &m_packable_entries; };
 
   /* stream entry header methods : header is implemention dependent, is not known here ! */
-  virtual size_t get_header_size (stream_packer *serializator) = 0;
+  virtual stream_packer *get_packer () = 0;
+  virtual size_t get_header_size (void) = 0;
   virtual void set_header_data_size (const size_t &data_size) = 0;
   virtual size_t get_data_packed_size (void) = 0;
-  virtual int pack_stream_entry_header (stream_packer *serializator) = 0;
-  virtual int unpack_stream_entry_header (stream_packer *serializator) = 0;
+  virtual int pack_stream_entry_header (void) = 0;
+  virtual int unpack_stream_entry_header (void) = 0;
   virtual int get_packable_entry_count_from_header (void) = 0;
   virtual bool is_equal (const stream_entry *other) = 0;
 };

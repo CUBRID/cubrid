@@ -50,7 +50,7 @@ class stream_packer;
 class log_generator : public stream_provider
 {
 private:
-  std::vector<replication_stream_entry> m_stream_entries;
+  std::vector<replication_stream_entry*> m_stream_entries;
 
   packing_stream *stream;
 

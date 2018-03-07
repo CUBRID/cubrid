@@ -33,7 +33,15 @@
 #include <algorithm>
 
 
-int stream_entry::pack (stream_packer *serializator)
+stream_entry::stream_entry (packing_stream *stream)
+{ 
+  m_stream = stream;
+  m_buffered_range = NULL;
+  m_data_start_position = 0;
+  set_packable (false);
+}
+
+int stream_entry::pack (void)
 {
   size_t total_stream_entry_size;
   size_t data_size, header_size;
@@ -46,14 +54,15 @@ int stream_entry::pack (stream_packer *serializator)
       return NO_ERROR;
     }
 
-  header_size = get_header_size (serializator);
-  data_size = get_entries_size (serializator);
+  stream_packer *serializator = get_packer ();
+  header_size = get_header_size ();
+  data_size = get_entries_size ();
   total_stream_entry_size = header_size + data_size;
 
   stream_start_ptr = serializator->start_packing_range (total_stream_entry_size, &m_buffered_range);
   set_header_data_size (data_size);
 
-  pack_stream_entry_header (serializator);
+  pack_stream_entry_header ();
   for (i = 0; i < m_packable_entries.size(); i++)
     {
       serializator->align (MAX_ALIGNMENT);
@@ -81,15 +90,16 @@ int stream_entry::pack (stream_packer *serializator)
  * this is pre-unpack method : it fetches enough data to unpack stream header contents,
  * then fetches (receive from socket) the actual amount of data without unpacking it.
  */
-int stream_entry::receive (stream_packer *serializator)
+int stream_entry::receive (void)
 {
   BUFFER_UNIT *stream_start_ptr;
-  size_t stream_entry_header_size = get_header_size (serializator);
+  stream_packer *serializator = get_packer ();
+  size_t stream_entry_header_size = get_header_size ();
   int error_code;
 
   stream_start_ptr = serializator->start_unpacking_range (stream_entry_header_size, &m_buffered_range);
 
-  error_code = unpack_stream_entry_header (serializator);
+  error_code = unpack_stream_entry_header ();
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -110,12 +120,13 @@ int stream_entry::receive (stream_packer *serializator)
 }
 
 /* this is called only right before applying the replication data */
-int stream_entry::unpack (stream_packer *serializator)
+int stream_entry::unpack (void)
 {
   int i, error_code = NO_ERROR;
 
   /* TODO[arnia] : make sure the serializator range already points to data contents */
 
+  stream_packer *serializator = get_packer ();
   size_t count_packable_entries = get_packable_entry_count_from_header ();
   BUFFER_UNIT *stream_start_ptr = serializator->start_unpacking_range_from_pos (m_data_start_position,
                                                                                 get_data_packed_size (),
@@ -143,11 +154,12 @@ int stream_entry::add_packable_entry (packable_object *entry)
   return NO_ERROR;
 }
 
-size_t stream_entry::get_entries_size (stream_packer *serializator)
+size_t stream_entry::get_entries_size (void)
 {
   size_t entry_size, total_size = 0;
   int i;
 
+  stream_packer *serializator = get_packer ();
   for (i = 0; i < m_packable_entries.size (); i++)
     {
       entry_size = m_packable_entries[i]->get_packed_size (serializator);

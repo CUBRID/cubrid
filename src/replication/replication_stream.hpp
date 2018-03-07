@@ -31,6 +31,7 @@
 #include "packing_stream.hpp"
 #include "replication_entry.hpp"
 #include "storage_common.h"
+#include "stream_packer.hpp"
 
 class stream_provider;
 
@@ -49,17 +50,22 @@ class replication_stream_entry : public stream_entry
 private:
   replication_stream_entry_header m_header;
 
-public:
+  stream_packer m_serializator;
 
-  size_t get_header_size (stream_packer *serializator);
+public:
+  replication_stream_entry (packing_stream *stream) : stream_entry (stream), m_serializator (stream) { };
+
+  size_t get_header_size ();
   size_t get_data_packed_size (void);
   void set_header_data_size (const size_t &data_size);
 
   object_builder *get_builder (void) { static replication_object_builder repl_object_builder; return &repl_object_builder; };
 
-  int pack_stream_entry_header (stream_packer *serializator);
-  int unpack_stream_entry_header (stream_packer *serializator);
+  int pack_stream_entry_header ();
+  int unpack_stream_entry_header ();
   int get_packable_entry_count_from_header (void);
+
+  stream_packer *get_packer ()  { return &m_serializator; };
 
   bool is_equal (const stream_entry *other);
 };

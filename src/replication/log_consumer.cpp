@@ -41,9 +41,9 @@ int log_consumer::fetch_stream_entry (replication_stream_entry **entry)
 {
   int err = NO_ERROR;
 
-  replication_stream_entry* se = new replication_stream_entry ();
+  replication_stream_entry* se = new replication_stream_entry (get_write_stream ());
 
-  err = se->receive (m_serializator);
+  err = se->receive ();
   if (err != NO_ERROR)
     {
       return err;
@@ -84,8 +84,6 @@ log_consumer* log_consumer::new_instance (const CONSUMER_TYPE req_type, const st
   new_lc->consume_stream->init (new_lc->curr_position);
 
   new_lc->consume_stream->acquire_new_write_buffer (new_lc, new_lc->curr_position, LC_BUFFER_CAPACITY, NULL);
-
-  new_lc->m_serializator = new stream_packer (new_lc->consume_stream);
 
   return new_lc; 
 }

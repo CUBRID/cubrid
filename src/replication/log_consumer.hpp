@@ -61,8 +61,6 @@ protected:
 
   packing_stream *consume_stream;
 
-  stream_packer *m_serializator;
-
   slave_replication_channel *m_src;
 
   /* current append position to be assigned to a new entry */
