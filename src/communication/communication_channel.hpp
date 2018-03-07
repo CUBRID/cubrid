@@ -21,8 +21,8 @@
  * communication_channel.hpp - wrapper for communication primitives
  */
 
-#ifndef _COMMUNICATION_CHANNEL_HPP
-#define _COMMUNICATION_CHANNEL_HPP
+#ifndef _COMMUNICATION_CHANNEL_HPP_
+#define _COMMUNICATION_CHANNEL_HPP_
 
 #include <string>
 #include <mutex>
@@ -97,5 +97,5 @@ class communication_channel
     SOCKET m_socket;
 };
 
-#endif /* _COMMUNICATION_CHANNEL_HPP */
+#endif /* _COMMUNICATION_CHANNEL_HPP_ */
 
