@@ -395,6 +395,10 @@ namespace cubthread
 	assert (false);
 	m_core_count = 1;
       }
+    if (m_core_count > pool_size)
+      {
+	m_core_count = pool_size;
+      }
     m_core_array = new core[m_core_count];
     std::size_t quotient = m_max_workers / m_core_count;
     std::size_t remainder = m_max_workers % m_core_count;
@@ -637,6 +641,8 @@ namespace cubthread
   void
   worker_pool<Context>::core::init_pool_and_workers (worker_pool<Context> &parent, std::size_t worker_count)
   {
+    assert (worker_count > 0);
+
     m_parent_pool = &parent;
     m_max_workers = worker_count;
 
@@ -655,6 +661,7 @@ namespace cubthread
   task<Context> *
   worker_pool<Context>::core::get_task (void)
   {
+    // get task from queue
     task_type *task_p = NULL;
     if (m_parent_pool->m_work_queue.consume (task_p))
       {
@@ -667,6 +674,8 @@ namespace cubthread
   bool
   worker_pool<Context>::core::execute_task (task_type *task_p)
   {
+    assert (task_p != NULL);
+
     wpstat::time_point_type push_time;
     worker *refp = NULL;
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
@@ -698,6 +707,7 @@ namespace cubthread
   {
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
     m_free_active_list.push_back (&worker_arg);
+    assert (m_free_active_list.size () <= m_max_workers);
   }
 
   template <typename Context>
@@ -706,6 +716,7 @@ namespace cubthread
   {
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
     m_inactive_list.push_front (&worker_arg);
+    assert (m_inactive_list.size () <= m_max_workers);
   }
 
   template <typename Context>
@@ -713,8 +724,11 @@ namespace cubthread
   worker_pool<Context>::core::move_worker_to_inactive_list (worker &worker_arg)
   {
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
-    m_free_active_list.remove (&worker_arg);
-    m_inactive_list.push_front (&worker_arg);
+    // we need to remove from active. this operation is slow. however, since we're here, it means thread timed out
+    // waiting for task. system is not overloaded so it should not matter
+    m_free_active_list.remove (&worker_arg);  // may or may not be there
+    m_inactive_list.push_front (&worker_arg); // but we'll add to inactive list either way
+    assert (m_inactive_list.size () <= m_max_workers);
   }
 
   template <typename Context>
@@ -825,6 +839,8 @@ namespace cubthread
   void
   worker_pool<Context>::core::worker::start_execution (task<Context> *work_p, wpstat::time_point_type push_time)
   {
+    assert (work_p != NULL);
+
     // start task execution. we have two options:
     //
     //  1. thread is already running and waiting for a new task notification. this case is faster.
@@ -884,6 +900,7 @@ namespace cubthread
   void
   worker_pool<Context>::core::worker::init_run (void)
   {
+    // thread was started
     m_time_point = m_push_time;
     m_statistics.collect_and_time (wpstat::id::START_THREAD, m_time_point);
 
@@ -896,6 +913,9 @@ namespace cubthread
   void
   worker_pool<Context>::core::worker::finish_run (void)
   {
+    assert (m_task_p == NULL);
+    assert (m_context_p != NULL);
+
     // retire context
     m_parent_core->retire_context (*m_context_p);
     m_context_p = NULL;
@@ -906,6 +926,8 @@ namespace cubthread
   void
   worker_pool<Context>::core::worker::retire_current_task (void)
   {
+    assert (m_task_p != NULL);
+
     // retire task
     m_task_p->retire ();
     m_task_p = NULL;
@@ -916,6 +938,8 @@ namespace cubthread
   void
   worker_pool<Context>::core::worker::execute_current_task (void)
   {
+    assert (m_task_p != NULL);
+
     // execute task
     m_task_p->execute (*m_context_p);
     m_statistics.collect_and_time (wpstat::id::EXECUTE_TASK, m_time_point);
@@ -965,14 +989,17 @@ namespace cubthread
   void
   worker_pool<Context>::core::worker::wait_for_task (void)
   {
+    assert (m_task_p == NULL);
+
+    const std::chrono::seconds WAIT_TIME = std::chrono::seconds (60);
+
     // notify parent core I am free
     m_parent_core->add_worker_to_free_active_list (*this);
 
     // wait for task
     std::unique_lock<std::mutex> ulock (m_task_mutex);
     m_waiting_task = true;
-    m_task_cv.wait_for (ulock, std::chrono::seconds (60),
-			[this] { return m_waiting_task && m_task_p != NULL; });
+    m_task_cv.wait_for (ulock, WAIT_TIME, [this] { return m_waiting_task && m_task_p != NULL; });
     m_waiting_task = false;
 
     if (m_task_p == NULL)
