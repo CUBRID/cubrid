@@ -74,6 +74,9 @@
 #include "heartbeat.h"
 #endif
 #include "dbtype.h"
+#include "thread_looper.hpp"
+#include "thread_manager.hpp"
+
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"
 
@@ -102,6 +105,7 @@ static HA_SERVER_STATE ha_Server_state = HA_SERVER_STATE_IDLE;
 static bool ha_Repl_delay_detected = false;
 
 static int ha_Server_num_of_hosts = 0;
+static char *ha_Server_master_hostname = NULL;
 
 typedef struct job_queue JOB_QUEUE;
 struct job_queue
@@ -231,6 +235,8 @@ static int css_process_new_connection_request (void);
 
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
+
+static void css_process_new_slave (SOCKET master_fd);
 
 /*
  * css_make_job_entry () -
@@ -989,6 +995,13 @@ css_process_master_request (SOCKET master_fd)
     case SERVER_GET_EOF:
       css_process_get_eof_request (master_fd);
       break;
+    case SERVER_RECEIVE_MASTER_HOSTNAME:
+      css_process_master_hostname ();
+      break;
+    case SERVER_CONNECT_NEW_SLAVE:
+      _er_log_debug (ARG_FILE_LINE, "css_process_master_request:" "received new slave\n");
+      css_process_new_slave (master_fd);
+      break;
 #endif
     default:
       /* master do not respond */
@@ -1195,6 +1208,59 @@ css_process_get_eof_request (SOCKET master_fd)
   css_send_heartbeat_request (css_Master_conn, SERVER_GET_EOF);
   css_send_heartbeat_data (css_Master_conn, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 #endif
+}
+
+int
+css_process_master_hostname ()
+{
+#				//if !defined (WINDOWS)
+  int hostname_length, error;
+
+  delete_master_hostname ();
+
+  error = css_receive_heartbeat_data (css_Master_conn, (char *) &hostname_length, sizeof (int));
+  if (error != NO_ERRORS)
+    {
+      return error;
+    }
+
+  if (hostname_length == 0)
+    {
+      return NO_ERRORS;
+    }
+  else if (hostname_length < 0)
+    {
+      return ER_FAILED;
+    }
+
+  ha_Server_master_hostname = (char *) malloc (hostname_length + 1);
+  error = css_receive_heartbeat_data (css_Master_conn, ha_Server_master_hostname, hostname_length);
+  if (error != NO_ERRORS)
+    {
+      return error;
+    }
+  ha_Server_master_hostname[hostname_length] = '\0';
+
+  assert (hostname_length > 0 && ha_Server_state == HA_SERVER_STATE_STANDBY);
+
+  master_replication_channel_manager::reset ();
+  slave_replication_channel::reset_singleton ();
+  slave_replication_channel::init (ha_Server_master_hostname, css_Master_server_name, css_Master_port_id);
+
+  error = slave_replication_channel::get_channel ().connect_to_cub_server_master ();
+  assert (error == NO_ERRORS);
+  /* TODO[arnia] add possibility of adding multiple daemons to slaves */
+  error = slave_replication_channel::get_channel ().start_daemon (cubthread::looper (std::chrono::seconds (1)),
+								  new
+								  slave_dummy_send_msg
+								  (&slave_replication_channel::get_channel ()));
+  assert (error == NO_ERROR);
+
+  _er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
+		 ha_Server_master_hostname);
+
+  return NO_ERRORS;
+//#endif
 }
 
 /*
@@ -2884,9 +2950,9 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
   HA_SERVER_STATE orig_state;
   int i;
 
-  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: ha_Server_state %s " "state %s force %c heartbeat %c\n",
-		css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state), (force ? 't' : 'f'),
-		(heartbeat ? 't' : 'f'));
+  _er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: ha_Server_state %s " "state %s force %c heartbeat %c\n",
+		 css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state), (force ? 't' : 'f'),
+		 (heartbeat ? 't' : 'f'));
 
   assert (state >= HA_SERVER_STATE_IDLE && state <= HA_SERVER_STATE_DEAD);
 
@@ -2894,6 +2960,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
       || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE && state == HA_SERVER_STATE_ACTIVE)
       || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY && state == HA_SERVER_STATE_STANDBY))
     {
+      //TODO is this really the intended behaviour?
       return NO_ERROR;
     }
 
@@ -2950,6 +3017,9 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_enable_update() \n");
 	  logtb_enable_update (thread_p);
 	}
+      slave_replication_channel::reset_singleton ();
+      master_replication_channel_manager::reset ();
+      master_replication_channel_manager::init ();
       break;
 
     case HA_SERVER_STATE_STANDBY:
@@ -3282,3 +3352,47 @@ xacl_reload (THREAD_ENTRY * thread_p)
   return css_set_accessible_ip_info ();
 }
 #endif
+
+static void
+css_process_new_slave (SOCKET master_fd)
+{
+  SOCKET new_fd;
+  unsigned short rid;
+
+  /* receive new socket descriptor from the master */
+  new_fd = css_open_new_socket_from_master (master_fd, &rid);
+  if (IS_INVALID_SOCKET (new_fd))
+    {
+      assert (false);
+      return;
+    }
+  _er_log_debug (ARG_FILE_LINE, "css_process_new_slave:" "received new slave fd from master fd=%d, current_state=%d\n",
+		 new_fd, ha_Server_state);
+
+  assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
+
+  master_replication_channel_manager::add_master_replication_channel (master_replication_channel_entry
+								      (new_fd, RECEIVE_FROM_SLAVE,
+								       new receive_from_slave_daemon ()));
+}
+
+void
+init_master_hostname ()
+{
+  ha_Server_master_hostname = NULL;
+}
+
+void
+delete_master_hostname ()
+{
+  if (ha_Server_master_hostname != NULL)
+    {
+      free (ha_Server_master_hostname);
+    }
+}
+
+const char *
+get_master_hostname ()
+{
+  return ha_Server_master_hostname;
+}

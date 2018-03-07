@@ -31,6 +31,8 @@ option (UNIT_TEST_MEMORY_ALLOC  "Unit testing for memory allocation")
 option (UNIT_TEST_STRING_BUFFER "Unit testing: string buffer with format")
 option (UNIT_TEST_LOCKFREE "Unit testing: lockfree module")
 option (UNIT_TEST_THREAD "Unit testing: thread module")
+option (UNIT_TEST_REPL_CHN_COMM "Unit testing: replication channel communication side module")
+option (UNIT_TEST_COMM_CHN "Unit testing: communication channel module")
 
 message("  unit_tests/...")
 
@@ -58,3 +60,13 @@ if (UNIT_TESTS OR UNIT_TEST_THREAD)
   message("    thread")
   add_subdirectory(thread)
 endif(UNIT_TESTS OR UNIT_TEST_THREAD)
+
+if (UNIT_TESTS OR UNIT_TEST_REPL_CHN_COMM)
+  message("    replication_channel_communication")
+  add_subdirectory(replication_channel_communication)
+endif(UNIT_TESTS OR UNIT_TEST_REPL_CHN_COMM)
+
+if (UNIT_TESTS OR UNIT_TEST_COMM_CHN)
+  message("    communication_channel")
+  add_subdirectory(communication_channel)
+endif(UNIT_TESTS OR UNIT_TEST_COMM_CHN)

@@ -297,6 +297,7 @@ static ER_FMT er_Fmt_list[(-ER_LAST_ERROR) + 1];
 static int er_Fmt_msg_fail_count = -ER_LAST_ERROR;
 static int er_Errid_not_initialized = 0;
 #if !defined (SERVER_MODE)
+
 static er_log_handler_t er_Handler = NULL;
 #endif /* !SERVER_MODE */
 static unsigned int er_Eid = 0;

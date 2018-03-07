@@ -131,6 +131,10 @@ set(CONNECTION_SOURCES
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
+  ${COMMUNICATION_DIR}/communication_channel.cpp
+  ${COMMUNICATION_DIR}/master_replication_channel.cpp
+  ${COMMUNICATION_DIR}/slave_replication_channel.cpp
+  ${COMMUNICATION_DIR}/master_replication_channel_manager.cpp
   )
 
 set(QUERY_SOURCES
@@ -221,11 +225,12 @@ set(SESSION_SOURCES
   ${SESSION_DIR}/session_sr.c
   )
 
+list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
+
 if(UNIX)
   list(APPEND BASE_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/variable_string.c)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/tcp.c)
-  list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
   list(APPEND STORAGE_SOURCES ${STORAGE_DIR}/es_owfs.c)
 else(UNIX)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/wintcp.c)

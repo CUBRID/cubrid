@@ -53,9 +53,11 @@
 #include "event_log.h"
 #include "util_func.h"
 #include "tz_support.h"
-#if defined(WINDOWS)
+#if !defined(WINDOWS)
+#include "tcp.h"
+#else /* WINDOWS */
 #include "wintcp.h"
-#endif /* WINDOWS */
+#endif
 #include "thread_manager.hpp"
 
 enum net_req_act
@@ -838,6 +840,8 @@ net_server_init (void)
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_redistribute_partition_data;
   req_p->name = "NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA";
+
+  init_master_hostname ();
 }
 
 #if defined(CUBRID_DEBUG)
@@ -1241,6 +1245,8 @@ loop:
 int
 net_server_start (const char *server_name)
 {
+
+
   int error = NO_ERROR;
   int name_length;
   char *packed_name;
@@ -1344,6 +1350,9 @@ net_server_start (const char *server_name)
 	{
 	  (void) xboot_shutdown_server (thread_get_thread_entry_info (), ER_THREAD_FINAL);
 	}
+
+      master_replication_channel_manager::reset ();
+      slave_replication_channel::reset_singleton ();
 
 #if defined(CUBRID_DEBUG)
       net_server_histo_print ();

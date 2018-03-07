@@ -29,9 +29,8 @@
 
 #include "config.h"
 
-#if defined(WINDOWS)
 #include <winsock2.h>
-#endif
+#include "connection_defs.h"
 
 enum CSS_ER_WINSOCK
 {
@@ -61,7 +60,7 @@ extern bool css_tcp_setup_server_datagram (char *pathname, SOCKET * sockfd);
 extern bool css_tcp_listen_server_datagram (SOCKET sockfd, SOCKET * newfd);
 extern bool css_tcp_master_datagram (char *pathname, SOCKET * sockfd);
 extern SOCKET css_open_new_socket_from_master (SOCKET fd, unsigned short *rid);
-extern bool css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid);
+extern bool css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SERVER_REQUEST request);
 extern int css_tcp_master_open (int port, SOCKET * sockfd);
 extern SOCKET css_master_accept (SOCKET sockfd);
 extern int css_open_server_connection_socket (void);

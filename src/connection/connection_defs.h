@@ -60,12 +60,18 @@
  */
 enum css_command_type
 {
+  NULL_REQUEST = 0,
   INFO_REQUEST = 1,		/* get runtime info from the master server */
   DATA_REQUEST = 2,		/* get data from the database server */
   SERVER_REQUEST = 3,		/* let new server attach */
   MSQL_REQUEST = 4,		/* A request to start a new M driver. */
-  SERVER_REQUEST_NEW = 5	/* new-style server request */
+  SERVER_REQUEST_NEW = 5,	/* new-style server request */
+  SERVER_REQUEST_CONNECT_NEW_SLAVE = 6,	/* slave server wants to connect to master server */
+  MAX_REQUEST
 };
+typedef enum css_command_type CSS_COMMAND_TYPE;
+
+typedef enum css_command_type CSS_COMMAND_TYPE;
 
 /*
  * These are the responses from the master to a server
@@ -145,8 +151,12 @@ enum css_server_request
   SERVER_REGISTER_HA_PROCESS = 10,
   SERVER_CHANGE_HA_MODE = 11,
   SERVER_DEREGISTER_HA_PROCESS = 12,
-  SERVER_GET_EOF = 13
+  SERVER_GET_EOF = 13,
+  SERVER_RECEIVE_MASTER_HOSTNAME = 14,
+  SERVER_CONNECT_NEW_SLAVE = 15
 };
+
+typedef enum css_server_request CSS_SERVER_REQUEST;
 
 /*
  * These are the status codes for the connection structure which represent

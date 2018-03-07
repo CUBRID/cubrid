@@ -59,4 +59,5 @@ extern bool css_is_valid_request_id (CSS_CONN_ENTRY * conn, unsigned short reque
 extern int css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id, char **buffer, int *buffer_size,
 				    int *rc);
 extern void css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn);
+extern int css_read_one_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, int *buffer_size);
 #endif /* _CONNECTION_CL_H_ */
