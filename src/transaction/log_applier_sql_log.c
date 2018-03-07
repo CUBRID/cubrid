@@ -41,6 +41,7 @@
 #include "set_object.h"
 #include "cci_applier.h"
 #include "schema_manager.h"
+#include "dbtype.h"
 
 #include "db_value_printer.hpp"
 #include "mem_block.hpp"

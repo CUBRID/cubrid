@@ -922,7 +922,7 @@ $ LOADDB
 853 객체(%1$d|%2$d|%3$d)에 대해 Uncommitted Read 트랜잭션(%4$d)이 잘못된 로크(%5$s)를 잡았습니다.
 854 경고: lock holder는 없지만 lock waiter는 존재하는 상태. %1$s를 참조하세요.
 855 경고: 둘 이상의 스레드가 하나의 트랜잭션(%1$d)를 위해 lock-waiting 중입니다.
-856 경고: 이상한 로크 대기 상태(%1$d|%2$d), 스레드는 (%3$d|%4$d), 트랜잭션은 (%5$d).
+856 경고: 이상한 로크 대기 상태(%1$d|%2$d), 스레드는 (%3$d|%4$lld), 트랜잭션은 (%5$d).
 857 볼륨 "%2$s"의 %1$d 페이지를 잘라내는 도중에 I/O 에러 발생.
 858 서버 재수행시 볼륨 "%1$s"는 알 수 없는 볼륨입니다. 
 859 페이지(%1$d|%2$d)에 대한 래치 획득 요청이 취소되었습니다.
@@ -1268,9 +1268,23 @@ $ LOADDB
 1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
 1200 Invalid JSON path
 1201 Json object name cannot be NULL.
-1202 마지막 에러
-1197 Double Write Buffer is disabled.
-1198 마지막 에러
+
+1202 Json PATH "%1$s" does not exist in %2$s
+1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
+1204 Json KEY "%1$s" is duplicate
+1205 Reserved error for JSON.
+1206 Reserved error for JSON.
+1207 Reserved error for JSON.
+1208 Reserved error for JSON.
+1209 Reserved error for JSON.
+1210 Reserved error for JSON.
+1211 Reserved error for JSON.
+1212 Reserved error for JSON.
+1213 Reserved error for JSON.
+1214 Reserved error for JSON.
+1215 Double Write Buffer is disabled.
+
+1216 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

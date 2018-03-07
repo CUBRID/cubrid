@@ -248,7 +248,7 @@ boot_server_status (BOOT_SERVER_STATUS status)
 
 #if defined(SERVER_MODE)
 /*
- * bo_shutdown_server_atexit () - make sure that the server is shutdown at exit
+ * bo_shutdown_server_at_exit () - make sure that the server is shutdown at exit
  *
  * return : nothing
  *
@@ -2496,13 +2496,18 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, boot_Dwb_path, dwb_prefix, from_backup, r_args);
 
+#if defined(SERVER_MODE)
+  pgbuf_daemons_init ();
+  dwb_daemons_init ();
+#endif /* SERVER_MODE */
+
   // after recovery we can boot vacuum
   error_code = vacuum_boot (thread_p);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto error;
-	}
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
 
   /* 
    * Initialize the catalog manager, the query evaluator, and install meta
@@ -2808,6 +2813,12 @@ error:
   logtb_finalize_global_unique_stats_table (thread_p);
 
   vacuum_stop (thread_p);
+
+#if defined(SERVER_MODE)
+  pgbuf_daemons_destroy ();
+  dwb_daemons_destroy ();
+#endif
+
   log_final (thread_p);
   fpcache_finalize (thread_p);
   qfile_finalize_list_cache (thread_p);
@@ -2947,7 +2958,8 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
       (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
 
 #if defined(SERVER_MODE)
-      thread_stop_active_daemons ();
+      pgbuf_daemons_destroy ();
+      dwb_daemons_destroy ();
 #endif
 
       log_final (thread_p);
@@ -4693,7 +4705,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
   /* Shutdown the server */
   if (error_code == NO_ERROR)
     {
-      boot_server_all_finalize (thread_p, ER_ALL_FINAL, shutdown_common_modules);
+      boot_server_all_finalize (thread_p, ER_THREAD_FINAL, shutdown_common_modules);
     }
   else
     {

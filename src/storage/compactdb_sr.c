@@ -94,7 +94,7 @@ process_value (THREAD_ENTRY * thread_p, DB_VALUE * value)
 	OID ref_class_oid;
 	HEAP_SCANCACHE scan_cache;
 
-	ref_oid = DB_GET_OID (value);
+	ref_oid = db_get_oid (value);
 
 	if (OID_ISNULL (ref_oid))
 	  {
@@ -136,7 +136,7 @@ process_value (THREAD_ENTRY * thread_p, DB_VALUE * value)
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
       {
-	return_value = process_set (thread_p, DB_GET_SET (value));
+	return_value = process_set (thread_p, db_get_set (value));
 	break;
       }
 

@@ -69,6 +69,8 @@
 #include "xserver_interface.h"
 #endif
 
+#include "dbtype.h"
+
 static const DB_ELO elo_Initializer = { -1LL, NULL, NULL, ELO_NULL, ES_NONE };
 
 #define ELO_NEEDS_TRANSACTION(e) \

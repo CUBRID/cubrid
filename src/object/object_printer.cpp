@@ -29,7 +29,6 @@
 #include "dbdef.h"
 #include "dbi.h"
 #include "dbtype.h"
-#include "dbval.h"
 #include "misc_string.h"
 #include "object_domain.h"
 #include "object_print_util.hpp"
@@ -49,8 +48,8 @@ void object_printer::describe_comment (const char *comment)
 
   assert (comment != NULL);
 
-  DB_MAKE_NULL (&comment_value);
-  DB_MAKE_STRING (&comment_value, comment);
+  db_make_null (&comment_value);
+  db_make_string_by_const_str (&comment_value, comment);
 
   m_buf ("COMMENT ");
   if (comment != NULL && comment[0] != '\0')
@@ -73,7 +72,7 @@ void object_printer::describe_partition_parts (const sm_partition &parts, class_
   int setsize, i;
   db_value_printer obj_print (m_buf);
 
-  DB_MAKE_NULL (&ele);
+  db_make_null (&ele);
 
   m_buf ("PARTITION ");
   describe_identifier (parts.pname, prt_type);
@@ -190,7 +189,7 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 	case DB_TYPE_TIME:
 	case DB_TYPE_TIMETZ:
 	case DB_TYPE_TIMELTZ:
-	case DB_TYPE_UTIME:
+	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPTZ:
 	case DB_TYPE_TIMESTAMPLTZ:
 	case DB_TYPE_DATETIME:
@@ -494,8 +493,8 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
 
 	      assert (attribute.auto_increment != NULL);
 
-	      DB_MAKE_NULL (&min_val);
-	      DB_MAKE_NULL (&inc_val);
+	      db_make_null (&min_val);
+	      db_make_null (&inc_val);
 
 	      if (db_get (attribute.auto_increment, "min_val", &min_val) != NO_ERROR)
 		{
@@ -1122,8 +1121,8 @@ void object_printer::describe_class (struct db_object *class_op)
   if (class_descr.comment != NULL && class_descr.comment[0] != '\0')
     {
       DB_VALUE comment_value;
-      DB_MAKE_NULL (&comment_value);
-      DB_MAKE_STRING (&comment_value, class_descr.comment);
+      db_make_null (&comment_value);
+      db_make_string (&comment_value, class_descr.comment);
 
       m_buf (" COMMENT=");
 
@@ -1182,7 +1181,7 @@ void object_printer::describe_partition_info (const sm_partition &partinfo)
     {
       if (set_get_element (partinfo.values, 1, &ele) == NO_ERROR)
 	{
-	  m_buf ("PARTITIONS %d", DB_GET_INTEGER (&ele));
+	  m_buf ("PARTITIONS %d", db_get_int (&ele));
 	}
     }
 }

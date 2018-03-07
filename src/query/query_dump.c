@@ -29,6 +29,7 @@
 #include "query_dump.h"
 #include "object_primitive.h"
 #include "system_parameter.h"
+#include "dbtype.h"
 
 #define foutput stdout
 
@@ -1375,10 +1376,20 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "JSON_ARRAY";
     case F_JSON_INSERT:
       return "JSON_INSERT";
+    case F_JSON_REPLACE:
+      return "JSON_REPLACE";
+    case F_JSON_SET:
+      return "JSON_SET";
+    case F_JSON_KEYS:
+      return "JSON_KEYS";
     case F_JSON_REMOVE:
       return "JSON_REMOVE";
+    case F_JSON_ARRAY_APPEND:
+      return "JSON_ARRAY_APPEND";
     case F_JSON_MERGE:
       return "JSON_MERGE";
+    case F_JSON_GET_ALL_PATHS:
+      return "JSON_GET_ALL_PATHS";
     default:
       return "***UNKNOWN***";
     }

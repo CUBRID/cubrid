@@ -37,6 +37,7 @@
 #include "object_accessor.h"
 #include "locator_cl.h"
 #include "virtual_object.h"
+#include "dbtype.h"
 
 #define MAX_STACK_OBJECTS 500
 
@@ -4095,12 +4096,12 @@ mq_replace_virtual_oid_with_real_oid (PARSER_CONTEXT * parser, PT_NODE * node, v
 		  PT_ERRORc (parser, node, er_msg ());
 		  return node;
 		}
-	      DB_MAKE_OBJECT (&db_val, obj);
+	      db_make_object (&db_val, obj);
 	    }
 	  else if (DB_VALUE_TYPE (&db_val) == DB_TYPE_OBJECT)
 	    {
-	      obj = db_real_instance (DB_GET_OBJECT (&db_val));
-	      DB_MAKE_OBJECT (&db_val, obj);
+	      obj = db_real_instance (db_get_object (&db_val));
+	      db_make_object (&db_val, obj);
 	    }
 	  else
 	    {
@@ -5634,11 +5635,13 @@ mq_set_non_updatable_oid (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * vir
 	  select_list->type_enum = PT_TYPE_OBJECT;
 
 	  /* set vclass_name as literal string */
-	  DB_MAKE_STRING (&vid, db_get_class_name (virt_entity->info.name.db_object));
+	  db_make_string_by_const_str (&vid, db_get_class_name (virt_entity->info.name.db_object));
 	  select_list->info.function.arg_list = pt_dbval_to_value (parser, &vid);
 	  select_list->info.function.function_type = F_SEQUENCE;
 
 	  select_list->data_type->info.data_type.virt_object = virt_entity->info.name.db_object;
+
+	  pr_clear_value (&vid);
 	}
       break;
     case PT_UNION:
@@ -9528,7 +9531,7 @@ mq_translate_value (PARSER_CONTEXT * parser, PT_NODE * value)
 	  db_value = pt_value_to_db (parser, value);
 	  if (db_value)
 	    {
-	      DB_MAKE_OBJECT (db_value, value->info.value.data_value.op);
+	      db_make_object (db_value, value->info.value.data_value.op);
 	    }
 
 	}
@@ -10560,7 +10563,7 @@ mq_update_attribute (DB_OBJECT * vclass_object, const char *attr_name, DB_OBJECT
 	  value_holder->info.value.db_value_is_initialized = true;
 	  pt_evaluate_tree (parser, expr->info.expr.arg2, real_value, 1);
 	  parser_free_tree (parser, value);
-	  DB_MAKE_NULL (&value_holder->info.value.db_value);
+	  db_make_null (&value_holder->info.value.db_value);
 	  value_holder->info.value.db_value_is_initialized = false;
 	  /* 
 	   * This is a bit of a kludge since there is no way to clean up
@@ -10919,7 +10922,7 @@ mq_evaluate_check_option (PARSER_CONTEXT * parser, PT_NODE * check_where, DB_OBJ
   DB_VALUE bool_val;
   int error;
 
-  DB_MAKE_NULL (&bool_val);
+  db_make_null (&bool_val);
 
   /* evaluate check option */
   if (check_where != NULL)

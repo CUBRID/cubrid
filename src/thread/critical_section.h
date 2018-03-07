@@ -27,7 +27,7 @@
 
 #ident "$Id$"
 
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "thread_compat.hpp"
 
 #if !defined(WINDOWS)
@@ -50,9 +50,7 @@ enum
  */
 enum
 {
-  CSECT_ER_LOG_FILE = 0,	/* Latch for error msg log file */
-  CSECT_ER_MSG_CACHE,		/* Latch for error msg cache */
-  CSECT_WFG,			/* Latch for wait-for-graph */
+  CSECT_WFG = 0,		/* Latch for wait-for-graph */
   CSECT_LOG,			/* Latch for log manager */
   CSECT_LOCATOR_SR_CLASSNAME_TABLE,	/* Latch for classname to classOID entries */
   CSECT_QPROC_QUERY_TABLE,	/* Latch for query manager table */
@@ -113,7 +111,7 @@ typedef struct sync_critical_section
   pthread_cond_t readers_ok;	/* start waiting readers */
   THREAD_ENTRY *waiting_writers_queue;	/* queue of waiting writers */
   THREAD_ENTRY *waiting_promoters_queue;	/* queue of waiting promoters */
-  pthread_t owner;		/* CS owner writer */
+  thread_id_t owner;		/* CS owner writer */
   int tran_index;		/* transaction id acquiring CS */
   SYNC_STATS *stats;
 } SYNC_CRITICAL_SECTION;
@@ -131,7 +129,7 @@ typedef struct sync_rmutex
 {
   const char *name;
   pthread_mutex_t lock;		/* mutex */
-  pthread_t owner;		/* owner thread id */
+  thread_id_t owner;		/* owner thread id */
   int lock_cnt;			/* # of times that owner enters */
   SYNC_STATS *stats;
 } SYNC_RMUTEX;

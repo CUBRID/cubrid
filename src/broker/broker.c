@@ -68,9 +68,8 @@
 #include "broker_access_list.h"
 #include "broker_filename.h"
 #include "broker_er_html.h"
-
 #include "broker_send_fd.h"
-
+#include "error_manager.h"
 #include "shard_shm.h"
 #include "shard_metadata.h"
 #include "broker_proxy_conn.h"
@@ -2023,6 +2022,8 @@ server_monitor_thr_f (void *arg)
   char *unusable_db_host;
   char busy_cas_db_name[SRV_CON_DBNAME_SIZE];
 
+  er_init (NULL, ER_NEVER_EXIT);
+
   check_list = (T_DB_SERVER *) malloc (sizeof (T_DB_SERVER) * UNUSABLE_DATABASE_MAX);
 
   while (process_flag)
@@ -2127,6 +2128,8 @@ server_monitor_thr_f (void *arg)
     }
 
   free_and_init (check_list);
+
+  er_final (ER_ALL_FINAL);
 
 #if !defined(WINDOWS)
   return NULL;

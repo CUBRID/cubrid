@@ -32,10 +32,6 @@
 #include "es_posix.h"
 #include "es_owfs.h"
 
-#if !defined (CS_MODE)
-#include "log_manager.h"
-#endif /* !defined (CS_MODE) */
-
 #if !defined (SERVER_MODE)
 #include "network_interface_cl.h"
 #endif /* !defined (SERVER_MODE) */
@@ -535,64 +531,3 @@ es_get_file_size (const char *uri)
 
   return ret;
 }
-
-/*
- * es_rv_nop () - Skip recovery operation for external storage.
- *
- * return	 : NO_ERROR.
- * thread_p (in) : Thread entry.
- * rcv (in)	 : Recovery data.
- */
-int
-es_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  /* Do nothing */
-  return NO_ERROR;
-}
-
-#if defined (SERVER_MODE)
-/*
- * es_notify_vacuum_for_delete () - External storage file cannot be deleted
- *				    when transaction is ended and MVCC is
- *				    used. Vacuum must be notified instead and
- *				    file is deleted when it is no longer
- *				    visible.
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- * uri (in)	 : File location URI.
- */
-void
-es_notify_vacuum_for_delete (THREAD_ENTRY * thread_p, const char *uri)
-{
-#define ES_NOTIFY_VACUUM_FOR_DELETE_BUFFER_SIZE \
-  (INT_ALIGNMENT +	/* Aligning buffer start */	      \
-   OR_INT_SIZE +	/* String length */		      \
-   ES_MAX_URI_LEN +	/* URI string */	  	      \
-   INT_ALIGNMENT)		/* Alignment of packed string */
-
-  LOG_DATA_ADDR addr;
-  int length;
-  char data_buf[ES_NOTIFY_VACUUM_FOR_DELETE_BUFFER_SIZE];
-  char *data = NULL;
-
-  addr.offset = -1;
-  addr.pgptr = NULL;
-  addr.vfid = NULL;
-
-  /* Compute the total length required to pack string */
-  length = or_packed_string_length (uri, NULL);
-
-  /* Check there is enough space in data buffer to pack the string */
-  assert (length <= (int) (ES_NOTIFY_VACUUM_FOR_DELETE_BUFFER_SIZE - INT_ALIGNMENT));
-
-  /* Align buffer to prepare for packing string */
-  data = PTR_ALIGN (data_buf, INT_ALIGNMENT);
-
-  /* Pack string */
-  (void) or_pack_string (data, uri);
-
-  /* This is not actually ever undone, but vacuum will process undo data of log entry. */
-  log_append_undo_data (thread_p, RVES_NOTIFY_VACUUM, &addr, length, data);
-}
-#endif /* SERVER_MODE */

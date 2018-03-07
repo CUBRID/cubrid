@@ -29,6 +29,9 @@
 #include "system_parameter.h"
 #include "double_write_buffer.h"
 #include "thread.h"
+#include "thread_daemon.hpp"
+#include "thread_entry_task.hpp"
+#include "thread_manager.hpp"
 #include "log_impl.h"
 #include "boot_sr.h"
 #include "perf_monitor.h"
@@ -449,6 +452,16 @@ STATIC_INLINE int dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, D
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_slots_hash_delete (THREAD_ENTRY * thread_p, DWB_SLOT * slot);
 
+#if defined (SERVER_MODE)
+static cubthread::daemon * dwb_flush_block_daemon = NULL;
+static cubthread::daemon * dwb_flush_block_helper_daemon = NULL;
+static cubthread::daemon * dwb_checkum_computation_daemon = NULL;
+#endif
+
+static bool dwb_is_flush_block_daemon_available (void);
+static bool dwb_is_flush_block_helper_daemon_available (void);
+static bool dwb_is_checksum_computation_daemon_available (void);
+
 /* Slots entry descriptor */
 static LF_ENTRY_DESCRIPTOR slots_entry_Descriptor = {
   /* offsets */
@@ -861,7 +874,7 @@ start_structure_modification:
 
 #if defined(SERVER_MODE)
 check_dwb_flush_thread_is_running:
-  if (thread_dwb_flush_block_thread_is_running () || thread_dwb_flush_block_helper_thread_is_running ())
+  if (false /* TO DO - is running dwb_is_flush_block_daemon_is_running() || dwb_is_flush_block_helper_daemon_is_running () */)
     {
       /* Can't modify structure while flush thread can access DWB. */
       thread_sleep (20);
@@ -2532,11 +2545,11 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	  count_writes++;
 
 	  if (((count_writes >= num_pages_to_sync) || (can_flush_volume == true))
-	      && (thread_is_dwb_flush_block_helper_thread_available ()))
+	      && (dwb_is_flush_block_helper_daemon_available ()))
 	    {
 	      if (ATOMIC_CAS_ADDR (&double_Write_Buffer.helper_flush_block, (DWB_BLOCK *) NULL, block))
 		{
-		  thread_wakeup_dwb_flush_helper_block_thread ();
+		  dwb_flush_block_helper_daemon->wakeup ();
 		}
 
 	      /* Add statistics. */
@@ -2558,7 +2571,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	  /* If helper_flush_block is NULL, it means that the flush helper thread does not run and was not woken yet. */
 	  if (ATOMIC_CAS_ADDR (&double_Write_Buffer.helper_flush_block, (DWB_BLOCK *) NULL, block))
 	    {
-	      thread_wakeup_dwb_flush_helper_block_thread ();
+	      dwb_flush_block_helper_daemon->wakeup ();
 	    }
 	}
 #endif
@@ -2702,7 +2715,7 @@ retry:
     {
       update_flush_block_helper_stat = is_perf_tracking;
       /* Be sure that the previous block was written on disk, before writing the the current block. */
-      if (thread_is_dwb_flush_block_helper_thread_available ())
+      if (dwb_is_flush_block_helper_daemon_available ())
 	{
 	  thread_sleep (1);
 	  goto retry;
@@ -2792,7 +2805,7 @@ retry:
 	}
 
 #if defined (SERVER_MODE)
-      if ((num_pages > max_pages_to_sync) && thread_is_dwb_flush_block_helper_thread_available ())
+      if ((num_pages > max_pages_to_sync) && dwb_is_flush_block_helper_daemon_available ())
 	{
 	  /* Let the helper thread to flush volumes having many pages. */
 	  assert (double_Write_Buffer.helper_flush_block != NULL);
@@ -3410,10 +3423,10 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
       dwb_add_checksum_computation_request (thread_p, block->block_no, dwb_slot->position_in_block);
 #if defined (SERVER_MODE)
       checksum_computation_started = false;
-      if (thread_is_dwb_checksum_computation_thread_available ())
+      if (dwb_is_checksum_computation_daemon_available ())
 	{
 	  /* Wake up checksum thread to compute checksum. */
-	  thread_wakeup_dwb_checksum_computation_thread ();
+	  dwb_checkum_computation_daemon->wakeup ();
 	  if (checksum_threads == 1)
 	    {
 	      if (needs_flush == false)
@@ -3467,10 +3480,10 @@ start_flush_block:
    * Wake ups flush block thread to flush the current block. The current block will be flushed after flushing the
    * previous block and after all slots checksum of current block were computed by checksum threads.
    */
-  if (thread_is_dwb_flush_block_thread_available ())
+  if (dwb_is_flush_block_daemon_available ())
     {
       /* Wakeup the thread that will flush the block. */
-      thread_wakeup_dwb_flush_block_thread ();
+      dwb_flush_block_daemon->wakeup ();
       return NO_ERROR;
     }
 
@@ -4393,10 +4406,10 @@ start:
 #if defined(SERVER_MODE)
       if (block_needs_flush)
 	{
-	  if (thread_is_dwb_flush_block_thread_available ())
+	  if (dwb_is_flush_block_daemon_available ())
 	    {
 	      /* Wakeup the thread to flush the block. */
-	      thread_wakeup_dwb_flush_block_thread ();
+	      dwb_flush_block_daemon->wakeup ();
 	    }
 	}
 #endif /* SERVER_MODE */
@@ -4470,4 +4483,234 @@ dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool *
     }
 
   return NO_ERROR;
+}
+
+#if defined(SERVER_MODE)
+// class dwb_flush_block_daemon_task
+//
+//  description:
+//    dwb flush block daemon task
+//
+class dwb_flush_block_daemon_task:
+public cubthread::entry_task
+{
+private:
+  PERF_UTIME_TRACKER m_perf_track;
+
+public:
+  dwb_flush_block_daemon_task ()
+  {
+    PERF_UTIME_TRACKER_START (NULL, &m_perf_track);
+  }
+
+  void
+  execute (cubthread::entry & thread_ref)
+    override
+  {
+    TSCTIMEVAL
+      tv_diff;
+    UINT64
+      oldest_time;
+    if (!BO_IS_SERVER_RESTARTED ())
+      {
+	// wait for boot to finish
+	return;
+      }
+
+    /* performance tracking */
+    if (m_perf_track.is_perf_tracking)
+      {
+	tsc_elapsed_time_usec (&tv_diff, m_perf_track.end_tick, m_perf_track.start_tick);
+	oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+	if (oldest_time > 0)
+	  {
+	    perfmon_add_stat (&thread_ref, PSTAT_DWB_FLUSH_BLOCK_COND_WAIT, oldest_time);
+	  }
+	m_perf_track.start_tick = m_perf_track.end_tick;
+
+	/* update is_perf_tracking */
+	m_perf_track.is_perf_tracking = perfmon_is_perf_tracking ();
+      }
+    else
+      {
+	/* update is_perf_tracking and start timer if it became true */
+	PERF_UTIME_TRACKER_START (&thread_ref, &m_perf_track);
+      }
+
+    /* flush pages as long as necessary */
+    if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)
+      {
+	if (dwb_flush_next_block (&thread_ref) != NO_ERROR)
+	  {
+	    assert_release (false);
+	  }
+      }
+  }
+};
+
+
+// class dwb_flush_block_helper_daemon_task
+//
+//  description:
+//    dwb flush block helper daemon task
+//
+class
+  dwb_flush_block_helper_daemon_task:
+  public
+  cubthread::entry_task
+{
+private:
+  PERF_UTIME_TRACKER m_perf_track;
+
+public:
+  void execute (cubthread::entry & thread_ref) override
+  {
+    if (!BO_IS_SERVER_RESTARTED ())
+      {
+	// wait for boot to finish
+	return;
+      }
+
+    /* flush pages as long as necessary */
+    if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)
+      {
+	dwb_flush_block_helper (&thread_ref);
+      }
+  }
+};
+
+// class dwb_checksum_computation_daemon_task
+//
+//  description:
+//    dwb checksum computation daemon task
+//
+class dwb_checksum_computation_daemon_task:
+public cubthread::entry_task
+{
+public:
+
+  void
+  execute (cubthread::entry & thread_ref)
+    override
+  {
+    if (!BO_IS_SERVER_RESTARTED ())
+      {
+	// wait for boot to finish
+	return;
+      }
+
+    /* flush pages as long as necessary */
+    if (prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS) > 0)
+      {
+	dwb_compute_checksums (&thread_ref);
+      }
+  }
+};
+
+/*
+* dwb_flush_block_daemon_init () - initialize DWB flush block daemon thread
+*/
+void
+dwb_flush_block_daemon_init ()
+{
+  cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (1));
+  dwb_flush_block_daemon_task *
+    daemon_task = new dwb_flush_block_daemon_task ();
+
+  dwb_flush_block_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (), daemon_task);
+}
+
+/*
+* dwb_flush_block_helper_daemon_init () - initialize DWB flush block helper daemon thread
+*/
+void
+dwb_flush_block_helper_daemon_init ()
+{
+  cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
+  dwb_flush_block_helper_daemon_task *
+    daemon_task = new dwb_flush_block_helper_daemon_task ();
+
+  dwb_flush_block_helper_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (), daemon_task);
+}
+
+/*
+* dwb_checksum_computation_daemon_init () - initialize DWB checksum computation daemon thread
+*/
+void
+dwb_checksum_computation_daemon_init ()
+{
+  cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (20));
+  dwb_checksum_computation_daemon_task *
+    daemon_task = new dwb_checksum_computation_daemon_task ();
+
+  dwb_checkum_computation_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (), daemon_task);
+}
+
+/*
+* dwb_daemons_init () - initialize DWB daemon threads
+*/
+void
+dwb_daemons_init ()
+{
+  dwb_flush_block_daemon_init ();
+  dwb_flush_block_helper_daemon_init ();
+  dwb_checksum_computation_daemon_init ();
+}
+
+/*
+* dwb_daemons_destroy () - destroy DWB daemon threads
+*/
+void
+dwb_daemons_destroy ()
+{
+  cubthread::get_manager ()->destroy_daemon (dwb_flush_block_daemon);
+  cubthread::get_manager ()->destroy_daemon (dwb_flush_block_helper_daemon);
+  cubthread::get_manager ()->destroy_daemon (dwb_checkum_computation_daemon);
+}
+#endif /* SERVER_MODE */
+
+/*
+* dwb_is_flush_block_daemon_available () - Check if flush block daemon is available
+* return: true if flush block daemon is available, false otherwise
+*/
+static
+  bool
+dwb_is_flush_block_daemon_available ()
+{
+#if defined (SERVER_MODE)
+  return dwb_flush_block_daemon != NULL;
+#else
+  return false;
+#endif
+}
+
+/*
+* dwb_is_flush_block_daemon_available () - Check if flush block helper daemon is available
+* return: true if flush block helper daemon is available, false otherwise
+*/
+static
+  bool
+dwb_is_flush_block_helper_daemon_available (void)
+{
+#if defined (SERVER_MODE)
+  return dwb_flush_block_helper_daemon != NULL;
+#else
+  return false;
+#endif
+}
+
+/*
+* dwb_is_checksum_computation_daemon_available () - Check whether checksum computation daemon is available
+*
+*   return: true, if checksum computation threadis available, false otherwise
+*/
+static
+  bool
+dwb_is_checksum_computation_daemon_available ()
+{
+#if defined (SERVER_MODE)
+  return dwb_checkum_computation_daemon != NULL;
+#else
+  return false;
+#endif
 }

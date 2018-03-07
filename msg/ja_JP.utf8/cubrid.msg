@@ -922,7 +922,7 @@ $ LOADDB
 853 オブジェクト(%1$d|%2$d|%3$d)に対して「Uncommitted Read」トランザクション(%4$d)が正しくないロック(%5$s)を獲得しました。
 854 警告: ロックホルダーはないけれど。ロックウエーターは存在する状態です。%1$sを参照してください。
 855 警告: ２つ以上のスレッドが一つのトランザクション(%1$d)のためにロックウエーティング中です。
-856 警告: おかしいロック待機状態(%1$d|%2$d)、スレッドは(%3$d|%4$d)、トランザクションは(%5$d).
+856 警告: おかしいロック待機状態(%1$d|%2$d)、スレッドは(%3$d|%4$lld)、トランザクションは(%5$d).
 857 ボリューム「%2$s」の「%1$d」ページを縮める途中にI/Oエラー発生。
 858 サーバーをリスタートする時ボリューム「%1$s」がわかりません。
 859 ページ(%1$d|%2$d)に対するラッチリクエストがキャンセルされました。
@@ -1268,8 +1268,23 @@ $ LOADDB
 1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
 1200 Invalid JSON path
 1201 Json object name cannot be NULL.
-1202 Double Write Buffer is disabled.
-1203 ラストエラー
+1202 Json PATH "%1$s" does not exist in %2$s
+1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
+1204 Json KEY "%1$s" is duplicate
+1205 Reserved error for JSON.
+1206 Reserved error for JSON.
+1207 Reserved error for JSON.
+1208 Reserved error for JSON.
+1209 Reserved error for JSON.
+1210 Reserved error for JSON.
+1211 Reserved error for JSON.
+1212 Reserved error for JSON.
+1213 Reserved error for JSON.
+1214 Reserved error for JSON.
+
+
+1215 Double Write Buffer is disabled.
+1216 ラストエラー
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
 2 エラーメッセージが使用できません。

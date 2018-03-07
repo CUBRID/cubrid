@@ -60,6 +60,7 @@
 #include "db.h"
 #include "object_printer.hpp"
 #include "string_buffer.hpp"
+#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -719,7 +720,9 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
       function_type = node->info.function.function_type;
       if (function_type == F_INSERT_SUBSTRING || function_type == F_ELT || function_type == F_JSON_OBJECT
 	  || function_type == F_JSON_ARRAY || function_type == F_JSON_INSERT || function_type == F_JSON_REMOVE
-	  || function_type == F_JSON_MERGE)
+	  || function_type == F_JSON_MERGE || function_type == F_JSON_ARRAY_APPEND
+	  || function_type == F_JSON_GET_ALL_PATHS || function_type == F_JSON_REPLACE || function_type == F_JSON_SET
+	  || function_type == F_JSON_KEYS)
 	{
 	  return true;
 	}
@@ -6121,7 +6124,7 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
   PT_NODE *lhs, *sum, *part1, *part2, *node;
   DB_VALUE sum_val;
 
-  DB_MAKE_NULL (&sum_val);
+  db_make_null (&sum_val);
 
   if (limit == NULL)
     {
@@ -6404,7 +6407,7 @@ pt_rewrite_to_auto_param (PARSER_CONTEXT * parser, PT_NODE * value)
 	}
       else
 	{
-	  DB_MAKE_NULL (host_var_val);
+	  db_make_null (host_var_val);
 	}
     }
   parser_free_tree (parser, value);
@@ -11209,7 +11212,7 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
   TP_DOMAIN *domainp = NULL;
   int error = NO_ERROR;
 
-  DB_MAKE_NULL (limit_val);
+  db_make_null (limit_val);
 
   if (limit == NULL)
     {
@@ -11246,7 +11249,7 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
     {
       DB_VALUE range;
 
-      DB_MAKE_NULL (&range);
+      db_make_null (&range);
 
       /* LIMIT :offset, :row_count => return :offset + :row_count */
       assert (limit->next->node_type == PT_VALUE || limit->next->node_type == PT_HOST_VAR
@@ -11272,14 +11275,14 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
 	}
 
       /* add range to current limit */
-      DB_MAKE_BIGINT (limit_val, DB_GET_BIGINT (limit_val) + DB_GET_BIGINT (&range));
+      db_make_bigint (limit_val, db_get_bigint (limit_val) + db_get_bigint (&range));
     }
 
 cleanup:
   if (error != NO_ERROR)
     {
       pr_clear_value (limit_val);
-      DB_MAKE_NULL (limit_val);
+      db_make_null (limit_val);
     }
 
   parser->set_host_var = save_set_host_var;
@@ -11298,7 +11301,7 @@ pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query, DB_VALUE * l
 {
   assert_release (limit_val != NULL);
 
-  DB_MAKE_NULL (limit_val);
+  db_make_null (limit_val);
 
   if (query == NULL || !PT_IS_QUERY (query))
     {
@@ -11360,7 +11363,7 @@ pt_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser, PT_NODE * query
       return false;
     }
 
-  DB_MAKE_NULL (&limit_val);
+  db_make_null (&limit_val);
 
   save_set_host_var = parser->set_host_var;
   parser->set_host_var = 1;
@@ -11380,7 +11383,7 @@ pt_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser, PT_NODE * query
       /* upper limit was successfully evaluated */
       *cannot_eval = false;
     }
-  if (DB_GET_BIGINT (&limit_val) > prm_get_integer_value (PRM_ID_MULTI_RANGE_OPT_LIMIT))
+  if (db_get_bigint (&limit_val) > prm_get_integer_value (PRM_ID_MULTI_RANGE_OPT_LIMIT))
     {
       goto end_mro_candidate;
     }
@@ -11556,7 +11559,7 @@ pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE * orderby_
     }
 
   /* evaluate the rhs expression */
-  DB_MAKE_NULL (&limit);
+  db_make_null (&limit);
   if (PT_IS_CONST (rhs) || PT_IS_CAST_CONST_INPUT_HOSTVAR (rhs))
     {
       pt_evaluate_tree_having_serial (parser, rhs, &limit, 1);
@@ -11574,9 +11577,9 @@ pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE * orderby_
   if (lt)
     {
       /* ORDERBY_NUM () < n => ORDERBY_NUM <= n - 1 */
-      DB_MAKE_BIGINT (&limit, (DB_GET_BIGINT (&limit) - 1));
+      db_make_bigint (&limit, (db_get_bigint (&limit) - 1));
     }
-  if (DB_IS_NULL (upper_limit) || (DB_GET_BIGINT (upper_limit) > DB_GET_BIGINT (&limit)))
+  if (DB_IS_NULL (upper_limit) || (db_get_bigint (upper_limit) > db_get_bigint (&limit)))
     {
       /* update upper limit */
       if (pr_clone_value (&limit, upper_limit) != NO_ERROR)
@@ -11868,7 +11871,7 @@ pt_recompile_for_limit_optimizations (PARSER_CONTEXT * parser, PT_NODE * stateme
     }
   else
     {
-      val = DB_GET_BIGINT (&limit_val);
+      val = db_get_bigint (&limit_val);
     }
 
   /* verify MRO */
@@ -12036,7 +12039,7 @@ pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NO
 	      if (PT_IS_CHAR_STRING_TYPE (pt_default_expr->info.expr.arg2->type_enum))
 		{
 		  db_value_default_expr_format = pt_value_to_db (parser, pt_default_expr->info.expr.arg2);
-		  default_expr->default_expr_format = DB_GET_STRING (db_value_default_expr_format);
+		  default_expr->default_expr_format = db_get_string (db_value_default_expr_format);
 		}
 	    }
 	}

@@ -46,6 +46,7 @@
 #include "cas_dbms_util.h"
 #endif
 #include "error_code.h"
+#include "dbtype.h"
 
 static int net_buf_realloc (T_NET_BUF * net_buf, int size);
 

@@ -74,6 +74,7 @@
 #include "vacuum.h"
 #include "object_primitive.h"
 #include "tz_support.h"
+#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1628,7 +1629,7 @@ slog_checkpoint (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  logpb_do_checkpoint ();
+  log_wakeup_checkpoint_daemon ();
 
   /* just send back a dummy message */
   (void) or_pack_errcode (reply, error);
@@ -3193,7 +3194,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   client_isolation = (TRAN_ISOLATION) xint;
 
 #if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-  SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_CONN_CONN_REQ, 1, DIAG_VAL_SETTYPE_INC, NULL);
+  perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_CONN_CONN_REQ, 1, DIAG_VAL_SETTYPE_INC, NULL);
 #endif
 
   tran_index = xboot_register_client (thread_p, &client_credential, client_lock_wait, client_isolation, &tran_state,
@@ -3201,7 +3202,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   if (tran_index == NULL_TRAN_INDEX)
     {
 #if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-      SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_CONN_CONN_REJECT, 1, DIAG_VAL_SETTYPE_INC, NULL);
+      perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_CONN_CONN_REJECT, 1, DIAG_VAL_SETTYPE_INC, NULL);
 #endif
       return_error_to_client (thread_p, rid);
       area = NULL;
@@ -5583,7 +5584,7 @@ sqp_get_sys_timestamp (THREAD_ENTRY * thread_p, unsigned int rid, char *request_
   DB_VALUE sys_timestamp;
 
   db_sys_timestamp (&sys_timestamp);
-  (void) or_pack_utime (reply, *(DB_TIMESTAMP *) DB_GET_TIMESTAMP (&sys_timestamp));
+  (void) or_pack_utime (reply, *(DB_TIMESTAMP *) db_get_timestamp (&sys_timestamp));
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 #endif /* ENABLE_UNUSED_FUNCTION */
 }
@@ -7381,7 +7382,7 @@ stran_get_local_transaction_id (THREAD_ENTRY * thread_p, unsigned int rid, char 
   int success, trid;
 
   success = (xtran_get_local_transaction_id (thread_p, &val) == NO_ERROR) ? NO_ERROR : ER_FAILED;
-  trid = DB_GET_INTEGER (&val);
+  trid = db_get_int (&val);
   ptr = or_pack_int (reply, success);
   ptr = or_pack_int (ptr, trid);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
@@ -8856,8 +8857,8 @@ ssession_get_session_variable (THREAD_ENTRY * thread_p, unsigned int rid, char *
   DB_VALUE result, name;
   int size = 0;
 
-  DB_MAKE_NULL (&result);
-  DB_MAKE_NULL (&name);
+  db_make_null (&result);
+  db_make_null (&name);
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 

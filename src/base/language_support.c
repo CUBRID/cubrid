@@ -48,9 +48,7 @@
 #include "authenticate.h"
 #include "db.h"
 #endif /* !defined (SERVER_MODE) */
-
-/* this must be the last header file included! */
-#include "dbval.h"
+#include "dbtype.h"
 
 static INTL_LANG lang_Lang_id = INTL_LANG_ENGLISH;
 static INTL_CODESET lang_Loc_charset = INTL_CODESET_ISO88591;
@@ -2635,12 +2633,14 @@ lang_db_put_charset (void)
   server_lang = lang_id ();
 
   AU_DISABLE (au_save);
-  db_make_string (&value, lang_get_lang_name_from_id (server_lang));
+  db_make_string_by_const_str (&value, lang_get_lang_name_from_id (server_lang));
   if (db_put_internal (Au_root, "lang", &value) != NO_ERROR)
     {
       /* Error Setting the language */
       assert (false);
     }
+
+  pr_clear_value (&value);
 
   db_make_int (&value, (int) server_codeset);
   if (db_put_internal (Au_root, "charset", &value) != NO_ERROR)

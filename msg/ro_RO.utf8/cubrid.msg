@@ -922,7 +922,7 @@ $ LOADDB
 853 Pentru un obiect(%1$d|%2$d|%3$d), tranzacţia(%4$d) de tip Uncommitted Read deţine un lock defect(%5$s).
 854 AVERTISMENT: Nu există niciun lock holder, dar există lock waiters. Consultaţi fişierul %1$s.
 855 AVERTISMENT: Unul sau mai multe fire de execuţie se află în starea de lock-waiting pentru o tranzacţie(%1$d).
-856 AVERTISMENT: Stare lockwait(%1$d|%2$d), fir de execuţie(%3$d|%4$d) şi tranzacţie(%5$d) neobişnuite.
+856 AVERTISMENT: Stare lockwait(%1$d|%2$d), fir de execuţie(%3$d|%4$lld) şi tranzacţie(%5$d) neobişnuite.
 857 O eroare I/O s-a produs la trunchierea paginii %1$d din volumul "%2$s".
 858 Volumul "%1$s" nu este cunoscut la repornirea serverului.
 859 Latch-ul pe pagina(%1$d|%2$d) a fost anulat.
@@ -1268,8 +1268,23 @@ $ LOADDB
 1199 Json-ul furnizat a fost invalidat de catre schema json (Calea catre schema invalidă: %1$s, Cuvantul cheie: %2$s, Calea catre json-ul invalid furnizat: %3$s)
 1200 Cale de JSON invalida
 1201 Numele unei valori dintr-un JSON Object nu poate fi NULL.
-1202 Double Write Buffer este dezactivat.
-1203 Ultima eroare
+1202 Calea "%1$s" nu exista in %2$s
+1203 Tipul JSON-ului de la calea %1$s este invalid. Expected %2$s, dar am gasit %3$s.
+1204 Cheia "%1$s" din json este duplicata
+1205 Reserved error for JSON.
+1206 Reserved error for JSON.
+1207 Reserved error for JSON.
+1208 Reserved error for JSON.
+1209 Reserved error for JSON.
+1210 Reserved error for JSON.
+1211 Reserved error for JSON.
+1212 Reserved error for JSON.
+1213 Reserved error for JSON.
+1214 Reserved error for JSON.
+
+
+1215 Double Write Buffer este dezactivat.
+1216 Ultima eroare
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
 2 Niciun mesaj de eroare disponibil.

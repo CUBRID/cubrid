@@ -62,8 +62,7 @@
 #if !defined(CS_MODE)
 #include "session.h"
 #endif
-
-#include "dbval.h"		/* this must be the last header file included!!! */
+#include "dbtype.h"
 
 #if !defined(WINDOWS)
 void (*prev_sigfpe_handler) (int) = SIG_DFL;
@@ -2330,9 +2329,9 @@ fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_error)
 	  error = set_get_element (set, i, &value);
 	  if (error == NO_ERROR)
 	    {
-	      if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && DB_GET_OBJECT (&value) != NULL)
+	      if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && db_get_object (&value) != NULL)
 		{
-		  mops[cnt] = DB_GET_OBJECT (&value);
+		  mops[cnt] = db_get_object (&value);
 		  cnt++;
 		}
 	      db_value_clear (&value);

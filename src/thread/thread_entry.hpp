@@ -24,11 +24,10 @@
 #ifndef _THREAD_ENTRY_HPP_
 #define _THREAD_ENTRY_HPP_
 
-//#include "adjustable_array.h"
-//#include "connection_defs.h"
-#include "error_manager.h"  // for ER_MSG
+#include "error_context.hpp"
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
+#include <thread>
 
 // forward definitions
 // from adjustable_array.h
@@ -84,6 +83,8 @@ struct event_stat
   /* log flush thread wait time */
   int trace_log_flush_time;
 };
+
+typedef std::thread::id thread_id_t;
 
 // FIXME
 enum THREAD_TYPE
@@ -141,8 +142,7 @@ namespace cubthread
       // public
       int index;			/* thread entry index */
       THREAD_TYPE type;		/* thread type */
-      pthread_t tid;		/* thread id */
-      pthread_t emulate_tid;	/* emulated thread id; applies to non-worker threads, when works on behalf of a worker
+      thread_id_t emulate_tid;	/* emulated thread id; applies to non-worker threads, when works on behalf of a worker
 				   * thread */
       int client_id;		/* client id whom this thread is responding */
       int tran_index;		/* tran index to which this thread belongs */
@@ -158,10 +158,6 @@ namespace cubthread
       adj_array *cnv_adj_buffer[3];	/* conversion buffer */
 
       css_conn_entry *conn_entry;	/* conn entry ptr */
-
-      ER_MSG ermsg;			/* error msg area */
-      ER_MSG *er_Msg;		/* last error */
-      char er_emergency_buf[ER_EMERGENCY_BUF_SIZE];	/* error msg buffer for emergency */
 
       void *xasl_unpack_info_ptr;	/* XASL_UNPACK_INFO * */
       int xasl_errcode;		/* xasl errorcode */
@@ -221,8 +217,24 @@ namespace cubthread
       int count_private_allocators;
 #endif
 
+      thread_id_t get_id ();
+      pthread_t get_posix_id ();
+      void register_id ();
+      void unregister_id ();
+      bool is_on_current_thread ();
+
+      cuberr::context &get_error_context (void)
+      {
+	return m_error;
+      }
+
     private:
       void clear_resources (void);
+
+      thread_id_t m_id;
+
+      // error manager context
+      cuberr::context m_error;
 
       // TODO: move all members her
       bool m_cleared;
@@ -233,6 +245,7 @@ namespace cubthread
 #ifndef _THREAD_COMPAT_HPP_
 // The whole code uses THREAD_ENTRY... It is ridiculous to change entire code to rename.
 typedef cubthread::entry THREAD_ENTRY;
+typedef std::thread::id thread_id_t;
 #endif // _THREAD_COMPAT_HPP_
 
 #endif // _THREAD_ENTRY_HPP_

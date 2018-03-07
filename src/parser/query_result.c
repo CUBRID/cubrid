@@ -41,6 +41,7 @@
 #include "object_primitive.h"
 #include "db.h"
 #include "network_interface_cl.h"
+#include "dbtype.h"
 
 
 static int pt_find_size_from_dbtype (const DB_TYPE T_type);

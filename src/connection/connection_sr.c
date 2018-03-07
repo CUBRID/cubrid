@@ -193,9 +193,6 @@ static void css_queue_data_packet (CSS_CONN_ENTRY * conn,
 static void css_queue_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, const NET_HEADER * header);
 static void css_queue_command_packet (CSS_CONN_ENTRY * conn,
 				      unsigned short request_id, const NET_HEADER * header, int size);
-#if defined (ENABLE_UNUSED_FUNCTION)
-static char *css_return_oob_buffer (int size);
-#endif
 static bool css_is_valid_request_id (CSS_CONN_ENTRY * conn, unsigned short request_id);
 static void css_remove_unexpected_packets (CSS_CONN_ENTRY * conn, unsigned short request_id);
 
@@ -2608,26 +2605,6 @@ css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id, char 
 
   return ret;
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * css_return_oob_buffer() - alloc oob buffer
- *   return: allocated buffer
- *   size(in): buffer size
- */
-static char *
-css_return_oob_buffer (int size)
-{
-  if (size == 0)
-    {
-      return NULL;
-    }
-  else
-    {
-      return ((char *) malloc (size));
-    }
-}
-#endif
 
 /*
  * css_is_valid_request_id() - check request id id valid

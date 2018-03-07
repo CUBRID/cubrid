@@ -286,8 +286,6 @@ extern int net_client_request (int request, char *argbuf, int argsize, char *rep
 extern int net_client_request_send_large_data (int request, char *argbuf, int argsize, char *replybuf, int replysize,
 					       char *databuf, INT64 datasize, char *replydata, int replydatasize);
 #endif
-extern int net_client_request_via_oob (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-				       char *databuf, int datasize, char *replydata, int replydatasize);
 extern int net_client_request2 (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf,
 				int datasize, char **replydata_ptr, int *replydatasize_ptr);
 extern int net_client_request2_no_malloc (int request, char *argbuf, int argsize, char *replybuf, int replysize,
