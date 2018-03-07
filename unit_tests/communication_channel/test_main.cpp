@@ -42,29 +42,7 @@ static int finish ();
 static int run ();
 static int init_thread_system ();
 
-class test_communication_channel : public communication_channel
-{
-  public:
-    using communication_channel::communication_channel;
-
-    int connect () override
-    {
-      if (is_connection_alive () || m_type != CHANNEL_TYPE::INITIATOR)
-	{
-	  return ER_FAILED;
-	}
-
-      m_socket = css_tcp_client_open (m_hostname.get (), m_port);
-      if (!IS_INVALID_SOCKET (m_socket))
-	{
-	  return NO_ERRORS;
-	}
-
-      return ER_FAILED;
-    }
-};
-
-void master_listening_thread_func (std::vector <test_communication_channel> &channels)
+void master_listening_thread_func (std::vector <communication_channel> &channels)
 {
   int num_of_conns = 0;
   SOCKET listen_fd[2] = {0, 0};
@@ -82,7 +60,7 @@ void master_listening_thread_func (std::vector <test_communication_channel> &cha
   listen_fd_platf_ind = listen_fd[0];
 #endif
 
-  test_communication_channel incom_conn (5000);
+  communication_channel incom_conn (5000);
   rc = incom_conn.accept (listen_fd_platf_ind);
   if (rc != NO_ERROR)
     {
@@ -103,7 +81,7 @@ void master_listening_thread_func (std::vector <test_communication_channel> &cha
       if ((revents & POLLIN) != 0)
 	{
 	  int new_sockfd = css_master_accept (listen_fd_platf_ind);
-	  test_communication_channel cc (MAX_TIMEOUT_IN_MS);
+	  communication_channel cc (MAX_TIMEOUT_IN_MS);
 	  rc = cc.accept (new_sockfd);
 	  if (rc != NO_ERROR)
 	    {
@@ -119,8 +97,8 @@ void master_listening_thread_func (std::vector <test_communication_channel> &cha
 class conn_initiator_daemon_task : public cubthread::entry_task
 {
   public:
-    conn_initiator_daemon_task (int &counter, test_communication_channel &&chn) : m_counter (counter),
-      m_channel (std::forward <test_communication_channel> (chn))
+    conn_initiator_daemon_task (int &counter, communication_channel &&chn) : m_counter (counter),
+      m_channel (std::forward <communication_channel> (chn))
     {
     }
 
@@ -154,14 +132,14 @@ class conn_initiator_daemon_task : public cubthread::entry_task
     }
   private:
     int &m_counter;
-    test_communication_channel m_channel;
+    communication_channel m_channel;
 };
 
 class conn_listener_daemon_task : public cubthread::entry_task
 {
   public:
-    conn_listener_daemon_task (std::vector <test_communication_channel> &&channels) : m_channels (
-	std::forward <std::vector <test_communication_channel>> (channels))
+    conn_listener_daemon_task (std::vector <communication_channel> &&channels) : m_channels (
+	std::forward <std::vector <communication_channel>> (channels))
     {
       assert (m_channels.size () == NUM_OF_INITIATORS);
     }
@@ -213,7 +191,7 @@ class conn_listener_daemon_task : public cubthread::entry_task
 	}
     }
   private:
-    std::vector <test_communication_channel> m_channels;
+    std::vector <communication_channel> m_channels;
 };
 
 static int init_thread_system ()
@@ -245,7 +223,7 @@ static int init ()
 #if !defined (WINDOWS)
   signal (SIGPIPE, SIG_IGN);
 #endif
-  error_code = er_init ("test_communication_channel.log", ER_EXIT_DONT_ASK);
+  error_code = er_init ("communication_channel.log", ER_EXIT_DONT_ASK);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -258,7 +236,7 @@ static int init ()
       return error_code;
     }
 
-  std::vector <test_communication_channel> channels;
+  std::vector <communication_channel> channels;
   std::vector <cubthread::entry_task *> tasks;
   counters = (int *) calloc (NUM_OF_INITIATORS, sizeof (int));
 
@@ -270,11 +248,11 @@ static int init ()
     }
   for (unsigned int i = 0; i < NUM_OF_INITIATORS; i++)
     {
-      test_communication_channel chn (MAX_TIMEOUT_IN_MS);
-      chn.create_initiator ("127.0.0.1", LISTENING_PORT);
-      error_code = chn.connect ();
+      communication_channel chn (MAX_TIMEOUT_IN_MS);
+      error_code = chn.connect ("127.0.0.1", LISTENING_PORT);
       if (error_code != NO_ERRORS)
 	{
+	  listening_thread.detach ();
 	  return error_code;
 	}
       tasks.push_back (new conn_initiator_daemon_task (counters[i], std::move (chn)));

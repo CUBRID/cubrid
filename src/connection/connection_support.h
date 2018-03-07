@@ -122,4 +122,12 @@ extern int css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_
 extern void css_set_net_header (NET_HEADER * header_p, int type, short function_code, int request_id, int buffer_size,
 				int transaction_id, int invalidate_snapshot, int db_error);
 extern void css_set_io_vector (struct iovec *vec1_p, struct iovec *vec2_p, const char *buff, int len, int *templen);
+extern int css_send_io_vector_with_socket (SOCKET & socket, struct iovec *vec_p, ssize_t total_len, int vector_length,
+					   int timeout);
+extern int css_send_magic_with_socket (SOCKET & socket);
+extern int css_net_send_with_socket (SOCKET & socket, const char *buff, int len, int timeout);
+extern int css_net_send3_with_socket (SOCKET & socket, const char *buff1, int len1, const char *buff2, int len2,
+				      const char *buff3, int len3);
+extern int css_send_request_with_socket (SOCKET & socket, int command, unsigned short *request_id,
+					 const char *arg_buffer, int arg_buffer_size);
 #endif /* _CONNECTION_SUPPORT_H_ */
