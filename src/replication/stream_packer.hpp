@@ -29,11 +29,11 @@
 #include "dbtype.h"
 #include "common_utils.hpp"
 #include "packer.hpp"
+#include "packing_stream.hpp"
 #include <vector>
 
 class serial_buffer;
 class stream_entry_header;
-class packing_stream;
 class stream_provider;
 
 /* 
@@ -54,13 +54,19 @@ public:
   stream_packer (packing_stream *stream_arg);
 
   /* method for starting a packing context */
-  BUFFER_UNIT *start_packing_range (const size_t amount, buffered_range **granted_range);
+  BUFFER_UNIT *start_packing_range (const size_t amount, buffer_context **granted_range);
 
   /* method for starting an unpacking context */
-  BUFFER_UNIT *start_unpacking_range (const size_t amount, buffered_range **granted_range);
-  BUFFER_UNIT *extend_unpacking_range (const size_t amount, buffered_range **granted_range);
+  BUFFER_UNIT *start_unpacking_range (const size_t amount, buffer_context **granted_range);
+  BUFFER_UNIT *start_unpacking_range_from_pos (const stream_position &start_pos, const size_t amount,
+                                               buffer_context **granted_range);
+  BUFFER_UNIT *extend_unpacking_range (const size_t amount, buffer_context **granted_range);
+  BUFFER_UNIT *extend_unpacking_range_from_pos (const stream_position &start_pos, const size_t amount,
+                                                buffer_context **granted_range);
 
   int packing_completed (void);
+
+  stream_position& get_stream_read_position (void) { return m_stream->get_curr_read_position (); };
  
 private:
   packing_stream *m_stream;
@@ -77,7 +83,7 @@ private:
   stream_provider *m_stream_provider;
 
   /* currently mapped range (set when packing starts) */
-  buffered_range *m_mapped_range;
+  buffer_context *m_mapped_range;
 };
 
 

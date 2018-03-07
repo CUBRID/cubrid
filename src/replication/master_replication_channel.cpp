@@ -46,9 +46,9 @@ master_replication_channel_manager *master_replication_channel_manager::get_inst
   return NULL;
 }
 
-int master_replication_channel_manager::add_buffers (std::vector <buffered_range> &bufferred_ranges)
+int master_replication_channel_manager::add_buffers (std::vector <buffer_context> &bufferred_ranges)
 {
-  std::vector<buffered_range>::iterator it;
+  std::vector<buffer_context>::iterator it;
 
   for (it = bufferred_ranges.begin (); it != bufferred_ranges.end (); it++)
     {
@@ -58,12 +58,12 @@ int master_replication_channel_manager::add_buffers (std::vector <buffered_range
   return NO_ERROR;
 }
 
-int master_replication_channel_manager::fetch_for_read (packing_stream_buffer *existing_buffer, const size_t &amount)
+int master_replication_channel_manager::fetch_data (BUFFER_UNIT *ptr, const size_t &amount)
 {
   return NO_ERROR;
 }
   
-int master_replication_channel_manager::flush_ready_stream (void)
+int master_replication_channel_manager::flush_old_stream_data (void)
 {
   return NO_ERROR;
 }

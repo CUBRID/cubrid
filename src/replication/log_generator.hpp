@@ -29,17 +29,15 @@
 /* TODO[arnia] : system parameter */
 #define LG_GLOBAL_INSTANCE_BUFFER_CAPACITY  (1 * 1024 * 1024)
 
-#include "thread_entry.hpp"
 #include "common_utils.hpp"
 #include "stream_provider.hpp"
+#include "thread_compat.hpp"
+#include "replication_stream.hpp"
 #include <vector>
 
-class replication_entry;
-class stream_entry;
-class stream_packer;
-class packing_stream;
 class packing_stream_buffer;
 class packable_object;
+class stream_packer;
 
 /* 
  * main class for producing log replication entries
@@ -52,12 +50,12 @@ class packable_object;
 class log_generator : public stream_provider
 {
 private:
-  std::vector<stream_entry*> m_stream_entries;
+  std::vector<replication_stream_entry> m_stream_entries;
 
   packing_stream *stream;
 
   /* current append position to be assigned to a new entry */
-  stream_position append_position;
+  stream_position m_append_position;
 
   static log_generator *global_log_generator;
 
@@ -69,19 +67,21 @@ public:
 
   ~log_generator ();
 
-  int append_repl_entry (cubthread::entry *th_entry, packable_object *repl_entry);
+  int append_repl_entry (THREAD_ENTRY *th_entry, packable_object *repl_entry);
+
+  void set_ready_to_pack (THREAD_ENTRY *th_entry);
 
   stream_packer *get_serializator (void) { return m_serializator; };
 
-  stream_entry* get_stream_entry (cubthread::entry *th_entry);
+  replication_stream_entry* get_stream_entry (THREAD_ENTRY *th_entry);
 
-  int pack_stream_entries (cubthread::entry *th_entry);
+  int pack_stream_entries (THREAD_ENTRY *th_entry);
 
-  static int new_instance (cubthread::entry *th_entry, const stream_position &start_position);
+  static log_generator *new_instance (THREAD_ENTRY *th_entry, const stream_position &start_position);
 
   /* stream_provider methods : */
-  int fetch_for_read (packing_stream_buffer *existing_buffer, const size_t &amount);
-  int flush_ready_stream (void);
+  int fetch_data (BUFFER_UNIT *ptr, const size_t &amount);
+  int flush_old_stream_data (void);
 
   packing_stream * get_write_stream (void) { return stream; };
 };

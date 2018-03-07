@@ -47,25 +47,40 @@ public:
 
   int init (BUFFER_UNIT *storage, const size_t amount);
 
+  void align (const size_t req_alignement) { m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, req_alignement); };
+  size_t get_packed_int_size (size_t curr_offset);
   int pack_int (const int value);
   int unpack_int (int *value);
   int peek_unpack_int (int *value);
 
-  int pack_bigint (const DB_BIGINT &value);
+  
+  size_t get_packed_short_size (size_t curr_offset);
+  int pack_short (short *value);
+  int unpack_short (short *value);
+
+  size_t get_packed_bigint_size (size_t curr_offset);
+  int pack_bigint (DB_BIGINT *value);
   int unpack_bigint (DB_BIGINT *value);
 
   int pack_int_array (const int *array, const int count);
   int unpack_int_array (int *array, int &count);
 
   /* TODO[arnia] : remove these if not needed */
+  size_t get_packed_int_vector_size (size_t curr_offset, const int count);
   int pack_int_vector (const std::vector<int> &array);
   int unpack_int_vector (std::vector <int> &array);
 
+  size_t get_packed_db_value_size (const DB_VALUE &value, size_t curr_offset);
   int pack_db_value (const DB_VALUE &value);
   int unpack_db_value (DB_VALUE *value);
 
+  size_t get_packed_small_string_size (const char *string, const size_t curr_offset);
   int pack_small_string (const char *string);
   int unpack_small_string (char *string, const size_t max_size);
+
+  size_t get_packed_large_string_size (const std::string &str, const size_t curr_offset);
+  int pack_large_string (const std::string &str);
+  int unpack_large_string (std::string &str);
 
   BUFFER_UNIT *get_curr_ptr (void) { return m_ptr; };
 

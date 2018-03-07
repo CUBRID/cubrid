@@ -107,11 +107,11 @@ public:
   static char *get_filename (const stream_position &start_position);
 
 
-  int fetch_for_read (packing_stream_buffer *existing_buffer, const size_t &amount);
+  int fetch_data (BUFFER_UNIT *ptr, const size_t &amount);
   
   int extend_buffer (packing_stream_buffer **existing_buffer, const size_t &amount);
 
-  int flush_ready_stream (void);
+  int flush_old_stream_data (void);
 
   packing_stream * get_write_stream (void);
 

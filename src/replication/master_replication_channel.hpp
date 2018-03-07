@@ -42,7 +42,7 @@ public:
 
   int init (const stream_position &start_position);
 
-  int add_buffers (std::vector <buffered_range> &bufferred_ranges);
+  int add_buffers (std::vector <buffer_context> &bufferred_ranges);
 
   int update_last_read_pos (void);
 
@@ -52,9 +52,9 @@ public:
   static master_replication_channel_manager *get_instance (void);
 
 
-  int fetch_for_read (packing_stream_buffer *existing_buffer, const size_t &amount);
+  int fetch_data (BUFFER_UNIT *ptr, const size_t &amount);
   
-  int flush_ready_stream (void);
+  int flush_old_stream_data (void);
 
   packing_stream * get_write_stream (void) { return generator_stream; };
 

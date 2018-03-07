@@ -17,31 +17,36 @@
  *
  */
 
+#include "test_log_generator.hpp"
 
-#include "replication_buffer.hpp"
-
-/* system headers */
 #include <iostream>
-#include <typeinfo>
-#include <array>
 
-namespace test_replication
+template <typename Func, typename ... Args>
+int
+test_module (int &global_error, Func &&f, Args &&... args)
 {
+  std::cout << std::endl;
+  std::cout << "  start testing module ";
 
-int test_replication_buffer (void)
-{
-    const size_t BUFFER_TEST_SIZE = 4 * 1024 * 1024;
-    char *ptr = NULL;
-
-    replication_buffer rpl_buffer (BUFFER_TEST_SIZE);
-
-    ptr = rpl_buffer.reserve (BUFFER_TEST_SIZE);
-    if (ptr != rpl_buffer.get_buffer ())
-      {
-         std::cout << "  ERROR: reserve,  = " <<  xarr_buf.get_size (); 
-      }
-
-
+  int err = f (std::forward <Args> (args)...);
+  if (err == 0)
+    {
+      std::cout << "  test completed successfully" << std::endl;
+    }
+  else
+    {
+      std::cout << "  test failed" << std::endl;
+      global_error = global_error == 0 ? err : global_error;
+    }
+  return err;
 }
 
+int main ()
+{
+  int global_error = 0;
+
+  test_module (global_error, test_replication::test_stream_packing);
+  /* add more tests here */
+
+  return global_error;
 }

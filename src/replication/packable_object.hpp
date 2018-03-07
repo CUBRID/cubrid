@@ -36,6 +36,8 @@ protected:
 public:
   virtual int pack (packer *serializator) = 0;
   virtual int unpack (packer *serializator) = 0;
+
+  virtual bool is_equal (const packable_object *other) = 0;
   
   /* used at packing to get info on how much memory to reserve */
   virtual size_t get_packed_size (packer *serializator) = 0;
@@ -45,6 +47,8 @@ class self_creating_object
 {
 public:
   virtual self_creating_object *create (void) = 0;
+
+  virtual ~self_creating_object() {};
 
   virtual int get_create_id (void) =  0;
 };

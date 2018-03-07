@@ -32,18 +32,41 @@
 
 int log_consumer::append_entry (replication_stream_entry *entry)
 {
+  /* TODO : split list of entries by transaction */
   m_stream_entries.push_back (entry);
   return NO_ERROR;
 }
 
+int log_consumer::fetch_stream_entry (replication_stream_entry **entry)
+{
+  int err = NO_ERROR;
+
+  replication_stream_entry* se = new replication_stream_entry ();
+
+  err = se->receive (m_serializator);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  *entry = se;
+
+  return err;
+}
+
 int log_consumer::consume_thread (void)
 {
-  for (;;)
+  int err = NO_ERROR;
+  
+   for (;;)
     {
-      replication_stream_entry* se = new replication_stream_entry ();
-      se->receive (m_serializator);
-
-      /* TODO : notify log_applier threads of new stream entry */
+      replication_stream_entry * se = NULL;
+      err = fetch_stream_entry (&se);
+      if (err != NO_ERROR)
+        {
+          break;
+        }
+      append_entry (se);
     }
   return NO_ERROR;
 }
@@ -52,30 +75,28 @@ log_consumer* log_consumer::new_instance (const CONSUMER_TYPE req_type, const st
 {
   int error_code = NO_ERROR;
   packing_stream_buffer *first_buffer = NULL;
-  buffered_range *granted_range;
 
   log_consumer *new_lc = new log_consumer ();
   new_lc->curr_position = start_position;
   new_lc->m_type = req_type;
 
-  new_lc->consume_stream = new packing_stream (this);
+  new_lc->consume_stream = new packing_stream (new_lc);
   new_lc->consume_stream->init (new_lc->curr_position);
 
-  new_lc->consume_stream->acquire_new_write_buffer (this, new_lc->curr_position, LC_BUFFER_CAPACITY, NULL);
+  new_lc->consume_stream->acquire_new_write_buffer (new_lc, new_lc->curr_position, LC_BUFFER_CAPACITY, NULL);
 
-  m_serializator = new stream_packer (new_lc->consume_stream);
+  new_lc->m_serializator = new stream_packer (new_lc->consume_stream);
 
-  return NO_ERROR; 
+  return new_lc; 
 }
 
-int log_consumer::fetch_for_read (packing_stream_buffer *existing_buffer, const size_t &amount)
+int log_consumer::fetch_data (BUFFER_UNIT *ptr, const size_t &amount)
 {
-  NOT_IMPLEMENTED ();
+  // m_src->receive (ptr, amount);
   return NO_ERROR;
 }
-
  
-int log_consumer::flush_ready_stream (void)
+int log_consumer::flush_old_stream_data (void)
 {
   NOT_IMPLEMENTED ();
   return NO_ERROR;

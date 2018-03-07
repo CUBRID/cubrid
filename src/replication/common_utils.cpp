@@ -24,7 +24,7 @@
 #ident "$Id$"
 
 #include "common_utils.hpp"
-
+#include "packing_stream_buffer.hpp"
 
 int pinner::pin (pinnable *reference)
 {
@@ -58,4 +58,25 @@ int pinner::unpin_all (void)
     }
 
   return NO_ERROR;
+}
+
+
+bool buffer_context::is_range_mapped (const stream_position &start, const size_t &amount)
+{
+  return (start >= first_pos && start + amount <= last_pos) ? true : false;
+}
+
+bool buffer_context::is_range_contiguously_mapped (const stream_position &start, const size_t &amount)
+{
+  return (start == last_pos && start + amount < last_allocated_pos) ? true : false;
+}
+
+BUFFER_UNIT * buffer_context::extend_range (const size_t &amount)
+{
+      BUFFER_UNIT * ptr;
+
+      ptr = mapped_buffer->get_buffer () + last_pos - first_pos;
+      last_pos += amount;
+
+      return ptr;
 }

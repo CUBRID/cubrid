@@ -51,7 +51,7 @@ private:
 
 public:
 
-  size_t get_header_size (void);
+  size_t get_header_size (stream_packer *serializator);
   size_t get_data_packed_size (void);
   void set_header_data_size (const size_t &data_size);
 
@@ -59,6 +59,9 @@ public:
 
   int pack_stream_entry_header (stream_packer *serializator);
   int unpack_stream_entry_header (stream_packer *serializator);
+  int get_packable_entry_count_from_header (void);
+
+  bool is_equal (const stream_entry *other);
 };
 
 

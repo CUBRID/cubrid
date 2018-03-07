@@ -81,18 +81,23 @@ enum stream_mode
 typedef enum stream_mode STREAM_MODE;
 
 /* this is stored in packing_stream */
-class buffered_range
+class buffer_context
 {
 public:
-  buffered_range() : mapped_buffer (NULL) {};
+  buffer_context() : mapped_buffer (NULL), is_filled (false) {};
   /* range of stream position reserved */
   stream_position first_pos;
   stream_position last_pos;
+  stream_position last_allocated_pos;
   packing_stream_buffer *mapped_buffer;
   size_t written_bytes;
-  int is_filled;
+  bool is_filled;
+  
+  bool is_range_mapped (const stream_position &start, const size_t &amount);
+  bool is_range_contiguously_mapped (const stream_position &start, const size_t &amount);
+  BUFFER_UNIT * extend_range (const size_t &amount);
 
-  bool operator== (const buffered_range &rhs) const
+  bool operator== (const buffer_context &rhs) const
     {
       return mapped_buffer == rhs.mapped_buffer;
     };

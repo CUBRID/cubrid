@@ -154,7 +154,7 @@ char *log_file::get_filename (const stream_position &start_position)
   return NULL;
 }
 
-int log_file::fetch_for_read (packing_stream_buffer *existing_buffer, const size_t &amount)
+int log_file::fetch_data (BUFFER_UNIT *ptr, const size_t &amount)
 {
   NOT_IMPLEMENTED ();
 
@@ -168,7 +168,7 @@ int log_file::extend_buffer (packing_stream_buffer **existing_buffer, const size
   return NO_ERROR;
 }
 
-int log_file::flush_ready_stream (void)
+int log_file::flush_old_stream_data (void)
 {
   NOT_IMPLEMENTED ();
 

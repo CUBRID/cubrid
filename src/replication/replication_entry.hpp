@@ -55,6 +55,14 @@ private:
   std::string m_statement;
 
 public:
+  sbr_repl_entry () {};
+  ~sbr_repl_entry () {};
+  sbr_repl_entry (const std::string &str) { set_statement (str); };
+
+  bool is_equal (const packable_object *other);
+
+  void set_statement (const std::string &str) { m_statement = str; };
+
   int get_create_id (void) { return STREAM_ENTRY_SBR; };
   self_creating_object *create (void) { return new sbr_repl_entry (); };
 
@@ -68,15 +76,28 @@ class single_row_repl_entry : public packable_object,  public self_creating_obje
 {
 private:
   REPL_ENTRY_TYPE m_type;
-  DB_VALUE key_value;
-  char class_name [SM_MAX_IDENTIFIER_LENGTH];
   std::vector <int> changed_attributes;
+  char m_class_name [SM_MAX_IDENTIFIER_LENGTH + 1];
+  DB_VALUE m_key_value;
   std::vector <DB_VALUE> new_values;
 
 public:
+  single_row_repl_entry () {};
+  ~single_row_repl_entry ();
+  single_row_repl_entry (const REPL_ENTRY_TYPE m_type, const char *class_name);
+
+  bool is_equal (const packable_object *other);
+
+  void set_class_name (const char *class_name);
+
+  void set_key_value (DB_VALUE *db_val);
+
+  void add_changed_value (const int att_id, DB_VALUE *db_val);
+
+
   int get_create_id (void) { return STREAM_ENTRY_RBR; };
   self_creating_object *create (void) { return new single_row_repl_entry (); };
-  
+
   int pack (packer *serializator);
   int unpack (packer *serializator);
 

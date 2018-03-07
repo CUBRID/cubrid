@@ -17,14 +17,14 @@
  *
  */
 
-#ifndef _TEST_REPLICATION_BUFFER_HPP_
-#define _TEST_REPLICATION_BUFFER_HPP_
+#ifndef _TEST_LOG_GENERATOR_HPP_
+#define _TEST_LOG_GENERATOR_HPP_
 
 namespace test_replication
 {
 
-int test_replication_buffer (void);
+int test_stream_packing (void);
 
 }
 
-#endif /* _TEST_REPLICATION_BUFFER_HPP_ */
+#endif /* _TEST_LOG_GENERATOR_HPP_ */

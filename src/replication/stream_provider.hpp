@@ -63,11 +63,12 @@ public:
 
   virtual int free_all_buffers (void);
 
-  virtual int fetch_for_read (packing_stream_buffer *existing_buffer, const size_t &amount) = 0;
+  /* directly read data into this memory */
+  virtual int fetch_data (BUFFER_UNIT *ptr, const size_t &amount) = 0;
   
   virtual int extend_buffer (packing_stream_buffer **existing_buffer, const size_t &amount);
 
-  virtual int flush_ready_stream (void) = 0;
+  virtual int flush_old_stream_data (void) = 0;
 
   virtual packing_stream * get_write_stream (void) = 0;
 
