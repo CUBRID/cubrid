@@ -2431,9 +2431,6 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 #if defined(WINDOWS)
       fileio_dismount (thread_p, vol_fd);
       vol_fd = fileio_mount (thread_p, NULL, vol_label_p, vol_id, false, false);
-#else
-      /* In case of DWB, need to be sure that data are written in permanent volumes. */
-      (void) fileio_synchronize (thread_p, vol_fd, vol_label_p, true);
 #endif /* WINDOWS */
     }
   else

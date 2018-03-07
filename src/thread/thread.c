@@ -118,7 +118,6 @@ static DAEMON_THREAD_MONITOR thread_Deadlock_detect_thread = DAEMON_THREAD_MONIT
 static DAEMON_THREAD_MONITOR thread_Checkpoint_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Purge_archive_logs_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Oob_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-static DAEMON_THREAD_MONITOR thread_Page_find_victim_candidates_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Page_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Flush_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
 static DAEMON_THREAD_MONITOR thread_Session_control_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
@@ -140,7 +139,6 @@ static int thread_compare_shutdown_sequence_of_daemon (const void *p1, const voi
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_deadlock_detect_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_checkpoint_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_purge_archive_logs_thread (void *);
-static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_find_victim_candidates_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_page_flush_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_flush_control_thread (void *);
 static THREAD_RET_T THREAD_CALLING_CONVENTION thread_log_flush_thread (void *);
@@ -165,7 +163,6 @@ typedef enum
   THREAD_DAEMON_CHECK_HA_DELAY_INFO,
   THREAD_DAEMON_AUTO_VOLUME_EXPANSION,
   THREAD_DAEMON_LOG_CLOCK,
-  THREAD_DAEMON_PAGE_FIND_VICTIM_CANDIDATE,
   THREAD_DAEMON_PAGE_FLUSH,
   THREAD_DAEMON_FLUSH_CONTROL,
   THREAD_DAEMON_LOG_FLUSH,
@@ -461,14 +458,8 @@ thread_initialize_manager (size_t & total_thread_count)
   /* Initialize page buffer maintenance daemon */
   thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_MAINTENANCE;
   thread_Daemons[daemon_index].daemon_monitor = &thread_Page_maintenance_thread;
-  thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 8;
-  thread_Daemons[daemon_index++].daemon_function = thread_page_buffer_maintenance_thread;
-
-  /* Initialize find victim candidate daemon. */
-  thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_FIND_VICTIM_CANDIDATE;
-  thread_Daemons[daemon_index].daemon_monitor = &thread_Page_find_victim_candidates_thread;
   thread_Daemons[daemon_index].shutdown_sequence = INT_MAX - 7;
-  thread_Daemons[daemon_index++].daemon_function = thread_page_find_victim_candidates_thread;
+  thread_Daemons[daemon_index++].daemon_function = thread_page_buffer_maintenance_thread;
 
   /* Initialize page flush daemon */
   thread_Daemons[daemon_index].type = THREAD_DAEMON_PAGE_FLUSH;
@@ -2701,82 +2692,6 @@ thread_check_ha_delay_info_thread (void *arg_p)
   tsd_ptr->status = TS_DEAD;
 
   return (THREAD_RET_T) 0;
-}
-
-/*
- * thread_page_find_victim_candidates_thread() - Find victim candidates thread.
- *   return:
- *   arg_p(in):
-*/
-static THREAD_RET_T THREAD_CALLING_CONVENTION
-thread_page_find_victim_candidates_thread (void *arg_p)
-{
-#define THREAD_FIND_VICTIM_CANDIDATES_WAKEUP_TIME_MSEC 100
-#if !defined(HPUX)
-  THREAD_ENTRY *tsd_ptr;
-#endif /* !HPUX */
-  bool needs_victim_candidates = false;
-  bool stop_iteration = false;
-
-  tsd_ptr = (THREAD_ENTRY *) arg_p;
-  thread_daemon_start (&thread_Page_find_victim_candidates_thread, tsd_ptr, TT_DAEMON);
-  needs_victim_candidates = pgbuf_keep_victim_flush_thread_running ();
-  while (!tsd_ptr->shutdown)
-    {
-      while (!tsd_ptr->shutdown && needs_victim_candidates)
-	{
-	  pgbuf_produce_victim_candidates (tsd_ptr, prm_get_float_value (PRM_ID_PB_BUFFER_FLUSH_RATIO),
-					   &stop_iteration);
-	  if (stop_iteration)
-	    {
-	      needs_victim_candidates = false;
-	      break;
-	    }
-	  needs_victim_candidates = pgbuf_keep_victim_flush_thread_running ();
-	}
-
-      assert (needs_victim_candidates == false);
-      if (!thread_daemon_timedwait (&thread_Page_find_victim_candidates_thread,
-				    THREAD_FIND_VICTIM_CANDIDATES_WAKEUP_TIME_MSEC))
-	{
-	  /* Did not timeout, someone requested victim candidates. Run again. */
-	  needs_victim_candidates = true;
-	}
-      else
-	{
-	  needs_victim_candidates = pgbuf_keep_victim_flush_thread_running ();
-	}
-    }
-  thread_daemon_stop (&thread_Page_find_victim_candidates_thread, tsd_ptr);
-
-  return (THREAD_RET_T) 0;
-#undef THREAD_FIND_VICTIM_CANDIDATES_WAKEUP_TIME_MSEC
-}
-
-/*
-* thread_wakeup_find_victim_candidates_thread() - wakeup the thread that find victim candidates
-*/
-void
-thread_wakeup_find_victim_candidates_thread (void)
-{
-  thread_daemon_wakeup (&thread_Page_find_victim_candidates_thread);
-}
-
-/*
-* thread_is_find_victim_candidates_thread_available() -
-*   return:
-*/
-bool
-thread_is_find_victim_candidates_thread_available (void)
-{
-  int rv;
-  bool is_available;
-
-  rv = pthread_mutex_lock (&thread_Page_find_victim_candidates_thread.lock);
-  is_available = thread_Page_find_victim_candidates_thread.is_available;
-  pthread_mutex_unlock (&thread_Page_find_victim_candidates_thread.lock);
-
-  return is_available;
 }
 
 /*

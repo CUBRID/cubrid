@@ -2098,12 +2098,6 @@ static int prm_pb_num_private_chains_upper = CSS_MAX_CLIENT_COUNT + VACUUM_MAX_W
 static int prm_pb_num_private_chains_lower = -1;
 static unsigned int prm_pb_num_private_chains_flag = 0;
 
-int PRM_PB_MAX_DEPTH_OF_SEARCHING_VICTIMS_IN_LRU_LIST = 1000;
-static int prm_pb_max_depth_of_searching_for_victims_in_lru_list_default = 1000;
-static int prm_pb_max_depth_of_searching_for_victims_in_lru_list_upper = 1000;
-static int prm_pb_max_depth_of_searching_for_victims_in_lru_list_lower = 1;
-static unsigned int prm_pb_max_depth_of_searching_for_victims_in_lru_list_flag = 0;
-
 bool PRM_PB_MONITOR_LOCKS = false;
 static bool prm_pb_monitor_locks_default = false;
 static unsigned int prm_pb_monitor_locks_flag = 0;
@@ -5335,18 +5329,6 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_PB_NUM_PRIVATE_CHAINS,
    (void *) &prm_pb_num_private_chains_upper,
    (void *) &prm_pb_num_private_chains_lower,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PB_MAX_DEPTH_OF_SEARCHING_VICTIMS_IN_LRU_LIST,
-   PRM_NAME_PB_MAX_DEPTH_OF_SEARCHING_FOR_VICTIMS_IN_LRU_LIST,
-   (PRM_FOR_SERVER),
-   PRM_INTEGER,
-   &prm_pb_max_depth_of_searching_for_victims_in_lru_list_flag,
-   (void *) &prm_pb_max_depth_of_searching_for_victims_in_lru_list_default,
-   (void *) &PRM_PB_MAX_DEPTH_OF_SEARCHING_VICTIMS_IN_LRU_LIST,
-   (void *) &prm_pb_max_depth_of_searching_for_victims_in_lru_list_upper,
-   (void *) &prm_pb_max_depth_of_searching_for_victims_in_lru_list_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
