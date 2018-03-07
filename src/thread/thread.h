@@ -238,20 +238,6 @@ struct fi_test_item;
   ((thread_p)->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT && \
    (thread_p)->interrupted == true)
 
-typedef struct daemon_thread_monitor DAEMON_THREAD_MONITOR;
-struct daemon_thread_monitor
-{
-  int thread_index;
-  bool is_available;
-  bool is_running;
-  int nrequestors;
-  pthread_mutex_t lock;
-  pthread_cond_t cond;
-};
-
-#define DAEMON_THREAD_MONITOR_INITIALIZER  \
-  {0, false, false, 0, PTHREAD_MUTEX_INITIALIZER,PTHREAD_COND_INITIALIZER}
-
 #if !defined(HPUX)
 extern int thread_set_thread_entry_info (THREAD_ENTRY * entry);
 #endif /* not HPUX */
@@ -261,7 +247,6 @@ extern THREAD_ENTRY *thread_get_thread_entry_info (void);
 extern int thread_initialize_manager (size_t & total_thread_count);
 extern int thread_start_workers (void);
 extern int thread_stop_active_workers (unsigned short stop_phase);
-extern int thread_stop_active_daemons (void);
 extern int thread_kill_all_workers (void);
 extern void thread_final_manager (void);
 extern void thread_slam_tran_index (THREAD_ENTRY * thread_p, int tran_index);
@@ -301,9 +286,6 @@ extern void thread_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_ind
 extern struct css_conn_entry *thread_get_current_conn_entry (void);
 extern int thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id);
 extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
-
-extern void thread_wakeup_log_flush_thread (void);
-extern bool thread_is_log_flush_thread_available (void);
 
 extern THREAD_ENTRY *thread_find_first_lockwait_entry (int *thrd_index);
 extern THREAD_ENTRY *thread_find_next_lockwait_entry (int *thrd_index);

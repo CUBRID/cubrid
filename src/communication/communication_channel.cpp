@@ -46,7 +46,7 @@ communication_channel::communication_channel (int max_timeout_in_ms) :
 }
 
 communication_channel::communication_channel (communication_channel &&comm) : m_max_timeout_in_ms (
-    comm.m_max_timeout_in_ms)
+	  comm.m_max_timeout_in_ms)
 {
   m_type = comm.m_type;
   comm.m_type = NO_TYPE;
@@ -90,8 +90,7 @@ css_error_code communication_channel::send (const char *buffer, std::size_t leng
   int total_len = 0, rc = NO_ERRORS;
   struct iovec iov[2];
 
-  css_set_io_vector (& (iov[0]), & (iov[1]), buffer, length,
-                    &templen);
+  css_set_io_vector (&iov[0], &iov[1], buffer, length, &templen);
   total_len = sizeof (int) + length;
 
   rc = css_send_io_vector_with_socket (m_socket, iov, total_len, vector_length, m_max_timeout_in_ms);
