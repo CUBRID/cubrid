@@ -18,13 +18,14 @@
  */
 
 /*
- * communication_channel.cpp - wrapper for the CSS_CONN_ENTRY structure
+ * communication_channel.cpp - wrapper for communication primitives
  *                           - it can establish a connection, send/receive messages, wait for events and close the connection
  */
 
 #include "communication_channel.hpp"
 
 #include "connection_support.h"
+#include "connection_globals.h"
 #include "system_parameter.h"
 #include "thread_manager.hpp"
 #include <string>
@@ -36,14 +37,18 @@
 #include "tcp.h"
 #endif /* WINDOWS */
 
-communication_channel::communication_channel (int max_timeout_in_ms) : m_conn_entry (NULL),
+communication_channel::communication_channel (int max_timeout_in_ms) :
   m_max_timeout_in_ms (max_timeout_in_ms),
   m_hostname (nullptr),
   m_server_name (nullptr),
   m_port (-1),
   m_request_id (-1),
-  m_type (CHANNEL_TYPE::DEFAULT),
-  m_command_type (NULL_REQUEST)
+  m_type (CHANNEL_TYPE::NO_TYPE),
+  m_command_type (NULL_REQUEST),
+  m_socket (INVALID_SOCKET),
+  current_iov_pointer (0),
+  current_iov_size (0),
+  iov_ptr (NULL)
 {
 }
 
@@ -56,9 +61,14 @@ communication_channel::communication_channel (communication_channel &&comm) : m_
   m_request_id = comm.m_request_id;
   m_type = comm.m_type;
   m_command_type = comm.m_command_type;
+  current_iov_pointer = comm.current_iov_pointer;
+  current_iov_size = comm.current_iov_size;
 
-  m_conn_entry = comm.m_conn_entry;
-  comm.m_conn_entry = NULL;
+  m_socket = comm.m_socket;
+  comm.m_socket = INVALID_SOCKET;
+
+  iov_ptr = comm.iov_ptr;
+  comm.iov_ptr = NULL;
 }
 
 communication_channel &communication_channel::operator= (communication_channel &&comm)
@@ -72,27 +82,50 @@ communication_channel &communication_channel::operator= (communication_channel &
 communication_channel::~communication_channel ()
 {
   close_connection ();
-  assert (m_conn_entry == NULL);
+  free (iov_ptr);
 }
 
-int communication_channel::send (const char *message, int message_length)
+int communication_channel::send ()
 {
-  return css_net_send (m_conn_entry, message, message_length, m_max_timeout_in_ms);
+  int total_len = 0;
+  int rc = 0, vector_length = 0;
+
+  for (unsigned int i = 0; i < current_iov_pointer; i++)
+    {
+      total_len += iov_ptr[i].iov_len;
+    }
+
+  vector_length = current_iov_pointer;
+  current_iov_pointer = 0;
+
+  while (total_len > 0)
+    {
+      rc = css_vector_send (m_socket, &iov_ptr, &vector_length, rc, m_max_timeout_in_ms);
+      if (rc < 0)
+	{
+	  close_connection ();
+	  return ERROR_ON_WRITE;
+	}
+      total_len -= rc;
+    }
+
+  return NO_ERRORS;
 }
 
 int communication_channel::send (const std::string &message)
 {
-  return css_net_send (m_conn_entry, message.c_str (), message.length (), m_max_timeout_in_ms);
+  return communication_channel::send (message.c_str (), message.length ());
 }
 
 int communication_channel::recv (char *buffer, int &received_length)
 {
-  return css_net_recv (m_conn_entry->fd, buffer, &received_length, m_max_timeout_in_ms);
+  return css_net_recv (m_socket, buffer, &received_length, m_max_timeout_in_ms);
 }
 
 int communication_channel::connect ()
 {
   int length = 0;
+  int rc = NO_ERRORS;
 
   assert (m_type == CHANNEL_TYPE::INITIATOR);
   assert (m_command_type > NULL_REQUEST && m_command_type < MAX_REQUEST);
@@ -111,22 +144,51 @@ int communication_channel::connect ()
       length = strlen (m_server_name.get ());
     }
 
-  m_conn_entry = css_make_conn (-1);
-  if (m_conn_entry == NULL)
+  m_socket = css_tcp_client_open (m_hostname.get (), m_port);
+  if (!IS_INVALID_SOCKET (m_socket))
     {
-      return ER_FAILED;
-    }
+      /* send magic */
+      NET_HEADER magic_header = DEFAULT_HEADER_DATA, command_header = DEFAULT_HEADER_DATA, data_header = DEFAULT_HEADER_DATA;
+      memset ((char *) &magic_header, 0, sizeof (NET_HEADER));
+      memcpy ((char *) &magic_header, css_Net_magic, sizeof (css_Net_magic));
 
-  if (css_common_connect (m_conn_entry, &m_request_id, m_hostname.get (),
-			  m_command_type, m_server_name.get (), length, m_port) == NULL)
+      rc = communication_channel::send ((const char *) &magic_header, sizeof (NET_HEADER));
+      if (rc != NO_ERRORS)
+	{
+	  close_connection ();
+	  return REQUEST_REFUSED;
+	}
+
+      /* send request */
+      css_set_net_header (&command_header, COMMAND_TYPE, m_command_type, m_request_id, length, 0, 0, 0);
+      if (length > 0)
+	{
+	  css_set_net_header (&data_header, DATA_TYPE, 0, m_request_id, length, 0, 0, 0);
+	  rc = communication_channel::send ((char *) &command_header, sizeof (NET_HEADER), (char *) &data_header,
+					    sizeof (NET_HEADER), m_server_name.get (), length);
+	  if (rc != NO_ERRORS)
+	    {
+	      close_connection ();
+	      return REQUEST_REFUSED;
+	    }
+	}
+      else
+	{
+	  rc = communication_channel::send ((char *) &command_header, sizeof (NET_HEADER));
+	  if (rc != NO_ERRORS)
+	    {
+	      close_connection ();
+	      return REQUEST_REFUSED;
+	    }
+	}
+
+      _er_log_debug (ARG_FILE_LINE, "connect_to_master:" "connected to master_hostname:%s\n", m_hostname.get ());
+      return NO_ERRORS;
+    }
+  else
     {
-      close_connection ();
       return REQUEST_REFUSED;
     }
-
-  _er_log_debug (ARG_FILE_LINE, "connect_to_master:" "connected to master_hostname:%s\n", m_hostname.get ());
-
-  return NO_ERRORS;
 }
 
 int communication_channel::connect (const char *hostname, int port, CSS_COMMAND_TYPE command_type,
@@ -151,31 +213,30 @@ int communication_channel::connect (const char *hostname, int port, CSS_COMMAND_
   m_command_type = command_type;
   m_request_id = -1;
   m_type = INITIATOR;
-
-  m_conn_entry = css_make_conn (-1);
+  m_socket = INVALID_SOCKET;
 
   return communication_channel::connect ();
 }
 
 int communication_channel::accept (SOCKET socket)
 {
-  if (is_connection_alive ())
+  if (is_connection_alive () || IS_INVALID_SOCKET (socket))
     {
       return ER_FAILED;
     }
 
   m_type = LISTENER;
-  m_conn_entry = css_make_conn (socket);
+  m_socket = socket;
 
-  return m_conn_entry == NULL ? ER_FAILED : NO_ERROR;
+  return NO_ERROR;
 }
 
 void communication_channel::close_connection ()
 {
-  if (m_conn_entry != NULL)
+  if (!IS_INVALID_SOCKET (m_socket))
     {
-      css_free_conn (m_conn_entry);
-      m_conn_entry = NULL;
+      css_shutdown_socket (m_socket);
+      m_socket = INVALID_SOCKET;
     }
 }
 
@@ -200,7 +261,7 @@ int communication_channel::wait_for (unsigned short int events, unsigned short i
       return -1;
     }
 
-  poll_fd.fd = m_conn_entry->fd;
+  poll_fd.fd = m_socket;
   poll_fd.events = events;
   poll_fd.revents = 0;
 
@@ -212,17 +273,12 @@ int communication_channel::wait_for (unsigned short int events, unsigned short i
 
 bool communication_channel::is_connection_alive ()
 {
-  if (m_conn_entry == NULL)
-    {
-      return false;
-    }
-
-  return !IS_INVALID_SOCKET (m_conn_entry->fd);
+  return !IS_INVALID_SOCKET (m_socket);
 }
 
-CSS_CONN_ENTRY *communication_channel::get_conn_entry ()
+SOCKET communication_channel::get_socket ()
 {
-  return m_conn_entry;
+  return m_socket;
 }
 
 void communication_channel::create_initiator (const char *hostname,
