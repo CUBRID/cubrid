@@ -711,7 +711,7 @@ namespace cubthread
   {
     assert (task_p != NULL);
 
-    wpstat::time_point_type push_time;
+    wpstat::time_point_type push_time = wpstat::clock_type::now ();
     worker *refp = NULL;
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
     if (!m_free_active_list.empty ())
@@ -1020,7 +1020,7 @@ namespace cubthread
   {
     assert (m_task_p == NULL);
 
-    const std::chrono::seconds WAIT_TIME = std::chrono::seconds (60);
+    const std::chrono::seconds WAIT_TIME = std::chrono::seconds (5);
 
     // notify parent core I am free
     m_parent_core->add_worker_to_free_active_list (*this);
