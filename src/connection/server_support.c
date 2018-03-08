@@ -3571,7 +3571,8 @@ css_get_thread_stats (UINT64 * stats_out)
   css_Server_request_worker_pool->get_stats (allstats);
 
   // collected timers are in nano-seconds. convert them to milliseconds
-  for (UINT64 *timer_stat_p = stats_out + wpstat::STATS_COUNT; timer_stat_p < stats_out + wpstat::TOTAL_STATS_COUNT;
+  for (UINT64 *timer_stat_p = stats_out + cubthread::wpstat::STATS_COUNT;
+       timer_stat_p < stats_out + cubthread::wpstat::TOTAL_STATS_COUNT;
        ++timer_stat_p)
     {
       *timer_stat_p = (*timer_stat_p) / 1000000;
