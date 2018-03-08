@@ -62,6 +62,7 @@
 #if !defined(CS_MODE)
 #include "session.h"
 #endif
+#include "connection_cl.h"
 #include "dbtype.h"
 
 #if !defined(WINDOWS)
@@ -69,6 +70,23 @@ void (*prev_sigfpe_handler) (int) = SIG_DFL;
 #else
 #include "wintcp.h"
 #endif /* !WINDOWS */
+
+/* host status for marking abnormal host status */
+typedef struct db_host_status DB_HOST_STATUS;
+struct db_host_status
+{
+  char hostname[MAXHOSTNAMELEN];
+  int status;
+};
+
+typedef struct db_host_status_list DB_HOST_STATUS_LIST;
+struct db_host_status_list
+{
+  /* preferred_hosts + db-hosts */
+  DB_HOST_STATUS hostlist[MAX_NUM_DB_HOSTS * 2];
+  DB_HOST_STATUS *connected_host_status;
+  int last_host_idx;
+};
 
 /* Some like to assume that the db_ layer is able to recognize that a
  database has not been successfully restarted.  For now, check every
