@@ -82,7 +82,7 @@
 #define FILEIO_VOLTMP_PREFIX         "_t"
 #define FILEIO_VOLINFO_SUFFIX        "_vinf"
 #define FILEIO_VOLLOCK_SUFFIX        "__lock"
-#define FILEIO_SUFFIX_DWB	     "_dwb"
+#define FILEIO_SUFFIX_DWB            "_dwb"
 #define FILEIO_MAX_SUFFIX_LENGTH     7
 
 typedef enum

@@ -3425,8 +3425,6 @@ boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_D
 		  + length_const_string (db_path_info->db_path, NULL)	/* db_path */
 		  + length_const_string (db_path_info->vol_path, NULL)	/* vol_path */
 		  + length_const_string (db_path_info->log_path, NULL)	/* log_path */
-		  + length_const_string (db_path_info->lob_path, NULL)	/* lob_path */
-		  + length_const_string (db_path_info->dwb_path, NULL)	/* dwb_path */
 		  + length_const_string (db_path_info->db_host, NULL)	/* db_host */
 		  + length_const_string (db_path_info->db_comments, NULL)	/* db_comments */
 		  + length_const_string (file_addmore_vols, NULL)	/* file_addmore_vols */
@@ -3453,8 +3451,6 @@ boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_D
       ptr = pack_const_string (ptr, db_path_info->db_path);
       ptr = pack_const_string (ptr, db_path_info->vol_path);
       ptr = pack_const_string (ptr, db_path_info->log_path);
-      ptr = pack_const_string (ptr, db_path_info->lob_path);
-      ptr = pack_const_string (ptr, db_path_info->dwb_path);
       ptr = pack_const_string (ptr, db_path_info->db_host);
       ptr = pack_const_string (ptr, db_path_info->db_comments);
       ptr = pack_const_string (ptr, file_addmore_vols);
@@ -5117,35 +5113,25 @@ boot_soft_rename (const char *old_db_name, const char *new_db_name, const char *
 }
 
 /*
- * xboot_copy () - copy the database to a new destination
+ * boot_copy () - copy the database to a new destination
  *
  * return : NO_ERROR if all OK, ER_ status otherwise
  *
  *   fromdb_name(in): The database from where the copy is made.
  *   newdb_name(in): Name of new database
  *   newdb_path(in): Directory where the new database will reside
- *   newlog_path(in): Directory where the log volumes of the new database
- *                    will reside
- *   new_lob_path(in): Directory where the lob volumes of the new database
- *                    will reside
+ *   newlog_path(in): Directory where the log volumes of the new database will reside
+ *   new_lob_path(in): Directory where the lob volumes of the new database will reside
  *   newdb_server_host(in): Server host where the new database reside
- *   new_volext_path(in): A path is included if all volumes are placed in one
- *                        place/directory. If NULL is given,
- *                        - If file "fileof_vols_and_wherepaths" is given, the
- *                          path is found in this file.
- *                        - Each volume is copied to same place where the
- *                          volume resides.
- *                      Note: This parameter should be NULL, if the above file
- *                            is given.
- *   fileof_vols_and_wherepaths(in): A file is given when the user decides to
- *                               control the copy/rename of the volume by
- *                               individual bases. That is, user decides to
- *                               spread the volumes over several locations and
+ *   new_volext_path(in): A path is included if all volumes are placed in one place/directory. If NULL is given,
+ *                        - If file "fileof_vols_and_wherepaths" is given, the path is found in this file.
+ *                        - Each volume is copied to same place where the volume resides.
+ *                      Note: This parameter should be NULL, if the above file is given.
+ *   fileof_vols_and_wherepaths(in): A file is given when the user decides to control the copy/rename of the volume by
+ *                               individual bases. That is, user decides to spread the volumes over several locations and
  *                               or to label the volumes with specific names.
- *                               Each volume entry consists of:
- *                                 volid from_fullvolname to_fullvolname
- *   newdb_overwrite(in): Whether to overwrite the new database if it already
- *                        exist.
+ *                               Each volume entry consists of: volid from_fullvolname to_fullvolname
+ *   newdb_overwrite(in): Whether to overwrite the new database if it already exist.
  */
 int
 boot_copy (const char *from_dbname, const char *new_db_name, const char *new_db_path, const char *new_log_path,
