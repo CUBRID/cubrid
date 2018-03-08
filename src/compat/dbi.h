@@ -50,6 +50,8 @@ extern "C"
 #define db_utime_to_string db_timestamp_to_string
 #define db_string_to_utime db_string_to_timestamp
 
+  /* todo: These functions are duplicated in dbi_compat.h. Find a workaround. */
+
 /* constants for db_include_oid */
   enum
   { DB_NO_OIDS, DB_ROW_OIDS, DB_COLUMN_OIDS };
