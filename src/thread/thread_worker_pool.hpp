@@ -1031,7 +1031,7 @@ namespace cubthread
     // wait for task
     std::unique_lock<std::mutex> ulock (m_task_mutex);
     m_waiting_task = true;
-    m_task_cv.wait_for (ulock, WAIT_TIME, [this] { return !m_waiting_task });
+    m_task_cv.wait_for (ulock, WAIT_TIME, [this] { return !m_waiting_task; });
     m_waiting_task = false;
 
     if (m_task_p == NULL)
