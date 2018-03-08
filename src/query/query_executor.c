@@ -13957,7 +13957,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		      if (level == 0 && spec_level == 1)
 			{
 #if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-			  SET_DIAG_VALUE_FULL_SCAN (diag_executediag, 1, DIAG_VAL_SETTYPE_INC, NULL, xasl, specp);
+			  perfmon_diag_set_full_scan (diag_executediag, NULL, xasl, specp);
 #if 0				/* ACTIVITY PROFILE */
 			  ADD_ACTIVITY_DATA (diag_executediag, DIAG_EVENTCLASS_TYPE_SERVER_QUERY_FULL_SCAN,
 					     xasl->sql_hash_text, "", 0);
@@ -13989,7 +13989,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      iscan_oid_order = false;
 			    }
 #if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-			  SET_DIAG_VALUE_FULL_SCAN (diag_executediag, 1, DIAG_VAL_SETTYPE_INC, NULL, xasl, specp);
+			  perfmon_diag_set_full_scan (diag_executediag, NULL, xasl, specp);
 #if 0				/* ACTIVITY PROFILE */
 			  ADD_ACTIVITY_DATA (diag_executediag, DIAG_EVENTCLASS_TYPE_SERVER_QUERY_FULL_SCAN,
 					     xasl->sql_hash_text, "", 0);
@@ -21699,7 +21699,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
       db_make_null (out_values[8]);
 
       /* index type */
-      db_make_string (out_values[10], "BTREE");
+      db_make_string_by_const_str (out_values[10], "BTREE");
 
       index = rep->indexes + i;
       /* Non_unique */
@@ -21729,8 +21729,8 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  num_idx_att = index->func_index_info->attr_index_start;
 	}
 
-      index_position = 0;
       /* index attributes */
+      index_position = 0;
       for (j = 0; j < num_idx_att; j++)
 	{
 	  index_att = index->atts[j];
@@ -21749,11 +21749,11 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  /* Collation */
 	  if (index->asc_desc[j])
 	    {
-	      db_make_string (out_values[5], "D");
+	      db_make_string_by_const_str (out_values[5], "D");
 	    }
 	  else
 	    {
-	      db_make_string (out_values[5], "A");
+	      db_make_string_by_const_str (out_values[5], "A");
 	    }
 
 	  /* Cardinality */
@@ -21785,11 +21785,11 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  /* [Null] */
 	  if (index_att->is_notnull)
 	    {
-	      db_make_string (out_values[9], "NO");
+	      db_make_string_by_const_str (out_values[9], "NO");
 	    }
 	  else
 	    {
-	      db_make_string (out_values[9], "YES");
+	      db_make_string_by_const_str (out_values[9], "YES");
 	    }
 
 	  /* Column_name */
@@ -21802,6 +21802,10 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		  break;
 		}
 	    }
+
+	  /* clear alloced DB_VALUEs */
+	  pr_clear_value (out_values[5]);
+	  pr_clear_value (out_values[9]);
 
 	  index_position++;
 	}
@@ -21820,11 +21824,11 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
 	  if (function_asc_desc)
 	    {
-	      db_make_string (out_values[5], "D");
+	      db_make_string_by_const_str (out_values[5], "D");
 	    }
 	  else
 	    {
-	      db_make_string (out_values[5], "A");
+	      db_make_string_by_const_str (out_values[5], "A");
 	    }
 
 	  /* Seq_in_index */
@@ -21850,7 +21854,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  db_make_null (out_values[7]);
 
 	  /* [Null] */
-	  db_make_string (out_values[9], "YES");
+	  db_make_string_by_const_str (out_values[9], "YES");
 
 	  /* Column_name */
 	  db_make_null (out_values[4]);
@@ -22258,13 +22262,12 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 
       return NO_ERROR;
     }
-
-  if (setdomain != NULL)
+  else if (setdomain != NULL)
     {
       /* process sequence */
       DB_VALUE set_arg1, set_arg2, set_result, *pset_arg1, *pset_arg2, *pset_result, *pset_temp;
       DB_DATA_STATUS data_stat;
-      DB_VALUE comma, set_of;
+      DB_VALUE comma;
       char **ordered_names = NULL, *min, *temp;
       int count_names = 0, i, j, idx_min;
 
@@ -22310,9 +22313,8 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       pset_result = &set_result;
 
       db_make_string (&comma, ",");
-      db_make_string (&set_of, set_of_string);
+      db_make_string_by_const_str (pset_result, set_of_string);
 
-      pr_clone_value (&set_of, pset_result);
       for (setdomain = domain->setdomain, i = 0; setdomain; setdomain = setdomain->next, i++)
 	{
 	  pset_temp = pset_arg1;
@@ -22351,10 +22353,9 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       free_and_init (ordered_names);
       return NO_ERROR;
     }
-
-  if (precision >= 0)
+  else if (precision >= 0)
     {
-      DB_VALUE db_int_scale, db_str_scale, db_name;
+      DB_VALUE db_int_scale, db_str_scale;
       DB_VALUE db_int_precision, db_str_precision;
       DB_VALUE prec_scale_result, prec_scale_arg1, *pprec_scale_arg1, *pprec_scale_result, *pprec_scale_temp;
       DB_VALUE comma, bracket1, bracket2;
@@ -22371,9 +22372,8 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       db_make_string (&comma, ",");
       db_make_string (&bracket1, "(");
       db_make_string (&bracket2, ")");
-      db_make_string (&db_name, name);
+      db_make_string_by_const_str (pprec_scale_arg1, name);
 
-      pr_clone_value (&db_name, pprec_scale_arg1);
       if ((db_string_concatenate (pprec_scale_arg1, &bracket1, pprec_scale_result, &data_stat) != NO_ERROR)
 	  || (data_stat != DATA_STATUS_OK))
 	{
@@ -22444,7 +22444,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 
       return NO_ERROR;
     }
-  if (validator != NULL)
+  else if (validator != NULL)
     {
       DB_DATA_STATUS data_stat;
       DB_VALUE bracket1, bracket2, db_name, schema;
@@ -22452,9 +22452,8 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 
       if (db_json_get_schema_raw_from_validator (validator) != NULL)
 	{
-	  db_make_string (&db_name, name);
-	  pr_clone_value (&db_name, result);
-	  db_make_string (&schema, db_json_get_schema_raw_from_validator (validator));
+	  db_make_string_by_const_str (result, name);
+	  db_make_string_by_const_str (&schema, db_json_get_schema_raw_from_validator (validator));
 	  db_make_string (&bracket1, "(\'");
 	  db_make_string (&bracket2, "\')");
 
@@ -22478,14 +22477,11 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 	}
       return NO_ERROR;
     }
-
-  {
-    DB_VALUE db_name;
-    db_make_string (&db_name, name);
-    pr_clone_value (&db_name, result);
-  }
-
-  return NO_ERROR;
+  else
+    {
+      db_make_string_by_const_str (result, name);
+      return NO_ERROR;
+    }
 
 exit_on_error:
   return ER_FAILED;
@@ -22644,7 +22640,8 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		case DB_TYPE_NCHAR:
 		case DB_TYPE_VARNCHAR:
 		case DB_TYPE_ENUMERATION:
-		  db_make_string (out_values[idx_val], lang_get_collation_name (attrepr->domain->collation_id));
+		  db_make_string_by_const_str (out_values[idx_val],
+					       lang_get_collation_name (attrepr->domain->collation_id));
 		  break;
 		default:
 		  db_make_null (out_values[idx_val]);
@@ -22655,11 +22652,11 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  /* attribute can store NULL ? */
 	  if (attrepr->is_notnull == 0)
 	    {
-	      db_make_string (out_values[idx_val], "YES");
+	      db_make_string_by_const_str (out_values[idx_val], "YES");
 	    }
 	  else
 	    {
-	      db_make_string (out_values[idx_val], "NO");
+	      db_make_string_by_const_str (out_values[idx_val], "NO");
 	    }
 	  idx_val++;
 
@@ -22694,21 +22691,21 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	    {
 	    case BTREE_UNIQUE:
 	    case BTREE_REVERSE_UNIQUE:
-	      db_make_string (out_values[idx_val], "UNI");
+	      db_make_string_by_const_str (out_values[idx_val], "UNI");
 	      break;
 
 	    case BTREE_INDEX:
 	    case BTREE_REVERSE_INDEX:
 	    case BTREE_FOREIGN_KEY:
-	      db_make_string (out_values[idx_val], "MUL");
+	      db_make_string_by_const_str (out_values[idx_val], "MUL");
 	      break;
 
 	    case BTREE_PRIMARY_KEY:
-	      db_make_string (out_values[idx_val], "PRI");
+	      db_make_string_by_const_str (out_values[idx_val], "PRI");
 	      break;
 
 	    default:
-	      db_make_string (out_values[idx_val], "");
+	      db_make_string_by_const_str (out_values[idx_val], "");
 	      break;
 	    }
 	  idx_val++;
@@ -22751,14 +22748,13 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
 		  strcat (default_value_string, ")");
 
-		  db_make_string (out_values[idx_val], default_value_string);
-		  out_values[idx_val]->need_clear = true;
+		  db_make_string_by_const_str (out_values[idx_val], default_value_string);
 		}
 	      else
 		{
 		  if (default_expr_type_string)
 		    {
-		      db_make_string (out_values[idx_val], default_expr_type_string);
+		      db_make_string_by_const_str (out_values[idx_val], default_expr_type_string);
 		    }
 		}
 	      idx_val++;
@@ -22809,11 +22805,11 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  /* attribute has auto_increment or not */
 	  if (attrepr->is_autoincrement == 0)
 	    {
-	      db_make_string (out_values[idx_val], "");
+	      db_make_string_by_const_str (out_values[idx_val], "");
 	    }
 	  else
 	    {
-	      db_make_string (out_values[idx_val], "auto_increment");
+	      db_make_string_by_const_str (out_values[idx_val], "auto_increment");
 	    }
 	  idx_val++;
 
