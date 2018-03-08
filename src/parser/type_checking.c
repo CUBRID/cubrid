@@ -13001,10 +13001,17 @@ namespace Func
                 //printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
                 break;
               }
-              if(!cmp_types(fix, arg->type_enum))
+            if(fix.type == pt_arg_type::NORMAL || fix.type == pt_arg_type::GENERIC)
+              {
+                if(!cmp_types(fix, arg->type_enum))
+                  {
+                    match = false;//current arg doesn't match coresponding type => try next signature
+                    break;
+                  }
+              }
+              else if(fix.type == pt_arg_type::INDEX)
                 {
-                  match = false;//current arg doesn't match coresponding type => try next signature
-                  break;
+                  //do nothing!?
                 }
             arg = arg->next;
           }
@@ -13057,7 +13064,8 @@ namespace Func
             //printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
             break;
           }
-        pt_type_enum equivalent_type = pt_get_equivalent_type(type, arg->type_enum);
+        auto t = (type.type == pt_arg_type::INDEX ? signature.fix[type.val.index] : type);
+        pt_type_enum equivalent_type = pt_get_equivalent_type(t, arg->type_enum);
         if(equivalent_type != arg->type_enum)
           {
             arg = pt_wrap_with_cast_op(parser, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
