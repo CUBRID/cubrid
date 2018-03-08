@@ -915,7 +915,7 @@ namespace cubthread
     m_statistics.collect_and_time (wpstat::id::RETIRE_CONTEXT, m_time_point);
 
     // last thing to do is to add to inactive list
-    add_worker_to_inactive_list (*this);
+    m_parent_core->add_worker_to_inactive_list (*this);
   }
 
   template <typename Context>
