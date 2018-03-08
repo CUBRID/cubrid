@@ -24,7 +24,7 @@
 
 #include <stdio.h>
 #include "storage_common.h"
-#include "dbdef.h"
+#include "cubrid_api.h"
 #include "object_representation.h"
 
 #define LOG_USERNAME_MAX        (DB_MAX_USER_LENGTH + 1)

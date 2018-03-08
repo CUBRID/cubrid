@@ -31,7 +31,7 @@
 
 #include <stdio.h>
 #include "error_manager.h"
-#include "dbdef.h"
+#include "cubrid_api.h"
 #include "intl_support.h"
 #include "db_date.h"
 #include "object_representation.h"

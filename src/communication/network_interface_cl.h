@@ -33,7 +33,7 @@
 
 #include <stdio.h>
 
-#include "dbdef.h"
+#include "cubrid_api.h"
 #include "replication.h"
 #include "server_interface.h"
 #include "perf_monitor.h"
