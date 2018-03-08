@@ -1558,7 +1558,7 @@
 #define ER_JSON_RESERVED_ERROR_7                    -1212
 #define ER_JSON_RESERVED_ERROR_8                    -1213
 #define ER_JSON_RESERVED_ERROR_9                    -1214
-#define ER_DWB_DISABLED				    -1215
+#define ER_DWB_DISABLED                             -1215
 
 #define ER_LAST_ERROR                               -1216
 

@@ -1263,10 +1263,6 @@ $ LOADDB
 1194 无法检查文件 %1$d|%2$d , 因为在类 %3$d|%4$d|%5$d 上的锁未被授权.
 1195 CTE的递归部分不能包含没有GROUP BY子句的聚合函数.
 1196 已达到CTE执行的最大递归次数%1$d.
-<<<<<<< HEAD
-1197 Double Write Buffer is disabled.
-1198 最后一个错误.
-=======
 1197 Invalid json: %1$s (%2$d)
 1198 A json object must be provided
 1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
@@ -1286,8 +1282,8 @@ $ LOADDB
 1212 Reserved error for JSON.
 1213 Reserved error for JSON.
 1214 Reserved error for JSON.
-
 1215 Double Write Buffer is disabled.
+
 1216 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL

@@ -1281,10 +1281,10 @@ $ LOADDB
 1212 Reserved error for JSON.
 1213 Reserved error for JSON.
 1214 Reserved error for JSON.
-
-
 1215 Double Write Buffer is disabled.
+
 1216 Son Hata
+
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
 2 Uygun hata mesajı bulunmamakta.

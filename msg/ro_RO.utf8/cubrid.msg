@@ -1281,10 +1281,10 @@ $ LOADDB
 1212 Reserved error for JSON.
 1213 Reserved error for JSON.
 1214 Reserved error for JSON.
-
-
 1215 Double Write Buffer este dezactivat.
+
 1216 Ultima eroare
+
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
 2 Niciun mesaj de eroare disponibil.

@@ -1282,9 +1282,8 @@ $ LOADDB
 1213 Reserved error for JSON.
 1214 Reserved error for JSON.
 1215 Double Write Buffer is disabled.
-1216 마지막 에러
 
-1215 마지막 에러
+1216 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

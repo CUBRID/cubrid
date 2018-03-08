@@ -1281,10 +1281,10 @@ $ LOADDB
 1212 Reserved error for JSON.
 1213 Reserved error for JSON.
 1214 Reserved error for JSON.
-
-
 1215 Double Write Buffer is disabled.
+
 1216 Last Error
+
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
 2 No error message available.
