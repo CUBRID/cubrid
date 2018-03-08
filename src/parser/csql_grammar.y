@@ -102,7 +102,6 @@ extern int yybuffer_pos;
 #include "chartype.h"
 #include "parser.h"
 #include "parser_message.h"
-#include "dbdef.h"
 #include "language_support.h"
 #include "unicode_support.h"
 #include "environment_variable.h"
