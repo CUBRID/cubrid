@@ -2900,7 +2900,6 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
 
 #if defined(SERVER_MODE)
       pgbuf_daemons_destroy ();
-      thread_stop_active_daemons ();
 #endif
 
       log_final (thread_p);

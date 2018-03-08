@@ -240,7 +240,17 @@ extern void db_private_free_release (void *thrd, void *ptr, bool rc_track);
         db_private_realloc_release(thrd, ptr, size, false)
 extern void *db_private_realloc_release (void *thrd, void *ptr, size_t size, bool rc_track);
 #endif /* NDEBUG */
-extern char *db_private_strdup (void *thrd, const char *s);
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+  extern char *db_private_strdup (void *thrd, const char *s);
+
+#ifdef __cplusplus
+}
+#endif
 
 /* for external package */
 extern void *db_private_alloc_external (void *thrd, size_t size);

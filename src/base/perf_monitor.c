@@ -973,25 +973,18 @@ static void *server_shm_open (int shm_key);
 #endif /* WINDOWS */
 
 T_DIAG_OBJECT_TABLE diag_obj_list[] = {
-  {"open_page", DIAG_OBJ_TYPE_QUERY_OPEN_PAGE, diag_val_set_query_open_page}
-  , {"opened_page", DIAG_OBJ_TYPE_QUERY_OPENED_PAGE,
-     diag_val_set_query_opened_page}
-  , {"slow_query", DIAG_OBJ_TYPE_QUERY_SLOW_QUERY,
-     diag_val_set_query_slow_query}
-  , {"full_scan", DIAG_OBJ_TYPE_QUERY_FULL_SCAN, diag_val_set_query_full_scan}
-  , {"cli_request", DIAG_OBJ_TYPE_CONN_CLI_REQUEST,
-     diag_val_set_conn_cli_request}
-  , {"aborted_client", DIAG_OBJ_TYPE_CONN_ABORTED_CLIENTS,
-     diag_val_set_conn_aborted_clients}
-  , {"conn_req", DIAG_OBJ_TYPE_CONN_CONN_REQ, diag_val_set_conn_conn_req}
-  , {"conn_reject", DIAG_OBJ_TYPE_CONN_CONN_REJECT,
-     diag_val_set_conn_conn_reject}
-  , {"buffer_page_read", DIAG_OBJ_TYPE_BUFFER_PAGE_READ,
-     diag_val_set_buffer_page_read}
-  , {"buffer_page_write", DIAG_OBJ_TYPE_BUFFER_PAGE_WRITE,
-     diag_val_set_buffer_page_write}
-  , {"lock_deadlock", DIAG_OBJ_TYPE_LOCK_DEADLOCK, diag_val_set_lock_deadlock}
-  , {"lock_request", DIAG_OBJ_TYPE_LOCK_REQUEST, diag_val_set_lock_request}
+  {"open_page", DIAG_OBJ_TYPE_QUERY_OPEN_PAGE, diag_val_set_query_open_page},
+  {"opened_page", DIAG_OBJ_TYPE_QUERY_OPENED_PAGE, diag_val_set_query_opened_page},
+  {"slow_query", DIAG_OBJ_TYPE_QUERY_SLOW_QUERY, diag_val_set_query_slow_query},
+  {"full_scan", DIAG_OBJ_TYPE_QUERY_FULL_SCAN, diag_val_set_query_full_scan},
+  {"cli_request", DIAG_OBJ_TYPE_CONN_CLI_REQUEST, diag_val_set_conn_cli_request},
+  {"aborted_client", DIAG_OBJ_TYPE_CONN_ABORTED_CLIENTS, diag_val_set_conn_aborted_clients},
+  {"conn_req", DIAG_OBJ_TYPE_CONN_CONN_REQ, diag_val_set_conn_conn_req},
+  {"conn_reject", DIAG_OBJ_TYPE_CONN_CONN_REJECT, diag_val_set_conn_conn_reject},
+  {"buffer_page_read", DIAG_OBJ_TYPE_BUFFER_PAGE_READ, diag_val_set_buffer_page_read},
+  {"buffer_page_write", DIAG_OBJ_TYPE_BUFFER_PAGE_WRITE, diag_val_set_buffer_page_write},
+  {"lock_deadlock", DIAG_OBJ_TYPE_LOCK_DEADLOCK, diag_val_set_lock_deadlock},
+  {"lock_request", DIAG_OBJ_TYPE_LOCK_REQUEST, diag_val_set_lock_request}
 };
 
 /* function definition */

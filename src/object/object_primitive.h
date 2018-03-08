@@ -332,7 +332,17 @@ extern int pr_share_value (DB_VALUE * src, DB_VALUE * dest);
     } \
   while (0)
 
-extern int pr_clear_value (DB_VALUE * var);
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+  extern int pr_clear_value (DB_VALUE * var);
+
+#ifdef __cplusplus
+}
+#endif
+
 extern int pr_free_value (DB_VALUE * var);
 extern DB_VALUE *pr_make_ext_value (void);
 extern int pr_free_ext_value (DB_VALUE * value);

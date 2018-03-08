@@ -362,8 +362,13 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 // *INDENT-OFF*
 static cubthread::daemon *log_Clock_daemon = NULL;
 static cubthread::daemon *log_Checkpoint_daemon = NULL;
-static cubthread::daemon *log_Remove_log_archive_daemon = NULL;
 static cubthread::daemon *log_Check_ha_delay_info_daemon = NULL;
+
+static cubthread::daemon *log_Remove_log_archive_daemon = NULL;
+static std::atomic_bool log_Remove_log_archive_daemon_force_wakeup = {false};
+
+static cubthread::daemon *log_Flush_daemon = NULL;
+static std::atomic_bool log_Flush_has_been_requested = {false};
 // *INDENT-ON*
 
 static void log_daemons_init ();
@@ -528,7 +533,6 @@ log_is_in_crash_recovery (void)
     }
 }
 
-
 /*
  * log_get_restart_lsa - FIND RESTART LOG SEQUENCE ADDRESS
  *
@@ -585,7 +589,6 @@ log_get_append_lsa (void)
 {
   return (&log_Gl.hdr.append_lsa);
 }
-
 
 /*
  * log_get_eof_lsa -
@@ -1293,7 +1296,6 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	}
       strncpy (log_Gl.hdr.db_release, rel_release_string (), REL_MAX_RELEASE_LENGTH);
     }
-
 
   /* 
    * Create the transaction table and make sure that data volumes and log
@@ -8003,7 +8005,6 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
   int data_header_size = 0;
   bool is_mvcc_op = false;
 
-
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   /* 
@@ -9440,7 +9441,6 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flush_data_pages
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-
 /*
  * log_active_log_header_start_scan () -
  *   return: NO_ERROR, or ER_code
@@ -9692,7 +9692,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   idx++;
 
   str = logpb_perm_status_to_string ((LOG_PSTATUS) header->perm_status);
-  db_make_string (out_values[idx], str);
+  db_make_string_by_const_str (out_values[idx], str);
   idx++;
 
   logpb_backup_level_info_to_string (buf, sizeof (buf), header->bkinfo + FILEIO_BACKUP_FULL_LEVEL);
@@ -9720,11 +9720,11 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
     }
 
   str = css_ha_server_state_string ((HA_SERVER_STATE) header->ha_server_state);
-  db_make_string (out_values[idx], str);
+  db_make_string_by_const_str (out_values[idx], str);
   idx++;
 
   str = logwr_log_ha_filestat_to_string ((LOG_HA_FILESTAT) header->ha_file_status);
-  db_make_string (out_values[idx], str);
+  db_make_string_by_const_str (out_values[idx], str);
   idx++;
 
   lsa_to_string (buf, sizeof (buf), &header->eof_lsa);
@@ -9996,7 +9996,6 @@ log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time)
   LOG_CS_EXIT (thread_p);
 }
 
-
 /*
  * log_get_undo_record () - gets undo record from log lsa adress
  *   return: S_SUCCESS or ER_code
@@ -10266,24 +10265,109 @@ log_read_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_P
   return NO_ERROR;
 }
 
-#if defined(SERVER_MODE)
+/*
+ * log_get_log_group_commit_interval () - setup flush daemon period based on system parameter
+ */
+void
+log_get_log_group_commit_interval (bool & is_timed_wait, cubthread::delta_time & period)
+{
+  is_timed_wait = true;
+
+#if defined (SERVER_MODE)
+  if (log_Flush_has_been_requested)
+    {
+      period = std::chrono::milliseconds (0);
+      return;
+    }
+#endif /* SERVER_MODE */
+
+  const int MAX_WAIT_TIME_MSEC = 1000;
+  int log_group_commit_interval_msec = prm_get_integer_value (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS);
+
+  assert (log_group_commit_interval_msec >= 0);
+
+  if (log_group_commit_interval_msec == 0)
+    {
+      period = std::chrono::milliseconds (MAX_WAIT_TIME_MSEC);
+    }
+  else
+    {
+      period = std::chrono::milliseconds (log_group_commit_interval_msec);
+    }
+}
+
+/*
+ * log_get_checkpoint_interval () - setup log checkpoint daemon period based on system parameter
+ */
+void
+log_get_checkpoint_interval (bool & is_timed_wait, cubthread::delta_time & period)
+{
+  int log_checkpoint_interval_sec = prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_INTERVAL_SECS);
+
+  assert (log_checkpoint_interval_sec >= 0);
+
+  if (log_checkpoint_interval_sec > 0)
+    {
+      // if log_checkpoint_interval_sec > 0 (zero) then loop for fixed interval
+      is_timed_wait = true;
+      period = std::chrono::seconds (log_checkpoint_interval_sec);
+    }
+  else
+    {
+      // infinite wait
+      is_timed_wait = false;
+    }
+}
+
+/*
+ * log_get_remove_log_archive_interval () - setup remove log archive daemon period based on system parameter
+ */
+void
+log_get_remove_log_archive_interval (bool & is_timed_wait, cubthread::delta_time & period)
+{
+  int remove_log_archive_interval_sec = prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
+
+  assert (remove_log_archive_interval_sec >= 0);
+
+  if (remove_log_archive_interval_sec > 0)
+    {
+      // if remove_log_archive_interval_sec > 0 (zero) then loop for fixed interval
+      is_timed_wait = true;
+      period = std::chrono::seconds (remove_log_archive_interval_sec);
+    }
+  else
+    {
+      // infinite wait
+      is_timed_wait = false;
+    }
+}
+
+#if defined (SERVER_MODE)
 /*
  * log_wakeup_remove_log_archive_daemon () - wakeup remove log archive daemon
  */
 void
 log_wakeup_remove_log_archive_daemon ()
 {
-  if (log_Remove_log_archive_daemon != NULL && prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL) == 0)
+  bool is_timed_wait;
+  cubthread::delta_time period;
+
+  log_get_remove_log_archive_interval (is_timed_wait, period);
+
+  if (log_Remove_log_archive_daemon && (!is_timed_wait || log_Remove_log_archive_daemon_force_wakeup))
     {
-      // If PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL is 0 (zero) it means that daemon is sleeping
+      // if is_timed_wait is false it means that daemon is sleeping
       // and on wakeup it will do his job,
       // otherwise daemon will be awakened every PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL seconds
       log_Remove_log_archive_daemon->wakeup ();
+
+      // reset force wake up
+      log_Remove_log_archive_daemon_force_wakeup = false;
     }
 }
 #endif /* SERVER_MODE */
 
-#if defined(SERVER_MODE)
+#if defined (SERVER_MODE)
 /*
  * log_wakeup_checkpoint_daemon () - wakeup checkpoint daemon
  */
@@ -10296,6 +10380,34 @@ log_wakeup_checkpoint_daemon ()
     }
 }
 #endif /* SERVER_MODE */
+
+/*
+ * log_wakeup_log_flush_daemon () - wakeup log flush daemon
+ */
+void
+log_wakeup_log_flush_daemon ()
+{
+  if (log_is_log_flush_daemon_available ())
+    {
+#if defined (SERVER_MODE)
+      log_Flush_has_been_requested = true;
+      log_Flush_daemon->wakeup ();
+#endif /* SERVER_MODE */
+    }
+}
+
+/*
+ * log_is_log_flush_daemon_available () - check if log flush daemon is available
+ */
+bool
+log_is_log_flush_daemon_available ()
+{
+#if defined (SERVER_MODE)
+  return log_Flush_daemon != NULL;
+#else
+  return false;
+#endif
+}
 
 // *INDENT-OFF*
 #if defined(SERVER_MODE)
@@ -10332,15 +10444,7 @@ class log_checkpoint_daemon_task : public cubthread::entry_task
 //
 class log_remove_log_archive_daemon_task : public cubthread::entry_task
 {
-  private:
-    int m_archive_logs_to_delete;
-
   public:
-    explicit log_remove_log_archive_daemon_task (int archive_logs_to_delete)
-    {
-      this->m_archive_logs_to_delete = archive_logs_to_delete;
-    }
-
     void execute (cubthread::entry & thread_ref) override
     {
       if (!BO_IS_SERVER_RESTARTED ())
@@ -10349,7 +10453,20 @@ class log_remove_log_archive_daemon_task : public cubthread::entry_task
 	  return;
 	}
 
-      logpb_remove_archive_logs_exceed_limit (&thread_ref, m_archive_logs_to_delete);
+      bool is_timed_wait;
+      cubthread::delta_time period;
+
+      log_get_remove_log_archive_interval (is_timed_wait, period);
+
+      // if is_timed_wait is true then on every loop remove one log archive
+      // otherwise on wakeup remove all log archive records
+      int log_archives_to_delete = is_timed_wait ? 1 : 0;
+      int deleted_count = logpb_remove_archive_logs_exceed_limit (&thread_ref, log_archives_to_delete);
+
+      if (deleted_count == 0 && is_timed_wait)
+	{
+	  log_Remove_log_archive_daemon_force_wakeup = true;
+	}
     }
 };
 #endif /* SERVER_MODE */
@@ -10473,6 +10590,39 @@ class log_check_ha_delay_info_daemon_task : public cubthread::entry_task
 };
 #endif /* SERVER_MODE */
 
+#if defined (SERVER_MODE)
+// class log_flush_daemon_task
+//
+//  description:
+//    log flush daemon task
+//
+class log_flush_daemon_task : public cubthread::entry_task
+{
+  public:
+    void execute (cubthread::entry & thread_ref) override
+    {
+      if (!BO_IS_SERVER_RESTARTED () || !log_Flush_has_been_requested)
+	{
+	  return;
+	}
+
+      // refresh log trace flush time
+      thread_ref.event_stats.trace_log_flush_time = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
+
+      LOG_CS_ENTER (&thread_ref);
+      logpb_flush_pages_direct (&thread_ref);
+      LOG_CS_EXIT (&thread_ref);
+
+      log_Stat.gc_flush_count++;
+
+      pthread_mutex_lock (&log_Gl.group_commit_info.gc_mutex);
+      pthread_cond_broadcast (&log_Gl.group_commit_info.gc_cond);
+      log_Flush_has_been_requested = false;
+      pthread_mutex_unlock (&log_Gl.group_commit_info.gc_mutex);
+    }
+};
+#endif /* SERVER_MODE */
+
 #if defined(SERVER_MODE)
 /*
  * log_checkpoint_daemon_init () - initialize checkpoint daemon
@@ -10482,10 +10632,11 @@ log_checkpoint_daemon_init ()
 {
   assert (log_Checkpoint_daemon == NULL);
 
+  cubthread::looper looper = cubthread::looper (log_get_checkpoint_interval);
+  log_checkpoint_daemon_task *daemon_task = new log_checkpoint_daemon_task ();
+
   // create checkpoint daemon thread
-  auto looper_interval = std::chrono::seconds (prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_INTERVAL_SECS));
-  log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (looper_interval),
-			  new log_checkpoint_daemon_task ());
+  log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
 }
 #endif /* SERVER_MODE */
 
@@ -10498,23 +10649,11 @@ log_remove_log_archive_daemon_init ()
 {
   assert (log_Remove_log_archive_daemon == NULL);
 
-  // get remove log archive interval in seconds system parameter
-  int remove_log_archive_interval = prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
+  cubthread::looper looper = cubthread::looper (log_get_remove_log_archive_interval);
+  log_remove_log_archive_daemon_task *daemon_task = new log_remove_log_archive_daemon_task ();
 
   // create log archive remover daemon thread
-  if (remove_log_archive_interval > 0)
-    {
-      // if interval is greater than 0 (zero) then on every loop remove one log archive
-      log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (
-					      cubthread::looper (std::chrono::seconds (remove_log_archive_interval)),
-					      new log_remove_log_archive_daemon_task (1));
-    }
-  else
-    {
-      // if interval is equal to 0 (zero) then on wakeup remove all log archive records
-      log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (),
-				      new log_remove_log_archive_daemon_task (0));
-    }
+  log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
 }
 #endif /* SERVER_MODE */
 
@@ -10527,9 +10666,8 @@ log_clock_daemon_init ()
 {
   assert (log_Clock_daemon == NULL);
 
-  auto looper_interval = std::chrono::milliseconds (200);
-  log_Clock_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (looper_interval),
-			 new log_clock_daemon_task ());
+  cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (200));
+  log_Clock_daemon = cubthread::get_manager ()->create_daemon (looper, new log_clock_daemon_task ());
 }
 #endif /* SERVER_MODE */
 
@@ -10542,9 +10680,26 @@ log_check_ha_delay_info_daemon_init ()
 {
   assert (log_Check_ha_delay_info_daemon == NULL);
 
-  auto looper_interval = std::chrono::seconds (1);
-  log_Check_ha_delay_info_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (looper_interval),
-				   new log_check_ha_delay_info_daemon_task ());
+  cubthread::looper looper = cubthread::looper (std::chrono::seconds (1));
+  log_check_ha_delay_info_daemon_task *daemon_task = new log_check_ha_delay_info_daemon_task ();
+
+  log_Check_ha_delay_info_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * log_flush_daemon_init () - initialize log flush daemon
+ */
+void
+log_flush_daemon_init ()
+{
+  assert (log_Flush_daemon == NULL);
+
+  cubthread::looper looper = cubthread::looper (log_get_log_group_commit_interval);
+  log_flush_daemon_task *daemon_task = new log_flush_daemon_task ();
+
+  log_Flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
 }
 #endif /* SERVER_MODE */
 
@@ -10559,6 +10714,7 @@ log_daemons_init ()
   log_checkpoint_daemon_init ();
   log_check_ha_delay_info_daemon_init ();
   log_clock_daemon_init ();
+  log_flush_daemon_init ();
 }
 #endif /* SERVER_MODE */
 
@@ -10573,6 +10729,7 @@ log_daemons_destroy ()
   cubthread::get_manager ()->destroy_daemon (log_Checkpoint_daemon);
   cubthread::get_manager ()->destroy_daemon (log_Check_ha_delay_info_daemon);
   cubthread::get_manager ()->destroy_daemon (log_Clock_daemon);
+  cubthread::get_manager ()->destroy_daemon (log_Flush_daemon);
 }
 #endif /* SERVER_MODE */
 // *INDENT-ON*

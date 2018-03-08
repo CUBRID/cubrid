@@ -1100,7 +1100,7 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 #if defined (SERVER_MODE)
 
   // get thread manager
-  auto thread_manager = cubthread::get_manager ();
+  cubthread::manager * thread_manager = cubthread::get_manager ();
 
   // get logging flag for vacuum worker pool
   /* *INDENT-OFF* */
@@ -1115,10 +1115,12 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 					vacuum_Worker_context_manager, 1, log_vacuum_worker_pool);
   assert (vacuum_Worker_threads != NULL);
 
+  int vacuum_master_wakeup_interval_msec = prm_get_integer_value (PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL);
+  cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (vacuum_master_wakeup_interval_msec));
+
   // create vacuum master thread
-  auto interval_time = std::chrono::milliseconds (prm_get_integer_value (PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL));
-  vacuum_Master_daemon = thread_manager->create_daemon (cubthread::looper (interval_time),
-							new vacuum_master_task (), vacuum_Master_context_manager);
+  vacuum_Master_daemon =
+    thread_manager->create_daemon (looper, new vacuum_master_task (), vacuum_Master_context_manager);
 #endif /* SERVER_MODE */
 
   vacuum_Is_booted = true;
@@ -1138,7 +1140,7 @@ vacuum_stop (THREAD_ENTRY * thread_p)
   // notify master to stop generating new jobs
   vacuum_notify_server_shutdown ();
 
-  auto thread_manager = cubthread::get_manager ();
+  cubthread::manager * thread_manager = cubthread::get_manager ();
 
   // stop work pool
   if (vacuum_Worker_threads != NULL)

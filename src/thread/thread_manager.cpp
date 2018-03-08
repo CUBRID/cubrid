@@ -45,11 +45,7 @@
 namespace cubthread
 {
 
-#if defined (NO_GCC_44) || defined (WINDOWS)
   thread_local entry *tl_Entry_p = NULL;
-#else // GCC 4.4
-  __thread entry *tl_Entry_p = NULL;
-#endif // GCC 4.4
 
   manager::manager (void)
     : m_max_threads (0)

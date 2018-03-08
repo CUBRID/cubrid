@@ -60,11 +60,13 @@
  */
 enum css_command_type
 {
+  NULL_REQUEST = 0,
   INFO_REQUEST = 1,		/* get runtime info from the master server */
   DATA_REQUEST = 2,		/* get data from the database server */
   SERVER_REQUEST = 3,		/* let new server attach */
-  MSQL_REQUEST = 4,		/* A request to start a new M driver. */
-  SERVER_REQUEST_NEW = 5	/* new-style server request */
+  UNUSED_REQUEST = 4,		/* unused request - leave it for compatibility */
+  SERVER_REQUEST_NEW = 5,	/* new-style server request */
+  MAX_REQUEST
 };
 
 /*
@@ -220,7 +222,8 @@ enum css_error_code
   INTERRUPTED_READ = 14,
   CANT_ALLOC_BUFFER = 15,
   OS_ERROR = 16,
-  TIMEDOUT_ON_QUEUE = 17
+  TIMEDOUT_ON_QUEUE = 17,
+  INTERNAL_CSS_ERROR = 18
 };
 
 /*

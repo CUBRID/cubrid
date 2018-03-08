@@ -818,6 +818,11 @@ STATIC_INLINE int perfmon_get_activation_flag (void) __attribute__ ((ALWAYS_INLI
 extern char *perfmon_pack_stats (char *buf, UINT64 * stats);
 extern char *perfmon_unpack_stats (char *buf, UINT64 * stats);
 
+STATIC_INLINE void perfmon_diff_timeval (struct timeval *elapsed, struct timeval *start, struct timeval *end)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_add_timeval (struct timeval *total, struct timeval *start, struct timeval *end)
+  __attribute__ ((ALWAYS_INLINE));
+
 #ifdef __cplusplus
 /* TODO: it looks ugly now, but it should be fixed with stat tool patch */
 
@@ -1328,44 +1333,58 @@ struct t_diag_object_table
   T_DO_FUNC func;
 };
 
-/* MACRO definition */
-#define SET_DIAG_VALUE(DIAG_EXEC_FLAG, ITEM_TYPE, VALUE, SET_TYPE, ERR_BUF)          \
-    do {                                                                             \
-        if (DIAG_EXEC_FLAG == true) {                                             \
-            set_diag_value(ITEM_TYPE , VALUE, SET_TYPE, ERR_BUF);                    \
-        }                                                                            \
-    } while(0)
+STATIC_INLINE void perfmon_diag_set_value (bool diag_exec_flag, T_DIAG_OBJ_TYPE item_type, int value,
+					   T_DIAG_VALUE_SETTYPE set_type, char *err_buf)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_diag_set_slow_query (bool diag_exec_flag, struct timeval *start_time,
+						struct timeval *end_time, char *err_buf)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_diag_set_full_scan (bool diag_exec_flag, char *err_buf, XASL_NODE * xasl,
+					       ACCESS_SPEC_TYPE * spec) __attribute__ ((ALWAYS_INLINE));
 
-#define DIAG_GET_TIME(DIAG_EXEC_FLAG, TIMER)                                         \
-    do {                                                                             \
-        if (DIAG_EXEC_FLAG == true) {                                             \
-            gettimeofday(&TIMER, NULL);                                              \
-        }                                                                            \
-    } while(0)
+STATIC_INLINE void
+perfmon_diag_set_value (bool diag_exec_flag, T_DIAG_OBJ_TYPE item_type, int value, T_DIAG_VALUE_SETTYPE set_type,
+			char *err_buf)
+{
+  if (diag_exec_flag == false)
+    {
+      return;
+    }
 
-#define SET_DIAG_VALUE_SLOW_QUERY(DIAG_EXEC_FLAG, START_TIME, END_TIME, VALUE, SET_TYPE, ERR_BUF)\
-    do {                                                                                 \
-        if (DIAG_EXEC_FLAG == true) {                                                 \
-            struct timeval result = {0,0};                                               \
-            ADD_TIMEVAL(result, START_TIME, END_TIME);                                   \
-            if (result.tv_sec >= diag_long_query_time)                                   \
-                set_diag_value(DIAG_OBJ_TYPE_QUERY_SLOW_QUERY, VALUE, SET_TYPE, ERR_BUF);\
-        }                                                                                \
-    } while(0)
+  set_diag_value (item_type, value, set_type, err_buf);
+}
 
-#define SET_DIAG_VALUE_FULL_SCAN(DIAG_EXEC_FLAG, VALUE, SET_TYPE, ERR_BUF, XASL, SPECP) \
-    do {                                                                                \
-        if (DIAG_EXEC_FLAG == true) {                                                \
-            if (((XASL_TYPE(XASL) == BUILDLIST_PROC) ||                                 \
-                 (XASL_TYPE(XASL) == BUILDVALUE_PROC))                                  \
-                && ACCESS_SPEC_ACCESS(SPECP) == SEQUENTIAL) {                           \
-                set_diag_value(DIAG_OBJ_TYPE_QUERY_FULL_SCAN                            \
-                        , 1                                                             \
-                        , DIAG_VAL_SETTYPE_INC                                          \
-                        , NULL);                                                        \
-            }                                                                           \
-        }                                                                               \
-    } while(0)
+STATIC_INLINE void
+perfmon_diag_set_slow_query (bool diag_exec_flag, struct timeval *start_time, struct timeval *end_time, char *err_buf)
+{
+  struct timeval result = { 0, 0 };
+
+  if (diag_exec_flag == false)
+    {
+      return;
+    }
+
+  perfmon_add_timeval (&result, start_time, end_time);
+  if (result.tv_sec >= diag_long_query_time)
+    {
+      set_diag_value (DIAG_OBJ_TYPE_QUERY_SLOW_QUERY, 1, DIAG_VAL_SETTYPE_INC, err_buf);
+    }
+}
+
+STATIC_INLINE void
+perfmon_diag_set_full_scan (bool diag_exec_flag, char *err_buf, XASL_NODE * xasl, ACCESS_SPEC_TYPE * spec)
+{
+  if (diag_exec_flag == false)
+    {
+      return;
+    }
+
+  if ((XASL_TYPE (xasl) == BUILDLIST_PROC || XASL_TYPE (xasl) == BUILDVALUE_PROC)
+      && ACCESS_SPEC_ACCESS (spec) == SEQUENTIAL)
+    {
+      set_diag_value (DIAG_OBJ_TYPE_QUERY_FULL_SCAN, 1, DIAG_VAL_SETTYPE_INC, err_buf);
+    }
+}
 
 extern int diag_long_query_time;
 extern bool diag_executediag;
@@ -1376,32 +1395,36 @@ extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYP
 #endif /* SERVER_MODE */
 #endif /* DIAG_DEVEL */
 
-#ifndef DIFF_TIMEVAL
-#define DIFF_TIMEVAL(start, end, elapsed) \
-    do { \
-      (elapsed).tv_sec = (end).tv_sec - (start).tv_sec; \
-      (elapsed).tv_usec = (end).tv_usec - (start).tv_usec; \
-      if ((elapsed).tv_usec < 0) \
-        { \
-          (elapsed).tv_sec--; \
-          (elapsed).tv_usec += 1000000; \
-        } \
-    } while (0)
-#endif
+STATIC_INLINE void
+perfmon_diff_timeval (struct timeval *elapsed, struct timeval *start, struct timeval *end)
+{
+  elapsed->tv_sec = end->tv_sec - start->tv_sec;
+  elapsed->tv_usec = end->tv_usec - start->tv_usec;
 
-#define ADD_TIMEVAL(total, start, end) do {     \
-  total.tv_usec +=                              \
-    (end.tv_usec - start.tv_usec) >= 0 ?        \
-      (end.tv_usec-start.tv_usec)               \
-    : (1000000 + (end.tv_usec-start.tv_usec));  \
-  total.tv_sec +=                               \
-    (end.tv_usec - start.tv_usec) >= 0 ?        \
-      (end.tv_sec-start.tv_sec)                 \
-    : (end.tv_sec-start.tv_sec-1);              \
-  total.tv_sec +=                               \
-    total.tv_usec/1000000;                      \
-  total.tv_usec %= 1000000;                     \
-} while(0)
+  if (elapsed->tv_usec < 0)
+    {
+      elapsed->tv_sec--;
+      elapsed->tv_usec += 1000000;
+    }
+}
+
+STATIC_INLINE void
+perfmon_add_timeval (struct timeval *total, struct timeval *start, struct timeval *end)
+{
+  if (end->tv_usec - start->tv_usec >= 0)
+    {
+      total->tv_usec += end->tv_usec - start->tv_usec;
+      total->tv_sec += end->tv_sec - start->tv_sec;
+    }
+  else
+    {
+      total->tv_usec += 1000000 + (end->tv_usec - start->tv_usec);
+      total->tv_sec += end->tv_sec - start->tv_sec - 1;
+    }
+
+  total->tv_sec += total->tv_usec / 1000000;
+  total->tv_usec %= 1000000;
+}
 
 #define TO_MSEC(elapsed) \
   ((int)(((elapsed).tv_sec * 1000) + (int) ((elapsed).tv_usec / 1000)))
