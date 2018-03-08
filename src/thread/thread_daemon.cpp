@@ -74,4 +74,10 @@ namespace cubthread
     m_looper.reset ();
   }
 
+  bool
+  daemon::is_running (void)
+  {
+    return m_waiter.is_running();
+  }
+
 } // namespace cubthread
