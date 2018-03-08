@@ -13030,12 +13030,19 @@ namespace Func
         int index = 0;
         for(; arg; arg=arg->next, index=(index+1)%sig.rep.size())
           {
-            auto& rep = sig.rep[index];
-            if(!cmp_types(rep, arg->type_enum))
+            auto& type = sig.rep[index];
+            if(type.type == pt_arg_type::NORMAL || type.type == pt_arg_type::GENERIC)
               {
-                match = false;//current arg doesn't match coresponding type => try next signature
-                break;
+                if(!cmp_types(type, arg->type_enum))
+                  {
+                    match = false;//current arg doesn't match coresponding type => try next signature
+                    break;
+                  }
               }
+              else if(type.type == pt_arg_type::INDEX)
+                {
+                  //do nothing!?
+                }
           }
         if(match)
           {
@@ -13098,7 +13105,8 @@ namespace Func
     for(; arg; prev = arg, arg=arg->next, index=(index+1)%signature.rep.size(), ++arg_pos)
       {
         auto& type = signature.rep[index];
-        pt_type_enum equivalent_type = pt_get_equivalent_type(type, arg->type_enum);
+        auto t = (type.type == pt_arg_type::INDEX ? signature.fix[type.val.index] : type);
+        pt_type_enum equivalent_type = pt_get_equivalent_type(t, arg->type_enum);
         if(equivalent_type != arg->type_enum)
           {
             arg = pt_wrap_with_cast_op(parser, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
