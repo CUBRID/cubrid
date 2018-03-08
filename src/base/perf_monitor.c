@@ -137,7 +137,7 @@ static void f_dump_in_buffer_Time_data_page_hold_acquire_time (char **, const UI
 static void f_dump_in_buffer_Time_data_page_fix_acquire_time (char **, const UINT64 * stat_vals, int *remaining_size);
 static void f_dump_in_buffer_Num_mvcc_snapshot_ext (char **, const UINT64 * stat_vals, int *remaining_size);
 static void f_dump_in_buffer_Time_obj_lock_acquire_time (char **, const UINT64 * stat_vals, int *remaining_size);
-void f_dump_in_buffer_Num_dwb_flushed_block_volumes (char **s, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_Num_dwb_flushed_block_volumes (char **s, const UINT64 * stat_vals, int *remaining_size);
 
 static void perfmon_stat_dump_in_file_fix_page_array_stat (FILE *, const UINT64 * stats_ptr);
 static void perfmon_stat_dump_in_file_promote_page_array_stat (FILE *, const UINT64 * stats_ptr);
@@ -4192,7 +4192,7 @@ perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const in
  * f_load_Num_data_page_fix_ext () - Get the number of values for Num_data_page_fix_ext statistic
  * 
  */
-int
+static int
 f_load_Num_data_page_fix_ext (void)
 {
   return PERF_PAGE_FIX_COUNTERS;
@@ -4202,7 +4202,7 @@ f_load_Num_data_page_fix_ext (void)
  * f_load_Num_data_page_promote_ext () - Get the number of values for Num_data_page_promote_ext statistic
  * 
  */
-int
+static int
 f_load_Num_data_page_promote_ext (void)
 {
   return PERF_PAGE_PROMOTE_COUNTERS;
@@ -4212,7 +4212,7 @@ f_load_Num_data_page_promote_ext (void)
  * f_load_Num_data_page_promote_time_ext () - Get the number of values for Num_data_page_promote_time_ext statistic
  * 
  */
-int
+static int
 f_load_Num_data_page_promote_time_ext (void)
 {
   return PERF_PAGE_PROMOTE_COUNTERS;
@@ -4222,7 +4222,7 @@ f_load_Num_data_page_promote_time_ext (void)
  * f_load_Num_data_page_unfix_ext () - Get the number of values for Num_data_page_unfix_ext statistic
  * 
  */
-int
+static int
 f_load_Num_data_page_unfix_ext (void)
 {
   return PERF_PAGE_UNFIX_COUNTERS;
@@ -4232,7 +4232,7 @@ f_load_Num_data_page_unfix_ext (void)
  * f_load_Time_data_page_lock_acquire_time () - Get the number of values for Time_data_page_lock_acquire_time statistic
  * 
  */
-int
+static int
 f_load_Time_data_page_lock_acquire_time (void)
 {
   return PERF_PAGE_LOCK_TIME_COUNTERS;
@@ -4242,7 +4242,7 @@ f_load_Time_data_page_lock_acquire_time (void)
  * f_load_Time_data_page_hold_acquire_time () - Get the number of values for Time_data_page_hold_acquire_time statistic
  * 
  */
-int
+static int
 f_load_Time_data_page_hold_acquire_time (void)
 {
   return PERF_PAGE_HOLD_TIME_COUNTERS;
@@ -4252,7 +4252,7 @@ f_load_Time_data_page_hold_acquire_time (void)
  * f_load_Time_data_page_fix_acquire_time () - Get the number of values for Time_data_page_fix_acquire_time statistic
  * 
  */
-int
+static int
 f_load_Time_data_page_fix_acquire_time (void)
 {
   return PERF_PAGE_FIX_TIME_COUNTERS;
@@ -4262,7 +4262,7 @@ f_load_Time_data_page_fix_acquire_time (void)
  * f_load_Num_mvcc_snapshot_ext () - Get the number of values for Num_mvcc_snapshot_ext statistic
  * 
  */
-int
+static int
 f_load_Num_mvcc_snapshot_ext (void)
 {
   return PERF_MVCC_SNAPSHOT_COUNTERS;
@@ -4272,7 +4272,7 @@ f_load_Num_mvcc_snapshot_ext (void)
  * f_load_Time_obj_lock_acquire_time () - Get the number of values for Time_obj_lock_acquire_time statistic
  * 
  */
-int
+static int
 f_load_Time_obj_lock_acquire_time (void)
 {
   return PERF_OBJ_LOCK_STAT_COUNTERS;
@@ -4282,7 +4282,7 @@ f_load_Time_obj_lock_acquire_time (void)
  * f_load_Num_dwb_flushed_block_volumes () - Get the number of values for Num_dwb_flushed_block_volumes statistic
  * 
  */
-int
+static int
 f_load_Num_dwb_flushed_block_volumes (void)
 {
   return PERF_DWB_FLUSHED_BLOCK_VOLUMES_CNT;
@@ -4292,7 +4292,7 @@ f_load_Num_dwb_flushed_block_volumes (void)
  * f_load_Time_get_snapshot_acquire_time () - Get the number of values for Time_get_snapshot_acquire_time statistic
  * 
  */
-int
+static int
 f_load_Time_get_snapshot_acquire_time (void)
 {
   return PERF_MODULE_CNT;
@@ -4302,7 +4302,7 @@ f_load_Time_get_snapshot_acquire_time (void)
  * f_load_Count_get_snapshot_retry () - Get the number of values for Count_get_snapshot_retry statistic
  * 
  */
-int
+static int
 f_load_Count_get_snapshot_retry (void)
 {
   return PERF_MODULE_CNT;
@@ -4312,7 +4312,7 @@ f_load_Count_get_snapshot_retry (void)
  * f_load_Time_tran_complete_time () - Get the number of values for Time_tran_complete_time statistic
  * 
  */
-int
+static int
 f_load_Time_tran_complete_time (void)
 {
   return PERF_MODULE_CNT;
@@ -4323,7 +4323,7 @@ f_load_Time_tran_complete_time (void)
  *						 statistic
  * 
  */
-int
+static int
 f_load_Time_get_oldest_mvcc_acquire_time (void)
 {
   return PERF_MODULE_CNT;
@@ -4333,7 +4333,7 @@ f_load_Time_get_oldest_mvcc_acquire_time (void)
  * f_load_Count_get_oldest_mvcc_retry () - Get the number of values for Count_get_oldest_mvcc_retry statistic
  * 
  */
-int
+static int
 f_load_Count_get_oldest_mvcc_retry (void)
 {
   return PERF_MODULE_CNT;
@@ -4345,7 +4345,7 @@ f_load_Count_get_oldest_mvcc_retry (void)
  * stat_vals (in): statistics buffer
  * 
  */
-void
+static void
 f_dump_in_file_Num_data_page_fix_ext (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_fix_page_array_stat (f, stat_vals);
@@ -4357,7 +4357,7 @@ f_dump_in_file_Num_data_page_fix_ext (FILE * f, const UINT64 * stat_vals)
  * stat_vals (in): statistics buffer
  * 
  */
-void
+static void
 f_dump_in_file_Num_data_page_promote_ext (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_promote_page_array_stat (f, stat_vals);
@@ -4370,7 +4370,7 @@ f_dump_in_file_Num_data_page_promote_ext (FILE * f, const UINT64 * stat_vals)
  * stat_vals (in): statistics buffer
  * 
  */
-void
+static void
 f_dump_in_file_Num_data_page_promote_time_ext (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_promote_page_array_stat (f, stat_vals);
@@ -4383,7 +4383,7 @@ f_dump_in_file_Num_data_page_promote_time_ext (FILE * f, const UINT64 * stat_val
  * stat_vals (in): statistics buffer
  * 
  */
-void
+static void
 f_dump_in_file_Num_data_page_unfix_ext (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_unfix_page_array_stat (f, stat_vals);
@@ -4396,7 +4396,7 @@ f_dump_in_file_Num_data_page_unfix_ext (FILE * f, const UINT64 * stat_vals)
  * stat_vals (in): statistics buffer
  * 
  */
-void
+static void
 f_dump_in_file_Time_data_page_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_page_lock_time_array_stat (f, stat_vals);
@@ -4409,7 +4409,7 @@ f_dump_in_file_Time_data_page_lock_acquire_time (FILE * f, const UINT64 * stat_v
  * stat_vals (in): statistics buffer
  * 
  */
-void
+static void
 f_dump_in_file_Time_data_page_hold_acquire_time (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_page_hold_time_array_stat (f, stat_vals);
@@ -4422,7 +4422,7 @@ f_dump_in_file_Time_data_page_hold_acquire_time (FILE * f, const UINT64 * stat_v
  * stat_vals (in): statistics buffer
  * 
  */
-void
+static void
 f_dump_in_file_Time_data_page_fix_acquire_time (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_page_fix_time_array_stat (f, stat_vals);
@@ -4435,7 +4435,7 @@ f_dump_in_file_Time_data_page_fix_acquire_time (FILE * f, const UINT64 * stat_va
  * stat_vals (in): statistics buffer
  * 
  */
-void
+static void
 f_dump_in_file_Num_mvcc_snapshot_ext (FILE * f, const UINT64 * stat_vals)
 {
   if (pstat_Global.activation_flag & PERFMON_ACTIVE_MVCC_SNAPSHOT)
@@ -4451,7 +4451,7 @@ f_dump_in_file_Num_mvcc_snapshot_ext (FILE * f, const UINT64 * stat_vals)
  * stat_vals (in): statistics buffer
  * 
  */
-void
+static void
 f_dump_in_file_Time_obj_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
 {
   if (pstat_Global.activation_flag & PERFMON_ACTIVE_LOCK_OBJECT)
@@ -4467,7 +4467,7 @@ f_dump_in_file_Time_obj_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
  * stat_vals (in): statistics buffer
  * 
  */
-void
+static void
 f_dump_in_file_Num_dwb_flushed_block_volumes (FILE * f, const UINT64 * stat_vals)
 {
   if (pstat_Global.activation_flag & PERFMON_ACTIVE_FLUSHED_BLOCK_VOLUMES)
@@ -4484,7 +4484,7 @@ f_dump_in_file_Num_dwb_flushed_block_volumes (FILE * f, const UINT64 * stat_vals
  * remaining_size (in): size of input buffer
  * 
  */
-void
+static void
 f_dump_in_buffer_Num_data_page_fix_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_fix_page_array_stat (stat_vals, s, remaining_size);
@@ -4498,7 +4498,7 @@ f_dump_in_buffer_Num_data_page_fix_ext (char **s, const UINT64 * stat_vals, int 
  * remaining_size (in): size of input buffer
  * 
  */
-void
+static void
 f_dump_in_buffer_Num_data_page_promote_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_promote_page_array_stat (stat_vals, s, remaining_size);
@@ -4512,7 +4512,7 @@ f_dump_in_buffer_Num_data_page_promote_ext (char **s, const UINT64 * stat_vals, 
  * remaining_size (in): size of input buffer
  * 
  */
-void
+static void
 f_dump_in_buffer_Num_data_page_promote_time_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_promote_page_array_stat (stat_vals, s, remaining_size);
@@ -4526,7 +4526,7 @@ f_dump_in_buffer_Num_data_page_promote_time_ext (char **s, const UINT64 * stat_v
  * remaining_size (in): size of input buffer
  * 
  */
-void
+static void
 f_dump_in_buffer_Num_data_page_unfix_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_unfix_page_array_stat (stat_vals, s, remaining_size);
@@ -4541,7 +4541,7 @@ f_dump_in_buffer_Num_data_page_unfix_ext (char **s, const UINT64 * stat_vals, in
  * remaining_size (in): size of input buffer
  * 
  */
-void
+static void
 f_dump_in_buffer_Time_data_page_lock_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_page_lock_time_array_stat (stat_vals, s, remaining_size);
@@ -4556,7 +4556,7 @@ f_dump_in_buffer_Time_data_page_lock_acquire_time (char **s, const UINT64 * stat
  * remaining_size (in): size of input buffer
  * 
  */
-void
+static void
 f_dump_in_buffer_Time_data_page_hold_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_page_hold_time_array_stat (stat_vals, s, remaining_size);
@@ -4571,7 +4571,7 @@ f_dump_in_buffer_Time_data_page_hold_acquire_time (char **s, const UINT64 * stat
  * remaining_size (in): size of input buffer
  * 
  */
-void
+static void
 f_dump_in_buffer_Time_data_page_fix_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_page_fix_time_array_stat (stat_vals, s, remaining_size);
@@ -4585,7 +4585,7 @@ f_dump_in_buffer_Time_data_page_fix_acquire_time (char **s, const UINT64 * stat_
  * remaining_size (in): size of input buffer
  * 
  */
-void
+static void
 f_dump_in_buffer_Num_mvcc_snapshot_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   if (pstat_Global.activation_flag & PERFMON_ACTIVE_MVCC_SNAPSHOT)
@@ -4602,7 +4602,7 @@ f_dump_in_buffer_Num_mvcc_snapshot_ext (char **s, const UINT64 * stat_vals, int 
  * remaining_size (in): size of input buffer
  * 
  */
-void
+static void
 f_dump_in_buffer_Time_obj_lock_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   if (pstat_Global.activation_flag & PERFMON_ACTIVE_LOCK_OBJECT)
@@ -4619,7 +4619,7 @@ f_dump_in_buffer_Time_obj_lock_acquire_time (char **s, const UINT64 * stat_vals,
  * remaining_size (in): size of input buffer
  * 
  */
-void
+static void
 f_dump_in_buffer_Num_dwb_flushed_block_volumes (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   if (pstat_Global.activation_flag & PERFMON_ACTIVE_FLUSHED_BLOCK_VOLUMES)
