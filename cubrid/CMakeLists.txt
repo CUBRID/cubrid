@@ -131,6 +131,11 @@ set(CONNECTION_SOURCES
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
+  ${COMMUNICATION_DIR}/communication_channel.cpp
+  )
+
+set(COMMUNICATION_HEADERS
+  ${COMMUNICATION_DIR}/communication_channel.hpp
   )
 
 set(QUERY_SOURCES
@@ -284,6 +289,7 @@ set (CUBRID_LIB_SOURCES
   )
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
+  ${COMMUNICATION_HEADERS}
   ${COMPAT_HEADERS}
   ${THREAD_HEADERS}
   )
