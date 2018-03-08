@@ -888,6 +888,7 @@ namespace cubthread
 	  {
 	    // still waiting. save task
 	    m_task_p = work_p;
+	    m_waiting_task = false;
 
 	    // unlock, notify thread and get out
 	    ulock.unlock ();
@@ -1028,7 +1029,7 @@ namespace cubthread
     // wait for task
     std::unique_lock<std::mutex> ulock (m_task_mutex);
     m_waiting_task = true;
-    m_task_cv.wait_for (ulock, WAIT_TIME, [this] { return !m_waiting_task || m_task_p != NULL; });
+    m_task_cv.wait_for (ulock, WAIT_TIME, [this] { return !m_waiting_task });
     m_waiting_task = false;
 
     if (m_task_p == NULL)
