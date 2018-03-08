@@ -570,9 +570,7 @@ STATIC_INLINE const char *perfmon_stat_promote_cond_name (const int cond_type) _
 STATIC_INLINE const char *perfmon_stat_snapshot_name (const int snapshot) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_snapshot_record_type (const int rec_type) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_lock_mode_name (const int lock_mode) __attribute__ ((ALWAYS_INLINE));
-#if defined (SERVER_MODE)
 static void perfmon_stat_thread_stat_name (size_t index, char *name_buf, size_t max_size);
-#endif // SERVER_MODE
 
 STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__ ((ALWAYS_INLINE));
 
@@ -4717,7 +4715,6 @@ f_load_thread_stats (void)
   return (int) thread_stats_count ();
 }
 
-#if defined (SERVER_MODE)
 static void
 perfmon_stat_thread_stat_name (size_t index, char * name_buf, size_t max_size)
 {
@@ -4740,7 +4737,6 @@ perfmon_stat_thread_stat_name (size_t index, char * name_buf, size_t max_size)
 
   std::strncat (name_buf, cubthread::wpstat::get_id_name (wpstat_id), max_size);
 }
-#endif // SERVER_MODE
 
 /*
  * f_dump_in_file_thread_stats () - Write in file the values for thread statistic
@@ -4768,7 +4764,6 @@ f_dump_in_file_thread_stats (FILE * f, const UINT64 * stat_vals)
 static void
 perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
 {
-#if defined (SERVER_MODE)
   UINT64 value = 0;
   const size_t MAX_NAME_SIZE = 64;
   char name_buf[MAX_NAME_SIZE];
@@ -4785,7 +4780,6 @@ perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
       perfmon_stat_thread_stat_name (it, name_buf, MAX_NAME_SIZE);
       fprintf (stream, "%-10s = %16llu\n", name_buf, (long long unsigned int) value);
     }
-#endif // SERVER_MODE
 }
 
 /*
@@ -4816,7 +4810,6 @@ f_dump_in_buffer_thread_stats (char **s, const UINT64 * stat_vals, int *remainin
 static void
 perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, int *remaining_size)
 {
-#if defined (SERVER_MODE)
   UINT64 value = 0;
   const size_t MAX_NAME_SIZE = 64;
   char name_buf[MAX_NAME_SIZE];
@@ -4842,6 +4835,5 @@ perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, in
 	  return;
 	}
     }
-#endif // SERVER_MODE
 }
 // *INDENT-ON*

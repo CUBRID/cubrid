@@ -188,9 +188,6 @@ namespace cubthread
 
       enum class id
       {
-	GET_WORKER_FROM_ACTIVE_QUEUE,
-	GET_WORKER_FROM_INACTIVE_QUEUE,
-	GET_WORKER_FAILED,
 	START_THREAD,
 	CREATE_CONTEXT,
 	EXECUTE_TASK,
@@ -198,16 +195,15 @@ namespace cubthread
 	SEARCH_TASK_IN_QUEUE,
 	WAKEUP_WITH_TASK,
 	RETIRE_CONTEXT,
-	DEACTIVATE_WORKER,
 	COUNT
       };
 
       static const std::size_t STATS_COUNT = static_cast<size_t> (id::COUNT);
       static const std::size_t TOTAL_STATS_COUNT = 2 * STATS_COUNT;  // counters + timers
 
-      static const char *get_id_name (id statid);
-      static std::size_t to_index (id &statid);
-      static id to_id (std::size_t index);
+      static inline const char *get_id_name (id statid);
+      static inline std::size_t to_index (id &statid);
+      static inline id to_id (std::size_t index);
 
       inline void collect (id statid, duration_type delta);
       inline void collect (id statid, time_point_type start, time_point_type end);
@@ -613,6 +609,45 @@ namespace cubthread
     time_point_type nowpt = clock_type::now ();
     collect (statid, nowpt - start);
     start = nowpt;
+  }
+
+  std::size_t
+  wpstat::to_index (id &statid)
+  {
+    return static_cast<size_t> (statid);
+  }
+
+  wpstat::id
+  wpstat::to_id (std::size_t index)
+  {
+    assert (index >= 0 && index < STATS_COUNT);
+    return static_cast<id> (index);
+  }
+
+  const char *
+  wpstat::get_id_name (id statid)
+  {
+    switch (statid)
+      {
+      case id::START_THREAD:
+	return "START_THREAD";
+      case id::CREATE_CONTEXT:
+	return "CREATE_CONTEXT";
+      case id::EXECUTE_TASK:
+	return "EXECUTE_TASK";
+      case id::RETIRE_TASK:
+	return "RETIRE_TASK";
+      case id::SEARCH_TASK_IN_QUEUE:
+	return "SEARCH_TASK_IN_QUEUE";
+      case id::WAKEUP_WITH_TASK:
+	return "WAKEUP_WITH_TASK";
+      case id::RETIRE_CONTEXT:
+	return "RETIRE_CONTEXT";
+      case id::COUNT:
+      default:
+	assert (false);
+	return "UNKNOW";
+      }
   }
 
   //////////////////////////////////////////////////////////////////////////

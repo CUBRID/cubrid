@@ -54,53 +54,6 @@ namespace cubthread
     delete m_own_stats;
   }
 
-  std::size_t
-  wpstat::to_index (id &statid)
-  {
-    return static_cast<size_t> (statid);
-  }
-
-  wpstat::id
-  wpstat::to_id (std::size_t index)
-  {
-    assert (index >= 0 && index < STATS_COUNT);
-    return static_cast<id> (index);
-  }
-
-  const char *
-  wpstat::get_id_name (id statid)
-  {
-    switch (statid)
-      {
-      case id::GET_WORKER_FROM_ACTIVE_QUEUE:
-	return "GET_WORKER_FROM_ACTIVE_QUEUE";
-      case id::GET_WORKER_FROM_INACTIVE_QUEUE:
-	return "GET_WORKER_FROM_INACTIVE_QUEUE";
-      case id::GET_WORKER_FAILED:
-	return "GET_WORKER_FAILED";
-      case id::START_THREAD:
-	return "START_THREAD";
-      case id::CREATE_CONTEXT:
-	return "CREATE_CONTEXT";
-      case id::EXECUTE_TASK:
-	return "EXECUTE_TASK";
-      case id::RETIRE_TASK:
-	return "RETIRE_TASK";
-      case id::SEARCH_TASK_IN_QUEUE:
-	return "SEARCH_TASK_IN_QUEUE";
-      case id::WAKEUP_WITH_TASK:
-	return "WAKEUP_WITH_TASK";
-      case id::RETIRE_CONTEXT:
-	return "RETIRE_CONTEXT";
-      case id::DEACTIVATE_WORKER:
-	return "DEACTIVATE_WORKER";
-      case id::COUNT:
-      default:
-	assert (false);
-	return "UNKNOW";
-      }
-  }
-
   void
   wpstat::operator+= (const wpstat &other_stat)
   {
