@@ -91,10 +91,10 @@ std::vector<func_signature> func_signature::type0_nr_or_str_discrete = {
 
 std::vector<func_signature> func_signature::group_concat = {
 //{PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING}, {}},
-  {PT_TYPE_VARCHAR , {PT_GENERIC_TYPE_CHAR  }, {}},
-  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_NCHAR }, {}},
-  {PT_TYPE_VARBIT  , {PT_GENERIC_TYPE_BIT   }, {}},
-  {PT_TYPE_VARCHAR , {PT_GENERIC_TYPE_NUMBER}, {}},
+  {PT_TYPE_VARCHAR , {PT_GENERIC_TYPE_CHAR  , PT_GENERIC_TYPE_CHAR  }, {}},
+  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_NCHAR , PT_GENERIC_TYPE_NCHAR }, {}},
+  {PT_TYPE_VARBIT  , {PT_GENERIC_TYPE_BIT   , PT_GENERIC_TYPE_BIT   }, {}},
+  {PT_TYPE_VARCHAR , {PT_GENERIC_TYPE_NUMBER, PT_GENERIC_TYPE_STRING}, {}},
 };
 
 std::vector<func_signature> func_signature::lead_lag = {//original code doesn't do anything!!!
