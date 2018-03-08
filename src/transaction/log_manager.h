@@ -67,8 +67,7 @@ extern int log_get_num_pages_for_creation (int db_npages);
 extern int log_create (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 		       const char *prefix_logname, DKNPAGES npages);
 extern void log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-			    const char *prefix_logname, const char *dwbpath, const char *prefix_dwbname,
-			    int ismedia_crash, BO_RESTART_ARG * r_args);
+			    const char *prefix_logname, int ismedia_crash, BO_RESTART_ARG * r_args);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int log_update_compatibility_and_release (THREAD_ENTRY * thread_p, float compatibility, char release[]);
 #endif

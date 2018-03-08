@@ -135,7 +135,6 @@ struct boot_db_path_info
   char *vol_path;
   char *log_path;
   char *lob_path;
-  char *dwb_path;
   char *db_host;
   char *db_comments;
 };

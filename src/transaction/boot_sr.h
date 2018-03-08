@@ -96,7 +96,6 @@ extern const char *boot_db_name (void);
 extern const char *boot_db_full_name (void);
 #if !defined(CS_MODE)
 extern const char *boot_get_lob_path (void);
-extern const char *boot_get_dwb_path (void);
 #endif /* !CS_MODE */
 int boot_find_root_heap (HFID * root_hfid_p);
 
@@ -110,7 +109,7 @@ extern int xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart
 extern bool xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final);
 extern int xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db_name,
 		       const char *new_db_path, const char *new_log_path, const char *new_lob_path,
-		       const char *new_dwb_path, const char *new_db_server_host, const char *new_volext_path,
+		       const char *new_db_server_host, const char *new_volext_path,
 		       const char *fileof_vols_and_copypaths, bool new_db_overwrite);
 extern int xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char *new_db_name,
 			      const char *new_db_path, const char *new_log_path, const char *new_db_server_host,

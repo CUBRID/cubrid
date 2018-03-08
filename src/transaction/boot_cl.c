@@ -151,7 +151,6 @@ static char boot_Client_id_buffer[L_cuserid + 1];
 static char boot_Db_path_buf[PATH_MAX];
 static char boot_Log_path_buf[PATH_MAX];
 static char boot_Lob_path_buf[PATH_MAX];
-static char boot_Dwb_path_buf[PATH_MAX];
 static char boot_Db_host_buf[MAXHOSTNAMELEN + 1];
 
 /* Volume assigned for new files/objects (e.g., heap files) */
@@ -426,12 +425,6 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 	  break;
 	}
     }
-  if (db_path_info->dwb_path == NULL)
-    {
-      /* assign the data volume directory */
-      strcpy (boot_Dwb_path_buf, db_path_info->db_path);
-      db_path_info->dwb_path = boot_Log_path_buf;
-    }
 
   /* make sure that the full path for the database is not too long */
   length = strlen (client_credential->db_name) + strlen (db_path_info->db_path) + 2;
@@ -465,9 +458,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   /* make new DB_INFO */
   hosts[0] = db_path_info->db_host;
   hosts[1] = NULL;
-  db =
-    cfg_new_db (client_credential->db_name, db_path_info->db_path, db_path_info->log_path, db_path_info->lob_path,
-		db_path_info->dwb_path, hosts);
+  db = cfg_new_db (client_credential->db_name, db_path_info->db_path, db_path_info->log_path, db_path_info->lob_path,
+		   hosts);
   if (db == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, client_credential->db_name);
@@ -874,7 +866,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       if (db == NULL)
 	{
 	  /* if not found, use secondary host lists */
-	  db = cfg_new_db (client_credential->db_name, NULL, NULL, NULL, NULL, NULL);
+	  db = cfg_new_db (client_credential->db_name, NULL, NULL, NULL, NULL);
 	}
 
       if (db == NULL
@@ -899,7 +891,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	  ha_node_list = ptr + 1;
 	  ha_hosts = cfg_get_hosts (ha_node_list, &num_hosts, false);
 
-	  db = cfg_new_db (client_credential->db_name, NULL, NULL, NULL, NULL, (const char **) ha_hosts);
+	  db = cfg_new_db (client_credential->db_name, NULL, NULL, NULL, (const char **) ha_hosts);
 
 	  if (ha_hosts)
 	    {
@@ -911,7 +903,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	  hosts[0] = ptr + 1;
 	  hosts[1] = NULL;
 
-	  db = cfg_new_db (client_credential->db_name, NULL, NULL, NULL, NULL, hosts);
+	  db = cfg_new_db (client_credential->db_name, NULL, NULL, NULL, hosts);
 	}
       *ptr = (char) '@';
 #else /* CS_MODE */
@@ -1026,7 +1018,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	      goto error;
 	    }
 
-	  tmp_db = cfg_new_db (db->name, NULL, NULL, NULL, NULL, (const char **) hosts);
+	  tmp_db = cfg_new_db (db->name, NULL, NULL, NULL, (const char **) hosts);
 	  if (tmp_db == NULL)
 	    {
 	      util_free_string_array (hosts);

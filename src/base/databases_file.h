@@ -59,7 +59,6 @@ struct database_info
   char **hosts;
   char *logpath;
   char *lobpath;
-  char *dwbpath;
   DB_INFO *next;
   int num_hosts;
 };
@@ -78,12 +77,12 @@ extern void cfg_free_directory (DB_INFO * databases);
 extern void cfg_dump_directory (const DB_INFO * databases);
 #endif
 extern void cfg_update_db (DB_INFO * db_info_p, const char *path, const char *logpath, const char *lobpath,
-			   const char *dwbpath, const char *host);
+			   const char *host);
 extern DB_INFO *cfg_new_db (const char *name, const char *path, const char *logpath, const char *lobpath,
-			    const char *dwbpath, const char **hosts);
+			    const char **hosts);
 extern DB_INFO *cfg_find_db_list (DB_INFO * dir, const char *name);
 extern DB_INFO *cfg_add_db (DB_INFO ** dir, const char *name, const char *path, const char *logpath,
-			    const char *lobpath, const char *dwbpath, const char *host);
+			    const char *lobpath, const char *host);
 extern DB_INFO *cfg_find_db (const char *db_name);
 extern bool cfg_delete_db (DB_INFO ** dir_info_p, const char *name);
 
