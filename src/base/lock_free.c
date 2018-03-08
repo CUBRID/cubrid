@@ -2924,6 +2924,7 @@ void
 lf_circular_queue_async_reset (LOCK_FREE_CIRCULAR_QUEUE * queue)
 {
   int es_idx;
+
   queue->produce_cursor = 0;
   queue->consume_cursor = 0;
 
@@ -2934,15 +2935,16 @@ lf_circular_queue_async_reset (LOCK_FREE_CIRCULAR_QUEUE * queue)
 }
 
 /*
-* lf_circular_queue_get_consumer_cursor () - Get consumer cursor.
-*
-* return     : consumer cursor.
-* queue (in) : Lock-free circular queue.
-*/
+ * lf_circular_queue_get_consumer_cursor () - Get consumer cursor.
+ *
+ * return     : consumer cursor.
+ * queue (in) : Lock-free circular queue.
+ */
 UINT64
 lf_circular_queue_get_consumer_cursor (LOCK_FREE_CIRCULAR_QUEUE * queue)
 {
   assert (queue != NULL);
+
   return queue->consume_cursor;
 }
 

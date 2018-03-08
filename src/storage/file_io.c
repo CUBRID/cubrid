@@ -3799,15 +3799,15 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_i
 }
 
 /*
-* fileio_write_or_add_to_dwb () - Write a page to disk if DWb disabled, otherwise add it to DWB
-*   return: io_page_p on success, NULL on failure
-*   vol_fd(in): Volume descriptor
-*   io_page_p(in): In-memory address where the current content of page resides
-*   page_id(in): Page identifier
-*   page_size(in): Page size
-*   skip_flush(in): True, if skip page flush
-*
-*/
+ * fileio_write_or_add_to_dwb () - Write a page to disk if DWb disabled, otherwise add it to DWB
+ *   return: io_page_p on success, NULL on failure
+ *   vol_fd(in): Volume descriptor
+ *   io_page_p(in): In-memory address where the current content of page resides
+ *   page_id(in): Page identifier
+ *   page_size(in): Page size
+ *   skip_flush(in): True, if skip page flush
+ *
+ */
 void *
 fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * io_page_p, PAGEID page_id,
 			    size_t page_size)
@@ -6322,10 +6322,10 @@ fileio_is_temp_volume (THREAD_ENTRY * thread_p, VOLID volid)
 }
 
 /*
-* fileio_is_permanent_volume_descriptor () - Check whether is permanent volume descriptor.
-*   return: I/O volume descriptor
-*   vol_fd(in): Volume descriptor to check.
-*/
+ * fileio_is_permanent_volume_descriptor () - Check whether is permanent volume descriptor.
+ *   return: I/O volume descriptor
+ *   vol_fd(in): Volume descriptor to check.
+ */
 bool
 fileio_is_permanent_volume_descriptor (THREAD_ENTRY * thread_p, int vol_fd)
 {
@@ -11812,17 +11812,19 @@ fileio_page_bitmap_dump (FILE * out_fp, const FILEIO_RESTORE_PAGE_BITMAP * page_
 }
 
 /*
-* fileio_compute_page_checksum - Computes data page checksum.
-* return: error code
-* thread_p (in) : thread entry
-* io_page (in) : page pointer
-* checksum_crc32(out): computed checksum
-*   Note: Currently CRC32 is used as checksum.
-*/
+ * fileio_compute_page_checksum - Computes data page checksum.
+ *   return: error code
+ *   thread_p (in) : thread entry
+ *   io_page (in) : page pointer
+ *   checksum_crc32 (out): computed checksum
+ *
+ *   Note: Currently CRC32 is used as checksum.
+ */
 static int
 fileio_compute_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, int *checksum_crc32)
 {
   int error_code = NO_ERROR, saved_checksum_crc32;
+
   assert (io_page != NULL && checksum_crc32 != NULL);
 
   /* Save the old page checksum. */
@@ -11841,16 +11843,17 @@ fileio_compute_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, in
 }
 
 /*
-* fileio_page_has_valid_checksum - Check whether the page checksum is valid.
-*   return: error code
-*   thread_p(in): thread entry
-*   io_page(in): the page
-*   has_valid_checksum(out): true, if has valid checksum.
-*/
+ * fileio_page_has_valid_checksum - Check whether the page checksum is valid.
+ *   return: error code
+ *   thread_p (in): thread entry
+ *   io_page (in): the page
+ *   has_valid_checksum (out): true, if has valid checksum.
+ */
 static int
 fileio_page_has_valid_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * has_valid_checksum)
 {
   int checksum_crc32, error_code = NO_ERROR;
+
   assert (io_page != NULL && has_valid_checksum != NULL);
 
   error_code = fileio_compute_page_checksum (thread_p, io_page, &checksum_crc32);
@@ -11865,14 +11868,16 @@ fileio_page_has_valid_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, 
 /* 
  * fileio_compute_checksum - Set page checksum.
  *   return: error code
- *   thread_p(in): thread entry
- *   io_page(in): page
- *    Note: Currently CRC32 is used as checksum.
+ *   thread_p (in): thread entry
+ *   io_page (in): page
+ *
+ *   Note: Currently CRC32 is used as checksum.
  */
 int
 fileio_set_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page)
 {
   int checksum_crc32, error_code = NO_ERROR;
+
   assert (io_page != NULL);
 
   error_code = fileio_compute_page_checksum (thread_p, io_page, &checksum_crc32);
@@ -11885,12 +11890,12 @@ fileio_set_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page)
 }
 
 /*
-* fileio_page_check_corruption - Check whether the page is corrupted.
-*   return: error code
-*   thread_p(in): thread entry
-*   io_page(in): the page
-*   is_page_corrupted(out): true, if the page is corrupted.
-*/
+ * fileio_page_check_corruption - Check whether the page is corrupted.
+ *   return: error code
+ *   thread_p (in): thread entry
+ *   io_page (in): the page
+ *   is_page_corrupted (out): true, if the page is corrupted.
+ */
 int
 fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * is_page_corrupted)
 {

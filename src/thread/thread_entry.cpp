@@ -175,7 +175,7 @@ namespace cubthread
     tran_entries[THREAD_TS_HFID_TABLE] = lf_tran_request_entry (&hfid_table_Ts);
     tran_entries[THREAD_TS_XCACHE] = lf_tran_request_entry (&xcache_Ts);
     tran_entries[THREAD_TS_FPCACHE] = lf_tran_request_entry (&fpcache_Ts);
-    tran_entries[THREAD_TS_DWB_SLOTS] = lf_tran_request_entry(&dwb_slots_Ts);
+    tran_entries[THREAD_TS_DWB_SLOTS] = lf_tran_request_entry (&dwb_slots_Ts);
 #endif // SERVER_MODE
   }
 

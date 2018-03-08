@@ -452,11 +452,13 @@ STATIC_INLINE int dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, D
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_slots_hash_delete (THREAD_ENTRY * thread_p, DWB_SLOT * slot);
 
+// *INDENT-OFF*
 #if defined (SERVER_MODE)
-static cubthread::daemon * dwb_flush_block_daemon = NULL;
-static cubthread::daemon * dwb_flush_block_helper_daemon = NULL;
-static cubthread::daemon * dwb_checkum_computation_daemon = NULL;
+static cubthread::daemon *dwb_flush_block_daemon = NULL;
+static cubthread::daemon *dwb_flush_block_helper_daemon = NULL;
+static cubthread::daemon *dwb_checkum_computation_daemon = NULL;
 #endif
+// *INDENT-ON*
 
 static bool dwb_is_flush_block_daemon_available (void);
 static bool dwb_is_flush_block_helper_daemon_available (void);
@@ -536,15 +538,15 @@ dwb_make_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue, void *data)
   return wait_queue_entry;
 }
 
- /*
-  * dwb_block_add_wait_queue_entry () - Add entry to wait queue.
-  *
-  * return   : Added queue entry.
-  * wait_queue (in/out) : The wait queue.
-  * data (in): The data.
-  *
-  *  Note: Is user responsibility to protect against queue concurrent access.
-  */
+/*
+ * dwb_block_add_wait_queue_entry () - Add entry to wait queue.
+ *
+ * return   : Added queue entry.
+ * wait_queue (in/out) : The wait queue.
+ * data (in): The data.
+ *
+ *  Note: Is user responsibility to protect against queue concurrent access.
+ */
 STATIC_INLINE DWB_WAIT_QUEUE_ENTRY *
 dwb_block_add_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue, void *data)
 {
@@ -632,13 +634,13 @@ dwb_block_disconnect_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue, void *data)
 }
 
 /*
-  * dwb_block_free_wait_queue_entry () - Free a wait queue entry.
-  *
-  * return   : Nothing.
-  * wait_queue (in/out) : The wait queue.
-  * wait_queue_entry (in): The wait queue entry.
-  * func(in): The function to apply on entry.
-  */
+ * dwb_block_free_wait_queue_entry () - Free a wait queue entry.
+ *
+ * return   : Nothing.
+ * wait_queue (in/out) : The wait queue.
+ * wait_queue_entry (in): The wait queue entry.
+ * func(in): The function to apply on entry.
+ */
 STATIC_INLINE void
 dwb_block_free_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue, DWB_WAIT_QUEUE_ENTRY * wait_queue_entry,
 				 int (*func) (void *))
@@ -658,16 +660,16 @@ dwb_block_free_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue, DWB_WAIT_QUEUE_ENT
 }
 
 /*
-  * dwb_remove_wait_queue_entry () - Remove the wait queue entry.
-  *
-  * return   : True, if entry removed, false otherwise.
-  * wait_queue (in/out): The wait queue.
-  * mutex (in): The mutex to protect the wait queue.
-  * data (in): The data.
-  * func(in): The function to apply on each entry.
-  *
-  *  Note: If the data is NULL, the first entry will be removed.
-  */
+ * dwb_remove_wait_queue_entry () - Remove the wait queue entry.
+ *
+ * return   : True, if entry removed, false otherwise.
+ * wait_queue (in/out): The wait queue.
+ * mutex (in): The mutex to protect the wait queue.
+ * data (in): The data.
+ * func(in): The function to apply on each entry.
+ *
+ *  Note: If the data is NULL, the first entry will be removed.
+ */
 STATIC_INLINE void
 dwb_remove_wait_queue_entry (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex, void *data, int (*func) (void *))
 {
@@ -757,14 +759,14 @@ dwb_destroy_wait_queue (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex)
 }
 
 /*
-  * dwb_adjust_write_buffer_values () - Adjust double write buffer values.
-  *
-  * return   : Error code.
-  * p_double_write_buffer_size (in/out) : Double write buffer size.
-  * p_num_blocks (in/out): The number of blocks.
-  * 
-  *  Note: The buffer size must be a multiple of 512 K. The number of blocks must be a power of 2.  
-  */
+ * dwb_adjust_write_buffer_values () - Adjust double write buffer values.
+ *
+ * return   : Error code.
+ * p_double_write_buffer_size (in/out) : Double write buffer size.
+ * p_num_blocks (in/out): The number of blocks.
+ * 
+ *  Note: The buffer size must be a multiple of 512 K. The number of blocks must be a power of 2.  
+ */
 STATIC_INLINE void
 dwb_adjust_write_buffer_values (unsigned int *p_double_write_buffer_size, unsigned int *p_num_blocks)
 {
@@ -874,7 +876,9 @@ start_structure_modification:
 
 #if defined(SERVER_MODE)
 check_dwb_flush_thread_is_running:
-  if (false /* TO DO - is running dwb_is_flush_block_daemon_is_running() || dwb_is_flush_block_helper_daemon_is_running () */)
+  if (false
+      /* TO DO - is running dwb_is_flush_block_daemon_is_running() || dwb_is_flush_block_helper_daemon_is_running () */
+    )
     {
       /* Can't modify structure while flush thread can access DWB. */
       thread_sleep (20);
@@ -1956,11 +1960,11 @@ dwb_destroy_internal (THREAD_ENTRY * thread_p, UINT64 * current_position_with_fl
 }
 
 /*
-* dwb_set_status_resumed () - Set status resumed.
-*
-* return   : Error code.
-* data (in): The thread entry.
-*/
+ * dwb_set_status_resumed () - Set status resumed.
+ *
+ * return   : Error code.
+ * data (in): The thread entry.
+ */
 STATIC_INLINE int
 dwb_set_status_resumed (void *data)
 {
@@ -2322,12 +2326,12 @@ dwb_block_create_ordered_slots (DWB_BLOCK * block, DWB_SLOT ** p_dwb_ordered_slo
 }
 
 /*
-* dwb_slots_hash_delete () - Delete entry in slots hash.
-*
-* return   : Error code.
-* thread_p (in): The thread entry.
-* slot(in): The DWB slot. 
-*/
+ * dwb_slots_hash_delete () - Delete entry in slots hash.
+ *
+ * return   : Error code.
+ * thread_p (in): The thread entry.
+ * slot(in): The DWB slot. 
+ */
 STATIC_INLINE int
 dwb_slots_hash_delete (THREAD_ENTRY * thread_p, DWB_SLOT * slot)
 {
@@ -3180,8 +3184,8 @@ dwb_compute_block_checksums (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool * 
 {
   UINT64 computed_slots_checksum_elem, requested_checksums_elem, bit_mask, computed_checksum_bits;
   int error_code = NO_ERROR, position_in_checksum_element, position;
-  unsigned int block_checksum_start_position, block_checksum_element_position, element_position, slot_position,
-    slot_base;
+  unsigned int block_checksum_start_position, block_checksum_element_position;
+  unsigned int element_position, slot_position, slot_base;
   bool checksum_computed, slots_checksum_computed, all_slots_checksum_computed;
   UINT64 block_version;
 
@@ -3955,8 +3959,8 @@ start:
 int
 dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync)
 {
-  UINT64 intial_position_with_flags, current_position_with_flags, prev_position_with_flags, intial_block_version,
-    current_block_version;
+  UINT64 intial_position_with_flags, current_position_with_flags, prev_position_with_flags;
+  UINT64 intial_block_version, current_block_version;
   unsigned int intial_block_no, current_block_no = DWB_NUM_TOTAL_BLOCKS;
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   FILEIO_PAGE *iopage = NULL;
@@ -4153,11 +4157,11 @@ end:
 }
 
 /*
-* dwb_flush_block_helper () - Helps block flushing.
-*
-* return   : Error code.
-* thread_p (in): Thread entry.
-*/
+ * dwb_flush_block_helper () - Helps block flushing.
+ *
+ * return   : Error code.
+ * thread_p (in): Thread entry.
+ */
 int
 dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 {
@@ -4485,98 +4489,91 @@ dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool *
   return NO_ERROR;
 }
 
+// *INDENT-OFF*
 #if defined(SERVER_MODE)
 // class dwb_flush_block_daemon_task
 //
 //  description:
 //    dwb flush block daemon task
 //
-class dwb_flush_block_daemon_task:
-public cubthread::entry_task
+class dwb_flush_block_daemon_task: public cubthread::entry_task
 {
-private:
-  PERF_UTIME_TRACKER m_perf_track;
+  private:
+    PERF_UTIME_TRACKER m_perf_track;
 
-public:
-  dwb_flush_block_daemon_task ()
-  {
-    PERF_UTIME_TRACKER_START (NULL, &m_perf_track);
-  }
+  public:
+    dwb_flush_block_daemon_task ()
+    {
+      PERF_UTIME_TRACKER_START (NULL, &m_perf_track);
+    }
 
-  void
-  execute (cubthread::entry & thread_ref)
-    override
-  {
-    TSCTIMEVAL
-      tv_diff;
-    UINT64
-      oldest_time;
-    if (!BO_IS_SERVER_RESTARTED ())
-      {
-	// wait for boot to finish
-	return;
-      }
+    void execute (cubthread::entry & thread_ref) override
+    {
+      TSCTIMEVAL tv_diff;
+      UINT64 oldest_time;
 
-    /* performance tracking */
-    if (m_perf_track.is_perf_tracking)
-      {
-	tsc_elapsed_time_usec (&tv_diff, m_perf_track.end_tick, m_perf_track.start_tick);
-	oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-	if (oldest_time > 0)
-	  {
-	    perfmon_add_stat (&thread_ref, PSTAT_DWB_FLUSH_BLOCK_COND_WAIT, oldest_time);
-	  }
-	m_perf_track.start_tick = m_perf_track.end_tick;
+      if (!BO_IS_SERVER_RESTARTED ())
+        {
+	  // wait for boot to finish
+	  return;
+        }
 
-	/* update is_perf_tracking */
-	m_perf_track.is_perf_tracking = perfmon_is_perf_tracking ();
-      }
-    else
-      {
-	/* update is_perf_tracking and start timer if it became true */
-	PERF_UTIME_TRACKER_START (&thread_ref, &m_perf_track);
-      }
+      /* performance tracking */
+      if (m_perf_track.is_perf_tracking)
+        {
+	  tsc_elapsed_time_usec (&tv_diff, m_perf_track.end_tick, m_perf_track.start_tick);
+	  oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+	  if (oldest_time > 0)
+	    {
+	      perfmon_add_stat (&thread_ref, PSTAT_DWB_FLUSH_BLOCK_COND_WAIT, oldest_time);
+	    }
+	  m_perf_track.start_tick = m_perf_track.end_tick;
 
-    /* flush pages as long as necessary */
-    if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)
-      {
-	if (dwb_flush_next_block (&thread_ref) != NO_ERROR)
-	  {
-	    assert_release (false);
-	  }
-      }
-  }
+	  /* update is_perf_tracking */
+	  m_perf_track.is_perf_tracking = perfmon_is_perf_tracking ();
+        }
+      else
+        {
+	  /* update is_perf_tracking and start timer if it became true */
+	  PERF_UTIME_TRACKER_START (&thread_ref, &m_perf_track);
+        }
+
+      /* flush pages as long as necessary */
+      if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)
+        {
+	  if (dwb_flush_next_block (&thread_ref) != NO_ERROR)
+	    {
+	      assert_release (false);
+	    }
+        }
+    }
 };
-
 
 // class dwb_flush_block_helper_daemon_task
 //
 //  description:
 //    dwb flush block helper daemon task
 //
-class
-  dwb_flush_block_helper_daemon_task:
-  public
-  cubthread::entry_task
+class dwb_flush_block_helper_daemon_task: public cubthread::entry_task
 {
-private:
-  PERF_UTIME_TRACKER m_perf_track;
+  private:
+    PERF_UTIME_TRACKER m_perf_track;
 
-public:
-  void execute (cubthread::entry & thread_ref) override
-  {
-    if (!BO_IS_SERVER_RESTARTED ())
-      {
-	// wait for boot to finish
-	return;
-      }
+  public:
+    void execute (cubthread::entry & thread_ref) override
+    {
+      if (!BO_IS_SERVER_RESTARTED ())
+        {
+	  // wait for boot to finish
+	  return;
+        }
 
-    /* flush pages as long as necessary */
-    if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)
-      {
-	dwb_flush_block_helper (&thread_ref);
-      }
-  }
+      /* flush pages as long as necessary */
+      if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)
+        {
+	  dwb_flush_block_helper (&thread_ref);
+        }
+    }
 };
 
 // class dwb_checksum_computation_daemon_task
@@ -4584,71 +4581,64 @@ public:
 //  description:
 //    dwb checksum computation daemon task
 //
-class dwb_checksum_computation_daemon_task:
-public cubthread::entry_task
+class dwb_checksum_computation_daemon_task: public cubthread::entry_task
 {
-public:
+  public:
+    void execute (cubthread::entry & thread_ref) override
+    {
+      if (!BO_IS_SERVER_RESTARTED ())
+        {
+	  // wait for boot to finish
+	  return;
+        }
 
-  void
-  execute (cubthread::entry & thread_ref)
-    override
-  {
-    if (!BO_IS_SERVER_RESTARTED ())
-      {
-	// wait for boot to finish
-	return;
-      }
-
-    /* flush pages as long as necessary */
-    if (prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS) > 0)
-      {
-	dwb_compute_checksums (&thread_ref);
-      }
-  }
+      /* flush pages as long as necessary */
+      if (prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS) > 0)
+        {
+	  dwb_compute_checksums (&thread_ref);
+        }
+    }
 };
 
 /*
-* dwb_flush_block_daemon_init () - initialize DWB flush block daemon thread
-*/
+ * dwb_flush_block_daemon_init () - initialize DWB flush block daemon thread
+ */
 void
 dwb_flush_block_daemon_init ()
 {
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (1));
-  dwb_flush_block_daemon_task *
-    daemon_task = new dwb_flush_block_daemon_task ();
+  dwb_flush_block_daemon_task *daemon_task = new dwb_flush_block_daemon_task ();
 
   dwb_flush_block_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (), daemon_task);
 }
 
 /*
-* dwb_flush_block_helper_daemon_init () - initialize DWB flush block helper daemon thread
-*/
+ * dwb_flush_block_helper_daemon_init () - initialize DWB flush block helper daemon thread
+ */
 void
 dwb_flush_block_helper_daemon_init ()
 {
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
-  dwb_flush_block_helper_daemon_task *
-    daemon_task = new dwb_flush_block_helper_daemon_task ();
+  dwb_flush_block_helper_daemon_task *daemon_task = new dwb_flush_block_helper_daemon_task ();
 
   dwb_flush_block_helper_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (), daemon_task);
 }
 
 /*
-* dwb_checksum_computation_daemon_init () - initialize DWB checksum computation daemon thread
-*/
+ * dwb_checksum_computation_daemon_init () - initialize DWB checksum computation daemon thread
+ */
 void
 dwb_checksum_computation_daemon_init ()
 {
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (20));
-  dwb_checksum_computation_daemon_task *
-    daemon_task = new dwb_checksum_computation_daemon_task ();
+  dwb_checksum_computation_daemon_task *daemon_task = new dwb_checksum_computation_daemon_task ();
 
   dwb_checkum_computation_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (), daemon_task);
 }
 
 /*
-* dwb_daemons_init () - initialize DWB daemon threads
-*/
+ * dwb_daemons_init () - initialize DWB daemon threads
+ */
 void
 dwb_daemons_init ()
 {
@@ -4658,8 +4648,8 @@ dwb_daemons_init ()
 }
 
 /*
-* dwb_daemons_destroy () - destroy DWB daemon threads
-*/
+ * dwb_daemons_destroy () - destroy DWB daemon threads
+ */
 void
 dwb_daemons_destroy ()
 {
@@ -4668,13 +4658,13 @@ dwb_daemons_destroy ()
   cubthread::get_manager ()->destroy_daemon (dwb_checkum_computation_daemon);
 }
 #endif /* SERVER_MODE */
+// *INDENT-ON*
 
 /*
-* dwb_is_flush_block_daemon_available () - Check if flush block daemon is available
-* return: true if flush block daemon is available, false otherwise
-*/
-static
-  bool
+ * dwb_is_flush_block_daemon_available () - Check if flush block daemon is available
+ * return: true if flush block daemon is available, false otherwise
+ */
+static bool
 dwb_is_flush_block_daemon_available ()
 {
 #if defined (SERVER_MODE)
@@ -4685,11 +4675,10 @@ dwb_is_flush_block_daemon_available ()
 }
 
 /*
-* dwb_is_flush_block_daemon_available () - Check if flush block helper daemon is available
-* return: true if flush block helper daemon is available, false otherwise
-*/
-static
-  bool
+ * dwb_is_flush_block_daemon_available () - Check if flush block helper daemon is available
+ * return: true if flush block helper daemon is available, false otherwise
+ */
+static bool
 dwb_is_flush_block_helper_daemon_available (void)
 {
 #if defined (SERVER_MODE)
@@ -4700,12 +4689,11 @@ dwb_is_flush_block_helper_daemon_available (void)
 }
 
 /*
-* dwb_is_checksum_computation_daemon_available () - Check whether checksum computation daemon is available
-*
-*   return: true, if checksum computation threadis available, false otherwise
-*/
-static
-  bool
+ * dwb_is_checksum_computation_daemon_available () - Check whether checksum computation daemon is available
+ *
+ *   return: true, if checksum computation threadis available, false otherwise
+ */
+static bool
 dwb_is_checksum_computation_daemon_available ()
 {
 #if defined (SERVER_MODE)

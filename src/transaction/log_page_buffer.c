@@ -483,13 +483,13 @@ logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p, LOG_PAGE * log_pg)
 }
 
 /*
-* logpb_compute_page_checksum - Computes log page checksum.
-* return: error code
-* thread_p (in) : thread entry
-* log_pgptr (in) : log page pointer
-* checksum_crc32(out): computed checksum
-*   Note: Currently CRC32 is used as checksum.
-*/
+ * logpb_compute_page_checksum - Computes log page checksum.
+ * return: error code
+ * thread_p (in) : thread entry
+ * log_pgptr (in) : log page pointer
+ * checksum_crc32(out): computed checksum
+ *   Note: Currently CRC32 is used as checksum.
+ */
 static int
 logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int *checksum_crc32)
 {
@@ -512,12 +512,12 @@ logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int 
 }
 
 /*
-* logpb_set_page_checksum - Set log page checksum.
-* return: error code
-* thread_p (in) : thread entry
-* log_pgptr (in) : log page pointer
-*   Note: Currently CRC32 is used as checksum.
-*/
+ * logpb_set_page_checksum - Set log page checksum.
+ * return: error code
+ * thread_p (in) : thread entry
+ * log_pgptr (in) : log page pointer
+ *   Note: Currently CRC32 is used as checksum.
+ */
 STATIC_INLINE int
 logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 {
@@ -535,12 +535,12 @@ logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 }
 
 /*
-* logpb_page_has_valid_checksum - Check whether the log page checksum is valid.
-*   return: error code
-*   thread_p(in): thread entry
-*   log_pgptr(in): the log page
-*   has_valid_checksum(out): true, if has valid checksum.
-*/
+ * logpb_page_has_valid_checksum - Check whether the log page checksum is valid.
+ *   return: error code
+ *   thread_p(in): thread entry
+ *   log_pgptr(in): the log page
+ *   has_valid_checksum(out): true, if has valid checksum.
+ */
 static int
 logpb_page_has_valid_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * has_valid_checksum)
 {
@@ -2258,10 +2258,10 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
       log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
       error_code = logpb_fetch_header_from_active_log (thread_p, db_fullname, logpath, prefix_logname, &hdr, log_pgptr);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
       is_header_read_from_file = true;
     }
 
@@ -12238,12 +12238,12 @@ logpb_last_complete_blockid (void)
 }
 
 /*
-* logpb_page_check_corruption - Check whether the log page is corrupted.
-*   return: error code
-*   thread_p(in): thread entry
-*   log_pgptr(in): the log page
-*   is_page_corrupted(out): true, if the log page is corrupted.
-*/
+ * logpb_page_check_corruption - Check whether the log page is corrupted.
+ *   return: error code
+ *   thread_p(in): thread entry
+ *   log_pgptr(in): the log page
+ *   is_page_corrupted(out): true, if the log page is corrupted.
+ */
 int
 logpb_page_check_corruption (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * is_page_corrupted)
 {
