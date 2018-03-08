@@ -539,20 +539,6 @@ PSTAT_METADATA pstat_Metadata[] = {
 			       &f_dump_in_buffer_thread_stats, &f_load_thread_stats)
 };
 
-// find a better place
-enum thread_stats
-{
-  THRS_TOTAL_WORKER_COUNT = 0,
-  THRS_TOTAL_TASK_COUNT,
-  THRS_WORKER_REGISTER_TIME,
-  THRS_THREAD_START_TIME,
-  THRS_THREAD_ENTRY_CLAIM_TIME,
-  THRS_EXECUTION_TIME,
-  THRS_THREAD_ENTRY_RETIRE_TIME,
-  THRS_WORKER_DEREGISTER_TIME,
-  THRS_COUNT
-};
-
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
 					       UINT64 amount) __attribute__ ((ALWAYS_INLINE));
 
