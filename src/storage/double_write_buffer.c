@@ -18,7 +18,7 @@
  */
 
 /*
- * dwb.c - double write buffer
+ * double_write_buffer.c - double write buffer
  */
 
 #ident "$Id$"

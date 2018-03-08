@@ -1,5 +1,29 @@
-#ifndef _DWB_H_
-#define _DWB_H_
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *
+ */
+
+
+/*
+ * double_write_buffer.h
+ */
+
+#ifndef _DOUBLE_WRITE_BUFFER_H_
+#define _DOUBLE_WRITE_BUFFER_H_
 
 #ident "$Id$"
 
@@ -35,7 +59,7 @@ extern int dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID 
 
 #if defined (SERVER_MODE)
 extern void dwb_daemons_init ();
-extern void dwb_daemons_destroy ();
-
+extern void dwb_daemons_destroy ();
 #endif	/* SERVER_MODE */
-#endif	/* _DWB_H_ */	      /* _DWB_H_ */
+
+#endif	/* _DOUBLE_WRITE_BUFFER_H_ */
