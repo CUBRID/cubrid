@@ -1023,6 +1023,8 @@ namespace cubthread
 
     const std::chrono::seconds WAIT_TIME = std::chrono::seconds (5);
 
+    // todo: consider checking m_task_p before waiting.
+
     // notify parent core I am free
     m_parent_core->add_worker_to_free_active_list (*this);
 
