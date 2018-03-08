@@ -263,7 +263,7 @@ namespace cubthread
       // worker management
       void add_worker_to_free_active_list (worker &worker_arg);
       void add_worker_to_inactive_list (worker &worker_arg);
-      void move_worker_to_inactive_list (worker &worker_arg);
+      void remove_worker_from_active_list (worker &worker_arg);
       bool is_stopped (void) const;
       // context management
       context_type &create_context (void);
@@ -721,14 +721,12 @@ namespace cubthread
 
   template <typename Context>
   void
-  worker_pool<Context>::core::move_worker_to_inactive_list (worker &worker_arg)
+  worker_pool<Context>::core::remove_worker_from_active_list (worker &worker_arg)
   {
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
     // we need to remove from active. this operation is slow. however, since we're here, it means thread timed out
     // waiting for task. system is not overloaded so it should not matter
     m_free_active_list.remove (&worker_arg);  // may or may not be there
-    m_inactive_list.push_front (&worker_arg); // but we'll add to inactive list either way
-    // assert (m_inactive_list.size () <= m_max_workers);  // forward_list has no size (); must be counted manually
   }
 
   template <typename Context>
@@ -785,12 +783,7 @@ namespace cubthread
   worker_pool<Context>::core::count_stopped_workers (std::size_t &count_inout)
   {
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
-    // claim as many workers as possible
-    while (!m_free_active_list.empty ())
-      {
-	m_free_active_list.pop_front ();
-	++count_inout;
-      }
+    // claim all inactive workers as possible; this will guarantee those workers are stopped
     while (!m_inactive_list.empty ())
       {
 	m_inactive_list.pop_front ();
@@ -920,6 +913,9 @@ namespace cubthread
     m_parent_core->retire_context (*m_context_p);
     m_context_p = NULL;
     m_statistics.collect_and_time (wpstat::id::RETIRE_CONTEXT, m_time_point);
+
+    // last thing to do is to add to inactive list
+    add_worker_to_inactive_list (*this);
   }
 
   template <typename Context>
@@ -957,9 +953,7 @@ namespace cubthread
     // check stop condition
     if (m_parent_core->is_stopped ())
       {
-	// add to inactive and stop
-	m_parent_core->add_worker_to_inactive_list (*this);
-
+	// stop
 	return false;
       }
 
@@ -999,7 +993,7 @@ namespace cubthread
     // wait for task
     std::unique_lock<std::mutex> ulock (m_task_mutex);
     m_waiting_task = true;
-    m_task_cv.wait_for (ulock, WAIT_TIME, [this] { return m_waiting_task && m_task_p != NULL; });
+    m_task_cv.wait_for (ulock, WAIT_TIME, [this] { return !m_waiting_task || m_task_p != NULL; });
     m_waiting_task = false;
 
     if (m_task_p == NULL)
@@ -1008,7 +1002,7 @@ namespace cubthread
 
 	// while holding the task mutex, I must move to inactive list. that is required not to mess up the lists and
 	// thread status when a task is pushed right before becoming inactive
-	m_parent_core->move_worker_to_inactive_list (*this);
+	m_parent_core->remove_worker_from_active_list (*this);
 	ulock.unlock ();
 
 	m_time_point = wpstat::clock_type::now ();
