@@ -880,7 +880,7 @@ start_structure_modification:
 #if defined(SERVER_MODE)
 check_dwb_flush_thread_is_running:
   if (false
-      /* TO DO - is running dwb_is_flush_block_daemon_is_running() || dwb_is_flush_block_helper_daemon_is_running () */
+      /* TODO - is running dwb_is_flush_block_daemon_is_running() || dwb_is_flush_block_helper_daemon_is_running () */
     )
     {
       /* Can't modify structure while flush thread can access DWB. */
@@ -4707,10 +4707,10 @@ dwb_is_checksum_computation_daemon_available ()
 }
 
 /*
-* dwb_is_flush_block_daemon_running () - Check whether flush block daemon is running
-*
-*   return: true, if flush block thread is running
-*/
+ * dwb_is_flush_block_daemon_running () - Check whether flush block daemon is running
+ *
+ *   return: true, if flush block thread is running
+ */
 static bool
 dwb_is_flush_block_daemon_is_running (void)
 {
@@ -4718,14 +4718,14 @@ dwb_is_flush_block_daemon_is_running (void)
   return ((dwb_flush_block_daemon != NULL) && (dwb_flush_block_daemon->is_running ()));
 #else
   return false;
-#endif /* ); */
+#endif /* SERVER_MODE */
 }
 
 /*
-* dwb_is_flush_block_helper_daemon_running () - Check whether flush block helper daemon is running
-*
-*   return: true, if flush block helper thread is running
-*/
+ * dwb_is_flush_block_helper_daemon_running () - Check whether flush block helper daemon is running
+ *
+ *   return: true, if flush block helper thread is running
+ */
 static bool
 dwb_is_flush_block_helper_daemon_running (void)
 {
@@ -4733,5 +4733,5 @@ dwb_is_flush_block_helper_daemon_running (void)
   return ((dwb_flush_block_helper_daemon != NULL) && (dwb_flush_block_helper_daemon->is_running ()));
 #else
   return false;
-#endif /* ); */
+#endif /* SERVER_MODE */
 }

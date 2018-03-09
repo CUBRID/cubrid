@@ -77,7 +77,7 @@ namespace cubthread
   bool
   daemon::is_running (void)
   {
-    return m_waiter.is_running();
+    return m_waiter.is_running ();
   }
 
 } // namespace cubthread
