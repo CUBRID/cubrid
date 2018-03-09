@@ -94,6 +94,8 @@ namespace cubthread
       void reset_looper (void);   // reset looper
       // note: this applies only if looper wait pattern is of type INCREASING_PERIODS
 
+      bool is_running (void);     // true, if running
+
     private:
       template <typename Context>
       static void loop (daemon *daemon_arg, context_manager<Context> *context_manager_arg,

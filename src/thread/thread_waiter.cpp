@@ -102,4 +102,12 @@ namespace cubthread
     // mutex is automatically unlocked
   }
 
+  bool
+  waiter::is_running (void)
+  {
+    std::unique_lock<std::mutex> lock(m_mutex);    /* mutex is also locked */
+
+    return (m_status == RUNNING);
+  }
+
 } // namespace cubthread

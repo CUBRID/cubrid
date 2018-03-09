@@ -464,6 +464,9 @@ static bool dwb_is_flush_block_daemon_available (void);
 static bool dwb_is_flush_block_helper_daemon_available (void);
 static bool dwb_is_checksum_computation_daemon_available (void);
 
+static bool dwb_is_flush_block_daemon_is_running (void);
+static bool dwb_is_flush_block_helper_daemon_is_running (void);
+
 /* Slots entry descriptor */
 static LF_ENTRY_DESCRIPTOR slots_entry_Descriptor = {
   /* offsets */
@@ -4691,7 +4694,7 @@ dwb_is_flush_block_helper_daemon_available (void)
 /*
  * dwb_is_checksum_computation_daemon_available () - Check whether checksum computation daemon is available
  *
- *   return: true, if checksum computation threadis available, false otherwise
+ *   return: true, if checksum computation thread is available, false otherwise
  */
 static bool
 dwb_is_checksum_computation_daemon_available ()
@@ -4701,4 +4704,34 @@ dwb_is_checksum_computation_daemon_available ()
 #else
   return false;
 #endif
+}
+
+/*
+* dwb_is_flush_block_daemon_running () - Check whether flush block daemon is running
+*
+*   return: true, if flush block thread is running
+*/
+static bool
+dwb_is_flush_block_daemon_is_running (void)
+{
+#if defined (SERVER_MODE)
+  return ((dwb_flush_block_daemon != NULL) && (dwb_flush_block_daemon->is_running ()));
+#else
+  return false;
+#endif /* ); */
+}
+
+/*
+* dwb_is_flush_block_helper_daemon_running () - Check whether flush block helper daemon is running
+*
+*   return: true, if flush block helper thread is running
+*/
+static bool
+dwb_is_flush_block_helper_daemon_running (void)
+{
+#if defined (SERVER_MODE)
+  return ((dwb_flush_block_helper_daemon != NULL) && (dwb_flush_block_helper_daemon->is_running ()));
+#else
+  return false;
+#endif /* ); */
 }
