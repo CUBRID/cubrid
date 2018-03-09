@@ -2575,7 +2575,8 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	  && (ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 0) > 0))
 	{
 	  /* If helper_flush_block is NULL, it means that the flush helper thread does not run and was not woken yet. */
-	  if (ATOMIC_CAS_ADDR (&double_Write_Buffer.helper_flush_block, (DWB_BLOCK *) NULL, block))
+	  if (dwb_is_flush_block_helper_daemon_available ()
+              && ATOMIC_CAS_ADDR (&double_Write_Buffer.helper_flush_block, (DWB_BLOCK *) NULL, block))
 	    {
 	      dwb_flush_block_helper_daemon->wakeup ();
 	    }
