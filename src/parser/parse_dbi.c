@@ -2768,6 +2768,7 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
   PT_NODE *dt;
   DB_TYPE val_type;
   PT_TYPE_ENUM pt_type;
+  const char *json_body = NULL;
 
   assert (node != NULL && val != NULL);
 
@@ -2912,7 +2913,8 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
       dt = parser_new_node (parser, PT_DATA_TYPE);
       if (dt)
 	{
-	  if (db_json_validate_json (val->data.json.json_body) != NO_ERROR)
+	  json_body = db_json_get_json_body_from_document (*val->data.json.document);
+	  if (db_json_validate_json (json_body) != NO_ERROR)
 	    {
 	      assert (false);
 	      parser_free_node (parser, dt);
@@ -2925,8 +2927,7 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
 	  dt->type_enum = node->type_enum;
 
 	  /* save raw schema */
-	  dt->info.data_type.json_schema =
-	    pt_append_bytes (parser, NULL, val->data.json.json_body, strlen (val->data.json.json_body));
+	  dt->info.data_type.json_schema = pt_append_bytes (parser, NULL, json_body, strlen (json_body));
 	}
       break;
 
@@ -3171,6 +3172,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
   int collation_id = LANG_COERCIBLE_COLL;
   INTL_CODESET codeset = LANG_COERCIBLE_CODESET;
   bool has_zone;
+  const char *json_body = NULL;
 
   assert (value->node_type == PT_VALUE);
   if (PT_HAS_COLLATION (value->type_enum) && value->data_type != NULL)
@@ -3490,10 +3492,9 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
     case PT_TYPE_JSON:
       db_value->domain.general_info.type = DB_TYPE_JSON;
       db_value->domain.general_info.is_null = 0;
-      db_value->data.json.json_body = db_private_strdup (NULL, (const char *) value->info.value.data_value.str->bytes);
-      if (db_json_get_json_from_str (db_value->data.json.json_body, db_value->data.json.document) != NO_ERROR)
+      json_body = (const char *) value->info.value.data_value.str->bytes;
+      if (db_json_get_json_from_str (json_body, db_value->data.json.document) != NO_ERROR)
 	{
-	  db_private_free (NULL, db_value->data.json.json_body);
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_INVALID_JSON,
 		      value->info.value.data_value.str->bytes);
 	  return (DB_VALUE *) NULL;

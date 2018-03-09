@@ -10509,11 +10509,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
 	if (status == DOMAIN_COMPATIBLE)
 	  {
-	    if (str == NULL)
-	      {
-		str = db_json_get_raw_json_body_from_document (doc);
-	      }
-	    db_make_json (target, str, doc, true);
+	    db_make_json (target, doc, true);
 	  }
 	else
 	  {

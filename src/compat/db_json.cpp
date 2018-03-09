@@ -119,6 +119,7 @@ class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_M
   private:
     static const int MAX_CHUNK_SIZE;
     std::string json_body;
+    //mutable char *ser_json;
 };
 
 class JSON_VALIDATOR
@@ -281,6 +282,7 @@ class JSON_SERIALIZER : public JSON_WALKER
     ~JSON_SERIALIZER() {}
 
     int WalkDocument (JSON_DOC &document);
+    int GetDocumentPackedSize (const JSON_DOC &document);
 
     char *GetJsonSerialized()
     {
@@ -291,12 +293,13 @@ class JSON_SERIALIZER : public JSON_WALKER
     int CallBefore (JSON_VALUE &value, JSON_VALUE *key = NULL);
     void Serialize_helper (const JSON_VALUE &obj, JSON_VALUE *key, char *&current);
     void InitPointers (const JSON_DOC &document);
-    int GetDocumentPackedSize (const JSON_DOC &document);
+
     int GetValuePackedSize (const JSON_VALUE &value);
     int GetStringPackedSize (const char *str);
 
     char *head;
     char *moving_ptr;
+    OR_BUF buf;
     std::unordered_map<std::string, std::string> serial_types;
 };
 
@@ -873,6 +876,12 @@ db_json_get_raw_json_body_from_document (const JSON_DOC *doc)
   return json_body;
 }
 
+const char *
+db_json_get_json_body_from_document (const JSON_DOC &doc)
+{
+  return doc.GetJsonBody().c_str();
+}
+
 static int
 db_json_add_json_value_to_object (JSON_DOC &doc, const char *name, JSON_VALUE &value)
 {
@@ -1038,10 +1047,6 @@ db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc)
       return ER_INVALID_JSON;
     }
 
-  char *serial = db_json_serialize (doc);
-  JSON_DOC *deserial = db_json_deserialize (serial);
-  char *body = db_json_get_raw_json_body_from_document (deserial);
-
   error_code = db_json_contains_duplicate_keys (doc);
   if (error_code != NO_ERROR)
     {
@@ -1049,6 +1054,7 @@ db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc)
       return error_code;
     }
 
+  doc.SetJsonBody (json_raw);
   return NO_ERROR;
 }
 
@@ -2647,6 +2653,13 @@ db_json_doc_wrap_as_array (JSON_DOC &doc)
   return db_json_value_wrap_as_array (doc, doc.GetAllocator ());
 }
 
+size_t
+db_json_get_json_doc_packed_size (const JSON_DOC &doc)
+{
+  JSON_SERIALIZER js;
+  return js.GetDocumentPackedSize (doc);
+}
+
 int
 JSON_WALKER::WalkDocument (JSON_DOC &document)
 {
@@ -2785,10 +2798,13 @@ JSON_SERIALIZER::InitPointers (const JSON_DOC &document)
 {
   // we need to know the size of the buffer where we will store the serialized json document
   // to do this, we need to precalculate the size
-  int size = GetDocumentPackedSize (document) + 1;
-  head = (char *) db_private_alloc (NULL, size);
-  head[size - 1] = '\0';
-  moving_ptr = head;
+  int size = GetDocumentPackedSize (document);
+  head = (char *)db_private_alloc (NULL, size);
+
+  or_init (&buf, head, size);
+  or_align (&buf, INT_ALIGNMENT);
+
+  moving_ptr = buf.ptr;
 }
 
 int

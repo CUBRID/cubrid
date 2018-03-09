@@ -412,7 +412,7 @@ void db_value_printer::describe_data (const db_value *value)
       break;
 
     case DB_TYPE_JSON:
-      m_buf ("%s", value->data.json.json_body);
+      m_buf ("%s", db_get_json_raw_body (value));
       break;
     case DB_TYPE_MIDXKEY:
       midxkey = db_get_midxkey (value);

@@ -17440,8 +17440,20 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
   if (value->data.json.document != NULL)
     {
       char *json_serialized = db_json_serialize (*value->data.json.document);
-      db_make_string (&json_body, json_serialized);
+      size_t json_serialized_size = db_json_get_json_doc_packed_size (*value->data.json.document);
+      db_value_domain_init (&json_body, DB_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0);
+      db_make_db_char (&json_body, LANG_SYS_CODESET, LANG_SYS_COLLATION, json_serialized, json_serialized_size);
       db_private_free (NULL, json_serialized);
+
+      /*json_body_length = db_json_get_json_doc_packed_size(*value->data.json.document);
+         json_body_length++;
+         if (json_body_length >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+         {
+         json_body_length += 8;
+         } */
+
+      json_body_length = mr_data_lengthval_string (&json_body, disk);
+
     }
   else
     {
@@ -17456,7 +17468,6 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
       db_make_string (&schema_raw, "");
     }
 
-  json_body_length = mr_data_lengthval_string (&json_body, disk);
   raw_schema_length = mr_data_lengthval_string (&schema_raw, disk);
 
   pr_clear_value (&json_body);
@@ -17495,7 +17506,10 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
     }
 
   char *json_serialized = db_json_serialize (*value->data.json.document);
-  db_make_string (&json_body, db_json_serialize (*value->data.json.document));
+  size_t json_serialized_size = db_json_get_json_doc_packed_size (*value->data.json.document);
+
+  db_value_domain_init (&json_body, DB_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0);
+  db_make_db_char (&json_body, LANG_SYS_CODESET, LANG_SYS_COLLATION, json_serialized, json_serialized_size);
   db_private_free (NULL, json_serialized);
 
   if (value->data.json.schema_raw != NULL)
@@ -17563,7 +17577,10 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 
   json_raw = db_get_string (&json_body);
 
-  doc = db_json_deserialize (json_raw);
+  json_raw_copy = (char *) db_private_alloc (NULL, db_get_string_size (&json_body));
+  memcpy (json_raw_copy, json_raw, db_get_string_size (&json_body));
+
+  doc = db_json_deserialize (json_raw_copy);
 
   // TODO
   // modify make_json to get the body directly from doc
@@ -17694,8 +17711,8 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
       /* force string comp */
       const char *str1 = NULL, *str2 = NULL;
 
-      str1 = doc1->GetJsonBody ().c_str ();
-      str2 = doc2->GetJsonBody ().c_str ();
+      str1 = db_json_get_json_body_from_document (*doc1);
+      str2 = db_json_get_json_body_from_document (*doc2);
 
       db_make_string (&scalar_value1, str1);
       db_make_string (&scalar_value2, str2);

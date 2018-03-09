@@ -76,6 +76,8 @@ unsigned int db_json_get_depth (const JSON_DOC *doc);
 int db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_path,
 					JSON_DOC *&result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
+
+const char *db_json_get_json_body_from_document (const JSON_DOC &doc);
 JSON_DOC *db_json_get_paths_for_search_func (const JSON_DOC *doc, const char *search_str, bool all);
 
 int db_json_add_member_to_object (JSON_DOC *doc, const char *name, const char *value);
@@ -93,6 +95,7 @@ JSON_DOC *db_json_get_copy_of_doc (const JSON_DOC *doc);
 
 char *db_json_serialize (JSON_DOC &doc);
 JSON_DOC *db_json_deserialize (char *json_raw);
+size_t db_json_get_json_doc_packed_size (const JSON_DOC &doc);
 
 int db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destination, const char *raw_path);
 int db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_path);

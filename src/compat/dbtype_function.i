@@ -85,7 +85,6 @@ STATIC_INLINE DB_TYPE db_value_type (const DB_VALUE * value) __attribute__ ((ALW
 STATIC_INLINE int db_value_precision (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_value_scale (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE JSON_DOC *db_get_json_document (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE char *db_get_json_raw_body (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, const char *str,
 				   const int size) __attribute__ ((ALWAYS_INLINE));
@@ -1018,16 +1017,6 @@ db_get_json_document (const DB_VALUE * value)
   assert (value->domain.general_info.type == DB_TYPE_JSON);
 
   return value->data.json.document;
-}
-
-char *
-db_get_json_raw_body (const DB_VALUE * value)
-{
-#if defined (API_ACTIVE_CHECKS)
-  CHECK_1ARG_ZERO (value);
-#endif
-
-  return value->data.json.json_body;
 }
 
 /***********************************************************/

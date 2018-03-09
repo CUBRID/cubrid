@@ -5084,7 +5084,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	const char *str;
 	int bytes_size = 0;
 
-	str = val->data.json.json_body;
+	str = db_get_json_raw_body (val);
 	bytes_size = strlen (str);
 
 	add_res_data_string (net_buf, str, bytes_size, 0, CAS_SCHEMA_DEFAULT_CHARSET, &data_size);

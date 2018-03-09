@@ -2183,7 +2183,7 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	  break;
 	case DB_TYPE_JSON:
 	  {
-	    char *json_body = NULL;
+	    const char *json_body = NULL;
 
 	    json_body = db_get_json_raw_body (val);
 

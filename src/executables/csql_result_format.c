@@ -1472,7 +1472,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	}
       break;
     case DB_TYPE_JSON:
-      result = duplicate_string (value->data.json.json_body);
+      result = duplicate_string (db_get_json_raw_body (value));
       if (result)
 	{
 	  len = strlen (result);

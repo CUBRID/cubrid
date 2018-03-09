@@ -5102,3 +5102,9 @@ db_is_json_doc_type (DB_TYPE type)
       return false;
     }
 }
+
+const char *
+db_get_json_raw_body (const DB_VALUE * value)
+{
+  return db_json_get_json_body_from_document (*value->data.json.document);
+}
