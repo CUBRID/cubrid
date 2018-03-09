@@ -4572,8 +4572,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
       dir = NULL;
     }
 
-  /* TO DO - check whether DWB and LOB is removed */
-  /* Now delete the database */
+  /* Now delete the database. Normally, DWB was already removed at database shutdown. */
   error_code = boot_remove_all_volumes (thread_p, boot_Db_full_name, log_path, log_prefix, false, force_delete);
   if (error_code == NO_ERROR)
     {
@@ -5928,8 +5927,7 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
   /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to mount every known volume
    * during restart. that may not be possible during media crash though. */
   heap_flush (thread_p, boot_Db_parm_oid);
-  fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL, 
-		      FILEIO_SYNC_ALSO_FLUSH_DWB);	/* label? */
+  fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL, FILEIO_SYNC_ALSO_FLUSH_DWB);	/* label? */
 
 exit:
   return error_code;
