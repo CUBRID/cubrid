@@ -3821,7 +3821,7 @@ fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * i
   int error_code;
   FILEIO_WRITE_MODE write_mode;
 
-  assert (vol_fd != NULL_VOLDES);
+  assert (vol_fd != NULL_VOLDES && io_page_p != NULL);
 
   skip_flush = dwb_is_created ();
   if (skip_flush)
@@ -3845,7 +3845,7 @@ fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * i
 	    }
 	  else if (p_dwb_slot != NULL)
 	    {
-	      /* TODO - describe why it is safe */
+	      /* The page was successfully added to DWB. It will be written later. */
 	      return io_page_p;
 	    }
 
@@ -4423,8 +4423,7 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FIL
     }
 #endif
 
-  /* TODO: describe why sync is not needed when DWB is completely flushed. */
-
+  /* If all_sync is true, everything was synchronized. This happens when DWB is completely flushed. */
   if (ret == NO_ERROR && all_sync == false)
     {
 #if defined(SERVER_MODE) && !defined(WINDOWS) && defined(USE_AIO)
