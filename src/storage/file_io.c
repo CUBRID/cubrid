@@ -2835,7 +2835,7 @@ fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vol_desc, DKNPAGES npages,
 	}
     }
 
-  if (fileio_synchronize (thread_p, to_vol_desc, to_vol_label_p, true) != to_vol_desc)
+  if (fileio_synchronize (thread_p, to_vol_desc, to_vol_label_p, FILEIO_SYNC_ALSO_FLUSH_DWB) != to_vol_desc)
     {
       goto error;
     }
@@ -2897,7 +2897,7 @@ fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, DK
     }
   free_and_init (malloc_io_page_p);
 
-  if (fileio_synchronize (thread_p, vol_fd, vlabel, true) != vol_fd)
+  if (fileio_synchronize (thread_p, vol_fd, vlabel, FILEIO_SYNC_ALSO_FLUSH_DWB) != vol_fd)
     {
       success = ER_FAILED;
     }
@@ -3072,7 +3072,7 @@ fileio_dismount (THREAD_ENTRY * thread_p, int vol_fd)
    */
   vlabel = fileio_get_volume_label_by_fd (vol_fd, PEEK);
 
-  (void) fileio_synchronize (thread_p, vol_fd, vlabel, true);
+  (void) fileio_synchronize (thread_p, vol_fd, vlabel, FILEIO_SYNC_ALSO_FLUSH_DWB);
 
 #if !defined(WINDOWS)
   lockf_type = fileio_get_lockf_type (vol_fd);
@@ -3274,7 +3274,7 @@ fileio_dismount_volume (THREAD_ENTRY * thread_p, FILEIO_VOLUME_INFO * vol_info_p
 {
   if (vol_info_p->vdes != NULL_VOLDES)
     {
-      (void) fileio_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel, true);
+      (void) fileio_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel, FILEIO_SYNC_ALSO_FLUSH_DWB);
 
 #if !defined(WINDOWS)
       if (vol_info_p->lockf_type != FILEIO_NOT_LOCKF)
@@ -3316,7 +3316,7 @@ fileio_dismount_all (THREAD_ENTRY * thread_p)
       if (sys_vol_info_p->vdes != NULL_VOLDES)
 	{
 	  /* System volume. No need to sync DWB. */
-	  (void) fileio_synchronize (thread_p, sys_vol_info_p->vdes, sys_vol_info_p->vlabel, false);
+	  (void) fileio_synchronize (thread_p, sys_vol_info_p->vdes, sys_vol_info_p->vlabel, FILEIO_SYNC_ONLY);
 
 #if !defined(WINDOWS)
 	  if (sys_vol_info_p->lockf_type != FILEIO_NOT_LOCKF)
@@ -3805,7 +3805,6 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_i
  *   io_page_p(in): In-memory address where the current content of page resides
  *   page_id(in): Page identifier
  *   page_size(in): Page size
- *   skip_flush(in): True, if skip page flush
  *
  */
 void *
@@ -4364,7 +4363,7 @@ fileio_writev (THREAD_ENTRY * thread_p, int vol_fd, void **io_page_array, PAGEID
  *   sync_dwb(in): True, if needs sync dwb
  */
 int
-fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, bool sync_dwb)
+fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FILEIO_SYNC_OPTION sync_dwb)
 {
   int ret = NO_ERROR;
   bool all_sync = false;
@@ -4410,7 +4409,7 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, boo
 #endif
 
 #if !defined (CS_MODE)
-  if (sync_dwb)
+  if (sync_dwb == FILEIO_SYNC_ALSO_FLUSH_DWB)
     {
       if (fileio_is_permanent_volume_descriptor (thread_p, vol_fd))
 	{
@@ -4513,7 +4512,7 @@ fileio_synchronize_sys_volume (THREAD_ENTRY * thread_p, FILEIO_SYSTEM_VOLUME_INF
 
 
       /* System volume. No need to sync DWB. */
-      fileio_synchronize (thread_p, sys_vol_info_p->vdes, sys_vol_info_p->vlabel, false);
+      fileio_synchronize (thread_p, sys_vol_info_p->vdes, sys_vol_info_p->vlabel, FILEIO_SYNC_ONLY);
     }
 
   return found;
@@ -4549,7 +4548,7 @@ fileio_synchronize_volume (THREAD_ENTRY * thread_p, FILEIO_VOLUME_INFO * vol_inf
 	  return false;
 	}
 
-      fileio_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel, false);
+      fileio_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel, FILEIO_SYNC_ONLY);
     }
 
   return found;
@@ -7358,7 +7357,7 @@ fileio_finish_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
 	  return NULL;
 	}
 
-      if (fileio_synchronize (thread_p, session_p->bkup.vdes, session_p->bkup.name, false) != session_p->bkup.vdes)
+      if (fileio_synchronize (thread_p, session_p->bkup.vdes, session_p->bkup.name, FILEIO_SYNC_ONLY) != session_p->bkup.vdes)
 	{
 	  return NULL;
 	}

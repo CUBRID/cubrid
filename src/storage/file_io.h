@@ -156,6 +156,12 @@ typedef enum
   FILEIO_NOT_LOCKF
 } FILEIO_LOCKF_TYPE;
 
+typedef enum
+{
+  FILEIO_SYNC_ONLY,
+  FILEIO_SYNC_ALSO_FLUSH_DWB
+} FILEIO_SYNC_OPTION;
+
 /* Reserved area of FILEIO_PAGE */
 typedef struct fileio_page_reserved FILEIO_PAGE_RESERVED;
 struct fileio_page_reserved
@@ -421,7 +427,7 @@ extern void *fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_p
 				 size_t page_size, bool skip_flush);
 extern void *fileio_writev (THREAD_ENTRY * thread_p, int vdes, void **arrayof_io_pgptr, PAGEID start_pageid,
 			    DKNPAGES npages, size_t page_size);
-extern int fileio_synchronize (THREAD_ENTRY * thread_p, int vdes, const char *vlabel, bool check_sync_dwb);
+extern int fileio_synchronize (THREAD_ENTRY * thread_p, int vdes, const char *vlabel, FILEIO_SYNC_OPTION check_sync_dwb);
 extern int fileio_synchronize_all (THREAD_ENTRY * thread_p, bool include_log);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void *fileio_read_user_area (THREAD_ENTRY * thread_p, int vdes, PAGEID pageid, off_t start_offset, size_t nbytes,

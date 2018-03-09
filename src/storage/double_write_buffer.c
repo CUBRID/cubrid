@@ -2734,7 +2734,7 @@ retry:
 		{
 		  (void) fileio_synchronize (thread_p,
 					     double_Write_Buffer.helper_flush_block->flush_volumes_info[i].vdes, NULL,
-					     false);
+					     FILEIO_SYNC_ONLY);
 		}
 	    }
 	  (void) ATOMIC_TAS_ADDR (&double_Write_Buffer.helper_flush_block, (DWB_BLOCK *) NULL);
@@ -2779,7 +2779,7 @@ retry:
   /* Increment statistics after writing in double write volume. */
   perfmon_add_stat (thread_p, PSTAT_PB_NUM_IOWRITES, block->count_wb_pages);
 
-  if (fileio_synchronize (thread_p, double_Write_Buffer.vdes, dwb_Volume_name, false) != double_Write_Buffer.vdes)
+  if (fileio_synchronize (thread_p, double_Write_Buffer.vdes, dwb_Volume_name, FILEIO_SYNC_ONLY) != double_Write_Buffer.vdes)
     {
       assert (false);
       /* Something wrong happened. */
@@ -2827,7 +2827,7 @@ retry:
       num_pages = ATOMIC_TAS_32 (&block->flush_volumes_info[i].num_pages, 0);
       assert (num_pages != 0);
 
-      (void) fileio_synchronize (thread_p, block->flush_volumes_info[i].vdes, NULL, false);
+      (void) fileio_synchronize (thread_p, block->flush_volumes_info[i].vdes, NULL, FILEIO_SYNC_ONLY);
     }
 
   /* Allow to flush helper to finish. */
@@ -3783,7 +3783,7 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
       /* Now, flush the volumes having pages in current block. */
       for (i = 0; i < rcv_block->count_flush_volumes_info; i++)
 	{
-	  if (fileio_synchronize (thread_p, rcv_block->flush_volumes_info[i].vdes, NULL, false) == NULL_VOLDES)
+	  if (fileio_synchronize (thread_p, rcv_block->flush_volumes_info[i].vdes, NULL, FILEIO_SYNC_ONLY) == NULL_VOLDES)
 	    {
 	      error_code = ER_FAILED;
 	      goto end;
@@ -4259,7 +4259,7 @@ start:
 	   * Flush the volume. If not all volume pages are available now, continue with next volume, if any,
 	   * and then resume the current one.
 	   */
-	  (void) fileio_synchronize (thread_p, current_flush_volume_info->vdes, NULL, false);
+	  (void) fileio_synchronize (thread_p, current_flush_volume_info->vdes, NULL, FILEIO_SYNC_ONLY);
 	}
 
       /* Set next volume to flush. */
