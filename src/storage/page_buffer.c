@@ -3731,7 +3731,7 @@ pgbuf_flush_chkpt_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flu
   sleep_msecs = prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_SLEEP_MSECS);
   if (sleep_msecs > 0)
     {
-      chkpt_flush_rate = 1000.0f / (float) sleep_msecs;
+      chkpt_flush_rate = sleep_msecs / 1000.0f;
     }
   else
     {
