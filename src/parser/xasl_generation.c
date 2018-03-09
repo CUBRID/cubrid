@@ -18810,11 +18810,8 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 
       statement->info.query.q.select.list = parser_copy_tree_list (parser, select_list);
 
-      /* S_UPDATE */
       if (scan_op_type == S_UPDATE)
 	{
-	  PT_NODE *lhs, *rhs;
-
 	  /* The system generated select was "SELECT ..., rhs1, rhs2, ... FROM table ...".
 	   * When two different updates set different sets of attrs, generated select was lead to one XASL entry.
 	   * This causes unexpected issues of reusing an XASL entry, e.g, mismatched types.
@@ -18824,6 +18821,8 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 	   *
 	   * pt_print_select will print aliases as well as values for the system generated select queries.
 	   */
+
+	  PT_NODE *lhs, *rhs;
 
 	  for (rhs = statement->info.query.q.select.list, lhs = select_names;
 	       rhs != NULL && lhs != NULL; rhs = rhs->next, lhs = lhs->next)

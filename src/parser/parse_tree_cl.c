@@ -14684,14 +14684,14 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	      r1 = pt_print_bytes (parser, temp);
 	      q = pt_append_varchar (parser, q, r1);
 
-	      if (temp->alias_print)
+	      if (temp->alias_print != NULL)
 		{
 		  q = pt_append_nulstring (parser, q, " as [");
 		  q = pt_append_nulstring (parser, q, temp->alias_print);
 		  q = pt_append_nulstring (parser, q, "]");
 		}
 
-	      if (temp->next)
+	      if (temp->next != NULL)
 		{
 		  q = pt_append_nulstring (parser, q, ",");
 		}
@@ -14703,7 +14703,8 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  for (temp = p->info.query.q.select.list; temp != NULL; temp = temp->next)
 	    {
 	      q = pt_append_nulstring (parser, q, "NA");
-	      if (temp->next)
+
+	      if (temp->next != NULL)
 		{
 		  q = pt_append_nulstring (parser, q, ",");
 		}
