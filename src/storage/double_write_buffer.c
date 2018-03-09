@@ -464,8 +464,8 @@ static bool dwb_is_flush_block_daemon_available (void);
 static bool dwb_is_flush_block_helper_daemon_available (void);
 static bool dwb_is_checksum_computation_daemon_available (void);
 
-static bool dwb_is_flush_block_daemon_is_running (void);
-static bool dwb_is_flush_block_helper_daemon_is_running (void);
+static bool dwb_flush_block_daemon_is_running (void);
+static bool dwb_flush_block_helper_daemon_is_running (void);
 
 /* Slots entry descriptor */
 static LF_ENTRY_DESCRIPTOR slots_entry_Descriptor = {
@@ -879,9 +879,7 @@ start_structure_modification:
 
 #if defined(SERVER_MODE)
 check_dwb_flush_thread_is_running:
-  if (false
-      /* TODO - is running dwb_is_flush_block_daemon_is_running() || dwb_is_flush_block_helper_daemon_is_running () */
-    )
+  if (dwb_flush_block_daemon_is_running () || dwb_flush_block_helper_daemon_is_running ())
     {
       /* Can't modify structure while flush thread can access DWB. */
       thread_sleep (20);
@@ -4711,12 +4709,12 @@ dwb_is_checksum_computation_daemon_available ()
 }
 
 /*
- * dwb_is_flush_block_daemon_running () - Check whether flush block daemon is running
+ * dwb_flush_block_daemon_is_running () - Check whether flush block daemon is running
  *
  *   return: true, if flush block thread is running
  */
 static bool
-dwb_is_flush_block_daemon_is_running (void)
+dwb_flush_block_daemon_is_running (void)
 {
 #if defined (SERVER_MODE)
   return ((dwb_flush_block_daemon != NULL) && (dwb_flush_block_daemon->is_running ()));
@@ -4726,12 +4724,12 @@ dwb_is_flush_block_daemon_is_running (void)
 }
 
 /*
- * dwb_is_flush_block_helper_daemon_running () - Check whether flush block helper daemon is running
+ * dwb_flush_block_helper_daemon_is_running () - Check whether flush block helper daemon is running
  *
  *   return: true, if flush block helper thread is running
  */
 static bool
-dwb_is_flush_block_helper_daemon_running (void)
+dwb_flush_block_helper_daemon_is_running (void)
 {
 #if defined (SERVER_MODE)
   return ((dwb_flush_block_helper_daemon != NULL) && (dwb_flush_block_helper_daemon->is_running ()));
