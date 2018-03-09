@@ -162,6 +162,12 @@ typedef enum
   FILEIO_SYNC_ALSO_FLUSH_DWB
 } FILEIO_SYNC_OPTION;
 
+typedef enum
+{
+  FILEIO_WRITE_DEFAULT_WRITE,	/* default write mode does compensate write including sync */
+  FILEIO_WRITE_NO_COMPENSATE_WRITE	/* skips */
+} FILEIO_WRITE_MODE;
+
 /* Reserved area of FILEIO_PAGE */
 typedef struct fileio_page_reserved FILEIO_PAGE_RESERVED;
 struct fileio_page_reserved
@@ -420,14 +426,15 @@ extern void *fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, 
 extern void *fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * io_page_p, PAGEID page_id,
 					 size_t page_size);
 extern void *fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_id, size_t page_size,
-			   bool skip_flush);
+			   FILEIO_WRITE_MODE write_mode);
 extern void *fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID page_id, int num_pages,
 				size_t page_size);
 extern void *fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID page_id, int num_pages,
-				 size_t page_size, bool skip_flush);
+				 size_t page_size, FILEIO_WRITE_MODE write_mode);
 extern void *fileio_writev (THREAD_ENTRY * thread_p, int vdes, void **arrayof_io_pgptr, PAGEID start_pageid,
 			    DKNPAGES npages, size_t page_size);
-extern int fileio_synchronize (THREAD_ENTRY * thread_p, int vdes, const char *vlabel, FILEIO_SYNC_OPTION check_sync_dwb);
+extern int fileio_synchronize (THREAD_ENTRY * thread_p, int vdes, const char *vlabel,
+			       FILEIO_SYNC_OPTION check_sync_dwb);
 extern int fileio_synchronize_all (THREAD_ENTRY * thread_p, bool include_log);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void *fileio_read_user_area (THREAD_ENTRY * thread_p, int vdes, PAGEID pageid, off_t start_offset, size_t nbytes,

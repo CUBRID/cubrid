@@ -2533,7 +2533,8 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 #endif
 
 	  /* Write the data. */
-	  if (fileio_write (thread_p, vol_fd, p_dwb_ordered_slots[i].io_page, vpid->pageid, IO_PAGESIZE, true) == NULL)
+	  if (fileio_write (thread_p, vol_fd, p_dwb_ordered_slots[i].io_page, vpid->pageid, IO_PAGESIZE,
+			    FILEIO_WRITE_NO_COMPENSATE_WRITE) == NULL)
 	    {
 	      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
 		{
@@ -2772,7 +2773,7 @@ retry:
 
   /* First, write and flush the double write file buffer. */
   if (fileio_write_pages (thread_p, double_Write_Buffer.vdes, block->write_buffer, 0, block->count_wb_pages,
-			  IO_PAGESIZE, true) == NULL)
+			  IO_PAGESIZE, FILEIO_WRITE_NO_COMPENSATE_WRITE) == NULL)
     {
       /* Something wrong happened. */
       assert (false);
@@ -2782,7 +2783,8 @@ retry:
   /* Increment statistics after writing in double write volume. */
   perfmon_add_stat (thread_p, PSTAT_PB_NUM_IOWRITES, block->count_wb_pages);
 
-  if (fileio_synchronize (thread_p, double_Write_Buffer.vdes, dwb_Volume_name, FILEIO_SYNC_ONLY) != double_Write_Buffer.vdes)
+  if (fileio_synchronize (thread_p, double_Write_Buffer.vdes, dwb_Volume_name,
+			  FILEIO_SYNC_ONLY) != double_Write_Buffer.vdes)
     {
       assert (false);
       /* Something wrong happened. */
@@ -3548,6 +3550,7 @@ bool
 dwb_is_created (void)
 {
   UINT64 position_with_flags = ATOMIC_INC_64 (&double_Write_Buffer.position_with_flags, 0ULL);
+
   return DWB_IS_CREATED (position_with_flags);
 }
 
@@ -3786,7 +3789,8 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
       /* Now, flush the volumes having pages in current block. */
       for (i = 0; i < rcv_block->count_flush_volumes_info; i++)
 	{
-	  if (fileio_synchronize (thread_p, rcv_block->flush_volumes_info[i].vdes, NULL, FILEIO_SYNC_ONLY) == NULL_VOLDES)
+	  if (fileio_synchronize (thread_p, rcv_block->flush_volumes_info[i].vdes, NULL,
+				  FILEIO_SYNC_ONLY) == NULL_VOLDES)
 	    {
 	      error_code = ER_FAILED;
 	      goto end;

@@ -2403,7 +2403,8 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 #if defined(HPUX)
       if ((is_sweep_clean == true
 	   && !fileio_initialize_pages (vol_fd, malloc_io_page_p, npages, page_size, kbytes_to_be_written_per_sec))
-	  || (is_sweep_clean == false && !fileio_write (vol_fd, malloc_io_page_p, npages - 1, page_size, skip_flush)))
+	  || (is_sweep_clean == false
+	      && !fileio_write (vol_fd, malloc_io_page_p, npages - 1, page_size, FILEIO_WRITE_DEFAULT_WRITE)))
 #else /* HPUX */
       if (!((fileio_write_or_add_to_dwb (thread_p, vol_fd, malloc_io_page_p, npages - 1, page_size) == malloc_io_page_p)
 	    && (is_sweep_clean == false
@@ -3811,15 +3812,17 @@ void *
 fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * io_page_p, PAGEID page_id,
 			    size_t page_size)
 {
-  bool skip_flush = false;
 #if !defined (CS_MODE)
+  bool skip_flush = false;
   DWB_SLOT *p_dwb_slot = NULL;
   VPID vpid;
   FILEIO_VOLUME_INFO *vol_info_p;
   APPLY_ARG arg = { 0 };
   int error_code;
+  FILEIO_WRITE_MODE write_mode;
 
   assert (vol_fd != NULL_VOLDES);
+
   skip_flush = dwb_is_created ();
   if (skip_flush)
     {
@@ -3842,17 +3845,22 @@ fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * i
 	    }
 	  else if (p_dwb_slot != NULL)
 	    {
+	      /* TODO - describe why it is safe */
 	      return io_page_p;
 	    }
+
 	  /* DWB disabled, write the page. */
 	}
       /* Not permanent volume - write the page. */
     }
+
+  write_mode = skip_flush ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
+
+  return fileio_write (thread_p, vol_fd, io_page_p, page_id, page_size, write_mode);
+#else
+  return fileio_write (thread_p, vol_fd, io_page_p, page_id, page_size, FILEIO_WRITE_DEFAULT_WRITE);
 #endif
-
-  return fileio_write (thread_p, vol_fd, io_page_p, page_id, page_size, skip_flush);
 }
-
 
 /*
  * fileio_write () - WRITE A PAGE TO DISK
@@ -3861,14 +3869,14 @@ fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * i
  *   io_page_p(in): In-memory address where the current content of page resides
  *   page_id(in): Page identifier
  *   page_size(in): Page size
- *   skip_flush(in): True, if skip page flush
+ *   write_mode(in): FILEIO_WRITE_NO_COMPENSATE_WRITE skips page flush
  *
- * Note:  Write the content of the page described by page_id to disk. The
- *        content of the page is stored onto io_page_p buffer which is
- *        page_size long.
+ * Note:  Write the content of the page described by page_id to disk. The content of the page is stored onto io_page_p
+ *        buffer which is page_size long.
  */
 void *
-fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_id, size_t page_size, bool skip_flush)
+fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_id, size_t page_size,
+	      FILEIO_WRITE_MODE write_mode)
 {
 #if defined (EnableThreadMonitoring)
   TSC_TICKS start_tick, end_tick;
@@ -3995,7 +4003,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_
     }
 #endif
 
-  if (skip_flush == false)
+  if (write_mode == FILEIO_WRITE_DEFAULT_WRITE)
     {
       fileio_compensate_flush (thread_p, vol_fd, 1);
     }
@@ -4162,11 +4170,11 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID
  *   page_id(in): First page identifier
  *   num_pages(in): Number of pages to flush
  *   page_size(in): Page size
- *   skip_flush(in): True, if skip page flush
+ *   write_mode(in): FILEIO_WRITE_NO_COMPENSATE_WRITE skips page flush
  */
 void *
 fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID page_id, int num_pages,
-		    size_t page_size, bool skip_flush)
+		    size_t page_size, FILEIO_WRITE_MODE write_mode)
 {
 #if defined (EnableThreadMonitoring)
   TSC_TICKS start_tick, end_tick;
@@ -4304,7 +4312,7 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEI
     }
 #endif
 
-  if (skip_flush == false)
+  if (write_mode == FILEIO_WRITE_DEFAULT_WRITE)
     {
       fileio_compensate_flush (thread_p, vol_fd, num_pages);
     }
@@ -4317,16 +4325,13 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEI
  * fileio_writev () - WRITE A SET OF CONTIGUOUS PAGES TO DISK
  *   return: io_pgptr on success, NULL on failure
  *   vol_fd(in): Volume descriptor
- *   arrayof_io_pgptr(in): An array address to address where the current
- *                         content of pages reside
+ *   arrayof_io_pgptr(in): An array address to address where the current content of pages reside
  *   start_page_id(in): Page identifier of first page
  *   npages(in): Number of consecutive pages
  *   page_size(in): Page size
  *
- * Note: Write the content of the consecutive pages described by
- *       start_pageid to disk. The content of the pages are address
- *       by the io_pgptr array. Each io_pgptr buffer is page size
- *       long.
+ * Note: Write the content of the consecutive pages described by start_pageid to disk. The content of the pages are
+ *       address by the io_pgptr array. Each io_pgptr buffer is page size long.
  *
  *            io_pgptr[0]  -->> start_pageid
  *            io_pgptr[1]  -->> start_pageid + 1
@@ -4338,15 +4343,15 @@ fileio_writev (THREAD_ENTRY * thread_p, int vol_fd, void **io_page_array, PAGEID
 	       size_t page_size)
 {
   int i;
-  bool skip_flush = false;
+  FILEIO_WRITE_MODE write_mode = FILEIO_WRITE_DEFAULT_WRITE;
 
 #if !defined (CS_MODE)
-  skip_flush = dwb_is_created ();
+  write_mode = dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
 #endif
 
   for (i = 0; i < npages; i++)
     {
-      if (fileio_write (thread_p, vol_fd, io_page_array[i], start_page_id + i, page_size, skip_flush) == NULL)
+      if (fileio_write (thread_p, vol_fd, io_page_array[i], start_page_id + i, page_size, write_mode) == NULL)
 	{
 	  return NULL;
 	}
@@ -4417,6 +4422,8 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FIL
 	}
     }
 #endif
+
+  /* TODO: describe why sync is not needed when DWB is completely flushed. */
 
   if (ret == NO_ERROR && all_sync == false)
     {
@@ -7357,7 +7364,8 @@ fileio_finish_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
 	  return NULL;
 	}
 
-      if (fileio_synchronize (thread_p, session_p->bkup.vdes, session_p->bkup.name, FILEIO_SYNC_ONLY) != session_p->bkup.vdes)
+      if (fileio_synchronize (thread_p, session_p->bkup.vdes, session_p->bkup.name,
+			      FILEIO_SYNC_ONLY) != session_p->bkup.vdes)
 	{
 	  return NULL;
 	}
@@ -10477,16 +10485,17 @@ static void *
 fileio_write_restore (THREAD_ENTRY * thread_p, FILEIO_RESTORE_PAGE_BITMAP * page_bitmap, int vol_fd, void *io_page_p,
 		      VOLID vol_id, PAGEID page_id, FILEIO_BACKUP_LEVEL level)
 {
-  bool is_set, skip_flush = false;
+  bool is_set;
+  FILEIO_WRITE_MODE write_mode = FILEIO_WRITE_DEFAULT_WRITE;
 
 #if !defined (CS_MODE)
-  skip_flush = dwb_is_created ();
+  write_mode = dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
 #endif
 
   if (page_bitmap == NULL)
     {
       /* don't care about ht for this volume */
-      if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE, skip_flush) == NULL)
+      if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE, write_mode) == NULL)
 	{
 	  return NULL;
 	}
@@ -10500,7 +10509,7 @@ fileio_write_restore (THREAD_ENTRY * thread_p, FILEIO_RESTORE_PAGE_BITMAP * page
 
       if (!is_set)
 	{
-	  if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE, skip_flush) == NULL)
+	  if (fileio_write (thread_p, vol_fd, io_page_p, page_id, IO_PAGESIZE, write_mode) == NULL)
 	    {
 	      return NULL;
 	    }
