@@ -4874,7 +4874,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 
   assert (flush_lsa != NULL && !LSA_ISNULL (flush_lsa));
 
-  if (!LOG_ISRESTARTED () || flush_lsa == NULL || LSA_ISNULL (flush_lsa))
+  if (!BO_IS_SERVER_RESTARTED () || flush_lsa == NULL || LSA_ISNULL (flush_lsa))
     {
       LOG_CS_ENTER (thread_p);
       logpb_flush_pages_direct (thread_p);
