@@ -4614,7 +4614,7 @@ dwb_flush_block_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (1));
   dwb_flush_block_daemon_task *daemon_task = new dwb_flush_block_daemon_task ();
 
-  dwb_flush_block_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (), daemon_task);
+  dwb_flush_block_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
 }
 
 /*
@@ -4626,7 +4626,7 @@ dwb_flush_block_helper_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
   dwb_flush_block_helper_daemon_task *daemon_task = new dwb_flush_block_helper_daemon_task ();
 
-  dwb_flush_block_helper_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (), daemon_task);
+  dwb_flush_block_helper_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
 }
 
 /*
@@ -4638,7 +4638,7 @@ dwb_checksum_computation_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (20));
   dwb_checksum_computation_daemon_task *daemon_task = new dwb_checksum_computation_daemon_task ();
 
-  dwb_checkum_computation_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (), daemon_task);
+  dwb_checkum_computation_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
 }
 
 /*
