@@ -998,6 +998,7 @@ static unsigned int prm_log_checkpoint_interval_secs_flag = 0;
 
 int PRM_LOG_CHECKPOINT_SLEEP_MSECS = 1;
 static int prm_log_checkpoint_sleep_msecs_default = 1;
+static int prm_log_checkpoint_sleep_msecs_upper = 100;
 static int prm_log_checkpoint_sleep_msecs_lower = 0;
 static unsigned int prm_log_checkpoint_sleep_msecs_flag = 0;
 
@@ -2533,7 +2534,8 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_log_checkpoint_sleep_msecs_flag,
    (void *) &prm_log_checkpoint_sleep_msecs_default,
    (void *) &PRM_LOG_CHECKPOINT_SLEEP_MSECS,
-   (void *) NULL, (void *) &prm_log_checkpoint_sleep_msecs_lower,
+   (void *) &prm_log_checkpoint_sleep_msecs_upper,
+   (void *) &prm_log_checkpoint_sleep_msecs_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
