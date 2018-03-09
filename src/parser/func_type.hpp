@@ -21,7 +21,7 @@ struct func_signature
   std::vector<pt_arg_type> fix; //fixed arguments types
   std::vector<pt_arg_type> rep; //repetitive arguments types
 
-  //signatures
+  //signatures; naming convention: returnType_fixedType(s)_r_repetitiveType(s)
   static std::vector<func_signature> bigint;                 //return bigint, no args
   static std::vector<func_signature> integer;                //return integer, no args
   static std::vector<func_signature> double_double01;        //return double, arg in [0,1]

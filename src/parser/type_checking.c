@@ -12971,6 +12971,70 @@ namespace Func
   };
   #undef X
 
+  //--------------------------------------------------------------------------------
+  class Node
+  {
+    private:
+      parser_context* m_parser;
+      parser_node* m_node;
+    public:
+      Node(parser_context* parser, parser_node* node)
+        : m_parser(parser)
+        , m_node(node)
+      {
+      }
+
+      //cast given argument to specified type
+      parser_node* cast(parser_node*& prev, parser_node* arg, pt_type_enum type, int p, int s, parser_node* dt)
+      {
+        if(type == arg->type_enum) //no cast needed
+          {
+            return arg;
+          }
+        arg = pt_wrap_with_cast_op(m_parser, arg, type, p, s, dt);
+        if(arg == NULL)
+          {
+            printf("ERR [%s()] cast failed (%d -> %d)\n", __func__, arg->type_enum, type);
+          }
+        prev->next = arg;
+        return arg;
+      }
+
+      //preprocess current function node type for special cases
+      void preprocess()
+      {
+        switch(m_node->info.function.function_type)
+          {
+          case F_ELT:
+            {
+              //find 1st arg of type character
+              pt_type_enum type = PT_TYPE_VARCHAR;
+              for(auto arg = m_node->info.function.arg_list; arg; arg = arg->next)
+                {
+                  if(PT_IS_CHAR_STRING_TYPE(arg->type_enum))
+                    {
+                      if (PT_IS_NATIONAL_CHAR_STRING_TYPE(arg->type_enum))
+                        {
+                          type = PT_TYPE_VARNCHAR;
+                        }
+                      break;
+                    }
+                }
+              //cast all args (starting with 2nd) to the above found type, make it also the return type
+              for(parser_node *prev = m_node->info.function.arg_list, *arg = m_node->info.function.arg_list->next; arg; prev = arg, arg = arg->next)
+                {
+                  //if (arg->type_enum != arg_type/* || arg->data_type->info.data_type.precision != max_precision*/)
+                  arg = cast(prev, arg, type, 0, 0, 0);
+                }
+              //m_node->type_enum = type; //it is enforced by function's signature
+              break;
+            }
+          default:
+            ;
+          }
+      }
+  };
+
   bool cmp_types_normal(const pt_arg_type& type, pt_type_enum type_enum)
   {
     return (type.type == pt_arg_type::NORMAL && type.val.type == type_enum);
@@ -13062,7 +13126,9 @@ namespace Func
   {
     FUNC_TYPE func_type = node->info.function.function_type;
     parser_node* arg = node->info.function.arg_list;
+#if 0
     parser_node* prev = NULL;
+    Func::Node funcNode(parser, node);
     int arg_pos = 0;
     for(auto type: signature.fix) //check fixed part of the function signature
       {
@@ -13093,6 +13159,25 @@ namespace Func
         prev = arg;
         arg = arg->next;
       }
+#else
+    parser_node** prev = &node->info.function.arg_list;
+    Func::Node funcNode(parser, node);
+    int arg_pos = 0;
+    for(auto type: signature.fix) //check fixed part of the function signature
+      {
+        if(arg == NULL)
+          {
+            //printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
+            break;
+          }
+        auto t = (type.type == pt_arg_type::INDEX ? signature.fix[type.val.index] : type);
+        pt_type_enum equivalent_type = pt_get_equivalent_type(t, arg->type_enum);
+        arg = funcNode.cast(*prev, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+        ++arg_pos;
+        prev = &arg;
+        arg = arg->next;
+      }
+#endif
 
     if(arg!=NULL && signature.rep.size()==0)
       {
@@ -13102,6 +13187,7 @@ namespace Func
 
     //check repetitive part of the function signature
     int index = 0;
+#if 0
     for(; arg; prev = arg, arg=arg->next, index=(index+1)%signature.rep.size(), ++arg_pos)
       {
         auto& type = signature.rep[index];
@@ -13124,13 +13210,23 @@ namespace Func
               }
           }
       }
+#else
+    for(; arg; prev = &arg, arg=arg->next, index=(index+1)%signature.rep.size(), ++arg_pos)
+      {
+        auto& type = signature.rep[index];
+        auto t = (type.type == pt_arg_type::INDEX ? signature.fix[type.val.index] : type);
+        pt_type_enum equivalent_type = pt_get_equivalent_type(t, arg->type_enum);
+        arg = funcNode.cast(*prev, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+      }
+#endif
     if(index)
       {
-        printf("ERR invaid number of arguments (index=%d)\n", index);
+        printf("ERR invalid number of arguments (index=%d)\n", index);
+        return false;
       }
     return true;
   }
-}
+}//namespace Func
 
 /*
  * pt_eval_function_type () -
@@ -13318,6 +13414,11 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
         PT_NODE *arg = arg_list;
         //printf("1: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
         std::vector<func_signature>& func_sigs = *Func::types[fcode-PT_MIN];
+
+        Func::Node funcNode(parser, node);
+        //preprocess special cases
+        funcNode.preprocess();
+
         const func_signature* func_sig = Func::get_signature(node, func_sigs, &Func::cmp_types_normal);
         if(func_sig == NULL)
           {

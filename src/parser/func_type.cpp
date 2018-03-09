@@ -15,7 +15,7 @@ std::vector<func_signature> func_signature::double_double01 = {
 };
 
 std::vector<func_signature> func_signature::percentile_dis = {
-  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_ANY}, {}},
+  {0, {PT_GENERIC_TYPE_ANY}, {}},
 };
 
 std::vector<func_signature> func_signature::bigint_discrete = {
@@ -105,8 +105,12 @@ std::vector<func_signature> func_signature::lead_lag = {//original code doesn't 
 };
 
 std::vector<func_signature> func_signature::elt = {
+#if 0
   {1           , {PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_TYPE_VARCHAR      }, {1}},
   {1           , {PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_NCHAR}, {1}},
+#else
+  {1           , {PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_STRING}, {1}},
+#endif
   {PT_TYPE_NULL, {PT_TYPE_NULL                                          }, {/*PT_TYPE_ANY*/}},
   {PT_TYPE_NULL, {PT_TYPE_INTEGER                                       }, {}},
 };
