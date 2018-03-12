@@ -192,6 +192,43 @@ int packing_stream::init (const stream_position &start_position)
   return NO_ERROR;
 }
 
+int packing_stream::write (const size_t &byte_count, stream_handler *handler)
+{
+  int err = NO_ERROR;
+  buffer_context *range = NULL;
+  BUFFER_UNIT *ptr;
+
+  ptr = reserve_with_buffer (byte_count, m_stream_provider, &range);
+  if (ptr == NULL )
+    {
+      err = ER_FAILED;
+      return err;
+    }
+
+  err = handler->handling_action (ptr, byte_count);
+
+  return err;
+}
+
+
+int packing_stream::read (const stream_position &first_pos, const size_t &byte_count, stream_handler *handler)
+{
+  int err = NO_ERROR;
+  buffer_context *range = NULL;
+  BUFFER_UNIT *ptr;
+
+  ptr = get_data_from_pos (first_pos, byte_count, m_stream_provider, &range);
+  if (ptr == NULL )
+    {
+      err = ER_FAILED;
+      return err;
+    }
+
+  err = handler->handling_action (ptr, byte_count);
+
+  return err;
+}
+
 int packing_stream::create_buffer_context (packing_stream_buffer *new_buffer, const STREAM_MODE stream_mode,
                                            const stream_position &first_pos, const stream_position &last_allocated_pos,
                                            const size_t &buffer_start_offset, buffer_context **granted_range)

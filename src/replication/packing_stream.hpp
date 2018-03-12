@@ -47,6 +47,11 @@ typedef enum
   COLLECT_AND_DETACH
 } COLLECT_ACTION;
 
+class stream_handler
+{
+public:
+  virtual int handling_action (BUFFER_UNIT *ptr, size_t byte_count) = 0;
+};
 
 class stream_entry : public pinner
 {
@@ -166,6 +171,9 @@ public:
 
   /* should be called when serialization of a stream entry ends */
   int update_contiguous_filled_pos (const stream_position &filled_pos);
+
+  int write (const size_t &byte_count, stream_handler *handler);
+  int read (const stream_position &first_pos, const size_t &byte_count, stream_handler *handler);
 
   BUFFER_UNIT * reserve_with_buffer (const size_t amount, const stream_provider *context_provider,
                                      buffer_context **granted_range);
