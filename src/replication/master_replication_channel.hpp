@@ -28,7 +28,7 @@
 
 #include <vector>
 
-#include "common_utils.hpp"
+#include "stream_common.hpp"
 #include "stream_provider.hpp"
 
 class packing_stream;

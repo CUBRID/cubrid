@@ -18,12 +18,12 @@
  */
 
 /*
- * common_utils.cpp
+ * stream_common.cpp
  */
 
 #ident "$Id$"
 
-#include "common_utils.hpp"
+#include "stream_common.hpp"
 #include "packing_stream_buffer.hpp"
 
 int pinner::pin (pinnable *reference)

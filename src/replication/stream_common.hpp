@@ -18,13 +18,13 @@
  */
 
 /*
- * common_utils.hpp
+ * stream_common.hpp
  */
 
 #ident "$Id$"
 
-#ifndef _COMMON_UTILS_HPP_
-#define _COMMON_UTILS_HPP_
+#ifndef _STREAM_COMMON_HPP_
+#define _STREAM_COMMON_HPP_
 
 #include <set>
 #include <assert.h>
@@ -124,4 +124,4 @@ public:
   stream_position stream_end_pos;
 };
 
-#endif /* _COMMON_UTILS_HPP_ */
+#endif /* _STREAM_COMMON_HPP_ */

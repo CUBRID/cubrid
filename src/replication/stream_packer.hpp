@@ -27,7 +27,7 @@
 #define _STREAM_PACKER_HPP_
 
 #include "dbtype.h"
-#include "common_utils.hpp"
+#include "stream_common.hpp"
 #include "packer.hpp"
 #include "packing_stream.hpp"
 #include <vector>

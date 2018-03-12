@@ -27,7 +27,7 @@
 #define _PACKING_STREAM_HPP_
 
 #include <vector>
-#include "common_utils.hpp"
+#include "stream_common.hpp"
 #include "storage_common.h"
 
 class stream_provider;
@@ -157,6 +157,8 @@ protected:
 
   BUFFER_UNIT * fetch_data_from_provider (stream_provider *context_provider, BUFFER_UNIT *ptr, const size_t &amount);
 
+  stream_position reserve_no_buffer (const size_t amount);
+
 public:
   packing_stream (const stream_provider *my_provider);
 
@@ -164,8 +166,6 @@ public:
 
   /* should be called when serialization of a stream entry ends */
   int update_contiguous_filled_pos (const stream_position &filled_pos);
-
-  stream_position reserve_no_buffer (const size_t amount);
 
   BUFFER_UNIT * reserve_with_buffer (const size_t amount, const stream_provider *context_provider,
                                      buffer_context **granted_range);

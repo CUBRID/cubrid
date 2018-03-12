@@ -27,7 +27,7 @@
 #define _LOG_CONSUMER_HPP_
 
 #include "stream_provider.hpp"
-#include "common_utils.hpp"
+#include "stream_common.hpp"
 #include <cstddef>
 
 class replication_stream_entry;

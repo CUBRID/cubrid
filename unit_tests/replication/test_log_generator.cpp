@@ -17,7 +17,7 @@
  *
  */
 
-#include "common_utils.hpp"
+#include "stream_common.hpp"
 #include "log_generator.hpp"
 #include "log_consumer.hpp"
 #include "replication_entry.hpp"

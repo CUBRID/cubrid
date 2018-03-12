@@ -29,7 +29,7 @@
 /* TODO[arnia] : system parameter */
 #define LG_GLOBAL_INSTANCE_BUFFER_CAPACITY  (1 * 1024 * 1024)
 
-#include "common_utils.hpp"
+#include "stream_common.hpp"
 #include "stream_provider.hpp"
 #include "thread_compat.hpp"
 #include "replication_stream.hpp"

@@ -26,7 +26,7 @@
 #ifndef _LOG_FILE_HPP_
 #define _LOG_FILE_HPP_
 
-#include "common_utils.hpp"
+#include "stream_common.hpp"
 #include "stream_provider.hpp"
 #include "packing_stream.hpp"
 #include <vector>

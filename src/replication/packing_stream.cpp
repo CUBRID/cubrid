@@ -24,7 +24,7 @@
 #ident "$Id$"
 
 #include "error_code.h"
-#include "common_utils.hpp"
+#include "stream_common.hpp"
 #include "packing_stream.hpp"
 #include "packable_object.hpp"
 #include "packing_stream_buffer.hpp"

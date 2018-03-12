@@ -29,7 +29,7 @@
 #include <atomic>
 #include <vector>
 #include "dbtype.h"
-#include "common_utils.hpp"
+#include "stream_common.hpp"
 
 
 class pinnable;

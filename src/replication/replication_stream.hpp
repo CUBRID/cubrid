@@ -27,7 +27,7 @@
 #define _REPLICATION_STREAM_HPP_
 
 #include <vector>
-#include "common_utils.hpp"
+#include "stream_common.hpp"
 #include "packing_stream.hpp"
 #include "replication_entry.hpp"
 #include "storage_common.h"

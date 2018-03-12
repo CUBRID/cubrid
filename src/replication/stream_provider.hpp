@@ -27,7 +27,7 @@
 #define _STREAM_PROVIDER_HPP_
 
 #include "error_code.h"
-#include "common_utils.hpp"
+#include "stream_common.hpp"
 #include <vector>
 #include <cstddef>
 

@@ -80,7 +80,7 @@ int replication_stream_entry::get_packable_entry_count_from_header (void)
   return m_header.count_replication_entries;
 }
 
-bool  replication_stream_entry::is_equal (const stream_entry *other)
+bool replication_stream_entry::is_equal (const stream_entry *other)
 {
   int i;
   const replication_stream_entry *other_t = dynamic_cast <const replication_stream_entry *> (other);
