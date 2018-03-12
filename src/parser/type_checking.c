@@ -12984,8 +12984,8 @@ namespace Func
       {
       }
 
-      //cast given argument to specified type
-      parser_node* cast(parser_node*& prev, parser_node* arg, pt_type_enum type, int p, int s, parser_node* dt)
+      //cast given argument to specified type and re-link
+      parser_node* cast(parser_node* prev, parser_node* arg, pt_type_enum type, int p, int s, parser_node* dt)
       {
         if(type == arg->type_enum) //no cast needed
           {
@@ -12996,7 +12996,14 @@ namespace Func
           {
             printf("ERR [%s()] cast failed (%d -> %d)\n", __func__, arg->type_enum, type);
           }
-        prev->next = arg;
+        if(prev)
+          {
+            prev->next = arg;
+          }
+        else
+          {
+            m_node->info.function.arg_list = arg;
+          }
         return arg;
       }
 
@@ -13126,7 +13133,6 @@ namespace Func
   {
     FUNC_TYPE func_type = node->info.function.function_type;
     parser_node* arg = node->info.function.arg_list;
-#if 0
     parser_node* prev = NULL;
     Func::Node funcNode(parser, node);
     int arg_pos = 0;
@@ -13139,45 +13145,16 @@ namespace Func
           }
         auto t = (type.type == pt_arg_type::INDEX ? signature.fix[type.val.index] : type);
         pt_type_enum equivalent_type = pt_get_equivalent_type(t, arg->type_enum);
-        if(equivalent_type != arg->type_enum)
+        arg = funcNode.cast(prev, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+        if(arg == NULL)
           {
-            arg = pt_wrap_with_cast_op(parser, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
-            if(arg == NULL)
-              {
-                printf("ERR [%s()] arg#%d doesn't match type and cast failed (%d -> %d)\n", __func__, arg_pos, arg->type_enum, equivalent_type);
-              }
-            if (prev != NULL)
-              {
-                prev->next = arg;
-              }
-            else
-              {
-                node->info.function.arg_list = arg;
-              }
+            printf("ERR\n");
+            return false;
           }
         ++arg_pos;
         prev = arg;
         arg = arg->next;
       }
-#else
-    parser_node** prev = &node->info.function.arg_list;
-    Func::Node funcNode(parser, node);
-    int arg_pos = 0;
-    for(auto type: signature.fix) //check fixed part of the function signature
-      {
-        if(arg == NULL)
-          {
-            //printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
-            break;
-          }
-        auto t = (type.type == pt_arg_type::INDEX ? signature.fix[type.val.index] : type);
-        pt_type_enum equivalent_type = pt_get_equivalent_type(t, arg->type_enum);
-        arg = funcNode.cast(*prev, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
-        ++arg_pos;
-        prev = &arg;
-        arg = arg->next;
-      }
-#endif
 
     if(arg!=NULL && signature.rep.size()==0)
       {
@@ -13187,38 +13164,13 @@ namespace Func
 
     //check repetitive part of the function signature
     int index = 0;
-#if 0
     for(; arg; prev = arg, arg=arg->next, index=(index+1)%signature.rep.size(), ++arg_pos)
       {
         auto& type = signature.rep[index];
         auto t = (type.type == pt_arg_type::INDEX ? signature.fix[type.val.index] : type);
         pt_type_enum equivalent_type = pt_get_equivalent_type(t, arg->type_enum);
-        if(equivalent_type != arg->type_enum)
-          {
-            arg = pt_wrap_with_cast_op(parser, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
-            if(arg == NULL)
-              {
-                printf("ERR [%s()] arg#%d doesn't match type and cast failed (%d -> %d)\n", __func__, arg_pos, arg->type_enum, equivalent_type);
-              }
-            if (prev != NULL)
-              {
-                prev->next = arg;
-              }
-            else
-              {
-                node->info.function.arg_list = arg;
-              }
-          }
+        arg = funcNode.cast(prev, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
       }
-#else
-    for(; arg; prev = &arg, arg=arg->next, index=(index+1)%signature.rep.size(), ++arg_pos)
-      {
-        auto& type = signature.rep[index];
-        auto t = (type.type == pt_arg_type::INDEX ? signature.fix[type.val.index] : type);
-        pt_type_enum equivalent_type = pt_get_equivalent_type(t, arg->type_enum);
-        arg = funcNode.cast(*prev, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
-      }
-#endif
     if(index)
       {
         printf("ERR invalid number of arguments (index=%d)\n", index);
