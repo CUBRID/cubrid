@@ -10,8 +10,8 @@ std::vector<func_signature> func_signature::bigint = {
   {PT_TYPE_BIGINT, {}, {}},
 };
 
-std::vector<func_signature> func_signature::double_double01 = {
-  {PT_TYPE_DOUBLE, {PT_TYPE_DOUBLE}, {}},
+std::vector<func_signature> func_signature::percentile_cont = {
+  {0, {PT_GENERIC_TYPE_ANY}, {}},
 };
 
 std::vector<func_signature> func_signature::percentile_dis = {

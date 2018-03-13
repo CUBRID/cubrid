@@ -24,7 +24,6 @@ struct func_signature
   //signatures; naming convention: returnType_fixedType(s)_r_repetitiveType(s)
   static std::vector<func_signature> bigint;                 //return bigint, no args
   static std::vector<func_signature> integer;                //return integer, no args
-  static std::vector<func_signature> double_double01;        //return double, arg in [0,1]
   static std::vector<func_signature> bigint_discrete;        //return bigint, arg: discrete
   static std::vector<func_signature> double_number;          //return double, arg: any number type number
   static std::vector<func_signature> count_star;
@@ -39,6 +38,7 @@ struct func_signature
   static std::vector<func_signature> lead_lag;
   static std::vector<func_signature> elt;
   static std::vector<func_signature> insert;
+  static std::vector<func_signature> percentile_cont;
   static std::vector<func_signature> percentile_dis;
   static std::vector<func_signature> json_key_val_r_key_val;
   static std::vector<func_signature> json_val_r_val;
