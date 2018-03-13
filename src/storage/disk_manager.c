@@ -52,6 +52,7 @@
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
+#include "double_write_buffer.h"
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
@@ -716,9 +717,17 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
       /* todo: understand what this code is supposed to do */
       PAGE_PTR pgptr = NULL;	/* Page pointer */
       LOG_LSA init_with_temp_lsa;	/* A lsa for temporary purposes */
+      bool flushed;
 
       /* Flush the pages so that the log is forced */
       (void) pgbuf_flush_all (thread_p, volid);
+
+      error_code = dwb_flush_force (thread_p, &flushed);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
 
       for (vpid.volid = volid, vpid.pageid = DISK_VOLHEADER_PAGE; vpid.pageid <= vhdr->sys_lastpage; vpid.pageid++)
 	{
