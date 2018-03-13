@@ -1354,13 +1354,21 @@ dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, DWB_SLOT * slot, bool mark_c
       tsc_getticks (&start_tick);
     }
 
-  error_code = fileio_set_page_checksum (thread_p, slot->io_page);
-  if (error_code != NO_ERROR)
+  if (!VPID_ISNULL (&slot->vpid))
     {
-      assert (false);
-      /* Restore it. */
-      ATOMIC_TAS_32 (&slot->checksum_status, DWB_SLOT_CHECKSUM_NOT_COMPUTED);
-      return error_code;
+      error_code = fileio_set_page_checksum (thread_p, slot->io_page);
+      if (error_code != NO_ERROR)
+	{
+	  assert (false);
+	  /* Restore it. */
+	  ATOMIC_TAS_32 (&slot->checksum_status, DWB_SLOT_CHECKSUM_NOT_COMPUTED);
+	  return error_code;
+	}
+    }
+  else
+    {
+      /* The slot page will not be written on data volume. */
+      assert (slot->io_page->prv.checksum == 0);
     }
 
   if (is_perf_tracking)
