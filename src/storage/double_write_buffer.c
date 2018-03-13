@@ -1824,10 +1824,10 @@ dwb_slots_hash_entry_init (void *entry)
 }
 
 /*
- * logtb_global_unique_stat_key_copy () - Copy a slots hash key.
+ * dwb_slots_hash_key_copy () - Copy a slots hash key.
  *   returns: Error code.
  *   src(in): The source.
- *   dest(in): The destination.
+ *   dest(out): The destination.
  */
 static int
 dwb_slots_hash_key_copy (void *src, void *dest)
@@ -1842,7 +1842,7 @@ dwb_slots_hash_key_copy (void *src, void *dest)
 }
 
 /*
- * btree_compare_btids () - Compare slots hash keys.
+ * dwb_slots_hash_compare_key () - Compare slots hash keys.
  *
  * return : 0 if equal, -1 otherwise.
  * key1 (in) : Pointer to first VPID value.
@@ -2186,7 +2186,7 @@ dwb_signal_block_completion (THREAD_ENTRY * thread_p, DWB_BLOCK * dwb_block)
 }
 
 /*
- * dwb_signal_block_completion () - Signal DWB structure changed.
+ * dwb_signal_structure_modificated () - Signal DWB structure changed.
  *
  * return   : Nothing.
  * thread_p (in): The thread entry.
@@ -3695,7 +3695,7 @@ end:
 }
 
 /*
- * dwb_load_and_recover () - Load and recover pages from DWB.
+ * dwb_load_and_recover_pages () - Load and recover pages from DWB.
  *
  * return   : Error code.
  * thread_p (in): The thread entry.
