@@ -4735,11 +4735,6 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
    */
   if (dwb_create (thread_p, log_path, log_prefix) != NO_ERROR)
     {
-      if (prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
-	{
-	  _er_log_debug (ARG_FILE_LINE, "DWB error: Can't create DWB \n");
-	}
-
       goto error;
     }
 

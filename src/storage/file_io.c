@@ -11579,6 +11579,8 @@ fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE_RESERVED * prv_p)
   prv_p->pageid = -1;
   prv_p->volid = -1;
 
+  /* TODO: clear prv_p->checksum ?? */
+
   prv_p->ptype = '\0';
   prv_p->pflag_reserve_1 = '\0';
   prv_p->p_reserve_2 = 0;
@@ -11866,7 +11868,7 @@ fileio_page_has_valid_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, 
   error_code = fileio_compute_page_checksum (thread_p, io_page, &checksum_crc32);
   if (error_code == NO_ERROR)
     {
-      *has_valid_checksum = checksum_crc32 == io_page->prv.checksum;
+      *has_valid_checksum = (checksum_crc32 == io_page->prv.checksum);
     }
 
   return error_code;
