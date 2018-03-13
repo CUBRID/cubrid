@@ -11,11 +11,13 @@ std::vector<func_signature> func_signature::bigint = {
 };
 
 std::vector<func_signature> func_signature::percentile_cont = {
-  {0, {PT_GENERIC_TYPE_ANY}, {}},
+//{0, {PT_GENERIC_TYPE_ANY}, {}},//tests fail!
+  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_ANY}, {}},
 };
 
 std::vector<func_signature> func_signature::percentile_dis = {
-  {0, {PT_GENERIC_TYPE_ANY}, {}},
+//{0, {PT_GENERIC_TYPE_ANY}, {}},//tests fail!
+  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_ANY}, {}},
 };
 
 std::vector<func_signature> func_signature::bigint_discrete = {
