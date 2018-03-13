@@ -29,11 +29,7 @@
 #include <atomic>
 #include <vector>
 #include "dbtype.h"
-#include "stream_common.hpp"
-
-
-class pinnable;
-class replication_stream;
+#include "packing_common.hpp"
 
 /*
  * This should serve as storage for packing / unpacking objects

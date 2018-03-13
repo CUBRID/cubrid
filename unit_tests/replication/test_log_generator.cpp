@@ -17,6 +17,7 @@
  *
  */
 
+#include "packing_common.hpp"
 #include "stream_common.hpp"
 #include "log_generator.hpp"
 #include "log_consumer.hpp"

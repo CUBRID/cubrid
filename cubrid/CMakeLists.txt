@@ -163,6 +163,7 @@ set(QUERY_SOURCES
   )
 
 set(REPLICATION_SOURCES
+  ${REPLICATION_DIR}/packing_common.cpp
   ${REPLICATION_DIR}/stream_common.cpp
   ${REPLICATION_DIR}/log_consumer.cpp
   ${REPLICATION_DIR}/log_file.cpp

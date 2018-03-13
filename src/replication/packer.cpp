@@ -23,7 +23,7 @@
 
 #ident "$Id$"
 
-#include "stream_common.hpp"
+#include "packing_common.hpp"
 #include "packer.hpp"
 #include "packing_buffer.hpp"
 #include "object_representation.h"

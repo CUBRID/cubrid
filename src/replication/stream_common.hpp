@@ -26,52 +26,13 @@
 #ifndef _STREAM_COMMON_HPP_
 #define _STREAM_COMMON_HPP_
 
+#include "packing_common.hpp"
 #include <set>
 #include <assert.h>
 #include <cstddef>
 #include "error_code.h"
 
-#define NOT_IMPLEMENTED() \
-  do \
-    { \
-      throw ("Not implemented"); \
-    } \
-  while (0)
-
-typedef unsigned char BUFFER_UNIT;
 typedef unsigned long long stream_position;
-
-class pinnable;
-class packing_stream;
-class packing_stream_buffer;
-
-class pinner
-{
-public:
-  int pin (pinnable *reference);
-  int unpin (pinnable *reference);
-
-  int unpin_all (void);
-
-  ~pinner () { assert (references.size() == 0); }
-
-private:
-  std::set <pinnable*> references;
-};
-
-class pinnable
-{
-public:
-  int add_pinner (pinner *referencer) { pinners.insert (referencer); return NO_ERROR; }
-  int remove_pinner (pinner *referencer) { pinners.erase (referencer); return NO_ERROR; }
-  int get_pin_count (void) { return (int) pinners.size(); }
-
-  ~pinnable () { assert (pinners.size() == 0); }
-
-private:
-  std::set <pinner*> pinners;
-
-};
 
 enum stream_mode
 {
@@ -80,6 +41,8 @@ enum stream_mode
 };
 typedef enum stream_mode STREAM_MODE;
 
+class packing_stream_buffer;
+class packing_stream;
 /* this is stored in packing_stream */
 class buffer_context
 {

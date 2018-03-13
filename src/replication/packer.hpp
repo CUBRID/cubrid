@@ -26,7 +26,7 @@
 #ifndef _PACKER_HPP_
 #define _PACKER_HPP_
 
-#include "stream_common.hpp"
+#include "packing_common.hpp"
 #include "object_representation.h"
 
 #include <vector>

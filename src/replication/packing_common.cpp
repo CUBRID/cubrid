@@ -18,30 +18,43 @@
  */
 
 /*
- * stream_common.cpp
+ * packing_common.cpp
  */
 
 #ident "$Id$"
 
-#include "stream_common.hpp"
-#include "packing_stream_buffer.hpp"
+#include "packing_common.hpp"
 
-bool buffer_context::is_range_mapped (const stream_position &start, const size_t &amount)
+int pinner::pin (pinnable *reference)
 {
-  return (start >= first_pos && start + amount <= last_pos) ? true : false;
+  if (reference->add_pinner (this) != NO_ERROR)
+    {
+      references.insert (reference);
+      return NO_ERROR; 
+    }
+
+  return NO_ERROR;
 }
 
-bool buffer_context::is_range_contiguously_mapped (const stream_position &start, const size_t &amount)
+int pinner::unpin (pinnable *reference)
 {
-  return (start == last_pos && start + amount < last_allocated_pos) ? true : false;
+  if (reference->remove_pinner (this) != NO_ERROR)
+    {
+      references.erase (reference);
+      return NO_ERROR;
+    }
+  
+  return NO_ERROR;
 }
 
-BUFFER_UNIT * buffer_context::extend_range (const size_t &amount)
+int pinner::unpin_all (void)
 {
-  BUFFER_UNIT * ptr;
+  auto it = references.begin ();
 
-  ptr = mapped_buffer->get_buffer () + last_pos - first_pos;
-  last_pos += amount;
+  for (;it != references.end(); it++)
+    {
+      unpin (*it);
+    }
 
-  return ptr;
+  return NO_ERROR;
 }
