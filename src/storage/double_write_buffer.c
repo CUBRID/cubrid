@@ -435,7 +435,7 @@ STATIC_INLINE void dwb_ends_structure_modification (THREAD_ENTRY * thread_p, UIN
 STATIC_INLINE void dwb_destroy_internal (THREAD_ENTRY * thread_p, UINT64 * current_position_with_flags)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_initialize_slot (DWB_SLOT * slot, FILEIO_PAGE * io_page,
-				        unsigned int position_in_block, unsigned int block_no)
+					unsigned int position_in_block, unsigned int block_no)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_create_slots_hash (THREAD_ENTRY * thread_p, DWB_SLOTS_HASH ** p_slots_hash)
   __attribute__ ((ALWAYS_INLINE));
@@ -4101,6 +4101,7 @@ start:
 
   /* Check whether the initial block was flushed */
 check_flushed_blocks:
+
   if ((ATOMIC_INC_32 (&dwb_Global.blocks_flush_counter, 0) > 0)
       && (ATOMIC_INC_32 (&dwb_Global.next_block_to_flush, 0) == initial_block_no)
       && (ATOMIC_INC_32 (&dwb_Global.blocks[initial_block_no].count_wb_pages, 0) == DWB_BLOCK_NUM_PAGES))
@@ -4159,9 +4160,11 @@ check_flushed_blocks:
   /* Check whether initial block content was overwritten. */
   current_block_no = DWB_GET_BLOCK_NO_FROM_POSITION (current_position_with_flags);
   current_block_version = dwb_Global.blocks[current_block_no].version;
+
   if ((current_block_no == initial_block_no) && (current_block_version != initial_block_version))
     {
       assert (current_block_version > initial_block_version);
+
       /* Nothing to do. Everything flushed. */
       goto end;
     }
@@ -4170,6 +4173,7 @@ check_flushed_blocks:
     {
       /* The system didn't advanced, add null pages to force flush block. */
       dwb_slot = NULL;
+
       error_code = dwb_add_page (thread_p, iopage, &null_vpid, &dwb_slot);
       if (error_code != NO_ERROR)
 	{
@@ -4180,6 +4184,7 @@ check_flushed_blocks:
 	  /* DWB disabled meanwhile, everything flushed. */
 	  goto end;
 	}
+
       count_added_pages++;
     }
 
@@ -4187,6 +4192,7 @@ check_flushed_blocks:
   goto check_flushed_blocks;
 
   initial_block = &dwb_Global.blocks[initial_block_no];
+
 #if defined (SERVER_MODE)
 retry:
   if (dwb_Global.helper_flush_block == initial_block)
@@ -4239,126 +4245,126 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 
 start:
   num_pages_to_sync = prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH);
+
   block = (DWB_BLOCK *) dwb_Global.helper_flush_block;
-  if (block != NULL)
+  if (block == NULL)
     {
-      is_perf_tracking = perfmon_is_perf_tracking ();
-      if (is_perf_tracking)
+      return NO_ERROR;
+    }
+
+  is_perf_tracking = perfmon_is_perf_tracking ();
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&start_tick);
+    }
+
+  count_flush_volumes_info = block->count_flush_volumes_info;
+  all_block_pages_written = block->all_pages_written;
+  need_wait = false;
+  first_partial_flushed_volume = -1;
+
+  for (i = start_flush_volume; i < count_flush_volumes_info; i++)
+    {
+      current_flush_volume_info = &block->flush_volumes_info[i];
+
+    try_again:
+
+      flushed_status = current_flush_volume_info->flushed_status;
+      if (flushed_status == VOLUME_FLUSHED_BY_DWB_FLUSH_THREAD)
 	{
-	  tsc_getticks (&start_tick);
+	  /* Flushed by other thread. */
+	  continue;
+	}
+      else if (flushed_status == VOLUME_NOT_FLUSHED)
+	{
+	  if (!ATOMIC_CAS_32 (&current_flush_volume_info->flushed_status, VOLUME_NOT_FLUSHED,
+			      VOLUME_FLUSHED_BY_DWB_FLUSH_HELPER_THREAD))
+	    {
+	      /* Try again. */
+	      goto try_again;
+	    }
 	}
 
-      count_flush_volumes_info = block->count_flush_volumes_info;
-      all_block_pages_written = block->all_pages_written;
-      need_wait = false;
-      first_partial_flushed_volume = -1;
-      for (i = start_flush_volume; i < count_flush_volumes_info; i++)
+      /* I'm the flusher of the volume. */
+      assert_release (current_flush_volume_info->flushed_status == VOLUME_FLUSHED_BY_DWB_FLUSH_HELPER_THREAD);
+
+      num_pages = ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 0);
+      if (num_pages < num_pages_to_sync)
 	{
-	  current_flush_volume_info = &block->flush_volumes_info[i];
-
-	try_again:
-	  flushed_status = current_flush_volume_info->flushed_status;
-	  if (flushed_status == VOLUME_FLUSHED_BY_DWB_FLUSH_THREAD)
+	  if (current_flush_volume_info->all_pages_written == true)
 	    {
-	      /* Flushed by other thread. */
-	      continue;
-	    }
-	  else if (flushed_status == VOLUME_NOT_FLUSHED)
-	    {
-	      if (!ATOMIC_CAS_32 (&current_flush_volume_info->flushed_status, VOLUME_NOT_FLUSHED,
-				  VOLUME_FLUSHED_BY_DWB_FLUSH_HELPER_THREAD))
+	      if (num_pages == 0)
 		{
-		  /* Try again. */
-		  goto try_again;
+		  /* Already flushed. */
+		  continue;
 		}
+
+	      /* Needs flushing. */
 	    }
-
-	  /* I'm the flusher of the volume. */
-	  assert_release (current_flush_volume_info->flushed_status == VOLUME_FLUSHED_BY_DWB_FLUSH_HELPER_THREAD);
-	  num_pages = ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 0);
-	  if (num_pages < num_pages_to_sync)
+	  else
 	    {
-	      if (current_flush_volume_info->all_pages_written == true)
-		{
-		  if (num_pages == 0)
-		    {
-		      /* Already flushed. */
-		      continue;
-		    }
+	      /* Not enough pages, check the other volumes and retry. */
+	      assert (all_block_pages_written == false);
 
-		  /* Needs flushing. */
-		}
-	      else
-		{
-		  /* Not enough pages, check the other volumes and retry. */
-		  assert (all_block_pages_written == false);
-		  if (first_partial_flushed_volume == -1)
-		    {
-		      first_partial_flushed_volume = i;
-		    }
-
-		  need_wait = true;
-		  break;
-		}
-	    }
-	  else if (current_flush_volume_info->all_pages_written == false)
-	    {
 	      if (first_partial_flushed_volume == -1)
 		{
 		  first_partial_flushed_volume = i;
 		}
+
+	      need_wait = true;
+	      break;
 	    }
-
-	  /* Reset the number of pages in volume. */
-	  num_pages2 = ATOMIC_TAS_32 (&current_flush_volume_info->num_pages, 0);
-	  assert_release (num_pages2 >= num_pages);
-
-	  /*
-	   * Flush the volume. If not all volume pages are available now, continue with next volume, if any,
-	   * and then resume the current one.
-	   */
-	  (void) fileio_synchronize (thread_p, current_flush_volume_info->vdes, NULL, FILEIO_SYNC_ONLY);
+	}
+      else if (current_flush_volume_info->all_pages_written == false)
+	{
+	  if (first_partial_flushed_volume == -1)
+	    {
+	      first_partial_flushed_volume = i;
+	    }
 	}
 
-      /* Set next volume to flush. */
+      /* Reset the number of pages in volume. */
+      num_pages2 = ATOMIC_TAS_32 (&current_flush_volume_info->num_pages, 0);
+      assert_release (num_pages2 >= num_pages);
+
+      /*
+       * Flush the volume. If not all volume pages are available now, continue with next volume, if any,
+       * and then resume the current one.
+       */
+      (void) fileio_synchronize (thread_p, current_flush_volume_info->vdes, NULL, FILEIO_SYNC_ONLY);
+    }
+
+  /* Set next volume to flush. */
+  if (first_partial_flushed_volume != -1)
+    {
+      assert ((first_partial_flushed_volume >= 0)
+	      && ((unsigned int) first_partial_flushed_volume < count_flush_volumes_info));
+
+      /* Continue with partial flushed volume. */
+      start_flush_volume = first_partial_flushed_volume;
+    }
+  else
+    {
+      /* Continue with the next volume. */
+      start_flush_volume = count_flush_volumes_info;
+    }
+
+  if (count_flush_volumes_info != block->count_flush_volumes_info)
+    {
+      /* Do not wait since a new volume arrived. */
+      goto start;
+    }
+
+  if (need_wait == false && all_block_pages_written == false)
+    {
+      /* Not all pages written yet, check whether we need to wait for them. */
       if (first_partial_flushed_volume != -1)
 	{
-	  assert ((first_partial_flushed_volume >= 0)
-		  && ((unsigned int) first_partial_flushed_volume < count_flush_volumes_info));
-	  /* Continue with partial flushed volume. */
-	  start_flush_volume = first_partial_flushed_volume;
-	}
-      else
-	{
-	  /* Continue with the next volume. */
-	  start_flush_volume = count_flush_volumes_info;
-	}
+	  current_flush_volume_info = &block->flush_volumes_info[first_partial_flushed_volume];
 
-      if (count_flush_volumes_info != block->count_flush_volumes_info)
-	{
-	  /* Do not wait since a new volume arrived. */
-	  goto start;
-	}
-
-      if ((need_wait == false) && (all_block_pages_written == false))
-	{
-	  /* Not all pages written yet, check wether we need to wait for them. */
-	  if (first_partial_flushed_volume != -1)
+	  if ((ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 0) < num_pages_to_sync)
+	      && (current_flush_volume_info->all_pages_written == false))
 	    {
-	      current_flush_volume_info = &block->flush_volumes_info[first_partial_flushed_volume];
-	      if ((ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 0) < num_pages_to_sync)
-		  && (current_flush_volume_info->all_pages_written == false))
-		{
-		  need_wait = true;
-		}
-	      else
-		{
-		  goto start;
-		}
-	    }
-	  else if (block->all_pages_written == false)
-	    {
-	      /* Not all pages were written and no volume available for flush yet. */
 	      need_wait = true;
 	    }
 	  else
@@ -4366,44 +4372,55 @@ start:
 	      goto start;
 	    }
 	}
-
-      if (need_wait == true)
+      else if (block->all_pages_written == false)
 	{
-#if defined (SERVER_MODE)
-	  thread_sleep (1);
-#endif
+	  /* Not all pages were written and no volume available for flush yet. */
+	  need_wait = true;
+	}
+      else
+	{
 	  goto start;
 	}
+    }
+
+  if (need_wait == true)
+    {
+#if defined (SERVER_MODE)
+      thread_sleep (1);
+#endif
+      goto start;
+    }
 
 #if !defined (NDEBUG)
-      assert (count_flush_volumes_info == block->count_flush_volumes_info);
-      for (i = 0; i < count_flush_volumes_info; i++)
-	{
-	  current_flush_volume_info = &block->flush_volumes_info[i];
-	  assert ((current_flush_volume_info->all_pages_written == true)
-		  && (current_flush_volume_info->flushed_status != VOLUME_NOT_FLUSHED));
-	}
+  assert (count_flush_volumes_info == block->count_flush_volumes_info);
+
+  for (i = 0; i < count_flush_volumes_info; i++)
+    {
+      current_flush_volume_info = &block->flush_volumes_info[i];
+
+      assert ((current_flush_volume_info->all_pages_written == true)
+	      && (current_flush_volume_info->flushed_status != VOLUME_NOT_FLUSHED));
+    }
 #endif
 
-      /* Be sure that the helper flush block was not changed by other thread. */
-      assert (block == dwb_Global.helper_flush_block);
-      (void) ATOMIC_TAS_ADDR (&dwb_Global.helper_flush_block, (DWB_BLOCK *) NULL);
+  /* Be sure that the helper flush block was not changed by other thread. */
+  assert (block == dwb_Global.helper_flush_block);
+  (void) ATOMIC_TAS_ADDR (&dwb_Global.helper_flush_block, (DWB_BLOCK *) NULL);
 
-      if (is_perf_tracking)
+  if (is_perf_tracking)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+      if (oldest_time > 0)
 	{
-	  tsc_getticks (&end_tick);
-	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-	  oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-	  if (oldest_time > 0)
-	    {
-	      perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_BLOCK_HELPER_TIME_COUNTERS, oldest_time);
-	    }
+	  perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_BLOCK_HELPER_TIME_COUNTERS, oldest_time);
+	}
 
-	  if (dwb_Global.helper_flush_block != NULL)
-	    {
-	      /* New data available for flush. */
-	      goto start;
-	    }
+      if (dwb_Global.helper_flush_block != NULL)
+	{
+	  /* New data available for flush. */
+	  goto start;
 	}
     }
 
@@ -4411,7 +4428,7 @@ start:
 }
 
 /*
- * dwb_flush_block_with_checksum(): Computes checksum for requested slots.
+ * dwb_compute_checksums (): Computes checksum for requested slots.
  *
  *   returns: Error code.
  * thread_p (in): The thread entry.
@@ -4426,6 +4443,7 @@ dwb_compute_checksums (THREAD_ENTRY * thread_p)
 
 start:
   position_with_flags = ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL);
+
   if (!DWB_IS_CREATED (position_with_flags) || DWB_IS_MODIFYING_STRUCTURE (position_with_flags))
     {
       return NO_ERROR;
@@ -4465,6 +4483,7 @@ start:
 	  assert (false);
 	  return error_code;
 	}
+
 #if defined(SERVER_MODE)
       if (block_needs_flush)
 	{
@@ -4510,6 +4529,7 @@ dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool *
   assert (vpid != NULL && io_page != NULL && success != NULL);
 
   *success = false;
+
   if (!dwb_is_created ())
     {
       return NO_ERROR;
@@ -4531,9 +4551,11 @@ dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_page, bool *
       if (VPID_EQ (&slots_hash_entry->slot->vpid, vpid))
 	{
 	  memcpy ((char *) io_page, (char *) slots_hash_entry->slot->io_page, IO_PAGESIZE);
+
 	  /* Be sure that no other transaction has modified slot data meanwhile. */
 	  assert (slots_hash_entry->slot->io_page->prv.pageid == vpid->pageid
 		  && slots_hash_entry->slot->io_page->prv.volid == vpid->volid);
+
 	  *success = true;
 	}
 
@@ -4561,7 +4583,7 @@ class dwb_flush_block_daemon_task: public cubthread::entry_task
       PERF_UTIME_TRACKER_START (NULL, &m_perf_track);
     }
 
-    void execute (cubthread::entry & thread_ref) override
+    void execute (cubthread::entry &thread_ref) override
     {
       TSCTIMEVAL tv_diff;
       UINT64 oldest_time;
@@ -4614,7 +4636,7 @@ class dwb_flush_block_helper_daemon_task: public cubthread::entry_task
     PERF_UTIME_TRACKER m_perf_track;
 
   public:
-    void execute (cubthread::entry & thread_ref) override
+    void execute (cubthread::entry &thread_ref) override
     {
       if (!BO_IS_SERVER_RESTARTED ())
         {
@@ -4638,7 +4660,7 @@ class dwb_flush_block_helper_daemon_task: public cubthread::entry_task
 class dwb_checksum_computation_daemon_task: public cubthread::entry_task
 {
   public:
-    void execute (cubthread::entry & thread_ref) override
+    void execute (cubthread::entry &thread_ref) override
     {
       if (!BO_IS_SERVER_RESTARTED ())
         {
