@@ -2083,7 +2083,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
 
   if (domain->json_validator)
     {
-      db_make_string (&schema_value, db_json_get_schema_raw_from_validator (domain->json_validator));
+      db_make_string_by_const_str (&schema_value, db_json_get_schema_raw_from_validator (domain->json_validator));
       (*(tp_String.data_writeval)) (buf, &schema_value);
       pr_clear_value (&schema_value);
     }

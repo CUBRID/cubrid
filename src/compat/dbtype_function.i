@@ -86,7 +86,7 @@ STATIC_INLINE int db_value_precision (const DB_VALUE * value) __attribute__ ((AL
 STATIC_INLINE int db_value_scale (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE JSON_DOC *db_get_json_document (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 
-STATIC_INLINE int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, const char *str,
+STATIC_INLINE int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, char *str,
 				   const int size) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int db_make_null (DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -135,8 +135,12 @@ STATIC_INLINE int db_make_enumeration (DB_VALUE * value, unsigned short index, D
 				       unsigned char codeset, const int collation_id) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle) __attribute__ ((ALWAYS_INLINE));
 
-STATIC_INLINE int db_make_string (DB_VALUE * value, const char *str) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_make_string (DB_VALUE * value, char *str) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_string_copy (DB_VALUE * value, const char *str) __attribute__ ((ALWAYS_INLINE));
+
+// TODO: It is ugly but I would like to separate the existing usages of db_make_string_copy from those of const str.
+// In some day, we may need a way to make db_value without copying const str. Hope this helps for future refactoring.
+#define db_make_string_by_const_str db_make_string_copy
 
 STATIC_INLINE int db_make_oid (DB_VALUE * value, const OID * oid) __attribute__ ((ALWAYS_INLINE));
 
@@ -1032,7 +1036,7 @@ db_get_json_document (const DB_VALUE * value)
  * size(in):
  */
 int
-db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, const char *str, const int size)
+db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, char *str, const int size)
 {
 #if defined (API_ACTIVE_CHECKS)
   CHECK_1ARG_ERROR (value);
@@ -1901,7 +1905,7 @@ db_make_oid (DB_VALUE * value, const OID * oid)
  * str(in):
  */
 int
-db_make_string (DB_VALUE * value, const char *str)
+db_make_string (DB_VALUE * value, char *str)
 {
   int error;
   int size;
@@ -1937,17 +1941,36 @@ int
 db_make_string_copy (DB_VALUE * value, const char *str)
 {
   int error;
-  DB_VALUE tmp_value;
+  char *copy_str;
 
 #if defined (API_ACTIVE_CHECKS)
   CHECK_1ARG_ERROR (value);
 #endif
 
-  error = db_make_string (&tmp_value, str);
-  if (error == NO_ERROR)
+  if (str == NULL)
     {
-      error = pr_clone_value (&tmp_value, value);
+      db_make_null (value);
+      return NO_ERROR;
     }
+
+  copy_str = db_private_strdup (NULL, str);
+
+  if (copy_str == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen(str) + 1);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  error = db_make_string (value, copy_str);
+
+  if (error != NO_ERROR)
+    {
+      pr_clear_value (value);
+      return error;
+    }
+
+  /* Set need_clear to true. */
+  value->need_clear = true;
 
   return error;
 }

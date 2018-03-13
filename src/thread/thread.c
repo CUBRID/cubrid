@@ -71,7 +71,6 @@ struct thread_manager
   THREAD_ENTRY *thread_array;	/* thread entry array */
   int num_total;
   int num_workers;
-  int num_daemons;
   bool initialized;
 };
 
@@ -84,36 +83,6 @@ static pthread_key_t thread_Thread_key;
 #endif /* HPUX */
 
 static THREAD_MANAGER thread_Manager;
-
-/*
- * For special Purpose Threads
- * Under the win32-threads system, *_cond variables are an auto-reset event
- */
-DAEMON_THREAD_MONITOR thread_Log_flush_thread = DAEMON_THREAD_MONITOR_INITIALIZER;
-
-static void thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor);
-static void thread_wakeup_daemon_thread (DAEMON_THREAD_MONITOR * daemon_monitor);
-
-static THREAD_RET_T THREAD_CALLING_CONVENTION thread_log_flush_thread (void *);
-
-typedef enum
-{
-  /* All the single threads */
-  THREAD_DAEMON_LOG_FLUSH,
-
-  THREAD_DAEMON_NUM_SINGLE_THREADS
-} THREAD_DAEMON_TYPE;
-
-typedef struct thread_daemon THREAD_DAEMON;
-struct thread_daemon
-{
-  DAEMON_THREAD_MONITOR *daemon_monitor;
-  THREAD_DAEMON_TYPE type;
-  int shutdown_sequence;
-    THREAD_RET_T (THREAD_CALLING_CONVENTION * daemon_function) (void *);
-};
-
-static THREAD_DAEMON *thread_Daemons = NULL;
 
 #define THREAD_RC_TRACK_VMEM_THRESHOLD_AMOUNT	      32767
 #define THREAD_RC_TRACK_PGBUF_THRESHOLD_AMOUNT	      1024
@@ -152,9 +121,6 @@ static THREAD_DAEMON *thread_Daemons = NULL;
     } \
   while (0)
 
-#if defined(WINDOWS)
-static int thread_initialize_sync_object (void);
-#endif /* WINDOWS */
 static int thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason, bool had_mutex);
 
 static void thread_rc_track_clear_all (THREAD_ENTRY * thread_p);
@@ -170,10 +136,6 @@ static void thread_rc_track_dump (THREAD_ENTRY * thread_p, FILE * outfp, THREAD_
 static int thread_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool * has_authoriation);
 static INT32 thread_rc_track_threshold_amount (int rc_idx);
 static bool thread_rc_track_is_enabled (THREAD_ENTRY * thread_p);
-
-STATIC_INLINE void thread_daemon_start (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p,
-					THREAD_TYPE thread_type) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void thread_daemon_wakeup_onereq (DAEMON_THREAD_MONITOR * daemon) __attribute__ ((ALWAYS_INLINE));
 
 #if !defined(NDEBUG)
 static void thread_rc_track_meter_at (THREAD_RC_METER * meter, const char *caller_file, int caller_line, int amount,
@@ -303,40 +265,12 @@ int
 thread_initialize_manager (size_t & total_thread_count)
 {
   int i, r;
-  int daemon_index;
-  size_t size;
 
   assert (NUM_NORMAL_TRANS >= 10);
   assert (!thread_Manager.initialized);
 
-  /* Initialize daemons */
-  thread_Manager.num_daemons = THREAD_DAEMON_NUM_SINGLE_THREADS;
-  size = thread_Manager.num_daemons * sizeof (THREAD_DAEMON);
-  thread_Daemons = (THREAD_DAEMON *) malloc (size);
-  if (thread_Daemons == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  /* IMPORTANT NOTE: Daemons are shutdown in the same order as they are created here. */
-  daemon_index = 0;
-
-  /* Initialize log flush daemon */
-  thread_Daemons[daemon_index].type = THREAD_DAEMON_LOG_FLUSH;
-  thread_Daemons[daemon_index].daemon_monitor = &thread_Log_flush_thread;
-  thread_Daemons[daemon_index].shutdown_sequence = INT_MAX;
-  thread_Daemons[daemon_index++].daemon_function = thread_log_flush_thread;
-
-  assert (daemon_index == thread_Manager.num_daemons);
-
-#if defined(WINDOWS)
-  thread_initialize_sync_object ();
-#endif /* WINDOWS */
-
   thread_Manager.num_workers = NUM_NON_SYSTEM_TRANS * 2;
-
-  thread_Manager.num_total = (thread_Manager.num_workers + thread_Manager.num_daemons);
+  thread_Manager.num_total = thread_Manager.num_workers;
 
   /* initialize lock-free transaction systems */
   r = lf_initialize_transaction_systems (thread_Manager.num_total + (int) cubthread::get_max_thread_count ());
@@ -443,36 +377,6 @@ thread_start_workers (void)
       /* If win32, then "thread_attr" is ignored, else "p->thread_handle". */
       pthread_t tid = 0;	// thread id is registered in thread_worker function, so do nothing with tid
       r = pthread_create (&tid, &thread_attr, thread_worker, thread_p);
-      if (r != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_CREATE, 0);
-	  pthread_mutex_unlock (&thread_p->th_entry_lock);
-	  return ER_CSS_PTHREAD_CREATE;
-	}
-
-      r = pthread_mutex_unlock (&thread_p->th_entry_lock);
-      if (r != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
-	  return ER_CSS_PTHREAD_MUTEX_UNLOCK;
-	}
-    }
-
-  for (i = 0; thread_index < thread_Manager.num_total; thread_index++, i++)
-    {
-      thread_Daemons[i].daemon_monitor->thread_index = thread_index;
-      thread_p = &thread_Manager.thread_array[thread_index];
-
-      r = pthread_mutex_lock (&thread_p->th_entry_lock);
-      if (r != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_LOCK, 0);
-	  return ER_CSS_PTHREAD_MUTEX_LOCK;
-	}
-
-      /* If win32, then "thread_attr" is ignored, else "p->thread_handle". */
-      pthread_t tid = 0;	// thread id is registered in daemon_function, so do nothing with tid
-      r = pthread_create (&tid, &thread_attr, thread_Daemons[i].daemon_function, thread_p);
       if (r != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_CREATE, 0);
@@ -622,65 +526,6 @@ loop:
 }
 
 /*
- * thread_wakeup_daemon_thread() -
- *
- */
-static void
-thread_wakeup_daemon_thread (DAEMON_THREAD_MONITOR * daemon_monitor)
-{
-  int rv;
-
-  rv = pthread_mutex_lock (&daemon_monitor->lock);
-  pthread_cond_signal (&daemon_monitor->cond);
-  pthread_mutex_unlock (&daemon_monitor->lock);
-}
-
-/*
- * thread_stop_daemon() -
- *
- */
-static void
-thread_stop_daemon (DAEMON_THREAD_MONITOR * daemon_monitor)
-{
-  THREAD_ENTRY *thread_p;
-
-  thread_p = &thread_Manager.thread_array[daemon_monitor->thread_index];
-  thread_p->shutdown = true;
-
-  while (thread_p->status != TS_DEAD)
-    {
-      thread_wakeup_daemon_thread (daemon_monitor);
-
-      if (css_is_shutdown_timeout_expired ())
-	{
-	  er_log_debug (ARG_FILE_LINE, "thread_stop_daemon(%d): _exit(0)\n", daemon_monitor->thread_index);
-	  /* exit process after some tries */
-	  _exit (0);
-	}
-      thread_sleep (10);	/* 10 msec */
-    }
-}
-
-/*
- * thread_stop_active_daemons() - Stop active daemon threads
- *   return: NO_ERROR
- */
-int
-thread_stop_active_daemons (void)
-{
-  int i;
-
-  for (i = 0; i < thread_Manager.num_daemons; i++)
-    {
-      assert ((i == 0) || (thread_Daemons[i - 1].shutdown_sequence < thread_Daemons[i].shutdown_sequence));
-
-      thread_stop_daemon (thread_Daemons[i].daemon_monitor);
-    }
-
-  return NO_ERROR;
-}
-
-/*
  * thread_kill_all_workers() - Signal all worker threads to exit.
  *   return: 0 if no error, or error code
  */
@@ -748,8 +593,6 @@ thread_final_manager (void)
   delete [] thread_Manager.thread_array;
   thread_Manager.thread_array = NULL;
   /* *INDENT-ON* */
-
-  free_and_init (thread_Daemons);
 
   lf_destroy_transaction_systems ();
 
@@ -1793,188 +1636,6 @@ thread_worker (void *arg_p)
   return (THREAD_RET_T) 0;
 }
 
-/* Special Purpose Threads
- * check point daemon
- */
-#if defined(WINDOWS)
-/*
- * thread_initialize_sync_object() -
- *   return:
- */
-static int
-thread_initialize_sync_object (void)
-{
-  int r, i;
-
-  r = NO_ERROR;
-
-  for (i = 0; i < thread_Manager.num_daemons; i++)
-    {
-      r = pthread_cond_init (&thread_Daemons[i].daemon_monitor->cond, NULL);
-      if (r != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_INIT, 0);
-	  return ER_CSS_PTHREAD_COND_INIT;
-	}
-      r = pthread_mutex_init (&thread_Daemons[i].daemon_monitor->lock, NULL);
-      if (r != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_INIT, 0);
-	  return ER_CSS_PTHREAD_MUTEX_INIT;
-	}
-    }
-
-  return r;
-}
-#endif /* WINDOWS */
-
-/*
- * thread_log_flush_thread() - flushed dirty log pages in background
- *   return:
- *   arg(in) : thread entry information
- *
- */
-static THREAD_RET_T THREAD_CALLING_CONVENTION
-thread_log_flush_thread (void *arg_p)
-{
-#if !defined(HPUX)
-  THREAD_ENTRY *tsd_ptr;
-#endif /* !HPUX */
-  int rv, ret;
-
-  struct timespec LFT_wakeup_time = { 0, 0 };
-  struct timeval wakeup_time = { 0, 0 };
-  struct timeval wait_time = { 0, 0 };
-  struct timeval tmp_timeval = { 0, 0 };
-
-  int working_time, remained_time, total_elapsed_time, param_refresh_remained;
-  int gc_interval, wakeup_interval;
-  int param_refresh_interval = 3000;
-  int max_wait_time = 1000;
-
-  LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
-
-  tsd_ptr = (THREAD_ENTRY *) arg_p;
-
-  thread_daemon_start (&thread_Log_flush_thread, tsd_ptr, TT_DAEMON);
-
-  gettimeofday (&wakeup_time, NULL);
-  total_elapsed_time = 0;
-  param_refresh_remained = param_refresh_interval;
-
-  tsd_ptr->event_stats.trace_log_flush_time = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
-
-  while (!tsd_ptr->shutdown)
-    {
-      er_clear ();
-
-      gc_interval = prm_get_integer_value (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS);
-
-      wakeup_interval = max_wait_time;
-      if (gc_interval > 0)
-	{
-	  wakeup_interval = MIN (gc_interval, wakeup_interval);
-	}
-
-      gettimeofday (&wait_time, NULL);
-      working_time = (int) timeval_diff_in_msec (&wait_time, &wakeup_time);
-      total_elapsed_time += working_time;
-
-      remained_time = MAX ((int) (wakeup_interval - working_time), 0);
-      (void) timeval_add_msec (&tmp_timeval, &wait_time, remained_time);
-      (void) timeval_to_timespec (&LFT_wakeup_time, &tmp_timeval);
-
-      rv = pthread_mutex_lock (&thread_Log_flush_thread.lock);
-
-      ret = 0;
-      if (thread_Log_flush_thread.nrequestors == 0 || gc_interval > 0)
-	{
-	  thread_Log_flush_thread.is_running = false;
-	  ret = pthread_cond_timedwait (&thread_Log_flush_thread.cond, &thread_Log_flush_thread.lock, &LFT_wakeup_time);
-	  thread_Log_flush_thread.is_running = true;
-	}
-
-      rv = pthread_mutex_unlock (&thread_Log_flush_thread.lock);
-
-      gettimeofday (&wakeup_time, NULL);
-      total_elapsed_time += (int) timeval_diff_in_msec (&wakeup_time, &wait_time);
-
-      if (tsd_ptr->shutdown)
-	{
-	  break;
-	}
-
-      if (ret == ETIMEDOUT)
-	{
-	  if (total_elapsed_time < gc_interval)
-	    {
-	      continue;
-	    }
-	}
-
-      /* to prevent performance degradation */
-      param_refresh_remained -= total_elapsed_time;
-      if (param_refresh_remained < 0)
-	{
-	  tsd_ptr->event_stats.trace_log_flush_time = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
-
-	  param_refresh_remained = param_refresh_interval;
-	}
-
-      LOG_CS_ENTER (tsd_ptr);
-      logpb_flush_pages_direct (tsd_ptr);
-      LOG_CS_EXIT (tsd_ptr);
-
-      log_Stat.gc_flush_count++;
-      total_elapsed_time = 0;
-
-      rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
-      pthread_cond_broadcast (&group_commit_info->gc_cond);
-      (void) ATOMIC_TAS_32 (&thread_Log_flush_thread.nrequestors, 0);
-      pthread_mutex_unlock (&group_commit_info->gc_mutex);
-
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "css_log_flush_thread: [%d]send signal - waiters\n", (int) THREAD_ID ());
-#endif /* CUBRID_DEBUG */
-    }
-
-  rv = pthread_mutex_lock (&thread_Log_flush_thread.lock);
-  thread_Log_flush_thread.is_available = false;
-  thread_Log_flush_thread.is_running = false;
-  pthread_mutex_unlock (&thread_Log_flush_thread.lock);
-
-  er_final (ER_THREAD_FINAL);
-  tsd_ptr->status = TS_DEAD;
-  tsd_ptr->unregister_id ();
-
-#if defined(CUBRID_DEBUG)
-  er_log_debug (ARG_FILE_LINE, "css_log_flush_thread: [%d]end \n", (int) THREAD_ID ());
-#endif /* CUBRID_DEBUG */
-
-  return (THREAD_RET_T) 0;
-}
-
-
-/*
- * thread_wakeup_log_flush_thread() - wakeup log flush thread.
- */
-void
-thread_wakeup_log_flush_thread (void)
-{
-  thread_daemon_wakeup_onereq (&thread_Log_flush_thread);
-}
-
-/*
- * thread_is_log_flush_thread_available () - is log flush thread available?
- *
- * return : true/false
- */
-bool
-thread_is_log_flush_thread_available (void)
-{
-  return thread_Log_flush_thread.is_available;
-}
-
 /*
  * thread_slam_tran_index() -
  *   return:
@@ -2973,7 +2634,6 @@ static void
 thread_rc_track_meter_assert_csect_dependency (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, int amount, void *ptr)
 {
   int cs_idx;
-  int i;
 
   assert (meter != NULL);
   assert (amount != 0);
@@ -3916,58 +3576,6 @@ thread_clear_recursion_depth (THREAD_ENTRY * thread_p)
     }
 
   thread_p->xasl_recursion_depth = 0;
-}
-
-/*
- * thread_daemon_start () - start daemon thread
- *
- * return           : void
- * daemon (in)      : daemon thread monitor
- * thread_p (in)    : thread entry
- * thread_type (in) : thread type
- */
-STATIC_INLINE void
-thread_daemon_start (DAEMON_THREAD_MONITOR * daemon, THREAD_ENTRY * thread_p, THREAD_TYPE thread_type)
-{
-  /* wait until THREAD_CREATE() finishes */
-  pthread_mutex_lock (&thread_p->th_entry_lock);
-  pthread_mutex_unlock (&thread_p->th_entry_lock);
-
-  thread_set_thread_entry_info (thread_p);	/* save TSD */
-  thread_p->type = thread_type;	/* daemon thread */
-  thread_p->status = TS_RUN;	/* set thread stat as RUN */
-  thread_p->register_id ();
-  thread_p->get_error_context ().register_thread_local ();
-
-  daemon->is_running = true;
-  daemon->is_available = true;
-
-  thread_set_current_tran_index (thread_p, LOG_SYSTEM_TRAN_INDEX);
-}
-
-/*
- * thread_daemon_wakeup_onereq () - request daemon thread wakeup if not already requested
- *
- * return      : void
- * daemon (in) : daemon thread monitor
- */
-STATIC_INLINE void
-thread_daemon_wakeup_onereq (DAEMON_THREAD_MONITOR * daemon)
-{
-  if (daemon->nrequestors > 0)
-    {
-      /* we register only one request per wakeup */
-      return;
-    }
-  /* increment requesters */
-  ++daemon->nrequestors;
-  pthread_mutex_lock (&daemon->lock);
-  if (!daemon->is_running)
-    {
-      /* signal wakeup */
-      pthread_cond_signal (&daemon->cond);
-    }
-  pthread_mutex_unlock (&daemon->lock);
 }
 
 /*

@@ -459,9 +459,9 @@ JSON_VALIDATOR::load ()
   m_document.Parse (m_schema_raw);
   if (m_document.HasParseError ())
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_JSON, 2,
 	      rapidjson::GetParseError_En (m_document.GetParseError ()), m_document.GetErrorOffset ());
-      return ER_INVALID_JSON;
+      return ER_JSON_INVALID_JSON;
     }
 
   generate_schema_validator ();
@@ -1042,9 +1042,9 @@ db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc)
 
   if (doc.Parse (json_raw).HasParseError ())
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_JSON, 2,
 	      rapidjson::GetParseError_En (doc.GetParseError ()), doc.GetErrorOffset ());
-      return ER_INVALID_JSON;
+      return ER_JSON_INVALID_JSON;
     }
 
   error_code = db_json_contains_duplicate_keys (doc);
@@ -1569,8 +1569,8 @@ db_json_object_contains_key (JSON_DOC *obj, const char *key, int &result)
 {
   if (!obj->IsObject ())
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NO_JSON_OBJECT_PROVIDED, 0);
-      return ER_NO_JSON_OBJECT_PROVIDED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_NO_JSON_OBJECT_PROVIDED, 0);
+      return ER_JSON_NO_JSON_OBJECT_PROVIDED;
     }
 
   result = (int) obj->HasMember (key);
@@ -1591,9 +1591,9 @@ db_json_validate_json (const char *json_body)
   document.Parse (json_body);
   if (document.HasParseError ())
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_JSON, 2,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_JSON, 2,
 	      rapidjson::GetParseError_En (document.GetParseError ()), document.GetErrorOffset ());
-      return ER_INVALID_JSON;
+      return ER_JSON_INVALID_JSON;
     }
 
   return NO_ERROR;

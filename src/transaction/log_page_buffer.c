@@ -2175,7 +2175,7 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
       return *io_page_size;
     }
 
-  /* 
+  /*
    * Make sure that the log is a log file and that it is compatible with the
    * running database and system
    */
@@ -3837,7 +3837,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, 
 #if defined(SERVER_MODE)
 	  if (!log_is_in_crash_recovery ())
 	    {
-	      thread_wakeup_log_flush_thread ();
+	      log_wakeup_log_flush_daemon ();
 
 	      thread_sleep (1);	/* 1msec */
 	    }
@@ -4744,7 +4744,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 
   assert (flush_lsa != NULL && !LSA_ISNULL (flush_lsa));
 
-  if (!LOG_ISRESTARTED () || flush_lsa == NULL || LSA_ISNULL (flush_lsa))
+  if (!BO_IS_SERVER_RESTARTED () || flush_lsa == NULL || LSA_ISNULL (flush_lsa))
     {
       LOG_CS_ENTER (thread_p);
       logpb_flush_pages_direct (thread_p);
@@ -4754,7 +4754,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
     }
   assert (!LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  if (!thread_is_log_flush_thread_available ())
+  if (!log_is_log_flush_daemon_available ())
     {
       LOG_CS_ENTER (thread_p);
       logpb_flush_pages_direct (thread_p);
@@ -4801,7 +4801,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 
   if (need_wakeup_LFT == true && need_wait == false)
     {
-      thread_wakeup_log_flush_thread ();
+      log_wakeup_log_flush_daemon ();
     }
   else if (need_wait == true)
     {
@@ -4828,7 +4828,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 
 	  if (need_wakeup_LFT == true)
 	    {
-	      thread_wakeup_log_flush_thread ();
+	      log_wakeup_log_flush_daemon ();
 	    }
 	  (void) pthread_cond_timedwait (&group_commit_info->gc_cond, &group_commit_info->gc_mutex, &to);
 	  pthread_mutex_unlock (&group_commit_info->gc_mutex);
@@ -6530,7 +6530,6 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 
   return log_pgptr;
 }
-
 
 /*
  * logpb_archive_active_log - Archive the active portion of the log

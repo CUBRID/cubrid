@@ -452,7 +452,7 @@ extern "C"
 				  unsigned char codeset, const int collation_id);
   extern int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);
 
-  extern int db_make_string (DB_VALUE * value, const char *str);
+  extern int db_make_string (DB_VALUE * value, char *str);
   extern int db_make_string_copy (DB_VALUE * value, const char *str);
 
   extern int db_make_oid (DB_VALUE * value, const OID * oid);
