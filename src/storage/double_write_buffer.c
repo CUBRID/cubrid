@@ -4741,7 +4741,7 @@ dwb_daemons_destroy ()
  * return: true if flush block daemon is available, false otherwise
  */
 static bool
-dwb_is_flush_block_daemon_available ()
+dwb_is_flush_block_daemon_available (void)
 {
 #if defined (SERVER_MODE)
   return dwb_flush_block_daemon != NULL;
@@ -4751,7 +4751,7 @@ dwb_is_flush_block_daemon_available ()
 }
 
 /*
- * dwb_is_flush_block_daemon_available () - Check if flush block helper daemon is available
+ * dwb_is_flush_block_helper_daemon_available () - Check if flush block helper daemon is available
  * return: true if flush block helper daemon is available, false otherwise
  */
 static bool
@@ -4770,7 +4770,7 @@ dwb_is_flush_block_helper_daemon_available (void)
  *   return: true, if checksum computation thread is available, false otherwise
  */
 static bool
-dwb_is_checksum_computation_daemon_available ()
+dwb_is_checksum_computation_daemon_available (void)
 {
 #if defined (SERVER_MODE)
   return dwb_checkum_computation_daemon != NULL;
