@@ -11579,7 +11579,8 @@ fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE_RESERVED * prv_p)
   prv_p->pageid = -1;
   prv_p->volid = -1;
 
-  /* TODO: clear prv_p->checksum ?? */
+  /* Clears checksum for debug purpose. */
+  prv_p->checksum = 0;
 
   prv_p->ptype = '\0';
   prv_p->pflag_reserve_1 = '\0';
