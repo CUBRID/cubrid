@@ -2951,10 +2951,9 @@ db_json_deserialize_helper (char *&json_raw, const std::string &path, JSON_DOC &
     case DB_JSON_STRING:
     {
       char *str;
-      json_raw = or_unpack_string_alloc (json_raw, &str);
+      json_raw = or_unpack_string_nocopy (json_raw, &str);
       value.SetString (str, (rapidjson::SizeType) strlen (str), doc.GetAllocator());
       p.Set (doc, value, doc.GetAllocator());
-      db_private_free (NULL, str);
       break;
     }
     case DB_JSON_BOOL:
@@ -3034,6 +3033,7 @@ JSON_DOC *db_json_deserialize (char *json_raw)
 
   char *json_body_raw = db_json_get_raw_json_body_from_document (doc);
   doc->SetJsonBody (json_body_raw);
+  db_private_free (NULL, json_body_raw);
 
   return doc;
 }

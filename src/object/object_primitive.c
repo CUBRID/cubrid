@@ -17049,7 +17049,8 @@ pr_do_db_value_string_compression (DB_VALUE * value)
     }
 
   /* Alloc memory for compression */
-  compressed_string = (char *) db_private_alloc (NULL, LZO_COMPRESSED_STRING_SIZE (src_size));
+  //compressed_string = (char *) db_private_alloc (NULL, LZO_COMPRESSED_STRING_SIZE (src_size));
+  compressed_string = (char *) malloc (LZO_COMPRESSED_STRING_SIZE (src_size));
   if (compressed_string == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -17059,6 +17060,7 @@ pr_do_db_value_string_compression (DB_VALUE * value)
     }
 
   rc = pr_data_compress_string (string, src_size, compressed_string, &compressed_size);
+
   if (rc != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -17202,8 +17204,6 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
       new_doc = json_copy.document;
     }
 
-  // TODO
-  // modify db_make_json to get json body directly from doc
   db_make_json (value, new_doc, copy);
   db_get_json_schema (value) = json_schema;
 
@@ -17272,7 +17272,10 @@ mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 
   /* json body can be null, but it is treated by writeval */
   char *json_serialized = db_json_serialize (*json->document);
-  db_make_string (&json_body, json_serialized);
+  size_t json_serialized_size = db_json_get_json_doc_packed_size (*json->document);
+
+  db_value_domain_init (&json_body, DB_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0);
+  db_make_db_char (&json_body, LANG_SYS_CODESET, LANG_SYS_COLLATION, json_serialized, json_serialized_size);
   db_private_free (NULL, json_serialized);
 
   if (json->schema_raw != NULL)
@@ -17296,7 +17299,7 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 {
   int json_body_length, schema_length;
   DB_VALUE json_body, schema_raw;
-  char *json_body_str = NULL, *schema_str = NULL;
+  char *json_body_str = NULL, *schema_str = NULL, *json_raw_copy = NULL;
   DB_JSON *json;
   int rc;
 
@@ -17348,13 +17351,18 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 
   json->schema_raw = db_private_strdup (NULL, schema_str);
 
-  json->document = db_json_deserialize (json_body_str);
-  db_private_free (NULL, json_body_str);
+  json_raw_copy = (char *) db_private_alloc (NULL, db_get_string_size (&json_body));
+  memcpy (json_raw_copy, json_body_str, db_get_string_size (&json_body));
+
+  json->document = db_json_deserialize (json_raw_copy);
+
   assert (rc == NO_ERROR);
 
 exit:
   pr_clear_value (&json_body);
   pr_clear_value (&schema_raw);
+  db_private_free (NULL, json_body_str);
+  db_private_free (NULL, json_raw_copy);
 }
 
 static void
@@ -17439,21 +17447,14 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
 
   if (value->data.json.document != NULL)
     {
+      // serialize the json and put it in a db_value to get the corect length
       char *json_serialized = db_json_serialize (*value->data.json.document);
       size_t json_serialized_size = db_json_get_json_doc_packed_size (*value->data.json.document);
+
       db_value_domain_init (&json_body, DB_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0);
       db_make_db_char (&json_body, LANG_SYS_CODESET, LANG_SYS_COLLATION, json_serialized, json_serialized_size);
       db_private_free (NULL, json_serialized);
-
-      /*json_body_length = db_json_get_json_doc_packed_size(*value->data.json.document);
-         json_body_length++;
-         if (json_body_length >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
-         {
-         json_body_length += 8;
-         } */
-
       json_body_length = mr_data_lengthval_string (&json_body, disk);
-
     }
   else
     {
@@ -17582,8 +17583,6 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 
   doc = db_json_deserialize (json_raw_copy);
 
-  // TODO
-  // modify make_json to get the body directly from doc
   db_make_json (value, doc, true);
 
   if (db_get_string_size (&schema_raw) > 0)
