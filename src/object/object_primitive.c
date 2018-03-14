@@ -17716,8 +17716,6 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 
       db_make_string_by_const_str (&scalar_value1, str1);
       db_make_string_by_const_str (&scalar_value2, str2);
-      scalar_value1.need_clear = true;
-      scalar_value2.need_clear = true;
     }
   else
     {
