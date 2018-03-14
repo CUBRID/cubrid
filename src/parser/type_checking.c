@@ -10891,11 +10891,13 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
     {
       common_type = PT_TYPE_DOUBLE;
     }
+#if 0 //bSolo: why is this here? maybe wrong merge?
   else if ((PT_IS_NUMERIC_TYPE (arg1_type) && arg2_type == PT_TYPE_JSON)
 	   || (arg1_type == PT_TYPE_JSON && PT_IS_NUMERIC_TYPE (arg2_type)))
     {
       common_type = PT_TYPE_JSON;
     }
+#endif
   else if ((PT_IS_STRING_TYPE (arg1_type) && arg2_type == PT_TYPE_JSON)
 	   || (arg1_type == PT_TYPE_JSON && PT_IS_STRING_TYPE (arg2_type)))
     {
@@ -11788,6 +11790,12 @@ pt_common_type_op (PT_TYPE_ENUM t1, PT_OP_TYPE op, PT_TYPE_ENUM t2)
   if (t1 == PT_TYPE_LOGICAL && t2 == PT_TYPE_LOGICAL && !pt_is_operator_logical (op))
     {
       result_type = PT_TYPE_INTEGER;
+    }
+
+  if (pt_is_comp_op (op) && ((PT_IS_NUMERIC_TYPE (t1) && t2 == PT_TYPE_JSON)	
+			     || (t1 == PT_TYPE_JSON && PT_IS_NUMERIC_TYPE (t2))))	
+    {	
+      result_type = PT_TYPE_JSON;	
     }
 
   return result_type;
@@ -21418,7 +21426,7 @@ pt_between_to_comp_op (PT_OP_TYPE between, PT_OP_TYPE * left, PT_OP_TYPE * right
 static PT_TYPE_ENUM
 pt_get_equivalent_type_with_op (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type, PT_OP_TYPE op)
 {
-  if (pt_is_op_hv_late_bind (op) && (def_type.type == pt_arg_type::NORMAL && arg_type == PT_TYPE_MAYBE))
+  if (pt_is_op_hv_late_bind (op) && (def_type.type == pt_arg_type::GENERIC && arg_type == PT_TYPE_MAYBE))
     {
       /* leave undetermined type */
       return PT_TYPE_MAYBE;
