@@ -1035,7 +1035,7 @@ dwb_initialize_slot (DWB_SLOT * slot, FILEIO_PAGE * io_page, unsigned int positi
 }
 
 /*
- * dwb_initialize_block () - Initialize a block.
+ * dwb_initialize_checksum_info () - Initialize checksum info.
  *
  * return : Nothing.
  * checksum_info (in/out) : The checksum info.
@@ -1234,7 +1234,7 @@ dwb_mark_checksum_computed (THREAD_ENTRY * thread_p, unsigned int block_no, unsi
 }
 
 /*
- * dwb_finalize_block () - Finalize checksum info.
+ * dwb_finalize_checksum_info () - Finalize checksum info.
  *
  * return   : Nothing.
  * checksum_info (in/out) : The checksum info.
@@ -1510,7 +1510,7 @@ dwb_create_blocks (THREAD_ENTRY * thread_p, unsigned int num_blocks, unsigned in
 
   *p_blocks = NULL;
 
-  for (i = 0; i < num_blocks; i++)
+  for (i = 0; i < DWB_MAX_BLOCKS; i++)
     {
       blocks_write_buffer[i] = NULL;
       slots[i] = NULL;
@@ -3436,11 +3436,9 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
   bool checksum_computed;
   DWB_SLOT *dwb_slot = NULL;
   bool needs_flush;
-#if defined (SERVER_MODE)
   bool checksum_computation_started;
-#endif
 
-  assert ((p_dwb_slot != NULL) && ((io_page_p != NULL) || ((*p_dwb_slot)->io_page != NULL)) && vpid != NULL);
+  assert (p_dwb_slot != NULL && (io_page_p != NULL || (*p_dwb_slot)->io_page != NULL) && vpid != NULL);
 
   if (thread_p == NULL)
     {
@@ -3501,8 +3499,9 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
     {
       dwb_add_checksum_computation_request (thread_p, block->block_no, dwb_slot->position_in_block);
 
-#if defined (SERVER_MODE)
       checksum_computation_started = false;
+
+#if defined (SERVER_MODE)
       if (dwb_is_checksum_computation_daemon_available ())
 	{
 	  /* Wake up checksum thread to compute checksum. */
@@ -3522,9 +3521,10 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 
 	  checksum_computation_started = true;
 	}
+#endif /* SERVER_MODE */
 
-      if ((checksum_computation_started == false) || (dwb_needs_speedup_checksum_computation (thread_p)))
-#endif
+      /* SA_MODE, checksum thread is unavailable or behind */
+      if (checksum_computation_started == false || dwb_needs_speedup_checksum_computation (thread_p))
 	{
 	  error_code = dwb_slot_compute_checksum (thread_p, dwb_slot, true, &checksum_computed);
 	  if (error_code != NO_ERROR)
@@ -3561,6 +3561,7 @@ start_flush_block:
     {
       /* Wakeup the thread that will flush the block. */
       dwb_flush_block_daemon->wakeup ();
+
       return NO_ERROR;
     }
 
@@ -3928,7 +3929,6 @@ end:
 
   return error_code;
 }
-
 
 /*
  * dwb_get_volume_name - Get the double write volume name.
@@ -4483,9 +4483,8 @@ start:
   checksum_computed = false;
   for (num_block = start_block; num_block < end_block; num_block++)
     {
-      error_code =
-	dwb_compute_block_checksums (thread_p, &dwb_Global.blocks[num_block],
-				     &block_slots_checksums_computed, &block_needs_flush);
+      error_code = dwb_compute_block_checksums (thread_p, &dwb_Global.blocks[num_block],
+						&block_slots_checksums_computed, &block_needs_flush);
       if (error_code != NO_ERROR)
 	{
 	  assert (false);

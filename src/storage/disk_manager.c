@@ -722,12 +722,17 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
       /* Flush the pages so that the log is forced */
       (void) pgbuf_flush_all (thread_p, volid);
 
+      /* Flush dwb also */
       error_code = dwb_flush_force (thread_p, &flushed);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
 	}
+
+      /* TODO: Does it hold??
+       * assert (flushed == true);
+       */
 
       for (vpid.volid = volid, vpid.pageid = DISK_VOLHEADER_PAGE; vpid.pageid <= vhdr->sys_lastpage; vpid.pageid++)
 	{

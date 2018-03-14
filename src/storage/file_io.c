@@ -35,7 +35,6 @@
 #include <limits.h>
 #include <sys/stat.h>
 #include <assert.h>
-#include <md5.h>
 
 #if defined(WINDOWS)
 #include <io.h>
@@ -4365,7 +4364,7 @@ fileio_writev (THREAD_ENTRY * thread_p, int vol_fd, void **io_page_array, PAGEID
  *   return: vdes or NULL_VOLDES
  *   vol_fd(in): Volume descriptor
  *   vlabel(in): Volume label
- *   sync_dwb(in): True, if needs sync dwb
+ *   sync_dwb(in): FILEIO_SYNC_ALSO_FLUSH_DWB if needs sync dwb
  */
 int
 fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FILEIO_SYNC_OPTION sync_dwb)
@@ -4462,6 +4461,7 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FIL
 #if defined(SERVER_MODE) && !defined(WINDOWS) && defined(USE_AIO)
       while (aio_error (&cb) == EINPROGRESS)
 	;
+
       if (aio_return (&cb) != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_SYNC, 1, (vlabel ? vlabel : "Unknown"));
@@ -11876,7 +11876,7 @@ fileio_page_has_valid_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, 
 }
 
 /* 
- * fileio_compute_checksum - Set page checksum.
+ * fileio_set_page_checksum - Set page checksum.
  *   return: error code
  *   thread_p (in): thread entry
  *   io_page (in): page
