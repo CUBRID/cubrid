@@ -33,6 +33,12 @@
 
 #define CSS_NUM_JOB_QUEUE 10	/* # of job queues */
 
+// forward definitions
+namespace cubthread
+{
+  class entry_task;
+}				// namespace cubthread
+
 extern void css_block_all_active_conn (unsigned short stop_phase);
 extern void css_broadcast_shutdown_thread (void);
 
@@ -64,7 +70,7 @@ css_initialize_server_interfaces (int (*request_handler)
 				  (THREAD_ENTRY * thrd, unsigned int eid, int request, int size, char *buffer),
 				  CSS_THREAD_FN connection_error_handler);
 extern char *css_pack_server_name (const char *server_name, int *name_length);
-extern int css_init (char *server_name, int server_name_length, int connection_id);
+extern int css_init (THREAD_ENTRY * thread_p, char *server_name, int server_name_length, int connection_id);
 extern char *css_add_client_version_string (THREAD_ENTRY * thread_p, const char *version_string);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern char *css_get_client_version_string (void);
@@ -83,5 +89,8 @@ extern int css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int wh
 extern int css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool force, int timeout,
 				       bool heartbeat);
 extern int css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE state);
+
+extern void css_push_external_task (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY * conn, cubthread::entry_task * task);
+extern void css_get_thread_stats (UINT64 * stats_out);
 
 #endif /* _SERVER_SUPPORT_H_ */

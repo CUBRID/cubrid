@@ -89,15 +89,15 @@ namespace cubthread
 
     protected:
 
-      virtual void on_create (entry &)    // manipulate entry after claim and before any execution
+      virtual void on_create (context_type &)    // manipulate entry after claim and before any execution
       {
 	// does nothing by default
       }
-      virtual void on_retire (entry &)    // manipulate entry before retire; should mirror on_create
+      virtual void on_retire (context_type &)    // manipulate entry before retire; should mirror on_create
       {
 	// does nothing by default
       }
-      virtual void on_recycle (entry &)   // manipulate entry between execution cycles
+      virtual void on_recycle (context_type &)   // manipulate entry between execution cycles
       {
 	// does nothing by default
       }

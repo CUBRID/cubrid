@@ -776,10 +776,9 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
 				  const BLOCK_LOG_BUFFER & log_buffer, bool is_partial_block);
 #endif // SA_MODE
 
-    void on_create (cubthread::entry &context) final
+    void on_create (cubthread::entry & context) final
     {
       context.tran_index = 0;
-      context.status = TS_RUN;
 
       vacuum_init_thread_context (context, TT_VACUUM_WORKER, m_pool->claim ());
 
@@ -789,7 +788,7 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
 	}
     }
 
-    void on_retire (cubthread::entry &context) final
+    void on_retire (cubthread::entry & context) final
     {
       if (context.vacuum_worker != NULL)
 	{
@@ -803,9 +802,10 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
 	}
     }
 
-    void on_recycle (cubthread::entry & entry) final
+    void on_recycle (cubthread::entry & context) final
     {
-      // nothing for now
+      // reset tran_index (it is recycled as -1)
+      context.tran_index = 0;
     }
 
     // members
@@ -1111,9 +1111,8 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 
   // create thread pool
   vacuum_Worker_threads =
-    thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT),
-					VACUUM_JOB_QUEUE_CAPACITY,
-					vacuum_Worker_context_manager, log_vacuum_worker_pool);
+    thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT), VACUUM_JOB_QUEUE_CAPACITY,
+					vacuum_Worker_context_manager, 1, log_vacuum_worker_pool);
   assert (vacuum_Worker_threads != NULL);
 
   int vacuum_master_wakeup_interval_msec = prm_get_integer_value (PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL);
