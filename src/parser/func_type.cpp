@@ -71,7 +71,7 @@ std::vector<func_signature> func_signature::ntile = {//why original code cast ar
 std::vector<func_signature> func_signature::median = {
   {PT_TYPE_DOUBLE , {PT_GENERIC_TYPE_NUMBER}  , {}},
   {0              , {PT_GENERIC_TYPE_DATETIME}, {}},
-  {0              , {PT_GENERIC_TYPE_ANY}     , {}}, 
+  {PT_TYPE_MAYBE  , {PT_GENERIC_TYPE_ANY}     , {}}, //let evaluation select the return type
 };
 
 std::vector<func_signature> func_signature::type0_nr_or_str = {
