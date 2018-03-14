@@ -69,7 +69,9 @@ std::vector<func_signature> func_signature::ntile = {//why original code cast ar
   MEDIAN('123456')     => MEDIAN(double)
   MEDIAN('2018-03-14') => MEDIAN(date)*/
 std::vector<func_signature> func_signature::median = {
-  {0 , {PT_GENERIC_TYPE_ANY}, {}}, 
+  {PT_TYPE_DOUBLE , {PT_GENERIC_TYPE_NUMBER}  , {}},
+  {0              , {PT_GENERIC_TYPE_DATETIME}, {}},
+  {0              , {PT_GENERIC_TYPE_ANY}     , {}}, 
 };
 
 std::vector<func_signature> func_signature::type0_nr_or_str = {
