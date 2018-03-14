@@ -15139,13 +15139,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		dtmp = db_get_double (arg1) + db_get_double (arg2);
 		if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-		{
-		  goto overflow;
-		}
+		  {
+		    goto overflow;
+		  }
 		else
-                  {
+		  {
 		    db_make_double (result, dtmp);
-                  }
+		  }
 		break;
 	      }
 
@@ -15170,13 +15170,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		dtmp = (db_get_monetary (arg1)->amount + db_get_monetary (arg2)->amount);
 		if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-		{
-		  goto overflow;
-		}
+		  {
+		    goto overflow;
+		  }
 		else
-		{
+		  {
 		    db_make_monetary (result, DB_CURRENCY_DEFAULT, dtmp);
-		}
+		  }
 		break;
 	      }
 
@@ -15932,13 +15932,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		dtmp = db_get_double (arg1) - db_get_double (arg2);
 		if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-		{
-		  goto overflow;
-		}
+		  {
+		    goto overflow;
+		  }
 		else
-                  {
+		  {
 		    db_make_double (result, dtmp);
-                  }
+		  }
 		break;
 	      }
 
@@ -15962,13 +15962,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		dtmp = db_get_monetary (arg1)->amount - db_get_monetary (arg2)->amount;
 		if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-		{
-		  goto overflow;
-		}
+		  {
+		    goto overflow;
+		  }
 		else
-                  {
+		  {
 		    db_make_monetary (result, DB_CURRENCY_DEFAULT, dtmp);
-                  }
+		  }
 		break;
 	      }
 
@@ -16324,9 +16324,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		ftmp = db_get_float (arg1) * db_get_float (arg2);
 		if (OR_CHECK_FLOAT_OVERFLOW (ftmp))
-		  goto overflow;
+		  {
+		    goto overflow;
+		  }
 		else
-		  db_make_float (result, ftmp);
+		  {
+		    db_make_float (result, ftmp);
+		  }
 		break;
 	      }
 
@@ -16336,13 +16340,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		dtmp = db_get_double (arg1) * db_get_double (arg2);
 		if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-		{
-		  goto overflow;
-		}
+		  {
+		    goto overflow;
+		  }
 		else
-                  {
+		  {
 		    db_make_double (result, dtmp);
-                  }
+		  }
 		break;
 	      }
 
@@ -16371,9 +16375,9 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		dtmp = db_get_monetary (arg1)->amount * db_get_monetary (arg2)->amount;
 		if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
-		{
-		  goto overflow;
-		}
+		  {
+		    goto overflow;
+		  }
 		else
 		  {
 		    db_make_monetary (result, DB_CURRENCY_DEFAULT, dtmp);
