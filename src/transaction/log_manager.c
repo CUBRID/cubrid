@@ -10444,10 +10444,14 @@ class log_remove_log_archive_daemon_task : public cubthread::entry_task
       // fetch remove log archives interval from system parameters
       set_remove_log_archives_interval_msec ();
 
-      if (m_remove_log_archives_interval_msec > std::chrono::milliseconds (0))
+      bool is_timed_wait;
+      cubthread::delta_time period;
+
+      get_remove_log_archives_interval (is_timed_wait, period);
+
+      if (is_timed_wait)
 	{
-	  // now - m_last_deletion_time: represents time elapsed since last log archive deletion
-	  if ((std::chrono::system_clock::now () - m_last_deletion_time) < m_remove_log_archives_interval_msec)
+	  if (period != m_remove_log_archives_interval_msec)
 	    {
 	      // do not delete logs. wait more time
 	      return;
