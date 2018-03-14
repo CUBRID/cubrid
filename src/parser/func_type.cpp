@@ -65,9 +65,11 @@ std::vector<func_signature> func_signature::ntile = {//why original code cast ar
   {PT_TYPE_INTEGER, {PT_TYPE_NULL}, {}},
 };
 
+/*cannot define a clear signature because casting depends on actual value
+  MEDIAN('123456')     => MEDIAN(double)
+  MEDIAN('2018-03-14') => MEDIAN(date)*/
 std::vector<func_signature> func_signature::median = {
-  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER}, {}},
-  {0,  {PT_GENERIC_TYPE_DATETIME}, {}},
+  {0 , {PT_GENERIC_TYPE_ANY}, {}}, 
 };
 
 std::vector<func_signature> func_signature::type0_nr_or_str = {
