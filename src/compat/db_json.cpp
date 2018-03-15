@@ -2757,12 +2757,8 @@ JSON_SERIALIZER::GetValuePackedSize (const JSON_VALUE &value)
       break;
 
     case DB_JSON_STRING:
-    {
-      std::string value_string = value.GetString();
-      db_json_replace_token_special_chars (value_string, special_chars);
-      size += GetStringPackedSize (value_string.c_str());
+      size += GetStringPackedSize (value.GetString());
       break;
-    }
 
     case DB_JSON_BOOL:
       size += GetStringPackedSize ("T");
@@ -2885,12 +2881,8 @@ JSON_SERIALIZER::Serialize_helper (const JSON_VALUE &obj, JSON_VALUE *key, char 
       break;
 
     case DB_JSON_STRING:
-    {
-      std::string object_string = obj.GetString();
-      db_json_replace_token_special_chars (object_string, special_chars);
-      current = or_pack_string (current, object_string.c_str());
+      current = or_pack_string (current, obj.GetString());
       break;
-    }
 
     case DB_JSON_ARRAY:
       // we need to know how many elements will be in the array
