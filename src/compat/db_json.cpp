@@ -329,6 +329,7 @@ static std::vector<std::pair<std::string, std::string> > serial_types_conversion
   std::make_pair ("o:", db_json_get_json_type_as_str (DB_JSON_OBJECT)),
   std::make_pair ("a:", db_json_get_json_type_as_str (DB_JSON_ARRAY)),
   std::make_pair ("b:", db_json_get_json_type_as_str (DB_JSON_BOOL)),
+  std::make_pair ("n:", db_json_get_json_type_as_str (DB_JSON_NULL)),
   std::make_pair ("k:", db_Json_object_key_conv_rep_serial), // these 2 are used only at serialization
   std::make_pair ("v:", db_Json_object_value_conv_rep_serial)
 };
@@ -2789,6 +2790,8 @@ JSON_SERIALIZER::GetValuePackedSize (const JSON_VALUE &value)
 	  size += GetValuePackedSize (*it);
 	}
       break;
+    case DB_JSON_NULL:
+      break;
     default:
       /* we shouldn't get here */
       assert (false);
@@ -2874,6 +2877,9 @@ JSON_SERIALIZER::Serialize_helper (const JSON_VALUE &obj, JSON_VALUE *key, char 
     case DB_JSON_OBJECT:
       // we need to know how many members will be in the object
       current = or_pack_int (current, obj.MemberCount ());
+      break;
+
+    case DB_JSON_NULL:
       break;
 
     default:
@@ -2983,6 +2989,11 @@ db_json_deserialize_helper (char *&json_raw, const std::string &path, JSON_DOC &
 	{
 	  db_json_deserialize_helper (json_raw, path + "/" + std::to_string (i), doc, serial_types);
 	}
+      break;
+
+    case DB_JSON_NULL:
+      value.SetNull();
+      p.Set (doc, value, doc.GetAllocator());
       break;
 
     default:
