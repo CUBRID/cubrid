@@ -13081,6 +13081,8 @@ namespace Func
       {
         case PT_GENERIC_TYPE_NUMBER:
           return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum));
+        case PT_GENERIC_TYPE_STRING:
+          return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum));
         default:
           return false;
       }
@@ -13272,24 +13274,13 @@ namespace Func
             node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
             break;
           case F_SET:
-            pt_add_type_to_set (parser, arg_list, &node->data_type);
-            break;
           case F_MULTISET:
-            node->type_enum = PT_TYPE_MULTISET;
-            pt_add_type_to_set (parser, arg_list, &node->data_type);
-            break;
           case F_SEQUENCE:
             pt_add_type_to_set (parser, arg_list, &node->data_type);
             break;
           case F_TABLE_SET:
-            pt_add_type_to_set (parser, pt_get_select_list (parser, arg_list), &node->data_type);
-            break;
           case F_TABLE_MULTISET:
-            node->type_enum = PT_TYPE_MULTISET;
-            pt_add_type_to_set (parser, pt_get_select_list (parser, arg_list), &node->data_type);
-            break;
           case F_TABLE_SEQUENCE:
-            node->type_enum = PT_TYPE_SEQUENCE;
             pt_add_type_to_set (parser, pt_get_select_list (parser, arg_list), &node->data_type);
             break;
           default:
@@ -13445,7 +13436,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case F_ELT:
     case F_INSERT_SUBSTRING:
       {
-        if(node->type_enum == PT_TYPE_NONE && node->data_type == NULL)
+        if(node->type_enum == PT_TYPE_NONE || node->data_type == NULL)
           {
             PT_NODE *arg = arg_list;
             //printf("1: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
