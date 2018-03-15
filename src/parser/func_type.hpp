@@ -50,6 +50,7 @@ struct func_signature
 
   static std::vector<func_signature> set;
   static std::vector<func_signature> sequence;
+  static std::vector<func_signature> table_set;
 };
 
 #endif

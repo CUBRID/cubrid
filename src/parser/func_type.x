@@ -59,7 +59,7 @@ X(GENERIC_              , NULL) //PT_GENERIC
 
 /* from here down are function code common to parser and xasl */
 /* "table" functions argument(s) are tables */
-X(TABLE_SET             , NULL)
+X(TABLE_SET             , &func_signature::table_set)
 X(TABLE_MULTISET        , NULL)
 X(TABLE_SEQUENCE        , NULL)
 X(TOP_TABLE_FUNC        , NULL)

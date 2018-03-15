@@ -13257,7 +13257,6 @@ namespace Func
             pt_add_type_to_set (parser, arg_list, &node->data_type);
             break;
           case F_TABLE_SET:
-            node->type_enum = PT_TYPE_SET;
             pt_add_type_to_set (parser, pt_get_select_list (parser, arg_list), &node->data_type);
             break;
           case F_TABLE_MULTISET:
