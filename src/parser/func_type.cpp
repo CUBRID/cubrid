@@ -167,13 +167,13 @@ std::vector<func_signature> func_signature::json_doc_path_doc_r_path_doc = {//(p
 };
 
 std::vector<func_signature> func_signature::set = {//???
-  {PT_TYPE_SET, {PT_GENERIC_TYPE_ANY}, {}},
+  {PT_TYPE_SET, {}, {PT_GENERIC_TYPE_ANY}},
 };
 
 std::vector<func_signature> func_signature::sequence = {//???
-  {PT_TYPE_SEQUENCE, {PT_GENERIC_TYPE_ANY}, {}},
+  {PT_TYPE_SEQUENCE, {}, {PT_GENERIC_TYPE_ANY}},
 };
 
 std::vector<func_signature> func_signature::table_set = {//??? similar with set?
-  {PT_TYPE_SET, {PT_GENERIC_TYPE_ANY}, {}},
+  {PT_TYPE_SET, {}, {PT_GENERIC_TYPE_ANY}},
 };
