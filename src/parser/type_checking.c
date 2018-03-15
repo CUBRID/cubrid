@@ -13423,7 +13423,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
         if(node->type_enum == PT_TYPE_NONE && node->data_type == NULL)
           {
             PT_NODE *arg = arg_list;
-            printf("1: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
+            //printf("1: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
             std::vector<func_signature>& func_sigs = *Func::types[fcode-PT_MIN];
             Func::Node funcNode(parser, node);
             funcNode.preprocess();//preprocess special cases (eg. ELT())
@@ -13436,7 +13436,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
               {
                 node->type_enum = PT_TYPE_NA;//to avoid entering here 2nd time
                 //func_sig = &func_sigs[0];
-                printf("DBG ========== NO FUNCTION SIGNATURE MATCHES ==========\n");
+                //printf("DBG ========== NO FUNCTION SIGNATURE MATCHES ==========\n");
                 arg_type = PT_TYPE_NONE;
                 PT_ERRORf2 (parser, node, "========== NO FUNCTION SIGNATURE MATCHES fcode=%d=%s ==========\n", fcode, Func::type_str[fcode-PT_MIN]);
               }
