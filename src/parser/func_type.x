@@ -66,9 +66,9 @@ X(TOP_TABLE_FUNC        , NULL)
 X(MIDXKEY               , NULL)
 
 /* "normal" functions, arguments are values */
-X(SET                   , NULL)
+X(SET                   , &func_signature::set)
 X(MULTISET              , NULL)
-X(SEQUENCE              , NULL)
+X(SEQUENCE              , &func_signature::sequence)
 X(VID                   , NULL)
 X(GENERIC               , NULL)
 X(CLASS_OF              , NULL)

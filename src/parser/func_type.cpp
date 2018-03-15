@@ -165,3 +165,11 @@ std::vector<func_signature> func_signature::json_doc_path_r_path = {//(pt_is_jso
 std::vector<func_signature> func_signature::json_doc_path_doc_r_path_doc = {//(pt_is_json_doc_type(), pt_is_json_path(), pt_is_json_doc() [, pt_is_json_path(), pt_is_json_doc()...])
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_JSON_PATH, PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_JSON_PATH, PT_GENERIC_TYPE_JSON_DOC}},
 };
+
+std::vector<func_signature> func_signature::set = {//???
+  {PT_TYPE_SEQUENCE, {PT_GENERIC_TYPE_ANY}, {}},
+};
+
+std::vector<func_signature> func_signature::sequence = {//???
+  {PT_TYPE_SEQUENCE, {PT_GENERIC_TYPE_ANY}, {}},
+};
