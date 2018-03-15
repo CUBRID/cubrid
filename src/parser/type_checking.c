@@ -13063,9 +13063,11 @@ namespace Func
   /*
    * get_signature () - get function signature using a function to compare types
    */
-  const func_signature* get_signature (parser_node* node, 
-                                 const std::vector<func_signature>& signatures, 
-                                 bool(*cmp_types)(const pt_arg_type&, pt_type_enum))
+  const func_signature* get_signature (
+    parser_node* node, 
+    const std::vector<func_signature>& signatures, 
+    bool(*cmp_types)(const pt_arg_type&, pt_type_enum)
+  )
   {
     for(auto& sig: signatures)
       {
@@ -13185,6 +13187,91 @@ namespace Func
         printf("ERR invalid number of arguments (index=%d)\n", index);
         return false;
       }
+
+    parser_node* arg_list = node->info.function.arg_list;
+    //printf("2: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
+    if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL) //return type
+      {
+        switch(signature.ret.type)
+          {
+          case pt_arg_type::NORMAL:
+              node->type_enum = signature.ret.val.type;
+              break;
+          case pt_arg_type::GENERIC:
+              assert(false);
+              break;
+          case pt_arg_type::INDEX:
+              size_t index = 0;
+              for(auto p=arg_list; p; p=p->next, ++index)
+                {
+                  if(index == signature.ret.val.index)
+                    {
+                      node->type_enum = p->type_enum;
+                      break;
+                    }
+                }
+              break;
+          }
+        switch(func_type)
+          {
+          case PT_MAX:
+          case PT_MIN:
+          case PT_LEAD:
+          case PT_LAG:
+          case PT_FIRST_VALUE:
+          case PT_LAST_VALUE:
+          case PT_NTH_VALUE:
+            node->data_type = (arg_list ? parser_copy_tree_list (parser, arg_list->data_type) : NULL);
+            break;
+          case PT_SUM:
+            node->data_type = (arg_list ? parser_copy_tree_list (parser, arg_list->data_type) : NULL);
+            if(arg_list && arg_list->type_enum == PT_TYPE_NUMERIC && node->data_type)
+              {
+                node->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
+              }
+            break;
+          case F_ELT:
+            node->data_type = pt_make_prim_data_type (parser, node->type_enum);
+	    if (node->data_type)
+	      {
+		//node->data_type->info.data_type.precision = max_precision;
+		node->data_type->info.data_type.dec_precision = 0;
+	      }
+            break;
+          case PT_GROUP_CONCAT:
+          case F_INSERT_SUBSTRING:
+            node->data_type = pt_make_prim_data_type (parser, node->type_enum);
+            node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+            break;
+          case F_SET:
+            node->type_enum = PT_TYPE_SET;
+            pt_add_type_to_set (parser, arg_list, &node->data_type);
+            break;
+          case F_MULTISET:
+            node->type_enum = PT_TYPE_MULTISET;
+            pt_add_type_to_set (parser, arg_list, &node->data_type);
+            break;
+          case F_SEQUENCE:
+            node->type_enum = PT_TYPE_SEQUENCE;
+            pt_add_type_to_set (parser, arg_list, &node->data_type);
+            break;
+          case F_TABLE_SET:
+            node->type_enum = PT_TYPE_SET;
+            pt_add_type_to_set (parser, pt_get_select_list (parser, arg_list), &node->data_type);
+            break;
+          case F_TABLE_MULTISET:
+            node->type_enum = PT_TYPE_MULTISET;
+            pt_add_type_to_set (parser, pt_get_select_list (parser, arg_list), &node->data_type);
+            break;
+          case F_TABLE_SEQUENCE:
+            node->type_enum = PT_TYPE_SEQUENCE;
+            pt_add_type_to_set (parser, pt_get_select_list (parser, arg_list), &node->data_type);
+            break;
+          default:
+            node->data_type = NULL;
+          }
+      }
+
     return true;
   }
 }//namespace Func
@@ -13249,7 +13336,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   PT_TYPE_ENUM arg_type = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
-  switch (fcode)
+  switch (fcode)//replace with Func::get_signature()/apply_signature()
     {
     case PT_TOP_AGG_FUNC:
     case PT_GENERIC:
@@ -13341,89 +13428,6 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
         if(func_sig != NULL)
           {
             Func::apply_signature(parser, node, *func_sig);
-            arg_list = node->info.function.arg_list;
-            //printf("2: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
-            if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL) //return type
-              {
-                switch(func_sig->ret.type)
-                  {
-                  case pt_arg_type::NORMAL:
-                      node->type_enum = func_sig->ret.val.type;
-                      break;
-                  case pt_arg_type::GENERIC:
-                      assert(false);
-                      break;
-                  case pt_arg_type::INDEX:
-                      size_t index = 0;
-                      for(auto p=arg_list; p; p=p->next, ++index)
-                        {
-                          if(index == func_sig->ret.val.index)
-                            {
-                              node->type_enum = p->type_enum;
-                              break;
-                            }
-                        }
-                      break;
-                  }
-                switch(fcode)
-                  {
-                  case PT_MAX:
-                  case PT_MIN:
-                  case PT_LEAD:
-                  case PT_LAG:
-                  case PT_FIRST_VALUE:
-                  case PT_LAST_VALUE:
-                  case PT_NTH_VALUE:
-                    node->data_type = (arg_list ? parser_copy_tree_list (parser, arg_list->data_type) : NULL);
-                    break;
-                  case PT_SUM:
-                    node->data_type = (arg_list ? parser_copy_tree_list (parser, arg_list->data_type) : NULL);
-                    if(arg_list && arg_list->type_enum == PT_TYPE_NUMERIC && node->data_type)
-                      {
-                        node->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
-                      }
-                    break;
-                  case F_ELT:
-                    node->data_type = pt_make_prim_data_type (parser, node->type_enum);
-	            if (node->data_type)
-	              {
-		        //node->data_type->info.data_type.precision = max_precision;
-		        node->data_type->info.data_type.dec_precision = 0;
-	              }
-                    break;
-                  case PT_GROUP_CONCAT:
-                  case F_INSERT_SUBSTRING:
-                    node->data_type = pt_make_prim_data_type (parser, node->type_enum);
-                    node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
-                    break;
-                  case F_SET:
-                    node->type_enum = PT_TYPE_SET;
-                    pt_add_type_to_set (parser, arg_list, &node->data_type);
-                    break;
-                  case F_MULTISET:
-                    node->type_enum = PT_TYPE_MULTISET;
-                    pt_add_type_to_set (parser, arg_list, &node->data_type);
-                    break;
-                  case F_SEQUENCE:
-                    node->type_enum = PT_TYPE_SEQUENCE;
-                    pt_add_type_to_set (parser, arg_list, &node->data_type);
-                    break;
-                  case F_TABLE_SET:
-                    node->type_enum = PT_TYPE_SET;
-                    pt_add_type_to_set (parser, pt_get_select_list (parser, arg_list), &node->data_type);
-                    break;
-                  case F_TABLE_MULTISET:
-                    node->type_enum = PT_TYPE_MULTISET;
-                    pt_add_type_to_set (parser, pt_get_select_list (parser, arg_list), &node->data_type);
-                    break;
-                  case F_TABLE_SEQUENCE:
-                    node->type_enum = PT_TYPE_SEQUENCE;
-                    pt_add_type_to_set (parser, pt_get_select_list (parser, arg_list), &node->data_type);
-                    break;
-                  default:
-                    node->data_type = NULL;
-                  }
-              }
           }
       }
       break;
