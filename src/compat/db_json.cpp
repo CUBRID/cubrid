@@ -269,8 +269,10 @@ class JSON_DUPLICATE_KEYS_CHECKER : public JSON_WALKER
     int CallBefore (JSON_VALUE &value, JSON_VALUE *key = NULL);
 };
 
-static void db_json_build_serial_types (JSON_SERIALIZE_ACTION action,
+static void db_json_build_serial_types (const JSON_SERIALIZE_ACTION &action,
 					std::unordered_map<std::string, std::string> &serial_types);
+static void db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_type,
+    std::unordered_map<std::string, std::string> &special_chars);
 
 class JSON_SERIALIZER : public JSON_WALKER
 {
@@ -278,6 +280,7 @@ class JSON_SERIALIZER : public JSON_WALKER
     JSON_SERIALIZER () : head (NULL), moving_ptr (NULL)
     {
       db_json_build_serial_types (JSON_SERIALIZE_ACTION::JSON_SERIALIZE, serial_types);
+      db_json_build_path_special_chars (JSON_PATH_TYPE::JSON_PATH_SQL_JSON, special_chars);
     }
     ~JSON_SERIALIZER() {}
 
@@ -301,6 +304,7 @@ class JSON_SERIALIZER : public JSON_WALKER
     char *moving_ptr;
     OR_BUF buf;
     std::unordered_map<std::string, std::string> serial_types;
+    std::unordered_map<std::string, std::string> special_chars;
 };
 
 const bool JSON_PRIVATE_ALLOCATOR::kNeedFree = true;
@@ -358,10 +362,6 @@ static bool db_json_iszero (const unsigned char &ch);
 static int db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_path_out);
 static int db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_pointer_out);
 static JSON_PATH_TYPE db_json_get_path_type (std::string &path_string);
-static void db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_type,
-    std::unordered_map<std::string, std::string> &special_chars);
-static void db_json_build_serial_types (JSON_SERIALIZE_ACTION action,
-					std::unordered_map<std::string, DB_JSON_TYPE> &serial_types);
 static std::vector<std::string> db_json_split_path_by_delimiters (const std::string &path,
     const std::string &delim);
 static bool db_json_sql_path_is_valid (std::string &sql_path);
@@ -1871,7 +1871,8 @@ db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_type,
  * serial_types (in)       : map where we store the the correspondence
  */
 static void
-db_json_build_serial_types (JSON_SERIALIZE_ACTION action, std::unordered_map<std::string, std::string> &serial_types)
+db_json_build_serial_types (const JSON_SERIALIZE_ACTION &action,
+			    std::unordered_map<std::string, std::string> &serial_types)
 {
   for (auto it = serial_types_conversions.begin (); it != serial_types_conversions.end (); ++it)
     {
@@ -2751,15 +2752,23 @@ JSON_SERIALIZER::GetValuePackedSize (const JSON_VALUE &value)
     case DB_JSON_INT:
       size += OR_INT_SIZE;
       break;
+
     case DB_JSON_DOUBLE:
       size += OR_DOUBLE_SIZE;
       break;
+
     case DB_JSON_STRING:
-      size += GetStringPackedSize (value.GetString ());
+    {
+      std::string value_string = value.GetString();
+      db_json_replace_token_special_chars (value_string, special_chars);
+      size += GetStringPackedSize (value_string.c_str());
       break;
+    }
+
     case DB_JSON_BOOL:
       size += GetStringPackedSize ("T");
       break;
+
     case DB_JSON_OBJECT:
       // we encode the number of members
       size += OR_INT_SIZE;
@@ -2770,8 +2779,12 @@ JSON_SERIALIZER::GetValuePackedSize (const JSON_VALUE &value)
 	  // here we count "k:"
 	  found_iterator = serial_types.find (db_Json_object_key_conv_rep_serial);
 	  size += GetStringPackedSize (found_iterator->second.c_str ());
+
 	  // count the actual key string
-	  size += GetStringPackedSize (it->name.GetString ());
+	  std::string key_string = it->name.GetString();
+	  db_json_replace_token_special_chars (key_string, special_chars);
+	  size += GetStringPackedSize (key_string.c_str());
+
 	  // count "v:"
 	  found_iterator = serial_types.find (db_Json_object_value_conv_rep_serial);
 	  size += GetStringPackedSize (found_iterator->second.c_str ());
@@ -2780,6 +2793,7 @@ JSON_SERIALIZER::GetValuePackedSize (const JSON_VALUE &value)
 	  size += GetValuePackedSize (it->value);
 	}
       break;
+
     case DB_JSON_ARRAY:
       // we encode the number of elements in the array
       size += OR_INT_SIZE;
@@ -2790,8 +2804,10 @@ JSON_SERIALIZER::GetValuePackedSize (const JSON_VALUE &value)
 	  size += GetValuePackedSize (*it);
 	}
       break;
+
     case DB_JSON_NULL:
       break;
+
     default:
       /* we shouldn't get here */
       assert (false);
@@ -2839,7 +2855,11 @@ JSON_SERIALIZER::Serialize_helper (const JSON_VALUE &obj, JSON_VALUE *key, char 
     {
       auto found_iterator = serial_types.find (db_Json_object_key_conv_rep_serial);
       current = or_pack_string (current, found_iterator->second.c_str ());
-      current = or_pack_string (current, key->GetString ());
+
+      std::string key_string = key->GetString();
+      db_json_replace_token_special_chars (key_string, special_chars);
+      current = or_pack_string (current, key_string.c_str());
+
       found_iterator = serial_types.find (db_Json_object_value_conv_rep_serial);
       current = or_pack_string (current, found_iterator->second.c_str ());
     }
@@ -2854,7 +2874,7 @@ JSON_SERIALIZER::Serialize_helper (const JSON_VALUE &obj, JSON_VALUE *key, char 
   switch (type)
     {
     case DB_JSON_INT:
-      current = or_pack_int (current, obj.GetInt ());
+      current = or_pack_int (current, obj.GetInt());
       break;
 
     case DB_JSON_DOUBLE:
@@ -2866,8 +2886,12 @@ JSON_SERIALIZER::Serialize_helper (const JSON_VALUE &obj, JSON_VALUE *key, char 
       break;
 
     case DB_JSON_STRING:
-      current = or_pack_string (current, obj.GetString ());
+    {
+      std::string object_string = obj.GetString();
+      db_json_replace_token_special_chars (object_string, special_chars);
+      current = or_pack_string (current, object_string.c_str());
       break;
+    }
 
     case DB_JSON_ARRAY:
       // we need to know how many elements will be in the array
