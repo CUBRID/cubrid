@@ -13064,16 +13064,33 @@ namespace Func
   bool cmp_types_castable(const pt_arg_type& type, pt_type_enum type_enum)//is possible to cast type_enum -> type?
   {
     assert(type.type != pt_arg_type::INDEX);
-
-    //this should be detailed because casting CHAR to NUMBER should be possible
+    //this should be detailed because casting CHAR to NUMBER or SMALLINT to INT should be possible
     if (type.type == pt_arg_type::NORMAL)
       {
+#if 0
         if (type.val.type == type_enum)
           {
             return (type_enum != PT_TYPE_NONE);//false if both arguments are of type none; true if both have the same type
           }
         /* if def_type is a PT_TYPE_ENUM and the conditions above did not hold then the two types are not equivalent. */
         return false;
+#else
+        switch(type.val.type)
+          {
+            case PT_TYPE_INTEGER:
+              return (PT_IS_DISCRETE_NUMBER_TYPE(type_enum));
+            case PT_TYPE_BIGINT:
+              return (PT_IS_DISCRETE_NUMBER_TYPE(type_enum));
+
+            default:
+              if (type.val.type == type_enum)
+                {
+                  return (type_enum != PT_TYPE_NONE);//false if both arguments are of type none; true if both have the same type
+                }
+              /* if def_type is a PT_TYPE_ENUM and the conditions above did not hold then the two types are not equivalent. */
+              return false;
+          }
+#endif
       }
 
     //type.type == pt_arg_type::GENERIC
@@ -13166,6 +13183,17 @@ namespace Func
           }
       }
     return NULL;
+  }
+
+    /*
+   * get_signature () - get function signature using a function to compare types
+   */
+  const func_signature* get_signature (parser_node* node, const std::vector<func_signature>& signatures)
+  {
+    const func_signature* signature = get_signature(node, signatures, &cmp_types_normal);
+    signature || (signature=get_signature(node, signatures, &cmp_types_generic));
+    signature || (signature=get_signature(node, signatures, &cmp_types_castable));
+    return signature;
   }
 
   /*
@@ -13450,16 +13478,11 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
             if(!Func::types[fcode-PT_MIN]){
               printf("ERR no function signature for fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
             }
-            assert("ERR no function signature" && Func::types[fcode-PT_MIN] != NULL);
-            std::vector<func_signature>& func_sigs = *Func::types[fcode-PT_MIN];
             Func::Node funcNode(parser, node);
             funcNode.preprocess();//preprocess special cases (eg. ELT())
-            const func_signature* func_sig = Func::get_signature(node, func_sigs, &Func::cmp_types_normal);
-
-            func_sig || 
-            (func_sig = Func::get_signature(node, func_sigs, &Func::cmp_types_generic)) ||
-            (func_sig = Func::get_signature(node, func_sigs, &Func::cmp_types_castable));
-
+            assert("ERR no function signature" && Func::types[fcode-PT_MIN] != NULL);
+            std::vector<func_signature>& func_sigs = *Func::types[fcode-PT_MIN];
+            const func_signature* func_sig = Func::get_signature(node, func_sigs);
             if(func_sig != NULL)
               {
                 Func::apply_signature(parser, node, *func_sig);
