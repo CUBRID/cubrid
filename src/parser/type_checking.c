@@ -13424,10 +13424,10 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
           {
             PT_NODE *arg = arg_list;
             //printf("1: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
-            assert(Func::types[fcode-PT_MIN] != NULL);
             if(!Func::types[fcode-PT_MIN]){
               printf("ERR no function signature for fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
             }
+            assert(Func::types[fcode-PT_MIN] != NULL);
             std::vector<func_signature>& func_sigs = *Func::types[fcode-PT_MIN];
             Func::Node funcNode(parser, node);
             funcNode.preprocess();//preprocess special cases (eg. ELT())
