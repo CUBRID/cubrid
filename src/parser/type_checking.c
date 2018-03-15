@@ -13350,6 +13350,14 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case F_CLASS_OF:
       node->type_enum = arg_type; // by default f(x) has same type as x
       break;
+
+    case F_SET:
+    case F_MULTISET:
+    case F_SEQUENCE:
+    case F_TABLE_SET:
+    case F_TABLE_MULTISET:
+    case F_TABLE_SEQUENCE:
+
     case PT_GROUP_CONCAT:
     case PT_MAX:
     case PT_MIN:
