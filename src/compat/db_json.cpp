@@ -313,8 +313,7 @@ const int JSON_DOC::MAX_CHUNK_SIZE = 64 * 1024; /* TODO does 64K serve our needs
 static std::vector<std::pair<std::string, std::string> > uri_fragment_conversions =
 {
   std::make_pair ("~", "~0"),
-  std::make_pair ("/", "~1"),
-  std::make_pair (" ", "%20")
+  std::make_pair ("/", "~1")
 };
 static const char *db_Json_pointer_delimiters = "/";
 static const char *db_Json_sql_path_delimiters = "$.[]\"";
