@@ -13432,7 +13432,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
           }
         if(func_sig == NULL)
           {
-            func_sig = &func_sigs[0];
+            //func_sig = &func_sigs[0];
+            printf("========== NO FUNCTION SIGNATURE MATCHES ==========\n");
           }
         if(func_sig != NULL)
           {
