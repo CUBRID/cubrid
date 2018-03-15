@@ -13057,6 +13057,7 @@ namespace Func
 
   bool cmp_types_generic(const pt_arg_type& type, pt_type_enum type_enum)
   {
+    assert(type.type != pt_arg_type::INDEX);
     return pt_are_equivalent_types(type, type_enum);
   }
 
