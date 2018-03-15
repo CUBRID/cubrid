@@ -13420,24 +13420,30 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case F_ELT:
     case F_INSERT_SUBSTRING:
       {
-        PT_NODE *arg = arg_list;
-        //printf("1: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
-        std::vector<func_signature>& func_sigs = *Func::types[fcode-PT_MIN];
-        Func::Node funcNode(parser, node);
-        funcNode.preprocess();//preprocess special cases (eg. ELT())
-        const func_signature* func_sig = Func::get_signature(node, func_sigs, &Func::cmp_types_normal);
-        if(func_sig == NULL)
+        if(node->type_enum == PT_TYPE_NONE && node->data_type == NULL)
           {
-            func_sig = Func::get_signature(node, func_sigs, &Func::cmp_types_generic);
-          }
-        if(func_sig == NULL)
-          {
-            //func_sig = &func_sigs[0];
-            printf("========== NO FUNCTION SIGNATURE MATCHES ==========\n");
-          }
-        if(func_sig != NULL)
-          {
-            Func::apply_signature(parser, node, *func_sig);
+            PT_NODE *arg = arg_list;
+            printf("1: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
+            std::vector<func_signature>& func_sigs = *Func::types[fcode-PT_MIN];
+            Func::Node funcNode(parser, node);
+            funcNode.preprocess();//preprocess special cases (eg. ELT())
+            const func_signature* func_sig = Func::get_signature(node, func_sigs, &Func::cmp_types_normal);
+            if(func_sig == NULL)
+              {
+                func_sig = Func::get_signature(node, func_sigs, &Func::cmp_types_generic);
+              }
+            if(func_sig == NULL)
+              {
+                node->type_enum = PT_TYPE_NA;//to avoid entering here 2nd time
+                //func_sig = &func_sigs[0];
+                printf("DBG ========== NO FUNCTION SIGNATURE MATCHES ==========\n");
+                arg_type = PT_TYPE_NONE;
+                PT_ERRORf2 (parser, node, "========== NO FUNCTION SIGNATURE MATCHES fcode=%d=%s ==========\n", fcode, Func::type_str[fcode-PT_MIN]);
+              }
+            if(func_sig != NULL)
+              {
+                Func::apply_signature(parser, node, *func_sig);
+              }
           }
       }
       break;
@@ -13447,7 +13453,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
   }
 
-  assert(node->type_enum != PT_TYPE_NONE || node->data_type != NULL);
+  //assert(node->type_enum != PT_TYPE_NONE || node->data_type != NULL);
 
   /* collation checking */
   arg_list = node->info.function.arg_list;
