@@ -4604,6 +4604,7 @@ class dwb_flush_block_daemon_task: public cubthread::entry_task
       /* performance tracking */
       if (m_perf_track.is_perf_tracking)
         {
+          tsc_getticks (&(m_perf_track.end_tick));
 	  tsc_elapsed_time_usec (&tv_diff, m_perf_track.end_tick, m_perf_track.start_tick);
 	  oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
 	  if (oldest_time > 0)
