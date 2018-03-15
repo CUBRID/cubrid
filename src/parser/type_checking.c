@@ -13336,6 +13336,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   PT_TYPE_ENUM arg_type = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
+  //printf("fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
   switch (fcode)//replace with Func::get_signature()/apply_signature()
     {
     case PT_TOP_AGG_FUNC:
@@ -13424,6 +13425,9 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
             PT_NODE *arg = arg_list;
             //printf("1: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
             assert(Func::types[fcode-PT_MIN] != NULL);
+            if(!Func::types[fcode-PT_MIN]){
+              printf("ERR no function signature for fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
+            }
             std::vector<func_signature>& func_sigs = *Func::types[fcode-PT_MIN];
             Func::Node funcNode(parser, node);
             funcNode.preprocess();//preprocess special cases (eg. ELT())
