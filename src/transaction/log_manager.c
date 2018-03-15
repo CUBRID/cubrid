@@ -10392,45 +10392,59 @@ class log_checkpoint_daemon_task : public cubthread::entry_task
 class log_remove_log_archive_daemon_task : public cubthread::entry_task
 {
   private:
-    std::chrono::system_clock::time_point m_last_deletion_time;
-    std::chrono::milliseconds m_remove_log_archives_interval_msec;
+    using clock = std::chrono::system_clock;
 
-    void set_remove_log_archives_interval_msec ()
+    bool m_is_timed_wait;
+    cubthread::delta_time m_period;
+    std::chrono::milliseconds m_param_period;
+    clock::time_point m_log_deleted_time;
+
+    void compute_period ()
     {
+      // fetch remove log archives interval
       int remove_log_archives_interval_sec = prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
-
       assert (remove_log_archives_interval_sec >= 0);
-      m_remove_log_archives_interval_msec = std::chrono::milliseconds (remove_log_archives_interval_sec * 1000);
-    }
 
-  public:
-    log_remove_log_archive_daemon_task () : m_last_deletion_time ()
-    {
-      set_remove_log_archives_interval_msec ();
-    }
+      // cache interval for later use
+      m_param_period = std::chrono::milliseconds (remove_log_archives_interval_sec * 1000);
 
-    void get_remove_log_archives_interval (bool & is_timed_wait, cubthread::delta_time & period)
-    {
-      if (m_remove_log_archives_interval_msec > std::chrono::milliseconds (0))
+      if (m_param_period > std::chrono::milliseconds (0))
 	{
-	  std::chrono::system_clock::time_point now = std::chrono::system_clock::now ();
-	  is_timed_wait = true;
+	  m_is_timed_wait = true;
+	  clock::time_point now = clock::now ();
 
-	  // now - m_last_deletion_time: represents time elapsed since last log archive deletion
-	  if ((now - m_last_deletion_time) > m_remove_log_archives_interval_msec)
+	  // now - m_log_deleted_time: represents time elapsed since last log archive deletion
+	  if ((now - m_log_deleted_time) > m_param_period)
 	    {
-	      period = m_remove_log_archives_interval_msec;
+	      m_period = m_param_period;
 	    }
 	  else
 	    {
-	      period = m_remove_log_archives_interval_msec - (now - m_last_deletion_time);
+	      m_period = m_param_period - (now - m_log_deleted_time);
 	    }
 	}
       else
 	{
 	  // infinite wait
-	  is_timed_wait = false;
+	  m_is_timed_wait = false;
 	}
+    }
+
+  public:
+    log_remove_log_archive_daemon_task ()
+      : m_is_timed_wait (true)
+      , m_period (0)
+      , m_param_period (0)
+      , m_log_deleted_time ()
+    {
+      // initialize period
+      compute_period ();
+    }
+
+    void get_remove_log_archives_interval (bool & is_timed_wait, cubthread::delta_time & period)
+    {
+      period = m_period;
+      is_timed_wait = m_is_timed_wait;
     }
 
     void execute (cubthread::entry & thread_ref) override
@@ -10441,17 +10455,12 @@ class log_remove_log_archive_daemon_task : public cubthread::entry_task
 	  return;
 	}
 
-      // fetch remove log archives interval from system parameters
-      set_remove_log_archives_interval_msec ();
+      // compute wait period based on configured interval
+      compute_period ();
 
-      bool is_timed_wait;
-      cubthread::delta_time period;
-
-      get_remove_log_archives_interval (is_timed_wait, period);
-
-      if (is_timed_wait)
+      if (m_is_timed_wait)
 	{
-	  if (period != m_remove_log_archives_interval_msec)
+	  if (m_period != m_param_period)
 	    {
 	      // do not delete logs. wait more time
 	      return;
@@ -10459,7 +10468,7 @@ class log_remove_log_archive_daemon_task : public cubthread::entry_task
 	  if (logpb_remove_archive_logs_exceed_limit (&thread_ref, 1) > 0)
 	    {
 	      // a log was deleted
-	      m_last_deletion_time = std::chrono::system_clock::now ();
+	      m_log_deleted_time = clock::now ();
 	    }
 	}
       else
