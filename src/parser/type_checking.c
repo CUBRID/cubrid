@@ -13193,6 +13193,7 @@ namespace Func
     //printf("2: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
     if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL) //return type
       {
+        //set node->type_enum
         switch(signature.ret.type)
           {
           case pt_arg_type::NORMAL:
@@ -13213,6 +13214,7 @@ namespace Func
                 }
               break;
           }
+        //set node->data_type
         switch(func_type)
           {
           case PT_MAX:
@@ -13245,7 +13247,6 @@ namespace Func
             node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
             break;
           case F_SET:
-            node->type_enum = PT_TYPE_SET;
             pt_add_type_to_set (parser, arg_list, &node->data_type);
             break;
           case F_MULTISET:
@@ -13253,7 +13254,6 @@ namespace Func
             pt_add_type_to_set (parser, arg_list, &node->data_type);
             break;
           case F_SEQUENCE:
-            node->type_enum = PT_TYPE_SEQUENCE;
             pt_add_type_to_set (parser, arg_list, &node->data_type);
             break;
           case F_TABLE_SET:
