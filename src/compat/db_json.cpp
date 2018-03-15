@@ -879,7 +879,8 @@ db_json_get_raw_json_body_from_document (const JSON_DOC *doc)
 const char *
 db_json_get_json_body_from_document (const JSON_DOC &doc)
 {
-  return doc.GetJsonBody().c_str();
+  //return doc.GetJsonBody().c_str();
+  return db_json_get_raw_json_body_from_document (&doc);
 }
 
 static int
