@@ -13132,12 +13132,13 @@ namespace Func
   }
 
   /*
-   * match_signature () - match function signature with casts if necessary
-   *   return:
-   *   list(in): list of nodes
-   *   signature(in): function signature
+   * apply_signature() - apply function signature with casts if necessary
+   *   return: success
+   *   parser (in): parser context
+   *   node (in): list of nodes
+   *   func_signature (in): function signature
    */
-  bool match_signature (parser_context* parser, parser_node* node, const func_signature& signature)
+  bool apply_signature (parser_context* parser, parser_node* node, const func_signature& signature)
   {
     FUNC_TYPE func_type = node->info.function.function_type;
     parser_node* arg = node->info.function.arg_list;
@@ -13200,9 +13201,14 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *arg_list = node->info.function.arg_list;
   FUNC_TYPE fcode = node->info.function.function_type;
-
-  if (!arg_list && fcode != PT_COUNT_STAR && fcode != PT_GROUPBY_NUM && fcode != PT_ROW_NUMBER && fcode != PT_RANK
-      && fcode != PT_DENSE_RANK && fcode != PT_CUME_DIST && fcode != PT_PERCENT_RANK)
+  if (!arg_list && 
+      fcode != PT_COUNT_STAR && 
+      fcode != PT_GROUPBY_NUM && 
+      fcode != PT_ROW_NUMBER && 
+      fcode != PT_RANK && 
+      fcode != PT_DENSE_RANK && 
+      fcode != PT_CUME_DIST && 
+      fcode != PT_PERCENT_RANK)
     {
       PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_NO_ARGS,
 		  pt_short_print (parser, node));
@@ -13242,74 +13248,21 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
-  /* 
-   * Should only get one arg to function; set to 0 if the function
-   * accepts more than one.
-   */
   PT_TYPE_ENUM arg_type = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
-
   switch (fcode)
     {
     case PT_TOP_AGG_FUNC:
-      node->type_enum = arg_type; // by default f(x) has same type as x
-      assert(false);
-      break;
     case PT_GENERIC:
-      node->type_enum = arg_type; // by default f(x) has same type as x
-      assert(false);
-      break;
-    case F_TABLE_SET:
-      node->type_enum = PT_TYPE_SET;
-      pt_add_type_to_set (parser, pt_get_select_list (parser, arg_list), &node->data_type);
-      break;
-    case F_TABLE_MULTISET:
-      node->type_enum = PT_TYPE_MULTISET;
-      pt_add_type_to_set (parser, pt_get_select_list (parser, arg_list), &node->data_type);
-      break;
-    case F_TABLE_SEQUENCE:
-      node->type_enum = PT_TYPE_SEQUENCE;
-      pt_add_type_to_set (parser, pt_get_select_list (parser, arg_list), &node->data_type);
-      break;
-    case F_TOP_TABLE_FUNC:
-      node->type_enum = arg_type; // by default f(x) has same type as x
-      assert(false);
-      break;
     case F_MIDXKEY:
-      node->type_enum = arg_type; // by default f(x) has same type as x
-      assert(false);
-      break;
-    case F_SET:
-      if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL)
-        {
-          node->type_enum = PT_TYPE_SET;
-          pt_add_type_to_set (parser, arg_list, &node->data_type);
-        }
-      break;
-    case F_MULTISET:
-      if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL)
-        {
-          node->type_enum = PT_TYPE_MULTISET;
-          pt_add_type_to_set (parser, arg_list, &node->data_type);
-        }
-      break;
-    case F_SEQUENCE:
-      if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL)
-        {
-          node->type_enum = PT_TYPE_SEQUENCE;
-          pt_add_type_to_set (parser, arg_list, &node->data_type);
-        }
-      break;
+    case F_TOP_TABLE_FUNC:
     case F_VID:
       node->type_enum = arg_type; // by default f(x) has same type as x
-      assert(false);//???
+      assert(false);
       break;
     case F_GENERIC:
-      node->type_enum = arg_type; // by default f(x) has same type as x
-      break;
     case F_CLASS_OF:
       node->type_enum = arg_type; // by default f(x) has same type as x
       break;
-
     case PT_GROUP_CONCAT:
     case PT_MAX:
     case PT_MIN:
@@ -13374,11 +13327,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
         PT_NODE *arg = arg_list;
         //printf("1: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
         std::vector<func_signature>& func_sigs = *Func::types[fcode-PT_MIN];
-
         Func::Node funcNode(parser, node);
-        //preprocess special cases
-        funcNode.preprocess();
-
+        funcNode.preprocess();//preprocess special cases (eg. ELT())
         const func_signature* func_sig = Func::get_signature(node, func_sigs, &Func::cmp_types_normal);
         if(func_sig == NULL)
           {
@@ -13390,10 +13340,9 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
           }
         if(func_sig != NULL)
           {
-            Func::match_signature(parser, node, *func_sig);
+            Func::apply_signature(parser, node, *func_sig);
             arg_list = node->info.function.arg_list;
             //printf("2: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
-            
             if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL) //return type
               {
                 switch(func_sig->ret.type)
@@ -13416,7 +13365,6 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
                         }
                       break;
                   }
-                //some functions need NULL and some need parser_copy_tree_list() !?
                 switch(fcode)
                   {
                   case PT_MAX:
@@ -13447,6 +13395,30 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
                   case F_INSERT_SUBSTRING:
                     node->data_type = pt_make_prim_data_type (parser, node->type_enum);
                     node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+                    break;
+                  case F_SET:
+                    node->type_enum = PT_TYPE_SET;
+                    pt_add_type_to_set (parser, arg_list, &node->data_type);
+                    break;
+                  case F_MULTISET:
+                    node->type_enum = PT_TYPE_MULTISET;
+                    pt_add_type_to_set (parser, arg_list, &node->data_type);
+                    break;
+                  case F_SEQUENCE:
+                    node->type_enum = PT_TYPE_SEQUENCE;
+                    pt_add_type_to_set (parser, arg_list, &node->data_type);
+                    break;
+                  case F_TABLE_SET:
+                    node->type_enum = PT_TYPE_SET;
+                    pt_add_type_to_set (parser, pt_get_select_list (parser, arg_list), &node->data_type);
+                    break;
+                  case F_TABLE_MULTISET:
+                    node->type_enum = PT_TYPE_MULTISET;
+                    pt_add_type_to_set (parser, pt_get_select_list (parser, arg_list), &node->data_type);
+                    break;
+                  case F_TABLE_SEQUENCE:
+                    node->type_enum = PT_TYPE_SEQUENCE;
+                    pt_add_type_to_set (parser, pt_get_select_list (parser, arg_list), &node->data_type);
                     break;
                   default:
                     node->data_type = NULL;
@@ -16275,15 +16247,22 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	    case DB_TYPE_INTEGER:
 	      {
-		int i1, i2, itmp;
+		/* NOTE that we need volatile to prevent optimizer from generating division expression as
+		 * multiplication.	
+		 */
+		volatile int i1, i2, itmp;
 
 		i1 = db_get_int (arg1);
 		i2 = db_get_int (arg2);
 		itmp = i1 * i2;
 		if (OR_CHECK_MULT_OVERFLOW (i1, i2, itmp))
-		  goto overflow;
+		  {
+		    goto overflow;
+		  }
 		else
-		  db_make_int (result, itmp);
+		  {
+		    db_make_int (result, itmp);
+		  }
 		break;
 	      }
 
@@ -16298,23 +16277,34 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		bi2 = db_get_bigint (arg2);
 		bitmp = bi1 * bi2;
 		if (OR_CHECK_MULT_OVERFLOW (bi1, bi2, bitmp))
-		  goto overflow;
+		  {
+		    goto overflow;
+		  }
 		else
-		  db_make_bigint (result, bitmp);
+		  {
+		    db_make_bigint (result, bitmp);
+		  }
 		break;
 	      }
 
 	    case DB_TYPE_SHORT:
 	      {
-		short s1, s2, stmp;
+		/* NOTE that we need volatile to prevent optimizer from generating division expression as
+		* multiplication.
+		*/
+		volatile short s1, s2, stmp;
 
 		s1 = db_get_short (arg1);
 		s2 = db_get_short (arg2);
 		stmp = s1 * s2;
 		if (OR_CHECK_MULT_OVERFLOW (s1, s2, stmp))
-		  goto overflow;
+		  {
+		    goto overflow;
+		  }
 		else
-		  db_make_short (result, stmp);
+		  {
+		    db_make_short (result, stmp);
+		  }
 		break;
 	      }
 
