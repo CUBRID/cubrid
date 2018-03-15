@@ -13061,6 +13061,31 @@ namespace Func
     return pt_are_equivalent_types(type, type_enum);
   }
 
+  bool cmp_types_castable(const pt_arg_type& type, pt_type_enum type_enum)//is possible to cast type_enum -> type?
+  {
+    assert(type.type != pt_arg_type::INDEX);
+
+    //this should be detailed because casting CHAR to NUMBER should be possible
+    if (type.type == pt_arg_type::NORMAL)
+      {
+        if (type.val.type == type_enum)
+          {
+            return (type_enum != PT_TYPE_NONE);//false if both arguments are of type none; true if both have the same type
+          }
+        /* if def_type is a PT_TYPE_ENUM and the conditions above did not hold then the two types are not equivalent. */
+        return false;
+      }
+
+    //type.type == pt_arg_type::GENERIC
+    switch(type.val.generic_type)
+      {
+        case PT_GENERIC_TYPE_NUMBER:
+          return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum));
+        default:
+          return false;
+      }
+}
+
   /*
    * get_signature () - get function signature using a function to compare types
    */
@@ -13432,10 +13457,11 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
             Func::Node funcNode(parser, node);
             funcNode.preprocess();//preprocess special cases (eg. ELT())
             const func_signature* func_sig = Func::get_signature(node, func_sigs, &Func::cmp_types_normal);
-            if(func_sig == NULL)
-              {
-                func_sig = Func::get_signature(node, func_sigs, &Func::cmp_types_generic);
-              }
+
+            func_sig || 
+            (func_sig = Func::get_signature(node, func_sigs, &Func::cmp_types_generic)) ||
+            (func_sig = Func::get_signature(node, func_sigs, &Func::cmp_types_castable));
+
             if(func_sig != NULL)
               {
                 Func::apply_signature(parser, node, *func_sig);
