@@ -170,6 +170,10 @@ std::vector<func_signature> func_signature::set = {//???
   {PT_TYPE_SET, {}, {PT_GENERIC_TYPE_ANY}},
 };
 
+std::vector<func_signature> func_signature::multiset = {//???
+  {PT_TYPE_MULTISET, {}, {PT_GENERIC_TYPE_ANY}},
+};
+
 std::vector<func_signature> func_signature::sequence = {//???
   {PT_TYPE_SEQUENCE, {}, {PT_GENERIC_TYPE_ANY}},
 };
@@ -177,3 +181,12 @@ std::vector<func_signature> func_signature::sequence = {//???
 std::vector<func_signature> func_signature::table_set = {//??? similar with set?
   {PT_TYPE_SET, {}, {PT_GENERIC_TYPE_ANY}},
 };
+
+std::vector<func_signature> func_signature::table_multiset = {//???
+  {PT_TYPE_MULTISET, {}, {PT_GENERIC_TYPE_ANY}},
+};
+
+std::vector<func_signature> func_signature::table_sequence = {//???
+  {PT_TYPE_SEQUENCE, {}, {PT_GENERIC_TYPE_ANY}},
+};
+
