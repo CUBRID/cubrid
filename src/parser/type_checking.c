@@ -13461,7 +13461,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
               {
                 node->type_enum = PT_TYPE_NA;//to avoid entering here 2nd time
                 arg_type = PT_TYPE_NONE;
-                PT_ERRORf2 (parser, node, "========== NO FUNCTION SIGNATURE MATCHES fcode=%d=%s ==========\n", fcode, Func::type_str[fcode-PT_MIN]);
+                PT_ERRORf2 (parser, node, "========== NO FUNCTION SIGNATURE MATCHES fcode=%d=%s args: %s ==========\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
               }
           }
       }
