@@ -3569,12 +3569,26 @@ start_flush_block:
   if (checksum_threads > 0)
     {
     retry:
-
       if (!dwb_block_has_all_checksums_computed (block->block_no))
 	{
-	  /* Wait for checksum thread to finish. */
-	  thread_sleep (10);
-	  goto retry;
+	  if (dwb_is_checksum_computation_daemon_available ())
+	    {
+	      dwb_checkum_computation_daemon->wakeup ();
+	      /* Wait for checksum thread to finish. */
+	      thread_sleep (10);
+	      goto retry;
+	    }
+	  else
+	    {
+	      error_code = dwb_compute_block_checksums (thread_p, block, NULL, &needs_flush);
+	      if (error_code != NO_ERROR)
+		{
+		  assert (false);
+		  return error_code;
+		}
+	      /* All checksums computed. */
+	      assert (needs_flush == true);
+	    }
 	}
     }
 #endif /* SERVER_MODE */
