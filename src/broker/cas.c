@@ -1944,10 +1944,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   /* for driver less than 10.0 */
   if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version, PROTOCOL_V7))
     {
-      ux_set_utype_for_timetz (CCI_U_TYPE_TIME);
       ux_set_utype_for_datetimetz (CCI_U_TYPE_DATETIME);
       ux_set_utype_for_timestamptz (CCI_U_TYPE_TIMESTAMP);
-      ux_set_utype_for_timeltz (CCI_U_TYPE_TIME);
       ux_set_utype_for_datetimeltz (CCI_U_TYPE_DATETIME);
       ux_set_utype_for_timestampltz (CCI_U_TYPE_TIMESTAMP);
     }
@@ -1972,10 +1970,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   /* for driver less than 10.0 */
   if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version, PROTOCOL_V7))
     {
-      ux_set_utype_for_timetz (CCI_U_TYPE_TIMETZ);
       ux_set_utype_for_datetimetz (CCI_U_TYPE_DATETIMETZ);
       ux_set_utype_for_timestamptz (CCI_U_TYPE_TIMESTAMPTZ);
-      ux_set_utype_for_timeltz (CCI_U_TYPE_TIMETZ);
       ux_set_utype_for_datetimeltz (CCI_U_TYPE_DATETIMETZ);
       ux_set_utype_for_timestampltz (CCI_U_TYPE_TIMESTAMPTZ);
     }

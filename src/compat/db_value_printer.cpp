@@ -202,16 +202,6 @@ void db_value_printer::describe_value (const db_value *value)
 	  describe_data (value);
 	  m_buf += '\'';
 	  break;
-	case DB_TYPE_TIMETZ:
-	  m_buf ("timetz '");
-	  describe_data (value);
-	  m_buf += '\'';
-	  break;
-	case DB_TYPE_TIMELTZ:
-	  m_buf ("timeltz '");
-	  describe_data (value);
-	  m_buf += '\'';
-	  break;
 	case DB_TYPE_TIMESTAMP:
 	  m_buf ("timestamp '");
 	  describe_data (value);
@@ -460,20 +450,6 @@ void db_value_printer::describe_data (const db_value *value)
       (void) db_time_to_string (line, TOO_BIG_TO_MATTER, db_get_time (value));
       m_buf (line);
       break;
-    case DB_TYPE_TIMELTZ:
-      (void) db_timeltz_to_string (line, TOO_BIG_TO_MATTER, db_get_time (value));
-      m_buf (line);
-      break;
-
-    case DB_TYPE_TIMETZ:
-    {
-      DB_TIMETZ *time_tz;
-
-      time_tz = db_get_timetz (value);
-      (void) db_timetz_to_string (line, TOO_BIG_TO_MATTER, &time_tz->time, &time_tz->tz_id);
-      m_buf (line);
-    }
-    break;
 
     case DB_TYPE_TIMESTAMP:
       (void) db_utime_to_string (line, TOO_BIG_TO_MATTER, db_get_timestamp (value));

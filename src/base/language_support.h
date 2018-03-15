@@ -212,7 +212,6 @@ struct lang_locale_data
   const char *date_format;	/* default date format */
   const char *datetime_format;	/* default datetime format */
   const char *timestamp_format;	/* default timestamp format */
-  const char *timetz_format;	/* default time_tz format */
   const char *datetimetz_format;	/* default datetime_tz format */
   const char *timestamptz_format;	/* default timestamp_tz format */
 

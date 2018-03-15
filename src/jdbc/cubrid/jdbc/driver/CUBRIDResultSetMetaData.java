@@ -217,12 +217,6 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 				ele_type[i] = -1;
 				break;
 				
-			case UUType.U_TYPE_TIMETZ:
-				col_type_name[i] = "TIMETZ";
-				col_type[i] = java.sql.Types.TIME;
-				ele_type[i] = -1;
-				break;				
-
 			case UUType.U_TYPE_TIMESTAMP:
 				col_type_name[i] = "TIMESTAMP";
 				col_type[i] = java.sql.Types.TIMESTAMP;
@@ -348,10 +342,6 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 					ele_type[i] = java.sql.Types.TIME;
 					ele_type_name[i] = "TIME";
 					break;
-				case UUType.U_TYPE_TIMETZ:
-					ele_type[i] = java.sql.Types.TIME;
-					ele_type_name[i] = "TIMETZ";
-					break;					
 				case UUType.U_TYPE_TIMESTAMP:
 					ele_type[i] = java.sql.Types.TIMESTAMP;
 					ele_type_name[i] = "TIMESTAMP";
@@ -562,9 +552,6 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 		case UUType.U_TYPE_TIME:
 			ret_size = 8;
 			break;
-		case UUType.U_TYPE_TIMETZ:
-			ret_size = 8 + 63;
-			break;			
 		case UUType.U_TYPE_TIMESTAMP:
 			ret_size = 19;
 			break;

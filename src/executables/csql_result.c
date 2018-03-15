@@ -51,8 +51,6 @@
 #define	MAX_DOUBLE_DISPLAY_LENGTH	  (DBL_DIG + 9)
 #define	MAX_TIME_DISPLAY_LENGTH		  11
 #define MAX_TIMEZONE_DISPLAY_LENGTH	  18
-#define	MAX_TIMETZ_DISPLAY_LENGTH  \
-  (MAX_TIME_DISPLAY_LENGTH + MAX_TIMEZONE_DISPLAY_LENGTH)
 #define	MAX_UTIME_DISPLAY_LENGTH	  25
 #define	MAX_TIMESTAMPTZ_DISPLAY_LENGTH  \
   (MAX_UTIME_DISPLAY_LENGTH + MAX_TIMEZONE_DISPLAY_LENGTH)
@@ -311,10 +309,6 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result, DB_QUERY
 	  break;
 	case DB_TYPE_TIME:
 	  attr_lengths[i] = -MAX (MAX_TIME_DISPLAY_LENGTH, attr_name_lengths[i]);
-	  break;
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
-	  attr_lengths[i] = -MAX (MAX_TIMETZ_DISPLAY_LENGTH, attr_name_lengths[i]);
 	  break;
 	case DB_TYPE_TIMESTAMP:
 	  attr_lengths[i] = -MAX (MAX_UTIME_DISPLAY_LENGTH, attr_name_lengths[i]);

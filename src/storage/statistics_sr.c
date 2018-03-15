@@ -977,12 +977,7 @@ stats_compare_data (DB_DATA * data1_p, DB_DATA * data2_p, DB_TYPE type)
       break;
 
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       status = stats_compare_time (&data1_p->time, &data2_p->time);
-      break;
-
-    case DB_TYPE_TIMETZ:
-      status = stats_compare_time (&data1_p->timetz.time, &data2_p->timetz.time);
       break;
 
     case DB_TYPE_TIMESTAMP:
@@ -1108,14 +1103,6 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 
 	case DB_TYPE_TIME:
 	  fprintf (fpp, "DB_TYPE_TIME \n");
-	  break;
-
-	case DB_TYPE_TIMELTZ:
-	  fprintf (fpp, "DB_TYPE_TIMELTZ \n");
-	  break;
-
-	case DB_TYPE_TIMETZ:
-	  fprintf (fpp, "DB_TYPE_TIMETZ \n");
 	  break;
 
 	case DB_TYPE_TIMESTAMP:

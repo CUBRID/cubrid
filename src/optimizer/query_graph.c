@@ -3206,7 +3206,6 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_INDEX_PREFIX:
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
-    case PT_TO_TIME_TZ:
     case PT_CRC32:
     case PT_CONV_TZ:
       return RANK_EXPR_MEDIUM;
@@ -3787,7 +3786,6 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_TO_NUMBER:
 	case PT_TO_DATETIME_TZ:
 	case PT_TO_TIMESTAMP_TZ:
-	case PT_TO_TIME_TZ:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
 		  && (expr->info.expr.arg2 ? pt_is_pseudo_const (expr->info.expr.arg2) : true)) ? true : false;
 	case PT_CURRENT_VALUE:
@@ -5470,11 +5468,7 @@ qo_data_compare (DB_DATA * data1, DB_DATA * data2, DB_TYPE type)
       result = ((data1->date < data2->date) ? -1 : ((data1->date > data2->date) ? 1 : 0));
       break;
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       result = ((data1->time < data2->time) ? -1 : ((data1->time > data2->time) ? 1 : 0));
-      break;
-    case DB_TYPE_TIMETZ:
-      result = ((data1->timetz.time < data2->timetz.time) ? -1 : ((data1->timetz.time > data2->timetz.time) ? 1 : 0));
       break;
 
     case DB_TYPE_TIMESTAMPLTZ:

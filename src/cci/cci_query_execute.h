@@ -164,14 +164,6 @@
 	  (TIME_VAL).ss = macro_var_ss;			                \
 	} while (0)
 
-#define NET_STR_TO_TIMETZ(TIME_VAL, PTR, TOTAL_SIZE)		        \
-	do {					                        \
-	  int tz_size;							\
-	  NET_STR_TO_TIME ((TIME_VAL), (PTR));				\
-	  tz_size = MIN (TOTAL_SIZE - NET_SIZE_TIME, CCI_TZ_SIZE);	\
-	  strncpy ((TIME_VAL).tz, (PTR) + NET_SIZE_TIME, tz_size);	\
-	} while (0)
-
 #define NET_STR_TO_MTIME(TIME_VAL, PTR)                                 \
         do {                                                            \
           short macro_var_hh, macro_var_mm, macro_var_ss, macro_var_ms; \

@@ -153,10 +153,8 @@ extern char ux_db_type_to_cas_type (int db_type);
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern void ux_set_utype_for_enum (char u_type);
-extern void ux_set_utype_for_timetz (char u_type);
 extern void ux_set_utype_for_timestamptz (char u_type);
 extern void ux_set_utype_for_datetimetz (char u_type);
-extern void ux_set_utype_for_timeltz (char u_type);
 extern void ux_set_utype_for_timestampltz (char u_type);
 extern void ux_set_utype_for_datetimeltz (char u_type);
 extern void ux_set_utype_for_json (char u_type);

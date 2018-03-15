@@ -50,7 +50,6 @@ import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamp;
 import cubrid.sql.CUBRIDTimestamptz;
-import cubrid.sql.CUBRIDTimetz;
 import java.util.TimeZone;
 
 class UInputBuffer {
@@ -299,39 +298,6 @@ class UInputBuffer {
 		return new Time(cal.getTimeInMillis());
 	}
 
-	CUBRIDTimetz readTimetz(int size) throws UJciException {
-		Time time;
-		String timezone;
-		int tmp_position;
-		int ts_size;
-		
-		if (position + size > capacity) {
-		    	throw uconn.createJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
-		}
-				
-		tmp_position = position;
-		time = readTime ();
-		
-		ts_size = position - tmp_position;
-				
-		if (ts_size > 0){
-			timezone = new String (buffer, position, size - ts_size - 1);
-			position += size - ts_size;
-		}
-		else{
-			timezone = "";
-			position++;
-		}
-
-		try{
-			return CUBRIDTimetz.valueOf(time, timezone);
-		}
-		catch (CUBRIDException e)
-		{
-			throw uconn.createJciException(UErrorCode.ER_ILLEGAL_DATA_SIZE);
-		}
-	}
-	
 	CUBRIDTimestamp readTimestamp(boolean is_tz) throws UJciException {
 		int year, month, day, hour, minute, second;
 		year = readShort();

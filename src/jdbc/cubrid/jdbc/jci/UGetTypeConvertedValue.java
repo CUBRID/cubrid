@@ -46,7 +46,6 @@ import java.sql.Timestamp;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamp;
 import cubrid.sql.CUBRIDTimestamptz;
-import cubrid.sql.CUBRIDTimetz;
 import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.jdbc.driver.CUBRIDException;
 
@@ -233,7 +232,7 @@ abstract public class UGetTypeConvertedValue {
 	    return ((BigDecimal) data).toPlainString();
 	} else if ((data instanceof Number) || (data instanceof Boolean)
 		|| (data instanceof Date) || (data instanceof Time)
-		|| (data instanceof CUBRIDTimetz) || (data instanceof CUBRIDTimestamptz)) {
+		|| (data instanceof CUBRIDTimestamptz)) {
 	    return data.toString();
 	} else if (data instanceof Timestamp) {
 	    String form;
@@ -279,35 +278,6 @@ abstract public class UGetTypeConvertedValue {
 		throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
 	}
 	
-	static public CUBRIDTimetz getTimetz(Object data) throws UJciException {
-		try
-		{
-			if (data == null)
-				return null;
-			else if (data instanceof CUBRIDTimetz)
-				return new CUBRIDTimetz(((Time) data).getTime(), ((CUBRIDTimetz) data).getTimezone());
-			else if (data instanceof CUBRIDTimestamptz)
-				return new CUBRIDTimetz(((CUBRIDTimestamptz) data).getTime(), ((CUBRIDTimestamptz) data).getTimezone());
-			else if (data instanceof String) {
-				try {
-					/* don't know how to parse a string with time and timezone */
-					return CUBRIDTimetz.valueOf((String) data, "");
-				} catch (IllegalArgumentException e) {
-					throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
-				}
-			}
-			else if (data instanceof Time)
-				return new CUBRIDTimetz(((Time) data).getTime(), "");
-			else if (data instanceof Timestamp)
-				return new CUBRIDTimetz(((Timestamp) data).getTime(), "");
-		}
-		catch (CUBRIDException e)
-		{
-			throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
-		}
-		throw new UJciException(UErrorCode.ER_TYPE_CONVERSION);
-	}
-
 	static public Timestamp getTimestamp(Object data) throws UJciException {
 		if (data == null)
 			return null;
@@ -329,8 +299,6 @@ abstract public class UGetTypeConvertedValue {
 	static public CUBRIDTimestamptz getTimestamptz(Object data) throws UJciException {
 		if (data == null)
 			return null;
-		else if (data instanceof CUBRIDTimetz)
-			return new CUBRIDTimestamptz(((Time) data).getTime(), false, ((CUBRIDTimetz) data).getTimezone());
 		else if (data instanceof CUBRIDTimestamptz)
 			return new CUBRIDTimestamptz(((CUBRIDTimestamptz) data).getTime(),
 										!CUBRIDTimestamp.isTimestampType ((CUBRIDTimestamp) data),

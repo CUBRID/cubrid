@@ -244,7 +244,6 @@ public class UColumnInfo {
 		case UUType.U_TYPE_DATE:
 			return "java.sql.Date";
 		case UUType.U_TYPE_TIME:
-		case UUType.U_TYPE_TIMETZ:		
 			return "java.sql.Time";
 		case UUType.U_TYPE_TIMESTAMP:
 		case UUType.U_TYPE_DATETIME:
@@ -298,7 +297,6 @@ public class UColumnInfo {
 		case UUType.U_TYPE_DATE:
 			return "java.sql.Date[]";
 		case UUType.U_TYPE_TIME:
-		case UUType.U_TYPE_TIMETZ:		
 			return "java.sql.Time[]";
 		case UUType.U_TYPE_TIMESTAMP:
 		case UUType.U_TYPE_DATETIME:

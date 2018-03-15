@@ -446,55 +446,22 @@ static DB_VALUE_COMPARE_RESULT mr_cmpval_double (DB_VALUE * value1, DB_VALUE * v
 static void mr_initmem_time (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_time (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_time (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
-static int mr_getmem_timeltz (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
 static void mr_data_writemem_time (OR_BUF * buf, void *mem, TP_DOMAIN * domain);
 static void mr_data_readmem_time (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size);
 static void mr_initval_time (DB_VALUE * value, int precision, int scale);
-static void mr_initval_timeltz (DB_VALUE * value, int precision, int scale);
 static int mr_setval_time (DB_VALUE * dest, const DB_VALUE * src, bool copy);
-static int mr_setval_timeltz (DB_VALUE * dest, const DB_VALUE * src, bool copy);
 static int mr_data_writeval_time (OR_BUF * buf, DB_VALUE * value);
 static int mr_data_readval_time (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 				 char *copy_buf, int copy_buf_len);
-static int mr_data_readval_timeltz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
-				    char *copy_buf, int copy_buf_len);
-static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_timeltz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
-							int total_order, int *start_colp);
-static DB_VALUE_COMPARE_RESULT mr_index_cmpdisk_timeltz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
-							 int total_order, int *start_colp);
-static DB_VALUE_COMPARE_RESULT mr_cmpval_timeltz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
-						  int total_order, int *start_colp, int collation);
 static int mr_index_writeval_time (OR_BUF * buf, DB_VALUE * value);
 static int mr_index_readval_time (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 				  char *copy_buf, int copy_buf_len);
-static int mr_index_readval_timeltz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
-				     char *copy_buf, int copy_buf_len);
 static DB_VALUE_COMPARE_RESULT mr_index_cmpdisk_time (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
 						      int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_time (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
 						     int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_cmpval_time (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
 					       int *start_colp, int collation);
-
-static void mr_initmem_timetz (void *mem, TP_DOMAIN * domain);
-static int mr_setmem_timetz (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
-static int mr_getmem_timetz (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
-static void mr_data_writemem_timetz (OR_BUF * buf, void *mem, TP_DOMAIN * domain);
-static void mr_data_readmem_timetz (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size);
-static void mr_initval_timetz (DB_VALUE * value, int precision, int scale);
-static int mr_setval_timetz (DB_VALUE * dest, const DB_VALUE * src, bool copy);
-static int mr_data_writeval_timetz (OR_BUF * buf, DB_VALUE * value);
-static int mr_data_readval_timetz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
-				   char *copy_buf, int copy_buf_len);
-static int mr_index_writeval_timetz (OR_BUF * buf, DB_VALUE * value);
-static int mr_index_readval_timetz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
-				    char *copy_buf, int copy_buf_len);
-static DB_VALUE_COMPARE_RESULT mr_index_cmpdisk_timetz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
-							int total_order, int *start_colp);
-static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_timetz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
-						       int total_order, int *start_colp);
-static DB_VALUE_COMPARE_RESULT mr_cmpval_timetz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
-						 int *start_colp, int collation);
 
 static void mr_initmem_utime (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_utime (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
@@ -1104,60 +1071,6 @@ PR_TYPE tp_Time = {
 };
 
 PR_TYPE *tp_Type_time = &tp_Time;
-
-PR_TYPE tp_Timetz = {
-  "timetz", DB_TYPE_TIMETZ, 0, sizeof (DB_TIMETZ), OR_TIMETZ_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
-  mr_initmem_timetz,
-  mr_initval_timetz,
-  mr_setmem_timetz,
-  mr_getmem_timetz,
-  mr_setval_timetz,
-  NULL,				/* data_lengthmem */
-  NULL,				/* data_lengthval */
-  mr_data_writemem_timetz,
-  mr_data_readmem_timetz,
-  mr_data_writeval_timetz,
-  mr_data_readval_timetz,
-  NULL,				/* index_lenghmem */
-  NULL,				/* index_lenghval */
-  mr_index_writeval_timetz,
-  mr_index_readval_timetz,
-  mr_index_cmpdisk_timetz,
-  NULL,				/* freemem */
-  mr_data_cmpdisk_timetz,
-  mr_cmpval_timetz
-};
-
-PR_TYPE *tp_Type_timetz = &tp_Timetz;
-
-PR_TYPE tp_Timeltz = {
-  "timeltz", DB_TYPE_TIMELTZ, 0, sizeof (DB_TIME), OR_TIME_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
-  mr_initmem_time,
-  mr_initval_timeltz,
-  mr_setmem_time,
-  mr_getmem_timeltz,
-  mr_setval_timeltz,
-  NULL,				/* data_lengthmem */
-  NULL,				/* data_lengthval */
-  mr_data_writemem_time,
-  mr_data_readmem_time,
-  mr_data_writeval_time,
-  mr_data_readval_timeltz,
-  NULL,				/* index_lenghmem */
-  NULL,				/* index_lenghval */
-  mr_index_writeval_time,
-  mr_index_readval_timeltz,
-  mr_index_cmpdisk_timeltz,
-  NULL,				/* freemem */
-  mr_data_cmpdisk_timeltz,
-  mr_cmpval_timeltz
-};
-
-PR_TYPE *tp_Type_timeltz = &tp_Timeltz;
 
 PR_TYPE tp_Utime = {
   "timestamp", DB_TYPE_TIMESTAMP, 0, sizeof (DB_UTIME), OR_UTIME_SIZE, 4,
@@ -1879,8 +1792,6 @@ PR_TYPE *tp_Type_id_map[] = {
   &tp_Datetimetz,
   &tp_Datetimeltz,
   &tp_Json,
-  &tp_Timetz,
-  &tp_Timeltz
 };
 
 PR_TYPE tp_ResultSet = {
@@ -3456,14 +3367,6 @@ mr_getmem_time (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
   return NO_ERROR;
 }
 
-static int
-mr_getmem_timeltz (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
-{
-  (void) db_make_timeltz (value, (DB_TIME *) mem);
-  value->need_clear = false;
-  return NO_ERROR;
-}
-
 static void
 mr_data_writemem_time (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 {
@@ -3492,15 +3395,6 @@ mr_initval_time (DB_VALUE * value, int precision, int scale)
   value->need_clear = false;
 }
 
-static void
-mr_initval_timeltz (DB_VALUE * value, int precision, int scale)
-{
-  DB_TIME tm = 0;
-
-  db_make_timeltz (value, &tm);
-  value->need_clear = false;
-}
-
 static int
 mr_setval_time (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
@@ -3513,22 +3407,6 @@ mr_setval_time (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   else
     {
       error = db_value_put_encoded_time (dest, db_get_time (src));
-    }
-  return error;
-}
-
-static int
-mr_setval_timeltz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
-{
-  int error;
-
-  if (DB_IS_NULL (src))
-    {
-      error = db_value_domain_init (dest, DB_TYPE_TIMELTZ, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-    }
-  else
-    {
-      error = db_make_timeltz (dest, db_get_time (src));
     }
   return error;
 }
@@ -3557,26 +3435,6 @@ mr_data_readval_time (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 	{
 	  db_value_put_encoded_time (value, &tm);
 	}
-      value->need_clear = false;
-    }
-  return rc;
-}
-
-static int
-mr_data_readval_timeltz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
-			 int copy_buf_len)
-{
-  DB_TIME tm;
-  int rc = NO_ERROR;
-
-  if (value == NULL)
-    {
-      rc = or_advance (buf, tp_Timeltz.disksize);
-    }
-  else
-    {
-      rc = or_get_time (buf, &tm);
-      db_make_timeltz (value, &tm);
       value->need_clear = false;
     }
   return rc;
@@ -3616,150 +3474,6 @@ mr_index_readval_time (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int s
   return rc;
 }
 
-static int
-mr_index_readval_timeltz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
-			  int copy_buf_len)
-{
-  DB_TIME tm;
-  int rc = NO_ERROR;
-
-  if (value == NULL)
-    {
-      rc = or_advance (buf, tp_Timeltz.disksize);
-    }
-  else
-    {
-      rc = or_get_data (buf, (char *) (&tm), tp_Timeltz.disksize);
-      if (rc == NO_ERROR)
-	{
-	  db_make_timeltz (value, &tm);
-	}
-      value->need_clear = false;
-    }
-
-  return rc;
-}
-
-static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_timeltz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
-{
-  DB_TIME t1, t2;
-  TZ_ID ses_tz_id1, ses_tz_id2;
-  DB_TIME t1_local, t2_local;
-  int error = NO_ERROR;
-
-  assert (domain != NULL);
-
-  /* TIME with LTZ compares the same as TIME */
-  OR_GET_TIME (mem1, &t1);
-  OR_GET_TIME (mem2, &t2);
-
-  error = tz_create_session_tzid_for_time (&t1, true, &ses_tz_id1);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  error = tz_create_session_tzid_for_time (&t2, true, &ses_tz_id2);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  error = tz_utc_timetz_to_local (&t1, &ses_tz_id1, &t1_local);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  error = tz_utc_timetz_to_local (&t2, &ses_tz_id2, &t2_local);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  return MR_CMP (t1_local, t2_local);
-}
-
-static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_timeltz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
-{
-  DB_TIME t1, t2;
-  TZ_ID ses_tz_id1, ses_tz_id2;
-  DB_TIME t1_local, t2_local;
-  int error = NO_ERROR;
-
-  assert (domain != NULL);
-
-  COPYMEM (DB_TIME, &t1, mem1);
-  COPYMEM (DB_TIME, &t2, mem2);
-
-  error = tz_create_session_tzid_for_time (&t1, true, &ses_tz_id1);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  error = tz_create_session_tzid_for_time (&t2, true, &ses_tz_id2);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  error = tz_utc_timetz_to_local (&t1, &ses_tz_id1, &t1_local);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  error = tz_utc_timetz_to_local (&t2, &ses_tz_id2, &t2_local);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  return MR_CMP (t1_local, t2_local);
-}
-
-static DB_VALUE_COMPARE_RESULT
-mr_cmpval_timeltz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-		   int collation)
-{
-  const DB_TIME *t1, *t2;
-  TZ_ID ses_tz_id1, ses_tz_id2;
-  DB_TIME t1_local, t2_local;
-  int error = NO_ERROR;
-
-  t1 = db_get_time (value1);
-  t2 = db_get_time (value2);
-
-  error = tz_create_session_tzid_for_time (t1, true, &ses_tz_id1);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  error = tz_create_session_tzid_for_time (t2, true, &ses_tz_id2);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  error = tz_utc_timetz_to_local (t1, &ses_tz_id1, &t1_local);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  error = tz_utc_timetz_to_local (t2, &ses_tz_id2, &t2_local);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  return MR_CMP (t1_local, t2_local);
-}
-
 static DB_VALUE_COMPARE_RESULT
 mr_index_cmpdisk_time (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
@@ -3795,237 +3509,6 @@ mr_cmpval_time (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   t2 = db_get_time (value2);
 
   return MR_CMP (*t1, *t2);
-}
-
-/*
- * TYPE TIMETZ
- *
- * TIME type with Timezone
- *
- */
-
-static void
-mr_initmem_timetz (void *mem, TP_DOMAIN * domain)
-{
-  DB_TIMETZ *time_tz = (DB_TIMETZ *) mem;
-
-  time_tz->time = 0;
-  time_tz->tz_id = 0;
-}
-
-static int
-mr_setmem_timetz (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
-{
-  if (value == NULL)
-    {
-      mr_initmem_time (mem, domain);
-    }
-  else
-    {
-      *(DB_TIMETZ *) mem = *db_get_timetz (value);
-    }
-
-  return NO_ERROR;
-}
-
-static int
-mr_getmem_timetz (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
-{
-  (void) db_make_timetz (value, (DB_TIMETZ *) mem);
-  value->need_clear = false;
-  return NO_ERROR;
-}
-
-static void
-mr_data_writemem_timetz (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
-{
-  or_put_timetz (buf, (DB_TIMETZ *) mem);
-}
-
-static void
-mr_data_readmem_timetz (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
-{
-  if (mem == NULL)
-    {
-      or_advance (buf, tp_Timetz.disksize);
-    }
-  else
-    {
-      or_get_timetz (buf, (DB_TIMETZ *) mem);
-    }
-}
-
-static void
-mr_initval_timetz (DB_VALUE * value, int precision, int scale)
-{
-  DB_TIMETZ time_tz;
-
-  mr_initmem_timetz (&time_tz, NULL);
-  db_make_timetz (value, &time_tz);
-  value->need_clear = false;
-}
-
-static int
-mr_setval_timetz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
-{
-  int error;
-
-  if (DB_IS_NULL (src))
-    {
-      error = db_value_domain_init (dest, DB_TYPE_TIMETZ, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-    }
-  else
-    {
-      error = db_make_timetz (dest, db_get_timetz (src));
-    }
-  return error;
-}
-
-static int
-mr_data_writeval_timetz (OR_BUF * buf, DB_VALUE * value)
-{
-  return or_put_timetz (buf, db_get_timetz (value));
-}
-
-static int
-mr_data_readval_timetz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
-			int copy_buf_len)
-{
-  DB_TIMETZ time_tz;
-  int rc = NO_ERROR;
-
-  if (value == NULL)
-    {
-      rc = or_advance (buf, tp_Timetz.disksize);
-    }
-  else
-    {
-      rc = or_get_timetz (buf, &time_tz);
-      db_make_timetz (value, &time_tz);
-    }
-  return rc;
-}
-
-static int
-mr_index_writeval_timetz (OR_BUF * buf, DB_VALUE * value)
-{
-  DB_TIMETZ *time_tz;
-
-  time_tz = db_get_timetz (value);
-
-  return or_put_data (buf, (char *) time_tz, tp_Timetz.disksize);
-}
-
-static int
-mr_index_readval_timetz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
-			 int copy_buf_len)
-{
-  DB_TIMETZ time_tz;
-  int rc = NO_ERROR;
-
-  if (value == NULL)
-    {
-      rc = or_advance (buf, tp_Timetz.disksize);
-    }
-  else
-    {
-      rc = or_get_data (buf, (char *) (&time_tz), tp_Timetz.disksize);
-      if (rc == NO_ERROR)
-	{
-	  db_make_timetz (value, &time_tz);
-	}
-    }
-
-  return rc;
-}
-
-static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_timetz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
-{
-  DB_TIMETZ t1, t2;
-  DB_VALUE_COMPARE_RESULT ret_cmp;
-  int day1, day2;
-
-  assert (domain != NULL);
-
-  COPYMEM (DB_TIMETZ, &t1, mem1);
-  COPYMEM (DB_TIMETZ, &t2, mem2);
-
-  /* TIME with TZ compares as what point in time comes first relative to the current day */
-
-  day1 = get_day_from_timetz (&t1);
-  day2 = get_day_from_timetz (&t2);
-
-  /* If we are in the same UTC day we compare UTC times else we compare the days */
-  if (day1 == day2)
-    {
-      ret_cmp = MR_CMP (t1.time, t2.time);
-    }
-  else
-    {
-      ret_cmp = MR_CMP (day1, day2);
-    }
-
-  return ret_cmp;
-}
-
-static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_timetz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
-{
-  DB_TIMETZ t1, t2;
-  DB_VALUE_COMPARE_RESULT ret_cmp;
-  int day1, day2;
-
-  assert (domain != NULL);
-
-  OR_GET_TIMETZ (mem1, &t1);
-  OR_GET_TIMETZ (mem2, &t2);
-
-  /* TIME with TZ compares as what point in time comes first relative to the current day */
-
-  day1 = get_day_from_timetz (&t1);
-  day2 = get_day_from_timetz (&t2);
-
-  /* If we are in the same UTC day we compare UTC times else we compare the days */
-  if (day1 == day2)
-    {
-      ret_cmp = MR_CMP (t1.time, t2.time);
-    }
-  else
-    {
-      ret_cmp = MR_CMP (day1, day2);
-    }
-
-  return ret_cmp;
-}
-
-static DB_VALUE_COMPARE_RESULT
-mr_cmpval_timetz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-		  int collation)
-{
-  const DB_TIMETZ *t1, *t2;
-  DB_VALUE_COMPARE_RESULT ret_cmp;
-  int day1, day2;
-
-  t1 = db_get_timetz (value1);
-  t2 = db_get_timetz (value2);
-
-  /* TIME with TZ compares as what point in time comes first relative to the current day */
-
-  day1 = get_day_from_timetz (t1);
-  day2 = get_day_from_timetz (t2);
-
-  /* If we are in the same UTC day we compare UTC times else we compare the days */
-  if (day1 == day2)
-    {
-      ret_cmp = MR_CMP (t1->time, t2->time);
-    }
-  else
-    {
-      ret_cmp = MR_CMP (day1, day2);
-    }
-
-  return ret_cmp;
 }
 
 /*
