@@ -2443,7 +2443,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	    }
 	}
 
-      if (prm_get_bool_value (PRM_ID_ENABLE_LOG_PAGE_CHECKSUM) == true)
+      /* Check whether active log pages are corrupted. This may happens in case of partial page flush for instance.  */
+      if ((prm_get_bool_value (PRM_ID_ENABLE_LOG_PAGE_CHECKSUM) == true) && (logpb_is_page_in_archive (log_lsa.pageid)))
 	{
 	  if (logpb_page_check_corruption (thread_p, log_page_p, &is_log_page_corrupted) != NO_ERROR)
 	    {
