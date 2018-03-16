@@ -13080,7 +13080,7 @@ namespace Func
             case PT_TYPE_INTEGER:
               return (PT_IS_DISCRETE_NUMBER_TYPE(type_enum));
             case PT_TYPE_BIGINT:
-              return (PT_IS_DISCRETE_NUMBER_TYPE(type_enum));
+              return (PT_IS_DISCRETE_NUMBER_TYPE(type_enum) || type_enum==PT_TYPE_MAYBE);
 
             default:
               if (type.val.type == type_enum)

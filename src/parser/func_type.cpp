@@ -117,6 +117,7 @@ std::vector<func_signature> func_signature::elt = {
   {1           , {PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_TYPE_VARCHAR      }, {1}},
   {1           , {PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_NCHAR}, {1}},
 #else
+  {1           , {PT_TYPE_BIGINT                 , PT_GENERIC_TYPE_STRING}, {1}},
   {1           , {PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_STRING}, {1}},
 #endif
   {PT_TYPE_NULL, {PT_TYPE_NULL                                          }, {/*PT_TYPE_ANY*/}},
