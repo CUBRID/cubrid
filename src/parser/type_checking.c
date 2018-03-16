@@ -13100,7 +13100,7 @@ namespace Func
         case PT_GENERIC_TYPE_NUMBER:
           return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum));
         case PT_GENERIC_TYPE_DISCRETE_NUMBER:
-          return (PT_IS_DISCRETE_NUMBER_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum));
+          return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum));
 
         case PT_GENERIC_TYPE_STRING:
           return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum));
