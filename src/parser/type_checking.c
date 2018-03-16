@@ -13306,7 +13306,10 @@ namespace Func
           case PT_GROUP_CONCAT:
           case F_INSERT_SUBSTRING:
             node->data_type = pt_make_prim_data_type (parser, node->type_enum);
-            node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+            if(node->data_type)
+              {
+                node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+              }
             break;
           case F_SET:
           case F_MULTISET:
