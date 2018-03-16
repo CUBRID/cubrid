@@ -2753,7 +2753,7 @@ JSON_SERIALIZER::GetValuePackedSize (const JSON_VALUE &value)
       break;
 
     case DB_JSON_DOUBLE:
-      size += OR_DOUBLE_SIZE;
+      size += OR_DOUBLE_SIZE + MAX_ALIGNMENT;
       break;
 
     case DB_JSON_STRING:
@@ -2873,7 +2873,7 @@ JSON_SERIALIZER::Serialize_helper (const JSON_VALUE &obj, JSON_VALUE *key, char 
       break;
 
     case DB_JSON_DOUBLE:
-      current = or_pack_double (current, obj.GetDouble ());
+      current = or_pack_double (current, obj.GetDouble());
       break;
 
     case DB_JSON_BOOL:
