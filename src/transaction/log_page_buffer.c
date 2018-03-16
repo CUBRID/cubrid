@@ -529,6 +529,8 @@ logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
   if (error_code == NO_ERROR)
     {
       log_pgptr->hdr.checksum = checksum_crc32;
+      logpb_log ("logpb_set_page_checksum: log page %lld has checksum = %\n",
+		 (long long int) log_pgptr->hdr.logical_pageid, checksum_crc32);
     }
 
   return error_code;
@@ -551,6 +553,11 @@ logpb_page_has_valid_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bo
   if (error_code == NO_ERROR)
     {
       *has_valid_checksum = checksum_crc32 == log_pgptr->hdr.checksum;
+      if (*has_valid_checksum == false)
+	{
+	  logpb_log ("logpb_page_has_valid_checksum: log page %lld has checksum = %d, computed checksum = %d\n",
+		     (long long int) log_pgptr->hdr.logical_pageid, log_pgptr->hdr.checksum, checksum_crc32);
+	}
     }
 
   return error_code;
@@ -2014,14 +2021,6 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
 	}
       else
 	{
-#if !defined(NDEBUG)
-	  if (boot_Server_status == BOOT_SERVER_UP || log_pgptr->hdr.logical_pageid != LOGPB_HEADER_PAGE_ID)
-	    {
-	      bool is_log_page_corrupted;
-	      assert ((logpb_page_check_corruption (thread_p, log_pgptr, &is_log_page_corrupted) == NO_ERROR)
-		      && (is_log_page_corrupted == false));
-	    }
-#endif
 	  if (log_pgptr->hdr.logical_pageid != pageid)
 	    {
 	      if (log_pgptr->hdr.logical_pageid == pageid + LOGPB_ACTIVE_NPAGES)
@@ -2054,6 +2053,18 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
     {
       LOG_CS_EXIT (thread_p);
     }
+
+  logpb_log ("logpb_read_page_from_file: log page %lld has checksum = %d\n",
+	     (long long int) log_pgptr->hdr.logical_pageid, log_pgptr->hdr.checksum);
+
+#if !defined(NDEBUG)
+  if (boot_Server_status == BOOT_SERVER_UP || log_pgptr->hdr.logical_pageid != LOGPB_HEADER_PAGE_ID)
+    {
+      bool is_log_page_corrupted;
+      assert ((logpb_page_check_corruption (thread_p, log_pgptr, &is_log_page_corrupted) == NO_ERROR)
+	      && (is_log_page_corrupted == false));
+    }
+#endif
 
   /* keep old function's usage */
   return NO_ERROR;
