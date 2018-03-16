@@ -13044,6 +13044,21 @@ namespace Func
               //m_node->type_enum = type; //it is enforced by function's signature
               break;
             }
+          case F_INSERT_SUBSTRING:
+            {
+              std::vector<parser_node*> args;//preallocate!?
+              int i = 0;
+              for(auto arg = m_node->info.function.arg_list; arg; arg = arg->next)
+                {
+                  args.push_back(arg);
+                }
+              if(args[0] && args[0]->type_enum == PT_TYPE_MAYBE && args[3] && args[3]->type_enum == PT_TYPE_MAYBE)
+              {
+                args[0] = cast(NULL, args[0], PT_TYPE_VARCHAR, 0, 0, NULL);
+                args[3] = cast(args[2], args[3], PT_TYPE_VARCHAR, 0, 0, NULL);
+              }
+              break;
+            }
           default:
             ;
           }
@@ -13078,7 +13093,7 @@ namespace Func
         switch(type.val.type)
           {
             case PT_TYPE_INTEGER:
-              return (PT_IS_DISCRETE_NUMBER_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum));
+              return (PT_IS_DISCRETE_NUMBER_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE);
             case PT_TYPE_BIGINT:
               return (PT_IS_DISCRETE_NUMBER_TYPE(type_enum) || type_enum==PT_TYPE_MAYBE);
 
@@ -13105,7 +13120,9 @@ namespace Func
         case PT_GENERIC_TYPE_STRING:
           return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum));
         case PT_GENERIC_TYPE_CHAR:
-          return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum));
+          return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE);
+        case PT_GENERIC_TYPE_NCHAR:
+          return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_NATIONAL_CHAR_STRING_TYPE(type_enum));
 
         default:
           return false;

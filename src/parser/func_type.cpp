@@ -132,6 +132,9 @@ std::vector<func_signature> func_signature::insert = {
   {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_CHAR   , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , PT_GENERIC_TYPE_CHAR} , {}},
   {PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_NCHAR  , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , PT_GENERIC_TYPE_NCHAR}, {}},
 
+  {0                , {3                      , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , PT_GENERIC_TYPE_NCHAR}, {}},
+  {0                , {3                      , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , PT_GENERIC_TYPE_STRING}, {}},
+
 #if 0
   {PT_TYPE_VARBIT  , {PT_GENERIC_TYPE_BIT  , PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_CHAR  }, {}},
   {PT_TYPE_VARBIT  , {PT_GENERIC_TYPE_BIT  , PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_NCHAR }, {}},
@@ -140,9 +143,6 @@ std::vector<func_signature> func_signature::insert = {
   {PT_TYPE_VARCHAR , {PT_TYPE_NULL         , PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_NCHAR }, {}},
   {PT_TYPE_VARCHAR , {PT_TYPE_NULL         , PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_BIT   }, {}},
 #endif
-
-  {0               , {3                    , PT_TYPE_INTEGER        , PT_TYPE_INTEGER     , PT_GENERIC_TYPE_CHAR }, {}},
-  {0               , {3                    , PT_TYPE_INTEGER        , PT_TYPE_INTEGER     , PT_GENERIC_TYPE_NCHAR}, {}},
 };
 
 std::vector<func_signature> func_signature::json_key_val_r_key_val = {//(jsonKey, jsonVal[, jsonKey, jsonVal])
