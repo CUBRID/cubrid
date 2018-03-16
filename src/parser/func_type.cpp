@@ -97,11 +97,10 @@ std::vector<func_signature> func_signature::type0_nr_or_str_discrete = {
 };
 
 std::vector<func_signature> func_signature::group_concat = {
-//{PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING}, {}},
   {PT_TYPE_VARCHAR , {PT_GENERIC_TYPE_CHAR  , PT_GENERIC_TYPE_CHAR  }, {}},
   {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_NCHAR , PT_GENERIC_TYPE_NCHAR }, {}},
   {PT_TYPE_VARBIT  , {PT_GENERIC_TYPE_BIT   , PT_GENERIC_TYPE_BIT   }, {}},
-  {PT_TYPE_VARCHAR , {PT_GENERIC_TYPE_NUMBER, PT_GENERIC_TYPE_STRING}, {}},
+//{PT_TYPE_VARCHAR , {PT_GENERIC_TYPE_NUMBER, PT_GENERIC_TYPE_STRING}, {}},
 };
 
 std::vector<func_signature> func_signature::lead_lag = {//original code doesn't do anything!!!
@@ -120,7 +119,7 @@ std::vector<func_signature> func_signature::elt = {
   {1           , {PT_TYPE_BIGINT                 , PT_GENERIC_TYPE_STRING}, {1}},
   {1           , {PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_STRING}, {1}},
 #endif
-  {PT_TYPE_NULL, {PT_TYPE_NULL                                          }, {/*PT_TYPE_ANY*/}},
+  {PT_TYPE_NULL, {PT_TYPE_NULL                                          }, {PT_GENERIC_TYPE_ANY}},
   {PT_TYPE_NULL, {PT_TYPE_INTEGER                                       }, {}},
 };
 
