@@ -378,7 +378,7 @@ namespace cubthread
       void init_core (core_type &parent);
 
       // start task execution (push_time is provided by core)
-      void start_execution (task<Context> *work_p, wpstat::time_point_type push_time);
+      void start_execution (task<Context> *work_p, wpstat::time_point_type push_time, const bool is_worker_active);
       // stop execution
       void stop_execution (void);
       // map function to context (if context is available)
@@ -796,18 +796,22 @@ namespace cubthread
 
     wpstat::time_point_type push_time = wpstat::clock_type::now ();
     worker *refp = NULL;
+    bool is_worker_active;
+
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
     if (!m_free_active_list.empty ())
       {
 	// found free active
 	refp = m_free_active_list.front ();
 	m_free_active_list.pop_front ();
+	is_worker_active = true;
       }
     else if (!m_inactive_list.empty ())
       {
 	// found free inactive
 	refp = m_inactive_list.front ();
 	m_inactive_list.pop_front ();
+	is_worker_active = false;
       }
     ulock.unlock ();
 
@@ -818,7 +822,7 @@ namespace cubthread
       }
 
     // push execution on found worker
-    refp->start_execution (task_p, push_time);
+    refp->start_execution (task_p, push_time, is_worker_active);
     return true;
   }
 
@@ -952,7 +956,8 @@ namespace cubthread
 
   template <typename Context>
   void
-  worker_pool<Context>::core::worker::start_execution (task<Context> *work_p, wpstat::time_point_type push_time)
+  worker_pool<Context>::core::worker::start_execution (task<Context> *work_p, wpstat::time_point_type push_time,
+      const bool is_worker_active)
   {
     assert (work_p != NULL);
 
@@ -967,21 +972,19 @@ namespace cubthread
     m_push_time = push_time;
 
     // is thread started and waiting for task?
-    if (m_waiting_task)
+    if (is_worker_active)
       {
 	// lock task mutex
 	std::unique_lock<std::mutex> ulock (m_task_mutex);
-	if (m_waiting_task)
-	  {
-	    // still waiting. save task and notify running thread
-	    m_task_p = work_p;
-	    m_waiting_task = false;  // this must be false to wake up running thread
 
-	    // unlock, notify thread and get out
-	    ulock.unlock ();
-	    m_task_cv.notify_one ();
-	    return;
-	  }
+	// save task and notify running thread
+	m_task_p = work_p;
+	m_waiting_task = false;  // this must be false to wake up running thread
+
+	// unlock, notify thread and get out
+	ulock.unlock ();
+	m_task_cv.notify_one ();
+	return;
       }
 
     // a new thread is required
