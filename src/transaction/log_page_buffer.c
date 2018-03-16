@@ -529,7 +529,7 @@ logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
   if (error_code == NO_ERROR)
     {
       log_pgptr->hdr.checksum = checksum_crc32;
-      logpb_log ("logpb_set_page_checksum: log page %lld has checksum = %\n",
+      logpb_log ("logpb_set_page_checksum: log page %lld has checksum = %d\n",
 		 (long long int) log_pgptr->hdr.logical_pageid, checksum_crc32);
     }
 
