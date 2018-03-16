@@ -285,11 +285,18 @@ class JSON_SERIALIZER : public JSON_WALKER
     ~JSON_SERIALIZER() {}
 
     int WalkDocument (JSON_DOC &document);
+    // the returned size is a prediction of how much memory we should allocate
     int GetDocumentPackedSize (const JSON_DOC &document);
 
     char *GetJsonSerialized ()
     {
       return head;
+    }
+
+    // the returned size is the actual size of the serialized json
+    size_t GetBufferSize()
+    {
+      return moving_ptr - head;
     }
 
   private:
@@ -2656,6 +2663,12 @@ db_json_doc_wrap_as_array (JSON_DOC &doc)
   return db_json_value_wrap_as_array (doc, doc.GetAllocator ());
 }
 
+/*
+ * db_json_get_json_doc_packed_size () - calculate the preliminary size used for pointers allocation
+ *
+ * return     : a prediction of how much memory we should allocate
+ * doc (in)   : the json document
+ */
 size_t
 db_json_get_json_doc_packed_size (const JSON_DOC &doc)
 {
@@ -2925,6 +2938,15 @@ char *db_json_serialize (JSON_DOC &doc)
   js.WalkDocument (doc);
 
   return js.GetJsonSerialized ();
+}
+
+std::pair<char *, size_t>
+db_json_serialize_with_length (JSON_DOC &doc)
+{
+  JSON_SERIALIZER js;
+  js.WalkDocument (doc);
+
+  return std::make_pair (js.GetJsonSerialized(), js.GetBufferSize());
 }
 
 /*

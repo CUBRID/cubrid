@@ -17233,12 +17233,11 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 	      return 0;
 	    }
 
-	  json_serialized = db_json_serialize (*json->document);
-	  size_t json_serialized_size = db_json_get_json_doc_packed_size (*json->document);
+	  std::pair < char *, size_t > json_serial = db_json_serialize_with_length (*json->document);
 
 	  db_value_domain_init (&json_body_value, DB_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0);
 	  db_make_db_char (&json_body_value, LANG_SYS_CODESET, LANG_SYS_COLLATION,
-			   json_serialized, json_serialized_size);
+			   json_serial.first, json_serial.second);
 	  json_body_length = mr_data_lengthval_string (&json_body_value, disk);
 
 	  if (json->schema_raw != NULL)
@@ -17276,11 +17275,10 @@ mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
     }
 
   /* json body can be null, but it is treated by writeval */
-  char *json_serialized = db_json_serialize (*json->document);
-  size_t json_serialized_size = db_json_get_json_doc_packed_size (*json->document);
+  std::pair < char *, size_t > json_serial = db_json_serialize_with_length (*json->document);
 
   db_value_domain_init (&json_body, DB_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0);
-  db_make_db_char (&json_body, LANG_SYS_CODESET, LANG_SYS_COLLATION, json_serialized, json_serialized_size);
+  db_make_db_char (&json_body, LANG_SYS_CODESET, LANG_SYS_COLLATION, json_serial.first, json_serial.second);
 
   if (json->schema_raw != NULL)
     {
@@ -17305,7 +17303,7 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
   DB_VALUE json_body, schema_raw;
   char *json_body_str = NULL, *schema_str = NULL, *json_raw_copy = NULL;
   DB_JSON *json;
-  int rc;
+  int rc = NO_ERROR;
 
   db_make_null (&json_body);
   db_make_null (&schema_raw);
@@ -17452,11 +17450,10 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
   if (value->data.json.document != NULL)
     {
       // serialize the json and put it in a db_value to get the corect length
-      char *json_serialized = db_json_serialize (*value->data.json.document);
-      size_t json_serialized_size = db_json_get_json_doc_packed_size (*value->data.json.document);
+      std::pair < char *, size_t > json_serial = db_json_serialize_with_length (*value->data.json.document);
 
       db_value_domain_init (&json_body, DB_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0);
-      db_make_db_char (&json_body, LANG_SYS_CODESET, LANG_SYS_COLLATION, json_serialized, json_serialized_size);
+      db_make_db_char (&json_body, LANG_SYS_CODESET, LANG_SYS_COLLATION, json_serial.first, json_serial.second);
       json_body_length = mr_data_lengthval_string (&json_body, disk);
     }
   else
@@ -17509,11 +17506,10 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
 	}
     }
 
-  char *json_serialized = db_json_serialize (*value->data.json.document);
-  size_t json_serialized_size = db_json_get_json_doc_packed_size (*value->data.json.document);
+  std::pair < char *, size_t > json_serial = db_json_serialize_with_length (*value->data.json.document);
 
   db_value_domain_init (&json_body, DB_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0);
-  db_make_db_char (&json_body, LANG_SYS_CODESET, LANG_SYS_COLLATION, json_serialized, json_serialized_size);
+  db_make_db_char (&json_body, LANG_SYS_CODESET, LANG_SYS_COLLATION, json_serial.first, json_serial.second);
 
   if (value->data.json.schema_raw != NULL)
     {
