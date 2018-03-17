@@ -1637,6 +1637,15 @@ logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_full
       goto error;
     }
 
+#if !defined(NDEBUG)
+  if (prm_get_bool_value (PRM_ID_ENABLE_LOG_PAGE_CHECKSUM) == true)
+    {
+      bool is_log_page_corrupted;
+      assert ((logpb_page_check_corruption (thread_p, log_pgptr, &is_log_page_corrupted) == NO_ERROR)
+	      && (is_log_page_corrupted == false));
+    }
+#endif
+
 error:
   return error_code;
 }
@@ -2058,7 +2067,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
 	     (long long int) log_pgptr->hdr.logical_pageid, log_pgptr->hdr.checksum);
 
 #if !defined(NDEBUG)
-  if (boot_Server_status == BOOT_SERVER_UP || log_pgptr->hdr.logical_pageid != LOGPB_HEADER_PAGE_ID)
+  if (prm_get_bool_value (PRM_ID_ENABLE_LOG_PAGE_CHECKSUM) == true)
     {
       bool is_log_page_corrupted;
       assert ((logpb_page_check_corruption (thread_p, log_pgptr, &is_log_page_corrupted) == NO_ERROR)
@@ -2120,6 +2129,23 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
 	  return -1;
 	}
     }
+
+#if !defined(NDEBUG)
+  if (prm_get_bool_value (PRM_ID_ENABLE_LOG_PAGE_CHECKSUM) == true)
+    {
+      bool is_log_page_corrupted;
+      char *ptr;
+      int i;
+
+      ptr = (char *) log_pgptr;
+      for (i = 0; i < num_pages; i++)
+	{
+	  assert ((logpb_page_check_corruption (thread_p, (LOG_PAGE *) ptr, &is_log_page_corrupted) == NO_ERROR)
+		  && (is_log_page_corrupted == false));
+	  ptr += LOG_PAGESIZE;
+	}
+    }
+#endif
 
   return num_pages;
 }
@@ -4663,6 +4689,15 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	}
       ++flush_page_count;
 
+      /* Update checksum. */
+      first_append_pageid = log_Pb.partial_append.log_page_record_header->hdr.logical_pageid;
+      bufptr = &log_Pb.buffers[logpb_get_log_buffer_index (first_append_pageid)];
+      if (bufptr->pageid == first_append_pageid)
+	{
+	  bufptr->logpage->hdr.checksum = log_Pb.partial_append.log_page_record_header->hdr.checksum;
+	  assert (!memcmp (bufptr->logpage, log_Pb.partial_append.log_page_record_header, LOG_PAGESIZE));
+	}
+
       /* we need to also sync again */
       if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active, FILEIO_SYNC_ONLY) == NULL_VOLDES)
 	{
@@ -6658,6 +6693,13 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
       LOG_ARCHIVE_CS_EXIT (thread_p);
 
       return NULL;
+    }
+
+  if (prm_get_bool_value (PRM_ID_ENABLE_LOG_PAGE_CHECKSUM) == true)
+    {
+      bool is_log_page_corrupted;
+      assert ((logpb_page_check_corruption (thread_p, log_pgptr, &is_log_page_corrupted) == NO_ERROR)
+	      && (is_log_page_corrupted == false));
     }
 #endif /* CUBRID_DEBUG */
 
@@ -12109,6 +12151,15 @@ logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p)
 	    }
 	}
       page_id = arv_hdr->fpageid;
+
+#if !defined(NDEBUG)
+      if (prm_get_bool_value (PRM_ID_ENABLE_LOG_PAGE_CHECKSUM) == true)
+	{
+	  bool is_log_page_corrupted;
+	  assert ((logpb_page_check_corruption (thread_p, arv_hdr_pgptr, &is_log_page_corrupted) == NO_ERROR)
+		  && (is_log_page_corrupted == false));
+	}
+#endif
 
       fileio_dismount (thread_p, vdes);
     }
