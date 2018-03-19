@@ -392,7 +392,8 @@ static int db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc);
 static int db_json_add_json_value_to_object (JSON_DOC &doc, const char *name, JSON_VALUE &value);
 
 static void db_json_deserialize_helper (char *&json_raw, const std::string &path, JSON_DOC &doc,
-					const std::unordered_map<std::string, std::string> &serial_types);
+					const std::unordered_map<std::string, std::string> &serial_types,
+					const std::unordered_map<std::string, std::string> &special_chars);
 
 int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value, JSON_VALUE *key)
 {
@@ -2789,9 +2790,7 @@ JSON_SERIALIZER::GetValuePackedSize (const JSON_VALUE &value)
 	  size += GetStringPackedSize (found_iterator->second.c_str ());
 
 	  // count the actual key string
-	  std::string key_string = it->name.GetString();
-	  db_json_replace_token_special_chars (key_string, special_chars);
-	  size += GetStringPackedSize (key_string.c_str());
+	  size += GetStringPackedSize (it->name.GetString());
 
 	  // count "v:"
 	  found_iterator = serial_types.find (db_Json_object_value_conv_rep_serial);
@@ -2864,9 +2863,7 @@ JSON_SERIALIZER::Serialize_helper (const JSON_VALUE &obj, JSON_VALUE *key, char 
       auto found_iterator = serial_types.find (db_Json_object_key_conv_rep_serial);
       current = or_pack_string (current, found_iterator->second.c_str ());
 
-      std::string key_string = key->GetString();
-      db_json_replace_token_special_chars (key_string, special_chars);
-      current = or_pack_string (current, key_string.c_str());
+      current = or_pack_string (current, key->GetString());
 
       found_iterator = serial_types.find (db_Json_object_value_conv_rep_serial);
       current = or_pack_string (current, found_iterator->second.c_str ());
@@ -2960,7 +2957,8 @@ db_json_serialize_with_length (JSON_DOC &doc)
  */
 static void
 db_json_deserialize_helper (char *&json_raw, const std::string &path, JSON_DOC &doc,
-			    const std::unordered_map<std::string, std::string> &serial_types)
+			    const std::unordered_map<std::string, std::string> &serial_types,
+			    const std::unordered_map<std::string, std::string> &special_chars)
 {
   JSON_VALUE value;
   char *type_raw = NULL;
@@ -3013,7 +3011,7 @@ db_json_deserialize_helper (char *&json_raw, const std::string &path, JSON_DOC &
       json_raw = or_unpack_int (json_raw, &size);
       for (int i = 0; i < size; i++)
 	{
-	  db_json_deserialize_helper (json_raw, path, doc, serial_types);
+	  db_json_deserialize_helper (json_raw, path, doc, serial_types, special_chars);
 	}
       break;
 
@@ -3024,7 +3022,7 @@ db_json_deserialize_helper (char *&json_raw, const std::string &path, JSON_DOC &
       json_raw = or_unpack_int (json_raw, &size);
       for (int i = 0; i < size; i++)
 	{
-	  db_json_deserialize_helper (json_raw, path + "/" + std::to_string (i), doc, serial_types);
+	  db_json_deserialize_helper (json_raw, path + "/" + std::to_string (i), doc, serial_types, special_chars);
 	}
       break;
 
@@ -3039,11 +3037,14 @@ db_json_deserialize_helper (char *&json_raw, const std::string &path, JSON_DOC &
 	{
 	  char *key;
 	  json_raw = or_unpack_string_nocopy (json_raw, &key);
-	  db_json_deserialize_helper (json_raw, path + "/" + key, doc, serial_types);
+	  std::string key_string = key;
+	  db_json_replace_token_special_chars (key_string, special_chars);
+
+	  db_json_deserialize_helper (json_raw, path + "/" + key_string, doc, serial_types, special_chars);
 	}
       else if (strcmp (type.c_str (), "v:") == 0)
 	{
-	  db_json_deserialize_helper (json_raw, path, doc, serial_types);
+	  db_json_deserialize_helper (json_raw, path, doc, serial_types, special_chars);
 	}
       else
 	{
@@ -3064,13 +3065,15 @@ db_json_deserialize_helper (char *&json_raw, const std::string &path, JSON_DOC &
 JSON_DOC *db_json_deserialize (char *json_raw)
 {
   std::unordered_map<std::string, std::string> serial_types;
+  std::unordered_map<std::string, std::string> special_chars;
 
   // construct the correspondence map
   db_json_build_serial_types (JSON_SERIALIZE_ACTION::JSON_DESERIALIZE, serial_types);
+  db_json_build_path_special_chars (JSON_PATH_TYPE::JSON_PATH_SQL_JSON, special_chars);
 
   // create the document that we want to reconstruct
   JSON_DOC *doc = db_json_allocate_doc ();
-  db_json_deserialize_helper (json_raw, "", *doc, serial_types);
+  db_json_deserialize_helper (json_raw, "", *doc, serial_types, special_chars);
 
   char *json_body_raw = db_json_get_raw_json_body_from_document (doc);
   doc->SetJsonBody (json_body_raw);
