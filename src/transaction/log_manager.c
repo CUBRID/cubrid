@@ -340,10 +340,8 @@ static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG
 // *INDENT-OFF*
 static cubthread::daemon *log_Clock_daemon = NULL;
 static cubthread::daemon *log_Checkpoint_daemon = NULL;
-static cubthread::daemon *log_Check_ha_delay_info_daemon = NULL;
-
 static cubthread::daemon *log_Remove_log_archive_daemon = NULL;
-static std::atomic_bool log_Remove_log_archive_daemon_force_wakeup = {false};
+static cubthread::daemon *log_Check_ha_delay_info_daemon = NULL;
 
 static cubthread::daemon *log_Flush_daemon = NULL;
 static std::atomic_bool log_Flush_has_been_requested = {false};
@@ -10306,29 +10304,6 @@ log_get_checkpoint_interval (bool & is_timed_wait, cubthread::delta_time & perio
     }
 }
 
-/*
- * log_get_remove_log_archive_interval () - setup remove log archive daemon period based on system parameter
- */
-void
-log_get_remove_log_archive_interval (bool & is_timed_wait, cubthread::delta_time & period)
-{
-  int remove_log_archive_interval_sec = prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
-
-  assert (remove_log_archive_interval_sec >= 0);
-
-  if (remove_log_archive_interval_sec > 0)
-    {
-      // if remove_log_archive_interval_sec > 0 (zero) then loop for fixed interval
-      is_timed_wait = true;
-      period = std::chrono::seconds (remove_log_archive_interval_sec);
-    }
-  else
-    {
-      // infinite wait
-      is_timed_wait = false;
-    }
-}
-
 #if defined (SERVER_MODE)
 /*
  * log_wakeup_remove_log_archive_daemon () - wakeup remove log archive daemon
@@ -10336,20 +10311,9 @@ log_get_remove_log_archive_interval (bool & is_timed_wait, cubthread::delta_time
 void
 log_wakeup_remove_log_archive_daemon ()
 {
-  bool is_timed_wait;
-  cubthread::delta_time period;
-
-  log_get_remove_log_archive_interval (is_timed_wait, period);
-
-  if (log_Remove_log_archive_daemon && (!is_timed_wait || log_Remove_log_archive_daemon_force_wakeup))
+  if (log_Remove_log_archive_daemon)
     {
-      // if is_timed_wait is false it means that daemon is sleeping
-      // and on wakeup it will do his job,
-      // otherwise daemon will be awakened every PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL seconds
       log_Remove_log_archive_daemon->wakeup ();
-
-      // reset force wake up
-      log_Remove_log_archive_daemon_force_wakeup = false;
     }
 }
 #endif /* SERVER_MODE */
@@ -10422,16 +10386,67 @@ class log_checkpoint_daemon_task : public cubthread::entry_task
 #if defined(SERVER_MODE)
 // class log_remove_log_archive_daemon_task
 //
-//  constructor args:
-//    archive_logs_to_delete : represents number of how many archive logs should be deleted by daemon task,
-//                             which must be dependent of PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL param value
-//
 //  description:
 //    remove archive logs daemon task
 //
 class log_remove_log_archive_daemon_task : public cubthread::entry_task
 {
+  private:
+    using clock = std::chrono::system_clock;
+
+    bool m_is_timed_wait;
+    cubthread::delta_time m_period;
+    std::chrono::milliseconds m_param_period;
+    clock::time_point m_log_deleted_time;
+
+    void compute_period ()
+    {
+      // fetch remove log archives interval
+      int remove_log_archives_interval_sec = prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
+      assert (remove_log_archives_interval_sec >= 0);
+
+      // cache interval for later use
+      m_param_period = std::chrono::milliseconds (remove_log_archives_interval_sec * 1000);
+
+      if (m_param_period > std::chrono::milliseconds (0))
+	{
+	  m_is_timed_wait = true;
+	  clock::time_point now = clock::now ();
+
+	  // now - m_log_deleted_time: represents time elapsed since last log archive deletion
+	  if ((now - m_log_deleted_time) > m_param_period)
+	    {
+	      m_period = m_param_period;
+	    }
+	  else
+	    {
+	      m_period = m_param_period - (now - m_log_deleted_time);
+	    }
+	}
+      else
+	{
+	  // infinite wait
+	  m_is_timed_wait = false;
+	}
+    }
+
   public:
+    log_remove_log_archive_daemon_task ()
+      : m_is_timed_wait (true)
+      , m_period (0)
+      , m_param_period (0)
+      , m_log_deleted_time ()
+    {
+      // initialize period
+      compute_period ();
+    }
+
+    void get_remove_log_archives_interval (bool & is_timed_wait, cubthread::delta_time & period)
+    {
+      period = m_period;
+      is_timed_wait = m_is_timed_wait;
+    }
+
     void execute (cubthread::entry & thread_ref) override
     {
       if (!BO_IS_SERVER_RESTARTED ())
@@ -10440,19 +10455,26 @@ class log_remove_log_archive_daemon_task : public cubthread::entry_task
 	  return;
 	}
 
-      bool is_timed_wait;
-      cubthread::delta_time period;
+      // compute wait period based on configured interval
+      compute_period ();
 
-      log_get_remove_log_archive_interval (is_timed_wait, period);
-
-      // if is_timed_wait is true then on every loop remove one log archive
-      // otherwise on wakeup remove all log archive records
-      int log_archives_to_delete = is_timed_wait ? 1 : 0;
-      int deleted_count = logpb_remove_archive_logs_exceed_limit (&thread_ref, log_archives_to_delete);
-
-      if (deleted_count == 0 && is_timed_wait)
+      if (m_is_timed_wait)
 	{
-	  log_Remove_log_archive_daemon_force_wakeup = true;
+	  if (m_period != m_param_period)
+	    {
+	      // do not delete logs. wait more time
+	      return;
+	    }
+	  if (logpb_remove_archive_logs_exceed_limit (&thread_ref, 1) > 0)
+	    {
+	      // a log was deleted
+	      m_log_deleted_time = clock::now ();
+	    }
+	}
+      else
+	{
+	  // remove all unnecessary logs
+	  logpb_remove_archive_logs_exceed_limit (&thread_ref, 0);
 	}
     }
 };
@@ -10636,8 +10658,14 @@ log_remove_log_archive_daemon_init ()
 {
   assert (log_Remove_log_archive_daemon == NULL);
 
-  cubthread::looper looper = cubthread::looper (log_get_remove_log_archive_interval);
   log_remove_log_archive_daemon_task *daemon_task = new log_remove_log_archive_daemon_task ();
+  cubthread::period_function setup_period_function = std::bind (
+      &log_remove_log_archive_daemon_task::get_remove_log_archives_interval,
+      daemon_task,
+      std::placeholders::_1,
+      std::placeholders::_2);
+
+  cubthread::looper looper = cubthread::looper (setup_period_function);
 
   // create log archive remover daemon thread
   log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
