@@ -726,7 +726,7 @@ namespace cubthread
   wpstat::id
   wpstat::to_id (std::size_t index)
   {
-    assert (index >= 0 && index < STATS_COUNT);
+    assert (index < STATS_COUNT);
     return static_cast<id> (index);
   }
 
@@ -880,7 +880,9 @@ namespace cubthread
     // waiting for task. system is not overloaded so it should not matter
     //
     // there is a very small window of opportunity when a task may be pushed right before removing worker from list.
-    for (std::list<worker *>::const_iterator it = m_free_active_list.cbegin (); it != m_free_active_list.cend (); ++it)
+    for (typename std::list<worker *>::const_iterator it = m_free_active_list.cbegin ();
+	 it != m_free_active_list.cend ();
+	 ++it)
       {
 	if (*it == &worker_arg)
 	  {
@@ -1009,7 +1011,7 @@ namespace cubthread
 
   template <typename Context>
   void
-  worker_pool<Context>::core::worker::push_task_on_current_thread (task<Context> *work_p,
+  worker_pool<Context>::core::worker::push_task_on_running_thread (task<Context> *work_p,
       wpstat::time_point_type push_time)
   {
     // run on current thread
