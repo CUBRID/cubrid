@@ -1139,14 +1139,6 @@ namespace cubthread
   }
 
   template <typename Context>
-  bool
-  worker_pool<Context>::core::worker::stop_waiting_for_task (void)
-  {
-    // wait until task is received or until stopped
-
-  }
-
-  template <typename Context>
   void
   worker_pool<Context>::core::worker::wait_for_task (void)
   {
@@ -1178,7 +1170,15 @@ namespace cubthread
 	    // I was not removed from active list... that means somebody claimed me right before removing from list
 	    // now I have to wait for the task
 	    ulock.lock ();
-	    m_task_cv.wait (ulock, [this] { return m_task_p != NULL; });
+	    if (m_task_p == NULL)
+	      {
+		// wait until task is set
+		m_task_cv.wait (ulock, [this] { return m_task_p != NULL; });
+	      }
+	    else
+	      {
+		// task already set, don't wait
+	      }
 	    ulock.unlock ();
 	  }
       }
