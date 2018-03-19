@@ -880,12 +880,12 @@ namespace cubthread
     // waiting for task. system is not overloaded so it should not matter
     //
     // there is a very small window of opportunity when a task may be pushed right before removing worker from list.
-    for (auto it = m_free_active_list.cbegin (); it != m_free_active_list.cend (); ++it)
+    for (std::list<worker *>::const_iterator it = m_free_active_list.cbegin (); it != m_free_active_list.cend (); ++it)
       {
 	if (*it == &worker_arg)
 	  {
 	    // found worker
-	    m_free_active_list.erase (it);
+	    (void) m_free_active_list.erase (it);
 	    return true;
 	  }
       }
