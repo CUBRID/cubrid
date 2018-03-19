@@ -13020,6 +13020,26 @@ namespace Func
       {
         switch(m_node->info.function.function_type)
           {
+          case PT_COUNT:
+            {
+              //to be moved in constant folding !?
+              parser_node* arg_list = m_node->info.function.arg_list;
+              /* do special constant folding; COUNT(1), COUNT(?), COUNT(:x), ... -> COUNT(*) */
+              /* TODO does this belong to type checking or constant folding? */
+              if (pt_is_const (arg_list))
+	        {
+	          PT_MISC_TYPE all_or_distinct;
+	          all_or_distinct = m_node->info.function.all_or_distinct;
+	          if (m_node->info.function.function_type == PT_COUNT && all_or_distinct != PT_DISTINCT)
+	            {
+	              m_node->info.function.function_type = PT_COUNT_STAR;
+	              parser_free_tree (m_parser, arg_list);
+	              m_node->info.function.arg_list = NULL;
+	            }
+	        }
+              m_node->type_enum = PT_TYPE_INTEGER;
+              break;
+            }
           case F_ELT:
             {
               //find 1st arg of type character
@@ -13446,23 +13466,6 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_AVG:
     case PT_COUNT_STAR:
     case PT_COUNT:
-#if 0//to be moved in constant folding
-      /* do special constant folding; COUNT(1), COUNT(?), COUNT(:x), ... -> COUNT(*) */
-      /* TODO does this belong to type checking or constant folding? */
-      if (pt_is_const (arg_list))
-	{
-	  PT_MISC_TYPE all_or_distinct;
-	  all_or_distinct = node->info.function.all_or_distinct;
-	  if (fcode == PT_COUNT && all_or_distinct != PT_DISTINCT)
-	    {
-	      fcode = node->info.function.function_type = PT_COUNT_STAR;
-	      parser_free_tree (parser, arg_list);
-	      arg_list = node->info.function.arg_list = NULL;
-	    }
-	}
-      node->type_enum = PT_TYPE_INTEGER;
-      break;
-#endif
     case PT_SUM:
     case PT_LEAD:
     case PT_LAG:
