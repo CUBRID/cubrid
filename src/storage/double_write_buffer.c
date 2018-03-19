@@ -3924,10 +3924,6 @@ dwb_destroy (THREAD_ENTRY * thread_p)
   int error_code = NO_ERROR;
   UINT64 current_position_with_flags;
 
-#if defined(SERVER_MODE)
-  dwb_daemons_destroy ();
-#endif
-
   error_code = dwb_starts_structure_modification (thread_p, &current_position_with_flags);
   if (error_code != NO_ERROR)
     {
@@ -3946,6 +3942,11 @@ dwb_destroy (THREAD_ENTRY * thread_p)
 end:
   /* Ends the modification, allowing to others to modify global position with flags. */
   dwb_ends_structure_modification (thread_p, current_position_with_flags);
+
+  /* DWB is destroyed, */
+#if defined(SERVER_MODE)
+  dwb_daemons_destroy ();
+#endif
 
   return error_code;
 }
@@ -4263,7 +4264,7 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
   FLUSH_VOLUME_STATUS flushed_status;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
-  UINT64 oldest_time;
+  UINT64 oldest_time, position_with_flags;
   bool is_perf_tracking = false;
   FLUSH_VOLUME_INFO *current_flush_volume_info = NULL;
   unsigned int count_flush_volumes_info;
@@ -4272,6 +4273,12 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
   int first_partial_flushed_volume = -1;
 
 start:
+  position_with_flags = ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL);
+  if (!DWB_IS_CREATED (position_with_flags) || DWB_IS_MODIFYING_STRUCTURE (position_with_flags))
+    {
+      return NO_ERROR;
+    }
+
   num_pages_to_sync = prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH);
 
   block = (DWB_BLOCK *) dwb_Global.helper_flush_block;
