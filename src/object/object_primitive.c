@@ -17240,6 +17240,8 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 			   json_serial.first, json_serial.second);
 	  json_body_length = mr_data_lengthval_string (&json_body_value, disk);
 
+	  json_body_value.need_clear = true;
+
 	  if (json->schema_raw != NULL)
 	    {
 	      db_make_string_by_const_str (&schema_raw_value, json->schema_raw);
@@ -17279,6 +17281,8 @@ mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 
   db_value_domain_init (&json_body, DB_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0);
   db_make_db_char (&json_body, LANG_SYS_CODESET, LANG_SYS_COLLATION, json_serial.first, json_serial.second);
+
+  json_body.need_clear = true;
 
   if (json->schema_raw != NULL)
     {
@@ -17454,6 +17458,8 @@ mr_data_lengthval_json (DB_VALUE * value, int disk)
 
       db_value_domain_init (&json_body, DB_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0);
       db_make_db_char (&json_body, LANG_SYS_CODESET, LANG_SYS_COLLATION, json_serial.first, json_serial.second);
+
+      json_body.need_clear = true;
       json_body_length = mr_data_lengthval_string (&json_body, disk);
     }
   else
@@ -17510,6 +17516,8 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
 
   db_value_domain_init (&json_body, DB_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0);
   db_make_db_char (&json_body, LANG_SYS_CODESET, LANG_SYS_COLLATION, json_serial.first, json_serial.second);
+
+  json_body.need_clear = true;
 
   if (value->data.json.schema_raw != NULL)
     {
@@ -17594,6 +17602,8 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 exit:
   pr_clear_value (&json_body);
   pr_clear_value (&schema_raw);
+
+  db_private_free (NULL, json_raw_copy);
 
   return rc;
 }
