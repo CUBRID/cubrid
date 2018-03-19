@@ -406,7 +406,7 @@ namespace cubthread
       // start task execution on a new thread (push_time is provided by core)
       void push_task_on_new_thread (task<Context> *work_p, wpstat::time_point_type push_time);
       // run task on current thread (push_time is provided by core)
-      void push_task_on_current_thread (task<Context> *work_p, wpstat::time_point_type push_time);
+      void push_task_on_running_thread (task<Context> *work_p, wpstat::time_point_type push_time);
       // stop execution
       void stop_execution (void);
       // map function to context (if context is available)
@@ -834,7 +834,7 @@ namespace cubthread
 	ulock.unlock ();
 
 	// push task on current worker
-	refp->push_task_on_current_thread (task_p, push_time);
+	refp->push_task_on_running_thread (task_p, push_time);
 	return true; // worker found
       }
     else if (!m_inactive_list.empty ())
