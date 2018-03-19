@@ -101,6 +101,7 @@ std::vector<func_signature> func_signature::group_concat = {
   {PT_TYPE_VARCHAR , {PT_GENERIC_TYPE_CHAR  , PT_GENERIC_TYPE_CHAR  }, {}},
   {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_NCHAR , PT_GENERIC_TYPE_NCHAR }, {}},
   {PT_TYPE_VARBIT  , {PT_GENERIC_TYPE_BIT   , PT_GENERIC_TYPE_BIT   }, {}},
+  {PT_TYPE_VARCHAR , {PT_TYPE_NULL                                  }, {}},
 //{PT_TYPE_VARCHAR , {PT_GENERIC_TYPE_NUMBER, PT_GENERIC_TYPE_STRING}, {}},
 };
 
