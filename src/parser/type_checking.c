@@ -13082,18 +13082,11 @@ namespace Func
     //this should be detailed because casting CHAR to NUMBER or SMALLINT to INT should be possible
     if (type.type == pt_arg_type::NORMAL)
       {
-#if 0
-        if (type.val.type == type_enum)
-          {
-            return (type_enum != PT_TYPE_NONE);//false if both arguments are of type none; true if both have the same type
-          }
-        /* if def_type is a PT_TYPE_ENUM and the conditions above did not hold then the two types are not equivalent. */
-        return false;
-#else
         switch(type.val.type)
           {
             case PT_TYPE_INTEGER:
-              return (PT_IS_DISCRETE_NUMBER_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE);
+              //return (PT_IS_DISCRETE_NUMBER_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE);
+              return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE);
             case PT_TYPE_BIGINT:
               return (PT_IS_DISCRETE_NUMBER_TYPE(type_enum) || type_enum==PT_TYPE_MAYBE);
 
@@ -13105,13 +13098,11 @@ namespace Func
               /* if def_type is a PT_TYPE_ENUM and the conditions above did not hold then the two types are not equivalent. */
               return false;
           }
-#endif
       }
 
     //type.type == pt_arg_type::GENERIC
     switch(type.val.generic_type)
       {
-      
         case PT_GENERIC_TYPE_NUMBER:
           return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum));
         case PT_GENERIC_TYPE_DISCRETE_NUMBER:
