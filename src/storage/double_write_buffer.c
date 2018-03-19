@@ -499,6 +499,7 @@ static bool dwb_is_checksum_computation_daemon_available (void);
 
 static bool dwb_flush_block_daemon_is_running (void);
 static bool dwb_flush_block_helper_daemon_is_running (void);
+static bool dwb_checksum_computation_daemon_is_running (void);
 
 /* Slots entry descriptor */
 static LF_ENTRY_DESCRIPTOR slots_entry_Descriptor = {
@@ -916,7 +917,8 @@ start_structure_modification:
 
 #if defined(SERVER_MODE)
 check_dwb_flush_thread_is_running:
-  if (dwb_flush_block_daemon_is_running () || dwb_flush_block_helper_daemon_is_running ())
+  if (dwb_flush_block_daemon_is_running () || dwb_flush_block_helper_daemon_is_running ()
+      || dwb_checksum_computation_daemon_is_running ())
     {
       /* Can't modify structure while flush thread can access DWB. */
       thread_sleep (20);
@@ -4830,6 +4832,21 @@ dwb_flush_block_helper_daemon_is_running (void)
 {
 #if defined (SERVER_MODE)
   return ((dwb_flush_block_helper_daemon != NULL) && (dwb_flush_block_helper_daemon->is_running ()));
+#else
+  return false;
+#endif /* SERVER_MODE */
+}
+
+/*
+* dwb_flush_block_helper_daemon_is_running () - Check whether checksum computation daemon is running
+*
+*   return: true, if checksum computation thread is running
+*/
+static bool
+dwb_checksum_computation_daemon_is_running (void)
+{
+#if defined (SERVER_MODE)
+  return ((dwb_checkum_computation_daemon != NULL) && (dwb_checkum_computation_daemon->is_running ()));
 #else
   return false;
 #endif /* SERVER_MODE */
