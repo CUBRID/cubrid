@@ -3922,6 +3922,10 @@ dwb_destroy (THREAD_ENTRY * thread_p)
   int error_code = NO_ERROR;
   UINT64 current_position_with_flags;
 
+#if defined(SERVER_MODE)
+  dwb_daemons_destroy ();
+#endif
+
   error_code = dwb_starts_structure_modification (thread_p, &current_position_with_flags);
   if (error_code != NO_ERROR)
     {
