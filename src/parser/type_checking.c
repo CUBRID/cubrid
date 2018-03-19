@@ -13124,7 +13124,7 @@ namespace Func
     switch(type.val.generic_type)
       {
         case PT_GENERIC_TYPE_NUMBER:
-          return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum));
+          return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || type_enum==PT_TYPE_JSON);
         case PT_GENERIC_TYPE_DISCRETE_NUMBER:
           return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum));
 
