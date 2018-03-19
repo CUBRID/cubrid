@@ -10891,13 +10891,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
     {
       common_type = PT_TYPE_DOUBLE;
     }
-#if 0 //bSolo: why is this here? maybe wrong merge?
-  else if ((PT_IS_NUMERIC_TYPE (arg1_type) && arg2_type == PT_TYPE_JSON)
-	   || (arg1_type == PT_TYPE_JSON && PT_IS_NUMERIC_TYPE (arg2_type)))
-    {
-      common_type = PT_TYPE_JSON;
-    }
-#endif
   else if ((PT_IS_STRING_TYPE (arg1_type) && arg2_type == PT_TYPE_JSON)
 	   || (arg1_type == PT_TYPE_JSON && PT_IS_STRING_TYPE (arg2_type)))
     {
