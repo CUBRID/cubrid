@@ -13054,7 +13054,6 @@ namespace Func
                   //if (arg->type_enum != arg_type/* || arg->data_type->info.data_type.precision != max_precision*/)
                   arg = cast(prev, arg, type, 0, 0, 0);
                 }
-              //m_node->type_enum = type; //it is enforced by function's signature
               break;
             }
           case F_INSERT_SUBSTRING:
@@ -13124,7 +13123,7 @@ namespace Func
         case PT_GENERIC_TYPE_STRING:
           return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum));
         case PT_GENERIC_TYPE_CHAR:
-          return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE);
+          return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE || type_enum == PT_TYPE_NULL);
         case PT_GENERIC_TYPE_NCHAR:
           return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_NATIONAL_CHAR_STRING_TYPE(type_enum));
 
