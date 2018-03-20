@@ -22748,7 +22748,8 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
 		  strcat (default_value_string, ")");
 
-		  db_make_string_by_const_str (out_values[idx_val], default_value_string);
+		  db_make_string (out_values[idx_val], default_value_string);
+		  out_values[idx_val]->need_clear = true;
 		}
 	      else
 		{
