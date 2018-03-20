@@ -27,14 +27,17 @@
 #include <pthread.h>
 #include <sys/time.h>
 #include <assert.h>
+#include <atomic>
 
-#include "lock_free.h"
+#include "lockfree_circular_queue.hpp"
 #include "thread.h"
 #include "vacuum.h"
 
 #define strlen(s1) ((int) strlen(s1))
 
-LOCK_FREE_CIRCULAR_QUEUE *vacuum_Finished_job_queue = NULL;
+/* *INDENT-OFF*/
+lockfree::circular_queue<VACUUM_LOG_BLOCKID> *vacuum_Finished_job_queue = NULL;
+/* *INDENT-ON*/
 
 void *test_circular_queue_consumer (void *param);
 void *test_circular_queue_producer (void *param);
@@ -84,8 +87,10 @@ fail (const char *message)
   return ER_FAILED;
 }
 
-static volatile INT64 global_nconsumed;
-static volatile INT64 global_nproduced;
+/* *INDENT-OFF*/
+static std::atomic_uint64_t global_nconsumed;
+static std::atomic_uint64_t global_nproduced;
+/* *INDENT-ON*/
 
 /* thread entry functions */
 void *
@@ -98,10 +103,10 @@ test_circular_queue_consumer (void *param)
 
   while ((int) global_nconsumed < n_tocons)
     {
-      r = lf_circular_queue_consume (vacuum_Finished_job_queue, &data);
+      r = vacuum_Finished_job_queue->consume (data);
       if (r)
 	{
-	  local_nconsumed = ATOMIC_INC_64 (&global_nconsumed, 1);
+	  local_nconsumed = ++global_nconsumed;
 	  if (local_nconsumed % 100000 == 0)
 	    {
 	      printf (" Consumed %ld entries \n", local_nconsumed);
@@ -123,10 +128,10 @@ test_circular_queue_producer (void *param)
   while ((int) global_nproduced < ntoprod)
     {
       data = 0;
-      r = lf_circular_queue_produce (vacuum_Finished_job_queue, &data);
+      r = vacuum_Finished_job_queue->produce (data);
       if (r)
 	{
-	  local_nproduced = ATOMIC_INC_64 (&global_nproduced, 1);
+	  local_nproduced = ++global_nproduced;
 	  if (local_nproduced % 100000 == 0)
 	    {
 	      printf (" Produced %ld entries \n", local_nproduced);
@@ -167,8 +172,9 @@ test_cqueue (int num_consumers, int num_producers)
   n_toprod = NOPS;
   n_tocons = NOPS;
 
-  vacuum_Finished_job_queue =
-    lf_circular_queue_create (VACUUM_FINISHED_JOB_QUEUE_CAPACITY, sizeof (VACUUM_LOG_BLOCKID));
+  /* *INDENT-OFF*/
+  vacuum_Finished_job_queue = new lockfree::circular_queue<VACUUM_LOG_BLOCKID> (VACUUM_FINISHED_JOB_QUEUE_CAPACITY);
+  /* *INDENT-ON*/
   if (vacuum_Finished_job_queue == NULL)
     {
       return fail ("circular queue create fail");
@@ -206,7 +212,7 @@ test_cqueue (int num_consumers, int num_producers)
   /* results */
 
   /* destroy */
-  lf_circular_queue_destroy (vacuum_Finished_job_queue);
+  delete vacuum_Finished_job_queue;
 
   return success ();
 
