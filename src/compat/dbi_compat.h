@@ -43,7 +43,6 @@
 #include "dbtype_def.h"
 #include "error_code.h"
 #include "dbtype_function.h"
-#include "cas_cci_common.h"
 #include "db_date.h"
 #include "db_elo.h"
 #include "cache_time.h"
