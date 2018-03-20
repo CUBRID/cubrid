@@ -78,6 +78,7 @@
 #include <locale>
 #include <unordered_map>
 #include <vector>
+#include <memory>
 
 #include <cctype>
 
@@ -93,6 +94,14 @@ class JSON_PRIVATE_ALLOCATOR
     void *Malloc (size_t size);
     void *Realloc (void *originalPtr, size_t originalSize, size_t newSize);
     static void Free (void *ptr);
+};
+
+struct JSON_RAW_STRING_DELETER
+{
+  void operator() (char *p) const
+  {
+    db_private_free (NULL, p);
+  }
 };
 
 typedef rapidjson::UTF8 <> JSON_ENCODING;
@@ -111,15 +120,15 @@ class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_M
       return json_body;
     }
 
-    void SetJsonBody (const std::string &body)
+    template<typename T>
+    void SetJsonBody (T &&body) const
     {
-      json_body = body;
+      json_body = std::forward<T> (body);
     }
 
   private:
     static const int MAX_CHUNK_SIZE;
-    std::string json_body;
-    //mutable char *ser_json;
+    mutable std::string json_body;
 };
 
 class JSON_VALIDATOR
@@ -887,8 +896,12 @@ db_json_get_raw_json_body_from_document (const JSON_DOC *doc)
 const char *
 db_json_get_json_body_from_document (const JSON_DOC &doc)
 {
-  //return doc.GetJsonBody().c_str();
-  return db_json_get_raw_json_body_from_document (&doc);
+  std::string json_body (std::unique_ptr<char, JSON_RAW_STRING_DELETER>
+			 (db_json_get_raw_json_body_from_document (&doc), JSON_RAW_STRING_DELETER()).get());
+
+  doc.SetJsonBody (json_body);
+
+  return doc.GetJsonBody().c_str();
 }
 
 static int
