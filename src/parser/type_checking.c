@@ -13211,11 +13211,11 @@ namespace Func
   const func_signature* get_signature (parser_node* node, const std::vector<func_signature>& signatures)
   {
     const func_signature* signature = get_signature(node, signatures, &cmp_types_normal);
-    if(signature)
+    if(signature == NULL)
       {
         signature = get_signature(node, signatures, &cmp_types_generic);
       }
-    if(signature)
+    if(signature == NULL)
       {
         signature = get_signature(node, signatures, &cmp_types_castable);
       }
