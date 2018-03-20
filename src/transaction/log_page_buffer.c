@@ -12332,6 +12332,11 @@ logpb_debug_check_log_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 
   if (prm_get_bool_value (PRM_ID_ENABLE_LOG_PAGE_CHECKSUM) == true)
     {
+      if (boot_Server_status != BOOT_SERVER_UP && log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID)
+	{
+	  /* Do not check here since log page size may be not available */
+	  return;
+	}
       err = logpb_page_check_corruption (thread_p, log_pgptr, &is_log_page_corrupted);
 
       assert (err == NO_ERROR && is_log_page_corrupted == false);
