@@ -3815,13 +3815,15 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	    {
 	      /* Update the current VPID and get the volume descriptor. */
 	      temp_vol_fd = fileio_get_volume_descriptor (vpid->volid);
-	      if (temp_vol_fd == NULL)
+	      if (temp_vol_fd == NULL_VOLDES)
 		{
 		  continue;
 		}
 	      vol_fd = temp_vol_fd;
 	      volid = vpid->volid;
 	    }
+
+	  assert (vol_fd != NULL_VOLDES);
 
 	  /* Read the page from data volume. */
 	  if (fileio_read (thread_p, vol_fd, iopage, vpid->pageid, IO_PAGESIZE) == NULL)
