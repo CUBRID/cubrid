@@ -308,10 +308,9 @@ namespace cubthread
       void add_worker_to_free_active_list (worker &worker_arg);
       // add worker to inactive list (no longer running)
       void add_worker_to_inactive_list (worker &worker_arg);
-      // remove worker from active list (when waiting for task times out)
-      void remove_worker_from_active_list (worker &worker_arg);
-      // return true when worker pool is stopped
-      bool is_stopped (void) const;
+      // remove worker from active list (when waiting for task times out).
+      // return true if worker was found, false otherwise
+      bool remove_worker_from_active_list (worker &worker_arg);
       // context management
       // pass request from worker to worker pool context manager to create, recycle, retire contexts
       context_type &create_context (void);
@@ -363,6 +362,33 @@ namespace cubthread
   //          - claiming task from queue
   //          - executing task
   //
+  //    a more sensible part of task execution is pushing task to running thread, due to limit cases. there are up to
+  //    three threads implicated into this process:
+  //
+  //      1. task pusher
+  //          - whenever worker is claimed from free active list, the task is directly assigned (m_task_p is set)!
+  //            (as a consequence, waiting thread cannot reject the task)
+  //
+  //      2. worker pool stopper
+  //          - thread requests worker pool to stop. the signal is passed to all cores and workers; including workers
+  //            that are waiting for tasks. that is signaled using m_stop field
+  //
+  //      3. task waiter
+  //         the thread "lingers" waiting for new arriving tasks. the worker first adds itself to core's free active
+  //         list and then waits until one of next conditions happen
+  //          - task is assigned (m_task_p is not nil). it executes the task (regardless of m_stop).
+  //          - thread is stopped (m_stop is true).
+  //          - wait times out
+  //         after waking up, if no task was assigned up to this point, the thread will attempt to remove its worker
+  //         from free active list. a task may yet be assigned until the worker is removed from this list; if worker is
+  //         not found to be removed, it means the worker was claimed and a task was pushed or is being pushed. thread
+  //         is forced to wait for assigned task.
+  //         if worker is removed successfully from free active list, its thread will stop and it will be added to
+  //         inactive list.
+  //         note that after wake up, m_stop does not affect the course of action in any way, only m_task_p. In most
+  //         cases, m_stop being true will be equivalent to m_task_p being nil. in the very limited case when m_stop is
+  //         true and a task is also assigned, we let the worker execute the task.
+  //
   // note
   //    class is nested to worker pool and cannot be used outside it
   //
@@ -377,8 +403,10 @@ namespace cubthread
       // init
       void init_core (core_type &parent);
 
-      // start task execution (push_time is provided by core)
-      void start_execution (task<Context> *work_p, wpstat::time_point_type push_time);
+      // start task execution on a new thread (push_time is provided by core)
+      void push_task_on_new_thread (task<Context> *work_p, wpstat::time_point_type push_time);
+      // run task on current thread (push_time is provided by core)
+      void push_task_on_running_thread (task<Context> *work_p, wpstat::time_point_type push_time);
       // stop execution
       void stop_execution (void);
       // map function to context (if context is available)
@@ -412,8 +440,8 @@ namespace cubthread
       // synchronization on task wait
       std::condition_variable m_task_cv;      // condition variable used to notify when a task is assigned or when
       // worker is stopped
-      std::mutex m_task_mutex;                // mutex to protect m_waiting_task (predicate for condition variable)
-      bool m_waiting_task;                    // condition variable predicate = !m_waiting_task
+      std::mutex m_task_mutex;                // mutex to protect waiting task condition
+      bool m_stop;                            // stop execution (set to true when worker pool is stopped)
 
       // statistics
       wpstat::stat_type m_stats_array[wpstat::TOTAL_STATS_COUNT];   // buffer to store statistics
@@ -698,7 +726,7 @@ namespace cubthread
   wpstat::id
   wpstat::to_id (std::size_t index)
   {
-    assert (index >= 0 && index < STATS_COUNT);
+    assert (index < STATS_COUNT);
     return static_cast<id> (index);
   }
 
@@ -796,30 +824,33 @@ namespace cubthread
 
     wpstat::time_point_type push_time = wpstat::clock_type::now ();
     worker *refp = NULL;
+
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
     if (!m_free_active_list.empty ())
       {
-	// found free active
+	// found free active; remove from list
 	refp = m_free_active_list.front ();
 	m_free_active_list.pop_front ();
+	ulock.unlock ();
+
+	// push task on current worker
+	refp->push_task_on_running_thread (task_p, push_time);
+	return true; // worker found
       }
     else if (!m_inactive_list.empty ())
       {
-	// found free inactive
+	// found free inactive; remove from list
 	refp = m_inactive_list.front ();
 	m_inactive_list.pop_front ();
-      }
-    ulock.unlock ();
+	ulock.unlock ();
 
-    if (refp == NULL)
-      {
-	// not found
-	return false;
+	// start new thread
+	refp->push_task_on_new_thread (task_p, push_time);
+	return true; // worker found
       }
 
-    // push execution on found worker
-    refp->start_execution (task_p, push_time);
-    return true;
+    // worker not found
+    return false;
   }
 
   template <typename Context>
@@ -841,20 +872,25 @@ namespace cubthread
   }
 
   template <typename Context>
-  void
+  bool
   worker_pool<Context>::core::remove_worker_from_active_list (worker &worker_arg)
   {
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
     // we need to remove from active. this operation is slow. however, since we're here, it means thread timed out
     // waiting for task. system is not overloaded so it should not matter
-    m_free_active_list.remove (&worker_arg);  // may or may not be there
-  }
-
-  template <typename Context>
-  bool
-  worker_pool<Context>::core::is_stopped (void) const
-  {
-    return m_parent_pool->m_stopped;
+    //
+    // there is a very small window of opportunity when a task may be pushed right before removing worker from list.
+    for (auto it = m_free_active_list.begin (); it != m_free_active_list.end (); ++it)
+      {
+	if (*it == &worker_arg)
+	  {
+	    // found worker
+	    (void) m_free_active_list.erase (it);
+	    return true;
+	  }
+      }
+    // not in the list
+    return false;
   }
 
   template <typename Context>
@@ -934,7 +970,7 @@ namespace cubthread
     , m_task_p (NULL)
     , m_task_cv ()
     , m_task_mutex ()
-    , m_waiting_task (false)
+    , m_stop (false)
     , m_stats_array {0}
     , m_statistics (reinterpret_cast<wpstat::stat_type *> (&m_stats_array))
     , m_push_time ()
@@ -952,42 +988,46 @@ namespace cubthread
 
   template <typename Context>
   void
-  worker_pool<Context>::core::worker::start_execution (task<Context> *work_p, wpstat::time_point_type push_time)
+  worker_pool<Context>::core::worker::push_task_on_new_thread (task<Context> *work_p, wpstat::time_point_type push_time)
   {
+    // start new thread and run task
     assert (work_p != NULL);
 
-    // start task execution. we have two options:
-    //
-    //  1. thread is already running and waiting for a new task notification. this case is faster.
-    //  2. thread is not running or waiting for a new task notification. we must start a new one (thread start has
-    //     a significant overhead)
-    //
+    // make sure worker is in a valid state
+    assert (m_task_p == NULL);
+    assert (m_context_p == NULL);
 
     // save push time
     m_push_time = push_time;
 
-    // is thread started and waiting for task?
-    if (m_waiting_task)
-      {
-	// lock task mutex
-	std::unique_lock<std::mutex> ulock (m_task_mutex);
-	if (m_waiting_task)
-	  {
-	    // still waiting. save task and notify running thread
-	    m_task_p = work_p;
-	    m_waiting_task = false;  // this must be false to wake up running thread
-
-	    // unlock, notify thread and get out
-	    ulock.unlock ();
-	    m_task_cv.notify_one ();
-	    return;
-	  }
-      }
-
-    // a new thread is required
     // save task
     m_task_p = work_p;
+
+    // start thread
     std::thread (&worker::run, this).detach ();    // don't wait for it
+  }
+
+  template <typename Context>
+  void
+  worker_pool<Context>::core::worker::push_task_on_running_thread (task<Context> *work_p,
+      wpstat::time_point_type push_time)
+  {
+    // run on current thread
+    assert (work_p != NULL);
+
+    // must lock task mutex
+    std::unique_lock<std::mutex> ulock (m_task_mutex);
+
+    // make sure worker is in a valid state
+    assert (m_task_p == NULL);
+    assert (m_context_p != NULL);
+
+    // set task
+    m_task_p = work_p;
+
+    // notify waiting thread
+    ulock.unlock (); // mutex is not needed for notify
+    m_task_cv.notify_one ();
   }
 
   template <typename Context>
@@ -1003,11 +1043,7 @@ namespace cubthread
 
     // make sure thread is not waiting for tasks
     std::unique_lock<std::mutex> ulock (m_task_mutex);
-    if (!m_waiting_task)
-      {
-	return;
-      }
-    m_waiting_task = false;
+    m_stop = true;    // stop worker
     ulock.unlock ();    // mutex is not needed for notify
     m_task_cv.notify_one ();
   }
@@ -1074,7 +1110,7 @@ namespace cubthread
     assert (m_task_p == NULL);
 
     // check stop condition
-    if (m_parent_core->is_stopped ())
+    if (m_stop)
       {
 	// stop
 	return false;
@@ -1117,26 +1153,44 @@ namespace cubthread
 
     // wait for task
     std::unique_lock<std::mutex> ulock (m_task_mutex);
-    m_waiting_task = true;
-    m_task_cv.wait_for (ulock, WAIT_TIME, [this] { return !m_waiting_task; });
-    m_waiting_task = false;
+    // wait until a task is received or stopped
+    // or time out
+    m_task_cv.wait_for (ulock, WAIT_TIME, [this] { return m_task_p != NULL || m_stop; });
+    ulock.unlock ();
 
     if (m_task_p == NULL)
       {
-	// no task assigned; move from active list to inactive
+	// not task received, remove from active list
+	if (m_parent_core->remove_worker_from_active_list (*this))
+	  {
+	    // removed from active list
+	  }
+	else
+	  {
+	    // I was not removed from active list... that means somebody claimed me right before removing from list
+	    // now I have to wait for the task
+	    ulock.lock ();
+	    if (m_task_p == NULL)
+	      {
+		// wait until task is set
+		m_task_cv.wait (ulock, [this] { return m_task_p != NULL; });
+	      }
+	    else
+	      {
+		// task already set, don't wait
+	      }
+	    ulock.unlock ();
+	  }
+      }
 
-	// while holding the task mutex, I must move to inactive list. that is required not to mess up the lists and
-	// thread status when a task is pushed right before becoming inactive
-	m_parent_core->remove_worker_from_active_list (*this);
-	ulock.unlock ();
-
+    if (m_task_p == NULL)
+      {
+	// no task assigned
 	m_time_point = wpstat::clock_type::now ();
       }
     else
       {
 	// found task
-	ulock.unlock ();
-
 	m_time_point = m_push_time;
 	m_statistics.collect_and_time (wpstat::id::WAKEUP_WITH_TASK, m_time_point);
       }
