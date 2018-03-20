@@ -28,8 +28,6 @@
 #undef strlen
 #endif
 
-/* TODO: replace with atomic */
-
 #include <cstdint>
 #include <atomic>
 #include <iostream>
@@ -38,8 +36,6 @@
 #include <chrono>
 #include <iomanip>
 #include <array>
-
-/* TODO: replace with atomic */
 
 namespace test_lockfree
 {

@@ -24,6 +24,8 @@
 #ifndef _LOCKFREE_CIRCULAR_QUEUE_HPP_
 #define _LOCKFREE_CIRCULAR_QUEUE_HPP_
 
+#include "base_flag.hpp"
+
 #include <atomic>
 #include <cassert>
 #include <climits>
@@ -31,8 +33,6 @@
 #include <cstdint>
 #include <thread>
 #include <type_traits>
-
-#include "base_flag.hpp"
 
 // activate preprocessor if you need to debug low-level execution of lockfree circular queue
 // note that if you wanna track the execution history of low-level operation of a certain queue, you also need to
