@@ -4845,10 +4845,10 @@ dwb_flush_block_helper_daemon_is_running (void)
 }
 
 /*
-* dwb_flush_block_helper_daemon_is_running () - Check whether checksum computation daemon is running
-*
-*   return: true, if checksum computation thread is running
-*/
+ * dwb_checksum_computation_daemon_is_running () - Check whether checksum computation daemon is running
+ *
+ *   return: true, if checksum computation thread is running
+ */
 static bool
 dwb_checksum_computation_daemon_is_running (void)
 {

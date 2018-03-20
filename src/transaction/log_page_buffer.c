@@ -418,6 +418,9 @@ static int logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_
 STATIC_INLINE int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
   __attribute__ ((ALWAYS_INLINE));
 static int logpb_page_has_valid_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * has_valid_checksum);
+
+static void logpb_debug_check_log_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
+
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
  *
@@ -1638,12 +1641,7 @@ logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_full
     }
 
 #if !defined(NDEBUG)
-  if (prm_get_bool_value (PRM_ID_ENABLE_LOG_PAGE_CHECKSUM) == true)
-    {
-      bool is_log_page_corrupted;
-      assert ((logpb_page_check_corruption (thread_p, log_pgptr, &is_log_page_corrupted) == NO_ERROR)
-	      && (is_log_page_corrupted == false));
-    }
+  logpb_debug_check_log_page (thread_p, log_pgptr);
 #endif
 
 error:
@@ -2067,12 +2065,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
 	     (long long int) log_pgptr->hdr.logical_pageid, log_pgptr->hdr.checksum);
 
 #if !defined(NDEBUG)
-  if (prm_get_bool_value (PRM_ID_ENABLE_LOG_PAGE_CHECKSUM) == true)
-    {
-      bool is_log_page_corrupted;
-      assert ((logpb_page_check_corruption (thread_p, log_pgptr, &is_log_page_corrupted) == NO_ERROR)
-	      && (is_log_page_corrupted == false));
-    }
+  logpb_debug_check_log_page (thread_p, log_pgptr);
 #endif
 
   /* keep old function's usage */
@@ -2131,20 +2124,17 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
     }
 
 #if !defined(NDEBUG)
-  if (prm_get_bool_value (PRM_ID_ENABLE_LOG_PAGE_CHECKSUM) == true)
-    {
-      bool is_log_page_corrupted;
-      char *ptr;
-      int i;
+  {
+    char *ptr;
+    int i;
 
-      ptr = (char *) log_pgptr;
-      for (i = 0; i < num_pages; i++)
-	{
-	  assert ((logpb_page_check_corruption (thread_p, (LOG_PAGE *) ptr, &is_log_page_corrupted) == NO_ERROR)
-		  && (is_log_page_corrupted == false));
-	  ptr += LOG_PAGESIZE;
-	}
-    }
+    ptr = (char *) log_pgptr;
+    for (i = 0; i < num_pages; i++)
+      {
+	logpb_debug_check_log_page (thread_p, (LOG_PAGE *) ptr);
+	ptr += LOG_PAGESIZE;
+      }
+  }
 #endif
 
   return num_pages;
@@ -6694,14 +6684,11 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 
       return NULL;
     }
-
-  if (prm_get_bool_value (PRM_ID_ENABLE_LOG_PAGE_CHECKSUM) == true)
-    {
-      bool is_log_page_corrupted;
-      assert ((logpb_page_check_corruption (thread_p, log_pgptr, &is_log_page_corrupted) == NO_ERROR)
-	      && (is_log_page_corrupted == false));
-    }
 #endif /* CUBRID_DEBUG */
+
+#if !defined (NDEBUG)
+  logpb_debug_check_log_page (thread_p, log_pgptr);
+#endif /* !NDEBUG */
 
   assert (log_pgptr != NULL && *ret_arv_num != -1 && arv_hdr != NULL);
   if (ret_arv_hdr != NULL)
@@ -12153,12 +12140,7 @@ logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p)
       page_id = arv_hdr->fpageid;
 
 #if !defined(NDEBUG)
-      if (prm_get_bool_value (PRM_ID_ENABLE_LOG_PAGE_CHECKSUM) == true)
-	{
-	  bool is_log_page_corrupted;
-	  assert ((logpb_page_check_corruption (thread_p, arv_hdr_pgptr, &is_log_page_corrupted) == NO_ERROR)
-		  && (is_log_page_corrupted == false));
-	}
+      logpb_debug_check_log_page (thread_p, arv_hdr_pgptr);
 #endif
 
       fileio_dismount (thread_p, vdes);
@@ -12340,4 +12322,18 @@ logpb_page_check_corruption (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool
     }
 
   return error_code;
+}
+
+static void
+logpb_debug_check_log_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
+{
+  int err;
+  bool is_log_page_corrupted;
+
+  if (prm_get_bool_value (PRM_ID_ENABLE_LOG_PAGE_CHECKSUM) == true)
+    {
+      err = logpb_page_check_corruption (thread_p, log_pgptr, &is_log_page_corrupted);
+
+      assert (err == NO_ERROR && is_log_page_corrupted == false);
+    }
 }
