@@ -2128,14 +2128,28 @@ static void
 db_json_replace_token_special_chars (std::string &token,
 				     const std::unordered_map<std::string, std::string> &special_chars)
 {
-  for (auto it = special_chars.begin (); it != special_chars.end (); ++it)
+  size_t start = 0;
+  size_t end = 0;
+  size_t step = 1;
+
+  while (start < token.length())
     {
-      size_t pos = 0;
-      while ((pos = token.find (it->first, pos)) != std::string::npos)
+      step = 1;
+
+      for (end = start + 1; end <= token.length(); end++)
 	{
-	  token.replace (pos, it->first.length (), it->second);
-	  pos += it->second.length ();
+	  const std::string &substring = token.substr (start, end - start);
+	  auto pair_iterator = special_chars.find (substring);
+
+	  if (pair_iterator != special_chars.end())
+	    {
+	      token.replace (start, substring.length(), pair_iterator->second);
+	      step = substring.length();
+	      break;
+	    }
 	}
+
+      start += step;
     }
 }
 
