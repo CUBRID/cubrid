@@ -17367,7 +17367,6 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 exit:
   pr_clear_value (&json_body);
   pr_clear_value (&schema_raw);
-  db_private_free (NULL, json_body_str);
   db_private_free (NULL, json_raw_copy);
 }
 
@@ -17655,8 +17654,6 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   res = mr_cmpval_json (&json1, &json2, do_coercion, total_order, 0, 0);
   pr_clear_value (&json1);
   pr_clear_value (&json2);
-
-  return res;
 
 cleanup:
   db_private_free (NULL, first_json_body);
