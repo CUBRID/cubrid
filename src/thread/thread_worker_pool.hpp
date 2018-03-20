@@ -474,6 +474,7 @@ namespace cubthread
     , m_context_manager (context_mgr)
     , m_core_array (NULL)
     , m_core_count (core_count)
+    , m_round_robin_counter (0)
     , m_stopped (false)
     , m_log (debug_log)
   {
