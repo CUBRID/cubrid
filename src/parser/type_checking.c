@@ -13123,7 +13123,7 @@ namespace Func
         case PT_GENERIC_TYPE_STRING:
           return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum));
         case PT_GENERIC_TYPE_CHAR:
-          return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE || type_enum == PT_TYPE_NULL);
+          return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE);
         case PT_GENERIC_TYPE_NCHAR:
           return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_NATIONAL_CHAR_STRING_TYPE(type_enum));
 
@@ -13211,8 +13211,14 @@ namespace Func
   const func_signature* get_signature (parser_node* node, const std::vector<func_signature>& signatures)
   {
     const func_signature* signature = get_signature(node, signatures, &cmp_types_normal);
-    signature || (signature=get_signature(node, signatures, &cmp_types_generic));
-    signature || (signature=get_signature(node, signatures, &cmp_types_castable));
+    if(signature)
+      {
+        signature = get_signature(node, signatures, &cmp_types_generic);
+      }
+    if(signature)
+      {
+        signature = get_signature(node, signatures, &cmp_types_castable);
+      }
     return signature;
   }
 
@@ -13477,6 +13483,16 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case F_ELT:
     case F_INSERT_SUBSTRING:
       {
+        //functions with at least 1 NULL arg should return NULL: func(..., NULL, ...) => NULL
+        for(auto n = arg_list; n != NULL; n = n->next)
+          {
+            if(n->type_enum == PT_TYPE_NULL)
+              {
+                node->type_enum = PT_TYPE_NULL;
+                node->data_type = NULL;
+                return node;
+              }
+          }
         if(node->type_enum == PT_TYPE_NONE || node->data_type == NULL)
           {
             PT_NODE *arg = arg_list;
@@ -13507,8 +13523,6 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       assert(false && "for all possible FUNC_TYPE enum values should be a case in switch!");
       break;
   }
-
-  //assert(node->type_enum != PT_TYPE_NONE || node->data_type != NULL);
 
   /* collation checking */
   arg_list = node->info.function.arg_list;
