@@ -32,7 +32,6 @@
 #include "config.h"
 
 #include "system_parameter.h"
-#include "cubrid_api.h"
 #include "error_manager.h"
 #include "system.h"
 #include "dbtype_def.h"

@@ -105,6 +105,7 @@ extern int yybuffer_pos;
 #include "language_support.h"
 #include "unicode_support.h"
 #include "environment_variable.h"
+#include "dbtype.h"
 #include "transaction_cl.h"
 #include "csql_grammar_scan.h"
 #include "system_parameter.h"
@@ -114,7 +115,6 @@ extern int yybuffer_pos;
 #endif /* WINDOWS */
 #include "memory_alloc.h"
 #include "db_elo.h"
-#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

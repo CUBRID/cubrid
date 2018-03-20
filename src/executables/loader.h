@@ -30,7 +30,7 @@
 
 #include <stdint.h>
 #include "porting.h"
-#include "cubrid_api.h"
+#include "dbtype_def.h"
 
 typedef struct LDR_CONTEXT LDR_CONTEXT;
 

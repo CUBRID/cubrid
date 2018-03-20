@@ -36,7 +36,6 @@
 #include <stdlib.h>
 
 #include "error_manager.h"
-#include "cubrid_api.h"
 #include "class_object.h"
 #include "databases_file.h"
 

@@ -21,6 +21,11 @@
  *	cache_time.h -  CACHE TIME RELATED DEFINITIONS
  */
 
+#ifndef _CACHE_TIME_H_
+#define _CACHE_TIME_H_
+
+#ident "$Id$"
+
 typedef struct cache_time CACHE_TIME;
 struct cache_time
 {
@@ -77,3 +82,5 @@ struct cache_time
         } \
     } \
   while (0)
+
+#endif /* _CACHE_TIME_T_ */

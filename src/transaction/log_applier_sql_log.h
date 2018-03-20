@@ -26,7 +26,6 @@
 
 #ident "$Id$"
 
-#include "cubrid_api.h"
 #include "dbtype_def.h"
 #include "work_space.h"
 

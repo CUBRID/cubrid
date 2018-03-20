@@ -35,7 +35,6 @@
 #include <stdio.h>
 #include <time.h>
 #include "dbtype_def.h"
-#include "cubrid_api.h"
 #include "db_date.h"
 #include "db_elo.h"
 #include "db_query.h"

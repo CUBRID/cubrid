@@ -42,6 +42,12 @@ extern "C"
   typedef char need_clear_type;
 #endif
 
+#define IS_VALID_ISOLATION_LEVEL(isolation_level) \
+    (TRAN_MINVALUE_ISOLATION <= (isolation_level) \
+     && (isolation_level) <= TRAN_MAXVALUE_ISOLATION)
+
+#define TRAN_DEFAULT_ISOLATION_LEVEL()	(TRAN_DEFAULT_ISOLATION)
+
 #if defined (__GNUC__) && defined (NDEBUG)
 #define ALWAYS_INLINE always_inline
 #else

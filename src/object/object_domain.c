@@ -38,7 +38,6 @@
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "numeric_opfunc.h"
-#include "cubrid_api.h"
 #include "tz_support.h"
 #include "db_date.h"
 #include "mprec.h"

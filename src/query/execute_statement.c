@@ -46,7 +46,6 @@
 #include "error_manager.h"
 #include "db.h"
 #include "dbi.h"
-#include "cubrid_api.h"
 #include "dbtype.h"
 #include "parser.h"
 #include "porting.h"
