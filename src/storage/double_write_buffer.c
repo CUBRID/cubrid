@@ -3814,8 +3814,12 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	  if (volid != vpid->volid)
 	    {
 	      /* Update the current VPID and get the volume descriptor. */
+	      vol_fd = fileio_get_volume_descriptor (vpid->volid);
+	      if (vol_fd == NULL)
+		{
+		  continue;
+		}
 	      volid = vpid->volid;
-	      vol_fd = fileio_get_volume_descriptor (volid);
 	    }
 
 	  /* Read the page from data volume. */
