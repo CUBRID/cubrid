@@ -13071,11 +13071,134 @@ namespace Func
               }
               break;
             }
+#if 0
+            case F_SET:
+            case F_MULTISET:
+            case F_SEQUENCE:
+              pt_add_type_to_set (m_parser, m_node->info.function.arg_list, &m_node->data_type);
+              break;
+            case F_TABLE_SET:
+            case F_TABLE_MULTISET:
+            case F_TABLE_SEQUENCE:
+              pt_add_type_to_set (m_parser, pt_get_select_list (m_parser, m_node->info.function.arg_list), &m_node->data_type);
+              break;
+#else
+            //try to extend pt_get_equivalent_type() for [TABLE_][MULTI]SET to group bellow cases
+            case F_SET:
+              m_node->type_enum = PT_TYPE_SET;
+              m_node->data_type = NULL;
+              pt_add_type_to_set (m_parser, m_node->info.function.arg_list, &m_node->data_type);
+              break;
+            case F_MULTISET:
+              m_node->type_enum = PT_TYPE_MULTISET;
+              m_node->data_type = NULL;
+              pt_add_type_to_set (m_parser, m_node->info.function.arg_list, &m_node->data_type);
+              break;
+            case F_SEQUENCE:
+              m_node->type_enum = PT_TYPE_SEQUENCE;
+              m_node->data_type = NULL;
+              pt_add_type_to_set (m_parser, m_node->info.function.arg_list, &m_node->data_type);
+              break;
+            case F_TABLE_SET:
+              m_node->type_enum = PT_TYPE_SET;
+              pt_add_type_to_set (m_parser, pt_get_select_list (m_parser, m_node->info.function.arg_list), &m_node->data_type);
+              m_node->data_type = NULL;
+              break;
+            case F_TABLE_MULTISET:
+              m_node->type_enum = PT_TYPE_MULTISET;
+              m_node->data_type = NULL;
+              pt_add_type_to_set (m_parser, pt_get_select_list (m_parser, m_node->info.function.arg_list), &m_node->data_type);
+              break;
+            case F_TABLE_SEQUENCE:
+              m_node->type_enum = PT_TYPE_SEQUENCE;
+              m_node->data_type = NULL;
+              pt_add_type_to_set (m_parser, pt_get_select_list (m_parser, m_node->info.function.arg_list), &m_node->data_type);
+              break;
+#endif
           default:
             ;
           }
       }
-  };
+
+    //set return type for current node in current context
+    void set_return_type(const func_signature& signature)
+    {
+      parser_node* arg_list = m_node->info.function.arg_list;
+      //printf("2: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
+      if (m_node->type_enum == PT_TYPE_NONE || m_node->data_type == NULL) //return type
+        {
+          //set node->type_enum
+          switch(signature.ret.type)
+            {
+            case pt_arg_type::NORMAL:
+                m_node->type_enum = signature.ret.val.type;
+                break;
+            case pt_arg_type::GENERIC:
+                assert(false);
+                break;
+            case pt_arg_type::INDEX:
+                size_t index = 0;
+                for(auto p=arg_list; p; p=p->next, ++index)
+                  {
+                    if(index == signature.ret.val.index)
+                      {
+                        m_node->type_enum = p->type_enum;
+                        break;
+                      }
+                  }
+                break;
+            }
+          //set node->data_type
+          switch(m_node->info.function.function_type)
+            {
+            case PT_MAX:
+            case PT_MIN:
+            case PT_LEAD:
+            case PT_LAG:
+            case PT_FIRST_VALUE:
+            case PT_LAST_VALUE:
+            case PT_NTH_VALUE:
+              m_node->data_type = (arg_list ? parser_copy_tree_list (m_parser, arg_list->data_type) : NULL);
+              break;
+            case PT_SUM:
+              m_node->data_type = (arg_list ? parser_copy_tree_list (m_parser, arg_list->data_type) : NULL);
+              if(arg_list && arg_list->type_enum == PT_TYPE_NUMERIC && m_node->data_type)
+                {
+                  m_node->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
+                }
+              break;
+            case F_ELT:
+              m_node->data_type = pt_make_prim_data_type (m_parser, m_node->type_enum);
+	      if (m_node->data_type)
+	        {
+		  //node->data_type->info.data_type.precision = max_precision;
+		  m_node->data_type->info.data_type.dec_precision = 0;
+	        }
+              break;
+            case PT_GROUP_CONCAT:
+            case F_INSERT_SUBSTRING:
+              m_node->data_type = pt_make_prim_data_type (m_parser, m_node->type_enum);
+              if(m_node->data_type)
+                {
+                  m_node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+                }
+              break;
+            case F_SET:
+            case F_MULTISET:
+            case F_SEQUENCE:
+              pt_add_type_to_set (m_parser, arg_list, &m_node->data_type);
+              break;
+            case F_TABLE_SET:
+            case F_TABLE_MULTISET:
+            case F_TABLE_SEQUENCE:
+              pt_add_type_to_set (m_parser, pt_get_select_list (m_parser, arg_list), &m_node->data_type);
+              break;
+            default:
+              m_node->data_type = NULL;
+            }
+        }
+    }
+  }; //class Node
 
   bool cmp_types_normal(const pt_arg_type& type, pt_type_enum type_enum)
   {
@@ -13276,82 +13399,6 @@ namespace Func
         printf("ERR invalid number of arguments (index=%d)\n", index);
         return false;
       }
-
-    parser_node* arg_list = node->info.function.arg_list;
-    //printf("2: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
-    if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL) //return type
-      {
-        //set node->type_enum
-        switch(signature.ret.type)
-          {
-          case pt_arg_type::NORMAL:
-              node->type_enum = signature.ret.val.type;
-              break;
-          case pt_arg_type::GENERIC:
-              assert(false);
-              break;
-          case pt_arg_type::INDEX:
-              size_t index = 0;
-              for(auto p=arg_list; p; p=p->next, ++index)
-                {
-                  if(index == signature.ret.val.index)
-                    {
-                      node->type_enum = p->type_enum;
-                      break;
-                    }
-                }
-              break;
-          }
-        //set node->data_type
-        switch(func_type)
-          {
-          case PT_MAX:
-          case PT_MIN:
-          case PT_LEAD:
-          case PT_LAG:
-          case PT_FIRST_VALUE:
-          case PT_LAST_VALUE:
-          case PT_NTH_VALUE:
-            node->data_type = (arg_list ? parser_copy_tree_list (parser, arg_list->data_type) : NULL);
-            break;
-          case PT_SUM:
-            node->data_type = (arg_list ? parser_copy_tree_list (parser, arg_list->data_type) : NULL);
-            if(arg_list && arg_list->type_enum == PT_TYPE_NUMERIC && node->data_type)
-              {
-                node->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
-              }
-            break;
-          case F_ELT:
-            node->data_type = pt_make_prim_data_type (parser, node->type_enum);
-	    if (node->data_type)
-	      {
-		//node->data_type->info.data_type.precision = max_precision;
-		node->data_type->info.data_type.dec_precision = 0;
-	      }
-            break;
-          case PT_GROUP_CONCAT:
-          case F_INSERT_SUBSTRING:
-            node->data_type = pt_make_prim_data_type (parser, node->type_enum);
-            if(node->data_type)
-              {
-                node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
-              }
-            break;
-          case F_SET:
-          case F_MULTISET:
-          case F_SEQUENCE:
-            pt_add_type_to_set (parser, arg_list, &node->data_type);
-            break;
-          case F_TABLE_SET:
-          case F_TABLE_MULTISET:
-          case F_TABLE_SEQUENCE:
-            pt_add_type_to_set (parser, pt_get_select_list (parser, arg_list), &node->data_type);
-            break;
-          default:
-            node->data_type = NULL;
-          }
-      }
-
     return true;
   }
 }//namespace Func
@@ -13483,14 +13530,18 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case F_ELT:
     case F_INSERT_SUBSTRING:
       {
+        Func::Node funcNode(parser, node);
+        funcNode.preprocess();//preprocess special cases (eg. ELT(), [TABLE_][MULTI]SET, ...)
+
         //functions with at least 1 NULL arg should return NULL: func(..., NULL, ...) => NULL
         for(auto n = arg_list; n != NULL; n = n->next)
           {
             if(n->type_enum == PT_TYPE_NULL)
               {
-                node->type_enum = PT_TYPE_NULL;
-                node->data_type = NULL;
-                return node;
+                //node->type_enum = PT_TYPE_NULL;
+                //node->data_type = NULL;
+                //funcNode.set_return_type(...);
+                return node; //no need to check collation in this case
               }
           }
         if(node->type_enum == PT_TYPE_NONE || node->data_type == NULL)
@@ -13500,14 +13551,13 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
             if(!Func::types[fcode-PT_MIN]){
               printf("ERR no function signature for fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
             }
-            Func::Node funcNode(parser, node);
-            funcNode.preprocess();//preprocess special cases (eg. ELT())
             assert("ERR no function signature" && Func::types[fcode-PT_MIN] != NULL);
             std::vector<func_signature>& func_sigs = *Func::types[fcode-PT_MIN];
             const func_signature* func_sig = Func::get_signature(node, func_sigs);
             if(func_sig != NULL)
               {
                 Func::apply_signature(parser, node, *func_sig);
+                funcNode.set_return_type(*func_sig);
               }
             else
               {
