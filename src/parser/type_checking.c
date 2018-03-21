@@ -13198,6 +13198,60 @@ namespace Func
             }
         }
     }
+
+    /*
+     * apply_signature() - apply function signature with casts if necessary
+     *   return: success
+     *   func_signature (in): function signature
+     */
+    bool apply_signature (const func_signature& signature)
+    {
+      FUNC_TYPE func_type = m_node->info.function.function_type;
+      parser_node* arg = m_node->info.function.arg_list;
+      parser_node* prev = NULL;
+      int arg_pos = 0;
+      for(auto type: signature.fix) //check fixed part of the function signature
+        {
+          if(arg == NULL)
+            {
+              //printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
+              break;
+            }
+          auto t = (type.type == pt_arg_type::INDEX ? signature.fix[type.val.index] : type);
+          pt_type_enum equivalent_type = pt_get_equivalent_type(t, arg->type_enum);
+          arg = cast(prev, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+          if(arg == NULL)
+            {
+              printf("ERR\n");
+              return false;
+            }
+          ++arg_pos;
+          prev = arg;
+          arg = arg->next;
+        }
+
+      if(arg!=NULL && signature.rep.size()==0)
+        {
+          printf("ERR invalid number or arguments\n");
+          return false;
+        }
+
+      //check repetitive part of the function signature
+      int index = 0;
+      for(; arg; prev = arg, arg=arg->next, index=(index+1)%signature.rep.size(), ++arg_pos)
+        {
+          auto& type = signature.rep[index];
+          auto t = (type.type == pt_arg_type::INDEX ? signature.fix[type.val.index] : type);
+          pt_type_enum equivalent_type = pt_get_equivalent_type(t, arg->type_enum);
+          arg = cast(prev, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+        }
+      if(index)
+        {
+          printf("ERR invalid number of arguments (index=%d)\n", index);
+          return false;
+        }
+      return true;
+    }
   }; //class Node
 
   bool cmp_types_normal(const pt_arg_type& type, pt_type_enum type_enum)
@@ -13343,63 +13397,6 @@ namespace Func
         signature = get_signature(node, signatures, &cmp_types_castable);
       }
     return signature;
-  }
-
-  /*
-   * apply_signature() - apply function signature with casts if necessary
-   *   return: success
-   *   parser (in): parser context
-   *   node (in): list of nodes
-   *   func_signature (in): function signature
-   */
-  bool apply_signature (parser_context* parser, parser_node* node, const func_signature& signature)
-  {
-    FUNC_TYPE func_type = node->info.function.function_type;
-    parser_node* arg = node->info.function.arg_list;
-    parser_node* prev = NULL;
-    Func::Node funcNode(parser, node);
-    int arg_pos = 0;
-    for(auto type: signature.fix) //check fixed part of the function signature
-      {
-        if(arg == NULL)
-          {
-            //printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
-            break;
-          }
-        auto t = (type.type == pt_arg_type::INDEX ? signature.fix[type.val.index] : type);
-        pt_type_enum equivalent_type = pt_get_equivalent_type(t, arg->type_enum);
-        arg = funcNode.cast(prev, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
-        if(arg == NULL)
-          {
-            printf("ERR\n");
-            return false;
-          }
-        ++arg_pos;
-        prev = arg;
-        arg = arg->next;
-      }
-
-    if(arg!=NULL && signature.rep.size()==0)
-      {
-        printf("ERR invalid number or arguments\n");
-        return false;
-      }
-
-    //check repetitive part of the function signature
-    int index = 0;
-    for(; arg; prev = arg, arg=arg->next, index=(index+1)%signature.rep.size(), ++arg_pos)
-      {
-        auto& type = signature.rep[index];
-        auto t = (type.type == pt_arg_type::INDEX ? signature.fix[type.val.index] : type);
-        pt_type_enum equivalent_type = pt_get_equivalent_type(t, arg->type_enum);
-        arg = funcNode.cast(prev, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
-      }
-    if(index)
-      {
-        printf("ERR invalid number of arguments (index=%d)\n", index);
-        return false;
-      }
-    return true;
   }
 }//namespace Func
 
@@ -13556,7 +13553,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
             const func_signature* func_sig = Func::get_signature(node, func_sigs);
             if(func_sig != NULL)
               {
-                Func::apply_signature(parser, node, *func_sig);
+                funcNode.apply_signature(*func_sig);
                 funcNode.set_return_type(*func_sig);
               }
             else
