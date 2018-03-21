@@ -79,6 +79,11 @@ if NOT "%VS90COMNTOOLS%"=="" (
 if NOT "%VS100COMNTOOLS%"=="" (
 @echo. Found installation for Visual Studio 2010
 )
+if NOT "%VS150COMCOMNTOOLS%"=="" (
+    @echo. Found installation for Visual Studio 2017_150 ("%VS150COMCOMNTOOLS%")
+    set VS2017_ARCH=-arch=amd64
+    goto :VS2017_150
+)
 if NOT "%VS140COMNTOOLS%"=="" (
 @echo. Found installation for Visual Studio 2017
 set VS2017_ARCH=-arch=amd64
@@ -120,6 +125,13 @@ if exist "%VS140COMNTOOLS%..\..\..\..\2017\Enterprise\Common7\Tools\VsDevCmd.bat
 echo Found %BUILD_TARGET% configuration in Visual Studio 2017 Enterprise.
 call "%VS140COMNTOOLS%..\..\..\..\2017\Enterprise\Common7\Tools\VsDevCmd.bat" %VS2017_ARCH%
 goto :BUILD
+)
+
+:VS2017_150
+if exist "%VS150COMCOMNTOOLS%VsDevCmd.bat" (
+    echo Found %BUILD_TARGET% configuration in Visual Studio 2017_150 Community.
+    call "%VS150COMCOMNTOOLS%VsDevCmd.bat" %VS2017_ARCH%
+    goto :BUILD
 )
 
 goto :ENV_ERROR
