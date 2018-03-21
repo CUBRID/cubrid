@@ -13535,7 +13535,10 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
           {
             if(n->type_enum == PT_TYPE_NULL)
               {
-                //node->type_enum = PT_TYPE_NULL;
+                if(node->type_enum == PT_TYPE_NONE)
+                {
+                  node->type_enum = PT_TYPE_NULL;
+                }
                 //node->data_type = NULL;
                 //funcNode.set_return_type(...);
                 return node; //no need to check collation in this case
