@@ -27,7 +27,7 @@
 #define _LOG_FILE_HPP_
 
 #include "stream_common.hpp"
-#include "stream_provider.hpp"
+#include "buffer_provider.hpp"
 #include "packing_stream.hpp"
 #include <vector>
 
@@ -77,7 +77,7 @@ public:
 
 };
 
-class log_file : public stream_provider
+class log_file : public buffer_provider
 {
 private:
   packing_stream *stream;

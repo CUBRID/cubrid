@@ -58,6 +58,7 @@ log_generator* log_generator::new_instance (THREAD_ENTRY *th_entry, const stream
 
   new_lg->stream = new packing_stream (new_lg);
   new_lg->stream->init (new_lg->m_append_position);
+  new_lg->stream->set_filled_stream_handler (new_lg);
 
   if (th_entry == NULL)
     {
@@ -146,13 +147,6 @@ int log_generator::pack_stream_entries (THREAD_ENTRY *th_entry)
       my_stream_entry->reset ();
     }
 
-  return NO_ERROR;
-}
-
-int log_generator::fetch_data (BUFFER_UNIT *ptr, const size_t &amount)
-{
-  /* data is pushed to log_generator, we don't ask for it */
-  assert (false);
   return NO_ERROR;
 }
 

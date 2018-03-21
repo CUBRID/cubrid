@@ -38,7 +38,7 @@ class replication_stream;
 /*
  * This should serve as storage for packing streams.
  *
- * Each buffer has a storage producer - we call it stream_provider 
+ * Each buffer has a storage producer - we call it buffer_provider 
  * (the one which decides when to create or scrap a buffer)
  * 
  */

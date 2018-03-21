@@ -17,23 +17,39 @@
  *
  */
 
-/*
- * packing_buffer.cpp
- */
+#include "test_packing.hpp"
 
-#ident "$Id$"
+#include <iostream>
 
-#include "packing_buffer.hpp"
-
-int packing_buffer::init (BUFFER_UNIT *ptr, const size_t buf_size, pinner *referencer)
+template <typename Func, typename ... Args>
+int
+test_module (int &global_error, Func &&f, Args &&... args)
 {
-  storage = ptr;
-  end_ptr = (BUFFER_UNIT *)((char *) ptr + buf_size);
+  std::cout << std::endl;
+  std::cout << "  start testing module ";
 
-  if (referencer != NULL)
+  int err = f (std::forward <Args> (args)...);
+  if (err == 0)
     {
-      referencer->pin (this);
+      std::cout << "  test completed successfully" << std::endl;
     }
+  else
+    {
+      std::cout << "  test failed" << std::endl;
+      global_error = global_error == 0 ? err : global_error;
+    }
+  return err;
+}
 
-  return NO_ERROR;
+int main ()
+{
+  int global_error = 0;
+
+  test_module (global_error, test_packing::test_packing1);
+
+  test_module (global_error, test_packing::test_packing_buffer1);
+  
+  /* add more tests here */
+
+  return global_error;
 }

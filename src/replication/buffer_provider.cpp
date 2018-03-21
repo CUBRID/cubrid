@@ -18,15 +18,23 @@
  */
 
 /*
- * stream_provider.cpp
+ * buffer_provider.cpp
  */
 
 #ident "$Id$"
 
-#include "stream_provider.hpp"
+#include "buffer_provider.hpp"
 #include "packing_stream_buffer.hpp"
 
-int stream_provider::allocate_buffer (packing_stream_buffer **new_buffer, const size_t &amount)
+
+buffer_provider *buffer_provider::get_default_instance (void)
+{
+  static buffer_provider global_buffer_provider;
+
+  return &global_buffer_provider;
+}
+
+int buffer_provider::allocate_buffer (packing_stream_buffer **new_buffer, const size_t &amount)
 {
   BUFFER_UNIT *mem;
   packing_stream_buffer *my_new_buffer;
@@ -54,7 +62,7 @@ int stream_provider::allocate_buffer (packing_stream_buffer **new_buffer, const 
   return NO_ERROR;
 }
 
-int stream_provider::free_all_buffers (void)
+int buffer_provider::free_all_buffers (void)
 {
   int i;
   for (i = 0; i < m_buffers.size (); i++)
@@ -75,7 +83,7 @@ int stream_provider::free_all_buffers (void)
 }
 
 
-int stream_provider::extend_buffer (packing_stream_buffer **existing_buffer, const size_t &amount)
+int buffer_provider::extend_buffer (packing_stream_buffer **existing_buffer, const size_t &amount)
 {
   if (*existing_buffer != NULL)
     {
@@ -90,7 +98,7 @@ int stream_provider::extend_buffer (packing_stream_buffer **existing_buffer, con
   return NO_ERROR;
 }
 
-int stream_provider::add_buffer (packing_stream_buffer *new_buffer)
+int buffer_provider::add_buffer (packing_stream_buffer *new_buffer)
 {
   m_buffers.push_back (new_buffer);
 

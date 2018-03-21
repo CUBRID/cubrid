@@ -26,13 +26,13 @@
 #ifndef _LOG_CONSUMER_HPP_
 #define _LOG_CONSUMER_HPP_
 
-#include "stream_provider.hpp"
+#include "buffer_provider.hpp"
 #include "stream_common.hpp"
+#include "packing_stream.hpp"
 #include <cstddef>
 
 class replication_stream_entry;
 class packing_stream_buffer;
-class packing_stream;
 class log_file;
 class stream_packer;
 class slave_replication_channel;
@@ -49,7 +49,7 @@ typedef enum consumer_type CONSUMER_TYPE;
  * main class for consuming log replication entries
  * it should be created only as a global instance
  */
-class log_consumer : public stream_provider
+class log_consumer : public buffer_provider, public stream_handler
 {
 protected:
   CONSUMER_TYPE m_type;
@@ -80,9 +80,9 @@ public:
 
   int fetch_data (BUFFER_UNIT *ptr, const size_t &amount);
   
-  int flush_old_stream_data (void);
-
   packing_stream * get_write_stream (void);
+
+  int handling_action (BUFFER_UNIT *ptr, size_t byte_count) { return fetch_data (ptr, byte_count); };
 };
 
 #endif /* _LOG_CONSUMER_HPP_ */

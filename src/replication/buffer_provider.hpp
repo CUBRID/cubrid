@@ -18,13 +18,13 @@
  */
 
 /*
- * stream_provider.hpp
+ * buffer_provider.hpp
  */
 
 #ident "$Id$"
 
-#ifndef _STREAM_PROVIDER_HPP_
-#define _STREAM_PROVIDER_HPP_
+#ifndef _BUFFER_PROVIDER_HPP_
+#define _BUFFER_PROVIDER_HPP_
 
 #include "error_code.h"
 #include "stream_common.hpp"
@@ -35,19 +35,15 @@ class packing_stream_buffer;
 class packing_stream;
 
 /*
- * an object of this type provides stream range (with content or empty stream, ready to be filled)
- * it also can allocate buffers as storage support for the stream
- *
- * TODO : maybe should be split into :
- * storage_provider : an object which only deals with memory allocation, and
- * content_provider : an object which provides data into stream (by recv from socket, read from file,
- *                    depending on stream input)
+ * an object of this type provides buffers (memory)
  */
-class stream_provider : public pinner
+class buffer_provider : public pinner
 {
 private:
-  /* a stream provider may allocate several buffers */
+  /* a buffer provider may allocate several buffers */
   std::vector<packing_stream_buffer*> m_buffers;
+
+  static buffer_provider *default_buffer_provider;
 
 protected:
   size_t min_alloc_size;
@@ -55,25 +51,20 @@ protected:
 
 public:
 
-  stream_provider () { min_alloc_size = 512 * 1024; max_alloc_size = 100 * 1024 * 1024; };
+  buffer_provider () { min_alloc_size = 512 * 1024; max_alloc_size = 100 * 1024 * 1024; };
 
-  ~stream_provider () { unpin_all (); free_all_buffers (); };
+  ~buffer_provider () { unpin_all (); free_all_buffers (); };
 
   virtual int allocate_buffer (packing_stream_buffer **new_buffer, const size_t &amount);
 
   virtual int free_all_buffers (void);
-
-  /* directly read data into this memory */
-  virtual int fetch_data (BUFFER_UNIT *ptr, const size_t &amount) = 0;
-  
+    
   virtual int extend_buffer (packing_stream_buffer **existing_buffer, const size_t &amount);
 
-  virtual int flush_old_stream_data (void) = 0;
-
-  virtual packing_stream * get_write_stream (void) = 0;
-
   virtual int add_buffer (packing_stream_buffer *new_buffer);
+
+  static buffer_provider *get_default_instance (void);
 };
 
 
-#endif /* _STREAM_PROVIDER_HPP_ */
+#endif /* _BUFFER_PROVIDER_HPP_ */

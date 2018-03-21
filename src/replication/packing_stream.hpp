@@ -27,13 +27,15 @@
 #define _PACKING_STREAM_HPP_
 
 #include <vector>
+#include <functional>
 #include "stream_common.hpp"
 #include "storage_common.h"
 
-class stream_provider;
+class buffer_provider;
 class packable_object;
 class object_builder;
 class stream_packer;
+class log_generator;
 
 typedef enum
 {
@@ -55,9 +57,7 @@ public:
 
 class stream_entry : public pinner
 {
-protected:
-  std::vector <packable_object *> m_packable_entries;
-
+private:
   int stream_entry_id;
 
   /* TODO : should move this to stream_packer ? */
@@ -66,6 +66,7 @@ protected:
   bool m_is_packable;
 
 protected:
+  std::vector <packable_object *> m_packable_entries;
 
   packing_stream *m_stream;
 
@@ -117,7 +118,7 @@ public:
 class packing_stream
 {
 private:
-  stream_provider *m_stream_provider;
+  buffer_provider *m_buffer_provider;
 
   /* a buffered range is a chunk of stream mapped onto a buffer (memory) 
    * a buffer can have multiple mappings (but contiguous) from the a stream (but only the same stream)
@@ -149,6 +150,9 @@ private:
    * normal mode should not need this : all buffers are send to MRC_Manager to be send to slave */
   size_t trigger_flush_to_disk_size;
 
+  stream_handler *filled_stream_handler;
+  stream_handler *fetch_data_handler;
+
 protected:
   int create_buffer_context (packing_stream_buffer *new_buffer, const STREAM_MODE stream_mode,
                              const stream_position &first_pos, const stream_position &last_allocated_pos,
@@ -160,12 +164,12 @@ protected:
 
   int remove_buffer_mapping (const STREAM_MODE stream_mode, buffer_context &mapped_range);
 
-  BUFFER_UNIT * fetch_data_from_provider (stream_provider *context_provider, BUFFER_UNIT *ptr, const size_t &amount);
+  BUFFER_UNIT * fetch_data_from_provider (buffer_provider *context_provider, BUFFER_UNIT *ptr, const size_t &amount);
 
   stream_position reserve_no_buffer (const size_t amount);
 
 public:
-  packing_stream (const stream_provider *my_provider);
+  packing_stream (const buffer_provider *my_provider);
 
   int init (const stream_position &start_position = 0);
 
@@ -175,10 +179,10 @@ public:
   int write (const size_t &byte_count, stream_handler *handler);
   int read (const stream_position &first_pos, const size_t &byte_count, stream_handler *handler);
 
-  BUFFER_UNIT * reserve_with_buffer (const size_t amount, const stream_provider *context_provider,
+  BUFFER_UNIT * reserve_with_buffer (const size_t amount, const buffer_provider *context_provider,
                                      buffer_context **granted_range);
 
-  BUFFER_UNIT * acquire_new_write_buffer (stream_provider *req_stream_provider, const stream_position &start_pos,
+  BUFFER_UNIT * acquire_new_write_buffer (buffer_provider *req_buffer_provider, const stream_position &start_pos,
                                           const size_t &amount, buffer_context **granted_range);
 
   int collect_buffers (std::vector <buffer_context> &buffered_ranges, COLLECT_FILTER collect_filter,
@@ -188,12 +192,15 @@ public:
   /* TODO[arnia] : temporary for unit test */
   void detach_all_buffers (void) { m_buffered_ranges.clear (); };
 
-  BUFFER_UNIT * get_more_data_with_buffer (const size_t amount, const stream_provider *context_provider,
+  BUFFER_UNIT * get_more_data_with_buffer (const size_t amount, const buffer_provider *context_provider,
                                            buffer_context **granted_range);
   BUFFER_UNIT * get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
-                                   const stream_provider *context_provider, buffer_context **granted_range);
+                                   const buffer_provider *context_provider, buffer_context **granted_range);
 
   stream_position &get_curr_read_position (void) { return m_read_position; };
+
+  void set_filled_stream_handler (stream_handler * handler) { filled_stream_handler = handler; };
+  void set_fetch_data_handler (stream_handler * handler) { fetch_data_handler = handler; };
 };
 
 #endif /* _PACKING_STREAM_HPP_ */

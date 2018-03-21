@@ -33,8 +33,6 @@
 #include "storage_common.h"
 #include "stream_packer.hpp"
 
-class stream_provider;
-
 struct replication_stream_entry_header
 {
   stream_position prev_record;

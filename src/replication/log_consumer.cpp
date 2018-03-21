@@ -84,6 +84,7 @@ log_consumer* log_consumer::new_instance (const CONSUMER_TYPE req_type, const st
   new_lc->consume_stream->init (new_lc->curr_position);
 
   new_lc->consume_stream->acquire_new_write_buffer (new_lc, new_lc->curr_position, LC_BUFFER_CAPACITY, NULL);
+  new_lc->consume_stream->set_fetch_data_handler (new_lc);
 
   return new_lc; 
 }
@@ -94,11 +95,6 @@ int log_consumer::fetch_data (BUFFER_UNIT *ptr, const size_t &amount)
   return NO_ERROR;
 }
  
-int log_consumer::flush_old_stream_data (void)
-{
-  NOT_IMPLEMENTED ();
-  return NO_ERROR;
-}
 
 packing_stream * log_consumer::get_write_stream (void)
 {

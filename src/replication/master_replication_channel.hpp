@@ -29,13 +29,13 @@
 #include <vector>
 
 #include "stream_common.hpp"
-#include "stream_provider.hpp"
+#include "buffer_provider.hpp"
 
 class packing_stream;
 class packing_stream_buffer;
 class log_file;
 
-class master_replication_channel_manager : public stream_provider
+class master_replication_channel_manager : public buffer_provider
 {
 public:
   master_replication_channel_manager (const stream_position &start_position);

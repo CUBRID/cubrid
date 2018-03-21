@@ -126,6 +126,4 @@ int test_stream_packing (void)
 
   return res;
 }
-
-
 }

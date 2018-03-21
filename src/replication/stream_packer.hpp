@@ -34,7 +34,7 @@
 
 class serial_buffer;
 class stream_entry_header;
-class stream_provider;
+class buffer_provider;
 
 /* 
  * this packs or unpacks objects from/into a stream
@@ -76,13 +76,13 @@ private:
   BUFFER_UNIT *m_packer_start_ptr;
 
 
-  /* stream provider is optional for packer :
+  /* buffer_provider is optional for packer :
    * it should be used when generating packable objects from multiple threads on the same
    * write stream : there is only one stream holding the global append position, but the storage
    * may be granted by each thread on its own
-   * By default, if packer does not have a provider, the stream provider is used (shared memory)
+   * By default, if packer does not have a provider, the buffer_provider is used (shared memory)
    */
-  stream_provider *m_stream_provider;
+  buffer_provider *m_buffer_provider;
 
   /* currently mapped range (set when packing starts) */
   buffer_context *m_mapped_range;

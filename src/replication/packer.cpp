@@ -284,7 +284,7 @@ size_t packer::get_packed_small_string_size (const char *string, const size_t cu
 
   entry_size = OR_BYTE_SIZE + strlen (string);
 
-  return DB_ALIGN (curr_offset + entry_size, MAX_ALIGNMENT) - curr_offset;
+  return DB_ALIGN (curr_offset + entry_size, INT_ALIGNMENT) - curr_offset;
 }
 
 int packer::pack_small_string (const char *string)
@@ -293,7 +293,7 @@ int packer::pack_small_string (const char *string)
   
   len = strlen (string);
 
-  if (len >= 255)
+  if (len > 255)
     {
       return ER_FAILED;
     }
@@ -305,7 +305,7 @@ int packer::pack_small_string (const char *string)
   (void) memcpy (m_ptr, string, len);
   m_ptr += len;
 
-  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, MAX_ALIGNMENT);
+  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, INT_ALIGNMENT);
 
   return NO_ERROR;
 }
@@ -329,7 +329,7 @@ int packer::unpack_small_string (char *string, const size_t max_size)
   *(string + len) = '\0';
   m_ptr += len;
 
-  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, MAX_ALIGNMENT);
+  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, INT_ALIGNMENT);
 
   return NO_ERROR;
 }
@@ -341,7 +341,7 @@ size_t packer::get_packed_large_string_size (const std::string &str, const size_
 
   entry_size = OR_INT_SIZE + str.size ();
 
-  return DB_ALIGN (curr_offset + entry_size, MAX_ALIGNMENT) - curr_offset;
+  return DB_ALIGN (curr_offset + entry_size, INT_ALIGNMENT) - curr_offset;
 }
 
 int packer::pack_large_string (const std::string &str)
@@ -356,7 +356,7 @@ int packer::pack_large_string (const std::string &str)
   m_ptr += OR_INT_SIZE;
   (void) memcpy (m_ptr, str.c_str (), len);
   m_ptr += len;
-  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, MAX_ALIGNMENT);
+  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, INT_ALIGNMENT);
 
   return NO_ERROR;
 }
@@ -375,7 +375,7 @@ int packer::unpack_large_string (std::string &str)
       str = std::string ((const char *) m_ptr);
       m_ptr += len;
     }
-  m_ptr = (BUFFER_UNIT *)  PTR_ALIGN (m_ptr, MAX_ALIGNMENT);
+  m_ptr = (BUFFER_UNIT *)  PTR_ALIGN (m_ptr, INT_ALIGNMENT);
 
   return NO_ERROR;
 }

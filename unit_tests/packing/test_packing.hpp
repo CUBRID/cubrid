@@ -17,35 +17,58 @@
  *
  */
 
-/*
- * slave_replication_channel.hpp
- */
+#ifndef _TEST_PACKING_HPP_
+#define _TEST_PACKING_HPP_
 
-#ident "$Id$"
+#include "packable_object.hpp"
+#include <vector>
 
-#ifndef _SLAVE_REPLICATION_CHANNEL_HPP_
-#define _SLAVE_REPLICATION_CHANNEL_HPP_
+class packing_buffer;
 
-
-struct stream_entry_header;
-class replication_stream;
-class serial_buffer;
-
-class slave_replication_channel
+namespace test_packing
 {
-public:
-  int init (void);
 
-  int receive_stream_entry_header (stream_entry_header &se_header);
+int test_packing1 (void);
 
-  replication_stream * get_write_stream (void) { return receiving_stream; };
+int test_packing_buffer1 (void);
 
-
+class buffer_manager : public pinner
+{
 private:
+  std::vector<packing_buffer*> buffers;
+public:
+  void allocate_bufer (packing_buffer *&buf, const size_t &amount);
 
-  replication_stream *receiving_stream;
+  void free_storage();
 
 };
 
+class po1 : public packable_object
+{
+public:
+  int i1;
+  short sh1;
+  DB_BIGINT b1;
+  int int_a[5];
+  std::vector<int> int_v;
+  DB_VALUE values[10];
+  char small_str[256];
+  std::string large_str;
 
-#endif /* _SLAVE_REPLICATION_CHANNEL_HPP_ */
+public:
+
+  int pack (packer *serializator);
+  int unpack (packer *serializator);
+
+  bool is_equal (const packable_object *other);
+  
+  size_t get_packed_size (packer *serializator);
+
+  void generate_obj (void);
+};
+
+
+
+}
+
+#endif /* _TEST_PACKING_HPP_ */

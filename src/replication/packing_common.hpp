@@ -50,7 +50,9 @@ public:
 
   int unpin_all (void);
 
-  ~pinner () { assert (references.size() == 0); }
+  bool check_references (void) { return (references.size() == 0); };
+
+  ~pinner () { assert (check_references () == true); };
 
 private:
   std::set <pinnable*> references;

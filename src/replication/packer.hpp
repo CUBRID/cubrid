@@ -52,7 +52,6 @@ public:
   int pack_int (const int value);
   int unpack_int (int *value);
   int peek_unpack_int (int *value);
-
   
   size_t get_packed_short_size (size_t curr_offset);
   int pack_short (short *value);

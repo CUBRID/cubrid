@@ -177,7 +177,7 @@ set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/replication_stream.cpp
   ${REPLICATION_DIR}/slave_replication_channel.cpp
   ${REPLICATION_DIR}/stream_packer.cpp
-  ${REPLICATION_DIR}/stream_provider.cpp
+  ${REPLICATION_DIR}/buffer_provider.cpp
   )
 
 set(OBJECT_SOURCES

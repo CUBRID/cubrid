@@ -32,7 +32,7 @@ stream_packer::stream_packer (packing_stream *stream_arg)
 {
   set_stream (stream_arg);
   m_packer_start_ptr = NULL;
-  m_stream_provider = NULL;
+  m_buffer_provider = NULL;
   init (NULL, 0);
 }
 
@@ -48,7 +48,7 @@ BUFFER_UNIT *stream_packer::start_packing_range (const size_t amount, buffer_con
 
   aligned_amount = DB_ALIGN (amount, MAX_ALIGNMENT);
 
-  ptr = m_stream->reserve_with_buffer (aligned_amount, m_stream_provider, granted_range);
+  ptr = m_stream->reserve_with_buffer (aligned_amount, m_buffer_provider, granted_range);
   if (ptr != NULL)
     {
       init (ptr, aligned_amount);
@@ -83,7 +83,7 @@ BUFFER_UNIT *stream_packer::start_unpacking_range (const size_t amount, buffer_c
 
   aligned_amount = DB_ALIGN (amount, MAX_ALIGNMENT);
 
-  ptr = m_stream->get_more_data_with_buffer (aligned_amount, m_stream_provider, granted_range);
+  ptr = m_stream->get_more_data_with_buffer (aligned_amount, m_buffer_provider, granted_range);
   if (ptr != NULL)
     {
       /* set unpacking context to memory pointer */
@@ -105,7 +105,7 @@ BUFFER_UNIT *stream_packer::start_unpacking_range_from_pos (const stream_positio
 
   aligned_amount = DB_ALIGN (amount, MAX_ALIGNMENT);
 
-  ptr = m_stream->get_data_from_pos (start_pos, aligned_amount, m_stream_provider, granted_range);
+  ptr = m_stream->get_data_from_pos (start_pos, aligned_amount, m_buffer_provider, granted_range);
   if (ptr != NULL)
     {
       /* set unpacking context to memory pointer */
