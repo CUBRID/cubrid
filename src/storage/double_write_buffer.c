@@ -4640,20 +4640,11 @@ class dwb_flush_block_daemon_task: public cubthread::entry_task
         {
           tsc_getticks (&(m_perf_track.end_tick));
 	  tsc_elapsed_time_usec (&tv_diff, m_perf_track.end_tick, m_perf_track.start_tick);
-	  oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-	  if (oldest_time > 0)
-	    {
+          oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
+          if (oldest_time > 0)
+            {
 	      perfmon_add_stat (&thread_ref, PSTAT_DWB_FLUSH_BLOCK_COND_WAIT, oldest_time);
-	    }
-	  m_perf_track.start_tick = m_perf_track.end_tick;
-
-	  /* update is_perf_tracking */
-	  m_perf_track.is_perf_tracking = perfmon_is_perf_tracking ();
-        }
-      else
-        {
-	  /* update is_perf_tracking and start timer if it became true */
-	  PERF_UTIME_TRACKER_START (&thread_ref, &m_perf_track);
+            }
         }
 
       /* flush pages as long as necessary */
@@ -4664,6 +4655,8 @@ class dwb_flush_block_daemon_task: public cubthread::entry_task
 	      assert_release (false);
 	    }
         }
+
+      PERF_UTIME_TRACKER_START (&thread_ref, &m_perf_track);
     }
 };
 
