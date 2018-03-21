@@ -166,3 +166,4 @@ inline bool flag<T>::is_flag_any_set (const T &where_to_check, const T &what_to_
 }
 
 #endif /* _BASE_FLAG_HPP_ */
+

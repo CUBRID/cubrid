@@ -615,4 +615,4 @@ namespace lockfree
 
 }  // namespace lockfree
 
-#endif // !_LOCKFREE_CIRCULAR_QUEUE_HPP_
+#endif // _LOCKFREE_CIRCULAR_QUEUE_HPP_

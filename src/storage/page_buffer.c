@@ -738,10 +738,10 @@ typedef struct pgbuf_direct_victim PGBUF_DIRECT_VICTIM;
 struct pgbuf_direct_victim
 {
   PGBUF_BCB **bcb_victims;
-  /* *INDENT-OFF*/
+  /* *INDENT-OFF* */
   lockfree::circular_queue<THREAD_ENTRY *> *waiter_threads_high_priority;
   lockfree::circular_queue<THREAD_ENTRY *> *waiter_threads_low_priority;
-  /* *INDENT-ON*/
+  /* *INDENT-ON* */
 };
 #define PGBUF_FLUSHED_BCBS_BUFFER_SIZE (8 * 1024)	/* 8k */
 #endif /* SERVER_MODE */
@@ -808,15 +808,15 @@ struct pgbuf_buffer_pool
   bool is_checkpoint;		/* flag set true when checkpoint is running */
 #endif				/* SERVER_MODE */
 
+  /* *INDENT-OFF* */
 #if defined (SERVER_MODE)
   PGBUF_DIRECT_VICTIM direct_victims;	/* direct victim assignment */
-  /* *INDENT-OFF*/
   lockfree::circular_queue<PGBUF_BCB *> *flushed_bcbs;	/* post-flush processing */
 #endif				/* SERVER_MODE */
   lockfree::circular_queue<int> *private_lrus_with_victims;
   lockfree::circular_queue<int> *big_private_lrus_with_victims;
   lockfree::circular_queue<int> *shared_lrus_with_victims;
-  /* *INDENT-ON*/
+  /* *INDENT-ON* */
 };
 
 /* victim candidate list */
@@ -1439,29 +1439,29 @@ pgbuf_initialize (void)
     }
   memset (pgbuf_Pool.direct_victims.bcb_victims, 0, thread_num_total_threads () * sizeof (PGBUF_BCB *));
 
-  /* *INDENT-OFF*/
+  /* *INDENT-OFF* */
   pgbuf_Pool.direct_victims.waiter_threads_high_priority =
     new lockfree::circular_queue<THREAD_ENTRY *> (thread_num_total_threads ());
-  /* *INDENT-ON*/
+  /* *INDENT-ON* */
   if (pgbuf_Pool.direct_victims.waiter_threads_high_priority == NULL)
     {
       ASSERT_ERROR ();
       goto error;
     }
 
-  /* *INDENT-OFF*/
+  /* *INDENT-OFF* */
   pgbuf_Pool.direct_victims.waiter_threads_low_priority =
     new lockfree::circular_queue<THREAD_ENTRY *> (2 * thread_num_total_threads ());
-  /* *INDENT-ON*/
+  /* *INDENT-ON* */
   if (pgbuf_Pool.direct_victims.waiter_threads_low_priority == NULL)
     {
       ASSERT_ERROR ();
       goto error;
     }
 
-  /* *INDENT-OFF*/
+  /* *INDENT-OFF* */
   pgbuf_Pool.flushed_bcbs = new lockfree::circular_queue<PGBUF_BCB *> (PGBUF_FLUSHED_BCBS_BUFFER_SIZE);
-  /* *INDENT-ON*/
+  /* *INDENT-ON* */
   if (pgbuf_Pool.flushed_bcbs == NULL)
     {
       ASSERT_ERROR ();
@@ -1471,18 +1471,18 @@ pgbuf_initialize (void)
 
   if (PGBUF_PAGE_QUOTA_IS_ENABLED)
     {
-      /* *INDENT-OFF*/
+      /* *INDENT-OFF* */
       pgbuf_Pool.private_lrus_with_victims = new lockfree::circular_queue<int> (PGBUF_PRIVATE_LRU_COUNT * 2);
-      /* *INDENT-ON*/
+      /* *INDENT-ON* */
       if (pgbuf_Pool.private_lrus_with_victims == NULL)
 	{
 	  ASSERT_ERROR ();
 	  goto error;
 	}
 
-      /* *INDENT-OFF*/
+      /* *INDENT-OFF* */
       pgbuf_Pool.big_private_lrus_with_victims = new lockfree::circular_queue<int> (PGBUF_PRIVATE_LRU_COUNT * 2);
-      /* *INDENT-ON*/
+      /* *INDENT-ON* */
       if (pgbuf_Pool.big_private_lrus_with_victims == NULL)
 	{
 	  ASSERT_ERROR ();
@@ -1490,9 +1490,9 @@ pgbuf_initialize (void)
 	}
     }
 
-  /* *INDENT-OFF*/
+  /* *INDENT-OFF* */
   pgbuf_Pool.shared_lrus_with_victims = new lockfree::circular_queue<int> (PGBUF_SHARED_LRU_COUNT * 2);
-  /* *INDENT-ON*/
+  /* *INDENT-ON* */
   if (pgbuf_Pool.shared_lrus_with_victims == NULL)
     {
       ASSERT_ERROR ();
@@ -16152,7 +16152,7 @@ pgbuf_daemons_destroy ()
   cubthread::get_manager ()->destroy_daemon (pgbuf_Flush_control_daemon);
 }
 #endif /* SERVER_MODE */
-// *INDENT-OFF*
+// *INDENT-ON*
 
 /*
  * pgbuf_is_page_flush_daemon_available () - check if page flush daemon is available

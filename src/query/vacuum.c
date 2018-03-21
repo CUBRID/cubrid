@@ -259,7 +259,7 @@ struct vacuum_data
   int log_block_npages;		/* The number of pages in a log block. */
 
   bool is_loaded;		/* True if vacuum data is loaded. */
-  /* *INDENT-OFF*/
+  /* *INDENT-OFF* */
   std::atomic<bool> shutdown_requested;	/* Set to true when shutdown is requested. It stops vacuum from generating or
                                          * executing new jobs. */
   /* INDENT-ON* */
@@ -373,17 +373,17 @@ struct vacuum_job_entry
  * transactions with vacuum threads and for this reason the block data is not
  * added directly to vacuum data.
  */
-/* *INDENT-OFF*/
+/* *INDENT-OFF* */
 lockfree::circular_queue<VACUUM_DATA_ENTRY *> *vacuum_Block_data_buffer = NULL;
-/* *INDENT-ON*/
+/* *INDENT-ON* */
 #define VACUUM_BLOCK_DATA_BUFFER_CAPACITY 1024
 
 /* A lock free queue of vacuum jobs. Master will add jobs based on vacuum data
  * and workers will execute the jobs one by one.
  */
-/* *INDENT-OFF*/
+/* *INDENT-OFF* */
 lockfree::circular_queue<VACUUM_LOG_BLOCKID> *vacuum_Finished_job_queue = NULL;
-/* *INDENT-ON*/
+/* *INDENT-ON* */
 
 #if defined(SERVER_MODE)
 /* Vacuum prefetch log block buffers */
@@ -948,9 +948,9 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
 #endif
 
   /* Initialize the log block data buffer */
-  /* *INDENT-OFF*/
+  /* *INDENT-OFF* */
   vacuum_Block_data_buffer = new lockfree::circular_queue<VACUUM_DATA_ENTRY *> (VACUUM_BLOCK_DATA_BUFFER_CAPACITY);
-  /* *INDENT-ON*/
+  /* *INDENT-ON* */
   if (vacuum_Block_data_buffer == NULL)
     {
       goto error;
@@ -980,9 +980,9 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
 #endif /* SERVER_MODE */
 
   /* Initialize finished job queue. */
-  /* *INDENT-OFF*/
+  /* *INDENT-OFF* */
   vacuum_Finished_job_queue = new lockfree::circular_queue<VACUUM_LOG_BLOCKID> (VACUUM_FINISHED_JOB_QUEUE_CAPACITY);
-  /* *INDENT-ON*/
+  /* *INDENT-ON* */
   if (vacuum_Finished_job_queue == NULL)
     {
       goto error;
@@ -5465,9 +5465,9 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
   LSA_COPY (&log_lsa, &mvcc_op_log_lsa);
 
   // stack used to produce in reverse order data for vacuum_Block_data_buffer circular queue
-  /* *INDENT-OFF*/
+  /* *INDENT-OFF* */
   std::stack<VACUUM_DATA_ENTRY> vacuum_block_data_buffer_stack;
-  /* *INDENT-ON*/
+  /* *INDENT-ON* */
 
   /* we don't reset data.oldest_mvccid between blocks. we need to maintain ordered oldest_mvccid's, and if a block + 1
    * MVCCID is smaller than all MVCCID's in block, then it must have been active (and probably suspended) while block
