@@ -93,8 +93,7 @@ void db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value);
 int db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc);
 JSON_DOC *db_json_get_copy_of_doc (const JSON_DOC *doc);
 
-char *db_json_serialize (JSON_DOC &doc);
-std::pair<char *, size_t> db_json_serialize_with_length (JSON_DOC &doc);
+std::pair<char *, size_t> db_json_serialize (JSON_DOC &doc);
 JSON_DOC *db_json_deserialize (char *json_raw);
 size_t db_json_get_json_doc_packed_size (const JSON_DOC &doc);
 
