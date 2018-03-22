@@ -14374,12 +14374,12 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 
       thread_unlock_entry (waiter_thread);
 
-      PERF_UTIME_TRACKER_TIME (thread_p, timetr, PSTAT_PB_ASSIGN_DIRECT_BCB);
+      PERF_UTIME_TRACKER_TIME (thread_p, &timetr, PSTAT_PB_ASSIGN_DIRECT_BCB);
 
       /* bcb was assigned */
       return true;
     }
-  PERF_UTIME_TRACKER_TIME (thread_p, timetr, PSTAT_PB_ASSIGN_DIRECT_BCB);
+  PERF_UTIME_TRACKER_TIME (thread_p, &timetr, PSTAT_PB_ASSIGN_DIRECT_BCB);
 #endif /* SERVER_MODE */
 
   /* no waiting threads */
