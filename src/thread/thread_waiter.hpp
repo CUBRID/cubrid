@@ -78,8 +78,7 @@ namespace cubthread
       //   5. with with timeout count
       //   6. zero waits
       //   7. wakeup delay time
-      //   8. wait time
-      static const std::size_t STAT_COUNT = 8;
+      static const std::size_t STAT_COUNT = 7;
 
       using stat_type = std::uint64_t;
       void get_stats (stat_type *stats_out);
@@ -114,7 +113,6 @@ namespace cubthread
       atomic_stat_type m_wait_zero;
       // timers
       stat_type m_wakeup_delay;         // protected by mutex
-      stat_type m_wait_time;            // protected by mutex
       // helpers
       clock_type::time_point m_awake_time;
       bool m_was_awaken;

@@ -34,6 +34,9 @@ namespace cubthread
     , m_stop (false)
     , m_was_woken_up (false)
     , m_start_execution_time ()
+    , m_sleep_count (0)
+    , m_sleep_time (0)
+    , m_reset_count (0)
   {
     // infinite waits
     m_setup_period = std::bind (&looper::setup_infinite_wait, *this, std::placeholders::_1, std::placeholders::_2);
@@ -107,7 +110,7 @@ namespace cubthread
 
     // register start of the task execution time
     m_start_execution_time = std::chrono::system_clock::now ();
-    m_sleep_time += (m_start_execution_time - start_sleep_timept).count ();
+    m_sleep_time += (std::chrono::nanoseconds (m_start_execution_time - start_sleep_timept)).count ();
   }
 
   void
@@ -175,7 +178,7 @@ namespace cubthread
   looper::get_stats (stat_type *stats_out)
   {
     stats_out[0] = m_sleep_count;
-    stats_out[1] = m_sleep_time;
+    stats_out[1] = m_sleep_time / 1000000;  // nano => milli
     stats_out[2] = m_reset_count;
   }
 

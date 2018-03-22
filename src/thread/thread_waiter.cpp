@@ -39,7 +39,6 @@ namespace cubthread
     , m_timeout_count (0)
     , m_wait_zero (0)
     , m_wakeup_delay (0)
-    , m_wait_time (0)
     , m_awake_time (0)
     , m_was_awaken (false)
   {
@@ -110,7 +109,7 @@ namespace cubthread
     // for statistics
     if (m_was_awaken)
       {
-	m_wakeup_delay += (clock_type::now () - m_awake_time).count ();
+	m_wakeup_delay += (std::chrono::nanoseconds (clock_type::now () - m_awake_time)).count ();
       }
   }
 
@@ -137,8 +136,7 @@ namespace cubthread
     stats_out[3] = m_wait_count;
     stats_out[4] = m_timeout_count;
     stats_out[5] = m_wait_zero;
-    stats_out[6] = m_wakeup_delay;
-    stats_out[7] = m_wait_time;
+    stats_out[6] = m_wakeup_delay / 1000000;  // nano => milli
   }
 
 } // namespace cubthread
