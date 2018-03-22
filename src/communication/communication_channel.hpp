@@ -36,6 +36,9 @@
 #include <winsock2.h>
 #endif
 
+/* TODO[arnia] this needs to be calculated a priori */
+#define MTU 1500
+
 enum CHANNEL_TYPE
 {
   NO_TYPE = 0,
@@ -83,6 +86,26 @@ class communication_channel
     CHANNEL_TYPE m_type;
     SOCKET m_socket;
 };
+
+/* TODO[arnia] these will be added from razvan's branch repl_base */
+typedef char BUFFER_UNIT;
+typedef unsigned long long stream_position;
+
+struct stream_handler
+{
+  virtual int handling_action (BUFFER_UNIT *ptr, std::size_t byte_count) = 0;
+  virtual ~stream_handler() = default;
+};
+
+class packing_stream
+{
+public:
+  virtual int write (std::size_t byte_count, stream_handler *handler) = 0;
+  virtual int read (stream_position first_pos, std::size_t byte_count, stream_handler *handler) = 0;
+  virtual ~packing_stream() = default;
+};
+
+/* TODO[arnia] end */
 
 #endif /* _COMMUNICATION_CHANNEL_HPP_ */
 
