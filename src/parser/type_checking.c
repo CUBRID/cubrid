@@ -13009,10 +13009,23 @@ namespace Func
       }
 
       //preprocess current function node type for special cases
-      void preprocess()
+      bool preprocess()
       {
+        auto arg_list = m_node->info.function.arg_list;
         switch(m_node->info.function.function_type)
           {
+          case PT_TOP_AGG_FUNC:
+          case PT_GENERIC:
+          case F_MIDXKEY:
+          case F_TOP_TABLE_FUNC:
+          case F_VID:
+            m_node->type_enum = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
+            assert(false);
+            break;
+          case F_GENERIC:
+          case F_CLASS_OF:
+            m_node->type_enum = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
+            return false;
           case PT_COUNT:
             {
               //to be moved in constant folding !?
@@ -13118,6 +13131,7 @@ namespace Func
           default:
             ;
           }
+          return true;
       }
 
     //set return type for current node in current context
@@ -13459,120 +13473,49 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
-  PT_TYPE_ENUM arg_type = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
   //printf("fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
-  switch (fcode)//replace with Func::get_signature()/apply_signature()
+  Func::Node funcNode(parser, node);
+  if(funcNode.preprocess())
     {
-    case PT_TOP_AGG_FUNC:
-    case PT_GENERIC:
-    case F_MIDXKEY:
-    case F_TOP_TABLE_FUNC:
-    case F_VID:
-      node->type_enum = arg_type; // by default f(x) has same type as x
-      assert(false);
-      break;
-    case F_GENERIC:
-    case F_CLASS_OF:
-      node->type_enum = arg_type; // by default f(x) has same type as x
-      break;
-
-    case F_SET:
-    case F_MULTISET:
-    case F_SEQUENCE:
-    case F_TABLE_SET:
-    case F_TABLE_MULTISET:
-    case F_TABLE_SEQUENCE:
-
-    case PT_GROUP_CONCAT:
-    case PT_MAX:
-    case PT_MIN:
-    case PT_FIRST_VALUE:
-    case PT_LAST_VALUE:
-    case PT_NTH_VALUE:
-    case PT_MEDIAN:
-    case PT_PERCENTILE_CONT:
-    case PT_PERCENTILE_DISC:
-    case PT_GROUPBY_NUM:
-    case PT_ROW_NUMBER:
-    case PT_RANK:
-    case PT_DENSE_RANK:
-    case PT_AGG_BIT_AND:
-    case PT_AGG_BIT_OR:
-    case PT_AGG_BIT_XOR:
-    case PT_STDDEV:
-    case PT_STDDEV_POP:
-    case PT_STDDEV_SAMP:
-    case PT_VARIANCE:
-    case PT_VAR_POP:
-    case PT_VAR_SAMP:
-    case PT_AVG:
-    case PT_COUNT_STAR:
-    case PT_COUNT:
-    case PT_SUM:
-    case PT_LEAD:
-    case PT_LAG:
-    case PT_CUME_DIST:
-    case PT_PERCENT_RANK:
-    case PT_NTILE:
-    case F_JSON_OBJECT:
-    case F_JSON_ARRAY:
-    case F_JSON_MERGE:
-    case F_JSON_REPLACE:
-    case F_JSON_SET:
-    case F_JSON_ARRAY_APPEND:
-    case F_JSON_INSERT:
-    case F_JSON_REMOVE:
-    case F_JSON_GET_ALL_PATHS:
-    case F_JSON_KEYS:
-    case F_ELT:
-    case F_INSERT_SUBSTRING:
-      {
-        Func::Node funcNode(parser, node);
-        funcNode.preprocess();//preprocess special cases (eg. ELT(), [TABLE_][MULTI]SET, ...)
-
-        //functions with at least 1 NULL arg should return NULL: func(..., NULL, ...) => NULL
-        for(auto n = arg_list; n != NULL; n = n->next)
-          {
-            if(n->type_enum == PT_TYPE_NULL)
+#if 0
+      //functions with at least 1 NULL arg should return NULL: func(..., NULL, ...) => NULL
+      for(auto n = arg_list; n != NULL; n = n->next)
+        {
+          if(n->type_enum == PT_TYPE_NULL)
+            {
+              if(node->type_enum == PT_TYPE_NONE)
               {
-                if(node->type_enum == PT_TYPE_NONE)
-                {
-                  node->type_enum = PT_TYPE_NULL;
-                }
-                //node->data_type = NULL;
-                //funcNode.set_return_type(...);
-                return node; //no need to check collation in this case
+                node->type_enum = PT_TYPE_NULL;
               }
-          }
-        if(node->type_enum == PT_TYPE_NONE || node->data_type == NULL)
-          {
-            PT_NODE *arg = arg_list;
-            //printf("1: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
-            if(!Func::types[fcode-PT_MIN]){
-              printf("ERR no function signature for fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
+              //node->data_type = NULL;
+              //funcNode.set_return_type(...);
+              return node; //no need to check collation in this case
             }
-            assert("ERR no function signature" && Func::types[fcode-PT_MIN] != NULL);
-            std::vector<func_signature>& func_sigs = *Func::types[fcode-PT_MIN];
-            const func_signature* func_sig = Func::get_signature(node, func_sigs);
-            if(func_sig != NULL)
-              {
-                funcNode.apply_signature(*func_sig);
-                funcNode.set_return_type(*func_sig);
-              }
-            else
-              {
-                node->type_enum = PT_TYPE_NA;//to avoid entering here 2nd time
-                arg_type = PT_TYPE_NONE;
-                PT_ERRORf3 (parser, node, "========== NO FUNCTION SIGNATURE MATCHES fcode=%d=%s args: %s ==========\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
-              }
+        }
+#endif
+      if(node->type_enum == PT_TYPE_NONE || node->data_type == NULL)
+        {
+          PT_NODE *arg = arg_list;
+          //printf("1: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
+          if(!Func::types[fcode-PT_MIN]){
+            printf("ERR no function signature for fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
           }
-      }
-      break;
-
-    default:
-      assert(false && "for all possible FUNC_TYPE enum values should be a case in switch!");
-      break;
-  }
+          assert("ERR no function signature" && Func::types[fcode-PT_MIN] != NULL);
+          std::vector<func_signature>& func_sigs = *Func::types[fcode-PT_MIN];
+          const func_signature* func_sig = Func::get_signature(node, func_sigs);
+          if(func_sig != NULL)
+            {
+              funcNode.apply_signature(*func_sig);
+              funcNode.set_return_type(*func_sig);
+            }
+          else
+            {
+              node->type_enum = PT_TYPE_NA;//to avoid entering here 2nd time
+              //arg_type = PT_TYPE_NONE;//unused!?
+              PT_ERRORf3 (parser, node, "========== NO FUNCTION SIGNATURE MATCHES fcode=%d=%s args: %s ==========\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
+            }
+        }
+    }
 
   /* collation checking */
   arg_list = node->info.function.arg_list;
