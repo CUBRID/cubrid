@@ -32,6 +32,16 @@ namespace cubthread
     : m_mutex ()
     , m_condvar ()
     , m_status (RUNNING)
+    , m_wakeup_count (0)
+    , m_wakeup_lock_count (0)
+    , m_awake_count (0)
+    , m_wait_count (0)
+    , m_timeout_count (0)
+    , m_wait_zero (0)
+    , m_wakeup_delay (0)
+    , m_wait_time (0)
+    , m_awake_time (0)
+    , m_was_awaken (false)
   {
   }
 
@@ -42,6 +52,8 @@ namespace cubthread
   void
   waiter::wakeup (void)
   {
+    ++m_wakeup_count;
+
     // early out if not sleeping
     if (m_status != SLEEPING)
       {
@@ -50,6 +62,8 @@ namespace cubthread
       }
 
     std::unique_lock<std::mutex> lock (m_mutex);
+    ++m_wakeup_lock_count;
+
     if (m_status != SLEEPING)
       {
 	return;
@@ -72,6 +86,9 @@ namespace cubthread
   {
     assert (m_status == RUNNING);
     m_status = SLEEPING;
+    // for statistics
+    m_was_awaken = false;
+    ++m_wait_count;
   }
 
   void
@@ -79,6 +96,10 @@ namespace cubthread
   {
     assert (m_status == SLEEPING);
     m_status = AWAKENING;
+    // for statistics
+    m_awake_time = clock_type::now ();
+    ++m_awake_count;
+    m_was_awaken = true;
   }
 
   void
@@ -86,6 +107,11 @@ namespace cubthread
   {
     assert (m_status == AWAKENING || m_status == SLEEPING);
     m_status = RUNNING;
+    // for statistics
+    if (m_was_awaken)
+      {
+	m_wakeup_delay += (clock_type::now () - m_awake_time).count ();
+      }
   }
 
   void
@@ -100,6 +126,19 @@ namespace cubthread
     run ();
 
     // mutex is automatically unlocked
+  }
+
+  void
+  waiter::get_stats (stat_type *stats_out)
+  {
+    stats_out[0] = m_wakeup_count;
+    stats_out[1] = m_wakeup_lock_count;
+    stats_out[2] = m_awake_count;
+    stats_out[3] = m_wait_count;
+    stats_out[4] = m_timeout_count;
+    stats_out[5] = m_wait_zero;
+    stats_out[6] = m_wakeup_delay;
+    stats_out[7] = m_wait_time;
   }
 
 } // namespace cubthread
