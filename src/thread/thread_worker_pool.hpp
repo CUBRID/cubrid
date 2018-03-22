@@ -1016,6 +1016,8 @@ namespace cubthread
     // run on current thread
     assert (work_p != NULL);
 
+    m_push_time = push_time;
+
     // must lock task mutex
     std::unique_lock<std::mutex> ulock (m_task_mutex);
 
@@ -1154,9 +1156,17 @@ namespace cubthread
 
     // wait for task
     std::unique_lock<std::mutex> ulock (m_task_mutex);
-    // wait until a task is received or stopped
-    // or time out
-    m_task_cv.wait_for (ulock, WAIT_TIME, [this] { return m_task_p != NULL || m_stop; });
+    if (m_task_p == NULL && !m_stop)
+      {
+	// wait until a task is received or stopped ...
+	// ... or time out
+	m_task_cv.wait_for (ulock, WAIT_TIME, [this] { return m_task_p != NULL || m_stop; });
+      }
+    else
+      {
+	// no need to wait
+      }
+    // unlock mutex
     ulock.unlock ();
 
     if (m_task_p == NULL)
