@@ -13085,6 +13085,7 @@ namespace Func
               break;
             }
 #if 0
+#if 0
             case F_SET:
             case F_MULTISET:
             case F_SEQUENCE:
@@ -13127,6 +13128,7 @@ namespace Func
               m_node->data_type = NULL;
               pt_add_type_to_set (m_parser, pt_get_select_list (m_parser, m_node->info.function.arg_list), &m_node->data_type);
               return false;//no need to continue with generic code
+#endif
 #endif
           default:
             ;
@@ -13477,22 +13479,6 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
   Func::Node funcNode(parser, node);
   if(funcNode.preprocess())
     {
-#if 0
-      //functions with at least 1 NULL arg should return NULL: func(..., NULL, ...) => NULL
-      for(auto n = arg_list; n != NULL; n = n->next)
-        {
-          if(n->type_enum == PT_TYPE_NULL)
-            {
-              if(node->type_enum == PT_TYPE_NONE)
-              {
-                node->type_enum = PT_TYPE_NULL;
-              }
-              //node->data_type = NULL;
-              //funcNode.set_return_type(...);
-              return node; //no need to check collation in this case
-            }
-        }
-#endif
       if(node->type_enum == PT_TYPE_NONE || node->data_type == NULL)
         {
           PT_NODE *arg = arg_list;
