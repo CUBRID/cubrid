@@ -13025,7 +13025,7 @@ namespace Func
           case F_GENERIC:
           case F_CLASS_OF:
             m_node->type_enum = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
-            return false;
+            return false;//no need to continue with generic code
           case PT_COUNT:
             {
               //to be moved in constant folding !?
@@ -13101,32 +13101,32 @@ namespace Func
               m_node->type_enum = PT_TYPE_SET;
               m_node->data_type = NULL;
               pt_add_type_to_set (m_parser, m_node->info.function.arg_list, &m_node->data_type);
-              break;
+              return false;//no need to continue with generic code
             case F_MULTISET:
               m_node->type_enum = PT_TYPE_MULTISET;
               m_node->data_type = NULL;
               pt_add_type_to_set (m_parser, m_node->info.function.arg_list, &m_node->data_type);
-              break;
+              return false;//no need to continue with generic code
             case F_SEQUENCE:
               m_node->type_enum = PT_TYPE_SEQUENCE;
               m_node->data_type = NULL;
               pt_add_type_to_set (m_parser, m_node->info.function.arg_list, &m_node->data_type);
-              break;
+              return false;//no need to continue with generic code
             case F_TABLE_SET:
               m_node->type_enum = PT_TYPE_SET;
               pt_add_type_to_set (m_parser, pt_get_select_list (m_parser, m_node->info.function.arg_list), &m_node->data_type);
               m_node->data_type = NULL;
-              break;
+              return false;//no need to continue with generic code
             case F_TABLE_MULTISET:
               m_node->type_enum = PT_TYPE_MULTISET;
               m_node->data_type = NULL;
               pt_add_type_to_set (m_parser, pt_get_select_list (m_parser, m_node->info.function.arg_list), &m_node->data_type);
-              break;
+              return false;//no need to continue with generic code
             case F_TABLE_SEQUENCE:
               m_node->type_enum = PT_TYPE_SEQUENCE;
               m_node->data_type = NULL;
               pt_add_type_to_set (m_parser, pt_get_select_list (m_parser, m_node->info.function.arg_list), &m_node->data_type);
-              break;
+              return false;//no need to continue with generic code
 #endif
           default:
             ;
