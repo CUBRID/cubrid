@@ -157,20 +157,20 @@ namespace cubthread
     std::chrono::nanoseconds timediff_nano;
     while (!daemon_arg->m_looper.is_stopped ())
       {
-	++m_loop_count;
+	++daemon_arg->m_loop_count;
 
 	// execute task
 	exec_arg->execute (context);
 	end_timept = clock_type::now ();
 	timediff_nano = end_timept - start_timept;
-	m_execute_time += timediff_nano.count ();
+	daemon_arg->m_execute_time += timediff_nano.count ();
 	start_timept = end_timept;
 
 	// take a break
 	daemon_arg->pause ();
 	end_timept = clock_type::now ();
 	timediff_nano = end_timept - start_timept;
-	m_pause_time += timediff_nano.count ();
+	daemon_arg->m_pause_time += timediff_nano.count ();
 	start_timept = end_timept;
       }
 

@@ -39,7 +39,7 @@ namespace cubthread
     , m_timeout_count (0)
     , m_wait_zero (0)
     , m_wakeup_delay (0)
-    , m_awake_time (0)
+    , m_awake_time ()
     , m_was_awaken (false)
   {
   }
