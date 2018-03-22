@@ -73,6 +73,9 @@ namespace cubthread
 
     assert (m_setup_period);
 
+    ++m_sleep_count;
+    std::chrono::system_clock::time_point start_sleep_timept = std::chrono::system_clock::now ();
+
     bool is_timed_wait = true;
     delta_time period = delta_time (0);
 
@@ -104,12 +107,14 @@ namespace cubthread
 
     // register start of the task execution time
     m_start_execution_time = std::chrono::system_clock::now ();
+    m_sleep_time += (m_start_execution_time - start_sleep_timept).count ();
   }
 
   void
   looper::reset (void)
   {
     m_period_index = 0;
+    ++m_reset_count;
   }
 
   bool
@@ -164,6 +169,14 @@ namespace cubthread
       {
 	is_timed_wait = false;
       }
+  }
+
+  void
+  looper::get_stats (stat_type *stats_out)
+  {
+    stats_out[0] = m_sleep_count;
+    stats_out[1] = m_sleep_time;
+    stats_out[2] = m_reset_count;
   }
 
 } // namespace cubthread

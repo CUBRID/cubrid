@@ -79,7 +79,7 @@ namespace cubthread
       //   6. zero waits
       //   7. wakeup delay time
       //   8. wait time
-      static std::size_t STAT_COUNT = 8;
+      static const std::size_t STAT_COUNT = 8;
 
       using stat_type = std::uint64_t;
       void get_stats (stat_type *stats_out);
