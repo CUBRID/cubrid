@@ -3,7 +3,6 @@
 #include "thread_manager.hpp"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
-#include <iostream>
 
 class default_producer_transfer_channel_sender_task : public cubthread::entry_task
 {
