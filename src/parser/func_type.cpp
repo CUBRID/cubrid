@@ -103,9 +103,13 @@ std::vector<func_signature> func_signature::group_concat = {
   {PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_NCHAR  , PT_GENERIC_TYPE_NCHAR }, {}},
   {PT_TYPE_VARBIT   , {PT_GENERIC_TYPE_BIT    , PT_GENERIC_TYPE_BIT   }, {}},
 
-  //anything else should be casted to separator's type (is possible! makes sense to detect incompatible types when detecting/applying signatures?)
+#if 0 //anything else should be casted to separator's type (if possible! makes sense to detect incompatible types when detecting/applying signatures?)
   {PT_TYPE_VARCHAR  , {1                      , PT_GENERIC_TYPE_CHAR  }, {}},//test
   {PT_TYPE_VARNCHAR , {1                      , PT_GENERIC_TYPE_NCHAR }, {}},//test
+#else //anything else should be left untouched (like in the original code), maybe it will be casted later?
+  {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_ANY    , PT_GENERIC_TYPE_CHAR  }, {}},//test
+  {PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_ANY    , PT_GENERIC_TYPE_NCHAR }, {}},//test
+#endif
 #if 0
   {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_NUMBER  , PT_GENERIC_TYPE_CHAR  }, {}},
   {PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_NUMBER  , PT_GENERIC_TYPE_NCHAR }, {}},
