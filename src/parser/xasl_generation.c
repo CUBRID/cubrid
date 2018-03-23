@@ -21865,6 +21865,15 @@ pt_init_precision_and_scale (DB_VALUE * value, PT_NODE * node)
   dt = node->data_type;
   domain_type = pt_type_enum_to_db (dt->type_enum);
 
+  if (DB_VALUE_DOMAIN_TYPE (value) != domain_type)
+    {
+      /* TODO 
+       * These 2 types should be the same. The assert will be decommented
+       */
+      //assert(false);
+      return;
+    }
+
   switch (domain_type)
     {
     case DB_TYPE_VARCHAR:
