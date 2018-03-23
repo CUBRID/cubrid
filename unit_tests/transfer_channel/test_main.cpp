@@ -68,25 +68,25 @@ class packing_stream_mock : public packing_stream
     {
       int err;
 
-      err = handler->handling_action (write_buffer + last_position, byte_count * sizeof (int));
+      err = handler->handling_action (write_buffer + last_position, byte_count);
       if (err == NO_ERRORS)
 	{
-	  last_position += (byte_count * sizeof (int));
+	  last_position += byte_count;
 	}
       return err;
     }
 
     int read (stream_position first_pos, std::size_t byte_count, stream_handler *handler) override
     {
-      char *ptr = (char *) malloc (byte_count * sizeof (int));
+      char *ptr = (char *) malloc (byte_count);
       int err = NO_ERROR;
 
-      for (std::size_t i = 0; i < byte_count * sizeof (int); i += sizeof (int))
+      for (std::size_t i = 0; i < byte_count; i += sizeof (int))
 	{
-	  * ((int *) (ptr + i)) = first_pos + i / sizeof (int);
+	  * ((int *) (ptr + i)) = first_pos / sizeof (int) + i / sizeof (int);
 	}
 
-      err = handler->handling_action (ptr, byte_count * sizeof (int));
+      err = handler->handling_action (ptr, byte_count);
       free (ptr);
 
       return err;

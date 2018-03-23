@@ -13,6 +13,7 @@ class consumer_transfer_channel_receiver_task : public cubthread::entry_task
     void execute (cubthread::entry &context) override
     {
       int rc = 0;
+      size_t max_len = MTU;
 
       if (this_consumer_channel->stream == NULL ||
 	  !this_consumer_channel->m_channel->is_connection_alive ())
@@ -20,11 +21,19 @@ class consumer_transfer_channel_receiver_task : public cubthread::entry_task
 	  return;
 	}
 
-      rc = this_consumer_channel->stream->write (MTU, this_consumer_channel);
+      rc = this_consumer_channel->m_channel->recv (this_consumer_channel->m_buffer, max_len);
+      if (rc != NO_ERRORS)
+	{
+	  this_consumer_channel->m_channel->close_connection ();
+	  return;
+	}
+
+      rc = this_consumer_channel->stream->write (max_len, this_consumer_channel);
       //assert (rc == NO_ERRORS);
       if (rc != NO_ERRORS)
 	{
 	  this_consumer_channel->m_channel->close_connection ();
+	  return;
 	}
     }
 
@@ -50,9 +59,10 @@ consumer_transfer_channel::~consumer_transfer_channel ()
 int consumer_transfer_channel::handling_action (BUFFER_UNIT *ptr, std::size_t byte_count)
 {
   std::size_t recv_bytes = byte_count;
-  int rc;
+  int rc = NO_ERRORS;
 
-  rc = m_channel->recv (ptr, recv_bytes);
+  memcpy (ptr, m_buffer, recv_bytes);
+
   if (rc == NO_ERRORS)
     {
       m_last_received_position += recv_bytes;
