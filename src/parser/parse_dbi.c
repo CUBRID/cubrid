@@ -1292,9 +1292,11 @@ pt_data_type_init_value (const PT_NODE * node, DB_VALUE * value_out)
 
   if (node->data_type == NULL)
     {
-      // nothing to init
+      // init as node->type_enum
+      db_value_domain_init_default (value_out, pt_type_enum_to_db (node->type_enum));
       return;
     }
+  // node->data_type is not null
 
   // get data type
   PT_NODE *node_data_type = node->data_type;
