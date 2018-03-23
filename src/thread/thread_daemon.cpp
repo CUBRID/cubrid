@@ -77,12 +77,20 @@ namespace cubthread
   void
   daemon::get_stats (stat_type *stats_out)
   {
-    stats_out[0] = m_loop_count;
-    stats_out[1] = m_execute_time / 1000000;  // nano => milli
-    stats_out[2] = m_pause_time / 1000000;    // nano => milli
+    int i = 0;
 
-    m_looper.get_stats (&stats_out[3]); // get looper stats
-    m_waiter.get_stats (&stats_out[3 + looper::STAT_COUNT]);  // get waiter stats
+    // get daemon stats
+    stats_out[i++] = m_loop_count;
+    stats_out[i++] = m_execute_time / 1000000;  // nano => milli
+    stats_out[i++] = m_pause_time / 1000000;    // nano => milli
+
+    // get looper stats
+    m_looper.get_stats (&stats_out[i]);
+    i += looper::STAT_COUNT;
+
+    // get waiter stats
+    m_waiter.get_stats (&stats_out[i]);
+    // i += waiter::STAT_COUNT;
   }
 
 } // namespace cubthread

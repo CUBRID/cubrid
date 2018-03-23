@@ -69,6 +69,7 @@ namespace cubthread
       }
 
     awake ();
+
     // unlock before notifying to avoid blocking the thread on mutex
     lock.unlock ();
     m_condvar.notify_one ();
@@ -84,7 +85,9 @@ namespace cubthread
   waiter::goto_sleep (void)
   {
     assert (m_status == RUNNING);
+
     m_status = SLEEPING;
+
     // for statistics
     m_was_awaken = false;
     ++m_wait_count;
@@ -94,7 +97,9 @@ namespace cubthread
   waiter::awake (void)
   {
     assert (m_status == SLEEPING);
+
     m_status = AWAKENING;
+
     // for statistics
     m_awake_time = clock_type::now ();
     ++m_awake_count;
@@ -105,7 +110,9 @@ namespace cubthread
   waiter::run (void)
   {
     assert (m_status == AWAKENING || m_status == SLEEPING);
+
     m_status = RUNNING;
+
     // for statistics
     if (m_was_awaken)
       {
@@ -130,13 +137,15 @@ namespace cubthread
   void
   waiter::get_stats (stat_type *stats_out)
   {
-    stats_out[0] = m_wakeup_count;
-    stats_out[1] = m_wakeup_lock_count;
-    stats_out[2] = m_awake_count;
-    stats_out[3] = m_wait_count;
-    stats_out[4] = m_timeout_count;
-    stats_out[5] = m_wait_zero;
-    stats_out[6] = m_wakeup_delay / 1000000;  // nano => milli
+    int i = 0;
+
+    stats_out[i++] = m_wakeup_count;
+    stats_out[i++] = m_wakeup_lock_count;
+    stats_out[i++] = m_awake_count;
+    stats_out[i++] = m_wait_count;
+    stats_out[i++] = m_timeout_count;
+    stats_out[i++] = m_wait_zero;
+    stats_out[i++] = m_wakeup_delay / 1000000;  // nano => milli
   }
 
 } // namespace cubthread

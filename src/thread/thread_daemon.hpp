@@ -152,15 +152,19 @@ namespace cubthread
 
     // loop until stopped
     using clock_type = std::chrono::high_resolution_clock;
+
     clock_type::time_point start_timept = clock_type::now ();
     clock_type::time_point end_timept;
     std::chrono::nanoseconds timediff_nano;
+
     while (!daemon_arg->m_looper.is_stopped ())
       {
 	++daemon_arg->m_loop_count;
 
 	// execute task
 	exec_arg->execute (context);
+
+	// gather execute stats
 	end_timept = clock_type::now ();
 	timediff_nano = end_timept - start_timept;
 	daemon_arg->m_execute_time += timediff_nano.count ();
@@ -168,6 +172,8 @@ namespace cubthread
 
 	// take a break
 	daemon_arg->pause ();
+
+	// gather pause stats
 	end_timept = clock_type::now ();
 	timediff_nano = end_timept - start_timept;
 	daemon_arg->m_pause_time += timediff_nano.count ();

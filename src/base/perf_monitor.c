@@ -4857,32 +4857,34 @@ f_load_thread_daemon_stats (void)
 }
 
 static const char *perfmon_Pgbuf_daemon_names [] =
-  {
-    "Page flush daemon thread:\n",
-    "Page post flush daemon thread:\n",
-    "Page flush control daemon thread:\n",
-    "Page maintenance thread:\n",
-  };
+{
+  "Page flush daemon thread:\n",
+  "Page post flush daemon thread:\n",
+  "Page flush control daemon thread:\n",
+  "Page maintenance thread:\n",
+};
 
 static const char *perfmon_Thread_daemon_stat_names [] =
-  {
-    // daemon
-    "daemon_loop_count",
-    "daemon_execute_time",
-    "daemon_pause_time",
-    // looper
-    "looper_sleep_count",
-    "looper_sleep_time",
-    "looper_reset_count"
-    // waiter
-    "waiter_wakeup_count",
-    "waiter_lock_wakeup_count",
-    "waiter_awake_count",
-    "waiter_sleep_count",
-    "waiter_timeout_count",
-    "waiter_no_wait_count",
-    "waiter_wakeup_delay_time",
-  };
+{
+  // daemon
+  "daemon_loop_count",
+  "daemon_execute_time",
+  "daemon_pause_time",
+
+  // looper
+  "looper_sleep_count",
+  "looper_sleep_time",
+  "looper_reset_count",
+
+  // waiter
+  "waiter_wakeup_count",
+  "waiter_lock_wakeup_count",
+  "waiter_awake_count",
+  "waiter_sleep_count",
+  "waiter_timeout_count",
+  "waiter_no_wait_count",
+  "waiter_wakeup_delay_time",
+};
 
 static void
 perfmon_stat_thread_daemon_stat_name (size_t index, char * name_buf, size_t max_size)

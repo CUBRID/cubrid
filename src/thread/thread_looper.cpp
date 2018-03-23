@@ -177,9 +177,11 @@ namespace cubthread
   void
   looper::get_stats (stat_type *stats_out)
   {
-    stats_out[0] = m_sleep_count;
-    stats_out[1] = m_sleep_time / 1000000;  // nano => milli
-    stats_out[2] = m_reset_count;
+    int i = 0;
+
+    stats_out[i++] = m_sleep_count;
+    stats_out[i++] = m_sleep_time / 1000000;  // nano => milli
+    stats_out[i++] = m_reset_count;
   }
 
 } // namespace cubthread

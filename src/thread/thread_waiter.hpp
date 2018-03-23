@@ -75,7 +75,7 @@ namespace cubthread
       //   2. locks on wakeup
       //   3. awake calls
       //   4. wait count
-      //   5. with with timeout count
+      //   5. with timeout count
       //   6. zero waits
       //   7. wakeup delay time
       static const std::size_t STAT_COUNT = 7;
