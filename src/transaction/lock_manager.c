@@ -5907,6 +5907,8 @@ class deadlock_detect_task : public cubthread::entry_task
 	  return;
 	}
 
+      thread_sleep (100);
+
       if (lk_Gl.deadlock_and_timeout_detector == 0)
 	{
 	  // if none of the threads were suspended then just return
