@@ -44,6 +44,7 @@
 	} while(0)
 #endif
 
+// todo: MASTER_ER_... shouldn't be necessary anymore. each thread has own error context
 #define MASTER_ER_SET(...) \
   do { \
       if (css_Master_er_log_enabled == true) { \

@@ -70,8 +70,6 @@
 SYNC_CRITICAL_SECTION csectgl_Critical_sections[CRITICAL_SECTION_COUNT];
 
 static const char *csect_Names[] = {
-  "ER_LOG_FILE",
-  "ER_MSG_CACHE",
   "WFG",
   "LOG",
   "LOCATOR_CLASSNAME_TABLE",
@@ -1666,7 +1664,7 @@ csect_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values
       idx++;
 
       /* The name of the critical section */
-      db_make_string (&vals[idx], CSECT_NAME (csect));
+      db_make_string_by_const_str (&vals[idx], CSECT_NAME (csect));
       idx++;
 
       /* 'N readers', '1 writer', 'none' */

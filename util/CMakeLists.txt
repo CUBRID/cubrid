@@ -281,20 +281,6 @@ if(WIN32)
   target_link_libraries(gencat LINK_PRIVATE ws2_32)
 endif(WIN32)
 
-
-set(CONVERT_PASSWORD_SOURCES ${EXECUTABLES_DIR}/convert_password.c)
-SET_SOURCE_FILES_PROPERTIES(
-    ${CONVERT_PASSWORD_SOURCES}
-    PROPERTIES LANGUAGE CXX
-  )
-if(WIN32)
-  list(APPEND CONVERT_PASSWORD_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
-endif(WIN32)
-add_executable(convert_password ${CONVERT_PASSWORD_SOURCES})
-target_include_directories(convert_password PRIVATE ${EP_INCLUDES})
-target_link_libraries(convert_password LINK_PRIVATE cubridsa)
-
-
 if(UNIX)
   set(UNITTESTS_LF_SOURCES
     ${BASE_DIR}/porting.c
@@ -323,18 +309,6 @@ if(UNIX)
   target_include_directories(unittests_area PRIVATE ${EP_INCLUDES})
   target_link_libraries(unittests_area LINK_PRIVATE cubrid)
 
-  set(UNITTESTS_CQUEUE_SOURCES
-    ${EXECUTABLES_DIR}/unittests_cqueue.c
-    )
-    SET_SOURCE_FILES_PROPERTIES(
-      ${UNITTESTS_CQUEUE_SOURCES}
-      PROPERTIES LANGUAGE CXX
-    )
-  add_executable(unittests_cqueue ${UNITTESTS_CQUEUE_SOURCES})
-  target_compile_definitions(unittests_cqueue PRIVATE UNITTEST_CQ SERVER_MODE ${COMMON_DEFS})
-  target_include_directories(unittests_cqueue PRIVATE ${EP_INCLUDES})
-  target_link_libraries(unittests_cqueue LINK_PRIVATE cubrid)
-  
   set(UNITTESTS_SNAPSHOT_SOURCES
       ${EXECUTABLES_DIR}/unittests_snapshot.c
       )
@@ -401,7 +375,6 @@ install(TARGETS
   loadjava
   cub_admin
   cubrid_esql
-  convert_password
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application
   LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header

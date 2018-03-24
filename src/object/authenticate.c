@@ -1546,11 +1546,12 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
       return er_errid ();
     }
 
-  db_make_string (&class_name_val, sm_get_ch_name (class_mop));
+  db_make_string_by_const_str (&class_name_val, sm_get_ch_name (class_mop));
   db_class_inst = obj_find_unique (db_class, "class_name", &class_name_val, AU_FETCH_READ);
   if (db_class_inst == NULL)
     {
       assert (er_errid () != NO_ERROR);
+      pr_clear_value (&class_name_val);
       return er_errid ();
     }
 
@@ -1568,6 +1569,7 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
   db_make_int (&value, (int) grant_option);
   obj_set (au_obj, "is_grantable", &value);
 
+  pr_clear_value (&class_name_val);
   return NO_ERROR;
 }
 
@@ -1647,13 +1649,13 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CLASS, 0);
       goto exit;
     }
-  db_make_string (&val[INDEX_FOR_CLASS_NAME], class_name);
+  db_make_string_by_const_str (&val[INDEX_FOR_CLASS_NAME], class_name);
 
   for (type = DB_AUTH_SELECT, i = 0; type != auth_type; type = (DB_AUTH) (type << 1), i++)
     {
       ;
     }
-  db_make_string (&val[INDEX_FOR_AUTH_TYPE], type_set[i]);
+  db_make_string_by_const_str (&val[INDEX_FOR_AUTH_TYPE], type_set[i]);
 
   session = db_open_buffer (sql_query);
   if (session == NULL)
@@ -2048,7 +2050,7 @@ au_delete_auth_of_dropping_table (const char *class_name)
       goto release;
     }
 
-  db_make_string (&val, class_name);
+  db_make_string_by_const_str (&val, class_name);
   error = db_push_values (session, 1, &val);
   if (error != NO_ERROR)
     {
@@ -2070,6 +2072,8 @@ release:
     }
 
 exit:
+  pr_clear_value (&val);
+
   AU_ENABLE (save);
 
   return error;
@@ -2835,8 +2839,9 @@ au_set_user_comment (MOP user, const char *comment)
 	}
       else
 	{
-	  db_make_string (&value, comment);
+	  db_make_string_by_const_str (&value, comment);
 	  error = obj_set (user, "comment", &value);
+	  pr_clear_value (&value);
 	}
     }
   AU_RESTORE (save);
@@ -3804,11 +3809,7 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 
   *grant_ptr = NULL;
 
-  error = er_stack_push ();
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
+  er_stack_push ();
 
   need_pop_er_stack = true;
 
@@ -3962,11 +3963,11 @@ end:
     {
       if (error == NO_ERROR)
 	{
-	  (void) er_stack_pop ();
+	  er_stack_pop ();
 	}
       else
 	{
-	  er_stack_clear ();
+	  er_stack_pop_and_keep_error ();
 	}
     }
 
@@ -4040,11 +4041,7 @@ update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
    */
   AU_DISABLE (save);
 
-  error = er_stack_push ();
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
+  er_stack_push ();
 
   need_pop_er_stack = true;
 
@@ -4175,11 +4172,11 @@ end:
     {
       if (error == NO_ERROR)
 	{
-	  (void) er_stack_pop ();
+	  er_stack_pop ();
 	}
       else
 	{
-	  er_stack_clear ();
+	  er_stack_pop_and_keep_error ();
 	}
     }
 
@@ -8670,7 +8667,7 @@ au_check_serial_authorization (MOP serial_object)
       return ret_val;
     }
 
-  creator = DB_GET_OBJECT (&creator_val);
+  creator = db_get_object (&creator_val);
 
   ret_val = ER_QPROC_CANNOT_UPDATE_SERIAL;
 

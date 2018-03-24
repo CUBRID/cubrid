@@ -2083,7 +2083,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
 
   if (domain->json_validator)
     {
-      db_make_string (&schema_value, db_json_get_schema_raw_from_validator (domain->json_validator));
+      db_make_string_by_const_str (&schema_value, db_json_get_schema_raw_from_validator (domain->json_validator));
       (*(tp_String.data_writeval)) (buf, &schema_value);
       pr_clear_value (&schema_value);
     }
@@ -3044,9 +3044,9 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 		  DB_VALUE def_expr_op, def_expr_type, def_expr_format;
 		  char *def_expr_format_str;
 
-		  assert (set_size (DB_GET_SEQUENCE (&value)) == 3);
+		  assert (set_size (db_get_set (&value)) == 3);
 
-		  def_expr_seq = DB_GET_SEQUENCE (&value);
+		  def_expr_seq = db_get_set (&value);
 
 		  /* get default expression operator (op of expr) */
 		  if (set_get_element_nocopy (def_expr_seq, 0, &def_expr_op) != NO_ERROR)
@@ -3054,8 +3054,8 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 		      assert (false);
 		    }
 		  assert (DB_VALUE_TYPE (&def_expr_op) == DB_TYPE_INTEGER
-			  && DB_GET_INT (&def_expr_op) == (int) T_TO_CHAR);
-		  att->default_value.default_expr.default_expr_op = DB_GET_INT (&def_expr_op);
+			  && db_get_int (&def_expr_op) == (int) T_TO_CHAR);
+		  att->default_value.default_expr.default_expr_op = db_get_int (&def_expr_op);
 
 		  /* get default expression type (arg1 of expr) */
 		  if (set_get_element_nocopy (def_expr_seq, 1, &def_expr_type) != NO_ERROR)
@@ -3064,7 +3064,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 		    }
 		  assert (DB_VALUE_TYPE (&def_expr_type) == DB_TYPE_INTEGER);
 		  att->default_value.default_expr.default_expr_type =
-		    (DB_DEFAULT_EXPR_TYPE) DB_GET_INT (&def_expr_type);
+		    (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr_type);
 
 		  /* get default expression format (arg2 of expr) */
 		  if (set_get_element_nocopy (def_expr_seq, 2, &def_expr_format) != NO_ERROR)
@@ -3080,7 +3080,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 #endif
 		  if (!db_value_is_null (&def_expr_format))
 		    {
-		      def_expr_format_str = DB_GET_STRING (&def_expr_format);
+		      def_expr_format_str = db_get_string (&def_expr_format);
 		      att->default_value.default_expr.default_expr_format = ws_copy_string (def_expr_format_str);
 		      if (att->default_value.default_expr.default_expr_format == NULL)
 			{
@@ -3090,7 +3090,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 		}
 	      else
 		{
-		  att->default_value.default_expr.default_expr_type = (DB_DEFAULT_EXPR_TYPE) DB_GET_INT (&value);
+		  att->default_value.default_expr.default_expr_type = (DB_DEFAULT_EXPR_TYPE) db_get_int (&value);
 		}
 
 	      pr_clear_value (&value);
@@ -4880,7 +4880,7 @@ disk_to_partition_info (OR_BUF * buf)
 	  classobj_free_partition_info (partition_info);
 	  return NULL;
 	}
-      partition_info->values = db_seq_copy (DB_GET_SEQUENCE (&val));
+      partition_info->values = db_seq_copy (db_get_set (&val));
       if (partition_info->values == NULL)
 	{
 	  free_var_table (vars);

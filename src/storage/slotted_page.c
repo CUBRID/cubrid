@@ -4759,15 +4759,15 @@ spage_get_page_header_info (PAGE_PTR page_p, DB_VALUE ** page_header_info)
   page_header_p = (SPAGE_HEADER *) page_p;
   SPAGE_VERIFY_HEADER (page_header_p);
 
-  DB_MAKE_INT (page_header_info[HEAP_PAGE_INFO_NUM_SLOTS], page_header_p->num_slots);
-  DB_MAKE_INT (page_header_info[HEAP_PAGE_INFO_NUM_RECORDS], page_header_p->num_records);
-  DB_MAKE_INT (page_header_info[HEAP_PAGE_INFO_ANCHOR_TYPE], page_header_p->anchor_type);
-  DB_MAKE_INT (page_header_info[HEAP_PAGE_INFO_ALIGNMENT], page_header_p->alignment);
-  DB_MAKE_INT (page_header_info[HEAP_PAGE_INFO_TOTAL_FREE], page_header_p->total_free);
-  DB_MAKE_INT (page_header_info[HEAP_PAGE_INFO_CONT_FREE], page_header_p->cont_free);
-  DB_MAKE_INT (page_header_info[HEAP_PAGE_INFO_OFFSET_TO_FREE_AREA], page_header_p->offset_to_free_area);
-  DB_MAKE_INT (page_header_info[HEAP_PAGE_INFO_IS_SAVING], page_header_p->is_saving);
-  DB_MAKE_INT (page_header_info[HEAP_PAGE_INFO_UPDATE_BEST], page_header_p->need_update_best_hint);
+  db_make_int (page_header_info[HEAP_PAGE_INFO_NUM_SLOTS], page_header_p->num_slots);
+  db_make_int (page_header_info[HEAP_PAGE_INFO_NUM_RECORDS], page_header_p->num_records);
+  db_make_int (page_header_info[HEAP_PAGE_INFO_ANCHOR_TYPE], page_header_p->anchor_type);
+  db_make_int (page_header_info[HEAP_PAGE_INFO_ALIGNMENT], page_header_p->alignment);
+  db_make_int (page_header_info[HEAP_PAGE_INFO_TOTAL_FREE], page_header_p->total_free);
+  db_make_int (page_header_info[HEAP_PAGE_INFO_CONT_FREE], page_header_p->cont_free);
+  db_make_int (page_header_info[HEAP_PAGE_INFO_OFFSET_TO_FREE_AREA], page_header_p->offset_to_free_area);
+  db_make_int (page_header_info[HEAP_PAGE_INFO_IS_SAVING], page_header_p->is_saving);
+  db_make_int (page_header_info[HEAP_PAGE_INFO_UPDATE_BEST], page_header_p->need_update_best_hint);
 
   return S_SUCCESS;
 }
@@ -5028,10 +5028,10 @@ spage_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_val
   db_make_int (out_values[idx], header->num_records);
   idx++;
 
-  db_make_string (out_values[idx], spage_anchor_flag_string (header->anchor_type));
+  db_make_string_by_const_str (out_values[idx], spage_anchor_flag_string (header->anchor_type));
   idx++;
 
-  db_make_string (out_values[idx], spage_alignment_string (header->alignment));
+  db_make_string_by_const_str (out_values[idx], spage_alignment_string (header->alignment));
   idx++;
 
   db_make_int (out_values[idx], header->total_free);
@@ -5216,7 +5216,7 @@ spage_slots_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
   db_make_int (out_values[idx], ctx->slot->offset_to_record);
   idx++;
 
-  db_make_string (out_values[idx], spage_record_type_string (ctx->slot->record_type));
+  db_make_string_by_const_str (out_values[idx], spage_record_type_string (ctx->slot->record_type));
   idx++;
 
   db_make_int (out_values[idx], ctx->slot->record_length);

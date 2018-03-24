@@ -3067,7 +3067,7 @@ lock_internal_hold_lock_object_instant (int tran_index, const OID * oid, const O
 #endif /* LK_DUMP */
 
 #if defined(SERVER_MODE) && defined(DIAG_DEVEL)
-  SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_LOCK_REQUEST, 1, DIAG_VAL_SETTYPE_INC, NULL);
+  perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_LOCK_REQUEST, 1, DIAG_VAL_SETTYPE_INC, NULL);
 #endif /* SERVER_MODE && DIAG_DEVEL */
   if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
     {
@@ -3276,7 +3276,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   *entry_addr_ptr = NULL;
 
 #if defined(SERVER_MODE) && defined(DIAG_DEVEL)
-  SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_LOCK_REQUEST, 1, DIAG_VAL_SETTYPE_INC, NULL);
+  perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_LOCK_REQUEST, 1, DIAG_VAL_SETTYPE_INC, NULL);
 #endif /* SERVER_MODE && DIAG_DEVEL */
 
   /* get current locking phase */
@@ -5956,10 +5956,11 @@ lock_deadlock_detect_daemon_init ()
 {
   assert (lock_Deadlock_detect_daemon == NULL);
 
+  cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (100));
+  deadlock_detect_task *daemon_task = new deadlock_detect_task ();
+
   // create deadlock detect daemon thread
-  auto interval_time = std::chrono::milliseconds (100);
-  lock_Deadlock_detect_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (interval_time),
-				new deadlock_detect_task ());
+  lock_Deadlock_detect_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
 }
 #endif /* SERVER_MODE */
 
@@ -5970,10 +5971,7 @@ lock_deadlock_detect_daemon_init ()
 void
 lock_deadlock_detect_daemon_destroy ()
 {
-  if (lock_Deadlock_detect_daemon != NULL)
-    {
-      cubthread::get_manager ()->destroy_daemon (lock_Deadlock_detect_daemon);
-    }
+  cubthread::get_manager ()->destroy_daemon (lock_Deadlock_detect_daemon);
 }
 #endif /* SERVER_MODE */
 // *INDENT-ON*
@@ -8075,7 +8073,7 @@ final_:
 #if defined(SERVER_MODE) && defined(DIAG_DEVEL)
   if (victim_count > 0)
     {
-      SET_DIAG_VALUE (diag_executediag, DIAG_OBJ_TYPE_LOCK_DEADLOCK, 1, DIAG_VAL_SETTYPE_INC, NULL);
+      perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_LOCK_DEADLOCK, 1, DIAG_VAL_SETTYPE_INC, NULL);
 #if 0				/* ACTIVITY PROFILE */
       ADD_ACTIVITY_DATA (diag_executediag, DIAG_EVENTCLASS_TYPE_SERVER_LOCK_DEADLOCK, "", "", victim_count);
 #endif

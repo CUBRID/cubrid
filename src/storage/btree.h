@@ -255,7 +255,7 @@ struct btree_scan
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
     (bts)->common_prefix = COMMON_PREFIX_UNKNOWN;	\
-    DB_MAKE_NULL (&(bts)->cur_key);			\
+    db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
     (bts)->is_btid_int_valid = false;			\
     (bts)->read_uncommitted = false;			\
@@ -302,7 +302,7 @@ struct btree_scan
     (bts)->restart_scan = 0;                    	\
     (bts)->common_prefix = COMMON_PREFIX_UNKNOWN;	\
     pr_clear_value (&(bts)->cur_key);			\
-    DB_MAKE_NULL (&(bts)->cur_key);			\
+    db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
     (bts)->is_scan_started = false;			\
   } while (0)

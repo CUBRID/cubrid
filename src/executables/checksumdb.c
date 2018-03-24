@@ -248,7 +248,7 @@ chksum_report_schema_diff (FILE * fp)
 	    }
 	  else
 	    {
-	      db_datetime_to_string (time_buf, sizeof (time_buf), DB_GET_DATETIME (&out_value));
+	      db_datetime_to_string (time_buf, sizeof (time_buf), db_get_datetime (&out_value));
 	    }
 	  db_value_clear (&out_value);
 
@@ -360,7 +360,7 @@ chksum_report_diff (FILE * fp)
 	      db_query_end (query_result);
 	      return error;
 	    }
-	  CHKSUM_PRINT_AND_LOG (fp, "%-15d ", DB_GET_INT (&out_value));
+	  CHKSUM_PRINT_AND_LOG (fp, "%-15d ", db_get_int (&out_value));
 	  db_value_clear (&out_value);
 
 	  /* lower bound */
@@ -444,7 +444,7 @@ chksum_report_summary (FILE * fp)
 	      db_query_end (query_result);
 	      return error;
 	    }
-	  num_chunks = DB_GET_INT (&out_value);
+	  num_chunks = db_get_int (&out_value);
 	  CHKSUM_PRINT_AND_LOG (fp, "%-23d ", num_chunks);
 	  db_value_clear (&out_value);
 
@@ -455,7 +455,7 @@ chksum_report_summary (FILE * fp)
 	      db_query_end (query_result);
 	      return error;
 	    }
-	  CHKSUM_PRINT_AND_LOG (fp, "%-23d ", DB_GET_INT (&out_value));
+	  CHKSUM_PRINT_AND_LOG (fp, "%-23d ", db_get_int (&out_value));
 	  db_value_clear (&out_value);
 
 	  /* total elapsed time */
@@ -466,7 +466,7 @@ chksum_report_summary (FILE * fp)
 	      return error;
 	    }
 
-	  CHKSUM_PRINT_AND_LOG (fp, "%d / %d ", DB_GET_INT (&out_value), DB_GET_INT (&out_value) / num_chunks);
+	  CHKSUM_PRINT_AND_LOG (fp, "%d / %d ", db_get_int (&out_value), db_get_int (&out_value) / num_chunks);
 	  db_value_clear (&out_value);
 
 	  /* min elapsed time */
@@ -477,7 +477,7 @@ chksum_report_summary (FILE * fp)
 	      return error;
 	    }
 
-	  CHKSUM_PRINT_AND_LOG (fp, "/ %d ", DB_GET_INT (&out_value));
+	  CHKSUM_PRINT_AND_LOG (fp, "/ %d ", db_get_int (&out_value));
 	  db_value_clear (&out_value);
 
 	  /* max elapsed time */
@@ -488,7 +488,7 @@ chksum_report_summary (FILE * fp)
 	      return error;
 	    }
 
-	  CHKSUM_PRINT_AND_LOG (fp, "/ %d (ms)\n", DB_GET_INT (&out_value));
+	  CHKSUM_PRINT_AND_LOG (fp, "/ %d (ms)\n", db_get_int (&out_value));
 	  db_value_clear (&out_value);
 
 	  pos = db_query_next_tuple (query_result);
@@ -863,7 +863,7 @@ chksum_get_prev_checksum_results (void)
 	      return error;
 	    }
 
-	  checksum_result->last_chunk_id = DB_GET_INT (&value);
+	  checksum_result->last_chunk_id = db_get_int (&value);
 	  db_value_clear (&value);
 
 	  /* chunk_lower_bound */
@@ -889,7 +889,7 @@ chksum_get_prev_checksum_results (void)
 	      return error;
 	    }
 
-	  checksum_result->last_chunk_cnt = DB_GET_INT (&value);
+	  checksum_result->last_chunk_cnt = db_get_int (&value);
 	  db_value_clear (&value);
 
 	  checksum_result->next = chksum_Prev_results;
@@ -1512,7 +1512,7 @@ chksum_update_master_checksum (PARSER_CONTEXT * parser, const char *table_name, 
 	      break;
 	    }
 
-	  master_checksum = DB_GET_INT (&value);
+	  master_checksum = db_get_int (&value);
 	  db_value_clear (&value);
 	  break;
 	case DB_CURSOR_END:

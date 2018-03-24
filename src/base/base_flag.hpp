@@ -52,8 +52,6 @@ class flag
     T m_flags;
 };
 
-#endif /* _BASE_FLAG_HPP_ */
-
 template<typename T>
 inline
 flag<T>::flag ()
@@ -166,3 +164,6 @@ inline bool flag<T>::is_flag_any_set (const T &where_to_check, const T &what_to_
 {
   return (where_to_check & what_to_check) != 0;
 }
+
+#endif /* _BASE_FLAG_HPP_ */
+

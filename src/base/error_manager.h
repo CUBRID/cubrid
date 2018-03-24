@@ -45,8 +45,6 @@
 #define ARG_FILE_LINE           __FILE__, __LINE__
 #define NULL_LEVEL              0
 
-#define ER_EMERGENCY_BUF_SIZE (256)
-
 /* Shorthand for simple warnings and errors */
 #define ERROR0(error, code) \
   do \
@@ -176,66 +174,6 @@ typedef void (*PTR_FNERLOG) (int err_id);
 #define ASSERT_NO_ERROR() \
   assert (er_errid () == NO_ERROR);
 
-/*
- * Definition of error message structure. One structure is defined for each
- * thread of execution. Note message areas are stored in the structure for
- * multi-threading purposes.
- */
-typedef struct er_copy_area ER_COPY_AREA;
-struct er_copy_area
-{
-  int err_id;			/* error identifier of the current message */
-  int severity;			/* warning, error, FATAL error, etc... */
-  int length_msg;		/* length of the message */
-  char area[1];			/* actualy, more than one */
-};
-
-typedef union er_va_arg ER_VA_ARG;
-union er_va_arg
-{
-  int int_value;		/* holders for the values that we actually */
-  void *pointer_value;		/* retrieve from the va_list. */
-  double double_value;
-  long double longdouble_value;
-  const char *string_value;
-  long long longlong_value;
-};
-
-typedef struct er_spec ER_SPEC;
-struct er_spec
-{
-  int width;			/* minimum width of field */
-  char code;			/* what to retrieve from the va_list int, long, double, long double or char */
-  char spec[10];		/* buffer to hold the actual sprintf code */
-};
-
-typedef struct er_fmt ER_FMT;
-struct er_fmt
-{
-  int err_id;			/* The int associated with the msg */
-  char *fmt;			/* A printf-style format for the msg */
-  ER_SPEC *spec;		/* Pointer to real array; points to spec_buf if nspecs < DIM(spec_buf) */
-  int fmt_length;		/* The strlen() of fmt */
-  int must_free;		/* TRUE if fmt must be free_and_initd */
-  int nspecs;			/* The number of format specs in fmt */
-  int spec_top;			/* The capacity of spec */
-  ER_SPEC spec_buf[16];		/* Array of format specs for args */
-};
-
-typedef struct er_msg ER_MSG;
-struct er_msg
-{
-  int err_id;			/* Error identifier of the current message */
-  int severity;			/* Warning, Error, FATAL Error, etc... */
-  const char *file_name;	/* File where the error is set */
-  int line_no;			/* Line in the file where the error is set */
-  int msg_area_size;		/* Size of the message area */
-  char *msg_area;		/* Pointer to message area */
-  ER_MSG *stack;		/* Stack to previous error messages */
-  ER_VA_ARG *args;		/* Array of va_list entries */
-  int nargs;			/* Length of array */
-};
-
 #ifdef __cplusplus
 extern "C"
 {
@@ -243,13 +181,10 @@ extern "C"
 
   extern const char *er_get_msglog_filename (void);
   extern int er_init (const char *msglog_filename, int exit_ask);
+  extern bool er_is_initialized (void);
   extern int er_init_access_log (void);
   extern void er_set_print_property (int print_console);
-
   extern void er_final (ER_FINAL_CODE do_global_final);
-#if defined(ENABLE_UNUSED_FUNCTION)
-  extern PTR_FNERLOG er_fnerlog (int severity, PTR_FNERLOG new_fnlog);
-#endif
   extern void er_clear (void);
   extern void er_set (int severity, const char *file_name, const int line_no, int err_id, int num_args, ...);
   extern void er_set_with_file (int severity, const char *file_name, const int line_no, int err_id, FILE * fp,
@@ -262,14 +197,9 @@ extern "C"
 
   extern int er_errid (void);
   extern int er_errid_if_has_error (void);
-  extern int er_severity (void);
-#if defined(ENABLE_UNUSED_FUNCTION)
-  extern int er_nlevels (void);
-  extern const char *er_file_line (int *line_no);
-#endif
+  extern int er_get_severity (void);
   extern const char *er_msg (void);
   extern void er_all (int *err_id, int *severity, int *nlevels, int *line_no, const char **file_name, const char **msg);
-  extern void er_print (void);
 
   extern void _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...);
 #define er_log_debug(...) if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG)) _er_log_debug(__VA_ARGS__)
@@ -277,10 +207,10 @@ extern "C"
   extern char *er_get_ermsg_from_area_error (char *buffer);
   extern char *er_get_area_error (char *buffer, int *length);
   extern int er_set_area_error (char *server_area);
-  extern int er_stack_push (void);
-  extern int er_stack_push_if_exists (void);
-  extern int er_stack_pop (void);
-  extern void er_stack_clear (void);
+  extern void er_stack_push (void);
+  extern void er_stack_push_if_exists (void);
+  extern void er_stack_pop (void);
+  extern void er_stack_pop_and_keep_error (void);
   extern void er_restore_last_error (void);
   extern void er_stack_clearall (void);
   extern void *db_default_malloc_handler (void *arg, const char *filename, int line_no, size_t size);
@@ -294,4 +224,36 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+
+#ifdef __cplusplus
+
+#if defined (SERVER_MODE) || !defined (WINDOWS)
+// not dll linkage
+#define CUBERR_MANAGER_DLL
+#elif defined (CS_MODE) || defined (SA_MODE)
+// Windows CS_MODE or SA_MODE - export
+#define CUBERR_MANAGER_DLL __declspec( dllexport )
+#else				// Windows, not CS_MODE and not SA_MODE
+// import
+#define CUBERR_MANAGER_DLL __declspec( dllimport )
+#endif				// Windows, not CS_MODE and not SA_MODE
+
+/* *INDENT-OFF* */
+namespace cuberr
+{
+  class CUBERR_MANAGER_DLL manager
+  {
+  public:
+    manager (const char * msg_file, er_exit_ask exit_arg);
+    ~manager (void);
+  };
+} // namespace cuberr
+/* *INDENT-ON* */
+
+// to use in C units instead of er_init; makes sure that er_final is called before exiting scope
+// NOTE - cuberr_manager variable is created. it may cause naming conflicts
+// NOTE - if used after jumps, expect "crosses initialization" errors
+#define ER_SAFE_INIT(msg_file, exit_arg) cuberr::manager cuberr_manager (msg_file, exit_arg)
+#endif				// c++
+
 #endif				/* _ERROR_MANAGER_H_ */

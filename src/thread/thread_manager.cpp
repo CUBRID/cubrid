@@ -43,11 +43,7 @@
 namespace cubthread
 {
 
-#if defined (NO_GCC_44) || defined (WINDOWS)
   thread_local entry *tl_Entry_p = NULL;
-#else // GCC 4.4
-  __thread entry *tl_Entry_p = NULL;
-#endif // GCC 4.4
 
   manager::manager (std::size_t max_threads)
     : m_max_threads (max_threads)
@@ -410,6 +406,10 @@ namespace cubthread
     Main_entry_p->status = TS_RUN;
     Main_entry_p->resume_status = THREAD_RESUME_NONE;
     Main_entry_p->tran_index = 0;	/* system transaction */
+#if defined (SERVER_MODE)
+    // SA_MODE uses singleton context
+    Main_entry_p->get_error_context ().register_thread_local ();
+#endif // SERVER_MODE
 
 #if defined (SERVER_MODE)
     thread_set_thread_entry_info (Main_entry_p);
@@ -425,6 +425,9 @@ namespace cubthread
   void
   finalize (void)
   {
+#if defined (SERVER_MODE)
+    Main_entry_p->get_error_context ().deregister_thread_local ();
+#endif // SERVER_MODE
     delete Main_entry_p;
     Main_entry_p = NULL;
 

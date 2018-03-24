@@ -29,7 +29,7 @@
 #include "btree.h"
 #include "dbtype.h"
 #include "heap_file.h"
-#include "lock_free.h"
+#include "lockfree_circular_queue.hpp"
 #include "log_compress.h"
 #include "log_impl.h"
 #include "mvcc.h"
@@ -50,6 +50,7 @@
 #include "util_func.h"
 
 #include <atomic>
+#include <stack>
 
 /* The maximum number of slots in a page if all of them are empty.
  * IO_MAX_PAGE_SIZE is used for page size and any headers are ignored (it
@@ -258,7 +259,7 @@ struct vacuum_data
   int log_block_npages;		/* The number of pages in a log block. */
 
   bool is_loaded;		/* True if vacuum data is loaded. */
-  /* *INDENT-OFF*/
+  /* *INDENT-OFF* */
   std::atomic<bool> shutdown_requested;	/* Set to true when shutdown is requested. It stops vacuum from generating or
                                          * executing new jobs. */
   /* INDENT-ON* */
@@ -372,14 +373,17 @@ struct vacuum_job_entry
  * transactions with vacuum threads and for this reason the block data is not
  * added directly to vacuum data.
  */
-LOCK_FREE_CIRCULAR_QUEUE *vacuum_Block_data_buffer = NULL;
+/* *INDENT-OFF* */
+lockfree::circular_queue<VACUUM_DATA_ENTRY *> *vacuum_Block_data_buffer = NULL;
+/* *INDENT-ON* */
 #define VACUUM_BLOCK_DATA_BUFFER_CAPACITY 1024
 
 /* A lock free queue of vacuum jobs. Master will add jobs based on vacuum data
  * and workers will execute the jobs one by one.
  */
-LOCK_FREE_CIRCULAR_QUEUE *vacuum_Job_queue = NULL;
-LOCK_FREE_CIRCULAR_QUEUE *vacuum_Finished_job_queue = NULL;
+/* *INDENT-OFF* */
+lockfree::circular_queue<VACUUM_LOG_BLOCKID> *vacuum_Finished_job_queue = NULL;
+/* *INDENT-ON* */
 
 #if defined(SERVER_MODE)
 /* Vacuum prefetch log block buffers */
@@ -670,6 +674,7 @@ static void vacuum_log_cleanup_dropped_files (THREAD_ENTRY * thread_p, PAGE_PTR 
 static void vacuum_dropped_files_set_next_page (THREAD_ENTRY * thread_p, VACUUM_DROPPED_FILES_PAGE * page_p,
 						VPID * next_page);
 static int vacuum_get_first_page_dropped_files (THREAD_ENTRY * thread_p, VPID * first_page_vpid);
+static void vacuum_notify_all_workers_dropped_file (const VFID & vfid_dropped, MVCCID mvccid);
 
 static bool is_not_vacuumed_and_lost (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header);
 static void print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEADER * rec_header, int btree_node_type);
@@ -943,7 +948,9 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
 #endif
 
   /* Initialize the log block data buffer */
-  vacuum_Block_data_buffer = lf_circular_queue_create (VACUUM_BLOCK_DATA_BUFFER_CAPACITY, sizeof (VACUUM_DATA_ENTRY));
+  /* *INDENT-OFF* */
+  vacuum_Block_data_buffer = new lockfree::circular_queue<VACUUM_DATA_ENTRY *> (VACUUM_BLOCK_DATA_BUFFER_CAPACITY);
+  /* *INDENT-ON* */
   if (vacuum_Block_data_buffer == NULL)
     {
       goto error;
@@ -970,17 +977,12 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
 	}
     }
 
-  /* Initialize job queue */
-  vacuum_Job_queue = lf_circular_queue_create (VACUUM_JOB_QUEUE_CAPACITY, sizeof (VACUUM_JOB_ENTRY));
-  if (vacuum_Job_queue == NULL)
-    {
-      goto error;
-    }
 #endif /* SERVER_MODE */
 
   /* Initialize finished job queue. */
-  vacuum_Finished_job_queue = lf_circular_queue_create (VACUUM_FINISHED_JOB_QUEUE_CAPACITY,
-							sizeof (VACUUM_LOG_BLOCKID));
+  /* *INDENT-OFF* */
+  vacuum_Finished_job_queue = new lockfree::circular_queue<VACUUM_LOG_BLOCKID> (VACUUM_FINISHED_JOB_QUEUE_CAPACITY);
+  /* *INDENT-ON* */
   if (vacuum_Finished_job_queue == NULL)
     {
       goto error;
@@ -1099,7 +1101,7 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 #if defined (SERVER_MODE)
 
   // get thread manager
-  auto thread_manager = cubthread::get_manager ();
+  cubthread::manager * thread_manager = cubthread::get_manager ();
 
   // get logging flag for vacuum worker pool
   /* *INDENT-OFF* */
@@ -1115,10 +1117,12 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 					vacuum_Worker_context_manager, log_vacuum_worker_pool);
   assert (vacuum_Worker_threads != NULL);
 
+  int vacuum_master_wakeup_interval_msec = prm_get_integer_value (PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL);
+  cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (vacuum_master_wakeup_interval_msec));
+
   // create vacuum master thread
-  auto interval_time = std::chrono::milliseconds (prm_get_integer_value (PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL));
-  vacuum_Master_daemon = thread_manager->create_daemon (cubthread::looper (interval_time),
-							new vacuum_master_task (), vacuum_Master_context_manager);
+  vacuum_Master_daemon =
+    thread_manager->create_daemon (looper, new vacuum_master_task (), vacuum_Master_context_manager);
 #endif /* SERVER_MODE */
 
   vacuum_Is_booted = true;
@@ -1138,7 +1142,7 @@ vacuum_stop (THREAD_ENTRY * thread_p)
   // notify master to stop generating new jobs
   vacuum_notify_server_shutdown ();
 
-  auto thread_manager = cubthread::get_manager ();
+  cubthread::manager * thread_manager = cubthread::get_manager ();
 
   // stop work pool
   if (vacuum_Worker_threads != NULL)
@@ -1236,12 +1240,12 @@ vacuum_finalize (THREAD_ENTRY * thread_p)
   if (vacuum_Finished_job_queue != NULL)
     {
       vacuum_data_mark_finished (thread_p);
-      if (!lf_circular_queue_is_empty (vacuum_Finished_job_queue))
+      if (!vacuum_Finished_job_queue->is_empty ())
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert (0);
 	}
-      lf_circular_queue_destroy (vacuum_Finished_job_queue);
+      delete vacuum_Finished_job_queue;
       vacuum_Finished_job_queue = NULL;
     }
 
@@ -1252,20 +1256,13 @@ vacuum_finalize (THREAD_ENTRY * thread_p)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert (0);
 	}
-      if (!lf_circular_queue_is_empty (vacuum_Block_data_buffer))
+      if (!vacuum_Block_data_buffer->is_empty ())
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert (0);
 	}
-      lf_circular_queue_destroy (vacuum_Block_data_buffer);
+      delete vacuum_Block_data_buffer;
       vacuum_Block_data_buffer = NULL;
-    }
-
-  /* Destroy job queues */
-  if (vacuum_Job_queue != NULL)
-    {
-      lf_circular_queue_destroy (vacuum_Job_queue);
-      vacuum_Job_queue = NULL;
     }
 
 #if !defined(SERVER_MODE)	/* SA_MODE */
@@ -2739,7 +2736,7 @@ vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, MVC
 		 (unsigned long long int) block_data.oldest_mvccid, (unsigned long long int) block_data.newest_mvccid);
 
   /* Push new block into block data buffer */
-  if (!lf_circular_queue_produce (vacuum_Block_data_buffer, &block_data))
+  if (!vacuum_Block_data_buffer->produce (&block_data))
     {
       /* Push failed, the buffer must be full */
       /* TODO: Set a new message error for full block data buffer */
@@ -2782,9 +2779,9 @@ static bool
 vacuum_check_finished_queue (void)
 {
 #if defined (SERVER_MODE)
-  return lf_circular_queue_approx_size (vacuum_Finished_job_queue) >= (int) vacuum_Finished_job_queue->capacity / 2;
+  return vacuum_Finished_job_queue->is_half_full ();
 #else // not SERVER_MODE = SA_MODE
-  return lf_circular_queue_is_full (vacuum_Finished_job_queue);
+  return vacuum_Finished_job_queue->is_full ();
 #endif // not SERVER_MODE = SA_MODE
 }
 
@@ -2792,7 +2789,7 @@ static bool
 vacuum_check_data_buffer (void)
 {
 #if defined (SERVER_MODE)
-  return lf_circular_queue_approx_size (vacuum_Block_data_buffer) >= (int) vacuum_Block_data_buffer->capacity / 2;
+  return vacuum_Block_data_buffer->is_half_full ();
 #else // not SERVER_MODE = SA_MODE
   return false;
 #endif // not SERVER_MODE = SA_MODE
@@ -3065,12 +3062,12 @@ restart:
 #if defined (SA_MODE)
   /* Complete vacuum for SA_MODE. This means also vacuuming based on last block being logged. */
 
-  assert (lf_circular_queue_is_empty (vacuum_Block_data_buffer));
+  assert (vacuum_Block_data_buffer->is_empty ());
 
   /* Remove all vacuumed entries. */
   vacuum_data_mark_finished (thread_p);
 
-  assert (lf_circular_queue_is_empty (vacuum_Finished_job_queue));
+  assert (vacuum_Finished_job_queue->is_empty ());
   assert (vacuum_Data.first_page == vacuum_Data.last_page);
   assert (vacuum_Data.first_page->index_unvacuumed == 0);
   assert (vacuum_Data.first_page->index_free == 0);
@@ -3782,7 +3779,7 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 
   /* Notify master the job is finished. */
   blockid = data->blockid;
-  if (!lf_circular_queue_produce (vacuum_Finished_job_queue, &blockid))
+  if (!vacuum_Finished_job_queue->produce (blockid))
     {
       assert_release (false);
       vacuum_er_log_error (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_JOBS, "%s", "Finished job queue is full!!!");
@@ -3790,7 +3787,7 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 
 #if defined (SERVER_MODE)
   /* Hurry master wakeup if finished job queue is getting filled. */
-  if ((UINT64) lf_circular_queue_approx_size (vacuum_Finished_job_queue) >= vacuum_Finished_job_queue->capacity / 2)
+  if (vacuum_Finished_job_queue->is_half_full ())
     {
       /* Wakeup master to process finished jobs. */
       vacuum_Master_daemon->wakeup ();
@@ -4525,7 +4522,7 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
   /* Consume finished block ID's from queue. */
   /* Stop if too many blocks have been collected (> TEMP_BUFFER_SIZE). */
   while (n_finished_blocks < TEMP_BUFFER_SIZE
-	 && lf_circular_queue_consume (vacuum_Finished_job_queue, &finished_blocks[n_finished_blocks]))
+	 && vacuum_Finished_job_queue->consume (finished_blocks[n_finished_blocks]))
     {
       /* Increment consumed finished blocks. */
       vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "Consumed from finished job queue %lld (flags %lld).",
@@ -5020,6 +5017,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 {
 #define MAX_PAGE_MAX_DATA_ENTRIES (IO_MAX_PAGE_SIZE / sizeof (VACUUM_DATA_ENTRY))
   VACUUM_DATA_ENTRY consumed_data;
+  VACUUM_DATA_ENTRY *consumed_data_ptr = &consumed_data;
   VACUUM_DATA_PAGE *data_page = NULL;
   VACUUM_DATA_ENTRY *page_free_data = NULL;
   VACUUM_DATA_ENTRY *save_page_free_data = NULL;
@@ -5047,7 +5045,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
     LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa) ?
     vacuum_Global_oldest_active_mvccid : ATOMIC_INC_64 (&log_Gl.hdr.last_block_oldest_mvccid, 0);
 
-  if (lf_circular_queue_is_empty (vacuum_Block_data_buffer))
+  if (vacuum_Block_data_buffer->is_empty ())
     {
       /* empty */
       return NO_ERROR;
@@ -5065,7 +5063,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 
   was_vacuum_data_empty = vacuum_is_empty ();
 
-  while (lf_circular_queue_consume (vacuum_Block_data_buffer, &consumed_data))
+  while (vacuum_Block_data_buffer->consume (consumed_data_ptr))
     {
       assert (vacuum_Data.last_blockid < consumed_data.blockid);
 
@@ -5466,6 +5464,11 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
   crt_blockid = vacuum_get_log_blockid (mvcc_op_log_lsa.pageid);
   LSA_COPY (&log_lsa, &mvcc_op_log_lsa);
 
+  // stack used to produce in reverse order data for vacuum_Block_data_buffer circular queue
+  /* *INDENT-OFF* */
+  std::stack<VACUUM_DATA_ENTRY> vacuum_block_data_buffer_stack;
+  /* *INDENT-ON* */
+
   /* we don't reset data.oldest_mvccid between blocks. we need to maintain ordered oldest_mvccid's, and if a block + 1
    * MVCCID is smaller than all MVCCID's in block, then it must have been active (and probably suspended) while block
    * was logged. therefore, we must keep it. */
@@ -5529,10 +5532,19 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	}
       else
 	{
-	  lf_circular_queue_async_push_ahead (vacuum_Block_data_buffer, &data);
+	  vacuum_block_data_buffer_stack.push (data);
 	}
+
       crt_blockid = vacuum_get_log_blockid (log_lsa.pageid);
     }
+
+  /* Produce recovered blocks. */
+  while (!vacuum_block_data_buffer_stack.empty ())
+    {
+      vacuum_Block_data_buffer->produce (&vacuum_block_data_buffer_stack.top ());
+      vacuum_block_data_buffer_stack.pop ();
+    }
+
   /* Consume recovered blocks. */
   error_code = vacuum_consume_buffer_log_blocks (thread_p);
   if (error_code != NO_ERROR)
@@ -5541,7 +5553,6 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
       return error_code;
     }
 
-  lf_circular_queue_async_reset (vacuum_Block_data_buffer);
   return NO_ERROR;
 }
 
@@ -6245,6 +6256,57 @@ vacuum_rv_replace_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
+ * vacuum_notify_all_workers_dropped_file () - notify all vacuum workers that given file was dropped
+ *
+ * vfid_dropped (in) : VFID of dropped file
+ * mvccid (in)       : MVCCID marker for dropped file
+ */
+static void
+vacuum_notify_all_workers_dropped_file (const VFID & vfid_dropped, MVCCID mvccid)
+{
+#if defined (SERVER_MODE)
+  if (!LOG_ISRESTARTED ())
+    {
+      // workers are not running during recovery
+      return;
+    }
+
+  INT32 my_version, workers_min_version;
+
+  /* Before notifying vacuum workers there is one last thing we have to do. Running workers must also be notified of
+   * the VFID being dropped to cleanup their collected heap object arrays. Since must done one file at a time, so a
+   * mutex is used for protection, in case there are several transactions doing file drops. */
+  pthread_mutex_lock (&vacuum_Dropped_files_mutex);
+  assert (VFID_ISNULL (&vacuum_Last_dropped_vfid));
+  VFID_COPY (&vacuum_Last_dropped_vfid, &vfid_dropped);
+
+  /* Increment dropped files version and save a version for current change. It is not important to keep the version
+   * synchronized with the changes. It is only used to make sure that all workers have seen current change. */
+  my_version = ++vacuum_Dropped_files_version;
+
+  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
+		 "Added dropped file - vfid=%d|%d, mvccid=%llu - "
+		 "Wait for all workers to see my_version=%d", VFID_AS_ARGS (&vfid_dropped), mvccid, my_version);
+
+  /* Wait until all workers have been notified of this change */
+  for (workers_min_version = vacuum_get_worker_min_dropped_files_version ();
+       workers_min_version != -1 && workers_min_version < my_version;
+       workers_min_version = vacuum_get_worker_min_dropped_files_version ())
+    {
+      vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
+		     "not all workers saw my changes, workers min version=%d. Sleep and retry.", workers_min_version);
+
+      thread_sleep (1);
+    }
+
+  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES, "All workers have been notified, min_version=%d", workers_min_version);
+
+  VFID_SET_NULL (&vacuum_Last_dropped_vfid);
+  pthread_mutex_unlock (&vacuum_Dropped_files_mutex);
+#endif // SERVER_MODE
+}
+
+/*
  * vacuum_rv_notify_dropped_file () - Add drop file used in recovery phase. Can be used in two ways: at run postpone phase
  *				   for dropped heap files and indexes (if postpone_ref_lsa in not null); or at undo
  *				   phase for created heap files and indexes.
@@ -6261,9 +6323,6 @@ vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   int error = NO_ERROR;
   OID *class_oid;
   MVCCID mvccid;
-#if defined (SERVER_MODE)
-  INT32 my_version, workers_min_version;
-#endif
   VACUUM_DROPPED_FILES_RCV_DATA *rcv_data;
 
   /* Copy VFID from current log recovery data but set MVCCID at this point. We will use the log_Gl.hdr.mvcc_next_id as
@@ -6282,38 +6341,8 @@ vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       return error;
     }
 
-#if defined (SERVER_MODE)
-  /* Before notifying vacuum workers there is one last thing we have to do. Running workers must also be notified of
-   * the VFID being dropped to cleanup their collected heap object arrays. Since must done one file at a time, so a
-   * mutex is used for protection, in case there are several transactions doing file drops. */
-  pthread_mutex_lock (&vacuum_Dropped_files_mutex);
-  assert (VFID_ISNULL (&vacuum_Last_dropped_vfid));
-  VFID_COPY (&vacuum_Last_dropped_vfid, &rcv_data->vfid);
-
-  /* Increment dropped files version and save a version for current change. It is not important to keep the version
-   * synchronized with the changes. It is only used to make sure that all workers have seen current change. */
-  my_version = ++vacuum_Dropped_files_version;
-
-  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-		 "Added dropped file - vfid=%d|%d, mvccid=%llu - "
-		 "Wait for all workers to see my_version=%d", VFID_AS_ARGS (&rcv_data->vfid), mvccid, my_version);
-
-  /* Wait until all workers have been notified of this change */
-  for (workers_min_version = vacuum_get_worker_min_dropped_files_version ();
-       workers_min_version != -1 && workers_min_version < my_version;
-       workers_min_version = vacuum_get_worker_min_dropped_files_version ())
-    {
-      vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES,
-		     "not all workers saw my changes, workers min version=%d. Sleep and retry.", workers_min_version);
-
-      thread_sleep (1);
-    }
-
-  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES, "All workers have been notified, min_version=%d", workers_min_version);
-
-  VFID_SET_NULL (&vacuum_Last_dropped_vfid);
-  pthread_mutex_unlock (&vacuum_Dropped_files_mutex);
-#endif /* SERVER_MODE */
+  // make sure vacuum workers will not access dropped file
+  vacuum_notify_all_workers_dropped_file (rcv_data->vfid, mvccid);
 
   /* vacuum is notified of the file drop, it is safe to remove from cache */
   class_oid = &rcv_data->class_oid;
@@ -7995,3 +8024,64 @@ vacuum_restore_thread (THREAD_ENTRY * thread_p, THREAD_TYPE save_type)
   thread_p->type = save_type;
   thread_p->vacuum_worker = NULL;
 }
+
+/*
+ * vacuum_rv_es_nop () - Skip recovery operation for external storage.
+ *
+ * return	 : NO_ERROR.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ */
+int
+vacuum_rv_es_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  /* Do nothing */
+  return NO_ERROR;
+}
+
+#if defined (SERVER_MODE)
+/*
+ * vacuum_notify_es_deleted () - External storage file cannot be deleted
+ *				    when transaction is ended and MVCC is
+ *				    used. Vacuum must be notified instead and
+ *				    file is deleted when it is no longer
+ *				    visible.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * uri (in)	 : File location URI.
+ */
+void
+vacuum_notify_es_deleted (THREAD_ENTRY * thread_p, const char *uri)
+{
+#define ES_NOTIFY_VACUUM_FOR_DELETE_BUFFER_SIZE \
+  (INT_ALIGNMENT +	/* Aligning buffer start */	      \
+   OR_INT_SIZE +	/* String length */		      \
+   ES_MAX_URI_LEN +	/* URI string */	  	      \
+   INT_ALIGNMENT)		/* Alignment of packed string */
+
+  LOG_DATA_ADDR addr;
+  int length;
+  char data_buf[ES_NOTIFY_VACUUM_FOR_DELETE_BUFFER_SIZE];
+  char *data = NULL;
+
+  addr.offset = -1;
+  addr.pgptr = NULL;
+  addr.vfid = NULL;
+
+  /* Compute the total length required to pack string */
+  length = or_packed_string_length (uri, NULL);
+
+  /* Check there is enough space in data buffer to pack the string */
+  assert (length <= (int) (ES_NOTIFY_VACUUM_FOR_DELETE_BUFFER_SIZE - INT_ALIGNMENT));
+
+  /* Align buffer to prepare for packing string */
+  data = PTR_ALIGN (data_buf, INT_ALIGNMENT);
+
+  /* Pack string */
+  (void) or_pack_string (data, uri);
+
+  /* This is not actually ever undone, but vacuum will process undo data of log entry. */
+  log_append_undo_data (thread_p, RVES_NOTIFY_VACUUM, &addr, length, data);
+}
+#endif /* SERVER_MODE */

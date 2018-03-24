@@ -84,10 +84,10 @@ int object_description::init (struct db_object *op)
   string_buffer sb;
   db_value_printer printer (sb);
 
-  DB_MAKE_OBJECT (&value, op);
+  db_make_object (&value, op);
   printer.describe_data (&value);
   db_value_clear (&value);
-  DB_MAKE_NULL (&value);
+  db_make_null (&value);
 
   this->oid = sb.move_ptr ();
 

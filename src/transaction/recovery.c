@@ -766,8 +766,8 @@ struct rvfun RV_fun[] = {
 
   {RVES_NOTIFY_VACUUM,
    "RVES_NOTIFY_VACUUM",
-   es_rv_nop,
-   es_rv_nop,
+   vacuum_rv_es_nop,
+   vacuum_rv_es_nop,
    NULL, NULL},
 
   {RVLOC_CLASSNAME_DUMMY,

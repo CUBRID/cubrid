@@ -28,8 +28,6 @@
 #undef strlen
 #endif
 
-/* TODO: replace with atomic */
-
 #include <cstdint>
 #include <atomic>
 #include <iostream>
@@ -38,8 +36,6 @@
 #include <chrono>
 #include <iomanip>
 #include <array>
-
-/* TODO: replace with atomic */
 
 namespace test_lockfree
 {
@@ -119,13 +115,13 @@ namespace test_lockfree
   void
   test_cqueue_no_hang (size_t producer_count, size_t consumer_count, size_t op_count, size_t cqueue_size)
   {
-    atomic_op_count_type produced_op_count = 0;
-    atomic_op_count_type consumed_op_count = 0;
+    atomic_op_count_type produced_op_count = {0};
+    atomic_op_count_type consumed_op_count = {0};
     std::thread *producers = new std::thread[producer_count];
     std::thread *consumers = new std::thread[consumer_count];
     test_cqueue cqueue (cqueue_size);
-    atomic_size_t finished_producers_count = 0;
-    atomic_size_t finished_consumers_count = 0;
+    atomic_size_t finished_producers_count = {0};
+    atomic_size_t finished_consumers_count = {0};
 
     std::cout << "  running test_cqueue_no_hang - " << std::endl;
     std::cout << "    producer count      = " << producer_count << std::endl;

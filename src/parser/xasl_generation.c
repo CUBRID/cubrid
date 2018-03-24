@@ -3697,7 +3697,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		    }
 		  else
 		    {
-		      DB_MAKE_NULL (aggregate_list->accumulator.value2);
+		      db_make_null (aggregate_list->accumulator.value2);
 		    }
 		}
 	    }
@@ -5224,7 +5224,7 @@ regu_make_constant_vid (DB_VALUE * val, DB_VALUE ** dbvalptr)
   assert (val != NULL);
 
   /* make sure we got a virtual MOP and a db_value */
-  if (DB_VALUE_TYPE (val) != DB_TYPE_OBJECT || !(vmop = DB_GET_OBJECT (val)) || !WS_ISVID (vmop))
+  if (DB_VALUE_TYPE (val) != DB_TYPE_OBJECT || !(vmop = db_get_object (val)) || !WS_ISVID (vmop))
     {
       return ER_GENERIC_ERROR;
     }
@@ -5273,8 +5273,8 @@ regu_make_constant_vid (DB_VALUE * val, DB_VALUE ** dbvalptr)
 	}
     }
 
-  DB_MAKE_OID (virt_val, &virt_oid);
-  DB_MAKE_OID (proxy_val, &proxy_oid);
+  db_make_oid (virt_val, &virt_oid);
+  db_make_oid (proxy_val, &proxy_oid);
 
   /* the DB_VALUE form of a VMOP is given a type of DB_TYPE_VOBJ and takes the form of a 3-element sequence: virt,
    * proxy, keys (Oh what joy to find out the secret encoding of a virtual object!) */
@@ -5396,7 +5396,7 @@ setof_mop_to_setof_vobj (PARSER_CONTEXT * parser, DB_SET * seq, DB_VALUE * new_v
 	    }
 	  db_value_domain_init (new_elem, DB_TYPE_OBJECT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	}
-      else if (DB_VALUE_DOMAIN_TYPE (&elem) != DB_TYPE_OBJECT || (obj = DB_GET_OBJECT (&elem)) == NULL)
+      else if (DB_VALUE_DOMAIN_TYPE (&elem) != DB_TYPE_OBJECT || (obj = db_get_object (&elem)) == NULL)
 	{
 	  /* the set has mixed object and non-object types. */
 	  new_elem = &elem;
@@ -5533,8 +5533,8 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	      regu->domain = tp_domain_copy (domain, false);
 	      if (regu->domain != NULL)
 		{
-		  regu->domain->codeset = DB_GET_STRING_CODESET (val);
-		  regu->domain->collation_id = DB_GET_STRING_COLLATION (val);
+		  regu->domain->codeset = db_get_string_codeset (val);
+		  regu->domain->collation_id = db_get_string_collation (val);
 		  regu->domain = tp_domain_cache (regu->domain);
 		  if (regu->domain == NULL)
 		    {
@@ -5585,7 +5585,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	    }
 	  else if (typ != exptyp
 		   || (TP_TYPE_HAS_COLLATION (typ) && TP_TYPE_HAS_COLLATION (exptyp)
-		       && (DB_GET_STRING_COLLATION (val) != TP_DOMAIN_COLLATION (regu->domain))))
+		       && (db_get_string_collation (val) != TP_DOMAIN_COLLATION (regu->domain))))
 	    {
 	      if (tp_value_cast (val, val, regu->domain, false) != DOMAIN_COMPATIBLE)
 		{
@@ -5732,7 +5732,7 @@ pt_make_regu_constant (PARSER_CONTEXT * parser, DB_VALUE * db_value, const DB_TY
 		{
 		  OID *oid;
 
-		  oid = db_identifier (DB_GET_OBJECT (db_value));
+		  oid = db_identifier (db_get_object (db_value));
 		  if (oid == NULL)
 		    {
 		      db_value_put_null (db_value);
@@ -5927,8 +5927,8 @@ pt_make_vid (PARSER_CONTEXT * parser, const PT_NODE * data_type, const REGU_VARI
       return NULL;
     }
 
-  DB_MAKE_OID (value1, &virt_oid);
-  DB_MAKE_OID (value2, &proxy_oid);
+  db_make_oid (value1, &virt_oid);
+  db_make_oid (value2, &proxy_oid);
 
   regu1 = pt_make_regu_constant (parser, value1, DB_TYPE_OID, NULL);
   regu2 = pt_make_regu_constant (parser, value2, DB_TYPE_OID, NULL);
@@ -7185,7 +7185,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  val = regu_dbval_alloc ();
 		  if (val)
 		    {
-		      DB_MAKE_INT (val, node->info.expr.arg3->info.expr.qualifier);
+		      db_make_int (val, node->info.expr.arg3->info.expr.qualifier);
 		      r3 = pt_make_regu_constant (parser, val, DB_TYPE_INTEGER, NULL);
 		    }
 
@@ -8334,7 +8334,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			    return NULL;
 			  }
 
-			DB_MAKE_INTEGER (&dbval, cached_num);
+			db_make_int (&dbval, cached_num);
 			cached_num_node_p = pt_dbval_to_value (parser, &dbval);
 			if (cached_num_node_p == NULL)
 			  {
@@ -9525,7 +9525,7 @@ pt_create_iss_range (INDX_INFO * indx_infop, TP_DOMAIN * domain)
 
   v1->domain = domain;
   v1->flags = 0;
-  DB_MAKE_NULL (&v1->value.dbval);
+  db_make_null (&v1->value.dbval);
 
   v1->vfetch_to = NULL;
 
@@ -12978,7 +12978,7 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 
 		  /* initialize result of regu expr */
 		  OID_SET_NULL (&nulloid);
-		  DB_MAKE_OID (regu->value.arithptr->value, &nulloid);
+		  db_make_oid (regu->value.arithptr->value, &nulloid);
 
 		  (*selupd_list_ptr) = pt_link_regu_to_selupd_list (parser, *regulist, (*selupd_list_ptr), upd_dom_cls);
 		  if ((*selupd_list_ptr) == NULL)
@@ -18810,6 +18810,27 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 
       statement->info.query.q.select.list = parser_copy_tree_list (parser, select_list);
 
+      if (scan_op_type == S_UPDATE)
+	{
+	  /* The system generated select was "SELECT ..., rhs1, rhs2, ... FROM table ...".
+	   * When two different updates set different sets of attrs, generated select was lead to one XASL entry.
+	   * This causes unexpected issues of reusing an XASL entry, e.g, mismatched types.
+	   *
+	   * Uses lhs of an assignment as its column alias:
+	   * For example, "UPDATE t SET x = ?, y = ?;" will generate "SELECT ..., ? AS x, ? AS y FROM t;".
+	   *
+	   * pt_print_select will print aliases as well as values for the system generated select queries.
+	   */
+
+	  PT_NODE *lhs, *rhs;
+
+	  for (rhs = statement->info.query.q.select.list, lhs = select_names;
+	       rhs != NULL && lhs != NULL; rhs = rhs->next, lhs = lhs->next)
+	    {
+	      rhs->alias_print = parser_print_tree (parser, lhs);
+	    }
+	}
+
       statement->info.query.q.select.from = parser_copy_tree_list (parser, from);
       statement->info.query.q.select.using_index = parser_copy_tree_list (parser, using_index);
 
@@ -22504,7 +22525,7 @@ pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree, ANALYTIC_INFO * an
       analytic->opr_dbtype = DB_TYPE_NULL;
       analytic->operand.type = TYPE_DBVAL;
       analytic->operand.domain = &tp_Null_domain;
-      DB_MAKE_NULL (&analytic->operand.value.dbval);
+      db_make_null (&analytic->operand.value.dbval);
 
       goto unlink_and_exit;
     }

@@ -2580,7 +2580,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
 
     case DB_TYPE_MONETARY:
       /* This is handled explicitly because describe_value will add a currency symbol, and it isn't needed here. */
-      printer.describe_money (DB_GET_MONETARY ((DB_VALUE *) val));
+      printer.describe_money (db_get_monetary ((DB_VALUE *) val));
       break;
 
     case DB_TYPE_BIT:
@@ -2601,7 +2601,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
       printer.describe_value (val);
       break;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
       /* everyone else gets csql's utime format */
@@ -14676,23 +14676,45 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, "distinct ");
 	}
 
-      if (!(parser->custom_print & PT_SUPPRESS_SELECT_LIST) || p->info.query.is_subquery == PT_IS_SUBQUERY)
+      if (PT_SELECT_INFO_IS_FLAGED (p, PT_SELECT_INFO_IS_UPD_DEL_QUERY))
 	{
-	  r1 = pt_print_bytes_l (parser, p->info.query.q.select.list);
-	  q = pt_append_varchar (parser, q, r1);
-	}
-      else
-	{
-	  temp = p->info.query.q.select.list;
-	  while (temp)
+	  /* print select list with column alias for system generated select of update query */
+	  for (temp = p->info.query.q.select.list; temp != NULL; temp = temp->next)
 	    {
-	      q = pt_append_nulstring (parser, q, "NA");
-	      if (temp->next)
+	      r1 = pt_print_bytes (parser, temp);
+	      q = pt_append_varchar (parser, q, r1);
+
+	      if (temp->alias_print != NULL)
+		{
+		  q = pt_append_nulstring (parser, q, " as [");
+		  q = pt_append_nulstring (parser, q, temp->alias_print);
+		  q = pt_append_nulstring (parser, q, "]");
+		}
+
+	      if (temp->next != NULL)
 		{
 		  q = pt_append_nulstring (parser, q, ",");
 		}
-	      temp = temp->next;
 	    }
+	}
+      else if ((parser->custom_print & PT_SUPPRESS_SELECT_LIST) != 0 && p->info.query.is_subquery != PT_IS_SUBQUERY)
+	{
+	  /* suppress select list: print NA */
+	  for (temp = p->info.query.q.select.list; temp != NULL; temp = temp->next)
+	    {
+	      q = pt_append_nulstring (parser, q, "NA");
+
+	      if (temp->next != NULL)
+		{
+		  q = pt_append_nulstring (parser, q, ",");
+		}
+	    }
+	}
+      else
+	{
+	  /* ordinary cases */
+	  r1 = pt_print_bytes_l (parser, p->info.query.q.select.list);
+	  q = pt_append_varchar (parser, q, r1);
 	}
 
       if (parser->custom_print & PT_PRINT_ALIAS)
@@ -17454,7 +17476,7 @@ static PT_NODE *
 pt_init_insert_value (PT_NODE * p)
 {
   p->info.insert_value.original_node = NULL;
-  DB_MAKE_NULL (&p->info.insert_value.value);
+  db_make_null (&p->info.insert_value.value);
   p->info.insert_value.is_evaluated = false;
   p->info.insert_value.replace_names = false;
 

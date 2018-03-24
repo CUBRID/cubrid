@@ -2499,10 +2499,7 @@ disk_auto_volume_expansion_daemon_destroy ()
   // disk auto volume expansion is not yet implemented, uncomment below code when functionality will be available
   // see disk_auto_expand (THREAD_ENTRY *) function for more details
   /*
-  if (disk_Auto_volume_expansion_daemon != NULL)
-    {
-      cubthread::get_manager ()->destroy_daemon (disk_Auto_volume_expansion_daemon);
-    }
+    cubthread::get_manager ()->destroy_daemon (disk_Auto_volume_expansion_daemon);
   */
 }
 #endif /* SERVER_MODE */
@@ -2972,10 +2969,10 @@ disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** o
   db_make_int (out_values[idx], vhdr->iopagesize);
   idx++;
 
-  db_make_string (out_values[idx], disk_purpose_to_string (vhdr->purpose));
+  db_make_string_by_const_str (out_values[idx], disk_purpose_to_string (vhdr->purpose));
   idx++;
 
-  db_make_string (out_values[idx], disk_type_to_string (vhdr->type));
+  db_make_string_by_const_str (out_values[idx], disk_type_to_string (vhdr->type));
   idx++;
 
   db_make_int (out_values[idx], vhdr->sect_npgs);

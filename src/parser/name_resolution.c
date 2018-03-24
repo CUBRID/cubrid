@@ -378,7 +378,7 @@ pt_eval_value_path (PARSER_CONTEXT * parser, PT_NODE * path)
   DB_VALUE val;
   PT_NODE *tmp;
 
-  DB_MAKE_NULL (&val);
+  db_make_null (&val);
 
   if (pt_eval_path_expr (parser, path, &val))
     {
@@ -453,7 +453,7 @@ pt_bind_parameter (PARSER_CONTEXT * parser, PT_NODE * parameter)
        */
       if (DB_VALUE_TYPE (db_val) == DB_TYPE_OBJECT)
 	{
-	  MOP mop = DB_GET_OBJECT (db_val);
+	  MOP mop = db_get_object (db_val);
 	  int does_exist = locator_does_exist_object (mop, DB_FETCH_READ);
 	  if (does_exist == LC_ERROR || does_exist == LC_DOESNOT_EXIST)
 	    {
@@ -8646,7 +8646,7 @@ pt_resolve_object (PARSER_CONTEXT * parser, PT_NODE * node)
       PT_ERRORm (parser, obj_param, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ARG_IS_NOT_AN_OBJECT);
       return;
     }
-  node->info.update.object = DB_GET_OBJECT (val);
+  node->info.update.object = db_get_object (val);
   class_op = db_get_class (node->info.update.object);
   if (class_op == NULL)
     {

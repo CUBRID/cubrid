@@ -68,6 +68,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/dynamic_array.c	
   ${BASE_DIR}/encryption.c
   ${BASE_DIR}/environment_variable.c
+  ${BASE_DIR}/error_context.cpp
   ${BASE_DIR}/error_manager.c
   ${BASE_DIR}/event_log.c
   ${BASE_DIR}/fault_injection.c
@@ -102,6 +103,9 @@ set(BASE_SOURCES
 set (BASE_HEADERS
   ${BASE_DIR}/contiguous_memory_buffer.hpp
   ${BASE_DIR}/db_private_allocator.hpp
+  ${BASE_DIR}/error_code.h
+  ${BASE_DIR}/error_context.hpp
+  ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/string_buffer.hpp
@@ -127,6 +131,11 @@ set(CONNECTION_SOURCES
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
+  ${COMMUNICATION_DIR}/communication_channel.cpp
+  )
+
+set(COMMUNICATION_HEADERS
+  ${COMMUNICATION_DIR}/communication_channel.hpp
   )
 
 set(QUERY_SOURCES
@@ -280,6 +289,7 @@ set (CUBRID_LIB_SOURCES
   )
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
+  ${COMMUNICATION_HEADERS}
   ${COMPAT_HEADERS}
   ${THREAD_HEADERS}
   )

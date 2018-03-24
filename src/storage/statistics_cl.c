@@ -391,8 +391,8 @@ stats_dump (const char *class_name_p, FILE * file_p)
 	  fprintf (file_p, "DB_TYPE_TIMETZ\n");
 	  break;
 
-	case DB_TYPE_UTIME:
-	  fprintf (file_p, "DB_TYPE_UTIME\n");
+	case DB_TYPE_TIMESTAMP:
+	  fprintf (file_p, "DB_TYPE_TIMESTAMP\n");
 	  break;
 
 	case DB_TYPE_TIMESTAMPLTZ:

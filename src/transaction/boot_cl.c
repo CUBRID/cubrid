@@ -838,6 +838,13 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
+  // reload with update file name
+  if (er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
+    {
+      assert_release (false);
+      goto error;
+    }
+
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
   /* initialize the "areas" memory manager, requires prm_ */
@@ -1501,6 +1508,13 @@ boot_shutdown_client_at_exit (void)
     {
       /* Avoid infinite looping if someone calls exit during shutdown */
       boot_Process_id++;
+
+      if (!er_is_initialized ())
+	{
+	  // we need error manager initialized
+	  er_init (NULL, ER_NEVER_EXIT);
+	}
+
       (void) boot_shutdown_client (true);
     }
 }
@@ -2743,7 +2757,7 @@ boot_define_index_key (MOP class_mop)
       return error_code;
     }
 
-  DB_MAKE_INTEGER (&prefix_default, -1);
+  db_make_int (&prefix_default, -1);
 
   error_code = smt_set_attribute_default (def, "key_prefix_length", 0, &prefix_default, NULL);
   if (error_code != NO_ERROR)
@@ -2981,10 +2995,10 @@ boot_add_data_type (MOP class_mop)
 	      return er_errid ();
 	    }
 
-	  DB_MAKE_INTEGER (&val, i + 1);
+	  db_make_int (&val, i + 1);
 	  db_put_internal (obj, "type_id", &val);
 
-	  DB_MAKE_VARCHAR (&val, 16, (char *) names[i], strlen (names[i]), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	  db_make_varchar (&val, 16, (char *) names[i], strlen (names[i]), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	  db_put_internal (obj, "type_name", &val);
 	}
     }
@@ -3260,7 +3274,7 @@ boot_define_serial (MOP class_mop)
 
   sprintf (domain_string, "numeric(%d,0)", DB_MAX_NUMERIC_PRECISION);
   numeric_coerce_int_to_num (1, num);
-  DB_MAKE_NUMERIC (&default_value, num, DB_MAX_NUMERIC_PRECISION, 0);
+  db_make_numeric (&default_value, num, DB_MAX_NUMERIC_PRECISION, 0);
 
   error_code = smt_add_attribute (def, "current_val", domain_string, NULL);
   if (error_code != NO_ERROR)
@@ -3296,7 +3310,7 @@ boot_define_serial (MOP class_mop)
       return error_code;
     }
 
-  DB_MAKE_INTEGER (&default_value, 0);
+  db_make_int (&default_value, 0);
 
   error_code = smt_add_attribute (def, "cyclic", "integer", NULL);
   if (error_code != NO_ERROR)
@@ -3698,30 +3712,30 @@ boot_add_collations (MOP class_mop)
 
       assert (lang_coll->coll.coll_id == i);
 
-      DB_MAKE_INTEGER (&val, i);
+      db_make_int (&val, i);
       db_put_internal (obj, CT_DBCOLL_COLL_ID_COLUMN, &val);
 
-      DB_MAKE_VARCHAR (&val, 32, lang_coll->coll.coll_name, strlen (lang_coll->coll.coll_name), LANG_SYS_CODESET,
+      db_make_varchar (&val, 32, lang_coll->coll.coll_name, strlen (lang_coll->coll.coll_name), LANG_SYS_CODESET,
 		       LANG_SYS_COLLATION);
       db_put_internal (obj, CT_DBCOLL_COLL_NAME_COLUMN, &val);
 
-      DB_MAKE_INTEGER (&val, (int) (lang_coll->codeset));
+      db_make_int (&val, (int) (lang_coll->codeset));
       db_put_internal (obj, CT_DBCOLL_CHARSET_ID_COLUMN, &val);
 
-      DB_MAKE_INTEGER (&val, lang_coll->built_in);
+      db_make_int (&val, lang_coll->built_in);
       db_put_internal (obj, CT_DBCOLL_BUILT_IN_COLUMN, &val);
 
-      DB_MAKE_INTEGER (&val, lang_coll->coll.uca_opt.sett_expansions ? 1 : 0);
+      db_make_int (&val, lang_coll->coll.uca_opt.sett_expansions ? 1 : 0);
       db_put_internal (obj, CT_DBCOLL_EXPANSIONS_COLUMN, &val);
 
-      DB_MAKE_INTEGER (&val, lang_coll->coll.count_contr);
+      db_make_int (&val, lang_coll->coll.count_contr);
       db_put_internal (obj, CT_DBCOLL_CONTRACTIONS_COLUMN, &val);
 
-      DB_MAKE_INTEGER (&val, (int) (lang_coll->coll.uca_opt.sett_strength));
+      db_make_int (&val, (int) (lang_coll->coll.uca_opt.sett_strength));
       db_put_internal (obj, CT_DBCOLL_UCA_STRENGTH, &val);
 
       assert (strlen (lang_coll->coll.checksum) == 32);
-      DB_MAKE_VARCHAR (&val, 32, lang_coll->coll.checksum, 32, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      db_make_varchar (&val, 32, lang_coll->coll.checksum, 32, LANG_SYS_CODESET, LANG_SYS_COLLATION);
       db_put_internal (obj, CT_DBCOLL_CHECKSUM_COLUMN, &val);
     }
 
@@ -3856,7 +3870,7 @@ boot_add_charsets (MOP class_mop)
 	  return er_errid ();
 	}
 
-      DB_MAKE_INTEGER (&val, i);
+      db_make_int (&val, i);
       db_put_internal (obj, CT_DBCHARSET_CHARSET_ID, &val);
 
       charset_name = (char *) lang_charset_cubrid_name ((INTL_CODESET) i);
@@ -3865,13 +3879,13 @@ boot_add_charsets (MOP class_mop)
 	  return ER_LANG_CODESET_NOT_AVAILABLE;
 	}
 
-      DB_MAKE_VARCHAR (&val, 32, charset_name, strlen (charset_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      db_make_varchar (&val, 32, charset_name, strlen (charset_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
       db_put_internal (obj, CT_DBCHARSET_CHARSET_NAME, &val);
 
-      DB_MAKE_INTEGER (&val, LANG_GET_BINARY_COLLATION (i));
+      db_make_int (&val, LANG_GET_BINARY_COLLATION (i));
       db_put_internal (obj, CT_DBCHARSET_DEFAULT_COLLATION, &val);
 
-      DB_MAKE_INTEGER (&val, INTL_CODESET_MULT (i));
+      db_make_int (&val, INTL_CODESET_MULT (i));
       db_put_internal (obj, CT_DBCHARSET_CHAR_SIZE, &val);
     }
 

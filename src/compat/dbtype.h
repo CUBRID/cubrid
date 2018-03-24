@@ -41,6 +41,7 @@
 #include "language_support.h"
 #include "intl_support.h"
 #include "object_primitive.h"
+#include "memory_alloc.h"
 
 
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
@@ -48,8 +49,6 @@
 #define db_set db_collection
 
 #define db_make_utime db_make_timestamp
-
-#define DB_MAKE_NULL(value) db_make_null(value)
 
 #define DB_VALUE_CLONE_AS_NULL(src_value, dest_value)                   \
   do {                                                                  \
@@ -61,141 +60,6 @@
       (void)db_value_put_null(dest_value);                              \
   } while (0)
 
-#define DB_MAKE_INTEGER(value, num) db_make_int(value, num)
-
-#define DB_MAKE_INT DB_MAKE_INTEGER
-
-#define DB_MAKE_BIGINT(value, num) db_make_bigint(value, num)
-
-#define DB_MAKE_BIGINTEGER DB_MAKE_BIGINT
-
-#define DB_MAKE_FLOAT(value, num) db_make_float(value, num)
-
-#define DB_MAKE_DOUBLE(value, num) db_make_double(value, num)
-
-#define DB_MAKE_OBJECT(value, obj) db_make_object(value, obj)
-
-#define DB_MAKE_OBJ DB_MAKE_OBJECT
-
-#define DB_MAKE_SET(value, set) db_make_set(value, set)
-
-#define DB_MAKE_MULTISET(value, set) db_make_multiset(value, set)
-
-/* obsolete */
-#define DB_MAKE_MULTI_SET DB_MAKE_MULTISET
-
-#define DB_MAKE_SEQUENCE(value, set) db_make_sequence(value, set)
-
-#define DB_MAKE_LIST DB_MAKE_SEQUENCE
-
-/* obsolete */
-#define DB_MAKE_SEQ DB_MAKE_SEQUENCE
-
-/* new preferred interface */
-#define DB_MAKE_OID(value, oid)	\
-      (((oid) == NULL) ? ((value)->domain.general_info.is_null = 1, NO_ERROR) : \
-          db_make_oid((value), (oid)))
-
-#define DB_GET_OID(value)		(db_get_oid(value))
-#define DB_MAKE_COLLECTION(value, col) db_make_collection(value, col)
-
-#define DB_MAKE_MIDXKEY(value, midxkey) db_make_midxkey(value, midxkey)
-
-#define DB_MAKE_ELO(value, type, elo) db_make_elo(value, type, elo)
-
-#define DB_MAKE_TIME(value, hour, minute, second) \
-    db_make_time(value, hour, minute, second)
-
-#define DB_MAKE_TIMETZ(value, timetz_value) \
-    db_make_timetz(value, timetz_value)
-
-#define DB_MAKE_TIMELTZ(value, time_value) \
-    db_make_timeltz(value, time_value)
-
-#define DB_MAKE_ENCODED_TIME(value, time_value) \
-    db_value_put_encoded_time(value, time_value)
-
-#define DB_MAKE_DATE(value, month, day, year) \
-    db_make_date(value, month, day, year)
-
-#define DB_MAKE_ENCODED_DATE(value, date_value) \
-    db_value_put_encoded_date(value, date_value)
-
-#define DB_MAKE_TIMESTAMP(value, timeval) \
-    db_make_timestamp(value, timeval)
-
-#define DB_MAKE_UTIME DB_MAKE_TIMESTAMP
-
-#define DB_MAKE_TIMESTAMPTZ(value, ts_tz) \
-    db_make_timestamptz(value, ts_tz)
-
-#define DB_MAKE_TIMESTAMPLTZ(value, timeval) \
-    db_make_timestampltz(value, timeval)
-
-#define DB_MAKE_MONETARY_AMOUNT(value, amount) \
-    db_make_monetary(value, DB_CURRENCY_DEFAULT, amount)
-
-#define DB_MAKE_DATETIME(value, datetime_value) \
-    db_make_datetime(value, datetime_value)
-
-#define DB_MAKE_DATETIMETZ(value, datetimetz_value) \
-    db_make_datetimetz(value, datetimetz_value)
-
-#define DB_MAKE_DATETIMELTZ(value, datetime_value) \
-    db_make_datetimeltz(value, datetime_value)
-
-#define DB_MAKE_MONETARY DB_MAKE_MONETARY_AMOUNT
-
-#define DB_MAKE_MONETARY_TYPE_AMOUNT(value, type, amount) \
-    db_make_monetary(value, type, amount)
-
-#define DB_MAKE_POINTER(value, ptr) db_make_pointer(value, ptr)
-
-#define DB_MAKE_ERROR(value, errcode) db_make_error(value, errcode)
-
-#define DB_MAKE_METHOD_ERROR(value, errcode, errmsg) \
-           db_make_method_error(value, errcode, errmsg)
-
-#define DB_MAKE_SMALLINT(value, num) db_make_short(value, num)
-
-#define DB_MAKE_SHORT DB_MAKE_SMALLINT
-
-#define DB_MAKE_NUMERIC(value, num, precision, scale) \
-        db_make_numeric(value, num, precision, scale)
-
-#define DB_MAKE_BIT(value, bit_length, bit_str, bit_str_bit_size) \
-        db_make_bit(value, bit_length, bit_str, bit_str_bit_size)
-
-#define DB_MAKE_VARBIT(value, max_bit_length, bit_str, bit_str_bit_size)\
-        db_make_varbit(value, max_bit_length, bit_str, bit_str_bit_size)
-
-#define DB_MAKE_CHAR(value, char_length, str, char_str_byte_size, \
-		     codeset, collation) \
-        db_make_char(value, char_length, str, char_str_byte_size, \
-		     codeset, collation)
-
-#define DB_MAKE_VARCHAR(value, max_char_length, str, char_str_byte_size, \
-		        codeset, collation) \
-        db_make_varchar(value, max_char_length, str, char_str_byte_size, \
-			codeset, collation)
-
-#define DB_MAKE_STRING(value, str) db_make_string(value, str)
-
-#define DB_MAKE_NCHAR(value, nchar_length, str, nchar_str_byte_size, \
-		      codeset, collation) \
-        db_make_nchar(value, nchar_length, str, nchar_str_byte_size, \
-		      codeset, collation)
-
-#define DB_MAKE_VARNCHAR(value, max_nchar_length, str, nchar_str_byte_size, \
-			 codeset, collation)\
-        db_make_varnchar(value, max_nchar_length, str, nchar_str_byte_size, \
-			 codeset, collation)
-
-#define DB_MAKE_ENUMERATION(value, index, str, size, codeset, collation) \
-	db_make_enumeration(value, index, str, size, codeset, collation)
-
-#define DB_MAKE_RESULTSET(value, handle) db_make_resultset(value, handle)
-
 #define db_get_collection db_get_set
 #define db_get_utime db_get_timestamp
 
@@ -203,66 +67,14 @@
 
 #define DB_VALUE_DOMAIN_TYPE(value)     db_value_domain_type(value)
 
-/* New preferred interface for DB_GET macros. */
-#define DB_GET_INT(v) db_get_int(v)
-#define DB_GET_SHORT(v) db_get_short(v)
-#define DB_GET_BIGINT(v) db_get_bigint(v)
-#define DB_GET_FLOAT(v) db_get_float(v)
-#define DB_GET_STRING(v) db_get_string(v)
-#define DB_GET_STRING_LENGTH(v) db_get_string_length(v)
-#define DB_GET_DOUBLE(v) db_get_double(v)
-#define DB_GET_OBJECT(v) db_get_object(v)
-#define DB_GET_SET(v) db_get_set(v)
-#define DB_GET_MIDXKEY(v) db_get_midxkey(v)
-#define DB_GET_POINTER(v) db_get_pointer(v)
-#define DB_GET_TIME(v) db_get_time(v)
-#define DB_GET_TIMETZ(v) db_get_timetz(v)
-#define DB_GET_TIMESTAMP(v) db_get_timestamp(v)
-#define DB_GET_TIMESTAMPTZ(v) db_get_timestamptz(v)
-#define DB_GET_DATETIME(v) db_get_datetime(v)
-#define DB_GET_DATETIMETZ(v) db_get_datetimetz(v)
-#define DB_GET_DATE(v) db_get_date(v)
-#define DB_GET_MONETARY(v) db_get_monetary(v)
-#define DB_GET_ERROR(v) db_get_error(v)
-#define DB_GET_ELO(v) db_get_elo(v)
-#define DB_GET_NUMERIC(v) db_get_numeric(v)
-#define DB_GET_BIT(v, l) db_get_bit(v, l)
-#define DB_GET_CHAR(v, l) db_get_char(v, l)
-#define DB_GET_NCHAR(v, l) db_get_nchar(v, l)
-#define DB_GET_STRING_SIZE(v) db_get_string_size(v)
-#define DB_GET_ENUM_SHORT(v) db_get_enum_short(v)
-#define DB_GET_ENUM_STRING(v) db_get_enum_string(v)
-#define DB_GET_ENUM_STRING_SIZE(v) db_get_enum_string_size(v)
-#define DB_GET_METHOD_ERROR_MSG() db_get_method_error_msg()
-#define DB_GET_RESULTSET(v) db_get_resultset(v)
-#define DB_GET_STRING_CODESET(v) ((INTL_CODESET) db_get_string_codeset(v))
-#define DB_GET_STRING_COLLATION(v) db_get_string_collation(v)
-#define DB_GET_ENUM_CODESET(v) db_get_enum_codeset(v)
-#define DB_GET_ENUM_COLLATION(v) db_get_enum_collation(v)
 #define DB_VALUE_TYPE(value) db_value_type(value)
 #define DB_VALUE_PRECISION(value) db_value_precision(value)
 #define DB_VALUE_SCALE(value) db_value_scale(value)
 
-#define DB_GET_INTEGER(value)           db_get_int(value)
-#define DB_GET_BIGINTEGER               DB_GET_BIGINT
-#define DB_GET_OBJ DB_GET_OBJECT
-#define DB_GET_MULTISET(value)          db_get_set(value)
-#define DB_GET_LIST(value)              db_get_set(value)
-#define DB_GET_SEQUENCE DB_GET_LIST
-#define DB_GET_COLLECTION(value)        db_get_set(value)
-#define DB_GET_UTIME DB_GET_TIMESTAMP
-#define DB_GET_SMALLINT(value)          db_get_short(value)
-
-#define DB_GET_COMPRESSED_SIZE(value) db_get_compressed_size(value)
-
-#define DB_GET_JSON_DOCUMENT(value) db_get_json_document(value)
-
-#define DB_GET_SEQ DB_GET_SEQUENCE
-
 #define DB_SET_COMPRESSED_STRING(value, compressed_string, compressed_size, compressed_need_clear) \
 	db_set_compressed_string(value, compressed_string, compressed_size, compressed_need_clear)
 
-#define DB_TRIED_COMPRESSION(value) (DB_GET_COMPRESSED_SIZE(value) != DB_NOT_YET_COMPRESSED)
+#define DB_TRIED_COMPRESSION(value) (db_get_compressed_size(value) != DB_NOT_YET_COMPRESSED)
 
   /* Macros from dbval.h */
 
@@ -332,7 +144,6 @@
 	((v)->data.json.schema_raw)
 
 #define db_get_json_schema(v) DB_GET_JSON_SCHEMA(v)
-#define DB_GET_JSON_RAW_BODY(v) db_get_json_raw_body(v)
 
 #ifdef __cplusplus
 extern "C"
