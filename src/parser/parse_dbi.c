@@ -1325,7 +1325,7 @@ pt_data_type_init_value (const PT_NODE * node, DB_VALUE * value_out)
       value_out->domain.numeric_info.scale = node_data_type->info.data_type.dec_precision;
       break;
     case DB_TYPE_JSON:
-      // we should really move json_schema from value
+      // we should really move json_schema from value.data
       if (node_data_type->info.data_type.json_schema != NULL)
 	{
 	  value_out->data.json.schema_raw =
