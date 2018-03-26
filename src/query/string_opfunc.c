@@ -685,7 +685,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 	  result[result_size] = 0;
 	  db_value_domain_init (db_result, result_type, precision, 0);
 	  error_status =
-	    db_make_db_char (db_result, codeset, collation_id, (const char *) result,
+	    db_make_db_char (db_result, codeset, collation_id, (char *) result,
 			     (result_type == DB_TYPE_VARBIT ? num_bits : result_size));
 	  db_result->need_clear = true;
 	}
@@ -27897,12 +27897,12 @@ db_get_cs_coll_info (DB_VALUE * result, const DB_VALUE * val, const int mode)
 
       if (mode == 0)
 	{
-	  db_make_string (result, lang_charset_cubrid_name ((INTL_CODESET) cs));
+	  db_make_string_by_const_str (result, lang_charset_cubrid_name ((INTL_CODESET) cs));
 	}
       else
 	{
 	  assert (mode == 1);
-	  db_make_string (result, lang_get_collation_name (coll));
+	  db_make_string_by_const_str (result, lang_get_collation_name (coll));
 	}
     }
 

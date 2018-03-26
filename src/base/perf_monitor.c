@@ -38,6 +38,9 @@
 #include "memory_alloc.h"
 #include "server_interface.h"
 #endif /* !SERVER_MODE */
+#include "thread_worker_pool.hpp"
+
+#include <cstring>
 
 #if defined(SERVER_MODE)
 #include <string.h>
@@ -64,6 +67,7 @@
 #include "session.h"
 #include "error_manager.h"
 #include "log_manager.h"
+#include "server_support.h"
 #include "system_parameter.h"
 #include "xserver_interface.h"
 #include "heap_file.h"
@@ -115,6 +119,7 @@ static int f_load_Count_get_snapshot_retry (void);
 static int f_load_Time_tran_complete_time (void);
 static int f_load_Time_get_oldest_mvcc_acquire_time (void);
 static int f_load_Count_get_oldest_mvcc_retry (void);
+static int f_load_thread_stats (void);
 
 static void f_dump_in_file_Num_data_page_fix_ext (FILE *, const UINT64 * stat_vals);
 static void f_dump_in_file_Num_data_page_promote_ext (FILE *, const UINT64 * stat_vals);
@@ -125,6 +130,7 @@ static void f_dump_in_file_Time_data_page_hold_acquire_time (FILE *, const UINT6
 static void f_dump_in_file_Time_data_page_fix_acquire_time (FILE *, const UINT64 * stat_vals);
 static void f_dump_in_file_Num_mvcc_snapshot_ext (FILE *, const UINT64 * stat_vals);
 static void f_dump_in_file_Time_obj_lock_acquire_time (FILE *, const UINT64 * stat_vals);
+static void f_dump_in_file_thread_stats (FILE * f, const UINT64 * stat_vals);
 
 static void f_dump_in_buffer_Num_data_page_fix_ext (char **, const UINT64 * stat_vals, int *remaining_size);
 static void f_dump_in_buffer_Num_data_page_promote_ext (char **, const UINT64 * stat_vals, int *remaining_size);
@@ -135,6 +141,7 @@ static void f_dump_in_buffer_Time_data_page_hold_acquire_time (char **, const UI
 static void f_dump_in_buffer_Time_data_page_fix_acquire_time (char **, const UINT64 * stat_vals, int *remaining_size);
 static void f_dump_in_buffer_Num_mvcc_snapshot_ext (char **, const UINT64 * stat_vals, int *remaining_size);
 static void f_dump_in_buffer_Time_obj_lock_acquire_time (char **, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_thread_stats (char **s, const UINT64 * stat_vals, int *remaining_size);
 
 static void perfmon_stat_dump_in_file_fix_page_array_stat (FILE *, const UINT64 * stats_ptr);
 static void perfmon_stat_dump_in_file_promote_page_array_stat (FILE *, const UINT64 * stats_ptr);
@@ -143,6 +150,7 @@ static void perfmon_stat_dump_in_file_page_lock_time_array_stat (FILE *, const U
 static void perfmon_stat_dump_in_file_page_hold_time_array_stat (FILE *, const UINT64 * stats_ptr);
 static void perfmon_stat_dump_in_file_page_fix_time_array_stat (FILE *, const UINT64 * stats_ptr);
 static void perfmon_stat_dump_in_file_snapshot_array_stat (FILE *, const UINT64 * stats_ptr);
+static void perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr);
 
 static void perfmon_stat_dump_in_buffer_fix_page_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
 static void perfmon_stat_dump_in_buffer_promote_page_array_stat (const UINT64 * stats_ptr, char **s,
@@ -155,8 +163,11 @@ static void perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 
 static void perfmon_stat_dump_in_buffer_page_fix_time_array_stat (const UINT64 * stats_ptr, char **s,
 								  int *remaining_size);
 static void perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
+static void perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, int *remaining_size);
 static void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr);
 static void perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size);
+
+STATIC_INLINE size_t thread_stats_count (void) __attribute__ ((ALWAYS_INLINE));
 
 PSTAT_GLOBAL pstat_Global;
 
@@ -523,7 +534,9 @@ PSTAT_METADATA pstat_Metadata[] = {
 			       &f_load_Num_mvcc_snapshot_ext),
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_OBJ_LOCK_TIME_COUNTERS, "Time_obj_lock_acquire_time",
 			       &f_dump_in_file_Time_obj_lock_acquire_time, &f_dump_in_buffer_Time_obj_lock_acquire_time,
-			       &f_load_Time_obj_lock_acquire_time)
+			       &f_load_Time_obj_lock_acquire_time),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_THREAD_STATS, "Thread_stats_counters_timers", &f_dump_in_file_thread_stats,
+			       &f_dump_in_buffer_thread_stats, &f_load_thread_stats)
 };
 
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
@@ -543,6 +556,7 @@ STATIC_INLINE const char *perfmon_stat_promote_cond_name (const int cond_type) _
 STATIC_INLINE const char *perfmon_stat_snapshot_name (const int snapshot) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_snapshot_record_type (const int rec_type) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_lock_mode_name (const int lock_mode) __attribute__ ((ALWAYS_INLINE));
+static void perfmon_stat_thread_stat_name (size_t index, char *name_buf, size_t max_size);
 
 STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__ ((ALWAYS_INLINE));
 
@@ -945,25 +959,18 @@ static void *server_shm_open (int shm_key);
 #endif /* WINDOWS */
 
 T_DIAG_OBJECT_TABLE diag_obj_list[] = {
-  {"open_page", DIAG_OBJ_TYPE_QUERY_OPEN_PAGE, diag_val_set_query_open_page}
-  , {"opened_page", DIAG_OBJ_TYPE_QUERY_OPENED_PAGE,
-     diag_val_set_query_opened_page}
-  , {"slow_query", DIAG_OBJ_TYPE_QUERY_SLOW_QUERY,
-     diag_val_set_query_slow_query}
-  , {"full_scan", DIAG_OBJ_TYPE_QUERY_FULL_SCAN, diag_val_set_query_full_scan}
-  , {"cli_request", DIAG_OBJ_TYPE_CONN_CLI_REQUEST,
-     diag_val_set_conn_cli_request}
-  , {"aborted_client", DIAG_OBJ_TYPE_CONN_ABORTED_CLIENTS,
-     diag_val_set_conn_aborted_clients}
-  , {"conn_req", DIAG_OBJ_TYPE_CONN_CONN_REQ, diag_val_set_conn_conn_req}
-  , {"conn_reject", DIAG_OBJ_TYPE_CONN_CONN_REJECT,
-     diag_val_set_conn_conn_reject}
-  , {"buffer_page_read", DIAG_OBJ_TYPE_BUFFER_PAGE_READ,
-     diag_val_set_buffer_page_read}
-  , {"buffer_page_write", DIAG_OBJ_TYPE_BUFFER_PAGE_WRITE,
-     diag_val_set_buffer_page_write}
-  , {"lock_deadlock", DIAG_OBJ_TYPE_LOCK_DEADLOCK, diag_val_set_lock_deadlock}
-  , {"lock_request", DIAG_OBJ_TYPE_LOCK_REQUEST, diag_val_set_lock_request}
+  {"open_page", DIAG_OBJ_TYPE_QUERY_OPEN_PAGE, diag_val_set_query_open_page},
+  {"opened_page", DIAG_OBJ_TYPE_QUERY_OPENED_PAGE, diag_val_set_query_opened_page},
+  {"slow_query", DIAG_OBJ_TYPE_QUERY_SLOW_QUERY, diag_val_set_query_slow_query},
+  {"full_scan", DIAG_OBJ_TYPE_QUERY_FULL_SCAN, diag_val_set_query_full_scan},
+  {"cli_request", DIAG_OBJ_TYPE_CONN_CLI_REQUEST, diag_val_set_conn_cli_request},
+  {"aborted_client", DIAG_OBJ_TYPE_CONN_ABORTED_CLIENTS, diag_val_set_conn_aborted_clients},
+  {"conn_req", DIAG_OBJ_TYPE_CONN_CONN_REQ, diag_val_set_conn_conn_req},
+  {"conn_reject", DIAG_OBJ_TYPE_CONN_CONN_REJECT, diag_val_set_conn_conn_reject},
+  {"buffer_page_read", DIAG_OBJ_TYPE_BUFFER_PAGE_READ, diag_val_set_buffer_page_read},
+  {"buffer_page_write", DIAG_OBJ_TYPE_BUFFER_PAGE_WRITE, diag_val_set_buffer_page_write},
+  {"lock_deadlock", DIAG_OBJ_TYPE_LOCK_DEADLOCK, diag_val_set_lock_deadlock},
+  {"lock_request", DIAG_OBJ_TYPE_LOCK_REQUEST, diag_val_set_lock_request}
 };
 
 /* function definition */
@@ -2721,6 +2728,8 @@ perfmon_server_calc_stats (UINT64 * stats)
 		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_BIG_PRV_NUM].start_offset]),
 		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_PRV_NUM].start_offset]),
 		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_SHR_NUM].start_offset]));
+
+  css_get_thread_stats (&stats[pstat_Metadata[PSTAT_THREAD_STATS].start_offset]);
 #endif
 
   for (i = 0; i < PSTAT_COUNT; i++)
@@ -4671,3 +4680,139 @@ perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int
   *remained_size -= ret;
   *s += ret;
 }
+
+// *INDENT-OFF*
+static size_t
+thread_stats_count (void)
+{
+  return cubthread::wpstat::STATS_COUNT * 2;
+}
+
+static int
+f_load_thread_stats (void)
+{
+  return (int) thread_stats_count ();
+}
+
+static void
+perfmon_stat_thread_stat_name (size_t index, char * name_buf, size_t max_size)
+{
+  cubthread::wpstat::id wpstat_id;
+  const char* prefixp;
+  const char* COUNTER_PREFIX = "Counter_";
+  const char* TIMER_PREFIX = "Timer_";
+  if (index < cubthread::wpstat::STATS_COUNT)
+    {
+      wpstat_id = cubthread::wpstat::to_id (index);
+      prefixp = COUNTER_PREFIX;
+    }
+  else
+    {
+      wpstat_id = cubthread::wpstat::to_id (index - cubthread::wpstat::STATS_COUNT);
+      prefixp = TIMER_PREFIX;
+    }
+  std::strncpy (name_buf, prefixp, max_size);
+  max_size -= std::strlen (prefixp);
+
+  std::strncat (name_buf, cubthread::wpstat::get_id_name (wpstat_id), max_size);
+}
+
+/*
+ * f_dump_in_file_thread_stats () - Write in file the values for thread statistic
+ *
+ * f (out): File handle
+ * stat_vals (in): statistics buffer
+ * 
+ */
+static void
+f_dump_in_file_thread_stats (FILE * f, const UINT64 * stat_vals)
+{
+  if ( /*pstat_Global.activation_flag & PERFMON_ACTIVE_THREAD */ true)
+    {
+      perfmon_stat_dump_in_file_thread_stats (f, stat_vals);
+    }
+}
+
+/*
+ * perfmon_stat_dump_in_file_thread_stats () -
+ *
+ * stream(in): output file
+ * stats_ptr(in): start of array values
+ * 
+ */
+static void
+perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
+{
+  UINT64 value = 0;
+  const size_t MAX_NAME_SIZE = 64;
+  char name_buf[MAX_NAME_SIZE];
+
+  assert (stream != NULL);
+
+  for (size_t it = 0; it < thread_stats_count (); it++)
+    {
+      value = stats_ptr[it];
+      if (value == 0)
+	{
+	  continue;
+	}
+      perfmon_stat_thread_stat_name (it, name_buf, MAX_NAME_SIZE);
+      fprintf (stream, "%-10s = %16llu\n", name_buf, (long long unsigned int) value);
+    }
+}
+
+/*
+ * f_dump_in_buffer_thread_stats () - Write to a buffer the values for Time_obj_lock_acquire_time
+ *						    statistic
+ * s (out): Buffer to write to
+ * stat_vals (in): statistics buffer
+ * remaining_size (in): size of input buffer
+ * 
+ */
+static void
+f_dump_in_buffer_thread_stats (char **s, const UINT64 * stat_vals, int *remaining_size)
+{
+  if ( /*pstat_Global.activation_flag & PERFMON_ACTIVE_THREAD */ true)
+    {
+      perfmon_stat_dump_in_buffer_thread_stats (stat_vals, s, remaining_size);
+    }
+}
+
+/*
+ * perfmon_stat_dump_in_buffer_thread_stats () -
+ *
+ * stats_ptr(in): start of array values
+ * s(in/out): output string (NULL if not used)
+ * remaining_size(in/out): remaining size in string s (NULL if not used)
+ * 
+ */
+static void
+perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, int *remaining_size)
+{
+  UINT64 value = 0;
+  const size_t MAX_NAME_SIZE = 64;
+  char name_buf[MAX_NAME_SIZE];
+  int ret;
+
+  assert (s != NULL);
+  assert (remaining_size != NULL);
+
+  for (size_t it = 0; it < thread_stats_count (); it++)
+    {
+      value = stats_ptr[it];
+      if (value == 0)
+	{
+	  continue;
+	}
+      perfmon_stat_thread_stat_name (it, name_buf, MAX_NAME_SIZE);
+      ret = snprintf (*s, *remaining_size, "%-10s = %16llu\n", name_buf, (long long unsigned int) value);
+
+      *remaining_size -= ret;
+      *s += ret;
+      if (*remaining_size <= 0)
+	{
+	  return;
+	}
+    }
+}
+// *INDENT-ON*

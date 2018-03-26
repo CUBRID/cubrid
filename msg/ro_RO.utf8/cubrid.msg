@@ -1271,7 +1271,19 @@ $ LOADDB
 1202 Calea "%1$s" nu exista in %2$s
 1203 Tipul JSON-ului de la calea %1$s este invalid. Expected %2$s, dar am gasit %3$s.
 1204 Cheia "%1$s" din json este duplicata
-1205 Ultima eroare
+1205 Reserved error for JSON.
+1206 Reserved error for JSON.
+1207 Reserved error for JSON.
+1208 Reserved error for JSON.
+1209 Reserved error for JSON.
+1210 Reserved error for JSON.
+1211 Reserved error for JSON.
+1212 Reserved error for JSON.
+1213 Reserved error for JSON.
+1214 Reserved error for JSON.
+
+1215 Ultima eroare
+
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
 2 Niciun mesaj de eroare disponibil.

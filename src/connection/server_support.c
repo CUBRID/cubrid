@@ -1760,7 +1760,7 @@ css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_r
 
   assert (thread_ref.conn_entry == &conn_ref);
 
-  local_tran_index = LOG_FIND_THREAD_TRAN_INDEX (&thread_ref);
+  local_tran_index = thread_ref.tran_index;
 
   rc = css_receive_request (&conn_ref, &rid, &request, &size);
   if (rc == NO_ERRORS)
@@ -1858,7 +1858,9 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   // initialize worker pool for server requests
   const std::size_t MAX_WORKERS = NUM_NON_SYSTEM_TRANS;
   const std::size_t JOB_QUEUE_SIZE = NUM_NON_SYSTEM_TRANS;
-  css_Server_request_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, JOB_QUEUE_SIZE);
+  css_Server_request_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, JOB_QUEUE_SIZE, NULL,
+										  cubthread::system_core_count (),
+										  false);
   if (css_Server_request_worker_pool == NULL)
     {
       assert (false);
@@ -3415,6 +3417,8 @@ css_server_task::execute (context_type & thread_ref)
       assert (thread_ref.private_lru_index == -1);
     }
 
+  thread_ref.status = TS_RUN;
+
   // todo: we lock tran_index_lock because css_internal_request_handler expects it to be locked. however, I am not
   //       convinced we really need this
   pthread_mutex_lock (&thread_ref.tran_index_lock);
@@ -3422,6 +3426,7 @@ css_server_task::execute (context_type & thread_ref)
 
   thread_ref.private_lru_index = -1;
   thread_ref.conn_entry = NULL;
+  thread_ref.status = TS_FREE;
 }
 
 void
@@ -3436,6 +3441,10 @@ css_server_external_task::execute (context_type & thread_ref)
     {
       assert (thread_ref.private_lru_index == -1);
     }
+
+  // todo: We lock tran_index_lock because external task expects it to be locked.
+  //       However, I am not convinced we really need this
+  pthread_mutex_lock (&thread_ref.tran_index_lock);
 
   m_task->execute (thread_ref);
 
@@ -3605,6 +3614,21 @@ css_stop_all_log_writer (THREAD_ENTRY & thread_ref)
     {
       // nothing to stop
       return;
+    }
+}
+
+void
+css_get_thread_stats (UINT64 * stats_out)
+{
+  cubthread::wpstat allstats (stats_out);
+  css_Server_request_worker_pool->get_stats (allstats);
+
+  // collected timers are in nano-seconds. convert them to milliseconds
+  for (UINT64 *timer_stat_p = stats_out + cubthread::wpstat::STATS_COUNT;
+       timer_stat_p < stats_out + cubthread::wpstat::TOTAL_STATS_COUNT;
+       ++timer_stat_p)
+    {
+      *timer_stat_p = (*timer_stat_p) / 1000000;
     }
 }
 // *INDENT-ON*

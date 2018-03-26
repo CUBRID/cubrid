@@ -45,11 +45,7 @@
 namespace cubthread
 {
 
-#if defined (NO_GCC_44) || defined (WINDOWS)
   thread_local entry *tl_Entry_p = NULL;
-#else // GCC 4.4
-  __thread entry *tl_Entry_p = NULL;
-#endif // GCC 4.4
 
   manager::manager (void)
     : m_max_threads (0)
@@ -154,7 +150,7 @@ namespace cubthread
 
   entry_workpool *
   manager::create_worker_pool (size_t pool_size, size_t work_queue_size, entry_manager *context_manager,
-			       bool debug_logging)
+			       std::size_t core_count, bool debug_logging)
   {
 #if defined (SERVER_MODE)
     if (is_single_thread ())
@@ -167,8 +163,8 @@ namespace cubthread
 	  {
 	    context_manager = m_entry_manager;
 	  }
-	return create_and_track_resource (m_worker_pools, pool_size, pool_size, work_queue_size, context_manager,
-					  debug_logging);
+	return create_and_track_resource (m_worker_pools, pool_size, pool_size, work_queue_size, *context_manager,
+					  core_count, debug_logging);
       }
 #else // not SERVER_MODE = SA_MODE
     return NULL;
@@ -303,16 +299,6 @@ namespace cubthread
   }
 
   bool
-  manager::is_pool_busy (entry_workpool *worker_pool_arg)
-  {
-#if defined (SERVER_MODE)
-    return worker_pool_arg == NULL || worker_pool_arg->is_busy ();
-#else // not SERVER_MODE = SA_MODE
-    return false;
-#endif // not SERVER_MODE = SA_MODE
-  }
-
-  bool
   manager::is_pool_full (entry_workpool *worker_pool_arg)
   {
 #if defined (SERVER_MODE)
@@ -368,35 +354,6 @@ namespace cubthread
   manager::get_max_thread_count (void) const
   {
     return m_max_threads;
-  }
-
-  std::size_t
-  manager::get_running_thread_count (void)
-  {
-#if defined (SERVER_MODE)
-    std::unique_lock<std::mutex> lock_guard (m_entries_mutex);
-    std::size_t running_count = 0;
-
-    for (auto wp_iter = m_worker_pools.cbegin (); wp_iter != m_worker_pools.cend (); ++wp_iter)
-      {
-	running_count += (*wp_iter)->get_running_count ();
-      }
-
-    for (auto daemon_iter = m_daemons.cbegin (); daemon_iter != m_daemons.cend (); ++daemon_iter)
-      {
-	++running_count;
-      }
-
-    return running_count;
-#else // not SERVER_MODE = SA_MODE
-    return 1;   // this
-#endif // not SERVER_MODE = SA_MODE
-  }
-
-  std::size_t
-  manager::get_free_thread_count (void)
-  {
-    return get_max_thread_count () - get_running_thread_count ();
   }
 
   void

@@ -23,3 +23,60 @@
 
 #include "thread_worker_pool.hpp"
 
+#include <cstring>
+
+namespace cubthread
+{
+
+  //////////////////////////////////////////////////////////////////////////
+  // wpstat
+  //////////////////////////////////////////////////////////////////////////
+
+  wpstat::wpstat (stat_type *stats_p)
+    : m_counters (NULL)
+    , m_timers (NULL)
+    , m_own_stats (NULL)
+  {
+    if (stats_p == NULL)
+      {
+	m_own_stats = new stat_type[STATS_COUNT * 2];
+	stats_p = m_own_stats;
+      }
+    m_counters = stats_p;
+    m_timers = stats_p + STATS_COUNT;
+
+    // reset all to zeros
+    std::memset (stats_p, 0, sizeof (stat_type) * STATS_COUNT * 2);
+  }
+
+  wpstat::~wpstat (void)
+  {
+    delete m_own_stats;
+  }
+
+  void
+  wpstat::operator+= (const wpstat &other_stat)
+  {
+    for (std::size_t it = 0; it < STATS_COUNT; it++)
+      {
+	m_counters[it] += other_stat.m_counters[it];
+	m_timers[it] += other_stat.m_timers[it];
+      }
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // functions
+  //////////////////////////////////////////////////////////////////////////
+
+  std::size_t
+  system_core_count (void)
+  {
+    std::size_t count = std::thread::hardware_concurrency ();
+    if (count == 0)
+      {
+	count = 1;
+      }
+    return count;
+  }
+
+} // namespace cubthread

@@ -81,8 +81,6 @@ namespace cubthread
     std::memset (&context.event_stats, 0, sizeof (context.event_stats));  // clear even stats
     context.tran_index = -1;    // clear transaction ID
 
-    context.unregister_id ();  // unregister thread ID
-
     on_recycle (context);
   }
 
@@ -101,6 +99,8 @@ namespace cubthread
 #if defined (SERVER_MODE)
     context.status = TS_DEAD;
 #endif // SERVER_MODE
+
+    context.unregister_id ();  // unregister thread ID
 
     on_daemon_retire (context);
   }
