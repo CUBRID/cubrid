@@ -75,6 +75,7 @@ std::vector<func_signature> func_signature::median = {
 
 //{PT_TYPE_MAYBE  , {PT_GENERIC_TYPE_ANY}     , {}}, //let evaluation select the return type
   {PT_TYPE_MAYBE  , {PT_TYPE_NULL}            , {}},
+  {PT_TYPE_MAYBE  , {PT_TYPE_MAYBE}           , {}},
   {PT_TYPE_MAYBE  , {PT_GENERIC_TYPE_STRING}  , {}},
 };
 
