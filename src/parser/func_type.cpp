@@ -72,7 +72,10 @@ std::vector<func_signature> func_signature::median = {
 //{PT_TYPE_DOUBLE , {PT_GENERIC_TYPE_NUMBER}  , {}},
   {PT_TYPE_MAYBE  , {PT_GENERIC_TYPE_NUMBER}  , {}},
   {0              , {PT_GENERIC_TYPE_DATETIME}, {}},
+
 //{PT_TYPE_MAYBE  , {PT_GENERIC_TYPE_ANY}     , {}}, //let evaluation select the return type
+  {PT_TYPE_MAYBE  , {PT_TYPE_NULL}            , {}},
+  {PT_TYPE_MAYBE  , {PT_GENERIC_TYPE_STRING}  , {}},
 };
 
 std::vector<func_signature> func_signature::type0_nr_or_str = {
