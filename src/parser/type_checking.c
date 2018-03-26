@@ -13084,6 +13084,28 @@ namespace Func
               }
               break;
             }
+          case PT_GROUP_CONCAT:
+            {
+              auto arg1 = m_node->info.function.arg_list;
+              if(arg1 != NULL)
+                {
+                  auto arg2 = arg1->next;
+                  if(arg2 != NULL)
+                    {
+                      if((PT_IS_SIMPLE_CHAR_STRING_TYPE(arg1->type_enum) && PT_IS_NATIONAL_CHAR_STRING_TYPE(arg2->type_enum)) ||
+                         (PT_IS_SIMPLE_CHAR_STRING_TYPE(arg2->type_enum) && PT_IS_NATIONAL_CHAR_STRING_TYPE(arg1->type_enum)))
+                        {
+                          //printf("ERR group_concat(char and nchar)\n");
+	                  PT_ERRORmf3 (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
+			               pt_show_function (PT_GROUP_CONCAT), 
+                                       pt_show_type_enum (arg1->type_enum), pt_show_type_enum (arg2->type_enum));
+                          m_node->type_enum = PT_TYPE_VARCHAR;
+                          return false;
+                        }
+                    }
+                }
+              break;
+            }
 #if 0
 #if 0
             case F_SET:

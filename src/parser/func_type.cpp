@@ -111,22 +111,22 @@ std::vector<func_signature> func_signature::group_concat = {
   {PT_TYPE_VARBIT   , {PT_GENERIC_TYPE_BIT    , PT_GENERIC_TYPE_BIT   }, {}},
 
 #if 0 //anything else should be casted to separator's type (if possible! makes sense to detect incompatible types when detecting/applying signatures?); NOTE: casting affects the order!!!
-  {PT_TYPE_VARCHAR  , {1                      , PT_GENERIC_TYPE_CHAR  }, {}},//test
-  {PT_TYPE_VARNCHAR , {1                      , PT_GENERIC_TYPE_NCHAR }, {}},//test
+  {PT_TYPE_VARCHAR  , {1                        , PT_GENERIC_TYPE_CHAR  }, {}},//test
+  {PT_TYPE_VARNCHAR , {1                        , PT_GENERIC_TYPE_NCHAR }, {}},//test
 #else //anything else should be left untouched (like in the original code), maybe it will be casted later?
-//{PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_ANY    , PT_GENERIC_TYPE_CHAR  }, {}},//test
-//{PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_ANY    , PT_GENERIC_TYPE_NCHAR }, {}},//test
+#if 0 //it allows group_concat(SET) but it should not!
+//{PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_ANY      , PT_GENERIC_TYPE_CHAR  }, {}},
+//{PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_ANY      , PT_GENERIC_TYPE_NCHAR }, {}},
+#else //OK to keep the order but it allows cast (n)char -> number and it should not because group_concat(n'123', ', ') should be rejected?!
+      //like that it allows group_concat(n'123', ', ') or group_concat(<nchar field>, ', ') when <nchar field> can be casted to double (acceptable for me)
+      //but solved in preprocess for compatibility to original behaviour
+  {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_NUMBER   , PT_GENERIC_TYPE_CHAR  }, {}},
+  {PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_NUMBER   , PT_GENERIC_TYPE_NCHAR }, {}},
+  {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_DATETIME , PT_GENERIC_TYPE_CHAR  }, {}},
+  {PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_DATETIME , PT_GENERIC_TYPE_NCHAR }, {}},
 #endif
-#if 1
-  {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_NUMBER  , PT_GENERIC_TYPE_CHAR  }, {}},
-  {PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_NUMBER  , PT_GENERIC_TYPE_NCHAR }, {}},
-  {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_DATETIME, PT_GENERIC_TYPE_CHAR  }, {}},
-  {PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_DATETIME, PT_GENERIC_TYPE_NCHAR }, {}},
-#else
-//{1                , {PT_GENERIC_TYPE_NUMBER, PT_GENERIC_TYPE_STRING}, {}},//would work if eq_type(PT_GENERIC_TYPE_STRING, [N]CHAR) would be VAR[N]CHAR
 #endif
-  {PT_TYPE_VARCHAR , {PT_TYPE_NULL                                  }, {}},
-//{PT_TYPE_VARCHAR , {PT_GENERIC_TYPE_NUMBER, PT_GENERIC_TYPE_STRING}, {}},
+  {PT_TYPE_VARCHAR  , {PT_TYPE_NULL                                     }, {}},
 };
 
 std::vector<func_signature> func_signature::lead_lag = {//original code doesn't do anything!!!
