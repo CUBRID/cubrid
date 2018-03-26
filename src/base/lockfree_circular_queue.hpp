@@ -47,10 +47,10 @@ namespace lockfree
   class circular_queue
   {
     public:
-      typedef std::uint64_t cursor_type;
-      typedef std::atomic<cursor_type> atomic_cursor_type;
-      typedef std::atomic<T> atomic_data_type;
-      typedef atomic_cursor_type atomic_flag_type;
+      using cursor_type = std::uint64_t;
+      using atomic_cursor_type = std::atomic<cursor_type>;
+      using data_type = T;
+      using atomic_flag_type = atomic_cursor_type;
 
       circular_queue (std::size_t size);
       ~circular_queue ();
@@ -98,7 +98,7 @@ namespace lockfree
       inline void unblock (cursor_type cursor);
       inline void init_blocked_cursors (void);
 
-      atomic_data_type *m_data;   // data storage. access is atomic
+      data_type *m_data;   // data storage. access is atomic
       atomic_flag_type *m_blocked_cursors;  // is_blocked flag; when producing new data, there is a time window between
       // cursor increment and until data is copied. block flag will tell when
       // produce is completed.
@@ -211,7 +211,7 @@ namespace lockfree
     m_index_mask = m_capacity - 1;
     assert ((m_capacity & m_index_mask) == 0);
 
-    m_data = new atomic_data_type[m_capacity];
+    m_data = new data_type[m_capacity];
     init_blocked_cursors ();
   }
 
@@ -445,14 +445,14 @@ namespace lockfree
   inline void
   circular_queue<T>::store_data (cursor_type cursor, const T &data)
   {
-    m_data[get_cursor_index (cursor)].store (data);
+    m_data[get_cursor_index (cursor)] = data;
   }
 
   template<class T>
   inline T
   circular_queue<T>::load_data (cursor_type consume_cursor) const
   {
-    return m_data[get_cursor_index (consume_cursor)].load ();
+    return m_data[get_cursor_index (consume_cursor)];
   }
 
   template<class T>

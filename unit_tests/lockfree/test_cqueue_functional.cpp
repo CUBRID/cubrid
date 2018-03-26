@@ -275,6 +275,8 @@ namespace test_lockfree
     /* queue size */
     size_t one_k_cqueue_size = 1024;
 
+    auto start_time = std::chrono::high_resolution_clock::now ();
+
 #if 0
     /* test for hangs */
     test_cqueue_no_hang (one_thread_count, core_count, one_mil_op_count, one_k_cqueue_size);
@@ -292,6 +294,10 @@ namespace test_lockfree
     test_cqueue_values_match (core_count_x2, one_mil_op_count, one_k_cqueue_size);
 
     std::cout << std::endl;
+
+    std::chrono::nanoseconds nanos = std::chrono::high_resolution_clock::now () - start_time;
+    std::uint64_t milli_count = nanos.count () / 1000000;
+    std::cout << milli_count << std::endl;
 
     return 0;
   }
