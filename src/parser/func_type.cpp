@@ -11,13 +11,31 @@ std::vector<func_signature> func_signature::bigint = {
 };
 
 std::vector<func_signature> func_signature::percentile_cont = {
+#if 0
 //{0, {PT_GENERIC_TYPE_ANY}, {}},//tests fail!
   {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_ANY}, {}},
+#else
+  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_NUMBER  }, {}},
+  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_STRING  }, {}},
+  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_DATETIME}, {}},
+  {PT_TYPE_MAYBE, {PT_TYPE_MAYBE           }, {}},
+  {PT_TYPE_MAYBE, {PT_TYPE_NULL            }, {}},
+  {PT_TYPE_MAYBE, {PT_TYPE_NA              }, {}},
+#endif
 };
 
 std::vector<func_signature> func_signature::percentile_dis = {
+#if 0
 //{0, {PT_GENERIC_TYPE_ANY}, {}},//tests fail!
   {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_ANY}, {}},
+#else
+  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_NUMBER  }, {}},
+  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_STRING  }, {}},
+  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_DATETIME}, {}},
+  {PT_TYPE_MAYBE, {PT_TYPE_MAYBE           }, {}},
+  {PT_TYPE_MAYBE, {PT_TYPE_NULL            }, {}},
+  {PT_TYPE_MAYBE, {PT_TYPE_NA              }, {}},
+#endif
 };
 
 std::vector<func_signature> func_signature::bigint_discrete = {
