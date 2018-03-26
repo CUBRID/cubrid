@@ -13065,7 +13065,7 @@ namespace Func
               for(parser_node *prev = m_node->info.function.arg_list, *arg = m_node->info.function.arg_list->next; arg; prev = arg, arg = arg->next)
                 {
                   //if (arg->type_enum != arg_type/* || arg->data_type->info.data_type.precision != max_precision*/)
-                  arg = cast(prev, arg, type, 0, 0, 0);
+                  arg = cast(prev, arg, type, DB_MAX_CHAR_PRECISION, 0, 0);
                 }
               break;
             }
