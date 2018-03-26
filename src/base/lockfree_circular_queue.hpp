@@ -24,16 +24,15 @@
 #ifndef _LOCKFREE_CIRCULAR_QUEUE_HPP_
 #define _LOCKFREE_CIRCULAR_QUEUE_HPP_
 
-#if defined (NO_GCC_44)
-#include <atomic>
-#endif
-#include <thread>
-#include <type_traits>
+#include "base_flag.hpp"
 
+#include <atomic>
 #include <cassert>
 #include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <thread>
+#include <type_traits>
 
 // activate preprocessor if you need to debug low-level execution of lockfree circular queue
 // note that if you wanna track the execution history of low-level operation of a certain queue, you also need to
@@ -48,21 +47,18 @@ namespace lockfree
   class circular_queue
   {
     public:
-      typedef std::uint64_t cursor_type;
-#if defined (NO_GCC_44)
-      typedef std::atomic<cursor_type> atomic_cursor_type;
-      typedef std::atomic<T> atomic_data_type;
-#else
-      typedef volatile cursor_type atomic_cursor_type;
-      typedef volatile T atomic_data_type;
-#endif
-      typedef atomic_cursor_type atomic_flag_type;
+      using cursor_type = std::uint64_t;
+      using atomic_cursor_type = std::atomic<cursor_type>;
+      using data_type = T;
+      using atomic_flag_type = atomic_cursor_type;
 
       circular_queue (std::size_t size);
       ~circular_queue ();
 
       inline bool is_empty () const;              // is query empty?
       inline bool is_full () const;               // is query full?
+      inline bool is_half_full ();
+      inline std::size_t size ();
 
       inline bool consume (T &element);               // consume one element from queue; returns false on fail
       // IMPORTANT!
@@ -94,7 +90,7 @@ namespace lockfree
       inline bool test_and_increment_cursor (atomic_cursor_type &cursor, cursor_type crt_value);
 
       inline T load_data (cursor_type consume_cursor) const;
-      inline void store_data (std::size_t index, const T &data);
+      inline void store_data (cursor_type index, const T &data);
       inline std::size_t get_cursor_index (cursor_type cursor) const;
 
       inline bool is_blocked (cursor_type cursor) const;
@@ -102,7 +98,7 @@ namespace lockfree
       inline void unblock (cursor_type cursor);
       inline void init_blocked_cursors (void);
 
-      atomic_data_type *m_data;   // data storage. access is atomic
+      data_type *m_data;   // data storage. access is atomic
       atomic_flag_type *m_blocked_cursors;  // is_blocked flag; when producing new data, there is a time window between
       // cursor increment and until data is copied. block flag will tell when
       // produce is completed.
@@ -198,11 +194,6 @@ namespace lockfree
 
 } // namespace lockfree
 
-#include "base_flag.hpp"
-#if !defined (NO_GCC_44)
-#include "porting.h"
-#endif
-
 namespace lockfree
 {
 
@@ -220,7 +211,7 @@ namespace lockfree
     m_index_mask = m_capacity - 1;
     assert ((m_capacity & m_index_mask) == 0);
 
-    m_data = new atomic_data_type[m_capacity];
+    m_data = new data_type[m_capacity];
     init_blocked_cursors ();
   }
 
@@ -309,9 +300,7 @@ namespace lockfree
   {
     while (!produce (element))
       {
-#if defined (NO_GCC_44)
 	std::this_thread::yield ();
-#endif // NO_GCC_44
       }
   }
 
@@ -339,7 +328,7 @@ namespace lockfree
 	cc = load_cursor (m_consume_cursor);
 	pc = load_cursor (m_produce_cursor);
 
-	if (pc <= cc)
+	if (test_empty_cursors (pc, cc))
 	  {
 	    /* empty */
 	    return false;
@@ -386,6 +375,28 @@ namespace lockfree
   }
 
   template<class T>
+  inline bool
+  circular_queue<T>::is_half_full ()
+  {
+    return size () >= (m_capacity / 2);
+  }
+
+  template<class T>
+  inline std::size_t
+  circular_queue<T>::size ()
+  {
+    cursor_type cc = load_cursor (m_consume_cursor);
+    cursor_type pc = load_cursor (m_produce_cursor);
+
+    if (pc <= cc)
+      {
+	return 0;
+      }
+
+    return pc - cc;
+  }
+
+  template<class T>
   inline std::size_t circular_queue<T>::next_pow2 (std::size_t size) const
   {
     std::size_t next_pow = 1;
@@ -399,7 +410,7 @@ namespace lockfree
   template<class T>
   inline bool circular_queue<T>::test_empty_cursors (cursor_type produce_cursor, cursor_type consume_cursor) const
   {
-    return produce_cursor >= consume_cursor;
+    return produce_cursor <= consume_cursor;
   }
 
   template<class T>
@@ -412,23 +423,15 @@ namespace lockfree
   inline typename circular_queue<T>::cursor_type
   circular_queue<T>::load_cursor (atomic_cursor_type &cursor)
   {
-#if defined (NO_GCC_44)
     return cursor.load ();
-#else
-    return ATOMIC_LOAD (&cursor);
-#endif
   }
 
   template<class T>
   inline bool
   circular_queue<T>::test_and_increment_cursor (atomic_cursor_type &cursor, cursor_type crt_value)
   {
-#if defined (NO_GCC_44)
     // can weak be used here? I tested, no performance difference from using one or the other
     return cursor.compare_exchange_strong (crt_value, crt_value + 1);
-#else
-    return ATOMIC_CAS (&cursor, crt_value, crt_value + 1);
-#endif
   }
 
   template<class T>
@@ -442,33 +445,21 @@ namespace lockfree
   inline void
   circular_queue<T>::store_data (cursor_type cursor, const T &data)
   {
-#if defined (NO_GCC_44)
-    m_data[get_cursor_index (cursor)].store (data);
-#else
-    ATOMIC_STORE (&m_data[get_cursor_index (cursor)], data);
-#endif
+    m_data[get_cursor_index (cursor)] = data;
   }
 
   template<class T>
   inline T
   circular_queue<T>::load_data (cursor_type consume_cursor) const
   {
-#if defined (NO_GCC_44)
-    return m_data[get_cursor_index (consume_cursor)].load ();
-#else
-    return ATOMIC_LOAD (&m_data[get_cursor_index (consume_cursor)]);
-#endif
+    return m_data[get_cursor_index (consume_cursor)];
   }
 
   template<class T>
   inline bool
   circular_queue<T>::is_blocked (cursor_type cursor) const
   {
-#if defined (NO_GCC_44)
     cursor_type block_val = m_blocked_cursors[get_cursor_index (cursor)].load ();
-#else
-    cursor_type block_val = ATOMIC_LOAD (&m_blocked_cursors[get_cursor_index (cursor)]);
-#endif
     return flag<cursor_type>::is_flag_set (block_val, BLOCK_FLAG);
   }
 
@@ -477,12 +468,8 @@ namespace lockfree
   circular_queue<T>::block (cursor_type cursor)
   {
     cursor_type block_val = flag<cursor_type> (cursor).set (BLOCK_FLAG).get_flags ();
-#if defined (NO_GCC_44)
     // can weak be used here?
     return m_blocked_cursors[get_cursor_index (cursor)].compare_exchange_strong (cursor, block_val);
-#else
-    return ATOMIC_CAS (&m_blocked_cursors[get_cursor_index (cursor)], cursor, block_val);
-#endif
   }
 
   template<class T>
@@ -490,20 +477,12 @@ namespace lockfree
   circular_queue<T>::unblock (cursor_type cursor)
   {
     atomic_flag_type &ref_blocked_cursor = m_blocked_cursors[get_cursor_index (cursor)];
-#if defined (NO_GCC_44)
     flag<cursor_type> blocked_cursor_value = ref_blocked_cursor.load ();
-#else
-    flag<cursor_type> blocked_cursor_value = ATOMIC_LOAD (&ref_blocked_cursor);
-#endif
 
     assert (blocked_cursor_value.is_set (BLOCK_FLAG));
     cursor_type nextgen_cursor = blocked_cursor_value.clear (BLOCK_FLAG).get_flags () + m_capacity;
 
-#if defined (NO_GCC_44)
     ref_blocked_cursor.store (nextgen_cursor);
-#else
-    ATOMIC_STORE (&ref_blocked_cursor, nextgen_cursor);
-#endif
   }
 
   template<class T>
@@ -636,4 +615,4 @@ namespace lockfree
 
 }  // namespace lockfree
 
-#endif // !_LOCKFREE_CIRCULAR_QUEUE_HPP_
+#endif // _LOCKFREE_CIRCULAR_QUEUE_HPP_
