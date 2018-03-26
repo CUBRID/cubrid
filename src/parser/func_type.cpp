@@ -117,7 +117,7 @@ std::vector<func_signature> func_signature::group_concat = {
 //{PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_ANY    , PT_GENERIC_TYPE_CHAR  }, {}},//test
 //{PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_ANY    , PT_GENERIC_TYPE_NCHAR }, {}},//test
 #endif
-#if 0
+#if 1
   {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_NUMBER  , PT_GENERIC_TYPE_CHAR  }, {}},
   {PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_NUMBER  , PT_GENERIC_TYPE_NCHAR }, {}},
   {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_DATETIME, PT_GENERIC_TYPE_CHAR  }, {}},
