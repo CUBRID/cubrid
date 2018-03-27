@@ -2927,7 +2927,11 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
 	  dt->type_enum = node->type_enum;
 
 	  /* save raw schema */
-	  dt->info.data_type.json_schema = pt_append_bytes (parser, NULL, json_body, strlen (json_body));
+	  if (val->data.json.schema_raw != NULL)
+	    {
+	      const char *schema_raw = val->data.json.schema_raw;
+	      dt->info.data_type.json_schema = pt_append_bytes (parser, NULL, schema_raw, strlen (schema_raw));
+	    }
 	}
       break;
 
@@ -3502,15 +3506,6 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 
       value->info.value.db_value_is_in_workspace = false;
       db_value->need_clear = true;
-      if (value->info.data_type.json_schema)
-	{
-	  db_value->data.json.schema_raw =
-	    db_private_strdup (NULL, (const char *) value->info.data_type.json_schema->bytes);
-	}
-      else
-	{
-	  db_value->data.json.schema_raw = NULL;
-	}
       *more_type_info_needed = (value->data_type == NULL);
       break;
 
