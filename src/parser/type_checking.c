@@ -13050,6 +13050,7 @@ namespace Func
             {
               //find 1st arg of type character
               pt_type_enum type = PT_TYPE_VARCHAR;
+              int precision = DB_MAX_VARCHAR_PRECISION;
               for(auto arg = m_node->info.function.arg_list; arg; arg = arg->next)
                 {
                   if(PT_IS_CHAR_STRING_TYPE(arg->type_enum))
@@ -13057,6 +13058,7 @@ namespace Func
                       if (PT_IS_NATIONAL_CHAR_STRING_TYPE(arg->type_enum))
                         {
                           type = PT_TYPE_VARNCHAR;
+                          precision = DB_MAX_VARNCHAR_PRECISION;
                         }
                       break;
                     }
@@ -13065,7 +13067,7 @@ namespace Func
               for(parser_node *prev = m_node->info.function.arg_list, *arg = m_node->info.function.arg_list->next; arg; prev = arg, arg = arg->next)
                 {
                   //if (arg->type_enum != arg_type/* || arg->data_type->info.data_type.precision != max_precision*/)
-                  arg = cast(prev, arg, type, DB_MAX_CHAR_PRECISION, 0, 0);
+                  arg = cast(prev, arg, type, precision, 0, 0);
                 }
               break;
             }
@@ -13207,11 +13209,11 @@ namespace Func
               break;
             case F_ELT:
               m_node->data_type = pt_make_prim_data_type (m_parser, m_node->type_enum);
-	      if (m_node->data_type)
-	        {
-		  //node->data_type->info.data_type.precision = max_precision;
-		  m_node->data_type->info.data_type.dec_precision = 0;
-	        }
+              if (m_node->data_type)
+                {
+                  m_node->data_type->info.data_type.precision = m_node->type_enum == (PT_TYPE_VARNCHAR ? DB_MAX_VARNCHAR_PRECISION : DB_MAX_VARCHAR_PRECISION);
+                  m_node->data_type->info.data_type.dec_precision = 0;
+                }
               break;
             case PT_GROUP_CONCAT:
             case F_INSERT_SUBSTRING:
