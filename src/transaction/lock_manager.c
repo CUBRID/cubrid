@@ -461,6 +461,8 @@ static int lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran
 static void lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index);
 static int lock_delete_from_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index);
 static LK_ENTRY *lock_find_tran_hold_entry (int tran_index, const OID * oid, bool is_class);
+static bool lock_is_local_deadlock_detection_interval_up (void);
+static void lock_detect_local_deadlock (THREAD_ENTRY * thread_p);
 static bool lock_is_class_lock_escalated (LOCK class_lock, LOCK lock_escalation);
 static LK_ENTRY *lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index, LOCK lock);
 static void lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr);
@@ -5907,11 +5909,15 @@ class deadlock_detect_task : public cubthread::entry_task
 	  return;
 	}
 
-      thread_sleep (100);
-
       if (lk_Gl.deadlock_and_timeout_detector == 0)
 	{
 	  // if none of the threads were suspended then just return
+	  return;
+	}
+
+      if (!lock_is_local_deadlock_detection_interval_up ())
+	{
+	  // forced to wait until PRM_ID_LK_RUN_DEADLOCK_INTERVAL
 	  return;
 	}
 
@@ -7780,6 +7786,37 @@ end:
 }
 
 /*
+ * lock_is_local_deadlock_detection_interval_up - Check local deadlock detection interval
+ *
+ * return:
+ *
+ * Note:check if the local deadlock detection should be performed.
+ */
+static bool
+lock_is_local_deadlock_detection_interval_up (void)
+{
+#if defined (SERVER_MODE)
+  struct timeval now, elapsed;
+  double elapsed_sec;
+
+  /* check deadlock detection interval */
+  gettimeofday (&now, NULL);
+  perfmon_diff_timeval (&elapsed, &lk_Gl.last_deadlock_run, &now);
+  elapsed_sec = elapsed.tv_sec + (elapsed.tv_usec / 1000);
+  if (elapsed_sec < prm_get_float_value (PRM_ID_LK_RUN_DEADLOCK_INTERVAL))
+    {
+      return false;
+    }
+  else
+    {
+      return true;
+    }
+#else /* !SERVER_MODE */
+  return false;
+#endif /* SERVER_MODE */
+}
+
+/*
  * lock_detect_local_deadlock - Run the local deadlock detection
  *
  * return: nothing
@@ -7803,7 +7840,7 @@ end:
  *
  *     Last, free WFG framework.
  */
-void
+static void
 lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 {
 #if !defined (SERVER_MODE)
