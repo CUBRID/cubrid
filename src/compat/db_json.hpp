@@ -77,7 +77,7 @@ int db_json_extract_document_from_path (const JSON_DOC *document, const char *ra
 					JSON_DOC *&result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
 
-const char *db_json_get_json_body_from_document (const JSON_DOC &doc);
+char *db_json_get_json_body_from_document (const JSON_DOC &doc);
 JSON_DOC *db_json_get_paths_for_search_func (const JSON_DOC *doc, const char *search_str, bool all);
 
 int db_json_add_member_to_object (JSON_DOC *doc, const char *name, const char *value);

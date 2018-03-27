@@ -5188,8 +5188,6 @@ db_json_type_dbval (const DB_VALUE * json, DB_VALUE * type_res)
       const char *type;
       unsigned int length;
 
-      assert (db_get_json_raw_body (json) != NULL);
-
       type = db_json_get_type_as_str (db_get_json_document (json));
       length = strlen (type);
 

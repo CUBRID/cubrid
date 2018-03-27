@@ -17712,13 +17712,16 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   if (db_json_doc_is_uncomparable (doc1) || db_json_doc_is_uncomparable (doc2))
     {
       /* force string comp */
-      const char *str1 = NULL, *str2 = NULL;
+      char *str1 = NULL, *str2 = NULL;
 
       str1 = db_json_get_json_body_from_document (*doc1);
       str2 = db_json_get_json_body_from_document (*doc2);
 
-      db_make_string_by_const_str (&scalar_value1, str1);
-      db_make_string_by_const_str (&scalar_value2, str2);
+      db_make_string (&scalar_value1, str1);
+      db_make_string (&scalar_value2, str2);
+
+      scalar_value1.need_clear = true;
+      scalar_value2.need_clear = true;
     }
   else
     {

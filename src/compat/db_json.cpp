@@ -115,6 +115,15 @@ class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_M
   public:
     bool IsLeaf ();
 
+    /* TODO:
+    In the future, it will be better if instead of constructing the json_body each time we need it,
+    we can have a boolean flag which indicates if the json_body is up to date or not.
+    We will set the flag to false when we apply functions that modify the JSON_DOC (like json_set, json_insert etc.)
+    If we apply functions that only retrieves values from JSON_DOC, the flag will remain unmodified
+
+    When we need the json_body, we will traverse only once the json "tree" and update the json_body and also the flag,
+    so next time we will get the json_body in O(1)
+
     const std::string &GetJsonBody () const
     {
       return json_body;
@@ -125,10 +134,10 @@ class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_M
     {
       json_body = std::forward<T> (body);
     }
-
+    */
   private:
     static const int MAX_CHUNK_SIZE;
-    mutable std::string json_body;
+    /* mutable std::string json_body; */
 };
 
 class JSON_VALIDATOR
@@ -905,15 +914,18 @@ db_json_get_raw_json_body_from_document (const JSON_DOC *doc)
   return json_body;
 }
 
-const char *
+char *
 db_json_get_json_body_from_document (const JSON_DOC &doc)
 {
+  /* TODO
   std::string json_body (std::unique_ptr<char, JSON_RAW_STRING_DELETER>
-			 (db_json_get_raw_json_body_from_document (&doc), JSON_RAW_STRING_DELETER()).get());
+  		 (db_json_get_raw_json_body_from_document (&doc), JSON_RAW_STRING_DELETER()).get());
 
   doc.SetJsonBody (json_body);
-
   return doc.GetJsonBody().c_str();
+  */
+
+  return db_json_get_raw_json_body_from_document (&doc);
 }
 
 static int
@@ -1088,7 +1100,6 @@ db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc)
       return error_code;
     }
 
-  doc.SetJsonBody (json_raw);
   return NO_ERROR;
 }
 
@@ -1117,7 +1128,9 @@ db_json_get_copy_of_doc (const JSON_DOC *doc)
   JSON_DOC *new_doc = db_json_allocate_doc ();
 
   new_doc->CopyFrom (*doc, new_doc->GetAllocator ());
+  /* TODO
   new_doc->SetJsonBody (doc->GetJsonBody ());
+  */
 
   return new_doc;
 }
@@ -3151,10 +3164,6 @@ JSON_DOC *db_json_deserialize (char *json_raw)
   // create the document that we want to reconstruct
   JSON_DOC *doc = db_json_allocate_doc ();
   db_json_deserialize_helper (json_raw, "", *doc, serial_types, special_chars, end);
-
-  char *json_body_raw = db_json_get_raw_json_body_from_document (doc);
-  doc->SetJsonBody (json_body_raw);
-  db_private_free (NULL, json_body_raw);
 
   return doc;
 }

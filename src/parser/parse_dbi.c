@@ -579,6 +579,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
   DB_OBJECT *mop;
   DB_TYPE db_type;
   char buf[100];
+  char *json_body = NULL;
 
   assert (parser != NULL && val != NULL);
 
@@ -637,8 +638,9 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       else
 	{
 	  result->data_type->type_enum = result->type_enum;
-	  result->info.value.data_value.str =
-	    pt_append_nulstring (parser, (PARSER_VARCHAR *) NULL, db_get_json_raw_body (val));
+	  json_body = db_get_json_raw_body (val);
+	  result->info.value.data_value.str = pt_append_nulstring (parser, (PARSER_VARCHAR *) NULL, json_body);
+	  db_private_free (NULL, json_body);
 	  if (db_get_json_schema (val) != NULL)
 	    {
 	      /* check valid schema */
@@ -2835,7 +2837,7 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
   PT_NODE *dt;
   DB_TYPE val_type;
   PT_TYPE_ENUM pt_type;
-  const char *json_body = NULL;
+  char *json_body = NULL;
 
   assert (node != NULL && val != NULL);
 
@@ -2987,11 +2989,13 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
 	      parser_free_node (parser, dt);
 	      /* TODO: set a real error. */
 	      PT_INTERNAL_ERROR (parser, "json validation failed");
+	      db_private_free (NULL, json_body);
 	      return NULL;
 	    }
 	  /* valid schema */
 
 	  dt->type_enum = node->type_enum;
+	  db_private_free (NULL, json_body);
 
 	  /* save raw schema */
 	  if (val->data.json.schema_raw != NULL)
