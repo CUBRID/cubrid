@@ -5909,15 +5909,15 @@ class deadlock_detect_task : public cubthread::entry_task
 	  return;
 	}
 
-      if (lk_Gl.deadlock_and_timeout_detector == 0)
-	{
-	  // if none of the threads were suspended then just return
-	  return;
-	}
-
       if (!lock_is_local_deadlock_detection_interval_up ())
 	{
 	  // forced to wait until PRM_ID_LK_RUN_DEADLOCK_INTERVAL
+	  return;
+	}
+
+      if (lk_Gl.deadlock_and_timeout_detector == 0)
+	{
+	  // if none of the threads were suspended then just return
 	  return;
 	}
 
