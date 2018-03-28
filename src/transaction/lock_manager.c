@@ -3807,7 +3807,7 @@ lock_tran_lk_entry:
 
 blocked:
 
-  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_LOCK_OBJECT))
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_LOCK_OBJECT))
     {
       tsc_getticks (&start_tick);
     }
@@ -3825,7 +3825,7 @@ blocked:
     }
   ret_val = lock_suspend (thread_p, entry_ptr, wait_msecs);
 
-  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_LOCK_OBJECT))
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_LOCK_OBJECT))
     {
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
