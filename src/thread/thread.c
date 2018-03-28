@@ -269,7 +269,7 @@ thread_initialize_manager (size_t & total_thread_count)
   assert (NUM_NORMAL_TRANS >= 10);
   assert (!thread_Manager.initialized);
 
-  thread_Manager.num_workers = NUM_NON_SYSTEM_TRANS;
+  thread_Manager.num_workers = NUM_NON_SYSTEM_TRANS;	/* only connection handler threads */
   thread_Manager.num_total = thread_Manager.num_workers;
 
   /* initialize lock-free transaction systems */

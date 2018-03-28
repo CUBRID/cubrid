@@ -7945,13 +7945,13 @@ class fileio_read_backup_volume_task : public cubthread::entry_task
 public:
   fileio_read_backup_volume_task (void) = delete;
 
-  fileio_read_backup_volume_task (FILEIO_BACKUP_SESSION * session_p)
+  fileio_read_backup_volume_task (FILEIO_BACKUP_SESSION *session_p)
   : m_backup_session (session_p)
   {
   }
 
   void
-  execute (context_type & thread_ref) override final
+  execute (context_type &thread_ref) override final
   {
     fileio_read_backup_volume (&thread_ref, m_backup_session);
   }

@@ -219,17 +219,17 @@ class log_abort_task : public cubthread::entry_task
 public:
   log_abort_task (void) = delete;
 
-  log_abort_task (log_tdes & tdes)
+  log_abort_task (log_tdes &tdes)
   : m_tdes (tdes)
   {
   }
 
-  void execute (context_type & thread_ref) final override;
+  void execute (context_type &thread_ref) final override;
 
   // retire deletes me
     
 private:
-  log_tdes& m_tdes;
+  log_tdes &m_tdes;
 };
 #endif // SERVER_MODE
 // *INDENT-ON*
@@ -10785,7 +10785,7 @@ log_get_clock_msec (void)
 // *INDENT-OFF*
 #if defined (SERVER_MODE)
 void
-log_abort_task::execute (context_type & thread_ref)
+log_abort_task::execute (context_type &thread_ref)
 {
   (void) log_abort_by_tdes (&thread_ref, &m_tdes);
 }

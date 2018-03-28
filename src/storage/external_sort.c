@@ -1691,13 +1691,13 @@ class px_sort_myself_task : public cubthread::entry_task
 public:
   px_sort_myself_task (void) = delete;
 
-  px_sort_myself_task (PX_TREE_NODE * node)
+  px_sort_myself_task (PX_TREE_NODE *node)
   : m_px_node (node)
   {
   }
 
   void
-  execute (context_type & thread_ref) override final
+  execute (context_type &thread_ref) override final
   {
     (void) px_sort_myself (&thread_ref, m_px_node);
   }
