@@ -243,22 +243,6 @@ namespace cubthread
     if (worker_pool_arg == NULL)
       {
 	// execute on this thread
-
-	// todo: think more about this case;
-	// take the example of vacuum. the server mode expected logic is:
-	// 1. claim thread entry (one is obtained from pool)
-	// 2. adjust thread entry for vacuum work (set worker context, no interrupt, so on)
-	// 3. execute job(s)
-	// 4. retire vacuum context
-	// 5. retire thread entry (returned to pool)
-	//
-	// it would be great if we could use a similar pattern on no work pool.
-	// 1. claim thread entry (use this thread)
-	// 2. adjust thread entry
-	// 3. execute job(s)
-	// 4. retire vacuum context
-	// 5. retire thread entry => restore previous state (e.g. check interrupt)
-
 	exec_p->execute (thread_p);
 	exec_p->retire ();
       }
@@ -267,6 +251,30 @@ namespace cubthread
 #if defined (SERVER_MODE)
 	check_not_single_thread ();
 	worker_pool_arg->execute (exec_p);
+#else // not SERVER_MODE = SA_MODE
+	assert (false);
+	// execute on this thread
+	exec_p->execute (thread_p);
+	exec_p->retire ();
+#endif // not SERVER_MODE = SA_MODE
+      }
+  }
+
+  void
+  manager::push_task_on_core (entry &thread_p, entry_workpool *worker_pool_arg, entry_task *exec_p,
+			      std::size_t core_hash)
+  {
+    if (worker_pool_arg == NULL)
+      {
+	// execute on this thread
+	exec_p->execute (thread_p);
+	exec_p->retire ();
+      }
+    else
+      {
+#if defined (SERVER_MODE)
+	check_not_single_thread ();
+	worker_pool_arg->execute_on_core (exec_p, core_hash);
 #else // not SERVER_MODE = SA_MODE
 	assert (false);
 	// execute on this thread

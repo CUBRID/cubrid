@@ -35,6 +35,7 @@
 #include <list>
 #include <memory>
 #include <mutex>
+#include <queue>
 #include <thread>
 
 #include <cassert>
@@ -141,6 +142,11 @@ namespace cubthread
       // execute task; execution is guaranteed, even if job queue is full. debug will crash though
       // read implementation in class comment for details
       void execute (task_type *work_arg);
+      // execute on give core. real core index is core_hash module core count.
+      // note: regular execute chooses a core through round robin scheduling. this may not be a good fit for all
+      //       execution patterns.
+      //       execute_on_core provides control on core scheduling.
+      void execute_on_core (task_type *work_arg, std::size_t core_hash);
 
       // stop worker pool; stop all running threads; discard any tasks in queue
       void stop_execution (void);
@@ -182,7 +188,7 @@ namespace cubthread
       friend class core;
 
       // get next core
-      core &get_next_core_for_execution (void);
+      std::size_t get_next_core_for_execution (void);
 
       // maximum number of concurrent workers
       std::size_t m_max_workers;
@@ -287,7 +293,7 @@ namespace cubthread
       // interface for worker pool
       // task management
       // execute task; returns true if task is accepted, false if it is rejected (no available workers)
-      bool execute_task (task_type *task_p);
+      void execute_task (task_type *task_p);
       // context management
       // map function to all workers (and their contexts)
       template <typename Func, typename ... Args>
@@ -305,9 +311,9 @@ namespace cubthread
       task_type *get_task (void);
       // worker management
       // add worker to free active list (still running, but ready to execute another task)
-      void add_worker_to_free_active_list (worker &worker_arg);
+      task_type *add_worker_to_free_active_list (worker &worker_arg);
       // add worker to inactive list (no longer running)
-      void add_worker_to_inactive_list (worker &worker_arg);
+      task_type *add_worker_to_inactive_list (worker &worker_arg);
       // remove worker from active list (when waiting for task times out).
       // return true if worker was found, false otherwise
       bool remove_worker_from_active_list (worker &worker_arg);
@@ -324,6 +330,7 @@ namespace cubthread
       worker *m_worker_array;                         // all core workers
       std::list<worker *> m_free_active_list;         // list of active and available workers
       std::forward_list<worker *> m_inactive_list;    // list of inactive workers (are also available)
+      std::queue<task_type *> m_task_queue;           // list of tasks pushed while all workers were occupied
       std::mutex m_workers_mutex;                     // mutex to synchronize activity on worker lists
   };
 
@@ -439,7 +446,7 @@ namespace cubthread
 
       // synchronization on task wait
       std::condition_variable m_task_cv;      // condition variable used to notify when a task is assigned or when
-					      // worker is stopped
+      // worker is stopped
       std::mutex m_task_mutex;                // mutex to protect waiting task condition
       bool m_stop;                            // stop execution (set to true when worker pool is stopped)
 
@@ -528,45 +535,30 @@ namespace cubthread
 	return false;
       }
 
-    core &core_ref = get_next_core_for_execution ();
+    core &core_ref = m_core_array[get_next_core_for_execution ()];
 
-    if (core_ref.execute_task (work_arg))
-      {
-	// task was pushed
-	return true;
-      }
+    core_ref.execute_task (work_arg);
 
     THREAD_WP_LOG ("try_execute", "drop task = %p", work_arg);
 
-    return false;
+    return true;
   }
 
   template <typename Context>
   void
   worker_pool<Context>::execute (task_type *work_arg)
   {
-    core &core_ref = get_next_core_for_execution ();
+    execute_on_core (work_arg, get_next_core_for_execution ());
+  }
 
-    if (core_ref.execute_task (work_arg))
-      {
-	// task was pushed
-	return;
-      }
-    else if (m_stopped)
-      {
-	// do not accept other new requests
-	assert (false);
+  template <typename Context>
+  void
+  worker_pool<Context>::execute_on_core (task_type *work_arg, std::size_t core_hash)
+  {
+    std::size_t core_index = core_hash % m_core_count;
+    core &core_ref = m_core_array[core_index];
 
-	work_arg->retire ();
-	return;
-      }
-    else if (!m_work_queue.produce (work_arg))
-      {
-	// failed to produce... this is really unfortunate (and unwanted)
-	assert (false);
-
-	m_work_queue.force_produce (work_arg);
-      }
+    core_ref.execute_task (work_arg);
   }
 
   template <typename Context>
@@ -677,7 +669,7 @@ namespace cubthread
   }
 
   template <typename Context>
-  typename worker_pool<Context>::core &
+  std::size_t
   worker_pool<Context>::get_next_core_for_execution (void)
   {
     // cores are not necessarily equal, so we try to preserve the assignments proportional to their size.
@@ -714,7 +706,7 @@ namespace cubthread
 	  }
       }
 
-    return m_core_array[index % m_core_count];
+    return index;
   }
 
   //////////////////////////////////////////////////////////////////////////
@@ -796,6 +788,7 @@ namespace cubthread
     , m_worker_array (NULL)
     , m_free_active_list ()
     , m_inactive_list ()
+    , m_task_queue ()
     , m_workers_mutex ()
   {
     //
@@ -844,7 +837,7 @@ namespace cubthread
   }
 
   template <typename Context>
-  bool
+  void
   worker_pool<Context>::core::execute_task (task_type *task_p)
   {
     assert (task_p != NULL);
@@ -869,9 +862,9 @@ namespace cubthread
 
 	// push task on current worker
 	refp->push_task_on_running_thread (task_p, push_time);
-	return true; // worker found
+	return;
       }
-    else if (!m_inactive_list.empty ())
+    if (!m_inactive_list.empty ())
       {
 	// found free inactive; remove from list
 	refp = m_inactive_list.front ();
@@ -881,33 +874,54 @@ namespace cubthread
 
 	// start new thread
 	refp->push_task_on_new_thread (task_p, push_time);
-	return true; // worker found
+	return; // worker found
       }
 
-    // worker not found
-    return false;
+    // save to queue
+    m_task_queue.push (task_p);
   }
 
   template <typename Context>
-  void
+  typename worker_pool<Context>::core::task_type *
   worker_pool<Context>::core::add_worker_to_free_active_list (worker &worker_arg)
   {
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
 
+    if (!m_task_queue.empty ())
+      {
+	task_type *task_p = m_task_queue.front ();
+	assert (task_p != NULL);
+	m_task_queue.pop ();
+	return task_p;
+      }
+
     m_free_active_list.push_back (&worker_arg);
 
     assert (m_free_active_list.size () <= m_max_workers);
+    return NULL;
   }
 
   template <typename Context>
-  void
+  typename worker_pool<Context>::core::task_type *
   worker_pool<Context>::core::add_worker_to_inactive_list (worker &worker_arg)
   {
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
 
+    if (!m_task_queue.empty ())
+      {
+	// start new task
+	task_type *task_p = m_task_queue.front ();
+	m_task_queue.pop ();
+
+	ulock.unlock ();
+
+	return task_p;
+      }
+
     m_inactive_list.push_front (&worker_arg);
 
     // assert (m_inactive_list.size () <= m_max_workers);  // forward_list has no size (); must be counted manually
+    return NULL;
   }
 
   template <typename Context>
@@ -1119,9 +1133,6 @@ namespace cubthread
     m_parent_core->retire_context (*m_context_p);
     m_context_p = NULL;
     m_statistics.collect_and_time (wpstat::id::RETIRE_CONTEXT, m_time_point);
-
-    // last thing to do is to add to inactive list
-    m_parent_core->add_worker_to_inactive_list (*this);
   }
 
   template <typename Context>
@@ -1163,15 +1174,8 @@ namespace cubthread
 	return false;
       }
 
-    // first try to get task from queue
-    m_task_p = m_parent_core->get_task ();
-    m_statistics.collect_and_time (wpstat::id::SEARCH_TASK_IN_QUEUE, m_time_point);
-
-    if (m_task_p == NULL)
-      {
-	// no task in queue. maybe a new one will be available soon
-	wait_for_task ();
-      }
+    // no task in queue. maybe a new one will be available soon
+    wait_for_task ();
 
     if (m_task_p != NULL)
       {
@@ -1196,7 +1200,14 @@ namespace cubthread
     // todo: consider checking m_task_p before waiting.
 
     // notify parent core I am free
-    m_parent_core->add_worker_to_free_active_list (*this);
+    task_type *task_p = m_parent_core->add_worker_to_free_active_list (*this);
+    if (task_p != NULL)
+      {
+	m_statistics.collect_and_time (wpstat::id::SEARCH_TASK_IN_QUEUE, m_time_point);
+	// it is safe to set here
+	m_task_p = task_p;
+	return;
+      }
 
     // wait for task
     std::unique_lock<std::mutex> ulock (m_task_mutex);
@@ -1255,16 +1266,31 @@ namespace cubthread
   void
   worker_pool<Context>::core::worker::run (void)
   {
-    init_run ();    // do stuff at the beginning like creating context
-
-    // loop and execute as many tasks as possible
+    task_type *task_p = NULL;
     do
       {
-	execute_current_task ();
-      }
-    while (get_new_task ());
+	init_run ();    // do stuff at the beginning like creating context
 
-    finish_run ();    // do stuff on end like retiring context
+	// loop and execute as many tasks as possible
+	do
+	  {
+	    execute_current_task ();
+	  }
+	while (get_new_task ());
+
+	finish_run ();    // do stuff on end like retiring context
+
+	// last thing to do is to add to inactive list; we may find a new task still and restart the execution loop
+	task_p = m_parent_core->add_worker_to_inactive_list (*this);
+	if (task_p == NULL)
+	  {
+	    break;
+	  }
+
+	// it is safe to set here
+	m_task_p = task_p;
+      }
+    while (true);
   }
 
   template <typename Context>

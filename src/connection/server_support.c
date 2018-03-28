@@ -3367,7 +3367,14 @@ xacl_reload (THREAD_ENTRY * thread_p)
 static void
 css_push_server_task (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
 {
-  THREAD_GET_MANAGER ()->push_task (thread_ref, css_Server_request_worker_pool, new css_server_task (conn_ref));
+  // push the task
+  //
+  // note: cores are partitioned by connection index. this is particularly important in order to avoid having tasks
+  //       randomly pushed to cores that are full. some of those tasks may belong to threads holding locks. as a
+  //       consequence, lock waiters may wait longer or even indefinitely if we are really unlucky.
+  //
+  THREAD_GET_MANAGER ()->push_task_on_core (thread_ref, css_Server_request_worker_pool,
+                                            new css_server_task (conn_ref), static_cast<size_t> (conn_ref.idx));
 }
 
 void
