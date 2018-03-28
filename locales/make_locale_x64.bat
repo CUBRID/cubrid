@@ -72,13 +72,25 @@ if "%BUILD_MODE%" == "." set BUILD_MODE=release
 @echo. Searching for Visual Studio installs...
 
 @rem 1. search Visual Studio installation (from newest to oldest)
+@echo checking Visual Studio 2017 v150... VS150COMNTOOLS = "%VS150COMNTOOLS%"
+if defined VS150COMNTOOLS (
+    @echo. Found installation for Visual Studio 2017 150: "%VS150COMNTOOLS%"
+    if exist "%VS150COMNTOOLS%VsDevCmd.bat" (
+        echo Found %BUILD_TARGET% configuration in Visual Studio 2017_150 Community.
+        @echo call "%VS150COMNTOOLS%VsDevCmd.bat" -arch=amd64
+        call "%VS150COMNTOOLS%VsDevCmd.bat" -arch=amd64
+        goto :BUILD
+    )
+    @rem it should be done similar for Professional and Enterprise editions (like for VS2017v140) but I have access to none of them to be sure about the paths
+    @rem configuration for this VS version didn't work, try older VS versions...
+)
 @echo checking Visual Studio 2017 v150... VS150COMCOMNTOOLS = "%VS150COMCOMNTOOLS%"
 if defined VS150COMCOMNTOOLS (
     @echo. Found installation for Visual Studio 2017 150: "%VS150COMCOMNTOOLS%"
-    set VS2017_ARCH=-arch=amd64
     if exist "%VS150COMCOMNTOOLS%VsDevCmd.bat" (
         echo Found %BUILD_TARGET% configuration in Visual Studio 2017_150 Community.
-        call "%VS150COMCOMNTOOLS%VsDevCmd.bat" %VS2017_ARCH%
+        @echo call "%VS150COMCOMNTOOLS%VsDevCmd.bat" -arch=amd64
+        call "%VS150COMCOMNTOOLS%VsDevCmd.bat" -arch=amd64
         goto :BUILD
     )
     @rem it should be done similar for Professional and Enterprise editions (like for VS2017v140) but I have access to none of them to be sure about the paths
@@ -87,23 +99,24 @@ if defined VS150COMCOMNTOOLS (
 @echo checking Visual Studio 2017 v140... VS140COMNTOOLS = "%VS140COMNTOOLS%"
 if defined VS140COMNTOOLS (
     @echo. Found installation for Visual Studio 2017 v140: "%VS140COMNTOOLS%"
-    set VS2017_ARCH=-arch=amd64
-    @echo checking "%VS140COMNTOOLS%..\..\..\..\2017\Community\Common7\Tools\VsDevCmd.bat"
-    if exist "%VS140COMNTOOLS%..\..\..\..\2017\Community\Common7\Tools\VsDevCmd.bat" (
+    @echo checking "%VS140COMNTOOLS%VsDevCmd.bat"
+    if exist "%VS140COMNTOOLS%VsDevCmd.bat" (
         echo Found %BUILD_TARGET% configuration in Visual Studio 2017 Community.
-        call "%VS140COMNTOOLS%..\..\..\..\2017\Community\Common7\Tools\VsDevCmd.bat" %VS2017_ARCH%
+        call "%VS140COMNTOOLS%VsDevCmd.bat" -arch=amd64
         goto :BUILD
     )
-    @echo checking "%VS140COMNTOOLS%..\..\..\..\2017\Professional\Common7\Tools\VsDevCmd.bat"
-    if exist "%VS140COMNTOOLS%..\..\..\..\2017\Professional\Common7\Tools\VsDevCmd.bat" (
+    @echo checking "%VS140COMNTOOLS%VsDevCmd.bat"
+    if exist "%VS140COMNTOOLS%VsDevCmd.bat" (
         echo Found %BUILD_TARGET% configuration in Visual Studio 2017 Professional.
-        call "%VS140COMNTOOLS%..\..\..\..\2017\Professional\Common7\Tools\VsDevCmd.bat" %VS2017_ARCH%
+        @echo call "%VS140COMNTOOLS%VsDevCmd.bat" -arch=amd64
+        call "%VS140COMNTOOLS%VsDevCmd.bat" -arch=amd64
         goto :BUILD
     )
-    @echo checking "%VS140COMNTOOLS%..\..\..\..\2017\Enterprise\Common7\Tools\VsDevCmd.bat"
-    if exist "%VS140COMNTOOLS%..\..\..\..\2017\Enterprise\Common7\Tools\VsDevCmd.bat" (
+    @echo checking "%VS140COMNTOOLS%VsDevCmd.bat"
+    if exist "%VS140COMNTOOLS%VsDevCmd.bat" (
         echo Found %BUILD_TARGET% configuration in Visual Studio 2017 Enterprise.
-        call "%VS140COMNTOOLS%..\..\..\..\2017\Enterprise\Common7\Tools\VsDevCmd.bat" %VS2017_ARCH%
+        @echo call "%VS140COMNTOOLS%VsDevCmd.bat" -arch=amd64
+        call "%VS140COMNTOOLS%VsDevCmd.bat" -arch=amd64
         goto :BUILD
     )
     @rem configuration for this VS version didn't work, try older VS versions...
@@ -114,6 +127,7 @@ if defined VS100COMNTOOLS (
     @echo checking "%VS100COMNTOOLS%..\..\VC\%VCVARS%"
     if exist "%VS100COMNTOOLS%..\..\VC\%VCVARS%" (
         echo Found %BUILD_TARGET% configuration in Visual Studio 2010.
+        @echo call "%VS100COMNTOOLS%..\..\VC\%VCVARS%"
         call "%VS100COMNTOOLS%..\..\VC\%VCVARS%"
         goto :BUILD
     )
@@ -125,6 +139,7 @@ if defined VS90COMNTOOLS (
     @echo checking "%VS90COMNTOOLS%..\..\VC\%VCVARS%"
     if exist "%VS90COMNTOOLS%..\..\VC\%VCVARS%" (
         @echo. Found %BUILD_TARGET% configuration in Visual Studio 2008.
+        @echo call "%VS90COMNTOOLS%..\..\VC\%VCVARS%"
         call "%VS90COMNTOOLS%..\..\VC\%VCVARS%"
         goto :BUILD
     )
@@ -136,6 +151,7 @@ if defined VS80COMNTOOLS (
     @echo checking "%VS80COMNTOOLS%..\..\VC\%VCVARS%"
     if exist "%VS80COMNTOOLS%..\..\VC\%VCVARS%" (
         echo Found %BUILD_TARGET% configuration in Visual Studio 2005.
+        @echo call "%VS80COMNTOOLS%..\..\VC\%VCVARS%"
         call "%VS80COMNTOOLS%..\..\VC\%VCVARS%"
         goto :BUILD
     )
@@ -153,15 +169,19 @@ goto :ENV_ERROR
 @echo. 
 
 @echo. Generating locale C file for %SELECTED_LOCALE% ...
+@echo cubrid genlocale %LOCALE_PARAM%
 cubrid genlocale %LOCALE_PARAM%
 
 if %ERRORLEVEL% NEQ 0 goto :ERROR_GENLOCALE
 
-echo Compiling locale library ...
+echo Compiling locale library ... using:
+@where cl.exe
+@where link.exe
 
 mkdir %CUBRID%\locales\loclib\Output
 set CURRENT_DIR=%CD%
 cd /D %CUBRID%\locales\loclib
+@echo nmake -f makefile %BUILD_MODE%
 nmake -f makefile %BUILD_MODE%
 echo Done.
 cd /D %CURRENT_DIR%
