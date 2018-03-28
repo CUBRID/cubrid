@@ -73,7 +73,7 @@ if "%BUILD_MODE%" == "." set BUILD_MODE=release
 
 @rem 1. search Visual Studio installation (from newest to oldest)
 @echo checking Visual Studio 2017 v150... VS150COMCOMNTOOLS = "%VS150COMCOMNTOOLS%"
-if NOT "%VS150COMCOMNTOOLS%"=="" (
+if defined VS150COMCOMNTOOLS (
     @echo. Found installation for Visual Studio 2017 150: "%VS150COMCOMNTOOLS%"
     set VS2017_ARCH=-arch=amd64
     if exist "%VS150COMCOMNTOOLS%VsDevCmd.bat" (
@@ -85,7 +85,7 @@ if NOT "%VS150COMCOMNTOOLS%"=="" (
     @rem configuration for this VS version didn't work, try older VS versions...
 )
 @echo checking Visual Studio 2017 v140... VS140COMNTOOLS = "%VS140COMNTOOLS%"
-if NOT "%VS140COMNTOOLS%"=="" (
+if defined VS140COMNTOOLS (
     @echo. Found installation for Visual Studio 2017 v140: "%VS140COMNTOOLS%"
     set VS2017_ARCH=-arch=amd64
     @echo checking "%VS140COMNTOOLS%..\..\..\..\2017\Community\Common7\Tools\VsDevCmd.bat"
@@ -109,7 +109,7 @@ if NOT "%VS140COMNTOOLS%"=="" (
     @rem configuration for this VS version didn't work, try older VS versions...
 )
 @echo checking Visual Studio 2010... VS100COMNTOOLS = "%VS100COMNTOOLS%"
-if NOT "%VS100COMNTOOLS%"=="" (
+if defined VS100COMNTOOLS (
     @echo. Found installation for Visual Studio 2010
     @echo checking "%VS100COMNTOOLS%..\..\VC\%VCVARS%"
     if exist "%VS100COMNTOOLS%..\..\VC\%VCVARS%" (
@@ -120,7 +120,7 @@ if NOT "%VS100COMNTOOLS%"=="" (
     @rem configuration for this VS version didn't work, try older VS versions...
 )
 @echo checking Visual Studio 2008... VS90COMNTOOLS = "%VS90COMNTOOLS%"
-if NOT "%VS90COMNTOOLS%"=="" (
+if defined VS90COMNTOOLS (
     @echo. Found installation for Visual Studio 2008
     @echo checking "%VS90COMNTOOLS%..\..\VC\%VCVARS%"
     if exist "%VS90COMNTOOLS%..\..\VC\%VCVARS%" (
@@ -131,7 +131,7 @@ if NOT "%VS90COMNTOOLS%"=="" (
     @rem configuration for this VS version didn't work, try older VS versions...
 )
 @echo checking Visual Studio 2005... VS80COMNTOOLS = "%VS80COMNTOOLS%"
-if NOT "%VS80COMNTOOLS%"=="" (
+if defined VS80COMNTOOLS (
     @echo. Found installation for Visual Studio 2005
     @echo checking "%VS80COMNTOOLS%..\..\VC\%VCVARS%"
     if exist "%VS80COMNTOOLS%..\..\VC\%VCVARS%" (
