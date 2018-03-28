@@ -111,7 +111,7 @@ namespace cubthread
       // create a entry_workpool with pool_size number of threads
       // notes: if there are not pool_size number of entries available, worker pool is not created and NULL is returned
       //        signature emulates worker_pool constructor signature
-      entry_workpool *create_worker_pool (std::size_t pool_size, std::size_t work_queue_size,
+      entry_workpool *create_worker_pool (std::size_t pool_size, std::size_t task_max_count,
 					  entry_manager *context_manager, std::size_t core_count,
 					  bool debug_logging);
 
