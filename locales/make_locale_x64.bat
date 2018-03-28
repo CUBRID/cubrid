@@ -72,7 +72,7 @@ if "%BUILD_MODE%" == "." set BUILD_MODE=release
 @echo. Searching for Visual Studio installs...
 
 @rem 1. search Visual Studio installation (from newest to oldest)
-@echo checking Visual Studio 2017 v150... VS150COMNTOOLS = "%VS150COMCOMNTOOLS%"
+@echo checking Visual Studio 2017 v150... VS150COMNTOOLS = "%VS150COMNTOOLS%"
 if defined VS150COMNTOOLS (
     @echo. Found installation for Visual Studio 2017 150: "%VS150COMNTOOLS%"
     if exist "%VS150COMNTOOLS%VsDevCmd.bat" (
