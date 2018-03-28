@@ -17,6 +17,7 @@ REM  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 US
 
 
 set APP_NAME=%0
+echo %APP_NAME%
 
 set BUILD_TARGET=x64
 set BUILD_MODE=.
@@ -81,7 +82,7 @@ if NOT "%VS150COMCOMNTOOLS%"=="" (
         goto :BUILD
     )
     @rem it should be done similar for Professional and Enterprise editions (like for VS2017v140) but I have access to none of them to be sure about the paths
-    goto :ENV_ERROR
+    @rem configuration for this VS version didn't work, try older VS versions...
 )
 @echo checking Visual Studio 2017 v140... VS140COMNTOOLS = "%VS140COMNTOOLS%"
 if NOT "%VS140COMNTOOLS%"=="" (
@@ -105,7 +106,7 @@ if NOT "%VS140COMNTOOLS%"=="" (
         call "%VS140COMNTOOLS%..\..\..\..\2017\Enterprise\Common7\Tools\VsDevCmd.bat" %VS2017_ARCH%
         goto :BUILD
     )
-    goto :ENV_ERROR
+    @rem configuration for this VS version didn't work, try older VS versions...
 )
 @echo checking Visual Studio 2010... VS100COMNTOOLS = "%VS100COMNTOOLS%"
 if NOT "%VS100COMNTOOLS%"=="" (
@@ -116,7 +117,7 @@ if NOT "%VS100COMNTOOLS%"=="" (
         call "%VS100COMNTOOLS%..\..\VC\%VCVARS%"
         goto :BUILD
     )
-    goto :ENV_ERROR
+    @rem configuration for this VS version didn't work, try older VS versions...
 )
 @echo checking Visual Studio 2008... VS90COMNTOOLS = "%VS90COMNTOOLS%"
 if NOT "%VS90COMNTOOLS%"=="" (
@@ -127,7 +128,7 @@ if NOT "%VS90COMNTOOLS%"=="" (
         call "%VS90COMNTOOLS%..\..\VC\%VCVARS%"
         goto :BUILD
     )
-    goto :ENV_ERROR
+    @rem configuration for this VS version didn't work, try older VS versions...
 )
 @echo checking Visual Studio 2005... VS80COMNTOOLS = "%VS80COMNTOOLS%"
 if NOT "%VS80COMNTOOLS%"=="" (
@@ -138,9 +139,9 @@ if NOT "%VS80COMNTOOLS%"=="" (
         call "%VS80COMNTOOLS%..\..\VC\%VCVARS%"
         goto :BUILD
     )
-    goto :ENV_ERROR
+    @rem configuration for this VS version didn't work, try older VS versions...
 )
-@echo. ERROR: no Visual Studio installation found
+@echo. ERROR: no valid Visual Studio installation found
 goto :ENV_ERROR
 
 @rem 2. build
