@@ -52,7 +52,9 @@ typedef enum
 class stream_handler
 {
 public:
-  virtual int handling_action (BUFFER_UNIT *ptr, size_t byte_count) = 0;
+  /* method for handling a chunk of stream, most obvious operations are read and write
+   * some handlers may choose to ignore some arguments */
+  virtual int handling_action (const stream_position pos, BUFFER_UNIT *ptr, size_t byte_count) = 0;
 };
 
 class stream_entry : public pinner
@@ -134,13 +136,18 @@ private:
   /* current stream position not allocated yet */
   stream_position m_append_position;
 
-  /* last stream position read */
-  stream_position m_read_position;
-
-  /* last position reported to be ready (filled) - can be discarded from stream */
+  /* last position reported to be ready (filled) by appenders; can be read by readers */
   stream_position m_last_reported_ready_pos;
 
-  stream_position m_max_buffered_position;
+  /* last stream position read
+   * in most scenarios, each reader provides its own read position,
+   * this is a shared "read position" usable only in single read scenarios */
+  stream_position m_read_position;
+
+  /* first and last positions of all currently mapped buffers; the range may have holes
+   * in it and also some ranges may be mapped by more than one buffer */
+  stream_position m_first_buffered_position;
+  stream_position m_last_buffered_position;
 
   /* size of all active buffers attached to this stream */
   size_t m_total_buffered_size;
@@ -150,12 +157,13 @@ private:
    * normal mode should not need this : all buffers are send to MRC_Manager to be send to slave */
   size_t trigger_flush_to_disk_size;
 
-  stream_handler *filled_stream_handler;
-  stream_handler *fetch_data_handler;
+  stream_handler *m_filled_stream_handler;
+  stream_handler *m_fetch_data_handler;
+  stream_handler *m_ready_pos_handler;
 
 protected:
   int create_buffer_context (packing_stream_buffer *new_buffer, const STREAM_MODE stream_mode,
-                             const stream_position &first_pos, const stream_position &last_allocated_pos,
+                             const stream_position &first_pos, const stream_position &last_pos,
                              const size_t &buffer_start_offset, buffer_context **granted_range);
 
   int add_buffer_context (packing_stream_buffer *new_buffer, const STREAM_MODE stream_mode,
@@ -164,12 +172,13 @@ protected:
 
   int remove_buffer_mapping (const STREAM_MODE stream_mode, buffer_context &mapped_range);
 
-  BUFFER_UNIT * fetch_data_from_provider (buffer_provider *context_provider, BUFFER_UNIT *ptr, const size_t &amount);
+  BUFFER_UNIT * fetch_data_from_provider (buffer_provider *context_provider, const stream_position pos, 
+                                          BUFFER_UNIT *ptr, const size_t &amount);
 
   stream_position reserve_no_buffer (const size_t amount);
 
 public:
-  packing_stream (const buffer_provider *my_provider);
+  packing_stream (const buffer_provider *my_provider = NULL);
 
   int init (const stream_position &start_position = 0);
 
@@ -199,8 +208,9 @@ public:
 
   stream_position &get_curr_read_position (void) { return m_read_position; };
 
-  void set_filled_stream_handler (stream_handler * handler) { filled_stream_handler = handler; };
-  void set_fetch_data_handler (stream_handler * handler) { fetch_data_handler = handler; };
+  void set_filled_stream_handler (stream_handler * handler) { m_filled_stream_handler = handler; };
+  void set_fetch_data_handler (stream_handler * handler) { m_fetch_data_handler = handler; };
+  void set_ready_pos_handler (stream_handler * handler) { m_ready_pos_handler = handler; };
 };
 
 #endif /* _PACKING_STREAM_HPP_ */

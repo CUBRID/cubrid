@@ -51,6 +51,7 @@ public:
   /* range of stream position reserved */
   stream_position first_pos;
   stream_position last_pos;
+  /* allocated position (the amount up to which last_pos can grow) */
   stream_position last_allocated_pos;
   packing_stream_buffer *mapped_buffer;
   size_t written_bytes;

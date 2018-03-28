@@ -33,6 +33,7 @@ option (UNIT_TEST_LOCKFREE "Unit testing: lockfree module")
 option (UNIT_TEST_THREAD "Unit testing: thread module")
 option (UNIT_TEST_REPLICATION "Unit testing: replication")
 option (UNIT_TEST_PACKING "Unit testing: packing")
+option (UNIT_TEST_STREAM "Unit testing: stream")
 option (UNIT_TEST_COMM_CHN "Unit testing: communication channel module")
 
 
@@ -72,6 +73,11 @@ if (UNIT_TESTS OR UNIT_TEST_PACKING)
   message("    packing")
   add_subdirectory(packing)
 endif(UNIT_TESTS OR UNIT_TEST_PACKING)
+
+if (UNIT_TESTS OR UNIT_TEST_STREAM)
+  message("    stream")
+  add_subdirectory(stream)
+endif(UNIT_TESTS OR UNIT_TEST_STREAM)
 
 if (UNIT_TESTS OR UNIT_TEST_COMM_CHN)
   message("    communication_channel")

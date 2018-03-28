@@ -82,7 +82,7 @@ public:
   
   packing_stream * get_write_stream (void);
 
-  int handling_action (BUFFER_UNIT *ptr, size_t byte_count) { return fetch_data (ptr, byte_count); };
+  int handling_action (const stream_position pos, BUFFER_UNIT *ptr, size_t byte_count) { return fetch_data (ptr, byte_count); };
 };
 
 #endif /* _LOG_CONSUMER_HPP_ */

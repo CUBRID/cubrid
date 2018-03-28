@@ -15,45 +15,45 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-project (test_packing)
+project (test_stream)
 
-set (TEST_PACKING_SRC
+set (TEST_STREAM_SRC
   test_main.cpp
-  test_packing.cpp
+  test_stream.cpp
   )
-set (TEST_PACKING_H
-  test_packing.hpp
+set (TEST_STREAM_H
+  test_stream.hpp
   )
 SET_SOURCE_FILES_PROPERTIES(
-  ${TEST_PACKING_SRC}
+  ${TEST_STREAM_SRC}
   PROPERTIES LANGUAGE CXX
   )
 
-add_executable(test_packing
-  ${TEST_PACKING_SRC}
-  ${TEST_PACKING_H}
+add_executable(test_stream
+  ${TEST_STREAM_SRC}
+  ${TEST_STREAM_H}
   )
 
-target_compile_definitions(test_packing PRIVATE
+target_compile_definitions(test_stream PRIVATE
   SERVER_MODE
   ${COMMON_DEFS}
   )
 
-target_include_directories(test_packing PRIVATE
+target_include_directories(test_stream PRIVATE
   ${TEST_INCLUDES}
   )
 
-target_link_libraries(test_packing PRIVATE
+target_link_libraries(test_stream PRIVATE
   test_common
   )
 if(UNIX)
-  target_link_libraries(test_packing PRIVATE
+  target_link_libraries(test_stream PRIVATE
     cubrid
     )
 elseif(WIN32)
-	target_link_libraries(test_packing PRIVATE
+	target_link_libraries(test_stream PRIVATE
     cubrid-win-lib
     )
 else()
-  message( SEND_ERROR "Packing unit testing is for unix/windows")
+  message( SEND_ERROR "Stream unit testing is for unix/windows")
 endif ()

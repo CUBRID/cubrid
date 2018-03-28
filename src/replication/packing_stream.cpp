@@ -184,7 +184,8 @@ packing_stream::packing_stream (const buffer_provider *my_provider)
       m_buffer_provider = (buffer_provider *) my_provider;
     }
   m_last_reported_ready_pos = 0;
-  m_max_buffered_position = 0;
+  m_last_buffered_position = 0;
+  m_first_buffered_position = 0;
   m_total_buffered_size = 0;
   m_read_position = 0;
 
@@ -193,6 +194,9 @@ packing_stream::packing_stream (const buffer_provider *my_provider)
 
   set_filled_stream_handler (NULL);
   set_fetch_data_handler (NULL);
+  set_ready_pos_handler (NULL);
+
+  init (0);
 }
 
 int packing_stream::init (const stream_position &start_position)
@@ -207,6 +211,7 @@ int packing_stream::write (const size_t &byte_count, stream_handler *handler)
   int err = NO_ERROR;
   buffer_context *range = NULL;
   BUFFER_UNIT *ptr;
+  stream_position new_completed_position;
 
   ptr = reserve_with_buffer (byte_count, m_buffer_provider, &range);
   if (ptr == NULL )
@@ -215,7 +220,23 @@ int packing_stream::write (const size_t &byte_count, stream_handler *handler)
       return err;
     }
 
-  err = handler->handling_action (ptr, byte_count);
+  err = handler->handling_action (range->first_pos, ptr, byte_count);
+
+  new_completed_position = range->first_pos + byte_count;
+
+  if (new_completed_position > m_last_reported_ready_pos)
+    {
+      if (m_ready_pos_handler != NULL)
+        {
+          err = m_ready_pos_handler->handling_action (m_last_reported_ready_pos, NULL,
+                                                      new_completed_position - m_last_reported_ready_pos);
+          if (err != NO_ERROR)
+            {
+              return err;
+            }
+        }
+      m_last_reported_ready_pos = new_completed_position;
+    }
 
   return err;
 }
@@ -234,13 +255,13 @@ int packing_stream::read (const stream_position &first_pos, const size_t &byte_c
       return err;
     }
 
-  err = handler->handling_action (ptr, byte_count);
+  err = handler->handling_action (first_pos, ptr, byte_count);
 
   return err;
 }
 
 int packing_stream::create_buffer_context (packing_stream_buffer *new_buffer, const STREAM_MODE stream_mode,
-                                           const stream_position &first_pos, const stream_position &last_allocated_pos,
+                                           const stream_position &first_pos, const stream_position &last_pos,
                                            const size_t &buffer_start_offset, buffer_context **granted_range)
 {
   buffer_context mapped_range;
@@ -248,8 +269,8 @@ int packing_stream::create_buffer_context (packing_stream_buffer *new_buffer, co
 
   mapped_range.mapped_buffer = new_buffer;
   mapped_range.first_pos = first_pos;
-  mapped_range.last_pos = first_pos;
-  mapped_range.last_allocated_pos= last_allocated_pos;
+  mapped_range.last_pos = last_pos;
+  mapped_range.last_allocated_pos = first_pos + new_buffer->get_buffer_size ();
   mapped_range.written_bytes = 0;
 
   m_buffered_ranges.push_back (mapped_range);
@@ -259,14 +280,19 @@ int packing_stream::create_buffer_context (packing_stream_buffer *new_buffer, co
       *granted_range = &(m_buffered_ranges.back());
     }
 
-  if (last_allocated_pos > m_max_buffered_position)
+  if (first_pos < m_first_buffered_position)
     {
-      m_max_buffered_position = last_allocated_pos;
+      m_first_buffered_position = first_pos;
     }
 
-  m_total_buffered_size += last_allocated_pos - first_pos;
+  if (mapped_range.last_allocated_pos > m_last_buffered_position)
+    {
+      m_last_buffered_position = mapped_range.last_allocated_pos;
+    }
 
-  error_code = new_buffer->attach_stream (this, stream_mode, first_pos, last_allocated_pos, buffer_start_offset);
+  m_total_buffered_size += mapped_range.last_allocated_pos - first_pos;
+
+  error_code = new_buffer->attach_stream (this, stream_mode, first_pos, mapped_range.last_allocated_pos, buffer_start_offset);
 
   return error_code;
 }
@@ -290,9 +316,14 @@ int packing_stream::add_buffer_context (packing_stream_buffer *new_buffer, const
       *granted_range = &(m_buffered_ranges.back());
     }
 
-  if (last_pos > m_max_buffered_position)
+  if (first_pos < m_first_buffered_position)
     {
-      m_max_buffered_position = last_pos;
+      m_first_buffered_position = first_pos;
+    }
+
+  if (last_pos > m_last_buffered_position)
+    {
+      m_last_buffered_position = last_pos;
     }
 
   m_total_buffered_size += last_pos - first_pos;
@@ -329,8 +360,14 @@ int packing_stream::remove_buffer_mapping (const STREAM_MODE stream_mode, buffer
 int packing_stream::update_contiguous_filled_pos (const stream_position &filled_pos)
 {
   int i;
-  stream_position min_completed_position = MIN (filled_pos, m_max_buffered_position);
+  stream_position min_completed_position = MIN (filled_pos, m_last_buffered_position);
   int error_code = NO_ERROR;
+
+  if (m_last_reported_ready_pos > min_completed_position)
+    {
+      /* already higher then new position */
+      return error_code;
+    }
 
   /* parse all mapped ranges and get the minimum start position among all incomplete
    * ranges; we start from a max buffered position (last position of of most recent range)
@@ -346,10 +383,18 @@ int packing_stream::update_contiguous_filled_pos (const stream_position &filled_
 
   if (min_completed_position > m_last_reported_ready_pos)
     {
+      /* signal the ready position handler there is new data available */
+      if (m_ready_pos_handler != NULL)
+        {
+          error_code = m_ready_pos_handler->handling_action (m_last_reported_ready_pos, NULL,
+                                                             min_completed_position - m_last_reported_ready_pos);
+          if (error_code != NO_ERROR)
+            {
+              return error_code;
+            }
+        }
+
       m_last_reported_ready_pos = min_completed_position;
-      /* signal master_replication_channel that this position is ready to be send */
-      /* TODO[arnia] */
-      /* mrc_manager->ready_position (m_last_reported_ready_pos); */
     }
 
   return error_code;
@@ -415,10 +460,10 @@ BUFFER_UNIT * packing_stream::reserve_with_buffer (const size_t amount, const bu
         }
     }
 
-  if (filled_stream_handler != NULL
+  if (m_filled_stream_handler != NULL
       && m_total_buffered_size + amount > trigger_flush_to_disk_size)
     {
-      filled_stream_handler->handling_action (NULL, 0);
+      m_filled_stream_handler->handling_action (0, NULL, 0);
     }
   
   return acquire_new_write_buffer (curr_buffer_provider, start_pos, amount, granted_range);
@@ -485,23 +530,21 @@ int packing_stream::attach_buffers (std::vector <buffer_context> &buffered_range
   return error_code;
 }
 
-BUFFER_UNIT * packing_stream::fetch_data_from_provider (buffer_provider *context_provider, BUFFER_UNIT *ptr,
-                                                        const size_t &amount)
+BUFFER_UNIT * packing_stream::fetch_data_from_provider (buffer_provider *context_provider, const stream_position pos,
+                                                        BUFFER_UNIT *ptr, const size_t &amount)
 {
   int err = NO_ERROR;
 
-  if (fetch_data_handler == NULL)
+  if (m_fetch_data_handler == NULL)
     {
       return NULL;
     }
 
-  err = fetch_data_handler->handling_action (ptr, amount);
+  err = m_fetch_data_handler->handling_action (pos, ptr, amount);
   if (err != NO_ERROR)
     {
       return NULL;
     }
-
-  m_read_position += amount;
 
   return ptr;
 }
@@ -548,7 +591,7 @@ BUFFER_UNIT * packing_stream::get_more_data_with_buffer (const size_t amount, co
           *granted_range = &(m_buffered_ranges[i]);
           ptr = m_buffered_ranges[i].extend_range (amount);
 
-          return fetch_data_from_provider (curr_buffer_provider, ptr, amount);
+          return fetch_data_from_provider (curr_buffer_provider, start_pos, ptr, amount);
         }
       else if (m_buffered_ranges[i].last_allocated_pos == start_pos)
         {
@@ -561,19 +604,19 @@ BUFFER_UNIT * packing_stream::get_more_data_with_buffer (const size_t amount, co
             {
               return NULL;
             }
-          return fetch_data_from_provider (curr_buffer_provider, ptr, amount);
+          return fetch_data_from_provider (curr_buffer_provider, start_pos, ptr, amount);
         }
     }
 
-  if (filled_stream_handler != NULL
+  if (m_filled_stream_handler != NULL
       && m_total_buffered_size + amount > trigger_flush_to_disk_size)
     {
-      filled_stream_handler->handling_action (NULL, 0);
+      m_filled_stream_handler->handling_action (0, NULL, 0);
     }
   
   ptr = acquire_new_write_buffer (curr_buffer_provider, start_pos, amount, granted_range);
 
-  return fetch_data_from_provider (curr_buffer_provider, ptr, amount);
+  return fetch_data_from_provider (curr_buffer_provider, start_pos, ptr, amount);
 }
 
 BUFFER_UNIT * packing_stream::get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
@@ -586,9 +629,17 @@ BUFFER_UNIT * packing_stream::get_data_from_pos (const stream_position &req_star
   buffer_provider *curr_buffer_provider;
   BUFFER_UNIT *ptr;
 
-  if (req_start_pos + amount <= m_read_position)
+  if (req_start_pos + amount > m_last_reported_ready_pos)
     {
-      /* already fetched */
+      /* not yet produced */
+      /* TODO[arnia] : set error in buffer_context ? */
+      return NULL;
+    }
+
+  if (req_start_pos >= m_first_buffered_position
+      && req_start_pos + amount <= m_last_buffered_position)
+    {
+      /* there is a chance it is already fetched */
       for (i = 0; i < m_buffered_ranges.size(); i++)
         {
           if (m_buffered_ranges[i].is_range_mapped (req_start_pos, amount))
@@ -618,7 +669,7 @@ BUFFER_UNIT * packing_stream::get_data_from_pos (const stream_position &req_star
           *granted_range = &(m_buffered_ranges[i]);
           ptr = m_buffered_ranges[i].extend_range (amount);
 
-          return fetch_data_from_provider (curr_buffer_provider, ptr, amount);
+          return fetch_data_from_provider (curr_buffer_provider, start_pos, ptr, amount);
         }
       else if (m_buffered_ranges[i].last_allocated_pos == start_pos)
         {
@@ -631,17 +682,17 @@ BUFFER_UNIT * packing_stream::get_data_from_pos (const stream_position &req_star
             {
               return NULL;
             }
-          return fetch_data_from_provider (curr_buffer_provider, ptr, amount);
+          return fetch_data_from_provider (curr_buffer_provider, start_pos, ptr, amount);
         }
     }
 
-  if (filled_stream_handler != NULL
+  if (m_filled_stream_handler != NULL
       && m_total_buffered_size + amount > trigger_flush_to_disk_size)
     {
-      filled_stream_handler->handling_action (NULL, 0);
+      m_filled_stream_handler->handling_action (0, NULL, 0);
     }
   
   ptr = acquire_new_write_buffer (curr_buffer_provider, start_pos, amount, granted_range);
 
-  return fetch_data_from_provider (curr_buffer_provider, ptr, amount);
+  return fetch_data_from_provider (curr_buffer_provider, start_pos, ptr, amount);
 }

@@ -81,7 +81,7 @@ public:
 
   static log_generator *new_instance (THREAD_ENTRY *th_entry, const stream_position &start_position);
 
-  int handling_action (BUFFER_UNIT *ptr, size_t byte_count) { return flush_old_stream_data (); };
+  int handling_action (const stream_position pos, BUFFER_UNIT *ptr, size_t byte_count) { return flush_old_stream_data (); };
   int flush_old_stream_data (void);
 
   packing_stream * get_write_stream (void) { return stream; };
