@@ -59,7 +59,7 @@ namespace cubthread
   //    in high-loads, thread context is shared between task
   //
   // how to use
-  //    // note that worker_pool is must be specialized with a thread context
+  //    // note that worker_pool must be specialized with a thread context
   //
   //    // define the thread context; for CUBRID, that is usually cubthread::entry
   //    class custom_context { ... };
@@ -166,7 +166,7 @@ namespace cubthread
       // map functions over all running contexts
       //
       // WARNING:
-      //    this is a dangerous functionality. please not that context retirement and mapping function is not
+      //    this is a dangerous functionality. please note that context retirement and mapping function is not
       //    synchronized. mapped context may be retired or in process of retirement.
       //
       //    make sure your case is handled properly
@@ -439,7 +439,7 @@ namespace cubthread
 
       // synchronization on task wait
       std::condition_variable m_task_cv;      // condition variable used to notify when a task is assigned or when
-      // worker is stopped
+					      // worker is stopped
       std::mutex m_task_mutex;                // mutex to protect waiting task condition
       bool m_stop;                            // stop execution (set to true when worker pool is stopped)
 
@@ -480,19 +480,24 @@ namespace cubthread
   {
     // initialize cores; we'll try to distribute pool evenly to all cores. if core count is not fully contained in
     // pool size, some cores will have one additional worker
+
     if (m_core_count == 0)
       {
 	assert (false);
 	m_core_count = 1;
       }
+
     if (m_core_count > pool_size)
       {
 	m_core_count = pool_size;
       }
+
     m_core_array = new core[m_core_count];
+
     std::size_t quotient = m_max_workers / m_core_count;
     std::size_t remainder = m_max_workers % m_core_count;
     std::size_t it = 0;
+
     for (; it < remainder; it++)
       {
 	m_core_array[it].init_pool_and_workers (*this, quotient + 1);
@@ -509,7 +514,9 @@ namespace cubthread
     // not safe to destroy running pools
     assert (m_stopped);
     assert (m_work_queue.is_empty ());
+
     delete [] m_core_array;
+    m_core_array = NULL;
   }
 
   template <typename Context>
@@ -520,13 +527,17 @@ namespace cubthread
       {
 	return false;
       }
+
     core &core_ref = get_next_core_for_execution ();
+
     if (core_ref.execute_task (work_arg))
       {
 	// task was pushed
 	return true;
       }
+
     THREAD_WP_LOG ("try_execute", "drop task = %p", work_arg);
+
     return false;
   }
 
@@ -535,6 +546,7 @@ namespace cubthread
   worker_pool<Context>::execute (task_type *work_arg)
   {
     core &core_ref = get_next_core_for_execution ();
+
     if (core_ref.execute_task (work_arg))
       {
 	// task was pushed
@@ -544,6 +556,7 @@ namespace cubthread
       {
 	// do not accept other new requests
 	assert (false);
+
 	work_arg->retire ();
 	return;
       }
@@ -551,6 +564,7 @@ namespace cubthread
       {
 	// failed to produce... this is really unfortunate (and unwanted)
 	assert (false);
+
 	m_work_queue.force_produce (work_arg);
       }
   }
@@ -577,6 +591,7 @@ namespace cubthread
     // loop until all workers are stopped or until timeout expires
     std::size_t stop_count = 0;
     auto timeout = std::chrono::system_clock::now () + time_wait_to_thread_stop;
+
     while (true)
       {
 	// notify all cores to stop
@@ -584,16 +599,19 @@ namespace cubthread
 	  {
 	    m_core_array[it].notify_stop ();
 	  }
+
 	// verify how many have stopped
 	for (std::size_t it = 0; it < m_core_count; it++)
 	  {
 	    m_core_array[it].count_stopped_workers (stop_count);
 	  }
+
 	if (stop_count == m_max_workers)
 	  {
 	    // all stopped
 	    break;
 	  }
+
 	if (std::chrono::system_clock::now () > timeout)
 	  {
 	    // timed out
@@ -607,9 +625,11 @@ namespace cubthread
 
     // retire all tasks that have not been executed; at this point, no new tasks are produced
     task_type *task = NULL;
+
     while (m_work_queue.consume (task))
       {
 	THREAD_WP_LOG ("stop", "retire without execution task = %p", task);
+
 	task->retire ();
       }
   }
@@ -622,7 +642,8 @@ namespace cubthread
   }
 
   template<typename Context>
-  inline bool worker_pool<Context>::is_full (void) const
+  inline bool
+  worker_pool<Context>::is_full (void) const
   {
     return m_work_queue.is_full ();
   }
@@ -675,20 +696,24 @@ namespace cubthread
     // get a core index atomically
     std::size_t index;
     std::size_t next_index;
+
     while (true)
       {
 	index = m_round_robin_counter;
+
 	next_index = index + 1;
 	if (next_index == m_max_workers)
 	  {
 	    next_index = 0;
 	  }
+
 	if (m_round_robin_counter.compare_exchange_strong (index, next_index))
 	  {
 	    // my index is found
 	    break;
 	  }
       }
+
     return m_core_array[index % m_core_count];
   }
 
@@ -700,6 +725,7 @@ namespace cubthread
   wpstat::collect (id statid, duration_type delta)
   {
     size_t index = to_index (statid);
+
     m_counters[index]++;
     m_timers[index] += delta.count ();
   }
@@ -714,6 +740,7 @@ namespace cubthread
   wpstat::collect_and_time (id statid, time_point_type &start)
   {
     time_point_type nowpt = clock_type::now ();
+
     collect (statid, nowpt - start);
     start = nowpt;    // reset time point
   }
@@ -728,6 +755,7 @@ namespace cubthread
   wpstat::to_id (std::size_t index)
   {
     assert (index < STATS_COUNT);
+
     return static_cast<id> (index);
   }
 
@@ -777,6 +805,7 @@ namespace cubthread
   worker_pool<Context>::core::~core ()
   {
     delete [] m_worker_array;
+    m_worker_array = NULL;
   }
 
   template <typename Context>
@@ -805,10 +834,12 @@ namespace cubthread
   {
     // get task from queue
     task_type *task_p = NULL;
+
     if (m_parent_pool->m_work_queue.consume (task_p))
       {
 	return task_p;
       }
+
     return NULL;
   }
 
@@ -827,11 +858,13 @@ namespace cubthread
     worker *refp = NULL;
 
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
+
     if (!m_free_active_list.empty ())
       {
 	// found free active; remove from list
 	refp = m_free_active_list.front ();
 	m_free_active_list.pop_front ();
+
 	ulock.unlock ();
 
 	// push task on current worker
@@ -843,6 +876,7 @@ namespace cubthread
 	// found free inactive; remove from list
 	refp = m_inactive_list.front ();
 	m_inactive_list.pop_front ();
+
 	ulock.unlock ();
 
 	// start new thread
@@ -859,7 +893,9 @@ namespace cubthread
   worker_pool<Context>::core::add_worker_to_free_active_list (worker &worker_arg)
   {
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
+
     m_free_active_list.push_back (&worker_arg);
+
     assert (m_free_active_list.size () <= m_max_workers);
   }
 
@@ -868,7 +904,9 @@ namespace cubthread
   worker_pool<Context>::core::add_worker_to_inactive_list (worker &worker_arg)
   {
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
+
     m_inactive_list.push_front (&worker_arg);
+
     // assert (m_inactive_list.size () <= m_max_workers);  // forward_list has no size (); must be counted manually
   }
 
@@ -877,10 +915,12 @@ namespace cubthread
   worker_pool<Context>::core::remove_worker_from_active_list (worker &worker_arg)
   {
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
+
     // we need to remove from active. this operation is slow. however, since we're here, it means thread timed out
     // waiting for task. system is not overloaded so it should not matter
     //
     // there is a very small window of opportunity when a task may be pushed right before removing worker from list.
+
     for (auto it = m_free_active_list.begin (); it != m_free_active_list.end (); ++it)
       {
 	if (*it == &worker_arg)
@@ -890,6 +930,7 @@ namespace cubthread
 	    return true;
 	  }
       }
+
     // not in the list
     return false;
   }
@@ -942,6 +983,7 @@ namespace cubthread
   worker_pool<Context>::core::count_stopped_workers (std::size_t &count_inout)
   {
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
+
     // claim all inactive workers as possible; this will guarantee those workers are stopped
     while (!m_inactive_list.empty ())
       {
@@ -1038,6 +1080,7 @@ namespace cubthread
   worker_pool<Context>::core::worker::stop_execution (void)
   {
     context_type *context_p = m_context_p;
+
     if (context_p != NULL)
       {
 	// notify context to stop
@@ -1048,6 +1091,7 @@ namespace cubthread
     std::unique_lock<std::mutex> ulock (m_task_mutex);
     m_stop = true;    // stop worker
     ulock.unlock ();    // mutex is not needed for notify
+
     m_task_cv.notify_one ();
   }
 
@@ -1236,6 +1280,7 @@ namespace cubthread
   worker_pool<Context>::core::worker::map_context (Func &&func, Args &&... args)
   {
     Context *ctxp = m_context_p;
+
     if (ctxp != NULL)
       {
 	func (*ctxp, args...);
