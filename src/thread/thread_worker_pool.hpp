@@ -25,7 +25,6 @@
 #define _THREAD_WORKER_POOL_HPP_
 
 #include "error_manager.h"
-#include "lockfree_circular_queue.hpp"
 #include "thread_task.hpp"
 
 #include <atomic>
@@ -54,9 +53,9 @@ namespace cubthread
   //
   //  description
   //    a pool of threads to execute tasks in parallel
-  //    for high-loads (more tasks than threads), stores tasks in a queue to be executed when a thread is freed.
-  //    for low-loads (fewer tasks than threads), retires thread when no new tasks are available and creates new threads
-  //      when tasks are added again
+  //    for high-loads (more tasks than threads), stores tasks in queues to be executed when a thread is freed.
+  //    for low-loads (fewer tasks than threads), retires thread when no new tasks are available and creates new
+  //      threads when tasks are added again
   //    in high-loads, thread context is shared between task
   //
   // how to use
@@ -92,32 +91,38 @@ namespace cubthread
   //    the worker pool can be partitioned into cores - a middle layer above a group of workers. this is an
   //    optimization for high-contention systems and only one core can be set if that's not the case.
   //
-  //    core manages its workers and tracks available resource - free active workers and inactive workers.
+  //    core manages a number of workers, tracks available resource - free active workers and inactive workers and
+  //    queues tasks that could not be executed immediately.
   //
-  //    workers start by being inactive (does not have a thread running). it starts a thread with its first task,
+  //    a worker starts by being inactive (does not have a thread running). it spawns a thread on its first task,
   //    becoming active, and stays active as long as it finds more tasks to execute.
   //
   //    This is how a new task is processed:
   //
-  //      1. Worker pool assigns the task to a core via round robin method. The core can then accept the task (if an
+  //      1. Worker pool assigns the task to a core via round robin method*. The core can then accept the task (if an
   //         available worker is found) or reject it. If task is rejected, then it is stored in a queue to be processed
-  //         later
+  //         later.
+  //         *round robin scheduling behavior may be overwritten by using execute_on_core instead of execute. it is
+  //         recommended to understand how cores and workers work before trying it.
+  //         sometimes however, if current tasks may be blocked until other incoming tasks are finished, a more careful
+  //         core management is required.
   //
   //      2. Core checks if a thread is available
   //          - first checks free active list
   //          - if no free active worker is found, it checks inactive list
   //          - if a worker is found, then it is assigned the task
-  //          - if no worker is found, task is rejected
+  //          - if no worker is found, task is saved in queue
   //
   //      3. Task is executed by worker in one of three ways:
-  //          1 worker was inactive and starts a new thread to execute the task
-  //            after it finishes its first task, it tries to find new ones:
-  //            2 first checks worker pool queue for any rejected tasks
-  //            3 if no task is found, it notifies parent core of its status (free and active) and waits for new task.
+  //          3.1. worker was inactive and starts a new thread to execute the task
+  //               after it finishes its first task, it tries to find new ones:
+  //          3.2. gets a queued task on its parent core
+  //          3.3. if there is no queue task, notifies core of its status (free and active) and waits for new task.
+  //          note: 3.2. and 3.3. together is an atomic operation (protected by mutex)
   //          Worker stops if waiting for new task times out (and becomes inactive).
   //
   //    NOTE: core class is private nested to worker pool and cannot be instantiated outside it.
-  //          also worker class is private nested to core class.
+  //          worker class is private nested to core class.
   //
   //  todo:
   //    [Optional] Define a way to stop worker pool, but to finish executing everything it has in queue.
@@ -134,12 +139,11 @@ namespace cubthread
 		   std::size_t core_count = 1, bool debug_logging = false);
       ~worker_pool ();
 
-      // try to execute task; executes only if there is an available thread; otherwise returns false
-      // note: when there are multiple cores, only one core is checked. if first try fails, try_execute also fails and
-      //       no other core is checked
+      // try to execute task; executes only if the maximum number of tasks is not reached.
+      // it return true when task is executed, false otherwise
       bool try_execute (task_type *work_arg);
 
-      // execute task; execution is guaranteed, even if job queue is full. debug will crash though
+      // execute task; execution is guaranteed, even if maximum number of tasks is reached.
       // read implementation in class comment for details
       void execute (task_type *work_arg);
       // execute on give core. real core index is core_hash module core count.
@@ -155,7 +159,7 @@ namespace cubthread
       // worker is stopped after stop_execution () is called
       bool is_running (void) const;
 
-      // is_full = work queue is full
+      // is_full = the maximum number of tasks is reached
       bool is_full (void) const;
 
       // get maximum number of threads that can run concurrently in this worker pool
@@ -187,8 +191,8 @@ namespace cubthread
       class core;
       friend class core;
 
-      // get next core
-      std::size_t get_next_core_for_execution (void);
+      // get next core by round robin scheduling
+      std::size_t get_round_robin_core_hash (void);
 
       // maximum number of concurrent workers
       std::size_t m_max_workers;
@@ -231,14 +235,14 @@ namespace cubthread
       // for each ID, a counter and a timer may be stored
       enum class id
       {
-	START_THREAD,
-	CREATE_CONTEXT,
-	EXECUTE_TASK,
-	RETIRE_TASK,
-	SEARCH_TASK_IN_QUEUE,
-	WAKEUP_WITH_TASK,
-	RETIRE_CONTEXT,
-	COUNT
+	START_THREAD,             // count & time between pushing a task and invoking run on spawned worker thread
+	CREATE_CONTEXT,           // count & time to create a context
+	EXECUTE_TASK,             // count & time to execute task
+	RETIRE_TASK,              // count & time to retire task
+	SEARCH_TASK_IN_QUEUE,     // count & time to get a queued task
+	WAKEUP_WITH_TASK,         // count & time between pushing a task and its executor's wakeup
+	RETIRE_CONTEXT,           // count & time retiring context
+	COUNT                     // the number of collected statistics
       };
       static const std::size_t STATS_COUNT = static_cast<size_t> (id::COUNT);
       static const std::size_t TOTAL_STATS_COUNT = 2 * STATS_COUNT;  // counters + timers
@@ -311,7 +315,6 @@ namespace cubthread
       // interface for workers
       // task management
       void finished_task_notification (void);
-      task_type *get_task (void);
       // worker management
       // get a task or add worker to free active list (still running, but ready to execute another task)
       task_type *get_task_or_add_to_free_active_list (worker &worker_arg);
@@ -366,7 +369,7 @@ namespace cubthread
   //          - notifying and waking thread
   //          - executing task
   //
-  //      3. by being claimed from task queue; if no worker (active or inactive) is available, task is added to queue
+  //      3. by being claimed from task queue; if no worker (active or inactive) is available, task is queued on core
   //         to be executed when a worker finishes its current task; it goes through next phases
   //          - adding task to queue
   //          - claiming task from queue
@@ -544,7 +547,7 @@ namespace cubthread
   void
   worker_pool<Context>::execute (task_type *work_arg)
   {
-    execute_on_core (work_arg, get_next_core_for_execution ());
+    execute_on_core (work_arg, get_round_robin_core_hash ());
   }
 
   template <typename Context>
@@ -663,7 +666,7 @@ namespace cubthread
 
   template <typename Context>
   std::size_t
-  worker_pool<Context>::get_next_core_for_execution (void)
+  worker_pool<Context>::get_round_robin_core_hash (void)
   {
     // cores are not necessarily equal, so we try to preserve the assignments proportional to their size.
     // if the worker pool size is 15 and there are four cores, three of them will have four workers and one only three.
@@ -1276,10 +1279,13 @@ namespace cubthread
 	task_p = m_parent_core->get_task_or_add_to_inactive_list (*this);
 	if (task_p == NULL)
 	  {
+	    // fall through to let the thread die
 	    break;
 	  }
 
-	// it is safe to set here
+	// note: for the same reason explained in get_new_task, we cannot save the result of
+	//       get_task_or_add_to_inactive_list directly to m_task_p.
+	//       but it's safe to set it here.
 	m_task_p = task_p;
 	m_statistics.collect_and_time (wpstat::id::SEARCH_TASK_IN_QUEUE, m_time_point);
       }
