@@ -33,7 +33,7 @@ int test_stream1 (void);
 class stream_handler_write : public stream_handler
 {
 public:
-  int handling_action (const stream_position pos, BUFFER_UNIT *ptr, size_t byte_count);
+  int handling_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count, size_t *processed_bytes);
 };
 
 
@@ -45,7 +45,7 @@ private:
 public:
   stream_handler_read () { m_remaining_to_read = 0; };
 
-  int handling_action (const stream_position pos, BUFFER_UNIT *ptr, size_t byte_count);
+  int handling_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count, size_t *processed_bytes);
 };
 
 }

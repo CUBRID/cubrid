@@ -23,7 +23,8 @@
 namespace test_stream
 {
 
-int stream_handler_write::handling_action (const stream_position pos, BUFFER_UNIT *ptr, size_t byte_count)
+int stream_handler_write::handling_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count,
+                                           size_t *processed_bytes)
 {
   int i;
 
@@ -38,45 +39,63 @@ int stream_handler_write::handling_action (const stream_position pos, BUFFER_UNI
       ptr++;
     }
 
+  if (processed_bytes != NULL)
+    {
+      *processed_bytes = byte_count;
+    }
+
   return 0;
 }
 
-int stream_handler_read::handling_action (const stream_position pos, BUFFER_UNIT *ptr, size_t byte_count)
+int stream_handler_read::handling_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count,
+                                          size_t *processed_bytes)
 {
   int i;
   size_t to_read;
+  size_t byte_count_rem = byte_count;
   
-  while (byte_count > 0)
+  while (byte_count_rem > 0)
     {
       if (m_remaining_to_read <= 0)
         {
+          if (byte_count_rem < OR_INT_SIZE)
+            {
+              /* not_enough to decode size prefix */
+              break;
+            }
+
           m_remaining_to_read = OR_GET_INT (ptr);
           ptr += OR_INT_SIZE;
           expected_val = m_remaining_to_read % 255;
           m_remaining_to_read -= OR_INT_SIZE;
+          byte_count_rem -= OR_INT_SIZE;
         }
       
-      to_read = MIN (byte_count, m_remaining_to_read);
+      to_read = MIN (byte_count_rem, m_remaining_to_read);
 
       for (i = 0; i < to_read; i++)
         {
           if (*ptr != expected_val)
             {
-              return -1;
+              return ER_FAILED;
             }
           ptr++;
         }
 
       m_remaining_to_read -= i;
 
-      if (to_read > byte_count)
+      if (to_read > byte_count_rem)
         {
-          return -1;
+          return ER_FAILED;
         }
-      byte_count -= to_read;
+      byte_count_rem -= to_read;
     }
 
-  return 0;
+  if (processed_bytes != NULL)
+    {
+      *processed_bytes = byte_count - byte_count_rem;
+    }
+  return NO_ERROR;
 }
 
 
@@ -85,8 +104,10 @@ int test_stream1 (void)
 {
   int res = 0;
   int i = 0;
-  long long desired_amount = 10000 * 1024;
+  long long desired_amount = 1 * 1024;
+  long long writted_amount;
   long long rem_amount;
+  int max_data_size = 500;
 
   packing_stream *my_stream = new packing_stream ();
 
@@ -96,31 +117,37 @@ int test_stream1 (void)
   /* writing in stream */
   for (rem_amount = desired_amount, i = 0; rem_amount > 5; i++)
     {
-      int amount = 5 + std::rand () % 100000;
+      int amount = 5 + std::rand () % max_data_size;
       rem_amount -= amount;
 
-      res = my_stream->write (amount, &writer);
+      res = my_stream->write (amount, NULL, &writer);
       if (res != 0)
         {
           assert (false);
           return res;
         }
     }
-  
-  /* writing in stream */
-  stream_position curr_read_pos = my_stream->get_curr_read_position ();
-  for (rem_amount = desired_amount; rem_amount > 5; i--)
+  writted_amount = desired_amount - rem_amount;
+
+  /* read from stream */
+  stream_position start_read_pos = my_stream->get_curr_read_position ();
+  stream_position curr_read_pos = start_read_pos;
+  for (rem_amount = writted_amount; rem_amount > 5; i--)
     {
-      int amount = 5 + std::rand () % 100000;
-      res = my_stream->read (curr_read_pos, amount,  &reader);
+      int amount = 5 + std::rand () % max_data_size;
+      size_t processed_amount;
+
+      amount = MIN (writted_amount - curr_read_pos, amount);
+
+      res = my_stream->read (curr_read_pos, amount, &processed_amount, &reader);
       if (res != 0)
         {
           assert (false);
           return res;
         }
 
-      curr_read_pos += amount;
-      rem_amount -= amount;
+      curr_read_pos += processed_amount;
+      rem_amount -= processed_amount;
     }
 
 

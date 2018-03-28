@@ -53,8 +53,11 @@ class stream_handler
 {
 public:
   /* method for handling a chunk of stream, most obvious operations are read and write
-   * some handlers may choose to ignore some arguments */
-  virtual int handling_action (const stream_position pos, BUFFER_UNIT *ptr, size_t byte_count) = 0;
+   * some handlers may choose to ignore some arguments and should allow NULL values where is the case
+   * returns error code (0 : no error, negative - error)
+   */
+  virtual int handling_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count,
+                               size_t *processed_bytes) = 0;
 };
 
 class stream_entry : public pinner
@@ -170,6 +173,10 @@ protected:
                           const stream_position &first_pos, const stream_position &last_pos,
                           const size_t &buffer_start_offset, buffer_context **granted_range);
 
+  BUFFER_UNIT * create_buffer_from_existing (buffer_provider *req_buffer_provider,
+                                             const stream_position &start_pos,
+                                             const size_t &amount, buffer_context **granted_range);
+
   int remove_buffer_mapping (const STREAM_MODE stream_mode, buffer_context &mapped_range);
 
   BUFFER_UNIT * fetch_data_from_provider (buffer_provider *context_provider, const stream_position pos, 
@@ -179,17 +186,19 @@ protected:
 
 public:
   packing_stream (const buffer_provider *my_provider = NULL);
+  ~packing_stream ();
 
   int init (const stream_position &start_position = 0);
 
   /* should be called when serialization of a stream entry ends */
   int update_contiguous_filled_pos (const stream_position &filled_pos);
 
-  int write (const size_t &byte_count, stream_handler *handler);
-  int read (const stream_position &first_pos, const size_t &byte_count, stream_handler *handler);
+  int write (const size_t byte_count, size_t *actual_written_bytes, stream_handler *handler);
+  int read (const stream_position first_pos, const size_t byte_count, size_t *actual_read_bytes,
+            stream_handler *handler);
 
   BUFFER_UNIT * reserve_with_buffer (const size_t amount, const buffer_provider *context_provider,
-                                     buffer_context **granted_range);
+                                     stream_position *reserved_pos, buffer_context **granted_range);
 
   BUFFER_UNIT * acquire_new_write_buffer (buffer_provider *req_buffer_provider, const stream_position &start_pos,
                                           const size_t &amount, buffer_context **granted_range);

@@ -58,6 +58,7 @@ public:
   bool is_filled;
   
   bool is_range_mapped (const stream_position &start, const size_t &amount);
+  size_t get_mapped_amount (const stream_position &start);
   bool is_range_contiguously_mapped (const stream_position &start, const size_t &amount);
   BUFFER_UNIT * extend_range (const size_t &amount);
 

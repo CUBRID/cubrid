@@ -31,6 +31,15 @@ bool buffer_context::is_range_mapped (const stream_position &start, const size_t
   return (start >= first_pos && start + amount <= last_pos) ? true : false;
 }
 
+size_t buffer_context::get_mapped_amount (const stream_position &start)
+{
+  if (start >= first_pos && start < last_pos)
+    {
+      return last_pos - start;
+    }
+  return 0;
+}
+
 bool buffer_context::is_range_contiguously_mapped (const stream_position &start, const size_t &amount)
 {
   return (start == last_pos && start + amount < last_allocated_pos) ? true : false;

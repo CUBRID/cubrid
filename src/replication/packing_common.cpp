@@ -52,7 +52,7 @@ int pinner::unpin_all (void)
 {
   auto it = references.begin ();
 
-  for (;it != references.end(); it++)
+  for (;it != references.end (); it++)
     {
       unpin (*it);
     }

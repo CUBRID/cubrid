@@ -48,7 +48,7 @@ BUFFER_UNIT *stream_packer::start_packing_range (const size_t amount, buffer_con
 
   aligned_amount = DB_ALIGN (amount, MAX_ALIGNMENT);
 
-  ptr = m_stream->reserve_with_buffer (aligned_amount, m_buffer_provider, granted_range);
+  ptr = m_stream->reserve_with_buffer (aligned_amount, m_buffer_provider, NULL, granted_range);
   if (ptr != NULL)
     {
       init (ptr, aligned_amount);
