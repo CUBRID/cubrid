@@ -1007,7 +1007,8 @@ namespace cubthread
   worker_pool<Context>::core::retire_queued_tasks (void)
   {
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
-    while (m_task_queue.empty ())
+
+    while (!m_task_queue.empty ())
       {
 	m_task_queue.front ()->retire ();
 	m_task_queue.pop ();
@@ -1196,6 +1197,7 @@ namespace cubthread
     if (task_p != NULL)
       {
 	m_statistics.collect_and_time (wpstat::id::SEARCH_TASK_IN_QUEUE, m_time_point);
+
 	// it is safe to set here
 	m_task_p = task_p;
 	return true;
@@ -1245,6 +1247,7 @@ namespace cubthread
       {
 	// no task assigned
 	m_time_point = wpstat::clock_type::now ();
+
 	return false;
       }
     else
@@ -1262,7 +1265,8 @@ namespace cubthread
   worker_pool<Context>::core::worker::run (void)
   {
     task_type *task_p = NULL;
-    do
+
+    while (true)
       {
 	init_run ();    // do stuff at the beginning like creating context
 
@@ -1289,7 +1293,6 @@ namespace cubthread
 	m_task_p = task_p;
 	m_statistics.collect_and_time (wpstat::id::SEARCH_TASK_IN_QUEUE, m_time_point);
       }
-    while (true);
   }
 
   template <typename Context>
