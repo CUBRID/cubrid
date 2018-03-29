@@ -19,6 +19,7 @@
 
 #include "test_stream.hpp"
 #include "packing_stream.hpp"
+#include "buffer_provider.hpp"
 
 namespace test_stream
 {
@@ -150,6 +151,12 @@ int test_stream1 (void)
       rem_amount -= processed_amount;
     }
 
+  std::vector <buffer_context> my_buffered_ranges;
+
+  my_stream->collect_buffers (my_buffered_ranges, COLLECT_ALL_BUFFERS, COLLECT_AND_DETACH);
+
+  buffer_provider::get_default_instance ()->unpin_all ();
+  buffer_provider::get_default_instance ()->free_all_buffers ();
 
   return res;
 }

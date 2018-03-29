@@ -90,11 +90,12 @@ int stream_entry::pack (void)
  * this is pre-unpack method : it fetches enough data to unpack stream header contents,
  * then fetches (receive from socket) the actual amount of data without unpacking it.
  */
-int stream_entry::receive (void)
+int stream_entry::prepare (void)
 {
   BUFFER_UNIT *stream_start_ptr;
   stream_packer *serializator = get_packer ();
   size_t stream_entry_header_size = get_header_size ();
+  size_t packed_data_size;
   int error_code;
 
   stream_start_ptr = serializator->start_unpacking_range (stream_entry_header_size, &m_buffered_range);
@@ -107,7 +108,11 @@ int stream_entry::receive (void)
 
   m_data_start_position = serializator->get_stream_read_position ();
   /* force read (fetch data from stream source) */
-  stream_start_ptr = serializator->extend_unpacking_range (get_data_packed_size (), &m_buffered_range);
+  packed_data_size = get_data_packed_size ();
+  /* TODO[arnia] : this should be a a seek-only method: we don't need actual data here,
+   * but for some stream we need to fetch data (from socket)
+   * for a stream fetching from stream, we don't need to read anything */
+  stream_start_ptr = serializator->extend_unpacking_range (packed_data_size, &m_buffered_range);
   if (stream_start_ptr == NULL)
     {
       error_code = ER_FAILED;
@@ -201,7 +206,10 @@ packing_stream::packing_stream (const buffer_provider *my_provider)
 
 packing_stream::~packing_stream ()
 {
-  m_buffer_provider->unpin_all ();
+  assert (m_buffered_ranges.size () == 0);
+  assert (m_total_buffered_size == 0);
+  assert (m_first_buffered_position == 0);
+  assert (m_last_buffered_position == 0);
 }
 
 int packing_stream::init (const stream_position &start_position)
@@ -304,6 +312,44 @@ int packing_stream::create_buffer_context (packing_stream_buffer *new_buffer, co
   m_total_buffered_size += mapped_range.last_allocated_pos - first_pos;
 
   error_code = new_buffer->attach_stream (this, stream_mode, first_pos, mapped_range.last_allocated_pos, buffer_start_offset);
+
+  return error_code;
+}
+
+int packing_stream::add_buffer_context (buffer_context *src_context, const STREAM_MODE stream_mode,
+                                        buffer_context **granted_range)
+{
+  buffer_context mapped_range;
+  int error_code = NO_ERROR;
+
+  mapped_range.mapped_buffer = src_context->mapped_buffer;
+  mapped_range.first_pos = src_context->first_pos;
+  mapped_range.last_pos = src_context->last_pos;
+  mapped_range.last_allocated_pos = src_context->last_allocated_pos;
+  mapped_range.written_bytes = src_context->written_bytes;
+  mapped_range.is_filled = src_context->is_filled;
+
+  m_buffered_ranges.push_back (mapped_range);
+
+  if (granted_range != NULL)
+    {
+      *granted_range = &(m_buffered_ranges.back());
+    }
+
+  if (src_context->first_pos < m_first_buffered_position)
+    {
+      m_first_buffered_position = src_context->first_pos;
+    }
+
+  if (src_context->last_pos > m_last_buffered_position)
+    {
+      m_last_buffered_position = src_context->last_pos;
+    }
+
+  m_total_buffered_size += src_context->last_pos - src_context->first_pos;
+
+  error_code = mapped_range.mapped_buffer->attach_stream (this, stream_mode,  src_context->first_pos,
+                                                          src_context->last_pos, 0);
 
   return error_code;
 }
@@ -424,7 +470,7 @@ BUFFER_UNIT * packing_stream::acquire_new_write_buffer (buffer_provider *req_buf
       return NULL;
     }
 
-  err = create_buffer_context (new_buffer, WRITE_STREAM, start_pos, start_pos + amount, 0, granted_range);
+  err = create_buffer_context (new_buffer, WRITE_STREAM, start_pos, start_pos, 0, granted_range);
   if (err != NO_ERROR)
     {
       return NULL;
@@ -542,7 +588,7 @@ BUFFER_UNIT * packing_stream::reserve_with_buffer (const size_t amount, const bu
     }
 
   /* check if any buffer covers the current range */
-  for (i = 0; i < m_buffered_ranges.size(); i++)
+  for (i = 0; i < m_buffered_ranges.size (); i++)
     {
       if (m_buffered_ranges[i].is_range_contiguously_mapped (start_pos, amount))
         {
@@ -574,7 +620,19 @@ BUFFER_UNIT * packing_stream::reserve_with_buffer (const size_t amount, const bu
       m_filled_stream_handler->handling_action (0, NULL, 0, NULL);
     }
   
-  return acquire_new_write_buffer (curr_buffer_provider, start_pos, amount, granted_range);
+  err = curr_buffer_provider->allocate_buffer (&new_buffer, amount);
+  if (err != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  err = create_buffer_context (new_buffer, WRITE_STREAM, start_pos, start_pos + amount, 0, granted_range);
+  if (err != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  return new_buffer->get_buffer ();
 }
 
 stream_position packing_stream::reserve_no_buffer (const size_t amount)
@@ -607,9 +665,6 @@ int packing_stream::collect_buffers (std::vector <buffer_context> &buffered_rang
                 {
                   return error_code;
                 }
-
-              /* TODO : where to unpin buffer from buffer_provider ? */
-              assert (buf->get_pin_count () == 0);
             }
         }
     }
@@ -626,13 +681,11 @@ int packing_stream::attach_buffers (std::vector <buffer_context> &buffered_range
     {
       packing_stream_buffer *buf = buffered_ranges[i].mapped_buffer;
 
-      error_code = add_buffer_context (buf, READ_STREAM, buffered_ranges[i].first_pos, buffered_ranges[i].last_pos,
-                                       0, NULL);
+      error_code = add_buffer_context (&buffered_ranges[i], READ_STREAM, NULL);
       if (error_code != NO_ERROR)
         {
           return error_code;
         }
-      m_append_position = MAX (m_append_position, buffered_ranges[i].last_pos);
     }
 
   return error_code;
@@ -660,71 +713,16 @@ BUFFER_UNIT * packing_stream::fetch_data_from_provider (buffer_provider *context
 BUFFER_UNIT * packing_stream::get_more_data_with_buffer (const size_t amount, const buffer_provider *context_provider,
                                                          buffer_context **granted_range)
 {
-  int i;
-  int err = NO_ERROR;
-  packing_stream_buffer *new_buffer = NULL;
-  buffer_provider *curr_buffer_provider;
   BUFFER_UNIT *ptr;
-
-  if (m_read_position + amount <= m_append_position)
+  ptr = get_data_from_pos (m_read_position, amount, context_provider, granted_range);
+  if (ptr == NULL)
     {
-      /* already fetched */
-      for (i = 0; i < m_buffered_ranges.size(); i++)
-        {
-          if (m_buffered_ranges[i].is_range_mapped (m_read_position, amount))
-            {
-              *granted_range = &(m_buffered_ranges[i]);
-              ptr = m_buffered_ranges[i].mapped_buffer->get_buffer () +  m_read_position - m_buffered_ranges[i].first_pos;
-
-              m_read_position += amount;
-              return ptr;
-            }
-        }
-
-      /* TODO : fetched, but not in memory anymore */
-      return NULL;
+      return ptr;
     }
 
-  /* TODO : should decide which provider to choose based on amount to reserve ? */
-  curr_buffer_provider = (context_provider != NULL) ? (buffer_provider *)context_provider : m_buffer_provider;
+  m_read_position += amount;
 
-  /* this is my current position in stream */
-  stream_position start_pos = reserve_no_buffer (amount);
-
-  /* check if any buffer covers the current range */
-  for (i = 0; i < m_buffered_ranges.size(); i++)
-    {
-      if (m_buffered_ranges[i].is_range_contiguously_mapped (start_pos, amount))
-        {
-          *granted_range = &(m_buffered_ranges[i]);
-          ptr = m_buffered_ranges[i].extend_range (amount);
-
-          return fetch_data_from_provider (curr_buffer_provider, start_pos, ptr, amount);
-        }
-      else if (m_buffered_ranges[i].last_allocated_pos == start_pos)
-        {
-          BUFFER_UNIT * ptr = m_buffered_ranges[i].mapped_buffer->reserve (amount);
-          size_t buffer_start_offset = ptr - m_buffered_ranges[i].mapped_buffer->get_buffer ();
-
-          err = add_buffer_context (m_buffered_ranges[i].mapped_buffer, WRITE_STREAM, start_pos, start_pos + amount,
-                                    buffer_start_offset, granted_range);
-          if (err != NO_ERROR)
-            {
-              return NULL;
-            }
-          return fetch_data_from_provider (curr_buffer_provider, start_pos, ptr, amount);
-        }
-    }
-
-  if (m_filled_stream_handler != NULL
-      && m_total_buffered_size + amount > trigger_flush_to_disk_size)
-    {
-      m_filled_stream_handler->handling_action (0, NULL, 0, NULL);
-    }
-  
-  ptr = acquire_new_write_buffer (curr_buffer_provider, start_pos, amount, granted_range);
-
-  return fetch_data_from_provider (curr_buffer_provider, start_pos, ptr, amount);
+  return ptr;
 }
 
 BUFFER_UNIT * packing_stream::get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
@@ -744,7 +742,7 @@ BUFFER_UNIT * packing_stream::get_data_from_pos (const stream_position &req_star
       return NULL;
     }
 
-  /* TODO : should decide which provider to choose based on amount to reserve ? */
+  /* TODO[arnia] : should decide which provider to choose based on amount to reserve ? */
   curr_buffer_provider = (context_provider != NULL) ? (buffer_provider *) context_provider : m_buffer_provider;
 
   if (req_start_pos >= m_first_buffered_position

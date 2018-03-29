@@ -34,16 +34,16 @@ master_replication_channel_manager::master_replication_channel_manager (const st
 int master_replication_channel_manager::init (const stream_position &start_position)
 {
   /* attach a log_file */
-  m_file = new log_file ();
-  m_file->open_file (log_file::get_filename (start_position));
+  //m_file = new log_file ();
+  //m_file->open_file (log_file::get_filename (start_position));
   return NO_ERROR;
 }
 
 master_replication_channel_manager *master_replication_channel_manager::get_instance (void)
 {
-  NOT_IMPLEMENTED ();
+  static master_replication_channel_manager global_mrcm (0);
 
-  return NULL;
+  return &global_mrcm;
 }
 
 int master_replication_channel_manager::add_buffers (std::vector <buffer_context> &bufferred_ranges)

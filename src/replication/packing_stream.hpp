@@ -84,7 +84,7 @@ public:
 
   int pack (void);
 
-  int receive (void);
+  int prepare (void);
   
   int unpack (void);
 
@@ -125,7 +125,8 @@ class packing_stream
 private:
   buffer_provider *m_buffer_provider;
 
-  /* a buffered range is a chunk of stream mapped onto a buffer (memory) 
+  /* 
+   * a buffered range is a chunk of stream mapped onto a buffer (memory) 
    * a buffer can have multiple mappings (but contiguous) from the a stream (but only the same stream)
    * when we flush (disk or network) a chunk of stream, we just sort the buffered_range object by position
    * and send/flush individually each buffer; pre-processing may used to concatenate adiacent ranges mapped
@@ -168,6 +169,9 @@ protected:
   int create_buffer_context (packing_stream_buffer *new_buffer, const STREAM_MODE stream_mode,
                              const stream_position &first_pos, const stream_position &last_pos,
                              const size_t &buffer_start_offset, buffer_context **granted_range);
+
+  int add_buffer_context (buffer_context *src_context, const STREAM_MODE stream_mode,
+                          buffer_context **granted_range);
 
   int add_buffer_context (packing_stream_buffer *new_buffer, const STREAM_MODE stream_mode,
                           const stream_position &first_pos, const stream_position &last_pos,
@@ -216,6 +220,7 @@ public:
                                    const buffer_provider *context_provider, buffer_context **granted_range);
 
   stream_position &get_curr_read_position (void) { return m_read_position; };
+  stream_position &get_last_reported_ready_pos (void) { return m_last_reported_ready_pos; };
 
   void set_filled_stream_handler (stream_handler * handler) { m_filled_stream_handler = handler; };
   void set_fetch_data_handler (stream_handler * handler) { m_fetch_data_handler = handler; };

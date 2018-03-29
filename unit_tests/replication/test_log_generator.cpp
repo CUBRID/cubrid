@@ -40,6 +40,8 @@ int move_buffers (packing_stream *stream1, packing_stream *stream2)
 
   stream2->attach_buffers (buffered_ranges);
 
+  stream2->update_contiguous_filled_pos (stream1->get_last_reported_ready_pos ());
+
   return NO_ERROR;
 }
 

@@ -33,7 +33,6 @@
 #include <vector>
 
 class serial_buffer;
-class stream_entry_header;
 class buffer_provider;
 
 /* 

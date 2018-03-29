@@ -50,11 +50,9 @@ int pinner::unpin (pinnable *reference)
 
 int pinner::unpin_all (void)
 {
-  auto it = references.begin ();
-
-  for (;it != references.end (); it++)
+  for (auto it = references.begin (); it != references.end ();)
     {
-      unpin (*it);
+      unpin (*it++);
     }
 
   return NO_ERROR;

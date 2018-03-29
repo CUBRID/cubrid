@@ -26,6 +26,14 @@
 #include "buffer_provider.hpp"
 #include "packing_stream_buffer.hpp"
 
+buffer_provider::~buffer_provider ()
+{
+  assert (m_buffers.size () == 0);
+
+  unpin_all ();
+  free_all_buffers ();
+}
+
 
 buffer_provider *buffer_provider::get_default_instance (void)
 {
@@ -77,7 +85,9 @@ int buffer_provider::free_all_buffers (void)
        free (mem);
 
        delete (m_buffers[i]);
+       m_buffers[i] = NULL;
     }
+  m_buffers.clear ();
 
   return NO_ERROR;
 }

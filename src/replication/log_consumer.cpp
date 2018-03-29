@@ -43,7 +43,7 @@ int log_consumer::fetch_stream_entry (replication_stream_entry **entry)
 
   replication_stream_entry* se = new replication_stream_entry (get_write_stream ());
 
-  err = se->receive ();
+  err = se->prepare ();
   if (err != NO_ERROR)
     {
       return err;

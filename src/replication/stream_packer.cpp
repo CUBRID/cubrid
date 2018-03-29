@@ -64,7 +64,7 @@ int stream_packer::packing_completed (void)
 {
   m_mapped_range->written_bytes += get_curr_ptr() - m_packer_start_ptr;
 
-  if (m_mapped_range->written_bytes > m_mapped_range->last_pos - m_mapped_range->first_pos)
+  if (m_mapped_range->written_bytes >= m_mapped_range->last_pos - m_mapped_range->first_pos)
     {
       m_mapped_range->is_filled = true;
     }

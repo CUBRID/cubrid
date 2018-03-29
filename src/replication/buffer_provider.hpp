@@ -53,7 +53,7 @@ public:
 
   buffer_provider () { min_alloc_size = 512 * 1024; max_alloc_size = 100 * 1024 * 1024; };
 
-  ~buffer_provider () { unpin_all (); free_all_buffers (); };
+  ~buffer_provider ();
 
   virtual int allocate_buffer (packing_stream_buffer **new_buffer, const size_t &amount);
 
