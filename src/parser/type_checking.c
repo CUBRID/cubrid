@@ -13048,10 +13048,15 @@ namespace Func
             }
           case F_ELT:
             {
-              //find 1st arg of type character
+              //find 1st arg of type character (starting with 2nd)
               pt_type_enum type = PT_TYPE_VARCHAR;
               int precision = DB_MAX_VARCHAR_PRECISION;
-              for(auto arg = m_node->info.function.arg_list; arg; arg = arg->next)
+              auto arg = m_node->info.function.arg_list;
+              if(arg) //skip the index (1st arg)
+                {
+                  arg = arg->next;
+                }
+              for(; arg; arg = arg->next)
                 {
                   if(PT_IS_CHAR_STRING_TYPE(arg->type_enum))
                     {
