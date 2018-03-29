@@ -1144,7 +1144,7 @@ STATIC_INLINE bool pgbuf_is_bcb_fixed_by_any (PGBUF_BCB * bcb, bool has_mutex_lo
 STATIC_INLINE bool pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   __attribute__ ((ALWAYS_INLINE));
 #if defined (SERVER_MODE)
-STATIC_INLINE bool pgbuf_get_thread_waiting_for_direct_victim (THREAD_ENTRY * waiting_thread_out)
+STATIC_INLINE bool pgbuf_get_thread_waiting_for_direct_victim (REFPTR (THREAD_ENTRY, waiting_thread_out))
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE PGBUF_BCB *pgbuf_get_direct_victim (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pgbuf_is_any_thread_waiting_for_direct_victim (void) __attribute__ ((ALWAYS_INLINE));
@@ -14452,7 +14452,7 @@ pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p)
  * waiting_thread_out (out) : output thread waiting for victim
  */
 STATIC_INLINE bool
-pgbuf_get_thread_waiting_for_direct_victim (THREAD_ENTRY * waiting_thread_out)
+pgbuf_get_thread_waiting_for_direct_victim (REFPTR (THREAD_ENTRY, waiting_thread_out))
 {
   static INT64 count = 0;
   INT64 my_count = ATOMIC_INC_64 (&count, 1);
