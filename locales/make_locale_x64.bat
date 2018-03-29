@@ -84,7 +84,6 @@ if defined VS150COMNTOOLS (
         call "%VS150COMNTOOLS%VsDevCmd.bat" -arch=amd64
         goto :BUILD
     )
-    @rem it should be done similar for Professional and Enterprise editions (like for VS2017v140) but I have access to none of them to be sure about the paths
     @rem configuration for this VS version didn't work, try older VS versions...
 )
 @echo checking Visual Studio 2017 v150... VS150COMCOMNTOOLS = "%VS150COMCOMNTOOLS%"
@@ -96,7 +95,6 @@ if defined VS150COMCOMNTOOLS (
         call "%VS150COMCOMNTOOLS%VsDevCmd.bat" -arch=amd64
         goto :BUILD
     )
-    @rem it should be done similar for Professional and Enterprise editions (like for VS2017v140) but I have access to none of them to be sure about the paths
     @rem configuration for this VS version didn't work, try older VS versions...
 )
 @echo checking Visual Studio 2017 v140... VS140COMNTOOLS = "%VS140COMNTOOLS%"
