@@ -4326,7 +4326,7 @@ f_dump_in_file_Time_data_page_fix_acquire_time (FILE * f, const UINT64 * stat_va
 void
 f_dump_in_file_Num_mvcc_snapshot_ext (FILE * f, const UINT64 * stat_vals)
 {
-  if (pstat_Global.activation_flag & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_MVCC_SNAPSHOT)
     {
       perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (f, stat_vals);
     }
@@ -4342,7 +4342,7 @@ f_dump_in_file_Num_mvcc_snapshot_ext (FILE * f, const UINT64 * stat_vals)
 void
 f_dump_in_file_Time_obj_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
 {
-  if (pstat_Global.activation_flag & PERFMON_ACTIVE_LOCK_OBJECT)
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_LOCK_OBJECT)
     {
       perfmon_stat_dump_in_file_obj_lock_array_stat (f, stat_vals);
     }
@@ -4460,7 +4460,7 @@ f_dump_in_buffer_Time_data_page_fix_acquire_time (char **s, const UINT64 * stat_
 void
 f_dump_in_buffer_Num_mvcc_snapshot_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
-  if (pstat_Global.activation_flag & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_MVCC_SNAPSHOT)
     {
       perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (stat_vals, s, remaining_size);
     }
@@ -4477,7 +4477,7 @@ f_dump_in_buffer_Num_mvcc_snapshot_ext (char **s, const UINT64 * stat_vals, int 
 void
 f_dump_in_buffer_Time_obj_lock_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
-  if (pstat_Global.activation_flag & PERFMON_ACTIVE_LOCK_OBJECT)
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_LOCK_OBJECT)
     {
       perfmon_stat_dump_in_buffer_obj_lock_array_stat (stat_vals, s, remaining_size);
     }
@@ -4698,9 +4698,10 @@ static void
 perfmon_stat_thread_stat_name (size_t index, char * name_buf, size_t max_size)
 {
   cubthread::wpstat::id wpstat_id;
-  const char* prefixp;
-  const char* COUNTER_PREFIX = "Counter_";
-  const char* TIMER_PREFIX = "Timer_";
+  const char *prefixp;
+  const char *COUNTER_PREFIX = "Counter_";
+  const char *TIMER_PREFIX = "Timer_";
+
   if (index < cubthread::wpstat::STATS_COUNT)
     {
       wpstat_id = cubthread::wpstat::to_id (index);
@@ -4711,6 +4712,7 @@ perfmon_stat_thread_stat_name (size_t index, char * name_buf, size_t max_size)
       wpstat_id = cubthread::wpstat::to_id (index - cubthread::wpstat::STATS_COUNT);
       prefixp = TIMER_PREFIX;
     }
+
   std::strncpy (name_buf, prefixp, max_size);
   max_size -= std::strlen (prefixp);
 
@@ -4727,7 +4729,7 @@ perfmon_stat_thread_stat_name (size_t index, char * name_buf, size_t max_size)
 static void
 f_dump_in_file_thread_stats (FILE * f, const UINT64 * stat_vals)
 {
-  if ( /*pstat_Global.activation_flag & PERFMON_ACTIVE_THREAD */ true)
+  if ( /*pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_THREAD */ true)
     {
       perfmon_stat_dump_in_file_thread_stats (f, stat_vals);
     }
@@ -4762,8 +4764,7 @@ perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
 }
 
 /*
- * f_dump_in_buffer_thread_stats () - Write to a buffer the values for Time_obj_lock_acquire_time
- *						    statistic
+ * f_dump_in_buffer_thread_stats () - Write to a buffer the values for Time_obj_lock_acquire_time statistic
  * s (out): Buffer to write to
  * stat_vals (in): statistics buffer
  * remaining_size (in): size of input buffer
@@ -4772,7 +4773,7 @@ perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
 static void
 f_dump_in_buffer_thread_stats (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
-  if ( /*pstat_Global.activation_flag & PERFMON_ACTIVE_THREAD */ true)
+  if ( /*pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_THREAD */ true)
     {
       perfmon_stat_dump_in_buffer_thread_stats (stat_vals, s, remaining_size);
     }

@@ -55,24 +55,28 @@
 #define SH_MODE 0644
 
 /* Statistics activation flags */
+typedef enum
+{
+  PERFMON_ACTIVATION_FLAG_DEFAULT = 0,
+  PERFMON_ACTIVATION_FLAG_DETAILED_BTREE_PAGE = 1,
+  PERFMON_ACTIVATION_FLAG_MVCC_SNAPSHOT = 2,
+  PERFMON_ACTIVATION_FLAG_LOCK_OBJECT = 4,
+  PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR = 8,
+  PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION = 16,
+  PERFMON_ACTIVATION_FLAG_THREAD = 32,
 
-#define PERFMON_ACTIVE_DEFAULT                    0
-#define PERFMON_ACTIVE_DETAILED_BTREE_PAGE        1
-#define PERFMON_ACTIVE_MVCC_SNAPSHOT              2
-#define PERFMON_ACTIVE_LOCK_OBJECT                4
-#define PERFMON_ACTIVE_PB_HASH_ANCHOR             8
-#define PERFMON_ACTIVE_PB_VICTIMIZATION           16
-#define PERFMON_ACTIVE_THREAD                     32
-#define PERFMON_ACTIVE_MAX_VALUE                  63	/* must update when adding new conditions */
+  /* must update when adding new conditions */
+  PERFMON_ACTIVATION_FLAG_LAST = PERFMON_ACTIVATION_FLAG_THREAD,
+
+  PERFMON_ACTIVATION_FLAG_MAX_VALUE = (PERFMON_ACTIVATION_FLAG_LAST << 1) - 1
+} PERFMON_ACTIVATION_FLAG;
 
 /* PERF_MODULE_TYPE x PERF_PAGE_TYPE x PAGE_FETCH_MODE x HOLDER_LATCH_MODE x COND_FIX_TYPE */
 #define PERF_PAGE_FIX_COUNTERS \
-  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) \
-   * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT))
+  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT))
 
 #define PERF_PAGE_PROMOTE_COUNTERS \
-  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PROMOTE_CONDITION_CNT) \
-  * (PERF_HOLDER_LATCH_CNT) * (2 /* success */))
+  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PROMOTE_CONDITION_CNT) * (PERF_HOLDER_LATCH_CNT) * (2 /* success */))
 
 /* PERF_MODULE_TYPE x PAGE_TYPE x DIRTY_OR_CLEAN x DIRTY_OR_CLEAN x READ_OR_WRITE_OR_MIX */
 #define PERF_PAGE_UNFIX_COUNTERS \
@@ -81,41 +85,32 @@
 #define PERF_PAGE_LOCK_TIME_COUNTERS PERF_PAGE_FIX_COUNTERS
 
 #define PERF_PAGE_HOLD_TIME_COUNTERS \
-    ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) \
-   * (PERF_HOLDER_LATCH_CNT))
+  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT))
 
 #define PERF_PAGE_FIX_TIME_COUNTERS PERF_PAGE_FIX_COUNTERS
 
-#define PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_found_mode,latch_mode,\
-				  cond_type) \
-  ((module) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
-    * (PERF_CONDITIONAL_FIX_CNT) \
-    + (page_type) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
-       * (PERF_CONDITIONAL_FIX_CNT) \
+#define PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_found_mode,latch_mode,cond_type) \
+  ((module) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT) \
+    + (page_type) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT) \
     + (page_found_mode) * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT) \
     + (latch_mode) * (PERF_CONDITIONAL_FIX_CNT) + (cond_type))
 
-#define PERF_PAGE_PROMOTE_STAT_OFFSET(module,page_type,promote_cond, \
-				      holder_latch,success) \
-  ((module) * (PERF_PAGE_CNT) * (PERF_PROMOTE_CONDITION_CNT) \
-    * (PERF_HOLDER_LATCH_CNT) * 2 /* success */ \
-    + (page_type) * (PERF_PROMOTE_CONDITION_CNT) * (PERF_HOLDER_LATCH_CNT) \
-    * 2 /* success */ \
+#define PERF_PAGE_PROMOTE_STAT_OFFSET(module,page_type,promote_cond,holder_latch,success) \
+  ((module) * (PERF_PAGE_CNT) * (PERF_PROMOTE_CONDITION_CNT) * (PERF_HOLDER_LATCH_CNT) * 2 /* success */ \
+    + (page_type) * (PERF_PROMOTE_CONDITION_CNT) * (PERF_HOLDER_LATCH_CNT) * 2 /* success */ \
     + (promote_cond) * (PERF_HOLDER_LATCH_CNT) * 2 /* success */ \
     + (holder_latch) * 2 /* success */ \
     + success)
 
-#define PERF_PAGE_UNFIX_STAT_OFFSET(module,page_type,buf_dirty,\
-				    dirtied_by_holder,holder_latch) \
-  ((module) * (PERF_PAGE_CNT) * 2 * 2 * (PERF_HOLDER_LATCH_CNT) + \
-   (page_type) * 2 * 2 * (PERF_HOLDER_LATCH_CNT) + \
-   (buf_dirty) * 2 * (PERF_HOLDER_LATCH_CNT) + \
-   (dirtied_by_holder) * (PERF_HOLDER_LATCH_CNT) + (holder_latch))
+#define PERF_PAGE_UNFIX_STAT_OFFSET(module,page_type,buf_dirty,dirtied_by_holder,holder_latch) \
+  ((module) * (PERF_PAGE_CNT) * 2 * 2 * (PERF_HOLDER_LATCH_CNT) \
+   + (page_type) * 2 * 2 * (PERF_HOLDER_LATCH_CNT) \
+   + (buf_dirty) * 2 * (PERF_HOLDER_LATCH_CNT) \
+   + (dirtied_by_holder) * (PERF_HOLDER_LATCH_CNT) \
+   + (holder_latch))
 
-#define PERF_PAGE_LOCK_TIME_OFFSET(module,page_type,page_found_mode,latch_mode,\
-				  cond_type) \
-	PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_found_mode,latch_mode,\
-				  cond_type)
+#define PERF_PAGE_LOCK_TIME_OFFSET(module,page_type,page_found_mode,latch_mode,cond_type) \
+  PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type)
 
 #define PERF_PAGE_HOLD_TIME_OFFSET(module,page_type,page_found_mode,latch_mode)\
   ((module) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
@@ -123,14 +118,11 @@
     + (page_found_mode) * (PERF_HOLDER_LATCH_CNT) \
     + (latch_mode))
 
-#define PERF_PAGE_FIX_TIME_OFFSET(module,page_type,page_found_mode,latch_mode,\
-				  cond_type) \
-	PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_found_mode,latch_mode,\
-				  cond_type)
+#define PERF_PAGE_FIX_TIME_OFFSET(module,page_type,page_found_mode,latch_mode,cond_type) \
+  PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type)
 
 #define PERF_MVCC_SNAPSHOT_COUNTERS \
-  (PERF_SNAPSHOT_CNT * PERF_SNAPSHOT_RECORD_TYPE_CNT \
-   * PERF_SNAPSHOT_VISIBILITY_CNT)
+  (PERF_SNAPSHOT_CNT * PERF_SNAPSHOT_RECORD_TYPE_CNT * PERF_SNAPSHOT_VISIBILITY_CNT)
 
 #define PERF_MVCC_SNAPSHOT_OFFSET(snapshot,rec_type,visibility) \
   ((snapshot) * PERF_SNAPSHOT_RECORD_TYPE_CNT * PERF_SNAPSHOT_VISIBILITY_CNT \

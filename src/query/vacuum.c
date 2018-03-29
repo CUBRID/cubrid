@@ -29,7 +29,7 @@
 #include "btree.h"
 #include "dbtype.h"
 #include "heap_file.h"
-#include "lock_free.h"
+#include "lockfree_circular_queue.hpp"
 #include "log_compress.h"
 #include "log_impl.h"
 #include "mvcc.h"
@@ -50,6 +50,7 @@
 #include "util_func.h"
 
 #include <atomic>
+#include <stack>
 
 /* The maximum number of slots in a page if all of them are empty.
  * IO_MAX_PAGE_SIZE is used for page size and any headers are ignored (it
@@ -258,7 +259,7 @@ struct vacuum_data
   int log_block_npages;		/* The number of pages in a log block. */
 
   bool is_loaded;		/* True if vacuum data is loaded. */
-  /* *INDENT-OFF*/
+  /* *INDENT-OFF* */
   std::atomic<bool> shutdown_requested;	/* Set to true when shutdown is requested. It stops vacuum from generating or
                                          * executing new jobs. */
   /* INDENT-ON* */
@@ -372,14 +373,17 @@ struct vacuum_job_entry
  * transactions with vacuum threads and for this reason the block data is not
  * added directly to vacuum data.
  */
-LOCK_FREE_CIRCULAR_QUEUE *vacuum_Block_data_buffer = NULL;
+/* *INDENT-OFF* */
+lockfree::circular_queue<vacuum_data_entry> *vacuum_Block_data_buffer = NULL;
+/* *INDENT-ON* */
 #define VACUUM_BLOCK_DATA_BUFFER_CAPACITY 1024
 
 /* A lock free queue of vacuum jobs. Master will add jobs based on vacuum data
  * and workers will execute the jobs one by one.
  */
-LOCK_FREE_CIRCULAR_QUEUE *vacuum_Job_queue = NULL;
-LOCK_FREE_CIRCULAR_QUEUE *vacuum_Finished_job_queue = NULL;
+/* *INDENT-OFF* */
+lockfree::circular_queue<VACUUM_LOG_BLOCKID> *vacuum_Finished_job_queue = NULL;
+/* *INDENT-ON* */
 
 #if defined(SERVER_MODE)
 /* Vacuum prefetch log block buffers */
@@ -944,7 +948,9 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
 #endif
 
   /* Initialize the log block data buffer */
-  vacuum_Block_data_buffer = lf_circular_queue_create (VACUUM_BLOCK_DATA_BUFFER_CAPACITY, sizeof (VACUUM_DATA_ENTRY));
+  /* *INDENT-OFF* */
+  vacuum_Block_data_buffer = new lockfree::circular_queue<vacuum_data_entry> (VACUUM_BLOCK_DATA_BUFFER_CAPACITY);
+  /* *INDENT-ON* */
   if (vacuum_Block_data_buffer == NULL)
     {
       goto error;
@@ -971,17 +977,12 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
 	}
     }
 
-  /* Initialize job queue */
-  vacuum_Job_queue = lf_circular_queue_create (VACUUM_JOB_QUEUE_CAPACITY, sizeof (VACUUM_JOB_ENTRY));
-  if (vacuum_Job_queue == NULL)
-    {
-      goto error;
-    }
 #endif /* SERVER_MODE */
 
   /* Initialize finished job queue. */
-  vacuum_Finished_job_queue = lf_circular_queue_create (VACUUM_FINISHED_JOB_QUEUE_CAPACITY,
-							sizeof (VACUUM_LOG_BLOCKID));
+  /* *INDENT-OFF* */
+  vacuum_Finished_job_queue = new lockfree::circular_queue<VACUUM_LOG_BLOCKID> (VACUUM_FINISHED_JOB_QUEUE_CAPACITY);
+  /* *INDENT-ON* */
   if (vacuum_Finished_job_queue == NULL)
     {
       goto error;
@@ -1238,12 +1239,12 @@ vacuum_finalize (THREAD_ENTRY * thread_p)
   if (vacuum_Finished_job_queue != NULL)
     {
       vacuum_data_mark_finished (thread_p);
-      if (!lf_circular_queue_is_empty (vacuum_Finished_job_queue))
+      if (!vacuum_Finished_job_queue->is_empty ())
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert (0);
 	}
-      lf_circular_queue_destroy (vacuum_Finished_job_queue);
+      delete vacuum_Finished_job_queue;
       vacuum_Finished_job_queue = NULL;
     }
 
@@ -1254,20 +1255,13 @@ vacuum_finalize (THREAD_ENTRY * thread_p)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert (0);
 	}
-      if (!lf_circular_queue_is_empty (vacuum_Block_data_buffer))
+      if (!vacuum_Block_data_buffer->is_empty ())
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  assert (0);
 	}
-      lf_circular_queue_destroy (vacuum_Block_data_buffer);
+      delete vacuum_Block_data_buffer;
       vacuum_Block_data_buffer = NULL;
-    }
-
-  /* Destroy job queues */
-  if (vacuum_Job_queue != NULL)
-    {
-      lf_circular_queue_destroy (vacuum_Job_queue);
-      vacuum_Job_queue = NULL;
     }
 
 #if !defined(SERVER_MODE)	/* SA_MODE */
@@ -2741,7 +2735,7 @@ vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, MVC
 		 (unsigned long long int) block_data.oldest_mvccid, (unsigned long long int) block_data.newest_mvccid);
 
   /* Push new block into block data buffer */
-  if (!lf_circular_queue_produce (vacuum_Block_data_buffer, &block_data))
+  if (!vacuum_Block_data_buffer->produce (block_data))
     {
       /* Push failed, the buffer must be full */
       /* TODO: Set a new message error for full block data buffer */
@@ -2784,9 +2778,9 @@ static bool
 vacuum_check_finished_queue (void)
 {
 #if defined (SERVER_MODE)
-  return lf_circular_queue_approx_size (vacuum_Finished_job_queue) >= (int) vacuum_Finished_job_queue->capacity / 2;
+  return vacuum_Finished_job_queue->is_half_full ();
 #else // not SERVER_MODE = SA_MODE
-  return lf_circular_queue_is_full (vacuum_Finished_job_queue);
+  return vacuum_Finished_job_queue->is_full ();
 #endif // not SERVER_MODE = SA_MODE
 }
 
@@ -2794,7 +2788,7 @@ static bool
 vacuum_check_data_buffer (void)
 {
 #if defined (SERVER_MODE)
-  return lf_circular_queue_approx_size (vacuum_Block_data_buffer) >= (int) vacuum_Block_data_buffer->capacity / 2;
+  return vacuum_Block_data_buffer->is_half_full ();
 #else // not SERVER_MODE = SA_MODE
   return false;
 #endif // not SERVER_MODE = SA_MODE
@@ -3067,12 +3061,12 @@ restart:
 #if defined (SA_MODE)
   /* Complete vacuum for SA_MODE. This means also vacuuming based on last block being logged. */
 
-  assert (lf_circular_queue_is_empty (vacuum_Block_data_buffer));
+  assert (vacuum_Block_data_buffer->is_empty ());
 
   /* Remove all vacuumed entries. */
   vacuum_data_mark_finished (thread_p);
 
-  assert (lf_circular_queue_is_empty (vacuum_Finished_job_queue));
+  assert (vacuum_Finished_job_queue->is_empty ());
   assert (vacuum_Data.first_page == vacuum_Data.last_page);
   assert (vacuum_Data.first_page->index_unvacuumed == 0);
   assert (vacuum_Data.first_page->index_free == 0);
@@ -3784,7 +3778,7 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 
   /* Notify master the job is finished. */
   blockid = data->blockid;
-  if (!lf_circular_queue_produce (vacuum_Finished_job_queue, &blockid))
+  if (!vacuum_Finished_job_queue->produce (blockid))
     {
       assert_release (false);
       vacuum_er_log_error (VACUUM_ER_LOG_WORKER | VACUUM_ER_LOG_JOBS, "%s", "Finished job queue is full!!!");
@@ -3792,7 +3786,7 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 
 #if defined (SERVER_MODE)
   /* Hurry master wakeup if finished job queue is getting filled. */
-  if ((UINT64) lf_circular_queue_approx_size (vacuum_Finished_job_queue) >= vacuum_Finished_job_queue->capacity / 2)
+  if (vacuum_Finished_job_queue->is_half_full ())
     {
       /* Wakeup master to process finished jobs. */
       vacuum_Master_daemon->wakeup ();
@@ -4527,7 +4521,7 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
   /* Consume finished block ID's from queue. */
   /* Stop if too many blocks have been collected (> TEMP_BUFFER_SIZE). */
   while (n_finished_blocks < TEMP_BUFFER_SIZE
-	 && lf_circular_queue_consume (vacuum_Finished_job_queue, &finished_blocks[n_finished_blocks]))
+	 && vacuum_Finished_job_queue->consume (finished_blocks[n_finished_blocks]))
     {
       /* Increment consumed finished blocks. */
       vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "Consumed from finished job queue %lld (flags %lld).",
@@ -5049,7 +5043,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
     LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa) ?
     vacuum_Global_oldest_active_mvccid : ATOMIC_INC_64 (&log_Gl.hdr.last_block_oldest_mvccid, 0);
 
-  if (lf_circular_queue_is_empty (vacuum_Block_data_buffer))
+  if (vacuum_Block_data_buffer->is_empty ())
     {
       /* empty */
       return NO_ERROR;
@@ -5067,7 +5061,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 
   was_vacuum_data_empty = vacuum_is_empty ();
 
-  while (lf_circular_queue_consume (vacuum_Block_data_buffer, &consumed_data))
+  while (vacuum_Block_data_buffer->consume (consumed_data))
     {
       assert (vacuum_Data.last_blockid < consumed_data.blockid);
 
@@ -5468,6 +5462,11 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
   crt_blockid = vacuum_get_log_blockid (mvcc_op_log_lsa.pageid);
   LSA_COPY (&log_lsa, &mvcc_op_log_lsa);
 
+  // stack used to produce in reverse order data for vacuum_Block_data_buffer circular queue
+  /* *INDENT-OFF* */
+  std::stack<VACUUM_DATA_ENTRY> vacuum_block_data_buffer_stack;
+  /* *INDENT-ON* */
+
   /* we don't reset data.oldest_mvccid between blocks. we need to maintain ordered oldest_mvccid's, and if a block + 1
    * MVCCID is smaller than all MVCCID's in block, then it must have been active (and probably suspended) while block
    * was logged. therefore, we must keep it. */
@@ -5531,10 +5530,19 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	}
       else
 	{
-	  lf_circular_queue_async_push_ahead (vacuum_Block_data_buffer, &data);
+	  vacuum_block_data_buffer_stack.push (data);
 	}
+
       crt_blockid = vacuum_get_log_blockid (log_lsa.pageid);
     }
+
+  /* Produce recovered blocks. */
+  while (!vacuum_block_data_buffer_stack.empty ())
+    {
+      vacuum_Block_data_buffer->produce (vacuum_block_data_buffer_stack.top ());
+      vacuum_block_data_buffer_stack.pop ();
+    }
+
   /* Consume recovered blocks. */
   error_code = vacuum_consume_buffer_log_blocks (thread_p);
   if (error_code != NO_ERROR)
@@ -5543,7 +5551,6 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
       return error_code;
     }
 
-  lf_circular_queue_async_reset (vacuum_Block_data_buffer);
   return NO_ERROR;
 }
 

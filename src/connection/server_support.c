@@ -207,8 +207,8 @@ static HA_LOG_APPLIER_STATE_TABLE ha_Log_applier_state[HA_LOG_APPLIER_STATE_TABL
 static int ha_Log_applier_state_num = 0;
 
 // *INDENT-OFF*
-static cubthread::entry_workpool* css_Server_request_worker_pool = NULL;
-static cubthread::entry_workpool* css_Connection_worker_pool = NULL;
+static cubthread::entry_workpool *css_Server_request_worker_pool = NULL;
+static cubthread::entry_workpool *css_Connection_worker_pool = NULL;
 
 class css_server_task : public cubthread::entry_task
 {
@@ -216,12 +216,12 @@ public:
 
   css_server_task (void) = delete;
 
-  css_server_task (CSS_CONN_ENTRY & conn)
+  css_server_task (CSS_CONN_ENTRY &conn)
   : m_conn (conn)
   {
   }
 
-  void execute (context_type & thread_ref) override final;
+  void execute (context_type &thread_ref) override final;
 
   // retire not overwritten; task is automatically deleted
 
@@ -232,13 +232,13 @@ private:
 // css_server_external_task - class used for legacy desgin; external modules may push tasks on css worker pool and we
 //                            need to make sure conn_entry is properly initialized.
 //
-// todo: remove me
+// TODO: remove me
 class css_server_external_task : public cubthread::entry_task
 {
 public:
   css_server_external_task (void) = delete;
 
-  css_server_external_task (CSS_CONN_ENTRY * conn, cubthread::entry_task * task)
+  css_server_external_task (CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
   : m_conn (conn)
   , m_task (task)
   {
@@ -249,7 +249,7 @@ public:
     m_task->retire ();
   }
 
-  void execute (context_type & thread_ref) override final;
+  void execute (context_type &thread_ref) override final;
 
   // retire not overwritten; task is automatically deleted
 
@@ -1857,8 +1857,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
   // initialize worker pool for server requests
   const std::size_t MAX_WORKERS = NUM_NON_SYSTEM_TRANS;
-  const std::size_t JOB_QUEUE_SIZE = NUM_NON_SYSTEM_TRANS;
-  css_Server_request_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, JOB_QUEUE_SIZE, NULL,
+  const std::size_t MAX_TASK_COUNT = 2 * NUM_NON_SYSTEM_TRANS;	// not that it matters...
+  css_Server_request_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT, NULL,
 										  cubthread::system_core_count (),
 										  false);
   if (css_Server_request_worker_pool == NULL)
@@ -1924,7 +1924,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 shutdown:
 #endif
 
-  // todo: stop connection worker pool
+  // TODO: stop connection worker pool
   /* stop threads */
   thread_stop_active_workers (THREAD_STOP_WORKERS_EXCEPT_LOGWR);
   css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
@@ -3381,6 +3381,7 @@ xacl_reload (THREAD_ENTRY * thread_p)
 }
 #endif
 
+// *INDENT-OFF*
 /*
  * css_push_server_task () - push a task on server request worker pool
  *
@@ -3388,26 +3389,33 @@ xacl_reload (THREAD_ENTRY * thread_p)
  * thread_ref (in) : thread context
  * task (in)       : task to execute
  *
- * todo: this is also used externally due to legacy design; should be internalized completely
+ * TODO: this is also used externally due to legacy design; should be internalized completely
  */
 static void
-css_push_server_task (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
+css_push_server_task (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
 {
-  THREAD_GET_MANAGER ()->push_task (thread_ref, css_Server_request_worker_pool, new css_server_task (conn_ref));
+  // push the task
+  //
+  // note: cores are partitioned by connection index. this is particularly important in order to avoid having tasks
+  //       randomly pushed to cores that are full. some of those tasks may belong to threads holding locks. as a
+  //       consequence, lock waiters may wait longer or even indefinitely if we are really unlucky.
+  //
+  THREAD_GET_MANAGER ()->push_task_on_core (thread_ref, css_Server_request_worker_pool,
+                                            new css_server_task (conn_ref), static_cast<size_t> (conn_ref.idx));
 }
 
 void
-css_push_external_task (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY * conn, cubthread::entry_task * task)
+css_push_external_task (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
 {
-  THREAD_GET_MANAGER ()->push_task (thread_ref,
-				    css_Server_request_worker_pool, new css_server_external_task (conn, task));
+  THREAD_GET_MANAGER ()->push_task (thread_ref, css_Server_request_worker_pool,
+				    new css_server_external_task (conn, task));
 }
 
-// *INDENT-OFF*
 void
-css_server_task::execute (context_type & thread_ref)
+css_server_task::execute (context_type &thread_ref)
 {
   thread_ref.conn_entry = &m_conn;
+
   if (thread_ref.conn_entry->session_p != NULL)
     {
       thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
@@ -3419,7 +3427,7 @@ css_server_task::execute (context_type & thread_ref)
 
   thread_ref.status = TS_RUN;
 
-  // todo: we lock tran_index_lock because css_internal_request_handler expects it to be locked. however, I am not
+  // TODO: we lock tran_index_lock because css_internal_request_handler expects it to be locked. however, I am not
   //       convinced we really need this
   pthread_mutex_lock (&thread_ref.tran_index_lock);
   (void) css_internal_request_handler (thread_ref, m_conn);
@@ -3430,7 +3438,7 @@ css_server_task::execute (context_type & thread_ref)
 }
 
 void
-css_server_external_task::execute (context_type & thread_ref)
+css_server_external_task::execute (context_type &thread_ref)
 {
   thread_ref.conn_entry = m_conn;
   if (thread_ref.conn_entry != NULL && thread_ref.conn_entry->session_p != NULL)
@@ -3442,7 +3450,7 @@ css_server_external_task::execute (context_type & thread_ref)
       assert (thread_ref.private_lru_index == -1);
     }
 
-  // todo: We lock tran_index_lock because external task expects it to be locked.
+  // TODO: We lock tran_index_lock because external task expects it to be locked.
   //       However, I am not convinced we really need this
   pthread_mutex_lock (&thread_ref.tran_index_lock);
 
@@ -3536,13 +3544,13 @@ css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool is_log_writer
 }
 
 static bool
-css_is_log_writer (const THREAD_ENTRY & thread_arg)
+css_is_log_writer (const THREAD_ENTRY &thread_arg)
 {
   return thread_arg.conn_entry != NULL && thread_arg.conn_entry->stop_phase == THREAD_STOP_LOGWR;
 }
 
 static void
-css_stop_all_workers (THREAD_ENTRY & thread_ref, thread_stop_type stop_phase)
+css_stop_all_workers (THREAD_ENTRY &thread_ref, thread_stop_type stop_phase)
 {
   bool is_not_stopped;
 
@@ -3608,7 +3616,7 @@ css_stop_all_workers (THREAD_ENTRY & thread_ref, thread_stop_type stop_phase)
 }
 
 static void
-css_stop_all_log_writer (THREAD_ENTRY & thread_ref)
+css_stop_all_log_writer (THREAD_ENTRY &thread_ref)
 {
   if (css_Server_request_worker_pool == NULL)
     {
@@ -3618,7 +3626,7 @@ css_stop_all_log_writer (THREAD_ENTRY & thread_ref)
 }
 
 void
-css_get_thread_stats (UINT64 * stats_out)
+css_get_thread_stats (UINT64 *stats_out)
 {
   cubthread::wpstat allstats (stats_out);
   css_Server_request_worker_pool->get_stats (allstats);

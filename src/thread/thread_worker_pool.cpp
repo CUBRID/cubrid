@@ -42,6 +42,7 @@ namespace cubthread
 	m_own_stats = new stat_type[STATS_COUNT * 2];
 	stats_p = m_own_stats;
       }
+
     m_counters = stats_p;
     m_timers = stats_p + STATS_COUNT;
 
@@ -51,7 +52,8 @@ namespace cubthread
 
   wpstat::~wpstat (void)
   {
-    delete m_own_stats;
+    delete [] m_own_stats;
+    m_own_stats = NULL;
   }
 
   void
@@ -72,10 +74,12 @@ namespace cubthread
   system_core_count (void)
   {
     std::size_t count = std::thread::hardware_concurrency ();
+
     if (count == 0)
       {
 	count = 1;
       }
+
     return count;
   }
 
