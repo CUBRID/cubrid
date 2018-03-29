@@ -99,10 +99,10 @@ if defined VS150COMCOMNTOOLS (
 @echo checking Visual Studio 2017 v140... VS140COMNTOOLS = "%VS140COMNTOOLS%"
 if defined VS140COMNTOOLS (
     @echo. Found installation for Visual Studio 2017 v140: "%VS140COMNTOOLS%"
-    @echo checking "%VS140COMNTOOLS%..\..\..\..\2017\Community\Common7\ToolsVsDevCmd.bat"
-    if exist "%VS140COMNTOOLS%..\..\..\..\2017\Community\Common7\ToolsVsDevCmd.bat" (
+    @echo checking "%VS140COMNTOOLS%..\..\..\..\2017\Community\Common7\Tools\VsDevCmd.bat"
+    if exist "%VS140COMNTOOLS%..\..\..\..\2017\Community\Common7\Tools\VsDevCmd.bat" (
         echo Found %BUILD_TARGET% configuration in Visual Studio 2017 Community.
-        call "%VS140COMNTOOLS%..\..\..\..\2017\Community\Common7\ToolsVsDevCmd.bat" -arch=amd64
+        call "%VS140COMNTOOLS%..\..\..\..\2017\Community\Common7\Tools\VsDevCmd.bat" -arch=amd64
         goto :BUILD
     )
     @echo checking "%VS140COMNTOOLS%..\..\..\..\2017\Professional\Common7\Tools\VsDevCmd.bat"
