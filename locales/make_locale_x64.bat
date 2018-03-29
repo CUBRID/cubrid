@@ -15,7 +15,6 @@ REM  You should have received a copy of the GNU General Public License
 REM  along with this program; if not, write to the Free Software 
 REM  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-
 set APP_NAME=%0
 echo %APP_NAME%
 
@@ -30,16 +29,20 @@ set VCVARS=bin\amd64\vcvarsamd64.bat
 if "%1." == "." (GOTO :CHECK_ENV)
 
 if "%1" == "/debug" (
-if "%BUILD_MODE%" == "." (
-set BUILD_MODE=debug
-GOTO :DO_SHIFT
-) else (GOTO :ERROR_BUILD_MODE)
+    if "%BUILD_MODE%" == "." (
+        set BUILD_MODE=debug
+        GOTO :DO_SHIFT
+    ) else (
+        GOTO :ERROR_BUILD_MODE
+    )
 )
 if "%1" == "/release" (
-if "%BUILD_MODE%" == "." (
-set BUILD_MODE=release
-GOTO :DO_SHIFT
-) else (GOTO :ERROR_BUILD_MODE)
+    if "%BUILD_MODE%" == "." (
+        set BUILD_MODE=release
+        GOTO :DO_SHIFT
+    ) else (
+        GOTO :ERROR_BUILD_MODE
+    )
 )
 
 if "%1" == "/h"            (GOTO :SHOW_USAGE)
@@ -47,8 +50,8 @@ if "%1" == "/?"            (GOTO :SHOW_USAGE)
 if "%1" == "/help"         (GOTO :SHOW_USAGE)
 if NOT "%2" == "" (GOTO :ERROR)
 if "%SELECTED_LOCALE%" == "." (
-set SELECTED_LOCALE=%1
-GOTO :CHECK_ENV
+    set SELECTED_LOCALE=%1
+    GOTO :CHECK_ENV
 )
 
 GOTO :ERROR
@@ -59,10 +62,10 @@ GOTO :CHECK_OPTION
 
 :CHECK_ENV
 if "%SELECTED_LOCALE%" == "." (
-set SELECTED_LOCALE=all_locales
+    set SELECTED_LOCALE=all_locales
 ) else (
-if "%SELECTED_LOCALE:~0,1%" == "-" goto :ERROR
-set LOCALE_PARAM=%SELECTED_LOCALE%
+    if "%SELECTED_LOCALE:~0,1%" == "-" goto :ERROR
+    set LOCALE_PARAM=%SELECTED_LOCALE%
 ) 
 
 if "%BUILD_MODE%" == "." set BUILD_MODE=release
