@@ -1200,6 +1200,9 @@ namespace cubthread
 
 	// it is safe to set here
 	m_task_p = task_p;
+
+	// we need to recycle context before reusing
+	m_parent_core->recycle_context (*m_context_p);
 	return true;
       }
 
@@ -1256,6 +1259,8 @@ namespace cubthread
 	m_time_point = m_push_time;
 	m_statistics.collect_and_time (wpstat::id::WAKEUP_WITH_TASK, m_time_point);
 
+	// we need to recycle context before reusing
+	m_parent_core->recycle_context (*m_context_p);
 	return true;
       }
   }
