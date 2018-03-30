@@ -157,11 +157,13 @@ std::vector<func_signature> func_signature::lead_lag = {//original code doesn't 
 };
 
 std::vector<func_signature> func_signature::elt = {
-#if 0
-  {1           , {PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_TYPE_VARCHAR      }, {1}},
-  {1           , {PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_NCHAR}, {1}},
-#else
-//{1           , {PT_TYPE_BIGINT                 , PT_GENERIC_TYPE_STRING}, {1}},//test without this
+#if 1//this works without preprocessing ELT
+//{PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_GENERIC_TYPE_CHAR }},//KO: eq_type(GCHAR, char)=char and get_current_result() expects VCHAR
+  {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARCHAR }},//get_current_result() expects args to be VCHAR, not just equivalent
+//{PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_GENERIC_TYPE_NCHAR}},//KO: eq_type(GNCHAR, nchar)=nchar and get_current_result() expects VNCHAR
+  {PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARNCHAR}},//get_current_result() expects args to be VNCHAR, not just equivalent
+#else//preprocess() + this works
+  {1           , {PT_TYPE_BIGINT                 , PT_GENERIC_TYPE_STRING}, {1}},//test without this; needed to cast everything else to bigint?
   {1           , {PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_STRING}, {1}},
 #endif
   {PT_TYPE_NULL, {PT_TYPE_NULL                                          }, {PT_GENERIC_TYPE_ANY}},

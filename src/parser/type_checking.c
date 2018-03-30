@@ -12985,6 +12985,18 @@ namespace Func
       {
       }
 
+      parser_node* get_arg(size_t index)
+      {
+        for(auto arg=m_node->info.function.arg_list; arg; arg = arg->next, --index)
+          {
+            if(index == 0)
+              {
+                return arg;
+              }
+          }
+        return NULL;
+      }
+
       //cast given argument to specified type and re-link
       parser_node* cast(parser_node* prev, parser_node* arg, pt_type_enum type, int p, int s, parser_node* dt)
       {
@@ -13019,7 +13031,6 @@ namespace Func
           case F_MIDXKEY:
           case F_TOP_TABLE_FUNC:
           case F_VID:
-            m_node->type_enum = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
             assert(false);
             break;
           case F_GENERIC:
@@ -13046,6 +13057,7 @@ namespace Func
               m_node->type_enum = PT_TYPE_INTEGER;
               break;
             }
+#if 0 //works with this but try to test without it
           case F_ELT:
             {
               //find 1st arg of type character (starting with 2nd)
@@ -13076,6 +13088,7 @@ namespace Func
                 }
               break;
             }
+#endif
           case F_INSERT_SUBSTRING:
             {
               std::vector<parser_node*> args;//preallocate!?
@@ -13262,7 +13275,11 @@ namespace Func
               //printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
               break;
             }
+#if 1//get index type from signature
           auto t = (type.type == pt_arg_type::INDEX ? signature.fix[type.val.index] : type);
+#else//get index type from actual argument
+          auto t = (type.type == pt_arg_type::INDEX ? get_arg(type.val.index)->type_enum : type);
+#endif
           pt_type_enum equivalent_type = pt_get_equivalent_type(t, arg->type_enum);
           arg = cast(prev, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
           if(arg == NULL)
@@ -13286,7 +13303,11 @@ namespace Func
       for(; arg; prev = arg, arg=arg->next, index=(index+1)%signature.rep.size(), ++arg_pos)
         {
           auto& type = signature.rep[index];
+#if 1//get index type from signature
           auto t = (type.type == pt_arg_type::INDEX ? signature.fix[type.val.index] : type);
+#else//get index type from actual argument
+          auto t = (type.type == pt_arg_type::INDEX ? get_arg(type.val.index)->type_enum : type);
+#endif
           pt_type_enum equivalent_type = pt_get_equivalent_type(t, arg->type_enum);
           arg = cast(prev, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
         }
@@ -13319,11 +13340,13 @@ namespace Func
         switch(type.val.type)
           {
             case PT_TYPE_INTEGER:
-              //return (PT_IS_DISCRETE_NUMBER_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE);
               return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE);
             case PT_TYPE_BIGINT:
               return (PT_IS_DISCRETE_NUMBER_TYPE(type_enum) || type_enum==PT_TYPE_MAYBE);
-
+            case PT_TYPE_VARCHAR:
+              return (PT_IS_SIMPLE_CHAR_STRING_TYPE(type_enum) || PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum));//monetary should be here???
+            case PT_TYPE_VARNCHAR:
+              return (PT_IS_NATIONAL_CHAR_STRING_TYPE(type_enum) || PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum));//monetary should be here???
             default:
               if (type.val.type == type_enum)
                 {
