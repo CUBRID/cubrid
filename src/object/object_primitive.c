@@ -17317,6 +17317,8 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
       return;
     }
 
+  json->document = db_json_deserialize (buf);
+
   (*(tp_String.data_readval)) (buf, &schema_raw, NULL, -1, false, NULL, 0);
 
   schema_length = db_get_string_size (&schema_raw);
@@ -17326,8 +17328,6 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
     }
 
   json->schema_raw = db_private_strdup (NULL, schema_str);
-
-  json->document = db_json_deserialize (buf);
 
   assert (rc == NO_ERROR);
 
@@ -17511,15 +17511,14 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
       return NO_ERROR;
     }
 
+  doc = db_json_deserialize (buf);
+  db_make_json (value, doc, true);
+
   rc = (*(tp_String.data_readval)) (buf, &schema_raw, NULL, -1, false, NULL, 0);
   if (rc != NO_ERROR)
     {
       goto exit;
     }
-
-  doc = db_json_deserialize (buf);
-
-  db_make_json (value, doc, true);
 
   if (db_get_string_size (&schema_raw) > 0)
     {
