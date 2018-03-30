@@ -3001,11 +3001,14 @@ db_json_deserialize_helper (OR_BUF *buf, const std::string &path, JSON_DOC &doc,
     case DB_JSON_STRING:
       str_length = or_get_int (buf, &rc);
       str = (char *)db_private_alloc (NULL, str_length);
+
       or_get_data (buf, str, str_length);
       or_align (buf, INT_ALIGNMENT);
 
       value.SetString (str, str_length - 1, doc.GetAllocator ());
       p.Set (doc, value, doc.GetAllocator ());
+
+      db_private_free (NULL, str);
       break;
 
     case DB_JSON_BOOL:
@@ -3029,11 +3032,14 @@ db_json_deserialize_helper (OR_BUF *buf, const std::string &path, JSON_DOC &doc,
 	  // get the key
 	  str_length = or_get_int (buf, &rc);
 	  key = (char *)db_private_alloc (NULL, str_length);
+
 	  or_get_data (buf, key, str_length);
 	  or_align (buf, INT_ALIGNMENT);
 
 	  std::string key_string = key;
 	  db_json_replace_token_special_chars (key_string, special_chars);
+
+	  db_private_free (NULL, key);
 
 	  // get the value
 	  db_json_deserialize_helper (buf, path + "/" + key_string, doc, special_chars);
