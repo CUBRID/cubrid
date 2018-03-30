@@ -32,6 +32,15 @@ namespace cubthread
     : m_mutex ()
     , m_condvar ()
     , m_status (RUNNING)
+    , m_wakeup_count (0)
+    , m_wakeup_lock_count (0)
+    , m_awake_count (0)
+    , m_wait_count (0)
+    , m_timeout_count (0)
+    , m_wait_zero (0)
+    , m_wakeup_delay (0)
+    , m_awake_time ()
+    , m_was_awaken (false)
   {
   }
 
@@ -42,6 +51,8 @@ namespace cubthread
   void
   waiter::wakeup (void)
   {
+    ++m_wakeup_count;
+
     // early out if not sleeping
     if (m_status != SLEEPING)
       {
@@ -50,12 +61,15 @@ namespace cubthread
       }
 
     std::unique_lock<std::mutex> lock (m_mutex);
+    ++m_wakeup_lock_count;
+
     if (m_status != SLEEPING)
       {
 	return;
       }
 
     awake ();
+
     // unlock before notifying to avoid blocking the thread on mutex
     lock.unlock ();
     m_condvar.notify_one ();
@@ -71,21 +85,39 @@ namespace cubthread
   waiter::goto_sleep (void)
   {
     assert (m_status == RUNNING);
+
     m_status = SLEEPING;
+
+    // for statistics
+    m_was_awaken = false;
+    ++m_wait_count;
   }
 
   void
   waiter::awake (void)
   {
     assert (m_status == SLEEPING);
+
     m_status = AWAKENING;
+
+    // for statistics
+    m_awake_time = clock_type::now ();
+    ++m_awake_count;
+    m_was_awaken = true;
   }
 
   void
   waiter::run (void)
   {
     assert (m_status == AWAKENING || m_status == SLEEPING);
+
     m_status = RUNNING;
+
+    // for statistics
+    if (m_was_awaken)
+      {
+	m_wakeup_delay += (std::chrono::nanoseconds (clock_type::now () - m_awake_time)).count ();
+      }
   }
 
   void
@@ -100,6 +132,20 @@ namespace cubthread
     run ();
 
     // mutex is automatically unlocked
+  }
+
+  void
+  waiter::get_stats (stat_type *stats_out)
+  {
+    int i = 0;
+
+    stats_out[i++] = m_wakeup_count;
+    stats_out[i++] = m_wakeup_lock_count;
+    stats_out[i++] = m_awake_count;
+    stats_out[i++] = m_wait_count;
+    stats_out[i++] = m_timeout_count;
+    stats_out[i++] = m_wait_zero;
+    stats_out[i++] = m_wakeup_delay / 1000000;  // nano => milli
   }
 
 } // namespace cubthread

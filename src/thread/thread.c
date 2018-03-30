@@ -307,7 +307,6 @@ thread_initialize_manager (size_t & total_thread_count)
 int
 thread_start_workers (void)
 {
-  int i;
   int thread_index, r;
   THREAD_ENTRY *thread_p = NULL;
   pthread_attr_t thread_attr;

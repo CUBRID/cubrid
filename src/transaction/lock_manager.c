@@ -5982,6 +5982,20 @@ lock_deadlock_detect_daemon_destroy ()
   cubthread::get_manager ()->destroy_daemon (lock_Deadlock_detect_daemon);
 }
 #endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_deadlock_detect_daemon_get_stats - get deadlock detector daemon thread statistics into statsp
+ */
+void
+lock_deadlock_detect_daemon_get_stats (UINT64 * statsp)
+{
+  if (lock_Deadlock_detect_daemon != NULL)
+    {
+      lock_Deadlock_detect_daemon->get_stats (statsp);
+    }
+}
+#endif /* SERVER_MODE */
 // *INDENT-ON*
 
 /*

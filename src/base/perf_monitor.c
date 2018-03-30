@@ -39,6 +39,7 @@
 #include "server_interface.h"
 #endif /* !SERVER_MODE */
 #include "thread_worker_pool.hpp"
+#include "thread_daemon.hpp"
 
 #include <cstring>
 
@@ -120,6 +121,7 @@ static int f_load_Time_tran_complete_time (void);
 static int f_load_Time_get_oldest_mvcc_acquire_time (void);
 static int f_load_Count_get_oldest_mvcc_retry (void);
 static int f_load_thread_stats (void);
+static int f_load_thread_daemon_stats (void);
 
 static void f_dump_in_file_Num_data_page_fix_ext (FILE *, const UINT64 * stat_vals);
 static void f_dump_in_file_Num_data_page_promote_ext (FILE *, const UINT64 * stat_vals);
@@ -131,6 +133,7 @@ static void f_dump_in_file_Time_data_page_fix_acquire_time (FILE *, const UINT64
 static void f_dump_in_file_Num_mvcc_snapshot_ext (FILE *, const UINT64 * stat_vals);
 static void f_dump_in_file_Time_obj_lock_acquire_time (FILE *, const UINT64 * stat_vals);
 static void f_dump_in_file_thread_stats (FILE * f, const UINT64 * stat_vals);
+static void f_dump_in_file_thread_daemon_stats (FILE * f, const UINT64 * stat_vals);
 
 static void f_dump_in_buffer_Num_data_page_fix_ext (char **, const UINT64 * stat_vals, int *remaining_size);
 static void f_dump_in_buffer_Num_data_page_promote_ext (char **, const UINT64 * stat_vals, int *remaining_size);
@@ -142,6 +145,7 @@ static void f_dump_in_buffer_Time_data_page_fix_acquire_time (char **, const UIN
 static void f_dump_in_buffer_Num_mvcc_snapshot_ext (char **, const UINT64 * stat_vals, int *remaining_size);
 static void f_dump_in_buffer_Time_obj_lock_acquire_time (char **, const UINT64 * stat_vals, int *remaining_size);
 static void f_dump_in_buffer_thread_stats (char **s, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_thread_daemon_stats (char **s, const UINT64 * stat_vals, int *remaining_size);
 
 static void perfmon_stat_dump_in_file_fix_page_array_stat (FILE *, const UINT64 * stats_ptr);
 static void perfmon_stat_dump_in_file_promote_page_array_stat (FILE *, const UINT64 * stats_ptr);
@@ -151,6 +155,7 @@ static void perfmon_stat_dump_in_file_page_hold_time_array_stat (FILE *, const U
 static void perfmon_stat_dump_in_file_page_fix_time_array_stat (FILE *, const UINT64 * stats_ptr);
 static void perfmon_stat_dump_in_file_snapshot_array_stat (FILE *, const UINT64 * stats_ptr);
 static void perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr);
+static void perfmon_stat_dump_in_file_thread_daemon_stats (FILE * stream, const UINT64 * stats_ptr);
 
 static void perfmon_stat_dump_in_buffer_fix_page_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
 static void perfmon_stat_dump_in_buffer_promote_page_array_stat (const UINT64 * stats_ptr, char **s,
@@ -164,10 +169,16 @@ static void perfmon_stat_dump_in_buffer_page_fix_time_array_stat (const UINT64 *
 								  int *remaining_size);
 static void perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
 static void perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, int *remaining_size);
+static void perfmon_stat_dump_in_buffer_thread_daemon_stats (const UINT64 * stats_ptr, char **s, int *remaining_size);
+
 static void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr);
 static void perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size);
 
 STATIC_INLINE size_t thread_stats_count (void) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE size_t thread_daemon_stats_count (void) __attribute__ ((ALWAYS_INLINE));
+#if defined (SERVER_MODE)
+static void perfmon_peek_thread_daemon_stats (UINT64 * stats);
+#endif // SERVER_MODE
 
 PSTAT_GLOBAL pstat_Global;
 
@@ -457,6 +468,8 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_NUM_SKIPPED_ALREADY_FLUSHED, "Num_data_page_skipped_flush_already_flushed"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_NUM_SKIPPED_FIXED_OR_HOT, "Num_data_page_skipped_flush_fixed_or_hot"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_COMPENSATE_FLUSH, "compensate_flush"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_ASSIGN_DIRECT_BCB, "assign_direct_bcb"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_WAKE_FLUSH_WAITER, "wake_flush_waiter"),
   /* allocate and victim assignments */
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_ALLOC_BCB, "alloc_bcb"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_ALLOC_BCB_SEARCH_VICTIM, "alloc_bcb_search_victim"),
@@ -536,7 +549,10 @@ PSTAT_METADATA pstat_Metadata[] = {
 			       &f_dump_in_file_Time_obj_lock_acquire_time, &f_dump_in_buffer_Time_obj_lock_acquire_time,
 			       &f_load_Time_obj_lock_acquire_time),
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_THREAD_STATS, "Thread_stats_counters_timers", &f_dump_in_file_thread_stats,
-			       &f_dump_in_buffer_thread_stats, &f_load_thread_stats)
+			       &f_dump_in_buffer_thread_stats, &f_load_thread_stats),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_THREAD_PGBUF_DAEMON_STATS, "Thread_pgbuf_daemon_stats_counters_timers",
+			       &f_dump_in_file_thread_daemon_stats, &f_dump_in_buffer_thread_daemon_stats,
+			       &f_load_thread_daemon_stats)
 };
 
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
@@ -2730,7 +2746,8 @@ perfmon_server_calc_stats (UINT64 * stats)
 		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_SHR_NUM].start_offset]));
 
   css_get_thread_stats (&stats[pstat_Metadata[PSTAT_THREAD_STATS].start_offset]);
-#endif
+  perfmon_peek_thread_daemon_stats (stats);
+#endif // SERVER_MODE
 
   for (i = 0; i < PSTAT_COUNT; i++)
     {
@@ -4816,4 +4833,175 @@ perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, in
 	}
     }
 }
+
+//////////////////////////////////////////////////////////////////////////
+// Thread daemons section
+//////////////////////////////////////////////////////////////////////////
+
+static const char *perfmon_Thread_daemon_stat_names [] =
+{
+  // daemon
+  "daemon_loop_count",
+  "daemon_execute_time",
+  "daemon_pause_time",
+
+  // looper
+  "looper_sleep_count",
+  "looper_sleep_time",
+  "looper_reset_count",
+
+  // waiter
+  "waiter_wakeup_count",
+  "waiter_lock_wakeup_count",
+  "waiter_awake_count",
+  "waiter_sleep_count",
+  "waiter_timeout_count",
+  "waiter_no_wait_count",
+  "waiter_wakeup_delay_time",
+
+  // todo - probably has to be moved to thread_daemon.hpp
+};
+
+static const char *perfmon_Pgbuf_daemon_names [] =
+{
+  "Page flush daemon thread:\n",
+  "Page post flush daemon thread:\n",
+  "Page flush control daemon thread:\n",
+  "Page maintenance daemon thread:\n",
+  "Deadlock detect daemon thread:\n",
+  "Log flush daemon thread:\n",
+};
+static const size_t PERFMON_PGBUF_DAEMON_COUNT = sizeof (perfmon_Pgbuf_daemon_names) / sizeof (const char *);
+
+static size_t
+thread_daemon_stats_count (void)
+{
+  return PERFMON_PGBUF_DAEMON_COUNT * cubthread::daemon::STAT_COUNT;
+}
+
+static int
+f_load_thread_daemon_stats (void)
+{
+  return (int) thread_daemon_stats_count ();
+}
+
+/*
+ * f_dump_in_file_thread_daemon_stats () - Write in file the values for thread statistic
+ *
+ * f (out): File handle
+ * stat_vals (in): statistics buffer
+ * 
+ */
+static void
+f_dump_in_file_thread_daemon_stats (FILE * f, const UINT64 * stat_vals)
+{
+  if ( /*pstat_Global.activation_flag & PERFMON_ACTIVE_THREAD */ true)
+    {
+      perfmon_stat_dump_in_file_thread_daemon_stats (f, stat_vals);
+    }
+}
+
+/*
+ * perfmon_stat_dump_in_file_thread_daemon_stats () -
+ *
+ * stream(in): output file
+ * stats_ptr(in): start of array values
+ * 
+ */
+static void
+perfmon_stat_dump_in_file_thread_daemon_stats (FILE * stream, const UINT64 * stats_ptr)
+{
+  UINT64 value = 0;
+
+  assert (stream != NULL);
+
+  for (size_t daemon_it = 0; daemon_it < PERFMON_PGBUF_DAEMON_COUNT; daemon_it++)
+    {
+      fprintf (stream, perfmon_Pgbuf_daemon_names[daemon_it]);
+      for (size_t stat_it = 0; stat_it < cubthread::daemon::STAT_COUNT; stat_it++)
+        {
+          value = stats_ptr[daemon_it * cubthread::daemon::STAT_COUNT + stat_it];
+          fprintf (stream, "%-10s = %16llu\n", perfmon_Thread_daemon_stat_names[stat_it],
+                   (long long unsigned int) value);
+        }
+    }
+}
+
+/*
+ * f_dump_in_buffer_thread_daemon_stats () - Write to a buffer the values for Time_obj_lock_acquire_time
+ *						    statistic
+ * s (out): Buffer to write to
+ * stat_vals (in): statistics buffer
+ * remaining_size (in): size of input buffer
+ * 
+ */
+static void
+f_dump_in_buffer_thread_daemon_stats (char **s, const UINT64 * stat_vals, int *remaining_size)
+{
+  if ( /*pstat_Global.activation_flag & PERFMON_ACTIVE_THREAD */ true)
+    {
+      perfmon_stat_dump_in_buffer_thread_daemon_stats (stat_vals, s, remaining_size);
+    }
+}
+
+/*
+ * perfmon_stat_dump_in_buffer_thread_daemon_stats () -
+ *
+ * stats_ptr(in): start of array values
+ * s(in/out): output string (NULL if not used)
+ * remaining_size(in/out): remaining size in string s (NULL if not used)
+ * 
+ */
+static void
+perfmon_stat_dump_in_buffer_thread_daemon_stats (const UINT64 * stats_ptr, char **s, int *remaining_size)
+{
+  UINT64 value = 0;
+  int ret;
+
+  assert (s != NULL);
+  assert (remaining_size != NULL);
+
+  for (size_t daemon_it = 0; daemon_it < PERFMON_PGBUF_DAEMON_COUNT; daemon_it++)
+    {
+      ret = snprintf (*s, *remaining_size, perfmon_Pgbuf_daemon_names[daemon_it]);
+      *remaining_size -= ret;
+      *s += ret;
+      if (*remaining_size <= 0)
+	{
+	  return;
+	}
+
+      for (size_t stat_it = 0; stat_it < cubthread::daemon::STAT_COUNT; stat_it++)
+        {
+          value = stats_ptr[daemon_it * cubthread::daemon::STAT_COUNT + stat_it];
+          ret = snprintf (*s, *remaining_size, "%-10s = %16llu\n",  perfmon_Thread_daemon_stat_names[stat_it],
+                          (long long unsigned int) value);
+
+          *remaining_size -= ret;
+          *s += ret;
+          if (*remaining_size <= 0)
+            {
+              return;
+            }
+        }
+    }
+}
+
+#if defined (SERVER_MODE)
+static void
+perfmon_peek_thread_daemon_stats (UINT64 * stats)
+{
+  UINT64 *statsp = &stats[pstat_Metadata[PSTAT_THREAD_PGBUF_DAEMON_STATS].start_offset];
+  pgbuf_daemons_get_stats (statsp);  // 4 x daemons
+  statsp += 4 * cubthread::daemon::STAT_COUNT;
+
+  // get deadlock stats
+  lock_deadlock_detect_daemon_get_stats (statsp);
+  statsp += cubthread::daemon::STAT_COUNT;
+
+  // get log flush stats
+  log_flush_daemon_get_stats (statsp);
+  statsp += cubthread::daemon::STAT_COUNT;
+}
+#endif // SERVER_MODE
 // *INDENT-ON*
