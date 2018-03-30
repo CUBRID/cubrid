@@ -35,7 +35,7 @@
 do { \
   if ((v) == 0) \
     { \
-      (v) = get_clockfreq (); \
+      (v) = tsc_get_clockfreq (); \
     } \
 } while (0)
 
@@ -60,6 +60,89 @@ static int power_Savings = -1;
 static TSC_UINT64 cpu_Clock_rate = 0;
 
 static void check_power_savings (void);
+static TSC_UINT64 tsc_get_clockfreq (void);
+
+/*
+ * tsc_get_clockfreq() - get the CPU clock rate
+ *   return: the CPU or Mainboard clock rate (KHz)
+ */
+static TSC_UINT64
+tsc_get_clockfreq (void)
+{
+#if defined (WINDOWS)
+  /* 
+   * Note: It has been implemented for Windows. 
+   */
+  LARGE_INTEGER fr;
+  QueryPerformanceFrequency (&fr);
+  return (TSC_UINT64) fr.QuadPart;
+
+#elif defined (LINUX)
+  /* 
+   * Note: The implementation is derived from glibc-2.18. 
+   */
+
+  /* We read the information from the /proc filesystem.  It contains at least one line like cpu MHz : 497.840237 or
+   * also cpu MHz : 497.841 We search for this line and convert the number in an integer.  */
+  TSC_UINT64 result = 0;
+  int fd;
+
+  fd = open ("/proc/cpuinfo", O_RDONLY);
+  if (fd != -1)
+    {
+      /* XXX AFAIK the /proc filesystem can generate "files" only up to a size of 4096 bytes.  */
+      char buf[4096];
+      ssize_t n;
+
+      n = read (fd, buf, sizeof buf);
+      if (n > 0)
+	{
+	  char *mhz = strstr (buf, "cpu MHz");
+
+	  if (mhz != NULL)
+	    {
+	      char *endp = buf + n;
+	      int seen_decpoint = 0;
+	      int ndigits = 0;
+
+	      /* Search for the beginning of the string.  */
+	      while (mhz < endp && (*mhz < '0' || *mhz > '9') && *mhz != '\n')
+		++mhz;
+
+	      while (mhz < endp && *mhz != '\n')
+		{
+		  if (*mhz >= '0' && *mhz <= '9')
+		    {
+		      result *= 10;
+		      result += *mhz - '0';
+		      if (seen_decpoint)
+			++ndigits;
+		    }
+		  else if (*mhz == '.')
+		    seen_decpoint = 1;
+
+		  ++mhz;
+		}
+
+	      /* Compensate for missing digits at the end.  */
+	      while (ndigits++ < 6)
+		result *= 10;
+	    }
+	}
+
+      close (fd);
+    }
+
+  return result;
+
+#else
+  /* 
+   * Note: Unknown OS. the return value will not be used. 
+   */
+  return 1;
+
+#endif
+}
 
 /*
  * tsc_init() - initialize the tsc_timer
@@ -68,7 +151,7 @@ void
 tsc_init (void)
 {
   check_power_savings ();
-  cpu_Clock_rate = get_clockfreq ();
+  cpu_Clock_rate = tsc_get_clockfreq ();
   return;
 }
 
