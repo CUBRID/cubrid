@@ -17540,10 +17540,7 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
 {
   char *first, *second;
   OR_BUF first_buf, second_buf;
-  int first_uncomp_length, first_comp_length;
-  int second_uncomp_length, second_comp_length;
   int rc;
-  char *first_json_body, *second_json_body;
   DB_VALUE json1, json2;
   JSON_DOC *doc1 = NULL, *doc2 = NULL;
 
@@ -17555,24 +17552,6 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   or_init (&first_buf, first, 0);
   or_init (&second_buf, second, 0);
 
-  or_get_varchar_compression_lengths (&first_buf, &first_comp_length, &first_uncomp_length);
-  or_get_varchar_compression_lengths (&second_buf, &second_comp_length, &second_uncomp_length);
-
-  first_json_body = (char *) db_private_alloc (NULL, first_uncomp_length + 1);
-  second_json_body = (char *) db_private_alloc (NULL, second_uncomp_length + 1);
-
-  rc = pr_get_compressed_data_from_buffer (&first_buf, first_json_body, first_comp_length, first_uncomp_length);
-  if (rc != NO_ERROR)
-    {
-      goto cleanup;
-    }
-
-  rc = pr_get_compressed_data_from_buffer (&second_buf, second_json_body, second_comp_length, second_uncomp_length);
-  if (rc != NO_ERROR)
-    {
-      goto cleanup;
-    }
-
   doc1 = db_json_deserialize (&first_buf);
   doc2 = db_json_deserialize (&second_buf);
 
@@ -17582,10 +17561,6 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   res = mr_cmpval_json (&json1, &json2, do_coercion, total_order, 0, 0);
   pr_clear_value (&json1);
   pr_clear_value (&json2);
-
-cleanup:
-  db_private_free (NULL, first_json_body);
-  db_private_free (NULL, second_json_body);
 
   return res;
 }
