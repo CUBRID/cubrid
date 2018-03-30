@@ -1011,8 +1011,7 @@ STATIC_INLINE int pgbuf_get_shared_lru_index_for_add (void) __attribute__ ((ALWA
 static int pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count,
 						 float lru_sum_flush_priority, bool * assigned_directly);
 static PGBUF_BCB *pgbuf_get_victim (THREAD_ENTRY * thread_p);
-STATIC_INLINE PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
-  __attribute__ ((ALWAYS_INLINE));
+static PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx);
 #if defined (SERVER_MODE)
 static int pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list,
 						       PGBUF_BCB * bcb_start);
@@ -8379,7 +8378,7 @@ pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock)
  *       If its fcnt != 0, makes bufptr->PrevBCB bottom and retry. 
  *       While this processing, the caller must be the holder of the LRU list.
  */
-STATIC_INLINE PGBUF_BCB *
+static PGBUF_BCB *
 pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 {
 #define PERF(pstatid) if (perf_tracking) perfmon_inc_stat (thread_p, pstatid)
