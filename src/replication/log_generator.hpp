@@ -49,7 +49,7 @@ class stream_packer;
  *        this will be supported later, but needs centralized stream_position in global log_generator
  */
 
-class log_generator : public buffer_provider, public stream_handler
+class log_generator : public buffer_provider, public notify_handler
 {
 private:
   std::vector<replication_stream_entry*> m_stream_entries;
@@ -81,7 +81,7 @@ public:
 
   static log_generator *new_instance (THREAD_ENTRY *th_entry, const stream_position &start_position);
 
-  int handling_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count, size_t *processed_bytes)
+  int notify (const stream_position pos, const size_t byte_count)
       { return flush_old_stream_data (); };
   int flush_old_stream_data (void);
 

@@ -30,14 +30,14 @@ namespace test_stream
 
 int test_stream1 (void);
 
-class stream_handler_write : public stream_handler
+class stream_handler_write : public write_handler
 {
 public:
-  int handling_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count, size_t *processed_bytes);
+  int write_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count);
 };
 
 
-class stream_handler_read : public stream_handler
+class stream_handler_read : public partial_read_handler
 {
 private:
   size_t m_remaining_to_read;
@@ -45,7 +45,7 @@ private:
 public:
   stream_handler_read () { m_remaining_to_read = 0; };
 
-  int handling_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count, size_t *processed_bytes);
+  int read_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count, size_t *processed_bytes);
 };
 
 }

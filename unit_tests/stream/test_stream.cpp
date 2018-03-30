@@ -24,8 +24,7 @@
 namespace test_stream
 {
 
-int stream_handler_write::handling_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count,
-                                           size_t *processed_bytes)
+int stream_handler_write::write_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count)
 {
   int i;
 
@@ -40,16 +39,11 @@ int stream_handler_write::handling_action (const stream_position pos, BUFFER_UNI
       ptr++;
     }
 
-  if (processed_bytes != NULL)
-    {
-      *processed_bytes = byte_count;
-    }
-
   return 0;
 }
 
-int stream_handler_read::handling_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count,
-                                          size_t *processed_bytes)
+int stream_handler_read::read_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count,
+                                      size_t *processed_bytes)
 {
   int i;
   size_t to_read;
@@ -121,7 +115,7 @@ int test_stream1 (void)
       int amount = 5 + std::rand () % max_data_size;
       rem_amount -= amount;
 
-      res = my_stream->write (amount, NULL, &writer);
+      res = my_stream->write (amount, &writer);
       if (res != 0)
         {
           assert (false);
@@ -140,7 +134,7 @@ int test_stream1 (void)
 
       amount = MIN (writted_amount - curr_read_pos, amount);
 
-      res = my_stream->read (curr_read_pos, amount, &processed_amount, &reader);
+      res = my_stream->read_partial (curr_read_pos, amount, &processed_amount, &reader);
       if (res != 0)
         {
           assert (false);

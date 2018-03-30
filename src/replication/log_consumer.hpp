@@ -49,7 +49,7 @@ typedef enum consumer_type CONSUMER_TYPE;
  * main class for consuming log replication entries
  * it should be created only as a global instance
  */
-class log_consumer : public buffer_provider, public stream_handler
+class log_consumer : public buffer_provider, public fetch_handler
 {
 protected:
   CONSUMER_TYPE m_type;
@@ -82,7 +82,7 @@ public:
   
   packing_stream * get_write_stream (void);
 
-  int handling_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count, size_t *processed_bytes)
+  int fetch_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count, size_t *processed_bytes)
       { return fetch_data (ptr, byte_count); };
 };
 

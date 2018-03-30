@@ -219,17 +219,12 @@ int packing_stream::init (const stream_position &start_position)
   return NO_ERROR;
 }
 
-int packing_stream::write (const size_t byte_count, size_t *actual_written_bytes, stream_handler *handler)
+int packing_stream::write (const size_t byte_count, write_handler *handler)
 {
   int err = NO_ERROR;
   buffer_context *range = NULL;
   BUFFER_UNIT *ptr;
   stream_position reserved_pos, new_completed_position;
-
-  if (actual_written_bytes != NULL)
-    {
-      *actual_written_bytes = 0;
-    }
 
   ptr = reserve_with_buffer (byte_count, m_buffer_provider, &reserved_pos, &range);
   if (ptr == NULL )
@@ -238,7 +233,7 @@ int packing_stream::write (const size_t byte_count, size_t *actual_written_bytes
       return err;
     }
 
-  err = handler->handling_action (reserved_pos, ptr, byte_count, actual_written_bytes);
+  err = handler->write_action (reserved_pos, ptr, byte_count);
 
   new_completed_position = reserved_pos + byte_count;
 
@@ -246,8 +241,8 @@ int packing_stream::write (const size_t byte_count, size_t *actual_written_bytes
     {
       if (m_ready_pos_handler != NULL)
         {
-          err = m_ready_pos_handler->handling_action (m_last_reported_ready_pos, NULL,
-                                                      new_completed_position - m_last_reported_ready_pos, NULL);
+          err = m_ready_pos_handler->notify (m_last_reported_ready_pos,
+                                             new_completed_position - m_last_reported_ready_pos);
           if (err != NO_ERROR)
             {
               return err;
@@ -259,9 +254,7 @@ int packing_stream::write (const size_t byte_count, size_t *actual_written_bytes
   return err;
 }
 
-
-int packing_stream::read (const stream_position first_pos, const size_t byte_count, size_t *actual_read_bytes,
-                          stream_handler *handler)
+int packing_stream::read (const stream_position first_pos, const size_t byte_count, read_handler *handler)
 {
   int err = NO_ERROR;
   buffer_context *range = NULL;
@@ -274,7 +267,26 @@ int packing_stream::read (const stream_position first_pos, const size_t byte_cou
       return err;
     }
 
-  err = handler->handling_action (first_pos, ptr, byte_count, actual_read_bytes);
+  err = handler->read_action (first_pos, ptr, byte_count);
+
+  return err;
+}
+
+int packing_stream::read_partial (const stream_position first_pos, const size_t byte_count, size_t *actual_read_bytes,
+                                  partial_read_handler *handler)
+{
+  int err = NO_ERROR;
+  buffer_context *range = NULL;
+  BUFFER_UNIT *ptr;
+
+  ptr = get_data_from_pos (first_pos, byte_count, m_buffer_provider, &range);
+  if (ptr == NULL )
+    {
+      err = ER_FAILED;
+      return err;
+    }
+
+  err = handler->read_action (first_pos, ptr, byte_count, actual_read_bytes);
 
   return err;
 }
@@ -443,8 +455,8 @@ int packing_stream::update_contiguous_filled_pos (const stream_position &filled_
       /* signal the ready position handler there is new data available */
       if (m_ready_pos_handler != NULL)
         {
-          error_code = m_ready_pos_handler->handling_action (m_last_reported_ready_pos, NULL,
-                                                             min_completed_position - m_last_reported_ready_pos, NULL);
+          error_code = m_ready_pos_handler->notify (m_last_reported_ready_pos,
+                                                    min_completed_position - m_last_reported_ready_pos);
           if (error_code != NO_ERROR)
             {
               return error_code;
@@ -541,8 +553,8 @@ BUFFER_UNIT * packing_stream::create_buffer_from_existing (buffer_provider *req_
         }
       else
         {
-          err = m_fetch_data_handler->handling_action (curr_start_pos, my_buffer_ptr, curr_rem_amount,
-                                                       &actual_read_bytes);
+          err = m_fetch_data_handler->fetch_action (curr_start_pos, my_buffer_ptr, curr_rem_amount,
+                                                    &actual_read_bytes);
         }
       if (err != NO_ERROR)
         {
@@ -617,7 +629,7 @@ BUFFER_UNIT * packing_stream::reserve_with_buffer (const size_t amount, const bu
   if (m_filled_stream_handler != NULL
       && m_total_buffered_size + amount > trigger_flush_to_disk_size)
     {
-      m_filled_stream_handler->handling_action (0, NULL, 0, NULL);
+      m_filled_stream_handler->notify (0, m_total_buffered_size);
     }
   
   err = curr_buffer_provider->allocate_buffer (&new_buffer, amount);
@@ -701,7 +713,7 @@ BUFFER_UNIT * packing_stream::fetch_data_from_provider (buffer_provider *context
       return NULL;
     }
 
-  err = m_fetch_data_handler->handling_action (pos, ptr, amount, NULL);
+  err = m_fetch_data_handler->fetch_action (pos, ptr, amount, NULL);
   if (err != NO_ERROR)
     {
       return NULL;
@@ -780,7 +792,7 @@ BUFFER_UNIT * packing_stream::get_data_from_pos (const stream_position &req_star
   ptr = new_buffer->get_buffer ();
 
   size_t actual_read_bytes;
-  err = m_fetch_data_handler->handling_action (req_start_pos, ptr, amount, &actual_read_bytes);
+  err = m_fetch_data_handler->fetch_action (req_start_pos, ptr, amount, &actual_read_bytes);
   if (err != NO_ERROR)
     {
       /* TODO [arnia] : dispose of buffer */

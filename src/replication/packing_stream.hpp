@@ -49,6 +49,40 @@ typedef enum
   COLLECT_AND_DETACH
 } COLLECT_ACTION;
 
+class read_handler
+{
+public:
+  virtual int read_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count) = 0;
+};
+
+class partial_read_handler
+{
+public:
+  virtual int read_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count,
+                           size_t *processed_bytes) = 0;
+};
+
+class write_handler
+{
+public:
+  virtual int write_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count) = 0;
+};
+
+class fetch_handler
+{
+public:
+  virtual int fetch_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count,
+                            size_t *processed_bytes) = 0;
+};
+
+class notify_handler
+{
+public:
+  virtual int notify (const stream_position pos, const size_t byte_count) = 0;
+};
+
+
+#if 0
 class stream_handler
 {
 public:
@@ -59,6 +93,7 @@ public:
   virtual int handling_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count,
                                size_t *processed_bytes) = 0;
 };
+#endif
 
 class stream_entry : public pinner
 {
@@ -161,9 +196,9 @@ private:
    * normal mode should not need this : all buffers are send to MRC_Manager to be send to slave */
   size_t trigger_flush_to_disk_size;
 
-  stream_handler *m_filled_stream_handler;
-  stream_handler *m_fetch_data_handler;
-  stream_handler *m_ready_pos_handler;
+  notify_handler *m_filled_stream_handler;
+  fetch_handler *m_fetch_data_handler;
+  notify_handler *m_ready_pos_handler;
 
 protected:
   int create_buffer_context (packing_stream_buffer *new_buffer, const STREAM_MODE stream_mode,
@@ -197,9 +232,10 @@ public:
   /* should be called when serialization of a stream entry ends */
   int update_contiguous_filled_pos (const stream_position &filled_pos);
 
-  int write (const size_t byte_count, size_t *actual_written_bytes, stream_handler *handler);
-  int read (const stream_position first_pos, const size_t byte_count, size_t *actual_read_bytes,
-            stream_handler *handler);
+  int write (const size_t byte_count, write_handler *handler);
+  int read_partial (const stream_position first_pos, const size_t byte_count, size_t *actual_read_bytes,
+                    partial_read_handler *handler);
+  int read (const stream_position first_pos, const size_t byte_count, read_handler *handler);
 
   BUFFER_UNIT * reserve_with_buffer (const size_t amount, const buffer_provider *context_provider,
                                      stream_position *reserved_pos, buffer_context **granted_range);
@@ -222,9 +258,9 @@ public:
   stream_position &get_curr_read_position (void) { return m_read_position; };
   stream_position &get_last_reported_ready_pos (void) { return m_last_reported_ready_pos; };
 
-  void set_filled_stream_handler (stream_handler * handler) { m_filled_stream_handler = handler; };
-  void set_fetch_data_handler (stream_handler * handler) { m_fetch_data_handler = handler; };
-  void set_ready_pos_handler (stream_handler * handler) { m_ready_pos_handler = handler; };
+  void set_filled_stream_handler (notify_handler * handler) { m_filled_stream_handler = handler; };
+  void set_fetch_data_handler (fetch_handler * handler) { m_fetch_data_handler = handler; };
+  void set_ready_pos_handler (notify_handler * handler) { m_ready_pos_handler = handler; };
 };
 
 #endif /* _PACKING_STREAM_HPP_ */
