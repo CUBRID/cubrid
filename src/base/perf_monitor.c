@@ -545,8 +545,8 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_OBJ_LOCK_TIME_COUNTERS, "Time_obj_lock_acquire_time",
 			       &f_dump_in_file_Time_obj_lock_acquire_time, &f_dump_in_buffer_Time_obj_lock_acquire_time,
 			       &f_load_Time_obj_lock_acquire_time),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_THREAD_STATS, "Thread_vacuum_worker_stats_counters_timers",
-			       &f_dump_in_file_thread_stats, &f_dump_in_buffer_thread_stats, &f_load_thread_stats),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_THREAD_STATS, "Thread_stats_counters_timers", &f_dump_in_file_thread_stats,
+			       &f_dump_in_buffer_thread_stats, &f_load_thread_stats),
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_THREAD_PGBUF_DAEMON_STATS, "Thread_pgbuf_daemon_stats_counters_timers",
 			       &f_dump_in_file_thread_daemon_stats, &f_dump_in_buffer_thread_daemon_stats,
 			       &f_load_thread_daemon_stats)
@@ -569,6 +569,7 @@ STATIC_INLINE const char *perfmon_stat_promote_cond_name (const int cond_type) _
 STATIC_INLINE const char *perfmon_stat_snapshot_name (const int snapshot) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_snapshot_record_type (const int rec_type) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_lock_mode_name (const int lock_mode) __attribute__ ((ALWAYS_INLINE));
+static void perfmon_stat_thread_stat_name (size_t index, char *name_buf, size_t max_size);
 
 STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__ ((ALWAYS_INLINE));
 
@@ -2741,6 +2742,7 @@ perfmon_server_calc_stats (UINT64 * stats)
 		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_PRV_NUM].start_offset]),
 		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_SHR_NUM].start_offset]));
 
+  css_get_thread_stats (&stats[pstat_Metadata[PSTAT_THREAD_STATS].start_offset]);
   pgbuf_daemons_get_stats (&(stats[pstat_Metadata[PSTAT_THREAD_PGBUF_DAEMON_STATS].start_offset]));
 #endif
 
@@ -4338,7 +4340,7 @@ f_dump_in_file_Time_data_page_fix_acquire_time (FILE * f, const UINT64 * stat_va
 void
 f_dump_in_file_Num_mvcc_snapshot_ext (FILE * f, const UINT64 * stat_vals)
 {
-  if (pstat_Global.activation_flag & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_MVCC_SNAPSHOT)
     {
       perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (f, stat_vals);
     }
@@ -4354,7 +4356,7 @@ f_dump_in_file_Num_mvcc_snapshot_ext (FILE * f, const UINT64 * stat_vals)
 void
 f_dump_in_file_Time_obj_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
 {
-  if (pstat_Global.activation_flag & PERFMON_ACTIVE_LOCK_OBJECT)
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_LOCK_OBJECT)
     {
       perfmon_stat_dump_in_file_obj_lock_array_stat (f, stat_vals);
     }
@@ -4472,7 +4474,7 @@ f_dump_in_buffer_Time_data_page_fix_acquire_time (char **s, const UINT64 * stat_
 void
 f_dump_in_buffer_Num_mvcc_snapshot_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
-  if (pstat_Global.activation_flag & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_MVCC_SNAPSHOT)
     {
       perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (stat_vals, s, remaining_size);
     }
@@ -4489,7 +4491,7 @@ f_dump_in_buffer_Num_mvcc_snapshot_ext (char **s, const UINT64 * stat_vals, int 
 void
 f_dump_in_buffer_Time_obj_lock_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
-  if (pstat_Global.activation_flag & PERFMON_ACTIVE_LOCK_OBJECT)
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_LOCK_OBJECT)
     {
       perfmon_stat_dump_in_buffer_obj_lock_array_stat (stat_vals, s, remaining_size);
     }
@@ -4693,14 +4695,11 @@ perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int
   *s += ret;
 }
 
-
 // *INDENT-OFF*
-
-// place holders for future integrations
 static size_t
 thread_stats_count (void)
 {
-  return 14; // cubthread::wpstat::STATS_COUNT * 2;
+  return cubthread::wpstat::STATS_COUNT * 2;
 }
 
 static int
@@ -4712,11 +4711,11 @@ f_load_thread_stats (void)
 static void
 perfmon_stat_thread_stat_name (size_t index, char * name_buf, size_t max_size)
 {
-#if 0
   cubthread::wpstat::id wpstat_id;
-  const char* prefixp;
-  const char* COUNTER_PREFIX = "Counter_";
-  const char* TIMER_PREFIX = "Timer_";
+  const char *prefixp;
+  const char *COUNTER_PREFIX = "Counter_";
+  const char *TIMER_PREFIX = "Timer_";
+
   if (index < cubthread::wpstat::STATS_COUNT)
     {
       wpstat_id = cubthread::wpstat::to_id (index);
@@ -4727,11 +4726,11 @@ perfmon_stat_thread_stat_name (size_t index, char * name_buf, size_t max_size)
       wpstat_id = cubthread::wpstat::to_id (index - cubthread::wpstat::STATS_COUNT);
       prefixp = TIMER_PREFIX;
     }
+
   std::strncpy (name_buf, prefixp, max_size);
   max_size -= std::strlen (prefixp);
 
   std::strncat (name_buf, cubthread::wpstat::get_id_name (wpstat_id), max_size);
-#endif // 0
 }
 
 /*
@@ -4744,7 +4743,7 @@ perfmon_stat_thread_stat_name (size_t index, char * name_buf, size_t max_size)
 static void
 f_dump_in_file_thread_stats (FILE * f, const UINT64 * stat_vals)
 {
-  if ( /*pstat_Global.activation_flag & PERFMON_ACTIVE_THREAD */ true)
+  if ( /*pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_THREAD */ true)
     {
       perfmon_stat_dump_in_file_thread_stats (f, stat_vals);
     }
@@ -4760,7 +4759,6 @@ f_dump_in_file_thread_stats (FILE * f, const UINT64 * stat_vals)
 static void
 perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
 {
-#if 0
   UINT64 value = 0;
   const size_t MAX_NAME_SIZE = 64;
   char name_buf[MAX_NAME_SIZE];
@@ -4777,12 +4775,10 @@ perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
       perfmon_stat_thread_stat_name (it, name_buf, MAX_NAME_SIZE);
       fprintf (stream, "%-10s = %16llu\n", name_buf, (long long unsigned int) value);
     }
-#endif // 0
 }
 
 /*
- * f_dump_in_buffer_thread_stats () - Write to a buffer the values for Time_obj_lock_acquire_time
- *						    statistic
+ * f_dump_in_buffer_thread_stats () - Write to a buffer the values for Time_obj_lock_acquire_time statistic
  * s (out): Buffer to write to
  * stat_vals (in): statistics buffer
  * remaining_size (in): size of input buffer
@@ -4791,7 +4787,7 @@ perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
 static void
 f_dump_in_buffer_thread_stats (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
-  if ( /*pstat_Global.activation_flag & PERFMON_ACTIVE_THREAD */ true)
+  if ( /*pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_THREAD */ true)
     {
       perfmon_stat_dump_in_buffer_thread_stats (stat_vals, s, remaining_size);
     }
@@ -4808,7 +4804,6 @@ f_dump_in_buffer_thread_stats (char **s, const UINT64 * stat_vals, int *remainin
 static void
 perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, int *remaining_size)
 {
-#if 0
   UINT64 value = 0;
   const size_t MAX_NAME_SIZE = 64;
   char name_buf[MAX_NAME_SIZE];
@@ -4834,7 +4829,6 @@ perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, in
 	  return;
 	}
     }
-#endif //
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -374,7 +374,7 @@ struct vacuum_job_entry
  * added directly to vacuum data.
  */
 /* *INDENT-OFF* */
-lockfree::circular_queue<VACUUM_DATA_ENTRY *> *vacuum_Block_data_buffer = NULL;
+lockfree::circular_queue<vacuum_data_entry> *vacuum_Block_data_buffer = NULL;
 /* *INDENT-ON* */
 #define VACUUM_BLOCK_DATA_BUFFER_CAPACITY 1024
 
@@ -780,10 +780,9 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
 				  const BLOCK_LOG_BUFFER & log_buffer, bool is_partial_block);
 #endif // SA_MODE
 
-    void on_create (cubthread::entry &context) final
+    void on_create (cubthread::entry & context) final
     {
       context.tran_index = 0;
-      context.status = TS_RUN;
 
       vacuum_init_thread_context (context, TT_VACUUM_WORKER, m_pool->claim ());
 
@@ -793,7 +792,7 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
 	}
     }
 
-    void on_retire (cubthread::entry &context) final
+    void on_retire (cubthread::entry & context) final
     {
       if (context.vacuum_worker != NULL)
 	{
@@ -807,9 +806,10 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
 	}
     }
 
-    void on_recycle (cubthread::entry & entry) final
+    void on_recycle (cubthread::entry & context) final
     {
-      // nothing for now
+      // reset tran_index (it is recycled as -1)
+      context.tran_index = 0;
     }
 
     // members
@@ -949,7 +949,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
 
   /* Initialize the log block data buffer */
   /* *INDENT-OFF* */
-  vacuum_Block_data_buffer = new lockfree::circular_queue<VACUUM_DATA_ENTRY *> (VACUUM_BLOCK_DATA_BUFFER_CAPACITY);
+  vacuum_Block_data_buffer = new lockfree::circular_queue<vacuum_data_entry> (VACUUM_BLOCK_DATA_BUFFER_CAPACITY);
   /* *INDENT-ON* */
   if (vacuum_Block_data_buffer == NULL)
     {
@@ -1112,9 +1112,8 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 
   // create thread pool
   vacuum_Worker_threads =
-    thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT),
-					VACUUM_JOB_QUEUE_CAPACITY,
-					vacuum_Worker_context_manager, log_vacuum_worker_pool);
+    thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT), VACUUM_JOB_QUEUE_CAPACITY,
+					vacuum_Worker_context_manager, 1, log_vacuum_worker_pool);
   assert (vacuum_Worker_threads != NULL);
 
   int vacuum_master_wakeup_interval_msec = prm_get_integer_value (PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL);
@@ -2736,7 +2735,7 @@ vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, MVC
 		 (unsigned long long int) block_data.oldest_mvccid, (unsigned long long int) block_data.newest_mvccid);
 
   /* Push new block into block data buffer */
-  if (!vacuum_Block_data_buffer->produce (&block_data))
+  if (!vacuum_Block_data_buffer->produce (block_data))
     {
       /* Push failed, the buffer must be full */
       /* TODO: Set a new message error for full block data buffer */
@@ -5017,7 +5016,6 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 {
 #define MAX_PAGE_MAX_DATA_ENTRIES (IO_MAX_PAGE_SIZE / sizeof (VACUUM_DATA_ENTRY))
   VACUUM_DATA_ENTRY consumed_data;
-  VACUUM_DATA_ENTRY *consumed_data_ptr = &consumed_data;
   VACUUM_DATA_PAGE *data_page = NULL;
   VACUUM_DATA_ENTRY *page_free_data = NULL;
   VACUUM_DATA_ENTRY *save_page_free_data = NULL;
@@ -5063,7 +5061,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 
   was_vacuum_data_empty = vacuum_is_empty ();
 
-  while (vacuum_Block_data_buffer->consume (consumed_data_ptr))
+  while (vacuum_Block_data_buffer->consume (consumed_data))
     {
       assert (vacuum_Data.last_blockid < consumed_data.blockid);
 
@@ -5541,7 +5539,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
   /* Produce recovered blocks. */
   while (!vacuum_block_data_buffer_stack.empty ())
     {
-      vacuum_Block_data_buffer->produce (&vacuum_block_data_buffer_stack.top ());
+      vacuum_Block_data_buffer->produce (vacuum_block_data_buffer_stack.top ());
       vacuum_block_data_buffer_stack.pop ();
     }
 
