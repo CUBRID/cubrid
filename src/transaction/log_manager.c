@@ -10373,6 +10373,20 @@ log_is_log_flush_daemon_available ()
 #endif
 }
 
+#if defined (SERVER_MODE)
+/*
+ * log_flush_daemon_get_stats () - get log flush daemon thread statistics into statsp
+ */
+void
+log_flush_daemon_get_stats (UINT64 * statsp)
+{
+  if (log_Flush_daemon != NULL)
+    {
+      log_Flush_daemon->get_stats (statsp);
+    }
+}
+#endif // SERVER_MODE
+
 // *INDENT-OFF*
 #if defined(SERVER_MODE)
 // class log_checkpoint_daemon_task
@@ -10575,7 +10589,7 @@ class log_check_ha_delay_info_daemon_task : public cubthread::entry_task
 
 	  if (error_code == NO_ERROR && log_record_time > 0)
 	    {
-	      curr_delay_in_secs = time (NULL) - log_record_time;
+	      curr_delay_in_secs = (int) (time (NULL) - log_record_time);
 	      if (curr_delay_in_secs > 0)
 		{
 		  curr_delay_in_secs -= HA_DELAY_ERR_CORRECTION;

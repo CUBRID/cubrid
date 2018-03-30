@@ -176,6 +176,9 @@ static void perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * st
 
 STATIC_INLINE size_t thread_stats_count (void) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE size_t thread_daemon_stats_count (void) __attribute__ ((ALWAYS_INLINE));
+#if defined (SERVER_MODE)
+static void perfmon_peek_thread_daemon_stats (UINT64 * stats);
+#endif // SERVER_MODE
 
 PSTAT_GLOBAL pstat_Global;
 
@@ -2743,8 +2746,8 @@ perfmon_server_calc_stats (UINT64 * stats)
 		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_SHR_NUM].start_offset]));
 
   css_get_thread_stats (&stats[pstat_Metadata[PSTAT_THREAD_STATS].start_offset]);
-  pgbuf_daemons_get_stats (&(stats[pstat_Metadata[PSTAT_THREAD_PGBUF_DAEMON_STATS].start_offset]));
-#endif
+  perfmon_peek_thread_daemon_stats (stats);
+#endif // SERVER_MODE
 
   for (i = 0; i < PSTAT_COUNT; i++)
     {
@@ -4835,29 +4838,6 @@ perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, in
 // Thread daemons section
 //////////////////////////////////////////////////////////////////////////
 
-#define PERFMON_PGBUF_DAEMON_COUNT 4
-
-static size_t
-thread_daemon_stats_count (void)
-{
-  // 4 daemons
-  return PERFMON_PGBUF_DAEMON_COUNT * cubthread::daemon::STAT_COUNT;
-}
-
-static int
-f_load_thread_daemon_stats (void)
-{
-  return (int) thread_daemon_stats_count ();
-}
-
-static const char *perfmon_Pgbuf_daemon_names [] =
-{
-  "Page flush daemon thread:\n",
-  "Page post flush daemon thread:\n",
-  "Page flush control daemon thread:\n",
-  "Page maintenance thread:\n",
-};
-
 static const char *perfmon_Thread_daemon_stat_names [] =
 {
   // daemon
@@ -4878,20 +4858,31 @@ static const char *perfmon_Thread_daemon_stat_names [] =
   "waiter_timeout_count",
   "waiter_no_wait_count",
   "waiter_wakeup_delay_time",
+
+  // todo - probably has to be moved to thread_daemon.hpp
 };
 
-static void
-perfmon_stat_thread_daemon_stat_name (size_t index, char * name_buf, size_t max_size)
+static const char *perfmon_Pgbuf_daemon_names [] =
 {
-  assert (index >= 0 && index < cubthread::daemon::STAT_COUNT);
+  "Page flush daemon thread:\n",
+  "Page post flush daemon thread:\n",
+  "Page flush control daemon thread:\n",
+  "Page maintenance daemon thread:\n",
+  "Deadlock detect daemon thread:\n",
+  "Log flush daemon thread:\n",
+};
+static const size_t PERFMON_PGBUF_DAEMON_COUNT = sizeof (perfmon_Pgbuf_daemon_names) / sizeof (const char *);
 
-  for (std::size_t daemon_it = 0; daemon_it < PERFMON_PGBUF_DAEMON_COUNT; daemon_it++)
-    {
-      for (std::size_t stat_it = 0; stat_it < cubthread::daemon::STAT_COUNT; stat_it++)
-        {
-          
-        }
-    }
+static size_t
+thread_daemon_stats_count (void)
+{
+  return PERFMON_PGBUF_DAEMON_COUNT * cubthread::daemon::STAT_COUNT;
+}
+
+static int
+f_load_thread_daemon_stats (void)
+{
+  return (int) thread_daemon_stats_count ();
 }
 
 /*
@@ -4995,4 +4986,22 @@ perfmon_stat_dump_in_buffer_thread_daemon_stats (const UINT64 * stats_ptr, char 
         }
     }
 }
+
+#if defined (SERVER_MODE)
+static void
+perfmon_peek_thread_daemon_stats (UINT64 * stats)
+{
+  UINT64 *statsp = &stats[pstat_Metadata[PSTAT_THREAD_PGBUF_DAEMON_STATS].start_offset];
+  pgbuf_daemons_get_stats (statsp);  // 4 x daemons
+  statsp += 4 * cubthread::daemon::STAT_COUNT;
+
+  // get deadlock stats
+  lock_deadlock_detect_daemon_get_stats (statsp);
+  statsp += cubthread::daemon::STAT_COUNT;
+
+  // get log flush stats
+  log_flush_daemon_get_stats (statsp);
+  statsp += cubthread::daemon::STAT_COUNT;
+}
+#endif // SERVER_MODE
 // *INDENT-ON*
