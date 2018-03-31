@@ -157,24 +157,11 @@ std::vector<func_signature> func_signature::lead_lag = {//original code doesn't 
 };
 
 std::vector<func_signature> func_signature::elt = {
-#if 1//this works without preprocessing ELT
-//{PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_GENERIC_TYPE_CHAR }},//KO: eq_type(GCHAR, char)=char and get_current_result() expects VCHAR
-  {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARCHAR }},//get_current_result() expects args to be VCHAR, not just equivalent
-//{PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_GENERIC_TYPE_NCHAR}},//KO: eq_type(GNCHAR, nchar)=nchar and get_current_result() expects VNCHAR
-  {PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARNCHAR}},//get_current_result() expects args to be VNCHAR, not just equivalent
-#else//preprocess() + this works
-  {1           , {PT_TYPE_BIGINT                 , PT_GENERIC_TYPE_STRING}, {1}},//test without this; needed to cast everything else to bigint?
-  {1           , {PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_STRING}, {1}},
-#endif
-  {PT_TYPE_NULL, {PT_TYPE_NULL                                          }, {PT_GENERIC_TYPE_ANY}},
-  {PT_TYPE_NULL, {PT_TYPE_INTEGER                                       }, {}},
+  {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARCHAR     }},//get_current_result() expects args to be VCHAR, not just equivalent
+  {PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARNCHAR    }},//get_current_result() expects args to be VNCHAR, not just equivalent
+  {PT_TYPE_NULL     , {PT_TYPE_NULL                   }, {PT_GENERIC_TYPE_ANY }},
+  {PT_TYPE_NULL     , {PT_TYPE_INTEGER                }, {}},
 };
-#if 0 // to test + eliminate ELT from preprocess()
-{generic_discrete}, {generic_char}
-{generic_discrete}, {generic_nchar}
-elt(1, 7, 'char') -> 1st signature
-elt(1, 7, n'char')
-#endif
 
 std::vector<func_signature> func_signature::insert = {
   {PT_TYPE_VARCHAR  , {PT_TYPE_NULL           , PT_GENERIC_TYPE_ANY , PT_GENERIC_TYPE_ANY , PT_GENERIC_TYPE_ANY}  , {}},

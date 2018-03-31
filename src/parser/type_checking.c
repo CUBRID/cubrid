@@ -13057,38 +13057,6 @@ namespace Func
               m_node->type_enum = PT_TYPE_INTEGER;
               break;
             }
-#if 0 //works with this but try to test without it
-          case F_ELT:
-            {
-              //find 1st arg of type character (starting with 2nd)
-              pt_type_enum type = PT_TYPE_VARCHAR;
-              int precision = DB_MAX_VARCHAR_PRECISION;
-              auto arg = m_node->info.function.arg_list;
-              if(arg) //skip the index (1st arg)
-                {
-                  arg = arg->next;
-                }
-              for(; arg; arg = arg->next)
-                {
-                  if(PT_IS_CHAR_STRING_TYPE(arg->type_enum))
-                    {
-                      if (PT_IS_NATIONAL_CHAR_STRING_TYPE(arg->type_enum))
-                        {
-                          type = PT_TYPE_VARNCHAR;
-                          precision = DB_MAX_VARNCHAR_PRECISION;
-                        }
-                      break;
-                    }
-                }
-              //cast all args (starting with 2nd) to the above found type, make it also the return type
-              for(parser_node *prev = m_node->info.function.arg_list, *arg = m_node->info.function.arg_list->next; arg; prev = arg, arg = arg->next)
-                {
-                  //if (arg->type_enum != arg_type/* || arg->data_type->info.data_type.precision != max_precision*/)
-                  arg = cast(prev, arg, type, precision, 0, 0);
-                }
-              break;
-            }
-#endif
           case F_INSERT_SUBSTRING:
             {
               std::vector<parser_node*> args;//preallocate!?
@@ -13126,52 +13094,6 @@ namespace Func
                 }
               break;
             }
-#if 0
-#if 0
-            case F_SET:
-            case F_MULTISET:
-            case F_SEQUENCE:
-              pt_add_type_to_set (m_parser, m_node->info.function.arg_list, &m_node->data_type);
-              break;
-            case F_TABLE_SET:
-            case F_TABLE_MULTISET:
-            case F_TABLE_SEQUENCE:
-              pt_add_type_to_set (m_parser, pt_get_select_list (m_parser, m_node->info.function.arg_list), &m_node->data_type);
-              break;
-#else
-            //try to extend pt_get_equivalent_type() for [TABLE_][MULTI]SET to group bellow cases
-            case F_SET:
-              m_node->type_enum = PT_TYPE_SET;
-              m_node->data_type = NULL;
-              pt_add_type_to_set (m_parser, m_node->info.function.arg_list, &m_node->data_type);
-              return false;//no need to continue with generic code
-            case F_MULTISET:
-              m_node->type_enum = PT_TYPE_MULTISET;
-              m_node->data_type = NULL;
-              pt_add_type_to_set (m_parser, m_node->info.function.arg_list, &m_node->data_type);
-              return false;//no need to continue with generic code
-            case F_SEQUENCE:
-              m_node->type_enum = PT_TYPE_SEQUENCE;
-              m_node->data_type = NULL;
-              pt_add_type_to_set (m_parser, m_node->info.function.arg_list, &m_node->data_type);
-              return false;//no need to continue with generic code
-            case F_TABLE_SET:
-              m_node->type_enum = PT_TYPE_SET;
-              pt_add_type_to_set (m_parser, pt_get_select_list (m_parser, m_node->info.function.arg_list), &m_node->data_type);
-              m_node->data_type = NULL;
-              return false;//no need to continue with generic code
-            case F_TABLE_MULTISET:
-              m_node->type_enum = PT_TYPE_MULTISET;
-              m_node->data_type = NULL;
-              pt_add_type_to_set (m_parser, pt_get_select_list (m_parser, m_node->info.function.arg_list), &m_node->data_type);
-              return false;//no need to continue with generic code
-            case F_TABLE_SEQUENCE:
-              m_node->type_enum = PT_TYPE_SEQUENCE;
-              m_node->data_type = NULL;
-              pt_add_type_to_set (m_parser, pt_get_select_list (m_parser, m_node->info.function.arg_list), &m_node->data_type);
-              return false;//no need to continue with generic code
-#endif
-#endif
           default:
             ;
           }
