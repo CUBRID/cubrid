@@ -27,6 +27,9 @@
 
 namespace cubthread
 {
+  //////////////////////////////////////////////////////////////////////////
+  // waiter
+  //////////////////////////////////////////////////////////////////////////
 
   waiter::waiter ()
     : m_mutex ()
@@ -147,5 +150,53 @@ namespace cubthread
     stats_out[i++] = m_wait_zero;
     stats_out[i++] = m_wakeup_delay / 1000000;  // nano => milli
   }
+
+  bool
+  waiter::wait_for (const std::chrono::system_clock::duration &delta)
+  {
+    if (delta == std::chrono::microseconds (0))
+      {
+	++m_wait_zero;
+	return true;
+      }
+
+    bool ret;
+
+    std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
+    goto_sleep ();
+
+    ret = m_condvar.wait_for (lock, delta, [this] { return m_status == AWAKENING; });
+    if (!ret)
+      {
+	++m_timeout_count;
+      }
+
+    run ();
+
+    // mutex is automatically unlocked
+    return ret;
+  }
+
+  bool
+  waiter::wait_until (const std::chrono::system_clock::time_point &timeout_time)
+  {
+    std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
+    goto_sleep ();
+
+    bool ret = m_condvar.wait_until (lock, timeout_time, [this] { return m_status == AWAKENING; });
+    if (!ret)
+      {
+	++m_timeout_count;
+      }
+
+    run ();
+
+    // mutex is automatically unlocked
+    return ret;
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // waiter stats
+  //////////////////////////////////////////////////////////////////////////
 
 } // namespace cubthread

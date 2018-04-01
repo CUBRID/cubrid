@@ -70,7 +70,7 @@ namespace cubthread
 {
 
   // definitions
-  typedef std::chrono::duration<std::uint64_t, std::nano> delta_time;
+  typedef std::chrono::system_clock::duration delta_time;
   typedef std::function<void (bool &, delta_time &)> period_function;
 
   // for increasing period pattern

@@ -63,11 +63,9 @@ namespace cubthread
       void wakeup (void);                                             // wakeup waiter thread
 
       void wait_inf (void);                                           // wait until wakeup
-      template< class Rep, class Period >
-      bool wait_for (std::chrono::duration<Rep, Period> &delta);      // wait for period of time or until wakeup
+      bool wait_for (const std::chrono::system_clock::duration &delta);   // wait for period of time or until wakeup
       // returns true if woke up before timeout
-      template< class Clock, class Duration >
-      bool wait_until (std::chrono::time_point<Clock, Duration> &timeout_time); // wait until time or until wakeup
+      bool wait_until (const std::chrono::system_clock::time_point &timeout_time);  // wait until time or until wakeup
       // returns true if woke up before timeout
 
       // stats count:
@@ -117,56 +115,6 @@ namespace cubthread
       clock_type::time_point m_awake_time;
       bool m_was_awaken;
   };
-
-  /************************************************************************/
-  /* Template implementation                                              */
-  /************************************************************************/
-
-  template< class Rep, class Period >
-  bool
-  waiter::wait_for (std::chrono::duration<Rep, Period> &delta)
-  {
-    if (delta == std::chrono::duration<Rep, Period> (0))
-      {
-	++m_wait_zero;
-	return true;
-      }
-
-    bool ret;
-
-    std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
-    goto_sleep ();
-
-    ret = m_condvar.wait_for (lock, delta, [this] { return m_status == AWAKENING; });
-    if (!ret)
-      {
-	++m_timeout_count;
-      }
-
-    run ();
-
-    // mutex is automatically unlocked
-    return ret;
-  }
-
-  template<class Clock, class Duration>
-  bool
-  waiter::wait_until (std::chrono::time_point<Clock, Duration> &timeout_time)
-  {
-    std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
-    goto_sleep ();
-
-    bool ret = m_condvar.wait_until (lock, timeout_time, [this] { return m_status == AWAKENING; });
-    if (!ret)
-      {
-	++m_timeout_count;
-      }
-
-    run ();
-
-    // mutex is automatically unlocked
-    return ret;
-  }
 
 } // namespace cubthread
 
