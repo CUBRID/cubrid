@@ -24,6 +24,7 @@
 #define _CUBRID_PERF_HPP_
 
 #include <chrono>
+#include <string>
 
 #include <cassert>
 #include <cinttypes>
@@ -201,98 +202,92 @@ namespace cubperf
   // statistics set & definitions
   //////////////////////////////////////////////////////////////////////////
 
-#if 0
-  struct statdef
-  {
-    std::size_t m_offset;
-    const std::size_t &id;
-  };
-
-  using statdef_count = statdef<1>;
-  using statdef_time = statdef<1>;
-  using statdef_count_time = statdef<2>;
-
-
-
-  struct stat_definition
-  {
-    public:
-      enum class stat_type
-      {
-	COUNT,
-	TIME,
-	COUNT_TIME,
-      };
-
-      static std::size_t get_value_count (stat_type type)
-      {
-	switch (type)
-	  {
-	  case stat_type::COUNT:
-	    return 1;
-	  case stat_type::TIME:
-	    return 1;
-	  case stat_type::COUNT_TIME:
-	    return 2;
-	  default:
-	    return 0;
-	  }
-      }
-
-      static stat_definition create_stat_count (const char *name)
-      {
-	return stat_definition (stat_type::COUNT, name);
-      }
-
-      static stat_definition create_stat_time (const char *name)
-      {
-	return stat_definition (stat_type::TIME, name);
-      }
-
-      static stat_definition create_stat_count_time (const char *count_name, const char *time_name)
-      {
-	return stat_definition (stat_type::COUNT_TIME, count_name, time_name);
-      }
-
-    private:
-      stat_definition (stat_type type, const char *name)
-      {
-
-      }
-
-      stat_definition (stat_type type, const char *count_name, const char *time_name)
-      {
-
-      }
-  };
-
   class statset_definition
   {
     public:
-      template <std::array<> StatDefs>
-      statset_definition (const StatDefs &defs)
+      struct onedef
       {
+	  std::size_t count;
+	  const char *names[2];
+	  std::size_t &id_ref;
 
+	private:
+	  friend statset_definition;
+
+	  onedef (std::size_t &id, const char *first_name, const char *second_name = NULL)
+	    : count (1)
+	    , names { first_name, second_name }
+	    , id_ref (id)
+	  {
+	    //
+	  }
+      };
+
+      onedef stat_count (const char *stat_count_name, std::size_t &stat_count_id)
+      {
+	return onedef (stat_count_id, stat_count_name);
+      }
+      onedef stat_time (const char *stat_time_name, std::size_t &stat_time_id)
+      {
+	return onedef (stat_time_id, stat_time_name);
+      }
+      onedef stat_count_time (const char *stat_count_name, const char *stat_time_name,
+			      std::size_t &stat_count_time_id)
+      {
+	return onedef (stat_count_time_id, stat_count_name, stat_time_name);
+      }
+
+      template <typename ... Args>
+      statset_definition (onedef &def, Args &&... args)
+      {
+	std::size_t offset_placeholder;
+	build (offset_placeholder, def, args...);
       }
 
     private:
-      const StatDefs &m_defs;
-  };
 
-  template <statset_definition Def>
-  class statset
-  {
-    public:
-      statset (const Def &def)
+      template <typename ... Args>
+      void
+      build (std::size_t &crt_offset, onedef &def, Args &&... args)
       {
-
+	preregister_stat (def);
+	build (args...);
+	postregister_stat (def, crt_offset);
       }
 
-    private:
-      std::array<stat_value,
-  };
+      void
+      build (std::size_t &crt_offset, onedef &def)
+      {
+	preregister_stat (def);
+	crt_offset = m_value_count;
+	postregister_stat (def, crt_offset);
+      }
 
-#endif
+      void preregister_stat (onedef &def)
+      {
+	def.id_ref = m_stats_count;
+	m_stats_count++;
+	m_value_count += def.count;
+      }
+
+      void postregister_stat (onedef &def, std::size_t crt_offset)
+      {
+	// starting offset for current stat
+	crt_offset -= m_offsets[def.id_ref];
+
+	m_offsets[def.id_ref] = crt_offset;
+	for (std::size_t it = 0; it < def.count; it++)
+	  {
+	    m_names[crt_offset + it] = def.names[it];
+	  }
+      }
+
+      std::size_t m_stats_count;
+      std::size_t m_value_count;
+
+      std::string *m_names;    // name for each tracked value
+      std::size_t *m_offsets;  // offset for each statistics
+  };
 }
 
 #endif // _CUBRID_PERF_HPP_s
