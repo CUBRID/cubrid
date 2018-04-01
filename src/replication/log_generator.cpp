@@ -100,7 +100,7 @@ replication_stream_entry* log_generator::get_stream_entry (THREAD_ENTRY *th_entr
   return my_stream_entry;
 }
 
-int log_generator::append_repl_entry (THREAD_ENTRY *th_entry, packable_object *repl_entry)
+int log_generator::append_repl_entry (THREAD_ENTRY *th_entry, cubpacking::packable_object *repl_entry)
 {
   replication_stream_entry *my_stream_entry = get_stream_entry (th_entry);
 

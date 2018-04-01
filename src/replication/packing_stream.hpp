@@ -28,14 +28,15 @@
 
 #include <vector>
 #include <functional>
+#include "packable_object.hpp"
 #include "stream_common.hpp"
 #include "storage_common.h"
 
+class cubpacking::packable_object;
+class cubpacking::object_builder;
 class buffer_provider;
-class packable_object;
-class object_builder;
 class stream_packer;
-class log_generator;
+
 
 typedef enum
 {
@@ -52,26 +53,26 @@ typedef enum
 class read_handler
 {
 public:
-  virtual int read_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count) = 0;
+  virtual int read_action (const stream_position pos, char *ptr, const size_t byte_count) = 0;
 };
 
 class partial_read_handler
 {
 public:
-  virtual int read_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count,
+  virtual int read_action (const stream_position pos, char *ptr, const size_t byte_count,
                            size_t *processed_bytes) = 0;
 };
 
 class write_handler
 {
 public:
-  virtual int write_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count) = 0;
+  virtual int write_action (const stream_position pos, char *ptr, const size_t byte_count) = 0;
 };
 
 class fetch_handler
 {
 public:
-  virtual int fetch_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count,
+  virtual int fetch_action (const stream_position pos, char *ptr, const size_t byte_count,
                             size_t *processed_bytes) = 0;
 };
 
@@ -90,12 +91,12 @@ public:
    * some handlers may choose to ignore some arguments and should allow NULL values where is the case
    * returns error code (0 : no error, negative - error)
    */
-  virtual int handling_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count,
+  virtual int handling_action (const stream_position pos, char *ptr, const size_t byte_count,
                                size_t *processed_bytes) = 0;
 };
 #endif
 
-class stream_entry : public pinner
+class stream_entry : public cubpacking::pinner
 {
 private:
   int stream_entry_id;
@@ -106,13 +107,13 @@ private:
   bool m_is_packable;
 
 protected:
-  std::vector <packable_object *> m_packable_entries;
+  std::vector <cubpacking::packable_object *> m_packable_entries;
 
   packing_stream *m_stream;
 
   stream_position m_data_start_position;
 
-  virtual object_builder *get_builder () = 0;
+  virtual cubpacking::object_builder *get_builder () = 0;
 
 public:
   stream_entry (packing_stream *stream);
@@ -127,13 +128,13 @@ public:
 
   size_t get_entries_size (void);
 
-  int add_packable_entry (packable_object *entry);
+  int add_packable_entry (cubpacking::packable_object *entry);
 
   void set_packable (const bool is_packable) { m_is_packable = is_packable;};
 
 
   /* TODO : unit testing only */
-  std::vector <packable_object *>* get_packable_entries_ptr (void) { return &m_packable_entries; };
+  std::vector <cubpacking::packable_object *>* get_packable_entries_ptr (void) { return &m_packable_entries; };
 
   /* stream entry header methods : header is implemention dependent, is not known here ! */
   virtual stream_packer *get_packer () = 0;
@@ -212,14 +213,14 @@ protected:
                           const stream_position &first_pos, const stream_position &last_pos,
                           const size_t &buffer_start_offset, buffer_context **granted_range);
 
-  BUFFER_UNIT * create_buffer_from_existing (buffer_provider *req_buffer_provider,
+  char * create_buffer_from_existing (buffer_provider *req_buffer_provider,
                                              const stream_position &start_pos,
                                              const size_t &amount, buffer_context **granted_range);
 
   int remove_buffer_mapping (const STREAM_MODE stream_mode, buffer_context &mapped_range);
 
-  BUFFER_UNIT * fetch_data_from_provider (buffer_provider *context_provider, const stream_position pos, 
-                                          BUFFER_UNIT *ptr, const size_t &amount);
+  char * fetch_data_from_provider (buffer_provider *context_provider, const stream_position pos, 
+                                          char *ptr, const size_t &amount);
 
   stream_position reserve_no_buffer (const size_t amount);
 
@@ -237,10 +238,10 @@ public:
                     partial_read_handler *handler);
   int read (const stream_position first_pos, const size_t byte_count, read_handler *handler);
 
-  BUFFER_UNIT * reserve_with_buffer (const size_t amount, const buffer_provider *context_provider,
+  char * reserve_with_buffer (const size_t amount, const buffer_provider *context_provider,
                                      stream_position *reserved_pos, buffer_context **granted_range);
 
-  BUFFER_UNIT * acquire_new_write_buffer (buffer_provider *req_buffer_provider, const stream_position &start_pos,
+  char * acquire_new_write_buffer (buffer_provider *req_buffer_provider, const stream_position &start_pos,
                                           const size_t &amount, buffer_context **granted_range);
 
   int collect_buffers (std::vector <buffer_context> &buffered_ranges, COLLECT_FILTER collect_filter,
@@ -250,9 +251,9 @@ public:
   /* TODO[arnia] : temporary for unit test */
   void detach_all_buffers (void) { m_buffered_ranges.clear (); };
 
-  BUFFER_UNIT * get_more_data_with_buffer (const size_t amount, const buffer_provider *context_provider,
+  char * get_more_data_with_buffer (const size_t amount, const buffer_provider *context_provider,
                                            buffer_context **granted_range);
-  BUFFER_UNIT * get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
+  char * get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
                                    const buffer_provider *context_provider, buffer_context **granted_range);
 
   stream_position &get_curr_read_position (void) { return m_read_position; };

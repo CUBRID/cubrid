@@ -44,7 +44,7 @@ buffer_provider *buffer_provider::get_default_instance (void)
 
 int buffer_provider::allocate_buffer (packing_stream_buffer **new_buffer, const size_t &amount)
 {
-  BUFFER_UNIT *mem;
+  char *mem;
   packing_stream_buffer *my_new_buffer;
   size_t to_alloc;
 
@@ -55,7 +55,7 @@ int buffer_provider::allocate_buffer (packing_stream_buffer **new_buffer, const 
 
   to_alloc = MAX (amount, min_alloc_size);
 
-  mem = (BUFFER_UNIT *) malloc (to_alloc);
+  mem = (char*) malloc (to_alloc);
   if (mem == NULL)
     {
       return ER_FAILED;
@@ -81,7 +81,7 @@ int buffer_provider::free_all_buffers (void)
           return ER_FAILED;
         }
 
-       BUFFER_UNIT *mem = m_buffers[i]->get_buffer ();
+       char *mem = m_buffers[i]->get_buffer ();
        free (mem);
 
        delete (m_buffers[i]);

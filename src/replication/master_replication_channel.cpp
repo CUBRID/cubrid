@@ -58,7 +58,7 @@ int master_replication_channel_manager::add_buffers (std::vector <buffer_context
   return NO_ERROR;
 }
 
-int master_replication_channel_manager::fetch_data (BUFFER_UNIT *ptr, const size_t &amount)
+int master_replication_channel_manager::fetch_data (char *ptr, const size_t &amount)
 {
   return NO_ERROR;
 }

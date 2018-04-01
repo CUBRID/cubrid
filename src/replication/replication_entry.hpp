@@ -26,20 +26,17 @@
 #ifndef _REPLICATION_ENTRY_HPP_
 #define _REPLICATION_ENTRY_HPP_
 
-#include <vector>
-#include <string>
 #include "packable_object.hpp"
 #include "dbtype.h"
 #include "storage_common.h"
-
+#include <vector>
+#include <string>
 
 /* TODO[arnia] : change these as constants */
 #define STREAM_ENTRY_RBR 0
 #define STREAM_ENTRY_SBR 1
 
-class replication_serialization;
-class packer;
-
+class cubpacking::packer;
 
 enum repl_entry_type
 {
@@ -49,7 +46,7 @@ enum repl_entry_type
 };
 typedef enum repl_entry_type REPL_ENTRY_TYPE;
 
-class sbr_repl_entry : public packable_object, public self_creating_object
+class sbr_repl_entry : public cubpacking::packable_object, public cubpacking::self_creating_object
 {
 private:
   std::string m_statement;
@@ -59,20 +56,20 @@ public:
   ~sbr_repl_entry () {};
   sbr_repl_entry (const std::string &str) { set_statement (str); };
 
-  bool is_equal (const packable_object *other);
+  bool is_equal (const cubpacking::packable_object *other);
 
   void set_statement (const std::string &str) { m_statement = str; };
 
   int get_create_id (void) { return STREAM_ENTRY_SBR; };
-  self_creating_object *create (void) { return new sbr_repl_entry (); };
+  cubpacking::self_creating_object *create (void) { return new sbr_repl_entry (); };
 
-  int pack (packer *serializator);
-  int unpack (packer *serializator);
+  int pack (cubpacking::packer *serializator);
+  int unpack (cubpacking::packer *serializator);
 
-  size_t get_packed_size (packer *serializator);
+  size_t get_packed_size (cubpacking::packer *serializator);
 };
 
-class single_row_repl_entry : public packable_object,  public self_creating_object
+class single_row_repl_entry : public cubpacking::packable_object, public cubpacking::self_creating_object
 {
 private:
   REPL_ENTRY_TYPE m_type;
@@ -86,7 +83,7 @@ public:
   ~single_row_repl_entry ();
   single_row_repl_entry (const REPL_ENTRY_TYPE m_type, const char *class_name);
 
-  bool is_equal (const packable_object *other);
+  bool is_equal (const cubpacking::packable_object *other);
 
   void set_class_name (const char *class_name);
 
@@ -96,16 +93,16 @@ public:
 
 
   int get_create_id (void) { return STREAM_ENTRY_RBR; };
-  self_creating_object *create (void) { return new single_row_repl_entry (); };
+  cubpacking::self_creating_object *create (void) { return new single_row_repl_entry (); };
 
-  int pack (packer *serializator);
-  int unpack (packer *serializator);
+  int pack (cubpacking::packer *serializator);
+  int unpack (cubpacking::packer *serializator);
 
-  size_t get_packed_size (packer *serializator);
+  size_t get_packed_size (cubpacking::packer *serializator);
 };
 
 
-class replication_object_builder : public object_builder
+class replication_object_builder : public cubpacking::object_builder
 {
 public:
   replication_object_builder ();

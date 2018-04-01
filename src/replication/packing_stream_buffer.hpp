@@ -42,14 +42,15 @@ class replication_stream;
  * (the one which decides when to create or scrap a buffer)
  * 
  */
-class packing_stream_buffer : public packing_buffer
+class packing_stream_buffer : public cubpacking::buffer
 {
 public:
-  packing_stream_buffer (BUFFER_UNIT *ptr, const size_t buf_size, pinner *referencer) { init (ptr, buf_size, referencer); };
+  packing_stream_buffer (char *ptr, const size_t buf_size, cubpacking::pinner *referencer)
+    { init (ptr, buf_size, referencer); };
 
-  BUFFER_UNIT * reserve (const size_t amount);
+  char * reserve (const size_t amount);
 
-  BUFFER_UNIT * get_curr_append_ptr (void) { return storage + write_stream_reference.buf_end_offset; };
+  char * get_curr_append_ptr (void) { return storage + write_stream_reference.buf_end_offset; };
 
   /* mapping methods : a memory already exists, just instruct buffer to use it */
   //int map_buffer_with_pin (serial_buffer *ref_buffer, pinner *referencer);

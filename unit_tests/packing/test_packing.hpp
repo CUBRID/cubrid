@@ -21,9 +21,9 @@
 #define _TEST_PACKING_HPP_
 
 #include "packable_object.hpp"
+#include "packing_buffer.hpp"
+#include "packing_common.hpp"
 #include <vector>
-
-class packing_buffer;
 
 namespace test_packing
 {
@@ -32,18 +32,18 @@ int test_packing1 (void);
 
 int test_packing_buffer1 (void);
 
-class buffer_manager : public pinner
+class buffer_manager : public cubpacking::pinner
 {
 private:
-  std::vector<packing_buffer*> buffers;
+  std::vector<cubpacking::buffer*> buffers;
 public:
-  void allocate_bufer (packing_buffer *&buf, const size_t &amount);
+  void allocate_bufer (cubpacking::buffer *&buf, const size_t &amount);
 
   void free_storage();
 
 };
 
-class po1 : public packable_object
+class po1 : public cubpacking::packable_object
 {
 public:
   int i1;
@@ -57,17 +57,15 @@ public:
 
 public:
 
-  int pack (packer *serializator);
-  int unpack (packer *serializator);
+  int pack (cubpacking::packer *serializator);
+  int unpack (cubpacking::packer *serializator);
 
   bool is_equal (const packable_object *other);
   
-  size_t get_packed_size (packer *serializator);
+  size_t get_packed_size (cubpacking::packer *serializator);
 
   void generate_obj (void);
 };
-
-
 
 }
 

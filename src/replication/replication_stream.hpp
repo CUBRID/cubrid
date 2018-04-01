@@ -57,7 +57,7 @@ public:
   size_t get_data_packed_size (void);
   void set_header_data_size (const size_t &data_size);
 
-  object_builder *get_builder (void) { static replication_object_builder repl_object_builder; return &repl_object_builder; };
+  cubpacking::object_builder *get_builder (void) { static replication_object_builder repl_object_builder; return &repl_object_builder; };
 
   int pack_stream_entry_header ();
   int unpack_stream_entry_header ();

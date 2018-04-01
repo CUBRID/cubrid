@@ -25,11 +25,11 @@
 
 #include "packing_stream_buffer.hpp"
 
-BUFFER_UNIT * packing_stream_buffer::reserve (const size_t amount)
+char * packing_stream_buffer::reserve (const size_t amount)
 {
   if (storage + write_stream_reference.buf_end_offset + amount < end_ptr)
     {
-      BUFFER_UNIT *ptr = storage + write_stream_reference.buf_end_offset;
+      char *ptr = storage + write_stream_reference.buf_end_offset;
       write_stream_reference.buf_end_offset += amount;
 
       return ptr;

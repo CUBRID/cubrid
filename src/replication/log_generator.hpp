@@ -69,7 +69,7 @@ public:
 
   ~log_generator ();
 
-  int append_repl_entry (THREAD_ENTRY *th_entry, packable_object *repl_entry);
+  int append_repl_entry (THREAD_ENTRY *th_entry, cubpacking::packable_object *repl_entry);
 
   void set_ready_to_pack (THREAD_ENTRY *th_entry);
 

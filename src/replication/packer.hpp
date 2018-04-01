@@ -38,16 +38,18 @@
  * (atomically == means no other object could insert sub-objects in the midle of the packing of 
  * currently serialized object)
  */
+namespace cubpacking
+{
+
 class packer
 {
 public:
   /* method for starting a packing context */
   packer (void) { m_ptr = NULL;};
-  packer (BUFFER_UNIT *storage, const size_t amount);
+  packer (char *storage, const size_t amount);
 
-  int init (BUFFER_UNIT *storage, const size_t amount);
+  int init (char *storage, const size_t amount);
 
-  void align (const size_t req_alignement) { m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, req_alignement); };
   size_t get_packed_int_size (size_t curr_offset);
   int pack_int (const int value);
   int unpack_int (int *value);
@@ -81,12 +83,15 @@ public:
   int pack_large_string (const std::string &str);
   int unpack_large_string (std::string &str);
 
-  BUFFER_UNIT *get_curr_ptr (void) { return m_ptr; };
+  char *get_curr_ptr (void) { return m_ptr; };
+
+  void align (const size_t req_alignement) { m_ptr = PTR_ALIGN (m_ptr, req_alignement); };
 
 private:
-  BUFFER_UNIT *m_ptr;       /* current pointer of serialization */
-  BUFFER_UNIT *m_end_ptr;     /* end of avaialable serialization scope */
+  char *m_ptr;       /* current pointer of serialization */
+  char *m_end_ptr;     /* end of avaialable serialization scope */
 };
 
+} /* namespace cubpacking */
 
 #endif /* _REPLICATION_SERIALIZATION_HPP_ */

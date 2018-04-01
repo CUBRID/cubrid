@@ -36,26 +36,31 @@
  * This is not intended to be used as character stream, but as bulk operations: users of it
  * reserve / allocate parts of it; there are objects which deal of byte level operations (see : packer)
  */
-class packing_buffer : public pinnable
+namespace cubpacking
+{
+
+class buffer : public pinnable
 {
 public:
-  packing_buffer () { storage = NULL; };
-  packing_buffer (BUFFER_UNIT *ptr, const size_t buf_size) { init (ptr, buf_size, NULL); };
+  buffer () { storage = NULL; };
+  buffer (char *ptr, const size_t buf_size) { init (ptr, buf_size, NULL); };
 
-  ~packing_buffer () { assert (get_pin_count () == 0); };
+  ~buffer () { assert (get_pin_count () == 0); };
 
-  BUFFER_UNIT * get_buffer (void) { return storage; };
+  char * get_buffer (void) { return storage; };
 
   size_t get_buffer_size (void) { return end_ptr - storage; };
 
-  int init (BUFFER_UNIT *ptr, const size_t buf_size, pinner *referencer);
+  int init (char *ptr, const size_t buf_size, pinner *referencer);
     
 protected:
 
   /* start of allocated memory */
-  BUFFER_UNIT *storage;
+  char *storage;
   /* end of allocated memory */
-  BUFFER_UNIT *end_ptr;
+  char *end_ptr;
 };
+
+} /* namespace cubpacking */
 
 #endif /* _PACKING_BUFFER_HPP_ */

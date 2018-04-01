@@ -29,6 +29,9 @@
 #include <map>
 #include "packer.hpp"
 
+namespace cubpacking
+{
+
 class packable_object
 {
 protected:
@@ -81,6 +84,6 @@ public:
     };
 };
 
-
+} /* namespace cubpacking */
 
 #endif /* _PACKABLE_OBJECT_HPP_ */

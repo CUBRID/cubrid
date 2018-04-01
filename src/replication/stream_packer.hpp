@@ -47,7 +47,7 @@ class buffer_provider;
  * is entirely mapped onto a buffer, but for simplicity, some code will use this)
  *
  */
-class stream_packer : public packer
+class stream_packer : public cubpacking::packer
 {
 public:
   stream_packer (packing_stream *stream_arg);
@@ -55,14 +55,14 @@ public:
   void set_stream (packing_stream *stream_arg);
 
   /* method for starting a packing context */
-  BUFFER_UNIT *start_packing_range (const size_t amount, buffer_context **granted_range);
+  char *start_packing_range (const size_t amount, buffer_context **granted_range);
 
   /* method for starting an unpacking context */
-  BUFFER_UNIT *start_unpacking_range (const size_t amount, buffer_context **granted_range);
-  BUFFER_UNIT *start_unpacking_range_from_pos (const stream_position &start_pos, const size_t amount,
+  char *start_unpacking_range (const size_t amount, buffer_context **granted_range);
+  char *start_unpacking_range_from_pos (const stream_position &start_pos, const size_t amount,
                                                buffer_context **granted_range);
-  BUFFER_UNIT *extend_unpacking_range (const size_t amount, buffer_context **granted_range);
-  BUFFER_UNIT *extend_unpacking_range_from_pos (const stream_position &start_pos, const size_t amount,
+  char *extend_unpacking_range (const size_t amount, buffer_context **granted_range);
+  char *extend_unpacking_range_from_pos (const stream_position &start_pos, const size_t amount,
                                                 buffer_context **granted_range);
 
   int packing_completed (void);
@@ -72,7 +72,7 @@ public:
 private:
   packing_stream *m_stream;
 
-  BUFFER_UNIT *m_packer_start_ptr;
+  char *m_packer_start_ptr;
 
 
   /* buffer_provider is optional for packer :

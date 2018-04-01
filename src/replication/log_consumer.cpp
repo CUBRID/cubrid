@@ -89,7 +89,7 @@ log_consumer* log_consumer::new_instance (const CONSUMER_TYPE req_type, const st
   return new_lc; 
 }
 
-int log_consumer::fetch_data (BUFFER_UNIT *ptr, const size_t &amount)
+int log_consumer::fetch_data (char *ptr, const size_t &amount)
 {
   // m_src->receive (ptr, amount);
   return NO_ERROR;

@@ -123,7 +123,7 @@ int log_file::write_buffer (packing_stream_buffer *buffer)
   return NO_ERROR;
 }
 
-int log_file::read_no_cache (BUFFER_UNIT *storage, const size_t count, file_pos_t start_pos)
+int log_file::read_no_cache (char *storage, const size_t count, file_pos_t start_pos)
 {
   size_t actual_read;
 
@@ -154,7 +154,7 @@ char *log_file::get_filename (const stream_position &start_position)
   return NULL;
 }
 
-int log_file::fetch_data (BUFFER_UNIT *ptr, const size_t &amount)
+int log_file::fetch_data (char *ptr, const size_t &amount)
 {
   NOT_IMPLEMENTED ();
 

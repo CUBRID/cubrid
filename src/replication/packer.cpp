@@ -31,6 +31,9 @@
 #include <vector>
 #include <string>
 
+namespace cubpacking
+{
+
 #define CHECK_RANGE(ptr, endptr, amount) \
   do \
     { \
@@ -44,12 +47,12 @@
 
 /* TODO[arnia] : error codes and mesages for ER_FAILED return codes */
 
-packer::packer (BUFFER_UNIT *storage, const size_t amount)
+packer::packer (char *storage, const size_t amount)
 {
   init (storage, amount);
 }
 
-int packer::init (BUFFER_UNIT *storage, const size_t amount)
+int packer::init (char *storage, const size_t amount)
 {
   m_ptr = storage;
   m_end_ptr = storage + amount;
@@ -64,7 +67,7 @@ size_t packer::get_packed_int_size (size_t curr_offset)
 
 int packer::pack_int (const int value)
 {
-  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, INT_ALIGNMENT);
+  align (INT_ALIGNMENT);
   CHECK_RANGE (m_ptr, m_end_ptr, OR_INT_SIZE);
    
   OR_PUT_INT (m_ptr, value);
@@ -74,7 +77,7 @@ int packer::pack_int (const int value)
 
 int packer::unpack_int (int *value)
 {
-  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, INT_ALIGNMENT);
+  align (INT_ALIGNMENT);
   CHECK_RANGE (m_ptr, m_end_ptr, OR_INT_SIZE);
 
   *value = OR_GET_INT (m_ptr);
@@ -85,7 +88,7 @@ int packer::unpack_int (int *value)
 
 int packer::peek_unpack_int (int *value)
 {
-  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, INT_ALIGNMENT);
+  align (INT_ALIGNMENT);
   CHECK_RANGE (m_ptr, m_end_ptr, OR_INT_SIZE);
 
   *value = OR_GET_INT (m_ptr);
@@ -101,7 +104,7 @@ size_t packer::get_packed_short_size (size_t curr_offset)
 
 int packer::pack_short (short *value)
 {
-  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, SHORT_ALIGNMENT);
+  align (SHORT_ALIGNMENT);
   CHECK_RANGE (m_ptr, m_end_ptr, OR_SHORT_SIZE);
    
   OR_PUT_SHORT (m_ptr, *value);
@@ -111,7 +114,7 @@ int packer::pack_short (short *value)
 
 int packer::unpack_short (short *value)
 {
-  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, SHORT_ALIGNMENT);
+  align (SHORT_ALIGNMENT);
   CHECK_RANGE (m_ptr, m_end_ptr, OR_SHORT_SIZE);
 
   *value = OR_GET_SHORT (m_ptr);
@@ -127,7 +130,7 @@ size_t packer::get_packed_bigint_size (size_t curr_offset)
 
 int packer::pack_bigint (DB_BIGINT *value)
 {
-  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, MAX_ALIGNMENT);
+  align (MAX_ALIGNMENT);
   CHECK_RANGE (m_ptr, m_end_ptr, OR_BIGINT_SIZE);
    
   OR_PUT_BIGINT (m_ptr, value);
@@ -137,7 +140,7 @@ int packer::pack_bigint (DB_BIGINT *value)
 
 int packer::unpack_bigint (DB_BIGINT *value)
 {
-  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, MAX_ALIGNMENT);
+  align (MAX_ALIGNMENT);
   CHECK_RANGE (m_ptr, m_end_ptr, OR_BIGINT_SIZE);
 
   OR_GET_BIGINT (m_ptr, value);
@@ -150,7 +153,7 @@ int packer::pack_int_array (const int *array, const int count)
 {
   int i;
 
-  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, INT_ALIGNMENT);
+  align (INT_ALIGNMENT);
   CHECK_RANGE (m_ptr, m_end_ptr, (OR_INT_SIZE * (count + 1)));
   
   OR_PUT_INT (m_ptr, count);
@@ -168,7 +171,7 @@ int packer::unpack_int_array (int *array, int &count)
 {
   int i;
 
-  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, INT_ALIGNMENT);
+  align (INT_ALIGNMENT);
   CHECK_RANGE (m_ptr, m_end_ptr, OR_INT_SIZE);
 
   count = OR_GET_INT (m_ptr);
@@ -200,7 +203,7 @@ int packer::pack_int_vector (const std::vector<int> &array)
   const int count = (const int) array.size();
   int i;
 
-  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, INT_ALIGNMENT);
+  align (INT_ALIGNMENT);
   CHECK_RANGE (m_ptr, m_end_ptr, (OR_INT_SIZE * (count + 1)));
 
   OR_PUT_INT (m_ptr, count);
@@ -219,7 +222,7 @@ int packer::unpack_int_vector (std::vector<int> &array)
   int i;
   int count;
 
-  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, INT_ALIGNMENT);
+  align (INT_ALIGNMENT);
   CHECK_RANGE (m_ptr, m_end_ptr, OR_INT_SIZE);
 
   count = OR_GET_INT (m_ptr);
@@ -246,15 +249,15 @@ size_t packer::get_packed_db_value_size (const DB_VALUE &value, size_t curr_offs
 
 int packer::pack_db_value (const DB_VALUE &value)
 {
-  BUFFER_UNIT *old_ptr;
+  char *old_ptr;
 
   size_t value_size = or_packed_value_size ((DB_VALUE *)&value, 1, 1, 0);
 
-  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, MAX_ALIGNMENT);
+  align (MAX_ALIGNMENT);
   CHECK_RANGE (m_ptr, m_end_ptr, value_size);
   old_ptr = m_ptr;
 
-  m_ptr = (BUFFER_UNIT *) or_pack_value ((char *) m_ptr, (DB_VALUE *) &value);
+  m_ptr =  or_pack_value (m_ptr, (DB_VALUE *) &value);
   assert (old_ptr + value_size == m_ptr);
 
   CHECK_RANGE (m_ptr, m_end_ptr, 0);
@@ -264,11 +267,11 @@ int packer::pack_db_value (const DB_VALUE &value)
 
 int packer::unpack_db_value (DB_VALUE *value)
 {
-  BUFFER_UNIT *old_ptr;
+  char *old_ptr;
   
-  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, MAX_ALIGNMENT);
+  align (MAX_ALIGNMENT);
   old_ptr = m_ptr;
-  m_ptr = (BUFFER_UNIT *) or_unpack_value ((char *) m_ptr, (DB_VALUE *) value);
+  m_ptr =  or_unpack_value (m_ptr, (DB_VALUE *) value);
 
   size_t value_size = or_packed_value_size (value, 1, 1, 0);
   assert (old_ptr + value_size == m_ptr);
@@ -305,7 +308,7 @@ int packer::pack_small_string (const char *string)
   (void) memcpy (m_ptr, string, len);
   m_ptr += len;
 
-  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, INT_ALIGNMENT);
+  align (INT_ALIGNMENT);
 
   return NO_ERROR;
 }
@@ -316,7 +319,7 @@ int packer::unpack_small_string (char *string, const size_t max_size)
 
   CHECK_RANGE (m_ptr, m_end_ptr, OR_BYTE_SIZE);
 
-  len = (size_t) *m_ptr;
+  len = (size_t) *(unsigned char *) m_ptr;
   if (len > max_size || len < 0)
     {
       return ER_FAILED;
@@ -329,7 +332,7 @@ int packer::unpack_small_string (char *string, const size_t max_size)
   *(string + len) = '\0';
   m_ptr += len;
 
-  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, INT_ALIGNMENT);
+  align (INT_ALIGNMENT);
 
   return NO_ERROR;
 }
@@ -356,7 +359,7 @@ int packer::pack_large_string (const std::string &str)
   m_ptr += OR_INT_SIZE;
   (void) memcpy (m_ptr, str.c_str (), len);
   m_ptr += len;
-  m_ptr = (BUFFER_UNIT *) PTR_ALIGN (m_ptr, INT_ALIGNMENT);
+  align (INT_ALIGNMENT);
 
   return NO_ERROR;
 }
@@ -375,7 +378,9 @@ int packer::unpack_large_string (std::string &str)
       str = std::string ((const char *) m_ptr);
       m_ptr += len;
     }
-  m_ptr = (BUFFER_UNIT *)  PTR_ALIGN (m_ptr, INT_ALIGNMENT);
+  align (INT_ALIGNMENT);
 
   return NO_ERROR;
 }
+
+} /* namespace cubpacking */

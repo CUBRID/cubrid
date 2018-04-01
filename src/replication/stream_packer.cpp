@@ -41,9 +41,9 @@ void stream_packer::set_stream (packing_stream *stream_arg)
   m_stream = stream_arg;
 }
 
-BUFFER_UNIT *stream_packer::start_packing_range (const size_t amount, buffer_context **granted_range)
+char *stream_packer::start_packing_range (const size_t amount, buffer_context **granted_range)
 {
-  BUFFER_UNIT *ptr;
+  char *ptr;
   size_t aligned_amount;
 
   aligned_amount = DB_ALIGN (amount, MAX_ALIGNMENT);
@@ -75,10 +75,10 @@ int stream_packer::packing_completed (void)
 }
 
 
-BUFFER_UNIT *stream_packer::start_unpacking_range (const size_t amount, buffer_context **granted_range)
+char *stream_packer::start_unpacking_range (const size_t amount, buffer_context **granted_range)
 {
   /* TODO[arnia] */
-  BUFFER_UNIT *ptr;
+  char *ptr;
   size_t aligned_amount;
 
   aligned_amount = DB_ALIGN (amount, MAX_ALIGNMENT);
@@ -96,11 +96,11 @@ BUFFER_UNIT *stream_packer::start_unpacking_range (const size_t amount, buffer_c
   return NULL;
 }
 
-BUFFER_UNIT *stream_packer::start_unpacking_range_from_pos (const stream_position &start_pos, const size_t amount,
+char *stream_packer::start_unpacking_range_from_pos (const stream_position &start_pos, const size_t amount,
                                                             buffer_context **granted_range)
 {
   /* TODO[arnia] */
-  BUFFER_UNIT *ptr;
+  char *ptr;
   size_t aligned_amount;
 
   aligned_amount = DB_ALIGN (amount, MAX_ALIGNMENT);
@@ -118,14 +118,14 @@ BUFFER_UNIT *stream_packer::start_unpacking_range_from_pos (const stream_positio
   return NULL;
 }
 
-BUFFER_UNIT *stream_packer::extend_unpacking_range (const size_t amount, buffer_context **granted_range)
+char *stream_packer::extend_unpacking_range (const size_t amount, buffer_context **granted_range)
 {
   /* TODO[arnia] : try to extend withing the current buffer;
    * if required amount is not available, allocate a new buffer which fits both existing range and the extended range */
    return start_unpacking_range (amount, granted_range);
 }
 
-BUFFER_UNIT *stream_packer::extend_unpacking_range_from_pos (const stream_position &start_pos,
+char *stream_packer::extend_unpacking_range_from_pos (const stream_position &start_pos,
                                                              const size_t amount, buffer_context **granted_range)
 {
   /* TODO[arnia] : try to extend withing the current buffer;

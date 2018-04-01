@@ -78,11 +78,11 @@ public:
 
   static log_consumer* new_instance (const CONSUMER_TYPE req_type, const stream_position &start_position);
 
-  int fetch_data (BUFFER_UNIT *ptr, const size_t &amount);
+  int fetch_data (char *ptr, const size_t &amount);
   
   packing_stream * get_write_stream (void);
 
-  int fetch_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count, size_t *processed_bytes)
+  int fetch_action (const stream_position pos, char *ptr, const size_t byte_count, size_t *processed_bytes)
       { return fetch_data (ptr, byte_count); };
 };
 

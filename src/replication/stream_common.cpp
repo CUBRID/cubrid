@@ -45,9 +45,9 @@ bool buffer_context::is_range_contiguously_mapped (const stream_position &start,
   return (start == last_pos && start + amount < last_allocated_pos) ? true : false;
 }
 
-BUFFER_UNIT * buffer_context::extend_range (const size_t &amount)
+char * buffer_context::extend_range (const size_t &amount)
 {
-  BUFFER_UNIT * ptr;
+  char * ptr;
 
   ptr = mapped_buffer->get_buffer () + last_pos - first_pos;
   last_pos += amount;

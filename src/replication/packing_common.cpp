@@ -25,6 +25,8 @@
 
 #include "packing_common.hpp"
 
+namespace cubpacking
+{
 int pinner::pin (pinnable *reference)
 {
   if (reference != NULL
@@ -57,3 +59,5 @@ int pinner::unpin_all (void)
 
   return NO_ERROR;
 }
+
+} /* namespace cubpacking */

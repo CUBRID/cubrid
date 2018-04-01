@@ -37,7 +37,7 @@ class packing_stream;
 /*
  * an object of this type provides buffers (memory)
  */
-class buffer_provider : public pinner
+class buffer_provider : public cubpacking::pinner
 {
 private:
   /* a buffer provider may allocate several buffers */

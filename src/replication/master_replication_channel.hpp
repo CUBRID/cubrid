@@ -52,7 +52,7 @@ public:
   static master_replication_channel_manager *get_instance (void);
 
 
-  int fetch_data (BUFFER_UNIT *ptr, const size_t &amount);
+  int fetch_data (char *ptr, const size_t &amount);
   
   int flush_old_stream_data (void);
 

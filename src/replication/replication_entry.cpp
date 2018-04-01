@@ -94,7 +94,7 @@ void single_row_repl_entry::add_changed_value (const int att_id, DB_VALUE *db_va
   new_values.push_back (*db_val);
 }
 
-size_t single_row_repl_entry::get_packed_size (packer *serializator)
+size_t single_row_repl_entry::get_packed_size (cubpacking::packer *serializator)
 {
   int i;
   size_t entry_size = 0;
@@ -103,7 +103,7 @@ size_t single_row_repl_entry::get_packed_size (packer *serializator)
 
   /* type of packed object  + type of RBR entry  */
   entry_size += 2 * serializator->get_packed_int_size (entry_size);
-  entry_size += serializator->get_packed_int_vector_size (entry_size, changed_attributes.size ());
+  entry_size += serializator->get_packed_int_vector_size (entry_size, (int) changed_attributes.size ());
   entry_size += serializator->get_packed_small_string_size (m_class_name, entry_size);
   entry_size += serializator->get_packed_db_value_size (m_key_value, entry_size);
   /* count of new_values */
@@ -116,7 +116,7 @@ size_t single_row_repl_entry::get_packed_size (packer *serializator)
   return entry_size;
 }
 
-int single_row_repl_entry::pack (packer *serializator)
+int single_row_repl_entry::pack (cubpacking::packer *serializator)
 {
   int i;
 
@@ -134,7 +134,7 @@ int single_row_repl_entry::pack (packer *serializator)
   return NO_ERROR;
 }
 
-int single_row_repl_entry::unpack (packer *serializator)
+int single_row_repl_entry::unpack (cubpacking::packer *serializator)
 {
   int count_new_values = 0;
   int i;
@@ -175,7 +175,7 @@ bool sbr_repl_entry::is_equal (const packable_object *other)
   return true;
 }
 
-size_t sbr_repl_entry::get_packed_size (packer *serializator)
+size_t sbr_repl_entry::get_packed_size (cubpacking::packer *serializator)
 {
   /* we assume that offset start has already MAX_ALIGNMENT */
 
@@ -187,14 +187,14 @@ size_t sbr_repl_entry::get_packed_size (packer *serializator)
   return entry_size;
 }
 
-int sbr_repl_entry::pack (packer *serializator)
+int sbr_repl_entry::pack (cubpacking::packer *serializator)
 {
   serializator->pack_int (get_create_id ());
   serializator->pack_large_string (m_statement);
   return NO_ERROR;
 }
 
-int sbr_repl_entry::unpack (packer *serializator)
+int sbr_repl_entry::unpack (cubpacking::packer *serializator)
 {
   int entry_type_not_used;
   serializator->unpack_int (&entry_type_not_used);

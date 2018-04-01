@@ -52,24 +52,24 @@ struct file_range
   file_range () { start_pos = -1; end_pos = -1; }
 };
 
-class file_cache : public pinner
+class file_cache : public cubpacking::pinner
 {
 private:
   packing_stream_buffer *buffer;
   file_range cached_range;
   log_file *owner;
 
-  BUFFER_UNIT *storage;
+  char *storage;
 
 public:
   const size_t FILE_CACHE_ONE_BUFFFER_SIZE = 16 * 1024;
 
-  file_cache() { buffer = NULL; owner = NULL; storage = new BUFFER_UNIT[FILE_CACHE_ONE_BUFFFER_SIZE]; };
+  file_cache() { buffer = NULL; owner = NULL; storage = new char[FILE_CACHE_ONE_BUFFFER_SIZE]; };
 
   packing_stream_buffer *get_buffer (void) { return buffer; };
   log_file *get_owner (void) { return owner; };
 
-  BUFFER_UNIT *get_storage (void) { return storage; };
+  char *get_storage (void) { return storage; };
 
   int release (void);
 
@@ -100,14 +100,14 @@ public:
 
   int open_file (const char *file_path);
 
-  int read_no_cache (BUFFER_UNIT *storage, const size_t count, file_pos_t start_pos = CURRENT_POSITION);
+  int read_no_cache (char *storage, const size_t count, file_pos_t start_pos = CURRENT_POSITION);
 
   int write_buffer (packing_stream_buffer *buffer);
 
   static char *get_filename (const stream_position &start_position);
 
 
-  int fetch_data (BUFFER_UNIT *ptr, const size_t &amount);
+  int fetch_data (char *ptr, const size_t &amount);
   
   int extend_buffer (packing_stream_buffer **existing_buffer, const size_t &amount);
 

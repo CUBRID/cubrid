@@ -40,8 +40,9 @@ void generate_str (char *str, size_t len)
   str[i] = '\0';
 }
 
-int po1::pack (packer *serializator)
+int po1::pack (cubpacking::packer *serializator)
 {
+  int res = 0;
   serializator->pack_int (i1);
   serializator->pack_short (&sh1);
   serializator->pack_bigint (&b1);
@@ -51,15 +52,18 @@ int po1::pack (packer *serializator)
     {
       serializator->pack_db_value (values[i]);
     }
-  serializator->pack_small_string (small_str);
-  serializator->pack_large_string (large_str);
+  res = serializator->pack_small_string (small_str);
+  assert (res == 0);
+  res = serializator->pack_large_string (large_str);
+  assert (res == 0);
 
   return NO_ERROR;
 }
 
-int po1::unpack (packer *serializator)
+int po1::unpack (cubpacking::packer *serializator)
 {
   int cnt;
+  int res;
 
   serializator->unpack_int (&i1);
   serializator->unpack_short (&sh1);
@@ -73,13 +77,15 @@ int po1::unpack (packer *serializator)
     {
       serializator->unpack_db_value (&values[i]);
     }
-  serializator->unpack_small_string (small_str, sizeof (small_str));
-  serializator->unpack_large_string (large_str);
+  res = serializator->unpack_small_string (small_str, sizeof (small_str));
+  assert (res == 0);
+  res = serializator->unpack_large_string (large_str);
+  assert (res == 0);
 
   return NO_ERROR;
 }
 
-bool po1::is_equal (const packable_object *other)
+bool po1::is_equal (const cubpacking::packable_object *other)
 {
   const po1 *other_po1 = dynamic_cast<const po1*>(other);
 
@@ -123,7 +129,7 @@ bool po1::is_equal (const packable_object *other)
   return true;
 }
 
-size_t po1::get_packed_size (packer *serializator)
+size_t po1::get_packed_size (cubpacking::packer *serializator)
 {
   size_t entry_size = 0;
 
@@ -188,12 +194,12 @@ void po1::generate_obj (void)
 
 /////////////////////////////
 
-void buffer_manager::allocate_bufer (packing_buffer *&buf, const size_t &amount)
+void buffer_manager::allocate_bufer (cubpacking::buffer *&buf, const size_t &amount)
 {
-  BUFFER_UNIT *ptr;
-  ptr = new BUFFER_UNIT[amount];
+  char *ptr;
+  ptr = new char[amount];
 
-  packing_buffer *new_buf = new packing_buffer;
+  cubpacking::buffer *new_buf = new cubpacking::buffer;
   new_buf->init (ptr, amount, this);
 
   buffers.push_back (new_buf);
@@ -245,8 +251,6 @@ int test_packing1 (void)
   int i;
   size_t obj_size = 0;
 
-
-
   init_common_cubrid_modules ();
 
   po1 *test_objects = new po1[TEST_OBJ_CNT];
@@ -257,14 +261,14 @@ int test_packing1 (void)
       test_objects[i].generate_obj ();
     }
 
-  BUFFER_UNIT *ptr1, *ptr2;
+  char *ptr1, *ptr2;
   size_t buf_size = 1024 * 1024;
-  ptr1 = new BUFFER_UNIT[buf_size];
-  ptr2 = new BUFFER_UNIT[buf_size];
-  packing_buffer buf1 (ptr1, buf_size);
-  packing_buffer buf2 (ptr2, buf_size);
-  packer packer_instance (buf1.get_buffer (), buf1.get_buffer_size ());
-  packer unpacker_instance (buf2.get_buffer (), buf2.get_buffer_size ());
+  ptr1 = new char[buf_size];
+  ptr2 = new char[buf_size];
+  cubpacking::buffer buf1 (ptr1, buf_size);
+  cubpacking::buffer buf2 (ptr2, buf_size);
+  cubpacking::packer packer_instance (buf1.get_buffer (), buf1.get_buffer_size ());
+  cubpacking::packer unpacker_instance (buf2.get_buffer (), buf2.get_buffer_size ());
 
   obj_size = 0;
   for (i = 0; i < TEST_OBJ_CNT; i++)
@@ -310,7 +314,7 @@ int test_packing_buffer1 (void)
   int res = 0;
 
   buffer_manager bm;
-  packing_buffer *buf[100];
+  cubpacking::buffer *buf[100];
 
   for (int i = 0; i < 100; i++)
     {

@@ -31,14 +31,15 @@
 #include <cstddef>
 #include "error_code.h"
 
+namespace cubpacking
+{
+
 #define NOT_IMPLEMENTED() \
   do \
     { \
       throw ("Not implemented"); \
     } \
   while (0)
-
-typedef unsigned char BUFFER_UNIT;
 
 class pinnable;
 
@@ -71,5 +72,7 @@ private:
   std::set <pinner*> pinners;
 
 };
+
+} /* namespace cubpacking */
 
 #endif /* _PACKING_COMMON_HPP_ */

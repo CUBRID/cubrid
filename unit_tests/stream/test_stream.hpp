@@ -33,7 +33,7 @@ int test_stream1 (void);
 class stream_handler_write : public write_handler
 {
 public:
-  int write_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count);
+  int write_action (const stream_position pos, char *ptr, const size_t byte_count);
 };
 
 
@@ -41,11 +41,11 @@ class stream_handler_read : public partial_read_handler
 {
 private:
   size_t m_remaining_to_read;
-  BUFFER_UNIT expected_val;
+  char expected_val;
 public:
   stream_handler_read () { m_remaining_to_read = 0; };
 
-  int read_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count, size_t *processed_bytes);
+  int read_action (const stream_position pos, char *ptr, const size_t byte_count, size_t *processed_bytes);
 };
 
 }

@@ -25,10 +25,13 @@
 
 #include "packing_buffer.hpp"
 
-int packing_buffer::init (BUFFER_UNIT *ptr, const size_t buf_size, pinner *referencer)
+namespace cubpacking
+{
+
+int buffer::init (char *ptr, const size_t buf_size, pinner *referencer)
 {
   storage = ptr;
-  end_ptr = (BUFFER_UNIT *)((char *) ptr + buf_size);
+  end_ptr = (ptr + buf_size);
 
   if (referencer != NULL)
     {
@@ -37,3 +40,5 @@ int packing_buffer::init (BUFFER_UNIT *ptr, const size_t buf_size, pinner *refer
 
   return NO_ERROR;
 }
+
+} /* namespace cubpacking */

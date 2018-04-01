@@ -24,7 +24,7 @@
 namespace test_stream
 {
 
-int stream_handler_write::write_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count)
+int stream_handler_write::write_action (const stream_position pos, char *ptr, const size_t byte_count)
 {
   int i;
 
@@ -42,7 +42,7 @@ int stream_handler_write::write_action (const stream_position pos, BUFFER_UNIT *
   return 0;
 }
 
-int stream_handler_read::read_action (const stream_position pos, BUFFER_UNIT *ptr, const size_t byte_count,
+int stream_handler_read::read_action (const stream_position pos, char *ptr, const size_t byte_count,
                                       size_t *processed_bytes)
 {
   int i;
