@@ -461,6 +461,8 @@ static int lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran
 static void lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index);
 static int lock_delete_from_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index);
 static LK_ENTRY *lock_find_tran_hold_entry (int tran_index, const OID * oid, bool is_class);
+static bool lock_is_local_deadlock_detection_interval_up (void);
+static void lock_detect_local_deadlock (THREAD_ENTRY * thread_p);
 static bool lock_is_class_lock_escalated (LOCK class_lock, LOCK lock_escalation);
 static LK_ENTRY *lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index, LOCK lock);
 static void lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr);
@@ -3805,7 +3807,7 @@ lock_tran_lk_entry:
 
 blocked:
 
-  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_LOCK_OBJECT))
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_LOCK_OBJECT))
     {
       tsc_getticks (&start_tick);
     }
@@ -3823,7 +3825,7 @@ blocked:
     }
   ret_val = lock_suspend (thread_p, entry_ptr, wait_msecs);
 
-  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVE_LOCK_OBJECT))
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_LOCK_OBJECT))
     {
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
@@ -5907,6 +5909,12 @@ class deadlock_detect_task : public cubthread::entry_task
 	  return;
 	}
 
+      if (!lock_is_local_deadlock_detection_interval_up ())
+	{
+	  // forced to wait until PRM_ID_LK_RUN_DEADLOCK_INTERVAL
+	  return;
+	}
+
       if (lk_Gl.deadlock_and_timeout_detector == 0)
 	{
 	  // if none of the threads were suspended then just return
@@ -5972,6 +5980,20 @@ void
 lock_deadlock_detect_daemon_destroy ()
 {
   cubthread::get_manager ()->destroy_daemon (lock_Deadlock_detect_daemon);
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_deadlock_detect_daemon_get_stats - get deadlock detector daemon thread statistics into statsp
+ */
+void
+lock_deadlock_detect_daemon_get_stats (UINT64 * statsp)
+{
+  if (lock_Deadlock_detect_daemon != NULL)
+    {
+      lock_Deadlock_detect_daemon->get_stats (statsp);
+    }
 }
 #endif /* SERVER_MODE */
 // *INDENT-ON*
@@ -7778,6 +7800,37 @@ end:
 }
 
 /*
+ * lock_is_local_deadlock_detection_interval_up - Check local deadlock detection interval
+ *
+ * return:
+ *
+ * Note:check if the local deadlock detection should be performed.
+ */
+static bool
+lock_is_local_deadlock_detection_interval_up (void)
+{
+#if defined (SERVER_MODE)
+  struct timeval now, elapsed;
+  double elapsed_sec;
+
+  /* check deadlock detection interval */
+  gettimeofday (&now, NULL);
+  perfmon_diff_timeval (&elapsed, &lk_Gl.last_deadlock_run, &now);
+  elapsed_sec = elapsed.tv_sec + (elapsed.tv_usec / 1000);
+  if (elapsed_sec < prm_get_float_value (PRM_ID_LK_RUN_DEADLOCK_INTERVAL))
+    {
+      return false;
+    }
+  else
+    {
+      return true;
+    }
+#else /* !SERVER_MODE */
+  return false;
+#endif /* SERVER_MODE */
+}
+
+/*
  * lock_detect_local_deadlock - Run the local deadlock detection
  *
  * return: nothing
@@ -7801,7 +7854,7 @@ end:
  *
  *     Last, free WFG framework.
  */
-void
+static void
 lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 {
 #if !defined (SERVER_MODE)

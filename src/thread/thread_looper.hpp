@@ -27,10 +27,11 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <functional>
 
 #include <cassert>
+#include <cinttypes>
 #include <cstdint>
-#include <functional>
 
 // cubthread::looper
 //
@@ -119,6 +120,15 @@ namespace cubthread
       // return true if waiter was woken up before timeout, for more details see put_to_sleep (waiter &)
       bool was_woken_up (void) const;
 
+      // statistics
+      // sleep count
+      // sleep time
+      // reset count
+      static const std::size_t STAT_COUNT = 3;
+
+      using stat_type = std::uint64_t;
+      void get_stats (stat_type *stats_out);
+
     private:
 
       void setup_fixed_waits (bool &is_timed_wait, delta_time &period);
@@ -137,6 +147,11 @@ namespace cubthread
       // a time point that represents the start of task execution
       // used by put_to_sleep function in order to sleep for difference between period interval and task execution time
       std::chrono::system_clock::time_point m_start_execution_time;
+
+      // statistics
+      stat_type m_sleep_count;
+      stat_type m_sleep_time;
+      stat_type m_reset_count;
   };
 
   /************************************************************************/

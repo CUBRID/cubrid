@@ -30,6 +30,8 @@
 
 #include <thread>
 
+#include <cinttypes>
+
 // cubthread::daemon
 //
 //  description
@@ -94,6 +96,17 @@ namespace cubthread
       void reset_looper (void);   // reset looper
       // note: this applies only if looper wait pattern is of type INCREASING_PERIODS
 
+      // statistics
+      using stat_type = std::uint64_t;
+
+      // all statistics:
+      // own stats: loop count, execute time, pause time = 3
+      // + looper stats
+      // + waiter stats
+      static const std::size_t STAT_COUNT = 3 + looper::STAT_COUNT + waiter::STAT_COUNT;
+
+      void get_stats (stat_type *stats_out);
+
     private:
       template <typename Context>
       static void loop (daemon *daemon_arg, context_manager<Context> *context_manager_arg,
@@ -104,6 +117,11 @@ namespace cubthread
       waiter m_waiter;        // thread waiter
       looper m_looper;        // thread looper
       std::thread m_thread;   // the actual daemon thread
+
+      // stats
+      stat_type m_loop_count;
+      stat_type m_execute_time;
+      stat_type m_pause_time;
 
       // todo: m_log
   };
@@ -118,6 +136,9 @@ namespace cubthread
     : m_waiter ()
     , m_looper (loop_pattern_arg)
     , m_thread (daemon::loop<Context>, this, context_manager_arg, exec)
+    , m_loop_count (0)
+    , m_execute_time (0)
+    , m_pause_time (0)
   {
     // starts a thread to execute daemon::loop
   }
@@ -130,13 +151,33 @@ namespace cubthread
     Context &context = context_manager_arg->create_context ();
 
     // loop until stopped
+    using clock_type = std::chrono::high_resolution_clock;
+
+    clock_type::time_point start_timept = clock_type::now ();
+    clock_type::time_point end_timept;
+    std::chrono::nanoseconds timediff_nano;
+
     while (!daemon_arg->m_looper.is_stopped ())
       {
+	++daemon_arg->m_loop_count;
+
 	// execute task
 	exec_arg->execute (context);
 
+	// gather execute stats
+	end_timept = clock_type::now ();
+	timediff_nano = end_timept - start_timept;
+	daemon_arg->m_execute_time += timediff_nano.count ();
+	start_timept = end_timept;
+
 	// take a break
 	daemon_arg->pause ();
+
+	// gather pause stats
+	end_timept = clock_type::now ();
+	timediff_nano = end_timept - start_timept;
+	daemon_arg->m_pause_time += timediff_nano.count ();
+	start_timept = end_timept;
       }
 
     // retire execution context

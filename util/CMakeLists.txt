@@ -308,18 +308,6 @@ if(UNIX)
   target_include_directories(unittests_area PRIVATE ${EP_INCLUDES})
   target_link_libraries(unittests_area LINK_PRIVATE cubrid)
 
-  set(UNITTESTS_CQUEUE_SOURCES
-    ${EXECUTABLES_DIR}/unittests_cqueue.c
-    )
-    SET_SOURCE_FILES_PROPERTIES(
-      ${UNITTESTS_CQUEUE_SOURCES}
-      PROPERTIES LANGUAGE CXX
-    )
-  add_executable(unittests_cqueue ${UNITTESTS_CQUEUE_SOURCES})
-  target_compile_definitions(unittests_cqueue PRIVATE UNITTEST_CQ SERVER_MODE ${COMMON_DEFS})
-  target_include_directories(unittests_cqueue PRIVATE ${EP_INCLUDES})
-  target_link_libraries(unittests_cqueue LINK_PRIVATE cubrid)
-  
   set(UNITTESTS_SNAPSHOT_SOURCES
       ${EXECUTABLES_DIR}/unittests_snapshot.c
       )

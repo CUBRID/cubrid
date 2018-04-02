@@ -24,6 +24,10 @@
 #ident "$Id$"
 
 #include "config.h"
+#include "session.h"
+#include "thread_entry_task.hpp"
+#include "thread_manager.hpp"
+#include "thread_worker_pool.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -74,6 +78,8 @@
 #include "heartbeat.h"
 #endif
 #include "dbtype.h"
+
+
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"
 
@@ -200,6 +206,59 @@ static HA_LOG_APPLIER_STATE_TABLE ha_Log_applier_state[HA_LOG_APPLIER_STATE_TABL
 
 static int ha_Log_applier_state_num = 0;
 
+// *INDENT-OFF*
+static cubthread::entry_workpool *css_Server_request_worker_pool = NULL;
+static cubthread::entry_workpool *css_Connection_worker_pool = NULL;
+
+class css_server_task : public cubthread::entry_task
+{
+public:
+
+  css_server_task (void) = delete;
+
+  css_server_task (CSS_CONN_ENTRY &conn)
+  : m_conn (conn)
+  {
+  }
+
+  void execute (context_type &thread_ref) override final;
+
+  // retire not overwritten; task is automatically deleted
+
+private:
+  CSS_CONN_ENTRY &m_conn;
+};
+
+// css_server_external_task - class used for legacy desgin; external modules may push tasks on css worker pool and we
+//                            need to make sure conn_entry is properly initialized.
+//
+// TODO: remove me
+class css_server_external_task : public cubthread::entry_task
+{
+public:
+  css_server_external_task (void) = delete;
+
+  css_server_external_task (CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
+  : m_conn (conn)
+  , m_task (task)
+  {
+  }
+
+  ~css_server_external_task (void)
+  {
+    m_task->retire ();
+  }
+
+  void execute (context_type &thread_ref) override final;
+
+  // retire not overwritten; task is automatically deleted
+
+private:
+  CSS_CONN_ENTRY *m_conn;
+  cubthread::entry_task *m_task;
+};
+// *INDENT-ON*
+
 static int css_free_job_entry_func (void *data, void *dummy);
 static void css_empty_job_queue (void);
 static void css_setup_server_loop (void);
@@ -218,7 +277,7 @@ static int css_reestablish_connection_to_master (void);
 static void dummy_sigurg_handler (int sig);
 static int css_connection_handler_thread (THREAD_ENTRY * thrd, CSS_CONN_ENTRY * conn);
 static int css_internal_connection_handler (CSS_CONN_ENTRY * conn);
-static int css_internal_request_handler (THREAD_ENTRY * thrd, CSS_THREAD_ARG arg);
+static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
 static int css_wait_worker_thread_on_jobq (THREAD_ENTRY * thrd, int jobq_index);
 static bool css_can_occupy_worker_thread_on_jobq (int jobq_index);
@@ -231,6 +290,13 @@ static int css_process_new_connection_request (void);
 
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
+
+static void css_push_server_task (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
+static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, THREAD_ENTRY & stopper_thread_ref);
+static void css_stop_log_writer (THREAD_ENTRY & thread_ref);
+static void css_find_not_stopped (THREAD_ENTRY & thread_ref, bool is_log_writer, bool & found);
+static bool css_is_log_writer (const THREAD_ENTRY & thread_arg);
+static void css_stop_all_workers (THREAD_ENTRY & thread_ref, thread_stop_type stop_phase);
 
 /*
  * css_make_job_entry () -
@@ -1433,7 +1499,6 @@ dummy_sigurg_handler (int sig)
 static int
 css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 {
-  CSS_JOB_ENTRY *job;
   int n, type, rv, status;
   volatile int conn_status;
   int css_peer_alive_timeout, poll_timeout;
@@ -1558,11 +1623,8 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	      /* if new command request has arrived, make new job and add it to job queue */
 	      if (type == COMMAND_TYPE)
 		{
-		  job = css_make_job_entry (conn, css_Request_handler, (CSS_THREAD_ARG) conn, -1);
-		  if (job)
-		    {
-		      css_add_to_job_queue (job);
-		    }
+		  // push new task
+		  css_push_server_task (*thread_p, *conn);
 		}
 	    }
 	}
@@ -1668,9 +1730,8 @@ css_internal_connection_handler (CSS_CONN_ENTRY * conn)
  *       thread that is blocking for data.
  */
 static int
-css_internal_request_handler (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
+css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
 {
-  CSS_CONN_ENTRY *conn;
   unsigned short rid;
   unsigned int eid;
   int request, rc, size = 0;
@@ -1678,48 +1739,42 @@ css_internal_request_handler (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
   int local_tran_index;
   int status = CSS_UNPLANNED_SHUTDOWN;
 
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
+  assert (thread_ref.conn_entry == &conn_ref);
 
-  local_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  local_tran_index = thread_ref.tran_index;
 
-  conn = (CSS_CONN_ENTRY *) arg;
-  assert (conn != NULL);
-
-  rc = css_receive_request (conn, &rid, &request, &size);
+  rc = css_receive_request (&conn_ref, &rid, &request, &size);
   if (rc == NO_ERRORS)
     {
       /* 1. change thread's transaction id to this connection's */
-      thread_p->tran_index = conn->transaction_id;
+      thread_ref.tran_index = conn_ref.transaction_id;
 
-      pthread_mutex_unlock (&thread_p->tran_index_lock);
+      pthread_mutex_unlock (&thread_ref.tran_index_lock);
 
       if (size)
 	{
-	  rc = css_receive_data (conn, rid, &buffer, &size, -1);
+	  rc = css_receive_data (&conn_ref, rid, &buffer, &size, -1);
 	  if (rc != NO_ERRORS)
 	    {
 	      return status;
 	    }
 	}
 
-      conn->db_error = 0;	/* This will reset the error indicator */
+      conn_ref.db_error = 0;	/* This will reset the error indicator */
 
-      eid = css_return_eid_from_conn (conn, rid);
+      eid = css_return_eid_from_conn (&conn_ref, rid);
       /* 2. change thread's client, rid, tran_index for this request */
-      thread_set_info (thread_p, conn->client_id, eid, conn->transaction_id, request);
+      thread_set_info (&thread_ref, conn_ref.client_id, eid, conn_ref.transaction_id, request);
 
       /* 3. Call server_request() function */
-      status = (*css_Server_request_handler) (thread_p, eid, request, size, buffer);
+      status = css_Server_request_handler (&thread_ref, eid, request, size, buffer);
 
       /* 4. reset thread transaction id(may be NULL_TRAN_INDEX) */
-      thread_set_info (thread_p, -1, 0, local_tran_index, -1);
+      thread_set_info (&thread_ref, -1, 0, local_tran_index, -1);
     }
   else
     {
-      pthread_mutex_unlock (&thread_p->tran_index_lock);
+      pthread_mutex_unlock (&thread_ref.tran_index_lock);
 
       if (rc == ERROR_WHEN_READING_SIZE || rc == NO_DATA_AVAILABLE)
 	{
@@ -1746,13 +1801,13 @@ css_initialize_server_interfaces (int (*request_handler) (THREAD_ENTRY * thrd, u
 				  CSS_THREAD_FN connection_error_function)
 {
   css_Server_request_handler = request_handler;
-  css_register_handler_routines (css_internal_connection_handler, css_internal_request_handler,
-				 connection_error_function);
+  css_register_handler_routines (css_internal_connection_handler, NULL /* disabled */ , connection_error_function);
 }
 
 /*
  * css_init() -
  *   return:
+ *   thread_p(in):
  *   server_name(in):
  *   name_length(in):
  *   port_id(in):
@@ -1763,9 +1818,8 @@ css_initialize_server_interfaces (int (*request_handler) (THREAD_ENTRY * thrd, u
  *       css_initialize_server_interfaces before calling this function.
  */
 int
-css_init (char *server_name, int name_length, int port_id)
+css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_id)
 {
-  THREAD_ENTRY *thread_p;
   CSS_CONN_ENTRY *conn;
   int status = ER_FAILED;
 
@@ -1781,6 +1835,19 @@ css_init (char *server_name, int name_length, int port_id)
       return ER_FAILED;
     }
 #endif /* WINDOWS */
+
+  // initialize worker pool for server requests
+  const std::size_t MAX_WORKERS = NUM_NON_SYSTEM_TRANS;
+  const std::size_t MAX_TASK_COUNT = 2 * NUM_NON_SYSTEM_TRANS;	// not that it matters...
+  css_Server_request_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT, NULL,
+										  cubthread::system_core_count (),
+										  false);
+  if (css_Server_request_worker_pool == NULL)
+    {
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
 
   /* startup worker/daemon threads */
   status = thread_start_workers ();
@@ -1830,16 +1897,16 @@ css_init (char *server_name, int name_length, int port_id)
 #if !defined(WINDOWS)
 shutdown:
 #endif
+
+  // TODO: stop connection worker pool
   /* stop threads */
   thread_stop_active_workers (THREAD_STOP_WORKERS_EXCEPT_LOGWR);
-
-  /* we should flush all append pages before stop log writer */
-  thread_p = thread_get_thread_entry_info ();
-  assert_release (thread_p != NULL);
+  css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
 
   /* stop vacuum threads. */
   vacuum_stop (thread_p);
 
+  /* we should flush all append pages before stop log writer */
   LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);
 
@@ -1865,6 +1932,10 @@ shutdown:
   LOG_CS_EXIT (thread_p);
 
   thread_stop_active_workers (THREAD_STOP_LOGWR);
+  css_stop_all_workers (*thread_p, THREAD_STOP_LOGWR);
+
+  // destroy request worker pool
+  THREAD_GET_MANAGER ()->destroy_worker_pool (css_Server_request_worker_pool);
 
   if (!HA_DISABLED ())
     {
@@ -3282,3 +3353,241 @@ xacl_reload (THREAD_ENTRY * thread_p)
   return css_set_accessible_ip_info ();
 }
 #endif
+
+// *INDENT-OFF*
+/*
+ * css_push_server_task () - push a task on server request worker pool
+ *
+ * return          : void
+ * thread_ref (in) : thread context
+ * task (in)       : task to execute
+ *
+ * TODO: this is also used externally due to legacy design; should be internalized completely
+ */
+static void
+css_push_server_task (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
+{
+  // push the task
+  //
+  // note: cores are partitioned by connection index. this is particularly important in order to avoid having tasks
+  //       randomly pushed to cores that are full. some of those tasks may belong to threads holding locks. as a
+  //       consequence, lock waiters may wait longer or even indefinitely if we are really unlucky.
+  //
+  THREAD_GET_MANAGER ()->push_task_on_core (thread_ref, css_Server_request_worker_pool,
+                                            new css_server_task (conn_ref), static_cast<size_t> (conn_ref.idx));
+}
+
+void
+css_push_external_task (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
+{
+  THREAD_GET_MANAGER ()->push_task (thread_ref, css_Server_request_worker_pool,
+				    new css_server_external_task (conn, task));
+}
+
+void
+css_server_task::execute (context_type &thread_ref)
+{
+  thread_ref.conn_entry = &m_conn;
+
+  if (thread_ref.conn_entry->session_p != NULL)
+    {
+      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
+    }
+  else
+    {
+      assert (thread_ref.private_lru_index == -1);
+    }
+
+  thread_ref.status = TS_RUN;
+
+  // TODO: we lock tran_index_lock because css_internal_request_handler expects it to be locked. however, I am not
+  //       convinced we really need this
+  pthread_mutex_lock (&thread_ref.tran_index_lock);
+  (void) css_internal_request_handler (thread_ref, m_conn);
+
+  thread_ref.private_lru_index = -1;
+  thread_ref.conn_entry = NULL;
+  thread_ref.status = TS_FREE;
+}
+
+void
+css_server_external_task::execute (context_type &thread_ref)
+{
+  thread_ref.conn_entry = m_conn;
+  if (thread_ref.conn_entry != NULL && thread_ref.conn_entry->session_p != NULL)
+    {
+      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
+    }
+  else
+    {
+      assert (thread_ref.private_lru_index == -1);
+    }
+
+  // TODO: We lock tran_index_lock because external task expects it to be locked.
+  //       However, I am not convinced we really need this
+  pthread_mutex_lock (&thread_ref.tran_index_lock);
+
+  m_task->execute (thread_ref);
+
+  thread_ref.private_lru_index = -1;
+  thread_ref.conn_entry = NULL;
+}
+
+static void
+css_stop_non_log_writer (THREAD_ENTRY &thread_ref, THREAD_ENTRY &stopper_thread_ref)
+{
+  // porting of legacy code
+
+  if (css_is_log_writer (thread_ref))
+    {
+      // not log writer
+      return;
+    }
+  if (thread_ref.tran_index == -1)
+    {
+      // no transaction, no stop
+      return;
+    }
+
+  (void) logtb_set_tran_index_interrupt (&stopper_thread_ref, thread_ref.tran_index, true);
+
+  if (thread_ref.status == TS_WAIT && logtb_is_current_active (&thread_ref))
+    {
+      thread_lock_entry (&thread_ref);
+
+      if (thread_ref.tran_index != -1 && thread_ref.status == TS_WAIT && thread_ref.lockwait == NULL
+          && thread_ref.check_interrupt)
+        {
+          thread_ref.interrupted = true;
+          thread_wakeup_already_had_mutex (&thread_ref, THREAD_RESUME_DUE_TO_INTERRUPT);
+        }
+      thread_unlock_entry (&thread_ref);
+    }
+}
+
+static void
+css_stop_log_writer (THREAD_ENTRY &thread_ref)
+{
+  if (!css_is_log_writer (thread_ref))
+    {
+      // this is not log writer
+      return;
+    }
+  if (thread_ref.tran_index != -1)
+    {
+      // no transaction, no stop
+      return;
+    }
+  if (thread_ref.status == TS_WAIT && logtb_is_current_active (&thread_ref))
+    {
+      if (thread_check_suspend_reason_and_wakeup (&thread_ref, THREAD_RESUME_DUE_TO_INTERRUPT, THREAD_LOGWR_SUSPENDED)
+          == NO_ERROR)
+        {
+          thread_ref.interrupted = true;
+        }
+    }
+}
+
+static void
+css_find_not_stopped (THREAD_ENTRY &thread_ref, bool is_log_writer, bool &found)
+{
+  if (is_log_writer != css_is_log_writer (thread_ref))
+    {
+      // don't care
+      return;
+    }
+  if (thread_ref.status != TS_FREE)
+    {
+      found = true;
+    }
+}
+
+static bool
+css_is_log_writer (const THREAD_ENTRY &thread_arg)
+{
+  return thread_arg.conn_entry != NULL && thread_arg.conn_entry->stop_phase == THREAD_STOP_LOGWR;
+}
+
+static void
+css_stop_all_workers (THREAD_ENTRY &thread_ref, thread_stop_type stop_phase)
+{
+  bool is_not_stopped;
+
+  if (css_Server_request_worker_pool == NULL)
+    {
+      // nothing to stop
+      return;
+    }
+
+  // note: this is legacy code ported from thread.c; the whole log writer management seems complicated, but hopefully
+  //       it can be removed after HA refactoring.
+  //
+  // question: is it possible to have more than one log writer thread?
+  //
+
+  if (stop_phase == THREAD_STOP_WORKERS_EXCEPT_LOGWR)
+    {
+      // first block all connections
+      css_block_all_active_conn (stop_phase);
+    }
+
+  // loop until all are stopped
+  while (true)
+    {
+      // tell all to stop
+      css_Server_request_worker_pool->map_running_contexts (css_stop_non_log_writer, thread_ref);
+
+      // make sure none is blocked in lock waits
+      lock_force_timeout_lock_wait_transactions (stop_phase);
+
+      // sleep for 50 milliseconds
+      std::this_thread::sleep_for (std::chrono::milliseconds (50));
+
+      is_not_stopped = false;
+      css_Server_request_worker_pool->map_running_contexts (css_find_not_stopped, stop_phase == THREAD_STOP_LOGWR,
+                                                            is_not_stopped);
+
+      if (!is_not_stopped)
+        {
+          break;
+        }
+
+      if (css_is_shutdown_timeout_expired ())
+        {
+          er_log_debug (ARG_FILE_LINE, "could not stop all active workers");
+          _exit (0);
+        }
+    }
+
+  // we must not block active connection before terminating log writer thread
+  if (stop_phase == THREAD_STOP_LOGWR)
+    {
+      css_block_all_active_conn (stop_phase);
+    }
+}
+
+static void
+css_stop_all_log_writer (THREAD_ENTRY &thread_ref)
+{
+  if (css_Server_request_worker_pool == NULL)
+    {
+      // nothing to stop
+      return;
+    }
+}
+
+void
+css_get_thread_stats (UINT64 *stats_out)
+{
+  cubthread::wpstat allstats (stats_out);
+  css_Server_request_worker_pool->get_stats (allstats);
+
+  // collected timers are in nano-seconds. convert them to milliseconds
+  for (UINT64 *timer_stat_p = stats_out + cubthread::wpstat::STATS_COUNT;
+       timer_stat_p < stats_out + cubthread::wpstat::TOTAL_STATS_COUNT;
+       ++timer_stat_p)
+    {
+      *timer_stat_p = (*timer_stat_p) / 1000000;
+    }
+}
+// *INDENT-ON*

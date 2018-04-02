@@ -24,12 +24,14 @@
 #ifndef _THREAD_WAITER_HPP_
 #define _THREAD_WAITER_HPP_
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
 #include <thread>
 
 #include <cassert>
+#include <cinttypes>
 
 // cubthread::waiter
 //
@@ -68,6 +70,19 @@ namespace cubthread
       bool wait_until (std::chrono::time_point<Clock, Duration> &timeout_time); // wait until time or until wakeup
       // returns true if woke up before timeout
 
+      // stats count:
+      //   1. wakeup calls
+      //   2. locks on wakeup
+      //   3. awake calls
+      //   4. wait count
+      //   5. with timeout count
+      //   6. zero waits
+      //   7. wakeup delay time
+      static const std::size_t STAT_COUNT = 7;
+
+      using stat_type = std::uint64_t;
+      void get_stats (stat_type *stats_out);
+
     private:
 
       enum status       // waiter status
@@ -85,18 +100,27 @@ namespace cubthread
       std::mutex m_mutex;                 // mutex used to synchronize waiter states
       std::condition_variable m_condvar;  // condition variable used to wait/wakeup
       status m_status;                    // current status
+
+      // stats
+      using atomic_stat_type = std::atomic<stat_type>;
+      using clock_type = std::chrono::high_resolution_clock;
+      // counters
+      atomic_stat_type m_wakeup_count;
+      stat_type m_wakeup_lock_count;    // protected by mutex
+      stat_type m_awake_count;          // protected by mutex
+      stat_type m_wait_count;
+      stat_type m_timeout_count;        // protected by mutex
+      atomic_stat_type m_wait_zero;
+      // timers
+      stat_type m_wakeup_delay;         // protected by mutex
+      // helpers
+      clock_type::time_point m_awake_time;
+      bool m_was_awaken;
   };
 
-} // namespace cubthread
-
-#endif // _THREAD_WAITER_HPP_
-
-/************************************************************************/
-/* Template implementation                                              */
-/************************************************************************/
-
-namespace cubthread
-{
+  /************************************************************************/
+  /* Template implementation                                              */
+  /************************************************************************/
 
   template< class Rep, class Period >
   bool
@@ -104,13 +128,20 @@ namespace cubthread
   {
     if (delta == std::chrono::duration<Rep, Period> (0))
       {
+	++m_wait_zero;
 	return true;
       }
+
+    bool ret;
 
     std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
     goto_sleep ();
 
-    bool ret = m_condvar.wait_for (lock, delta, [this] { return m_status == AWAKENING; });
+    ret = m_condvar.wait_for (lock, delta, [this] { return m_status == AWAKENING; });
+    if (!ret)
+      {
+	++m_timeout_count;
+      }
 
     run ();
 
@@ -126,6 +157,10 @@ namespace cubthread
     goto_sleep ();
 
     bool ret = m_condvar.wait_until (lock, timeout_time, [this] { return m_status == AWAKENING; });
+    if (!ret)
+      {
+	++m_timeout_count;
+      }
 
     run ();
 
@@ -134,3 +169,5 @@ namespace cubthread
   }
 
 } // namespace cubthread
+
+#endif // _THREAD_WAITER_HPP_

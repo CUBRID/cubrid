@@ -74,7 +74,7 @@ css_error_code communication_channel::send (const std::string &message)
   return communication_channel::send (message.c_str (), message.length ());
 }
 
-css_error_code communication_channel::recv (char *buffer, std::size_t & maxlen_in_recvlen_out)
+css_error_code communication_channel::recv (char *buffer, std::size_t &maxlen_in_recvlen_out)
 {
   int copy_of_maxlen_in_recvlen_out = maxlen_in_recvlen_out;
   int rc = NO_ERRORS;

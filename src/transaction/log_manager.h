@@ -207,5 +207,8 @@ extern void log_wakeup_checkpoint_daemon ();
 extern void log_wakeup_log_flush_daemon ();
 
 extern bool log_is_log_flush_daemon_available ();
+#if defined (SERVER_MODE)
+extern void log_flush_daemon_get_stats (UINT64 * statsp);
+#endif // SERVER_MODE
 
 #endif /* _LOG_MANAGER_H_ */

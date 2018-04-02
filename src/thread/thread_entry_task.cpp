@@ -32,6 +32,8 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 
+#include <cstring>
+
 namespace cubthread
 {
 
@@ -43,6 +45,9 @@ namespace cubthread
     // for backward compatibility
     context.register_id ();
     context.type = TT_WORKER;
+#if defined (SERVER_MODE)
+    context.status = TS_RUN;
+#endif // SERVER_MODE
 
     context.get_error_context ().register_thread_local ();
 
@@ -72,9 +77,9 @@ namespace cubthread
   void
   entry_manager::recycle_context (entry &context)
   {
-    er_clear ();
-
-    context.unregister_id ();
+    er_clear ();    // clear errors
+    std::memset (&context.event_stats, 0, sizeof (context.event_stats));  // clear even stats
+    context.tran_index = -1;    // clear transaction ID
 
     on_recycle (context);
   }
@@ -82,9 +87,6 @@ namespace cubthread
   void
   daemon_entry_manager::on_create (entry &context)
   {
-#if defined (SERVER_MODE)
-    context.status = TS_RUN;
-#endif // SERVER_MODE
     context.type = TT_DAEMON;
     context.tran_index = LOG_SYSTEM_TRAN_INDEX;
 
@@ -97,6 +99,8 @@ namespace cubthread
 #if defined (SERVER_MODE)
     context.status = TS_DEAD;
 #endif // SERVER_MODE
+
+    context.unregister_id ();  // unregister thread ID
 
     on_daemon_retire (context);
   }
