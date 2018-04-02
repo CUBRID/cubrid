@@ -74,7 +74,8 @@ std::vector<func_signature> func_signature::sum = {
 };
 
 std::vector<func_signature> func_signature::double_r_any = {//original code doesn't check arguments!!!
-  {PT_TYPE_DOUBLE, {}, {PT_GENERIC_TYPE_ANY}},
+  {PT_TYPE_DOUBLE, {}, {                    }},
+  {PT_TYPE_DOUBLE, {}, {PT_GENERIC_TYPE_ANY }},
 };
 
 std::vector<func_signature> func_signature::ntile = {//why original code cast args to double instead int???
