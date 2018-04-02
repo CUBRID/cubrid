@@ -32,6 +32,9 @@
 #include <cstddef>
 #include "error_code.h"
 
+namespace cubstream
+{
+
 typedef unsigned long long stream_position;
 
 enum stream_mode
@@ -41,8 +44,8 @@ enum stream_mode
 };
 typedef enum stream_mode STREAM_MODE;
 
-class packing_stream_buffer;
-class packing_stream;
+class stream_buffer;
+class stream;
 /* this is stored in packing_stream */
 class buffer_context
 {
@@ -53,7 +56,7 @@ public:
   stream_position last_pos;
   /* allocated position (the amount up to which last_pos can grow) */
   stream_position last_allocated_pos;
-  packing_stream_buffer *mapped_buffer;
+  stream_buffer *mapped_buffer;
   size_t written_bytes;
   bool is_filled;
   
@@ -73,9 +76,9 @@ public:
 class stream_reference
 {
 public:
-  stream_reference() : stream(NULL) {};
+  stream_reference() : m_stream(NULL) {};
 
-  packing_stream *stream;
+  stream *m_stream;
 
   /*
    * currently mapped start and end offset relative to buffer start 
@@ -88,5 +91,7 @@ public:
   stream_position stream_start_pos;
   stream_position stream_end_pos;
 };
+
+} /* namespace cubstream */
 
 #endif /* _STREAM_COMMON_HPP_ */

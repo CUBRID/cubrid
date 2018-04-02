@@ -30,11 +30,11 @@
 namespace test_replication
 {
 
-int move_buffers (packing_stream *stream1, packing_stream *stream2)
+int move_buffers (cubstream::packing_stream *stream1, cubstream::packing_stream *stream2)
 {
-  std::vector <buffer_context> buffered_ranges;
+  std::vector <cubstream::buffer_context> buffered_ranges;
 
-  stream1->collect_buffers (buffered_ranges, COLLECT_ALL_BUFFERS, COLLECT_KEEP);
+  stream1->collect_buffers (buffered_ranges, cubstream::COLLECT_ALL_BUFFERS, cubstream::COLLECT_KEEP);
 
   stream2->detach_all_buffers ();
 
@@ -113,14 +113,14 @@ int test_stream_packing (void)
   log_consumer *lc = log_consumer::new_instance (REPLICATION_DATA_APPLIER, 0);
   
   /* get stream from log_generator, get its buffer and attached it to log_consumer stream */
-  packing_stream *lg_stream = lg->get_write_stream ();
-  packing_stream *lc_stream = lc->get_write_stream ();
+  cubstream::packing_stream *lg_stream = lg->get_write_stream ();
+  cubstream::packing_stream *lc_stream = lc->get_write_stream ();
 
   move_buffers (lg_stream, lc_stream);
 
   replication_stream_entry *se = NULL;
 
-  stream_packer local_serializator (lc_stream);
+  cubstream::stream_packer local_serializator (lc_stream);
   lc->fetch_stream_entry (&se);
   se->unpack ();
 

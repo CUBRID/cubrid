@@ -27,13 +27,15 @@
 #include "packing_common.hpp"
 #include "packing_stream.hpp"
 #include "packable_object.hpp"
-#include "packing_stream_buffer.hpp"
+#include "stream_buffer.hpp"
 #include "stream_packer.hpp"
 #include "buffer_provider.hpp"
 #include <algorithm>
 
+namespace cubstream
+{
 
-stream_entry::stream_entry (packing_stream *stream)
+entry::entry (packing_stream *stream)
 { 
   m_stream = stream;
   m_buffered_range = NULL;
@@ -41,7 +43,7 @@ stream_entry::stream_entry (packing_stream *stream)
   set_packable (false);
 }
 
-int stream_entry::pack (void)
+int entry::pack (void)
 {
   size_t total_stream_entry_size;
   size_t data_size, header_size;
@@ -90,7 +92,7 @@ int stream_entry::pack (void)
  * this is pre-unpack method : it fetches enough data to unpack stream header contents,
  * then fetches (receive from socket) the actual amount of data without unpacking it.
  */
-int stream_entry::prepare (void)
+int entry::prepare (void)
 {
   char *stream_start_ptr;
   stream_packer *serializator = get_packer ();
@@ -125,7 +127,7 @@ int stream_entry::prepare (void)
 }
 
 /* this is called only right before applying the replication data */
-int stream_entry::unpack (void)
+int entry::unpack (void)
 {
   int i, error_code = NO_ERROR;
 
@@ -153,14 +155,14 @@ int stream_entry::unpack (void)
   return error_code;
 }
 
-int stream_entry::add_packable_entry (cubpacking::packable_object *entry)
+int entry::add_packable_entry (cubpacking::packable_object *entry)
 {
   m_packable_entries.push_back (entry);
 
   return NO_ERROR;
 }
 
-size_t stream_entry::get_entries_size (void)
+size_t entry::get_entries_size (void)
 {
   size_t entry_size, total_size = 0;
   int i;
@@ -189,20 +191,12 @@ packing_stream::packing_stream (const buffer_provider *my_provider)
     {
       m_buffer_provider = (buffer_provider *) my_provider;
     }
-  m_last_reported_ready_pos = 0;
   m_last_buffered_position = 0;
   m_first_buffered_position = 0;
   m_total_buffered_size = 0;
-  m_read_position = 0;
 
   /* TODO[arnia] : system parameter */
   trigger_flush_to_disk_size = 1024 * 1024;
-
-  set_filled_stream_handler (NULL);
-  set_fetch_data_handler (NULL);
-  set_ready_pos_handler (NULL);
-
-  init (0);
 }
 
 packing_stream::~packing_stream ()
@@ -211,13 +205,6 @@ packing_stream::~packing_stream ()
   assert (m_total_buffered_size == 0);
   assert (m_first_buffered_position == 0);
   assert (m_last_buffered_position == 0);
-}
-
-int packing_stream::init (const stream_position &start_position)
-{
-  m_append_position = start_position;
-
-  return NO_ERROR;
 }
 
 int packing_stream::write (const size_t byte_count, write_handler *handler)
@@ -292,7 +279,7 @@ int packing_stream::read_partial (const stream_position first_pos, const size_t 
   return err;
 }
 
-int packing_stream::create_buffer_context (packing_stream_buffer *new_buffer, const STREAM_MODE stream_mode,
+int packing_stream::create_buffer_context (stream_buffer *new_buffer, const STREAM_MODE stream_mode,
                                            const stream_position &first_pos, const stream_position &last_pos,
                                            const size_t &buffer_start_offset, buffer_context **granted_range)
 {
@@ -367,7 +354,7 @@ int packing_stream::add_buffer_context (buffer_context *src_context, const STREA
   return error_code;
 }
 
-int packing_stream::add_buffer_context (packing_stream_buffer *new_buffer, const STREAM_MODE stream_mode,
+int packing_stream::add_buffer_context (stream_buffer *new_buffer, const STREAM_MODE stream_mode,
                                         const stream_position &first_pos, const stream_position &last_pos,
                                         const size_t &buffer_start_offset, buffer_context **granted_range)
 {
@@ -474,7 +461,7 @@ char * packing_stream::acquire_new_write_buffer (buffer_provider *req_buffer_pro
                                                         const stream_position &start_pos,
                                                         const size_t &amount, buffer_context **granted_range)
 {
-  packing_stream_buffer *new_buffer = NULL;
+  stream_buffer *new_buffer = NULL;
   int err;
 
   err = req_buffer_provider->allocate_buffer (&new_buffer, amount);
@@ -496,7 +483,7 @@ char * packing_stream::create_buffer_from_existing (buffer_provider *req_buffer_
                                                            const stream_position &start_pos,
                                                            const size_t &amount, buffer_context **granted_range)
 {
-  packing_stream_buffer *new_buffer = NULL;
+  stream_buffer *new_buffer = NULL;
   int err;
   int i;
   stream_position curr_start_pos = start_pos;
@@ -587,7 +574,7 @@ char * packing_stream::reserve_with_buffer (const size_t amount, const buffer_pr
 {
   int i;
   int err;
-  packing_stream_buffer *new_buffer = NULL;
+  stream_buffer *new_buffer = NULL;
   buffer_provider *curr_buffer_provider;
 
   /* TODO : should decide which provider to choose based on amount to reserve ? */
@@ -667,7 +654,7 @@ int packing_stream::collect_buffers (std::vector <buffer_context> &buffered_rang
     {
       if (collect_filter == COLLECT_ALL_BUFFERS || m_buffered_ranges[i].is_filled)
         {
-          packing_stream_buffer *buf = m_buffered_ranges[i].mapped_buffer;
+          stream_buffer *buf = m_buffered_ranges[i].mapped_buffer;
 
           buffered_ranges.push_back (m_buffered_ranges[i]);
 
@@ -692,7 +679,7 @@ int packing_stream::attach_buffers (std::vector <buffer_context> &buffered_range
   
   for (i = 0; i < buffered_ranges.size(); i++)
     {
-      packing_stream_buffer *buf = buffered_ranges[i].mapped_buffer;
+      stream_buffer *buf = buffered_ranges[i].mapped_buffer;
 
       error_code = add_buffer_context (&buffered_ranges[i], READ_STREAM, NULL);
       if (error_code != NO_ERROR)
@@ -744,7 +731,7 @@ char * packing_stream::get_data_from_pos (const stream_position &req_start_pos, 
 {
   int i;
   int err = NO_ERROR;
-  packing_stream_buffer *new_buffer = NULL;
+  stream_buffer *new_buffer = NULL;
   buffer_provider *curr_buffer_provider;
   char *ptr;
 
@@ -814,3 +801,5 @@ char * packing_stream::get_data_from_pos (const stream_position &req_start_pos, 
 
   return new_buffer->get_buffer ();
 }
+
+} /* namespace cubstream */

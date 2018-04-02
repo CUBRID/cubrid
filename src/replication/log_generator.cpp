@@ -25,7 +25,7 @@
 
 #include "log_generator.hpp"
 #include "replication_stream.hpp"
-#include "packing_stream_buffer.hpp"
+#include "stream_buffer.hpp"
 #include "stream_packer.hpp"
 #include "log_file.hpp"
 #include "master_replication_channel.hpp"
@@ -38,7 +38,7 @@ log_generator::~log_generator()
 {
   if (this == global_log_generator)
     {
-      delete stream;
+      delete m_stream;
       log_generator::global_log_generator = NULL;
     }
 
@@ -49,16 +49,16 @@ log_generator::~log_generator()
     }
 }
 
-log_generator* log_generator::new_instance (THREAD_ENTRY *th_entry, const stream_position &start_position)
+log_generator* log_generator::new_instance (THREAD_ENTRY *th_entry, const cubstream::stream_position &start_position)
 {
   int error_code = NO_ERROR;
 
   log_generator *new_lg = new log_generator ();
   new_lg->m_append_position = start_position;
 
-  new_lg->stream = new packing_stream (new_lg);
-  new_lg->stream->init (new_lg->m_append_position);
-  new_lg->stream->set_filled_stream_handler (new_lg);
+  new_lg->m_stream = new cubstream::packing_stream (new_lg);
+  new_lg->m_stream->init (new_lg->m_append_position);
+  new_lg->m_stream->set_filled_stream_handler (new_lg);
 
   if (th_entry == NULL)
     {
@@ -69,17 +69,17 @@ log_generator* log_generator::new_instance (THREAD_ENTRY *th_entry, const stream
       new_lg->m_stream_entries.resize (100);
       for (int i = 0; i < 100; i++)
         {
-          new_lg->m_stream_entries[i] = new replication_stream_entry (new_lg->stream);
+          new_lg->m_stream_entries[i] = new replication_stream_entry (new_lg->m_stream);
         }
     }
   else
     {
       /* TODO[arnia] : set instance per thread  */
       new_lg->m_stream_entries.resize (1);
-      new_lg->m_stream_entries[0] = new replication_stream_entry (new_lg->stream);
+      new_lg->m_stream_entries[0] = new replication_stream_entry (new_lg->m_stream);
     }
 
-  new_lg->stream->acquire_new_write_buffer (new_lg, new_lg->m_append_position, LG_GLOBAL_INSTANCE_BUFFER_CAPACITY, NULL);
+  new_lg->m_stream->acquire_new_write_buffer (new_lg, new_lg->m_append_position, LG_GLOBAL_INSTANCE_BUFFER_CAPACITY, NULL);
 
   return new_lg;
 }
@@ -122,7 +122,7 @@ void log_generator::set_ready_to_pack (THREAD_ENTRY *th_entry)
     }
   else
     {
-      stream_entry *my_stream_entry = get_stream_entry (th_entry);
+      cubstream::entry *my_stream_entry = get_stream_entry (th_entry);
       my_stream_entry->set_packable (true);
     }
 }
@@ -142,7 +142,7 @@ int log_generator::pack_stream_entries (THREAD_ENTRY *th_entry)
     }
   else
     {
-      stream_entry *my_stream_entry = get_stream_entry (th_entry);
+      cubstream::entry *my_stream_entry = get_stream_entry (th_entry);
       my_stream_entry->pack ();
       my_stream_entry->reset ();
     }
@@ -154,9 +154,10 @@ int log_generator::flush_old_stream_data (void)
 {
   int error_code;
   /* detach filled buffers from write stream and send them to MRC_Manager */
-  std::vector <buffer_context> ready_buffers;
+  std::vector <cubstream::buffer_context> ready_buffers;
 
-  error_code = stream->collect_buffers (ready_buffers, COLLECT_ONLY_FILLED_BUFFERS, COLLECT_AND_DETACH);
+  error_code = m_stream->collect_buffers (ready_buffers, cubstream::COLLECT_ONLY_FILLED_BUFFERS,
+                                          cubstream::COLLECT_AND_DETACH);
   if (error_code != NO_ERROR)
     {
       return error_code;

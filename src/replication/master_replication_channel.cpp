@@ -26,12 +26,12 @@
 #include "master_replication_channel.hpp"
 #include "log_file.hpp"
 
-master_replication_channel_manager::master_replication_channel_manager (const stream_position &start_position)
+master_replication_channel_manager::master_replication_channel_manager (const cubstream::stream_position &start_position)
 {
   init (start_position);
 }
 
-int master_replication_channel_manager::init (const stream_position &start_position)
+int master_replication_channel_manager::init (const cubstream::stream_position &start_position)
 {
   /* attach a log_file */
   //m_file = new log_file ();
@@ -46,9 +46,9 @@ master_replication_channel_manager *master_replication_channel_manager::get_inst
   return &global_mrcm;
 }
 
-int master_replication_channel_manager::add_buffers (std::vector <buffer_context> &bufferred_ranges)
+int master_replication_channel_manager::add_buffers (std::vector <cubstream::buffer_context> &bufferred_ranges)
 {
-  std::vector<buffer_context>::iterator it;
+  std::vector<cubstream::buffer_context>::iterator it;
 
   for (it = bufferred_ranges.begin (); it != bufferred_ranges.end (); it++)
     {

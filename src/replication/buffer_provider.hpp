@@ -31,7 +31,11 @@
 #include <vector>
 #include <cstddef>
 
-class packing_stream_buffer;
+
+namespace cubstream
+{
+
+class stream_buffer;
 class packing_stream;
 
 /*
@@ -41,7 +45,7 @@ class buffer_provider : public cubpacking::pinner
 {
 private:
   /* a buffer provider may allocate several buffers */
-  std::vector<packing_stream_buffer*> m_buffers;
+  std::vector<stream_buffer*> m_buffers;
 
   static buffer_provider *default_buffer_provider;
 
@@ -55,16 +59,17 @@ public:
 
   ~buffer_provider ();
 
-  virtual int allocate_buffer (packing_stream_buffer **new_buffer, const size_t &amount);
+  virtual int allocate_buffer (stream_buffer **new_buffer, const size_t &amount);
 
   virtual int free_all_buffers (void);
     
-  virtual int extend_buffer (packing_stream_buffer **existing_buffer, const size_t &amount);
+  virtual int extend_buffer (stream_buffer **existing_buffer, const size_t &amount);
 
-  virtual int add_buffer (packing_stream_buffer *new_buffer);
+  virtual int add_buffer (stream_buffer *new_buffer);
 
   static buffer_provider *get_default_instance (void);
 };
 
+} /* namespace cubstream */
 
 #endif /* _BUFFER_PROVIDER_HPP_ */

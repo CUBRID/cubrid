@@ -32,7 +32,7 @@
 size_t replication_stream_entry::get_header_size ()
 {
   size_t header_size = 0;
-  stream_packer *serializator = get_packer ();
+  cubstream::stream_packer *serializator = get_packer ();
   header_size += serializator->get_packed_bigint_size (header_size);
   header_size += serializator->get_packed_bigint_size (header_size);
   header_size += serializator->get_packed_int_size (header_size);
@@ -54,7 +54,7 @@ void replication_stream_entry::set_header_data_size (const size_t &data_size)
 
 int replication_stream_entry::pack_stream_entry_header ()
 {
-  stream_packer *serializator = get_packer ();
+  cubstream::stream_packer *serializator = get_packer ();
   m_header.count_replication_entries = (int) m_packable_entries.size ();
   serializator->pack_bigint ((DB_BIGINT *)&m_header.prev_record);
   serializator->pack_bigint ((DB_BIGINT *)&m_header.mvccid);
@@ -66,7 +66,7 @@ int replication_stream_entry::pack_stream_entry_header ()
 
 int replication_stream_entry::unpack_stream_entry_header ()
 {
-  stream_packer *serializator = get_packer ();
+  cubstream::stream_packer *serializator = get_packer ();
   serializator->unpack_bigint ((DB_BIGINT *) &m_header.prev_record);
   serializator->unpack_bigint ((DB_BIGINT *) &m_header.mvccid);
   serializator->unpack_int ((int *) &m_header.count_replication_entries);
@@ -80,7 +80,7 @@ int replication_stream_entry::get_packable_entry_count_from_header (void)
   return m_header.count_replication_entries;
 }
 
-bool replication_stream_entry::is_equal (const stream_entry *other)
+bool replication_stream_entry::is_equal (const cubstream::entry *other)
 {
   int i;
   const replication_stream_entry *other_t = dynamic_cast <const replication_stream_entry *> (other);

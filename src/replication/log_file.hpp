@@ -34,9 +34,9 @@
 typedef size_t file_pos_t;
 
 class replication_entry;
-class packing_stream_buffer;
+class cubstream::stream_buffer;
 class log_file;
-class stream_entry;
+class cubstream::entry;
 
 
 enum
@@ -55,7 +55,7 @@ struct file_range
 class file_cache : public cubpacking::pinner
 {
 private:
-  packing_stream_buffer *buffer;
+  cubstream::stream_buffer *buffer;
   file_range cached_range;
   log_file *owner;
 
@@ -66,7 +66,7 @@ public:
 
   file_cache() { buffer = NULL; owner = NULL; storage = new char[FILE_CACHE_ONE_BUFFFER_SIZE]; };
 
-  packing_stream_buffer *get_buffer (void) { return buffer; };
+  cubstream::stream_buffer *get_buffer (void) { return buffer; };
   log_file *get_owner (void) { return owner; };
 
   char *get_storage (void) { return storage; };
@@ -77,10 +77,10 @@ public:
 
 };
 
-class log_file : public buffer_provider
+class log_file : public cubstream::buffer_provider
 {
 private:
-  packing_stream *stream;
+  cubstream::packing_stream *stream;
 
   file_pos_t curr_append_position;
   file_pos_t curr_read_position;
@@ -102,18 +102,18 @@ public:
 
   int read_no_cache (char *storage, const size_t count, file_pos_t start_pos = CURRENT_POSITION);
 
-  int write_buffer (packing_stream_buffer *buffer);
+  int write_buffer (cubstream::stream_buffer *buffer);
 
-  static char *get_filename (const stream_position &start_position);
+  static char *get_filename (const cubstream::stream_position &start_position);
 
 
   int fetch_data (char *ptr, const size_t &amount);
   
-  int extend_buffer (packing_stream_buffer **existing_buffer, const size_t &amount);
+  int extend_buffer (cubstream::stream_buffer **existing_buffer, const size_t &amount);
 
   int flush_old_stream_data (void);
 
-  packing_stream * get_write_stream (void);
+  cubstream::packing_stream * get_write_stream (void);
 
 };
 

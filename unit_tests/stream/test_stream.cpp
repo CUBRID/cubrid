@@ -24,7 +24,7 @@
 namespace test_stream
 {
 
-int stream_handler_write::write_action (const stream_position pos, char *ptr, const size_t byte_count)
+int stream_handler_write::write_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count)
 {
   int i;
 
@@ -42,7 +42,7 @@ int stream_handler_write::write_action (const stream_position pos, char *ptr, co
   return 0;
 }
 
-int stream_handler_read::read_action (const stream_position pos, char *ptr, const size_t byte_count,
+int stream_handler_read::read_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count,
                                       size_t *processed_bytes)
 {
   int i;
@@ -104,7 +104,7 @@ int test_stream1 (void)
   long long rem_amount;
   int max_data_size = 500;
 
-  packing_stream *my_stream = new packing_stream ();
+  cubstream::packing_stream *my_stream = new cubstream::packing_stream ();
 
   stream_handler_write writer;
   stream_handler_read reader;
@@ -125,8 +125,8 @@ int test_stream1 (void)
   writted_amount = desired_amount - rem_amount;
 
   /* read from stream */
-  stream_position start_read_pos = my_stream->get_curr_read_position ();
-  stream_position curr_read_pos = start_read_pos;
+  cubstream::stream_position start_read_pos = my_stream->get_curr_read_position ();
+  cubstream::stream_position curr_read_pos = start_read_pos;
   for (rem_amount = writted_amount; rem_amount > 5; i--)
     {
       int amount = 5 + std::rand () % max_data_size;
@@ -145,12 +145,12 @@ int test_stream1 (void)
       rem_amount -= processed_amount;
     }
 
-  std::vector <buffer_context> my_buffered_ranges;
+  std::vector <cubstream::buffer_context> my_buffered_ranges;
 
-  my_stream->collect_buffers (my_buffered_ranges, COLLECT_ALL_BUFFERS, COLLECT_AND_DETACH);
+  my_stream->collect_buffers (my_buffered_ranges, cubstream::COLLECT_ALL_BUFFERS, cubstream::COLLECT_AND_DETACH);
 
-  buffer_provider::get_default_instance ()->unpin_all ();
-  buffer_provider::get_default_instance ()->free_all_buffers ();
+  cubstream::buffer_provider::get_default_instance ()->unpin_all ();
+  cubstream::buffer_provider::get_default_instance ()->free_all_buffers ();
 
   return res;
 }

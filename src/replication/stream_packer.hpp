@@ -32,7 +32,9 @@
 #include "packing_stream.hpp"
 #include <vector>
 
-class serial_buffer;
+namespace cubstream
+{
+
 class buffer_provider;
 
 /* 
@@ -86,5 +88,7 @@ private:
   /* currently mapped range (set when packing starts) */
   buffer_context *m_mapped_range;
 };
+
+} /* namespace cubstream */
 
 #endif /* _STREAM_PACKER_HPP_ */

@@ -25,8 +25,11 @@
 
 #include "stream_packer.hpp"
 #include "packing_stream.hpp"
-#include "packing_stream_buffer.hpp"
+#include "stream_buffer.hpp"
 #include <vector>
+
+namespace cubstream
+{
 
 stream_packer::stream_packer (packing_stream *stream_arg)
 {
@@ -132,3 +135,5 @@ char *stream_packer::extend_unpacking_range_from_pos (const stream_position &sta
    * if required amount is not available, allocate a new buffer which fits both existing range and the extended range */
    return start_unpacking_range_from_pos (start_pos, amount, granted_range);
 }
+
+} /* namespace cubstream */

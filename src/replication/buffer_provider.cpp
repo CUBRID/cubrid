@@ -24,7 +24,10 @@
 #ident "$Id$"
 
 #include "buffer_provider.hpp"
-#include "packing_stream_buffer.hpp"
+#include "stream_buffer.hpp"
+
+namespace cubstream
+{
 
 buffer_provider::~buffer_provider ()
 {
@@ -42,10 +45,10 @@ buffer_provider *buffer_provider::get_default_instance (void)
   return &global_buffer_provider;
 }
 
-int buffer_provider::allocate_buffer (packing_stream_buffer **new_buffer, const size_t &amount)
+int buffer_provider::allocate_buffer (stream_buffer **new_buffer, const size_t &amount)
 {
   char *mem;
-  packing_stream_buffer *my_new_buffer;
+  stream_buffer *my_new_buffer;
   size_t to_alloc;
 
   if (amount > max_alloc_size)
@@ -61,7 +64,7 @@ int buffer_provider::allocate_buffer (packing_stream_buffer **new_buffer, const 
       return ER_FAILED;
     }
   
-  my_new_buffer = new packing_stream_buffer (mem, to_alloc, this);
+  my_new_buffer = new stream_buffer (mem, to_alloc, this);
 
   add_buffer (my_new_buffer);
 
@@ -93,7 +96,7 @@ int buffer_provider::free_all_buffers (void)
 }
 
 
-int buffer_provider::extend_buffer (packing_stream_buffer **existing_buffer, const size_t &amount)
+int buffer_provider::extend_buffer (stream_buffer **existing_buffer, const size_t &amount)
 {
   if (*existing_buffer != NULL)
     {
@@ -108,7 +111,7 @@ int buffer_provider::extend_buffer (packing_stream_buffer **existing_buffer, con
   return NO_ERROR;
 }
 
-int buffer_provider::add_buffer (packing_stream_buffer *new_buffer)
+int buffer_provider::add_buffer (stream_buffer *new_buffer)
 {
   m_buffers.push_back (new_buffer);
 
@@ -116,3 +119,5 @@ int buffer_provider::add_buffer (packing_stream_buffer *new_buffer)
   
   return NO_ERROR;
 };
+
+} /* namespace cubstream */

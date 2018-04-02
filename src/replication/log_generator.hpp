@@ -36,9 +36,9 @@
 #include "replication_stream.hpp"
 #include <vector>
 
-class packing_stream_buffer;
-class packable_object;
-class stream_packer;
+class cubstream::stream_buffer;
+class cubpacking::packable_object;
+class cubstream::stream_packer;
 
 /* 
  * main class for producing log replication entries
@@ -49,23 +49,23 @@ class stream_packer;
  *        this will be supported later, but needs centralized stream_position in global log_generator
  */
 
-class log_generator : public buffer_provider, public notify_handler
+class log_generator : public cubstream::buffer_provider, public cubstream::notify_handler
 {
 private:
   std::vector<replication_stream_entry*> m_stream_entries;
 
-  packing_stream *stream;
+  cubstream::packing_stream *m_stream;
 
   /* current append position to be assigned to a new entry */
-  stream_position m_append_position;
+  cubstream::stream_position m_append_position;
 
   static log_generator *global_log_generator;
 
-  stream_packer *m_serializator;
+  cubstream::stream_packer *m_serializator;
 
 public:
 
-  log_generator () { stream = NULL; };
+  log_generator () { m_stream = NULL; };
 
   ~log_generator ();
 
@@ -73,19 +73,19 @@ public:
 
   void set_ready_to_pack (THREAD_ENTRY *th_entry);
 
-  stream_packer *get_serializator (void) { return m_serializator; };
+  cubstream::stream_packer *get_serializator (void) { return m_serializator; };
 
   replication_stream_entry* get_stream_entry (THREAD_ENTRY *th_entry);
 
   int pack_stream_entries (THREAD_ENTRY *th_entry);
 
-  static log_generator *new_instance (THREAD_ENTRY *th_entry, const stream_position &start_position);
+  static log_generator *new_instance (THREAD_ENTRY *th_entry, const cubstream::stream_position &start_position);
 
-  int notify (const stream_position pos, const size_t byte_count)
+  int notify (const cubstream::stream_position pos, const size_t byte_count)
       { return flush_old_stream_data (); };
   int flush_old_stream_data (void);
 
-  packing_stream * get_write_stream (void) { return stream; };
+  cubstream::packing_stream * get_write_stream (void) { return m_stream; };
 };
 
 #endif /* _LOG_GENERATOR_HPP_ */

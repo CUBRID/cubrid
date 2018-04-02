@@ -32,7 +32,7 @@
 #include <cstddef>
 
 class replication_stream_entry;
-class packing_stream_buffer;
+class stream_buffer;
 class log_file;
 class stream_packer;
 class slave_replication_channel;
@@ -49,7 +49,7 @@ typedef enum consumer_type CONSUMER_TYPE;
  * main class for consuming log replication entries
  * it should be created only as a global instance
  */
-class log_consumer : public buffer_provider, public fetch_handler
+class log_consumer : public cubstream::buffer_provider, public cubstream::fetch_handler
 {
 protected:
   CONSUMER_TYPE m_type;
@@ -59,12 +59,12 @@ protected:
   /* file attached to log_generator (only for global instance) */
   log_file *file;
 
-  packing_stream *consume_stream;
+  cubstream::packing_stream *consume_stream;
 
   slave_replication_channel *m_src;
 
   /* current append position to be assigned to a new entry */
-  stream_position curr_position;
+  cubstream::stream_position curr_position;
 
 public:
 
@@ -76,13 +76,13 @@ public:
 
   int consume_thread (void);
 
-  static log_consumer* new_instance (const CONSUMER_TYPE req_type, const stream_position &start_position);
+  static log_consumer* new_instance (const CONSUMER_TYPE req_type, const cubstream::stream_position &start_position);
 
   int fetch_data (char *ptr, const size_t &amount);
   
-  packing_stream * get_write_stream (void);
+  cubstream::packing_stream * get_write_stream (void);
 
-  int fetch_action (const stream_position pos, char *ptr, const size_t byte_count, size_t *processed_bytes)
+  int fetch_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count, size_t *processed_bytes)
       { return fetch_data (ptr, byte_count); };
 };
 

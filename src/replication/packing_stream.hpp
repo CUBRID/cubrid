@@ -29,14 +29,19 @@
 #include <vector>
 #include <functional>
 #include "packable_object.hpp"
+#include "cubstream.hpp"
 #include "stream_common.hpp"
 #include "storage_common.h"
 
 class cubpacking::packable_object;
 class cubpacking::object_builder;
+
+namespace cubstream
+{
+
 class buffer_provider;
 class stream_packer;
-
+class packing_stream;
 
 typedef enum
 {
@@ -50,53 +55,7 @@ typedef enum
   COLLECT_AND_DETACH
 } COLLECT_ACTION;
 
-class read_handler
-{
-public:
-  virtual int read_action (const stream_position pos, char *ptr, const size_t byte_count) = 0;
-};
-
-class partial_read_handler
-{
-public:
-  virtual int read_action (const stream_position pos, char *ptr, const size_t byte_count,
-                           size_t *processed_bytes) = 0;
-};
-
-class write_handler
-{
-public:
-  virtual int write_action (const stream_position pos, char *ptr, const size_t byte_count) = 0;
-};
-
-class fetch_handler
-{
-public:
-  virtual int fetch_action (const stream_position pos, char *ptr, const size_t byte_count,
-                            size_t *processed_bytes) = 0;
-};
-
-class notify_handler
-{
-public:
-  virtual int notify (const stream_position pos, const size_t byte_count) = 0;
-};
-
-
-#if 0
-class stream_handler
-{
-public:
-  /* method for handling a chunk of stream, most obvious operations are read and write
-   * some handlers may choose to ignore some arguments and should allow NULL values where is the case
-   * returns error code (0 : no error, negative - error)
-   */
-  virtual int handling_action (const stream_position pos, char *ptr, const size_t byte_count,
-                               size_t *processed_bytes) = 0;
-};
-#endif
-
-class stream_entry : public cubpacking::pinner
+class entry : public cubpacking::pinner
 {
 private:
   int stream_entry_id;
@@ -116,7 +75,7 @@ protected:
   virtual cubpacking::object_builder *get_builder () = 0;
 
 public:
-  stream_entry (packing_stream *stream);
+  entry (packing_stream *stream);
 
   int pack (void);
 
@@ -144,7 +103,7 @@ public:
   virtual int pack_stream_entry_header (void) = 0;
   virtual int unpack_stream_entry_header (void) = 0;
   virtual int get_packable_entry_count_from_header (void) = 0;
-  virtual bool is_equal (const stream_entry *other) = 0;
+  virtual bool is_equal (const entry *other) = 0;
 };
 
 /*
@@ -156,7 +115,7 @@ public:
  *
  * TODO : create a stream only for read of only for write (never both read and write !!!)
  */
-class packing_stream
+class packing_stream : public stream
 {
 private:
   buffer_provider *m_buffer_provider;
@@ -170,19 +129,8 @@ private:
    * different ranges can be filled at different speeds, concatenation of ranges should be done only on filled buffers
    */
 
-  /* TODO : maybe these should be moved as sub-object for each packing_stream_buffer mapped onto the stream */
+  /* TODO : maybe these should be moved as sub-object for each stream_buffer mapped onto the stream */
   std::vector<buffer_context> m_buffered_ranges;
-
-  /* current stream position not allocated yet */
-  stream_position m_append_position;
-
-  /* last position reported to be ready (filled) by appenders; can be read by readers */
-  stream_position m_last_reported_ready_pos;
-
-  /* last stream position read
-   * in most scenarios, each reader provides its own read position,
-   * this is a shared "read position" usable only in single read scenarios */
-  stream_position m_read_position;
 
   /* first and last positions of all currently mapped buffers; the range may have holes
    * in it and also some ranges may be mapped by more than one buffer */
@@ -197,19 +145,15 @@ private:
    * normal mode should not need this : all buffers are send to MRC_Manager to be send to slave */
   size_t trigger_flush_to_disk_size;
 
-  notify_handler *m_filled_stream_handler;
-  fetch_handler *m_fetch_data_handler;
-  notify_handler *m_ready_pos_handler;
-
 protected:
-  int create_buffer_context (packing_stream_buffer *new_buffer, const STREAM_MODE stream_mode,
+  int create_buffer_context (stream_buffer *new_buffer, const STREAM_MODE stream_mode,
                              const stream_position &first_pos, const stream_position &last_pos,
                              const size_t &buffer_start_offset, buffer_context **granted_range);
 
   int add_buffer_context (buffer_context *src_context, const STREAM_MODE stream_mode,
                           buffer_context **granted_range);
 
-  int add_buffer_context (packing_stream_buffer *new_buffer, const STREAM_MODE stream_mode,
+  int add_buffer_context (stream_buffer *new_buffer, const STREAM_MODE stream_mode,
                           const stream_position &first_pos, const stream_position &last_pos,
                           const size_t &buffer_start_offset, buffer_context **granted_range);
 
@@ -227,8 +171,6 @@ protected:
 public:
   packing_stream (const buffer_provider *my_provider = NULL);
   ~packing_stream ();
-
-  int init (const stream_position &start_position = 0);
 
   /* should be called when serialization of a stream entry ends */
   int update_contiguous_filled_pos (const stream_position &filled_pos);
@@ -256,12 +198,8 @@ public:
   char * get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
                                    const buffer_provider *context_provider, buffer_context **granted_range);
 
-  stream_position &get_curr_read_position (void) { return m_read_position; };
-  stream_position &get_last_reported_ready_pos (void) { return m_last_reported_ready_pos; };
-
-  void set_filled_stream_handler (notify_handler * handler) { m_filled_stream_handler = handler; };
-  void set_fetch_data_handler (fetch_handler * handler) { m_fetch_data_handler = handler; };
-  void set_ready_pos_handler (notify_handler * handler) { m_ready_pos_handler = handler; };
 };
+
+} /* namespace cubstream */
 
 #endif /* _PACKING_STREAM_HPP_ */

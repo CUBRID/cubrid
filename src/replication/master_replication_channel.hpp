@@ -31,18 +31,18 @@
 #include "stream_common.hpp"
 #include "buffer_provider.hpp"
 
-class packing_stream;
-class packing_stream_buffer;
+class cubstream::packing_stream;
+class cubstream::stream_buffer;
 class log_file;
 
-class master_replication_channel_manager : public buffer_provider
+class master_replication_channel_manager : public cubstream::buffer_provider
 {
 public:
-  master_replication_channel_manager (const stream_position &start_position);
+  master_replication_channel_manager (const cubstream::stream_position &start_position);
 
-  int init (const stream_position &start_position);
+  int init (const cubstream::stream_position &start_position);
 
-  int add_buffers (std::vector <buffer_context> &bufferred_ranges);
+  int add_buffers (std::vector <cubstream::buffer_context> &bufferred_ranges);
 
   int update_last_read_pos (void);
 
@@ -56,7 +56,7 @@ public:
   
   int flush_old_stream_data (void);
 
-  packing_stream * get_write_stream (void) { return generator_stream; };
+  cubstream::packing_stream * get_write_stream (void) { return generator_stream; };
 
 private:
   /* file attached to log_generator (only for global instance) */
@@ -72,11 +72,11 @@ private:
    * After buffers are flushed to disk, MRC_M is no longer concerned with old stream data
    * Each MRC is responsible to read using its own stream from disk
    */
-  packing_stream *generator_stream;
+  cubstream::packing_stream *generator_stream;
 
-  std::vector<packing_stream_buffer*> send_pending_buffers;
+  std::vector<cubstream::stream_buffer*> send_pending_buffers;
 
-  std::vector<packing_stream_buffer*> flush_pending_buffers;
+  std::vector<cubstream::stream_buffer*> flush_pending_buffers;
 };
 
 

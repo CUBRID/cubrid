@@ -18,13 +18,13 @@
  */
 
 /*
- * packing_stream_buffer.hpp
+ * stream_buffer.hpp
  */
 
 #ident "$Id$"
 
-#ifndef _PACKING_STREAM_BUFFER_HPP_
-#define _PACKING_STREAM_BUFFER_HPP_
+#ifndef _STREAM_BUFFER_HPP_
+#define _STREAM_BUFFER_HPP_
 
 #include <atomic>
 #include <vector>
@@ -32,8 +32,8 @@
 #include "stream_common.hpp"
 #include "packing_buffer.hpp"
 
-
-class replication_stream;
+namespace cubstream
+{
 
 /*
  * This should serve as storage for packing streams.
@@ -42,10 +42,10 @@ class replication_stream;
  * (the one which decides when to create or scrap a buffer)
  * 
  */
-class packing_stream_buffer : public cubpacking::buffer
+class stream_buffer : public cubpacking::buffer
 {
 public:
-  packing_stream_buffer (char *ptr, const size_t buf_size, cubpacking::pinner *referencer)
+  stream_buffer (char *ptr, const size_t buf_size, cubpacking::pinner *referencer)
     { init (ptr, buf_size, referencer); };
 
   char * reserve (const size_t amount);
@@ -55,16 +55,16 @@ public:
   /* mapping methods : a memory already exists, just instruct buffer to use it */
   //int map_buffer_with_pin (serial_buffer *ref_buffer, pinner *referencer);
 
-  /* TODO[arnia] : STREAM_MODE should be property of replication_stream (and called STREAM_TYPE instead ) ? */
-  int attach_stream (packing_stream *stream, const STREAM_MODE stream_mode,
+  /* TODO[arnia] : STREAM_MODE should be property of stream (and called STREAM_TYPE instead ) ? */
+  int attach_stream (stream *stream_p, const STREAM_MODE stream_mode,
                      const stream_position &stream_start, const stream_position &stream_end,
                      const size_t &buffer_start_offset);
 
-  int dettach_stream (packing_stream *stream, const STREAM_MODE stream_mode);
+  int dettach_stream (stream *stream_p, const STREAM_MODE stream_mode);
   
-  int check_stream_append_contiguity (const packing_stream *stream, const stream_position &req_pos);
+  int check_stream_append_contiguity (const stream *stream_p, const stream_position &req_pos);
 
-  bool is_unreferenced (void) { return (write_stream_reference.stream == NULL) && (read_stream_references.size () == 0); };
+  bool is_unreferenced (void) { return (write_stream_reference.m_stream == NULL) && (read_stream_references.size () == 0); };
 
 
 protected:
@@ -78,5 +78,6 @@ protected:
  
 };
 
+} /* namespace cubstream */
 
-#endif /* _PACKING_STREAM_BUFFER_HPP_ */
+#endif /* _STREAM_BUFFER_HPP_ */

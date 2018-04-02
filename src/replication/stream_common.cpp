@@ -24,7 +24,10 @@
 #ident "$Id$"
 
 #include "stream_common.hpp"
-#include "packing_stream_buffer.hpp"
+#include "stream_buffer.hpp"
+
+namespace cubstream
+{
 
 bool buffer_context::is_range_mapped (const stream_position &start, const size_t &amount)
 {
@@ -54,3 +57,5 @@ char * buffer_context::extend_range (const size_t &amount)
 
   return ptr;
 }
+
+} /* namespace cubstream */

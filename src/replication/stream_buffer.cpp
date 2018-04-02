@@ -18,14 +18,17 @@
  */
 
 /*
- * packing_stream_buffer.cpp
+ * stream_buffer.cpp
  */
 
 #ident "$Id$"
 
-#include "packing_stream_buffer.hpp"
+#include "stream_buffer.hpp"
 
-char * packing_stream_buffer::reserve (const size_t amount)
+namespace cubstream
+{
+
+char * stream_buffer::reserve (const size_t amount)
 {
   if (storage + write_stream_reference.buf_end_offset + amount < end_ptr)
     {
@@ -38,15 +41,15 @@ char * packing_stream_buffer::reserve (const size_t amount)
   return NULL;
 }
 
-int packing_stream_buffer::attach_stream (packing_stream *stream, const STREAM_MODE stream_mode,
-                                          const stream_position &stream_start, const stream_position &stream_end,
-                                          const size_t &buffer_start_offset)
+int stream_buffer::attach_stream (stream *stream_p, const STREAM_MODE stream_mode,
+                                  const stream_position &stream_start, const stream_position &stream_end,
+                                  const size_t &buffer_start_offset)
 {
   if (stream_mode == WRITE_STREAM)
     {
-      assert (write_stream_reference.stream == NULL);
+      assert (write_stream_reference.m_stream == NULL);
 
-      write_stream_reference.stream = stream;
+      write_stream_reference.m_stream = stream_p;
 
       write_stream_reference.buf_start_offset = buffer_start_offset;
       write_stream_reference.buf_end_offset = buffer_start_offset + stream_end - stream_start;
@@ -58,7 +61,7 @@ int packing_stream_buffer::attach_stream (packing_stream *stream, const STREAM_M
     {
       stream_reference new_stream_ref;
 
-      new_stream_ref.stream = stream;
+      new_stream_ref.m_stream = stream_p;
 
       new_stream_ref.buf_start_offset = buffer_start_offset;
       new_stream_ref.buf_end_offset = buffer_start_offset + stream_end - stream_start;
@@ -72,13 +75,13 @@ int packing_stream_buffer::attach_stream (packing_stream *stream, const STREAM_M
   return NO_ERROR;
 }
 
-int packing_stream_buffer::dettach_stream (packing_stream *stream, const STREAM_MODE stream_mode)
+int stream_buffer::dettach_stream (stream *stream_p, const STREAM_MODE stream_mode)
 {
   if (stream_mode == WRITE_STREAM)
     {
-      assert (write_stream_reference.stream != NULL);
+      assert (write_stream_reference.m_stream == stream_p);
 
-      write_stream_reference.stream = NULL;
+      write_stream_reference.m_stream = NULL;
     }
   else
     {
@@ -87,7 +90,7 @@ int packing_stream_buffer::dettach_stream (packing_stream *stream, const STREAM_
 
       for (i = 0; i < read_stream_references.size (); i++)
         {
-          if (read_stream_references[i].stream == stream)
+          if (read_stream_references[i].m_stream == stream_p)
             {
               found = true;
             }
@@ -104,10 +107,9 @@ int packing_stream_buffer::dettach_stream (packing_stream *stream, const STREAM_
   return NO_ERROR;
 }
 
-int packing_stream_buffer::check_stream_append_contiguity (const packing_stream *stream,
-                                                           const stream_position &req_pos)
+int stream_buffer::check_stream_append_contiguity (const stream *stream_p, const stream_position &req_pos)
 {
-  if (stream != write_stream_reference.stream)
+  if (stream_p != write_stream_reference.m_stream)
     {
       /* not my write stream !*/
       return ER_FAILED;
@@ -121,3 +123,4 @@ int packing_stream_buffer::check_stream_append_contiguity (const packing_stream 
   return ER_FAILED;
 }
 
+} /* namespace cubstream */

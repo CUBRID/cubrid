@@ -26,7 +26,7 @@
 
 #include "log_file.hpp"
 #include "packing_stream.hpp"
-#include "packing_stream_buffer.hpp"
+#include "stream_buffer.hpp"
 #if defined (LINUX)
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -45,7 +45,7 @@ bool file_cache::is_in_cache (const file_pos_t start_pos, const size_t count)
 
 int file_cache::release (void)
 {
-  packing_stream_buffer *buffer;
+  cubstream::stream_buffer *buffer;
   buffer = get_buffer ();
   if (buffer != NULL && buffer->get_pin_count () == 0)
     {
@@ -103,7 +103,7 @@ file_cache *log_file::new_cache (void)
 }
 
 
-int log_file::write_buffer (packing_stream_buffer *buffer)
+int log_file::write_buffer (cubstream::stream_buffer *buffer)
 {
   file_pos_t buffer_size = buffer->get_buffer_size();
 
@@ -147,7 +147,7 @@ int log_file::read_no_cache (char *storage, const size_t count, file_pos_t start
   return (int) actual_read;
 }
 
-char *log_file::get_filename (const stream_position &start_position)
+char *log_file::get_filename (const cubstream::stream_position &start_position)
 {
   /* TODO[arnia]:*/
   NOT_IMPLEMENTED();
@@ -161,7 +161,7 @@ int log_file::fetch_data (char *ptr, const size_t &amount)
   return NO_ERROR;
 }
   
-int log_file::extend_buffer (packing_stream_buffer **existing_buffer, const size_t &amount)
+int log_file::extend_buffer (cubstream::stream_buffer **existing_buffer, const size_t &amount)
 {
   NOT_IMPLEMENTED ();
 
@@ -175,7 +175,7 @@ int log_file::flush_old_stream_data (void)
   return NO_ERROR;
 }
 
-packing_stream * log_file::get_write_stream (void)
+cubstream::packing_stream * log_file::get_write_stream (void)
 {
   NOT_IMPLEMENTED ();
 

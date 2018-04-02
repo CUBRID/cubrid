@@ -17,37 +17,38 @@
  *
  */
 
-#ifndef _TEST_STREAM_HPP_
-#define _TEST_STREAM_HPP_
+/*
+ * cubstream.cpp
+ */
 
-#include "packable_object.hpp"
-#include "packing_stream.hpp"
-#include <vector>
+#ident "$Id$"
 
+#include "cubstream.hpp"
+#include "buffer_provider.hpp"
+#include "error_code.h"
+#include <algorithm>
 
-namespace test_stream
+namespace cubstream
 {
 
-int test_stream1 (void);
-
-class stream_handler_write : public cubstream::write_handler
+stream::stream ()
 {
-public:
-  int write_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count);
-};
+  m_last_reported_ready_pos = 0;
+  m_read_position = 0;
 
 
-class stream_handler_read : public cubstream::partial_read_handler
-{
-private:
-  size_t m_remaining_to_read;
-  char expected_val;
-public:
-  stream_handler_read () { m_remaining_to_read = 0; };
+  set_filled_stream_handler (NULL);
+  set_fetch_data_handler (NULL);
+  set_ready_pos_handler (NULL);
 
-  int read_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count, size_t *processed_bytes);
-};
-
+  init (0);
 }
 
-#endif /* _TEST_STREAM_HPP_ */
+int stream::init (const stream_position &start_position)
+{
+  m_append_position = start_position;
+
+  return NO_ERROR;
+}
+
+} /* namespace cubstream */

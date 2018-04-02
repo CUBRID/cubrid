@@ -26,7 +26,7 @@
 #include "log_consumer.hpp"
 #include "replication_stream.hpp"
 #include "stream_packer.hpp"
-#include "packing_stream_buffer.hpp"
+#include "stream_buffer.hpp"
 
 #define LC_BUFFER_CAPACITY (1 * 1024 * 1024)
 
@@ -71,16 +71,17 @@ int log_consumer::consume_thread (void)
   return NO_ERROR;
 }
 
-log_consumer* log_consumer::new_instance (const CONSUMER_TYPE req_type, const stream_position &start_position)
+log_consumer* log_consumer::new_instance (const CONSUMER_TYPE req_type,
+                                          const cubstream::stream_position &start_position)
 {
   int error_code = NO_ERROR;
-  packing_stream_buffer *first_buffer = NULL;
+  stream_buffer *first_buffer = NULL;
 
   log_consumer *new_lc = new log_consumer ();
   new_lc->curr_position = start_position;
   new_lc->m_type = req_type;
 
-  new_lc->consume_stream = new packing_stream (new_lc);
+  new_lc->consume_stream = new cubstream::packing_stream (new_lc);
   new_lc->consume_stream->init (new_lc->curr_position);
 
   new_lc->consume_stream->acquire_new_write_buffer (new_lc, new_lc->curr_position, LC_BUFFER_CAPACITY, NULL);
@@ -96,7 +97,7 @@ int log_consumer::fetch_data (char *ptr, const size_t &amount)
 }
  
 
-packing_stream * log_consumer::get_write_stream (void)
+cubstream::packing_stream * log_consumer::get_write_stream (void)
 {
   return consume_stream;
 }
