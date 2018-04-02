@@ -45,8 +45,8 @@ struct func_signature
   static std::vector<func_signature> json_doc;
   static std::vector<func_signature> json_doc_r_doc;
   static std::vector<func_signature> json_doc_path;
-  static std::vector<func_signature> json_doc_path_r_path;
-  static std::vector<func_signature> json_doc_path_doc_r_path_doc;
+  static std::vector<func_signature> json_doc_r_path;
+  static std::vector<func_signature> json_doc_r_path_doc;
 
   static std::vector<func_signature> set;
   static std::vector<func_signature> multiset;

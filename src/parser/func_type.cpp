@@ -184,11 +184,7 @@ std::vector<func_signature> func_signature::json_r_key_val = {//(jsonKey, jsonVa
 };
 
 std::vector<func_signature> func_signature::json_r_val = {//(pt_is_json_value()[, pt_is_json_value()...])
-#if 0
-  {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_VAL}, {PT_GENERIC_TYPE_JSON_VAL}},
-#else
   {PT_TYPE_JSON, {}, {PT_GENERIC_TYPE_JSON_VAL}},
-#endif
 };
 
 std::vector<func_signature> func_signature::json_doc = {//(pt_is_json_doc_type())
@@ -203,20 +199,12 @@ std::vector<func_signature> func_signature::json_doc_path = {//(pt_is_json_doc_t
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_JSON_PATH}, {}},
 };
 
-std::vector<func_signature> func_signature::json_doc_path_r_path = {//(pt_is_json_doc_type(), pt_is_json_path()[, pt_is_json_path()...])
-#if 0
-  {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_JSON_PATH}, {PT_GENERIC_TYPE_JSON_PATH}},
-#else
+std::vector<func_signature> func_signature::json_doc_r_path = {//(pt_is_json_doc_type(), pt_is_json_path()[, pt_is_json_path()...])
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_JSON_PATH}},
-#endif
 };
 
-std::vector<func_signature> func_signature::json_doc_path_doc_r_path_doc = {//(pt_is_json_doc_type(), pt_is_json_path(), pt_is_json_doc() [, pt_is_json_path(), pt_is_json_doc()...])
-#if 0
-  {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_JSON_PATH, PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_JSON_PATH, PT_GENERIC_TYPE_JSON_DOC}},
-#else
+std::vector<func_signature> func_signature::json_doc_r_path_doc = {//(pt_is_json_doc_type(), pt_is_json_path(), pt_is_json_doc() [, pt_is_json_path(), pt_is_json_doc()...])
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_JSON_PATH, PT_GENERIC_TYPE_JSON_DOC}},
-#endif
 };
 
 std::vector<func_signature> func_signature::set = {//???
