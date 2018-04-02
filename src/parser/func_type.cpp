@@ -204,11 +204,19 @@ std::vector<func_signature> func_signature::json_doc_path = {//(pt_is_json_doc_t
 };
 
 std::vector<func_signature> func_signature::json_doc_path_r_path = {//(pt_is_json_doc_type(), pt_is_json_path()[, pt_is_json_path()...])
+#if 0
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_JSON_PATH}, {PT_GENERIC_TYPE_JSON_PATH}},
+#else
+  {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_JSON_PATH}},
+#endif
 };
 
 std::vector<func_signature> func_signature::json_doc_path_doc_r_path_doc = {//(pt_is_json_doc_type(), pt_is_json_path(), pt_is_json_doc() [, pt_is_json_path(), pt_is_json_doc()...])
+#if 0
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_JSON_PATH, PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_JSON_PATH, PT_GENERIC_TYPE_JSON_DOC}},
+#else
+  {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_JSON_PATH, PT_GENERIC_TYPE_JSON_DOC}},
+#endif
 };
 
 std::vector<func_signature> func_signature::set = {//???
