@@ -22,11 +22,39 @@
  */
 
 #include "thread_waiter.hpp"
+#include "perf.hpp"
 
 #include <cassert>
 
+// todo: fix time unit
+
 namespace cubthread
 {
+  //////////////////////////////////////////////////////////////////////////
+  // statistics collector
+  //////////////////////////////////////////////////////////////////////////
+
+  static cubperf::stat_id STAT_LOCK_WAKEUP_COUNT = 0;
+  static cubperf::stat_id STAT_SLEEP_COUNT = 0;
+  static cubperf::stat_id STAT_TIMEOUT_COUNT = 0;
+  static cubperf::stat_id STAT_NO_SLEEP_COUNT = 0;
+  static cubperf::stat_id STAT_AWAKEN_COUNT_AND_TIME = 0;
+  static cubperf::statset_definition waiter_statistics =
+  {
+    cubperf::statset_definition::stat_count ("waiter_lock_wakeup_count", STAT_LOCK_WAKEUP_COUNT),
+    cubperf::statset_definition::stat_count ("waiter_sleep_count", STAT_SLEEP_COUNT),
+    cubperf::statset_definition::stat_count ("waiter_timeout_count", STAT_TIMEOUT_COUNT),
+    cubperf::statset_definition::stat_count ("waiter_no_sleep_count", STAT_NO_SLEEP_COUNT),
+    cubperf::statset_definition::stat_count_time ("waiter_awaken_count", "waiter_awaken_delay",
+    STAT_AWAKEN_COUNT_AND_TIME)
+  };
+
+  static cubperf::stat_id ATOMIC_STAT_WAKEUP_COUNT = 0;
+  cubperf::statset_definition waiter_atomic_statistics =
+  {
+    cubperf::statset_definition::stat_count ("waiter_wakeup_count", ATOMIC_STAT_WAKEUP_COUNT)
+  };
+
   //////////////////////////////////////////////////////////////////////////
   // waiter
   //////////////////////////////////////////////////////////////////////////
@@ -35,16 +63,12 @@ namespace cubthread
     : m_mutex ()
     , m_condvar ()
     , m_status (RUNNING)
-    , m_wakeup_count (0)
-    , m_wakeup_lock_count (0)
-    , m_awake_count (0)
-    , m_wait_count (0)
-    , m_timeout_count (0)
-    , m_wait_zero (0)
-    , m_wakeup_delay (0)
-    , m_awake_time ()
+    , m_stats_p (NULL)
+    , m_atomic_stats_p (NULL)
     , m_was_awaken (false)
   {
+    m_stats_p = new cubperf::statset (waiter_statistics);
+    m_atomic_stats_p = new cubperf::atomic_statset (waiter_atomic_statistics);
   }
 
   waiter::~waiter ()
@@ -54,7 +78,7 @@ namespace cubthread
   void
   waiter::wakeup (void)
   {
-    ++m_wakeup_count;
+    m_atomic_stats_p->increment (ATOMIC_STAT_WAKEUP_COUNT);
 
     // early out if not sleeping
     if (m_status != SLEEPING)
@@ -64,7 +88,7 @@ namespace cubthread
       }
 
     std::unique_lock<std::mutex> lock (m_mutex);
-    ++m_wakeup_lock_count;
+    m_stats_p->increment (STAT_LOCK_WAKEUP_COUNT);
 
     if (m_status != SLEEPING)
       {
@@ -93,7 +117,7 @@ namespace cubthread
 
     // for statistics
     m_was_awaken = false;
-    ++m_wait_count;
+    m_stats_p->increment (STAT_SLEEP_COUNT);
   }
 
   void
@@ -104,8 +128,7 @@ namespace cubthread
     m_status = AWAKENING;
 
     // for statistics
-    m_awake_time = clock_type::now ();
-    ++m_awake_count;
+    m_stats_p->reset_timepoint ();
     m_was_awaken = true;
   }
 
@@ -119,7 +142,7 @@ namespace cubthread
     // for statistics
     if (m_was_awaken)
       {
-	m_wakeup_delay += (std::chrono::nanoseconds (clock_type::now () - m_awake_time)).count ();
+	m_stats_p->increment_and_time (STAT_AWAKEN_COUNT_AND_TIME);
       }
   }
 
@@ -140,15 +163,8 @@ namespace cubthread
   void
   waiter::get_stats (stat_type *stats_out)
   {
-    int i = 0;
-
-    stats_out[i++] = m_wakeup_count;
-    stats_out[i++] = m_wakeup_lock_count;
-    stats_out[i++] = m_awake_count;
-    stats_out[i++] = m_wait_count;
-    stats_out[i++] = m_timeout_count;
-    stats_out[i++] = m_wait_zero;
-    stats_out[i++] = m_wakeup_delay / 1000000;  // nano => milli
+    m_atomic_stats_p->get_stats (stats_out);
+    m_stats_p->get_stats (stats_out + waiter_atomic_statistics.get_value_count ());
   }
 
   bool
@@ -156,7 +172,7 @@ namespace cubthread
   {
     if (delta == std::chrono::microseconds (0))
       {
-	++m_wait_zero;
+	m_stats_p->increment (STAT_NO_SLEEP_COUNT);
 	return true;
       }
 
@@ -168,7 +184,7 @@ namespace cubthread
     ret = m_condvar.wait_for (lock, delta, [this] { return m_status == AWAKENING; });
     if (!ret)
       {
-	++m_timeout_count;
+	m_stats_p->increment (STAT_TIMEOUT_COUNT);
       }
 
     run ();
@@ -186,7 +202,7 @@ namespace cubthread
     bool ret = m_condvar.wait_until (lock, timeout_time, [this] { return m_status == AWAKENING; });
     if (!ret)
       {
-	++m_timeout_count;
+	m_stats_p->increment (STAT_TIMEOUT_COUNT);
       }
 
     run ();

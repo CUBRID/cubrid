@@ -51,9 +51,15 @@
 //    // similarly, first thread can wait with timeout using wait_for or wait_until functions
 //
 
+// forward definition
+namespace cubperf
+{
+  class statset;
+  class atomic_statset;
+}
+
 namespace cubthread
 {
-
   class waiter
   {
     public:
@@ -100,20 +106,9 @@ namespace cubthread
       status m_status;                    // current status
 
       // stats
-      using atomic_stat_type = std::atomic<stat_type>;
-      using clock_type = std::chrono::high_resolution_clock;
-      // counters
-      atomic_stat_type m_wakeup_count;
-      stat_type m_wakeup_lock_count;    // protected by mutex
-      stat_type m_awake_count;          // protected by mutex
-      stat_type m_wait_count;
-      stat_type m_timeout_count;        // protected by mutex
-      atomic_stat_type m_wait_zero;
-      // timers
-      stat_type m_wakeup_delay;         // protected by mutex
-      // helpers
-      clock_type::time_point m_awake_time;
-      bool m_was_awaken;
+      cubperf::statset *m_stats_p;
+      cubperf::atomic_statset *m_atomic_stats_p;
+      bool m_was_awaken;                  // used for statistics
   };
 
 } // namespace cubthread
