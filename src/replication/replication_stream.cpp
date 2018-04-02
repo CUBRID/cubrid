@@ -23,11 +23,14 @@
 
 #ident "$Id$"
 
-#include "error_code.h"
 #include "replication_entry.hpp"
 #include "replication_stream.hpp"
 #include "stream_packer.hpp"
+#include "error_code.h"
 #include <algorithm>
+
+namespace cubreplication
+{
 
 size_t replication_stream_entry::get_header_size ()
 {
@@ -107,3 +110,5 @@ bool replication_stream_entry::is_equal (const cubstream::entry *other)
     }
   return true;
 }
+
+} /* namespace cubreplication */

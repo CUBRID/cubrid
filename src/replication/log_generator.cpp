@@ -32,6 +32,9 @@
 #include "thread_entry.hpp"
 #include "packing_stream.hpp"
 
+namespace cubreplication
+{
+
 log_generator * log_generator::global_log_generator = NULL;
 
 log_generator::~log_generator()
@@ -168,3 +171,5 @@ int log_generator::flush_old_stream_data (void)
 
   return error_code;
 }
+
+} /* namespace cubreplication */

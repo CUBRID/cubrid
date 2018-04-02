@@ -28,6 +28,9 @@
 #include "stream_packer.hpp"
 #include "stream_buffer.hpp"
 
+namespace cubreplication
+{
+
 #define LC_BUFFER_CAPACITY (1 * 1024 * 1024)
 
 int log_consumer::append_entry (replication_stream_entry *entry)
@@ -75,7 +78,6 @@ log_consumer* log_consumer::new_instance (const CONSUMER_TYPE req_type,
                                           const cubstream::stream_position &start_position)
 {
   int error_code = NO_ERROR;
-  stream_buffer *first_buffer = NULL;
 
   log_consumer *new_lc = new log_consumer ();
   new_lc->curr_position = start_position;
@@ -101,3 +103,5 @@ cubstream::packing_stream * log_consumer::get_write_stream (void)
 {
   return consume_stream;
 }
+
+} /* namespace cubreplication */

@@ -32,6 +32,8 @@
 #include <fcntl.h>
 #endif
 
+namespace cubreplication
+{
 
 bool file_cache::is_in_cache (const file_pos_t start_pos, const size_t count)
 {
@@ -181,3 +183,5 @@ cubstream::packing_stream * log_file::get_write_stream (void)
 
   return NO_ERROR;
 }
+
+} /* namespace cubreplication */

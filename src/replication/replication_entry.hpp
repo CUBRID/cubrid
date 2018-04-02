@@ -32,11 +32,15 @@
 #include <vector>
 #include <string>
 
+
+class cubpacking::packer;
+
+namespace cubreplication
+{
+
 /* TODO[arnia] : change these as constants */
 #define STREAM_ENTRY_RBR 0
 #define STREAM_ENTRY_SBR 1
-
-class cubpacking::packer;
 
 enum repl_entry_type
 {
@@ -107,5 +111,7 @@ class replication_object_builder : public cubpacking::object_builder
 public:
   replication_object_builder ();
 };
+
+} /* namespace cubreplication */
 
 #endif /* _REPLICATION_ENTRY_HPP_ */

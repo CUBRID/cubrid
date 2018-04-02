@@ -26,6 +26,9 @@
 #include "master_replication_channel.hpp"
 #include "log_file.hpp"
 
+namespace cubreplication
+{
+
 master_replication_channel_manager::master_replication_channel_manager (const cubstream::stream_position &start_position)
 {
   init (start_position);
@@ -67,3 +70,5 @@ int master_replication_channel_manager::flush_old_stream_data (void)
 {
   return NO_ERROR;
 }
+
+} /* namespace cubreplication */

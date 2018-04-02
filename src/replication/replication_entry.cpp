@@ -27,6 +27,8 @@
 #include "replication_entry.hpp"
 #include "object_representation.h"
 
+namespace cubreplication
+{
 
 single_row_repl_entry::single_row_repl_entry (const REPL_ENTRY_TYPE type, const char *class_name)
 {
@@ -207,3 +209,5 @@ int sbr_repl_entry::unpack (cubpacking::packer *serializator)
    add_pattern_object (new sbr_repl_entry());
    add_pattern_object (new single_row_repl_entry());
  }
+
+ } /* namespace cubreplication */

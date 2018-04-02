@@ -40,6 +40,9 @@ class cubstream::stream_buffer;
 class cubpacking::packable_object;
 class cubstream::stream_packer;
 
+namespace cubreplication
+{
+
 /* 
  * main class for producing log replication entries
  * it may be created as a local (per transaction/thread) instance to hold a limited number of replication entries
@@ -87,5 +90,7 @@ public:
 
   cubstream::packing_stream * get_write_stream (void) { return m_stream; };
 };
+
+} /* namespace cubreplication */
 
 #endif /* _LOG_GENERATOR_HPP_ */

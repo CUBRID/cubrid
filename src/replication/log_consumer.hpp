@@ -31,11 +31,16 @@
 #include "packing_stream.hpp"
 #include <cstddef>
 
-class replication_stream_entry;
-class stream_buffer;
+
+
+class cubstream::stream_buffer;
+class cubstream::stream_packer;
+
+namespace cubreplication
+{
 class log_file;
-class stream_packer;
 class slave_replication_channel;
+class replication_stream_entry;
 
 enum consumer_type
 {
@@ -86,4 +91,5 @@ public:
       { return fetch_data (ptr, byte_count); };
 };
 
+} /* namespace cubreplication */
 #endif /* _LOG_CONSUMER_HPP_ */

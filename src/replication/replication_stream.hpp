@@ -26,12 +26,15 @@
 #ifndef _REPLICATION_STREAM_HPP_
 #define _REPLICATION_STREAM_HPP_
 
-#include <vector>
 #include "stream_common.hpp"
 #include "packing_stream.hpp"
 #include "replication_entry.hpp"
 #include "storage_common.h"
 #include "stream_packer.hpp"
+#include <vector>
+
+namespace cubreplication
+{
 
 struct replication_stream_entry_header
 {
@@ -69,5 +72,6 @@ public:
   bool is_equal (const cubstream::entry *other);
 };
 
+} /* namespace cubreplication */
 
 #endif /* _REPLICATION_STREAM_HPP_ */

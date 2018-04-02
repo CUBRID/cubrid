@@ -27,9 +27,12 @@
 #define _SLAVE_REPLICATION_CHANNEL_HPP_
 
 
+namespace cubreplication
+{
+  
 struct stream_entry_header;
 class replication_stream;
-class serial_buffer;
+
 
 class slave_replication_channel
 {
@@ -47,5 +50,6 @@ private:
 
 };
 
+} /* namespace cubreplication */
 
 #endif /* _SLAVE_REPLICATION_CHANNEL_HPP_ */

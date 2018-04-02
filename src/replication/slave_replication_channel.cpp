@@ -26,6 +26,9 @@
 #include "slave_replication_channel.hpp"
 #include "replication_stream.hpp"
 
+namespace cubreplication
+{
+
 int slave_replication_channel::init (void)
 {
   return NO_ERROR;
@@ -40,3 +43,4 @@ int slave_replication_channel::receive_stream_entry_header (stream_entry_header 
   return NO_ERROR;
 }
 
+} /* namespace cubreplication */

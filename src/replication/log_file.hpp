@@ -31,13 +31,16 @@
 #include "packing_stream.hpp"
 #include <vector>
 
+class cubstream::stream_buffer;
+class cubstream::entry;
+
+namespace cubreplication
+{
+
 typedef size_t file_pos_t;
 
 class replication_entry;
-class cubstream::stream_buffer;
 class log_file;
-class cubstream::entry;
-
 
 enum
 {
@@ -116,5 +119,7 @@ public:
   cubstream::packing_stream * get_write_stream (void);
 
 };
+
+} /*  namespace cubreplication */
 
 #endif /* _LOG_FILE_HPP_ */

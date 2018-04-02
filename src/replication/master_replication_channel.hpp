@@ -33,6 +33,10 @@
 
 class cubstream::packing_stream;
 class cubstream::stream_buffer;
+
+namespace cubreplication
+{
+
 class log_file;
 
 class master_replication_channel_manager : public cubstream::buffer_provider
@@ -79,5 +83,6 @@ private:
   std::vector<cubstream::stream_buffer*> flush_pending_buffers;
 };
 
+} /* namespace cubreplication */
 
 #endif /* _MASTER_REPLICATION_CHANNEL_HPP_ */
