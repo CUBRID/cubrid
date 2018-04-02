@@ -40,8 +40,8 @@ struct func_signature
   static std::vector<func_signature> insert;
   static std::vector<func_signature> percentile_cont;
   static std::vector<func_signature> percentile_dis;
-  static std::vector<func_signature> json_key_val_r_key_val;
-  static std::vector<func_signature> json_val_r_val;
+  static std::vector<func_signature> json_r_key_val;
+  static std::vector<func_signature> json_r_val;
   static std::vector<func_signature> json_doc;
   static std::vector<func_signature> json_doc_r_doc;
   static std::vector<func_signature> json_doc_path;

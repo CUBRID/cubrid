@@ -179,16 +179,16 @@ std::vector<func_signature> func_signature::insert = {
   {0                , {3                      , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , PT_GENERIC_TYPE_STRING}, {}},
 };
 
-std::vector<func_signature> func_signature::json_key_val_r_key_val = {//(jsonKey, jsonVal[, jsonKey, jsonVal])
-#if 0
-  {PT_TYPE_JSON, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_JSON_VAL}, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_JSON_VAL}},
-#else
+std::vector<func_signature> func_signature::json_r_key_val = {//(jsonKey, jsonVal[, jsonKey, jsonVal])
   {PT_TYPE_JSON, {}, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_JSON_VAL}},
-#endif
 };
 
-std::vector<func_signature> func_signature::json_val_r_val = {//(pt_is_json_value()[, pt_is_json_value()...])
+std::vector<func_signature> func_signature::json_r_val = {//(pt_is_json_value()[, pt_is_json_value()...])
+#if 0
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_VAL}, {PT_GENERIC_TYPE_JSON_VAL}},
+#else
+  {PT_TYPE_JSON, {}, {PT_GENERIC_TYPE_JSON_VAL}},
+#endif
 };
 
 std::vector<func_signature> func_signature::json_doc = {//(pt_is_json_doc_type())
