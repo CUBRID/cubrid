@@ -13335,16 +13335,9 @@ namespace Func
                 }
             arg = arg->next;
           }
-        if(!match)
+        if(!match || (arg!=NULL && sig.rep.size()==0) || (arg==NULL && sig.rep.size()!=0))
           {
             continue;
-          }
-
-        if(arg!=NULL && sig.rep.size()==0)
-          {
-            //printf("ERR invalid number or arguments\n");
-            //return NULL;
-          continue;
           }
         //check repetitive args
         int index = 0;
@@ -13364,7 +13357,7 @@ namespace Func
                   //do nothing!?
                 }
           }
-        if(match)
+        if(match && index==0)
           {
             return &sig;
           }

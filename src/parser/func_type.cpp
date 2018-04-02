@@ -160,7 +160,8 @@ std::vector<func_signature> func_signature::elt = {
   {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARCHAR     }},//get_current_result() expects args to be VCHAR, not just equivalent
   {PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARNCHAR    }},//get_current_result() expects args to be VNCHAR, not just equivalent
   {PT_TYPE_NULL     , {PT_TYPE_NULL                   }, {PT_GENERIC_TYPE_ANY }},
-  {PT_TYPE_NULL     , {PT_TYPE_INTEGER                }, {}},
+  {PT_TYPE_NULL     , {PT_TYPE_NULL                   }, {                    }},
+  {PT_TYPE_NULL     , {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {                    }},//test with PT_GENERIC_TYPE_DISCRETE_NUMBER instead PT_TYPE_INTEGER
 };
 
 std::vector<func_signature> func_signature::insert = {
