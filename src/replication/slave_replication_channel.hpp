@@ -26,6 +26,7 @@
 #ifndef _SLAVE_REPLICATION_CHANNEL_HPP_
 #define _SLAVE_REPLICATION_CHANNEL_HPP_
 
+#include "cubstream.hpp"
 
 namespace cubreplication
 {
@@ -39,14 +40,11 @@ class slave_replication_channel
 public:
   int init (void);
 
-  int receive_stream_entry_header (stream_entry_header &se_header);
-
-  replication_stream * get_write_stream (void) { return receiving_stream; };
-
+  cubstream::stream* get_write_stream (void) { return receiving_stream; };
 
 private:
 
-  replication_stream *receiving_stream;
+  cubstream::stream *receiving_stream;
 
 };
 

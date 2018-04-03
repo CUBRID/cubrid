@@ -164,7 +164,6 @@ set(QUERY_SOURCES
 
 set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_consumer.cpp
-  ${REPLICATION_DIR}/log_file.cpp
   ${REPLICATION_DIR}/log_generator.cpp
   ${REPLICATION_DIR}/master_replication_channel.cpp
   ${REPLICATION_DIR}/packing_common.cpp
@@ -179,6 +178,7 @@ set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/stream_packer.cpp
   ${REPLICATION_DIR}/packing_stream.cpp
   ${REPLICATION_DIR}/buffer_provider.cpp
+  ${REPLICATION_DIR}/stream_file.cpp
   )
 
 set(OBJECT_SOURCES

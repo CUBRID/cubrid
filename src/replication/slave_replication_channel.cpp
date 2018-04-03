@@ -34,13 +34,4 @@ int slave_replication_channel::init (void)
   return NO_ERROR;
 }
 
-
-int slave_replication_channel::receive_stream_entry_header (stream_entry_header &se_header)
-{
-
-  // receive (socket_id, &stream_entry_header, sizeof (stream_entry_header));
-
-  return NO_ERROR;
-}
-
 } /* namespace cubreplication */

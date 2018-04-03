@@ -24,7 +24,6 @@
 #ident "$Id$"
 
 #include "master_replication_channel.hpp"
-#include "log_file.hpp"
 
 namespace cubreplication
 {

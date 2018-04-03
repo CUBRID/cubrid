@@ -27,7 +27,6 @@
 #include "replication_stream.hpp"
 #include "stream_buffer.hpp"
 #include "stream_packer.hpp"
-#include "log_file.hpp"
 #include "master_replication_channel.hpp"
 #include "thread_entry.hpp"
 #include "packing_stream.hpp"

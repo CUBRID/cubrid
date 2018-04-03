@@ -18,13 +18,13 @@
  */
 
 /*
- * log_file.cpp
+ * stream_file.cpp
  */
 
 #ident "$Id$"
 
 
-#include "log_file.hpp"
+#include "stream_file.hpp"
 #include "packing_stream.hpp"
 #include "stream_buffer.hpp"
 #if defined (LINUX)
@@ -35,34 +35,7 @@
 namespace cubreplication
 {
 
-bool file_cache::is_in_cache (const file_pos_t start_pos, const size_t count)
-{
-  if (start_pos >= cached_range.start_pos && start_pos + count <= cached_range.end_pos)
-    {
-      return true;
-    }
-
-  return false;
-}
-
-int file_cache::release (void)
-{
-  cubstream::stream_buffer *buffer;
-  buffer = get_buffer ();
-  if (buffer != NULL && buffer->get_pin_count () == 0)
-    {
-      buffer = NULL;
-      cached_range.end_pos = -1;
-      cached_range.start_pos = -1;
-      return NO_ERROR;
-    }
-
-  return ER_FAILED;
-}
-
-///////////////////////////////////////////////////////
-
-log_file::log_file (const char *file_path)
+stream_file::stream_file (const char *file_path)
 {
   if (open_file (file_path) != NO_ERROR)
     {
@@ -71,7 +44,7 @@ log_file::log_file (const char *file_path)
     }
 }
 
-int log_file::open_file (const char *file_path)
+int stream_file::open_file (const char *file_path)
 {
 #if defined (LINUX)
   fd = open (file_path, O_RDWR);
@@ -87,25 +60,7 @@ int log_file::open_file (const char *file_path)
   return NO_ERROR;
 }
 
-file_cache *log_file::get_cache (void)
-{
-  /* TODO[arnia] */
-  NOT_IMPLEMENTED();
-  return &caches[0];
-}
-
-file_cache *log_file::new_cache (void)
-{
-  /* TODO[arnia] */
-  file_cache *my_cache;
-
-  my_cache = new file_cache;
-
-  return my_cache;
-}
-
-
-int log_file::write_buffer (cubstream::stream_buffer *buffer)
+int stream_file::write_buffer (cubstream::stream_buffer *buffer)
 {
   file_pos_t buffer_size = buffer->get_buffer_size();
 
@@ -125,7 +80,7 @@ int log_file::write_buffer (cubstream::stream_buffer *buffer)
   return NO_ERROR;
 }
 
-int log_file::read_no_cache (char *storage, const size_t count, file_pos_t start_pos)
+int stream_file::read_no_cache (char *storage, const size_t count, file_pos_t start_pos)
 {
   size_t actual_read;
 
@@ -149,35 +104,35 @@ int log_file::read_no_cache (char *storage, const size_t count, file_pos_t start
   return (int) actual_read;
 }
 
-char *log_file::get_filename (const cubstream::stream_position &start_position)
+char *stream_file::get_filename (const cubstream::stream_position &start_position)
 {
   /* TODO[arnia]:*/
   NOT_IMPLEMENTED();
   return NULL;
 }
 
-int log_file::fetch_data (char *ptr, const size_t &amount)
+int stream_file::fetch_data (char *ptr, const size_t &amount)
 {
   NOT_IMPLEMENTED ();
 
   return NO_ERROR;
 }
   
-int log_file::extend_buffer (cubstream::stream_buffer **existing_buffer, const size_t &amount)
+int stream_file::extend_buffer (cubstream::stream_buffer **existing_buffer, const size_t &amount)
 {
   NOT_IMPLEMENTED ();
 
   return NO_ERROR;
 }
 
-int log_file::flush_old_stream_data (void)
+int stream_file::flush_old_stream_data (void)
 {
   NOT_IMPLEMENTED ();
 
   return NO_ERROR;
 }
 
-cubstream::packing_stream * log_file::get_write_stream (void)
+cubstream::packing_stream * stream_file::get_write_stream (void)
 {
   NOT_IMPLEMENTED ();
 

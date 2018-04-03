@@ -18,13 +18,13 @@
  */
 
 /*
- * log_file.hpp
+ * stream_file.hpp
  */
 
 #ident "$Id$"
 
-#ifndef _LOG_FILE_HPP_
-#define _LOG_FILE_HPP_
+#ifndef _STREAM_FILE_HPP_
+#define _STREAM_FILE_HPP_
 
 #include "stream_common.hpp"
 #include "buffer_provider.hpp"
@@ -39,48 +39,36 @@ namespace cubreplication
 
 typedef size_t file_pos_t;
 
-class replication_entry;
-class log_file;
-
 enum
 {
   CURRENT_POSITION = -1
 };
 
-struct file_range
-{
-  file_pos_t start_pos;
-  file_pos_t end_pos;
+class stream_file;
 
-  file_range () { start_pos = -1; end_pos = -1; }
-};
-
-class file_cache : public cubpacking::pinner
+class file_reader : public cubstream::partial_read_handler
 {
 private:
-  cubstream::stream_buffer *buffer;
-  file_range cached_range;
-  log_file *owner;
-
-  char *storage;
+  stream_file *m_file;
 
 public:
-  const size_t FILE_CACHE_ONE_BUFFFER_SIZE = 16 * 1024;
 
-  file_cache() { buffer = NULL; owner = NULL; storage = new char[FILE_CACHE_ONE_BUFFFER_SIZE]; };
-
-  cubstream::stream_buffer *get_buffer (void) { return buffer; };
-  log_file *get_owner (void) { return owner; };
-
-  char *get_storage (void) { return storage; };
-
-  int release (void);
-
-  bool is_in_cache (const file_pos_t start_pos, const size_t count);
-
+  int read_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count, size_t *processed_bytes);
 };
 
-class log_file : public cubstream::buffer_provider
+class file_writer : public cubstream::write_handler
+{
+private:
+  stream_file *m_file;
+
+public:
+
+  int write_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count);
+};
+
+
+/* class for handling reading/writing to files from a stream */
+class stream_file : public cubstream::buffer_provider
 {
 private:
   cubstream::packing_stream *stream;
@@ -88,18 +76,18 @@ private:
   file_pos_t curr_append_position;
   file_pos_t curr_read_position;
 
-  std::vector<file_cache> caches;
-
   int fd;
+
+  std::string m_base_filename;
+
+  /* end positions of files */
+  std::vector<cubstream::stream_position> m_file_end_positions;
 
 public:
   const int MAX_FILE_CACHES = 32;
 
-  log_file () { fd = -1; };
-  log_file (const char *file_path);
-
-  file_cache *new_cache (void);
-  file_cache *get_cache (void);
+  stream_file () { fd = -1; };
+  stream_file (const char *file_path);
 
   int open_file (const char *file_path);
 
@@ -108,7 +96,6 @@ public:
   int write_buffer (cubstream::stream_buffer *buffer);
 
   static char *get_filename (const cubstream::stream_position &start_position);
-
 
   int fetch_data (char *ptr, const size_t &amount);
   
@@ -122,4 +109,4 @@ public:
 
 } /*  namespace cubreplication */
 
-#endif /* _LOG_FILE_HPP_ */
+#endif /* _STREAM_FILE_HPP_ */
