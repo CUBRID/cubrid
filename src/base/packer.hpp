@@ -30,6 +30,7 @@
 #include "object_representation.h"
 
 #include <vector>
+#include <string>
 
 /* 
  * the packer object packs or unpacks promitive objects from/into a buffer 
