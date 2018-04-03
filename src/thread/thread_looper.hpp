@@ -95,15 +95,14 @@ namespace cubthread
       looper (const period_function &setup_period_function);
 
       // loop and wait for a fixed period of time
-      template<class Rep, class Period>
-      looper (const std::chrono::duration<Rep, Period> &fixed_period);
+      looper (const delta_time &fixed_period);
 
       // loop and wait for increasing periods of time
       //
       // the sleep time is increased according to periods for each sleep that times out
       // sleep timer is reset when sleep doesn't time out
-      template<class Rep, class Period, std::size_t Count>
-      looper (const std::array<std::chrono::duration<Rep, Period>, Count> periods);
+      template<std::size_t Count>
+      looper (const std::array<delta_time, Count> periods);
 
       // dtor
       ~looper (void);
@@ -162,30 +161,9 @@ namespace cubthread
   /* Template implementation                                              */
   /************************************************************************/
 
-  template<class Rep, class Period>
-  looper::looper (const std::chrono::duration<Rep, Period> &fixed_period)
-    : m_periods_count (0)
-    , m_periods {fixed_period}
-    , m_period_index (0)
-    , m_stop (false)
-    , m_was_woken_up (false)
-    , m_setup_period ()
-    , m_start_execution_time ()
-    , m_stats_p (new cubperf::statset (looper_statdef))
-  {
-    m_setup_period = std::bind (&looper::setup_fixed_waits, *this, std::placeholders::_1, std::placeholders::_2);
-  }
-
-  template<class Rep, class Period, std::size_t Count>
-  looper::looper (const std::array<std::chrono::duration<Rep, Period>, Count> periods)
-    : m_periods_count (Count)
-    , m_periods {}
-    , m_period_index (0)
-    , m_stop (false)
-    , m_was_woken_up (false)
-    , m_setup_period ()
-    , m_start_execution_time ()
-    , m_stats_p (new cubperf::statset (looper_statdef))
+  template<std::size_t Count>
+  looper::looper (const std::array<delta_time, Count> periods)
+    : looper ()
   {
     static_assert (Count <= MAX_LOOPER_PERIODS, "Count template cannot exceed MAX_LOOPER_PERIODS=3");
     m_periods_count = std::min (Count, MAX_LOOPER_PERIODS);

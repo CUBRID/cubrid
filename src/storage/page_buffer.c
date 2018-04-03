@@ -16103,7 +16103,7 @@ pgbuf_page_post_flush_daemon_init ()
 {
   assert (pgbuf_Page_post_flush_daemon == NULL);
 
-  std::array<std::chrono::milliseconds, 3> looper_interval {{
+  std::array<cubthread::delta_time, 3> looper_interval {{
       std::chrono::milliseconds (1),
       std::chrono::milliseconds (10),
       std::chrono::milliseconds (100)

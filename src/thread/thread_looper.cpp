@@ -39,7 +39,7 @@ namespace cubthread
   cubperf::statset_definition looper_statdef =
   {
     cubperf::statset_definition::stat_count_time ("looper_sleep_count", "looper_sleep_time",
-	STAT_LOOPER_SLEEP_COUNT_AND_TIME),
+    STAT_LOOPER_SLEEP_COUNT_AND_TIME),
     cubperf::statset_definition::stat_count ("looper_reset_count", STAT_LOOPER_RESET_COUNT)
   };
 
@@ -62,27 +62,25 @@ namespace cubthread
   }
 
   looper::looper (const looper &other)
-    : m_periods_count (other.m_periods_count)
-    , m_periods ()
-    , m_period_index (0)
-    , m_stop (false)
-    , m_was_woken_up (false)
-    , m_setup_period (other.m_setup_period)
-    , m_start_execution_time (other.m_start_execution_time)
+    : looper ()
   {
+    m_periods_count = other.m_periods_count;
+    m_setup_period = other.m_setup_period;
+    m_start_execution_time = other.m_start_execution_time;
     std::copy (std::begin (other.m_periods), std::end (other.m_periods), std::begin (m_periods));
   }
 
   looper::looper (const period_function &setup_period_function)
-    : m_periods_count (0)
-    , m_periods ()
-    , m_period_index (0)
-    , m_stop (false)
-    , m_was_woken_up (false)
-    , m_setup_period (setup_period_function)
-    , m_start_execution_time ()
-    , m_stats_p (new cubperf::statset (looper_statdef))
+    : looper ()
   {
+    m_setup_period = setup_period_function;
+  }
+
+  looper::looper (const delta_time &fixed_period)
+    : looper ()
+  {
+    m_periods[0] = fixed_period;
+    m_setup_period = std::bind (&looper::setup_fixed_waits, *this, std::placeholders::_1, std::placeholders::_2);
   }
 
   looper::~looper (void)
