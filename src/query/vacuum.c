@@ -52,6 +52,8 @@
 #include <atomic>
 #include <stack>
 
+#include <cstring>
+
 /* The maximum number of slots in a page if all of them are empty.
  * IO_MAX_PAGE_SIZE is used for page size and any headers are ignored (it
  * wouldn't bring a significant difference).
@@ -576,6 +578,13 @@ static int vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * w
 				      LOG_PAGE * log_page_p, LOG_DATA * log_record_data, MVCCID * mvccid,
 				      char **undo_data_ptr, int *undo_data_size, LOG_VACUUM_INFO * vacuum_info,
 				      bool * is_file_dropped, bool stop_after_vacuum_info);
+static void vacuum_read_log_aligned (THREAD_ENTRY * thread_entry, LOG_LSA * log_lsa, LOG_PAGE * log_page);
+static void vacuum_read_log_add_aligned (THREAD_ENTRY * thread_entry, size_t size, LOG_LSA * log_lsa,
+					 LOG_PAGE * log_page);
+static void vacuum_read_advance_when_doesnt_fit (THREAD_ENTRY * thread_entry, size_t size, LOG_LSA * log_lsa,
+						 LOG_PAGE * log_page);
+static void vacuum_copy_data_from_log (THREAD_ENTRY * thread_p, char *area, int length, LOG_LSA * log_lsa,
+				       LOG_PAGE * log_page);
 static void vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * block_data,
 					  bool is_vacuum_complete);
 static bool vacuum_is_work_in_progress (THREAD_ENTRY * thread_p);
@@ -3619,6 +3628,109 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 }
 
 /*
+ * vacuum_read_log_aligned () - clone of LOG_READ_ALIGN based on vacuum_fetch_log_page
+ *
+ * thread_entry (in) : thread entry
+ * log_lsa (in/out)  : log lsa
+ * log_page (in/out) : log page
+ */
+static void
+vacuum_read_log_aligned (THREAD_ENTRY * thread_entry, LOG_LSA * log_lsa, LOG_PAGE * log_page)
+{
+  // align offset
+  log_lsa->offset = DB_ALIGN (log_lsa->offset, DOUBLE_ALIGNMENT);
+  while (log_lsa->offset >= (int) LOGAREA_SIZE)
+    {
+      log_lsa->pageid++;
+      if (vacuum_fetch_log_page (thread_entry, log_lsa->pageid, log_page) != NO_ERROR)
+	{
+	  // we cannot recover from this
+	  logpb_fatal_error (thread_entry, true, ARG_FILE_LINE, "vacuum_read_log_aligned");
+	}
+
+      log_lsa->offset = DB_ALIGN (log_lsa->offset - (int) LOGAREA_SIZE, DOUBLE_ALIGNMENT);
+    }
+}
+
+/*
+ * vacuum_read_log_add_aligned () - clone of LOG_READ_ADD_ALIGN based on vacuum_fetch_log_page
+ *
+ * thread_entry (in) : thread entry
+ * size (in)         : size to add
+ * log_lsa (in/out)  : log lsa
+ * log_page (in/out) : log page
+ */
+static void
+vacuum_read_log_add_aligned (THREAD_ENTRY * thread_entry, size_t size, LOG_LSA * log_lsa, LOG_PAGE * log_page)
+{
+  // this is a 
+  log_lsa->offset += (int) size;
+  vacuum_read_log_aligned (thread_entry, log_lsa, log_page);
+}
+
+/*
+ * vacuum_read_advance_when_doesnt_fit () - clone of LOG_READ_ADVANCE_WHEN_DOESNT_FIT based on vacuum_fetch_log_page
+ *
+ * thread_entry (in) : thread entry
+ * size (in)         : size to add
+ * log_lsa (in/out)  : log lsa
+ * log_page (in/out) : log page
+ */
+static void
+vacuum_read_advance_when_doesnt_fit (THREAD_ENTRY * thread_entry, size_t size, LOG_LSA * log_lsa, LOG_PAGE * log_page)
+{
+  if (log_lsa->offset + (int) size >= (int) LOGAREA_SIZE)
+    {
+      log_lsa->offset = (int) LOGAREA_SIZE;	// force fetching next page
+      vacuum_read_log_aligned (thread_entry, log_lsa, log_page);
+      log_lsa->offset = 0;
+    }
+}
+
+/*
+ * vacuum_copy_data_from_log () - clone of logpb_copy_from_log based on vacuum_fetch_log_page
+ *
+ * thread_entry (in) : thread entry
+ * area (out)        : where to copy log data
+ * length (in)       : how much log data to copy
+ * size (in)         : size to add
+ * log_lsa (in/out)  : log lsa
+ * log_page (in/out) : log page
+ */
+static void
+vacuum_copy_data_from_log (THREAD_ENTRY * thread_p, char *area, int length, LOG_LSA * log_lsa, LOG_PAGE * log_page)
+{
+  if (log_lsa->offset + length < (int) LOGAREA_SIZE)
+    {
+      // the log data is contiguous
+      std::memcpy (area, log_page->area + log_lsa->offset, length);
+      log_lsa->offset += length;
+    }
+  else
+    {
+      int copy_length = 0;
+      int area_offset = 0;
+
+      while (length > 0)
+	{
+	  vacuum_read_advance_when_doesnt_fit (thread_p, 0, log_lsa, log_page);
+	  if (log_lsa->offset + length < (int) LOGAREA_SIZE)
+	    {
+	      copy_length = length;
+	    }
+	  else
+	    {
+	      copy_length = LOGAREA_SIZE - (int) log_lsa->offset;
+	    }
+	  std::memcpy (area + area_offset, log_page->area + log_lsa->offset, copy_length);
+	  length -= copy_length;
+	  area_offset += copy_length;
+	  log_lsa->offset += copy_length;
+	}
+    }
+}
+
+/*
  * vacuum_process_log_record () - Process one log record for vacuum.
  *
  * return			  : Error code.
@@ -3669,12 +3781,12 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
   /* Get log record header */
   log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, log_lsa_p);
   log_rec_type = log_rec_header->type;
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), log_lsa_p, log_page_p);
+  vacuum_read_log_add_aligned (thread_p, sizeof (*log_rec_header), log_lsa_p, log_page_p);
 
   if (log_rec_type == LOG_MVCC_UNDO_DATA)
     {
       /* Get log record mvcc_undo information */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undo), log_lsa_p, log_page_p);
+      vacuum_read_advance_when_doesnt_fit (thread_p, sizeof (*mvcc_undo), log_lsa_p, log_page_p);
       mvcc_undo = (LOG_REC_MVCC_UNDO *) (log_page_p->area + log_lsa_p->offset);
 
       /* Get MVCCID */
@@ -3690,12 +3802,12 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
       LSA_COPY (&vacuum_info->prev_mvcc_op_log_lsa, &mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa);
       VFID_COPY (&vacuum_info->vfid, &mvcc_undo->vacuum_info.vfid);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undo), log_lsa_p, log_page_p);
+      vacuum_read_log_add_aligned (thread_p, sizeof (*mvcc_undo), log_lsa_p, log_page_p);
     }
   else if (log_rec_type == LOG_MVCC_UNDOREDO_DATA || log_rec_type == LOG_MVCC_DIFF_UNDOREDO_DATA)
     {
       /* Get log record undoredo information */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo), log_lsa_p, log_page_p);
+      vacuum_read_advance_when_doesnt_fit (thread_p, sizeof (*mvcc_undoredo), log_lsa_p, log_page_p);
       mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) (log_page_p->area + log_lsa_p->offset);
 
       /* Get MVCCID */
@@ -3711,12 +3823,12 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
       LSA_COPY (&vacuum_info->prev_mvcc_op_log_lsa, &mvcc_undoredo->vacuum_info.prev_mvcc_op_log_lsa);
       VFID_COPY (&vacuum_info->vfid, &mvcc_undoredo->vacuum_info.vfid);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undoredo), log_lsa_p, log_page_p);
+      vacuum_read_log_add_aligned (thread_p, sizeof (*mvcc_undoredo), log_lsa_p, log_page_p);
     }
   else if (log_rec_type == LOG_SYSOP_END)
     {
       /* Get system op mvcc undo information */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*sysop_end), log_lsa_p, log_page_p);
+      vacuum_read_advance_when_doesnt_fit (thread_p, sizeof (*sysop_end), log_lsa_p, log_page_p);
       sysop_end = (LOG_REC_SYSOP_END *) (log_page_p->area + log_lsa_p->offset);
       if (sysop_end->type != LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 	{
@@ -3740,7 +3852,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
       LSA_COPY (&vacuum_info->prev_mvcc_op_log_lsa, &mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa);
       VFID_COPY (&vacuum_info->vfid, &mvcc_undo->vacuum_info.vfid);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), log_lsa_p, log_page_p);
+      vacuum_read_log_add_aligned (thread_p, sizeof (*sysop_end), log_lsa_p, log_page_p);
     }
   else
     {
@@ -3831,7 +3943,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
       *undo_data_ptr = worker->undo_data_buffer;
 
       /* Copy data to buffer. */
-      logpb_copy_from_log (thread_p, *undo_data_ptr, *undo_data_size, log_lsa_p, log_page_p);
+      vacuum_copy_data_from_log (thread_p, *undo_data_ptr, *undo_data_size, log_lsa_p, log_page_p);
     }
 
   if (is_zipped)
