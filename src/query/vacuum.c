@@ -706,7 +706,7 @@ vacuum_init_thread_context (cubthread::entry &context, THREAD_TYPE type, VACUUM_
 // class vacuum_master_context_manager
 //
 //  description:
-//    extend entry_manager to override context custruction and retirement
+//    extend entry_manager to override context construction and retirement
 //
 class vacuum_master_context_manager : public cubthread::daemon_entry_manager
 {
@@ -790,6 +790,9 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
 	{
 	  assert (false);
 	}
+
+      // get private LRU index
+      context.private_lru_index = context.vacuum_worker->private_lru_index;
     }
 
     void on_retire (cubthread::entry & context) final
@@ -804,6 +807,9 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
 	{
 	  assert (false);
 	}
+
+      // reset private LRU index
+      context.private_lru_index = -1;
     }
 
     void on_recycle (cubthread::entry & context) final
@@ -995,6 +1001,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
   vacuum_Master.log_zip_p = NULL;
   vacuum_Master.undo_data_buffer = NULL;
   vacuum_Master.undo_data_buffer_capacity = 0;
+  vacuum_Master.private_lru_index = -1;
   vacuum_Master.heap_objects = NULL;
   vacuum_Master.heap_objects_capacity = 0;
 #if defined (SERVER_MODE)
@@ -1014,6 +1021,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
       vacuum_Workers[i].log_zip_p = NULL;
       vacuum_Workers[i].undo_data_buffer = NULL;
       vacuum_Workers[i].undo_data_buffer_capacity = 0;
+      vacuum_Workers[i].private_lru_index = pgbuf_assign_private_lru (thread_p, true, i);
       vacuum_Workers[i].heap_objects = NULL;
       vacuum_Workers[i].heap_objects_capacity = 0;
       vacuum_Workers[i].tdes = NULL;

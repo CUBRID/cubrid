@@ -144,6 +144,9 @@ struct vacuum_worker
   char *undo_data_buffer;	/* Buffer to save log undo data */
   int undo_data_buffer_capacity;	/* Capacity of log undo data buffer */
 
+  // page buffer private lru list
+  int private_lru_index;
+
   /* Caches postpones to avoid reading them from log after commit top operation with postpone. Otherwise, log critical
    * section may be required which will slow the access on merged index nodes. */
   VACUUM_CACHE_POSTPONE_STATUS postpone_cache_status;
