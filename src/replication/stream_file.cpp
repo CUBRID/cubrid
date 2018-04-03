@@ -44,6 +44,44 @@ stream_file::stream_file (const char *file_path)
     }
 }
 
+void stream_file::init (const std::string& base_name, const size_t file_size = DEFAULT_FILE_SIZE,
+                        const int print_digits = DEFAULT_FILENAME_DIGITS)
+{
+  m_base_filename = base_name;
+  m_desired_file_size = file_size;
+  m_filename_digits_seqno = print_digits;
+
+  m_start_file_seqno = 1;
+  m_curr_file_seqno = 1;
+}
+
+int stream_file::get_seqno_from_stream_pos (const cubstream::stream_position pos)
+{
+  for (auto it:m_file_end_positions)
+    {
+      if (pos < *it)
+        {
+          return m_start_file_seqno + it - m_file_end_positions.begin ();
+        }
+    }
+
+  return -1;
+}
+
+int stream_file::get_filename (char *filename, const size_t max_filename, const cubstream::stream_position pos)
+{
+  int seqno;
+  std::string filename;
+
+  seqno = get_seqno_from_stream_pos (pos);
+  if (seqno > 0)
+    {
+      snprintf (filename, max_filename, "%s_%*d", m_base_filename, m_filename_digits_seqno, seqno);
+      return NO_ERROR;
+    }
+  return ER_FAILED;
+}
+
 int stream_file::open_file (const char *file_path)
 {
 #if defined (LINUX)
@@ -102,13 +140,6 @@ int stream_file::read_no_cache (char *storage, const size_t count, file_pos_t st
     }
 
   return (int) actual_read;
-}
-
-char *stream_file::get_filename (const cubstream::stream_position &start_position)
-{
-  /* TODO[arnia]:*/
-  NOT_IMPLEMENTED();
-  return NULL;
 }
 
 int stream_file::fetch_data (char *ptr, const size_t &amount)
