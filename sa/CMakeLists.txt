@@ -84,6 +84,9 @@ set(BASE_SOURCES
   ${BASE_DIR}/uca_support.c
   ${BASE_DIR}/unicode_support.c
   ${BASE_DIR}/memory_hash.c
+  ${BASE_DIR}/packer.cpp
+  ${BASE_DIR}/packing_buffer.cpp
+  ${BASE_DIR}/packing_common.cpp
   ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/system_parameter.c
@@ -115,6 +118,10 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
+  ${BASE_DIR}/packer.hpp
+  ${BASE_DIR}/packing_common.hpp
+  ${BASE_DIR}/packing_buffer.hpp
+  ${BASE_DIR}/packable_object.hpp
 )
 
 set(HEAPLAYER_SOURCES
