@@ -13026,19 +13026,13 @@ namespace Func
         auto arg_list = m_node->info.function.arg_list;
         switch(m_node->info.function.function_type)
           {
-          case PT_TOP_AGG_FUNC:
-          case PT_GENERIC:
-          case F_MIDXKEY:
-          case F_TOP_TABLE_FUNC:
-          case F_VID:
-            assert(false);
-            break;
           case F_GENERIC:
-          case F_CLASS_OF:
+          case F_CLASS_OF://move it to the beginning of pt_eval_function_type() ... not without complicating the code
             m_node->type_enum = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
             return false;//no need to continue with generic code
-          case PT_COUNT:
-            {
+#if 0
+          case PT_COUNT://look for a better place to move it
+             {
               //to be moved in constant folding !?
               parser_node* arg_list = m_node->info.function.arg_list;
               /* do special constant folding; COUNT(1), COUNT(?), COUNT(:x), ... -> COUNT(*) */
@@ -13057,6 +13051,7 @@ namespace Func
               m_node->type_enum = PT_TYPE_INTEGER;
               break;
             }
+#endif
           case F_INSERT_SUBSTRING:
             {
               std::vector<parser_node*> args;//preallocate!?
@@ -13297,6 +13292,7 @@ namespace Func
         default:
           return false;
       }
+    //see where the error is found in EXPR for: select concat('char', n'nchar');
 }
 
   /*
@@ -13393,8 +13389,20 @@ namespace Func
 static PT_NODE *
 pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE *arg_list = node->info.function.arg_list;
   FUNC_TYPE fcode = node->info.function.function_type;
+
+  switch(fcode)
+    {
+      case PT_TOP_AGG_FUNC:
+      case PT_GENERIC:
+      case F_MIDXKEY:
+      case F_TOP_TABLE_FUNC:
+      case F_VID:
+        assert(false);
+        return NULL;
+    }
+
+  PT_NODE *arg_list = node->info.function.arg_list;
   if (!arg_list && 
       fcode != PT_COUNT_STAR && 
       fcode != PT_GROUPBY_NUM && 
@@ -20149,12 +20157,29 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
       return func;
     }
 
+  if(func->info.function.function_type == PT_COUNT)
+    {
+    parser_node* arg_list = func->info.function.arg_list;
+    /* do special constant folding; COUNT(1), COUNT(?), COUNT(:x), ... -> COUNT(*) */
+    if (pt_is_const (arg_list))
+      {
+	PT_MISC_TYPE all_or_distinct;
+	all_or_distinct = func->info.function.all_or_distinct;
+	if (func->info.function.function_type == PT_COUNT && all_or_distinct != PT_DISTINCT)
+	  {
+	    func->info.function.function_type = PT_COUNT_STAR;
+	    parser_free_tree (parser, arg_list);
+	    func->info.function.arg_list = NULL;
+	  }
+      }
+    func->type_enum = PT_TYPE_INTEGER;
+  }
+
   /* only functions wrapped with expressions are supported */
   if (!pt_is_expr_wrapped_function (parser, func))
     {
       return func;
     }
-
 
   /* PT_FUNCTION doesn't have location attribute as PT_EXPR does temporary set location to 0 ( WHERE clause) */
   location = 0;
