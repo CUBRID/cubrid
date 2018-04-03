@@ -80,7 +80,7 @@
 #define VACUUM_LOG_ADD_DROPPED_FILE_UNDO false
 
 /* number of log pages in each vacuum block */
-#define VACUUM_LOG_BLOCK_PAGES_DEFAULT 31\
+#define VACUUM_LOG_BLOCK_PAGES_DEFAULT 31
 
 /* VACUUM_WORKER_STATE - State of vacuum workers */
 enum vacuum_worker_state
