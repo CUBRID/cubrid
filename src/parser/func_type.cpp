@@ -162,7 +162,7 @@ std::vector<func_signature> func_signature::elt = {
   {PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARNCHAR    }},//get_current_result() expects args to be VNCHAR, not just equivalent
   {PT_TYPE_NULL     , {PT_TYPE_NULL                   }, {PT_GENERIC_TYPE_ANY }},
   {PT_TYPE_NULL     , {PT_TYPE_NULL                   }, {                    }},
-  {PT_TYPE_NULL     , {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {                    }},//test with PT_GENERIC_TYPE_DISCRETE_NUMBER instead PT_TYPE_INTEGER
+  {PT_TYPE_NULL     , {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {                    }},
 };
 
 std::vector<func_signature> func_signature::insert = {
@@ -207,27 +207,14 @@ std::vector<func_signature> func_signature::json_doc_r_path_doc = {//(pt_is_json
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_JSON_PATH, PT_GENERIC_TYPE_JSON_DOC}},
 };
 
-std::vector<func_signature> func_signature::set = {//???
+std::vector<func_signature> func_signature::set_r_any = {
   {PT_TYPE_SET, {}, {PT_GENERIC_TYPE_ANY}},
 };
 
-std::vector<func_signature> func_signature::multiset = {//???
+std::vector<func_signature> func_signature::multiset_r_any = {
   {PT_TYPE_MULTISET, {}, {PT_GENERIC_TYPE_ANY}},
 };
 
-std::vector<func_signature> func_signature::sequence = {//???
+std::vector<func_signature> func_signature::sequence_r_any = {
   {PT_TYPE_SEQUENCE, {}, {PT_GENERIC_TYPE_ANY}},
 };
-
-std::vector<func_signature> func_signature::table_set = {//??? similar with set?
-  {PT_TYPE_SET, {}, {PT_GENERIC_TYPE_ANY}},
-};
-
-std::vector<func_signature> func_signature::table_multiset = {//???
-  {PT_TYPE_MULTISET, {}, {PT_GENERIC_TYPE_ANY}},
-};
-
-std::vector<func_signature> func_signature::table_sequence = {//???
-  {PT_TYPE_SEQUENCE, {}, {PT_GENERIC_TYPE_ANY}},
-};
-

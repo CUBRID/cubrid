@@ -59,16 +59,16 @@ X(GENERIC_              , NULL) //PT_GENERIC
 
 /* from here down are function code common to parser and xasl */
 /* "table" functions argument(s) are tables */
-X(TABLE_SET             , &func_signature::table_set)
-X(TABLE_MULTISET        , &func_signature::table_multiset)
-X(TABLE_SEQUENCE        , &func_signature::table_sequence)
+X(TABLE_SET             , &func_signature::set_r_any)
+X(TABLE_MULTISET        , &func_signature::multiset_r_any)
+X(TABLE_SEQUENCE        , &func_signature::sequence_r_any)
 X(TOP_TABLE_FUNC        , NULL)
 X(MIDXKEY               , NULL)
 
 /* "normal" functions, arguments are values */
-X(SET                   , &func_signature::set)
-X(MULTISET              , &func_signature::multiset)
-X(SEQUENCE              , &func_signature::sequence)
+X(SET                   , &func_signature::set_r_any)
+X(MULTISET              , &func_signature::multiset_r_any)
+X(SEQUENCE              , &func_signature::sequence_r_any)
 X(VID                   , NULL)
 X(GENERIC               , NULL)
 X(CLASS_OF              , NULL)
