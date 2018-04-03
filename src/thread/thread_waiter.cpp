@@ -46,7 +46,7 @@ namespace cubthread
     cubperf::statset_definition::stat_count ("waiter_timeout_count", STAT_TIMEOUT_COUNT),
     cubperf::statset_definition::stat_count ("waiter_no_sleep_count", STAT_NO_SLEEP_COUNT),
     cubperf::statset_definition::stat_count_time ("waiter_awaken_count", "waiter_awaken_delay",
-    STAT_AWAKEN_COUNT_AND_TIME)
+	STAT_AWAKEN_COUNT_AND_TIME)
   };
 
   static cubperf::stat_id ATOMIC_STAT_WAKEUP_COUNT = 0;
@@ -73,6 +73,8 @@ namespace cubthread
 
   waiter::~waiter ()
   {
+    delete m_stats_p;
+    delete m_atomic_stats_p;
   }
 
   void

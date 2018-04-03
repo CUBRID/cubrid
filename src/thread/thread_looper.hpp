@@ -24,6 +24,8 @@
 #ifndef _THREAD_LOOPER_HPP_
 #define _THREAD_LOOPER_HPP_
 
+#include "perf.hpp"
+
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -33,42 +35,8 @@
 #include <cinttypes>
 #include <cstdint>
 
-// cubthread::looper
-//
-// description
-//    used for loops that require pausing.
-//    defines the wait pattern between each loop iteration
-//    should be used together with a waiter
-//
-// how to use
-//
-//    // define a loop pattern and then loop and put waiter to sleep on each iteration
-//
-//    // example using increasing wait patterns
-//
-//    // declare period type for this example
-//    typedef std::chrono::duration<std::uint64, std::chrono::milliseconds milli_period_type;
-//    // declare increasing waiting periods
-//    // wait first for 1 millisecond, then for 100, then for 1000, then infinite
-//    std::array<milli_period_type, THREE> periods = {{ 1, 100, 1000 }};
-//    // create looper
-//    looper_shared_variable = new loop_pattern (periods);
-//
-//    // declare waiter
-//    while (!looper.is_stopped ())
-//      {
-//        // do work
-//
-//        // now sleep until timeout or wakeup
-//        looper.put_to_sleep (waiter);
-//        // thread woke up
-//      }
-//    // loop is stopped calling looper_shared_variable->stop ();
-//
-
 namespace cubthread
 {
-
   // definitions
   typedef std::chrono::system_clock::duration delta_time;
   typedef std::function<void (bool &, delta_time &)> period_function;
@@ -79,6 +47,38 @@ namespace cubthread
   // forward def
   class waiter;
 
+  // cubthread::looper
+  //
+  // description
+  //    used for loops that require pausing.
+  //    defines the wait pattern between each loop iteration
+  //    should be used together with a waiter
+  //
+  // how to use
+  //
+  //    // define a loop pattern and then loop and put waiter to sleep on each iteration
+  //
+  //    // example using increasing wait patterns
+  //
+  //    // declare period type for this example
+  //    typedef std::chrono::duration<std::uint64, std::chrono::milliseconds milli_period_type;
+  //    // declare increasing waiting periods
+  //    // wait first for 1 millisecond, then for 100, then for 1000, then infinite
+  //    std::array<milli_period_type, THREE> periods = {{ 1, 100, 1000 }};
+  //    // create looper
+  //    looper_shared_variable = new loop_pattern (periods);
+  //
+  //    // declare waiter
+  //    while (!looper.is_stopped ())
+  //      {
+  //        // do work
+  //
+  //        // now sleep until timeout or wakeup
+  //        looper.put_to_sleep (waiter);
+  //        // thread woke up
+  //      }
+  //    // loop is stopped calling looper_shared_variable->stop ();
+  //
   class looper
   {
     public:
@@ -104,6 +104,9 @@ namespace cubthread
       // sleep timer is reset when sleep doesn't time out
       template<class Rep, class Period, std::size_t Count>
       looper (const std::array<std::chrono::duration<Rep, Period>, Count> periods);
+
+      // dtor
+      ~looper (void);
 
       // put waiter to sleep according to loop pattern
       void put_to_sleep (waiter &waiter_arg);
@@ -149,6 +152,7 @@ namespace cubthread
       std::chrono::system_clock::time_point m_start_execution_time;
 
       // statistics
+      cubperf::statset *m_stats_p;
       stat_type m_sleep_count;
       stat_type m_sleep_time;
       stat_type m_reset_count;
@@ -165,7 +169,9 @@ namespace cubthread
     , m_period_index (0)
     , m_stop (false)
     , m_was_woken_up (false)
+    , m_setup_period ()
     , m_start_execution_time ()
+    , m_stats_p (new cubperf::statset (looper_statdef))
   {
     m_setup_period = std::bind (&looper::setup_fixed_waits, *this, std::placeholders::_1, std::placeholders::_2);
   }
@@ -177,7 +183,9 @@ namespace cubthread
     , m_period_index (0)
     , m_stop (false)
     , m_was_woken_up (false)
+    , m_setup_period ()
     , m_start_execution_time ()
+    , m_stats_p (new cubperf::statset (looper_statdef))
   {
     static_assert (Count <= MAX_LOOPER_PERIODS, "Count template cannot exceed MAX_LOOPER_PERIODS=3");
     m_periods_count = std::min (Count, MAX_LOOPER_PERIODS);
