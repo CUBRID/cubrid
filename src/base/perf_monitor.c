@@ -4964,7 +4964,7 @@ perfmon_stat_dump_in_buffer_thread_daemon_stats (const UINT64 * stats_ptr, char 
       for (size_t stat_it = 0; stat_it < cubthread::daemon::STAT_COUNT; stat_it++)
         {
           value = stats_ptr[daemon_it * cubthread::daemon::STAT_COUNT + stat_it];
-          ret = snprintf (*s, *remaining_size, "%s.%-10s = %16llu\n", perfmon_Daemon_names[daemon_it],
+          ret = snprintf (*s, *remaining_size, "%s.%s = %16llu\n", perfmon_Daemon_names[daemon_it],
 			  perfmon_Thread_daemon_stat_names[stat_it], (long long unsigned int) value);
 
           *remaining_size -= ret;
