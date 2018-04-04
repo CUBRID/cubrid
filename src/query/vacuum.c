@@ -7082,40 +7082,54 @@ end:
 static int
 vacuum_fetch_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, LOG_PAGE * log_page_p)
 {
-  VACUUM_WORKER *worker = vacuum_get_vacuum_worker (thread_p);
   int error = NO_ERROR;
 
-  assert (worker != NULL);
-  assert (log_page_p != NULL);
-
-  if (worker->prefetch_first_pageid <= log_pageid && log_pageid <= worker->prefetch_last_pageid)
+  if (vacuum_is_thread_vacuum (thread_p))
     {
-      /* log page is cached */
-      size_t page_index = log_pageid - worker->prefetch_first_pageid;
-      memcpy (log_page_p, worker->prefetch_log_buffer + page_index * LOG_PAGESIZE, LOG_PAGESIZE);
+      // try to fetch from prefetched pages
+      VACUUM_WORKER *worker = vacuum_get_vacuum_worker (thread_p);
 
-      perfmon_inc_stat (thread_p, PSTAT_VAC_NUM_PREFETCH_HITS_LOG_PAGES);
+      assert (worker != NULL);
+      assert (log_page_p != NULL);
+
+      perfmon_inc_stat (thread_p, PSTAT_VAC_NUM_PREFETCH_REQUESTS_LOG_PAGES);
+
+      if (worker->prefetch_first_pageid <= log_pageid && log_pageid <= worker->prefetch_last_pageid)
+	{
+	  /* log page is cached */
+	  size_t page_index = log_pageid - worker->prefetch_first_pageid;
+	  memcpy (log_page_p, worker->prefetch_log_buffer + page_index * LOG_PAGESIZE, LOG_PAGESIZE);
+
+	  perfmon_inc_stat (thread_p, PSTAT_VAC_NUM_PREFETCH_HITS_LOG_PAGES);
+	  return NO_ERROR;
+	}
+      else
+	{
+	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_LOGGING,
+			 "log page %lld is not in prefetched range %lld - %lld\n",
+			 log_pageid, worker->prefetch_first_pageid, worker->prefetch_last_pageid);
+	}
+      // fall through
     }
   else
     {
-      LOG_LSA req_lsa;
-
-      vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_LOGGING,
-		     "log page %lld is not in prefetched range %lld - %lld\n",
-		     log_pageid, worker->prefetch_first_pageid, worker->prefetch_last_pageid);
-
-      req_lsa.pageid = log_pageid;
-      req_lsa.offset = LOG_PAGESIZE;
-      error = logpb_fetch_page (thread_p, &req_lsa, LOG_CS_SAFE_READER, log_page_p);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_fetch_log_page");
-	  error = ER_FAILED;
-	}
+      // there are two possible paths here
+      // 1. vacuum_process_log_block (when caller must be vacuum worker)
+      // 2. vacuum_recover_lost_block_data (when caller is boot thread)
+      // this must be second case
     }
+  // need to fetch from log
 
-  perfmon_inc_stat (thread_p, PSTAT_VAC_NUM_PREFETCH_REQUESTS_LOG_PAGES);
+  LOG_LSA req_lsa;
+  req_lsa.pageid = log_pageid;
+  req_lsa.offset = LOG_PAGESIZE;
+  error = logpb_fetch_page (thread_p, &req_lsa, LOG_CS_SAFE_READER, log_page_p);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_fetch_log_page");
+      error = ER_FAILED;
+    }
 
   return error;
 }
