@@ -24,8 +24,6 @@
 #ifndef _THREAD_LOOPER_HPP_
 #define _THREAD_LOOPER_HPP_
 
-#include "perf.hpp"
-
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -34,6 +32,12 @@
 #include <cassert>
 #include <cinttypes>
 #include <cstdint>
+
+// forward def
+namespace cubperf
+{
+  class statset;
+}
 
 namespace cubthread
 {
@@ -151,7 +155,7 @@ namespace cubthread
       std::chrono::system_clock::time_point m_start_execution_time;
 
       // statistics
-      cubperf::statset *m_stats_p;
+      cubperf::statset &m_stats;
       stat_type m_sleep_count;
       stat_type m_sleep_time;
       stat_type m_reset_count;

@@ -21,3 +21,53 @@
  */
 
 #include "perf.hpp"
+
+namespace cubperf
+{
+  //////////////////////////////////////////////////////////////////////////
+  // stat_def
+  //////////////////////////////////////////////////////////////////////////
+  stat_def::stat_def (stat_id &idref, type stat_type, const char *first_name, const char *second_name /* = NULL */)
+    : m_idr (idref)
+    , m_type (stat_type)
+    , m_names { first_name, second_name }
+  {
+    //
+  }
+
+  stat_def::stat_def (const stat_def &other)
+    : m_idr (other.m_idr)
+    , m_type (other.m_type)
+    , m_names { other.m_names[0], other.m_names[1] }
+  {
+    //
+  }
+
+  std::size_t
+  stat_def::get_value_count (void)
+  {
+    return m_type == type::COUNTER_AND_TIMER ? 2 : 1;
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // stat_factory
+  //////////////////////////////////////////////////////////////////////////
+  void
+  stat_factory::build (std::size_t &crt_offset, stat_def &def)
+  {
+
+  }
+
+  void
+  stat_factory::preprocess_def (stat_def &def)
+  {
+
+  }
+
+  void
+  stat_factory::postprocess_def (std::size_t &crt_offset, stat_def &def)
+  {
+
+  }
+
+} // namespace cubperf

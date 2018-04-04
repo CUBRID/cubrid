@@ -26,22 +26,76 @@
 #include <atomic>
 #include <chrono>
 #include <string>
+#include <type_traits>
 
 #include <cassert>
 #include <cinttypes>
 
 namespace cubperf
 {
-  // statistics values
-  using stat_value = std::uint64_t;
-  using atomic_stat_value = std::atomic<stat_value>;
-
   // clocking
   using clock = std::chrono::high_resolution_clock;
   using time_point = clock::time_point;
   using duration = clock::duration;
 
-  // functions
+  // time value conversion ratios
+  const unsigned int CONVERT_RATIO_MICROSECONDS = 1000;
+  const unsigned int CONVERT_RATIO_MILLISECONDS = 1000000;
+  const unsigned int CONVERT_RATIO_SECONDS = 1000000000;
+
+  // statistics values
+  template <bool IsAtomic>
+  using generic_value = typename std::conditional<IsAtomic, std::atomic<std::uint64_t>, std::uint64_t>::type;
+  using stat_value = generic_value<false>;
+  using atomic_stat_value = generic_value<true>;
+
+  // alias for std::size_t used in the context of statistic id
+  using stat_id = std::size_t;
+
+  class stat_def
+  {
+    public:
+      enum class type
+      {
+	COUNTER,
+	TIMER,
+	COUNTER_AND_TIMER
+      };
+
+      // constructor
+      stat_def (void) = delete;
+      stat_def (stat_id &idref, type stat_type, const char *first_name, const char *second_name = NULL);
+      stat_def (const stat_def &other);
+
+      std::size_t get_value_count (void); // get value count
+
+    private:
+      friend class stat_factory;
+
+      static const std::size_t MAX_VALUE_COUNT = 2;
+
+      stat_id &m_idr;
+      type m_type;
+      const char *m_names[MAX_VALUE_COUNT];  // one per each value
+  };
+
+  class stat_factory
+  {
+    public:
+      stat_factory (void) = delete;
+      template <typename... Args>
+      stat_factory (stat_def &def, Args &&... args);
+
+    private:
+      template <typename... Args>
+      void build (std::size_t &crt_offset, stat_def &def, Args &&... args);
+      void build (std::size_t &crt_offset, stat_def &def);
+      void preprocess_def (stat_def &def);
+      void postprocess_def (std::size_t &crt_offset, stat_def &def);
+
+      std::size_t m_stats_count;
+
+  };
 
   class stat_time
   {
@@ -78,6 +132,11 @@ namespace cubperf
       inline stat_value get_value (void)
       {
 	return m_value;
+      }
+
+      inline stat_value get_value (unsigned int convert_ratio)
+      {
+	return m_value / convert_ratio;
       }
 
     private:
@@ -122,6 +181,11 @@ namespace cubperf
 	return m_time.get_value ();
       }
 
+      inline stat_value get_time (unsigned int convert_ratio)
+      {
+	return m_time.get_value (convert_ratio);
+      }
+
       inline void operator+= (const stat_count_time &other)
       {
 	m_count += other.m_count;
@@ -133,79 +197,15 @@ namespace cubperf
       stat_time m_time;
   };
 
-  class stat_set_count_time
-  {
-    public:
-      stat_set_count_time (std::size_t size)
-	: m_own_values (new stat_count_time[size])
-	, m_values (m_own_values)
-	, m_size (size)
-      {
-      }
-
-      stat_set_count_time (stat_count_time *values, std::size_t size)
-	: m_own_values (NULL)
-	, m_values (NULL)
-	, m_size (size)
-      {
-      }
-
-      ~stat_set_count_time ()
-      {
-	delete [] m_own_values;
-      }
-
-      inline void add (std::size_t index, duration delta)
-      {
-	assert (index < m_size);
-	m_values[index].add (delta);
-      }
-
-      inline void add_until_now (std::size_t index, time_point start)
-      {
-	assert (index < m_size);
-	m_values[index].add_until_now (start);
-      }
-
-      inline void add_until_now_and_reset (std::size_t index, time_point start)
-      {
-	assert (index < m_size);
-	m_values[index].add_until_now_and_reset (start);
-      }
-
-      inline void operator+= (const stat_set_count_time &other)
-      {
-	assert (m_size == other.m_size);
-	for (std::size_t it = 0; it < m_size; it++)
-	  {
-	    m_values[it] += other.m_values[it];
-	  }
-      }
-
-      inline stat_value get_count (std::size_t index)
-      {
-	assert (index < m_size);
-	return m_values[index].get_count ();
-      }
-
-      inline stat_value get_time (std::size_t index)
-      {
-	assert (index < m_size);
-	return m_values[index].get_time ();
-      }
-
-    private:
-      stat_count_time *m_own_values;
-      stat_count_time *m_values;
-      std::size_t m_size;
-  };
-
   //////////////////////////////////////////////////////////////////////////
   // statistics set & definitions
   //////////////////////////////////////////////////////////////////////////
 
-  // alias for std::size_t used in the context of statistic id
-  using stat_id = std::size_t;
+
+
+
+
+
 
   class statset_definition
   {
@@ -280,6 +280,11 @@ namespace cubperf
 	return m_value_count;
       }
 
+      std::size_t get_stats_count (void) const
+      {
+	return m_stats_count;
+      }
+
       void validate_increment_op (stat_id id) const
       {
 	assert (id < m_stats_count);
@@ -311,6 +316,8 @@ namespace cubperf
       }
 
     private:
+      friend class statset;
+      friend class atomic_statset;
 
       template <typename ... Args>
       void
@@ -425,9 +432,19 @@ namespace cubperf
 	m_timepoint = clock::now ();
       }
 
-      void get_stats (stat_value *stats_out)
+      void get_stats (stat_value *stats_out, unsigned int convert_ratio = 1)
       {
-	std::memcpy (stats_out, m_values, m_definition.get_value_count () * sizeof (stat_value));
+	if (convert_ratio == 1)
+	  {
+	    std::memcpy (stats_out, m_values, m_definition.get_value_count () * sizeof (stat_value));
+	  }
+	else
+	  {
+	    for (stat_id stat_it = 0; stat_it < m_definition.get_stats_count (); stat_it++)
+	      {
+		//
+	      }
+	  }
       }
 
     private:
@@ -507,6 +524,24 @@ namespace cubperf
       atomic_stat_value *m_values;
       time_point m_timepoint;
   };
+
+  //////////////////////////////////////////////////////////////////////////
+  // Template & inline implementations
+  //////////////////////////////////////////////////////////////////////////
+
+  template <typename ... Args>
+  stat_factory::stat_factory (stat_def &def, Args &&... args)
+    : m_stats_count (0)
+  {
+    build (std::size_t (), def, args);
+  }
+
+  template <typename ... Args>
+  void
+  stat_factory::build (std::size_t &crt_offset, stat_def &def, Args &&... args)
+  {
+    //
+  }
 }
 
 #endif // _CUBRID_PERF_HPP_s

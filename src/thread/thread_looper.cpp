@@ -39,7 +39,7 @@ namespace cubthread
   cubperf::statset_definition looper_statdef =
   {
     cubperf::statset_definition::stat_count_time ("looper_sleep_count", "looper_sleep_time",
-    STAT_LOOPER_SLEEP_COUNT_AND_TIME),
+	STAT_LOOPER_SLEEP_COUNT_AND_TIME),
     cubperf::statset_definition::stat_count ("looper_reset_count", STAT_LOOPER_RESET_COUNT)
   };
 
@@ -55,7 +55,7 @@ namespace cubthread
     , m_was_woken_up (false)
     , m_setup_period ()
     , m_start_execution_time ()
-    , m_stats_p (new cubperf::statset (looper_statdef))
+    , m_stats (*new cubperf::statset (looper_statdef))
   {
     // infinite waits
     m_setup_period = std::bind (&looper::setup_infinite_wait, *this, std::placeholders::_1, std::placeholders::_2);
@@ -85,7 +85,7 @@ namespace cubthread
 
   looper::~looper (void)
   {
-    delete m_stats_p;
+    delete &m_stats;
   }
 
   void
@@ -99,7 +99,7 @@ namespace cubthread
 
     assert (m_setup_period);
 
-    m_stats_p->reset_timepoint ();
+    m_stats.reset_timepoint ();
 
     bool is_timed_wait = true;
     delta_time period = delta_time (0);
@@ -132,14 +132,14 @@ namespace cubthread
 
     // register start of the task execution time
     m_start_execution_time = std::chrono::system_clock::now ();
-    m_stats_p->increment_and_time (STAT_LOOPER_SLEEP_COUNT_AND_TIME);
+    m_stats.increment_and_time (STAT_LOOPER_SLEEP_COUNT_AND_TIME);
   }
 
   void
   looper::reset (void)
   {
     m_period_index = 0;
-    m_stats_p->increment (STAT_LOOPER_RESET_COUNT);
+    m_stats.increment (STAT_LOOPER_RESET_COUNT);
   }
 
   bool
@@ -199,7 +199,7 @@ namespace cubthread
   void
   looper::get_stats (stat_type *stats_out)
   {
-    m_stats_p->get_stats (stats_out);
+    m_stats.get_stats (stats_out);
   }
 
 } // namespace cubthread
