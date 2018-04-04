@@ -2514,8 +2514,7 @@ vacuum_log_remove_ovf_insid (THREAD_ENTRY * thread_p, PAGE_PTR ovfpage)
 }
 
 /*
- * vacuum_rv_redo_remove_ovf_insid () - Redo removing insert MVCCID from big
- *					record.
+ * vacuum_rv_redo_remove_ovf_insid () - Redo removing insert MVCCID from big record.
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
@@ -2659,9 +2658,8 @@ vacuum_check_data_buffer (void)
 }
 
 /*
- * vacuum_process_vacuum_data () - Start a new vacuum iteration that processes
- *				   vacuum data and identifies blocks candidate
- *				   to assign as jobs for vacuum workers.
+ * vacuum_process_vacuum_data () - Start a new vacuum iteration that processes vacuum data and identifies blocks
+ *				   candidate to assign as jobs for vacuum workers.
  *
  * return	 : Void.
  * thread_p (in) : Thread entry.
@@ -3005,15 +3003,13 @@ vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * vacuum_process_log_block () - Vacuum heap and b-tree entries using log
- *				 information found in a block of pages.
+ * vacuum_process_log_block () - Vacuum heap and b-tree entries using log information found in a block of pages.
  *
  * return		      : Error code.
  * thread_p (in)	      : Thread entry.
  * data (in)		      : Block data.
  * block_log_buffer (in)      : Block log page buffer identifier
- * sa_mode_partial_block (in) : True when SA_MODE vacuum based on partial
- *				block information from log header.
+ * sa_mode_partial_block (in) : True when SA_MODE vacuum based on partial block information from log header.
  *				Logging is skipped if true.
  */
 static int
@@ -3465,17 +3461,14 @@ vacuum_finalize_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker_info)
 
       free_and_init (worker_info->tdes);
     }
-#if defined (SERVER_MODE)
   if (worker_info->prefetch_log_buffer != NULL)
     {
       free_and_init (worker_info->prefetch_log_buffer);
     }
-#endif /* SERVER_MODE */
 }
 
 /*
- * vacuum_rv_get_worker_by_trid () - Get vacuum worker identified by TRANID
- *				     to recover its system operations.
+ * vacuum_rv_get_worker_by_trid () - Get vacuum worker identified by TRANID to recover its system operations.
  *
  * return	    : Transaction descriptor.
  * thread_p (in)    : Thread entry.
@@ -3663,7 +3656,6 @@ vacuum_read_log_aligned (THREAD_ENTRY * thread_entry, LOG_LSA * log_lsa, LOG_PAG
 static void
 vacuum_read_log_add_aligned (THREAD_ENTRY * thread_entry, size_t size, LOG_LSA * log_lsa, LOG_PAGE * log_page)
 {
-  // this is a 
   log_lsa->offset += (int) size;
   vacuum_read_log_aligned (thread_entry, log_lsa, log_page);
 }
@@ -3736,16 +3728,13 @@ vacuum_copy_data_from_log (THREAD_ENTRY * thread_p, char *area, int length, LOG_
  * return			  : Error code.
  * worker (in)			  : Vacuum worker.
  * thread_p (in)		  : Thread entry.
- * log_lsa_p (in/out)		  : Input is the start of undo data. Output is
- *				    the end of undo data.
+ * log_lsa_p (in/out)		  : Input is the start of undo data. Output is the end of undo data.
  * log_page_p (in/out)		  : The log page for log_lsa_p.
  * mvccid (out)			  : Log entry MVCCID.
  * undo_data_ptr (out)		  : Undo data pointer.
  * undo_data_size (out)		  : Undo data size.
- * is_file_dropped (out)	  : True if the file corresponding to log
- *				    entry was dropped.
- * stop_after_vacuum_info (in)	  : True if only vacuum info must be obtained
- *				    from log record.
+ * is_file_dropped (out)	  : True if the file corresponding to log entry was dropped.
+ * stop_after_vacuum_info (in)	  : True if only vacuum info must be obtained from log record.
  */
 static int
 vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_LSA * log_lsa_p, LOG_PAGE * log_page_p,
@@ -4252,8 +4241,7 @@ vacuum_load_dropped_files_from_disk (THREAD_ENTRY * thread_p)
 }
 
 /*
- * vacuum_create_file_for_vacuum_data () - Create a disk file to keep vacuum
- *					   data.
+ * vacuum_create_file_for_vacuum_data () - Create a disk file to keep vacuum data.
  *
  * return		   : Error code.
  * thread_p (in)	   : Thread entry.
@@ -5506,8 +5494,7 @@ vacuum_get_log_blockid (LOG_PAGEID pageid)
  * vacuum_min_log_pageid_to_keep () - Get the minimum log pageid required to execute vacuum.
  *				      See vacuum_update_keep_from_log_pageid.
  *
- * return	 : LOG Page identifier for first log page that should be
- *		   processed by vacuum.
+ * return	 : LOG Page identifier for first log page that should be processed by vacuum.
  * thread_p (in) : Thread entry.
  */
 LOG_PAGEID
@@ -5679,8 +5666,7 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
 /*
  * vacuum_compare_dropped_files () - Compare two file identifiers.
  *
- * return    : Positive if the first argument is bigger, negative if it is
- *	       smaller and 0 if arguments are equal.
+ * return    : Positive if the first argument is bigger, negative if it is smaller and 0 if arguments are equal.
  * a (in)    : Pointer to a file identifier.
  * b (in)    : Pointer to a a file identifier.
  */
@@ -5978,8 +5964,7 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
 
 /*
  * vacuum_log_add_dropped_file () - Append postpone/undo log for notifying vacuum of a file being dropped. Postpone
- *				    is added when a class or index is dropped and undo when a class or index is
- (				    created.
+ *				    is added when a class or index is dropped and undo when a class or index is created.
  *
  * return	 : Void.
  * thread_p (in) : Thread entry.
@@ -6577,8 +6562,7 @@ vacuum_find_dropped_file (THREAD_ENTRY * thread_p, bool * is_file_dropped, VFID 
  * indexes (in)	  : Indexes of cleaned up dropped files.
  * n_indexes (in) : Total count of dropped files.
  *
- * NOTE: Consider not logging cleanup. Cleanup can be done at database
- *	 restart.
+ * NOTE: Consider not logging cleanup. Cleanup can be done at database restart.
  */
 static void
 vacuum_log_cleanup_dropped_files (THREAD_ENTRY * thread_p, PAGE_PTR page_p, INT16 * indexes, INT16 n_indexes)
@@ -6613,8 +6597,7 @@ vacuum_log_cleanup_dropped_files (THREAD_ENTRY * thread_p, PAGE_PTR page_p, INT1
  * thread_p (in) : Thread entry,
  * rcv (in)	 : Recovery data.
  *
- * NOTE: Consider not logging cleanup. Cleanup can be done at database
- *	 restart.
+ * NOTE: Consider not logging cleanup. Cleanup can be done at database restart.
  */
 int
 vacuum_rv_redo_cleanup_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
@@ -6690,8 +6673,7 @@ vacuum_dropped_files_set_next_page (THREAD_ENTRY * thread_p, VACUUM_DROPPED_FILE
 }
 
 /*
- * vacuum_rv_set_next_page_dropped_files () - Recover setting link to next
- *					      page for dropped files.
+ * vacuum_rv_set_next_page_dropped_files () - Recover setting link to next page for dropped files.
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
@@ -7529,8 +7511,7 @@ vacuum_cache_log_postpone_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 /*
  * vacuum_do_postpone_from_cache () - Do postpone from vacuum worker's cached postpone entries.
  *
- * return		   : True if postpone was run from cached entries,
- *			     false otherwise.
+ * return		   : True if postpone was run from cached entries, false otherwise.
  * thread_p (in)	   : Thread entry.
  * start_postpone_lsa (in) : Start postpone LSA.
  */
@@ -7779,9 +7760,9 @@ vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, 
 }
 
 /* 
- *	vacuum_is_empty() - Checks if the vacuum is empty.
+ * vacuum_is_empty() - Checks if the vacuum is empty.
  *
- *	return :- true or false
+ * return :- true or false
  */
 bool
 vacuum_is_empty (void)
@@ -7797,9 +7778,9 @@ vacuum_is_empty (void)
 }
 
 /*
- *  vacuum_log_last_blockid () - Logs the vacuum_Data.last_blockid similar to vacuum_empty_data_page
+ * vacuum_log_last_blockid () - Logs the vacuum_Data.last_blockid similar to vacuum_empty_data_page
  *
- *  thread_p(in) :- Thread context.
+ * thread_p(in) :- Thread context.
  */
 void
 vacuum_log_last_blockid (THREAD_ENTRY * thread_p)
