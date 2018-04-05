@@ -27,6 +27,7 @@
 #include <chrono>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 #include <cassert>
 #include <cinttypes>
@@ -52,10 +53,10 @@ namespace cubperf
   // alias for std::size_t used in the context of statistic id
   using stat_id = std::size_t;
 
-  class stat_def
+  class stat_definition
   {
     public:
-      enum class type
+      enum type
       {
 	COUNTER,
 	TIMER,
@@ -63,484 +64,343 @@ namespace cubperf
       };
 
       // constructor
-      stat_def (void) = delete;
-      stat_def (stat_id &idref, type stat_type, const char *first_name, const char *second_name = NULL);
-      stat_def (const stat_def &other);
+      stat_definition (stat_id &idref, type stat_type, const char *first_name, const char *second_name = NULL);
+      stat_definition (const stat_definition &other);
 
       std::size_t get_value_count (void); // get value count
 
     private:
-      friend class stat_factory;
+      friend class statset_definition;
+
+      stat_definition (void);
 
       static const std::size_t MAX_VALUE_COUNT = 2;
 
       stat_id &m_idr;
       type m_type;
       const char *m_names[MAX_VALUE_COUNT];  // one per each value
+      std::size_t m_offset;
   };
 
-  class stat_factory
+  template<bool IsAtomic>
+  struct generic_statset
   {
-    public:
-      stat_factory (void) = delete;
-      template <typename... Args>
-      stat_factory (stat_def &def, Args &&... args);
+      std::size_t m_value_count;
+      generic_value<IsAtomic> *m_values;
+      time_point m_timept;
+
+      ~generic_statset (void);
+
+      void reset_timept (void);
 
     private:
-      template <typename... Args>
-      void build (std::size_t &crt_offset, stat_def &def, Args &&... args);
-      void build (std::size_t &crt_offset, stat_def &def);
-      void preprocess_def (stat_def &def);
-      void postprocess_def (std::size_t &crt_offset, stat_def &def);
 
-      std::size_t m_stats_count;
+      // classes that can construct me
+      friend class statset_definition;
+      template <bool IsAtomic>
+      friend class generic_stat_counter;
+      template <bool IsAtomic>
+      friend class generic_stat_timer;
+      template <bool IsAtomic>
+      friend class generic_stat_counter_and_timer;
 
+      generic_statset (void) = delete;
+      generic_statset (std::size_t value_count);
   };
-
-  class stat_time
-  {
-    public:
-
-      inline stat_time ()
-	: m_value (0)
-      {
-
-      }
-
-      inline void add (duration delta)
-      {
-	m_value += delta.count ();
-      }
-
-      inline void add_until_now (time_point start)
-      {
-	add (clock::now () - start);
-      }
-
-      inline void add_until_now_and_reset (time_point &start)
-      {
-	time_point timept_now = clock::now ();
-	add (timept_now - start);
-	start = timept_now;
-      }
-
-      inline void operator+= (const stat_time &other)
-      {
-	m_value += other.m_value;
-      }
-
-      inline stat_value get_value (void)
-      {
-	return m_value;
-      }
-
-      inline stat_value get_value (unsigned int convert_ratio)
-      {
-	return m_value / convert_ratio;
-      }
-
-    private:
-      stat_value m_value;
-  };
-
-  class stat_count_time
-  {
-    public:
-
-      inline stat_count_time ()
-	: m_count (0)
-	, m_time ()
-      {
-      }
-
-      inline void add (duration delta)
-      {
-	++m_count;
-	m_time.add (delta);
-      }
-
-      inline void add_until_now (time_point start)
-      {
-	add (clock::now () - start);
-      }
-
-      inline void add_until_now_and_reset (time_point &start)
-      {
-	time_point timept_now = clock::now ();
-	add (timept_now - start);
-	start = timept_now;
-      }
-
-      inline stat_value get_count (void)
-      {
-	return m_count;
-      }
-
-      inline stat_value get_time (void)
-      {
-	return m_time.get_value ();
-      }
-
-      inline stat_value get_time (unsigned int convert_ratio)
-      {
-	return m_time.get_value (convert_ratio);
-      }
-
-      inline void operator+= (const stat_count_time &other)
-      {
-	m_count += other.m_count;
-	m_time += other.m_time;
-      }
-
-    private:
-      stat_value m_count;
-      stat_time m_time;
-  };
-
-  //////////////////////////////////////////////////////////////////////////
-  // statistics set & definitions
-  //////////////////////////////////////////////////////////////////////////
-
-
-
-
-
-
+  using statset = generic_statset<false>;
+  using atomic_statset = generic_statset<true>;
 
   class statset_definition
   {
     public:
+      statset_definition (void) = delete;
+      template <typename... Args>
+      statset_definition (stat_definition &def, Args &&... args);
 
-      //////////////////////////////////////////////////////////////////////////
-      // definition helper - used to construct the definition for statistics set
-      //////////////////////////////////////////////////////////////////////////
-      enum class stat_type
-      {
-	COUNT,
-	TIME,
-	COUNT_AND_TIME
-      };
+      statset *create_statset (void) const;
+      atomic_statset *create_atomic_statset (void) const;
 
-      struct definition_helper
-      {
-	  std::size_t count;
-	  const char *names[2];
-	  stat_id &id_ref;
-	  stat_type type;
+      // increment counter statistic
+      inline void increment (statset &statsetr, stat_id id, stat_value incr = 1) const;
+      inline void increment (atomic_statset &statsetr, stat_id id, stat_value incr = 1) const;
 
-	private:
-	  friend statset_definition;
+      // register time durations to timer statistic
+      //   1. with duration argument, adds the duration to timer statistic.
+      //   2. without duration argument, uses statset internal time point; adds duration betweem time point and now
+      //      and resets the time point to now.
+      inline void time (statset &statsetr, stat_id id, duration d) const;
+      inline void time (statset &statsetr, stat_id id) const;
+      inline void time (atomic_statset &statsetr, stat_id id, duration d) const;
+      inline void time (atomic_statset &statsetr, stat_id id) const;
 
-	  definition_helper (stat_id &id, stat_type type_arg, const char *first_name, const char *second_name = NULL)
-	    : count (0)
-	    , names { first_name, second_name }
-	    , id_ref (id)
-	    , type (type_arg)
-	  {
-	    if (type_arg == stat_type::COUNT_AND_TIME)
-	      {
-		count = 2;
-		assert (second_name != NULL);
-	      }
-	    else
-	      {
-		count = 1;
-	      }
-	  }
-      };
-      static definition_helper stat_count (const char *stat_count_name, stat_id &stat_count_id)
-      {
-	return definition_helper (stat_count_id, stat_type::COUNT, stat_count_name);
-      }
-      static definition_helper stat_time (const char *stat_time_name, stat_id &stat_time_id)
-      {
-	return definition_helper (stat_time_id, stat_type::TIME, stat_time_name);
-      }
-      static definition_helper stat_count_time (const char *stat_count_name, const char *stat_time_name,
-	  stat_id &stat_count_time_id)
-      {
-	return definition_helper (stat_count_time_id, stat_type::COUNT_AND_TIME, stat_count_name, stat_time_name);
-      }
+      // update counter and timer statistic. equivalent to time + increment functions.
+      // counter is last to use its default value of 1
+      inline void time_and_increment (statset &statsetr, stat_id id, duration d, stat_value incr = 1) const;
+      inline void time_and_increment (statset &statsetr, stat_id id, stat_value incr = 1) const;
+      inline void time_and_increment (atomic_statset &statsetr, stat_id id, duration d, stat_value incr = 1) const;
+      inline void time_and_increment (atomic_statset &statsetr, stat_id id, stat_value incr = 1) const;
 
-      template <typename ... Args>
-      statset_definition (definition_helper &def, Args &&... args)
-      {
-	std::size_t offset_placeholder;
-	build (offset_placeholder, def, args...);
-      }
+      void get_stat_values (statset &statsetr, stat_value *output_stats);
+      void get_stat_values (atomic_statset &statsetr, stat_value *output_stats);
 
-      ~statset_definition (void)
-      {
-	delete [] m_names;
-	delete [] m_offsets;
-      }
-
-      std::size_t get_value_count (void) const
-      {
-	return m_value_count;
-      }
-
-      std::size_t get_stats_count (void) const
-      {
-	return m_stats_count;
-      }
-
-      void validate_increment_op (stat_id id) const
-      {
-	assert (id < m_stats_count);
-	assert (m_types[id] == stat_type::COUNT);
-      }
-
-      void validate_time_op (stat_id id) const
-      {
-	assert (id < m_stats_count);
-	assert (m_types[id] == stat_type::TIME);
-      }
-
-      void validate_increment_and_time_op (stat_id id) const
-      {
-	assert (id < m_stats_count);
-	assert (m_types[id] == stat_type::COUNT_AND_TIME);
-      }
-
-      std::size_t get_offset (stat_id id) const
-      {
-	assert (id < m_stats_count);
-	return m_offsets[id];
-      }
-
-      const char *get_name (std::size_t value_index)
-      {
-	assert (value_index < m_value_count);
-	return m_names[value_index].c_str ();
-      }
+      // getters
+      std::size_t get_stat_count () const;
+      std::size_t get_value_count () const;
+      const char *get_value_name (std::size_t value_index) const;
+      std::size_t get_values_memsize (void) const;
 
     private:
-      friend class statset;
-      friend class atomic_statset;
+      template <typename... Args>
+      void build (stat_definition &def, Args &&... args);
+      void build (stat_definition &def);
+      void process_def (stat_definition &def);
 
-      template <typename ... Args>
-      void
-      build (std::size_t &crt_offset, definition_helper &def, Args &&... args)
-      {
-	preregister_stat (def);
-	build (crt_offset, args...);
-	postregister_stat (def, crt_offset);
-      }
+      template <bool IsAtomic>
+      inline void generic_increment (generic_statset<IsAtomic> &statsetr, stat_id id, stat_value incr) const;
+      template <bool IsAtomic>
+      inline void generic_time (generic_statset<IsAtomic> &statsetr, stat_id id, duration d) const;
+      template <bool IsAtomic>
+      inline void generic_time (generic_statset<IsAtomic> &statsetr, stat_id id) const;
+      template <bool IsAtomic>
+      inline void generic_time_and_increment (generic_statset<IsAtomic> &statsetr, stat_id id, stat_value incr,
+					      duration d) const;
+      template <bool IsAtomic>
+      inline void generic_time_and_increment (generic_statset<IsAtomic> &statsetr, stat_id id, stat_value incr) const;
 
-      void
-      build (std::size_t &crt_offset, definition_helper &def)
-      {
-	preregister_stat (def);
-
-	crt_offset = m_value_count;
-	m_offsets = new std::size_t[m_stats_count];
-	m_types = new stat_type[m_stats_count];
-	m_names = new std::string[m_value_count];
-
-	postregister_stat (def, crt_offset);
-      }
-
-      void preregister_stat (definition_helper &def)
-      {
-	def.id_ref = m_stats_count;
-	m_stats_count++;
-	m_value_count += def.count;
-      }
-
-      void postregister_stat (definition_helper &def, std::size_t crt_offset)
-      {
-	// starting offset for current stat
-	crt_offset -= m_offsets[def.id_ref];
-
-	m_offsets[def.id_ref] = crt_offset;
-	for (std::size_t it = 0; it < def.count; it++)
-	  {
-	    m_names[crt_offset + it] = def.names[it];
-	  }
-	m_types[def.id_ref] = def.type;
-      }
-
-      std::size_t m_stats_count;
-      std::size_t m_value_count;
-
-      std::string *m_names;    // name for each tracked value
-      std::size_t *m_offsets;  // offset for each statistics
-      stat_type *m_types;      // statistic type
+      std::vector<stat_definition> m_stat_defs;
+      std::vector<const char *> m_value_names;
   };
 
-  class statset
+  template <bool IsAtomic>
+  class generic_stat_counter
   {
     public:
-      statset (const statset_definition &def, stat_value *values = NULL)
-	: m_definition (def)
-	, m_values (values)
-	, m_own_values (NULL)
-      {
-	if (m_values == NULL)
-	  {
-	    m_values = m_own_values = new stat_value[m_definition.get_value_count ()];
-	  }
-      }
+      generic_stat_counter (const char *name = NULL);
 
-      ~statset (void)
-      {
-	delete [] m_own_values;
-      }
-
-      void increment (stat_id id, stat_value diff = 1)
-      {
-	m_definition.validate_increment_op (id);
-	++m_values[m_definition.get_offset (id)];
-      }
-
-      void time (stat_id id, duration d)
-      {
-	m_definition.validate_time_op (id);
-	m_values[m_definition.get_offset (id)] += d.count ();
-      }
-
-      void time (stat_id id)
-      {
-	time_point crt_timepoint = clock::now ();
-	time (id, crt_timepoint - m_timepoint);
-	m_timepoint = crt_timepoint;
-      }
-
-      void increment_and_time (stat_id id, duration d)
-      {
-	m_definition.validate_increment_and_time_op (id);
-	std::size_t offset = m_definition.get_offset (id);
-	++m_values[offset];
-	m_values[offset + 1] += d.count ();
-      }
-
-      void increment_and_time (stat_id id)
-      {
-	time_point crt_timepoint = clock::now ();
-	increment_and_time (id, crt_timepoint - m_timepoint);
-	m_timepoint = crt_timepoint;
-      }
-
-      void set_timepoint (time_point timepoint)
-      {
-	m_timepoint = timepoint;
-      }
-
-      void reset_timepoint (void)
-      {
-	m_timepoint = clock::now ();
-      }
-
-      void get_stats (stat_value *stats_out, unsigned int convert_ratio = 1)
-      {
-	if (convert_ratio == 1)
-	  {
-	    std::memcpy (stats_out, m_values, m_definition.get_value_count () * sizeof (stat_value));
-	  }
-	else
-	  {
-	    for (stat_id stat_it = 0; stat_it < m_definition.get_stats_count (); stat_it++)
-	      {
-		//
-	      }
-	  }
-      }
+      inline void increment (stat_value incr = 1);
+      stat_value get_count (void);
+      const char *get_name (void);
 
     private:
-
-      const statset_definition &m_definition;
-      stat_value *m_values;
-      stat_value *m_own_values;
-      time_point m_timepoint;
+      stat_id m_dummy_id;
+      const statset_definition m_def;
+      generic_statset<IsAtomic> &m_stat_values;
   };
+  using stat_counter = generic_stat_counter<false>;
+  using atomic_stat_counter = generic_stat_counter<true>;
 
-  class atomic_statset
+  template <bool IsAtomic>
+  class generic_stat_timer
   {
     public:
-      atomic_statset (const statset_definition &def)
-	: m_definition (def)
-	, m_values (NULL)
-      {
-	m_values = new atomic_stat_value[m_definition.get_value_count ()];
-      }
+      generic_stat_timer (const char *name = NULL);
 
-      ~atomic_statset (void)
-      {
-	delete [] m_values;
-      }
-
-      void increment (stat_id id, stat_value diff = 1)
-      {
-	m_definition.validate_increment_op (id);
-	++m_values[m_definition.get_offset (id)];
-      }
-
-      void time (stat_id id, duration d)
-      {
-	m_definition.validate_time_op (id);
-	m_values[m_definition.get_offset (id)] += d.count ();
-      }
-
-      void time (stat_id id)
-      {
-	time_point crt_timepoint = clock::now ();
-	time (id, crt_timepoint - m_timepoint);
-	m_timepoint = crt_timepoint;
-      }
-
-      void increment_and_time (stat_id id, duration d)
-      {
-	m_definition.validate_increment_and_time_op (id);
-	std::size_t offset = m_definition.get_offset (id);
-	++m_values[offset];
-	m_values[offset + 1] += d.count ();
-      }
-
-      void increment_and_time (stat_id id)
-      {
-	time_point crt_timepoint = clock::now ();
-	increment_and_time (id, crt_timepoint - m_timepoint);
-	m_timepoint = crt_timepoint;
-      }
-
-      void set_timepoint (time_point timepoint)
-      {
-	m_timepoint = timepoint;
-      }
-
-      // implement timer ratios
-      void get_stats (stat_value *stats_out)
-      {
-	for (std::size_t it = 0; it < m_definition.get_value_count (); it++)
-	  {
-	    stats_out[it] = m_values[it];
-	  }
-      }
+      inline void time (duration d);
+      inline void time (void);
+      stat_value get_time (void);
+      const char *get_name (void);
 
     private:
-
-      const statset_definition &m_definition;
-      atomic_stat_value *m_values;
-      time_point m_timepoint;
+      stat_id m_dummy_id;
+      const statset_definition m_def;
+      generic_statset<IsAtomic> &m_stat_values;
   };
+  using stat_timer = generic_stat_timer<false>;
+  using atomic_stat_timer = generic_stat_timer<true>;
+
+  template <bool IsAtomic>
+  class generic_stat_counter_and_timer
+  {
+    public:
+      generic_stat_counter_and_timer ();
+      generic_stat_counter_and_timer (const char *stat_counter_name, const char *stat_timer_name);
+
+      inline void time_and_increment (duration d, stat_value incr = 1);
+      inline void time_and_increment (stat_value incr = 1);
+      stat_value get_count (void);
+      stat_value get_time (void);
+      const char *get_count_name (void);
+      const char *get_time_name (void);
+
+    private:
+      stat_id m_dummy_id;
+      const statset_definition m_def;
+      generic_statset<IsAtomic> &m_stat_values;
+  };
+  using stat_counter_and_timer = generic_stat_counter_and_timer<false>;
+  using atomic_stat_counter_and_timer = generic_stat_counter_and_timer<true>;
 
   //////////////////////////////////////////////////////////////////////////
   // Template & inline implementations
   //////////////////////////////////////////////////////////////////////////
 
   template <typename ... Args>
-  stat_factory::stat_factory (stat_def &def, Args &&... args)
-    : m_stats_count (0)
+  statset_definition::statset_definition (stat_definition &def, Args &&... args)
+    : m_stat_defs ()
+    , m_value_names ()
   {
-    build (std::size_t (), def, args);
+    build (def, args...);
   }
 
   template <typename ... Args>
   void
-  stat_factory::build (std::size_t &crt_offset, stat_def &def, Args &&... args)
+  statset_definition::build (stat_definition &def, Args &&... args)
   {
-    //
+    process_def (def);
+    build (args...);
+  }
+
+  template <bool IsAtomic>
+  void
+  statset_definition::generic_increment (generic_statset<IsAtomic> &statsetr, stat_id id, stat_value incr) const
+  {
+    assert (id < get_stat_count ());
+    assert (m_stat_defs[id].m_type == stat_definition::type::COUNTER);
+
+    // increment at id's offset
+    statsetr.m_values[m_stat_defs[id].m_offset] += incr;
+  }
+
+  void
+  statset_definition::increment (statset &statsetr, stat_id id, stat_value incr /* = 1 */) const
+  {
+    generic_increment<false> (statsetr, id, incr);
+  }
+
+  void
+  statset_definition::increment (atomic_statset &statsetr, stat_id id, stat_value incr /* = 1 */) const
+  {
+    generic_increment<true> (statsetr, id, incr);
+  }
+
+  template <bool IsAtomic>
+  void
+  statset_definition::generic_time (generic_statset<IsAtomic> &statsetr, stat_id id, duration d) const
+  {
+    assert (id < get_stat_count ());
+    assert (m_stat_defs[id].m_type == stat_definition::type::TIMER);
+
+    // add duration at id's offset
+    statsetr.m_values[m_stat_defs[id].m_offset] += d.count ();
+  }
+
+  template <bool IsAtomic>
+  void
+  statset_definition::generic_time (generic_statset<IsAtomic> &statsetr, stat_id id) const
+  {
+    time_point nowpt = clock::now ();
+    generic_time (statsetr, id, nowpt - statsetr.m_timept);
+    statsetr.m_timept = nowpt;
+  }
+
+  void
+  statset_definition::time (statset &statsetr, stat_id id, duration d) const
+  {
+    generic_time<false> (statsetr, id, d);
+  }
+
+  void
+  statset_definition::time (statset &statsetr, stat_id id) const
+  {
+    generic_time<false> (statsetr, id);
+  }
+
+  void
+  statset_definition::time (atomic_statset &statsetr, stat_id id, duration d) const
+  {
+    generic_time<true> (statsetr, id, d);
+  }
+
+  void
+  statset_definition::time (atomic_statset &statsetr, stat_id id) const
+  {
+    generic_time<true> (statsetr, id);
+  }
+
+  template <bool IsAtomic>
+  void
+  statset_definition::generic_time_and_increment (generic_statset<IsAtomic> &statsetr, stat_id id, stat_value incr,
+      duration d) const
+  {
+    assert (id < get_stat_count ());
+    assert (m_stat_defs[id].m_type == stat_definition::type::TIMER);
+
+    // add duration at id's offset
+    std::size_t offset = m_stat_defs[id].m_offset;
+    statsetr.m_values[offset + 1] += incr;          // first is counter
+    statsetr.m_values[offset + 1] += d.count ();    // then is timer
+  }
+
+  template <bool IsAtomic>
+  void
+  statset_definition::generic_time_and_increment (generic_statset<IsAtomic> &statsetr, stat_id id, stat_value incr) const
+  {
+    time_point nowpt = clock::now ();
+    generic_time_and_increment (statsetr, id, incr, nowpt - statsetr.m_timept);
+    statsetr.m_timept = nowpt;
+  }
+
+  void
+  statset_definition::time_and_increment (statset &statsetr, stat_id id, duration d, stat_value incr /* = 1 */) const
+  {
+    generic_time_and_increment<false> (statsetr, id, incr, d);
+  }
+
+  void
+  statset_definition::time_and_increment (statset &statsetr, stat_id id, stat_value incr /* = 1 */) const
+  {
+    generic_time_and_increment<false> (statsetr, id, incr);
+  }
+
+  void
+  statset_definition::time_and_increment (atomic_statset &statsetr, stat_id id, duration d,
+					  stat_value incr /* = 1 */) const
+  {
+    generic_time_and_increment<true> (statsetr, id, incr, d);
+  }
+
+  void
+  statset_definition::time_and_increment (atomic_statset &statsetr, stat_id id, stat_value incr /* = 1 */) const
+  {
+    generic_time_and_increment<true> (statsetr, id, incr);
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // generic specialized stats
+  //////////////////////////////////////////////////////////////////////////
+  template<bool IsAtomic>
+  void
+  generic_stat_counter<IsAtomic>::increment (stat_value incr /* = 1 */)
+  {
+    m_def.increment (m_stat_values, 0, incr);
+  }
+
+  template<bool IsAtomic>
+  void
+  generic_stat_timer<IsAtomic>::time (duration d)
+  {
+    m_def.time (m_stat_values, 0, d);
+  }
+
+  template<bool IsAtomic>
+  void
+  generic_stat_timer<IsAtomic>::time (void)
+  {
+    m_def.time (m_stat_values, 0);
+  }
+
+  template<bool IsAtomic>
+  void
+  generic_stat_counter_and_timer<IsAtomic>::time_and_increment (duration d, stat_value incr /* = 1 */)
+  {
+    m_def.time_and_increment (m_stat_values, 0, d, incr);
+  }
+
+  template<bool IsAtomic>
+  void
+  generic_stat_counter_and_timer<IsAtomic>::time_and_increment (stat_value incr /* = 1 */)
+  {
+    m_def.time_and_increment (m_stat_values, 0, incr);
   }
 }
 

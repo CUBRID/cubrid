@@ -27,7 +27,8 @@ namespace cubperf
   //////////////////////////////////////////////////////////////////////////
   // stat_def
   //////////////////////////////////////////////////////////////////////////
-  stat_def::stat_def (stat_id &idref, type stat_type, const char *first_name, const char *second_name /* = NULL */)
+  stat_definition::stat_definition (stat_id &idref, type stat_type, const char *first_name,
+				    const char *second_name /* = NULL */)
     : m_idr (idref)
     , m_type (stat_type)
     , m_names { first_name, second_name }
@@ -35,7 +36,7 @@ namespace cubperf
     //
   }
 
-  stat_def::stat_def (const stat_def &other)
+  stat_definition::stat_definition (const stat_definition &other)
     : m_idr (other.m_idr)
     , m_type (other.m_type)
     , m_names { other.m_names[0], other.m_names[1] }
@@ -44,30 +45,208 @@ namespace cubperf
   }
 
   std::size_t
-  stat_def::get_value_count (void)
+  stat_definition::get_value_count (void)
   {
     return m_type == type::COUNTER_AND_TIMER ? 2 : 1;
   }
 
   //////////////////////////////////////////////////////////////////////////
-  // stat_factory
+  // statset
+  //////////////////////////////////////////////////////////////////////////
+
+  template<bool IsAtomic>
+  generic_statset<IsAtomic>::generic_statset (std::size_t value_count)
+    : m_value_count (value_count)
+    , m_values (new generic_value<IsAtomic>[m_value_count])
+    , m_timept (clock::now ())
+  {
+    //
+  }
+
+  template<bool IsAtomic>
+  generic_statset<IsAtomic>::~generic_statset (void)
+  {
+    delete [] m_values;
+  }
+
+  template<bool IsAtomic>
+  void
+  generic_statset<IsAtomic>::reset_timept (void)
+  {
+    m_timept = clock::now ();
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // statset_definition
   //////////////////////////////////////////////////////////////////////////
   void
-  stat_factory::build (std::size_t &crt_offset, stat_def &def)
+  statset_definition::build (stat_definition &def)
   {
-
+    process_def (def);
   }
 
   void
-  stat_factory::preprocess_def (stat_def &def)
+  statset_definition::process_def (stat_definition &def)
   {
+    def.m_idr = m_stat_defs.size ();
+    m_stat_defs.push_back (def);
+    for (std::size_t count = 0; count < def.get_value_count (); count++)
+      {
+	m_value_names.push_back (def.m_names[count]);
+      }
+  }
 
+  statset *
+  statset_definition::create_statset (void) const
+  {
+    return new statset (get_value_count ());
+  }
+
+  atomic_statset *
+  statset_definition::create_atomic_statset (void) const
+  {
+    return new atomic_statset (get_value_count ());
+  }
+
+  std::size_t
+  cubperf::statset_definition::get_stat_count () const
+  {
+    return m_stat_defs.size ();
+  }
+
+  std::size_t
+  cubperf::statset_definition::get_value_count () const
+  {
+    return m_value_names.size ();
+  }
+
+  const char *
+  statset_definition::get_value_name (std::size_t value_index) const
+  {
+    return m_value_names[value_index];
+  }
+
+  std::size_t
+  statset_definition::get_values_memsize (void) const
+  {
+    return get_value_count () * sizeof (stat_value);
   }
 
   void
-  stat_factory::postprocess_def (std::size_t &crt_offset, stat_def &def)
+  cubperf::statset_definition::get_stat_values (statset &statsetr, stat_value *output_stats)
   {
+    std::memcpy (output_stats, statsetr.m_values, get_values_memsize ());
+  }
 
+  void
+  cubperf::statset_definition::get_stat_values (atomic_statset &statsetr, stat_value *output_stats)
+  {
+    for (std::size_t it = 0; it < get_value_count (); it++)
+      {
+	output_stats[it] = statsetr.m_values[it];
+      }
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // generic_stat_counter
+  //////////////////////////////////////////////////////////////////////////
+  template<bool IsAtomic>
+  generic_stat_counter::generic_stat_counter (const char *name /* = NULL */)
+    : m_dummy_id (0)
+    , m_def (stat_definition (m_dummy_id, stat_definition::COUNTER, name))
+    , m_stat_values (1)
+  {
+    //
+  }
+
+  template<bool IsAtomic>
+  stat_value
+  generic_stat_counter<IsAtomic>::get_count (void)
+  {
+    return *m_stat_values.m_values;
+  }
+
+  template<bool IsAtomic>
+  const char *
+  generic_stat_counter<IsAtomic>::get_name (void)
+  {
+    return m_def.get_value_name (0);
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // generic_stat_timer
+  //////////////////////////////////////////////////////////////////////////
+
+  template<bool IsAtomic>
+  generic_stat_timer<IsAtomic>::generic_stat_timer (const char *name /* = NULL */)
+    : m_dummy_id (0)
+    , m_def (stat_definition (m_dummy_id, stat_definition::TIMER, name))
+    , m_stat_values (1)
+  {
+    //
+  }
+
+  template<bool IsAtomic>
+  stat_value
+  generic_stat_timer<IsAtomic>::get_time (void)
+  {
+    return *m_stat_values.m_values;
+  }
+
+  template<bool IsAtomic>
+  const char *
+  generic_stat_timer<IsAtomic>::get_name (void)
+  {
+    return m_def.get_value_name (0);
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // generic_stat_counter_and_timer
+  //////////////////////////////////////////////////////////////////////////
+
+  template<bool IsAtomic>
+  generic_stat_counter_and_timer<IsAtomic>::generic_stat_counter_and_timer (const char *stat_counter_name,
+      const char *stat_timer_name)
+    : m_dummy_id (0)
+    , m_def (stat_definition (m_dummy_id, stat_definition::COUNTER_AND_TIMER, stat_counter_name, stat_timer_name))
+    , m_stat_values (1)
+  {
+    //
+  }
+
+  template<bool IsAtomic>
+  generic_stat_counter_and_timer<IsAtomic>::generic_stat_counter_and_timer (void)
+    : generic_stat_counter_and_timer<IsAtomic> (NULL, NULL)
+  {
+    //
+  }
+
+  template<bool IsAtomic>
+  stat_value
+  generic_stat_counter_and_timer<IsAtomic>::get_count (void)
+  {
+    return m_stat_values.m_values[0];
+  }
+
+  template<bool IsAtomic>
+  stat_value
+  generic_stat_counter_and_timer<IsAtomic>::get_time (void)
+  {
+    return m_stat_values.m_values[1];
+  }
+
+  template<bool IsAtomic>
+  const char *
+  generic_stat_counter_and_timer<IsAtomic>::get_count_name (void)
+  {
+    return m_def.get_value_name (0);
+  }
+
+  template<bool IsAtomic>
+  const char *
+  generic_stat_counter_and_timer<IsAtomic>::get_time_name (void)
+  {
+    return m_def.get_value_name (1);
   }
 
 } // namespace cubperf

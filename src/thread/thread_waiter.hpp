@@ -24,6 +24,8 @@
 #ifndef _THREAD_WAITER_HPP_
 #define _THREAD_WAITER_HPP_
 
+#include "perf.hpp"
+
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -51,13 +53,6 @@
 //    // similarly, first thread can wait with timeout using wait_for or wait_until functions
 //
 
-// forward definition
-namespace cubperf
-{
-  class statset;
-  class atomic_statset;
-}
-
 namespace cubthread
 {
   class waiter
@@ -84,8 +79,7 @@ namespace cubthread
       //   7. wakeup delay time
       static const std::size_t STAT_COUNT = 7;
 
-      using stat_type = std::uint64_t;
-      void get_stats (stat_type *stats_out);
+      void get_stats (cubperf::stat_value *stats_out);
 
     private:
 
@@ -106,8 +100,8 @@ namespace cubthread
       status m_status;                    // current status
 
       // stats
-      cubperf::statset *m_stats_p;
-      cubperf::atomic_statset *m_atomic_stats_p;
+      cubperf::statset &m_stats;
+      cubperf::atomic_stat_counter m_wakeup_calls;
       bool m_was_awaken;                  // used for statistics
   };
 

@@ -27,6 +27,12 @@
 #include "perf.hpp"
 
 // todo: fix time conversion
+void foo (void)
+{
+  cubperf::stat_id dummy;
+  cubperf::statset_definition fact = { cubperf::stat_definition (dummy, cubperf::stat_definition::type::COUNTER, "stat") };
+  cubperf::stat_value *vals = NULL;
+}
 
 namespace cubthread
 {
