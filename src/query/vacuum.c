@@ -3077,10 +3077,17 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 		 "vacuum_process_log_block (): " VACUUM_LOG_DATA_ENTRY_MSG ("block"),
 		 VACUUM_LOG_DATA_ENTRY_AS_ARGS (data));
 
-  error_code = vacuum_log_prefetch_vacuum_block (thread_p, data);
-  if (error_code != NO_ERROR)
+  if (!sa_mode_partial_block)
     {
-      return error_code;
+      error_code = vacuum_log_prefetch_vacuum_block (thread_p, data);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+  else
+    {
+      // block is not entirely logged and we cannot prefetch it.
     }
 
   /* Initialize stored heap objects. */
