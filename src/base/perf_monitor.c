@@ -4746,7 +4746,7 @@ perfmon_stat_thread_stat_name (size_t index, char * name_buf, size_t max_size)
 static void
 f_dump_in_file_thread_stats (FILE * f, const UINT64 * stat_vals)
 {
-  if ( /*pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_THREAD */ true)
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_THREAD)
     {
       perfmon_stat_dump_in_file_thread_stats (f, stat_vals);
     }
@@ -4781,7 +4781,7 @@ perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
 }
 
 /*
- * f_dump_in_buffer_thread_stats () - Write to a buffer the values for Time_obj_lock_acquire_time statistic
+ * f_dump_in_buffer_thread_stats () - Write to a buffer the values for thread statistic
  * s (out): Buffer to write to
  * stat_vals (in): statistics buffer
  * remaining_size (in): size of input buffer
@@ -4790,7 +4790,7 @@ perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
 static void
 f_dump_in_buffer_thread_stats (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
-  if ( /*pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_THREAD */ true)
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_THREAD)
     {
       perfmon_stat_dump_in_buffer_thread_stats (stat_vals, s, remaining_size);
     }
@@ -4862,21 +4862,21 @@ static const char *perfmon_Thread_daemon_stat_names [] =
   // todo - probably has to be moved to thread_daemon.hpp
 };
 
-static const char *perfmon_Pgbuf_daemon_names [] =
+static const char *perfmon_Daemon_names [] =
 {
-  "Page flush daemon thread:\n",
-  "Page post flush daemon thread:\n",
-  "Page flush control daemon thread:\n",
-  "Page maintenance daemon thread:\n",
-  "Deadlock detect daemon thread:\n",
-  "Log flush daemon thread:\n",
+  "Page_flush_daemon_thread",
+  "Page_post_flush_daemon_thread",
+  "Page_flush_control_daemon_thread",
+  "Page_maintenance_daemon_thread",
+  "Deadlock_detect_daemon_thread",
+  "Log_flush_daemon_thread",
 };
-static const size_t PERFMON_PGBUF_DAEMON_COUNT = sizeof (perfmon_Pgbuf_daemon_names) / sizeof (const char *);
+static const size_t PERFMON_DAEMON_COUNT = sizeof (perfmon_Daemon_names) / sizeof (const char *);
 
 static size_t
 thread_daemon_stats_count (void)
 {
-  return PERFMON_PGBUF_DAEMON_COUNT * cubthread::daemon::STAT_COUNT;
+  return PERFMON_DAEMON_COUNT * cubthread::daemon::STAT_COUNT;
 }
 
 static int
@@ -4886,7 +4886,7 @@ f_load_thread_daemon_stats (void)
 }
 
 /*
- * f_dump_in_file_thread_daemon_stats () - Write in file the values for thread statistic
+ * f_dump_in_file_thread_daemon_stats () - Write in file the values for daemon statistic
  *
  * f (out): File handle
  * stat_vals (in): statistics buffer
@@ -4895,7 +4895,7 @@ f_load_thread_daemon_stats (void)
 static void
 f_dump_in_file_thread_daemon_stats (FILE * f, const UINT64 * stat_vals)
 {
-  if ( /*pstat_Global.activation_flag & PERFMON_ACTIVE_THREAD */ true)
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_DAEMONS)
     {
       perfmon_stat_dump_in_file_thread_daemon_stats (f, stat_vals);
     }
@@ -4915,21 +4915,19 @@ perfmon_stat_dump_in_file_thread_daemon_stats (FILE * stream, const UINT64 * sta
 
   assert (stream != NULL);
 
-  for (size_t daemon_it = 0; daemon_it < PERFMON_PGBUF_DAEMON_COUNT; daemon_it++)
+  for (size_t daemon_it = 0; daemon_it < PERFMON_DAEMON_COUNT; daemon_it++)
     {
-      fprintf (stream, perfmon_Pgbuf_daemon_names[daemon_it]);
       for (size_t stat_it = 0; stat_it < cubthread::daemon::STAT_COUNT; stat_it++)
         {
           value = stats_ptr[daemon_it * cubthread::daemon::STAT_COUNT + stat_it];
-          fprintf (stream, "%-10s = %16llu\n", perfmon_Thread_daemon_stat_names[stat_it],
-                   (long long unsigned int) value);
+          fprintf (stream, "%s.%s = %16llu\n", perfmon_Daemon_names[daemon_it],
+		   perfmon_Thread_daemon_stat_names[stat_it], (long long unsigned int) value);
         }
     }
 }
 
 /*
- * f_dump_in_buffer_thread_daemon_stats () - Write to a buffer the values for Time_obj_lock_acquire_time
- *						    statistic
+ * f_dump_in_buffer_thread_daemon_stats () - Write to a buffer the values for daemon statistic
  * s (out): Buffer to write to
  * stat_vals (in): statistics buffer
  * remaining_size (in): size of input buffer
@@ -4938,7 +4936,7 @@ perfmon_stat_dump_in_file_thread_daemon_stats (FILE * stream, const UINT64 * sta
 static void
 f_dump_in_buffer_thread_daemon_stats (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
-  if ( /*pstat_Global.activation_flag & PERFMON_ACTIVE_THREAD */ true)
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_DAEMONS)
     {
       perfmon_stat_dump_in_buffer_thread_daemon_stats (stat_vals, s, remaining_size);
     }
@@ -4961,21 +4959,13 @@ perfmon_stat_dump_in_buffer_thread_daemon_stats (const UINT64 * stats_ptr, char 
   assert (s != NULL);
   assert (remaining_size != NULL);
 
-  for (size_t daemon_it = 0; daemon_it < PERFMON_PGBUF_DAEMON_COUNT; daemon_it++)
+  for (size_t daemon_it = 0; daemon_it < PERFMON_DAEMON_COUNT; daemon_it++)
     {
-      ret = snprintf (*s, *remaining_size, perfmon_Pgbuf_daemon_names[daemon_it]);
-      *remaining_size -= ret;
-      *s += ret;
-      if (*remaining_size <= 0)
-	{
-	  return;
-	}
-
       for (size_t stat_it = 0; stat_it < cubthread::daemon::STAT_COUNT; stat_it++)
         {
           value = stats_ptr[daemon_it * cubthread::daemon::STAT_COUNT + stat_it];
-          ret = snprintf (*s, *remaining_size, "%-10s = %16llu\n",  perfmon_Thread_daemon_stat_names[stat_it],
-                          (long long unsigned int) value);
+          ret = snprintf (*s, *remaining_size, "%s.%s = %16llu\n", perfmon_Daemon_names[daemon_it],
+			  perfmon_Thread_daemon_stat_names[stat_it], (long long unsigned int) value);
 
           *remaining_size -= ret;
           *s += ret;
