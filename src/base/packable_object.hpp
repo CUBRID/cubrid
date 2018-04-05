@@ -26,16 +26,16 @@
 #ifndef _PACKABLE_OBJECT_HPP_
 #define _PACKABLE_OBJECT_HPP_
 
-#include <map>
 #include "packer.hpp"
+#include <map>
 
 namespace cubpacking
 {
 
+class packer;
+
 class packable_object
 {
-protected:
-  size_t m_packed_size;
 public:
   virtual int pack (packer *serializator) = 0;
   virtual int unpack (packer *serializator) = 0;

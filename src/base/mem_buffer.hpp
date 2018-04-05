@@ -18,28 +18,28 @@
  */
 
 /*
- * packing_buffer.hpp
+ * mem_buffer.hpp
  */
 
 #ident "$Id$"
 
-#ifndef _PACKING_BUFFER_HPP_
-#define _PACKING_BUFFER_HPP_
+#ifndef _MEM_BUFFER_HPP_
+#define _MEM_BUFFER_HPP_
 
+#include "pinning.hpp"
+#include "dbtype.h"
 #include <atomic>
 #include <vector>
-#include "dbtype.h"
-#include "packing_common.hpp"
 
 /*
  * This should serve as storage for packing / unpacking objects
  * This is not intended to be used as character stream, but as bulk operations: users of it
  * reserve / allocate parts of it; there are objects which deal of byte level operations (see : packer)
  */
-namespace cubpacking
+namespace mem
 {
 
-class buffer : public pinnable
+class buffer : public cubbase::pinnable
 {
 public:
   buffer () { storage = NULL; };
@@ -51,7 +51,7 @@ public:
 
   size_t get_buffer_size (void) { return end_ptr - storage; };
 
-  int init (char *ptr, const size_t buf_size, pinner *referencer);
+  int init (char *ptr, const size_t buf_size, cubbase::pinner *referencer);
     
 protected:
 
@@ -61,6 +61,6 @@ protected:
   char *end_ptr;
 };
 
-} /* namespace cubpacking */
+} /* namespace mem */
 
-#endif /* _PACKING_BUFFER_HPP_ */
+#endif /* _MEM_BUFFER_HPP_ */

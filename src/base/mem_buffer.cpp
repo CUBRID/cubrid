@@ -18,46 +18,28 @@
  */
 
 /*
- * packing_common.cpp
+ * mem_buffer.cpp
  */
 
 #ident "$Id$"
 
-#include "packing_common.hpp"
+#include "mem_buffer.hpp"
+#include "pinning.hpp"
 
-namespace cubpacking
+namespace mem
 {
-int pinner::pin (pinnable *reference)
+
+int buffer::init (char *ptr, const size_t buf_size, cubbase::pinner *referencer)
 {
-  if (reference != NULL
-      && reference->add_pinner (this) == NO_ERROR)
+  storage = ptr;
+  end_ptr = (ptr + buf_size);
+
+  if (referencer != NULL)
     {
-      references.insert (reference);
-      return NO_ERROR; 
+      referencer->pin (this);
     }
 
   return NO_ERROR;
 }
 
-int pinner::unpin (pinnable *reference)
-{
-  if (reference->remove_pinner (this) == NO_ERROR)
-    {
-      references.erase (reference);
-      return NO_ERROR;
-    }
-  
-  return NO_ERROR;
-}
-
-int pinner::unpin_all (void)
-{
-  for (auto it = references.begin (); it != references.end ();)
-    {
-      unpin (*it++);
-    }
-
-  return NO_ERROR;
-}
-
-} /* namespace cubpacking */
+} /* namespace mem */

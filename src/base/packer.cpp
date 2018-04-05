@@ -23,9 +23,7 @@
 
 #ident "$Id$"
 
-#include "packing_common.hpp"
 #include "packer.hpp"
-#include "packing_buffer.hpp"
 #include "object_representation.h"
 
 #include <vector>
@@ -33,6 +31,8 @@
 
 namespace cubpacking
 {
+#define MAX_SMALL_STRING_SIZE 255
+#define LARGE_STRING_CODE 0xff
 
 #define CHECK_RANGE(ptr, endptr, amount) \
   do \
@@ -128,22 +128,22 @@ size_t packer::get_packed_bigint_size (size_t curr_offset)
   return DB_ALIGN (curr_offset, MAX_ALIGNMENT) - curr_offset + OR_BIGINT_SIZE;
 }
 
-int packer::pack_bigint (DB_BIGINT *value)
+int packer::pack_bigint (std::int64_t *value)
 {
   align (MAX_ALIGNMENT);
   CHECK_RANGE (m_ptr, m_end_ptr, OR_BIGINT_SIZE);
    
-  OR_PUT_BIGINT (m_ptr, value);
+  OR_PUT_INT64 (m_ptr, value);
   m_ptr += OR_BIGINT_SIZE;
   return NO_ERROR;
 }
 
-int packer::unpack_bigint (DB_BIGINT *value)
+int packer::unpack_bigint (std::int64_t *value)
 {
   align (MAX_ALIGNMENT);
   CHECK_RANGE (m_ptr, m_end_ptr, OR_BIGINT_SIZE);
 
-  OR_GET_BIGINT (m_ptr, value);
+  OR_GET_INT64 (m_ptr, value);
   m_ptr += OR_BIGINT_SIZE;
 
   return NO_ERROR;
@@ -296,7 +296,7 @@ int packer::pack_small_string (const char *string)
   
   len = strlen (string);
 
-  if (len > 255)
+  if (len > MAX_SMALL_STRING_SIZE)
     {
       return ER_FAILED;
     }
@@ -305,8 +305,11 @@ int packer::pack_small_string (const char *string)
 
   OR_PUT_BYTE (m_ptr, len);
   m_ptr += OR_BYTE_SIZE;
-  (void) memcpy (m_ptr, string, len);
-  m_ptr += len;
+  if (len > 0)
+    {
+      (void) memcpy (m_ptr, string, len);
+      m_ptr += len;
+    }
 
   align (INT_ALIGNMENT);
 
@@ -319,8 +322,8 @@ int packer::unpack_small_string (char *string, const size_t max_size)
 
   CHECK_RANGE (m_ptr, m_end_ptr, OR_BYTE_SIZE);
 
-  len = (size_t) *(unsigned char *) m_ptr;
-  if (len > max_size || len < 0)
+  len = OR_GET_BYTE (m_ptr);
+  if (len > max_size)
     {
       return ER_FAILED;
     }
@@ -328,9 +331,16 @@ int packer::unpack_small_string (char *string, const size_t max_size)
   m_ptr += OR_BYTE_SIZE;
 
   CHECK_RANGE (m_ptr, m_end_ptr, len);
-  (void) memcpy (string, m_ptr, len);
-  *(string + len) = '\0';
-  m_ptr += len;
+  if (len > 0)
+    {
+      (void) memcpy (string, m_ptr, len);
+      *(string + len) = '\0';
+      m_ptr += len;
+    }
+  else
+    {
+      *string = '\0';
+    }
 
   align (INT_ALIGNMENT);
 
@@ -353,6 +363,7 @@ int packer::pack_large_string (const std::string &str)
   
   len = str.size ();
 
+  align (INT_ALIGNMENT);
   CHECK_RANGE (m_ptr, m_end_ptr, len + OR_INT_SIZE);
 
   OR_PUT_INT (m_ptr, len);
@@ -368,6 +379,8 @@ int packer::unpack_large_string (std::string &str)
 {
   size_t len;
 
+  align (INT_ALIGNMENT);
+
   CHECK_RANGE (m_ptr, m_end_ptr, OR_INT_SIZE);
 
   len = OR_GET_INT (m_ptr);
@@ -375,12 +388,117 @@ int packer::unpack_large_string (std::string &str)
   if (len > 0)
     {
       CHECK_RANGE (m_ptr, m_end_ptr, len);
-      str = std::string ((const char *) m_ptr);
+      str = std::string ((const char *) m_ptr, len);
       m_ptr += len;
     }
   align (INT_ALIGNMENT);
 
   return NO_ERROR;
 }
+
+size_t packer::get_packed_string_size (const std::string &str, const size_t curr_offset)
+{
+  return get_packed_c_string_size (str.c_str (), str.size (), curr_offset);
+}
+
+int packer::pack_string (const std::string &str)
+{
+  size_t len = str.size ();
+
+  return pack_c_string (str.c_str (), len);
+}
+
+int packer::unpack_string (std::string &str)
+{
+  size_t len;
+
+  CHECK_RANGE (m_ptr, m_end_ptr, 1);
+
+  len = OR_GET_BYTE (m_ptr);
+
+  if (len == LARGE_STRING_CODE)
+    {
+      m_ptr++;
+      return unpack_large_string (str);
+    }
+  else
+    {
+      m_ptr++;
+      str = std::string ((const char *) m_ptr, len);
+      m_ptr += len;
+      align (INT_ALIGNMENT);
+      return NO_ERROR;
+    }
+}
+
+size_t packer::get_packed_c_string_size (const char *str, const size_t str_size, const size_t curr_offset)
+{
+  size_t entry_size;
+  
+  if (str_size > MAX_SMALL_STRING_SIZE)
+    {
+      entry_size = OR_BYTE_SIZE + str_size;
+    }
+  else
+    {
+      entry_size = OR_BYTE_SIZE + OR_INT_SIZE + str_size;
+    }
+  
+  return DB_ALIGN (curr_offset + entry_size, INT_ALIGNMENT) - curr_offset;    
+}
+
+int packer::pack_c_string (const char *str, const size_t str_size)
+{
+  if (str_size < MAX_SMALL_STRING_SIZE)
+    {
+      return pack_small_string (str);
+    }
+  else
+    {
+      CHECK_RANGE (m_ptr, m_end_ptr, str_size + 1 + OR_INT_SIZE);
+      OR_PUT_BYTE (m_ptr, LARGE_STRING_CODE);
+      m_ptr++;
+      return pack_large_string (str);
+    }
+}
+
+int packer::unpack_c_string (char *str, const size_t max_str_size)
+{
+  size_t len;
+
+  CHECK_RANGE (m_ptr, m_end_ptr, 1);
+  len = OR_GET_BYTE (m_ptr);
+  if (len == LARGE_STRING_CODE)
+    {
+      m_ptr++;
+
+      align (OR_INT_SIZE);
+
+      len = OR_GET_INT (m_ptr);
+      m_ptr += OR_INT_SIZE;
+    }
+  else
+    {
+      m_ptr++;
+    }
+
+  if (len >= max_str_size)
+    {
+      return ER_FAILED;
+    }
+  if (len > 0)
+    {
+      CHECK_RANGE (m_ptr, m_end_ptr, len);
+      memcpy (str, m_ptr, len);
+      m_ptr += len;
+    }
+
+  str[len] = '\0';
+
+  align (INT_ALIGNMENT);
+
+  return NO_ERROR;
+}
+
 
 } /* namespace cubpacking */

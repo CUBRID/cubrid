@@ -18,8 +18,7 @@
  */
 
 #include "test_packing.hpp"
-#include "packing_common.hpp"
-#include "packing_buffer.hpp"
+#include "mem_buffer.hpp"
 #include "thread_compat.hpp"
 #include "thread_manager.hpp"
 #include "object_representation.h"
@@ -57,6 +56,12 @@ int po1::pack (cubpacking::packer *serializator)
   res = serializator->pack_large_string (large_str);
   assert (res == 0);
 
+  res = serializator->pack_string (str1);
+  assert (res == 0);
+
+  res = serializator->pack_c_string (str2, sizeof (str2) - 1);
+  assert (res == 0);
+
   return NO_ERROR;
 }
 
@@ -69,7 +74,7 @@ int po1::unpack (cubpacking::packer *serializator)
   serializator->unpack_short (&sh1);
   serializator->unpack_bigint (&b1);
   serializator->unpack_int_array (int_a, cnt);
-  assert (cnt ==  sizeof (int_a) / sizeof (int_a[0]));
+  assert (cnt == sizeof (int_a) / sizeof (int_a[0]));
 
   serializator->unpack_int_vector (int_v);
 
@@ -80,6 +85,11 @@ int po1::unpack (cubpacking::packer *serializator)
   res = serializator->unpack_small_string (small_str, sizeof (small_str));
   assert (res == 0);
   res = serializator->unpack_large_string (large_str);
+  assert (res == 0);
+
+  res = serializator->unpack_string (str1);
+  assert (res == 0);
+  res = serializator->unpack_c_string (str2, sizeof (str2));
   assert (res == 0);
 
   return NO_ERROR;
@@ -126,6 +136,16 @@ bool po1::is_equal (const cubpacking::packable_object *other)
       return false;
     }
 
+  if (str1.compare (other_po1->str1) != 0)
+    {
+      return false;
+    }
+
+  if (strcmp (str2, other_po1->str2) != 0)
+    {
+      return false;
+    }
+
   return true;
 }
 
@@ -145,12 +165,14 @@ size_t po1::get_packed_size (cubpacking::packer *serializator)
   entry_size += serializator->get_packed_small_string_size (small_str, entry_size);
   entry_size += serializator->get_packed_large_string_size (large_str, entry_size);
 
+  entry_size += serializator->get_packed_string_size (str1, entry_size);
+  entry_size += serializator->get_packed_c_string_size (str2, sizeof (str2), entry_size);
   return entry_size;
 }
 
 void po1::generate_obj (void)
 {
-  char *str;
+  char *tmp_str;
   size_t str_size;
 
   i1 = std::rand ();
@@ -178,8 +200,8 @@ void po1::generate_obj (void)
             break;
           case 4:
             str_size = std::rand () % 1000 + 1;
-            str = new char[str_size + 1];
-            db_make_char (&values[i], str_size, str, str_size, INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY);
+            tmp_str = new char[str_size + 1];
+            db_make_char (&values[i], str_size, tmp_str, str_size, INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY);
             break;
         }
     }
@@ -187,19 +209,26 @@ void po1::generate_obj (void)
   generate_str (small_str, sizeof (small_str) - 1);
 
   str_size = std::rand () % 10000 + 1;
-  str = new char[str_size + 1];
-  generate_str (str, str_size);
-  large_str = str;
+  tmp_str = new char[str_size + 1];
+  generate_str (tmp_str, str_size);
+  large_str = tmp_str;
+
+  str_size = std::rand () % 10000 + 1;
+  tmp_str = new char[str_size + 1];
+  generate_str (tmp_str, str_size);
+  str1 = tmp_str;
+
+  generate_str (str2, sizeof (str2) - 1);
 }
 
 /////////////////////////////
 
-void buffer_manager::allocate_bufer (cubpacking::buffer *&buf, const size_t &amount)
+void buffer_manager::allocate_bufer (mem::buffer *&buf, const size_t &amount)
 {
   char *ptr;
   ptr = new char[amount];
 
-  cubpacking::buffer *new_buf = new cubpacking::buffer;
+  mem::buffer *new_buf = new mem::buffer;
   new_buf->init (ptr, amount, this);
 
   buffers.push_back (new_buf);
@@ -265,8 +294,8 @@ int test_packing1 (void)
   size_t buf_size = 1024 * 1024;
   ptr1 = new char[buf_size];
   ptr2 = new char[buf_size];
-  cubpacking::buffer buf1 (ptr1, buf_size);
-  cubpacking::buffer buf2 (ptr2, buf_size);
+  mem::buffer buf1 (ptr1, buf_size);
+  mem::buffer buf2 (ptr2, buf_size);
   cubpacking::packer packer_instance (buf1.get_buffer (), buf1.get_buffer_size ());
   cubpacking::packer unpacker_instance (buf2.get_buffer (), buf2.get_buffer_size ());
 
@@ -297,6 +326,7 @@ int test_packing1 (void)
       if (test_objects_unpack[i].is_equal (&test_objects[i]) == false)
         {
           res = -1;
+          assert (false);
         }
     }
 
@@ -314,7 +344,7 @@ int test_packing_buffer1 (void)
   int res = 0;
 
   buffer_manager bm;
-  cubpacking::buffer *buf[100];
+  mem::buffer *buf[100];
 
   for (int i = 0; i < 100; i++)
     {

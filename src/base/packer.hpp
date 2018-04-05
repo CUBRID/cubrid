@@ -23,11 +23,10 @@
 
 #ident "$Id$"
 
-#ifndef _PACKER_HPP_
-#define _PACKER_HPP_
+#ifndef _CUBRID_PACKER_HPP_
+#define _CUBRID_PACKER_HPP_
 
-#include "packing_common.hpp"
-#include "object_representation.h"
+#include "dbtype.h"
 
 #include <vector>
 #include <string>
@@ -61,8 +60,8 @@ public:
   int unpack_short (short *value);
 
   size_t get_packed_bigint_size (size_t curr_offset);
-  int pack_bigint (DB_BIGINT *value);
-  int unpack_bigint (DB_BIGINT *value);
+  int pack_bigint (std::int64_t *value);
+  int unpack_bigint (std::int64_t *value);
 
   int pack_int_array (const int *array, const int count);
   int unpack_int_array (int *array, int &count);
@@ -84,7 +83,15 @@ public:
   int pack_large_string (const std::string &str);
   int unpack_large_string (std::string &str);
 
-  char *get_curr_ptr (void) { return m_ptr; };
+  size_t get_packed_string_size (const std::string &str, const size_t curr_offset);
+  int pack_string (const std::string &str);
+  int unpack_string (std::string &str);
+
+  size_t get_packed_c_string_size (const char *str, const size_t str_size, const size_t curr_offset);
+  int pack_c_string (const char *str, const size_t str_size);
+  int unpack_c_string (char *str, const size_t max_str_size);
+
+  const char *get_curr_ptr (void) { return m_ptr; };
 
   void align (const size_t req_alignement) { m_ptr = PTR_ALIGN (m_ptr, req_alignement); };
 
@@ -95,4 +102,4 @@ private:
 
 } /* namespace cubpacking */
 
-#endif /* _REPLICATION_SERIALIZATION_HPP_ */
+#endif /* _CUBRID_PACKER_HPP_ */

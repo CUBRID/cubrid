@@ -18,20 +18,20 @@
  */
 
 /*
- * packing_common.hpp
+ * pinning.hpp
  */
 
 #ident "$Id$"
 
-#ifndef _PACKING_COMMON_HPP_
-#define _PACKING_COMMON_HPP_
+#ifndef _PINNING_HPP_
+#define _PINNING_HPP_
 
 #include <set>
 #include <assert.h>
 #include <cstddef>
 #include "error_code.h"
 
-namespace cubpacking
+namespace cubbase
 {
 
 #define NOT_IMPLEMENTED() \
@@ -73,6 +73,6 @@ private:
 
 };
 
-} /* namespace cubpacking */
+} /* namespace cubbase */
 
-#endif /* _PACKING_COMMON_HPP_ */
+#endif /* _PINNING_HPP_ */

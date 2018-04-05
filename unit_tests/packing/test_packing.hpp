@@ -21,8 +21,7 @@
 #define _TEST_PACKING_HPP_
 
 #include "packable_object.hpp"
-#include "packing_buffer.hpp"
-#include "packing_common.hpp"
+#include "mem_buffer.hpp"
 #include <vector>
 
 namespace test_packing
@@ -32,12 +31,12 @@ int test_packing1 (void);
 
 int test_packing_buffer1 (void);
 
-class buffer_manager : public cubpacking::pinner
+class buffer_manager : public cubbase::pinner
 {
 private:
-  std::vector<cubpacking::buffer*> buffers;
+  std::vector<mem::buffer*> buffers;
 public:
-  void allocate_bufer (cubpacking::buffer *&buf, const size_t &amount);
+  void allocate_bufer (mem::buffer *&buf, const size_t &amount);
 
   void free_storage();
 
@@ -48,12 +47,14 @@ class po1 : public cubpacking::packable_object
 public:
   int i1;
   short sh1;
-  DB_BIGINT b1;
+  std::int64_t b1;
   int int_a[5];
   std::vector<int> int_v;
   DB_VALUE values[10];
   char small_str[256];
   std::string large_str;
+  std::string str1;
+  char str2[300];
 
 public:
 
