@@ -5944,6 +5944,7 @@ class deadlock_detect_task : public cubthread::entry_task
 	    {
 	      lock_wait_count++;
 	    }
+
 	  lock_wait_entry = thread_find_next_lockwait_entry (&thread_index);
 	}
 
@@ -7816,15 +7817,17 @@ lock_is_local_deadlock_detection_interval_up (void)
   /* check deadlock detection interval */
   gettimeofday (&now, NULL);
   perfmon_diff_timeval (&elapsed, &lk_Gl.last_deadlock_run, &now);
-  elapsed_sec = elapsed.tv_sec + (elapsed.tv_usec / 1000);
+  elapsed_sec = elapsed.tv_sec + (elapsed.tv_usec / 1000000);
+
   if (elapsed_sec < prm_get_float_value (PRM_ID_LK_RUN_DEADLOCK_INTERVAL))
     {
       return false;
     }
-  else
-    {
-      return true;
-    }
+
+  /* update the last deadlock run time */
+  lk_Gl.last_deadlock_run = now;
+
+  return true;
 #else /* !SERVER_MODE */
   return false;
 #endif /* SERVER_MODE */
@@ -8235,9 +8238,6 @@ final_:
 	  lk_Gl.no_victim_case_count = 0;
 	}
     }
-
-  /* save the last deadlock run time */
-  gettimeofday (&lk_Gl.last_deadlock_run, NULL);
 
   return;
 #endif /* !SERVER_MODE */
