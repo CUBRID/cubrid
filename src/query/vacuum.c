@@ -7042,7 +7042,7 @@ vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * e
       error = logpb_fetch_page (thread_p, &req_lsa, LOG_CS_SAFE_READER, log_page);
       if (error != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
+	  assert (false);	// failure is not acceptable
 	  vacuum_er_log_error (VACUUM_ER_LOG_ERROR, "cannot prefetch log page %d", log_pageid);
 
 	  error = ER_FAILED;
@@ -7089,6 +7089,8 @@ vacuum_fetch_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, LOG_PAGE 
 	  size_t page_index = log_pageid - worker->prefetch_first_pageid;
 	  memcpy (log_page_p, worker->prefetch_log_buffer + page_index * LOG_PAGESIZE, LOG_PAGESIZE);
 
+	  assert (log_page_p->hdr.logical_pageid == log_pageid);	// should be the correct page
+
 	  perfmon_inc_stat (thread_p, PSTAT_VAC_NUM_PREFETCH_HITS_LOG_PAGES);
 	  return NO_ERROR;
 	}
@@ -7115,7 +7117,7 @@ vacuum_fetch_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, LOG_PAGE 
   error = logpb_fetch_page (thread_p, &req_lsa, LOG_CS_SAFE_READER, log_page_p);
   if (error != NO_ERROR)
     {
-      ASSERT_ERROR ();
+      assert (false);		// failure is not acceptable
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_fetch_log_page");
       error = ER_FAILED;
     }
