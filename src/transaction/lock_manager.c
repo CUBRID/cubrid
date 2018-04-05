@@ -7817,7 +7817,7 @@ lock_is_local_deadlock_detection_interval_up (void)
   /* check deadlock detection interval */
   gettimeofday (&now, NULL);
   perfmon_diff_timeval (&elapsed, &lk_Gl.last_deadlock_run, &now);
-  elapsed_sec = elapsed.tv_sec + (elapsed.tv_usec / 1000000);
+  elapsed_sec = elapsed.tv_sec + (elapsed.tv_usec / 1000000.0);
 
   if (elapsed_sec < prm_get_float_value (PRM_ID_LK_RUN_DEADLOCK_INTERVAL))
     {
