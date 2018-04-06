@@ -21,10 +21,10 @@
  * packer.hpp
  */
 
-#ident "$Id$"
+#ifndef _PACKER_HPP_
+#define _PACKER_HPP_
 
-#ifndef _CUBRID_PACKER_HPP_
-#define _CUBRID_PACKER_HPP_
+#ident "$Id$"
 
 #include "dbtype.h"
 
@@ -111,4 +111,4 @@ namespace cubpacking
 
 } /* namespace cubpacking */
 
-#endif /* _CUBRID_PACKER_HPP_ */
+#endif /* _PACKER_HPP_ */

@@ -21,10 +21,10 @@
  * pinning.hpp
  */
 
-#ident "$Id$"
-
 #ifndef _PINNING_HPP_
 #define _PINNING_HPP_
+
+#ident "$Id$"
 
 #include <set>
 #include <assert.h>
@@ -92,7 +92,6 @@ namespace cubbase
 
     private:
       std::set <pinner *> pinners;
-
   };
 
 } /* namespace cubbase */

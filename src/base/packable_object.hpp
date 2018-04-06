@@ -53,7 +53,7 @@ namespace cubpacking
 
       virtual ~self_creating_object() {};
 
-      virtual int get_create_id (void) =  0;
+      virtual int get_create_id (void) = 0;
   };
 
   /*
@@ -65,10 +65,12 @@ namespace cubpacking
   {
     protected:
       std::map <int, self_creating_object *> m_object_patterns;
+
     public:
       ~object_builder ()
       {
-	for (std::map<int, self_creating_object *>::iterator it = m_object_patterns.begin(); it != m_object_patterns.end();
+	for (std::map<int, self_creating_object *>::iterator it = m_object_patterns.begin ();
+	     it != m_object_patterns.end ();
 	     it++)
 	  {
 	    delete (it->second);
@@ -83,6 +85,7 @@ namespace cubpacking
       virtual self_creating_object *create_object (packer *serializator)
       {
 	int obj_type;
+
 	serializator->peek_unpack_int (&obj_type);
 
 	return m_object_patterns[obj_type]->create ();

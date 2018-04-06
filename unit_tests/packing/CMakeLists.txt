@@ -57,4 +57,3 @@ elseif(WIN32)
 else()
   message( SEND_ERROR "Packing unit testing is for unix/windows")
 endif ()
-
