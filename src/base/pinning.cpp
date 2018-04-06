@@ -27,37 +27,37 @@
 
 namespace cubbase
 {
-int pinner::pin (pinnable *reference)
-{
-  if (reference != NULL
-      && reference->add_pinner (this) == NO_ERROR)
-    {
-      references.insert (reference);
-      return NO_ERROR; 
-    }
+  int pinner::pin (pinnable *reference)
+  {
+    if (reference != NULL
+	&& reference->add_pinner (this) == NO_ERROR)
+      {
+	references.insert (reference);
+	return NO_ERROR;
+      }
 
-  return NO_ERROR;
-}
+    return NO_ERROR;
+  }
 
-int pinner::unpin (pinnable *reference)
-{
-  if (reference->remove_pinner (this) == NO_ERROR)
-    {
-      references.erase (reference);
-      return NO_ERROR;
-    }
-  
-  return NO_ERROR;
-}
+  int pinner::unpin (pinnable *reference)
+  {
+    if (reference->remove_pinner (this) == NO_ERROR)
+      {
+	references.erase (reference);
+	return NO_ERROR;
+      }
 
-int pinner::unpin_all (void)
-{
-  for (auto it = references.begin (); it != references.end ();)
-    {
-      unpin (*it++);
-    }
+    return NO_ERROR;
+  }
 
-  return NO_ERROR;
-}
+  int pinner::unpin_all (void)
+  {
+    for (auto it = references.begin (); it != references.end ();)
+      {
+	unpin (*it++);
+      }
+
+    return NO_ERROR;
+  }
 
 } /* namespace pinning */

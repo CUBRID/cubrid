@@ -41,37 +41,59 @@ namespace cubbase
     } \
   while (0)
 
-class pinnable;
+  class pinnable;
 
-class pinner
-{
-public:
-  int pin (pinnable *reference);
-  int unpin (pinnable *reference);
+  class pinner
+  {
+    public:
+      int pin (pinnable *reference);
+      int unpin (pinnable *reference);
 
-  int unpin_all (void);
+      int unpin_all (void);
 
-  bool check_references (void) { return (references.size() == 0); };
+      bool check_references (void)
+      {
+	return (references.size () == 0);
+      };
 
-  ~pinner () { assert (check_references () == true); };
+      ~pinner ()
+      {
+	assert (check_references () == true);
+      };
 
-private:
-  std::set <pinnable*> references;
-};
+    private:
+      std::set <pinnable *> references;
+  };
 
-class pinnable
-{
-public:
-  int add_pinner (pinner *referencer) { pinners.insert (referencer); return NO_ERROR; }
-  int remove_pinner (pinner *referencer) { pinners.erase (referencer); return NO_ERROR; }
-  int get_pin_count (void) { return (int) pinners.size(); }
+  class pinnable
+  {
+    public:
+      int add_pinner (pinner *referencer)
+      {
+	pinners.insert (referencer);
+	return NO_ERROR;
+      }
 
-  ~pinnable () { assert (pinners.size() == 0); }
+      int remove_pinner (pinner *referencer)
+      {
+	pinners.erase (referencer);
+	return NO_ERROR;
+      }
 
-private:
-  std::set <pinner*> pinners;
+      int get_pin_count (void)
+      {
+	return (int) pinners.size ();
+      }
 
-};
+      ~pinnable ()
+      {
+	assert (pinners.size () == 0);
+      }
+
+    private:
+      std::set <pinner *> pinners;
+
+  };
 
 } /* namespace cubbase */
 

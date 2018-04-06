@@ -29,17 +29,17 @@
 namespace mem
 {
 
-int buffer::init (char *ptr, const size_t buf_size, cubbase::pinner *referencer)
-{
-  storage = ptr;
-  end_ptr = (ptr + buf_size);
+  int buffer::init (char *ptr, const size_t buf_size, cubbase::pinner *referencer)
+  {
+    storage = ptr;
+    end_ptr = (ptr + buf_size);
 
-  if (referencer != NULL)
-    {
-      referencer->pin (this);
-    }
+    if (referencer != NULL)
+      {
+	referencer->pin (this);
+      }
 
-  return NO_ERROR;
-}
+    return NO_ERROR;
+  }
 
 } /* namespace mem */

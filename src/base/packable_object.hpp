@@ -21,10 +21,10 @@
  * packable_object.hpp
  */
 
-#ident "$Id$"
-
 #ifndef _PACKABLE_OBJECT_HPP_
 #define _PACKABLE_OBJECT_HPP_
+
+#ident "$Id$"
 
 #include "packer.hpp"
 #include <map>
@@ -32,57 +32,62 @@
 namespace cubpacking
 {
 
-class packer;
+  class packer;
 
-class packable_object
-{
-public:
-  virtual int pack (packer *serializator) = 0;
-  virtual int unpack (packer *serializator) = 0;
+  class packable_object
+  {
+    public:
+      virtual int pack (packer *serializator) = 0;
+      virtual int unpack (packer *serializator) = 0;
 
-  virtual bool is_equal (const packable_object *other) = 0;
-  
-  /* used at packing to get info on how much memory to reserve */
-  virtual size_t get_packed_size (packer *serializator) = 0;
-};
+      virtual bool is_equal (const packable_object *other) = 0;
 
-class self_creating_object
-{
-public:
-  virtual self_creating_object *create (void) = 0;
+      /* used at packing to get info on how much memory to reserve */
+      virtual size_t get_packed_size (packer *serializator) = 0;
+  };
 
-  virtual ~self_creating_object() {};
+  class self_creating_object
+  {
+    public:
+      virtual self_creating_object *create (void) = 0;
 
-  virtual int get_create_id (void) =  0;
-};
-/*
- * this is used as factory for packable_object
- * at unpacking, we have to instanciate a specific type of 'packable_object' from a sequence
- * of bytes (usualy first integer which encodes the type)
- */
-class object_builder
-{
-protected:
-  std::map <int, self_creating_object*> m_object_patterns;
-public:
-  ~object_builder ()
-    {
-      for(std::map<int, self_creating_object*>::iterator it = m_object_patterns.begin(); it != m_object_patterns.end(); it++)
-        {
-          delete (it->second);
-        }
-    };
+      virtual ~self_creating_object() {};
 
-  void add_pattern_object (self_creating_object *obj) { m_object_patterns[obj->get_create_id ()] = obj; };
+      virtual int get_create_id (void) =  0;
+  };
 
-  virtual self_creating_object *create_object (packer *serializator)
-    {
-      int obj_type;
-      serializator->peek_unpack_int (&obj_type);
+  /*
+   * this is used as factory for packable_object
+   * at unpacking, we have to instanciate a specific type of 'packable_object' from a sequence
+   * of bytes (usualy first integer which encodes the type)
+   */
+  class object_builder
+  {
+    protected:
+      std::map <int, self_creating_object *> m_object_patterns;
+    public:
+      ~object_builder ()
+      {
+	for (std::map<int, self_creating_object *>::iterator it = m_object_patterns.begin(); it != m_object_patterns.end();
+	     it++)
+	  {
+	    delete (it->second);
+	  }
+      };
 
-      return m_object_patterns[obj_type]->create ();
-    };
-};
+      void add_pattern_object (self_creating_object *obj)
+      {
+	m_object_patterns[obj->get_create_id ()] = obj;
+      };
+
+      virtual self_creating_object *create_object (packer *serializator)
+      {
+	int obj_type;
+	serializator->peek_unpack_int (&obj_type);
+
+	return m_object_patterns[obj_type]->create ();
+      };
+  };
 
 } /* namespace cubpacking */
 
