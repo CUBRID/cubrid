@@ -95,6 +95,9 @@ set(BASE_SOURCES
   ${BASE_DIR}/message_catalog.c
   ${BASE_DIR}/misc_string.c
   ${BASE_DIR}/mprec.c
+  ${BASE_DIR}/packer.cpp
+  ${BASE_DIR}/mem_buffer.cpp
+  ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/perf.c
   ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/porting.c
@@ -115,6 +118,10 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
+  ${BASE_DIR}/packer.hpp
+  ${BASE_DIR}/pinning.hpp
+  ${BASE_DIR}/mem_buffer.hpp
+  ${BASE_DIR}/packable_object.hpp
 )
 
 set(HEAPLAYER_SOURCES
