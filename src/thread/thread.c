@@ -1681,6 +1681,13 @@ xthread_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kil
       return ER_CSS_KILL_BAD_INTERFACE;
     }
 
+  if (kill_tran_index == LOG_SYSTEM_TRAN_INDEX)
+    {
+      // cannot kill system transaction; not even if this is dba
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_ALLOWED, 1, kill_tran_index);
+      return ER_KILL_TR_NOT_ALLOWED;
+    }
+
   signaled = false;
   for (i = 0; i < THREAD_RETRY_MAX_SLAM_TIMES && error_code == NO_ERROR && !killed; i++)
     {
@@ -1745,6 +1752,13 @@ xthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is
   bool interrupt, has_authorization;
   bool is_trx_exists;
   KILLSTMT_TYPE kill_type;
+
+  if (tran_index == LOG_SYSTEM_TRAN_INDEX)
+    {
+      // cannot kill system transaction; not even if this is dba
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_ALLOWED, 1, tran_index);
+      return ER_KILL_TR_NOT_ALLOWED;
+    }
 
   if (!is_dba_group_member)
     {
