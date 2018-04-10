@@ -134,14 +134,12 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/communication_channel.cpp
   ${COMMUNICATION_DIR}/producer_transfer_channel.cpp
   ${COMMUNICATION_DIR}/consumer_transfer_channel.cpp
-  ${COMMUNICATION_DIR}/cub_server_communication_channel.cpp
   )
 
 set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/communication_channel.hpp
   ${COMMUNICATION_DIR}/producer_transfer_channel.hpp
   ${COMMUNICATION_DIR}/consumer_transfer_channel.hpp
-  ${COMMUNICATION_DIR}/cub_server_communication_channel.hpp
   )
 
 set(QUERY_SOURCES
