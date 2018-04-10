@@ -3,6 +3,7 @@
 #include "communication_channel.hpp"
 #include "producer_transfer_channel.hpp"
 #include "consumer_transfer_channel.hpp"
+#include "cubstream.hpp"
 
 #include "thread_manager.hpp"
 #include "thread_entry_task.hpp"
@@ -29,9 +30,9 @@
 #define LISTENING_PORT 2222
 #define MAX_TIMEOUT_IN_MS 1000
 #define MAX_SENT_BYTES 1024 * 1024 * 4 //4 MB
-#define MAX_CYCLES 1
+#define MAX_CYCLES 10
 
-class packing_stream_mock;
+class stream_mock;
 
 static cubthread::entry *thread_p = NULL;
 
@@ -42,33 +43,33 @@ static std::atomic_bool is_listening;
 static communication_channel *producer_communication_channel, *consumer_communication_channel;
 static producer_transfer_channel *producer = NULL;
 static consumer_transfer_channel *consumer = NULL;
-static packing_stream_mock *stream = NULL;
+static stream_mock *stream = NULL;
 
 static int init ();
 static int finish ();
 static int run ();
 static int init_thread_system ();
 
-class packing_stream_mock : public packing_stream
+class stream_mock : public cubstream::stream
 {
   public:
 
-    packing_stream_mock ()
+    stream_mock ()
     {
       write_buffer = (char *) malloc (MAX_SENT_BYTES * sizeof (int));
       last_position = 0;
     }
 
-    ~packing_stream_mock()
+    ~stream_mock()
     {
       free (write_buffer);
     }
 
-    int write (std::size_t byte_count, stream_handler *handler) override
+    int write (const size_t byte_count, cubstream::write_handler *handler) override
     {
       int err;
 
-      err = handler->handling_action (write_buffer + last_position, byte_count);
+      err = handler->write_action (last_position, write_buffer, byte_count);
       if (err == NO_ERRORS)
 	{
 	  last_position += byte_count;
@@ -76,7 +77,7 @@ class packing_stream_mock : public packing_stream
       return err;
     }
 
-    int read (stream_position first_pos, std::size_t byte_count, stream_handler *handler) override
+    int read (const stream_position first_pos, const size_t byte_count, cubstream::read_handler *handler) override
     {
       char *ptr = (char *) malloc (byte_count);
       int err = NO_ERROR;
@@ -86,10 +87,17 @@ class packing_stream_mock : public packing_stream
 	  * ((int *) (ptr + i)) = first_pos / sizeof (int) + i / sizeof (int);
 	}
 
-      err = handler->handling_action (ptr, byte_count);
+      err = handler->read_action (first_pos, ptr, byte_count);
       free (ptr);
 
       return err;
+    }
+
+    int read_partial (const stream_position first_pos, const size_t byte_count, size_t *actual_read_bytes,
+                            cubstream::partial_read_handler *handler) override
+    {
+      assert (false);
+      return NO_ERROR;
     }
 
     char *write_buffer;
@@ -211,7 +219,7 @@ static int init ()
 
   producer = new producer_transfer_channel (producer_communication_channel);
   consumer = new consumer_transfer_channel (consumer_communication_channel);
-  stream = new packing_stream_mock ();
+  stream = new stream_mock ();
 
   producer->set_stream (stream);
   consumer->set_stream (stream);

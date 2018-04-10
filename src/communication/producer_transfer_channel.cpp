@@ -38,7 +38,6 @@ class default_producer_transfer_channel_sender_task : public cubthread::entry_ta
 	       MTU,
 	       this_producer_channel);
 	}
-      //assert (rc == NO_ERRORS);
       if (rc != NO_ERRORS)
 	{
 	  this_producer_channel->m_channel->close_connection ();
@@ -92,7 +91,7 @@ std::atomic<stream_position> &producer_transfer_channel::get_hard_limit ()
   return m_hard_limit_position;
 }
 
-int producer_transfer_channel::handling_action (BUFFER_UNIT *ptr, std::size_t byte_count)
+int producer_transfer_channel::read_action (const stream_position pos, char *ptr, const size_t byte_count)
 {
   int rc = m_channel->send (ptr, byte_count);
 

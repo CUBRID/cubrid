@@ -4,10 +4,10 @@
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 
-class consumer_transfer_channel_receiver_task : public cubthread::entry_task
+class default_consumer_transfer_channel_receiver_task : public cubthread::entry_task
 {
   public:
-    consumer_transfer_channel_receiver_task (consumer_transfer_channel *consumer_channel) : this_consumer_channel (
+    default_consumer_transfer_channel_receiver_task (consumer_transfer_channel *consumer_channel) : this_consumer_channel (
 	consumer_channel) {}
 
     void execute (cubthread::entry &context) override
@@ -29,7 +29,6 @@ class consumer_transfer_channel_receiver_task : public cubthread::entry_task
 	}
 
       rc = this_consumer_channel->stream->write (max_len, this_consumer_channel);
-      //assert (rc == NO_ERRORS);
       if (rc != NO_ERRORS)
 	{
 	  this_consumer_channel->m_channel->close_connection ();
@@ -41,13 +40,20 @@ class consumer_transfer_channel_receiver_task : public cubthread::entry_task
     consumer_transfer_channel *this_consumer_channel;
 };
 
-consumer_transfer_channel::consumer_transfer_channel (communication_channel *chn,
+consumer_transfer_channel::consumer_transfer_channel (communication_channel *chn, cubthread::entry_task *recv_task,
     stream_position received_from_position) : m_channel (chn),
   m_last_received_position (received_from_position),
   stream (NULL)
 {
-  m_receiver_daemon = cubthread::get_manager ()->create_daemon (std::chrono::milliseconds (10),
-		      new consumer_transfer_channel_receiver_task (this));
+  m_receiver_daemon = cubthread::get_manager ()->create_daemon (std::chrono::milliseconds (10), recv_task);
+}
+
+consumer_transfer_channel::consumer_transfer_channel (communication_channel *chn,
+    stream_position received_from_position) : consumer_transfer_channel (chn,
+                                                                         new default_consumer_transfer_channel_receiver_task (this),
+                                                                         received_from_position)
+{
+
 }
 
 consumer_transfer_channel::~consumer_transfer_channel ()
@@ -56,12 +62,12 @@ consumer_transfer_channel::~consumer_transfer_channel ()
   delete m_channel;
 }
 
-int consumer_transfer_channel::handling_action (BUFFER_UNIT *ptr, std::size_t byte_count)
+int consumer_transfer_channel::write_action (const stream_position pos, char *ptr, const size_t byte_count)
 {
   std::size_t recv_bytes = byte_count;
   int rc = NO_ERRORS;
 
-  memcpy (ptr, m_buffer, recv_bytes);
+  memcpy (ptr + pos, m_buffer, recv_bytes);
 
   if (rc == NO_ERRORS)
     {
