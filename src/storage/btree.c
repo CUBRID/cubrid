@@ -13939,6 +13939,7 @@ btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_S
   /* check if unique_stat_info is NULL */
   if (unique_stat_info == NULL)
     {
+      assert (false);
       return ER_FAILED;
     }
 
@@ -13948,7 +13949,8 @@ btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_S
   root = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (root == NULL)
     {
-      goto exit_on_error;
+      ASSERT_ERROR_AND_SET (ret);
+      goto exit;
     }
 
   (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
@@ -13957,7 +13959,9 @@ btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_S
   root_header = btree_get_root_header (thread_p, root);
   if (root_header == NULL)
     {
-      goto exit_on_error;
+      assert (false);
+      ret = ER_FAILED;
+      goto exit;
     }
 
   if (root_header->num_nulls != -1)
@@ -13978,7 +13982,9 @@ btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_S
 	    {
 	      if (pgbuf_set_lsa (thread_p, root, &unique_stat_info->last_log_lsa) == NULL)
 		{
-		  goto exit_on_error;
+		  assert (false);
+		  ret = ER_FAILED;
+		  goto exit;
 		}
 	    }
 
@@ -13999,19 +14005,14 @@ btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_S
 	}
     }
 
-  /* free the root page */
-  pgbuf_unfix_and_init (thread_p, root);
-
-  return ret;
-
-exit_on_error:
+exit:
 
   if (root != NULL)
     {
       pgbuf_unfix_and_init (thread_p, root);
     }
 
-  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  return ret;
 }
 
 /*
