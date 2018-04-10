@@ -173,7 +173,9 @@ static int init_thread_system ()
       return error_code;
     }
 
-  cubthread::initialize (thread_p);
+  cubthread::set_manager (new cubthread::manager ());
+  cubthread::get_manager()->alloc_entries ();
+  cubthread::get_manager()->init_entries (0, false);
 
   return NO_ERROR;
 }
@@ -243,7 +245,6 @@ static int finish ()
 
   css_final_conn_list();
   lf_destroy_transaction_systems ();
-  cubthread::finalize ();
 
   er_final (ER_ALL_FINAL);
 
