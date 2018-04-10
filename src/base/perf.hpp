@@ -83,8 +83,9 @@ namespace cubperf
   };
 
   template<bool IsAtomic>
-  struct generic_statset
+  class generic_statset
   {
+    public:
       std::size_t m_value_count;
       generic_value<IsAtomic> *m_values;
       time_point m_timept;
@@ -182,9 +183,8 @@ namespace cubperf
       const char *get_name (void);
 
     private:
-      stat_id m_dummy_id;
-      const statset_definition m_def;
-      generic_statset<IsAtomic> &m_stat_values;
+      generic_value<IsAtomic> m_stat_value;
+      const char *m_stat_name;
   };
   using stat_counter = generic_stat_counter<false>;
   using atomic_stat_counter = generic_stat_counter<true>;
@@ -200,10 +200,12 @@ namespace cubperf
       stat_value get_time (void);
       const char *get_name (void);
 
+      inline void reset_timept (void);
+
     private:
-      stat_id m_dummy_id;
-      const statset_definition m_def;
-      generic_statset<IsAtomic> &m_stat_values;
+      generic_value<IsAtomic> m_stat_value;
+      const char *m_stat_name;
+      time_point m_timept;
   };
   using stat_timer = generic_stat_timer<false>;
   using atomic_stat_timer = generic_stat_timer<true>;
@@ -222,10 +224,11 @@ namespace cubperf
       const char *get_count_name (void);
       const char *get_time_name (void);
 
+      inline void reset_timept (void);
+
     private:
-      stat_id m_dummy_id;
-      const statset_definition m_def;
-      generic_statset<IsAtomic> &m_stat_values;
+      generic_stat_counter<IsAtomic> m_stat_counter;
+      generic_stat_timer<IsAtomic> m_stat_timer;
   };
   using stat_counter_and_timer = generic_stat_counter_and_timer<false>;
   using atomic_stat_counter_and_timer = generic_stat_counter_and_timer<true>;
@@ -372,35 +375,53 @@ namespace cubperf
   void
   generic_stat_counter<IsAtomic>::increment (stat_value incr /* = 1 */)
   {
-    m_def.increment (m_stat_values, 0, incr);
+    m_stat_value += incr;
   }
 
   template<bool IsAtomic>
   void
   generic_stat_timer<IsAtomic>::time (duration d)
   {
-    m_def.time (m_stat_values, 0, d);
+    m_stat_value += d.count ();
   }
 
   template<bool IsAtomic>
   void
   generic_stat_timer<IsAtomic>::time (void)
   {
-    m_def.time (m_stat_values, 0);
+    time_point nowpt = clock::now ();
+    time (nowpt - m_timept);
+    m_timept = nowpt;
+  }
+
+  template<bool IsAtomic>
+  void
+  generic_stat_timer<IsAtomic>::reset_timept (void)
+  {
+    m_timept = clock::now ();
   }
 
   template<bool IsAtomic>
   void
   generic_stat_counter_and_timer<IsAtomic>::time_and_increment (duration d, stat_value incr /* = 1 */)
   {
-    m_def.time_and_increment (m_stat_values, 0, d, incr);
+    m_stat_counter.increment (incr);
+    m_stat_timer.time (d);
   }
 
   template<bool IsAtomic>
   void
   generic_stat_counter_and_timer<IsAtomic>::time_and_increment (stat_value incr /* = 1 */)
   {
-    m_def.time_and_increment (m_stat_values, 0, incr);
+    m_stat_counter.increment (incr);
+    m_stat_timer.time ();
+  }
+
+  template<bool IsAtomic>
+  void
+  generic_stat_counter_and_timer<IsAtomic>::reset_timept (void)
+  {
+    m_stat_timer.reset_timept ();
   }
 }
 

@@ -152,9 +152,8 @@ namespace cubperf
   //////////////////////////////////////////////////////////////////////////
   template<bool IsAtomic>
   generic_stat_counter::generic_stat_counter (const char *name /* = NULL */)
-    : m_dummy_id (0)
-    , m_def (stat_definition (m_dummy_id, stat_definition::COUNTER, name))
-    , m_stat_values (1)
+    : m_stat_value (0)
+    , m_stat_name (name)
   {
     //
   }
@@ -163,14 +162,14 @@ namespace cubperf
   stat_value
   generic_stat_counter<IsAtomic>::get_count (void)
   {
-    return *m_stat_values.m_values;
+    return m_stat_value;
   }
 
   template<bool IsAtomic>
   const char *
   generic_stat_counter<IsAtomic>::get_name (void)
   {
-    return m_def.get_value_name (0);
+    return m_stat_name;
   }
 
   //////////////////////////////////////////////////////////////////////////
@@ -179,9 +178,9 @@ namespace cubperf
 
   template<bool IsAtomic>
   generic_stat_timer<IsAtomic>::generic_stat_timer (const char *name /* = NULL */)
-    : m_dummy_id (0)
-    , m_def (stat_definition (m_dummy_id, stat_definition::TIMER, name))
-    , m_stat_values (1)
+    : m_stat_value (0)
+    , m_stat_name (name)
+    , m_timept (clock::now ())
   {
     //
   }
@@ -190,14 +189,14 @@ namespace cubperf
   stat_value
   generic_stat_timer<IsAtomic>::get_time (void)
   {
-    return *m_stat_values.m_values;
+    return m_stat_value;
   }
 
   template<bool IsAtomic>
   const char *
   generic_stat_timer<IsAtomic>::get_name (void)
   {
-    return m_def.get_value_name (0);
+    return m_stat_name;
   }
 
   //////////////////////////////////////////////////////////////////////////
@@ -207,9 +206,8 @@ namespace cubperf
   template<bool IsAtomic>
   generic_stat_counter_and_timer<IsAtomic>::generic_stat_counter_and_timer (const char *stat_counter_name,
       const char *stat_timer_name)
-    : m_dummy_id (0)
-    , m_def (stat_definition (m_dummy_id, stat_definition::COUNTER_AND_TIMER, stat_counter_name, stat_timer_name))
-    , m_stat_values (1)
+    : m_stat_counter (stat_counter_name)
+    , m_stat_timer (stat_timer_name)
   {
     //
   }
@@ -225,28 +223,28 @@ namespace cubperf
   stat_value
   generic_stat_counter_and_timer<IsAtomic>::get_count (void)
   {
-    return m_stat_values.m_values[0];
+    return m_stat_counter.get_count ();
   }
 
   template<bool IsAtomic>
   stat_value
   generic_stat_counter_and_timer<IsAtomic>::get_time (void)
   {
-    return m_stat_values.m_values[1];
+    return m_stat_timer.get_time ();
   }
 
   template<bool IsAtomic>
   const char *
   generic_stat_counter_and_timer<IsAtomic>::get_count_name (void)
   {
-    return m_def.get_value_name (0);
+    return m_stat_counter.get_name ();
   }
 
   template<bool IsAtomic>
   const char *
   generic_stat_counter_and_timer<IsAtomic>::get_time_name (void)
   {
-    return m_def.get_value_name (1);
+    return m_stat_timer.get_name ();
   }
 
 } // namespace cubperf
