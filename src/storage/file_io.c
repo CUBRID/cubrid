@@ -104,6 +104,13 @@
 #include "intl_support.h"
 #include "tsc_timer.h"
 
+#if defined (SERVER_MODE)
+#include "server_support.h"
+#endif // SERVER_MODE
+#if defined (SERVER_MODE)
+#include "thread_entry_task.hpp"
+#endif // SERVER_MODE
+
 /************************************************************************/
 /* TODO: why is this in client module?                                  */
 /************************************************************************/
@@ -7932,14 +7939,34 @@ exit_on_error:
   goto exit_on_end;
 }
 
+// *INDENT-OFF*
+class fileio_read_backup_volume_task : public cubthread::entry_task
+{
+public:
+  fileio_read_backup_volume_task (void) = delete;
+
+  fileio_read_backup_volume_task (FILEIO_BACKUP_SESSION *session_p)
+  : m_backup_session (session_p)
+  {
+  }
+
+  void
+  execute (context_type &thread_ref) override final
+  {
+    fileio_read_backup_volume (&thread_ref, m_backup_session);
+  }
+
+private:
+  FILEIO_BACKUP_SESSION *m_backup_session;
+};
+// *INDENT-ON*
+
 static int
 fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
 			    FILEIO_THREAD_INFO * thread_info_p, int from_npages, bool is_only_updated_pages,
 			    int check_ratio, int check_npages, FILEIO_QUEUE * queue_p)
 {
   CSS_CONN_ENTRY *conn_p;
-  int conn_index;
-  CSS_JOB_ENTRY *job_entry_p;
   int i;
 
   /* Initialize global MT variables */
@@ -7954,21 +7981,9 @@ fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * ses
   thread_info_p->tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   /* start read threads */
   conn_p = thread_get_current_conn_entry ();
-  conn_index = (conn_p) ? conn_p->idx : 0;
   for (i = 1; i <= thread_info_p->act_r_threads; i++)
     {
-      job_entry_p =
-	css_make_job_entry (conn_p, (CSS_THREAD_FN) fileio_read_backup_volume, (CSS_THREAD_ARG) session_p,
-			    conn_index + i
-			    /* explicit job queue index */
-	);
-
-      if (job_entry_p == NULL)
-	{
-	  return ER_FAILED;
-	}
-
-      css_add_to_job_queue (job_entry_p);
+      css_push_external_task (*thread_p, conn_p, new fileio_read_backup_volume_task (session_p));
     }
 
   /* work as write thread */
