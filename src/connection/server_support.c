@@ -1931,8 +1931,8 @@ shutdown:
 
   LOG_CS_EXIT (thread_p);
 
-  thread_stop_active_workers (THREAD_STOP_LOGWR);
   css_stop_all_workers (*thread_p, THREAD_STOP_LOGWR);
+  thread_stop_active_workers (THREAD_STOP_LOGWR);
 
   // destroy request worker pool
   THREAD_GET_MANAGER ()->destroy_worker_pool (css_Server_request_worker_pool);
@@ -3562,7 +3562,9 @@ css_stop_all_workers (THREAD_ENTRY &thread_ref, thread_stop_type stop_phase)
   // we must not block active connection before terminating log writer thread
   if (stop_phase == THREAD_STOP_LOGWR)
     {
-      css_block_all_active_conn (stop_phase);
+      // todo: temporary disabled.
+      // thread_stop_active_workers will call it. activate when connections are merged to new thread manager
+      // css_block_all_active_conn (stop_phase);
     }
 }
 
