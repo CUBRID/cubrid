@@ -2154,9 +2154,6 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   lk_Gl.TWFG_node[entry_ptr->tran_index].thrd_wait_stime = entry_ptr->thrd_entry->lockwait_stime;
   lk_Gl.deadlock_and_timeout_detector++;
 
-  /* wakeup the dealock detect thread */
-  lock_Deadlock_detect_daemon->wakeup ();
-
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
   /* I must not be a deadlock-victim thread */
