@@ -34,18 +34,17 @@ namespace cubpacking
 #define MAX_SMALL_STRING_SIZE 255
 #define LARGE_STRING_CODE 0xff
 
-#define CHECK_RANGE(ptr, endptr, amount) \
-  do \
-    { \
-      assert ((ptr) + (amount) <= (endptr)); \
-      if ((ptr) + (amount) > (endptr)) \
-        { \
-          throw ("serialization range not properly initialized"); \
-        } \
-    } \
-  while (0)
+  STATIC_INLINE void check_range (const char *ptr, const char *endptr, const size_t amount)
+    __attribute__ ((ALWAYS_INLINE));
 
-  /* TODO[arnia] : error codes and mesages for ER_FAILED return codes */
+  STATIC_INLINE void check_range (const char *ptr, const char *endptr, const size_t amount)
+  {
+    assert (ptr + amount <= endptr);
+    if (ptr + amount > endptr)
+      {
+        abort ();
+      }
+  }
 
   packer::packer (char *storage, const size_t amount)
   {
@@ -68,7 +67,7 @@ namespace cubpacking
   int packer::pack_int (const int value)
   {
     align (INT_ALIGNMENT);
-    CHECK_RANGE (m_ptr, m_end_ptr, OR_INT_SIZE);
+    check_range (m_ptr, m_end_ptr, OR_INT_SIZE);
 
     OR_PUT_INT (m_ptr, value);
     m_ptr += OR_INT_SIZE;
@@ -79,7 +78,7 @@ namespace cubpacking
   int packer::unpack_int (int *value)
   {
     align (INT_ALIGNMENT);
-    CHECK_RANGE (m_ptr, m_end_ptr, OR_INT_SIZE);
+    check_range (m_ptr, m_end_ptr, OR_INT_SIZE);
 
     *value = OR_GET_INT (m_ptr);
     m_ptr += OR_INT_SIZE;
@@ -90,7 +89,7 @@ namespace cubpacking
   int packer::peek_unpack_int (int *value)
   {
     align (INT_ALIGNMENT);
-    CHECK_RANGE (m_ptr, m_end_ptr, OR_INT_SIZE);
+    check_range (m_ptr, m_end_ptr, OR_INT_SIZE);
 
     *value = OR_GET_INT (m_ptr);
 
@@ -105,7 +104,7 @@ namespace cubpacking
   int packer::pack_short (short *value)
   {
     align (SHORT_ALIGNMENT);
-    CHECK_RANGE (m_ptr, m_end_ptr, OR_SHORT_SIZE);
+    check_range (m_ptr, m_end_ptr, OR_SHORT_SIZE);
 
     OR_PUT_SHORT (m_ptr, *value);
     m_ptr += OR_SHORT_SIZE;
@@ -116,7 +115,7 @@ namespace cubpacking
   int packer::unpack_short (short *value)
   {
     align (SHORT_ALIGNMENT);
-    CHECK_RANGE (m_ptr, m_end_ptr, OR_SHORT_SIZE);
+    check_range (m_ptr, m_end_ptr, OR_SHORT_SIZE);
 
     *value = OR_GET_SHORT (m_ptr);
     m_ptr += OR_SHORT_SIZE;
@@ -132,7 +131,7 @@ namespace cubpacking
   int packer::pack_bigint (std::int64_t *value)
   {
     align (MAX_ALIGNMENT);
-    CHECK_RANGE (m_ptr, m_end_ptr, OR_BIGINT_SIZE);
+    check_range (m_ptr, m_end_ptr, OR_BIGINT_SIZE);
 
     OR_PUT_INT64 (m_ptr, value);
     m_ptr += OR_BIGINT_SIZE;
@@ -143,7 +142,7 @@ namespace cubpacking
   int packer::unpack_bigint (std::int64_t *value)
   {
     align (MAX_ALIGNMENT);
-    CHECK_RANGE (m_ptr, m_end_ptr, OR_BIGINT_SIZE);
+    check_range (m_ptr, m_end_ptr, OR_BIGINT_SIZE);
 
     OR_GET_INT64 (m_ptr, value);
     m_ptr += OR_BIGINT_SIZE;
@@ -156,7 +155,7 @@ namespace cubpacking
     int i;
 
     align (INT_ALIGNMENT);
-    CHECK_RANGE (m_ptr, m_end_ptr, (OR_INT_SIZE * (count + 1)));
+    check_range (m_ptr, m_end_ptr, (OR_INT_SIZE * (count + 1)));
 
     OR_PUT_INT (m_ptr, count);
     m_ptr += OR_INT_SIZE;
@@ -174,7 +173,7 @@ namespace cubpacking
     int i;
 
     align (INT_ALIGNMENT);
-    CHECK_RANGE (m_ptr, m_end_ptr, OR_INT_SIZE);
+    check_range (m_ptr, m_end_ptr, OR_INT_SIZE);
 
     count = OR_GET_INT (m_ptr);
     m_ptr += OR_INT_SIZE;
@@ -184,7 +183,7 @@ namespace cubpacking
 	return NO_ERROR;
       }
 
-    CHECK_RANGE (m_ptr, m_end_ptr, OR_INT_SIZE * count);
+    check_range (m_ptr, m_end_ptr, OR_INT_SIZE * count);
 
     for (i = 0; i < count; i++)
       {
@@ -206,7 +205,7 @@ namespace cubpacking
     int i;
 
     align (INT_ALIGNMENT);
-    CHECK_RANGE (m_ptr, m_end_ptr, (OR_INT_SIZE * (count + 1)));
+    check_range (m_ptr, m_end_ptr, (OR_INT_SIZE * (count + 1)));
 
     OR_PUT_INT (m_ptr, count);
     m_ptr += OR_INT_SIZE;
@@ -225,12 +224,12 @@ namespace cubpacking
     int count;
 
     align (INT_ALIGNMENT);
-    CHECK_RANGE (m_ptr, m_end_ptr, OR_INT_SIZE);
+    check_range (m_ptr, m_end_ptr, OR_INT_SIZE);
 
     count = OR_GET_INT (m_ptr);
     m_ptr += OR_INT_SIZE;
 
-    CHECK_RANGE (m_ptr, m_end_ptr, OR_INT_SIZE * count);
+    check_range (m_ptr, m_end_ptr, OR_INT_SIZE * count);
 
     for (i = 0; i < count; i++)
       {
@@ -256,13 +255,13 @@ namespace cubpacking
     size_t value_size = or_packed_value_size ((DB_VALUE *) &value, 1, 1, 0);
 
     align (MAX_ALIGNMENT);
-    CHECK_RANGE (m_ptr, m_end_ptr, value_size);
+    check_range (m_ptr, m_end_ptr, value_size);
     old_ptr = m_ptr;
 
     m_ptr = or_pack_value (m_ptr, (DB_VALUE *) &value);
     assert (old_ptr + value_size == m_ptr);
 
-    CHECK_RANGE (m_ptr, m_end_ptr, 0);
+    check_range (m_ptr, m_end_ptr, 0);
 
     return NO_ERROR;
   }
@@ -278,7 +277,7 @@ namespace cubpacking
     size_t value_size = or_packed_value_size (value, 1, 1, 0);
     assert (old_ptr + value_size == m_ptr);
 
-    CHECK_RANGE (m_ptr, m_end_ptr, 0);
+    check_range (m_ptr, m_end_ptr, 0);
 
     return NO_ERROR;
   }
@@ -303,7 +302,7 @@ namespace cubpacking
 	return ER_FAILED;
       }
 
-    CHECK_RANGE (m_ptr, m_end_ptr, len + 1);
+    check_range (m_ptr, m_end_ptr, len + 1);
 
     OR_PUT_BYTE (m_ptr, len);
     m_ptr += OR_BYTE_SIZE;
@@ -322,7 +321,7 @@ namespace cubpacking
   {
     size_t len;
 
-    CHECK_RANGE (m_ptr, m_end_ptr, OR_BYTE_SIZE);
+    check_range (m_ptr, m_end_ptr, OR_BYTE_SIZE);
 
     len = OR_GET_BYTE (m_ptr);
     if (len > max_size)
@@ -332,7 +331,7 @@ namespace cubpacking
 
     m_ptr += OR_BYTE_SIZE;
 
-    CHECK_RANGE (m_ptr, m_end_ptr, len);
+    check_range (m_ptr, m_end_ptr, len);
     if (len > 0)
       {
 	(void) memcpy (string, m_ptr, len);
@@ -366,7 +365,7 @@ namespace cubpacking
     len = str.size ();
 
     align (INT_ALIGNMENT);
-    CHECK_RANGE (m_ptr, m_end_ptr, len + OR_INT_SIZE);
+    check_range (m_ptr, m_end_ptr, len + OR_INT_SIZE);
 
     OR_PUT_INT (m_ptr, len);
     m_ptr += OR_INT_SIZE;
@@ -385,14 +384,14 @@ namespace cubpacking
 
     align (INT_ALIGNMENT);
 
-    CHECK_RANGE (m_ptr, m_end_ptr, OR_INT_SIZE);
+    check_range (m_ptr, m_end_ptr, OR_INT_SIZE);
 
     len = OR_GET_INT (m_ptr);
     m_ptr += OR_INT_SIZE;
 
     if (len > 0)
       {
-	CHECK_RANGE (m_ptr, m_end_ptr, len);
+	check_range (m_ptr, m_end_ptr, len);
 	str = std::string ((const char *) m_ptr, len);
 	m_ptr += len;
       }
@@ -418,7 +417,7 @@ namespace cubpacking
   {
     size_t len;
 
-    CHECK_RANGE (m_ptr, m_end_ptr, 1);
+    check_range (m_ptr, m_end_ptr, 1);
 
     len = OR_GET_BYTE (m_ptr);
 
@@ -464,7 +463,7 @@ namespace cubpacking
       }
     else
       {
-	CHECK_RANGE (m_ptr, m_end_ptr, str_size + 1 + OR_INT_SIZE);
+	check_range (m_ptr, m_end_ptr, str_size + 1 + OR_INT_SIZE);
 
 	OR_PUT_BYTE (m_ptr, LARGE_STRING_CODE);
 	m_ptr++;
@@ -477,7 +476,7 @@ namespace cubpacking
   {
     size_t len;
 
-    CHECK_RANGE (m_ptr, m_end_ptr, 1);
+    check_range (m_ptr, m_end_ptr, 1);
     len = OR_GET_BYTE (m_ptr);
     if (len == LARGE_STRING_CODE)
       {
@@ -499,7 +498,7 @@ namespace cubpacking
       }
     if (len > 0)
       {
-	CHECK_RANGE (m_ptr, m_end_ptr, len);
+	check_range (m_ptr, m_end_ptr, len);
 	memcpy (str, m_ptr, len);
 	m_ptr += len;
       }

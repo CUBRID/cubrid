@@ -18,16 +18,16 @@
  */
 
 /*
- * mem_buffer.hpp
+ * pinnable_buffer.hpp
  */
 
-#ifndef _MEM_BUFFER_HPP_
-#define _MEM_BUFFER_HPP_
+#ifndef _PINNABLE_BUFFER_HPP_
+#define _PINNABLE_BUFFER_HPP_
 
 #ident "$Id$"
 
-#include "pinning.hpp"
 #include "dbtype.h"
+#include "pinning.hpp"
 #include <atomic>
 #include <vector>
 
@@ -39,32 +39,33 @@
 namespace mem
 {
 
-  class buffer : public cubbase::pinnable
+  class pinnable_buffer : public cubbase::pinnable
   {
     public:
-      buffer ()
+      pinnable_buffer ()
       {
-	storage = NULL;
+	m_storage = NULL;
+        m_end_ptr = NULL;
       };
 
-      buffer (char *ptr, const size_t buf_size)
+      pinnable_buffer (char *ptr, const size_t buf_size)
       {
 	init (ptr, buf_size, NULL);
       };
 
-      ~buffer ()
+      ~pinnable_buffer ()
       {
 	assert (get_pin_count () == 0);
       };
 
       char *get_buffer (void)
       {
-	return storage;
+	return m_storage;
       };
 
       size_t get_buffer_size (void)
       {
-	return end_ptr - storage;
+	return m_end_ptr - m_storage;
       };
 
       int init (char *ptr, const size_t buf_size, cubbase::pinner *referencer);
@@ -72,11 +73,11 @@ namespace mem
     protected:
 
       /* start of allocated memory */
-      char *storage;
+      char *m_storage;
       /* end of allocated memory */
-      char *end_ptr;
+      char *m_end_ptr;
   };
 
 } /* namespace mem */
 
-#endif /* _MEM_BUFFER_HPP_ */
+#endif /* _PINNABLE_BUFFER_HPP_ */

@@ -21,7 +21,7 @@
 #define _TEST_PACKING_HPP_
 
 #include "packable_object.hpp"
-#include "mem_buffer.hpp"
+#include "pinnable_buffer.hpp"
 #include <vector>
 
 namespace test_packing
@@ -34,9 +34,9 @@ namespace test_packing
   class buffer_manager : public cubbase::pinner
   {
     private:
-      std::vector<mem::buffer *> buffers;
+      std::vector<mem::pinnable_buffer *> buffers;
     public:
-      void allocate_bufer (mem::buffer *&buf, const size_t &amount);
+      void allocate_bufer (mem::pinnable_buffer *&buf, const size_t &amount);
 
       void free_storage();
 

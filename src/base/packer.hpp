@@ -69,7 +69,6 @@ namespace cubpacking
       int pack_int_array (const int *array, const int count);
       int unpack_int_array (int *array, int &count);
 
-      /* TODO[arnia] : remove these if not needed */
       size_t get_packed_int_vector_size (size_t curr_offset, const int count);
       int pack_int_vector (const std::vector<int> &array);
       int unpack_int_vector (std::vector <int> &array);
