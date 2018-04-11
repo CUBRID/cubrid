@@ -3473,7 +3473,7 @@ css_stop_log_writer (THREAD_ENTRY &thread_ref)
       // this is not log writer
       return;
     }
-  if (thread_ref.tran_index != -1)
+  if (thread_ref.tran_index == -1)
     {
       // no transaction, no stop
       return;
