@@ -39,14 +39,14 @@ namespace cubthread
   static cubperf::stat_id STAT_TIMEOUT_COUNT = 0;
   static cubperf::stat_id STAT_NO_SLEEP_COUNT = 0;
   static cubperf::stat_id STAT_AWAKEN_COUNT_AND_TIME = 0;
-  static cubperf::statset_definition Waiter_statistics =
+  static const cubperf::statset_definition Waiter_statistics =
   {
     cubperf::stat_definition (STAT_LOCK_WAKEUP_COUNT, cubperf::stat_definition::COUNTER, "waiter_lock_wakeup_count"),
     cubperf::stat_definition (STAT_SLEEP_COUNT, cubperf::stat_definition::COUNTER, "waiter_sleep_count"),
     cubperf::stat_definition (STAT_TIMEOUT_COUNT, cubperf::stat_definition::COUNTER, "waiter_timeout_count"),
     cubperf::stat_definition (STAT_NO_SLEEP_COUNT, cubperf::stat_definition::COUNTER, "waiter_no_sleep_count"),
     cubperf::stat_definition (STAT_AWAKEN_COUNT_AND_TIME, cubperf::stat_definition::COUNTER_AND_TIMER,
-			      "waiter_awaken_count", "waiter_awaken_delay")
+    "waiter_awaken_count", "waiter_awaken_delay")
   };
 
   //////////////////////////////////////////////////////////////////////////

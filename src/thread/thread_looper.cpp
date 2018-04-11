@@ -42,11 +42,11 @@ namespace cubthread
 
   static cubperf::stat_id STAT_LOOPER_SLEEP_COUNT_AND_TIME = 0;
   static cubperf::stat_id STAT_LOOPER_RESET_COUNT = 0;
-  cubperf::statset_definition looper_statdef =
+  static const cubperf::statset_definition looper_statdef =
   {
-    cubperf::statset_definition::stat_count_time ("looper_sleep_count", "looper_sleep_time",
-	STAT_LOOPER_SLEEP_COUNT_AND_TIME),
-    cubperf::statset_definition::stat_count ("looper_reset_count", STAT_LOOPER_RESET_COUNT)
+    cubperf::stat_definition (STAT_LOOPER_SLEEP_COUNT_AND_TIME, cubperf::stat_definition::COUNTER_AND_TIMER,
+    "looper_sleep_count", "looper_sleep_time"),
+    cubperf::stat_definition (STAT_LOOPER_RESET_COUNT, cubperf::stat_definition::COUNTER, "looper_reset_count"),
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -61,7 +61,7 @@ namespace cubthread
     , m_was_woken_up (false)
     , m_setup_period ()
     , m_start_execution_time ()
-    , m_stats (*new cubperf::statset (looper_statdef))
+    , m_stats (*looper_statdef.create_statset ())
   {
     // infinite waits
     m_setup_period = std::bind (&looper::setup_infinite_wait, *this, std::placeholders::_1, std::placeholders::_2);
@@ -105,7 +105,7 @@ namespace cubthread
 
     assert (m_setup_period);
 
-    m_stats.reset_timepoint ();
+    m_stats.reset_timept ();
 
     bool is_timed_wait = true;
     delta_time period = delta_time (0);
@@ -138,14 +138,14 @@ namespace cubthread
 
     // register start of the task execution time
     m_start_execution_time = std::chrono::system_clock::now ();
-    m_stats.increment_and_time (STAT_LOOPER_SLEEP_COUNT_AND_TIME);
+    looper_statdef.time_and_increment (m_stats, STAT_LOOPER_SLEEP_COUNT_AND_TIME);
   }
 
   void
   looper::reset (void)
   {
     m_period_index = 0;
-    m_stats.increment (STAT_LOOPER_RESET_COUNT);
+    looper_statdef.increment (m_stats, STAT_LOOPER_RESET_COUNT);
   }
 
   bool
@@ -203,9 +203,9 @@ namespace cubthread
   }
 
   void
-  looper::get_stats (stat_type *stats_out)
+  looper::get_stats (cubperf::stat_value *stats_out)
   {
-    m_stats.get_stats (stats_out);
+    looper_statdef.get_stat_values (m_stats, stats_out);
   }
 
 } // namespace cubthread

@@ -141,8 +141,8 @@ namespace cubperf
       inline void time_and_increment (atomic_statset &statsetr, stat_id id, duration d, stat_value incr = 1) const;
       inline void time_and_increment (atomic_statset &statsetr, stat_id id, stat_value incr = 1) const;
 
-      void get_stat_values (statset &statsetr, stat_value *output_stats);
-      void get_stat_values (atomic_statset &statsetr, stat_value *output_stats);
+      void get_stat_values (statset &statsetr, stat_value *output_stats) const;
+      void get_stat_values (atomic_statset &statsetr, stat_value *output_stats) const;
 
       // getters
       std::size_t get_stat_count () const;

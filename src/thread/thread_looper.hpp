@@ -24,6 +24,8 @@
 #ifndef _THREAD_LOOPER_HPP_
 #define _THREAD_LOOPER_HPP_
 
+#include "perf.hpp"
+
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -32,12 +34,6 @@
 #include <cassert>
 #include <cinttypes>
 #include <cstdint>
-
-// forward def
-namespace cubperf
-{
-  class statset;
-}
 
 namespace cubthread
 {
@@ -132,8 +128,7 @@ namespace cubthread
       // reset count
       static const std::size_t STAT_COUNT = 3;
 
-      using stat_type = std::uint64_t;
-      void get_stats (stat_type *stats_out);
+      void get_stats (cubperf::stat_value *stats_out);
 
     private:
 
@@ -156,9 +151,6 @@ namespace cubthread
 
       // statistics
       cubperf::statset &m_stats;
-      stat_type m_sleep_count;
-      stat_type m_sleep_time;
-      stat_type m_reset_count;
   };
 
   /************************************************************************/

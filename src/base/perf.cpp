@@ -133,13 +133,13 @@ namespace cubperf
   }
 
   void
-  cubperf::statset_definition::get_stat_values (statset &statsetr, stat_value *output_stats)
+  cubperf::statset_definition::get_stat_values (statset &statsetr, stat_value *output_stats) const
   {
     std::memcpy (output_stats, statsetr.m_values, get_values_memsize ());
   }
 
   void
-  cubperf::statset_definition::get_stat_values (atomic_statset &statsetr, stat_value *output_stats)
+  cubperf::statset_definition::get_stat_values (atomic_statset &statsetr, stat_value *output_stats) const
   {
     for (std::size_t it = 0; it < get_value_count (); it++)
       {
