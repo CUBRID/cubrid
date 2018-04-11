@@ -24,6 +24,7 @@
 #ident "$Id$"
 
 #include "packer.hpp"
+#include "dbtype_def.h"
 #include "object_representation.h"
 
 #include <vector>

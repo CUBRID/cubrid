@@ -26,7 +26,7 @@
 
 #ident "$Id$"
 
-#include "dbtype.h"
+#include "memory_alloc.h"
 
 #include <vector>
 #include <string>

@@ -33,14 +33,6 @@
 
 namespace cubbase
 {
-
-#define NOT_IMPLEMENTED() \
-  do \
-    { \
-      throw ("Not implemented"); \
-    } \
-  while (0)
-
   class pinnable;
 
   class pinner
