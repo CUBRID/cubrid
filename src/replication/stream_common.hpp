@@ -27,6 +27,7 @@
 #define _STREAM_COMMON_HPP_
 
 #include "packing_common.hpp"
+#include "cubstream.hpp"
 #include <set>
 #include <assert.h>
 #include <cstddef>
@@ -35,13 +36,12 @@
 namespace cubstream
 {
 
-typedef unsigned long long stream_position;
-
 enum stream_mode
 {
   WRITE_STREAM = 0,
   READ_STREAM
 };
+
 typedef enum stream_mode STREAM_MODE;
 
 class stream_buffer;

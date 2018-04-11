@@ -107,13 +107,8 @@ public:
 };
 
 /*
- * stream is a contiguous stream (flow) of bytes
- * at one time, a part of it has a storage support (buffer) which can be read or written 
- * a stream can be read/written when packing/unpacking objects or by higher level objects (files, communication channels) 
- * if an operation would exceed the storage range, the stream needs to fetch aditional data or 
- * append new storage (for writting)
- *
- * TODO : create a stream only for read of only for write (never both read and write !!!)
+ * this adds a layer which allows handling a stream in chunks (stream_entry),
+ * especially in context of packable objects
  */
 class packing_stream : public stream
 {
@@ -163,8 +158,8 @@ protected:
 
   int remove_buffer_mapping (const STREAM_MODE stream_mode, buffer_context &mapped_range);
 
-  char * fetch_data_from_provider (buffer_provider *context_provider, const stream_position pos, 
-                                          char *ptr, const size_t &amount);
+  char * fetch_data_from_provider (buffer_provider *context_provider, const stream_position &pos, 
+                                   char *ptr, const size_t amount);
 
   stream_position reserve_no_buffer (const size_t amount);
 

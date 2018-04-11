@@ -26,17 +26,10 @@
 #ifndef _CUBSTREAM_HPP_
 #define _CUBSTREAM_HPP_
 
-#include <vector>
-#include <functional>
-#include "packable_object.hpp"
-#include "stream_common.hpp"
-#include "storage_common.h"
-
-class cubpacking::packable_object;
-class cubpacking::object_builder;
-
 namespace cubstream
 {
+
+typedef unsigned long long stream_position;
 
 class buffer_provider;
 class stream_packer;
@@ -80,7 +73,6 @@ public:
  * if an operation would exceed the storage range, the stream needs to fetch aditional data or 
  * append new storage (for writting)
  *
- * TODO : create a stream only for read of only for write (never both read and write !!!)
  */
 class stream
 {

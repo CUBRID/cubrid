@@ -83,7 +83,8 @@ private:
   file_pos_t curr_append_position;
   file_pos_t curr_read_position;
 
-  int fd;
+  /* mapping of file sequence to OS file descriptor */
+  std::map<int,int> file_descriptors;
 
   /* stream file is split into several physical files
    * this is the desired size of such physical file;
@@ -108,12 +109,23 @@ private:
   int m_curr_file_seqno;
 
   /* end positions of files, the positions are relevant for available files (m_start_file_seqno) */
-  std::map<cubstream::stream_position> m_file_end_positions;
+  std::vector<cubstream::stream_position> m_file_end_positions;
 
-private:
-  int get_seqno_from_stream_pos (const cubstream::stream_position pos);
+protected:
+  int get_file_desc_from_file_id (const int file_id);
+  int get_fileid_from_stream_pos (const cubstream::stream_position &pos);
+  int get_fileid_from_stream_pos_ext (const cubstream::stream_position &pos, size_t &amount, size_t &file_offset);
 
-  int get_filename (char *filename, const size_t max_filename, const cubstream::stream_position pos);
+  int get_filename_with_position (char *filename, const size_t max_filename, const cubstream::stream_position &pos);
+  int get_filename_with_fileid (char *filename, const size_t max_filename, const int file_id);
+
+  int open_fileid (const int file_id);
+
+  int open_file (const char *file_path);
+
+  size_t read_buffer (const int file_id, const size_t file_offset, const char *buf, const size_t amount);
+  size_t write_buffer (const int file_id, const size_t file_offset, const char *buf, const size_t amount);
+
 public:
   static const int DEFAULT_FILENAME_DIGITS = 4;
   
@@ -126,19 +138,9 @@ public:
              const int print_digits = DEFAULT_FILENAME_DIGITS);
 
 
-  int open_file (const char *file_path);
+  int write (const cubstream::stream_position &pos, const char *buf, const size_t amount);
 
-  int read_no_cache (char *storage, const size_t count, file_pos_t start_pos = CURRENT_POSITION);
-
-  int write_buffer (cubstream::stream_buffer *buffer);
-
-  int fetch_data (char *ptr, const size_t &amount);
-  
-  int extend_buffer (cubstream::stream_buffer **existing_buffer, const size_t &amount);
-
-  int flush_old_stream_data (void);
-
-  cubstream::packing_stream * get_write_stream (void);
+  int read (const cubstream::stream_position &pos, const char *buf, const size_t amount);
 
 };
 

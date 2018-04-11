@@ -691,8 +691,8 @@ int packing_stream::attach_buffers (std::vector <buffer_context> &buffered_range
   return error_code;
 }
 
-char * packing_stream::fetch_data_from_provider (buffer_provider *context_provider, const stream_position pos,
-                                                        char *ptr, const size_t &amount)
+char * packing_stream::fetch_data_from_provider (buffer_provider *context_provider, const stream_position &pos,
+                                                        char *ptr, const size_t amount)
 {
   int err = NO_ERROR;
 
