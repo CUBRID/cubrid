@@ -99,6 +99,12 @@ int stream_file::get_fileid_from_stream_pos_ext (const cubstream::stream_positio
   return -1;
 }
 
+int stream_file::create_fileid_to_pos (const cubstream::stream_position &pos)
+{
+
+  return NO_ERROR;
+}
+
 
 int stream_file::get_filename_with_position (char *filename, const size_t max_filename,
                                              const cubstream::stream_position &pos)
@@ -145,20 +151,37 @@ int stream_file::open_file (const char *file_path)
 {
   int fd;
 
-#if defined (LINUX)
+#if defined (WINDOWS)
+  fd = open (file_path, O_RDWR | O_BINARY);
+#else
   fd = open (file_path, O_RDWR);
-  if (fd == -1)
+#endif
+
+  if (fd < 0)
     {
       /* TODO[arnia] : error */
-      return ER_FAILED;
     }
-#else
-  NOT_IMPLEMENTED ();
-#endif
 
   return fd;
 }
 
+int stream_file::create_file (const char *file_path)
+{
+  int fd;
+
+#if defined (WINDOWS)
+  fd = open (file_path, O_RDWR | O_BINARY | O_CREAT | O_EXCL);
+#else
+  fd = open (file_path, O_RDWR | O_CREAT | O_EXCL);
+#endif
+
+  if (fd < 0)
+    {
+      /* TODO[arnia] : error */
+    }
+
+  return fd;
+}
 
 size_t stream_file::read_buffer (const int file_id, const size_t file_offset, const char *buf, const size_t amount)
 {
@@ -180,7 +203,11 @@ size_t stream_file::read_buffer (const int file_id, const size_t file_offset, co
 #if defined (LINUX)  
   actual_read = pread (fd, buf, amount, file_offset);
 #else
-  NOT_IMPLEMENTED ();
+   if (lseek (fd, file_offset, SEEK_SET) != file_offset)
+     {
+        return 0;
+     }
+   actual_read = read (fd, buf, amount);
 #endif
 
   return actual_read;
@@ -215,21 +242,43 @@ size_t stream_file::write_buffer (const int file_id, const size_t file_offset, c
 
 int stream_file::write (const cubstream::stream_position &pos, const char *buf, const size_t amount)
 {
+  cubstream::stream_position curr_pos;
+  size_t file_offset, rem_amount, available_amount_in_file;
+  int file_id;
+  int err = NO_ERROR;
 
-  /* TODO[arnia] : atomic write  */
-  /* TODO[arnia] : incremental write not supported yet */
-
-
-
-#if defined (LINUX)
-  if (pwrite (fd, buffer->get_buffer(), buffer_size, curr_append_position) != buffer_size)
+  if (pos + amount >= curr_append_position)
     {
-      /* TODO[arnia] : error */
-      return ER_FAILED;
+      create_fileid_to_pos (pos + amount);
     }
-#else
-  NOT_IMPLEMENTED ();
-#endif
+
+  curr_pos = pos;
+  rem_amount = amount;
+
+  while (rem_amount > 0)
+    {
+      size_t current_to_read;
+      size_t actual_read;
+
+      file_id = get_fileid_from_stream_pos_ext (curr_pos, available_amount_in_file, file_offset);
+      if (file_id < 0)
+        {
+          /* TODO[arnia] : not found */
+          return ER_FAILED;
+        }
+
+      current_to_read = MIN (available_amount_in_file, rem_amount);
+
+      actual_read = read_buffer (file_id, file_offset, buf, current_to_read);
+      if (actual_read < current_to_read)
+        {
+          return ER_FAILED;
+        }
+
+      rem_amount -= current_to_read;
+      curr_pos += current_to_read;
+      buf += current_to_read;
+    }
 
 
   return NO_ERROR;

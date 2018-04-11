@@ -116,12 +116,16 @@ protected:
   int get_fileid_from_stream_pos (const cubstream::stream_position &pos);
   int get_fileid_from_stream_pos_ext (const cubstream::stream_position &pos, size_t &amount, size_t &file_offset);
 
+  int create_fileid_to_pos (const cubstream::stream_position &pos);
+
   int get_filename_with_position (char *filename, const size_t max_filename, const cubstream::stream_position &pos);
   int get_filename_with_fileid (char *filename, const size_t max_filename, const int file_id);
 
   int open_fileid (const int file_id);
 
   int open_file (const char *file_path);
+
+  int create_file (const char *file_path);
 
   size_t read_buffer (const int file_id, const size_t file_offset, const char *buf, const size_t amount);
   size_t write_buffer (const int file_id, const size_t file_offset, const char *buf, const size_t amount);
