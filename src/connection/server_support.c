@@ -3537,7 +3537,7 @@ css_stop_all_workers (THREAD_ENTRY &thread_ref, thread_stop_type stop_phase)
       // tell all to stop
       if (stop_phase == THREAD_STOP_LOGWR)
         {
-          css_Server_request_worker_pool->map_running_contexts (css_stop_log_writer, thread_ref);
+          css_Server_request_worker_pool->map_running_contexts (css_stop_log_writer);
         }
       else
         {
