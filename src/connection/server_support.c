@@ -1957,8 +1957,8 @@ shutdown:
 
   LOG_CS_EXIT (thread_p);
 
-  thread_stop_active_workers (THREAD_STOP_LOGWR);
   css_stop_all_workers (*thread_p, THREAD_STOP_LOGWR);
+  thread_stop_active_workers (THREAD_STOP_LOGWR);
 
   // destroy request worker pool
   THREAD_GET_MANAGER ()->destroy_worker_pool (css_Server_request_worker_pool);
@@ -3513,7 +3513,7 @@ css_stop_log_writer (THREAD_ENTRY & thread_ref, bool &)
       // this is not log writer
       return;
     }
-  if (thread_ref.tran_index != -1)
+  if (thread_ref.tran_index == -1)
     {
       // no transaction, no stop
       return;
@@ -3576,8 +3576,16 @@ css_stop_all_workers (THREAD_ENTRY &thread_ref, thread_stop_type stop_phase)
   while (true)
     {
       // tell all to stop
-      css_Server_request_worker_pool->map_running_contexts (css_stop_non_log_writer, thread_ref);
-      css_Connection_worker_pool->map_running_contexts (css_stop_non_log_writer, thread_ref);
+      if (stop_phase == THREAD_STOP_LOGWR)
+        {
+          css_Server_request_worker_pool->map_running_contexts (css_stop_log_writer);
+          css_Connection_worker_pool->map_running_contexts (css_stop_log_writer);
+        }
+      else
+        {
+          css_Server_request_worker_pool->map_running_contexts (css_stop_non_log_writer, thread_ref);
+          css_Connection_worker_pool->map_running_contexts (css_stop_non_log_writer, thread_ref);
+        }
 
       // make sure none is blocked in lock waits
       lock_force_timeout_lock_wait_transactions (stop_phase);
@@ -3612,16 +3620,6 @@ css_stop_all_workers (THREAD_ENTRY &thread_ref, thread_stop_type stop_phase)
   if (stop_phase == THREAD_STOP_LOGWR)
     {
       css_block_all_active_conn (stop_phase);
-    }
-}
-
-static void
-css_stop_all_log_writer (THREAD_ENTRY &thread_ref)
-{
-  if (css_Server_request_worker_pool == NULL)
-    {
-      // nothing to stop
-      return;
     }
 }
 

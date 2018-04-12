@@ -82,12 +82,6 @@
 /* number of log pages in each vacuum block */
 #define VACUUM_LOG_BLOCK_PAGES_DEFAULT 31
 
-/* prefetch log modes :
- * 0 : vacuum master thread is performing prefetch in a shared buffer
- * 1 : each vacuum worker performs prefetch in its own buffer */
-#define VACUUM_PREFETCH_LOG_MODE_MASTER 0
-#define VACUUM_PREFETCH_LOG_MODE_WORKERS 1
-
 /* VACUUM_WORKER_STATE - State of vacuum workers */
 enum vacuum_worker_state
 {
@@ -144,6 +138,9 @@ struct vacuum_worker
   char *undo_data_buffer;	/* Buffer to save log undo data */
   int undo_data_buffer_capacity;	/* Capacity of log undo data buffer */
 
+  // page buffer private lru list
+  int private_lru_index;
+
   /* Caches postpones to avoid reading them from log after commit top operation with postpone. Otherwise, log critical
    * section may be required which will slow the access on merged index nodes. */
   VACUUM_CACHE_POSTPONE_STATUS postpone_cache_status;
@@ -152,9 +149,9 @@ struct vacuum_worker
   VACUUM_CACHE_POSTPONE_ENTRY postpone_cached_entries[VACUUM_CACHE_POSTPONE_ENTRIES_MAX_COUNT];
   int postpone_cached_entries_count;
 
-#if defined (SERVER_MODE)
   char *prefetch_log_buffer;	/* buffer for prefetching log pages */
-#endif				/* SERVER_MODE */
+  LOG_PAGEID prefetch_first_pageid;	/* first prefetched log pageid */
+  LOG_PAGEID prefetch_last_pageid;	/* last prefetch log pageid */
 
   bool allocated_resources;
 };

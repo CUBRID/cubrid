@@ -1011,8 +1011,7 @@ STATIC_INLINE int pgbuf_get_shared_lru_index_for_add (void) __attribute__ ((ALWA
 static int pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count,
 						 float lru_sum_flush_priority, bool * assigned_directly);
 static PGBUF_BCB *pgbuf_get_victim (THREAD_ENTRY * thread_p);
-STATIC_INLINE PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
-  __attribute__ ((ALWAYS_INLINE));
+static PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx);
 #if defined (SERVER_MODE)
 static int pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list,
 						       PGBUF_BCB * bcb_start);
@@ -3683,11 +3682,9 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
       collected_bcbs++;
 
 #if defined(SERVER_MODE)
-      if (thread_p && thread_p->shutdown == true)
+      if (thread_p != NULL && thread_p->shutdown == true)
 	{
-#if defined (SERVER_MODE)
 	  pgbuf_Pool.is_checkpoint = false;
-#endif
 	  return ER_FAILED;
 	}
 #endif
@@ -3766,6 +3763,12 @@ pgbuf_flush_chkpt_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flu
   while (seq_flusher->flush_idx < seq_flusher->flush_cnt)
     {
 #if defined (SERVER_MODE)
+      if (thread_p != NULL && thread_p->shutdown)
+	{
+	  // stop
+	  return ER_FAILED;
+	}
+
       gettimeofday (&cur_time, NULL);
 
       /* compute time limit for allowed flush interval */
@@ -8379,7 +8382,7 @@ pgbuf_is_bcb_victimizable (PGBUF_BCB * bcb, bool has_mutex_lock)
  *       If its fcnt != 0, makes bufptr->PrevBCB bottom and retry. 
  *       While this processing, the caller must be the holder of the LRU list.
  */
-STATIC_INLINE PGBUF_BCB *
+static PGBUF_BCB *
 pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 {
 #define PERF(pstatid) if (perf_tracking) perfmon_inc_stat (thread_p, pstatid)
@@ -9963,6 +9966,10 @@ pgbuf_wake_flush_waiters (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
   THREAD_ENTRY *prev_waiter = NULL;
   THREAD_ENTRY *crt_waiter = NULL;
   THREAD_ENTRY *save_next_waiter = NULL;
+  PERF_UTIME_TRACKER timetr;
+
+  PERF_UTIME_TRACKER_START (thread_p, &timetr);
+
   PGBUF_BCB_CHECK_OWN (bcb);
 
   for (crt_waiter = bcb->next_wait_thrd; crt_waiter != NULL; crt_waiter = save_next_waiter)
@@ -9989,6 +9996,8 @@ pgbuf_wake_flush_waiters (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 	  prev_waiter = crt_waiter;
 	}
     }
+
+  PERF_UTIME_TRACKER_TIME (thread_p, &timetr, PSTAT_PB_WAKE_FLUSH_WAITER);
 #endif /* SERVER_MODE */
 }
 
@@ -14323,6 +14332,10 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 #if defined (SERVER_MODE)
   THREAD_ENTRY *waiter_thread = NULL;
 
+  PERF_UTIME_TRACKER timetr;
+
+  PERF_UTIME_TRACKER_START (thread_p, &timetr);
+
   /* must hold bcb mutex and victimization should be possible. the only victim-candidate invalidating flag allowed here
    * is PGBUF_BCB_FLUSHING_TO_DISK_FLAG (because flush also calls this). */
   assert (!pgbuf_bcb_is_direct_victim (bcb));
@@ -14365,9 +14378,12 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 
       thread_unlock_entry (waiter_thread);
 
+      PERF_UTIME_TRACKER_TIME (thread_p, &timetr, PSTAT_PB_ASSIGN_DIRECT_BCB);
+
       /* bcb was assigned */
       return true;
     }
+  PERF_UTIME_TRACKER_TIME (thread_p, &timetr, PSTAT_PB_ASSIGN_DIRECT_BCB);
 #endif /* SERVER_MODE */
 
   /* no waiting threads */
@@ -16153,6 +16169,37 @@ pgbuf_daemons_destroy ()
   cubthread::get_manager ()->destroy_daemon (pgbuf_Flush_control_daemon);
 }
 #endif /* SERVER_MODE */
+
+void
+pgbuf_daemons_get_stats (UINT64 * stats_out)
+{
+#if defined (SERVER_MODE)
+  UINT64 *statsp = stats_out;
+
+  if (pgbuf_Page_flush_daemon != NULL)
+    {
+      pgbuf_Page_flush_daemon->get_stats (statsp);
+    }
+  statsp += cubthread::daemon::STAT_COUNT;
+
+  if (pgbuf_Page_post_flush_daemon != NULL)
+    {
+      pgbuf_Page_post_flush_daemon->get_stats (statsp);
+    }
+  statsp += cubthread::daemon::STAT_COUNT;
+
+  if (pgbuf_Flush_control_daemon != NULL)
+    {
+      pgbuf_Flush_control_daemon->get_stats (statsp);
+    }
+  statsp += cubthread::daemon::STAT_COUNT;
+
+  if (pgbuf_Page_maintenance_daemon != NULL)
+    {
+      pgbuf_Page_maintenance_daemon->get_stats (statsp);
+    }
+#endif
+}
 // *INDENT-ON*
 
 /*

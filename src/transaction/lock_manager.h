@@ -217,7 +217,6 @@ extern bool lock_has_lock_transaction (int tran_index);
 extern bool lock_is_waiting_transaction (int tran_index);
 extern LK_ENTRY *lock_get_class_lock (const OID * class_oid, int tran_index);
 extern void lock_force_timeout_lock_wait_transactions (unsigned short stop_phase);
-extern bool lock_force_timeout_expired_wait_transactions (void *thrd_entry);
 extern void lock_notify_isolation_incons (THREAD_ENTRY * thread_p,
 					  bool (*fun) (const OID * class_oid, const OID * oid, void *args), void *args);
 extern int lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlocks, int tran_index);
@@ -245,4 +244,8 @@ extern int lock_has_lock_on_object (const OID * oid, const OID * class_oid, int 
 extern int lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock, int cond_flag);
 extern void lock_demote_read_class_lock_for_checksumdb (THREAD_ENTRY * thread_p, int tran_index, const OID * class_oid);
 extern const char *lock_wait_state_to_string (int state);
+
+#if defined (SERVER_MODE)
+extern void lock_deadlock_detect_daemon_get_stats (UINT64 * statsp);
+#endif // SERVER_MODE
 #endif /* _LOCK_MANAGER_H_ */
