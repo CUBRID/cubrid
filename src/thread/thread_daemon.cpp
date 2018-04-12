@@ -27,10 +27,28 @@
 
 namespace cubthread
 {
+  //////////////////////////////////////////////////////////////////////////
+  // daemon statistics
+  //////////////////////////////////////////////////////////////////////////
+  static cubperf::stat_id STAT_LOOP_EXECUTE_COUNT_AND_TIME;
+  static cubperf::stat_id STAT_LOOP_PAUSE_TIME; // count is same as for execute
+  static const cubperf::statset_definition Daemon_statistics =
+  {
+    cubperf::stat_definition (STAT_LOOP_EXECUTE_COUNT_AND_TIME, cubperf::stat_definition::COUNTER_AND_TIMER,
+    "daemon_loop_count", "daemon_execution_time"),
+    cubperf::stat_definition (STAT_LOOP_PAUSE_TIME, cubperf::stat_definition::TIMER, "daemon_pause_time")
+  };
+
+  //////////////////////////////////////////////////////////////////////////
+  // daemon implementation
+  //////////////////////////////////////////////////////////////////////////
+
   daemon::~daemon ()
   {
     // thread must be stopped
     stop_execution ();
+
+    delete &m_stats;
   }
 
   void
@@ -91,6 +109,12 @@ namespace cubthread
     // get waiter stats
     m_waiter.get_stats (&stats_out[i]);
     // i += waiter::STAT_COUNT;
+  }
+
+  cubperf::statset &
+  daemon::create_statset (void)
+  {
+    // TODO: insert return statement here
   }
 
 } // namespace cubthread

@@ -28,6 +28,8 @@
 #include "thread_task.hpp"
 #include "thread_waiter.hpp"
 
+#include "perf.hpp"
+
 #include <thread>
 
 #include <cinttypes>
@@ -113,6 +115,7 @@ namespace cubthread
 			task<Context> *exec_arg);     // daemon thread loop function
 
       void pause (void);                                    // pause between tasks
+      static cubperf::statset &create_statset (void);
 
       waiter m_waiter;        // thread waiter
       looper m_looper;        // thread looper
@@ -122,6 +125,7 @@ namespace cubthread
       stat_type m_loop_count;
       stat_type m_execute_time;
       stat_type m_pause_time;
+      cubperf::statset &m_stats;
 
       // todo: m_log
   };
@@ -139,6 +143,7 @@ namespace cubthread
     , m_loop_count (0)
     , m_execute_time (0)
     , m_pause_time (0)
+    , m_stats (daemon::create_statset ())
   {
     // starts a thread to execute daemon::loop
   }
