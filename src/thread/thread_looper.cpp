@@ -42,7 +42,7 @@ namespace cubthread
 
   static cubperf::stat_id STAT_LOOPER_SLEEP_COUNT_AND_TIME = 0;
   static cubperf::stat_id STAT_LOOPER_RESET_COUNT = 0;
-  static const cubperf::statset_definition looper_statdef =
+  static const cubperf::statset_definition Looper_statistics =
   {
     cubperf::stat_definition (STAT_LOOPER_SLEEP_COUNT_AND_TIME, cubperf::stat_definition::COUNTER_AND_TIMER,
     "looper_sleep_count", "looper_sleep_time"),
@@ -61,7 +61,7 @@ namespace cubthread
     , m_was_woken_up (false)
     , m_setup_period ()
     , m_start_execution_time ()
-    , m_stats (*looper_statdef.create_statset ())
+    , m_stats (*Looper_statistics.create_statset ())
   {
     // infinite waits
     m_setup_period = std::bind (&looper::setup_infinite_wait, *this, std::placeholders::_1, std::placeholders::_2);
@@ -138,14 +138,14 @@ namespace cubthread
 
     // register start of the task execution time
     m_start_execution_time = std::chrono::system_clock::now ();
-    looper_statdef.time_and_increment (m_stats, STAT_LOOPER_SLEEP_COUNT_AND_TIME);
+    Looper_statistics.time_and_increment (m_stats, STAT_LOOPER_SLEEP_COUNT_AND_TIME);
   }
 
   void
   looper::reset (void)
   {
     m_period_index = 0;
-    looper_statdef.increment (m_stats, STAT_LOOPER_RESET_COUNT);
+    Looper_statistics.increment (m_stats, STAT_LOOPER_RESET_COUNT);
   }
 
   bool
@@ -205,7 +205,13 @@ namespace cubthread
   void
   looper::get_stats (cubperf::stat_value *stats_out)
   {
-    looper_statdef.get_stat_values (m_stats, stats_out);
+    Looper_statistics.get_stat_values (m_stats, stats_out);
+  }
+
+  const char *
+  looper::get_stat_name (std::size_t stat_index)
+  {
+    return Looper_statistics.get_value_name (stat_index);
   }
 
 } // namespace cubthread

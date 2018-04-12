@@ -48,6 +48,7 @@ namespace cubthread
     cubperf::stat_definition (STAT_AWAKEN_COUNT_AND_TIME, cubperf::stat_definition::COUNTER_AND_TIMER,
     "waiter_awaken_count", "waiter_awaken_delay")
   };
+  static const char *STAT_WAKEUP_CALL_COUNT_NAME = "waiter_wakeup_count";
 
   //////////////////////////////////////////////////////////////////////////
   // waiter
@@ -158,6 +159,20 @@ namespace cubthread
   {
     stats_out[0] = m_wakeup_calls.get_count ();
     Waiter_statistics.get_stat_values (m_stats, stats_out + 1);
+  }
+
+  const char *
+  waiter::get_stat_name (std::size_t stat_index)
+  {
+    if (stat_index == 0)
+      {
+	// atomic wakeup call count statistic is separate
+	return STAT_WAKEUP_CALL_COUNT_NAME;
+      }
+    else
+      {
+	return Waiter_statistics.get_value_name (stat_index - 1);
+      }
   }
 
   bool
