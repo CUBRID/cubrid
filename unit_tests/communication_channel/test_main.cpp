@@ -139,7 +139,7 @@ class conn_listener_daemon_task : public cubthread::entry_task
 {
   public:
     conn_listener_daemon_task (std::vector <communication_channel> &&channels) : m_channels (
-	std::forward <std::vector <communication_channel>> (channels))
+	      std::forward <std::vector <communication_channel>> (channels))
     {
       assert (m_channels.size () == NUM_OF_INITIATORS);
     }

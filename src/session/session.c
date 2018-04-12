@@ -943,6 +943,7 @@ session_remove_expired_sessions ()
 	  if (session_check_timeout (state, &active_sessions, &is_expired) != NO_ERROR)
 	    {
 	      pthread_mutex_unlock (&state->mutex);
+	      lf_tran_end_with_mb (t_entry);
 	      err = ER_FAILED;
 	      goto exit_on_end;
 	    }

@@ -177,6 +177,7 @@ extern "C"
   extern int db_value_equal (const DB_VALUE * value1, const DB_VALUE * value2);
   extern int db_value_compare (const DB_VALUE * value1, const DB_VALUE * value2);
   extern int db_value_domain_init (DB_VALUE * value, DB_TYPE type, const int precision, const int scale);
+  extern void db_value_domain_init_default (DB_VALUE * value, const DB_TYPE type);
   extern int db_value_domain_min (DB_VALUE * value, DB_TYPE type, const int precision, const int scale,
 				  const int codeset, const int collation_id, const DB_ENUMERATION * enumeration);
   extern int db_value_domain_max (DB_VALUE * value, DB_TYPE type, const int precision, const int scale,
