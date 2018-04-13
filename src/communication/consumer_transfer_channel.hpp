@@ -11,28 +11,33 @@ namespace cubthread
   class entry_task;
 };
 
-class consumer_transfer_channel : public cubstream::write_handler
+namespace cubstream
 {
-  public:
-    friend class default_consumer_transfer_channel_receiver_task;
 
-    consumer_transfer_channel (communication_channel *chn, cubthread::entry_task *recv_task, stream_position received_from_position = 0);
-    consumer_transfer_channel (communication_channel *chn, stream_position received_from_position = 0);
-    virtual ~consumer_transfer_channel ();
+  class consumer_transfer_channel : public cubstream::write_handler
+  {
+    public:
+      friend class default_consumer_transfer_channel_receiver_task;
 
-    virtual int write_action (const stream_position pos, char *ptr, const size_t byte_count) override;
+      consumer_transfer_channel (communication_channel *chn, stream_position received_from_position = 0, bool with_default_daemon = true);
+      virtual ~consumer_transfer_channel ();
 
-    inline void set_stream (cubstream::stream *stream)
-    {
-      this->stream = stream;
-    }
+      virtual int write_action (const stream_position pos, char *ptr, const size_t byte_count) override;
 
-  private:
-    communication_channel *m_channel;
-    std::atomic<stream_position> m_last_received_position;
-    cubthread::daemon *m_receiver_daemon;
-    char m_buffer[MTU];
-    cubstream::stream *stream;
-};
+      inline void set_stream (cubstream::stream *stream)
+      {
+        this->stream = stream;
+      }
+      void set_daemon (cubthread::entry_task *task);
+
+    private:
+      communication_channel *m_channel;
+      std::atomic<stream_position> m_last_received_position;
+      cubthread::daemon *m_receiver_daemon;
+      char m_buffer[MTU];
+      cubstream::stream *stream;
+  };
+
+} // namespace cubstream
 
 #endif /* _SLAVE_TRANSFER_CHANNEL_HPP */

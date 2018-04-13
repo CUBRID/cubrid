@@ -36,13 +36,10 @@ class stream_mock;
 
 static cubthread::entry *thread_p = NULL;
 
-static cubthread::daemon *producer_daemon;
-static cubthread::daemon *consumer_daemon;
-
 static std::atomic_bool is_listening;
 static communication_channel *producer_communication_channel, *consumer_communication_channel;
-static producer_transfer_channel *producer = NULL;
-static consumer_transfer_channel *consumer = NULL;
+static cubstream::producer_transfer_channel *producer = NULL;
+static cubstream::consumer_transfer_channel *consumer = NULL;
 static stream_mock *stream = NULL;
 
 static int init ();
@@ -219,8 +216,8 @@ static int init ()
   assert (producer_communication_channel->is_connection_alive () &&
 	  consumer_communication_channel->is_connection_alive ());
 
-  producer = new producer_transfer_channel (producer_communication_channel);
-  consumer = new consumer_transfer_channel (consumer_communication_channel);
+  producer = new cubstream::producer_transfer_channel (producer_communication_channel);
+  consumer = new cubstream::consumer_transfer_channel (consumer_communication_channel);
   stream = new stream_mock ();
 
   producer->set_stream (stream);
