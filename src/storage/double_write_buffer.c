@@ -2482,9 +2482,15 @@ STATIC_INLINE void
 dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block, int vol_fd,
 				    FLUSH_VOLUME_INFO ** flush_volume_info)
 {
-  assert (flush_volume_info != NULL);
-
+#if !defined (NDEBUG)
+  unsigned int old_count_flush_volumes_info;
+#endif
+  assert (flush_volume_info != NULL && block != NULL);
   *flush_volume_info = NULL;
+
+#if !defined (NDEBUG)
+  old_count_flush_volumes_info = block->count_flush_volumes_info;
+#endif
 
   if (vol_fd != NULL_VOLDES)
     {
@@ -2496,8 +2502,12 @@ dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block, 
       flush_new_volume_info->all_pages_written = false;
       flush_new_volume_info->flushed_status = VOLUME_NOT_FLUSHED;
 
+      /* There is only a writer and several (currently 2) readers on flush_new_volume_info array.
+       * I need to be sure that size is incremented after setting element. Uses atomic to prevent code reordering.
+       */
       ATOMIC_INC_32 (&block->count_flush_volumes_info, 1);
-      assert (block->count_flush_volumes_info < block->max_to_flush_vdes);
+      assert (((old_count_flush_volumes_info + 1) == block->count_flush_volumes_info)
+	      && (block->count_flush_volumes_info < block->max_to_flush_vdes));
 
       *flush_volume_info = flush_new_volume_info;
     }
