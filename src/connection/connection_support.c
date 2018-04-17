@@ -372,6 +372,7 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 
 #if defined (WINDOWS)
   int winsock_error;
+#else
   struct pollfd po[1] = { {0, 0, 0} };
 #endif /* WINDOWS */
 
@@ -390,7 +391,7 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
   nleft = nbytes;
   do
     {
-//#if !defined (WINDOWS)
+#if !defined (WINDOWS)
       po[0].fd = fd;
       po[0].events = POLLIN;
       po[0].revents = 0;
@@ -426,7 +427,7 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	      return -1;
 	    }
 	}
-//#endif /* !WINDOWS */
+#endif /* !WINDOWS */
 
     read_again:
       n = recv (fd, ptr, nleft, 0);
