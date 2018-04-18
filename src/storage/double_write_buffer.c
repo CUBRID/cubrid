@@ -2597,23 +2597,30 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
     }
 
   /* the last written volume */
-  // TODO - consider a case that the first entry is valid and the others are not.
-  // it will reach here with null current_flush_volume_info.
   if (current_flush_volume_info != NULL)
     {
       current_flush_volume_info->all_pages_written = true;
-#if defined (SERVER_MODE)
-      if (dwb_Global.helper_flush_block == NULL && ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 0) > 0)
-	{
-	  /* If helper_flush_block is NULL, it means that the flush helper thread does not run and was not woken yet. */
-	  if (dwb_is_flush_block_helper_daemon_available ()
-	      && ATOMIC_CAS_ADDR (&dwb_Global.helper_flush_block, (DWB_BLOCK *) NULL, block))
-	    {
-	      dwb_flush_block_helper_daemon->wakeup ();
-	    }
-	}
-#endif
     }
+
+#if !defined (NDEBUG)
+  for (i = 0; i < block->count_flush_volumes_info; i++)
+    {
+      assert (block->flush_volumes_info[i].all_pages_written == true);
+      assert (block->flush_volumes_info[i].vdes != NULL_VOLDES);
+    }
+#endif
+
+#if defined (SERVER_MODE)
+  if ((dwb_Global.helper_flush_block == NULL) && (block->count_flush_volumes_info > 0))
+    {
+      /* If helper_flush_block is NULL, it means that the flush helper thread does not run and was not woken yet. */
+      if (dwb_is_flush_block_helper_daemon_available ()
+	  && ATOMIC_CAS_ADDR (&dwb_Global.helper_flush_block, (DWB_BLOCK *) NULL, block))
+	{
+	  dwb_flush_block_helper_daemon->wakeup ();
+	}
+    }
+#endif
 
   /* Add statistics. */
   perfmon_add_stat (thread_p, PSTAT_PB_NUM_IOWRITES, count_writes);
@@ -2633,7 +2640,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	      continue;
 	    }
 
-	  // TODO: add assertion to check validity of p_dwb_ordered_slots[i].position_in_block
+	  assert (p_dwb_ordered_slots[i].position_in_block < DWB_BLOCK_NUM_PAGES);
 	  error_code = dwb_slots_hash_delete (thread_p, &block->slots[p_dwb_ordered_slots[i].position_in_block]);
 	  if (error_code != NO_ERROR)
 	    {
@@ -2709,7 +2716,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
 	  assert (LSA_LE (&p_dwb_ordered_slots[i].lsa, &p_dwb_ordered_slots[i + 1].lsa));
 
 	  VPID_SET_NULL (&p_dwb_ordered_slots[i].vpid);
-	  // TODO: add assertion to check validity of p_dwb_ordered_slots[i].position_in_block
+	  assert (p_dwb_ordered_slots[i].position_in_block < DWB_BLOCK_NUM_PAGES);
 	  VPID_SET_NULL (&(block->slots[p_dwb_ordered_slots[i].position_in_block].vpid));
 	  fileio_initialize_res (thread_p, &(p_dwb_ordered_slots[i].io_page->prv));
 	}
@@ -4370,13 +4377,6 @@ start:
   (void) ATOMIC_TAS_ADDR (&dwb_Global.helper_flush_block, (DWB_BLOCK *) NULL);
 
   PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_DWB_FLUSH_BLOCK_HELPER_TIME_COUNTERS);
-
-  // TODO: Is it really necessary?
-  if (dwb_Global.helper_flush_block != NULL)
-    {
-      /* New data available for flush. */
-      goto start;
-    }
 
   return NO_ERROR;
 }
