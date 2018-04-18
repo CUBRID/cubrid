@@ -501,6 +501,10 @@ static bool dwb_flush_block_daemon_is_running (void);
 static bool dwb_flush_block_helper_daemon_is_running (void);
 static bool dwb_checksum_computation_daemon_is_running (void);
 
+static int dwb_flush_block_helper (THREAD_ENTRY * thread_p);
+static int dwb_compute_checksums (THREAD_ENTRY * thread_p);
+static int dwb_flush_next_block (THREAD_ENTRY * thread_p);
+
 /* Slots entry descriptor */
 static LF_ENTRY_DESCRIPTOR slots_entry_Descriptor = {
   /* offsets */
@@ -1336,10 +1340,7 @@ dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, DWB_SLOT * slot, bool mark_c
 			   bool * checksum_computed)
 {
   int error_code = NO_ERROR;
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
-  UINT64 oldest_time;
-  bool is_perf_tracking = false;
+  PERF_UTIME_TRACKER time_track;
 
   assert (slot != NULL);
 
@@ -1350,11 +1351,7 @@ dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, DWB_SLOT * slot, bool mark_c
       return NO_ERROR;
     }
 
-  is_perf_tracking = perfmon_is_perf_tracking ();
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&start_tick);
-    }
+  PERF_UTIME_TRACKER_START (thread_p, &time_track);
 
   if (!VPID_ISNULL (&slot->vpid))
     {
@@ -1373,16 +1370,7 @@ dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, DWB_SLOT * slot, bool mark_c
       assert (slot->io_page->prv.checksum == 0);
     }
 
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-      if (oldest_time > 0)
-	{
-	  perfmon_add_stat (thread_p, PSTAT_DWB_PAGE_CHECKSUM_TIME_COUNTERS, oldest_time);
-	}
-    }
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_DWB_PAGE_CHECKSUM_TIME_COUNTERS);
 
   if (mark_checksum_computed)
     {
@@ -2050,21 +2038,14 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
   int error_code = NO_ERROR;
   DWB_WAIT_QUEUE_ENTRY *double_write_queue_entry = NULL;
   DWB_BLOCK *dwb_block = NULL;
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
-  UINT64 oldest_time;
-  bool is_perf_tracking = false;
+  PERF_UTIME_TRACKER time_track;
   UINT64 current_position_with_flags;
   int r;
   struct timespec to;
 
   assert (thread_p != NULL && block_no < DWB_NUM_TOTAL_BLOCKS);
 
-  is_perf_tracking = perfmon_is_perf_tracking ();
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&start_tick);
-    }
+  PERF_UTIME_TRACKER_START (thread_p, &time_track);
 
   dwb_block = &dwb_Global.blocks[block_no];
   (void) pthread_mutex_lock (&dwb_block->mutex);
@@ -2077,16 +2058,8 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
     {
       thread_unlock_entry (thread_p);
       pthread_mutex_unlock (&dwb_block->mutex);
-      if (is_perf_tracking)
-	{
-	  tsc_getticks (&end_tick);
-	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-	  oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-	  if (oldest_time > 0)
-	    {
-	      perfmon_add_stat (thread_p, PSTAT_DWB_WAIT_FLUSH_BLOCK_TIME_COUNTERS, oldest_time);
-	    }
-	}
+
+      PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_DWB_WAIT_FLUSH_BLOCK_TIME_COUNTERS);
 
       return NO_ERROR;
     }
@@ -2110,16 +2083,7 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
 
   r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
 
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-      if (oldest_time > 0)
-	{
-	  perfmon_add_stat (thread_p, PSTAT_DWB_WAIT_FLUSH_BLOCK_TIME_COUNTERS, oldest_time);
-	}
-    }
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_DWB_WAIT_FLUSH_BLOCK_TIME_COUNTERS);
 
   if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
     {
@@ -2361,6 +2325,7 @@ dwb_block_create_ordered_slots (DWB_BLOCK * block, DWB_SLOT ** p_dwb_ordered_slo
 
   assert (block != NULL && p_dwb_ordered_slots != NULL);
 
+  /* including sentinel */
   p_local_dwb_ordered_slots = (DWB_SLOT *) malloc ((block->count_wb_pages + 1) * sizeof (DWB_SLOT));
   if (p_local_dwb_ordered_slots == NULL)
     {
@@ -2371,6 +2336,7 @@ dwb_block_create_ordered_slots (DWB_BLOCK * block, DWB_SLOT ** p_dwb_ordered_slo
 
   memcpy (p_local_dwb_ordered_slots, block->slots, block->count_wb_pages * sizeof (DWB_SLOT));
 
+  /* init sentinel slot */
   dwb_init_slot (&p_local_dwb_ordered_slots[block->count_wb_pages]);
 
   /* Order pages by (VPID, LSA) */
@@ -2482,25 +2448,22 @@ STATIC_INLINE void
 dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block, int vol_fd,
 				    FLUSH_VOLUME_INFO ** flush_volume_info)
 {
+  FLUSH_VOLUME_INFO *flush_new_volume_info;
+
   assert (flush_volume_info != NULL);
+  assert (vol_fd != NULL_VOLDES);
 
-  *flush_volume_info = NULL;
+  flush_new_volume_info = &block->flush_volumes_info[block->count_flush_volumes_info];
 
-  if (vol_fd != NULL_VOLDES)
-    {
-      FLUSH_VOLUME_INFO *flush_new_volume_info;
+  flush_new_volume_info->vdes = vol_fd;
+  flush_new_volume_info->num_pages = 0;
+  flush_new_volume_info->all_pages_written = false;
+  flush_new_volume_info->flushed_status = VOLUME_NOT_FLUSHED;
 
-      flush_new_volume_info = &block->flush_volumes_info[block->count_flush_volumes_info];
-      flush_new_volume_info->vdes = vol_fd;
-      flush_new_volume_info->num_pages = 0;
-      flush_new_volume_info->all_pages_written = false;
-      flush_new_volume_info->flushed_status = VOLUME_NOT_FLUSHED;
+  ATOMIC_INC_32 (&block->count_flush_volumes_info, 1);
+  assert (block->count_flush_volumes_info < block->max_to_flush_vdes);
 
-      ATOMIC_INC_32 (&block->count_flush_volumes_info, 1);
-      assert (block->count_flush_volumes_info < block->max_to_flush_vdes);
-
-      *flush_volume_info = flush_new_volume_info;
-    }
+  *flush_volume_info = flush_new_volume_info;
 }
 
 /*
@@ -2519,15 +2482,11 @@ STATIC_INLINE int
 dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_ordered_slots,
 		 unsigned int ordered_slots_length, bool remove_from_hash)
 {
-  INT16 volid;
+  VOLID last_written_volid;
   unsigned int i;
-  int vol_fd;
+  int last_written_vol_fd, vol_fd;
   VPID *vpid;
   int error_code = NO_ERROR;
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
-  UINT64 oldest_time;
-  bool is_perf_tracking = false;
   int count_writes = 0, num_pages_to_sync;
   FLUSH_VOLUME_INFO *current_flush_volume_info = NULL;
   bool can_flush_volume = false;
@@ -2539,12 +2498,14 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
    * may be slow. While the current transaction has delays caused by fileio_write, the concurrent transaction still
    * can access the data from memory instead disk
    */
-  volid = NULL_VOLID;
 
   assert (block->count_wb_pages < ordered_slots_length);
   assert (block->count_flush_volumes_info == 0);
 
   num_pages_to_sync = prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH);
+
+  last_written_volid = NULL_VOLID;
+  last_written_vol_fd = NULL_VOLDES;
 
   for (i = 0; i < block->count_wb_pages; i++)
     {
@@ -2556,68 +2517,78 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 
       assert (VPID_ISNULL (&p_dwb_ordered_slots[i + 1].vpid) || VPID_LT (vpid, &p_dwb_ordered_slots[i + 1].vpid));
 
-      if (volid != vpid->volid)
+      if (last_written_volid != vpid->volid)
 	{
 	  /* Get the volume descriptor. */
-	  if (current_flush_volume_info)
+	  if (current_flush_volume_info != NULL)
 	    {
-	      assert_release (current_flush_volume_info->vdes == vol_fd);
+	      assert_release (current_flush_volume_info->vdes == last_written_vol_fd);
 	      current_flush_volume_info->all_pages_written = true;
 	      can_flush_volume = true;
+
+	      current_flush_volume_info = NULL;	/* reset */
 	    }
 
-	  volid = vpid->volid;
-	  vol_fd = fileio_get_volume_descriptor (volid);
-	  dwb_add_volume_to_block_flush_area (thread_p, block, vol_fd, &current_flush_volume_info);
+	  vol_fd = fileio_get_volume_descriptor (vpid->volid);
+	  if (vol_fd == NULL_VOLDES)
+	    {
+	      /* probably it was removed meanwhile. skip it! */
+	      continue;
+	    }
+
+	  last_written_volid = vpid->volid;
+	  last_written_vol_fd = vol_fd;
+
+	  dwb_add_volume_to_block_flush_area (thread_p, block, last_written_vol_fd, &current_flush_volume_info);
 	}
 
-      /* Check whether the volume was removed meanwhile. */
-      if (vol_fd != NULL_VOLDES)
-	{
-#if 1
-	  assert (p_dwb_ordered_slots[i].io_page->prv.pflag_reserve_1 == '\0');
-	  assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_2 == 0);
-	  assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_3 == 0);
-	  assert (p_dwb_ordered_slots[i].vpid.pageid == p_dwb_ordered_slots[i].io_page->prv.pageid
-		  && p_dwb_ordered_slots[i].vpid.volid == p_dwb_ordered_slots[i].io_page->prv.volid);
-#endif
+      assert (last_written_vol_fd != NULL_VOLDES);
 
-	  /* Write the data. */
-	  if (fileio_write (thread_p, vol_fd, p_dwb_ordered_slots[i].io_page, vpid->pageid, IO_PAGESIZE,
-			    FILEIO_WRITE_NO_COMPENSATE_WRITE) == NULL)
-	    {
-	      dwb_log_error ("DWB write page VPID=(%d, %d) LSA=(%lld,%d) with %d error: \n",
-			     vpid->volid, vpid->pageid, p_dwb_ordered_slots[i].io_page->prv.lsa.pageid,
-			     (int) p_dwb_ordered_slots[i].io_page->prv.lsa.offset, er_errid ());
-	      assert (false);
-	      /* Something wrong happened. */
-	      return ER_FAILED;
-	    }
+      assert (p_dwb_ordered_slots[i].io_page->prv.pflag_reserve_1 == '\0');
+      assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_2 == 0);
+      assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_3 == 0);
+      assert (p_dwb_ordered_slots[i].vpid.pageid == p_dwb_ordered_slots[i].io_page->prv.pageid
+	      && p_dwb_ordered_slots[i].vpid.volid == p_dwb_ordered_slots[i].io_page->prv.volid);
+
+      /* Write the data. */
+      if (fileio_write (thread_p, last_written_vol_fd, p_dwb_ordered_slots[i].io_page, vpid->pageid, IO_PAGESIZE,
+			FILEIO_WRITE_NO_COMPENSATE_WRITE) == NULL)
+	{
+	  ASSERT_ERROR ();
+	  dwb_log_error ("DWB write page VPID=(%d, %d) LSA=(%lld,%d) with %d error: \n",
+			 vpid->volid, vpid->pageid, p_dwb_ordered_slots[i].io_page->prv.lsa.pageid,
+			 (int) p_dwb_ordered_slots[i].io_page->prv.lsa.offset, er_errid ());
+	  assert (false);
+	  /* Something wrong happened. */
+	  return ER_FAILED;
+	}
 
 #if defined (SERVER_MODE)
-	  assert (current_flush_volume_info != NULL);
+      assert (current_flush_volume_info != NULL);
 
-	  ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 1);
-	  count_writes++;
+      ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 1);
+      count_writes++;
 
-	  if ((count_writes >= num_pages_to_sync || can_flush_volume == true)
-	      && dwb_is_flush_block_helper_daemon_available ())
+      if ((count_writes >= num_pages_to_sync || can_flush_volume == true)
+	  && dwb_is_flush_block_helper_daemon_available ())
+	{
+	  if (ATOMIC_CAS_ADDR (&dwb_Global.helper_flush_block, (DWB_BLOCK *) NULL, block))
 	    {
-	      if (ATOMIC_CAS_ADDR (&dwb_Global.helper_flush_block, (DWB_BLOCK *) NULL, block))
-		{
-		  dwb_flush_block_helper_daemon->wakeup ();
-		}
-
-	      /* Add statistics. */
-	      perfmon_add_stat (thread_p, PSTAT_PB_NUM_IOWRITES, count_writes);
-	      count_writes = 0;
-	      can_flush_volume = false;
+	      dwb_flush_block_helper_daemon->wakeup ();
 	    }
-#endif
+
+	  /* Add statistics. */
+	  perfmon_add_stat (thread_p, PSTAT_PB_NUM_IOWRITES, count_writes);
+	  count_writes = 0;
+	  can_flush_volume = false;
 	}
+#endif
     }
 
-  if (current_flush_volume_info)
+  /* the last written volume */
+  // TODO - consider a case that the first entry is valid and the others are not.
+  // it will reach here with null current_flush_volume_info.
+  if (current_flush_volume_info != NULL)
     {
       current_flush_volume_info->all_pages_written = true;
 #if defined (SERVER_MODE)
@@ -2637,14 +2608,12 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
   perfmon_add_stat (thread_p, PSTAT_PB_NUM_IOWRITES, count_writes);
 
   /* Remove the corresponding entries from hash. */
-  is_perf_tracking = perfmon_is_perf_tracking ();
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&start_tick);
-    }
-
   if (remove_from_hash)
     {
+      PERF_UTIME_TRACKER time_track;
+
+      PERF_UTIME_TRACKER_START (thread_p, &time_track);
+
       for (i = 0; i < block->count_wb_pages; i++)
 	{
 	  vpid = &p_dwb_ordered_slots[i].vpid;
@@ -2653,23 +2622,15 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	      continue;
 	    }
 
+	  // TODO: add assertion to check validity of p_dwb_ordered_slots[i].position_in_block
 	  error_code = dwb_slots_hash_delete (thread_p, &block->slots[p_dwb_ordered_slots[i].position_in_block]);
 	  if (error_code != NO_ERROR)
 	    {
 	      return error_code;
 	    }
 	}
-    }
 
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-      if (oldest_time > 0)
-	{
-	  perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_BLOCK_REMOVE_HASH_ENTRIES, oldest_time);
-	}
+      PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_DWB_FLUSH_BLOCK_REMOVE_HASH_ENTRIES);
     }
 
   return NO_ERROR;
@@ -2693,15 +2654,13 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
   DWB_SLOT *p_dwb_ordered_slots = NULL;
   unsigned int i, ordered_slots_length;
   unsigned int block_checksum_element_position, block_checksum_start_position, element_position;
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
-  UINT64 oldest_time;
-  bool is_perf_tracking = false;
+  PERF_UTIME_TRACKER time_track;
   int num_pages;
   unsigned int current_block_to_flush, next_block_to_flush;
   int max_pages_to_sync;
 #if defined (SERVER_MODE)
-  bool update_flush_block_helper_stat;
+  bool flush = false;
+  PERF_UTIME_TRACKER time_track_flush_helper;
 #endif
 #if !defined (NDEBUG)
   DWB_BLOCK *saved_helper_flush_block = NULL;
@@ -2709,11 +2668,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
 
   assert (block != NULL && block->count_wb_pages > 0 && dwb_is_created ());
 
-  is_perf_tracking = perfmon_is_perf_tracking ();
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&start_tick);
-    }
+  PERF_UTIME_TRACKER_START (thread_p, &time_track);
 
   /* Currently we allow only one block to be flushed. */
   ATOMIC_INC_32 (&dwb_Global.blocks_flush_counter, 1);
@@ -2730,47 +2685,38 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
   /* Remove duplicates */
   for (i = 0; i < block->count_wb_pages - 1; i++)
     {
-#if 1
       assert (p_dwb_ordered_slots[i].io_page->prv.pflag_reserve_1 == '\0');
       assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_2 == 0);
       assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_3 == 0);
-#endif
 
-      if (VPID_EQ (&p_dwb_ordered_slots[i].vpid, &p_dwb_ordered_slots[i + 1].vpid)
-	  && !VPID_ISNULL (&p_dwb_ordered_slots[i].vpid))
+      if (!VPID_ISNULL (&p_dwb_ordered_slots[i].vpid)
+	  && VPID_EQ (&p_dwb_ordered_slots[i].vpid, &p_dwb_ordered_slots[i + 1].vpid))
 	{
 	  /* Next slot contains the same page, but that page is newer than the current one. Invalidate the VPID to
 	   * avoid flushing the page twice. I'm sure that the current slot is not in hash.
 	   */
 	  assert (LSA_LE (&p_dwb_ordered_slots[i].lsa, &p_dwb_ordered_slots[i + 1].lsa));
+
 	  VPID_SET_NULL (&p_dwb_ordered_slots[i].vpid);
+	  // TODO: add assertion to check validity of p_dwb_ordered_slots[i].position_in_block
 	  VPID_SET_NULL (&(block->slots[p_dwb_ordered_slots[i].position_in_block].vpid));
 	  fileio_initialize_res (thread_p, &(p_dwb_ordered_slots[i].io_page->prv));
 	}
     }
 
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-      if (oldest_time > 0)
-	{
-	  perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_BLOCK_SORT_TIME_COUNTERS, oldest_time);
-	}
-    }
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_DWB_FLUSH_BLOCK_SORT_TIME_COUNTERS);
 
 #if !defined (NDEBUG)
   saved_helper_flush_block = (DWB_BLOCK *) dwb_Global.helper_flush_block;
 #endif
 
 #if defined (SERVER_MODE)
-  update_flush_block_helper_stat = false;
+  PERF_UTIME_TRACKER_START (thread_p, &time_track_flush_helper);
 
 retry:
   if (dwb_Global.helper_flush_block != NULL)
     {
-      update_flush_block_helper_stat = is_perf_tracking;
+      flush = true;
 
       /* Be sure that the previous block was written on disk, before writing the the current block. */
       if (dwb_is_flush_block_helper_daemon_available ())
@@ -2808,15 +2754,9 @@ retry:
     }
 #endif
 
-  if (update_flush_block_helper_stat)
+  if (flush == true)
     {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-      if (oldest_time > 0)
-	{
-	  perfmon_add_stat (thread_p, PSTAT_DWB_WAIT_FLUSH_BLOCK_HELPER_TIME_COUNTERS, oldest_time);
-	}
+      PERF_UTIME_TRACKER_TIME (thread_p, &time_track_flush_helper, PSTAT_DWB_WAIT_FLUSH_BLOCK_HELPER_TIME_COUNTERS);
     }
 #endif /* SERVER_MODE */
 
@@ -2954,16 +2894,7 @@ end:
       free_and_init (p_dwb_ordered_slots);
     }
 
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-      if (oldest_time > 0)
-	{
-	  perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_BLOCK_TIME_COUNTERS, oldest_time);
-	}
-    }
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_DWB_FLUSH_BLOCK_TIME_COUNTERS);
 
   return error_code;
 }
@@ -3981,7 +3912,7 @@ dwb_get_volume_name (void)
  *   returns: error code
  * thread_p (in): The thread entry.
  */
-int
+static int
 dwb_flush_next_block (THREAD_ENTRY * thread_p)
 {
   unsigned int block_no;
@@ -4064,18 +3995,11 @@ dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync)
   DWB_SLOT *dwb_slot = NULL;
   unsigned int count_added_pages = 0, max_pages_to_add = 0, initial_num_pages = 0;
   DWB_BLOCK *initial_block;
-  TSC_TICKS start_tick, end_tick;
-  UINT64 oldest_time;
-  TSCTIMEVAL tv_diff;
-  bool is_perf_tracking;
+  PERF_UTIME_TRACKER time_track;
 
   assert (all_sync != NULL);
 
-  is_perf_tracking = perfmon_is_perf_tracking ();
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&start_tick);
-    }
+  PERF_UTIME_TRACKER_START (thread_p, &time_track);
 
   *all_sync = false;
 
@@ -4242,16 +4166,7 @@ retry:
 end:
   *all_sync = true;
 
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-      if (oldest_time > 0)
-	{
-	  perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_FORCE_TIME_COUNTERS, oldest_time);
-	}
-    }
+  PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_track, PSTAT_DWB_FLUSH_FORCE_TIME_COUNTERS);
 
   return NO_ERROR;
 }
@@ -4262,22 +4177,20 @@ end:
  * return   : Error code.
  * thread_p (in): Thread entry.
  */
-int
+static int
 dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 {
   unsigned int i;
   int num_pages, num_pages2, num_pages_to_sync;
   DWB_BLOCK *block;
   FLUSH_VOLUME_STATUS flushed_status;
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
-  UINT64 oldest_time, position_with_flags;
-  bool is_perf_tracking = false;
+  UINT64 position_with_flags;
   FLUSH_VOLUME_INFO *current_flush_volume_info = NULL;
   unsigned int count_flush_volumes_info;
   bool all_block_pages_written = false, need_wait;
   unsigned int start_flush_volume = 0;
   int first_partial_flushed_volume = -1;
+  PERF_UTIME_TRACKER time_track;
 
 start:
   position_with_flags = ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL);
@@ -4294,11 +4207,7 @@ start:
       return NO_ERROR;
     }
 
-  is_perf_tracking = perfmon_is_perf_tracking ();
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&start_tick);
-    }
+  PERF_UTIME_TRACKER_START (thread_p, &time_track);
 
   count_flush_volumes_info = block->count_flush_volumes_info;
   all_block_pages_written = block->all_pages_written;
@@ -4449,21 +4358,13 @@ start:
   assert (block == dwb_Global.helper_flush_block);
   (void) ATOMIC_TAS_ADDR (&dwb_Global.helper_flush_block, (DWB_BLOCK *) NULL);
 
-  if (is_perf_tracking)
-    {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-      if (oldest_time > 0)
-	{
-	  perfmon_add_stat (thread_p, PSTAT_DWB_FLUSH_BLOCK_HELPER_TIME_COUNTERS, oldest_time);
-	}
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_DWB_FLUSH_BLOCK_HELPER_TIME_COUNTERS);
 
-      if (dwb_Global.helper_flush_block != NULL)
-	{
-	  /* New data available for flush. */
-	  goto start;
-	}
+  // TODO: Is it really necessary?
+  if (dwb_Global.helper_flush_block != NULL)
+    {
+      /* New data available for flush. */
+      goto start;
     }
 
   return NO_ERROR;
@@ -4472,10 +4373,10 @@ start:
 /*
  * dwb_compute_checksums (): Computes checksum for requested slots.
  *
- *   returns: Error code.
+ * returns: Error code.
  * thread_p (in): The thread entry.
  */
-int
+static int
 dwb_compute_checksums (THREAD_ENTRY * thread_p)
 {
   UINT64 position_with_flags;
@@ -4627,7 +4528,7 @@ class dwb_flush_block_daemon_task: public cubthread::entry_task
     void execute (cubthread::entry &thread_ref) override
     {
       TSCTIMEVAL tv_diff;
-      UINT64 oldest_time;
+      UINT64 elapsed_usec;
 
       if (!BO_IS_SERVER_RESTARTED ())
         {
@@ -4636,16 +4537,7 @@ class dwb_flush_block_daemon_task: public cubthread::entry_task
         }
 
       /* performance tracking */
-      if (m_perf_track.is_perf_tracking)
-        {
-          tsc_getticks (&(m_perf_track.end_tick));
-	  tsc_elapsed_time_usec (&tv_diff, m_perf_track.end_tick, m_perf_track.start_tick);
-          oldest_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-          if (oldest_time > 0)
-            {
-	      perfmon_add_stat (&thread_ref, PSTAT_DWB_FLUSH_BLOCK_COND_WAIT, oldest_time);
-            }
-        }
+      PERF_UTIME_TRACKER_TIME (NULL, &m_perf_track, PSTAT_DWB_FLUSH_BLOCK_COND_WAIT);
 
       /* flush pages as long as necessary */
       if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true)
