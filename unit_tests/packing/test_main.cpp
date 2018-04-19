@@ -48,7 +48,7 @@ int main ()
   test_module (global_error, test_packing::test_packing1);
 
   test_module (global_error, test_packing::test_packing_buffer1);
-  
+
   /* add more tests here */
 
   return global_error;

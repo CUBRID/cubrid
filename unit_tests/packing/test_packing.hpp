@@ -21,51 +21,52 @@
 #define _TEST_PACKING_HPP_
 
 #include "packable_object.hpp"
-#include "packing_buffer.hpp"
-#include "packing_common.hpp"
+#include "pinnable_buffer.hpp"
 #include <vector>
 
 namespace test_packing
 {
 
-int test_packing1 (void);
+  int test_packing1 (void);
 
-int test_packing_buffer1 (void);
+  int test_packing_buffer1 (void);
 
-class buffer_manager : public cubpacking::pinner
-{
-private:
-  std::vector<cubpacking::buffer*> buffers;
-public:
-  void allocate_bufer (cubpacking::buffer *&buf, const size_t &amount);
+  class buffer_manager : public cubbase::pinner
+  {
+    private:
+      std::vector<mem::pinnable_buffer *> buffers;
+    public:
+      void allocate_bufer (mem::pinnable_buffer *&buf, const size_t &amount);
 
-  void free_storage();
+      void free_storage();
 
-};
+  };
 
-class po1 : public cubpacking::packable_object
-{
-public:
-  int i1;
-  short sh1;
-  DB_BIGINT b1;
-  int int_a[5];
-  std::vector<int> int_v;
-  DB_VALUE values[10];
-  char small_str[256];
-  std::string large_str;
+  class po1 : public cubpacking::packable_object
+  {
+    public:
+      int i1;
+      short sh1;
+      std::int64_t b1;
+      int int_a[5];
+      std::vector<int> int_v;
+      DB_VALUE values[10];
+      char small_str[256];
+      std::string large_str;
+      std::string str1;
+      char str2[300];
 
-public:
+    public:
 
-  int pack (cubpacking::packer *serializator);
-  int unpack (cubpacking::packer *serializator);
+      int pack (cubpacking::packer *serializator);
+      int unpack (cubpacking::packer *serializator);
 
-  bool is_equal (const packable_object *other);
-  
-  size_t get_packed_size (cubpacking::packer *serializator);
+      bool is_equal (const packable_object *other);
 
-  void generate_obj (void);
-};
+      size_t get_packed_size (cubpacking::packer *serializator);
+
+      void generate_obj (void);
+  };
 
 }
 

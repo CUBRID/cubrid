@@ -26,7 +26,6 @@
 #ifndef _STREAM_COMMON_HPP_
 #define _STREAM_COMMON_HPP_
 
-#include "packing_common.hpp"
 #include "cubstream.hpp"
 #include <set>
 #include <assert.h>
