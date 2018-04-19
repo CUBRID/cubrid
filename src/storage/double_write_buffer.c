@@ -902,9 +902,10 @@ dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * current_pos
   assert (current_position_with_flags != NULL);
 
   do
-    
+
     {
-      local_current_position_with_flags = ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL);
+
+      local_current_position_with_flags = ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL);
       if (DWB_IS_MODIFYING_STRUCTURE (local_current_position_with_flags))
 	{
 	  /* Only one thread can change the structure */
@@ -912,7 +913,7 @@ dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * current_pos
 	}
 
       new_position_with_flags = DWB_STARTS_MODIFYING_STRUCTURE (local_current_position_with_flags);
-      /* Start structure modifications, the threads that want to flush afterwards, have to wait. */ 
+      /* Start structure modifications, the threads that want to flush afterwards, have to wait. */
     }
   while (!ATOMIC_CAS_64 (&dwb_Global.position_with_flags, local_current_position_with_flags, new_position_with_flags));
 
@@ -2026,7 +2027,10 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
   PERF_UTIME_TRACKER time_track;
   UINT64 current_position_with_flags;
   int r;
+  struct timeval timeval_crt;
   struct timespec to;
+  long usec_tmp;
+  const int usec_onesec = 1000 * 1000;
 
   assert (thread_p != NULL && block_no < DWB_NUM_TOTAL_BLOCKS);
 
@@ -2063,8 +2067,17 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
 
   pthread_mutex_unlock (&dwb_block->mutex);
 
-  to.tv_sec = (int) time (NULL) + 20;
-  to.tv_nsec = 0;
+  /* Waits for maximum 20 milliseconds. */
+  gettimeofday (&timeval_crt, NULL);
+
+  to.tv_sec = timeval_crt.tv_sec;
+  usec_tmp = timeval_crt.tv_usec + 20 * 1000;
+  if (usec_tmp >= usec_onesec)
+    {
+      to.tv_sec++;
+      usec_tmp -= usec_onesec;
+    }
+  to.tv_nsec = usec_tmp * 1000;
 
   r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
 
@@ -2187,12 +2200,24 @@ dwb_wait_for_strucure_modification (THREAD_ENTRY * thread_p)
   if (double_write_queue_entry != NULL)
     {
       int r;
+      struct timeval timeval_crt;
       struct timespec to;
+      long usec_tmp;
+      const int usec_onesec = 1000 * 1000;
 
       pthread_mutex_unlock (&dwb_Global.mutex);
 
-      to.tv_sec = (int) time (NULL) + 10;
-      to.tv_nsec = 0;
+      /* Waits for maximum 10 milliseconds. */
+      gettimeofday (&timeval_crt, NULL);
+
+      to.tv_sec = timeval_crt.tv_sec;
+      usec_tmp = timeval_crt.tv_usec + 10 * 1000;
+      if (usec_tmp >= usec_onesec)
+	{
+	  to.tv_sec++;
+	  usec_tmp -= usec_onesec;
+	}
+      to.tv_nsec = usec_tmp * 1000;
 
       r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
       if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
