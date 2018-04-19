@@ -4883,6 +4883,13 @@ perfmon_one_daemon_stat_count (void)
   // 7 from waiter
   static const std::size_t PORTABLE_DAEMON_STAT_COUNT = 3 + 3 + 7;
 #if defined (SERVER_MODE)
+  // note - client module currently requires to compute exact size of performance statistics. this is inconvenient
+  //        because we are forced to share a information that normally belongs only to server - the number of
+  //        statistics collected by daemons.
+  //
+  //        ideally, the meta-information (e.g. the number of statistics, the names of statistics and so on) should be
+  //        fetched from server and not computed during boot.
+  //
   assert (PORTABLE_DAEMON_STAT_COUNT == cubthread::daemon::STAT_COUNT);
 #endif // SERVER_MODE
   return PORTABLE_DAEMON_STAT_COUNT;
