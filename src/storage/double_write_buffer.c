@@ -2862,7 +2862,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
       perfmon_db_flushed_block_volumes (thread_p, block->count_flush_volumes_info);
     }
 
-  if (prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS) > 0)
+  if (prm_get_bool_value (PRM_ID_ENABLE_DWB_CHECKSUM_THREAD) == true)
     {
       block_checksum_start_position = DWB_BLOCK_GET_CHECKSUM_START_POSITION (block->block_no);
 
@@ -3144,7 +3144,7 @@ dwb_get_next_block_for_flush (THREAD_ENTRY * thread_p, unsigned int *block_no)
     }
 
   found = true;
-  if (prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS) > 0)
+  if (prm_get_bool_value (PRM_ID_ENABLE_DWB_CHECKSUM_THREAD) == true)
     {
       block_checksum_start_position = DWB_BLOCK_GET_CHECKSUM_START_POSITION (dwb_Global.next_block_to_flush);
 
@@ -3390,12 +3390,11 @@ int
 dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB_SLOT ** p_dwb_slot)
 {
   unsigned int count_wb_pages;
-  int error_code = NO_ERROR, inserted, checksum_threads;
+  int error_code = NO_ERROR, inserted;
   DWB_BLOCK *block = NULL;
   bool checksum_computed;
   DWB_SLOT *dwb_slot = NULL;
   bool needs_flush;
-  bool checksum_computation_started;
 
   assert (p_dwb_slot != NULL && (io_page_p != NULL || (*p_dwb_slot)->io_page != NULL) && vpid != NULL);
 
@@ -3453,38 +3452,21 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
       needs_flush = true;
     }
 
-  checksum_threads = prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS);
-  if (checksum_threads > 0)
+  if (prm_get_bool_value (PRM_ID_ENABLE_DWB_CHECKSUM_THREAD) == true)
     {
       dwb_add_checksum_computation_request (thread_p, block->block_no, dwb_slot->position_in_block);
-
-      checksum_computation_started = false;
 
 #if defined (SERVER_MODE)
       if (dwb_is_checksum_computation_daemon_available ())
 	{
 	  /* Wake up checksum thread to compute checksum. */
 	  dwb_checkum_computation_daemon->wakeup ();
-
-	  if (checksum_threads == 1)
-	    {
-	      if (needs_flush == false)
-		{
-		  return NO_ERROR;
-		}
-	      else
-		{
-		  goto start_flush_block;
-		}
-	    }
-
-	  checksum_computation_started = true;
 	}
-#endif /* SERVER_MODE */
 
-      /* SA_MODE, checksum thread is unavailable or behind */
-      if (checksum_computation_started == false || dwb_needs_speedup_checksum_computation (thread_p))
+      if (dwb_needs_speedup_checksum_computation (thread_p))
+#endif /* SERVER_MODE */
 	{
+	  /* Speed up checksum computation, if is too slow. */
 	  error_code = dwb_slot_compute_checksum (thread_p, dwb_slot, true, &checksum_computed);
 	  if (error_code != NO_ERROR)
 	    {
@@ -3492,13 +3474,11 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 			     dwb_slot->position_in_block, dwb_slot->block_no);
 	      return error_code;
 	    }
+
+	  dwb_log ("Successfully computed checksums for slots %d in block %d\n",
+		   dwb_slot->position_in_block, dwb_slot->block_no);
 	}
-
-      dwb_log ("Successfully computed checksums for slots %d in block %d\n",
-	       dwb_slot->position_in_block, dwb_slot->block_no);
     }
-
-start_flush_block:
 
   if (needs_flush == false)
     {
@@ -3524,25 +3504,24 @@ start_flush_block:
       return NO_ERROR;
     }
 
-  /* This thread must flush the block, but has to wait for checksum computation. */
-  if (checksum_threads > 0)
+  /* This thread must flush the block, but has to compute checksums first. */
+  if (!dwb_block_has_all_checksums_computed (block->block_no))
     {
-      if (!dwb_block_has_all_checksums_computed (block->block_no))
+      /* Computes checksum. Checksum thread may also computes checksums but for
+       * different block pages.
+       */
+      error_code = dwb_compute_block_checksums (thread_p, block, NULL, &needs_flush);
+      if (error_code != NO_ERROR)
 	{
-	  /* Computes checksum. Checksum thread may also computes checksums but for
-	   * different block pages.
-	   */
-	  error_code = dwb_compute_block_checksums (thread_p, block, NULL, &needs_flush);
-	  if (error_code != NO_ERROR)
-	    {
-	      assert (false);
-	      return error_code;
-	    }
-
-	  /* All checksums computed. */
-	  assert (needs_flush == true);
+	  assert (false);
+	  return error_code;
 	}
+
+      /* All checksums computed. */
+      assert (needs_flush == true);
     }
+#else
+  assert (dwb_block_has_all_checksums_computed (block->block_no));
 #endif /* SERVER_MODE */
 
   /* Flush all pages from current block */
@@ -4586,8 +4565,8 @@ class dwb_checksum_computation_daemon_task: public cubthread::entry_task
 	  return;
         }
 
-      /* flush pages as long as necessary */
-      if (prm_get_integer_value (PRM_ID_DWB_CHECKSUM_THREADS) > 0)
+      /* flush pages as long as necessary */      
+      if (prm_get_bool_value(PRM_ID_ENABLE_DWB_CHECKSUM_THREAD) == true)
         {
 	  dwb_compute_checksums (&thread_ref);
         }

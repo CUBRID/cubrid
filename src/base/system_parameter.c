@@ -632,7 +632,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_DWB_BLOCKS "double_write_buffer_blocks"
 #define PRM_NAME_ENABLE_DWB_FLUSH_THREAD "double_write_buffer_enable_flush_thread"
 #define PRM_NAME_ENABLE_LOG_PAGE_CHECKSUM "enable_log_page_checksum"
-#define PRM_NAME_DWB_CHECKSUM_THREADS "double_write_buffer_checksum_threads"
+#define PRM_NAME_ENABLE_DWB_CHECKSUM_THREAD "double_write_buffer_enable_checksum_thread"
 #define PRM_NAME_DWB_ENABLE_LOG "double_write_buffer_enable_log"
 
 #define PRM_NAME_JSON_LOG_ALLOCATIONS "json_log_allocations"
@@ -2117,6 +2117,10 @@ static unsigned int prm_dwb_blocks_lower = 0;
 bool PRM_ENABLE_DWB_FLUSH_THREAD = true;
 static bool prm_enable_dwb_flush_thread_default = true;
 static unsigned int prm_enable_dwb_flush_thread_flag = 0;
+
+bool PRM_ENABLE_DWB_CHECKSUM_THREAD = true;
+static bool prm_enable_dwb_checksum_thread_default = true;
+static unsigned int prm_enable_dwb_checksum_thread_flag = 0;
 
 unsigned int PRM_DWB_CHECKSUM_THREADS = 1;
 static unsigned int prm_dwb_checksum_threads_flag = 0;
@@ -5409,15 +5413,14 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_DWB_CHECKSUM_THREADS,
-   PRM_NAME_DWB_CHECKSUM_THREADS,
+  {PRM_ID_ENABLE_DWB_CHECKSUM_THREAD,
+   PRM_NAME_ENABLE_DWB_CHECKSUM_THREAD,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
-   PRM_INTEGER,
+   PRM_BOOLEAN,
    &prm_dwb_checksum_threads_flag,
-   (void *) &prm_dwb_checksum_threads_default,
-   (void *) &PRM_DWB_CHECKSUM_THREADS,
-   (void *) &prm_dwb_checksum_threads_upper,
-   (void *) &prm_dwb_checksum_threads_lower,
+   (void *) &prm_enable_dwb_checksum_thread_default,
+   (void *) &PRM_ENABLE_DWB_CHECKSUM_THREAD,
+   (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
