@@ -123,10 +123,6 @@ set (REPLICATION_HEADERS
   ${REPLICATION_DIR}/cub_stream.hpp
   ${REPLICATION_DIR}/log_consumer.hpp
   ${REPLICATION_DIR}/log_generator.hpp
-  ${REPLICATION_DIR}/packable_object.hpp
-  ${REPLICATION_DIR}/packer.hpp
-  ${REPLICATION_DIR}/packing_buffer.hpp
-  ${REPLICATION_DIR}/packing_common.hpp
   ${REPLICATION_DIR}/packing_stream.hpp
   ${REPLICATION_DIR}/replication_entry.hpp
   ${REPLICATION_DIR}/replication_stream.hpp
@@ -191,9 +187,6 @@ set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_consumer.cpp
   ${REPLICATION_DIR}/log_generator.cpp
   ${REPLICATION_DIR}/master_replication_channel.cpp
-  ${REPLICATION_DIR}/packing_common.cpp
-  ${REPLICATION_DIR}/packer.cpp
-  ${REPLICATION_DIR}/packing_buffer.cpp
   ${REPLICATION_DIR}/replication_entry.cpp
   ${REPLICATION_DIR}/replication_stream.cpp
   ${REPLICATION_DIR}/slave_replication_channel.cpp
