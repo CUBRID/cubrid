@@ -3275,7 +3275,6 @@ db_json_replace (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
-  char *str;
 
   db_make_null (result);
 
@@ -3346,7 +3345,6 @@ db_json_set (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
-  char *str;
 
   db_make_null (result);
 
@@ -3481,7 +3479,6 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i, error_code;
   JSON_DOC *new_doc = NULL;
-  char *str;
 
   db_make_null (result);
 
@@ -3607,7 +3604,6 @@ int
 db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i;
-  char *str;
   int error_code;
   JSON_DOC *accumulator = NULL;
 

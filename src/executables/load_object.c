@@ -1570,7 +1570,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 
     case DB_TYPE_JSON:
       json_body = db_get_json_raw_body (value);
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "'%s'", json_body));	//, strlen (db_get_json_raw_body (value)), NULL));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "'%s'", json_body));
       db_private_free (NULL, json_body);
       break;
 

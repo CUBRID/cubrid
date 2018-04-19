@@ -5279,9 +5279,8 @@ db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * 
 {
   JSON_DOC *this_doc;
   const char *raw_path;
-  char *json_body;
   JSON_DOC *result_doc = NULL;
-  int error_code;
+  int error_code = NO_ERROR;
 
   if (DB_IS_NULL (json) || DB_IS_NULL (path))
     {
