@@ -43,6 +43,9 @@ namespace cubthread
   // daemon implementation
   //////////////////////////////////////////////////////////////////////////
 
+  const std::size_t daemon::STAT_COUNT =
+	  Daemon_statistics.get_value_count () + looper::STAT_COUNT + waiter::STAT_COUNT;
+
   daemon::~daemon ()
   {
     // thread must be stopped
@@ -95,12 +98,11 @@ namespace cubthread
   void
   daemon::get_stats (stat_type *stats_out)
   {
-    int i = 0;
+    std::size_t i = 0;
 
     // get daemon stats
-    stats_out[i++] = m_loop_count;
-    stats_out[i++] = m_execute_time / 1000000;  // nano => milli
-    stats_out[i++] = m_pause_time / 1000000;    // nano => milli
+    Daemon_statistics.get_stat_values (m_stats, stats_out);
+    i += Daemon_statistics.get_value_count ();
 
     // get looper stats
     m_looper.get_stats (&stats_out[i]);
@@ -114,7 +116,7 @@ namespace cubthread
   cubperf::statset &
   daemon::create_statset (void)
   {
-    // TODO: insert return statement here
+    return *Daemon_statistics.create_statset ();
   }
 
 } // namespace cubthread

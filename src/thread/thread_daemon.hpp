@@ -105,7 +105,7 @@ namespace cubthread
       // own stats: loop count, execute time, pause time = 3
       // + looper stats
       // + waiter stats
-      static const std::size_t STAT_COUNT = 3 + looper::STAT_COUNT + waiter::STAT_COUNT;
+      static const std::size_t STAT_COUNT;
 
       void get_stats (stat_type *stats_out);
 

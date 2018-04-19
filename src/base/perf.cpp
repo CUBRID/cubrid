@@ -51,32 +51,6 @@ namespace cubperf
   }
 
   //////////////////////////////////////////////////////////////////////////
-  // statset
-  //////////////////////////////////////////////////////////////////////////
-
-  template<bool IsAtomic>
-  generic_statset<IsAtomic>::generic_statset (std::size_t value_count)
-    : m_value_count (value_count)
-    , m_values (new generic_value<IsAtomic>[m_value_count])
-    , m_timept (clock::now ())
-  {
-    //
-  }
-
-  template<bool IsAtomic>
-  generic_statset<IsAtomic>::~generic_statset (void)
-  {
-    delete [] m_values;
-  }
-
-  template<bool IsAtomic>
-  void
-  generic_statset<IsAtomic>::reset_timept (void)
-  {
-    m_timept = clock::now ();
-  }
-
-  //////////////////////////////////////////////////////////////////////////
   // statset_definition
   //////////////////////////////////////////////////////////////////////////
   void
@@ -145,106 +119,6 @@ namespace cubperf
       {
 	output_stats[it] = statsetr.m_values[it];
       }
-  }
-
-  //////////////////////////////////////////////////////////////////////////
-  // generic_stat_counter
-  //////////////////////////////////////////////////////////////////////////
-  template<bool IsAtomic>
-  generic_stat_counter::generic_stat_counter (const char *name /* = NULL */)
-    : m_stat_value (0)
-    , m_stat_name (name)
-  {
-    //
-  }
-
-  template<bool IsAtomic>
-  stat_value
-  generic_stat_counter<IsAtomic>::get_count (void)
-  {
-    return m_stat_value;
-  }
-
-  template<bool IsAtomic>
-  const char *
-  generic_stat_counter<IsAtomic>::get_name (void)
-  {
-    return m_stat_name;
-  }
-
-  //////////////////////////////////////////////////////////////////////////
-  // generic_stat_timer
-  //////////////////////////////////////////////////////////////////////////
-
-  template<bool IsAtomic>
-  generic_stat_timer<IsAtomic>::generic_stat_timer (const char *name /* = NULL */)
-    : m_stat_value (0)
-    , m_stat_name (name)
-    , m_timept (clock::now ())
-  {
-    //
-  }
-
-  template<bool IsAtomic>
-  stat_value
-  generic_stat_timer<IsAtomic>::get_time (void)
-  {
-    return m_stat_value;
-  }
-
-  template<bool IsAtomic>
-  const char *
-  generic_stat_timer<IsAtomic>::get_name (void)
-  {
-    return m_stat_name;
-  }
-
-  //////////////////////////////////////////////////////////////////////////
-  // generic_stat_counter_and_timer
-  //////////////////////////////////////////////////////////////////////////
-
-  template<bool IsAtomic>
-  generic_stat_counter_and_timer<IsAtomic>::generic_stat_counter_and_timer (const char *stat_counter_name,
-      const char *stat_timer_name)
-    : m_stat_counter (stat_counter_name)
-    , m_stat_timer (stat_timer_name)
-  {
-    //
-  }
-
-  template<bool IsAtomic>
-  generic_stat_counter_and_timer<IsAtomic>::generic_stat_counter_and_timer (void)
-    : generic_stat_counter_and_timer<IsAtomic> (NULL, NULL)
-  {
-    //
-  }
-
-  template<bool IsAtomic>
-  stat_value
-  generic_stat_counter_and_timer<IsAtomic>::get_count (void)
-  {
-    return m_stat_counter.get_count ();
-  }
-
-  template<bool IsAtomic>
-  stat_value
-  generic_stat_counter_and_timer<IsAtomic>::get_time (void)
-  {
-    return m_stat_timer.get_time ();
-  }
-
-  template<bool IsAtomic>
-  const char *
-  generic_stat_counter_and_timer<IsAtomic>::get_count_name (void)
-  {
-    return m_stat_counter.get_name ();
-  }
-
-  template<bool IsAtomic>
-  const char *
-  generic_stat_counter_and_timer<IsAtomic>::get_time_name (void)
-  {
-    return m_stat_timer.get_name ();
   }
 
 } // namespace cubperf

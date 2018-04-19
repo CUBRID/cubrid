@@ -126,7 +126,7 @@ namespace cubthread
       // sleep count
       // sleep time
       // reset count
-      static const std::size_t STAT_COUNT = 3;
+      static const std::size_t STAT_COUNT;
 
       void get_stats (cubperf::stat_value *stats_out);
       const char *get_stat_name (std::size_t stat_index);

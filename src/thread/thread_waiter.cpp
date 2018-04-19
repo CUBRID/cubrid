@@ -54,6 +54,11 @@ namespace cubthread
   // waiter
   //////////////////////////////////////////////////////////////////////////
 
+  // total stats count:
+  // one atomic count
+  // + Waiter_statistics
+  const std::size_t waiter::STAT_COUNT = 1 + Waiter_statistics.get_value_count ();
+
   waiter::waiter ()
     : m_mutex ()
     , m_condvar ()

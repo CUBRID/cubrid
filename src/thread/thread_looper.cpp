@@ -53,6 +53,8 @@ namespace cubthread
   // looper implementation
   //////////////////////////////////////////////////////////////////////////
 
+  const std::size_t looper::STAT_COUNT = Looper_statistics.get_value_count ();
+
   looper::looper ()
     : m_periods_count (0)
     , m_periods ()

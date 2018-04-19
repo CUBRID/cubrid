@@ -69,15 +69,8 @@ namespace cubthread
       bool wait_until (const std::chrono::system_clock::time_point &timeout_time);  // wait until time or until wakeup
       // returns true if woke up before timeout
 
-      // stats count:
-      //   1. wakeup calls
-      //   2. locks on wakeup
-      //   3. awake calls
-      //   4. wait count
-      //   5. with timeout count
-      //   6. zero waits
-      //   7. wakeup delay time
-      static const std::size_t STAT_COUNT = 7;
+      // statistics
+      static const std::size_t STAT_COUNT;
 
       void get_stats (cubperf::stat_value *stats_out);
       const char *get_stat_name (std::size_t stat_index);

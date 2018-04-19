@@ -39,7 +39,9 @@
 #include "server_interface.h"
 #endif /* !SERVER_MODE */
 #include "thread_worker_pool.hpp"
+#if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
+#endif // SERVER_MODE
 
 #include <cstring>
 
@@ -175,7 +177,7 @@ static void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 *
 static void perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size);
 
 STATIC_INLINE size_t thread_stats_count (void) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE size_t thread_daemon_stats_count (void) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE size_t perfmon_thread_daemon_stats_count (void) __attribute__ ((ALWAYS_INLINE));
 #if defined (SERVER_MODE)
 static void perfmon_peek_thread_daemon_stats (UINT64 * stats);
 #endif // SERVER_MODE
@@ -4874,15 +4876,28 @@ static const char *perfmon_Pgbuf_daemon_names [] =
 static const size_t PERFMON_PGBUF_DAEMON_COUNT = sizeof (perfmon_Pgbuf_daemon_names) / sizeof (const char *);
 
 static size_t
-thread_daemon_stats_count (void)
+perfmon_one_daemon_stat_count (void)
 {
-  return PERFMON_PGBUF_DAEMON_COUNT * cubthread::daemon::STAT_COUNT;
+  // 3 from daemon
+  // 3 from looper
+  // 7 from waiter
+  static const std::size_t PORTABLE_DAEMON_STAT_COUNT = 3 + 3 + 7;
+#if defined (SERVER_MODE)
+  assert (PORTABLE_DAEMON_STAT_COUNT == cubthread::daemon::STAT_COUNT);
+#endif // SERVER_MODE
+  return PORTABLE_DAEMON_STAT_COUNT;
+}
+
+static size_t
+perfmon_thread_daemon_stats_count (void)
+{
+  return PERFMON_PGBUF_DAEMON_COUNT * perfmon_one_daemon_stat_count ();
 }
 
 static int
 f_load_thread_daemon_stats (void)
 {
-  return (int) thread_daemon_stats_count ();
+  return (int) perfmon_thread_daemon_stats_count ();
 }
 
 /*
@@ -4918,9 +4933,9 @@ perfmon_stat_dump_in_file_thread_daemon_stats (FILE * stream, const UINT64 * sta
   for (size_t daemon_it = 0; daemon_it < PERFMON_PGBUF_DAEMON_COUNT; daemon_it++)
     {
       fprintf (stream, perfmon_Pgbuf_daemon_names[daemon_it]);
-      for (size_t stat_it = 0; stat_it < cubthread::daemon::STAT_COUNT; stat_it++)
+      for (size_t stat_it = 0; stat_it < perfmon_one_daemon_stat_count (); stat_it++)
         {
-          value = stats_ptr[daemon_it * cubthread::daemon::STAT_COUNT + stat_it];
+          value = stats_ptr[daemon_it * perfmon_one_daemon_stat_count () + stat_it];
           fprintf (stream, "%-10s = %16llu\n", perfmon_Thread_daemon_stat_names[stat_it],
                    (long long unsigned int) value);
         }
@@ -4971,9 +4986,9 @@ perfmon_stat_dump_in_buffer_thread_daemon_stats (const UINT64 * stats_ptr, char 
 	  return;
 	}
 
-      for (size_t stat_it = 0; stat_it < cubthread::daemon::STAT_COUNT; stat_it++)
+      for (size_t stat_it = 0; stat_it < perfmon_one_daemon_stat_count (); stat_it++)
         {
-          value = stats_ptr[daemon_it * cubthread::daemon::STAT_COUNT + stat_it];
+          value = stats_ptr[daemon_it * perfmon_one_daemon_stat_count () + stat_it];
           ret = snprintf (*s, *remaining_size, "%-10s = %16llu\n",  perfmon_Thread_daemon_stat_names[stat_it],
                           (long long unsigned int) value);
 
@@ -4993,15 +5008,15 @@ perfmon_peek_thread_daemon_stats (UINT64 * stats)
 {
   UINT64 *statsp = &stats[pstat_Metadata[PSTAT_THREAD_PGBUF_DAEMON_STATS].start_offset];
   pgbuf_daemons_get_stats (statsp);  // 4 x daemons
-  statsp += 4 * cubthread::daemon::STAT_COUNT;
+  statsp += 4 * perfmon_one_daemon_stat_count ();
 
   // get deadlock stats
   lock_deadlock_detect_daemon_get_stats (statsp);
-  statsp += cubthread::daemon::STAT_COUNT;
+  statsp += perfmon_one_daemon_stat_count ();
 
   // get log flush stats
   log_flush_daemon_get_stats (statsp);
-  statsp += cubthread::daemon::STAT_COUNT;
+  statsp += perfmon_one_daemon_stat_count ();
 }
 #endif // SERVER_MODE
 // *INDENT-ON*

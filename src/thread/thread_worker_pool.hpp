@@ -235,6 +235,7 @@ namespace cubthread
       // for each ID, a counter and a timer may be stored
       enum class id
       {
+	// todo: add recycle context
 	START_THREAD,             // count & time between pushing a task and invoking run on spawned worker thread
 	CREATE_CONTEXT,           // count & time to create a context
 	EXECUTE_TASK,             // count & time to execute task
