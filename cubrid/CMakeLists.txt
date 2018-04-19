@@ -111,6 +111,24 @@ set (BASE_HEADERS
   ${BASE_DIR}/string_buffer.hpp
   )
 
+set (REPLICATION_HEADERS
+  ${REPLICATION_DIR}/buffer_provider.hpp
+  ${REPLICATION_DIR}/cub_stream.hpp
+  ${REPLICATION_DIR}/log_consumer.hpp
+  ${REPLICATION_DIR}/log_generator.hpp
+  ${REPLICATION_DIR}/packable_object.hpp
+  ${REPLICATION_DIR}/packer.hpp
+  ${REPLICATION_DIR}/packing_buffer.hpp
+  ${REPLICATION_DIR}/packing_common.hpp
+  ${REPLICATION_DIR}/packing_stream.hpp
+  ${REPLICATION_DIR}/replication_entry.hpp
+  ${REPLICATION_DIR}/replication_stream.hpp
+  ${REPLICATION_DIR}/stream_buffer.hpp
+  ${REPLICATION_DIR}/stream_common.hpp
+  ${REPLICATION_DIR}/stream_file.hpp
+  ${REPLICATION_DIR}/stream_packer.hpp
+  )
+
 set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/util_common.c
   )
@@ -313,6 +331,7 @@ set (CUBRID_LIB_HEADERS
   ${COMMUNICATION_HEADERS}
   ${COMPAT_HEADERS}
   ${THREAD_HEADERS}
+  ${REPLICATION_HEADERS}
   )
 
 add_library(cubrid SHARED

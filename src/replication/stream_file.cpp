@@ -24,15 +24,16 @@
 #ident "$Id$"
 
 
-#include "stream_file.hpp"
-#include "packing_stream.hpp"
-#include "stream_buffer.hpp"
-#if defined (LINUX)
-#include <sys/stat.h>
-#include <fcntl.h>
+#include <cstdio>
+#include <cassert>
+#if defined (WINDOWS)
+#include <io.h>
+#else
+#include <unistd.h>
 #endif
+#include "stream_file.hpp"
 
-namespace cubreplication
+namespace cubstream
 {
 
 void stream_file::init (const std::string& base_name, const size_t file_size, const int print_digits)
@@ -41,16 +42,31 @@ void stream_file::init (const std::string& base_name, const size_t file_size, co
   m_desired_file_size = file_size;
   m_filename_digits_seqno = print_digits;
 
+  m_curr_append_position = 0;
+  m_curr_append_file_size = 0;
+
   m_start_file_seqno = 1;
   m_curr_file_seqno = 1;
 }
 
-int stream_file::get_file_desc_from_file_id (const int file_id)
+void stream_file::finish (void)
 {
   std::map<int,int>::iterator it;
 
-  it = file_descriptors.find (file_id);
-  if (it != file_descriptors.end ())
+  for (it = m_file_descriptors.begin (); it != m_file_descriptors.end (); it ++)
+    {
+      assert (it->second > 0);
+      close (it->second);
+    }
+  m_file_descriptors.clear ();
+}
+
+int stream_file::get_file_desc_from_file_seqno (const int file_seqno)
+{
+  std::map<int,int>::iterator it;
+
+  it = m_file_descriptors.find (file_seqno);
+  if (it != m_file_descriptors.end ())
     {
       return it->second;
     }
@@ -58,83 +74,74 @@ int stream_file::get_file_desc_from_file_id (const int file_id)
   return -1;
 }
 
-int stream_file::get_fileid_from_stream_pos (const cubstream::stream_position &pos)
+int stream_file::get_file_seqno_from_stream_pos (const stream_position &pos)
 {
-  std::vector<cubstream::stream_position>::iterator it;
+  stream_position start_available_pos;
+  int file_seqno;
 
-  for (it = m_file_end_positions.begin (); it != m_file_end_positions.end (); it ++)
+  start_available_pos = m_start_file_seqno * m_desired_file_size;
+
+  if (pos < start_available_pos)
     {
-      if (pos < *it)
-        {
-          return m_start_file_seqno + (int) (it - m_file_end_positions.begin ());
-        }
+      /* not not on disk anymore */
+      return -1;
     }
 
-  return -1;
-}
-
-int stream_file::get_fileid_from_stream_pos_ext (const cubstream::stream_position &pos, size_t &amount,
-                                                 size_t &file_offset)
-{
-  std::vector<cubstream::stream_position>::iterator it;
-
-  for (it = m_file_end_positions.begin (); it != m_file_end_positions.end (); it ++)
+  if (pos >= m_curr_append_position)
     {
-      if (pos < *it)
-        {
-          amount = *it - pos;
-          if (it == m_file_end_positions.begin ())
-            {
-              file_offset = pos;
-            }
-          else
-            {
-              file_offset = pos - *(it - 1);
-            }
-
-          return m_start_file_seqno + (int) (it - m_file_end_positions.begin ());
-        }
+      /* not yet produced */
+      return -1;
     }
 
-  return -1;
+  file_seqno = (int) (pos / m_desired_file_size);
+
+  return file_seqno;
 }
 
-int stream_file::create_fileid_to_pos (const cubstream::stream_position &pos)
+int stream_file::get_file_seqno_from_stream_pos_ext (const stream_position &pos, size_t &amount, size_t &file_offset)
 {
+  int file_seqno = get_file_seqno_from_stream_pos (pos);
+  
+  file_offset = pos - file_seqno * m_desired_file_size;
 
-  return NO_ERROR;
+  amount = (file_seqno + 1) * m_desired_file_size - pos;
+
+  return file_seqno;
 }
 
+int stream_file::create_files_to_pos (const stream_position &pos)
+{
+  /* TODO */
+  return write_internal (m_curr_append_position, NULL, pos - m_curr_append_position, WRITE_MODE_CREATE);
+}
 
-int stream_file::get_filename_with_position (char *filename, const size_t max_filename,
-                                             const cubstream::stream_position &pos)
+int stream_file::get_filename_with_position (char *filename, const size_t max_filename, const stream_position &pos)
 {
   int file_id;
 
-  file_id = get_fileid_from_stream_pos (pos);
+  file_id = get_file_seqno_from_stream_pos (pos);
   if (file_id > 0)
     {
-      return get_filename_with_fileid (filename, max_filename, file_id);
+      return get_filename_with_file_seqno (filename, max_filename, file_id);
     }
 
   return ER_FAILED;
 }
 
-int stream_file::get_filename_with_fileid (char *filename, const size_t max_filename, const int file_id)
+int stream_file::get_filename_with_file_seqno (char *filename, const size_t max_filename, const int file_seqno)
 {
-  assert (file_id >= 0);
+  assert (file_seqno >= 0);
 
-  snprintf (filename, max_filename, "%s_%*d", m_base_filename.c_str (), m_filename_digits_seqno, file_id);
+  snprintf (filename, max_filename, "%s_%*d", m_base_filename.c_str (), m_filename_digits_seqno, file_seqno);
   return NO_ERROR;
 }
 
-
-int stream_file::open_fileid (const int file_id)
+int stream_file::open_file_seqno (const int file_seqno)
 {
   int fd;
   char file_name [PATH_MAX];
   
-  get_filename_with_fileid (file_name, sizeof (file_name) - 1, file_id);
+  get_filename_with_file_seqno (file_name, sizeof (file_name) - 1, file_seqno);
 
   fd = open_file (file_name);
   if (fd < 0)
@@ -142,7 +149,7 @@ int stream_file::open_fileid (const int file_id)
       return ER_FAILED;
     }
 
-  file_descriptors[file_id] = fd;
+  m_file_descriptors[file_seqno] = fd;
 
   return NO_ERROR;
 }
@@ -183,16 +190,16 @@ int stream_file::create_file (const char *file_path)
   return fd;
 }
 
-size_t stream_file::read_buffer (const int file_id, const size_t file_offset, const char *buf, const size_t amount)
+size_t stream_file::read_buffer (const int file_seqno, const size_t file_offset, const char *buf, const size_t amount)
 {
   size_t actual_read;
   int fd;
 
-  fd = get_file_desc_from_file_id (file_id);
+  fd = get_file_desc_from_file_seqno (file_seqno);
 
   if (fd <= 0)
     {
-      fd = open_fileid (file_id);
+      fd = open_file_seqno (file_seqno);
     }
 
   if (fd <= 0)
@@ -200,29 +207,27 @@ size_t stream_file::read_buffer (const int file_id, const size_t file_offset, co
       return 0;
     }
 
-#if defined (LINUX)  
-  actual_read = pread (fd, buf, amount, file_offset);
+#if defined (WINDOWS)
+  /* TODO : use Windows API for paralel reads */
+  lseek (fd, (long) file_offset, SEEK_SET);
+  actual_read = read (fd, buf, amount);
 #else
-   if (lseek (fd, file_offset, SEEK_SET) != file_offset)
-     {
-        return 0;
-     }
-   actual_read = read (fd, buf, amount);
+  actual_read = pread (fd, buf, amount, file_offset);
 #endif
 
   return actual_read;
 }
 
-size_t stream_file::write_buffer (const int file_id, const size_t file_offset, const char *buf, const size_t amount)
+size_t stream_file::write_buffer (const int file_seqno, const size_t file_offset, const char *buf, const size_t amount)
 {
   size_t actual_write;
   int fd;
 
-  fd = get_file_desc_from_file_id (file_id);
+  fd = get_file_desc_from_file_seqno (file_seqno);
 
   if (fd <= 0)
     {
-      fd = open_fileid (file_id);
+      fd = open_file_seqno (file_seqno);
     }
 
   if (fd <= 0)
@@ -230,26 +235,26 @@ size_t stream_file::write_buffer (const int file_id, const size_t file_offset, c
       return 0;
     }
 
-#if defined (LINUX)  
-  actual_write = pwrite (fd, buf, amount, file_offset);
+#if defined (WINDOWS)  
+  lseek (fd, (long ) file_offset, SEEK_SET);
+  actual_write = write (fd, buf, amount);
 #else
-  NOT_IMPLEMENTED ();
+  actual_write = pwrite (fd, buf, amount, file_offset);
 #endif
 
   return actual_write;
 }
 
-
-int stream_file::write (const cubstream::stream_position &pos, const char *buf, const size_t amount)
+int stream_file::write (const stream_position &pos, const char *buf, const size_t amount)
 {
-  cubstream::stream_position curr_pos;
+  stream_position curr_pos;
   size_t file_offset, rem_amount, available_amount_in_file;
   int file_id;
   int err = NO_ERROR;
 
-  if (pos + amount >= curr_append_position)
+  if (pos + amount >= m_curr_append_position)
     {
-      create_fileid_to_pos (pos + amount);
+      create_files_to_pos (pos + amount);
     }
 
   curr_pos = pos;
@@ -257,36 +262,53 @@ int stream_file::write (const cubstream::stream_position &pos, const char *buf, 
 
   while (rem_amount > 0)
     {
-      size_t current_to_read;
-      size_t actual_read;
+      size_t current_to_write;
+      size_t actual_write;
 
-      file_id = get_fileid_from_stream_pos_ext (curr_pos, available_amount_in_file, file_offset);
+      file_id = get_file_seqno_from_stream_pos_ext (curr_pos, available_amount_in_file, file_offset);
       if (file_id < 0)
         {
           /* TODO[arnia] : not found */
           return ER_FAILED;
         }
 
-      current_to_read = MIN (available_amount_in_file, rem_amount);
+      current_to_write = MIN (available_amount_in_file, rem_amount);
 
-      actual_read = read_buffer (file_id, file_offset, buf, current_to_read);
-      if (actual_read < current_to_read)
+      actual_write = write_buffer (file_id, file_offset, buf, current_to_write);
+      if (actual_write < current_to_write)
         {
           return ER_FAILED;
         }
 
-      rem_amount -= current_to_read;
-      curr_pos += current_to_read;
-      buf += current_to_read;
+      rem_amount -= actual_write;
+      curr_pos += current_to_write;
+      buf += current_to_write;
     }
-
 
   return NO_ERROR;
 }
 
-int stream_file::read (const cubstream::stream_position &pos, const char *buf, const size_t amount)
+int stream_file::write_internal (const stream_position &pos, const char *buf, const size_t amount, const WRITE_MODE wr_mode)
 {
-  cubstream::stream_position curr_pos;
+  stream_position curr_pos;
+  size_t file_offset, rem_amount, available_amount_in_file;
+  int file_id;
+  int err = NO_ERROR;
+  char zero_buffer[4 * 1024] = { 0 };
+
+  curr_pos = pos;
+  rem_amount = amount;
+
+  file_id = get_file_seqno_from_stream_pos_ext (curr_pos, available_amount_in_file, file_offset);
+
+  /*TODO */
+
+  return NO_ERROR;
+}
+
+int stream_file::read (const stream_position &pos, const char *buf, const size_t amount)
+{
+  stream_position curr_pos;
   size_t available_amount_in_file, file_offset, rem_amount;
   int file_id;
   int err = NO_ERROR;
@@ -299,7 +321,7 @@ int stream_file::read (const cubstream::stream_position &pos, const char *buf, c
       size_t current_to_read;
       size_t actual_read;
 
-      file_id = get_fileid_from_stream_pos_ext (curr_pos, available_amount_in_file, file_offset);
+      file_id = get_file_seqno_from_stream_pos_ext (curr_pos, available_amount_in_file, file_offset);
       if (file_id < 0)
         {
           /* TODO[arnia] : not found */
@@ -322,5 +344,4 @@ int stream_file::read (const cubstream::stream_position &pos, const char *buf, c
   return NO_ERROR;
 }
 
-
-} /* namespace cubreplication */
+} /* namespace cubstream */

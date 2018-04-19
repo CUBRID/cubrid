@@ -27,43 +27,41 @@
 #define _STREAM_FILE_HPP_
 
 #include "stream_common.hpp"
+#include "stream_io.hpp"
 #include "buffer_provider.hpp"
 #include "packing_stream.hpp"
 #include <vector>
 
-class cubstream::stream_buffer;
-class cubstream::entry;
 
-namespace cubreplication
+namespace cubstream
 {
 
-typedef size_t file_pos_t;
-
-enum
+typedef enum
 {
-  CURRENT_POSITION = -1
-};
+  WRITE_MODE_DATA = 0,
+  WRITE_MODE_CREATE
+} WRITE_MODE;
 
 class stream_file;
 
-class file_reader : public cubstream::partial_read_handler
+class file_reader : public partial_read_handler
 {
 private:
   stream_file *m_file;
 
 public:
 
-  int read_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count, size_t *processed_bytes);
+  int read_action (const stream_position pos, char *ptr, const size_t byte_count, size_t *processed_bytes);
 };
 
-class file_writer : public cubstream::write_handler
+class file_writer : public write_handler
 {
 private:
   stream_file *m_file;
 
 public:
 
-  int write_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count);
+  int write_action (const stream_position pos, char *ptr, const size_t byte_count);
 };
 
 
@@ -71,26 +69,33 @@ public:
  * class for handling reading/writing to files from a stream 
  * stream file consists of several physical files on disk;
  * there is a base file name (considered the name of stream), suffixed by a sequence number, generated incrementally
- * For instance: $CUBRID/logs/replica_0001, ... replica_0123
- * We reserve 0000 seqno for special purpose (maybe metainformation file ?)
+ * For instance: $CUBRID/logs/replica_0000, replica_0001, ... replica_0123
+ * each file has a configured fixed size
+ * The file having the filename of base has special purpose (maybe metainformation file ?)
  * 
  */
-class stream_file : public cubstream::buffer_provider
+class stream_file : public stream_io
 {
 private:
-  cubstream::packing_stream *stream;
+  static const int DEFAULT_FILENAME_DIGITS = 4;
+  
+  /* 100 MBytes */
+  static const size_t DEFAULT_FILE_SIZE = 100 * 1024 * 1024;  
 
-  file_pos_t curr_append_position;
-  file_pos_t curr_read_position;
+
+  /* largest stream position written to file */
+  stream_position m_curr_append_position;
+  /* TODO : size of last physical file - do we need it ? it may be computed from curr_append_position */
+  size_t m_curr_append_file_size;
 
   /* mapping of file sequence to OS file descriptor */
-  std::map<int,int> file_descriptors;
+  std::map<int, int> m_file_descriptors;
 
   /* stream file is split into several physical files
    * this is the desired size of such physical file;
    * a new file should be created when the current file (the one which is appended into) size approaches this limit 
    * or already exceeded it;
-   * the purpose is to avoid splittin stream entries among stream files
+   * the purpose is to avoid splitting stream entries among stream files
    */
   size_t m_desired_file_size;
 
@@ -108,46 +113,42 @@ private:
   /* last/current file */
   int m_curr_file_seqno;
 
-  /* end positions of files, the positions are relevant for available files (m_start_file_seqno) */
-  std::vector<cubstream::stream_position> m_file_end_positions;
-
 protected:
-  int get_file_desc_from_file_id (const int file_id);
-  int get_fileid_from_stream_pos (const cubstream::stream_position &pos);
-  int get_fileid_from_stream_pos_ext (const cubstream::stream_position &pos, size_t &amount, size_t &file_offset);
+  int get_file_desc_from_file_seqno (const int file_seqno);
+  int get_file_seqno_from_stream_pos (const stream_position &pos);
+  int get_file_seqno_from_stream_pos_ext (const stream_position &pos, size_t &amount, size_t &file_offset);
 
-  int create_fileid_to_pos (const cubstream::stream_position &pos);
+  int create_files_to_pos (const stream_position &pos);
 
-  int get_filename_with_position (char *filename, const size_t max_filename, const cubstream::stream_position &pos);
-  int get_filename_with_fileid (char *filename, const size_t max_filename, const int file_id);
+  int get_filename_with_position (char *filename, const size_t max_filename, const stream_position &pos);
+  int get_filename_with_file_seqno (char *filename, const size_t max_filename, const int file_seqno);
 
-  int open_fileid (const int file_id);
+  int open_file_seqno (const int file_seqno);
 
   int open_file (const char *file_path);
 
   int create_file (const char *file_path);
 
-  size_t read_buffer (const int file_id, const size_t file_offset, const char *buf, const size_t amount);
-  size_t write_buffer (const int file_id, const size_t file_offset, const char *buf, const size_t amount);
+  size_t read_buffer (const int file_seqno, const size_t file_offset, const char *buf, const size_t amount);
+  size_t write_buffer (const int file_seqno, const size_t file_offset, const char *buf, const size_t amount);
+
+  int write_internal (const stream_position &pos, const char *buf, const size_t amount, const WRITE_MODE wr_mode);
 
 public:
-  static const int DEFAULT_FILENAME_DIGITS = 4;
-  
-  /* 100 MBytes */
-  static const size_t DEFAULT_FILE_SIZE = 100 * 1024 * 1024;  
-
   stream_file (const std::string& base_name) { init (base_name); };
+
+  ~stream_file () { finish (); };
 
   void init (const std::string& base_name, const size_t file_size = DEFAULT_FILE_SIZE,
              const int print_digits = DEFAULT_FILENAME_DIGITS);
 
+  void finish ();
 
-  int write (const cubstream::stream_position &pos, const char *buf, const size_t amount);
+  int write (const stream_position &pos, const char *buf, const size_t amount);
 
-  int read (const cubstream::stream_position &pos, const char *buf, const size_t amount);
-
+  int read (const stream_position &pos, const char *buf, const size_t amount);
 };
 
-} /*  namespace cubreplication */
+} /*  namespace cubstream */
 
 #endif /* _STREAM_FILE_HPP_ */
