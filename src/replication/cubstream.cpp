@@ -30,24 +30,24 @@
 namespace cubstream
 {
 
-stream::stream ()
-{
-  m_last_reported_ready_pos = 0;
-  m_read_position = 0;
+  stream::stream ()
+  {
+    m_last_reported_ready_pos = 0;
+    m_read_position = 0;
 
 
-  set_filled_stream_handler (NULL);
-  set_fetch_data_handler (NULL);
-  set_ready_pos_handler (NULL);
+    set_filled_stream_handler (NULL);
+    set_fetch_data_handler (NULL);
+    set_ready_pos_handler (NULL);
 
-  init (0);
-}
+    init (0);
+  }
 
-int stream::init (const stream_position &start_position)
-{
-  m_append_position = start_position;
+  int stream::init (const stream_position &start_position)
+  {
+    m_append_position = start_position;
 
-  return NO_ERROR;
-}
+    return NO_ERROR;
+  }
 
 } /* namespace cubstream */

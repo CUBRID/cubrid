@@ -37,7 +37,7 @@
 #endif
 
 /* TODO[arnia] this needs to be calculated a priori */
-#define MTU 1500
+const int MTU = 1500;
 
 enum CHANNEL_TYPE
 {

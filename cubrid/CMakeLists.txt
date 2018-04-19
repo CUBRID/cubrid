@@ -132,14 +132,14 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
   ${COMMUNICATION_DIR}/communication_channel.cpp
-  ${COMMUNICATION_DIR}/producer_transfer_channel.cpp
-  ${COMMUNICATION_DIR}/consumer_transfer_channel.cpp
+  ${COMMUNICATION_DIR}/stream_transfer_receiver.cpp
+  ${COMMUNICATION_DIR}/stream_transfer_sender.cpp
   )
 
 set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/communication_channel.hpp
-  ${COMMUNICATION_DIR}/producer_transfer_channel.hpp
-  ${COMMUNICATION_DIR}/consumer_transfer_channel.hpp
+  ${COMMUNICATION_DIR}/stream_transfer_receiver.hpp
+  ${COMMUNICATION_DIR}/stream_transfer_sender.hpp
   )
 
 set(QUERY_SOURCES

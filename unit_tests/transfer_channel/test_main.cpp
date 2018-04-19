@@ -1,8 +1,8 @@
 #define SERVER_MODE
 
 #include "communication_channel.hpp"
-#include "producer_transfer_channel.hpp"
-#include "consumer_transfer_channel.hpp"
+#include "stream_transfer_receiver.hpp"
+#include "stream_transfer_sender.hpp"
 #include "cubstream.hpp"
 
 #include "thread_manager.hpp"
@@ -38,8 +38,8 @@ static cubthread::entry *thread_p = NULL;
 
 static std::atomic_bool is_listening;
 static communication_channel *producer_communication_channel, *consumer_communication_channel;
-static cubstream::producer_transfer_channel *producer = NULL;
-static cubstream::consumer_transfer_channel *consumer = NULL;
+static cubstream::transfer_sender *producer = NULL;
+static cubstream::transfer_receiver *consumer = NULL;
 static stream_mock *stream = NULL;
 
 static int init ();
@@ -91,14 +91,14 @@ class stream_mock : public cubstream::stream
     }
 
     int read_partial (const stream_position first_pos, const size_t byte_count, size_t *actual_read_bytes,
-                            cubstream::partial_read_handler *handler) override
+		      cubstream::partial_read_handler *handler) override
     {
       assert (false);
       return NO_ERROR;
     }
 
     char *write_buffer;
-    std::atomic<stream_position> last_position;
+    stream_position last_position;
 };
 
 void master_listening_thread_func ()
@@ -216,12 +216,9 @@ static int init ()
   assert (producer_communication_channel->is_connection_alive () &&
 	  consumer_communication_channel->is_connection_alive ());
 
-  producer = new cubstream::producer_transfer_channel (producer_communication_channel);
-  consumer = new cubstream::consumer_transfer_channel (consumer_communication_channel);
   stream = new stream_mock ();
-
-  producer->set_stream (stream);
-  consumer->set_stream (stream);
+  producer = new cubstream::transfer_sender (*producer_communication_channel, *stream);
+  consumer = new cubstream::transfer_receiver (*consumer_communication_channel, *stream);
 
   return NO_ERROR;
 }
@@ -232,6 +229,9 @@ static int finish ()
 
   delete producer;
   delete consumer;
+
+  delete producer_communication_channel;
+  delete consumer_communication_channel;
 
   rc = csect_finalize_static_critical_sections();
   if (rc != NO_ERROR)
@@ -254,13 +254,13 @@ static int run ()
 
   do
     {
-      producer->get_soft_limit() += MTU * sizeof (int);
+      stream->get_last_reported_ready_pos() += MTU;
       std::this_thread::sleep_for (std::chrono::milliseconds (100));
       cycles++;
     }
   while (cycles < MAX_CYCLES);
 
-  if (stream->last_position == MTU * MAX_CYCLES * sizeof (int))
+  if (stream->last_position == MTU * MAX_CYCLES)
     {
       unsigned int sum = 0;
 

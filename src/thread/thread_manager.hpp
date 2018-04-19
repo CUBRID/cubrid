@@ -229,7 +229,7 @@ namespace cubthread
   // get thread manager
   manager *get_manager (void);
 
-  //quick fix for mockups
+  //quick fix for unit test mockups
   void set_manager (manager *manager);
 
   // get maximum thread count
