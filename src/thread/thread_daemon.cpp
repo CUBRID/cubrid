@@ -71,6 +71,12 @@ namespace cubthread
 	return;
       }
 
+    if (m_func_on_stop)
+      {
+	// to interrupt execution context
+	m_func_on_stop ();
+      }
+
     // make sure thread will wakeup
     wakeup ();
 

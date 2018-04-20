@@ -4748,7 +4748,7 @@ perfmon_stat_thread_stat_name (size_t index, char * name_buf, size_t max_size)
 static void
 f_dump_in_file_thread_stats (FILE * f, const UINT64 * stat_vals)
 {
-  if ( /*pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_THREAD */ true)
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_THREAD)
     {
       perfmon_stat_dump_in_file_thread_stats (f, stat_vals);
     }
@@ -4783,7 +4783,7 @@ perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
 }
 
 /*
- * f_dump_in_buffer_thread_stats () - Write to a buffer the values for Time_obj_lock_acquire_time statistic
+ * f_dump_in_buffer_thread_stats () - Write to a buffer the values for thread statistic
  * s (out): Buffer to write to
  * stat_vals (in): statistics buffer
  * remaining_size (in): size of input buffer
@@ -4792,7 +4792,7 @@ perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
 static void
 f_dump_in_buffer_thread_stats (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
-  if ( /*pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_THREAD */ true)
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_THREAD)
     {
       perfmon_stat_dump_in_buffer_thread_stats (stat_vals, s, remaining_size);
     }
@@ -4868,12 +4868,12 @@ static const size_t PERFMON_PORTABLE_DAEMON_STAT_COUNT =
 
 static const char *perfmon_Portable_daemon_names [] =
 {
-  "Page flush daemon thread:\n",
-  "Page post flush daemon thread:\n",
-  "Page flush control daemon thread:\n",
-  "Page maintenance daemon thread:\n",
-  "Deadlock detect daemon thread:\n",
-  "Log flush daemon thread:\n",
+  "Page_flush_daemon_thread",
+  "Page_post_flush_daemon_thread",
+  "Page_flush_control_daemon_thread",
+  "Page_maintenance_daemon_thread",
+  "Deadlock_detect_daemon_thread",
+  "Log_flush_daemon_thread",
 };
 static const size_t PERFMON_PORTABLE_DAEMON_COUNT = sizeof (perfmon_Portable_daemon_names) / sizeof (const char *);
 
@@ -4928,7 +4928,7 @@ f_load_thread_daemon_stats (void)
 }
 
 /*
- * f_dump_in_file_thread_daemon_stats () - Write in file the values for thread statistic
+ * f_dump_in_file_thread_daemon_stats () - Write in file the values for daemon statistic
  *
  * f (out): File handle
  * stat_vals (in): statistics buffer
@@ -4969,8 +4969,8 @@ perfmon_stat_dump_in_file_thread_daemon_stats (FILE * stream, const UINT64 * sta
 }
 
 /*
- * f_dump_in_buffer_thread_daemon_stats () - Write to a buffer the values for Time_obj_lock_acquire_time
- *						    statistic
+ * f_dump_in_buffer_thread_daemon_stats () - Write to a buffer the values for daemon statistics
+ *
  * s (out): Buffer to write to
  * stat_vals (in): statistics buffer
  * remaining_size (in): size of input buffer

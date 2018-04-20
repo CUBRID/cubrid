@@ -3682,11 +3682,9 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
       collected_bcbs++;
 
 #if defined(SERVER_MODE)
-      if (thread_p && thread_p->shutdown == true)
+      if (thread_p != NULL && thread_p->shutdown == true)
 	{
-#if defined (SERVER_MODE)
 	  pgbuf_Pool.is_checkpoint = false;
-#endif
 	  return ER_FAILED;
 	}
 #endif
@@ -3765,6 +3763,12 @@ pgbuf_flush_chkpt_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flu
   while (seq_flusher->flush_idx < seq_flusher->flush_cnt)
     {
 #if defined (SERVER_MODE)
+      if (thread_p != NULL && thread_p->shutdown)
+	{
+	  // stop
+	  return ER_FAILED;
+	}
+
       gettimeofday (&cur_time, NULL);
 
       /* compute time limit for allowed flush interval */

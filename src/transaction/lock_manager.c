@@ -461,6 +461,7 @@ static int lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran
 static void lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index);
 static int lock_delete_from_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index);
 static LK_ENTRY *lock_find_tran_hold_entry (int tran_index, const OID * oid, bool is_class);
+static bool lock_force_timeout_expired_wait_transactions (void *thrd_entry);
 static bool lock_is_local_deadlock_detection_interval_up (void);
 static void lock_detect_local_deadlock (THREAD_ENTRY * thread_p);
 static bool lock_is_class_lock_escalated (LOCK class_lock, LOCK lock_escalation);
@@ -2152,9 +2153,6 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 
   lk_Gl.TWFG_node[entry_ptr->tran_index].thrd_wait_stime = entry_ptr->thrd_entry->lockwait_stime;
   lk_Gl.deadlock_and_timeout_detector++;
-
-  /* wakeup the dealock detect thread */
-  lock_Deadlock_detect_daemon->wakeup ();
 
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
@@ -5897,6 +5895,11 @@ error:
 //
 //  description:
 //    deadlock detect daemon task
+//    It does
+//      (1) to resume an interrupted lock waiter
+//      (2) to resume a timedout lock waiter
+//      (3) to detect and resolve a deadlock.
+//    It operates (1) and (2) for every 100ms and does (3) for every PRM_ID_LK_RUN_DEADLOCK_INTERVAL.
 //
 class deadlock_detect_task : public cubthread::entry_task
 {
@@ -5906,12 +5909,6 @@ class deadlock_detect_task : public cubthread::entry_task
       if (!BO_IS_SERVER_RESTARTED ())
 	{
 	  // wait for boot to finish
-	  return;
-	}
-
-      if (!lock_is_local_deadlock_detection_interval_up ())
-	{
-	  // forced to wait until PRM_ID_LK_RUN_DEADLOCK_INTERVAL
 	  return;
 	}
 
@@ -5944,10 +5941,11 @@ class deadlock_detect_task : public cubthread::entry_task
 	    {
 	      lock_wait_count++;
 	    }
+
 	  lock_wait_entry = thread_find_next_lockwait_entry (&thread_index);
 	}
 
-      if (lock_wait_count >= 2)
+      if (lock_is_local_deadlock_detection_interval_up () && lock_wait_count >= 2)
 	{
 	  lock_detect_local_deadlock (&thread_ref);
 	}
@@ -7527,8 +7525,7 @@ lock_get_class_lock (const OID * class_oid, int tran_index)
 }
 
 /*
- * lock_force_timeout_lock_wait_transactions - All lock-wait transactions
- *                               are forced to timeout
+ * lock_force_timeout_lock_wait_transactions - All lock-wait transactions are forced to timeout
  *
  * return: nothing
  *
@@ -7567,7 +7564,8 @@ lock_force_timeout_lock_wait_transactions (unsigned short stop_phase)
 	  if (thrd->lockwait != NULL || thrd->lockwait_state == (int) LOCK_SUSPENDED)
 	    {
 	      /* some strange lock wait state.. */
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, thrd->lockwait,
+	      assert (false);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, thrd->lockwait,
 		      thrd->lockwait_state, thrd->index, thrd->get_posix_id (), thrd->tran_index);
 	    }
 	  /* release the thread entry mutex */
@@ -7583,16 +7581,16 @@ lock_force_timeout_lock_wait_transactions (unsigned short stop_phase)
  *                           expired or it is interrupted
  *
  * return: true if the thread was timed out or
- *                       false if the thread was not timed out.
+ *         false if the thread was not timed out.
  *
- *   thrd_entry(in): thread entry pointer
+ * thrd_entry(in): thread entry pointer
  *
  * Note:If the given thread is waiting on a lock to be granted, and
  *     either its expiration time has expired or it is interrupted,
  *     the thread is timed-out.
  *     If NULL is given, it applies to all threads.
  */
-bool
+static bool
 lock_force_timeout_expired_wait_transactions (void *thrd_entry)
 {
 #if !defined (SERVER_MODE)
@@ -7602,85 +7600,51 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
   bool ignore;
   THREAD_ENTRY *thrd;
 
-  if (thrd_entry != NULL)
+  assert (thrd_entry != NULL);
+
+  thrd = (THREAD_ENTRY *) thrd_entry;
+
+  (void) thread_lock_entry (thrd);
+  if (LK_IS_LOCKWAIT_THREAD (thrd))
     {
-      thrd = (THREAD_ENTRY *) thrd_entry;
-      (void) thread_lock_entry (thrd);
-      if (LK_IS_LOCKWAIT_THREAD (thrd))
+      if (logtb_is_interrupted_tran (NULL, true, &ignore, thrd->tran_index))
+	{
+	  /* wake up the thread */
+	  lock_resume ((LK_ENTRY *) thrd->lockwait, LOCK_RESUMED_INTERRUPT);
+	  return true;
+	}
+      else if (LK_CAN_TIMEOUT (thrd->lockwait_msecs))
 	{
 	  struct timeval tv;
 	  INT64 etime;
+
 	  (void) gettimeofday (&tv, NULL);
 	  etime = (tv.tv_sec * 1000000LL + tv.tv_usec) / 1000LL;
-	  if (LK_CAN_TIMEOUT (thrd->lockwait_msecs) && etime - thrd->lockwait_stime > thrd->lockwait_msecs)
+	  if (etime - thrd->lockwait_stime > thrd->lockwait_msecs)
 	    {
 	      /* wake up the thread */
 	      lock_resume ((LK_ENTRY *) thrd->lockwait, LOCK_RESUMED_TIMEOUT);
 	      return true;
 	    }
-	  else if (logtb_is_interrupted_tran (NULL, true, &ignore, thrd->tran_index))
-	    {
-	      /* wake up the thread */
-	      lock_resume ((LK_ENTRY *) thrd->lockwait, LOCK_RESUMED_INTERRUPT);
-	      return true;
-	    }
-	  else
-	    {
-	      /* release the thread entry mutex */
-	      (void) thread_unlock_entry (thrd);
-	      return false;
-	    }
 	}
-      else
-	{
-	  if (thrd->lockwait != NULL || thrd->lockwait_state == (int) LOCK_SUSPENDED)
-	    {
-	      /* some strange lock wait state.. */
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, thrd->lockwait,
-		      thrd->lockwait_state, thrd->index, thrd->get_posix_id (), thrd->tran_index);
-	    }
-	  /* release the thread entry mutex */
-	  (void) thread_unlock_entry (thrd);
-	  return false;
-	}
+
+      /* release the thread entry mutex */
+      (void) thread_unlock_entry (thrd);
+      return false;
     }
   else
     {
-      for (i = 1; i < thread_num_total_threads (); i++)
+      if (thrd->lockwait != NULL || thrd->lockwait_state == (int) LOCK_SUSPENDED)
 	{
-	  thrd = thread_find_entry_by_index (i);
-	  (void) thread_lock_entry (thrd);
-	  if (LK_IS_LOCKWAIT_THREAD (thrd))
-	    {
-	      struct timeval tv;
-	      INT64 etime;
-	      (void) gettimeofday (&tv, NULL);
-	      etime = (tv.tv_sec * 1000000LL + tv.tv_usec) / 1000LL;
-	      if ((LK_CAN_TIMEOUT (thrd->lockwait_msecs) && etime - thrd->lockwait_stime > thrd->lockwait_msecs)
-		  || logtb_is_interrupted_tran (NULL, true, &ignore, thrd->tran_index))
-		{
-		  /* wake up the thread */
-		  lock_resume ((LK_ENTRY *) thrd->lockwait, LOCK_RESUMED_TIMEOUT);
-		}
-	      else
-		{
-		  /* release the thread entry mutex */
-		  (void) thread_unlock_entry (thrd);
-		}
-	    }
-	  else
-	    {
-	      if (thrd->lockwait != NULL || thrd->lockwait_state == (int) LOCK_SUSPENDED)
-		{
-		  /* some strange lock wait state.. */
-		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, thrd->lockwait,
-			  thrd->lockwait_state, thrd->index, thrd->get_posix_id (), thrd->tran_index);
-		}
-	      /* release the thread entry mutex */
-	      (void) thread_unlock_entry (thrd);
-	    }
+	  /* some strange lock wait state.. */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, thrd->lockwait,
+		  thrd->lockwait_state, thrd->index, thrd->get_posix_id (), thrd->tran_index);
 	}
-      return true;
+
+      /* release the thread entry mutex */
+      (void) thread_unlock_entry (thrd);
+      return false;
     }
 #endif /* !SERVER_MODE */
 }
@@ -7816,15 +7780,17 @@ lock_is_local_deadlock_detection_interval_up (void)
   /* check deadlock detection interval */
   gettimeofday (&now, NULL);
   perfmon_diff_timeval (&elapsed, &lk_Gl.last_deadlock_run, &now);
-  elapsed_sec = elapsed.tv_sec + (elapsed.tv_usec / 1000);
+  elapsed_sec = elapsed.tv_sec + (elapsed.tv_usec / 1000000.0);
+
   if (elapsed_sec < prm_get_float_value (PRM_ID_LK_RUN_DEADLOCK_INTERVAL))
     {
       return false;
     }
-  else
-    {
-      return true;
-    }
+
+  /* update the last deadlock run time */
+  lk_Gl.last_deadlock_run = now;
+
+  return true;
 #else /* !SERVER_MODE */
   return false;
 #endif /* SERVER_MODE */
@@ -8235,9 +8201,6 @@ final_:
 	  lk_Gl.no_victim_case_count = 0;
 	}
     }
-
-  /* save the last deadlock run time */
-  gettimeofday (&lk_Gl.last_deadlock_run, NULL);
 
   return;
 #endif /* !SERVER_MODE */

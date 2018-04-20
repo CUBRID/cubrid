@@ -52,6 +52,8 @@
 #include <atomic>
 #include <stack>
 
+#include <cstring>
+
 /* The maximum number of slots in a page if all of them are empty.
  * IO_MAX_PAGE_SIZE is used for page size and any headers are ignored (it
  * wouldn't bring a significant difference).
@@ -349,25 +351,6 @@ INT32 vacuum_Global_oldest_active_blockers_counter;
  */
 MVCCID vacuum_Save_log_hdr_oldest_mvccid = MVCCID_NULL;
 
-/* BLOCK_LOG_BUFFER - Log block buffer used to prefetch block pages. */
-typedef struct block_log_buffer BLOCK_LOG_BUFFER;
-struct block_log_buffer
-{
-  int buffer_id;
-  LOG_PAGEID start_page;	/* start page (sequence order) */
-  LOG_PAGEID last_page;		/* last page (including) */
-};
-
-/* VACUUM_JOB_ENTRY - Info required for a vacuum job. */
-typedef struct vacuum_job_entry VACUUM_JOB_ENTRY;
-struct vacuum_job_entry
-{
-  VACUUM_DATA_ENTRY vacuum_data_entry;	/* copy of data to avoid mutex usage */
-#if defined(SERVER_MODE)
-  BLOCK_LOG_BUFFER block_log_buffer;
-#endif				/* SERVER_MODE */
-};
-
 /* A lock-free buffer used for communication between logger transactions and
  * auto-vacuum master. It is advisable to avoid synchronizing running
  * transactions with vacuum threads and for this reason the block data is not
@@ -385,53 +368,16 @@ lockfree::circular_queue<vacuum_data_entry> *vacuum_Block_data_buffer = NULL;
 lockfree::circular_queue<VACUUM_LOG_BLOCKID> *vacuum_Finished_job_queue = NULL;
 /* *INDENT-ON* */
 
-#if defined(SERVER_MODE)
-/* Vacuum prefetch log block buffers */
-LOG_PAGE *vacuum_Prefetch_log_buffer = NULL;
-LF_BITMAP vacuum_Prefetch_free_buffers_bitmap;
-int vacuum_Prefetch_log_pages = -1;
-int vacuum_Prefetch_log_mode = VACUUM_PREFETCH_LOG_MODE_MASTER;
-
-/* Count of prefetch log buffer blocks : number of blocks in job queue
- * + number of blocks being processed by vacuum workers */
-#define VACUUM_PREFETCH_LOG_PAGES (vacuum_Prefetch_log_pages)
-
-/* Number of prefetch log buffer blocks */
-#define VACUUM_PREFETCH_LOG_BLOCK_BUFFERS_COUNT \
-  (VACUUM_PREFETCH_LOG_PAGES / VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES)
-
 /* number or log pages on each block of buffer log prefetch */
-#define VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES \
-  (1 + vacuum_Data.log_block_npages)
+#define VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES ((size_t) (1 + vacuum_Data.log_block_npages))
 
-#define VACUUM_JOB_QUEUE_SAFETY_BUFFER 10
-#define VACUUM_JOB_QUEUE_MIN_CAPACITY \
-  (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT) \
-   + VACUUM_JOB_QUEUE_SAFETY_BUFFER)
-#define VACUUM_JOB_QUEUE_CAPACITY \
-  (VACUUM_PREFETCH_LOG_BLOCK_BUFFERS_COUNT - \
-   prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT))
-
-#define VACUUM_PREFETCH_LOG_BLOCK_BUFFER(i) \
-  ((char *) (PTR_ALIGN (vacuum_Prefetch_log_buffer, MAX_ALIGNMENT)) \
-   + (((size_t) (i)) * ((size_t) LOG_PAGESIZE) \
-      * ((size_t) VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES)))
-
-#else /* SERVER_MODE */
-#define VACUUM_JOB_QUEUE_CAPACITY (1024)
+#if defined(SERVER_MODE)
+#define VACUUM_MAX_TASKS_IN_WORKER_POOL ((size_t) (3 * prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT)))
 #endif /* SERVER_MODE */
 
 #define VACUUM_FINISHED_JOB_QUEUE_CAPACITY  2048
 
 #define VACUUM_LOG_BLOCK_BUFFER_INVALID (-1)
-
-#define VACUUM_INIT_PREFETCH_BLOCK(block) \
-  do \
-    { \
-      (block)->buffer_id = VACUUM_LOG_BLOCK_BUFFER_INVALID; \
-      (block)->start_page = NULL_PAGEID; \
-      (block)->last_page = NULL_PAGEID; \
-    } while (0)
 
 /* Convert vacuum worker TRANID to an index in vacuum worker's array */
 #define VACUUM_WORKER_INDEX_TO_TRANID(index) \
@@ -627,11 +573,18 @@ static void vacuum_data_initialize_new_page (THREAD_ENTRY * thread_p, VACUUM_DAT
 static int vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p);
 
 static int vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * block_data,
-				     BLOCK_LOG_BUFFER * block_log_buffer, bool sa_mode_partial_block);
+				     bool sa_mode_partial_block);
 static int vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_LSA * log_lsa_p,
 				      LOG_PAGE * log_page_p, LOG_DATA * log_record_data, MVCCID * mvccid,
 				      char **undo_data_ptr, int *undo_data_size, LOG_VACUUM_INFO * vacuum_info,
 				      bool * is_file_dropped, bool stop_after_vacuum_info);
+static void vacuum_read_log_aligned (THREAD_ENTRY * thread_entry, LOG_LSA * log_lsa, LOG_PAGE * log_page);
+static void vacuum_read_log_add_aligned (THREAD_ENTRY * thread_entry, size_t size, LOG_LSA * log_lsa,
+					 LOG_PAGE * log_page);
+static void vacuum_read_advance_when_doesnt_fit (THREAD_ENTRY * thread_entry, size_t size, LOG_LSA * log_lsa,
+						 LOG_PAGE * log_page);
+static void vacuum_copy_data_from_log (THREAD_ENTRY * thread_p, char *area, int length, LOG_LSA * log_lsa,
+				       LOG_PAGE * log_page);
 static void vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * block_data,
 					  bool is_vacuum_complete);
 static bool vacuum_is_work_in_progress (THREAD_ENTRY * thread_p);
@@ -653,14 +606,8 @@ static void vacuum_log_vacuum_heap_page (THREAD_ENTRY * thread_p, PAGE_PTR page_
 static void vacuum_log_remove_ovf_insid (THREAD_ENTRY * thread_p, PAGE_PTR ovfpage);
 static void vacuum_log_redoundo_vacuum_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid,
 					       RECDES * undo_recdes, bool reusable);
-
-#if defined (SERVER_MODE)
-static int vacuum_init_master_prefetch (THREAD_ENTRY * thread_p);
-#endif /* SERVER_MODE */
-static int vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * entry,
-					     BLOCK_LOG_BUFFER * block_log_buffer, int prefetch_mode);
-static int vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, BLOCK_LOG_BUFFER * block_log_buffer,
-				 LOG_PAGE * log_page);
+static int vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * entry);
+static int vacuum_fetch_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, LOG_PAGE * log_page);
 
 static int vacuum_compare_dropped_files (const void *a, const void *b);
 #if defined (SERVER_MODE)
@@ -706,7 +653,7 @@ vacuum_init_thread_context (cubthread::entry &context, THREAD_TYPE type, VACUUM_
 // class vacuum_master_context_manager
 //
 //  description:
-//    extend entry_manager to override context custruction and retirement
+//    extend entry_manager to override context construction and retirement
 //
 class vacuum_master_context_manager : public cubthread::daemon_entry_manager
 {
@@ -777,7 +724,7 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
 #if defined (SA_MODE)
     // find a proper way to do this; SA_MODE claim vacuum worker
     friend void vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
-				  const BLOCK_LOG_BUFFER & log_buffer, bool is_partial_block);
+                                  bool is_partial_block);
 #endif // SA_MODE
 
     void on_create (cubthread::entry & context) final
@@ -790,6 +737,9 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
 	{
 	  assert (false);
 	}
+
+      // get private LRU index
+      context.private_lru_index = context.vacuum_worker->private_lru_index;
     }
 
     void on_retire (cubthread::entry & context) final
@@ -804,6 +754,9 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
 	{
 	  assert (false);
 	}
+
+      // reset private LRU index
+      context.private_lru_index = -1;
     }
 
     void on_recycle (cubthread::entry & context) final
@@ -824,10 +777,8 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
 class vacuum_worker_task : public cubthread::entry_task
 {
   public:
-    vacuum_worker_task (const VACUUM_DATA_ENTRY & entry_ref, const BLOCK_LOG_BUFFER & log_buffer_ref,
-			bool is_partial_block)
+    vacuum_worker_task (const VACUUM_DATA_ENTRY & entry_ref, bool is_partial_block)
       : m_data (entry_ref)
-      , m_block_log_buffer (log_buffer_ref)
       , m_partial_block (is_partial_block)
     {
     }
@@ -838,14 +789,13 @@ class vacuum_worker_task : public cubthread::entry_task
       // safe-guard - check interrupt is always false
       assert (!thread_ref.check_interrupt);
 #endif // SERVER_MODE
-      vacuum_process_log_block (&thread_ref, &m_data, &m_block_log_buffer, m_partial_block);
+      vacuum_process_log_block (&thread_ref, &m_data, m_partial_block);
     }
 
   private:
     vacuum_worker_task ();
 
     VACUUM_DATA_ENTRY m_data;
-    BLOCK_LOG_BUFFER m_block_log_buffer;
     bool m_partial_block;
 };
 
@@ -956,29 +906,6 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
       goto error;
     }
 
-#if defined(SERVER_MODE)
-  vacuum_Prefetch_log_pages = prm_get_integer_value (PRM_ID_VACUUM_PREFETCH_LOG_NBUFFERS);
-
-  if (VACUUM_JOB_QUEUE_CAPACITY < VACUUM_JOB_QUEUE_MIN_CAPACITY)
-    {
-      vacuum_Prefetch_log_pages =
-	(prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT) + VACUUM_JOB_QUEUE_MIN_CAPACITY)
-	* VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES;
-      assert (VACUUM_JOB_QUEUE_CAPACITY >= prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT));
-    }
-
-  vacuum_Prefetch_log_mode = prm_get_integer_value (PRM_ID_VACUUM_PREFETCH_LOG_MODE);
-  if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER)
-    {
-      error_code = vacuum_init_master_prefetch (thread_p);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-
-#endif /* SERVER_MODE */
-
   /* Initialize finished job queue. */
   /* *INDENT-OFF* */
   vacuum_Finished_job_queue = new lockfree::circular_queue<VACUUM_LOG_BLOCKID> (VACUUM_FINISHED_JOB_QUEUE_CAPACITY);
@@ -995,11 +922,12 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
   vacuum_Master.log_zip_p = NULL;
   vacuum_Master.undo_data_buffer = NULL;
   vacuum_Master.undo_data_buffer_capacity = 0;
+  vacuum_Master.private_lru_index = -1;
   vacuum_Master.heap_objects = NULL;
   vacuum_Master.heap_objects_capacity = 0;
-#if defined (SERVER_MODE)
   vacuum_Master.prefetch_log_buffer = NULL;
-#endif /* SERVER_MODE */
+  vacuum_Master.prefetch_first_pageid = NULL_PAGEID;
+  vacuum_Master.prefetch_last_pageid = NULL_PAGEID;
   vacuum_Master.postpone_cache_status = VACUUM_CACHE_POSTPONE_NO;
   vacuum_Master.postpone_redo_data_ptr = NULL;
   vacuum_Master.postpone_redo_data_buffer = NULL;
@@ -1014,12 +942,13 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
       vacuum_Workers[i].log_zip_p = NULL;
       vacuum_Workers[i].undo_data_buffer = NULL;
       vacuum_Workers[i].undo_data_buffer_capacity = 0;
+      vacuum_Workers[i].private_lru_index = pgbuf_assign_private_lru (thread_p, true, i);
       vacuum_Workers[i].heap_objects = NULL;
       vacuum_Workers[i].heap_objects_capacity = 0;
       vacuum_Workers[i].tdes = NULL;
-#if defined (SERVER_MODE)
       vacuum_Workers[i].prefetch_log_buffer = NULL;
-#endif /* SERVER_MODE */
+      vacuum_Workers[i].prefetch_first_pageid = NULL_PAGEID;
+      vacuum_Workers[i].prefetch_last_pageid = NULL_PAGEID;
       vacuum_Workers[i].postpone_cache_status = VACUUM_CACHE_POSTPONE_NO;
       vacuum_Workers[i].postpone_redo_data_ptr = NULL;
       vacuum_Workers[i].postpone_redo_data_buffer = NULL;
@@ -1112,8 +1041,9 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 
   // create thread pool
   vacuum_Worker_threads =
-    thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT), VACUUM_JOB_QUEUE_CAPACITY,
-					vacuum_Worker_context_manager, 1, log_vacuum_worker_pool);
+    thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT),
+					VACUUM_MAX_TASKS_IN_WORKER_POOL, vacuum_Worker_context_manager, 1,
+					log_vacuum_worker_pool);
   assert (vacuum_Worker_threads != NULL);
 
   int vacuum_master_wakeup_interval_msec = prm_get_integer_value (PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL);
@@ -1162,60 +1092,6 @@ vacuum_stop (THREAD_ENTRY * thread_p)
 
   vacuum_Is_booted = false;
 }
-
-#if defined(SERVER_MODE)
-/*
- * vacuum_init_master_prefetch () - Initialize necessary structures for prefetching log data with vacuum master thread.
- *
- * return		   : Void.
- * thread_p (in)	   : Thread entry.
- * vacuum_data_npages (in) : Number of vacuum data pages.
- * vacuum_data_vfid (in)   : Vacuum data VFID.
- * dropped_files_vfid (in) : Dropped files VFID.
- */
-static int
-vacuum_init_master_prefetch (THREAD_ENTRY * thread_p)
-{
-  int error_code = NO_ERROR;
-  long long unsigned size_vacuum_prefetch_log_buffer;
-
-  size_vacuum_prefetch_log_buffer = (((long long unsigned) VACUUM_PREFETCH_LOG_PAGES) * LOG_PAGESIZE) + MAX_ALIGNMENT;
-
-  vacuum_er_log (VACUUM_ER_LOG_MASTER,
-		 "VACUUM INIT: prefetch pages:%d, log_page_size:%d, "
-		 "prefetch buffer size:%llu, job_queue_capacity:%d.", (int) VACUUM_PREFETCH_LOG_PAGES,
-		 (int) LOG_PAGESIZE, size_vacuum_prefetch_log_buffer, (int) VACUUM_JOB_QUEUE_CAPACITY);
-
-  if (!MEM_SIZE_IS_VALID (size_vacuum_prefetch_log_buffer))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, "vacuum_prefetch_log_pages");
-      error_code = ER_PRM_BAD_VALUE;
-      goto error;
-    }
-
-  vacuum_Prefetch_log_buffer = (LOG_PAGE *) malloc ((size_t) size_vacuum_prefetch_log_buffer);
-  if (vacuum_Prefetch_log_buffer == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) size_vacuum_prefetch_log_buffer);
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto error;
-    }
-
-  error_code =
-    lf_bitmap_init (&vacuum_Prefetch_free_buffers_bitmap, LF_BITMAP_ONE_CHUNK, VACUUM_PREFETCH_LOG_BLOCK_BUFFERS_COUNT,
-		    LF_BITMAP_FULL_USAGE_RATIO);
-  if (error_code != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      VACUUM_JOB_QUEUE_CAPACITY * sizeof (unsigned int) / LF_BITFIELD_WORD_SIZE);
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto error;
-    }
-
-error:
-  return error_code;
-}
-#endif /* SERVER_MODE */
 
 /*
 * vacuum_finalize () - Finalize structures used for vacuum.
@@ -1280,17 +1156,6 @@ vacuum_finalize (THREAD_ENTRY * thread_p)
       vacuum_finalize_worker (thread_p, &vacuum_Workers[i]);
     }
   vacuum_finalize_worker (thread_p, &vacuum_Master);
-
-#if defined(SERVER_MODE)
-  if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER)
-    {
-      if (vacuum_Prefetch_log_buffer != NULL)
-	{
-	  free_and_init (vacuum_Prefetch_log_buffer);
-	}
-      lf_bitmap_destroy (&vacuum_Prefetch_free_buffers_bitmap);
-    }
-#endif /* SERVER_MODE */
 
   /* Unlock data */
   pthread_mutex_destroy (&vacuum_Dropped_files_mutex);
@@ -2649,8 +2514,7 @@ vacuum_log_remove_ovf_insid (THREAD_ENTRY * thread_p, PAGE_PTR ovfpage)
 }
 
 /*
- * vacuum_rv_redo_remove_ovf_insid () - Redo removing insert MVCCID from big
- *					record.
+ * vacuum_rv_redo_remove_ovf_insid () - Redo removing insert MVCCID from big record.
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
@@ -2750,8 +2614,7 @@ vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, MVC
 }
 
 void
-vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry, const BLOCK_LOG_BUFFER & log_buffer,
-		  bool is_partial_block = false)
+vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry, bool is_partial_block = false)
 {
 #if defined (SA_MODE)
   // we need a smarter thread manager that can do this automatically
@@ -2766,7 +2629,7 @@ vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
       return;
     }
   cubthread::get_manager ()->push_task (*thread_p, vacuum_Worker_threads,
-					new vacuum_worker_task (data_entry, log_buffer, is_partial_block));
+					new vacuum_worker_task (data_entry, is_partial_block));
 #if defined (SA_MODE)
   vacuum_convert_thread_to_master (thread_p, save_type);
   assert (save_type == THREAD_TYPE::TT_VACUUM_WORKER);
@@ -2795,9 +2658,8 @@ vacuum_check_data_buffer (void)
 }
 
 /*
- * vacuum_process_vacuum_data () - Start a new vacuum iteration that processes
- *				   vacuum data and identifies blocks candidate
- *				   to assign as jobs for vacuum workers.
+ * vacuum_process_vacuum_data () - Start a new vacuum iteration that processes vacuum data and identifies blocks
+ *				   candidate to assign as jobs for vacuum workers.
  *
  * return	 : Void.
  * thread_p (in) : Thread entry.
@@ -2808,7 +2670,6 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
   int data_index;
   VACUUM_DATA_ENTRY *entry = NULL;
   MVCCID local_oldest_active_mvccid;
-  BLOCK_LOG_BUFFER log_buffer;
   VACUUM_DATA_PAGE *data_page = NULL;
   VPID next_vpid;
   PERF_UTIME_TRACKER perf_tracker;
@@ -2878,8 +2739,6 @@ vacuum_process_vacuum_data (THREAD_ENTRY * thread_p)
       VPID_COPY (&vacuum_Data.vpid_job_cursor, pgbuf_get_vpid_ptr ((PAGE_PTR) vacuum_Data.first_page));
       vacuum_Data.blockid_job_cursor = VACUUM_BLOCKID_WITHOUT_FLAGS (vacuum_Data.first_page->data[0].blockid);
     }
-
-  VACUUM_INIT_PREFETCH_BLOCK (&log_buffer);	// init
 
   /* Server-mode will restart if block data buffer or finished job queue are getting filled. */
   /* Stand-alone mode will restart if finished job queue is full. */
@@ -2997,17 +2856,6 @@ restart:
 	  continue;
 	}
 
-      error_code = vacuum_log_prefetch_vacuum_block (thread_p, entry, &log_buffer, VACUUM_PREFETCH_LOG_MODE_MASTER);
-      if (error_code != NO_ERROR)
-	{
-	  assert_release (false);
-	  vacuum_er_log_error (VACUUM_ER_LOG_MASTER,
-			       "Error %d while master tried to prefetch log pages for block %lld.",
-			       er_errid (), (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
-	  vacuum_unfix_data_page (thread_p, data_page);
-	  break;
-	}
-
       VACUUM_BLOCK_STATUS_SET_IN_PROGRESS (entry->blockid);
       vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
       if (!VACUUM_BLOCK_IS_INTERRUPTED (entry->blockid))
@@ -3024,7 +2872,7 @@ restart:
       // job will be executed immediately
       PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
 #endif // SA_MODE
-      vacuum_push_task (thread_p, *entry, log_buffer);
+      vacuum_push_task (thread_p, *entry);
 #if defined (SA_MODE)
       PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
 #endif // SA_MODE
@@ -3095,7 +2943,7 @@ restart:
 
       PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
 
-      vacuum_push_task (thread_p, vacuum_data_entry, log_buffer, true);
+      vacuum_push_task (thread_p, vacuum_data_entry, true);
 
       PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
       (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
@@ -3155,20 +3003,17 @@ vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * vacuum_process_log_block () - Vacuum heap and b-tree entries using log
- *				 information found in a block of pages.
+ * vacuum_process_log_block () - Vacuum heap and b-tree entries using log information found in a block of pages.
  *
  * return		      : Error code.
  * thread_p (in)	      : Thread entry.
  * data (in)		      : Block data.
  * block_log_buffer (in)      : Block log page buffer identifier
- * sa_mode_partial_block (in) : True when SA_MODE vacuum based on partial
- *				block information from log header.
+ * sa_mode_partial_block (in) : True when SA_MODE vacuum based on partial block information from log header.
  *				Logging is skipped if true.
  */
 static int
-vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLOCK_LOG_BUFFER * block_log_buffer,
-			  bool sa_mode_partial_block)
+vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, bool sa_mode_partial_block)
 {
   VACUUM_WORKER *worker = vacuum_get_vacuum_worker (thread_p);
   LOG_LSA log_lsa;
@@ -3232,10 +3077,17 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 		 "vacuum_process_log_block (): " VACUUM_LOG_DATA_ENTRY_MSG ("block"),
 		 VACUUM_LOG_DATA_ENTRY_AS_ARGS (data));
 
-  error_code = vacuum_log_prefetch_vacuum_block (thread_p, data, block_log_buffer, VACUUM_PREFETCH_LOG_MODE_WORKERS);
-  if (error_code != NO_ERROR)
+  if (!sa_mode_partial_block)
     {
-      return error_code;
+      error_code = vacuum_log_prefetch_vacuum_block (thread_p, data);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+  else
+    {
+      // block is not entirely logged and we cannot prefetch it.
     }
 
   /* Initialize stored heap objects. */
@@ -3274,7 +3126,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, BLO
 
       if (log_page_p->hdr.logical_pageid != log_lsa.pageid)
 	{
-	  error_code = vacuum_copy_log_page (thread_p, log_lsa.pageid, block_log_buffer, log_page_p);
+	  error_code = vacuum_fetch_log_page (thread_p, log_lsa.pageid, log_page_p);
 	  if (error_code != NO_ERROR)
 	    {
 	      assert_release (false);
@@ -3483,13 +3335,6 @@ end:
 
   assert (worker->tdes->topops.last == -1);
 
-#if defined(SERVER_MODE)
-  if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER && block_log_buffer != NULL)
-    {
-      lf_bitmap_free_entry (&vacuum_Prefetch_free_buffers_bitmap, block_log_buffer->buffer_id);
-    }
-#endif /* SERVER_MODE */
-
   worker->state = VACUUM_WORKER_STATE_INACTIVE;
   if (!sa_mode_partial_block)
     {
@@ -3522,9 +3367,7 @@ end:
 static int
 vacuum_worker_allocate_resources (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker)
 {
-#if defined (SERVER_MODE)
-  long long unsigned size_worker_prefetch_log_buffer;
-#endif /* SERVER_MODE */
+  size_t size_worker_prefetch_log_buffer;
 
   assert (worker->state == VACUUM_WORKER_STATE::VACUUM_WORKER_STATE_INACTIVE
 	  || worker->state == VACUUM_WORKER_STATE::VACUUM_WORKER_STATE_RECOVERY);
@@ -3571,21 +3414,14 @@ vacuum_worker_allocate_resources (THREAD_ENTRY * thread_p, VACUUM_WORKER * worke
       goto error;
     }
 
-#if defined (SERVER_MODE)
-  if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_WORKERS && worker->prefetch_log_buffer == NULL)
+  size_worker_prefetch_log_buffer = VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES * LOG_PAGESIZE;
+  worker->prefetch_log_buffer = (char *) malloc (size_worker_prefetch_log_buffer);
+  if (worker->prefetch_log_buffer == NULL)
     {
-      size_worker_prefetch_log_buffer =
-	(((long long unsigned) VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES) * LOG_PAGESIZE) + MAX_ALIGNMENT;
-
-      worker->prefetch_log_buffer = (char *) malloc ((size_t) size_worker_prefetch_log_buffer);
-      if (worker->prefetch_log_buffer == NULL)
-	{
-	  vacuum_er_log_error (VACUUM_ER_LOG_WORKER, "%s", "Could not allocate prefetch buffer.");
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_worker_allocate_resources");
-	  goto error;
-	}
+      vacuum_er_log_error (VACUUM_ER_LOG_WORKER, "%s", "Could not allocate prefetch buffer.");
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_worker_allocate_resources");
+      goto error;
     }
-#endif
 
   /* Safe guard - it is assumed that transaction descriptor is already initialized. */
   assert (worker->tdes != NULL);
@@ -3632,17 +3468,14 @@ vacuum_finalize_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker_info)
 
       free_and_init (worker_info->tdes);
     }
-#if defined (SERVER_MODE)
   if (worker_info->prefetch_log_buffer != NULL)
     {
       free_and_init (worker_info->prefetch_log_buffer);
     }
-#endif /* SERVER_MODE */
 }
 
 /*
- * vacuum_rv_get_worker_by_trid () - Get vacuum worker identified by TRANID
- *				     to recover its system operations.
+ * vacuum_rv_get_worker_by_trid () - Get vacuum worker identified by TRANID to recover its system operations.
  *
  * return	    : Transaction descriptor.
  * thread_p (in)    : Thread entry.
@@ -3795,21 +3628,120 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
 }
 
 /*
+ * vacuum_read_log_aligned () - clone of LOG_READ_ALIGN based on vacuum_fetch_log_page
+ *
+ * thread_entry (in) : thread entry
+ * log_lsa (in/out)  : log lsa
+ * log_page (in/out) : log page
+ */
+static void
+vacuum_read_log_aligned (THREAD_ENTRY * thread_entry, LOG_LSA * log_lsa, LOG_PAGE * log_page)
+{
+  // align offset
+  log_lsa->offset = DB_ALIGN (log_lsa->offset, DOUBLE_ALIGNMENT);
+  while (log_lsa->offset >= (int) LOGAREA_SIZE)
+    {
+      log_lsa->pageid++;
+      if (vacuum_fetch_log_page (thread_entry, log_lsa->pageid, log_page) != NO_ERROR)
+	{
+	  // we cannot recover from this
+	  logpb_fatal_error (thread_entry, true, ARG_FILE_LINE, "vacuum_read_log_aligned");
+	}
+
+      log_lsa->offset = DB_ALIGN (log_lsa->offset - (int) LOGAREA_SIZE, DOUBLE_ALIGNMENT);
+    }
+}
+
+/*
+ * vacuum_read_log_add_aligned () - clone of LOG_READ_ADD_ALIGN based on vacuum_fetch_log_page
+ *
+ * thread_entry (in) : thread entry
+ * size (in)         : size to add
+ * log_lsa (in/out)  : log lsa
+ * log_page (in/out) : log page
+ */
+static void
+vacuum_read_log_add_aligned (THREAD_ENTRY * thread_entry, size_t size, LOG_LSA * log_lsa, LOG_PAGE * log_page)
+{
+  log_lsa->offset += (int) size;
+  vacuum_read_log_aligned (thread_entry, log_lsa, log_page);
+}
+
+/*
+ * vacuum_read_advance_when_doesnt_fit () - clone of LOG_READ_ADVANCE_WHEN_DOESNT_FIT based on vacuum_fetch_log_page
+ *
+ * thread_entry (in) : thread entry
+ * size (in)         : size to add
+ * log_lsa (in/out)  : log lsa
+ * log_page (in/out) : log page
+ */
+static void
+vacuum_read_advance_when_doesnt_fit (THREAD_ENTRY * thread_entry, size_t size, LOG_LSA * log_lsa, LOG_PAGE * log_page)
+{
+  if (log_lsa->offset + (int) size >= (int) LOGAREA_SIZE)
+    {
+      log_lsa->offset = (int) LOGAREA_SIZE;	// force fetching next page
+      vacuum_read_log_aligned (thread_entry, log_lsa, log_page);
+      log_lsa->offset = 0;
+    }
+}
+
+/*
+ * vacuum_copy_data_from_log () - clone of logpb_copy_from_log based on vacuum_fetch_log_page
+ *
+ * thread_entry (in) : thread entry
+ * area (out)        : where to copy log data
+ * length (in)       : how much log data to copy
+ * size (in)         : size to add
+ * log_lsa (in/out)  : log lsa
+ * log_page (in/out) : log page
+ */
+static void
+vacuum_copy_data_from_log (THREAD_ENTRY * thread_p, char *area, int length, LOG_LSA * log_lsa, LOG_PAGE * log_page)
+{
+  if (log_lsa->offset + length < (int) LOGAREA_SIZE)
+    {
+      // the log data is contiguous
+      std::memcpy (area, log_page->area + log_lsa->offset, length);
+      log_lsa->offset += length;
+    }
+  else
+    {
+      int copy_length = 0;
+      int area_offset = 0;
+
+      while (length > 0)
+	{
+	  vacuum_read_advance_when_doesnt_fit (thread_p, 0, log_lsa, log_page);
+	  if (log_lsa->offset + length < (int) LOGAREA_SIZE)
+	    {
+	      copy_length = length;
+	    }
+	  else
+	    {
+	      copy_length = LOGAREA_SIZE - (int) log_lsa->offset;
+	    }
+	  std::memcpy (area + area_offset, log_page->area + log_lsa->offset, copy_length);
+	  length -= copy_length;
+	  area_offset += copy_length;
+	  log_lsa->offset += copy_length;
+	}
+    }
+}
+
+/*
  * vacuum_process_log_record () - Process one log record for vacuum.
  *
  * return			  : Error code.
  * worker (in)			  : Vacuum worker.
  * thread_p (in)		  : Thread entry.
- * log_lsa_p (in/out)		  : Input is the start of undo data. Output is
- *				    the end of undo data.
+ * log_lsa_p (in/out)		  : Input is the start of undo data. Output is the end of undo data.
  * log_page_p (in/out)		  : The log page for log_lsa_p.
  * mvccid (out)			  : Log entry MVCCID.
  * undo_data_ptr (out)		  : Undo data pointer.
  * undo_data_size (out)		  : Undo data size.
- * is_file_dropped (out)	  : True if the file corresponding to log
- *				    entry was dropped.
- * stop_after_vacuum_info (in)	  : True if only vacuum info must be obtained
- *				    from log record.
+ * is_file_dropped (out)	  : True if the file corresponding to log entry was dropped.
+ * stop_after_vacuum_info (in)	  : True if only vacuum info must be obtained from log record.
  */
 static int
 vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_LSA * log_lsa_p, LOG_PAGE * log_page_p,
@@ -3845,12 +3777,12 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
   /* Get log record header */
   log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, log_lsa_p);
   log_rec_type = log_rec_header->type;
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), log_lsa_p, log_page_p);
+  vacuum_read_log_add_aligned (thread_p, sizeof (*log_rec_header), log_lsa_p, log_page_p);
 
   if (log_rec_type == LOG_MVCC_UNDO_DATA)
     {
       /* Get log record mvcc_undo information */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undo), log_lsa_p, log_page_p);
+      vacuum_read_advance_when_doesnt_fit (thread_p, sizeof (*mvcc_undo), log_lsa_p, log_page_p);
       mvcc_undo = (LOG_REC_MVCC_UNDO *) (log_page_p->area + log_lsa_p->offset);
 
       /* Get MVCCID */
@@ -3866,12 +3798,12 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
       LSA_COPY (&vacuum_info->prev_mvcc_op_log_lsa, &mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa);
       VFID_COPY (&vacuum_info->vfid, &mvcc_undo->vacuum_info.vfid);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undo), log_lsa_p, log_page_p);
+      vacuum_read_log_add_aligned (thread_p, sizeof (*mvcc_undo), log_lsa_p, log_page_p);
     }
   else if (log_rec_type == LOG_MVCC_UNDOREDO_DATA || log_rec_type == LOG_MVCC_DIFF_UNDOREDO_DATA)
     {
       /* Get log record undoredo information */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo), log_lsa_p, log_page_p);
+      vacuum_read_advance_when_doesnt_fit (thread_p, sizeof (*mvcc_undoredo), log_lsa_p, log_page_p);
       mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) (log_page_p->area + log_lsa_p->offset);
 
       /* Get MVCCID */
@@ -3887,12 +3819,12 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
       LSA_COPY (&vacuum_info->prev_mvcc_op_log_lsa, &mvcc_undoredo->vacuum_info.prev_mvcc_op_log_lsa);
       VFID_COPY (&vacuum_info->vfid, &mvcc_undoredo->vacuum_info.vfid);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (*mvcc_undoredo), log_lsa_p, log_page_p);
+      vacuum_read_log_add_aligned (thread_p, sizeof (*mvcc_undoredo), log_lsa_p, log_page_p);
     }
   else if (log_rec_type == LOG_SYSOP_END)
     {
       /* Get system op mvcc undo information */
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*sysop_end), log_lsa_p, log_page_p);
+      vacuum_read_advance_when_doesnt_fit (thread_p, sizeof (*sysop_end), log_lsa_p, log_page_p);
       sysop_end = (LOG_REC_SYSOP_END *) (log_page_p->area + log_lsa_p->offset);
       if (sysop_end->type != LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 	{
@@ -3916,7 +3848,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
       LSA_COPY (&vacuum_info->prev_mvcc_op_log_lsa, &mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa);
       VFID_COPY (&vacuum_info->vfid, &mvcc_undo->vacuum_info.vfid);
 
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (*sysop_end), log_lsa_p, log_page_p);
+      vacuum_read_log_add_aligned (thread_p, sizeof (*sysop_end), log_lsa_p, log_page_p);
     }
   else
     {
@@ -4007,7 +3939,7 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
       *undo_data_ptr = worker->undo_data_buffer;
 
       /* Copy data to buffer. */
-      logpb_copy_from_log (thread_p, *undo_data_ptr, *undo_data_size, log_lsa_p, log_page_p);
+      vacuum_copy_data_from_log (thread_p, *undo_data_ptr, *undo_data_size, log_lsa_p, log_page_p);
     }
 
   if (is_zipped)
@@ -4316,8 +4248,7 @@ vacuum_load_dropped_files_from_disk (THREAD_ENTRY * thread_p)
 }
 
 /*
- * vacuum_create_file_for_vacuum_data () - Create a disk file to keep vacuum
- *					   data.
+ * vacuum_create_file_for_vacuum_data () - Create a disk file to keep vacuum data.
  *
  * return		   : Error code.
  * thread_p (in)	   : Thread entry.
@@ -5570,8 +5501,7 @@ vacuum_get_log_blockid (LOG_PAGEID pageid)
  * vacuum_min_log_pageid_to_keep () - Get the minimum log pageid required to execute vacuum.
  *				      See vacuum_update_keep_from_log_pageid.
  *
- * return	 : LOG Page identifier for first log page that should be
- *		   processed by vacuum.
+ * return	 : LOG Page identifier for first log page that should be processed by vacuum.
  * thread_p (in) : Thread entry.
  */
 LOG_PAGEID
@@ -5743,8 +5673,7 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
 /*
  * vacuum_compare_dropped_files () - Compare two file identifiers.
  *
- * return    : Positive if the first argument is bigger, negative if it is
- *	       smaller and 0 if arguments are equal.
+ * return    : Positive if the first argument is bigger, negative if it is smaller and 0 if arguments are equal.
  * a (in)    : Pointer to a file identifier.
  * b (in)    : Pointer to a a file identifier.
  */
@@ -6042,8 +5971,7 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
 
 /*
  * vacuum_log_add_dropped_file () - Append postpone/undo log for notifying vacuum of a file being dropped. Postpone
- *				    is added when a class or index is dropped and undo when a class or index is
- (				    created.
+ *				    is added when a class or index is dropped and undo when a class or index is created.
  *
  * return	 : Void.
  * thread_p (in) : Thread entry.
@@ -6641,8 +6569,7 @@ vacuum_find_dropped_file (THREAD_ENTRY * thread_p, bool * is_file_dropped, VFID 
  * indexes (in)	  : Indexes of cleaned up dropped files.
  * n_indexes (in) : Total count of dropped files.
  *
- * NOTE: Consider not logging cleanup. Cleanup can be done at database
- *	 restart.
+ * NOTE: Consider not logging cleanup. Cleanup can be done at database restart.
  */
 static void
 vacuum_log_cleanup_dropped_files (THREAD_ENTRY * thread_p, PAGE_PTR page_p, INT16 * indexes, INT16 n_indexes)
@@ -6677,8 +6604,7 @@ vacuum_log_cleanup_dropped_files (THREAD_ENTRY * thread_p, PAGE_PTR page_p, INT1
  * thread_p (in) : Thread entry,
  * rcv (in)	 : Recovery data.
  *
- * NOTE: Consider not logging cleanup. Cleanup can be done at database
- *	 restart.
+ * NOTE: Consider not logging cleanup. Cleanup can be done at database restart.
  */
 int
 vacuum_rv_redo_cleanup_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
@@ -6754,8 +6680,7 @@ vacuum_dropped_files_set_next_page (THREAD_ENTRY * thread_p, VACUUM_DROPPED_FILE
 }
 
 /*
- * vacuum_rv_set_next_page_dropped_files () - Recover setting link to next
- *					      page for dropped files.
+ * vacuum_rv_set_next_page_dropped_files () - Recover setting link to next page for dropped files.
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
@@ -7086,7 +7011,6 @@ vacuum_verify_vacuum_data_debug (THREAD_ENTRY * thread_p)
  *					 required by a vacuum block
  * thread_p (in):
  * entry (in): vacuum data entry
- * block_log_buffer (in/out): block log buffer identifier
  *
  * Note : this function does not handle cases when last log entry in 'start_lsa'
  *	  page of vacuum data entry spans for more than extra one log page.
@@ -7095,145 +7019,108 @@ vacuum_verify_vacuum_data_debug (THREAD_ENTRY * thread_p)
  *	  the vacuum will require log pages before this one.
  */
 static int
-vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * entry,
-				  BLOCK_LOG_BUFFER * block_log_buffer, int prefetch_mode)
+vacuum_log_prefetch_vacuum_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * entry)
 {
-#if defined (SERVER_MODE)
-  int i;
-  char *buffer_block_start_ptr;
-  char *log_page;
-  LOG_PAGEID start_log_pageid, log_pageid;
   VACUUM_WORKER *worker = vacuum_get_vacuum_worker (thread_p);
   int error = NO_ERROR;
   LOG_LSA req_lsa;
+  LOG_PAGEID log_pageid;
+  LOG_PAGE *log_page;
 
   req_lsa.offset = LOG_PAGESIZE;
 
   assert (entry != NULL);
-  assert (block_log_buffer != NULL);
 
-  if (vacuum_Prefetch_log_mode != prefetch_mode)
-    {
-      // don't pre-fetch here
-      return NO_ERROR;
-    }
+  worker->prefetch_first_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
+  worker->prefetch_last_pageid = worker->prefetch_first_pageid + VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES - 1;
 
-  if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER)
-    {
-      block_log_buffer->buffer_id = lf_bitmap_get_entry (&vacuum_Prefetch_free_buffers_bitmap);
-      if (block_log_buffer->buffer_id < 0)
-	{
-	  assert (false);
-	  vacuum_er_log_error (VACUUM_ER_LOG_MASTER, "%s", "Could not prefetch. No more free log block buffers.");
-	  return ER_FAILED;
-	}
-      buffer_block_start_ptr = VACUUM_PREFETCH_LOG_BLOCK_BUFFER (block_log_buffer->buffer_id);
-    }
-  else
-    {
-      buffer_block_start_ptr = worker->prefetch_log_buffer;
-    }
-
-  start_log_pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (VACUUM_BLOCKID_WITHOUT_FLAGS (entry->blockid));
-  log_pageid = start_log_pageid;
-
-  log_page = buffer_block_start_ptr;
-  for (i = 0; i < VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES && log_pageid <= entry->start_lsa.pageid + 1;
-       i++, log_pageid++)
+  for (log_pageid = worker->prefetch_first_pageid, log_page = (LOG_PAGE *) worker->prefetch_log_buffer;
+       log_pageid <= worker->prefetch_last_pageid;
+       log_pageid++, log_page = (LOG_PAGE *) (((char *) log_page) + LOG_PAGESIZE))
     {
       req_lsa.pageid = log_pageid;
-      error = logpb_fetch_page (thread_p, &req_lsa, LOG_CS_SAFE_READER, (LOG_PAGE *) log_page);
+      error = logpb_fetch_page (thread_p, &req_lsa, LOG_CS_SAFE_READER, log_page);
       if (error != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
+	  assert (false);	// failure is not acceptable
 	  vacuum_er_log_error (VACUUM_ER_LOG_ERROR, "cannot prefetch log page %d", log_pageid);
-	  if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER)
-	    {
-	      lf_bitmap_free_entry (&vacuum_Prefetch_free_buffers_bitmap, block_log_buffer->buffer_id);
-	      block_log_buffer->buffer_id = VACUUM_LOG_BLOCK_BUFFER_INVALID;
-	    }
 
 	  error = ER_FAILED;
 	  goto end;
 	}
-
-      log_page += LOG_PAGESIZE;
     }
 
-  block_log_buffer->start_page = start_log_pageid;
-  block_log_buffer->last_page = start_log_pageid + i - 1;
-
-  vacuum_er_log (VACUUM_ER_LOG_MASTER, "VACUUM : prefetched %d log pages from %lld to %lld", i,
-		 (long long int) block_log_buffer->start_page, (long long int) block_log_buffer->last_page);
+  vacuum_er_log (VACUUM_ER_LOG_MASTER, "VACUUM : prefetched %d log pages from %lld to %lld",
+		 VACUUM_PREFETCH_LOG_BLOCK_BUFFER_PAGES, (long long int) worker->prefetch_first_pageid,
+		 (long long int) worker->prefetch_last_pageid);
 
 end:
   return error;
-#else // not SERVER_MODE = SA_MODE
-  // no prefetch
-  return NO_ERROR;
-#endif // not SERVER_MODE = SA_MODE
 }
 
 
 /*
- * vacuum_copy_log_page () - Loads a log page to be processed by vacuum from vacuum block buffer or log page buffer or
- *			     disk log archive.
+ * vacuum_fetch_log_page () - Loads a log page to be processed by vacuum from vacuum block buffer or log page buffer or
+ *			      disk log archive.
  *
  * thread_p (in):
  * log_pageid (in): log page logical id
- * block_log_buffer (in): block log buffer identifier
  * log_page_p (in/out): pre-allocated buffer to store one log page
  *
  */
 static int
-vacuum_copy_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, BLOCK_LOG_BUFFER * block_log_buffer,
-		      LOG_PAGE * log_page_p)
+vacuum_fetch_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, LOG_PAGE * log_page_p)
 {
-#if defined (SERVER_MODE)
-  char *buffer_block_start_ptr;
-  char *buffer_page_start_ptr;
-  VACUUM_WORKER *worker = vacuum_get_vacuum_worker (thread_p);
-#endif /* SERVER_MODE */
   int error = NO_ERROR;
 
-  assert (log_page_p != NULL);
-
-#if defined (SERVER_MODE)
-  if (block_log_buffer != NULL && log_pageid >= block_log_buffer->start_page
-      && log_pageid <= block_log_buffer->last_page)
+  if (vacuum_is_thread_vacuum (thread_p))
     {
-      if (vacuum_Prefetch_log_mode == VACUUM_PREFETCH_LOG_MODE_MASTER)
+      // try to fetch from prefetched pages
+      VACUUM_WORKER *worker = vacuum_get_vacuum_worker (thread_p);
+
+      assert (worker != NULL);
+      assert (log_page_p != NULL);
+
+      perfmon_inc_stat (thread_p, PSTAT_VAC_NUM_PREFETCH_REQUESTS_LOG_PAGES);
+
+      if (worker->prefetch_first_pageid <= log_pageid && log_pageid <= worker->prefetch_last_pageid)
 	{
-	  buffer_block_start_ptr = VACUUM_PREFETCH_LOG_BLOCK_BUFFER (block_log_buffer->buffer_id);
+	  /* log page is cached */
+	  size_t page_index = log_pageid - worker->prefetch_first_pageid;
+	  memcpy (log_page_p, worker->prefetch_log_buffer + page_index * LOG_PAGESIZE, LOG_PAGESIZE);
+
+	  assert (log_page_p->hdr.logical_pageid == log_pageid);	// should be the correct page
+
+	  perfmon_inc_stat (thread_p, PSTAT_VAC_NUM_PREFETCH_HITS_LOG_PAGES);
+	  return NO_ERROR;
 	}
       else
 	{
-	  buffer_block_start_ptr = worker->prefetch_log_buffer;
+	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_LOGGING,
+			 "log page %lld is not in prefetched range %lld - %lld\n",
+			 log_pageid, worker->prefetch_first_pageid, worker->prefetch_last_pageid);
 	}
-      buffer_page_start_ptr = buffer_block_start_ptr + (log_pageid - block_log_buffer->start_page) * LOG_PAGESIZE;
-
-      /* log page is cached */
-      memcpy (log_page_p, buffer_page_start_ptr, LOG_PAGESIZE);
-
-      perfmon_inc_stat (thread_p, PSTAT_VAC_NUM_PREFETCH_HITS_LOG_PAGES);
+      // fall through
     }
   else
-#endif /* SERVER_MODE */
     {
-      LOG_LSA req_lsa;
-
-      req_lsa.pageid = log_pageid;
-      req_lsa.offset = LOG_PAGESIZE;
-      error = logpb_fetch_page (thread_p, &req_lsa, LOG_CS_SAFE_READER, log_page_p);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_copy_log_page");
-	  error = ER_FAILED;
-	}
+      // there are two possible paths here
+      // 1. vacuum_process_log_block (when caller must be vacuum worker)
+      // 2. vacuum_recover_lost_block_data (when caller is boot thread)
+      // this must be second case
     }
+  // need to fetch from log
 
-  perfmon_inc_stat (thread_p, PSTAT_VAC_NUM_PREFETCH_REQUESTS_LOG_PAGES);
+  LOG_LSA req_lsa;
+  req_lsa.pageid = log_pageid;
+  req_lsa.offset = LOG_PAGESIZE;
+  error = logpb_fetch_page (thread_p, &req_lsa, LOG_CS_SAFE_READER, log_page_p);
+  if (error != NO_ERROR)
+    {
+      assert (false);		// failure is not acceptable
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_fetch_log_page");
+      error = ER_FAILED;
+    }
 
   return error;
 }
@@ -7647,8 +7534,7 @@ vacuum_cache_log_postpone_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 /*
  * vacuum_do_postpone_from_cache () - Do postpone from vacuum worker's cached postpone entries.
  *
- * return		   : True if postpone was run from cached entries,
- *			     false otherwise.
+ * return		   : True if postpone was run from cached entries, false otherwise.
  * thread_p (in)	   : Thread entry.
  * start_postpone_lsa (in) : Start postpone LSA.
  */
@@ -7897,9 +7783,9 @@ vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, 
 }
 
 /* 
- *	vacuum_is_empty() - Checks if the vacuum is empty.
+ * vacuum_is_empty() - Checks if the vacuum is empty.
  *
- *	return :- true or false
+ * return :- true or false
  */
 bool
 vacuum_is_empty (void)
@@ -7915,9 +7801,9 @@ vacuum_is_empty (void)
 }
 
 /*
- *  vacuum_log_last_blockid () - Logs the vacuum_Data.last_blockid similar to vacuum_empty_data_page
+ * vacuum_log_last_blockid () - Logs the vacuum_Data.last_blockid similar to vacuum_empty_data_page
  *
- *  thread_p(in) :- Thread context.
+ * thread_p(in) :- Thread context.
  */
 void
 vacuum_log_last_blockid (THREAD_ENTRY * thread_p)

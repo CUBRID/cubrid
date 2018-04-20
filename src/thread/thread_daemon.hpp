@@ -77,6 +77,7 @@ namespace cubthread
   class daemon
   {
     public:
+
       //  daemon constructor needs:
       //    loop_pattern_arg    : loop pattern for task execution
       //    context_manager_arg : context manager to create and retire thread execution context
@@ -116,6 +117,8 @@ namespace cubthread
 
       waiter m_waiter;        // thread waiter
       looper m_looper;        // thread looper
+      std::function<void (void)> m_func_on_stop;  // callback function to interrupt execution on stop request
+
       std::thread m_thread;   // the actual daemon thread
 
       // stats
@@ -136,13 +139,15 @@ namespace cubthread
 		  task<Context> *exec)
     : m_waiter ()
     , m_looper (loop_pattern_arg)
-    , m_thread (daemon::loop<Context>, this, context_manager_arg, exec)
+    , m_func_on_stop ()
+    , m_thread ()
     , m_loop_count (0)
     , m_execute_time (0)
     , m_pause_time (0)
     , m_stats (daemon::create_statset ())
   {
     // starts a thread to execute daemon::loop
+    m_thread = std::thread (daemon::loop<Context>, this, context_manager_arg, exec);
   }
 
   template <typename Context>
@@ -151,6 +156,9 @@ namespace cubthread
   {
     // create execution context
     Context &context = context_manager_arg->create_context ();
+
+    // now that we have access to context we can set the callback function on stop
+    daemon_arg->m_func_on_stop = std::bind (&Context::interrupt_execution, std::ref (context));
 
     // loop until stopped
     using clock_type = std::chrono::high_resolution_clock;
