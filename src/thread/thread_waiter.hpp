@@ -71,9 +71,9 @@ namespace cubthread
 
       // statistics
       static const std::size_t STAT_COUNT;
+      static const char *get_stat_name (std::size_t stat_index);
 
       void get_stats (cubperf::stat_value *stats_out);
-      const char *get_stat_name (std::size_t stat_index);
 
     private:
 

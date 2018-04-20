@@ -101,12 +101,9 @@ namespace cubthread
       // statistics
       using stat_type = std::uint64_t;
 
-      // all statistics:
-      // own stats: loop count, execute time, pause time = 3
-      // + looper stats
-      // + waiter stats
+      // statistics
       static const std::size_t STAT_COUNT;
-
+      static const char *get_stat_name (std::size_t stat_index);
       void get_stats (stat_type *stats_out);
 
     private:

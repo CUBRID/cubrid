@@ -123,13 +123,10 @@ namespace cubthread
       bool was_woken_up (void) const;
 
       // statistics
-      // sleep count
-      // sleep time
-      // reset count
       static const std::size_t STAT_COUNT;
+      static const char *get_stat_name (std::size_t stat_index);
 
       void get_stats (cubperf::stat_value *stats_out);
-      const char *get_stat_name (std::size_t stat_index);
 
     private:
 

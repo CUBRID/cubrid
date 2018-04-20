@@ -113,6 +113,36 @@ namespace cubthread
     // i += waiter::STAT_COUNT;
   }
 
+  const char *
+  daemon::get_stat_name (std::size_t stat_index)
+  {
+    assert (stat_index < STAT_COUNT);
+
+    // is from daemon?
+    if (stat_index < Daemon_statistics.get_value_count ())
+      {
+	return Daemon_statistics.get_value_name (stat_index);
+      }
+    else
+      {
+	stat_index -= Daemon_statistics.get_value_count ();
+      }
+
+    // is from looper?
+    if (stat_index < looper::STAT_COUNT)
+      {
+	return looper::get_stat_name (stat_index);
+      }
+    else
+      {
+	stat_index -= looper::STAT_COUNT;
+      }
+
+    // must be from waiter
+    assert (stat_index < waiter::STAT_COUNT);
+    return waiter::get_stat_name (stat_index);
+  }
+
   cubperf::statset &
   daemon::create_statset (void)
   {
