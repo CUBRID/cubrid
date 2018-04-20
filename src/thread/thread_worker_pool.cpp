@@ -23,47 +23,76 @@
 
 #include "thread_worker_pool.hpp"
 
+#include "perf.hpp"
+
 #include <cstring>
 
 namespace cubthread
 {
-
   //////////////////////////////////////////////////////////////////////////
-  // wpstat
+  // statistics
   //////////////////////////////////////////////////////////////////////////
 
-  wpstat::wpstat (stat_type *stats_p)
-    : m_counters (NULL)
-    , m_timers (NULL)
-    , m_own_stats (NULL)
+  cubperf::stat_id Wpstat_start_thread;
+  cubperf::stat_id Wpstat_create_context;
+  cubperf::stat_id Wpstat_execute_task;
+  cubperf::stat_id Wpstat_retire_task;
+  cubperf::stat_id Wpstat_search_in_queue;
+  cubperf::stat_id Wpstat_wakeup_with_task;
+  cubperf::stat_id Wpstat_retire_context;
+
+  static const cubperf::statset_definition Worker_pool_statdef =
   {
-    if (stats_p == NULL)
-      {
-	m_own_stats = new stat_type[STATS_COUNT * 2];
-	stats_p = m_own_stats;
-      }
+    cubperf::stat_definition (Wpstat_start_thread, cubperf::stat_definition::COUNTER_AND_TIMER,
+    "Counter_start_thread", "Timer_start_thread"),
+    cubperf::stat_definition (Wpstat_create_context, cubperf::stat_definition::COUNTER_AND_TIMER,
+    "Counter_start_thread", "Timer_start_thread"),
+    cubperf::stat_definition (Wpstat_execute_task, cubperf::stat_definition::COUNTER_AND_TIMER,
+    "Counter_start_thread", "Timer_start_thread"),
+    cubperf::stat_definition (Wpstat_retire_task, cubperf::stat_definition::COUNTER_AND_TIMER,
+    "Counter_start_thread", "Timer_start_thread"),
+    cubperf::stat_definition (Wpstat_search_in_queue, cubperf::stat_definition::COUNTER_AND_TIMER,
+    "Counter_start_thread", "Timer_start_thread"),
+    cubperf::stat_definition (Wpstat_wakeup_with_task, cubperf::stat_definition::COUNTER_AND_TIMER,
+    "Counter_start_thread", "Timer_start_thread"),
+    cubperf::stat_definition (Wpstat_retire_context, cubperf::stat_definition::COUNTER_AND_TIMER,
+    "Counter_start_thread", "Timer_start_thread")
+  };
 
-    m_counters = stats_p;
-    m_timers = stats_p + STATS_COUNT;
-
-    // reset all to zeros
-    std::memset (stats_p, 0, sizeof (stat_type) * STATS_COUNT * 2);
-  }
-
-  wpstat::~wpstat (void)
+  cubperf::statset &
+  wp_statset_create (void)
   {
-    delete [] m_own_stats;
-    m_own_stats = NULL;
+    return *Worker_pool_statdef.create_statset ();
   }
 
   void
-  wpstat::operator+= (const wpstat &other_stat)
+  wp_statset_destroy (cubperf::statset &stats)
   {
-    for (std::size_t it = 0; it < STATS_COUNT; it++)
-      {
-	m_counters[it] += other_stat.m_counters[it];
-	m_timers[it] += other_stat.m_timers[it];
-      }
+    delete &stats;
+  }
+
+  void
+  wp_statset_time_and_increment (cubperf::statset &stats, cubperf::stat_id id)
+  {
+    Worker_pool_statdef.time_and_increment (stats, id);
+  }
+
+  void
+  wp_statset_accumulate (const cubperf::statset &what, cubperf::stat_value *where)
+  {
+    Worker_pool_statdef.add_stat_values (what, where);
+  }
+
+  std::size_t
+  wp_statset_get_count (void)
+  {
+    return Worker_pool_statdef.get_value_count ();
+  }
+
+  const char *
+  wp_statset_get_name (std::size_t stat_index)
+  {
+    return Worker_pool_statdef.get_value_name (stat_index);
   }
 
   //////////////////////////////////////////////////////////////////////////

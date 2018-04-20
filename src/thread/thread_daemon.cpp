@@ -102,7 +102,7 @@ namespace cubthread
   }
 
   void
-  daemon::get_stats (stat_type *stats_out)
+  daemon::get_stats (cubperf::stat_value *stats_out)
   {
     std::size_t i = 0;
 
@@ -153,6 +153,18 @@ namespace cubthread
   daemon::create_statset (void)
   {
     return *Daemon_statistics.create_statset ();
+  }
+
+  void
+  daemon::register_stat_pause (void)
+  {
+    Daemon_statistics.time (m_stats, STAT_LOOP_PAUSE_TIME);
+  }
+
+  void
+  daemon::register_stat_execute (void)
+  {
+    Daemon_statistics.time_and_increment (m_stats, STAT_LOOP_EXECUTE_COUNT_AND_TIME);
   }
 
 } // namespace cubthread

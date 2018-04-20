@@ -574,7 +574,7 @@ STATIC_INLINE const char *perfmon_stat_promote_cond_name (const int cond_type) _
 STATIC_INLINE const char *perfmon_stat_snapshot_name (const int snapshot) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_snapshot_record_type (const int rec_type) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_lock_mode_name (const int lock_mode) __attribute__ ((ALWAYS_INLINE));
-static void perfmon_stat_thread_stat_name (size_t index, char *name_buf, size_t max_size);
+static const char *perfmon_stat_thread_stat_name (size_t index);
 
 STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__ ((ALWAYS_INLINE));
 
@@ -4701,10 +4701,52 @@ perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int
 }
 
 // *INDENT-OFF*
+//////////////////////////////////////////////////////////////////////////
+// thread workers section
+//////////////////////////////////////////////////////////////////////////
+
+const char *perfmon_Portable_worker_stat_names [] =
+  {
+    "Counter_start_thread",
+    "Timer_start_thread",
+    "Counter_create_context",
+    "Timer_create_context",
+    "Counter_execute_task",
+    "Timer_execute_task",
+    "Counter_retire_task",
+    "Timer_retire_task",
+    "Counter_search_task_in_queue",
+    "Timer_search_task_in_queue",
+    "Counter_wakeup_with_task",
+    "Timer_wakeup_with_task",
+    "Counter_retire_context",
+    "Timer_retire_context"
+  };
+static const size_t PERFMON_PORTABLE_WORKER_STAT_COUNT =
+  sizeof (perfmon_Portable_worker_stat_names) / sizeof (const char *);
+
 static size_t
 thread_stats_count (void)
 {
-  return cubthread::wpstat::STATS_COUNT * 2;
+#if defined (SERVER_MODE)
+  assert (PERFMON_PORTABLE_WORKER_STAT_COUNT == cubthread::wp_statset_get_count ());
+  static bool check_names = true;
+  if (check_names)
+    {
+      for (size_t index = 0; index < PERFMON_PORTABLE_WORKER_STAT_COUNT; index++)
+        {
+          if (std::strcmp (perfmon_Portable_worker_stat_names[index], cubthread::wp_statset_get_name (index)) != 0)
+            {
+              assert (false);
+              _er_log_debug (ARG_FILE_LINE,
+                             "Warning - Monitoring thread worker statistics; statistics name not matching for %zu\n"
+                             "\t\tperfmon name = %s\n" "\t\tdaemon name = %s\n", index,
+                             perfmon_Portable_worker_stat_names[index], cubthread::wp_statset_get_name (index));
+            }
+        }
+    }
+#endif // SERVER_MODE
+  return PERFMON_PORTABLE_WORKER_STAT_COUNT;
 }
 
 static int
@@ -4713,29 +4755,10 @@ f_load_thread_stats (void)
   return (int) thread_stats_count ();
 }
 
-static void
-perfmon_stat_thread_stat_name (size_t index, char * name_buf, size_t max_size)
+static const char *
+perfmon_stat_thread_stat_name (size_t index)
 {
-  cubthread::wpstat::id wpstat_id;
-  const char *prefixp;
-  const char *COUNTER_PREFIX = "Counter_";
-  const char *TIMER_PREFIX = "Timer_";
-
-  if (index < cubthread::wpstat::STATS_COUNT)
-    {
-      wpstat_id = cubthread::wpstat::to_id (index);
-      prefixp = COUNTER_PREFIX;
-    }
-  else
-    {
-      wpstat_id = cubthread::wpstat::to_id (index - cubthread::wpstat::STATS_COUNT);
-      prefixp = TIMER_PREFIX;
-    }
-
-  std::strncpy (name_buf, prefixp, max_size);
-  max_size -= std::strlen (prefixp);
-
-  std::strncat (name_buf, cubthread::wpstat::get_id_name (wpstat_id), max_size);
+  return perfmon_Portable_worker_stat_names[index];
 }
 
 /*
@@ -4765,8 +4788,6 @@ static void
 perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
 {
   UINT64 value = 0;
-  const size_t MAX_NAME_SIZE = 64;
-  char name_buf[MAX_NAME_SIZE];
 
   assert (stream != NULL);
 
@@ -4777,8 +4798,7 @@ perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
 	{
 	  continue;
 	}
-      perfmon_stat_thread_stat_name (it, name_buf, MAX_NAME_SIZE);
-      fprintf (stream, "%-10s = %16llu\n", name_buf, (long long unsigned int) value);
+      fprintf (stream, "%-10s = %16llu\n", perfmon_stat_thread_stat_name (it), (long long unsigned int) value);
     }
 }
 
@@ -4810,8 +4830,6 @@ static void
 perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, int *remaining_size)
 {
   UINT64 value = 0;
-  const size_t MAX_NAME_SIZE = 64;
-  char name_buf[MAX_NAME_SIZE];
   int ret;
 
   assert (s != NULL);
@@ -4824,8 +4842,8 @@ perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, in
 	{
 	  continue;
 	}
-      perfmon_stat_thread_stat_name (it, name_buf, MAX_NAME_SIZE);
-      ret = snprintf (*s, *remaining_size, "%-10s = %16llu\n", name_buf, (long long unsigned int) value);
+      ret = snprintf (*s, *remaining_size, "%-10s = %16llu\n", perfmon_stat_thread_stat_name (it),
+                      (long long unsigned int) value);
 
       *remaining_size -= ret;
       *s += ret;
@@ -4893,11 +4911,11 @@ perfmon_per_daemon_stat_count (void)
     {
       for (size_t index = 0; index < PERFMON_PORTABLE_DAEMON_STAT_COUNT; index++)
         {
-          
           if (std::strcmp (perfmon_Portable_daemon_stat_names[index], cubthread::daemon::get_stat_name (index)) != 0)
             {
               assert (false);
-              _er_log_debug ("Warning - Monitoring daemon statistics; statistics name not matching for %zu\n"
+              _er_log_debug (ARG_FILE_LINE,
+                             "Warning - Monitoring daemon statistics; statistics name not matching for %zu\n"
                              "\t\tperfmon name = %s\n" "\t\tdaemon name = %s\n", index,
                              perfmon_Portable_daemon_stat_names[index], cubthread::daemon::get_stat_name (index));
             }

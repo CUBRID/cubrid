@@ -86,13 +86,14 @@ namespace cubperf
   class generic_statset
   {
     public:
-      std::size_t m_value_count;
-      generic_value<IsAtomic> *m_values;
-      time_point m_timept;
+      std::size_t m_value_count;          // value count
+      generic_value<IsAtomic> *m_values;  // statistics values
+      time_point m_timept;                // internal time point; used as default starting time point for time and
+      // time_and_increment functions
 
-      ~generic_statset (void);
+      ~generic_statset (void);      // destroy
 
-      void reset_timept (void);
+      void reset_timept (void);     // reset internal time point to current
 
     private:
 
@@ -141,8 +142,10 @@ namespace cubperf
       inline void time_and_increment (atomic_statset &statsetr, stat_id id, duration d, stat_value incr = 1) const;
       inline void time_and_increment (atomic_statset &statsetr, stat_id id, stat_value incr = 1) const;
 
-      void get_stat_values (statset &statsetr, stat_value *output_stats) const;
-      void get_stat_values (atomic_statset &statsetr, stat_value *output_stats) const;
+      void get_stat_values (const statset &statsetr, stat_value *output_stats) const;
+      void get_stat_values (const atomic_statset &statsetr, stat_value *output_stats) const;
+      void add_stat_values (const statset &statsetr, stat_value *output_stats) const;
+      void add_stat_values (const atomic_statset &statsetr, stat_value *output_stats) const;
 
       // getters
       std::size_t get_stat_count () const;
