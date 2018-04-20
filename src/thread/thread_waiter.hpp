@@ -24,7 +24,7 @@
 #ifndef _THREAD_WAITER_HPP_
 #define _THREAD_WAITER_HPP_
 
-#include "perf.hpp"
+#include "perf_def.hpp"
 
 #include <atomic>
 #include <chrono>

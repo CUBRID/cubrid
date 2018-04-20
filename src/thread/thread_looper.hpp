@@ -24,7 +24,7 @@
 #ifndef _THREAD_LOOPER_HPP_
 #define _THREAD_LOOPER_HPP_
 
-#include "perf.hpp"
+#include "perf_def.hpp"
 
 #include <array>
 #include <atomic>

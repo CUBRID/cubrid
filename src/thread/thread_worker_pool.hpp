@@ -28,7 +28,7 @@
 #include "thread_task.hpp"
 
 // cubrid includes
-#include "perf.hpp"
+#include "perf_def.hpp"
 
 // system includes
 #include <atomic>

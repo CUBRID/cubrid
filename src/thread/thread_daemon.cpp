@@ -21,9 +21,14 @@
  * thread_daemon - interface for daemon threads
  */
 
+// own header
 #include "thread_daemon.hpp"
 
+// module headers
 #include "thread_task.hpp"
+
+// cubrid headers
+#include "perf.hpp"
 
 namespace cubthread
 {

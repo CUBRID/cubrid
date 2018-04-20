@@ -120,6 +120,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
+  ${BASE_DIR}/perf_def.hpp
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/packable_object.hpp
