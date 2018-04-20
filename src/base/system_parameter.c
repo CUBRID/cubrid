@@ -2118,14 +2118,9 @@ static bool prm_enable_dwb_flush_thread_default = true;
 static unsigned int prm_enable_dwb_flush_thread_flag = 0;
 
 bool PRM_ENABLE_DWB_CHECKSUM_THREAD = true;
+static unsigned int prm_dwb_checksum_thread_flag = 0;
 static bool prm_enable_dwb_checksum_thread_default = true;
 static unsigned int prm_enable_dwb_checksum_thread_flag = 0;
-
-unsigned int PRM_DWB_CHECKSUM_THREADS = 1;
-static unsigned int prm_dwb_checksum_threads_flag = 0;
-static unsigned int prm_dwb_checksum_threads_default = 1;
-static unsigned int prm_dwb_checksum_threads_upper = 2;
-static unsigned int prm_dwb_checksum_threads_lower = 0;
 
 bool PRM_DWB_LOGGING = false;
 static bool prm_dwb_logging_default = false;
@@ -5412,7 +5407,7 @@ static SYSPRM_PARAM prm_Def[] = {
    PRM_NAME_ENABLE_DWB_CHECKSUM_THREAD,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_BOOLEAN,
-   &prm_dwb_checksum_threads_flag,
+   &prm_dwb_checksum_thread_flag,
    (void *) &prm_enable_dwb_checksum_thread_default,
    (void *) &PRM_ENABLE_DWB_CHECKSUM_THREAD,
    (void *) NULL, (void *) NULL,
