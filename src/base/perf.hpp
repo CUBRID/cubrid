@@ -31,11 +31,83 @@
 
 #include <cassert>
 
+// cubperf basic functionality
+//
+//  description:
+//
+//    the purpose of this module is to offer consistent ways of collecting statistics atomically and non-atomically.
+//    it provides an interface to:
+//        1. declare multiple different statistics in a group
+//        2. create sets of atomic or non-atomic values for this group of statistics
+//        3. safely manipulate the set of values
+//        4. easily modify the group of statistics by adding, removing or changing types of statistics
+//
+//    the model is somewhat inspired from performance monitor's PSTAT_METADATA and the way it collects statistics, using
+//    the C++ templates
+//    templates are used for:
+//      1. avoiding duplicate implementation for atomic and non-atomic statistic sets.
+//      2. static initializer for statset_definition
+//      3. automatic timer statistics conversions
+//
+//  usage:
+//
+//    // define statistics ID's; we want these const to let compiler replace them
+//    // note - stat_defition will check provided id's are successive starting with 0
+//    static const cubperf::stat_id STAT_COUNTER = 0;
+//    static const cubperf::stat_id STAT_TIMER = 1;
+//    static const cubperf::stat_id STAT_COUNTER_AND_TIMER = 2;
+//    // define your set of statistics:
+//    static const cubperf::stat_definition Mystat_definition =
+//      {
+//        cubperf::stat_definition (STAT_COUNTER, cubperf::stat_definition::COUNTER, "c_counter"),
+//        cubperf::stat_definition (STAT_TIMER, cubperf::stat_definition::TIMER, "t_timer"),
+//        cubperf::stat_definition (STAT_COUNTER_AND_TIMER, cubperf::stat_definition::COUNTER_AND_TIMER, "ct_counter"
+//                                  "ct_timer")
+//      };
+//
+//    // a statistics set of values can be created using definition
+//    cubperf::statset& my_statset = Mystat_definition.create_statset ();
+//    // an atomic set can be created with same definition
+//    cubperf::atomic_statset& my_atomic_statset = Mystat_definition.create_atomic_statset ();
+//
+//    // collecting statistics is supervised by definition
+//    Mystat_definition.increment (my_statset, STAT_COUNTER, 10);  // a counter is expected
+//
+//    // same for atomic sets
+//    Mystat_definition.time_and_increment (my_atomic_statset, STAT_COUNTER_AND_TIMER); // a counter and timer expected
+//    // note: by default counter is incremented by 1;
+//    //       by default timer is incremented by duration since last time_and_increment
+//
+//    // print statistics
+//    stat_value *values = new stat_value [Mystat_definition.get_value_count ()]; // allocate array to copy values to
+//                                                                                // just for example
+//    // get statistics; timers can be automatically converted to desired unit
+//    Mystat_definition.get_stat_values_with_converted_timers<std::chrono::milliseconds> (my_atomic_statset, values);
+//
+//    // print all values
+//    for (std::size_t index = 0; index < Mystat_definition.get_value_count (); index++)
+//      {
+//        printf ("%s = %llu\n", Mystat_definition.get_value_name (index), values[index]);
+//      }
+//
+//    // note - to extend the statistics set, you only need to:
+//    //        1. add new ID.
+//    //        2. update Mystat_definition
+//    //        3. call increment/time/time_and_increment operations on new statistic
+//
+//    delete values;
+//    delete &my_statset;
+//    delete &my_atomic_statset
+//
+
 namespace cubperf
 {
+  // stat_definition - defines one statistics entry in a set
   class stat_definition
   {
     public:
+
+      // possible types
       enum type
       {
 	COUNTER,
@@ -45,31 +117,47 @@ namespace cubperf
 
       // constructor
       stat_definition (const stat_id id, type stat_type, const char *first_name, const char *second_name = NULL);
+
+      // copy constructor - needed by statset_definition's vector
       stat_definition (const stat_definition &other);
 
       std::size_t get_value_count (void); // get value count
 
     private:
-      friend class statset_definition;
+      friend class statset_definition; // statset_definition will process private content
 
       stat_definition (void) = delete;
 
+      // make sure this is updated if more values are possible
       static const std::size_t MAX_VALUE_COUNT = 2;
 
-      const stat_id m_id;
-      type m_type;
-      const char *m_names[MAX_VALUE_COUNT];  // one per each value
-      std::size_t m_offset;
+      const stat_id m_id;                     // assigned ID
+      type m_type;                            // type
+      const char *m_names[MAX_VALUE_COUNT];   // one per each value
+      std::size_t m_offset;                   // used by stat_definition to track each statistic's values
   };
 
+  // statset_definition - defines a set of statistics and supervises all operations on sets of values
+  //
+  // see how to use in file description comment
+  //
   class statset_definition
   {
     public:
+      // no default constructor
       statset_definition (void) = delete;
+
+      // construct as:
+      // mydef = { stat_definition (...), stat_definition (...), ... };
+      //
+      // needed variadic templates to allow any number of statistics
+      //
       template <typename... Args>
       statset_definition (stat_definition &def, Args &&... args);
 
+      // create (construct) a non-atomic set of values
       statset *create_statset (void) const;
+      // create (construct) an atomic set of values
       atomic_statset *create_atomic_statset (void) const;
 
       // increment counter statistic
@@ -86,31 +174,35 @@ namespace cubperf
       inline void time (atomic_statset &statsetr, stat_id id) const;
 
       // update counter and timer statistic. equivalent to time + increment functions.
-      // counter is last to use its default value of 1
+      // timer is first to allow default counter value of 1
       inline void time_and_increment (statset &statsetr, stat_id id, duration d, stat_value incr = 1) const;
       inline void time_and_increment (statset &statsetr, stat_id id, stat_value incr = 1) const;
       inline void time_and_increment (atomic_statset &statsetr, stat_id id, duration d, stat_value incr = 1) const;
       inline void time_and_increment (atomic_statset &statsetr, stat_id id, stat_value incr = 1) const;
 
+      // copy from set of values to given array
       void get_stat_values (const statset &statsetr, stat_value *output_stats) const;
       void get_stat_values (const atomic_statset &statsetr, stat_value *output_stats) const;
+      // accumulate values from set of values to given array
       void add_stat_values (const statset &statsetr, stat_value *output_stats) const;
       void add_stat_values (const atomic_statset &statsetr, stat_value *output_stats) const;
 
+      // copy values from set of values to given array by converting timer values to desired duration type
       template <typename Duration>
       void get_stat_values_with_converted_timers (const statset &statsetr, stat_value *output_stats) const;
       template <typename Duration>
       void get_stat_values_with_converted_timers (const atomic_statset &statsetr, stat_value *output_stats) const;
+      // accumulate values from set of values to given array by converting timer values to desired duration type
       template <typename Duration>
       void add_stat_values_with_converted_timers (const statset &statsetr, stat_value *output_stats) const;
       template <typename Duration>
       void add_stat_values_with_converted_timers (const atomic_statset &statsetr, stat_value *output_stats) const;
 
       // getters
-      std::size_t get_stat_count () const;
-      std::size_t get_value_count () const;
-      const char *get_value_name (std::size_t value_index) const;
-      std::size_t get_values_memsize (void) const;
+      std::size_t get_stat_count () const;      // statistics (counter, timer, counter and timer) count
+      std::size_t get_value_count () const;     // value count (size of set of values)
+      const char *get_value_name (std::size_t value_index) const;   // get the name for value at index
+      std::size_t get_values_memsize (void) const;                  // get memory size for set of values
 
     private:
       template <typename... Args>

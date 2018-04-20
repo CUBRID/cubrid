@@ -17,7 +17,7 @@
    <http://www.gnu.org/licenses/>.  */
 
 /*
- * perf.hpp - interface for performance statistics basic utilities
+ * perf_def.hpp - types and class definitions used perf module.
  */
 
 #ifndef _CUBRID_PERF_DEF_HPP_
@@ -28,6 +28,11 @@
 
 #include <cinttypes>
 
+// perf module basic types and classes
+//
+// read details in perf.hpp description comment
+//
+
 namespace cubperf
 {
   // clocking
@@ -35,12 +40,7 @@ namespace cubperf
   using time_point = clock::time_point;
   using duration = clock::duration;
 
-  // time value conversion ratios
-  const unsigned int CONVERT_RATIO_MICROSECONDS = 1000;
-  const unsigned int CONVERT_RATIO_MILLISECONDS = 1000000;
-  const unsigned int CONVERT_RATIO_SECONDS = 1000000000;
-
-  // statistics values
+  // statistics value types
   template <bool IsAtomic>
   using generic_value = typename std::conditional<IsAtomic, std::atomic<std::uint64_t>, std::uint64_t>::type;
   using stat_value = generic_value<false>;
