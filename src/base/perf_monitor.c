@@ -4705,6 +4705,7 @@ perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int
 // thread workers section
 //////////////////////////////////////////////////////////////////////////
 
+// NOTE - should match cubthread::Worker_pool_statdef
 const char *perfmon_Portable_worker_stat_names [] =
   {
     "Counter_start_thread",
@@ -4715,10 +4716,12 @@ const char *perfmon_Portable_worker_stat_names [] =
     "Timer_execute_task",
     "Counter_retire_task",
     "Timer_retire_task",
-    "Counter_search_task_in_queue",
-    "Timer_search_task_in_queue",
+    "Counter_found_task_in_queue",
+    "Timer_found_task_in_queue",
     "Counter_wakeup_with_task",
     "Timer_wakeup_with_task",
+    "Counter_recycle_context",
+    "Timer_recycle_context",
     "Counter_retire_context",
     "Timer_retire_context"
   };
@@ -4729,19 +4732,19 @@ static size_t
 thread_stats_count (void)
 {
 #if defined (SERVER_MODE)
-  assert (PERFMON_PORTABLE_WORKER_STAT_COUNT == cubthread::wp_statset_get_count ());
+  assert (PERFMON_PORTABLE_WORKER_STAT_COUNT == cubthread::wp_worker_statset_get_count ());
   static bool check_names = true;
   if (check_names)
     {
       for (size_t index = 0; index < PERFMON_PORTABLE_WORKER_STAT_COUNT; index++)
         {
-          if (std::strcmp (perfmon_Portable_worker_stat_names[index], cubthread::wp_statset_get_name (index)) != 0)
+          if (std::strcmp (perfmon_Portable_worker_stat_names[index], cubthread::wp_worker_statset_get_name (index)) != 0)
             {
               assert (false);
               _er_log_debug (ARG_FILE_LINE,
                              "Warning - Monitoring thread worker statistics; statistics name not matching for %zu\n"
                              "\t\tperfmon name = %s\n" "\t\tdaemon name = %s\n", index,
-                             perfmon_Portable_worker_stat_names[index], cubthread::wp_statset_get_name (index));
+                             perfmon_Portable_worker_stat_names[index], cubthread::wp_worker_statset_get_name (index));
             }
         }
     }
@@ -4858,6 +4861,7 @@ perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, in
 // Thread daemons section
 //////////////////////////////////////////////////////////////////////////
 
+// NOTE - should match cubthread::daemon + cubthread::looper + cubthread::waiter statistics
 static const char *perfmon_Portable_daemon_stat_names [] =
 {
   // daemon

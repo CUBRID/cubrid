@@ -408,20 +408,22 @@ namespace cubthread
   // statistics
   //////////////////////////////////////////////////////////////////////////
 
-  static const cubperf::stat_id Wpstat_start_thread;
-  static const cubperf::stat_id Wpstat_create_context;
-  static const cubperf::stat_id Wpstat_execute_task;
-  static const cubperf::stat_id Wpstat_retire_task;
-  static const cubperf::stat_id Wpstat_search_in_queue;
-  static const cubperf::stat_id Wpstat_wakeup_with_task;
-  static const cubperf::stat_id Wpstat_retire_context;
+  // collected workers
+  static const cubperf::stat_id Wpstat_start_thread = 0;
+  static const cubperf::stat_id Wpstat_create_context = 1;
+  static const cubperf::stat_id Wpstat_execute_task = 2;
+  static const cubperf::stat_id Wpstat_retire_task = 3;
+  static const cubperf::stat_id Wpstat_found_in_queue = 4;
+  static const cubperf::stat_id Wpstat_wakeup_with_task = 5;
+  static const cubperf::stat_id Wpstat_recycle_context = 6;
+  static const cubperf::stat_id Wpstat_retire_context = 7;
 
-  cubperf::statset &wp_statset_create (void);
-  void wp_statset_destroy (cubperf::statset &stats);
-  void wp_statset_time_and_increment (cubperf::statset &stats, cubperf::stat_id id);
-  void wp_statset_accumulate (const cubperf::statset &what, cubperf::stat_value *where);
-  std::size_t wp_statset_get_count (void);
-  const char *wp_statset_get_name (std::size_t stat_index);
+  cubperf::statset &wp_worker_statset_create (void);
+  void wp_worker_statset_destroy (cubperf::statset &stats);
+  void wp_worker_statset_time_and_increment (cubperf::statset &stats, cubperf::stat_id id);
+  void wp_worker_statset_accumulate (const cubperf::statset &what, cubperf::stat_value *where);
+  std::size_t wp_worker_statset_get_count (void);
+  const char *wp_worker_statset_get_name (std::size_t stat_index);
 
   //////////////////////////////////////////////////////////////////////////
   // other functions
@@ -935,7 +937,7 @@ namespace cubthread
     , m_task_cv ()
     , m_task_mutex ()
     , m_stop (false)
-    , m_statistics (wp_statset_create ())
+    , m_statistics (wp_worker_statset_create ())
     , m_push_time ()
   {
     //
@@ -944,7 +946,7 @@ namespace cubthread
   template <typename Context>
   worker_pool<Context>::core::worker::~worker (void)
   {
-    wp_statset_destroy (m_statistics);
+    wp_worker_statset_destroy (m_statistics);
   }
 
   template <typename Context>
@@ -1026,11 +1028,11 @@ namespace cubthread
   {
     // thread was started
     m_statistics.m_timept = m_push_time;
-    wp_statset_time_and_increment (m_statistics, Wpstat_start_thread);
+    wp_worker_statset_time_and_increment (m_statistics, Wpstat_start_thread);
 
     // a context is required
     m_context_p = &m_parent_core->create_context ();
-    wp_statset_time_and_increment (m_statistics, Wpstat_create_context);
+    wp_worker_statset_time_and_increment (m_statistics, Wpstat_create_context);
   }
 
   template <typename Context>
@@ -1043,7 +1045,7 @@ namespace cubthread
     // retire context
     m_parent_core->retire_context (*m_context_p);
     m_context_p = NULL;
-    wp_statset_time_and_increment (m_statistics, Wpstat_retire_context);
+    wp_worker_statset_time_and_increment (m_statistics, Wpstat_retire_context);
   }
 
   template <typename Context>
@@ -1055,7 +1057,7 @@ namespace cubthread
     // retire task
     m_task_p->retire ();
     m_task_p = NULL;
-    wp_statset_time_and_increment (m_statistics, Wpstat_retire_task);
+    wp_worker_statset_time_and_increment (m_statistics, Wpstat_retire_task);
   }
 
   template <typename Context>
@@ -1066,7 +1068,7 @@ namespace cubthread
 
     // execute task
     m_task_p->execute (*m_context_p);
-    wp_statset_time_and_increment (m_statistics, Wpstat_execute_task);
+    wp_worker_statset_time_and_increment (m_statistics, Wpstat_execute_task);
 
     // and retire task
     retire_current_task ();
@@ -1098,13 +1100,14 @@ namespace cubthread
     task_type *task_p = m_parent_core->get_task_or_add_to_free_active_list (*this);
     if (task_p != NULL)
       {
-	wp_statset_time_and_increment (m_statistics, Wpstat_search_in_queue);
+	wp_worker_statset_time_and_increment (m_statistics, Wpstat_found_in_queue);
 
 	// it is safe to set here
 	m_task_p = task_p;
 
 	// we need to recycle context before reusing
 	m_parent_core->recycle_context (*m_context_p);
+	wp_worker_statset_time_and_increment (m_statistics, Wpstat_recycle_context);
 	return true;
       }
 
@@ -1159,10 +1162,11 @@ namespace cubthread
       {
 	// found task
 	m_statistics.m_timept = m_push_time;
-	wp_statset_time_and_increment (m_statistics, Wpstat_wakeup_with_task);
+	wp_worker_statset_time_and_increment (m_statistics, Wpstat_wakeup_with_task);
 
 	// we need to recycle context before reusing
 	m_parent_core->recycle_context (*m_context_p);
+	wp_worker_statset_time_and_increment (m_statistics, Wpstat_recycle_context);
 	return true;
       }
   }
@@ -1198,7 +1202,7 @@ namespace cubthread
 	//       get_task_or_add_to_inactive_list directly to m_task_p.
 	//       but it's safe to set it here.
 	m_task_p = task_p;
-	wp_statset_time_and_increment (m_statistics, Wpstat_search_in_queue);
+	wp_worker_statset_time_and_increment (m_statistics, Wpstat_found_in_queue);
       }
   }
 
@@ -1206,7 +1210,7 @@ namespace cubthread
   void
   worker_pool<Context>::core::worker::get_stats (cubperf::stat_value *sum_inout)
   {
-    wp_statset_accumulate (m_statistics, sum_inout);
+    wp_worker_statset_accumulate (m_statistics, sum_inout);
   }
 
   template <typename Context>
