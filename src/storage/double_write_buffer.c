@@ -2024,10 +2024,8 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
   PERF_UTIME_TRACKER time_track;
   UINT64 current_position_with_flags;
   int r;
-  struct timeval timeval_crt;
+  struct timeval timeval_crt, timeval_timeout;
   struct timespec to;
-  long usec_tmp;
-  const int usec_onesec = 1000 * 1000;
 
   assert (thread_p != NULL && block_no < DWB_NUM_TOTAL_BLOCKS);
 
@@ -2065,15 +2063,8 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
 
   /* Waits for maximum 20 milliseconds. */
   gettimeofday (&timeval_crt, NULL);
-
-  to.tv_sec = timeval_crt.tv_sec;
-  usec_tmp = timeval_crt.tv_usec + 20 * 1000;
-  if (usec_tmp >= usec_onesec)
-    {
-      to.tv_sec++;
-      usec_tmp -= usec_onesec;
-    }
-  to.tv_nsec = usec_tmp * 1000;
+  timeval_add_msec (&timeval_timeout, &timeval_crt, 20);
+  timeval_to_timespec (&to, &timeval_timeout);
 
   r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
 
@@ -2179,6 +2170,9 @@ dwb_wait_for_strucure_modification (THREAD_ENTRY * thread_p)
   int error_code = NO_ERROR;
   DWB_WAIT_QUEUE_ENTRY *double_write_queue_entry = NULL;
   UINT64 current_position_with_flags;
+  int r;
+  struct timeval timeval_crt, timeval_timeout;
+  struct timespec to;
 
   (void) pthread_mutex_lock (&dwb_Global.mutex);
 
@@ -2193,52 +2187,7 @@ dwb_wait_for_strucure_modification (THREAD_ENTRY * thread_p)
   thread_lock_entry (thread_p);
 
   double_write_queue_entry = dwb_block_add_wait_queue_entry (&dwb_Global.wait_queue, thread_p);
-  if (double_write_queue_entry != NULL)
-    {
-      int r;
-      struct timeval timeval_crt;
-      struct timespec to;
-      long usec_tmp;
-      const int usec_onesec = 1000 * 1000;
-
-      pthread_mutex_unlock (&dwb_Global.mutex);
-
-      /* Waits for maximum 10 milliseconds. */
-      gettimeofday (&timeval_crt, NULL);
-
-      to.tv_sec = timeval_crt.tv_sec;
-      usec_tmp = timeval_crt.tv_usec + 10 * 1000;
-      if (usec_tmp >= usec_onesec)
-	{
-	  to.tv_sec++;
-	  usec_tmp -= usec_onesec;
-	}
-      to.tv_nsec = usec_tmp * 1000;
-
-      r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
-      if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
-	{
-	  /* timeout, remove the entry from queue */
-	  dwb_remove_wait_queue_entry (&dwb_Global.wait_queue, &dwb_Global.mutex, thread_p, NULL);
-	  return r;
-	}
-      else if (thread_p->resume_status != THREAD_DWB_QUEUE_RESUMED)
-	{
-	  /* interruption, remove the entry from queue */
-	  assert (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT
-		  || thread_p->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN);
-
-	  dwb_remove_wait_queue_entry (&dwb_Global.wait_queue, &dwb_Global.mutex, thread_p, NULL);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	  return ER_INTERRUPTED;
-	}
-      else
-	{
-	  assert (thread_p->resume_status == THREAD_DWB_QUEUE_RESUMED);
-	  return NO_ERROR;
-	}
-    }
-  else
+  if (double_write_queue_entry == NULL)
     {
       /* allocation error */
       thread_unlock_entry (thread_p);
@@ -2246,6 +2195,36 @@ dwb_wait_for_strucure_modification (THREAD_ENTRY * thread_p)
 
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
+    }
+
+  pthread_mutex_unlock (&dwb_Global.mutex);
+
+  /* Waits for maximum 10 milliseconds. */
+  gettimeofday (&timeval_crt, NULL);
+  timeval_add_msec (&timeval_timeout, &timeval_crt, 10);
+  timeval_to_timespec (&to, &timeval_timeout);
+
+  r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
+  if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
+    {
+      /* timeout, remove the entry from queue */
+      dwb_remove_wait_queue_entry (&dwb_Global.wait_queue, &dwb_Global.mutex, thread_p, NULL);
+      return r;
+    }
+  else if (thread_p->resume_status != THREAD_DWB_QUEUE_RESUMED)
+    {
+      /* interruption, remove the entry from queue */
+      assert (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT
+	      || thread_p->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN);
+
+      dwb_remove_wait_queue_entry (&dwb_Global.wait_queue, &dwb_Global.mutex, thread_p, NULL);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+      return ER_INTERRUPTED;
+    }
+  else
+    {
+      assert (thread_p->resume_status == THREAD_DWB_QUEUE_RESUMED);
+      return NO_ERROR;
     }
 #else /* !SERVER_MODE */
   return NO_ERROR;
