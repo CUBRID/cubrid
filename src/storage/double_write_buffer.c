@@ -149,7 +149,7 @@
 /* Get next DWB position with flags. */
 #define DWB_GET_NEXT_POSITION_WITH_FLAGS(position_with_flags) \
   ((DWB_GET_POSITION (position_with_flags)) == (DWB_NUM_TOTAL_PAGES - 1) \
-  ? ((position_with_flags) & DWB_FLAG_MASK) : ((position_with_flags) + 1))
+   ? ((position_with_flags) & DWB_FLAG_MASK) : ((position_with_flags) + 1))
 
 /* Get position in DWB block from DWB position with flags. */
 #define DWB_GET_POSITION_IN_BLOCK(position_with_flags) \
@@ -901,9 +901,7 @@ dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * current_pos
   assert (current_position_with_flags != NULL);
 
   do
-
     {
-
       local_current_position_with_flags = ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL);
       if (DWB_IS_MODIFYING_STRUCTURE (local_current_position_with_flags))
 	{
@@ -2059,8 +2057,7 @@ dwb_wait_for_block_completion (THREAD_ENTRY * thread_p, unsigned int block_no)
       thread_unlock_entry (thread_p);
       pthread_mutex_unlock (&dwb_block->mutex);
 
-      error_code = er_errid ();
-      assert (error_code != NO_ERROR);
+      ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
 
@@ -2247,8 +2244,7 @@ dwb_wait_for_strucure_modification (THREAD_ENTRY * thread_p)
       thread_unlock_entry (thread_p);
       pthread_mutex_unlock (&dwb_Global.mutex);
 
-      error_code = er_errid ();
-      assert (error_code != NO_ERROR);
+      ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
 #else /* !SERVER_MODE */
@@ -3503,9 +3499,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
   /* This thread must flush the block, but has to compute checksums first. */
   if (!dwb_block_has_all_checksums_computed (block->block_no))
     {
-      /* Computes checksum. Checksum thread may also computes checksums but for
-       * different block pages.
-       */
+      /* Computes checksum. Checksum thread may also computes checksums but for different block pages. */
       error_code = dwb_compute_block_checksums (thread_p, block, NULL, &needs_flush);
       if (error_code != NO_ERROR)
 	{
@@ -3743,8 +3737,7 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	  if (fileio_read (thread_p, vol_fd, iopage, vpid->pageid, IO_PAGESIZE) == NULL)
 	    {
 	      /* There was an error in reading the page. */
-	      ASSERT_ERROR ();
-	      error_code = er_errid ();
+	      ASSERT_ERROR_AND_SET (error_code);
 	      goto end;
 	    }
 
@@ -4313,7 +4306,7 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 	    }
 	}
     }
-  while (can_flush_volume);
+  while (can_flush_volume == true);
 
 #if !defined (NDEBUG)
   if (count_flush_volumes_info != 0)
@@ -4562,7 +4555,7 @@ class dwb_checksum_computation_daemon_task: public cubthread::entry_task
         }
 
       /* flush pages as long as necessary */
-      if (prm_get_bool_value(PRM_ID_ENABLE_DWB_CHECKSUM_THREAD) == true)
+      if (prm_get_bool_value (PRM_ID_ENABLE_DWB_CHECKSUM_THREAD) == true)
         {
 	  dwb_compute_checksums (&thread_ref);
         }

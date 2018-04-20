@@ -4420,12 +4420,9 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FIL
 #endif
 
 #if !defined (CS_MODE)
-  if (sync_dwb == FILEIO_SYNC_ALSO_FLUSH_DWB)
+  if (sync_dwb == FILEIO_SYNC_ALSO_FLUSH_DWB && fileio_is_permanent_volume_descriptor (thread_p, vol_fd))
     {
-      if (fileio_is_permanent_volume_descriptor (thread_p, vol_fd))
-	{
-	  ret = dwb_flush_force (thread_p, &all_sync);
-	}
+      ret = dwb_flush_force (thread_p, &all_sync);
     }
 #endif
 
