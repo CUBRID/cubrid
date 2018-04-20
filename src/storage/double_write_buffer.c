@@ -413,9 +413,8 @@ STATIC_INLINE void dwb_signal_block_completion (THREAD_ENTRY * thread_p, DWB_BLO
 STATIC_INLINE int dwb_block_create_ordered_slots (DWB_BLOCK * block, DWB_SLOT ** p_dwb_ordered_slots,
 						  unsigned int *p_ordered_slots_length) __attribute__ ((ALWAYS_INLINE));
 static int dwb_compare_vol_fd (const void *v1, const void *v2);
-STATIC_INLINE void
-dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block, int vol_fd,
-				    FLUSH_VOLUME_INFO ** flush_volume_info) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE FLUSH_VOLUME_INFO *dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block,
+								     int vol_fd) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_slots,
 				   unsigned int ordered_slots_length, bool remove_from_hash)
   __attribute__ ((ALWAYS_INLINE));
@@ -2436,24 +2435,22 @@ dwb_compare_vol_fd (const void *v1, const void *v2)
 /*
  * dwb_add_volume_to_block_flush_area () - Add a volume to block flush area.
  *
- * return   : Error code.
+ * return   : 
  * thread_p (in): The thread entry.
  * block(in): The block where the flush area reside.
  * vol_fd(in): The volume to add.
- * flush_volume_info(out): Information about the volumes to flush.
  *
- *  Note: The volume is added if is not already in block flush area.
+ * Note: The volume is added if is not already in block flush area.
  */
-STATIC_INLINE void
-dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block, int vol_fd,
-				    FLUSH_VOLUME_INFO ** flush_volume_info)
+STATIC_INLINE FLUSH_VOLUME_INFO *
+dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block, int vol_fd)
 {
   FLUSH_VOLUME_INFO *flush_new_volume_info;
 #if !defined (NDEBUG)
   unsigned int old_count_flush_volumes_info;
 #endif
 
-  assert (flush_volume_info != NULL && block != NULL);
+  assert (block != NULL);
   assert (vol_fd != NULL_VOLDES);
 
 #if !defined (NDEBUG)
@@ -2471,10 +2468,11 @@ dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block, 
    * I need to be sure that size is incremented after setting element. Uses atomic to prevent code reordering.
    */
   ATOMIC_INC_32 (&block->count_flush_volumes_info, 1);
+
   assert (((old_count_flush_volumes_info + 1) == block->count_flush_volumes_info)
 	  && (block->count_flush_volumes_info < block->max_to_flush_vdes));
 
-  *flush_volume_info = flush_new_volume_info;
+  return flush_new_volume_info;
 }
 
 /*
@@ -2550,7 +2548,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	  last_written_volid = vpid->volid;
 	  last_written_vol_fd = vol_fd;
 
-	  dwb_add_volume_to_block_flush_area (thread_p, block, last_written_vol_fd, &current_flush_volume_info);
+	  current_flush_volume_info = dwb_add_volume_to_block_flush_area (thread_p, block, last_written_vol_fd);
 	}
 
       assert (last_written_vol_fd != NULL_VOLDES);
@@ -3075,11 +3073,9 @@ dwb_set_slot_data (THREAD_ENTRY * thread_p, DWB_SLOT * dwb_slot, FILEIO_PAGE * i
 {
   assert (dwb_slot != NULL && io_page_p != NULL);
 
-#if 1
   assert (io_page_p->prv.pflag_reserve_1 == '\0');
   assert (io_page_p->prv.p_reserve_2 == 0);
   assert (io_page_p->prv.p_reserve_3 == 0);
-#endif
 
   if (io_page_p->prv.pageid != NULL_PAGEID)
     {
@@ -3096,7 +3092,7 @@ dwb_set_slot_data (THREAD_ENTRY * thread_p, DWB_SLOT * dwb_slot, FILEIO_PAGE * i
 }
 
 /*
- * dwb_init_slot () - Intialize DWB slot.
+ * dwb_init_slot () - Initialize DWB slot.
  *
  * return   : Nothing.
  * slot (in/out) : The DWB slot.
@@ -3458,6 +3454,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 	  /* Wake up checksum thread to compute checksum. */
 	  dwb_checkum_computation_daemon->wakeup ();
 
+	  // TODO: What is different from 1 and 2? Do we need value of 2?
 	  if (checksum_threads == 1)
 	    {
 	      if (needs_flush == false)
