@@ -628,6 +628,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_PB_MAX_DEPTH_OF_SEARCHING_FOR_VICTIMS_IN_LRU_LIST "max_depth_of_searching_for_victims_in_lru_list"
 
 #define PRM_NAME_CTE_MAX_RECURSIONS "cte_max_recursions"
+
 #define PRM_NAME_DWB_SIZE "double_write_buffer_size"
 #define PRM_NAME_DWB_BLOCKS "double_write_buffer_blocks"
 #define PRM_NAME_ENABLE_DWB_FLUSH_THREAD "double_write_buffer_enable_flush_thread"
@@ -2101,6 +2102,7 @@ static unsigned int prm_connection_logging_flag = 0;
 int PRM_THREAD_LOGGING_FLAG = 0;
 static int prm_thread_logging_flag_default = 0;
 static unsigned int prm_thread_logging_flag_flag = 0;
+
 unsigned int PRM_DWB_SIZE = 2 * 1024 * 1024;	/* 2M */
 static unsigned int prm_dwb_size_flag = 0;
 static unsigned int prm_dwb_size_default = (2 * 1024 * 1024);	/* 2M */
@@ -5416,7 +5418,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_DWB_LOGGING,
    PRM_NAME_DWB_LOGGING,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_BOOLEAN,
    &prm_dwb_logging_flag,
    (void *) &prm_dwb_logging_default,
