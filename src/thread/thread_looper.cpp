@@ -26,22 +26,14 @@
 
 #include "perf.hpp"
 
-// todo: fix time conversion
-void foo (void)
-{
-  cubperf::stat_id dummy;
-  cubperf::statset_definition fact = { cubperf::stat_definition (dummy, cubperf::stat_definition::type::COUNTER, "stat") };
-  cubperf::stat_value *vals = NULL;
-}
-
 namespace cubthread
 {
   //////////////////////////////////////////////////////////////////////////
   // statistics
   //////////////////////////////////////////////////////////////////////////
 
-  static cubperf::stat_id STAT_LOOPER_SLEEP_COUNT_AND_TIME = 0;
-  static cubperf::stat_id STAT_LOOPER_RESET_COUNT = 0;
+  static const cubperf::stat_id STAT_LOOPER_SLEEP_COUNT_AND_TIME = 0;
+  static const cubperf::stat_id STAT_LOOPER_RESET_COUNT = 1;
   static const cubperf::statset_definition Looper_statistics =
   {
     cubperf::stat_definition (STAT_LOOPER_SLEEP_COUNT_AND_TIME, cubperf::stat_definition::COUNTER_AND_TIMER,

@@ -33,14 +33,6 @@ namespace cubthread
   // statistics
   //////////////////////////////////////////////////////////////////////////
 
-  cubperf::stat_id Wpstat_start_thread;
-  cubperf::stat_id Wpstat_create_context;
-  cubperf::stat_id Wpstat_execute_task;
-  cubperf::stat_id Wpstat_retire_task;
-  cubperf::stat_id Wpstat_search_in_queue;
-  cubperf::stat_id Wpstat_wakeup_with_task;
-  cubperf::stat_id Wpstat_retire_context;
-
   static const cubperf::statset_definition Worker_pool_statdef =
   {
     cubperf::stat_definition (Wpstat_start_thread, cubperf::stat_definition::COUNTER_AND_TIMER,

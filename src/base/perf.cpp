@@ -22,24 +22,28 @@
 
 #include "perf.hpp"
 
+#include "error_manager.h"
+
 namespace cubperf
 {
   //////////////////////////////////////////////////////////////////////////
   // stat_def
   //////////////////////////////////////////////////////////////////////////
-  stat_definition::stat_definition (stat_id &idref, type stat_type, const char *first_name,
+  stat_definition::stat_definition (const stat_id idref, type stat_type, const char *first_name,
 				    const char *second_name /* = NULL */)
-    : m_idr (idref)
+    : m_id (idref)
     , m_type (stat_type)
     , m_names { first_name, second_name }
+    , m_offset (0)
   {
     //
   }
 
   stat_definition::stat_definition (const stat_definition &other)
-    : m_idr (other.m_idr)
+    : m_id (other.m_id)
     , m_type (other.m_type)
     , m_names { other.m_names[0], other.m_names[1] }
+    , m_offset (0)
   {
     //
   }
@@ -62,7 +66,13 @@ namespace cubperf
   void
   statset_definition::process_def (stat_definition &def)
   {
-    def.m_idr = m_stat_defs.size ();
+    if (def.m_id != m_stat_defs.size ())
+      {
+	// invalid
+	assert (false);
+	_er_log_debug (ARG_FILE_LINE, "Invalid statset definition; expected id = %zu, received id = %zu.\n",
+		       def.m_id, m_stat_defs.size ());
+      }
     m_stat_defs.push_back (def);
     for (std::size_t count = 0; count < def.get_value_count (); count++)
       {

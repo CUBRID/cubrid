@@ -34,11 +34,11 @@ namespace cubthread
   // statistics collector
   //////////////////////////////////////////////////////////////////////////
 
-  static cubperf::stat_id STAT_LOCK_WAKEUP_COUNT = 0;
-  static cubperf::stat_id STAT_SLEEP_COUNT = 0;
-  static cubperf::stat_id STAT_TIMEOUT_COUNT = 0;
-  static cubperf::stat_id STAT_NO_SLEEP_COUNT = 0;
-  static cubperf::stat_id STAT_AWAKEN_COUNT_AND_TIME = 0;
+  static const cubperf::stat_id STAT_LOCK_WAKEUP_COUNT = 0;
+  static const cubperf::stat_id STAT_SLEEP_COUNT = 1;
+  static const cubperf::stat_id STAT_TIMEOUT_COUNT = 2;
+  static const cubperf::stat_id STAT_NO_SLEEP_COUNT = 3;
+  static const cubperf::stat_id STAT_AWAKEN_COUNT_AND_TIME = 4;
   static const cubperf::statset_definition Waiter_statistics =
   {
     cubperf::stat_definition (STAT_LOCK_WAKEUP_COUNT, cubperf::stat_definition::COUNTER, "waiter_lock_wakeup_count"),

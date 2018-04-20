@@ -408,13 +408,13 @@ namespace cubthread
   // statistics
   //////////////////////////////////////////////////////////////////////////
 
-  extern cubperf::stat_id Wpstat_start_thread;
-  extern cubperf::stat_id Wpstat_create_context;
-  extern cubperf::stat_id Wpstat_execute_task;
-  extern cubperf::stat_id Wpstat_retire_task;
-  extern cubperf::stat_id Wpstat_search_in_queue;
-  extern cubperf::stat_id Wpstat_wakeup_with_task;
-  extern cubperf::stat_id Wpstat_retire_context;
+  static const cubperf::stat_id Wpstat_start_thread;
+  static const cubperf::stat_id Wpstat_create_context;
+  static const cubperf::stat_id Wpstat_execute_task;
+  static const cubperf::stat_id Wpstat_retire_task;
+  static const cubperf::stat_id Wpstat_search_in_queue;
+  static const cubperf::stat_id Wpstat_wakeup_with_task;
+  static const cubperf::stat_id Wpstat_retire_context;
 
   cubperf::statset &wp_statset_create (void);
   void wp_statset_destroy (cubperf::statset &stats);

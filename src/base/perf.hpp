@@ -64,7 +64,7 @@ namespace cubperf
       };
 
       // constructor
-      stat_definition (stat_id &idref, type stat_type, const char *first_name, const char *second_name = NULL);
+      stat_definition (const stat_id id, type stat_type, const char *first_name, const char *second_name = NULL);
       stat_definition (const stat_definition &other);
 
       std::size_t get_value_count (void); // get value count
@@ -72,11 +72,11 @@ namespace cubperf
     private:
       friend class statset_definition;
 
-      stat_definition (void);
+      stat_definition (void) = delete;
 
       static const std::size_t MAX_VALUE_COUNT = 2;
 
-      stat_id &m_idr;
+      const stat_id m_id;
       type m_type;
       const char *m_names[MAX_VALUE_COUNT];  // one per each value
       std::size_t m_offset;
