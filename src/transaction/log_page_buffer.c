@@ -2166,17 +2166,10 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
   logpb_log ("called logpb_write_page_to_disk for logical_pageid = %lld\n", (long long int) logical_pageid);
 
   /* Set page CRC before writing to disk. */
-  if (prm_get_bool_value (PRM_ID_ENABLE_LOG_PAGE_CHECKSUM) == true)
+  error_code = logpb_set_page_checksum (thread_p, log_pgptr);
+  if (error_code != NO_ERROR)
     {
-      error_code = logpb_set_page_checksum (thread_p, log_pgptr);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
-  else
-    {
-      log_pgptr->hdr.checksum = 0;
+      return error_code;
     }
 
   phy_pageid = logpb_to_physical_pageid (logical_pageid);
@@ -2636,23 +2629,12 @@ logpb_writev_append_pages (THREAD_ENTRY * thread_p, LOG_PAGE ** to_flush, DKNPAG
       logpb_log ("logpb_writev_append_pages: started with pageid = %lld and phy_pageid = %lld\n",
 		 (long long int) bufptr->pageid, (long long int) phy_pageid);
 
-      if (prm_get_bool_value (PRM_ID_ENABLE_LOG_PAGE_CHECKSUM) == true)
+      for (i = 0; i < npages; i++)
 	{
-	  for (i = 0; i < npages; i++)
+	  /* Set page CRC before writing to disk. */
+	  if (logpb_set_page_checksum (thread_p, to_flush[i]) != NO_ERROR)
 	    {
-	      /* Set page CRC before writing to disk. */
-	      if (logpb_set_page_checksum (thread_p, to_flush[i]) != NO_ERROR)
-		{
-		  return NULL;
-		}
-	    }
-	}
-      else
-	{
-	  for (i = 0; i < npages; i++)
-	    {
-	      /* Set page CRC before writing to disk. */
-	      to_flush[i]->hdr.checksum = 0;
+	      return NULL;
 	    }
 	}
 
@@ -12330,15 +12312,12 @@ logpb_debug_check_log_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
   int err;
   bool is_log_page_corrupted;
 
-  if (prm_get_bool_value (PRM_ID_ENABLE_LOG_PAGE_CHECKSUM) == true)
+  if (boot_Server_status != BOOT_SERVER_UP && log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID)
     {
-      if (boot_Server_status != BOOT_SERVER_UP && log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID)
-	{
-	  /* Do not check here since log page size may be not available */
-	  return;
-	}
-      err = logpb_page_check_corruption (thread_p, log_pgptr, &is_log_page_corrupted);
-
-      assert (err == NO_ERROR && is_log_page_corrupted == false);
+      /* Do not check here since log page size may be not available */
+      return;
     }
+  err = logpb_page_check_corruption (thread_p, log_pgptr, &is_log_page_corrupted);
+
+  assert (err == NO_ERROR && is_log_page_corrupted == false);
 }

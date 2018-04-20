@@ -2444,31 +2444,28 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	}
 
       /* Check whether active log pages are corrupted. This may happens in case of partial page flush for instance.  */
-      if (prm_get_bool_value (PRM_ID_ENABLE_LOG_PAGE_CHECKSUM) == true)
+      if (logpb_page_check_corruption (thread_p, log_page_p, &is_log_page_corrupted) != NO_ERROR)
 	{
-	  if (logpb_page_check_corruption (thread_p, log_page_p, &is_log_page_corrupted) != NO_ERROR)
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
+	  return;
+	}
+
+      if (is_log_page_corrupted)
+	{
+	  if (logpb_is_page_in_archive (log_lsa.pageid))
 	    {
+	      /* Should not happen. */
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
 	      return;
 	    }
 
-	  if (is_log_page_corrupted)
+	  /* Found corrupted log page. Recovery will be done up to the last log record on previous log page. */
+	  if (found_end_of_log == false)
 	    {
-	      if (logpb_is_page_in_archive (log_lsa.pageid))
-		{
-		  /* Should not happen. */
-		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
-		  return;
-		}
-
-	      /* Found corrupted log page. Recovery will be done up to the last log record on previous log page. */
-	      if (found_end_of_log == false)
-		{
-		  /* Simulate end of log */
-		  LOG_RESET_APPEND_LSA (&log_lsa);
-		}
-	      break;
+	      /* Simulate end of log */
+	      LOG_RESET_APPEND_LSA (&log_lsa);
 	    }
+	  break;
 	}
 
       /* Check all log records in this phase */
