@@ -372,7 +372,7 @@ static DOUBLE_WRITE_BUFFER dwb_Global = {
 
 #define dwb_Log dwb_Global.logging_enabled
 
-#define dwb_check_logging() (dwb_Log = prm_get_bool_value (PRM_ID_DWB_ENABLE_LOG))
+#define dwb_check_logging() (dwb_Log = prm_get_bool_value (PRM_ID_DWB_LOGGING))
 #define dwb_log(...) if (dwb_Log) _er_log_debug (ARG_FILE_LINE, "DWB: " __VA_ARGS__)
 #define dwb_log_error(...) if (dwb_Log) _er_log_debug (ARG_FILE_LINE, "DWB ERROR: " __VA_ARGS__)
 
@@ -3388,8 +3388,8 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
   unsigned int count_wb_pages;
   int error_code = NO_ERROR, inserted;
   DWB_BLOCK *block = NULL;
-  bool checksum_computed;
   DWB_SLOT *dwb_slot = NULL;
+  bool checksum_computed;
   bool needs_flush;
 
   assert (p_dwb_slot != NULL && (io_page_p != NULL || (*p_dwb_slot)->io_page != NULL) && vpid != NULL);
@@ -4561,7 +4561,7 @@ class dwb_checksum_computation_daemon_task: public cubthread::entry_task
 	  return;
         }
 
-      /* flush pages as long as necessary */      
+      /* flush pages as long as necessary */
       if (prm_get_bool_value(PRM_ID_ENABLE_DWB_CHECKSUM_THREAD) == true)
         {
 	  dwb_compute_checksums (&thread_ref);

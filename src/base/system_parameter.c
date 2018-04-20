@@ -633,7 +633,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_ENABLE_DWB_FLUSH_THREAD "double_write_buffer_enable_flush_thread"
 #define PRM_NAME_ENABLE_LOG_PAGE_CHECKSUM "enable_log_page_checksum"
 #define PRM_NAME_ENABLE_DWB_CHECKSUM_THREAD "double_write_buffer_enable_checksum_thread"
-#define PRM_NAME_DWB_ENABLE_LOG "double_write_buffer_enable_log"
+#define PRM_NAME_DWB_LOGGING "double_write_buffer_logging"
 
 #define PRM_NAME_JSON_LOG_ALLOCATIONS "json_log_allocations"
 
@@ -2132,9 +2132,9 @@ bool PRM_ENABLE_LOG_PAGE_CHECKSUM = true;
 static bool prm_enable_log_page_checksum_default = true;
 static unsigned int prm_enable_log_page_checksum_flag = 0;
 
-bool PRM_ENABLE_DWB_LOG = false;
-static bool prm_enable_dwb_log_default = false;
-static unsigned int prm_enable_dwb_log_flag = 0;
+bool PRM_DWB_LOGGING = false;
+static bool prm_dwb_logging_default = false;
+static unsigned int prm_dwb_logging_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5435,13 +5435,13 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_DWB_ENABLE_LOG,
-   PRM_NAME_DWB_ENABLE_LOG,
+  {PRM_ID_DWB_LOGGING,
+   PRM_NAME_DWB_LOGGING,
    (PRM_FOR_SERVER),
    PRM_BOOLEAN,
-   &prm_enable_dwb_log_flag,
-   (void *) &prm_enable_dwb_log_default,
-   (void *) &PRM_ENABLE_DWB_LOG,
+   &prm_dwb_logging_flag,
+   (void *) &prm_dwb_logging_default,
+   (void *) &PRM_DWB_LOGGING,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
