@@ -112,7 +112,7 @@ namespace cubthread
     std::size_t i = 0;
 
     // get daemon stats
-    Daemon_statistics.get_stat_values (m_stats, stats_out);
+    Daemon_statistics.get_stat_values_with_converted_timers<std::chrono::microseconds> (m_stats, stats_out);
     i += Daemon_statistics.get_value_count ();
 
     // get looper stats

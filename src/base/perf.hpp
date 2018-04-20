@@ -97,6 +97,15 @@ namespace cubperf
       void add_stat_values (const statset &statsetr, stat_value *output_stats) const;
       void add_stat_values (const atomic_statset &statsetr, stat_value *output_stats) const;
 
+      template <typename Duration>
+      void get_stat_values_with_converted_timers (const statset &statsetr, stat_value *output_stats) const;
+      template <typename Duration>
+      void get_stat_values_with_converted_timers (const atomic_statset &statsetr, stat_value *output_stats) const;
+      template <typename Duration>
+      void add_stat_values_with_converted_timers (const statset &statsetr, stat_value *output_stats) const;
+      template <typename Duration>
+      void add_stat_values_with_converted_timers (const atomic_statset &statsetr, stat_value *output_stats) const;
+
       // getters
       std::size_t get_stat_count () const;
       std::size_t get_value_count () const;
@@ -120,6 +129,15 @@ namespace cubperf
 					      duration d) const;
       template <bool IsAtomic>
       inline void generic_time_and_increment (generic_statset<IsAtomic> &statsetr, stat_id id, stat_value incr) const;
+
+      template <typename Duration>
+      stat_value convert_timeval (stat_value nanosecs) const;
+      template <bool IsAtomic, typename Duration>
+      void generic_get_stat_values_with_converted_timers (const generic_statset<IsAtomic> &statsetr,
+	  stat_value *output_stats) const;
+      template <bool IsAtomic, typename Duration>
+      void generic_add_stat_values_with_converted_timers (const generic_statset<IsAtomic> &statsetr,
+	  stat_value *output_stats) const;
 
       std::vector<stat_definition> m_stat_defs;
       std::vector<const char *> m_value_names;
@@ -226,7 +244,7 @@ namespace cubperf
 
     // add duration at id's offset
     std::size_t offset = m_stat_defs[id].m_offset;
-    statsetr.m_values[offset + 1] += incr;          // first is counter
+    statsetr.m_values[offset] += incr;          // first is counter
     statsetr.m_values[offset + 1] += d.count ();    // then is timer
   }
 
@@ -262,6 +280,101 @@ namespace cubperf
   statset_definition::time_and_increment (atomic_statset &statsetr, stat_id id, stat_value incr /* = 1 */) const
   {
     generic_time_and_increment<true> (statsetr, id, incr);
+  }
+
+  template <typename Duration>
+  stat_value
+  statset_definition::convert_timeval (stat_value default_duration_count) const
+  {
+    duration default_duration (default_duration_count);
+    Duration desired_duration = std::chrono::duration_cast<Duration> (default_duration);
+    return desired_duration.count ();
+  }
+
+  template <bool IsAtomic, typename Duration>
+  void
+  statset_definition::generic_get_stat_values_with_converted_timers (const generic_statset<IsAtomic> &statsetr,
+      stat_value *output_stats) const
+  {
+    std::size_t offset = 0;
+    for (stat_id id = 0; id < m_stat_defs.size (); id++)
+      {
+	offset = m_stat_defs[id].m_offset;
+	switch (m_stat_defs[id].m_type)
+	  {
+	  case stat_definition::COUNTER:
+	    output_stats[offset] = statsetr.m_values[offset];
+	    break;
+	  case stat_definition::TIMER:
+	    output_stats[offset] = convert_timeval<Duration> (statsetr.m_values[offset]);
+	    break;
+	  case stat_definition::COUNTER_AND_TIMER:
+	    output_stats[offset] = statsetr.m_values[offset];
+	    output_stats[offset + 1] = convert_timeval<Duration> (statsetr.m_values[offset + 1]);
+	    break;
+	  default:
+	    assert (false);
+	    break;
+	  }
+      }
+  }
+
+  template <typename Duration>
+  void
+  statset_definition::get_stat_values_with_converted_timers (const statset &statsetr, stat_value *output_stats) const
+  {
+    return generic_get_stat_values_with_converted_timers<false, Duration> (statsetr, output_stats);
+  }
+
+  template <typename Duration>
+  void
+  statset_definition::get_stat_values_with_converted_timers (const atomic_statset &statsetr,
+      stat_value *output_stats) const
+  {
+    return generic_get_stat_values_with_converted_timers<true, Duration> (statsetr, output_stats);
+  }
+
+  template <bool IsAtomic, typename Duration>
+  void
+  statset_definition::generic_add_stat_values_with_converted_timers (const generic_statset<IsAtomic> &statsetr,
+      stat_value *output_stats) const
+  {
+    std::size_t offset = 0;
+    for (stat_id id = 0; id < m_stat_defs.size (); id++)
+      {
+	offset = m_stat_defs[id].m_offset;
+	switch (m_stat_defs[id].m_type)
+	  {
+	  case stat_definition::COUNTER:
+	    output_stats[offset] += statsetr.m_values[offset];
+	    break;
+	  case stat_definition::TIMER:
+	    output_stats[offset] += convert_timeval<Duration> (statsetr.m_values[offset]);
+	    break;
+	  case stat_definition::COUNTER_AND_TIMER:
+	    output_stats[offset] += statsetr.m_values[offset];
+	    output_stats[offset + 1] += convert_timeval<Duration> (statsetr.m_values[offset + 1]);
+	    break;
+	  default:
+	    assert (false);
+	    break;
+	  }
+      }
+  }
+
+  template <typename Duration>
+  void
+  statset_definition::add_stat_values_with_converted_timers (const statset &statsetr, stat_value *output_stats) const
+  {
+    return generic_add_stat_values_with_converted_timers<false, Duration> (statsetr, output_stats);
+  }
+
+  template <typename Duration>
+  void
+  statset_definition::add_stat_values_with_converted_timers (const atomic_statset &statsetr,
+      stat_value *output_stats) const
+  {
+    return generic_add_stat_values_with_converted_timers<true, Duration> (statsetr, output_stats);
   }
 
   //////////////////////////////////////////////////////////////////////////

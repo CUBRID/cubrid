@@ -72,7 +72,7 @@ namespace cubthread
   void
   wp_statset_accumulate (const cubperf::statset &what, cubperf::stat_value *where)
   {
-    Worker_pool_statdef.add_stat_values (what, where);
+    Worker_pool_statdef.add_stat_values_with_converted_timers<std::chrono::microseconds> (what, where);
   }
 
   std::size_t

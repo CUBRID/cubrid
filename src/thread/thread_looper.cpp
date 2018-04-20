@@ -199,7 +199,7 @@ namespace cubthread
   void
   looper::get_stats (cubperf::stat_value *stats_out)
   {
-    Looper_statistics.get_stat_values (m_stats, stats_out);
+    Looper_statistics.get_stat_values_with_converted_timers<std::chrono::microseconds> (m_stats, stats_out);
   }
 
   const char *

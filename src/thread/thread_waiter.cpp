@@ -163,7 +163,7 @@ namespace cubthread
   waiter::get_stats (cubperf::stat_value *stats_out)
   {
     stats_out[0] = m_wakeup_calls.get_count ();
-    Waiter_statistics.get_stat_values (m_stats, stats_out + 1);
+    Waiter_statistics.get_stat_values_with_converted_timers<std::chrono::microseconds> (m_stats, stats_out + 1);
   }
 
   const char *
