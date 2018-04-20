@@ -69,3 +69,8 @@ if (UNIT_TESTS OR UNIT_TEST_PACKING)
   message("    packing")
   add_subdirectory(packing)
 endif(UNIT_TESTS OR UNIT_TEST_PACKING)
+
+if (UNIT_TESTS OR UNIT_TEST_OBJECT_FACTORY)
+  message("    object_factory")
+  add_subdirectory(object_factory)
+endif(UNIT_TESTS OR UNIT_TEST_OBJECT_FACTORY)
