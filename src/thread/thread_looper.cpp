@@ -33,12 +33,20 @@ namespace cubthread
   //////////////////////////////////////////////////////////////////////////
 
   static const cubperf::stat_id STAT_LOOPER_SLEEP_COUNT_AND_TIME = 0;
-  static const cubperf::stat_id STAT_LOOPER_RESET_COUNT = 1;
+  static cubperf::stat_id STAT_LOOPER_RESET_COUNT = 1;
+
+  static cubperf::stat_definition stat_looper_sleep (STAT_LOOPER_SLEEP_COUNT_AND_TIME,
+      cubperf::stat_definition::COUNTER_AND_TIMER,
+      "looper_sleep_count",
+      "looper_sleep_time");
+  static cubperf::stat_definition stat_looper_reset (STAT_LOOPER_RESET_COUNT,
+      cubperf::stat_definition::COUNTER,
+      "looper_reset_count");
+
   static const cubperf::statset_definition Looper_statistics =
   {
-    cubperf::stat_definition (STAT_LOOPER_SLEEP_COUNT_AND_TIME, cubperf::stat_definition::COUNTER_AND_TIMER,
-    "looper_sleep_count", "looper_sleep_time"),
-    cubperf::stat_definition (STAT_LOOPER_RESET_COUNT, cubperf::stat_definition::COUNTER, "looper_reset_count"),
+    stat_looper_sleep,
+    stat_looper_reset
   };
 
   //////////////////////////////////////////////////////////////////////////

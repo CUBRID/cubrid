@@ -37,11 +37,19 @@ namespace cubthread
   //////////////////////////////////////////////////////////////////////////
   static const cubperf::stat_id STAT_LOOP_EXECUTE_COUNT_AND_TIME = 0;
   static const cubperf::stat_id STAT_LOOP_PAUSE_TIME = 1; // count is same as for execute
+
+  static cubperf::stat_definition stat_loop_execute (STAT_LOOP_EXECUTE_COUNT_AND_TIME,
+      cubperf::stat_definition::COUNTER_AND_TIMER,
+      "daemon_loop_count",
+      "daemon_execution_time");
+  static cubperf::stat_definition stat_loop_pause (STAT_LOOP_PAUSE_TIME,
+      cubperf::stat_definition::TIMER,
+      "daemon_pause_time");
+
   static const cubperf::statset_definition Daemon_statistics =
   {
-    cubperf::stat_definition (STAT_LOOP_EXECUTE_COUNT_AND_TIME, cubperf::stat_definition::COUNTER_AND_TIMER,
-    "daemon_loop_count", "daemon_execution_time"),
-    cubperf::stat_definition (STAT_LOOP_PAUSE_TIME, cubperf::stat_definition::TIMER, "daemon_pause_time")
+    stat_loop_execute,
+    stat_loop_pause
   };
 
   //////////////////////////////////////////////////////////////////////////

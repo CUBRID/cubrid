@@ -39,15 +39,32 @@ namespace cubthread
   static const cubperf::stat_id STAT_TIMEOUT_COUNT = 2;
   static const cubperf::stat_id STAT_NO_SLEEP_COUNT = 3;
   static const cubperf::stat_id STAT_AWAKEN_COUNT_AND_TIME = 4;
+
+  static cubperf::stat_definition stat_lock_wakeup (STAT_LOCK_WAKEUP_COUNT,
+      cubperf::stat_definition::COUNTER,
+      "waiter_lock_wakeup_count");
+  static cubperf::stat_definition stat_sleep (STAT_SLEEP_COUNT,
+      cubperf::stat_definition::COUNTER,
+      "waiter_sleep_count");
+  static cubperf::stat_definition stat_timeout (STAT_TIMEOUT_COUNT,
+      cubperf::stat_definition::COUNTER,
+      "waiter_timeout_count");
+  static cubperf::stat_definition stat_no_sleep (STAT_NO_SLEEP_COUNT,
+      cubperf::stat_definition::COUNTER,
+      "waiter_no_sleep_count");
+  static cubperf::stat_definition stat_awake (STAT_AWAKEN_COUNT_AND_TIME,
+      cubperf::stat_definition::COUNTER_AND_TIMER,
+      "waiter_awaken_count",
+      "waiter_awaken_delay");
   static const cubperf::statset_definition Waiter_statistics =
   {
-    cubperf::stat_definition (STAT_LOCK_WAKEUP_COUNT, cubperf::stat_definition::COUNTER, "waiter_lock_wakeup_count"),
-    cubperf::stat_definition (STAT_SLEEP_COUNT, cubperf::stat_definition::COUNTER, "waiter_sleep_count"),
-    cubperf::stat_definition (STAT_TIMEOUT_COUNT, cubperf::stat_definition::COUNTER, "waiter_timeout_count"),
-    cubperf::stat_definition (STAT_NO_SLEEP_COUNT, cubperf::stat_definition::COUNTER, "waiter_no_sleep_count"),
-    cubperf::stat_definition (STAT_AWAKEN_COUNT_AND_TIME, cubperf::stat_definition::COUNTER_AND_TIMER,
-    "waiter_awaken_count", "waiter_awaken_delay")
+    stat_lock_wakeup,
+    stat_sleep,
+    stat_timeout,
+    stat_no_sleep,
+    stat_awake
   };
+
   static const char *STAT_WAKEUP_CALL_COUNT_NAME = "waiter_wakeup_count";
 
   //////////////////////////////////////////////////////////////////////////

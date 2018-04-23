@@ -439,8 +439,6 @@ namespace cubthread
   /* Template/inline implementation                                       */
   /************************************************************************/
 
-#define THREAD_WP_LOG(func, msg, ...) if (m_log) _er_log_debug (ARG_FILE_LINE, func ": " msg "\n", __VA_ARGS__)
-
   //////////////////////////////////////////////////////////////////////////
   // worker_pool implementation
   //////////////////////////////////////////////////////////////////////////
@@ -536,12 +534,10 @@ namespace cubthread
     if (m_stopped.exchange (true))
       {
 	// already stopped
-	THREAD_WP_LOG ("stop", "stop was %s", "true");
 	return;
       }
     else
       {
-	THREAD_WP_LOG ("stop", "stop was %s", "false");
 	// I am responsible with stopping threads
       }
 
@@ -1225,8 +1221,6 @@ namespace cubthread
 	func (*ctxp, args...);
       }
   }
-
-#undef THREAD_WP_LOG
 
 } // namespace cubthread
 
