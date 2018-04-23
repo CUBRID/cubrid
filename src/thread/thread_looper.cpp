@@ -64,7 +64,8 @@ namespace cubthread
     , m_stats (*Looper_statistics.create_statset ())
   {
     // infinite waits
-    m_setup_period = std::bind (&looper::setup_infinite_wait, *this, std::placeholders::_1, std::placeholders::_2);
+    m_setup_period = std::bind (&looper::setup_infinite_wait, std::ref (*this), std::placeholders::_1,
+				std::placeholders::_2);
   }
 
   looper::looper (const looper &other)
@@ -86,7 +87,8 @@ namespace cubthread
     : looper ()
   {
     m_periods[0] = fixed_period;
-    m_setup_period = std::bind (&looper::setup_fixed_waits, *this, std::placeholders::_1, std::placeholders::_2);
+    m_setup_period = std::bind (&looper::setup_fixed_waits, std::ref (*this), std::placeholders::_1,
+				std::placeholders::_2);
   }
 
   looper::~looper (void)

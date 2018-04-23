@@ -339,7 +339,7 @@ namespace cubperf
       duration d) const
   {
     assert (id < get_stat_count ());
-    assert (m_stat_defs[id].m_type == stat_definition::type::TIMER);
+    assert (m_stat_defs[id].m_type == stat_definition::type::COUNTER_AND_TIMER);
 
     // add duration at id's offset
     std::size_t offset = m_stat_defs[id].m_offset;

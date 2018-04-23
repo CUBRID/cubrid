@@ -170,7 +170,8 @@ namespace cubthread
 	assert (i == 0 || m_periods[i - 1] < m_periods[i]);
       }
 
-    m_setup_period = std::bind (&looper::setup_increasing_waits, *this, std::placeholders::_1, std::placeholders::_2);
+    m_setup_period = std::bind (&looper::setup_increasing_waits, std::ref (*this), std::placeholders::_1,
+				std::placeholders::_2);
   }
 
 } // namespace cubthread
