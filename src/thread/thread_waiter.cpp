@@ -55,7 +55,7 @@ namespace cubthread
   static cubperf::stat_definition stat_awake (STAT_AWAKEN_COUNT_AND_TIME,
       cubperf::stat_definition::COUNTER_AND_TIMER,
       "waiter_awake_count",
-      "waiter_awake_delay");
+      "waiter_wakeup_delay_time");
   static const cubperf::statset_definition Waiter_statistics =
   {
     stat_lock_wakeup,
