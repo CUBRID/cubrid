@@ -83,4 +83,12 @@ namespace cubthread
     return count;
   }
 
+  void
+  wp_handle_exception (const char *message, const std::exception &e)
+  {
+    er_print_callstack (ARG_FILE_LINE, "%s - throws %s", message, e.what ());
+    assert (false);
+    throw e;
+  }
+
 } // namespace cubthread

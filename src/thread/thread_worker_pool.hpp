@@ -467,6 +467,9 @@ namespace cubthread
   // does not return 0
   std::size_t system_core_count (void);
 
+  // custom worker pool exception handler
+  void wp_handle_exception (const char *message, const std::exception &e);
+
   /************************************************************************/
   /* Template/inline implementation                                       */
   /************************************************************************/
@@ -1069,8 +1072,23 @@ namespace cubthread
     // save task
     m_task_p = work_p;
 
-    // start thread
-    std::thread (&worker::run, this).detach ();    // don't wait for it
+#if !defined (NDEBUG)
+    // debug wrapper to catch and print exception messages. this is sensible code and we don't want to catch the
+    // exceptions on release
+    try
+      {
+#endif // DEBUG
+
+	// start thread
+	std::thread (&worker::run, this).detach ();    // don't wait for it
+
+#if !defined (NDEBUG)
+      }
+    catch (const std::exception &e)
+      {
+	wp_handle_exception ("starting new thread", e);
+      }
+#endif // NDEBUG
   }
 
   template <typename Context>
