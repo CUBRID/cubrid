@@ -21,10 +21,10 @@
  * cubstream.hpp
  */
 
-#ident "$Id$"
-
 #ifndef _CUBSTREAM_HPP_
 #define _CUBSTREAM_HPP_
+
+#ident "$Id$"
 
 #include <vector>
 #include <functional>
