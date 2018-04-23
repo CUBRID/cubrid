@@ -4989,11 +4989,11 @@ perfmon_stat_dump_in_file_thread_daemon_stats (FILE * stream, const UINT64 * sta
 
   for (size_t daemon_it = 0; daemon_it < PERFMON_PORTABLE_DAEMON_COUNT; daemon_it++)
     {
-      fprintf (stream, perfmon_Portable_daemon_names[daemon_it]);
       for (size_t stat_it = 0; stat_it < perfmon_per_daemon_stat_count (); stat_it++)
 	{
 	  value = stats_ptr[daemon_it * perfmon_per_daemon_stat_count () + stat_it];
-	  fprintf (stream, "%-10s = %16llu\n", perfmon_thread_daemon_name (stat_it), (long long unsigned int) value);
+          fprintf (stream, "%s.%s = %16llu\n", perfmon_Portable_daemon_names[daemon_it],
+                   perfmon_thread_daemon_name (stat_it), (long long unsigned int) value);
 	}
     }
 }
@@ -5034,19 +5034,11 @@ perfmon_stat_dump_in_buffer_thread_daemon_stats (const UINT64 * stats_ptr, char 
 
   for (size_t daemon_it = 0; daemon_it < PERFMON_PORTABLE_DAEMON_COUNT; daemon_it++)
     {
-      ret = snprintf (*s, *remaining_size, perfmon_Portable_daemon_names[daemon_it]);
-      *remaining_size -= ret;
-      *s += ret;
-      if (*remaining_size <= 0)
-	{
-	  return;
-	}
-
       for (size_t stat_it = 0; stat_it < perfmon_per_daemon_stat_count (); stat_it++)
 	{
 	  value = stats_ptr[daemon_it * perfmon_per_daemon_stat_count () + stat_it];
-	  ret = snprintf (*s, *remaining_size, "%-10s = %16llu\n", perfmon_thread_daemon_name (stat_it),
-			  (long long unsigned int) value);
+          ret = snprintf (*s, *remaining_size, "%s.%s = %16llu\n", perfmon_Portable_daemon_names[daemon_it],
+                          perfmon_thread_daemon_name (stat_it), (long long unsigned int) value);
 
 	  *remaining_size -= ret;
 	  *s += ret;
