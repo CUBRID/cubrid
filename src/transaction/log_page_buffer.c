@@ -957,6 +957,8 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
     {
       if (fetch_mode == NEW_PAGE)
 	{
+	  /* Fills log page with 0, for checksum consistency. */
+	  memset (log_bufptr->logpage, 0, LOG_PAGESIZE);
 	  log_bufptr->logpage->hdr.logical_pageid = pageid;
 	  log_bufptr->logpage->hdr.offset = NULL_OFFSET;
 	}
