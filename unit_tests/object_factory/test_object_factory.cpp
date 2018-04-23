@@ -97,8 +97,11 @@ namespace test_object_factory
             }
         }
 
-      delete []a;
-      delete []copy_of_a;
+      for (i = 0; i < OBJ_CNT; i++)
+        {
+          delete a[i];
+          delete copy_of_a[i];
+        }
 
       return res;
     }
