@@ -38,40 +38,43 @@
 namespace cubbase
 {
   template <typename object_key, typename object_base> class factory
-    {
-      public:
-        template <typename object_type>
-        int register_creator (object_key k,
-                              std::function <object_base*()> object_creator = default_creator <object_type>)
-          {
-            typename std::map<object_key, std::function <object_base*()> >::iterator it = m_creators_map.find (k); 
-            if (it != m_creators_map.end())
-              { 
-                /* key already used */
-                assert (false);
-                return -1;
-              }
+  {
+    public:
+      template <typename object_type>
+      int register_creator (object_key k,
+			    std::function <object_base*()> object_creator = default_creator <object_type>)
+      {
+	typename std::map<object_key, std::function <object_base*()> >::iterator it = m_creators_map.find (k);
+	if (it != m_creators_map.end())
+	  {
+	    /* key already used */
+	    assert (false);
+	    return -1;
+	  }
 
-            m_creators_map[k] = object_creator;
-            return 0;
-          };
+	m_creators_map[k] = object_creator;
+	return 0;
+      };
 
-        object_base* create_object (object_key k)
-          {
-              typename std::map<object_key, std::function <object_base*()> >::iterator it = m_creators_map.find (k); 
-              if (it == m_creators_map.end ())
-                { 
-                  return NULL;
-                }
-              return (it->second) ();
-          };
-        
-      private:
-        template <typename object_type>
-        static object_base * default_creator () { return new object_type; };
+      object_base *create_object (object_key k)
+      {
+	typename std::map<object_key, std::function <object_base*()> >::iterator it = m_creators_map.find (k);
+	if (it == m_creators_map.end ())
+	  {
+	    return NULL;
+	  }
+	return (it->second) ();
+      };
 
-        std::map <object_key, std::function <object_base*()> > m_creators_map;
-    };
+    private:
+      template <typename object_type>
+      static object_base *default_creator ()
+      {
+	return new object_type;
+      };
+
+      std::map <object_key, std::function <object_base*()> > m_creators_map;
+  };
 
 } /* namespace cubbase */
 
