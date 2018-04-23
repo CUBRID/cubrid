@@ -132,7 +132,7 @@ namespace cubthread
   std::size_t
   daemon::get_stats_value_count (void)
   {
-    return Daemon_statistics.get_value_count (); // +
+    return Daemon_statistics.get_value_count () + looper::get_stats_value_count() + waiter::get_stats_value_count ();
   }
 
   const char *
