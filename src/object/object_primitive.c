@@ -17254,7 +17254,7 @@ mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
   rc = db_json_serialize (*json->document, *buf);
   if (rc != NO_ERROR)
     {
-      assert (false);		// is this acceptable?
+      ASSERT_ERROR ();
     }
 }
 
@@ -17408,7 +17408,7 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
   rc = db_json_serialize (*value->data.json.document, *buf);
   if (rc != NO_ERROR)
     {
-      assert (false);
+      ASSERT_ERROR ();
     }
 
   return rc;

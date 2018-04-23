@@ -365,25 +365,9 @@ class JSON_SERIALIZER : public JSON_BASE_HANDLER
     bool PackType (const DB_JSON_TYPE &type);
     bool PackString (const char *str);
 
-    bool IsErrorAndSetIfClear (int error_code)
+    bool HasError ()
     {
-      // it's not an error so do nothing
-      if (error_code != NO_ERROR)
-	{
-	  return false;
-	}
-
-      // if we already set an error internally
-      if (m_error != NO_ERROR)
-	{
-	  return true;
-	}
-
-      m_error = error_code;
-      assert (!er_is_initialized());
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
-
-      return true;
+      return m_error != NO_ERROR;
     }
 
     int m_error;                            // internal error code
@@ -2767,14 +2751,14 @@ JSON_SERIALIZER::SetSizePointers (SizeType size)
 
 bool JSON_SERIALIZER::PackType (const DB_JSON_TYPE &type)
 {
-  int err = or_put_int (m_buffer, static_cast<int> (type));
-  return IsErrorAndSetIfClear (err);
+  m_error = or_put_int (m_buffer, static_cast<int> (type));
+  return HasError();
 }
 
 bool JSON_SERIALIZER::PackString (const char *str)
 {
-  int err = or_put_string_aligned_with_length (m_buffer, str);
-  return IsErrorAndSetIfClear (err);
+  m_error = or_put_string_aligned_with_length (m_buffer, str);
+  return HasError();
 }
 
 bool JSON_SERIALIZER_LENGTH::Null ()
@@ -2802,8 +2786,8 @@ bool JSON_SERIALIZER::Bool (bool b)
       return false;
     }
 
-  int err = or_put_int (m_buffer, b ? 1 : 0);
-  return IsErrorAndSetIfClear (err);
+  m_error = or_put_int (m_buffer, b ? 1 : 0);
+  return HasError();
 }
 
 bool JSON_SERIALIZER_LENGTH::Int (int i)
@@ -2820,8 +2804,8 @@ bool JSON_SERIALIZER::Int (int i)
       return false;
     }
 
-  int err = or_put_int (m_buffer, i);
-  return IsErrorAndSetIfClear (err);
+  m_error = or_put_int (m_buffer, i);
+  return HasError();
 }
 
 bool JSON_SERIALIZER_LENGTH::Double (double d)
@@ -2838,8 +2822,8 @@ bool JSON_SERIALIZER::Double (double d)
       return false;
     }
 
-  int err = or_put_double (m_buffer, d);
-  return IsErrorAndSetIfClear (err);
+  m_error = or_put_double (m_buffer, d);
+  return HasError();
 }
 
 bool JSON_SERIALIZER_LENGTH::String (const Ch *str, SizeType length, bool copy)
@@ -2949,7 +2933,7 @@ db_json_serialize (const JSON_DOC &doc, OR_BUF &buffer)
   if (!doc.Accept (js))
     {
       error_code = js.GetErrorCode();
-      ASSERT_ERROR_AND_SET (error_code);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
     }
 
   return error_code;
