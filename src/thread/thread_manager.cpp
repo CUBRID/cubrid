@@ -86,7 +86,7 @@ namespace cubthread
 
     // todo: is there a better way to decide on the maximum number of thread entries?
     std::size_t max_active_workers = NUM_NON_SYSTEM_TRANS;  // one per each connection
-    std::size_t max_conn_workers = NUM_NON_SYSTEM_TRANS;    // one per each connection
+    std::size_t max_conn_workers = 0; //NUM_NON_SYSTEM_TRANS;    // one per each connection
     std::size_t max_vacuum_workers = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT);
     std::size_t max_daemons = 128;  // magic number to cover predictable requirements; not cool
 

@@ -27,7 +27,6 @@
 
 #include "communication_channel.hpp"
 #include "cubstream.hpp"
-#include <atomic>
 
 namespace cubthread
 {
