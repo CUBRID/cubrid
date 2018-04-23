@@ -130,6 +130,14 @@ namespace cubthread
 
     private:
 
+      enum wait_type
+      {
+	INF_WAITS,
+	FIXED_WAITS,
+	INCREASING_WAITS,
+	CUSTOM_WAITS,
+      };
+
       void setup_fixed_waits (bool &is_timed_wait, delta_time &period);
       void setup_infinite_wait (bool &is_timed_wait, delta_time &period);
       void setup_increasing_waits (bool &is_timed_wait, delta_time &period);
@@ -149,6 +157,9 @@ namespace cubthread
 
       // statistics
       cubperf::statset &m_stats;
+
+      // my type
+      wait_type m_wait_type;
   };
 
   /************************************************************************/
@@ -172,6 +183,8 @@ namespace cubthread
 
     m_setup_period = std::bind (&looper::setup_increasing_waits, std::ref (*this), std::placeholders::_1,
 				std::placeholders::_2);
+
+    m_wait_type = INCREASING_WAITS;
   }
 
 } // namespace cubthread

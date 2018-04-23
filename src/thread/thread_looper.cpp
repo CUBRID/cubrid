@@ -62,6 +62,7 @@ namespace cubthread
     , m_setup_period ()
     , m_start_execution_time ()
     , m_stats (*Looper_statistics.create_statset ())
+    , m_wait_type (INF_WAITS)
   {
     // infinite waits
     m_setup_period = std::bind (&looper::setup_infinite_wait, std::ref (*this), std::placeholders::_1,
@@ -72,15 +73,38 @@ namespace cubthread
     : looper ()
   {
     m_periods_count = other.m_periods_count;
-    m_setup_period = other.m_setup_period;
     m_start_execution_time = other.m_start_execution_time;
     std::copy (std::begin (other.m_periods), std::end (other.m_periods), std::begin (m_periods));
+
+    // we need to use same target function, however for default setup function first argument must be this and not
+    // other
+    switch (other.m_wait_type)
+      {
+      case INF_WAITS:
+	// already bound to looper::setup_infinite_wait
+	break;
+      case FIXED_WAITS:
+	m_setup_period = std::bind (&looper::setup_fixed_waits, std::ref (*this), std::placeholders::_1,
+				    std::placeholders::_2);
+	break;
+      case INCREASING_WAITS:
+	m_setup_period = std::bind (&looper::setup_increasing_waits, std::ref (*this), std::placeholders::_1,
+				    std::placeholders::_2);
+	break;
+      case CUSTOM_WAITS:
+	m_setup_period = other.m_setup_period;    // just copy function
+	break;
+      default:
+	assert (false);
+	break;
+      }
   }
 
   looper::looper (const period_function &setup_period_function)
     : looper ()
   {
     m_setup_period = setup_period_function;
+    m_wait_type = CUSTOM_WAITS;
   }
 
   looper::looper (const delta_time &fixed_period)
@@ -89,6 +113,7 @@ namespace cubthread
     m_periods[0] = fixed_period;
     m_setup_period = std::bind (&looper::setup_fixed_waits, std::ref (*this), std::placeholders::_1,
 				std::placeholders::_2);
+    m_wait_type = FIXED_WAITS;
   }
 
   looper::~looper (void)
