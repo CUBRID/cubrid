@@ -1643,7 +1643,10 @@ logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_full
     }
 
 #if !defined(NDEBUG)
-  logpb_debug_check_log_page (thread_p, log_pgptr);
+  if (log_Gl.rcv_phase != LOG_RECOVERY_ANALYSIS_PHASE)
+    {
+      logpb_debug_check_log_page (thread_p, log_pgptr);
+    }
 #endif
 
 error:
@@ -2067,7 +2070,10 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
 	     (long long int) log_pgptr->hdr.logical_pageid, log_pgptr->hdr.checksum);
 
 #if !defined(NDEBUG)
-  logpb_debug_check_log_page (thread_p, log_pgptr);
+  if (log_Gl.rcv_phase != LOG_RECOVERY_ANALYSIS_PHASE)
+    {
+      logpb_debug_check_log_page (thread_p, log_pgptr);
+    }
 #endif
 
   /* keep old function's usage */
@@ -2126,17 +2132,18 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
     }
 
 #if !defined(NDEBUG)
-  {
-    char *ptr;
-    int i;
+  if (log_Gl.rcv_phase != LOG_RECOVERY_ANALYSIS_PHASE)
+    {
+      char *ptr;
+      int i;
 
-    ptr = (char *) log_pgptr;
-    for (i = 0; i < num_pages; i++)
-      {
-	logpb_debug_check_log_page (thread_p, (LOG_PAGE *) ptr);
-	ptr += LOG_PAGESIZE;
-      }
-  }
+      ptr = (char *) log_pgptr;
+      for (i = 0; i < num_pages; i++)
+	{
+	  logpb_debug_check_log_page (thread_p, (LOG_PAGE *) ptr);
+	  ptr += LOG_PAGESIZE;
+	}
+    }
 #endif
 
   return num_pages;
@@ -6671,7 +6678,11 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 #endif /* CUBRID_DEBUG */
 
 #if !defined (NDEBUG)
-  logpb_debug_check_log_page (thread_p, log_pgptr);
+  /* In analysys phase, the page may be corrupted. */
+  if (log_Gl.rcv_phase != LOG_RECOVERY_ANALYSIS_PHASE)
+    {
+      logpb_debug_check_log_page (thread_p, log_pgptr);
+    }
 #endif /* !NDEBUG */
 
   assert (log_pgptr != NULL && *ret_arv_num != -1 && arv_hdr != NULL);
@@ -12124,7 +12135,11 @@ logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p)
       page_id = arv_hdr->fpageid;
 
 #if !defined(NDEBUG)
-      logpb_debug_check_log_page (thread_p, arv_hdr_pgptr);
+      /* In analysys phase, the page may be corrupted. */
+      if (log_Gl.rcv_phase != LOG_RECOVERY_ANALYSIS_PHASE)
+	{
+	  logpb_debug_check_log_page (thread_p, arv_hdr_pgptr);
+	}
 #endif
 
       fileio_dismount (thread_p, vdes);

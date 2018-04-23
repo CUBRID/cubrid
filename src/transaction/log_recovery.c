@@ -2464,6 +2464,14 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	    {
 	      /* Simulate end of log */
 	      LOG_RESET_APPEND_LSA (&log_lsa);
+	      _er_log_debug (ARG_FILE_LINE,
+			     "logpb_recovery_analysis: log page %lld is corrupted due to partial flush.\n"
+			     "LSA: append_lsa = (%lld, %d), prior_lsa = (%lld, %d), end_redo_lsa = (%lld, %d)\n",
+			     (long long int) log_lsa.pageid,
+			     (long long int) log_Gl.hdr.append_lsa.pageid, (int) log_Gl.hdr.append_lsa.offset,
+			     (long long int) log_Gl.prior_info.prior_lsa.pageid,
+			     (int) log_Gl.prior_info.prior_lsa.offset, (long long int) end_redo_lsa->pageid,
+			     (int) end_redo_lsa->offset);
 	    }
 	  break;
 	}
