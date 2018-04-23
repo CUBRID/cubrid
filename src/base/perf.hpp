@@ -205,11 +205,14 @@ namespace cubperf
       std::size_t get_values_memsize (void) const;                  // get memory size for set of values
 
     private:
+      // build & process_def are used to append each statistics definition to the set
       template <typename... Args>
-      void build (stat_definition &def, Args &&... args);
-      void build (stat_definition &def);
-      void process_def (stat_definition &def);
+      void build (stat_definition &def, Args &&... args); // build based on def and other args
+      void build (stat_definition &def);                  // build based on def
+      void process_def (stat_definition &def);            // process on stat definition
 
+      // generic versions of statistics operation on set of values
+      // common point for specialized versions of operations - on statset and atomic_statset
       template <bool IsAtomic>
       inline void generic_increment (generic_statset<IsAtomic> &statsetr, stat_id id, stat_value incr) const;
       template <bool IsAtomic>
@@ -222,17 +225,21 @@ namespace cubperf
       template <bool IsAtomic>
       inline void generic_time_and_increment (generic_statset<IsAtomic> &statsetr, stat_id id, stat_value incr) const;
 
+      // functions used for time conversions
+      // convert time value from default (nanosecs) to desired duration type
       template <typename Duration>
       stat_value convert_timeval (stat_value nanosecs) const;
+      // generic function to copy statistics into array of values
       template <bool IsAtomic, typename Duration>
       void generic_get_stat_values_with_converted_timers (const generic_statset<IsAtomic> &statsetr,
 	  stat_value *output_stats) const;
+      // generic function to accumulate statistics into array of values
       template <bool IsAtomic, typename Duration>
       void generic_add_stat_values_with_converted_timers (const generic_statset<IsAtomic> &statsetr,
 	  stat_value *output_stats) const;
 
-      std::vector<stat_definition> m_stat_defs;
-      std::vector<const char *> m_value_names;
+      std::vector<stat_definition> m_stat_defs;     // vector with statistics definitions
+      std::vector<const char *> m_value_names;      // vector with names for each value in the set
   };
 
   //////////////////////////////////////////////////////////////////////////

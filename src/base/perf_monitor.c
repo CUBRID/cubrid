@@ -4705,6 +4705,19 @@ perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int
 // thread workers section
 //////////////////////////////////////////////////////////////////////////
 
+// note - current monitor implementation requires a single point to manage all statistics meta information (stats
+//        count and names). this prevents us from isolating statistics management per each module, because some
+//        modules are restricted to server only, while the monitor implementation is same for server and client.
+//
+//        ideally, meta information should be fetched from server and not necessarily known from start by client.
+//        this would prevent any miss-matches between server and clients and better module encapsulation. performance
+//        monitor would only store the values and collect from all modules rather than keeping extended information
+//        on each module (like it does now with page buffer, thread and others)
+//
+//        for now, we are forced to duplicate here some information about thread workers and daemons that is normally
+//        restricted to server
+//
+
 // NOTE - should match cubthread::Worker_pool_statdef
 const char *perfmon_Portable_worker_stat_names [] =
   {
@@ -4903,12 +4916,7 @@ static size_t
 perfmon_per_daemon_stat_count (void)
 {
 #if defined (SERVER_MODE)
-  // note - current monitor implementation requires a single point to manage all statistics meta information (stats
-  //        count and names). this prevents us from isolating statistics management per each module, because some
-  //        modules are restricted to server only, while monitor is same for server and client.
-  //
-  //        ideally, meta information should be fetched from server and not necessarily known from start by client.
-  //
+  
   assert (PERFMON_PORTABLE_DAEMON_STAT_COUNT == cubthread::daemon::STAT_COUNT);
   static bool check_names = true;
   if (check_names)
