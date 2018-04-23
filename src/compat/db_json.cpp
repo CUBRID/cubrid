@@ -312,7 +312,7 @@ class JSON_SERIALIZER_LENGTH : public JSON_BASE_HANDLER
       return OR_INT_SIZE;
     }
 
-    std::size_t GetStringPackedSize (const char * str) const
+    std::size_t GetStringPackedSize (const char *str) const
     {
       return or_packed_string_with_size_length (str);
     }
@@ -336,8 +336,8 @@ class JSON_SERIALIZER : public JSON_BASE_HANDLER
 {
   public:
     JSON_SERIALIZER (OR_BUF &buffer)
-    : m_buffer (&buffer)
-    , m_size_pointers ()
+      : m_buffer (&buffer)
+      , m_size_pointers ()
     {
     }
     ~JSON_SERIALIZER() {}
@@ -353,16 +353,43 @@ class JSON_SERIALIZER : public JSON_BASE_HANDLER
     bool EndObject (SizeType memberCount);
     bool EndArray (SizeType elementCount);
 
+    int GetErrorCode (void)
+    {
+      return m_error;
+    }
+
   private:
     void SaveSizePointers (char *ptr);
     void SetSizePointers (SizeType size);
 
-    void PackType (const DB_JSON_TYPE &type);
-    void PackString (const char *str);
+    bool PackType (const DB_JSON_TYPE &type);
+    bool PackString (const char *str);
 
+    bool IsErrorAndSetIfClear (int error_code)
+    {
+      // it's not an error so do nothing
+      if (error_code != NO_ERROR)
+	{
+	  return false;
+	}
+
+      // if we already set an error internally
+      if (m_error != NO_ERROR)
+	{
+	  return true;
+	}
+
+      m_error = error_code;
+      assert (!er_is_initialized());
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+
+      return true;
+    }
+
+    int m_error;                            // internal error code
     OR_BUF *m_buffer;                       // buffer to serialize to
     std::stack<char *> m_size_pointers;     // stack used by nested arrays & objects to save starting pointer.
-                                            // member/element count is saved at the end
+    // member/element count is saved at the end
 };
 
 const bool JSON_PRIVATE_ALLOCATOR::kNeedFree = true;
@@ -401,7 +428,7 @@ static int db_json_convert_pointer_to_sql_path (const char *pointer_path, std::s
 static int db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_pointer_out);
 static JSON_PATH_TYPE db_json_get_path_type (std::string &path_string);
 static void db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_type,
-                                              std::unordered_map<std::string, std::string> &special_chars);
+    std::unordered_map<std::string, std::string> &special_chars);
 static std::vector<std::string> db_json_split_path_by_delimiters (const std::string &path,
     const std::string &delim);
 static bool db_json_sql_path_is_valid (std::string &sql_path);
@@ -426,8 +453,8 @@ STATIC_INLINE const JSON_VALUE &db_json_doc_to_value (const JSON_DOC &doc) __att
 static int db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc);
 static int db_json_add_json_value_to_object (JSON_DOC &doc, const char *name, JSON_VALUE &value);
 
-static void db_json_deserialize_helper (OR_BUF *buf, const std::string &path, JSON_DOC &doc,
-					const std::unordered_map<std::string, std::string> &special_chars);
+static void db_json_deserialize_value (OR_BUF *buf, const std::string &path, JSON_DOC &doc,
+				       const std::unordered_map<std::string, std::string> &special_chars, int &err);
 
 int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
 {
@@ -2738,14 +2765,16 @@ JSON_SERIALIZER::SetSizePointers (SizeType size)
   or_pack_int (buf, (int) size);
 }
 
-void JSON_SERIALIZER::PackType (const DB_JSON_TYPE &type)
+bool JSON_SERIALIZER::PackType (const DB_JSON_TYPE &type)
 {
-  or_put_int (m_buffer, static_cast<int> (type));
+  int err = or_put_int (m_buffer, static_cast<int> (type));
+  return IsErrorAndSetIfClear (err);
 }
 
-void JSON_SERIALIZER::PackString (const char *str)
+bool JSON_SERIALIZER::PackString (const char *str)
 {
-  or_put_string_aligned_with_length (m_buffer, str);
+  int err = or_put_string_aligned_with_length (m_buffer, str);
+  return IsErrorAndSetIfClear (err);
 }
 
 bool JSON_SERIALIZER_LENGTH::Null ()
@@ -2756,8 +2785,7 @@ bool JSON_SERIALIZER_LENGTH::Null ()
 
 bool JSON_SERIALIZER::Null ()
 {
-  PackType (DB_JSON_NULL);
-  return true;
+  return PackType (DB_JSON_NULL);
 }
 
 bool JSON_SERIALIZER_LENGTH::Bool (bool b)
@@ -2769,9 +2797,13 @@ bool JSON_SERIALIZER_LENGTH::Bool (bool b)
 
 bool JSON_SERIALIZER::Bool (bool b)
 {
-  PackType (DB_JSON_BOOL);
-  or_put_int (m_buffer, b ? 1 : 0);
-  return true;
+  if (!PackType (DB_JSON_BOOL))
+    {
+      return false;
+    }
+
+  int err = or_put_int (m_buffer, b ? 1 : 0);
+  return IsErrorAndSetIfClear (err);
 }
 
 bool JSON_SERIALIZER_LENGTH::Int (int i)
@@ -2783,9 +2815,13 @@ bool JSON_SERIALIZER_LENGTH::Int (int i)
 
 bool JSON_SERIALIZER::Int (int i)
 {
-  PackType (DB_JSON_INT);
-  or_put_int (m_buffer, i);
-  return true;
+  if (!PackType (DB_JSON_INT))
+    {
+      return false;
+    }
+
+  int err = or_put_int (m_buffer, i);
+  return IsErrorAndSetIfClear (err);
 }
 
 bool JSON_SERIALIZER_LENGTH::Double (double d)
@@ -2797,9 +2833,13 @@ bool JSON_SERIALIZER_LENGTH::Double (double d)
 
 bool JSON_SERIALIZER::Double (double d)
 {
-  PackType (DB_JSON_DOUBLE);
-  or_put_double (m_buffer, d);
-  return true;
+  if (!PackType (DB_JSON_DOUBLE))
+    {
+      return false;
+    }
+
+  int err = or_put_double (m_buffer, d);
+  return IsErrorAndSetIfClear (err);
 }
 
 bool JSON_SERIALIZER_LENGTH::String (const Ch *str, SizeType length, bool copy)
@@ -2810,9 +2850,7 @@ bool JSON_SERIALIZER_LENGTH::String (const Ch *str, SizeType length, bool copy)
 
 bool JSON_SERIALIZER::String (const Ch *str, SizeType length, bool copy)
 {
-  PackType (DB_JSON_STRING);
-  PackString (str);
-  return true;
+  return PackType (DB_JSON_STRING) && PackString (str);
 }
 
 bool JSON_SERIALIZER_LENGTH::Key (const Ch *str, SizeType length, bool copy)
@@ -2824,8 +2862,7 @@ bool JSON_SERIALIZER_LENGTH::Key (const Ch *str, SizeType length, bool copy)
 
 bool JSON_SERIALIZER::Key (const Ch *str, SizeType length, bool copy)
 {
-  PackString (str);
-  return true;
+  return PackString (str);
 }
 
 bool JSON_SERIALIZER_LENGTH::StartObject()
@@ -2837,7 +2874,11 @@ bool JSON_SERIALIZER_LENGTH::StartObject()
 
 bool JSON_SERIALIZER::StartObject()
 {
-  PackType (DB_JSON_OBJECT);
+  if (!PackType (DB_JSON_OBJECT))
+    {
+      return false;
+    }
+
   // add pointer to stack, because we need to come back to overwrite this pointer with the correct size
   // we will know that in EndObject function
   SaveSizePointers (m_buffer->ptr);
@@ -2854,7 +2895,11 @@ bool JSON_SERIALIZER_LENGTH::StartArray()
 
 bool JSON_SERIALIZER::StartArray()
 {
-  PackType (DB_JSON_ARRAY);
+  if (!PackType (DB_JSON_ARRAY))
+    {
+      return false;
+    }
+
   // add pointer to stack, because we need to come back to overwrite this pointer with the correct size
   // we will know that in EndObject function
   SaveSizePointers (m_buffer->ptr);
@@ -2899,10 +2944,15 @@ int
 db_json_serialize (const JSON_DOC &doc, OR_BUF &buffer)
 {
   JSON_SERIALIZER js (buffer);
+  int error_code = NO_ERROR;
 
-  doc.Accept (js);
+  if (!doc.Accept (js))
+    {
+      error_code = js.GetErrorCode();
+      ASSERT_ERROR_AND_SET (error_code);
+    }
 
-  return NO_ERROR;
+  return error_code;
 }
 
 std::size_t
@@ -2917,15 +2967,15 @@ db_json_serialize_length (const JSON_DOC &doc)
 /*
  * db_json_deserialize_helper () - this is where the deserialization actually happens
  *
- * return            : void
+ * return            : error_code
  * json_raw (in)     : pointer of the current position of buffer
  * path (in)         : the path is used at reconstruction
  * doc (in)          : the reconstructed document
  * serial_types (in) : map where we store the correspondence between internal types and serialization types
  */
 static void
-db_json_deserialize_helper (OR_BUF *buf, const std::string &path, JSON_DOC &doc,
-			    const std::unordered_map<std::string, std::string> &special_chars)
+db_json_deserialize_value (OR_BUF *buf, const std::string &path, JSON_DOC &doc,
+			   const std::unordered_map<std::string, std::string> &special_chars, int &err)
 {
   JSON_VALUE value;
   DB_JSON_TYPE json_type;
@@ -2936,29 +2986,86 @@ db_json_deserialize_helper (OR_BUF *buf, const std::string &path, JSON_DOC &doc,
   int size = 0, str_length = 0;
   int rc = NO_ERROR;
 
+  // early out if the error was set earlier in the recursion
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR();
+      return;
+    }
+
   // get the json scalar value
   json_type = static_cast<DB_JSON_TYPE> (or_get_int (buf, &rc));
+  if (rc != NO_ERROR)
+    {
+      err = rc;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+      return;
+    }
 
   switch (json_type)
     {
     case DB_JSON_INT:
       int_value = or_get_int (buf, &rc);
+      if (rc != NO_ERROR)
+	{
+	  err = rc;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+	  return;
+	}
+
       value.SetInt (int_value);
       p.Set (doc, value, doc.GetAllocator ());
       break;
 
     case DB_JSON_DOUBLE:
       double_value = or_get_double (buf, &rc);
+      if (rc != NO_ERROR)
+	{
+	  err = rc;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+	  return;
+	}
+
       value.SetDouble (double_value);
       p.Set (doc, value, doc.GetAllocator ());
       break;
 
     case DB_JSON_STRING:
       str_length = or_get_int (buf, &rc);
+      if (rc != NO_ERROR)
+	{
+	  err = rc;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+	  return;
+	}
+
       str = (char *)db_private_alloc (NULL, str_length);
 
-      or_get_data (buf, str, str_length);
-      or_align (buf, INT_ALIGNMENT);
+      rc = or_get_data (buf, str, str_length);
+      if (rc != NO_ERROR)
+	{
+	  err = rc;
+	  // we need to assert error here because or_underflow sets the error unlike or_overflow
+	  // which only returns the error code
+	  ASSERT_ERROR();
+	  if (str != NULL)
+	    {
+	      db_private_free (NULL, str);
+	    }
+	  return;
+	}
+
+      rc = or_align (buf, INT_ALIGNMENT);
+      if (rc != NO_ERROR)
+	{
+	  err = rc;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+	  if (str != NULL)
+	    {
+	      db_private_free (NULL, str);
+	    }
+	  return;
+	}
 
       value.SetString (str, str_length - 1, doc.GetAllocator ());
       p.Set (doc, value, doc.GetAllocator ());
@@ -2968,6 +3075,13 @@ db_json_deserialize_helper (OR_BUF *buf, const std::string &path, JSON_DOC &doc,
 
     case DB_JSON_BOOL:
       int_value = or_get_int (buf, &rc); // it can be 0 or 1
+      if (rc != NO_ERROR)
+	{
+	  err = rc;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+	  return;
+	}
+
       value.SetBool (int_value == 1 ? true : false);
       p.Set (doc, value, doc.GetAllocator());
       break;
@@ -2982,15 +3096,48 @@ db_json_deserialize_helper (OR_BUF *buf, const std::string &path, JSON_DOC &doc,
       p.Set (doc, value, doc.GetAllocator ());
 
       size = or_get_int (buf, &rc);
+      if (rc != NO_ERROR)
+	{
+	  err = rc;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+	  return;
+	}
+
       for (int i = 0; i < size; i++)
 	{
 	  // get the key
-          // TODO: packer seems to just pack string. Why do we do this on unpack?
+	  // TODO: packer seems to just pack string. Why do we do this on unpack?
 	  str_length = or_get_int (buf, &rc);
+	  if (rc != NO_ERROR)
+	    {
+	      err = rc;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+	      return;
+	    }
+
 	  key = (char *)db_private_alloc (NULL, str_length);
 
-	  or_get_data (buf, key, str_length);
-	  or_align (buf, INT_ALIGNMENT);
+	  rc = or_get_data (buf, key, str_length);
+	  if (rc != NO_ERROR)
+	    {
+	      err = rc;
+	      // we need to assert error here because or_underflow sets the error unlike or_overflow
+	      // which only returns the error code
+	      ASSERT_ERROR();
+	      if (key != NULL)
+		{
+		  db_private_free (NULL, key);
+		}
+	      return;
+	    }
+
+	  rc = or_align (buf, INT_ALIGNMENT);
+	  if (rc != NO_ERROR)
+	    {
+	      err = rc;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+	      return;
+	    }
 
 	  std::string key_string = key;
 	  db_json_replace_token_special_chars (key_string, special_chars);
@@ -2998,7 +3145,7 @@ db_json_deserialize_helper (OR_BUF *buf, const std::string &path, JSON_DOC &doc,
 	  db_private_free (NULL, key);
 
 	  // get the value
-	  db_json_deserialize_helper (buf, path + "/" + key_string, doc, special_chars);
+	  db_json_deserialize_value (buf, path + "/" + key_string, doc, special_chars, err);
 	}
 
       break;
@@ -3008,9 +3155,16 @@ db_json_deserialize_helper (OR_BUF *buf, const std::string &path, JSON_DOC &doc,
       p.Set (doc, value, doc.GetAllocator ());
 
       size = or_get_int (buf, &rc);
+      if (rc != NO_ERROR)
+	{
+	  err = rc;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+	  return;
+	}
+
       for (int i = 0; i < size; i++)
 	{
-	  db_json_deserialize_helper (buf, path + "/" + std::to_string (i), doc, special_chars);
+	  db_json_deserialize_value (buf, path + "/" + std::to_string (i), doc, special_chars, err);
 	}
 
       break;
@@ -3018,6 +3172,7 @@ db_json_deserialize_helper (OR_BUF *buf, const std::string &path, JSON_DOC &doc,
     default:
       /* we shouldn't get here */
       assert (false);
+      err = ER_FAILED;
       return;
     }
 }
@@ -3025,20 +3180,23 @@ db_json_deserialize_helper (OR_BUF *buf, const std::string &path, JSON_DOC &doc,
 /*
  * db_json_deserialize () - deserialize a json reconstructing the object from a buffer
  *
- * return        : json document deserialized
+ * return        : error code
  * json_raw (in) : buffer of the json serialized
+ * doc (in)      : json document deserialized
  */
-JSON_DOC *
-db_json_deserialize (OR_BUF *buf)
+int
+db_json_deserialize (OR_BUF *buf, JSON_DOC *&doc)
 {
   std::unordered_map<std::string, std::string> special_chars;
+  int error_code = NO_ERROR;
 
   // construct the correspondence map
   db_json_build_path_special_chars (JSON_PATH_TYPE::JSON_PATH_SQL_JSON, special_chars);
 
   // create the document that we want to reconstruct
-  JSON_DOC *doc = db_json_allocate_doc ();
-  db_json_deserialize_helper (buf, "", *doc, special_chars);
+  doc = db_json_allocate_doc ();
 
-  return doc;
+  db_json_deserialize_value (buf, "", *doc, special_chars, error_code);
+
+  return error_code;
 }

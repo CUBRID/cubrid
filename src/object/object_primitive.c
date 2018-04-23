@@ -17159,7 +17159,7 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       error = db_get_deep_copy_of_json (&value->data.json, json);
       if (error != NO_ERROR)
 	{
-          ASSERT_ERROR ();
+	  ASSERT_ERROR ();
 	  return error;
 	}
     }
@@ -17254,7 +17254,7 @@ mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
   rc = db_json_serialize (*json->document, *buf);
   if (rc != NO_ERROR)
     {
-      assert (false);   // is this acceptable?
+      assert (false);		// is this acceptable?
     }
 }
 
@@ -17270,9 +17270,9 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
       if (size != 0)
 	{
 	  if (or_advance (buf, size) != NO_ERROR)
-            {
-              assert (false);
-            }
+	    {
+	      assert (false);
+	    }
 	}
       return;
     }
@@ -17289,7 +17289,12 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
       return;
     }
 
-  json->document = db_json_deserialize (buf);
+  rc = db_json_deserialize (buf, json->document);
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      db_json_delete_doc (json->document);
+    }
 }
 
 static void
@@ -17415,6 +17420,7 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 {
   JSON_DOC *doc = NULL;
   char *json_raw = NULL;
+  int rc = NO_ERROR;
 
   db_make_null (value);
 
@@ -17424,7 +17430,14 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
       return NO_ERROR;
     }
 
-  doc = db_json_deserialize (buf);
+  rc = db_json_deserialize (buf, doc);
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      db_json_delete_doc (doc);
+      return rc;
+    }
+
   db_make_json (value, doc, true);
 
   return NO_ERROR;
@@ -17437,6 +17450,7 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   OR_BUF first_buf, second_buf;
   DB_VALUE json1, json2;
   JSON_DOC *doc1 = NULL, *doc2 = NULL;
+  int rc = NO_ERROR;
 
   DB_VALUE_COMPARE_RESULT res = DB_UNK;
 
@@ -17446,8 +17460,21 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   or_init (&first_buf, first, 0);
   or_init (&second_buf, second, 0);
 
-  doc1 = db_json_deserialize (&first_buf);
-  doc2 = db_json_deserialize (&second_buf);
+  rc = db_json_deserialize (&first_buf, doc1);
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      db_json_delete_doc (doc1);
+      return res;
+    }
+
+  rc = db_json_deserialize (&second_buf, doc2);
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      db_json_delete_doc (doc2);
+      return res;
+    }
 
   db_make_json (&json1, doc1, true);
   db_make_json (&json2, doc2, true);
