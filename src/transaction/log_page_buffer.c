@@ -369,6 +369,8 @@ static LOG_ZIP *logpb_get_zip_redo (THREAD_ENTRY * thread_p);
 static char *logpb_get_data_ptr (THREAD_ENTRY * thread_p);
 static bool logpb_realloc_data_ptr (THREAD_ENTRY * thread_p, int length);
 
+static void logpb_log_page_area (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int offset, int length);
+
 static int logpb_flush_all_append_pages (THREAD_ENTRY * thread_p);
 static int logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * ndoe);
 
@@ -4163,6 +4165,47 @@ logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * logpb_log_page_area - Log page area.
+ *
+ * return: nothing
+ *   log_pgptr(in): log page 
+ *   offset(in): offset to start logging
+ *   length(in): length to log
+ */
+static void
+logpb_log_page_area (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int offset, int length)
+{
+  int line_no;
+  char log_line[100], count_lines, *src_ptr, *end_ptr, *dest_ptr;
+
+  assert (log_pgptr != NULL);
+  if (offset < 0 || length < 0 || length > LOG_PAGESIZE)
+    {
+      return;
+    }
+
+  /* Dump max 90 chars/line. */
+  src_ptr = log_pgptr->area;
+  count_lines = (length * 3) / 90 + 1;
+  for (line_no = 0; line_no < count_lines; line_no++)
+    {
+      dest_ptr = log_line;
+      end_ptr = src_ptr + 30;
+      while (src_ptr < end_ptr)
+	{
+	  sprintf (dest_ptr, "%02X ", *src_ptr);
+
+	  dest_ptr += 3;
+	  src_ptr++;
+	}
+      *dest_ptr = 0;
+
+      logpb_log ("logpb_log_page_area(%d): page_id = %lld, offset = %d, length = %d\n data = %s \n",
+		 line_no + 1, (long long int) log_pgptr->hdr.logical_pageid, offset, length, log_line);
+    }
+}
+
+/*
  * logpb_flush_all_append_pages - Flush log append pages
  *
  * return: 1 : log flushed, 0 : do not need log flush, < 0 : error code
@@ -4593,6 +4636,14 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
 	  error_code = ER_FAILED;
 	  goto error;
+	}
+
+      if (logpb_Logging)
+	{
+	  /* Dump latest portion of page, for debugging purpose. */
+	  logpb_log_page_area (thread_p, bufptr->logpage,
+			       (int) (log_Gl.append.nxio_lsa.offset - sizeof (LOG_RECORD_HEADER)),
+			       (int) sizeof (LOG_RECORD_HEADER));
 	}
 
       logpb_write_page_to_disk (thread_p, bufptr->logpage, bufptr->pageid);
