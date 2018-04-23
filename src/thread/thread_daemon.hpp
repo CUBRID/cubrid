@@ -100,7 +100,7 @@ namespace cubthread
       // note: this applies only if looper wait pattern is of type INCREASING_PERIODS
 
       // statistics
-      static const std::size_t STAT_COUNT;
+      static std::size_t get_stats_value_count (void);
       static const char *get_stat_name (std::size_t stat_index);
       void get_stats (cubperf::stat_value *stats_out);
 

@@ -4917,7 +4917,7 @@ perfmon_per_daemon_stat_count (void)
 {
 #if defined (SERVER_MODE)
   
-  assert (PERFMON_PORTABLE_DAEMON_STAT_COUNT == cubthread::daemon::STAT_COUNT);
+  assert (PERFMON_PORTABLE_DAEMON_STAT_COUNT == cubthread::daemon::get_stats_value_count ());
   static bool check_names = true;
   if (check_names)
     {

@@ -56,9 +56,6 @@ namespace cubthread
   // daemon implementation
   //////////////////////////////////////////////////////////////////////////
 
-  const std::size_t daemon::STAT_COUNT =
-	  Daemon_statistics.get_value_count () + looper::STAT_COUNT + waiter::STAT_COUNT;
-
   daemon::~daemon ()
   {
     // thread must be stopped
@@ -125,17 +122,23 @@ namespace cubthread
 
     // get looper stats
     m_looper.get_stats (&stats_out[i]);
-    i += looper::STAT_COUNT;
+    i += looper::get_stats_value_count ();
 
     // get waiter stats
     m_waiter.get_stats (&stats_out[i]);
     // i += waiter::STAT_COUNT;
   }
 
+  std::size_t
+  daemon::get_stats_value_count (void)
+  {
+    return Daemon_statistics.get_value_count (); // +
+  }
+
   const char *
   daemon::get_stat_name (std::size_t stat_index)
   {
-    assert (stat_index < STAT_COUNT);
+    assert (stat_index < get_stats_value_count ());
 
     // is from daemon?
     if (stat_index < Daemon_statistics.get_value_count ())
@@ -148,17 +151,17 @@ namespace cubthread
       }
 
     // is from looper?
-    if (stat_index < looper::STAT_COUNT)
+    if (stat_index < looper::get_stats_value_count ())
       {
 	return looper::get_stat_name (stat_index);
       }
     else
       {
-	stat_index -= looper::STAT_COUNT;
+	stat_index -= looper::get_stats_value_count ();
       }
 
     // must be from waiter
-    assert (stat_index < waiter::STAT_COUNT);
+    assert (stat_index < waiter::get_stats_value_count ());
     return waiter::get_stat_name (stat_index);
   }
 

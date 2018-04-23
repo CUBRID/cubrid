@@ -71,11 +71,6 @@ namespace cubthread
   // waiter
   //////////////////////////////////////////////////////////////////////////
 
-  // total stats count:
-  // one atomic count
-  // + Waiter_statistics
-  const std::size_t waiter::STAT_COUNT = 1 + Waiter_statistics.get_value_count ();
-
   waiter::waiter ()
     : m_mutex ()
     , m_condvar ()
@@ -183,9 +178,19 @@ namespace cubthread
     Waiter_statistics.get_stat_values_with_converted_timers<std::chrono::microseconds> (m_stats, stats_out + 1);
   }
 
+  std::size_t
+  waiter::get_stats_value_count (void)
+  {
+    // total stats count:
+    // one atomic count
+    // + Waiter_statistics
+    return 1 + Waiter_statistics.get_value_count ();
+  }
+
   const char *
   waiter::get_stat_name (std::size_t stat_index)
   {
+    assert (stat_index < get_stats_value_count ());
     if (stat_index == 0)
       {
 	// atomic wakeup call count statistic is separate
