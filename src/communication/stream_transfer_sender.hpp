@@ -19,7 +19,7 @@
 
 /*
  * stream_transfer_[sender/receiver].hpp - transfer stream through the network
- *                                          see stream_transfer_sender.cpp commentary for more details
+ *                                         see stream_transfer_sender.cpp commentary for more details
  */
 
 #ifndef _STREAM_TRANSFER_SENDER_HPP
@@ -49,6 +49,7 @@ namespace cubstream
 
       stream_position get_last_sent_position ();
       communication_channel &get_communication_channel ();
+
     private:
 
       friend class transfer_sender_task;

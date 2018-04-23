@@ -66,12 +66,12 @@ if (UNIT_TESTS OR UNIT_TEST_COMM_CHN)
   add_subdirectory(communication_channel)
 endif(UNIT_TESTS OR UNIT_TEST_COMM_CHN)
 
-if (UNIT_TESTS OR UNIT_TEST_TRANS_CHN)
-  message("    transfer_channel")
-  add_subdirectory(transfer_channel)
-endif(UNIT_TESTS OR UNIT_TEST_TRANS_CHN)
-
 if (UNIT_TESTS OR UNIT_TEST_PACKING)
   message("    packing")
   add_subdirectory(packing)
 endif(UNIT_TESTS OR UNIT_TEST_PACKING)
+
+if (UNIT_TESTS OR UNIT_TEST_TRANS_CHN)
+  message("    transfer_channel")
+  add_subdirectory(transfer_channel)
+endif(UNIT_TESTS OR UNIT_TEST_TRANS_CHN)

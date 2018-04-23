@@ -18,15 +18,16 @@
  */
 
 /*
- * stream_transfer_[sender/receiver].cpp - sends or receives chunks(usually MTU bytes) from cubstream::stream
- *                                       - the sender interogates the respective stream and tries to send the minimum
- *                                          between MTU and what is left of the stream
- *                                       - it contains a daemon that is started automatically at creation, that
- *                                          does the task of sending/receiving bytes
- *                                       - usage can be found in transfer_channel/test_main.cpp; on one machine
- *                                          will exist a transfer_sender instance and on the other a transfer_receiver.
- *                                          the instances are created using consumer/producer streams and connected communication channels.
- *                                          the stream will be sent automatically until m_last_reported_ready_pos
+ * stream_transfer_[sender/receiver].cpp
+ *
+ * - sends or receives chunks(usually MTU bytes) from cubstream::stream
+ * - the sender interogates the respective stream and tries to send the minimum between MTU and what is left of
+ *   the stream
+ * - it contains a daemon that is started automatically at creation, that does the task of sending/receiving bytes
+ * - usage can be found in transfer_channel/test_main.cpp;
+ *   on one machine will exist a transfer_sender instance and on the other a transfer_receiver.
+ *   the instances are created using consumer/producer streams and connected communication channels.
+ *   the stream will be sent automatically until m_last_reported_ready_pos
  */
 
 #include "stream_transfer_sender.hpp"
@@ -41,25 +42,24 @@ namespace cubstream
   class transfer_sender_task : public cubthread::entry_task
   {
     public:
-      transfer_sender_task (cubstream::transfer_sender &producer_channel) : this_producer_channel (
-	  producer_channel) {}
+      transfer_sender_task (cubstream::transfer_sender &producer_channel)
+	: this_producer_channel (producer_channel)
+      {
+      }
 
       void execute (cubthread::entry &context) override
       {
 	int rc = NO_ERRORS;
-	stream_position last_reported_ready_pos = this_producer_channel.m_stream.get_last_reported_ready_pos();
+	stream_position last_reported_ready_pos = this_producer_channel.m_stream.get_last_reported_ready_pos ();
 
 	assert (this_producer_channel.m_channel.is_connection_alive ());
 
-	while (rc == NO_ERRORS &&
-	       this_producer_channel.m_last_sent_position < last_reported_ready_pos)
+	while (rc == NO_ERRORS && this_producer_channel.m_last_sent_position < last_reported_ready_pos)
 	  {
 	    unsigned int byte_count = std::min ((stream_position) MTU,
-						last_reported_ready_pos -
-						this_producer_channel.m_last_sent_position);
+						last_reported_ready_pos - this_producer_channel.m_last_sent_position);
 
-	    rc = this_producer_channel.m_stream.read (this_producer_channel.m_last_sent_position,
-		 byte_count,
+	    rc = this_producer_channel.m_stream.read (this_producer_channel.m_last_sent_position, byte_count,
 		 &this_producer_channel);
 
 	    if (rc != NO_ERRORS)
@@ -73,11 +73,11 @@ namespace cubstream
       cubstream::transfer_sender &this_producer_channel;
   };
 
-  transfer_sender::transfer_sender (communication_channel &chn,
-				    cubstream::stream &stream,
-				    stream_position begin_sending_position) : m_channel (chn),
-    m_stream (stream),
-    m_last_sent_position (begin_sending_position)
+  transfer_sender::transfer_sender (communication_channel &chn, cubstream::stream &stream,
+				    stream_position begin_sending_position)
+    : m_channel (chn),
+      m_stream (stream),
+      m_last_sent_position (begin_sending_position)
   {
     m_sender_daemon = cubthread::get_manager ()->create_daemon (std::chrono::milliseconds (10),
 		      new transfer_sender_task (*this));

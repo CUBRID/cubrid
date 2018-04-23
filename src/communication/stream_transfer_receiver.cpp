@@ -36,15 +36,17 @@ namespace cubstream
   class transfer_receiver_task : public cubthread::entry_task
   {
     public:
-      transfer_receiver_task (cubstream::transfer_receiver &consumer_channel) : this_consumer_channel (
-	  consumer_channel) {}
+      transfer_receiver_task (cubstream::transfer_receiver &consumer_channel)
+	: this_consumer_channel (consumer_channel)
+      {
+      }
 
       void execute (cubthread::entry &context) override
       {
 	int rc = 0;
 	size_t max_len = MTU;
 
-	assert (this_consumer_channel.m_channel.is_connection_alive());
+	assert (this_consumer_channel.m_channel.is_connection_alive ());
 
 	rc = this_consumer_channel.m_channel.recv (this_consumer_channel.m_buffer, max_len);
 	if (rc != NO_ERRORS)
@@ -67,9 +69,10 @@ namespace cubstream
 
   transfer_receiver::transfer_receiver (communication_channel &chn,
 					cubstream::stream &stream,
-					stream_position received_from_position) : m_channel (chn),
-    m_stream (stream),
-    m_last_received_position (received_from_position)
+					stream_position received_from_position)
+    : m_channel (chn),
+      m_stream (stream),
+      m_last_received_position (received_from_position)
   {
     m_receiver_daemon = cubthread::get_manager ()->create_daemon (std::chrono::milliseconds (0),
 			new transfer_receiver_task (*this));
