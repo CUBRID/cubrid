@@ -32,7 +32,6 @@
 
 /*
  * factory of objects:
- * main purpose is to be used with unpacking objects beloning to a class hierarchy:
  * 'object_base' is the base class having derived classed 'object_type'
  * each 'object_type' is identified by a value of 'object_key'
  */
