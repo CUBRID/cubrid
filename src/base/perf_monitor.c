@@ -4760,6 +4760,7 @@ thread_stats_count (void)
                              perfmon_Portable_worker_stat_names[index], cubthread::wp_worker_statset_get_name (index));
             }
         }
+      check_names = false;
     }
 #endif // SERVER_MODE
   return PERFMON_PORTABLE_WORKER_STAT_COUNT;
