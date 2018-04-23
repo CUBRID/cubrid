@@ -4890,10 +4890,10 @@ static const char *perfmon_Portable_daemon_stat_names [] =
   // waiter
   "waiter_wakeup_count",
   "waiter_lock_wakeup_count",
-  "waiter_awake_count",
   "waiter_sleep_count",
   "waiter_timeout_count",
   "waiter_no_wait_count",
+  "waiter_awake_count",
   "waiter_wakeup_delay_time",
 
   // todo - probably has to be moved to thread_daemon.hpp
