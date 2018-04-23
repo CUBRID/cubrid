@@ -2752,13 +2752,13 @@ JSON_SERIALIZER::SetSizePointers (SizeType size)
 bool JSON_SERIALIZER::PackType (const DB_JSON_TYPE &type)
 {
   m_error = or_put_int (m_buffer, static_cast<int> (type));
-  return HasError();
+  return !HasError();
 }
 
 bool JSON_SERIALIZER::PackString (const char *str)
 {
   m_error = or_put_string_aligned_with_length (m_buffer, str);
-  return HasError();
+  return !HasError();
 }
 
 bool JSON_SERIALIZER_LENGTH::Null ()
@@ -2787,7 +2787,7 @@ bool JSON_SERIALIZER::Bool (bool b)
     }
 
   m_error = or_put_int (m_buffer, b ? 1 : 0);
-  return HasError();
+  return !HasError();
 }
 
 bool JSON_SERIALIZER_LENGTH::Int (int i)
@@ -2805,7 +2805,7 @@ bool JSON_SERIALIZER::Int (int i)
     }
 
   m_error = or_put_int (m_buffer, i);
-  return HasError();
+  return !HasError();
 }
 
 bool JSON_SERIALIZER_LENGTH::Double (double d)
@@ -2823,7 +2823,7 @@ bool JSON_SERIALIZER::Double (double d)
     }
 
   m_error = or_put_double (m_buffer, d);
-  return HasError();
+  return !HasError();
 }
 
 bool JSON_SERIALIZER_LENGTH::String (const Ch *str, SizeType length, bool copy)
