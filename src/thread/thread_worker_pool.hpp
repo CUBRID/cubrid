@@ -470,6 +470,8 @@ namespace cubthread
 
   // custom worker pool exception handler
   void wp_handle_system_error (const char *message, const std::system_error &e);
+  template <typename Func>
+  void wp_call_func_throwing_system_error (const char *message, Func &func);
 
   /************************************************************************/
   /* Template/inline implementation                                       */
@@ -1073,23 +1075,21 @@ namespace cubthread
     // save task
     m_task_p = work_p;
 
-#if !defined (NDEBUG)
-    // debug wrapper to catch and print exception messages. this is sensible code and we don't want to catch the
-    // exceptions on release
-    try
-      {
-#endif // DEBUG
+    // start thread.
+    //
+    // the next code tries to help visualizing any system errors that can occur during create or detach in debug mode
+    //
+    // release will basically be reduced to:
+    // std::thread (&worker::run, this).detach ();
+    //
 
-	// start thread
-	std::thread (&worker::run, this).detach ();    // don't wait for it
+    std::thread t;
 
-#if !defined (NDEBUG)
-      }
-    catch (const std::system_error &e)
-      {
-	wp_handle_system_error ("starting new thread", e);
-      }
-#endif // NDEBUG
+    auto lambda_create = [&] (void) -> void { t = std::thread (&worker::run, this); };
+    auto lambda_detach = [&] (void) -> void { t.detach (); };
+
+    wp_call_func_throwing_system_error ("starting thread", lambda_create);
+    wp_call_func_throwing_system_error ("detaching thread", lambda_detach);
   }
 
   template <typename Context>
@@ -1337,6 +1337,30 @@ namespace cubthread
       {
 	func (*ctxp, args...);
       }
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // other functions
+  //////////////////////////////////////////////////////////////////////////
+
+  template <typename Func>
+  void
+  wp_call_func_throwing_system_error (const char *message, Func &func)
+  {
+#if defined (NDEBUG)
+    try
+      {
+#endif // DEBUG
+
+	func ();  // no exception catching on release
+
+#if defined (NDEBUG)
+      }
+    catch (const std::system_error &e)
+      {
+	wp_handle_system_error (message, e);
+      }
+#endif // DEBUG
   }
 
 #undef THREAD_WP_LOG
