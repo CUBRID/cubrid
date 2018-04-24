@@ -2557,6 +2557,8 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	  return ER_FAILED;
 	}
 
+      dwb_log ("dwb_write_block: written page = (%d,%d)\n", vpid->volid, vpid->pageid);
+
 #if defined (SERVER_MODE)
       assert (current_flush_volume_info != NULL);
 
@@ -2782,6 +2784,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
       error_code = ER_FAILED;
       goto end;
     }
+  dwb_log ("dwb_flush_block: DWB synchronized\n");
 
   /* Now, write and flush the original location. */
   error_code = dwb_write_block (thread_p, block, p_dwb_ordered_slots, ordered_slots_length, true);
@@ -3407,6 +3410,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 	}
     }
 
+  dwb_log ("dwb_add_page: added page = (%d,%d)\n", vpid->volid, vpid->pageid);
   /* Reset checksum. */
   dwb_slot->io_page->prv.checksum = 0;
 
