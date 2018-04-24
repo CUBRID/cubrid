@@ -102,6 +102,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/unicode_support.c
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/xml_parser.c
+  ${BASE_DIR}/cubstream.cpp
   )
 set (BASE_HEADERS
   ${BASE_DIR}/contiguous_memory_buffer.hpp
@@ -116,6 +117,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/packable_object.hpp
   ${BASE_DIR}/string_buffer.hpp
+  ${BASE_DIR}/cubstream.hpp
   )
 
 set(EXECUTABLE_SOURCES
@@ -139,10 +141,14 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
   ${COMMUNICATION_DIR}/communication_channel.cpp
+  ${COMMUNICATION_DIR}/stream_transfer_receiver.cpp
+  ${COMMUNICATION_DIR}/stream_transfer_sender.cpp
   )
 
 set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/communication_channel.hpp
+  ${COMMUNICATION_DIR}/stream_transfer_receiver.hpp
+  ${COMMUNICATION_DIR}/stream_transfer_sender.hpp
   )
 
 set(QUERY_SOURCES
