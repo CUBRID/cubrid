@@ -69,6 +69,7 @@ namespace cubthread
     context.check_interrupt = true;
 #if defined (SERVER_MODE)
     context.status = TS_FREE;
+    context.resume_status = THREAD_RESUME_NONE;
 #endif // SERVER_MODE
 
     get_manager ()->retire_entry (context);
@@ -80,7 +81,9 @@ namespace cubthread
     er_clear ();    // clear errors
     std::memset (&context.event_stats, 0, sizeof (context.event_stats));  // clear even stats
     context.tran_index = -1;    // clear transaction ID
-
+#if defined (SERVER_MODE)
+    context.resume_status = THREAD_RESUME_NONE;
+#endif // SERVER_MODE
     on_recycle (context);
   }
 
