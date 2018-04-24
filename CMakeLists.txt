@@ -852,6 +852,7 @@ if(WITH_LIBEDIT STREQUAL "BUNDLED")
     set(LIBEDIT_TARGET libedit)
     externalproject_add(${LIBEDIT_TARGET}
       URL http://thrysoee.dk/editline/libedit-20170329-3.1.tar.gz
+      TIMEOUT 300
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -916,6 +917,7 @@ elseif(WITH_LIBLZO MATCHES "^http")
     #e.g. http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz
     externalproject_add(${LIBLZO_TARGET}
       URL ${WITH_LIBLZO}
+      TIMEOUT 300
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
@@ -1001,6 +1003,7 @@ endif(WIN32)
 externalproject_add(rapidjson
   # tried URL but archive gets downloaded every time. URL_MD5 may help
   URL https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz
+  TIMEOUT 300
   # don't install
   INSTALL_COMMAND ""
   # don't build test, doc and examples

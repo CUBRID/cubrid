@@ -75,3 +75,8 @@ if (UNIT_TESTS OR UNIT_TEST_TRANS_CHN)
   message("    transfer_channel")
   add_subdirectory(transfer_channel)
 endif(UNIT_TESTS OR UNIT_TEST_TRANS_CHN)
+
+if (UNIT_TESTS OR UNIT_TEST_OBJECT_FACTORY)
+  message("    object_factory")
+  add_subdirectory(object_factory)
+endif(UNIT_TESTS OR UNIT_TEST_OBJECT_FACTORY)
