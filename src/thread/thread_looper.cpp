@@ -132,7 +132,7 @@ namespace cubthread
 
     assert (m_setup_period);
 
-    m_stats.reset_timept ();
+    cubperf::reset_timept (m_stats.m_timept);
 
     bool is_timed_wait = true;
     delta_time period = delta_time (0);

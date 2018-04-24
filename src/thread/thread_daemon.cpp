@@ -172,6 +172,12 @@ namespace cubthread
   }
 
   void
+  daemon::register_stat_start (void)
+  {
+    cubperf::reset_timept (m_stats.m_timept);
+  }
+
+  void
   daemon::register_stat_pause (void)
   {
     Daemon_statistics.time (m_stats, STAT_LOOP_PAUSE_TIME);

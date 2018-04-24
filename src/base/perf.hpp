@@ -243,6 +243,12 @@ namespace cubperf
   };
 
   //////////////////////////////////////////////////////////////////////////
+  // functions
+  //////////////////////////////////////////////////////////////////////////
+
+  inline void reset_timept (time_point &timept);
+
+  //////////////////////////////////////////////////////////////////////////
   // Template & inline implementations
   //////////////////////////////////////////////////////////////////////////
 
@@ -495,13 +501,6 @@ namespace cubperf
     delete [] m_values;
   }
 
-  template<bool IsAtomic>
-  void
-  generic_statset<IsAtomic>::reset_timept (void)
-  {
-    m_timept = clock::now ();
-  }
-
   //////////////////////////////////////////////////////////////////////////
   // generic_stat_counter
   //////////////////////////////////////////////////////////////////////////
@@ -565,13 +564,6 @@ namespace cubperf
   }
 
   template<bool IsAtomic>
-  void
-  generic_stat_timer<IsAtomic>::reset_timept (void)
-  {
-    m_timept = clock::now ();
-  }
-
-  template<bool IsAtomic>
   stat_value
   generic_stat_timer<IsAtomic>::get_time (void)
   {
@@ -622,13 +614,6 @@ namespace cubperf
   }
 
   template<bool IsAtomic>
-  void
-  generic_stat_counter_and_timer<IsAtomic>::reset_timept (void)
-  {
-    m_stat_timer.reset_timept ();
-  }
-
-  template<bool IsAtomic>
   stat_value
   generic_stat_counter_and_timer<IsAtomic>::get_count (void)
   {
@@ -654,6 +639,16 @@ namespace cubperf
   generic_stat_counter_and_timer<IsAtomic>::get_time_name (void)
   {
     return m_stat_timer.get_name ();
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // inline functions
+  //////////////////////////////////////////////////////////////////////////
+
+  void
+  reset_timept (time_point &timept)
+  {
+    timept = clock::now ();
   }
 
 } // namespace cubperf

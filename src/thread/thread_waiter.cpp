@@ -139,7 +139,7 @@ namespace cubthread
     m_status = AWAKENING;
 
     // for statistics
-    m_stats.reset_timept ();
+    cubperf::reset_timept (m_stats.m_timept);
     m_was_awaken = true;
   }
 

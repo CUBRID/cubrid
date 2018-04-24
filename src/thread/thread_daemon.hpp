@@ -110,6 +110,7 @@ namespace cubthread
 			task<Context> *exec_arg);     // daemon thread loop function
 
       void pause (void);                                    // pause between tasks
+      void register_stat_start (void);
       void register_stat_pause (void);
       void register_stat_execute (void);
 
@@ -157,7 +158,7 @@ namespace cubthread
     // loop until stopped
     using clock_type = std::chrono::high_resolution_clock;
 
-    daemon_arg->m_stats.reset_timept ();
+    daemon_arg->register_stat_start ();
 
     while (!daemon_arg->m_looper.is_stopped ())
       {

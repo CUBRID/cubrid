@@ -61,8 +61,6 @@ namespace cubperf
 
       ~generic_statset (void);      // destroy
 
-      void reset_timept (void);     // reset internal time point to current
-
     private:
 
       // classes that can construct me
@@ -105,9 +103,6 @@ namespace cubperf
       stat_value get_time (void);                       // get current timer value
       const char *get_name (void);                      // get statistic name
 
-      inline void reset_timept (void);                  // reset internal time point to clock::now ()
-      // used by time (void) calls
-
     private:
       generic_value<IsAtomic> m_stat_value;             // timer statistic value
       const char *m_stat_name;                          // statistic name
@@ -132,8 +127,6 @@ namespace cubperf
       stat_value get_time (void);                                         // get current timer value
       const char *get_count_name (void);                                  // get counter statistic name
       const char *get_time_name (void);                                   // get timer statistic name
-
-      inline void reset_timept (void);                                    // reset internal time point
 
     private:
       generic_stat_counter<IsAtomic> m_stat_counter;                      // counter statistic
