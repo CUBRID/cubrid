@@ -44,8 +44,8 @@ namespace cubbase
       int register_creator (object_key k,
 			    std::function <object_base*()> object_creator = default_creator <object_type>)
       {
-	typename std::map<object_key, std::function <object_base*()> >::iterator it = m_creators_map.find (k);
-	if (it != m_creators_map.end())
+	typename std::map<object_key, std::function <object_base*()>>::iterator it = m_creators_map.find (k);
+	if (it != m_creators_map.end ())
 	  {
 	    /* key already used */
 	    assert (false);
@@ -58,7 +58,7 @@ namespace cubbase
 
       object_base *create_object (object_key k)
       {
-	typename std::map<object_key, std::function <object_base*()> >::iterator it = m_creators_map.find (k);
+	typename std::map<object_key, std::function <object_base*()>>::iterator it = m_creators_map.find (k);
 	if (it == m_creators_map.end ())
 	  {
 	    return NULL;
@@ -73,7 +73,7 @@ namespace cubbase
 	return new object_type;
       };
 
-      std::map <object_key, std::function <object_base*()> > m_creators_map;
+      std::map <object_key, std::function <object_base*()>> m_creators_map;
   };
 
 } /* namespace cubbase */
