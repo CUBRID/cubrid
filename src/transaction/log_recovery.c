@@ -2365,8 +2365,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
   LOG_INFO_CHKPT_TRANS *chkpt_trans;
   time_t last_at_time = -1;
   char time_val[CTIME_MAX];
-  bool may_need_synch_checkpoint_2pc = false, may_use_checkpoint = false,
-    is_log_page_corrupted = false, found_end_of_log = false;
+  bool may_need_synch_checkpoint_2pc = false, may_use_checkpoint = false, is_log_page_corrupted = false;
   int tran_index;
   TRANID tran_id;
   LOG_TDES *tdes;		/* Transaction descriptor */
@@ -2459,21 +2458,10 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	      return;
 	    }
 
-	  /* Found corrupted log page. Recovery will be done up to the last log record on previous log page. */
-	  if (found_end_of_log == false)
-	    {
-	      /* Simulate end of log */
-	      LOG_RESET_APPEND_LSA (&log_lsa);
-	      _er_log_debug (ARG_FILE_LINE,
-			     "logpb_recovery_analysis: log page %lld is corrupted due to partial flush.\n"
-			     "LSA: append_lsa = (%lld, %d), prior_lsa = (%lld, %d), end_redo_lsa = (%lld, %d)\n",
-			     (long long int) log_lsa.pageid,
-			     (long long int) log_Gl.hdr.append_lsa.pageid, (int) log_Gl.hdr.append_lsa.offset,
-			     (long long int) log_Gl.prior_info.prior_lsa.pageid,
-			     (int) log_Gl.prior_info.prior_lsa.offset, (long long int) end_redo_lsa->pageid,
-			     (int) end_redo_lsa->offset);
-	    }
-	  break;
+	  /* Found corrupted log page. */
+	  _er_log_debug (ARG_FILE_LINE,
+			 "logpb_recovery_analysis: log page %lld is corrupted due to partial flush.\n",
+			 (long long int) log_lsa.pageid);
 	}
 
       /* Check all log records in this phase */
@@ -2516,6 +2504,12 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 
 	  LSA_COPY (end_redo_lsa, &lsa);
 	  LSA_COPY (&lsa, &log_rec->forw_lsa);
+
+	  if ((is_log_page_corrupted) && (log_rtype != LOG_END_OF_LOG) && (lsa.pageid != log_lsa.pageid))
+	    {
+	      /* The page is corrupted, do not allow to advance to the next page. */
+	      LSA_SET_NULL (&lsa);
+	    }
 
 	  /* 
 	   * If the next page is NULL_PAGEID and the current page is an archive
@@ -2597,11 +2591,6 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		}
 	    }
 
-	  if (log_rtype == LOG_END_OF_LOG)
-	    {
-	      found_end_of_log = true;
-	    }
-
 	  log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_lsa, log_page_p, &checkpoint_lsa, &prev_lsa,
 				  start_lsa, start_redo_lsa, is_media_crash, stop_at, did_incom_recovery,
 				  &may_use_checkpoint, &may_need_synch_checkpoint_2pc);
@@ -2613,6 +2602,17 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	  if (LSA_EQ (end_redo_lsa, &lsa))
 	    {
 	      assert_release (!LSA_EQ (end_redo_lsa, &lsa));
+	      LSA_SET_NULL (&lsa);
+	      break;
+	    }
+	  if ((is_log_page_corrupted) && (log_rtype == LOG_END_OF_LOG))
+	    {
+	      /* The page is corrupted. Stop if end of log was found in page. In this case,
+	       * the remaining data in log page is corrupted. If end of log is not found,
+	       * then we will advance up to NULL LSA. Is importane to initialize page with -1.
+	       * Another option may be to store the previous LSA in header page.
+	       * Or, to use checksum on log records, but this may slow down the system.
+	       */
 	      LSA_SET_NULL (&lsa);
 	      break;
 	    }

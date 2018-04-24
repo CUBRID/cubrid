@@ -124,7 +124,7 @@ static int rv;
 #define LOGPB_LAST_ACTIVE_PAGE_ID     (log_Gl.hdr.nxarv_pageid + log_Gl.hdr.npages - 1)
 #define LOGPB_ACTIVE_NPAGES           (log_Gl.hdr.npages)
 
-
+#define LOG_PAGE_INIT_VALUE 0xff
 /*
  * TRANSLATING LOGICAL LOG PAGES (I.E., PAGES IN THE INFINITE LOG) TO PHYSICAL
  * PAGES IN THE CURRENT LOG FILE
@@ -669,7 +669,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
     }
 
   /* Initialize every new buffer */
-  MEM_REGION_INIT (log_Pb.pages_area, (size_t) log_Pb.num_buffers * LOG_PAGESIZE);
+  memset (log_Pb.pages_area, LOG_PAGE_INIT_VALUE, log_Pb.num_buffers * (LOG_PAGESIZE));
   for (i = 0; i < log_Pb.num_buffers; i++)
     {
       logpb_initialize_log_buffer (&log_Pb.buffers[i],
@@ -685,7 +685,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  MEM_REGION_INIT (log_Pb.header_page, LOG_PAGESIZE);
+  memset (log_Pb.header_page, LOG_PAGE_INIT_VALUE, LOG_PAGESIZE);
   logpb_initialize_log_buffer (&log_Pb.header_buffer, log_Pb.header_page);
 
   error_code = logpb_initialize_flush_info ();
@@ -959,8 +959,8 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
     {
       if (fetch_mode == NEW_PAGE)
 	{
-	  /* Fills log page with 0, for checksum consistency. */
-	  memset (log_bufptr->logpage, 0, LOG_PAGESIZE);
+	  /* Fills log page with 0xff, for checksum consistency. */
+	  memset (log_bufptr->logpage, LOG_PAGE_INIT_VALUE, LOG_PAGESIZE);
 	  log_bufptr->logpage->hdr.logical_pageid = pageid;
 	  log_bufptr->logpage->hdr.offset = NULL_OFFSET;
 	}
@@ -1688,7 +1688,7 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "logpb_flush_header");
 	  return;
 	}
-      memset (log_Gl.loghdr_pgptr, 0, LOG_PAGESIZE);
+      memset (log_Gl.loghdr_pgptr, LOG_PAGE_INIT_VALUE, LOG_PAGESIZE);
     }
 
   log_hdr = (LOG_HEADER *) (log_Gl.loghdr_pgptr->area);
@@ -6813,7 +6813,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
     {
       goto error;
     }
-  memset (malloc_arv_hdr_pgptr, 0, LOG_PAGESIZE);
+  memset (malloc_arv_hdr_pgptr, LOG_PAGE_INIT_VALUE, LOG_PAGESIZE);
 
   /* Must force the log here to avoid nasty side effects */
   logpb_flush_all_append_pages (thread_p);
