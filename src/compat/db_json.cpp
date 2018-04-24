@@ -314,7 +314,7 @@ class JSON_SERIALIZER_LENGTH : public JSON_BASE_HANDLER
 
     std::size_t GetStringPackedSize (const char *str) const
     {
-      return or_packed_string_with_size_length (str);
+      return or_packed_string_length (str, NULL);
     }
 
     bool Null ();
@@ -2828,7 +2828,7 @@ bool JSON_SERIALIZER::Double (double d)
 
 bool JSON_SERIALIZER_LENGTH::String (const Ch *str, SizeType length, bool copy)
 {
-  m_length += GetTypePackedSize () + GetStringPackedSize (str);
+  m_length += GetTypePackedSize() + GetStringPackedSize (str);
   return true;
 }
 
