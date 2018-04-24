@@ -4176,14 +4176,6 @@ or_packed_string_length (const char *string, int *strlenp)
   return total;
 }
 
-// or_packed_string_with_size_length - aligned size of packed string with its length packed first
-//
-int
-or_packed_string_with_size_length (const char * str)
-{
-  return OR_INT_SIZE + or_packed_string_length (str, NULL);
-}
-
 /*
  * or_packed_stream_length - Determines the number of bytes required to hold
  * the packed representation of a stream.

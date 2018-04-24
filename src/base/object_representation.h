@@ -1380,7 +1380,6 @@ extern int or_packed_bool_array_length (const bool * bools, int size);
 /* pack/unpack support functions */
 extern int or_packed_stream_length (size_t len);
 extern int or_packed_string_length (const char *string, int *strlen);
-extern int or_packed_string_with_size_length (const char * str);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int or_align_length (int length);
 #endif /* ENABLE_UNUSED_FUNCTION */
