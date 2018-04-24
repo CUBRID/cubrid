@@ -102,6 +102,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/unicode_support.c
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/xml_parser.c
+  ${BASE_DIR}/cubstream.cpp
   )
 set (BASE_HEADERS
   ${BASE_DIR}/contiguous_memory_buffer.hpp
@@ -116,6 +117,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/packable_object.hpp
   ${BASE_DIR}/string_buffer.hpp
+  ${BASE_DIR}/cubstream.hpp
   )
 
 set(EXECUTABLE_SOURCES
@@ -185,14 +187,6 @@ set(OBJECT_SOURCES
 
 set(JSP_SOURCES
   ${JSP_DIR}/jsp_sr.c
-  )
-
-set(REPLICATION_SOURCES
-  ${REPLICATION_DIR}/cubstream.cpp
-  )
-
-set(REPLICATION_HEADERS
-  ${REPLICATION_DIR}/cubstream.hpp
   )
 
 set(TRANSACTION_SOURCES
@@ -275,7 +269,6 @@ SET_SOURCE_FILES_PROPERTIES(
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${JSP_SOURCES}
-  ${REPLICATION_SOURCES}
   ${TRANSACTION_SOURCES}
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
@@ -300,7 +293,6 @@ set (CUBRID_LIB_SOURCES
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${JSP_SOURCES}
-  ${REPLICATION_SOURCES}
   ${TRANSACTION_SOURCES}
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
@@ -311,7 +303,6 @@ set (CUBRID_LIB_SOURCES
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
   ${COMMUNICATION_HEADERS}
-  ${REPLICATION_HEADERS}
   ${COMPAT_HEADERS}
   ${THREAD_HEADERS}
   )
