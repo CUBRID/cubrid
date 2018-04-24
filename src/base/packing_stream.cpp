@@ -25,7 +25,6 @@
 
 #include "error_code.h"
 #include "packing_stream.hpp"
-#include "packable_object.hpp"
 #include "stream_buffer.hpp"
 #include "stream_packer.hpp"
 #include "buffer_provider.hpp"
@@ -68,8 +67,8 @@ int entry::pack (void)
     {
       serializator->align (MAX_ALIGNMENT);
 #if !defined (NDEBUG)
-      char *old_ptr = serializator->get_curr_ptr ();
-      char *curr_ptr;
+      const char *old_ptr = serializator->get_curr_ptr ();
+      const char *curr_ptr;
       size_t entry_size = m_packable_entries[i]->get_packed_size (serializator);
 #endif
 
@@ -128,7 +127,9 @@ int entry::prepare (void)
 /* this is called only right before applying the replication data */
 int entry::unpack (void)
 {
-  int i, error_code = NO_ERROR;
+  int i;
+  int error_code = NO_ERROR;
+  int object_id;
 
   /* TODO[arnia] : make sure the serializator range already points to data contents */
 
@@ -140,9 +141,14 @@ int entry::unpack (void)
 
   for (i = 0 ; i < count_packable_entries; i++)
     {
+      serializator->peek_unpack_int (&object_id);
       /* create a specific replication_entry object (depending on type) */
-      cubpacking::packable_object *packable_entry =
-        dynamic_cast<cubpacking::packable_object *>(get_builder()->create_object (serializator));
+      cubpacking::packable_object *packable_entry = get_builder()->create_object (object_id);
+      if (packable_entry == NULL)
+        {
+          error_code = ER_FAILED;
+          return error_code;
+        }
       
       assert (packable_entry != NULL);
 

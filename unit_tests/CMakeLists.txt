@@ -74,3 +74,8 @@ if (UNIT_TESTS OR UNIT_TEST_OBJECT_FACTORY)
   message("    object_factory")
   add_subdirectory(object_factory)
 endif(UNIT_TESTS OR UNIT_TEST_OBJECT_FACTORY)
+
+if (UNIT_TESTS OR UNIT_TEST_STREAM)
+  message("    stream")
+  add_subdirectory(stream)
+endif(UNIT_TESTS OR UNIT_TEST_STREAM)

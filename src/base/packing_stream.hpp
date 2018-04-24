@@ -26,14 +26,14 @@
 #ifndef _PACKING_STREAM_HPP_
 #define _PACKING_STREAM_HPP_
 
-#include <vector>
-#include <functional>
-#include "packable_object.hpp"
 #include "cubstream.hpp"
+#include "object_factory.hpp"
+#include "packable_object.hpp"
+#include "pinning.hpp"
 #include "stream_common.hpp"
 #include "storage_common.h"
-
-class cubpacking::object_builder;
+#include <vector>
+#include <functional>
 
 namespace cubstream
 {
@@ -54,8 +54,11 @@ typedef enum
   COLLECT_AND_DETACH
 } COLLECT_ACTION;
 
+
 class entry : public cubbase::pinner
 {
+using packable_factory = cubbase::factory<int, cubpacking::packable_object>;
+
 private:
   int stream_entry_id;
 
@@ -71,7 +74,7 @@ protected:
 
   stream_position m_data_start_position;
 
-  virtual cubpacking::object_builder *get_builder () = 0;
+  virtual packable_factory *get_builder () = 0;
 
 public:
   entry (packing_stream *stream);
