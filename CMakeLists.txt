@@ -415,7 +415,6 @@ include_directories(
   src/optimizer
   src/parser
   src/query
-  src/replication
   src/session
   src/storage
   src/thread
