@@ -3632,7 +3632,7 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   FILEIO_PAGE *iopage;
   VPID *vpid;
-  int vol_fd, temp_vol_fd;
+  int vol_fd, temp_vol_fd, vol_pages = 0;
   INT16 volid;
   bool is_page_corrupted;
 
@@ -3712,9 +3712,16 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 		}
 	      vol_fd = temp_vol_fd;
 	      volid = vpid->volid;
+	      vol_pages = fileio_get_number_of_volume_pages (vol_fd, IO_PAGESIZE);
 	    }
 
 	  assert (vol_fd != NULL_VOLDES);
+
+	  if (vpid->pageid >= vol_pages)
+	    {
+	      /* The page was written in DWB, not in data volume. */
+	      continue;
+	    }
 
 	  /* Read the page from data volume. */
 	  if (fileio_read (thread_p, vol_fd, iopage, vpid->pageid, IO_PAGESIZE) == NULL)
