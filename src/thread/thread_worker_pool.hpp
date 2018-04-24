@@ -35,6 +35,7 @@
 #include <memory>
 #include <mutex>
 #include <queue>
+#include <system_error>
 #include <thread>
 
 #include <cassert>
@@ -468,7 +469,7 @@ namespace cubthread
   std::size_t system_core_count (void);
 
   // custom worker pool exception handler
-  void wp_handle_exception (const char *message, const std::exception &e);
+  void wp_handle_system_error (const char *message, const std::system_error &e);
 
   /************************************************************************/
   /* Template/inline implementation                                       */
@@ -1084,9 +1085,9 @@ namespace cubthread
 
 #if !defined (NDEBUG)
       }
-    catch (const std::exception &e)
+    catch (const std::system_error &e)
       {
-	wp_handle_exception ("starting new thread", e);
+	wp_handle_system_error ("starting new thread", e);
       }
 #endif // NDEBUG
   }

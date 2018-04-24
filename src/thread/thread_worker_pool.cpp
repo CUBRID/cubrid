@@ -84,9 +84,9 @@ namespace cubthread
   }
 
   void
-  wp_handle_exception (const char *message, const std::exception &e)
+  wp_handle_system_error (const char *message, const std::system_error &e)
   {
-    er_print_callstack (ARG_FILE_LINE, "%s - throws %s", message, e.what ());
+    er_print_callstack (ARG_FILE_LINE, "%s - throws err = %d: %s\n", message, e.code (), e.what ());
     assert (false);
     throw e;
   }
