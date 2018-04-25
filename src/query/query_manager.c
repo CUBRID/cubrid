@@ -326,7 +326,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
 	   * This may help us to quickly locate an available id.
 	   */
 	  assert (hint_query_id != 0);
-	  tran_entry_p->query_id_generator = hint_query_id;
+	  tran_entry_p->query_id_generator = (int) hint_query_id;
 	}
     }
   assert (usable == true);

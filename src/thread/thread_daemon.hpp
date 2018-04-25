@@ -28,6 +28,8 @@
 #include "thread_task.hpp"
 #include "thread_waiter.hpp"
 
+#include "perf_def.hpp"
+
 #include <thread>
 
 #include <cinttypes>
@@ -98,15 +100,9 @@ namespace cubthread
       // note: this applies only if looper wait pattern is of type INCREASING_PERIODS
 
       // statistics
-      using stat_type = std::uint64_t;
-
-      // all statistics:
-      // own stats: loop count, execute time, pause time = 3
-      // + looper stats
-      // + waiter stats
-      static const std::size_t STAT_COUNT = 3 + looper::STAT_COUNT + waiter::STAT_COUNT;
-
-      void get_stats (stat_type *stats_out);
+      static std::size_t get_stats_value_count (void);
+      static const char *get_stat_name (std::size_t stat_index);
+      void get_stats (cubperf::stat_value *stats_out);
 
     private:
       template <typename Context>
@@ -114,6 +110,11 @@ namespace cubthread
 			task<Context> *exec_arg);     // daemon thread loop function
 
       void pause (void);                                    // pause between tasks
+      void register_stat_start (void);
+      void register_stat_pause (void);
+      void register_stat_execute (void);
+
+      static cubperf::statset &create_statset (void);
 
       waiter m_waiter;        // thread waiter
       looper m_looper;        // thread looper
@@ -122,9 +123,7 @@ namespace cubthread
       std::thread m_thread;   // the actual daemon thread
 
       // stats
-      stat_type m_loop_count;
-      stat_type m_execute_time;
-      stat_type m_pause_time;
+      cubperf::statset &m_stats;
 
       // todo: m_log
   };
@@ -140,9 +139,7 @@ namespace cubthread
     , m_looper (loop_pattern_arg)
     , m_func_on_stop ()
     , m_thread ()
-    , m_loop_count (0)
-    , m_execute_time (0)
-    , m_pause_time (0)
+    , m_stats (daemon::create_statset ())
   {
     // starts a thread to execute daemon::loop
     m_thread = std::thread (daemon::loop<Context>, this, context_manager_arg, exec);
@@ -161,31 +158,17 @@ namespace cubthread
     // loop until stopped
     using clock_type = std::chrono::high_resolution_clock;
 
-    clock_type::time_point start_timept = clock_type::now ();
-    clock_type::time_point end_timept;
-    std::chrono::nanoseconds timediff_nano;
+    daemon_arg->register_stat_start ();
 
     while (!daemon_arg->m_looper.is_stopped ())
       {
-	++daemon_arg->m_loop_count;
-
 	// execute task
 	exec_arg->execute (context);
-
-	// gather execute stats
-	end_timept = clock_type::now ();
-	timediff_nano = end_timept - start_timept;
-	daemon_arg->m_execute_time += timediff_nano.count ();
-	start_timept = end_timept;
+	daemon_arg->register_stat_execute ();
 
 	// take a break
 	daemon_arg->pause ();
-
-	// gather pause stats
-	end_timept = clock_type::now ();
-	timediff_nano = end_timept - start_timept;
-	daemon_arg->m_pause_time += timediff_nano.count ();
-	start_timept = end_timept;
+	daemon_arg->register_stat_pause ();
       }
 
     // retire execution context

@@ -22445,7 +22445,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
   else if (validator != NULL)
     {
       DB_DATA_STATUS data_stat;
-      DB_VALUE bracket1, bracket2, db_name, schema;
+      DB_VALUE bracket1, bracket2, schema;
       bool err = false;
 
       if (db_json_get_schema_raw_from_validator (validator) != NULL)
