@@ -2442,7 +2442,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	    }
 	}
 
-      /* Check whether active log pages are corrupted. This may happens in case of partial page flush for instance.  */
+      /* Check whether active log pages are corrupted. This may happen in case of partial page flush for instance. */
       if (logpb_page_check_corruption (thread_p, log_page_p, &is_log_page_corrupted) != NO_ERROR)
 	{
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
@@ -2609,7 +2609,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	    {
 	      /* The page is corrupted. Stop if end of log was found in page. In this case,
 	       * the remaining data in log page is corrupted. If end of log is not found,
-	       * then we will advance up to NULL LSA. Is importane to initialize page with -1.
+	       * then we will advance up to NULL LSA. It is important to initialize page with -1.
 	       * Another option may be to store the previous LSA in header page.
 	       * Or, to use checksum on log records, but this may slow down the system.
 	       */
