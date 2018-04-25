@@ -104,13 +104,16 @@ namespace cubthread
   }
 
   void
-  manager::init_entries (std::size_t starting_index)
+  manager::init_entries (std::size_t starting_index, bool with_lock_free)
   {
     // initialize thread indexes and lock-free resources
     for (std::size_t it = 0; it < m_max_threads; it++)
       {
 	m_all_entries[it].index = (int) (it + starting_index + 1);
-	m_all_entries[it].request_lock_free_transactions ();
+	if (with_lock_free)
+	  {
+	    m_all_entries[it].request_lock_free_transactions ();
+	  }
       }
   }
 
@@ -440,7 +443,7 @@ namespace cubthread
   }
 
   int
-  initialize_thread_entries (void)
+  initialize_thread_entries (bool with_lock_free /* = true*/)
   {
     int error_code = NO_ERROR;
 #if defined (SERVER_MODE)
@@ -455,9 +458,12 @@ namespace cubthread
 	return error_code;
       }
 
-    Main_entry_p->request_lock_free_transactions ();
+    if (with_lock_free)
+      {
+	Main_entry_p->request_lock_free_transactions ();
+      }
 
-    Manager->init_entries (old_manager_thread_count);
+    Manager->init_entries (old_manager_thread_count, with_lock_free);
 #endif // SERVER_MODE
 
     return NO_ERROR;
@@ -477,6 +483,13 @@ namespace cubthread
     assert (Manager != NULL);
 
     return Manager;
+  }
+
+  void set_manager (manager *manager)
+  {
+    assert (Manager == NULL);
+
+    Manager = manager;
   }
 
   std::size_t

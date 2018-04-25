@@ -39,7 +39,9 @@
 #include "server_interface.h"
 #endif /* !SERVER_MODE */
 #include "thread_worker_pool.hpp"
+#if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
+#endif // SERVER_MODE
 
 #include <cstring>
 
@@ -175,7 +177,7 @@ static void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 *
 static void perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size);
 
 STATIC_INLINE size_t thread_stats_count (void) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE size_t thread_daemon_stats_count (void) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE size_t perfmon_thread_daemon_stats_count (void) __attribute__ ((ALWAYS_INLINE));
 #if defined (SERVER_MODE)
 static void perfmon_peek_thread_daemon_stats (UINT64 * stats);
 #endif // SERVER_MODE
@@ -550,7 +552,7 @@ PSTAT_METADATA pstat_Metadata[] = {
 			       &f_load_Time_obj_lock_acquire_time),
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_THREAD_STATS, "Thread_stats_counters_timers", &f_dump_in_file_thread_stats,
 			       &f_dump_in_buffer_thread_stats, &f_load_thread_stats),
-  PSTAT_METADATA_INIT_COMPLEX (PSTAT_THREAD_PGBUF_DAEMON_STATS, "Thread_pgbuf_daemon_stats_counters_timers",
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_THREAD_DAEMON_STATS, "Thread_pgbuf_daemon_stats_counters_timers",
 			       &f_dump_in_file_thread_daemon_stats, &f_dump_in_buffer_thread_daemon_stats,
 			       &f_load_thread_daemon_stats)
 };
@@ -572,7 +574,7 @@ STATIC_INLINE const char *perfmon_stat_promote_cond_name (const int cond_type) _
 STATIC_INLINE const char *perfmon_stat_snapshot_name (const int snapshot) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_snapshot_record_type (const int rec_type) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_lock_mode_name (const int lock_mode) __attribute__ ((ALWAYS_INLINE));
-static void perfmon_stat_thread_stat_name (size_t index, char *name_buf, size_t max_size);
+static const char *perfmon_stat_thread_stat_name (size_t index);
 
 STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__ ((ALWAYS_INLINE));
 
@@ -4699,10 +4701,69 @@ perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int
 }
 
 // *INDENT-OFF*
+//////////////////////////////////////////////////////////////////////////
+// thread workers section
+//////////////////////////////////////////////////////////////////////////
+
+// note - current monitor implementation requires a single point to manage all statistics meta information (stats
+//        count and names). this prevents us from isolating statistics management per each module, because some
+//        modules are restricted to server only, while the monitor implementation is same for server and client.
+//
+//        ideally, meta information should be fetched from server and not necessarily known from start by client.
+//        this would prevent any miss-matches between server and clients and better module encapsulation. performance
+//        monitor would only store the values and collect from all modules rather than keeping extended information
+//        on each module (like it does now with page buffer, thread and others)
+//
+//        for now, we are forced to duplicate here some information about thread workers and daemons that is normally
+//        restricted to server
+//
+
+// NOTE - should match cubthread::Worker_pool_statdef
+const char *perfmon_Portable_worker_stat_names [] =
+  {
+    "Counter_start_thread",
+    "Timer_start_thread",
+    "Counter_create_context",
+    "Timer_create_context",
+    "Counter_execute_task",
+    "Timer_execute_task",
+    "Counter_retire_task",
+    "Timer_retire_task",
+    "Counter_found_task_in_queue",
+    "Timer_found_task_in_queue",
+    "Counter_wakeup_with_task",
+    "Timer_wakeup_with_task",
+    "Counter_recycle_context",
+    "Timer_recycle_context",
+    "Counter_retire_context",
+    "Timer_retire_context"
+  };
+static const size_t PERFMON_PORTABLE_WORKER_STAT_COUNT =
+  sizeof (perfmon_Portable_worker_stat_names) / sizeof (const char *);
+
 static size_t
 thread_stats_count (void)
 {
-  return cubthread::wpstat::STATS_COUNT * 2;
+#if defined (SERVER_MODE)
+  assert (PERFMON_PORTABLE_WORKER_STAT_COUNT == cubthread::wp_worker_statset_get_count ());
+  static bool check_names = true;
+  if (check_names)
+    {
+      for (size_t index = 0; index < PERFMON_PORTABLE_WORKER_STAT_COUNT; index++)
+        {
+          if (std::strcmp (perfmon_Portable_worker_stat_names[index], cubthread::wp_worker_statset_get_name (index)) != 0)
+            {
+              assert (false);
+              _er_log_debug (ARG_FILE_LINE,
+                             "Warning - Monitoring thread worker statistics; statistics name not matching for %zu\n"
+                             "\t\tperfmon name = %s\n" "\t\tdaemon name = %s\n", index,
+                             perfmon_Portable_worker_stat_names[index], cubthread::wp_worker_statset_get_name (index));
+            }
+        }
+      check_names = false;
+    }
+#endif // SERVER_MODE
+  return PERFMON_PORTABLE_WORKER_STAT_COUNT;
 }
 
 static int
@@ -4711,29 +4772,10 @@ f_load_thread_stats (void)
   return (int) thread_stats_count ();
 }
 
-static void
-perfmon_stat_thread_stat_name (size_t index, char * name_buf, size_t max_size)
+static const char *
+perfmon_stat_thread_stat_name (size_t index)
 {
-  cubthread::wpstat::id wpstat_id;
-  const char *prefixp;
-  const char *COUNTER_PREFIX = "Counter_";
-  const char *TIMER_PREFIX = "Timer_";
-
-  if (index < cubthread::wpstat::STATS_COUNT)
-    {
-      wpstat_id = cubthread::wpstat::to_id (index);
-      prefixp = COUNTER_PREFIX;
-    }
-  else
-    {
-      wpstat_id = cubthread::wpstat::to_id (index - cubthread::wpstat::STATS_COUNT);
-      prefixp = TIMER_PREFIX;
-    }
-
-  std::strncpy (name_buf, prefixp, max_size);
-  max_size -= std::strlen (prefixp);
-
-  std::strncat (name_buf, cubthread::wpstat::get_id_name (wpstat_id), max_size);
+  return perfmon_Portable_worker_stat_names[index];
 }
 
 /*
@@ -4763,8 +4805,6 @@ static void
 perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
 {
   UINT64 value = 0;
-  const size_t MAX_NAME_SIZE = 64;
-  char name_buf[MAX_NAME_SIZE];
 
   assert (stream != NULL);
 
@@ -4775,8 +4815,7 @@ perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
 	{
 	  continue;
 	}
-      perfmon_stat_thread_stat_name (it, name_buf, MAX_NAME_SIZE);
-      fprintf (stream, "%-10s = %16llu\n", name_buf, (long long unsigned int) value);
+      fprintf (stream, "%-10s = %16llu\n", perfmon_stat_thread_stat_name (it), (long long unsigned int) value);
     }
 }
 
@@ -4808,8 +4847,6 @@ static void
 perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, int *remaining_size)
 {
   UINT64 value = 0;
-  const size_t MAX_NAME_SIZE = 64;
-  char name_buf[MAX_NAME_SIZE];
   int ret;
 
   assert (s != NULL);
@@ -4822,8 +4859,8 @@ perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, in
 	{
 	  continue;
 	}
-      perfmon_stat_thread_stat_name (it, name_buf, MAX_NAME_SIZE);
-      ret = snprintf (*s, *remaining_size, "%-10s = %16llu\n", name_buf, (long long unsigned int) value);
+      ret = snprintf (*s, *remaining_size, "%-10s = %16llu\n", perfmon_stat_thread_stat_name (it),
+                      (long long unsigned int) value);
 
       *remaining_size -= ret;
       *s += ret;
@@ -4838,7 +4875,8 @@ perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, in
 // Thread daemons section
 //////////////////////////////////////////////////////////////////////////
 
-static const char *perfmon_Thread_daemon_stat_names [] =
+// NOTE - should match cubthread::daemon + cubthread::looper + cubthread::waiter statistics
+static const char *perfmon_Portable_daemon_stat_names [] =
 {
   // daemon
   "daemon_loop_count",
@@ -4853,16 +4891,18 @@ static const char *perfmon_Thread_daemon_stat_names [] =
   // waiter
   "waiter_wakeup_count",
   "waiter_lock_wakeup_count",
-  "waiter_awake_count",
   "waiter_sleep_count",
   "waiter_timeout_count",
-  "waiter_no_wait_count",
+  "waiter_no_sleep_count",
+  "waiter_awake_count",
   "waiter_wakeup_delay_time",
 
   // todo - probably has to be moved to thread_daemon.hpp
 };
+static const size_t PERFMON_PORTABLE_DAEMON_STAT_COUNT =
+  sizeof (perfmon_Portable_daemon_stat_names) / sizeof (const char *);
 
-static const char *perfmon_Daemon_names [] =
+static const char *perfmon_Portable_daemon_names [] =
 {
   "Page_flush_daemon_thread",
   "Page_post_flush_daemon_thread",
@@ -4871,18 +4911,51 @@ static const char *perfmon_Daemon_names [] =
   "Deadlock_detect_daemon_thread",
   "Log_flush_daemon_thread",
 };
-static const size_t PERFMON_DAEMON_COUNT = sizeof (perfmon_Daemon_names) / sizeof (const char *);
+static const size_t PERFMON_PORTABLE_DAEMON_COUNT = sizeof (perfmon_Portable_daemon_names) / sizeof (const char *);
 
 static size_t
-thread_daemon_stats_count (void)
+perfmon_per_daemon_stat_count (void)
 {
-  return PERFMON_DAEMON_COUNT * cubthread::daemon::STAT_COUNT;
+#if defined (SERVER_MODE) && !defined (NDEBUG)
+  assert (PERFMON_PORTABLE_DAEMON_STAT_COUNT == cubthread::daemon::get_stats_value_count ());
+
+  static bool check_names = true;
+  if (check_names)
+    {
+      for (size_t index = 0; index < PERFMON_PORTABLE_DAEMON_STAT_COUNT; index++)
+        {
+          if (std::strcmp (perfmon_Portable_daemon_stat_names[index], cubthread::daemon::get_stat_name (index)) != 0)
+            {
+              assert (false);
+              _er_log_debug (ARG_FILE_LINE,
+                             "Warning - Monitoring daemon statistics; statistics name not matching for %zu\n"
+                             "\t\tperfmon name = %s\n" "\t\tdaemon name = %s\n", index,
+                             perfmon_Portable_daemon_stat_names[index], cubthread::daemon::get_stat_name (index));
+            }
+        }
+      check_names = false;
+    }
+#endif // SERVER_MODE and DEBUG
+  return PERFMON_PORTABLE_DAEMON_STAT_COUNT;
+}
+
+static size_t
+perfmon_thread_daemon_stats_count (void)
+{
+  return PERFMON_PORTABLE_DAEMON_COUNT * perfmon_per_daemon_stat_count ();
+}
+
+static const char *
+perfmon_thread_daemon_name (size_t index)
+{
+  assert (index < PERFMON_PORTABLE_DAEMON_STAT_COUNT);
+  return perfmon_Portable_daemon_stat_names[index];
 }
 
 static int
 f_load_thread_daemon_stats (void)
 {
-  return (int) thread_daemon_stats_count ();
+  return (int) perfmon_thread_daemon_stats_count ();
 }
 
 /*
@@ -4915,19 +4988,20 @@ perfmon_stat_dump_in_file_thread_daemon_stats (FILE * stream, const UINT64 * sta
 
   assert (stream != NULL);
 
-  for (size_t daemon_it = 0; daemon_it < PERFMON_DAEMON_COUNT; daemon_it++)
+  for (size_t daemon_it = 0; daemon_it < PERFMON_PORTABLE_DAEMON_COUNT; daemon_it++)
     {
-      for (size_t stat_it = 0; stat_it < cubthread::daemon::STAT_COUNT; stat_it++)
-        {
-          value = stats_ptr[daemon_it * cubthread::daemon::STAT_COUNT + stat_it];
-          fprintf (stream, "%s.%s = %16llu\n", perfmon_Daemon_names[daemon_it],
-		   perfmon_Thread_daemon_stat_names[stat_it], (long long unsigned int) value);
-        }
+      for (size_t stat_it = 0; stat_it < perfmon_per_daemon_stat_count (); stat_it++)
+	{
+	  value = stats_ptr[daemon_it * perfmon_per_daemon_stat_count () + stat_it];
+          fprintf (stream, "%s.%s = %16llu\n", perfmon_Portable_daemon_names[daemon_it],
+                   perfmon_thread_daemon_name (stat_it), (long long unsigned int) value);
+	}
     }
 }
 
 /*
- * f_dump_in_buffer_thread_daemon_stats () - Write to a buffer the values for daemon statistic
+ * f_dump_in_buffer_thread_daemon_stats () - Write to a buffer the values for daemon statistics
+ *
  * s (out): Buffer to write to
  * stat_vals (in): statistics buffer
  * remaining_size (in): size of input buffer
@@ -4959,21 +5033,21 @@ perfmon_stat_dump_in_buffer_thread_daemon_stats (const UINT64 * stats_ptr, char 
   assert (s != NULL);
   assert (remaining_size != NULL);
 
-  for (size_t daemon_it = 0; daemon_it < PERFMON_DAEMON_COUNT; daemon_it++)
+  for (size_t daemon_it = 0; daemon_it < PERFMON_PORTABLE_DAEMON_COUNT; daemon_it++)
     {
-      for (size_t stat_it = 0; stat_it < cubthread::daemon::STAT_COUNT; stat_it++)
-        {
-          value = stats_ptr[daemon_it * cubthread::daemon::STAT_COUNT + stat_it];
-          ret = snprintf (*s, *remaining_size, "%s.%s = %16llu\n", perfmon_Daemon_names[daemon_it],
-			  perfmon_Thread_daemon_stat_names[stat_it], (long long unsigned int) value);
+      for (size_t stat_it = 0; stat_it < perfmon_per_daemon_stat_count (); stat_it++)
+	{
+	  value = stats_ptr[daemon_it * perfmon_per_daemon_stat_count () + stat_it];
+          ret = snprintf (*s, *remaining_size, "%s.%s = %16llu\n", perfmon_Portable_daemon_names[daemon_it],
+                          perfmon_thread_daemon_name (stat_it), (long long unsigned int) value);
 
-          *remaining_size -= ret;
-          *s += ret;
-          if (*remaining_size <= 0)
-            {
-              return;
-            }
-        }
+	  *remaining_size -= ret;
+	  *s += ret;
+	  if (*remaining_size <= 0)
+	    {
+	      return;
+	    }
+	}
     }
 }
 
@@ -4981,17 +5055,17 @@ perfmon_stat_dump_in_buffer_thread_daemon_stats (const UINT64 * stats_ptr, char 
 static void
 perfmon_peek_thread_daemon_stats (UINT64 * stats)
 {
-  UINT64 *statsp = &stats[pstat_Metadata[PSTAT_THREAD_PGBUF_DAEMON_STATS].start_offset];
-  pgbuf_daemons_get_stats (statsp);  // 4 x daemons
-  statsp += 4 * cubthread::daemon::STAT_COUNT;
+  UINT64 *statsp = &stats[pstat_Metadata[PSTAT_THREAD_DAEMON_STATS].start_offset];
+  pgbuf_daemons_get_stats (statsp);	// 4 x daemons
+  statsp += 4 * perfmon_per_daemon_stat_count ();
 
   // get deadlock stats
   lock_deadlock_detect_daemon_get_stats (statsp);
-  statsp += cubthread::daemon::STAT_COUNT;
+  statsp += perfmon_per_daemon_stat_count ();
 
   // get log flush stats
   log_flush_daemon_get_stats (statsp);
-  statsp += cubthread::daemon::STAT_COUNT;
+  statsp += perfmon_per_daemon_stat_count ();
 }
 #endif // SERVER_MODE
 // *INDENT-ON*
