@@ -124,7 +124,12 @@ static int rv;
 #define LOGPB_LAST_ACTIVE_PAGE_ID     (log_Gl.hdr.nxarv_pageid + log_Gl.hdr.npages - 1)
 #define LOGPB_ACTIVE_NPAGES           (log_Gl.hdr.npages)
 
-// TODO: We need comments to describe why 0xff.
+/* Uses 0xff to fills up the page, before writing in it. This helps recovery to detect the end of the log in
+ * case of log page corruption, caused by partial page flush. Thus, at recovery analysis, we can easily
+ * detect the last valid log record - the log record having NULL_LSA (0xff) in its forward address field.
+ * If we do not use 0xff, a corrupted log record will be considered valid at recovery, thus affecting
+ * the database consistency.
+ */
 #define LOG_PAGE_INIT_VALUE 0xff
 
 /*
