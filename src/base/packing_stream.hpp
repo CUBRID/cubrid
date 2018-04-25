@@ -114,6 +114,8 @@ public:
  */
 class packing_stream : public stream
 {
+  friend class stream_packer;
+
 private:
   buffer_provider *m_buffer_provider;
 
@@ -165,20 +167,25 @@ protected:
 
   stream_position reserve_no_buffer (const size_t amount);
 
+  /* should be called when serialization of a stream entry ends */
+  int update_contiguous_filled_pos (const stream_position &filled_pos);
+
+  char * reserve_with_buffer (const size_t amount, const buffer_provider *context_provider,
+                                     stream_position *reserved_pos, buffer_context **granted_range);
+
+  char * get_more_data_with_buffer (const size_t amount, const buffer_provider *context_provider,
+                                           buffer_context **granted_range);
+  char * get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
+                                   const buffer_provider *context_provider, buffer_context **granted_range);
+
 public:
   packing_stream (const buffer_provider *my_provider = NULL);
   ~packing_stream ();
-
-  /* should be called when serialization of a stream entry ends */
-  int update_contiguous_filled_pos (const stream_position &filled_pos);
 
   int write (const size_t byte_count, write_handler *handler);
   int read_partial (const stream_position first_pos, const size_t byte_count, size_t *actual_read_bytes,
                     partial_read_handler *handler);
   int read (const stream_position first_pos, const size_t byte_count, read_handler *handler);
-
-  char * reserve_with_buffer (const size_t amount, const buffer_provider *context_provider,
-                                     stream_position *reserved_pos, buffer_context **granted_range);
 
   char * acquire_new_write_buffer (buffer_provider *req_buffer_provider, const stream_position &start_pos,
                                           const size_t &amount, buffer_context **granted_range);
@@ -189,12 +196,6 @@ public:
 
   /* TODO[arnia] : temporary for unit test */
   void detach_all_buffers (void) { m_buffered_ranges.clear (); };
-
-  char * get_more_data_with_buffer (const size_t amount, const buffer_provider *context_provider,
-                                           buffer_context **granted_range);
-  char * get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
-                                   const buffer_provider *context_provider, buffer_context **granted_range);
-
 };
 
 } /* namespace cubstream */

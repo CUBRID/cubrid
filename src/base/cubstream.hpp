@@ -33,9 +33,6 @@ namespace cubstream
 
 typedef unsigned long long stream_position;
 
-class buffer_provider;
-class stream_packer;
-
 class read_handler
 {
 public:
