@@ -23,6 +23,7 @@
 
 #include "thread_worker_pool.hpp"
 
+#include "error_manager.h"
 #include "perf.hpp"
 
 #include <cstring>
@@ -104,6 +105,14 @@ namespace cubthread
       }
 
     return count;
+  }
+
+  void
+  wp_handle_system_error (const char *message, const std::system_error &e)
+  {
+    er_print_callstack (ARG_FILE_LINE, "%s - throws err = %d: %s\n", message, e.code (), e.what ());
+    assert (false);
+    throw e;
   }
 
 } // namespace cubthread

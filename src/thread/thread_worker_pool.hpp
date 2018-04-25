@@ -39,6 +39,7 @@
 #include <memory>
 #include <mutex>
 #include <queue>
+#include <system_error>
 #include <thread>
 
 #include <cassert>
@@ -434,6 +435,11 @@ namespace cubthread
   // use it as core count if the task execution must be highly tuned.
   // does not return 0
   std::size_t system_core_count (void);
+
+  // custom worker pool exception handler
+  void wp_handle_system_error (const char *message, const std::system_error &e);
+  template <typename Func>
+  void wp_call_func_throwing_system_error (const char *message, Func &func);
 
   /************************************************************************/
   /* Template/inline implementation                                       */
@@ -969,8 +975,21 @@ namespace cubthread
     // save task
     m_task_p = work_p;
 
-    // start thread
-    std::thread (&worker::run, this).detach ();    // don't wait for it
+    // start thread.
+    //
+    // the next code tries to help visualizing any system errors that can occur during create or detach in debug mode
+    //
+    // release will basically be reduced to:
+    // std::thread (&worker::run, this).detach ();
+    //
+
+    std::thread t;
+
+    auto lambda_create = [&] (void) -> void { t = std::thread (&worker::run, this); };
+    auto lambda_detach = [&] (void) -> void { t.detach (); };
+
+    wp_call_func_throwing_system_error ("starting thread", lambda_create);
+    wp_call_func_throwing_system_error ("detaching thread", lambda_detach);
   }
 
   template <typename Context>
@@ -1220,6 +1239,30 @@ namespace cubthread
       {
 	func (*ctxp, args...);
       }
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // other functions
+  //////////////////////////////////////////////////////////////////////////
+
+  template <typename Func>
+  void
+  wp_call_func_throwing_system_error (const char *message, Func &func)
+  {
+#if !defined (NDEBUG)
+    try
+      {
+#endif // DEBUG
+
+	func ();  // no exception catching on release
+
+#if !defined (NDEBUG)
+      }
+    catch (const std::system_error &e)
+      {
+	wp_handle_system_error (message, e);
+      }
+#endif // DEBUG
   }
 
 } // namespace cubthread

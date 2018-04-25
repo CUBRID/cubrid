@@ -110,10 +110,10 @@ namespace cubthread
     for (std::size_t it = 0; it < m_max_threads; it++)
       {
 	m_all_entries[it].index = (int) (it + starting_index + 1);
-        if (with_lock_free)
-          {
+	if (with_lock_free)
+	  {
 	    m_all_entries[it].request_lock_free_transactions ();
-          }
+	  }
       }
   }
 
@@ -460,7 +460,7 @@ namespace cubthread
 
     if (with_lock_free)
       {
-        Main_entry_p->request_lock_free_transactions ();
+	Main_entry_p->request_lock_free_transactions ();
       }
 
     Manager->init_entries (old_manager_thread_count, with_lock_free);
