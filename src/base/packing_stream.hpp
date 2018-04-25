@@ -137,7 +137,7 @@ private:
   /* size of all active buffers attached to this stream */
   size_t m_total_buffered_size;
 
-  /* size of all active buffers attached to stream, after which we need to start deferring them to log_file 
+  /* size of all active buffers attached to stream, after which we need to start deferring them to stream_file 
    * for flushing;
    * normal mode should not need this : all buffers are send to MRC_Manager to be send to slave */
   size_t trigger_flush_to_disk_size;
