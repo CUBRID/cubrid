@@ -4916,9 +4916,9 @@ static const size_t PERFMON_PORTABLE_DAEMON_COUNT = sizeof (perfmon_Portable_dae
 static size_t
 perfmon_per_daemon_stat_count (void)
 {
-#if defined (SERVER_MODE)
-  
+#if defined (SERVER_MODE) && !defined (NDEBUG)
   assert (PERFMON_PORTABLE_DAEMON_STAT_COUNT == cubthread::daemon::get_stats_value_count ());
+
   static bool check_names = true;
   if (check_names)
     {
@@ -4935,8 +4935,8 @@ perfmon_per_daemon_stat_count (void)
         }
       check_names = false;
     }
-#endif // SERVER_MODE
-return PERFMON_PORTABLE_DAEMON_STAT_COUNT;
+#endif // SERVER_MODE and DEBUG
+  return PERFMON_PORTABLE_DAEMON_STAT_COUNT;
 }
 
 static size_t

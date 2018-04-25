@@ -86,6 +86,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/mprec.c
   ${BASE_DIR}/object_representation_sr.c
   ${BASE_DIR}/packer.cpp
+  ${BASE_DIR}/get_clockfreq.c
   ${BASE_DIR}/perf.cpp
   ${BASE_DIR}/pinnable_buffer.cpp
   ${BASE_DIR}/pinning.cpp
