@@ -35,48 +35,56 @@
 namespace cubstream
 {
 
-/*
- * This should serve as storage for packing streams.
- *
- * Each buffer has a storage producer - we call it buffer_provider 
- * (the one which decides when to create or scrap a buffer)
- * 
- */
-class stream_buffer : public mem::pinnable_buffer
-{
-public:
-  stream_buffer (char *ptr, const size_t buf_size, cubbase::pinner *referencer)
-    { init (ptr, buf_size, referencer); };
-
-  char * reserve (const size_t amount);
-
-  char * get_curr_append_ptr (void) { return m_storage + write_stream_reference.buf_end_offset; };
-
-  /* mapping methods : a memory already exists, just instruct buffer to use it */
-  //int map_buffer_with_pin (serial_buffer *ref_buffer, pinner *referencer);
-
-  /* TODO[arnia] : STREAM_MODE should be property of stream (and called STREAM_TYPE instead ) ? */
-  int attach_stream (stream *stream_p, const STREAM_MODE stream_mode,
-                     const stream_position &stream_start, const stream_position &stream_end,
-                     const size_t &buffer_start_offset);
-
-  int dettach_stream (stream *stream_p, const STREAM_MODE stream_mode);
-  
-  int check_stream_append_contiguity (const stream *stream_p, const stream_position &req_pos);
-
-  bool is_unreferenced (void) { return (write_stream_reference.m_stream == NULL) && (read_stream_references.size () == 0); };
-
-
-protected:
-  /* mapping of buffer to streams :
-   * several read streams can be attached to buffer, only one write stream
+  /*
+   * This should serve as storage for packing streams.
+   *
+   * Each buffer has a storage producer - we call it buffer_provider
+   * (the one which decides when to create or scrap a buffer)
+   *
    */
-  stream_reference write_stream_reference;
-  
-  /* read streams : each read stream is unique */
-  std::vector<stream_reference> read_stream_references;
- 
-};
+  class stream_buffer : public mem::pinnable_buffer
+  {
+    public:
+      stream_buffer (char *ptr, const size_t buf_size, cubbase::pinner *referencer)
+      {
+	init (ptr, buf_size, referencer);
+      };
+
+      char *reserve (const size_t amount);
+
+      char *get_curr_append_ptr (void)
+      {
+	return m_storage + write_stream_reference.buf_end_offset;
+      };
+
+      /* mapping methods : a memory already exists, just instruct buffer to use it */
+      //int map_buffer_with_pin (serial_buffer *ref_buffer, pinner *referencer);
+
+      /* TODO[arnia] : STREAM_MODE should be property of stream (and called STREAM_TYPE instead ) ? */
+      int attach_stream (stream *stream_p, const STREAM_MODE stream_mode,
+			 const stream_position &stream_start, const stream_position &stream_end,
+			 const size_t &buffer_start_offset);
+
+      int dettach_stream (stream *stream_p, const STREAM_MODE stream_mode);
+
+      int check_stream_append_contiguity (const stream *stream_p, const stream_position &req_pos);
+
+      bool is_unreferenced (void)
+      {
+	return (write_stream_reference.m_stream == NULL) && (read_stream_references.size () == 0);
+      };
+
+
+    protected:
+      /* mapping of buffer to streams :
+       * several read streams can be attached to buffer, only one write stream
+       */
+      stream_reference write_stream_reference;
+
+      /* read streams : each read stream is unique */
+      std::vector<stream_reference> read_stream_references;
+
+  };
 
 } /* namespace cubstream */
 

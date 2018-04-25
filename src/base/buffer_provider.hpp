@@ -36,40 +36,44 @@
 namespace cubstream
 {
 
-class stream_buffer;
-class packing_stream;
+  class stream_buffer;
+  class packing_stream;
 
-/*
- * an object of this type provides buffers (memory)
- */
-class buffer_provider : public cubbase::pinner
-{
-private:
-  /* a buffer provider may allocate several buffers */
-  std::vector<stream_buffer*> m_buffers;
+  /*
+   * an object of this type provides buffers (memory)
+   */
+  class buffer_provider : public cubbase::pinner
+  {
+    private:
+      /* a buffer provider may allocate several buffers */
+      std::vector<stream_buffer *> m_buffers;
 
-  static buffer_provider *default_buffer_provider;
+      static buffer_provider *default_buffer_provider;
 
-protected:
-  size_t min_alloc_size;
-  size_t max_alloc_size;
+    protected:
+      size_t min_alloc_size;
+      size_t max_alloc_size;
 
-public:
+    public:
 
-  buffer_provider () { min_alloc_size = 512 * 1024; max_alloc_size = 100 * 1024 * 1024; };
+      buffer_provider ()
+      {
+	min_alloc_size = 512 * 1024;
+	max_alloc_size = 100 * 1024 * 1024;
+      };
 
-  ~buffer_provider ();
+      ~buffer_provider ();
 
-  virtual int allocate_buffer (stream_buffer **new_buffer, const size_t &amount);
+      virtual int allocate_buffer (stream_buffer **new_buffer, const size_t &amount);
 
-  virtual int free_all_buffers (void);
-    
-  virtual int extend_buffer (stream_buffer **existing_buffer, const size_t &amount);
+      virtual int free_all_buffers (void);
 
-  virtual int add_buffer (stream_buffer *new_buffer);
+      virtual int extend_buffer (stream_buffer **existing_buffer, const size_t &amount);
 
-  static buffer_provider *get_default_instance (void);
-};
+      virtual int add_buffer (stream_buffer *new_buffer);
+
+      static buffer_provider *get_default_instance (void);
+  };
 
 } /* namespace cubstream */
 

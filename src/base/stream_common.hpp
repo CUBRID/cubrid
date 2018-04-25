@@ -35,61 +35,61 @@
 namespace cubstream
 {
 
-enum stream_mode
-{
-  WRITE_STREAM = 0,
-  READ_STREAM
-};
+  enum stream_mode
+  {
+    WRITE_STREAM = 0,
+    READ_STREAM
+  };
 
-typedef enum stream_mode STREAM_MODE;
+  typedef enum stream_mode STREAM_MODE;
 
-class stream_buffer;
-class stream;
-/* this is stored in packing_stream */
-class buffer_context
-{
-public:
-  buffer_context() : mapped_buffer (NULL), is_filled (false) {};
-  /* range of stream position reserved */
-  stream_position first_pos;
-  stream_position last_pos;
-  /* allocated position (the amount up to which last_pos can grow) */
-  stream_position last_allocated_pos;
-  stream_buffer *mapped_buffer;
-  size_t written_bytes;
-  bool is_filled;
-  
-  bool is_range_mapped (const stream_position &start, const size_t &amount);
-  size_t get_mapped_amount (const stream_position &start);
-  bool is_range_contiguously_mapped (const stream_position &start, const size_t &amount);
-  char * extend_range (const size_t &amount);
+  class stream_buffer;
+  class stream;
+  /* this is stored in packing_stream */
+  class buffer_context
+  {
+    public:
+      buffer_context() : mapped_buffer (NULL), is_filled (false) {};
+      /* range of stream position reserved */
+      stream_position first_pos;
+      stream_position last_pos;
+      /* allocated position (the amount up to which last_pos can grow) */
+      stream_position last_allocated_pos;
+      stream_buffer *mapped_buffer;
+      size_t written_bytes;
+      bool is_filled;
 
-  bool operator== (const buffer_context &rhs) const
-    {
-      return mapped_buffer == rhs.mapped_buffer;
-    };
+      bool is_range_mapped (const stream_position &start, const size_t &amount);
+      size_t get_mapped_amount (const stream_position &start);
+      bool is_range_contiguously_mapped (const stream_position &start, const size_t &amount);
+      char *extend_range (const size_t &amount);
 
-};
+      bool operator== (const buffer_context &rhs) const
+      {
+	return mapped_buffer == rhs.mapped_buffer;
+      };
 
-/* this is stored in packing_stream_buffer */
-class stream_reference
-{
-public:
-  stream_reference() : m_stream(NULL) {};
+  };
 
-  stream *m_stream;
+  /* this is stored in packing_stream_buffer */
+  class stream_reference
+  {
+    public:
+      stream_reference() : m_stream (NULL) {};
 
-  /*
-   * currently mapped start and end offset relative to buffer start 
-   * for write streams, the start_offset should always be zero
-   */
-  size_t buf_start_offset;
-  size_t buf_end_offset;
+      stream *m_stream;
 
-  /* first and last position mapped to the stream (these are stream positions) */
-  stream_position stream_start_pos;
-  stream_position stream_end_pos;
-};
+      /*
+       * currently mapped start and end offset relative to buffer start
+       * for write streams, the start_offset should always be zero
+       */
+      size_t buf_start_offset;
+      size_t buf_end_offset;
+
+      /* first and last position mapped to the stream (these are stream positions) */
+      stream_position stream_start_pos;
+      stream_position stream_end_pos;
+  };
 
 } /* namespace cubstream */
 

@@ -30,13 +30,13 @@
 namespace cubstream
 {
 
-class stream_io
-{
-public:
-  virtual int write (const stream_position &pos, const char *buf, const size_t amount) = 0;
+  class stream_io
+  {
+    public:
+      virtual int write (const stream_position &pos, const char *buf, const size_t amount) = 0;
 
-  virtual int read (const stream_position &pos, const char *buf, const size_t amount) = 0;
-};
+      virtual int read (const stream_position &pos, const char *buf, const size_t amount) = 0;
+  };
 
 } /*  namespace cubstream */
 

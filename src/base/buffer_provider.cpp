@@ -29,96 +29,96 @@
 namespace cubstream
 {
 
-buffer_provider::~buffer_provider ()
-{
-  assert (m_buffers.size () == 0);
+  buffer_provider::~buffer_provider ()
+  {
+    assert (m_buffers.size () == 0);
 
-  unpin_all ();
-  free_all_buffers ();
-}
-
-
-buffer_provider *buffer_provider::get_default_instance (void)
-{
-  static buffer_provider global_buffer_provider;
-
-  return &global_buffer_provider;
-}
-
-int buffer_provider::allocate_buffer (stream_buffer **new_buffer, const size_t &amount)
-{
-  char *mem;
-  stream_buffer *my_new_buffer;
-  size_t to_alloc;
-
-  if (amount > max_alloc_size)
-    {
-      return ER_FAILED;
-    }
-
-  to_alloc = MAX (amount, min_alloc_size);
-
-  mem = (char*) malloc (to_alloc);
-  if (mem == NULL)
-    {
-      return ER_FAILED;
-    }
-  
-  my_new_buffer = new stream_buffer (mem, to_alloc, this);
-
-  add_buffer (my_new_buffer);
-
-  *new_buffer = my_new_buffer;
-
-  return NO_ERROR;
-}
-
-int buffer_provider::free_all_buffers (void)
-{
-  int i;
-  for (i = 0; i < m_buffers.size (); i++)
-    {
-      if (m_buffers[i]->is_unreferenced () == false)
-        {
-          assert (false);
-          return ER_FAILED;
-        }
-
-       char *mem = m_buffers[i]->get_buffer ();
-       free (mem);
-
-       delete (m_buffers[i]);
-       m_buffers[i] = NULL;
-    }
-  m_buffers.clear ();
-
-  return NO_ERROR;
-}
+    unpin_all ();
+    free_all_buffers ();
+  }
 
 
-int buffer_provider::extend_buffer (stream_buffer **existing_buffer, const size_t &amount)
-{
-  if (*existing_buffer != NULL)
-    {
-      /* TODO[arnia] : to extend an existing buffer with an amount : to use for unpacking of stream entry data
-       * after unpacking of stream entry header
-       */
-      assert (false);
-      *existing_buffer = NULL;
-    }
+  buffer_provider *buffer_provider::get_default_instance (void)
+  {
+    static buffer_provider global_buffer_provider;
 
-  return allocate_buffer (existing_buffer, amount);
+    return &global_buffer_provider;
+  }
 
-  return NO_ERROR;
-}
+  int buffer_provider::allocate_buffer (stream_buffer **new_buffer, const size_t &amount)
+  {
+    char *mem;
+    stream_buffer *my_new_buffer;
+    size_t to_alloc;
 
-int buffer_provider::add_buffer (stream_buffer *new_buffer)
-{
-  m_buffers.push_back (new_buffer);
+    if (amount > max_alloc_size)
+      {
+	return ER_FAILED;
+      }
 
-  pin (new_buffer);
-  
-  return NO_ERROR;
-};
+    to_alloc = MAX (amount, min_alloc_size);
+
+    mem = (char *) malloc (to_alloc);
+    if (mem == NULL)
+      {
+	return ER_FAILED;
+      }
+
+    my_new_buffer = new stream_buffer (mem, to_alloc, this);
+
+    add_buffer (my_new_buffer);
+
+    *new_buffer = my_new_buffer;
+
+    return NO_ERROR;
+  }
+
+  int buffer_provider::free_all_buffers (void)
+  {
+    int i;
+    for (i = 0; i < m_buffers.size (); i++)
+      {
+	if (m_buffers[i]->is_unreferenced () == false)
+	  {
+	    assert (false);
+	    return ER_FAILED;
+	  }
+
+	char *mem = m_buffers[i]->get_buffer ();
+	free (mem);
+
+	delete (m_buffers[i]);
+	m_buffers[i] = NULL;
+      }
+    m_buffers.clear ();
+
+    return NO_ERROR;
+  }
+
+
+  int buffer_provider::extend_buffer (stream_buffer **existing_buffer, const size_t &amount)
+  {
+    if (*existing_buffer != NULL)
+      {
+	/* TODO[arnia] : to extend an existing buffer with an amount : to use for unpacking of stream entry data
+	 * after unpacking of stream entry header
+	 */
+	assert (false);
+	*existing_buffer = NULL;
+      }
+
+    return allocate_buffer (existing_buffer, amount);
+
+    return NO_ERROR;
+  }
+
+  int buffer_provider::add_buffer (stream_buffer *new_buffer)
+  {
+    m_buffers.push_back (new_buffer);
+
+    pin (new_buffer);
+
+    return NO_ERROR;
+  };
 
 } /* namespace cubstream */

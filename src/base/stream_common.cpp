@@ -29,33 +29,33 @@
 namespace cubstream
 {
 
-bool buffer_context::is_range_mapped (const stream_position &start, const size_t &amount)
-{
-  return (start >= first_pos && start + amount <= last_pos) ? true : false;
-}
+  bool buffer_context::is_range_mapped (const stream_position &start, const size_t &amount)
+  {
+    return (start >= first_pos && start + amount <= last_pos) ? true : false;
+  }
 
-size_t buffer_context::get_mapped_amount (const stream_position &start)
-{
-  if (start >= first_pos && start < last_pos)
-    {
-      return last_pos - start;
-    }
-  return 0;
-}
+  size_t buffer_context::get_mapped_amount (const stream_position &start)
+  {
+    if (start >= first_pos && start < last_pos)
+      {
+	return last_pos - start;
+      }
+    return 0;
+  }
 
-bool buffer_context::is_range_contiguously_mapped (const stream_position &start, const size_t &amount)
-{
-  return (start == last_pos && start + amount < last_allocated_pos) ? true : false;
-}
+  bool buffer_context::is_range_contiguously_mapped (const stream_position &start, const size_t &amount)
+  {
+    return (start == last_pos && start + amount < last_allocated_pos) ? true : false;
+  }
 
-char * buffer_context::extend_range (const size_t &amount)
-{
-  char * ptr;
+  char *buffer_context::extend_range (const size_t &amount)
+  {
+    char *ptr;
 
-  ptr = mapped_buffer->get_buffer () + last_pos - first_pos;
-  last_pos += amount;
+    ptr = mapped_buffer->get_buffer () + last_pos - first_pos;
+    last_pos += amount;
 
-  return ptr;
-}
+    return ptr;
+  }
 
 } /* namespace cubstream */

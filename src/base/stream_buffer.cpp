@@ -28,99 +28,99 @@
 namespace cubstream
 {
 
-char * stream_buffer::reserve (const size_t amount)
-{
-  if (m_storage + write_stream_reference.buf_end_offset + amount < m_end_ptr)
-    {
-      char *ptr = m_storage + write_stream_reference.buf_end_offset;
-      write_stream_reference.buf_end_offset += amount;
+  char *stream_buffer::reserve (const size_t amount)
+  {
+    if (m_storage + write_stream_reference.buf_end_offset + amount < m_end_ptr)
+      {
+	char *ptr = m_storage + write_stream_reference.buf_end_offset;
+	write_stream_reference.buf_end_offset += amount;
 
-      return ptr;
-    }
+	return ptr;
+      }
 
-  return NULL;
-}
+    return NULL;
+  }
 
-int stream_buffer::attach_stream (stream *stream_p, const STREAM_MODE stream_mode,
-                                  const stream_position &stream_start, const stream_position &stream_end,
-                                  const size_t &buffer_start_offset)
-{
-  if (stream_mode == WRITE_STREAM)
-    {
-      assert (write_stream_reference.m_stream == NULL);
+  int stream_buffer::attach_stream (stream *stream_p, const STREAM_MODE stream_mode,
+				    const stream_position &stream_start, const stream_position &stream_end,
+				    const size_t &buffer_start_offset)
+  {
+    if (stream_mode == WRITE_STREAM)
+      {
+	assert (write_stream_reference.m_stream == NULL);
 
-      write_stream_reference.m_stream = stream_p;
+	write_stream_reference.m_stream = stream_p;
 
-      write_stream_reference.buf_start_offset = buffer_start_offset;
-      write_stream_reference.buf_end_offset = buffer_start_offset + stream_end - stream_start;
-      
-      write_stream_reference.stream_start_pos = stream_start;
-      write_stream_reference.stream_end_pos = stream_end;
-    }
-  else
-    {
-      stream_reference new_stream_ref;
+	write_stream_reference.buf_start_offset = buffer_start_offset;
+	write_stream_reference.buf_end_offset = buffer_start_offset + stream_end - stream_start;
 
-      new_stream_ref.m_stream = stream_p;
+	write_stream_reference.stream_start_pos = stream_start;
+	write_stream_reference.stream_end_pos = stream_end;
+      }
+    else
+      {
+	stream_reference new_stream_ref;
 
-      new_stream_ref.buf_start_offset = buffer_start_offset;
-      new_stream_ref.buf_end_offset = buffer_start_offset + stream_end - stream_start;
-      
-      new_stream_ref.stream_start_pos = stream_start;
-      new_stream_ref.stream_end_pos = stream_end;
+	new_stream_ref.m_stream = stream_p;
 
-      read_stream_references.push_back (new_stream_ref);
-    }
-  
-  return NO_ERROR;
-}
+	new_stream_ref.buf_start_offset = buffer_start_offset;
+	new_stream_ref.buf_end_offset = buffer_start_offset + stream_end - stream_start;
 
-int stream_buffer::dettach_stream (stream *stream_p, const STREAM_MODE stream_mode)
-{
-  if (stream_mode == WRITE_STREAM)
-    {
-      assert (write_stream_reference.m_stream == stream_p);
+	new_stream_ref.stream_start_pos = stream_start;
+	new_stream_ref.stream_end_pos = stream_end;
 
-      write_stream_reference.m_stream = NULL;
-    }
-  else
-    {
-      int i;
-      bool found = false;
+	read_stream_references.push_back (new_stream_ref);
+      }
 
-      for (i = 0; i < read_stream_references.size (); i++)
-        {
-          if (read_stream_references[i].m_stream == stream_p)
-            {
-              found = true;
-            }
-        }
+    return NO_ERROR;
+  }
 
-      if (!found)
-        {
-          return ER_FAILED;
-        }
+  int stream_buffer::dettach_stream (stream *stream_p, const STREAM_MODE stream_mode)
+  {
+    if (stream_mode == WRITE_STREAM)
+      {
+	assert (write_stream_reference.m_stream == stream_p);
 
-      read_stream_references.erase (read_stream_references.begin() + i);
-    }
-  
-  return NO_ERROR;
-}
+	write_stream_reference.m_stream = NULL;
+      }
+    else
+      {
+	int i;
+	bool found = false;
 
-int stream_buffer::check_stream_append_contiguity (const stream *stream_p, const stream_position &req_pos)
-{
-  if (stream_p != write_stream_reference.m_stream)
-    {
-      /* not my write stream !*/
-      return ER_FAILED;
-    }
+	for (i = 0; i < read_stream_references.size (); i++)
+	  {
+	    if (read_stream_references[i].m_stream == stream_p)
+	      {
+		found = true;
+	      }
+	  }
 
-  if (req_pos == write_stream_reference.stream_end_pos)
-    {
-      return NO_ERROR;
-    }
+	if (!found)
+	  {
+	    return ER_FAILED;
+	  }
 
-  return ER_FAILED;
-}
+	read_stream_references.erase (read_stream_references.begin() + i);
+      }
+
+    return NO_ERROR;
+  }
+
+  int stream_buffer::check_stream_append_contiguity (const stream *stream_p, const stream_position &req_pos)
+  {
+    if (stream_p != write_stream_reference.m_stream)
+      {
+	/* not my write stream !*/
+	return ER_FAILED;
+      }
+
+    if (req_pos == write_stream_reference.stream_end_pos)
+      {
+	return NO_ERROR;
+      }
+
+    return ER_FAILED;
+  }
 
 } /* namespace cubstream */
