@@ -21,8 +21,8 @@
  * perf.hpp - interface for performance statistics basic utilities
  */
 
-#ifndef _CUBRID_PERF_HPP_
-#define _CUBRID_PERF_HPP_
+#ifndef _PERF_HPP_
+#define _PERF_HPP_
 
 #include "perf_def.hpp"
 
@@ -46,7 +46,7 @@
 //    the model is somewhat inspired from performance monitor's PSTAT_METADATA and the way it collects statistics, using
 //    the C++ templates
 //    templates are used for:
-//      1. avoiding duplicate implementation for atomic and non-atomic statistic sets.
+//      1. avoiding duplicate implementation for atomic and non-atomic statistics sets.
 //      2. static initializer for statset_definition
 //      3. automatic timer statistics conversions
 //
@@ -659,4 +659,4 @@ namespace cubperf
 
 } // namespace cubperf
 
-#endif // _CUBRID_PERF_HPP_s
+#endif // _PERF_HPP_
