@@ -74,7 +74,7 @@ class stream_mock : public cubstream::stream
       return err;
     }
 
-    int read (const stream_position first_pos, const size_t byte_count, cubstream::read_handler *handler) override
+    int read (const cubstream::stream_position first_pos, const size_t byte_count, cubstream::read_handler *handler) override
     {
       char *ptr = (char *) malloc (byte_count);
       int err = NO_ERROR;
@@ -90,7 +90,7 @@ class stream_mock : public cubstream::stream
       return err;
     }
 
-    int read_partial (const stream_position first_pos, const size_t byte_count, size_t *actual_read_bytes,
+    int read_partial (const cubstream::stream_position first_pos, const size_t byte_count, size_t *actual_read_bytes,
 		      cubstream::partial_read_handler *handler) override
     {
       assert (false);
@@ -98,7 +98,7 @@ class stream_mock : public cubstream::stream
     }
 
     char *write_buffer;
-    stream_position last_position;
+    cubstream::stream_position last_position;
 };
 
 void master_listening_thread_func ()

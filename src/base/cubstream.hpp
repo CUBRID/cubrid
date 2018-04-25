@@ -26,6 +26,8 @@
 #ifndef _CUBSTREAM_HPP_
 #define _CUBSTREAM_HPP_
 
+#include <stddef.h>
+
 namespace cubstream
 {
 
