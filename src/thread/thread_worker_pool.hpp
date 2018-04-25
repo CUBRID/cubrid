@@ -1347,14 +1347,14 @@ namespace cubthread
   void
   wp_call_func_throwing_system_error (const char *message, Func &func)
   {
-#if defined (NDEBUG)
+#if !defined (NDEBUG)
     try
       {
 #endif // DEBUG
 
 	func ();  // no exception catching on release
 
-#if defined (NDEBUG)
+#if !defined (NDEBUG)
       }
     catch (const std::system_error &e)
       {
