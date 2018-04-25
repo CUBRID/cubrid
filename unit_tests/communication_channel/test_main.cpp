@@ -1,10 +1,11 @@
 #define SERVER_MODE
 
 #include "communication_channel.hpp"
-#include "thread_manager.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
 #include "thread_looper.hpp"
+#include "thread_task.hpp"
+#include "thread_daemon.hpp"
 #include "lock_free.h"
 #include <vector>
 #include <mutex>
@@ -30,7 +31,34 @@
 #define NUM_OF_MSGS 10
 #define MAX_TIMEOUT_IN_MS 1000
 
-static cubthread::entry *thread_p = NULL;
+/* TODO remove this after remzi creates
+ * a daemon impl without the use of a context
+ */
+class dummy_entry
+  {
+    public:
+      void interrupt_execution (void)
+      {
+
+      }
+  };
+static dummy_entry dummy_context_var;
+
+class dummy_context_manager : public cubthread::context_manager<dummy_entry>
+{
+public:
+  dummy_entry &create_context (void)
+  {
+    return dummy_context_var;
+  }
+  void retire_context (dummy_entry &)
+  {
+  }
+};
+
+static dummy_context_manager *dummy_mng_ptr = new dummy_context_manager();
+/* end remove this */
+
 static int *counters = NULL;
 static std::vector <cubthread::daemon *> initiator_daemons;
 static cubthread::daemon *listener_daemon;
@@ -94,7 +122,7 @@ void master_listening_thread_func (std::vector <communication_channel> &channels
     }
 }
 
-class conn_initiator_daemon_task : public cubthread::entry_task
+class conn_initiator_daemon_task : public cubthread::task<dummy_entry>
 {
   public:
     conn_initiator_daemon_task (int &counter, communication_channel &&chn) : m_counter (counter),
@@ -102,7 +130,7 @@ class conn_initiator_daemon_task : public cubthread::entry_task
     {
     }
 
-    void execute (cubthread::entry &context)
+    void execute (dummy_entry &) override
     {
       std::size_t length = MAX_MSG_LENGTH;
       char buff[MAX_MSG_LENGTH];
@@ -135,7 +163,7 @@ class conn_initiator_daemon_task : public cubthread::entry_task
     communication_channel m_channel;
 };
 
-class conn_listener_daemon_task : public cubthread::entry_task
+class conn_listener_daemon_task : public cubthread::task<dummy_entry>
 {
   public:
     conn_listener_daemon_task (std::vector <communication_channel> &&channels) : m_channels (
@@ -144,7 +172,7 @@ class conn_listener_daemon_task : public cubthread::entry_task
       assert (m_channels.size () == NUM_OF_INITIATORS);
     }
 
-    void execute (cubthread::entry &context)
+    void execute (dummy_entry &) override
     {
       std::size_t length = MAX_MSG_LENGTH;
       char buff[MAX_MSG_LENGTH];
@@ -212,8 +240,6 @@ static int init_thread_system ()
       return error_code;
     }
 
-  cubthread::initialize (thread_p);
-
   return NO_ERROR;
 }
 
@@ -229,7 +255,6 @@ static int init ()
       return error_code;
     }
 
-
   error_code = init_thread_system ();
   if (error_code != NO_ERROR)
     {
@@ -237,7 +262,7 @@ static int init ()
     }
 
   std::vector <communication_channel> channels;
-  std::vector <cubthread::entry_task *> tasks;
+  std::vector <cubthread::task<dummy_entry> *> tasks;
   counters = (int *) calloc (NUM_OF_INITIATORS, sizeof (int));
 
   is_listening.store (false);
@@ -259,11 +284,11 @@ static int init ()
     }
   listening_thread.join ();
 
-  listener_daemon = cubthread::get_manager ()->create_daemon (std::chrono::seconds (0),
+  listener_daemon = new cubthread::daemon (std::chrono::seconds (0), dummy_mng_ptr,
 		    new conn_listener_daemon_task (std::move (channels)));
   for (unsigned int i = 0; i < NUM_OF_INITIATORS; i++)
     {
-      initiator_daemons.push_back (cubthread::get_manager ()->create_daemon (std::chrono::seconds (1), tasks[i]));
+      initiator_daemons.push_back (new cubthread::daemon (std::chrono::seconds (1), dummy_mng_ptr, tasks[i]));
     }
 
   return NO_ERROR;
@@ -275,9 +300,9 @@ static int finish ()
 
   for (unsigned int i = 0; i < NUM_OF_INITIATORS; i++)
     {
-      cubthread::get_manager ()->destroy_daemon (initiator_daemons[i]);
+      delete initiator_daemons[i];
     }
-  cubthread::get_manager ()->destroy_daemon (listener_daemon);
+  delete listener_daemon;
 
   rc = csect_finalize_static_critical_sections();
   if (rc != NO_ERROR)
@@ -288,7 +313,6 @@ static int finish ()
 
   css_final_conn_list();
   lf_destroy_transaction_systems ();
-  cubthread::finalize ();
 
   er_final (ER_ALL_FINAL);
 
