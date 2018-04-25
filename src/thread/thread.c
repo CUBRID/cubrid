@@ -1881,7 +1881,9 @@ thread_find_entry_by_index (int thread_index)
   THREAD_ENTRY *thread_p;
   if (thread_index == 0)
     {
-      thread_p = cubthread::get_main_entry ();
+      // this is the index of main thread entry. we don't want to expose it by thread_find_entry_by_index
+      assert (false);
+      return NULL;
     }
   else if (thread_index <= thread_Manager.num_total)
     {
@@ -3604,7 +3606,7 @@ thread_clear_recursion_depth (THREAD_ENTRY * thread_p)
 THREAD_ENTRY *
 thread_iterate (THREAD_ENTRY * thread_p)
 {
-  int index = 0;
+  int index = 1;		// iteration starts with thread index = 1
 
   if (!thread_Manager.initialized)
     {
