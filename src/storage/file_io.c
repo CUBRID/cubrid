@@ -3521,6 +3521,62 @@ fileio_is_system_volume_label_equal (THREAD_ENTRY * thread_p, FILEIO_SYSTEM_VOLU
   return (util_compare_filepath (sys_vol_info_p->vlabel, arg->vol_label) == 0);
 }
 
+#if defined(SERVER_MODE) && !defined(WINDOWS) && !defined (USE_AIO)
+/*
+* pwrite_with_fi () - Write buffer to file descriptor with fault injection.
+*   return:
+*   thread_p(in): thread entry
+*   fd(in): file descriptor
+*   buf(in):  buffer to write
+*   count(in): count bytes to write
+*   offset(in): offset into file
+*/
+ssize_t
+pwrite_with_fi (THREAD_ENTRY * thread_p, int fd, const void *buf, size_t count, off_t offset)
+{
+  const int _4K = 4096;
+  ssize_t r;
+  int count_blocks;
+
+  if (sysprm_find_fi_code_in_integer_list (PRM_ID_FAULT_INJECTION_IDS, (int) FI_TEST_FILE_IO_WRITE_PARTS1) == true)
+    {
+      /* Write blocks in their order. You may change and test another order. */
+      count_blocks = count / _4K;
+      for (int i = 0; i < count_blocks; i++)
+	{
+	  r = pwrite (fd, ((char *) buf) + (i * _4K), _4K, offset + (i * _4K));
+	  if (r != _4K)
+	    {
+	      return r;
+	    }
+
+	  FI_TEST (thread_p, FI_TEST_FILE_IO_WRITE_PARTS1, 0);
+	}
+
+      return r;
+    }
+  else if (sysprm_find_fi_code_in_integer_list (PRM_ID_FAULT_INJECTION_IDS, (int) FI_TEST_FILE_IO_WRITE_PARTS2) == true)
+    {
+      /* Write blocks in reverse order. You may change and test the blocks order. */
+      count_blocks = count / _4K;
+      for (int i = count_blocks - 1; i >= 0; i--)
+	{
+	  r = pwrite (fd, ((char *) buf) + (i * _4K), _4K, offset + (i * _4K));
+	  if (r != _4K)
+	    {
+	      return r;
+	    }
+
+	  FI_TEST (thread_p, FI_TEST_FILE_IO_WRITE_PARTS2, 0);
+	}
+
+      return r;
+    }
+
+  return pwrite (fd, buf, count, offset);
+}
+#endif
+
 #if defined(HPUX) && !defined(IA64)
 /*
  * pread () -
@@ -3960,7 +4016,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_
 
       if (aio_write (&cb) < 0)
 #else /* USE_AIO */
-      if (pwrite (vol_fd, io_page_p, page_size, offset) != (ssize_t) page_size)
+      if (pwrite_with_fi (thread_p, vol_fd, io_page_p, page_size, offset) != (ssize_t) page_size)
 #endif /* USE_AIO */
 #endif /* WINDOWS */
 	{
@@ -4270,7 +4326,7 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEI
 	}
       nbytes = aio_return (&cb);
 #else /* USE_AIO */
-      nbytes = pwrite (vol_fd, io_pages_p, write_bytes, offset);
+      nbytes = pwrite_with_fi (thread_p, vol_fd, io_pages_p, write_bytes, offset);
 #endif /* USE_AIO */
 #endif /* WINDOWS */
       if (nbytes <= 0)
@@ -4863,7 +4919,7 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id, off
       pthread_mutex_unlock (&io_mutex);
       if (actual_nwrite != nbytes)
 #else /* WINDOWS */
-      if (pwrite (vol_fd, write_p, nbytes, offset) != nbytes)
+      if (pwrite_with_fi (thread_p vol_fd, write_p, nbytes, offset) != nbytes)
 #endif /* WINDOWS */
 	{
 	  if (errno == EINTR)

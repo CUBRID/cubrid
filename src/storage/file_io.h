@@ -564,4 +564,8 @@ extern void fileio_page_bitmap_list_destroy (FILEIO_RESTORE_PAGE_BITMAP_LIST * p
 extern int fileio_set_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page);
 extern int fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * is_page_corrupted);
 
+#if defined(SERVER_MODE) && !defined(WINDOWS) && !defined (USE_AIO)
+ssize_t pwrite_with_fi (THREAD_ENTRY * thread_p, int fd, const void *buf, size_t count, off_t offset);
+#endif
+
 #endif /* _FILE_IO_H_ */
