@@ -23,6 +23,7 @@
 
 #include "thread_worker_pool.hpp"
 
+#include "error_manager.h"
 #include "perf.hpp"
 
 #include <cstring>
