@@ -3626,15 +3626,6 @@ css_stop_all_workers (THREAD_ENTRY &thread_ref, thread_stop_type stop_phase)
 void
 css_get_thread_stats (UINT64 *stats_out)
 {
-  cubthread::wpstat allstats (stats_out);
-  css_Server_request_worker_pool->get_stats (allstats);
-
-  // collected timers are in nano-seconds. convert them to milliseconds
-  for (UINT64 *timer_stat_p = stats_out + cubthread::wpstat::STATS_COUNT;
-       timer_stat_p < stats_out + cubthread::wpstat::TOTAL_STATS_COUNT;
-       ++timer_stat_p)
-    {
-      *timer_stat_p = (*timer_stat_p) / 1000000;
-    }
+  css_Server_request_worker_pool->get_stats (stats_out);
 }
 // *INDENT-ON*

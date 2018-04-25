@@ -102,7 +102,7 @@ namespace cubthread
       //////////////////////////////////////////////////////////////////////////
 
       void alloc_entries (void);
-      void init_entries (std::size_t starting_index = 0);
+      void init_entries (std::size_t starting_index = 0, bool with_lock_free = false);
 
       //////////////////////////////////////////////////////////////////////////
       // worker pool management
@@ -223,11 +223,14 @@ namespace cubthread
   void finalize (void);
 
   // backward compatibility initialization
-  int initialize_thread_entries (void);
+  int initialize_thread_entries (bool with_lock_free = true);
   entry *get_main_entry (void);
 
   // get thread manager
   manager *get_manager (void);
+
+  //quick fix for unit test mockups
+  void set_manager (manager *manager);
 
   // get maximum thread count
   std::size_t get_max_thread_count (void);

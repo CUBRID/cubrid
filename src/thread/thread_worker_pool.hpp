@@ -24,9 +24,13 @@
 #ifndef _THREAD_WORKER_POOL_HPP_
 #define _THREAD_WORKER_POOL_HPP_
 
-#include "error_manager.h"
+// same module include
 #include "thread_task.hpp"
 
+// cubrid includes
+#include "perf_def.hpp"
+
+// system includes
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -35,17 +39,13 @@
 #include <memory>
 #include <mutex>
 #include <queue>
+#include <system_error>
 #include <thread>
 
 #include <cassert>
 
 namespace cubthread
 {
-  // forward definitions
-
-  // wpstat - class used to collect worker pool statistics
-  class wpstat;
-
   // cubtread::worker_pool<Context>
   //
   //  templates
@@ -167,7 +167,7 @@ namespace cubthread
 
       // get worker pool statistics
       // note: the statistics are collected from all cores and all their workers adding up all local statistics
-      void get_stats (wpstat &sum_inout);
+      void get_stats (cubperf::stat_value *stats_out);
 
       //////////////////////////////////////////////////////////////////////////
       // context management
@@ -216,61 +216,6 @@ namespace cubthread
       bool m_log;
   };
 
-  // wpstat - class used to collect worker pool statistics
-  //
-  class wpstat
-  {
-    public:
-      // types
-      using stat_type = std::uint64_t;
-      using clock_type = std::chrono::high_resolution_clock;
-      using time_point_type = clock_type::time_point;
-      using duration_type = std::chrono::nanoseconds;
-
-      // ctor/dtor
-      wpstat (stat_type *stats_p = NULL);
-      ~wpstat (void);
-
-      // statistic ID's - each for a different step of worker lifetime and task execution
-      // for each ID, a counter and a timer may be stored
-      enum class id
-      {
-	START_THREAD,             // count & time between pushing a task and invoking run on spawned worker thread
-	CREATE_CONTEXT,           // count & time to create a context
-	EXECUTE_TASK,             // count & time to execute task
-	RETIRE_TASK,              // count & time to retire task
-	SEARCH_TASK_IN_QUEUE,     // count & time to get a queued task
-	WAKEUP_WITH_TASK,         // count & time between pushing a task and its executor's wakeup
-	RETIRE_CONTEXT,           // count & time retiring context
-	COUNT                     // the number of collected statistics
-      };
-      static const std::size_t STATS_COUNT = static_cast<size_t> (id::COUNT);
-      static const std::size_t TOTAL_STATS_COUNT = 2 * STATS_COUNT;  // counters + timers
-
-      // helper functions
-      static inline const char *get_id_name (id statid);
-      static inline std::size_t to_index (id &statid);
-      static inline id to_id (std::size_t index);
-
-      // collect functions
-      // counter++, timer += delta
-      inline void collect (id statid, duration_type delta);
-      // counter++, timer += end - start
-      inline void collect (id statid, time_point_type start, time_point_type end);
-      // collect_and_timer - incremental collection that resets start time point on each call
-      // counter++, timer += now () - start, start = now ()
-      inline void collect_and_time (id statid, time_point_type &start);
-
-      // accumulate other_stats
-      void operator+= (const wpstat &other_stat);
-
-    private:
-
-      stat_type *m_counters;    // counters
-      stat_type *m_timers;      // timers
-      stat_type *m_own_stats;   // statistics buffer allocated when constructor doesn't receive a buffer
-  };
-
   // worker_pool<Context>::core
   //
   // description
@@ -310,7 +255,7 @@ namespace cubthread
       void count_stopped_workers (std::size_t &count_inout);
       void retire_queued_tasks (void);
       // statistics
-      void get_stats (wpstat &sum_inout);
+      void get_stats (cubperf::stat_value *sum_inout);
 
       // interface for workers
       // task management
@@ -411,22 +356,23 @@ namespace cubthread
     public:
       using core_type = typename worker_pool<Context>::core;
 
-      worker ();
+      worker (void);
+      ~worker (void);
 
       // init
       void init_core (core_type &parent);
 
       // start task execution on a new thread (push_time is provided by core)
-      void push_task_on_new_thread (task<Context> *work_p, wpstat::time_point_type push_time);
+      void push_task_on_new_thread (task<Context> *work_p, cubperf::time_point push_time);
       // run task on current thread (push_time is provided by core)
-      void push_task_on_running_thread (task<Context> *work_p, wpstat::time_point_type push_time);
+      void push_task_on_running_thread (task<Context> *work_p, cubperf::time_point push_time);
       // stop execution
       void stop_execution (void);
       // map function to context (if context is available)
       template <typename Func, typename ... Args>
       void map_context (bool &stop, Func &&func, Args &&... args);
       // add own stats to given argument
-      void get_stats (wpstat &sum_inout);
+      void get_stats (cubperf::stat_value *sum_inout);
 
     private:
 
@@ -455,11 +401,34 @@ namespace cubthread
       bool m_stop;                            // stop execution (set to true when worker pool is stopped)
 
       // statistics
-      wpstat::stat_type m_stats_array[wpstat::TOTAL_STATS_COUNT];   // buffer to store statistics
-      wpstat m_statistics;                                          // statistic collector
-      wpstat::time_point_type m_push_time;                          // push time point (provided by core)
-      wpstat::time_point_type m_time_point;                         // current time point
+      cubperf::statset &m_statistics;                                          // statistic collector
+      cubperf::time_point m_push_time;                          // push time point (provided by core)
   };
+
+  //////////////////////////////////////////////////////////////////////////
+  // statistics
+  //////////////////////////////////////////////////////////////////////////
+
+  // collected workers
+  static const cubperf::stat_id Wpstat_start_thread = 0;
+  static const cubperf::stat_id Wpstat_create_context = 1;
+  static const cubperf::stat_id Wpstat_execute_task = 2;
+  static const cubperf::stat_id Wpstat_retire_task = 3;
+  static const cubperf::stat_id Wpstat_found_in_queue = 4;
+  static const cubperf::stat_id Wpstat_wakeup_with_task = 5;
+  static const cubperf::stat_id Wpstat_recycle_context = 6;
+  static const cubperf::stat_id Wpstat_retire_context = 7;
+
+  cubperf::statset &wp_worker_statset_create (void);
+  void wp_worker_statset_destroy (cubperf::statset &stats);
+  void wp_worker_statset_time_and_increment (cubperf::statset &stats, cubperf::stat_id id);
+  void wp_worker_statset_accumulate (const cubperf::statset &what, cubperf::stat_value *where);
+  std::size_t wp_worker_statset_get_count (void);
+  const char *wp_worker_statset_get_name (std::size_t stat_index);
+
+  //////////////////////////////////////////////////////////////////////////
+  // other functions
+  //////////////////////////////////////////////////////////////////////////
 
   // system_core_count - return system core counts or 1 (if system core count cannot be obtained).
   //
@@ -467,11 +436,14 @@ namespace cubthread
   // does not return 0
   std::size_t system_core_count (void);
 
+  // custom worker pool exception handler
+  void wp_handle_system_error (const char *message, const std::system_error &e);
+  template <typename Func>
+  void wp_call_func_throwing_system_error (const char *message, Func &func);
+
   /************************************************************************/
   /* Template/inline implementation                                       */
   /************************************************************************/
-
-#define THREAD_WP_LOG(func, msg, ...) if (m_log) _er_log_debug (ARG_FILE_LINE, func ": " msg "\n", __VA_ARGS__)
 
   //////////////////////////////////////////////////////////////////////////
   // worker_pool implementation
@@ -568,12 +540,10 @@ namespace cubthread
     if (m_stopped.exchange (true))
       {
 	// already stopped
-	THREAD_WP_LOG ("stop", "stop was %s", "true");
 	return;
       }
     else
       {
-	THREAD_WP_LOG ("stop", "stop was %s", "false");
 	// I am responsible with stopping threads
       }
 
@@ -645,11 +615,11 @@ namespace cubthread
 
   template<typename Context>
   void
-  worker_pool<Context>::get_stats (wpstat &sum_inout)
+  worker_pool<Context>::get_stats (cubperf::stat_value *stats_out)
   {
     for (std::size_t it = 0; it < m_core_count; it++)
       {
-	m_core_array[it].get_stats (sum_inout);
+	m_core_array[it].get_stats (stats_out);
       }
   }
 
@@ -703,74 +673,6 @@ namespace cubthread
       }
 
     return index;
-  }
-
-  //////////////////////////////////////////////////////////////////////////
-  // wpstat
-  //////////////////////////////////////////////////////////////////////////
-
-  void
-  wpstat::collect (id statid, duration_type delta)
-  {
-    size_t index = to_index (statid);
-
-    m_counters[index]++;
-    m_timers[index] += delta.count ();
-  }
-
-  void
-  wpstat::collect (id statid, time_point_type start, time_point_type end)
-  {
-    collect (statid, end - start);
-  }
-
-  void
-  wpstat::collect_and_time (id statid, time_point_type &start)
-  {
-    time_point_type nowpt = clock_type::now ();
-
-    collect (statid, nowpt - start);
-    start = nowpt;    // reset time point
-  }
-
-  std::size_t
-  wpstat::to_index (id &statid)
-  {
-    return static_cast<size_t> (statid);
-  }
-
-  wpstat::id
-  wpstat::to_id (std::size_t index)
-  {
-    assert (index < STATS_COUNT);
-
-    return static_cast<id> (index);
-  }
-
-  const char *
-  wpstat::get_id_name (id statid)
-  {
-    switch (statid)
-      {
-      case id::START_THREAD:
-	return "START_THREAD";
-      case id::CREATE_CONTEXT:
-	return "CREATE_CONTEXT";
-      case id::EXECUTE_TASK:
-	return "EXECUTE_TASK";
-      case id::RETIRE_TASK:
-	return "RETIRE_TASK";
-      case id::SEARCH_TASK_IN_QUEUE:
-	return "SEARCH_TASK_IN_QUEUE";
-      case id::WAKEUP_WITH_TASK:
-	return "WAKEUP_WITH_TASK";
-      case id::RETIRE_CONTEXT:
-	return "RETIRE_CONTEXT";
-      case id::COUNT:
-      default:
-	assert (false);
-	return "UNKNOW";
-      }
   }
 
   //////////////////////////////////////////////////////////////////////////
@@ -836,7 +738,7 @@ namespace cubthread
     // 2. inactive will do too
     // 3. if no workers, reject task (returns false)
 
-    wpstat::time_point_type push_time = wpstat::clock_type::now ();
+    cubperf::time_point push_time = cubperf::clock::now ();
     worker *refp = NULL;
 
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
@@ -1017,11 +919,11 @@ namespace cubthread
 
   template <typename Context>
   void
-  worker_pool<Context>::core::get_stats (wpstat &sum_inout)
+  worker_pool<Context>::core::get_stats (cubperf::stat_value *stats_out)
   {
     for (std::size_t it = 0; it < m_max_workers; it++)
       {
-	m_worker_array[it].get_stats (sum_inout);
+	m_worker_array[it].get_stats (stats_out);
       }
   }
 
@@ -1030,19 +932,23 @@ namespace cubthread
   //////////////////////////////////////////////////////////////////////////
 
   template <typename Context>
-  worker_pool<Context>::core::worker::worker ()
+  worker_pool<Context>::core::worker::worker (void)
     : m_parent_core (NULL)
     , m_context_p (NULL)
     , m_task_p (NULL)
     , m_task_cv ()
     , m_task_mutex ()
     , m_stop (false)
-    , m_stats_array {0}
-    , m_statistics (reinterpret_cast<wpstat::stat_type *> (&m_stats_array))
+    , m_statistics (wp_worker_statset_create ())
     , m_push_time ()
-    , m_time_point ()
   {
     //
+  }
+
+  template <typename Context>
+  worker_pool<Context>::core::worker::~worker (void)
+  {
+    wp_worker_statset_destroy (m_statistics);
   }
 
   template <typename Context>
@@ -1054,7 +960,7 @@ namespace cubthread
 
   template <typename Context>
   void
-  worker_pool<Context>::core::worker::push_task_on_new_thread (task<Context> *work_p, wpstat::time_point_type push_time)
+  worker_pool<Context>::core::worker::push_task_on_new_thread (task<Context> *work_p, cubperf::time_point push_time)
   {
     // start new thread and run task
     assert (work_p != NULL);
@@ -1069,14 +975,27 @@ namespace cubthread
     // save task
     m_task_p = work_p;
 
-    // start thread
-    std::thread (&worker::run, this).detach ();    // don't wait for it
+    // start thread.
+    //
+    // the next code tries to help visualizing any system errors that can occur during create or detach in debug mode
+    //
+    // release will basically be reduced to:
+    // std::thread (&worker::run, this).detach ();
+    //
+
+    std::thread t;
+
+    auto lambda_create = [&] (void) -> void { t = std::thread (&worker::run, this); };
+    auto lambda_detach = [&] (void) -> void { t.detach (); };
+
+    wp_call_func_throwing_system_error ("starting thread", lambda_create);
+    wp_call_func_throwing_system_error ("detaching thread", lambda_detach);
   }
 
   template <typename Context>
   void
   worker_pool<Context>::core::worker::push_task_on_running_thread (task<Context> *work_p,
-      wpstat::time_point_type push_time)
+      cubperf::time_point push_time)
   {
     // run on current thread
     assert (work_p != NULL);
@@ -1123,12 +1042,12 @@ namespace cubthread
   worker_pool<Context>::core::worker::init_run (void)
   {
     // thread was started
-    m_time_point = m_push_time;
-    m_statistics.collect_and_time (wpstat::id::START_THREAD, m_time_point);
+    m_statistics.m_timept = m_push_time;
+    wp_worker_statset_time_and_increment (m_statistics, Wpstat_start_thread);
 
     // a context is required
     m_context_p = &m_parent_core->create_context ();
-    m_statistics.collect_and_time (wpstat::id::CREATE_CONTEXT, m_time_point);
+    wp_worker_statset_time_and_increment (m_statistics, Wpstat_create_context);
   }
 
   template <typename Context>
@@ -1141,7 +1060,7 @@ namespace cubthread
     // retire context
     m_parent_core->retire_context (*m_context_p);
     m_context_p = NULL;
-    m_statistics.collect_and_time (wpstat::id::RETIRE_CONTEXT, m_time_point);
+    wp_worker_statset_time_and_increment (m_statistics, Wpstat_retire_context);
   }
 
   template <typename Context>
@@ -1153,7 +1072,7 @@ namespace cubthread
     // retire task
     m_task_p->retire ();
     m_task_p = NULL;
-    m_statistics.collect_and_time (wpstat::id::RETIRE_TASK, m_time_point);
+    wp_worker_statset_time_and_increment (m_statistics, Wpstat_retire_task);
   }
 
   template <typename Context>
@@ -1164,7 +1083,7 @@ namespace cubthread
 
     // execute task
     m_task_p->execute (*m_context_p);
-    m_statistics.collect_and_time (wpstat::id::EXECUTE_TASK, m_time_point);
+    wp_worker_statset_time_and_increment (m_statistics, Wpstat_execute_task);
 
     // and retire task
     retire_current_task ();
@@ -1196,13 +1115,14 @@ namespace cubthread
     task_type *task_p = m_parent_core->get_task_or_add_to_free_active_list (*this);
     if (task_p != NULL)
       {
-	m_statistics.collect_and_time (wpstat::id::SEARCH_TASK_IN_QUEUE, m_time_point);
+	wp_worker_statset_time_and_increment (m_statistics, Wpstat_found_in_queue);
 
 	// it is safe to set here
 	m_task_p = task_p;
 
 	// we need to recycle context before reusing
 	m_parent_core->recycle_context (*m_context_p);
+	wp_worker_statset_time_and_increment (m_statistics, Wpstat_recycle_context);
 	return true;
       }
 
@@ -1249,18 +1169,19 @@ namespace cubthread
     if (m_task_p == NULL)
       {
 	// no task assigned
-	m_time_point = wpstat::clock_type::now ();
+	m_statistics.m_timept = cubperf::clock::now ();
 
 	return false;
       }
     else
       {
 	// found task
-	m_time_point = m_push_time;
-	m_statistics.collect_and_time (wpstat::id::WAKEUP_WITH_TASK, m_time_point);
+	m_statistics.m_timept = m_push_time;
+	wp_worker_statset_time_and_increment (m_statistics, Wpstat_wakeup_with_task);
 
 	// we need to recycle context before reusing
 	m_parent_core->recycle_context (*m_context_p);
+	wp_worker_statset_time_and_increment (m_statistics, Wpstat_recycle_context);
 	return true;
       }
   }
@@ -1296,15 +1217,15 @@ namespace cubthread
 	//       get_task_or_add_to_inactive_list directly to m_task_p.
 	//       but it's safe to set it here.
 	m_task_p = task_p;
-	m_statistics.collect_and_time (wpstat::id::SEARCH_TASK_IN_QUEUE, m_time_point);
+	wp_worker_statset_time_and_increment (m_statistics, Wpstat_found_in_queue);
       }
   }
 
   template <typename Context>
   void
-  worker_pool<Context>::core::worker::get_stats (wpstat &sum_inout)
+  worker_pool<Context>::core::worker::get_stats (cubperf::stat_value *sum_inout)
   {
-    sum_inout += m_statistics;
+    wp_worker_statset_accumulate (m_statistics, sum_inout);
   }
 
   template <typename Context>
@@ -1320,7 +1241,29 @@ namespace cubthread
       }
   }
 
-#undef THREAD_WP_LOG
+  //////////////////////////////////////////////////////////////////////////
+  // other functions
+  //////////////////////////////////////////////////////////////////////////
+
+  template <typename Func>
+  void
+  wp_call_func_throwing_system_error (const char *message, Func &func)
+  {
+#if !defined (NDEBUG)
+    try
+      {
+#endif // DEBUG
+
+	func ();  // no exception catching on release
+
+#if !defined (NDEBUG)
+      }
+    catch (const std::system_error &e)
+      {
+	wp_handle_system_error (message, e);
+      }
+#endif // DEBUG
+  }
 
 } // namespace cubthread
 

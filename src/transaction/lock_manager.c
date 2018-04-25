@@ -7602,7 +7602,6 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
 #if !defined (SERVER_MODE)
   return true;
 #else /* !SERVER_MODE */
-  int i;
   bool ignore;
   THREAD_ENTRY *thrd;
 
