@@ -27,7 +27,6 @@
 
 #include <string>
 #include <type_traits>
-#include <vector>
 
 #include <cassert>
 
@@ -117,21 +116,20 @@ namespace cubperf
 
       // constructor
       stat_definition (const stat_id id, type stat_type, const char *first_name, const char *second_name = NULL);
-
-      // copy constructor - needed by statset_definition's vector
+      // copy constructor
       stat_definition (const stat_definition &other);
 
-      std::size_t get_value_count (void); // get value count
+      std::size_t get_value_count (void) const; // get value count
 
     private:
       friend class statset_definition; // statset_definition will process private content
 
-      stat_definition (void) = delete;
+      stat_definition (void);
 
       // make sure this is updated if more values are possible
       static const std::size_t MAX_VALUE_COUNT = 2;
 
-      const stat_id m_id;                     // assigned ID
+      stat_id m_id;                           // assigned ID
       type m_type;                            // type
       const char *m_names[MAX_VALUE_COUNT];   // one per each value
       std::size_t m_offset;                   // used by stat_definition to track each statistic's values
@@ -146,14 +144,8 @@ namespace cubperf
     public:
       // no default constructor
       statset_definition (void) = delete;
-
-      // construct as:
-      // mydef = { stat_definition (...), stat_definition (...), ... };
-      //
-      // needed variadic templates to allow any number of statistics
-      //
-      template <typename... Args>
-      statset_definition (stat_definition &def, Args &&... args);
+      statset_definition (std::initializer_list<stat_definition> defs);
+      ~statset_definition (void);
 
       // create (construct) a non-atomic set of values
       statset *create_statset (void) const;
@@ -205,11 +197,6 @@ namespace cubperf
       std::size_t get_values_memsize (void) const;                  // get memory size for set of values
 
     private:
-      // build & process_def are used to append each statistics definition to the set
-      template <typename... Args>
-      void build (stat_definition &def, Args &&... args); // build based on def and other args
-      void build (stat_definition &def);                  // build based on def
-      void process_def (stat_definition &def);            // process on stat definition
 
       // generic versions of statistics operation on set of values
       // common point for specialized versions of operations - on statset and atomic_statset
@@ -238,8 +225,10 @@ namespace cubperf
       void generic_add_stat_values_with_converted_timers (const generic_statset<IsAtomic> &statsetr,
 	  stat_value *output_stats) const;
 
-      std::vector<stat_definition> m_stat_defs;     // vector with statistics definitions
-      std::vector<const char *> m_value_names;      // vector with names for each value in the set
+      std::size_t m_stat_count;
+      std::size_t m_value_count;
+      stat_definition *m_stat_defs;     // vector with statistics definitions
+      std::string *m_value_names;      // vector with names for each value in the set
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -255,22 +244,6 @@ namespace cubperf
   //////////////////////////////////////////////////////////////////////////
   // statset_definition
   //////////////////////////////////////////////////////////////////////////
-
-  template <typename ... Args>
-  statset_definition::statset_definition (stat_definition &def, Args &&... args)
-    : m_stat_defs ()
-    , m_value_names ()
-  {
-    build (def, args...);
-  }
-
-  template <typename ... Args>
-  void
-  statset_definition::build (stat_definition &def, Args &&... args)
-  {
-    process_def (def);
-    build (args...);
-  }
 
   template <bool IsAtomic>
   void
@@ -402,7 +375,7 @@ namespace cubperf
       stat_value *output_stats) const
   {
     std::size_t offset = 0;
-    for (stat_id id = 0; id < m_stat_defs.size (); id++)
+    for (stat_id id = 0; id < get_stat_count (); id++)
       {
 	offset = m_stat_defs[id].m_offset;
 	switch (m_stat_defs[id].m_type)
@@ -445,7 +418,7 @@ namespace cubperf
       stat_value *output_stats) const
   {
     std::size_t offset = 0;
-    for (stat_id id = 0; id < m_stat_defs.size (); id++)
+    for (stat_id id = 0; id < get_stat_count (); id++)
       {
 	offset = m_stat_defs[id].m_offset;
 	switch (m_stat_defs[id].m_type)
