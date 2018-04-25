@@ -42,12 +42,11 @@
 //        3. safely manipulate the set of values
 //        4. easily modify the group of statistics by adding, removing or changing types of statistics
 //
-//    the model is somewhat inspired from performance monitor's PSTAT_METADATA and the way it collects statistics, using
-//    the C++ templates
+//    the model is somewhat inspired from performance monitor's PSTAT_METADATA and the way it collects statistics,
+//    with the addition C++ templates
 //    templates are used for:
 //      1. avoiding duplicate implementation for atomic and non-atomic statistics sets.
-//      2. static initializer for statset_definition
-//      3. automatic timer statistics conversions
+//      2. automatic timer statistics conversions
 //
 //  usage:
 //
