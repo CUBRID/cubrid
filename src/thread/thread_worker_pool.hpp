@@ -626,11 +626,17 @@ namespace cubthread
   template <typename Context>
   template <typename Func, typename ... Args>
   void
-  cubthread::worker_pool<Context>::map_running_contexts (bool &stop, Func &&func, Args &&... args)
+  cubthread::worker_pool<Context>::map_running_contexts (Func &&func, Args &&... args)
   {
+    bool stop = false;
     for (std::size_t it = 0; it < m_core_count && !stop; it++)
       {
 	m_core_array[it].map_running_contexts (stop, func, args...);
+	if (stop)
+	  {
+	    // mapping is stopped
+	    return;
+	  }
       }
   }
 
@@ -871,11 +877,16 @@ namespace cubthread
   template <typename Context>
   template <typename Func, typename ... Args>
   void
-  cubthread::worker_pool<Context>::core::map_running_contexts (bool &core, Func &&func, Args &&... args)
+  cubthread::worker_pool<Context>::core::map_running_contexts (bool &stop, Func &&func, Args &&... args)
   {
     for (std::size_t it = 0; it < m_max_workers && !stop; it++)
       {
 	m_worker_array[it].map_context (stop, func, args...);
+	if (stop)
+	  {
+	    // stop mapping
+	    return;
+	  }
       }
   }
 

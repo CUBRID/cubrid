@@ -477,43 +477,6 @@ css_init_job_queue (void)
 }
 
 /*
- * css_broadcast_shutdown_thread () -
- *   return:
- */
-void
-css_broadcast_shutdown_thread (void)
-{
-  THREAD_ENTRY *thrd = NULL;
-  int rv;
-  int i, thread_count;
-
-  /* idle worker threads are blocked on the job queue. */
-  for (i = 0; i < CSS_NUM_JOB_QUEUE; i++)
-    {
-      rv = pthread_mutex_lock (&css_Job_queue[i].job_lock);
-
-      thrd = css_Job_queue[i].worker_thrd_list;
-      thread_count = 0;
-
-      while (thrd)
-	{
-	  thread_wakeup (thrd, THREAD_RESUME_DUE_TO_SHUTDOWN);
-	  thrd = thrd->worker_thrd_list;
-	  thread_count++;
-
-	  if (thread_count > thread_num_worker_threads ())
-	    {
-	      /* prevent infinite loop */
-	      assert (0);
-	      break;
-	    }
-	}
-
-      pthread_mutex_unlock (&css_Job_queue[i].job_lock);
-    }
-}
-
-/*
  * css_add_to_job_queue () -
  *   return:
  *   job_entry_p(in):
@@ -1867,23 +1830,12 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
     }
-  css_Connection_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, JOB_QUEUE_SIZE);
+  css_Connection_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT, NULL,
+									      cubthread::system_core_count (), false);
   if (css_Connection_worker_pool == NULL)
     {
       assert (false);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_FAILED;
-    }
-
-  /* startup worker/daemon threads */
-  status = thread_start_workers ();
-  if (status != NO_ERROR)
-    {
-      if (status == ER_CSS_PTHREAD_CREATE)
-	{
-	  /* thread creation error */
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, NUM_NORMAL_TRANS);
-	}
       return ER_FAILED;
     }
 
@@ -1924,9 +1876,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 shutdown:
 #endif
 
-  // TODO: stop connection worker pool
-  /* stop threads */
-  thread_stop_active_workers (THREAD_STOP_WORKERS_EXCEPT_LOGWR);
+  // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
+  // all log is transfered
   css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
 
   /* stop vacuum threads. */
@@ -1957,10 +1908,10 @@ shutdown:
 
   LOG_CS_EXIT (thread_p);
 
+  // stop log writers
   css_stop_all_workers (*thread_p, THREAD_STOP_LOGWR);
-  thread_stop_active_workers (THREAD_STOP_LOGWR);
 
-  // destroy request worker pool
+  // destroy thread worker pools
   THREAD_GET_MANAGER ()->destroy_worker_pool (css_Server_request_worker_pool);
   THREAD_GET_MANAGER ()->destroy_worker_pool (css_Connection_worker_pool);
 
