@@ -284,11 +284,11 @@ static int init ()
     }
   listening_thread.join ();
 
-  listener_daemon = new cubthread::daemon (std::chrono::seconds (0), dummy_mng_ptr,
+  listener_daemon = new cubthread::daemon (cubthread::looper (std::chrono::seconds (0)), dummy_mng_ptr,
 		    new conn_listener_daemon_task (std::move (channels)));
   for (unsigned int i = 0; i < NUM_OF_INITIATORS; i++)
     {
-      initiator_daemons.push_back (new cubthread::daemon (std::chrono::seconds (1), dummy_mng_ptr, tasks[i]));
+      initiator_daemons.push_back (new cubthread::daemon (cubthread::looper (std::chrono::seconds (1)), dummy_mng_ptr, tasks[i]));
     }
 
   return NO_ERROR;
