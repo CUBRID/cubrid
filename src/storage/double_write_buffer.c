@@ -2455,7 +2455,7 @@ dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block, 
   ATOMIC_INC_32 (&block->count_flush_volumes_info, 1);
 
   assert (((old_count_flush_volumes_info + 1) == block->count_flush_volumes_info)
-	  && (block->count_flush_volumes_info < block->max_to_flush_vdes));
+	  && (block->count_flush_volumes_info <= block->max_to_flush_vdes));
 
   return flush_new_volume_info;
 }
