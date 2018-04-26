@@ -359,7 +359,7 @@ class JSON_SERIALIZER : public JSON_BASE_HANDLER
     }
 
   private:
-    void SaveSizePointers (char *ptr);
+    bool SaveSizePointers (char *ptr);
     void SetSizePointers (SizeType size);
 
     bool PackType (const DB_JSON_TYPE &type);
@@ -437,8 +437,14 @@ STATIC_INLINE const JSON_VALUE &db_json_doc_to_value (const JSON_DOC &doc) __att
 static int db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc);
 static int db_json_add_json_value_to_object (JSON_DOC &doc, const char *name, JSON_VALUE &value);
 
-static void db_json_deserialize_value (OR_BUF *buf, const std::string &path, JSON_DOC &doc,
-				       const std::unordered_map<std::string, std::string> &special_chars, int &err);
+static int db_json_deserialize_doc_internal (OR_BUF *buf, JSON_DOC &doc, JSON_VALUE &value);
+
+static int db_json_or_buf_underflow (OR_BUF *buf, size_t length);
+static int db_json_unpack_string_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc);
+static int db_json_unpack_int_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc);
+static int db_json_unpack_bool_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc);
+static int db_json_unpack_object_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc);
+static int db_json_unpack_array_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc);
 
 int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
 {
@@ -2728,13 +2734,14 @@ JSON_WALKER::WalkValue (JSON_VALUE &value)
   return NO_ERROR;
 }
 
-void
+bool
 JSON_SERIALIZER::SaveSizePointers (char *ptr)
 {
   // save the current pointer
   m_size_pointers.push (ptr);
   // skip the size
-  or_put_int (m_buffer, 0);
+  m_error = or_put_int (m_buffer, 0);
+  return !HasError();
 }
 
 void
@@ -2865,9 +2872,7 @@ bool JSON_SERIALIZER::StartObject()
 
   // add pointer to stack, because we need to come back to overwrite this pointer with the correct size
   // we will know that in EndObject function
-  SaveSizePointers (m_buffer->ptr);
-
-  return true;
+  return SaveSizePointers (m_buffer->ptr);
 }
 
 bool JSON_SERIALIZER_LENGTH::StartArray()
@@ -2886,9 +2891,7 @@ bool JSON_SERIALIZER::StartArray()
 
   // add pointer to stack, because we need to come back to overwrite this pointer with the correct size
   // we will know that in EndObject function
-  SaveSizePointers (m_buffer->ptr);
-
-  return true;
+  return SaveSizePointers (m_buffer->ptr);
 }
 
 bool JSON_SERIALIZER_LENGTH::EndObject (SizeType memberCount)
@@ -2949,216 +2952,260 @@ db_json_serialize_length (const JSON_DOC &doc)
 }
 
 /*
- * db_json_deserialize_helper () - this is where the deserialization actually happens
- *
- * return            : error_code
- * json_raw (in)     : pointer of the current position of buffer
- * path (in)         : the path is used at reconstruction
- * doc (in)          : the reconstructed document
- * serial_types (in) : map where we store the correspondence between internal types and serialization types
- */
-static void
-db_json_deserialize_value (OR_BUF *buf, const std::string &path, JSON_DOC &doc,
-			   const std::unordered_map<std::string, std::string> &special_chars, int &err)
+* db_json_or_buf_underflow () - Check if the buffer return underflow
+*
+* return            : error_code
+* buf (in)          : the buffer which contains the data
+* length (in)       : the length of the string that we want to retrieve
+*
+* We do this check separately because we want to avoid an additional memory copy when getting the data from the buffer
+* for storing it in the json document
+*/
+static int
+db_json_or_buf_underflow (OR_BUF *buf, size_t length)
 {
-  JSON_VALUE value;
-  DB_JSON_TYPE json_type;
-  JSON_POINTER p (path.c_str ());
-  int int_value;
-  double double_value;
-  char *str = NULL, *key = NULL;
-  int size = 0, str_length = 0;
+  if ((buf->ptr + length) > buf->endptr)
+    {
+      return or_underflow (buf);
+    }
+  return NO_ERROR;
+}
+
+static int
+db_json_unpack_string_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
+{
+  size_t str_length;
   int rc = NO_ERROR;
 
-  // early out if the error was set earlier in the recursion
-  if (err != NO_ERROR)
+  // get the string length
+  str_length = or_get_int (buf, &rc);
+  if (rc != NO_ERROR)
     {
-      ASSERT_ERROR();
-      return;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+      return rc;
     }
+
+  rc = db_json_or_buf_underflow (buf, str_length);
+  if (rc != NO_ERROR)
+    {
+      // we need to assert error here because or_underflow sets the error unlike or_overflow
+      // which only returns the error code
+      ASSERT_ERROR();
+      return rc;
+    }
+
+  // set the string directly from the buffer to avoid additional copy
+  value.SetString (buf->ptr, str_length - 1, doc.GetAllocator());
+  // update the buffer pointer
+  buf->ptr += str_length;
+
+  // still need to take care of the alignment
+  rc = or_align (buf, INT_ALIGNMENT);
+  if (rc != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+      return rc;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+db_json_unpack_int_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
+{
+  int rc = NO_ERROR;
+  int int_value;
+
+  // unpack int
+  int_value = or_get_int (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+      return rc;
+    }
+
+  value.SetInt (int_value);
+
+  return NO_ERROR;
+}
+
+static int
+db_json_unpack_double_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
+{
+  int rc = NO_ERROR;
+  double double_value;
+
+  // unpack double
+  double_value = or_get_double (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+      return rc;
+    }
+
+  value.SetDouble (double_value);
+
+  return NO_ERROR;
+}
+
+static int
+db_json_unpack_bool_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
+{
+  int rc = NO_ERROR;
+  int int_value;
+
+  int_value = or_get_int (buf, &rc); // it can be 0 or 1
+  if (rc != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+      return rc;
+    }
+
+  value.SetBool (int_value == 1 ? true : false);
+
+  return NO_ERROR;
+}
+
+static int
+db_json_unpack_object_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
+{
+  int rc = NO_ERROR;
+  int size;
+
+  value.SetObject();
+
+  // get the member count of the object
+  size = or_get_int (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+      return rc;
+    }
+
+  // for each key-value pair we need to deserialize the value
+  for (int i = 0; i < size; i++)
+    {
+      // get the key
+      JSON_VALUE key;
+      rc = db_json_unpack_string_to_value (buf, key, doc);
+      if (rc != NO_ERROR)
+	{
+	  ASSERT_ERROR();
+	  return rc;
+	}
+
+      // get the value
+      JSON_VALUE child;
+      rc = db_json_deserialize_doc_internal (buf, doc, child);
+      if (rc != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+	  return rc;
+	}
+
+      value.AddMember (key, child, doc.GetAllocator());
+    }
+
+  return NO_ERROR;
+}
+
+static int
+db_json_unpack_array_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
+{
+  int rc = NO_ERROR;
+  int size;
+
+  value.SetArray();
+
+  // get the member count of the array
+  size = or_get_int (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+      return rc;
+    }
+
+  // for each member we need to deserialize it
+  for (int i = 0; i < size; i++)
+    {
+      JSON_VALUE child;
+      rc = db_json_deserialize_doc_internal (buf, doc, child);
+      if (rc != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+	  return rc;
+	}
+
+      value.PushBack (child, doc.GetAllocator());
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * db_json_deserialize_doc_internal () - this is where the deserialization actually happens
+ *
+ * return           : error_code
+ * buf (in)         : the buffer which contains the json serialized
+ * doc (in)         : we will use this parameter only for the allocator, it's the root of the json document
+ * value (in)       : the current value from the json document
+ */
+static int
+db_json_deserialize_doc_internal (OR_BUF *buf, JSON_DOC &doc, JSON_VALUE &value)
+{
+  DB_JSON_TYPE json_type;
+  int rc = NO_ERROR;
 
   // get the json scalar value
   json_type = static_cast<DB_JSON_TYPE> (or_get_int (buf, &rc));
   if (rc != NO_ERROR)
     {
-      err = rc;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
-      return;
+      return rc;
     }
 
   switch (json_type)
     {
     case DB_JSON_INT:
-      int_value = or_get_int (buf, &rc);
-      if (rc != NO_ERROR)
-	{
-	  err = rc;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
-	  return;
-	}
-
-      value.SetInt (int_value);
-      p.Set (doc, value, doc.GetAllocator ());
+      rc = db_json_unpack_int_to_value (buf, value, doc);
       break;
 
     case DB_JSON_DOUBLE:
-      double_value = or_get_double (buf, &rc);
-      if (rc != NO_ERROR)
-	{
-	  err = rc;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
-	  return;
-	}
-
-      value.SetDouble (double_value);
-      p.Set (doc, value, doc.GetAllocator ());
+      rc = db_json_unpack_double_to_value (buf, value, doc);
       break;
 
     case DB_JSON_STRING:
-      str_length = or_get_int (buf, &rc);
-      if (rc != NO_ERROR)
-	{
-	  err = rc;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
-	  return;
-	}
-
-      str = (char *)db_private_alloc (NULL, str_length);
-
-      rc = or_get_data (buf, str, str_length);
-      if (rc != NO_ERROR)
-	{
-	  err = rc;
-	  // we need to assert error here because or_underflow sets the error unlike or_overflow
-	  // which only returns the error code
-	  ASSERT_ERROR();
-	  if (str != NULL)
-	    {
-	      db_private_free (NULL, str);
-	    }
-	  return;
-	}
-
-      rc = or_align (buf, INT_ALIGNMENT);
-      if (rc != NO_ERROR)
-	{
-	  err = rc;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
-	  if (str != NULL)
-	    {
-	      db_private_free (NULL, str);
-	    }
-	  return;
-	}
-
-      value.SetString (str, str_length - 1, doc.GetAllocator ());
-      p.Set (doc, value, doc.GetAllocator ());
-
-      db_private_free (NULL, str);
+      rc = db_json_unpack_string_to_value (buf, value, doc);
       break;
 
     case DB_JSON_BOOL:
-      int_value = or_get_int (buf, &rc); // it can be 0 or 1
-      if (rc != NO_ERROR)
-	{
-	  err = rc;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
-	  return;
-	}
-
-      value.SetBool (int_value == 1 ? true : false);
-      p.Set (doc, value, doc.GetAllocator());
+      rc = db_json_unpack_bool_to_value (buf, value, doc);
       break;
 
     case DB_JSON_NULL:
-      value.SetNull();
-      p.Set (doc, value, doc.GetAllocator());
+      doc.SetNull();
       break;
 
     case DB_JSON_OBJECT:
-      value.SetObject ();
-      p.Set (doc, value, doc.GetAllocator ());
-
-      size = or_get_int (buf, &rc);
-      if (rc != NO_ERROR)
-	{
-	  err = rc;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
-	  return;
-	}
-
-      for (int i = 0; i < size; i++)
-	{
-	  // get the key
-	  // TODO: packer seems to just pack string. Why do we do this on unpack?
-	  str_length = or_get_int (buf, &rc);
-	  if (rc != NO_ERROR)
-	    {
-	      err = rc;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
-	      return;
-	    }
-
-	  key = (char *)db_private_alloc (NULL, str_length);
-
-	  rc = or_get_data (buf, key, str_length);
-	  if (rc != NO_ERROR)
-	    {
-	      err = rc;
-	      // we need to assert error here because or_underflow sets the error unlike or_overflow
-	      // which only returns the error code
-	      ASSERT_ERROR();
-	      if (key != NULL)
-		{
-		  db_private_free (NULL, key);
-		}
-	      return;
-	    }
-
-	  rc = or_align (buf, INT_ALIGNMENT);
-	  if (rc != NO_ERROR)
-	    {
-	      err = rc;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
-	      return;
-	    }
-
-	  std::string key_string = key;
-	  db_json_replace_token_special_chars (key_string, special_chars);
-
-	  db_private_free (NULL, key);
-
-	  // get the value
-	  db_json_deserialize_value (buf, path + "/" + key_string, doc, special_chars, err);
-	}
-
+      rc = db_json_unpack_object_to_value (buf, value, doc);
       break;
 
     case DB_JSON_ARRAY:
-      value.SetArray ();
-      p.Set (doc, value, doc.GetAllocator ());
-
-      size = or_get_int (buf, &rc);
-      if (rc != NO_ERROR)
-	{
-	  err = rc;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
-	  return;
-	}
-
-      for (int i = 0; i < size; i++)
-	{
-	  db_json_deserialize_value (buf, path + "/" + std::to_string (i), doc, special_chars, err);
-	}
-
+      rc = db_json_unpack_array_to_value (buf, value, doc);
       break;
 
     default:
       /* we shouldn't get here */
       assert (false);
-      err = ER_FAILED;
-      return;
+      return ER_FAILED;
     }
+
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR();
+    }
+
+  return rc;
 }
 
 /*
@@ -3171,16 +3218,17 @@ db_json_deserialize_value (OR_BUF *buf, const std::string &path, JSON_DOC &doc,
 int
 db_json_deserialize (OR_BUF *buf, JSON_DOC *&doc)
 {
-  std::unordered_map<std::string, std::string> special_chars;
   int error_code = NO_ERROR;
-
-  // construct the correspondence map
-  db_json_build_path_special_chars (JSON_PATH_TYPE::JSON_PATH_SQL_JSON, special_chars);
 
   // create the document that we want to reconstruct
   doc = db_json_allocate_doc ();
 
-  db_json_deserialize_value (buf, "", *doc, special_chars, error_code);
+  error_code = db_json_deserialize_doc_internal (buf, *doc, db_json_doc_to_value (*doc));
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR();
+      db_json_delete_doc (doc);
+    }
 
   return error_code;
 }

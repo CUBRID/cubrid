@@ -17434,7 +17434,6 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
   if (rc != NO_ERROR)
     {
       ASSERT_ERROR ();
-      db_json_delete_doc (doc);
       return rc;
     }
 
@@ -17464,7 +17463,6 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   if (rc != NO_ERROR)
     {
       ASSERT_ERROR ();
-      db_json_delete_doc (doc1);
       return res;
     }
 
@@ -17472,7 +17470,6 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   if (rc != NO_ERROR)
     {
       ASSERT_ERROR ();
-      db_json_delete_doc (doc2);
       return res;
     }
 
