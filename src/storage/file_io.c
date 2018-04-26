@@ -62,10 +62,6 @@
 #include <aio.h>
 #endif /* HPUX */
 
-#if defined(USE_AIO)
-#include <aio.h>
-#endif /* USE_AIO */
-
 #include "porting.h"
 
 #include "chartype.h"
@@ -498,6 +494,10 @@ static bool fileio_is_volume_label_equal (THREAD_ENTRY * thread_p, FILEIO_VOLUME
 static int fileio_expand_permanent_volume_info (FILEIO_VOLUME_HEADER * header, int volid);
 static int fileio_expand_temporary_volume_info (FILEIO_VOLUME_HEADER * header, int volid);
 static bool fileio_is_terminated_process (int pid);
+
+static ssize_t fileio_os_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, size_t count, off_t offset);
+static ssize_t fileio_os_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, size_t count, off_t offset);
+static ssize_t pwrite_with_fi (THREAD_ENTRY * thread_p, int fd, const void *buf, size_t count, off_t offset);
 
 #if !defined(WINDOWS)
 static FILEIO_LOCKF_TYPE fileio_lock (const char *db_fullname, const char *vlabel, int vdes, bool dowait);
@@ -3521,31 +3521,30 @@ fileio_is_system_volume_label_equal (THREAD_ENTRY * thread_p, FILEIO_SYSTEM_VOLU
   return (util_compare_filepath (sys_vol_info_p->vlabel, arg->vol_label) == 0);
 }
 
-#if defined(SERVER_MODE) && !defined(WINDOWS) && !defined (USE_AIO)
 /*
-* pwrite_with_fi () - Write buffer to file descriptor with fault injection.
-*   return:
-*   thread_p(in): thread entry
-*   fd(in): file descriptor
-*   buf(in):  buffer to write
-*   count(in): count bytes to write
-*   offset(in): offset into file
-*/
-ssize_t
+ * pwrite_with_fi () - Write buffer to file descriptor with fault injection.
+ *   return:
+ *   thread_p(in): thread entry
+ *   fd(in): file descriptor
+ *   buf(in):  buffer to write
+ *   count(in): count bytes to write
+ *   offset(in): offset into file
+ */
+static ssize_t
 pwrite_with_fi (THREAD_ENTRY * thread_p, int fd, const void *buf, size_t count, off_t offset)
 {
-  const int _4K = 4096;
-  ssize_t r;
+  const int fourK = 4096;
   int count_blocks;
+  ssize_t r;
 
   if (sysprm_find_fi_code_in_integer_list (PRM_ID_FAULT_INJECTION_IDS, (int) FI_TEST_FILE_IO_WRITE_PARTS1) == true)
     {
       /* Write blocks in their order. You may change and test another order. */
-      count_blocks = count / _4K;
+      count_blocks = count / fourK;
       for (int i = 0; i < count_blocks; i++)
 	{
-	  r = pwrite (fd, ((char *) buf) + (i * _4K), _4K, offset + (i * _4K));
-	  if (r != _4K)
+	  r = pwrite (fd, ((char *) buf) + (i * fourK), fourK, offset + (i * fourK));
+	  if (r != fourK)
 	    {
 	      return r;
 	    }
@@ -3558,11 +3557,11 @@ pwrite_with_fi (THREAD_ENTRY * thread_p, int fd, const void *buf, size_t count, 
   else if (sysprm_find_fi_code_in_integer_list (PRM_ID_FAULT_INJECTION_IDS, (int) FI_TEST_FILE_IO_WRITE_PARTS2) == true)
     {
       /* Write blocks in reverse order. You may change and test the blocks order. */
-      count_blocks = count / _4K;
+      count_blocks = count / fourK;
       for (int i = count_blocks - 1; i >= 0; i--)
 	{
-	  r = pwrite (fd, ((char *) buf) + (i * _4K), _4K, offset + (i * _4K));
-	  if (r != _4K)
+	  r = pwrite (fd, ((char *) buf) + (i * fourK), fourK, offset + (i * fourK));
+	  if (r != fourK)
 	    {
 	      return r;
 	    }
@@ -3575,7 +3574,6 @@ pwrite_with_fi (THREAD_ENTRY * thread_p, int fd, const void *buf, size_t count, 
 
   return pwrite (fd, buf, count, offset);
 }
-#endif
 
 #if defined(HPUX) && !defined(IA64)
 /*
@@ -3708,17 +3706,78 @@ fileio_get_volume_mutex (THREAD_ENTRY * thread_p, int vdes)
 #endif /* WINDOWS && SERVER_MODE */
 
 /*
+ * fileio_os_read () - helper for fileio_read
+ *   return: the number of bytes read is returned. On error, error code.
+ *   vol_fd(in): Volume descriptor
+ *   io_page_p(out): Address where content of page is stored. Must be of page_size long
+ *   count(in): the number of bytes to be read
+ *   offset(in): starting file offset
+ */
+static ssize_t
+fileio_os_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, size_t count, off_t offset)
+{
+#if !defined (SERVER_MODE)
+  /* Locate the desired page */
+  if (lseek (vol_fd, offset, SEEK_SET) != offset)
+    {
+      return ER_FAILED;
+    }
+
+  /* Read the desired page */
+  return read (vol_fd, io_page_p, count);
+#elif defined (WINDOWS)
+  // TODO: replace it with ReadFile
+  ssize_t nbytes;
+  int rv;
+  pthread_mutex_t *io_mutex;
+  static pthread_mutex_t io_mutex_instance = PTHREAD_MUTEX_INITIALIZER;
+
+  io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
+  if (io_mutex == NULL)
+    {
+      io_mutex = &io_mutex_instance;
+    }
+
+  rv = pthread_mutex_lock (io_mutex);
+  if (rv != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      return ER_FAILED;
+    }
+
+  /* Locate the desired page */
+  if (lseek (vol_fd, offset, SEEK_SET) != offset)
+    {
+      pthread_mutex_unlock (io_mutex);
+      return ER_FAILED;
+    }
+
+  /* Read the desired page */
+  nbytes = read (vol_fd, io_page_p, (unsigned int) count);
+  if (pthread_mutex_unlock (io_mutex) != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
+      return ER_FAILED;
+    }
+
+  return nbytes;
+#else /* WINDOWS */
+  return pread (vol_fd, io_page_p, count, offset);
+#endif
+}
+
+/*
  * fileio_read () - READ A PAGE FROM DISK
  *   return:
  *   vol_fd(in): Volume descriptor
- *   io_page_p(out): Address where content of page is stored. Must be of
- *                   page_size long
+ *   io_page_p(out): Address where content of page is stored. Must be of page_size long
  *   page_id(in): Page identifier
  *   page_size(in): Page size
  *
  * Note: Read the content of the page described by page_id onto the
  *       given io_page_p buffer. The io_page_p must be page_size long.
  */
+
 void *
 fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_id, size_t page_size)
 {
@@ -3729,16 +3788,6 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_i
   off_t offset = FILEIO_GET_FILE_SIZE (page_size, page_id);
   ssize_t nbytes;
   bool is_retry = true;
-
-#if defined(WINDOWS) && defined(SERVER_MODE)
-  int rv;
-  pthread_mutex_t *io_mutex;
-  static pthread_mutex_t io_mutex_instance = PTHREAD_MUTEX_INITIALIZER;
-#endif /* WINDOWS && SERVER_MODE */
-#if defined(USE_AIO)
-  struct aiocb cb;
-  const struct aiocb *cblist[1];
-#endif /* USE_AIO */
 
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
@@ -3751,66 +3800,8 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_i
     {
       is_retry = false;
 
-#if !defined(SERVER_MODE)
-      /* Locate the desired page */
-      if (lseek (vol_fd, offset, SEEK_SET) != offset)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_READ, 2, page_id,
-			       fileio_get_volume_label (fileio_get_volume_id (vol_fd), PEEK));
-	  return NULL;
-	}
-
-      /* Read the desired page */
-      nbytes = read (vol_fd, io_page_p, (unsigned int) page_size);
+      nbytes = fileio_os_read (thread_p, vol_fd, io_page_p, page_size, offset);
       if (nbytes != (ssize_t) page_size)
-#elif defined(WINDOWS)
-      io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
-      if (io_mutex == NULL)
-	{
-	  io_mutex = &io_mutex_instance;
-	}
-
-      rv = pthread_mutex_lock (io_mutex);
-      if (rv != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, rv, 0);
-	  return NULL;
-	}
-
-      /* Locate the desired page */
-      if (lseek (vol_fd, offset, SEEK_SET) != offset)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_READ, 2, page_id,
-			       fileio_get_volume_label (fileio_get_volume_id (vol_fd), PEEK));
-	  pthread_mutex_unlock (io_mutex);
-	  return NULL;
-	}
-
-      /* Read the desired page */
-      nbytes = read (vol_fd, io_page_p, (unsigned int) page_size);
-      if (pthread_mutex_unlock (io_mutex) != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
-	  return NULL;
-	}
-
-      if (nbytes != page_size)
-#else /* WINDOWS */
-#if defined(USE_AIO)
-      bzero (&cb, sizeof (cb));
-      cb.aio_fildes = vol_fd;
-      cb.aio_lio_opcode = LIO_READ;
-      cb.aio_buf = io_page_p;
-      cb.aio_nbytes = page_size;
-      cb.aio_offset = offset;
-      cblist[0] = &cb;
-
-      if (aio_read (&cb) < 0)
-#else /* USE_AIO */
-      nbytes = pread (vol_fd, io_page_p, page_size, offset);
-      if (nbytes != (ssize_t) page_size)
-#endif /* USE_AIO */
-#endif /* WINDOWS */
 	{
 	  if (nbytes == 0)
 	    {
@@ -3845,15 +3836,6 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_i
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "file read",
 	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
       er_log_debug (ARG_FILE_LINE, "fileio_read: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
-    }
-#endif
-
-#if defined(SERVER_MODE) && !defined(WINDOWS) && defined(USE_AIO)
-  if (aio_suspend (cblist, 1, NULL) < 0 || aio_return (&cb) != page_size)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_READ, 2, page_id,
-			   fileio_get_volume_label_by_fd (vol_fd, PEEK));
-      return NULL;
     }
 #endif
 
@@ -3925,6 +3907,66 @@ fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * i
 }
 
 /*
+ * fileio_os_write () - helper for fileio_write
+ *   return: the number of bytes written is returned. On error, error code.
+ *   vol_fd(in): Volume descriptor
+ *   io_page_p(in): In-memory address where the current content of page resides
+ *   count(in): the number of bytes to be written
+ *   offset(in): starting file offset
+ *
+ */
+static ssize_t
+fileio_os_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, size_t count, off_t offset)
+{
+#if !defined (SERVER_MODE)
+  if (lseek (vol_fd, offset, SEEK_SET) != offset)
+    {
+      return ER_FAILED;
+    }
+
+  /* write the page */
+  return write (vol_fd, io_page_p, count);
+#elif defined (WINDOWS)
+  // TODO: replace it with WriteFile
+  int rv, nbytes;
+  pthread_mutex_t *io_mutex;
+  static pthread_mutex_t io_mutex_instance = PTHREAD_MUTEX_INITIALIZER;
+
+  io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
+  if (io_mutex == NULL)
+    {
+      io_mutex = &io_mutex_instance;
+    }
+
+  rv = pthread_mutex_lock (io_mutex);
+  if (rv != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_LOCK, 0);
+      return ER_FAILED;
+    }
+
+  if (lseek (vol_fd, offset, SEEK_SET) != offset)
+    {
+      pthread_mutex_unlock (io_mutex);
+      return ER_FAILED;
+    }
+
+  /* write the page */
+  nbytes = write (vol_fd, io_page_p, count);
+
+  pthread_mutex_unlock (io_mutex);
+
+  return (ssize_t) nbytes;
+#elif defined (NDEBUG)
+  /* release mode */
+  return pwrite (thread_p, vol_fd, io_page_p, count, offset);
+#else
+  /* server debugging mode */
+  return pwrite_with_fi (thread_p, vol_fd, io_page_p, count, offset);
+#endif
+}
+
+/*
  * fileio_write () - WRITE A PAGE TO DISK
  *   return: io_page_p on success, NULL on failure
  *   vol_fd(in): Volume descriptor
@@ -3944,17 +3986,9 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL elapsed_time;
 #endif
+  ssize_t nbytes_written;
   off_t offset = FILEIO_GET_FILE_SIZE (page_size, page_id);
   bool is_retry = true;
-#if defined(WINDOWS) && defined(SERVER_MODE)
-  int rv, nbytes;
-  pthread_mutex_t *io_mutex;
-  static pthread_mutex_t io_mutex_instance = PTHREAD_MUTEX_INITIALIZER;
-#endif /* WINDOWS && SERVER_MODE */
-#if defined(USE_AIO)
-  struct aiocb cb;
-  const struct aiocb *cblist[1];
-#endif /* USE_AIO */
 
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
@@ -3967,75 +4001,23 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_
     {
       is_retry = false;
 
-#if !defined(SERVER_MODE)
-      if (lseek (vol_fd, offset, SEEK_SET) != offset)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2, page_id,
-			       fileio_get_volume_label (fileio_get_volume_id (vol_fd), PEEK));
-	  return NULL;
-	}
-
-      /* write the page */
-      if (write (vol_fd, io_page_p, (unsigned int) page_size) != (int) page_size)
-#elif defined(WINDOWS)
-      io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
-      if (io_mutex == NULL)
-	{
-	  io_mutex = &io_mutex_instance;
-	}
-
-      rv = pthread_mutex_lock (io_mutex);
-      if (rv != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, rv, 0);
-	  return NULL;
-	}
-
-      if (lseek (vol_fd, offset, SEEK_SET) != offset)
-	{
-	  pthread_mutex_unlock (io_mutex);
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2, page_id,
-			       fileio_get_volume_label (fileio_get_volume_id (vol_fd), PEEK));
-	  return NULL;
-	}
-
-      /* write the page */
-      nbytes = write (vol_fd, io_page_p, (unsigned int) page_size);
-      pthread_mutex_unlock (io_mutex);
-
-      if (nbytes != page_size)
-#else /* WINDOWS */
-#if defined(USE_AIO)
-      bzero (&cb, sizeof (cb));
-      cb.aio_fildes = vol_fd;
-      cb.aio_lio_opcode = LIO_WRITE;
-      cb.aio_buf = io_page_p;
-      cb.aio_nbytes = page_size;
-      cb.aio_offset = offset;
-      cblist[0] = &cb;
-
-      if (aio_write (&cb) < 0)
-#else /* USE_AIO */
-      if (pwrite_with_fi (thread_p, vol_fd, io_page_p, page_size, offset) != (ssize_t) page_size)
-#endif /* USE_AIO */
-#endif /* WINDOWS */
+      nbytes_written = fileio_os_write (thread_p, vol_fd, io_page_p, page_size, offset);
+      if (nbytes_written != (ssize_t) page_size)
 	{
 	  if (errno == EINTR)
 	    {
 	      is_retry = true;
 	    }
+	  else if (errno == ENOSPC)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE_OUT_OF_SPACE, 2, page_id,
+		      fileio_get_volume_label_by_fd (vol_fd, PEEK));
+	      return NULL;
+	    }
 	  else
 	    {
-	      if (errno == ENOSPC)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE_OUT_OF_SPACE, 2, page_id,
-			  fileio_get_volume_label_by_fd (vol_fd, PEEK));
-		}
-	      else
-		{
-		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2, page_id,
-				       fileio_get_volume_label_by_fd (vol_fd, PEEK));
-		}
+	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2, page_id,
+				   fileio_get_volume_label_by_fd (vol_fd, PEEK));
 	      return NULL;
 	    }
 	}
@@ -4053,15 +4035,6 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "file write",
 	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
       er_log_debug (ARG_FILE_LINE, "fileio_write: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
-    }
-#endif
-
-#if defined(SERVER_MODE) && !defined(WINDOWS) && defined(USE_AIO)
-  if (aio_suspend (cblist, 1, NULL) < 0 || aio_return (&cb) != page_size)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2, page_id,
-			   fileio_get_volume_label_by_fd (vol_fd, PEEK));
-      return NULL;
     }
 #endif
 
@@ -4087,23 +4060,19 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID
   TSCTIMEVAL elapsed_time;
 #endif
   off_t offset;
-  ssize_t nbytes;
-  size_t read_bytes;
+  ssize_t nbytes_read;
+  size_t nbytes_to_be_read;
 
 #if defined(WINDOWS) && defined(SERVER_MODE)
   int rv;
   pthread_mutex_t *io_mutex;
   static pthread_mutex_t io_mutex_instance = PTHREAD_MUTEX_INITIALIZER;
 #endif /* WINDOWS && SERVER_MODE */
-#if defined(USE_AIO)
-  struct aiocb cb;
-  const struct aiocb *cblist[1];
-#endif /* USE_AIO */
 
   assert (num_pages > 0);
 
   offset = FILEIO_GET_FILE_SIZE (page_size, page_id);
-  read_bytes = ((size_t) page_size) * ((size_t) num_pages);
+  nbytes_to_be_read = ((size_t) page_size) * ((size_t) num_pages);
 
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
@@ -4112,71 +4081,12 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID
     }
 #endif
 
-  while (read_bytes > 0)
+  while (nbytes_to_be_read > 0)
     {
-#if !defined(SERVER_MODE)
-      /* Locate the desired page */
-      if (lseek (vol_fd, offset, SEEK_SET) != offset)
+      nbytes_read = fileio_os_read (thread_p, vol_fd, io_pages_p, nbytes_to_be_read, offset);
+      if (nbytes_read <= 0)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_READ, 2, page_id,
-			       fileio_get_volume_label (fileio_get_volume_id (vol_fd), PEEK));
-	  return NULL;
-	}
-
-      /* Read the desired page */
-      nbytes = read (vol_fd, io_pages_p, (unsigned int) read_bytes);
-#elif defined(WINDOWS)
-      io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
-      if (io_mutex == NULL)
-	{
-	  io_mutex = &io_mutex_instance;
-	}
-
-      rv = pthread_mutex_lock (io_mutex);
-      if (rv != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, rv, 0);
-	  return NULL;
-	}
-
-      /* Locate the desired page */
-      if (lseek (vol_fd, offset, SEEK_SET) != offset)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_READ, 2, page_id,
-			       fileio_get_volume_label (fileio_get_volume_id (vol_fd), PEEK));
-	  pthread_mutex_unlock (io_mutex);
-	  return NULL;
-	}
-
-      /* Read the desired page */
-      nbytes = read (vol_fd, io_pages_p, (unsigned int) read_bytes);
-      if (pthread_mutex_unlock (io_mutex) != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
-	  return NULL;
-	}
-#else /* WINDOWS */
-#if defined (USE_AIO)
-      bzero (&cb, sizeof (cb));
-      cb.aio_fildes = vol_fd;
-      cb.aio_lio_opcode = LIO_READ;
-      cb.aio_buf = io_pages_p;
-      cb.aio_nbytes = read_bytes;
-      cb.aio_offset = offset;
-      cblist[0] = &cb;
-
-      if (aio_read (&cb) < 0 || aio_suspend (cblist, 1, NULL) < 0)
-	{
-	  nbytes = -1;
-	}
-      nbytes = aio_return (&cb);
-#else /* USE_AIO */
-      nbytes = pread (vol_fd, io_pages_p, read_bytes, offset);
-#endif /* USE_AIO */
-#endif /* WINDOWS */
-      if (nbytes <= 0)
-	{
-	  if (nbytes == 0)
+	  if (nbytes_read == 0)
 	    {
 	      return NULL;
 	    }
@@ -4199,9 +4109,9 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID
 	    }
 	}
 
-      offset += nbytes;
-      io_pages_p += nbytes;
-      read_bytes -= nbytes;
+      offset += nbytes_read;
+      io_pages_p += nbytes_read;
+      nbytes_to_be_read -= nbytes_read;
     }
 
 #if defined (EnableThreadMonitoring)
@@ -4243,23 +4153,19 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEI
   TSCTIMEVAL elapsed_time;
 #endif
   off_t offset;
-  ssize_t nbytes;
-  size_t write_bytes;
+  ssize_t nbytes_written;
+  size_t nbytes_to_be_written;
 
 #if defined(WINDOWS) && defined(SERVER_MODE)
   int rv;
   pthread_mutex_t *io_mutex;
   static pthread_mutex_t io_mutex_instance = PTHREAD_MUTEX_INITIALIZER;
 #endif /* WINDOWS && SERVER_MODE */
-#if defined(USE_AIO)
-  struct aiocb cb;
-  const struct aiocb *cblist[1];
-#endif /* USE_AIO */
 
   assert (num_pages > 0);
 
   offset = FILEIO_GET_FILE_SIZE (page_size, page_id);
-  write_bytes = ((size_t) page_size) * ((size_t) num_pages);
+  nbytes_to_be_written = ((size_t) page_size) * ((size_t) num_pages);
 
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
@@ -4268,70 +4174,12 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEI
     }
 #endif
 
-  while (write_bytes > 0)
+  while (nbytes_to_be_written > 0)
     {
-#if !defined(SERVER_MODE)
-      if (lseek (vol_fd, offset, SEEK_SET) != offset)
+      nbytes_written = fileio_os_write (thread_p, vol_fd, io_pages_p, nbytes_to_be_written, offset);
+      if (nbytes_written <= 0)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2, page_id,
-			       fileio_get_volume_label (fileio_get_volume_id (vol_fd), PEEK));
-	  return NULL;
-	}
-
-      /* write the page */
-      nbytes = write (vol_fd, io_pages_p, (unsigned int) write_bytes);
-#elif defined(WINDOWS)
-      io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
-      if (io_mutex == NULL)
-	{
-	  io_mutex = &io_mutex_instance;
-	}
-
-      rv = pthread_mutex_lock (io_mutex);
-      if (rv != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, rv, 0);
-	  return NULL;
-	}
-
-      /* Locate the desired page */
-      if (lseek (vol_fd, offset, SEEK_SET) != offset)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2, page_id,
-			       fileio_get_volume_label (fileio_get_volume_id (vol_fd), PEEK));
-	  pthread_mutex_unlock (io_mutex);
-	  return NULL;
-	}
-
-      /* Write the desired page */
-      nbytes = write (vol_fd, io_pages_p, (unsigned int) write_bytes);
-      if (pthread_mutex_unlock (io_mutex) != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
-	  return NULL;
-	}
-#else /* WINDOWS */
-#if defined (USE_AIO)
-      bzero (&cb, sizeof (cb));
-      cb.aio_fildes = vol_fd;
-      cb.aio_lio_opcode = LIO_WRITE;
-      cb.aio_buf = io_pages_p;
-      cb.aio_nbytes = write_bytes;
-      cb.aio_offset = offset;
-      cblist[0] = &cb;
-
-      if (aio_write (&cb) < 0 || aio_suspend (cblist, 1, NULL) < 0)
-	{
-	  nbytes = -1;
-	}
-      nbytes = aio_return (&cb);
-#else /* USE_AIO */
-      nbytes = pwrite_with_fi (thread_p, vol_fd, io_pages_p, write_bytes, offset);
-#endif /* USE_AIO */
-#endif /* WINDOWS */
-      if (nbytes <= 0)
-	{
-	  if (nbytes == 0)
+	  if (nbytes_written == 0)
 	    {
 	      return NULL;
 	    }
@@ -4354,9 +4202,9 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEI
 	    }
 	}
 
-      offset += nbytes;
-      io_pages_p += nbytes;
-      write_bytes -= nbytes;
+      offset += nbytes_written;
+      io_pages_p += nbytes_written;
+      nbytes_to_be_written -= nbytes_written;
     }
 
 #if defined (EnableThreadMonitoring)
@@ -4443,9 +4291,6 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FIL
   int r;
 #endif
   static int inc_cnt = 0;
-#if defined(USE_AIO)
-  struct aiocb cb;
-#endif /* USE_AIO */
 
   if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) > 0)
     {
@@ -4485,13 +4330,7 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FIL
   /* If all_sync is true, everything was synchronized. This happens when DWB is completely flushed. */
   if (ret == NO_ERROR && all_sync == false)
     {
-#if defined(SERVER_MODE) && !defined(WINDOWS) && defined(USE_AIO)
-      bzero (&cb, sizeof (cb));
-      cb.aio_fildes = vol_fd;
-      ret = aio_fsync (O_SYNC, &cb);
-#else /* USE_AIO */
       ret = fsync (vol_fd);
-#endif /* USE_AIO */
     }
 
 #if defined (EnableThreadMonitoring)
@@ -4515,17 +4354,6 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FIL
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "file sync",
 		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
 	  er_log_debug (ARG_FILE_LINE, "fileio_synchronize: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
-	}
-#endif
-
-#if defined(SERVER_MODE) && !defined(WINDOWS) && defined(USE_AIO)
-      while (aio_error (&cb) == EINPROGRESS)
-	;
-
-      if (aio_return (&cb) != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_SYNC, 1, (vlabel ? vlabel : "Unknown"));
-	  return NULL_VOLDES;
 	}
 #endif
 
@@ -4866,7 +4694,6 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id, off
 
       write_p = (void *) io_page_p;
       nbytes = IO_PAGESIZE;
-
     }
   else
     {
@@ -4880,71 +4707,24 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id, off
     {
       is_retry = false;
 
-#if !defined(SERVER_MODE)
-      /* Locate the desired page */
-      if (lseek (vol_fd, offset, SEEK_SET) != offset)
-	{
-	  if (io_page_p != NULL)
-	    {
-	      free_and_init (io_page_p);
-	    }
-
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2, page_id,
-			       fileio_get_volume_label (fileio_get_volume_id (vol_fd), PEEK));
-	  return NULL;
-	}
-
-      /* Write desired portion to page */
-      if (write (vol_fd, write_p, nbytes) != nbytes)
-#elif defined(WINDOWS)
-      io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
-      rv = pthread_mutex_lock (&io_mutex);
-      if (rv != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, rv, 0);
-	  return NULL;
-	}
-      /* Locate the desired page */
-      if (lseek (vol_fd, offset, SEEK_SET) != offset)
-	{
-	  pthread_mutex_unlock (&io_mutex);
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2, page_id,
-			       fileio_get_volume_label (fileio_get_volume_id (vol_fd), PEEK));
-	  return NULL;
-	}
-
-      /* write the page */
-
-      actual_nwrite = write (vol_fd, write_p, (int) nbytes);
-      pthread_mutex_unlock (&io_mutex);
-      if (actual_nwrite != nbytes)
-#else /* WINDOWS */
-      if (pwrite_with_fi (thread_p vol_fd, write_p, nbytes, offset) != nbytes)
-#endif /* WINDOWS */
+      nbytes_written = fileio_os_write (thread_p, vol_fd, write_p, nbytes, offset);
+      if (nbytes_written != nbytes)
 	{
 	  if (errno == EINTR)
 	    {
 	      is_retry = true;
 	    }
+	  else if (errno == ENOSPC)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE_OUT_OF_SPACE, 2, page_id,
+		      fileio_get_volume_label_by_fd (vol_fd, PEEK));
+	      goto error;
+	    }
 	  else
 	    {
-	      if (errno == ENOSPC)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE_OUT_OF_SPACE, 2, page_id,
-			  fileio_get_volume_label_by_fd (vol_fd, PEEK));
-		}
-	      else
-		{
-		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2, page_id,
-				       fileio_get_volume_label_by_fd (vol_fd, PEEK));
-		}
-
-	      if (io_page_p != NULL)
-		{
-		  free_and_init (io_page_p);
-		}
-
-	      return NULL;
+	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2, page_id,
+				   fileio_get_volume_label_by_fd (vol_fd, PEEK));
+	      goto error;
 	    }
 	}
     }
@@ -4957,6 +4737,14 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id, off
   fileio_compensate_flush (thread_p, vol_fd, 1);
   perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_IOWRITES);
   return area_p;
+
+error:
+  if (io_page_p != NULL)
+    {
+      free_and_init (io_page_p);
+    }
+
+  return NULL;
 }
 #endif
 
