@@ -1676,24 +1676,16 @@ css_block_all_active_conn (unsigned short stop_phase)
  *   return:
  *   conn(in):
  *
- * Note: This routine is "registered" to be called when a new connection is
- *       requested by the client
+ * Note: This routine is "registered" to be called when a new connection is requested by the client
  */
 static int
 css_internal_connection_handler (CSS_CONN_ENTRY * conn)
 {
-  CSS_JOB_ENTRY *job;
-
   css_insert_into_active_conn_list (conn);
 
-  job = css_make_job_entry (conn, (CSS_THREAD_FN) css_connection_handler_thread, (CSS_THREAD_ARG) conn,
-			    -1 /* implicit: DEFAULT */ );
-  assert (job != NULL);
-
-  if (job != NULL)
-    {
-      css_add_to_job_queue (job);
-    }
+  // push connection handler task
+  cubthread::get_manager ()->push_task (cubthread::get_manager ()->get_entry (), css_Connection_worker_pool,
+					new css_connection_task (*conn));
 
   return 1;
 }
