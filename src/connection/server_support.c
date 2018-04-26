@@ -3061,7 +3061,8 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 
 	  /* try to kill transaction. */
 	  TR_TABLE_CS_ENTER (thread_p);
-	  for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
+	  // start from transaction index i = 1; system transaction cannot be killed
+	  for (i = 1; i < log_Gl.trantable.num_total_indices; i++)
 	    {
 	      tdes = log_Gl.trantable.all_tdes[i];
 	      if (tdes != NULL && tdes->trid != NULL_TRANID)
