@@ -22,32 +22,182 @@
 
 #include "packable_object.hpp"
 #include "packing_stream.hpp"
+#include "stream_packer.hpp"
 #include <vector>
 
 
 namespace test_stream
 {
 
-int test_stream1 (void);
+  /* testing of stream with byte objects */
+  int test_stream1 (void);
+  /* testing of stream with packable objects */
+  int test_stream2 (void);
 
-class stream_handler_write : public cubstream::write_handler
-{
-public:
-  int write_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count);
-};
+  class stream_handler_write : public cubstream::write_handler
+  {
+    public:
+      int write_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count);
+  };
 
 
-class stream_handler_read : public cubstream::partial_read_handler
-{
-private:
-  size_t m_remaining_to_read;
-  char expected_val;
-public:
-  stream_handler_read () { m_remaining_to_read = 0; };
+  class stream_handler_read : public cubstream::partial_read_handler
+  {
+    private:
+      size_t m_remaining_to_read;
+      char expected_val;
+    public:
+      stream_handler_read ()
+      {
+	m_remaining_to_read = 0;
+      };
 
-  int read_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count, size_t *processed_bytes);
-};
+      int read_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count, size_t *processed_bytes);
+  };
 
+  /* testing of stream with packable objects */
+  /* TODO: this code is copied from test_packing unit tests  */
+  class po1 : public cubpacking::packable_object
+  {
+    public:
+      static int ID;
+
+      int i1;
+      short sh1;
+      std::int64_t b1;
+      int int_a[5];
+      std::vector<int> int_v;
+      DB_VALUE values[10];
+      char small_str[256];
+      std::string large_str;
+      std::string str1;
+      char str2[300];
+
+    public:
+
+      int pack (cubpacking::packer *serializator);
+      int unpack (cubpacking::packer *serializator);
+
+      bool is_equal (const packable_object *other);
+
+      size_t get_packed_size (cubpacking::packer *serializator);
+
+      void generate_obj (void);
+  };
+
+  class po2 : public cubpacking::packable_object
+  {
+    public:
+      static int ID;
+
+      std::string large_str;
+
+    public:
+
+      int pack (cubpacking::packer *serializator);
+      int unpack (cubpacking::packer *serializator);
+
+      bool is_equal (const packable_object *other);
+
+      size_t get_packed_size (cubpacking::packer *serializator);
+
+      void generate_obj (void);
+  };
+
+  struct test_stream_entry_header
+  {
+    unsigned int count_objects;
+    int data_size;
+  };
+
+  class test_stream_entry : public cubstream::entry
+  {
+    private:
+      test_stream_entry_header m_header;
+
+      cubstream::stream_packer m_serializator;
+
+    public:
+      test_stream_entry (cubstream::packing_stream *stream_p) : entry (stream_p), m_serializator (stream_p) { };
+
+      packable_factory *get_builder ();
+
+      size_t get_header_size ()
+      {
+	size_t header_size = 0;
+	cubstream::stream_packer *serializator = get_packer ();
+	header_size += serializator->get_packed_int_size (header_size);
+	header_size += serializator->get_packed_int_size (header_size);
+
+	return header_size;
+      };
+
+      size_t get_data_packed_size (void)
+      {
+	return m_header.data_size;
+      };
+
+      void set_header_data_size (const size_t &data_size)
+      {
+	m_header.data_size = (int) data_size;
+      };
+
+      int pack_stream_entry_header ()
+      {
+	cubstream::stream_packer *serializator = get_packer ();
+	m_header.count_objects = (int) m_packable_entries.size ();
+
+	serializator->pack_int (m_header.count_objects);
+	serializator->pack_int (m_header.data_size);
+
+	return NO_ERROR;
+      };
+
+      int unpack_stream_entry_header ()
+      {
+	cubstream::stream_packer *serializator = get_packer ();
+	serializator->unpack_int ((int *) &m_header.count_objects);
+	serializator->unpack_int (&m_header.data_size);
+
+	return NO_ERROR;
+      };
+
+      int get_packable_entry_count_from_header (void)
+      {
+	return m_header.count_objects;
+      }
+
+      cubstream::stream_packer *get_packer ()
+      {
+	return &m_serializator;
+      };
+
+      bool is_equal (const cubstream::entry *other)
+      {
+	int i;
+	const test_stream_entry *other_t = dynamic_cast <const test_stream_entry *> (other);
+
+	if (other_t == NULL)
+	  {
+	    return false;
+	  }
+	if (m_header.data_size != other_t->m_header.data_size
+	    || m_header.count_objects != other_t->m_header.count_objects
+	    || m_packable_entries.size () != other_t->m_packable_entries.size ())
+	  {
+	    return false;
+	  }
+
+	for (i = 0; i < m_packable_entries.size (); i++)
+	  {
+	    if (m_packable_entries[i]->is_equal (other_t->m_packable_entries[i]) == false)
+	      {
+		return false;
+	      }
+	  }
+	return true;
+      };
+  };
 }
 
 #endif /* _TEST_STREAM_HPP_ */
