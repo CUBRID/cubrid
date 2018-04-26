@@ -3416,9 +3416,18 @@ css_connection_task::execute (context_type & thread_ref)
   thread_ref.conn_entry = NULL;
 }
 
+//
+// css_stop_non_log_writer () - function mapped over worker pools to search and stop non-log writer workers
+//
+// thread_ref (in)         : entry of thread to check and stop
+// stop_mapper (out)       : ignored; part of expected signature of mapper function
+// stopper_thread_ref (in) : entry of thread mapping this function over worker pool
+//
 static void
-css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopper_thread_ref)
+css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY & stopper_thread_ref)
 {
+  (void) stop;    // suppress unused warning
+
   // porting of legacy code
 
   if (css_is_log_writer (thread_ref))
@@ -3448,9 +3457,18 @@ css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopp
     }
 }
 
+//
+// css_stop_non_log_writer () - function mapped over worker pools to search and stop log writer workers
+//
+// thread_ref (in)         : entry of thread to check and stop
+// stop_mapper (out)       : ignored; part of expected signature of mapper function
+// stopper_thread_ref (in) : entry of thread mapping this function over worker pool
+//
 static void
-css_stop_log_writer (THREAD_ENTRY & thread_ref, bool &)
+css_stop_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper)
 {
+  (void) stop_mapper; // suppress unused warning
+
   if (!css_is_log_writer (thread_ref))
     {
       // this is not log writer
@@ -3471,8 +3489,17 @@ css_stop_log_writer (THREAD_ENTRY & thread_ref, bool &)
     }
 }
 
+
+//
+// css_find_not_stopped () - find any target thread that is not stopped
+//
+// thread_ref (in)    : entry of thread that should be stopped
+// stop (out)         : output true to stop mapping
+// is_log_writer (in) : true to target log writers, false to target non-log writers
+// found (out)        : output true if target thread is not stopped
+//
 static void
-css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool is_log_writer, bool & found)
+css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop_mapper, bool is_log_writer, bool & found)
 {
   if (is_log_writer != css_is_log_writer (thread_ref))
     {
@@ -3482,16 +3509,28 @@ css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool is_log_writer
   if (thread_ref.status != TS_FREE)
     {
       found = true;
-      stop = true;
+      stop_mapper = true;
     }
 }
 
+//
+// css_is_log_writer () - does thread entry belong to a log writer?
+//
+// return          : true for log writer, false otherwise
+// thread_arg (in) : thread entry
+//
 static bool
 css_is_log_writer (const THREAD_ENTRY &thread_arg)
 {
   return thread_arg.conn_entry != NULL && thread_arg.conn_entry->stop_phase == THREAD_STOP_LOGWR;
 }
 
+//
+// css_stop_all_workers () - stop target workers based on phase (log writers or non-log writers)
+//
+// thread_ref (in) : thread local entry
+// stop_phase (in) : THREAD_STOP_WORKERS_EXCEPT_LOGWR or THREAD_STOP_LOGWR
+//
 static void
 css_stop_all_workers (THREAD_ENTRY &thread_ref, thread_stop_type stop_phase)
 {
@@ -3566,6 +3605,11 @@ css_stop_all_workers (THREAD_ENTRY &thread_ref, thread_stop_type stop_phase)
     }
 }
 
+//
+// css_get_thread_stats () - get statistics for server request handlers
+//
+// stats_out (out) : output statistics
+//
 void
 css_get_thread_stats (UINT64 *stats_out)
 {
