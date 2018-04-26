@@ -175,7 +175,8 @@ namespace cubthread
   }
 
   daemon *
-  manager::create_daemon (const looper &looper_arg, entry_task *exec_p, entry_manager *context_manager)
+  manager::create_daemon (const looper &looper_arg, entry_task *exec_p, const char *daemon_name /* = NULL */,
+			  entry_manager *context_manager /* = NULL */)
   {
 #if defined (SERVER_MODE)
     if (is_single_thread ())

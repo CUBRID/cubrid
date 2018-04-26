@@ -530,7 +530,7 @@ session_control_daemon_init ()
   session_control_daemon_task *daemon_task = new session_control_daemon_task ();
 
   // create session control daemon thread
-  session_Control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  session_Control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "session_control");
 }
 #endif /* SERVER_MODE */
 

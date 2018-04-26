@@ -75,7 +75,7 @@ namespace cubstream
       m_last_received_position (received_from_position)
   {
     m_receiver_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
-			new transfer_receiver_task (*this));
+			new transfer_receiver_task (*this), "transfer_receiver");
   }
 
   transfer_receiver::~transfer_receiver ()

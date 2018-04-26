@@ -1051,7 +1051,7 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 
   // create vacuum master thread
   vacuum_Master_daemon =
-    thread_manager->create_daemon (looper, new vacuum_master_task (), vacuum_Master_context_manager);
+    thread_manager->create_daemon (looper, new vacuum_master_task (), "vacuum_master", vacuum_Master_context_manager);
 #endif /* SERVER_MODE */
 
   vacuum_Is_booted = true;

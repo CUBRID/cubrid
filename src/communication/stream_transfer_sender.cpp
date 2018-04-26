@@ -80,7 +80,8 @@ namespace cubstream
       m_last_sent_position (begin_sending_position)
   {
     cubthread::delta_time daemon_period = std::chrono::milliseconds (10);
-    m_sender_daemon = cubthread::get_manager ()->create_daemon (daemon_period, new transfer_sender_task (*this));
+    m_sender_daemon = cubthread::get_manager ()->create_daemon (daemon_period, new transfer_sender_task (*this),
+		      "transfer_sender");
   }
 
   transfer_sender::~transfer_sender ()
