@@ -54,11 +54,8 @@ namespace cubstream
     COLLECT_AND_DETACH
   } COLLECT_ACTION;
 
-
   class entry : public cubbase::pinner
   {
-      using packable_factory = cubbase::factory<int, cubpacking::packable_object>;
-
     private:
       int stream_entry_id;
 
@@ -74,9 +71,12 @@ namespace cubstream
 
       stream_position m_data_start_position;
 
-      virtual packable_factory *get_builder () = 0;
 
     public:
+      using packable_factory = cubbase::factory<int, cubpacking::packable_object>;
+
+      virtual packable_factory *get_builder () = 0;
+
       entry (packing_stream *stream);
 
       int pack (void);
@@ -119,8 +119,10 @@ namespace cubstream
   };
 
   /*
-   * this adds a layer which allows handling a stream in chunks (stream_entry),
+   * this adds a layer which allows handling a stream in chunks (cubstream::entry),
    * especially in context of packable objects
+   * for writing/reading packable_objects into/from (packing_)stream, the friend class stream_packer is used as
+   * both a packer and a context over a range in stream
    */
   class packing_stream : public stream
   {

@@ -87,8 +87,8 @@ namespace cubstream
       size_t buf_end_offset;
 
       /* first and last position mapped to the stream (these are stream positions) */
-      stream_position stream_start_pos;
-      stream_position stream_end_pos;
+      cubstream::stream_position stream_start_pos;
+      cubstream::stream_position stream_end_pos;
   };
 
 } /* namespace cubstream */
