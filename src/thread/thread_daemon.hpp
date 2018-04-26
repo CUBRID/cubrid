@@ -30,6 +30,7 @@
 
 #include "perf_def.hpp"
 
+#include <string>
 #include <thread>
 
 #include <cinttypes>
@@ -87,7 +88,7 @@ namespace cubthread
       //
       template <typename Context>
       daemon (const looper &loop_pattern_arg, context_manager<Context> *context_manager_arg,
-	      task<Context> *exec);
+	      task<Context> *exec, const char *name = NULL);
       ~daemon();
 
       void wakeup (void);         // wakeup daemon thread
@@ -107,7 +108,7 @@ namespace cubthread
     private:
       template <typename Context>
       static void loop (daemon *daemon_arg, context_manager<Context> *context_manager_arg,
-			task<Context> *exec_arg);     // daemon thread loop function
+			task<Context> *exec_arg, const char *name);     // daemon thread loop function
 
       void pause (void);                                    // pause between tasks
       void register_stat_start (void);
@@ -122,6 +123,8 @@ namespace cubthread
 
       std::thread m_thread;   // the actual daemon thread
 
+      std::string m_name;     // own name
+
       // stats
       cubperf::statset &m_stats;
 
@@ -134,21 +137,25 @@ namespace cubthread
 
   template <typename Context>
   daemon::daemon (const looper &loop_pattern_arg, context_manager<Context> *context_manager_arg,
-		  task<Context> *exec)
+		  task<Context> *exec, const char *name)
     : m_waiter ()
     , m_looper (loop_pattern_arg)
     , m_func_on_stop ()
     , m_thread ()
+    , m_name (name)
     , m_stats (daemon::create_statset ())
   {
     // starts a thread to execute daemon::loop
-    m_thread = std::thread (daemon::loop<Context>, this, context_manager_arg, exec);
+    m_thread = std::thread (daemon::loop<Context>, this, context_manager_arg, exec, m_name.c_str ());
   }
 
   template <typename Context>
   void
-  daemon::loop (daemon *daemon_arg, context_manager<Context> *context_manager_arg, task<Context> *exec_arg)
+  daemon::loop (daemon *daemon_arg, context_manager<Context> *context_manager_arg, task<Context> *exec_arg,
+		const char *name /* = NULL */)
   {
+    (void) (name);    // parameter is never used. it is here for convenience, to be seen on thread stacks
+
     // create execution context
     Context &context = context_manager_arg->create_context ();
 
