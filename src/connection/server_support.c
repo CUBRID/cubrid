@@ -3426,7 +3426,7 @@ css_connection_task::execute (context_type & thread_ref)
 static void
 css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY & stopper_thread_ref)
 {
-  (void) stop;    // suppress unused warning
+  (void) stop_mapper;    // suppress unused warning
 
   // porting of legacy code
 
