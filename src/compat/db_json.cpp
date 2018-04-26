@@ -3183,7 +3183,7 @@ db_json_deserialize_doc_internal (OR_BUF *buf, JSON_DOC &doc, JSON_VALUE &value)
       break;
 
     case DB_JSON_NULL:
-      doc.SetNull();
+      value.SetNull();
       break;
 
     case DB_JSON_OBJECT:
