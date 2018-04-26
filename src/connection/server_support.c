@@ -267,6 +267,7 @@ public:
   css_connection_task (CSS_CONN_ENTRY & conn)
   : m_conn (conn)
   {
+    //
   }
 
   void execute (context_type & thread_ref) override final;
@@ -1626,8 +1627,6 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
     {
       assert (thread_p->shutdown == true || conn->stop_talk == true);
     }
-
-  thread_p->type = TT_WORKER;
 
   return 0;
 }

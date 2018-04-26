@@ -68,7 +68,6 @@
 typedef struct thread_manager THREAD_MANAGER;
 struct thread_manager
 {
-  THREAD_ENTRY *thread_array;	/* thread entry array */
   int num_total;
   int num_workers;
   bool initialized;
