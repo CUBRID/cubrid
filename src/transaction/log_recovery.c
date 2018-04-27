@@ -2355,9 +2355,11 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 {
   LOG_LSA checkpoint_lsa = { -1, -1 };
   LOG_LSA lsa;			/* LSA of log record to analyse */
+  const int block_size = 4 * ONE_K;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  char null_buffer[block_size + MAX_ALIGNMENT], *null_block;
   LOG_PAGE *log_page_p = NULL;	/* Log page pointer where LSA is located */
-  LOG_LSA log_lsa, prev_lsa;
+  LOG_LSA log_lsa, prev_lsa, first_corrupted_rec_lsa;
   LOG_RECTYPE log_rtype;	/* Log record type */
   LOG_RECORD_HEADER *log_rec = NULL;	/* Pointer to log record */
   LOG_REC_CHKPT *tmp_chkpt;	/* Temp Checkpoint log record */
@@ -2372,8 +2374,10 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
   void *area = NULL;
   int size;
   int i;
+  int max_num_blocks = LOG_PAGESIZE / block_size;
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  null_block = PTR_ALIGN (null_buffer, MAX_ALIGNMENT);
 
   if (num_redo_log_records != NULL)
     {
@@ -2385,6 +2389,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
    * transactions at system crash
    */
 
+  LSA_SET_NULL (&first_corrupted_rec_lsa);
   LSA_COPY (&lsa, start_lsa);
 
   LSA_COPY (start_redo_lsa, &lsa);
@@ -2393,6 +2398,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
   *did_incom_recovery = false;
 
   log_page_p = (LOG_PAGE *) aligned_log_pgbuf;
+  memset (null_block, 0xff, block_size);
 
   while (!LSA_ISNULL (&lsa))
     {
@@ -2458,6 +2464,19 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	      return;
 	    }
 
+	  /* Set first corrupted record lsa, if a block is corrupt. */
+	  for (i = 0; i < max_num_blocks; i++)
+	    {
+	      /* Checks null blocks. Additional checking for each record may be done, but, for partial page flush, checking blocks should be enough. */
+	      if (!memcmp (((char *) log_page_p) + (i * block_size), null_block, block_size))
+		{
+		  /* The block is corrupted, do not analyze it. */
+		  first_corrupted_rec_lsa.pageid = log_lsa.pageid;
+		  first_corrupted_rec_lsa.offset = i * block_size;
+		  break;
+		}
+	    }
+
 	  /* Found corrupted log page. */
 	  _er_log_debug (ARG_FILE_LINE,
 			 "logpb_recovery_analysis: log page %lld is corrupted due to partial flush.\n",
@@ -2493,6 +2512,17 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	  /* Find the log record */
 	  log_lsa.offset = lsa.offset;
 	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_page_p, &log_lsa);
+
+	  if (is_log_page_corrupted && !LSA_ISNULL (&first_corrupted_rec_lsa))
+	    {
+	      /* Check whether the record is corrupted. */
+	      if (LSA_GE (&log_lsa, &first_corrupted_rec_lsa) || LSA_GT (&log_rec->forw_lsa, &first_corrupted_rec_lsa))
+		{
+		  /* The record that resides at log_lsa is corrupted - it resides in a corrupted block. */
+		  LSA_SET_NULL (&lsa);
+		  break;
+		}
+	    }
 
 	  tran_id = log_rec->trid;
 	  log_rtype = log_rec->type;

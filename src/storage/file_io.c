@@ -497,8 +497,10 @@ static bool fileio_is_terminated_process (int pid);
 
 static ssize_t fileio_os_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, size_t count, off_t offset);
 static ssize_t fileio_os_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, size_t count, off_t offset);
+#if !defined (WINDOWS)
 static ssize_t pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, size_t count,
 					   off_t offset);
+#endif
 
 #if !defined(WINDOWS)
 static FILEIO_LOCKF_TYPE fileio_lock (const char *db_fullname, const char *vlabel, int vdes, bool dowait);
@@ -3535,6 +3537,7 @@ fileio_sync_and_exit_handler (void)
   _exit (0);
 }
 
+#if !defined (WINDOWS)
 /*
  * pwrite_write_with_injected_fault () - Write buffer to file descriptor with fault injection.
  *   return:
@@ -3629,6 +3632,7 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
 
   return pwrite (fd, buf, count, offset);
 }
+#endif
 
 #if defined(HPUX) && !defined(IA64)
 /*
