@@ -53,6 +53,7 @@ extern int dwb_read_page (THREAD_ENTRY * thread_p, const VPID * vpid, void *io_p
 extern int dwb_set_data_on_next_slot (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, bool can_wait,
 				      DWB_SLOT ** p_dwb_slot);
 extern int dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB_SLOT ** p_dwb_slot);
+extern int dwb_is_double_write_volume (THREAD_ENTRY * thread_p, int fd);
 
 #if defined (SERVER_MODE)
 extern void dwb_daemons_init ();

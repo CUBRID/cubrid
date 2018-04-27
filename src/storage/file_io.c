@@ -3524,19 +3524,6 @@ fileio_is_system_volume_label_equal (THREAD_ENTRY * thread_p, FILEIO_SYSTEM_VOLU
   return (util_compare_filepath (sys_vol_info_p->vlabel, arg->vol_label) == 0);
 }
 
-static void
-fileio_sync_and_exit_handler (void)
-{
-  THREAD_ENTRY *thread_p = NULL;
-
-#if defined (SERVER_MODE)
-  thread_p = thread_get_thread_entry_info ();
-#endif
-
-  (void) fileio_synchronize_all (thread_p, true);
-  _exit (0);
-}
-
 #if !defined (WINDOWS)
 /*
  * pwrite_write_with_injected_fault () - Write buffer to file descriptor with fault injection.
@@ -3589,13 +3576,16 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
 	      return r;
 	    }
 
+	  if (dwb_is_double_write_volume (fd))
+	    {
+	      continue;
+	    }
+
 	  // randomly exits to remain page is partially written
 	  if ((rand () % count_blocks - 1) == 0)
 	    {
 	      char msg[1024];
 	      char *vlabel;
-
-	      atexit (fileio_sync_and_exit_handler);
 
 	      vlabel = fileio_get_volume_label_by_fd (fd, PEEK);
 	      sprintf (msg, "fault injected to write a page to offset (%ld) of '%s'\n", offset,
@@ -3603,7 +3593,7 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
 	      er_print_callstack (ARG_FILE_LINE, "FAULT INJECTION: RANDOM EXIT\n");
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, msg);
 
-	      // This will call atexit handler.
+	      (void) fileio_synchronize (thread_p, fd, NULL, FILEIO_SYNC_ONLY);
 	      exit (0);
 	    }
 	}
