@@ -282,11 +282,9 @@ thread_initialize_manager (size_t & total_thread_count)
   /* allocate threads */
   thread_Manager.thread_array = new THREAD_ENTRY[thread_Manager.num_total];
 
-  // thread_mgr.thread_array[0] is used for main thread
-  // Main thread does not have lock free resources
-  thread_Manager.thread_array[0].index = 1;
-
-  for (i = 1; i < thread_Manager.num_total; i++)
+  /* init worker/page flush thread/log flush thread
+   * thread_mgr.thread_array[0] is used for main thread */
+  for (i = 0; i < thread_Manager.num_total; i++)
     {
       thread_Manager.thread_array[i].index = i + 1;
       thread_Manager.thread_array[i].request_lock_free_transactions ();
@@ -641,6 +639,7 @@ thread_return_all_transactions_entries (void)
       return NO_ERROR;
     }
 
+  thread_return_transaction_entry (cubthread::get_main_entry ());
   for (THREAD_ENTRY * entry_iter = thread_iterate (NULL); entry_iter != NULL; entry_iter = thread_iterate (entry_iter))
     {
       error = thread_return_transaction_entry (entry_iter);
