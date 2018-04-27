@@ -338,6 +338,7 @@ thread_return_all_transactions_entries (void)
       return NO_ERROR;
     }
 
+  thread_return_transaction_entry (cubthread::get_main_entry ());
   for (THREAD_ENTRY * entry_iter = thread_iterate (NULL); entry_iter != NULL; entry_iter = thread_iterate (entry_iter))
     {
       error = thread_return_transaction_entry (entry_iter);
