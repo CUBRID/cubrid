@@ -87,7 +87,7 @@ namespace cubthread
   {
     public:
       task (void) = default;
-      virtual ~task (void);
+      virtual ~task (void) = default;
 
       virtual void execute (void) = 0;
       virtual void retire (void)

@@ -166,6 +166,7 @@ namespace cubthread
 	  {
 	    context_manager = m_entry_manager;
 	  }
+	// reserver pool_size entries and add to m_worker_pools
 	return create_and_track_resource (m_worker_pools, pool_size, pool_size, task_max_count, *context_manager,
 					  core_count, debug_logging);
       }
@@ -190,7 +191,28 @@ namespace cubthread
 	  {
 	    context_manager = m_daemon_entry_manager;
 	  }
+	// reserve 1 entry and add to m_daemons
 	return create_and_track_resource (m_daemons, 1, looper_arg, context_manager, exec_p, daemon_name);
+      }
+#else // not SERVER_MODE = SA_MODE
+    assert (false);
+    return NULL;
+#endif // not SERVER_MODE = SA_MODE
+  }
+
+  daemon *
+  manager::create_daemon_without_entry (const looper &looper_arg, task<void> *exec_p, const char *daemon_name)
+  {
+#if defined (SERVER_MODE)
+    if (is_single_thread ())
+      {
+	assert (false);
+	return NULL;
+      }
+    else
+      {
+	// reserve no entry and add to m_daemons_without_entries
+	return create_and_track_resource (m_daemons_without_entries, 0, looper_arg, exec_p, daemon_name);
       }
 #else // not SERVER_MODE = SA_MODE
     assert (false);
@@ -235,6 +257,7 @@ namespace cubthread
       {
 	return;
       }
+    // remove from m_worker_pools and free worker_pool_arg->get_max_count thread entries
     return destroy_and_untrack_resource (m_worker_pools, worker_pool_arg, worker_pool_arg->get_max_count ());
 #else // not SERVER_MODE = SA_MODE
     assert (worker_pool_arg == NULL);
@@ -329,7 +352,23 @@ namespace cubthread
       {
 	return;
       }
+    // remove from m_daemons and free one thread entry
     return destroy_and_untrack_resource (m_daemons, daemon_arg, 1);
+#else // not SERVER_MODE = SA_MODE
+    assert (daemon_arg == NULL);
+#endif // not SERVER_MODE = SA_MODE
+  }
+
+  void
+  manager::destroy_daemon_without_entry (daemon *&daemon_arg)
+  {
+#if defined (SERVER_MODE)
+    if (daemon_arg == NULL)
+      {
+	return;
+      }
+    // remove from m_daemons_without_entries; no thread entries have been reserved
+    return destroy_and_untrack_resource (m_daemons_without_entries, daemon_arg, 0);
 #else // not SERVER_MODE = SA_MODE
     assert (daemon_arg == NULL);
 #endif // not SERVER_MODE = SA_MODE
@@ -374,6 +413,7 @@ namespace cubthread
     // check all thread resources are killed and freed
     destroy_and_untrack_all_resources (m_worker_pools);
     destroy_and_untrack_all_resources (m_daemons);
+    destroy_and_untrack_all_resources (m_daemons_without_entries);
   }
 
   //////////////////////////////////////////////////////////////////////////

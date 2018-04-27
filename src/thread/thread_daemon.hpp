@@ -86,11 +86,9 @@ namespace cubthread
       //
       //  NOTE: it is recommended to use dynamic allocation for execution tasks
       //
-      // todo: remove default value NULL from name
-      //
       template <typename Context>
       daemon (const looper &loop_pattern_arg, context_manager<Context> *context_manager_arg,
-	      task<Context> *exec, const char *name = "");
+	      task<Context> *exec, const char *name);
       daemon (const looper &loop_pattern_arg, task<void> *exec_arg, const char *name);
       ~daemon();
 

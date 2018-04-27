@@ -31,34 +31,6 @@
 #define NUM_OF_MSGS 10
 #define MAX_TIMEOUT_IN_MS 1000
 
-/* TODO remove this after remzi creates
- * a daemon impl without the use of a context
- */
-class dummy_entry
-{
-  public:
-    void interrupt_execution (void)
-    {
-
-    }
-};
-static dummy_entry dummy_context_var;
-
-class dummy_context_manager : public cubthread::context_manager<dummy_entry>
-{
-  public:
-    dummy_entry &create_context (void)
-    {
-      return dummy_context_var;
-    }
-    void retire_context (dummy_entry &)
-    {
-    }
-};
-
-static dummy_context_manager *dummy_mng_ptr = new dummy_context_manager();
-/* end remove this */
-
 static int *counters = NULL;
 static std::vector <cubthread::daemon *> initiator_daemons;
 static cubthread::daemon *listener_daemon;
@@ -122,7 +94,7 @@ void master_listening_thread_func (std::vector <communication_channel> &channels
     }
 }
 
-class conn_initiator_daemon_task : public cubthread::task<dummy_entry>
+class conn_initiator_daemon_task : public cubthread::task<void>
 {
   public:
     conn_initiator_daemon_task (int &counter, communication_channel &&chn) : m_counter (counter),
@@ -130,7 +102,12 @@ class conn_initiator_daemon_task : public cubthread::task<dummy_entry>
     {
     }
 
-    void execute (dummy_entry &) override
+    ~conn_initiator_daemon_task (void)
+    {
+      //
+    }
+
+    void execute (void) override
     {
       std::size_t length = MAX_MSG_LENGTH;
       char buff[MAX_MSG_LENGTH];
@@ -163,7 +140,7 @@ class conn_initiator_daemon_task : public cubthread::task<dummy_entry>
     communication_channel m_channel;
 };
 
-class conn_listener_daemon_task : public cubthread::task<dummy_entry>
+class conn_listener_daemon_task : public cubthread::task<void>
 {
   public:
     conn_listener_daemon_task (std::vector <communication_channel> &&channels) : m_channels (
@@ -172,7 +149,12 @@ class conn_listener_daemon_task : public cubthread::task<dummy_entry>
       assert (m_channels.size () == NUM_OF_INITIATORS);
     }
 
-    void execute (dummy_entry &) override
+    ~conn_listener_daemon_task (void)
+    {
+      //
+    }
+
+    void execute (void) override
     {
       std::size_t length = MAX_MSG_LENGTH;
       char buff[MAX_MSG_LENGTH];
@@ -262,7 +244,7 @@ static int init ()
     }
 
   std::vector <communication_channel> channels;
-  std::vector <cubthread::task<dummy_entry> *> tasks;
+  std::vector <cubthread::task<void> *> tasks;
   counters = (int *) calloc (NUM_OF_INITIATORS, sizeof (int));
 
   is_listening.store (false);
@@ -284,12 +266,12 @@ static int init ()
     }
   listening_thread.join ();
 
-  listener_daemon = new cubthread::daemon (cubthread::looper (std::chrono::seconds (0)), dummy_mng_ptr,
-      new conn_listener_daemon_task (std::move (channels)));
+  listener_daemon = new cubthread::daemon (cubthread::looper (std::chrono::seconds (0)),
+      new conn_listener_daemon_task (std::move (channels)), "listener_daemon");
   for (unsigned int i = 0; i < NUM_OF_INITIATORS; i++)
     {
-      initiator_daemons.push_back (new cubthread::daemon (cubthread::looper (std::chrono::seconds (1)), dummy_mng_ptr,
-				   tasks[i]));
+      initiator_daemons.push_back (new cubthread::daemon (cubthread::looper (std::chrono::seconds (1)), tasks[i],
+				   "initiator_daemon"));
     }
 
   return NO_ERROR;
