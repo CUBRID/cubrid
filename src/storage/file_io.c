@@ -3552,9 +3552,11 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
 {
   static bool init = false;
   const int mod_factor = 50000;
-  const int fourK = 4096;
+  const int unit_size = 4096;
   int count_blocks;
   ssize_t r;
+  off_t unit_offset;
+  bool fi_partial_write1_on, fi_partial_write2_on;
 
   if (init == false)
     {
@@ -3562,53 +3564,32 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
       init = true;
     }
 
-  if (FI_INSERTED (FI_TEST_FILE_IO_WRITE_PARTS1) && ((rand () % mod_factor) == 0))
+  fi_partial_write1_on = FI_INSERTED (FI_TEST_FILE_IO_WRITE_PARTS1);
+  fi_partial_write2_on = FI_INSERTED (FI_TEST_FILE_IO_WRITE_PARTS2);
+
+  if ((fi_partial_write1_on || fi_partial_write2_on) && ((rand () % mod_factor) == 0))
     {
       // simulate partial write
-
-      count_blocks = count / fourK;
+      count_blocks = count / unit_size;
       for (int i = 0; i < count_blocks; i++)
 	{
-	  r = pwrite (fd, ((char *) buf) + (i * fourK), fourK, offset + (i * fourK));
-	  if (r != fourK)
+	  if (fi_partial_write1_on)
+	    {
+	      unit_offset = i * unit_size;
+	    }
+	  else
+	    {
+	      // reverse order
+	      unit_offset = ((count_blocks - 1) - i) * unit_size;
+	    }
+
+	  r = pwrite (fd, ((char *) buf) + unit_offset, unit_size, offset + unit_offset);
+	  if (r != unit_size)
 	    {
 	      return r;
 	    }
 
-	  if ((rand () % count_blocks - 1) == 0)
-	    {
-	      char msg[1024];
-	      char *vlabel;
-
-	      atexit (fileio_sync_and_exit_handler);
-
-	      vlabel = fileio_get_volume_label_by_fd (fd, PEEK);
-	      sprintf (msg, "fault injected to write a page to offset (%ld) of '%s'\n", offset,
-		       vlabel ? vlabel : "unknown volume");
-	      er_print_callstack (ARG_FILE_LINE, "FAULT INJECTION: RANDOM EXIT\n");
-	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, msg);
-
-	      // This will call atexit handler.
-	      exit (0);
-	    }
-	}
-
-      return r;
-    }
-  else if (FI_INSERTED (FI_TEST_FILE_IO_WRITE_PARTS2) && ((rand () % mod_factor) == 0))
-    {
-      // simulate partial write
-
-      /* Write blocks in reverse order. You may change and test the blocks order. */
-      count_blocks = count / fourK;
-      for (int i = count_blocks - 1; i >= 0; i--)
-	{
-	  r = pwrite (fd, ((char *) buf) + (i * fourK), fourK, offset + (i * fourK));
-	  if (r != fourK)
-	    {
-	      return r;
-	    }
-
+	  // randomly exits to remain page is partially written
 	  if ((rand () % count_blocks - 1) == 0)
 	    {
 	      char msg[1024];
