@@ -23,6 +23,7 @@
 #include "packing_stream.hpp"
 #include "thread_compat.hpp"
 #include "thread_manager.hpp"
+#include <iostream>
 
 namespace test_stream
 {
@@ -385,6 +386,8 @@ namespace test_stream
     stream_handler_write writer;
     stream_handler_read reader;
 
+    std::cout << "  Testing stream write/read with bytes" << std::endl;
+
     /* writing in stream */
     for (rem_amount = desired_amount, i = 0; rem_amount > 5; i++)
       {
@@ -466,6 +469,29 @@ namespace test_stream
     return &test_factory_po;
   }
 
+
+  class stream_mover : public cubstream::read_handler, public cubstream::write_handler
+    {
+    private:
+      static const int BUF_SIZE = 1024;
+      char m_buffer[BUF_SIZE];
+    public:
+
+      int read_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count)
+        {
+          memcpy (m_buffer, ptr, byte_count);
+          return byte_count;
+        };
+
+      int write_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count)
+        {
+          memcpy (ptr, m_buffer, byte_count);
+          return byte_count;
+        };
+
+      size_t get_buf_size (void) { return sizeof (m_buffer); };
+    };
+
   int test_stream2 (void)
   {
 #define TEST_OBJ_CNT 100
@@ -476,6 +502,7 @@ namespace test_stream
     init_common_cubrid_modules ();
 
     /* create objects */
+    std::cout << "  Testing packing/unpacking of objects using same stream" << std::endl;
     cubpacking::packable_object *test_objects[TEST_OBJ_CNT];
     for (i = 0; i < TEST_OBJ_CNT; i++)
       {
@@ -532,7 +559,67 @@ namespace test_stream
         res = -1;
       }
 
+    /* create a new stream and copy buffers */
+    std::cout << "  Testing packing/unpacking of objects using different streams. Copying stream contents." << std::endl;
+    cubstream::packing_stream test_stream_for_unpack;
+
+    cubstream::stream_position last_pos = test_stream_for_pack.get_last_reported_ready_pos ();
+    cubstream::stream_position curr_pos;
+
+    stream_mover test_stream_mover;
+    size_t copy_chunk_size = test_stream_mover.get_buf_size ();
+    int read_bytes, written_bytes;
+
+    for (curr_pos = 0; curr_pos <= last_pos;)
+      {
+        char buf[1024];
+
+        copy_chunk_size = MIN (copy_chunk_size, last_pos - curr_pos);
+
+        read_bytes = test_stream_for_pack.read (curr_pos, copy_chunk_size, &test_stream_mover);
+        if (read_bytes <= 0)
+          {
+            break;
+          }
+
+        written_bytes = test_stream_for_unpack.write (read_bytes, &test_stream_mover);
+        assert (read_bytes == written_bytes);
+        if (written_bytes <= 0)
+          {
+            res = -1;
+            return res;
+          }
+
+        curr_pos += read_bytes;
+      }
+
+    test_stream_entry se3 (&test_stream_for_unpack);
+
+     res = se3.prepare ();
+      if (res != 0)
+        {
+          assert (false);
+          return res;
+        }
+
+      res = se3.unpack ();
+      if (res != 0)
+        {
+          assert (false);
+          return res;
+        }
+
+      if (se.is_equal (&se3) == false)
+        {
+          res = -1;
+        }
+
+
     test_stream_for_pack.detach_all_buffers ();
+
+    test_stream_for_unpack.detach_all_buffers ();
+
+    cubstream::buffer_provider::get_default_instance ()->free_all_buffers ();
 
     return res;
   }
