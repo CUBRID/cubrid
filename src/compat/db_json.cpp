@@ -353,11 +353,6 @@ class JSON_SERIALIZER : public JSON_BASE_HANDLER
     bool EndObject (SizeType memberCount);
     bool EndArray (SizeType elementCount);
 
-    int GetErrorCode (void)
-    {
-      return m_error;
-    }
-
   private:
     bool SaveSizePointers (char *ptr);
     void SetSizePointers (SizeType size);
@@ -2935,7 +2930,7 @@ db_json_serialize (const JSON_DOC &doc, OR_BUF &buffer)
 
   if (!doc.Accept (js))
     {
-      error_code = js.GetErrorCode();
+      error_code = ER_TF_BUFFER_OVERFLOW;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
     }
 
@@ -3061,6 +3056,8 @@ db_json_unpack_bool_to_value (OR_BUF *buf, JSON_VALUE &value)
       return rc;
     }
 
+  assert (int_value == 0 || int_value == 1);
+
   value.SetBool (int_value == 1 ? true : false);
 
   return NO_ERROR;
@@ -3160,7 +3157,7 @@ db_json_deserialize_doc_internal (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_M
   json_type = static_cast<DB_JSON_TYPE> (or_get_int (buf, &rc));
   if (rc != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+      ASSERT_ERROR();
       return rc;
     }
 
