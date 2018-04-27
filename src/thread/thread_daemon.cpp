@@ -49,6 +49,17 @@ namespace cubthread
   // daemon implementation
   //////////////////////////////////////////////////////////////////////////
 
+  daemon::daemon (const looper &loop_pattern_arg, task<void> *exec_arg, const char *name)
+    : m_waiter ()
+    , m_looper (loop_pattern_arg)
+    , m_func_on_stop ()
+    , m_thread ()
+    , m_name (name)
+    , m_stats (daemon::create_statset ())
+  {
+    m_thread = std::thread (daemon::loop, this, exec_arg, m_name.c_str ());
+  }
+
   daemon::~daemon ()
   {
     // thread must be stopped
@@ -180,6 +191,29 @@ namespace cubthread
   daemon::register_stat_execute (void)
   {
     Daemon_statistics.time_and_increment (m_stats, STAT_LOOP_EXECUTE_COUNT_AND_TIME);
+  }
+
+  void
+  daemon::loop (daemon *daemon_arg, task<void> *exec_arg, const char *name)
+  {
+    (void) name;  // suppress unused parameter warning
+    // its purpose is to help visualize daemon thread stacks
+
+    daemon_arg->register_stat_start ();
+
+    while (!daemon_arg->m_looper.is_stopped ())
+      {
+	// execute task
+	exec_arg->execute ();
+	daemon_arg->register_stat_execute ();
+
+	// take a break
+	daemon_arg->pause ();
+	daemon_arg->register_stat_pause ();
+      }
+
+    // retire task
+    exec_arg->retire ();
   }
 
 } // namespace cubthread

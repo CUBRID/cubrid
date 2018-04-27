@@ -86,9 +86,12 @@ namespace cubthread
       //
       //  NOTE: it is recommended to use dynamic allocation for execution tasks
       //
+      // todo: remove default value NULL from name
+      //
       template <typename Context>
       daemon (const looper &loop_pattern_arg, context_manager<Context> *context_manager_arg,
 	      task<Context> *exec, const char *name = "");
+      daemon (const looper &loop_pattern_arg, task<void> *exec_arg, const char *name);
       ~daemon();
 
       void wakeup (void);         // wakeup daemon thread
@@ -109,6 +112,7 @@ namespace cubthread
       template <typename Context>
       static void loop (daemon *daemon_arg, context_manager<Context> *context_manager_arg,
 			task<Context> *exec_arg, const char *name);     // daemon thread loop function
+      static void loop (daemon *daemon_arg, task<void> *exec_arg, const char *name);
 
       void pause (void);                                    // pause between tasks
       void register_stat_start (void);
@@ -127,8 +131,6 @@ namespace cubthread
 
       // stats
       cubperf::statset &m_stats;
-
-      // todo: m_log
   };
 
   /************************************************************************/
@@ -154,16 +156,14 @@ namespace cubthread
   daemon::loop (daemon *daemon_arg, context_manager<Context> *context_manager_arg, task<Context> *exec_arg,
 		const char *name)
   {
-    (void) (name);    // parameter is never used. it is here for convenience, to be seen on thread stacks
+    (void) name;  // suppress unused parameter warning
+    // its purpose is to help visualize daemon thread stacks
 
     // create execution context
     Context &context = context_manager_arg->create_context ();
 
     // now that we have access to context we can set the callback function on stop
     daemon_arg->m_func_on_stop = std::bind (&Context::interrupt_execution, std::ref (context));
-
-    // loop until stopped
-    using clock_type = std::chrono::high_resolution_clock;
 
     daemon_arg->register_stat_start ();
 
