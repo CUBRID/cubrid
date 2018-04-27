@@ -107,16 +107,27 @@ namespace cubthread
       void get_stats (cubperf::stat_value *stats_out);
 
     private:
+
+      // loop functions invoked by spawned daemon thread
+
+      // loop_with_context - after thread is spawned, it claims context from context manager and repeatedly executes
+      //                     task until stopped.
+      //
+      // note: context must implement interrupt_execution function
       template <typename Context>
-      static void loop (daemon *daemon_arg, context_manager<Context> *context_manager_arg,
-			task<Context> *exec_arg, const char *name);     // daemon thread loop function
-      static void loop (daemon *daemon_arg, task<void> *exec_arg, const char *name);
+      static void loop_with_context (daemon *daemon_arg, context_manager<Context> *context_manager_arg,
+				     task<Context> *exec_arg, const char *name);
+
+      // loop_without_context - just execute context-less task in a loop
+      static void loop_without_context (daemon *daemon_arg, task<void> *exec_arg, const char *name);
 
       void pause (void);                                    // pause between tasks
+      // register statistics
       void register_stat_start (void);
       void register_stat_pause (void);
       void register_stat_execute (void);
 
+      // create a set to store daemon statistic values
       static cubperf::statset &create_statset (void);
 
       waiter m_waiter;        // thread waiter
@@ -146,13 +157,13 @@ namespace cubthread
     , m_stats (daemon::create_statset ())
   {
     // starts a thread to execute daemon::loop
-    m_thread = std::thread (daemon::loop<Context>, this, context_manager_arg, exec, m_name.c_str ());
+    m_thread = std::thread (daemon::loop_with_context<Context>, this, context_manager_arg, exec, m_name.c_str ());
   }
 
   template <typename Context>
   void
-  daemon::loop (daemon *daemon_arg, context_manager<Context> *context_manager_arg, task<Context> *exec_arg,
-		const char *name)
+  daemon::loop_with_context (daemon *daemon_arg, context_manager<Context> *context_manager_arg,
+			     task<Context> *exec_arg, const char *name)
   {
     (void) name;  // suppress unused parameter warning
     // its purpose is to help visualize daemon thread stacks

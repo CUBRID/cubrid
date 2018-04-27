@@ -57,7 +57,7 @@ namespace cubthread
     , m_name (name)
     , m_stats (daemon::create_statset ())
   {
-    m_thread = std::thread (daemon::loop, this, exec_arg, m_name.c_str ());
+    m_thread = std::thread (daemon::loop_without_context, this, exec_arg, m_name.c_str ());
   }
 
   daemon::~daemon ()
@@ -194,7 +194,7 @@ namespace cubthread
   }
 
   void
-  daemon::loop (daemon *daemon_arg, task<void> *exec_arg, const char *name)
+  daemon::loop_without_context (daemon *daemon_arg, task<void> *exec_arg, const char *name)
   {
     (void) name;  // suppress unused parameter warning
     // its purpose is to help visualize daemon thread stacks
