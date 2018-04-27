@@ -437,14 +437,14 @@ STATIC_INLINE const JSON_VALUE &db_json_doc_to_value (const JSON_DOC &doc) __att
 static int db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc);
 static int db_json_add_json_value_to_object (JSON_DOC &doc, const char *name, JSON_VALUE &value);
 
-static int db_json_deserialize_doc_internal (OR_BUF *buf, JSON_DOC &doc, JSON_VALUE &value);
+static int db_json_deserialize_doc_internal (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator);
 
 static int db_json_or_buf_underflow (OR_BUF *buf, size_t length);
-static int db_json_unpack_string_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc);
-static int db_json_unpack_int_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc);
-static int db_json_unpack_bool_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc);
-static int db_json_unpack_object_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc);
-static int db_json_unpack_array_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc);
+static int db_json_unpack_string_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator);
+static int db_json_unpack_int_to_value (OR_BUF *buf, JSON_VALUE &value);
+static int db_json_unpack_bool_to_value (OR_BUF *buf, JSON_VALUE &value);
+static int db_json_unpack_object_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator);
+static int db_json_unpack_array_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator);
 
 int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
 {
@@ -2972,7 +2972,7 @@ db_json_or_buf_underflow (OR_BUF *buf, size_t length)
 }
 
 static int
-db_json_unpack_string_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
+db_json_unpack_string_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator)
 {
   size_t str_length;
   int rc = NO_ERROR;
@@ -2995,7 +2995,7 @@ db_json_unpack_string_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
     }
 
   // set the string directly from the buffer to avoid additional copy
-  value.SetString (buf->ptr, str_length - 1, doc.GetAllocator());
+  value.SetString (buf->ptr, str_length - 1, doc_allocator);
   // update the buffer pointer
   buf->ptr += str_length;
 
@@ -3011,7 +3011,7 @@ db_json_unpack_string_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
 }
 
 static int
-db_json_unpack_int_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
+db_json_unpack_int_to_value (OR_BUF *buf, JSON_VALUE &value)
 {
   int rc = NO_ERROR;
   int int_value;
@@ -3030,7 +3030,7 @@ db_json_unpack_int_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
 }
 
 static int
-db_json_unpack_double_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
+db_json_unpack_double_to_value (OR_BUF *buf, JSON_VALUE &value)
 {
   int rc = NO_ERROR;
   double double_value;
@@ -3049,7 +3049,7 @@ db_json_unpack_double_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
 }
 
 static int
-db_json_unpack_bool_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
+db_json_unpack_bool_to_value (OR_BUF *buf, JSON_VALUE &value)
 {
   int rc = NO_ERROR;
   int int_value;
@@ -3067,7 +3067,7 @@ db_json_unpack_bool_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
 }
 
 static int
-db_json_unpack_object_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
+db_json_unpack_object_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator)
 {
   int rc = NO_ERROR;
   int size;
@@ -3087,7 +3087,7 @@ db_json_unpack_object_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
     {
       // get the key
       JSON_VALUE key;
-      rc = db_json_unpack_string_to_value (buf, key, doc);
+      rc = db_json_unpack_string_to_value (buf, key, doc_allocator);
       if (rc != NO_ERROR)
 	{
 	  ASSERT_ERROR();
@@ -3096,21 +3096,21 @@ db_json_unpack_object_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
 
       // get the value
       JSON_VALUE child;
-      rc = db_json_deserialize_doc_internal (buf, doc, child);
+      rc = db_json_deserialize_doc_internal (buf, child, doc_allocator);
       if (rc != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
 	  return rc;
 	}
 
-      value.AddMember (key, child, doc.GetAllocator());
+      value.AddMember (key, child, doc_allocator);
     }
 
   return NO_ERROR;
 }
 
 static int
-db_json_unpack_array_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
+db_json_unpack_array_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator)
 {
   int rc = NO_ERROR;
   int size;
@@ -3129,14 +3129,14 @@ db_json_unpack_array_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
   for (int i = 0; i < size; i++)
     {
       JSON_VALUE child;
-      rc = db_json_deserialize_doc_internal (buf, doc, child);
+      rc = db_json_deserialize_doc_internal (buf, child, doc_allocator);
       if (rc != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
 	  return rc;
 	}
 
-      value.PushBack (child, doc.GetAllocator());
+      value.PushBack (child, doc_allocator);
     }
 
   return NO_ERROR;
@@ -3145,13 +3145,13 @@ db_json_unpack_array_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_DOC &doc)
 /*
  * db_json_deserialize_doc_internal () - this is where the deserialization actually happens
  *
- * return           : error_code
- * buf (in)         : the buffer which contains the json serialized
- * doc (in)         : we will use this parameter only for the allocator, it's the root of the json document
- * value (in)       : the current value from the json document
+ * return             : error_code
+ * buf (in)           : the buffer which contains the json serialized
+ * doc_allocator (in) : the allocator used to create json "tree"
+ * value (in)         : the current value from the json document
  */
 static int
-db_json_deserialize_doc_internal (OR_BUF *buf, JSON_DOC &doc, JSON_VALUE &value)
+db_json_deserialize_doc_internal (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator)
 {
   DB_JSON_TYPE json_type;
   int rc = NO_ERROR;
@@ -3167,19 +3167,19 @@ db_json_deserialize_doc_internal (OR_BUF *buf, JSON_DOC &doc, JSON_VALUE &value)
   switch (json_type)
     {
     case DB_JSON_INT:
-      rc = db_json_unpack_int_to_value (buf, value, doc);
+      rc = db_json_unpack_int_to_value (buf, value);
       break;
 
     case DB_JSON_DOUBLE:
-      rc = db_json_unpack_double_to_value (buf, value, doc);
+      rc = db_json_unpack_double_to_value (buf, value);
       break;
 
     case DB_JSON_STRING:
-      rc = db_json_unpack_string_to_value (buf, value, doc);
+      rc = db_json_unpack_string_to_value (buf, value, doc_allocator);
       break;
 
     case DB_JSON_BOOL:
-      rc = db_json_unpack_bool_to_value (buf, value, doc);
+      rc = db_json_unpack_bool_to_value (buf, value);
       break;
 
     case DB_JSON_NULL:
@@ -3187,11 +3187,11 @@ db_json_deserialize_doc_internal (OR_BUF *buf, JSON_DOC &doc, JSON_VALUE &value)
       break;
 
     case DB_JSON_OBJECT:
-      rc = db_json_unpack_object_to_value (buf, value, doc);
+      rc = db_json_unpack_object_to_value (buf, value, doc_allocator);
       break;
 
     case DB_JSON_ARRAY:
-      rc = db_json_unpack_array_to_value (buf, value, doc);
+      rc = db_json_unpack_array_to_value (buf, value, doc_allocator);
       break;
 
     default:
@@ -3223,7 +3223,9 @@ db_json_deserialize (OR_BUF *buf, JSON_DOC *&doc)
   // create the document that we want to reconstruct
   doc = db_json_allocate_doc ();
 
-  error_code = db_json_deserialize_doc_internal (buf, *doc, db_json_doc_to_value (*doc));
+  // the conversion from JSON_DOC to JSON_VALUE is needed because we want a refference to current node
+  // from json "tree" while iterating
+  error_code = db_json_deserialize_doc_internal (buf, db_json_doc_to_value (*doc), doc->GetAllocator());
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR();
