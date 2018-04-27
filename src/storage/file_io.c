@@ -497,7 +497,8 @@ static bool fileio_is_terminated_process (int pid);
 
 static ssize_t fileio_os_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, size_t count, off_t offset);
 static ssize_t fileio_os_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, size_t count, off_t offset);
-static ssize_t pwrite_with_fi (THREAD_ENTRY * thread_p, int fd, const void *buf, size_t count, off_t offset);
+static ssize_t pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, size_t count,
+					   off_t offset);
 
 #if !defined(WINDOWS)
 static FILEIO_LOCKF_TYPE fileio_lock (const char *db_fullname, const char *vlabel, int vdes, bool dowait);
@@ -3521,8 +3522,21 @@ fileio_is_system_volume_label_equal (THREAD_ENTRY * thread_p, FILEIO_SYSTEM_VOLU
   return (util_compare_filepath (sys_vol_info_p->vlabel, arg->vol_label) == 0);
 }
 
+static void
+fileio_sync_and_exit_handler (void)
+{
+  THREAD_ENTRY *thread_p = NULL;
+
+#if defined (SERVER_MODE)
+  thread_p = thread_get_thread_entry_info ();
+#endif
+
+  (void) fileio_synchronize_all (thread_p, true);
+  _exit (0);
+}
+
 /*
- * pwrite_with_fi () - Write buffer to file descriptor with fault injection.
+ * pwrite_write_with_injected_fault () - Write buffer to file descriptor with fault injection.
  *   return:
  *   thread_p(in): thread entry
  *   fd(in): file descriptor
@@ -3531,15 +3545,24 @@ fileio_is_system_volume_label_equal (THREAD_ENTRY * thread_p, FILEIO_SYSTEM_VOLU
  *   offset(in): offset into file
  */
 static ssize_t
-pwrite_with_fi (THREAD_ENTRY * thread_p, int fd, const void *buf, size_t count, off_t offset)
+pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, size_t count, off_t offset)
 {
+  static bool init = false;
+  const int mod_factor = 50000;
   const int fourK = 4096;
   int count_blocks;
   ssize_t r;
 
-  if (sysprm_find_fi_code_in_integer_list (PRM_ID_FAULT_INJECTION_IDS, (int) FI_TEST_FILE_IO_WRITE_PARTS1) == true)
+  if (init == false)
     {
-      /* Write blocks in their order. You may change and test another order. */
+      srand ((unsigned int) time (NULL));
+      init = true;
+    }
+
+  if (FI_INSERTED (FI_TEST_FILE_IO_WRITE_PARTS1) && ((rand () % mod_factor) == 0))
+    {
+      // simulate partial write
+
       count_blocks = count / fourK;
       for (int i = 0; i < count_blocks; i++)
 	{
@@ -3549,13 +3572,30 @@ pwrite_with_fi (THREAD_ENTRY * thread_p, int fd, const void *buf, size_t count, 
 	      return r;
 	    }
 
-	  FI_TEST (thread_p, FI_TEST_FILE_IO_WRITE_PARTS1, 0);
+	  if ((rand () % count_blocks - 1) == 0)
+	    {
+	      char msg[1024];
+	      char *vlabel;
+
+	      atexit (fileio_sync_and_exit_handler);
+
+	      vlabel = fileio_get_volume_label_by_fd (fd, PEEK);
+	      sprintf (msg, "fault injected to write a page to offset (%ld) of '%s'\n", offset,
+		       vlabel ? vlabel : "unknown volume");
+	      er_print_callstack (ARG_FILE_LINE, "FAULT INJECTION: RANDOM EXIT\n");
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, msg);
+
+	      // This will call atexit handler.
+	      exit (0);
+	    }
 	}
 
       return r;
     }
-  else if (sysprm_find_fi_code_in_integer_list (PRM_ID_FAULT_INJECTION_IDS, (int) FI_TEST_FILE_IO_WRITE_PARTS2) == true)
+  else if (FI_INSERTED (FI_TEST_FILE_IO_WRITE_PARTS2) && ((rand () % mod_factor) == 0))
     {
+      // simulate partial write
+
       /* Write blocks in reverse order. You may change and test the blocks order. */
       count_blocks = count / fourK;
       for (int i = count_blocks - 1; i >= 0; i--)
@@ -3566,7 +3606,22 @@ pwrite_with_fi (THREAD_ENTRY * thread_p, int fd, const void *buf, size_t count, 
 	      return r;
 	    }
 
-	  FI_TEST (thread_p, FI_TEST_FILE_IO_WRITE_PARTS2, 0);
+	  if ((rand () % count_blocks - 1) == 0)
+	    {
+	      char msg[1024];
+	      char *vlabel;
+
+	      atexit (fileio_sync_and_exit_handler);
+
+	      vlabel = fileio_get_volume_label_by_fd (fd, PEEK);
+	      sprintf (msg, "fault injected to write a page to offset (%ld) of '%s'\n", offset,
+		       vlabel ? vlabel : "unknown volume");
+	      er_print_callstack (ARG_FILE_LINE, "FAULT INJECTION: RANDOM EXIT\n");
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, msg);
+
+	      // This will call atexit handler.
+	      exit (0);
+	    }
 	}
 
       return r;
@@ -3962,7 +4017,7 @@ fileio_os_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, size_t co
   return pwrite (thread_p, vol_fd, io_page_p, count, offset);
 #else
   /* server debugging mode */
-  return pwrite_with_fi (thread_p, vol_fd, io_page_p, count, offset);
+  return pwrite_with_injected_fault (thread_p, vol_fd, io_page_p, count, offset);
 #endif
 }
 
