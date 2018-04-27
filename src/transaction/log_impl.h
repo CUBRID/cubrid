@@ -138,6 +138,14 @@ struct log_page
   char area[1];
 };
 
+/* Uses 0xff to fills up the page, before writing in it. This helps recovery to detect the end of the log in
+ * case of log page corruption, caused by partial page flush. Thus, at recovery analysis, we can easily
+ * detect the last valid log record - the log record having NULL_LSA (0xff) in its forward address field.
+ * If we do not use 0xff, a corrupted log record will be considered valid at recovery, thus affecting
+ * the database consistency.
+ */
+#define LOG_PAGE_INIT_VALUE 0xff
+
 /*
  * This structure encapsulates various information and metrics related
  * to each backup level.

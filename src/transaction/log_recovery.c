@@ -32,6 +32,7 @@
 #include <time.h>
 #include <assert.h>
 
+#include "log_impl.h"
 #include "log_manager.h"
 #include "recovery.h"
 #include "error_manager.h"
@@ -2398,7 +2399,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
   *did_incom_recovery = false;
 
   log_page_p = (LOG_PAGE *) aligned_log_pgbuf;
-  memset (null_block, 0xff, block_size);
+  memset (null_block, LOG_PAGE_INIT_VALUE, block_size);
 
   while (!LSA_ISNULL (&lsa))
     {
@@ -2425,6 +2426,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		  fflush (stdout);
 		}
 #endif /* !NDEBUG */
+
 	      /* if previous log record exists, reset tdes->tail_lsa/undo_nxlsa as previous of end_redo_lsa */
 	      if (log_rec != NULL)
 		{
@@ -2464,11 +2466,13 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	      return;
 	    }
 
-	  /* Set first corrupted record lsa, if a block is corrupt. */
+	  /* Set first corrupted record lsa, if a block is corrupted. */
 	  for (i = 0; i < max_num_blocks; i++)
 	    {
-	      /* Checks null blocks. Additional checking for each record may be done, but, for partial page flush, checking blocks should be enough. */
-	      if (!memcmp (((char *) log_page_p) + (i * block_size), null_block, block_size))
+	      /* Checks null blocks. Additional checking for each record may be done,
+	       * but, for partial page flush, checking blocks should be enough.
+	       */
+	      if (memcmp (((char *) log_page_p) + (i * block_size), null_block, block_size) == 0)
 		{
 		  /* The block is corrupted, do not analyze it. */
 		  first_corrupted_rec_lsa.pageid = log_lsa.pageid;
