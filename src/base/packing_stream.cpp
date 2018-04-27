@@ -702,6 +702,21 @@ namespace cubstream
     return error_code;
   }
 
+  void packing_stream::detach_all_buffers (void)
+    {
+      std::vector <buffer_context> ranges;
+
+      collect_buffers (ranges, COLLECT_ALL_BUFFERS, COLLECT_AND_DETACH);
+
+      for (std::vector <buffer_context>::iterator it = ranges.begin (); it != ranges.end (); it++)
+        {
+          m_buffer_provider->unpin (it->mapped_buffer);
+        }
+	
+      m_total_buffered_size = 0;
+      m_last_buffered_position = 0;
+    }
+
   char *packing_stream::fetch_data_from_provider (buffer_provider *context_provider, const stream_position &pos,
       char *ptr, const size_t amount)
   {

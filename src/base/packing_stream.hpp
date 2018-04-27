@@ -207,10 +207,8 @@ namespace cubstream
       int attach_buffers (std::vector <buffer_context> &buffered_ranges);
 
       /* TODO[arnia] : temporary for unit test */
-      void detach_all_buffers (void)
-      {
-	m_buffered_ranges.clear ();
-      };
+      void detach_all_buffers (void);
+
   };
 
 } /* namespace cubstream */
