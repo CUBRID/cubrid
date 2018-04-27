@@ -88,7 +88,7 @@ namespace cubthread
       //
       template <typename Context>
       daemon (const looper &loop_pattern_arg, context_manager<Context> *context_manager_arg,
-	      task<Context> *exec, const char *name = NULL);
+	      task<Context> *exec, const char *name = "");
       ~daemon();
 
       void wakeup (void);         // wakeup daemon thread
@@ -137,7 +137,7 @@ namespace cubthread
 
   template <typename Context>
   daemon::daemon (const looper &loop_pattern_arg, context_manager<Context> *context_manager_arg,
-		  task<Context> *exec, const char *name)
+		  task<Context> *exec, const char *name /* = "" */)
     : m_waiter ()
     , m_looper (loop_pattern_arg)
     , m_func_on_stop ()
@@ -152,7 +152,7 @@ namespace cubthread
   template <typename Context>
   void
   daemon::loop (daemon *daemon_arg, context_manager<Context> *context_manager_arg, task<Context> *exec_arg,
-		const char *name /* = NULL */)
+		const char *name)
   {
     (void) (name);    // parameter is never used. it is here for convenience, to be seen on thread stacks
 

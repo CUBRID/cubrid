@@ -141,7 +141,7 @@ namespace cubthread
 
       // create daemon thread
       // todo: remove default daemon name
-      daemon *create_daemon (const looper &looper_arg, entry_task *exec_p, const char *daemon_name = NULL,
+      daemon *create_daemon (const looper &looper_arg, entry_task *exec_p, const char *daemon_name = "",
 			     entry_manager *context_manager = NULL);
 
       // destroy daemon thread

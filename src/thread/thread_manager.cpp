@@ -175,7 +175,7 @@ namespace cubthread
   }
 
   daemon *
-  manager::create_daemon (const looper &looper_arg, entry_task *exec_p, const char *daemon_name /* = NULL */,
+  manager::create_daemon (const looper &looper_arg, entry_task *exec_p, const char *daemon_name /* = "" */,
 			  entry_manager *context_manager /* = NULL */)
   {
 #if defined (SERVER_MODE)
@@ -190,7 +190,7 @@ namespace cubthread
 	  {
 	    context_manager = m_daemon_entry_manager;
 	  }
-	return create_and_track_resource (m_daemons, 1, looper_arg, context_manager, exec_p);
+	return create_and_track_resource (m_daemons, 1, looper_arg, context_manager, exec_p, daemon_name);
       }
 #else // not SERVER_MODE = SA_MODE
     assert (false);
