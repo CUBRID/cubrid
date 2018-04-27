@@ -1651,7 +1651,7 @@ logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_full
     }
 
 #if !defined(NDEBUG)
-  if (log_Gl.rcv_phase != LOG_RECOVERY_ANALYSIS_PHASE)
+  if (log_Gl.rcv_phase == LOG_RESTARTED)
     {
       logpb_debug_check_log_page (thread_p, log_pgptr);
     }
@@ -2078,7 +2078,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
 	     (long long int) log_pgptr->hdr.logical_pageid, log_pgptr->hdr.checksum);
 
 #if !defined(NDEBUG)
-  if (log_Gl.rcv_phase != LOG_RECOVERY_ANALYSIS_PHASE)
+  if (log_Gl.rcv_phase == LOG_RESTARTED)
     {
       logpb_debug_check_log_page (thread_p, log_pgptr);
     }
@@ -2140,7 +2140,7 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
     }
 
 #if !defined(NDEBUG)
-  if (log_Gl.rcv_phase != LOG_RECOVERY_ANALYSIS_PHASE)
+  if (log_Gl.rcv_phase == LOG_RESTARTED)
     {
       char *ptr;
       int i;
@@ -6742,7 +6742,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 
 #if !defined (NDEBUG)
   /* In analysys phase, the page may be corrupted. */
-  if (log_Gl.rcv_phase != LOG_RECOVERY_ANALYSIS_PHASE)
+  if (log_Gl.rcv_phase == LOG_RESTARTED)
     {
       logpb_debug_check_log_page (thread_p, log_pgptr);
     }
@@ -12218,7 +12218,7 @@ logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p)
 
 #if !defined(NDEBUG)
       /* In analysys phase, the page may be corrupted. */
-      if (log_Gl.rcv_phase != LOG_RECOVERY_ANALYSIS_PHASE)
+      if (log_Gl.rcv_phase == LOG_RESTARTED)
 	{
 	  logpb_debug_check_log_page (thread_p, arv_hdr_pgptr);
 	}
