@@ -3538,7 +3538,7 @@ static ssize_t
 pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, size_t count, off_t offset)
 {
   static bool init = false;
-  const int mod_factor = 50000;
+  const int mod_factor = 25000;
   const int unit_size = 4096;
   int count_blocks;
   ssize_t r;
