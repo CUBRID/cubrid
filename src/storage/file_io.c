@@ -3576,11 +3576,6 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
 	      return r;
 	    }
 
-	  if (dwb_is_double_write_volume (fd))
-	    {
-	      continue;
-	    }
-
 	  // randomly exits to remain page is partially written
 	  if ((rand () % count_blocks - 1) == 0)
 	    {

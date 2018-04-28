@@ -3512,23 +3512,6 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 }
 
 /*
-* dwb_is_double_write_volume () - Check whether a file descriptor is double write volume
-*
-* return   : True, if it is DWB volume.
-*   fd: file descriptor to check
-*/
-int
-dwb_is_double_write_volume (THREAD_ENTRY * thread_p, int fd)
-{
-  if (dwb_Global.vdes != NULL_VOLDES && dwb_Global.vdes == fd)
-    {
-      return true;
-    }
-
-  return false;
-}
-
-/*
  * dwb_is_created () - Checks whether double write buffer was created.
  *
  * return   : True, if created. 
