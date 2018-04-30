@@ -156,7 +156,7 @@ void master_listening_thread_func ()
 
 static int init_thread_system ()
 {
-  error_code = csect_initialize_static_critical_sections ();
+  int error_code = csect_initialize_static_critical_sections ();
   if (error_code != NO_ERROR)
     {
       assert (false);
