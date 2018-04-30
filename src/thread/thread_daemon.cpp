@@ -49,7 +49,7 @@ namespace cubthread
   // daemon implementation
   //////////////////////////////////////////////////////////////////////////
 
-  daemon::daemon (const looper &loop_pattern_arg, task<void> *exec_arg, const char *name)
+  daemon::daemon (const looper &loop_pattern_arg, task_without_context *exec_arg, const char *name)
     : m_waiter ()
     , m_looper (loop_pattern_arg)
     , m_func_on_stop ()
@@ -194,7 +194,7 @@ namespace cubthread
   }
 
   void
-  daemon::loop_without_context (daemon *daemon_arg, task<void> *exec_arg, const char *name)
+  daemon::loop_without_context (daemon *daemon_arg, task_without_context *exec_arg, const char *name)
   {
     (void) name;  // suppress unused parameter warning
     // its purpose is to help visualize daemon thread stacks

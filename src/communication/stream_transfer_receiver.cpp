@@ -33,7 +33,7 @@
 namespace cubstream
 {
 
-  class transfer_receiver_task : public cubthread::task<void>
+  class transfer_receiver_task : public cubthread::task_without_context
   {
     public:
       transfer_receiver_task (cubstream::transfer_receiver &consumer_channel)
@@ -75,7 +75,7 @@ namespace cubstream
       m_last_received_position (received_from_position)
   {
     m_receiver_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
-			new transfer_receiver_task (*this), "transfer_receiver");
+			new transfer_receiver_task (*this), "stream_transfer_receiver");
   }
 
   transfer_receiver::~transfer_receiver ()

@@ -97,7 +97,7 @@ void master_listening_thread_func (std::vector <communication_channel> &channels
     }
 }
 
-class conn_initiator_daemon_task : public cubthread::task<void>
+class conn_initiator_daemon_task : public cubthread::task_without_context
 {
   public:
     conn_initiator_daemon_task (int &counter, communication_channel &&chn) : m_counter (counter),
@@ -143,7 +143,7 @@ class conn_initiator_daemon_task : public cubthread::task<void>
     communication_channel m_channel;
 };
 
-class conn_listener_daemon_task : public cubthread::task<void>
+class conn_listener_daemon_task : public cubthread::task_without_context
 {
   public:
     conn_listener_daemon_task (std::vector <communication_channel> &&channels) : m_channels (
@@ -248,7 +248,7 @@ static int init ()
     }
 
   std::vector <communication_channel> channels;
-  std::vector <cubthread::task<void> *> tasks;
+  std::vector <cubthread::task_without_context *> tasks;
   counters = (int *) calloc (NUM_OF_INITIATORS, sizeof (int));
 
   is_listening.store (false);

@@ -39,7 +39,7 @@
 namespace cubstream
 {
 
-  class transfer_sender_task : public cubthread::task<void>
+  class transfer_sender_task : public cubthread::task_without_context
   {
     public:
       transfer_sender_task (cubstream::transfer_sender &producer_channel)
@@ -82,7 +82,7 @@ namespace cubstream
     cubthread::delta_time daemon_period = std::chrono::milliseconds (10);
     m_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (daemon_period,
 		      new transfer_sender_task (*this),
-		      "transfer_sender");
+		      "stream_transfer_sender");
   }
 
   transfer_sender::~transfer_sender ()

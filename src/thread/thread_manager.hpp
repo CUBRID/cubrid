@@ -166,7 +166,8 @@ namespace cubthread
       // create & destroy daemon thread without thread entry
       //
       // note: create signature should match context-less daemon constructor
-      daemon *create_daemon_without_entry (const looper &looper_arg, task<void> *exec_p, const char *daemon_name);
+      daemon *create_daemon_without_entry (const looper &looper_arg, task_without_context *exec_p,
+					   const char *daemon_name);
       void destroy_daemon_without_entry (daemon *&daemon_arg);
 
       //////////////////////////////////////////////////////////////////////////

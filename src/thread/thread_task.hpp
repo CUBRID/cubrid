@@ -95,6 +95,7 @@ namespace cubthread
 	delete this;
       }
   };
+  using task_without_context = task<void>;
 
   // context_manager
   //

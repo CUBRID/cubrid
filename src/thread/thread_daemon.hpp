@@ -89,7 +89,7 @@ namespace cubthread
       template <typename Context>
       daemon (const looper &loop_pattern_arg, context_manager<Context> *context_manager_arg,
 	      task<Context> *exec, const char *name);
-      daemon (const looper &loop_pattern_arg, task<void> *exec_arg, const char *name);
+      daemon (const looper &loop_pattern_arg, task_without_context *exec_arg, const char *name);
       ~daemon();
 
       void wakeup (void);         // wakeup daemon thread
@@ -119,7 +119,7 @@ namespace cubthread
 				     task<Context> *exec_arg, const char *name);
 
       // loop_without_context - just execute context-less task in a loop
-      static void loop_without_context (daemon *daemon_arg, task<void> *exec_arg, const char *name);
+      static void loop_without_context (daemon *daemon_arg, task_without_context *exec_arg, const char *name);
 
       void pause (void);                                    // pause between tasks
       // register statistics
