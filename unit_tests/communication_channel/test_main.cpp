@@ -21,6 +21,7 @@
 #include <thread>
 #include <vector>
 
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 
