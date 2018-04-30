@@ -210,9 +210,9 @@ class conn_listener_daemon_task : public cubthread::task<void>
 static int init_thread_system ()
 {
   int error_code;
-  lf_initialize_transaction_systems (MAX_THREADS);
 
-  if (csect_initialize_static_critical_sections () != NO_ERROR)
+  error_code = csect_initialize_static_critical_sections ();
+  if (error_code != NO_ERROR)
     {
       assert (false);
       return error_code;
@@ -243,6 +243,7 @@ static int init ()
   error_code = init_thread_system ();
   if (error_code != NO_ERROR)
     {
+      assert (false);
       return error_code;
     }
 
@@ -298,7 +299,6 @@ static int finish ()
     }
 
   css_final_conn_list();
-  lf_destroy_transaction_systems ();
 
   er_final (ER_ALL_FINAL);
 
