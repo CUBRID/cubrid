@@ -2485,6 +2485,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	  _er_log_debug (ARG_FILE_LINE,
 			 "logpb_recovery_analysis: log page %lld is corrupted due to partial flush.\n",
 			 (long long int) log_lsa.pageid);
+	  logpb_dump_log_page_area (thread_p, log_page_p, 0, LOGAREA_SIZE);
 	}
 
       /* Check all log records in this phase */

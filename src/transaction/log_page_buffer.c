@@ -368,8 +368,6 @@ static LOG_ZIP *logpb_get_zip_redo (THREAD_ENTRY * thread_p);
 static char *logpb_get_data_ptr (THREAD_ENTRY * thread_p);
 static bool logpb_realloc_data_ptr (THREAD_ENTRY * thread_p, int length);
 
-static void logpb_dump_log_page_area (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int offset, int length);
-
 static int logpb_flush_all_append_pages (THREAD_ENTRY * thread_p);
 static int logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * ndoe);
 
@@ -4177,15 +4175,17 @@ logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p)
  * logpb_dump_log_page_area - Dump log page area.
  *
  * return: nothing
- *   log_pgptr(in): log page 
- *   offset(in): offset to start logging
+ *   log_pgptr(in): log page
+ *   offset(in): offset in page area to start logging
  *   length(in): length to log
  */
-static void
+void
 logpb_dump_log_page_area (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int offset, int length)
 {
-  int line_no;
-  char log_line[100], count_lines, *src_ptr, *end_ptr, *dest_ptr;
+  const int block_size = 4 * ONE_K;
+  char log_block_string[block_size * 4], log_header_string[200], *src_ptr, *dest_ptr;
+  int count_remaining_bytes, count_bytes_to_dump, i;
+  int line_no = 0;
 
   if (logpb_Logging == false)
     {
@@ -4193,29 +4193,34 @@ logpb_dump_log_page_area (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int off
     }
 
   assert (log_pgptr != NULL);
-  if (offset < 0 || length < 0 || length > LOG_PAGESIZE)
+  if (offset < 0 || length < 0 || length > LOGAREA_SIZE || offset + length > LOGAREA_SIZE)
     {
       return;
     }
 
-  /* Dump max 90 chars/line. */
-  src_ptr = log_pgptr->area;
-  count_lines = (length * 3) / 90 + 1;
-  for (line_no = 0; line_no < count_lines; line_no++)
+  sprintf (log_header_string, "page_id = %lld, checksum = %d, offset = %d, length = %d\n",
+	   (long long int) log_pgptr->hdr.logical_pageid, log_pgptr->hdr.checksum, offset, length);
+  count_remaining_bytes = length;
+  src_ptr = log_pgptr->area + offset;
+  while (count_remaining_bytes > 0)
     {
-      dest_ptr = log_line;
-      end_ptr = src_ptr + 30;
-      while (src_ptr < end_ptr)
+      dest_ptr = log_block_string;
+      count_bytes_to_dump = MIN (count_remaining_bytes, block_size);
+      for (i = 0; i < count_bytes_to_dump; i++, src_ptr++)
 	{
-	  sprintf (dest_ptr, "%02X ", *src_ptr);
+	  if (i % 32 == 0)
+	    {
+	      sprintf (dest_ptr, "\n  %05d: ", line_no++);
+	      dest_ptr += 10;
+	    }
 
+	  sprintf (dest_ptr, "%02X ", (unsigned char) (*src_ptr));
 	  dest_ptr += 3;
-	  src_ptr++;
 	}
-      *dest_ptr = 0;
 
-      logpb_log ("logpb_dump_log_page_area(%d): page_id = %lld, offset = %d, length = %d\n data = %s\n",
-		 line_no + 1, (long long int) log_pgptr->hdr.logical_pageid, offset + line_no * 30, 30, log_line);
+      sprintf (dest_ptr, "\n");
+      logpb_log ("logpb_dump_log_page_area: header = %s data = %s\n", log_header_string, log_block_string);
+      count_remaining_bytes = count_remaining_bytes - count_bytes_to_dump;
     }
 }
 
@@ -4652,11 +4657,6 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  goto error;
 	}
 
-      /* Dump latest portion of page, for debugging purpose. */
-      logpb_dump_log_page_area (thread_p, bufptr->logpage,
-				(int) (log_Gl.append.nxio_lsa.offset - sizeof (LOG_RECORD_HEADER)),
-				(int) sizeof (LOG_RECORD_HEADER));
-
       logpb_write_page_to_disk (thread_p, bufptr->logpage, bufptr->pageid);
       need_sync = true;
       bufptr->dirty = false;
@@ -4664,6 +4664,11 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
       logpb_log ("logpb_flush_all_append_pages: flushed nxio_lsa = %lld|%d page to disk.\n",
 		 (long long int) log_Gl.append.nxio_lsa.pageid, (int) log_Gl.append.nxio_lsa.offset);
+      /* Dump latest portion of page, for debugging purpose. */
+      logpb_dump_log_page_area (thread_p, bufptr->logpage, (int) (log_Gl.append.nxio_lsa.offset),
+				(int) sizeof (LOG_RECORD_HEADER));
+      logpb_dump_log_page_area (thread_p, bufptr->logpage, (int) (log_Gl.hdr.eof_lsa.offset),
+				(int) sizeof (LOG_RECORD_HEADER));
     }
   else
     {
