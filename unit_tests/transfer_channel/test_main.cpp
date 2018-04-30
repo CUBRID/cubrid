@@ -12,19 +12,20 @@
 #include "lock_free.h"
 #include "connection_sr.h"
 
-#include <vector>
-#include <mutex>
-#include <iostream>
-#include <chrono>
-#include <thread>
-#include <stdio.h>
-#include <stdlib.h>
-
 #if !defined (WINDOWS)
 #include "tcp.h"
 #else
 #include "wintcp.h"
 #endif
+
+#include <chrono>
+#include <iostream>
+#include <mutex>
+#include <thread>
+#include <vector>
+
+#include <stdio.h>
+#include <stdlib.h>
 
 #define MAX_THREADS 16
 #define LISTENING_PORT 2222

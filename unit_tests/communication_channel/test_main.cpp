@@ -1,26 +1,28 @@
 #define SERVER_MODE
 
 #include "communication_channel.hpp"
+#include "connection_sr.h"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
 #include "thread_looper.hpp"
 #include "thread_task.hpp"
 #include "thread_daemon.hpp"
 #include "lock_free.h"
-#include <vector>
-#include <mutex>
-#include <iostream>
-#include <chrono>
-#include <thread>
-#include "connection_sr.h"
-#include <stdio.h>
-#include <stdlib.h>
 
 #if !defined (WINDOWS)
 #include "tcp.h"
 #else
 #include "wintcp.h"
 #endif
+
+#include <chrono>
+#include <iostream>
+#include <mutex>
+#include <thread>
+#include <vector>
+
+#include <stdio.h>
+#include <stdlib.h>
 
 #define MAX_THREADS 16
 
