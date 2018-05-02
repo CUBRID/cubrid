@@ -1116,7 +1116,7 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
   css_end_server_request (conn_p);
 
   /* avoid infinite waiting with xtran_wait_server_active_trans() */
-  thread_p->status = TS_CHECK;
+  thread_p->m_status = cubthread::entry::status::TS_CHECK;
 
 loop:
   prev_thrd_cnt = thread_has_threads (thread_p, tran_index, client_id);
@@ -1227,7 +1227,7 @@ loop:
   css_free_conn (conn_p);
 
   thread_set_info (thread_p, -1, 0, local_tran_index, -1);
-  thread_p->status = TS_RUN;
+  thread_p->m_status = cubthread::entry::status::TS_RUN;
 
   return NO_ERROR;
 }

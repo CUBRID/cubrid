@@ -2683,7 +2683,7 @@ css_server_task::execute (context_type &thread_ref)
       assert (thread_ref.private_lru_index == -1);
     }
 
-  thread_ref.status = TS_RUN;
+  thread_ref.m_status = cubthread::entry::status::TS_RUN;
 
   // TODO: we lock tran_index_lock because css_internal_request_handler expects it to be locked. however, I am not
   //       convinced we really need this
@@ -2692,7 +2692,7 @@ css_server_task::execute (context_type &thread_ref)
 
   thread_ref.private_lru_index = -1;
   thread_ref.conn_entry = NULL;
-  thread_ref.status = TS_FREE;
+  thread_ref.m_status = cubthread::entry::status::TS_FREE;
 }
 
 void
@@ -2758,12 +2758,12 @@ css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_E
 
   (void) logtb_set_tran_index_interrupt (&stopper_thread_ref, thread_ref.tran_index, true);
 
-  if (thread_ref.status == TS_WAIT && logtb_is_current_active (&thread_ref))
+  if (thread_ref.m_status == cubthread::entry::status::TS_WAIT && logtb_is_current_active (&thread_ref))
     {
       thread_lock_entry (&thread_ref);
 
-      if (thread_ref.tran_index != -1 && thread_ref.status == TS_WAIT && thread_ref.lockwait == NULL
-          && thread_ref.check_interrupt)
+      if (thread_ref.tran_index != -1 && thread_ref.m_status == cubthread::entry::status::TS_WAIT
+          && thread_ref.lockwait == NULL && thread_ref.check_interrupt)
         {
           thread_ref.interrupted = true;
           thread_wakeup_already_had_mutex (&thread_ref, THREAD_RESUME_DUE_TO_INTERRUPT);
@@ -2794,7 +2794,7 @@ css_stop_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper)
       // no transaction, no stop
       return;
     }
-  if (thread_ref.status == TS_WAIT && logtb_is_current_active (&thread_ref))
+  if (thread_ref.m_status == cubthread::entry::status::TS_WAIT && logtb_is_current_active (&thread_ref))
     {
       if (thread_check_suspend_reason_and_wakeup (&thread_ref, THREAD_RESUME_DUE_TO_INTERRUPT, THREAD_LOGWR_SUSPENDED)
           == NO_ERROR)
@@ -2821,7 +2821,7 @@ css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop_mapper, bool is_log
       // don't care
       return;
     }
-  if (thread_ref.status != TS_FREE)
+  if (thread_ref.m_status != cubthread::entry::status::TS_FREE)
     {
       found = true;
       stop_mapper = true;

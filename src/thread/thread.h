@@ -55,11 +55,6 @@
 #endif // SA_MODE
 
 enum
-{
-  TS_DEAD = 0, TS_FREE, TS_RUN, TS_WAIT, TS_CHECK
-};
-
-enum
 { THREAD_RESUME_NONE = 0,
   THREAD_RESUME_DUE_TO_INTERRUPT = 1,
   THREAD_RESUME_DUE_TO_SHUTDOWN = 2,
@@ -335,7 +330,7 @@ extern void thread_dec_recursion_depth (THREAD_ENTRY * thread_p);
 extern void thread_clear_recursion_depth (THREAD_ENTRY * thread_p);
 
 extern const char *thread_type_to_string (int type);
-extern const char *thread_status_to_string (int status);
+extern const char *thread_status_to_string (cubthread::entry::status status);
 extern const char *thread_resume_status_to_string (int resume_status);
 
 #if defined(WINDOWS)

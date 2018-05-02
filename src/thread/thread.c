@@ -21,6 +21,8 @@
  * thread.c - Thread management module at the server
  */
 
+// *INDENT-OFF*
+
 #ident "$Id$"
 
 #if !defined(WINDOWS)
@@ -544,14 +546,14 @@ int
 thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p, int suspended_reason)
 {
   int r;
-  int old_status;
+  cubthread::entry::status old_status;
 
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
 
-  assert (thread_p->status == TS_RUN || thread_p->status == TS_CHECK);
-  old_status = thread_p->status;
-  thread_p->status = TS_WAIT;
+  assert (thread_p->m_status == cubthread::entry::status::TS_RUN || thread_p->m_status == cubthread::entry::status::TS_CHECK);
+  old_status = thread_p->m_status;
+  thread_p->m_status = cubthread::entry::status::TS_WAIT;
 
   thread_p->resume_status = suspended_reason;
 
@@ -582,7 +584,7 @@ thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p, int suspended_r
 	}
     }
 
-  thread_p->status = old_status;
+  thread_p->m_status = old_status;
 
   r = pthread_mutex_unlock (&thread_p->th_entry_lock);
   if (r != 0)
@@ -605,12 +607,12 @@ int
 thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p, struct timespec *time_p, int suspended_reason)
 {
   int r;
-  int old_status;
+  cubthread::entry::status old_status;
   int error = NO_ERROR;
 
-  assert (thread_p->status == TS_RUN || thread_p->status == TS_CHECK);
-  old_status = thread_p->status;
-  thread_p->status = TS_WAIT;
+  assert (thread_p->m_status == cubthread::entry::status::TS_RUN || thread_p->m_status == cubthread::entry::status::TS_CHECK);
+  old_status = thread_p->m_status;
+  thread_p->m_status = cubthread::entry::status::TS_WAIT;
 
   thread_p->resume_status = suspended_reason;
 
@@ -627,7 +629,7 @@ thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p, struct 
       error = ER_CSS_PTHREAD_COND_TIMEDOUT;
     }
 
-  thread_p->status = old_status;
+  thread_p->m_status = old_status;
 
   r = pthread_mutex_unlock (&thread_p->th_entry_lock);
   if (r != 0)
@@ -791,11 +793,11 @@ thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p, pthread_mutex_t * mute
 				 int suspended_reason)
 {
   int r;
-  int old_status;
+  cubthread::entry::status old_status;
   int error = NO_ERROR;
 
   assert (thread_p != NULL);
-  old_status = thread_p->status;
+  old_status = thread_p->m_status;
 
   r = pthread_mutex_lock (&thread_p->th_entry_lock);
   if (r != NO_ERROR)
@@ -804,7 +806,7 @@ thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p, pthread_mutex_t * mute
       return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
 
-  thread_p->status = TS_WAIT;
+  thread_p->m_status = cubthread::entry::status::TS_WAIT;
   thread_p->resume_status = suspended_reason;
 
   r = pthread_mutex_unlock (&thread_p->th_entry_lock);
@@ -840,7 +842,7 @@ thread_suspend_with_other_mutex (THREAD_ENTRY * thread_p, pthread_mutex_t * mute
       return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
 
-  thread_p->status = old_status;
+  thread_p->m_status = old_status;
 
   r = pthread_mutex_unlock (&thread_p->th_entry_lock);
   if (r != NO_ERROR)
@@ -930,8 +932,8 @@ thread_belongs_to (THREAD_ENTRY * thread_p, int tran_index, int client_id)
   bool does_belong = false;
 
   (void) pthread_mutex_lock (&thread_p->tran_index_lock);
-  if (!thread_p->is_on_current_thread () && thread_p->status != TS_DEAD && thread_p->status != TS_FREE
-      && thread_p->status != TS_CHECK)
+  if (!thread_p->is_on_current_thread () && thread_p->m_status != cubthread::entry::status::TS_DEAD && thread_p->m_status != cubthread::entry::status::TS_FREE
+      && thread_p->m_status != cubthread::entry::status::TS_CHECK)
     {
       conn_p = thread_p->conn_entry;
       if (tran_index == NULL_TRAN_INDEX)
@@ -1016,11 +1018,11 @@ thread_get_info_threads (int *num_total_threads, int *num_worker_threads, int *n
     {
       for (thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
 	{
-	  if (num_free_threads && thread_p->status == TS_FREE)
+	  if (num_free_threads && thread_p->m_status == cubthread::entry::status::TS_FREE)
 	    {
 	      (*num_free_threads)++;
 	    }
-	  if (num_suspended_threads && thread_p->status == TS_WAIT)
+	  if (num_suspended_threads && thread_p->m_status == cubthread::entry::status::TS_WAIT)
 	    {
 	      (*num_suspended_threads)++;
 	    }
@@ -1426,7 +1428,7 @@ thread_find_first_lockwait_entry (int *thread_index_p)
 {
   for (THREAD_ENTRY * thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
     {
-      if (thread_p->status == TS_DEAD || thread_p->status == TS_FREE)
+      if (thread_p->m_status == cubthread::entry::status::TS_DEAD || thread_p->m_status == cubthread::entry::status::TS_FREE)
 	{
 	  continue;
 	}
@@ -1457,7 +1459,7 @@ thread_find_next_lockwait_entry (int *thread_index_p)
   for (THREAD_ENTRY * thread_p = thread_find_entry_by_index (start_index);
        thread_p != NULL; thread_p = thread_iterate (thread_p))
     {
-      if (thread_p->status == TS_DEAD || thread_p->status == TS_FREE)
+      if (thread_p->m_status == cubthread::entry::status::TS_DEAD || thread_p->m_status == cubthread::entry::status::TS_FREE)
 	{
 	  continue;
 	}
@@ -1530,7 +1532,7 @@ thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** thread_array_p)
   thread_count = 0;
   for (thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
     {
-      if (thread_p->status == TS_DEAD || thread_p->status == TS_FREE)
+      if (thread_p->m_status == cubthread::entry::status::TS_DEAD || thread_p->m_status == cubthread::entry::status::TS_FREE)
 	{
 	  continue;
 	}
@@ -2828,19 +2830,19 @@ thread_type_to_string (int type)
  *   type(in): thread type
  */
 const char *
-thread_status_to_string (int status)
+thread_status_to_string (cubthread::entry::status status)
 {
   switch (status)
     {
-    case TS_DEAD:
+    case cubthread::entry::status::TS_DEAD:
       return "DEAD";
-    case TS_FREE:
+    case cubthread::entry::status::TS_FREE:
       return "FREE";
-    case TS_RUN:
+    case cubthread::entry::status::TS_RUN:
       return "RUN";
-    case TS_WAIT:
+    case cubthread::entry::status::TS_WAIT:
       return "WAIT";
-    case TS_CHECK:
+    case cubthread::entry::status::TS_CHECK:
       return "CHECK";
     }
   return "UNKNOWN";
@@ -3223,3 +3225,5 @@ thread_iterate (THREAD_ENTRY * thread_p)
     }
   return thread_find_entry_by_index (index);
 }
+
+// *INDENT-ON*

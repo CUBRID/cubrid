@@ -50,7 +50,7 @@ namespace cubthread
     , private_lru_index (-1)
     , tran_index_lock ()
     , rid (0)
-    , status (TS_DEAD)
+    , m_status (status::TS_DEAD)
     , th_entry_lock ()
     , wakeup_cond ()
     , private_heap_id (0)

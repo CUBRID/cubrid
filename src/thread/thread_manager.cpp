@@ -406,7 +406,7 @@ namespace cubthread
     Main_entry_p = new entry ();
     Main_entry_p->index = 0;
     Main_entry_p->register_id ();
-    Main_entry_p->status = TS_RUN;
+    Main_entry_p->m_status = entry::status::TS_RUN;
     Main_entry_p->resume_status = THREAD_RESUME_NONE;
     Main_entry_p->tran_index = 0;	/* system transaction */
 #if defined (SERVER_MODE)

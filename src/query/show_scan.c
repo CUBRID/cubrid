@@ -553,7 +553,7 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
       idx++;
 
       /* Status */
-      db_make_string_by_const_str (&vals[idx], thread_status_to_string (thrd->status));
+      db_make_string_by_const_str (&vals[idx], thread_status_to_string (thrd->m_status));
       idx++;
 
       /* Resume_status */

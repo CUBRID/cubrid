@@ -130,6 +130,16 @@ namespace cubthread
       entry ();
       ~entry ();
 
+      // enumerations
+      enum class status
+      {
+	TS_DEAD,
+	TS_FREE,
+	TS_RUN,
+	TS_WAIT,
+	TS_CHECK
+      };
+
       // public functions
 
       // Context template requirement
@@ -148,7 +158,7 @@ namespace cubthread
       int private_lru_index;	/* private lru index when transaction quota is used */
       pthread_mutex_t tran_index_lock;
       unsigned int rid;		/* request id which this thread is processing */
-      int status;			/* thread status */
+      status m_status;			/* thread status */
 
       pthread_mutex_t th_entry_lock;	/* latch for this thread entry */
       pthread_cond_t wakeup_cond;	/* wakeup condition */
