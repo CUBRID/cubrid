@@ -16078,7 +16078,8 @@ pgbuf_page_maintenance_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (100));
   pgbuf_page_maintenance_daemon_task *daemon_task = new pgbuf_page_maintenance_daemon_task ();
 
-  pgbuf_Page_maintenance_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  pgbuf_Page_maintenance_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
+                                                                            "pgbuf_page_maintenance");
 }
 #endif /* SERVER_MODE */
 
@@ -16094,7 +16095,7 @@ pgbuf_page_flush_daemon_init ()
   cubthread::looper looper = cubthread::looper (pgbuf_get_page_flush_interval);
   pgbuf_page_flush_daemon_task *daemon_task = new pgbuf_page_flush_daemon_task ();
 
-  pgbuf_Page_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  pgbuf_Page_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "pgbuf_page_flush");
 }
 #endif /* SERVER_MODE */
 
@@ -16116,7 +16117,8 @@ pgbuf_page_post_flush_daemon_init ()
   cubthread::looper looper = cubthread::looper (looper_interval);
   pgbuf_page_post_flush_daemon_task *daemon_task = new pgbuf_page_post_flush_daemon_task ();
 
-  pgbuf_Page_post_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  pgbuf_Page_post_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
+                                                                           "pgbuf_page_post_flush");
 }
 #endif /* SERVER_MODE */
 
@@ -16138,7 +16140,8 @@ pgbuf_flush_control_daemon_init ()
     }
 
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (50));
-  pgbuf_Flush_control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  pgbuf_Flush_control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
+                                                                         "pgbuf_flush_control");
 }
 #endif /* SERVER_MODE */
 
