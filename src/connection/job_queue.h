@@ -40,15 +40,6 @@ struct css_job_entry
   CSS_JOB_ENTRY *next;
 };
 
-extern CSS_JOB_ENTRY *css_make_job_entry (CSS_CONN_ENTRY * conn, CSS_THREAD_FN func, CSS_THREAD_ARG arg, int index);
-extern void css_free_job_entry (CSS_JOB_ENTRY * p);
-extern void css_init_job_queue (void);
-extern void css_final_job_queue (void);
-extern void css_add_to_job_queue (CSS_JOB_ENTRY * job);
-extern CSS_JOB_ENTRY *css_get_new_job (void);
-extern void css_incr_job_queue_counter (int jobq_index, CSS_THREAD_FN func);
-extern void css_decr_job_queue_counter (int jobq_index, CSS_THREAD_FN func);
-
 extern int css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt,
 				      void **ptr);
 
