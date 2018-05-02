@@ -327,6 +327,7 @@ static void css_wp_core_job_scan_mapper (const cubthread::entry_workpool::core &
                                          int & error_code);
 // *INDENT-ON*
 
+#if defined (SERVER_MODE)
 /*
  * css_job_queues_start_scan() - start scan function for 'SHOW JOB QUEUES'
  *   return: NO_ERROR, or ER_code
@@ -352,7 +353,7 @@ css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** a
 
   *ptr = NULL;
 
-  ctx = showstmt_alloc_array_context (thread_p, css_Server_request_worker_pool->get_core_count (),
+  ctx = showstmt_alloc_array_context (thread_p, (int) css_Server_request_worker_pool->get_core_count (),
 				      (int) CSS_JOB_QUEUE_SCAN_COLUMN_COUNT);
   if (ctx == NULL)
     {
@@ -372,6 +373,7 @@ css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** a
 
   return NO_ERROR;
 }
+#endif // SERVER_MODE
 
 /*
  * css_free_job_entry_func () -

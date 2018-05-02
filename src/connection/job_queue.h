@@ -40,11 +40,4 @@ struct css_job_entry
   CSS_JOB_ENTRY *next;
 };
 
-extern int css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt,
-				      void **ptr);
-
-#if !defined(SERVER_MODE)
-#define css_job_queues_start_scan NULL
-#endif /* !SERVER_MODE */
-
 #endif /* _JOB_QUEUE_H_ */
