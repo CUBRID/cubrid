@@ -3475,7 +3475,6 @@ css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_E
 //
 // thread_ref (in)         : entry of thread to check and stop
 // stop_mapper (out)       : ignored; part of expected signature of mapper function
-// stopper_thread_ref (in) : entry of thread mapping this function over worker pool
 //
 static void
 css_stop_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper)
@@ -3502,12 +3501,11 @@ css_stop_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper)
     }
 }
 
-
 //
 // css_find_not_stopped () - find any target thread that is not stopped
 //
 // thread_ref (in)    : entry of thread that should be stopped
-// stop (out)         : output true to stop mapping
+// stop_mapper (out)  : output true to stop mapping
 // is_log_writer (in) : true to target log writers, false to target non-log writers
 // found (out)        : output true if target thread is not stopped
 //

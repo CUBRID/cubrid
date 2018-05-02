@@ -263,7 +263,7 @@ thread_is_manager_initialized (void)
 int
 thread_initialize_manager (size_t & total_thread_count)
 {
-  int i, r;
+  int r;
 
   assert (NUM_NORMAL_TRANS >= 10);
   assert (!thread_Manager.initialized);
