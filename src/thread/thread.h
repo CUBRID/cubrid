@@ -339,7 +339,6 @@ extern const char *thread_status_to_string (int status);
 extern const char *thread_resume_status_to_string (int resume_status);
 
 #if defined(WINDOWS)
-extern unsigned __stdcall thread_worker (void *);
 
 /* There is no static mutex initializer - PTHREAD_MUTEX_INITIALIZER - in win32
  * threads. So all mutexes are initialized at the first time it used. This
