@@ -1821,8 +1821,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
     }
-  css_Connection_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT, NULL,
-									      cubthread::system_core_count (), false);
+  css_Connection_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT, NULL, 1,
+									      false);
   if (css_Connection_worker_pool == NULL)
     {
       assert (false);
