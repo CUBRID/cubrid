@@ -4200,6 +4200,7 @@ logpb_dump_log_page_area (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int off
 
   sprintf (log_header_string, "page_id = %lld, checksum = %d, offset = %d, length = %d\n",
 	   (long long int) log_pgptr->hdr.logical_pageid, log_pgptr->hdr.checksum, offset, length);
+
   count_remaining_bytes = length;
   src_ptr = log_pgptr->area + offset;
   while (count_remaining_bytes > 0)
@@ -4220,7 +4221,7 @@ logpb_dump_log_page_area (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int off
 
       sprintf (dest_ptr, "\n");
       logpb_log ("logpb_dump_log_page_area: header = %s data = %s\n", log_header_string, log_block_string);
-      count_remaining_bytes = count_remaining_bytes - count_bytes_to_dump;
+      count_remaining_bytes -= count_bytes_to_dump;
     }
 }
 
@@ -4664,11 +4665,15 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
       logpb_log ("logpb_flush_all_append_pages: flushed nxio_lsa = %lld|%d page to disk.\n",
 		 (long long int) log_Gl.append.nxio_lsa.pageid, (int) log_Gl.append.nxio_lsa.offset);
-      /* Dump latest portion of page, for debugging purpose. */
-      logpb_dump_log_page_area (thread_p, bufptr->logpage, (int) (log_Gl.append.nxio_lsa.offset),
-				(int) sizeof (LOG_RECORD_HEADER));
-      logpb_dump_log_page_area (thread_p, bufptr->logpage, (int) (log_Gl.hdr.eof_lsa.offset),
-				(int) sizeof (LOG_RECORD_HEADER));
+
+      if (logpb_Logging)
+	{
+	  /* Dump latest portion of page, for debugging purpose. */
+	  logpb_dump_log_page_area (thread_p, bufptr->logpage, (int) (log_Gl.append.nxio_lsa.offset),
+				    (int) sizeof (LOG_RECORD_HEADER));
+	  logpb_dump_log_page_area (thread_p, bufptr->logpage, (int) (log_Gl.hdr.eof_lsa.offset),
+				    (int) sizeof (LOG_RECORD_HEADER));
+	}
     }
   else
     {

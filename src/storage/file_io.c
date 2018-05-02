@@ -3588,8 +3588,11 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
 	      er_print_callstack (ARG_FILE_LINE, "FAULT INJECTION: RANDOM EXIT\n");
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, msg);
 
-	      (void) fileio_synchronize (thread_p, fd, NULL, FILEIO_SYNC_ONLY);
-	      exit (0);
+	      // exit handler
+	      (void) fileio_synchronize (thread_p, fd, vlabel, FILEIO_SYNC_ONLY);
+
+	      // exit
+	      _exit (0);
 	    }
 	}
 
