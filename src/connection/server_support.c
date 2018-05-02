@@ -296,7 +296,7 @@ static void css_close_connection_to_master (void);
 static int css_reestablish_connection_to_master (void);
 static void dummy_sigurg_handler (int sig);
 static int css_connection_handler_thread (THREAD_ENTRY * thrd, CSS_CONN_ENTRY * conn);
-static int css_internal_connection_handler (CSS_CONN_ENTRY * conn);
+static css_error_code css_internal_connection_handler (CSS_CONN_ENTRY * conn);
 static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
 static int css_wait_worker_thread_on_jobq (THREAD_ENTRY * thrd, int jobq_index);
@@ -1149,7 +1149,14 @@ css_process_new_client (SOCKET master_fd)
 
   if (css_Connect_handler)
     {
-      (*css_Connect_handler) (conn);
+      if ((*css_Connect_handler) (conn) != NO_ERRORS)
+	{
+	  assert_release (false);
+	}
+    }
+  else
+    {
+      assert_release (false);
     }
 }
 
@@ -1401,7 +1408,10 @@ css_process_new_connection_request (void)
 
 	      if (css_Connect_handler)
 		{
-		  (*css_Connect_handler) (conn);
+		  if ((*css_Connect_handler) (conn) != NO_ERRORS)
+		    {
+		      assert_release (false);
+		    }
 		}
 	    }
 	  else
@@ -1677,16 +1687,20 @@ css_block_all_active_conn (unsigned short stop_phase)
  *
  * Note: This routine is "registered" to be called when a new connection is requested by the client
  */
-static int
+static css_error_code
 css_internal_connection_handler (CSS_CONN_ENTRY * conn)
 {
   css_insert_into_active_conn_list (conn);
 
   // push connection handler task
-  cubthread::get_manager ()->push_task (cubthread::get_manager ()->get_entry (), css_Connection_worker_pool,
-					new css_connection_task (*conn));
+  if (!cubthread::get_manager ()->try_task (cubthread::get_manager ()->get_entry (), css_Connection_worker_pool,
+					    new css_connection_task (*conn)))
+    {
+      assert_release (false);
+      return REQUEST_REFUSED;
+    }
 
-  return 1;
+  return NO_ERRORS;
 }
 
 /*
@@ -1821,8 +1835,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
     }
-  css_Connection_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT, NULL, 1,
-									      false);
+  css_Connection_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_WORKERS, NULL, 1, false);
   if (css_Connection_worker_pool == NULL)
     {
       assert (false);
@@ -3458,7 +3471,7 @@ css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_E
 }
 
 //
-// css_stop_non_log_writer () - function mapped over worker pools to search and stop log writer workers
+// css_stop_log_writer () - function mapped over worker pools to search and stop log writer workers
 //
 // thread_ref (in)         : entry of thread to check and stop
 // stop_mapper (out)       : ignored; part of expected signature of mapper function

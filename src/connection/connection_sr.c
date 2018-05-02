@@ -135,7 +135,7 @@ static LAST_ACCESS_STATUS *css_Access_status_anchor = NULL;
 int css_Num_access_user = 0;
 
 /* This will handle new connections */
-int (*css_Connect_handler) (CSS_CONN_ENTRY *) = NULL;
+css_error_code (*css_Connect_handler) (CSS_CONN_ENTRY *) = NULL;
 
 /* This will handle new requests per connection */
 CSS_THREAD_FN css_Request_handler = NULL;
@@ -1020,7 +1020,7 @@ css_print_free_conn_list (void)
  *       detects an error it considers to be fatal.
  */
 void
-css_register_handler_routines (int (*connect_handler) (CSS_CONN_ENTRY * conn),
+css_register_handler_routines (css_error_code (*connect_handler) (CSS_CONN_ENTRY * conn),
 			       CSS_THREAD_FN request_handler, CSS_THREAD_FN connection_error_handler)
 {
   css_Connect_handler = connect_handler;
