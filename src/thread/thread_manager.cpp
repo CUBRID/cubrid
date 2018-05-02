@@ -166,7 +166,7 @@ namespace cubthread
 	  {
 	    context_manager = m_entry_manager;
 	  }
-	// reserver pool_size entries and add to m_worker_pools
+	// reserve pool_size entries and add to m_worker_pools
 	return create_and_track_resource (m_worker_pools, pool_size, pool_size, task_max_count, *context_manager,
 					  core_count, debug_logging);
       }
