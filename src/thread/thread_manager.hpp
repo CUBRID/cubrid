@@ -94,18 +94,26 @@ namespace cubthread
   class manager
   {
     public:
-      // TODO: remove starting_index
-      manager (std::size_t max_threads);
+      manager ();
       ~manager ();
+
+      //////////////////////////////////////////////////////////////////////////
+      // entry manager
+      //////////////////////////////////////////////////////////////////////////
+
+      void alloc_entries (void);
+      void init_entries (std::size_t starting_index = 0, bool with_lock_free = false);
 
       //////////////////////////////////////////////////////////////////////////
       // worker pool management
       //////////////////////////////////////////////////////////////////////////
 
       // create a entry_workpool with pool_size number of threads
-      // note: if there are not pool_size number of entries available, worker pool is not created and NULL is returned
-      entry_workpool *create_worker_pool (size_t pool_size, size_t work_queue_size,
-					  entry_manager *context_manager = NULL, bool debug_logging = false);
+      // notes: if there are not pool_size number of entries available, worker pool is not created and NULL is returned
+      //        signature emulates worker_pool constructor signature
+      entry_workpool *create_worker_pool (std::size_t pool_size, std::size_t task_max_count,
+					  entry_manager *context_manager, std::size_t core_count,
+					  bool debug_logging);
 
       // destroy worker pool
       void destroy_worker_pool (entry_workpool *&worker_pool_arg);
@@ -113,15 +121,14 @@ namespace cubthread
       // push task to worker pool created with this manager
       // if worker_pool_arg is NULL, the task is executed immediately
       void push_task (entry &thread_p, entry_workpool *worker_pool_arg, entry_task *exec_p);
+      // push task on the given core of entry worker pool.
+      // read cubthread::worker_pool::execute_on_core for details.
+      void push_task_on_core (entry &thread_p, entry_workpool *worker_pool_arg, entry_task *exec_p,
+			      std::size_t core_hash);
 
       // try to execute task if there are available thread in worker pool
       // if worker_pool_arg is NULL, the task is executed immediately
       bool try_task (entry &thread_p, entry_workpool *worker_pool_arg, entry_task *exec_p);
-
-      // return if pool is busy
-      // for SERVER_MODE see worker_pool::is_busy
-      // for SA_MODE it is always false
-      bool is_pool_busy (entry_workpool *worker_pool_arg);
 
       // return if pool is full
       // for SERVER_MODE see worker_pool::is_full
@@ -148,12 +155,6 @@ namespace cubthread
 
       // get the maximum thread count
       std::size_t get_max_thread_count (void) const;
-
-      // get currently running threads count
-      std::size_t get_running_thread_count (void);
-
-      // get currently available threads count
-      std::size_t get_free_thread_count (void);
 
       // verify all threads (workers and daemons) are killed
       void check_all_killed (void);
@@ -222,11 +223,14 @@ namespace cubthread
   void finalize (void);
 
   // backward compatibility initialization
-  int initialize_thread_entries (void);
+  int initialize_thread_entries (bool with_lock_free = true);
   entry *get_main_entry (void);
 
   // get thread manager
   manager *get_manager (void);
+
+  //quick fix for unit test mockups
+  void set_manager (manager *manager);
 
   // get maximum thread count
   std::size_t get_max_thread_count (void);
@@ -238,5 +242,7 @@ namespace cubthread
   void check_not_single_thread (void);
 
 } // namespace cubthread
+
+#define THREAD_GET_MANAGER() cubthread::get_manager ()
 
 #endif  // _THREAD_MANAGER_HPP_

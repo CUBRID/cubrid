@@ -269,7 +269,7 @@ thread_initialize_manager (size_t & total_thread_count)
   assert (NUM_NORMAL_TRANS >= 10);
   assert (!thread_Manager.initialized);
 
-  thread_Manager.num_workers = NUM_NON_SYSTEM_TRANS * 2;
+  thread_Manager.num_workers = NUM_NON_SYSTEM_TRANS;	/* only connection handler threads */
   thread_Manager.num_total = thread_Manager.num_workers;
 
   /* initialize lock-free transaction systems */
@@ -307,7 +307,6 @@ thread_initialize_manager (size_t & total_thread_count)
 int
 thread_start_workers (void)
 {
-  int i;
   int thread_index, r;
   THREAD_ENTRY *thread_p = NULL;
   pthread_attr_t thread_attr;
@@ -640,6 +639,7 @@ thread_return_all_transactions_entries (void)
       return NO_ERROR;
     }
 
+  thread_return_transaction_entry (cubthread::get_main_entry ());
   for (THREAD_ENTRY * entry_iter = thread_iterate (NULL); entry_iter != NULL; entry_iter = thread_iterate (entry_iter))
     {
       error = thread_return_transaction_entry (entry_iter);
@@ -1265,10 +1265,9 @@ thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id)
 {
   int n = 0;
 
-  for (THREAD_ENTRY * thread_p = thread_Manager.thread_array;
-       thread_p < thread_Manager.thread_array + thread_Manager.num_workers; thread_p++)
+  for (THREAD_ENTRY * thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
     {
-      if (thread_p == caller)
+      if (thread_p == caller || thread_p->type != TT_WORKER)
 	{
 	  continue;
 	}
@@ -1683,6 +1682,13 @@ xthread_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kil
       return ER_CSS_KILL_BAD_INTERFACE;
     }
 
+  if (kill_tran_index == LOG_SYSTEM_TRAN_INDEX)
+    {
+      // cannot kill system transaction; not even if this is dba
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_ALLOWED, 1, kill_tran_index);
+      return ER_KILL_TR_NOT_ALLOWED;
+    }
+
   signaled = false;
   for (i = 0; i < THREAD_RETRY_MAX_SLAM_TIMES && error_code == NO_ERROR && !killed; i++)
     {
@@ -1747,6 +1753,13 @@ xthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is
   bool interrupt, has_authorization;
   bool is_trx_exists;
   KILLSTMT_TYPE kill_type;
+
+  if (tran_index == LOG_SYSTEM_TRAN_INDEX)
+    {
+      // cannot kill system transaction; not even if this is dba
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_ALLOWED, 1, tran_index);
+      return ER_KILL_TR_NOT_ALLOWED;
+    }
 
   if (!is_dba_group_member)
     {
@@ -1865,18 +1878,25 @@ THREAD_ENTRY *
 thread_find_entry_by_index (int thread_index)
 {
   assert (thread_index >= 0 && thread_index < thread_num_total_threads ());
+
+  THREAD_ENTRY *thread_p;
   if (thread_index == 0)
     {
-      return cubthread::get_main_entry ();
+      // this is the index of main thread entry. we don't want to expose it by thread_find_entry_by_index
+      assert (false);
+      return NULL;
     }
   else if (thread_index <= thread_Manager.num_total)
     {
-      return (&thread_Manager.thread_array[thread_index - 1]);
+      thread_p = (&thread_Manager.thread_array[thread_index - 1]);
     }
   else
     {
-      return &(cubthread::get_manager ()->get_all_entries ()[thread_index - thread_Manager.num_total - 1]);
+      thread_p = &(cubthread::get_manager ()->get_all_entries ()[thread_index - thread_Manager.num_total - 1]);
     }
+  assert (thread_p->index == thread_index);
+
+  return thread_p;
 }
 
 /*
@@ -3587,7 +3607,7 @@ thread_clear_recursion_depth (THREAD_ENTRY * thread_p)
 THREAD_ENTRY *
 thread_iterate (THREAD_ENTRY * thread_p)
 {
-  int index = 0;
+  int index = 1;		// iteration starts with thread index = 1
 
   if (!thread_Manager.initialized)
     {

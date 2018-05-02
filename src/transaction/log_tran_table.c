@@ -3081,6 +3081,12 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
 
+  if (tran_index == LOG_SYSTEM_TRAN_INDEX)
+    {
+      assert (false);
+      return false;
+    }
+
   if (log_Gl.trantable.area != NULL)
     {
       tdes = LOG_FIND_TDES (tran_index);
@@ -6749,6 +6755,10 @@ logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p)
     {
       return NO_ERROR;
     }
+
+  // reflecting stats should not be interrupted
+  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+
   lf_hash_create_iterator (&it, t_entry, &log_Gl.unique_stats_table.unique_stats_hash);
   for (stats = (GLOBAL_UNIQUE_STATS *) lf_hash_iterate (&it); stats != NULL;
        stats = (GLOBAL_UNIQUE_STATS *) lf_hash_iterate (&it))
@@ -6759,13 +6769,22 @@ logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p)
 	  error = btree_reflect_global_unique_statistics (thread_p, stats, false);
 	  if (error != NO_ERROR)
 	    {
-	      return error;
+	      ASSERT_ERROR ();
+
+	      // must unlock entry
+	      pthread_mutex_unlock (&stats->mutex);
+
+	      // finish transaction
+	      lf_tran_end_with_mb (t_entry);
+	      break;
 	    }
 	  LSA_SET_NULL (&stats->last_log_lsa);
 	}
     }
 
-  return NO_ERROR;
+  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
+
+  return error;
 }
 
 /*

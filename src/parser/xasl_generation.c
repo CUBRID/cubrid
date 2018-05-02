@@ -516,8 +516,6 @@ static PRED_REGU_VARIABLE_P_LIST pt_get_var_regu_variable_p_list (const REGU_VAR
 
 static XASL_NODE *pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * xasl);
 
-static void pt_init_precision_and_scale (DB_VALUE * value, PT_NODE * node);
-
 static SORT_LIST *pt_to_order_siblings_by (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NODE * connect_by_xasl);
 static SORT_LIST *pt_agg_orderby_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * order_list, PT_NODE * agg_args_list);
 static PT_NODE *pt_substitute_assigned_name_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
@@ -3369,7 +3367,6 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
   return sig_list;
 }
 
-
 /*
  * pt_make_val_list () - Makes a val list with a DB_VALUE place holder
  *                       for every attribute on an attribute list
@@ -3396,21 +3393,16 @@ pt_make_val_list (PARSER_CONTEXT * parser, PT_NODE * attribute_list)
 
   for (attribute = attribute_list; attribute != NULL; attribute = attribute->next)
     {
+      // init regu
       dbval_list = regu_dbvallist_alloc ();
-      if (dbval_list && regu_dbval_type_init (dbval_list->val, pt_node_to_db_type (attribute)))
-	{
-	  pt_init_precision_and_scale (dbval_list->val, attribute);
-	  dbval_list->dom = pt_xasl_node_to_domain (parser, attribute);
+      // init value with expected type
+      pt_data_type_init_value (attribute, dbval_list->val);
+      dbval_list->dom = pt_xasl_node_to_domain (parser, attribute);
 
-	  value_list->val_cnt++;
-	  (*dbval_list_tail) = dbval_list;
-	  dbval_list_tail = &dbval_list->next;
-	  dbval_list->next = NULL;
-	}
-      else
-	{
-	  return NULL;
-	}
+      value_list->val_cnt++;
+      (*dbval_list_tail) = dbval_list;
+      dbval_list_tail = &dbval_list->next;
+      dbval_list->next = NULL;
     }
 
   return value_list;
@@ -21836,65 +21828,6 @@ parser_generate_do_stmt_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   return xasl;
-}
-
-/*
- * pt_init_precision_and_scale () -
- *   return:
- *   value(in):
- *   node(in):
- */
-static void
-pt_init_precision_and_scale (DB_VALUE * value, PT_NODE * node)
-{
-  PT_NODE *dt;
-  DB_TYPE domain_type;
-
-  if (!value || !node)
-    {
-      return;
-    }
-
-  CAST_POINTER_TO_NODE (node);
-
-  if (node->data_type == NULL)
-    {
-      return;
-    }
-
-  dt = node->data_type;
-  domain_type = pt_type_enum_to_db (dt->type_enum);
-
-  switch (domain_type)
-    {
-    case DB_TYPE_VARCHAR:
-    case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_BIT:
-    case DB_TYPE_VARBIT:
-      value->domain.char_info.length = dt->info.data_type.precision;
-      break;
-
-    case DB_TYPE_NUMERIC:
-      value->domain.numeric_info.precision = dt->info.data_type.precision;
-      value->domain.numeric_info.scale = dt->info.data_type.dec_precision;
-      break;
-    case DB_TYPE_JSON:
-      if (dt->info.data_type.json_schema)
-	{
-	  value->data.json.schema_raw = db_private_strdup (NULL, (const char *) dt->info.data_type.json_schema->bytes);
-	  value->need_clear = true;
-	}
-      else
-	{
-	  value->data.json.schema_raw = NULL;
-	}
-      break;
-
-    default:
-      ;				/* Do nothing. This suppresses compiler's warnings. */
-    }
 }
 
 /*

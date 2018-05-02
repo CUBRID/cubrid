@@ -36,6 +36,9 @@
 #include <winsock2.h>
 #endif
 
+/* TODO[arnia] this needs to be calculated a priori */
+const int MTU = 1500;
+
 enum CHANNEL_TYPE
 {
   NO_TYPE = 0,
@@ -56,7 +59,7 @@ class communication_channel
     communication_channel &operator= (communication_channel &&comm);
 
     /* receive/send functions that use the created m_socket */
-    css_error_code recv (char *buffer, std::size_t & maxlen_in_recvlen_out);
+    css_error_code recv (char *buffer, std::size_t &maxlen_in_recvlen_out);
     css_error_code send (const std::string &message);
     css_error_code send (const char *buffer, std::size_t length);
 
