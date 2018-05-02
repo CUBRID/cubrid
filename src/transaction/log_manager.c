@@ -54,7 +54,6 @@
 #include "message_catalog.h"
 #include "environment_variable.h"
 #if defined(SERVER_MODE)
-#include "job_queue.h"
 #include "server_support.h"
 #endif /* SERVER_MODE */
 #include "log_compress.h"

@@ -46,7 +46,6 @@
 #include <unistd.h>
 #endif /* WINDOWS */
 
-#include "job_queue.h"
 #include "thread.h"
 #include "boot_sr.h"
 #include "server_support.h"

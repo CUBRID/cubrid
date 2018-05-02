@@ -55,7 +55,6 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "error_manager.h"
-#include "job_queue.h"
 #include "connection_error.h"
 #include "message_catalog.h"
 #include "critical_section.h"
@@ -116,76 +115,12 @@ struct job_queue
   CSS_LIST job_list;
   THREAD_ENTRY *worker_thrd_list;
   pthread_mutex_t free_lock;
-  CSS_JOB_ENTRY *free_list;
 #if !defined(HAVE_ATOMIC_BUILTINS)
   pthread_mutex_t counter_lock;	/* protect job queue counter */
 #endif				/* !HAVE_ATOMIC_BUILTINS */
   int num_total_workers;	/* Num of total workers in this job queue */
   int num_busy_workers;		/* Num of busy threads in this job queue */
   int num_conn_workers;		/* Num of connection threads in this job queue */
-};
-
-static JOB_QUEUE css_Job_queue[CSS_NUM_JOB_QUEUE] = {
-  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
-#if !defined(HAVE_ATOMIC_BUILTINS)
-   PTHREAD_MUTEX_INITIALIZER,
-#endif /* !HAVE_ATOMIC_BUILTINS */
-   0, 0, 0},
-  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
-#if !defined(HAVE_ATOMIC_BUILTINS)
-   PTHREAD_MUTEX_INITIALIZER,
-#endif /* !HAVE_ATOMIC_BUILTINS */
-   0, 0, 0},
-  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
-#if !defined(HAVE_ATOMIC_BUILTINS)
-   PTHREAD_MUTEX_INITIALIZER,
-#endif /* !HAVE_ATOMIC_BUILTINS */
-   0, 0, 0},
-  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
-#if !defined(HAVE_ATOMIC_BUILTINS)
-   PTHREAD_MUTEX_INITIALIZER,
-#endif /* !HAVE_ATOMIC_BUILTINS */
-   0, 0, 0},
-  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
-#if !defined(HAVE_ATOMIC_BUILTINS)
-   PTHREAD_MUTEX_INITIALIZER,
-#endif /* !HAVE_ATOMIC_BUILTINS */
-   0, 0, 0},
-  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
-#if !defined(HAVE_ATOMIC_BUILTINS)
-   PTHREAD_MUTEX_INITIALIZER,
-#endif /* !HAVE_ATOMIC_BUILTINS */
-   0, 0, 0},
-  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
-#if !defined(HAVE_ATOMIC_BUILTINS)
-   PTHREAD_MUTEX_INITIALIZER,
-#endif /* !HAVE_ATOMIC_BUILTINS */
-   0, 0, 0},
-  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
-#if !defined(HAVE_ATOMIC_BUILTINS)
-   PTHREAD_MUTEX_INITIALIZER,
-#endif /* !HAVE_ATOMIC_BUILTINS */
-   0, 0, 0},
-  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
-#if !defined(HAVE_ATOMIC_BUILTINS)
-   PTHREAD_MUTEX_INITIALIZER,
-#endif /* !HAVE_ATOMIC_BUILTINS */
-   0, 0, 0},
-  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
-#if !defined(HAVE_ATOMIC_BUILTINS)
-   PTHREAD_MUTEX_INITIALIZER,
-#endif /* !HAVE_ATOMIC_BUILTINS */
-   0, 0, 0}
 };
 
 #define HA_LOG_APPLIER_STATE_TABLE_MAX  5
@@ -281,8 +216,6 @@ private:
 
 static const size_t CSS_JOB_QUEUE_SCAN_COLUMN_COUNT = 4;
 
-static int css_free_job_entry_func (void *data, void *dummy);
-static void css_empty_job_queue (void);
 static void css_setup_server_loop (void);
 static int css_check_conn (CSS_CONN_ENTRY * p);
 static void css_set_shutdown_timeout (int timeout);
@@ -301,9 +234,6 @@ static int css_connection_handler_thread (THREAD_ENTRY * thrd, CSS_CONN_ENTRY * 
 static int css_internal_connection_handler (CSS_CONN_ENTRY * conn);
 static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
-static int css_wait_worker_thread_on_jobq (THREAD_ENTRY * thrd, int jobq_index);
-static bool css_can_occupy_worker_thread_on_jobq (int jobq_index);
-static int css_wakeup_worker_thread_on_jobq (int jobq_index);
 static int css_check_accessibility (SOCKET new_fd);
 
 #if defined(WINDOWS)
@@ -374,48 +304,6 @@ css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** a
   return NO_ERROR;
 }
 #endif // SERVER_MODE
-
-/*
- * css_free_job_entry_func () -
- *   return:
- *   data(in):
- *   user(in):
- */
-static int
-css_free_job_entry_func (void *data, void *dummy)
-{
-  CSS_JOB_ENTRY *job_entry_p = (CSS_JOB_ENTRY *) data;
-  int rv;
-
-  rv = pthread_mutex_lock (&css_Job_queue[job_entry_p->jobq_index].free_lock);
-
-  job_entry_p->next = css_Job_queue[job_entry_p->jobq_index].free_list;
-  css_Job_queue[job_entry_p->jobq_index].free_list = job_entry_p;
-
-  pthread_mutex_unlock (&css_Job_queue[job_entry_p->jobq_index].free_lock);
-
-  return TRAV_CONT_DELETE;
-}
-
-/*
- * css_empty_job_queue() - delete all job from the job queue
- *   return:
- */
-static void
-css_empty_job_queue (void)
-{
-  int rv;
-  int i;
-
-  for (i = 0; i < CSS_NUM_JOB_QUEUE; i++)
-    {
-      rv = pthread_mutex_lock (&css_Job_queue[i].job_lock);
-
-      css_traverse_list (&css_Job_queue[i].job_list, css_free_job_entry_func, NULL);
-
-      pthread_mutex_unlock (&css_Job_queue[i].job_lock);
-    }
-}
 
 /*
  * css_setup_server_loop() -
@@ -604,9 +492,6 @@ css_master_thread (void)
     }
 
   css_set_shutdown_timeout (prm_get_integer_value (PRM_ID_SHUTDOWN_WAIT_TIME_IN_SECS));
-
-  /* going down, so stop dispatching request */
-  css_empty_job_queue ();
 
 #if defined(WINDOWS)
   return 0;
@@ -2068,218 +1953,6 @@ css_cleanup_server_queues (unsigned int eid)
   int idx = CSS_ENTRYID_FROM_EID (eid);
 
   css_remove_all_unexpected_packets (&css_Conn_array[idx]);
-}
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * css_number_of_clients() - Returns the number of clients connected to
- *                           the server
- *   return:
- */
-int
-css_number_of_clients (void)
-{
-  int n = 0, r;
-  CSS_CONN_ENTRY *conn;
-
-  START_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
-
-  for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
-    {
-      if (conn != css_Master_conn)
-	{
-	  n++;
-	}
-    }
-
-  END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
-
-  return n;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
-/*
- * css_wait_worker_thread_on_jobq () -
- *   return:
- *   thrd(in):
- *   jobq_index(in):
- */
-static int
-css_wait_worker_thread_on_jobq (THREAD_ENTRY * thrd, int jobq_index)
-{
-#if defined(DEBUG)
-  THREAD_ENTRY *t;
-#endif /* DEBUG */
-
-#if defined(DEBUG)
-  /* to detect whether the job queue has a cycle or not */
-  t = css_Job_queue[jobq_index].worker_thrd_list;
-  while (t)
-    {
-      assert (t != thrd);
-      t = t->worker_thrd_list;
-    }
-#endif /* DEBUG */
-
-  /* add thrd at the front of job queue */
-  thrd->worker_thrd_list = css_Job_queue[jobq_index].worker_thrd_list;
-  css_Job_queue[jobq_index].worker_thrd_list = thrd;
-
-  thrd->resume_status = THREAD_JOB_QUEUE_SUSPENDED;
-
-  /* sleep on the thrd's condition variable with the mutex of the job queue */
-  pthread_cond_wait (&thrd->wakeup_cond, &css_Job_queue[jobq_index].job_lock);
-
-  if (thrd->shutdown == false && thrd->resume_status != THREAD_JOB_QUEUE_RESUMED)
-    {
-      char notimsg[LINE_MAX];
-      THREAD_ENTRY *current, *prev = NULL;
-
-      /* something is wrong!!! My entry in the job queue must be removed. */
-      assert (thrd->resume_status == THREAD_JOB_QUEUE_RESUMED);
-
-      snprintf (notimsg, LINE_MAX, "Thread %p's resume status is" " not JOB QUEUE RESUMED but %d (job Q index : %d)",
-		thrd, thrd->resume_status, jobq_index);
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, notimsg);
-
-      current = css_Job_queue[jobq_index].worker_thrd_list;
-      while (current)
-	{
-	  if (current == thrd)
-	    {
-	      if (prev == NULL)
-		{
-		  css_Job_queue[jobq_index].worker_thrd_list = thrd->worker_thrd_list;
-		}
-	      else
-		{
-		  prev->worker_thrd_list = thrd->worker_thrd_list;
-		}
-	      thrd->worker_thrd_list = NULL;
-	      break;
-	    }
-	  else
-	    {
-	      prev = current;
-	    }
-
-	  current = current->worker_thrd_list;
-	}
-    }
-
-  if (thrd->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN || thrd->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
-    {
-      assert_release (thrd->shutdown == true);
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * css_wakeup_worker_thread_on_jobq () -
- *   return:
- *   jobq_index(in):
- */
-static int
-css_wakeup_worker_thread_on_jobq (int jobq_index)
-{
-  THREAD_ENTRY *wait_thrd = NULL, *prev_thrd = NULL;
-  int r = NO_ERROR;
-  THREAD_ENTRY *worker = NULL;
-
-  for (wait_thrd = css_Job_queue[jobq_index].worker_thrd_list; wait_thrd; wait_thrd = wait_thrd->worker_thrd_list)
-    {
-      /* wakeup a free worker thread */
-      if (wait_thrd->status == TS_FREE)
-	{
-	  r = thread_wakeup (wait_thrd, THREAD_JOB_QUEUE_RESUMED);
-	  if (r == NO_ERROR)
-	    {
-	      if (prev_thrd == NULL)
-		{
-		  css_Job_queue[jobq_index].worker_thrd_list = wait_thrd->worker_thrd_list;
-		}
-	      else
-		{
-		  prev_thrd->worker_thrd_list = wait_thrd->worker_thrd_list;
-		}
-
-	      wait_thrd->worker_thrd_list = NULL;
-	      worker = wait_thrd;
-
-	      break;
-	    }
-	}
-
-      prev_thrd = wait_thrd;
-    }
-
-  if (worker == NULL)
-    {
-      int thread_index, num_workers;
-
-      /* Defence code of a bug. Find an available worker thread that is not in the list of job queue, but is waiting
-       * for a job. */
-      thread_index = jobq_index;
-      if (thread_index == 0)
-	{
-	  thread_index += CSS_NUM_JOB_QUEUE;
-	}
-
-      num_workers = thread_num_worker_threads ();
-
-      for (; thread_index <= num_workers; thread_index += CSS_NUM_JOB_QUEUE)
-	{
-	  THREAD_ENTRY *thread_p;
-
-	  thread_p = thread_find_entry_by_index (thread_index);
-	  assert_release (thread_p->index % CSS_NUM_JOB_QUEUE == jobq_index);
-
-	  if (thread_p->resume_status == THREAD_JOB_QUEUE_SUSPENDED && thread_p->status == TS_FREE)
-	    {
-	      r = thread_wakeup (thread_p, THREAD_JOB_QUEUE_RESUMED);
-	      if (r == NO_ERROR)
-		{
-		  char notimsg[LINE_MAX];
-
-		  snprintf (notimsg, LINE_MAX,
-			    "Wakes up thread %p. " "It was suspended in the job queue (index : %d), "
-			    "but was not in the joq Q's worker thread list", thread_p, jobq_index);
-
-		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, notimsg);
-		  thread_p->worker_thrd_list = NULL;
-		  break;
-		}
-	    }
-	}
-    }
-
-  return r;
-}
-
-/*
- * css_can_occupy_worker_thread_on_jobq () -
- *   return:
- *   jobq_index(in):
- *
- * NOTE: The caller should hold mutex on css_Job_queue[jobq_index]
- *       to call this function.
- */
-static bool
-css_can_occupy_worker_thread_on_jobq (int jobq_index)
-{
-  THREAD_ENTRY *wait_thrd;
-
-  for (wait_thrd = css_Job_queue[jobq_index].worker_thrd_list; wait_thrd; wait_thrd = wait_thrd->worker_thrd_list)
-    {
-      if (wait_thrd->status == TS_FREE)
-	{
-	  return true;
-	}
-    }
-
-  return false;
 }
 
 /*

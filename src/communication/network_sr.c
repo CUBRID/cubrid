@@ -45,7 +45,6 @@
 #include "release_string.h"
 #include "server_support.h"
 #include "connection_sr.h"
-#include "job_queue.h"
 #include "connection_error.h"
 #include "message_catalog.h"
 #include "log_impl.h"

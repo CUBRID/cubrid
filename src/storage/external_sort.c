@@ -47,7 +47,6 @@
 #endif /* ENABLE_SYSTEMTAP */
 #if defined(SERVER_MODE)
 #include "connection_error.h"
-#include "job_queue.h"
 #endif /* SERVER_MODE */
 #include "server_support.h"
 #include "thread.h"
