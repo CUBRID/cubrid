@@ -5966,7 +5966,7 @@ lock_deadlock_detect_daemon_init ()
   deadlock_detect_task *daemon_task = new deadlock_detect_task ();
 
   // create deadlock detect daemon thread
-  lock_Deadlock_detect_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  lock_Deadlock_detect_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "lock_deadlock_detect");
 }
 #endif /* SERVER_MODE */
 

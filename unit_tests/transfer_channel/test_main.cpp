@@ -12,19 +12,21 @@
 #include "lock_free.h"
 #include "connection_sr.h"
 
-#include <vector>
-#include <mutex>
-#include <iostream>
-#include <chrono>
-#include <thread>
-#include <stdio.h>
-#include <stdlib.h>
-
 #if !defined (WINDOWS)
 #include "tcp.h"
 #else
 #include "wintcp.h"
 #endif
+
+#include <chrono>
+#include <iostream>
+#include <mutex>
+#include <thread>
+#include <vector>
+
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #define MAX_THREADS 16
 #define LISTENING_PORT 2222
@@ -154,10 +156,8 @@ void master_listening_thread_func ()
 
 static int init_thread_system ()
 {
-  int error_code;
-  lf_initialize_transaction_systems (MAX_THREADS);
-
-  if (csect_initialize_static_critical_sections () != NO_ERROR)
+  int error_code = csect_initialize_static_critical_sections ();
+  if (error_code != NO_ERROR)
     {
       assert (false);
       return error_code;
@@ -241,7 +241,6 @@ static int finish ()
     }
 
   css_final_conn_list();
-  lf_destroy_transaction_systems ();
 
   er_final (ER_ALL_FINAL);
 
