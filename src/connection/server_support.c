@@ -1252,7 +1252,7 @@ int
 css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_id)
 {
   CSS_CONN_ENTRY *conn;
-  int status = ER_FAILED;
+  int status = NO_ERROR;
 
   if (server_name == NULL || port_id <= 0)
     {
@@ -1278,7 +1278,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     {
       assert (false);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_FAILED;
+      status = ER_FAILED;
+      goto shutdown;
     }
 
   css_Connection_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_WORKERS, NULL, 1, false);
@@ -1286,7 +1287,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     {
       assert (false);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_FAILED;
+      status = ER_FAILED;
+      goto shutdown;
     }
 
   css_Server_connection_socket = INVALID_SOCKET;
@@ -1309,22 +1311,21 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 	  if (status != NO_ERROR)
 	    {
 	      fprintf (stderr, "failed to heartbeat register.\n");
-	      goto shutdown;
 	    }
 	}
 #endif
 
-      css_setup_server_loop ();
-
-      status = NO_ERROR;
+      if (status == NO_ERROR)
+	{
+	  // server message loop
+	  css_setup_server_loop ();
+	}
     }
 
+shutdown:
   /* 
    * start to shutdown server
    */
-#if !defined(WINDOWS)
-shutdown:
-#endif
 
   // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
   // all log is transfered
@@ -1370,8 +1371,6 @@ shutdown:
       css_close_connection_to_master ();
     }
 
-  css_close_server_connection_socket ();
-
   if (css_Master_server_name)
     {
       free_and_init (css_Master_server_name);
@@ -1379,6 +1378,7 @@ shutdown:
 
   /* If this was opened for the new style connection protocol, make sure it gets closed. */
   css_close_server_connection_socket ();
+
 #if defined(WINDOWS)
   css_windows_shutdown ();
 #endif /* WINDOWS */
