@@ -3541,7 +3541,7 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
   const int mod_factor = 25000;
   const int unit_size = 4096;
   int count_blocks;
-  ssize_t r;
+  ssize_t r, written_nbytes;
   off_t unit_offset;
   bool fi_partial_write1_on, fi_partial_write2_on;
 
@@ -3558,6 +3558,7 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
     {
       // simulate partial write
       count_blocks = count / unit_size;
+      written_nbytes = 0;
       for (int i = 0; i < count_blocks; i++)
 	{
 	  if (fi_partial_write1_on)
@@ -3571,9 +3572,10 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
 	    }
 
 	  r = pwrite (fd, ((char *) buf) + unit_offset, unit_size, offset + unit_offset);
+	  written_nbytes += r;
 	  if (r != unit_size)
 	    {
-	      return r;
+	      return written_nbytes;
 	    }
 
 	  // randomly exits to remain page is partially written
@@ -3596,7 +3598,7 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
 	    }
 	}
 
-      return r;
+      return written_nbytes;
     }
 
   return pwrite (fd, buf, count, offset);
