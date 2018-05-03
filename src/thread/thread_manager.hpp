@@ -310,4 +310,11 @@ thread_return_lock_free_transaction_entries (void)
   return cubthread::return_lock_free_transaction_entries ();
 }
 
+template <typename Duration>
+inline void
+thread_sleep_for (Duration d)
+{
+  std::this_thread::sleep_for (d);
+}
+
 #endif  // _THREAD_MANAGER_HPP_

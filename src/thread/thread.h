@@ -157,15 +157,6 @@ struct thread_resource_track
 #endif
 };
 
-/* Forward definition to fix compile error. */
-struct vacuum_worker;
-struct fi_test_item;
-
-#define DOES_THREAD_RESUME_DUE_TO_SHUTDOWN(thread_p) \
-  ((thread_p)->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT && \
-   (thread_p)->interrupted == true)
-
-extern void thread_slam_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 extern int thread_lock_entry (THREAD_ENTRY * entry);
 extern int thread_unlock_entry (THREAD_ENTRY * p);
 extern int thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * p, int suspended_reason);
@@ -207,11 +198,6 @@ extern int thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** array);
 extern int thread_suspend_with_other_mutex (THREAD_ENTRY * p, pthread_mutex_t * mutexp, int timeout,
 					    struct timespec *to, int suspended_reason);
 extern bool thread_get_check_interrupt (THREAD_ENTRY * thread_p);
-
-extern int xthread_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user, char *kill_host,
-				    int kill_pid);
-extern int xthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_id, bool is_dba_group_member,
-					   bool interrupt_only);
 
 extern HL_HEAPID css_get_private_heap (THREAD_ENTRY * thread_p);
 extern HL_HEAPID css_set_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id);

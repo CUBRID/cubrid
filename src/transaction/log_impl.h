@@ -2392,5 +2392,11 @@ extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HE
 
 extern VACUUM_LOG_BLOCKID logpb_last_complete_blockid (void);
 
+extern void logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index);
+extern int xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user, char *kill_host,
+				   int kill_pid);
+extern int xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_id, bool is_dba_group_member,
+					  bool interrupt_only);
+
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #endif /* _LOG_IMPL_H_ */

@@ -6423,7 +6423,7 @@ sthread_kill_tran_index (THREAD_ENTRY * thread_p, unsigned int rid, char *reques
   ptr = or_unpack_string_nocopy (ptr, &kill_host);
   ptr = or_unpack_int (ptr, &kill_pid);
 
-  success = (xthread_kill_tran_index (thread_p, kill_tran_index, kill_user, kill_host, kill_pid)
+  success = (xlogtb_kill_tran_index (thread_p, kill_tran_index, kill_user, kill_host, kill_pid)
 	     == NO_ERROR) ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
@@ -6466,8 +6466,7 @@ sthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, unsigned int rid, char 
   for (i = 0; i < num_tran_index; i++)
     {
       success =
-	xthread_kill_or_interrupt_tran (thread_p, tran_index_list[i], (bool) is_dba_group_member,
-					(bool) interrupt_only);
+	xlogtb_kill_or_interrupt_tran (thread_p, tran_index_list[i], (bool) is_dba_group_member, (bool) interrupt_only);
       if (success == NO_ERROR)
 	{
 	  num_killed_tran++;

@@ -2373,7 +2373,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.host_name, boot_Host_name,
 							       tdes->client.client_type))
 		    {
-		      thread_slam_tran_index (thread_p, tdes->tran_index);
+		      logtb_slam_transaction (thread_p, tdes->tran_index);
 		    }
 		}
 	    }

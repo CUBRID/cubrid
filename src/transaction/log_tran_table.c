@@ -59,6 +59,7 @@
 #include "boot_sr.h"
 #include "db_date.h"
 #include "dbtype.h"
+#include "server_support.h"
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
@@ -116,6 +117,8 @@ static BOOT_CLIENT_CREDENTIAL log_Client_credential = {
   -1				/* process_id */
 };
 
+static const unsigned int LOGTB_RETRY_SLAM_MAX_TIMES = 10;
+
 static int logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices);
 static int logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, TRAN_STATE state,
 				      const BOOT_CLIENT_CREDENTIAL * client_credential, TRAN_STATE * current_state,
@@ -166,6 +169,8 @@ static void logtb_free_tran_mvcc_info (LOG_TDES * tdes);
 static int logtb_allocate_snapshot_data (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * snapshot);
 
 static int logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvcc_subid);
+
+static int logtb_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool * has_authorization);
 
 /*
  * logtb_realloc_topops_stack - realloc stack of top system operations
@@ -7371,4 +7376,218 @@ logtb_check_class_for_rr_isolation_err (const OID * class_oid)
     }
 
   return false;
+}
+
+void
+logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index)
+{
+  logtb_set_tran_index_interrupt (thread_p, tran_index, true);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_SHUTDOWN, 0);
+  css_shutdown_conn_by_tran_index (tran_index);
+}
+
+/*
+ * logtb_check_kill_tran_auth () - User who is not DBA can kill only own transaction
+ *   return: NO_ERROR or error code
+ *   thread_p(in):
+ *   tran_id(in):
+ *   has_authorization(out):
+ */
+static int
+logtb_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool * has_authorization)
+{
+  char *tran_client_name;
+  char *current_client_name;
+
+  assert (has_authorization);
+
+  *has_authorization = false;
+
+  if (logtb_am_i_dba_client (thread_p) == true)
+    {
+      *has_authorization = true;
+      return NO_ERROR;
+    }
+
+  tran_client_name = logtb_find_client_name (tran_id);
+  current_client_name = logtb_find_current_client_name (thread_p);
+
+  if (tran_client_name == NULL || current_client_name == NULL)
+    {
+      return ER_CSS_KILL_UNKNOWN_TRANSACTION;
+    }
+
+  if (strcasecmp (tran_client_name, current_client_name) == 0)
+    {
+      *has_authorization = true;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * xlogtb_kill_tran_index() - Kill given transaction.
+ *   return:
+ *   kill_tran_index(in):
+ *   kill_user(in):
+ *   kill_host(in):
+ *   kill_pid(id):
+ */
+int
+xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user_p, char *kill_host_p,
+			int kill_pid)
+{
+  char *slam_progname_p;	/* Client program name for tran */
+  char *slam_user_p;		/* Client user name for tran */
+  char *slam_host_p;		/* Client host for tran */
+  int slam_pid;			/* Client process id for tran */
+  bool signaled = false;
+  int error_code = NO_ERROR;
+  bool killed = false;
+  int i;
+
+  if (kill_tran_index == NULL_TRAN_INDEX || kill_user_p == NULL || kill_host_p == NULL || strcmp (kill_user_p, "") == 0
+      || strcmp (kill_host_p, "") == 0)
+    {
+      /* 
+       * Not enough information to kill specific transaction..
+       *
+       * For now.. I am setting an er_set..since I have so many files out..and
+       * I cannot compile more junk..
+       */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_KILL_BAD_INTERFACE, 0);
+      return ER_CSS_KILL_BAD_INTERFACE;
+    }
+
+  if (kill_tran_index == LOG_SYSTEM_TRAN_INDEX)
+    {
+      // cannot kill system transaction; not even if this is dba
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_ALLOWED, 1, kill_tran_index);
+      return ER_KILL_TR_NOT_ALLOWED;
+    }
+
+  signaled = false;
+  for (i = 0; i < LOGTB_RETRY_SLAM_MAX_TIMES && error_code == NO_ERROR && !killed; i++)
+    {
+      if (logtb_find_client_name_host_pid (kill_tran_index, &slam_progname_p, &slam_user_p, &slam_host_p, &slam_pid) !=
+	  NO_ERROR)
+	{
+	  if (signaled == false)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_KILL_UNKNOWN_TRANSACTION, 4, kill_tran_index,
+		      kill_user_p, kill_host_p, kill_pid);
+	      error_code = ER_CSS_KILL_UNKNOWN_TRANSACTION;
+	    }
+	  else
+	    {
+	      killed = true;
+	    }
+	  break;
+	}
+
+      if (kill_pid == slam_pid && strcmp (kill_user_p, slam_user_p) == 0 && strcmp (kill_host_p, slam_host_p) == 0)
+	{
+	  logtb_slam_transaction (thread_p, kill_tran_index);
+	  signaled = true;
+	}
+      else
+	{
+	  if (signaled == false)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_KILL_DOES_NOTMATCH, 8, kill_tran_index, kill_user_p,
+		      kill_host_p, kill_pid, kill_tran_index, slam_user_p, slam_host_p, slam_pid);
+	      error_code = ER_CSS_KILL_DOES_NOTMATCH;
+	    }
+	  else
+	    {
+	      killed = true;
+	    }
+	  break;
+	}
+      thread_sleep_for (std::chrono::seconds (1));
+    }
+
+  if (error_code == NO_ERROR && !killed)
+    {
+      error_code = ER_FAILED;	/* timeout */
+    }
+
+  return error_code;
+}
+
+/*
+ * xlogtb_kill_or_interrupt_tran() -
+ *   return:
+ *   thread_p(in):
+ *   tran_index(in):
+ *   is_dba_group_member(in):
+ *   kill_query_only(in):
+ */
+int
+xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_dba_group_member, bool interrupt_only)
+{
+  int i, error;
+  bool interrupt, has_authorization;
+  bool is_trx_exists;
+  KILLSTMT_TYPE kill_type;
+
+  if (tran_index == LOG_SYSTEM_TRAN_INDEX)
+    {
+      // cannot kill system transaction; not even if this is dba
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_ALLOWED, 1, tran_index);
+      return ER_KILL_TR_NOT_ALLOWED;
+    }
+
+  if (!is_dba_group_member)
+    {
+      error = logtb_check_kill_tran_auth (thread_p, tran_index, &has_authorization);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      if (has_authorization == false)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_ALLOWED, 1, tran_index);
+	  return ER_KILL_TR_NOT_ALLOWED;
+	}
+    }
+
+  is_trx_exists = logtb_set_tran_index_interrupt (thread_p, tran_index, true);
+
+  kill_type = interrupt_only ? KILLSTMT_QUERY : KILLSTMT_TRAN;
+  if (kill_type == KILLSTMT_TRAN)
+    {
+      css_shutdown_conn_by_tran_index (tran_index);
+    }
+
+  for (i = 0; i < LOGTB_RETRY_SLAM_MAX_TIMES; i++)
+    {
+      thread_sleep_for (std::chrono::seconds (1));
+
+      if (logtb_find_interrupt (tran_index, &interrupt) != NO_ERROR)
+	{
+	  break;
+	}
+      if (interrupt == false)
+	{
+	  break;
+	}
+    }
+
+  if (i == LOGTB_RETRY_SLAM_MAX_TIMES)
+    {
+      return ER_FAILED;		/* timeout */
+    }
+
+  if (is_trx_exists == false)
+    {
+      /* 
+       * Note that the following error will be ignored by
+       * sthread_kill_or_interrupt_tran().
+       */
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
 }
