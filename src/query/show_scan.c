@@ -48,7 +48,6 @@
 #include "btree.h"
 #include "connection_support.h"
 #include "critical_section.h"
-#include "job_queue.h"
 #include "tz_support.h"
 #include "db_date.h"
 #include "network.h"
@@ -529,15 +528,8 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
       db_make_int (&vals[idx], thrd->index);
       idx++;
 
-      /* Jobq_index */
-      if (0 < thrd->index && thrd->index <= thread_num_worker_threads ())
-	{
-	  db_make_int (&vals[idx], thrd->index % CSS_NUM_JOB_QUEUE);
-	}
-      else
-	{
-	  db_make_null (&vals[idx]);
-	}
+      /* Jobq_index */// it is obsolete
+      db_make_null (&vals[idx]);
       idx++;
 
       /* Thread_id */
