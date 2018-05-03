@@ -232,7 +232,7 @@ static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_E
 static void css_stop_log_writer (THREAD_ENTRY & thread_ref, bool &);
 static void css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool is_log_writer, bool & found);
 static bool css_is_log_writer (const THREAD_ENTRY & thread_arg);
-static void css_stop_all_workers (THREAD_ENTRY & thread_ref, thread_stop_type stop_phase);
+static void css_stop_all_workers (THREAD_ENTRY & thread_ref, css_thread_stop_type stop_phase);
 static void css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapper, int &busy_count);
 // *INDENT-OFF*
 // cubthread::entry_workpool::core confuses indent
@@ -2836,7 +2836,7 @@ css_is_log_writer (const THREAD_ENTRY &thread_arg)
 // stop_phase (in) : THREAD_STOP_WORKERS_EXCEPT_LOGWR or THREAD_STOP_LOGWR
 //
 static void
-css_stop_all_workers (THREAD_ENTRY &thread_ref, thread_stop_type stop_phase)
+css_stop_all_workers (THREAD_ENTRY &thread_ref, css_thread_stop_type stop_phase)
 {
   bool is_not_stopped;
 

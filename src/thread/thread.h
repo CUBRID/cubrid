@@ -71,12 +71,6 @@
 
 #else /* !SERVER_MODE */
 
-enum thread_stop_type
-{
-  THREAD_STOP_WORKERS_EXCEPT_LOGWR,
-  THREAD_STOP_LOGWR
-};
-
 /*
  * thread resource track info matrix: thread_p->track.meter[RC][MGR]
  * +------------+-----+-------+------+

@@ -75,6 +75,7 @@
 #include "tcp.h"
 #endif /* WINDOWS */
 #include "connection_sr.h"
+#include "server_support.h"
 
 #ifdef PACKET_TRACE
 #define TRACE(string, arg)					\

@@ -54,6 +54,7 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "query_manager.h"
+#include "server_support.h"
 #include "storage_common.h"
 #include "system_parameter.h"
 #include "thread.h"

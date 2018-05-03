@@ -25,7 +25,9 @@
 #ifndef _SERVER_SUPPORT_H_
 #define _SERVER_SUPPORT_H_
 
-#ident "$Id$"
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error server_support.h belongs to server or stand-alone modules
+#endif // not SERVER_MODE and not SA_MODE
 
 #include "connection_defs.h"
 #include "connection_sr.h"
@@ -36,6 +38,12 @@ namespace cubthread
 {
   class entry_task;
 }				// namespace cubthread
+
+enum css_thread_stop_type
+{
+  THREAD_STOP_WORKERS_EXCEPT_LOGWR,
+  THREAD_STOP_LOGWR
+};
 
 extern void css_block_all_active_conn (unsigned short stop_phase);
 
