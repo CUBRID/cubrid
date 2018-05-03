@@ -927,52 +927,6 @@ css_set_cnv_adj_buffer (int idx, ADJ_ARRAY * buffer_p)
 }
 
 /*
- * thread_set_sort_stats_active() -
- *   return:
- *   flag(in):
- */
-bool
-thread_set_sort_stats_active (THREAD_ENTRY * thread_p, bool flag)
-{
-  bool old_val = false;
-
-  if (BO_IS_SERVER_RESTARTED ())
-    {
-      if (thread_p == NULL)
-	{
-	  thread_p = thread_get_thread_entry_info ();
-	}
-
-      old_val = thread_p->sort_stats_active;
-      thread_p->sort_stats_active = flag;
-    }
-
-  return old_val;
-}
-
-/*
- * thread_get_sort_stats_active() -
- *   return:
- */
-bool
-thread_get_sort_stats_active (THREAD_ENTRY * thread_p)
-{
-  bool ret_val = false;
-
-  if (BO_IS_SERVER_RESTARTED ())
-    {
-      if (thread_p == NULL)
-	{
-	  thread_p = thread_get_thread_entry_info ();
-	}
-
-      ret_val = thread_p->sort_stats_active;
-    }
-
-  return ret_val;
-}
-
-/*
  * thread_set_check_interrupt() -
  *   return:
  *   flag(in):
@@ -1018,6 +972,9 @@ thread_get_check_interrupt (THREAD_ENTRY * thread_p)
     }
 
   return ret_val;
+}
+
+/*
  * thread_slam_tran_index() -
  *   return:
  *   tran_index(in):

@@ -293,7 +293,7 @@ typedef std::thread::id thread_id_t;
 //////////////////////////////////////////////////////////////////////////
 
 inline int
-thread_get_entry_index (THREAD_ENTRY *thread_p)
+thread_get_entry_index (cubthread::entry *thread_p)
 {
   assert (thread_p != NULL);
 
@@ -301,31 +301,31 @@ thread_get_entry_index (THREAD_ENTRY *thread_p)
 }
 
 inline int
-thread_get_recursion_depth (THREAD_ENTRY *thread_p)
+thread_get_recursion_depth (cubthread::entry *thread_p)
 {
   return thread_p->xasl_recursion_depth;
 }
 
 inline void
-thread_inc_recursion_depth (THREAD_ENTRY *thread_p)
+thread_inc_recursion_depth (cubthread::entry *thread_p)
 {
   thread_p->xasl_recursion_depth++;
 }
 
 inline void
-thread_dec_recursion_depth (THREAD_ENTRY *thread_p)
+thread_dec_recursion_depth (cubthread::entry *thread_p)
 {
   thread_p->xasl_recursion_depth--;
 }
 
 inline void
-thread_clear_recursion_depth (THREAD_ENTRY *thread_p)
+thread_clear_recursion_depth (cubthread::entry *thread_p)
 {
   thread_p->xasl_recursion_depth = 0;
 }
 
 inline lf_tran_entry *
-thread_get_tran_entry (THREAD_ENTRY *thread_p, int entry_idx)
+thread_get_tran_entry (cubthread::entry *thread_p, int entry_idx)
 {
   if (entry_idx >= 0 && entry_idx < THREAD_TS_LAST)
     {
@@ -339,33 +339,47 @@ thread_get_tran_entry (THREAD_ENTRY *thread_p, int entry_idx)
 }
 
 inline void
-thread_trace_on (THREAD_ENTRY *thread_p)
+thread_trace_on (cubthread::entry *thread_p)
 {
   thread_p->on_trace = true;
 }
 
 inline void
-thread_set_trace_format (THREAD_ENTRY *thread_p, int format)
+thread_set_trace_format (cubthread::entry *thread_p, int format)
 {
   thread_p->trace_format = format;
 }
 
 inline bool
-thread_is_on_trace (THREAD_ENTRY *thread_p)
+thread_is_on_trace (cubthread::entry *thread_p)
 {
   return thread_p->on_trace;
 }
 
 inline void
-thread_set_clear_trace (THREAD_ENTRY *thread_p, bool clear)
+thread_set_clear_trace (cubthread::entry *thread_p, bool clear)
 {
   thread_p->clear_trace = clear;
 }
 
-bool
-thread_need_clear_trace (THREAD_ENTRY *thread_p)
+inline bool
+thread_need_clear_trace (cubthread::entry *thread_p)
 {
   return thread_p->clear_trace;
+}
+
+inline bool
+thread_get_sort_stats_active (cubthread::entry *thread_p)
+{
+  return thread_p->sort_stats_active;
+}
+
+inline bool
+thread_set_sort_stats_active (cubthread::entry *thread_p, bool new_flag)
+{
+  bool old_flag = thread_p->sort_stats_active;
+  thread_p->sort_stats_active = new_flag;
+  return old_flag;
 }
 
 #endif // _THREAD_ENTRY_HPP_

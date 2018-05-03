@@ -1194,7 +1194,7 @@ css_internal_connection_handler (CSS_CONN_ENTRY * conn)
   css_insert_into_active_conn_list (conn);
 
   // push connection handler task
-  if (!cubthread::get_manager ()->try_task (cubthread::get_manager ()->get_entry (), css_Connection_worker_pool,
+  if (!cubthread::get_manager ()->try_task (cubthread::get_entry (), css_Connection_worker_pool,
 					    new css_connection_task (*conn)))
     {
       assert_release (false);
