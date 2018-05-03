@@ -60,6 +60,7 @@
 #define thread_set_check_interrupt(thread_p, flag) tran_set_check_interrupt (flag)
 #define thread_get_check_interrupt(thread_p) tran_get_check_interrupt ()
 
+// todo - implement resource tracker independent of threading
 #define thread_rc_track_need_to_trace(thread_p) (false)
 #define thread_rc_track_enter(thread_p) (-1)
 #define thread_rc_track_exit(thread_p, idx) (NO_ERROR)
@@ -69,10 +70,6 @@
 #define thread_rc_track_meter(thread_p, file, line, amount, ptr, rc_idx, mgr_idx)
 
 #else /* !SERVER_MODE */
-
-#if defined(HPUX)
-#define thread_set_thread_entry_info(entry)
-#endif /* HPUX */
 
 enum thread_stop_type
 {
@@ -173,10 +170,6 @@ struct fi_test_item;
 #define DOES_THREAD_RESUME_DUE_TO_SHUTDOWN(thread_p) \
   ((thread_p)->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT && \
    (thread_p)->interrupted == true)
-
-#if !defined(HPUX)
-extern int thread_set_thread_entry_info (THREAD_ENTRY * entry);
-#endif /* not HPUX */
 
 extern void thread_slam_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 extern int thread_lock_entry (THREAD_ENTRY * entry);

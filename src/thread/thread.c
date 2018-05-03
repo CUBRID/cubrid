@@ -165,26 +165,6 @@ thread_initialize_key (void)
     }
   return r;
 }
-
-/*
- * thread_set_thread_entry_info() - associates TSD with entry
- *   return: 0 if no error, or error code
- *   entry_p(in): thread entry
- */
-int
-thread_set_thread_entry_info (THREAD_ENTRY * entry_p)
-{
-  int r;
-
-  r = pthread_setspecific (thread_Thread_key, (void *) entry_p);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_SETSPECIFIC, 0);
-      return ER_CSS_PTHREAD_SETSPECIFIC;
-    }
-
-  return r;
-}
 #endif /* HPUX */
 
 /*

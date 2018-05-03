@@ -455,10 +455,6 @@ namespace cubthread
     Main_entry_p->get_error_context ().register_thread_local ();
 #endif // SERVER_MODE
 
-#if defined (SERVER_MODE)
-    thread_set_thread_entry_info (Main_entry_p);
-#endif // SERVER_MODE
-
     tl_Entry_p = Main_entry_p;
 
     my_entry = Main_entry_p;
