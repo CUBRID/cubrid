@@ -1037,9 +1037,6 @@ thread_get_check_interrupt (THREAD_ENTRY * thread_p)
     }
 
   return ret_val;
-}
-
-/*
  * thread_slam_tran_index() -
  *   return:
  *   tran_index(in):

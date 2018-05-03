@@ -29,6 +29,7 @@
 #endif // not SERVER_MODE and not SA_MODE
 
 #include "thread_entry.hpp"
+#include "thread_task.hpp"
 
 #include <mutex>
 #include <vector>
@@ -140,12 +141,34 @@ namespace cubthread
       // daemon management
       //////////////////////////////////////////////////////////////////////////
 
-      // create daemon thread
-      daemon *create_daemon (const looper &looper_arg, entry_task *exec_p,
-			     entry_manager *context_manager = NULL);
+      // there are two types of daemons:
+      //
+      //    1. daemons based on thread_entry context
+      //    2. daemons without context
+      //
+      // first types of daemons will also have to reserve a thread entry. there can be unlimited second type daemons
+      //
+      // create_daemon/destroy_daemon and create_daemon_without_entry/destroy_daemon_without_entry are not
+      // interchangeable. expect safe-guard failures if not used appropriately.
+      //
 
+      // create daemon thread
+      //
+      // note: signature should match context-based daemon constructor. only exception is context manager which is
+      //       moved at the end to allow a default value
+      //
+      // todo: remove default daemon name
+      daemon *create_daemon (const looper &looper_arg, entry_task *exec_p, const char *daemon_name = "",
+			     entry_manager *context_manager = NULL);
       // destroy daemon thread
       void destroy_daemon (daemon *&daemon_arg);
+
+      // create & destroy daemon thread without thread entry
+      //
+      // note: create signature should match context-less daemon constructor
+      daemon *create_daemon_without_entry (const looper &looper_arg, task_without_context *exec_p,
+					   const char *daemon_name);
+      void destroy_daemon_without_entry (daemon *&daemon_arg);
 
       //////////////////////////////////////////////////////////////////////////
       // other member functions
@@ -199,6 +222,8 @@ namespace cubthread
       std::vector<entry_workpool *> m_worker_pools;
       // daemons
       std::vector<daemon *> m_daemons;
+      // daemons without entries
+      std::vector<daemon *> m_daemons_without_entries;
 
       // entries
       entry *m_all_entries;

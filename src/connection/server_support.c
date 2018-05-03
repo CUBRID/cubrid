@@ -108,21 +108,6 @@ static bool ha_Repl_delay_detected = false;
 
 static int ha_Server_num_of_hosts = 0;
 
-typedef struct job_queue JOB_QUEUE;
-struct job_queue
-{
-  pthread_mutex_t job_lock;
-  CSS_LIST job_list;
-  THREAD_ENTRY *worker_thrd_list;
-  pthread_mutex_t free_lock;
-#if !defined(HAVE_ATOMIC_BUILTINS)
-  pthread_mutex_t counter_lock;	/* protect job queue counter */
-#endif				/* !HAVE_ATOMIC_BUILTINS */
-  int num_total_workers;	/* Num of total workers in this job queue */
-  int num_busy_workers;		/* Num of busy threads in this job queue */
-  int num_conn_workers;		/* Num of connection threads in this job queue */
-};
-
 #define HA_LOG_APPLIER_STATE_TABLE_MAX  5
 typedef struct ha_log_applier_state_table HA_LOG_APPLIER_STATE_TABLE;
 struct ha_log_applier_state_table
@@ -229,9 +214,8 @@ static void css_process_get_eof_request (SOCKET master_fd);
 
 static void css_close_connection_to_master (void);
 static int css_reestablish_connection_to_master (void);
-static void dummy_sigurg_handler (int sig);
 static int css_connection_handler_thread (THREAD_ENTRY * thrd, CSS_CONN_ENTRY * conn);
-static int css_internal_connection_handler (CSS_CONN_ENTRY * conn);
+static css_error_code css_internal_connection_handler (CSS_CONN_ENTRY * conn);
 static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
 static int css_check_accessibility (SOCKET new_fd);
@@ -676,7 +660,14 @@ css_process_new_client (SOCKET master_fd)
 
   if (css_Connect_handler)
     {
-      (*css_Connect_handler) (conn);
+      if ((*css_Connect_handler) (conn) != NO_ERRORS)
+	{
+	  assert_release (false);
+	}
+    }
+  else
+    {
+      assert_release (false);
     }
 }
 
@@ -928,7 +919,10 @@ css_process_new_connection_request (void)
 
 	      if (css_Connect_handler)
 		{
-		  (*css_Connect_handler) (conn);
+		  if ((*css_Connect_handler) (conn) != NO_ERRORS)
+		    {
+		      assert_release (false);
+		    }
 		}
 	    }
 	  else
@@ -986,16 +980,6 @@ css_reestablish_connection_to_master (void)
 
   css_Pipe_to_master = INVALID_SOCKET;
   return 0;
-}
-
-/*
- * dummy_sigurg_handler () - SIGURG signal handling thread
- *   return:
- *   sig(in):
- */
-static void
-dummy_sigurg_handler (int sig)
-{
 }
 
 /*
@@ -1204,16 +1188,20 @@ css_block_all_active_conn (unsigned short stop_phase)
  *
  * Note: This routine is "registered" to be called when a new connection is requested by the client
  */
-static int
+static css_error_code
 css_internal_connection_handler (CSS_CONN_ENTRY * conn)
 {
   css_insert_into_active_conn_list (conn);
 
   // push connection handler task
-  cubthread::get_manager ()->push_task (cubthread::get_entry (), css_Connection_worker_pool,
-					new css_connection_task (*conn));
+  if (!cubthread::get_manager ()->try_task (cubthread::get_manager ()->get_entry (), css_Connection_worker_pool,
+					    new css_connection_task (*conn)))
+    {
+      assert_release (false);
+      return REQUEST_REFUSED;
+    }
 
-  return 1;
+  return NO_ERRORS;
 }
 
 /*
@@ -1321,7 +1309,7 @@ int
 css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_id)
 {
   CSS_CONN_ENTRY *conn;
-  int status = ER_FAILED;
+  int status = NO_ERROR;
 
   if (server_name == NULL || port_id <= 0)
     {
@@ -1339,6 +1327,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   // initialize worker pool for server requests
   const std::size_t MAX_WORKERS = NUM_NON_SYSTEM_TRANS;
   const std::size_t MAX_TASK_COUNT = 2 * NUM_NON_SYSTEM_TRANS;	// not that it matters...
+
   css_Server_request_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT, NULL,
 										  cubthread::system_core_count (),
 										  false);
@@ -1346,15 +1335,17 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     {
       assert (false);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_FAILED;
+      status = ER_FAILED;
+      goto shutdown;
     }
-  css_Connection_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT, NULL,
-									      cubthread::system_core_count (), false);
+
+  css_Connection_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_WORKERS, NULL, 1, false);
   if (css_Connection_worker_pool == NULL)
     {
       assert (false);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_FAILED;
+      status = ER_FAILED;
+      goto shutdown;
     }
 
   css_Server_connection_socket = INVALID_SOCKET;
@@ -1377,22 +1368,21 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 	  if (status != NO_ERROR)
 	    {
 	      fprintf (stderr, "failed to heartbeat register.\n");
-	      goto shutdown;
 	    }
 	}
 #endif
 
-      css_setup_server_loop ();
-
-      status = NO_ERROR;
+      if (status == NO_ERROR)
+	{
+	  // server message loop
+	  css_setup_server_loop ();
+	}
     }
 
+shutdown:
   /* 
    * start to shutdown server
    */
-#if !defined(WINDOWS)
-shutdown:
-#endif
 
   // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
   // all log is transfered
@@ -1438,8 +1428,6 @@ shutdown:
       css_close_connection_to_master ();
     }
 
-  css_close_server_connection_socket ();
-
   if (css_Master_server_name)
     {
       free_and_init (css_Master_server_name);
@@ -1447,6 +1435,7 @@ shutdown:
 
   /* If this was opened for the new style connection protocol, make sure it gets closed. */
   css_close_server_connection_socket ();
+
 #if defined(WINDOWS)
   css_windows_shutdown ();
 #endif /* WINDOWS */
@@ -2773,7 +2762,7 @@ css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_E
 }
 
 //
-// css_stop_non_log_writer () - function mapped over worker pools to search and stop log writer workers
+// css_stop_log_writer () - function mapped over worker pools to search and stop log writer workers
 //
 // thread_ref (in)         : entry of thread to check and stop
 // stop_mapper (out)       : ignored; part of expected signature of mapper function
@@ -2809,7 +2798,7 @@ css_stop_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper)
 // css_find_not_stopped () - find any target thread that is not stopped
 //
 // thread_ref (in)    : entry of thread that should be stopped
-// stop (out)         : output true to stop mapping
+// stop_mapper (out)  : output true to stop mapping
 // is_log_writer (in) : true to target log writers, false to target non-log writers
 // found (out)        : output true if target thread is not stopped
 //
