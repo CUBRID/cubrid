@@ -145,48 +145,6 @@ static void thread_rc_track_meter_assert_csect_usage (THREAD_ENTRY * thread_p, T
  * Each worker thread picks one up from this array.
  */
 
-#if defined(HPUX)
-#else /* HPUX */
-/*
- * thread_initialize_key() - allocates a key for TSD
- *   return: 0 if no error, or error code
- */
-int
-thread_initialize_key (void)
-{
-  int r;
-
-  r = pthread_key_create (&thread_Thread_key, NULL);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_KEY_CREATE, 0);
-      return ER_CSS_PTHREAD_KEY_CREATE;
-    }
-  return r;
-}
-#endif /* HPUX */
-
-/*
- * Thread Manager related functions
- *
- * Global thread manager, thread_mgr, related functions. It creates/destroys
- * TSD and takes control over actual threads, for example master, worker.
- */
-
-/*
- * thread_final_manager() -
- *   return: void
- */
-void
-thread_final_manager (void)
-{
-  lf_destroy_transaction_systems ();
-
-#ifndef HPUX
-  pthread_key_delete (thread_Thread_key);
-#endif /* not HPUX */
-}
-
 /*
  * Thread entry related functions
  * Information retrieval modules.

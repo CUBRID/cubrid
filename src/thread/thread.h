@@ -228,12 +228,6 @@ extern pthread_mutex_t css_Internal_mutex_for_mutex_initialize;
 #endif /* !WINDOWS */
 
 extern THREAD_ENTRY *thread_iterate (THREAD_ENTRY * thread_p);
-
-#if defined(HPUX)
-#define thread_initialize_key()
-#else
-extern int thread_initialize_key (void);
-#endif /* HPUX */
 #endif /* SERVER_MODE */
 
 /* *INDENT-ON* */

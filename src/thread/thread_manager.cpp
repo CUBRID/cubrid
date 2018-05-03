@@ -439,10 +439,6 @@ namespace cubthread
 	Manager = new manager ();
       }
 
-#if defined (SERVER_MODE)
-    thread_initialize_key ();
-#endif
-
     // init main entry
     Main_entry_p = new entry ();
     Main_entry_p->index = 0;
