@@ -78,6 +78,7 @@
 #include <locale>
 #include <unordered_map>
 #include <vector>
+#include <climits>
 
 #include <cctype>
 
@@ -1984,14 +1985,59 @@ static void
 db_json_replace_token_special_chars (std::string &token,
 				     const std::unordered_map<std::string, std::string> &special_chars)
 {
-  for (auto it = special_chars.begin (); it != special_chars.end (); ++it)
+  // in this map we will store only the characters that we have met before to avoid searching for a character that we
+  // knew in the first place that is not present in the string
+  std::unordered_map<std::string, std::string> left;
+
+  // first we put all the pairs from special_chars to left
+  for (auto it = special_chars.begin(); it != special_chars.end(); ++it)
     {
-      size_t pos = 0;
-      while ((pos = token.find (it->first, pos)) != std::string::npos)
+      left.emplace (*it);
+    }
+
+  // first initialize the pair used for replace
+  // we will store the position where we want to do the replacement and a pair (old, new)
+  std::pair<int, std::pair<const std::string, std::string> *> pair_rep = std::make_pair (0, nullptr);
+  size_t minpos = INT_MAX;
+  size_t pos = 0;
+  size_t current_index = 0;
+
+  while (true)
+    {
+      minpos = INT_MAX;
+
+      for (auto it = left.begin(); it != left.end();)
 	{
-	  token.replace (pos, it->first.length (), it->second);
-	  pos += it->second.length ();
+	  pos = token.find (it->first, current_index);
+	  // if we don't find any occurence, we won't search for it in future loops
+	  if (pos == std::string::npos)
+	    {
+	      it = left.erase (it);
+	      continue;
+	    }
+
+	  // we need to replace the first occurence whatever that is
+	  if (pos < minpos)
+	    {
+	      pair_rep.first = pos;
+	      pair_rep.second = & (*it);
+	      minpos = pos;
+	    }
+
+	  // don't forget to increment the iterator
+	  ++it;
 	}
+
+      // we did not find characters to replace
+      if (minpos == INT_MAX)
+	{
+	  break;
+	}
+
+      // do the replacement
+      token.replace (pair_rep.first, pair_rep.second->first.length(), pair_rep.second->second);
+      // next time we will start the search from this index
+      current_index += pair_rep.second->second.length();
     }
 }
 
@@ -2124,6 +2170,7 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
   json_pointer_out = "";
   for (unsigned int i = 0; i < tokens.size (); ++i)
     {
+      db_json_replace_token_special_chars (tokens[i], special_chars);
       json_pointer_out += "/" + tokens[i];
     }
 
