@@ -1675,7 +1675,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
    *       Permanent volumes for temporary data purpose can only be added by user and are never extended.
    */
 
-  assert (disk_Cache->owner_extend == thread_get_current_entry_index ());
+  assert (disk_Cache->owner_extend == thread_get_entry_index (thread_p));
 
   /* expand */
   /* what is the desired remaining free after expand? */
@@ -4431,7 +4431,7 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
     }
 
   assert (context->n_cache_reserve_remaining > 0);
-  assert (extend_info->owner_reserve == thread_get_current_entry_index ());
+  assert (extend_info->owner_reserve == thread_get_entry_index (thread_p));
 
   if (extend_info->nsect_free > context->n_cache_reserve_remaining)
     {

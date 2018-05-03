@@ -2650,7 +2650,7 @@ pgbuf_unfix_all (THREAD_ENTRY * thread_p)
   const char *latch_mode_str, *zone_str, *consistent_str;
 #endif /* NDEBUG */
 
-  thrd_index = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
+  thrd_index = thread_get_entry_index (thread_p);
 
   thrd_holder_info = &(pgbuf_Pool.thrd_holder_info[thrd_index]);
 
@@ -5337,7 +5337,7 @@ pgbuf_allocate_thrd_holder_entry (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  thrd_index = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
+  thrd_index = thread_get_entry_index (thread_p);
 
   thrd_holder_info = &(pgbuf_Pool.thrd_holder_info[thrd_index]);
 
@@ -5413,7 +5413,7 @@ pgbuf_find_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
   assert (bufptr != NULL);
 
-  thrd_index = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
+  thrd_index = thread_get_entry_index (thread_p);
 
   /* For each BCB holder entry of thread's holder list */
   holder = pgbuf_Pool.thrd_holder_info[thrd_index].thrd_hold_list;
@@ -5517,7 +5517,7 @@ pgbuf_remove_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_HOLDER * holder)
   /* holder->fix_count is always set to some meaningful value when the holder entry is allocated for use. So, at this
    * time, we do not need to initialize it. connect the BCB holder entry into free BCB holder list of given thread. */
 
-  thrd_index = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
+  thrd_index = thread_get_entry_index (thread_p);
 
   thrd_holder_info = &(pgbuf_Pool.thrd_holder_info[thrd_index]);
 
@@ -11053,7 +11053,7 @@ pgbuf_wakeup_page_flush_daemon (THREAD_ENTRY * thread_p)
 bool
 pgbuf_has_perm_pages_fixed (THREAD_ENTRY * thread_p)
 {
-  int thrd_idx = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
+  int thrd_idx = thread_get_entry_index (thread_p);
   PGBUF_HOLDER *holder = NULL;
 
   if (pgbuf_Pool.thrd_holder_info[thrd_idx].num_hold_cnt == 0)
@@ -11082,7 +11082,7 @@ pgbuf_has_perm_pages_fixed (THREAD_ENTRY * thread_p)
 static bool
 pgbuf_is_thread_high_priority (THREAD_ENTRY * thread_p)
 {
-  int thrd_idx = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
+  int thrd_idx = thread_get_entry_index (thread_p);
   PGBUF_HOLDER *holder = NULL;
 
   if (pgbuf_Pool.thrd_holder_info[thrd_idx].num_hold_cnt == 0)
@@ -11676,7 +11676,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
   req_page_holder_info.watch_count = 1;
   req_page_holder_info.watcher[0] = req_watcher;
 
-  thrd_idx = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
+  thrd_idx = thread_get_entry_index (thread_p);
   holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list;
   if ((holder == NULL) || ((holder->thrd_link == NULL) && (VPID_EQ (req_vpid, &(holder->bufptr->vpid)))))
     {
@@ -12405,7 +12405,7 @@ pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAG
 
   VPID_SET_NULL (groupid);
 
-  thrd_idx = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
+  thrd_idx = thread_get_entry_index (thread_p);
 
   /* get class oid and hfid */
   er_status = heap_get_class_oid_from_page (thread_p, *pgptr, &cls_oid);
@@ -12661,7 +12661,7 @@ pgbuf_get_holder (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   PGBUF_HOLDER *holder;
 
   assert (pgptr != NULL);
-  thrd_idx = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
+  thrd_idx = thread_get_entry_index (thread_p);
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
 
@@ -12899,7 +12899,7 @@ pgbuf_is_page_fixed_by_thread (THREAD_ENTRY * thread_p, VPID * vpid_p)
   assert (vpid_p != NULL);
 
   /* walk holders and try to find page */
-  thrd_index = THREAD_GET_CURRENT_ENTRY_INDEX (thread_p);
+  thrd_index = thread_get_entry_index (thread_p);
   thrd_holder_info = &(pgbuf_Pool.thrd_holder_info[thrd_index]);
   for (thrd_holder = thrd_holder_info->thrd_hold_list; thrd_holder != NULL; thrd_holder = thrd_holder->next_holder)
     {
@@ -14047,11 +14047,7 @@ pgbuf_get_fix_count (PAGE_PTR pgptr)
 int
 pgbuf_get_hold_count (THREAD_ENTRY * thread_p)
 {
-  int me =
-#if defined (SERVER_MODE)
-    thread_p ? thread_p->index :
-#endif /* SERVER_MODE */
-    thread_get_current_entry_index ();
+  int me = thread_get_entry_index (thread_p);
   return pgbuf_Pool.thrd_holder_info[me].num_hold_cnt;
 }
 

@@ -358,21 +358,6 @@ thread_find_entry_by_tran_index (int tran_index)
 }
 
 /*
- * thread_get_current_entry_index() -
- *   return:
- */
-int
-thread_get_current_entry_index (void)
-{
-  THREAD_ENTRY *thread_p;
-
-  thread_p = thread_get_thread_entry_info ();
-  assert (thread_p != NULL);
-
-  return thread_p->index;
-}
-
-/*
  * thread_get_current_session_id () - get session id for current thread
  *   return: session id
  */

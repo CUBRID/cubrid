@@ -61,8 +61,21 @@ thread_get_thread_entry_info (void)
   return &te;
 }
 
+inline int
+thread_get_entry_index (THREAD_ENTRY * thread_p)
+{
+  assert (thread_p != NULL);
+
+  return thread_p->index;
+}
+
+inline int
+thread_get_current_entry_index (void)
+{
+  return thread_get_entry_index (thread_get_thread_entry_info ());
+}
+
 #if !defined(SERVER_MODE)
-#define THREAD_GET_CURRENT_ENTRY_INDEX(thrd) thread_get_current_entry_index()
 
 extern int thread_Recursion_depth;
 
@@ -70,7 +83,6 @@ extern LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST];
 
 #define thread_num_worker_threads()  (1)
 #define thread_num_total_threads()   (1)
-#define thread_get_current_entry_index() (0)
 #define thread_get_current_session_id() (db_Session_id)
 #define thread_set_check_interrupt(thread_p, flag) tran_set_check_interrupt (flag)
 #define thread_get_check_interrupt(thread_p) tran_get_check_interrupt ()
@@ -99,9 +111,6 @@ extern LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST];
 #define thread_get_tran_entry(thread_p, entry_idx)  (&thread_ts_decoy_entries[entry_idx])
 
 #else /* !SERVER_MODE */
-
-#define THREAD_GET_CURRENT_ENTRY_INDEX(thrd) \
-  ((thrd) ? (thrd)->index : thread_get_current_entry_index())
 
 #if defined(HPUX)
 #define thread_set_thread_entry_info(entry)
@@ -243,7 +252,6 @@ extern int thread_get_client_id (THREAD_ENTRY * thread_p);
 extern unsigned int thread_get_comm_request_id (THREAD_ENTRY * thread_p);
 extern THREAD_ENTRY *thread_find_entry_by_tran_index (int tran_index);
 extern THREAD_ENTRY *thread_find_entry_by_tran_index_except_me (int tran_index);
-extern int thread_get_current_entry_index (void);
 extern unsigned int thread_get_current_session_id (void);
 extern int thread_get_current_tran_index (void);
 extern void thread_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index);
