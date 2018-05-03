@@ -2132,8 +2132,7 @@ css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
 	      if (data_wait == NULL)
 		{
 		  /* if waiter not exists, add to data queue */
-		  css_add_queue_entry (conn, &conn->data_queue, request_id,
-				       buffer, size, rc, conn->transaction_id,
+		  css_add_queue_entry (conn, &conn->data_queue, request_id, buffer, size, rc, conn->transaction_id,
 				       conn->invalidate_snapshot, conn->db_error);
 		  return;
 		}
@@ -2337,10 +2336,8 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *requ
 }
 
 /*
- * clear_wait_queue_entry_and_free_buffer () - remove data_wait_queue entry
- *                                             when completing or aborting
- *                                             to receive buffer
- *                                             from data_wait_queue.
+ * clear_wait_queue_entry_and_free_buffer () - remove data_wait_queue entry when completing or aborting
+ *                                             to receive buffer from data_wait_queue.
  *   return: void
  *   conn(in): connection entry
  *   rid(in): request id

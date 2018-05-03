@@ -45,7 +45,6 @@
 #include "release_string.h"
 #include "server_support.h"
 #include "connection_sr.h"
-#include "job_queue.h"
 #include "connection_error.h"
 #include "message_catalog.h"
 #include "log_impl.h"
@@ -1322,7 +1321,6 @@ net_server_start (const char *server_name)
   else
     {
       packed_name = css_pack_server_name (server_name, &name_length);
-      css_init_job_queue ();
 
       r = css_init (thread_p, packed_name, name_length, prm_get_integer_value (PRM_ID_TCP_PORT_ID));
       free_and_init (packed_name);
@@ -1349,7 +1347,6 @@ net_server_start (const char *server_name)
       net_server_histo_print ();
 #endif /* CUBRID_DEBUG */
 
-      css_final_job_queue ();
       css_final_conn_list ();
       css_free_user_access_status ();
     }

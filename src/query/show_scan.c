@@ -48,7 +48,6 @@
 #include "btree.h"
 #include "connection_support.h"
 #include "critical_section.h"
-#include "job_queue.h"
 #include "tz_support.h"
 #include "db_date.h"
 #include "network.h"
@@ -198,7 +197,7 @@ showstmt_scan_init (void)
 
   req = &show_Requests[SHOWSTMT_JOB_QUEUES];
   req->show_type = SHOWSTMT_JOB_QUEUES;
-  req->start_func = css_job_queues_start_scan;
+  req->start_func = NULL;	// FIXME
   req->next_func = showstmt_array_next_scan;
   req->end_func = showstmt_array_end_scan;
 
