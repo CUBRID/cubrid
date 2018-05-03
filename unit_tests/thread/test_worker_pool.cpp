@@ -104,7 +104,7 @@ namespace test_thread
     private:
       static std::atomic<size_t> m_count;
   };
-  std::atomic<size_t> inc_work::m_count = 0;
+  std::atomic<size_t> inc_work::m_count = { 0 };
 
   int
   test_one_thread_pool (void)
