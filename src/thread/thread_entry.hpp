@@ -259,6 +259,8 @@ namespace cubthread
       void unregister_id ();
       bool is_on_current_thread ();
 
+      void return_lock_free_transaction_entries (void);
+
       cuberr::context &get_error_context (void)
       {
 	return m_error;
@@ -283,5 +285,57 @@ namespace cubthread
 typedef cubthread::entry THREAD_ENTRY;
 typedef std::thread::id thread_id_t;
 #endif // _THREAD_COMPAT_HPP_
+
+//////////////////////////////////////////////////////////////////////////
+// alias functions for C legacy code
+//
+// use inline functions instead definitions
+//////////////////////////////////////////////////////////////////////////
+
+inline int
+thread_get_entry_index (THREAD_ENTRY *thread_p)
+{
+  assert (thread_p != NULL);
+
+  return thread_p->index;
+}
+
+inline int
+thread_get_recursion_depth (THREAD_ENTRY *thread_p)
+{
+  return thread_p->xasl_recursion_depth;
+}
+
+inline void
+thread_inc_recursion_depth (THREAD_ENTRY *thread_p)
+{
+  thread_p->xasl_recursion_depth++;
+}
+
+inline void
+thread_dec_recursion_depth (THREAD_ENTRY *thread_p)
+{
+  thread_p->xasl_recursion_depth--;
+}
+
+inline void
+thread_clear_recursion_depth (THREAD_ENTRY *thread_p)
+{
+  thread_p->xasl_recursion_depth = 0;
+}
+
+inline lf_tran_entry *
+thread_get_tran_entry (THREAD_ENTRY *thread_p, int entry_idx)
+{
+  if (entry_idx >= 0 && entry_idx < THREAD_TS_LAST)
+    {
+      return thread_p->tran_entries[entry_idx];
+    }
+  else
+    {
+      assert (false);
+      return NULL;
+    }
+}
 
 #endif // _THREAD_ENTRY_HPP_

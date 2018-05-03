@@ -65,15 +65,6 @@
 
 #include "thread_manager.hpp"
 
-/* Thread Manager structure */
-typedef struct thread_manager THREAD_MANAGER;
-struct thread_manager
-{
-  int num_total;
-  int num_workers;
-  bool initialized;
-};
-
 static const int THREAD_RETRY_MAX_SLAM_TIMES = 10;
 
 #if defined(HPUX)
@@ -81,8 +72,6 @@ static __thread THREAD_ENTRY *tsd_ptr;
 #else /* HPUX */
 static pthread_key_t thread_Thread_key;
 #endif /* HPUX */
-
-static THREAD_MANAGER thread_Manager;
 
 #define THREAD_RC_TRACK_VMEM_THRESHOLD_AMOUNT	      32767
 #define THREAD_RC_TRACK_PGBUF_THRESHOLD_AMOUNT	      1024
@@ -206,48 +195,6 @@ thread_set_thread_entry_info (THREAD_ENTRY * entry_p)
  */
 
 /*
- * thread_is_manager_initialized() -
- *   return:
- */
-int
-thread_is_manager_initialized (void)
-{
-  return thread_Manager.initialized;
-}
-
-/*
- * thread_initialize_manager() - Create and initialize all necessary threads.
- *   return: 0 if no error, or error code
- *
- * Note: It includes a main thread, service handler etc.
- *       Some other threads like signal handler might be needed later.
- */
-int
-thread_initialize_manager (size_t & total_thread_count)
-{
-  int i, r;
-
-  assert (NUM_NORMAL_TRANS >= 10);
-  assert (!thread_Manager.initialized);
-
-  thread_Manager.num_workers = 0;
-  thread_Manager.num_total = thread_Manager.num_workers;
-
-  /* initialize lock-free transaction systems */
-  r = lf_initialize_transaction_systems (thread_Manager.num_total + (int) cubthread::get_max_thread_count ());
-  if (r != NO_ERROR)
-    {
-      return r;
-    }
-
-  thread_Manager.initialized = true;
-
-  total_thread_count = thread_Manager.num_total;
-
-  return NO_ERROR;
-}
-
-/*
  * thread_final_manager() -
  *   return: void
  */
@@ -259,59 +206,6 @@ thread_final_manager (void)
 #ifndef HPUX
   pthread_key_delete (thread_Thread_key);
 #endif /* not HPUX */
-}
-
-/*
- * thread_return_transaction_entry() - return previously requested entries
- *   return: error code
- *   entry_p(in): thread entry
- */
-int
-thread_return_transaction_entry (THREAD_ENTRY * entry_p)
-{
-  int i, error = NO_ERROR;
-
-  for (i = 0; i < THREAD_TS_COUNT; i++)
-    {
-      if (entry_p->tran_entries[i] != NULL)
-	{
-	  error = lf_tran_return_entry (entry_p->tran_entries[i]);
-	  if (error != NO_ERROR)
-	    {
-	      break;
-	    }
-	  entry_p->tran_entries[i] = NULL;
-	}
-    }
-  return error;
-}
-
-/*
- * thread_return_all_transactions_entries() - return previously requested entries for all transactions
- *   return:
- */
-int
-thread_return_all_transactions_entries (void)
-{
-  int error = NO_ERROR;
-
-  if (!thread_Manager.initialized)
-    {
-      return NO_ERROR;
-    }
-
-  thread_return_transaction_entry (cubthread::get_main_entry ());
-  for (THREAD_ENTRY * entry_iter = thread_iterate (NULL); entry_iter != NULL; entry_iter = thread_iterate (entry_iter))
-    {
-      error = thread_return_transaction_entry (entry_iter);
-      if (error != NO_ERROR)
-	{
-	  assert (false);
-	  break;
-	}
-    }
-
-  return error;
 }
 
 /*
@@ -946,11 +840,11 @@ thread_get_info_threads (int *num_total_threads, int *num_worker_threads, int *n
 
   if (num_total_threads)
     {
-      *num_total_threads = thread_num_total_threads ();
+      *num_total_threads = (int) thread_num_total_threads ();
     }
   if (num_worker_threads)
     {
-      *num_worker_threads = thread_num_worker_threads ();
+      *num_worker_threads = (int) css_get_num_total_workers ();
     }
   if (num_free_threads)
     {
@@ -974,18 +868,6 @@ thread_get_info_threads (int *num_total_threads, int *num_worker_threads, int *n
 	    }
 	}
     }
-}
-
-int
-thread_num_worker_threads (void)
-{
-  return thread_Manager.num_workers;
-}
-
-int
-thread_num_total_threads (void)
-{
-  return thread_Manager.num_total + (int) cubthread::get_max_thread_count ();
 }
 
 /*
@@ -1085,33 +967,6 @@ thread_set_sort_stats_active (THREAD_ENTRY * thread_p, bool flag)
     }
 
   return old_val;
-}
-
-/*
- * thread_get_tran_entry () - get specific lock free transaction entry
- *   returns: transaction entry or NULL on error
- *   thread_p(in): thread entry or NULL for current thread
- *   entry(in): transaction entry index
- */
-LF_TRAN_ENTRY *
-thread_get_tran_entry (THREAD_ENTRY * thread_p, int entry_idx)
-{
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  assert_release (thread_p != NULL);
-
-  if (entry_idx >= 0 && entry_idx < THREAD_TS_LAST)
-    {
-      return thread_p->tran_entries[entry_idx];
-    }
-  else
-    {
-      assert (false);
-      return NULL;
-    }
 }
 
 /*
@@ -1437,7 +1292,7 @@ thread_find_entry_by_index (int thread_index)
     }
   else
     {
-      thread_p = &(cubthread::get_manager ()->get_all_entries ()[thread_index - thread_Manager.num_total - 1]);
+      thread_p = &(cubthread::get_manager ()->get_all_entries ()[thread_index - 1]);
     }
   assert (thread_p->index == thread_index);
 
@@ -3097,12 +2952,6 @@ THREAD_ENTRY *
 thread_iterate (THREAD_ENTRY * thread_p)
 {
   int index = 1;		// iteration starts with thread index = 1
-
-  if (!thread_Manager.initialized)
-    {
-      assert (false);
-      return NULL;
-    }
 
   if (thread_p != NULL)
     {

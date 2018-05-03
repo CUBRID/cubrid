@@ -54,57 +54,8 @@
 
 #include "thread_manager.hpp"
 
-inline THREAD_ENTRY *
-thread_get_thread_entry_info (void)
-{
-  THREAD_ENTRY& te = cubthread::get_manager ()->get_entry ();
-  return &te;
-}
-
-inline int
-thread_get_entry_index (THREAD_ENTRY * thread_p)
-{
-  assert (thread_p != NULL);
-
-  return thread_p->index;
-}
-
-inline int
-thread_get_current_entry_index (void)
-{
-  return thread_get_entry_index (thread_get_thread_entry_info ());
-}
-
-inline int
-thread_get_recursion_depth (THREAD_ENTRY * thread_p)
-{
-  return thread_p->xasl_recursion_depth;
-}
-
-inline void
-thread_inc_recursion_depth (THREAD_ENTRY * thread_p)
-{
-  thread_p->xasl_recursion_depth++;
-}
-
-inline void
-thread_dec_recursion_depth (THREAD_ENTRY * thread_p)
-{
-  thread_p->xasl_recursion_depth--;
-}
-
-inline void
-thread_clear_recursion_depth (THREAD_ENTRY * thread_p)
-{
-  thread_p->xasl_recursion_depth = 0;
-}
-
 #if !defined(SERVER_MODE)
 
-extern LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST];
-
-#define thread_num_worker_threads()  (1)
-#define thread_num_total_threads()   (1)
 #define thread_get_current_session_id() (db_Session_id)
 #define thread_set_check_interrupt(thread_p, flag) tran_set_check_interrupt (flag)
 #define thread_get_check_interrupt(thread_p) tran_get_check_interrupt ()
@@ -124,8 +75,6 @@ extern LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST];
 #define thread_rc_track_amount_qlist(thread_p) (0)
 #define thread_rc_track_dump_all(thread_p, outfp)
 #define thread_rc_track_meter(thread_p, file, line, amount, ptr, rc_idx, mgr_idx)
-
-#define thread_get_tran_entry(thread_p, entry_idx)  (&thread_ts_decoy_entries[entry_idx])
 
 #else /* !SERVER_MODE */
 
@@ -237,8 +186,6 @@ struct fi_test_item;
 extern int thread_set_thread_entry_info (THREAD_ENTRY * entry);
 #endif /* not HPUX */
 
-extern int thread_initialize_manager (size_t & total_thread_count);
-extern void thread_final_manager (void);
 extern void thread_slam_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 extern int thread_lock_entry (THREAD_ENTRY * entry);
 extern int thread_unlock_entry (THREAD_ENTRY * p);
@@ -252,7 +199,6 @@ extern int thread_wakeup_with_tran_index (int tran_index, int resume_reason);
 
 extern ADJ_ARRAY *css_get_cnv_adj_buffer (int idx);
 extern void css_set_cnv_adj_buffer (int idx, ADJ_ARRAY * buffer);
-extern int thread_is_manager_initialized (void);
 #ifdef __cplusplus
 extern "C"
 {
@@ -263,8 +209,6 @@ extern "C"
 #endif
 extern void thread_get_info_threads (int *num_total_threads, int *num_worker_threads, int *num_free_threads,
 				     int *num_suspended_threads);
-extern int thread_num_worker_threads (void);
-extern int thread_num_total_threads (void);
 extern int thread_get_client_id (THREAD_ENTRY * thread_p);
 extern unsigned int thread_get_comm_request_id (THREAD_ENTRY * thread_p);
 extern THREAD_ENTRY *thread_find_entry_by_tran_index (int tran_index);
@@ -284,7 +228,6 @@ extern int thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** array);
 
 extern int thread_suspend_with_other_mutex (THREAD_ENTRY * p, pthread_mutex_t * mutexp, int timeout,
 					    struct timespec *to, int suspended_reason);
-extern int thread_return_all_transactions_entries (void);
 extern bool thread_get_check_interrupt (THREAD_ENTRY * thread_p);
 
 extern int xthread_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user, char *kill_host,
@@ -310,8 +253,6 @@ extern void thread_rc_track_finalize (THREAD_ENTRY * thread_p);
 extern bool thread_get_sort_stats_active (THREAD_ENTRY * thread_p);
 extern bool thread_set_sort_stats_active (THREAD_ENTRY * thread_p, bool flag);
 
-extern LF_TRAN_ENTRY *thread_get_tran_entry (THREAD_ENTRY * thread_p, int entry_idx);
-
 extern void thread_trace_on (THREAD_ENTRY * thread_p);
 extern void thread_set_trace_format (THREAD_ENTRY * thread_p, int format);
 extern bool thread_is_on_trace (THREAD_ENTRY * thread_p);
@@ -334,8 +275,6 @@ extern void *thread_worker (void *);
 #endif /* !WINDOWS */
 
 extern THREAD_ENTRY *thread_iterate (THREAD_ENTRY * thread_p);
-
-extern int thread_return_transaction_entry (THREAD_ENTRY * entry_p);
 
 #if defined(HPUX)
 #define thread_initialize_key()

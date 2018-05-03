@@ -86,6 +86,9 @@ extern int css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPL
 
 extern void css_push_external_task (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY * conn, cubthread::entry_task * task);
 extern void css_get_thread_stats (UINT64 * stats_out);
+extern size_t css_get_num_request_workers (void);
+extern size_t css_get_num_connection_workers (void);
+extern size_t css_get_num_total_workers (void);
 
 #if defined (SERVER_MODE)
 extern int css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt,

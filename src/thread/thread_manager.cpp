@@ -37,6 +37,7 @@
 // project includes
 #include "error_manager.h"
 #include "log_impl.h"
+#include "lock_free.h"
 #include "resource_shared_pool.hpp"
 #include "system_parameter.h"
 
@@ -104,12 +105,12 @@ namespace cubthread
   }
 
   void
-  manager::init_entries (std::size_t starting_index, bool with_lock_free)
+  manager::init_entries (bool with_lock_free)
   {
     // initialize thread indexes and lock-free resources
     for (std::size_t it = 0; it < m_max_threads; it++)
       {
-	m_all_entries[it].index = (int) (it + starting_index + 1);
+	m_all_entries[it].index = (int) (it + 1);
 	if (with_lock_free)
 	  {
 	    m_all_entries[it].request_lock_free_transactions ();
@@ -351,16 +352,6 @@ namespace cubthread
     m_entry_dispatcher->retire (entry_p);
   }
 
-  entry &
-  manager::get_entry (void)
-  {
-    // shouldn't be called
-    // todo: add thread_p to error manager; or something
-    // er_print_callstack (ARG_FILE_LINE, "warning: manager::get_entry is called");
-    // todo
-    return *tl_Entry_p;
-  }
-
   std::size_t
   manager::get_max_thread_count (void) const
   {
@@ -373,6 +364,15 @@ namespace cubthread
     // check all thread resources are killed and freed
     destroy_and_untrack_all_resources (m_worker_pools);
     destroy_and_untrack_all_resources (m_daemons);
+  }
+
+  void
+  manager::return_lock_free_transaction_entries (void)
+  {
+    for (std::size_t index = 0; index < m_max_threads; index++)
+      {
+	m_all_entries[index].return_lock_free_transaction_entries ();
+      }
   }
 
   //////////////////////////////////////////////////////////////////////////
@@ -436,10 +436,6 @@ namespace cubthread
 
     delete Manager;
     Manager = NULL;
-
-#if defined (SERVER_MODE)
-    thread_final_manager ();
-#endif // SERVER_MODE
   }
 
   int
@@ -447,11 +443,13 @@ namespace cubthread
   {
     int error_code = NO_ERROR;
 #if defined (SERVER_MODE)
-    size_t old_manager_thread_count = 0;
-
     Manager->alloc_entries ();
+#endif // SERVER_MODE
 
-    error_code = thread_initialize_manager (old_manager_thread_count);
+    // note: even though SA_MODE does not really need to synchronize access on lock-free structures, it is better to
+    //       simulate using lock-free transaction in order to avoid managing separate code
+
+    error_code = lf_initialize_transaction_systems ((int) get_max_thread_count ());
     if (error_code != NO_ERROR)
       {
 	ASSERT_ERROR ();
@@ -463,8 +461,7 @@ namespace cubthread
 	Main_entry_p->request_lock_free_transactions ();
       }
 
-    Manager->init_entries (old_manager_thread_count, with_lock_free);
-#endif // SERVER_MODE
+    Manager->init_entries (with_lock_free);
 
     return NO_ERROR;
   }
@@ -499,6 +496,16 @@ namespace cubthread
     return 1 + (Manager != NULL ? Manager->get_max_thread_count() : 0);
   }
 
+  entry &
+  get_entry (void)
+  {
+    // shouldn't be called
+    // todo: add thread_p to error manager; or something
+    // er_print_callstack (ARG_FILE_LINE, "warning: manager::get_entry is called");
+    // todo
+    return *tl_Entry_p;
+  }
+
   bool
   is_single_thread (void)
   {
@@ -509,6 +516,16 @@ namespace cubthread
   check_not_single_thread (void)
   {
     assert (!Is_single_thread);
+  }
+
+  void
+  return_lock_free_transaction_entries (void)
+  {
+    Main_entry_p->return_lock_free_transaction_entries ();
+    if (Manager != NULL)
+      {
+	Manager->return_lock_free_transaction_entries ();
+      }
   }
 
 } // namespace cubthread

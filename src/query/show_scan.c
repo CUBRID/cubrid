@@ -505,7 +505,7 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
 
   *ptr = NULL;
 
-  ctx = showstmt_alloc_array_context (thread_p, thread_num_total_threads (), num_cols);
+  ctx = showstmt_alloc_array_context (thread_p, (int) thread_num_total_threads (), num_cols);
   if (ctx == NULL)
     {
       error = er_errid ();

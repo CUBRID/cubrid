@@ -42,6 +42,7 @@
 #include "show_scan.h"
 #include "numeric_opfunc.h"
 #include "dbtype.h"
+#include "thread_manager.hpp"
 
 #undef csect_initialize_critical_section
 #undef csect_finalize_critical_section
@@ -2162,7 +2163,7 @@ rmutex_lock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
 
-  if (!thread_is_manager_initialized ())
+  if (!cubthread::is_single_thread ())
     {
       /* Regard the resource is available, since system is working as a single thread. */
       return NO_ERROR;
@@ -2220,7 +2221,7 @@ rmutex_lock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
 int
 rmutex_unlock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
 {
-  if (!thread_is_manager_initialized ())
+  if (!cubthread::is_single_thread ())
     {
       /* Regard the resource is available, since system is working as a single thread. */
       return NO_ERROR;

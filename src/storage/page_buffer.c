@@ -5023,8 +5023,8 @@ pgbuf_initialize_hash_table (void)
 static int
 pgbuf_initialize_lock_table (void)
 {
-  int i;
-  int thrd_num_total;
+  size_t i;
+  size_t thrd_num_total;
   size_t alloc_size;
 
   /* allocate memory space for the buffer lock table */
@@ -5245,9 +5245,9 @@ pgbuf_initialize_invalid_list (void)
 static int
 pgbuf_initialize_thrd_holder (void)
 {
-  int thrd_num_total;
+  size_t thrd_num_total;
   size_t alloc_size;
-  int i, j, idx;
+  size_t i, j, idx;
 
   thrd_num_total = thread_num_total_threads ();
 #if defined(SERVER_MODE)
@@ -8518,7 +8518,7 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 #if defined (SERVER_MODE)
 	      /* todo: this is a hack */
 	      if (pgbuf_Pool.direct_victims.waiter_threads_low_priority->size ()
-		  >= (5 + (thread_num_worker_threads () / 20)))
+		  >= (5 + (thread_num_total_threads () / 20)))
 		{
 		  pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, bufptr->prev_BCB);
 		}
@@ -10639,7 +10639,7 @@ pgbuf_finalize_statistics (void)
     int i;
     UINT64 sum_sources = 0;
 
-    _er_log_debug (ARG_FILE_LINE, "\nPBFIX: Worker threads:%d\n\n", thread_num_worker_threads ());
+    _er_log_debug (ARG_FILE_LINE, "\nPBFIX: Worker threads:%d\n\n", thread_num_total_threads ());
 
     _er_log_debug (ARG_FILE_LINE, "\nPBFIX: Transactions:%d\n\n", log_Gl.trantable.num_total_indices);
 
@@ -13030,7 +13030,7 @@ pgbuf_initialize_page_monitor (void)
   int i;
   int error_status = NO_ERROR;
 #if defined (SERVER_MODE)
-  int count_threads = thread_num_total_threads ();
+  size_t count_threads = thread_num_total_threads ();
 #endif /* SERVER_MODE */
 
   monitor = &(pgbuf_Pool.monitor);

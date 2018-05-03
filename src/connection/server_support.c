@@ -1210,7 +1210,7 @@ css_internal_connection_handler (CSS_CONN_ENTRY * conn)
   css_insert_into_active_conn_list (conn);
 
   // push connection handler task
-  cubthread::get_manager ()->push_task (cubthread::get_manager ()->get_entry (), css_Connection_worker_pool,
+  cubthread::get_manager ()->push_task (cubthread::get_entry (), css_Connection_worker_pool,
 					new css_connection_task (*conn));
 
   return 1;
@@ -1430,8 +1430,8 @@ shutdown:
   css_stop_all_workers (*thread_p, THREAD_STOP_LOGWR);
 
   // destroy thread worker pools
-  THREAD_GET_MANAGER ()->destroy_worker_pool (css_Server_request_worker_pool);
-  THREAD_GET_MANAGER ()->destroy_worker_pool (css_Connection_worker_pool);
+  thread_get_manager ()->destroy_worker_pool (css_Server_request_worker_pool);
+  thread_get_manager ()->destroy_worker_pool (css_Connection_worker_pool);
 
   if (!HA_DISABLED ())
     {
@@ -2658,14 +2658,14 @@ css_push_server_task (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
   //       randomly pushed to cores that are full. some of those tasks may belong to threads holding locks. as a
   //       consequence, lock waiters may wait longer or even indefinitely if we are really unlucky.
   //
-  THREAD_GET_MANAGER ()->push_task_on_core (thread_ref, css_Server_request_worker_pool,
+  thread_get_manager ()->push_task_on_core (thread_ref, css_Server_request_worker_pool,
                                             new css_server_task (conn_ref), static_cast<size_t> (conn_ref.idx));
 }
 
 void
 css_push_external_task (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
 {
-  THREAD_GET_MANAGER ()->push_task (thread_ref, css_Server_request_worker_pool,
+  thread_get_manager ()->push_task (thread_ref, css_Server_request_worker_pool,
 				    new css_server_external_task (conn, task));
 }
 
@@ -2929,6 +2929,33 @@ void
 css_get_thread_stats (UINT64 *stats_out)
 {
   css_Server_request_worker_pool->get_stats (stats_out);
+}
+
+//
+// css_get_num_request_workers () - get number of workers executing server requests
+//
+size_t
+css_get_num_request_workers (void)
+{
+  return css_Server_request_worker_pool->get_max_count ();
+}
+
+//
+// css_get_num_connection_workers () - get number of workers handling connections
+//
+size_t
+css_get_num_connection_workers (void)
+{
+  return css_Connection_worker_pool->get_max_count ();
+}
+
+//
+// css_get_num_total_workers () - get total number of workers (request and connection handlers)
+//
+size_t
+css_get_num_total_workers (void)
+{
+  return css_get_num_request_workers () + css_get_num_connection_workers ();
 }
 
 //

@@ -26,6 +26,7 @@
 #include "adjustable_array.h"
 #include "error_manager.h"
 #include "fault_injection.h"
+#include "lock_free.h"
 #include "log_compress.h"
 #include "memory_alloc.h"
 #include "page_buffer.h"
@@ -280,6 +281,22 @@ namespace cubthread
   entry::is_on_current_thread ()
   {
     return m_id == std::this_thread::get_id ();
+  }
+
+  void
+  entry::return_lock_free_transaction_entries (void)
+  {
+    for (std::size_t i = 0; i < THREAD_TS_COUNT; i++)
+      {
+	if (tran_entries[i] != NULL)
+	  {
+	    if (lf_tran_return_entry (tran_entries[i]) != NO_ERROR)
+	      {
+		assert (false);
+	      }
+	    tran_entries[i] = NULL;
+	  }
+      }
   }
 
 } // namespace cubthread

@@ -2282,7 +2282,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
 #if defined (SERVER_MODE)
 #if defined(DIAG_DEVEL)
-  init_diag_mgr (server_name, thread_num_worker_threads (), NULL);
+  init_diag_mgr (server_name, thread_num_total_threads (), NULL);
 #endif /* DIAG_DEVEL */
 #endif /* !SERVER_MODE */
 
@@ -3657,14 +3657,12 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
 
   if (shutdown_common_modules == BOOT_SHUTDOWN_ALL_MODULES)
     {
-#if defined(SERVER_MODE)
       /*
        * Clears latch free resources, before shutting down the area manager. This is needed, since latch free resources
        * may still refers the area manager.
        */
-      thread_return_all_transactions_entries ();
+      thread_return_lock_free_transaction_entries ();
       lf_destroy_transaction_systems ();
-#endif
       es_final ();
       tp_final ();
       locator_free_areas ();

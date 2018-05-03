@@ -28,6 +28,8 @@
 #error Wrong module
 #endif // not SERVER_MODE and not SA_MODE
 
+#include "thread_entry.hpp"
+
 #include <mutex>
 #include <vector>
 
@@ -42,7 +44,6 @@ namespace cubthread
   class worker_pool;
   class looper;
   class daemon;
-  class entry;
   class entry_task;
   class entry_manager;
   class daemon_entry_manager;
@@ -102,7 +103,7 @@ namespace cubthread
       //////////////////////////////////////////////////////////////////////////
 
       void alloc_entries (void);
-      void init_entries (std::size_t starting_index = 0, bool with_lock_free = false);
+      void init_entries (bool with_lock_free = false);
 
       //////////////////////////////////////////////////////////////////////////
       // worker pool management
@@ -150,9 +151,6 @@ namespace cubthread
       // other member functions
       //////////////////////////////////////////////////////////////////////////
 
-      // get current thread's entry
-      entry &get_entry (void);
-
       // get the maximum thread count
       std::size_t get_max_thread_count (void) const;
 
@@ -165,6 +163,8 @@ namespace cubthread
       {
 	return m_all_entries;
       }
+
+      void return_lock_free_transaction_entries (void);
 
     private:
 
@@ -229,7 +229,7 @@ namespace cubthread
   // get thread manager
   manager *get_manager (void);
 
-  //quick fix for unit test mockups
+  // quick fix for unit test mock-ups
   void set_manager (manager *manager);
 
   // get maximum thread count
@@ -241,8 +241,48 @@ namespace cubthread
   // safe-guard for multi-thread features not being used in single-thread context
   void check_not_single_thread (void);
 
+  // get current thread's entry
+  entry &get_entry (void);
+
+  void return_lock_free_transaction_entries (void);
+
 } // namespace cubthread
 
-#define THREAD_GET_MANAGER() cubthread::get_manager ()
+//////////////////////////////////////////////////////////////////////////
+// alias functions to be used in C legacy code
+//
+// use inline functions instead of definitions
+//////////////////////////////////////////////////////////////////////////
+
+inline cubthread::manager *
+thread_get_manager (void)
+{
+  return cubthread::get_manager ();
+}
+
+inline std::size_t
+thread_num_total_threads (void)
+{
+  return cubthread::get_max_thread_count ();
+}
+
+inline cubthread::entry *
+thread_get_thread_entry_info (void)
+{
+  cubthread::entry &te = cubthread::get_entry ();
+  return &te;
+}
+
+inline int
+thread_get_current_entry_index (void)
+{
+  return thread_get_entry_index (thread_get_thread_entry_info ());
+}
+
+inline void
+thread_return_lock_free_transaction_entries (void)
+{
+  return cubthread::return_lock_free_transaction_entries ();
+}
 
 #endif  // _THREAD_MANAGER_HPP_
