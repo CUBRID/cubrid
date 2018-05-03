@@ -80,7 +80,7 @@ namespace cubthread
   {
     er_clear ();    // clear errors
     std::memset (&context.event_stats, 0, sizeof (context.event_stats));  // clear even stats
-    context.tran_index = -1;    // clear transaction ID
+    context.tran_index = NULL_TRAN_INDEX;    // clear transaction ID
 #if defined (SERVER_MODE)
     context.resume_status = THREAD_RESUME_NONE;
 #endif // SERVER_MODE
