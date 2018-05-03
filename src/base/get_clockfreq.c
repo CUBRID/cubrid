@@ -17,7 +17,7 @@
    <http://www.gnu.org/licenses/>.  */
 
 /*
- * perf.c - get_clockfreq() function implementation
+ * get_clockfreq.c - get_clockfreq() function implementation
  */
 
 #ident "$Id$"

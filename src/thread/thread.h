@@ -248,9 +248,6 @@ extern int thread_set_thread_entry_info (THREAD_ENTRY * entry);
 extern THREAD_ENTRY *thread_get_thread_entry_info (void);
 
 extern int thread_initialize_manager (size_t & total_thread_count);
-extern int thread_start_workers (void);
-extern int thread_stop_active_workers (unsigned short stop_phase);
-extern int thread_kill_all_workers (void);
 extern void thread_final_manager (void);
 extern void thread_slam_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 extern int thread_lock_entry (THREAD_ENTRY * entry);

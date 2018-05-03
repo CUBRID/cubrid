@@ -29,31 +29,49 @@ namespace test_object_factory
   int test_object_factory2 (void);
 
   class animal
-    {
-      public:
-        virtual int get_height () = 0;
-    };
+  {
+    public:
+      virtual int get_height () = 0;
+  };
 
   class lion : public animal
-    {
-      public:
-        static animal * create () { return new lion; };
-        int get_height () { return 100; }
-    };
+  {
+    public:
+      static animal *create ()
+      {
+	return new lion;
+      };
+      int get_height ()
+      {
+	return 100;
+      }
+  };
 
   class beetle : public animal
-    {
-      public:
-        static animal * create () { return new beetle; };
-        int get_height () { return 2; }
-    };
+  {
+    public:
+      static animal *create ()
+      {
+	return new beetle;
+      };
+      int get_height ()
+      {
+	return 2;
+      }
+  };
 
   class hawk : public animal
-    {
-      public:
-        static animal * create () { return new hawk; };
-        int get_height () { return 20; }
-    };
+  {
+    public:
+      static animal *create ()
+      {
+	return new hawk;
+      };
+      int get_height ()
+      {
+	return 20;
+      }
+  };
 
 } /* namespace test_object_factory*/
 

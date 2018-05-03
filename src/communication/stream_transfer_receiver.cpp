@@ -33,7 +33,7 @@
 namespace cubstream
 {
 
-  class transfer_receiver_task : public cubthread::entry_task
+  class transfer_receiver_task : public cubthread::task_without_context
   {
     public:
       transfer_receiver_task (cubstream::transfer_receiver &consumer_channel)
@@ -41,7 +41,7 @@ namespace cubstream
       {
       }
 
-      void execute (cubthread::entry &context) override
+      void execute () override
       {
 	int rc = 0;
 	size_t max_len = MTU;
@@ -74,13 +74,13 @@ namespace cubstream
       m_stream (stream),
       m_last_received_position (received_from_position)
   {
-    m_receiver_daemon = cubthread::get_manager ()->create_daemon (std::chrono::milliseconds (0),
-			new transfer_receiver_task (*this));
+    m_receiver_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
+			new transfer_receiver_task (*this), "stream_transfer_receiver");
   }
 
   transfer_receiver::~transfer_receiver ()
   {
-    cubthread::get_manager ()->destroy_daemon (m_receiver_daemon);
+    cubthread::get_manager ()->destroy_daemon_without_entry (m_receiver_daemon);
   }
 
   int transfer_receiver::write_action (const stream_position pos, char *ptr, const size_t byte_count)

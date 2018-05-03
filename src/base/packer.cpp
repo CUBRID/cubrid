@@ -36,14 +36,14 @@ namespace cubpacking
 #define LARGE_STRING_CODE 0xff
 
   STATIC_INLINE void check_range (const char *ptr, const char *endptr, const size_t amount)
-    __attribute__ ((ALWAYS_INLINE));
+  __attribute__ ((ALWAYS_INLINE));
 
   STATIC_INLINE void check_range (const char *ptr, const char *endptr, const size_t amount)
   {
     assert (ptr + amount <= endptr);
     if (ptr + amount > endptr)
       {
-        abort ();
+	abort ();
       }
   }
 

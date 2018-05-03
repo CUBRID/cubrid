@@ -16078,7 +16078,8 @@ pgbuf_page_maintenance_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (100));
   pgbuf_page_maintenance_daemon_task *daemon_task = new pgbuf_page_maintenance_daemon_task ();
 
-  pgbuf_Page_maintenance_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  pgbuf_Page_maintenance_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
+                                                                            "pgbuf_page_maintenance");
 }
 #endif /* SERVER_MODE */
 
@@ -16094,7 +16095,7 @@ pgbuf_page_flush_daemon_init ()
   cubthread::looper looper = cubthread::looper (pgbuf_get_page_flush_interval);
   pgbuf_page_flush_daemon_task *daemon_task = new pgbuf_page_flush_daemon_task ();
 
-  pgbuf_Page_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  pgbuf_Page_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "pgbuf_page_flush");
 }
 #endif /* SERVER_MODE */
 
@@ -16107,7 +16108,7 @@ pgbuf_page_post_flush_daemon_init ()
 {
   assert (pgbuf_Page_post_flush_daemon == NULL);
 
-  std::array<std::chrono::milliseconds, 3> looper_interval {{
+  std::array<cubthread::delta_time, 3> looper_interval {{
       std::chrono::milliseconds (1),
       std::chrono::milliseconds (10),
       std::chrono::milliseconds (100)
@@ -16116,7 +16117,8 @@ pgbuf_page_post_flush_daemon_init ()
   cubthread::looper looper = cubthread::looper (looper_interval);
   pgbuf_page_post_flush_daemon_task *daemon_task = new pgbuf_page_post_flush_daemon_task ();
 
-  pgbuf_Page_post_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  pgbuf_Page_post_flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
+                                                                           "pgbuf_page_post_flush");
 }
 #endif /* SERVER_MODE */
 
@@ -16138,7 +16140,8 @@ pgbuf_flush_control_daemon_init ()
     }
 
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (50));
-  pgbuf_Flush_control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  pgbuf_Flush_control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
+                                                                         "pgbuf_flush_control");
 }
 #endif /* SERVER_MODE */
 
@@ -16180,19 +16183,19 @@ pgbuf_daemons_get_stats (UINT64 * stats_out)
     {
       pgbuf_Page_flush_daemon->get_stats (statsp);
     }
-  statsp += cubthread::daemon::STAT_COUNT;
+  statsp += cubthread::daemon::get_stats_value_count ();
 
   if (pgbuf_Page_post_flush_daemon != NULL)
     {
       pgbuf_Page_post_flush_daemon->get_stats (statsp);
     }
-  statsp += cubthread::daemon::STAT_COUNT;
+  statsp += cubthread::daemon::get_stats_value_count ();
 
   if (pgbuf_Flush_control_daemon != NULL)
     {
       pgbuf_Flush_control_daemon->get_stats (statsp);
     }
-  statsp += cubthread::daemon::STAT_COUNT;
+  statsp += cubthread::daemon::get_stats_value_count ();
 
   if (pgbuf_Page_maintenance_daemon != NULL)
     {

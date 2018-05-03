@@ -39,7 +39,7 @@
 namespace cubstream
 {
 
-  class transfer_sender_task : public cubthread::entry_task
+  class transfer_sender_task : public cubthread::task_without_context
   {
     public:
       transfer_sender_task (cubstream::transfer_sender &producer_channel)
@@ -47,7 +47,7 @@ namespace cubstream
       {
       }
 
-      void execute (cubthread::entry &context) override
+      void execute () override
       {
 	int rc = NO_ERRORS;
 	stream_position last_reported_ready_pos = this_producer_channel.m_stream.get_last_reported_ready_pos ();
@@ -56,8 +56,8 @@ namespace cubstream
 
 	while (rc == NO_ERRORS && this_producer_channel.m_last_sent_position < last_reported_ready_pos)
 	  {
-	    unsigned int byte_count = std::min ((stream_position) MTU,
-						last_reported_ready_pos - this_producer_channel.m_last_sent_position);
+	    std::size_t byte_count = std::min ((stream_position) MTU,
+					       last_reported_ready_pos - this_producer_channel.m_last_sent_position);
 
 	    rc = this_producer_channel.m_stream.read (this_producer_channel.m_last_sent_position, byte_count,
 		 &this_producer_channel);
@@ -79,13 +79,15 @@ namespace cubstream
       m_stream (stream),
       m_last_sent_position (begin_sending_position)
   {
-    m_sender_daemon = cubthread::get_manager ()->create_daemon (std::chrono::milliseconds (10),
-		      new transfer_sender_task (*this));
+    cubthread::delta_time daemon_period = std::chrono::milliseconds (10);
+    m_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (daemon_period,
+		      new transfer_sender_task (*this),
+		      "stream_transfer_sender");
   }
 
   transfer_sender::~transfer_sender ()
   {
-    cubthread::get_manager ()->destroy_daemon (m_sender_daemon);
+    cubthread::get_manager ()->destroy_daemon_without_entry (m_sender_daemon);
   }
 
   communication_channel &transfer_sender::get_communication_channel ()

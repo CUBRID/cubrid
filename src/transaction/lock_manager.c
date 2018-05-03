@@ -5966,7 +5966,7 @@ lock_deadlock_detect_daemon_init ()
   deadlock_detect_task *daemon_task = new deadlock_detect_task ();
 
   // create deadlock detect daemon thread
-  lock_Deadlock_detect_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  lock_Deadlock_detect_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "lock_deadlock_detect");
 }
 #endif /* SERVER_MODE */
 
@@ -7596,7 +7596,6 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
 #if !defined (SERVER_MODE)
   return true;
 #else /* !SERVER_MODE */
-  int i;
   bool ignore;
   THREAD_ENTRY *thrd;
 

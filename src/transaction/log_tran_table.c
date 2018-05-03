@@ -3081,6 +3081,12 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
 
+  if (tran_index == LOG_SYSTEM_TRAN_INDEX)
+    {
+      assert (false);
+      return false;
+    }
+
   if (log_Gl.trantable.area != NULL)
     {
       tdes = LOG_FIND_TDES (tran_index);

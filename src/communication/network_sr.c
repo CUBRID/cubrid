@@ -1349,7 +1349,6 @@ net_server_start (const char *server_name)
       net_server_histo_print ();
 #endif /* CUBRID_DEBUG */
 
-      thread_kill_all_workers ();
       css_final_job_queue ();
       css_final_conn_list ();
       css_free_user_access_status ();

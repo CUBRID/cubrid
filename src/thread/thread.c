@@ -68,7 +68,6 @@
 typedef struct thread_manager THREAD_MANAGER;
 struct thread_manager
 {
-  THREAD_ENTRY *thread_array;	/* thread entry array */
   int num_total;
   int num_workers;
   bool initialized;
@@ -264,12 +263,12 @@ thread_is_manager_initialized (void)
 int
 thread_initialize_manager (size_t & total_thread_count)
 {
-  int i, r;
+  int r;
 
   assert (NUM_NORMAL_TRANS >= 10);
   assert (!thread_Manager.initialized);
 
-  thread_Manager.num_workers = NUM_NON_SYSTEM_TRANS;	/* only connection handler threads */
+  thread_Manager.num_workers = 0;
   thread_Manager.num_total = thread_Manager.num_workers;
 
   /* initialize lock-free transaction systems */
@@ -279,304 +278,9 @@ thread_initialize_manager (size_t & total_thread_count)
       return r;
     }
 
-  /* allocate threads */
-  thread_Manager.thread_array = new THREAD_ENTRY[thread_Manager.num_total];
-
-  /* init worker/page flush thread/log flush thread
-   * thread_mgr.thread_array[0] is used for main thread */
-  for (i = 0; i < thread_Manager.num_total; i++)
-    {
-      thread_Manager.thread_array[i].index = i + 1;
-      thread_Manager.thread_array[i].request_lock_free_transactions ();
-    }
-
   thread_Manager.initialized = true;
 
   total_thread_count = thread_Manager.num_total;
-
-  return NO_ERROR;
-}
-
-/*
- * thread_start_workers() - Boot up every threads.
- *   return: 0 if no error, or error code
- *
- * Note: All threads are set ready to execute when activation condition is
- *       satisfied.
- */
-int
-thread_start_workers (void)
-{
-  int thread_index, r;
-  THREAD_ENTRY *thread_p = NULL;
-  pthread_attr_t thread_attr;
-#if defined(_POSIX_THREAD_ATTR_STACKSIZE)
-  size_t ts_size;
-#endif /* _POSIX_THREAD_ATTR_STACKSIZE */
-
-  assert (thread_Manager.initialized == true);
-
-#if !defined(WINDOWS)
-  r = pthread_attr_init (&thread_attr);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_ATTR_INIT, 0);
-      return ER_CSS_PTHREAD_ATTR_INIT;
-    }
-
-  r = pthread_attr_setdetachstate (&thread_attr, PTHREAD_CREATE_DETACHED);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_ATTR_SETDETACHSTATE, 0);
-      return ER_CSS_PTHREAD_ATTR_SETDETACHSTATE;
-    }
-
-#if defined(AIX)
-  /* AIX's pthread is slightly different from other systems. Its performance highly depends on the pthread's scope and
-   * its related kernel parameters. */
-  r =
-    pthread_attr_setscope (&thread_attr,
-			   prm_get_bool_value (PRM_ID_PTHREAD_SCOPE_PROCESS) ? PTHREAD_SCOPE_PROCESS :
-			   PTHREAD_SCOPE_SYSTEM);
-#else /* AIX */
-  r = pthread_attr_setscope (&thread_attr, PTHREAD_SCOPE_SYSTEM);
-#endif /* AIX */
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_ATTR_SETSCOPE, 0);
-      return ER_CSS_PTHREAD_ATTR_SETSCOPE;
-    }
-
-#if defined(_POSIX_THREAD_ATTR_STACKSIZE)
-  r = pthread_attr_getstacksize (&thread_attr, &ts_size);
-  if (ts_size != (size_t) prm_get_bigint_value (PRM_ID_THREAD_STACKSIZE))
-    {
-      r = pthread_attr_setstacksize (&thread_attr, prm_get_bigint_value (PRM_ID_THREAD_STACKSIZE));
-      if (r != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_ATTR_SETSTACKSIZE, 0);
-	  return ER_CSS_PTHREAD_ATTR_SETSTACKSIZE;
-	}
-    }
-#endif /* _POSIX_THREAD_ATTR_STACKSIZE */
-#endif /* WINDOWS */
-
-  /* start worker thread */
-  for (thread_index = 0; thread_index < thread_Manager.num_workers; thread_index++)
-    {
-      thread_p = &thread_Manager.thread_array[thread_index];
-
-      r = pthread_mutex_lock (&thread_p->th_entry_lock);
-      if (r != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_LOCK, 0);
-	  return ER_CSS_PTHREAD_MUTEX_LOCK;
-	}
-
-      /* If win32, then "thread_attr" is ignored, else "p->thread_handle". */
-      pthread_t tid = 0;	// thread id is registered in thread_worker function, so do nothing with tid
-      r = pthread_create (&tid, &thread_attr, thread_worker, thread_p);
-      if (r != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_CREATE, 0);
-	  pthread_mutex_unlock (&thread_p->th_entry_lock);
-	  return ER_CSS_PTHREAD_CREATE;
-	}
-
-      r = pthread_mutex_unlock (&thread_p->th_entry_lock);
-      if (r != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
-	  return ER_CSS_PTHREAD_MUTEX_UNLOCK;
-	}
-    }
-
-  /* destroy thread_attribute */
-  r = pthread_attr_destroy (&thread_attr);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_ATTR_DESTROY, 0);
-      return ER_CSS_PTHREAD_ATTR_DESTROY;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * thread_stop_active_workers() - Stop active work thread.
- *   return: 0 if no error, or error code
- *
- * Node: This function is invoked when system is going shut down.
- */
-int
-thread_stop_active_workers (unsigned short stop_phase)
-{
-  int i;
-  int r;
-  bool repeat_loop;
-  THREAD_ENTRY *thread_p;
-  CSS_CONN_ENTRY *conn_p;
-
-  assert (thread_Manager.initialized == true);
-
-  if (stop_phase == THREAD_STOP_WORKERS_EXCEPT_LOGWR)
-    {
-      css_block_all_active_conn (stop_phase);
-    }
-
-loop:
-  for (i = 0; i < thread_Manager.num_workers; i++)
-    {
-      thread_p = &thread_Manager.thread_array[i];
-
-      conn_p = thread_p->conn_entry;
-      if ((stop_phase == THREAD_STOP_LOGWR && conn_p == NULL) || (conn_p && conn_p->stop_phase != stop_phase))
-	{
-	  continue;
-	}
-
-      if (thread_p->tran_index != -1)
-	{
-	  if (stop_phase == THREAD_STOP_WORKERS_EXCEPT_LOGWR)
-	    {
-	      logtb_set_tran_index_interrupt (NULL, thread_p->tran_index, 1);
-	    }
-
-	  if (thread_p->status == TS_WAIT && logtb_is_current_active (thread_p))
-	    {
-	      if (stop_phase == THREAD_STOP_WORKERS_EXCEPT_LOGWR)
-		{
-		  thread_lock_entry (thread_p);
-
-		  /* The worker thread may have been waked up by others. Check it again. */
-		  if (thread_p->tran_index != -1 && thread_p->status == TS_WAIT && thread_p->lockwait == NULL
-		      && thread_p->check_interrupt == true)
-		    {
-		      thread_p->interrupted = true;
-		      thread_wakeup_already_had_mutex (thread_p, THREAD_RESUME_DUE_TO_INTERRUPT);
-		    }
-
-		  thread_unlock_entry (thread_p);
-		}
-	      else if (stop_phase == THREAD_STOP_LOGWR)
-		{
-		  /* 
-		   * we can only wakeup LWT when waiting on THREAD_LOGWR_SUSPENDED.
-		   */
-		  r = thread_check_suspend_reason_and_wakeup (thread_p, THREAD_RESUME_DUE_TO_INTERRUPT,
-							      THREAD_LOGWR_SUSPENDED);
-		  if (r == NO_ERROR)
-		    {
-		      thread_p->interrupted = true;
-		    }
-		}
-	    }
-	}
-    }
-
-  thread_sleep (50);		/* 50 msec */
-
-  lock_force_timeout_lock_wait_transactions (stop_phase);
-
-  /* Signal for blocked on job queue */
-  /* css_broadcast_shutdown_thread(); */
-
-  repeat_loop = false;
-  for (i = 0; i < thread_Manager.num_workers; i++)
-    {
-      thread_p = &thread_Manager.thread_array[i];
-
-      conn_p = thread_p->conn_entry;
-      if ((stop_phase == THREAD_STOP_LOGWR && conn_p == NULL) || (conn_p && conn_p->stop_phase != stop_phase))
-	{
-	  continue;
-	}
-
-      if (thread_p->status != TS_FREE)
-	{
-	  repeat_loop = true;
-	}
-    }
-
-  if (repeat_loop)
-    {
-      if (css_is_shutdown_timeout_expired ())
-	{
-#if CUBRID_DEBUG
-	  logtb_dump_trantable (NULL, stderr);
-#endif
-	  er_log_debug (ARG_FILE_LINE, "thread_stop_active_workers: _exit(0)\n");
-	  /* exit process after some tries */
-	  _exit (0);
-	}
-
-      goto loop;
-    }
-
-  /* 
-   * we must not block active connection before terminating log writer thread.
-   */
-  if (stop_phase == THREAD_STOP_LOGWR)
-    {
-      css_block_all_active_conn (stop_phase);
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * thread_kill_all_workers() - Signal all worker threads to exit.
- *   return: 0 if no error, or error code
- */
-int
-thread_kill_all_workers (void)
-{
-  int i;
-  bool repeat_loop;
-  THREAD_ENTRY *thread_p;
-
-  for (i = 0; i < thread_Manager.num_workers; i++)
-    {
-      thread_p = &thread_Manager.thread_array[i];
-      thread_p->interrupted = true;
-      thread_p->shutdown = true;
-    }
-
-loop:
-
-  /* Signal for blocked on job queue */
-  css_broadcast_shutdown_thread ();
-
-  repeat_loop = false;
-  for (i = 0; i < thread_Manager.num_workers; i++)
-    {
-      thread_p = &thread_Manager.thread_array[i];
-      if (thread_p->status != TS_DEAD)
-	{
-	  if (thread_p->status == TS_FREE && thread_p->resume_status == THREAD_JOB_QUEUE_SUSPENDED)
-	    {
-	      /* Defence code of a bug. wake up a thread which is not in the list of Job queue, but is waiting for a
-	       * job. */
-	      thread_wakeup (thread_p, THREAD_RESUME_DUE_TO_SHUTDOWN);
-	    }
-	  repeat_loop = true;
-	}
-    }
-
-  if (repeat_loop)
-    {
-      if (css_is_shutdown_timeout_expired ())
-	{
-#if CUBRID_DEBUG
-	  xlogtb_dump_trantable (NULL, stderr);
-#endif
-	  er_log_debug (ARG_FILE_LINE, "thread_kill_all_workers: _exit(0)\n");
-	  /* exit process after some tries */
-	  _exit (0);
-	}
-      thread_sleep (1000);	/* 1000 msec */
-      goto loop;
-    }
 
   return NO_ERROR;
 }
@@ -588,11 +292,6 @@ loop:
 void
 thread_final_manager (void)
 {
-  /* *INDENT-OFF* */
-  delete [] thread_Manager.thread_array;
-  thread_Manager.thread_array = NULL;
-  /* *INDENT-ON* */
-
   lf_destroy_transaction_systems ();
 
 #ifndef HPUX
@@ -639,6 +338,7 @@ thread_return_all_transactions_entries (void)
       return NO_ERROR;
     }
 
+  thread_return_transaction_entry (cubthread::get_main_entry ());
   for (THREAD_ENTRY * entry_iter = thread_iterate (NULL); entry_iter != NULL; entry_iter = thread_iterate (entry_iter))
     {
       error = thread_return_transaction_entry (entry_iter);
@@ -1681,6 +1381,13 @@ xthread_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kil
       return ER_CSS_KILL_BAD_INTERFACE;
     }
 
+  if (kill_tran_index == LOG_SYSTEM_TRAN_INDEX)
+    {
+      // cannot kill system transaction; not even if this is dba
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_ALLOWED, 1, kill_tran_index);
+      return ER_KILL_TR_NOT_ALLOWED;
+    }
+
   signaled = false;
   for (i = 0; i < THREAD_RETRY_MAX_SLAM_TIMES && error_code == NO_ERROR && !killed; i++)
     {
@@ -1745,6 +1452,13 @@ xthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is
   bool interrupt, has_authorization;
   bool is_trx_exists;
   KILLSTMT_TYPE kill_type;
+
+  if (tran_index == LOG_SYSTEM_TRAN_INDEX)
+    {
+      // cannot kill system transaction; not even if this is dba
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_ALLOWED, 1, tran_index);
+      return ER_KILL_TR_NOT_ALLOWED;
+    }
 
   if (!is_dba_group_member)
     {
@@ -1867,11 +1581,9 @@ thread_find_entry_by_index (int thread_index)
   THREAD_ENTRY *thread_p;
   if (thread_index == 0)
     {
-      thread_p = cubthread::get_main_entry ();
-    }
-  else if (thread_index <= thread_Manager.num_total)
-    {
-      thread_p = (&thread_Manager.thread_array[thread_index - 1]);
+      // this is the index of main thread entry. we don't want to expose it by thread_find_entry_by_index
+      assert (false);
+      return NULL;
     }
   else
     {
@@ -3590,7 +3302,7 @@ thread_clear_recursion_depth (THREAD_ENTRY * thread_p)
 THREAD_ENTRY *
 thread_iterate (THREAD_ENTRY * thread_p)
 {
-  int index = 0;
+  int index = 1;		// iteration starts with thread index = 1
 
   if (!thread_Manager.initialized)
     {
