@@ -252,25 +252,6 @@ thread_find_entry_by_tran_index (int tran_index)
 }
 
 /*
- * thread_get_current_session_id () - get session id for current thread
- *   return: session id
- */
-SESSION_ID
-thread_get_current_session_id (void)
-{
-  THREAD_ENTRY *thread_p;
-
-  thread_p = thread_get_thread_entry_info ();
-  assert (thread_p != NULL);
-
-  if (thread_p->conn_entry == NULL)
-    {
-      return 0;
-    }
-  return thread_p->conn_entry->session_id;
-}
-
-/*
  * thread_get_current_tran_index() - get transaction index if current
  *                                       thread
  *   return:

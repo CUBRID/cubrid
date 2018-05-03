@@ -1382,7 +1382,7 @@ session_get_session_id (THREAD_ENTRY * thread_p, SESSION_ID * id)
   assert (id != NULL);
 
 #if !defined(SERVER_MODE)
-  *id = thread_get_current_session_id ();
+  *id = db_Session_id;
 
   return NO_ERROR;
 #else

@@ -56,7 +56,6 @@
 
 #if !defined(SERVER_MODE)
 
-#define thread_get_current_session_id() (db_Session_id)
 #define thread_set_check_interrupt(thread_p, flag) tran_set_check_interrupt (flag)
 #define thread_get_check_interrupt(thread_p) tran_get_check_interrupt ()
 
@@ -213,7 +212,6 @@ extern int thread_get_client_id (THREAD_ENTRY * thread_p);
 extern unsigned int thread_get_comm_request_id (THREAD_ENTRY * thread_p);
 extern THREAD_ENTRY *thread_find_entry_by_tran_index (int tran_index);
 extern THREAD_ENTRY *thread_find_entry_by_tran_index_except_me (int tran_index);
-extern unsigned int thread_get_current_session_id (void);
 extern int thread_get_current_tran_index (void);
 extern void thread_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 extern struct css_conn_entry *thread_get_current_conn_entry (void);
