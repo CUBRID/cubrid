@@ -2519,10 +2519,20 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 
 	  if (is_log_page_corrupted && !LSA_ISNULL (&first_corrupted_rec_lsa))
 	    {
-	      /* Check whether the record is corrupted. */
-	      if (LSA_GE (&log_lsa, &first_corrupted_rec_lsa) || LSA_GT (&log_rec->forw_lsa, &first_corrupted_rec_lsa))
+	      /* If the record is corrupted - it resides in a corrupted block, then
+	       * resets append lsa to last valid address and stop.
+	       */
+	      if (LSA_GT (&log_lsa, &first_corrupted_rec_lsa))
 		{
-		  /* The record that resides at log_lsa is corrupted - it resides in a corrupted block. */
+		  LOG_RESET_APPEND_LSA (end_redo_lsa);
+		  LSA_SET_NULL (&lsa);
+		  break;
+		}
+	      else if (LSA_EQ (&log_lsa, &first_corrupted_rec_lsa)
+		       || LSA_GT (&log_rec->forw_lsa, &first_corrupted_rec_lsa))
+		{
+		  /* When log_lsa = first_corrupted_rec_lsa, forw_lsa may be NULL. */
+		  LOG_RESET_APPEND_LSA (&log_lsa);
 		  LSA_SET_NULL (&lsa);
 		  break;
 		}
