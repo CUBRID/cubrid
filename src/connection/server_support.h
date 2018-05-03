@@ -40,7 +40,6 @@ namespace cubthread
 }				// namespace cubthread
 
 extern void css_block_all_active_conn (unsigned short stop_phase);
-extern void css_broadcast_shutdown_thread (void);
 
 extern THREAD_RET_T THREAD_CALLING_CONVENTION css_master_thread (void);
 

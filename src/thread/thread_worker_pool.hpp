@@ -247,7 +247,7 @@ namespace cubthread
       // context management
       // map function to all workers (and their contexts)
       template <typename Func, typename ... Args>
-      void map_running_contexts (Func &&func, Args &&... args);
+      void map_running_contexts (bool &stop, Func &&func, Args &&... args);
       // worker management
       // notify workers to stop
       void notify_stop (void);
@@ -370,7 +370,7 @@ namespace cubthread
       void stop_execution (void);
       // map function to context (if context is available)
       template <typename Func, typename ... Args>
-      void map_context (Func &&func, Args &&... args);
+      void map_context (bool &stop, Func &&func, Args &&... args);
       // add own stats to given argument
       void get_stats (cubperf::stat_value *sum_inout);
 
@@ -628,9 +628,15 @@ namespace cubthread
   void
   cubthread::worker_pool<Context>::map_running_contexts (Func &&func, Args &&... args)
   {
-    for (std::size_t it = 0; it < m_core_count; it++)
+    bool stop = false;
+    for (std::size_t it = 0; it < m_core_count && !stop; it++)
       {
-	m_core_array[it].map_running_contexts (func, args...);
+	m_core_array[it].map_running_contexts (stop, func, args...);
+	if (stop)
+	  {
+	    // mapping is stopped
+	    return;
+	  }
       }
   }
 
@@ -871,11 +877,16 @@ namespace cubthread
   template <typename Context>
   template <typename Func, typename ... Args>
   void
-  cubthread::worker_pool<Context>::core::map_running_contexts (Func &&func, Args &&... args)
+  cubthread::worker_pool<Context>::core::map_running_contexts (bool &stop, Func &&func, Args &&... args)
   {
-    for (std::size_t it = 0; it < m_max_workers; it++)
+    for (std::size_t it = 0; it < m_max_workers && !stop; it++)
       {
-	m_worker_array[it].map_context (func, args...);
+	m_worker_array[it].map_context (stop, func, args...);
+	if (stop)
+	  {
+	    // stop mapping
+	    return;
+	  }
       }
   }
 
@@ -1231,13 +1242,13 @@ namespace cubthread
   template <typename Context>
   template <typename Func, typename ... Args>
   void
-  worker_pool<Context>::core::worker::map_context (Func &&func, Args &&... args)
+  worker_pool<Context>::core::worker::map_context (bool &stop, Func &&func, Args &&... args)
   {
     Context *ctxp = m_context_p;
 
     if (ctxp != NULL)
       {
-	func (*ctxp, args...);
+	func (*ctxp, stop, args...);
       }
   }
 
