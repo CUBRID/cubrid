@@ -3088,62 +3088,6 @@ thread_need_clear_trace (THREAD_ENTRY * thread_p)
 }
 
 /*
- * thread_get_recursion_depth() -
- */
-int
-thread_get_recursion_depth (THREAD_ENTRY * thread_p)
-{
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  return thread_p->xasl_recursion_depth;
-}
-
-/*
- * thread_inc_recursion_depth() -
- */
-void
-thread_inc_recursion_depth (THREAD_ENTRY * thread_p)
-{
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  thread_p->xasl_recursion_depth++;
-}
-
-/*
- * thread_dec_recursion_depth() -
- */
-void
-thread_dec_recursion_depth (THREAD_ENTRY * thread_p)
-{
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  thread_p->xasl_recursion_depth--;
-}
-
-/*
- * thread_clear_recursion_depth() -
- */
-void
-thread_clear_recursion_depth (THREAD_ENTRY * thread_p)
-{
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  thread_p->xasl_recursion_depth = 0;
-}
-
-/*
  * thread_iterate () - thread iterator
  *
  * return        : next thread entry

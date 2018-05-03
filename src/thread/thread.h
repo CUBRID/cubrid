@@ -75,9 +75,31 @@ thread_get_current_entry_index (void)
   return thread_get_entry_index (thread_get_thread_entry_info ());
 }
 
-#if !defined(SERVER_MODE)
+inline int
+thread_get_recursion_depth (THREAD_ENTRY * thread_p)
+{
+  return thread_p->xasl_recursion_depth;
+}
 
-extern int thread_Recursion_depth;
+inline void
+thread_inc_recursion_depth (THREAD_ENTRY * thread_p)
+{
+  thread_p->xasl_recursion_depth++;
+}
+
+inline void
+thread_dec_recursion_depth (THREAD_ENTRY * thread_p)
+{
+  thread_p->xasl_recursion_depth--;
+}
+
+inline void
+thread_clear_recursion_depth (THREAD_ENTRY * thread_p)
+{
+  thread_p->xasl_recursion_depth = 0;
+}
+
+#if !defined(SERVER_MODE)
 
 extern LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST];
 
@@ -94,11 +116,6 @@ extern LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST];
 #define thread_need_clear_trace(thread_p) (false)
 #define thread_get_sort_stats_active(thread_p) (false)
 #define thread_set_sort_stats_active(thread_p, flag)
-
-#define thread_get_recursion_depth(thread_p) (thread_Recursion_depth)
-#define thread_inc_recursion_depth(thread_p) (thread_Recursion_depth ++)
-#define thread_dec_recursion_depth(thread_p) (thread_Recursion_depth --)
-#define thread_clear_recursion_depth(thread_p) (thread_Recursion_depth = 0)
 
 #define thread_rc_track_need_to_trace(thread_p) (false)
 #define thread_rc_track_enter(thread_p) (-1)
@@ -300,11 +317,6 @@ extern void thread_set_trace_format (THREAD_ENTRY * thread_p, int format);
 extern bool thread_is_on_trace (THREAD_ENTRY * thread_p);
 extern void thread_set_clear_trace (THREAD_ENTRY * thread_p, bool clear);
 extern bool thread_need_clear_trace (THREAD_ENTRY * thread_p);
-
-extern int thread_get_recursion_depth (THREAD_ENTRY * thread_p);
-extern void thread_inc_recursion_depth (THREAD_ENTRY * thread_p);
-extern void thread_dec_recursion_depth (THREAD_ENTRY * thread_p);
-extern void thread_clear_recursion_depth (THREAD_ENTRY * thread_p);
 
 extern const char *thread_type_to_string (int type);
 extern const char *thread_status_to_string (cubthread::entry::status status);
