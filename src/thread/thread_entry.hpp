@@ -85,8 +85,8 @@ struct event_stat
 
 typedef std::thread::id thread_id_t;
 
-// FIXME
-enum THREAD_TYPE
+// FIXME - move these enum to cubthread::entry
+enum thread_type
 {
   TT_MASTER,
   TT_SERVER,
@@ -95,6 +95,33 @@ enum THREAD_TYPE
   TT_VACUUM_MASTER,
   TT_VACUUM_WORKER,
   TT_NONE
+};
+
+enum thread_resume_status
+{
+  THREAD_RESUME_NONE = 0,
+  THREAD_RESUME_DUE_TO_INTERRUPT = 1,
+  THREAD_RESUME_DUE_TO_SHUTDOWN = 2,
+  THREAD_PGBUF_SUSPENDED = 3,
+  THREAD_PGBUF_RESUMED = 4,
+  THREAD_JOB_QUEUE_SUSPENDED = 5,
+  THREAD_JOB_QUEUE_RESUMED = 6,
+  THREAD_CSECT_READER_SUSPENDED = 7,
+  THREAD_CSECT_READER_RESUMED = 8,
+  THREAD_CSECT_WRITER_SUSPENDED = 9,
+  THREAD_CSECT_WRITER_RESUMED = 10,
+  THREAD_CSECT_PROMOTER_SUSPENDED = 11,
+  THREAD_CSECT_PROMOTER_RESUMED = 12,
+  THREAD_CSS_QUEUE_SUSPENDED = 13,
+  THREAD_CSS_QUEUE_RESUMED = 14,
+  THREAD_HEAP_CLSREPR_SUSPENDED = 15,
+  THREAD_HEAP_CLSREPR_RESUMED = 16,
+  THREAD_LOCK_SUSPENDED = 17,
+  THREAD_LOCK_RESUMED = 18,
+  THREAD_LOGWR_SUSPENDED = 19,
+  THREAD_LOGWR_RESUMED = 20,
+  THREAD_ALLOC_BCB_SUSPENDED = 21,
+  THREAD_ALLOC_BCB_RESUMED = 22,
 };
 
 namespace cubthread
@@ -150,7 +177,7 @@ namespace cubthread
       // The rules of thumbs is to always use private members. Until a complete refactoring, these members will remain
       // public
       int index;			/* thread entry index */
-      THREAD_TYPE type;		/* thread type */
+      thread_type type;		/* thread type */
       thread_id_t emulate_tid;	/* emulated thread id; applies to non-worker threads, when works on behalf of a worker
 				   * thread */
       int client_id;		/* client id whom this thread is responding */
