@@ -50,9 +50,16 @@
 #include <sys/types.h>
 #endif // SERVER_MODE
 
-#if defined (SA_MODE)
-#include "thread_manager.hpp"	// for thread_get_thread_entry_info ();
-#endif // SA_MODE
+/* *INDENT-OFF* */
+
+#include "thread_manager.hpp"
+
+inline THREAD_ENTRY *
+thread_get_thread_entry_info (void)
+{
+  THREAD_ENTRY& te = cubthread::get_manager ()->get_entry ();
+  return &te;
+}
 
 #if !defined(SERVER_MODE)
 #define THREAD_GET_CURRENT_ENTRY_INDEX(thrd) thread_get_current_entry_index()
@@ -60,16 +67,6 @@
 extern int thread_Recursion_depth;
 
 extern LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST];
-
-/* *INDENT-OFF* */
-STATIC_INLINE THREAD_ENTRY *thread_get_thread_entry_info (void) __attribute__ ((ALWAYS_INLINE));
-THREAD_ENTRY *
-thread_get_thread_entry_info (void)
-{
-  THREAD_ENTRY& te = cubthread::get_manager ()->get_entry ();
-  return &te;
-}
-/* *INDENT-ON* */
 
 #define thread_num_worker_threads()  (1)
 #define thread_num_total_threads()   (1)
@@ -214,8 +211,6 @@ struct fi_test_item;
 extern int thread_set_thread_entry_info (THREAD_ENTRY * entry);
 #endif /* not HPUX */
 
-extern THREAD_ENTRY *thread_get_thread_entry_info (void);
-
 extern int thread_initialize_manager (size_t & total_thread_count);
 extern void thread_final_manager (void);
 extern void thread_slam_tran_index (THREAD_ENTRY * thread_p, int tran_index);
@@ -328,5 +323,7 @@ extern int thread_return_transaction_entry (THREAD_ENTRY * entry_p);
 extern int thread_initialize_key (void);
 #endif /* HPUX */
 #endif /* SERVER_MODE */
+
+/* *INDENT-ON* */
 
 #endif /* _THREAD_H_ */

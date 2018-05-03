@@ -158,25 +158,6 @@ static void thread_rc_track_meter_assert_csect_usage (THREAD_ENTRY * thread_p, T
  */
 
 #if defined(HPUX)
-/*
- * thread_get_thread_entry_info() - retrieve TSD of its own.
- *   return: thread entry
- */
-THREAD_ENTRY *
-thread_get_thread_entry_info ()
-{
-#if defined (SERVER_MODE)
-  assert (tsd_ptr != NULL);
-#endif
-  if (tsd_ptr == NULL)
-    {
-      return &cubthread::get_manager ()->get_entry ();
-    }
-  else
-    {
-      return tsd_ptr;
-    }
-}
 #else /* HPUX */
 /*
  * thread_initialize_key() - allocates a key for TSD
@@ -214,26 +195,6 @@ thread_set_thread_entry_info (THREAD_ENTRY * entry_p)
     }
 
   return r;
-}
-
-/*
- * thread_get_thread_entry_info() - retrieve TSD of its own.
- *   return: thread entry
- */
-THREAD_ENTRY *
-thread_get_thread_entry_info (void)
-{
-  void *p;
-
-  p = pthread_getspecific (thread_Thread_key);
-#if defined (SERVER_MODE)
-  if (p == NULL)
-    {
-      p = (void *) &(cubthread::get_manager ()->get_entry ());
-    }
-  assert (p != NULL);
-#endif
-  return (THREAD_ENTRY *) p;
 }
 #endif /* HPUX */
 
