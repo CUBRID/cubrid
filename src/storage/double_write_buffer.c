@@ -4147,6 +4147,13 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
   PERF_UTIME_TRACKER_START (thread_p, &time_track);
   num_pages_to_sync = prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH);
 
+  position_with_flags = ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL);
+  if (!DWB_IS_CREATED (position_with_flags) || DWB_IS_MODIFYING_STRUCTURE (position_with_flags))
+    {
+      /* Needs to modify structure. Stop flushing. */
+      return NO_ERROR;
+    }
+
   block = (DWB_BLOCK *) dwb_Global.helper_flush_block;
   if (block == NULL)
     {
@@ -4155,13 +4162,6 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 
   do
     {
-      position_with_flags = ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL);
-      if (!DWB_IS_CREATED (position_with_flags) || DWB_IS_MODIFYING_STRUCTURE (position_with_flags))
-	{
-	  /* Needs to modify structure. Stop flushing. */
-	  break;
-	}
-
       count_flush_volumes_info = block->count_flush_volumes_info;
       all_block_pages_written = block->all_pages_written;
       need_wait = false;
