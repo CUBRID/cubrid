@@ -2361,7 +2361,7 @@ lock_wakeup_deadlock_victim_timeout (int tran_index)
   for (i = 0; i < thrd_count; i++)
     {
       thrd_ptr = thrd_array[i];
-      (void) thread_lock_entry (thrd_ptr);
+      thread_lock_entry (thrd_ptr);
       if (thrd_ptr->tran_index == tran_index && LK_IS_LOCKWAIT_THREAD (thrd_ptr))
 	{
 	  /* wake up the thread while notifying timeout */
@@ -2379,7 +2379,7 @@ lock_wakeup_deadlock_victim_timeout (int tran_index)
 	  /* The current thread has already been waken up by other threads. The current thread might be granted the
 	   * lock. or with any other reason....... even if it is a thread of the deadlock victim. */
 	  /* release the thread entry mutex */
-	  (void) thread_unlock_entry (thrd_ptr);
+	  thread_unlock_entry (thrd_ptr);
 	}
     }
   return wakeup_first;
@@ -2413,7 +2413,7 @@ lock_wakeup_deadlock_victim_aborted (int tran_index)
   for (i = 0; i < thrd_count; i++)
     {
       thrd_ptr = thrd_array[i];
-      (void) thread_lock_entry (thrd_ptr);
+      thread_lock_entry (thrd_ptr);
       if (thrd_ptr->tran_index == tran_index && LK_IS_LOCKWAIT_THREAD (thrd_ptr))
 	{
 	  /* wake up the thread while notifying deadlock victim */
@@ -2443,7 +2443,7 @@ lock_wakeup_deadlock_victim_aborted (int tran_index)
 	  /* The current thread has already been waken up by other threads. The current thread might have held the
 	   * lock. or with any other reason....... even if it is a thread of the deadlock victim. */
 	  /* release the thread entry mutex */
-	  (void) thread_unlock_entry (thrd_ptr);
+	  thread_unlock_entry (thrd_ptr);
 	}
     }
   return wakeup_first;
@@ -2502,7 +2502,7 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
       /* compatible: grant it */
 
       /* hold the thread entry mutex */
-      (void) thread_lock_entry (check->thrd_entry);
+      thread_lock_entry (check->thrd_entry);
 
       /* check if the thread is still waiting on a lock */
       if (LK_IS_LOCKWAIT_THREAD (check->thrd_entry))
@@ -2562,7 +2562,7 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	  /* The thread is not waiting for a lock, currently. That is, the thread has already been waked up by timeout,
 	   * deadlock victim or interrupt. In this case, we have nothing to do since the thread itself will remove this
 	   * lock entry. */
-	  (void) thread_unlock_entry (check->thrd_entry);
+	  thread_unlock_entry (check->thrd_entry);
 	  prev_check = check;
 	}
 
@@ -2615,7 +2615,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 
       /* compatible: grant it */
       /* hold the thread entry mutex */
-      (void) thread_lock_entry (check->thrd_entry);
+      thread_lock_entry (check->thrd_entry);
 
       /* check if the thread is still waiting for a lock */
       if (LK_IS_LOCKWAIT_THREAD (check->thrd_entry))
@@ -2676,7 +2676,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	  /* The thread is not waiting on the lock, currently. That is, the thread has already been waken up by lock
 	   * timeout, deadlock victim or interrupt. In this case, we have nothing to do since the thread itself will
 	   * remove this lock entry. */
-	  (void) thread_unlock_entry (check->thrd_entry);
+	  thread_unlock_entry (check->thrd_entry);
 	  prev_check = check;
 	}
 
@@ -2771,7 +2771,7 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
 	}
 
       /* compatible: grant it */
-      (void) thread_lock_entry (check->thrd_entry);
+      thread_lock_entry (check->thrd_entry);
       if (LK_IS_LOCKWAIT_THREAD (check->thrd_entry))
 	{
 	  int owner_tran_index;
@@ -2827,7 +2827,7 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
 	  /* The thread is not waiting on the lock. That is, the thread has already been waken up by lock timeout,
 	   * deadlock victim or interrupt. In this case, we have nothing to do since the thread itself will remove this
 	   * lock entry. */
-	  (void) thread_unlock_entry (check->thrd_entry);
+	  thread_unlock_entry (check->thrd_entry);
 
 	  /* change prev_check */
 	  assert (check->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
@@ -3817,7 +3817,7 @@ blocked:
   LK_MSG_LOCK_WAITFOR (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
 
-  (void) thread_lock_entry (entry_ptr->thrd_entry);
+  thread_lock_entry (entry_ptr->thrd_entry);
   if (is_res_mutex_locked)
     {
       pthread_mutex_unlock (&res_ptr->res_mutex);
@@ -7448,10 +7448,10 @@ lock_is_waiting_transaction (int tran_index)
   for (i = 0; i < thrd_count; i++)
     {
       thrd_ptr = thrd_array[i];
-      (void) thread_lock_entry (thrd_ptr);
+      thread_lock_entry (thrd_ptr);
       if (LK_IS_LOCKWAIT_THREAD (thrd_ptr))
 	{
-	  (void) thread_unlock_entry (thrd_ptr);
+	  thread_unlock_entry (thrd_ptr);
 	  return true;
 	}
       else
@@ -7463,7 +7463,7 @@ lock_is_waiting_transaction (int tran_index)
 		      thrd_ptr->lockwait_state, thrd_ptr->index, thrd_ptr->get_posix_id (), thrd_ptr->tran_index);
 	    }
 	}
-      (void) thread_unlock_entry (thrd_ptr);
+      thread_unlock_entry (thrd_ptr);
     }
 
   return false;
@@ -7554,7 +7554,7 @@ lock_force_timeout_lock_wait_transactions (unsigned short stop_phase)
 	  continue;
 	}
 
-      (void) thread_lock_entry (thrd);
+      thread_lock_entry (thrd);
       if (LK_IS_LOCKWAIT_THREAD (thrd))
 	{
 	  /* wake up the thread */
@@ -7570,7 +7570,7 @@ lock_force_timeout_lock_wait_transactions (unsigned short stop_phase)
 		      thrd->lockwait_state, thrd->index, thrd->get_posix_id (), thrd->tran_index);
 	    }
 	  /* release the thread entry mutex */
-	  (void) thread_unlock_entry (thrd);
+	  thread_unlock_entry (thrd);
 	}
     }
   return;
@@ -7604,7 +7604,7 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
 
   thrd = (THREAD_ENTRY *) thrd_entry;
 
-  (void) thread_lock_entry (thrd);
+  thread_lock_entry (thrd);
   if (LK_IS_LOCKWAIT_THREAD (thrd))
     {
       if (logtb_is_interrupted_tran (NULL, true, &ignore, thrd->tran_index))
@@ -7629,7 +7629,7 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
 	}
 
       /* release the thread entry mutex */
-      (void) thread_unlock_entry (thrd);
+      thread_unlock_entry (thrd);
       return false;
     }
   else
@@ -7643,7 +7643,7 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
 	}
 
       /* release the thread entry mutex */
-      (void) thread_unlock_entry (thrd);
+      thread_unlock_entry (thrd);
       return false;
     }
 #endif /* !SERVER_MODE */

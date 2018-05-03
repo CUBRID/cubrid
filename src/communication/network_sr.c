@@ -1142,7 +1142,7 @@ loop:
 	      int r;
 	      bool wakeup_now = false;
 
-	      r = thread_lock_entry (suspended_p);
+	      thread_lock_entry (suspended_p);
 	      if (r != NO_ERROR)
 		{
 		  return r;
@@ -1195,12 +1195,7 @@ loop:
 		{
 		  r = thread_wakeup_already_had_mutex (suspended_p, THREAD_RESUME_DUE_TO_INTERRUPT);
 		}
-	      r = thread_unlock_entry (suspended_p);
-
-	      if (r != NO_ERROR)
-		{
-		  return r;
-		}
+	      thread_unlock_entry (suspended_p);
 	    }
 	}
     }

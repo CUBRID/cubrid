@@ -157,8 +157,6 @@ struct thread_resource_track
 #endif
 };
 
-extern int thread_lock_entry (THREAD_ENTRY * entry);
-extern int thread_unlock_entry (THREAD_ENTRY * p);
 extern int thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * p, int suspended_reason);
 extern int thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * p, struct timespec *t, int suspended_reason);
 extern int thread_wakeup (THREAD_ENTRY * p, int resume_reason);

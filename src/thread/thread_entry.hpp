@@ -261,6 +261,9 @@ namespace cubthread
 
       void return_lock_free_transaction_entries (void);
 
+      void lock (void);
+      void unlock (void);
+
       cuberr::context &get_error_context (void)
       {
 	return m_error;
@@ -380,6 +383,18 @@ thread_set_sort_stats_active (cubthread::entry *thread_p, bool new_flag)
   bool old_flag = thread_p->sort_stats_active;
   thread_p->sort_stats_active = new_flag;
   return old_flag;
+}
+
+inline void
+thread_lock_entry (cubthread::entry *thread_p)
+{
+  thread_p->lock ();
+}
+
+inline void
+thread_unlock_entry (cubthread::entry *thread_p)
+{
+  thread_p->unlock ();
 }
 
 #endif // _THREAD_ENTRY_HPP_

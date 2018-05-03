@@ -238,60 +238,6 @@ thread_get_current_conn_entry (void)
 }
 
 /*
- * thread_lock_entry() -
- *   return:
- *   thread_p(in):
- */
-int
-thread_lock_entry (THREAD_ENTRY * thread_p)
-{
-  int r;
-
-  if (thread_p == NULL)
-    {
-      assert (thread_p != NULL);	/* expects callers pass thread handle */
-      thread_p = thread_get_thread_entry_info ();
-    }
-  assert (thread_p != NULL);
-
-  r = pthread_mutex_lock (&thread_p->th_entry_lock);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_LOCK, 0);
-      return ER_CSS_PTHREAD_MUTEX_LOCK;
-    }
-
-  return r;
-}
-
-/*
- * thread_unlock_entry() -
- *   return:
- *   thread_p(in):
- */
-int
-thread_unlock_entry (THREAD_ENTRY * thread_p)
-{
-  int r;
-
-  if (thread_p == NULL)
-    {
-      assert (thread_p != NULL);	/* expects callers pass thread handle */
-      thread_p = thread_get_thread_entry_info ();
-    }
-  assert (thread_p != NULL);
-
-  r = pthread_mutex_unlock (&thread_p->th_entry_lock);
-  if (r != 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_UNLOCK, 0);
-      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
-    }
-
-  return r;
-}
-
-/*
  * thread_suspend_wakeup_and_unlock_entry() -
  *   return:
  *   thread_p(in):
@@ -412,11 +358,7 @@ thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason, bool had_mut
 
   if (had_mutex == false)
     {
-      r = thread_lock_entry (thread_p);
-      if (r != 0)
-	{
-	  return r;
-	}
+      thread_lock_entry (thread_p);
     }
 
   r = pthread_cond_signal (&thread_p->wakeup_cond);
@@ -456,17 +398,13 @@ thread_check_suspend_reason_and_wakeup_internal (THREAD_ENTRY * thread_p, int re
 
   if (had_mutex == false)
     {
-      r = thread_lock_entry (thread_p);
-      if (r != 0)
-	{
-	  return r;
-	}
+      thread_lock_entry (thread_p);
     }
 
   if (thread_p->resume_status != suspend_reason)
     {
-      r = thread_unlock_entry (thread_p);
-      return (r == NO_ERROR) ? ER_FAILED : r;
+      thread_unlock_entry (thread_p);
+      return NO_ERROR;
     }
 
   r = pthread_cond_signal (&thread_p->wakeup_cond);
@@ -479,9 +417,9 @@ thread_check_suspend_reason_and_wakeup_internal (THREAD_ENTRY * thread_p, int re
 
   thread_p->resume_status = resume_reason;
 
-  r = thread_unlock_entry (thread_p);
+  thread_unlock_entry (thread_p);
 
-  return r;
+  return NO_ERROR;
 }
 
 

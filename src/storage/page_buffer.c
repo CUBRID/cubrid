@@ -6419,7 +6419,7 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
   if (request_mode == PGBUF_LATCH_FLUSH)
     {
       /* is it safe to use infinite wait instead of timed sleep? */
-      rv = thread_lock_entry (cur_thrd_entry);
+      thread_lock_entry (cur_thrd_entry);
       PGBUF_BCB_UNLOCK (bufptr);
       if (rv == 0)
 	{
@@ -6802,7 +6802,7 @@ pgbuf_wakeup_reader_writer (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       if ((bufptr->latch_mode == PGBUF_NO_LATCH)
 	  || (bufptr->latch_mode == PGBUF_LATCH_READ && thrd_entry->request_latch_mode == PGBUF_LATCH_READ))
 	{
-	  (void) thread_lock_entry (thrd_entry);
+	  thread_lock_entry (thrd_entry);
 
 	  if (thrd_entry->request_latch_mode != PGBUF_NO_LATCH)
 	    {
@@ -6837,7 +6837,7 @@ pgbuf_wakeup_reader_writer (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 		  prev_thrd_entry->next_wait_thrd = next_thrd_entry;
 		}
 	      thrd_entry->next_wait_thrd = NULL;
-	      (void) thread_unlock_entry (thrd_entry);
+	      thread_unlock_entry (thrd_entry);
 	    }
 	}
       else if (bufptr->latch_mode == PGBUF_LATCH_READ)
@@ -10931,13 +10931,10 @@ pgbuf_sleep (THREAD_ENTRY * thread_p, pthread_mutex_t * mutex_p)
 {
   int r;
 
-  r = thread_lock_entry (thread_p);
-  if (r == NO_ERROR)
-    {
-      pthread_mutex_unlock (mutex_p);
+  thread_lock_entry (thread_p);
+  pthread_mutex_unlock (mutex_p);
 
-      r = thread_suspend_wakeup_and_unlock_entry (thread_p, THREAD_PGBUF_SUSPENDED);
-    }
+  r = thread_suspend_wakeup_and_unlock_entry (thread_p, THREAD_PGBUF_SUSPENDED);
 
   return r;
 }
@@ -10945,7 +10942,7 @@ pgbuf_sleep (THREAD_ENTRY * thread_p, pthread_mutex_t * mutex_p)
 STATIC_INLINE int
 pgbuf_wakeup (THREAD_ENTRY * thread_p)
 {
-  int r;
+  int r = NO_ERROR;
 
   if (thread_p->request_latch_mode != PGBUF_NO_LATCH)
     {
@@ -10965,7 +10962,7 @@ pgbuf_wakeup (THREAD_ENTRY * thread_p)
 		    thread_p->get_posix_id ());
     }
 
-  r = thread_unlock_entry (thread_p);
+  thread_unlock_entry (thread_p);
 
   return r;
 }
@@ -10975,21 +10972,18 @@ pgbuf_wakeup_uncond (THREAD_ENTRY * thread_p)
 {
   int r;
 
-  r = thread_lock_entry (thread_p);
-  if (r == NO_ERROR)
+  thread_lock_entry (thread_p);
+  thread_p->resume_status = THREAD_PGBUF_RESUMED;
+
+  r = pthread_cond_signal (&thread_p->wakeup_cond);
+  if (r != 0)
     {
-      thread_p->resume_status = THREAD_PGBUF_RESUMED;
-
-      r = pthread_cond_signal (&thread_p->wakeup_cond);
-      if (r != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_SIGNAL, 0);
-	  thread_unlock_entry (thread_p);
-	  return ER_CSS_PTHREAD_COND_SIGNAL;
-	}
-
-      r = thread_unlock_entry (thread_p);
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_SIGNAL, 0);
+      thread_unlock_entry (thread_p);
+      return ER_CSS_PTHREAD_COND_SIGNAL;
     }
+
+  thread_unlock_entry (thread_p);
 
   return r;
 }
@@ -14350,12 +14344,12 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
     {
       assert (waiter_thread != NULL);
 
-      (void) thread_lock_entry (waiter_thread);
+      thread_lock_entry (waiter_thread);
 
       if (waiter_thread->resume_status != THREAD_ALLOC_BCB_SUSPENDED)
 	{
 	  /* it is not waiting for us anymore */
-	  (void) thread_unlock_entry (waiter_thread);
+	  thread_unlock_entry (waiter_thread);
 	  continue;
 	}
 

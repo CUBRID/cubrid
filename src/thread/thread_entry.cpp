@@ -299,4 +299,16 @@ namespace cubthread
       }
   }
 
+  void
+  entry::lock (void)
+  {
+    pthread_mutex_lock (&th_entry_lock);
+  }
+
+  void
+  entry::unlock (void)
+  {
+    pthread_mutex_unlock (&th_entry_lock);
+  }
+
 } // namespace cubthread
