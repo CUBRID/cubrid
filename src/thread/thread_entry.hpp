@@ -338,4 +338,34 @@ thread_get_tran_entry (THREAD_ENTRY *thread_p, int entry_idx)
     }
 }
 
+inline void
+thread_trace_on (THREAD_ENTRY *thread_p)
+{
+  thread_p->on_trace = true;
+}
+
+inline void
+thread_set_trace_format (THREAD_ENTRY *thread_p, int format)
+{
+  thread_p->trace_format = format;
+}
+
+inline bool
+thread_is_on_trace (THREAD_ENTRY *thread_p)
+{
+  return thread_p->on_trace;
+}
+
+inline void
+thread_set_clear_trace (THREAD_ENTRY *thread_p, bool clear)
+{
+  thread_p->clear_trace = clear;
+}
+
+bool
+thread_need_clear_trace (THREAD_ENTRY *thread_p)
+{
+  return thread_p->clear_trace;
+}
+
 #endif // _THREAD_ENTRY_HPP_

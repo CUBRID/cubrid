@@ -56,14 +56,11 @@
 
 #if !defined(SERVER_MODE)
 
+// todo - this is more tricky to solve due to dependency on transaction_cl
 #define thread_set_check_interrupt(thread_p, flag) tran_set_check_interrupt (flag)
 #define thread_get_check_interrupt(thread_p) tran_get_check_interrupt ()
+//
 
-#define thread_trace_on(thread_p)
-#define thread_set_trace_format(thread_p, format)
-#define thread_is_on_trace(thread_p) (false)
-#define thread_set_clear_trace(thread_p, clear)
-#define thread_need_clear_trace(thread_p) (false)
 #define thread_get_sort_stats_active(thread_p) (false)
 #define thread_set_sort_stats_active(thread_p, flag)
 
@@ -250,12 +247,6 @@ extern void thread_rc_track_initialize (THREAD_ENTRY * thread_p);
 extern void thread_rc_track_finalize (THREAD_ENTRY * thread_p);
 extern bool thread_get_sort_stats_active (THREAD_ENTRY * thread_p);
 extern bool thread_set_sort_stats_active (THREAD_ENTRY * thread_p, bool flag);
-
-extern void thread_trace_on (THREAD_ENTRY * thread_p);
-extern void thread_set_trace_format (THREAD_ENTRY * thread_p, int format);
-extern bool thread_is_on_trace (THREAD_ENTRY * thread_p);
-extern void thread_set_clear_trace (THREAD_ENTRY * thread_p, bool clear);
-extern bool thread_need_clear_trace (THREAD_ENTRY * thread_p);
 
 extern const char *thread_type_to_string (int type);
 extern const char *thread_status_to_string (cubthread::entry::status status);
