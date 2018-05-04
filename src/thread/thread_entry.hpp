@@ -70,6 +70,7 @@ struct lf_tran_entry;
 typedef struct event_stat EVENT_STAT;
 struct event_stat
 {
+  // todo - replace timeval with std::chrono::milliseconds
   /* slow query stats */
   struct timeval cs_waits;
   struct timeval lock_waits;
@@ -100,7 +101,7 @@ enum thread_type
   TT_NONE
 };
 
-enum thread_resume_status
+enum thread_resume_suspend_status
 {
   THREAD_RESUME_NONE = 0,
   THREAD_RESUME_DUE_TO_INTERRUPT = 1,
@@ -205,7 +206,7 @@ namespace cubthread
       unsigned int rand_seed;	/* seed for rand_r() */
       struct drand48_data rand_buf;	/* seed for lrand48_r(), drand48_r() */
 
-      int resume_status;		/* resume status */
+      thread_resume_suspend_status resume_status;		/* resume status */
       int request_latch_mode;	/* for page latch support */
       int request_fix_count;
       bool victim_request_fail;
@@ -399,5 +400,16 @@ thread_unlock_entry (cubthread::entry *thread_p)
 {
   thread_p->unlock ();
 }
+
+void thread_suspend_wakeup_and_unlock_entry (cubthread::entry *p, thread_resume_suspend_status suspended_reason);
+int thread_suspend_timeout_wakeup_and_unlock_entry (cubthread::entry *p, struct timespec *t,
+    thread_resume_suspend_status suspended_reason);
+void thread_wakeup (cubthread::entry *p, thread_resume_suspend_status resume_reason);
+void thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason,
+    thread_resume_suspend_status suspend_reason);
+void thread_wakeup_already_had_mutex (cubthread::entry *p, thread_resume_suspend_status resume_reason);
+void thread_wakeup_with_tran_index (int tran_index, thread_resume_suspend_status resume_reason);
+int thread_suspend_with_other_mutex (cubthread::entry *p, pthread_mutex_t *mutexp, int timeout, struct timespec *to,
+				     thread_resume_suspend_status suspended_reason);
 
 #endif // _THREAD_ENTRY_HPP_

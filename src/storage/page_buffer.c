@@ -1093,7 +1093,7 @@ static void pgbuf_add_fixed_at (PGBUF_HOLDER * holder, const char *caller_file, 
 #endif
 
 #if defined(SERVER_MODE)
-static int pgbuf_sleep (THREAD_ENTRY * thread_p, pthread_mutex_t * mutex_p);
+static void pgbuf_sleep (THREAD_ENTRY * thread_p, pthread_mutex_t * mutex_p);
 STATIC_INLINE int pgbuf_wakeup (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_wakeup_uncond (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 #endif /* SERVER_MODE */
@@ -10918,17 +10918,13 @@ pgbuf_add_fixed_at (PGBUF_HOLDER * holder, const char *caller_file, int caller_l
 #endif /* NDEBUG */
 
 #if defined(SERVER_MODE)
-static int
+static void
 pgbuf_sleep (THREAD_ENTRY * thread_p, pthread_mutex_t * mutex_p)
 {
-  int r;
-
   thread_lock_entry (thread_p);
   pthread_mutex_unlock (mutex_p);
 
-  r = thread_suspend_wakeup_and_unlock_entry (thread_p, THREAD_PGBUF_SUSPENDED);
-
-  return r;
+  thread_suspend_wakeup_and_unlock_entry (thread_p, THREAD_PGBUF_SUSPENDED);
 }
 
 STATIC_INLINE int
@@ -14346,12 +14342,7 @@ pgbuf_assign_direct_victim (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 	}
 
       /* wakeup suspended thread */
-      if (thread_wakeup_already_had_mutex (waiter_thread, THREAD_ALLOC_BCB_RESUMED) != NO_ERROR)
-	{
-	  /* could not wake it... what do we do here? */
-	  thread_unlock_entry (waiter_thread);
-	  continue;
-	}
+      thread_wakeup_already_had_mutex (waiter_thread, THREAD_ALLOC_BCB_RESUMED);
 
       /* assign bcb to thread */
       pgbuf_bcb_update_flags (thread_p, bcb, PGBUF_BCB_VICTIM_DIRECT_FLAG, PGBUF_BCB_FLUSHING_TO_DISK_FLAG);

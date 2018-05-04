@@ -424,7 +424,7 @@ csect_wakeup_waiting_writer (SYNC_CRITICAL_SECTION * csect)
       csect->waiting_writers_queue = waiting_thread_p->next_wait_thrd;
       waiting_thread_p->next_wait_thrd = NULL;
 
-      error_code = thread_wakeup (waiting_thread_p, THREAD_CSECT_WRITER_RESUMED);
+      thread_wakeup (waiting_thread_p, THREAD_CSECT_WRITER_RESUMED);
     }
 
   return error_code;
@@ -443,7 +443,7 @@ csect_wakeup_waiting_promoter (SYNC_CRITICAL_SECTION * csect)
       csect->waiting_promoters_queue = waiting_thread_p->next_wait_thrd;
       waiting_thread_p->next_wait_thrd = NULL;
 
-      error_code = thread_wakeup (waiting_thread_p, THREAD_CSECT_PROMOTER_RESUMED);
+      thread_wakeup (waiting_thread_p, THREAD_CSECT_PROMOTER_RESUMED);
     }
 
   return error_code;

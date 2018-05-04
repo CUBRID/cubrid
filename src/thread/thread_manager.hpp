@@ -189,6 +189,8 @@ namespace cubthread
 
       void return_lock_free_transaction_entries (void);
 
+
+
     private:
 
       // define friend classes/functions to access claim_entry/retire_entry functions

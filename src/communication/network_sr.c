@@ -1139,14 +1139,9 @@ loop:
 	  suspended_p = thread_find_entry_by_tran_index_except_me (tran_index);
 	  if (suspended_p != NULL)
 	    {
-	      int r;
 	      bool wakeup_now = false;
 
 	      thread_lock_entry (suspended_p);
-	      if (r != NO_ERROR)
-		{
-		  return r;
-		}
 
 	      if (suspended_p->check_interrupt)
 		{
@@ -1193,7 +1188,7 @@ loop:
 
 	      if (wakeup_now == true)
 		{
-		  r = thread_wakeup_already_had_mutex (suspended_p, THREAD_RESUME_DUE_TO_INTERRUPT);
+		  thread_wakeup_already_had_mutex (suspended_p, THREAD_RESUME_DUE_TO_INTERRUPT);
 		}
 	      thread_unlock_entry (suspended_p);
 	    }

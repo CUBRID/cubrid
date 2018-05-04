@@ -157,14 +157,6 @@ struct thread_resource_track
 #endif
 };
 
-extern int thread_suspend_wakeup_and_unlock_entry (THREAD_ENTRY * p, int suspended_reason);
-extern int thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * p, struct timespec *t, int suspended_reason);
-extern int thread_wakeup (THREAD_ENTRY * p, int resume_reason);
-extern int thread_check_suspend_reason_and_wakeup (THREAD_ENTRY * thread_p, int resume_reason, int suspend_reason);
-
-extern int thread_wakeup_already_had_mutex (THREAD_ENTRY * p, int resume_reason);
-extern int thread_wakeup_with_tran_index (int tran_index, int resume_reason);
-
 extern ADJ_ARRAY *css_get_cnv_adj_buffer (int idx);
 extern void css_set_cnv_adj_buffer (int idx, ADJ_ARRAY * buffer);
 #ifdef __cplusplus
@@ -193,8 +185,7 @@ extern THREAD_ENTRY *thread_find_entry_by_index (int thrd_index);
 extern THREAD_ENTRY *thread_find_entry_by_tid (thread_id_t thrd_id);
 extern int thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** array);
 
-extern int thread_suspend_with_other_mutex (THREAD_ENTRY * p, pthread_mutex_t * mutexp, int timeout,
-					    struct timespec *to, int suspended_reason);
+
 extern bool thread_get_check_interrupt (THREAD_ENTRY * thread_p);
 
 extern HL_HEAPID css_get_private_heap (THREAD_ENTRY * thread_p);

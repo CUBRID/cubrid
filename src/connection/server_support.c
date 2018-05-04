@@ -2785,11 +2785,8 @@ css_stop_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper)
     }
   if (thread_ref.m_status == cubthread::entry::status::TS_WAIT && logtb_is_current_active (&thread_ref))
     {
-      if (thread_check_suspend_reason_and_wakeup (&thread_ref, THREAD_RESUME_DUE_TO_INTERRUPT, THREAD_LOGWR_SUSPENDED)
-          == NO_ERROR)
-        {
-          thread_ref.interrupted = true;
-        }
+      thread_check_suspend_reason_and_wakeup (&thread_ref, THREAD_RESUME_DUE_TO_INTERRUPT, THREAD_LOGWR_SUSPENDED);
+      thread_ref.interrupted = true;
     }
 }
 
