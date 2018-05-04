@@ -157,14 +157,6 @@ struct thread_resource_track
 #endif
 };
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-  extern void thread_sleep (double);
-#ifdef __cplusplus
-}
-#endif
 extern void thread_get_info_threads (int *num_total_threads, int *num_worker_threads, int *num_free_threads,
 				     int *num_suspended_threads);
 extern int thread_get_client_id (THREAD_ENTRY * thread_p);

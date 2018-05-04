@@ -1903,7 +1903,7 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, D
 	  time_to_sleep = allowed_millis_for_a_sleep - previous_elapsed_millis;
 	  if (time_to_sleep > 0)
 	    {
-	      thread_sleep ((int) time_to_sleep);
+	      thread_sleep ((double) time_to_sleep);
 	    }
 
 	  tsc_getticks (&start_tick);

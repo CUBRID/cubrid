@@ -167,28 +167,6 @@ thread_get_current_conn_entry (void)
 }
 
 /*
- * thread_sleep() - Halts the currently running thread for <milliseconds>
- *   return: void
- *   milliseconds(in): The number of milliseconds for the thread to sleep
- *
- *  Note: Used to temporarly halt the current process.
- */
-void
-thread_sleep (double milliseconds)
-{
-#if defined(WINDOWS)
-  Sleep ((int) milliseconds);
-#else /* WINDOWS */
-  struct timeval to;
-
-  to.tv_sec = (int) (milliseconds / 1000);
-  to.tv_usec = ((int) (milliseconds * 1000)) % 1000000;
-
-  select (0, NULL, NULL, NULL, &to);
-#endif /* WINDOWS */
-}
-
-/*
  * thread_get_client_id() - returns the unique client identifier
  *   return: returns the unique client identifier, on error, returns -1
  *

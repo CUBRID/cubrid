@@ -344,4 +344,12 @@ thread_sleep_for (Duration d)
   std::this_thread::sleep_for (d);
 }
 
+inline void
+thread_sleep (double millisec)
+{
+  // try to avoid this and use thread_sleep_for instead
+  std::chrono::duration<double, std::milli> duration_millis (millisec);
+  thread_sleep_for (duration_millis);
+}
+
 #endif  // _THREAD_MANAGER_HPP_
