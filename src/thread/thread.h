@@ -157,8 +157,6 @@ struct thread_resource_track
 #endif
 };
 
-extern ADJ_ARRAY *css_get_cnv_adj_buffer (int idx);
-extern void css_set_cnv_adj_buffer (int idx, ADJ_ARRAY * buffer);
 #ifdef __cplusplus
 extern "C"
 {

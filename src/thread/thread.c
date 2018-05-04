@@ -385,39 +385,6 @@ css_set_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
 }
 
 /*
- * css_get_cnv_adj_buffer() -
- *   return:
- *   idx(in):
- */
-ADJ_ARRAY *
-css_get_cnv_adj_buffer (int idx)
-{
-  THREAD_ENTRY *thread_p;
-
-  thread_p = thread_get_thread_entry_info ();
-  assert (thread_p != NULL);
-
-  return thread_p->cnv_adj_buffer[idx];
-}
-
-/*
- * css_set_cnv_adj_buffer() -
- *   return: void
- *   idx(in):
- *   buffer_p(in):
- */
-void
-css_set_cnv_adj_buffer (int idx, ADJ_ARRAY * buffer_p)
-{
-  THREAD_ENTRY *thread_p;
-
-  thread_p = thread_get_thread_entry_info ();
-  assert (thread_p != NULL);
-
-  thread_p->cnv_adj_buffer[idx] = buffer_p;
-}
-
-/*
  * thread_set_check_interrupt() -
  *   return:
  *   flag(in):
