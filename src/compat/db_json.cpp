@@ -1998,7 +1998,6 @@ db_json_replace_token_special_chars (std::string &token,
 	  if (token_idx + special_it->first.length() <= token.length())
 	    {
 	      if (token.compare (token_idx, special_it->first.length(), special_it->first.c_str()) == 0)
-		//if (std::strncmp("", special_it->first.c_str(), special_it->first.length()) == 0)
 		{
 		  // replace
 		  token.replace (token_idx, special_it->first.length(), special_it->second);
