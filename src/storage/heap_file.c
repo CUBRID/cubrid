@@ -1382,7 +1382,7 @@ heap_classrepr_initialize_cache (void)
       goto exit_on_error;
     }
   lock_entry = heap_Classrepr_cache.lock_table;
-  for (i = 0; i < thread_num_total_threads (); i++)
+  for (i = 0; i < (int) thread_num_total_threads (); i++)
     {
       OID_SET_NULL (&lock_entry[i].class_oid);
       lock_entry[i].lock_next = NULL;

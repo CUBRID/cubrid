@@ -7544,7 +7544,7 @@ lock_force_timeout_lock_wait_transactions (unsigned short stop_phase)
   THREAD_ENTRY *thrd;
   CSS_CONN_ENTRY *conn_p;
 
-  for (i = 1; i < thread_num_total_threads (); i++)
+  for (i = 1; i < (int) thread_num_total_threads (); i++)
     {
       thrd = thread_find_entry_by_index (i);
 

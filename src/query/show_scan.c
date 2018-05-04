@@ -512,7 +512,7 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
       return error;
     }
 
-  for (i = 1; i < thread_num_total_threads (); i++)
+  for (i = 1; i < (int) thread_num_total_threads (); i++)
     {
       thrd = thread_find_entry_by_index (i);
 

@@ -59,7 +59,9 @@
 #include "boot_sr.h"
 #include "db_date.h"
 #include "dbtype.h"
+#if defined (SERVER_MODE)
 #include "server_support.h"
+#endif // SERVER_MODE
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
@@ -7383,7 +7385,9 @@ logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index)
 {
   logtb_set_tran_index_interrupt (thread_p, tran_index, true);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_SHUTDOWN, 0);
+#if defined (SERVER_MODE)
   css_shutdown_conn_by_tran_index (tran_index);
+#endif // SERVER_MODE
 }
 
 /*
@@ -7559,7 +7563,9 @@ xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_
   kill_type = interrupt_only ? KILLSTMT_QUERY : KILLSTMT_TRAN;
   if (kill_type == KILLSTMT_TRAN)
     {
+#if defined (SERVER_MODE)
       css_shutdown_conn_by_tran_index (tran_index);
+#endif // SERVER_MODE
     }
 
   for (i = 0; i < LOGTB_RETRY_SLAM_MAX_TIMES; i++)

@@ -5030,7 +5030,7 @@ pgbuf_initialize_lock_table (void)
   /* allocate memory space for the buffer lock table */
   thrd_num_total = thread_num_total_threads ();
 #if defined(SERVER_MODE)
-  assert (thrd_num_total > MAX_NTRANS * 2);
+  assert ((int) thrd_num_total > MAX_NTRANS * 2);
 #else /* !SERVER_MODE */
   assert (thrd_num_total == 1);
 #endif /* !SERVER_MODE */
@@ -5251,7 +5251,7 @@ pgbuf_initialize_thrd_holder (void)
 
   thrd_num_total = thread_num_total_threads ();
 #if defined(SERVER_MODE)
-  assert (thrd_num_total > MAX_NTRANS * 2);
+  assert ((int) thrd_num_total > MAX_NTRANS * 2);
 #else /* !SERVER_MODE */
   assert (thrd_num_total == 1);
 #endif /* !SERVER_MODE */
@@ -6371,7 +6371,6 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
 {
 #if defined(SERVER_MODE)
   THREAD_ENTRY *cur_thrd_entry, *thrd_entry;
-  int rv;
 
   /* caller is holding bufptr->mutex */
   /* request_mode == PGBUF_LATCH_READ/PGBUF_LATCH_WRITE/PGBUF_LATCH_FLUSH */
@@ -6421,14 +6420,7 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
       /* is it safe to use infinite wait instead of timed sleep? */
       thread_lock_entry (cur_thrd_entry);
       PGBUF_BCB_UNLOCK (bufptr);
-      if (rv == 0)
-	{
-	  rv = thread_suspend_wakeup_and_unlock_entry (thread_p, THREAD_PGBUF_SUSPENDED);
-	}
-      else
-	{
-	  /* we don't treat the case */
-	}
+      thread_suspend_wakeup_and_unlock_entry (thread_p, THREAD_PGBUF_SUSPENDED);
 
       if (cur_thrd_entry->resume_status != THREAD_PGBUF_RESUMED)
 	{
