@@ -4573,7 +4573,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
 	      lang_str = db_get_string (&heap_value->dbvalue);
 	      lang_str_len = (lang_str != NULL) ? strlen (lang_str) : 0;
 
-	      assert (lang_str_len < lang_buf_size);
+	      assert ((int) lang_str_len < lang_buf_size);
 	      if (lang_str_len > 0)
 		{
 		  /* Copying length 0 from NULL pointer fails when DUMA is enabled. */

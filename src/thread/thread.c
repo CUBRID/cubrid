@@ -376,7 +376,7 @@ thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason, bool had_mut
 
   if (had_mutex == false)
     {
-      r = thread_unlock_entry (thread_p);
+      thread_unlock_entry (thread_p);
     }
 
   return r;

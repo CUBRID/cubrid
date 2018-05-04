@@ -526,7 +526,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   addr.vfid = NULL;
 
   if ((strlen (vol_fullname) + 1 > DB_MAX_PATH_LENGTH)
-      || (DB_PAGESIZE < (SSIZEOF (DISK_VOLUME_HEADER) + strlen (vol_fullname) + 1)))
+      || (DB_PAGESIZE < (PGLENGTH) (SSIZEOF (DISK_VOLUME_HEADER) + strlen (vol_fullname) + 1)))
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 3, NULL, vol_fullname,
 	      strlen (vol_fullname) + 1, DB_MAX_PATH_LENGTH);

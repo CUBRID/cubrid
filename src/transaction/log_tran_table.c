@@ -7444,7 +7444,7 @@ xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill
   bool signaled = false;
   int error_code = NO_ERROR;
   bool killed = false;
-  int i;
+  size_t i;
 
   if (kill_tran_index == NULL_TRAN_INDEX || kill_user_p == NULL || kill_host_p == NULL || strcmp (kill_user_p, "") == 0
       || strcmp (kill_host_p, "") == 0)
@@ -7526,10 +7526,11 @@ xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill
 int
 xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_dba_group_member, bool interrupt_only)
 {
-  int i, error;
+  int error;
   bool interrupt, has_authorization;
   bool is_trx_exists;
   KILLSTMT_TYPE kill_type;
+  size_t i;
 
   if (tran_index == LOG_SYSTEM_TRAN_INDEX)
     {

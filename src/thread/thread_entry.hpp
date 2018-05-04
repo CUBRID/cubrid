@@ -27,7 +27,10 @@
 #include "error_context.hpp"
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
+
 #include <thread>
+
+#include <cassert>
 
 // forward definitions
 // from adjustable_array.h
