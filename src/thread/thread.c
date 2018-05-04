@@ -256,64 +256,6 @@ thread_get_check_interrupt (THREAD_ENTRY * thread_p)
   return ret_val;
 }
 
-
-
-
-
-/*
- * thread_find_first_lockwait_entry() -
- *   return:
- *   thread_index_p(in):
- */
-THREAD_ENTRY *
-thread_find_first_lockwait_entry (int *thread_index_p)
-{
-  for (THREAD_ENTRY * thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
-    {
-      if (thread_p->m_status == cubthread::entry::status::TS_DEAD || thread_p->m_status == cubthread::entry::status::TS_FREE)
-	{
-	  continue;
-	}
-      if (thread_p->lockwait != NULL)
-	{			/* found */
-	  *thread_index_p = thread_p->index;
-	  return thread_p;
-	}
-    }
-  return (THREAD_ENTRY *) NULL;
-}
-
-/*
- * thread_find_next_lockwait_entry() -
- *   return:
- *   thread_index_p(in):
- */
-THREAD_ENTRY *
-thread_find_next_lockwait_entry (int *thread_index_p)
-{
-  int start_index = (*thread_index_p) + 1;
-  if (start_index == thread_num_total_threads ())
-    {
-      // no other threads
-      return NULL;
-    }
-  // iterate threads
-  for (THREAD_ENTRY * thread_p = thread_find_entry_by_index (start_index);
-       thread_p != NULL; thread_p = thread_iterate (thread_p))
-    {
-      if (thread_p->m_status == cubthread::entry::status::TS_DEAD || thread_p->m_status == cubthread::entry::status::TS_FREE)
-	{
-	  continue;
-	}
-      if (thread_p->lockwait != NULL)
-	{			/* found */
-	  *thread_index_p = thread_p->index;
-	  return thread_p;
-	}
-    }
-  return (THREAD_ENTRY *) NULL;
-}
-
 /*
  * thread_find_entry_by_index() -
  *   return:

@@ -525,6 +525,10 @@ static bool lock_is_safe_lock_with_page (THREAD_ENTRY * thread_p, LK_ENTRY * ent
 static LK_ENTRY *lock_get_new_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist);
 static void lock_free_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, LK_ENTRY * lock_entry);
 
+static void lock_victimize_first_thread_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper);
+static void lock_check_timeout_expired_and_count_suspended_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
+								    size_t & suspend_count);
+
 // *INDENT-OFF*
 static cubthread::daemon *lock_Deadlock_detect_daemon = NULL;
 
@@ -5892,6 +5896,43 @@ error:
 
 // *INDENT-OFF*
 #if defined(SERVER_MODE)
+
+//
+// lock_check_timeout_expired_and_count_suspended_mapfunc - function to map over all thread entries to find timed out
+//                                                          locks and suspended threads
+//
+// thread_ref (in)     : thread entry
+// stop_mapper (out)   : ignored
+// suspend_count (out) : count suspended threads
+//
+static void
+lock_check_timeout_expired_and_count_suspended_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
+                                                        size_t & suspend_count)
+{
+  (void) stop_mapper;  // suppress unused parameter warning
+
+  // skip dead/free threads
+  if (thread_ref.m_status == cubthread::entry::status::TS_DEAD
+      || thread_ref.m_status == cubthread::entry::status::TS_FREE)
+    {
+      return;
+    }
+  if (thread_ref.lockwait == NULL)
+    {
+      return;
+    }
+  // suspended thread
+
+  /* The transaction, for which the current thread is working, might be interrupted.
+   * lock_force_timeout_expired_wait_transactions() performs not only interrupt but timeout checking.
+   */
+  if (!lock_force_timeout_expired_wait_transactions (&thread_ref))
+    {
+      // not timed out. count as suspended
+      suspend_count++;
+    }
+}
+
 // class deadlock_detect_task
 //
 //  description:
@@ -5920,31 +5961,8 @@ class deadlock_detect_task : public cubthread::entry_task
 	}
 
       /* check if the lock-wait thread exists */
-      int thread_index;
-      THREAD_ENTRY *lock_wait_entry = thread_find_first_lockwait_entry (&thread_index);
-
-      if (lock_wait_entry == NULL)
-	{
-	  return;
-	}
-
-      int lock_wait_count = 0;
-
-      /* One or more threads are lock-waiting */
-      while (lock_wait_entry != NULL)
-	{
-	  /* The transaction, for which the current thread is working, might be interrupted.
-	   * lock_force_timeout_expired_wait_transactions() performs not only interrupt but timeout checking.
-	   */
-	  bool state = lock_force_timeout_expired_wait_transactions (lock_wait_entry);
-
-	  if (!state)
-	    {
-	      lock_wait_count++;
-	    }
-
-	  lock_wait_entry = thread_find_next_lockwait_entry (&thread_index);
-	}
+      size_t lock_wait_count = 0;
+      thread_get_manager ()->map_entries (lock_check_timeout_expired_and_count_suspended_mapfunc, lock_wait_count);
 
       if (lock_is_local_deadlock_detection_interval_up () && lock_wait_count >= 2)
 	{
@@ -7796,6 +7814,28 @@ lock_is_local_deadlock_detection_interval_up (void)
 #endif /* SERVER_MODE */
 }
 
+//
+// lock_victimize_first_thread_mapfunc - map function on all entries until one lock waiter is victimized
+//
+// thread_ref (in)  : current thread
+// stop_mapper (in) : output to stop mapper when a thread was victimized
+//
+static void
+lock_victimize_first_thread_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper)
+{
+  if (thread_ref.lockwait == NULL)
+    {
+      return;
+    }
+  int tran_index = thread_ref.tran_index;
+  if (lock_wakeup_deadlock_victim_timeout (tran_index))
+    {
+      stop_mapper = true;
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LK_NOTENOUGH_ACTIVE_THREADS, 3,
+	      (int) css_get_num_request_workers (), logtb_get_number_assigned_tran_indices (), tran_index);
+    }
+}
+
 /*
  * lock_detect_local_deadlock - Run the local deadlock detection
  *
@@ -8172,29 +8212,11 @@ final_:
 	}
       else
 	{
-	  int thrd_index;
-	  THREAD_ENTRY *thrd_ptr;
-
 	  /* Make sure that we have threads available for another client to execute, otherwise Panic... */
 	  if (css_are_all_request_handlers_suspended ())
 	    {
 	      /* We must timeout at least one thread, so other clients can execute, otherwise, the server will hang. */
-	      thrd_ptr = thread_find_first_lockwait_entry (&thrd_index);
-	      while (thrd_ptr != NULL)
-		{
-		  if (lock_wakeup_deadlock_victim_timeout (thrd_ptr->tran_index) == true)
-		    {
-		      break;
-		    }
-		  thrd_ptr = thread_find_next_lockwait_entry (&thrd_index);
-		}
-
-	      if (thrd_ptr != NULL)
-		{
-		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LK_NOTENOUGH_ACTIVE_THREADS, 3,
-			  (int) css_get_num_request_workers (), logtb_get_number_assigned_tran_indices (),
-			  thrd_ptr->tran_index);
-		}
+	      thread_get_manager ()->map_entries (lock_victimize_first_thread_mapfunc);
 	    }
 	  lk_Gl.no_victim_case_count = 0;
 	}
