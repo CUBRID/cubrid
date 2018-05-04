@@ -8172,14 +8172,11 @@ final_:
 	}
       else
 	{
-	  int worker_threads = 0;
-	  int suspended_threads = 0;
 	  int thrd_index;
 	  THREAD_ENTRY *thrd_ptr;
 
 	  /* Make sure that we have threads available for another client to execute, otherwise Panic... */
-	  thread_get_info_threads (NULL, &worker_threads, NULL, &suspended_threads);
-	  if (worker_threads == suspended_threads)
+	  if (css_are_all_request_handlers_suspended ())
 	    {
 	      /* We must timeout at least one thread, so other clients can execute, otherwise, the server will hang. */
 	      thrd_ptr = thread_find_first_lockwait_entry (&thrd_index);
@@ -8194,8 +8191,9 @@ final_:
 
 	      if (thrd_ptr != NULL)
 		{
-		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LK_NOTENOUGH_ACTIVE_THREADS, 3, worker_threads,
-			  logtb_get_number_assigned_tran_indices (), thrd_ptr->tran_index);
+		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LK_NOTENOUGH_ACTIVE_THREADS, 3,
+			  (int) css_get_num_request_workers (), logtb_get_number_assigned_tran_indices (),
+			  thrd_ptr->tran_index);
 		}
 	    }
 	  lk_Gl.no_victim_case_count = 0;

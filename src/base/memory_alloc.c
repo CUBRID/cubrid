@@ -309,7 +309,7 @@ db_clear_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
   if (heap_id == 0)
     {
 #if defined (SERVER_MODE)
-      heap_id = css_get_private_heap (thread_p);
+      heap_id = db_private_get_heapid_from_thread (thread_p);
 #else /* SERVER_MODE */
       heap_id = private_heap_id;
 #endif /* SERVER_MODE */
@@ -332,7 +332,7 @@ db_change_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
   HL_HEAPID old_heap_id;
 
 #if defined (SERVER_MODE)
-  old_heap_id = css_set_private_heap (thread_p, heap_id);
+  old_heap_id = db_private_set_heapid_to_thread (thread_p, heap_id);
 #else /* SERVER_MODE */
   old_heap_id = private_heap_id;
   if (db_on_server)
@@ -354,14 +354,14 @@ db_replace_private_heap (THREAD_ENTRY * thread_p)
   HL_HEAPID old_heap_id, heap_id;
 
 #if defined (SERVER_MODE)
-  old_heap_id = css_get_private_heap (thread_p);
+  old_heap_id = db_private_get_heapid_from_thread (thread_p);
 #else /* SERVER_MODE */
   old_heap_id = private_heap_id;
 #endif /* SERVER_MODE */
 
 #if defined (SERVER_MODE)
   heap_id = db_create_private_heap ();
-  css_set_private_heap (thread_p, heap_id);
+  db_private_set_heapid_to_thread (thread_p, heap_id);
 #else /* SERVER_MODE */
   if (db_on_server)
     {
@@ -383,7 +383,7 @@ db_destroy_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
   if (heap_id == 0)
     {
 #if defined (SERVER_MODE)
-      heap_id = css_get_private_heap (thread_p);
+      heap_id = db_private_get_heapid_from_thread (thread_p);
 #else /* SERVER_MODE */
       heap_id = private_heap_id;
 #endif /* SERVER_MODE */
@@ -447,7 +447,7 @@ db_private_alloc_release (void *thrd, size_t size, bool rc_track)
       return NULL;
     }
 
-  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id : css_get_private_heap (NULL));
+  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id : db_private_get_heapid_from_thread (NULL));
 
   if (heap_id)
     {
@@ -566,7 +566,7 @@ db_private_realloc_release (void *thrd, void *ptr, size_t size, bool rc_track)
       return NULL;
     }
 
-  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id : css_get_private_heap (NULL));
+  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id : db_private_get_heapid_from_thread (NULL));
 
   if (heap_id)
     {
@@ -730,7 +730,7 @@ db_private_free_release (void *thrd, void *ptr, bool rc_track)
 #if defined (CS_MODE)
   db_ws_free (ptr);
 #elif defined (SERVER_MODE)
-  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id : css_get_private_heap (NULL));
+  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id : db_private_get_heapid_from_thread (NULL));
 
   if (heap_id)
     {
@@ -923,4 +923,50 @@ os_free_release (void *ptr, bool rc_track)
     }
 #endif /* !NDEBUG */
 }
+
+#if defined (SERVER_MODE)
+/*
+* db_private_get_heapid_from_thread () -
+*   return:
+*   thread_p(in):
+*/
+HL_HEAPID
+db_private_get_heapid_from_thread (THREAD_ENTRY * thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert (thread_p != NULL);
+
+  return thread_p->private_heap_id;
+}
+}
+
+/*
+ * css_set_private_heap() -
+ *   return:
+ *   thread_p(in):
+ *   heap_id(in):
+ */
+HL_HEAPID
+db_private_set_heapid_to_thread (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
+{
+  HL_HEAPID old_heap_id = 0;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert (thread_p != NULL);
+
+  old_heap_id = thread_p->private_heap_id;
+  thread_p->private_heap_id = heap_id;
+
+  return old_heap_id;
+}
+#endif // SERVER_MODE
+
 #endif

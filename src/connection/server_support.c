@@ -240,6 +240,8 @@ static void css_wp_core_job_scan_mapper (const cubthread::entry_workpool::core &
                                          THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx, size_t & core_index,
                                          int & error_code);
 // *INDENT-ON*
+static void css_is_any_thread_not_suspended_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, size_t & count,
+						     bool & found);
 
 #if defined (SERVER_MODE)
 /*
@@ -3010,5 +3012,55 @@ css_wp_core_job_scan_mapper (const cubthread::entry_workpool::core & wp_core, bo
   ++core_index;
 
   assert (val_index == CSS_JOB_QUEUE_SCAN_COLUMN_COUNT);
+}
+
+//
+// css_is_thread_not_suspended_mapfunc
+//
+// thread_ref (in)   : current thread entry
+// stop_mapper (out) : output true to stop mapper
+// count (out)       : count number of threads
+// found (out)       : output true when not suspended thread is found
+//
+static void
+css_is_any_thread_not_suspended_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, size_t & count, bool & found)
+{
+  if (thread_ref.m_status != cubthread::entry::status::TS_WAIT)
+    {
+      // found not suspended; stop
+      stop_mapper = true;
+      found = true;
+      return;
+    }
+  ++count;
+}
+
+//
+// css_are_all_request_handlers_suspended - are all request handlers suspended?
+//
+bool
+css_are_all_request_handlers_suspended (void)
+{
+  // assume all are suspended
+  bool is_any_not_suspended = false;
+  size_t checked_threads_count = 0;
+
+  css_Server_request_worker_pool->map_running_contexts (css_is_any_thread_not_suspended_mapfunc, checked_threads_count,
+                                                        is_any_not_suspended);
+  if (is_any_not_suspended)
+    {
+      // found a thread that was not suspended
+      return false;
+    }
+  if (checked_threads_count == css_Server_request_worker_pool->get_max_count ())
+    {
+      // all threads are suspended
+      return true;
+    }
+  else
+    {
+      // at least one thread is free
+      return false;
+    }
 }
 // *INDENT-ON*

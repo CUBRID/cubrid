@@ -157,8 +157,6 @@ struct thread_resource_track
 #endif
 };
 
-extern void thread_get_info_threads (int *num_total_threads, int *num_worker_threads, int *num_free_threads,
-				     int *num_suspended_threads);
 extern int thread_get_client_id (THREAD_ENTRY * thread_p);
 extern unsigned int thread_get_comm_request_id (THREAD_ENTRY * thread_p);
 extern struct css_conn_entry *thread_get_current_conn_entry (void);
@@ -171,11 +169,7 @@ extern THREAD_ENTRY *thread_find_entry_by_index (int thrd_index);
 extern THREAD_ENTRY *thread_find_entry_by_tid (thread_id_t thrd_id);
 extern int thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** array);
 
-
 extern bool thread_get_check_interrupt (THREAD_ENTRY * thread_p);
-
-extern HL_HEAPID css_get_private_heap (THREAD_ENTRY * thread_p);
-extern HL_HEAPID css_set_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id);
 
 extern void thread_set_info (THREAD_ENTRY * thread_p, int client_id, int rid, int tran_index, int net_request_index);
 

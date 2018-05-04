@@ -195,9 +195,9 @@ db_private_allocator<T>::allocate (size_type count)
       /* this is not something we should do! */
       assert (false);
 
-      HL_HEAPID save_heapid = css_set_private_heap (m_thread_p, m_heapid);
+      HL_HEAPID save_heapid = db_private_set_heapid_to_thread (m_thread_p, m_heapid);
       pointer p = reinterpret_cast<pointer> (db_private_alloc (m_thread_p, count * sizeof (T)));
-      (void) css_set_private_heap (m_thread_p, save_heapid);
+      (void) db_private_set_heapid_to_thread (m_thread_p, save_heapid);
       return p;
     }
   else
@@ -216,9 +216,9 @@ db_private_allocator<T>::deallocate (pointer p, size_type UNUSED)
     {
       assert (false);
       /* what am I gonna do on release mode? this is memory leak! */
-      HL_HEAPID save_heapid = css_set_private_heap (m_thread_p, m_heapid);
+      HL_HEAPID save_heapid = db_private_set_heapid_to_thread (m_thread_p, m_heapid);
       db_private_free (m_thread_p, p);
-      (void) css_set_private_heap (m_thread_p, save_heapid);
+      (void) db_private_set_heapid_to_thread (m_thread_p, save_heapid);
     }
   else
 #endif /* !SERVER_MODE */
