@@ -302,41 +302,6 @@ thread_find_entry_by_tid (thread_id_t tid)
 }
 
 /*
- * thread_get_lockwait_entry() -
- *   return:
- *   tran_index(in):
- *   thread_array_p(in):
- */
-int
-thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** thread_array_p)
-{
-  THREAD_ENTRY *thread_p;
-  int thread_count;
-
-  thread_count = 0;
-  for (thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
-    {
-      if (thread_p->m_status == cubthread::entry::status::TS_DEAD || thread_p->m_status == cubthread::entry::status::TS_FREE)
-	{
-	  continue;
-	}
-      if (thread_p->tran_index == tran_index && thread_p->lockwait != NULL)
-	{
-	  thread_array_p[thread_count] = thread_p;
-	  thread_count++;
-	  if (thread_count >= 10)
-	    {
-	      assert (false);
-	      break;
-	    }
-	}
-    }
-  /* TODO: transfer to new manager */
-
-  return thread_count;
-}
-
-/*
  * thread_rc_track_meter_check () -
  *   return:
  *   thread_p(in):

@@ -162,7 +162,6 @@ extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 
 extern THREAD_ENTRY *thread_find_entry_by_index (int thrd_index);
 extern THREAD_ENTRY *thread_find_entry_by_tid (thread_id_t thrd_id);
-extern int thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** array);
 
 extern bool thread_get_check_interrupt (THREAD_ENTRY * thread_p);
 

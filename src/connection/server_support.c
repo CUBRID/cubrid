@@ -2852,6 +2852,8 @@ css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_E
         }
       thread_unlock_entry (&thread_ref);
     }
+  // make sure not blocked in locks
+  lock_force_thread_timeout_lock (&thread_ref);
 }
 
 //
@@ -2881,6 +2883,8 @@ css_stop_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper)
       thread_check_suspend_reason_and_wakeup (&thread_ref, THREAD_RESUME_DUE_TO_INTERRUPT, THREAD_LOGWR_SUSPENDED);
       thread_ref.interrupted = true;
     }
+  // make sure not blocked in locks
+  lock_force_thread_timeout_lock (&thread_ref);
 }
 
 
@@ -2962,9 +2966,6 @@ css_stop_all_workers (THREAD_ENTRY &thread_ref, css_thread_stop_type stop_phase)
           css_Server_request_worker_pool->map_running_contexts (css_stop_non_log_writer, thread_ref);
           css_Connection_worker_pool->map_running_contexts (css_stop_non_log_writer, thread_ref);
         }
-
-      // make sure none is blocked in lock waits
-      lock_force_timeout_lock_wait_transactions (stop_phase);
 
       // sleep for 50 milliseconds
       std::this_thread::sleep_for (std::chrono::milliseconds (50));
