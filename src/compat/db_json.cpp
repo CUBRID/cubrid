@@ -1985,59 +1985,38 @@ static void
 db_json_replace_token_special_chars (std::string &token,
 				     const std::unordered_map<std::string, std::string> &special_chars)
 {
-  // in this map we will store only the characters that we have met before to avoid searching for a character that we
-  // knew in the first place that is not present in the string
-  std::unordered_map<std::string, std::string> left;
+  bool replaced = false;
 
-  // first we put all the pairs from special_chars to left
-  for (auto it = special_chars.begin(); it != special_chars.end(); ++it)
+  // iterate character by character and detect special characters
+  for (size_t token_idx = 0; token_idx < token.length(); /* incremented in for body */)
     {
-      left.emplace (*it);
-    }
-
-  // first initialize the pair used for replace
-  // we will store the position where we want to do the replacement and a pair (old, new)
-  std::pair<int, std::pair<const std::string, std::string> *> pair_rep = std::make_pair (0, nullptr);
-  size_t minpos = INT_MAX;
-  size_t pos = 0;
-  size_t current_index = 0;
-
-  while (true)
-    {
-      minpos = INT_MAX;
-
-      for (auto it = left.begin(); it != left.end();)
+      replaced = false;
+      // compare with special characters
+      for (auto special_it = special_chars.begin(); special_it != special_chars.end(); ++special_it)
 	{
-	  pos = token.find (it->first, current_index);
-	  // if we don't find any occurence, we won't search for it in future loops
-	  if (pos == std::string::npos)
+	  // compare special characters with sequence following token_it
+	  if (token_idx + special_it->first.length() <= token.length())
 	    {
-	      it = left.erase (it);
-	      continue;
-	    }
+	      if (token.compare (token_idx, special_it->first.length(), special_it->first.c_str()) == 0)
+		//if (std::strncmp("", special_it->first.c_str(), special_it->first.length()) == 0)
+		{
+		  // replace
+		  token.replace (token_idx, special_it->first.length(), special_it->second);
+		  // skip replaced
+		  token_idx += special_it->second.length();
 
-	  // we need to replace the first occurence whatever that is
-	  if (pos < minpos)
-	    {
-	      pair_rep.first = pos;
-	      pair_rep.second = & (*it);
-	      minpos = pos;
+		  replaced = true;
+		  // next loop
+		  continue;
+		}
 	    }
-
-	  // don't forget to increment the iterator
-	  ++it;
 	}
 
-      // we did not find characters to replace
-      if (minpos == INT_MAX)
+      if (!replaced)
 	{
-	  break;
+	  // no match; next character
+	  token_idx++;
 	}
-
-      // do the replacement
-      token.replace (pair_rep.first, pair_rep.second->first.length(), pair_rep.second->second);
-      // next time we will start the search from this index
-      current_index += pair_rep.second->second.length();
     }
 }
 
