@@ -152,77 +152,6 @@ static void thread_rc_track_meter_assert_csect_usage (THREAD_ENTRY * thread_p, T
  */
 
 /*
- * thread_find_entry_by_tran_index_except_me() -
- *   return:
- *   tran_index(in):
- */
-THREAD_ENTRY *
-thread_find_entry_by_tran_index_except_me (int tran_index)
-{
-  for (THREAD_ENTRY * thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
-    {
-      if (thread_p->tran_index == tran_index && !thread_p->is_on_current_thread ())
-	{
-	  return thread_p;
-	}
-    }
-  return NULL;
-}
-
-/*
- * thread_find_entry_by_tran_index() -
- *   return:
- *   tran_index(in):
- */
-THREAD_ENTRY *
-thread_find_entry_by_tran_index (int tran_index)
-{
-  // todo: is this safe? afaik, we could have multiple threads for same transaction
-  for (THREAD_ENTRY * thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
-    {
-      if (thread_p->tran_index == tran_index)
-	{
-	  return thread_p;
-	}
-    }
-  return NULL;
-}
-
-/*
- * thread_get_current_tran_index() - get transaction index if current
- *                                       thread
- *   return:
- */
-int
-thread_get_current_tran_index (void)
-{
-  THREAD_ENTRY *thread_p;
-
-  thread_p = thread_get_thread_entry_info ();
-  assert (thread_p != NULL);
-
-  return thread_p->tran_index;
-}
-
-/*
- * thread_set_current_tran_index() -
- *   return: void
- *   tran_index(in):
- */
-void
-thread_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index)
-{
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  assert (thread_p != NULL);
-
-  thread_p->tran_index = tran_index;
-}
-
-/*
  * thread_get_current_conn_entry() -
  *   return:
  */
@@ -236,23 +165,6 @@ thread_get_current_conn_entry (void)
 
   return thread_p->conn_entry;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*
  * thread_sleep() - Halts the currently running thread for <milliseconds>

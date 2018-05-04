@@ -517,26 +517,6 @@ thread_wakeup_already_had_mutex (cubthread::entry *thread_p, thread_resume_suspe
 }
 
 /*
- * thread_wakeup_with_tran_index() -
- *   return:
- *   tran_index(in):
- */
-void
-thread_wakeup_with_tran_index (int tran_index, thread_resume_suspend_status resume_reason)
-{
-  cubthread::entry *thread_p = NULL;
-
-  // todo - enable me
-  // thread_p = thread_find_entry_by_tran_index_except_me (tran_index);
-  if (thread_p == NULL)
-    {
-      return;
-    }
-
-  thread_wakeup (thread_p, resume_reason);
-}
-
-/*
  * thread_suspend_with_other_mutex() -
  *   return: 0 if no error, or error code
  *   thread_p(in):

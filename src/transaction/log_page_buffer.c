@@ -4285,7 +4285,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  if (entry->status == LOGWR_STATUS_WAIT)
 	    {
 	      entry->status = LOGWR_STATUS_FETCH;
-	      thread_wakeup_with_tran_index (entry->thread_p->tran_index, THREAD_LOGWR_RESUMED);
+	      logtb_wakeup_thread_with_tran_index (entry->thread_p->tran_index, THREAD_LOGWR_RESUMED);
 	    }
 	  entry = entry->next;
 	}

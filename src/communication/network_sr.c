@@ -1136,7 +1136,7 @@ loop:
       /* never try to wake non TRAN_ACTIVE state trans. note that non-TRAN_ACTIVE trans will not be interrupted. */
       if (logtb_is_interrupted_tran (thread_p, false, &continue_check, tran_index))
 	{
-	  suspended_p = thread_find_entry_by_tran_index_except_me (tran_index);
+	  suspended_p = logtb_find_thread_by_tran_index_except_me (tran_index);
 	  if (suspended_p != NULL)
 	    {
 	      bool wakeup_now = false;

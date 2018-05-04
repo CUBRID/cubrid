@@ -143,7 +143,7 @@ extern LOCK_COMPATIBILITY lock_Comp[11][11];
     { \
       THREAD_ENTRY *locked_thread_entry_p; \
       assert ((th)->emulate_tid == thread_id_t ()); \
-      locked_thread_entry_p = thread_find_entry_by_tran_index ((lock_entry)->tran_index); \
+      locked_thread_entry_p = logtb_find_thread_by_tran_index ((lock_entry)->tran_index); \
       if (locked_thread_entry_p != NULL) \
 	{ \
 	  (th)->emulate_tid = locked_thread_entry_p->get_id (); \
@@ -2235,7 +2235,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 	      while (true)
 		{
 		  thread_sleep (10);	/* sleep 10 msec */
-		  thread_wakeup_with_tran_index (entry_ptr->tran_index, THREAD_RESUME_DUE_TO_INTERRUPT);
+		  logtb_wakeup_thread_with_tran_index (entry_ptr->tran_index, THREAD_RESUME_DUE_TO_INTERRUPT);
 
 		  client_id = thread_get_client_id (thread_p);
 		  if (thread_has_threads (thread_p, entry_ptr->tran_index, client_id) == 0)

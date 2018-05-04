@@ -49,7 +49,7 @@
 
 #if defined (SERVER_MODE)
 #define XCACHE_ENTRY_DELETED_BY_ME \
-  ((XCACHE_ENTRY_MARK_DELETED | XCACHE_ENTRY_FIX_COUNT_MASK) - thread_get_current_tran_index ())
+  ((XCACHE_ENTRY_MARK_DELETED | XCACHE_ENTRY_FIX_COUNT_MASK) - logtb_get_current_tran_index ())
 #else	/* !SERVER_MODE */		   /* SA_MODE */
 #define XCACHE_ENTRY_DELETED_BY_ME (XCACHE_ENTRY_MARK_DELETED | XCACHE_ENTRY_FIX_COUNT_MASK)
 #endif /* SA_MODE */

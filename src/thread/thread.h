@@ -171,10 +171,6 @@ extern void thread_get_info_threads (int *num_total_threads, int *num_worker_thr
 				     int *num_suspended_threads);
 extern int thread_get_client_id (THREAD_ENTRY * thread_p);
 extern unsigned int thread_get_comm_request_id (THREAD_ENTRY * thread_p);
-extern THREAD_ENTRY *thread_find_entry_by_tran_index (int tran_index);
-extern THREAD_ENTRY *thread_find_entry_by_tran_index_except_me (int tran_index);
-extern int thread_get_current_tran_index (void);
-extern void thread_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 extern struct css_conn_entry *thread_get_current_conn_entry (void);
 extern int thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id);
 extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);

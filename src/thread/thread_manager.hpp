@@ -189,7 +189,13 @@ namespace cubthread
 
       void return_lock_free_transaction_entries (void);
 
+      // mappers
 
+      // map all entries
+      // function signature is:
+      //    bool & stop_mapper - output true to stop mapping over threads
+      template <typename Func, typename ... Args>
+      void map_entries (Func &&func, Args &&... args);
 
     private:
 
@@ -272,6 +278,25 @@ namespace cubthread
   entry &get_entry (void);
 
   void return_lock_free_transaction_entries (void);
+
+  //////////////////////////////////////////////////////////////////////////
+  // template / inline functions
+  //////////////////////////////////////////////////////////////////////////
+
+  template <typename Func, typename ... Args>
+  void
+  manager::map_entries (Func &&func, Args &&... args)
+  {
+    bool stop = false;
+    for (std::size_t i = 0; i < m_max_threads; i++)
+      {
+	func (m_all_entries[i], stop, std::forward<Args> (args)...);
+	if (stop)
+	  {
+	    break;
+	  }
+      }
+  }
 
 } // namespace cubthread
 

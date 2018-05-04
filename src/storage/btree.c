@@ -22949,7 +22949,7 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	  goto error_or_not_found;
 #else	/* !SA_MODE */	       /* SERVER_MODE */
 	  /* Object is being inserted/deleted. We need to lock and suspend until it's fate is decided. */
-	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, thread_get_current_tran_index (),
+	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, logtb_get_current_tran_index (),
 					    find_unique_helper->lock_mode));
 #endif /* SERVER_MODE */
 	  /* Fall through. */
@@ -22982,7 +22982,7 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	      goto error_or_not_found;
 	    }
 	  /* Object locked. */
-	  assert (lock_has_lock_on_object (&unique_oid, &unique_class_oid, thread_get_current_tran_index (),
+	  assert (lock_has_lock_on_object (&unique_oid, &unique_class_oid, logtb_get_current_tran_index (),
 					   find_unique_helper->lock_mode) > 0);
 	  COPY_OID (&find_unique_helper->locked_oid, &unique_oid);
 	  COPY_OID (&find_unique_helper->locked_class_oid, &unique_class_oid);
@@ -23263,7 +23263,7 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	  goto error_or_not_found;
 #else	/* !SA_MODE */	       /* SERVER_MODE */
 	  /* Object is being inserted/deleted. We need to lock and suspend until it's fate is decided. */
-	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, thread_get_current_tran_index (),
+	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, logtb_get_current_tran_index (),
 					    find_unique_helper->lock_mode));
 #endif /* SERVER_MODE */
 	  /* Fall through. */
@@ -23310,7 +23310,7 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	      goto error_or_not_found;
 	    }
 	  /* Object locked. */
-	  assert (lock_has_lock_on_object (&unique_oid, &unique_class_oid, thread_get_current_tran_index (),
+	  assert (lock_has_lock_on_object (&unique_oid, &unique_class_oid, logtb_get_current_tran_index (),
 					   find_unique_helper->lock_mode) > 0);
 	  COPY_OID (&find_unique_helper->locked_oid, &unique_oid);
 	  COPY_OID (&find_unique_helper->locked_class_oid, &unique_class_oid);
@@ -23978,7 +23978,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 #if defined (SERVER_MODE)
       /* Safe guard: object is supposed to be locked. */
       assert (scan_op_type == S_SELECT
-	      || lock_has_lock_on_object (oid, class_oid, thread_get_current_tran_index (),
+	      || lock_has_lock_on_object (oid, class_oid, logtb_get_current_tran_index (),
 					  find_unique_helper.lock_mode) > 0);
 #endif /* SERVER_MODE */
 
@@ -25697,7 +25697,7 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 	  if (OID_EQ (&find_fk_obj->locked_object, oid))
 	    {
 	      /* Object already locked. */
-	      assert (lock_has_lock_on_object (oid, class_oid, thread_get_current_tran_index (), find_fk_obj->lock_mode)
+	      assert (lock_has_lock_on_object (oid, class_oid, logtb_get_current_tran_index (), find_fk_obj->lock_mode)
 		      > 0);
 	      lock_result = LK_GRANTED;
 	    }
@@ -27285,7 +27285,7 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
 #if defined (SERVER_MODE)
   assert (!BTREE_IS_UNIQUE (btid_int->unique_pk) || log_is_in_crash_recovery ()
 	  || lock_has_lock_on_object (BTREE_INSERT_OID (insert_helper), BTREE_INSERT_CLASS_OID (insert_helper),
-				      thread_get_current_tran_index (), X_LOCK) > 0);
+				      logtb_get_current_tran_index (), X_LOCK) > 0);
 #endif /* SERVER_MODE */
 
   /* Insert new key. */
@@ -27565,7 +27565,7 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 #if defined (SERVER_MODE)
   assert (log_is_in_crash_recovery ()
 	  || lock_has_lock_on_object (BTREE_INSERT_OID (insert_helper), BTREE_INSERT_CLASS_OID (insert_helper),
-				      thread_get_current_tran_index (), X_LOCK) > 0);
+				      logtb_get_current_tran_index (), X_LOCK) > 0);
 #endif /* SERVER_MODE */
 
   /* Insert object in the beginning of leaf record if unique constraint is not violated. Step 1: Protect key by
@@ -30577,7 +30577,7 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 	  /* Cannot check if class OID is NULL. Get it in debug mode. */
 	  || OID_ISNULL (BTREE_DELETE_CLASS_OID (delete_helper))
 	  || lock_has_lock_on_object (BTREE_DELETE_OID (delete_helper), BTREE_DELETE_CLASS_OID (delete_helper),
-				      thread_get_current_tran_index (), X_LOCK) > 0);
+				      logtb_get_current_tran_index (), X_LOCK) > 0);
 #endif /* SERVER_MODE */
 
   /* Safe guard: if the index is unique and we want to physically delete the object and if operation type is not

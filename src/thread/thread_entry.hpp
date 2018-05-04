@@ -408,8 +408,6 @@ void thread_wakeup (cubthread::entry *p, thread_resume_suspend_status resume_rea
 void thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason,
     thread_resume_suspend_status suspend_reason);
 void thread_wakeup_already_had_mutex (cubthread::entry *p, thread_resume_suspend_status resume_reason);
-void thread_wakeup_with_tran_index (int tran_index, thread_resume_suspend_status resume_reason);
 int thread_suspend_with_other_mutex (cubthread::entry *p, pthread_mutex_t *mutexp, int timeout, struct timespec *to,
 				     thread_resume_suspend_status suspended_reason);
-
 #endif // _THREAD_ENTRY_HPP_

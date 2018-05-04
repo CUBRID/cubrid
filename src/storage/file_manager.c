@@ -8993,7 +8993,7 @@ STATIC_INLINE int
 file_get_tempcache_entry_index (THREAD_ENTRY * thread_p)
 {
 #if defined (SERVER_MODE)
-  return thread_get_current_tran_index ();
+  return logtb_get_current_tran_index ();
 #else
   return 0;
 #endif

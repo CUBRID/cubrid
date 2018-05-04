@@ -173,6 +173,8 @@ static int logtb_allocate_snapshot_data (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT 
 static int logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvcc_subid);
 
 static int logtb_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool * has_authorization);
+static void logtb_find_thread_entry_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, int tran_index,
+					     bool except_me, REFPTR (THREAD_ENTRY, found_ptr));
 
 /*
  * logtb_realloc_topops_stack - realloc stack of top system operations
@@ -2530,7 +2532,7 @@ int
 logtb_find_client_tran_name_host_pid (int &tran_index, char **client_prog_name, char **client_user_name,
 				      char **client_host_name, int *client_pid)
 {
-  tran_index = thread_get_current_tran_index ();
+  tran_index = logtb_get_current_tran_index ();
   return logtb_find_client_name_host_pid (tran_index, client_prog_name, client_user_name, client_host_name, client_pid);
 }
 #endif // SERVER_MODE
@@ -7597,4 +7599,108 @@ xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_
     }
 
   return NO_ERROR;
+}
+
+//
+// logtb_find_thread_entry_mapfunc - function mapped over thread manager's entries to find thread belonging to given
+//                                   transaction index
+//
+// thread_ref (in)   : thread entry
+// stop_mapper (out) : output true to stop mapping
+// tran_index (in)   : searched transaction index
+// except_me (in)    : true to accept current transaction, false otherwise
+// found_ptr (out)   : saves pointer to found thread entry
+//
+static void
+logtb_find_thread_entry_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, int tran_index, bool except_me,
+				 REFPTR (THREAD_ENTRY, found_ptr))
+{
+  if (thread_ref.tran_index != tran_index)
+    {
+      // not this
+      return;
+    }
+  if (except_me && thread_ref.is_on_current_thread ())
+    {
+      // not me
+      return;
+    }
+  // found
+  found_ptr = &thread_ref;
+  stop_mapper = true;		// stop searching
+}
+
+//
+// logtb_find_thread_by_tran_index - find thread entry by transaction index
+//
+// return          : NULL or pointer to found thread
+// tran_index (in) : searched transaction index
+//
+THREAD_ENTRY *
+logtb_find_thread_by_tran_index (int tran_index)
+{
+  THREAD_ENTRY *found_thread = NULL;
+  thread_get_manager ()->map_entries (logtb_find_thread_entry_mapfunc, tran_index, false, found_thread);
+  return found_thread;
+}
+
+//
+// thread_find_entry_by_tran_index_except_me - find thread entry by transaction index; ignore current thread
+//
+// return          : NULL or pointer to found thread
+// tran_index (in) : searched transaction index
+//
+THREAD_ENTRY *
+logtb_find_thread_by_tran_index_except_me (int tran_index)
+{
+  THREAD_ENTRY *found_thread = NULL;
+  thread_get_manager ()->map_entries (logtb_find_thread_entry_mapfunc, tran_index, true, found_thread);
+  return found_thread;
+}
+
+#if defined (SERVER_MODE)
+//
+// logtb_wakeup_thread_with_tran_index - find thread by transaction index and wake it
+//
+// tran_index (in)    : searched transaction index
+// resume_reason (in) : the reason thread is resumed
+void
+logtb_wakeup_thread_with_tran_index (int tran_index, thread_resume_suspend_status resume_reason)
+{
+  // find thread with transaction index; ignore current thread
+  THREAD_ENTRY *thread_p = logtb_find_thread_by_tran_index_except_me (tran_index);
+  if (thread_p == NULL)
+    {
+      // not found
+      return;
+    }
+
+  thread_wakeup (thread_p, resume_reason);
+}
+#endif // SERVER_MODE
+
+/*
+ * logtb_get_current_tran_index() - get transaction index of current thread
+ *   return:
+ */
+int
+logtb_get_current_tran_index (void)
+{
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  assert (thread_p != NULL);
+
+  return thread_p->tran_index;
+}
+
+/*
+ * logtb_set_current_tran_index - set transaction index on current thread
+ */
+void
+logtb_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  thread_p->tran_index = tran_index;
 }

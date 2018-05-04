@@ -31,6 +31,9 @@
 #include "connection_defs.h"
 #include "dbtype_def.h"
 #endif /* SERVER_MODE */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "log_impl.h"
+#endif // SERVER_MODE or SA_MODE
 #include "memory_alloc.h"
 #include "storage_common.h"
 #if defined (SERVER_MODE)
@@ -149,7 +152,7 @@ extern int log_Tran_index;	/* Index onto transaction table for current thread of
 #if defined (SERVER_MODE)
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) \
-  ((thrd) ? (thrd)->tran_index : thread_get_current_tran_index())
+  ((thrd) ? (thrd)->tran_index : logtb_get_current_tran_index())
 #endif
 #else
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
