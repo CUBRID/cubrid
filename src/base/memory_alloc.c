@@ -52,6 +52,10 @@ extern unsigned int db_on_server;
 HL_HEAPID private_heap_id = 0;
 #endif /* SERVER_MODE */
 
+#if defined (SERVER_MODE)
+static HL_HEAPID db_private_get_heapid_from_thread (THREAD_ENTRY * thread_p);
+#endif // SERVER_MODE
+
 /*
  * ansisql_strcmp - String comparison according to ANSI SQL
  *   return: an integer value which is less than zero
@@ -930,7 +934,7 @@ os_free_release (void *ptr, bool rc_track)
 *   return:
 *   thread_p(in):
 */
-HL_HEAPID
+static HL_HEAPID
 db_private_get_heapid_from_thread (THREAD_ENTRY * thread_p)
 {
   if (thread_p == NULL)
@@ -941,7 +945,6 @@ db_private_get_heapid_from_thread (THREAD_ENTRY * thread_p)
   assert (thread_p != NULL);
 
   return thread_p->private_heap_id;
-}
 }
 
 /*

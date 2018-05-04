@@ -5944,7 +5944,7 @@ xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lis
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  rid = thread_get_comm_request_id (thread_p);
+  rid = css_get_comm_request_id (thread_p);
   length = or_listid_length ((void *) list_id);
   length += or_method_sig_list_length ((void *) method_sig_list);
   ptr = or_pack_int (reply, (int) METHOD_CALL);
@@ -6006,7 +6006,7 @@ xs_receive_data_from_client_with_timeout (THREAD_ENTRY * thread_p, char **area, 
     {
       free_and_init (*area);
     }
-  rid = thread_get_comm_request_id (thread_p);
+  rid = css_get_comm_request_id (thread_p);
 
   rc = css_receive_data_from_client_with_timeout (thread_p->conn_entry, rid, area, (int *) datasize, timeout);
 
@@ -6053,7 +6053,7 @@ xs_send_action_to_client (THREAD_ENTRY * thread_p, VACOMM_BUFFER_CLIENT_ACTION a
       return ER_FAILED;
     }
 
-  rid = thread_get_comm_request_id (thread_p);
+  rid = css_get_comm_request_id (thread_p);
   (void) or_pack_int (reply, (int) action);
   if (css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_INT_SIZE))
     {
@@ -6704,7 +6704,7 @@ xcallback_console_print (THREAD_ENTRY * thread_p, char *print_str)
   char *ptr;
   char *databuf;
 
-  rid = thread_get_comm_request_id (thread_p);
+  rid = css_get_comm_request_id (thread_p);
   data_len = or_packed_string_length (print_str, &print_len);
 
   ptr = or_pack_int (reply, (int) CONSOLE_OUTPUT);
@@ -6761,7 +6761,7 @@ xio_send_user_prompt_to_client (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TY
   char *ptr;
   char *databuf;
 
-  rid = thread_get_comm_request_id (thread_p);
+  rid = css_get_comm_request_id (thread_p);
   /* need to know length of prompt string we are sending */
   prompt_length = (or_packed_string_length (prompt, &strlen1) + or_packed_string_length (failure_prompt, &strlen2)
 		   + OR_INT_SIZE * 2 + or_packed_string_length (secondary_prompt, &strlen3) + OR_INT_SIZE);
@@ -6815,7 +6815,7 @@ xlog_send_log_pages_to_client (THREAD_ENTRY * thread_p, char *logpg_area, int ar
   unsigned int rid, rc;
   char *ptr;
 
-  rid = thread_get_comm_request_id (thread_p);
+  rid = css_get_comm_request_id (thread_p);
 
   /* 
    * Client side caller must be expecting a reply/callback followed

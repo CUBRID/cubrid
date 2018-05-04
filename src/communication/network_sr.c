@@ -1110,7 +1110,7 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
   tran_index = conn_p->transaction_id;
   client_id = conn_p->client_id;
 
-  thread_set_info (thread_p, client_id, 0, tran_index, NET_SERVER_SHUTDOWN);
+  css_set_thread_info (thread_p, client_id, 0, tran_index, NET_SERVER_SHUTDOWN);
   pthread_mutex_unlock (&thread_p->tran_index_lock);
 
   css_end_server_request (conn_p);
@@ -1216,7 +1216,7 @@ loop:
     }
   css_free_conn (conn_p);
 
-  thread_set_info (thread_p, -1, 0, local_tran_index, -1);
+  css_set_thread_info (thread_p, -1, 0, local_tran_index, -1);
   thread_p->m_status = cubthread::entry::status::TS_RUN;
 
   return NO_ERROR;

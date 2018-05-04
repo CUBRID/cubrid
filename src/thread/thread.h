@@ -157,9 +157,6 @@ struct thread_resource_track
 #endif
 };
 
-extern int thread_get_client_id (THREAD_ENTRY * thread_p);
-extern unsigned int thread_get_comm_request_id (THREAD_ENTRY * thread_p);
-extern struct css_conn_entry *thread_get_current_conn_entry (void);
 extern int thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id);
 extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 
@@ -171,8 +168,6 @@ extern int thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** array);
 
 extern bool thread_get_check_interrupt (THREAD_ENTRY * thread_p);
 
-extern void thread_set_info (THREAD_ENTRY * thread_p, int client_id, int rid, int tran_index, int net_request_index);
-
 extern bool thread_rc_track_need_to_trace (THREAD_ENTRY * thread_p);
 extern int thread_rc_track_enter (THREAD_ENTRY * thread_p);
 extern int thread_rc_track_exit (THREAD_ENTRY * thread_p, int id);
@@ -183,18 +178,11 @@ extern void thread_rc_track_meter (THREAD_ENTRY * thread_p, const char *file_nam
 				   void *ptr, int rc_idx, int mgr_idx);
 extern void thread_rc_track_initialize (THREAD_ENTRY * thread_p);
 extern void thread_rc_track_finalize (THREAD_ENTRY * thread_p);
+extern void thread_rc_track_clear_all (THREAD_ENTRY * thread_p);
 
 extern const char *thread_type_to_string (int type);
 extern const char *thread_status_to_string (cubthread::entry::status status);
 extern const char *thread_resume_status_to_string (int resume_status);
-
-#if defined(WINDOWS)
-/* There is no static mutex initializer - PTHREAD_MUTEX_INITIALIZER - in win32
- * threads. So all mutexes are initialized at the first time it used. This
- * variable is used to synchronize mutex initialization.
- */
-extern pthread_mutex_t css_Internal_mutex_for_mutex_initialize;
-#endif /* !WINDOWS */
 
 extern THREAD_ENTRY *thread_iterate (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE */

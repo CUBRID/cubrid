@@ -99,6 +99,12 @@ extern size_t css_get_num_connection_workers (void);
 extern size_t css_get_num_total_workers (void);
 extern bool css_are_all_request_handlers_suspended (void);
 
+extern void css_set_thread_info (THREAD_ENTRY * thread_p, int client_id, int rid, int tran_index,
+				 int net_request_index);
+int css_get_client_id (THREAD_ENTRY * thread_p);
+extern unsigned int css_get_comm_request_id (THREAD_ENTRY * thread_p);
+extern struct css_conn_entry *css_get_current_conn_entry (void);
+
 #if defined (SERVER_MODE)
 extern int css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt,
 				      void **ptr);

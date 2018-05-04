@@ -112,7 +112,7 @@ static pthread_key_t thread_Thread_key;
 
 static int thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason, bool had_mutex);
 
-static void thread_rc_track_clear_all (THREAD_ENTRY * thread_p);
+
 static int thread_rc_track_meter_check (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, THREAD_RC_METER * prev_meter);
 static int thread_rc_track_check (THREAD_ENTRY * thread_p, int id);
 static THREAD_RC_TRACK *thread_rc_track_alloc (THREAD_ENTRY * thread_p);
@@ -151,69 +151,7 @@ static void thread_rc_track_meter_assert_csect_usage (THREAD_ENTRY * thread_p, T
  * Inter thread synchronization modules.
  */
 
-/*
- * thread_get_current_conn_entry() -
- *   return:
- */
-CSS_CONN_ENTRY *
-thread_get_current_conn_entry (void)
-{
-  THREAD_ENTRY *thread_p;
 
-  thread_p = thread_get_thread_entry_info ();
-  assert (thread_p != NULL);
-
-  return thread_p->conn_entry;
-}
-
-/*
- * thread_get_client_id() - returns the unique client identifier
- *   return: returns the unique client identifier, on error, returns -1
- *
- * Note: WARN: this function doesn't lock on thread_entry
- */
-int
-thread_get_client_id (THREAD_ENTRY * thread_p)
-{
-  CSS_CONN_ENTRY *conn_p;
-
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  assert (thread_p != NULL);
-
-  conn_p = thread_p->conn_entry;
-  if (conn_p != NULL)
-    {
-      return conn_p->client_id;
-    }
-  else
-    {
-      return -1;
-    }
-}
-
-/*
- * thread_get_comm_request_id() - returns the request id that started the current thread
- *   return: returns the comm system request id for the client request that
- *           started the thread. On error, returns -1
- *
- * Note: WARN: this function doesn't lock on thread_entry
- */
-unsigned int
-thread_get_comm_request_id (THREAD_ENTRY * thread_p)
-{
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  assert (thread_p != NULL);
-
-  return thread_p->rid;
-}
 
 bool
 thread_belongs_to (THREAD_ENTRY * thread_p, int tran_index, int client_id)
@@ -457,33 +395,6 @@ thread_get_lockwait_entry (int tran_index, THREAD_ENTRY ** thread_array_p)
 }
 
 /*
- * thread_set_info () -
- *   return:
- *   thread_p(out):
- *   client_id(in):
- *   rid(in):
- *   tran_index(in):
- */
-void
-thread_set_info (THREAD_ENTRY * thread_p, int client_id, int rid, int tran_index, int net_request_index)
-{
-  thread_p->client_id = client_id;
-  thread_p->rid = rid;
-  thread_p->tran_index = tran_index;
-  thread_p->net_request_index = net_request_index;
-  thread_p->victim_request_fail = false;
-  thread_p->next_wait_thrd = NULL;
-  thread_p->wait_for_latch_promote = false;
-  thread_p->lockwait = NULL;
-  thread_p->lockwait_state = -1;
-  thread_p->query_entry = NULL;
-  thread_p->tran_next_wait = NULL;
-
-  (void) thread_rc_track_clear_all (thread_p);
-  thread_clear_recursion_depth (thread_p);
-}
-
-/*
  * thread_rc_track_meter_check () -
  *   return:
  *   thread_p(in):
@@ -617,7 +528,7 @@ thread_rc_track_check (THREAD_ENTRY * thread_p, int id)
  *   return:
  *   thread_p(in):
  */
-static void
+void
 thread_rc_track_clear_all (THREAD_ENTRY * thread_p)
 {
   if (thread_p == NULL)

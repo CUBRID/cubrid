@@ -1254,13 +1254,13 @@ css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_r
 
       eid = css_return_eid_from_conn (&conn_ref, rid);
       /* 2. change thread's client, rid, tran_index for this request */
-      thread_set_info (&thread_ref, conn_ref.client_id, eid, conn_ref.transaction_id, request);
+      css_set_thread_info (&thread_ref, conn_ref.client_id, eid, conn_ref.transaction_id, request);
 
       /* 3. Call server_request() function */
       status = css_Server_request_handler (&thread_ref, eid, request, size, buffer);
 
       /* 4. reset thread transaction id(may be NULL_TRAN_INDEX) */
-      thread_set_info (&thread_ref, -1, 0, local_tran_index, -1);
+      css_set_thread_info (&thread_ref, -1, 0, local_tran_index, -1);
     }
   else
     {
@@ -1921,7 +1921,7 @@ css_get_client_version_string (void)
 {
   CSS_CONN_ENTRY *entry;
 
-  entry = thread_get_current_conn_entry ();
+  entry = css_get_current_conn_entry ();
   if (entry != NULL)
     {
       return entry->version_string;
@@ -2411,7 +2411,7 @@ css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE s
 
   csect_enter (thread_p, CSECT_HA_SERVER_STATE, INF_WAIT);
 
-  client_id = thread_get_client_id (thread_p);
+  client_id = css_get_client_id (thread_p);
   er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: client %d state %s\n", client_id,
 		css_ha_applier_state_string (state));
   for (i = 0, table = ha_Log_applier_state; i < ha_Log_applier_state_num; i++, table++)
@@ -2629,6 +2629,97 @@ xacl_reload (THREAD_ENTRY * thread_p)
   return css_set_accessible_ip_info ();
 }
 #endif
+
+/*
+ * css_get_client_id() - returns the unique client identifier
+ *   return: returns the unique client identifier, on error, returns -1
+ *
+ * Note: WARN: this function doesn't lock on thread_entry
+ */
+int
+css_get_client_id (THREAD_ENTRY * thread_p)
+{
+  CSS_CONN_ENTRY *conn_p;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert (thread_p != NULL);
+
+  conn_p = thread_p->conn_entry;
+  if (conn_p != NULL)
+    {
+      return conn_p->client_id;
+    }
+  else
+    {
+      return -1;
+    }
+}
+
+/*
+ * css_set_thread_info () -
+ *   return:
+ *   thread_p(out):
+ *   client_id(in):
+ *   rid(in):
+ *   tran_index(in):
+ */
+void
+css_set_thread_info (THREAD_ENTRY * thread_p, int client_id, int rid, int tran_index, int net_request_index)
+{
+  thread_p->client_id = client_id;
+  thread_p->rid = rid;
+  thread_p->tran_index = tran_index;
+  thread_p->net_request_index = net_request_index;
+  thread_p->victim_request_fail = false;
+  thread_p->next_wait_thrd = NULL;
+  thread_p->wait_for_latch_promote = false;
+  thread_p->lockwait = NULL;
+  thread_p->lockwait_state = -1;
+  thread_p->query_entry = NULL;
+  thread_p->tran_next_wait = NULL;
+
+  (void) thread_rc_track_clear_all (thread_p);
+  thread_clear_recursion_depth (thread_p);
+}
+
+/*
+ * css_get_comm_request_id() - returns the request id that started the current thread
+ *   return: returns the comm system request id for the client request that
+ *           started the thread. On error, returns -1
+ *
+ * Note: WARN: this function doesn't lock on thread_entry
+ */
+unsigned int
+css_get_comm_request_id (THREAD_ENTRY * thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert (thread_p != NULL);
+
+  return thread_p->rid;
+}
+
+/*
+ * css_get_current_conn_entry() -
+ *   return:
+ */
+CSS_CONN_ENTRY *
+css_get_current_conn_entry (void)
+{
+  THREAD_ENTRY *thread_p;
+
+  thread_p = thread_get_thread_entry_info ();
+  assert (thread_p != NULL);
+
+  return thread_p->conn_entry;
+}
 
 // *INDENT-OFF*
 /*

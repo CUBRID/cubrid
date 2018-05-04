@@ -1727,7 +1727,7 @@ px_sort_communicate (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
   assert_release (px_node->px_id < sort_param->px_array_size);
   assert_release (px_node->px_vector_size > 1);
 
-  css_push_external_task (*thread_p, thread_get_current_conn_entry (), new px_sort_myself_task (px_node));
+  css_push_external_task (*thread_p, css_get_current_conn_entry (), new px_sort_myself_task (px_node));
 
   return NO_ERROR;
 }
