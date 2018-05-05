@@ -42,21 +42,29 @@ namespace mem
   class bip_buffer
   {
     public:
-      bip_buffer () {};
+      bip_buffer ()
+        {
+          m_buffer = NULL;
+        };
+
+      ~bip_buffer ()
+        {
+          delete [] m_buffer;
+        };
 
       void init (const size_t capacity)
         {
           m_capacity = DB_ALIGN (capacity, 4 * 1024);
-          m_capacity = MIN (m_capacity, 100 * 1024);
+          m_capacity = MIN (m_capacity, 100 * 1024 * 1024);
           m_read_page_size = m_capacity / P;
           m_capacity = DB_ALIGN (m_capacity, m_read_page_size);
 
           m_read_page_size = m_capacity / P;
 
-          m_reserve_margin = m_capacity / 100;
+          m_reserve_margin = m_capacity / 10;
           m_reserve_margin = DB_ALIGN (m_reserve_margin, MAX_ALIGNMENT);
-          m_reserve_margin = MIN (m_reserve_margin, 100 * 1024);
-          m_reserve_margin = MAX (m_reserve_margin, 10 * 1024 * 1024);
+          m_reserve_margin = MAX (m_reserve_margin, 10 * 1024);
+          m_reserve_margin = MIN (m_reserve_margin, 10 * 1024 * 1024);
 
           assert (m_reserve_margin < m_capacity);
 
@@ -147,7 +155,8 @@ namespace mem
 
       int commit (const char *ptr)
         {
-          assert (ptr < m_ptr_append);
+          assert (ptr <= m_ptr_append);
+          assert (ptr > m_buffer);
 
           m_ptr_start_a = ptr;
 
@@ -213,7 +222,8 @@ namespace mem
             }
           else
             {
-              amount_trail_b = 0;
+              amount_trail_b = m_ptr_start_a - m_buffer;
+              trail_b = m_buffer;
             }
 
           if (m_ptr_prev_gen_committed != NULL)
@@ -227,52 +237,7 @@ namespace mem
             }
         }
         
-    private:
-      size_t m_capacity;
-
-      const char *m_buffer;
-
-      /* limits of region A : end_a points to first byte after the last one of region */
-      const char *m_ptr_start_a;
-      const char *m_ptr_end_a;
-      const char *m_ptr_append;
-
-      /* pointer to last committed data in previous generation of Region A 
-       * should be updated only by external user
-       * should finally catchup with m_ptr_prev_gen_last_reserved
-       * it is used by readers to check the upper bound of available data
-       */
-      const char *m_ptr_prev_gen_committed;
-      /* pointer to last reserved position in previous generation of Region A
-       * is updated when current region A switches to backup region B
-       */
-      const char *m_ptr_prev_gen_last_reserved;
-
-      /* region B is activated as stand-by when end of region A is close to end of buffer
-       * region B always starts from offset zero of buffer
-       */
-      const char *m_ptr_end_b;
-
-
-      /* for reading, we split the entire buffer in equal fixed sized pages:
-       * - each page has read fix count (the counter is incremented each time a read starts,
-       *   is decremented when a read ends)
-       * - a page read cannot be validated if at has at least one part of the page covered by any of 
-       *   the "write" regions (A or B)
-       * - the append pointer of A region cannot advance into a page having non-zero fix count (write is blocked)
-       * - the "spare" interval (an amount of space after the current append pointer) can be advanced 
-       *   into a "read" page
-       */
-      /* read fix count for each page */
-      int m_read_fcnt[P];
-      std::bitset<P> m_read_flags;
-
-      size_t m_read_page_size;
-
-      size_t m_reserve_margin;
-
-      int m_read_pages;
-
+     protected:
       int get_page_from_ptr (const char *ptr)
         {
           if (ptr - m_buffer > m_capacity)
@@ -357,6 +322,51 @@ namespace mem
               activate_region_b ();
             }
         };
+    private:
+      size_t m_capacity;
+
+      const char *m_buffer;
+
+      /* limits of region A : end_a points to first byte after the last one of region */
+      const char *m_ptr_start_a;
+      const char *m_ptr_end_a;
+      const char *m_ptr_append;
+
+      /* pointer to last committed data in previous generation of Region A 
+       * should be updated only by external user
+       * should finally catchup with m_ptr_prev_gen_last_reserved
+       * it is used by readers to check the upper bound of available data
+       */
+      const char *m_ptr_prev_gen_committed;
+      /* pointer to last reserved position in previous generation of Region A
+       * is updated when current region A switches to backup region B
+       */
+      const char *m_ptr_prev_gen_last_reserved;
+
+      /* region B is activated as stand-by when end of region A is close to end of buffer
+       * region B always starts from offset zero of buffer
+       */
+      const char *m_ptr_end_b;
+
+
+      /* for reading, we split the entire buffer in equal fixed sized pages:
+       * - each page has read fix count (the counter is incremented each time a read starts,
+       *   is decremented when a read ends)
+       * - a page read cannot be validated if at has at least one part of the page covered by any of 
+       *   the "write" regions (A or B)
+       * - the append pointer of A region cannot advance into a page having non-zero fix count (write is blocked)
+       * - the "spare" interval (an amount of space after the current append pointer) can be advanced 
+       *   into a "read" page
+       */
+      /* read fix count for each page */
+      int m_read_fcnt[P];
+      std::bitset<P> m_read_flags;
+
+      size_t m_read_page_size;
+
+      size_t m_reserve_margin;
+
+      int m_read_pages;
   };
 
 } /* namespace mem */
