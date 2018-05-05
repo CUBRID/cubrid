@@ -31,6 +31,7 @@ namespace test_stream
   int stream_handler_write::write_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count)
   {
     int i;
+    char *start_ptr = ptr;
 
     assert (byte_count > OR_INT_SIZE);
 
@@ -43,7 +44,7 @@ namespace test_stream
 	ptr++;
       }
 
-    return 0;
+    return ptr - start_ptr;
   }
 
   int stream_handler_read::read_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count,
@@ -381,7 +382,7 @@ namespace test_stream
     long long rem_amount;
     int max_data_size = 500;
 
-    cubstream::packing_stream *my_stream = new cubstream::packing_stream ();
+    cubstream::packing_stream *my_stream = new cubstream::packing_stream (10 * 1024 * 1024, 100);
 
     stream_handler_write writer;
     stream_handler_read reader;
@@ -395,7 +396,7 @@ namespace test_stream
 	rem_amount -= amount;
 
 	res = my_stream->write (amount, &writer);
-	if (res != 0)
+	if (res <= 0)
 	  {
 	    assert (false);
 	    return res;
@@ -514,9 +515,8 @@ namespace test_stream
 	  }
       }
 
-
     /* create a stream for packing and add pack objects to stream */
-    cubstream::packing_stream test_stream_for_pack;
+    cubstream::packing_stream test_stream_for_pack (10 * 1024 * 1024, 10);
 
     test_stream_entry se (&test_stream_for_pack);
 
@@ -555,7 +555,7 @@ namespace test_stream
 
     /* create a new stream and copy buffers */
     std::cout << "  Testing packing/unpacking of objects using different streams. Copying stream contents." << std::endl;
-    cubstream::packing_stream test_stream_for_unpack;
+    cubstream::packing_stream test_stream_for_unpack (10 * 1024 * 1024, 10);
 
     cubstream::stream_position last_pos = test_stream_for_pack.get_last_committed_pos ();
     cubstream::stream_position curr_pos;
