@@ -922,9 +922,6 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 #if !defined(NDEBUG)
   int track_id;
 #endif
-#if defined (DIAG_DEVEL)
-  struct timeval diag_start_time, diag_end_time, diag_elapsed_time;
-#endif /* DIAG_DEVEL */
 
   if (buffer == NULL && size > 0)
     {
@@ -1006,13 +1003,6 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 	  goto end;
 	}
     }
-#if defined (DIAG_DEVEL)
-  if (net_Requests[request].action_attribute & SET_DIAGNOSTICS_INFO)
-    {
-      perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_CONN_CLI_REQUEST, 1, DIAG_VAL_SETTYPE_INC, NULL);
-      gettimeofday (&diag_start_time, NULL);
-    }
-#endif /* DIAG_DEVEL */
   if (net_Requests[request].action_attribute & IN_TRANSACTION)
     {
       conn->in_transaction = true;
@@ -1050,17 +1040,6 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
     }
 
   /* check the defined action attribute */
-#if defined (DIAG_DEVEL)
-  if (net_Requests[request].action_attribute & SET_DIAGNOSTICS_INFO)
-    {
-      gettimeofday (&diag_end_time, NULL);
-      perfmon_diff_timeval (&diag_elapsed_time, &diag_start_time, &diag_end_time);
-      if (request == NET_SERVER_QM_QUERY_EXECUTE || request == NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE)
-	{
-	  perfmon_diag_set_slow_query (diag_executediag, &diag_start_time, &diag_end_time, NULL);
-	}
-    }
-#endif /* DIAG_DEVEL */
   if (net_Requests[request].action_attribute & OUT_TRANSACTION)
     {
       conn->in_transaction = false;
