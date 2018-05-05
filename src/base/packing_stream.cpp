@@ -106,6 +106,7 @@ namespace cubstream
       {
 	return error_code;
       }
+    serializator->unpacking_completed ();
 
     m_data_start_position = serializator->get_stream_read_position ();
     /* force read (fetch data from stream source) */
@@ -191,12 +192,18 @@ namespace cubstream
 
 ////////////////////////////////////////
 
-  packing_stream::packing_stream ()
+  packing_stream::packing_stream (const size_t buffer_capacity, const int max_appenders)
   {
     m_total_buffered_size = 0;
+    m_oldest_readable_position = 0;
 
     /* TODO[arnia] : system parameter */
-    trigger_flush_to_disk_size = 1024 * 1024;
+    trigger_flush_to_disk_size = buffer_capacity / 2;
+
+    /* TODO[arnia] : not initialized in base constructor */
+    m_read_position = 0;
+
+    init_storage (buffer_capacity, max_appenders);
   }
 
   packing_stream::~packing_stream ()
@@ -209,7 +216,6 @@ namespace cubstream
       m_bip_buffer.init (buffer_capacity);
 
       m_reserved_positions.init (max_appenders);
-
     }
 
   int packing_stream::write (const size_t byte_count, write_handler *handler)
@@ -225,26 +231,16 @@ namespace cubstream
 	err = ER_FAILED;
 	return err;
       }
+    reserved_pos = reserve_context->start_pos;
 
     err = handler->write_action (reserved_pos, ptr, byte_count);
+    if (err < 0)
+      {
+        return ER_FAILED;
+      }
+    reserve_context->written_bytes = err;
 
     commit_append (reserve_context);
-
-    new_completed_position = reserved_pos + byte_count;
-
-    if (new_completed_position > m_last_committed_pos)
-      {
-	if (m_ready_pos_handler != NULL)
-	  {
-	    err = m_ready_pos_handler->notify (m_last_committed_pos,
-					       new_completed_position - m_last_committed_pos);
-	    if (err != NO_ERROR)
-	      {
-		return err;
-	      }
-	  }
-	m_last_committed_pos = new_completed_position;
-      }
 
     return err;
   }
@@ -332,12 +328,34 @@ namespace cubstream
   {
     stream_reserve_context *new_reserved_head = NULL;
     int collapsed_count;
+    char *ptr_commit = reserve_context->ptr + reserve_context->reserved_amount;
+    stream_position new_completed_position = reserve_context->start_pos + reserve_context->reserved_amount;
 
     std::unique_lock<std::mutex> ulock (m_buffer_mutex);
     collapsed_count = m_reserved_positions.consume (reserve_context, new_reserved_head);
-    if (collapsed_count > 0 && new_reserved_head != NULL)
+    if (collapsed_count > 0)
       {
-        m_bip_buffer.commit (new_reserved_head->ptr);
+        if (new_reserved_head != NULL)
+          {
+            ptr_commit = new_reserved_head->ptr;
+            new_completed_position = new_reserved_head->start_pos;
+          }
+         m_bip_buffer.commit (ptr_commit);
+      }
+
+    if (new_completed_position > m_last_committed_pos)
+      {
+	if (m_ready_pos_handler != NULL)
+	  { 
+            int err;
+	    err = m_ready_pos_handler->notify (m_last_committed_pos,
+					       new_completed_position - m_last_committed_pos);
+	    if (err != NO_ERROR)
+	      {
+		return err;
+	      }
+	  }
+	m_last_committed_pos = new_completed_position;
       }
 
     return NO_ERROR;
@@ -435,7 +453,8 @@ namespace cubstream
     buffer_provider *curr_buffer_provider;
     char *ptr = NULL;
 
-    if (req_start_pos + amount > m_last_committed_pos)
+    if (req_start_pos + amount > m_last_committed_pos
+        && m_fetch_data_handler != NULL)
       {
 	/* not yet produced */
         /* try asking for more data : */
@@ -479,18 +498,20 @@ namespace cubstream
       }
 
     oldest_reserved_context = m_reserved_positions.peek_head ();
-    if (oldest_reserved_context == NULL)
+    if (oldest_reserved_context != NULL)
       {
-        m_oldest_readable_position = oldest_reserved_context->start_pos;
+        start_active_region = oldest_reserved_context->start_pos;
       }
     else
       {
-        m_oldest_readable_position = m_append_position;
+        start_active_region = m_append_position;
       }
 
-    assert (m_oldest_readable_position > req_start_pos);
-
     total_in_buffer = amount_trail_b + amount_trail_a;
+
+    m_oldest_readable_position = start_active_region - total_in_buffer;
+
+    assert (req_start_pos >= m_oldest_readable_position);
 
     if (req_start_pos + total_in_buffer < m_oldest_readable_position)
       {
@@ -500,15 +521,15 @@ namespace cubstream
         return NULL;
       }
 
-    if (m_oldest_readable_position - req_start_pos < amount_trail_b)
+    if (req_start_pos - m_oldest_readable_position <= amount_trail_b)
       {
         /* the area may be found in trail of region B */
-        ptr = (char *) ptr_trail_b + amount_trail_b - (m_oldest_readable_position - req_start_pos);
+        ptr = (char *) ptr_trail_b - (m_oldest_readable_position - req_start_pos);
         actual_read_bytes = MIN (amount, amount_trail_b);
       }
     else
       {
-        ptr = (char *) ptr_trail_a + amount_trail_a - (m_oldest_readable_position - req_start_pos - amount_trail_b);
+        ptr = (char *) ptr_trail_a - (m_oldest_readable_position - req_start_pos - amount_trail_b);
         actual_read_bytes = MIN (amount, amount_trail_a);
       }
     err = m_bip_buffer.start_read (ptr, actual_read_bytes);

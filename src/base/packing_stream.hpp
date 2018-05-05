@@ -140,8 +140,10 @@ namespace cubstream
       /* a BIP-Buffer with 64 pages */
       mem::bip_buffer<64> m_bip_buffer;
 
-      /* oldest readable position : uptated according to buffer availability:
-       * after reserve, this value is expected to increase */
+      /* oldest readable position : updated according to buffer availability:
+       * oldest stream position available from bip_buffer
+       * after reserve, this value is expected to increase, so if any reader needs to get a position
+       * older than this, there is no need to check the buffer or reserved queue */
       stream_position m_oldest_readable_position;
 
       mem::collapsable_circular_queue<stream_reserve_context> m_reserved_positions;
@@ -173,7 +175,7 @@ namespace cubstream
                                size_t &actual_read_bytes);
       int unlatch_read_data (const char *ptr, const size_t amount);
     public:
-      packing_stream ();
+      packing_stream (const size_t buffer_capacity, const int max_appenders);
       ~packing_stream ();
 
       void init_storage (const size_t buffer_capacity, const int max_appenders);
