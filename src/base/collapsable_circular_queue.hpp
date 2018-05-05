@@ -91,7 +91,7 @@ namespace mem
         {
           int pos;
 
-          if (size () >= m_capacity -1)
+          if (size () >= m_capacity - 1)
             {
               /* is full */
               return NULL;
@@ -120,7 +120,7 @@ namespace mem
       int consume (T *elem, T* &new_head)
         {
           CCQ_SLOT *slot = reinterpret_cast <CCQ_SLOT *> (elem);
-          int pos = (slot - m_buffer) / sizeof (CCQ_SLOT);
+          int pos = slot - m_buffer;
 
           return consume (pos, new_head);
         };
@@ -149,7 +149,10 @@ namespace mem
                     break;
                   }
               }
-            new_head = &(m_buffer[m_head].value);
+            if (m_head != m_tail)
+              {
+                new_head = &(m_buffer[m_head].value);
+              }
             return (m_head - pos) % m_capacity;
           }
 
