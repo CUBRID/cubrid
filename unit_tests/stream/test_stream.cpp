@@ -424,13 +424,7 @@ namespace test_stream
 	rem_amount -= processed_amount;
       }
 
-    std::vector <cubstream::buffer_context> my_buffered_ranges;
-
-    my_stream->collect_buffers (my_buffered_ranges, cubstream::COLLECT_ALL_BUFFERS, cubstream::COLLECT_AND_DETACH);
-
-    cubstream::buffer_provider::get_default_instance ()->unpin_all ();
-    cubstream::buffer_provider::get_default_instance ()->free_all_buffers ();
-
+  
     return res;
   }
 
@@ -563,7 +557,7 @@ namespace test_stream
     std::cout << "  Testing packing/unpacking of objects using different streams. Copying stream contents." << std::endl;
     cubstream::packing_stream test_stream_for_unpack;
 
-    cubstream::stream_position last_pos = test_stream_for_pack.get_last_reported_ready_pos ();
+    cubstream::stream_position last_pos = test_stream_for_pack.get_last_committed_pos ();
     cubstream::stream_position curr_pos;
 
     stream_mover test_stream_mover;
@@ -613,13 +607,6 @@ namespace test_stream
         {
           res = -1;
         }
-
-
-    test_stream_for_pack.detach_all_buffers ();
-
-    test_stream_for_unpack.detach_all_buffers ();
-
-    cubstream::buffer_provider::get_default_instance ()->free_all_buffers ();
 
     return res;
   }

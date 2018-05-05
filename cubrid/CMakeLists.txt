@@ -131,7 +131,9 @@ set (BASE_HEADERS
   )
 
 set (STREAM_HEADERS
+  ${BASE_DIR}/bip_buffer.hpp
   ${BASE_DIR}/buffer_provider.hpp
+  ${BASE_DIR}/collapsable_circular_queue.hpp
   ${BASE_DIR}/cubstream.hpp
   ${BASE_DIR}/packing_stream.hpp
   ${BASE_DIR}/stream_buffer.hpp

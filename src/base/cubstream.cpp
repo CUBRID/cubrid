@@ -33,7 +33,7 @@ namespace cubstream
 
   stream::stream ()
   {
-    m_last_reported_ready_pos = 0;
+    m_last_committed_pos = 0;
     m_read_position = 0;
 
 

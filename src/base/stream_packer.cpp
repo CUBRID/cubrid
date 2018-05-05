@@ -34,8 +34,9 @@ namespace cubstream
   stream_packer::stream_packer (packing_stream *stream_arg)
   {
     set_stream (stream_arg);
-    m_packer_start_ptr = NULL;
-    m_buffer_provider = NULL;
+    m_local_buffer = NULL;
+    m_current_local_buffer_size = 0;
+    m_use_unpack_stream_buffer = false;
     init (NULL, 0);
   }
 
@@ -44,19 +45,19 @@ namespace cubstream
     m_stream = stream_arg;
   }
 
-  char *stream_packer::start_packing_range (const size_t amount, buffer_context **granted_range)
+  char *stream_packer::start_packing_range (const size_t amount)
   {
     char *ptr;
     size_t aligned_amount;
 
+    assert (m_stream_reserve_context == NULL);
+
     aligned_amount = DB_ALIGN (amount, MAX_ALIGNMENT);
 
-    ptr = m_stream->reserve_with_buffer (aligned_amount, m_buffer_provider, NULL, granted_range);
+    ptr = m_stream->reserve_with_buffer (aligned_amount, m_stream_reserve_context);
     if (ptr != NULL)
       {
 	init (ptr, aligned_amount);
-	m_packer_start_ptr = ptr;
-	m_mapped_range = *granted_range;
 	return ptr;
       }
 
@@ -65,75 +66,148 @@ namespace cubstream
 
   int stream_packer::packing_completed (void)
   {
-    m_mapped_range->written_bytes += get_curr_ptr() - m_packer_start_ptr;
+    assert (m_stream_reserve_context != NULL);
 
-    if (m_mapped_range->written_bytes >= m_mapped_range->last_pos - m_mapped_range->first_pos)
-      {
-	m_mapped_range->is_filled = true;
-      }
+    m_stream_reserve_context->written_bytes += get_curr_ptr () - get_packer_buffer ();
 
-    m_stream->update_contiguous_filled_pos (m_mapped_range->last_pos);
+    assert (m_stream_reserve_context->written_bytes <= m_stream_reserve_context->reserved_amount);
+
+    m_stream->commit_append (m_stream_reserve_context);
+    
+    m_stream_reserve_context = NULL;
 
     return NO_ERROR;
   }
 
+  int stream_packer::unpacking_completed (void)
+    {
+      if (m_use_unpack_stream_buffer)
+        {
+          m_stream->unlatch_read_data (get_packer_buffer (), get_packer_end () - get_packer_buffer ());
+          m_use_unpack_stream_buffer = false;
+        }
 
-  char *stream_packer::start_unpacking_range (const size_t amount, buffer_context **granted_range)
+      init (NULL, 0);
+
+      return NO_ERROR;
+    }
+
+  char *stream_packer::start_unpacking_range (const size_t amount)
   {
     /* TODO[arnia] */
     char *ptr;
     size_t aligned_amount;
+    size_t actual_read_btyes;
+
+    if (m_use_unpack_stream_buffer)
+      {
+        assert (false);
+        unpacking_completed ();
+      }
 
     aligned_amount = DB_ALIGN (amount, MAX_ALIGNMENT);
 
-    ptr = m_stream->get_more_data_with_buffer (aligned_amount, m_buffer_provider, granted_range);
+    ptr = m_stream->get_more_data_with_buffer (aligned_amount, actual_read_btyes);
     if (ptr != NULL)
       {
+        if (actual_read_btyes < aligned_amount)
+          {
+            size_t next_actual_read_btyes;
+
+            alloc_local_buffer (aligned_amount);
+            memcpy (m_local_buffer, ptr, actual_read_btyes);
+            m_stream->unlatch_read_data (ptr, actual_read_btyes);
+
+            ptr = m_stream->get_more_data_with_buffer (aligned_amount - actual_read_btyes, next_actual_read_btyes);
+            if (ptr == NULL || next_actual_read_btyes != aligned_amount - actual_read_btyes)
+              {
+                return NULL;
+              }
+            memcpy (m_local_buffer + actual_read_btyes, ptr, next_actual_read_btyes);
+            m_stream->unlatch_read_data (ptr, next_actual_read_btyes);
+
+            ptr = m_local_buffer;
+            m_use_unpack_stream_buffer = false;
+          }
+        else
+          {
+            m_use_unpack_stream_buffer = true;
+          }
 	/* set unpacking context to memory pointer */
 	init (ptr, aligned_amount);
-	m_packer_start_ptr = ptr;
-	m_mapped_range = *granted_range;
 	return ptr;
       }
 
     return NULL;
   }
 
-  char *stream_packer::start_unpacking_range_from_pos (const stream_position &start_pos, const size_t amount,
-      buffer_context **granted_range)
+  char *stream_packer::start_unpacking_range_from_pos (const stream_position &start_pos, const size_t amount)
   {
     /* TODO[arnia] */
     char *ptr;
     size_t aligned_amount;
+    size_t actual_read_btyes;
+
+    if (m_use_unpack_stream_buffer)
+      {
+        assert (false);
+        unpacking_completed ();
+      }
 
     aligned_amount = DB_ALIGN (amount, MAX_ALIGNMENT);
 
-    ptr = m_stream->get_data_from_pos (start_pos, aligned_amount, m_buffer_provider, granted_range);
+    ptr = m_stream->get_data_from_pos (start_pos, aligned_amount, actual_read_btyes);
     if (ptr != NULL)
       {
+        if (actual_read_btyes < aligned_amount)
+          {
+            size_t next_actual_read_btyes;
+            stream_position next_pos;
+
+            alloc_local_buffer (aligned_amount);
+            memcpy (m_local_buffer, ptr, actual_read_btyes);
+            m_stream->unlatch_read_data (ptr, actual_read_btyes);
+
+            next_pos = start_pos + actual_read_btyes;
+            ptr = m_stream->get_data_from_pos (next_pos, aligned_amount - actual_read_btyes, next_actual_read_btyes);
+            if (ptr == NULL || next_actual_read_btyes != aligned_amount - actual_read_btyes)
+              {
+                return NULL;
+              }
+            memcpy (m_local_buffer + actual_read_btyes, ptr, next_actual_read_btyes);
+            m_stream->unlatch_read_data (ptr, next_actual_read_btyes);
+
+            ptr = m_local_buffer;
+            m_use_unpack_stream_buffer = false;
+          }
+        else
+          {
+            m_use_unpack_stream_buffer = true;
+          }
 	/* set unpacking context to memory pointer */
 	init (ptr, aligned_amount);
-	m_packer_start_ptr = ptr;
-	m_mapped_range = *granted_range;
 	return ptr;
       }
 
     return NULL;
-  }
-
-  char *stream_packer::extend_unpacking_range (const size_t amount, buffer_context **granted_range)
-  {
-    /* TODO[arnia] : try to extend withing the current buffer;
-     * if required amount is not available, allocate a new buffer which fits both existing range and the extended range */
-    return start_unpacking_range (amount, granted_range);
   }
 
   char *stream_packer::extend_unpacking_range_from_pos (const stream_position &start_pos,
-      const size_t amount, buffer_context **granted_range)
+      const size_t amount)
   {
     /* TODO[arnia] : try to extend withing the current buffer;
      * if required amount is not available, allocate a new buffer which fits both existing range and the extended range */
-    return start_unpacking_range_from_pos (start_pos, amount, granted_range);
+    return start_unpacking_range_from_pos (start_pos, amount);
   }
+
+  char *stream_packer::alloc_local_buffer (const size_t amount)
+    {
+      if (amount > m_current_local_buffer_size)
+        {
+          m_local_buffer = (char *) realloc (m_local_buffer, amount);
+          m_current_local_buffer_size = amount;
+        }
+      return m_local_buffer;
+    }
 
 } /* namespace cubstream */

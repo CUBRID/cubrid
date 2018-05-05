@@ -253,7 +253,7 @@ static int run ()
 
   do
     {
-      stream->get_last_reported_ready_pos() += MTU;
+      stream->get_last_committed_pos() += MTU;
       std::this_thread::sleep_for (std::chrono::milliseconds (100));
       cycles++;
     }

@@ -83,8 +83,8 @@ namespace cubstream
       /* current stream position not allocated yet */
       stream_position m_append_position;
 
-      /* last position reported to be ready (filled) by appenders; can be read by readers */
-      stream_position m_last_reported_ready_pos;
+      /* last position reported committed (filled) by appenders; can be read by readers */
+      stream_position m_last_committed_pos;
 
       /* last stream position read
        * in most scenarios, each reader provides its own read position,
@@ -105,9 +105,9 @@ namespace cubstream
       {
 	return m_read_position;
       };
-      stream_position &get_last_reported_ready_pos (void)
+      stream_position &get_last_committed_pos (void)
       {
-	return m_last_reported_ready_pos;
+	return m_last_committed_pos;
       };
 
       void set_filled_stream_handler (notify_handler *handler)

@@ -26,11 +26,14 @@
 #ifndef _PACKING_STREAM_HPP_
 #define _PACKING_STREAM_HPP_
 
+#include "bip_buffer.hpp"
+#include "collapsable_circular_queue.hpp"
 #include "cubstream.hpp"
 #include "object_factory.hpp"
 #include "packable_object.hpp"
 #include "pinning.hpp"
-#include "stream_common.hpp"
+//#include "stream_common.hpp"
+#include "stream_io.hpp"
 #include "storage_common.h"
 #include <vector>
 #include <functional>
@@ -58,9 +61,6 @@ namespace cubstream
   {
     private:
       int stream_entry_id;
-
-      /* TODO : should move this to stream_packer ? */
-      buffer_context *m_buffered_range;
 
       bool m_is_packable;
 
@@ -124,29 +124,27 @@ namespace cubstream
    * for writing/reading packable_objects into/from (packing_)stream, the friend class stream_packer is used as
    * both a packer and a context over a range in stream
    */
+  struct stream_reserve_context
+    {
+      stream_position start_pos;
+      char *ptr;
+      size_t reserved_amount;
+      size_t written_bytes;
+    };
+
   class packing_stream : public stream
   {
       friend class stream_packer;
 
     private:
-      buffer_provider *m_buffer_provider;
+      /* a BIP-Buffer with 64 pages */
+      mem::bip_buffer<64> m_bip_buffer;
 
-      /*
-       * a buffered range is a chunk of stream mapped onto a buffer (memory)
-       * a buffer can have multiple mappings (but contiguous) from the a stream (but only the same stream)
-       * when we flush (disk or network) a chunk of stream, we just sort the buffered_range object by position
-       * and send/flush individually each buffer; pre-processing may used to concatenate adiacent ranges mapped
-       * onto the same buffer;
-       * different ranges can be filled at different speeds, concatenation of ranges should be done only on filled buffers
-       */
+      /* oldest readable position : uptated according to buffer availability:
+       * after reserve, this value is expected to increase */
+      stream_position m_oldest_readable_position;
 
-      /* TODO : maybe these should be moved as sub-object for each stream_buffer mapped onto the stream */
-      std::vector<buffer_context> m_buffered_ranges;
-
-      /* first and last positions of all currently mapped buffers; the range may have holes
-       * in it and also some ranges may be mapped by more than one buffer */
-      stream_position m_first_buffered_position;
-      stream_position m_last_buffered_position;
+      mem::collapsable_circular_queue<stream_reserve_context> m_reserved_positions;
 
       /* size of all active buffers attached to this stream */
       size_t m_total_buffered_size;
@@ -156,58 +154,34 @@ namespace cubstream
        * normal mode should not need this : all buffers are send to MRC_Manager to be send to slave */
       size_t trigger_flush_to_disk_size;
 
+      std::mutex m_buffer_mutex;
+
+      stream_io *m_io;
+
     protected:
-      int create_buffer_context (stream_buffer *new_buffer, const STREAM_MODE stream_mode,
-				 const stream_position &first_pos, const stream_position &last_pos,
-				 const size_t &buffer_start_offset, buffer_context **granted_range);
-
-      int add_buffer_context (buffer_context *src_context, const STREAM_MODE stream_mode,
-			      buffer_context **granted_range);
-
-      int add_buffer_context (stream_buffer *new_buffer, const STREAM_MODE stream_mode,
-			      const stream_position &first_pos, const stream_position &last_pos,
-			      const size_t &buffer_start_offset, buffer_context **granted_range);
-
-      char *create_buffer_from_existing (buffer_provider *req_buffer_provider,
-					 const stream_position &start_pos,
-					 const size_t &amount, buffer_context **granted_range);
-
-      int remove_buffer_mapping (const STREAM_MODE stream_mode, buffer_context &mapped_range);
-
-      char *fetch_data_from_provider (buffer_provider *context_provider, const stream_position &pos,
-				      char *ptr, const size_t amount);
+      int fetch_data_from_provider (const stream_position &pos, const size_t amount);
 
       stream_position reserve_no_buffer (const size_t amount);
 
       /* should be called when serialization of a stream entry ends */
-      int update_contiguous_filled_pos (const stream_position &filled_pos);
+      int commit_append (stream_reserve_context *reserve_context);
 
-      char *reserve_with_buffer (const size_t amount, const buffer_provider *context_provider,
-				 stream_position *reserved_pos, buffer_context **granted_range);
+      char *reserve_with_buffer (const size_t amount, stream_reserve_context* &reserved_context);
 
-      char *get_more_data_with_buffer (const size_t amount, const buffer_provider *context_provider,
-				       buffer_context **granted_range);
-      char *get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
-			       const buffer_provider *context_provider, buffer_context **granted_range);
-
+      char *get_more_data_with_buffer (const size_t amount, size_t &actual_read_bytes);
+      char *get_data_from_pos (const stream_position &req_start_pos, const size_t amount, 
+                               size_t &actual_read_bytes);
+      int unlatch_read_data (const char *ptr, const size_t amount);
     public:
-      packing_stream (const buffer_provider *my_provider = NULL);
+      packing_stream ();
       ~packing_stream ();
+
+      void init_storage (const size_t buffer_capacity, const int max_appenders);
 
       int write (const size_t byte_count, write_handler *handler);
       int read_partial (const stream_position first_pos, const size_t byte_count, size_t *actual_read_bytes,
 			partial_read_handler *handler);
       int read (const stream_position first_pos, const size_t byte_count, read_handler *handler);
-
-      char *acquire_new_write_buffer (buffer_provider *req_buffer_provider, const stream_position &start_pos,
-				      const size_t &amount, buffer_context **granted_range);
-
-      int collect_buffers (std::vector <buffer_context> &buffered_ranges, COLLECT_FILTER collect_filter,
-			   COLLECT_ACTION collect_action);
-      int attach_buffers (std::vector <buffer_context> &buffered_ranges);
-
-      /* TODO[arnia] : temporary for unit test */
-      void detach_all_buffers (void);
 
   };
 

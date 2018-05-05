@@ -53,43 +53,45 @@ namespace cubstream
   {
     public:
       stream_packer (packing_stream *stream_arg);
+      ~stream_packer ()
+        {
+          unpacking_completed ();
+          if (m_local_buffer)
+            {
+              assert (m_current_local_buffer_size > 0);
+              delete []m_local_buffer;
+            }
+        };
 
       void set_stream (packing_stream *stream_arg);
 
       /* method for starting a packing context */
-      char *start_packing_range (const size_t amount, buffer_context **granted_range);
+      char *start_packing_range (const size_t amount);
 
       /* method for starting an unpacking context */
-      char *start_unpacking_range (const size_t amount, buffer_context **granted_range);
-      char *start_unpacking_range_from_pos (const stream_position &start_pos, const size_t amount,
-					    buffer_context **granted_range);
-      char *extend_unpacking_range (const size_t amount, buffer_context **granted_range);
-      char *extend_unpacking_range_from_pos (const stream_position &start_pos, const size_t amount,
-					     buffer_context **granted_range);
+      char *start_unpacking_range (const size_t amount);
+      char *start_unpacking_range_from_pos (const stream_position &start_pos, const size_t amount);
+      char *extend_unpacking_range_from_pos (const stream_position &start_pos, const size_t amount);
 
       int packing_completed (void);
+      int unpacking_completed (void);
 
       stream_position &get_stream_read_position (void)
       {
 	return m_stream->get_curr_read_position ();
       };
+    protected:
+      char *alloc_local_buffer (const size_t amount);
 
     private:
       packing_stream *m_stream;
 
-      char *m_packer_start_ptr;
+      char *m_local_buffer;
+      size_t m_current_local_buffer_size;
+      bool m_use_unpack_stream_buffer;
 
-
-      /* buffer_provider is optional for packer :
-       * it should be used when generating packable objects from multiple threads on the same
-       * write stream : there is only one stream holding the global append position, but the storage
-       * may be granted by each thread on its own
-       * By default, if packer does not have a provider, the buffer_provider is used (shared memory)
-       */
-      buffer_provider *m_buffer_provider;
-
-      /* currently mapped range (set when packing starts) */
-      buffer_context *m_mapped_range;
+      /* currently reserved context (set when packing starts) */
+      stream_reserve_context *m_stream_reserve_context;
   };
 
 } /* namespace cubstream */

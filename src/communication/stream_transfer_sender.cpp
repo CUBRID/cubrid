@@ -27,7 +27,7 @@
  * - usage can be found in transfer_channel/test_main.cpp;
  *   on one machine will exist a transfer_sender instance and on the other a transfer_receiver.
  *   the instances are created using consumer/producer streams and connected communication channels.
- *   the stream will be sent automatically until m_last_reported_ready_pos
+ *   the stream will be sent automatically until m_last_committed_pos
  */
 
 #include "stream_transfer_sender.hpp"
@@ -50,7 +50,7 @@ namespace cubstream
       void execute () override
       {
 	int rc = NO_ERRORS;
-	stream_position last_reported_ready_pos = this_producer_channel.m_stream.get_last_reported_ready_pos ();
+	stream_position last_reported_ready_pos = this_producer_channel.m_stream.get_last_committed_pos ();
 
 	assert (this_producer_channel.m_channel.is_connection_alive ());
 

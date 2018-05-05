@@ -54,6 +54,7 @@ namespace cubpacking
 
   int packer::init (char *storage, const size_t amount)
   {
+    m_packer_start_ptr = storage;
     m_ptr = storage;
     m_end_ptr = storage + amount;
 
