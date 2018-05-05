@@ -36,6 +36,7 @@ namespace cubstream
     set_stream (stream_arg);
     m_local_buffer = NULL;
     m_current_local_buffer_size = 0;
+    m_stream_reserve_context = NULL;
     m_use_unpack_stream_buffer = false;
     init (NULL, 0);
   }
