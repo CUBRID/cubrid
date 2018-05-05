@@ -27,11 +27,12 @@
 #define _CUBSTREAM_HPP_
 
 #include <stddef.h>
+#include <sys/types.h>
 
 namespace cubstream
 {
 
-  typedef unsigned long long stream_position;
+  typedef off_t stream_position;
 
   class read_handler
   {
