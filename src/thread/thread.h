@@ -153,8 +153,6 @@ struct thread_resource_track
 #endif
 };
 
-extern THREAD_ENTRY *thread_find_entry_by_index (int thrd_index);
-
 extern bool thread_rc_track_need_to_trace (THREAD_ENTRY * thread_p);
 extern int thread_rc_track_enter (THREAD_ENTRY * thread_p);
 extern int thread_rc_track_exit (THREAD_ENTRY * thread_p, int id);

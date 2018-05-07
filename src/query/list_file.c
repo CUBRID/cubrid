@@ -40,7 +40,7 @@
 #include "object_print.h"
 #include "stream_to_xasl.h"
 #include "query_opfunc.h"
-#include "thread.h"
+#include "thread.h"		// for resource tracker
 #include "dbtype.h"
 
 /* TODO */

@@ -200,32 +200,6 @@ thread_get_check_interrupt (THREAD_ENTRY * thread_p)
 }
 
 /*
- * thread_find_entry_by_index() -
- *   return:
- *   thread_index(in):
- */
-THREAD_ENTRY *
-thread_find_entry_by_index (int thread_index)
-{
-  assert (thread_index >= 0 && thread_index < thread_num_total_threads ());
-
-  THREAD_ENTRY *thread_p;
-  if (thread_index == 0)
-    {
-      // this is the index of main thread entry. we don't want to expose it by thread_find_entry_by_index
-      assert (false);
-      return NULL;
-    }
-  else
-    {
-      thread_p = &(cubthread::get_manager ()->get_all_entries ()[thread_index - 1]);
-    }
-  assert (thread_p->index == thread_index);
-
-  return thread_p;
-}
-
-/*
  * thread_rc_track_meter_check () -
  *   return:
  *   thread_p(in):

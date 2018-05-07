@@ -31,7 +31,7 @@
 #include "log_compress.h"
 #include "memory_alloc.h"
 #include "page_buffer.h"
-#include "thread.h"
+#include "thread.h"     // for resource tracker
 
 #include <cstring>
 #include <sstream>

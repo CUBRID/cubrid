@@ -34,7 +34,7 @@
 #include "porting.h"
 #include "critical_section.h"
 #include "connection_defs.h"
-#include "thread.h"
+#include "thread.h"		// for resource tracker
 #include "connection_error.h"
 #include "perf_monitor.h"
 #include "system_parameter.h"

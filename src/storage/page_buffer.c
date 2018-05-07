@@ -44,7 +44,7 @@
 #include "critical_section.h"
 #include "perf_monitor.h"
 #include "environment_variable.h"
-#include "thread.h"
+#include "thread.h"		// for resource tracker
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
@@ -57,7 +57,7 @@
 
 #if defined(SERVER_MODE)
 #include "connection_error.h"
-#else /* SERVER_MODE */
+#endif /* SERVER_MODE */
 
 #if defined(PAGE_STATISTICS)
 #include "boot_sr.h"

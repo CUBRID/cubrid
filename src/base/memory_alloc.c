@@ -42,7 +42,7 @@
 #include "quick_fit.h"
 #endif /* SERVER_MODE */
 #if defined (SERVER_MODE)
-#include "thread.h"
+#include "thread.h"		// for resource tracker
 #endif // SERVER_MODE
 
 #define DEFAULT_OBSTACK_CHUNK_SIZE      32768	/* 1024 x 32 */

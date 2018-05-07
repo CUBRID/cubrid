@@ -63,7 +63,7 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "db_json.hpp"
-#include "thread.h"
+#include "thread.h"		// for resource tracker
 
 #include "dbtype.h"
 

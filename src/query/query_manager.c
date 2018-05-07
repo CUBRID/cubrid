@@ -2339,7 +2339,7 @@ qmgr_get_old_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
 
 	  /* interrupt check */
 #if defined (SERVER_MODE)
-	  if (thread_get_check_interrupt (thread_p) == true
+	  if (logtb_get_check_interrupt (thread_p) == true
 	      && logtb_is_interrupted_tran (thread_p, true, &dummy, tran_index) == true)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
@@ -2986,7 +2986,7 @@ qmgr_is_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_id)
       return true;
     }
 
-  return (thread_get_check_interrupt (thread_p) && logtb_is_interrupted_tran (thread_p, true, &dummy, tran_index));
+  return (logtb_get_check_interrupt (thread_p) && logtb_is_interrupted_tran (thread_p, true, &dummy, tran_index));
 }
 #endif /* SERVER_MODE */
 

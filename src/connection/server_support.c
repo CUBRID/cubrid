@@ -46,7 +46,7 @@
 #include <assert.h>
 
 #include "porting.h"
-#include "thread.h"
+#include "thread.h"		// for resource tracker
 #include "memory_alloc.h"
 #include "boot_sr.h"
 #include "connection_defs.h"
@@ -242,6 +242,9 @@ static void css_wp_core_job_scan_mapper (const cubthread::entry_workpool::core &
 // *INDENT-ON*
 static void css_is_any_thread_not_suspended_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, size_t & count,
 						     bool & found);
+static void css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
+							  THREAD_ENTRY * caller_thread, int tran_index, int client_id,
+							  size_t & count);
 
 #if defined (SERVER_MODE)
 /*
@@ -3156,11 +3159,25 @@ css_are_all_request_handlers_suspended (void)
     }
 }
 
-void
+//
+// css_count_transaction_worker_threads_mapfunc () - mapper function for worker pool thread entries. tries to identify
+//                                                   entries belonging to given transaction/client and increment
+//                                                   counter
+//
+// thread_ref (in)    : thread entry belonging to running worker
+// stop_mapper (out)  : ignored
+// caller_thread (in) : thread entry of caller
+// tran_index (in)    : transaction index
+// client_id (in)     : client id
+// count (out)        : increment counter if thread entry belongs to transaction/client
+//
+static void
 css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
                                               THREAD_ENTRY * caller_thread, int tran_index, int client_id,
                                               size_t & count)
 {
+  (void) stop_mapper;   // suppress unused parameter warning
+
   CSS_CONN_ENTRY *conn_p;
   bool does_belong = false;
 
@@ -3195,6 +3212,15 @@ css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & 
     }
 }
 
+//
+// css_count_transaction_worker_threads () - count thread entries belonging to transaction/client (exclude current
+//                                           thread)
+//
+// return          : thread entries count
+// thread_p (in)   : thread entry of caller
+// tran_index (in) : transaction index
+// client_id (in)  : client id
+//
 size_t
 css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, int client_id)
 {

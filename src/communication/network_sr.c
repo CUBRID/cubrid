@@ -40,7 +40,7 @@
 #include "boot_sr.h"
 #include "network_interface_sr.h"
 #include "query_list.h"
-#include "thread.h"
+#include "thread.h"		// for resource tracker
 #include "critical_section.h"
 #include "release_string.h"
 #include "server_support.h"
