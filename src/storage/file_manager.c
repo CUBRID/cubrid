@@ -56,9 +56,8 @@
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */
-#include "thread.h"
-
 #include "fault_injection.h"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
 
 /************************************************************************/
 /* Define structures, globals, and macro's                              */

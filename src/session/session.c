@@ -48,7 +48,6 @@
 #include "lock_free.h"
 #include "object_primitive.h"
 #include "dbtype.h"
-#include "thread.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"

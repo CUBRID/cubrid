@@ -26,9 +26,6 @@
 #include "error_manager.h"
 #include "log_impl.h"
 #include "porting.h"
-#if defined (SERVER_MODE)
-#include "thread.h"
-#endif // SERVER_MODE
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 

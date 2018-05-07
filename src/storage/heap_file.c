@@ -59,8 +59,8 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
-#include "thread.h"
 #include "dbtype.h"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

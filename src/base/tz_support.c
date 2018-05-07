@@ -46,6 +46,9 @@
 #endif /* !defined (SERVER_MODE) */
 #include "boot_sr.h"
 #include "dbtype.h"
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"
+#endif // SERVER_MODE
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

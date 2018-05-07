@@ -68,7 +68,6 @@
 #include "tz_support.h"
 #include "filter_pred_cache.h"
 #include "slotted_page.h"
-#include "thread.h"
 #include "thread_manager.hpp"
 #if defined(SERVER_MODE)
 #include "connection_sr.h"

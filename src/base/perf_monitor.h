@@ -36,11 +36,7 @@
 #endif // SERVER_MODE or SA_MODE
 #include "memory_alloc.h"
 #include "storage_common.h"
-#if defined (SERVER_MODE)
-#include "thread.h"
-#else
 #include "thread_compat.hpp"
-#endif
 #include "tsc_timer.h"
 
 #include <assert.h>

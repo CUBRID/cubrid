@@ -41,7 +41,6 @@
 #include "statistics_sr.h"
 #include "partition_sr.h"
 #include "object_primitive.h"
-#include "thread.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

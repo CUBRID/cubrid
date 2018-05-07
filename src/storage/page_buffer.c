@@ -44,7 +44,6 @@
 #include "critical_section.h"
 #include "perf_monitor.h"
 #include "environment_variable.h"
-#include "thread.h"		// for resource tracker
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
@@ -54,18 +53,16 @@
 #include "xserver_interface.h"
 #include "btree_load.h"
 #include "boot_sr.h"
-
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */
-
 #if defined(PAGE_STATISTICS)
 #include "boot_sr.h"
 #endif /* PAGE_STATISTICS */
-
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
+#include "thread.h"		// for resource tracker
 
 const VPID vpid_Null_vpid = { NULL_PAGEID, NULL_VOLID };
 

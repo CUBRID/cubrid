@@ -37,7 +37,6 @@
 #include "page_buffer.h"
 #include "perf_monitor.h"
 #include "resource_shared_pool.hpp"
-#include "thread.h"
 #include "thread_entry_task.hpp"
 #if defined (SERVER_MODE)
 #include "thread_daemon.hpp"

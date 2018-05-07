@@ -33,9 +33,10 @@
 #include "list_file.h"
 #include "binaryheap.h"
 #include "statistics_sr.h"
-#include "thread.h"
 #include "query_manager.h"
 #include "stream_to_xasl.h"
+#include "thread_entry.hpp"
+#include "thread_manager.hpp"
 
 #define XCACHE_ENTRY_MARK_DELETED	    ((INT32) 0x80000000)
 #define XCACHE_ENTRY_TO_BE_RECOMPILED	    ((INT32) 0x40000000)

@@ -40,7 +40,7 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
-#include "thread.h"
+#include "thread_entry.hpp"
 
 #if !defined (SERVER_MODE)
 
@@ -3399,10 +3399,6 @@ struct drand48_data *
 qmgr_get_rand_buf (THREAD_ENTRY * thread_p)
 {
 #if defined(SERVER_MODE)
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
   return &thread_p->rand_buf;
 #else
   return &qmgr_rand_buf;

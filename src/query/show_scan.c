@@ -52,10 +52,6 @@
 #include "db_date.h"
 #include "network.h"
 
-#if defined(SERVER_MODE)
-#include "thread.h"
-#endif /* SERVER_MODE */
-
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
@@ -63,6 +59,7 @@
 #include "porting.h"
 #include "server_support.h"
 #include "dbtype.h"
+#include "thread_manager.hpp"
 
 typedef SCAN_CODE (*NEXT_SCAN_FUNC) (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_values, int out_cnt,
 				     void *ctx);
@@ -84,6 +81,10 @@ const size_t THREAD_SCAN_COLUMN_COUNT = 26;
 static SCAN_CODE showstmt_array_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_values, int out_cnt,
 					   void *ptr);
 static int showstmt_array_end_scan (THREAD_ENTRY * thread_p, void **ptr);
+#if defined (SERVER_MODE)
+static void thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY * caller_thread_p,
+				 SHOWSTMT_ARRAY_CONTEXT * ctx, int &error);
+#endif // SERVER_MODE
 
 
 static bool show_scan_Inited = false;
@@ -472,6 +473,7 @@ showstmt_array_end_scan (THREAD_ENTRY * thread_p, void **ptr)
   return NO_ERROR;
 }
 
+#if defined (SERVER_MODE)
 //
 // thread_scan_mapfunc () - mapper function to get information from thread entry for scanner
 //
@@ -784,6 +786,7 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
 
   assert (idx == THREAD_SCAN_COLUMN_COUNT);
 }
+#endif // SERVER_MODE
 
 /*
  * thread_start_scan () -  start scan function for show threads
@@ -800,27 +803,11 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
 {
 #if defined(SERVER_MODE)
   SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
-  const int num_cols = 26;
-  THREAD_ENTRY *thrd, *next_thrd;
-  int i, idx, error = NO_ERROR;
-  DB_VALUE *vals = NULL;
-  int ival;
-  INT64 i64val;
-  CSS_CONN_ENTRY *conn_entry = NULL;
-  OR_ALIGNED_BUF (1024) a_buffer;
-  char *buffer;
-  char *area;
-  int buf_len;
-  HL_HEAPID private_heap_id;
-  void *query_entry;
-  LK_ENTRY *lockwait;
-  time_t stime;
-  int msecs;
-  DB_DATETIME time_val;
+  int error = NO_ERROR;
 
   *ptr = NULL;
 
-  ctx = showstmt_alloc_array_context (thread_p, (int) thread_num_total_threads (), num_cols);
+  ctx = showstmt_alloc_array_context (thread_p, (int) thread_num_total_threads (), THREAD_SCAN_COLUMN_COUNT);
   if (ctx == NULL)
     {
       ASSERT_ERROR_AND_SET (error);

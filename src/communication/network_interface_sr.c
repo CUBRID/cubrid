@@ -56,7 +56,6 @@
 #include "query_manager.h"
 #include "transaction_sr.h"
 #include "release_string.h"
-#include "thread.h"
 #include "critical_section.h"
 #include "statistics.h"
 #include "chartype.h"
@@ -75,6 +74,7 @@
 #include "object_primitive.h"
 #include "tz_support.h"
 #include "dbtype.h"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

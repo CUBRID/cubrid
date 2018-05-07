@@ -49,8 +49,8 @@
 #include "connection_error.h"
 #endif /* SERVER_MODE */
 #include "server_support.h"
-#include "thread.h"
 #include "thread_entry_task.hpp"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
 
 /* Estimate on number of pages in the multipage temporary file */
 #define SORT_MULTIPAGE_FILE_SIZE_ESTIMATE  20

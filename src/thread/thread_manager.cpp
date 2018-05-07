@@ -24,7 +24,6 @@
 #include "thread_manager.hpp"
 
 // same module includes
-#include "thread.h"
 #if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
 #endif // SERVER_MODE

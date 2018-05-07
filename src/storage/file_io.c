@@ -109,6 +109,9 @@
 #if defined (SERVER_MODE)
 #include "thread_entry_task.hpp"
 #endif // SERVER_MODE
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
+#endif // SERVER_MODE
 
 /************************************************************************/
 /* TODO: why is this in client module?                                  */

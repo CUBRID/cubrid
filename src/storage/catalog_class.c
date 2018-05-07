@@ -40,7 +40,6 @@
 #include "query_dump.h"
 #include "db_date.h"
 #include "dbtype.h"
-#include "thread.h"
 
 #define IS_SUBSET(value)        (value).sub.count >= 0
 
@@ -233,9 +232,7 @@ catcls_free_entry_kv (const void *key, void *data, void *args)
 static int
 catcls_free_entry (CATCLS_ENTRY * entry_p)
 {
-  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-
-  assert (csect_check_own (thread_p, CSECT_CT_OID_TABLE) == 1);
+  assert (csect_check_own (NULL, CSECT_CT_OID_TABLE) == 1);
 
   entry_p->next = catcls_Free_entry_list;
   catcls_Free_entry_list = entry_p;

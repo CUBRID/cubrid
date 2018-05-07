@@ -51,9 +51,8 @@
 #include "object_primitive.h"
 #include "perf_monitor.h"
 #include "fault_injection.h"
-#include "thread.h"
-
 #include "dbtype.h"
+#include "thread_manager.hpp"
 
 #define BTREE_HEALTH_CHECK
 

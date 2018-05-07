@@ -42,7 +42,8 @@
 #include "locator_sr.h"
 #include "page_buffer.h"
 #include "log_compress.h"
-#include "thread.h"
+#include "thread_entry.hpp"
+#include "thread_manager.hpp"
 
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,

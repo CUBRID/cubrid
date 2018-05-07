@@ -52,7 +52,7 @@
 #include "db_date.h"
 #include "dbtype.h"
 #if defined (SERVER_MODE)
-#include "thread.h"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
 
 #if defined (SUPPRESS_STRLEN_WARNING)

@@ -51,12 +51,11 @@
 #include "fetch.h"
 #include "query_executor.h"
 #include "xasl_cache.h"
-#include "thread.h"
 #if defined(DMALLOC)
 #include "dmalloc.h"
 #endif /* DMALLOC */
-
 #include "dbtype.h"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
 
 /* TODO : remove */
 extern bool catcls_Enable;

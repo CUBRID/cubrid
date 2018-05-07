@@ -125,7 +125,7 @@ bool operator!= (const db_private_allocator<T> &, const db_private_allocator<U> 
 /************************************************************************/
 
 #if defined (SERVER_MODE)
-#include "thread.h"
+#include "thread_manager.hpp"
 #endif // SERVER_MODE
 
 template<typename T>

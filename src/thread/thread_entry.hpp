@@ -24,6 +24,10 @@
 #ifndef _THREAD_ENTRY_HPP_
 #define _THREAD_ENTRY_HPP_
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Wrong module
+#endif // not SERVER_MODE and not SA_MODE
+
 #include "error_context.hpp"
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID

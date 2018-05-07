@@ -65,6 +65,8 @@
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
+#include "thread_entry.hpp"
+#include "thread_manager.hpp"
 
 #define RMUTEX_NAME_TDES_TOPOP "TDES_TOPOP"
 
