@@ -45,6 +45,7 @@ namespace mem
       bip_buffer ()
         {
           m_buffer = NULL;
+          m_cycles = 0;
         };
 
       ~bip_buffer ()
@@ -159,7 +160,19 @@ namespace mem
           assert (ptr <= m_ptr_append);
           assert (ptr > m_buffer);
 
-          m_ptr_start_a = ptr;
+          if (ptr >= m_ptr_start_a && ptr < m_ptr_end_a)
+            {
+              m_ptr_start_a = ptr;
+            }
+          else
+            {
+              assert (m_ptr_prev_gen_committed != NULL);
+              assert (m_ptr_prev_gen_last_reserved != NULL);
+
+              assert (ptr >= m_ptr_prev_gen_committed && ptr < m_ptr_prev_gen_last_reserved);
+
+              m_ptr_prev_gen_committed = ptr;
+            }
 
           return NO_ERROR;
         };
@@ -256,7 +269,7 @@ namespace mem
           const char *b1 = ptr2;
           const char *b2 = ptr2 + size2;
 
-          return (a2 >= b1) && (a1 >= b2);
+          return (a2 > b1) && (b2 > a1);
         };
 
       bool check_readers (const char *start_ptr, const char *end_ptr)
@@ -309,6 +322,7 @@ namespace mem
           m_ptr_append = m_ptr_start_a;
 
           deactivate_region_b ();
+          m_cycles++;
         };
 
       void take_margin_in_region_a (const size_t amount)
@@ -372,6 +386,8 @@ namespace mem
       size_t m_reserve_margin;
 
       int m_read_pages;
+
+      std::uint64_t m_cycles;
   };
 
 } /* namespace mem */
