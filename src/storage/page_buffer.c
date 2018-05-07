@@ -57,9 +57,7 @@
 
 #if defined(SERVER_MODE)
 #include "connection_error.h"
-#else	/* !SERVER_MODE */		   /* SA_MODE */
-#include "transaction_cl.h"
-#endif /* SERVER_MODE */
+#else /* SERVER_MODE */
 
 #if defined(PAGE_STATISTICS)
 #include "boot_sr.h"
@@ -1854,7 +1852,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 try_again:
 
   /* interrupt check */
-  if (thread_get_check_interrupt (thread_p) == true)
+  if (logtb_get_check_interrupt (thread_p) == true)
     {
       if (logtb_is_interrupted (thread_p, true, &pgbuf_Pool.check_for_interrupts) == true)
 	{

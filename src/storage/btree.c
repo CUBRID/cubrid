@@ -51,9 +51,6 @@
 #include "object_primitive.h"
 #include "perf_monitor.h"
 #include "fault_injection.h"
-#if defined (SA_MODE)
-#include "transaction_cl.h"	/* for interrupt */
-#endif /* defined (SA_MODE) */
 #include "thread.h"
 
 #include "dbtype.h"
@@ -19393,7 +19390,7 @@ btree_verify_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page_p
     }
 
   /* don't let interrupts break our verification */
-  check_interrupt = thread_set_check_interrupt (thread_p, false);
+  check_interrupt = logtb_set_check_interrupt (thread_p, false);
 
   node_type = (header->node_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
 
@@ -19407,7 +19404,7 @@ btree_verify_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page_p
     }
 
   assert_release (ret == NO_ERROR);
-  (void) thread_set_check_interrupt (thread_p, check_interrupt);
+  (void) logtb_set_check_interrupt (thread_p, check_interrupt);
 
   return ret;
 }
@@ -29581,7 +29578,7 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
 
   /* Add more btree_delete_helper initialization here. */
 
-  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
+  old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
   FI_SET (thread_p, FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL, 1);
 
   error_code =
@@ -29589,7 +29586,7 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
 					  btree_merge_node_and_advance, &delete_helper, key_func, &delete_helper, NULL,
 					  NULL);
 
-  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+  (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
   FI_RESET (thread_p, FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL);
 
   if (delete_helper.printed_key != NULL)

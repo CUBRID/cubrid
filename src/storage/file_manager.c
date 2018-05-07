@@ -57,9 +57,6 @@
 #include "connection_error.h"
 #endif /* SERVER_MODE */
 #include "thread.h"
-#if !defined (SERVER_MODE)
-#include "transaction_cl.h"
-#endif
 
 #include "fault_injection.h"
 
@@ -3813,7 +3810,7 @@ exit:
       if (was_temp_reserved)
 	{
 	  /* recovery won't free reserved sectors. we have to manually handle the unreserve */
-	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+	  bool save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
 
 	  /* make sure sectors are sorted */
 	  qsort (vsids_reserved, n_sectors, sizeof (VSID), disk_compare_vsids);
@@ -3824,7 +3821,7 @@ exit:
 	      assert_release (false);
 	      /* fall through */
 	    }
-	  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
+	  (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
 	}
     }
 
@@ -4007,7 +4004,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
   if (is_temp)
     {
       /* do not interrupt destroying temporary files. it will leak pages. */
-      save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+      save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
     }
   else
     {
@@ -4154,7 +4151,7 @@ exit:
     }
   if (is_temp)
     {
-      (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
+      (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
     }
   return error_code;
 }
@@ -8047,7 +8044,7 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
   bool was_empty = false;
   bool is_full = false;
   /* we don't have rollback, so don't interrupt */
-  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+  bool save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
   int error_code = NO_ERROR;
 
   file_header_sanity_check (thread_p, fhead);
@@ -8269,7 +8266,7 @@ exit:
     {
       pgbuf_unfix_and_init (thread_p, page_ftab);
     }
-  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
+  (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
   return error_code;
 }
 
@@ -8343,7 +8340,7 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
   int error_code = NO_ERROR;
 
   /* don't let this be interrupted, because we might ruin the file */
-  save_interrupt = thread_set_check_interrupt (thread_p, false);
+  save_interrupt = logtb_set_check_interrupt (thread_p, false);
 
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
   page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
@@ -8487,7 +8484,7 @@ exit:
       pgbuf_unfix (thread_p, page_fhead);
     }
 
-  (void) thread_set_check_interrupt (thread_p, save_interrupt);
+  (void) logtb_set_check_interrupt (thread_p, save_interrupt);
 
   if (collector.partsect_ftab != NULL)
     {

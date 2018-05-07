@@ -2409,5 +2409,8 @@ void logtb_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 extern void logtb_wakeup_thread_with_tran_index (int tran_index, thread_resume_suspend_status resume_reason);
 #endif // SERVER_MODE
 
+extern bool logtb_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
+extern bool logtb_get_check_interrupt (THREAD_ENTRY * thread_p);
+
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #endif /* _LOG_IMPL_H_ */

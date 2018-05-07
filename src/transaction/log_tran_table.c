@@ -4007,12 +4007,12 @@ logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p)
   /* We have to disable interrupt while reflecting unique stats. Please notice that the transaction is still in
    * TRAN_ACTIVE state and it may be previously interrupted but user eventually issues commit. The transaction should
    * successfully complete commit in spite of interrupt. */
-  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
+  old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
 
   error_code =
     mht_map_no_key (thread_p, tdes->log_upd_stats.unique_stats_hash, logtb_tran_update_delta_hash_func, thread_p);
 
-  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+  (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
 
   return error_code;
 }
@@ -6766,7 +6766,7 @@ logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p)
     }
 
   // reflecting stats should not be interrupted
-  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+  bool save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
 
   lf_hash_create_iterator (&it, t_entry, &log_Gl.unique_stats_table.unique_stats_hash);
   for (stats = (GLOBAL_UNIQUE_STATS *) lf_hash_iterate (&it); stats != NULL;
@@ -6791,7 +6791,7 @@ logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p)
 	}
     }
 
-  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
+  (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
 
   return error;
 }
@@ -7703,4 +7703,60 @@ logtb_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index)
       thread_p = thread_get_thread_entry_info ();
     }
   thread_p->tran_index = tran_index;
+}
+
+/*
+ * logtb_set_check_interrupt() -
+ *   return:
+ *   flag(in):
+ */
+bool
+logtb_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag)
+{
+#if defined (SERVER_MODE)
+  bool old_val = true;
+
+  if (BO_IS_SERVER_RESTARTED ())
+    {
+      if (thread_p == NULL)
+	{
+	  thread_p = thread_get_thread_entry_info ();
+	}
+
+      /* safe guard: vacuum workers should not check for interrupt */
+      assert (flag == false || !VACUUM_IS_THREAD_VACUUM (thread_p));
+      old_val = thread_p->check_interrupt;
+      thread_p->check_interrupt = flag;
+    }
+
+  return old_val;
+#else // not SERVER_MODE = SA_MODE
+  return tran_set_check_interrupt (flag);
+#endif // not SERVER_MODE = SA_MODE
+}
+
+/*
+ * logtb_get_check_interrupt() -
+ *   return:
+ */
+bool
+logtb_get_check_interrupt (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  bool ret_val = true;
+
+  if (BO_IS_SERVER_RESTARTED ())
+    {
+      if (thread_p == NULL)
+	{
+	  thread_p = thread_get_thread_entry_info ();
+	}
+
+      ret_val = thread_p->check_interrupt;
+    }
+
+  return ret_val;
+#else // not SERVER_MODE = SA_MODE
+  return tran_get_check_interrupt ();
+#endif // not SERVER_MODE = SA_MODE
 }

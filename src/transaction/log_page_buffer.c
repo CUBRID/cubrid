@@ -61,7 +61,6 @@
 #include "boot_sr.h"
 #if !defined(SERVER_MODE)
 #include "boot_cl.h"
-#include "transaction_cl.h"
 #else /* !SERVER_MODE */
 #include "connection_defs.h"
 #include "connection_sr.h"
@@ -8345,7 +8344,7 @@ loop:
       /* wait until checkpoint process is finished */
 
       /* interrupt check */
-      if (thread_get_check_interrupt (thread_p) == true)
+      if (logtb_get_check_interrupt (thread_p) == true)
 	{
 	  if (logtb_is_interrupted (thread_p, true, &continue_check) == true)
 	    {

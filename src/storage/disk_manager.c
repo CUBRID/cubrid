@@ -52,9 +52,6 @@
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
-#if defined (SA_MODE)
-#include "transaction_cl.h"	/* for interrupt */
-#endif /* defined (SA_MODE) */
 
 /************************************************************************/
 /* Define structures, globals, and macro's                              */
@@ -1645,7 +1642,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
   DKNSECTS nsect_temp_extended = 0;
 #endif /* SERVER_MODE */
 
-  bool check_interrupt = thread_get_check_interrupt (thread_p);
+  bool check_interrupt = logtb_get_check_interrupt (thread_p);
   bool continue_check = false;
   int error_code = NO_ERROR;
 
@@ -1708,9 +1705,9 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 
       log_sysop_start (thread_p);
 
-      (void) thread_set_check_interrupt (thread_p, false);
+      (void) logtb_set_check_interrupt (thread_p, false);
       error_code = disk_volume_expand (thread_p, extend_info->volid_extend, voltype, to_expand, &nsect_free_new);
-      (void) thread_set_check_interrupt (thread_p, check_interrupt);
+      (void) logtb_set_check_interrupt (thread_p, check_interrupt);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -1792,9 +1789,9 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       volext.nsect_total = DISK_SECTS_ROUND_UP (volext.nsect_total);
 
       /* add new volume */
-      (void) thread_set_check_interrupt (thread_p, false);
+      (void) logtb_set_check_interrupt (thread_p, false);
       error_code = disk_add_volume (thread_p, &volext, &volid_new, &nsect_free_new);
-      (void) thread_set_check_interrupt (thread_p, check_interrupt);
+      (void) logtb_set_check_interrupt (thread_p, check_interrupt);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -4107,7 +4104,7 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
   bool old_check_interrupt;
   int old_wait_msecs;
 
-  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
+  old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
   old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
 
   if (fileio_get_volume_descriptor (volid) == NULL_VOLDES || pageid < 0)
@@ -4149,7 +4146,7 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
 
 exit:
   xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
-  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+  (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
 
   if (page_volheader)
     {
@@ -4294,14 +4291,14 @@ error:
       if (purpose == DB_TEMPORARY_DATA_PURPOSE)
 	{
 	  /* nothing was logged. we need to revert any partial allocations we may have made. */
-	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+	  bool save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
 
 	  qsort (reserved_sectors, nreserved, sizeof (VSID), disk_compare_vsids);
 	  if (disk_unreserve_ordered_sectors_without_csect (thread_p, purpose, nreserved, reserved_sectors) != NO_ERROR)
 	    {
 	      assert_release (false);
 	    }
-	  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
+	  (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
 	}
 
       /* we'll need to remove reservations for the rest of sectors (that were not allocated from disk). but first,

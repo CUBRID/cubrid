@@ -50,9 +50,6 @@
 #endif /* SERVER_MODE */
 #include "server_support.h"
 #include "thread.h"
-#if !defined (SERVER_MODE)
-#include "transaction_cl.h"
-#endif
 #include "thread_entry_task.hpp"
 
 /* Estimate on number of pages in the multipage temporary file */
@@ -1805,7 +1802,7 @@ px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
 #endif
 #endif /* SERVER_MODE */
 
-  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
+  old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
 
   buff = px_node->px_buff;
   vector = px_node->px_vector;
@@ -2138,7 +2135,7 @@ exit_on_end:
     }
 #endif /* SERVER_MODE */
 
-  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+  (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
 
   return ret;
 

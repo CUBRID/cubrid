@@ -56,10 +56,6 @@
 
 #if !defined(SERVER_MODE)
 
-// todo - this is more tricky to solve due to dependency on transaction_cl
-#define thread_set_check_interrupt(thread_p, flag) tran_set_check_interrupt (flag)
-#define thread_get_check_interrupt(thread_p) tran_get_check_interrupt ()
-
 // todo - implement resource tracker independent of threading
 #define thread_rc_track_need_to_trace(thread_p) (false)
 #define thread_rc_track_enter(thread_p) (-1)
@@ -157,11 +153,7 @@ struct thread_resource_track
 #endif
 };
 
-extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
-
 extern THREAD_ENTRY *thread_find_entry_by_index (int thrd_index);
-
-extern bool thread_get_check_interrupt (THREAD_ENTRY * thread_p);
 
 extern bool thread_rc_track_need_to_trace (THREAD_ENTRY * thread_p);
 extern int thread_rc_track_enter (THREAD_ENTRY * thread_p);
