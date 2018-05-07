@@ -2006,7 +2006,7 @@ db_json_replace_token_special_chars (std::string &token,
 
 		  replaced = true;
 		  // next loop
-		  continue;
+		  break;
 		}
 	    }
 	}
