@@ -26,8 +26,9 @@
 #ifndef _CUBSTREAM_HPP_
 #define _CUBSTREAM_HPP_
 
-#include <cinttypes>
 #include <atomic>
+#include <cinttypes>
+#include <cstddef>
 
 namespace cubstream
 {
