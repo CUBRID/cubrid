@@ -94,7 +94,6 @@ namespace cubstream
 
   char *stream_packer::start_unpacking_range (const size_t amount)
   {
-    /* TODO[arnia] */
     char *ptr;
     size_t aligned_amount;
     size_t actual_read_btyes;
@@ -143,7 +142,6 @@ namespace cubstream
 
   char *stream_packer::start_unpacking_range_from_pos (const stream_position &start_pos, const size_t amount)
   {
-    /* TODO[arnia] */
     char *ptr;
     size_t aligned_amount;
     size_t actual_read_btyes;
@@ -190,14 +188,6 @@ namespace cubstream
       }
 
     return NULL;
-  }
-
-  char *stream_packer::extend_unpacking_range_from_pos (const stream_position &start_pos,
-      const size_t amount)
-  {
-    /* TODO[arnia] : try to extend withing the current buffer;
-     * if required amount is not available, allocate a new buffer which fits both existing range and the extended range */
-    return start_unpacking_range_from_pos (start_pos, amount);
   }
 
   char *stream_packer::alloc_local_buffer (const size_t amount)

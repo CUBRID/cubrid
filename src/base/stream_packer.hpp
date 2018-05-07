@@ -68,7 +68,6 @@ namespace cubstream
       /* method for starting an unpacking context */
       char *start_unpacking_range (const size_t amount);
       char *start_unpacking_range_from_pos (const stream_position &start_pos, const size_t amount);
-      char *extend_unpacking_range_from_pos (const stream_position &start_pos, const size_t amount);
 
       int packing_completed (void);
       int unpacking_completed (void);

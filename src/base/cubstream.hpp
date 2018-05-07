@@ -28,6 +28,7 @@
 
 #include <stddef.h>
 #include <sys/types.h>
+#include <atomic>
 
 namespace cubstream
 {
@@ -82,15 +83,15 @@ namespace cubstream
       notify_handler *m_ready_pos_handler;
 
       /* current stream position not allocated yet */
-      stream_position m_append_position;
-
-      /* last position reported committed (filled) by appenders; can be read by readers */
-      stream_position m_last_committed_pos;
+      std::atomic <stream_position> m_append_position;
 
       /* last stream position read
        * in most scenarios, each reader provides its own read position,
        * this is a shared "read position" usable only in single read scenarios */
       stream_position m_read_position;
+
+      /* last position reported committed (filled) by appenders; can be read by readers */
+      stream_position m_last_committed_pos;
 
     public:
       stream ();

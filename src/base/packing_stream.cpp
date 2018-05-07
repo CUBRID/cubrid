@@ -192,6 +192,9 @@ namespace cubstream
 
   packing_stream::packing_stream (const size_t buffer_capacity, const int max_appenders)
   {
+        printf ("\n\packing_stream m_read_position=%ld  (%p)\n\n", m_read_position, &m_read_position);
+        printf ("\n\packing_stream m_last_committed_pos=%ld (%p)\n\n", m_last_committed_pos, &m_last_committed_pos);
+
     m_total_buffered_size = 0;
     m_oldest_readable_position = 0;
 
@@ -199,7 +202,7 @@ namespace cubstream
     trigger_flush_to_disk_size = buffer_capacity / 2;
 
     /* TODO[arnia] : not initialized in base constructor */
-    m_read_position = 0;
+    //m_read_position = 0;
 
     init_storage (buffer_capacity, max_appenders);
   }
@@ -390,9 +393,7 @@ namespace cubstream
 
   stream_position packing_stream::reserve_no_buffer (const size_t amount)
   {
-    /* TODO[arnia] : atomic */
-    stream_position initial_pos = m_append_position;
-    m_append_position += amount;
+    stream_position initial_pos = m_append_position.fetch_add (amount);
 
     return initial_pos;
   }
