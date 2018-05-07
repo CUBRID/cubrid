@@ -100,10 +100,18 @@ namespace mem
           const char *reserved_ptr = NULL;
           bool need_take_margin = true;
 
+          /* TODO[arnia] : adaptive reserve margin */
           if (amount > m_reserve_margin)
             {
-              assert (false);
-              return NULL;
+              assert (amount < m_capacity / 10);
+              if (amount < m_capacity / 10)
+                {
+                  m_reserve_margin = amount;
+                }
+              else
+                {
+                  return NULL;
+                }
             }
 
           while (1)
@@ -384,8 +392,6 @@ namespace mem
       size_t m_read_page_size;
 
       size_t m_reserve_margin;
-
-      int m_read_pages;
 
       std::uint64_t m_cycles;
   };
