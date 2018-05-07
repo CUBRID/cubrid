@@ -31,8 +31,6 @@
 #include "connection_sr.h"
 #include "thread_compat.hpp"
 
-#define CSS_NUM_JOB_QUEUE 10	/* # of job queues */
-
 // forward definitions
 namespace cubthread
 {
@@ -44,9 +42,6 @@ extern void css_block_all_active_conn (unsigned short stop_phase);
 extern THREAD_RET_T THREAD_CALLING_CONVENTION css_master_thread (void);
 
 extern unsigned int css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern int css_number_of_clients (void);
-#endif
 extern unsigned int css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size);
 extern unsigned int css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply,
 						       int reply_size, char *buffer, int buffer_size);
@@ -91,5 +86,25 @@ extern int css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPL
 
 extern void css_push_external_task (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY * conn, cubthread::entry_task * task);
 extern void css_get_thread_stats (UINT64 * stats_out);
+
+#if defined (SERVER_MODE)
+extern int css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt,
+				      void **ptr);
+#else // not SERVER_MODE = SA_MODE
+// SA_MODE does not have access to server_support.c, but job scan is a common function
+// however, on SA_MODE, the result is always empty list
+inline int
+css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
+{
+  // suppress all unused parameter warnings
+  (void) thread_p;
+  (void) show_type;
+  (void) arg_values;
+  (void) arg_cnt;
+
+  *ptr = NULL;
+  return NO_ERROR;
+}
+#endif // not SERVER_MODE = SA_MODE
 
 #endif /* _SERVER_SUPPORT_H_ */

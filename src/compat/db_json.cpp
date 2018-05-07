@@ -1988,21 +1988,21 @@ db_json_replace_token_special_chars (std::string &token,
   bool replaced = false;
 
   // iterate character by character and detect special characters
-  for (size_t token_idx = 0; token_idx < token.length(); /* incremented in for body */)
+  for (size_t token_idx = 0; token_idx < token.length (); /* incremented in for body */)
     {
       replaced = false;
       // compare with special characters
-      for (auto special_it = special_chars.begin(); special_it != special_chars.end(); ++special_it)
+      for (auto special_it = special_chars.begin (); special_it != special_chars.end (); ++special_it)
 	{
 	  // compare special characters with sequence following token_it
-	  if (token_idx + special_it->first.length() <= token.length())
+	  if (token_idx + special_it->first.length () <= token.length ())
 	    {
-	      if (token.compare (token_idx, special_it->first.length(), special_it->first.c_str()) == 0)
+	      if (token.compare (token_idx, special_it->first.length (), special_it->first.c_str ()) == 0)
 		{
 		  // replace
-		  token.replace (token_idx, special_it->first.length(), special_it->second);
+		  token.replace (token_idx, special_it->first.length (), special_it->second);
 		  // skip replaced
-		  token_idx += special_it->second.length();
+		  token_idx += special_it->second.length ();
 
 		  replaced = true;
 		  // next loop

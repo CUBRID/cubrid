@@ -135,6 +135,9 @@ namespace cubthread
       using task_type = task<Context>;
       using context_manager_type = context_manager<Context>;
 
+      // forward definition
+      class core;
+
       worker_pool (std::size_t pool_size, std::size_t task_max_count, context_manager_type &context_mgr,
 		   std::size_t core_count = 1, bool debug_logging = false);
       ~worker_pool ();
@@ -164,16 +167,23 @@ namespace cubthread
 
       // get maximum number of threads that can run concurrently in this worker pool
       std::size_t get_max_count (void) const;
+      // get the number of cores
+      std::size_t get_core_count (void) const;
 
       // get worker pool statistics
       // note: the statistics are collected from all cores and all their workers adding up all local statistics
-      void get_stats (cubperf::stat_value *stats_out);
+      void get_stats (cubperf::stat_value *stats_out) const;
 
       //////////////////////////////////////////////////////////////////////////
       // context management
       //////////////////////////////////////////////////////////////////////////
 
       // map functions over all running contexts
+      //
+      // function signature is:
+      //    cubthread::worker_pool::context_type & (in/out)    : running thread context
+      //    bool & (in/out)                                    : input is usually false, output true to stop mapping
+      //    typename ... args (in/out)                         : variadic arguments based on needs
       //
       // WARNING:
       //    this is a dangerous functionality. please note that context retirement and mapping function is not
@@ -184,11 +194,20 @@ namespace cubthread
       template <typename Func, typename ... Args>
       void map_running_contexts (Func &&func, Args &&... args);
 
+      // map functions over all cores
+      //
+      // function signature is:
+      //    const cubthread::worker_pool::core & (in) : core
+      //    bool & (in/out)                           : input is usually false, output true to stop mapping
+      //    typename ... args (in/out)                : variadic arguments based on needs
+      //
+      template <typename Func, typename ... Args>
+      void map_cores (Func &&func, Args &&... args);
+
     private:
       using atomic_context_ptr = std::atomic<context_type *>;
 
       // forward definition for nested core class; he's a friend
-      class core;
       friend class core;
 
       // get next core by round robin scheduling
@@ -233,10 +252,6 @@ namespace cubthread
       // forward definition of nested class worker
       class worker;
 
-      // ctor/dtor
-      core ();
-      ~core (void);
-
       // init function
       void init_pool_and_workers (worker_pool<Context> &parent, std::size_t worker_count);
 
@@ -247,7 +262,7 @@ namespace cubthread
       // context management
       // map function to all workers (and their contexts)
       template <typename Func, typename ... Args>
-      void map_running_contexts (bool &stop, Func &&func, Args &&... args);
+      void map_running_contexts (bool &stop, Func &&func, Args &&... args) const;
       // worker management
       // notify workers to stop
       void notify_stop (void);
@@ -255,7 +270,7 @@ namespace cubthread
       void count_stopped_workers (std::size_t &count_inout);
       void retire_queued_tasks (void);
       // statistics
-      void get_stats (cubperf::stat_value *sum_inout);
+      void get_stats (cubperf::stat_value *sum_inout) const;
 
       // interface for workers
       // task management
@@ -274,7 +289,16 @@ namespace cubthread
       void recycle_context (context_type &context);
       void retire_context (context_type &context);
 
+      // getters
+      std::size_t get_max_worker_count (void) const;
+
     private:
+
+      friend worker_pool;
+
+      // ctor/dtor
+      core ();
+      ~core (void);
 
       worker_pool_type *m_parent_pool;                // pointer to parent pool
       std::size_t m_max_workers;                      // maximum number of workers running at once
@@ -372,7 +396,7 @@ namespace cubthread
       template <typename Func, typename ... Args>
       void map_context (bool &stop, Func &&func, Args &&... args);
       // add own stats to given argument
-      void get_stats (cubperf::stat_value *sum_inout);
+      void get_stats (cubperf::stat_value *sum_inout) const;
 
     private:
 
@@ -607,15 +631,22 @@ namespace cubthread
   }
 
   template<typename Context>
-  inline std::size_t
+  std::size_t
   worker_pool<Context>::get_max_count (void) const
   {
     return m_max_workers;
   }
 
   template<typename Context>
+  std::size_t
+  worker_pool<Context>::get_core_count (void) const
+  {
+    return m_core_count;
+  }
+
+  template<typename Context>
   void
-  worker_pool<Context>::get_stats (cubperf::stat_value *stats_out)
+  worker_pool<Context>::get_stats (cubperf::stat_value *stats_out) const
   {
     for (std::size_t it = 0; it < m_core_count; it++)
       {
@@ -632,6 +663,25 @@ namespace cubthread
     for (std::size_t it = 0; it < m_core_count && !stop; it++)
       {
 	m_core_array[it].map_running_contexts (stop, func, args...);
+	if (stop)
+	  {
+	    // mapping is stopped
+	    return;
+	  }
+      }
+  }
+
+  template <typename Context>
+  template <typename Func, typename ... Args>
+  void
+  cubthread::worker_pool<Context>::map_cores (Func &&func, Args &&... args)
+  {
+    bool stop = false;
+    const core *core_p;
+    for (std::size_t it = 0; it < m_core_count && !stop; it++)
+      {
+	core_p = &m_core_array[it];
+	func (*core_p, stop, args...);
 	if (stop)
 	  {
 	    // mapping is stopped
@@ -875,9 +925,16 @@ namespace cubthread
   }
 
   template <typename Context>
+  std::size_t
+  worker_pool<Context>::core::get_max_worker_count (void) const
+  {
+    return m_max_workers;
+  }
+
+  template <typename Context>
   template <typename Func, typename ... Args>
   void
-  cubthread::worker_pool<Context>::core::map_running_contexts (bool &stop, Func &&func, Args &&... args)
+  cubthread::worker_pool<Context>::core::map_running_contexts (bool &stop, Func &&func, Args &&... args) const
   {
     for (std::size_t it = 0; it < m_max_workers && !stop; it++)
       {
@@ -930,7 +987,7 @@ namespace cubthread
 
   template <typename Context>
   void
-  worker_pool<Context>::core::get_stats (cubperf::stat_value *stats_out)
+  worker_pool<Context>::core::get_stats (cubperf::stat_value *stats_out) const
   {
     for (std::size_t it = 0; it < m_max_workers; it++)
       {
@@ -1234,7 +1291,7 @@ namespace cubthread
 
   template <typename Context>
   void
-  worker_pool<Context>::core::worker::get_stats (cubperf::stat_value *sum_inout)
+  worker_pool<Context>::core::worker::get_stats (cubperf::stat_value *sum_inout) const
   {
     wp_worker_statset_accumulate (m_statistics, sum_inout);
   }

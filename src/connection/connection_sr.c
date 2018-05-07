@@ -1062,11 +1062,11 @@ css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid,
 
       if (css_send_request (conn, connect_type, rid, server_name, server_name_length) == NO_ERRORS)
 	{
-	  return (conn);
+	  return conn;
 	}
     }
 
-  return (NULL);
+  return NULL;
 }
 
 /*
@@ -1091,120 +1091,117 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 #endif
 
   css_Service_id = master_port_id;
-  if (GETHOSTNAME (hname, MAXHOSTNAMELEN) == 0)
+  if (GETHOSTNAME (hname, MAXHOSTNAMELEN) != 0)
     {
-      conn = css_make_conn (0);
-      if (conn == NULL)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
-	  return (NULL);
-	}
+      return NULL;
+    }
 
-      /* select the connection protocol, for PC's this will always be new */
-      if (css_Server_use_new_connection_protocol)
+  conn = css_make_conn (0);
+  if (conn == NULL)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+      return NULL;
+    }
+
+  /* select the connection protocol */
+  if (css_Server_use_new_connection_protocol)
+    {
+      // Windows
+      connection_protocol = SERVER_REQUEST_NEW;
+    }
+  else
+    {
+      // Linux and Unix
+      connection_protocol = SERVER_REQUEST;
+    }
+
+  if (css_common_connect (conn, &rid, hname, connection_protocol, server_name, name_length, master_port_id) == NULL)
+    {
+      goto fail_end;
+    }
+
+  if (css_readn (conn->fd, (char *) &response_buff, sizeof (int), -1) != sizeof (int))
+    {
+      goto fail_end;
+    }
+
+  response = ntohl (response_buff);
+  TRACE ("css_connect_to_master_server received %d as response from master\n", response);
+
+  switch (response)
+    {
+    case SERVER_ALREADY_EXISTS:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1, server_name);
+      goto fail_end;
+
+    case SERVER_REQUEST_ACCEPTED_NEW:
+      /* 
+       * Master requests a new-style connect, must go get
+       * our port id and set up our connection socket.
+       * For drivers, we don't need a connection socket and we
+       * don't want to allocate a bunch of them.  Let a flag variable
+       * control whether or not we actually create one of these.
+       */
+      if (css_Server_inhibit_connection_socket)
 	{
-	  connection_protocol = SERVER_REQUEST_NEW;
+	  server_port_id = -1;
 	}
       else
 	{
-	  connection_protocol = SERVER_REQUEST;
+	  server_port_id = css_open_server_connection_socket ();
 	}
 
-      if (css_common_connect (conn, &rid, hname, connection_protocol, server_name, name_length, master_port_id) == NULL)
-	{
-	  css_free_conn (conn);
-	  return (NULL);
-	}
-      else
-	{
-	  if (css_readn (conn->fd, (char *) &response_buff, sizeof (int), -1) == sizeof (int))
-	    {
-	      response = ntohl (response_buff);
-	      TRACE ("css_connect_to_master_server received %d as response from master\n", response);
+      response = htonl (server_port_id);
+      css_net_send (conn, (char *) &response, sizeof (int), -1);
+      /* this connection remains our only contact with the master */
+      return conn;
 
-	      switch (response)
-		{
-		case SERVER_ALREADY_EXISTS:
-		  css_free_conn (conn);
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1, server_name);
-		  return (NULL);
-
-		case SERVER_REQUEST_ACCEPTED_NEW:
-		  /* 
-		   * Master requests a new-style connect, must go get
-		   * our port id and set up our connection socket.
-		   * For drivers, we don't need a connection socket and we
-		   * don't want to allocate a bunch of them.  Let a flag variable
-		   * control whether or not we actually create one of these.
-		   */
-		  if (css_Server_inhibit_connection_socket)
-		    {
-		      server_port_id = -1;
-		    }
-		  else
-		    {
-		      server_port_id = css_open_server_connection_socket ();
-		    }
-
-		  response = htonl (server_port_id);
-		  css_net_send (conn, (char *) &response, sizeof (int), -1);
-		  /* this connection remains our only contact with the master */
-		  return conn;
-
-		case SERVER_REQUEST_ACCEPTED:
+    case SERVER_REQUEST_ACCEPTED:
 #if defined(WINDOWS)
-		  /* PC's can't handle this style of connection at all */
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
-		  css_free_conn (conn);
-		  return (NULL);
+      /* PC's can't handle this style of connection at all */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+      goto fail_end;
 #else /* WINDOWS */
-		  /* send the "pathname" for the datagram */
-		  /* be sure to open the datagram first.  */
+      /* send the "pathname" for the datagram */
+      /* be sure to open the datagram first.  */
 
-		  //on newer systems (e.g. fedora 25) the following line of code
-		  //produces this warning: the use of `tempnam' is dangerous, better use `mkstemp'
+      //on newer systems (e.g. fedora 25) the following line of code
+      //produces this warning: the use of `tempnam' is dangerous, better use `mkstemp'
 
-		  pname = tempnam (NULL, "cubrid");
-		  if (pname)
-		    {
-		      if (css_tcp_setup_server_datagram (pname, &socket_fd)
-			  &&
-			  (css_send_data
-			   (conn, rid, pname,
-			    strlen (pname) + 1) == NO_ERRORS)
-			  && (css_tcp_listen_server_datagram (socket_fd, &datagram_fd)))
-			{
-			  (void) unlink (pname);
-			  /* don't use free_and_init on pname since it came from tempnam() */
-			  free (pname);
-			  css_free_conn (conn);
-			  return (css_make_conn (datagram_fd));
-			}
-		      else
-			{
-			  /* don't use free_and_init on pname since it came from tempnam() */
-			  free (pname);
-			  er_set_with_oserror (ER_ERROR_SEVERITY,
-					       ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
-			  css_free_conn (conn);
-			  return (NULL);
-			}
-		    }
-		  else
-		    {
-		      /* Could not create the temporary file */
-		      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-					   ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
-		      css_free_conn (conn);
-		      return (NULL);
-		    }
-#endif /* WINDOWS */
-		}
+      pname = tempnam (NULL, "cubrid");
+      if (pname)
+	{
+	  if (css_tcp_setup_server_datagram (pname, &socket_fd)
+	      && (css_send_data (conn, rid, pname, strlen (pname) + 1) == NO_ERRORS)
+	      && (css_tcp_listen_server_datagram (socket_fd, &datagram_fd)))
+	    {
+	      (void) unlink (pname);
+	      /* don't use free_and_init on pname since it came from tempnam() */
+	      free (pname);
+	      css_free_conn (conn);
+	      return (css_make_conn (datagram_fd));
+	    }
+	  else
+	    {
+	      /* don't use free_and_init on pname since it came from tempnam() */
+	      free (pname);
+	      er_set_with_oserror (ER_ERROR_SEVERITY,
+				   ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+	      goto fail_end;
 	    }
 	}
-      css_free_conn (conn);
+      else
+	{
+	  /* Could not create the temporary file */
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+	  goto fail_end;
+	}
+#endif /* WINDOWS */
     }
-  return (NULL);
+
+fail_end:
+  css_free_conn (conn);
+  return NULL;
 }
 
 /*
@@ -2132,8 +2129,7 @@ css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
 	      if (data_wait == NULL)
 		{
 		  /* if waiter not exists, add to data queue */
-		  css_add_queue_entry (conn, &conn->data_queue, request_id,
-				       buffer, size, rc, conn->transaction_id,
+		  css_add_queue_entry (conn, &conn->data_queue, request_id, buffer, size, rc, conn->transaction_id,
 				       conn->invalidate_snapshot, conn->db_error);
 		  return;
 		}
@@ -2337,10 +2333,8 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *requ
 }
 
 /*
- * clear_wait_queue_entry_and_free_buffer () - remove data_wait_queue entry
- *                                             when completing or aborting
- *                                             to receive buffer
- *                                             from data_wait_queue.
+ * clear_wait_queue_entry_and_free_buffer () - remove data_wait_queue entry when completing or aborting
+ *                                             to receive buffer from data_wait_queue.
  *   return: void
  *   conn(in): connection entry
  *   rid(in): request id
