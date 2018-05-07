@@ -3193,17 +3193,10 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   ptr = or_unpack_int (ptr, &xint);
   client_isolation = (TRAN_ISOLATION) xint;
 
-#if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-  perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_CONN_CONN_REQ, 1, DIAG_VAL_SETTYPE_INC, NULL);
-#endif
-
   tran_index = xboot_register_client (thread_p, &client_credential, client_lock_wait, client_isolation, &tran_state,
 				      &server_credential);
   if (tran_index == NULL_TRAN_INDEX)
     {
-#if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-      perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_CONN_CONN_REJECT, 1, DIAG_VAL_SETTYPE_INC, NULL);
-#endif
       return_error_to_client (thread_p, rid);
       area = NULL;
       area_size = 0;

@@ -56,9 +56,6 @@
 #include "db_date.h"
 #include "btree_load.h"
 #include "query_dump.h"
-#if defined(SERVER_MODE) && defined(DIAG_DEVEL)
-#include "perf_monitor.h"
-#endif
 #if defined (SERVER_MODE)
 #include "jansson.h"
 #endif /* defined (SERVER_MODE) */
@@ -13954,13 +13951,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		      /* open the scan for this access specification node */
 		      if (level == 0 && spec_level == 1)
 			{
-#if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-			  perfmon_diag_set_full_scan (diag_executediag, NULL, xasl, specp);
-#if 0				/* ACTIVITY PROFILE */
-			  ADD_ACTIVITY_DATA (diag_executediag, DIAG_EVENTCLASS_TYPE_SERVER_QUERY_FULL_SCAN,
-					     xasl->sql_hash_text, "", 0);
-#endif
-#endif
 			  if (qexec_open_scan (thread_p, specp, xptr->merge_val_list, &xasl_state->vd,
 					       force_select_lock, specp->fixed_scan, specp->grouped_scan,
 					       iscan_oid_order, &specp->s_id, xasl_state->query_id, xasl->scan_op_type,
@@ -13986,13 +13976,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      specp->grouped_scan = false;
 			      iscan_oid_order = false;
 			    }
-#if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-			  perfmon_diag_set_full_scan (diag_executediag, NULL, xasl, specp);
-#if 0				/* ACTIVITY PROFILE */
-			  ADD_ACTIVITY_DATA (diag_executediag, DIAG_EVENTCLASS_TYPE_SERVER_QUERY_FULL_SCAN,
-					     xasl->sql_hash_text, "", 0);
-#endif
-#endif
 
 			  if (qexec_open_scan (thread_p, specp, xptr->val_list, &xasl_state->vd, force_select_lock,
 					       specp->fixed_scan, specp->grouped_scan, iscan_oid_order, &specp->s_id,
