@@ -84,7 +84,7 @@ namespace mem
         
       int size (void)
         {
-          return (m_tail - m_head) % m_capacity;
+          return (m_tail >= m_head) ? (m_tail - m_head) : (m_capacity + m_tail - m_head);
         };
 
       /* returns position in queue reserved */
@@ -154,7 +154,7 @@ namespace mem
               {
                 new_head = &(m_buffer[m_head].value);
               }
-            return (m_head - pos) % m_capacity;
+            return (m_head >= pos) ? (m_head - pos) : (m_capacity + m_head - pos);
           }
 
         if (pos == m_tail)
@@ -169,7 +169,7 @@ namespace mem
                     break;
                   }
               }
-             return (pos - m_tail) % m_capacity;
+             return (pos >= m_tail) ? (pos - m_tail) : (m_capacity +pos - m_tail);
           }
 
         return 0;
