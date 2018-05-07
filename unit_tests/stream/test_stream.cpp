@@ -431,9 +431,14 @@ namespace test_stream
 
   int init_common_cubrid_modules (void)
   {
+    static bool initialized = false;
     int res;
     THREAD_ENTRY *thread_p = NULL;
 
+    if (initialized)
+      {
+        return 0;
+      }
 
     lang_init ();
     tp_init ();
@@ -446,6 +451,9 @@ namespace test_stream
 	ASSERT_ERROR ();
 	return res;
       }
+
+    initialized = true;
+
     return NO_ERROR;
   }
 
@@ -488,7 +496,7 @@ namespace test_stream
 
   int test_stream2 (void)
   {
-#define TEST_OBJ_CNT 100
+#define TEST_OBJ_CNT 1000
 
     int res = 0;
     int i;
@@ -549,6 +557,7 @@ namespace test_stream
 
     if (se.is_equal (&se2) == false)
       {
+        assert (false);
         res = -1;
       }
 
@@ -607,6 +616,98 @@ namespace test_stream
           res = -1;
           assert (false);
         }
+
+    return res;
+#undef TEST_OBJ_CNT
+  }
+
+  int test_stream3 (void)
+  {
+#define TEST_ENTRIES_CNT 300
+#define TEST_OBJS_IN_ENTRIES_CNT 200
+#define TEST_DELAY_UNPACK_IN_ENTRIES 10
+
+    int res = 0;
+    int i, j;
+
+    init_common_cubrid_modules ();
+
+    /* create objects */
+    std::cout << "  Testing packing/unpacking of cubstream::entries with sub-objects using same stream" << std::endl;
+    /* create a stream for packing and add pack objects to stream */
+    cubstream::packing_stream test_stream_for_pack (10 * 1024 * 1024, 10);
+    test_stream_for_pack.set_buffer_reserve_margin (100 * 1024);
+
+    std::cout << "      Generating stream entries and objects...";
+    test_stream_entry* se_array[TEST_ENTRIES_CNT];
+    for (i = 0; i < TEST_ENTRIES_CNT; i++)
+      {
+        se_array[i] = new test_stream_entry(&test_stream_for_pack);
+
+        for (j = 0; j < TEST_OBJS_IN_ENTRIES_CNT; j++)
+          {
+	    if (std::rand() %2 == 0)
+	      {
+	        po1 *obj = new po1;
+	        obj->generate_obj ();
+                se_array[i]->add_packable_entry (obj);
+	      }
+	    else
+	      {
+	        po2 *obj = new po2;
+	        obj->generate_obj ();
+                se_array[i]->add_packable_entry (obj);
+	      }
+          }
+      }
+    std::cout << "Done" << std::endl;
+
+    std::cout << "      Start test..";
+    /* use same stream for unpack (same buffers) and create another stream::entry */
+    test_stream_entry* se_array_unpacked[TEST_ENTRIES_CNT];
+    for (i = 0; i < TEST_ENTRIES_CNT + TEST_DELAY_UNPACK_IN_ENTRIES; i++)
+      {
+        if (i < TEST_ENTRIES_CNT)
+          {
+            /* pack original entry */
+            se_array[i]->set_packable (true);
+
+            res = se_array[i]->pack ();
+            if (res != 0)
+              {
+                assert (false);
+                return res;
+              }
+          }
+
+        if (i >= TEST_DELAY_UNPACK_IN_ENTRIES)
+          {
+            se_array_unpacked[i - TEST_DELAY_UNPACK_IN_ENTRIES] = new test_stream_entry(&test_stream_for_pack);
+
+            /* unpack into a copy */
+            res = se_array_unpacked[i - TEST_DELAY_UNPACK_IN_ENTRIES]->prepare ();
+            if (res != 0)
+              {
+                assert (false);
+                return res;
+              }
+
+            res = se_array_unpacked[i - TEST_DELAY_UNPACK_IN_ENTRIES]->unpack ();
+            if (res != 0)
+              {
+                assert (false);
+                return res;
+              }
+
+            if (se_array_unpacked[i - TEST_DELAY_UNPACK_IN_ENTRIES]->is_equal (se_array[i - TEST_DELAY_UNPACK_IN_ENTRIES]) == false)
+              {
+                res = -1;
+                assert (false);
+              }
+          }
+      }
+    std::cout << "Done" << std::endl;
+
 
     return res;
   }

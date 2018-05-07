@@ -34,6 +34,9 @@ namespace test_stream
   /* testing of stream with packable objects */
   int test_stream2 (void);
 
+  /* testing of stream with packable objects and multiple cubstream:entry */
+  int test_stream3 (void);
+
   class stream_handler_write : public cubstream::write_handler
   {
     public:

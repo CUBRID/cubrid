@@ -47,7 +47,7 @@ int main ()
 
   test_module (global_error, test_stream::test_stream1);
   test_module (global_error, test_stream::test_stream2);
- 
+  test_module (global_error, test_stream::test_stream3);
   /* add more tests here */
 
   return global_error;
