@@ -364,9 +364,8 @@ namespace cubstream
     stream_reserve_context context;
 
     /* this is my current position in stream */
-    context.start_pos = reserve_no_buffer (amount);
-
     m_buffer_mutex.lock ();
+    context.start_pos = reserve_no_buffer (amount);
 
     reserved_context = m_reserved_positions.produce (context);
 
@@ -390,7 +389,8 @@ namespace cubstream
 
   stream_position packing_stream::reserve_no_buffer (const size_t amount)
   {
-    stream_position initial_pos = m_append_position.fetch_add (amount);
+    stream_position initial_pos = m_append_position;
+    m_append_position += amount;
 
     return initial_pos;
   }

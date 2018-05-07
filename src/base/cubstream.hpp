@@ -83,7 +83,7 @@ namespace cubstream
       notify_handler *m_ready_pos_handler;
 
       /* current stream position not allocated yet */
-      std::atomic <stream_position> m_append_position;
+      stream_position m_append_position;
 
       /* last stream position read
        * in most scenarios, each reader provides its own read position,
