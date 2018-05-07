@@ -27,6 +27,7 @@
 #ident "$Id$"
 
 #include <assert.h>
+#include <cstring>
 #include <mutex>
 
 /*
