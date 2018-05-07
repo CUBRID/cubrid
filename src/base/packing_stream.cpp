@@ -333,6 +333,8 @@ namespace cubstream
       {
         if (new_reserved_head != NULL)
           {
+            assert (new_completed_position <= new_reserved_head->start_pos);
+
             ptr_commit = new_reserved_head->ptr;
             new_completed_position = new_reserved_head->start_pos;
           }
@@ -480,7 +482,6 @@ namespace cubstream
     const char *ptr_trail_a;
     const char *ptr_trail_b;
     size_t amount_trail_a, amount_trail_b, total_in_buffer;
-    stream_reserve_context *oldest_reserved_context;
     stream_position start_active_region;
 
     m_bip_buffer.get_read_ranges (ptr_trail_b, amount_trail_b, ptr_trail_a, amount_trail_a);
@@ -490,21 +491,12 @@ namespace cubstream
         return NULL;
       }
 
-    oldest_reserved_context = m_reserved_positions.peek_head ();
-    if (oldest_reserved_context != NULL)
-      {
-        start_active_region = oldest_reserved_context->start_pos;
-      }
-    else
-      {
-        start_active_region = m_append_position;
-      }
-
     total_in_buffer = amount_trail_b + amount_trail_a;
 
-    m_oldest_readable_position = start_active_region - total_in_buffer;
+    m_oldest_readable_position = m_last_committed_pos - total_in_buffer;
 
-    if (req_start_pos  < m_oldest_readable_position)
+    /* TODO[arnia] : maybe we should require that all buffer in buffer */
+    if (req_start_pos < m_oldest_readable_position)
       {
         /* not in buffer anymore request it from stream_io */
         /* TODO[arnia] */
@@ -512,15 +504,15 @@ namespace cubstream
         return NULL;
       }
 
-    if (req_start_pos - m_oldest_readable_position <= amount_trail_b)
+    if (m_last_committed_pos - req_start_pos <= amount_trail_b)
       {
         /* the area may be found in trail of region B */
-        ptr = (char *) ptr_trail_b - (m_oldest_readable_position - req_start_pos);
+        ptr = (char *) ptr_trail_b + amount_trail_b - (m_last_committed_pos - req_start_pos);
         actual_read_bytes = MIN (amount, amount_trail_b);
       }
     else
       {
-        ptr = (char *) ptr_trail_a - (m_oldest_readable_position - req_start_pos - amount_trail_b);
+        ptr = (char *) ptr_trail_a + amount_trail_a - (m_last_committed_pos - req_start_pos - amount_trail_b);
         actual_read_bytes = MIN (amount, amount_trail_a);
       }
     err = m_bip_buffer.start_read (ptr, actual_read_bytes);

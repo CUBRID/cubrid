@@ -183,6 +183,11 @@ namespace cubstream
 			partial_read_handler *handler);
       int read (const stream_position first_pos, const size_t byte_count, read_handler *handler);
 
+      void set_buffer_reserve_margin (const size_t margin)
+        {
+          m_bip_buffer.set_reserve_margin (margin);
+        }
+
   };
 
 } /* namespace cubstream */

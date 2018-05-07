@@ -35,7 +35,6 @@ namespace cubstream
     m_last_committed_pos = 0;
     m_read_position = 0;
 
-
     set_filled_stream_handler (NULL);
     set_fetch_data_handler (NULL);
     set_ready_pos_handler (NULL);
