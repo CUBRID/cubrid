@@ -154,6 +154,7 @@ namespace mem
               {
                 new_head = &(m_buffer[m_head].value);
               }
+
             return (m_head >= pos) ? (m_head - pos) : (m_capacity + m_head - pos);
           }
 
@@ -169,7 +170,8 @@ namespace mem
                     break;
                   }
               }
-             return (pos >= m_tail) ? (pos - m_tail) : (m_capacity +pos - m_tail);
+
+            /* do not return colapsed count here */
           }
 
         return 0;
