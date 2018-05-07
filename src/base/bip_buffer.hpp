@@ -69,6 +69,7 @@ namespace mem
           assert (m_reserve_margin < m_capacity);
 
           m_buffer = new char[m_capacity];
+          m_buffer_end = m_buffer + m_capacity;
 
           m_ptr_start_a = m_buffer;
           m_ptr_append = m_ptr_start_a;
@@ -106,7 +107,7 @@ namespace mem
 
           while (1)
             {
-              if (m_ptr_append + amount > m_buffer + m_capacity)
+              if (m_ptr_append + amount > m_buffer_end)
                 {
                   /* not enough till end of whole buffer; try switch to region B */
                   if (is_region_b_used () == false)
@@ -240,7 +241,7 @@ namespace mem
      protected:
       int get_page_from_ptr (const char *ptr)
         {
-          if (ptr - m_buffer > m_capacity)
+          if (ptr >= m_buffer_end)
             {
               return -1;
             }
@@ -266,7 +267,7 @@ namespace mem
 
           assert (start_ptr < end_ptr -1);
           assert (start_ptr >= m_buffer);
-          assert (end_ptr < m_buffer + m_capacity);
+          assert (end_ptr < m_buffer_end);
 
           if (m_read_flags.any ())
             {
@@ -312,20 +313,24 @@ namespace mem
 
       void take_margin_in_region_a (const size_t amount)
         {
-          if (m_ptr_append + amount + m_reserve_margin < m_buffer + m_capacity)
+          if (m_ptr_append + amount + m_reserve_margin < m_buffer_end)
             {
               m_ptr_end_a = m_ptr_append + amount + m_reserve_margin;
              }
           else
             {
-              m_ptr_end_a = m_buffer + m_capacity;
-              activate_region_b ();
+              m_ptr_end_a = m_buffer_end;
+              if (is_region_b_used () == false)
+                {
+                  activate_region_b ();
+                }
             }
         };
     private:
       size_t m_capacity;
 
       const char *m_buffer;
+      const char *m_buffer_end;
 
       /* limits of region A : end_a points to first byte after the last one of region */
       const char *m_ptr_start_a;
