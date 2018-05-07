@@ -26,14 +26,13 @@
 #ifndef _CUBSTREAM_HPP_
 #define _CUBSTREAM_HPP_
 
-#include <stddef.h>
-#include <sys/types.h>
+#include <cinttypes>
 #include <atomic>
 
 namespace cubstream
 {
 
-  typedef off_t stream_position;
+  typedef std::uint64_t stream_position;
 
   class read_handler
   {

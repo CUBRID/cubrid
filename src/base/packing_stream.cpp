@@ -192,9 +192,6 @@ namespace cubstream
 
   packing_stream::packing_stream (const size_t buffer_capacity, const int max_appenders)
   {
-        printf ("\n\packing_stream m_read_position=%ld  (%p)\n\n", m_read_position, &m_read_position);
-        printf ("\n\packing_stream m_last_committed_pos=%ld (%p)\n\n", m_last_committed_pos, &m_last_committed_pos);
-
     m_total_buffered_size = 0;
     m_oldest_readable_position = 0;
 

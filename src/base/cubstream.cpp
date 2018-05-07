@@ -41,9 +41,6 @@ namespace cubstream
     set_ready_pos_handler (NULL);
 
     init (0);
-
-        printf ("\n\nstream m_read_position=%ld  (%p)\n\n", m_read_position, &m_read_position);
-        printf ("\n\nstream m_last_committed_pos=%ld (%p)\n\n", m_last_committed_pos, &m_last_committed_pos);
   }
 
   int stream::init (const stream_position &start_position)
