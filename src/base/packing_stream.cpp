@@ -60,7 +60,7 @@ namespace cubstream
     set_header_data_size (data_size);
 
     pack_stream_entry_header ();
-    const char *eptr = serializator->get_curr_ptr ();
+
     for (i = 0; i < m_packable_entries.size(); i++)
       {
 	serializator->align (MAX_ALIGNMENT);
@@ -413,17 +413,17 @@ namespace cubstream
   char *packing_stream::get_more_data_with_buffer (const size_t amount, size_t &actual_read_bytes)
   {
     char *ptr;
-    int err;
+    int err = NO_ERROR;
 
     if (m_read_position + amount > m_append_position)
       {
         if (m_fetch_data_handler != NULL)
           {
             err = fetch_data_from_provider (m_read_position, amount);
-          }
-        if (err != NO_ERROR)
-          {
-            return NULL;
+            if (err != NO_ERROR)
+              {
+                return NULL;
+              }
           }
       }
 
@@ -503,9 +503,7 @@ namespace cubstream
 
     m_oldest_readable_position = start_active_region - total_in_buffer;
 
-    assert (req_start_pos >= m_oldest_readable_position);
-
-    if (req_start_pos + total_in_buffer < m_oldest_readable_position)
+    if (req_start_pos  < m_oldest_readable_position)
       {
         /* not in buffer anymore request it from stream_io */
         /* TODO[arnia] */
