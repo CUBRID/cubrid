@@ -3630,7 +3630,6 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
   DWB_BLOCK *rcv_block = NULL;
   DWB_SLOT *p_dwb_ordered_slots = NULL;
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  char null_page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *null_page;
   FILEIO_PAGE *iopage;
   VPID *vpid;
   int vol_fd, temp_vol_fd, vol_pages = 0;
@@ -3691,8 +3690,6 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 
       volid = NULL_VOLID;
       iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
-      null_page = PTR_ALIGN (null_page_buf, MAX_ALIGNMENT);
-      memset (null_page, 0, IO_PAGESIZE);
 
       /* Check whether the data page is corrupted. If true, replaced with the DWB page. */
       for (i = 0; i < rcv_block->count_wb_pages; i++)
@@ -3702,14 +3699,6 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	    {
 	      continue;
 	    }
-
-	  if (memcmp ((char *) p_dwb_ordered_slots[i].io_page, null_page, IO_PAGESIZE) == 0)
-	    {
-	      /* At DWB creation, if partial page issue happens, we may have a lot of 0. */
-	      continue;
-	    }
-
-	  assert (!VPID_EQ (vpid, &p_dwb_ordered_slots[i + 1].vpid));
 
 	  if (volid != vpid->volid)
 	    {
@@ -3750,6 +3739,7 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	  if (!is_page_corrupted)
 	    {
 	      /* The page in data volume is not corrupted. Do not overwrite its content - reset slot VPID. */
+	      assert (!VPID_EQ (vpid, &p_dwb_ordered_slots[i + 1].vpid));
 	      VPID_SET_NULL (&p_dwb_ordered_slots[i].vpid);
 	      fileio_initialize_res (thread_p, &(p_dwb_ordered_slots[i].io_page->prv));
 	      continue;
