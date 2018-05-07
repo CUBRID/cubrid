@@ -417,13 +417,14 @@ namespace cubstream
 
     if (m_read_position + amount > m_append_position)
       {
+        err = ER_FAILED;
         if (m_fetch_data_handler != NULL)
           {
             err = fetch_data_from_provider (m_read_position, amount);
-            if (err != NO_ERROR)
-              {
-                return NULL;
-              }
+          }
+        if (err != NO_ERROR)
+          {
+            return NULL;
           }
       }
 
