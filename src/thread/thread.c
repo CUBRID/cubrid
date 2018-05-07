@@ -23,55 +23,13 @@
 
 // *INDENT-OFF*
 
-#ident "$Id$"
-
-#if !defined(WINDOWS)
-#define __STDC_FORMAT_MACROS
-#include <inttypes.h>
-#endif
-
-#include "config.h"
-
-#include <assert.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
-#include <errno.h>
-#include <signal.h>
-#include <limits.h>
-
-#if defined(WINDOWS)
-#include <process.h>
-#else /* WINDOWS */
-#include <sys/time.h>
-#include <unistd.h>
-#endif /* WINDOWS */
-
 #include "thread.h"
-#include "boot_sr.h"
-#include "server_support.h"
-#include "session.h"
-#if defined(WINDOWS)
-#include "wintcp.h"
-#else /* WINDOWS */
-#include "tcp.h"
-#endif /* WINDOWS */
-#include "vacuum.h"
 
-#if defined(WINDOWS)
-#include "heartbeat.h"
-#endif
-
+#include "error_manager.h"
+#include "memory_alloc.h"
+#include "system_parameter.h"
 #include "thread_manager.hpp"
-
-static const int THREAD_RETRY_MAX_SLAM_TIMES = 10;
-
-#if defined(HPUX)
-static __thread THREAD_ENTRY *tsd_ptr;
-#else /* HPUX */
-static pthread_key_t thread_Thread_key;
-#endif /* HPUX */
+#include "critical_section.h"
 
 #define THREAD_RC_TRACK_VMEM_THRESHOLD_AMOUNT	      32767
 #define THREAD_RC_TRACK_PGBUF_THRESHOLD_AMOUNT	      1024
@@ -110,8 +68,6 @@ static pthread_key_t thread_Thread_key;
     } \
   while (0)
 
-static int thread_wakeup_internal (THREAD_ENTRY * thread_p, int resume_reason, bool had_mutex);
-
 
 static int thread_rc_track_meter_check (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, THREAD_RC_METER * prev_meter);
 static int thread_rc_track_check (THREAD_ENTRY * thread_p, int id);
@@ -133,72 +89,6 @@ static void thread_rc_track_meter_assert_csect_dependency (THREAD_ENTRY * thread
 static void thread_rc_track_meter_assert_csect_usage (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, int enter_mode,
 						      void *ptr);
 #endif /* !NDEBUG */
-
-/*
- * Thread Specific Data management
- *
- * All kind of thread has its own information like request id, error code,
- * synchronization informations, etc. We use THREAD_ENTRY structure
- * which saved as TSD(thread specific data) to manage these informations.
- * Global thread manager(thread_mgr) has an array of these entries which is
- * initialized by the 'thread_mgr'.
- * Each worker thread picks one up from this array.
- */
-
-/*
- * Thread entry related functions
- * Information retrieval modules.
- * Inter thread synchronization modules.
- */
-
-/*
- * thread_set_check_interrupt() -
- *   return:
- *   flag(in):
- */
-bool
-thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag)
-{
-  bool old_val = true;
-
-  if (BO_IS_SERVER_RESTARTED ())
-    {
-      if (thread_p == NULL)
-	{
-	  thread_p = thread_get_thread_entry_info ();
-	}
-
-      /* safe guard: vacuum workers should not check for interrupt */
-      assert (flag == false || !VACUUM_IS_THREAD_VACUUM (thread_p));
-      old_val = thread_p->check_interrupt;
-      thread_p->check_interrupt = flag;
-    }
-
-  return old_val;
-}
-
-/*
- * thread_get_check_interrupt() -
- *   return:
- */
-bool
-thread_get_check_interrupt (THREAD_ENTRY * thread_p)
-{
-  bool ret_val = true;
-
-  if (BO_IS_SERVER_RESTARTED ())
-    {
-      if (thread_p == NULL)
-	{
-	  thread_p = thread_get_thread_entry_info ();
-	}
-
-      ret_val = thread_p->check_interrupt;
-    }
-
-  return ret_val;
-}
-
 /*
  * thread_rc_track_meter_check () -
  *   return:

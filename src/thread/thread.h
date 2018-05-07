@@ -25,34 +25,9 @@
 #ifndef _THREAD_H_
 #define _THREAD_H_
 
-#ident "$Id$"
-
 #if (!defined (SERVER_MODE) && !defined (SA_MODE)) || !defined (__cplusplus)
 #error Does not belong in this context; maybe thread_compat.h can be included instead
 #endif // not SERVER_MODE and not SA_MODE or not C++
-
-#include "lock_free.h"
-#include "thread_entry.hpp"
-
-#if defined(SERVER_MODE)
-#include "adjustable_array.h"
-#include "dbtype_def.h"
-#include "error_manager.h"
-#include "log_compress.h"
-#include "porting.h"
-#include "system_parameter.h"
-#endif /* SERVER_MODE */
-
-#if defined(SERVER_MODE) && !defined (WINDOWS)
-#include <pthread.h>
-#endif // SERVER_MODE and not WINDOWS
-#if defined(SERVER_MODE)
-#include <sys/types.h>
-#endif // SERVER_MODE
-
-/* *INDENT-OFF* */
-
-#include "thread_manager.hpp"
 
 #if !defined(SERVER_MODE)
 
@@ -66,6 +41,10 @@
 #define thread_rc_track_meter(thread_p, file, line, amount, ptr, rc_idx, mgr_idx)
 
 #else /* !SERVER_MODE */
+
+#include "porting.h"
+#include "system.h"
+#include "thread_compat.hpp"
 
 /*
  * thread resource track info matrix: thread_p->track.meter[RC][MGR]
