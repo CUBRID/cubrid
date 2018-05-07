@@ -25,9 +25,7 @@
 
 #include "error_code.h"
 #include "packing_stream.hpp"
-#include "stream_buffer.hpp"
 #include "stream_packer.hpp"
-#include "buffer_provider.hpp"
 #include <algorithm>
 
 namespace cubstream
@@ -134,7 +132,7 @@ namespace cubstream
     int error_code = NO_ERROR;
     int object_id;
 
-    /* TODO[arnia] : make sure the serializator range already points to data contents */
+    /* position the serializator range to data contents */
 
     stream_packer *serializator = get_packer ();
     size_t count_packable_entries = get_packable_entry_count_from_header ();
@@ -248,7 +246,6 @@ namespace cubstream
   int packing_stream::read (const stream_position first_pos, const size_t byte_count, read_handler *handler)
   {
     int err = NO_ERROR;
-    buffer_context *range = NULL;
     char *ptr;
     size_t actual_read_bytes = 0;
     char *local_buffer = NULL;
@@ -306,7 +303,6 @@ namespace cubstream
 				    partial_read_handler *handler)
   {
     int err = NO_ERROR;
-    buffer_context *range = NULL;
     char *ptr;
     size_t contiguous_bytes_in_buffer = 0;
 
@@ -449,8 +445,6 @@ namespace cubstream
   {
     int i;
     int err = NO_ERROR;
-    stream_buffer *new_buffer = NULL;
-    buffer_provider *curr_buffer_provider;
     char *ptr = NULL;
 
     if (req_start_pos + amount > m_last_committed_pos

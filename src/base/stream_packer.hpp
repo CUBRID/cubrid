@@ -27,15 +27,12 @@
 #define _STREAM_PACKER_HPP_
 
 #include "dbtype.h"
-#include "stream_common.hpp"
 #include "packer.hpp"
 #include "packing_stream.hpp"
 #include <vector>
 
 namespace cubstream
 {
-
-  class buffer_provider;
 
   /*
    * this packs or unpacks objects from/into a stream

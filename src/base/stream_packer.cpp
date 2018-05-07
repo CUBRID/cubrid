@@ -25,7 +25,6 @@
 
 #include "stream_packer.hpp"
 #include "packing_stream.hpp"
-#include "stream_buffer.hpp"
 #include <vector>
 
 namespace cubstream

@@ -24,7 +24,6 @@
 #ident "$Id$"
 
 #include "cubstream.hpp"
-#include "buffer_provider.hpp"
 #include "error_code.h"
 #include <algorithm>
 

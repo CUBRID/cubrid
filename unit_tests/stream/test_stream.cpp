@@ -18,7 +18,6 @@
  */
 
 #include "test_stream.hpp"
-#include "buffer_provider.hpp"
 #include "object_representation.h"
 #include "packing_stream.hpp"
 #include "thread_compat.hpp"
@@ -606,6 +605,7 @@ namespace test_stream
       if (se.is_equal (&se3) == false)
         {
           res = -1;
+          assert (false);
         }
 
     return res;

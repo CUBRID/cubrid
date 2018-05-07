@@ -56,11 +56,8 @@ set(THREAD_HEADERS
   )
 
 set(STREAM_SOURCES
-  ${BASE_DIR}/buffer_provider.cpp
   ${BASE_DIR}/cubstream.cpp
   ${BASE_DIR}/packing_stream.cpp
-  ${BASE_DIR}/stream_buffer.cpp
-  ${BASE_DIR}/stream_common.cpp
   ${BASE_DIR}/stream_packer.cpp
   )
 
@@ -132,12 +129,9 @@ set (BASE_HEADERS
 
 set (STREAM_HEADERS
   ${BASE_DIR}/bip_buffer.hpp
-  ${BASE_DIR}/buffer_provider.hpp
   ${BASE_DIR}/collapsable_circular_queue.hpp
   ${BASE_DIR}/cubstream.hpp
   ${BASE_DIR}/packing_stream.hpp
-  ${BASE_DIR}/stream_buffer.hpp
-  ${BASE_DIR}/stream_common.hpp
   ${BASE_DIR}/stream_io.hpp
   ${BASE_DIR}/stream_packer.hpp
   )

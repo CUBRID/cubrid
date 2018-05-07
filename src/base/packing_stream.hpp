@@ -32,7 +32,6 @@
 #include "object_factory.hpp"
 #include "packable_object.hpp"
 #include "pinning.hpp"
-//#include "stream_common.hpp"
 #include "stream_io.hpp"
 #include "storage_common.h"
 #include <vector>
@@ -41,7 +40,6 @@
 namespace cubstream
 {
 
-  class buffer_provider;
   class stream_packer;
   class packing_stream;
 
