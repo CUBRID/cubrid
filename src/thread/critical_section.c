@@ -1706,7 +1706,7 @@ csect_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values
 	}
       else
 	{
-	  thread_entry = thread_find_entry_by_tid (owner_tid);
+	  thread_entry = thread_get_manager ()->find_by_tid (owner_tid);
 	  if (thread_entry != NULL)
 	    {
 	      db_make_bigint (&vals[idx], thread_entry->index);

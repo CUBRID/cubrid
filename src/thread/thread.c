@@ -151,63 +151,6 @@ static void thread_rc_track_meter_assert_csect_usage (THREAD_ENTRY * thread_p, T
  * Inter thread synchronization modules.
  */
 
-
-
-bool
-thread_belongs_to (THREAD_ENTRY * thread_p, int tran_index, int client_id)
-{
-  CSS_CONN_ENTRY *conn_p;
-  bool does_belong = false;
-
-  (void) pthread_mutex_lock (&thread_p->tran_index_lock);
-  if (!thread_p->is_on_current_thread () && thread_p->m_status != cubthread::entry::status::TS_DEAD && thread_p->m_status != cubthread::entry::status::TS_FREE
-      && thread_p->m_status != cubthread::entry::status::TS_CHECK)
-    {
-      conn_p = thread_p->conn_entry;
-      if (tran_index == NULL_TRAN_INDEX)
-	{
-	  // exact match client ID is required
-	  does_belong = conn_p != NULL && conn_p->client_id == client_id;
-	}
-      else if (tran_index == thread_p->tran_index)
-	{
-	  // match client ID or null connection
-	  does_belong = conn_p == NULL || conn_p->client_id == client_id;
-	}
-    }
-  pthread_mutex_unlock (&thread_p->tran_index_lock);
-  return does_belong;
-}
-
-/*
- * thread_has_threads() - check if any thread is processing job of transaction
- *                          tran_index
- *   return:
- *   tran_index(in):
- *   client_id(in):
- *
- * Note: WARN: this function doesn't lock thread_mgr
- */
-int
-thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id)
-{
-  int n = 0;
-
-  for (THREAD_ENTRY * thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
-    {
-      if (thread_p == caller || thread_p->type != TT_WORKER)
-	{
-	  continue;
-	}
-      if (thread_belongs_to (thread_p, tran_index, client_id))
-	{
-	  n++;
-	}
-    }
-
-  return n;
-}
-
 /*
  * thread_set_check_interrupt() -
  *   return:
@@ -280,25 +223,6 @@ thread_find_entry_by_index (int thread_index)
   assert (thread_p->index == thread_index);
 
   return thread_p;
-}
-
-/*
- * thread_find_entry_by_tid() -
- *   return:
- *   tid(in)
- */
-THREAD_ENTRY *
-thread_find_entry_by_tid (thread_id_t tid)
-{
-  for (THREAD_ENTRY * thread_p = thread_iterate (NULL); thread_p != NULL; thread_p = thread_iterate (thread_p))
-    {
-      if (thread_p->get_id () == tid)
-	{
-	  return thread_p;
-	}
-    }
-
-  return NULL;
 }
 
 /*
@@ -1634,28 +1558,5 @@ thread_rc_track_meter_at (THREAD_RC_METER * meter, const char *caller_file, int 
     }
 }
 #endif /* !NDEBUG */
-
-/*
- * thread_iterate () - thread iterator
- *
- * return        : next thread entry
- * thread_p (in) : current thread entry
- */
-THREAD_ENTRY *
-thread_iterate (THREAD_ENTRY * thread_p)
-{
-  int index = 1;		// iteration starts with thread index = 1
-
-  if (thread_p != NULL)
-    {
-      index = thread_p->index + 1;
-    }
-  if (index >= thread_num_total_threads ())
-    {
-      assert (index == thread_num_total_threads ());
-      return NULL;
-    }
-  return thread_find_entry_by_index (index);
-}
 
 // *INDENT-ON*

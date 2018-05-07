@@ -1074,7 +1074,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 
 	  /* check server's HA state */
 	  if (ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY && conn->in_transaction == false
-	      && thread_has_threads (thread_p, conn->transaction_id, conn->client_id) == 0)
+	      && css_count_transaction_worker_threads (thread_p, conn->transaction_id, conn->client_id) == 0)
 	    {
 	      status = REQUEST_REFUSED;
 	      break;
@@ -3154,5 +3154,53 @@ css_are_all_request_handlers_suspended (void)
       // at least one thread is free
       return false;
     }
+}
+
+void
+css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
+                                              THREAD_ENTRY * caller_thread, int tran_index, int client_id,
+                                              size_t & count)
+{
+  CSS_CONN_ENTRY *conn_p;
+  bool does_belong = false;
+
+  if (caller_thread == &thread_ref || thread_ref.type != TT_WORKER)
+    {
+      // not what we need
+      return;
+    }
+
+  (void) pthread_mutex_lock (&thread_ref.tran_index_lock);
+  if (!thread_ref.is_on_current_thread () && thread_ref.m_status != cubthread::entry::status::TS_DEAD
+      && thread_ref.m_status != cubthread::entry::status::TS_FREE
+      && thread_ref.m_status != cubthread::entry::status::TS_CHECK)
+    {
+      conn_p = thread_ref.conn_entry;
+      if (tran_index == NULL_TRAN_INDEX)
+        {
+          // exact match client ID is required
+          does_belong = conn_p != NULL && conn_p->client_id == client_id;
+        }
+      else if (tran_index == thread_ref.tran_index)
+        {
+          // match client ID or null connection
+          does_belong = conn_p == NULL || conn_p->client_id == client_id;
+        }
+    }
+  pthread_mutex_unlock (&thread_ref.tran_index_lock);
+
+  if (does_belong)
+    {
+      count++;
+    }
+}
+
+size_t
+css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, int client_id)
+{
+  size_t count = 0;
+  css_Server_request_worker_pool->map_running_contexts (css_count_transaction_worker_threads_mapfunc, thread_p,
+                                                        tran_index, client_id, count);
+  return count;
 }
 // *INDENT-ON*

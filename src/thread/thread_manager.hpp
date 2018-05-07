@@ -188,6 +188,7 @@ namespace cubthread
       }
 
       void return_lock_free_transaction_entries (void);
+      entry *find_by_tid (thread_id_t tid);
 
       // mappers
 

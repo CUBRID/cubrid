@@ -98,6 +98,7 @@ extern size_t css_get_num_request_workers (void);
 extern size_t css_get_num_connection_workers (void);
 extern size_t css_get_num_total_workers (void);
 extern bool css_are_all_request_handlers_suspended (void);
+extern size_t css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, int client_id);
 
 extern void css_set_thread_info (THREAD_ENTRY * thread_p, int client_id, int rid, int tran_index,
 				 int net_request_index);

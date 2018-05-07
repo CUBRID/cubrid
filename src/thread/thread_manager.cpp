@@ -416,6 +416,19 @@ namespace cubthread
       }
   }
 
+  entry *
+  manager::find_by_tid (thread_id_t tid)
+  {
+    for (std::size_t index = 0; index < m_max_threads; index++)
+      {
+	if (m_all_entries[index].get_id () == tid)
+	  {
+	    return &m_all_entries[index];
+	  }
+      }
+    return NULL;
+  }
+
   //////////////////////////////////////////////////////////////////////////
   // Global thread interface
   //////////////////////////////////////////////////////////////////////////

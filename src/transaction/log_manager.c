@@ -1608,7 +1608,7 @@ loop:
     {
       if (i != LOG_SYSTEM_TRAN_INDEX && (tdes = LOG_FIND_TDES (i)) != NULL && tdes->trid != NULL_TRANID)
 	{
-	  if (thread_has_threads (thread_p, i, tdes->client_id) > 0)
+	  if (css_count_transaction_worker_threads (thread_p, i, tdes->client_id) > 0)
 	    {
 	      repeat_loop = true;
 	    }

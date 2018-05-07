@@ -157,11 +157,9 @@ struct thread_resource_track
 #endif
 };
 
-extern int thread_has_threads (THREAD_ENTRY * caller, int tran_index, int client_id);
 extern bool thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 
 extern THREAD_ENTRY *thread_find_entry_by_index (int thrd_index);
-extern THREAD_ENTRY *thread_find_entry_by_tid (thread_id_t thrd_id);
 
 extern bool thread_get_check_interrupt (THREAD_ENTRY * thread_p);
 
@@ -176,12 +174,6 @@ extern void thread_rc_track_meter (THREAD_ENTRY * thread_p, const char *file_nam
 extern void thread_rc_track_initialize (THREAD_ENTRY * thread_p);
 extern void thread_rc_track_finalize (THREAD_ENTRY * thread_p);
 extern void thread_rc_track_clear_all (THREAD_ENTRY * thread_p);
-
-extern const char *thread_type_to_string (int type);
-extern const char *thread_status_to_string (cubthread::entry::status status);
-extern const char *thread_resume_status_to_string (int resume_status);
-
-extern THREAD_ENTRY *thread_iterate (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE */
 
 /* *INDENT-ON* */

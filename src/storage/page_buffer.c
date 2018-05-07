@@ -3501,53 +3501,57 @@ end:
        * we know of one more possible scenario. the waiting threads have no victims in their private lists, and their
        * private lists are over quota. there are enough victims in other lists, so enough that flush could not find
        * any viable candidates to flush. let's confirm this scenario. */
-      THREAD_ENTRY *thrd_iter;
-      PGBUF_LRU_LIST *lru_list = NULL;
-      int lru_idx;
-      int count_check_this_lru;
 
       assert (check_count_lru > 0);
 
-      for (thrd_iter = thread_iterate (NULL); thrd_iter != NULL; thrd_iter = thread_iterate (thrd_iter))
-	{
-	  if (thrd_iter->resume_status != THREAD_ALLOC_BCB_SUSPENDED)
-	    {
-	      continue;
-	    }
-	  if (!PGBUF_THREAD_HAS_PRIVATE_LRU (thrd_iter))
-	    {
-	      continue;
-	    }
-	  lru_list = PGBUF_GET_LRU_LIST (PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thrd_iter)));
-	  if (PGBUF_LRU_VICTIM_ZONE_COUNT (lru_list) == 0)
-	    {
-	      continue;
-	    }
-	  if (lru_list->count_vict_cand > 0)
-	    {
-	      if (pgbuf_is_any_thread_waiting_for_direct_victim () == false)
-		{
-		  /* we had direct victim waiters at the start of check loop; now, all waiters got BCB from the direct
-		   * flush queue */
-		  continue;
-		}
-	      /* should have found victim candidate */
-	      assert (false);
-	    }
-	  if (!PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
-	    {
-	      if (pgbuf_is_any_thread_waiting_for_direct_victim () == false)
-		{
-		  /* we had direct victim waiters at the start of check loop; now, all waiters got BCB from the direct
-		   * flush queue */
-		  continue;
-		}
-	      /* should be over quota */
-	      assert (false);
-	    }
-	}
+      // lambda function to map checks on all thread entry
+      auto check_mapfunc =[&](THREAD_ENTRY & thrd_iter, bool & stop_mapper) {
+	(void) stop_mapper;	// suppress unused parameter warning
+
+	PGBUF_LRU_LIST *lru_list = NULL;
+	if (thrd_iter.resume_status != THREAD_ALLOC_BCB_SUSPENDED)
+	  {
+	    return;
+	  }
+	if (!PGBUF_THREAD_HAS_PRIVATE_LRU (&thrd_iter))
+	  {
+	    return;
+	  }
+	lru_list = PGBUF_GET_LRU_LIST (PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (&thrd_iter)));
+	if (PGBUF_LRU_VICTIM_ZONE_COUNT (lru_list) == 0)
+	  {
+	    return;
+	  }
+	if (lru_list->count_vict_cand > 0)
+	  {
+	    if (pgbuf_is_any_thread_waiting_for_direct_victim () == false)
+	      {
+		/* we had direct victim waiters at the start of check loop; now, all waiters got BCB from the direct
+		 * flush queue */
+		return;
+	      }
+	    /* should have found victim candidate */
+	    assert (false);
+	  }
+	if (!PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
+	  {
+	    if (pgbuf_is_any_thread_waiting_for_direct_victim () == false)
+	      {
+		/* we had direct victim waiters at the start of check loop; now, all waiters got BCB from the direct
+		 * flush queue */
+		return;
+	      }
+	    /* should be over quota */
+	    assert (false);
+	  }
+      };
+      // map checks
+      thread_get_manager ()->map_entries (check_mapfunc);
 
       /* now, let's double check that not finding flush candidates is possible (enough victim candidates as it is). */
+      int lru_idx;
+      int count_check_this_lru;
+      PGBUF_LRU_LIST *lru_list = NULL;
       for (lru_idx = 0; lru_idx < PGBUF_TOTAL_LRU_COUNT; lru_idx++)
 	{
 	  if (pgbuf_Pool.quota.lru_victim_flush_priority_per_lru[lru_idx] <= 0)
