@@ -572,3 +572,114 @@ thread_suspend_with_other_mutex (cubthread::entry *thread_p, pthread_mutex_t *mu
 
   return error;
 }
+
+/*
+ * thread_type_to_string () - Translate thread type into string
+ *                            representation
+ *   return:
+ *   type(in): thread type
+ */
+const char *
+thread_type_to_string (thread_type type)
+{
+  switch (type)
+    {
+    case TT_MASTER:
+      return "MASTER";
+    case TT_SERVER:
+      return "SERVER";
+    case TT_WORKER:
+      return "WORKER";
+    case TT_DAEMON:
+      return "DAEMON";
+    case TT_VACUUM_MASTER:
+      return "VACUUM_MASTER";
+    case TT_VACUUM_WORKER:
+      return "VACUUM_WORKER";
+    case TT_NONE:
+      return "NONE";
+    }
+  return "UNKNOWN";
+}
+
+/*
+ * thread_status_to_string () - Translate thread status into string
+ *                              representation
+ *   return:
+ *   type(in): thread type
+ */
+const char *
+thread_status_to_string (cubthread::entry::status status)
+{
+  switch (status)
+    {
+    case cubthread::entry::status::TS_DEAD:
+      return "DEAD";
+    case cubthread::entry::status::TS_FREE:
+      return "FREE";
+    case cubthread::entry::status::TS_RUN:
+      return "RUN";
+    case cubthread::entry::status::TS_WAIT:
+      return "WAIT";
+    case cubthread::entry::status::TS_CHECK:
+      return "CHECK";
+    }
+  return "UNKNOWN";
+}
+
+/*
+ * thread_resume_status_to_string () - Translate thread resume status into
+ *                                     string representation
+ *   return:
+ *   type(in): thread type
+ */
+const char *
+thread_resume_status_to_string (thread_resume_suspend_status resume_status)
+{
+  switch (resume_status)
+    {
+    case THREAD_RESUME_NONE:
+      return "RESUME_NONE";
+    case THREAD_RESUME_DUE_TO_INTERRUPT:
+      return "RESUME_DUE_TO_INTERRUPT";
+    case THREAD_RESUME_DUE_TO_SHUTDOWN:
+      return "RESUME_DUE_TO_SHUTDOWN";
+    case THREAD_PGBUF_SUSPENDED:
+      return "PGBUF_SUSPENDED";
+    case THREAD_PGBUF_RESUMED:
+      return "PGBUF_RESUMED";
+    case THREAD_JOB_QUEUE_SUSPENDED:
+      return "JOB_QUEUE_SUSPENDED";
+    case THREAD_JOB_QUEUE_RESUMED:
+      return "JOB_QUEUE_RESUMED";
+    case THREAD_CSECT_READER_SUSPENDED:
+      return "CSECT_READER_SUSPENDED";
+    case THREAD_CSECT_READER_RESUMED:
+      return "CSECT_READER_RESUMED";
+    case THREAD_CSECT_WRITER_SUSPENDED:
+      return "CSECT_WRITER_SUSPENDED";
+    case THREAD_CSECT_WRITER_RESUMED:
+      return "CSECT_WRITER_RESUMED";
+    case THREAD_CSECT_PROMOTER_SUSPENDED:
+      return "CSECT_PROMOTER_SUSPENDED";
+    case THREAD_CSECT_PROMOTER_RESUMED:
+      return "CSECT_PROMOTER_RESUMED";
+    case THREAD_CSS_QUEUE_SUSPENDED:
+      return "CSS_QUEUE_SUSPENDED";
+    case THREAD_CSS_QUEUE_RESUMED:
+      return "CSS_QUEUE_RESUMED";
+    case THREAD_HEAP_CLSREPR_SUSPENDED:
+      return "HEAP_CLSREPR_SUSPENDED";
+    case THREAD_HEAP_CLSREPR_RESUMED:
+      return "HEAP_CLSREPR_RESUMED";
+    case THREAD_LOCK_SUSPENDED:
+      return "LOCK_SUSPENDED";
+    case THREAD_LOCK_RESUMED:
+      return "LOCK_RESUMED";
+    case THREAD_LOGWR_SUSPENDED:
+      return "LOGWR_SUSPENDED";
+    case THREAD_LOGWR_RESUMED:
+      return "LOGWR_RESUMED";
+    }
+  return "UNKNOWN";
+}

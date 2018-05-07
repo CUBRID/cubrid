@@ -410,4 +410,8 @@ void thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p, thread_
 void thread_wakeup_already_had_mutex (cubthread::entry *p, thread_resume_suspend_status resume_reason);
 int thread_suspend_with_other_mutex (cubthread::entry *p, pthread_mutex_t *mutexp, int timeout, struct timespec *to,
 				     thread_resume_suspend_status suspended_reason);
+
+const char *thread_type_to_string (thread_type type);
+const char *thread_status_to_string (cubthread::entry::status status);
+const char *thread_resume_status_to_string (thread_resume_suspend_status resume_status);
 #endif // _THREAD_ENTRY_HPP_
