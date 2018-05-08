@@ -42,6 +42,11 @@
 #include <stdint.h>
 #endif
 
+#if defined (__cplusplus)
+#include <memory>
+#include <functional>
+#endif
+
 /* Ceiling of positive division */
 #define CEIL_PTVDIV(dividend, divisor) \
         (((dividend) == 0) ? 0 : (((dividend) - 1) / (divisor)) + 1)
@@ -290,5 +295,48 @@ enum
 #define private_user2hl_ptr(ptr) \
   (PRIVATE_MALLOC_HEADER *)((char *)(ptr) - PRIVATE_MALLOC_HEADER_ALIGNED_SIZE)
 #endif /* SA_MODE */
+
+#if defined (__cplusplus)
+
+class PRIVATE_UNIQUE_PTR_DELETER
+{
+public:
+  PRIVATE_UNIQUE_PTR_DELETER ():thread_p (NULL)
+  {
+  }
+  PRIVATE_UNIQUE_PTR_DELETER (THREAD_ENTRY * thread_p):thread_p (thread_p)
+  {
+  }
+
+  void operator () (void *ptr) const
+  {
+    db_private_free (thread_p, ptr);
+  }
+
+private:
+    THREAD_ENTRY * thread_p;
+};
+
+class PRIVATE_UNIQUE_PTR
+{
+public:
+  PRIVATE_UNIQUE_PTR (void *ptr, THREAD_ENTRY * thread_p):ptr (ptr), thread_p (thread_p)
+  {
+    std::unique_ptr < void, PRIVATE_UNIQUE_PTR_DELETER > local_ptr (ptr, PRIVATE_UNIQUE_PTR_DELETER (thread_p));
+
+      smart_ptr = std::move (local_ptr);
+  }
+
+  void *Get ()
+  {
+    return smart_ptr.get ();
+  }
+
+private:
+  void *ptr;
+  THREAD_ENTRY *thread_p;
+  std::unique_ptr < void, PRIVATE_UNIQUE_PTR_DELETER > smart_ptr;
+};
+#endif
 
 #endif /* _MEMORY_ALLOC_H_ */

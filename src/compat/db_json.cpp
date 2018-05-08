@@ -1191,6 +1191,8 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
       return NO_ERROR;
     }
 
+  PRIVATE_UNIQUE_PTR pup (db_private_alloc (NULL, 10), NULL);
+
   // here starts the INSERTION part
   return db_json_insert_helper (value, doc, p, json_pointer_string);
 }
