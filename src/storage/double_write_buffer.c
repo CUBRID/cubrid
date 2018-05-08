@@ -2557,7 +2557,9 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 	  return ER_FAILED;
 	}
 
-      dwb_log ("dwb_write_block: written page = (%d,%d)\n", vpid->volid, vpid->pageid);
+      dwb_log ("dwb_write_block: written page = (%d,%d) LSA=(%lld,%d)\n",
+	       vpid->volid, vpid->pageid, p_dwb_ordered_slots[i].io_page->prv.lsa.pageid,
+	       (int) p_dwb_ordered_slots[i].io_page->prv.lsa.offset);
 
 #if defined (SERVER_MODE)
       assert (current_flush_volume_info != NULL);
@@ -2738,6 +2740,9 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
 		  (void) fileio_synchronize (thread_p,
 					     dwb_Global.helper_flush_block->flush_volumes_info[i].vdes, NULL,
 					     FILEIO_SYNC_ONLY);
+
+		  dwb_log ("dwb_flush_block: Synchronized volume %d\n",
+			   dwb_Global.helper_flush_block->flush_volumes_info[i].vdes);
 		}
 	    }
 	  (void) ATOMIC_TAS_ADDR (&dwb_Global.helper_flush_block, (DWB_BLOCK *) NULL);
@@ -2828,6 +2833,8 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
       assert (num_pages != 0);
 
       (void) fileio_synchronize (thread_p, block->flush_volumes_info[i].vdes, NULL, FILEIO_SYNC_ONLY);
+
+      dwb_log ("dwb_flush_block: Synchronized volume %d\n", block->flush_volumes_info[i].vdes);
     }
 
   /* Allow to flush helper to finish. */
@@ -3781,6 +3788,8 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	      error_code = ER_FAILED;
 	      goto end;
 	    }
+
+	  dwb_log ("dwb_load_and_recover_pages: Synchronized volume %d\n", rcv_block->flush_volumes_info[i].vdes);
 	}
       rcv_block->count_flush_volumes_info = 0;
 
@@ -4228,6 +4237,8 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 	   * and then resume the current one.
 	   */
 	  (void) fileio_synchronize (thread_p, current_flush_volume_info->vdes, NULL, FILEIO_SYNC_ONLY);
+
+	  dwb_log ("dwb_flush_block_helper: Synchronized volume %d\n", current_flush_volume_info->vdes);
 	}
 
       /* Set next volume to flush. */
