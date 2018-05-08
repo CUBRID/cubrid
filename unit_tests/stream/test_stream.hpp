@@ -23,6 +23,8 @@
 #include "packable_object.hpp"
 #include "packing_stream.hpp"
 #include "stream_packer.hpp"
+#include "thread_task.hpp"
+#include "thread_worker_pool.hpp"
 #include <vector>
 
 
@@ -36,6 +38,9 @@ namespace test_stream
 
   /* testing of stream with packable objects and multiple cubstream:entry */
   int test_stream3 (void);
+
+  /* testing of stream with packable objects and multiple cubstream:entry using multiple threads */
+  int test_stream_mt (void);
 
   class stream_handler_write : public cubstream::write_handler
   {
@@ -109,6 +114,8 @@ namespace test_stream
 
   struct test_stream_entry_header
   {
+    int tran_id;
+    int mvcc_id;
     unsigned int count_objects;
     int data_size;
   };
@@ -129,6 +136,8 @@ namespace test_stream
       {
 	size_t header_size = 0;
 	cubstream::stream_packer *serializator = get_packer ();
+        header_size += serializator->get_packed_int_size (header_size);
+        header_size += serializator->get_packed_int_size (header_size);
 	header_size += serializator->get_packed_int_size (header_size);
 	header_size += serializator->get_packed_int_size (header_size);
 
@@ -140,6 +149,25 @@ namespace test_stream
 	return m_header.data_size;
       };
 
+      void set_tran_id (const int tr_id)
+        {
+          m_header.tran_id = tr_id;
+        }
+
+      void set_mvcc_id (const int mvcc_id)
+        {
+          m_header.mvcc_id = mvcc_id;
+        }
+
+      int &get_tran_id ()
+        {
+          return m_header.tran_id;
+        }
+      int &get_mvcc_id ()
+        {
+          return m_header.mvcc_id;
+        }
+
       void set_header_data_size (const size_t &data_size)
       {
 	m_header.data_size = (int) data_size;
@@ -150,6 +178,8 @@ namespace test_stream
 	cubstream::stream_packer *serializator = get_packer ();
 	m_header.count_objects = (int) m_packable_entries.size ();
 
+        serializator->pack_int (m_header.tran_id);
+        serializator->pack_int (m_header.mvcc_id);
 	serializator->pack_int (m_header.count_objects);
 	serializator->pack_int (m_header.data_size);
 
@@ -159,6 +189,8 @@ namespace test_stream
       int unpack_stream_entry_header ()
       {
 	cubstream::stream_packer *serializator = get_packer ();
+        serializator->unpack_int ((int *) &m_header.tran_id);
+        serializator->unpack_int ((int *) &m_header.mvcc_id);
 	serializator->unpack_int ((int *) &m_header.count_objects);
 	serializator->unpack_int (&m_header.data_size);
 
@@ -201,6 +233,58 @@ namespace test_stream
 	return true;
       };
   };
+
+
+  class stream_worker_context
+    {
+    };
+
+  class stream_context_manager : public cubthread::context_manager<stream_worker_context> 
+    {
+    public:
+      context_type &
+      create_context (void) final
+      {
+	return * (new context_type);
+      }
+
+      void
+      retire_context (context_type &context) final
+      {
+	delete &context;
+      }
+
+      static int g_cnt_packing_entries_per_thread;
+      static int g_cnt_unpacking_entries_per_thread;
+
+      static int g_pack_threads;
+      static int g_unpack_threads;
+
+      static test_stream_entry **g_entries;
+      static test_stream_entry **g_unpacked_entries;
+
+      static cubstream::packing_stream *g_stream;
+
+      static int g_packed_entries_cnt;
+      static int g_unpacked_entries_cnt;
+
+      static bool g_pause_packer;
+    };
+
+  class stream_pack_task : public cubthread::task<stream_worker_context>
+  {
+  public:
+      void execute (context_type &context);
+
+      int m_tran_id;
+  };
+
+  class stream_unpack_task : public cubthread::task<stream_worker_context>
+  {
+  public:
+      void execute (context_type &context);
+  }; 
+
 }
 
 #endif /* _TEST_STREAM_HPP_ */
