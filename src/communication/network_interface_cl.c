@@ -114,7 +114,7 @@ enter_server ()
       private_heap_id = db_create_private_heap ();
     }
 
-  thread_get_thread_entry_info ();
+  return thread_get_thread_entry_info ();
 }
 
 //
