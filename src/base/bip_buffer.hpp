@@ -165,7 +165,6 @@ namespace mem
 
       int commit (const char *ptr)
         {
-          assert (ptr <= m_ptr_append);
           assert (ptr > m_buffer);
 
           if (ptr >= m_ptr_start_a && ptr < m_ptr_end_a)
@@ -257,8 +256,13 @@ namespace mem
             {
               amount_trail_a = 0;
             }
-        }
+        };
         
+      const size_t get_page_size (void)
+        {
+          return m_read_page_size;
+        };
+
      protected:
       int get_page_from_ptr (const char *ptr)
         {
