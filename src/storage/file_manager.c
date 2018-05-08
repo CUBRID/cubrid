@@ -53,7 +53,6 @@
 #include "util_func.h"
 #include "vacuum.h"
 #include "critical_section.h"
-#include "double_write_buffer.h"
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */
@@ -9472,16 +9471,6 @@ file_tracker_unregister (THREAD_ENTRY * thread_p, const VFID * vfid)
   assert (vfid != NULL && !VFID_ISNULL (vfid));
   assert (log_check_system_op_is_started (thread_p));
 
-  if (dwb_is_created ())
-    {
-      error_code = fileio_synchronize_all (thread_p, false);
-      if (error_code != NO_ERROR)
-	{
-	  assert_release (false);
-	  return error_code;
-	}
-    }
-
   page_track_head = pgbuf_fix (thread_p, &file_Tracker_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page_track_head == NULL)
     {
@@ -9987,16 +9976,6 @@ file_rv_tracker_mark_heap_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool 
 
   assert (rcv->length == sizeof (*vfid));
   assert (!LSA_ISNULL (&rcv->reference_lsa));
-
-  if (dwb_is_created ())
-    {
-      error_code = fileio_synchronize_all (thread_p, false);
-      if (error_code != NO_ERROR)
-	{
-	  assert_release (false);
-	  return error_code;
-	}
-    }
 
   context.is_undo = is_undo;
   context.ref_lsa = rcv->reference_lsa;
