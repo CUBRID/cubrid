@@ -72,15 +72,18 @@ namespace cubstream
       int packing_completed (void);
       int unpacking_completed (void);
 
-      stream_position &get_stream_read_position (void)
+      stream_position &get_next_read_position (void)
       {
-	return m_stream->get_curr_read_position ();
+	return m_next_read_position;
       };
+
     protected:
       char *alloc_local_buffer (const size_t amount);
 
     private:
       packing_stream *m_stream;
+
+      stream_position m_next_read_position;
 
       char *m_local_buffer;
       size_t m_current_local_buffer_size;

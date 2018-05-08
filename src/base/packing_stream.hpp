@@ -146,13 +146,9 @@ namespace cubstream
 
       mem::collapsable_circular_queue<stream_reserve_context> m_reserved_positions;
 
-      /* size of all active buffers attached to this stream */
-      size_t m_total_buffered_size;
-
-      /* size of all active buffers attached to stream, after which we need to start deferring them to stream_file
-       * for flushing;
-       * normal mode should not need this : all buffers are send to MRC_Manager to be send to slave */
-      size_t trigger_flush_to_disk_size;
+      /* threshold size of unread stream content not read which triggers signalling "filled" event
+       * such event may be throttling the reserve calls on stream */
+      size_t m_trigger_flush_to_disk_size;
 
       std::mutex m_buffer_mutex;
 
@@ -168,7 +164,7 @@ namespace cubstream
 
       char *reserve_with_buffer (const size_t amount, stream_reserve_context* &reserved_context);
 
-      char *get_more_data_with_buffer (const size_t amount, size_t &actual_read_bytes);
+      char *get_more_data_with_buffer (const size_t amount, size_t &actual_read_bytes, stream_position &trail_pos);
       char *get_data_from_pos (const stream_position &req_start_pos, const size_t amount, 
                                size_t &actual_read_bytes);
       int unlatch_read_data (const char *ptr, const size_t amount);
