@@ -945,6 +945,16 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
       assert (fhead->n_sector_total == fhead->n_sector_full);
     }
 
+  // in some scenario with many file manipulation operations, next checks may be too slow. They gradually stack and
+  // waiting times for file headers grow continuously.
+  // skip the check if there are waiters on file header.
+  // don't skip if file logging is activated. it means a bug in file manipulation is investigated and header checks may
+  // be valuable.
+  if (!prm_get_bool_value (PRM_ID_FILE_LOGGING) && pgbuf_has_any_waiters ((PAGE_PTR) fhead))
+    {
+      return;
+    }
+
   er_stack_push ();
 
   FILE_HEADER_GET_PART_FTAB (fhead, part_table);

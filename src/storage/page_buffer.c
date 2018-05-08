@@ -7805,10 +7805,6 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
   /* at this point, the caller is holding bufptr->mutex */
 
-#if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-  perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_QUERY_OPENED_PAGE, 1, DIAG_VAL_SETTYPE_INC, NULL);
-#endif /* DIAG_DEVEL && SERVER_MODE */
-
   return NO_ERROR;
 }
 
@@ -7866,10 +7862,6 @@ pgbuf_invalidate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
       /* Now, the caller is holding bufptr->mutex. */
       /* bufptr->mutex will be released in following function. */
       pgbuf_put_bcb_into_invalid_list (thread_p, bufptr);
-
-#if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-      perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_QUERY_OPENED_PAGE, 1, DIAG_VAL_SETTYPE_INC, NULL);
-#endif /* DIAG_DEVEL && SERVER_MODE */
     }
   else
     {

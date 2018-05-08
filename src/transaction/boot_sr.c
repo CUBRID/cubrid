@@ -2280,12 +2280,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
   /* *INDENT-ON* */
 
-#if defined (SERVER_MODE)
-#if defined(DIAG_DEVEL)
-  init_diag_mgr (server_name, thread_num_worker_threads (), NULL);
-#endif /* DIAG_DEVEL */
-#endif /* !SERVER_MODE */
-
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
   /* 
@@ -3649,10 +3643,6 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
 #if defined(SERVER_MODE)
   /* server mode shuts down all modules */
   shutdown_common_modules = BOOT_SHUTDOWN_ALL_MODULES;
-
-#if defined(DIAG_DEVEL)
-  close_diag_mgr ();
-#endif /* DIAG_DEVEL */
 #endif /* SERVER_MODE */
 
   if (shutdown_common_modules == BOOT_SHUTDOWN_ALL_MODULES)
