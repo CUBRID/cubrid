@@ -57,6 +57,12 @@ namespace cubstream
     total_stream_entry_size = DB_ALIGN (header_size, MAX_ALIGNMENT) + data_size;
 
     stream_start_ptr = serializator->start_packing_range (total_stream_entry_size);
+    if (stream_start_ptr == NULL)
+      {
+        assert (false);
+        return ER_FAILED;
+      }
+
     set_header_data_size (data_size);
 
     pack_stream_entry_header ();
@@ -98,6 +104,10 @@ namespace cubstream
     int error_code;
 
     stream_start_ptr = serializator->start_unpacking_range (stream_entry_header_size);
+    if (stream_start_ptr == NULL)
+      {
+        return ER_FAILED;
+      }
 
     error_code = unpack_stream_entry_header ();
     if (error_code != NO_ERROR)
@@ -106,13 +116,13 @@ namespace cubstream
       }
     serializator->unpacking_completed ();
 
-    m_data_start_position = serializator->get_stream_read_position ();
+    m_data_start_position = serializator->get_next_read_position ();
     /* force read (fetch data from stream source) */
     packed_data_size = get_data_packed_size ();
     /* TODO[arnia] : this should be a a seek-only method: we don't need actual data here,
      * but for some stream we need to fetch data (from socket)
      * for a stream fetching from stream, we don't need to read anything */
-    stream_start_ptr = serializator->start_unpacking_range (packed_data_size);
+    stream_start_ptr = serializator->start_unpacking_range_from_pos (m_data_start_position, packed_data_size);
     if (stream_start_ptr == NULL)
       {
 	error_code = ER_FAILED;
@@ -138,6 +148,11 @@ namespace cubstream
     size_t count_packable_entries = get_packable_entry_count_from_header ();
     char *stream_start_ptr = serializator->start_unpacking_range_from_pos (m_data_start_position,
 			     get_data_packed_size ());
+    if (stream_start_ptr == NULL)
+      {
+        /* no more data */
+        return ER_FAILED;
+      }
 
     for (i = 0 ; i < count_packable_entries; i++)
       {
@@ -192,21 +207,17 @@ namespace cubstream
 
   packing_stream::packing_stream (const size_t buffer_capacity, const int max_appenders)
   {
-    m_total_buffered_size = 0;
     m_oldest_readable_position = 0;
 
     /* TODO[arnia] : system parameter */
-    trigger_flush_to_disk_size = buffer_capacity / 2;
-
-    /* TODO[arnia] : not initialized in base constructor */
-    //m_read_position = 0;
+    m_trigger_flush_to_disk_size = buffer_capacity / 2;
 
     init_storage (buffer_capacity, max_appenders);
   }
 
   packing_stream::~packing_stream ()
   {
-    assert (m_total_buffered_size == 0);
+    assert (m_append_position - m_read_position == 0);
   }
 
   void packing_stream::init_storage (const size_t buffer_capacity, const int max_appenders)
@@ -364,20 +375,34 @@ namespace cubstream
     int err;
     char *ptr = NULL;
     stream_reserve_context context;
+    int cnt_try = 1000;
 
     /* this is my current position in stream */
     m_buffer_mutex.lock ();
+    while (cnt_try-- > 0)
+      {
+        ptr = (char *) m_bip_buffer.reserve (amount);
+        if (ptr != NULL)
+          {
+            break;
+          }
+        assert (false);
+        m_buffer_mutex.unlock ();
+        std::this_thread::sleep_for (std::chrono::microseconds (100));
+        m_buffer_mutex.lock ();
+      }
+
     context.start_pos = reserve_no_buffer (amount);
 
     reserved_context = m_reserved_positions.produce (context);
+    assert (reserved_context != NULL);
 
-    ptr = (char *) m_bip_buffer.reserve (amount);
+    size_t ready_to_read = m_last_committed_pos - m_read_position;
 
-    /* TODO[arnia] */
     if (m_filled_stream_handler != NULL
-	&& m_total_buffered_size + amount > trigger_flush_to_disk_size)
+	&& ready_to_read > m_trigger_flush_to_disk_size)
       {
-	m_filled_stream_handler->notify (0, m_total_buffered_size);
+	m_filled_stream_handler->notify (m_read_position, ready_to_read);
       }
 
     m_buffer_mutex.unlock ();
@@ -397,7 +422,7 @@ namespace cubstream
     return initial_pos;
   }
 
-   int packing_stream::fetch_data_from_provider (const stream_position &pos, const size_t amount)
+  int packing_stream::fetch_data_from_provider (const stream_position &pos, const size_t amount)
   {
     int err = NO_ERROR;
 
@@ -412,31 +437,36 @@ namespace cubstream
     return NO_ERROR;
   }
 
-  char *packing_stream::get_more_data_with_buffer (const size_t amount, size_t &actual_read_bytes)
+  char *packing_stream::get_more_data_with_buffer (const size_t amount, size_t &actual_read_bytes, stream_position &trail_pos)
   {
     char *ptr;
     int err = NO_ERROR;
+    stream_position to_read_pos;
 
-    if (m_read_position + amount > m_append_position)
+    do
       {
-        err = ER_FAILED;
-        if (m_fetch_data_handler != NULL)
+        to_read_pos = m_read_position;
+
+        if (to_read_pos + amount > m_last_committed_pos
+            || to_read_pos + amount > m_append_position - 2 * m_bip_buffer.get_page_size ())
           {
-            err = fetch_data_from_provider (m_read_position, amount);
-          }
-        if (err != NO_ERROR)
-          {
+            if (m_fetch_data_handler != NULL)
+              {
+                err = fetch_data_from_provider (to_read_pos, amount);
+              }
+
+            /* tell user to wait */
             return NULL;
           }
       }
+    while (!m_read_position.compare_exchange_weak (to_read_pos, to_read_pos + amount));
 
-    ptr = get_data_from_pos (m_read_position, amount, actual_read_bytes);
+    ptr = get_data_from_pos (to_read_pos, amount, actual_read_bytes);
     if (ptr == NULL)
       {
 	return ptr;
       }
-
-    m_read_position += amount;
+    trail_pos = to_read_pos + amount;
 
     return ptr;
   }

@@ -88,7 +88,7 @@ namespace cubstream
       /* last stream position read
        * in most scenarios, each reader provides its own read position,
        * this is a shared "read position" usable only in single read scenarios */
-      stream_position m_read_position;
+      std::atomic<stream_position> m_read_position;
 
       /* last position reported committed (filled) by appenders; can be read by readers */
       stream_position m_last_committed_pos;
@@ -103,10 +103,11 @@ namespace cubstream
       virtual int read (const stream_position first_pos, const size_t byte_count, read_handler *handler) = 0;
 
 
-      stream_position &get_curr_read_position (void)
+      stream_position get_curr_read_position (void)
       {
-	return m_read_position;
+	return m_read_position.load ();
       };
+
       stream_position &get_last_committed_pos (void)
       {
 	return m_last_committed_pos;
