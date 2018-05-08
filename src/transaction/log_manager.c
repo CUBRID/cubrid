@@ -531,6 +531,19 @@ log_is_in_crash_recovery (void)
     }
 }
 
+bool
+log_is_in_crash_recovery_and_not_yet_completes_redo (void)
+{
+  if (log_Gl.rcv_phase == LOG_RECOVERY_ANALYSIS_PHASE || log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
+    {
+      return true;
+    }
+  else
+    {
+      return false;
+    }
+}
+
 /*
  * log_get_restart_lsa - FIND RESTART LOG SEQUENCE ADDRESS
  *

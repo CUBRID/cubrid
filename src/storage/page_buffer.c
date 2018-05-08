@@ -1933,7 +1933,8 @@ try_again:
   pgbuf_bcb_register_fix (bufptr);
 
   /* Set Page identifier if needed */
-  force_set_vpid = (fetch_mode == NEW_PAGE && log_is_in_crash_recovery ());
+  // Redo recovery may find an immature page which should be set.
+  force_set_vpid = (fetch_mode == NEW_PAGE && log_is_in_crash_recovery_and_not_yet_completes_redo ());
   pgbuf_set_bcb_page_vpid (bufptr, force_set_vpid);
 
   maybe_deallocated = (fetch_mode == OLD_PAGE_MAYBE_DEALLOCATED);
@@ -10356,16 +10357,13 @@ pgbuf_check_bcb_page_vpid (PGBUF_BCB * bufptr, bool maybe_deallocated)
   if (bufptr->vpid.volid > NULL_VOLID)
     {
       /* Check Page identifier */
-      assert ((maybe_deallocated && log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
-	      || (bufptr->vpid.pageid == bufptr->iopage_buffer->iopage.prv.pageid));
-      assert ((maybe_deallocated && log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
-	      || (bufptr->vpid.volid == bufptr->iopage_buffer->iopage.prv.volid));
+      assert ((maybe_deallocated && log_is_in_crash_recovery_and_not_yet_completes_redo ())
+	      || (bufptr->vpid.pageid == bufptr->iopage_buffer->iopage.prv.pageid
+		  && bufptr->vpid.volid == bufptr->iopage_buffer->iopage.prv.volid));
 
-#if 1				/* TODO - do not delete me */
       assert (bufptr->iopage_buffer->iopage.prv.pflag_reserve_1 == '\0');
       assert (bufptr->iopage_buffer->iopage.prv.p_reserve_2 == 0);
       assert (bufptr->iopage_buffer->iopage.prv.p_reserve_3 == 0);
-#endif
 
       return (bufptr->vpid.pageid == bufptr->iopage_buffer->iopage.prv.pageid
 	      && bufptr->vpid.volid == bufptr->iopage_buffer->iopage.prv.volid);
@@ -14409,7 +14407,7 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thread_p, const VPID * 
   *page =
     pgbuf_fix_debug (thread_p, vpid, OLD_PAGE_MAYBE_DEALLOCATED, latch_mode, latch_condition, caller_file, caller_line);
 #endif /* !NDEBUG */
-  if ((*page == NULL) && (log_Gl.rcv_phase != LOG_RECOVERY_REDO_PHASE))
+  if (*page == NULL && !log_is_in_crash_recovery_and_not_yet_completes_redo ())
     {
       ASSERT_ERROR_AND_SET (error_code);
       if (error_code == ER_PB_BAD_PAGEID)
