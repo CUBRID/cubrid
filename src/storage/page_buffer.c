@@ -1066,8 +1066,9 @@ STATIC_INLINE void pgbuf_wakeup_reader_writer (THREAD_ENTRY * thread_p, PGBUF_BC
 
 STATIC_INLINE bool pgbuf_get_check_page_validation_level (int page_validation_level) __attribute__ ((ALWAYS_INLINE));
 static bool pgbuf_is_valid_page_ptr (const PAGE_PTR pgptr);
-STATIC_INLINE void pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool pgbuf_check_bcb_page_vpid (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr, bool force_set_vpid) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_check_bcb_page_vpid (PGBUF_BCB * bufptr, bool maybe_deallocated)
+  __attribute__ ((ALWAYS_INLINE));
 
 #if defined(CUBRID_DEBUG)
 static void pgbuf_scramble (FILEIO_PAGE * iopage);
@@ -1797,6 +1798,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
   bool had_holder = false;
 #endif /* !NDEBUG */
   PGBUF_FIX_PERF perf;
+  bool maybe_deallocated, force_set_vpid;
 
   perf.perf_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
 
@@ -1931,9 +1933,11 @@ try_again:
   pgbuf_bcb_register_fix (bufptr);
 
   /* Set Page identifier if needed */
-  pgbuf_set_bcb_page_vpid (bufptr);
+  force_set_vpid = (fetch_mode == NEW_PAGE && log_is_in_crash_recovery ());
+  pgbuf_set_bcb_page_vpid (bufptr, force_set_vpid);
 
-  if (pgbuf_check_bcb_page_vpid (bufptr) != true)
+  maybe_deallocated = (fetch_mode == OLD_PAGE_MAYBE_DEALLOCATED);
+  if (pgbuf_check_bcb_page_vpid (bufptr, maybe_deallocated) != true)
     {
       if (buf_lock_acquired)
 	{
@@ -4589,7 +4593,7 @@ pgbuf_get_page_id (PAGE_PTR pgptr)
   /* NOTE: Does not need to hold mutex since the page is fixed */
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-  assert (pgbuf_check_bcb_page_vpid (bufptr) == true);
+  assert (pgbuf_check_bcb_page_vpid (bufptr, false) == true);
 
   return bufptr->vpid.pageid;
 }
@@ -4616,7 +4620,7 @@ pgbuf_get_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   /* NOTE: Does not need to hold mutex since the page is fixed */
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-  assert_release (pgbuf_check_bcb_page_vpid (bufptr) == true);
+  assert_release (pgbuf_check_bcb_page_vpid (bufptr, false) == true);
 
   ptype = (PAGE_TYPE) (bufptr->iopage_buffer->iopage.prv.ptype);
 
@@ -4763,11 +4767,12 @@ pgbuf_set_lsa_as_permanent (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
  * pgbuf_set_bcb_page_vpid () -
  *   return: void
  *   bufptr(in): pointer to buffer page
+ *   force_set_vpid(in): true, if forces VPID setting
  *
  * Note: This function is used for debugging.
  */
 STATIC_INLINE void
-pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr)
+pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr, bool force_set_vpid)
 {
   if (bufptr == NULL || VPID_ISNULL (&bufptr->vpid))
     {
@@ -4780,7 +4785,8 @@ pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr)
   if (bufptr->vpid.volid > NULL_VOLID)
     {
       /* Check if is the first time */
-      if (bufptr->iopage_buffer->iopage.prv.pageid == -1 && bufptr->iopage_buffer->iopage.prv.volid == -1)
+      if (force_set_vpid
+	  || (bufptr->iopage_buffer->iopage.prv.pageid == -1 && bufptr->iopage_buffer->iopage.prv.volid == -1))
 	{
 	  /* Set Page identifier */
 	  bufptr->iopage_buffer->iopage.prv.pageid = bufptr->vpid.pageid;
@@ -4822,9 +4828,9 @@ pgbuf_set_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype)
   assert (!VPID_ISNULL (&bufptr->vpid));
 
   /* Set Page identifier if needed */
-  pgbuf_set_bcb_page_vpid (bufptr);
+  pgbuf_set_bcb_page_vpid (bufptr, false);
 
-  if (pgbuf_check_bcb_page_vpid (bufptr) != true)
+  if (pgbuf_check_bcb_page_vpid (bufptr, false) != true)
     {
       assert (false);
       return;
@@ -6014,7 +6020,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
   /* the caller is holding bufptr->mutex */
 
   assert (!VPID_ISNULL (&bufptr->vpid));
-  assert (pgbuf_check_bcb_page_vpid (bufptr) == true);
+  assert (pgbuf_check_bcb_page_vpid (bufptr, false) == true);
 
   CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
 
@@ -9897,7 +9903,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
    * 2. lock bcb again, clear is flushing status, wake up of threads waiting for flush and return.
    */
 
-  if (pgbuf_check_bcb_page_vpid (bufptr) != true)
+  if (pgbuf_check_bcb_page_vpid (bufptr, false) != true)
     {
       assert (false);
       return ER_FAILED;
@@ -10310,7 +10316,7 @@ pgbuf_check_page_ptype_internal (PAGE_PTR pgptr, PAGE_TYPE ptype, bool no_error)
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   assert (!VPID_ISNULL (&bufptr->vpid));
 
-  if (pgbuf_check_bcb_page_vpid (bufptr) == true)
+  if (pgbuf_check_bcb_page_vpid (bufptr, false) == true)
     {
       if (bufptr->iopage_buffer->iopage.prv.ptype != PAGE_UNKNOWN && bufptr->iopage_buffer->iopage.prv.ptype != ptype)
 	{
@@ -10331,12 +10337,13 @@ pgbuf_check_page_ptype_internal (PAGE_PTR pgptr, PAGE_TYPE ptype, bool no_error)
  * pgbuf_check_bcb_page_vpid () - Validate an FILEIO_PAGE prv
  *   return: true/false
  *   bufptr(in): pointer to buffer page
+ *   maybe_deallocated(in) : true, if page may be deallocated
  *
  * Note: Verify if the given page's prv is valid.
  *       This function is used for debugging purposes.
  */
 STATIC_INLINE bool
-pgbuf_check_bcb_page_vpid (PGBUF_BCB * bufptr)
+pgbuf_check_bcb_page_vpid (PGBUF_BCB * bufptr, bool maybe_deallocated)
 {
   if (bufptr == NULL || VPID_ISNULL (&bufptr->vpid))
     {
@@ -10349,8 +10356,10 @@ pgbuf_check_bcb_page_vpid (PGBUF_BCB * bufptr)
   if (bufptr->vpid.volid > NULL_VOLID)
     {
       /* Check Page identifier */
-      assert (bufptr->vpid.pageid == bufptr->iopage_buffer->iopage.prv.pageid);
-      assert (bufptr->vpid.volid == bufptr->iopage_buffer->iopage.prv.volid);
+      assert ((maybe_deallocated && log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
+	      || (bufptr->vpid.pageid == bufptr->iopage_buffer->iopage.prv.pageid));
+      assert ((maybe_deallocated && log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
+	      || (bufptr->vpid.volid == bufptr->iopage_buffer->iopage.prv.volid));
 
 #if 1				/* TODO - do not delete me */
       assert (bufptr->iopage_buffer->iopage.prv.pflag_reserve_1 == '\0');
@@ -14400,7 +14409,7 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thread_p, const VPID * 
   *page =
     pgbuf_fix_debug (thread_p, vpid, OLD_PAGE_MAYBE_DEALLOCATED, latch_mode, latch_condition, caller_file, caller_line);
 #endif /* !NDEBUG */
-  if (*page == NULL)
+  if ((*page == NULL) && (log_Gl.rcv_phase != LOG_RECOVERY_REDO_PHASE))
     {
       ASSERT_ERROR_AND_SET (error_code);
       if (error_code == ER_PB_BAD_PAGEID)
