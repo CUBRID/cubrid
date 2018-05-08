@@ -165,7 +165,6 @@ namespace cubthread
   void
   entry::request_lock_free_transactions (void)
   {
-#if defined (SERVER_MODE)
     /* lock-free transaction entries */
     tran_entries[THREAD_TS_SPAGE_SAVING] = lf_tran_request_entry (&spage_saving_Ts);
     tran_entries[THREAD_TS_OBJ_LOCK_RES] = lf_tran_request_entry (&obj_lock_res_Ts);
@@ -177,7 +176,6 @@ namespace cubthread
     tran_entries[THREAD_TS_HFID_TABLE] = lf_tran_request_entry (&hfid_table_Ts);
     tran_entries[THREAD_TS_XCACHE] = lf_tran_request_entry (&xcache_Ts);
     tran_entries[THREAD_TS_FPCACHE] = lf_tran_request_entry (&fpcache_Ts);
-#endif // SERVER_MODE
   }
 
   void
