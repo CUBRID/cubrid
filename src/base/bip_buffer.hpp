@@ -145,7 +145,7 @@ namespace mem
           bool need_take_margin = true;
 
           /* TODO : adaptive reserve margin */
-          /* TODO : a possible optimiztion would be to increase m_ptr_end_a with page increments,
+          /* TODO : a possible optimization would be to increase m_ptr_end_a with page increments,
            * instead of keeping it consistently ahead of append with a fixed amount */
           if (amount > m_reserve_margin)
             {
@@ -211,11 +211,17 @@ namespace mem
 
       int commit (const char *ptr)
         {
-          assert (ptr > m_buffer);
+          assert (ptr >= m_buffer);
 
           if (ptr >= m_ptr_start_a && ptr < m_ptr_end_a)
             {
-              assert (m_ptr_prev_gen_committed == m_ptr_prev_gen_last_reserved);
+              /* a later reserve is committed before the commit of a earlier reserve */
+              assert (m_ptr_prev_gen_committed <= m_ptr_prev_gen_last_reserved);
+              if (m_ptr_prev_gen_committed < m_ptr_prev_gen_last_reserved)
+                {
+                  m_ptr_prev_gen_last_reserved = m_ptr_prev_gen_last_reserved;
+                }
+
               m_ptr_start_a = ptr;
             }
           else
