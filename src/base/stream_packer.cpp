@@ -126,11 +126,11 @@ namespace cubstream
             m_stream->unlatch_read_data (ptr, next_actual_read_bytes);
 
             ptr = m_local_buffer;
-            m_use_unpack_stream_buffer = true;
+            m_use_unpack_stream_buffer = false;
           }
         else
           {
-            m_use_unpack_stream_buffer = false;
+            m_use_unpack_stream_buffer = true;
           }
 	/* set unpacking context to memory pointer */
 	init (ptr, aligned_amount);
@@ -176,16 +176,19 @@ namespace cubstream
             m_stream->unlatch_read_data (ptr, next_actual_read_btyes);
 
             ptr = m_local_buffer;
-            m_use_unpack_stream_buffer = true;
+            m_use_unpack_stream_buffer = false;
           }
         else
           {
-            m_use_unpack_stream_buffer = false;
+            m_use_unpack_stream_buffer = true;
           }
 	/* set unpacking context to memory pointer */
 	init (ptr, aligned_amount);
 	return ptr;
       }
+
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, m_stream_name.c_str (), start_pos,
+            aligned_amount);
 
     return NULL;
   }

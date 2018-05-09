@@ -89,6 +89,8 @@ namespace cubstream
       size_t m_current_local_buffer_size;
       bool m_use_unpack_stream_buffer;
 
+      std::string m_stream_name;
+
       /* currently reserved context (set when packing starts) */
       stream_reserve_context *m_stream_reserve_context;
   };

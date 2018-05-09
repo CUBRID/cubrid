@@ -110,6 +110,7 @@ namespace cubstream
       }
 
     error_code = unpack_stream_entry_header ();
+
     if (error_code != NO_ERROR)
       {
 	return error_code;
@@ -119,10 +120,10 @@ namespace cubstream
     m_data_start_position = serializator->get_next_read_position ();
     /* force read (fetch data from stream source) */
     packed_data_size = get_data_packed_size ();
-    /* TODO[arnia] : this should be a a seek-only method: we don't need actual data here,
+    /* TODO : this should be a a seek-only method: we don't need actual data here,
      * but for some stream we need to fetch data (from socket)
-     * for a stream fetching from stream, we don't need to read anything */
-    stream_start_ptr = serializator->start_unpacking_range_from_pos (m_data_start_position, packed_data_size);
+     * for a stream fetching from file, we don't need to read anything */
+    stream_start_ptr = serializator->start_unpacking_range (packed_data_size);
     if (stream_start_ptr == NULL)
       {
 	error_code = ER_FAILED;
@@ -151,7 +152,8 @@ namespace cubstream
     if (stream_start_ptr == NULL)
       {
         /* no more data */
-        return ER_FAILED;
+        assert (er_errid () == ER_STREAM_NO_MORE_DATA);
+        return ER_STREAM_NO_MORE_DATA;
       }
 
     for (i = 0 ; i < count_packable_entries; i++)
@@ -163,7 +165,8 @@ namespace cubstream
 	cubpacking::packable_object *packable_entry = get_builder()->create_object (object_id);
 	if (packable_entry == NULL)
 	  {
-	    error_code = ER_FAILED;
+	    error_code = ER_STREAM_UNPACKING_INV_OBJ_ID;
+            er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_UNPACKING_INV_OBJ_ID, 1, object_id);
 	    return error_code;
 	  }
 
@@ -209,7 +212,7 @@ namespace cubstream
   {
     m_oldest_readable_position = 0;
 
-    /* TODO[arnia] : system parameter */
+    /* TODO : system parameter */
     m_trigger_flush_to_disk_size = buffer_capacity / 2;
 
     init_storage (buffer_capacity, max_appenders);
@@ -375,11 +378,9 @@ namespace cubstream
     int err;
     char *ptr = NULL;
     stream_reserve_context context;
-    int cnt_try = 1000;
 
-    /* this is my current position in stream */
     m_buffer_mutex.lock ();
-    while (cnt_try-- > 0)
+    while (1)
       {
         ptr = (char *) m_bip_buffer.reserve (amount);
         if (ptr != NULL)
@@ -398,14 +399,21 @@ namespace cubstream
     assert (reserved_context != NULL);
 
     size_t ready_to_read = m_last_committed_pos - m_read_position;
-
-    if (m_filled_stream_handler != NULL
-	&& ready_to_read > m_trigger_flush_to_disk_size)
-      {
-	m_filled_stream_handler->notify (m_read_position, ready_to_read);
-      }
+    size_t ready_to_drop = m_last_committed_pos - m_last_dropable_pos;
 
     m_buffer_mutex.unlock ();
+
+    if (m_ready_pos_handler != NULL
+	&& ready_to_read > m_trigger_flush_to_disk_size)
+      {
+	m_ready_pos_handler->notify (m_read_position, ready_to_read);
+      }
+
+    if (m_filled_stream_handler != NULL
+	&& ready_to_drop > m_trigger_flush_to_disk_size)
+      {
+	m_filled_stream_handler->notify (m_last_dropable_pos, ready_to_drop);
+      }
 
     reserved_context->ptr = ptr;
     reserved_context->reserved_amount = amount;
@@ -443,23 +451,20 @@ namespace cubstream
     int err = NO_ERROR;
     stream_position to_read_pos;
 
-    do
+    to_read_pos = m_read_position;
+
+    if (to_read_pos + amount > m_last_committed_pos)
       {
-        to_read_pos = m_read_position;
-
-        if (to_read_pos + amount > m_last_committed_pos
-            || to_read_pos + amount + 2 * m_bip_buffer.get_page_size () > m_append_position)
+        if (m_fetch_data_handler != NULL)
           {
-            if (m_fetch_data_handler != NULL)
-              {
-                err = fetch_data_from_provider (to_read_pos, amount);
-              }
-
-            /* tell user to wait */
-            return NULL;
+            err = fetch_data_from_provider (to_read_pos, amount);
           }
+
+        /* tell user to wait */
+        return NULL;
       }
-    while (!m_read_position.compare_exchange_weak (to_read_pos, to_read_pos + amount));
+
+    m_read_position = to_read_pos + amount;
 
     ptr = get_data_from_pos (to_read_pos, amount, actual_read_bytes);
     if (ptr == NULL)
