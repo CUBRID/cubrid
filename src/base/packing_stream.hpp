@@ -55,7 +55,7 @@ namespace cubstream
     COLLECT_AND_DETACH
   } COLLECT_ACTION;
 
-  class entry : public cubbase::pinner
+  class entry
   {
     private:
       int stream_entry_id;
