@@ -327,6 +327,17 @@ thread_get_thread_entry_info (void)
 }
 
 inline int
+thread_get_entry_index (cubthread::entry *thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  return thread_p->index;
+}
+
+inline int
 thread_get_current_entry_index (void)
 {
   return thread_get_entry_index (thread_get_thread_entry_info ());

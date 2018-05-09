@@ -304,14 +304,6 @@ typedef std::thread::id thread_id_t;
 //////////////////////////////////////////////////////////////////////////
 
 inline int
-thread_get_entry_index (cubthread::entry *thread_p)
-{
-  assert (thread_p != NULL);
-
-  return thread_p->index;
-}
-
-inline int
 thread_get_recursion_depth (cubthread::entry *thread_p)
 {
   return thread_p->xasl_recursion_depth;
