@@ -190,6 +190,9 @@ namespace cubthread
 	return m_all_entries;
       }
 
+      void set_max_thread_count_from_config ();
+      void set_max_thread_count (std::size_t count);
+
     private:
 
       // define friend classes/functions to access claim_entry/retire_entry functions
