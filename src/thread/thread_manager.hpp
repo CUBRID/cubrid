@@ -338,6 +338,25 @@ thread_return_lock_free_transaction_entries (void)
   return cubthread::return_lock_free_transaction_entries ();
 }
 
+// todo - we really need to do some refactoring for lock-free structures
+inline lf_tran_entry *
+thread_get_tran_entry (cubthread::entry *thread_p, int entry_idx)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  if (entry_idx >= 0 && entry_idx < THREAD_TS_LAST)
+    {
+      return thread_p->tran_entries[entry_idx];
+    }
+  else
+    {
+      assert (false);
+      return NULL;
+    }
+}
+
 template <typename Duration>
 inline void
 thread_sleep_for (Duration d)

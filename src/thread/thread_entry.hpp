@@ -335,20 +335,6 @@ thread_clear_recursion_depth (cubthread::entry *thread_p)
   thread_p->xasl_recursion_depth = 0;
 }
 
-inline lf_tran_entry *
-thread_get_tran_entry (cubthread::entry *thread_p, int entry_idx)
-{
-  if (entry_idx >= 0 && entry_idx < THREAD_TS_LAST)
-    {
-      return thread_p->tran_entries[entry_idx];
-    }
-  else
-    {
-      assert (false);
-      return NULL;
-    }
-}
-
 inline void
 thread_trace_on (cubthread::entry *thread_p)
 {
