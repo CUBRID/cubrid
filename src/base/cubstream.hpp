@@ -87,11 +87,17 @@ namespace cubstream
 
       /* last stream position read
        * in most scenarios, each reader provides its own read position,
-       * this is a shared "read position" usable only in single read scenarios */
-      std::atomic<stream_position> m_read_position;
+       * this is a shared "read position" usable only in single read scenarios 
+       * any reader can access the stream using random position concurrently */
+      stream_position m_read_position;
 
-      /* last position reported committed (filled) by appenders; can be read by readers */
+      /* last position committed (filled) by appenders; can be read by readers */
       stream_position m_last_committed_pos;
+
+      /* last position which may be dropped (the underlying memory associated may be recycled)
+       * is checked by stream notify (e.g. flush to disk), and set by external clients;
+       */
+      stream_position m_last_dropable_pos;
 
     public:
       stream ();
@@ -102,16 +108,26 @@ namespace cubstream
 				partial_read_handler *handler) = 0;
       virtual int read (const stream_position first_pos, const size_t byte_count, read_handler *handler) = 0;
 
-
       stream_position get_curr_read_position (void)
       {
-	return m_read_position.load ();
+	return m_read_position;
       };
 
       stream_position &get_last_committed_pos (void)
       {
 	return m_last_committed_pos;
       };
+
+      stream_position &get_last_dropable_pos (void)
+        {
+          return m_last_dropable_pos;
+        };
+
+      void set_last_dropable_pos (const stream_position &last_dropable_pos)
+        {
+          m_last_dropable_pos = last_dropable_pos;
+        };
+
 
       void set_filled_stream_handler (notify_handler *handler)
       {
