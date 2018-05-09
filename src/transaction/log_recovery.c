@@ -6202,8 +6202,10 @@ log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVIND
     }
   if (page == NULL && RCV_IS_NEW_PAGE_INIT (rcvindex))
     {
-      // see case OLD_PAGE_MAYBE_DEALLOCATED of pgbuf_fix
-      // redo recovery may try to fix an immature page which was probably partially written.
+      /* see case OLD_PAGE_MAYBE_DEALLOCATED of pgbuf_fix
+       * redo recovery may try to fix an immature page, reserved, but which was not initialized
+       * or it was reused (deallocated and allocated again).
+       */
       if (er_errid () == ER_PB_BAD_PAGEID && er_get_severity () == ER_WARNING_SEVERITY)
 	{
 	  // forget the warning since we are going to fix the page as NEW and don't want it will bother us.
