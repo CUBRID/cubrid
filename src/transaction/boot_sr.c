@@ -1935,6 +1935,14 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       goto exit_on_error;
     }
 
+  // sessions state is required to continue
+  error_code = session_states_init (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      assert (false);
+      goto exit_on_error;
+    }
+
   /* print_version string */
 #if defined (NDEBUG)
   strncpy (format, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_GENERAL, MSGCAT_GENERAL_DATABASE_INIT),
