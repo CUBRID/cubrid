@@ -5573,31 +5573,32 @@ static void
 boot_decoy_entries_finalize (void)
 {
   LF_TRAN_ENTRY *t_entry;
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
 
-  t_entry = thread_get_tran_entry (NULL, THREAD_TS_SPAGE_SAVING);
+  t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SPAGE_SAVING);
   lf_tran_destroy_entry (t_entry);
 
   /* To free the tran entry of THREAD_TS_OBJ_LOCK_RES and THREAD_TS_OBJ_LOCK_ENT are not needed */
 
-  t_entry = thread_get_tran_entry (NULL, THREAD_TS_CATALOG);
+  t_entry = thread_get_tran_entry (thread_p, THREAD_TS_CATALOG);
   lf_tran_destroy_entry (t_entry);
 
-  t_entry = thread_get_tran_entry (NULL, THREAD_TS_SESSIONS);
+  t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
   lf_tran_destroy_entry (t_entry);
 
-  t_entry = thread_get_tran_entry (NULL, THREAD_TS_FREE_SORT_LIST);
+  t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FREE_SORT_LIST);
   lf_tran_destroy_entry (t_entry);
 
-  t_entry = thread_get_tran_entry (NULL, THREAD_TS_GLOBAL_UNIQUE_STATS);
+  t_entry = thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
   lf_tran_destroy_entry (t_entry);
 
-  t_entry = thread_get_tran_entry (NULL, THREAD_TS_HFID_TABLE);
+  t_entry = thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
   lf_tran_destroy_entry (t_entry);
 
-  t_entry = thread_get_tran_entry (NULL, THREAD_TS_XCACHE);
+  t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
   lf_tran_destroy_entry (t_entry);
 
-  t_entry = thread_get_tran_entry (NULL, THREAD_TS_FPCACHE);
+  t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FPCACHE);
   lf_tran_destroy_entry (t_entry);
 }
 #endif

@@ -444,171 +444,95 @@ static int lk_Standalone_has_xlock = 0;
 #endif /* !SERVER_MODE */
 
 const size_t DEFAULT_LOCK_WAITING_THREAD_ARRAY_SIZE = 10;
-using tran_lock_waiters_array_type = std::array < THREAD_ENTRY *, DEFAULT_LOCK_WAITING_THREAD_ARRAY_SIZE >;
+// *INDENT-OFF*
+using tran_lock_waiters_array_type = std::array<THREAD_ENTRY *, DEFAULT_LOCK_WAITING_THREAD_ARRAY_SIZE>;
+// *INDENT-ON*
 
 #if defined(SERVER_MODE)
-static void
-lock_initialize_entry (LK_ENTRY * entry_ptr);
-static void
-lock_initialize_entry_as_granted (LK_ENTRY * entry_ptr, int tran_index, LK_RES * res, LOCK lock);
-static void
-lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr, THREAD_ENTRY * thread_p, int tran_index,
-				  LK_RES * res, LOCK lock);
-static void
-lock_initialize_entry_as_non2pl (LK_ENTRY * entry_ptr, int tran_index, LK_RES * res, LOCK lock);
-static void
-lock_initialize_resource (LK_RES * res_ptr);
-static void
-lock_initialize_resource_as_allocated (LK_RES * res_ptr, LOCK lock);
-static unsigned int
-lock_get_hash_value (const OID * oid, int htsize);
-static int
-lock_initialize_tran_lock_table (void);
-static int
-lock_initialize_object_hash_table (void);
-static int
-lock_initialize_object_lock_res_list (void);
-static int
-lock_initialize_object_lock_entry_list (void);
-static int
-lock_initialize_deadlock_detection (void);
-static int
-lock_remove_resource (LK_RES * res_ptr);
-static void
-lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index);
-static int
-lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index);
-static void
-lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index);
-static int
-lock_delete_from_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index);
-static LK_ENTRY *
-lock_find_tran_hold_entry (int tran_index, const OID * oid, bool is_class);
-static
-  bool
-lock_force_timeout_expired_wait_transactions (void *thrd_entry);
-static
-  bool
-lock_is_local_deadlock_detection_interval_up (void);
-static void
-lock_detect_local_deadlock (THREAD_ENTRY * thread_p);
-static
-  bool
-lock_is_class_lock_escalated (LOCK class_lock, LOCK lock_escalation);
-static LK_ENTRY *
-lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index, LOCK lock);
-static void
-lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr);
-static void
-lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr);
-static void
-lock_set_error_for_aborted (LK_ENTRY * entry_ptr, TRAN_ABORT_REASON abort_reason);
-static
-  LOCK_WAIT_STATE
-lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs);
-static void
-lock_resume (LK_ENTRY * entry_ptr, int state);
-static
-  bool
-lock_wakeup_deadlock_victim_timeout (int tran_index);
-static
-  bool
-lock_wakeup_deadlock_victim_aborted (int tran_index);
-static void
-lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
-static int
-lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
-static void
-lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * from_whom);
-static
-  bool
-lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, LK_TRAN_LOCK * tran_lock);
-static int
-lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tran_index);
-static int
-lock_internal_hold_lock_object_instant (int tran_index, const OID * oid, const OID * class_oid, LOCK lock);
-static int
-lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, const OID * oid,
-				   const OID * class_oid, LOCK lock, int wait_msecs,
-				   LK_ENTRY ** entry_addr_ptr, LK_ENTRY * class_entry);
-static void
-lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, bool release_flag,
-				     bool move_to_non2pl);
-static void
-lock_unlock_object_by_isolation (THREAD_ENTRY * thread_p, int tran_index, TRAN_ISOLATION isolation,
-				 const OID * class_oid, const OID * oid);
-static void
-lock_unlock_inst_locks_of_class_by_isolation (THREAD_ENTRY * thread_p, int tran_index,
-					      TRAN_ISOLATION isolation, const OID * class_oid);
-static int
-lock_internal_demote_shared_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr);
-static void
-lock_demote_all_shared_class_locks (THREAD_ENTRY * thread_p, int tran_index);
-static void
-lock_unlock_shared_inst_lock (THREAD_ENTRY * thread_p, int tran_index, const OID * inst_oid);
-static void
-lock_remove_all_class_locks (THREAD_ENTRY * thread_p, int tran_index, LOCK lock);
-static void
-lock_remove_non2pl (LK_ENTRY * non2pl, int tran_index);
-static void
-lock_update_non2pl_list (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index, LOCK lock);
-static int
-lock_add_WFG_edge (int from_tran_index, int to_tran_index, int holder_flag, INT64 edge_wait_stime);
-static void
-lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t);
-static void
-lock_dump_deadlock_victims (THREAD_ENTRY * thread_p, FILE * outfile);
-static int
-lock_compare_lock_info (const void *lockinfo1, const void *lockinfo2);
-static float
-lock_wait_msecs_to_secs (int msecs);
-static void
-lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr);
+static void lock_initialize_entry (LK_ENTRY * entry_ptr);
+static void lock_initialize_entry_as_granted (LK_ENTRY * entry_ptr, int tran_index, LK_RES * res, LOCK lock);
+static void lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr, THREAD_ENTRY * thread_p, int tran_index,
+					      LK_RES * res, LOCK lock);
+static void lock_initialize_entry_as_non2pl (LK_ENTRY * entry_ptr, int tran_index, LK_RES * res, LOCK lock);
+static void lock_initialize_resource (LK_RES * res_ptr);
+static void lock_initialize_resource_as_allocated (LK_RES * res_ptr, LOCK lock);
+static unsigned int lock_get_hash_value (const OID * oid, int htsize);
+static int lock_initialize_tran_lock_table (void);
+static int lock_initialize_object_hash_table (void);
+static int lock_initialize_object_lock_res_list (void);
+static int lock_initialize_object_lock_entry_list (void);
+static int lock_initialize_deadlock_detection (void);
+static int lock_remove_resource (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
+static void lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index);
+static int lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index);
+static void lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index);
+static int lock_delete_from_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index);
+static LK_ENTRY *lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, bool is_class);
+static bool lock_force_timeout_expired_wait_transactions (void *thrd_entry);
+static bool lock_is_local_deadlock_detection_interval_up (void);
+static void lock_detect_local_deadlock (THREAD_ENTRY * thread_p);
+static bool lock_is_class_lock_escalated (LOCK class_lock, LOCK lock_escalation);
+static LK_ENTRY *lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index, LOCK lock);
+static void lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr);
+static void lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr);
+static void lock_set_error_for_aborted (LK_ENTRY * entry_ptr, TRAN_ABORT_REASON abort_reason);
+static LOCK_WAIT_STATE lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs);
+static void lock_resume (LK_ENTRY * entry_ptr, int state);
+static bool lock_wakeup_deadlock_victim_timeout (int tran_index);
+static bool lock_wakeup_deadlock_victim_aborted (int tran_index);
+static void lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
+static int lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
+static void lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * from_whom);
+static bool lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, LK_TRAN_LOCK * tran_lock);
+static int lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tran_index);
+static int lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index, const OID * oid,
+						   const OID * class_oid, LOCK lock);
+static int lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, const OID * oid,
+					      const OID * class_oid, LOCK lock, int wait_msecs,
+					      LK_ENTRY ** entry_addr_ptr, LK_ENTRY * class_entry);
+static void lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, bool release_flag,
+						 bool move_to_non2pl);
+static void lock_unlock_object_by_isolation (THREAD_ENTRY * thread_p, int tran_index, TRAN_ISOLATION isolation,
+					     const OID * class_oid, const OID * oid);
+static void lock_unlock_inst_locks_of_class_by_isolation (THREAD_ENTRY * thread_p, int tran_index,
+							  TRAN_ISOLATION isolation, const OID * class_oid);
+static int lock_internal_demote_shared_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr);
+static void lock_demote_all_shared_class_locks (THREAD_ENTRY * thread_p, int tran_index);
+static void lock_unlock_shared_inst_lock (THREAD_ENTRY * thread_p, int tran_index, const OID * inst_oid);
+static void lock_remove_all_class_locks (THREAD_ENTRY * thread_p, int tran_index, LOCK lock);
+static void lock_remove_non2pl (THREAD_ENTRY * thread_p, LK_ENTRY * non2pl, int tran_index);
+static void lock_update_non2pl_list (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index, LOCK lock);
+static int lock_add_WFG_edge (int from_tran_index, int to_tran_index, int holder_flag, INT64 edge_wait_stime);
+static void lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t);
+static void lock_dump_deadlock_victims (THREAD_ENTRY * thread_p, FILE * outfile);
+static int lock_compare_lock_info (const void *lockinfo1, const void *lockinfo2);
+static float lock_wait_msecs_to_secs (int msecs);
+static void lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr);
 #if defined (ENABLE_UNUSED_FUNCTION)
-static
-  bool
-lock_check_consistent_resource (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
-static
-  bool
-lock_check_consistent_tran_lock (LK_TRAN_LOCK * tran_lock);
+static bool lock_check_consistent_resource (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
+static bool lock_check_consistent_tran_lock (LK_TRAN_LOCK * tran_lock);
 #endif
 
-static void
-lock_increment_class_granules (LK_ENTRY * class_entry);
+static void lock_increment_class_granules (LK_ENTRY * class_entry);
 
-static void
-lock_decrement_class_granules (LK_ENTRY * class_entry);
-static LK_ENTRY *
-lock_find_class_entry (int tran_index, const OID * class_oid);
+static void lock_decrement_class_granules (LK_ENTRY * class_entry);
+static LK_ENTRY *lock_find_class_entry (int tran_index, const OID * class_oid);
 
-static void
-lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index);
-static void
-lock_event_log_blocked_lock (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry);
-static void
-lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * wait_entry);
-static void
-lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry);
-static void
-lock_event_set_tran_wait_entry (int tran_index, LK_ENTRY * entry);
-static void
-lock_event_set_xasl_id_to_entry (int tran_index, LK_ENTRY * entry);
-static
-  LK_RES_KEY
-lock_create_search_key (OID * oid, OID * class_oid);
+static void lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index);
+static void lock_event_log_blocked_lock (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry);
+static void lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * wait_entry);
+static void lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry);
+static void lock_event_set_tran_wait_entry (int tran_index, LK_ENTRY * entry);
+static void lock_event_set_xasl_id_to_entry (int tran_index, LK_ENTRY * entry);
+static LK_RES_KEY lock_create_search_key (OID * oid, OID * class_oid);
 #if defined (SERVER_MODE)
-static
-  bool
-lock_is_safe_lock_with_page (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr);
+static bool lock_is_safe_lock_with_page (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr);
 #endif /* SERVER_MODE */
 
-static LK_ENTRY *
-lock_get_new_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist);
-static void
-lock_free_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, LK_ENTRY * lock_entry);
+static LK_ENTRY *lock_get_new_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist);
+static void lock_free_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, LK_ENTRY * lock_entry);
 
-static void
-lock_victimize_first_thread_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper);
+static void lock_victimize_first_thread_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper);
 static void
 lock_check_timeout_expired_and_count_suspended_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
 							size_t & suspend_count);
@@ -628,43 +552,30 @@ static void lock_deadlock_detect_daemon_destroy ();
 // *INDENT-ON*
 
 /* object lock entry */
-static void *
-lock_alloc_entry (void);
-static int
-lock_dealloc_entry (void *res);
-static int
-lock_init_entry (void *res);
-static int
-lock_uninit_entry (void *res);
+static void *lock_alloc_entry (void);
+static int lock_dealloc_entry (void *res);
+static int lock_init_entry (void *res);
+static int lock_uninit_entry (void *res);
 
-LF_ENTRY_DESCRIPTOR obj_lock_entry_desc =
-{
+LF_ENTRY_DESCRIPTOR obj_lock_entry_desc = {
   offsetof (LK_ENTRY, stack), offsetof (LK_ENTRY, next), offsetof (LK_ENTRY, del_id), 0,	/* does not have a key, not used in a hash table */
-    0,				/* does not have a mutex, protected by resource mutex */
-    LF_EM_NOT_USING_MUTEX, lock_alloc_entry, lock_dealloc_entry, lock_init_entry, lock_uninit_entry, NULL, NULL, NULL,	/* no key */
-    NULL			/* no inserts */
+  0,				/* does not have a mutex, protected by resource mutex */
+  LF_EM_NOT_USING_MUTEX, lock_alloc_entry, lock_dealloc_entry, lock_init_entry, lock_uninit_entry, NULL, NULL, NULL,	/* no key */
+  NULL				/* no inserts */
 };
 
 /*
  * Object lock resource
  */
-static void *
-lock_alloc_resource (void);
-static int
-lock_dealloc_resource (void *res);
-static int
-lock_init_resource (void *res);
-static int
-lock_uninit_resource (void *res);
-static int
-lock_res_key_copy (void *src, void *dest);
-static int
-lock_res_key_compare (void *k1, void *k2);
-static unsigned int
-lock_res_key_hash (void *key, int htsize);
+static void *lock_alloc_resource (void);
+static int lock_dealloc_resource (void *res);
+static int lock_init_resource (void *res);
+static int lock_uninit_resource (void *res);
+static int lock_res_key_copy (void *src, void *dest);
+static int lock_res_key_compare (void *k1, void *k2);
+static unsigned int lock_res_key_hash (void *key, int htsize);
 
-LF_ENTRY_DESCRIPTOR obj_lock_res_desc =
-{
+LF_ENTRY_DESCRIPTOR obj_lock_res_desc = {
   offsetof (LK_RES, stack), offsetof (LK_RES, hash_next), offsetof (LK_RES, del_id), offsetof (LK_RES, key), offsetof (LK_RES, res_mutex), LF_EM_USING_MUTEX, lock_alloc_resource, lock_dealloc_resource, lock_init_resource, lock_uninit_resource, lock_res_key_copy, lock_res_key_compare, lock_res_key_hash, NULL	/* no inserts */
 };
 #endif /* SERVER_MODE */
@@ -672,8 +583,7 @@ LF_ENTRY_DESCRIPTOR obj_lock_res_desc =
 
 #if defined(SERVER_MODE)
 
-static
-  LK_RES_KEY
+static LK_RES_KEY
 lock_create_search_key (OID * oid, OID * class_oid)
 {
   LK_RES_KEY search_key;
@@ -734,8 +644,7 @@ lock_dealloc_entry (void *res)
 static int
 lock_init_entry (void *entry)
 {
-  LK_ENTRY *
-    entry_ptr = (LK_ENTRY *) entry;
+  LK_ENTRY *entry_ptr = (LK_ENTRY *) entry;
   if (entry_ptr != NULL)
     {
       return NO_ERROR;
@@ -750,8 +659,7 @@ lock_init_entry (void *entry)
 static int
 lock_uninit_entry (void *entry)
 {
-  LK_ENTRY *
-    entry_ptr = (LK_ENTRY *) entry;
+  LK_ENTRY *entry_ptr = (LK_ENTRY *) entry;
 
   if (entry_ptr == NULL)
     {
@@ -767,8 +675,7 @@ lock_uninit_entry (void *entry)
 static void *
 lock_alloc_resource (void)
 {
-  LK_RES *
-    res_ptr = (LK_RES *) malloc (sizeof (LK_RES));
+  LK_RES *res_ptr = (LK_RES *) malloc (sizeof (LK_RES));
   if (res_ptr != NULL)
     {
       pthread_mutex_init (&(res_ptr->res_mutex), NULL);
@@ -779,8 +686,7 @@ lock_alloc_resource (void)
 static int
 lock_dealloc_resource (void *res)
 {
-  LK_RES *
-    res_ptr = (LK_RES *) res;
+  LK_RES *res_ptr = (LK_RES *) res;
   if (res_ptr != NULL)
     {
       pthread_mutex_destroy (&res_ptr->res_mutex);
@@ -797,8 +703,7 @@ lock_dealloc_resource (void *res)
 static int
 lock_init_resource (void *res)
 {
-  LK_RES *
-    res_ptr = (LK_RES *) res;
+  LK_RES *res_ptr = (LK_RES *) res;
 
   if (res_ptr == NULL)
     {
@@ -818,8 +723,7 @@ lock_init_resource (void *res)
 static int
 lock_uninit_resource (void *res)
 {
-  LK_RES *
-    res_ptr = (LK_RES *) res;
+  LK_RES *res_ptr = (LK_RES *) res;
 
   if (res == NULL)
     {
@@ -838,10 +742,8 @@ lock_uninit_resource (void *res)
 static int
 lock_res_key_copy (void *src, void *dest)
 {
-  LK_RES_KEY *
-    src_k = (LK_RES_KEY *) src;
-  LK_RES_KEY *
-    dest_k = (LK_RES_KEY *) dest;
+  LK_RES_KEY *src_k = (LK_RES_KEY *) src;
+  LK_RES_KEY *dest_k = (LK_RES_KEY *) dest;
 
   if (src_k == NULL || dest_k == NULL)
     {
@@ -877,10 +779,8 @@ lock_res_key_copy (void *src, void *dest)
 static int
 lock_res_key_compare (void *k1, void *k2)
 {
-  LK_RES_KEY *
-    k1_k = (LK_RES_KEY *) k1;
-  LK_RES_KEY *
-    k2_k = (LK_RES_KEY *) k2;
+  LK_RES_KEY *k1_k = (LK_RES_KEY *) k1;
+  LK_RES_KEY *k2_k = (LK_RES_KEY *) k2;
 
   if (k1_k == NULL || k2_k == NULL)
     {
@@ -919,8 +819,7 @@ lock_res_key_compare (void *k1, void *k2)
 static unsigned int
 lock_res_key_hash (void *key, int htsize)
 {
-  LK_RES_KEY *
-    key_k = (LK_RES_KEY *) key;
+  LK_RES_KEY *key_k = (LK_RES_KEY *) key;
 
   if (key_k != NULL)
     {
@@ -1048,9 +947,7 @@ lock_initialize_resource_as_allocated (LK_RES * res_ptr, LOCK lock)
 static unsigned int
 lock_get_hash_value (const OID * oid, int htsize)
 {
-  unsigned int
-    next_base_slotid,
-    addr;
+  unsigned int next_base_slotid, addr;
 
   if (oid->slotid <= 0)
     {
@@ -1096,13 +993,9 @@ lock_get_hash_value (const OID * oid, int htsize)
 static int
 lock_initialize_tran_lock_table (void)
 {
-  LK_TRAN_LOCK *
-    tran_lock;			/* pointer to transaction hold entry */
-  int
-    i,
-    j;				/* loop variable */
-  LK_ENTRY *
-    entry = NULL;
+  LK_TRAN_LOCK *tran_lock;	/* pointer to transaction hold entry */
+  int i, j;			/* loop variable */
+  LK_ENTRY *entry = NULL;
 
   /* initialize the number of transactions */
   lk_Gl.num_trans = MAX_NTRANS;
@@ -1150,9 +1043,7 @@ static int
 lock_initialize_object_hash_table (void)
 {
 #define LK_INITIAL_OBJECT_LOCK_TABLE_SIZE       10000
-  int
-    obj_hash_size,
-    ret;
+  int obj_hash_size, ret;
 
   lk_Gl.max_obj_locks = LK_INITIAL_OBJECT_LOCK_TABLE_SIZE;
 
@@ -1192,10 +1083,7 @@ lock_initialize_object_hash_table (void)
 static int
 lock_initialize_object_lock_res_list (void)
 {
-  int
-    block_size,
-    block_count,
-    ret;
+  int block_size, block_count, ret;
 
   /* initialize */
   block_count = 1;
@@ -1225,10 +1113,7 @@ lock_initialize_object_lock_res_list (void)
 static int
 lock_initialize_object_lock_entry_list (void)
 {
-  int
-    block_count,
-    block_size,
-    ret;
+  int block_count, block_size, ret;
 
   /* initialize the entry freelist */
   block_count = 1;
@@ -1254,8 +1139,7 @@ lock_initialize_object_lock_entry_list (void)
 static int
 lock_initialize_deadlock_detection (void)
 {
-  int
-    i;
+  int i;
 
   pthread_mutex_init (&lk_Gl.DL_detection_mutex, NULL);
   gettimeofday (&lk_Gl.last_deadlock_run, NULL);
@@ -1294,16 +1178,13 @@ lock_initialize_deadlock_detection (void)
  *
  *   res_ptr(in):
  *
- * Note:This function removes the given lock resource entry
- *     from lock hash table.
+ * Note:This function removes the given lock resource entry from lock hash table.
  */
 static int
-lock_remove_resource (LK_RES * res_ptr)
+lock_remove_resource (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 {
-  LF_TRAN_ENTRY *
-    t_entry = thread_get_tran_entry (NULL, THREAD_TS_OBJ_LOCK_RES);
-  int
-    success = 0, rc;
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
+  int success = 0, rc;
 
   rc = lf_hash_delete_already_locked (t_entry, &lk_Gl.obj_hash_table, (void *) &res_ptr->key, res_ptr, &success);
   if (!success)
@@ -1346,10 +1227,8 @@ lock_remove_resource (LK_RES * res_ptr)
 static void
 lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
 {
-  LK_TRAN_LOCK *
-    tran_lock;
-  int
-    rv;
+  LK_TRAN_LOCK *tran_lock;
+  int rv;
 
   /* The caller is holding a resource mutex */
 
@@ -1379,8 +1258,7 @@ lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
 #if defined(CUBRID_DEBUG)
       if (tran_lock->class_hold_list != NULL)
 	{
-	  LK_ENTRY *
-	    _ptr;
+	  LK_ENTRY *_ptr;
 	  _ptr = tran_lock->class_hold_list;
 	  while (_ptr != NULL)
 	    {
@@ -1409,8 +1287,7 @@ lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
 #if defined(CUBRID_DEBUG)
       if (tran_lock->inst_hold_list != NULL)
 	{
-	  LK_ENTRY *
-	    _ptr;
+	  LK_ENTRY *_ptr;
 	  _ptr = tran_lock->inst_hold_list;
 	  while (_ptr != NULL)
 	    {
@@ -1458,12 +1335,9 @@ lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
 static int
 lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
 {
-  LK_TRAN_LOCK *
-    tran_lock;
-  int
-    rv;
-  int
-    error_code = NO_ERROR;
+  LK_TRAN_LOCK *tran_lock;
+  int rv;
+  int error_code = NO_ERROR;
 
   /* The caller is holding a resource mutex */
 
@@ -1568,10 +1442,8 @@ lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
 static void
 lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index)
 {
-  LK_TRAN_LOCK *
-    tran_lock;
-  int
-    rv;
+  LK_TRAN_LOCK *tran_lock;
+  int rv;
 
   /* The caller is holding a resource mutex */
 
@@ -1610,15 +1482,10 @@ lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index)
 static int
 lock_delete_from_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index)
 {
-  LK_TRAN_LOCK *
-    tran_lock;
-  LK_ENTRY *
-  prev, *
-    curr;
-  int
-    rv;
-  int
-    error_code = NO_ERROR;
+  LK_TRAN_LOCK *tran_lock;
+  LK_ENTRY *prev, *curr;
+  int rv;
+  int error_code = NO_ERROR;
 
   /* The caller is holding a resource mutex */
 
@@ -1693,12 +1560,9 @@ lock_delete_from_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index)
 static LK_ENTRY *
 lock_find_class_entry (int tran_index, const OID * class_oid)
 {
-  LK_TRAN_LOCK *
-    tran_lock;
-  LK_ENTRY *
-    entry_ptr;
-  int
-    rv;
+  LK_TRAN_LOCK *tran_lock;
+  LK_ENTRY *entry_ptr;
+  int rv;
 
   /* The caller is not holding any mutex */
 
@@ -1747,14 +1611,10 @@ lock_find_class_entry (int tran_index, const OID * class_oid)
 static LK_ENTRY *
 lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index, LOCK lock)
 {
-  LF_TRAN_ENTRY *
-    t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
-  LK_ENTRY *
-    non2pl;
-  LK_TRAN_LOCK *
-    tran_lock;
-  int
-    rv;
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
+  LK_ENTRY *non2pl;
+  LK_TRAN_LOCK *tran_lock;
+  int rv;
   LOCK_COMPATIBILITY compat;
 
   assert (!OID_ISNULL (&res_ptr->key.oid));
@@ -1848,18 +1708,10 @@ lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index,
 static void
 lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr)
 {
-  LK_ENTRY *
-  prev, *
-    i;
-  LK_ENTRY *
-  ta, *
-    tap;
-  LK_ENTRY *
-  tb, *
-    tbp;
-  LK_ENTRY *
-  tc, *
-    tcp;
+  LK_ENTRY *prev, *i;
+  LK_ENTRY *ta, *tap;
+  LK_ENTRY *tb, *tbp;
+  LK_ENTRY *tc, *tcp;
   LOCK_COMPATIBILITY compat1, compat2;
 
   /* find the position where the lock entry to be inserted */
@@ -1978,47 +1830,26 @@ lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr)
 static void
 lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 {
-  char *
-    client_prog_name;		/* Client program name for transaction */
-  char *
-    client_user_name;		/* Client user name for transaction */
-  char *
-    client_host_name;		/* Client host for transaction */
-  int
-    client_pid;			/* Client process id for transaction */
-  char *
-    waitfor_client_users_default = (char *) "";
-  char *
-    waitfor_client_users;	/* Waitfor users */
-  char *
-    classname;			/* Name of the class */
-  int
-    n,
-    i,
-    nwaits,
-    max_waits = DEFAULT_WAIT_USERS;
-  int
-    wait_for_buf[DEFAULT_WAIT_USERS];
-  int *
-    wait_for = wait_for_buf, *t;
-  LK_ENTRY *
-    entry;
-  LK_RES *
-    res_ptr = NULL;
-  int
-    unit_size = LOG_USERNAME_MAX + MAXHOSTNAMELEN + PATH_MAX + 20 + 4;
-  char *
-    ptr;
-  int
-    rv;
+  char *client_prog_name;	/* Client program name for transaction */
+  char *client_user_name;	/* Client user name for transaction */
+  char *client_host_name;	/* Client host for transaction */
+  int client_pid;		/* Client process id for transaction */
+  char *waitfor_client_users_default = (char *) "";
+  char *waitfor_client_users;	/* Waitfor users */
+  char *classname;		/* Name of the class */
+  int n, i, nwaits, max_waits = DEFAULT_WAIT_USERS;
+  int wait_for_buf[DEFAULT_WAIT_USERS];
+  int *wait_for = wait_for_buf, *t;
+  LK_ENTRY *entry;
+  LK_RES *res_ptr = NULL;
+  int unit_size = LOG_USERNAME_MAX + MAXHOSTNAMELEN + PATH_MAX + 20 + 4;
+  char *ptr;
+  int rv;
   bool is_classname_alloced = false;
   bool free_mutex_flag = false;
   bool isdeadlock_timeout = false;
-  int
-    compat1,
-    compat2;
-  OID *
-    oid_rr;
+  int compat1, compat2;
+  OID *oid_rr;
 
   /* Find the users that transaction is waiting for */
   waitfor_client_users = waitfor_client_users_default;
@@ -2224,8 +2055,7 @@ set_error:
 
   if (isdeadlock_timeout == false)
     {
-      FILE *
-	log_fp;
+      FILE *log_fp;
 
       log_fp = event_log_start (thread_p, "LOCK_TIMEOUT");
       if (log_fp == NULL)
@@ -2254,16 +2084,11 @@ set_error:
 static void
 lock_set_error_for_aborted (LK_ENTRY * entry_ptr, TRAN_ABORT_REASON abort_reason)
 {
-  char *
-    client_prog_name;		/* Client user name for transaction */
-  char *
-    client_user_name;		/* Client user name for transaction */
-  char *
-    client_host_name;		/* Client host for transaction */
-  int
-    client_pid;			/* Client process id for transaction */
-  LOG_TDES *
-    tdes;
+  char *client_prog_name;	/* Client user name for transaction */
+  char *client_user_name;	/* Client user name for transaction */
+  char *client_host_name;	/* Client host for transaction */
+  int client_pid;		/* Client process id for transaction */
+  LOG_TDES *tdes;
 
   (void) logtb_find_client_name_host_pid (entry_ptr->tran_index, &client_prog_name, &client_user_name,
 					  &client_host_name, &client_pid);
@@ -2285,18 +2110,13 @@ lock_set_error_for_aborted (LK_ENTRY * entry_ptr, TRAN_ABORT_REASON abort_reason
  *   entry_ptr(in): lock entry for lock waiting
  *   wait_msecs(in): lock wait milliseconds
  */
-static
-  LOCK_WAIT_STATE
+static LOCK_WAIT_STATE
 lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 {
-  THREAD_ENTRY *
-    p;
-  struct timeval
-    tv;
-  int
-    client_id;
-  LOG_TDES *
-    tdes;
+  THREAD_ENTRY *p;
+  struct timeval tv;
+  int client_id;
+  LOG_TDES *tdes;
 
   /* The threads must not hold a page latch to be blocked on a lock request. */
   assert (lock_is_safe_lock_with_page (thread_p, entry_ptr) || !pgbuf_has_perm_pages_fixed (thread_p));
@@ -2305,14 +2125,10 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 
   if (lk_Gl.verbose_mode)
     {
-      char *
-	__client_prog_name;	/* Client program name for transaction */
-      char *
-	__client_user_name;	/* Client user name for transaction */
-      char *
-	__client_host_name;	/* Client host for transaction */
-      int
-	__client_pid;		/* Client process id for transaction */
+      char *__client_prog_name;	/* Client program name for transaction */
+      char *__client_user_name;	/* Client user name for transaction */
+      char *__client_host_name;	/* Client host for transaction */
+      int __client_pid;		/* Client process id for transaction */
 
       fflush (stderr);
       fflush (stdout);
@@ -2487,14 +2303,10 @@ lock_resume (LK_ENTRY * entry_ptr, int state)
   /* The caller has identified the fact that lockwait is not NULL. that is, the thread is suspended. */
   if (lk_Gl.verbose_mode == true)
     {
-      char *
-	__client_prog_name;	/* Client program name for transaction */
-      char *
-	__client_user_name;	/* Client user name for transaction */
-      char *
-	__client_host_name;	/* Client host for transaction */
-      int
-	__client_pid;		/* Client process id for transaction */
+      char *__client_prog_name;	/* Client program name for transaction */
+      char *__client_user_name;	/* Client user name for transaction */
+      char *__client_host_name;	/* Client host for transaction */
+      int __client_pid;		/* Client process id for transaction */
 
       fflush (stderr);
       fflush (stdout);
@@ -2532,16 +2344,13 @@ lock_resume (LK_ENTRY * entry_ptr, int state)
  *     deadlock detection. The deadlock victim is waked up and noitified of
  *     timeout by this function if the deadlock victim is still suspended.
  */
-static
-  bool
+static bool
 lock_wakeup_deadlock_victim_timeout (int tran_index)
 {
   tran_lock_waiters_array_type tran_lock_waiters;
-  THREAD_ENTRY **
-    thrd_array;
+  THREAD_ENTRY **thrd_array;
   size_t thrd_count, i;
-  THREAD_ENTRY *
-    thrd_ptr;
+  THREAD_ENTRY *thrd_ptr;
   bool wakeup_first = false;
 
   thrd_count = 0;
@@ -2591,16 +2400,13 @@ lock_wakeup_deadlock_victim_timeout (int tran_index)
  *     deadlock detection. The deadlock victim is waked up and noitified of
  *     abortion by this function if the deadlock victim is still suspended.
  */
-static
-  bool
+static bool
 lock_wakeup_deadlock_victim_aborted (int tran_index)
 {
   tran_lock_waiters_array_type tran_lock_waiters;
-  THREAD_ENTRY **
-    thrd_array;
+  THREAD_ENTRY **thrd_array;
   size_t thrd_count, i;
-  THREAD_ENTRY *
-    thrd_ptr;
+  THREAD_ENTRY *thrd_ptr;
   bool wakeup_first = false;
 
   thrd_count = 0;
@@ -2667,12 +2473,8 @@ lock_wakeup_deadlock_victim_aborted (int tran_index)
 static void
 lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 {
-  LK_ENTRY *
-    prev_check;
-  LK_ENTRY *
-  check, *
-  i, *
-    prev;
+  LK_ENTRY *prev_check;
+  LK_ENTRY *check, *i, *prev;
   LOCK mode;
   LOCK_COMPATIBILITY compat;
 
@@ -2792,15 +2594,11 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 static int
 lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 {
-  LK_ENTRY *
-    prev_check;
-  LK_ENTRY *
-  check, *
-    i;
+  LK_ENTRY *prev_check;
+  LK_ENTRY *check, *i;
   LOCK mode;
   bool change_total_waiters_mode = false;
-  int
-    error_code = NO_ERROR;
+  int error_code = NO_ERROR;
   LOCK_COMPATIBILITY compat;
 
   /* The caller is holding a resource mutex */
@@ -2825,8 +2623,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
       /* check if the thread is still waiting for a lock */
       if (LK_IS_LOCKWAIT_THREAD (check->thrd_entry))
 	{
-	  int
-	    owner_tran_index;
+	  int owner_tran_index;
 
 	  /* The thread is still waiting for a lock. */
 	  change_total_waiters_mode = true;
@@ -2929,11 +2726,8 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 static void
 lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * from_whom)
 {
-  LK_ENTRY *
-    prev_check;
-  LK_ENTRY *
-  check, *
-    i;
+  LK_ENTRY *prev_check;
+  LK_ENTRY *check, *i;
   LOCK mode;
   LOCK_COMPATIBILITY compat;
 
@@ -2983,8 +2777,7 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
       thread_lock_entry (check->thrd_entry);
       if (LK_IS_LOCKWAIT_THREAD (check->thrd_entry))
 	{
-	  int
-	    owner_tran_index;
+	  int owner_tran_index;
 
 	  /* the thread is waiting on a lock */
 	  /* remove the lock entry from the waiter */
@@ -3086,12 +2879,10 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
  *   tran_lock(in):
  *
  */
-static
-  bool
+static bool
 lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, LK_TRAN_LOCK * tran_lock)
 {
-  LK_ENTRY *
-    superclass_entry = NULL;
+  LK_ENTRY *superclass_entry = NULL;
 
   if (tran_lock->lock_escalation_on == true)
     {
@@ -3147,15 +2938,11 @@ lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, LK_TRAN_LO
 static int
 lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tran_index)
 {
-  LK_TRAN_LOCK *
-    tran_lock;
+  LK_TRAN_LOCK *tran_lock;
   LOCK max_class_lock = NULL_LOCK;	/* escalated class lock mode */
-  int
-    granted;
-  int
-    wait_msecs;
-  int
-    rv;
+  int granted;
+  int wait_msecs;
+  int rv;
 
   /* check lock escalation count */
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
@@ -3261,23 +3048,17 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tr
  * Note:hold a lock on the given object with instant duration.
  */
 static int
-lock_internal_hold_lock_object_instant (int tran_index, const OID * oid, const OID * class_oid, LOCK lock)
+lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, const OID * class_oid,
+					LOCK lock)
 {
-  LF_TRAN_ENTRY *
-    t_entry = thread_get_tran_entry (NULL, THREAD_TS_OBJ_LOCK_RES);
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
   LK_RES_KEY search_key;
-  LK_RES *
-    res_ptr;
-  LK_ENTRY *
-  entry_ptr, *
-    i;
+  LK_RES *res_ptr;
+  LK_ENTRY *entry_ptr, *i;
   LOCK new_mode;
   LOCK group_mode;
-  int
-    rv;
-  int
-    compat1,
-    compat2;
+  int rv;
+  int compat1, compat2;
 
 #if defined(LK_DUMP)
   if (lk_Gl.dump_level >= 1)
@@ -3419,32 +3200,20 @@ static int
 lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, const OID * class_oid,
 				   LOCK lock, int wait_msecs, LK_ENTRY ** entry_addr_ptr, LK_ENTRY * class_entry)
 {
-  LF_TRAN_ENTRY *
-    t_entry_res = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
-  LF_TRAN_ENTRY *
-    t_entry_ent = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
+  LF_TRAN_ENTRY *t_entry_res = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
+  LF_TRAN_ENTRY *t_entry_ent = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
   LK_RES_KEY search_key;
   TRAN_ISOLATION isolation;
-  int
-    ret_val;
+  int ret_val;
   LOCK group_mode, old_mode, new_mode;	/* lock mode */
-  LK_RES *
-    res_ptr;
-  LK_ENTRY *
-    entry_ptr = NULL;
-  LK_ENTRY *
-    wait_entry_ptr = NULL;
-  LK_ENTRY *
-  prev, *
-  curr, *
-    i;
+  LK_RES *res_ptr;
+  LK_ENTRY *entry_ptr = NULL;
+  LK_ENTRY *wait_entry_ptr = NULL;
+  LK_ENTRY *prev, *curr, *i;
   bool lock_conversion = false;
-  THREAD_ENTRY *
-    thrd_entry;
-  int
-    rv;
-  LK_TRAN_LOCK *
-    tran_lock;
+  THREAD_ENTRY *thrd_entry;
+  int rv;
+  LK_TRAN_LOCK *tran_lock;
   bool is_instant_duration;
   LOCK_COMPATIBILITY compat1, compat2;
   bool is_res_mutex_locked = false;
@@ -3453,10 +3222,8 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   UINT64 lock_wait_time;
 
 #if defined(ENABLE_SYSTEMTAP)
-  const OID *
-    class_oid_for_marker_p;
-  const OID *
-    oid_for_marker_p;
+  const OID *class_oid_for_marker_p;
+  const OID *oid_for_marker_p;
 #endif /* ENABLE_SYSTEMTAP */
 
   assert (!OID_ISNULL (oid));
@@ -3525,8 +3292,7 @@ start:
       ret_val = lock_escalate_if_needed (thread_p, class_entry, tran_index);
       if (ret_val == LK_NOTGRANTED_DUE_ABORTED)
 	{
-	  LOG_TDES *
-	    tdes = LOG_FIND_TDES (tran_index);
+	  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
 	  if (tdes && tdes->tran_abort_reason == TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION)
 	    {
 	      goto end;
@@ -3930,9 +3696,8 @@ lock_tran_lk_entry:
       pthread_mutex_unlock (&res_ptr->res_mutex);
       if (wait_msecs == LK_ZERO_WAIT)
 	{
-	  LK_ENTRY *
-	    p = lock_get_new_entry (tran_index, t_entry_ent,
-				    &lk_Gl.obj_free_entry_list);
+	  LK_ENTRY *p = lock_get_new_entry (tran_index, t_entry_ent,
+					    &lk_Gl.obj_free_entry_list);
 
 	  if (p != NULL)
 	    {
@@ -4168,22 +3933,14 @@ static void
 lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, bool release_flag,
 				     bool move_to_non2pl)
 {
-  LF_TRAN_ENTRY *
-    t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
-  int
-    tran_index;
-  LK_RES *
-    res_ptr;
-  LK_ENTRY *
-    i;
-  LK_ENTRY *
-  prev, *
-    curr;
-  LK_ENTRY *
-    from_whom;
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
+  int tran_index;
+  LK_RES *res_ptr;
+  LK_ENTRY *i;
+  LK_ENTRY *prev, *curr;
+  LK_ENTRY *from_whom;
   LOCK mode;
-  int
-    rv;
+  int rv;
 
 #if defined(LK_DUMP)
   if (lk_Gl.dump_level >= 1)
@@ -4361,7 +4118,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
       if (res_ptr->non2pl == NULL)
 	{
 	  /* if resource entry is empty, remove it. */
-	  (void) lock_remove_resource (res_ptr);
+	  (void) lock_remove_resource (thread_p, res_ptr);
 	}
       else
 	{
@@ -4406,14 +4163,10 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 static int
 lock_internal_demote_shared_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 {
-  LK_RES *
-    res_ptr;			/* lock resource entry pointer */
-  LK_ENTRY *
-  check, *
-    i;				/* lock entry pointer */
+  LK_RES *res_ptr;		/* lock resource entry pointer */
+  LK_ENTRY *check, *i;		/* lock entry pointer */
   LOCK total_mode;
-  int
-    rv;
+  int rv;
 
   /* The caller is not holding any mutex */
 
@@ -4510,13 +4263,12 @@ lock_internal_demote_shared_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entr
 void
 lock_demote_read_class_lock_for_checksumdb (THREAD_ENTRY * thread_p, int tran_index, const OID * class_oid)
 {
-  LK_ENTRY *
-    entry_ptr;
+  LK_ENTRY *entry_ptr;
 
   /* The caller is not holding any mutex */
 
   /* demote only one class lock */
-  entry_ptr = lock_find_tran_hold_entry (tran_index, class_oid, true);
+  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, class_oid, true);
   if (entry_ptr == NULL)
     {
       assert (entry_ptr != NULL);
@@ -4544,11 +4296,8 @@ lock_demote_read_class_lock_for_checksumdb (THREAD_ENTRY * thread_p, int tran_in
 static void
 lock_demote_all_shared_class_locks (THREAD_ENTRY * thread_p, int tran_index)
 {
-  LK_TRAN_LOCK *
-    tran_lock;
-  LK_ENTRY *
-  curr, *
-    next;
+  LK_TRAN_LOCK *tran_lock;
+  LK_ENTRY *curr, *next;
 
   /* When this function is called, only one thread is executing for the transaction. (transaction : thread = 1 : 1)
    * Therefore, there is no need to hold tran_lock->hold_mutex. */
@@ -4599,11 +4348,10 @@ lock_demote_all_shared_class_locks (THREAD_ENTRY * thread_p, int tran_index)
 static void
 lock_unlock_shared_inst_lock (THREAD_ENTRY * thread_p, int tran_index, const OID * inst_oid)
 {
-  LK_ENTRY *
-    entry_ptr;
+  LK_ENTRY *entry_ptr;
 
   /* unlock the shared instance lock (S_LOCK) */
-  entry_ptr = lock_find_tran_hold_entry (tran_index, inst_oid, false);
+  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, inst_oid, false);
 
   if (entry_ptr != NULL && entry_ptr->granted_mode == S_LOCK)
     {
@@ -4626,11 +4374,8 @@ lock_unlock_shared_inst_lock (THREAD_ENTRY * thread_p, int tran_index, const OID
 static void
 lock_remove_all_class_locks (THREAD_ENTRY * thread_p, int tran_index, LOCK lock)
 {
-  LK_TRAN_LOCK *
-    tran_lock;
-  LK_ENTRY *
-  curr, *
-    next;
+  LK_TRAN_LOCK *tran_lock;
+  LK_ENTRY *curr, *next;
 
   /* When this function is called, only one thread is executing for the transaction. (transaction : thread = 1 : 1)
    * Therefore, there is no need to hold tran_lock->hold_mutex. */
@@ -4681,11 +4426,8 @@ lock_remove_all_class_locks (THREAD_ENTRY * thread_p, int tran_index, LOCK lock)
 void
 lock_remove_all_inst_locks (THREAD_ENTRY * thread_p, int tran_index, const OID * class_oid, LOCK lock)
 {
-  LK_TRAN_LOCK *
-    tran_lock;
-  LK_ENTRY *
-  curr, *
-    next;
+  LK_TRAN_LOCK *tran_lock;
+  LK_ENTRY *curr, *next;
 
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
 
@@ -4727,17 +4469,12 @@ lock_remove_all_inst_locks (THREAD_ENTRY * thread_p, int tran_index, const OID *
  *   tran_index(in):
  */
 static void
-lock_remove_non2pl (LK_ENTRY * non2pl, int tran_index)
+lock_remove_non2pl (THREAD_ENTRY * thread_p, LK_ENTRY * non2pl, int tran_index)
 {
-  LF_TRAN_ENTRY *
-    t_entry = thread_get_tran_entry (NULL, THREAD_TS_OBJ_LOCK_ENT);
-  LK_RES *
-    res_ptr;
-  LK_ENTRY *
-  prev, *
-    curr;
-  int
-    rv;
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
+  LK_RES *res_ptr;
+  LK_ENTRY *prev, *curr;
+  int rv;
 
   /* The given non2pl entry has already been removed from the transaction non2pl list. Therefore, This function removes
    * the given non2pl entry from the resource non2pl list and then frees the entry. */
@@ -4779,7 +4516,7 @@ lock_remove_non2pl (LK_ENTRY * non2pl, int tran_index)
 
   if (res_ptr->holder == NULL && res_ptr->waiter == NULL && res_ptr->non2pl == NULL)
     {
-      (void) lock_remove_resource (res_ptr);
+      (void) lock_remove_resource (thread_p, res_ptr);
     }
   else
     {
@@ -4802,18 +4539,12 @@ lock_remove_non2pl (LK_ENTRY * non2pl, int tran_index)
 static void
 lock_update_non2pl_list (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index, LOCK lock)
 {
-  LF_TRAN_ENTRY *
-    t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
-  LK_ENTRY *
-    prev;
-  LK_ENTRY *
-    curr;
-  LK_ENTRY *
-    next;
-  LK_TRAN_LOCK *
-    tran_lock;
-  int
-    rv;
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
+  LK_ENTRY *prev;
+  LK_ENTRY *curr;
+  LK_ENTRY *next;
+  LK_TRAN_LOCK *tran_lock;
+  int rv;
   LOCK_COMPATIBILITY compat;
 
   /* The caller is holding a resource mutex */
@@ -4889,15 +4620,10 @@ lock_update_non2pl_list (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_ind
 static int
 lock_add_WFG_edge (int from_tran_index, int to_tran_index, int holder_flag, INT64 edge_wait_stime)
 {
-  int
-    prev,
-    curr;
-  int
-    i;
-  int
-    alloc_idx;
-  char *
-    temp_ptr;
+  int prev, curr;
+  int i;
+  int alloc_idx;
+  char *temp_ptr;
 
   /* check if the transactions has been selected as victims */
   /* Note that the transactions might be old deadlock victims */
@@ -5027,57 +4753,32 @@ lock_add_WFG_edge (int from_tran_index, int to_tran_index, int holder_flag, INT6
 static void
 lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 {
-  LK_WFG_NODE *
-    TWFG_node;
-  LK_WFG_EDGE *
-    TWFG_edge;
+  LK_WFG_NODE *TWFG_node;
+  LK_WFG_EDGE *TWFG_edge;
   TRANID tranid;
   TRANID victim_tranid;
   bool can_timeout;
-  int
-    i,
-    u,
-    v,
-    w,
-    n;
+  int i, u, v, w, n;
   bool false_dd_cycle = false;
   bool lock_holder_found = false;
   bool inact_trans_found = false;
-  int
-    tot_WFG_nodes;
+  int tot_WFG_nodes;
 #if defined(CUBRID_DEBUG)
-  int
-    num_WFG_nodes;
-  int
-    WFG_nidx;
-  int
-    tran_index_area[20];
-  int *
-    tran_index_set = &tran_index_area[0];
+  int num_WFG_nodes;
+  int WFG_nidx;
+  int tran_index_area[20];
+  int *tran_index_set = &tran_index_area[0];
 #endif
-  char *
-    cycle_info_string;
-  char *
-    ptr;
-  int
-    num_tran_in_cycle;
-  int
-    unit_size = LOG_USERNAME_MAX + MAXHOSTNAMELEN + PATH_MAX + 10;
-  char *
-  client_prog_name, *
-  client_user_name, *
-    client_host_name;
-  int
-    client_pid;
-  int
-    next_node;
-  int *
-    tran_index_in_cycle = NULL;
-  int
-    victim_tran_index;
-  int
-    tran_log_count,
-    victim_tran_log_count;
+  char *cycle_info_string;
+  char *ptr;
+  int num_tran_in_cycle;
+  int unit_size = LOG_USERNAME_MAX + MAXHOSTNAMELEN + PATH_MAX + 10;
+  char *client_prog_name, *client_user_name, *client_host_name;
+  int client_pid;
+  int next_node;
+  int *tran_index_in_cycle = NULL;
+  int victim_tran_index;
+  int tran_log_count, victim_tran_log_count;
 
   /* simple notation */
   TWFG_node = lk_Gl.TWFG_node;
@@ -5238,8 +4939,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 
   if (cycle_info_string != NULL && tran_index_in_cycle != NULL)
     {
-      int
-	i;
+      int i;
 
       ptr = cycle_info_string;
 
@@ -5442,9 +5142,7 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 static void
 lock_dump_deadlock_victims (THREAD_ENTRY * thread_p, FILE * outfile)
 {
-  int
-    k,
-    count;
+  int k, count;
 
   fprintf (outfile, "*** Deadlock Victim Information ***\n");
   fprintf (outfile, "Victim count = %d\n", victim_count);
@@ -5509,10 +5207,8 @@ lock_dump_deadlock_victims (THREAD_ENTRY * thread_p, FILE * outfile)
 static int
 lock_compare_lock_info (const void *lockinfo1, const void *lockinfo2)
 {
-  const OID *
-    oid1;
-  const OID *
-    oid2;
+  const OID *oid1;
+  const OID *oid2;
 
   oid1 = &(((LK_LOCKINFO *) (lockinfo1))->oid);
   oid2 = &(((LK_LOCKINFO *) (lockinfo2))->oid);
@@ -5556,19 +5252,12 @@ static void
 lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 {
 #define TEMP_BUFFER_SIZE  128
-  LK_ENTRY *
-    entry_ptr;
-  char *
-    classname;			/* Name of the class */
-  int
-    num_holders,
-    num_blocked_holders,
-    num_waiters;
-  char
-    time_val[CTIME_MAX];
+  LK_ENTRY *entry_ptr;
+  char *classname;		/* Name of the class */
+  int num_holders, num_blocked_holders, num_waiters;
+  char time_val[CTIME_MAX];
   size_t time_str_len;
-  OID *
-    oid_rr = NULL;
+  OID *oid_rr = NULL;
   HEAP_SCANCACHE scan_cache;
   OID real_class_oid;
 
@@ -5670,9 +5359,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 		  MVCC_REC_HEADER mvcc_rec_header;
 		  if (or_mvcc_get_header (&recdes, &mvcc_rec_header) == NO_ERROR)
 		    {
-		      char
-			str_insid[128],
-			str_delid[128];
+		      char str_insid[128], str_delid[128];
 		      if (MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID))
 			{
 			  sprintf (str_insid, "%llu", (unsigned long long int) MVCC_GET_INSID (&mvcc_rec_header));
@@ -5863,18 +5550,13 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
  *     waiting on at least one transaction holding a lock, otherwise,
  *     an inconsistent entry exist. Some waiters may be waiting on waiters.
  */
-static
-  bool
+static bool
 lock_check_consistent_resource (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 {
   LOCK total_mode;
-  LK_ENTRY *
-  i, *
-    j;
-  const char *
-    msg_str;
-  int
-    rv;
+  LK_ENTRY *i, *j;
+  const char *msg_str;
+  int rv;
 
   /* hold resource mutex */
   rv = pthread_mutex_lock (&res_ptr->res_mutex);
@@ -6056,16 +5738,12 @@ inconsistent:
  *
  * Note:check if the given transaction lock information enrtry is consistent.
  */
-static
-  bool
+static bool
 lock_check_consistent_tran_lock (LK_TRAN_LOCK * tran_lock)
 {
-  int
-    count;
-  LK_ENTRY *
-    i;
-  int
-    rv;
+  int count;
+  LK_ENTRY *i;
+  int rv;
 
   /* hold transaction hold mutex */
   rv = pthread_mutex_lock (&tran_lock->hold_mutex);
@@ -6140,10 +5818,8 @@ lock_initialize (void)
   lk_Standalone_has_xlock = false;
   return NO_ERROR;
 #else /* !SERVER_MODE */
-  const char *
-    env_value;
-  int
-    error_code = NO_ERROR;
+  const char *env_value;
+  int error_code = NO_ERROR;
 
   error_code = lock_initialize_tran_lock_table ();
   if (error_code != NO_ERROR)
@@ -6346,10 +6022,8 @@ lock_finalize (void)
 #if !defined (SERVER_MODE)
   lk_Standalone_has_xlock = false;
 #else /* !SERVER_MODE */
-  LK_TRAN_LOCK *
-    tran_lock;
-  int
-    i;
+  LK_TRAN_LOCK *tran_lock;
+  int i;
 
   /* Release all the locks and awake all transactions */
   /* TODO: Why ? */
@@ -6371,8 +6045,7 @@ lock_finalize (void)
 	  pthread_mutex_destroy (&tran_lock->non2pl_mutex);
 	  while (tran_lock->lk_entry_pool != NULL)
 	    {
-	      LK_ENTRY *
-		entry = tran_lock->lk_entry_pool;
+	      LK_ENTRY *entry = tran_lock->lk_entry_pool;
 	      tran_lock->lk_entry_pool = tran_lock->lk_entry_pool->next;
 	      free (entry);
 	    }
@@ -6414,8 +6087,7 @@ lock_hold_object_instant (THREAD_ENTRY * thread_p, const OID * oid, const OID * 
   LK_SET_STANDALONE_XLOCK (lock);
   return LK_GRANTED;
 #else /* !SERVER_MODE */
-  int
-    tran_index;
+  int tran_index;
   if (oid == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2, "lk_object_instant", "NULL OID pointer");
@@ -6432,7 +6104,7 @@ lock_hold_object_instant (THREAD_ENTRY * thread_p, const OID * oid, const OID * 
     }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  return lock_internal_hold_lock_object_instant (tran_index, oid, class_oid, lock);
+  return lock_internal_hold_lock_object_instant (thread_p, tran_index, oid, class_oid, lock);
 
 #endif /* !SERVER_MODE */
 }
@@ -6459,21 +6131,15 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
   LK_SET_STANDALONE_XLOCK (lock);
   return LK_GRANTED;
 #else /* !SERVER_MODE */
-  int
-    tran_index;
-  int
-    wait_msecs;
+  int tran_index;
+  int wait_msecs;
   TRAN_ISOLATION isolation;
   LOCK new_class_lock;
   LOCK old_class_lock;
-  int
-    granted;
-  LK_ENTRY *
-    root_class_entry = NULL;
-  LK_ENTRY *
-    class_entry = NULL, *superclass_entry = NULL;
-  LK_ENTRY *
-    inst_entry = NULL;
+  int granted;
+  LK_ENTRY *root_class_entry = NULL;
+  LK_ENTRY *class_entry = NULL, *superclass_entry = NULL;
+  LK_ENTRY *inst_entry = NULL;
 #if defined (EnableThreadMonitoring)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL elapsed_time;
@@ -6536,7 +6202,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 
   /* Check if current transaction has already held the class lock. If the class lock is not held, hold the class lock,
    * now. */
-  class_entry = lock_get_class_lock (class_oid, tran_index);
+  class_entry = lock_get_class_lock (thread_p, class_oid, tran_index);
   old_class_lock = (class_entry) ? class_entry->granted_mode : NULL_LOCK;
 
   if (OID_IS_ROOTOID (class_oid))
@@ -6571,7 +6237,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 	    }
 	  else
 	    {
-	      superclass_entry = lock_get_class_lock (oid_Root_class_oid, tran_index);
+	      superclass_entry = lock_get_class_lock (thread_p, oid_Root_class_oid, tran_index);
 	    }
 
 	  granted =
@@ -6641,14 +6307,10 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * su
   return LK_GRANTED;
 #else /* !SERVER_MODE */
   LOCK new_superclass_lock, old_superclass_lock;
-  LK_ENTRY *
-    superclass_entry = NULL, *subclass_entry = NULL;
-  int
-    granted;
-  int
-    tran_index;
-  int
-    wait_msecs;
+  LK_ENTRY *superclass_entry = NULL, *subclass_entry = NULL;
+  int granted;
+  int tran_index;
+  int wait_msecs;
   TRAN_ISOLATION isolation;
 #if defined (EnableThreadMonitoring)
   TSC_TICKS start_tick, end_tick;
@@ -6702,7 +6364,7 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * su
 
   /* Check if current transaction has already held the class lock. If the class lock is not held, hold the class lock,
    * now. */
-  superclass_entry = lock_get_class_lock (superclass_oid, tran_index);
+  superclass_entry = lock_get_class_lock (thread_p, superclass_oid, tran_index);
   old_superclass_lock = (superclass_entry) ? superclass_entry->granted_mode : NULL_LOCK;
 
 
@@ -6767,10 +6429,8 @@ lock_object_wait_msecs (THREAD_ENTRY * thread_p, const OID * oid, const OID * cl
   LK_SET_STANDALONE_XLOCK (lock);
   return LK_GRANTED;
 #else /* !SERVER_MODE */
-  int
-    old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, wait_msecs);
-  int
-    lock_result = lock_object (thread_p, oid, class_oid, lock, cond_flag);
+  int old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, wait_msecs);
+  int lock_result = lock_object (thread_p, oid, class_oid, lock, cond_flag);
 
   xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 
@@ -6797,17 +6457,12 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK c
 #if !defined (SERVER_MODE)
   return LK_GRANTED;
 #else /* !SERVER_MODE */
-  int
-    tran_index;
-  int
-    wait_msecs;
+  int tran_index;
+  int wait_msecs;
   TRAN_ISOLATION isolation;
-  int
-    granted;
-  LK_ENTRY *
-    root_class_entry = NULL;
-  LK_ENTRY *
-    class_entry = NULL;
+  int granted;
+  LK_ENTRY *root_class_entry = NULL;
+  LK_ENTRY *class_entry = NULL;
 #if defined (EnableThreadMonitoring)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL elapsed_time;
@@ -6840,7 +6495,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK c
 
   /* acquire the lock on the class */
   /* NOTE that in case of acquiring a lock on a class object, the higher lock granule of the class object is not given. */
-  root_class_entry = lock_get_class_lock (oid_Root_class_oid, tran_index);
+  root_class_entry = lock_get_class_lock (thread_p, oid_Root_class_oid, tran_index);
   granted = lock_internal_perform_lock_object (thread_p, tran_index, class_oid, NULL, class_lock, wait_msecs,
 					       &class_entry, root_class_entry);
   assert (granted == LK_GRANTED || cond_flag == LK_COND_LOCK || er_errid () != NO_ERROR);
@@ -6879,8 +6534,7 @@ int
 lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 {
 #if !defined (SERVER_MODE)
-  int
-    i;
+  int i;
 
   for (i = 0; i < lockhint->num_classes; i++)
     {
@@ -6893,27 +6547,18 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
     }
   return LK_GRANTED;
 #else /* !SERVER_MODE */
-  int
-    tran_index;
-  int
-    wait_msecs;
+  int tran_index;
+  int wait_msecs;
   TRAN_ISOLATION isolation;
   LK_LOCKINFO cls_lockinfo_space[LK_LOCKINFO_FIXED_COUNT];
-  LK_LOCKINFO *
-    cls_lockinfo;
-  LK_ENTRY *
-    root_class_entry = NULL;
-  LK_ENTRY *
-    class_entry = NULL;
-  OID *
-    root_oidp;
+  LK_LOCKINFO *cls_lockinfo;
+  LK_ENTRY *root_class_entry = NULL;
+  LK_ENTRY *class_entry = NULL;
+  OID *root_oidp;
   LOCK root_lock;
   LOCK intention_mode;
-  int
-    cls_count;
-  int
-    granted,
-    i;
+  int cls_count;
+  int granted, i;
 #if defined (EnableThreadMonitoring)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL elapsed_time;
@@ -7014,7 +6659,7 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
     }
 
   /* get root class lock mode */
-  root_class_entry = lock_get_class_lock (oid_Root_class_oid, tran_index);
+  root_class_entry = lock_get_class_lock (thread_p, oid_Root_class_oid, tran_index);
 
   for (i = 0; i < cls_count; i++)
     {
@@ -7096,17 +6741,15 @@ lock_unlock_object_lock_internal (THREAD_ENTRY * thread_p, const OID * oid, cons
 #if !defined (SERVER_MODE)
   return;
 #else /* !SERVER_MODE */
-  LK_ENTRY *
-    entry_ptr = NULL;
-  int
-    tran_index;
+  LK_ENTRY *entry_ptr = NULL;
+  int tran_index;
   bool is_class;
 
   is_class = (OID_IS_ROOTOID (oid) || OID_IS_ROOTOID (class_oid)) ? true : false;
 
   /* get transaction table index */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  entry_ptr = lock_find_tran_hold_entry (tran_index, oid, is_class);
+  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, is_class);
 
   if (entry_ptr != NULL)
     {
@@ -7162,11 +6805,9 @@ lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_
 #if !defined (SERVER_MODE)
   return;
 #else /* !SERVER_MODE */
-  int
-    tran_index;			/* transaction table index */
+  int tran_index;		/* transaction table index */
   TRAN_ISOLATION isolation;	/* transaction isolation level */
-  LK_ENTRY *
-    entry_ptr;
+  LK_ENTRY *entry_ptr;
   bool is_class;
 
   if (oid == NULL)
@@ -7191,7 +6832,7 @@ lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_
       CUBRID_LOCK_RELEASE_START (oid, class_oid, lock);
 #endif /* ENABLE_SYSTEMTAP */
 
-      entry_ptr = lock_find_tran_hold_entry (tran_index, oid, is_class);
+      entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, is_class);
 
       if (entry_ptr != NULL)
 	{
@@ -7256,15 +6897,11 @@ lock_unlock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
 #if !defined (SERVER_MODE)
   return;
 #else /* !SERVER_MODE */
-  int
-    tran_index;			/* transaction table index */
+  int tran_index;		/* transaction table index */
   TRAN_ISOLATION isolation;	/* transaction isolation level */
   LOCK reqobj_class_unlock;
-  OID *
-  oid, *
-    class_oid;
-  int
-    i;
+  OID *oid, *class_oid;
+  int i;
 
   if (lockset == NULL)
     {
@@ -7330,11 +6967,9 @@ lock_unlock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 #if !defined (SERVER_MODE)
   return;
 #else /* !SERVER_MODE */
-  int
-    tran_index;			/* transaction table index */
+  int tran_index;		/* transaction table index */
   TRAN_ISOLATION isolation;	/* transaction isolation level */
-  int
-    i;
+  int i;
 
   if (lockhint == NULL)
     {
@@ -7394,12 +7029,9 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
 
   return;
 #else /* !SERVER_MODE */
-  int
-    tran_index;
-  LK_TRAN_LOCK *
-    tran_lock;
-  LK_ENTRY *
-    entry_ptr;
+  int tran_index;
+  LK_TRAN_LOCK *tran_lock;
+  LK_ENTRY *entry_ptr;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
@@ -7447,7 +7079,7 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
 	  tran_lock->num_incons_non2pl -= 1;
 	}
       /* remove the non2pl entry from resource non2pl list and free it */
-      lock_remove_non2pl (entry_ptr, tran_index);
+      lock_remove_non2pl (thread_p, entry_ptr, tran_index);
     }
 
   lock_clear_deadlock_victim (tran_index);
@@ -7457,20 +7089,16 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
 }
 
 static LK_ENTRY *
-lock_find_tran_hold_entry (int tran_index, const OID * oid, bool is_class)
+lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, bool is_class)
 {
 #if !defined (SERVER_MODE)
   return NULL;
 #else /* !SERVER_MODE */
-  LF_TRAN_ENTRY *
-    t_entry = thread_get_tran_entry (NULL, THREAD_TS_OBJ_LOCK_RES);
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
   LK_RES_KEY search_key;
-  LK_RES *
-    res_ptr;
-  LK_ENTRY *
-    entry_ptr;
-  int
-    rv;
+  LK_RES *res_ptr;
+  LK_ENTRY *entry_ptr;
+  int rv;
 
   if (is_class)
     {
@@ -7535,12 +7163,10 @@ lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index)
   return X_LOCK;
 #else /* !SERVER_MODE */
   LOCK lock_mode = NULL_LOCK;	/* return value */
-  LK_TRAN_LOCK *
-    tran_lock;
-  LK_ENTRY *
-    entry_ptr;
-  int
-    rv;
+  LK_TRAN_LOCK *tran_lock;
+  LK_ENTRY *entry_ptr;
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  int rv;
 
   if (oid == NULL)
     {
@@ -7577,7 +7203,7 @@ lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index)
   /* get the granted lock mode acquired on the given class oid */
   if (class_oid == NULL || OID_EQ (class_oid, oid_Root_class_oid))
     {
-      entry_ptr = lock_find_tran_hold_entry (tran_index, oid, true);
+      entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, true);
       if (entry_ptr != NULL)
 	{
 	  lock_mode = entry_ptr->granted_mode;
@@ -7585,7 +7211,7 @@ lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index)
       return lock_mode;		/* might be NULL_LOCK */
     }
 
-  entry_ptr = lock_find_tran_hold_entry (tran_index, class_oid, true);
+  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, class_oid, true);
   if (entry_ptr != NULL)
     {
       lock_mode = entry_ptr->granted_mode;
@@ -7610,7 +7236,7 @@ lock_get_object_lock (const OID * oid, const OID * class_oid, int tran_index)
 	  lock_mode = NULL_LOCK;
 	}
 
-      entry_ptr = lock_find_tran_hold_entry (tran_index, oid, false);
+      entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, false);
       if (entry_ptr != NULL)
 	{
 	  lock_mode = entry_ptr->granted_mode;
@@ -7641,12 +7267,10 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index,
   return 1;
 #else /* !SERVER_MODE */
   LOCK granted_lock_mode = NULL_LOCK;
-  LK_TRAN_LOCK *
-    tran_lock;
-  LK_ENTRY *
-    entry_ptr;
-  int
-    rv;
+  LK_TRAN_LOCK *tran_lock;
+  LK_ENTRY *entry_ptr;
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  int rv;
 
   if (oid == NULL)
     {
@@ -7683,7 +7307,7 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index,
   /* get the granted lock mode acquired on the given class oid */
   if (class_oid == NULL || OID_EQ (class_oid, oid_Root_class_oid))
     {
-      entry_ptr = lock_find_tran_hold_entry (tran_index, oid, true);
+      entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, true);
       if (entry_ptr != NULL)
 	{
 	  granted_lock_mode = entry_ptr->granted_mode;
@@ -7691,7 +7315,7 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index,
       return (lock_Conv[lock][granted_lock_mode] == granted_lock_mode);
     }
 
-  entry_ptr = lock_find_tran_hold_entry (tran_index, class_oid, true);
+  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, class_oid, true);
   if (entry_ptr != NULL)
     {
       granted_lock_mode = entry_ptr->granted_mode;
@@ -7705,7 +7329,7 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index,
    * case 3: object lock
    */
   /* get the granted lock mode acquired on the given instance/pseudo oid */
-  entry_ptr = lock_find_tran_hold_entry (tran_index, oid, false);
+  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, false);
   if (entry_ptr != NULL)
     {
       granted_lock_mode = entry_ptr->granted_mode;
@@ -7730,15 +7354,11 @@ lock_has_xlock (THREAD_ENTRY * thread_p)
 #if !defined (SERVER_MODE)
   return lk_Standalone_has_xlock;
 #else /* !SERVER_MODE */
-  int
-    tran_index;
-  LK_TRAN_LOCK *
-    tran_lock;
+  int tran_index;
+  LK_TRAN_LOCK *tran_lock;
   LOCK lock_mode;
-  LK_ENTRY *
-    entry_ptr;
-  int
-    rv;
+  LK_ENTRY *entry_ptr;
+  int rv;
 
   /*
    * Exclusive locks in this context mean IX_LOCK, SIX_LOCK, X_LOCK and
@@ -7798,11 +7418,9 @@ lock_has_lock_transaction (int tran_index)
 #if !defined (SERVER_MODE)
   return lk_Standalone_has_xlock;
 #else /* !SERVER_MODE */
-  LK_TRAN_LOCK *
-    tran_lock;
+  LK_TRAN_LOCK *tran_lock;
   bool lock_hold;
-  int
-    rv;
+  int rv;
 
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
   rv = pthread_mutex_lock (&tran_lock->hold_mutex);
@@ -7836,11 +7454,9 @@ lock_is_waiting_transaction (int tran_index)
   return false;
 #else /* !SERVER_MODE */
   tran_lock_waiters_array_type tran_lock_waiters;
-  THREAD_ENTRY **
-    thrd_array;
+  THREAD_ENTRY **thrd_array;
   size_t thrd_count, i;
-  THREAD_ENTRY *
-    thrd_ptr;
+  THREAD_ENTRY *thrd_ptr;
 
   thrd_count = 0;
   lock_get_transaction_lock_waiting_threads (tran_index, tran_lock_waiters, thrd_count);
@@ -7884,19 +7500,16 @@ lock_is_waiting_transaction (int tran_index)
  *     on the given class and then return a pointer to the lock entry.
  */
 LK_ENTRY *
-lock_get_class_lock (const OID * class_oid, int tran_index)
+lock_get_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, int tran_index)
 {
 #if !defined (SERVER_MODE)
   assert (false);
 
   return NULL;
 #else /* !SERVER_MODE */
-  LK_TRAN_LOCK *
-    tran_lock;
-  LK_ENTRY *
-    entry_ptr;
-  int
-    rv;
+  LK_TRAN_LOCK *tran_lock;
+  LK_ENTRY *entry_ptr;
+  int rv;
 
   if (class_oid == NULL)
     {
@@ -7922,7 +7535,7 @@ lock_get_class_lock (const OID * class_oid, int tran_index)
     }
   else
     {
-      entry_ptr = lock_find_tran_hold_entry (tran_index, class_oid, true);
+      entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, class_oid, true);
     }
 
   return entry_ptr;
@@ -7968,16 +7581,14 @@ lock_force_thread_timeout_lock (THREAD_ENTRY * thrd)
  *     the thread is timed-out.
  *     If NULL is given, it applies to all threads.
  */
-static
-  bool
+static bool
 lock_force_timeout_expired_wait_transactions (void *thrd_entry)
 {
 #if !defined (SERVER_MODE)
   return true;
 #else /* !SERVER_MODE */
   bool ignore;
-  THREAD_ENTRY *
-    thrd;
+  THREAD_ENTRY *thrd;
 
   assert (thrd_entry != NULL);
 
@@ -7994,8 +7605,7 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
 	}
       else if (LK_CAN_TIMEOUT (thrd->lockwait_msecs))
 	{
-	  struct timeval
-	    tv;
+	  struct timeval tv;
 	  INT64 etime;
 
 	  (void) gettimeofday (&tv, NULL);
@@ -8052,21 +7662,13 @@ lock_notify_isolation_incons (THREAD_ENTRY * thread_p, bool (*fun) (const OID * 
   return;
 #else /* !SERVER_MODE */
   TRAN_ISOLATION isolation;
-  int
-    tran_index;
-  LK_TRAN_LOCK *
-    tran_lock;
-  LK_ENTRY *
-  curr, *
-  prev, *
-    next;
-  LK_ENTRY *
-    incon_non2pl_list_header = NULL;
-  LK_ENTRY *
-    incon_non2pl_list_tail = NULL;
+  int tran_index;
+  LK_TRAN_LOCK *tran_lock;
+  LK_ENTRY *curr, *prev, *next;
+  LK_ENTRY *incon_non2pl_list_header = NULL;
+  LK_ENTRY *incon_non2pl_list_tail = NULL;
   bool ret_val;
-  int
-    rv;
+  int rv;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   isolation = logtb_find_isolation (tran_index);
@@ -8142,7 +7744,7 @@ end:
       next = curr->tran_next;
 
       /* remove it from resource non2pl list and free it */
-      lock_remove_non2pl (curr, tran_index);
+      lock_remove_non2pl (thread_p, curr, tran_index);
 
       curr = next;
     }
@@ -8158,16 +7760,12 @@ end:
  *
  * Note:check if the local deadlock detection should be performed.
  */
-static
-  bool
+static bool
 lock_is_local_deadlock_detection_interval_up (void)
 {
 #if defined (SERVER_MODE)
-  struct timeval
-    now,
-    elapsed;
-  double
-    elapsed_sec;
+  struct timeval now, elapsed;
+  double elapsed_sec;
 
   /* check deadlock detection interval */
   gettimeofday (&now, NULL);
@@ -8202,8 +7800,7 @@ lock_victimize_first_thread_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapp
     {
       return;
     }
-  int
-    tran_index = thread_ref.tran_index;
+  int tran_index = thread_ref.tran_index;
   if (lock_wakeup_deadlock_victim_timeout (tran_index))
     {
       stop_mapper = true;
@@ -8244,29 +7841,16 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
   return;
 #else /* !SERVER_MODE */
   LF_HASH_TABLE_ITERATOR iterator;
-  LF_TRAN_ENTRY *
-    t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
-  int
-    k,
-    s,
-    t;
-  LK_RES *
-    res_ptr;
-  LK_ENTRY *
-  hi, *
-    hj;
-  LK_WFG_NODE *
-    TWFG_node;
-  LK_WFG_EDGE *
-    TWFG_edge;
-  int
-    i,
-    rv;
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
+  int k, s, t;
+  LK_RES *res_ptr;
+  LK_ENTRY *hi, *hj;
+  LK_WFG_NODE *TWFG_node;
+  LK_WFG_EDGE *TWFG_edge;
+  int i, rv;
   LOCK_COMPATIBILITY compat1, compat2;
-  int
-    tran_index;
-  FILE *
-    log_fp;
+  int tran_index;
+  FILE *log_fp;
 
   /* initialize deadlock detection related structures */
 
@@ -8315,11 +7899,9 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 	  else
 	    {
 #if defined(CUBRID_DEBUG)
-	      FILE *
-		lk_fp;
+	      FILE *lk_fp;
 	      time_t cur_time;
-	      char
-		time_val[CTIME_MAX];
+	      char time_val[CTIME_MAX];
 
 	      lk_fp = fopen ("lock_waiter_only_info.log", "a");
 	      if (lk_fp != NULL)
@@ -8525,10 +8107,8 @@ final_:
   if (victim_count > 0)
     {
       size_t size_loc;
-      char *
-	ptr;
-      FILE *
-	fp = port_open_memstream (&ptr, &size_loc);
+      char *ptr;
+      FILE *fp = port_open_memstream (&ptr, &size_loc);
 
       if (fp)
 	{
@@ -8631,31 +8211,19 @@ lk_global_deadlock_detection (void)
 #if !defined (SERVER_MODE)
   return;
 #else /* !SERVER_MODE */
-  int
-    i,
-    j;
-  WFG_CYCLE *
-  cycles, *
-    cur_cycle;
+  int i, j;
+  WFG_CYCLE *cycles, *cur_cycle;
   WFG_CYCLE_CASE cycle_case;
-  int
-    num_victims;
-  int
-    tot_num_victims = 0;
+  int num_victims;
+  int tot_num_victims = 0;
   LK_DEADLOCK_VICTIM victims[LK_MAX_VICTIM_COUNT];
-  LK_DEADLOCK_VICTIM *
-    v_p;
-  int
-    tran_index;
+  LK_DEADLOCK_VICTIM *v_p;
+  int tran_index;
   TRANID tranid;
-  int
-    can_timeout;
-  int
-    already_picked;
-  int
-    ok;
-  int
-    error;
+  int can_timeout;
+  int already_picked;
+  int ok;
+  int error;
   bool isvictim_tg_waiting;
   bool iscandidate_tg_waiting;
 
@@ -8826,12 +8394,9 @@ lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlock
 #if !defined (SERVER_MODE)
   return LK_GRANTED;
 #else /* !SERVER_MODE */
-  int
-    granted = LK_GRANTED, r;
-  unsigned int
-    i;
-  LK_ENTRY *
-    dummy_ptr;
+  int granted = LK_GRANTED, r;
+  unsigned int i;
+  LK_ENTRY *dummy_ptr;
 
   if (acqlocks == NULL)
     {
@@ -8887,16 +8452,11 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
     }
   return;
 #else /* !SERVER_MODE */
-  int
-    tran_index;
-  LK_TRAN_LOCK *
-    tran_lock;
-  int
-    idx;
-  LK_ENTRY *
-    entry_ptr;
-  int
-    rv;
+  int tran_index;
+  LK_TRAN_LOCK *tran_lock;
+  int idx;
+  LK_ENTRY *entry_ptr;
+  int rv;
 
   /* some preparation */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -8996,8 +8556,7 @@ lock_dump_acquired (FILE * fp, LK_ACQUIRED_LOCKS * acqlocks)
 #if !defined (SERVER_MODE)
   return;
 #else /* !SERVER_MODE */
-  unsigned int
-    i;
+  unsigned int i;
 
   /* Dump object locks */
   if (acqlocks->obj != NULL && acqlocks->nobj_locks > 0)
@@ -9034,32 +8593,20 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 #else /* !SERVER_MODE */
   LF_HASH_TABLE_ITERATOR iterator;
 
-  LF_TRAN_ENTRY *
-    t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
-  char *
-    client_prog_name;		/* Client program name for tran */
-  char *
-    client_user_name;		/* Client user name for tran */
-  char *
-    client_host_name;		/* Client host for tran */
-  int
-    client_pid;			/* Client process id for tran */
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
+  char *client_prog_name;	/* Client program name for tran */
+  char *client_user_name;	/* Client user name for tran */
+  char *client_host_name;	/* Client host for tran */
+  int client_pid;		/* Client process id for tran */
   TRAN_ISOLATION isolation;	/* Isolation for client tran */
   TRAN_STATE state;
-  int
-    wait_msecs;
-  int
-    old_wait_msecs = 0;		/* Old transaction lock wait */
-  int
-    tran_index;
-  LK_RES *
-    res_ptr;
-  int
-    num_locked;
-  float
-    lock_timeout_sec;
-  char
-    lock_timeout_string[64];
+  int wait_msecs;
+  int old_wait_msecs = 0;	/* Old transaction lock wait */
+  int tran_index;
+  LK_RES *res_ptr;
+  int num_locked;
+  float lock_timeout_sec;
+  char lock_timeout_string[64];
 
   if (outfp == NULL)
     {
@@ -9157,20 +8704,13 @@ lock_check_consistency (THREAD_ENTRY * thread_p)
 #if !defined (SERVER_MODE)
   return;
 #else /* !SERVER_MODE */
-  int
-    consistent = true;
-  int
-    hash_index;
-  LK_HASH *
-    hash_anchor;
-  LK_RES *
-    res_ptr;
-  int
-    tran_index;
-  LK_TRAN_LOCK *
-    tran_lock;
-  int
-    rv;
+  int consistent = true;
+  int hash_index;
+  LK_HASH *hash_anchor;
+  LK_RES *res_ptr;
+  int tran_index;
+  LK_TRAN_LOCK *tran_lock;
+  int rv;
 
   /* check the consisteny in object lock table */
   for (hash_index = 0; hash_index < lk_Gl.obj_hash_size; hash_index++)
@@ -9224,8 +8764,7 @@ lock_initialize_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * com
 #if !defined (SERVER_MODE)
   return NO_ERROR;
 #else /* !SERVER_MODE */
-  LK_LOCKCOMP *
-    lockcomp;
+  LK_LOCKCOMP *lockcomp;
 
   lockcomp = &(comp_lock->lockcomp);
   lockcomp->tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -9252,17 +8791,12 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_lock,
 #if !defined (SERVER_MODE)
   return NO_ERROR;
 #else /* !SERVER_MODE */
-  LK_LOCKCOMP *
-    lockcomp;
-  LK_LOCKCOMP_CLASS *
-    lockcomp_class;
-  OID *
-    p;
-  int
-    max_oids;
+  LK_LOCKCOMP *lockcomp;
+  LK_LOCKCOMP_CLASS *lockcomp_class;
+  OID *p;
+  int max_oids;
   bool need_free;
-  int
-    ret = NO_ERROR;
+  int ret = NO_ERROR;
 
   need_free = false;		/* init */
 
@@ -9291,7 +8825,7 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_lock,
 
       if (lockcomp->root_class_ptr == NULL)
 	{
-	  lockcomp->root_class_ptr = lock_get_class_lock (oid_Root_class_oid, lockcomp->tran_index);
+	  lockcomp->root_class_ptr = lock_get_class_lock (thread_p, oid_Root_class_oid, lockcomp->tran_index);
 	}
 
       /* initialize lockcomp_class */
@@ -9411,15 +8945,10 @@ lock_finalize_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_
 #if !defined (SERVER_MODE)
   return LK_GRANTED;
 #else /* !SERVER_MODE */
-  LK_LOCKCOMP *
-    lockcomp;
-  LK_LOCKCOMP_CLASS *
-    lockcomp_class;
-  LK_ENTRY *
-    dummy;
-  int
-    i,
-    value = LK_GRANTED;
+  LK_LOCKCOMP *lockcomp;
+  LK_LOCKCOMP_CLASS *lockcomp_class;
+  LK_ENTRY *dummy;
+  int i, value = LK_GRANTED;
 
   lockcomp = &(comp_lock->lockcomp);
   for (lockcomp_class = lockcomp->class_list; lockcomp_class != NULL; lockcomp_class = lockcomp_class->next)
@@ -9476,10 +9005,8 @@ lock_abort_composite_lock (LK_COMPOSITE_LOCK * comp_lock)
 #if !defined (SERVER_MODE)
   return;
 #else /* !SERVER_MODE */
-  LK_LOCKCOMP *
-    lockcomp;
-  LK_LOCKCOMP_CLASS *
-    lockcomp_class;
+  LK_LOCKCOMP *lockcomp;
+  LK_LOCKCOMP_CLASS *lockcomp_class;
 
   lockcomp = &(comp_lock->lockcomp);
   lockcomp->tran_index = NULL_TRAN_INDEX;
@@ -9506,8 +9033,7 @@ lock_abort_composite_lock (LK_COMPOSITE_LOCK * comp_lock)
  *   class_lock(in): class lock
  *   lock_escalation(in): lock escalation
  */
-static
-  bool
+static bool
 lock_is_class_lock_escalated (LOCK class_lock, LOCK lock_escalation)
 {
 #if !defined (SERVER_MODE)
@@ -9541,12 +9067,9 @@ lock_get_number_object_locks (void)
 #if defined(SA_MODE)
   return 0;
 #else
-  int
-    available = lk_Gl.obj_hash_table.freelist->available_cnt;
-  int
-    retired = lk_Gl.obj_hash_table.freelist->retired_cnt;
-  int
-    allocd = lk_Gl.obj_hash_table.freelist->alloc_cnt;
+  int available = lk_Gl.obj_hash_table.freelist->available_cnt;
+  int retired = lk_Gl.obj_hash_table.freelist->retired_cnt;
+  int allocd = lk_Gl.obj_hash_table.freelist->alloc_cnt;
 
   /* might fetch values mid-operation, so impose a lower cap */
   return MAX (allocd - available - retired, 0);
@@ -9566,8 +9089,7 @@ lock_start_instant_lock_mode (int tran_index)
 #if !defined (SERVER_MODE)
   return;
 #else /* !SERVER_MODE */
-  LK_TRAN_LOCK *
-    tran_lock;
+  LK_TRAN_LOCK *tran_lock;
 
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
   tran_lock->is_instant_duration = true;
@@ -9589,13 +9111,9 @@ lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index, bool need_
 #if !defined (SERVER_MODE)
   return;
 #else /* !SERVER_MODE */
-  LK_TRAN_LOCK *
-    tran_lock;
-  LK_ENTRY *
-  entry_ptr, *
-    next_ptr;
-  int
-    count;
+  LK_TRAN_LOCK *tran_lock;
+  LK_ENTRY *entry_ptr, *next_ptr;
+  int count;
 
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
 
@@ -9685,8 +9203,7 @@ lock_clear_deadlock_victim (int tran_index)
 #if !defined (SERVER_MODE)
   return;
 #else /* !SERVER_MODE */
-  int
-    rv;
+  int rv;
 
   /* communication with deadlock detector */
   if (lk_Gl.TWFG_node[tran_index].checked_by_deadlock_detector)
@@ -9715,8 +9232,7 @@ lock_is_instant_lock_mode (int tran_index)
 #if !defined (SERVER_MODE)
   return false;
 #else /* !SERVER_MODE */
-  LK_TRAN_LOCK *
-    tran_lock;
+  LK_TRAN_LOCK *tran_lock;
 
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
   return tran_lock->is_instant_duration;
@@ -9767,152 +9283,7 @@ lock_decrement_class_granules (LK_ENTRY * class_entry)
       class_entry->class_entry->ngranules--;
     }
 }
-
 #endif /* SERVER_MODE */
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * lock_get_total_holders_mode - Get the total holders mode
- *
- * return: the total holders mode
- *
- *   oid(in): target object ientifier
- *   class_oid(in): class identifier of the target object
- */
-
-LOCK
-lock_get_total_holders_mode (const OID * oid, const OID * class_oid)
-{
-#if !defined (SERVER_MODE)
-  return X_LOCK;
-#else /* !SERVER_MODE */
-  LF_TRAN_ENTRY *
-    t_entry = thread_get_tran_entry (NULL, THREAD_TS_OBJ_LOCK_RES);
-  LK_RES_KEY search_key;
-  LOCK total_hold_mode = NULL_LOCK;	/* lock mode */
-  LK_RES *
-    res_ptr;
-
-  int
-    rv;
-  bool is_class = false;
-
-  if (oid == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2, "lock_get_total_holders_mode",
-	      "NULL OID pointer");
-      return NULL_LOCK;
-    }
-
-  is_class = OID_EQ (oid, oid_Root_class_oid) || class_oid == NULL || OID_EQ (class_oid, oid_Root_class_oid);
-
-  /* search hash */
-  search_key = lock_create_search_key ((OID *) oid, (OID *) class_oid);
-  rv = lf_hash_find (t_entry, &lk_Gl.obj_hash_table, (void *) &search_key, (void **) &res_ptr);
-  if (rv != NO_ERROR)
-    {
-      /* hopefully will never happen */
-      assert (false);
-      return 0;
-    }
-  else if (res_ptr == NULL)
-    {
-      return NULL_LOCK;
-    }
-
-  if (is_class || OID_EQ (&res_ptr->key.class_oid, class_oid))
-    {
-      total_hold_mode = res_ptr->total_holders_mode;
-    }
-
-  /* release lock hash mutex */
-  pthread_mutex_unlock (&res_ptr->res_mutex);
-
-  return total_hold_mode;
-#endif /* !SERVER_MODE */
-}
-
-/*
- * lock_get_all_except_transaction - Find the acquired lock mode of all except
- *				     tran_index transactions
- * return:
- *
- *   oid(in): target object ientifier
- *   class_oid(in): class identifier of the target object
- *   tran_index(in): the transaction index
- */
-
-LOCK
-lock_get_all_except_transaction (const OID * oid, const OID * class_oid, int tran_index)
-{
-#if !defined (SERVER_MODE)
-  return X_LOCK;
-#else /* !SERVER_MODE */
-  LF_TRAN_ENTRY *
-    t_entry = thread_get_tran_entry (NULL, THREAD_TS_OBJ_LOCK_RES);
-  LK_RES_KEY search_key;
-  LOCK group_mode;		/* lock mode */
-  LK_RES *
-    res_ptr;
-  LK_ENTRY *
-    i;
-  int
-    rv;
-  bool is_class = false;
-
-  if (oid == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2, "lock_get_all_except_transaction",
-	      "NULL OID pointer");
-      return NULL_LOCK;
-    }
-
-  is_class = OID_EQ (oid, oid_Root_class_oid) || class_oid == NULL || OID_EQ (class_oid, oid_Root_class_oid);
-
-  /* search hash */
-  search_key = lock_create_search_key ((OID *) oid, (OID *) class_oid);
-  rv = lf_hash_find (t_entry, &lk_Gl.obj_hash_table, (void *) &search_key, (void **) &res_ptr);
-  if (rv != NO_ERROR)
-    {
-      /* hopefully will never happen */
-      assert (false);
-      return 0;
-    }
-
-#if defined (REWRITE)
-  if (OID_EQ (&res_ptr->key.oid, oid))
-    {
-      if (is_class || OID_EQ (&res_ptr->key.class_oid, class_oid))
-	{
-	  break;
-	}
-    }
-#endif
-
-  if (res_ptr == NULL)
-    {
-      /* not found */
-      return NULL_LOCK;
-    }
-
-  /* other holder's granted mode */
-  group_mode = NULL_LOCK;
-  for (i = res_ptr->holder; i != NULL; i = i->next)
-    {
-      if (i->tran_index != tran_index)
-	{
-	  assert (i->granted_mode >= NULL_LOCK && group_mode >= NULL_LOCK);
-	  group_mode = lock_Conv[i->granted_mode][group_mode];
-	  assert (group_mode != NA_LOCK);
-	}
-    }
-
-  pthread_mutex_unlock (&res_ptr->res_mutex);
-
-  return group_mode;
-#endif /* !SERVER_MODE */
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * lock_get_lock_holder_tran_index -
@@ -9946,21 +9317,12 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int wa
 #else
 
 #define HOLDER_ENTRY_LENGTH (12)
-  int
-    rv;
-  LK_ENTRY *
-  holder, *
-    waiter;
-  int
-    holder_number = 0;
-  int
-    buf_size,
-    n,
-    remained_size;
+  int rv;
+  LK_ENTRY *holder, *waiter;
+  int holder_number = 0;
+  int buf_size, n, remained_size;
   bool is_valid = false;	/* validation check */
-  char *
-  buf, *
-    p;
+  char *buf, *p;
 
   if (res == NULL)
     {
@@ -10133,14 +9495,9 @@ lock_wait_state_to_string (int state)
 static void
 lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index)
 {
-  int
-    rv,
-    i,
-    indent = 2;
-  LK_TRAN_LOCK *
-    tran_lock;
-  LK_ENTRY *
-    entry;
+  int rv, i, indent = 2;
+  LK_TRAN_LOCK *tran_lock;
+  LK_ENTRY *entry;
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
 
@@ -10204,8 +9561,7 @@ lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_inde
 static void
 lock_event_log_blocked_lock (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry)
 {
-  int
-    indent = 2;
+  int indent = 2;
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
 
@@ -10237,14 +9593,10 @@ lock_event_log_blocked_lock (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * 
 static void
 lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * wait_entry)
 {
-  LK_ENTRY *
-    entry;
-  LK_RES *
-    res_ptr = NULL;
+  LK_ENTRY *entry;
+  LK_RES *res_ptr = NULL;
   LOCK_COMPATIBILITY compat1, compat2;
-  int
-    rv,
-    indent = 2;
+  int rv, indent = 2;
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
 
@@ -10325,12 +9677,9 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 static void
 lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry)
 {
-  LK_RES *
-    res_ptr;
-  char *
-    classname;
-  OID *
-    oid_rr;
+  LK_RES *res_ptr;
+  char *classname;
+  OID *oid_rr;
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
 
@@ -10419,10 +9768,8 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * ent
 static void
 lock_event_set_tran_wait_entry (int tran_index, LK_ENTRY * entry)
 {
-  LK_TRAN_LOCK *
-    tran_lock;
-  int
-    rv;
+  LK_TRAN_LOCK *tran_lock;
+  int rv;
 
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
   rv = pthread_mutex_lock (&tran_lock->hold_mutex);
@@ -10445,8 +9792,7 @@ lock_event_set_tran_wait_entry (int tran_index, LK_ENTRY * entry)
 static void
 lock_event_set_xasl_id_to_entry (int tran_index, LK_ENTRY * entry)
 {
-  LOG_TDES *
-    tdes;
+  LOG_TDES *tdes;
 
   tdes = LOG_FIND_TDES (tran_index);
   if (tdes != NULL && !XASL_ID_IS_NULL (&tdes->xasl_id))
@@ -10485,14 +9831,10 @@ lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock, int cond_flag)
   LK_SET_STANDALONE_XLOCK (lock);
   return NO_ERROR;
 #else /* !SERVER_MODE */
-  int
-    tran_index;
-  int
-    wait_msecs;
-  OID *
-    rep_read_oid = oid_get_rep_read_tran_oid ();
-  LK_ENTRY *
-    entry_addr = NULL;
+  int tran_index;
+  int wait_msecs;
+  OID *rep_read_oid = oid_get_rep_read_tran_oid ();
+  LK_ENTRY *entry_addr = NULL;
 
   if (lock == NULL_LOCK)
     {
@@ -10520,12 +9862,10 @@ lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock, int cond_flag)
 }
 
 #if defined (SERVER_MODE)
-static
-  bool
+static bool
 lock_is_safe_lock_with_page (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 {
-  LK_RES *
-    lock_res;
+  LK_RES *lock_res;
   bool is_safe = true;
 
   lock_res = entry_ptr->res_head;
@@ -10559,10 +9899,8 @@ lock_is_safe_lock_with_page (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 static LK_ENTRY *
 lock_get_new_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 {
-  LK_TRAN_LOCK *
-    tran_lock = &lk_Gl.tran_lock_table[tran_index];
-  LK_ENTRY *
-    lock_entry;
+  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
+  LK_ENTRY *lock_entry;
 
   /* Check if local pool has free entries. */
   if (tran_lock->lk_entry_pool)
@@ -10592,8 +9930,7 @@ lock_get_new_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * fr
 static void
 lock_free_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, LK_ENTRY * lock_entry)
 {
-  LK_TRAN_LOCK *
-    tran_lock = &lk_Gl.tran_lock_table[tran_index];
+  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
 
   assert (tran_lock->lk_entry_pool_count >= 0 && tran_lock->lk_entry_pool_count <= LOCK_TRAN_LOCAL_POOL_MAX_SIZE);
 
