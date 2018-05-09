@@ -444,6 +444,7 @@ namespace test_stream
 
     lang_init ();
     tp_init ();
+    er_init ("unit_test", 1);
     lang_set_charset_lang ("en_US.iso88591");
     cub_th_m.set_max_thread_count (100);
 
@@ -744,6 +745,7 @@ namespace test_stream
           se_array[i]->pack ();
           stream_context_manager::g_packed_entries_cnt++;
         }
+      stream_context_manager::g_pause_unpacker = false;
     }
 
     void stream_unpack_task::execute (context_type &context)
@@ -763,31 +765,21 @@ namespace test_stream
           
           do
             {
-              if (stream_context_manager::g_pause_packer
-                  && curr_pos_commited - curr_pos_read < 1024)
-                {
-                  stream_context_manager::g_pause_packer = false;
-                }
-              
-              std::this_thread::sleep_for (std::chrono::milliseconds (1));
-              
-              curr_pos_commited = stream_context_manager::g_stream->get_last_committed_pos ();
-              curr_pos_read = stream_context_manager::g_stream->get_curr_read_position ();
-            }
-          while (curr_pos_commited <= last_pos_commited);
-
-          last_pos_commited = curr_pos_commited;
-          
-          do
-            {
               err = se->prepare ();
               if (err == NO_ERROR)
                 {
                   break;
                 }
-              std::this_thread::sleep_for (std::chrono::milliseconds (1));
+              
+              /* unpacking may not have enough data, and could be signalled to block*/
+              while (stream_context_manager::g_pause_unpacker == true)
+                {
+                  std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                }
             }
           while (err != NO_ERROR);
+          
+          assert (err == NO_ERROR);
 
           do
             {
@@ -796,7 +788,12 @@ namespace test_stream
                 {
                   break;
                 }
-              std::this_thread::sleep_for (std::chrono::milliseconds (1));
+
+              /* unpacking may not have enough data, and could be signalled to block*/
+              while (stream_context_manager::g_pause_unpacker == true)
+                {
+                  std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                }
             }
           while (err != NO_ERROR);
          
@@ -823,6 +820,7 @@ int stream_context_manager::g_packed_entries_cnt = 0;
 int stream_context_manager::g_unpacked_entries_cnt = 0;
 
   bool stream_context_manager::g_pause_packer = true;
+  bool stream_context_manager::g_pause_unpacker = true;
 
   class stream_reserve_throttling : public cubstream::notify_handler
     {
@@ -830,6 +828,7 @@ int stream_context_manager::g_unpacked_entries_cnt = 0;
       int notify (const cubstream::stream_position pos, const size_t byte_count)
         {
           stream_context_manager::g_pause_packer = true;
+          stream_context_manager::g_pause_unpacker = false;
           return NO_ERROR;
         };
     };
@@ -841,16 +840,17 @@ int stream_context_manager::g_unpacked_entries_cnt = 0;
 				size_t *processed_bytes)
         {
           stream_context_manager::g_pause_packer = false;
+          stream_context_manager::g_pause_unpacker = true;
           return NO_ERROR;
         }
     };
 
   int test_stream_mt (void)
   {
-#define TEST_PACK_THREADS 1
+#define TEST_PACK_THREADS 4
 #define TEST_UNPACK_THREADS 1
 #define TEST_ENTRIES (TEST_PACK_THREADS * 100)
-#define TEST_OBJS_IN_ENTRIES_CNT 100
+#define TEST_OBJS_IN_ENTRIES_CNT 400
 
     int res = 0;
     int i, j;
@@ -866,6 +866,7 @@ int stream_context_manager::g_unpacked_entries_cnt = 0;
     cubstream::packing_stream test_stream_for_pack (10 * 1024 * 1024, 10);
     test_stream_for_pack.set_buffer_reserve_margin (100 * 1024);
     test_stream_for_pack.set_filled_stream_handler (&stream_reserve_throttling_handler);
+    test_stream_for_pack.set_ready_pos_handler (&stream_reserve_throttling_handler);
     test_stream_for_pack.set_fetch_data_handler (&stream_fetch_handler);
 
     std::cout << "      Generating stream entries and objects...";

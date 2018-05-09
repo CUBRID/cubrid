@@ -260,6 +260,7 @@ namespace test_stream
       static int g_unpacked_entries_cnt;
 
       static bool g_pause_packer;
+      static bool g_pause_unpacker;
     };
 
   class stream_pack_task : public cubthread::task<cubthread::entry>
