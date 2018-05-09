@@ -650,22 +650,23 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * b
     } \
   while (false)
 
-/* Reset b-tree scan for a new range scan (it can be called internally by
- * btree_range_scan).
- */
-#define BTS_RESET_SCAN(bts) \
-  do \
-    { \
-      /* Reset bts->is_scan_started. */ \
-      (bts)->is_scan_started = false; \
-      /* No current leaf node. */ \
-      VPID_SET_NULL (&(bts)->C_vpid); \
-      if (bts->C_page != NULL) \
-	{ \
-	  pgbuf_unfix_and_init (NULL, bts->C_page); \
-	} \
-    } \
-  while (false)
+//
+// bts_reset_scan - reset b-tree scan (clear progress)
+//
+// thread_p (in) : thread entry
+// bts (in)      : b-tree scan
+static void
+bts_reset_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
+{
+  /* Reset bts->is_scan_started. */
+  bts->is_scan_started = false;
+  /* No current leaf node. */
+  VPID_SET_NULL (&(bts)->C_vpid);
+  if (bts->C_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, bts->C_page);
+    }
+}
 
 /* BTREE_FIND_FK_OBJECT -
  * Structure used to find if a key of foreign key index has any objects.
@@ -24835,7 +24836,7 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	  if (BTS_IS_INDEX_ILS (bts))
 	    {
 	      /* Reset scan to avoid using btree_range_scan_resume () */
-	      BTS_RESET_SCAN (bts);
+	      bts_reset_scan (thread_p, bts);
 	    }
 	  continue;
 	}
@@ -25458,7 +25459,7 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p, BTID_INT * 
 
 	  /* Since range scan must be moved on a totally different range, it must restart by looking for the first
 	   * eligible key of the new range. Trick it to think this a new call of btree_range_scan. */
-	  BTS_RESET_SCAN (bts);
+	  bts_reset_scan (thread_p, bts);
 
 	  /* Adjust range of scan. */
 	  error_code = btree_ils_adjust_range (thread_p, bts);
