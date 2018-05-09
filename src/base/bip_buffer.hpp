@@ -33,11 +33,55 @@
 #include <assert.h>
 
 
-/*
- * Implementation BI-Partite circular buffer : returns a contiguous memory
- */
 namespace mem
 {
+  /*
+   * Implementation of a enhanced BI-Partite circular buffer : returns a contiguous memory for append
+   * and allows reads in past appended (and committed) data.
+   *
+   * The buffer has an active region (m_ptr_start_a -> m_ptr_end_a) which servers the appends
+   * The append pointer (m_ptr_append) is located in this range (m_ptr_start_a <= m_ptr_append <= m_ptr_end_a)
+   * The m_ptr_end_a servers as a "reserve margin" limit : the range (append -> end_a) 
+   * is the immediate "future" data (to be reserved). When the reserve margin cannot be guaranteed till end of buffer,
+   * the B region is activated (normally is inactive, and when active it always resides the the beginning of the buffer).
+   * 
+   * The append consists for two steps:
+   *  1. reserve (amount) : increments the append pointer with the desired amount
+   *  2. commit (ptr) : increases either the lower limit of A region, or lower limit of previous "era" of region A
+   *     (which is the range : m_ptr_prev_gen_committed -> m_ptr_prev_gen_last_reserved), depending on the value of ptr
+   *
+   *  Interlaced commit/reserve calls may be performed (concurrent calls are handled at upper layer).
+   *  For proper functionallity of the buffer, it is assumed that commits are always performed in the same order
+   *  as original reserve :  R1, R2, C1, R3, C2, C3;  (an invalid order would be: R1, R2, C2, C1). This should be
+   *  handled by upper layer.
+   *
+   * The reads are performed in three steps:
+   * 1. get_read_ranges : returns valid read ranges
+   *  The reads cannot enter either of region A or region B (start_a -> end_a; buffer_start -> end_b) to prevent
+   *  interfering with appenders. Also, it may read only data which was actually previously written 
+   *  (cannot read past 'm_ptr_prev_gen_committed'). The call returns two ranges:
+   *     i) trail_b + amount_b (the range after region B), in case region B is de-activated, this range extends from start
+   *        buffer to start of region A
+   *    ii) trail_a + amount_a (range after region A), this is the oldest data in the buffer and extends from end of A
+   *        till m_ptr_prev_gen_committed.
+   * 2. start_read (ptr, amount) : the buffer is split into equal sized pages (template parameter); 
+   *    each page has a fixed count (m_read_fcnt) and a bit flag in m_read_flags.
+   *    the start_read, increments the fix count of each affected page, and sets the correspoding bit
+   * 3. end_read (ptr, amount) : the reserve of start_read (decrements the fix count,
+   *    and clears the bit if count reaches zero)
+   *
+   * The reserve may fail for several reasons:
+   *  a) amount is too big - static condition (amount > threshold)
+   *     (this is subject to change, we should probably set by configuration/ratio of capacity)
+   *  b) amount is too big - dynamic condition : the active region (difference between reserved and commited)
+   *     is too large, and no contiguous range may be served
+   *  c) the append pointer cannot be extended because readers are pending
+   *  in all cases, NULL is returned; it is the responsibility of upper layer to handle this cases
+   *  (preferably to prevent them)
+   */
+
+  /* TODO: template parameter is required by bitset; a solution would be to define a biset with a maximum size
+   * and let the code use only as much as it needs */
   template <unsigned int P>
   class bip_buffer
   {
@@ -100,7 +144,9 @@ namespace mem
           const char *reserved_ptr = NULL;
           bool need_take_margin = true;
 
-          /* TODO[arnia] : adaptive reserve margin */
+          /* TODO : adaptive reserve margin */
+          /* TODO : a possible optimiztion would be to increase m_ptr_end_a with page increments,
+           * instead of keeping it consistently ahead of append with a fixed amount */
           if (amount > m_reserve_margin)
             {
               assert (amount < m_capacity / 10);
@@ -169,6 +215,7 @@ namespace mem
 
           if (ptr >= m_ptr_start_a && ptr < m_ptr_end_a)
             {
+              assert (m_ptr_prev_gen_committed == m_ptr_prev_gen_last_reserved);
               m_ptr_start_a = ptr;
             }
           else
