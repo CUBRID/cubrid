@@ -6202,9 +6202,19 @@ log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVIND
     }
   if (page == NULL && RCV_IS_NEW_PAGE_INIT (rcvindex))
     {
+      // see case OLD_PAGE_MAYBE_DEALLOCATED of pgbuf_fix
+      // redo recovery may try to fix an immature page which was probably partially written.
+      if (er_errid () == ER_PB_BAD_PAGEID && er_get_severity () == ER_WARNING_SEVERITY)
+	{
+	  // forget the warning since we are going to fix the page as NEW and don't want it will bother us.
+	  er_clear ();
+	}
+
       /* page is deallocated. however, this is redo of a new page initialization, we still have to apply it.
-       * page must still be reserved, otherwise it means its file was completely destroyed. */
+       * page must still be reserved, otherwise it means its file was completely destroyed.
+       */
       DISK_ISVALID isvalid;
+
       isvalid = disk_is_page_sector_reserved (thread_p, vpid_rcv->volid, vpid_rcv->pageid);
       if (isvalid == DISK_ERROR)
 	{
