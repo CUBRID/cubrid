@@ -3185,7 +3185,7 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 #endif /* CUBRID_DEBUG */
 
 #if defined(SA_MODE)
-  (void) xboot_shutdown_server (NULL, ER_ALL_FINAL);
+  (void) xboot_shutdown_server (thread_p, ER_ALL_FINAL);
 #endif /* SA_MODE */
 
   return NO_ERROR;
