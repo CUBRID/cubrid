@@ -14387,6 +14387,10 @@ pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thread_p, const VPID * 
   assert (page != NULL);
   *page = NULL;
 
+  /* First, checks whether the file was destroyed. Such check may create performance issues.
+   * This function must be adapted. Thus, if the transaction has a lock on table, we can skip
+   * the code that checks whether the file was destroyed.
+   */
   isvalid = disk_is_page_sector_reserved (thread_p, vpid->volid, vpid->pageid);
   if (isvalid == DISK_INVALID)
     {
