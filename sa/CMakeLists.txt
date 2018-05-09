@@ -112,6 +112,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/binaryheap.c
   ${BASE_DIR}/tsc_timer.c
   ${BASE_DIR}/lock_free.c
+  ${BASE_DIR}/resource_tracker.cpp
   ${BASE_DIR}/tz_compile.c
   ${BASE_DIR}/tz_support.c
   )
@@ -125,6 +126,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/packable_object.hpp
+  ${BASE_DIR}/resource_tracker.hpp
 )
 
 set(HEAPLAYER_SOURCES

@@ -37,6 +37,7 @@
 #include "util_func.h"
 #include "error_manager.h"
 #include "intl_support.h"
+#include "resource_tracker.hpp"
 #include "customheaps.h"
 #if !defined (SERVER_MODE)
 #include "quick_fit.h"

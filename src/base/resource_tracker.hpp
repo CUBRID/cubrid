@@ -36,7 +36,6 @@ namespace cubbase
     public:
 
       using res_type = Res;
-      using leak_callback_func = std::function<void (Res, int)>;
 
       void increment (const char *filename, const int line, const res_type &res);
       void decrement (const char *filename, const int line, const res_type &res);
@@ -45,7 +44,7 @@ namespace cubbase
     private:
       void track (const char *filename, const int line, res_type &res, int amount);
 
-      const std::size_t MAX_FILENAME_SIZE = 32;
+      static const std::size_t MAX_FILENAME_SIZE = 32;
 
       struct location
       {
@@ -80,7 +79,6 @@ namespace cubbase
       size_t m_crt_size;
 
       std::map<res_type, res_entry> m_tracked;
-      leak_callback_func m_leak_callback;
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -89,7 +87,7 @@ namespace cubbase
 
   template <typename Res>
   void
-  resource_tracker::increment (const char *filename, const int line, Res res)
+  resource_tracker<Res>::increment (const char *filename, const int line, const res_type &res)
   {
     if (!m_enabled || m_aborted)
       {
@@ -117,7 +115,7 @@ namespace cubbase
 
   template <typename Res>
   void
-  resource_tracker::decrement (const char *filename, const int line, const res_type &res)
+  resource_tracker<Res>::decrement (const char *filename, const int line, const res_type &res)
   {
     if (!m_enabled || m_aborted)
       {
@@ -141,4 +139,4 @@ namespace cubbase
 
 } // namespace cubbase
 
-// _CUBRID_RESOURCE_TRACKER_HPP_
+#endif // _CUBRID_RESOURCE_TRACKER_HPP_
