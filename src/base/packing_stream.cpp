@@ -448,7 +448,7 @@ namespace cubstream
         to_read_pos = m_read_position;
 
         if (to_read_pos + amount > m_last_committed_pos
-            || to_read_pos + amount > m_append_position - 2 * m_bip_buffer.get_page_size ())
+            || to_read_pos + amount + 2 * m_bip_buffer.get_page_size () > m_append_position)
           {
             if (m_fetch_data_handler != NULL)
               {
