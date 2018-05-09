@@ -2163,7 +2163,7 @@ rmutex_lock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
 
-  if (!cubthread::is_single_thread ())
+  if (cubthread::is_single_thread ())
     {
       /* Regard the resource is available, since system is working as a single thread. */
       return NO_ERROR;
@@ -2221,7 +2221,7 @@ rmutex_lock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
 int
 rmutex_unlock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
 {
-  if (!cubthread::is_single_thread ())
+  if (cubthread::is_single_thread ())
     {
       /* Regard the resource is available, since system is working as a single thread. */
       return NO_ERROR;
