@@ -16,50 +16,44 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-if(UNIX)
-  add_custom_command(
-    OUTPUT tzlib/timezones.c
-    COMMAND ${CMAKE_COMMAND} -E make_directory tzlib
-    COMMAND CUBRID=${CMAKE_BINARY_DIR} LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cubridsa> $<TARGET_FILE:cub_admin> gen_tz -i ${CMAKE_CURRENT_SOURCE_DIR}/tzdata -g new
-    DEPENDS gen_msgs_en_US
-    )
-else(UNIX)
-  if(TARGET_PLATFORM_BITS EQUAL 32)
-    set(REQUIRED_DLLS
-      ${CMAKE_SOURCE_DIR}/win/external/dll/jansson.dll
-      ${CMAKE_SOURCE_DIR}/win/external/dll/Win32/libgcrypt.dll
-      ${CMAKE_SOURCE_DIR}/win/external/dll/Win32/libgpg-error-0.dll
-      )
-  else(TARGET_PLATFORM_BITS EQUAL 32)
-    set(REQUIRED_DLLS
-      ${CMAKE_SOURCE_DIR}/win/external/dll/jansson64.dll
-      ${CMAKE_SOURCE_DIR}/win/external/dll/x64/libgcrypt.dll
-      ${CMAKE_SOURCE_DIR}/win/external/dll/x64/libgpg-error-0.dll
-      )
-  endif(TARGET_PLATFORM_BITS EQUAL 32)
-  add_custom_command(
-    OUTPUT tzlib/timezones.c
-    COMMAND ${CMAKE_COMMAND} -E make_directory tzlib
-    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:cubridsa> $<TARGET_FILE_DIR:cub_admin>
-    COMMAND set CUBRID=${CMAKE_BINARY_DIR}
-    COMMAND $<TARGET_FILE:cub_admin> gen_tz -i ${CMAKE_CURRENT_SOURCE_DIR}/tzdata -g new
-    DEPENDS gen_msgs_en_US
-    )
-endif(UNIX)
-add_custom_target(gen_timezones DEPENDS cubridsa cub_admin tzlib/timezones.c)
-set_source_files_properties(tzlib/timezones.c PROPERTIES GENERATED true)
-foreach(required_file ${REQUIRED_DLLS})
-  add_custom_command(TARGET gen_timezones PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${required_file} $<TARGET_FILE_DIR:cub_admin>)
-endforeach(required_file)
+message (STATUS ".. timezone shared library")
 
+# create an executable that can generate timezones.c file
+message (STATUS ".... gen_timezone executable")
+set (GEN_TIMEZONES_SOURCES
+  ${EXECUTABLES_DIR}/generate_timezone.cpp
+  )
+message (STATUS "...... source files: ${GEN_TIMEZONES_SOURCES}")
+set_source_files_properties (
+  ${GEN_TIMEZONES_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
+
+add_executable(gen_timezone
+  ${GEN_TIMEZONES_SOURCES}
+  )
+
+target_link_libraries (gen_timezone LINK_PRIVATE cubridsa)
+target_compile_definitions (gen_timezone PRIVATE SA_MODE)
+
+# run executable
+message (STATUS ".... generate timezone command")
+add_custom_command(
+  OUTPUT tzlib/timezones.c
+  COMMENT "generating tzlib/timezones.c from ${CMAKE_CURRENT_SOURCE_DIR}/tzdata"
+  COMMAND ${CMAKE_COMMAND} -E make_directory tzlib
+  COMMAND gen_timezone ${CMAKE_CURRENT_SOURCE_DIR}/tzdata tzlib/timezones.c
+)
+set_source_files_properties(tzlib/timezones.c PROPERTIES GENERATED true)
+
+# create library
+message (STATUS ".... cubrid_timezones lib")
 add_library(cubrid_timezones SHARED tzlib/timezones.c)
 set_target_properties(cubrid_timezones PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 if(WIN32)
   set_target_properties(cubrid_timezones PROPERTIES OUTPUT_NAME libcubrid_timezones)
 endif(WIN32)
-target_include_directories(cubrid_timezones PRIVATE ${CMAKE_SOURCE_DIR}/src/base)
-add_dependencies(cubrid_timezones gen_timezones)
+add_dependencies(cubrid_timezones gen_timezone)
 
 install(TARGETS cubrid_timezones
   RUNTIME DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
@@ -98,8 +92,6 @@ install(DIRECTORY
 install(FILES
   ${CMAKE_SOURCE_DIR}/src/base/timezone_lib_common.h
   DESTINATION ${CUBRID_TZDIR}/tzlib COMPONENT Header)
-
-
 
 # install pdb files for debugging on windows
 # TODO: move the pdb files to CUBRID/symbols directory

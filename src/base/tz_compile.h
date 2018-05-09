@@ -31,7 +31,7 @@ extern "C"
 #endif
 #if defined (SA_MODE)
   extern int timezone_compile_data (const char *input_folder, const TZ_GEN_TYPE tz_gen_type, char *database_name,
-				    char *checksum);
+				    const char *output_file_path, char *checksum);
 #endif
   extern void tzc_dump_summary (const TZ_DATA * tzd);
   extern void tzc_dump_countries (const TZ_DATA * tzd);
