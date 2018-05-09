@@ -445,7 +445,9 @@ namespace test_stream
     lang_init ();
     tp_init ();
     lang_set_charset_lang ("en_US.iso88591");
+    cub_th_m.set_max_thread_count (100);
 
+    cubthread::set_manager (&cub_th_m);
     cubthread::initialize (thread_p);
     res = cubthread::initialize_thread_entries ();
     if (res != NO_ERROR)
@@ -455,6 +457,12 @@ namespace test_stream
       }
 
     initialized = true;
+
+
+    cub_th_m.alloc_entries ();
+    cub_th_m.init_entries (0, false);
+
+
 
     return NO_ERROR;
   }
@@ -797,7 +805,7 @@ namespace test_stream
           se_unpack_array[se->get_mvcc_id()] = se;
 
           res = se->is_equal (se_array[se->get_mvcc_id()]);
-          assert (res == 0);
+          assert (res == true);
 
           stream_context_manager::g_unpacked_entries_cnt++;
         }
@@ -903,23 +911,23 @@ int stream_context_manager::g_unpacked_entries_cnt = 0;
     stream_context_manager ctx_m;
     stream_context_manager::g_stream = &test_stream_for_pack;
 
-    cubthread::worker_pool<stream_worker_context> packing_worker_pool (stream_context_manager::g_pack_threads,
-        stream_context_manager::g_pack_threads, ctx_m, 1, false);
+    cubthread::entry_workpool* packing_worker_pool =
+      cub_th_m.create_worker_pool (stream_context_manager::g_pack_threads, stream_context_manager::g_pack_threads, &ctx_m, 1, false);
 
-    cubthread::worker_pool<stream_worker_context> unpacking_worker_pool (stream_context_manager::g_unpack_threads,
-        stream_context_manager::g_unpack_threads, ctx_m, 1, false);
+    cubthread::entry_workpool* unpacking_worker_pool =
+      cub_th_m.create_worker_pool (stream_context_manager::g_unpack_threads, stream_context_manager::g_unpack_threads, &ctx_m, 1, false);
 
     for (i = 0; i < stream_context_manager::g_pack_threads; i++)
       {
         stream_pack_task *packing_task = new stream_pack_task ();
         packing_task->m_tran_id = i;
-        packing_worker_pool.execute (packing_task);
+        packing_worker_pool->execute (packing_task);
       }
 
     for (i = 0; i < stream_context_manager::g_unpack_threads; i++)
       {
         stream_unpack_task *unpacking_task = new stream_unpack_task ();
-        unpacking_worker_pool.execute (unpacking_task);
+        unpacking_worker_pool->execute (unpacking_task);
       }
 
     while (stream_context_manager::g_packed_entries_cnt < TEST_ENTRIES

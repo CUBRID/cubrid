@@ -25,6 +25,7 @@
 #include "stream_packer.hpp"
 #include "thread_task.hpp"
 #include "thread_worker_pool.hpp"
+#include "thread_entry_task.hpp"
 #include <vector>
 
 
@@ -239,20 +240,10 @@ namespace test_stream
     {
     };
 
-  class stream_context_manager : public cubthread::context_manager<stream_worker_context> 
+  class stream_context_manager : public cubthread::entry_manager
     {
     public:
-      context_type &
-      create_context (void) final
-      {
-	return * (new context_type);
-      }
-
-      void
-      retire_context (context_type &context) final
-      {
-	delete &context;
-      }
+  
 
       static int g_cnt_packing_entries_per_thread;
       static int g_cnt_unpacking_entries_per_thread;
@@ -271,7 +262,7 @@ namespace test_stream
       static bool g_pause_packer;
     };
 
-  class stream_pack_task : public cubthread::task<stream_worker_context>
+  class stream_pack_task : public cubthread::task<cubthread::entry>
   {
   public:
       void execute (context_type &context);
@@ -279,7 +270,7 @@ namespace test_stream
       int m_tran_id;
   };
 
-  class stream_unpack_task : public cubthread::task<stream_worker_context>
+  class stream_unpack_task : public cubthread::task<cubthread::entry>
   {
   public:
       void execute (context_type &context);
