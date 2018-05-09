@@ -40,6 +40,7 @@
 #include "query_dump.h"
 #include "db_date.h"
 #include "dbtype.h"
+#include "thread_manager.hpp"
 
 #define IS_SUBSET(value)        (value).sub.count >= 0
 
@@ -4283,6 +4284,12 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
   char *string = NULL;
   int alloced_string = 0;
   int error = NO_ERROR;
+
+  if (thread_p == NULL)
+    {
+      // because SA_MODE client calls this directly with NULL argument...
+      thread_p = thread_get_thread_entry_info ();
+    }
 
   /* check if an old version database */
   if (catcls_find_class_oid_by_class_name (thread_p, CT_CLASS_NAME, &tmp_oid) != NO_ERROR)
