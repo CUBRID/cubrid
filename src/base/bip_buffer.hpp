@@ -186,7 +186,7 @@ namespace mem
               assert (m_ptr_prev_gen_committed <= m_ptr_prev_gen_last_reserved);
               if (m_ptr_prev_gen_committed < m_ptr_prev_gen_last_reserved)
                 {
-                  m_ptr_prev_gen_last_reserved = m_ptr_prev_gen_last_reserved;
+                  m_ptr_prev_gen_committed = m_ptr_prev_gen_last_reserved;
                 }
 
               m_ptr_start_a = ptr;
@@ -315,6 +315,8 @@ namespace mem
 
           memset (m_read_fcnt, 0, P * sizeof (m_read_fcnt[0]));
           m_read_flags.reset ();
+
+          m_cycles = 0;
         };
 
       int get_page_from_ptr (const char *ptr)
