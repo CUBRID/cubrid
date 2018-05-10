@@ -907,7 +907,6 @@ os_calloc_release (size_t n, size_t size, bool rc_track)
   return ptr;
 }
 
-
 /*
  * os_free () -
  *   return:
@@ -936,10 +935,10 @@ os_free_release (void *ptr, bool rc_track)
 
 #if defined (SERVER_MODE)
 /*
-* db_private_get_heapid_from_thread () -
-*   return:
-*   thread_p(in):
-*/
+ * db_private_get_heapid_from_thread () -
+ *   return:
+ *   thread_p(in):
+ */
 static HL_HEAPID
 db_private_get_heapid_from_thread (THREAD_ENTRY * thread_p)
 {

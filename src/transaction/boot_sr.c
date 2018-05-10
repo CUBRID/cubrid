@@ -2877,48 +2877,52 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
 bool
 xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
 {
-  if (BO_IS_SERVER_RESTARTED ())
+  if (!BO_IS_SERVER_RESTARTED ())
     {
+      return true;
+    }
+
 #if defined(CUBRID_DEBUG)
-      boot_check_db_at_num_shutdowns (true);
+  boot_check_db_at_num_shutdowns (true);
 #endif /* CUBRID_DEBUG */
 
-      sysprm_set_force (prm_get_name (PRM_ID_SUPPRESS_FSYNC), "0");
+  sysprm_set_force (prm_get_name (PRM_ID_SUPPRESS_FSYNC), "0");
 
-      /* Shutdown the system with the system transaction */
-      logtb_set_to_system_tran_index (thread_p);
-      log_abort_all_active_transaction (thread_p);
-      vacuum_stop (thread_p);
+  /* Shutdown the system with the system transaction */
+  logtb_set_to_system_tran_index (thread_p);
+  log_abort_all_active_transaction (thread_p);
+  vacuum_stop (thread_p);
 
-      /* before removing temp vols */
-      (void) logtb_reflect_global_unique_stats_to_btree (thread_p);
-      qfile_finalize_list_cache (thread_p);
-      xcache_finalize (thread_p);
-      fpcache_finalize (thread_p);
-      session_states_finalize (thread_p);
+  /* before removing temp vols */
+  (void) logtb_reflect_global_unique_stats_to_btree (thread_p);
+  qfile_finalize_list_cache (thread_p);
+  xcache_finalize (thread_p);
+  fpcache_finalize (thread_p);
+  session_states_finalize (thread_p);
 
-      (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
+  (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
 
 #if defined(SERVER_MODE)
-      pgbuf_daemons_destroy ();
+  pgbuf_daemons_destroy ();
 #endif
 
-      log_final (thread_p);
+  log_final (thread_p);
 
-      if (is_er_final == ER_ALL_FINAL)
-	{
-	  boot_server_all_finalize (thread_p, is_er_final, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
-	}
-      else
-	{
-	  er_stack_push ();
-	  boot_server_all_finalize (thread_p, is_er_final, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
-	  er_stack_pop ();
-	}
-#if defined(SA_MODE)
-      boot_decoy_entries_finalize ();
-#endif
+  if (is_er_final == ER_ALL_FINAL)
+    {
+      boot_server_all_finalize (thread_p, is_er_final, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
     }
+  else
+    {
+      er_stack_push ();
+      boot_server_all_finalize (thread_p, is_er_final, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
+      er_stack_pop ();
+    }
+
+#if defined(SA_MODE)
+  boot_decoy_entries_finalize ();
+#endif
+
   return true;
 }
 
@@ -3153,7 +3157,6 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 #else
       if (tdes == NULL)
 	{
-
 #if defined(ENABLE_SYSTEMTAP)
 	  CUBRID_CONN_END (-1, "NULL");
 #endif /* ENABLE_SYSTEMTAP */

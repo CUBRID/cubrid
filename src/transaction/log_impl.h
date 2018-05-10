@@ -2403,8 +2403,8 @@ extern int xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_id, 
 					  bool interrupt_only);
 extern THREAD_ENTRY *logtb_find_thread_by_tran_index (int tran_index);
 extern THREAD_ENTRY *logtb_find_thread_by_tran_index_except_me (int tran_index);
-int logtb_get_current_tran_index (void);
-void logtb_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index);
+extern int logtb_get_current_tran_index (void);
+extern void logtb_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 #if defined (SERVER_MODE)
 extern void logtb_wakeup_thread_with_tran_index (int tran_index, thread_resume_suspend_status resume_reason);
 #endif // SERVER_MODE

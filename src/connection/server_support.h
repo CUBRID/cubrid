@@ -102,7 +102,7 @@ extern size_t css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int
 
 extern void css_set_thread_info (THREAD_ENTRY * thread_p, int client_id, int rid, int tran_index,
 				 int net_request_index);
-int css_get_client_id (THREAD_ENTRY * thread_p);
+extern int css_get_client_id (THREAD_ENTRY * thread_p);
 extern unsigned int css_get_comm_request_id (THREAD_ENTRY * thread_p);
 extern struct css_conn_entry *css_get_current_conn_entry (void);
 

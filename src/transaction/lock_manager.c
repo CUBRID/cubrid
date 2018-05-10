@@ -533,16 +533,14 @@ static LK_ENTRY *lock_get_new_entry (int tran_index, LF_TRAN_ENTRY * tran_entry,
 static void lock_free_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, LK_ENTRY * lock_entry);
 
 static void lock_victimize_first_thread_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper);
-static void
-lock_check_timeout_expired_and_count_suspended_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
-							size_t & suspend_count);
-static void
-lock_get_transaction_lock_waiting_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
-						   int tran_index,
-						   tran_lock_waiters_array_type & tran_lock_waiters, size_t & count);
-static void
-lock_get_transaction_lock_waiting_threads (int tran_index,
-					   tran_lock_waiters_array_type & tran_lock_waiters, size_t & count);
+static void lock_check_timeout_expired_and_count_suspended_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
+								    size_t & suspend_count);
+static void lock_get_transaction_lock_waiting_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
+							       int tran_index,
+							       tran_lock_waiters_array_type & tran_lock_waiters,
+							       size_t & count);
+static void lock_get_transaction_lock_waiting_threads (int tran_index, tran_lock_waiters_array_type & tran_lock_waiters,
+						       size_t & count);
 
 // *INDENT-OFF*
 static cubthread::daemon *lock_Deadlock_detect_daemon = NULL;
@@ -558,9 +556,19 @@ static int lock_init_entry (void *res);
 static int lock_uninit_entry (void *res);
 
 LF_ENTRY_DESCRIPTOR obj_lock_entry_desc = {
-  offsetof (LK_ENTRY, stack), offsetof (LK_ENTRY, next), offsetof (LK_ENTRY, del_id), 0,	/* does not have a key, not used in a hash table */
+  offsetof (LK_ENTRY, stack),
+  offsetof (LK_ENTRY, next),
+  offsetof (LK_ENTRY, del_id),
+  0,				/* does not have a key, not used in a hash table */
   0,				/* does not have a mutex, protected by resource mutex */
-  LF_EM_NOT_USING_MUTEX, lock_alloc_entry, lock_dealloc_entry, lock_init_entry, lock_uninit_entry, NULL, NULL, NULL,	/* no key */
+  LF_EM_NOT_USING_MUTEX,
+  lock_alloc_entry,
+  lock_dealloc_entry,
+  lock_init_entry,
+  lock_uninit_entry,
+  NULL,
+  NULL,
+  NULL,				/* no key */
   NULL				/* no inserts */
 };
 
@@ -576,13 +584,24 @@ static int lock_res_key_compare (void *k1, void *k2);
 static unsigned int lock_res_key_hash (void *key, int htsize);
 
 LF_ENTRY_DESCRIPTOR obj_lock_res_desc = {
-  offsetof (LK_RES, stack), offsetof (LK_RES, hash_next), offsetof (LK_RES, del_id), offsetof (LK_RES, key), offsetof (LK_RES, res_mutex), LF_EM_USING_MUTEX, lock_alloc_resource, lock_dealloc_resource, lock_init_resource, lock_uninit_resource, lock_res_key_copy, lock_res_key_compare, lock_res_key_hash, NULL	/* no inserts */
+  offsetof (LK_RES, stack),
+  offsetof (LK_RES, hash_next),
+  offsetof (LK_RES, del_id),
+  offsetof (LK_RES, key),
+  offsetof (LK_RES, res_mutex),
+  LF_EM_USING_MUTEX,
+  lock_alloc_resource,
+  lock_dealloc_resource,
+  lock_init_resource,
+  lock_uninit_resource,
+  lock_res_key_copy,
+  lock_res_key_compare,
+  lock_res_key_hash,
+  NULL				/* no inserts */
 };
 #endif /* SERVER_MODE */
 
-
 #if defined(SERVER_MODE)
-
 static LK_RES_KEY
 lock_create_search_key (OID * oid, OID * class_oid)
 {

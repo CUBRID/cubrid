@@ -3110,7 +3110,7 @@ css_wp_core_job_scan_mapper (const cubthread::entry_workpool::core & wp_core, bo
 }
 
 //
-// css_is_thread_not_suspended_mapfunc
+// css_is_any_thread_not_suspended_mapfunc
 //
 // thread_ref (in)   : current thread entry
 // stop_mapper (out) : output true to stop mapper
@@ -3147,6 +3147,7 @@ css_are_all_request_handlers_suspended (void)
       // found a thread that was not suspended
       return false;
     }
+
   if (checked_threads_count == css_Server_request_worker_pool->get_max_count ())
     {
       // all threads are suspended
@@ -3188,7 +3189,9 @@ css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & 
     }
 
   (void) pthread_mutex_lock (&thread_ref.tran_index_lock);
-  if (!thread_ref.is_on_current_thread () && thread_ref.m_status != cubthread::entry::status::TS_DEAD
+
+  if (!thread_ref.is_on_current_thread ()
+      && thread_ref.m_status != cubthread::entry::status::TS_DEAD
       && thread_ref.m_status != cubthread::entry::status::TS_FREE
       && thread_ref.m_status != cubthread::entry::status::TS_CHECK)
     {
@@ -3196,14 +3199,15 @@ css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & 
       if (tran_index == NULL_TRAN_INDEX)
         {
           // exact match client ID is required
-          does_belong = conn_p != NULL && conn_p->client_id == client_id;
+          does_belong = (conn_p != NULL && conn_p->client_id == client_id);
         }
       else if (tran_index == thread_ref.tran_index)
         {
           // match client ID or null connection
-          does_belong = conn_p == NULL || conn_p->client_id == client_id;
+          does_belong = (conn_p == NULL || conn_p->client_id == client_id);
         }
     }
+
   pthread_mutex_unlock (&thread_ref.tran_index_lock);
 
   if (does_belong)
@@ -3225,8 +3229,10 @@ size_t
 css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, int client_id)
 {
   size_t count = 0;
+
   css_Server_request_worker_pool->map_running_contexts (css_count_transaction_worker_threads_mapfunc, thread_p,
                                                         tran_index, client_id, count);
+
   return count;
 }
 // *INDENT-ON*
