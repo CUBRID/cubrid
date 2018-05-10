@@ -86,47 +86,14 @@ namespace mem
   class bip_buffer
   {
     public:
-      bip_buffer ()
+      bip_buffer (const size_t capacity)
         {
-          m_buffer = NULL;
-          m_cycles = 0;
+          init (capacity);
         };
 
       ~bip_buffer ()
         {
           delete [] m_buffer;
-        };
-
-      void init (const size_t capacity)
-        {
-          m_capacity = DB_ALIGN (capacity, 4 * 1024);
-          m_capacity = MIN (m_capacity, 100 * 1024 * 1024);
-          m_read_page_size = m_capacity / P;
-          m_capacity = DB_ALIGN (m_capacity, m_read_page_size);
-
-          m_read_page_size = m_capacity / P;
-
-          m_reserve_margin = m_capacity / 10;
-          m_reserve_margin = DB_ALIGN (m_reserve_margin, MAX_ALIGNMENT);
-          m_reserve_margin = MAX (m_reserve_margin, 10 * 1024);
-          m_reserve_margin = MIN (m_reserve_margin, 10 * 1024 * 1024);
-
-          assert (m_reserve_margin < m_capacity);
-
-          m_buffer = new char[m_capacity];
-          m_buffer_end = m_buffer + m_capacity;
-
-          m_ptr_start_a = m_buffer;
-          m_ptr_append = m_ptr_start_a;
-          m_ptr_end_a = m_ptr_append + m_reserve_margin;
-
-          m_ptr_end_b = NULL;
-
-          m_ptr_prev_gen_committed = NULL;
-          m_ptr_prev_gen_last_reserved = NULL;
-
-          memset (m_read_fcnt, 0, P * sizeof (m_read_fcnt[0]));
-          m_read_flags.reset ();
         };
 
       size_t get_capacity ()
@@ -317,6 +284,39 @@ namespace mem
         };
 
      protected:
+
+      void init (const size_t capacity)
+        {
+          m_capacity = DB_ALIGN (capacity, 4 * 1024);
+          m_capacity = MIN (m_capacity, 100 * 1024 * 1024);
+          m_read_page_size = m_capacity / P;
+          m_capacity = DB_ALIGN (m_capacity, m_read_page_size);
+
+          m_read_page_size = m_capacity / P;
+
+          m_reserve_margin = m_capacity / 10;
+          m_reserve_margin = DB_ALIGN (m_reserve_margin, MAX_ALIGNMENT);
+          m_reserve_margin = MAX (m_reserve_margin, 10 * 1024);
+          m_reserve_margin = MIN (m_reserve_margin, 10 * 1024 * 1024);
+
+          assert (m_reserve_margin < m_capacity);
+
+          m_buffer = new char[m_capacity];
+          m_buffer_end = m_buffer + m_capacity;
+
+          m_ptr_start_a = m_buffer;
+          m_ptr_append = m_ptr_start_a;
+          m_ptr_end_a = m_ptr_append + m_reserve_margin;
+
+          m_ptr_end_b = NULL;
+
+          m_ptr_prev_gen_committed = NULL;
+          m_ptr_prev_gen_last_reserved = NULL;
+
+          memset (m_read_fcnt, 0, P * sizeof (m_read_fcnt[0]));
+          m_read_flags.reset ();
+        };
+
       int get_page_from_ptr (const char *ptr)
         {
           if (ptr >= m_buffer_end)

@@ -55,9 +55,9 @@ namespace mem
           CCQ_USED
         };
 
-      collapsable_circular_queue ()
+      collapsable_circular_queue (const size_t capacity)
         {
-          m_capacity = 0;
+          init (capacity);
         };
 
       ~collapsable_circular_queue ()
@@ -65,23 +65,6 @@ namespace mem
           clear ();
         };
 
-      void init (const size_t capacity)
-        {
-          m_capacity = capacity;
-          m_buffer = new CCQ_SLOT[capacity];
-
-          std::memset (m_buffer, 0, capacity * sizeof (CCQ_SLOT));
-
-          m_head = 0;
-          m_tail = 0;
-        };
-
-      void clear ()
-        {
-          delete[] m_buffer;
-          m_capacity = 0;
-        };
-        
       int size (void)
         {
           return (m_tail >= m_head) ? (m_tail - m_head) : (m_capacity + m_tail - m_head);
@@ -127,6 +110,24 @@ namespace mem
         };
 
     protected:
+      void init (const size_t capacity)
+        {
+          m_capacity = capacity;
+          m_buffer = new CCQ_SLOT[capacity];
+
+          std::memset (m_buffer, 0, capacity * sizeof (CCQ_SLOT));
+
+          m_head = 0;
+          m_tail = 0;
+        };
+
+      void clear ()
+        {
+          delete[] m_buffer;
+          m_capacity = 0;
+        };
+        
+
       /* returns count of collapsed positions */
       int consume (const int pos, T* &new_head)
       {

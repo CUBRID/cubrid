@@ -172,8 +172,6 @@ namespace cubstream
       packing_stream (const size_t buffer_capacity, const int max_appenders);
       ~packing_stream ();
 
-      void init_storage (const size_t buffer_capacity, const int max_appenders);
-
       int write (const size_t byte_count, write_handler *handler);
       int read_partial (const stream_position first_pos, const size_t byte_count, size_t *actual_read_bytes,
 			partial_read_handler *handler);
@@ -182,7 +180,7 @@ namespace cubstream
       void set_buffer_reserve_margin (const size_t margin)
         {
           m_bip_buffer.set_reserve_margin (margin);
-        }
+        };
 
   };
 

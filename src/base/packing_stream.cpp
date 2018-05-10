@@ -209,26 +209,18 @@ namespace cubstream
 ////////////////////////////////////////
 
   packing_stream::packing_stream (const size_t buffer_capacity, const int max_appenders)
+    : m_bip_buffer (buffer_capacity), m_reserved_positions (max_appenders)
   {
     m_oldest_readable_position = 0;
 
     /* TODO : system parameter */
     m_trigger_flush_to_disk_size = buffer_capacity / 2;
-
-    init_storage (buffer_capacity, max_appenders);
   }
 
   packing_stream::~packing_stream ()
   {
     assert (m_append_position - m_read_position == 0);
   }
-
-  void packing_stream::init_storage (const size_t buffer_capacity, const int max_appenders)
-    {
-      m_bip_buffer.init (buffer_capacity);
-
-      m_reserved_positions.init (max_appenders);
-    }
 
   int packing_stream::write (const size_t byte_count, write_handler *handler)
   {
