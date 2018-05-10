@@ -4106,11 +4106,11 @@ boot_restart_from_backup (int print_restart, const char *db_name, BO_RESTART_ARG
 #else /* CS_MODE */
   int tran_index;
 
-  THREAD_ENTRY *thread_p = enter_server ();
+  enter_server_no_thread_entry ();
 
-  tran_index = xboot_restart_from_backup (thread_p, print_restart, db_name, r_args);
+  tran_index = xboot_restart_from_backup (NULL, print_restart, db_name, r_args);
 
-  exit_server (*thread_p);
+  exit_server_no_thread_entry ();
 
   return tran_index;
 #endif /* !CS_MODE */
@@ -5173,13 +5173,13 @@ boot_copy (const char *from_dbname, const char *new_db_name, const char *new_db_
 #else /* CS_MODE */
   int error_code;
 
-  THREAD_ENTRY *thread_p = enter_server ();
+  enter_server_no_thread_entry ();
 
   error_code =
-    xboot_copy (thread_p, from_dbname, new_db_name, new_db_path, new_log_path, new_lob_path, new_db_server_host,
+    xboot_copy (NULL, from_dbname, new_db_name, new_db_path, new_log_path, new_lob_path, new_db_server_host,
 		new_volext_path, fileof_vols_and_copypaths, new_db_overwrite);
 
-  exit_server (*thread_p);
+  exit_server_no_thread_entry ();
 
   return error_code;
 #endif /* !CS_MODE */
