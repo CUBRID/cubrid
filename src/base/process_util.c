@@ -31,6 +31,10 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#if defined(WINDOWS)
+#include <string>
+#endif
+
 int
 create_child_process (const char *const argv[], int wait_flag, const char *stdin_file, char *stdout_file, char *stderr_file,
                       int *exit_status)
@@ -41,7 +45,7 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
   PROCESS_INFORMATION proc_info;
   BOOL res;
   int i, cmd_arg_len;
-  char cmd_arg[1024];
+  std::string cmd_arg = "";
   BOOL inherit_flag = FALSE;
   HANDLE hStdIn = INVALID_HANDLE_VALUE;
   HANDLE hStdOut = INVALID_HANDLE_VALUE;
@@ -52,7 +56,14 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
 
   for (i = 0, cmd_arg_len = 0; argv[i]; i++)
     {
-      cmd_arg_len += sprintf (cmd_arg + cmd_arg_len, "\"%s\" ", argv[i]);
+      std::string arg = "";
+
+      arg += "\"";
+      arg += argv[i];
+      arg += "\" ";
+
+      cmd_arg += arg;
+      cmd_arg_len += arg.size ();
     }
 
   GetStartupInfo (&start_info);
