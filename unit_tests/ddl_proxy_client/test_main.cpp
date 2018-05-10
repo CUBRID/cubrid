@@ -5,8 +5,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <string>
-#include <unistd.h>
 #include <iostream>
+
+#if defined(WINDOWS)
+#include <direct.h>
+#else
+#include <unistd.h>
+#endif
 
 int main(int argc, char **argv)
 {

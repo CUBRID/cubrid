@@ -23,11 +23,9 @@
  */
 
 #include "util_support.h"
-#include "cubrid_getopt.h"
 #include "utility.h"
 #include "csql.h"
 #include "db.h"
-#include "dbi.h"
 
 static void
 utility_print (int message_num, ...)
@@ -104,8 +102,10 @@ static int start_ddl_proxy_client(const char *program_name, CSQL_ARGUMENT *args)
               }
 
             if (stmt_id == 0)
-              goto error;
-
+              {
+                /* this means that we processed all statements */
+                break;
+              }
             num_of_rows = db_execute_statement (session, stmt_id, &result);
             if (num_of_rows < 0)
               {
