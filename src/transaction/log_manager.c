@@ -1659,7 +1659,7 @@ loop:
 	  if (LOG_ISTRAN_ACTIVE (tdes))
 	    {
 	      log_Tran_index = i;
-	      (void) log_abort (NULL, log_Tran_index);
+	      (void) log_abort (thread_p, log_Tran_index);
 	    }
 	}
     }
