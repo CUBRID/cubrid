@@ -7616,7 +7616,7 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
   thread_lock_entry (thrd);
   if (LK_IS_LOCKWAIT_THREAD (thrd))
     {
-      if (logtb_is_interrupted_tran (NULL, true, &ignore, thrd->tran_index))
+      if (logtb_is_interrupted_tran (thrd, true, &ignore, thrd->tran_index))
 	{
 	  /* wake up the thread */
 	  lock_resume ((LK_ENTRY *) thrd->lockwait, LOCK_RESUMED_INTERRUPT);
