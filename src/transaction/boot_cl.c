@@ -584,9 +584,6 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
       is_db_user_alloced = false;
     }
 
-  // create session
-  (void) db_find_or_create_session (client_credential->db_user, client_credential->program_name);
-
   if (tran_index == NULL_TRAN_INDEX)
     {
       assert (er_errid () != NO_ERROR);
@@ -598,6 +595,9 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 	}
       goto error_exit;
     }
+
+  // create session
+  (void) db_find_or_create_session (client_credential->db_user, client_credential->program_name);
 
   oid_set_root (&rootclass_oid);
   OID_INIT_TEMPID ();
