@@ -27,6 +27,7 @@
 #include "error_context.hpp"
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
+
 #include <thread>
 
 // forward definitions
@@ -43,6 +44,13 @@ struct vacuum_worker;
 
 // from thread.h - FIXME
 struct thread_resource_track;
+namespace cubbase
+{
+  template <typename Res>
+  class resource_tracker;
+
+  using alloc_tracker = resource_tracker<void *>;
+}
 
 // for lock-free - FIXME
 enum
@@ -220,11 +228,16 @@ namespace cubthread
       pthread_t get_posix_id ();
       void register_id ();
       void unregister_id ();
-      bool is_on_current_thread ();
+      bool is_on_current_thread () const;
 
       cuberr::context &get_error_context (void)
       {
 	return m_error;
+      }
+
+      cubbase::alloc_tracker &get_alloc_tracker (void)
+      {
+	return m_alloc_tracker;
       }
 
     private:
@@ -237,6 +250,9 @@ namespace cubthread
 
       // TODO: move all members her
       bool m_cleared;
+
+      // trackers
+      cubbase::alloc_tracker &m_alloc_tracker;
   };
 
 } // namespace cubthread

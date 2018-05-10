@@ -35,6 +35,8 @@ namespace cubbase
   {
     public:
 
+      resource_tracker (bool enabled, bool stackable, std::size_t max_size);
+
       using res_type = Res;
 
       void increment (const char *filename, const int line, const res_type &res);
@@ -84,6 +86,17 @@ namespace cubbase
   //////////////////////////////////////////////////////////////////////////
   // implementation
   //////////////////////////////////////////////////////////////////////////
+
+  template <typename Res>
+  resource_tracker<Res>::resource_tracker (bool enabled, bool stackable, std::size_t max_size)
+    : m_enabled (enabled)
+    , m_stackable (stackable)
+    , m_aborted (false)
+    , m_max_size (max_size)
+    , m_crt_size (0)
+  {
+
+  }
 
   template <typename Res>
   void

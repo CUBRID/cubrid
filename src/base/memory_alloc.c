@@ -424,10 +424,10 @@ db_private_alloc_debug (void *thrd, size_t size, bool rc_track, const char *call
 
 #if !defined(NDEBUG)
 void *
-db_private_alloc_debug (void *thrd, size_t size, bool rc_track, const char *caller_file, int caller_line)
+db_private_alloc_debug (THREAD_ENTRY * thrd, size_t size, bool rc_track, const char *caller_file, int caller_line)
 #else /* NDEBUG */
 void *
-db_private_alloc_release (void *thrd, size_t size, bool rc_track)
+db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track)
 #endif				/* NDEBUG */
 {
 #if !defined (CS_MODE)
@@ -448,7 +448,7 @@ db_private_alloc_release (void *thrd, size_t size, bool rc_track)
       return NULL;
     }
 
-  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id : css_get_private_heap (NULL));
+  heap_id = (thrd != NULL ? thrd->private_heap_id : css_get_private_heap (NULL));
 
   if (heap_id)
     {

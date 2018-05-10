@@ -29,6 +29,7 @@
 #include "log_compress.h"
 #include "memory_alloc.h"
 #include "page_buffer.h"
+#include "resource_tracker.hpp"
 #include "thread.h"
 
 #include <cstring>
@@ -100,6 +101,7 @@ namespace cubthread
     , m_id ()
     , m_error ()
     , m_cleared (false)
+    , m_alloc_tracker { false, false, 1024 }
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)
       {
@@ -277,7 +279,7 @@ namespace cubthread
   }
 
   bool
-  entry::is_on_current_thread ()
+  entry::is_on_current_thread () const
   {
     return m_id == std::this_thread::get_id ();
   }
