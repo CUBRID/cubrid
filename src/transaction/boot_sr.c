@@ -3650,6 +3650,11 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
   catcls_finalize_class_oid_to_oid_hash_table (thread_p);
   serial_finalize_cache_pool ();
   partition_cache_finalize (thread_p);
+
+  // return lock-free transaction and destroy the system.
+  thread_return_lock_free_transaction_entries ();
+  lf_destroy_transaction_systems ();
+
 #if defined(SERVER_MODE)
   /* server mode shuts down all modules */
   shutdown_common_modules = BOOT_SHUTDOWN_ALL_MODULES;
@@ -3657,12 +3662,6 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
 
   if (shutdown_common_modules == BOOT_SHUTDOWN_ALL_MODULES)
     {
-      /*
-       * Clears latch free resources, before shutting down the area manager. This is needed, since latch free resources
-       * may still refers the area manager.
-       */
-      thread_return_lock_free_transaction_entries ();
-      lf_destroy_transaction_systems ();
       es_final ();
       tp_final ();
       locator_free_areas ();
