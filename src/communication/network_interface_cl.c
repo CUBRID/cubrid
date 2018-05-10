@@ -4080,11 +4080,11 @@ boot_delete (const char *db_name, bool force_delete)
 #else /* CS_MODE */
   int error_code;
 
-  THREAD_ENTRY *thread_p = enter_server ();
+  enter_server_no_thread_entry ();
 
-  error_code = xboot_delete (thread_p, db_name, force_delete, BOOT_SHUTDOWN_ALL_MODULES);
+  error_code = xboot_delete (NULL, db_name, force_delete, BOOT_SHUTDOWN_ALL_MODULES);
 
-  exit_server (*thread_p);
+  exit_server_no_thread_entry ();
 
   return error_code;
 #endif /* !CS_MODE */
@@ -5201,11 +5201,11 @@ boot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npage
 #else /* CS_MODE */
   int error_code;
 
-  THREAD_ENTRY *thread_p = enter_server ();
+  enter_server_no_thread_entry ();
 
-  error_code = xboot_emergency_patch (thread_p, db_name, recreate_log, log_npages, db_locale, out_fp);
+  error_code = xboot_emergency_patch (NULL, db_name, recreate_log, log_npages, db_locale, out_fp);
 
-  exit_server (*thread_p);
+  exit_server_no_thread_entry ();
 
   return error_code;
 #endif /* !CS_MODE */
