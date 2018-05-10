@@ -92,18 +92,18 @@ static int length_const_string (const char *cstring, int *strlen);
 static int length_string_with_null_padding (int len);
 #endif /* CS_MODE */
 #if defined (SA_MODE)
+static void enter_server_no_thread_entry (void);
 static THREAD_ENTRY *enter_server (void);
+static void exit_server_no_thread_entry (void);
 static void exit_server (const THREAD_ENTRY & thread_ref);
 #endif // SERVER_MODE
 
 #if defined (SA_MODE)
 //
-// enter_server () - start simulating server mode
+// enter_server_no_thread_entry () - enter server mode without getting a thread entry (e.g. when "starting" server).
 //
-// return : pointer to thread entry
-//
-static THREAD_ENTRY *
-enter_server ()
+static void
+enter_server_no_thread_entry (void)
 {
   db_on_server++;
   er_stack_push_if_exists ();
@@ -113,27 +113,45 @@ enter_server ()
       assert (db_on_server == 1);
       private_heap_id = db_create_private_heap ();
     }
+}
 
+//
+// enter_server () - start simulating server mode
+//
+// return : pointer to thread entry
+//
+static THREAD_ENTRY *
+enter_server ()
+{
+  enter_server_no_thread_entry ();
   return thread_get_thread_entry_info ();
 }
 
 //
-// exit_server () - 
-//
-// return :
-// const THREAD_ENTRY & thread_ref (in) :
+// exit_server_no_thread_entry () - exit server mode without getting a thread entry (e.g. when "starting" server).
 //
 static void
-exit_server (const THREAD_ENTRY & thread_ref)
+exit_server_no_thread_entry (void)
 {
-  (void) thread_ref;		// not really used; just to force caller declare obtain thread entry
-
   if ((db_on_server - 1) == 0 && private_heap_id != 0)
     {
       db_clear_private_heap (NULL, private_heap_id);
     }
   er_restore_last_error ();
   db_on_server--;
+}
+
+//
+// exit_server () - exit server mode simulation
+//
+// thread_ref (in) : reference to thread entry used to enter server mode
+//
+static void
+exit_server (const THREAD_ENTRY & thread_ref)
+{
+  (void) thread_ref;		// not really used; just to force caller declare obtain thread entry
+
+  exit_server_no_thread_entry ();
 }
 #endif // SA_MODE
 
@@ -3617,12 +3635,11 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 #else /* CS_MODE */
   int tran_index = NULL_TRAN_INDEX;
 
-  THREAD_ENTRY *thread_p = enter_server ();
+  enter_server_no_thread_entry ();
 
   tran_index =
-    xboot_register_client (thread_p, client_credential, client_lock_wait, client_isolation, tran_state,
-			   server_credential);
-  exit_server (*thread_p);
+    xboot_register_client (NULL, client_credential, client_lock_wait, client_isolation, tran_state, server_credential);
+  exit_server_no_thread_entry ();
 
   return tran_index;
 #endif /* !CS_MODE */
