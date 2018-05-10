@@ -168,8 +168,8 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 
   if (sa_mode && backup_num_threads > 1)
     {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_INVALID_THREAD_NUM_OPT));
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB,
+					     BACKUPDB_INVALID_THREAD_NUM_OPT));
     }
 
   if (backup_num_threads < FILEIO_BACKUP_NUM_THREADS_AUTO)
@@ -202,11 +202,24 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 	  backup_path = real_pathbuf;
 	}
 
-      if (stat (backup_path, &st_buf) != 0 || !S_ISDIR (st_buf.st_mode))
+      // accept directory and FIFO (named pipe) file as backup destination.
+      if (stat (backup_path, &st_buf) != 0)
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_INVALID_PATH));
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB,
+						 BACKUPDB_INVALID_PATH));
 	  goto error_exit;
+	}
+      else if (!S_ISDIR (st_buf.st_mode))
+	{
+#if !defined (WINDOWS)
+	  // Unfortunately, Windows does not support FIFO file.
+	  if (!S_ISFIFO (st_buf.st_mode))
+#endif /* !WINDOWS */
+	    {
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB,
+						     BACKUPDB_INVALID_PATH));
+	      goto error_exit;
+	    }
 	}
     }
 
@@ -220,78 +233,75 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
 
-  if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
-    {
-      if (check)
-	{
-	  int check_flag = 0;
-
-	  check_flag |= CHECKDB_FILE_TRACKER_CHECK;
-	  check_flag |= CHECKDB_HEAP_CHECK_ALLHEAPS;
-	  check_flag |= CHECKDB_CT_CHECK_CAT_CONSISTENCY;
-	  check_flag |= CHECKDB_BTREE_CHECK_ALL_BTREES;
-	  check_flag |= CHECKDB_LC_CHECK_CLASSNAMES;
-
-	  if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR
-	      || boot_check_db_consistency (check_flag, 0, 0, NULL) != NO_ERROR)
-	    {
-	      const char *tmpname;
-	      if ((tmpname = er_get_msglog_filename ()) == NULL)
-		{
-		  tmpname = "/dev/null";
-		}
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message
-				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKDB, CHECKDB_MSG_INCONSISTENT),
-				     tmpname);
-	      db_shutdown ();
-	      goto error_exit;
-	    }
-	}
-
-      /* some other utilities may need interrupt handler too */
-      if (os_set_signal_handler (SIGINT, backupdb_sig_interrupt_handler) == SIG_ERR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  db_shutdown ();
-	  goto error_exit;
-	}
-
-      if (backup_verbose_file && *backup_verbose_file && *backup_verbose_file != '/')
-	{
-	  char dirname[PATH_MAX];
-
-	  /* resolve relative path */
-	  if (getcwd (dirname, PATH_MAX) != NULL)
-	    {
-	      snprintf (verbose_file_realpath, PATH_MAX - 1, "%s/%s", dirname, backup_verbose_file);
-	      backup_verbose_file = verbose_file_realpath;
-	    }
-	}
-
-      if (boot_backup
-	  (backup_path, (FILEIO_BACKUP_LEVEL) backup_level, remove_log_archives, backup_verbose_file,
-	   backup_num_threads, backup_zip_method, backup_zip_level, skip_activelog, sleep_msecs) == NO_ERROR)
-	{
-	  if (db_commit_transaction () != NO_ERROR)
-	    {
-	      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	    }
-	}
-      else
-	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  db_shutdown ();
-	  goto error_exit;
-	}
-
-      db_shutdown ();
-    }
-  else
+  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
     }
+
+  if (check)
+    {
+      int check_flag = 0;
+
+      check_flag |= CHECKDB_FILE_TRACKER_CHECK;
+      check_flag |= CHECKDB_HEAP_CHECK_ALLHEAPS;
+      check_flag |= CHECKDB_CT_CHECK_CAT_CONSISTENCY;
+      check_flag |= CHECKDB_BTREE_CHECK_ALL_BTREES;
+      check_flag |= CHECKDB_LC_CHECK_CLASSNAMES;
+
+      if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR
+	  || boot_check_db_consistency (check_flag, 0, 0, NULL) != NO_ERROR)
+	{
+	  const char *tmpname;
+
+	  tmpname = er_get_msglog_filename ();
+	  if (tmpname == NULL)
+	    {
+	      tmpname = "/dev/null";
+	    }
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKDB,
+						 CHECKDB_MSG_INCONSISTENT), tmpname);
+	  db_shutdown ();
+	  goto error_exit;
+	}
+    }
+
+  /* some other utilities may need interrupt handler too */
+  if (os_set_signal_handler (SIGINT, backupdb_sig_interrupt_handler) == SIG_ERR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      db_shutdown ();
+      goto error_exit;
+    }
+
+  if (backup_verbose_file && *backup_verbose_file && *backup_verbose_file != '/')
+    {
+      char dirname[PATH_MAX];
+
+      /* resolve relative path */
+      if (getcwd (dirname, PATH_MAX) != NULL)
+	{
+	  snprintf (verbose_file_realpath, PATH_MAX - 1, "%s/%s", dirname, backup_verbose_file);
+	  backup_verbose_file = verbose_file_realpath;
+	}
+    }
+
+  if (boot_backup (backup_path, (FILEIO_BACKUP_LEVEL) backup_level, remove_log_archives, backup_verbose_file,
+		   backup_num_threads, backup_zip_method, backup_zip_level, skip_activelog, sleep_msecs) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      db_shutdown ();
+      goto error_exit;
+    }
+
+  if (db_commit_transaction () != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+    }
+
+  db_shutdown ();
+
   return EXIT_SUCCESS;
 
 print_backup_usage:
@@ -449,9 +459,8 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
 
       if (ext_info.max_npages <= 0)
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ADDVOLDB, ADDVOLDB_MSG_BAD_NPAGES),
-				 ext_info.max_npages);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ADDVOLDB,
+						 ADDVOLDB_MSG_BAD_NPAGES), ext_info.max_npages);
 	  db_shutdown ();
 	  goto error_exit;
 	}
@@ -533,8 +542,8 @@ util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_na
       ws_find (cls_mop, obj);
       if (cls_sm == NULL || cls_sm->class_type != SM_CLASS_CT)
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKDB, CHECKDB_MSG_NO_SUCH_CLASS), table);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKDB,
+						 CHECKDB_MSG_NO_SUCH_CLASS), table);
 	  continue;
 	}
 
@@ -545,8 +554,8 @@ util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_na
 	}
       else
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKDB, CHECKDB_MSG_NO_SUCH_CLASS), table);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKDB,
+						 CHECKDB_MSG_NO_SUCH_CLASS), table);
 	  continue;
 	}
 
@@ -555,9 +564,8 @@ util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_na
 	  constraint = classobj_find_class_index (cls_sm, index_name);
 	  if (constraint == NULL)
 	    {
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message
-				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKDB, CHECKDB_MSG_NO_SUCH_INDEX),
-				     index_name, name);
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKDB,
+						     CHECKDB_MSG_NO_SUCH_INDEX), index_name, name);
 	      free_and_init (oids);
 	      return NULL;
 	    }
@@ -741,8 +749,8 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 	    {
 	      tmpname = "/dev/null";
 	    }
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKDB, CHECKDB_MSG_INCONSISTENT), tmpname);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKDB,
+						 CHECKDB_MSG_INCONSISTENT), tmpname);
 
 	  if (repair_plink || repair)
 	    {
@@ -1275,26 +1283,27 @@ doesmatch_transaction (const ONE_TRAN_INFO * tran, int *tran_index_list, int ind
 {
   int i;
 
-  if (isvalid_transaction (tran))
+  if (!isvalid_transaction (tran))
     {
-      if ((username != NULL && strcmp (tran->login_name, username) == 0)
-	  || (hostname != NULL && strcmp (tran->host_name, hostname) == 0) || (progname != NULL
-									       && strcmp (tran->program_name,
-											  progname) == 0)
-	  || (sql_id != NULL && tran->query_exec_info.sql_id != NULL
-	      && strcmp (tran->query_exec_info.sql_id, sql_id) == 0))
+      return false;
+    }
+
+  if ((username != NULL && strcmp (tran->login_name, username) == 0)
+      || (hostname != NULL && strcmp (tran->host_name, hostname) == 0)
+      || (progname != NULL && strcmp (tran->program_name, progname) == 0)
+      || (sql_id != NULL && tran->query_exec_info.sql_id != NULL && strcmp (tran->query_exec_info.sql_id, sql_id) == 0))
+    {
+      return true;
+    }
+
+  for (i = 0; i < index_list_size; i++)
+    {
+      if (tran->tran_index == tran_index_list[i])
 	{
 	  return true;
 	}
-
-      for (i = 0; i < index_list_size; i++)
-	{
-	  if (tran->tran_index == tran_index_list[i])
-	    {
-	      return true;
-	    }
-	}
     }
+
   return false;
 }
 
@@ -1478,8 +1487,8 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 
 	  for (i = 0; i < info->num_trans; i++)
 	    {
-	      if (doesmatch_transaction
-		  (&info->tran[i], tran_index_list, list_size, username, hostname, progname, sql_id))
+	      if (doesmatch_transaction (&info->tran[i], tran_index_list, list_size, username, hostname, progname,
+					 sql_id))
 		{
 		  print_tran_entry (&info->tran[i], dump_level);
 		}
@@ -1500,15 +1509,14 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 	{
 	  for (i = 0; i < info->num_trans; i++)
 	    {
-	      if (doesmatch_transaction
-		  (&info->tran[i], tran_index_list, list_size, username, hostname, progname, sql_id))
+	      if (doesmatch_transaction (&info->tran[i], tran_index_list, list_size, username, hostname, progname,
+					 sql_id))
 		{
 		  fprintf (stdout,
 			   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN, KILLTRAN_MSG_KILLING),
 			   info->tran[i].tran_index);
-		  if (thread_kill_tran_index
-		      (info->tran[i].tran_index, info->tran[i].db_user, info->tran[i].host_name,
-		       info->tran[i].process_id) == NO_ERROR)
+		  if (thread_kill_tran_index (info->tran[i].tran_index, info->tran[i].db_user, info->tran[i].host_name,
+					      info->tran[i].process_id) == NO_ERROR)
 		    {
 		      info->tran[i].tran_index = -1;	/* Gone */
 		      nkills++;
@@ -1520,9 +1528,8 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 		       */
 		      if (nfailures == 0)
 			{
-			  fprintf (stdout,
-				   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
-						   KILLTRAN_MSG_KILL_FAILED));
+			  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
+							   KILLTRAN_MSG_KILL_FAILED));
 			  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, header));
 			  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, underscore));
 			}
@@ -1535,9 +1542,8 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 			}
 		      else	/* probably it is the case of timeout */
 			{
-			  PRINT_AND_LOG_ERR_MSG (msgcat_message
-						 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
-						  KILLTRAN_MSG_KILL_TIMEOUT));
+			  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
+								 KILLTRAN_MSG_KILL_TIMEOUT));
 			}
 		      nfailures++;
 		    }
@@ -1664,9 +1670,8 @@ tranlist (UTIL_FUNCTION_ARG * arg)
 
   if (tranlist_Sort_column > 10 || tranlist_Sort_column < 0 || (is_summary && tranlist_Sort_column > 5))
     {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, TRANLIST_MSG_INVALID_SORT_KEY),
-			     tranlist_Sort_column);
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST,
+					     TRANLIST_MSG_INVALID_SORT_KEY), tranlist_Sort_column);
       goto error_exit;
     }
 
@@ -1763,9 +1768,8 @@ print_tranlist_usage:
 error_exit:
   return EXIT_FAILURE;
 #else /* CS_MODE */
-  PRINT_AND_LOG_ERR_MSG (msgcat_message
-			 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, TRANLIST_MSG_NOT_IN_STANDALONE),
-			 basename (arg->argv0));
+  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST,
+					 TRANLIST_MSG_NOT_IN_STANDALONE), basename (arg->argv0));
   return EXIT_FAILURE;
 #endif /* !CS_MODE */
 }
@@ -1881,8 +1885,8 @@ killtran (UTIL_FUNCTION_ARG * arg)
 	   */
 
 	  /* get password interactively if interactive mode */
-	  passbuf =
-	    getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN, KILLTRAN_MSG_DBA_PASSWORD));
+	  passbuf = getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
+					     KILLTRAN_MSG_DBA_PASSWORD));
 	  if (passbuf[0] == '\0')	/* to fit into db_login protocol */
 	    {
 	      passbuf = (char *) NULL;
@@ -1953,10 +1957,8 @@ killtran (UTIL_FUNCTION_ARG * arg)
 	      result = parse_int (&value, ptr, 10);
 	      if (result != 0 || value <= 0)
 		{
-		  PRINT_AND_LOG_ERR_MSG (msgcat_message
-					 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
-					  KILLTRAN_MSG_INVALID_TRANINDEX), ptr);
-
+		  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
+							 KILLTRAN_MSG_INVALID_TRANINDEX), ptr);
 		  if (info)
 		    {
 		      logtb_free_trans_info (info);
@@ -1973,10 +1975,8 @@ killtran (UTIL_FUNCTION_ARG * arg)
 	  result = parse_int (&value, ptr, 10);
 	  if (result != 0 || value <= 0)
 	    {
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message
-				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN, KILLTRAN_MSG_INVALID_TRANINDEX),
-				     ptr);
-
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
+						     KILLTRAN_MSG_INVALID_TRANINDEX), ptr);
 	      if (info)
 		{
 		  logtb_free_trans_info (info);
@@ -2020,9 +2020,8 @@ print_killtran_usage:
 error_exit:
   return EXIT_FAILURE;
 #else /* CS_MODE */
-  PRINT_AND_LOG_ERR_MSG (msgcat_message
-			 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN, KILLTRAN_MSG_NOT_IN_STANDALONE),
-			 basename (arg->argv0));
+  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
+					 KILLTRAN_MSG_NOT_IN_STANDALONE), basename (arg->argv0));
   return EXIT_FAILURE;
 #endif /* !CS_MODE */
 }
@@ -2065,9 +2064,8 @@ plandump (UTIL_FUNCTION_ARG * arg)
       outfp = fopen (output_file, "w");
       if (outfp == NULL)
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PLANDUMP, PLANDUMP_MSG_BAD_OUTPUT),
-				 output_file);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PLANDUMP,
+						 PLANDUMP_MSG_BAD_OUTPUT), output_file);
 	  goto error_exit;
 	}
     }
@@ -2166,9 +2164,8 @@ paramdump (UTIL_FUNCTION_ARG * arg)
       outfp = fopen (output_file, "w");
       if (outfp == NULL)
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_BAD_OUTPUT),
-				 output_file);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP,
+						 PARAMDUMP_MSG_BAD_OUTPUT), output_file);
 	  goto error_exit;
 	}
     }
@@ -2298,9 +2295,8 @@ statdump (UTIL_FUNCTION_ARG * arg)
       outfp = fopen (output_file, "w");
       if (outfp == NULL)
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_STATDUMP, STATDUMP_MSG_BAD_OUTPUT),
-				 output_file);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_STATDUMP,
+						 STATDUMP_MSG_BAD_OUTPUT), output_file);
 	  goto error_exit;
 	}
     }
@@ -2376,9 +2372,8 @@ error_exit:
     }
   return EXIT_FAILURE;
 #else /* CS_MODE */
-  PRINT_AND_LOG_ERR_MSG (msgcat_message
-			 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_STATDUMP, STATDUMP_MSG_NOT_IN_STANDALONE),
-			 basename (arg->argv0));
+  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_STATDUMP,
+					 STATDUMP_MSG_NOT_IN_STANDALONE), basename (arg->argv0));
 
   return EXIT_FAILURE;
 #endif /* !CS_MODE */
@@ -2420,9 +2415,8 @@ int
 changemode (UTIL_FUNCTION_ARG * arg)
 {
 #if defined (WINDOWS)
-  PRINT_AND_LOG_ERR_MSG (msgcat_message
-			 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_HA_NOT_SUPPORT),
-			 basename (arg->argv0));
+  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE,
+					 CHANGEMODE_MSG_HA_NOT_SUPPORT), basename (arg->argv0));
 
   return EXIT_FAILURE;
 #else /* WINDOWS */
@@ -2469,9 +2463,8 @@ changemode (UTIL_FUNCTION_ARG * arg)
 	{
 	  if (sscanf (mode_name, "%d", &keyval) != 1)
 	    {
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message
-				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_BAD_MODE),
-				     mode_name);
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE,
+						     CHANGEMODE_MSG_BAD_MODE), mode_name);
 	      goto error_exit;
 	    }
 	}
@@ -2479,9 +2472,8 @@ changemode (UTIL_FUNCTION_ARG * arg)
       if (!(ha_state == HA_SERVER_STATE_ACTIVE || ha_state == HA_SERVER_STATE_STANDBY
 	    || ha_state == HA_SERVER_STATE_MAINTENANCE))
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_BAD_MODE),
-				 mode_name);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE,
+						 CHANGEMODE_MSG_BAD_MODE), mode_name);
 	  goto error_exit;
 	}
     }
@@ -2506,8 +2498,8 @@ changemode (UTIL_FUNCTION_ARG * arg)
 
   if (HA_DISABLED ())
     {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_NOT_HA_MODE));
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE,
+					     CHANGEMODE_MSG_NOT_HA_MODE));
       goto error_exit;
     }
 
@@ -2555,9 +2547,8 @@ print_changemode_usage:
 error_exit:
   return EXIT_FAILURE;
 #else /* CS_MODE */
-  PRINT_AND_LOG_ERR_MSG (msgcat_message
-			 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_NOT_IN_STANDALONE),
-			 basename (arg->argv0));
+  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE,
+					 CHANGEMODE_MSG_NOT_IN_STANDALONE), basename (arg->argv0));
   return EXIT_FAILURE;
 #endif /* !CS_MODE */
 #endif /* !WINDOWS */
@@ -2626,16 +2617,15 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
 	{
 	  if (sscanf (mode_name, "%d", &mode) != 1)
 	    {
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message
-				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYLOGDB, COPYLOGDB_MSG_BAD_MODE),
-				     mode_name);
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYLOGDB,
+						     COPYLOGDB_MSG_BAD_MODE), mode_name);
 	      goto error_exit;
 	    }
 	}
       if (!(mode >= LOGWR_MODE_ASYNC && mode <= LOGWR_MODE_SYNC))
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYLOGDB, COPYLOGDB_MSG_BAD_MODE), mode_name);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYLOGDB,
+						 COPYLOGDB_MSG_BAD_MODE), mode_name);
 	  goto error_exit;
 	}
     }
@@ -2785,9 +2775,8 @@ error_exit:
 
   return EXIT_FAILURE;
 #else /* CS_MODE */
-  PRINT_AND_LOG_ERR_MSG (msgcat_message
-			 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYLOGDB, COPYLOGDB_MSG_NOT_IN_STANDALONE),
-			 basename (arg->argv0));
+  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYLOGDB,
+					 COPYLOGDB_MSG_NOT_IN_STANDALONE), basename (arg->argv0));
   return EXIT_FAILURE;
 #endif /* !CS_MODE */
 #endif /* !WINDOWS */
@@ -2801,9 +2790,8 @@ int
 applylogdb (UTIL_FUNCTION_ARG * arg)
 {
 #if defined (WINDOWS)
-  PRINT_AND_LOG_ERR_MSG (msgcat_message
-			 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYLOGDB, APPLYLOGDB_MSG_HA_NOT_SUPPORT),
-			 basename (arg->argv0));
+  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYLOGDB,
+					 APPLYLOGDB_MSG_HA_NOT_SUPPORT), basename (arg->argv0));
 
   return EXIT_FAILURE;
 #else /* WINDOWS */
@@ -2912,12 +2900,10 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
 	{
 	  if (util_str_to_time_since_epoch (replica_time_bound_str) == 0)
 	    {
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message
-				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
-				      MSGCAT_UTIL_GENERIC_INVALID_PARAMETER),
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
+						     MSGCAT_UTIL_GENERIC_INVALID_PARAMETER),
 				     prm_get_name (PRM_ID_HA_REPLICA_TIME_BOUND),
 				     "(the correct format: YYYY-MM-DD hh:mm:ss)");
-
 	      return EXIT_FAILURE;
 	    }
 	}
@@ -3002,9 +2988,8 @@ error_exit:
 
   return EXIT_FAILURE;
 #else /* CS_MODE */
-  PRINT_AND_LOG_ERR_MSG (msgcat_message
-			 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYLOGDB, APPLYLOGDB_MSG_NOT_IN_STANDALONE),
-			 basename (arg->argv0));
+  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYLOGDB,
+					 APPLYLOGDB_MSG_NOT_IN_STANDALONE), basename (arg->argv0));
 
 error_exit:
   return EXIT_FAILURE;
@@ -3173,9 +3158,8 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	{
 	  if (util_str_to_time_since_epoch (replica_time_bound_str) == 0)
 	    {
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message
-				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
-				      MSGCAT_UTIL_GENERIC_INVALID_PARAMETER),
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
+						     MSGCAT_UTIL_GENERIC_INVALID_PARAMETER),
 				     prm_get_name (PRM_ID_HA_REPLICA_TIME_BOUND),
 				     "(the correct format: YYYY-MM-DD hh:mm:ss)");
 	      return EXIT_FAILURE;
@@ -3224,14 +3208,14 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
 	  if (HA_DISABLED ())
 	    {
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message
-				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO, APPLYINFO_MSG_NOT_HA_MODE));
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO,
+						     APPLYINFO_MSG_NOT_HA_MODE));
 	      goto check_applied_info_end;
 	    }
 
-	  error =
-	    la_log_page_check (local_database_name, log_path, pageid, check_applied_info, check_copied_info,
-			       check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa, &applied_final_lsa);
+	  error = la_log_page_check (local_database_name, log_path, pageid, check_applied_info, check_copied_info,
+				     check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa,
+				     &applied_final_lsa);
 	  (void) db_shutdown ();
 	}
       else if (check_copied_info)
@@ -3240,9 +3224,9 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  strcpy (local_database_name, database_name);
 	  strcat (local_database_name, "@localhost");
 
-	  error =
-	    la_log_page_check (local_database_name, log_path, pageid, check_applied_info, check_copied_info,
-			       check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa, &applied_final_lsa);
+	  error = la_log_page_check (local_database_name, log_path, pageid, check_applied_info, check_copied_info,
+				     check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa,
+				     &applied_final_lsa);
 	}
 
     check_applied_info_end:
