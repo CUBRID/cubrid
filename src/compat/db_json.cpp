@@ -1191,8 +1191,6 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
       return NO_ERROR;
     }
 
-  PRIVATE_UNIQUE_PTR pup (db_private_alloc (NULL, 10), NULL);
-
   // here starts the INSERTION part
   return db_json_insert_helper (value, doc, p, json_pointer_string);
 }
@@ -1936,12 +1934,14 @@ db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, co
 
   // get the json body
   char *raw_json_body = db_json_get_raw_json_body_from_document (doc);
+  PRIVATE_UNIQUE_PTR unique_ptr (raw_json_body, NULL);
 
   er_set (ER_ERROR_SEVERITY, file_name, line_no, ER_JSON_PATH_DOES_NOT_EXIST, 2,
 	  sql_path_string.c_str (), raw_json_body);
 
-  // we need to free json body in order to avoid mem leak
-  db_private_free (NULL, raw_json_body);
+  // using the functionality of PRIVATE_UNIQUE_PTR, we don't need to free the memory explicitly
+  // it will be done when it gets out of scope, so the next line should remain commented
+  //db_private_free (NULL, raw_json_body);
 
   return ER_JSON_PATH_DOES_NOT_EXIST;
 }

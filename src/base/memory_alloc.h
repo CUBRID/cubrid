@@ -308,9 +308,12 @@ public:
   {
   }
 
-  void operator () (void *ptr) const
+  void operator  () (void *ptr) const
   {
-    db_private_free (thread_p, ptr);
+    if (ptr != NULL)
+      {
+	db_private_free (thread_p, ptr);
+      }
   }
 
 private:
@@ -322,14 +325,17 @@ class PRIVATE_UNIQUE_PTR
 public:
   PRIVATE_UNIQUE_PTR (void *ptr, THREAD_ENTRY * thread_p):ptr (ptr), thread_p (thread_p)
   {
-    std::unique_ptr < void, PRIVATE_UNIQUE_PTR_DELETER > local_ptr (ptr, PRIVATE_UNIQUE_PTR_DELETER (thread_p));
-
-      smart_ptr = std::move (local_ptr);
+    smart_ptr = std::unique_ptr < void, PRIVATE_UNIQUE_PTR_DELETER > (ptr, PRIVATE_UNIQUE_PTR_DELETER (thread_p));
   }
 
   void *Get ()
   {
     return smart_ptr.get ();
+  }
+
+  void *Release ()
+  {
+    return smart_ptr.release ();
   }
 
 private:
