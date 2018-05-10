@@ -126,24 +126,7 @@ extern int catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT **
 extern int catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p);
 
 #if defined(SA_MODE)
-int thread_Recursion_depth = 0;
-
-LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST] = {
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &spage_saving_Ts, 0, false},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &obj_lock_res_Ts, 0, false},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &obj_lock_ent_Ts, 0, false},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &catalog_Ts, 0, false},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &sessions_Ts, 0, false},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &free_sort_list_Ts, 0, false},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &global_unique_stats_Ts, 0, false},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &hfid_table_Ts, 0, false},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &xcache_Ts, 0, false},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &fpcache_Ts, 0, false}
-};
-
 extern void boot_client_all_finalize (bool is_er_final);
-
-static void boot_decoy_entries_finalize (void);
 #endif /* SA_MODE */
 
 
@@ -2919,10 +2902,6 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
       er_stack_pop ();
     }
 
-#if defined(SA_MODE)
-  boot_decoy_entries_finalize ();
-#endif
-
   return true;
 }
 
@@ -5572,46 +5551,6 @@ boot_volume_info_log_path (char *log_path)
 
   return NULL;
 }
-
-#if defined(SA_MODE)
-/*
- * boot_decoy_entries_finalize () - free memory of the decoy entries in SA_MODE
- *
- * return : nothing
- */
-static void
-boot_decoy_entries_finalize (void)
-{
-  LF_TRAN_ENTRY *t_entry;
-  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-
-  t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SPAGE_SAVING);
-  lf_tran_destroy_entry (t_entry);
-
-  /* To free the tran entry of THREAD_TS_OBJ_LOCK_RES and THREAD_TS_OBJ_LOCK_ENT are not needed */
-
-  t_entry = thread_get_tran_entry (thread_p, THREAD_TS_CATALOG);
-  lf_tran_destroy_entry (t_entry);
-
-  t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
-  lf_tran_destroy_entry (t_entry);
-
-  t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FREE_SORT_LIST);
-  lf_tran_destroy_entry (t_entry);
-
-  t_entry = thread_get_tran_entry (thread_p, THREAD_TS_GLOBAL_UNIQUE_STATS);
-  lf_tran_destroy_entry (t_entry);
-
-  t_entry = thread_get_tran_entry (thread_p, THREAD_TS_HFID_TABLE);
-  lf_tran_destroy_entry (t_entry);
-
-  t_entry = thread_get_tran_entry (thread_p, THREAD_TS_XCACHE);
-  lf_tran_destroy_entry (t_entry);
-
-  t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FPCACHE);
-  lf_tran_destroy_entry (t_entry);
-}
-#endif
 
 /*
  * xboot_compact_db () - compact the database
