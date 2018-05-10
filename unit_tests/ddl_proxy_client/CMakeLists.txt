@@ -44,11 +44,11 @@ target_link_libraries(test_ddl_client PRIVATE
   )
 if(UNIX)
   target_link_libraries(test_ddl_client PRIVATE
-    cubridcs
+    cubrid
     )
 elseif(WIN32)
 	target_link_libraries(test_ddl_client PRIVATE
-    cubridcs
+    cubrid-win-lib
     )
 else()
   message( SEND_ERROR "DDL Proxy Client unit testing is for unix/windows")

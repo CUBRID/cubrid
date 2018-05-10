@@ -291,19 +291,11 @@ SET_SOURCE_FILES_PROPERTIES(
   ${DDL_PROXY_CLIENT_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
-if(WIN32)
-  list(APPEND DDL_PROXY_CLIENT_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
-endif(WIN32)
+
 add_executable(ddl_proxy_client ${DDL_PROXY_CLIENT_SOURCES})
 target_compile_definitions(ddl_proxy_client PRIVATE ${COMMON_DEFS})
 target_include_directories(ddl_proxy_client PRIVATE ${EP_INCLUDES})
-if(UNIX)
-  target_link_libraries(ddl_proxy_client LINK_PRIVATE ${CMAKE_DL_LIBS})
-  target_link_libraries(ddl_proxy_client LINK_PRIVATE cubridcs)
-else(UNIX)
-  target_compile_definitions(ddl_proxy_client PRIVATE _CONSOLE)
-  target_link_libraries(ddl_proxy_client LINK_PRIVATE ws2_32)
-endif(UNIX)
+target_link_libraries(ddl_proxy_client LINK_PRIVATE cubridcs)
 if(UNIX)
   add_dependencies(ddl_proxy_client ${EP_TARGETS})
 endif(UNIX)
