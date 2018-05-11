@@ -1377,6 +1377,16 @@ typedef struct _ha_config
 #define COMMDB_HA_START_UTIL_PROCESS_S          't'
 #define COMMDB_HA_START_UTIL_PROCESS_L          "start-ha-util-process"
 
+/* ddl_proxy_client option list */
+#define DDL_PROXY_USER_L "user"
+#define DDL_PROXY_USER_S 'u'
+#define DDL_PROXY_PASSWORD_L "password"
+#define DDL_PROXY_PASSWORD_S 'p'
+#define DDL_PROXY_OUTPUT_FILE_L "output-file"
+#define DDL_PROXY_OUTPUT_FILE_S 'o'
+#define DDL_PROXY_COMMAND_L "command"
+#define DDL_PROXY_COMMAND_S 'c'
+
 /* paramdump option list */
 #define PARAMDUMP_OUTPUT_FILE_S                 'o'
 #define PARAMDUMP_OUTPUT_FILE_L                 "output-file"

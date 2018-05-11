@@ -22,10 +22,26 @@
  * ddl_proxy_client.cpp - client that executes ddl queries
  */
 
-#include "util_support.h"
+#include <stdio.h>
+#include <stdarg.h>
+
+#include "message_catalog.h"
+#include "environment_variable.h"
+#include "intl_support.h"
 #include "utility.h"
-#include "csql.h"
-#include "db.h"
+#include "util_support.h"
+#include "cubrid_getopt.h"
+#include "db_admin.h"
+#include "dbi.h"
+
+typedef struct
+{
+  const char *db_name;
+  const char *user_name;
+  const char *passwd;
+  const char *command;
+  const char *out_file_name;
+} DDL_CLIENT_ARGUMENT;
 
 static void
 utility_print (int message_num, ...)
@@ -60,7 +76,7 @@ utility_print (int message_num, ...)
   }
 }
 
-static int start_ddl_proxy_client(const char *program_name, CSQL_ARGUMENT *args)
+static int start_ddl_proxy_client(const char *program_name, DDL_CLIENT_ARGUMENT *args)
 {
   DB_SESSION *session = NULL;
   int rc = NO_ERROR;
@@ -144,21 +160,18 @@ main (int argc, char *argv[])
 {
   char arguments_string[64];
   int error = 0;
-  CSQL_ARGUMENT arguments;
+  DDL_CLIENT_ARGUMENT arguments;
 
   GETOPT_LONG possible_arguments[] = {
-    {CSQL_USER_L, 1, 0, CSQL_USER_S},
-    {CSQL_PASSWORD_L, 1, 0, CSQL_PASSWORD_S},
-    {CSQL_OUTPUT_FILE_L, 1, 0, CSQL_OUTPUT_FILE_S},
-    {CSQL_COMMAND_L, 1, 0, CSQL_COMMAND_S},
+    {DDL_PROXY_USER_L, 1, 0, DDL_PROXY_USER_S},
+    {DDL_PROXY_PASSWORD_L, 1, 0, DDL_PROXY_PASSWORD_S},
+    {DDL_PROXY_OUTPUT_FILE_L, 1, 0, DDL_PROXY_OUTPUT_FILE_S},
+    {DDL_PROXY_COMMAND_L, 1, 0, DDL_PROXY_COMMAND_S},
     {VERSION_L, 0, 0, VERSION_S},
     {0, 0, 0, 0}
   };
 
-  memset (&arguments, 0, sizeof (CSQL_ARGUMENT));
-  arguments.auto_commit = true;
-  arguments.single_line_execution = true;
-  arguments.string_width = 0;
+  memset (&arguments, 0, sizeof (DDL_CLIENT_ARGUMENT));
   utility_make_getopt_optstring (possible_arguments, arguments_string);
 
   while (1)

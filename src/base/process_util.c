@@ -46,6 +46,7 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
   BOOL res;
   int i, cmd_arg_len;
   std::string cmd_arg = "";
+  char *cmd_arg_ptr;
   BOOL inherit_flag = FALSE;
   HANDLE hStdIn = INVALID_HANDLE_VALUE;
   HANDLE hStdOut = INVALID_HANDLE_VALUE;
@@ -65,6 +66,8 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
       cmd_arg += arg;
       cmd_arg_len += arg.size ();
     }
+
+  cmd_arg_ptr = strdup (cmd_arg.c_str ());
 
   GetStartupInfo (&start_info);
   start_info.wShowWindow = SW_HIDE;
@@ -107,7 +110,8 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
     }
 
   res =
-    CreateProcess (argv[0], cmd_arg, NULL, NULL, inherit_flag, CREATE_NO_WINDOW, NULL, NULL, &start_info, &proc_info);
+    CreateProcess (argv[0], cmd_arg_ptr, NULL, NULL, inherit_flag, CREATE_NO_WINDOW, NULL, NULL, &start_info, &proc_info);
+  free(cmd_arg_ptr);
 
   if (hStdIn != INVALID_HANDLE_VALUE)
     {

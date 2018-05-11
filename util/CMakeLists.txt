@@ -283,8 +283,6 @@ endif(WIN32)
 set(DDL_PROXY_CLIENT_SOURCES
   ${EXECUTABLES_DIR}/ddl_proxy_client.cpp
   ${EXECUTABLES_DIR}/util_support.c
-  ${BASE_DIR}/porting.c
-  ${BASE_DIR}/cubrid_getopt_long.c
   )
 
 SET_SOURCE_FILES_PROPERTIES(
@@ -294,11 +292,11 @@ SET_SOURCE_FILES_PROPERTIES(
 
 add_executable(ddl_proxy_client ${DDL_PROXY_CLIENT_SOURCES})
 target_compile_definitions(ddl_proxy_client PRIVATE ${COMMON_DEFS})
-target_include_directories(ddl_proxy_client PRIVATE ${EP_INCLUDES})
 target_link_libraries(ddl_proxy_client LINK_PRIVATE cubridcs)
-if(UNIX)
-  add_dependencies(ddl_proxy_client ${EP_TARGETS})
-endif(UNIX)
+
+if(WIN32)
+target_link_libraries(ddl_proxy_client LINK_PRIVATE ws2_32)
+endif(WIN32)
 
 if(UNIX)
   set(UNITTESTS_LF_SOURCES
