@@ -9569,7 +9569,6 @@ tran_lock_rep_read (LOCK lock_rr_tran)
 int
 boot_get_server_timezone_checksum (char *timezone_checksum)
 {
-#define CHECKSUM_SIZE 32
 #if defined(CS_MODE)
   int req_error;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
@@ -9600,8 +9599,8 @@ boot_get_server_timezone_checksum (char *timezone_checksum)
   assert (reply_data != NULL);
 
   ptr = or_unpack_string_nocopy (reply_data, &(temp_str));
-  strncpy (timezone_checksum, temp_str, CHECKSUM_SIZE);
-  timezone_checksum[CHECKSUM_SIZE] = '\0';
+  strncpy (timezone_checksum, temp_str, TZ_CHECKSUM_SIZE);
+  timezone_checksum[TZ_CHECKSUM_SIZE] = '\0';
 
   if (reply_data != NULL)
     {
@@ -9619,7 +9618,6 @@ error:
 #else
   return -1;
 #endif
-#undef CHECKSUM_SIZE
 }
 
 int

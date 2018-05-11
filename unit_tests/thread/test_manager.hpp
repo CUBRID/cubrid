@@ -27,7 +27,7 @@
 namespace test_thread
 {
 
-int test_manager (void);
+  int test_manager (void);
 
 }
 #endif // _TEST_MANAGER_HPP_

@@ -4403,7 +4403,6 @@ int
 catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_id_p, char *lang_buf,
 			       const int lang_buf_size, char *timezone_checksum)
 {
-#define CHECKSUM_SIZE 32
   OID class_oid;
   OID inst_oid;
   HFID hfid;
@@ -4604,7 +4603,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
 	      checksum = db_get_string (&heap_value->dbvalue);
 	      checksum_len = (checksum != NULL) ? strlen (checksum) : 0;
 
-	      assert (checksum_len <= CHECKSUM_SIZE);
+	      assert (checksum_len <= TZ_CHECKSUM_SIZE);
 	      if (checksum_len > 0)
 		{
 		  /* Copying length 0 from NULL pointer fails when DUMA is enabled. */
@@ -4629,7 +4628,6 @@ exit:
     }
 
   return error;
-#undef CHECKSUM_SIZE
 }
 
 /*
