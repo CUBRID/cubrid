@@ -409,13 +409,13 @@ db_destroy_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
 #if defined(WINDOWS)
 #if !defined(NDEBUG)
 void *
-db_private_alloc_release (void *thrd, size_t size, bool rc_track)
+db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track)
 {
   return NULL;
 }
 #else
 void *
-db_private_alloc_debug (void *thrd, size_t size, bool rc_track, const char *caller_file, int caller_line)
+db_private_alloc_debug (THREAD_ENTRY * thrd, size_t size, bool rc_track, const char *caller_file, int caller_line)
 {
   return NULL;
 }
@@ -530,13 +530,14 @@ db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track)
 #if defined(WINDOWS)
 #if !defined(NDEBUG)
 void *
-db_private_realloc_release (void *thrd, void *ptr, size_t size, bool rc_track)
+db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc_track)
 {
   return NULL;
 }
 #else
 void *
-db_private_realloc_debug (void *thrd, void *ptr, size_t size, bool rc_track, const char *caller_file, int caller_line)
+db_private_realloc_debug (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc_track, const char *caller_file,
+			  int caller_line)
 {
   return NULL;
 }
@@ -545,10 +546,11 @@ db_private_realloc_debug (void *thrd, void *ptr, size_t size, bool rc_track, con
 
 #if !defined(NDEBUG)
 void *
-db_private_realloc_debug (void *thrd, void *ptr, size_t size, bool rc_track, const char *caller_file, int caller_line)
+db_private_realloc_debug (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc_track, const char *caller_file,
+			  int caller_line)
 #else /* NDEBUG */
 void *
-db_private_realloc_release (void *thrd, void *ptr, size_t size, bool rc_track)
+db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc_track)
 #endif				/* NDEBUG */
 {
 #if !defined (CS_MODE)
@@ -664,7 +666,7 @@ db_private_realloc_release (void *thrd, void *ptr, size_t size, bool rc_track)
  *   size(s): source string
  */
 char *
-db_private_strdup (void *thrd, const char *s)
+db_private_strdup (THREAD_ENTRY * thrd, const char *s)
 {
   char *cp;
   int len;
@@ -698,13 +700,13 @@ db_private_strdup (void *thrd, const char *s)
 #if defined(WINDOWS)
 #if !defined(NDEBUG)
 void
-db_private_free_release (void *thrd, void *ptr, bool rc_track)
+db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
 {
   return;
 }
 #else
 void
-db_private_free_debug (void *thrd, void *ptr, bool rc_track, const char *caller_file, int caller_line)
+db_private_free_debug (THREAD_ENTRY * thrd, void *ptr, bool rc_track, const char *caller_file, int caller_line)
 {
   return;
 }
@@ -713,10 +715,10 @@ db_private_free_debug (void *thrd, void *ptr, bool rc_track, const char *caller_
 
 #if !defined(NDEBUG)
 void
-db_private_free_debug (void *thrd, void *ptr, bool rc_track, const char *caller_file, int caller_line)
+db_private_free_debug (THREAD_ENTRY * thrd, void *ptr, bool rc_track, const char *caller_file, int caller_line)
 #else /* NDEBUG */
 void
-db_private_free_release (void *thrd, void *ptr, bool rc_track)
+db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
 #endif				/* NDEBUG */
 {
 #if defined (SERVER_MODE)
@@ -793,7 +795,7 @@ db_private_free_release (void *thrd, void *ptr, bool rc_track)
 
 
 void *
-db_private_alloc_external (void *thrd, size_t size)
+db_private_alloc_external (THREAD_ENTRY * thrd, size_t size)
 {
 #if !defined(NDEBUG)
   return db_private_alloc_debug (thrd, size, true, __FILE__, __LINE__);
@@ -804,7 +806,7 @@ db_private_alloc_external (void *thrd, size_t size)
 
 
 void
-db_private_free_external (void *thrd, void *ptr)
+db_private_free_external (THREAD_ENTRY * thrd, void *ptr)
 {
 #if !defined(NDEBUG)
   db_private_free_debug (thrd, ptr, true, __FILE__, __LINE__);
@@ -815,7 +817,7 @@ db_private_free_external (void *thrd, void *ptr)
 
 
 void *
-db_private_realloc_external (void *thrd, void *ptr, size_t size)
+db_private_realloc_external (THREAD_ENTRY * thrd, void *ptr, size_t size)
 {
 #if !defined(NDEBUG)
   return db_private_realloc_debug (thrd, ptr, size, true, __FILE__, __LINE__);

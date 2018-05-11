@@ -101,7 +101,7 @@ namespace cubthread
     , m_id ()
     , m_error ()
     , m_cleared (false)
-    , m_alloc_tracker { false, false, 1024 }
+    , m_alloc_tracker (*new cubbase::alloc_tracker (false, false, 1024))
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)
       {
@@ -152,6 +152,8 @@ namespace cubthread
   entry::~entry (void)
   {
     clear_resources ();
+
+    delete &m_alloc_tracker;
   }
 
   void
