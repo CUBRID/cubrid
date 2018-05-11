@@ -357,4 +357,9 @@ extern int thread_initialize_key (void);
 #endif /* HPUX */
 #endif /* SERVER_MODE */
 
+#define THREAD_RC_TRACK_VMEM_THRESHOLD_AMOUNT	      32767
+#define THREAD_RC_TRACK_PGBUF_THRESHOLD_AMOUNT	      1024
+#define THREAD_RC_TRACK_QLIST_THRESHOLD_AMOUNT	      1024
+#define THREAD_RC_TRACK_CS_THRESHOLD_AMOUNT	      1024
+
 #endif /* _THREAD_H_ */

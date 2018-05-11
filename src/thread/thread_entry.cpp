@@ -41,6 +41,12 @@
 
 namespace cubthread
 {
+  static const bool ENABLE_TRACKERS =
+#if defined (NDEBUG)
+	  false;
+#else // DEBUG
+	  true;
+#endif // DEBUG
 
   entry::entry ()
     : index (-1)
@@ -101,7 +107,8 @@ namespace cubthread
     , m_id ()
     , m_error ()
     , m_cleared (false)
-    , m_alloc_tracker (*new cubbase::alloc_tracker (false, false, 1024))
+    , m_alloc_tracker (*new cubbase::alloc_tracker ("Virtual Memory", ENABLE_TRACKERS, false,
+		       THREAD_RC_TRACK_VMEM_THRESHOLD_AMOUNT))
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)
       {

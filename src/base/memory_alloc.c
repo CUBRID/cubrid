@@ -468,7 +468,7 @@ db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track)
     {
       if (ptr != NULL)
 	{
-	  thread_rc_track_meter ((THREAD_ENTRY *) thrd, caller_file, caller_line, 1, ptr, RC_VMEM, MGR_DEF);
+	  thread_get_thread_entry_info ()->get_alloc_tracker ().increment (caller_file, caller_line, ptr);
 	}
     }
 #endif /* !NDEBUG */
@@ -590,12 +590,12 @@ db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc
       /* remove old pointer from track meter */
       if (ptr != NULL)
 	{
-	  thread_rc_track_meter ((THREAD_ENTRY *) thrd, caller_file, caller_line, -1, ptr, RC_VMEM, MGR_DEF);
+	  thread_get_thread_entry_info ()->get_alloc_tracker ().decrement (ptr);
 	}
       /* add new pointer to track meter */
       if (new_ptr != NULL)
 	{
-	  thread_rc_track_meter ((THREAD_ENTRY *) thrd, caller_file, caller_line, 1, new_ptr, RC_VMEM, MGR_DEF);
+	  thread_get_thread_entry_info ()->get_alloc_tracker ().increment (caller_file, caller_line, new_ptr);
 	}
     }
 #endif /* !NDEBUG */
@@ -749,7 +749,7 @@ db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
     {
       if (ptr != NULL)
 	{
-	  thread_rc_track_meter ((THREAD_ENTRY *) thrd, caller_file, caller_line, -1, ptr, RC_VMEM, MGR_DEF);
+	  thrd->get_alloc_tracker ().decrement (ptr);
 	}
     }
 #endif /* !NDEBUG */
@@ -855,7 +855,7 @@ os_malloc_release (size_t size, bool rc_track)
     {
       if (ptr != NULL)
 	{
-	  thread_rc_track_meter (NULL, caller_file, caller_line, 1, ptr, RC_VMEM, MGR_DEF);
+	  thread_get_thread_entry_info ()->get_alloc_tracker ().increment (caller_file, caller_line, ptr);
 	}
     }
 #endif /* !NDEBUG */
@@ -892,7 +892,7 @@ os_calloc_release (size_t n, size_t size, bool rc_track)
     {
       if (ptr != NULL)
 	{
-	  thread_rc_track_meter (NULL, caller_file, caller_line, 1, ptr, RC_VMEM, MGR_DEF);
+	  thread_get_thread_entry_info ()->get_alloc_tracker ().increment (caller_file, caller_line, ptr);
 	}
     }
 #endif /* !NDEBUG */
@@ -921,7 +921,7 @@ os_free_release (void *ptr, bool rc_track)
     {
       if (ptr != NULL)
 	{
-	  thread_rc_track_meter (NULL, caller_file, caller_line, -1, ptr, RC_VMEM, MGR_DEF);
+	  thread_get_thread_entry_info ()->get_alloc_tracker ().decrement (ptr);
 	}
     }
 #endif /* !NDEBUG */

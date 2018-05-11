@@ -23,3 +23,22 @@
 
 #include "resource_tracker.hpp"
 
+namespace cubbase
+{
+
+  fileline_location::fileline_location (const char *fn_arg, int l_arg)
+    : file {}
+    , line (l_arg)
+  {
+    std::strncpy (file, fn_arg, MAX_FILENAME_SIZE);
+  }
+
+
+  resource_tracker_item::resource_tracker_item (const char *fn_arg, int l_arg)
+    : m_first_location (fn_arg, l_arg)
+    , m_current_amount (1) // starts as 1
+  {
+    //
+  }
+
+} // namespace cubbase
