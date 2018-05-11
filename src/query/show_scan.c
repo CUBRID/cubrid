@@ -819,11 +819,11 @@ thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, in
 
   if (error == NO_ERROR)
     {
-      ASSERT_ERROR ();
       *ptr = ctx;
     }
   else
     {
+      ASSERT_ERROR ();
       showstmt_free_array_context (thread_p, ctx);
     }
 
