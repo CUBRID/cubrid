@@ -32,6 +32,8 @@
 
 /*
  * Collapsable circular queue : this is similar to circular queue, with some particularities:
+ * - head value points to the first used element, tail points to the first available element (insert pointer)
+ * - queue is empty when tail == head
  * - elements of the queue may be flagged as free (consumed) from the middle of queue
  * - when consuming or freeing the head (consume pointer), will collpase all free elements
  * - the capacity of queue is fixed
@@ -78,6 +80,7 @@ namespace mem
           if (size () >= m_capacity - 1)
             {
               /* is full */
+              assert (false);
               return NULL;
             }
           pos = m_tail;
@@ -86,6 +89,8 @@ namespace mem
           m_buffer[pos].flags = CCQ_USED;
 
           m_tail = (m_tail + 1) % m_capacity;
+
+          assert (m_head != m_tail);
   
           m_buffer[pos].value = elem;
 
@@ -141,9 +146,11 @@ namespace mem
 
         if (pos == m_head)
           {
+            int collapsed_count = 0;
             while (m_buffer[m_head].flags == CCQ_FREE)
               {
                 m_head = (m_head + 1) % m_capacity;
+                collapsed_count++;
 
                 if (m_head == m_tail)
                   {
@@ -156,22 +163,22 @@ namespace mem
                 new_head = &(m_buffer[m_head].value);
               }
 
-            return (m_head >= pos) ? (m_head - pos) : (m_capacity + m_head - pos);
+            return collapsed_count;
           }
 
-        if (pos == m_tail)
+        int last_element = (m_tail == 0) ? (m_capacity - 1) : (m_tail - 1);
+        if (pos == last_element
+            && m_buffer[last_element].flags == CCQ_FREE)
           {
-            while (m_buffer[m_tail].flags == CCQ_FREE)
+            while (m_buffer[last_element].flags == CCQ_FREE)
               {
-                m_tail = (m_tail - 1) % m_capacity;
+                last_element = (last_element > 0) ? (last_element - 1) : (m_capacity - 1);
 
-                if (m_head == m_tail)
-                  {
-                    /* queue becomes free */
-                    break;
-                  }
+                /* this case should have been reached from head direction : */
+                assert (last_element != m_head);
               }
 
+            m_tail = (last_element + 1) % m_capacity;
             /* do not return colapsed count here */
           }
 
