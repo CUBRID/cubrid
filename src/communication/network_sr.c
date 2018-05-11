@@ -1306,11 +1306,11 @@ net_server_start (const char *server_name)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	    }
 
-	  xboot_shutdown_server (thread_get_thread_entry_info (), ER_THREAD_FINAL);
+	  xboot_shutdown_server (thread_p, ER_THREAD_FINAL);
 	}
       else
 	{
-	  (void) xboot_shutdown_server (thread_get_thread_entry_info (), ER_THREAD_FINAL);
+	  (void) xboot_shutdown_server (thread_p, ER_THREAD_FINAL);
 	}
 
 #if defined(CUBRID_DEBUG)

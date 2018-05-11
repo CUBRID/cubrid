@@ -239,7 +239,8 @@ boot_shutdown_server_at_exit (void)
     {
       /* Avoid infinite looping if someone calls exit during shutdown */
       boot_Server_process_id++;
-      (void) xboot_shutdown_server (NULL, ER_ALL_FINAL);
+      THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+      (void) xboot_shutdown_server (thread_p, ER_ALL_FINAL);
     }
 }
 
@@ -1441,11 +1442,11 @@ boot_ctrl_c_in_init_server (int ignore_signo)
  *       started.
  */
 int
-xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL * client_credential,
-			 BOOT_DB_PATH_INFO * db_path_info, bool db_overwrite, const char *file_addmore_vols,
-			 volatile DKNPAGES db_npages, PGLENGTH db_desired_pagesize, volatile DKNPAGES log_npages,
-			 PGLENGTH db_desired_log_page_size, OID * rootclass_oid, HFID * rootclass_hfid,
-			 int client_lock_wait, TRAN_ISOLATION client_isolation)
+xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
+			 bool db_overwrite, const char *file_addmore_vols, volatile DKNPAGES db_npages,
+			 PGLENGTH db_desired_pagesize, volatile DKNPAGES log_npages, PGLENGTH db_desired_log_page_size,
+			 OID * rootclass_oid, HFID * rootclass_hfid, int client_lock_wait,
+			 TRAN_ISOLATION client_isolation)
 {
   int tran_index = NULL_TRAN_INDEX;
   const char *log_prefix = NULL;
@@ -1467,6 +1468,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   struct stat stat_buf;
   bool is_exist_volume;
   char *db_path, *log_path, *lob_path, *p;
+  THREAD_ENTRY *thread_p = NULL;
 
   assert (client_credential != NULL);
   assert (db_path_info != NULL);
@@ -1656,7 +1658,13 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   /* If the server is already restarted, shutdown the server */
   if (BO_IS_SERVER_RESTARTED ())
     {
+      // not sure this can be true
+      if (thread_p == NULL)
+	{
+	  thread_p = thread_get_thread_entry_info ();
+	}
       (void) xboot_shutdown_server (thread_p, ER_ALL_FINAL);
+      assert (thread_p == NULL);
     }
 
   log_prefix = fileio_get_base_file_name (client_credential->db_name);
@@ -1969,6 +1977,9 @@ exit_on_error:
   er_stack_push ();
   boot_server_all_finalize (thread_p, ER_THREAD_FINAL, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
   er_stack_pop ();
+
+  // and now finalize thread entry
+  cubthread::finalize ();
 
   return NULL_TRAN_INDEX;
 }
@@ -2851,6 +2862,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
  *
  * return : true
  *
+ *   thread_p (in/out) : input thread entry; outputs NULL if thread is finalized (SA_MODE)
  *   is_er_final(in): Terminate the error module..
  *
  * Note: All active transactions of all clients are aborted and the
@@ -2858,7 +2870,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
  *       is destroyed.
  */
 bool
-xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
+xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_final)
 {
   if (!BO_IS_SERVER_RESTARTED ())
     {
@@ -2901,6 +2913,12 @@ xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
       boot_server_all_finalize (thread_p, is_er_final, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
       er_stack_pop ();
     }
+
+#if defined (SA_MODE)
+  // stop thread module
+  cubthread::finalize ();
+  thread_p = NULL;
+#endif // SA_MODE
 
   return true;
 }
@@ -3082,6 +3100,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
  *
  * return : NO_ERROR if all OK, ER_ status otherwise
  *
+ *   thread_p (in/out) : input thread entry; outputs NULL if thread is finalized (SA_MODE)
  *   tran_index(in): Client transaction index
  *
  * Note: A client is unregistered. Any active transactions on that
@@ -3091,7 +3110,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
  *       and allocated memory, on behalf of the client.
  */
 int
-xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
+xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
 {
   int save_index;
   LOG_TDES *tdes;
@@ -3713,6 +3732,7 @@ xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LE
  *
  * return : NO_ERROR if all OK, ER_ status otherwise
  *
+ *   thread_p (in/out) : input thread entry; outputs NULL if thread is finalized (SA_MODE)
  *   fromdb_name(in): The database from where the copy is made.
  *   newdb_name(in): Name of new database
  *   newdb_path(in): Directory where the new database will reside
@@ -3738,7 +3758,7 @@ xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LE
  *                        exist.
  */
 int
-xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db_name, const char *new_db_path,
+xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char *new_db_name, const char *new_db_path,
 	    const char *new_log_path, const char *new_lob_path, const char *new_db_server_host,
 	    const char *new_volext_path, const char *fileof_vols_and_copypaths, bool new_db_overwrite)
 {
@@ -3760,6 +3780,8 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
 #if defined (WINDOWS)
   struct stat stat_buf;
 #endif
+
+  assert (thread_p != NULL);
 
   /* If db_path and/or log_path are NULL find the defaults */
 
@@ -3960,7 +3982,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
 	    }
 	  (void) xboot_shutdown_server (thread_p, ER_THREAD_FINAL);
 
-	  error_code = xboot_delete (thread_p, new_db_name, true, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
+	  error_code = xboot_delete (new_db_name, true, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -3975,6 +3997,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
 	  error_code =
 	    xboot_copy (thread_p, from_dbname, new_db_name, new_db_path, new_log_path, new_lob_path, new_db_server_host,
 			new_volext_path, fileof_vols_and_copypaths, false);
+	  assert (thread_p == NULL);
 
 	  return error_code;
 	}
@@ -4400,8 +4423,7 @@ end:
  *              run when there are multiusers in the system.
  */
 int
-xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
-	      BOOT_SERVER_SHUTDOWN_MODE shutdown_common_modules)
+xboot_delete (const char *db_name, bool force_delete, BOOT_SERVER_SHUTDOWN_MODE shutdown_common_modules)
 {
   char log_path[PATH_MAX];
   const char *log_prefix = NULL;
@@ -4410,6 +4432,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
   int dbtxt_vdes = NULL_VOLDES;
   char dbtxt_label[PATH_MAX];
   int error_code = NO_ERROR;
+  THREAD_ENTRY *thread_p = NULL;
 
   if (!BO_IS_SERVER_RESTARTED ())
     {
@@ -5047,8 +5070,8 @@ error_rem_allvols:
  *              is not available, the recreate_flag must be given
  */
 int
-xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recreate_log, DKNPAGES log_npages,
-		       const char *db_locale, FILE * out_fp)
+xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npages, const char *db_locale,
+		       FILE * out_fp)
 {
   char log_path[PATH_MAX];
   const char *log_prefix;
@@ -5061,6 +5084,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
   INTL_CODESET db_charset_db_root = INTL_CODESET_ERROR;
   char dummy_timezone_checksum[32 + 1];
   char db_lang[LANG_MAX_LANGNAME];
+  THREAD_ENTRY *thread_p = NULL;
 
   if (lang_init () != NO_ERROR)
     {

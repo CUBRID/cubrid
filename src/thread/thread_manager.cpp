@@ -444,14 +444,18 @@ namespace cubthread
   void
   initialize (entry *&my_entry)
   {
+    // note - currently it is designed to be called only once. if we want repeatable calls, code must be updated.
+
     assert (my_entry == NULL);
 
+    assert (Manager == NULL);
     if (Manager == NULL)
       {
 	Manager = new manager ();
       }
 
     // init main entry
+    assert (Main_entry_p == NULL);
     Main_entry_p = new entry ();
     Main_entry_p->index = 0;
     Main_entry_p->register_id ();
@@ -463,6 +467,7 @@ namespace cubthread
     Main_entry_p->get_error_context ().register_thread_local ();
 #endif // SERVER_MODE
 
+    assert (tl_Entry_p == NULL);
     tl_Entry_p = Main_entry_p;
 
     my_entry = Main_entry_p;

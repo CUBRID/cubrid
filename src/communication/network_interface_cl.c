@@ -3524,14 +3524,14 @@ boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_D
 #else /* CS_MODE */
   int tran_index = NULL_TRAN_INDEX;
 
-  THREAD_ENTRY *thread_p = enter_server ();
+  enter_server_no_thread_entry ();
 
   tran_index =
-    xboot_initialize_server (thread_p, client_credential, db_path_info, db_overwrite, file_addmore_vols, db_npages,
+    xboot_initialize_server (client_credential, db_path_info, db_overwrite, file_addmore_vols, db_npages,
 			     db_desired_pagesize, log_npages, db_desired_log_page_size, rootclass_oid, rootclass_hfid,
 			     client_lock_wait, client_isolation);
 
-  exit_server (*thread_p);
+  exit_server_no_thread_entry ();
 
   return (tran_index);
 #endif /* !CS_MODE */
@@ -3684,8 +3684,9 @@ boot_unregister_client (int tran_index)
   THREAD_ENTRY *thread_p = enter_server ();
 
   success = xboot_unregister_client (thread_p, tran_index);
+  assert (thread_p == NULL);
 
-  exit_server (*thread_p);
+  exit_server_no_thread_entry ();
 
   return success;
 #endif /* !CS_MODE */
@@ -4082,7 +4083,7 @@ boot_delete (const char *db_name, bool force_delete)
 
   enter_server_no_thread_entry ();
 
-  error_code = xboot_delete (NULL, db_name, force_delete, BOOT_SHUTDOWN_ALL_MODULES);
+  error_code = xboot_delete (db_name, force_delete, BOOT_SHUTDOWN_ALL_MODULES);
 
   exit_server_no_thread_entry ();
 
@@ -4135,8 +4136,9 @@ boot_shutdown_server (ER_FINAL_CODE iserfinal)
   THREAD_ENTRY *thread_p = enter_server ();
 
   result = xboot_shutdown_server (thread_p, iserfinal);
+  assert (thread_p == NULL);
 
-  exit_server (*thread_p);
+  exit_server_no_thread_entry ();
 
   return result;
 #endif /* !CS_MODE */
@@ -5173,11 +5175,12 @@ boot_copy (const char *from_dbname, const char *new_db_name, const char *new_db_
 #else /* CS_MODE */
   int error_code;
 
-  enter_server_no_thread_entry ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   error_code =
-    xboot_copy (NULL, from_dbname, new_db_name, new_db_path, new_log_path, new_lob_path, new_db_server_host,
+    xboot_copy (thread_p, from_dbname, new_db_name, new_db_path, new_log_path, new_lob_path, new_db_server_host,
 		new_volext_path, fileof_vols_and_copypaths, new_db_overwrite);
+  assert (thread_p == NULL);
 
   exit_server_no_thread_entry ();
 
@@ -5203,7 +5206,7 @@ boot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npage
 
   enter_server_no_thread_entry ();
 
-  error_code = xboot_emergency_patch (NULL, db_name, recreate_log, log_npages, db_locale, out_fp);
+  error_code = xboot_emergency_patch (db_name, recreate_log, log_npages, db_locale, out_fp);
 
   exit_server_no_thread_entry ();
 
