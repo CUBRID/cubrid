@@ -24,15 +24,17 @@
 
 #include "process_util.h"
 
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 
 #if defined(WINDOWS)
 #include <string>
+#include <Windows.h>
+#else
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <signal.h>
 #endif
 
 int
