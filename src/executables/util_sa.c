@@ -2722,6 +2722,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
   int part_tables_used = 0;
   int part_tables_alloced = 0;
   bool need_manual_sync = false;
+  THREAD_ENTRY *thread_p;
 
   assert (db_name != NULL);
   assert (db_obs_coll_cnt != NULL);
@@ -2730,13 +2731,15 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
   *db_obs_coll_cnt = 0;
   *new_sys_coll_cnt = 0;
 
+  thread_p = thread_get_thread_entry_info ();
+
   /* read all collations from DB : id, name, checksum */
-  db_status = catcls_get_db_collation (NULL, &db_collations, &db_coll_cnt);
+  db_status = catcls_get_db_collation (thread_p, &db_collations, &db_coll_cnt);
   if (db_status != NO_ERROR)
     {
       if (db_collations != NULL)
 	{
-	  db_private_free (NULL, db_collations);
+	  db_private_free (thread_p, db_collations);
 	}
       status = EXIT_FAILURE;
       goto exit;
@@ -3016,7 +3019,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 			    {
 			      vclass_names_alloced = 1 + DB_MAX_IDENTIFIER_LENGTH;
 			    }
-			  vclass_names = (char *) db_private_realloc (NULL, vclass_names, 2 * vclass_names_alloced);
+			  vclass_names = (char *) db_private_realloc (thread_p, vclass_names, 2 * vclass_names_alloced);
 
 			  if (vclass_names == NULL)
 			    {
@@ -3043,7 +3046,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 			    {
 			      part_tables_alloced = 1 + DB_MAX_IDENTIFIER_LENGTH;
 			    }
-			  part_tables = (char *) db_private_realloc (NULL, part_tables, 2 * part_tables_alloced);
+			  part_tables = (char *) db_private_realloc (thread_p, part_tables, 2 * part_tables_alloced);
 
 			  if (part_tables == NULL)
 			    {
@@ -3358,13 +3361,13 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 exit:
   if (vclass_names != NULL)
     {
-      db_private_free (NULL, vclass_names);
+      db_private_free (thread_p, vclass_names);
       vclass_names = NULL;
     }
 
   if (part_tables != NULL)
     {
-      db_private_free (NULL, part_tables);
+      db_private_free (thread_p, part_tables);
       part_tables = NULL;
     }
 
@@ -3381,7 +3384,7 @@ exit:
     }
   if (db_collations != NULL)
     {
-      db_private_free (NULL, db_collations);
+      db_private_free (thread_p, db_collations);
     }
 
   return status;
