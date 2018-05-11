@@ -305,7 +305,7 @@ csect_wait_on_writer_queue (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cse
     {
       err = thread_suspend_with_other_mutex (thread_p, &csect->lock, timeout, to, THREAD_CSECT_WRITER_SUSPENDED);
 
-      if (thread_p->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN && thread_p->interrupted)
+      if (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT && thread_p->interrupted)
 	{
 	  /* check if i'm in the queue */
 	  prev_thread_p = csect->waiting_writers_queue;
@@ -374,7 +374,7 @@ csect_wait_on_promoter_queue (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
     {
       err = thread_suspend_with_other_mutex (thread_p, &csect->lock, timeout, to, THREAD_CSECT_PROMOTER_SUSPENDED);
 
-      if (thread_p->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN && thread_p->interrupted)
+      if (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT && thread_p->interrupted)
 	{
 	  /* check if i'm in the queue */
 	  prev_thread_p = csect->waiting_promoters_queue;
