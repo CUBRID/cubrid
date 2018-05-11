@@ -55,7 +55,9 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
   HANDLE hStdErr = INVALID_HANDLE_VALUE;
 
   if (exit_status != NULL)
-    *exit_status = 0;
+    {
+      *exit_status = 0;
+    }
 
   for (i = 0, cmd_arg_len = 0; argv[i]; i++)
     {
