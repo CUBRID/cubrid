@@ -3684,9 +3684,15 @@ boot_unregister_client (int tran_index)
   THREAD_ENTRY *thread_p = enter_server ();
 
   success = xboot_unregister_client (thread_p, tran_index);
-  assert (thread_p == NULL);
-
-  exit_server_no_thread_entry ();
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      assert (thread_p == NULL);
+      exit_server_no_thread_entry ();
+    }
+  else
+    {
+      exit_server (*thread_p);
+    }
 
   return success;
 #endif /* !CS_MODE */
