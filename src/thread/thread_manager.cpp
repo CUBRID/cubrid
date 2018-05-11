@@ -474,8 +474,12 @@ namespace cubthread
   finalize (void)
   {
 #if defined (SERVER_MODE)
-    Main_entry_p->get_error_context ().deregister_thread_local ();
+    if (Main_entry_p != NULL)
+      {
+	Main_entry_p->get_error_context ().deregister_thread_local ();
+      }
 #endif // SERVER_MODE
+
     delete Main_entry_p;
     Main_entry_p = NULL;
 
@@ -486,8 +490,11 @@ namespace cubthread
   int
   initialize_thread_entries (bool with_lock_free /* = true*/)
   {
+    assert (Main_entry_p != NULL);
+
     int error_code = NO_ERROR;
 #if defined (SERVER_MODE)
+    assert (Manager != NULL);
     Manager->alloc_entries ();
 #endif // SERVER_MODE
 
@@ -548,6 +555,7 @@ namespace cubthread
     // todo: add thread_p to error manager; or something
     // er_print_callstack (ARG_FILE_LINE, "warning: manager::get_entry is called");
     // todo
+    assert (tl_Entry_p != NULL);
     return *tl_Entry_p;
   }
 
@@ -566,7 +574,10 @@ namespace cubthread
   void
   return_lock_free_transaction_entries (void)
   {
-    Main_entry_p->return_lock_free_transaction_entries ();
+    if (Main_entry_p != NULL)
+      {
+	Main_entry_p->return_lock_free_transaction_entries ();
+      }
     if (Manager != NULL)
       {
 	Manager->return_lock_free_transaction_entries ();
