@@ -3695,6 +3695,51 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	  goto end;
 	}
 
+#if !defined (NDEBUG)
+      /* Check for duplicates in DWB. */
+      for (i = 1; i < num_pages; i++)
+	{
+	  if (VPID_ISNULL (&p_dwb_ordered_slots[i].vpid))
+	    {
+	      continue;
+	    }
+
+	  if (VPID_EQ (&p_dwb_ordered_slots[i].vpid, &p_dwb_ordered_slots[i - 1].vpid))
+	    {
+	      /* Same VPID, at least one is corrupted. */
+	      error_code =
+		fileio_page_check_corruption (thread_p, p_dwb_ordered_slots[i - 1].io_page, &is_page_corrupted);
+	      if (error_code != NO_ERROR)
+		{
+		  /* Error in checksum computation. */
+		  goto end;
+		}
+
+	      if (is_page_corrupted)
+		{
+		  continue;
+		}
+
+	      error_code = fileio_page_check_corruption (thread_p, p_dwb_ordered_slots[i].io_page, &is_page_corrupted);
+	      if (error_code != NO_ERROR)
+		{
+		  /* Error in checksum computation. */
+		  goto end;
+		}
+
+	      if (is_page_corrupted)
+		{
+		  continue;
+		}
+
+	      /* Found duplicates - something is wrong. We may still can check for same LSAs.
+	       * But, duplicates occupies disk space so is better to avoid it.
+	       */
+	      assert (false);
+	    }
+	}
+#endif
+
       volid = NULL_VOLID;
       iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
 
@@ -3746,7 +3791,6 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	  if (!is_page_corrupted)
 	    {
 	      /* The page in data volume is not corrupted. Do not overwrite its content - reset slot VPID. */
-	      assert (!VPID_EQ (vpid, &p_dwb_ordered_slots[i + 1].vpid));
 	      VPID_SET_NULL (&p_dwb_ordered_slots[i].vpid);
 	      fileio_initialize_res (thread_p, &(p_dwb_ordered_slots[i].io_page->prv));
 	      continue;
