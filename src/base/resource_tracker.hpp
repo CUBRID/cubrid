@@ -26,6 +26,7 @@
 
 #include <map>
 #include <string>
+#include <iostream>
 
 #include <cstring>
 
@@ -41,10 +42,20 @@ namespace cubbase
 
     static const std::size_t MAX_FILENAME_SIZE = 32;
 
-    char file[MAX_FILENAME_SIZE];
-    int line;
-  };
+    static const char *print_format (void)
+    {
+      return "%s:%d";
+    }
 
+    char m_file[MAX_FILENAME_SIZE];
+    int m_line;
+  };
+#define FILELINE_LOCATION_AS_ARGS(fileline) (fileline).m_file, (fileline).m_line
+
+  std::ostream &operator<< (std::ostream &os, const fileline_location &fileline);
+
+  // resource_tracker_item -
+  //
   struct resource_tracker_item
   {
     public:
@@ -52,17 +63,20 @@ namespace cubbase
       resource_tracker_item (const char *fn_arg, int l_arg);
 
       fileline_location m_first_location;
-      int m_current_amount;
+      int m_amount;
   };
+
+  std::ostream &operator<< (std::ostream &os, const resource_tracker_item &item);
 
   template <typename Res>
   class resource_tracker
   {
     public:
-
-      resource_tracker (const char *name, bool enabled, bool stackable, std::size_t max_size);
-
       using res_type = Res;
+      using map_type = std::map<res_type, resource_tracker_item>;
+
+      resource_tracker (const char *name, bool enabled, bool stackable, std::size_t max_size,
+			const char *res_name = "res_ptr");
 
       void increment (const char *filename, const int line, const res_type &res);
       void decrement (const res_type &res);
@@ -70,8 +84,11 @@ namespace cubbase
 
     private:
       void track (const char *filename, const int line, res_type &res, int amount);
+      int get_total_amount ();
+      void dump (void);
 
       std::string m_name;
+      std::string m_res_name;
 
       bool m_enabled;
       bool m_stackable;
@@ -79,16 +96,22 @@ namespace cubbase
       size_t m_max_size;
       size_t m_crt_size;
 
-      std::map<res_type, resource_tracker_item> m_tracked;
+      map_type m_tracked;
   };
 
   //////////////////////////////////////////////////////////////////////////
-  // implementation
+  // other functions
+  //////////////////////////////////////////////////////////////////////////
+
+  //////////////////////////////////////////////////////////////////////////
+  // template/inline implementation
   //////////////////////////////////////////////////////////////////////////
 
   template <typename Res>
-  resource_tracker<Res>::resource_tracker (const char *name, bool enabled, bool stackable, std::size_t max_size)
+  resource_tracker<Res>::resource_tracker (const char *name, bool enabled, bool stackable, std::size_t max_size,
+      const char *res_name /* = "res_ptr" */)
     : m_name (name)
+    , m_res_name (res_name)
     , m_enabled (enabled)
     , m_stackable (stackable)
     , m_aborted (false)
@@ -128,7 +151,7 @@ namespace cubbase
 	// already exists
 	assert (m_stackable);
 	// increment amount
-	inserted.first->second.m_current_amount++;
+	inserted.first->second.m_amount++;
       }
   }
 
@@ -151,8 +174,8 @@ namespace cubbase
     else
       {
 	// decrement
-	tracked->second.m_current_amount--;
-	if (tracked->second.m_current_amount == 0)
+	tracked->second.m_amount--;
+	if (tracked->second.m_amount == 0)
 	  {
 	    // remove from map
 	    m_tracked.erase (tracked);
@@ -162,6 +185,37 @@ namespace cubbase
 	    assert (m_stackable);
 	  }
       }
+  }
+
+  template <typename Res>
+  int
+  resource_tracker<Res>::get_total_amount (void)
+  {
+    int total = 0;
+    for (auto it : m_tracked)
+      {
+	total += it.second.m_amount;
+      }
+    return total;
+  }
+
+  template <typename Res>
+  void
+  resource_tracker<Res>::dump (void)
+  {
+    std::ostream &out = std::cerr;
+
+    out << "   +--- " << m_name << std::endl ();
+    out << "         +--- amount = " << get_total_amount () << " (threshold = %d)" << m_max_size << std::endl ();
+
+    for (it : m_tracked)
+      {
+	out << "            +--- tracked res = " << m_res_name << "=" << it.first;
+	out << " " << it.second;
+	out << std::endl ();
+      }
+
+    os << "            +--- tracked res count = " << m_tracked.count () << std::endl ();
   }
 
 } // namespace cubbase

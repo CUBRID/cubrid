@@ -27,18 +27,33 @@ namespace cubbase
 {
 
   fileline_location::fileline_location (const char *fn_arg, int l_arg)
-    : file {}
-    , line (l_arg)
+    : m_file {}
+    , m_line (l_arg)
   {
-    std::strncpy (file, fn_arg, MAX_FILENAME_SIZE);
+    std::strncpy (m_file, fn_arg, MAX_FILENAME_SIZE);
   }
 
+  std::ostream &
+  operator<< (std::ostream &os, const fileline_location &fileline)
+  {
+    os << fileline.m_file << ":" << fileline.m_line;
+    return os;
+  }
 
   resource_tracker_item::resource_tracker_item (const char *fn_arg, int l_arg)
     : m_first_location (fn_arg, l_arg)
-    , m_current_amount (1) // starts as 1
+    , m_amount (1) // starts as 1
   {
     //
   }
+
+  std::ostream &
+  operator<< (std::ostream &os, const resource_tracker_item &item)
+  {
+    os << "amount=" << item.m_amount << "first_caller=" << item.m_first_location;
+    return os;
+  }
+
+  //////////////////////////////////////////////////////////////////////////
 
 } // namespace cubbase
