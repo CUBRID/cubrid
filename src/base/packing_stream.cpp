@@ -215,6 +215,8 @@ namespace cubstream
 
     /* TODO : system parameter */
     m_trigger_flush_to_disk_size = buffer_capacity / 2;
+
+    m_trigger_min_to_read_size = 1024;
   }
 
   packing_stream::~packing_stream ()
@@ -333,7 +335,7 @@ namespace cubstream
     char *ptr_commit = reserve_context->ptr + reserve_context->reserved_amount;
     stream_position new_completed_position = reserve_context->start_pos + reserve_context->reserved_amount;
 
-    std::unique_lock<std::mutex> ulock (m_buffer_mutex);
+    m_buffer_mutex.lock ();
     collapsed_count = m_reserved_positions.consume (reserve_context, new_reserved_head);
     if (collapsed_count > 0)
       {
@@ -347,19 +349,32 @@ namespace cubstream
          m_bip_buffer.commit (ptr_commit);
       }
 
-    if (new_completed_position > m_last_committed_pos)
+    assert (new_completed_position > m_last_committed_pos);
+    m_last_committed_pos = new_completed_position;
+
+    size_t ready_to_drop = m_last_committed_pos - m_last_dropable_pos;
+
+    if (new_completed_position > m_last_notified_committed_pos + m_trigger_min_to_read_size)
       {
 	if (m_ready_pos_handler != NULL)
 	  { 
             int err;
-	    err = m_ready_pos_handler->notify (m_last_committed_pos,
-					       new_completed_position - m_last_committed_pos);
+	    err = m_ready_pos_handler->notify (m_last_notified_committed_pos,
+					       new_completed_position - m_last_notified_committed_pos);
 	    if (err != NO_ERROR)
 	      {
 		return err;
 	      }
 	  }
-	m_last_committed_pos = new_completed_position;
+	m_last_notified_committed_pos = new_completed_position;
+      }
+
+    m_buffer_mutex.unlock ();
+
+    if (m_filled_stream_handler != NULL
+	&& ready_to_drop > m_trigger_flush_to_disk_size)
+      {
+	m_filled_stream_handler->notify (m_last_dropable_pos, ready_to_drop);
       }
 
     return NO_ERROR;
@@ -370,6 +385,8 @@ namespace cubstream
     int err;
     char *ptr = NULL;
     stream_reserve_context context;
+    
+    assert (amount > 0);
 
     m_buffer_mutex.lock ();
     while (1)
@@ -390,23 +407,8 @@ namespace cubstream
     reserved_context = m_reserved_positions.produce (context);
     assert (reserved_context != NULL);
 
-    size_t ready_to_read = m_last_committed_pos - m_read_position;
-    size_t ready_to_drop = m_last_committed_pos - m_last_dropable_pos;
-
     m_buffer_mutex.unlock ();
-
-    if (m_ready_pos_handler != NULL
-	&& ready_to_read > m_trigger_flush_to_disk_size)
-      {
-	m_ready_pos_handler->notify (m_read_position, ready_to_read);
-      }
-
-    if (m_filled_stream_handler != NULL
-	&& ready_to_drop > m_trigger_flush_to_disk_size)
-      {
-	m_filled_stream_handler->notify (m_last_dropable_pos, ready_to_drop);
-      }
-
+     
     reserved_context->ptr = ptr;
     reserved_context->reserved_amount = amount;
     reserved_context->written_bytes = 0;

@@ -33,7 +33,9 @@ namespace cubstream
   stream::stream ()
   {
     m_last_committed_pos = 0;
+    m_last_notified_committed_pos = 0;
     m_read_position = 0;
+    m_last_dropable_pos = 0;
 
     set_filled_stream_handler (NULL);
     set_fetch_data_handler (NULL);

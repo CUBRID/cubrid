@@ -94,6 +94,9 @@ namespace cubstream
       /* last position committed (filled) by appenders; can be read by readers */
       stream_position m_last_committed_pos;
 
+      /* last position notified as committed; used to send notifications */
+      stream_position m_last_notified_committed_pos;
+
       /* last position which may be dropped (the underlying memory associated may be recycled)
        * is checked by stream notify (e.g. flush to disk), and set by external clients;
        */

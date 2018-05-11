@@ -147,8 +147,11 @@ namespace cubstream
       mem::collapsable_circular_queue<stream_reserve_context> m_reserved_positions;
 
       /* threshold size of unread stream content not read which triggers signalling "filled" event
-       * such event may be throttling the reserve calls on stream */
+       * such event may be throttling the reserve calls on stream (the stream content needs to saved to disk) */
       size_t m_trigger_flush_to_disk_size;
+
+      /* the minimum amount commited to stream which may be read (to avoid notifications in case of too small data) */
+      size_t m_trigger_min_to_read_size;
 
       std::mutex m_buffer_mutex;
 
