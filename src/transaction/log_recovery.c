@@ -2322,7 +2322,9 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
 		    "log_recovery_analysis: Unknown record type = %d (%s) ... May be a system error\n", log_rtype,
 		    log_to_string (log_rtype));
 #endif /* CUBRID_DEBUG */
+      /* If we are here, probably the log is corrupted.  */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, log_lsa->pageid);
+      assert (false);
       break;
     }
 }
