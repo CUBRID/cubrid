@@ -85,6 +85,7 @@ static int start_ddl_proxy_client(const char *program_name, DDL_CLIENT_ARGUMENT 
 
   if (rc != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return rc;
     }
 
@@ -96,13 +97,13 @@ static int start_ddl_proxy_client(const char *program_name, DDL_CLIENT_ARGUMENT 
       session = db_open_buffer ((const char *) args->command);
       if (session == NULL)
 	{
-          rc = er_errid ();
+	  ASSERT_ERROR_AND_SET (rc);
 	  goto error;
 	}
 
         if (db_get_errors (session) || er_errid () != NO_ERROR)
           {
-            rc = er_errid ();
+            ASSERT_ERROR_AND_SET (rc);
             goto error;
           }
 
@@ -112,7 +113,7 @@ static int start_ddl_proxy_client(const char *program_name, DDL_CLIENT_ARGUMENT 
             stmt_id = db_compile_statement (session);
             if (stmt_id < 0)
               {
-                rc = er_errid ();
+                ASSERT_ERROR_AND_SET (rc);
                 db_abort_transaction ();
                 goto error;
               }
