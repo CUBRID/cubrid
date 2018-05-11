@@ -229,7 +229,7 @@ struct tz_data
   /* 
    * 32 digits for the md5 checksum
    */
-  char checksum[32 + 1];
+  char checksum[TZ_CHECKSUM_SIZE + 1];
 };
 
 #endif /* _TIMEZONE_LIB_COMMON_H_ */

@@ -437,7 +437,8 @@ static int comp_func_tz_names (const void *arg1, const void *arg2);
 
 static void print_seconds_as_time_hms_var (int seconds);
 
-static int tzc_export_timezone_C_file (const TZ_DATA * tzd);
+static void tzc_get_timezones_dot_c_filepath (size_t size, char *timezones_dot_c_file_path);
+static int tzc_export_timezone_dot_c (const TZ_DATA * tzd, const char *tz_C_filepath);
 
 static int tzc_load_raw_data (TZ_RAW_DATA * tzd_raw, const char *input_folder);
 static int tzc_import_old_data (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode);
@@ -611,15 +612,19 @@ exit:
  * tz_gen_type(in): control flag (type of TZ build/gen to perform)
  * database_name(in): database name for which to do data migration if an update is necessary, if it is NULL
  *                    then data migration will be done for all the databases
+ * timezones_dot_c_filepath(in): path for timezones.c output file. if NULL, it will be saved in default path (in CUBRID install
+ *                       folder).
  * checksum(out): new checksum to write in the database when extend option is used
  */
 int
-timezone_compile_data (const char *input_folder, const TZ_GEN_TYPE tz_gen_type, char *database_name, char *checksum)
+timezone_compile_data (const char *input_folder, const TZ_GEN_TYPE tz_gen_type, char *database_name,
+		       const char *timezones_dot_c_filepath, char *checksum)
 {
   int err_status = NO_ERROR;
   TZ_RAW_DATA tzd_raw;
   TZ_DATA tzd;
   bool write_checksum = false;
+  char default_output_file_path[PATH_MAX] = { 0 };
 
   memset (&tzd, 0, sizeof (tzd));
   memset (&tzd_raw, 0, sizeof (tzd_raw));
@@ -704,7 +709,12 @@ timezone_compile_data (const char *input_folder, const TZ_GEN_TYPE tz_gen_type, 
       goto exit;
     }
 
-  err_status = tzc_export_timezone_C_file (&tzd);
+  if (timezones_dot_c_filepath == NULL)
+    {
+      tzc_get_timezones_dot_c_filepath (sizeof (default_output_file_path), default_output_file_path);
+      timezones_dot_c_filepath = default_output_file_path;
+    }
+  err_status = tzc_export_timezone_dot_c (&tzd, timezones_dot_c_filepath);
   if (err_status != NO_ERROR)
     {
       goto exit;
@@ -4165,27 +4175,38 @@ print_seconds_as_time_hms_var (int seconds)
 }
 
 /*
- * tzc_export_timezone_C_file () - saves all timezone data into a C source
+ * tzc_get_timezones_dot_c_filepath () - get path to timezones.c file in the CUBRID install folder
+ *
+ * size (in)                       : maximum name size
+ * timezones_dot_c_file_path (out) : output file path
+ */
+static void
+tzc_get_timezones_dot_c_filepath (size_t size, char *timezones_dot_c_file_path)
+{
+  char tz_cub_path[PATH_MAX] = { 0 };
+
+  envvar_cubrid_dir (tz_cub_path, sizeof (tz_cub_path));
+  tzc_build_filepath (timezones_dot_c_file_path, size, tz_cub_path, PATH_PARTIAL_TIMEZONES_FILE);
+}
+
+/*
+ * tzc_export_timezone_dot_c () - saves all timezone data into a C source
  *			      file to be later compiled into a shared library
  * Returns: always NO_ERROR
  * tzd(in): timezone data
+ * tz_C_filepath(in): timezones.c file path
  */
 static int
-tzc_export_timezone_C_file (const TZ_DATA * tzd)
+tzc_export_timezone_dot_c (const TZ_DATA * tzd, const char *timezones_dot_c_filepath)
 {
   int err_status = NO_ERROR;
-  char tz_C_filepath[PATH_MAX] = { 0 };
-  char tz_cub_path[PATH_MAX] = { 0 };
   TZ_OFFSET_RULE *offrule = NULL;
   int i;
   TZ_DS_RULE *rule = NULL;
   TZ_LEAP_SEC *leap_sec = NULL;
   FILE *fp;
 
-  envvar_cubrid_dir (tz_cub_path, sizeof (tz_cub_path));
-  tzc_build_filepath (tz_C_filepath, sizeof (tz_C_filepath), tz_cub_path, PATH_PARTIAL_TIMEZONES_FILE);
-
-  fp = fopen_ex (tz_C_filepath, "wt");
+  fp = fopen_ex (timezones_dot_c_filepath, "wt");
   if (fp == NULL)
     {
       err_status = TZC_ERR_GENERIC;

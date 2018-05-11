@@ -65,7 +65,7 @@ endif(UNIX)
 if(UNIX)
   add_dependencies(csql ${EP_TARGETS})
 endif(UNIX)
-
+add_dependencies(csql cubridsa cubridcs)
 
 set(CUB_MASTER_SOURCES
   ${EXECUTABLES_DIR}/master.c
@@ -224,6 +224,7 @@ if(UNIX)
 else(UNIX)
   target_link_libraries(cub_admin LINK_PRIVATE ws2_32)
 endif(UNIX)
+target_link_libraries(cub_admin LINK_PRIVATE cubridsa)
 
 set(CUBRID_ESQL_SOURCES
   ${BISON_esql_grammar_OUTPUTS}
