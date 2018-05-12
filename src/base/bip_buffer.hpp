@@ -66,8 +66,9 @@ namespace mem
    *        till m_ptr_prev_gen_committed.
    * 2. start_read (ptr, amount) : the buffer is split into equal sized pages (template parameter); 
    *    each page has a fixed count (m_read_fcnt) and a bit flag in m_read_flags.
-   *    the start_read, increments the fix count of each affected page, and sets the correspoding bit
-   * 3. end_read (ptr, amount) : the reserve of start_read (decrements the fix count,
+   *    start_read increments the fix count of only the first of the affected pages, and sets the correspoding bit
+   *    it returns the page id which was latched (to be used by the end_read function)
+   * 3. end_read (page_id) : the reverse of start_read (decrements the fix count,
    *    and clears the bit if count reaches zero)
    *
    * The reserve may fail for several reasons:
@@ -79,6 +80,14 @@ namespace mem
    *  in all cases, NULL is returned; it is the responsibility of upper layer to handle this cases
    *  (preferably to prevent them)
    */
+
+
+  /* latch read position id */
+  typedef int buffer_latch_read_id;
+  enum BUFFER_READ_LATCH_ID
+  {
+    BUFFER_NO_READ_LATCH = -1
+  };
 
   /* TODO: template parameter is required by bitset; a solution would be to define a biset with a maximum size
    * and let the code use only as much as it needs */
@@ -196,7 +205,7 @@ namespace mem
               assert (m_ptr_prev_gen_committed != NULL);
               assert (m_ptr_prev_gen_last_reserved != NULL);
 
-              assert (ptr >= m_ptr_prev_gen_committed && ptr < m_ptr_prev_gen_last_reserved);
+              assert (ptr >= m_ptr_prev_gen_committed && ptr <= m_ptr_prev_gen_last_reserved);
 
               m_ptr_prev_gen_committed = ptr;
             }
@@ -204,10 +213,9 @@ namespace mem
           return NO_ERROR;
         };
 
-      int start_read (const char *ptr, const size_t amount)
+      int start_read (const char *ptr, const size_t amount, mem::buffer_latch_read_id &latched_page_idx)
         {
-          int start_page_idx, end_page_idx;
-          int idx;
+          int start_page_idx;
 
           if (is_region_b_used ())
             {
@@ -223,32 +231,62 @@ namespace mem
             }
 
           start_page_idx = get_page_from_ptr (ptr);
-          end_page_idx =  get_page_from_ptr (ptr + amount);
+          /* since append/reserve pointers always cycle in future of the buffer, it is enough to latch only
+           * the first page (coresponding to start of read range), 
+           * the appender will not be able to pass beyond a latched page
+           */
 
-          for (idx = start_page_idx; idx <= end_page_idx; idx++)
+          /* TODO : avoid to set read latch on a page if append is in that page
+           * Instead we try to latch the page before it (logically in the past): if it is the first page,
+           * we try to latch the last page.
+           * if the previous page cannot be latched the read is denied
+           */
+
+          if (is_ptr_in_page (m_ptr_append, start_page_idx))
             {
-              m_read_fcnt[idx]++;
-              m_read_flags.set (idx);
+              start_page_idx--;
+              if (start_page_idx < 0)
+                {
+                  start_page_idx = P - 1;
+                }
+
+              /* check that this page is not reserved */
+              const char *latch_start_ptr = m_buffer + start_page_idx * m_read_page_size;
+
+              if (is_region_b_used ())
+                {
+                  if (is_range_overlap (latch_start_ptr, m_read_page_size, m_buffer, m_ptr_end_b - m_buffer))
+                    {
+                      return ER_FAILED;
+                    }
+                }
+
+              if (is_range_overlap (latch_start_ptr, m_read_page_size, m_ptr_start_a, m_ptr_end_a - m_ptr_start_a))
+                {
+                  return ER_FAILED;
+                }
             }
+
+          assert (is_ptr_in_page (m_ptr_append, start_page_idx) == false);
+
+          m_read_fcnt[start_page_idx]++;
+          m_read_flags.set (start_page_idx);
+          latched_page_idx = start_page_idx;
+
           return NO_ERROR;
         };
 
-      int end_read (const char *ptr, const size_t amount)
+      int end_read (const mem::buffer_latch_read_id &page_idx)
         {
-          int start_page_idx, end_page_idx;
-          int idx;
+          assert (page_idx >= 0 && page_idx < P);
 
-          start_page_idx = get_page_from_ptr (ptr);
-          end_page_idx =  get_page_from_ptr (ptr + amount);
+          assert (m_read_fcnt[page_idx] > 0);
+          m_read_fcnt[page_idx]--;
 
-          for (idx = start_page_idx; idx <= end_page_idx; idx++)
+          if (m_read_fcnt[page_idx] == 0)
             {
-              assert (m_read_fcnt[idx] > 0);
-              m_read_fcnt[idx]--;
-              if (m_read_fcnt[idx] == 0)
-                {
-                  m_read_flags.reset (idx);
-                }
+              assert (m_read_flags.test (page_idx) == true);
+              m_read_flags.reset (page_idx);
             }
 
           return NO_ERROR;
@@ -406,6 +444,17 @@ namespace mem
                   activate_region_b ();
                 }
             }
+        };
+
+      bool is_ptr_in_page (const char *ptr, const int page_idx)
+        {
+          if (ptr >= m_buffer + m_read_page_size * page_idx
+              && ptr < m_buffer + m_read_page_size * (page_idx + 1))
+            {
+              return true;
+            }
+
+          return false;
         };
     private:
       size_t m_capacity;
