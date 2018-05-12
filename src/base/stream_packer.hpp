@@ -93,6 +93,8 @@ namespace cubstream
 
       /* currently reserved context (set when packing starts) */
       stream_reserve_context *m_stream_reserve_context;
+
+      mem::buffer_latch_read_id m_read_latch_page_idx;
   };
 
 } /* namespace cubstream */

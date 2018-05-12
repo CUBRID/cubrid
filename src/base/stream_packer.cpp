@@ -37,6 +37,8 @@ namespace cubstream
     m_current_local_buffer_size = 0;
     m_stream_reserve_context = NULL;
     m_use_unpack_stream_buffer = false;
+    m_read_latch_page_idx = mem::BUFFER_NO_READ_LATCH;
+    m_next_read_position = 0;
     init (NULL, 0);
   }
 
@@ -83,7 +85,7 @@ namespace cubstream
     {
       if (m_use_unpack_stream_buffer)
         {
-          m_stream->unlatch_read_data (get_packer_buffer (), get_packer_end () - get_packer_buffer ());
+          m_stream->unlatch_read_data (m_read_latch_page_idx);
           m_use_unpack_stream_buffer = false;
         }
 
@@ -106,7 +108,8 @@ namespace cubstream
 
     aligned_amount = DB_ALIGN (amount, MAX_ALIGNMENT);
 
-    ptr = m_stream->get_more_data_with_buffer (aligned_amount, actual_read_bytes, m_next_read_position);
+    ptr = m_stream->get_more_data_with_buffer (aligned_amount, actual_read_bytes, m_next_read_position,
+                                               m_read_latch_page_idx);
     if (ptr != NULL)
       {
         if (actual_read_bytes < aligned_amount)
@@ -115,15 +118,18 @@ namespace cubstream
 
             alloc_local_buffer (aligned_amount);
             memcpy (m_local_buffer, ptr, actual_read_bytes);
-            m_stream->unlatch_read_data (ptr, actual_read_bytes);
+            m_stream->unlatch_read_data (m_read_latch_page_idx);
 
-            ptr = m_stream->get_more_data_with_buffer (aligned_amount - actual_read_bytes, next_actual_read_bytes, m_next_read_position);
+            ptr = m_stream->get_more_data_with_buffer (aligned_amount - actual_read_bytes,
+                                                       next_actual_read_bytes,
+                                                       m_next_read_position,
+                                                       m_read_latch_page_idx);
             if (ptr == NULL || next_actual_read_bytes != aligned_amount - actual_read_bytes)
               {
                 return NULL;
               }
             memcpy (m_local_buffer + actual_read_bytes, ptr, next_actual_read_bytes);
-            m_stream->unlatch_read_data (ptr, next_actual_read_bytes);
+            m_stream->unlatch_read_data (m_read_latch_page_idx);
 
             ptr = m_local_buffer;
             m_use_unpack_stream_buffer = false;
@@ -154,7 +160,7 @@ namespace cubstream
 
     aligned_amount = DB_ALIGN (amount, MAX_ALIGNMENT);
 
-    ptr = m_stream->get_data_from_pos (start_pos, aligned_amount, actual_read_btyes);
+    ptr = m_stream->get_data_from_pos (start_pos, aligned_amount, actual_read_btyes, m_read_latch_page_idx);
     if (ptr != NULL)
       {
         if (actual_read_btyes < aligned_amount)
@@ -164,16 +170,18 @@ namespace cubstream
 
             alloc_local_buffer (aligned_amount);
             memcpy (m_local_buffer, ptr, actual_read_btyes);
-            m_stream->unlatch_read_data (ptr, actual_read_btyes);
+            m_stream->unlatch_read_data (m_read_latch_page_idx);
 
             next_pos = start_pos + actual_read_btyes;
-            ptr = m_stream->get_data_from_pos (next_pos, aligned_amount - actual_read_btyes, next_actual_read_btyes);
+            ptr = m_stream->get_data_from_pos (next_pos, aligned_amount - actual_read_btyes,
+                                               next_actual_read_btyes,
+                                               m_read_latch_page_idx);
             if (ptr == NULL || next_actual_read_btyes != aligned_amount - actual_read_btyes)
               {
                 return NULL;
               }
             memcpy (m_local_buffer + actual_read_btyes, ptr, next_actual_read_btyes);
-            m_stream->unlatch_read_data (ptr, next_actual_read_btyes);
+            m_stream->unlatch_read_data (m_read_latch_page_idx);
 
             ptr = m_local_buffer;
             m_use_unpack_stream_buffer = false;
