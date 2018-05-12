@@ -80,7 +80,6 @@ namespace mem
           if (size () >= m_capacity - 1)
             {
               /* is full */
-              assert (false);
               return NULL;
             }
           pos = m_tail;
@@ -93,6 +92,27 @@ namespace mem
           assert (m_head != m_tail);
   
           m_buffer[pos].value = elem;
+
+          return &(m_buffer[pos].value);
+        };
+
+      T* produce (void)
+        {
+          int pos;
+
+          if (size () >= m_capacity - 1)
+            {
+              /* is full */
+              return NULL;
+            }
+          pos = m_tail;
+
+          assert (m_buffer[pos].flags == CCQ_FREE);
+          m_buffer[pos].flags = CCQ_USED;
+
+          m_tail = (m_tail + 1) % m_capacity;
+
+          assert (m_head != m_tail);
 
           return &(m_buffer[pos].value);
         };
@@ -112,6 +132,22 @@ namespace mem
           int pos = slot - m_buffer;
 
           return consume (pos, new_head);
+        };
+
+      int mark_unused (T *elem)
+        {
+          CCQ_SLOT *slot = reinterpret_cast <CCQ_SLOT *> (elem);
+          int pos = slot - m_buffer;
+
+          if (m_buffer[pos].flags != CCQ_USED)
+            {
+              assert (false);
+              return -1;
+            }
+
+          m_buffer[pos].flags = CCQ_FREE;
+
+          return 0;
         };
 
     protected:
@@ -173,12 +209,11 @@ namespace mem
             while (m_buffer[last_element].flags == CCQ_FREE)
               {
                 last_element = (last_element > 0) ? (last_element - 1) : (m_capacity - 1);
-
-                /* this case should have been reached from head direction : */
-                assert (last_element != m_head);
               }
 
             m_tail = (last_element + 1) % m_capacity;
+            /* this case should have been reached from head direction : */
+            assert (m_tail != m_head);
             /* do not return colapsed count here */
           }
 
