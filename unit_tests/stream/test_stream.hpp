@@ -261,6 +261,10 @@ namespace test_stream
 
       static bool g_pause_packer;
       static bool g_pause_unpacker;
+
+      static bool g_stop_packer;
+
+      static std::bitset<1024> g_running_packers;
     };
 
   class stream_pack_task : public cubthread::task<cubthread::entry>
