@@ -153,7 +153,7 @@ namespace mem
                     }
                   /* next loop */
                }
-              else if (m_ptr_append + amount >= m_ptr_end_a)
+              else if (m_ptr_append + amount > m_ptr_end_a)
                 {
                   /* enough till end of buffer, but need to extend region A */
                   take_margin_in_region_a (amount);
@@ -162,7 +162,7 @@ namespace mem
                 }
               else  /* enough in region A */
                 {
-                  assert (m_ptr_append + amount < m_ptr_end_a);
+                  assert (m_ptr_append + amount <= m_ptr_end_a);
 
                   /* check that no readers are pending inside new region A */
                   if (check_readers (m_ptr_append, m_ptr_append + amount) == false)
