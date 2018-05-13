@@ -32,10 +32,11 @@
 
 /*
  * Collapsable circular queue : this is similar to circular queue, with some particularities:
- * - head value points to the first used element, tail points to the first available element (insert pointer)
+ * - head value points to the first used element, tail points to the insert pointer
  * - queue is empty when tail == head
  * - elements of the queue may be flagged as free (consumed) from the middle of queue
  * - when consuming or freeing the head (consume pointer), will collpase all free elements
+ * - consuming from middle or tail does not move tail/head pointers
  * - the capacity of queue is fixed
  * - the actual maximum size is (capacity - 1)
  */
@@ -126,18 +127,23 @@ namespace mem
           return NULL; 
         };
 
-      int consume (T *elem, T* &new_head)
+      int consume (T *elem, T* &last_used_elem)
         {
           CCQ_SLOT *slot = reinterpret_cast <CCQ_SLOT *> (elem);
           int pos = slot - m_buffer;
 
-          return consume (pos, new_head);
+          return consume (pos, last_used_elem);
         };
 
-      int mark_unused (T *elem)
+      /* deletes the last element of queue (this needs to be produced-undo without release the mutex) */
+      int undo_produce (T *elem)
         {
           CCQ_SLOT *slot = reinterpret_cast <CCQ_SLOT *> (elem);
           int pos = slot - m_buffer;
+
+          int last_element = (m_tail == 0) ? (m_capacity - 1) : (m_tail - 1);
+          
+          assert (pos = last_element);
 
           if (m_buffer[pos].flags != CCQ_USED)
             {
@@ -146,6 +152,7 @@ namespace mem
             }
 
           m_buffer[pos].flags = CCQ_FREE;
+          m_tail = last_element;
 
           return 0;
         };
@@ -167,10 +174,9 @@ namespace mem
           delete[] m_buffer;
           m_capacity = 0;
         };
-        
 
-      /* returns count of collapsed positions */
-      int consume (const int pos, T* &new_head)
+      /* returns count of collapsed positions and if last used element (or last before tail) */
+      int consume (const int pos, T* &last_used_elem)
       {
         if (m_buffer[pos].flags != CCQ_USED)
           {
@@ -183,8 +189,10 @@ namespace mem
         if (pos == m_head)
           {
             int collapsed_count = 0;
+            int prev_used_pos;
             while (m_buffer[m_head].flags == CCQ_FREE)
               {
+                prev_used_pos = m_head;
                 m_head = (m_head + 1) % m_capacity;
                 collapsed_count++;
 
@@ -194,29 +202,16 @@ namespace mem
                     break;
                   }
               }
-            if (m_head != m_tail)
-              {
-                new_head = &(m_buffer[m_head].value);
-              }
+
+            assert (m_head == m_tail || m_buffer[m_head].flags == CCQ_USED);
+
+            last_used_elem = &(m_buffer[prev_used_pos].value);
 
             return collapsed_count;
           }
-
-        int last_element = (m_tail == 0) ? (m_capacity - 1) : (m_tail - 1);
-        if (pos == last_element
-            && m_buffer[last_element].flags == CCQ_FREE)
-          {
-            while (m_buffer[last_element].flags == CCQ_FREE)
-              {
-                last_element = (last_element > 0) ? (last_element - 1) : (m_capacity - 1);
-              }
-
-            m_tail = (last_element + 1) % m_capacity;
-            /* this case should have been reached from head direction : */
-            assert (m_tail != m_head);
-            /* do not return colapsed count here */
-          }
-
+        
+        /* do not collapse tail : is allowed only to advance */
+    
         return 0;
       };
     private:
