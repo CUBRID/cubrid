@@ -217,6 +217,13 @@ namespace cubstream
     m_trigger_flush_to_disk_size = buffer_capacity / 2;
 
     m_trigger_min_to_read_size = 1024;
+
+    m_stat_reserve_queue_spins = 0;
+    m_stat_reserve_buffer_spins = 0;
+    m_stat_read_not_enough_data_cnt = 0;
+    m_stat_read_not_in_buffer_cnt = 0;
+    m_stat_read_no_readable_pos_cnt = 0;
+    m_stat_read_buffer_failed_cnt = 0;
   }
 
   packing_stream::~packing_stream ()
@@ -333,22 +340,21 @@ namespace cubstream
 
   int packing_stream::commit_append (stream_reserve_context *reserve_context)
   {
-    stream_reserve_context *new_reserved_head = NULL;
+    stream_reserve_context *last_used_context = NULL;
     int collapsed_count;
-    char *ptr_commit = reserve_context->ptr + reserve_context->reserved_amount;
+    char *ptr_commit;
     stream_position new_completed_position = reserve_context->start_pos + reserve_context->reserved_amount;
 
     m_buffer_mutex.lock ();
-    collapsed_count = m_reserved_positions.consume (reserve_context, new_reserved_head);
+    collapsed_count = m_reserved_positions.consume (reserve_context, last_used_context);
     if (collapsed_count > 0)
       {
-        if (new_reserved_head != NULL)
-          {
-            assert (new_completed_position <= new_reserved_head->start_pos);
-            ptr_commit = new_reserved_head->ptr;
+        assert (last_used_context != NULL);
+        
+        assert (new_completed_position <= last_used_context->start_pos + last_used_context->reserved_amount);
+        new_completed_position = last_used_context->start_pos + last_used_context->reserved_amount;
 
-            new_completed_position = new_reserved_head->start_pos;
-          }
+        ptr_commit = last_used_context->ptr + last_used_context->reserved_amount;
         m_bip_buffer.commit (ptr_commit);
 
         assert (new_completed_position > m_last_committed_pos);
@@ -399,9 +405,10 @@ namespace cubstream
         reserved_context = m_reserved_positions.produce ();
         if (reserved_context == NULL)
           {
-            /* this may happen for very slow commiter */
+            /* this may happen due to a very slow commiter, which may cause to fill up the queue */
             m_buffer_mutex.unlock ();
             std::this_thread::sleep_for (std::chrono::microseconds (100));
+            m_stat_reserve_queue_spins++;
             m_buffer_mutex.lock ();
             continue;
           }
@@ -411,11 +418,12 @@ namespace cubstream
           {
             break;
           }
-        err = m_reserved_positions.mark_unused (reserved_context);
+        err = m_reserved_positions.undo_produce (reserved_context);
         assert (err == NO_ERROR);
 
         m_buffer_mutex.unlock ();
         std::this_thread::sleep_for (std::chrono::microseconds (100));
+        m_stat_reserve_buffer_spins++;
         m_buffer_mutex.lock ();
       }
 
@@ -462,6 +470,7 @@ namespace cubstream
 
     if (to_read_pos + amount > m_last_committed_pos)
       {
+        m_stat_read_not_enough_data_cnt++;
         if (m_fetch_data_handler != NULL)
           {
             err = fetch_data_from_provider (to_read_pos, amount);
@@ -493,6 +502,7 @@ namespace cubstream
     if (req_start_pos + amount > m_last_committed_pos
         && m_fetch_data_handler != NULL)
       {
+        m_stat_read_not_enough_data_cnt++;
 	/* not yet produced */
         /* try asking for more data : */
         size_t actual_read_bytes;
@@ -511,8 +521,9 @@ namespace cubstream
 	return NULL;
       }
 
-    if (req_start_pos + amount < m_oldest_readable_position)
+    if (req_start_pos < m_oldest_readable_position)
       {
+        m_stat_read_not_in_buffer_cnt++;
         /* not in buffer anymore request it from stream_io */
         /* TODO[arnia] */
         // m_io->read (req_start_pos, buf, amount);
@@ -530,6 +541,7 @@ namespace cubstream
     if (amount_trail_a == 0 && amount_trail_b == 0)
       {
         /* no readable regions */
+        m_stat_read_no_readable_pos_cnt++;
         return NULL;
       }
 
@@ -539,6 +551,7 @@ namespace cubstream
 
     if (req_start_pos < m_oldest_readable_position)
       {
+        m_stat_read_not_in_buffer_cnt++;
         /* not in buffer anymore request it from stream_io */
         /* TODO: */
         // m_io->read (req_start_pos, buf, amount);
@@ -559,6 +572,7 @@ namespace cubstream
     err = m_bip_buffer.start_read (ptr, actual_read_bytes, read_latch_page_idx);
     if (err != NO_ERROR)
       {
+        m_stat_read_buffer_failed_cnt++;
         return NULL;
       }
 

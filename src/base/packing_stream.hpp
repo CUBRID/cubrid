@@ -157,6 +157,14 @@ namespace cubstream
 
       stream_io *m_io;
 
+      /* stats counters */
+      std::uint64_t m_stat_reserve_queue_spins;
+      std::uint64_t m_stat_reserve_buffer_spins;
+      std::uint64_t m_stat_read_not_enough_data_cnt;
+      std::uint64_t m_stat_read_not_in_buffer_cnt;
+      std::uint64_t m_stat_read_no_readable_pos_cnt;
+      std::uint64_t m_stat_read_buffer_failed_cnt;
+
     protected:
       int fetch_data_from_provider (const stream_position &pos, const size_t amount);
 
