@@ -64,6 +64,24 @@ namespace test_stream
       int read_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count, size_t *processed_bytes);
   };
 
+  class stream_handler_read_copy : public cubstream::partial_read_handler
+  {
+    private:
+      char m_buffer[2048];
+    public:
+      stream_handler_read_copy ()
+      {
+	std::memset (m_buffer, 0, 2048);
+      };
+
+      int read_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count, size_t *processed_bytes)
+        {
+          *processed_bytes = MIN (2048, byte_count);
+          memcpy (m_buffer, ptr, *processed_bytes);
+          return NO_ERROR;
+        };
+  };
+
   /* testing of stream with packable objects */
   /* TODO: this code is copied from test_packing unit tests  */
   class po1 : public cubpacking::packable_object
@@ -244,12 +262,14 @@ namespace test_stream
     {
     public:
   
+      static cubstream::stream_position g_read_positions[200];
 
       static int g_cnt_packing_entries_per_thread;
       static int g_cnt_unpacking_entries_per_thread;
 
       static int g_pack_threads;
       static int g_unpack_threads;
+      static int g_read_byte_threads;
 
       static test_stream_entry **g_entries;
       static test_stream_entry **g_unpacked_entries;
@@ -279,6 +299,14 @@ namespace test_stream
   {
   public:
       void execute (context_type &context);
+  }; 
+
+  class stream_read_task : public cubthread::task<cubthread::entry>
+  {
+  public:
+      void execute (context_type &context);
+
+      int m_reader_id;
   }; 
 
 }
