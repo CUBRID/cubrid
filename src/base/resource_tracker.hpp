@@ -77,13 +77,13 @@ namespace cubbase
 
       resource_tracker (const char *name, bool enabled, bool stackable, std::size_t max_size,
 			const char *res_name = "res_ptr");
+      ~resource_tracker (void);
 
       void increment (const char *filename, const int line, const res_type &res);
       void decrement (const res_type &res);
       void check_leaks (void);
 
     private:
-      void track (const char *filename, const int line, res_type &res, int amount);
       int get_total_amount ();
       void dump (void);
 
@@ -122,6 +122,12 @@ namespace cubbase
   }
 
   template <typename Res>
+  resource_tracker<Res>::~resource_tracker (void)
+  {
+    assert (m_crt_size == 0);
+  }
+
+  template <typename Res>
   void
   resource_tracker<Res>::increment (const char *filename, const int line, const res_type &res)
   {
@@ -141,9 +147,10 @@ namespace cubbase
 	// did insert
 	if (++m_crt_size == m_max_size)
 	  {
-	    // max size reached. abort the check
+	    // max size reached. abort the tracker
 	    m_aborted = true;
 	    m_tracked.clear ();
+	    m_crt_size = 0;
 	  }
       }
     else
@@ -205,17 +212,37 @@ namespace cubbase
   {
     std::ostream &out = std::cerr;
 
-    out << "   +--- " << m_name << std::endl ();
-    out << "         +--- amount = " << get_total_amount () << " (threshold = %d)" << m_max_size << std::endl ();
+    out << "   +--- " << m_name << std::endl;
+    out << "         +--- amount = " << get_total_amount () << " (threshold = %d)" << m_max_size << std::endl;
 
-    for (it : m_tracked)
+    for (auto it : m_tracked)
       {
 	out << "            +--- tracked res = " << m_res_name << "=" << it.first;
 	out << " " << it.second;
-	out << std::endl ();
+	out << std::endl;
       }
 
-    os << "            +--- tracked res count = " << m_tracked.count () << std::endl ();
+    out << "            +--- tracked res count = " << m_tracked.size () << std::endl;
+  }
+
+  template <typename Res>
+  void
+  resource_tracker<Res>::check_leaks (void)
+  {
+    if (!m_tracked.empty ())
+      {
+	dump ();
+	assert (false);
+
+	// remove all entries
+	m_tracked.clear ();
+      }
+    else
+      {
+	assert (m_crt_size == 0);
+      }
+    m_crt_size = 0;
+    m_aborted = false;
   }
 
 } // namespace cubbase

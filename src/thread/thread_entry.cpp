@@ -293,4 +293,10 @@ namespace cubthread
     return m_id == std::this_thread::get_id ();
   }
 
+  void
+  entry::check_resource_trackers (void)
+  {
+    m_alloc_tracker.check_leaks ();
+  }
+
 } // namespace cubthread

@@ -240,6 +240,8 @@ namespace cubthread
 	return m_alloc_tracker;
       }
 
+      void check_resource_trackers (void);
+
     private:
       void clear_resources (void);
 
