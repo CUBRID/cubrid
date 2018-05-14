@@ -25,6 +25,7 @@
 #define _CUBRID_RESOURCE_TRACKER_HPP_
 
 #include <map>
+#include <stack>
 #include <string>
 #include <iostream>
 
@@ -81,21 +82,28 @@ namespace cubbase
 
       void increment (const char *filename, const int line, const res_type &res);
       void decrement (const res_type &res);
-      void check_leaks (void);
+      void start_track (void);
+      void end_track (void);
+      void clear_all (void);
 
     private:
-      int get_total_amount ();
+      int get_total_amount (void);
+      map_type &get_current_map (void);
+
+      void abort (void);
       void dump (void);
+      void dump_map (const map_type &map, std::ostream &out);
 
       std::string m_name;
       std::string m_res_name;
 
       bool m_enabled;
-      bool m_stackable;
+      bool m_stackable_amount;
       bool m_aborted;
       size_t m_max_size;
       size_t m_crt_size;
 
+      std::stack<map_type> m_tracked_stack;
       map_type m_tracked;
   };
 
@@ -113,7 +121,7 @@ namespace cubbase
     : m_name (name)
     , m_res_name (res_name)
     , m_enabled (enabled)
-    , m_stackable (stackable)
+    , m_stackable_amount (stackable)
     , m_aborted (false)
     , m_max_size (max_size)
     , m_crt_size (0)
@@ -136,27 +144,28 @@ namespace cubbase
 	return;
       }
 
+    map_type &map = get_current_map ();
+
     //
     // std::map::try_emplace returns a pair <it_insert_or_found, did_insert>
     // it_insert_or_found = did_insert ? iterator to inserted : iterator to existing
     // it_insert_or_found is an iterator to pair <res_type, resource_tracker_item>
     //
-    auto inserted = m_tracked.try_emplace (res, filename, line);
+    auto inserted = map.try_emplace (res, filename, line);
     if (inserted.second)
       {
 	// did insert
 	if (++m_crt_size == m_max_size)
 	  {
 	    // max size reached. abort the tracker
-	    m_aborted = true;
-	    m_tracked.clear ();
-	    m_crt_size = 0;
+	    abort ();
+	    return;
 	  }
       }
     else
       {
 	// already exists
-	assert (m_stackable);
+	assert (m_stackable_amount);
 	// increment amount
 	inserted.first->second.m_amount++;
       }
@@ -171,9 +180,11 @@ namespace cubbase
 	return;
       }
 
+    map_type &map = get_current_map ();
+
     // std::map::find returns a pair to <res_type, resource_tracker_item>
-    auto tracked = m_tracked.find (res);
-    if (tracked == m_tracked.end ())
+    auto tracked = map.find (res);
+    if (tracked == map.end ())
       {
 	// not found
 	assert (false);
@@ -185,11 +196,11 @@ namespace cubbase
 	if (tracked->second.m_amount == 0)
 	  {
 	    // remove from map
-	    m_tracked.erase (tracked);
+	    map.erase (tracked);
 	  }
 	else
 	  {
-	    assert (m_stackable);
+	    assert (m_stackable_amount);
 	  }
       }
   }
@@ -199,11 +210,39 @@ namespace cubbase
   resource_tracker<Res>::get_total_amount (void)
   {
     int total = 0;
-    for (auto it : m_tracked)
+    for (auto stack_it : m_tracked_stack)
       {
-	total += it.second.m_amount;
+	for (auto map_it : *stack_it)
+	  {
+	    total += map_it.second.m_amount;
+	  }
       }
     return total;
+  }
+
+  template <typename Res>
+  typename resource_tracker<Res>::map_type &
+  resource_tracker<Res>::get_current_map (void)
+  {
+    return m_tracked_stack.top ();
+  }
+
+  template <typename Res>
+  void
+  resource_tracker<Res>::clear_all (void)
+  {
+    m_tracked_stack.clear ();
+    m_crt_size = 0;
+    m_aborted = false;
+  }
+
+  template <typename Res>
+  void
+  resource_tracker<Res>::abort (void)
+  {
+    m_tracked_stack.clear ();
+    m_crt_size = 0;
+    m_aborted = true;
   }
 
   template <typename Res>
@@ -215,34 +254,73 @@ namespace cubbase
     out << "   +--- " << m_name << std::endl;
     out << "         +--- amount = " << get_total_amount () << " (threshold = %d)" << m_max_size << std::endl;
 
-    for (auto it : m_tracked)
+    std::size_t level = 0;
+    for (auto stack_it : m_tracked_stack)
       {
-	out << "            +--- tracked res = " << m_res_name << "=" << it.first;
-	out << " " << it.second;
-	out << std::endl;
+	out << "         +--- stack_level = " << level;
+	dump_map (*stack_it, out);
+	level++;
       }
 
+
+  }
+
+  template <typename Res>
+  void
+  resource_tracker<Res>::dump_map (const map_type &map, std::ostream &out)
+  {
+    for (auto map_it : stack_it)
+      {
+	out << "            +--- tracked res = " << m_res_name << "=" << map_it.first;
+	out << " " << map_it.second;
+	out << std::endl;
+      }
     out << "            +--- tracked res count = " << m_tracked.size () << std::endl;
   }
 
   template <typename Res>
   void
-  resource_tracker<Res>::check_leaks (void)
+  resource_tracker<Res>::push_track (void)
   {
-    if (!m_tracked.empty ())
+    if (!m_enabled)
       {
-	dump ();
-	assert (false);
+	return;
+      }
 
-	// remove all entries
-	m_tracked.clear ();
-      }
-    else
+    m_tracked_stack.emplace ();
+  }
+
+  template <typename Res>
+  void
+  resource_tracker<Res>::pop_track (void)
+  {
+    if (!m_enabled)
       {
-	assert (m_crt_size == 0);
+	return;
       }
-    m_crt_size = 0;
-    m_aborted = false;
+
+    if (m_tracked_stack.empty ())
+      {
+	assert (false);
+	return;
+      }
+
+    if (!m_aborted)
+      {
+	map_type &map = m_tracked_stack.top ();
+	if (!map.empty ())
+	  {
+	    dump ();
+	    assert (false);
+	  }
+      }
+    m_tracked_stack.pop ();
+
+    if (m_tracked_stack.empty ())
+      {
+	// we couldn't reset until the stack became empty; now we can
+	m_aborted = false;
+      }
   }
 
 } // namespace cubbase

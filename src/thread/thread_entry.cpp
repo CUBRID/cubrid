@@ -41,12 +41,13 @@
 
 namespace cubthread
 {
+  // enable trackers in SERVER_MODE && debug
   static const bool ENABLE_TRACKERS =
-#if defined (NDEBUG)
-	  false;
-#else // DEBUG
+#if !defined (NDEBUG) && defined (SERVER_MODE)
 	  true;
-#endif // DEBUG
+#else // RELEASE or !SERVER_MODE
+	  false;
+#endif // RELEASE or !SERVER_MODE
 
   entry::entry ()
     : index (-1)
@@ -246,6 +247,8 @@ namespace cubthread
     fi_thread_final (this);
 #endif // DEBUG
 
+    end_all_trackers ();
+
     m_cleared = true;
   }
 
@@ -294,9 +297,14 @@ namespace cubthread
   }
 
   void
-  entry::check_resource_trackers (void)
+  entry::end_all_trackers (void)
   {
-    m_alloc_tracker.check_leaks ();
+    if (!ENABLE_TRACKERS)
+      {
+	// all trackers are activated by this flag
+	return;
+      }
+    m_alloc_tracker.clear_all ();
   }
 
 } // namespace cubthread
