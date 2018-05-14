@@ -2530,13 +2530,37 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		  LSA_SET_NULL (&lsa);
 		  break;
 		}
-	      else if (LSA_EQ (&log_lsa, &first_corrupted_rec_lsa)
-		       || LSA_GT (&log_rec->forw_lsa, &first_corrupted_rec_lsa))
+	      else
 		{
-		  /* When log_lsa = first_corrupted_rec_lsa, forw_lsa may be NULL. */
-		  LOG_RESET_APPEND_LSA (&log_lsa);
-		  LSA_SET_NULL (&lsa);
-		  break;
+		  LOG_LSA temp_log_lsa;
+		  bool is_log_lsa_corrupted = false;
+
+		  if (LSA_EQ (&log_lsa, &first_corrupted_rec_lsa)
+		      || LSA_GT (&log_rec->forw_lsa, &first_corrupted_rec_lsa))
+		    {
+		      /* When log_lsa = first_corrupted_rec_lsa, forw_lsa may be NULL. */
+		      is_log_lsa_corrupted = true;
+		    }
+		  else
+		    {
+		      /* Check correctness of information from log header. */
+		      LSA_COPY (&temp_log_lsa, &log_lsa);
+		      temp_log_lsa.offset += sizeof (LOG_RECORD_HEADER);
+		      temp_log_lsa.offset = DB_ALIGN (temp_log_lsa.offset, DOUBLE_ALIGNMENT);
+
+		      if ((temp_log_lsa.offset > (int) LOGAREA_SIZE)
+			  || (LSA_GT (&temp_log_lsa, &first_corrupted_rec_lsa)))
+			{
+			  is_log_lsa_corrupted = true;
+			}
+		    }
+
+		  if (is_log_lsa_corrupted)
+		    {
+		      LOG_RESET_APPEND_LSA (&log_lsa);
+		      LSA_SET_NULL (&lsa);
+		      break;
+		    }
 		}
 	    }
 
