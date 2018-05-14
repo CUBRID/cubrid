@@ -204,18 +204,13 @@ set(CUB_ADMIN_SOURCES
   ${BASE_DIR}/cubrid_getopt_long.c
   ${BASE_DIR}/porting.c
   )
-  
 SET_SOURCE_FILES_PROPERTIES(
   ${CUB_ADMIN_SOURCES}
   PROPERTIES LANGUAGE CXX
-  )  
-
+  )
 if(WIN32)
   list(APPEND CUB_ADMIN_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
-
-
-
 add_executable(cub_admin ${CUB_ADMIN_SOURCES})
 target_include_directories(cub_admin PRIVATE ${EP_INCLUDES})
 target_link_libraries(cub_admin LINK_PRIVATE ${CMAKE_DL_LIBS})
@@ -224,7 +219,8 @@ if(UNIX)
 else(UNIX)
   target_link_libraries(cub_admin LINK_PRIVATE ws2_32)
 endif(UNIX)
-target_link_libraries(cub_admin LINK_PRIVATE cubridsa)
+add_dependencies(cub_admin cubridsa)
+
 
 set(CUBRID_ESQL_SOURCES
   ${BISON_esql_grammar_OUTPUTS}
