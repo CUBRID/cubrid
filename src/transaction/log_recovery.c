@@ -2557,6 +2557,9 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 
 		  if (is_log_lsa_corrupted)
 		    {
+		      _er_log_debug (ARG_FILE_LINE,
+				     "logpb_recovery_analysis: Partial page flush - first corrupted log record LSA = (%lld, %d)\n",
+				     (long long int) log_lsa.pageid, log_lsa.offset);
 		      LOG_RESET_APPEND_LSA (&log_lsa);
 		      LSA_SET_NULL (&lsa);
 		      break;
