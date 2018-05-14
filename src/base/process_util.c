@@ -26,6 +26,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 
 #if defined(WINDOWS)
 #include <string>
@@ -53,6 +54,7 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
   HANDLE hStdIn = INVALID_HANDLE_VALUE;
   HANDLE hStdOut = INVALID_HANDLE_VALUE;
   HANDLE hStdErr = INVALID_HANDLE_VALUE;
+  BOOL rc;
 
   if (exit_status != NULL)
     {
@@ -79,38 +81,47 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
   if (stdin_file)
     {
       hStdIn = CreateFile (stdin_file, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-      if (hStdIn != INVALID_HANDLE_VALUE)
+
+      if (hStdIn == INVALID_HANDLE_VALUE)
 	{
-	  SetHandleInformation (hStdIn, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-	  start_info.dwFlags = STARTF_USESTDHANDLES;
-	  start_info.hStdInput = hStdIn;
-	  inherit_flag = TRUE;
+	  assert (false);
+	  return 1;
 	}
+
+      SetHandleInformation (hStdIn, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+      start_info.dwFlags = STARTF_USESTDHANDLES;
+      start_info.hStdInput = hStdIn;
+      inherit_flag = TRUE;
     }
   if (stdout_file)
     {
       hStdOut =
 	CreateFile (stdout_file, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-      if (hStdOut != INVALID_HANDLE_VALUE)
+      if (hStdOut == INVALID_HANDLE_VALUE)
 	{
-	  SetHandleInformation (hStdOut, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-	  start_info.dwFlags = STARTF_USESTDHANDLES;
-	  start_info.hStdOutput = hStdOut;
-	  inherit_flag = TRUE;
+	  assert (false);
+	  return 1;
 	}
+      SetHandleInformation (hStdOut, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+      start_info.dwFlags = STARTF_USESTDHANDLES;
+      start_info.hStdOutput = hStdOut;
+      inherit_flag = TRUE;
     }
   if (stderr_file)
     {
       hStdErr =
 	CreateFile (stderr_file, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
 		    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-      if (hStdErr != INVALID_HANDLE_VALUE)
+      if (hStdErr == INVALID_HANDLE_VALUE)
 	{
-	  SetHandleInformation (hStdErr, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-	  start_info.dwFlags = STARTF_USESTDHANDLES;
-	  start_info.hStdError = hStdErr;
-	  inherit_flag = TRUE;
+	  assert (false);
+	  return 1;
 	}
+
+      SetHandleInformation (hStdErr, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+      start_info.dwFlags = STARTF_USESTDHANDLES;
+      start_info.hStdError = hStdErr;
+      inherit_flag = TRUE;
     }
 
   res =
@@ -118,22 +129,37 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
 		   &proc_info);
   free (cmd_arg_ptr);
 
+  if (res == FALSE)
+    {
+      return 1;
+    }
+
   if (hStdIn != INVALID_HANDLE_VALUE)
     {
-      CloseHandle (hStdIn);
+      rc = CloseHandle (hStdIn);
+      if (rc == FALSE)
+	{
+	  assert (false);
+	  return 1;
+	}
     }
   if (hStdOut != INVALID_HANDLE_VALUE)
     {
-      CloseHandle (hStdOut);
+      rc = CloseHandle (hStdOut);
+      if (rc == FALSE)
+	{
+	  assert (false);
+	  return 1;
+	}
     }
   if (hStdErr != INVALID_HANDLE_VALUE)
     {
-      CloseHandle (hStdErr);
-    }
-
-  if (res == FALSE)
-    {
-      return -1;
+      rc = CloseHandle (hStdErr);
+      if (rc == FALSE)
+	{
+	  assert (false);
+	  return 1;
+	}
     }
 
   new_pid = proc_info.dwProcessId;
@@ -141,20 +167,51 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
   if (wait_flag)
     {
       DWORD status = 0;
-      WaitForSingleObject (proc_info.hProcess, INFINITE);
-      GetExitCodeProcess (proc_info.hProcess, &status);
+
+      status = WaitForSingleObject (proc_info.hProcess, INFINITE);
+      if (status == WAIT_FAILED)
+	{
+	  assert (false);
+	  return 1;
+	}
+      rc = GetExitCodeProcess (proc_info.hProcess, &status);
+      if (rc == FALSE)
+	{
+	  assert (false);
+	  return 1;
+	}
       if (exit_status != NULL)
 	{
 	  *exit_status = status;
 	}
-      CloseHandle (proc_info.hProcess);
-      CloseHandle (proc_info.hThread);
+      rc = CloseHandle (proc_info.hProcess);
+      if (rc == FALSE)
+	{
+	  assert (false);
+	  return 1;
+	}
+      rc = CloseHandle (proc_info.hThread);
+      if (rc == FALSE)
+	{
+	  assert (false);
+	  return 1;
+	}
       return 0;
     }
   else
     {
-      CloseHandle (proc_info.hProcess);
-      CloseHandle (proc_info.hThread);
+      rc = CloseHandle (proc_info.hProcess);
+      if (rc == FALSE)
+	{
+	  assert (false);
+	  return 1;
+	}
+      rc = CloseHandle (proc_info.hThread);
+      if (rc == FALSE)
+	{
+	  assert (false);
+	  return 1;
+	}
       return new_pid;
     }
 }
@@ -168,13 +225,28 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
 
   if (wait_flag)
     {
-      signal (SIGCHLD, SIG_DFL);
+      if (signal (SIGCHLD, SIG_DFL) == SIG_ERR)
+	{
+	  assert (false);
+	  return 1;
+	}
     }
   else
     {
-      signal (SIGCHLD, SIG_IGN);
+      if (signal (SIGCHLD, SIG_IGN) == SIG_ERR)
+	{
+	  assert (false);
+	  return 1;
+	}
     }
+
   pid = fork ();
+
+  if (pid < 0)
+    {
+      return 1;
+    }
+
   if (pid == 0)
     {
       FILE *fp;
@@ -182,46 +254,95 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
       if (stdin_file != NULL)
 	{
 	  fp = fopen (stdin_file, "r");
-	  if (fp != NULL)
+	  if (fp == NULL)
 	    {
-	      dup2 (fileno (fp), 0);
-	      fclose (fp);
+	      assert (false);
+	      return 1;
+	    }
+
+	  rc = dup2 (fileno (fp), 0);
+	  if (rc == -1)
+	    {
+	      assert (false);
+	      return 1;
+	    }
+	  rc = fclose (fp);
+	  if (rc != 0)
+	    {
+	      assert (false);
+	      return 1;
 	    }
 	}
       if (stdout_file != NULL)
 	{
-	  unlink (stdout_file);
-	  fp = fopen (stdout_file, "w");
-	  if (fp != NULL)
+	  rc = unlink (stdout_file);
+	  if (rc == -1)
 	    {
-	      dup2 (fileno (fp), 1);
-	      fclose (fp);
+	      assert (false);
+	      return 1;
+	    }
+	  fp = fopen (stdout_file, "w");
+	  if (fp == NULL)
+	    {
+	      assert (false);
+	      return 1;
+	    }
+	  rc = dup2 (fileno (fp), 1);
+	  if (rc == -1)
+	    {
+	      assert (false);
+	      return 1;
+	    }
+	  rc = fclose (fp);
+	  if (rc != 0)
+	    {
+	      assert (false);
+	      return 1;
 	    }
 	}
       if (stderr_file != NULL)
 	{
-	  unlink (stderr_file);
-	  fp = fopen (stderr_file, "w");
-	  if (fp != NULL)
+	  rc = unlink (stderr_file);
+	  if (rc == -1)
 	    {
-	      dup2 (fileno (fp), 2);
-	      fclose (fp);
+	      assert (false);
+	      return 1;
+	    }
+	  fp = fopen (stderr_file, "w");
+	  if (fp == NULL)
+	    {
+	      assert (false);
+	      return 1;
+	    }
+	  rc = dup2 (fileno (fp), 2);
+	  if (rc == -1)
+	    {
+	      assert (false);
+	      return 1;
+	    }
+	  rc = fclose (fp);
+	  if (rc != 0)
+	    {
+	      assert (false);
+	      return 1;
 	    }
 	}
 
       rc = execv ((const char *) argv[0], (char *const *) argv);
-      exit (1);
-    }
-
-  if (pid < 0)
-    {
-      return -1;
+      assert (false);
+      return rc;
     }
 
   if (wait_flag)
     {
       int status = 0;
-      waitpid (pid, &status, 0);
+
+      rc = waitpid (pid, &status, 0);
+      if (rc == -1)
+	{
+	  assert (false);
+	  return 1;
+	}
       if (exit_status != NULL)
 	{
 	  *exit_status = WEXITSTATUS (status);
