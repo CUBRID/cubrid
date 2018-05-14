@@ -219,7 +219,7 @@ if(UNIX)
 else(UNIX)
   target_link_libraries(cub_admin LINK_PRIVATE ws2_32)
 endif(UNIX)
-add_dependencies(cub_admin cubridsa)
+add_dependencies(cub_admin cubridsa cubridcs)
 
 
 set(CUBRID_ESQL_SOURCES
