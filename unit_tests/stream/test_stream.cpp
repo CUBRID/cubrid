@@ -975,6 +975,8 @@ namespace test_stream
         {
           if (pos > m_prev_fetch_pos)
             {
+              m_prev_fetch_pos = pos;
+
               if (stream_context_manager::g_stream->stream_fill_factor () < 1.0f)
                 {
                   std::cout << "      Stream fetch notifier : need resume producing; waiting at position:  " << pos << " bytes: " << byte_count << std::endl;
@@ -989,8 +991,6 @@ namespace test_stream
                   pos = MIN (pos, stream_context_manager::g_read_positions[j]);
                 }
               stream_context_manager::g_stream->set_last_dropable_pos (pos);
-  
-              m_prev_fetch_pos = pos;
             }
 
           return NO_ERROR;
