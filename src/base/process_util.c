@@ -38,8 +38,8 @@
 #endif
 
 int
-create_child_process (const char *const argv[], int wait_flag, const char *stdin_file, char *stdout_file, char *stderr_file,
-                      int *exit_status)
+create_child_process (const char *const argv[], int wait_flag, const char *stdin_file, char *stdout_file,
+		      char *stderr_file, int *exit_status)
 {
 #if defined(WINDOWS)
   int new_pid;
@@ -114,8 +114,9 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
     }
 
   res =
-    CreateProcess (argv[0], cmd_arg_ptr, NULL, NULL, inherit_flag, CREATE_NO_WINDOW, NULL, NULL, &start_info, &proc_info);
-  free(cmd_arg_ptr);
+    CreateProcess (argv[0], cmd_arg_ptr, NULL, NULL, inherit_flag, CREATE_NO_WINDOW, NULL, NULL, &start_info,
+		   &proc_info);
+  free (cmd_arg_ptr);
 
   if (hStdIn != INVALID_HANDLE_VALUE)
     {
@@ -143,7 +144,9 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
       WaitForSingleObject (proc_info.hProcess, INFINITE);
       GetExitCodeProcess (proc_info.hProcess, &status);
       if (exit_status != NULL)
-	*exit_status = status;
+	{
+	  *exit_status = status;
+	}
       CloseHandle (proc_info.hProcess);
       CloseHandle (proc_info.hThread);
       return 0;
@@ -159,12 +162,18 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
   int pid, rc;
 
   if (exit_status != NULL)
-    *exit_status = 0;
+    {
+      *exit_status = 0;
+    }
 
   if (wait_flag)
-    signal (SIGCHLD, SIG_DFL);
+    {
+      signal (SIGCHLD, SIG_DFL);
+    }
   else
-    signal (SIGCHLD, SIG_IGN);
+    {
+      signal (SIGCHLD, SIG_IGN);
+    }
   pid = fork ();
   if (pid == 0)
     {
@@ -205,14 +214,18 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
     }
 
   if (pid < 0)
-    return -1;
+    {
+      return -1;
+    }
 
   if (wait_flag)
     {
       int status = 0;
       waitpid (pid, &status, 0);
       if (exit_status != NULL)
-	*exit_status = WEXITSTATUS(status);
+	{
+	  *exit_status = WEXITSTATUS (status);
+	}
       return 0;
     }
   else

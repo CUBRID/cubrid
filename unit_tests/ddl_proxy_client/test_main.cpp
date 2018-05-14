@@ -13,7 +13,7 @@
 #include <unistd.h>
 #endif
 
-int main(int argc, char **argv)
+int main (int argc, char **argv)
 {
   int exit_status, rc;
   char path[257];
@@ -21,13 +21,14 @@ int main(int argc, char **argv)
   char *cubrid_databases_env_var;
   std::string command = "";
   const char *ddl_argv[6] = {path,
-                             "-udba",
-                             "test_ddl_db",
-                             "-c",
-                             "create table t1 (a int)",
-                             NULL};
+			     "-udba",
+			     "test_ddl_db",
+			     "-c",
+			     "create table t1 (a int)",
+			     NULL
+			    };
 
-  cubrid_env_var = getenv("CUBRID");
+  cubrid_env_var = getenv ("CUBRID");
   assert (cubrid_env_var != NULL);
 
   cubrid_databases_env_var = getenv ("CUBRID_DATABASES");
@@ -47,12 +48,12 @@ int main(int argc, char **argv)
   rc = system ("cubrid server start test_ddl_db");
   assert (rc != -1);
 
-  (void) create_child_process(ddl_argv,
-                              1,
-                              NULL,
-                              NULL,
-                              NULL,
-                              &exit_status);
+  (void) create_child_process (ddl_argv,
+			       1,
+			       NULL,
+			       NULL,
+			       NULL,
+			       &exit_status);
   if (exit_status != 0)
     {
       rc = system ("cubrid server stop test_ddl_db");
@@ -62,12 +63,12 @@ int main(int argc, char **argv)
     }
 
   ddl_argv[4] = "insert into t1 values (1); insert into t1 values (2)";
-  (void) create_child_process(ddl_argv,
-                              1,
-                              NULL,
-                              NULL,
-                              NULL,
-                              &exit_status);
+  (void) create_child_process (ddl_argv,
+			       1,
+			       NULL,
+			       NULL,
+			       NULL,
+			       &exit_status);
   if (exit_status != 0)
     {
       rc = system ("cubrid server stop test_ddl_db");

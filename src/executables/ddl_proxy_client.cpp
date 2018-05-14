@@ -46,7 +46,7 @@ typedef struct
 static void
 utility_print (int message_num, ...)
 {
-  typedef const char *(*GET_MESSAGE) (int message_index);
+  typedef const char * (*GET_MESSAGE) (int message_index);
 
   DSO_HANDLE util_sa_library;
   DSO_HANDLE symbol;
@@ -76,7 +76,7 @@ utility_print (int message_num, ...)
   }
 }
 
-static int start_ddl_proxy_client(const char *program_name, DDL_CLIENT_ARGUMENT *args)
+static int start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT *args)
 {
   DB_SESSION *session = NULL;
   int rc = NO_ERROR;
@@ -101,48 +101,48 @@ static int start_ddl_proxy_client(const char *program_name, DDL_CLIENT_ARGUMENT 
 	  goto error;
 	}
 
-        if (db_get_errors (session) || er_errid () != NO_ERROR)
-          {
-            ASSERT_ERROR_AND_SET (rc);
-            goto error;
-          }
+      if (db_get_errors (session) || er_errid () != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (rc);
+	  goto error;
+	}
 
-        total_stmts = db_statement_count (session);
-        for (i = 0; i < total_stmts; i++)
-          {
-            stmt_id = db_compile_statement (session);
-            if (stmt_id < 0)
-              {
-                ASSERT_ERROR_AND_SET (rc);
-                db_abort_transaction ();
-                goto error;
-              }
+      total_stmts = db_statement_count (session);
+      for (i = 0; i < total_stmts; i++)
+	{
+	  stmt_id = db_compile_statement (session);
+	  if (stmt_id < 0)
+	    {
+	      ASSERT_ERROR_AND_SET (rc);
+	      db_abort_transaction ();
+	      goto error;
+	    }
 
-            if (stmt_id == 0)
-              {
-                /* this means that we processed all statements */
-                break;
-              }
-            num_of_rows = db_execute_statement (session, stmt_id, &result);
-            if (num_of_rows < 0)
-              {
-                rc = er_errid ();
-                db_abort_transaction ();
-                goto error;
-              }
+	  if (stmt_id == 0)
+	    {
+	      /* this means that we processed all statements */
+	      break;
+	    }
+	  num_of_rows = db_execute_statement (session, stmt_id, &result);
+	  if (num_of_rows < 0)
+	    {
+	      rc = er_errid ();
+	      db_abort_transaction ();
+	      goto error;
+	    }
 
-            if (result != NULL)
-              {
-                db_query_end (result);
-                result = NULL;
-              }
-            else
-              {
-                db_free_query (session);
-              }
+	  if (result != NULL)
+	    {
+	      db_query_end (result);
+	      result = NULL;
+	    }
+	  else
+	    {
+	      db_free_query (session);
+	    }
 
-            db_drop_statement (session, stmt_id);
-          }
+	  db_drop_statement (session, stmt_id);
+	}
     }
 
 error:
@@ -163,7 +163,8 @@ main (int argc, char *argv[])
   int error = 0;
   DDL_CLIENT_ARGUMENT arguments;
 
-  GETOPT_LONG possible_arguments[] = {
+  GETOPT_LONG possible_arguments[] =
+  {
     {DDL_PROXY_USER_L, 1, 0, DDL_PROXY_USER_S},
     {DDL_PROXY_PASSWORD_L, 1, 0, DDL_PROXY_PASSWORD_S},
     {DDL_PROXY_OUTPUT_FILE_L, 1, 0, DDL_PROXY_OUTPUT_FILE_S},
@@ -226,7 +227,7 @@ main (int argc, char *argv[])
 	  goto exit_on_end;
 
 	default:
-	  assert(false);
+	  assert (false);
 	}
     }
 
@@ -237,12 +238,12 @@ main (int argc, char *argv[])
   else if (argc > optind)
     {
       utility_print (MSGCAT_UTIL_GENERIC_ARGS_OVER, argv[optind + 1]);
-      assert(false);
+      assert (false);
     }
   else
     {
       utility_print (MSGCAT_UTIL_GENERIC_MISS_DBNAME);
-      assert(false);
+      assert (false);
     }
 
   error = start_ddl_proxy_client (argv[0], &arguments);
