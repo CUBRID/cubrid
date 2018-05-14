@@ -2707,6 +2707,10 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
 	  VPID_SET_NULL (&(block->slots[p_dwb_ordered_slots[i].position_in_block].vpid));
 	  fileio_initialize_res (thread_p, &(p_dwb_ordered_slots[i].io_page->prv));
 	}
+
+      /* Check for WAL protocol. */
+      assert ((p_dwb_ordered_slots[i].io_page->prv.pageid == NULL_PAGEID)
+	      || (!logpb_need_wal (&p_dwb_ordered_slots[i].io_page->prv.lsa)));
     }
 
   PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_DWB_FLUSH_BLOCK_SORT_TIME_COUNTERS);
