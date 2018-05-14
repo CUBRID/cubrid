@@ -930,7 +930,7 @@ namespace test_stream
           if (pos >= m_prev_throttle_pos)
             {
               m_prev_throttle_pos = pos;
-              std::cout << "      Stream producer throthled position:  " << pos << " bytes: " << byte_count << std::endl;
+              std::cout << "      Stream producer throttled position:  " << pos << " bytes: " << byte_count << std::endl;
               stream_context_manager::g_pause_packer = true;
             }
 
@@ -950,7 +950,7 @@ namespace test_stream
 
       int notify (const cubstream::stream_position pos, const size_t byte_count)
         {
-          if (m_ready_pos <= pos)
+          if (pos > m_ready_pos)
             {
               m_ready_pos = pos;
               std::cout << "      Stream data ready of reading position:  " << pos << " bytes: " << byte_count << std::endl;
@@ -973,7 +973,7 @@ namespace test_stream
       int fetch_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count,
 				size_t *processed_bytes)
         {
-          if (m_prev_fetch_pos <= pos)
+          if (pos > m_prev_fetch_pos)
             {
               if (stream_context_manager::g_stream->stream_fill_factor () < 1.0f)
                 {
