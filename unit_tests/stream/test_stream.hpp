@@ -276,8 +276,8 @@ namespace test_stream
 
       static cubstream::packing_stream *g_stream;
 
-      static int g_packed_entries_cnt;
-      static int g_unpacked_entries_cnt;
+      static volatile int g_packed_entries_cnt;
+      static volatile int g_unpacked_entries_cnt;
 
       static bool g_pause_packer;
       static bool g_pause_unpacker;
@@ -285,6 +285,7 @@ namespace test_stream
       static bool g_stop_packer;
 
       static std::bitset<1024> g_running_packers;
+      static std::bitset<1024> g_running_readers;
     };
 
   class stream_pack_task : public cubthread::task<cubthread::entry>
@@ -299,6 +300,7 @@ namespace test_stream
   {
   public:
       void execute (context_type &context);
+      int m_reader_id;
   }; 
 
   class stream_read_task : public cubthread::task<cubthread::entry>
