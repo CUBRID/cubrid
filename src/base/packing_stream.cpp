@@ -361,8 +361,6 @@ namespace cubstream
         m_last_committed_pos = new_completed_position;
       }
 
-    size_t ready_to_drop = m_last_committed_pos - m_last_dropable_pos;
-
     /* notify readers of the new completed position */
     if (new_completed_position > m_last_notified_committed_pos + m_trigger_min_to_read_size)
       {
@@ -377,13 +375,6 @@ namespace cubstream
 	      }
 	  }
 	m_last_notified_committed_pos = new_completed_position;
-      }
-
-    /* notify that stream content needs to be saved, otherwise it may be overwritten in bip_buffer */
-    if (m_filled_stream_handler != NULL
-	&& ready_to_drop > m_trigger_flush_to_disk_size)
-      {
-	m_filled_stream_handler->notify (m_last_dropable_pos, ready_to_drop);
       }
 
     m_buffer_mutex.unlock ();
@@ -438,7 +429,18 @@ namespace cubstream
     reserved_context->reserved_amount = amount;
     reserved_context->written_bytes = 0;
 
+    float stream_fill = stream_fill_factor ();
+    stream_position drop_pos = m_last_dropable_pos;
+    size_t produced_since_drop = m_append_position - m_last_dropable_pos;
+
     m_buffer_mutex.unlock ();
+
+    /* notify that stream content needs to be saved, otherwise it may be overwritten in bip_buffer */
+    if (m_filled_stream_handler != NULL
+	&& stream_fill >= 1.0f)
+      {
+	m_filled_stream_handler->notify (drop_pos, produced_since_drop);
+      }
 
     return ptr;
   }
@@ -560,7 +562,8 @@ namespace cubstream
 
     if (m_last_committed_pos - req_start_pos <= amount_trail_b)
       {
-        /* the area may be found in trail of region B */
+        /* the area may be found in trail of region B 
+         * this includes case when B does not exit - from start of buffer) */
         ptr = (char *) ptr_trail_b + amount_trail_b - (m_last_committed_pos - req_start_pos);
         actual_read_bytes = MIN (amount, amount_trail_b);
       }

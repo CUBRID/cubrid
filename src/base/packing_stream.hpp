@@ -193,6 +193,12 @@ namespace cubstream
           m_bip_buffer.set_reserve_margin (margin);
         };
 
+      /* fill factor : if < 1 : no need to flush or throtle the appenders ; if > 1 : need to flush and/or throttle */
+      float stream_fill_factor (void)
+        {
+          return ((float) m_append_position - (float) m_last_dropable_pos) / (float) m_trigger_flush_to_disk_size;
+        };
+
   };
 
 } /* namespace cubstream */
