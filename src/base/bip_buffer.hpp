@@ -296,23 +296,34 @@ namespace mem
         {
           if (is_region_b_used ())
             {
+              /* when region B is active there is gap (data may be found but we want to prevent readers in B),
+               * which does not guarantee contiguous data in trail B + trail A, we give up trail A completely
+               * to avoid accounting for the gap.
+               *
+               *  | B region | trail B             | A region                | trail A |
+               *  |----------|---------------------|-------------------------|---------|
+               *  | Past     |  Past               |Present           Future | Far past|
+               *  | (avoid R)|
+               *
+               */
               trail_b = m_ptr_end_b;
               amount_trail_b = m_ptr_start_a - m_ptr_end_b;
+              amount_trail_a = 0;
             }
           else
             {
               amount_trail_b = m_ptr_start_a - m_buffer;
               trail_b = m_buffer;
-            }
 
-          if (m_ptr_prev_gen_committed != NULL)
-            {
-              trail_a = m_ptr_end_a;
-              amount_trail_a = m_ptr_prev_gen_committed - m_ptr_end_a;
-            }
-          else
-            {
-              amount_trail_a = 0;
+              if (m_ptr_prev_gen_committed != NULL)
+                {
+                  trail_a = m_ptr_end_a;
+                  amount_trail_a = m_ptr_prev_gen_committed - m_ptr_end_a;
+                }
+              else
+                {
+                  amount_trail_a = 0;
+                }
             }
         };
         
