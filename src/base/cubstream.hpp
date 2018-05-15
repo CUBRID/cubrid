@@ -29,6 +29,7 @@
 #include <atomic>
 #include <cinttypes>
 #include <cstddef>
+#include <string>
 
 namespace cubstream
 {
@@ -102,6 +103,8 @@ namespace cubstream
        */
       stream_position m_last_dropable_pos;
 
+      std::string m_stream_name;
+
     public:
       stream ();
       int init (const stream_position &start_position = 0);
@@ -144,6 +147,11 @@ namespace cubstream
       {
 	m_ready_pos_handler = handler;
       };
+
+      const std::string& name (void)
+        {
+          return m_stream_name;
+        }
   };
 
 } /* namespace cubstream */

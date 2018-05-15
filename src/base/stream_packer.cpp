@@ -195,7 +195,7 @@ namespace cubstream
 	return ptr;
       }
 
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, m_stream_name.c_str (), start_pos,
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, m_stream->name ().c_str (), start_pos,
             aligned_amount);
 
     return NULL;
