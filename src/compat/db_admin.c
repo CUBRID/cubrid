@@ -70,6 +70,8 @@ void (*prev_sigfpe_handler) (int) = SIG_DFL;
 #include "wintcp.h"
 #endif /* !WINDOWS */
 
+#include "db_admin.h"
+
 /* Some like to assume that the db_ layer is able to recognize that a
  database has not been successfully restarted.  For now, check every
  time.  We'll want another functional layer for esql that doesn't
