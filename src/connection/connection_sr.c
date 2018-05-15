@@ -166,9 +166,9 @@ static CSS_QUEUE_ENTRY *css_make_queue_entry (CSS_CONN_ENTRY * conn,
 					      unsigned int key, char *buffer,
 					      int size, int rc, int transid, int invalidate_snapshot, int db_error);
 static void css_free_queue_entry (CSS_CONN_ENTRY * conn, CSS_QUEUE_ENTRY * entry);
-static int css_add_queue_entry (CSS_CONN_ENTRY * conn, CSS_LIST * list,
-				unsigned short request_id, char *buffer,
-				int buffer_size, int rc, int transid, int invalidate_snapshot, int db_error);
+static css_error_code css_add_queue_entry (CSS_CONN_ENTRY * conn, CSS_LIST * list,
+					   unsigned short request_id, char *buffer,
+					   int buffer_size, int rc, int transid, int invalidate_snapshot, int db_error);
 static CSS_QUEUE_ENTRY *css_find_queue_entry (CSS_LIST * list, unsigned int key);
 static CSS_QUEUE_ENTRY *css_find_and_remove_queue_entry (CSS_LIST * list, unsigned int key);
 static CSS_WAIT_QUEUE_ENTRY *css_make_wait_queue_entry (CSS_CONN_ENTRY * conn,
@@ -1452,9 +1452,10 @@ int
 css_send_abort_request (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
   int rc, r;
+
   if (!conn || conn->status != CONN_OPEN)
     {
-      return (CONNECTION_CLOSED);
+      return CONNECTION_CLOSED;
     }
 
   r = rmutex_lock (NULL, &conn->rmutex);
@@ -1465,6 +1466,7 @@ css_send_abort_request (CSS_CONN_ENTRY * conn, unsigned short request_id)
 
   r = rmutex_unlock (NULL, &conn->rmutex);
   assert (r == NO_ERROR);
+
   return rc;
 }
 
@@ -1537,14 +1539,14 @@ css_read_and_queue (CSS_CONN_ENTRY * conn, int *type)
 
   if (!conn || conn->status != CONN_OPEN)
     {
-      return (ERROR_ON_READ);
+      return ERROR_ON_READ;
     }
 
   rc = css_read_header (conn, &header);
 
   if (conn->stop_talk == true)
     {
-      return (CONNECTION_CLOSED);
+      return CONNECTION_CLOSED;
     }
 
   if (rc != NO_ERRORS)
@@ -1693,25 +1695,26 @@ css_free_queue_entry (CSS_CONN_ENTRY * conn, CSS_QUEUE_ENTRY * entry)
  *   transid(in):
  *   db_error(in):
  */
-static int
-css_add_queue_entry (CSS_CONN_ENTRY * conn, CSS_LIST * list,
-		     unsigned short request_id, char *buffer, int buffer_size,
+static css_error_code
+css_add_queue_entry (CSS_CONN_ENTRY * conn, CSS_LIST * list, unsigned short request_id, char *buffer, int buffer_size,
 		     int rc, int transid, int invalidate_snapshot, int db_error)
 {
   CSS_QUEUE_ENTRY *p;
-  int r = NO_ERRORS;
+  int r;
 
   p = css_make_queue_entry (conn, request_id, buffer, buffer_size, rc, transid, invalidate_snapshot, db_error);
   if (p == NULL)
     {
-      r = CANT_ALLOC_BUFFER;
-    }
-  else
-    {
-      css_add_list (list, p);
+      return CANT_ALLOC_BUFFER;
     }
 
-  return r;
+  r = css_add_list (list, p);
+  if (r != NO_ERROR)
+    {
+      return CANT_ALLOC_BUFFER;
+    }
+
+  return NO_ERRORS;
 }
 
 /*
@@ -2011,6 +2014,8 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type, unsigned short request_id, co
 
   r = rmutex_unlock (NULL, &conn->rmutex);
   assert (r == NO_ERROR);
+
+  return NO_ERRORS;
 }
 
 /*
@@ -2264,28 +2269,37 @@ css_queue_command_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, cons
       p = (NET_HEADER *) malloc (sizeof (NET_HEADER));
     }
 
-  if (p != NULL)
-    {
-      memcpy ((char *) p, (char *) header, sizeof (NET_HEADER));
-      css_add_queue_entry (conn, &conn->request_queue, request_id, (char *) p,
-			   size, NO_ERRORS, conn->transaction_id, conn->invalidate_snapshot, conn->db_error);
-      if (ntohl (header->buffer_size) > 0)
-	{
-	  rc = (css_error_code) css_read_header (conn, &data_header);
-	  if (rc != NO_ERRORS)
-	    {
-	      // what to do?
-	      return rc;
-	    }
-	  rc = css_queue_packet (conn, (int) ntohl (data_header.type), (unsigned short) ntohl (data_header.request_id),
-				 &data_header, sizeof (NET_HEADER));
-	  return rc;
-	}
-    }
-  else
+  if (p == NULL)
     {
       assert (false);
+      return CANT_ALLOC_BUFFER;
     }
+
+  memcpy ((char *) p, (char *) header, sizeof (NET_HEADER));
+
+  rc = css_add_queue_entry (conn, &conn->request_queue, request_id, (char *) p,
+			    size, NO_ERRORS, conn->transaction_id, conn->invalidate_snapshot, conn->db_error);
+  if (rc != NO_ERRORS)
+    {
+      return rc;
+    }
+
+  if (ntohl (header->buffer_size) <= 0)
+    {
+      // FIXME - confirm
+      return NO_ERRORS;
+    }
+
+  rc = (css_error_code) css_read_header (conn, &data_header);
+  if (rc != NO_ERRORS)
+    {
+      // what to do?
+      return rc;
+    }
+
+  rc = css_queue_packet (conn, (int) ntohl (data_header.type), (unsigned short) ntohl (data_header.request_id),
+			 &data_header, sizeof (NET_HEADER));
+  return rc;
 }
 
 /*
