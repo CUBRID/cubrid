@@ -45,7 +45,7 @@ namespace mem
   template <typename T>
   class collapsable_circular_queue
   {
-    public:
+    private:
       struct CCQ_SLOT
         {
           T value;
@@ -58,6 +58,7 @@ namespace mem
           CCQ_USED
         };
 
+    public:
       collapsable_circular_queue (const size_t capacity)
         {
           init (capacity);
@@ -127,7 +128,7 @@ namespace mem
           return NULL; 
         };
 
-      int consume (T *elem, T* &last_used_elem)
+      bool consume (T *elem, T* &last_used_elem)
         {
           CCQ_SLOT *slot = reinterpret_cast <CCQ_SLOT *> (elem);
           int pos = slot - m_buffer;
@@ -136,7 +137,7 @@ namespace mem
         };
 
       /* deletes the last element of queue (this needs to be produced-undo without release the mutex) */
-      int undo_produce (T *elem)
+      void undo_produce (T *elem)
         {
           CCQ_SLOT *slot = reinterpret_cast <CCQ_SLOT *> (elem);
           int pos = slot - m_buffer;
@@ -145,16 +146,10 @@ namespace mem
           
           assert (pos = last_element);
 
-          if (m_buffer[pos].flags != CCQ_USED)
-            {
-              assert (false);
-              return -1;
-            }
+          assert (m_buffer[pos].flags == CCQ_USED);
 
           m_buffer[pos].flags = CCQ_FREE;
           m_tail = last_element;
-
-          return 0;
         };
 
     protected:
@@ -176,12 +171,12 @@ namespace mem
         };
 
       /* returns count of collapsed positions and if last used element (or last before tail) */
-      int consume (const int pos, T* &last_used_elem)
+      bool consume (const int pos, T* &last_used_elem)
       {
         if (m_buffer[pos].flags != CCQ_USED)
           {
             assert (false);
-            return -1;
+            return false;
           }
 
         m_buffer[pos].flags = CCQ_FREE;
@@ -207,12 +202,12 @@ namespace mem
 
             last_used_elem = &(m_buffer[prev_used_pos].value);
 
-            return collapsed_count;
+            return true;
           }
         
         /* do not collapse tail : is allowed only to advance */
     
-        return 0;
+        return false;
       };
     private:
       int m_head;
