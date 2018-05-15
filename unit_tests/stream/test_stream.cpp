@@ -778,8 +778,7 @@ namespace test_stream
       stream_context_manager::g_running_readers.set (m_reader_id);
       std::cout << "      Start unpacking thread " << std::endl;
 
-      for (i = 0; stream_context_manager::g_running_packers.any ()
-                  || i < stream_context_manager::g_packed_entries_cnt; i++)
+      for (i = 0; ; i++)
         {
           test_stream_entry * se = new test_stream_entry (stream_context_manager::g_stream);
           
@@ -973,7 +972,7 @@ namespace test_stream
       int fetch_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count,
 				size_t *processed_bytes)
         {
-          if (pos > m_prev_fetch_pos)
+          if (pos >= m_prev_fetch_pos)
             {
               m_prev_fetch_pos = pos;
 
