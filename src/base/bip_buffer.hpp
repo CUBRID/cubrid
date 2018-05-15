@@ -396,7 +396,7 @@ namespace mem
 
           assert (start_ptr < end_ptr -1);
           assert (start_ptr >= m_buffer);
-          assert (end_ptr < m_buffer_end);
+          assert (end_ptr <= m_buffer_end);
 
           if (m_read_flags.any ())
             {
