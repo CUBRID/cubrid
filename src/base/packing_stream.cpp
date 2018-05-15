@@ -341,13 +341,13 @@ namespace cubstream
   int packing_stream::commit_append (stream_reserve_context *reserve_context)
   {
     stream_reserve_context *last_used_context = NULL;
-    int collapsed_count;
+    bool collapsed_reserve;
     char *ptr_commit;
     stream_position new_completed_position = reserve_context->start_pos + reserve_context->reserved_amount;
 
     m_buffer_mutex.lock ();
-    collapsed_count = m_reserved_positions.consume (reserve_context, last_used_context);
-    if (collapsed_count > 0)
+    collapsed_reserve = m_reserved_positions.consume (reserve_context, last_used_context);
+    if (collapsed_reserve)
       {
         assert (last_used_context != NULL);
         
@@ -409,8 +409,7 @@ namespace cubstream
           {
             break;
           }
-        err = m_reserved_positions.undo_produce (reserved_context);
-        assert (err == NO_ERROR);
+        m_reserved_positions.undo_produce (reserved_context);
 
         m_buffer_mutex.unlock ();
         std::this_thread::sleep_for (std::chrono::microseconds (100));
