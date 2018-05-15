@@ -2543,8 +2543,10 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
 
   if (new_size <= current_size)
     {
-      /* this must be recovery. */
-      assert (!LOG_ISRESTARTED ());
+      /* this is possible in limited cases. we cannot link file expand to a page, so sometimes we may expand but volume
+       * header does not reflect this change. also, once expanded, we don't undo the expansion.
+       * however next time volume wants to expand (this case), it just notices file is already expanded and all is
+       * good. */
       er_log_debug (ARG_FILE_LINE, "skip extending volume %d with current size %zu to new size %zu\n",
 		    vol_id, current_size, new_size);
       return NO_ERROR;

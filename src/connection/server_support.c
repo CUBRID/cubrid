@@ -988,8 +988,7 @@ css_reestablish_connection_to_master (void)
 }
 
 /*
- * css_connection_handler_thread () - Accept/process request from
- *                                    one client
+ * css_connection_handler_thread () - Accept/process request from one client
  *   return:
  *   arg(in):
  *
@@ -1044,7 +1043,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 
       if (conn_status != CONN_OPEN)
 	{
-	  er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: " "conn->status (%d) is not CONN_OPEN.",
+	  er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: conn->status (%d) is not CONN_OPEN.",
 			conn_status);
 	  status = CONNECTION_CLOSED;
 	  break;
@@ -1069,7 +1068,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	    {
 	      if (css_peer_alive (fd, css_peer_alive_timeout) == false)
 		{
-		  er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: " "css_peer_alive() error\n");
+		  er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: css_peer_alive() error\n");
 		  status = CONNECTION_CLOSED;
 		  break;
 		}
@@ -1095,7 +1094,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	    }
 	  else
 	    {
-	      er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: " "select() error\n");
+	      er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: select() error\n");
 	      status = ERROR_ON_READ;
 	      break;
 	    }
@@ -1114,7 +1113,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	  status = css_read_and_queue (conn, &type);
 	  if (status != NO_ERRORS)
 	    {
-	      er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: " "css_read_and_queue() error\n");
+	      er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: css_read_and_queue() error\n");
 	      break;
 	    }
 	  else
@@ -1133,7 +1132,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
   if (status != NO_ERRORS || css_check_conn (conn) != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE,
-		    "css_connection_handler_thread: " "status %d conn { status %d transaction_id %d "
+		    "css_connection_handler_thread: status %d conn { status %d transaction_id %d "
 		    "db_error %d stop_talk %d stop_phase %d }\n", status, conn->status, conn->transaction_id,
 		    conn->db_error, conn->stop_talk, conn->stop_phase);
       rv = pthread_mutex_lock (&thread_p->tran_index_lock);
