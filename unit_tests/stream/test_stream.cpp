@@ -871,6 +871,10 @@ namespace test_stream
           do
             {
               last_committed_pos = stream_context_manager::g_stream->get_last_committed_pos ();
+              if (my_curr_pos + to_read <= last_committed_pos)
+                {
+                  break;
+                }
               std::this_thread::sleep_for (std::chrono::microseconds (10));
             }
           while (my_curr_pos + to_read > last_committed_pos);
