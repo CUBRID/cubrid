@@ -3699,6 +3699,9 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	  goto end;
 	}
 
+      iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
+      memset (iopage, 0, IO_PAGESIZE);
+
 #if !defined (NDEBUG)
       /* Check for duplicates in DWB. */
       for (i = 1; i < num_pages; i++)
@@ -3736,6 +3739,18 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 		  continue;
 		}
 
+	      if (memcmp (p_dwb_ordered_slots[i - 1].io_page, iopage, IO_PAGESIZE) == 0)
+		{
+		  /* Skip not initialized pages. */
+		  continue;
+		}
+
+	      if (memcmp (p_dwb_ordered_slots[i].io_page, iopage, IO_PAGESIZE) == 0)
+		{
+		  /* Skip not initialized pages. */
+		  continue;
+		}
+
 	      /* Found duplicates - something is wrong. We may still can check for same LSAs.
 	       * But, duplicates occupies disk space so is better to avoid it.
 	       */
@@ -3745,7 +3760,6 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 #endif
 
       volid = NULL_VOLID;
-      iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
 
       /* Check whether the data page is corrupted. If true, replaced with the DWB page. */
       for (i = 0; i < rcv_block->count_wb_pages; i++)
