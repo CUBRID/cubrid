@@ -58,7 +58,7 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
 
   if (exit_status != NULL)
     {
-      *exit_status = 0;
+      *exit_status = -1;
     }
 
   for (i = 0, cmd_arg_len = 0; argv[i]; i++)
