@@ -126,7 +126,7 @@ static int start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT
 	  num_of_rows = db_execute_statement (session, stmt_id, &result);
 	  if (num_of_rows < 0)
 	    {
-	      rc = er_errid ();
+	      ASSERT_ERROR_AND_SET (rc);
 	      db_abort_transaction ();
 	      goto error;
 	    }

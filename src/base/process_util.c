@@ -220,7 +220,7 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
 
   if (exit_status != NULL)
     {
-      *exit_status = 0;
+      *exit_status = -1;
     }
 
   if (wait_flag)
@@ -345,7 +345,14 @@ create_child_process (const char *const argv[], int wait_flag, const char *stdin
 	}
       if (exit_status != NULL)
 	{
-	  *exit_status = WEXITSTATUS (status);
+	  if (WIFEXITED (status))
+            {
+              *exit_status = WEXITSTATUS (status);
+            }
+          else
+            {
+              *exit_status = -2;
+            }
 	}
       return 0;
     }
