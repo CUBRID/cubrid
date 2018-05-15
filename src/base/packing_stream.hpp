@@ -43,18 +43,6 @@ namespace cubstream
   class stream_packer;
   class packing_stream;
 
-  typedef enum
-  {
-    COLLECT_ALL_BUFFERS = 0,
-    COLLECT_ONLY_FILLED_BUFFERS
-  } COLLECT_FILTER;
-
-  typedef enum
-  {
-    COLLECT_KEEP = 0,
-    COLLECT_AND_DETACH
-  } COLLECT_ACTION;
-
   class entry
   {
     private:
