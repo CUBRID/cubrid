@@ -487,6 +487,7 @@ namespace cubthread
 
     delete Main_entry_p;
     Main_entry_p = NULL;
+    tl_Entry_p = NULL;
 
     delete Manager;
     Manager = NULL;
