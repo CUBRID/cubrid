@@ -1831,22 +1831,24 @@ css_make_wait_queue_entry (CSS_CONN_ENTRY * conn, unsigned int key, char **buffe
 static void
 css_free_wait_queue_entry (CSS_CONN_ENTRY * conn, CSS_WAIT_QUEUE_ENTRY * entry)
 {
-  if (entry != NULL)
+  if (entry == NULL)
     {
-      if (entry->thrd_entry)
-	{
-	  thread_lock_entry (entry->thrd_entry);
-
-	  assert (entry->thrd_entry->resume_status == THREAD_CSS_QUEUE_SUSPENDED);
-	  thread_wakeup_already_had_mutex (entry->thrd_entry, THREAD_CSS_QUEUE_RESUMED);
-
-	  thread_unlock_entry (entry->thrd_entry);
-	}
-
-      entry->next = conn->free_wait_queue_list;
-      conn->free_wait_queue_list = entry;
-      conn->free_wait_queue_count++;
+      return;
     }
+
+  if (entry->thrd_entry != NULL)
+    {
+      thread_lock_entry (entry->thrd_entry);
+
+      assert (entry->thrd_entry->resume_status == THREAD_CSS_QUEUE_SUSPENDED);
+      thread_wakeup_already_had_mutex (entry->thrd_entry, THREAD_CSS_QUEUE_RESUMED);
+
+      thread_unlock_entry (entry->thrd_entry);
+    }
+
+  entry->next = conn->free_wait_queue_list;
+  conn->free_wait_queue_list = entry;
+  conn->free_wait_queue_count++;
 }
 
 /*
@@ -1965,15 +1967,19 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type, unsigned short request_id, co
     case CLOSE_TYPE:
       css_process_close_packet (conn);
       break;
+
     case ABORT_TYPE:
       css_process_abort_packet (conn, request_id);
       break;
+
     case DATA_TYPE:
       css_queue_data_packet (conn, request_id, header, &wait_thrd);
       break;
+
     case ERROR_TYPE:
       css_queue_error_packet (conn, request_id, header);
       break;
+
     case COMMAND_TYPE:
       rc = css_queue_command_packet (conn, request_id, header, size);
       if (rc != NO_ERRORS)
@@ -1983,10 +1989,11 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type, unsigned short request_id, co
 	  return rc;
 	}
       break;
+
     default:
       CSS_TRACE2 ("Asked to queue an unknown packet id = %d.\n", type);
       assert (false);
-      break;
+      return WRONG_PACKET_TYPE;
     }
 
   p = wait_thrd;
@@ -2286,7 +2293,7 @@ css_queue_command_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, cons
 
   if (ntohl (header->buffer_size) <= 0)
     {
-      // FIXME - confirm
+      // a request without a buffer, e.g, NET_SERVER_LOG_CHECKPOINT, NET_SERVER_TM_SERVER_ABORT.
       return NO_ERRORS;
     }
 
@@ -2708,9 +2715,8 @@ css_queue_user_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, in
 
   if (buffer && (!css_is_request_aborted (conn, request_id)))
     {
-      rc =
-	css_add_queue_entry (conn, &conn->buffer_queue, request_id, buffer,
-			     size, NO_ERRORS, conn->transaction_id, conn->invalidate_snapshot, conn->db_error);
+      rc = css_add_queue_entry (conn, &conn->buffer_queue, request_id, buffer,
+				size, NO_ERRORS, conn->transaction_id, conn->invalidate_snapshot, conn->db_error);
     }
 
   r = rmutex_unlock (NULL, &conn->rmutex);
