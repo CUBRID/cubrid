@@ -2669,6 +2669,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
 #endif
 #if !defined (NDEBUG)
   DWB_BLOCK *saved_helper_flush_block = NULL;
+  LOG_LSA nxio_lsa;
 #endif
 
   assert (block != NULL && block->count_wb_pages > 0 && dwb_is_created ());
@@ -2709,8 +2710,15 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
 	}
 
       /* Check for WAL protocol. */
-      assert ((p_dwb_ordered_slots[i].io_page->prv.pageid == NULL_PAGEID)
-	      || (!logpb_need_wal (&p_dwb_ordered_slots[i].io_page->prv.lsa)));
+#if !defined (NDEBUG)
+      if ((p_dwb_ordered_slots[i].io_page->prv.pageid != NULL_PAGEID)
+	  && (logpb_need_wal (&p_dwb_ordered_slots[i].io_page->prv.lsa)))
+	{
+	  /* Need WAL. Check whether log buffer pool was destroyed. */
+	  logpb_get_nxio_lsa (&nxio_lsa);
+	  assert (LSA_ISNULL (&nxio_lsa));
+	}
+#endif
     }
 
   PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_DWB_FLUSH_BLOCK_SORT_TIME_COUNTERS);
