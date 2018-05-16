@@ -1127,7 +1127,7 @@ namespace test_stream
         read_byte_worker_pool->execute (read_byte_task);
       }
 
-    std::this_thread::sleep_for (std::chrono::seconds (2500));
+    std::this_thread::sleep_for (std::chrono::seconds (25));
     stream_context_manager::g_stop_packer = true;
     stream_context_manager::g_pause_unpacker = false;
     std::cout << "      Stopping packers" << std::endl;
@@ -1146,6 +1146,22 @@ namespace test_stream
     cub_th_m.destroy_worker_pool (packing_worker_pool);
     cub_th_m.destroy_worker_pool (unpacking_worker_pool);
     cub_th_m.destroy_worker_pool (read_byte_worker_pool);
+
+
+   for (i = 0; i < TEST_ENTRIES; i++)
+      {
+        if (se_array[i] != NULL)
+          {
+            delete se_array[i];
+          }
+
+        if (se_unpacked_array[i] != NULL)
+          {
+            delete se_unpacked_array[i];
+          }
+     }
+
+    std::cout << "Done" << std::endl;
 
 
     return res;
