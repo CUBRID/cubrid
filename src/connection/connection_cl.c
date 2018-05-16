@@ -1077,8 +1077,9 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
        * Receiving error from server might not be completed because server disconnects the temporary connection.
        */
       css_err_code = css_receive_error (conn, rid, &error_area, &error_length);
-      if (css_err_code != NO_ERRORS && error_area != NULL)
+      if (css_err_code == NO_ERRORS && error_area != NULL)
 	{
+	  // properly received the server error
 	  er_set_area_error (error_area);
 	}
 

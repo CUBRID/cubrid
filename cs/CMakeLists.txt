@@ -66,6 +66,7 @@ set (COMPAT_HEADERS
   ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/dbtype_function.h
   ${COMPAT_DIR}/dbtype_function.i
+  ${COMPAT_DIR}/db_admin.h
   )
 
 set(BASE_SOURCES
