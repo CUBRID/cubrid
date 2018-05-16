@@ -849,15 +849,16 @@ namespace test_stream
             }
           while (err != NO_ERROR);
          
-
+          /*/
           if (se_unpack_array[se->get_mvcc_id()] != NULL)
             {
               delete se_unpack_array[se->get_mvcc_id()];
             }
           se_unpack_array[se->get_mvcc_id()] = se;
-
+          */
           res = se->is_equal (se_array[se->get_mvcc_id()]);
           assert (res == 1);
+          delete se;
 
           stream_context_manager::g_unpacked_entries_cnt++;
         }
