@@ -251,6 +251,18 @@ namespace test_stream
 	  }
 	return true;
       };
+
+      void destroy_objects (void)
+        {
+          for (int i = 0; i < m_packable_entries.size (); i++)
+            {
+              if (m_packable_entries[i] != NULL)
+                {
+                  delete (m_packable_entries[i]);
+                }
+            }
+          m_packable_entries.clear ();
+        };
   };
 
 

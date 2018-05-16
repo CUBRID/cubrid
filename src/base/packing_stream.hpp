@@ -65,6 +65,8 @@ namespace cubstream
 
       entry (packing_stream *stream);
 
+      ~entry() { reset (); };
+
       int pack (void);
 
       int prepare (void);
@@ -74,7 +76,7 @@ namespace cubstream
       void reset (void)
       {
 	set_packable (false);
-	m_packable_entries.clear ();
+        destroy_objects ();
       };
 
       size_t get_entries_size (void);
@@ -86,13 +88,6 @@ namespace cubstream
 	m_is_packable = is_packable;
       };
 
-
-      /* TODO : unit testing only */
-      std::vector <cubpacking::packable_object *> *get_packable_entries_ptr (void)
-      {
-	return &m_packable_entries;
-      };
-
       /* stream entry header methods : header is implemention dependent, is not known here ! */
       virtual stream_packer *get_packer () = 0;
       virtual size_t get_header_size (void) = 0;
@@ -102,6 +97,7 @@ namespace cubstream
       virtual int unpack_stream_entry_header (void) = 0;
       virtual int get_packable_entry_count_from_header (void) = 0;
       virtual bool is_equal (const entry *other) = 0;
+      virtual void destroy_objects () = 0;
   };
 
   /*
