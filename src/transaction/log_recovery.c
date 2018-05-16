@@ -2778,6 +2778,9 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 
   logtb_reset_bit_area_start_mvccid ();
 
+  _er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: end of analysis phase, append_lsa = (%lld|%d) \n",
+		 (long long int) log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset);
+
   return;
 }
 
