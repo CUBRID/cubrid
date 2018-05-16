@@ -806,7 +806,7 @@ css_process_master_hostname ()
 
   //create slave replication channel and connect to hostname
 
-  _er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
+  er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
 		 ha_Server_master_hostname);
 
   return NO_ERRORS;
@@ -2690,7 +2690,7 @@ css_process_new_slave (SOCKET master_fd)
       assert (false);
       return;
     }
-  _er_log_debug (ARG_FILE_LINE, "css_process_new_slave:" "received new slave fd from master fd=%d, current_state=%d\n",
+  er_log_debug (ARG_FILE_LINE, "css_process_new_slave:" "received new slave fd from master fd=%d, current_state=%d\n",
 		 new_fd, ha_Server_state);
 
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
