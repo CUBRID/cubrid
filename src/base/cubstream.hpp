@@ -114,17 +114,17 @@ namespace cubstream
 				partial_read_handler *handler) = 0;
       virtual int read (const stream_position first_pos, const size_t byte_count, read_handler *handler) = 0;
 
-      stream_position get_curr_read_position (void)
+      const stream_position &get_curr_read_position (void)
       {
 	return m_read_position;
       };
 
-      stream_position &get_last_committed_pos (void)
+      const stream_position &get_last_committed_pos (void)
       {
 	return m_last_committed_pos;
       };
 
-      stream_position &get_last_dropable_pos (void)
+      const stream_position &get_last_dropable_pos (void)
         {
           return m_last_dropable_pos;
         };

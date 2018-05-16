@@ -64,6 +64,11 @@ class stream_mock : public cubstream::stream
       free (write_buffer);
     }
 
+    void produce (const size_t amount)
+      {
+        m_last_committed_pos += amount;   
+      }
+
     int write (const size_t byte_count, cubstream::write_handler *handler) override
     {
       int err;
@@ -253,7 +258,7 @@ static int run ()
 
   do
     {
-      stream->get_last_committed_pos() += MTU;
+      stream->produce (MTU);
       std::this_thread::sleep_for (std::chrono::milliseconds (100));
       cycles++;
     }
