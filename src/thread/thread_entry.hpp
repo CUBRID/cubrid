@@ -49,7 +49,16 @@ namespace cubbase
   template <typename Res>
   class resource_tracker;
 
-  using alloc_tracker = resource_tracker<void *>;
+  // trackers
+  // memory allocations
+  using alloc_tracker = resource_tracker<const void *>;
+  // query lists
+  struct qfile_list_id;
+  using qlist_tracker = resource_tracker<const qfile_list_id *>;
+  // page fix
+  using pgbuf_tracker = resource_tracker<const char *>;
+  // critical sections - by index
+  using csect_tracker = resource_tracker<int>;
 }
 
 // for lock-free - FIXME
@@ -240,7 +249,9 @@ namespace cubthread
 	return m_alloc_tracker;
       }
 
-      void check_resource_trackers (void);
+      void end_resource_tracks (void);
+      void push_resource_tracks (void);
+      void pop_resource_tracks (void);
 
     private:
       void clear_resources (void);
@@ -255,6 +266,9 @@ namespace cubthread
 
       // trackers
       cubbase::alloc_tracker &m_alloc_tracker;
+      cubbase::qlist_tracker &m_qlist_tracker;
+      cubbase::pgbuf_tracker &m_pgbuf_tracker;
+      cubbase::csect_tracker &m_csect_tracker;
   };
 
 } // namespace cubthread

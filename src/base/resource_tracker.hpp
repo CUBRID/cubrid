@@ -25,7 +25,7 @@
 #define _CUBRID_RESOURCE_TRACKER_HPP_
 
 #include <map>
-#include <stack>
+#include <forward_list>
 #include <string>
 #include <iostream>
 
@@ -82,12 +82,14 @@ namespace cubbase
 
       void increment (const char *filename, const int line, const res_type &res);
       void decrement (const res_type &res);
-      void start_track (void);
-      void end_track (void);
+      void push_track (void);
+      void pop_track (void);
       void clear_all (void);
+      int get_total_amount (void);
+      void check_total_amount (std::size_t expected_amount);
 
     private:
-      int get_total_amount (void);
+
       map_type &get_current_map (void);
 
       void abort (void);
@@ -103,7 +105,7 @@ namespace cubbase
       size_t m_max_size;
       size_t m_crt_size;
 
-      std::stack<map_type> m_tracked_stack;
+      std::forward_list<map_type> m_tracked_stack;
       map_type m_tracked;
   };
 
@@ -212,7 +214,7 @@ namespace cubbase
     int total = 0;
     for (auto stack_it : m_tracked_stack)
       {
-	for (auto map_it : *stack_it)
+	for (auto map_it : stack_it)
 	  {
 	    total += map_it.second.m_amount;
 	  }
@@ -221,27 +223,41 @@ namespace cubbase
   }
 
   template <typename Res>
+  void
+  resource_tracker<Res>::check_total_amount (std::size_t expected_amount)
+  {
+    assert (get_total_amount () == expected_amount);
+  }
+
+  template <typename Res>
   typename resource_tracker<Res>::map_type &
   resource_tracker<Res>::get_current_map (void)
   {
-    return m_tracked_stack.top ();
+    return m_tracked_stack.front ();
   }
 
   template <typename Res>
   void
   resource_tracker<Res>::clear_all (void)
   {
-    m_tracked_stack.clear ();
-    m_crt_size = 0;
-    m_aborted = false;
+    // clear stack
+    while (!m_tracked_stack.empty ())
+      {
+	pop_track ();
+      }
+    assert (m_crt_size == 0);
   }
 
   template <typename Res>
   void
   resource_tracker<Res>::abort (void)
   {
-    m_tracked_stack.clear ();
-    m_crt_size = 0;
+    // clear stack
+    while (!m_tracked_stack.empty ())
+      {
+	pop_track ();
+      }
+    assert (m_crt_size == 0);
     m_aborted = true;
   }
 
@@ -258,7 +274,7 @@ namespace cubbase
     for (auto stack_it : m_tracked_stack)
       {
 	out << "         +--- stack_level = " << level;
-	dump_map (*stack_it, out);
+	dump_map (stack_it, out);
 	level++;
       }
 
@@ -269,7 +285,7 @@ namespace cubbase
   void
   resource_tracker<Res>::dump_map (const map_type &map, std::ostream &out)
   {
-    for (auto map_it : stack_it)
+    for (auto map_it : map)
       {
 	out << "            +--- tracked res = " << m_res_name << "=" << map_it.first;
 	out << " " << map_it.second;
@@ -287,7 +303,7 @@ namespace cubbase
 	return;
       }
 
-    m_tracked_stack.emplace ();
+    m_tracked_stack.emplace_front ();
   }
 
   template <typename Res>
@@ -307,14 +323,15 @@ namespace cubbase
 
     if (!m_aborted)
       {
-	map_type &map = m_tracked_stack.top ();
+	map_type &map = m_tracked_stack.front ();
 	if (!map.empty ())
 	  {
 	    dump ();
 	    assert (false);
+	    m_crt_size -= map.size ();
 	  }
       }
-    m_tracked_stack.pop ();
+    m_tracked_stack.pop_front ();
 
     if (m_tracked_stack.empty ())
       {

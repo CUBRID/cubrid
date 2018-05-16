@@ -1017,9 +1017,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   assert (func != NULL);
   if (func)
     {
-#if !defined(NDEBUG)
-      track_id = thread_rc_track_enter (thread_p);
-#endif
+      thread_p->push_resource_tracks ();
 
       if (conn->invalidate_snapshot != 0)
 	{
@@ -1027,13 +1025,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 	}
       (*func) (thread_p, rid, buffer, size);
 
-#if !defined(NDEBUG)
-      if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
-	{
-	  assert_release (false);
-	}
-      assert (thread_p->count_private_allocators == 0);
-#endif
+      thread_p->pop_resource_tracks ();
 
       /* defence code: let other threads continue. */
       pgbuf_unfix_all (thread_p);

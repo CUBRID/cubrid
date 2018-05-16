@@ -26,6 +26,7 @@
 #include "adjustable_array.h"
 #include "error_manager.h"
 #include "fault_injection.h"
+#include "list_file.h"
 #include "log_compress.h"
 #include "memory_alloc.h"
 #include "page_buffer.h"
@@ -110,6 +111,12 @@ namespace cubthread
     , m_cleared (false)
     , m_alloc_tracker (*new cubbase::alloc_tracker ("Virtual Memory", ENABLE_TRACKERS, false,
 		       THREAD_RC_TRACK_VMEM_THRESHOLD_AMOUNT))
+    , m_qlist_tracker (*new cubbase::qlist_tracker ("List file", ENABLE_TRACKERS, false,
+		       THREAD_RC_TRACK_QLIST_THRESHOLD_AMOUNT))
+    , m_pgbuf_tracker (*new cubbase::pgbuf_tracker ("Page Buffer", ENABLE_TRACKERS, true,
+		       THREAD_RC_TRACK_PGBUF_THRESHOLD_AMOUNT))
+    , m_csect_tracker (*new cubbase::csect_tracker ("Critical Section", ENABLE_TRACKERS, true,
+		       THREAD_RC_TRACK_CS_THRESHOLD_AMOUNT))
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)
       {
@@ -162,6 +169,9 @@ namespace cubthread
     clear_resources ();
 
     delete &m_alloc_tracker;
+    delete &m_qlist_tracker;
+    delete &m_pgbuf_tracker;
+    delete &m_csect_tracker;
   }
 
   void
@@ -247,7 +257,7 @@ namespace cubthread
     fi_thread_final (this);
 #endif // DEBUG
 
-    end_all_trackers ();
+    end_resource_tracks ();
 
     m_cleared = true;
   }
@@ -297,7 +307,7 @@ namespace cubthread
   }
 
   void
-  entry::end_all_trackers (void)
+  entry::end_resource_tracks (void)
   {
     if (!ENABLE_TRACKERS)
       {
@@ -305,6 +315,37 @@ namespace cubthread
 	return;
       }
     m_alloc_tracker.clear_all ();
+    m_qlist_tracker.clear_all ();
+    m_pgbuf_tracker.clear_all ();
+    m_csect_tracker.clear_all ();
+  }
+
+  void
+  entry::push_resource_tracks (void)
+  {
+    if (!ENABLE_TRACKERS)
+      {
+	// all trackers are activated by this flag
+	return;
+      }
+    m_alloc_tracker.push_track ();
+    m_qlist_tracker.push_track ();
+    m_pgbuf_tracker.push_track ();
+    m_csect_tracker.push_track ();
+  }
+
+  void
+  entry::pop_resource_tracks (void)
+  {
+    if (!ENABLE_TRACKERS)
+      {
+	// all trackers are activated by this flag
+	return;
+      }
+    m_alloc_tracker.pop_track ();
+    m_qlist_tracker.pop_track ();
+    m_pgbuf_tracker.pop_track ();
+    m_csect_tracker.pop_track ();
   }
 
 } // namespace cubthread

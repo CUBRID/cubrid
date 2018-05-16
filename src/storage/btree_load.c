@@ -689,9 +689,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   log_sysop_start (thread_p);
   is_sysop_started = true;
 
-#if !defined(NDEBUG)
-  track_id = thread_rc_track_enter (thread_p);
-#endif
+  thread_p->push_resource_tracks ();
 
   btid_int.sys_btid = btid;
   btid_int.unique_pk = unique_pk;
@@ -1015,12 +1013,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       db_private_free_and_init (thread_p, func_unpack_info);
     }
 
-#if !defined(NDEBUG)
-  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
-    {
-      assert_release (false);
-    }
-#endif
+  thread_p->pop_resource_tracks ();
 
   if (is_sysop_started)
     {
@@ -1130,12 +1123,7 @@ error:
       db_private_free_and_init (thread_p, func_unpack_info);
     }
 
-#if !defined(NDEBUG)
-  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
-    {
-      assert_release (false);
-    }
-#endif
+  thread_p->pop_resource_tracks ();
 
   if (is_sysop_started)
     {
