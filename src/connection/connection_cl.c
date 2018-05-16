@@ -148,7 +148,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->abort_queue = NULL;
   conn->buffer_queue = NULL;
   conn->error_queue = NULL;
-  conn->transaction_id = -1;
+  conn->set_tran_index (NULL_TRAN_INDEX);
   conn->invalidate_snapshot = 1;
   conn->db_error = 0;
   conn->cnxn = NULL;
@@ -330,7 +330,7 @@ css_send_close_request (CSS_CONN_ENTRY * conn)
   if (conn->status == CONN_OPEN)
     {
       header.type = htonl (CLOSE_TYPE);
-      header.transaction_id = htonl (conn->transaction_id);
+      header.transaction_id = htonl (conn->get_tran_index ());
       flags = 0;
       if (conn->invalidate_snapshot)
 	{
@@ -378,7 +378,7 @@ css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header)
       return CONNECTION_CLOSED;
     }
 
-  conn->transaction_id = ntohl (local_header->transaction_id);
+  conn->set_tran_index (ntohl (local_header->transaction_id));
   flags = ntohs (local_header->flags);
   conn->invalidate_snapshot = flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
   conn->db_error = (int) ntohl (local_header->db_error);
@@ -505,7 +505,7 @@ begin:
   if (rc == NO_ERRORS)
     {
       rid = ntohl (header.request_id);
-      conn->transaction_id = ntohl (header.transaction_id);
+      conn->set_tran_index (ntohl (header.transaction_id));
       conn->db_error = (int) ntohl (header.db_error);
       type = ntohl (header.type);
 
@@ -619,7 +619,7 @@ begin:
   if (rc == NO_ERRORS)
     {
       rid = ntohl (header.request_id);
-      conn->transaction_id = ntohl (header.transaction_id);
+      conn->set_tran_index (ntohl (header.transaction_id));
       conn->db_error = (int) ntohl (header.db_error);
       type = ntohl (header.type);
       if (ERROR_TYPE == type)
@@ -1315,7 +1315,7 @@ css_return_queued_data (CSS_CONN_ENTRY * conn, unsigned short request_id, char *
     }
 
   *rc = data_q_entry_p->rc;
-  conn->transaction_id = data_q_entry_p->transaction_id;
+  conn->set_tran_index (data_q_entry_p->transaction_id);
   conn->invalidate_snapshot = data_q_entry_p->invalidate_snapshot;
   conn->db_error = data_q_entry_p->db_error;
   css_queue_remove_header_entry_ptr (&conn->data_queue, data_q_entry_p);
@@ -1418,7 +1418,7 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *requ
 
   *request = ntohs (buffer->function_code);
   *buffer_size = ntohl (buffer->buffer_size);
-  conn->transaction_id = request_q_entry_p->transaction_id;
+  conn->set_tran_index (request_q_entry_p->transaction_id);
   conn->invalidate_snapshot = request_q_entry_p->invalidate_snapshot;
   conn->db_error = request_q_entry_p->db_error;
 
