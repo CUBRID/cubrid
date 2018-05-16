@@ -2156,7 +2156,7 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 	public synchronized ResultSet getUDTs(String catalog, String schemaPattern,
 			String typeNamePattern, int[] types) throws SQLException {
-		throw new UnsupportedOperationException();
+		throw new SQLException(new UnsupportedOperationException());
 	}
 
 	public synchronized Connection getConnection() throws SQLException {
@@ -2421,63 +2421,63 @@ public class CUBRIDDatabaseMetaData implements DatabaseMetaData {
 
 	/* JDK 1.6 */
 	public boolean autoCommitFailureClosesAllResultSets() throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public ResultSet getClientInfoProperties() throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public ResultSet getFunctionColumns(String catalog, String schemaPattern,
 			String functionNamePattern, String columnNamePattern)
 			throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public ResultSet getFunctions(String catalog, String schemaPattern,
 			String functionNamePattern) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public RowIdLifetime getRowIdLifetime() throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public ResultSet getSchemas(String catalog, String schemaPattern)
 			throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public boolean supportsStoredFunctionsUsingCallSyntax() throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public boolean isWrapperFor(Class<?> iface) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public <T> T unwrap(Class<T> iface) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.7 */
 	public ResultSet getPseudoColumns(String catalog, String schemaPattern,
 			String tableNamePattern, String columnNamePattern)
 			throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.7 */
 	public boolean generatedKeyAlwaysReturned() throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 }
