@@ -101,7 +101,7 @@ namespace test_stream
       char str2[300];
 
     public:
-
+      ~po1();
       int pack (cubpacking::packer *serializator);
       int unpack (cubpacking::packer *serializator);
 
