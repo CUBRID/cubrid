@@ -283,6 +283,7 @@ namespace test_stream
 	    str_size = std::rand () % 1000 + 1;
 	    tmp_str = new char[str_size + 1];
 	    db_make_char (&values[i], str_size, tmp_str, str_size, INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY);
+            values[i].need_clear = true;
 	    break;
 	  }
       }
@@ -293,14 +294,27 @@ namespace test_stream
     tmp_str = new char[str_size + 1];
     generate_str (tmp_str, str_size);
     large_str = tmp_str;
+    delete []tmp_str;
 
     str_size = std::rand () % 10000 + 1;
     tmp_str = new char[str_size + 1];
     generate_str (tmp_str, str_size);
     str1 = tmp_str;
+    delete []tmp_str;
 
     generate_str (str2, sizeof (str2) - 1);
   }
+
+  po1::~po1()
+    {
+      for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
+        {
+          if (values[i].need_clear)
+            {
+              pr_clear_value (&values[i]);
+            }
+        }
+    }
   /* po2 */
   int po2::pack (cubpacking::packer *serializator)
   {
@@ -368,6 +382,7 @@ namespace test_stream
     tmp_str = new char[str_size + 1];
     generate_str (tmp_str, str_size);
     large_str = tmp_str;
+    delete[] tmp_str;
   }
 
   int po1::ID = 4;
@@ -1112,7 +1127,7 @@ namespace test_stream
         read_byte_worker_pool->execute (read_byte_task);
       }
 
-    std::this_thread::sleep_for (std::chrono::seconds (25));
+    std::this_thread::sleep_for (std::chrono::seconds (2500));
     stream_context_manager::g_stop_packer = true;
     stream_context_manager::g_pause_unpacker = false;
     std::cout << "      Stopping packers" << std::endl;
