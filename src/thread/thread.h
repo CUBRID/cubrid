@@ -122,8 +122,6 @@ thread_get_thread_entry_info (void)
 #define thread_dec_recursion_depth(thread_p) (thread_Recursion_depth --)
 #define thread_clear_recursion_depth(thread_p) (thread_Recursion_depth = 0)
 
-#define thread_rc_track_dump_all(thread_p, outfp)
-
 #define thread_get_tran_entry(thread_p, entry_idx)  (&thread_ts_decoy_entries[entry_idx])
 
 #else /* !SERVER_MODE */
@@ -302,8 +300,6 @@ extern HL_HEAPID css_set_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_i
 
 extern void thread_set_info (THREAD_ENTRY * thread_p, int client_id, int rid, int tran_index, int net_request_index);
 
-extern void thread_rc_track_dump_all (THREAD_ENTRY * thread_p, FILE * outfp);
-extern void thread_rc_track_initialize (THREAD_ENTRY * thread_p);
 extern bool thread_get_sort_stats_active (THREAD_ENTRY * thread_p);
 extern bool thread_set_sort_stats_active (THREAD_ENTRY * thread_p, bool flag);
 

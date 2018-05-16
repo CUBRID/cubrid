@@ -131,15 +131,6 @@ static int thread_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bo
 static INT32 thread_rc_track_threshold_amount (int rc_idx);
 static bool thread_rc_track_is_enabled (THREAD_ENTRY * thread_p);
 
-#if !defined(NDEBUG)
-static void thread_rc_track_meter_at (THREAD_RC_METER * meter, const char *caller_file, int caller_line, int amount,
-				      void *ptr);
-static void thread_rc_track_meter_assert_csect_dependency (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, int amount,
-							   void *ptr);
-static void thread_rc_track_meter_assert_csect_usage (THREAD_ENTRY * thread_p, THREAD_RC_METER * meter, int enter_mode,
-						      void *ptr);
-#endif /* !NDEBUG */
-
 /*
  * Thread Specific Data management
  *
@@ -1729,29 +1720,6 @@ thread_rc_track_clear_all (THREAD_ENTRY * thread_p)
 }
 
 /*
- * thread_rc_track_initialize () -
- *   return:
- *   thread_p(in):
- */
-void
-thread_rc_track_initialize (THREAD_ENTRY * thread_p)
-{
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  assert_release (thread_p != NULL);
-
-  thread_p->track = NULL;
-  thread_p->track_depth = -1;
-  thread_p->track_threshold = 0x7F;	/* 127 */
-  thread_p->track_free_list = NULL;
-
-  (void) thread_rc_track_clear_all (thread_p);
-}
-
-/*
  * thread_rc_track_finalize () -
  *   return:
  *   thread_p(in):
@@ -2556,160 +2524,6 @@ thread_resume_status_to_string (int resume_status)
     }
   return "UNKNOWN";
 }
-
-/*
- * thread_rc_track_dump_all () -
- *   return:
- *   thread_p(in):
- */
-void
-thread_rc_track_dump_all (THREAD_ENTRY * thread_p, FILE * outfp)
-{
-  THREAD_RC_TRACK *track;
-  int depth;
-
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  assert_release (thread_p != NULL);
-
-  if (outfp == NULL)
-    {
-      outfp = stderr;
-    }
-
-  fprintf (outfp, "------------ Thread[%d] Resource Track Info: ------------\n", thread_p->index);
-
-  fprintf (outfp, "track_depth = %d\n", thread_p->track_depth);
-  fprintf (outfp, "track_threshold = %d\n", thread_p->track_threshold);
-  for (track = thread_p->track_free_list, depth = 0; track != NULL; track = track->prev, depth++)
-    {
-      ;
-    }
-  fprintf (outfp, "track_free_list size = %d\n", depth);
-
-  for (track = thread_p->track, depth = thread_p->track_depth; track != NULL; track = track->prev, depth--)
-    {
-      (void) thread_rc_track_dump (thread_p, outfp, track, depth);
-    }
-  assert_release (depth == -1);
-
-  fprintf (outfp, "\n");
-
-  fflush (outfp);
-}
-
-#if !defined(NDEBUG)
-/*
- * thread_rc_track_meter_at () -
- *   return:
- *   meter(in):
- */
-static void
-thread_rc_track_meter_at (THREAD_RC_METER * meter, const char *caller_file, int caller_line, int amount, void *ptr)
-{
-  const char *p = NULL;
-  int min, max, mid, mem_size;
-  bool found = false;
-
-  assert_release (meter != NULL);
-  assert_release (amount != 0);
-
-  /* Truncate path to file name */
-  p = (char *) caller_file + strlen (caller_file);
-  while (p)
-    {
-      if (p == caller_file)
-	{
-	  break;
-	}
-
-      if (*p == '/' || *p == '\\')
-	{
-	  p++;
-	  break;
-	}
-
-      p--;
-    }
-
-  /* TODO: A binary search function that could also return the rightful position for an entry that was not found is
-   * really necessary. */
-
-  /* There are three possible actions here: 1. Resource doesn't exist and must be added. 2. Resource exists and we
-   * update amount to a non-zero value. 3. Resource exists and new amount is 0 and it must be removed from tracked
-   * array. */
-  /* The array is ordered by resource pointer and binary search is used. */
-  min = 0;
-  max = meter->m_tracked_res_count - 1;
-  mid = 0;
-
-  while (min <= max)
-    {
-      /* Get middle */
-      mid = (min + max) >> 1;
-      if (ptr == meter->m_tracked_res[mid].res_ptr)
-	{
-	  found = true;
-	  break;
-	}
-      if (ptr < meter->m_tracked_res[mid].res_ptr)
-	{
-	  /* Set search range to [min, mid - 1] */
-	  max = mid - 1;
-	}
-      else
-	{
-	  /* Set search range to [min + 1, max] */
-	  min = ++mid;
-	}
-    }
-
-  if (found)
-    {
-      assert_release (mid < meter->m_tracked_res_count);
-
-      /* Update amount for resource */
-      meter->m_tracked_res[mid].amount += amount;
-      if (meter->m_tracked_res[mid].amount == 0)
-	{
-	  /* Remove tracked resource */
-	  mem_size = (meter->m_tracked_res_count - 1 - mid) * sizeof (THREAD_TRACKED_RESOURCE);
-
-	  if (mem_size > 0)
-	    {
-	      memmove (&meter->m_tracked_res[mid], &meter->m_tracked_res[mid + 1], mem_size);
-	    }
-	  meter->m_tracked_res_count--;
-	}
-    }
-  else
-    {
-      /* Add new tracked resource */
-      assert_release (mid <= meter->m_tracked_res_count);
-      if (meter->m_tracked_res_count == meter->m_tracked_res_capacity)
-	{
-	  /* No more room for new resources */
-	  return;
-	}
-      /* Try to free the memory space for new resource */
-      mem_size = (meter->m_tracked_res_count - mid) * sizeof (THREAD_TRACKED_RESOURCE);
-      if (mem_size > 0)
-	{
-	  memmove (&meter->m_tracked_res[mid + 1], &meter->m_tracked_res[mid], mem_size);
-	}
-      /* Save new resource */
-      meter->m_tracked_res[mid].res_ptr = ptr;
-      meter->m_tracked_res[mid].amount = amount;
-      meter->m_tracked_res[mid].caller_line = caller_line;
-      strncpy (meter->m_tracked_res[mid].caller_file, p, THREAD_TRACKED_RES_CALLER_FILE_MAX_SIZE);
-      meter->m_tracked_res[mid].caller_file[THREAD_TRACKED_RES_CALLER_FILE_MAX_SIZE - 1] = '\0';
-      meter->m_tracked_res_count++;
-    }
-}
-#endif /* !NDEBUG */
 
 /*
  * thread_trace_on () -
