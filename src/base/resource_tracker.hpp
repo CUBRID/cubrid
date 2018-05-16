@@ -61,7 +61,7 @@ namespace cubbase
   {
     public:
 
-      resource_tracker_item (const char *fn_arg, int l_arg);
+      resource_tracker_item (const char *fn_arg, int l_arg, int amount);
 
       fileline_location m_first_location;
       int m_amount;
@@ -80,8 +80,8 @@ namespace cubbase
 			const char *res_name = "res_ptr");
       ~resource_tracker (void);
 
-      void increment (const char *filename, const int line, const res_type &res);
-      void decrement (const res_type &res);
+      void increment (const char *filename, const int line, const res_type &res, int amount = 1);
+      void decrement (const res_type &res, int amount = 1);
       void push_track (void);
       void pop_track (void);
       void clear_all (void);
@@ -139,12 +139,15 @@ namespace cubbase
 
   template <typename Res>
   void
-  resource_tracker<Res>::increment (const char *filename, const int line, const res_type &res)
+  resource_tracker<Res>::increment (const char *filename, const int line, const res_type &res, int amount /* = 1 */)
   {
     if (!m_enabled || m_aborted)
       {
 	return;
       }
+
+    // if amount is not stackable, only 1 amount is acceptable
+    assert (amount == 1 || m_stackable_amount);
 
     map_type &map = get_current_map ();
 
@@ -153,7 +156,7 @@ namespace cubbase
     // it_insert_or_found = did_insert ? iterator to inserted : iterator to existing
     // it_insert_or_found is an iterator to pair <res_type, resource_tracker_item>
     //
-    auto inserted = map.try_emplace (res, filename, line);
+    auto inserted = map.try_emplace (res, filename, line, amount);
     if (inserted.second)
       {
 	// did insert
@@ -169,13 +172,13 @@ namespace cubbase
 	// already exists
 	assert (m_stackable_amount);
 	// increment amount
-	inserted.first->second.m_amount++;
+	inserted.first->second.m_amount += amount;
       }
   }
 
   template <typename Res>
   void
-  resource_tracker<Res>::decrement (const res_type &res)
+  resource_tracker<Res>::decrement (const res_type &res, int amount /* = 1 */)
   {
     if (!m_enabled || m_aborted)
       {
@@ -194,7 +197,7 @@ namespace cubbase
     else
       {
 	// decrement
-	tracked->second.m_amount--;
+	tracked->second.m_amount -= amount;
 	if (tracked->second.m_amount == 0)
 	  {
 	    // remove from map
@@ -226,7 +229,10 @@ namespace cubbase
   void
   resource_tracker<Res>::check_total_amount (std::size_t expected_amount)
   {
-    assert (get_total_amount () == expected_amount);
+    if (m_enabled)
+      {
+	assert (get_total_amount () == expected_amount);
+      }
   }
 
   template <typename Res>

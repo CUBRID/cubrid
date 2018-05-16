@@ -40,9 +40,9 @@ namespace cubbase
     return os;
   }
 
-  resource_tracker_item::resource_tracker_item (const char *fn_arg, int l_arg)
+  resource_tracker_item::resource_tracker_item (const char *fn_arg, int l_arg, int amount)
     : m_first_location (fn_arg, l_arg)
-    , m_amount (1) // starts as 1
+    , m_amount (amount)
   {
     //
   }

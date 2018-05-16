@@ -654,9 +654,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   bool has_fk;
   BTID btid_global_stats = BTID_INITIALIZER;
   OID *notification_class_oid;
-#if !defined(NDEBUG)
-  int track_id;
-#endif
   bool is_sysop_started = false;
 
   /* Check for robustness */

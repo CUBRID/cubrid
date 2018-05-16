@@ -44,6 +44,7 @@ struct vacuum_worker;
 
 // from thread.h - FIXME
 struct thread_resource_track;
+struct qfile_list_id;  // for qlist_tracker
 namespace cubbase
 {
   template <typename Res>
@@ -53,7 +54,6 @@ namespace cubbase
   // memory allocations
   using alloc_tracker = resource_tracker<const void *>;
   // query lists
-  struct qfile_list_id;
   using qlist_tracker = resource_tracker<const qfile_list_id *>;
   // page fix
   using pgbuf_tracker = resource_tracker<const char *>;
@@ -247,6 +247,18 @@ namespace cubthread
       cubbase::alloc_tracker &get_alloc_tracker (void)
       {
 	return m_alloc_tracker;
+      }
+      cubbase::qlist_tracker &get_qlist_tracker (void)
+      {
+	return m_qlist_tracker;
+      }
+      cubbase::pgbuf_tracker &get_pgbuf_tracker (void)
+      {
+	return m_pgbuf_tracker;
+      }
+      cubbase::csect_tracker &get_csect_tracker (void)
+      {
+	return m_csect_tracker;
       }
 
       void end_resource_tracks (void);

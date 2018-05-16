@@ -113,9 +113,6 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
   int i, j;
   OID *partitions = NULL;
   int count = 0, error_code = NO_ERROR;
-#if !defined(NDEBUG)
-  int track_id;
-#endif
   int lk_grant_code = 0;
   CATALOG_ACCESS_INFO catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
 
@@ -454,9 +451,6 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
   char *buf_p, *start_p;
   int key_size;
   int lk_grant_code;
-#if !defined(NDEBUG)
-  int track_id;
-#endif
   CATALOG_ACCESS_INFO catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
 
   /* init */

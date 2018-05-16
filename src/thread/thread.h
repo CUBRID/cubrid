@@ -122,13 +122,7 @@ thread_get_thread_entry_info (void)
 #define thread_dec_recursion_depth(thread_p) (thread_Recursion_depth --)
 #define thread_clear_recursion_depth(thread_p) (thread_Recursion_depth = 0)
 
-#define thread_rc_track_need_to_trace(thread_p) (false)
-#define thread_rc_track_enter(thread_p) (-1)
-#define thread_rc_track_exit(thread_p, idx) (NO_ERROR)
-#define thread_rc_track_amount_pgbuf(thread_p) (0)
-#define thread_rc_track_amount_qlist(thread_p) (0)
 #define thread_rc_track_dump_all(thread_p, outfp)
-#define thread_rc_track_meter(thread_p, file, line, amount, ptr, rc_idx, mgr_idx)
 
 #define thread_get_tran_entry(thread_p, entry_idx)  (&thread_ts_decoy_entries[entry_idx])
 
@@ -308,16 +302,8 @@ extern HL_HEAPID css_set_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_i
 
 extern void thread_set_info (THREAD_ENTRY * thread_p, int client_id, int rid, int tran_index, int net_request_index);
 
-extern bool thread_rc_track_need_to_trace (THREAD_ENTRY * thread_p);
-extern int thread_rc_track_enter (THREAD_ENTRY * thread_p);
-extern int thread_rc_track_exit (THREAD_ENTRY * thread_p, int id);
-extern int thread_rc_track_amount_pgbuf (THREAD_ENTRY * thread_p);
-extern int thread_rc_track_amount_qlist (THREAD_ENTRY * thread_p);
 extern void thread_rc_track_dump_all (THREAD_ENTRY * thread_p, FILE * outfp);
-extern void thread_rc_track_meter (THREAD_ENTRY * thread_p, const char *file_name, const int line_no, int amount,
-				   void *ptr, int rc_idx, int mgr_idx);
 extern void thread_rc_track_initialize (THREAD_ENTRY * thread_p);
-extern void thread_rc_track_finalize (THREAD_ENTRY * thread_p);
 extern bool thread_get_sort_stats_active (THREAD_ENTRY * thread_p);
 extern bool thread_set_sort_stats_active (THREAD_ENTRY * thread_p, bool flag);
 

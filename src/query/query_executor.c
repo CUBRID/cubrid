@@ -68,7 +68,7 @@
 #endif /* defined (SA_MODE) */
 #include "db_json.hpp"
 #include "thread.h"
-
+#include "resource_tracker.hpp"
 #include "dbtype.h"
 
 #define GOTO_EXIT_ON_ERROR \
@@ -8260,13 +8260,8 @@ qexec_setup_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
       VFID_COPY (&(list_id->temp_vfid), &(list_id->tfile_vfid->temp_vfid));
     }
 
-#if !defined (NDEBUG)
   assert (list_id->type_list.type_cnt == 1);
-  if (list_id->type_list.type_cnt != 0)
-    {
-      thread_rc_track_meter (thread_p, __FILE__, __LINE__, 1, list_id, RC_QLIST, MGR_DEF);
-    }
-#endif /* NDEBUG */
+  thread_p->get_qlist_tracker ().increment (ARG_FILE_LINE, list_id);
 
   return NO_ERROR;
 }
@@ -14470,11 +14465,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 
   struct drand48_data *rand_buf_p;
 
-#if !defined (NDEBUG)
   int amount_qlist_enter;
-  int amount_qlist_exit;
-  int amount_qlist_new;
-#endif /* NDEBUG */
 
 #if defined(ENABLE_SYSTEMTAP)
   const char *query_str = NULL;
@@ -14551,9 +14542,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
     }
 #endif /* CUBRID_DEBUG */
 
-#if !defined (NDEBUG)
-  amount_qlist_enter = thread_rc_track_amount_qlist (thread_p);
-#endif /* NDEBUG */
+  amount_qlist_enter = thread_p->get_qlist_tracker ().get_total_amount ();
 
   /* this routine should not be called if an outstanding error condition already exists. */
   er_clear ();
@@ -14656,21 +14645,16 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 
 	  (void) qexec_clear_xasl (thread_p, xasl, true);
 
-#if !defined (NDEBUG)
-	  amount_qlist_exit = thread_rc_track_amount_qlist (thread_p);
-	  amount_qlist_new = amount_qlist_exit - amount_qlist_enter;
-	  if (thread_rc_track_need_to_trace (thread_p))
+	  if (list_id && list_id->type_list.type_cnt != 0)
 	    {
-	      if (list_id && list_id->type_list.type_cnt != 0)
-		{
-		  assert_release (amount_qlist_new == 1);
-		}
-	      else
-		{
-		  assert_release (amount_qlist_new == 0);
-		}
+	      // one new list file
+	      thread_p->get_qlist_tracker ().check_total_amount (amount_qlist_enter + 1);
 	    }
-#endif /* NDEBUG */
+	  else
+	    {
+	      // no new list files
+	      thread_p->get_qlist_tracker ().check_total_amount (amount_qlist_enter);
+	    }
 
 	  /* caller will detect the error condition and free the listid */
 	  goto end;
@@ -14703,21 +14687,16 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
   /* clear XASL tree */
   (void) qexec_clear_xasl (thread_p, xasl, true);
 
-#if !defined (NDEBUG)
-  amount_qlist_exit = thread_rc_track_amount_qlist (thread_p);
-  amount_qlist_new = amount_qlist_exit - amount_qlist_enter;
-  if (thread_rc_track_need_to_trace (thread_p))
+  if (list_id && list_id->type_list.type_cnt != 0)
     {
-      if (list_id && list_id->type_list.type_cnt != 0)
-	{
-	  assert_release (amount_qlist_new == 1);
-	}
-      else
-	{
-	  assert_release (amount_qlist_new == 0);
-	}
+      // one new list file
+      thread_p->get_qlist_tracker ().check_total_amount (amount_qlist_enter + 1);
     }
-#endif /* NDEBUG */
+  else
+    {
+      // no new list files
+      thread_p->get_qlist_tracker ().check_total_amount (amount_qlist_enter);
+    }
 
 #if defined(CUBRID_DEBUG)
   if (trace && fp)

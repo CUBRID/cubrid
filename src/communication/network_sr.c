@@ -919,9 +919,6 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   int status = CSS_NO_ERRORS;
   int error_code;
   CSS_CONN_ENTRY *conn;
-#if !defined(NDEBUG)
-  int track_id;
-#endif
 
   if (buffer == NULL && size > 0)
     {

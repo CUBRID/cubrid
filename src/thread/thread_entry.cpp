@@ -240,9 +240,7 @@ namespace cubthread
 	free (log_data_ptr);
       }
 
-#if defined (SERVER_MODE)
-    thread_rc_track_finalize (this);
-#endif // SERVER_MODE
+    end_resource_tracks ();
 
     db_destroy_private_heap (this, private_heap_id);
 
@@ -256,8 +254,6 @@ namespace cubthread
 #if !defined (NDEBUG)
     fi_thread_final (this);
 #endif // DEBUG
-
-    end_resource_tracks ();
 
     m_cleared = true;
   }
