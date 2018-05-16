@@ -73,6 +73,7 @@
 #else /* WINDOWS */
 #include "tcp.h"
 #endif /* WINDOWS */
+#include "release_string.h"
 #include "heartbeat.h"
 
 extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id, const char *server_name, int name_length);
