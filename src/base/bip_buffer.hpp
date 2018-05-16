@@ -189,7 +189,7 @@ namespace mem
         {
           assert (ptr >= m_buffer);
 
-          if (ptr >= m_ptr_start_a && ptr < m_ptr_end_a)
+          if (ptr >= m_ptr_start_a && ptr <= m_ptr_end_a)
             {
               /* a later reserve is committed before the commit of a earlier reserve */
               assert (m_ptr_prev_gen_committed <= m_ptr_prev_gen_last_reserved);
@@ -317,6 +317,9 @@ namespace mem
 
               if (m_ptr_prev_gen_committed != NULL)
                 {
+                  assert (m_ptr_prev_gen_committed == m_ptr_prev_gen_last_reserved
+                          || m_ptr_start_a == m_buffer);
+
                   trail_a = m_ptr_end_a;
                   amount_trail_a = m_ptr_prev_gen_committed - m_ptr_end_a;
                 }
