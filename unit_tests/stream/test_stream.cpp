@@ -830,6 +830,7 @@ namespace test_stream
                  == stream_context_manager::g_stream->get_curr_read_position ())
             {
               /* test has finished, we read all data */
+              delete se;
               break;
             }
 
