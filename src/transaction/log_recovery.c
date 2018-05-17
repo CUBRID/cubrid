@@ -2479,6 +2479,14 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		  /* The block is corrupted, do not analyze it. */
 		  first_corrupted_rec_lsa.pageid = log_lsa.pageid;
 		  first_corrupted_rec_lsa.offset = i * block_size;
+
+		  if (first_corrupted_rec_lsa.offset > 0)
+		    {
+		      /* Skip log header size. */
+		      first_corrupted_rec_lsa.offset -= sizeof (LOG_HDRPAGE);
+		    }
+
+		  assert (first_corrupted_rec_lsa.offset >= 0);
 		  break;
 		}
 	    }
