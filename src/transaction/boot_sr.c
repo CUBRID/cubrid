@@ -4624,6 +4624,12 @@ xboot_delete (const char *db_name, bool force_delete, BOOT_SERVER_SHUTDOWN_MODE 
 #endif
       er_stack_pop ();
     }
+
+#if defined (SA_MODE)
+  cubthread::finalize ();
+  thread_p = NULL;
+#endif // SA_MODE
+
   return error_code;
 
 error_dirty_delete:
@@ -4638,6 +4644,11 @@ error_dirty_delete:
   boot_server_all_finalize (thread_p, ER_THREAD_FINAL, shutdown_common_modules);
 #endif
   er_stack_pop ();
+
+#if defined (SA_MODE)
+  cubthread::finalize ();
+  thread_p = NULL;
+#endif // SA_MODE
 
   return error_code;
 }
