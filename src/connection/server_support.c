@@ -1076,7 +1076,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 
 	  /* check server's HA state */
 	  if (ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY && conn->in_transaction == false
-	      && css_count_transaction_worker_threads (thread_p, conn->transaction_id, conn->client_id) == 0)
+	      && css_count_transaction_worker_threads (thread_p, conn->get_tran_index (), conn->client_id) == 0)
 	    {
 	      status = REQUEST_REFUSED;
 	      break;
@@ -1133,7 +1133,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "css_connection_handler_thread: status %d conn { status %d transaction_id %d "
-		    "db_error %d stop_talk %d stop_phase %d }\n", status, conn->status, conn->transaction_id,
+		    "db_error %d stop_talk %d stop_phase %d }\n", status, conn->status, conn->get_tran_index (),
 		    conn->db_error, conn->stop_talk, conn->stop_phase);
       rv = pthread_mutex_lock (&thread_p->tran_index_lock);
       (*css_Connection_error_handler) (thread_p, conn);
@@ -1175,7 +1175,7 @@ css_block_all_active_conn (unsigned short stop_phase)
       if (!IS_INVALID_SOCKET (conn->fd) && conn->fd != css_Pipe_to_master)
 	{
 	  conn->stop_talk = true;
-	  logtb_set_tran_index_interrupt (NULL, conn->transaction_id, 1);
+	  logtb_set_tran_index_interrupt (NULL, conn->get_tran_index (), 1);
 	}
 
       r = rmutex_unlock (NULL, &conn->rmutex);
@@ -1239,7 +1239,7 @@ css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_r
   if (rc == NO_ERRORS)
     {
       /* 1. change thread's transaction id to this connection's */
-      thread_ref.tran_index = conn_ref.transaction_id;
+      thread_ref.tran_index = conn_ref.get_tran_index ();
 
       pthread_mutex_unlock (&thread_ref.tran_index_lock);
 
@@ -1256,7 +1256,7 @@ css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_r
 
       eid = css_return_eid_from_conn (&conn_ref, rid);
       /* 2. change thread's client, rid, tran_index for this request */
-      css_set_thread_info (&thread_ref, conn_ref.client_id, eid, conn_ref.transaction_id, request);
+      css_set_thread_info (&thread_ref, conn_ref.client_id, eid, conn_ref.get_tran_index (), request);
 
       /* 3. Call server_request() function */
       status = css_Server_request_handler (&thread_ref, eid, request, size, buffer);

@@ -646,7 +646,7 @@ public class CUBRIDStatement implements Statement {
 		 * e) { throw new CUBRIDException(CUBRIDJDBCErrorCode.statement_closed);
 		 * }
 		 */
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	int getHoldability() {
@@ -780,27 +780,27 @@ public class CUBRIDStatement implements Statement {
 
 	/* JDK 1.6 */
 	public boolean isClosed() throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		return is_closed;
 	}
 
 	/* JDK 1.6 */
 	public boolean isPoolable() throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public void setPoolable(boolean poolable) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public boolean isWrapperFor(Class<?> iface) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public <T> T unwrap(Class<T> iface) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	protected CUBRIDOID executeInsertCore() throws SQLException {
@@ -1039,12 +1039,12 @@ public class CUBRIDStatement implements Statement {
 
 	/* JDK 1.7 */
 	public void closeOnCompletion() throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.7 */
 	public boolean isCloseOnCompletion() throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	public void setCurrentTransaction (boolean is_from_current_transaction) {

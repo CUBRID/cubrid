@@ -3038,7 +3038,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
   if (tran_index != NULL_TRAN_INDEX)
     {
 #if defined (SERVER_MODE)
-      thread_p->conn_entry->transaction_id = tran_index;
+      thread_p->conn_entry->set_tran_index (tran_index);
 #endif /* SERVER_MODE */
       server_credential->db_full_name = boot_Db_full_name;
       server_credential->host_name = boot_Host_name;
