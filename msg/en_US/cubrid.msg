@@ -1295,6 +1295,7 @@ $ LOADDB
 1226 Reserved error for stream/replication.
 1227 Reserved error for stream/replication.
 1228 Reserved error for stream/replication.
+1229 Reserved error for stream/replication.
 1230 Reserved error for stream/replication.
 1231 Reserved error for stream/replication.
 1232 Reserved error for stream/replication.
