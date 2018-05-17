@@ -2736,6 +2736,12 @@ tran_server_is_active_and_has_updated (void)
 #else /* CS_MODE */
   int isactive_and_has_updated = 0;	/* TODO */
 
+  if (!BO_IS_SERVER_RESTARTED ())
+    {
+      // server is killed already
+      return 0;
+    }
+
   THREAD_ENTRY *thread_p = enter_server ();
 
   isactive_and_has_updated = xtran_server_is_active_and_has_updated (thread_p);
@@ -3658,7 +3664,7 @@ int
 boot_unregister_client (int tran_index)
 {
 #if defined(CS_MODE)
-  int success = ER_FAILED;
+  int error_code = ER_FAILED;
   int req_error;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request;
@@ -3672,18 +3678,28 @@ boot_unregister_client (int tran_index)
 
   req_error = net_client_request (NET_SERVER_BO_UNREGISTER_CLIENT, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
+  if (req_error == NO_ERROR)
     {
-      or_unpack_int (reply, &success);
+      or_unpack_int (reply, &error_code);
+    }
+  else
+    {
+      error_code = req_error;
     }
 
-  return success;
+  return error_code;
 #else /* CS_MODE */
-  int success = ER_FAILED;
+  int error_code = NO_ERROR;
+
+  if (!BO_IS_SERVER_RESTARTED ())
+    {
+      // server is killed already
+      return NO_ERROR;
+    }
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xboot_unregister_client (thread_p, tran_index);
+  error_code = xboot_unregister_client (thread_p, tran_index);
   if (tran_index == NULL_TRAN_INDEX)
     {
       assert (thread_p == NULL);
@@ -3694,7 +3710,7 @@ boot_unregister_client (int tran_index)
       exit_server (*thread_p);
     }
 
-  return success;
+  return error_code;
 #endif /* !CS_MODE */
 }
 
