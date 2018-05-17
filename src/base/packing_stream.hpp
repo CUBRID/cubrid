@@ -65,7 +65,7 @@ namespace cubstream
 
       entry (packing_stream *stream);
 
-      ~entry() { reset (); };
+      virtual ~entry() { reset (); };
 
       int pack (void);
 
@@ -97,7 +97,7 @@ namespace cubstream
       virtual int unpack_stream_entry_header (void) = 0;
       virtual int get_packable_entry_count_from_header (void) = 0;
       virtual bool is_equal (const entry *other) = 0;
-      virtual void destroy_objects () = 0;
+      virtual void destroy_objects ();
   };
 
   /*

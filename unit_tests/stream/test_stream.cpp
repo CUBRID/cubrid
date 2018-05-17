@@ -1129,7 +1129,7 @@ namespace test_stream
         read_byte_worker_pool->execute (read_byte_task);
       }
 
-    std::this_thread::sleep_for (std::chrono::seconds (25));
+    std::this_thread::sleep_for (std::chrono::seconds (2115));
     stream_context_manager::g_stop_packer = true;
     stream_context_manager::g_pause_unpacker = false;
     std::cout << "      Stopping packers" << std::endl;

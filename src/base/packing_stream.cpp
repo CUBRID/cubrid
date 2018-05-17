@@ -38,6 +38,18 @@ namespace cubstream
     set_packable (false);
   }
 
+  void entry::destroy_objects ()
+  {
+    for (int i = 0; i < m_packable_entries.size (); i++)
+      {
+        if (m_packable_entries[i] != NULL)
+          {
+            delete (m_packable_entries[i]);
+          }
+      }
+    m_packable_entries.clear ();
+  }
+
   int entry::pack (void)
   {
     size_t total_stream_entry_size;
