@@ -120,6 +120,7 @@ namespace test_stream
       std::string large_str;
 
     public:
+      ~po2() {};
 
       int pack (cubpacking::packer *serializator);
       int unpack (cubpacking::packer *serializator);

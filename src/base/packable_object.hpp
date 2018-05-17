@@ -35,6 +35,7 @@ namespace cubpacking
   class packable_object
   {
     public:
+      virtual ~packable_object () {};
       virtual int pack (packer *serializator) = 0;
       virtual int unpack (packer *serializator) = 0;
 

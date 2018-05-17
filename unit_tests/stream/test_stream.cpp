@@ -281,7 +281,7 @@ namespace test_stream
 	    break;
 	  case 4:
 	    str_size = std::rand () % 1000 + 1;
-	    tmp_str = new char[str_size + 1];
+	    tmp_str = (char *) db_private_alloc (NULL, str_size + 1);
 	    db_make_char (&values[i], str_size, tmp_str, str_size, INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY);
             values[i].need_clear = true;
 	    break;
@@ -293,13 +293,13 @@ namespace test_stream
     str_size = std::rand () % 10000 + 1;
     tmp_str = new char[str_size + 1];
     generate_str (tmp_str, str_size);
-    large_str = tmp_str;
+    large_str = std::string (tmp_str);
     delete []tmp_str;
 
     str_size = std::rand () % 10000 + 1;
     tmp_str = new char[str_size + 1];
     generate_str (tmp_str, str_size);
-    str1 = tmp_str;
+    str1 = std::string (tmp_str);
     delete []tmp_str;
 
     generate_str (str2, sizeof (str2) - 1);
@@ -381,7 +381,7 @@ namespace test_stream
     str_size = std::rand () % 10000 + 1;
     tmp_str = new char[str_size + 1];
     generate_str (tmp_str, str_size);
-    large_str = tmp_str;
+    large_str = std::string (tmp_str);
     delete[] tmp_str;
   }
 
@@ -450,7 +450,6 @@ namespace test_stream
   int init_common_cubrid_modules (void)
   {
     static bool initialized = false;
-    int res;
     THREAD_ENTRY *thread_p = NULL;
 
     if (initialized)
@@ -1129,7 +1128,7 @@ namespace test_stream
         read_byte_worker_pool->execute (read_byte_task);
       }
 
-    std::this_thread::sleep_for (std::chrono::seconds (2115));
+    std::this_thread::sleep_for (std::chrono::seconds (15));
     stream_context_manager::g_stop_packer = true;
     stream_context_manager::g_pause_unpacker = false;
     std::cout << "      Stopping packers" << std::endl;
