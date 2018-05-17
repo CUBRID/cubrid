@@ -1890,15 +1890,54 @@ dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot, in
     {
       assert (slots_hash_entry->slot != NULL);
 
-      if (LSA_LE (&slot->lsa, &slots_hash_entry->slot->lsa))
+      if (LSA_LT (&slot->lsa, &slots_hash_entry->slot->lsa))
 	{
 	  dwb_log ("DWB hash find key (%d, %d), the LSA=(%lld,%d), better than (%lld,%d): \n",
 		   vpid->volid, vpid->pageid, slots_hash_entry->slot->lsa.pageid,
 		   slots_hash_entry->slot->lsa.offset, slot->lsa.pageid, slot->lsa.offset);
 
-	  /* The older slot is same or better than mine - leave it in hash. */
+	  /* The older slot is better than mine - leave it in hash. */
 	  pthread_mutex_unlock (&slots_hash_entry->mutex);
 	  return NO_ERROR;
+	}
+      else if (LSA_EQ (&slot->lsa, &slots_hash_entry->slot->lsa))
+	{
+	  /*
+	   * If LSA's are equals, still replace slot in hash. We are in "flushing to disk without logging" case.
+	   * The page was modified but not logged. We have to flush this version since is the latest one.
+	   */
+	  if (slots_hash_entry->slot->block_no == slot->block_no)
+	    {
+	      /* Invalidate the old slot, if is in the same block. We want to avoid duplicates in block at flush. */
+	      assert (slots_hash_entry->slot->position_in_block < slot->position_in_block);
+	      VPID_SET_NULL (&slots_hash_entry->slot->vpid);
+	      fileio_initialize_res (thread_p, &(slots_hash_entry->slot->io_page->prv));
+
+	      _er_log_debug (ARG_FILE_LINE,
+			     "Found same page with same LSA in same block - %d - at positions (%d, %d) \n",
+			     slots_hash_entry->slot->position_in_block, slot->position_in_block);
+	    }
+	  else
+	    {
+#if !defined (NDEBUG)
+	      int old_block_no = ATOMIC_INC_32 (&slots_hash_entry->slot->block_no, 0);
+	      if (old_block_no > 0)
+		{
+		  /* Be sure that the block containing old page version is flushed first. */
+		  DWB_BLOCK *old_block = &dwb_Global.blocks[old_block_no];
+		  DWB_BLOCK *new_block = &dwb_Global.blocks[slot->block_no];
+
+		  /* Maybe we will check that the slot is still in old block. */
+		  assert ((old_block->version < new_block->version)
+			  || (old_block->version == new_block->version && old_block->block_no < new_block->block_no));
+
+		  _er_log_debug (ARG_FILE_LINE,
+				 "Found same page with same LSA in 2 different blocks old = (%d, %d), new = (%d,%d) \n",
+				 old_block_no, slots_hash_entry->slot->position_in_block, new_block->block_no,
+				 slot->position_in_block);
+		}
+#endif
+	    }
 	}
 
       dwb_log ("Replace hash key (%d, %d), the new LSA=(%lld,%d), the old LSA = (%lld,%d)",
