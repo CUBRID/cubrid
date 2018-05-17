@@ -107,7 +107,7 @@ static HA_SERVER_STATE ha_Server_state = HA_SERVER_STATE_IDLE;
 static bool ha_Repl_delay_detected = false;
 
 static int ha_Server_num_of_hosts = 0;
-static char *ha_Server_master_hostname = NULL;
+static char ha_Server_master_hostname[HOST_NAME_MAX];
 
 #define HA_LOG_APPLIER_STATE_TABLE_MAX  5
 typedef struct ha_log_applier_state_table HA_LOG_APPLIER_STATE_TABLE;
@@ -777,8 +777,6 @@ css_process_master_hostname ()
 {
   int hostname_length, error;
 
-  delete_master_hostname ();
-
   error = css_receive_heartbeat_data (css_Master_conn, (char *) &hostname_length, sizeof (int));
   if (error != NO_ERRORS)
     {
@@ -794,7 +792,6 @@ css_process_master_hostname ()
       return ER_FAILED;
     }
 
-  ha_Server_master_hostname = (char *) malloc (hostname_length + 1);
   error = css_receive_heartbeat_data (css_Master_conn, ha_Server_master_hostname, hostname_length);
   if (error != NO_ERRORS)
     {
@@ -2700,21 +2697,6 @@ css_process_new_slave (SOCKET master_fd)
   // remove this after master/slave repl chn impl
   css_shutdown_socket (new_fd);
 #endif
-}
-
-void
-init_master_hostname ()
-{
-  ha_Server_master_hostname = NULL;
-}
-
-void
-delete_master_hostname ()
-{
-  if (ha_Server_master_hostname != NULL)
-    {
-      free (ha_Server_master_hostname);
-    }
 }
 
 const char *

@@ -839,8 +839,6 @@ net_server_init (void)
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_redistribute_partition_data;
   req_p->name = "NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA";
-
-  init_master_hostname ();
 }
 
 #if defined(CUBRID_DEBUG)
