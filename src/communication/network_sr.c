@@ -1086,7 +1086,7 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
   local_tran_index = thread_p->tran_index;
 
   conn_p = (CSS_CONN_ENTRY *) arg;
-  tran_index = conn_p->transaction_id;
+  tran_index = conn_p->get_tran_index ();
   client_id = conn_p->client_id;
 
   thread_set_info (thread_p, client_id, 0, tran_index, NET_SERVER_SHUTDOWN);
@@ -1105,7 +1105,7 @@ loop:
 	{
 	  /* the connected client does not yet finished boot_client_register */
 	  thread_sleep (50);	/* 50 msec */
-	  tran_index = conn_p->transaction_id;
+	  tran_index = conn_p->get_tran_index ();
 	}
       if (!logtb_is_interrupted_tran (thread_p, false, &continue_check, tran_index))
 	{
