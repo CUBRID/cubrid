@@ -29,6 +29,7 @@
 #include <string>
 #include <iostream>
 
+#include <cassert>
 #include <cstring>
 
 namespace cubbase
@@ -41,7 +42,7 @@ namespace cubbase
   {
     fileline_location (const char *fn_arg, int l_arg);
 
-    static const std::size_t MAX_FILENAME_SIZE = 32;
+    static const std::size_t MAX_FILENAME_SIZE = 20;
 
     static const char *print_format (void)
     {
@@ -64,7 +65,7 @@ namespace cubbase
       resource_tracker_item (const char *fn_arg, int l_arg, int amount);
 
       fileline_location m_first_location;
-      int m_amount;
+      unsigned m_amount;
   };
 
   std::ostream &operator<< (std::ostream &os, const resource_tracker_item &item);
@@ -76,57 +77,63 @@ namespace cubbase
       using res_type = Res;
       using map_type = std::map<res_type, resource_tracker_item>;
 
-      resource_tracker (const char *name, bool enabled, bool stackable, std::size_t max_size,
-			const char *res_name = "res_ptr");
+      resource_tracker (const char *name, bool enabled, std::size_t max_size, const char *res_name,
+			unsigned max_amount = 1);
       ~resource_tracker (void);
 
-      void increment (const char *filename, const int line, const res_type &res, int amount = 1);
-      void decrement (const res_type &res, int amount = 1);
+      void increment (const char *filename, const int line, const res_type &res, unsigned amount = 1);
+      void decrement (const res_type &res, unsigned amount = 1);
       void push_track (void);
       void pop_track (void);
       void clear_all (void);
-      int get_total_amount (void);
-      void check_total_amount (std::size_t expected_amount);
+      unsigned get_total_amount (void) const;
+      void check_total_amount (unsigned expected_amount) const;
 
     private:
 
       map_type &get_current_map (void);
 
       void abort (void);
-      void dump (void);
-      void dump_map (const map_type &map, std::ostream &out);
+      void dump (void) const;
+      void dump_map (const map_type &map, std::ostream &out) const;
 
-      std::string m_name;
-      std::string m_res_name;
+      const char *m_name;
+      const char *m_res_name;
 
       bool m_enabled;
-      bool m_stackable_amount;
       bool m_aborted;
       size_t m_max_size;
       size_t m_crt_size;
+      unsigned m_max_amout;
 
       std::forward_list<map_type> m_tracked_stack;
-      map_type m_tracked;
   };
 
   //////////////////////////////////////////////////////////////////////////
-  // other functions
+  // other functions & stuff
   //////////////////////////////////////////////////////////////////////////
+
+  bool restrack_pop_error (void);
+  void restrack_set_error (bool set_error);
+  void restrack_set_suppress_assert (bool suppress);
+  bool restrack_is_assert_suppressed (void);
+  inline void restrack_assert (bool cond);
 
   //////////////////////////////////////////////////////////////////////////
   // template/inline implementation
   //////////////////////////////////////////////////////////////////////////
 
   template <typename Res>
-  resource_tracker<Res>::resource_tracker (const char *name, bool enabled, bool stackable, std::size_t max_size,
-      const char *res_name /* = "res_ptr" */)
+  resource_tracker<Res>::resource_tracker (const char *name, bool enabled, std::size_t max_size, const char *res_name,
+      unsigned max_amount /* = 1 */)
     : m_name (name)
     , m_res_name (res_name)
     , m_enabled (enabled)
-    , m_stackable_amount (stackable)
     , m_aborted (false)
     , m_max_size (max_size)
     , m_crt_size (0)
+    , m_max_amout (max_amount)
+    , m_tracked_stack ()
   {
     //
   }
@@ -134,20 +141,29 @@ namespace cubbase
   template <typename Res>
   resource_tracker<Res>::~resource_tracker (void)
   {
-    assert (m_crt_size == 0);
+    restrack_assert (m_tracked_stack.empty ());
+    restrack_assert (m_crt_size == 0);
+
+    clear_all ();
   }
 
   template <typename Res>
   void
-  resource_tracker<Res>::increment (const char *filename, const int line, const res_type &res, int amount /* = 1 */)
+  resource_tracker<Res>::increment (const char *filename, const int line, const res_type &res,
+				    unsigned amount /* = 1 */)
   {
     if (!m_enabled || m_aborted)
       {
 	return;
       }
 
-    // if amount is not stackable, only 1 amount is acceptable
-    assert (amount == 1 || m_stackable_amount);
+    if (m_tracked_stack.empty ())
+      {
+	// not active
+	return;
+      }
+
+    restrack_assert (amount <= m_max_amout);
 
     map_type &map = get_current_map ();
 
@@ -170,51 +186,69 @@ namespace cubbase
     else
       {
 	// already exists
-	assert (m_stackable_amount);
 	// increment amount
 	inserted.first->second.m_amount += amount;
+
+	restrack_assert (inserted.first->second.m_amount <= m_max_amout);
       }
   }
 
   template <typename Res>
   void
-  resource_tracker<Res>::decrement (const res_type &res, int amount /* = 1 */)
+  resource_tracker<Res>::decrement (const res_type &res, unsigned amount /* = 1 */)
   {
     if (!m_enabled || m_aborted)
       {
 	return;
       }
 
+    if (m_tracked_stack.empty ())
+      {
+	// not active
+	return;
+      }
+
     map_type &map = get_current_map ();
+
+    // note - currently resources from different levels cannot be mixed. one level cannot free resources from another
+    //        level... if we want to do that, I don't think the stacking has any use anymore. we can just keep only
+    //        one level and that's that.
 
     // std::map::find returns a pair to <res_type, resource_tracker_item>
     auto tracked = map.find (res);
     if (tracked == map.end ())
       {
 	// not found
-	assert (false);
+	restrack_assert (false);
       }
     else
       {
 	// decrement
-	tracked->second.m_amount -= amount;
-	if (tracked->second.m_amount == 0)
+	if (amount > tracked->second.m_amount)
 	  {
-	    // remove from map
+	    // more than expected
+	    restrack_assert (false);
 	    map.erase (tracked);
+	    m_crt_size--;
 	  }
 	else
 	  {
-	    assert (m_stackable_amount);
+	    tracked->second.m_amount -= amount;
+	    if (tracked->second.m_amount == 0)
+	      {
+		// remove from map
+		map.erase (tracked);
+		m_crt_size--;
+	      }
 	  }
       }
   }
 
   template <typename Res>
-  int
-  resource_tracker<Res>::get_total_amount (void)
+  unsigned
+  resource_tracker<Res>::get_total_amount (void) const
   {
-    int total = 0;
+    unsigned total = 0;
     for (auto stack_it : m_tracked_stack)
       {
 	for (auto map_it : stack_it)
@@ -227,11 +261,11 @@ namespace cubbase
 
   template <typename Res>
   void
-  resource_tracker<Res>::check_total_amount (std::size_t expected_amount)
+  resource_tracker<Res>::check_total_amount (unsigned expected_amount) const
   {
     if (m_enabled)
       {
-	assert (get_total_amount () == expected_amount);
+	restrack_assert (get_total_amount () == expected_amount);
       }
   }
 
@@ -251,7 +285,7 @@ namespace cubbase
       {
 	pop_track ();
       }
-    assert (m_crt_size == 0);
+    restrack_assert (m_crt_size == 0);
   }
 
   template <typename Res>
@@ -263,18 +297,18 @@ namespace cubbase
       {
 	pop_track ();
       }
-    assert (m_crt_size == 0);
+    restrack_assert (m_crt_size == 0);
     m_aborted = true;
   }
 
   template <typename Res>
   void
-  resource_tracker<Res>::dump (void)
+  resource_tracker<Res>::dump (void) const
   {
     std::ostream &out = std::cerr;
 
     out << "   +--- " << m_name << std::endl;
-    out << "         +--- amount = " << get_total_amount () << " (threshold = %d)" << m_max_size << std::endl;
+    out << "         +--- amount = " << get_total_amount () << " (threshold = " << m_max_size << ")" << std::endl;
 
     std::size_t level = 0;
     for (auto stack_it : m_tracked_stack)
@@ -283,13 +317,11 @@ namespace cubbase
 	dump_map (stack_it, out);
 	level++;
       }
-
-
   }
 
   template <typename Res>
   void
-  resource_tracker<Res>::dump_map (const map_type &map, std::ostream &out)
+  resource_tracker<Res>::dump_map (const map_type &map, std::ostream &out) const
   {
     for (auto map_it : map)
       {
@@ -297,7 +329,7 @@ namespace cubbase
 	out << " " << map_it.second;
 	out << std::endl;
       }
-    out << "            +--- tracked res count = " << m_tracked.size () << std::endl;
+    out << "            +--- tracked res count = " << map.size () << std::endl;
   }
 
   template <typename Res>
@@ -323,7 +355,7 @@ namespace cubbase
 
     if (m_tracked_stack.empty ())
       {
-	assert (false);
+	restrack_assert (false);
 	return;
       }
 
@@ -333,7 +365,7 @@ namespace cubbase
 	if (!map.empty ())
 	  {
 	    dump ();
-	    assert (false);
+	    restrack_assert (false);
 	    m_crt_size -= map.size ();
 	  }
       }
@@ -342,8 +374,28 @@ namespace cubbase
     if (m_tracked_stack.empty ())
       {
 	// we couldn't reset until the stack became empty; now we can
+	restrack_assert (m_aborted || m_crt_size == 0);
 	m_aborted = false;
+	m_crt_size = 0;
       }
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // other
+  //////////////////////////////////////////////////////////////////////////
+  void
+  restrack_assert (bool cond)
+  {
+#if !defined (NDEBUG)
+    if (restrack_is_assert_suppressed ())
+      {
+	restrack_set_error (!cond);
+      }
+    else
+      {
+	assert (cond);
+      }
+#endif // NDEBUG
   }
 
 } // namespace cubbase

@@ -139,92 +139,6 @@ enum thread_stop_type
   THREAD_STOP_LOGWR
 };
 
-/*
- * thread resource track info matrix: thread_p->track.meter[RC][MGR]
- * +------------+-----+-------+------+
- * |RC/MGR      | DEF | BTREE | LAST |
- * +------------+-----+-------+------+
- * | VMEM       |     |   X   |   X  |
- * +------------+-----+-------+------+
- * | PGBUF      |     |   X   |   X  |
- * +------------+-----+-------+------+
- * | PGBUF_TEMP |     |   X   |   X  |
- * +------------+-----+-------+------+
- * | QLIST      |     |   X   |   X  |
- * +------------+-----+-------+------+
- * | CS         |     |   X   |   X  |
- * +------------+-----+-------+------+
- * | LAST       |  X  |   X   |   X  |
- * +------------+-----+-------+------+
- */
-
-/* resource track meters */
-enum
-{ RC_VMEM = 0, RC_PGBUF, RC_QLIST, RC_CS, RC_LAST };
-
-/* resource track managers */
-enum
-{ MGR_DEF = 0, MGR_LAST };
-
-/* resource track critical section enter mode */
-enum
-{
-  THREAD_TRACK_CSECT_ENTER_AS_READER = 1,
-  THREAD_TRACK_CSECT_ENTER_AS_WRITER,
-  THREAD_TRACK_CSECT_PROMOTE,
-  THREAD_TRACK_CSECT_DEMOTE,
-  THREAD_TRACK_CSECT_EXIT
-};
-
-#if !defined (NDEBUG)
-#define THREAD_TRACKED_RES_CALLER_FILE_MAX_SIZE	    20
-/* THREAD_TRACKED_RESOURCE - Used to track allocated resources.
- * When a resource is used first time, a structure like this one is generated
- * and file name and line are saved. Any other usages will update the amount.
- * When the amount becomes 0, the resource is considered "freed".
- */
-typedef struct thread_tracked_resource THREAD_TRACKED_RESOURCE;
-struct thread_tracked_resource
-{
-  void *res_ptr;
-  int caller_line;
-  INT32 amount;
-  char caller_file[THREAD_TRACKED_RES_CALLER_FILE_MAX_SIZE];
-};
-#endif /* !NDEBUG */
-
-typedef struct thread_resource_meter THREAD_RC_METER;
-struct thread_resource_meter
-{
-  INT32 m_amount;		/* resource hold counter */
-  INT32 m_threshold;		/* for future work, get PRM */
-  const char *m_add_file_name;	/* last add file name, line number */
-  INT32 m_add_line_no;
-  const char *m_sub_file_name;	/* last sub file name, line number */
-  INT32 m_sub_line_no;
-#if !defined(NDEBUG)
-  char m_hold_buf[ONE_K];	/* used specially for each meter */
-  char m_rwlock_buf[ONE_K];	/* the rwlock for each thread in CS */
-  INT32 m_hold_buf_size;
-
-  THREAD_TRACKED_RESOURCE *m_tracked_res;
-  INT32 m_tracked_res_capacity;
-  INT32 m_tracked_res_count;
-#endif				/* !NDEBUG */
-};
-
-typedef struct thread_resource_track THREAD_RC_TRACK;
-struct thread_resource_track
-{
-  HL_HEAPID private_heap_id;	/* id of thread private memory allocator */
-  THREAD_RC_METER meter[RC_LAST][MGR_LAST];
-  THREAD_RC_TRACK *prev;
-
-#if !defined (NDEBUG)
-  THREAD_TRACKED_RESOURCE *tracked_resources;
-#endif
-};
-
 /* Forward definition to fix compile error. */
 struct vacuum_worker;
 struct fi_test_item;
@@ -338,10 +252,5 @@ extern int thread_return_transaction_entry (THREAD_ENTRY * entry_p);
 extern int thread_initialize_key (void);
 #endif /* HPUX */
 #endif /* SERVER_MODE */
-
-#define THREAD_RC_TRACK_VMEM_THRESHOLD_AMOUNT	      32767
-#define THREAD_RC_TRACK_PGBUF_THRESHOLD_AMOUNT	      1024
-#define THREAD_RC_TRACK_QLIST_THRESHOLD_AMOUNT	      1024
-#define THREAD_RC_TRACK_CS_THRESHOLD_AMOUNT	      1024
 
 #endif /* _THREAD_H_ */

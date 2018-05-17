@@ -42,8 +42,7 @@ struct log_zip;
 // from vacuum.h
 struct vacuum_worker;
 
-// from thread.h - FIXME
-struct thread_resource_track;
+// forward resource trackers
 struct qfile_list_id;  // for qlist_tracker
 namespace cubbase
 {
@@ -208,12 +207,6 @@ namespace cubthread
       int net_request_index;	/* request index of net server functions */
 
       struct vacuum_worker *vacuum_worker;	/* Vacuum worker info */
-
-      /* resource track info */
-      thread_resource_track *track;
-      int track_depth;
-      int track_threshold;		/* for future work, get PRM */
-      thread_resource_track *track_free_list;
 
       bool sort_stats_active;
 

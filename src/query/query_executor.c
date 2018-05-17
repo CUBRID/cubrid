@@ -14465,7 +14465,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 
   struct drand48_data *rand_buf_p;
 
-  int amount_qlist_enter;
+  unsigned amount_qlist_enter;
 
 #if defined(ENABLE_SYSTEMTAP)
   const char *query_str = NULL;

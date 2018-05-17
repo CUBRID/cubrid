@@ -42,6 +42,11 @@
 
 namespace cubthread
 {
+  //////////////////////////////////////////////////////////////////////////
+  // resource tracker dedicated section
+  // todo - normally each tracker should be moved to its own module
+  //////////////////////////////////////////////////////////////////////////
+
   // enable trackers in SERVER_MODE && debug
   static const bool ENABLE_TRACKERS =
 #if !defined (NDEBUG) && defined (SERVER_MODE)
@@ -49,6 +54,32 @@ namespace cubthread
 #else // RELEASE or !SERVER_MODE
 	  false;
 #endif // RELEASE or !SERVER_MODE
+
+  // tracker constants
+  // alloc
+  const char *ALLOC_TRACK_NAME = "Virtual Memory";
+  const char *ALLOC_TRACK_RES_NAME = "res_ptr";
+  const std::size_t ALLOC_TRACK_MAX_ITEMS = 32767;
+
+  // query list
+  const char *QLIST_TRACK_NAME = "List File";
+  const char *QLIST_TRACK_RES_NAME = "qlist_p";
+  const std::size_t QLIST_TRACK_MAX_ITEMS = 1024;
+
+  // page buffer
+  const char *PGBUF_TRACK_NAME = "Page Buffer";
+  const char *PGBUF_TRACK_RES_NAME = "pgptr";
+  const std::size_t PGBUF_TRACK_MAX_ITEMS = 1024;
+
+  // critical section
+  const char *CSECT_TRACK_NAME = "Critical Section";
+  const char *CSECT_TRACK_RES_NAME = "cs_index";
+  const std::size_t CSECT_TRACK_MAX_ITEMS = 1024;
+  const unsigned CSECT_TRACK_MAX_AMOUNT = 63;
+
+  //////////////////////////////////////////////////////////////////////////
+  // entry implementation
+  //////////////////////////////////////////////////////////////////////////
 
   entry::entry ()
     : index (-1)
@@ -92,10 +123,6 @@ namespace cubthread
     , log_data_length (0)
     , net_request_index (-1)
     , vacuum_worker (NULL)
-    , track (NULL)
-    , track_depth (-1)
-    , track_threshold (0x7f)  // 127
-    , track_free_list (NULL)
     , sort_stats_active (false)
     , event_stats ()
     , trace_format (0)
@@ -109,14 +136,14 @@ namespace cubthread
     , m_id ()
     , m_error ()
     , m_cleared (false)
-    , m_alloc_tracker (*new cubbase::alloc_tracker ("Virtual Memory", ENABLE_TRACKERS, false,
-		       THREAD_RC_TRACK_VMEM_THRESHOLD_AMOUNT))
-    , m_qlist_tracker (*new cubbase::qlist_tracker ("List file", ENABLE_TRACKERS, false,
-		       THREAD_RC_TRACK_QLIST_THRESHOLD_AMOUNT))
-    , m_pgbuf_tracker (*new cubbase::pgbuf_tracker ("Page Buffer", ENABLE_TRACKERS, true,
-		       THREAD_RC_TRACK_PGBUF_THRESHOLD_AMOUNT))
-    , m_csect_tracker (*new cubbase::csect_tracker ("Critical Section", ENABLE_TRACKERS, true,
-		       THREAD_RC_TRACK_CS_THRESHOLD_AMOUNT))
+    , m_alloc_tracker (*new cubbase::alloc_tracker (ALLOC_TRACK_NAME, ENABLE_TRACKERS, ALLOC_TRACK_MAX_ITEMS,
+		       ALLOC_TRACK_RES_NAME))
+    , m_qlist_tracker (*new cubbase::qlist_tracker (QLIST_TRACK_NAME, ENABLE_TRACKERS, QLIST_TRACK_MAX_ITEMS,
+		       QLIST_TRACK_RES_NAME))
+    , m_pgbuf_tracker (*new cubbase::pgbuf_tracker (PGBUF_TRACK_NAME, ENABLE_TRACKERS, PGBUF_TRACK_MAX_ITEMS,
+		       PGBUF_TRACK_RES_NAME))
+    , m_csect_tracker (*new cubbase::csect_tracker (CSECT_TRACK_NAME, ENABLE_TRACKERS, CSECT_TRACK_MAX_ITEMS,
+		       CSECT_TRACK_RES_NAME, CSECT_TRACK_MAX_AMOUNT))
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)
       {

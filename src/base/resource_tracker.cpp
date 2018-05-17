@@ -55,5 +55,34 @@ namespace cubbase
   }
 
   //////////////////////////////////////////////////////////////////////////
+  // debugging
+  bool Restrack_has_error = false;
+  bool Restrack_suppress_assert = false;
+
+  bool
+  restrack_pop_error (void)
+  {
+    bool ret = Restrack_has_error;
+    Restrack_has_error = false;
+    return ret;
+  }
+
+  void
+  restrack_set_error (bool error)
+  {
+    Restrack_has_error = Restrack_has_error || error;
+  }
+
+  void
+  restrack_set_suppress_assert (bool suppress)
+  {
+    Restrack_suppress_assert = suppress;
+  }
+
+  bool
+  restrack_is_assert_suppressed (void)
+  {
+    return Restrack_suppress_assert;
+  }
 
 } // namespace cubbase
