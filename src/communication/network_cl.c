@@ -1736,7 +1736,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 
 			  net_consume_expected_packets (rc, 1);
 			}
-
 		    }
 		  else
 		    {
@@ -2560,7 +2559,7 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
   char *packed_desc = NULL;
   int packed_desc_size;
 
-  error = 0;
+  error = NO_ERROR;
   if (net_Server_name[0] == '\0')
     {
       /* need to have a more appropriate "unexpected disconnect" message */
@@ -2703,7 +2702,6 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
       net_consume_expected_packets (rc, num_packets);
     }
 
-exit:
 #if defined(HISTO)
   if (net_Histo_setup)
     {
