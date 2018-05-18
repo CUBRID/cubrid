@@ -30,7 +30,17 @@ namespace cubbase
     : m_file {}
     , m_line (l_arg)
   {
-    std::strncpy (m_file, fn_arg, MAX_FILENAME_SIZE);
+    // find filename from full path; get last charachter of '\\' or '/'
+    const char *start_chp;
+    for (start_chp = fn_arg + std::strlen (fn_arg); start_chp >= fn_arg; start_chp--)
+      {
+	if (*start_chp == '/' || *start_chp == '\\')
+	  {
+	    start_chp++;
+	    break;
+	  }
+      }
+    std::strncpy (m_file, start_chp, MAX_FILENAME_SIZE);
   }
 
   std::ostream &
@@ -50,7 +60,7 @@ namespace cubbase
   std::ostream &
   operator<< (std::ostream &os, const resource_tracker_item &item)
   {
-    os << "amount=" << item.m_amount << "first_caller=" << item.m_first_location;
+    os << "amount=" << item.m_amount << " | first_caller=" << item.m_first_location;
     return os;
   }
 
