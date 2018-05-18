@@ -172,7 +172,13 @@ namespace cubbase
     // it_insert_or_found = did_insert ? iterator to inserted : iterator to existing
     // it_insert_or_found is an iterator to pair <res_type, resource_tracker_item>
     //
-    auto inserted = map.try_emplace (res, filename, line, amount);
+    // as of c++17 we could just do:
+    // auto inserted = map.try_emplace (res, filename, line, amount);
+    //
+    // however, for now we have to use next piece of code I got from
+    // https://en.cppreference.com/w/cpp/container/map/emplace
+    auto inserted = map.emplace (std::piecewise_construct, std::forward_as_tuple (res),
+				 std::forward_as_tuple (filename, line, amount));
     if (inserted.second)
       {
 	// did insert
