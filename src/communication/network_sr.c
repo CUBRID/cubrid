@@ -40,7 +40,7 @@
 #include "boot_sr.h"
 #include "network_interface_sr.h"
 #include "query_list.h"
-#include "thread.h"
+#include "thread.h"		// for resource tracker
 #include "critical_section.h"
 #include "release_string.h"
 #include "server_support.h"
@@ -1057,7 +1057,7 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
 {
   int tran_index;
   CSS_CONN_ENTRY *conn_p;
-  int prev_thrd_cnt, thrd_cnt;
+  size_t prev_thrd_cnt, thrd_cnt;
   bool continue_check;
   int client_id;
   int local_tran_index;
@@ -1078,16 +1078,16 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
   tran_index = conn_p->get_tran_index ();
   client_id = conn_p->client_id;
 
-  thread_set_info (thread_p, client_id, 0, tran_index, NET_SERVER_SHUTDOWN);
+  css_set_thread_info (thread_p, client_id, 0, tran_index, NET_SERVER_SHUTDOWN);
   pthread_mutex_unlock (&thread_p->tran_index_lock);
 
   css_end_server_request (conn_p);
 
   /* avoid infinite waiting with xtran_wait_server_active_trans() */
-  thread_p->status = TS_CHECK;
+  thread_p->m_status = cubthread::entry::status::TS_CHECK;
 
 loop:
-  prev_thrd_cnt = thread_has_threads (thread_p, tran_index, client_id);
+  prev_thrd_cnt = css_count_transaction_worker_threads (thread_p, tran_index, client_id);
   if (prev_thrd_cnt > 0)
     {
       if (tran_index == NULL_TRAN_INDEX)
@@ -1104,17 +1104,12 @@ loop:
       /* never try to wake non TRAN_ACTIVE state trans. note that non-TRAN_ACTIVE trans will not be interrupted. */
       if (logtb_is_interrupted_tran (thread_p, false, &continue_check, tran_index))
 	{
-	  suspended_p = thread_find_entry_by_tran_index_except_me (tran_index);
+	  suspended_p = logtb_find_thread_by_tran_index_except_me (tran_index);
 	  if (suspended_p != NULL)
 	    {
-	      int r;
 	      bool wakeup_now = false;
 
-	      r = thread_lock_entry (suspended_p);
-	      if (r != NO_ERROR)
-		{
-		  return r;
-		}
+	      thread_lock_entry (suspended_p);
 
 	      if (suspended_p->check_interrupt)
 		{
@@ -1161,19 +1156,15 @@ loop:
 
 	      if (wakeup_now == true)
 		{
-		  r = thread_wakeup_already_had_mutex (suspended_p, THREAD_RESUME_DUE_TO_INTERRUPT);
+		  thread_wakeup_already_had_mutex (suspended_p, THREAD_RESUME_DUE_TO_INTERRUPT);
 		}
-	      r = thread_unlock_entry (suspended_p);
-
-	      if (r != NO_ERROR)
-		{
-		  return r;
-		}
+	      thread_unlock_entry (suspended_p);
 	    }
 	}
     }
 
-  while ((thrd_cnt = thread_has_threads (thread_p, tran_index, client_id)) >= prev_thrd_cnt && thrd_cnt > 0)
+  while ((thrd_cnt = css_count_transaction_worker_threads (thread_p, tran_index, client_id)) >= prev_thrd_cnt
+	 && thrd_cnt > 0)
     {
       /* Some threads may wait for data from the m-driver. It's possible from the fact that css_server_thread() is
        * responsible for receiving every data from which is sent by a client and all m-drivers. We must have chance to
@@ -1194,8 +1185,8 @@ loop:
     }
   css_free_conn (conn_p);
 
-  thread_set_info (thread_p, -1, 0, local_tran_index, -1);
-  thread_p->status = TS_RUN;
+  css_set_thread_info (thread_p, -1, 0, local_tran_index, -1);
+  thread_p->m_status = cubthread::entry::status::TS_RUN;
 
   return NO_ERROR;
 }
@@ -1304,11 +1295,11 @@ net_server_start (const char *server_name)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	    }
 
-	  xboot_shutdown_server (thread_get_thread_entry_info (), ER_THREAD_FINAL);
+	  xboot_shutdown_server (thread_p, ER_THREAD_FINAL);
 	}
       else
 	{
-	  (void) xboot_shutdown_server (thread_get_thread_entry_info (), ER_THREAD_FINAL);
+	  (void) xboot_shutdown_server (thread_p, ER_THREAD_FINAL);
 	}
 
 #if defined(CUBRID_DEBUG)

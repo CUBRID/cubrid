@@ -34,7 +34,7 @@
 #include "dbtype.h"
 #include "error_manager.h"
 #include "stream_to_xasl.h"
-#include "thread.h"
+#include "thread_manager.hpp"
 
 /* memory alignment unit - to align stored XASL tree nodes */
 #define	ALIGN_UNIT	sizeof(double)
@@ -6654,11 +6654,6 @@ stx_free_visited_ptrs (THREAD_ENTRY * thread_p)
   int i;
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
   for (i = 0; i < MAX_PTR_BLOCKS; i++)
     {
       xasl_unpack_info->ptr_lwm[i] = 0;
@@ -6754,11 +6749,6 @@ stx_init_xasl_unpack_info (THREAD_ENTRY * thread_p, char *xasl_stream, int xasl_
 
 #define UNPACK_SCALE 3		/* TODO: assume */
 
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
   head_offset = sizeof (XASL_UNPACK_INFO);
   head_offset = MAKE_ALIGN (head_offset);
   body_offset = xasl_stream_size * UNPACK_SCALE;
@@ -6800,11 +6790,6 @@ static XASL_UNPACK_INFO *
 stx_get_xasl_unpack_info_ptr (THREAD_ENTRY * thread_p)
 {
 #if defined(SERVER_MODE)
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
   return (XASL_UNPACK_INFO *) thread_p->xasl_unpack_info_ptr;
 #else /* SERVER_MODE */
   return (XASL_UNPACK_INFO *) xasl_unpack_info;
@@ -6820,11 +6805,6 @@ stx_get_xasl_unpack_info_ptr (THREAD_ENTRY * thread_p)
 static void
 stx_set_xasl_unpack_info_ptr (THREAD_ENTRY * thread_p, XASL_UNPACK_INFO * ptr)
 {
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
   thread_p->xasl_unpack_info_ptr = ptr;
 }
 #endif /* SERVER_MODE */
@@ -6837,11 +6817,6 @@ static int
 stx_get_xasl_errcode (THREAD_ENTRY * thread_p)
 {
 #if defined(SERVER_MODE)
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
   return thread_p->xasl_errcode;
 #else /* SERVER_MODE */
   return stx_Xasl_errcode;
@@ -6857,11 +6832,6 @@ static void
 stx_set_xasl_errcode (THREAD_ENTRY * thread_p, int errcode)
 {
 #if defined(SERVER_MODE)
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
   thread_p->xasl_errcode = errcode;
 #else /* SERVER_MODE */
   stx_Xasl_errcode = errcode;

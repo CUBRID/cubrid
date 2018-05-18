@@ -34,7 +34,7 @@
 #include "porting.h"
 #include "critical_section.h"
 #include "connection_defs.h"
-#include "thread.h"
+#include "thread.h"		// for resource tracker
 #include "connection_error.h"
 #include "perf_monitor.h"
 #include "system_parameter.h"
@@ -43,6 +43,7 @@
 #include "numeric_opfunc.h"
 #include "dbtype.h"
 #include "resource_tracker.hpp"
+#include "thread_manager.hpp"
 
 #undef csect_initialize_critical_section
 #undef csect_finalize_critical_section
@@ -305,7 +306,7 @@ csect_wait_on_writer_queue (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cse
     {
       err = thread_suspend_with_other_mutex (thread_p, &csect->lock, timeout, to, THREAD_CSECT_WRITER_SUSPENDED);
 
-      if (DOES_THREAD_RESUME_DUE_TO_SHUTDOWN (thread_p))
+      if (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT && thread_p->interrupted)
 	{
 	  /* check if i'm in the queue */
 	  prev_thread_p = csect->waiting_writers_queue;
@@ -374,7 +375,7 @@ csect_wait_on_promoter_queue (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
     {
       err = thread_suspend_with_other_mutex (thread_p, &csect->lock, timeout, to, THREAD_CSECT_PROMOTER_SUSPENDED);
 
-      if (DOES_THREAD_RESUME_DUE_TO_SHUTDOWN (thread_p))
+      if (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT && thread_p->interrupted)
 	{
 	  /* check if i'm in the queue */
 	  prev_thread_p = csect->waiting_promoters_queue;
@@ -424,7 +425,7 @@ csect_wakeup_waiting_writer (SYNC_CRITICAL_SECTION * csect)
       csect->waiting_writers_queue = waiting_thread_p->next_wait_thrd;
       waiting_thread_p->next_wait_thrd = NULL;
 
-      error_code = thread_wakeup (waiting_thread_p, THREAD_CSECT_WRITER_RESUMED);
+      thread_wakeup (waiting_thread_p, THREAD_CSECT_WRITER_RESUMED);
     }
 
   return error_code;
@@ -443,7 +444,7 @@ csect_wakeup_waiting_promoter (SYNC_CRITICAL_SECTION * csect)
       csect->waiting_promoters_queue = waiting_thread_p->next_wait_thrd;
       waiting_thread_p->next_wait_thrd = NULL;
 
-      error_code = thread_wakeup (waiting_thread_p, THREAD_CSECT_PROMOTER_RESUMED);
+      thread_wakeup (waiting_thread_p, THREAD_CSECT_PROMOTER_RESUMED);
     }
 
   return error_code;
@@ -1694,7 +1695,7 @@ csect_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values
 	}
       else
 	{
-	  thread_entry = thread_find_entry_by_tid (owner_tid);
+	  thread_entry = thread_get_manager ()->find_by_tid (owner_tid);
 	  if (thread_entry != NULL)
 	    {
 	      db_make_bigint (&vals[idx], thread_entry->index);
@@ -2151,7 +2152,7 @@ rmutex_lock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
 
-  if (!thread_is_manager_initialized ())
+  if (cubthread::is_single_thread ())
     {
       /* Regard the resource is available, since system is working as a single thread. */
       return NO_ERROR;
@@ -2209,7 +2210,7 @@ rmutex_lock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
 int
 rmutex_unlock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
 {
-  if (!thread_is_manager_initialized ())
+  if (cubthread::is_single_thread ())
     {
       /* Regard the resource is available, since system is working as a single thread. */
       return NO_ERROR;

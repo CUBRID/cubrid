@@ -62,7 +62,6 @@
 #include "memory_alloc.h"
 #include "environment_variable.h"
 #include "system_parameter.h"
-#include "thread.h"
 #include "critical_section.h"
 #include "log_manager.h"
 #include "object_representation.h"
@@ -75,6 +74,8 @@
 #include "tcp.h"
 #endif /* WINDOWS */
 #include "connection_sr.h"
+#include "server_support.h"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
 
 #ifdef PACKET_TRACE
 #define TRACE(string, arg)					\
