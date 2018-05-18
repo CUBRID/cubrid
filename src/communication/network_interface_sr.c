@@ -4772,34 +4772,35 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       /* get the first page of the list file */
       if (VPID_ISNULL (&(list_id->first_vpid)))
 	{
+	  // Note that not all list files have a page, for instance, insert.
 	  page_ptr = NULL;
 	}
       else
 	{
 	  page_ptr = qmgr_get_old_page (thread_p, &(list_id->first_vpid), list_id->tfile_vfid);
-	}
 
-      if (page_ptr)
-	{
-	  /* calculate page size */
-	  if (QFILE_GET_TUPLE_COUNT (page_ptr) == -2 || QFILE_GET_OVERFLOW_PAGE_ID (page_ptr) != NULL_PAGEID)
+	  if (page_ptr)
 	    {
-	      page_size = DB_PAGESIZE;
+	      /* calculate page size */
+	      if (QFILE_GET_TUPLE_COUNT (page_ptr) == -2 || QFILE_GET_OVERFLOW_PAGE_ID (page_ptr) != NULL_PAGEID)
+		{
+		  page_size = DB_PAGESIZE;
+		}
+	      else
+		{
+		  int offset = QFILE_GET_LAST_TUPLE_OFFSET (page_ptr);
+
+		  page_size = (offset + QFILE_GET_TUPLE_LENGTH (page_ptr + offset));
+		}
+
+	      memcpy (aligned_page_buf, page_ptr, page_size);
+	      qmgr_free_old_page_and_init (thread_p, page_ptr, list_id->tfile_vfid);
+	      page_ptr = aligned_page_buf;
 	    }
 	  else
 	    {
-	      int offset = QFILE_GET_LAST_TUPLE_OFFSET (page_ptr);
-
-	      page_size = (offset + QFILE_GET_TUPLE_LENGTH (page_ptr + offset));
+	      return_error_to_client (thread_p, rid);
 	    }
-
-	  memcpy (aligned_page_buf, page_ptr, page_size);
-	  qmgr_free_old_page_and_init (thread_p, page_ptr, list_id->tfile_vfid);
-	  page_ptr = aligned_page_buf;
-	}
-      else
-	{
-	  return_error_to_client (thread_p, rid);
 	}
     }
 
