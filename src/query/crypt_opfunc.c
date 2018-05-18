@@ -46,8 +46,8 @@
 #include "memory_alloc.h"
 #include "crypt_opfunc.h"
 #if defined (SERVER_MODE)
-#include "thread.h"
-#endif
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#endif // SERVER_MODE
 
 #define GCRYPT_NO_MPI_MACROS
 #define GCRYPT_NO_DEPRECATED

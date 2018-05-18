@@ -41,7 +41,7 @@
 #include "partition_sr.h"
 #include "partition.h"
 #include "dbtype.h"
-#include "thread.h"
+#include "thread.h"		// for resource tracker
 
 typedef struct sort_args SORT_ARGS;
 struct sort_args

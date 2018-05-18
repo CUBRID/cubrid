@@ -52,7 +52,7 @@
 #include "db_date.h"
 #include "dbtype.h"
 #if defined (SERVER_MODE)
-#include "thread.h"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -371,6 +371,11 @@ static int nfmt_fractional_digits (FORMAT_DIGIT digit_type, int ndigits, char *t
 static int nfmt_fractional_value (FORMAT_DIGIT digit_type, int ndigits, char *the_value);
 #endif
 static int fmt_max_digits;
+
+#if defined (SERVER_MODE)
+static ADJ_ARRAY *cnv_get_thread_local_adj_buffer (int idx);
+static void cnv_set_thread_local_adj_buffer (int idx, ADJ_ARRAY * buffer_p);
+#endif // SERVER_MODE
 
 /* Internal buffers.
  *
@@ -2351,7 +2356,7 @@ static const wchar_t *
 cnv_wcs (const char *mbs)
 {
 #if defined(SERVER_MODE)
-  ADJ_ARRAY *buffer = css_get_cnv_adj_buffer (0);
+  ADJ_ARRAY *buffer = cnv_get_thread_local_adj_buffer (0);
 #else
   ADJ_ARRAY *buffer = cnv_adj_buffer1;
 #endif
@@ -2365,7 +2370,7 @@ cnv_wcs (const char *mbs)
     {
 #if defined(SERVER_MODE)
       buffer = adj_ar_new (sizeof (wchar_t), 0, 1.0);
-      css_set_cnv_adj_buffer (0, buffer);
+      cnv_set_thread_local_adj_buffer (0, buffer);
 #else
       buffer = cnv_adj_buffer1 = adj_ar_new (sizeof (wchar_t), 0, 1.0);
 #endif
@@ -2592,7 +2597,7 @@ static ADJ_ARRAY *
 cnv_get_string_buffer (int nchars)
 {
 #if defined(SERVER_MODE)
-  ADJ_ARRAY *buffer = css_get_cnv_adj_buffer (1);
+  ADJ_ARRAY *buffer = cnv_get_thread_local_adj_buffer (1);
 #else
   ADJ_ARRAY *buffer = cnv_adj_buffer2;
 #endif
@@ -2605,7 +2610,7 @@ cnv_get_string_buffer (int nchars)
     {
 #if defined(SERVER_MODE)
       buffer = adj_ar_new (sizeof (char), nchars, 1.0);
-      css_set_cnv_adj_buffer (1, buffer);
+      cnv_set_thread_local_adj_buffer (1, buffer);
 #else
       buffer = cnv_adj_buffer2 = adj_ar_new (sizeof (char), nchars, 1.0);
 #endif
@@ -2627,7 +2632,7 @@ static ADJ_ARRAY *
 cnv_get_value_string_buffer (int nchars)
 {
 #if defined(SERVER_MODE)
-  ADJ_ARRAY *buffer = css_get_cnv_adj_buffer (2);
+  ADJ_ARRAY *buffer = cnv_get_thread_local_adj_buffer (2);
 #else
   ADJ_ARRAY *buffer = cnv_adj_buffer3;
 #endif
@@ -2643,7 +2648,7 @@ cnv_get_value_string_buffer (int nchars)
     {
 #if defined(SERVER_MODE)
       buffer = adj_ar_new (sizeof (char), nchars, 1.0);
-      css_set_cnv_adj_buffer (2, buffer);
+      cnv_set_thread_local_adj_buffer (2, buffer);
 #else
       buffer = cnv_adj_buffer3 = adj_ar_new (sizeof (char), nchars, 1.0);
 #endif
@@ -3386,12 +3391,12 @@ cnvutil_cleanup (void)
 
   for (i = 0; i < 3; i++)
     {
-      buffer = css_get_cnv_adj_buffer (i);
+      buffer = cnv_get_thread_local_adj_buffer (i);
       if (buffer)
 	{
 	  adj_ar_free (buffer);
 	}
-      css_set_cnv_adj_buffer (i, NULL);
+      cnv_set_thread_local_adj_buffer (i, NULL);
     }
 
 #else
@@ -8684,3 +8689,38 @@ cnv_cleanup (void)
   cnv_fmt_exit ();
   cnvutil_cleanup ();
 }
+
+#if defined (SERVER_MODE)
+/*
+ * cnv_get_thread_local_adj_buffer() -
+ *   return:
+ *   idx(in):
+ */
+static ADJ_ARRAY *
+cnv_get_thread_local_adj_buffer (int idx)
+{
+  THREAD_ENTRY *thread_p;
+
+  thread_p = thread_get_thread_entry_info ();
+  assert (thread_p != NULL);
+
+  return thread_p->cnv_adj_buffer[idx];
+}
+
+/*
+ * cnv_set_thread_local_adj_buffer() -
+ *   return: void
+ *   idx(in):
+ *   buffer_p(in):
+ */
+static void
+cnv_set_thread_local_adj_buffer (int idx, ADJ_ARRAY * buffer_p)
+{
+  THREAD_ENTRY *thread_p;
+
+  thread_p = thread_get_thread_entry_info ();
+  assert (thread_p != NULL);
+
+  thread_p->cnv_adj_buffer[idx] = buffer_p;
+}
+#endif // SERVER_MODE
