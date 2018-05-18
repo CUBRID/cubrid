@@ -19,7 +19,7 @@
 
 #include "test_memory_alloc_helper.hpp"
 
-#include "thread.h"
+#include "thread_entry.hpp"
 
 #include <iostream>
 #include <mutex>

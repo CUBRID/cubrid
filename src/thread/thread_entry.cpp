@@ -33,7 +33,6 @@
 #include "memory_alloc.h"
 #include "page_buffer.h"
 #include "resource_tracker.hpp"
-#include "thread.h"     // for resource tracker
 
 #include <cstring>
 #include <sstream>

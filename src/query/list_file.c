@@ -41,8 +41,8 @@
 #include "query_manager.h"
 #include "query_opfunc.h"
 #include "resource_tracker.hpp"
-#include "thread.h"		// for resource tracker
 #include "stream_to_xasl.h"
+#include "thread_entry.hpp"
 #include "thread_manager.hpp"	// for thread_sleep
 
 /* TODO */

@@ -63,7 +63,7 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
-#include "thread.h"		// for resource tracker
+#include "thread_entry.hpp"
 
 const VPID vpid_Null_vpid = { NULL_PAGEID, NULL_VOLID };
 

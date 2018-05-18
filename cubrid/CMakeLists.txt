@@ -26,14 +26,13 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_set.c
   ${COMPAT_DIR}/db_value_printer.cpp
   )
-set (COMPAT_HEADERS  
+set (COMPAT_HEADERS
   ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/dbtype_function.i
   ${COMPAT_DIR}/dbtype_function.h
   )
 
 set(THREAD_SOURCES
-  ${THREAD_DIR}/thread.c
   ${THREAD_DIR}/critical_section.c
   ${THREAD_DIR}/thread_daemon.cpp
   ${THREAD_DIR}/thread_entry.cpp

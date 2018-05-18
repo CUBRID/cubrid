@@ -64,9 +64,9 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "db_json.hpp"
-#include "thread.h"		// for resource tracker
-#include "resource_tracker.hpp"
 #include "dbtype.h"
+#include "resource_tracker.hpp"
+#include "thread_entry.hpp"
 
 #define GOTO_EXIT_ON_ERROR \
   do \

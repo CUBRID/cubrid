@@ -43,9 +43,6 @@
 #include "quick_fit.h"
 #endif /* SERVER_MODE */
 #if defined (SERVER_MODE)
-#include "thread.h"		// for resource tracker
-#endif // SERVER_MODE
-#if defined (SERVER_MODE)
 #include "thread_entry.hpp"
 #endif // SERVER_MODE
 #if defined (SERVER_MODE)

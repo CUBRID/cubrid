@@ -34,7 +34,6 @@
 #include "porting.h"
 #include "critical_section.h"
 #include "connection_defs.h"
-#include "thread.h"		// for resource tracker
 #include "connection_error.h"
 #include "perf_monitor.h"
 #include "system_parameter.h"
@@ -43,6 +42,7 @@
 #include "numeric_opfunc.h"
 #include "dbtype.h"
 #include "resource_tracker.hpp"
+#include "thread_entry.hpp"
 #include "thread_manager.hpp"
 
 #undef csect_initialize_critical_section

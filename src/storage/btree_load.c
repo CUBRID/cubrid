@@ -30,18 +30,19 @@
 #include <assert.h>
 
 #include "btree_load.h"
+
 #include "btree.h"
+#include "dbtype.h"
 #include "external_sort.h"
 #include "heap_file.h"
+#include "object_primitive.h"
+#include "partition.h"
+#include "partition_sr.h"
+#include "query_executor.h"
+#include "stream_to_xasl.h"
+#include "thread_entry.hpp"
 #include "xserver_interface.h"
 #include "xasl.h"
-#include "stream_to_xasl.h"
-#include "object_primitive.h"
-#include "query_executor.h"
-#include "partition_sr.h"
-#include "partition.h"
-#include "dbtype.h"
-#include "thread.h"		// for resource tracker
 
 typedef struct sort_args SORT_ARGS;
 struct sort_args

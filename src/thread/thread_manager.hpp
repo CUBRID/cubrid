@@ -248,8 +248,6 @@ namespace cubthread
   // thread global functions
   //////////////////////////////////////////////////////////////////////////
 
-  // TODO: gradually move functionality from thread.h here
-
   // initialize thread manager; note this creates a singleton cubthread::manager instance
   void initialize (entry *&my_entry);
 
