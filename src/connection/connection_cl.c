@@ -507,13 +507,16 @@ begin:
       return rc;
     }
 
+  assert (header_size == sizeof (NET_HEADER));	// to make it sure.
+
   rid = ntohl (header.request_id);
-  conn->set_tran_index (ntohl (header.transaction_id));
   conn->db_error = (int) ntohl (header.db_error);
 
   type = ntohl (header.type);
   if (type == DATA_TYPE)
     {
+      conn->set_tran_index (ntohl (header.transaction_id));
+
       buf_size = ntohl (header.buffer_size);
 
       if (rid == req_id)
