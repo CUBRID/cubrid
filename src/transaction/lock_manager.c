@@ -460,7 +460,8 @@ static bool lock_is_class_lock_escalated (LOCK class_lock, LOCK lock_escalation)
 static LK_ENTRY *lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index, LOCK lock);
 static void lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr);
 static void lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr);
-static void lock_set_error_for_aborted (LK_ENTRY * entry_ptr, TRAN_ABORT_REASON abort_reason);
+static void lock_set_error_for_aborted (LK_ENTRY * entry_ptr);
+static void lock_set_tran_abort_reason (int tran_index, TRAN_ABORT_REASON abort_reason);
 static LOCK_WAIT_STATE lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs);
 static void lock_resume (LK_ENTRY * entry_ptr, int state);
 static bool lock_wakeup_deadlock_victim_timeout (int tran_index);
@@ -2063,6 +2064,24 @@ set_error:
 
 #if defined(SERVER_MODE)
 /*
+ * lock_set_tran_abort_reason - Set tran_abort_reason for the tran_index
+ *
+ * return: void
+ *   tran_index(in):
+ *   abort_reason(in):
+ */
+static void
+lock_set_tran_abort_reason (int tran_index, TRAN_ABORT_REASON abort_reason)
+{
+  LOG_TDES *tdes;
+
+  tdes = LOG_FIND_TDES (tran_index);
+  assert (tdes != NULL);
+
+  tdes->tran_abort_reason = abort_reason;
+}
+
+/*
  * lock_set_error_for_aborted - Set error for unilaterally aborted
  *
  * return:
@@ -2072,7 +2091,7 @@ set_error:
  * Note:set error code for unilaterally aborted deadlock victim
  */
 static void
-lock_set_error_for_aborted (LK_ENTRY * entry_ptr, TRAN_ABORT_REASON abort_reason)
+lock_set_error_for_aborted (LK_ENTRY * entry_ptr)
 {
   char *client_prog_name;	/* Client user name for transaction */
   char *client_user_name;	/* Client user name for transaction */
@@ -2084,10 +2103,6 @@ lock_set_error_for_aborted (LK_ENTRY * entry_ptr, TRAN_ABORT_REASON abort_reason
 					  &client_host_name, &client_pid);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_UNILATERALLY_ABORTED, 4, entry_ptr->tran_index, client_user_name,
 	  client_host_name, client_pid);
-
-  tdes = LOG_FIND_TDES (entry_ptr->tran_index);
-  assert (tdes != NULL);
-  tdes->tran_abort_reason = abort_reason;
 }
 #endif /* SERVER_MODE */
 
@@ -2211,7 +2226,8 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
       if (logtb_is_current_active (thread_p) == true)
 	{
 	  /* set error code */
-	  lock_set_error_for_aborted (entry_ptr, TRAN_ABORT_DUE_DEADLOCK);
+	  lock_set_error_for_aborted (entry_ptr);
+	  lock_set_tran_abort_reason (entry_ptr->tran_index, TRAN_ABORT_DUE_DEADLOCK);
 
 	  /* wait until other threads finish their works A css_server_thread is always running for this transaction.
 	   * so, wait until thread_has_threads() becomes 1 (except me) */
@@ -2943,7 +2959,8 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tr
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ROLLBACK_ON_LOCK_ESCALATION, 1,
 	      prm_get_integer_value (PRM_ID_LK_ESCALATION_AT));
 
-      lock_set_error_for_aborted (class_entry, TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION);
+      lock_set_error_for_aborted (class_entry);
+      lock_set_tran_abort_reason (class_entry->tran_index, TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION);
 
       pthread_mutex_unlock (&tran_lock->hold_mutex);
       return LK_NOTGRANTED_DUE_ABORTED;
@@ -9140,6 +9157,9 @@ lock_clear_deadlock_victim (int tran_index)
       rv = pthread_mutex_lock (&lk_Gl.DL_detection_mutex);
       lk_Gl.TWFG_node[tran_index].DL_victim = false;
       pthread_mutex_unlock (&lk_Gl.DL_detection_mutex);
+
+      // reset its tran_abort_reason
+      lock_set_tran_abort_reason (tran_index, TRAN_NORMAL);
     }
 #endif /* !SERVER_MODE */
 }
