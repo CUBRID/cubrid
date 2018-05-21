@@ -28,11 +28,18 @@
 #ident "$Id$"
 
 #include "dbtype_def.h"
+#include "porting.h"		// for pthread, STATIC_CAST
 #include "thread_compat.hpp"
 
 #if !defined(WINDOWS)
 #include <pthread.h>
 #endif /* !WINDOWS */
+#if !defined(WINDOWS)
+#include <sys/time.h>
+#endif /* !WINDOWS */
+#if defined (WINDOWS)
+#include <WinSock2.h>
+#endif // WINDOWS
 
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
 #error critical_section.h belongs to server or stand-alone modules.
@@ -71,7 +78,7 @@ enum
   CSECT_LAST
 };
 
-#define CRITICAL_SECTION_COUNT  CSECT_LAST
+static const int CRITICAL_SECTION_COUNT = STATIC_CAST (int, CSECT_LAST);
 
 typedef enum
 {
@@ -143,6 +150,15 @@ extern int csect_demote (THREAD_ENTRY * thread_p, int cs_index, int wait_secs);
 extern int csect_promote (THREAD_ENTRY * thread_p, int cs_index, int wait_secs);
 extern int csect_exit (THREAD_ENTRY * thread_p, int cs_index);
 
+#if defined (SERVER_MODE)
+extern const char *csect_name_at (int cs_index);
+#else // not SERVER_MODE = SA_MODE
+static inline const char *
+csect_name_at (int cs_index)
+{
+  return "UNKNOWN";
+}
+#endif // not SERVER_MODE = SA_MODE
 extern int csect_initialize_critical_section (SYNC_CRITICAL_SECTION * cs_ptr, const char *name);
 extern int csect_finalize_critical_section (SYNC_CRITICAL_SECTION * cs_ptr);
 extern int csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs_ptr, int wait_secs);

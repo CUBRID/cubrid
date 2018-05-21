@@ -24,6 +24,8 @@
 #ifndef _CUBRID_RESOURCE_TRACKER_HPP_
 #define _CUBRID_RESOURCE_TRACKER_HPP_
 
+#include "fileline_location.hpp"
+
 #include <map>
 #include <forward_list>
 #include <string>
@@ -34,28 +36,6 @@
 
 namespace cubbase
 {
-  // file_line - holder of file/line location
-  //
-  // probably should be moved elsewhere
-  //
-  struct fileline_location
-  {
-    fileline_location (const char *fn_arg, int l_arg);
-
-    static const std::size_t MAX_FILENAME_SIZE = 20;
-
-    static const char *print_format (void)
-    {
-      return "%s:%d";
-    }
-
-    char m_file[MAX_FILENAME_SIZE];
-    int m_line;
-  };
-#define FILELINE_LOCATION_AS_ARGS(fileline) (fileline).m_file, (fileline).m_line
-
-  std::ostream &operator<< (std::ostream &os, const fileline_location &fileline);
-
   // resource_tracker_item -
   //
   struct resource_tracker_item

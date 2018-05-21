@@ -25,31 +25,6 @@
 
 namespace cubbase
 {
-
-  fileline_location::fileline_location (const char *fn_arg, int l_arg)
-    : m_file {}
-    , m_line (l_arg)
-  {
-    // find filename from full path; get last charachter of '\\' or '/'
-    const char *start_chp;
-    for (start_chp = fn_arg + std::strlen (fn_arg); start_chp >= fn_arg; start_chp--)
-      {
-	if (*start_chp == '/' || *start_chp == '\\')
-	  {
-	    start_chp++;
-	    break;
-	  }
-      }
-    std::strncpy (m_file, start_chp, MAX_FILENAME_SIZE);
-  }
-
-  std::ostream &
-  operator<< (std::ostream &os, const fileline_location &fileline)
-  {
-    os << fileline.m_file << ":" << fileline.m_line;
-    return os;
-  }
-
   resource_tracker_item::resource_tracker_item (const char *fn_arg, int l_arg, int amount)
     : m_first_location (fn_arg, l_arg)
     , m_amount (amount)

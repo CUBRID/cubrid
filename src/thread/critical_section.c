@@ -23,27 +23,28 @@
 
 #ident "$Id$"
 
+#include "critical_section.h"
+
+#include "connection_defs.h"
+#include "connection_error.h"
 #include "config.h"
+#include "critical_section_tracker.hpp"
+#include "dbtype.h"
+#include "numeric_opfunc.h"
+#include "perf_monitor.h"
+#include "porting.h"
+#include "resource_tracker.hpp"
+#include "show_scan.h"
+#include "system_parameter.h"
+#include "thread_entry.hpp"
+#include "thread_manager.hpp"
+#include "tsc_timer.h"
 
 #include <stdio.h>
 #include <assert.h>
-#if !defined(WINDOWS)
-#include <sys/time.h>
-#endif /* !WINDOWS */
 
-#include "porting.h"
-#include "critical_section.h"
-#include "connection_defs.h"
-#include "connection_error.h"
-#include "perf_monitor.h"
-#include "system_parameter.h"
-#include "tsc_timer.h"
-#include "show_scan.h"
-#include "numeric_opfunc.h"
-#include "dbtype.h"
-#include "resource_tracker.hpp"
-#include "thread_entry.hpp"
-#include "thread_manager.hpp"
+// belongs to cubsync
+using namespace cubsync;
 
 #undef csect_initialize_critical_section
 #undef csect_finalize_critical_section
@@ -91,7 +92,18 @@ static const char *csect_Names[] = {
   "ACCESS_STATUS"
 };
 
-#define CSECT_NAME(c) ((c)->name ? (c)->name : "UNKNOWN")
+static const char *
+csect_name (SYNC_CRITICAL_SECTION * c)
+{
+  return c != NULL ? c->name : "UNKNOWN";
+}
+
+const char *
+csect_name_at (int cs_index)
+{
+  assert (cs_index >= 0 && cs_index < CRITICAL_SECTION_COUNT);
+  return csect_Names[cs_index];
+}
 
 /* 
  * Synchronization Primitives Statistics Monitor
@@ -473,7 +485,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
       thread_p = thread_get_thread_entry_info ();
     }
 
-  thread_p->get_csect_tracker ().increment (ARG_FILE_LINE, csect->cs_index);
+  thread_p->get_csect_tracker ().on_enter_as_writer (ARG_FILE_LINE, csect->cs_index);
 
   csect->stats->nenter++;
 
@@ -634,13 +646,13 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
     {
       if (csect->cs_index > 0)
 	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, CSECT_NAME (csect),
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, csect_name (csect),
 		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
 	}
       er_log_debug (ARG_FILE_LINE,
 		    "csect_enter_critical_section_as_reader: %6d.%06d"
 		    " %s total_enter %d ntotal_elapsed %d max_elapsed %d.%06d total_elapsed %d.06d\n", tv_diff.tv_sec,
-		    tv_diff.tv_usec, CSECT_NAME (csect), csect->stats->nenter, csect->stats->nwait,
+		    tv_diff.tv_usec, csect_name (csect), csect->stats->nenter, csect->stats->nwait,
 		    csect->stats->max_elapsed.tv_sec, csect->stats->max_elapsed.tv_usec,
 		    csect->stats->total_elapsed.tv_sec, csect->stats->total_elapsed.tv_usec);
     }
@@ -696,7 +708,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_S
       thread_p = thread_get_thread_entry_info ();
     }
 
-  thread_p->get_csect_tracker ().increment (ARG_FILE_LINE, csect->cs_index);
+  thread_p->get_csect_tracker ().on_enter_as_reader (ARG_FILE_LINE, csect->cs_index);
 
   csect->stats->nenter++;
 
@@ -854,12 +866,12 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_S
     {
       if (csect->cs_index > 0)
 	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, CSECT_NAME (csect),
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, csect_name (csect),
 		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
 	}
       er_log_debug (ARG_FILE_LINE,
 		    "csect_enter_critical_section: %6d.%06d %s total_enter %d ntotal_elapsed %d max_elapsed %d.%06d"
-		    " total_elapsed %d.06d\n", tv_diff.tv_sec, tv_diff.tv_usec, CSECT_NAME (csect),
+		    " total_elapsed %d.06d\n", tv_diff.tv_sec, tv_diff.tv_usec, csect_name (csect),
 		    csect->stats->nenter, csect->stats->nwait, csect->stats->max_elapsed.tv_sec,
 		    csect->stats->max_elapsed.tv_usec, csect->stats->total_elapsed.tv_sec,
 		    csect->stats->total_elapsed.tv_usec);
@@ -916,7 +928,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * 
       thread_p = thread_get_thread_entry_info ();
     }
 
-  thread_p->get_csect_tracker ().decrement (csect->cs_index);
+  thread_p->get_csect_tracker ().on_demote (csect->cs_index);
 
   csect->stats->nenter++;
 
@@ -1115,12 +1127,12 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * 
     {
       if (csect->cs_index > 0)
 	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, CSECT_NAME (csect),
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, csect_name (csect),
 		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
 	}
       er_log_debug (ARG_FILE_LINE,
 		    "csect_demote_critical_section: %6d.%06d %s total_enter %d ntotal_elapsed %d max_elapsed %d.%06d"
-		    " total_elapsed %d.06d\n", tv_diff.tv_sec, tv_diff.tv_usec, CSECT_NAME (csect),
+		    " total_elapsed %d.06d\n", tv_diff.tv_sec, tv_diff.tv_usec, csect_name (csect),
 		    csect->stats->nenter, csect->stats->nwait, csect->stats->max_elapsed.tv_sec,
 		    csect->stats->max_elapsed.tv_usec, csect->stats->total_elapsed.tv_sec,
 		    csect->stats->total_elapsed.tv_usec);
@@ -1173,7 +1185,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION *
       thread_p = thread_get_thread_entry_info ();
     }
 
-  thread_p->get_csect_tracker ().increment (ARG_FILE_LINE, csect->cs_index);
+  thread_p->get_csect_tracker ().on_promote (csect->cs_index);
 
   csect->stats->nenter++;
 
@@ -1325,12 +1337,12 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION *
     {
       if (csect->cs_index > 0)
 	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, CSECT_NAME (csect),
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, csect_name (csect),
 		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
 	}
       er_log_debug (ARG_FILE_LINE,
 		    "csect_promote_critical_section: %6d.%06d %s total_enter %d ntotal_elapsed %d max_elapsed %d.%06d"
-		    " total_elapsed %d.06d\n", tv_diff.tv_sec, tv_diff.tv_usec, CSECT_NAME (csect),
+		    " total_elapsed %d.06d\n", tv_diff.tv_sec, tv_diff.tv_usec, csect_name (csect),
 		    csect->stats->nenter, csect->stats->nwait, csect->stats->max_elapsed.tv_sec,
 		    csect->stats->max_elapsed.tv_usec, csect->stats->total_elapsed.tv_sec,
 		    csect->stats->total_elapsed.tv_usec);
@@ -1377,7 +1389,7 @@ csect_exit_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs
       thread_p = thread_get_thread_entry_info ();
     }
 
-  thread_p->get_csect_tracker ().decrement (csect->cs_index);
+  thread_p->get_csect_tracker ().on_exit (csect->cs_index);
 
   error_code = pthread_mutex_lock (&csect->lock);
   if (error_code != NO_ERROR)
@@ -1525,7 +1537,7 @@ csect_dump_statistics (FILE * fp)
       csect = &csectgl_Critical_sections[i];
 
       fprintf (fp, "%-23s |%10d |%10d |  %10d | %6ld.%06ld | %6ld.%06ld\n",
-	       CSECT_NAME (csect), csect->stats->nenter, csect->stats->nreenter,
+	       csect_name (csect), csect->stats->nenter, csect->stats->nreenter,
 	       csect->stats->nwait, csect->stats->max_elapsed.tv_sec, csect->stats->max_elapsed.tv_usec,
 	       csect->stats->total_elapsed.tv_sec, csect->stats->total_elapsed.tv_usec);
 
@@ -1654,7 +1666,7 @@ csect_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values
       idx++;
 
       /* The name of the critical section */
-      db_make_string_by_const_str (&vals[idx], CSECT_NAME (csect));
+      db_make_string_by_const_str (&vals[idx], csect_name (csect));
       idx++;
 
       /* 'N readers', '1 writer', 'none' */

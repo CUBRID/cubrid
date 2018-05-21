@@ -18,6 +18,7 @@
  */
 
 #include "resource_tracker.hpp"
+#include "critical_section_tracker.hpp"
 
 using test_restrack = cubbase::resource_tracker<unsigned>;
 const std::size_t DEFAULT_MAX_ITEMS = 8;

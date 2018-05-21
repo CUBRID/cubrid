@@ -21,14 +21,9 @@
 
 set (TEST_RESTRACK_SOURCES
   test_restrack_main.cpp
-  ${BASE_DIR}/resource_tracker.cpp
-  )
-set (TEST_RESTRACK_HEADERS
-  ${BASE_DIR}/resource_tracker.hpp
   )
 
 SET_SOURCE_FILES_PROPERTIES(
-  ${TEST_RESTRACK_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
@@ -39,4 +34,16 @@ add_executable(test_resource_tracker
 
 target_compile_definitions(test_resource_tracker PRIVATE
   ${COMMON_DEFS}
+  SERVER_MODE # to suppress module checks in headers
   )
+if(UNIX)
+  target_link_libraries(test_resource_tracker PRIVATE
+    cubrid
+    )
+elseif(WIN32)
+  target_link_libraries(test_resource_tracker PRIVATE
+    cubrid-win-lib
+    )
+else()
+  message( SEND_ERROR "resource tracker unit testing is for unix/windows")
+endif ()

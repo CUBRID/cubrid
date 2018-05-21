@@ -62,8 +62,10 @@ namespace cubbase
   using qlist_tracker = resource_tracker<const qfile_list_id *>;
   // page fix
   using pgbuf_tracker = resource_tracker<const char *>;
-  // critical sections - by index
-  using csect_tracker = resource_tracker<int>;
+}
+namespace cubsync
+{
+  class critical_section_tracker;
 }
 
 // for lock-free - FIXME
@@ -298,7 +300,7 @@ namespace cubthread
       {
 	return m_pgbuf_tracker;
       }
-      cubbase::csect_tracker &get_csect_tracker (void)
+      cubsync::critical_section_tracker &get_csect_tracker (void)
       {
 	return m_csect_tracker;
       }
@@ -322,7 +324,7 @@ namespace cubthread
       cubbase::alloc_tracker &m_alloc_tracker;
       cubbase::qlist_tracker &m_qlist_tracker;
       cubbase::pgbuf_tracker &m_pgbuf_tracker;
-      cubbase::csect_tracker &m_csect_tracker;
+      cubsync::critical_section_tracker &m_csect_tracker;
   };
 
 } // namespace cubthread

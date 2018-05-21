@@ -25,6 +25,7 @@
 
 #include "adjustable_array.h"
 #include "critical_section.h"  // for INF_WAIT
+#include "critical_section_tracker.hpp"
 #include "error_manager.h"
 #include "fault_injection.h"
 #include "list_file.h"
@@ -143,8 +144,7 @@ namespace cubthread
 		       QLIST_TRACK_RES_NAME))
     , m_pgbuf_tracker (*new cubbase::pgbuf_tracker (PGBUF_TRACK_NAME, ENABLE_TRACKERS, PGBUF_TRACK_MAX_ITEMS,
 		       PGBUF_TRACK_RES_NAME))
-    , m_csect_tracker (*new cubbase::csect_tracker (CSECT_TRACK_NAME, ENABLE_TRACKERS, CSECT_TRACK_MAX_ITEMS,
-		       CSECT_TRACK_RES_NAME, CSECT_TRACK_MAX_AMOUNT))
+    , m_csect_tracker (*new cubsync::critical_section_tracker (ENABLE_TRACKERS))
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)
       {
@@ -381,7 +381,7 @@ namespace cubthread
     m_alloc_tracker.push_track ();
     m_qlist_tracker.push_track ();
     m_pgbuf_tracker.push_track ();
-    m_csect_tracker.push_track ();
+    m_csect_tracker.start ();
   }
 
   void
@@ -395,7 +395,7 @@ namespace cubthread
     m_alloc_tracker.pop_track ();
     m_qlist_tracker.pop_track ();
     m_pgbuf_tracker.pop_track ();
-    m_csect_tracker.pop_track ();
+    m_csect_tracker.stop ();
   }
 
 } // namespace cubthread
@@ -408,7 +408,7 @@ using thread_clock_type = std::chrono::system_clock;
 
 static void thread_wakeup_internal (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason,
 				    bool had_mutex);
-static void thread_check_suspend_reason_and_wakeup_internal (THREAD_ENTRY *thread_p,
+static void thread_check_suspend_reason_and_wakeup_internal (cubthread::entry *thread_p,
     thread_resume_suspend_status resume_reason,
     thread_resume_suspend_status suspend_reason,
     bool had_mutex);
