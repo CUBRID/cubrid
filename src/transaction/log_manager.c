@@ -1483,6 +1483,9 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
   LOG_CS_EXIT (thread_p);
 
+  _er_log_debug (ARG_FILE_LINE, "log_initialize_internal: end of log initializaton, append_lsa = (%lld|%d) \n",
+		 (long long int) log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset);
+
   return error_code;
 
 error:
