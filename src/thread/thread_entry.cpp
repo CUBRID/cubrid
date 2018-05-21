@@ -159,7 +159,7 @@ namespace cubthread
   {
     shutdown = true;
 
-    // migrate thread code here
+    thread_wakeup (this, THREAD_RESUME_DUE_TO_SHUTDOWN);
   }
 
   void
