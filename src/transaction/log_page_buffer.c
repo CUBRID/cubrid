@@ -703,6 +703,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   log_Pb.partial_append.status = LOGPB_APPENDREC_SUCCESS;
   log_Pb.partial_append.log_page_record_header =
     (LOG_PAGE *) PTR_ALIGN (log_Pb.partial_append.buffer_log_page, MAX_ALIGNMENT);
+  memset (log_Pb.partial_append.log_page_record_header, LOG_PAGE_INIT_VALUE, IO_MAX_PAGE_SIZE);
 
   logpb_Initialized = true;
   pthread_mutex_init (&log_Gl.chkpt_lsa_lock, NULL);
@@ -10195,6 +10196,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
       error_code = ER_FAILED;
       goto error;
     }
+  memset (to_malloc_log_pgptr, LOG_PAGE_INIT_VALUE, LOG_PAGESIZE);
 
   fileio_make_log_active_name (to_volname, to_logpath, to_prefix_logname);
   if (logpb_add_volume (to_db_fullname, LOG_DBLOG_ACTIVE_VOLID, to_volname, DISK_UNKNOWN_PURPOSE) !=
