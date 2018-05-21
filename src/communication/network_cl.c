@@ -1599,7 +1599,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 {
   unsigned int rc;
   int size, error;
-  int reply_datasize_listid, reply_datasize_page, reply_datasize_plan, remaining_size;
+  int reply_datasize_listid, reply_datasize_page, reply_datasize_plan;
   char *reply = NULL, *replydata, *ptr;
   QUERY_SERVER_REQUEST server_request;
   int server_request_num;
@@ -1668,13 +1668,9 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 	      ptr = or_unpack_int (ptr, &reply_datasize_plan);
 	      COMPARE_AND_FREE_BUFFER (replybuf, reply);
 
-	      remaining_size = reply_datasize_listid + reply_datasize_page + reply_datasize_plan;
-
 	      // 1. Read list_id
-	      if (0 < remaining_size)
+	      if (0 < reply_datasize_listid)
 		{
-		  assert (0 < reply_datasize_listid);
-
 		  if ((error == NO_ERROR) && (replydata = (char *) malloc (reply_datasize_listid)) != NULL)
 		    {
 		      css_queue_receive_data_buffer (rc, replydata, reply_datasize_listid);
@@ -1700,58 +1696,55 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 
 		      net_consume_expected_packets (rc, 1);
 		    }
-
-		  remaining_size -= reply_datasize_listid;
+		}
+	      else
+		{
+		  // Even though its size is 0, it should also be consumed.
+		  assert (reply_datasize_listid == 0);
+		  net_consume_expected_packets (rc, 1);
 		}
 
 	      // 2. Read page if exists
 	      //
 	      // Note that not all list files have a page. list file for insert may not have one.
-	      if (0 < remaining_size)
+	      if (0 < reply_datasize_page)
 		{
-		  if (0 < reply_datasize_page)
+		  if ((error == NO_ERROR) && (replydata = (char *) malloc (DB_PAGESIZE)) != NULL)
 		    {
-		      if ((error == NO_ERROR) && (replydata = (char *) malloc (DB_PAGESIZE)) != NULL)
+		      css_queue_receive_data_buffer (rc, replydata, reply_datasize_page);
+
+		      error = css_receive_data_from_server (rc, &reply, &size);
+		      if (error != NO_ERROR)
 			{
-			  css_queue_receive_data_buffer (rc, replydata, reply_datasize_page);
-
-			  error = css_receive_data_from_server (rc, &reply, &size);
-			  if (error != NO_ERROR)
-			    {
-			      COMPARE_AND_FREE_BUFFER (replydata, reply);
-			      free_and_init (replydata);
-			      return set_server_error (error);
-			    }
-
-			  error = COMPARE_SIZE_AND_BUFFER (&reply_datasize_page, size, &replydata, reply);
-
-			  *replydata_page = reply;
-			  *replydatasize_page = size;
-
-			  reply = NULL;
+			  COMPARE_AND_FREE_BUFFER (replydata, reply);
+			  free_and_init (replydata);
+			  return set_server_error (error);
 			}
-		      else
-			{
-			  error = net_set_alloc_err_if_not_set (error, ARG_FILE_LINE);
 
-			  net_consume_expected_packets (rc, 1);
-			}
+		      error = COMPARE_SIZE_AND_BUFFER (&reply_datasize_page, size, &replydata, reply);
+
+		      *replydata_page = reply;
+		      *replydatasize_page = size;
+
+		      reply = NULL;
 		    }
 		  else
 		    {
-		      // Even though its size is 0, it should also be consumed.
-		      assert (reply_datasize_page == 0);
+		      error = net_set_alloc_err_if_not_set (error, ARG_FILE_LINE);
+
 		      net_consume_expected_packets (rc, 1);
 		    }
-
-		  remaining_size -= reply_datasize_page;
+		}
+	      else
+		{
+		  // Even though its size is 0, it should also be consumed.
+		  assert (reply_datasize_page == 0);
+		  net_consume_expected_packets (rc, 1);
 		}
 
 	      // 3. Read plan if exists
-	      if (0 < remaining_size)
+	      if (0 < reply_datasize_plan)
 		{
-		  assert (0 < reply_datasize_plan);
-
 		  if ((error == NO_ERROR) && (replydata = (char *) malloc (reply_datasize_plan + 1)) != NULL)
 		    {
 		      css_queue_receive_data_buffer (rc, replydata, reply_datasize_plan);
@@ -1785,6 +1778,11 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		      net_consume_expected_packets (rc, 1);
 		    }
 		}
+	      else
+		{
+		  // When you want to append a reply argument, you should handle zero-size case.
+		}
+
 	      break;
 
 	    case METHOD_CALL:
