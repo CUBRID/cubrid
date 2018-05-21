@@ -36,8 +36,9 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
-
+#include "server_support.h"
 #include "dbtype.h"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
 
 /*
  * xtran_server_commit - Commit the current transaction
@@ -589,7 +590,7 @@ int
 xtran_wait_server_active_trans (THREAD_ENTRY * thread_p)
 {
 #if defined(SERVER_MODE)
-  int prev_thrd_cnt, thrd_cnt;
+  size_t prev_thrd_cnt, thrd_cnt;
   CSS_CONN_ENTRY *p;
   int tran_index, client_id;
   bool continue_check;
@@ -609,7 +610,7 @@ xtran_wait_server_active_trans (THREAD_ENTRY * thread_p)
   client_id = p->client_id;
 
 loop:
-  prev_thrd_cnt = thread_has_threads (thread_p, tran_index, client_id);
+  prev_thrd_cnt = css_count_transaction_worker_threads (thread_p, tran_index, client_id);
   if (prev_thrd_cnt > 0)
     {
       if (!logtb_is_interrupted_tran (thread_p, false, &continue_check, tran_index))
@@ -618,7 +619,8 @@ loop:
 	}
     }
 
-  while ((thrd_cnt = thread_has_threads (thread_p, tran_index, client_id)) >= prev_thrd_cnt && thrd_cnt > 0)
+  while ((thrd_cnt = css_count_transaction_worker_threads (thread_p, tran_index, client_id)) >= prev_thrd_cnt
+	 && thrd_cnt > 0)
     {
       /* Some threads may wait for data from the m-driver. It's possible from the fact that css_server_thread() is
        * responsible for receiving every data from which is sent by a client and all m-drivers. We must have chance to

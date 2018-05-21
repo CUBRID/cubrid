@@ -30,8 +30,8 @@
 
 #include "config.h"
 #include "dbtype_def.h"
-#include "lzoconf.h"
-#include "lzo1x.h"
+#include "lzo/lzoconf.h"
+#include "lzo/lzo1x.h"
 #include "memory_hash.h"
 #include "porting.h"
 #include "release_string.h"

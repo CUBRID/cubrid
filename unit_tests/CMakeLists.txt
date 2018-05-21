@@ -32,6 +32,8 @@ option (UNIT_TEST_STRING_BUFFER "Unit testing: string buffer with format")
 option (UNIT_TEST_LOCKFREE "Unit testing: lockfree module")
 option (UNIT_TEST_THREAD "Unit testing: thread module")
 option (UNIT_TEST_COMM_CHN "Unit testing: communication channel module")
+option (UNIT_TEST_TRANS_CHN "Unit testing: transfer channel module")
+option (UNIT_TEST_DDL_CL "Unit testing: ddl proxy client module")
 
 message("  unit_tests/...")
 
@@ -69,3 +71,18 @@ if (UNIT_TESTS OR UNIT_TEST_PACKING)
   message("    packing")
   add_subdirectory(packing)
 endif(UNIT_TESTS OR UNIT_TEST_PACKING)
+
+if (UNIT_TESTS OR UNIT_TEST_TRANS_CHN)
+  message("    transfer_channel")
+  add_subdirectory(transfer_channel)
+endif(UNIT_TESTS OR UNIT_TEST_TRANS_CHN)
+
+if (UNIT_TESTS OR UNIT_TEST_OBJECT_FACTORY)
+  message("    object_factory")
+  add_subdirectory(object_factory)
+endif(UNIT_TESTS OR UNIT_TEST_OBJECT_FACTORY)
+
+if (UNIT_TESTS OR UNIT_TEST_DDL_CL)
+  message("    ddl_proxy_client")
+  add_subdirectory(ddl_proxy_client)
+endif(UNIT_TESTS OR UNIT_TEST_DDL_CL)

@@ -168,11 +168,11 @@ public class CUBRIDBlob implements Blob {
 	}
 
 	public long position(byte[] pattern, long start) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	public long position(Blob pattern, long start) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	public int setBytes(long pos, byte[] bytes) throws SQLException {
@@ -244,7 +244,7 @@ public class CUBRIDBlob implements Blob {
 	}
 
 	public void truncate(long len) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */

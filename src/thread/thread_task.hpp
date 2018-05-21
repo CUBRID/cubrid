@@ -57,7 +57,7 @@ namespace cubthread
   //              task_p->retire (); // this will delete task_p
   //            }
   //
-  // NOTE: to use tasks with worker pools, Context should have interrupt_execution () method defined.
+  // NOTE: to use tasks with worker pools & daemons, Context should have interrupt_execution () method defined.
   //       For long execution tasks, it is recommended to check the interrupt condition regularly.
   //
   template <typename Context>
@@ -66,10 +66,10 @@ namespace cubthread
     public:
       using context_type = Context;
 
-      task () = default;
+      task (void) = default;
 
       // abstract class requires virtual destructor
-      virtual ~task () = default;
+      virtual ~task (void) = default;
 
       // virtual functions to be implemented by inheritors
       virtual void execute (context_type &) = 0;
@@ -80,6 +80,22 @@ namespace cubthread
 	delete this;
       }
   };
+
+  // context-less task specialization. no argument for execute function
+  template<>
+  class task<void>
+  {
+    public:
+      task (void) = default;
+      virtual ~task (void) = default;
+
+      virtual void execute (void) = 0;
+      virtual void retire (void)
+      {
+	delete this;
+      }
+  };
+  using task_without_context = task<void>;
 
   // context_manager
   //

@@ -595,6 +595,9 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
       goto error_exit;
     }
 
+  // create session
+  (void) db_find_or_create_session (client_credential->db_user, client_credential->program_name);
+
   oid_set_root (&rootclass_oid);
   OID_INIT_TEMPID ();
 
@@ -5395,8 +5398,7 @@ catcls_vclass_install (void)
     {"CTV_TRIGGER_NAME", boot_define_view_trigger},
     {"CTV_PARTITION_NAME", boot_define_view_partition},
     {"CTV_STORED_PROC_NAME", boot_define_view_stored_procedure},
-    {"CTV_STORED_PROC_ARGS_NAME",
-     boot_define_view_stored_procedure_arguments},
+    {"CTV_STORED_PROC_ARGS_NAME", boot_define_view_stored_procedure_arguments},
     {"CTV_DB_COLLATION_NAME", boot_define_view_db_collation},
     {"CTV_DB_CHARSET_NAME", boot_define_view_db_charset}
   };
@@ -5440,7 +5442,6 @@ boot_build_catalog_classes (const char *dbname)
   /* check if an old version database */
   if (locator_find_class (CT_CLASS_NAME) != NULL)
     {
-
       fprintf (stdout, "Database %s already has system catalog class/vclass\n", dbname);
       return 1;
     }
@@ -5736,9 +5737,8 @@ boot_set_server_session_key (const char *key)
 static int
 boot_check_timezone_checksum (BOOT_CLIENT_CREDENTIAL * client_credential)
 {
-#define CHECKSUM_SIZE 32
   int error_code = NO_ERROR;
-  char timezone_checksum[CHECKSUM_SIZE + 1];
+  char timezone_checksum[TZ_CHECKSUM_SIZE + 1];
   const TZ_DATA *tzd;
   char cli_text[PATH_MAX];
   char srv_text[DB_MAX_IDENTIFIER_LENGTH + 10];
@@ -5757,7 +5757,6 @@ boot_check_timezone_checksum (BOOT_CLIENT_CREDENTIAL * client_credential)
   error_code = check_timezone_compat (tzd->checksum, timezone_checksum, cli_text, srv_text);
 exit:
   return error_code;
-#undef CHECKSUM_SIZE
 }
 #endif /* CS_MODE */
 
