@@ -56,20 +56,14 @@
 #include "db_date.h"
 #include "btree_load.h"
 #include "query_dump.h"
-#if defined(SERVER_MODE) && defined(DIAG_DEVEL)
-#include "perf_monitor.h"
-#endif
 #if defined (SERVER_MODE)
 #include "jansson.h"
 #endif /* defined (SERVER_MODE) */
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
-#if defined (SA_MODE)
-#include "transaction_cl.h"	/* for interrupt */
-#endif /* defined (SA_MODE) */
 #include "db_json.hpp"
-#include "thread.h"
+#include "thread.h"		// for resource tracker
 
 #include "dbtype.h"
 
@@ -8343,7 +8337,7 @@ qexec_destroy_upddel_ehash_files (THREAD_ENTRY * thread_p, XASL_NODE * buildlist
   bool save_interrupted;
   EHID *hash_list = buildlist->proc.buildlist.upddel_oid_locator_ehids;
 
-  save_interrupted = thread_set_check_interrupt (thread_p, false);
+  save_interrupted = logtb_set_check_interrupt (thread_p, false);
 
   for (idx = 0; idx < buildlist->upd_del_class_cnt; idx++)
     {
@@ -8356,7 +8350,7 @@ qexec_destroy_upddel_ehash_files (THREAD_ENTRY * thread_p, XASL_NODE * buildlist
   db_private_free (thread_p, hash_list);
   buildlist->proc.buildlist.upddel_oid_locator_ehids = NULL;
 
-  (void) thread_set_check_interrupt (thread_p, save_interrupted);
+  (void) logtb_set_check_interrupt (thread_p, save_interrupted);
 }
 
 /*
@@ -13954,13 +13948,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		      /* open the scan for this access specification node */
 		      if (level == 0 && spec_level == 1)
 			{
-#if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-			  perfmon_diag_set_full_scan (diag_executediag, NULL, xasl, specp);
-#if 0				/* ACTIVITY PROFILE */
-			  ADD_ACTIVITY_DATA (diag_executediag, DIAG_EVENTCLASS_TYPE_SERVER_QUERY_FULL_SCAN,
-					     xasl->sql_hash_text, "", 0);
-#endif
-#endif
 			  if (qexec_open_scan (thread_p, specp, xptr->merge_val_list, &xasl_state->vd,
 					       force_select_lock, specp->fixed_scan, specp->grouped_scan,
 					       iscan_oid_order, &specp->s_id, xasl_state->query_id, xasl->scan_op_type,
@@ -13986,13 +13973,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      specp->grouped_scan = false;
 			      iscan_oid_order = false;
 			    }
-#if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-			  perfmon_diag_set_full_scan (diag_executediag, NULL, xasl, specp);
-#if 0				/* ACTIVITY PROFILE */
-			  ADD_ACTIVITY_DATA (diag_executediag, DIAG_EVENTCLASS_TYPE_SERVER_QUERY_FULL_SCAN,
-					     xasl->sql_hash_text, "", 0);
-#endif
-#endif
 
 			  if (qexec_open_scan (thread_p, specp, xptr->val_list, &xasl_state->vd, force_select_lock,
 					       specp->fixed_scan, specp->grouped_scan, iscan_oid_order, &specp->s_id,
@@ -22445,7 +22425,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
   else if (validator != NULL)
     {
       DB_DATA_STATUS data_stat;
-      DB_VALUE bracket1, bracket2, db_name, schema;
+      DB_VALUE bracket1, bracket2, schema;
       bool err = false;
 
       if (db_json_get_schema_raw_from_validator (validator) != NULL)

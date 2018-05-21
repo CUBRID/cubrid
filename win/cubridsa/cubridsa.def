@@ -111,6 +111,7 @@ EXPORTS
     sysprm_set_er_log_file
     sysprm_check_range
     sysprm_get_range
+    timezone_compile_data
     utility_get_generic_message
     util_make_ha_conf
     util_get_ha_mode_for_sa_utils
@@ -133,6 +134,7 @@ EXPORTS
     sm_get_ch_name
     tr_map_trigger
     er_init
+    er_final
     prm_get_name
 ; utility functions
 	createdb

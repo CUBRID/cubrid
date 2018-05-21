@@ -26,7 +26,7 @@
 
 #include "object_domain.h"
 #include "query_list.h"
-#include "regex38a.h"
+#include "libregex38a/regex38a.h"
 #include "string_opfunc.h"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)

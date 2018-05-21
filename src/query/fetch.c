@@ -49,10 +49,7 @@
 #include "db_date.h"
 #include "xasl.h"
 #include "query_executor.h"
-#include "thread_compat.hpp"
-#if defined (SERVER_MODE) || defined (SA_MODE)
-#include "thread.h"
-#endif // SERVER_MODE or SA_MODE
+#include "thread_entry.hpp"
 
 #include "dbtype.h"
 

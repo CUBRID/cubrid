@@ -52,9 +52,6 @@
 #include "memory_hash.h"	/* For hash functions */
 #include "db_date.h"
 #include "thread_compat.hpp"
-#if defined (SA_MODE)
-#include "transaction_cl.h"
-#endif /* SA_MODE */
 
 #ifdef EHASH_DEBUG
 #define EHASH_BALANCE_FACTOR     4	/* Threshold rate of no. of directory pointers over no. of bucket pages. If
