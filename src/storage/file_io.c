@@ -2192,6 +2192,8 @@ fileio_create (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 #endif /* !CS_MODE */
     }
 
+  er_log_debug (ARG_FILE_LINE, "Created volume %s\n", vol_label_p);
+
   return vol_fd;
 }
 
@@ -2767,6 +2769,8 @@ fileio_unformat_and_rename (THREAD_ENTRY * thread_p, const char *vol_label_p, co
       er_log_debug (ARG_FILE_LINE, "fileio_unformat: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
 #endif
+
+  er_log_debug (ARG_FILE_LINE, "Destroyed volume %s\n", vol_label_p);
 }
 
 /*
