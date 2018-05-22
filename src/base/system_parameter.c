@@ -403,6 +403,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS "ha_check_disk_failure_interval"
 
+#define PRM_NAME_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSEC "ha_update_hostname_interval_in_msecs"
+
 #define PRM_NAME_JAVA_STORED_PROCEDURE "java_stored_procedure"
 
 #define PRM_NAME_COMPAT_PRIMARY_KEY "compat_primary_key"
@@ -1532,6 +1534,10 @@ static int prm_ha_check_disk_failure_interval_in_secs_default = 15;
 static int prm_ha_check_disk_failure_interval_in_secs_upper = INT_MAX;
 static int prm_ha_check_disk_failure_interval_in_secs_lower = 0;
 static unsigned int prm_ha_check_disk_failure_interval_in_secs_flag = 0;
+
+int PRM_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS = HB_DEFAULT_UPDATE_HOSTNAME_INTERVAL_IN_MSECS;
+static int prm_ha_update_hostname_interval_in_msecs_default = HB_DEFAULT_UPDATE_HOSTNAME_INTERVAL_IN_MSECS;
+static unsigned int prm_ha_update_hostname_interval_in_msecs_flag = 0;
 
 bool PRM_JAVA_STORED_PROCEDURE = false;
 static bool prm_java_stored_procedure_default = false;
@@ -3837,6 +3843,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_msec_to_sec,
    (DUP_PRM_FUNC) prm_sec_to_msec},
+  {PRM_ID_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS,
+   PRM_NAME_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSEC,
+   (PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
+   PRM_INTEGER,
+   &prm_ha_update_hostname_interval_in_msecs_flag,
+   (void *) &prm_ha_update_hostname_interval_in_msecs_default,
+   (void *) &PRM_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_JAVA_STORED_PROCEDURE,
    PRM_NAME_JAVA_STORED_PROCEDURE,
    (PRM_FOR_SERVER),

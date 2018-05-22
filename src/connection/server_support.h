@@ -32,6 +32,7 @@
 #include "connection_defs.h"
 #include "connection_sr.h"
 #include "thread_compat.hpp"
+#include "master_heartbeat.h"
 
 // forward definitions
 namespace cubthread
@@ -91,6 +92,9 @@ extern int css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int wh
 extern int css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool force, int timeout,
 				       bool heartbeat);
 extern int css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE state);
+
+extern int css_process_master_hostname (void);
+extern const char *get_master_hostname ();
 
 extern void css_push_external_task (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY * conn, cubthread::entry_task * task);
 extern void css_get_thread_stats (UINT64 * stats_out);
