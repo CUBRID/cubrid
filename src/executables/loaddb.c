@@ -99,8 +99,8 @@ static int schema_file_start_line = 1;
 static int index_file_start_line = 1;
 static int compare_Storage_order = 0;
 
-#define LOADDB_LOG_FILENAME "loaddb.log"
-static FILE *loaddb_log_file;
+#define LOADDB_LOG_FILENAME_SUFFIX "loaddb.log"
+FILE *loaddb_log_file = NULL;
 
 bool No_oid_hint = false;
 
@@ -149,10 +149,17 @@ print_log_msg (int verbose, const char *fmt, ...)
       va_end (ap);
     }
 
-  va_start (ap, fmt);
-  vfprintf (loaddb_log_file, fmt, ap);
-  fflush (loaddb_log_file);
-  va_end (ap);
+  if (loaddb_log_file != NULL)
+    {
+      va_start (ap, fmt);
+      vfprintf (loaddb_log_file, fmt, ap);
+      fflush (loaddb_log_file);
+      va_end (ap);
+    }
+  else
+    {
+      assert (false);
+    }
 }
 
 /*
@@ -680,7 +687,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   db_disable_trigger ();
 
   /* open loaddb log file */
-  sprintf (log_file_name, "%s_loaddb.log", Volume);
+  sprintf (log_file_name, "%s_%s", Volume, LOADDB_LOG_FILENAME_SUFFIX);
   loaddb_log_file = fopen (log_file_name, "w+");
   if (loaddb_log_file == NULL)
     {
