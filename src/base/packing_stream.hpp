@@ -62,7 +62,7 @@ namespace cubstream
 
       int packing_func (const stream_position &pos, char *ptr, const size_t amount);
       int prepare_func (const stream_position &data_start_pos, char *ptr, const size_t header_size,
-                          size_t &payload_size);
+			size_t &payload_size);
       int unpack_func (char *ptr, const size_t data_size);
 
     public:
@@ -72,7 +72,10 @@ namespace cubstream
 
       entry (packing_stream *stream);
 
-      virtual ~entry() { reset (); };
+      virtual ~entry()
+      {
+	reset ();
+      };
 
       int pack (void);
 
@@ -83,7 +86,7 @@ namespace cubstream
       void reset (void)
       {
 	set_packable (false);
-        destroy_objects ();
+	destroy_objects ();
       };
 
       size_t get_entries_size (void);
@@ -108,21 +111,21 @@ namespace cubstream
   };
 
   struct stream_reserve_context
-    {
-      stream_position start_pos;
-      char *ptr;
-      size_t reserved_amount;
-      size_t written_bytes;
-    };
+  {
+    stream_position start_pos;
+    char *ptr;
+    size_t reserved_amount;
+    size_t written_bytes;
+  };
 
   class packing_stream : public stream
   {
     public:
       enum STREAM_SKIP_MODE
-        {
-          STREAM_DONT_SKIP = 0,
-          STREAM_SKIP
-        };
+      {
+	STREAM_DONT_SKIP = 0,
+	STREAM_SKIP
+      };
 
     private:
       /* a BIP-Buffer with 64 pages */
@@ -159,16 +162,16 @@ namespace cubstream
       /* should be called when serialization of a stream entry ends */
       int commit_append (stream_reserve_context *reserve_context);
 
-      char *reserve_with_buffer (const size_t amount, stream_reserve_context* &reserved_context);
+      char *reserve_with_buffer (const size_t amount, stream_reserve_context *&reserved_context);
 
       char *get_more_data_with_buffer (const size_t amount, size_t &actual_read_bytes, stream_position &trail_pos,
-                                       mem::buffer_latch_read_id &read_latch_page_idx);
-      char *get_data_from_pos (const stream_position &req_start_pos, const size_t amount, 
-                               size_t &actual_read_bytes, mem::buffer_latch_read_id &read_latch_page_idx);
+				       mem::buffer_latch_read_id &read_latch_page_idx);
+      char *get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
+			       size_t &actual_read_bytes, mem::buffer_latch_read_id &read_latch_page_idx);
       int unlatch_read_data (const mem::buffer_latch_read_id &read_latch_page_idx);
 
       int wait_for_data (const size_t amount, const STREAM_SKIP_MODE skip_mode);
-    
+
     public:
       packing_stream (const size_t buffer_capacity, const int max_appenders);
       ~packing_stream ();
@@ -180,15 +183,15 @@ namespace cubstream
       int read_serial (const size_t byte_count, read_prepare_func_t &read_action);
 
       void set_buffer_reserve_margin (const size_t margin)
-        {
-          m_bip_buffer.set_reserve_margin (margin);
-        };
+      {
+	m_bip_buffer.set_reserve_margin (margin);
+      };
 
       /* fill factor : if < 1 : no need to flush or throtle the appenders ; if > 1 : need to flush and/or throttle */
       float stream_fill_factor (void)
-        {
-          return ((float) m_append_position - (float) m_last_dropable_pos) / (float) m_trigger_flush_to_disk_size;
-        };
+      {
+	return ((float) m_append_position - (float) m_last_dropable_pos) / (float) m_trigger_flush_to_disk_size;
+      };
 
   };
 

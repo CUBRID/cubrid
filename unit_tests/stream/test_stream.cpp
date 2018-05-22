@@ -281,7 +281,7 @@ namespace test_stream
 	    str_size = std::rand () % 1000 + 1;
 	    tmp_str = (char *) db_private_alloc (NULL, str_size + 1);
 	    db_make_char (&values[i], str_size, tmp_str, str_size, INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY);
-            values[i].need_clear = true;
+	    values[i].need_clear = true;
 	    break;
 	  }
       }
@@ -304,15 +304,15 @@ namespace test_stream
   }
 
   po1::~po1()
-    {
-      for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
-        {
-          if (values[i].need_clear)
-            {
-              pr_clear_value (&values[i]);
-            }
-        }
-    }
+  {
+    for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
+      {
+	if (values[i].need_clear)
+	  {
+	    pr_clear_value (&values[i]);
+	  }
+      }
+  }
   /* po2 */
   int po2::pack (cubpacking::packer *serializator)
   {
@@ -441,7 +441,7 @@ namespace test_stream
 	rem_amount -= processed_amount;
       }
 
-  
+
     return res;
   }
 
@@ -454,7 +454,7 @@ namespace test_stream
 
     if (initialized)
       {
-        return 0;
+	return 0;
       }
 
     lang_init ();
@@ -469,8 +469,8 @@ namespace test_stream
     res = cubthread::initialize_thread_entries ();
     if (res != NO_ERROR)
       {
-	ASSERT_ERROR ();
-	return res;
+    ASSERT_ERROR ();
+    return res;
       }
       */
     initialized = true;
@@ -490,9 +490,9 @@ namespace test_stream
     static bool created = false;
     if (created == false)
       {
-        test_factory_po.register_creator<po1> (po1::ID);
-        test_factory_po.register_creator<po2> (po2::ID);
-        created = true;
+	test_factory_po.register_creator<po1> (po1::ID);
+	test_factory_po.register_creator<po2> (po2::ID);
+	created = true;
       }
 
     return &test_factory_po;
@@ -500,39 +500,42 @@ namespace test_stream
 
 
   class stream_mover
-    {
+  {
     private:
       static const int BUF_SIZE = 1024;
       char m_buffer[BUF_SIZE];
 
       int read_action (char *ptr, const size_t byte_count)
-        {
-          memcpy (m_buffer, ptr, byte_count);
-          return byte_count;
-        };
+      {
+	memcpy (m_buffer, ptr, byte_count);
+	return byte_count;
+      };
 
       int write_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count)
-        {
-          memcpy (ptr, m_buffer, byte_count);
-          return byte_count;
-        };
+      {
+	memcpy (ptr, m_buffer, byte_count);
+	return byte_count;
+      };
 
     public:
 
       stream_mover ()
-        {
-          m_reader_func = std::bind (&stream_mover::read_action, std::ref (*this),
-                                     std::placeholders::_1, std::placeholders::_2);
-          m_writer_func = std::bind (&stream_mover::write_action, std::ref (*this),
-                                     std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+      {
+	m_reader_func = std::bind (&stream_mover::read_action, std::ref (*this),
+				   std::placeholders::_1, std::placeholders::_2);
+	m_writer_func = std::bind (&stream_mover::write_action, std::ref (*this),
+				   std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
 
-        };
+      };
 
-      size_t get_buf_size (void) { return sizeof (m_buffer); };
+      size_t get_buf_size (void)
+      {
+	return sizeof (m_buffer);
+      };
 
       cubstream::stream::read_func_t m_reader_func;
       cubstream::stream::write_func_t m_writer_func;
-    };
+  };
 
   int test_stream2 (void)
   {
@@ -575,8 +578,8 @@ namespace test_stream
     res = se.pack ();
     if (res != 0)
       {
-        assert (false);
-        return res;
+	assert (false);
+	return res;
       }
 
     /* use same stream for unpack (same buffers) and create another stream::entry */
@@ -584,21 +587,21 @@ namespace test_stream
     res = se2.prepare ();
     if (res != 0)
       {
-        assert (false);
-        return res;
+	assert (false);
+	return res;
       }
 
     res = se2.unpack ();
     if (res != 0)
       {
-        assert (false);
-        return res;
+	assert (false);
+	return res;
       }
 
     if (se.is_equal (&se2) == false)
       {
-        assert (false);
-        res = -1;
+	assert (false);
+	res = -1;
       }
 
     /* create a new stream and copy buffers */
@@ -614,46 +617,46 @@ namespace test_stream
 
     for (curr_pos = 0; curr_pos <= last_pos;)
       {
-        copy_chunk_size = MIN (copy_chunk_size, last_pos - curr_pos);
+	copy_chunk_size = MIN (copy_chunk_size, last_pos - curr_pos);
 
-        read_bytes = test_stream_for_pack.read (curr_pos, copy_chunk_size, test_stream_mover.m_reader_func);
-        if (read_bytes <= 0)
-          {
-            break;
-          }
+	read_bytes = test_stream_for_pack.read (curr_pos, copy_chunk_size, test_stream_mover.m_reader_func);
+	if (read_bytes <= 0)
+	  {
+	    break;
+	  }
 
-        written_bytes = test_stream_for_unpack.write (read_bytes, test_stream_mover.m_writer_func);
-        assert (read_bytes == written_bytes);
-        if (written_bytes <= 0)
-          {
-            res = -1;
-            return res;
-          }
+	written_bytes = test_stream_for_unpack.write (read_bytes, test_stream_mover.m_writer_func);
+	assert (read_bytes == written_bytes);
+	if (written_bytes <= 0)
+	  {
+	    res = -1;
+	    return res;
+	  }
 
-        curr_pos += read_bytes;
+	curr_pos += read_bytes;
       }
 
     test_stream_entry se3 (&test_stream_for_unpack);
 
-     res = se3.prepare ();
-      if (res != 0)
-        {
-          assert (false);
-          return res;
-        }
+    res = se3.prepare ();
+    if (res != 0)
+      {
+	assert (false);
+	return res;
+      }
 
-      res = se3.unpack ();
-      if (res != 0)
-        {
-          assert (false);
-          return res;
-        }
+    res = se3.unpack ();
+    if (res != 0)
+      {
+	assert (false);
+	return res;
+      }
 
-      if (se.is_equal (&se3) == false)
-        {
-          res = -1;
-          assert (false);
-        }
+    if (se.is_equal (&se3) == false)
+      {
+	res = -1;
+	assert (false);
+      }
 
     return res;
 #undef TEST_OBJ_CNT
@@ -677,72 +680,72 @@ namespace test_stream
     test_stream_for_pack.set_buffer_reserve_margin (100 * 1024);
 
     std::cout << "      Generating stream entries and objects...";
-    test_stream_entry* se_array[TEST_ENTRIES_CNT];
+    test_stream_entry *se_array[TEST_ENTRIES_CNT];
     for (i = 0; i < TEST_ENTRIES_CNT; i++)
       {
-        se_array[i] = new test_stream_entry(&test_stream_for_pack);
+	se_array[i] = new test_stream_entry (&test_stream_for_pack);
 
-        for (j = 0; j < TEST_OBJS_IN_ENTRIES_CNT; j++)
-          {
+	for (j = 0; j < TEST_OBJS_IN_ENTRIES_CNT; j++)
+	  {
 	    if (std::rand() %2 == 0)
 	      {
-	        po1 *obj = new po1;
-	        obj->generate_obj ();
-                se_array[i]->add_packable_entry (obj);
+		po1 *obj = new po1;
+		obj->generate_obj ();
+		se_array[i]->add_packable_entry (obj);
 	      }
 	    else
 	      {
-	        po2 *obj = new po2;
-	        obj->generate_obj ();
-                se_array[i]->add_packable_entry (obj);
+		po2 *obj = new po2;
+		obj->generate_obj ();
+		se_array[i]->add_packable_entry (obj);
 	      }
-          }
+	  }
       }
     std::cout << "Done" << std::endl;
 
     std::cout << "      Start test..";
     /* use same stream for unpack (same buffers) and create another stream::entry */
-    test_stream_entry* se_array_unpacked[TEST_ENTRIES_CNT];
+    test_stream_entry *se_array_unpacked[TEST_ENTRIES_CNT];
     for (i = 0; i < TEST_ENTRIES_CNT + TEST_DELAY_UNPACK_IN_ENTRIES; i++)
       {
-        if (i < TEST_ENTRIES_CNT)
-          {
-            /* pack original entry */
-            se_array[i]->set_packable (true);
+	if (i < TEST_ENTRIES_CNT)
+	  {
+	    /* pack original entry */
+	    se_array[i]->set_packable (true);
 
-            res = se_array[i]->pack ();
-            if (res != 0)
-              {
-                assert (false);
-                return res;
-              }
-          }
+	    res = se_array[i]->pack ();
+	    if (res != 0)
+	      {
+		assert (false);
+		return res;
+	      }
+	  }
 
-        if (i >= TEST_DELAY_UNPACK_IN_ENTRIES)
-          {
-            se_array_unpacked[i - TEST_DELAY_UNPACK_IN_ENTRIES] = new test_stream_entry(&test_stream_for_pack);
+	if (i >= TEST_DELAY_UNPACK_IN_ENTRIES)
+	  {
+	    se_array_unpacked[i - TEST_DELAY_UNPACK_IN_ENTRIES] = new test_stream_entry (&test_stream_for_pack);
 
-            /* unpack into a copy */
-            res = se_array_unpacked[i - TEST_DELAY_UNPACK_IN_ENTRIES]->prepare ();
-            if (res != 0)
-              {
-                assert (false);
-                return res;
-              }
+	    /* unpack into a copy */
+	    res = se_array_unpacked[i - TEST_DELAY_UNPACK_IN_ENTRIES]->prepare ();
+	    if (res != 0)
+	      {
+		assert (false);
+		return res;
+	      }
 
-            res = se_array_unpacked[i - TEST_DELAY_UNPACK_IN_ENTRIES]->unpack ();
-            if (res != 0)
-              {
-                assert (false);
-                return res;
-              }
+	    res = se_array_unpacked[i - TEST_DELAY_UNPACK_IN_ENTRIES]->unpack ();
+	    if (res != 0)
+	      {
+		assert (false);
+		return res;
+	      }
 
-            if (se_array_unpacked[i - TEST_DELAY_UNPACK_IN_ENTRIES]->is_equal (se_array[i - TEST_DELAY_UNPACK_IN_ENTRIES]) == false)
-              {
-                res = -1;
-                assert (false);
-              }
-          }
+	    if (se_array_unpacked[i - TEST_DELAY_UNPACK_IN_ENTRIES]->is_equal (se_array[i - TEST_DELAY_UNPACK_IN_ENTRIES]) == false)
+	      {
+		res = -1;
+		assert (false);
+	      }
+	  }
       }
     std::cout << "Done" << std::endl;
 
@@ -756,181 +759,183 @@ namespace test_stream
 
 
   void stream_pack_task::execute (context_type &context)
-    {
-      int tran_id = m_tran_id;
-      int i;
-      int entries_per_tran = stream_context_manager::g_cnt_packing_entries_per_thread;
-      test_stream_entry **se_array = stream_context_manager::g_entries;
+  {
+    int tran_id = m_tran_id;
+    int i;
+    int entries_per_tran = stream_context_manager::g_cnt_packing_entries_per_thread;
+    test_stream_entry **se_array = stream_context_manager::g_entries;
 
-      stream_context_manager::g_running_packers.set (m_tran_id);
+    stream_context_manager::g_running_packers.set (m_tran_id);
 
-      std::cout << "      Start packing thread " << tran_id << std::endl;
-      do
-        {
-          for (i = entries_per_tran * tran_id; i < entries_per_tran * (tran_id + 1); i++)
-            {
-              if (stream_context_manager::g_stop_packer)
-                {
-                  break;
-                }
+    std::cout << "      Start packing thread " << tran_id << std::endl;
+    do
+      {
+	for (i = entries_per_tran * tran_id; i < entries_per_tran * (tran_id + 1); i++)
+	  {
+	    if (stream_context_manager::g_stop_packer)
+	      {
+		break;
+	      }
 
-              while (stream_context_manager::g_pause_packer)
-                {
-                  std::this_thread::sleep_for (std::chrono::microseconds (100));
-                  if (stream_context_manager::g_stop_packer)
-                    {
-                      break;
-                    }
-                }
-              stream_context_manager::g_packed_entries_cnt++;
-              se_array[i]->pack ();
-            }
+	    while (stream_context_manager::g_pause_packer)
+	      {
+		std::this_thread::sleep_for (std::chrono::microseconds (100));
+		if (stream_context_manager::g_stop_packer)
+		  {
+		    break;
+		  }
+	      }
+	    stream_context_manager::g_packed_entries_cnt++;
+	    se_array[i]->pack ();
+	  }
 
-        }
-      while (stream_context_manager::g_stop_packer == false);
+      }
+    while (stream_context_manager::g_stop_packer == false);
 
-      std::cout << "      Stopped packing thread:" << tran_id << " at count: " << stream_context_manager::g_packed_entries_cnt << std::endl;
-      stream_context_manager::g_running_packers.reset (m_tran_id);
-      stream_context_manager::g_pause_unpacker = false;
-    }
+    std::cout << "      Stopped packing thread:" << tran_id << " at count: " << stream_context_manager::g_packed_entries_cnt
+	      << std::endl;
+    stream_context_manager::g_running_packers.reset (m_tran_id);
+    stream_context_manager::g_pause_unpacker = false;
+  }
 
-    void stream_unpack_task::execute (context_type &context)
-    {
-      int i;
-      int res;
-      test_stream_entry **se_unpack_array = stream_context_manager::g_unpacked_entries;
-      test_stream_entry **se_array = stream_context_manager::g_entries;
-      int err = NO_ERROR; 
+  void stream_unpack_task::execute (context_type &context)
+  {
+    int i;
+    int res;
+    test_stream_entry **se_unpack_array = stream_context_manager::g_unpacked_entries;
+    test_stream_entry **se_array = stream_context_manager::g_entries;
+    int err = NO_ERROR;
 
-      stream_context_manager::g_running_readers.set (m_reader_id);
-      std::cout << "      Start unpacking thread " << std::endl;
+    stream_context_manager::g_running_readers.set (m_reader_id);
+    std::cout << "      Start unpacking thread " << std::endl;
 
-      for (i = 0; ; i++)
-        {
-          test_stream_entry * se = new test_stream_entry (stream_context_manager::g_stream);
-          
-          do
-            {
-              err = se->prepare ();
-              if (err == NO_ERROR)
-                {
-                  break;
-                }
-              
-              /* unpacking may not have enough data, and could be signalled to block */
-              while (stream_context_manager::g_pause_unpacker == true)
-                {
-                  std::this_thread::sleep_for (std::chrono::microseconds (10));
-                }
+    for (i = 0; ; i++)
+      {
+	test_stream_entry *se = new test_stream_entry (stream_context_manager::g_stream);
 
-              if (stream_context_manager::g_running_packers.any () == false
-                  && stream_context_manager::g_stream->get_last_committed_pos ()
-                     == stream_context_manager::g_stream->get_curr_read_position ())
-                {
-                  /* test has finished, we read all data */
-                  err = NO_ERROR;
-                  break;
-                }
+	do
+	  {
+	    err = se->prepare ();
+	    if (err == NO_ERROR)
+	      {
+		break;
+	      }
 
-            }
-          while (err != NO_ERROR);
-          
-          assert (err == NO_ERROR);
+	    /* unpacking may not have enough data, and could be signalled to block */
+	    while (stream_context_manager::g_pause_unpacker == true)
+	      {
+		std::this_thread::sleep_for (std::chrono::microseconds (10));
+	      }
 
-          if (stream_context_manager::g_running_packers.any () == false
-              && stream_context_manager::g_stream->get_last_committed_pos ()
-                 == stream_context_manager::g_stream->get_curr_read_position ())
-            {
-              /* test has finished, we read all data */
-              delete se;
-              break;
-            }
+	    if (stream_context_manager::g_running_packers.any () == false
+		&& stream_context_manager::g_stream->get_last_committed_pos ()
+		== stream_context_manager::g_stream->get_curr_read_position ())
+	      {
+		/* test has finished, we read all data */
+		err = NO_ERROR;
+		break;
+	      }
 
-          do
-            {
-              err = se->unpack ();
-              if (err == NO_ERROR)
-                {
-                  break;
-                }
+	  }
+	while (err != NO_ERROR);
 
-              /* unpacking may not have enough data, and could be signalled to block*/
-              while (stream_context_manager::g_pause_unpacker == true)
-                {
-                  std::this_thread::sleep_for (std::chrono::microseconds (10));
-                }
-            }
-          while (err != NO_ERROR);
-         
-          /*/
-          if (se_unpack_array[se->get_mvcc_id()] != NULL)
-            {
-              delete se_unpack_array[se->get_mvcc_id()];
-            }
-          se_unpack_array[se->get_mvcc_id()] = se;
-          */
-          res = se->is_equal (se_array[se->get_mvcc_id()]);
-          assert (res == 1);
-          delete se;
+	assert (err == NO_ERROR);
 
-          stream_context_manager::g_unpacked_entries_cnt++;
-        }
+	if (stream_context_manager::g_running_packers.any () == false
+	    && stream_context_manager::g_stream->get_last_committed_pos ()
+	    == stream_context_manager::g_stream->get_curr_read_position ())
+	  {
+	    /* test has finished, we read all data */
+	    delete se;
+	    break;
+	  }
 
-       std::cout << "      End of unpacking thread " << std::endl;
-       stream_context_manager::g_running_readers.reset (m_reader_id);
-    }
+	do
+	  {
+	    err = se->unpack ();
+	    if (err == NO_ERROR)
+	      {
+		break;
+	      }
 
-   void stream_read_task::execute (context_type &context)
-    {
-      cubstream::stream_position my_curr_pos = 0;
-      cubstream::stream_position last_committed_pos = 0;
-      size_t to_read;
-      size_t actual_read_bytes;
-      int err = NO_ERROR; 
-      stream_read_partial_copy_context my_read_handler;
-      int my_read_cnt = 0;
+	    /* unpacking may not have enough data, and could be signalled to block*/
+	    while (stream_context_manager::g_pause_unpacker == true)
+	      {
+		std::this_thread::sleep_for (std::chrono::microseconds (10));
+	      }
+	  }
+	while (err != NO_ERROR);
 
-      stream_context_manager::g_running_readers.set (m_reader_id);
-      std::cout << "      Start reading (as byte stream) thread " << std::endl;
+	/*/
+	if (se_unpack_array[se->get_mvcc_id()] != NULL)
+	  {
+	    delete se_unpack_array[se->get_mvcc_id()];
+	  }
+	se_unpack_array[se->get_mvcc_id()] = se;
+	*/
+	res = se->is_equal (se_array[se->get_mvcc_id()]);
+	assert (res == 1);
+	delete se;
 
-      while (stream_context_manager::g_running_packers.any () && stream_context_manager::g_stop_packer == false)
-        {
-          to_read = std::rand () % 1024;
+	stream_context_manager::g_unpacked_entries_cnt++;
+      }
 
-          do
-            {
-              last_committed_pos = stream_context_manager::g_stream->get_last_committed_pos ();
-              if (my_curr_pos + to_read <= last_committed_pos)
-                {
-                  break;
-                }
-              std::this_thread::sleep_for (std::chrono::microseconds (10));
-            }
-          while (my_curr_pos + to_read > last_committed_pos);
+    std::cout << "      End of unpacking thread " << std::endl;
+    stream_context_manager::g_running_readers.reset (m_reader_id);
+  }
 
-          
-          err = stream_context_manager::g_stream->read_partial (my_curr_pos, to_read, actual_read_bytes, my_read_handler.m_read_action_func);
-          if (err != NO_ERROR)
-            {
-              break;
-            }
+  void stream_read_task::execute (context_type &context)
+  {
+    cubstream::stream_position my_curr_pos = 0;
+    cubstream::stream_position last_committed_pos = 0;
+    size_t to_read;
+    size_t actual_read_bytes;
+    int err = NO_ERROR;
+    stream_read_partial_copy_context my_read_handler;
+    int my_read_cnt = 0;
 
-          my_curr_pos += actual_read_bytes;
-          my_read_cnt++;
+    stream_context_manager::g_running_readers.set (m_reader_id);
+    std::cout << "      Start reading (as byte stream) thread " << std::endl;
 
-          stream_context_manager::g_read_positions[m_reader_id] = my_curr_pos;
+    while (stream_context_manager::g_running_packers.any () && stream_context_manager::g_stop_packer == false)
+      {
+	to_read = std::rand () % 1024;
 
-          //std::this_thread::sleep_for (std::chrono::microseconds (10));
-        }
+	do
+	  {
+	    last_committed_pos = stream_context_manager::g_stream->get_last_committed_pos ();
+	    if (my_curr_pos + to_read <= last_committed_pos)
+	      {
+		break;
+	      }
+	    std::this_thread::sleep_for (std::chrono::microseconds (10));
+	  }
+	while (my_curr_pos + to_read > last_committed_pos);
 
-       std::cout << "      End of reading (as byte stream) thread at position:" << 
-         my_curr_pos << " count:" << my_read_cnt << "err:" << err << std::endl;
 
-        stream_context_manager::g_running_readers.reset (m_reader_id);
-    }
+	err = stream_context_manager::g_stream->read_partial (my_curr_pos, to_read, actual_read_bytes,
+	      my_read_handler.m_read_action_func);
+	if (err != NO_ERROR)
+	  {
+	    break;
+	  }
 
-  test_stream_entry** stream_context_manager::g_entries = NULL;
-  test_stream_entry** stream_context_manager::g_unpacked_entries = NULL;
+	my_curr_pos += actual_read_bytes;
+	my_read_cnt++;
+
+	stream_context_manager::g_read_positions[m_reader_id] = my_curr_pos;
+
+	//std::this_thread::sleep_for (std::chrono::microseconds (10));
+      }
+
+    std::cout << "      End of reading (as byte stream) thread at position:" <<
+	      my_curr_pos << " count:" << my_read_cnt << "err:" << err << std::endl;
+
+    stream_context_manager::g_running_readers.reset (m_reader_id);
+  }
+
+  test_stream_entry **stream_context_manager::g_entries = NULL;
+  test_stream_entry **stream_context_manager::g_unpacked_entries = NULL;
   int stream_context_manager::g_cnt_packing_entries_per_thread = 0;
   int stream_context_manager::g_cnt_unpacking_entries_per_thread = 0;
   cubstream::packing_stream *stream_context_manager::g_stream = NULL;
@@ -950,113 +955,114 @@ namespace test_stream
   cubstream::stream_position stream_context_manager::g_read_positions[200];
 
   class stream_producer_throttling
-    {
+  {
     public:
       stream_producer_throttling ()
-        {
-          m_prev_throttle_pos = 0;
-          m_notify_func = std::bind (&stream_producer_throttling::notify, std::ref (*this),
-                                     std::placeholders::_1, 
-                                     std::placeholders::_2);
-        };
+      {
+	m_prev_throttle_pos = 0;
+	m_notify_func = std::bind (&stream_producer_throttling::notify, std::ref (*this),
+				   std::placeholders::_1,
+				   std::placeholders::_2);
+      };
 
       cubstream::stream::notify_func_t m_notify_func;
     protected:
       int notify (const cubstream::stream_position pos, const size_t byte_count)
-        {
-          if (pos >= m_prev_throttle_pos)
-            {
-              m_prev_throttle_pos = pos;
-              std::cout << "      Stream producer throttled position:  " << pos << " bytes: " << byte_count << std::endl;
-              stream_context_manager::g_pause_packer = true;
-            }
+      {
+	if (pos >= m_prev_throttle_pos)
+	  {
+	    m_prev_throttle_pos = pos;
+	    std::cout << "      Stream producer throttled position:  " << pos << " bytes: " << byte_count << std::endl;
+	    stream_context_manager::g_pause_packer = true;
+	  }
 
-          return NO_ERROR;
-        };
+	return NO_ERROR;
+      };
     private:
       cubstream::stream_position m_prev_throttle_pos;
-    };
+  };
 
   class stream_ready_notifier
-    {
+  {
     public:
       stream_ready_notifier ()
-        {
-          m_ready_pos = 0;
-          m_notify_func = std::bind (&stream_ready_notifier::notify, std::ref (*this),
-                                     std::placeholders::_1, 
-                                     std::placeholders::_2);
-        };
+      {
+	m_ready_pos = 0;
+	m_notify_func = std::bind (&stream_ready_notifier::notify, std::ref (*this),
+				   std::placeholders::_1,
+				   std::placeholders::_2);
+      };
 
       cubstream::stream::notify_func_t m_notify_func;
     protected:
       int notify (const cubstream::stream_position pos, const size_t byte_count)
-        {
-          if (pos > m_ready_pos)
-            {
-              m_ready_pos = pos;
-              std::cout << "      Stream data ready of reading position:  " << pos << " bytes: " << byte_count << std::endl;
-              stream_context_manager::g_pause_unpacker = false;
-            }
+      {
+	if (pos > m_ready_pos)
+	  {
+	    m_ready_pos = pos;
+	    std::cout << "      Stream data ready of reading position:  " << pos << " bytes: " << byte_count << std::endl;
+	    stream_context_manager::g_pause_unpacker = false;
+	  }
 
-          return NO_ERROR;
-        };
+	return NO_ERROR;
+      };
     private:
       cubstream::stream_position m_ready_pos;
-    };
+  };
 
   class stream_fetcher
-    {
+  {
     public:
       stream_fetcher ()
-        {
-          m_prev_fetch_pos = 0;
-          m_fetch_func = std::bind (&stream_fetcher::fetch_action, std::ref (*this),
-                                     std::placeholders::_1, 
-                                     std::placeholders::_2,
-                                     std::placeholders::_3,
-                                     std::placeholders::_4);
-        };
+      {
+	m_prev_fetch_pos = 0;
+	m_fetch_func = std::bind (&stream_fetcher::fetch_action, std::ref (*this),
+				  std::placeholders::_1,
+				  std::placeholders::_2,
+				  std::placeholders::_3,
+				  std::placeholders::_4);
+      };
       cubstream::stream::fetch_func_t m_fetch_func;
     protected:
       int fetch_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count,
-	                size_t &processed_bytes)
-        {
-          int err = ER_FAILED;
-          if (pos >= m_prev_fetch_pos)
-            {
-              m_prev_fetch_pos = pos;
+			size_t &processed_bytes)
+      {
+	int err = ER_FAILED;
+	if (pos >= m_prev_fetch_pos)
+	  {
+	    m_prev_fetch_pos = pos;
 
-              if (stream_context_manager::g_stream->stream_fill_factor () < 1.0f)
-                {
-                  std::cout << "      Stream fetch notifier : need resume producing; waiting at position:  " << pos << " bytes: " << byte_count << std::endl;
+	    if (stream_context_manager::g_stream->stream_fill_factor () < 1.0f)
+	      {
+		std::cout << "      Stream fetch notifier : need resume producing; waiting at position:  " << pos << " bytes: " <<
+			  byte_count << std::endl;
 
-                  stream_context_manager::g_pause_packer = false;
-                }
+		stream_context_manager::g_pause_packer = false;
+	      }
 
-              cubstream::stream_position pos = stream_context_manager::g_stream->get_curr_read_position ();
+	    cubstream::stream_position pos = stream_context_manager::g_stream->get_curr_read_position ();
 
-              for (int j = 0; j < stream_context_manager::g_read_byte_threads; j++)
-                {
-                  pos = MIN (pos, stream_context_manager::g_read_positions[j]);
-                }
-              stream_context_manager::g_stream->set_last_dropable_pos (pos);
+	    for (int j = 0; j < stream_context_manager::g_read_byte_threads; j++)
+	      {
+		pos = MIN (pos, stream_context_manager::g_read_positions[j]);
+	      }
+	    stream_context_manager::g_stream->set_last_dropable_pos (pos);
 
-              if (pos + byte_count >= stream_context_manager::g_stream->get_last_committed_pos ())
-                {
-                  err = NO_ERROR;
-                }
-              return err;
-            }
+	    if (pos + byte_count >= stream_context_manager::g_stream->get_last_committed_pos ())
+	      {
+		err = NO_ERROR;
+	      }
+	    return err;
+	  }
 
-          return err;
-        };
+	return err;
+      };
     private:
       cubstream::stream_position m_prev_fetch_pos;
 
       std::mutex m;
       std::condition_variable c;
-    };
+  };
 
   stream_context_manager ctx_m1;
   stream_context_manager ctx_m2;
@@ -1076,7 +1082,8 @@ namespace test_stream
     init_common_cubrid_modules ();
 
     /* create objects */
-    std::cout << "  Testing packing/unpacking of cubstream::entries with sub-objects using same stream and multithreading " << std::endl;
+    std::cout << "  Testing packing/unpacking of cubstream::entries with sub-objects using same stream and multithreading "
+	      << std::endl;
     /* create a stream for packing and add pack objects to stream */
     stream_producer_throttling stream_producer_throttling_handler;
     stream_ready_notifier stream_ready_notify_handler;
@@ -1089,10 +1096,10 @@ namespace test_stream
     test_stream_for_pack.set_fetch_data_handler (stream_fetch_handler.m_fetch_func);
 
     std::cout << "      Generating stream entries and objects...";
-    test_stream_entry* se_array[TEST_ENTRIES];
-    test_stream_entry* se_unpacked_array[TEST_ENTRIES];
-    memset (se_unpacked_array, 0, TEST_ENTRIES * sizeof (test_stream_entry*));
-    memset (se_array, 0, TEST_ENTRIES * sizeof (test_stream_entry*));
+    test_stream_entry *se_array[TEST_ENTRIES];
+    test_stream_entry *se_unpacked_array[TEST_ENTRIES];
+    memset (se_unpacked_array, 0, TEST_ENTRIES * sizeof (test_stream_entry *));
+    memset (se_array, 0, TEST_ENTRIES * sizeof (test_stream_entry *));
 
     stream_context_manager::g_entries = se_array;
     stream_context_manager::g_unpacked_entries = se_unpacked_array;
@@ -1110,73 +1117,76 @@ namespace test_stream
 
     for (i = 0; i < TEST_ENTRIES; i++)
       {
-        se_array[i] = new test_stream_entry(&test_stream_for_pack);
+	se_array[i] = new test_stream_entry (&test_stream_for_pack);
 
-        se_array[i]->set_tran_id (i / stream_context_manager::g_cnt_packing_entries_per_thread);
-        se_array[i]->set_mvcc_id (i);
+	se_array[i]->set_tran_id (i / stream_context_manager::g_cnt_packing_entries_per_thread);
+	se_array[i]->set_mvcc_id (i);
 
-        for (j = 0; j < TEST_OBJS_IN_ENTRIES_CNT; j++)
-          {
+	for (j = 0; j < TEST_OBJS_IN_ENTRIES_CNT; j++)
+	  {
 	    if (std::rand() %2 == 0)
 	      {
-	        po1 *obj = new po1;
-	        obj->generate_obj ();
-                se_array[i]->add_packable_entry (obj);
+		po1 *obj = new po1;
+		obj->generate_obj ();
+		se_array[i]->add_packable_entry (obj);
 	      }
 	    else
 	      {
-	        po2 *obj = new po2;
-	        obj->generate_obj ();
-                se_array[i]->add_packable_entry (obj);
+		po2 *obj = new po2;
+		obj->generate_obj ();
+		se_array[i]->add_packable_entry (obj);
 	      }
-          }
-        se_array[i]->set_packable (true);
+	  }
+	se_array[i]->set_packable (true);
       }
     std::cout << "Done" << std::endl;
 
     stream_context_manager::g_stream = &test_stream_for_pack;
 
-    cubthread::entry_workpool* packing_worker_pool =
-      cub_th_m.create_worker_pool (stream_context_manager::g_pack_threads, stream_context_manager::g_pack_threads, &ctx_m1, 1, false);
+    cubthread::entry_workpool *packing_worker_pool =
+	    cub_th_m.create_worker_pool (stream_context_manager::g_pack_threads, stream_context_manager::g_pack_threads, &ctx_m1, 1,
+					 false);
 
-    cubthread::entry_workpool* unpacking_worker_pool =
-      cub_th_m.create_worker_pool (stream_context_manager::g_unpack_threads, stream_context_manager::g_unpack_threads, &ctx_m2, 1, false);
+    cubthread::entry_workpool *unpacking_worker_pool =
+	    cub_th_m.create_worker_pool (stream_context_manager::g_unpack_threads, stream_context_manager::g_unpack_threads,
+					 &ctx_m2, 1, false);
 
-    cubthread::entry_workpool* read_byte_worker_pool =
-      cub_th_m.create_worker_pool (stream_context_manager::g_read_byte_threads, stream_context_manager::g_read_byte_threads, &ctx_m3, 1, false);
+    cubthread::entry_workpool *read_byte_worker_pool =
+	    cub_th_m.create_worker_pool (stream_context_manager::g_read_byte_threads, stream_context_manager::g_read_byte_threads,
+					 &ctx_m3, 1, false);
 
     for (i = 0; i < stream_context_manager::g_pack_threads; i++)
       {
-        stream_pack_task *packing_task = new stream_pack_task ();
-        packing_task->m_tran_id = i;
-        packing_worker_pool->execute (packing_task);
+	stream_pack_task *packing_task = new stream_pack_task ();
+	packing_task->m_tran_id = i;
+	packing_worker_pool->execute (packing_task);
       }
 
     std::this_thread::sleep_for (std::chrono::milliseconds (1));
 
     for (i = 0; i < stream_context_manager::g_unpack_threads; i++)
       {
-        stream_unpack_task *unpacking_task = new stream_unpack_task ();
-        unpacking_task->m_reader_id = i + stream_context_manager::g_read_byte_threads;
-        unpacking_worker_pool->execute (unpacking_task);
+	stream_unpack_task *unpacking_task = new stream_unpack_task ();
+	unpacking_task->m_reader_id = i + stream_context_manager::g_read_byte_threads;
+	unpacking_worker_pool->execute (unpacking_task);
       }
 
     for (i = 0; i < stream_context_manager::g_read_byte_threads; i++)
       {
-        stream_read_task *read_byte_task = new stream_read_task ();
-        read_byte_task->m_reader_id = i;
-        read_byte_worker_pool->execute (read_byte_task);
+	stream_read_task *read_byte_task = new stream_read_task ();
+	read_byte_task->m_reader_id = i;
+	read_byte_worker_pool->execute (read_byte_task);
       }
 
     std::this_thread::sleep_for (std::chrono::seconds (15));
     stream_context_manager::g_stop_packer = true;
     stream_context_manager::g_pause_unpacker = false;
     std::cout << "      Stopping packers" << std::endl;
-    
+
     while (stream_context_manager::g_running_packers.any ()
-           || stream_context_manager::g_running_readers.any ())
+	   || stream_context_manager::g_running_readers.any ())
       {
-        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+	std::this_thread::sleep_for (std::chrono::milliseconds (100));
       }
 
     packing_worker_pool->stop_execution ();
@@ -1189,18 +1199,18 @@ namespace test_stream
     cub_th_m.destroy_worker_pool (read_byte_worker_pool);
 
 
-   for (i = 0; i < TEST_ENTRIES; i++)
+    for (i = 0; i < TEST_ENTRIES; i++)
       {
-        if (se_array[i] != NULL)
-          {
-            delete se_array[i];
-          }
+	if (se_array[i] != NULL)
+	  {
+	    delete se_array[i];
+	  }
 
-        if (se_unpacked_array[i] != NULL)
-          {
-            delete se_unpacked_array[i];
-          }
-     }
+	if (se_unpacked_array[i] != NULL)
+	  {
+	    delete se_unpacked_array[i];
+	  }
+      }
 
     std::cout << "Done" << std::endl;
 

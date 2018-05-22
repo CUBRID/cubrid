@@ -49,20 +49,20 @@ namespace test_stream
     private:
       size_t m_remaining_to_read;
       char expected_val;
-  protected:
+    protected:
       int read_action (char *ptr, const size_t byte_count, size_t &processed_bytes);
     public:
       stream_read_partial_context ()
       {
 	m_remaining_to_read = 0;
 
-        m_reader_partial_func = std::bind (&stream_read_partial_context::read_action, std::ref (*this),
-                                           std::placeholders::_1,
-                                           std::placeholders::_2,
-                                           std::placeholders::_3);
+	m_reader_partial_func = std::bind (&stream_read_partial_context::read_action, std::ref (*this),
+					   std::placeholders::_1,
+					   std::placeholders::_2,
+					   std::placeholders::_3);
       };
 
-      
+
 
       cubstream::stream::read_partial_func_t m_reader_partial_func;
   };
@@ -75,18 +75,18 @@ namespace test_stream
       stream_read_partial_copy_context ()
       {
 	std::memset (m_buffer, 0, 2048);
-        m_read_action_func = std::bind (&stream_read_partial_copy_context::read_action, std::ref (*this),
-                                        std::placeholders::_1,
-                                        std::placeholders::_2,
-                                        std::placeholders::_3);
+	m_read_action_func = std::bind (&stream_read_partial_copy_context::read_action, std::ref (*this),
+					std::placeholders::_1,
+					std::placeholders::_2,
+					std::placeholders::_3);
       };
 
       int read_action (char *ptr, const size_t byte_count, size_t &processed_bytes)
-        {
-          processed_bytes = MIN (2048, byte_count);
-          memcpy (m_buffer, ptr, processed_bytes);
-          return NO_ERROR;
-        };
+      {
+	processed_bytes = MIN (2048, byte_count);
+	memcpy (m_buffer, ptr, processed_bytes);
+	return NO_ERROR;
+      };
 
       cubstream::stream::read_partial_func_t m_read_action_func;
   };
@@ -165,8 +165,8 @@ namespace test_stream
       {
 	size_t header_size = 0;
 	cubpacking::packer *serializator = get_packer ();
-        header_size += serializator->get_packed_int_size (header_size);
-        header_size += serializator->get_packed_int_size (header_size);
+	header_size += serializator->get_packed_int_size (header_size);
+	header_size += serializator->get_packed_int_size (header_size);
 	header_size += serializator->get_packed_int_size (header_size);
 	header_size += serializator->get_packed_int_size (header_size);
 
@@ -179,23 +179,23 @@ namespace test_stream
       };
 
       void set_tran_id (const int tr_id)
-        {
-          m_header.tran_id = tr_id;
-        }
+      {
+	m_header.tran_id = tr_id;
+      }
 
       void set_mvcc_id (const int mvcc_id)
-        {
-          m_header.mvcc_id = mvcc_id;
-        }
+      {
+	m_header.mvcc_id = mvcc_id;
+      }
 
       int &get_tran_id ()
-        {
-          return m_header.tran_id;
-        }
+      {
+	return m_header.tran_id;
+      }
       int &get_mvcc_id ()
-        {
-          return m_header.mvcc_id;
-        }
+      {
+	return m_header.mvcc_id;
+      }
 
       void set_header_data_size (const size_t &data_size)
       {
@@ -207,8 +207,8 @@ namespace test_stream
 	cubpacking::packer *serializator = get_packer ();
 	m_header.count_objects = (int) m_packable_entries.size ();
 
-        serializator->pack_int (m_header.tran_id);
-        serializator->pack_int (m_header.mvcc_id);
+	serializator->pack_int (m_header.tran_id);
+	serializator->pack_int (m_header.mvcc_id);
 	serializator->pack_int (m_header.count_objects);
 	serializator->pack_int (m_header.data_size);
 
@@ -218,8 +218,8 @@ namespace test_stream
       int unpack_stream_entry_header ()
       {
 	cubpacking::packer *serializator = get_packer ();
-        serializator->unpack_int ((int *) &m_header.tran_id);
-        serializator->unpack_int ((int *) &m_header.mvcc_id);
+	serializator->unpack_int ((int *) &m_header.tran_id);
+	serializator->unpack_int ((int *) &m_header.mvcc_id);
 	serializator->unpack_int ((int *) &m_header.count_objects);
 	serializator->unpack_int (&m_header.data_size);
 
@@ -265,13 +265,13 @@ namespace test_stream
 
 
   class stream_worker_context
-    {
-    };
+  {
+  };
 
   class stream_context_manager : public cubthread::entry_manager
-    {
+  {
     public:
-  
+
       static cubstream::stream_position g_read_positions[200];
 
       static int g_cnt_packing_entries_per_thread;
@@ -296,11 +296,11 @@ namespace test_stream
 
       static std::bitset<1024> g_running_packers;
       static std::bitset<1024> g_running_readers;
-    };
+  };
 
   class stream_pack_task : public cubthread::task<cubthread::entry>
   {
-  public:
+    public:
       void execute (context_type &context);
 
       int m_tran_id;
@@ -308,18 +308,18 @@ namespace test_stream
 
   class stream_unpack_task : public cubthread::task<cubthread::entry>
   {
-  public:
+    public:
       void execute (context_type &context);
       int m_reader_id;
-  }; 
+  };
 
   class stream_read_task : public cubthread::task<cubthread::entry>
   {
-  public:
+    public:
       void execute (context_type &context);
 
       int m_reader_id;
-  }; 
+  };
 
 }
 

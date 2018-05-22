@@ -38,28 +38,28 @@ namespace cubstream
     set_packable (false);
 
     m_packing_func = std::bind (&entry::packing_func, std::ref (*this),
-                                      std::placeholders::_1,
-                                      std::placeholders::_2,
-                                      std::placeholders::_3);
+				std::placeholders::_1,
+				std::placeholders::_2,
+				std::placeholders::_3);
 
     m_prepare_func = std::bind (&entry::prepare_func, std::ref (*this),
-                                       std::placeholders::_1,
-                                       std::placeholders::_2,
-                                       std::placeholders::_3,
-                                       std::placeholders::_4);
+				std::placeholders::_1,
+				std::placeholders::_2,
+				std::placeholders::_3,
+				std::placeholders::_4);
     m_unpack_func = std::bind (&entry::unpack_func, std::ref (*this),
-                                       std::placeholders::_1,
-                                       std::placeholders::_2);
+			       std::placeholders::_1,
+			       std::placeholders::_2);
   }
 
   void entry::destroy_objects ()
   {
     for (int i = 0; i < m_packable_entries.size (); i++)
       {
-        if (m_packable_entries[i] != NULL)
-          {
-            delete (m_packable_entries[i]);
-          }
+	if (m_packable_entries[i] != NULL)
+	  {
+	    delete (m_packable_entries[i]);
+	  }
       }
     m_packable_entries.clear ();
   }
@@ -93,37 +93,37 @@ namespace cubstream
   }
 
   int entry::packing_func (const stream_position &pos, char *ptr, const size_t reserved_amount)
-    {
-      int i;
-      cubpacking::packer *serializator = get_packer ();
-      
-      size_t aligned_amount = DB_ALIGN (reserved_amount, MAX_ALIGNMENT);
-      serializator->init (ptr, aligned_amount);
+  {
+    int i;
+    cubpacking::packer *serializator = get_packer ();
 
-      pack_stream_entry_header ();
+    size_t aligned_amount = DB_ALIGN (reserved_amount, MAX_ALIGNMENT);
+    serializator->init (ptr, aligned_amount);
 
-      for (i = 0; i < m_packable_entries.size(); i++)
-        {
-	  serializator->align (MAX_ALIGNMENT);
-  #if !defined (NDEBUG)
-	  const char *old_ptr = serializator->get_curr_ptr ();
-	  const char *curr_ptr;
-	  size_t entry_size = m_packable_entries[i]->get_packed_size (serializator);
-  #endif
+    pack_stream_entry_header ();
 
-	  m_packable_entries[i]->pack (serializator);
+    for (i = 0; i < m_packable_entries.size(); i++)
+      {
+	serializator->align (MAX_ALIGNMENT);
+#if !defined (NDEBUG)
+	const char *old_ptr = serializator->get_curr_ptr ();
+	const char *curr_ptr;
+	size_t entry_size = m_packable_entries[i]->get_packed_size (serializator);
+#endif
 
-  #if !defined (NDEBUG)
-	  curr_ptr = serializator->get_curr_ptr ();
-	  assert (curr_ptr - old_ptr == entry_size);
-  #endif
-        }
-      serializator->align (MAX_ALIGNMENT);
+	m_packable_entries[i]->pack (serializator);
 
-      int packed_amount = (int) (serializator->get_curr_ptr () - serializator->get_packer_buffer ());
+#if !defined (NDEBUG)
+	curr_ptr = serializator->get_curr_ptr ();
+	assert (curr_ptr - old_ptr == entry_size);
+#endif
+      }
+    serializator->align (MAX_ALIGNMENT);
 
-      return packed_amount;
-    }
+    int packed_amount = (int) (serializator->get_curr_ptr () - serializator->get_packer_buffer ());
+
+    return packed_amount;
+  }
   /*
    * this is pre-unpack method : it fetches enough data to unpack stream header contents,
    * then fetches (receive from socket) the actual amount of data without unpacking it.
@@ -144,7 +144,7 @@ namespace cubstream
 
   /* callback header-read function for entry */
   int entry::prepare_func (const stream_position &data_start_pos, char *ptr, const size_t header_size,
-                             size_t &payload_size)
+			   size_t &payload_size)
   {
     cubpacking::packer *serializator = get_packer ();
     int error_code;
@@ -162,7 +162,7 @@ namespace cubstream
 
     m_data_start_position = data_start_pos;
     payload_size = get_data_packed_size ();
-    
+
     return error_code;
   }
 
@@ -182,7 +182,7 @@ namespace cubstream
     int object_id;
     cubpacking::packer *serializator = get_packer ();
     size_t count_packable_entries = get_packable_entry_count_from_header ();
-    
+
     serializator->init (ptr, data_size);
 
     for (i = 0 ; i < count_packable_entries; i++)
@@ -363,13 +363,13 @@ namespace cubstream
     /* wait for stream to receive data */
     if (m_read_position + amount > m_last_committed_pos)
       {
-        err = wait_for_data (amount, STREAM_DONT_SKIP);
+	err = wait_for_data (amount, STREAM_DONT_SKIP);
 
-        /* fetch is expect to return NO_ERROR upon completion of fetch with success */
+	/* fetch is expect to return NO_ERROR upon completion of fetch with success */
 	if (err != NO_ERROR)
-          {
-            return err;
-          }
+	  {
+	    return err;
+	  }
       }
 
     to_read_pos = m_read_position;
@@ -560,34 +560,34 @@ namespace cubstream
 
     if (m_read_position + amount <= m_last_committed_pos)
       {
-        if (skip_mode == STREAM_SKIP)
-          {
-            m_read_position += amount;
-          }
-        return NO_ERROR;
+	if (skip_mode == STREAM_SKIP)
+	  {
+	    m_read_position += amount;
+	  }
+	return NO_ERROR;
       }
-    
+
     m_stat_read_not_enough_data_cnt++;
     if (m_fetch_data_handler)
       {
-        err = m_fetch_data_handler (m_read_position, NULL, amount, dummy);
-        if (err != NO_ERROR)
-          {
+	err = m_fetch_data_handler (m_read_position, NULL, amount, dummy);
+	if (err != NO_ERROR)
+	  {
 	    return err;
-          }
+	  }
       }
     else
       {
-        err = ER_STREAM_NO_MORE_DATA;
-        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (), m_read_position,
-                amount);
-        return err;
+	err = ER_STREAM_NO_MORE_DATA;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (), m_read_position,
+		amount);
+	return err;
       }
-  
+
     if (skip_mode == STREAM_SKIP)
       {
-        assert (err == NO_ERROR);
-        m_read_position += amount;
+	assert (err == NO_ERROR);
+	m_read_position += amount;
       }
 
     return err;
