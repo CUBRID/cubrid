@@ -766,6 +766,10 @@ thread_resume_status_to_string (thread_resume_suspend_status resume_status)
       return "LOGWR_SUSPENDED";
     case THREAD_LOGWR_RESUMED:
       return "LOGWR_RESUMED";
+    case THREAD_ALLOC_BCB_SUSPENDED:
+      return "ALLOC_BCB_SUSPENDED";
+    case THREAD_ALLOC_BCB_RESUMED:
+      return "ALLOC_BCB_RESUMED";
     }
   return "UNKNOWN";
 }
