@@ -58,11 +58,10 @@ namespace cubsync
   void
   critical_section_tracker::on_enter_as_reader (int cs_index)
   {
-    if (!m_enabled)
+    if (!m_enabled || !is_started ())
       {
 	return;
       }
-    cstrack_assert (is_started ());
 
     cstrack_entry &cs_entry = m_cstrack_array[cs_index];
 
@@ -98,11 +97,10 @@ namespace cubsync
   void
   critical_section_tracker::on_enter_as_writer (int cs_index)
   {
-    if (!m_enabled)
+    if (!m_enabled || !is_started ())
       {
 	return;
       }
-    cstrack_assert (is_started ());
 
     cstrack_entry &cs_entry = m_cstrack_array[cs_index];
 
@@ -124,11 +122,10 @@ namespace cubsync
   void
   critical_section_tracker::on_promote (int cs_index)
   {
-    if (!m_enabled)
+    if (!m_enabled || !is_started ())
       {
 	return;
       }
-    cstrack_assert (is_started ());
 
     cstrack_entry &cs_entry = m_cstrack_array[cs_index];
 
@@ -143,11 +140,10 @@ namespace cubsync
   void
   critical_section_tracker::on_demote (int cs_index)
   {
-    if (!m_enabled)
+    if (!m_enabled || !is_started ())
       {
 	return;
       }
-    cstrack_assert (is_started ());
 
     cstrack_entry &cs_entry = m_cstrack_array[cs_index];
 
@@ -162,11 +158,10 @@ namespace cubsync
   void
   critical_section_tracker::on_exit (int cs_index)
   {
-    if (!m_enabled)
+    if (!m_enabled || !is_started ())
       {
 	return;
       }
-    cstrack_assert (is_started ());
 
     cstrack_entry &cs_entry = m_cstrack_array[cs_index];
 
