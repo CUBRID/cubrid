@@ -17,9 +17,45 @@
  *
  */
 
-/*
- * resource_tracker.hpp - interface to track resource usage (allocations, page fixes) and detect leaks
- */
+//
+// resource_tracker.hpp - interface to track and debug resource usage (allocations, page fixes)
+//
+// the purpose of this interface is to track resource usage and detect possible issues:
+//
+//    1. resource leaks (at the end of the scope, used resources are not freed/retired)
+//    2. resource over-usage (a resource exceeds a maximum allowed of usage).
+//    3. invalid free/retire.
+//
+// how to use:
+//
+//    1. specialize your tracker based on resource type:
+//
+//        using my_tracker_type = cubbase::resource_tracker<my_resource_type>;
+//
+//        note - my_resource_type must be comparable; resource_tracker uses internally a std::map specialized by
+//               provided type and std::less of same type.
+//        todo - template for compare function
+//
+//    2. create an instance of your tracker.
+//
+//        my_tracker_type my_tracker ("My Tracker", true, MAX_RESOURCES, "my res", MAX_REUSE);
+//
+//    3. start tracking:
+//
+//        my_tracker.push_track ();
+//
+//    4. track resource; resource over-usage may be detected:
+//
+//        my_tracker.increment (__FILE__, __LINE__, my_res_to_track, use_count /* default 1 */)
+//
+//    5. un-track resource; resource invalid free/retire may be detected:
+//
+//        my_tracker.decrement (my_res_to_track, use_count /* default 1 */);
+//
+//    6. stop tracking; resource leaks may be detected:
+//
+//        my_tracker.pop_track ();
+//
 
 #ifndef _CUBRID_RESOURCE_TRACKER_HPP_
 #define _CUBRID_RESOURCE_TRACKER_HPP_
@@ -28,63 +64,88 @@
 
 #include <map>
 #include <forward_list>
-#include <string>
 #include <iostream>
 
 #include <cassert>
 
 namespace cubbase
 {
-  // resource_tracker_item -
+  //
+  // resource_tracker_item - helper structure used by resource tracker to store information one resource.
   //
   struct resource_tracker_item
   {
     public:
 
-      resource_tracker_item (const char *fn_arg, int l_arg, int amount);
+      // ctor - file, line, initial reuse count
+      resource_tracker_item (const char *fn_arg, int l_arg, unsigned reuse);
 
-      fileline_location m_first_location;
-      unsigned m_amount;
+      fileline_location m_first_location;   // first increment location
+      unsigned m_reuse_count;               // current reuse count
   };
-
+  // printing a resource_tracker_item to output stream
   std::ostream &operator<< (std::ostream &os, const resource_tracker_item &item);
 
+  //
+  // resource tracker - see more details on file description
+  //
+  // Res template is used to allow any resource specialization. It is restricted to comparable types.
+  //
   template <typename Res>
   class resource_tracker
   {
     public:
+
+      // internal types
       using res_type = Res;
       using map_type = std::map<res_type, resource_tracker_item>;
 
-      resource_tracker (const char *name, bool enabled, std::size_t max_size, const char *res_name,
-			unsigned max_amount = 1);
+      // ctor/dtor
+      resource_tracker (const char *name, bool enabled, std::size_t max_resources, const char *res_name,
+			unsigned max_reuse = 1);
       ~resource_tracker (void);
 
-      void increment (const char *filename, const int line, const res_type &res, unsigned amount = 1);
-      void decrement (const res_type &res, unsigned amount = 1);
+      // using resources
+      // increment "uses" for given resource.
+      // if it is first use, file & line are saved.
+      // detects if maximum uses is exceeded.
+      void increment (const char *filename, const int line, const res_type &res, unsigned use_count = 1);
+      // decrement "uses" for given resource.
+      // if use count becomes 0, resource is removed from tracker
+      // detects invalid free/retire (existing use count is less than given count)
+      void decrement (const res_type &res, unsigned use_count = 1);
+
+      // tracking; is stackable (allows nested tracking).
+      // push tracking; a new level of tracking is started
       void push_track (void);
+      // pop tracking; finish last level of tacking. resource leaks are checked for last level
       void pop_track (void);
+      // clear all tracks.
       void clear_all (void);
-      unsigned get_total_amount (void) const;
-      void check_total_amount (unsigned expected_amount) const;
 
     private:
 
-      map_type &get_current_map (void);
+      map_type &get_current_map (void);     // get map for current level of tracking
 
-      void abort (void);
-      void dump (void) const;
-      void dump_map (const map_type &map, std::ostream &out) const;
+      void abort (void);                    // abort tracking when maximum number of resources is exceeded
+      void dump (void) const;               // dump all tracked resources on all levels
+      void dump_map (const map_type &map, std::ostream &out) const;   // dump one tracker level
+      unsigned get_total_use_count (void) const;        // compute and return total use count
 
-      const char *m_name;
-      const char *m_res_name;
+      const char *m_name;                   // tracker name; used for dumping
+      const char *m_res_alias;              // resource alias; used for dumping
 
-      bool m_enabled;
-      bool m_is_aborted;
-      size_t m_max_size;
-      size_t m_crt_size;
-      unsigned m_max_amout;
+      bool m_enabled;                       // if disabled, all tracker functions do nothing.
+      // it is used to avoid branching when calling tracker functions.
+      bool m_is_aborted;                    // set to true when tracking had to be aborted;
+      std::size_t m_max_resources;          // maximum number of resources allowed to track; if exceeded, the tracker
+      // is aborted
+      std::size_t m_resource_count;         // current resource count
+      unsigned m_max_reuse;                 // maximum reuse for a resource. by default is one.
 
+      // a list of maps of tracked resources.
+      // each map represents one level in tracker
+      // list holds all levels
       std::forward_list<map_type> m_tracked_stack;
   };
 
@@ -92,10 +153,20 @@ namespace cubbase
   // other functions & stuff
   //////////////////////////////////////////////////////////////////////////
 
+  // functions used mainly to disable debug crashing and convert into an error; for unit testing
+  // todo - convert from global to instance
+
+  // pop existing error
+  // returns true if error exists and false otherwise. error is reset.
   bool restrack_pop_error (void);
+  // if set_error is true, error is set. if set_error is false, error remains as is.
   void restrack_set_error (bool set_error);
+  // set assert mode
+  // if suppress is true, assert is suppressed and error is set instead; if false, assert is allowed.
   void restrack_set_suppress_assert (bool suppress);
+  // get current assert mode
   bool restrack_is_assert_suppressed (void);
+  // check condition to be true; based on assert mode, assert is hit or error is set
   inline void restrack_assert (bool cond);
 
   //////////////////////////////////////////////////////////////////////////
@@ -103,15 +174,15 @@ namespace cubbase
   //////////////////////////////////////////////////////////////////////////
 
   template <typename Res>
-  resource_tracker<Res>::resource_tracker (const char *name, bool enabled, std::size_t max_size, const char *res_name,
-      unsigned max_amount /* = 1 */)
+  resource_tracker<Res>::resource_tracker (const char *name, bool enabled, std::size_t max_resources,
+      const char *res_name, unsigned max_reuse /* = 1 */)
     : m_name (name)
-    , m_res_name (res_name)
+    , m_res_alias (res_name)
     , m_enabled (enabled)
     , m_is_aborted (false)
-    , m_max_size (max_size)
-    , m_crt_size (0)
-    , m_max_amout (max_amount)
+    , m_max_resources (max_resources)
+    , m_resource_count (0)
+    , m_max_reuse (max_reuse)
     , m_tracked_stack ()
   {
     //
@@ -120,8 +191,9 @@ namespace cubbase
   template <typename Res>
   resource_tracker<Res>::~resource_tracker (void)
   {
+    // check no leaks
     restrack_assert (m_tracked_stack.empty ());
-    restrack_assert (m_crt_size == 0);
+    restrack_assert (m_resource_count == 0);
 
     clear_all ();
   }
@@ -129,7 +201,7 @@ namespace cubbase
   template <typename Res>
   void
   resource_tracker<Res>::increment (const char *filename, const int line, const res_type &res,
-				    unsigned amount /* = 1 */)
+				    unsigned use_count /* = 1 */)
   {
     if (!m_enabled || m_is_aborted)
       {
@@ -142,26 +214,29 @@ namespace cubbase
 	return;
       }
 
-    restrack_assert (amount <= m_max_amout);
+    // given use_count cannot exceed max reuse
+    restrack_assert (use_count <= m_max_reuse);
 
+    // get current level map
     map_type &map = get_current_map ();
 
+    // add resource to map or increment the use count of existing entry
     //
     // std::map::try_emplace returns a pair <it_insert_or_found, did_insert>
     // it_insert_or_found = did_insert ? iterator to inserted : iterator to existing
     // it_insert_or_found is an iterator to pair <res_type, resource_tracker_item>
     //
     // as of c++17 we could just do:
-    // auto inserted = map.try_emplace (res, filename, line, amount);
+    // auto inserted = map.try_emplace (res, filename, line, use_count);
     //
     // however, for now we have to use next piece of code I got from
     // https://en.cppreference.com/w/cpp/container/map/emplace
     auto inserted = map.emplace (std::piecewise_construct, std::forward_as_tuple (res),
-				 std::forward_as_tuple (filename, line, amount));
+				 std::forward_as_tuple (filename, line, use_count));
     if (inserted.second)
       {
 	// did insert
-	if (++m_crt_size > m_max_size)
+	if (++m_resource_count > m_max_resources)
 	  {
 	    // max size reached. abort the tracker
 	    abort ();
@@ -171,16 +246,16 @@ namespace cubbase
     else
       {
 	// already exists
-	// increment amount
-	inserted.first->second.m_amount += amount;
+	// increment use_count
+	inserted.first->second.m_reuse_count += use_count;
 
-	restrack_assert (inserted.first->second.m_amount <= m_max_amout);
+	restrack_assert (inserted.first->second.m_reuse_count <= m_max_reuse);
       }
   }
 
   template <typename Res>
   void
-  resource_tracker<Res>::decrement (const res_type &res, unsigned amount /* = 1 */)
+  resource_tracker<Res>::decrement (const res_type &res, unsigned use_count /* = 1 */)
   {
     if (!m_enabled || m_is_aborted)
       {
@@ -203,27 +278,27 @@ namespace cubbase
     auto tracked = map.find (res);
     if (tracked == map.end ())
       {
-	// not found
+	// not found; invalid free
 	restrack_assert (false);
       }
     else
       {
 	// decrement
-	if (amount > tracked->second.m_amount)
+	if (use_count > tracked->second.m_reuse_count)
 	  {
-	    // more than expected
+	    // more than expected; invalid free
 	    restrack_assert (false);
 	    map.erase (tracked);
-	    m_crt_size--;
+	    m_resource_count--;
 	  }
 	else
 	  {
-	    tracked->second.m_amount -= amount;
-	    if (tracked->second.m_amount == 0)
+	    tracked->second.m_reuse_count -= use_count;
+	    if (tracked->second.m_reuse_count == 0)
 	      {
 		// remove from map
 		map.erase (tracked);
-		m_crt_size--;
+		m_resource_count--;
 	      }
 	  }
       }
@@ -231,27 +306,18 @@ namespace cubbase
 
   template <typename Res>
   unsigned
-  resource_tracker<Res>::get_total_amount (void) const
+  resource_tracker<Res>::get_total_use_count (void) const
   {
+    // iterate through all resources and collect use count
     unsigned total = 0;
     for (auto stack_it : m_tracked_stack)
       {
 	for (auto map_it : stack_it)
 	  {
-	    total += map_it.second.m_amount;
+	    total += map_it.second.m_reuse_count;
 	  }
       }
     return total;
-  }
-
-  template <typename Res>
-  void
-  resource_tracker<Res>::check_total_amount (unsigned expected_amount) const
-  {
-    if (m_enabled)
-      {
-	restrack_assert (get_total_amount () == expected_amount);
-      }
   }
 
   template <typename Res>
@@ -270,7 +336,7 @@ namespace cubbase
       {
 	pop_track ();
       }
-    restrack_assert (m_crt_size == 0);
+    restrack_assert (m_resource_count == 0);
   }
 
   template <typename Res>
@@ -288,7 +354,7 @@ namespace cubbase
 
     out << std::endl;
     out << "   +--- " << m_name << std::endl;
-    out << "         +--- amount = " << get_total_amount () << " (threshold = " << m_max_size << ")" << std::endl;
+    out << "         +--- amount = " << get_total_use_count () << " (threshold = " << m_max_resources << ")" << std::endl;
 
     std::size_t level = 0;
     for (auto stack_it : m_tracked_stack)
@@ -305,11 +371,11 @@ namespace cubbase
   {
     for (auto map_it : map)
       {
-	out << "            +--- tracked " << m_res_name << "=" << map_it.first;
+	out << "            +--- tracked " << m_res_alias << "=" << map_it.first;
 	out << " " << map_it.second;
 	out << std::endl;
       }
-    out << "            +--- tracked " << m_res_name << " count = " << map.size () << std::endl;
+    out << "            +--- tracked " << m_res_alias << " count = " << map.size () << std::endl;
   }
 
   template <typename Res>
@@ -324,7 +390,7 @@ namespace cubbase
     if (m_tracked_stack.empty ())
       {
 	// fresh start. set abort as false
-	m_crt_size = 0;
+	m_resource_count = 0;
 	m_is_aborted = false;
       }
 
@@ -346,19 +412,28 @@ namespace cubbase
 	return;
       }
 
+    // get current level map
     map_type &map = m_tracked_stack.front ();
     if (!map.empty ())
       {
 	if (!m_is_aborted)
 	  {
+	    // resources are leaked
 	    dump ();
 	    restrack_assert (false);
 	  }
-	m_crt_size -= map.size ();
+	else
+	  {
+	    // tracker was aborted; we don't know if there are really leaks
+	  }
+	// remove resources
+	m_resource_count -= map.size ();
       }
+    // remove level from stack
     m_tracked_stack.pop_front ();
 
-    restrack_assert (!m_tracked_stack.empty () || m_crt_size == 0);
+    // if no levels, resource count should be zero
+    restrack_assert (!m_tracked_stack.empty () || m_resource_count == 0);
   }
 
   //////////////////////////////////////////////////////////////////////////

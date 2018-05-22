@@ -25,9 +25,9 @@
 
 namespace cubbase
 {
-  resource_tracker_item::resource_tracker_item (const char *fn_arg, int l_arg, int amount)
+  resource_tracker_item::resource_tracker_item (const char *fn_arg, int l_arg, unsigned reuse)
     : m_first_location (fn_arg, l_arg)
-    , m_amount (amount)
+    , m_reuse_count (reuse)
   {
     //
   }
@@ -35,7 +35,7 @@ namespace cubbase
   std::ostream &
   operator<< (std::ostream &os, const resource_tracker_item &item)
   {
-    os << "amount=" << item.m_amount << " | first_caller=" << item.m_first_location;
+    os << "amount=" << item.m_reuse_count << " | first_caller=" << item.m_first_location;
     return os;
   }
 
