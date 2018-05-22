@@ -471,7 +471,7 @@ db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track)
     }
 
 #if !defined (NDEBUG)
-  if (rc_track)
+  if (rc_track && heap_id != 0)
     {
       if (ptr != NULL)
 	{
@@ -592,7 +592,7 @@ db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc
     }
 
 #if !defined (NDEBUG)
-  if (rc_track && new_ptr != ptr)
+  if (rc_track && heap_id != 0 && new_ptr != ptr)
     {
       /* remove old pointer from track meter */
       if (ptr != NULL)
@@ -752,7 +752,7 @@ db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
     }
 
 #if !defined (NDEBUG)
-  if (rc_track)
+  if (rc_track && heap_id != 0)
     {
       if (ptr != NULL)
 	{

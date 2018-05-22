@@ -286,6 +286,7 @@ namespace cubbase
   {
     std::ostream &out = std::cerr;
 
+    out << std::endl;
     out << "   +--- " << m_name << std::endl;
     out << "         +--- amount = " << get_total_amount () << " (threshold = " << m_max_size << ")" << std::endl;
 
