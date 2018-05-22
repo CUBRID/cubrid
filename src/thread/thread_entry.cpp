@@ -72,6 +72,7 @@ namespace cubthread
   const char *PGBUF_TRACK_NAME = "Page Buffer";
   const char *PGBUF_TRACK_RES_NAME = "pgptr";
   const std::size_t PGBUF_TRACK_MAX_ITEMS = 1024;
+  const unsigned PGBUF_TRACK_MAX_AMOUNT = 16;       // re-fix is possible... how many to accept is debatable
 
   // critical section
   const char *CSECT_TRACK_NAME = "Critical Section";
@@ -143,7 +144,7 @@ namespace cubthread
     , m_qlist_tracker (*new cubbase::qlist_tracker (QLIST_TRACK_NAME, ENABLE_TRACKERS, QLIST_TRACK_MAX_ITEMS,
 		       QLIST_TRACK_RES_NAME))
     , m_pgbuf_tracker (*new cubbase::pgbuf_tracker (PGBUF_TRACK_NAME, ENABLE_TRACKERS, PGBUF_TRACK_MAX_ITEMS,
-		       PGBUF_TRACK_RES_NAME))
+		       PGBUF_TRACK_RES_NAME, PGBUF_TRACK_MAX_AMOUNT))
     , m_csect_tracker (*new cubsync::critical_section_tracker (ENABLE_TRACKERS))
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)
