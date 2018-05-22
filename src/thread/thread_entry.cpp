@@ -85,6 +85,7 @@ namespace cubthread
   //////////////////////////////////////////////////////////////////////////
 
   entry::entry ()
+  // public:
     : index (-1)
     , type (TT_WORKER)
     , emulate_tid ()
@@ -136,13 +137,13 @@ namespace cubthread
     , fi_test_array (NULL)
     , count_private_allocators (0)
 #endif /* DEBUG */
+    , m_qlist_count (0)
+      // private:
     , m_id ()
     , m_error ()
     , m_cleared (false)
     , m_alloc_tracker (*new cubbase::alloc_tracker (ALLOC_TRACK_NAME, ENABLE_TRACKERS, ALLOC_TRACK_MAX_ITEMS,
 		       ALLOC_TRACK_RES_NAME))
-    , m_qlist_tracker (*new cubbase::qlist_tracker (QLIST_TRACK_NAME, ENABLE_TRACKERS, QLIST_TRACK_MAX_ITEMS,
-		       QLIST_TRACK_RES_NAME))
     , m_pgbuf_tracker (*new cubbase::pgbuf_tracker (PGBUF_TRACK_NAME, ENABLE_TRACKERS, PGBUF_TRACK_MAX_ITEMS,
 		       PGBUF_TRACK_RES_NAME, PGBUF_TRACK_MAX_AMOUNT))
     , m_csect_tracker (*new cubsync::critical_section_tracker (ENABLE_TRACKERS))
@@ -198,7 +199,6 @@ namespace cubthread
     clear_resources ();
 
     delete &m_alloc_tracker;
-    delete &m_qlist_tracker;
     delete &m_pgbuf_tracker;
     delete &m_csect_tracker;
   }
@@ -366,9 +366,9 @@ namespace cubthread
 	return;
       }
     m_alloc_tracker.clear_all ();
-    m_qlist_tracker.clear_all ();
     m_pgbuf_tracker.clear_all ();
     m_csect_tracker.clear_all ();
+    m_qlist_count = 0;
   }
 
   void
@@ -380,7 +380,6 @@ namespace cubthread
 	return;
       }
     m_alloc_tracker.push_track ();
-    m_qlist_tracker.push_track ();
     m_pgbuf_tracker.push_track ();
     m_csect_tracker.start ();
   }
@@ -394,7 +393,6 @@ namespace cubthread
 	return;
       }
     m_alloc_tracker.pop_track ();
-    m_qlist_tracker.pop_track ();
     m_pgbuf_tracker.pop_track ();
     m_csect_tracker.stop ();
   }

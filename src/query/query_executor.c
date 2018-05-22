@@ -65,7 +65,6 @@
 #endif /* ENABLE_SYSTEMTAP */
 #include "db_json.hpp"
 #include "dbtype.h"
-#include "resource_tracker.hpp"
 #include "thread_entry.hpp"
 
 #define GOTO_EXIT_ON_ERROR \
@@ -8258,7 +8257,7 @@ qexec_setup_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     }
 
   assert (list_id->type_list.type_cnt == 1);
-  thread_p->get_qlist_tracker ().increment (ARG_FILE_LINE, list_id);
+  thread_p->m_qlist_count++;
 
   return NO_ERROR;
 }
@@ -14462,7 +14461,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 
   struct drand48_data *rand_buf_p;
 
-  unsigned amount_qlist_enter;
+  unsigned qlist_enter_count;
 
 #if defined(ENABLE_SYSTEMTAP)
   const char *query_str = NULL;
@@ -14539,7 +14538,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
     }
 #endif /* CUBRID_DEBUG */
 
-  amount_qlist_enter = thread_p->get_qlist_tracker ().get_total_amount ();
+  qlist_enter_count = thread_p->m_qlist_count;
 
   /* this routine should not be called if an outstanding error condition already exists. */
   er_clear ();
@@ -14645,12 +14644,12 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 	  if (list_id && list_id->type_list.type_cnt != 0)
 	    {
 	      // one new list file
-	      thread_p->get_qlist_tracker ().check_total_amount (amount_qlist_enter + 1);
+	      assert (thread_p->m_qlist_count == qlist_enter_count + 1);
 	    }
 	  else
 	    {
 	      // no new list files
-	      thread_p->get_qlist_tracker ().check_total_amount (amount_qlist_enter);
+	      assert (thread_p->m_qlist_count == qlist_enter_count);
 	    }
 
 	  /* caller will detect the error condition and free the listid */
@@ -14687,12 +14686,12 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
   if (list_id && list_id->type_list.type_cnt != 0)
     {
       // one new list file
-      thread_p->get_qlist_tracker ().check_total_amount (amount_qlist_enter + 1);
+      assert (thread_p->m_qlist_count == qlist_enter_count + 1);
     }
   else
     {
       // no new list files
-      thread_p->get_qlist_tracker ().check_total_amount (amount_qlist_enter);
+      assert (thread_p->m_qlist_count == qlist_enter_count);
     }
 
 #if defined(CUBRID_DEBUG)
