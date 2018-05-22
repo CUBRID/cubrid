@@ -42,7 +42,8 @@
 #include "locator_sr.h"
 #include "page_buffer.h"
 #include "log_compress.h"
-#include "thread.h"
+#include "thread_entry.hpp"
+#include "thread_manager.hpp"
 
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
@@ -155,7 +156,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
   TRAN_STATE save_state;	/* The current state of the transaction. Must be returned to this state */
   bool is_zip = false;
   int error_code = NO_ERROR;
-  THREAD_TYPE save_thread_type = THREAD_TYPE::TT_NONE;
+  thread_type save_thread_type = thread_type::TT_NONE;
 
   if (thread_p == NULL)
     {
@@ -403,7 +404,7 @@ end:
   /* Convert thread back to system transaction. */
   if (LOG_IS_VACUUM_THREAD_TRANID (tdes->trid))
     {
-      vacuum_restore_thread (thread_p, (THREAD_TYPE) save_thread_type);
+      vacuum_restore_thread (thread_p, (thread_type) save_thread_type);
     }
   else
     {
@@ -4013,7 +4014,7 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
 {
   int i;
   int save_tran_index;
-  THREAD_TYPE save_thread_type = THREAD_TYPE::TT_NONE;
+  thread_type save_thread_type = thread_type::TT_NONE;
   TRANID trid;
   LOG_TDES *tdes = NULL;	/* Transaction descriptor */
   VACUUM_WORKER *worker = NULL;
@@ -4068,7 +4069,7 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
 {
   int i;
   int save_tran_index;
-  THREAD_TYPE save_thread_type = THREAD_TYPE::TT_NONE;
+  thread_type save_thread_type = thread_type::TT_NONE;
   TRANID trid;
   LOG_TDES *tdes = NULL;	/* Transaction descriptor */
   VACUUM_WORKER *worker = NULL;

@@ -31,13 +31,12 @@
 #include "connection_defs.h"
 #include "dbtype_def.h"
 #endif /* SERVER_MODE */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "log_impl.h"
+#endif // SERVER_MODE or SA_MODE
 #include "memory_alloc.h"
 #include "storage_common.h"
-#if defined (SERVER_MODE)
-#include "thread.h"
-#else
 #include "thread_compat.hpp"
-#endif
 #include "tsc_timer.h"
 
 #include <assert.h>
@@ -149,7 +148,7 @@ extern int log_Tran_index;	/* Index onto transaction table for current thread of
 #if defined (SERVER_MODE)
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) \
-  ((thrd) ? (thrd)->tran_index : thread_get_current_tran_index())
+  ((thrd) ? (thrd)->tran_index : logtb_get_current_tran_index())
 #endif
 #else
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
@@ -607,7 +606,7 @@ typedef enum
   PSTAT_MVCC_SNAPSHOT_COUNTERS,
   PSTAT_OBJ_LOCK_TIME_COUNTERS,
   PSTAT_THREAD_STATS,
-  PSTAT_THREAD_PGBUF_DAEMON_STATS,
+  PSTAT_THREAD_DAEMON_STATS,
 
   PSTAT_COUNT
 } PERF_STAT_ID;
@@ -1290,106 +1289,6 @@ extern int perfmon_print_global_stats (FILE * stream, bool cumulative, const cha
 extern int perfmon_get_stats (void);
 extern int perfmon_get_global_stats (void);
 #endif /* CS_MODE || SA_MODE */
-
-#if defined (DIAG_DEVEL)
-#if defined(SERVER_MODE)
-
-enum t_diag_obj_type
-{
-  DIAG_OBJ_TYPE_QUERY_OPEN_PAGE = 0,
-  DIAG_OBJ_TYPE_QUERY_OPENED_PAGE = 1,
-  DIAG_OBJ_TYPE_QUERY_SLOW_QUERY = 2,
-  DIAG_OBJ_TYPE_QUERY_FULL_SCAN = 3,
-  DIAG_OBJ_TYPE_CONN_CLI_REQUEST = 4,
-  DIAG_OBJ_TYPE_CONN_ABORTED_CLIENTS = 5,
-  DIAG_OBJ_TYPE_CONN_CONN_REQ = 6,
-  DIAG_OBJ_TYPE_CONN_CONN_REJECT = 7,
-  DIAG_OBJ_TYPE_BUFFER_PAGE_READ = 8,
-  DIAG_OBJ_TYPE_BUFFER_PAGE_WRITE = 9,
-  DIAG_OBJ_TYPE_LOCK_DEADLOCK = 10,
-  DIAG_OBJ_TYPE_LOCK_REQUEST = 11
-};
-typedef enum t_diag_obj_type T_DIAG_OBJ_TYPE;
-
-enum t_diag_value_settype
-{
-  DIAG_VAL_SETTYPE_INC,
-  DIAG_VAL_SETTYPE_DEC,
-  DIAG_VAL_SETTYPE_SET
-};
-typedef enum t_diag_value_settype T_DIAG_VALUE_SETTYPE;
-
-typedef int (*T_DO_FUNC) (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
-
-typedef struct t_diag_object_table T_DIAG_OBJECT_TABLE;
-struct t_diag_object_table
-{
-  char typestring[32];
-  T_DIAG_OBJ_TYPE type;
-  T_DO_FUNC func;
-};
-
-STATIC_INLINE void perfmon_diag_set_value (bool diag_exec_flag, T_DIAG_OBJ_TYPE item_type, int value,
-					   T_DIAG_VALUE_SETTYPE set_type, char *err_buf)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void perfmon_diag_set_slow_query (bool diag_exec_flag, struct timeval *start_time,
-						struct timeval *end_time, char *err_buf)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void perfmon_diag_set_full_scan (bool diag_exec_flag, char *err_buf, XASL_NODE * xasl,
-					       ACCESS_SPEC_TYPE * spec) __attribute__ ((ALWAYS_INLINE));
-
-STATIC_INLINE void
-perfmon_diag_set_value (bool diag_exec_flag, T_DIAG_OBJ_TYPE item_type, int value, T_DIAG_VALUE_SETTYPE set_type,
-			char *err_buf)
-{
-  if (diag_exec_flag == false)
-    {
-      return;
-    }
-
-  set_diag_value (item_type, value, set_type, err_buf);
-}
-
-STATIC_INLINE void
-perfmon_diag_set_slow_query (bool diag_exec_flag, struct timeval *start_time, struct timeval *end_time, char *err_buf)
-{
-  struct timeval result = { 0, 0 };
-
-  if (diag_exec_flag == false)
-    {
-      return;
-    }
-
-  perfmon_add_timeval (&result, start_time, end_time);
-  if (result.tv_sec >= diag_long_query_time)
-    {
-      set_diag_value (DIAG_OBJ_TYPE_QUERY_SLOW_QUERY, 1, DIAG_VAL_SETTYPE_INC, err_buf);
-    }
-}
-
-STATIC_INLINE void
-perfmon_diag_set_full_scan (bool diag_exec_flag, char *err_buf, XASL_NODE * xasl, ACCESS_SPEC_TYPE * spec)
-{
-  if (diag_exec_flag == false)
-    {
-      return;
-    }
-
-  if ((XASL_TYPE (xasl) == BUILDLIST_PROC || XASL_TYPE (xasl) == BUILDVALUE_PROC)
-      && ACCESS_SPEC_ACCESS (spec) == SEQUENTIAL)
-    {
-      set_diag_value (DIAG_OBJ_TYPE_QUERY_FULL_SCAN, 1, DIAG_VAL_SETTYPE_INC, err_buf);
-    }
-}
-
-extern int diag_long_query_time;
-extern bool diag_executediag;
-
-extern bool init_diag_mgr (const char *server_name, int num_thread, char *err_buf);
-extern void close_diag_mgr (void);
-extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
-#endif /* SERVER_MODE */
-#endif /* DIAG_DEVEL */
 
 STATIC_INLINE void
 perfmon_diff_timeval (struct timeval *elapsed, struct timeval *start, struct timeval *end)

@@ -24,9 +24,10 @@
 #ifndef _TEST_WORKER_POOL_HPP_
 #define _TEST_WORKER_POOL_HPP_
 
-namespace test_thread {
+namespace test_thread
+{
 
-int test_worker_pool (void);
+  int test_worker_pool (void);
 
 } // namespace test_thread
 

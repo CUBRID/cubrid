@@ -85,9 +85,14 @@ set(BASE_SOURCES
   ${BASE_DIR}/misc_string.c
   ${BASE_DIR}/mprec.c
   ${BASE_DIR}/object_representation_sr.c
-  ${BASE_DIR}/perf.c
+  ${BASE_DIR}/packer.cpp
+  ${BASE_DIR}/get_clockfreq.c
+  ${BASE_DIR}/perf.cpp
+  ${BASE_DIR}/pinnable_buffer.cpp
+  ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/porting.c
+  ${BASE_DIR}/process_util.c
   ${BASE_DIR}/release_string.c
   ${BASE_DIR}/sha1.c
   ${BASE_DIR}/stack_dump.c
@@ -99,6 +104,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/unicode_support.c
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/xml_parser.c
+  ${BASE_DIR}/cubstream.cpp
   )
 set (BASE_HEADERS
   ${BASE_DIR}/contiguous_memory_buffer.hpp
@@ -108,7 +114,15 @@ set (BASE_HEADERS
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/mem_block.hpp
+  ${BASE_DIR}/packer.hpp
+  ${BASE_DIR}/perf.hpp
+  ${BASE_DIR}/perf_def.hpp
+  ${BASE_DIR}/pinning.hpp
+  ${BASE_DIR}/pinnable_buffer.hpp
+  ${BASE_DIR}/packable_object.hpp
+  ${BASE_DIR}/process_util.h
   ${BASE_DIR}/string_buffer.hpp
+  ${BASE_DIR}/cubstream.hpp
   )
 
 set(EXECUTABLE_SOURCES
@@ -132,10 +146,14 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
   ${COMMUNICATION_DIR}/communication_channel.cpp
+  ${COMMUNICATION_DIR}/stream_transfer_receiver.cpp
+  ${COMMUNICATION_DIR}/stream_transfer_sender.cpp
   )
 
 set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/communication_channel.hpp
+  ${COMMUNICATION_DIR}/stream_transfer_receiver.hpp
+  ${COMMUNICATION_DIR}/stream_transfer_sender.hpp
   )
 
 set(QUERY_SOURCES
@@ -226,11 +244,11 @@ set(SESSION_SOURCES
   ${SESSION_DIR}/session_sr.c
   )
 
+list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
 if(UNIX)
   list(APPEND BASE_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/variable_string.c)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/tcp.c)
-  list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
   list(APPEND STORAGE_SOURCES ${STORAGE_DIR}/es_owfs.c)
 else(UNIX)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/wintcp.c)

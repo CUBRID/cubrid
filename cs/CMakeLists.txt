@@ -66,6 +66,7 @@ set (COMPAT_HEADERS
   ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/dbtype_function.h
   ${COMPAT_DIR}/dbtype_function.i
+  ${COMPAT_DIR}/db_admin.h
   )
 
 set(BASE_SOURCES
@@ -95,7 +96,11 @@ set(BASE_SOURCES
   ${BASE_DIR}/message_catalog.c
   ${BASE_DIR}/misc_string.c
   ${BASE_DIR}/mprec.c
-  ${BASE_DIR}/perf.c
+  ${BASE_DIR}/packer.cpp
+  ${BASE_DIR}/get_clockfreq.c
+  ${BASE_DIR}/perf.cpp
+  ${BASE_DIR}/pinnable_buffer.cpp
+  ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/release_string.c
@@ -115,6 +120,12 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
+  ${BASE_DIR}/packer.hpp
+  ${BASE_DIR}/perf.hpp
+  ${BASE_DIR}/perf_def.hpp
+  ${BASE_DIR}/pinning.hpp
+  ${BASE_DIR}/pinnable_buffer.hpp
+  ${BASE_DIR}/packable_object.hpp
 )
 
 set(HEAPLAYER_SOURCES
@@ -233,10 +244,10 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/es_posix.c
   )
 
+list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
 if(UNIX)
   list(APPEND EXECUTABLE_SOURCES ${EXECUTABLES_DIR}/checksumdb.c)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/tcp.c)
-  list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/dynamic_load.c)
   list(APPEND TRANSACTION_SOURCES ${TRANSACTION_DIR}/log_applier_sql_log.c)
   list(APPEND TRANSACTION_SOURCES ${TRANSACTION_DIR}/log_applier.c)

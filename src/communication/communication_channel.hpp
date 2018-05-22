@@ -36,6 +36,9 @@
 #include <winsock2.h>
 #endif
 
+/* TODO[arnia] this needs to be calculated a priori */
+const int MTU = 1500;
+
 enum CHANNEL_TYPE
 {
   NO_TYPE = 0,
