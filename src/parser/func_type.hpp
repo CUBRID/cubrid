@@ -7,14 +7,6 @@
 struct parser_context;
 struct parser_node;
 
-#define X(id, ...) _F_##id,
-enum FUNC_TYPE2: int
-{
-  _0 = 899, //start value
-  #include "func_type.x"
-};
-#undef X
-
 struct func_signature
 {
   pt_arg_type ret;              //return type
@@ -51,6 +43,8 @@ struct func_signature
   static std::vector<func_signature> set_r_any;     //set, table_set
   static std::vector<func_signature> multiset_r_any;//multiset, table_multiset
   static std::vector<func_signature> sequence_r_any;//sequence, table_sequence
+
+  static std::vector<func_signature>* get_signature(FUNC_TYPE ft);
 };
 
 #endif
