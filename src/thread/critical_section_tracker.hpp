@@ -61,7 +61,7 @@ namespace cubsync
 
       bool is_started (void);
       void check (void);
-      void check_dependencies (int cs_index);
+      void check_csect_interdependencies (int cs_index);
 
       cstrack_entry m_cstrack_array[CRITICAL_SECTION_COUNT];
       bool m_enabled;
