@@ -69,11 +69,11 @@ class stream_mock : public cubstream::stream
         m_last_committed_pos += amount;   
       }
 
-    int write (const size_t byte_count, cubstream::write_handler *handler) override
+    int write (const size_t byte_count, cubstream::stream::write_func_t &write_action)
     {
       int err;
 
-      err = handler->write_action (last_position, write_buffer, byte_count);
+      err = write_action (last_position, write_buffer, byte_count);
       if (err == NO_ERRORS)
 	{
 	  last_position += byte_count;
@@ -81,7 +81,8 @@ class stream_mock : public cubstream::stream
       return err;
     }
 
-    int read (const cubstream::stream_position first_pos, const size_t byte_count, cubstream::read_handler *handler) override
+    int read (const cubstream::stream_position first_pos, const size_t byte_count,
+              cubstream::stream::read_func_t &read_action)
     {
       char *ptr = (char *) malloc (byte_count);
       int err = NO_ERROR;
@@ -91,14 +92,14 @@ class stream_mock : public cubstream::stream
 	  * ((int *) (ptr + i)) = first_pos / sizeof (int) + i / sizeof (int);
 	}
 
-      err = handler->read_action (first_pos, ptr, byte_count);
+      err = read_action (ptr, byte_count);
       free (ptr);
 
       return err;
     }
 
-    int read_partial (const cubstream::stream_position first_pos, const size_t byte_count, size_t *actual_read_bytes,
-		      cubstream::partial_read_handler *handler) override
+    int read_partial (const cubstream::stream_position first_pos, const size_t byte_count, size_t &actual_read_bytes,
+		      read_partial_func_t &read_partial_action)
     {
       assert (false);
       return NO_ERROR;

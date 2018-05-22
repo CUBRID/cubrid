@@ -30,43 +30,12 @@
 #include <cinttypes>
 #include <cstddef>
 #include <string>
+#include <functional>
 
 namespace cubstream
 {
 
   typedef std::uint64_t stream_position;
-
-  class read_handler
-  {
-    public:
-      virtual int read_action (const stream_position pos, char *ptr, const size_t byte_count) = 0;
-  };
-
-  class partial_read_handler
-  {
-    public:
-      virtual int read_action (const stream_position pos, char *ptr, const size_t byte_count,
-			       size_t *processed_bytes) = 0;
-  };
-
-  class write_handler
-  {
-    public:
-      virtual int write_action (const stream_position pos, char *ptr, const size_t byte_count) = 0;
-  };
-
-  class fetch_handler
-  {
-    public:
-      virtual int fetch_action (const stream_position pos, char *ptr, const size_t byte_count,
-				size_t *processed_bytes) = 0;
-  };
-
-  class notify_handler
-  {
-    public:
-      virtual int notify (const stream_position pos, const size_t byte_count) = 0;
-  };
 
   /*
    * stream is a contiguous stream (flow) of bytes
@@ -78,10 +47,18 @@ namespace cubstream
    */
   class stream
   {
+    public:
+      typedef std::function<int (char *, const size_t)> read_func_t;
+      typedef std::function<int (char *, const size_t, size_t &)> read_partial_func_t;
+      typedef std::function<int (const stream_position &, char *, const size_t, size_t &)> read_prepare_func_t;
+      typedef std::function<int (const stream_position &, char *, const size_t)> write_func_t;
+      typedef std::function<int (const stream_position &, const size_t)> notify_func_t;
+      typedef std::function<int (const stream_position &, char *, const size_t, size_t&)> fetch_func_t;
+ 
     protected:
-      notify_handler *m_filled_stream_handler;
-      fetch_handler *m_fetch_data_handler;
-      notify_handler *m_ready_pos_handler;
+      notify_func_t m_filled_stream_handler;
+      fetch_func_t m_fetch_data_handler;
+      notify_func_t m_ready_pos_handler;
 
       /* current stream position not allocated yet */
       stream_position m_append_position;
@@ -109,10 +86,11 @@ namespace cubstream
       stream ();
       int init (const stream_position &start_position = 0);
 
-      virtual int write (const size_t byte_count, write_handler *handler) = 0;
-      virtual int read_partial (const stream_position first_pos, const size_t byte_count, size_t *actual_read_bytes,
-				partial_read_handler *handler) = 0;
-      virtual int read (const stream_position first_pos, const size_t byte_count, read_handler *handler) = 0;
+      virtual int write (const size_t byte_count, write_func_t &write_action) = 0;
+
+      virtual int read_partial (const stream_position first_pos, const size_t byte_count, size_t &actual_read_bytes,
+				read_partial_func_t &read_partial_action) = 0;
+      virtual int read (const stream_position first_pos, const size_t byte_count, read_func_t &read_action) = 0;
 
       const stream_position &get_curr_read_position (void)
       {
@@ -134,16 +112,15 @@ namespace cubstream
           m_last_dropable_pos = last_dropable_pos;
         };
 
-
-      void set_filled_stream_handler (notify_handler *handler)
+      void set_filled_stream_handler (notify_func_t handler)
       {
 	m_filled_stream_handler = handler;
       };
-      void set_fetch_data_handler (fetch_handler *handler)
+      void set_fetch_data_handler (fetch_func_t handler)
       {
 	m_fetch_data_handler = handler;
       };
-      void set_ready_pos_handler (notify_handler *handler)
+      void set_ready_pos_handler (notify_func_t handler)
       {
 	m_ready_pos_handler = handler;
       };

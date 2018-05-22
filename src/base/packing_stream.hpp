@@ -31,7 +31,7 @@
 #include "cubstream.hpp"
 #include "object_factory.hpp"
 #include "packable_object.hpp"
-#include "pinning.hpp"
+#include "packer.hpp"
 #include "stream_io.hpp"
 #include "storage_common.h"
 #include <vector>
@@ -40,7 +40,6 @@
 namespace cubstream
 {
 
-  class stream_packer;
   class packing_stream;
 
   class entry
@@ -57,6 +56,14 @@ namespace cubstream
 
       stream_position m_data_start_position;
 
+      stream::write_func_t m_packing_func;
+      stream::read_prepare_func_t m_prepare_func;
+      stream::read_func_t m_unpack_func;
+
+      int packing_func (const stream_position &pos, char *ptr, const size_t amount);
+      int prepare_func (const stream_position &data_start_pos, char *ptr, const size_t header_size,
+                          size_t &payload_size);
+      int unpack_func (char *ptr, const size_t data_size);
 
     public:
       using packable_factory = cubbase::factory<int, cubpacking::packable_object>;
@@ -89,7 +96,7 @@ namespace cubstream
       };
 
       /* stream entry header methods : header is implemention dependent, is not known here ! */
-      virtual stream_packer *get_packer () = 0;
+      virtual cubpacking::packer *get_packer () = 0;
       virtual size_t get_header_size (void) = 0;
       virtual void set_header_data_size (const size_t &data_size) = 0;
       virtual size_t get_data_packed_size (void) = 0;
@@ -100,12 +107,6 @@ namespace cubstream
       virtual void destroy_objects ();
   };
 
-  /*
-   * this adds a layer which allows handling a stream in chunks (cubstream::entry),
-   * especially in context of packable objects
-   * for writing/reading packable_objects into/from (packing_)stream, the friend class stream_packer is used as
-   * both a packer and a context over a range in stream
-   */
   struct stream_reserve_context
     {
       stream_position start_pos;
@@ -116,7 +117,12 @@ namespace cubstream
 
   class packing_stream : public stream
   {
-      friend class stream_packer;
+    public:
+      enum STREAM_SKIP_MODE
+        {
+          STREAM_DONT_SKIP = 0,
+          STREAM_SKIP
+        };
 
     private:
       /* a BIP-Buffer with 64 pages */
@@ -150,8 +156,6 @@ namespace cubstream
       std::uint64_t m_stat_read_buffer_failed_cnt;
 
     protected:
-      int fetch_data_from_provider (const stream_position &pos, const size_t amount);
-
       /* should be called when serialization of a stream entry ends */
       int commit_append (stream_reserve_context *reserve_context);
 
@@ -162,15 +166,18 @@ namespace cubstream
       char *get_data_from_pos (const stream_position &req_start_pos, const size_t amount, 
                                size_t &actual_read_bytes, mem::buffer_latch_read_id &read_latch_page_idx);
       int unlatch_read_data (const mem::buffer_latch_read_id &read_latch_page_idx);
+
+      int wait_for_data (const size_t amount, const STREAM_SKIP_MODE skip_mode);
     
     public:
       packing_stream (const size_t buffer_capacity, const int max_appenders);
       ~packing_stream ();
 
-      int write (const size_t byte_count, write_handler *handler);
-      int read_partial (const stream_position first_pos, const size_t byte_count, size_t *actual_read_bytes,
-			partial_read_handler *handler);
-      int read (const stream_position first_pos, const size_t byte_count, read_handler *handler);
+      int write (const size_t byte_count, write_func_t &write_action);
+      int read_partial (const stream_position first_pos, const size_t byte_count, size_t &actual_read_bytes,
+			read_partial_func_t &read_partial_action);
+      int read (const stream_position first_pos, const size_t byte_count, read_func_t &read_action);
+      int read_serial (const size_t byte_count, read_prepare_func_t &read_action);
 
       void set_buffer_reserve_margin (const size_t margin)
         {

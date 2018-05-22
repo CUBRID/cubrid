@@ -24,12 +24,13 @@
 #include "thread_manager.hpp"
 #include "thread_task.hpp"
 #include "thread_entry.hpp"
+#include "dbtype.h"
 #include <iostream>
 
 namespace test_stream
 {
 
-  int stream_handler_write::write_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count)
+  int write_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count)
   {
     int i;
     char *start_ptr = ptr;
@@ -48,8 +49,7 @@ namespace test_stream
     return ptr - start_ptr;
   }
 
-  int stream_handler_read::read_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count,
-					size_t *processed_bytes)
+  int stream_read_partial_context::read_action (char *ptr, const size_t byte_count, size_t &processed_bytes)
   {
     int i;
     size_t to_read;
@@ -92,10 +92,8 @@ namespace test_stream
 	byte_count_rem -= to_read;
       }
 
-    if (processed_bytes != NULL)
-      {
-	*processed_bytes = byte_count - byte_count_rem;
-      }
+    processed_bytes = byte_count - byte_count_rem;
+
     return NO_ERROR;
   }
 
@@ -400,8 +398,10 @@ namespace test_stream
 
     cubstream::packing_stream *my_stream = new cubstream::packing_stream (10 * 1024 * 1024, 100);
 
-    stream_handler_write writer;
-    stream_handler_read reader;
+    cubstream::stream::write_func_t writer_func;
+    writer_func = std::bind (&write_action, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+
+    stream_read_partial_context reader_context;
 
     std::cout << "  Testing stream write/read with bytes" << std::endl;
 
@@ -411,7 +411,7 @@ namespace test_stream
 	int amount = 5 + std::rand () % max_data_size;
 	rem_amount -= amount;
 
-	res = my_stream->write (amount, &writer);
+	res = my_stream->write (amount, writer_func);
 	if (res <= 0)
 	  {
 	    assert (false);
@@ -430,7 +430,7 @@ namespace test_stream
 
 	amount = MIN (writted_amount - curr_read_pos, amount);
 
-	res = my_stream->read_partial (curr_read_pos, amount, &processed_amount, &reader);
+	res = my_stream->read_partial (curr_read_pos, amount, processed_amount, reader_context.m_reader_partial_func);
 	if (res != 0)
 	  {
 	    assert (false);
@@ -499,14 +499,13 @@ namespace test_stream
   }
 
 
-  class stream_mover : public cubstream::read_handler, public cubstream::write_handler
+  class stream_mover
     {
     private:
       static const int BUF_SIZE = 1024;
       char m_buffer[BUF_SIZE];
-    public:
 
-      int read_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count)
+      int read_action (char *ptr, const size_t byte_count)
         {
           memcpy (m_buffer, ptr, byte_count);
           return byte_count;
@@ -518,7 +517,21 @@ namespace test_stream
           return byte_count;
         };
 
+    public:
+
+      stream_mover ()
+        {
+          m_reader_func = std::bind (&stream_mover::read_action, std::ref (*this),
+                                     std::placeholders::_1, std::placeholders::_2);
+          m_writer_func = std::bind (&stream_mover::write_action, std::ref (*this),
+                                     std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+
+        };
+
       size_t get_buf_size (void) { return sizeof (m_buffer); };
+
+      cubstream::stream::read_func_t m_reader_func;
+      cubstream::stream::write_func_t m_writer_func;
     };
 
   int test_stream2 (void)
@@ -603,13 +616,13 @@ namespace test_stream
       {
         copy_chunk_size = MIN (copy_chunk_size, last_pos - curr_pos);
 
-        read_bytes = test_stream_for_pack.read (curr_pos, copy_chunk_size, &test_stream_mover);
+        read_bytes = test_stream_for_pack.read (curr_pos, copy_chunk_size, test_stream_mover.m_reader_func);
         if (read_bytes <= 0)
           {
             break;
           }
 
-        written_bytes = test_stream_for_unpack.write (read_bytes, &test_stream_mover);
+        written_bytes = test_stream_for_unpack.write (read_bytes, test_stream_mover.m_writer_func);
         assert (read_bytes == written_bytes);
         if (written_bytes <= 0)
           {
@@ -874,7 +887,7 @@ namespace test_stream
       size_t to_read;
       size_t actual_read_bytes;
       int err = NO_ERROR; 
-      stream_handler_read_copy my_read_handler;
+      stream_read_partial_copy_context my_read_handler;
       int my_read_cnt = 0;
 
       stream_context_manager::g_running_readers.set (m_reader_id);
@@ -896,7 +909,7 @@ namespace test_stream
           while (my_curr_pos + to_read > last_committed_pos);
 
           
-          err = stream_context_manager::g_stream->read_partial (my_curr_pos, to_read, &actual_read_bytes, &my_read_handler);
+          err = stream_context_manager::g_stream->read_partial (my_curr_pos, to_read, actual_read_bytes, my_read_handler.m_read_action_func);
           if (err != NO_ERROR)
             {
               break;
@@ -936,14 +949,19 @@ namespace test_stream
 
   cubstream::stream_position stream_context_manager::g_read_positions[200];
 
-  class stream_producer_throttling : public cubstream::notify_handler
+  class stream_producer_throttling
     {
     public:
       stream_producer_throttling ()
         {
           m_prev_throttle_pos = 0;
+          m_notify_func = std::bind (&stream_producer_throttling::notify, std::ref (*this),
+                                     std::placeholders::_1, 
+                                     std::placeholders::_2);
         };
 
+      cubstream::stream::notify_func_t m_notify_func;
+    protected:
       int notify (const cubstream::stream_position pos, const size_t byte_count)
         {
           if (pos >= m_prev_throttle_pos)
@@ -959,14 +977,19 @@ namespace test_stream
       cubstream::stream_position m_prev_throttle_pos;
     };
 
-  class stream_ready_notifier : public cubstream::notify_handler
+  class stream_ready_notifier
     {
     public:
       stream_ready_notifier ()
         {
           m_ready_pos = 0;
+          m_notify_func = std::bind (&stream_ready_notifier::notify, std::ref (*this),
+                                     std::placeholders::_1, 
+                                     std::placeholders::_2);
         };
 
+      cubstream::stream::notify_func_t m_notify_func;
+    protected:
       int notify (const cubstream::stream_position pos, const size_t byte_count)
         {
           if (pos > m_ready_pos)
@@ -982,16 +1005,24 @@ namespace test_stream
       cubstream::stream_position m_ready_pos;
     };
 
-  class stream_fetcher : public cubstream::fetch_handler
+  class stream_fetcher
     {
     public:
       stream_fetcher ()
         {
           m_prev_fetch_pos = 0;
+          m_fetch_func = std::bind (&stream_fetcher::fetch_action, std::ref (*this),
+                                     std::placeholders::_1, 
+                                     std::placeholders::_2,
+                                     std::placeholders::_3,
+                                     std::placeholders::_4);
         };
+      cubstream::stream::fetch_func_t m_fetch_func;
+    protected:
       int fetch_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count,
-				size_t *processed_bytes)
+	                size_t &processed_bytes)
         {
+          int err = ER_FAILED;
           if (pos >= m_prev_fetch_pos)
             {
               m_prev_fetch_pos = pos;
@@ -1010,12 +1041,21 @@ namespace test_stream
                   pos = MIN (pos, stream_context_manager::g_read_positions[j]);
                 }
               stream_context_manager::g_stream->set_last_dropable_pos (pos);
+
+              if (pos + byte_count >= stream_context_manager::g_stream->get_last_committed_pos ())
+                {
+                  err = NO_ERROR;
+                }
+              return err;
             }
 
-          return NO_ERROR;
-        }
+          return err;
+        };
     private:
       cubstream::stream_position m_prev_fetch_pos;
+
+      std::mutex m;
+      std::condition_variable c;
     };
 
   stream_context_manager ctx_m1;
@@ -1044,9 +1084,9 @@ namespace test_stream
 
     cubstream::packing_stream test_stream_for_pack (10 * 1024 * 1024, TEST_PACK_THREADS);
     test_stream_for_pack.set_buffer_reserve_margin (100 * 1024);
-    test_stream_for_pack.set_filled_stream_handler (&stream_producer_throttling_handler);
-    test_stream_for_pack.set_ready_pos_handler (&stream_ready_notify_handler);
-    test_stream_for_pack.set_fetch_data_handler (&stream_fetch_handler);
+    test_stream_for_pack.set_filled_stream_handler (stream_producer_throttling_handler.m_notify_func);
+    test_stream_for_pack.set_ready_pos_handler (stream_ready_notify_handler.m_notify_func);
+    test_stream_for_pack.set_fetch_data_handler (stream_fetch_handler.m_fetch_func);
 
     std::cout << "      Generating stream entries and objects...";
     test_stream_entry* se_array[TEST_ENTRIES];

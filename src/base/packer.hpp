@@ -103,16 +103,15 @@ namespace cubpacking
 	m_ptr = PTR_ALIGN (m_ptr, req_alignment);
       };
 
-    protected:
       const char *get_packer_buffer (void)
         {
           return m_packer_start_ptr;
-        }
+        };
 
       const char *get_packer_end (void)
         {
           return m_end_ptr;
-        }
+        };
 
     private:
       char *m_packer_start_ptr; /* start of buffer */

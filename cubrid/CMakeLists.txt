@@ -58,7 +58,6 @@ set(THREAD_HEADERS
 set(STREAM_SOURCES
   ${BASE_DIR}/cubstream.cpp
   ${BASE_DIR}/packing_stream.cpp
-  ${BASE_DIR}/stream_packer.cpp
   )
 
 set(BASE_SOURCES
@@ -135,7 +134,6 @@ set (STREAM_HEADERS
   ${BASE_DIR}/cubstream.hpp
   ${BASE_DIR}/packing_stream.hpp
   ${BASE_DIR}/stream_io.hpp
-  ${BASE_DIR}/stream_packer.hpp
   )
 
 set(EXECUTABLE_SOURCES

@@ -93,7 +93,7 @@ namespace cubstream
 
       return NO_ERROR;
     }
-
+#if 0
   char *stream_packer::start_unpacking_range (const size_t amount)
   {
     char *ptr;
@@ -145,7 +145,7 @@ namespace cubstream
 
     return NULL;
   }
-
+#endif
   char *stream_packer::start_unpacking_range_from_pos (const stream_position &start_pos, const size_t amount)
   {
     char *ptr;
