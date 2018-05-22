@@ -62,34 +62,13 @@
 #include "db.h"
 #include "db_query.h"
 #include "dbtype.h"
+#if defined (SA_MODE)
+#include "thread_manager.hpp"
+#endif // SA_MODE
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
  */
-#define ENTER_SERVER() \
-  do \
-    { \
-      db_on_server++; \
-      er_stack_push_if_exists (); \
-      if (private_heap_id == 0) \
-        { \
-	  assert (db_on_server == 1); \
-          private_heap_id = db_create_private_heap (); \
-        } \
-    } \
-  while (0)
-
-#define EXIT_SERVER() \
-  do \
-    { \
-      if ((db_on_server - 1) == 0 && private_heap_id != 0) \
-        { \
-          db_clear_private_heap (NULL, private_heap_id); \
-        } \
-      er_restore_last_error (); \
-      db_on_server--; \
-    } \
-  while (0)
 
 #define NET_COPY_AREA_SENDRECV_SIZE (OR_INT_SIZE * 3)
 #define NET_SENDRECV_BUFFSIZE (OR_INT_SIZE)
@@ -112,6 +91,69 @@ static char *pack_string_with_null_padding (char *buffer, const char *stream, in
 static int length_const_string (const char *cstring, int *strlen);
 static int length_string_with_null_padding (int len);
 #endif /* CS_MODE */
+#if defined (SA_MODE)
+static void enter_server_no_thread_entry (void);
+static THREAD_ENTRY *enter_server (void);
+static void exit_server_no_thread_entry (void);
+static void exit_server (const THREAD_ENTRY & thread_ref);
+#endif // SERVER_MODE
+
+#if defined (SA_MODE)
+//
+// enter_server_no_thread_entry () - enter server mode without getting a thread entry (e.g. when "starting" server).
+//
+static void
+enter_server_no_thread_entry (void)
+{
+  db_on_server++;
+  er_stack_push_if_exists ();
+
+  if (private_heap_id == 0)
+    {
+      assert (db_on_server == 1);
+      private_heap_id = db_create_private_heap ();
+    }
+}
+
+//
+// enter_server () - start simulating server mode
+//
+// return : pointer to thread entry
+//
+static THREAD_ENTRY *
+enter_server ()
+{
+  enter_server_no_thread_entry ();
+  return thread_get_thread_entry_info ();
+}
+
+//
+// exit_server_no_thread_entry () - exit server mode without getting a thread entry (e.g. when "starting" server).
+//
+static void
+exit_server_no_thread_entry (void)
+{
+  if ((db_on_server - 1) == 0 && private_heap_id != 0)
+    {
+      db_clear_private_heap (NULL, private_heap_id);
+    }
+  er_restore_last_error ();
+  db_on_server--;
+}
+
+//
+// exit_server () - exit server mode simulation
+//
+// thread_ref (in) : reference to thread entry used to enter server mode
+//
+static void
+exit_server (const THREAD_ENTRY & thread_ref)
+{
+  (void) thread_ref;		// not really used; just to force caller declare obtain thread entry
+
+  exit_server_no_thread_entry ();
+}
+#endif // SA_MODE
 
 #if defined(CS_MODE)
 /*
@@ -252,13 +294,13 @@ locator_fetch (OID * oidp, int chn, LOCK lock, LC_FETCH_VERSION_TYPE fetch_versi
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   success =
-    xlocator_fetch (NULL, oidp, chn, lock, fetch_version_type, fetch_version_type, class_oid, class_chn, prefetch,
+    xlocator_fetch (thread_p, oidp, chn, lock, fetch_version_type, fetch_version_type, class_oid, class_chn, prefetch,
 		    fetch_copyarea);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -319,11 +361,11 @@ locator_get_class (OID * class_oid, int class_chn, const OID * oid, LOCK lock, i
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xlocator_get_class (NULL, class_oid, class_chn, oid, lock, prefetching, fetch_copyarea);
+  success = xlocator_get_class (thread_p, class_oid, class_chn, oid, lock, prefetching, fetch_copyarea);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -391,13 +433,13 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   success =
-    xlocator_fetch_all (NULL, hfid, lock, fetch_version_type, class_oidp, nobjects, nfetched, last_oidp,
+    xlocator_fetch_all (thread_p, hfid, lock, fetch_version_type, class_oidp, nobjects, nfetched, last_oidp,
 			fetch_copyarea);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -472,13 +514,13 @@ locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid, int class_c
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   success =
-    xlocator_does_exist (NULL, oidp, chn, lock, fetch_version_type, class_oid, class_chn, need_fetching, prefetch,
+    xlocator_does_exist (thread_p, oidp, chn, lock, fetch_version_type, class_oid, class_chn, need_fetching, prefetch,
 			 fetch_copyarea);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -524,11 +566,11 @@ locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea)
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xlocator_notify_isolation_incons (NULL, synch_copyarea);
+  success = xlocator_notify_isolation_incons (thread_p, synch_copyarea);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -686,11 +728,11 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
 
   memcpy (copy_area_clone->mem, copy_area->mem, copy_area->length);
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  error_code = xlocator_force (NULL, copy_area, num_ignore_error_list, ignore_error_list);
+  error_code = xlocator_force (thread_p, copy_area, num_ignore_error_list, ignore_error_list);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   if (error_code != NO_ERROR)
     {
@@ -787,11 +829,11 @@ locator_fetch_lockset (LC_LOCKSET * lockset, LC_COPYAREA ** fetch_copyarea)
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xlocator_fetch_lockset (NULL, lockset, fetch_copyarea);
+  success = xlocator_fetch_lockset (thread_p, lockset, fetch_copyarea);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -877,13 +919,13 @@ locator_fetch_all_reference_lockset (OID * oid, int chn, OID * class_oid, int cl
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   success =
-    xlocator_fetch_all_reference_lockset (NULL, oid, chn, class_oid, class_chn, lock, quit_on_errors, prune_level,
+    xlocator_fetch_all_reference_lockset (thread_p, oid, chn, class_oid, class_chn, lock, quit_on_errors, prune_level,
 					  lockset, fetch_copyarea);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -941,11 +983,11 @@ locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock)
 #else /* CS_MODE */
   LC_FIND_CLASSNAME found = LC_CLASSNAME_ERROR;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  found = xlocator_find_class_oid (NULL, class_name, class_oid, lock);
+  found = xlocator_find_class_oid (thread_p, class_name, class_oid, lock);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return found;
 #endif /* !CS_MODE */
@@ -1010,11 +1052,11 @@ locator_reserve_class_names (const int num_classes, const char **class_names, OI
 #else /* CS_MODE */
   LC_FIND_CLASSNAME reserved = LC_CLASSNAME_ERROR;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  reserved = xlocator_reserve_class_names (NULL, num_classes, class_names, class_oids);
+  reserved = xlocator_reserve_class_names (thread_p, num_classes, class_names, class_oids);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return reserved;
 #endif /* !CS_MODE */
@@ -1069,11 +1111,11 @@ locator_get_reserved_class_name_oid (const char *classname, OID * class_oid)
 #else
   int is_reserved;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  is_reserved = xlocator_get_reserved_class_name_oid (NULL, classname, class_oid);
+  is_reserved = xlocator_get_reserved_class_name_oid (thread_p, classname, class_oid);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return is_reserved;
 #endif
@@ -1124,11 +1166,11 @@ locator_delete_class_name (const char *class_name)
 #else /* CS_MODE */
   LC_FIND_CLASSNAME deleted = LC_CLASSNAME_ERROR;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  deleted = xlocator_delete_class_name (NULL, class_name);
+  deleted = xlocator_delete_class_name (thread_p, class_name);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return deleted;
 #endif /* !CS_MODE */
@@ -1184,11 +1226,11 @@ locator_rename_class_name (const char *old_name, const char *new_name, OID * cla
 #else /* CS_MODE */
   LC_FIND_CLASSNAME renamed = LC_CLASSNAME_ERROR;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  renamed = xlocator_rename_class_name (NULL, old_name, new_name, class_oid);
+  renamed = xlocator_rename_class_name (thread_p, old_name, new_name, class_oid);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return renamed;
 #endif /* !CS_MODE */
@@ -1246,11 +1288,11 @@ locator_assign_oid (const HFID * hfid, OID * perm_oid, int expected_length, OID 
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xlocator_assign_oid (NULL, hfid, perm_oid, expected_length, class_oid, class_name);
+  success = xlocator_assign_oid (thread_p, hfid, perm_oid, expected_length, class_oid, class_name);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -1318,11 +1360,11 @@ locator_assign_oid_batch (LC_OIDSET * oidset)
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xlocator_assign_oid_batch (NULL, oidset);
+  success = xlocator_assign_oid_batch (thread_p, oidset);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return (success);
 #endif /* !CS_MODE */
@@ -1438,14 +1480,14 @@ locator_find_lockhint_class_oids (int num_classes, const char **many_classnames,
 #else /* CS_MODE */
   LC_FIND_CLASSNAME allfind = LC_CLASSNAME_ERROR;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   allfind =
-    xlocator_find_lockhint_class_oids (NULL, num_classes, many_classnames, many_locks, many_need_subclasses, many_flags,
-				       guessed_class_oids, guessed_class_chns, quit_on_errors, lockhint,
+    xlocator_find_lockhint_class_oids (thread_p, num_classes, many_classnames, many_locks, many_need_subclasses,
+				       many_flags, guessed_class_oids, guessed_class_chns, quit_on_errors, lockhint,
 				       fetch_copyarea);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return allfind;
 #endif /* !CS_MODE */
@@ -1532,11 +1574,11 @@ locator_fetch_lockhint_classes (LC_LOCKHINT * lockhint, LC_COPYAREA ** fetch_cop
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xlocator_fetch_lockhint_classes (NULL, lockhint, fetch_copyarea);
+  success = xlocator_fetch_lockhint_classes (thread_p, lockhint, fetch_copyarea);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -1584,11 +1626,11 @@ heap_create (HFID * hfid, const OID * class_oid, bool reuse_oid)
 #else /* CS_MODE */
   int success;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xheap_create (NULL, hfid, class_oid, reuse_oid);
+  success = xheap_create (thread_p, hfid, class_oid, reuse_oid);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -1633,11 +1675,11 @@ heap_destroy (const HFID * hfid)
 #else /* CS_MODE */
   int success;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xheap_destroy (NULL, hfid, NULL);
+  success = xheap_destroy (thread_p, hfid, NULL);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -1683,11 +1725,11 @@ heap_destroy_newly_created (const HFID * hfid, const OID * class_oid)
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xheap_destroy_newly_created (NULL, hfid, class_oid);
+  success = xheap_destroy_newly_created (thread_p, hfid, class_oid);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -1732,11 +1774,11 @@ heap_reclaim_addresses (const HFID * hfid)
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xheap_reclaim_addresses (NULL, hfid);
+  success = xheap_reclaim_addresses (thread_p, hfid);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -1779,11 +1821,11 @@ disk_get_total_numpages (VOLID volid)
 #else /* CS_MODE */
   DKNPAGES npages = 0;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  npages = xdisk_get_total_numpages (NULL, volid);
+  npages = xdisk_get_total_numpages (thread_p, volid);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return npages;
 #endif /* !CS_MODE */
@@ -1827,11 +1869,11 @@ disk_get_free_numpages (VOLID volid)
 #else /* CS_MODE */
   DKNPAGES npages = 0;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  npages = xdisk_get_free_numpages (NULL, volid);
+  npages = xdisk_get_free_numpages (thread_p, volid);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return npages;
 #endif /* !CS_MODE */
@@ -1882,11 +1924,11 @@ disk_get_remarks (VOLID volid)
 #else /* CS_MODE */
   char *remark = NULL;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  remark = xdisk_get_remarks (NULL, volid);
+  remark = xdisk_get_remarks (thread_p, volid);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return remark;
 #endif /* !CS_MODE */
@@ -1941,11 +1983,11 @@ disk_get_fullname (VOLID volid, char *vol_fullname)
   return vol_fullname;
 #else /* CS_MODE */
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  vol_fullname = xdisk_get_fullname (NULL, volid, vol_fullname);
+  vol_fullname = xdisk_get_fullname (thread_p, volid, vol_fullname);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return vol_fullname;
 #endif /* !CS_MODE */
@@ -1988,11 +2030,11 @@ log_reset_wait_msecs (int wait_msecs)
 #else /* CS_MODE */
   int wait = -1;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  wait = xlogtb_reset_wait_msecs (NULL, wait_msecs);
+  wait = xlogtb_reset_wait_msecs (thread_p, wait_msecs);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return wait;
 #endif /* !CS_MODE */
@@ -2034,11 +2076,11 @@ log_reset_isolation (TRAN_ISOLATION isolation)
 #else /* CS_MODE */
   int error_code = NO_ERROR;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  error_code = xlogtb_reset_isolation (NULL, isolation);
+  error_code = xlogtb_reset_isolation (thread_p, isolation);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return error_code;
 #endif /* !CS_MODE */
@@ -2066,11 +2108,11 @@ log_set_interrupt (int set)
   (void) net_client_request_no_reply (NET_SERVER_LOG_SET_INTERRUPT, request, OR_ALIGNED_BUF_SIZE (a_request));
 #else /* CS_MODE */
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  xlogtb_set_interrupt (NULL, set);
+  xlogtb_set_interrupt (thread_p, set);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 #endif /* !CS_MODE */
 }
 
@@ -2131,11 +2173,11 @@ log_dump_stat (FILE * outfp)
   req_error = net_client_request_recv_stream (NET_SERVER_LOG_DUMP_STAT, NULL, 0, NULL, 0, NULL, 0, outfp);
 #else /* CS_MODE */
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   xlogpb_dump_stat (outfp);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 #endif /* !CS_MODE */
 }
 
@@ -2173,11 +2215,11 @@ log_set_suppress_repl_on_transaction (int set)
 
   return req_error;
 #else /* CS_MODE */
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  xlogtb_set_suppress_repl_on_transaction (NULL, set);
+  xlogtb_set_suppress_repl_on_transaction (thread_p, set);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return NO_ERROR;
 #endif /* !CS_MODE */
@@ -2228,11 +2270,11 @@ log_find_lob_locator (const char *locator, char *real_locator)
 #else /* CS_MODE */
   LOB_LOCATOR_STATE state;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  state = xlog_find_lob_locator (NULL, locator, real_locator);
+  state = xlog_find_lob_locator (thread_p, locator, real_locator);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
   return state;
 #endif /* !CS_MODE */
 }
@@ -2280,11 +2322,11 @@ log_add_lob_locator (const char *locator, LOB_LOCATOR_STATE state)
 #else /* CS_MODE */
   int error_code;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  error_code = xlog_add_lob_locator (NULL, locator, state);
+  error_code = xlog_add_lob_locator (thread_p, locator, state);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return error_code;
 #endif /* !CS_MODE */
@@ -2335,11 +2377,11 @@ log_change_state_of_locator (const char *locator, const char *new_locator, LOB_L
 #else /* CS_MODE */
   int error_code;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  error_code = xlog_change_state_of_locator (NULL, locator, new_locator, state);
+  error_code = xlog_change_state_of_locator (thread_p, locator, new_locator, state);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return error_code;
 #endif /* !CS_MODE */
@@ -2387,11 +2429,11 @@ log_drop_lob_locator (const char *locator)
 #else /* CS_MODE */
   int error_code;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  error_code = xlog_drop_lob_locator (NULL, locator);
+  error_code = xlog_drop_lob_locator (thread_p, locator);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return error_code;
 #endif /* !CS_MODE */
@@ -2468,11 +2510,11 @@ tran_server_commit (bool retain_lock)
 #else /* CS_MODE */
   TRAN_STATE tran_state = TRAN_UNACTIVE_UNKNOWN;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  tran_state = xtran_server_commit (NULL, retain_lock);
+  tran_state = xtran_server_commit (thread_p, retain_lock);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return tran_state;
 #endif /* !CS_MODE */
@@ -2524,11 +2566,11 @@ tran_server_abort (void)
 #else /* CS_MODE */
   TRAN_STATE tran_state = TRAN_UNACTIVE_UNKNOWN;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  tran_state = xtran_server_abort (NULL);
+  tran_state = xtran_server_abort (thread_p);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return tran_state;
 #endif /* !CS_MODE */
@@ -2614,11 +2656,11 @@ tran_is_blocked (int tran_index)
 #else /* CS_MODE */
   bool blocked = false;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  blocked = xtran_is_blocked (NULL, tran_index);
+  blocked = xtran_is_blocked (thread_p, tran_index);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return blocked;
 #endif /* !CS_MODE */
@@ -2654,11 +2696,11 @@ tran_server_has_updated (void)
 #else /* CS_MODE */
   int has_updated = 0;		/* TODO */
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  has_updated = xtran_server_has_updated (NULL);
+  has_updated = xtran_server_has_updated (thread_p);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return has_updated;
 #endif /* !CS_MODE */
@@ -2694,11 +2736,17 @@ tran_server_is_active_and_has_updated (void)
 #else /* CS_MODE */
   int isactive_and_has_updated = 0;	/* TODO */
 
-  ENTER_SERVER ();
+  if (!BO_IS_SERVER_RESTARTED ())
+    {
+      // server is killed already
+      return 0;
+    }
 
-  isactive_and_has_updated = xtran_server_is_active_and_has_updated (NULL);
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  EXIT_SERVER ();
+  isactive_and_has_updated = xtran_server_is_active_and_has_updated (thread_p);
+
+  exit_server (*thread_p);
 
   return (isactive_and_has_updated);
 #endif /* !CS_MODE */
@@ -2775,11 +2823,11 @@ tran_server_set_global_tran_info (int gtrid, void *info, int size)
 #else /* CS_MODE */
   int success;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xtran_server_set_global_tran_info (NULL, gtrid, info, size);
+  success = xtran_server_set_global_tran_info (thread_p, gtrid, info, size);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -2826,11 +2874,11 @@ tran_server_get_global_tran_info (int gtrid, void *buffer, int size)
 #else /* CS_MODE */
   int success;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xtran_server_get_global_tran_info (NULL, gtrid, buffer, size);
+  success = xtran_server_get_global_tran_info (thread_p, gtrid, buffer, size);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -2866,11 +2914,11 @@ tran_server_2pc_start (void)
 #else /* CS_MODE */
   int gtrid = NULL_TRANID;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  gtrid = xtran_server_2pc_start (NULL);
+  gtrid = xtran_server_2pc_start (thread_p);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return gtrid;
 #endif /* !CS_MODE */
@@ -2906,11 +2954,11 @@ tran_server_2pc_prepare (void)
 #else /* CS_MODE */
   TRAN_STATE state = TRAN_UNACTIVE_UNKNOWN;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  state = xtran_server_2pc_prepare (NULL);
+  state = xtran_server_2pc_prepare (thread_p);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return (state);
 #endif /* !CS_MODE */
@@ -2964,11 +3012,11 @@ tran_server_2pc_recovery_prepared (int gtrids[], int size)
 #else /* CS_MODE */
   int count;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  count = xtran_server_2pc_recovery_prepared (NULL, gtrids, size);
+  count = xtran_server_2pc_recovery_prepared (thread_p, gtrids, size);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return count;
 #endif /* !CS_MODE */
@@ -3011,11 +3059,11 @@ tran_server_2pc_attach_global_tran (int gtrid)
 #else /* CS_MODE */
   int tran_index = NULL_TRAN_INDEX;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  tran_index = xtran_server_2pc_attach_global_tran (NULL, gtrid);
+  tran_index = xtran_server_2pc_attach_global_tran (thread_p, gtrid);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return tran_index;
 #endif /* !CS_MODE */
@@ -3059,11 +3107,11 @@ tran_server_2pc_prepare_global_tran (int gtrid)
 #else /* CS_MODE */
   TRAN_STATE tran_state = TRAN_UNACTIVE_UNKNOWN;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  tran_state = xtran_server_2pc_prepare_global_tran (NULL, gtrid);
+  tran_state = xtran_server_2pc_prepare_global_tran (thread_p, gtrid);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return tran_state;
 #endif /* !CS_MODE */
@@ -3103,9 +3151,9 @@ tran_server_start_topop (LOG_LSA * topop_lsa)
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  if (xtran_server_start_topop (NULL, topop_lsa) != NO_ERROR)
+  if (xtran_server_start_topop (thread_p, topop_lsa) != NO_ERROR)
     {
       success = ER_FAILED;
     }
@@ -3114,7 +3162,7 @@ tran_server_start_topop (LOG_LSA * topop_lsa)
       success = NO_ERROR;
     }
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -3159,11 +3207,11 @@ tran_server_end_topop (LOG_RESULT_TOPOP result, LOG_LSA * topop_lsa)
 #else /* CS_MODE */
   TRAN_STATE tran_state = TRAN_UNACTIVE_UNKNOWN;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  tran_state = xtran_server_end_topop (NULL, result, topop_lsa);
+  tran_state = xtran_server_end_topop (thread_p, result, topop_lsa);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return (tran_state);
 #endif /* !CS_MODE */
@@ -3215,11 +3263,11 @@ tran_server_savepoint (const char *savept_name, LOG_LSA * savept_lsa)
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xtran_server_savepoint (NULL, savept_name, savept_lsa);
+  success = xtran_server_savepoint (thread_p, savept_name, savept_lsa);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -3270,11 +3318,11 @@ tran_server_partial_abort (const char *savept_name, LOG_LSA * savept_lsa)
 #else /* CS_MODE */
   TRAN_STATE tran_state = TRAN_UNACTIVE_UNKNOWN;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  tran_state = xtran_server_partial_abort (NULL, savept_name, savept_lsa);
+  tran_state = xtran_server_partial_abort (thread_p, savept_name, savept_lsa);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return tran_state;
 #endif /* !CS_MODE */
@@ -3354,11 +3402,11 @@ lock_dump (FILE * outfp)
   req_error = net_client_request_recv_stream (NET_SERVER_LK_DUMP, NULL, 0, NULL, 0, NULL, 0, outfp);
 #else /* CS_MODE */
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  xlock_dump (NULL, outfp);
+  xlock_dump (thread_p, outfp);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 #endif /* !CS_MODE */
 }
 
@@ -3482,14 +3530,14 @@ boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_D
 #else /* CS_MODE */
   int tran_index = NULL_TRAN_INDEX;
 
-  ENTER_SERVER ();
+  enter_server_no_thread_entry ();
 
   tran_index =
-    xboot_initialize_server (NULL, client_credential, db_path_info, db_overwrite, file_addmore_vols, db_npages,
+    xboot_initialize_server (client_credential, db_path_info, db_overwrite, file_addmore_vols, db_npages,
 			     db_desired_pagesize, log_npages, db_desired_log_page_size, rootclass_oid, rootclass_hfid,
 			     client_lock_wait, client_isolation);
 
-  EXIT_SERVER ();
+  exit_server_no_thread_entry ();
 
   return (tran_index);
 #endif /* !CS_MODE */
@@ -3593,11 +3641,11 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 #else /* CS_MODE */
   int tran_index = NULL_TRAN_INDEX;
 
-  ENTER_SERVER ();
+  enter_server_no_thread_entry ();
 
   tran_index =
     xboot_register_client (NULL, client_credential, client_lock_wait, client_isolation, tran_state, server_credential);
-  EXIT_SERVER ();
+  exit_server_no_thread_entry ();
 
   return tran_index;
 #endif /* !CS_MODE */
@@ -3616,7 +3664,7 @@ int
 boot_unregister_client (int tran_index)
 {
 #if defined(CS_MODE)
-  int success = ER_FAILED;
+  int error_code = ER_FAILED;
   int req_error;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request;
@@ -3630,22 +3678,39 @@ boot_unregister_client (int tran_index)
 
   req_error = net_client_request (NET_SERVER_BO_UNREGISTER_CLIENT, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
+  if (req_error == NO_ERROR)
     {
-      or_unpack_int (reply, &success);
+      or_unpack_int (reply, &error_code);
+    }
+  else
+    {
+      error_code = req_error;
     }
 
-  return success;
+  return error_code;
 #else /* CS_MODE */
-  int success = ER_FAILED;
+  int error_code = NO_ERROR;
 
-  ENTER_SERVER ();
+  if (!BO_IS_SERVER_RESTARTED ())
+    {
+      // server is killed already
+      return NO_ERROR;
+    }
 
-  success = xboot_unregister_client (NULL, tran_index);
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  EXIT_SERVER ();
+  error_code = xboot_unregister_client (thread_p, tran_index);
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      assert (thread_p == NULL);
+      exit_server_no_thread_entry ();
+    }
+  else
+    {
+      exit_server (*thread_p);
+    }
 
-  return success;
+  return error_code;
 #endif /* !CS_MODE */
 }
 
@@ -3720,12 +3785,12 @@ boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level, bool del
 #else /* CS_MODE */
   int success = false;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xboot_backup (NULL, backup_path, backup_level, delete_unneeded_logarchives, backup_verbose_file,
+  success = xboot_backup (thread_p, backup_path, backup_level, delete_unneeded_logarchives, backup_verbose_file,
 			  num_threads, zip_method, zip_level, skip_activelog, sleep_msecs);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -3786,11 +3851,11 @@ boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info)
 #else /* CS_MODE */
   VOLID volid;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  volid = xboot_add_volume_extension (NULL, ext_info);
+  volid = xboot_add_volume_extension (thread_p, ext_info);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return volid;
 #endif /* !CS_MODE */
@@ -3856,11 +3921,11 @@ boot_check_db_consistency (int check_flag, OID * oids, int num_oids, BTID * inde
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xboot_check_db_consistency (NULL, check_flag, oids, num_oids, index_btid);
+  success = xboot_check_db_consistency (thread_p, check_flag, oids, num_oids, index_btid);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -3895,11 +3960,11 @@ boot_find_number_permanent_volumes (void)
 #else /* CS_MODE */
   int nvols = -1;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  nvols = xboot_find_number_permanent_volumes (NULL);
+  nvols = xboot_find_number_permanent_volumes (thread_p);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return nvols;
 #endif /* !CS_MODE */
@@ -3934,11 +3999,11 @@ boot_find_number_temp_volumes (void)
 #else /* CS_MODE */
   int nvols = -1;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  nvols = xboot_find_number_temp_volumes (NULL);
+  nvols = xboot_find_number_temp_volumes (thread_p);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return nvols;
 #endif /* !CS_MODE */
@@ -3973,11 +4038,11 @@ boot_find_last_permanent (void)
 
   return volid;
 #else /* CS_MODE */
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  volid = xboot_find_last_permanent (NULL);
+  volid = xboot_find_last_permanent (thread_p);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return volid;
 #endif /* !CS_MODE */
@@ -4012,11 +4077,11 @@ boot_find_last_temp (void)
 #else /* CS_MODE */
   int nvols = -1;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  nvols = xboot_find_last_temp (NULL);
+  nvols = xboot_find_last_temp (thread_p);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return nvols;
 #endif /* !CS_MODE */
@@ -4038,11 +4103,11 @@ boot_delete (const char *db_name, bool force_delete)
 #else /* CS_MODE */
   int error_code;
 
-  ENTER_SERVER ();
+  enter_server_no_thread_entry ();
 
-  error_code = xboot_delete (NULL, db_name, force_delete, BOOT_SHUTDOWN_ALL_MODULES);
+  error_code = xboot_delete (db_name, force_delete, BOOT_SHUTDOWN_ALL_MODULES);
 
-  EXIT_SERVER ();
+  exit_server_no_thread_entry ();
 
   return error_code;
 #endif /* !CS_MODE */
@@ -4064,11 +4129,11 @@ boot_restart_from_backup (int print_restart, const char *db_name, BO_RESTART_ARG
 #else /* CS_MODE */
   int tran_index;
 
-  ENTER_SERVER ();
+  enter_server_no_thread_entry ();
 
   tran_index = xboot_restart_from_backup (NULL, print_restart, db_name, r_args);
 
-  EXIT_SERVER ();
+  exit_server_no_thread_entry ();
 
   return tran_index;
 #endif /* !CS_MODE */
@@ -4090,11 +4155,12 @@ boot_shutdown_server (ER_FINAL_CODE iserfinal)
 #else /* CS_MODE */
   bool result;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  result = xboot_shutdown_server (NULL, iserfinal);
+  result = xboot_shutdown_server (thread_p, iserfinal);
+  assert (thread_p == NULL);
 
-  EXIT_SERVER ();
+  exit_server_no_thread_entry ();
 
   return result;
 #endif /* !CS_MODE */
@@ -4206,19 +4272,19 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   int result = NO_ERROR;
   SESSION_ID id;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   if (db_Session_id == DB_EMPTY_SESSION)
     {
-      result = xsession_create_new (NULL, &id);
+      result = xsession_create_new (thread_p, &id);
     }
   else
     {
       id = db_Session_id;
-      if (xsession_check_session (NULL, id) != NO_ERROR)
+      if (xsession_check_session (thread_p, id) != NO_ERROR)
 	{
 	  /* create new session */
-	  if (xsession_create_new (NULL, &id) != NO_ERROR)
+	  if (xsession_create_new (thread_p, &id) != NO_ERROR)
 	    {
 	      result = ER_FAILED;
 	    }
@@ -4231,10 +4297,10 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   /* get row count */
   if (result != ER_FAILED)
     {
-      xsession_get_row_count (NULL, row_count);
+      xsession_get_row_count (thread_p, row_count);
     }
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return result;
 #endif
@@ -4274,11 +4340,11 @@ csession_end_session (SESSION_ID session_id)
 #else
   int result = NO_ERROR;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  result = xsession_end_session (NULL, session_id);
+  result = xsession_end_session (thread_p, session_id);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return result;
 #endif
@@ -4321,11 +4387,11 @@ csession_set_row_count (int rows)
 #else
   int result = NO_ERROR;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  result = xsession_set_row_count (NULL, rows);
+  result = xsession_set_row_count (thread_p, rows);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return result;
 #endif
@@ -4366,11 +4432,11 @@ csession_get_row_count (int *rows)
 #else
   int result = NO_ERROR;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  result = xsession_get_row_count (NULL, rows);
+  result = xsession_get_row_count (thread_p, rows);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return result;
 #endif
@@ -4433,11 +4499,11 @@ cleanup:
   return req_error;
 #else
   int result = NO_ERROR;
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  result = xsession_get_last_insert_id (NULL, value, update_last_insert_id);
+  result = xsession_get_last_insert_id (thread_p, value, update_last_insert_id);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return result;
 #endif
@@ -4470,11 +4536,11 @@ csession_reset_cur_insert_id (void)
 #else
   int result = NO_ERROR;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  result = xsession_reset_cur_insert_id (NULL);
+  result = xsession_reset_cur_insert_id (thread_p);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return result;
 #endif
@@ -4564,7 +4630,7 @@ cleanup:
   size_t len = 0;
   SHA1Hash alias_sha1 = SHA1_HASH_INITIALIZER;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   /* The server keeps a packed version of the prepared statement information and we need to pack it here */
 
@@ -4619,13 +4685,14 @@ cleanup:
     }
 
   result =
-    xsession_create_prepared_statement (NULL, local_name, local_alias_print, &alias_sha1, local_stmt_info, info_length);
+    xsession_create_prepared_statement (thread_p, local_name, local_alias_print, &alias_sha1, local_stmt_info,
+					info_length);
   if (result != NO_ERROR)
     {
       goto error;
     }
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return result;
 
@@ -4644,7 +4711,7 @@ error:
       free_and_init (local_stmt_info);
     }
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return result;
 #endif
@@ -4744,12 +4811,12 @@ error:
   int result = NO_ERROR;
   int stmt_info_len = 0;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   INIT_XASL_NODE_HEADER (xasl_header_p);
-  result = xsession_get_prepared_statement (NULL, name, stmt_info, &stmt_info_len, xasl_id, xasl_header_p);
+  result = xsession_get_prepared_statement (thread_p, name, stmt_info, &stmt_info_len, xasl_id, xasl_header_p);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return result;
 #endif
@@ -4799,11 +4866,11 @@ csession_delete_prepared_statement (const char *name)
 #else
   int result = NO_ERROR;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  result = xsession_delete_prepared_statement (NULL, name);
+  result = xsession_delete_prepared_statement (thread_p, name);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return result;
 #endif
@@ -4853,11 +4920,11 @@ clogin_user (const char *username)
 #else
   int result = NO_ERROR;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  result = xlogin_user (NULL, username);
+  result = xlogin_user (thread_p, username);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return result;
 #endif
@@ -4922,11 +4989,11 @@ cleanup:
 #else
   int err = 0;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  err = xsession_set_session_variables (NULL, variables, count);
+  err = xsession_set_session_variables (thread_p, variables, count);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return err;
 #endif
@@ -4991,11 +5058,11 @@ cleanup:
 #else
   int err = 0;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  err = xsession_drop_session_variables (NULL, variables, count);
+  err = xsession_drop_session_variables (thread_p, variables, count);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return err;
 #endif
@@ -5062,11 +5129,11 @@ cleanup:
   int err = NO_ERROR;
   DB_VALUE *val_ref = NULL;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
   /* we cannot use the allocation methods from the server context so we will just get a reference here */
-  err = xsession_get_session_variable_no_copy (NULL, name, &val_ref);
+  err = xsession_get_session_variable_no_copy (thread_p, name, &val_ref);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   if (err == NO_ERROR)
     {
@@ -5100,13 +5167,13 @@ boot_soft_rename (const char *old_db_name, const char *new_db_name, const char *
 #else /* CS_MODE */
   int error_code;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   error_code =
-    xboot_soft_rename (NULL, old_db_name, new_db_name, new_db_path, new_log_path, new_db_server_host, new_volext_path,
-		       fileof_vols_and_renamepaths, new_db_overwrite, extern_rename, force_delete);
+    xboot_soft_rename (thread_p, old_db_name, new_db_name, new_db_path, new_log_path, new_db_server_host,
+		       new_volext_path, fileof_vols_and_renamepaths, new_db_overwrite, extern_rename, force_delete);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return error_code;
 #endif /* !CS_MODE */
@@ -5130,13 +5197,14 @@ boot_copy (const char *from_dbname, const char *new_db_name, const char *new_db_
 #else /* CS_MODE */
   int error_code;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   error_code =
-    xboot_copy (NULL, from_dbname, new_db_name, new_db_path, new_log_path, new_lob_path, new_db_server_host,
+    xboot_copy (thread_p, from_dbname, new_db_name, new_db_path, new_log_path, new_lob_path, new_db_server_host,
 		new_volext_path, fileof_vols_and_copypaths, new_db_overwrite);
+  assert (thread_p == NULL);
 
-  EXIT_SERVER ();
+  exit_server_no_thread_entry ();
 
   return error_code;
 #endif /* !CS_MODE */
@@ -5158,11 +5226,11 @@ boot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npage
 #else /* CS_MODE */
   int error_code;
 
-  ENTER_SERVER ();
+  enter_server_no_thread_entry ();
 
-  error_code = xboot_emergency_patch (NULL, db_name, recreate_log, log_npages, db_locale, out_fp);
+  error_code = xboot_emergency_patch (db_name, recreate_log, log_npages, db_locale, out_fp);
 
-  EXIT_SERVER ();
+  exit_server_no_thread_entry ();
 
   return error_code;
 #endif /* !CS_MODE */
@@ -5289,11 +5357,11 @@ stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *l
 #else /* CS_MODE */
   char *area;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  area = xstats_get_statistics_from_server (NULL, classoid, timestamp, length_ptr);
+  area = xstats_get_statistics_from_server (thread_p, classoid, timestamp, length_ptr);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return area;
 #endif /* !CS_MODE */
@@ -5339,11 +5407,11 @@ stats_update_statistics (OID * classoid, int with_fullscan)
 #else /* CS_MODE */
   int success;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xstats_update_statistics (NULL, classoid, (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
+  success = xstats_update_statistics (thread_p, classoid, (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -5386,11 +5454,11 @@ stats_update_all_statistics (int with_fullscan)
 #else /* CS_MODE */
   int success;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xstats_update_all_statistics (NULL, (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
+  success = xstats_update_all_statistics (thread_p, (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -5457,16 +5525,16 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
 #else /* CS_MODE */
   int error = NO_ERROR;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  btid = xbtree_add_index (NULL, btid, key_type, class_oid, attr_id, unique_pk, 0, 0, 0);
+  btid = xbtree_add_index (thread_p, btid, key_type, class_oid, attr_id, unique_pk, 0, 0, 0);
   if (btid == NULL)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return error;
 #endif /* !CS_MODE */
@@ -5633,10 +5701,10 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 #else /* CS_MODE */
   int error = NO_ERROR;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   btid =
-    xbtree_load_index (NULL, btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids, attrs_prefix_length,
+    xbtree_load_index (thread_p, btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids, attrs_prefix_length,
 		       hfids, unique_pk, not_null_flag, fk_refcls_oid, fk_refcls_pk_btid, fk_name, pred_stream,
 		       pred_stream_size, expr_stream, expr_stream_size, func_col_id, func_attr_index_start);
   if (btid == NULL)
@@ -5649,7 +5717,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
       error = NO_ERROR;
     }
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return error;
 #endif /* !CS_MODE */
@@ -5691,11 +5759,11 @@ btree_delete_index (BTID * btid)
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xbtree_delete_index (NULL, btid);
+  success = xbtree_delete_index (thread_p, btid);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -5717,11 +5785,11 @@ locator_log_force_nologging (void)
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   success = log_set_no_logging ();
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -5766,11 +5834,11 @@ locator_remove_class_from_index (OID * oid, BTID * btid, HFID * hfid)
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xlocator_remove_class_from_index (NULL, oid, btid, hfid);
+  success = xlocator_remove_class_from_index (thread_p, oid, btid, hfid);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -5854,9 +5922,9 @@ btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid)
       return BTREE_ERROR_OCCURRED;
     }
 
-  ENTER_SERVER ();
-  status = xbtree_find_unique (NULL, btid, S_SELECT_WITH_LOCK, key, class_oid, oid, false);
-  EXIT_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
+  status = xbtree_find_unique (thread_p, btid, S_SELECT_WITH_LOCK, key, class_oid, oid, false);
+  exit_server (*thread_p);
   return status;
 
 #endif /* !CS_MODE */
@@ -6002,13 +6070,14 @@ cleanup:
   OID *local_oids = NULL;
   int local_count = 0;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   result =
-    xbtree_find_multi_uniques (NULL, class_oid, pruning_type, btids, keys, count, op_type, &local_oids, &local_count);
+    xbtree_find_multi_uniques (thread_p, class_oid, pruning_type, btids, keys, count, op_type, &local_oids,
+			       &local_count);
   if (result == BTREE_ERROR_OCCURRED)
     {
-      EXIT_SERVER ();
+      exit_server (*thread_p);
       return result;
     }
 
@@ -6018,16 +6087,16 @@ cleanup:
       *oids = (OID *) malloc (local_count * sizeof (OID));
       if (*oids == NULL)
 	{
-	  db_private_free (NULL, local_oids);
-	  EXIT_SERVER ();
+	  db_private_free (thread_p, local_oids);
+	  exit_server (*thread_p);
 	  return BTREE_ERROR_OCCURRED;
 	}
       *oids_count = local_count;
       memcpy (*oids, local_oids, local_count * sizeof (OID));
-      db_private_free (NULL, local_oids);
+      db_private_free (thread_p, local_oids);
     }
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return result;
 #endif
@@ -6065,11 +6134,11 @@ btree_class_test_unique (char *buf, int buf_size)
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xbtree_class_test_unique (NULL, buf, buf_size);
+  success = xbtree_class_test_unique (thread_p, buf, buf_size);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -6120,11 +6189,11 @@ qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid, char *b
   int success;
   int page_size;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xqfile_get_list_file_page (NULL, query_id, volid, pageid, buffer, &page_size);
+  success = xqfile_get_list_file_page (thread_p, query_id, volid, pageid, buffer, &page_size);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -6255,7 +6324,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
   int error_code = NO_ERROR;
   XASL_STREAM server_stream;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   /* We cannot use the stream created on client context. XASL cache will save the stream in cache entry and it will
    * suppose the stream buffer was allocated using malloc.
@@ -6269,7 +6338,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
       server_stream.buffer = (char *) malloc (stream->buffer_size);
       if (server_stream.buffer == NULL)
 	{
-	  EXIT_SERVER ();
+	  exit_server (*thread_p);
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, stream->buffer_size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -6285,7 +6354,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
   INIT_XASL_NODE_HEADER (server_stream.xasl_header);
 
   /* call the server routine of query prepare */
-  error_code = xqmgr_prepare_query (NULL, context, &server_stream);
+  error_code = xqmgr_prepare_query (thread_p, context, &server_stream);
   if (server_stream.buffer != NULL)
     {
       free_and_init (server_stream.buffer);
@@ -6295,7 +6364,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
       ASSERT_ERROR ();
     }
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return error_code;
 
@@ -6450,14 +6519,14 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
   OID *oid;
   int i;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   /* reallocate dbvals to use server allocation */
   if (dbval_cnt > 0)
     {
       size_t s = dbval_cnt * sizeof (DB_VALUE);
 
-      server_db_values = (DB_VALUE *) db_private_alloc (NULL, s);
+      server_db_values = (DB_VALUE *) db_private_alloc (thread_p, s);
       if (server_db_values == NULL)
 	{
 	  goto cleanup;
@@ -6497,8 +6566,8 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 
   /* call the server routine of query execute */
   list_id =
-    xqmgr_execute_query (NULL, xasl_id, query_idp, dbval_cnt, server_db_values, &flag, clt_cache_time, srv_cache_time,
-			 query_timeout, NULL);
+    xqmgr_execute_query (thread_p, xasl_id, query_idp, dbval_cnt, server_db_values, &flag, clt_cache_time,
+			 srv_cache_time, query_timeout, NULL);
 
 cleanup:
   if (server_db_values != NULL)
@@ -6507,10 +6576,10 @@ cleanup:
 	{
 	  db_value_clear (&server_db_values[i]);
 	}
-      db_private_free (NULL, server_db_values);
+      db_private_free (thread_p, server_db_values);
     }
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return list_id;
 #endif /* !CS_MODE */
@@ -6617,13 +6686,13 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size, QUERY_I
 #else /* CS_MODE */
   QFILE_LIST_ID *regu_result;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   regu_result =
-    xqmgr_prepare_and_execute_query (NULL, xasl_stream, xasl_stream_size, query_idp, dbval_cnt, dbval_ptr, &flag,
+    xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, query_idp, dbval_cnt, dbval_ptr, &flag,
 				     query_timeout);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return regu_result;
 #endif /* !CS_MODE */
@@ -6689,11 +6758,11 @@ qmgr_end_query (QUERY_ID query_id)
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xqmgr_end_query (NULL, query_id);
+  success = xqmgr_end_query (thread_p, query_id);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -6743,12 +6812,12 @@ qmgr_drop_all_query_plans (void)
 #else /* CS_MODE */
   int status;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   /* call the server routine of query drop plan */
-  status = xqmgr_drop_all_query_plans (NULL);
+  status = xqmgr_drop_all_query_plans (thread_p);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return status;
 #endif /* !CS_MODE */
@@ -6777,11 +6846,11 @@ qmgr_dump_query_plans (FILE * outfp)
   req_error = net_client_request_recv_stream (NET_SERVER_QM_QUERY_DUMP_PLANS, NULL, 0, NULL, 0, NULL, 0, outfp);
 #else /* CS_MODE */
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  xqmgr_dump_query_plans (NULL, outfp);
+  xqmgr_dump_query_plans (thread_p, outfp);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 #endif /* !CS_MODE */
 }
 
@@ -6808,11 +6877,11 @@ qmgr_dump_query_cache (FILE * outfp)
   req_error = net_client_request_recv_stream (NET_SERVER_QM_QUERY_DUMP_CACHE, NULL, 0, NULL, 0, NULL, 0, outfp);
 #else /* CS_MODE */
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  xqmgr_dump_query_cache (NULL, outfp);
+  xqmgr_dump_query_cache (thread_p, outfp);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 #endif /* !CS_MODE */
 }
 
@@ -6852,11 +6921,11 @@ qp_get_sys_timestamp (DB_VALUE * value)
   return NO_ERROR;
 #else /* CS_MODE */
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   db_sys_timestamp (value);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return NO_ERROR;
 #endif /* !CS_MODE */
@@ -6905,11 +6974,11 @@ serial_get_current_value (DB_VALUE * value, OID * oid_p, int cached_num)
 #else /* CS_MODE */
   int error = NO_ERROR;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  error = xserial_get_current_value (NULL, value, oid_p, cached_num);
+  error = xserial_get_current_value (thread_p, value, oid_p, cached_num);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return error;
 #endif /* !CS_MODE */
@@ -6959,15 +7028,15 @@ serial_get_next_value (DB_VALUE * value, OID * oid_p, int cached_num, int num_al
 #else /* CS_MODE */
   int error;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   /* 
    * If a client wants to generate AUTO_INCREMENT value during client-side
    * insertion, a server should update LAST_INSERT_ID on a session.
    */
-  error = xserial_get_next_value (NULL, value, oid_p, cached_num, num_alloc, is_auto_increment, true);
+  error = xserial_get_next_value (thread_p, value, oid_p, cached_num, num_alloc, is_auto_increment, true);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return error;
 #endif /* !CS_MODE */
@@ -7008,11 +7077,11 @@ serial_decache (OID * oid)
 
   return NO_ERROR;
 #else /* CS_MODE */
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  xserial_decache (NULL, oid);
+  xserial_decache (thread_p, oid);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return NO_ERROR;
 #endif /* !CS_MODE */
@@ -7046,11 +7115,11 @@ perfmon_server_start_stats (void)
 
   return (status);
 #else /* CS_MODE */
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  perfmon_start_watch (NULL);
+  perfmon_start_watch (thread_p);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return NO_ERROR;
 #endif /* !CS_MODE */
@@ -7083,11 +7152,11 @@ perfmon_server_stop_stats (void)
   return NO_ERROR;
 #else /* CS_MODE */
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  perfmon_stop_watch (NULL);
+  perfmon_stop_watch (thread_p);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
   return NO_ERROR;
 #endif /* !CS_MODE */
 }
@@ -7137,11 +7206,11 @@ perfmon_server_copy_stats (UINT64 * to_stats)
 
 #else /* CS_MODE */
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  xperfmon_server_copy_stats (NULL, to_stats);
+  xperfmon_server_copy_stats (thread_p, to_stats);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
   return NO_ERROR;
 #endif /* !CS_MODE */
 }
@@ -7188,11 +7257,11 @@ perfmon_server_copy_global_stats (UINT64 * to_stats)
   return err;
 #else /* CS_MODE */
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   xperfmon_server_copy_global_stats (to_stats);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
   return NO_ERROR;
 #endif /* !CS_MODE */
 }
@@ -7241,11 +7310,11 @@ catalog_check_rep_dir (OID * class_id, OID * rep_dir_p)
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xcatalog_check_rep_dir (NULL, class_id, rep_dir_p);
+  success = xcatalog_check_rep_dir (thread_p, class_id, rep_dir_p);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -7448,11 +7517,11 @@ logtb_get_pack_tran_table (char **buffer_p, int *size_p, bool include_query_exec
 #else /* CS_MODE */
   int error;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  error = xlogtb_get_pack_tran_table (NULL, buffer_p, size_p, 0);
+  error = xlogtb_get_pack_tran_table (thread_p, buffer_p, size_p, 0);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return error;
 #endif /* !CS_MODE */
@@ -7636,11 +7705,11 @@ logtb_dump_trantable (FILE * outfp)
   req_error = net_client_request_recv_stream (NET_SERVER_LOG_DUMP_TRANTB, NULL, 0, NULL, 0, NULL, 0, outfp);
 #else /* CS_MODE */
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  xlogtb_dump_trantable (NULL, outfp);
+  xlogtb_dump_trantable (thread_p, outfp);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 #endif /* !CS_MODE */
 }
 
@@ -7689,11 +7758,11 @@ heap_get_class_num_objects_pages (HFID * hfid, int approximation, int *nobjs, in
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xheap_get_class_num_objects_pages (NULL, hfid, approximation, nobjs, npages);
+  success = xheap_get_class_num_objects_pages (thread_p, hfid, approximation, nobjs, npages);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -7746,7 +7815,7 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   assert_release (!BTID_IS_NULL (btid));
   assert_release (stat_info->keys == 0);
@@ -7759,14 +7828,14 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
       stat_info->pkeys_size = 0;	/* do not request pkeys info */
     }
 
-  success = btree_get_stats (NULL, stat_info, STATS_WITH_SAMPLING);
+  success = btree_get_stats (thread_p, stat_info, STATS_WITH_SAMPLING);
 
   assert_release (stat_info->leafs > 0);
   assert_release (stat_info->pages > 0);
   assert_release (stat_info->height > 0);
   assert_release (stat_info->keys >= 0);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -7823,14 +7892,14 @@ btree_get_index_key_type (BTID btid, TP_DOMAIN ** key_type_p)
 #else /* CS_MODE */
   int error = NO_ERROR;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   assert_release (!BTID_IS_NULL (&btid));
   assert_release (key_type_p != NULL);
 
-  error = xbtree_get_key_type (NULL, btid, key_type_p);
+  error = xbtree_get_key_type (thread_p, btid, key_type_p);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return error;
 #endif /* !CS_MODE */
@@ -7870,11 +7939,11 @@ db_local_transaction_id (DB_VALUE * result_trid)
 #else /* CS_MODE */
   int success;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xtran_get_local_transaction_id (NULL, result_trid);
+  success = xtran_get_local_transaction_id (thread_p, result_trid);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -7946,7 +8015,7 @@ error_exit:
 #else /* CS_MODE */
   int success = NO_ERROR;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   if (server_info_bits & SI_SYS_DATETIME)
     {
@@ -7963,7 +8032,7 @@ error_exit:
     }
 
 error_exit:
-  EXIT_SERVER ();
+  exit_server (*thread_p);
   return success;
 #endif /* !CS_MODE */
 }
@@ -8013,9 +8082,9 @@ sysprm_change_server_parameters (const SYSPRM_ASSIGN_VALUE * assignments)
 
   return rc;
 #else /* CS_MODE */
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
   xsysprm_change_server_parameters (assignments);
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return PRM_ERR_NO_ERROR;
 #endif /* !CS_MODE */
@@ -8090,9 +8159,9 @@ cleanup:
 
   return rc;
 #else /* CS_MODE */
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
   xsysprm_obtain_server_parameters (*prm_values_ptr);
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return PRM_ERR_NO_ERROR;
 #endif /* !CS_MODE */
@@ -8175,11 +8244,11 @@ sysprm_dump_server_parameters (FILE * outfp)
 
   req_error = net_client_request_recv_stream (NET_SERVER_PRM_DUMP_PARAMETERS, NULL, 0, NULL, 0, NULL, 0, outfp);
 #else /* CS_MODE */
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   xsysprm_dump_server_parameters (outfp);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 #endif /* !CS_MODE */
 }
 
@@ -8224,9 +8293,9 @@ heap_has_instance (HFID * hfid, OID * class_oid, int has_visible_instance)
 #else /* CS_MODE */
   int r = ER_FAILED;
 
-  ENTER_SERVER ();
-  r = xheap_has_instance (NULL, hfid, class_oid, has_visible_instance);
-  EXIT_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
+  r = xheap_has_instance (thread_p, hfid, class_oid, has_visible_instance);
+  exit_server (*thread_p);
 
   return r;
 #endif /* !CS_MODE */
@@ -8264,9 +8333,9 @@ jsp_get_server_port (void)
   return port;
 #else /* CS_MODE */
   int port;
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
   port = jsp_server_port ();
-  EXIT_SERVER ();
+  exit_server (*thread_p);
   return port;
 #endif /* !CS_MODE */
 }
@@ -8306,7 +8375,7 @@ repl_log_get_append_lsa (LOG_LSA * lsa)
   LOG_LSA *tmp_lsa = NULL;
   int r = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
   tmp_lsa = xrepl_log_get_append_lsa ();
   if (lsa && tmp_lsa)
     {
@@ -8317,7 +8386,7 @@ repl_log_get_append_lsa (LOG_LSA * lsa)
     {
       r = ER_FAILED;
     }
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return r;
 #endif /* !CS_MODE */
@@ -8388,9 +8457,9 @@ repl_set_info (REPL_INFO * repl_info)
 #else /* CS_MODE */
   int r = ER_FAILED;
 
-  ENTER_SERVER ();
-  r = xrepl_set_info (NULL, repl_info);
-  EXIT_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
+  r = xrepl_set_info (thread_p, repl_info);
+  exit_server (*thread_p);
   return r;
 #endif /* !CS_MODE */
 }
@@ -8462,11 +8531,12 @@ locator_check_fk_validity (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type, int
 #else /* CS_MODE */
   int error = NO_ERROR;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  error = xlocator_check_fk_validity (NULL, cls_oid, hfid, key_type, n_attrs, attr_ids, pk_cls_oid, pk_btid, fk_name);
+  error =
+    xlocator_check_fk_validity (thread_p, cls_oid, hfid, key_type, n_attrs, attr_ids, pk_cls_oid, pk_btid, fk_name);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
   return error;
 #endif /* !CS_MODE */
 }
@@ -9255,12 +9325,12 @@ cvacuum (void)
 #else /* !CS_MODE */
   int err;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
   /* Call server function for vacuuming */
-  err = xvacuum (NULL);
+  err = xvacuum (thread_p);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return err;
 #endif /* CS_MODE */
@@ -9291,11 +9361,11 @@ log_get_mvcc_snapshot (void)
 #else /* !CS_MODE */
   int err;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  err = xlogtb_get_mvcc_snapshot (NULL);
+  err = xlogtb_get_mvcc_snapshot (thread_p);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return err;
 #endif /* CS_MODE */
@@ -9343,11 +9413,11 @@ locator_upgrade_instances_domain (OID * class_oid, int attribute_id)
 #else /* CS_MODE */
   int error = NO_ERROR;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  error = xlocator_upgrade_instances_domain (NULL, class_oid, attribute_id);
+  error = xlocator_upgrade_instances_domain (thread_p, class_oid, attribute_id);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
   return error;
 #endif /* !CS_MODE */
 }
@@ -9633,11 +9703,11 @@ chksum_insert_repl_log_and_demote_table_lock (REPL_INFO * repl_info, const OID *
 #else /* CS_MODE */
   int r = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  r = xchksum_insert_repl_log_and_demote_table_lock (NULL, repl_info, class_oidp);
+  r = xchksum_insert_repl_log_and_demote_table_lock (thread_p, repl_info, class_oidp);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return r;
 #endif /* !CS_MODE */
@@ -9763,11 +9833,11 @@ locator_redistribute_partition_data (OID * class_oid, int no_oids, OID * oid_lis
 #else /* CS_MODE */
   int success = ER_FAILED;
 
-  ENTER_SERVER ();
+  THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xlocator_redistribute_partition_data (NULL, class_oid, no_oids, oid_list);
+  success = xlocator_redistribute_partition_data (thread_p, class_oid, no_oids, oid_list);
 
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return success;
 #endif /* !CS_MODE */
@@ -9834,21 +9904,21 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
 #else	/* !CS_MODE */	       /* SA_MDOE */
   int error_code = ER_FAILED;
 
-  ENTER_SERVER ();
-  error_code = disk_spacedb (NULL, spaceall, spacevols);
+  THREAD_ENTRY *thread_p = enter_server ();
+  error_code = disk_spacedb (thread_p, spaceall, spacevols);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
     }
   else if (spacefiles != NULL)
     {
-      error_code = file_spacedb (NULL, spacefiles);
+      error_code = file_spacedb (thread_p, spacefiles);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	}
     }
-  EXIT_SERVER ();
+  exit_server (*thread_p);
 
   return error_code;
 #endif /* SA_MODE */

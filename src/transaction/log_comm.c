@@ -50,9 +50,11 @@
 #if defined(SERVER_MODE)
 #include "server_support.h"
 #include "connection_defs.h"
-#include "thread.h"
 #endif /* SERVER_MODE */
 #endif /* !WINDOWS */
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"
+#endif // SERVER_MODE
 
 struct tran_state_name
 {

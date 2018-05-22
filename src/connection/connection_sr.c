@@ -62,7 +62,6 @@
 #include "memory_alloc.h"
 #include "environment_variable.h"
 #include "system_parameter.h"
-#include "thread.h"
 #include "critical_section.h"
 #include "log_manager.h"
 #include "object_representation.h"
@@ -75,6 +74,8 @@
 #include "tcp.h"
 #endif /* WINDOWS */
 #include "connection_sr.h"
+#include "server_support.h"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
 
 #ifdef PACKET_TRACE
 #define TRACE(string, arg)					\
@@ -277,7 +278,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->fd = fd;
   conn->request_id = 0;
   conn->status = CONN_OPEN;
-  conn->transaction_id = -1;
+  conn->set_tran_index (NULL_TRAN_INDEX);
   conn->invalidate_snapshot = 1;
   err = css_get_next_client_id ();
   if (err < 0)
@@ -922,7 +923,8 @@ css_print_conn_entry_info (CSS_CONN_ENTRY * conn)
 {
   fprintf (stderr,
 	   "CONN_ENTRY: %p, next(%p), idx(%d),fd(%lld),request_id(%d),transaction_id(%d),client_id(%d)\n",
-	   conn, conn->next, conn->idx, (long long) conn->fd, conn->request_id, conn->transaction_id, conn->client_id);
+	   conn, conn->next, conn->idx, (long long) conn->fd, conn->request_id, conn->get_tran_index (),
+	   conn->client_id);
 }
 
 /*
@@ -1214,7 +1216,7 @@ css_find_conn_by_tran_index (int tran_index)
       for (conn = css_Active_conn_anchor; conn != NULL; conn = next)
 	{
 	  next = conn->next;
-	  if (conn->transaction_id == tran_index)
+	  if (conn->get_tran_index () == tran_index)
 	    {
 	      break;
 	    }
@@ -1339,7 +1341,7 @@ css_shutdown_conn_by_tran_index (int tran_index)
 
       for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
 	{
-	  if (conn->transaction_id == tran_index)
+	  if (conn->get_tran_index () == tran_index)
 	    {
 	      if (conn->status == CONN_OPEN)
 		{
@@ -1417,7 +1419,7 @@ css_abort_request (CSS_CONN_ENTRY * conn, unsigned short rid)
 
   header.type = htonl (ABORT_TYPE);
   header.request_id = htonl (rid);
-  header.transaction_id = htonl (conn->transaction_id);
+  header.transaction_id = htonl (conn->get_tran_index ());
 
   if (conn->invalidate_snapshot)
     {
@@ -1493,7 +1495,7 @@ css_read_header (CSS_CONN_ENTRY * conn, const NET_HEADER * local_header)
       return CONNECTION_CLOSED;
     }
 
-  conn->transaction_id = ntohl (local_header->transaction_id);
+  conn->set_tran_index (ntohl (local_header->transaction_id));
   conn->db_error = (int) ntohl (local_header->db_error);
 
   flags = ntohs (local_header->flags);
@@ -2168,7 +2170,7 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type, unsigned short request_id, co
       return CONNECTION_CLOSED;
     }
 
-  conn->transaction_id = transaction_id;
+  conn->set_tran_index (transaction_id);
   conn->db_error = db_error;
   conn->invalidate_snapshot = invalidate_snapshot;
 
@@ -2278,7 +2280,7 @@ css_process_abort_packet (CSS_CONN_ENTRY * conn, unsigned short request_id)
   if (css_find_queue_entry (&conn->abort_queue, request_id) == NULL)
     {
       css_add_queue_entry (conn, &conn->abort_queue, request_id, NULL, 0,
-			   NO_ERRORS, conn->transaction_id, conn->invalidate_snapshot, conn->db_error);
+			   NO_ERRORS, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
     }
 }
 
@@ -2367,7 +2369,7 @@ css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
 	      if (data_wait == NULL)
 		{
 		  /* if waiter not exists, add to data queue */
-		  css_add_queue_entry (conn, &conn->data_queue, request_id, buffer, size, rc, conn->transaction_id,
+		  css_add_queue_entry (conn, &conn->data_queue, request_id, buffer, size, rc, conn->get_tran_index (),
 				       conn->invalidate_snapshot, conn->db_error);
 		  return;
 		}
@@ -2394,7 +2396,7 @@ css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
 	  if (data_wait == NULL)
 	    {
 	      css_add_queue_entry (conn, &conn->data_queue, request_id, NULL,
-				   0, rc, conn->transaction_id, conn->invalidate_snapshot, conn->db_error);
+				   0, rc, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
 	      return;
 	    }
 	}
@@ -2434,7 +2436,8 @@ css_queue_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, const 
 	  if (!css_is_request_aborted (conn, request_id))
 	    {
 	      css_add_queue_entry (conn, &conn->error_queue, request_id,
-				   buffer, size, rc, conn->transaction_id, conn->invalidate_snapshot, conn->db_error);
+				   buffer, size, rc, conn->get_tran_index (), conn->invalidate_snapshot,
+				   conn->db_error);
 	      return;
 	    }
 	}
@@ -2447,7 +2450,7 @@ css_queue_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, const 
       if (!css_is_request_aborted (conn, request_id))
 	{
 	  css_add_queue_entry (conn, &conn->error_queue, request_id, NULL, 0,
-			       rc, conn->transaction_id, conn->invalidate_snapshot, conn->db_error);
+			       rc, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
 	}
     }
 }
@@ -2492,8 +2495,8 @@ css_queue_command_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, cons
 
   memcpy ((char *) p, (char *) header, sizeof (NET_HEADER));
 
-  rc = css_add_queue_entry (conn, &conn->request_queue, request_id, (char *) p, size, NO_ERRORS, conn->transaction_id,
-			    conn->invalidate_snapshot, conn->db_error);
+  rc = css_add_queue_entry (conn, &conn->request_queue, request_id, (char *) p, size, NO_ERRORS,
+			    conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
   if (rc != NO_ERRORS)
     {
       css_retire_net_header_entry (conn, p);
@@ -2571,7 +2574,7 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *requ
 	  *request = ntohs (buffer->function_code);
 	  *buffer_size = ntohl (buffer->buffer_size);
 
-	  conn->transaction_id = p->transaction_id;
+	  conn->set_tran_index (p->transaction_id);
 	  conn->invalidate_snapshot = p->invalidate_snapshot;
 	  conn->db_error = p->db_error;
 
@@ -2697,7 +2700,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 
 	  /* set return code, transaction id, and error code */
 	  *rc = data_entry->rc;
-	  conn->transaction_id = data_entry->transaction_id;
+	  conn->set_tran_index (data_entry->transaction_id);
 	  conn->invalidate_snapshot = data_entry->invalidate_snapshot;
 	  conn->db_error = data_entry->db_error;
 
@@ -2928,7 +2931,7 @@ css_queue_user_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, in
   if (buffer && (!css_is_request_aborted (conn, request_id)))
     {
       rc = css_add_queue_entry (conn, &conn->buffer_queue, request_id, buffer,
-				size, NO_ERRORS, conn->transaction_id, conn->invalidate_snapshot, conn->db_error);
+				size, NO_ERRORS, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
     }
 
   r = rmutex_unlock (NULL, &conn->rmutex);

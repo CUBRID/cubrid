@@ -37,16 +37,12 @@
 #include "page_buffer.h"
 #include "perf_monitor.h"
 #include "resource_shared_pool.hpp"
-#include "thread.h"
 #include "thread_entry_task.hpp"
 #if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
 #endif /* SERVER_MODE */
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
-#if defined (SA_MODE)
-#include "transaction_cl.h"	/* for interrupt */
-#endif /* defined (SA_MODE) */
 #include "util_func.h"
 
 #include <atomic>
@@ -627,8 +623,8 @@ static bool is_not_vacuumed_and_lost (THREAD_ENTRY * thread_p, MVCC_REC_HEADER *
 static void print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEADER * rec_header, int btree_node_type);
 
 static bool vacuum_is_empty (void);
-static void vacuum_convert_thread_to_master (THREAD_ENTRY * thread_p, THREAD_TYPE & save_type);
-static void vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, THREAD_TYPE & save_type);
+static void vacuum_convert_thread_to_master (THREAD_ENTRY * thread_p, thread_type & save_type);
+static void vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, thread_type & save_type);
 
 #if !defined (NDEBUG)
 /* Debug function to verify vacuum data. */
@@ -641,7 +637,7 @@ static void vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p);
 
 /* *INDENT-OFF* */
 void
-vacuum_init_thread_context (cubthread::entry &context, THREAD_TYPE type, VACUUM_WORKER *worker)
+vacuum_init_thread_context (cubthread::entry &context, thread_type type, VACUUM_WORKER *worker)
 {
   assert (worker != NULL);
 
@@ -824,7 +820,7 @@ xvacuum (THREAD_ENTRY * thread_p)
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VACUUM_CS_NOT_AVAILABLE, 0);
   return ER_VACUUM_CS_NOT_AVAILABLE;
 #else	/* !SERVER_MODE */		   /* SA_MODE */
-  THREAD_TYPE save_type = THREAD_TYPE::TT_NONE;
+  thread_type save_type = thread_type::TT_NONE;
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) || vacuum_Data.is_vacuum_complete)
     {
@@ -2619,9 +2615,9 @@ vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
 #if defined (SA_MODE)
   // we need a smarter thread manager that can do this automatically
   VACUUM_WORKER *worker_p = vacuum_Worker_context_manager->m_pool->claim ();
-  THREAD_TYPE save_type = THREAD_TYPE::TT_NONE;
+  thread_type save_type = thread_type::TT_NONE;
   vacuum_convert_thread_to_worker (thread_p, worker_p, save_type);
-  assert (save_type == THREAD_TYPE::TT_VACUUM_MASTER);
+  assert (save_type == thread_type::TT_VACUUM_MASTER);
 #endif // SA_MODE
   if (vacuum_Data.shutdown_requested)
     {
@@ -2632,7 +2628,7 @@ vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
 					new vacuum_worker_task (data_entry, is_partial_block));
 #if defined (SA_MODE)
   vacuum_convert_thread_to_master (thread_p, save_type);
-  assert (save_type == THREAD_TYPE::TT_VACUUM_WORKER);
+  assert (save_type == thread_type::TT_VACUUM_WORKER);
   vacuum_Worker_context_manager->m_pool->retire (*worker_p);
 #endif // SA_MODE
 }
@@ -2924,7 +2920,7 @@ restart:
     {
       /* Execute vacuum based on the block not generated yet. */
       /* We don't want to interrupt next operation. */
-      save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+      save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
 
       /* Create vacuum data entry for the job. */
       vacuum_data_entry.blockid = vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid);
@@ -2946,7 +2942,7 @@ restart:
       vacuum_push_task (thread_p, vacuum_data_entry, true);
 
       PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
-      (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
+      (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
     }
 
   /* All vacuum complete. */
@@ -3109,7 +3105,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	  goto end;
 	}
 #else	/* !SERVER_MODE */		   /* SA_MODE */
-      if (thread_get_check_interrupt (thread_p) && logtb_is_interrupted (thread_p, true, &dummy_continue_check))
+      if (logtb_get_check_interrupt (thread_p) && logtb_is_interrupted (thread_p, true, &dummy_continue_check))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	  error_code = ER_INTERRUPTED;
@@ -7835,7 +7831,7 @@ vacuum_log_last_blockid (THREAD_ENTRY * thread_p)
  * save_type (out) : thread entry old type
  */
 static void
-vacuum_convert_thread_to_master (THREAD_ENTRY * thread_p, THREAD_TYPE & save_type)
+vacuum_convert_thread_to_master (THREAD_ENTRY * thread_p, thread_type & save_type)
 {
   if (thread_p == NULL)
     {
@@ -7854,7 +7850,7 @@ vacuum_convert_thread_to_master (THREAD_ENTRY * thread_p, THREAD_TYPE & save_typ
  * save_type (out) : save previous thread type
  */
 static void
-vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, THREAD_TYPE & save_type)
+vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, thread_type & save_type)
 {
   if (thread_p == NULL)
     {
@@ -7877,7 +7873,7 @@ vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker
  * save_type (out) : save previous thread type
  */
 void
-vacuum_rv_convert_thread_to_vacuum (THREAD_ENTRY * thread_p, TRANID trid, THREAD_TYPE & save_type)
+vacuum_rv_convert_thread_to_vacuum (THREAD_ENTRY * thread_p, TRANID trid, thread_type & save_type)
 {
   if (trid == LOG_VACUUM_MASTER_TRANID)
     {
@@ -7899,7 +7895,7 @@ vacuum_rv_convert_thread_to_vacuum (THREAD_ENTRY * thread_p, TRANID trid, THREAD
  * save_type (in) : saved type of thread entry
  */
 void
-vacuum_restore_thread (THREAD_ENTRY * thread_p, THREAD_TYPE save_type)
+vacuum_restore_thread (THREAD_ENTRY * thread_p, thread_type save_type)
 {
   if (thread_p == NULL)
     {
