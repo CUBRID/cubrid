@@ -102,6 +102,7 @@ namespace mem
 
       ~bip_buffer ()
       {
+        assert (m_read_flags.any () == false);
 	delete [] m_buffer;
       };
 
@@ -154,7 +155,7 @@ namespace mem
 	    /* enough till end of buffer, but need to extend region A */
 	    take_margin_in_region_a (amount);
 	    need_take_margin = false;
-	    /* next loop */
+	    /* fall through */
 	  }
 
 	assert (m_ptr_append + amount <= m_ptr_end_a);
@@ -369,7 +370,7 @@ namespace mem
 	    return -1;
 	  }
 
-	return (ptr - m_buffer) / m_read_page_size;
+	return (int) ((ptr - m_buffer) / m_read_page_size);
       }
 
       bool is_range_overlap (const char *ptr1, const size_t size1, const char *ptr2, const size_t size2)
