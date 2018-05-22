@@ -373,7 +373,10 @@ qfile_copy_list_id (QFILE_LIST_ID * dest_list_id_p, const QFILE_LIST_ID * src_li
 
   memset (&dest_list_id_p->tpl_descr, 0, sizeof (QFILE_TUPLE_DESCRIPTOR));
 
-  thread_get_thread_entry_info ()->get_qlist_tracker ().increment (ARG_FILE_LINE, dest_list_id_p);
+  if (dest_list_id_p->type_list.type_cnt != 0)
+    {
+      thread_get_thread_entry_info ()->get_qlist_tracker ().increment (ARG_FILE_LINE, dest_list_id_p);
+    }
 
   return NO_ERROR;
 }
@@ -412,7 +415,10 @@ qfile_clone_list_id (const QFILE_LIST_ID * list_id_p, bool is_include_sort_list)
 void
 qfile_clear_list_id (QFILE_LIST_ID * list_id_p)
 {
-  thread_get_thread_entry_info ()->get_qlist_tracker ().decrement (list_id_p);
+  if (list_id_p->type_list.type_cnt != 0)
+    {
+      thread_get_thread_entry_info ()->get_qlist_tracker ().decrement (list_id_p);
+    }
 
   if (list_id_p->tpl_descr.f_valp)
     {
@@ -1132,7 +1138,10 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
       list_id_p->sort_list = NULL;
     }
 
-  thread_p->get_qlist_tracker ().increment (ARG_FILE_LINE, list_id_p);
+  if (list_id_p->type_list.type_cnt != 0)
+    {
+      thread_p->get_qlist_tracker ().increment (ARG_FILE_LINE, list_id_p);
+    }
 
   return list_id_p;
 }
