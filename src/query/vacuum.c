@@ -1217,10 +1217,19 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Vacuum heap page %d|%d, error_code=%d.",
 			       page_ptr->oid.volid, page_ptr->oid.pageid);
 
-	  assert_release (false);
-	  er_clear ();
-	  error_code = NO_ERROR;
-	  /* Release should not stop. Continue. */
+	  if (thread_p->shutdown)
+	    {
+	      // interrupted for shutdown
+	      return error_code;
+	    }
+	  else
+	    {
+	      // unexpected case
+	      assert_release (false);
+	      er_clear ();
+	      error_code = NO_ERROR;
+	      /* Release should not stop. Continue. */
+	    }
 	}
       /* Advance to next page. */
       page_ptr = obj_ptr;
@@ -3277,6 +3286,12 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	  /* Did we have any errors? */
 	  if (error_code != NO_ERROR)
 	    {
+	      if (thread_p->shutdown)
+		{
+		  // interrupted on shutdown
+		  goto end;
+		}
+	      // unexpected case
 	      assert_release (false);
 	      vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
 			     "Error deleting object or insert MVCCID: error_code=%d", error_code);
@@ -3317,8 +3332,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
   error_code = vacuum_heap (thread_p, worker, threshold_mvccid, was_interrupted);
   if (error_code != NO_ERROR)
     {
-      assert_release (false);
-      /* Release should not stop. Continue. */
+      assert_release (thread_p->shutdown);
+      goto end;
     }
   assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
   assert (worker->tdes->topops.last == -1);
