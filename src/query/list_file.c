@@ -1139,7 +1139,7 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
 
   if (list_id_p->type_list.type_cnt != 0)
     {
-      thread_p->m_qlist_count--;
+      thread_p->m_qlist_count++;
     }
 
   return list_id_p;
