@@ -63,6 +63,8 @@ namespace cubsync
 	return;
       }
 
+    check_csect_interdependencies (cs_index);
+
     cstrack_entry &cs_entry = m_cstrack_array[cs_index];
 
     // is first enter?
@@ -104,6 +106,8 @@ namespace cubsync
 
     cstrack_entry &cs_entry = m_cstrack_array[cs_index];
 
+    check_csect_interdependencies (cs_index);
+
     // is first enter?
     if (cs_entry.m_enter_count == 0)
       {
@@ -114,8 +118,8 @@ namespace cubsync
       }
     // is not first enter.
 
-    // re-enter is not accepted.
-    cstrack_assert (false);
+    // re-enter is only accepted if it was already writer
+    cstrack_assert (cs_entry.m_is_writer);
     cs_entry.m_enter_count++;
   }
 
@@ -176,6 +180,15 @@ namespace cubsync
       {
 	cs_entry.m_is_demoted = false;
 	cs_entry.m_is_writer = false;
+      }
+  }
+
+  void
+  critical_section_tracker::check_csect_interdependencies (int cs_index)
+  {
+    if (cs_index == CSECT_LOCATOR_SR_CLASSNAME_TABLE)
+      {
+	cstrack_assert (m_cstrack_array[CSECT_CT_OID_TABLE].m_enter_count == 0);
       }
   }
 
