@@ -268,7 +268,7 @@ namespace cubthread
 
       int count_private_allocators;
 #endif
-      std::size_t m_qlist_count;
+      int m_qlist_count;
 
       thread_id_t get_id ();
       pthread_t get_posix_id ();
