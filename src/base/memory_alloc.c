@@ -57,7 +57,7 @@ HL_HEAPID private_heap_id = 0;
 #endif /* SERVER_MODE */
 
 #if defined (SERVER_MODE)
-static HL_HEAPID db_private_get_heapid_from_thread (THREAD_ENTRY * thread_p);
+static HL_HEAPID db_private_get_heapid_from_thread (REFPTR (THREAD_ENTRY, thread_p));
 #endif // SERVER_MODE
 
 /*
@@ -455,7 +455,7 @@ db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track)
       return NULL;
     }
 
-  heap_id = (thrd != NULL ? thrd->private_heap_id : db_private_get_heapid_from_thread (NULL));
+  heap_id = db_private_get_heapid_from_thread (thrd);
 
   if (heap_id)
     {
@@ -576,7 +576,7 @@ db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc
       return NULL;
     }
 
-  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id : db_private_get_heapid_from_thread (NULL));
+  heap_id = db_private_get_heapid_from_thread (thrd);
 
   if (heap_id)
     {
@@ -740,7 +740,7 @@ db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
 #if defined (CS_MODE)
   db_ws_free (ptr);
 #elif defined (SERVER_MODE)
-  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id : db_private_get_heapid_from_thread (NULL));
+  heap_id = db_private_get_heapid_from_thread (thrd);
 
   if (heap_id)
     {
@@ -936,17 +936,16 @@ os_free_release (void *ptr, bool rc_track)
 #if defined (SERVER_MODE)
 /*
  * db_private_get_heapid_from_thread () -
- *   return:
- *   thread_p(in):
+ *   return: heap id
+ *   thread_p(in/out): thread local entry; output is never nil
  */
 static HL_HEAPID
-db_private_get_heapid_from_thread (THREAD_ENTRY * thread_p)
+db_private_get_heapid_from_thread (REFPTR (THREAD_ENTRY, thread_p))
 {
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
-
   assert (thread_p != NULL);
 
   return thread_p->private_heap_id;
