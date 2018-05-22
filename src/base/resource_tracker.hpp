@@ -32,7 +32,6 @@
 #include <iostream>
 
 #include <cassert>
-#include <cstring>
 
 namespace cubbase
 {
