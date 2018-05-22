@@ -131,7 +131,7 @@ namespace mem
       bool consume (T *elem, T* &last_used_elem)
         {
           CCQ_SLOT *slot = reinterpret_cast <CCQ_SLOT *> (elem);
-          int pos = slot - m_buffer;
+          int pos = (int) (slot - m_buffer);
 
           return consume (pos, last_used_elem);
         };
@@ -140,7 +140,7 @@ namespace mem
       void undo_produce (T *elem)
         {
           CCQ_SLOT *slot = reinterpret_cast <CCQ_SLOT *> (elem);
-          int pos = slot - m_buffer;
+          int pos = (int) (slot - m_buffer);
 
           int last_element = (m_tail == 0) ? (m_capacity - 1) : (m_tail - 1);
           
@@ -155,7 +155,7 @@ namespace mem
     protected:
       void init (const size_t capacity)
         {
-          m_capacity = capacity;
+          m_capacity = (int) capacity;
           m_buffer = new CCQ_SLOT[capacity];
 
           std::memset (m_buffer, 0, capacity * sizeof (CCQ_SLOT));
