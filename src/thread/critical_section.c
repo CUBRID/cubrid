@@ -485,7 +485,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
       thread_p = thread_get_thread_entry_info ();
     }
 
-  thread_p->get_csect_tracker ().on_enter_as_writer (ARG_FILE_LINE, csect->cs_index);
+  thread_p->get_csect_tracker ().on_enter_as_writer (csect->cs_index);
 
   csect->stats->nenter++;
 
@@ -708,7 +708,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_S
       thread_p = thread_get_thread_entry_info ();
     }
 
-  thread_p->get_csect_tracker ().on_enter_as_reader (ARG_FILE_LINE, csect->cs_index);
+  thread_p->get_csect_tracker ().on_enter_as_reader (csect->cs_index);
 
   csect->stats->nenter++;
 

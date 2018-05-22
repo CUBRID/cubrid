@@ -25,7 +25,6 @@
 #define _CUBRID_CRITICAL_SECTION_TRACKER_HPP_
 
 #include "critical_section.h"
-#include "fileline_location.hpp"
 
 #include <cinttypes>
 
@@ -43,8 +42,8 @@ namespace cubsync
       void stop (void);
       void clear_all (void);
 
-      void on_enter_as_reader (const char *file, int line, int cs_index);
-      void on_enter_as_writer (const char *file, int line, int cs_index);
+      void on_enter_as_reader (int cs_index);
+      void on_enter_as_writer (int cs_index);
       void on_promote (int cs_index);
       void on_demote (int cs_index);
       void on_exit (int cs_index);
@@ -53,7 +52,6 @@ namespace cubsync
 
       struct cstrack_entry
       {
-	cubbase::fileline_location m_first_enter_location;
 	std::uint8_t m_enter_count;
 	bool m_is_writer;
 	bool m_is_demoted;

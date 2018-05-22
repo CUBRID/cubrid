@@ -40,8 +40,7 @@ namespace cubsync
   }
 
   critical_section_tracker::cstrack_entry::cstrack_entry (void)
-    : m_first_enter_location ()
-    , m_enter_count (0)
+    : m_enter_count (0)
     , m_is_writer (false)
     , m_is_demoted (false)
   {
@@ -57,7 +56,7 @@ namespace cubsync
   }
 
   void
-  critical_section_tracker::on_enter_as_reader (const char *file, int line, int cs_index)
+  critical_section_tracker::on_enter_as_reader (int cs_index)
   {
     if (!m_enabled)
       {
@@ -71,7 +70,6 @@ namespace cubsync
     if (cs_entry.m_enter_count == 0)
       {
 	cstrack_assert (!cs_entry.m_is_writer && !cs_entry.m_is_demoted);
-	cs_entry.m_first_enter_location.set (file, line);
 	cs_entry.m_enter_count++;
 	return;
       }
@@ -98,7 +96,7 @@ namespace cubsync
   }
 
   void
-  critical_section_tracker::on_enter_as_writer (const char *file, int line, int cs_index)
+  critical_section_tracker::on_enter_as_writer (int cs_index)
   {
     if (!m_enabled)
       {
@@ -112,7 +110,6 @@ namespace cubsync
     if (cs_entry.m_enter_count == 0)
       {
 	cstrack_assert (!cs_entry.m_is_writer && !cs_entry.m_is_demoted);
-	cs_entry.m_first_enter_location.set (file, line);
 	cs_entry.m_is_writer = true;
 	cs_entry.m_enter_count++;
 	return;
@@ -244,8 +241,6 @@ namespace cubsync
 	      }
 	    os << "     +--- " << csect_name_at (cs_index) << std::endl;
 	    os << "       +--- enter count = " << m_cstrack_array[cs_index].m_enter_count << std::endl;
-	    os << "       +--- first enter location = " << m_cstrack_array[cs_index].m_first_enter_location
-	       << std::endl;
 	    os << "       +--- is writer = " << m_cstrack_array[cs_index].m_is_writer << std::endl;
 	    os << "       +--- is demoted = " << m_cstrack_array[cs_index].m_is_demoted << std::endl;
 	  }

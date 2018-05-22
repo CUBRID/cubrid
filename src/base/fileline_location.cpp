@@ -23,6 +23,8 @@
 
 #include "fileline_location.hpp"
 
+#include <cstring>
+
 namespace cubbase
 {
   fileline_location::fileline_location (const char *fn_arg /* = "" */, int l_arg /* = 0 */)
