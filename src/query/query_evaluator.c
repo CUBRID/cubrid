@@ -38,8 +38,8 @@
 #include "xasl.h"
 #include "dbtype.h"
 #include "query_executor.h"
-#include "thread.h"
 #include "dbtype.h"
+#include "thread_entry.hpp"
 
 #define UNKNOWN_CARD   -2	/* Unknown cardinality of a set member */
 

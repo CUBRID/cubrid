@@ -48,7 +48,6 @@
 #include "lock_free.h"
 #include "object_primitive.h"
 #include "dbtype.h"
-#include "thread.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
@@ -175,7 +174,7 @@ static LF_ENTRY_DESCRIPTOR session_state_Descriptor = {
 /* the active sessions storage */
 static ACTIVE_SESSIONS sessions = { LF_HASH_TABLE_INITIALIZER, LF_FREELIST_INITIALIZER, 0, 0 };
 
-static int session_remove_expired_sessions ();
+static int session_remove_expired_sessions (THREAD_ENTRY * thread_p);
 
 static int session_check_timeout (SESSION_STATE * session_p, SESSION_INFO * active_sessions, bool * remove);
 
@@ -512,7 +511,7 @@ class session_control_daemon_task : public cubthread::entry_task
 	  return;
 	}
 
-      session_remove_expired_sessions ();
+      session_remove_expired_sessions (&thread_ref);
     }
 };
 #endif /* SERVER_MODE */
@@ -906,10 +905,10 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
  *   return      : NO_ERROR or error code
  */
 static int
-session_remove_expired_sessions ()
+session_remove_expired_sessions (THREAD_ENTRY * thread_p)
 {
 #define EXPIRED_SESSION_BUFFER_SIZE 1024
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (NULL, THREAD_TS_SESSIONS);
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
   LF_HASH_TABLE_ITERATOR it;
   SESSION_STATE *state = NULL;
   int err = NO_ERROR, success = 0;
@@ -1382,7 +1381,7 @@ session_get_session_id (THREAD_ENTRY * thread_p, SESSION_ID * id)
   assert (id != NULL);
 
 #if !defined(SERVER_MODE)
-  *id = thread_get_current_session_id ();
+  *id = db_Session_id;
 
   return NO_ERROR;
 #else

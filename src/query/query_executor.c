@@ -62,11 +62,8 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
-#if defined (SA_MODE)
-#include "transaction_cl.h"	/* for interrupt */
-#endif /* defined (SA_MODE) */
 #include "db_json.hpp"
-#include "thread.h"
+#include "thread.h"		// for resource tracker
 
 #include "dbtype.h"
 
@@ -8340,7 +8337,7 @@ qexec_destroy_upddel_ehash_files (THREAD_ENTRY * thread_p, XASL_NODE * buildlist
   bool save_interrupted;
   EHID *hash_list = buildlist->proc.buildlist.upddel_oid_locator_ehids;
 
-  save_interrupted = thread_set_check_interrupt (thread_p, false);
+  save_interrupted = logtb_set_check_interrupt (thread_p, false);
 
   for (idx = 0; idx < buildlist->upd_del_class_cnt; idx++)
     {
@@ -8353,7 +8350,7 @@ qexec_destroy_upddel_ehash_files (THREAD_ENTRY * thread_p, XASL_NODE * buildlist
   db_private_free (thread_p, hash_list);
   buildlist->proc.buildlist.upddel_oid_locator_ehids = NULL;
 
-  (void) thread_set_check_interrupt (thread_p, save_interrupted);
+  (void) logtb_set_check_interrupt (thread_p, save_interrupted);
 }
 
 /*

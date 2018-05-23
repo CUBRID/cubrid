@@ -24,12 +24,14 @@
 #include "thread_entry.hpp"
 
 #include "adjustable_array.h"
+#include "critical_section.h"  // for INF_WAIT
 #include "error_manager.h"
 #include "fault_injection.h"
+#include "lock_free.h"
 #include "log_compress.h"
 #include "memory_alloc.h"
 #include "page_buffer.h"
-#include "thread.h"
+#include "thread.h"     // for resource tracker
 
 #include <cstring>
 #include <sstream>
@@ -50,7 +52,7 @@ namespace cubthread
     , private_lru_index (-1)
     , tran_index_lock ()
     , rid (0)
-    , status (TS_DEAD)
+    , m_status (status::TS_DEAD)
     , th_entry_lock ()
     , wakeup_cond ()
     , private_heap_id (0)
@@ -157,13 +159,30 @@ namespace cubthread
   {
     shutdown = true;
 
-    // migrate thread code here
+    // wakeup if waiting
+    if (m_status != status::TS_WAIT)
+      {
+	// not waiting
+	return;
+      }
+
+    lock ();
+    // check again
+    if (m_status != status::TS_WAIT)
+      {
+	// not waiting
+	unlock ();
+	return;
+      }
+
+    // force wakeup
+    thread_wakeup_already_had_mutex (this, THREAD_RESUME_DUE_TO_SHUTDOWN);
+    unlock ();
   }
 
   void
   entry::request_lock_free_transactions (void)
   {
-#if defined (SERVER_MODE)
     /* lock-free transaction entries */
     tran_entries[THREAD_TS_SPAGE_SAVING] = lf_tran_request_entry (&spage_saving_Ts);
     tran_entries[THREAD_TS_OBJ_LOCK_RES] = lf_tran_request_entry (&obj_lock_res_Ts);
@@ -175,7 +194,6 @@ namespace cubthread
     tran_entries[THREAD_TS_HFID_TABLE] = lf_tran_request_entry (&hfid_table_Ts);
     tran_entries[THREAD_TS_XCACHE] = lf_tran_request_entry (&xcache_Ts);
     tran_entries[THREAD_TS_FPCACHE] = lf_tran_request_entry (&fpcache_Ts);
-#endif // SERVER_MODE
   }
 
   void
@@ -282,4 +300,402 @@ namespace cubthread
     return m_id == std::this_thread::get_id ();
   }
 
+  void
+  entry::return_lock_free_transaction_entries (void)
+  {
+    for (std::size_t i = 0; i < THREAD_TS_COUNT; i++)
+      {
+	if (tran_entries[i] != NULL)
+	  {
+	    if (lf_tran_return_entry (tran_entries[i]) != NO_ERROR)
+	      {
+		assert (false);
+	      }
+	    tran_entries[i] = NULL;
+	  }
+      }
+  }
+
+  void
+  entry::lock (void)
+  {
+    pthread_mutex_lock (&th_entry_lock);
+  }
+
+  void
+  entry::unlock (void)
+  {
+    pthread_mutex_unlock (&th_entry_lock);
+  }
+
 } // namespace cubthread
+
+//////////////////////////////////////////////////////////////////////////
+// legacy C functions
+//////////////////////////////////////////////////////////////////////////
+
+using thread_clock_type = std::chrono::system_clock;
+
+static void thread_wakeup_internal (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason,
+				    bool had_mutex);
+static void thread_check_suspend_reason_and_wakeup_internal (THREAD_ENTRY *thread_p,
+    thread_resume_suspend_status resume_reason,
+    thread_resume_suspend_status suspend_reason,
+    bool had_mutex);
+
+// todo - remove timeval and use std::chrono
+static void
+thread_timeval_add_usec (const std::chrono::microseconds &usec, struct timeval &tv)
+{
+  const long ratio = 1000000;
+
+  // add all usecs to tv_usec
+  tv.tv_usec += (long) usec.count ();
+  // move seconds from tv_usec to tv_sec
+  tv.tv_sec = tv.tv_usec / ratio;
+  tv.tv_usec = tv.tv_usec % ratio;
+}
+
+/*
+ * thread_suspend_wakeup_and_unlock_entry() -
+ *   return:
+ *   thread_p(in):
+ *   suspended_reason(in):
+ *
+ * Note: this function must be called by current thread also, the lock must have already been acquired.
+ */
+void
+thread_suspend_wakeup_and_unlock_entry (cubthread::entry *thread_p, thread_resume_suspend_status suspended_reason)
+{
+  cubthread::entry::status old_status;
+
+  thread_clock_type::time_point start_time_pt;
+  std::chrono::microseconds usecs;
+
+  assert (thread_p->m_status == cubthread::entry::status::TS_RUN
+	  || thread_p->m_status == cubthread::entry::status::TS_CHECK);
+  old_status = thread_p->m_status;
+  thread_p->m_status = cubthread::entry::status::TS_WAIT;
+
+  thread_p->resume_status = suspended_reason;
+
+  if (thread_p->event_stats.trace_slow_query == true)
+    {
+      start_time_pt = thread_clock_type::now ();
+    }
+
+  pthread_cond_wait (&thread_p->wakeup_cond, &thread_p->th_entry_lock);
+
+  if (thread_p->event_stats.trace_slow_query == true)
+    {
+      usecs = std::chrono::duration_cast<std::chrono::microseconds> (thread_clock_type::now () - start_time_pt);
+
+      if (suspended_reason == THREAD_LOCK_SUSPENDED)
+	{
+	  thread_timeval_add_usec (usecs, thread_p->event_stats.lock_waits);
+	}
+      else if (suspended_reason == THREAD_PGBUF_SUSPENDED)
+	{
+	  thread_timeval_add_usec (usecs, thread_p->event_stats.latch_waits);
+	}
+    }
+
+  thread_p->m_status = old_status;
+
+  pthread_mutex_unlock (&thread_p->th_entry_lock);
+}
+
+/*
+ * thread_suspend_timeout_wakeup_and_unlock_entry() -
+ *   return:
+ *   thread_p(in):
+ *   time_p(in):
+ *   suspended_reason(in):
+ */
+int
+thread_suspend_timeout_wakeup_and_unlock_entry (cubthread::entry *thread_p, struct timespec *time_p,
+    thread_resume_suspend_status suspended_reason)
+{
+  int r;
+  cubthread::entry::status old_status;
+  int error = NO_ERROR;
+
+  assert (thread_p->m_status == cubthread::entry::status::TS_RUN
+	  || thread_p->m_status == cubthread::entry::status::TS_CHECK);
+  old_status = thread_p->m_status;
+  thread_p->m_status = cubthread::entry::status::TS_WAIT;
+
+  thread_p->resume_status = suspended_reason;
+
+  r = pthread_cond_timedwait (&thread_p->wakeup_cond, &thread_p->th_entry_lock, time_p);
+
+  if (r != 0 && r != ETIMEDOUT)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_TIMEDWAIT, 0);
+      return ER_CSS_PTHREAD_COND_TIMEDWAIT;
+    }
+
+  if (r == ETIMEDOUT)
+    {
+      error = ER_CSS_PTHREAD_COND_TIMEDOUT;
+    }
+
+  thread_p->m_status = old_status;
+
+  pthread_mutex_unlock (&thread_p->th_entry_lock);
+
+  return error;
+}
+
+/*
+ * thread_wakeup_internal () -
+ *   return:
+ *   thread_p(in/out):
+ *   resume_reason:
+ */
+static void
+thread_wakeup_internal (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason, bool had_mutex)
+{
+  if (had_mutex == false)
+    {
+      thread_lock_entry (thread_p);
+    }
+
+  pthread_cond_signal (&thread_p->wakeup_cond);
+  thread_p->resume_status = resume_reason;
+
+  if (had_mutex == false)
+    {
+      thread_unlock_entry (thread_p);
+    }
+}
+
+/*
+ * thread_check_suspend_reason_and_wakeup_internal () -
+ *   return:
+ *   thread_p(in):
+ *   resume_reason:
+ *   suspend_reason:
+ *   had_mutex:
+ */
+static void
+thread_check_suspend_reason_and_wakeup_internal (cubthread::entry *thread_p,
+    thread_resume_suspend_status resume_reason,
+    thread_resume_suspend_status suspend_reason, bool had_mutex)
+{
+  if (had_mutex == false)
+    {
+      thread_lock_entry (thread_p);
+    }
+
+  if (thread_p->resume_status != suspend_reason)
+    {
+      thread_unlock_entry (thread_p);
+      return;
+    }
+
+  pthread_cond_signal (&thread_p->wakeup_cond);
+
+  thread_p->resume_status = resume_reason;
+
+  thread_unlock_entry (thread_p);
+}
+
+/*
+ * thread_wakeup () -
+ *   return:
+ *   thread_p(in/out):
+ *   resume_reason:
+ */
+void
+thread_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason)
+{
+  thread_wakeup_internal (thread_p, resume_reason, false);
+}
+
+void
+thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason,
+					thread_resume_suspend_status suspend_reason)
+{
+  thread_check_suspend_reason_and_wakeup_internal (thread_p, resume_reason, suspend_reason, false);
+}
+
+/*
+ * thread_wakeup_already_had_mutex () -
+ *   return:
+ *   thread_p(in/out):
+ *   resume_reason:
+ */
+void
+thread_wakeup_already_had_mutex (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason)
+{
+  thread_wakeup_internal (thread_p, resume_reason, true);
+}
+
+/*
+ * thread_suspend_with_other_mutex() -
+ *   return: 0 if no error, or error code
+ *   thread_p(in):
+ *   mutex_p():
+ *   timeout(in):
+ *   to(in):
+ *   suspended_reason(in):
+ */
+int
+thread_suspend_with_other_mutex (cubthread::entry *thread_p, pthread_mutex_t *mutex_p, int timeout,
+				 struct timespec *to, thread_resume_suspend_status suspended_reason)
+{
+  int r = 0;
+  cubthread::entry::status old_status;
+  int error = NO_ERROR;
+
+  assert (thread_p != NULL);
+  old_status = thread_p->m_status;
+
+  pthread_mutex_lock (&thread_p->th_entry_lock);
+
+  thread_p->m_status = cubthread::entry::status::TS_WAIT;
+  thread_p->resume_status = suspended_reason;
+
+  pthread_mutex_unlock (&thread_p->th_entry_lock);
+
+  if (timeout == INF_WAIT)
+    {
+      pthread_cond_wait (&thread_p->wakeup_cond, mutex_p);
+    }
+  else
+    {
+      r = pthread_cond_timedwait (&thread_p->wakeup_cond, mutex_p, to);
+    }
+
+  /* we should restore thread's status */
+  if (r != NO_ERROR)
+    {
+      error = (r == ETIMEDOUT) ? ER_CSS_PTHREAD_COND_TIMEDOUT : ER_CSS_PTHREAD_COND_WAIT;
+      if (timeout == INF_WAIT || r != ETIMEDOUT)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+    }
+
+  pthread_mutex_lock (&thread_p->th_entry_lock);
+
+  thread_p->m_status = old_status;
+
+  pthread_mutex_unlock (&thread_p->th_entry_lock);
+
+  assert (error == NO_ERROR || error == ER_CSS_PTHREAD_COND_TIMEDOUT);
+
+  return error;
+}
+
+/*
+ * thread_type_to_string () - Translate thread type into string
+ *                            representation
+ *   return:
+ *   type(in): thread type
+ */
+const char *
+thread_type_to_string (thread_type type)
+{
+  switch (type)
+    {
+    case TT_MASTER:
+      return "MASTER";
+    case TT_SERVER:
+      return "SERVER";
+    case TT_WORKER:
+      return "WORKER";
+    case TT_DAEMON:
+      return "DAEMON";
+    case TT_VACUUM_MASTER:
+      return "VACUUM_MASTER";
+    case TT_VACUUM_WORKER:
+      return "VACUUM_WORKER";
+    case TT_NONE:
+      return "NONE";
+    }
+  return "UNKNOWN";
+}
+
+/*
+ * thread_status_to_string () - Translate thread status into string
+ *                              representation
+ *   return:
+ *   type(in): thread type
+ */
+const char *
+thread_status_to_string (cubthread::entry::status status)
+{
+  switch (status)
+    {
+    case cubthread::entry::status::TS_DEAD:
+      return "DEAD";
+    case cubthread::entry::status::TS_FREE:
+      return "FREE";
+    case cubthread::entry::status::TS_RUN:
+      return "RUN";
+    case cubthread::entry::status::TS_WAIT:
+      return "WAIT";
+    case cubthread::entry::status::TS_CHECK:
+      return "CHECK";
+    }
+  return "UNKNOWN";
+}
+
+/*
+ * thread_resume_status_to_string () - Translate thread resume status into
+ *                                     string representation
+ *   return:
+ *   type(in): thread type
+ */
+const char *
+thread_resume_status_to_string (thread_resume_suspend_status resume_status)
+{
+  switch (resume_status)
+    {
+    case THREAD_RESUME_NONE:
+      return "RESUME_NONE";
+    case THREAD_RESUME_DUE_TO_INTERRUPT:
+      return "RESUME_DUE_TO_INTERRUPT";
+    case THREAD_RESUME_DUE_TO_SHUTDOWN:
+      return "RESUME_DUE_TO_SHUTDOWN";
+    case THREAD_PGBUF_SUSPENDED:
+      return "PGBUF_SUSPENDED";
+    case THREAD_PGBUF_RESUMED:
+      return "PGBUF_RESUMED";
+    case THREAD_JOB_QUEUE_SUSPENDED:
+      return "JOB_QUEUE_SUSPENDED";
+    case THREAD_JOB_QUEUE_RESUMED:
+      return "JOB_QUEUE_RESUMED";
+    case THREAD_CSECT_READER_SUSPENDED:
+      return "CSECT_READER_SUSPENDED";
+    case THREAD_CSECT_READER_RESUMED:
+      return "CSECT_READER_RESUMED";
+    case THREAD_CSECT_WRITER_SUSPENDED:
+      return "CSECT_WRITER_SUSPENDED";
+    case THREAD_CSECT_WRITER_RESUMED:
+      return "CSECT_WRITER_RESUMED";
+    case THREAD_CSECT_PROMOTER_SUSPENDED:
+      return "CSECT_PROMOTER_SUSPENDED";
+    case THREAD_CSECT_PROMOTER_RESUMED:
+      return "CSECT_PROMOTER_RESUMED";
+    case THREAD_CSS_QUEUE_SUSPENDED:
+      return "CSS_QUEUE_SUSPENDED";
+    case THREAD_CSS_QUEUE_RESUMED:
+      return "CSS_QUEUE_RESUMED";
+    case THREAD_HEAP_CLSREPR_SUSPENDED:
+      return "HEAP_CLSREPR_SUSPENDED";
+    case THREAD_HEAP_CLSREPR_RESUMED:
+      return "HEAP_CLSREPR_RESUMED";
+    case THREAD_LOCK_SUSPENDED:
+      return "LOCK_SUSPENDED";
+    case THREAD_LOCK_RESUMED:
+      return "LOCK_RESUMED";
+    case THREAD_LOGWR_SUSPENDED:
+      return "LOGWR_SUSPENDED";
+    case THREAD_LOGWR_RESUMED:
+      return "LOGWR_RESUMED";
+    }
+  return "UNKNOWN";
+}

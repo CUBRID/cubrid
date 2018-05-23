@@ -24,10 +24,17 @@
 #ifndef _THREAD_ENTRY_HPP_
 #define _THREAD_ENTRY_HPP_
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Wrong module
+#endif // not SERVER_MODE and not SA_MODE
+
 #include "error_context.hpp"
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
+
 #include <thread>
+
+#include <cassert>
 
 // forward definitions
 // from adjustable_array.h
@@ -67,6 +74,7 @@ struct lf_tran_entry;
 typedef struct event_stat EVENT_STAT;
 struct event_stat
 {
+  // todo - replace timeval with std::chrono::milliseconds
   /* slow query stats */
   struct timeval cs_waits;
   struct timeval lock_waits;
@@ -85,8 +93,8 @@ struct event_stat
 
 typedef std::thread::id thread_id_t;
 
-// FIXME
-enum THREAD_TYPE
+// FIXME - move these enum to cubthread::entry
+enum thread_type
 {
   TT_MASTER,
   TT_SERVER,
@@ -95,6 +103,33 @@ enum THREAD_TYPE
   TT_VACUUM_MASTER,
   TT_VACUUM_WORKER,
   TT_NONE
+};
+
+enum thread_resume_suspend_status
+{
+  THREAD_RESUME_NONE = 0,
+  THREAD_RESUME_DUE_TO_INTERRUPT = 1,
+  THREAD_RESUME_DUE_TO_SHUTDOWN = 2,
+  THREAD_PGBUF_SUSPENDED = 3,
+  THREAD_PGBUF_RESUMED = 4,
+  THREAD_JOB_QUEUE_SUSPENDED = 5,
+  THREAD_JOB_QUEUE_RESUMED = 6,
+  THREAD_CSECT_READER_SUSPENDED = 7,
+  THREAD_CSECT_READER_RESUMED = 8,
+  THREAD_CSECT_WRITER_SUSPENDED = 9,
+  THREAD_CSECT_WRITER_RESUMED = 10,
+  THREAD_CSECT_PROMOTER_SUSPENDED = 11,
+  THREAD_CSECT_PROMOTER_RESUMED = 12,
+  THREAD_CSS_QUEUE_SUSPENDED = 13,
+  THREAD_CSS_QUEUE_RESUMED = 14,
+  THREAD_HEAP_CLSREPR_SUSPENDED = 15,
+  THREAD_HEAP_CLSREPR_RESUMED = 16,
+  THREAD_LOCK_SUSPENDED = 17,
+  THREAD_LOCK_RESUMED = 18,
+  THREAD_LOGWR_SUSPENDED = 19,
+  THREAD_LOGWR_RESUMED = 20,
+  THREAD_ALLOC_BCB_SUSPENDED = 21,
+  THREAD_ALLOC_BCB_RESUMED = 22,
 };
 
 namespace cubthread
@@ -130,6 +165,16 @@ namespace cubthread
       entry ();
       ~entry ();
 
+      // enumerations
+      enum class status
+      {
+	TS_DEAD,
+	TS_FREE,
+	TS_RUN,
+	TS_WAIT,
+	TS_CHECK
+      };
+
       // public functions
 
       // Context template requirement
@@ -140,7 +185,7 @@ namespace cubthread
       // The rules of thumbs is to always use private members. Until a complete refactoring, these members will remain
       // public
       int index;			/* thread entry index */
-      THREAD_TYPE type;		/* thread type */
+      thread_type type;		/* thread type */
       thread_id_t emulate_tid;	/* emulated thread id; applies to non-worker threads, when works on behalf of a worker
 				   * thread */
       int client_id;		/* client id whom this thread is responding */
@@ -148,7 +193,7 @@ namespace cubthread
       int private_lru_index;	/* private lru index when transaction quota is used */
       pthread_mutex_t tran_index_lock;
       unsigned int rid;		/* request id which this thread is processing */
-      int status;			/* thread status */
+      status m_status;			/* thread status */
 
       pthread_mutex_t th_entry_lock;	/* latch for this thread entry */
       pthread_cond_t wakeup_cond;	/* wakeup condition */
@@ -165,7 +210,7 @@ namespace cubthread
       unsigned int rand_seed;	/* seed for rand_r() */
       struct drand48_data rand_buf;	/* seed for lrand48_r(), drand48_r() */
 
-      int resume_status;		/* resume status */
+      thread_resume_suspend_status resume_status;		/* resume status */
       int request_latch_mode;	/* for page latch support */
       int request_fix_count;
       bool victim_request_fail;
@@ -222,6 +267,11 @@ namespace cubthread
       void unregister_id ();
       bool is_on_current_thread ();
 
+      void return_lock_free_transaction_entries (void);
+
+      void lock (void);
+      void unlock (void);
+
       cuberr::context &get_error_context (void)
       {
 	return m_error;
@@ -247,4 +297,103 @@ typedef cubthread::entry THREAD_ENTRY;
 typedef std::thread::id thread_id_t;
 #endif // _THREAD_COMPAT_HPP_
 
+//////////////////////////////////////////////////////////////////////////
+// alias functions for C legacy code
+//
+// use inline functions instead definitions
+//////////////////////////////////////////////////////////////////////////
+
+inline int
+thread_get_recursion_depth (cubthread::entry *thread_p)
+{
+  return thread_p->xasl_recursion_depth;
+}
+
+inline void
+thread_inc_recursion_depth (cubthread::entry *thread_p)
+{
+  thread_p->xasl_recursion_depth++;
+}
+
+inline void
+thread_dec_recursion_depth (cubthread::entry *thread_p)
+{
+  thread_p->xasl_recursion_depth--;
+}
+
+inline void
+thread_clear_recursion_depth (cubthread::entry *thread_p)
+{
+  thread_p->xasl_recursion_depth = 0;
+}
+
+inline void
+thread_trace_on (cubthread::entry *thread_p)
+{
+  thread_p->on_trace = true;
+}
+
+inline void
+thread_set_trace_format (cubthread::entry *thread_p, int format)
+{
+  thread_p->trace_format = format;
+}
+
+inline bool
+thread_is_on_trace (cubthread::entry *thread_p)
+{
+  return thread_p->on_trace;
+}
+
+inline void
+thread_set_clear_trace (cubthread::entry *thread_p, bool clear)
+{
+  thread_p->clear_trace = clear;
+}
+
+inline bool
+thread_need_clear_trace (cubthread::entry *thread_p)
+{
+  return thread_p->clear_trace;
+}
+
+inline bool
+thread_get_sort_stats_active (cubthread::entry *thread_p)
+{
+  return thread_p->sort_stats_active;
+}
+
+inline bool
+thread_set_sort_stats_active (cubthread::entry *thread_p, bool new_flag)
+{
+  bool old_flag = thread_p->sort_stats_active;
+  thread_p->sort_stats_active = new_flag;
+  return old_flag;
+}
+
+inline void
+thread_lock_entry (cubthread::entry *thread_p)
+{
+  thread_p->lock ();
+}
+
+inline void
+thread_unlock_entry (cubthread::entry *thread_p)
+{
+  thread_p->unlock ();
+}
+
+void thread_suspend_wakeup_and_unlock_entry (cubthread::entry *p, thread_resume_suspend_status suspended_reason);
+int thread_suspend_timeout_wakeup_and_unlock_entry (cubthread::entry *p, struct timespec *t,
+    thread_resume_suspend_status suspended_reason);
+void thread_wakeup (cubthread::entry *p, thread_resume_suspend_status resume_reason);
+void thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason,
+    thread_resume_suspend_status suspend_reason);
+void thread_wakeup_already_had_mutex (cubthread::entry *p, thread_resume_suspend_status resume_reason);
+int thread_suspend_with_other_mutex (cubthread::entry *p, pthread_mutex_t *mutexp, int timeout, struct timespec *to,
+				     thread_resume_suspend_status suspended_reason);
+
+const char *thread_type_to_string (thread_type type);
+const char *thread_status_to_string (cubthread::entry::status status);
+const char *thread_resume_status_to_string (thread_resume_suspend_status resume_status);
 #endif // _THREAD_ENTRY_HPP_

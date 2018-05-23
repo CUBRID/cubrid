@@ -257,6 +257,10 @@ extern void *db_private_alloc_external (void *thrd, size_t size);
 extern void db_private_free_external (void *thrd, void *ptr);
 extern void *db_private_realloc_external (void *thrd, void *ptr, size_t size);
 
+#if defined (SERVER_MODE)
+extern HL_HEAPID db_private_set_heapid_to_thread (THREAD_ENTRY * thread_p, HL_HEAPID heap_id);
+#endif // SERVER_MODE
+
 extern HL_HEAPID db_create_fixed_heap (int req_size, int recs_per_chunk);
 extern void db_destroy_fixed_heap (HL_HEAPID heap_id);
 extern void *db_fixed_alloc (HL_HEAPID heap_id, size_t size);

@@ -426,7 +426,6 @@ struct css_conn_entry
   SOCKET fd;
   unsigned short request_id;
   int status;			/* CONN_OPEN, CONN_CLOSED, CONN_CLOSING = 3 */
-  int transaction_id;
   int invalidate_snapshot;
   int client_id;
   int db_error;
@@ -469,6 +468,18 @@ struct css_conn_entry
 #endif
   SESSION_ID session_id;
   CSS_CONN_ENTRY *next;
+
+#if defined __cplusplus
+  // transaction ID manipulation
+  void set_tran_index (int tran_index);
+  int get_tran_index (void);
+
+private:
+  // note - I want to protect this.
+  int transaction_id;
+#else				// not c++ = c
+  int transaction_id;
+#endif				// not c++ = c
 };
 
 /*
