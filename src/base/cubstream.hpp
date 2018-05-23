@@ -56,8 +56,18 @@ namespace cubstream
       typedef std::function<int (const stream_position &, char *, const size_t, size_t &)> fetch_func_t;
 
     protected:
+      /* callback functions: */
+      /* called before old data content needs to be dropped : the drop position is an aggregate minimum of all
+       * readers; when the difference between append position and drop position exceeds threshold, this action
+       * needs to be taken (usually saving to disk) */
       notify_func_t m_filled_stream_handler;
+
+      /* called when reader does not have enough data to read; usually it blocks in waiting for producing, but
+       * may be used as actively producing data */
       fetch_func_t m_fetch_data_handler;
+
+      /* called when commit position advances enough (delta above threshold); the usual action is notify readers
+       */
       notify_func_t m_ready_pos_handler;
 
       /* current stream position not allocated yet */
