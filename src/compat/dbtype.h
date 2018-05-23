@@ -283,6 +283,8 @@ extern "C"
   extern bool db_is_json_value_type (DB_TYPE type);
   extern bool db_is_json_doc_type (DB_TYPE type);
 
+  extern bool db_value_is_corrupted (const DB_VALUE * value);
+
 /* Use the inline version of the functions. */
 #include "dbtype_function.i"
 
