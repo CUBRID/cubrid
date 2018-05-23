@@ -53,8 +53,8 @@ namespace cubstream
       typedef std::function<int (const stream_position &, char *, const size_t, size_t &)> read_prepare_func_t;
       typedef std::function<int (const stream_position &, char *, const size_t)> write_func_t;
       typedef std::function<int (const stream_position &, const size_t)> notify_func_t;
-      typedef std::function<int (const stream_position &, char *, const size_t, size_t&)> fetch_func_t;
- 
+      typedef std::function<int (const stream_position &, char *, const size_t, size_t &)> fetch_func_t;
+
     protected:
       notify_func_t m_filled_stream_handler;
       fetch_func_t m_fetch_data_handler;
@@ -65,7 +65,7 @@ namespace cubstream
 
       /* last stream position read
        * in most scenarios, each reader provides its own read position,
-       * this is a shared "read position" usable only in single read scenarios 
+       * this is a shared "read position" usable only in single read scenarios
        * any reader can access the stream using random position concurrently */
       stream_position m_read_position;
 
@@ -103,14 +103,14 @@ namespace cubstream
       };
 
       const stream_position &get_last_dropable_pos (void)
-        {
-          return m_last_dropable_pos;
-        };
+      {
+	return m_last_dropable_pos;
+      };
 
       void set_last_dropable_pos (const stream_position &last_dropable_pos)
-        {
-          m_last_dropable_pos = last_dropable_pos;
-        };
+      {
+	m_last_dropable_pos = last_dropable_pos;
+      };
 
       void set_filled_stream_handler (notify_func_t handler)
       {
@@ -125,10 +125,10 @@ namespace cubstream
 	m_ready_pos_handler = handler;
       };
 
-      const std::string& name (void)
-        {
-          return m_stream_name;
-        }
+      const std::string &name (void)
+      {
+	return m_stream_name;
+      }
   };
 
 } /* namespace cubstream */

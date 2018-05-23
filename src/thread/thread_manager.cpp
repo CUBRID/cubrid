@@ -408,14 +408,14 @@ namespace cubthread
     //       generated at "runtime" (after thread starts its task). however, with current thread entry design, that is
     //       rather unlikely.
 
-    m_max_threads = max_active_workers + max_conn_workers + max_vacuum_workers + max_daemons;      
+    m_max_threads = max_active_workers + max_conn_workers + max_vacuum_workers + max_daemons;
   }
 
   void
   manager::set_max_thread_count (std::size_t count)
-    {
-      m_max_threads = count;
-    }
+  {
+    m_max_threads = count;
+  }
 
   void
   manager::return_lock_free_transaction_entries (void)
