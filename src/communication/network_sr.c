@@ -51,9 +51,11 @@
 #include "event_log.h"
 #include "util_func.h"
 #include "tz_support.h"
-#if defined(WINDOWS)
+#if !defined(WINDOWS)
+#include "tcp.h"
+#else /* WINDOWS */
 #include "wintcp.h"
-#endif /* WINDOWS */
+#endif
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 

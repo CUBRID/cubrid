@@ -506,7 +506,7 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
  *       "new-style" multiple port-id connection interface
  */
 bool
-css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
+css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SERVER_REQUEST request)
 {
   return false;
 }

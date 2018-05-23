@@ -208,7 +208,25 @@ namespace cubthread
   {
     shutdown = true;
 
-    // migrate thread code here
+    // wakeup if waiting
+    if (m_status != status::TS_WAIT)
+      {
+	// not waiting
+	return;
+      }
+
+    lock ();
+    // check again
+    if (m_status != status::TS_WAIT)
+      {
+	// not waiting
+	unlock ();
+	return;
+      }
+
+    // force wakeup
+    thread_wakeup_already_had_mutex (this, THREAD_RESUME_DUE_TO_SHUTDOWN);
+    unlock ();
   }
 
   void

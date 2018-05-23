@@ -3994,6 +3994,8 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
 	      goto error;
 	    }
 
+	  // get current thread entry
+	  thread_p = thread_get_thread_entry_info ();
 	  error_code =
 	    xboot_copy (thread_p, from_dbname, new_db_name, new_db_path, new_log_path, new_lob_path, new_db_server_host,
 			new_volext_path, fileof_vols_and_copypaths, false);
