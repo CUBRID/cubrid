@@ -12975,7 +12975,7 @@ namespace Func
 
       parser_node* get_arg(size_t index)
       {
-        for(auto arg=m_node->info.function.arg_list; arg; arg = arg->next, --index)
+        for(auto arg=m_node->info.function.arg_list; arg; arg=arg->next, --index)
           {
             if(index == 0)
               {
@@ -12993,9 +12993,9 @@ namespace Func
             return arg;
           }
         arg = pt_wrap_with_cast_op(m_parser, arg, type, p, s, dt);
-        if(arg == NULL)
+        if(arg == NULL)//memory allocation failed
           {
-            printf("ERR [%s()] cast failed (%d -> %d)\n", __func__, arg->type_enum, type);
+            return NULL;
           }
         if(prev)
           {
@@ -13045,9 +13045,9 @@ namespace Func
                          (PT_IS_SIMPLE_CHAR_STRING_TYPE(arg2->type_enum) && PT_IS_NATIONAL_CHAR_STRING_TYPE(arg1->type_enum)))
                         {
                           //printf("ERR group_concat(char and nchar)\n");
-	                  PT_ERRORmf3 (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
-			               pt_show_function (PT_GROUP_CONCAT),
-                                       pt_show_type_enum (arg1->type_enum), pt_show_type_enum (arg2->type_enum));
+                          PT_ERRORmf3 (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
+                            pt_show_function (PT_GROUP_CONCAT),
+                            pt_show_type_enum (arg1->type_enum), pt_show_type_enum (arg2->type_enum));
                           m_node->type_enum = PT_TYPE_VARCHAR;
                           return false;
                         }
@@ -13217,7 +13217,6 @@ namespace Func
   bool cmp_types_castable(const pt_arg_type& type, pt_type_enum type_enum)//is possible to cast type_enum -> type?
   {
     assert(type.type != pt_arg_type::INDEX);
-    //this should be detailed because casting CHAR to NUMBER or SMALLINT to INT should be possible
     if (type.type == pt_arg_type::NORMAL)
       {
         switch(type.val.type)
@@ -13352,8 +13351,7 @@ namespace Func
  *   node(in): a parse tree node of type PT_FUNCTION denoting an
  *             an expression with aggregate functions.
  */
-static PT_NODE *
-pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
+static PT_NODE* pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   FUNC_TYPE fcode = node->info.function.function_type;
 
@@ -13416,7 +13414,6 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
-  //printf("fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
   Func::Node funcNode(parser, node);
   if(funcNode.preprocess())
     {
@@ -13439,7 +13436,6 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
             {
               node->type_enum = PT_TYPE_NA;//to avoid entering here 2nd time
               //arg_type = PT_TYPE_NONE;//unused!?
-              //PT_ERRORf3 (parser, node, "========== NO FUNCTION SIGNATURE MATCHES fcode=%d=%s args: %s ==========\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
               PT_ERRORf3 (parser, node, "========== NO FUNCTION SIGNATURE MATCHES fcode=%d=%s args: %s ==========\n", fcode, "..."/*Func::type_str[fcode-PT_MIN]*/, parser_print_tree_list(parser, arg_list));
             }
         }
