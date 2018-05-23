@@ -228,7 +228,7 @@ namespace cubsync
     if (m_start_count == 0)
       {
 	// check no critical section is entered
-	check ();
+	clear_all ();
       }
   }
 
@@ -251,6 +251,8 @@ namespace cubsync
 	    os << "       +--- enter count = " << m_cstrack_array[cs_index].m_enter_count << std::endl;
 	    os << "       +--- is writer = " << m_cstrack_array[cs_index].m_is_writer << std::endl;
 	    os << "       +--- is demoted = " << m_cstrack_array[cs_index].m_is_demoted << std::endl;
+
+	    cstrack_assert (false);
 	  }
       }
   }

@@ -43,6 +43,7 @@ static void test_push_pop (void);
 static void test_leaks (void);
 static void test_amount (void);
 static void test_abort (void);
+static void test_csect (void);
 
 int
 main (int, char **)
@@ -53,6 +54,7 @@ main (int, char **)
   test_leaks ();
   test_amount ();
   test_abort ();
+  test_csect ();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -237,4 +239,159 @@ test_abort (void)
     rt.pop_track ();
   }
   check_no_error ();
+}
+
+void
+test_csect (void)
+{
+  // enabled
+  cubsync::critical_section_tracker cst = { true };
+
+  // test no conflict => no error
+  {
+    cst.start ();
+
+    // enter as reader and exit
+    cst.on_enter_as_reader (0);
+    cst.on_exit (0);
+
+    // enter as writer and exit
+    cst.on_enter_as_writer (0);
+    cst.on_exit (0);
+
+    // enter as reader, promote, demote, exit
+    cst.on_enter_as_reader (0);
+    cst.on_promote (0);
+    cst.on_demote (0);
+    cst.on_exit (0);
+
+    cst.stop ();
+  }
+  check_no_error ();
+
+  // leak error
+  {
+    cst.start ();
+
+    cst.on_enter_as_reader (0);
+
+    cst.stop ();
+  }
+  check_has_error ();
+
+  // re-enter as reader error
+  {
+    cst.start ();
+
+    cst.on_enter_as_reader (0);
+    cst.on_enter_as_reader (0);
+    cst.on_exit (0);
+    cst.on_exit (0);
+
+    cst.stop ();
+  }
+  check_has_error ();
+
+  // re-enter as writer over reader error
+  {
+    cst.start ();
+
+    cst.on_enter_as_reader (0);
+    cst.on_enter_as_writer (0);
+    cst.on_exit (0);
+    cst.on_exit (0);
+
+    cst.stop ();
+  }
+  check_has_error ();
+
+  // re-enter as writer over writer is ok
+  {
+    cst.start ();
+
+    cst.on_enter_as_writer (0);
+    cst.on_enter_as_writer (0);
+    cst.on_exit (0);
+    cst.on_exit (0);
+
+    cst.stop ();
+  }
+  check_no_error ();
+
+  // re-enter as reader over writer is ok
+  {
+    cst.start ();
+
+    cst.on_enter_as_writer (0);
+    cst.on_enter_as_reader (0);
+    cst.on_exit (0);
+    cst.on_exit (0);
+
+    cst.stop ();
+  }
+  check_no_error ();
+
+  // promoting write is not ok
+  {
+    cst.start ();
+
+    cst.on_enter_as_writer (0);
+    cst.on_promote (0);
+    cst.on_exit (0);
+
+    cst.stop ();
+  }
+  check_has_error ();
+
+  // promoting no lock is not ok
+  {
+    cst.start ();
+
+    cst.on_promote (0);
+    cst.on_exit (0);
+
+    cst.stop ();
+  }
+  check_has_error ();
+
+  // demoting reader is not ok
+  {
+    cst.start ();
+
+    cst.on_enter_as_reader (0);
+    cst.on_demote (0);
+    cst.on_exit (0);
+
+    cst.stop ();
+  }
+  check_has_error ();
+
+  // entering as reader after demotion is ok
+  {
+    cst.start ();
+
+    cst.on_enter_as_writer (0);
+    cst.on_demote (0);
+    cst.on_enter_as_reader (0);
+    cst.on_exit (0);
+    cst.on_exit (0);
+
+    cst.stop ();
+  }
+  check_no_error ();
+
+  // interdependencies
+
+  // CSECT_LOCATOR_SR_CLASSNAME_TABLE after CSECT_CT_OID_TABLE is not allowed
+  {
+    cst.start ();
+
+    cst.on_enter_as_reader (CSECT_CT_OID_TABLE);
+    cst.on_enter_as_reader (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+    cst.on_exit (CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+    cst.on_exit (CSECT_CT_OID_TABLE);
+
+    cst.stop ();
+  }
+  check_has_error ();
 }
