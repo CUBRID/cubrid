@@ -63,11 +63,6 @@ namespace cubthread
   const char *ALLOC_TRACK_RES_NAME = "res_ptr";
   const std::size_t ALLOC_TRACK_MAX_ITEMS = 32767;
 
-  // query list
-  const char *QLIST_TRACK_NAME = "List File";
-  const char *QLIST_TRACK_RES_NAME = "qlist_p";
-  const std::size_t QLIST_TRACK_MAX_ITEMS = 1024;
-
   // page buffer
   const char *PGBUF_TRACK_NAME = "Page Buffer";
   const char *PGBUF_TRACK_RES_NAME = "pgptr";
