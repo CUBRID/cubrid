@@ -6735,6 +6735,7 @@ end:
 void
 qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p, int inc)
 {
+#if defined (SERVER_MODE)
   if (list_p != NULL && list_p->type_list.type_cnt != 0)
     {
       thread_p->m_qlist_count += inc;
@@ -6743,4 +6744,5 @@ qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p,
 	  er_print_callstack (ARG_FILE_LINE, "update qlist_count by %d to %d\n", inc, thread_p->m_qlist_count);
 	}
     }
+#endif // SERVER_MODE
 }
