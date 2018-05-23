@@ -638,6 +638,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_THREAD_LOGGING_FLAG "thread_logging_flag"
 
+#define PRM_NAME_LOG_QUERY_LISTS "log_query_lists"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2103,6 +2105,10 @@ static unsigned int prm_connection_logging_flag = 0;
 int PRM_THREAD_LOGGING_FLAG = 0;
 static int prm_thread_logging_flag_default = 0;
 static unsigned int prm_thread_logging_flag_flag = 0;
+
+int PRM_LOG_QUERY_LISTS = 0;
+static bool prm_log_query_lists_default = true;	// todo: false
+static unsigned int prm_log_query_lists_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5353,6 +5359,17 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_thread_logging_flag_flag,
    (void *) &prm_thread_logging_flag_default,
    (void *) &PRM_THREAD_LOGGING_FLAG,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_LOG_QUERY_LISTS,
+   PRM_NAME_LOG_QUERY_LISTS,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_log_query_lists_flag,
+   (void *) &prm_log_query_lists_default,
+   (void *) &PRM_LOG_QUERY_LISTS,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

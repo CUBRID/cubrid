@@ -8257,7 +8257,7 @@ qexec_setup_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     }
 
   assert (list_id->type_list.type_cnt == 1);
-  thread_p->m_qlist_count++;
+  qfile_update_qlist_count (thread_p, list_id, 1);
 
   return NO_ERROR;
 }
