@@ -374,6 +374,9 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	  free_and_init (class_name);
 	  return error;
 	}
+
+      /* Suppress VALGRING complaint. */
+      memset (ptr, 0, repl_rec->length);
       repl_rec->repl_data = ptr;
 
       /* first 4 bytes are for packed_key_len which will be filled after packing the value. */
