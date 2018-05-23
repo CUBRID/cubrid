@@ -3132,6 +3132,8 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
+  /* Suppress VALGRIND complaint. */
+  memset (node->data_header, 0, node->data_header_length);
 
   /* Fill the data header fields */
   switch (node->log_header.type)
@@ -3575,6 +3577,8 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) node->data_header_length);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
+      /* Suppress VALGRIND complaint. */
+      memset (node->data_header, 0, node->data_header_length);
     }
 
   if (length > 0)

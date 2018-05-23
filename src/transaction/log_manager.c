@@ -3412,7 +3412,6 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
     }
 
   savept = (LOG_REC_SAVEPT *) node->data_header;
-  memset (savept, 0, sizeof (LOG_REC_SAVEPT));
   savept->length = length;
   LSA_COPY (&savept->prv_savept, &tdes->savept_lsa);
 
