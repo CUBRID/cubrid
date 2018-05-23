@@ -19,6 +19,8 @@
 
 #include "test_memory_alloc_helper.hpp"
 
+#include "thread.h"
+
 #include <iostream>
 #include <mutex>
 

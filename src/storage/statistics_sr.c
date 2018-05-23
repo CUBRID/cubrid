@@ -35,7 +35,7 @@
 #include "boot_sr.h"
 #include "partition_sr.h"
 #include "object_primitive.h"
-#include "thread.h"
+#include "thread.h"		// for resource tracker
 
 #define SQUARE(n) ((n)*(n))
 

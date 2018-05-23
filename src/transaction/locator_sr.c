@@ -51,12 +51,11 @@
 #include "fetch.h"
 #include "query_executor.h"
 #include "xasl_cache.h"
-#include "thread.h"
 #if defined(DMALLOC)
 #include "dmalloc.h"
 #endif /* DMALLOC */
-
 #include "dbtype.h"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
 
 /* TODO : remove */
 extern bool catcls_Enable;
@@ -1714,7 +1713,7 @@ locator_print_class_name (THREAD_ENTRY * thread_p, FILE * outfp, const void *key
   int *class_no_p = (int *) args;
   LOCATOR_CLASSNAME_ACTION *action;
   const char *str_action;
-  int i;
+  size_t i;
   size_t key_size;
 
   assert (class_no_p != NULL);
@@ -5642,7 +5641,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		    {
 #if defined (SERVER_MODE)
 		      /* If not inserted by me, I must have lock. */
-		      assert (lock_has_lock_on_object (oid, class_oid, thread_get_current_tran_index (), X_LOCK) > 0);
+		      assert (lock_has_lock_on_object (oid, class_oid, logtb_get_current_tran_index (), X_LOCK) > 0);
 #endif /* SERVER_MODE */
 		    }
 		}
