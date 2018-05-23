@@ -266,5 +266,6 @@ namespace cubsync
 	// reset
 	m_cstrack_array[cs_index] = {};
       }
+    m_start_count = 0;
   }
 } // namespace cubsync

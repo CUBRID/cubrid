@@ -69,12 +69,6 @@ namespace cubthread
   const std::size_t PGBUF_TRACK_MAX_ITEMS = 1024;
   const unsigned PGBUF_TRACK_MAX_AMOUNT = 16;       // re-fix is possible... how many to accept is debatable
 
-  // critical section
-  const char *CSECT_TRACK_NAME = "Critical Section";
-  const char *CSECT_TRACK_RES_NAME = "cs_index";
-  const std::size_t CSECT_TRACK_MAX_ITEMS = 1024;
-  const unsigned CSECT_TRACK_MAX_AMOUNT = 63;
-
   //////////////////////////////////////////////////////////////////////////
   // entry implementation
   //////////////////////////////////////////////////////////////////////////
