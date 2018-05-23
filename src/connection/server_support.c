@@ -2710,38 +2710,6 @@ get_master_hostname ()
   return ha_Server_master_hostname;
 }
 
-static void
-css_process_new_slave (SOCKET master_fd)
-{
-
-  SOCKET new_fd;
-  unsigned short rid;
-
-  /* receive new socket descriptor from the master */
-  new_fd = css_open_new_socket_from_master (master_fd, &rid);
-  if (IS_INVALID_SOCKET (new_fd))
-    {
-      assert (false);
-      return;
-    }
-  er_log_debug (ARG_FILE_LINE, "css_process_new_slave:" "received new slave fd from master fd=%d, current_state=%d\n",
-		new_fd, ha_Server_state);
-
-  assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
-
-  // add slave to master replication channel manager
-#if 1
-  // remove this after master/slave repl chn impl
-  css_shutdown_socket (new_fd);
-#endif
-}
-
-const char *
-get_master_hostname ()
-{
-  return ha_Server_master_hostname;
-}
-
 /*
  * css_get_client_id() - returns the unique client identifier
  *   return: returns the unique client identifier, on error, returns -1
