@@ -445,7 +445,7 @@ namespace test_stream
     return res;
   }
 
-  cubthread::manager cub_th_m;
+  cubthread::manager *cub_th_m;
 
   int init_common_cubrid_modules (void)
   {
@@ -461,24 +461,17 @@ namespace test_stream
     tp_init ();
     er_init ("unit_test", 1);
     lang_set_charset_lang ("en_US.iso88591");
-    cub_th_m.set_max_thread_count (100);
+    //cub_th_m.set_max_thread_count (100);
 
-    cubthread::set_manager (&cub_th_m);
+    //cubthread::set_manager (&cub_th_m);
     cubthread::initialize (thread_p);
-    /*
-    res = cubthread::initialize_thread_entries ();
-    if (res != NO_ERROR)
-      {
-    ASSERT_ERROR ();
-    return res;
-      }
-      */
+    cub_th_m = cubthread::get_manager ();
+    cub_th_m->set_max_thread_count (100);
+
+    cub_th_m->alloc_entries ();
+    cub_th_m->init_entries (false);
+
     initialized = true;
-
-
-    cub_th_m.alloc_entries ();
-    cub_th_m.init_entries (0, false);
-
 
 
     return NO_ERROR;
@@ -1144,15 +1137,15 @@ namespace test_stream
     stream_context_manager::g_stream = &test_stream_for_pack;
 
     cubthread::entry_workpool *packing_worker_pool =
-	    cub_th_m.create_worker_pool (stream_context_manager::g_pack_threads, stream_context_manager::g_pack_threads, &ctx_m1, 1,
+	    cub_th_m->create_worker_pool (stream_context_manager::g_pack_threads, stream_context_manager::g_pack_threads, &ctx_m1, 1,
 					 false);
 
     cubthread::entry_workpool *unpacking_worker_pool =
-	    cub_th_m.create_worker_pool (stream_context_manager::g_unpack_threads, stream_context_manager::g_unpack_threads,
+	    cub_th_m->create_worker_pool (stream_context_manager::g_unpack_threads, stream_context_manager::g_unpack_threads,
 					 &ctx_m2, 1, false);
 
     cubthread::entry_workpool *read_byte_worker_pool =
-	    cub_th_m.create_worker_pool (stream_context_manager::g_read_byte_threads, stream_context_manager::g_read_byte_threads,
+	    cub_th_m->create_worker_pool (stream_context_manager::g_read_byte_threads, stream_context_manager::g_read_byte_threads,
 					 &ctx_m3, 1, false);
 
     for (i = 0; i < stream_context_manager::g_pack_threads; i++)
@@ -1194,9 +1187,9 @@ namespace test_stream
     read_byte_worker_pool->stop_execution ();
 
     /* wait for thread manager thread to end */
-    cub_th_m.destroy_worker_pool (packing_worker_pool);
-    cub_th_m.destroy_worker_pool (unpacking_worker_pool);
-    cub_th_m.destroy_worker_pool (read_byte_worker_pool);
+    cub_th_m->destroy_worker_pool (packing_worker_pool);
+    cub_th_m->destroy_worker_pool (unpacking_worker_pool);
+    cub_th_m->destroy_worker_pool (read_byte_worker_pool);
 
 
     for (i = 0; i < TEST_ENTRIES; i++)
