@@ -26,7 +26,7 @@
 
 #include "critical_section.h"
 
-#include <cinttypes>
+#include <cstdint>
 
 namespace cubsync
 {

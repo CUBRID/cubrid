@@ -37,7 +37,7 @@ namespace cubbase
   void
   fileline_location::set (const char *fn_arg, int l_arg)
   {
-    // find filename from full path; get last charachter of '\\' or '/'
+    // find filename from full path; get last character of '\\' or '/'
     const char *start_chp;
     for (start_chp = fn_arg + std::strlen (fn_arg); start_chp >= fn_arg; start_chp--)
       {
