@@ -703,7 +703,11 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   log_Pb.partial_append.status = LOGPB_APPENDREC_SUCCESS;
   log_Pb.partial_append.log_page_record_header =
     (LOG_PAGE *) PTR_ALIGN (log_Pb.partial_append.buffer_log_page, MAX_ALIGNMENT);
+
+#if !defined (NDEBUG)
+  // suppress valgrind complaint.
   memset (log_Pb.partial_append.log_page_record_header, LOG_PAGE_INIT_VALUE, IO_MAX_PAGE_SIZE);
+#endif // DEBUG
 
   logpb_Initialized = true;
   pthread_mutex_init (&log_Gl.chkpt_lsa_lock, NULL);
@@ -3132,8 +3136,11 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
-  /* Suppress VALGRIND complaint. */
+
+#if !defined (NDEBUG)
+  /* Suppress valgrind complaint. */
   memset (node->data_header, 0, node->data_header_length);
+#endif // DEBUG
 
   /* Fill the data header fields */
   switch (node->log_header.type)
@@ -3577,8 +3584,11 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) node->data_header_length);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      /* Suppress VALGRIND complaint. */
+
+#if !defined (NDEBUG)
+      /* Suppress valgrind complaint. */
       memset (node->data_header, 0, node->data_header_length);
+#endif // DEBUG
     }
 
   if (length > 0)
@@ -10186,7 +10196,6 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
       goto error;
     }
 
-
   /* 
    * FIRST CREATE A NEW LOG FOR THE NEW DATABASE. This log is not a copy of
    * of the old log; it is a newly created one.
@@ -10200,7 +10209,11 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
       error_code = ER_FAILED;
       goto error;
     }
+
+#if !defined (NDEBUG)
+  // suppress valgrind complaint.
   memset (to_malloc_log_pgptr, LOG_PAGE_INIT_VALUE, LOG_PAGESIZE);
+#endif // DEBUG
 
   fileio_make_log_active_name (to_volname, to_logpath, to_prefix_logname);
   if (logpb_add_volume (to_db_fullname, LOG_DBLOG_ACTIVE_VOLID, to_volname, DISK_UNKNOWN_PURPOSE) !=
