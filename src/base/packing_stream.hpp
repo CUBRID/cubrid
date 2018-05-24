@@ -93,8 +93,6 @@ namespace cubstream
 
       char *reserve_with_buffer (const size_t amount, stream_reserve_context *&reserved_context);
 
-      char *get_more_data_with_buffer (const size_t amount, size_t &actual_read_bytes, stream_position &trail_pos,
-				       mem::buffer_latch_read_id &read_latch_page_idx);
       char *get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
 			       size_t &actual_read_bytes, mem::buffer_latch_read_id &read_latch_page_idx);
       int unlatch_read_data (const mem::buffer_latch_read_id &read_latch_page_idx);
