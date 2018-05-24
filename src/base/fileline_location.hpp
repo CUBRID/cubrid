@@ -21,8 +21,8 @@
  * fileline_location.hpp - interface of file & line location
  */
 
-#ifndef _CUBRID_FILELINE_LOCATION_HPP_
-#define _CUBRID_FILELINE_LOCATION_HPP_
+#ifndef _FILELINE_LOCATION_HPP_
+#define _FILELINE_LOCATION_HPP_
 
 #include <iostream>
 
@@ -48,9 +48,10 @@ namespace cubbase
     char m_file[MAX_FILENAME_SIZE];
     int m_line;
   };
+
 #define FILELINE_LOCATION_AS_ARGS(fileline) (fileline).m_file, (fileline).m_line
 
   std::ostream &operator<< (std::ostream &os, const fileline_location &fileline);
 } // namespace cubbase
 
-#endif // _CUBRID_FILELINE_LOCATION_HPP_
+#endif // _FILELINE_LOCATION_HPP_

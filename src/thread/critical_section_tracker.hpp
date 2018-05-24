@@ -21,8 +21,8 @@
  * critical_section_tracker.hpp - interface to track and debug critical sections usage
  */
 
-#ifndef _CUBRID_CRITICAL_SECTION_TRACKER_HPP_
-#define _CUBRID_CRITICAL_SECTION_TRACKER_HPP_
+#ifndef _CRITICAL_SECTION_TRACKER_HPP_
+#define _CRITICAL_SECTION_TRACKER_HPP_
 
 #include "critical_section.h"
 
@@ -70,4 +70,4 @@ namespace cubsync
 
 } // namespace cubsync
 
-#endif // _CUBRID_CRITICAL_SECTION_TRACKER_HPP_
+#endif // _CRITICAL_SECTION_TRACKER_HPP_

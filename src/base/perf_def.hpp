@@ -21,8 +21,8 @@
  * perf_def.hpp - types and class definitions used perf module.
  */
 
-#ifndef _CUBRID_PERF_DEF_HPP_
-#define _CUBRID_PERF_DEF_HPP_
+#ifndef _PERF_DEF_HPP_
+#define _PERF_DEF_HPP_
 
 #include <atomic>
 #include <chrono>
@@ -144,4 +144,4 @@ namespace cubperf
 
 } // namespace cubperf
 
-#endif // _CUBRID_PERF_DEF_HPP_
+#endif // _PERF_DEF_HPP_

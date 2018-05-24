@@ -57,8 +57,8 @@
 //        my_tracker.pop_track ();
 //
 
-#ifndef _CUBRID_RESOURCE_TRACKER_HPP_
-#define _CUBRID_RESOURCE_TRACKER_HPP_
+#ifndef _RESOURCE_TRACKER_HPP_
+#define _RESOURCE_TRACKER_HPP_
 
 #include "fileline_location.hpp"
 
@@ -456,4 +456,4 @@ namespace cubbase
 
 } // namespace cubbase
 
-#endif // _CUBRID_RESOURCE_TRACKER_HPP_
+#endif // _RESOURCE_TRACKER_HPP_
