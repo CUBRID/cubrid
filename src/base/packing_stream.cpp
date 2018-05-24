@@ -594,7 +594,7 @@ namespace cubstream
   }
 
   char *packing_stream::get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
-      size_t &actual_read_bytes, int &read_latch_page_idx)
+      size_t &actual_read_bytes, mem::buffer_latch_read_id &read_latch_page_idx)
   {
     int err = NO_ERROR;
     char *ptr = NULL;
@@ -679,7 +679,7 @@ namespace cubstream
     return ptr;
   }
 
-  int packing_stream::unlatch_read_data (const int &read_latch_page_idx)
+  int packing_stream::unlatch_read_data (const mem::buffer_latch_read_id &read_latch_page_idx)
   {
     std::unique_lock<std::mutex> ulock (m_buffer_mutex);
     m_bip_buffer.end_read (read_latch_page_idx);

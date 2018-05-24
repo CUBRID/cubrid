@@ -39,17 +39,31 @@
 
 namespace cubstream
 {
-  struct stream_reserve_context
-  {
-    stream_position start_pos;
-    char *ptr;
-    size_t reserved_amount;
-    size_t written_bytes;
-  };
-
+  /* stream with capability to pack/unpack objects concurrently
+   * the read, read_partial, read_serial, write require a function argument to perform the packing/unpacking;
+   *
+   * write (amount, write_function):
+   *   - the amount needs to be pre-computed
+   *   - internally, the write_function is wrapped by a reserve/commit pair
+   *
+   * read (pos, amount, read_function):
+   *    - the position and amount of data are required
+   *    - internally, the read_function is wrapped by start_read, end_read (for latching the page in buffer)
+   *    - if required range is still in bip_buffer storage and it spans across the its boundary, the read
+   *      creates internally a buffer and provides a copy of range to read_function
+   *
+   * read_serial (amount, read_function):
+   *    - the stream stores an internal position for serial reading
+   *    - this method must be used by only one thread
+   *
+   * read_partial (pos, amount, read_amount, read_function):
+   *    - similar with read, but it provides only 'read_amount' in case of range spans across buffer boundary
+   */
   class packing_stream : public stream
   {
     public:
+      static const int BIP_BUFFER_READ_PAGES_COUNT = 64;
+
       enum STREAM_SKIP_MODE
       {
 	STREAM_DONT_SKIP = 0,
@@ -57,8 +71,16 @@ namespace cubstream
       };
 
     private:
-      /* a BIP-Buffer with 64 pages */
-      mem::bip_buffer<64> m_bip_buffer;
+      /* structure capturing context of a stream reserve-commit scope */
+      struct stream_reserve_context
+      {
+        stream_position start_pos;
+        char *ptr;
+        size_t reserved_amount;
+        size_t written_bytes;
+      };
+
+      mem::bip_buffer<BIP_BUFFER_READ_PAGES_COUNT> m_bip_buffer;
 
       /* oldest readable position : updated according to buffer availability:
        * oldest stream position available from bip_buffer
