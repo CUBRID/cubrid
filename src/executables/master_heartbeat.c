@@ -3574,31 +3574,33 @@ hb_resource_job_send_master_hostname (HB_JOB_ARG * arg)
     }
   pthread_mutex_unlock (&hb_Resource->lock);
 
-  if (hostname == NULL)
+  if (proc != NULL)
     {
-      proc->knows_master_hostname = false;
-      current_master_hostname = NULL;
-      return;
+      if (hostname == NULL)
+        {
+          proc->knows_master_hostname = false;
+          current_master_hostname = NULL;
+          return;
+        }
+
+      if (current_master_hostname == NULL)
+        {
+          current_master_hostname = hostname;
+          proc->knows_master_hostname = false;
+        }
+      else if (current_master_hostname == hostname && proc->knows_master_hostname == true)
+        {
+          return;
+        }
+      else if (current_master_hostname != hostname)
+        {
+          proc->knows_master_hostname = false;
+        }
+
+      error = css_send_to_my_server_the_master_hostname (hostname, proc, conn);
+      assert (error == NO_ERROR);
     }
 
-  if (current_master_hostname == NULL)
-    {
-      current_master_hostname = hostname;
-      proc->knows_master_hostname = false;
-    }
-  else if (current_master_hostname == hostname && proc->knows_master_hostname == true)
-    {
-      return;
-    }
-  else if (current_master_hostname != hostname)
-    {
-      proc->knows_master_hostname = false;
-    }
-
-  error = css_send_to_my_server_the_master_hostname (hostname, proc, conn);
-  assert (error == NO_ERROR);
-
-  /* TODO put other interval */
   error =
     hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL,
 			   prm_get_integer_value (PRM_ID_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS));
