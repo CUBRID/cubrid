@@ -245,11 +245,11 @@ set(SESSION_SOURCES
   ${SESSION_DIR}/session_sr.c
   )
 
+list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
 if(UNIX)
   list(APPEND BASE_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/variable_string.c)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/tcp.c)
-  list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
   list(APPEND STORAGE_SOURCES ${STORAGE_DIR}/es_owfs.c)
 else(UNIX)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/wintcp.c)
