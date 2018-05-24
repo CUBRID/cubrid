@@ -8257,7 +8257,7 @@ qexec_setup_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     }
 
   assert (list_id->type_list.type_cnt == 1);
-  thread_p->m_qlist_count++;
+  qfile_update_qlist_count (thread_p, list_id, 1);
 
   return NO_ERROR;
 }
@@ -14461,7 +14461,9 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 
   struct drand48_data *rand_buf_p;
 
+#if defined (SERVER_MODE)
   int qlist_enter_count;
+#endif // SERVER_MODE
 
 #if defined(ENABLE_SYSTEMTAP)
   const char *query_str = NULL;
@@ -14538,7 +14540,13 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
     }
 #endif /* CUBRID_DEBUG */
 
+#if defined (SERVER_MODE)
   qlist_enter_count = thread_p->m_qlist_count;
+  if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
+    {
+      er_print_callstack (ARG_FILE_LINE, "starting query execution with qlist_count = %d\n", qlist_enter_count);
+    }
+#endif // SERVER_MODE
 
   /* this routine should not be called if an outstanding error condition already exists. */
   er_clear ();
@@ -14641,17 +14649,6 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 
 	  (void) qexec_clear_xasl (thread_p, xasl, true);
 
-	  if (list_id && list_id->type_list.type_cnt != 0)
-	    {
-	      // one new list file
-	      assert (thread_p->m_qlist_count == qlist_enter_count + 1);
-	    }
-	  else
-	    {
-	      // no new list files
-	      assert (thread_p->m_qlist_count == qlist_enter_count);
-	    }
-
 	  /* caller will detect the error condition and free the listid */
 	  goto end;
 	}
@@ -14683,17 +14680,6 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
   /* clear XASL tree */
   (void) qexec_clear_xasl (thread_p, xasl, true);
 
-  if (list_id && list_id->type_list.type_cnt != 0)
-    {
-      // one new list file
-      assert (thread_p->m_qlist_count == qlist_enter_count + 1);
-    }
-  else
-    {
-      // no new list files
-      assert (thread_p->m_qlist_count == qlist_enter_count);
-    }
-
 #if defined(CUBRID_DEBUG)
   if (trace && fp)
     {
@@ -14716,6 +14702,24 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 #endif /* CUBRID_DEBUG */
 
 end:
+
+#if defined (SERVER_MODE)
+  if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
+    {
+      er_print_callstack (ARG_FILE_LINE, "ending query execution with qlist_count = %d\n", thread_p->m_qlist_count);
+    }
+  if (list_id && list_id->type_list.type_cnt != 0)
+    {
+      // one new list file
+      assert (thread_p->m_qlist_count == qlist_enter_count + 1);
+    }
+  else
+    {
+      // no new list files
+      assert (thread_p->m_qlist_count == qlist_enter_count);
+    }
+#endif // SERVER_MODE
+
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user, (er_errid () != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
