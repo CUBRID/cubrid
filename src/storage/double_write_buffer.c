@@ -504,6 +504,11 @@ static int dwb_flush_block_helper (THREAD_ENTRY * thread_p);
 static int dwb_compute_checksums (THREAD_ENTRY * thread_p);
 static int dwb_flush_next_block (THREAD_ENTRY * thread_p);
 
+#if !defined (NDEBUG)
+static int dwb_debug_check_dwb (THREAD_ENTRY * thread_p, DWB_SLOT * p_dwb_ordered_slots, unsigned int num_pages);
+#endif // DEBUG
+static int dwb_check_data_page_is_sane (THREAD_ENTRY * thread_p, DWB_BLOCK * rcv_block, DWB_SLOT * p_dwb_ordered_slots);
+
 /* Slots entry descriptor */
 static LF_ENTRY_DESCRIPTOR slots_entry_Descriptor = {
   /* offsets */
@@ -3669,6 +3674,188 @@ end:
 }
 
 /*
+ * dwb_debug_check_dwb () - check sanity of ordered slots
+ *
+ * return   : Error code 
+ * thread_p (in): The thread entry.
+ * p_dwb_ordered_slots(in): 
+ * num_dwb_pages(in): 
+ *
+ */
+static int
+dwb_debug_check_dwb (THREAD_ENTRY * thread_p, DWB_SLOT * p_dwb_ordered_slots, unsigned int num_dwb_pages)
+{
+  char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  FILEIO_PAGE *iopage;
+  int error_code;
+  unsigned int i;
+  bool is_page_corrupted;
+
+  iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
+  memset (iopage, 0, IO_PAGESIZE);
+
+  /* Check for duplicates in DWB. */
+  for (i = 1; i < num_dwb_pages; i++)
+    {
+      if (VPID_ISNULL (&p_dwb_ordered_slots[i].vpid))
+	{
+	  continue;
+	}
+
+      if (VPID_EQ (&p_dwb_ordered_slots[i].vpid, &p_dwb_ordered_slots[i - 1].vpid))
+	{
+	  /* Same VPID, at least one is corrupted. */
+	  error_code = fileio_page_check_corruption (thread_p, p_dwb_ordered_slots[i - 1].io_page, &is_page_corrupted);
+	  if (error_code != NO_ERROR)
+	    {
+	      /* Error in checksum computation. */
+	      return error_code;
+	    }
+
+	  if (is_page_corrupted)
+	    {
+	      continue;
+	    }
+
+	  error_code = fileio_page_check_corruption (thread_p, p_dwb_ordered_slots[i].io_page, &is_page_corrupted);
+	  if (error_code != NO_ERROR)
+	    {
+	      /* Error in checksum computation. */
+	      return error_code;
+	    }
+
+	  if (is_page_corrupted)
+	    {
+	      continue;
+	    }
+
+	  if (memcmp (p_dwb_ordered_slots[i - 1].io_page, iopage, IO_PAGESIZE) == 0)
+	    {
+	      /* Skip not initialized pages. */
+	      continue;
+	    }
+
+	  if (memcmp (p_dwb_ordered_slots[i].io_page, iopage, IO_PAGESIZE) == 0)
+	    {
+	      /* Skip not initialized pages. */
+	      continue;
+	    }
+
+	  /* Found duplicates - something is wrong. We may still can check for same LSAs.
+	   * But, duplicates occupies disk space so is better to avoid it.
+	   */
+	  assert (false);
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * dwb_check_data_page_is_sane () - Check whether the data page is corrupted.
+ *
+ * return   : Error code or the number of recoverable corrupted pages
+ * thread_p (in): The thread entry.
+ * block(in): 
+ * p_dwb_ordered_slots(in): 
+ *
+ */
+static int
+dwb_check_data_page_is_sane (THREAD_ENTRY * thread_p, DWB_BLOCK * rcv_block, DWB_SLOT * p_dwb_ordered_slots)
+{
+  char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  FILEIO_PAGE *iopage;
+  VPID *vpid;
+  int vol_fd, temp_vol_fd, vol_pages = 0;
+  INT16 volid;
+  int error_code;
+  unsigned int i;
+  int num_recoverable_pages = 0;
+  bool is_page_corrupted;
+
+  iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
+  memset (iopage, 0, IO_PAGESIZE);
+
+  volid = NULL_VOLID;
+
+  /* Check whether the data page is corrupted. If true, replaced with the DWB page. */
+  for (i = 0; i < rcv_block->count_wb_pages; i++)
+    {
+      vpid = &p_dwb_ordered_slots[i].vpid;
+      if (VPID_ISNULL (vpid))
+	{
+	  continue;
+	}
+
+      if (volid != vpid->volid)
+	{
+	  /* Update the current VPID and get the volume descriptor. */
+	  temp_vol_fd = fileio_get_volume_descriptor (vpid->volid);
+	  if (temp_vol_fd == NULL_VOLDES)
+	    {
+	      continue;
+	    }
+	  vol_fd = temp_vol_fd;
+	  volid = vpid->volid;
+	  vol_pages = fileio_get_number_of_volume_pages (vol_fd, IO_PAGESIZE);
+	}
+
+      assert (vol_fd != NULL_VOLDES);
+
+      if (vpid->pageid >= vol_pages)
+	{
+	  /* The page was written in DWB, not in data volume. */
+	  continue;
+	}
+
+      /* Read the page from data volume. */
+      if (fileio_read (thread_p, vol_fd, iopage, vpid->pageid, IO_PAGESIZE) == NULL)
+	{
+	  /* There was an error in reading the page. */
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+
+      error_code = fileio_page_check_corruption (thread_p, iopage, &is_page_corrupted);
+      if (error_code != NO_ERROR)
+	{
+	  /* Error in checksum computation. */
+	  return error_code;
+	}
+
+      if (!is_page_corrupted)
+	{
+	  /* The page in data volume is not corrupted. Do not overwrite its content - reset slot VPID. */
+	  VPID_SET_NULL (&p_dwb_ordered_slots[i].vpid);
+	  fileio_initialize_res (thread_p, &(p_dwb_ordered_slots[i].io_page->prv));
+	  continue;
+	}
+
+      /* Corrupted page in data volume. Check DWB. */
+      error_code = fileio_page_check_corruption (thread_p, p_dwb_ordered_slots[i].io_page, &is_page_corrupted);
+      if (error_code != NO_ERROR)
+	{
+	  /* Error in checksum computation. */
+	  return error_code;
+	}
+
+      if (is_page_corrupted)
+	{
+	  /* The page is corrupted in data volume and DWB. Something wrong happened. */
+	  assert_release (false);
+	  dwb_log_error ("Can't recover page = (%d,%d)\n", vpid->volid, vpid->pageid);
+	  return ER_FAILED;
+	}
+
+      /* The page content in data volume will be replaced later with the DWB page content. */
+      dwb_log ("page = (%d,%d) is recovered with DWB.\n", vpid->volid, vpid->pageid);
+      num_recoverable_pages++;
+    }
+
+  return num_recoverable_pages;
+}
+
+/*
  * dwb_load_and_recover_pages () - Load and recover pages from DWB.
  *
  * return   : Error code.
@@ -3684,15 +3871,11 @@ int
 dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, const char *db_name_p)
 {
   int error_code = NO_ERROR, read_fd = NULL_VOLDES;
-  unsigned int num_pages, ordered_slots_length, i;
+  unsigned int num_dwb_pages, ordered_slots_length, i;
   DWB_BLOCK *rcv_block = NULL;
   DWB_SLOT *p_dwb_ordered_slots = NULL;
-  char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   FILEIO_PAGE *iopage;
-  VPID *vpid;
-  int vol_fd, temp_vol_fd, vol_pages = 0;
-  INT16 volid;
-  bool is_page_corrupted;
+  int num_recoverable_pages;
 
   assert (dwb_Global.vdes == NULL_VOLDES);
 
@@ -3709,37 +3892,37 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	  return ER_IO_MOUNT_FAIL;
 	}
 
-      num_pages = fileio_get_number_of_volume_pages (read_fd, IO_PAGESIZE);
+      num_dwb_pages = fileio_get_number_of_volume_pages (read_fd, IO_PAGESIZE);
 
-      assert (IS_POWER_OF_2 (num_pages));
-      assert ((num_pages * IO_PAGESIZE) % (DWB_MIN_SIZE) == 0);
-
-      /* If num_pages = 0, DWB is corrupted. */
-      if (num_pages > 0)
+      /* If num_dwb_pages = 0, DWB is corrupted. */
+      if (num_dwb_pages > 0)
 	{
+	  assert (IS_POWER_OF_2 (num_dwb_pages));
+	  assert ((num_dwb_pages * IO_PAGESIZE) % (DWB_MIN_SIZE) == 0);
+
 	  /* Create DWB block for recovery purpose. */
-	  error_code = dwb_create_blocks (thread_p, 1, num_pages, &rcv_block);
+	  error_code = dwb_create_blocks (thread_p, 1, num_dwb_pages, &rcv_block);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto end;
 	    }
 
 	  /* Read pages in block write area. This means that slot pages are set. */
-	  if (fileio_read_pages (thread_p, read_fd, rcv_block->write_buffer, 0, num_pages, IO_PAGESIZE) == NULL)
+	  if (fileio_read_pages (thread_p, read_fd, rcv_block->write_buffer, 0, num_dwb_pages, IO_PAGESIZE) == NULL)
 	    {
 	      error_code = ER_FAILED;
 	      goto end;
 	    }
 
 	  /* Set slots VPID and LSA from pages. */
-	  for (i = 0; i < num_pages; i++)
+	  for (i = 0; i < num_dwb_pages; i++)
 	    {
 	      iopage = rcv_block->slots[i].io_page;
 
 	      VPID_SET (&rcv_block->slots[i].vpid, iopage->prv.volid, iopage->prv.pageid);
 	      LSA_COPY (&rcv_block->slots[i].lsa, &iopage->prv.lsa);
 	    }
-	  rcv_block->count_wb_pages = num_pages;
+	  rcv_block->count_wb_pages = num_dwb_pages;
 
 	  /* Order slots by VPID, to flush faster. */
 	  error_code = dwb_block_create_ordered_slots (rcv_block, &p_dwb_ordered_slots, &ordered_slots_length);
@@ -3749,162 +3932,49 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	      goto end;
 	    }
 
-	  iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
-	  memset (iopage, 0, IO_PAGESIZE);
-
 #if !defined (NDEBUG)
-	  /* Check for duplicates in DWB. */
-	  for (i = 1; i < num_pages; i++)
-	    {
-	      if (VPID_ISNULL (&p_dwb_ordered_slots[i].vpid))
-		{
-		  continue;
-		}
-
-	      if (VPID_EQ (&p_dwb_ordered_slots[i].vpid, &p_dwb_ordered_slots[i - 1].vpid))
-		{
-		  /* Same VPID, at least one is corrupted. */
-		  error_code =
-		    fileio_page_check_corruption (thread_p, p_dwb_ordered_slots[i - 1].io_page, &is_page_corrupted);
-		  if (error_code != NO_ERROR)
-		    {
-		      /* Error in checksum computation. */
-		      goto end;
-		    }
-
-		  if (is_page_corrupted)
-		    {
-		      continue;
-		    }
-
-		  error_code = fileio_page_check_corruption (thread_p, p_dwb_ordered_slots[i].io_page,
-							     &is_page_corrupted);
-		  if (error_code != NO_ERROR)
-		    {
-		      /* Error in checksum computation. */
-		      goto end;
-		    }
-
-		  if (is_page_corrupted)
-		    {
-		      continue;
-		    }
-
-		  if (memcmp (p_dwb_ordered_slots[i - 1].io_page, iopage, IO_PAGESIZE) == 0)
-		    {
-		      /* Skip not initialized pages. */
-		      continue;
-		    }
-
-		  if (memcmp (p_dwb_ordered_slots[i].io_page, iopage, IO_PAGESIZE) == 0)
-		    {
-		      /* Skip not initialized pages. */
-		      continue;
-		    }
-
-		  /* Found duplicates - something is wrong. We may still can check for same LSAs.
-		   * But, duplicates occupies disk space so is better to avoid it.
-		   */
-		  assert (false);
-		}
-	    }
-#endif
-
-	  volid = NULL_VOLID;
-
-	  /* Check whether the data page is corrupted. If true, replaced with the DWB page. */
-	  for (i = 0; i < rcv_block->count_wb_pages; i++)
-	    {
-	      vpid = &p_dwb_ordered_slots[i].vpid;
-	      if (VPID_ISNULL (vpid))
-		{
-		  continue;
-		}
-
-	      if (volid != vpid->volid)
-		{
-		  /* Update the current VPID and get the volume descriptor. */
-		  temp_vol_fd = fileio_get_volume_descriptor (vpid->volid);
-		  if (temp_vol_fd == NULL_VOLDES)
-		    {
-		      continue;
-		    }
-		  vol_fd = temp_vol_fd;
-		  volid = vpid->volid;
-		  vol_pages = fileio_get_number_of_volume_pages (vol_fd, IO_PAGESIZE);
-		}
-
-	      assert (vol_fd != NULL_VOLDES);
-
-	      if (vpid->pageid >= vol_pages)
-		{
-		  /* The page was written in DWB, not in data volume. */
-		  continue;
-		}
-
-	      /* Read the page from data volume. */
-	      if (fileio_read (thread_p, vol_fd, iopage, vpid->pageid, IO_PAGESIZE) == NULL)
-		{
-		  /* There was an error in reading the page. */
-		  ASSERT_ERROR_AND_SET (error_code);
-		  goto end;
-		}
-
-	      error_code = fileio_page_check_corruption (thread_p, iopage, &is_page_corrupted);
-	      if (error_code != NO_ERROR)
-		{
-		  /* Error in checksum computation. */
-		  goto end;
-		}
-
-	      if (!is_page_corrupted)
-		{
-		  /* The page in data volume is not corrupted. Do not overwrite its content - reset slot VPID. */
-		  VPID_SET_NULL (&p_dwb_ordered_slots[i].vpid);
-		  fileio_initialize_res (thread_p, &(p_dwb_ordered_slots[i].io_page->prv));
-		  continue;
-		}
-
-	      /* Corrupted page in data volume. Check DWB. */
-	      error_code = fileio_page_check_corruption (thread_p, p_dwb_ordered_slots[i].io_page, &is_page_corrupted);
-	      if (error_code != NO_ERROR)
-		{
-		  /* Error in checksum computation. */
-		  goto end;
-		}
-
-	      if (is_page_corrupted)
-		{
-		  /* The page is corrupted in data volume and DWB. Something wrong happened. */
-		  assert_release (false);
-		  dwb_log_error ("Can't recover page = (%d,%d)\n", vpid->volid, vpid->pageid);
-		  error_code = ER_FAILED;
-		  goto end;
-		}
-
-	      /* The page content in data volume will be replaced later with the DWB page content. */
-	    }
-
-	  /* Replace the corrupted pages in data volume with the DWB content, if is the case. */
-	  error_code = dwb_write_block (thread_p, rcv_block, p_dwb_ordered_slots, ordered_slots_length, false);
+	  // check sanity of ordered slots
+	  error_code = dwb_debug_check_dwb (thread_p, p_dwb_ordered_slots, num_dwb_pages);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto end;
 	    }
+#endif // DEBUG
 
-	  /* Now, flush the volumes having pages in current block. */
-	  for (i = 0; i < rcv_block->count_flush_volumes_info; i++)
+	  /* Check whether the data page is corrupted. If the case, it will be replaced with the DWB page. */
+	  num_recoverable_pages = dwb_check_data_page_is_sane (thread_p, rcv_block, p_dwb_ordered_slots);
+	  if (num_recoverable_pages != NO_ERROR)
 	    {
-	      if (fileio_synchronize (thread_p, rcv_block->flush_volumes_info[i].vdes, NULL,
-				      FILEIO_SYNC_ONLY) == NULL_VOLDES)
+	      goto end;
+	    }
+
+	  if (0 < num_recoverable_pages)
+	    {
+	      /* Replace the corrupted pages in data volume with the DWB content. */
+	      error_code = dwb_write_block (thread_p, rcv_block, p_dwb_ordered_slots, ordered_slots_length, false);
+	      if (error_code != NO_ERROR)
 		{
-		  error_code = ER_FAILED;
 		  goto end;
 		}
 
-	      dwb_log ("dwb_load_and_recover_pages: Synchronized volume %d\n", rcv_block->flush_volumes_info[i].vdes);
+	      /* Now, flush the volumes having pages in current block. */
+	      for (i = 0; i < rcv_block->count_flush_volumes_info; i++)
+		{
+		  if (fileio_synchronize (thread_p, rcv_block->flush_volumes_info[i].vdes, NULL,
+					  FILEIO_SYNC_ONLY) == NULL_VOLDES)
+		    {
+		      error_code = ER_FAILED;
+		      goto end;
+		    }
+
+		  dwb_log ("dwb_load_and_recover_pages: Synchronized volume %d\n",
+			   rcv_block->flush_volumes_info[i].vdes);
+		}
+
+	      rcv_block->count_flush_volumes_info = 0;
 	    }
-	  rcv_block->count_flush_volumes_info = 0;
+
+	  assert (rcv_block->count_flush_volumes_info == 0);
 	}
 
       /* Dismount the file. */
