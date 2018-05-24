@@ -2107,7 +2107,7 @@ static int prm_thread_logging_flag_default = 0;
 static unsigned int prm_thread_logging_flag_flag = 0;
 
 int PRM_LOG_QUERY_LISTS = 0;
-static bool prm_log_query_lists_default = true;	// todo: false
+static bool prm_log_query_lists_default = false;
 static unsigned int prm_log_query_lists_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
