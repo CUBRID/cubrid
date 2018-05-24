@@ -142,7 +142,7 @@ namespace cubstream
     return (err < 0) ? err : NO_ERROR;
   }
 
-  /* callback header-read function for entry */
+  /* callback header-read function for entry (called with packing_stream::read_serial) */
   int entry::prepare_func (const stream_position &data_start_pos, char *ptr, const size_t header_size,
 			   size_t &payload_size)
   {
@@ -175,6 +175,9 @@ namespace cubstream
     return (err < 0) ? err : NO_ERROR;
   }
 
+  /* unpack function for entry;
+   * this unpacks only the payload (objects) of the the entry, the header was unpacked with entry::prepare_func
+   */
   int entry::unpack_func (char *ptr, const size_t data_size)
   {
     int i;
@@ -261,6 +264,13 @@ namespace cubstream
     assert (m_append_position - m_read_position == 0);
   }
 
+  /*
+   * write API for stream:
+   * 1. reserve position (with pointer in bip_buffer)
+   * 2. call write action
+   * 3. commit the reserve position
+   *  the write_function is expected to return error code (negative value) or number of written bytes (positive)
+   */
   int packing_stream::write (const size_t byte_count, write_func_t &write_action)
   {
     int err = NO_ERROR;
@@ -289,6 +299,17 @@ namespace cubstream
     return (err < 0) ? err : written_bytes;
   }
 
+  /*
+   * read API:
+   * 1. acquire pointer to data range
+   * 2. if actual range is same as requested continue with (7)
+   * 3. (actual range < requested range) allocate new local memory buffer for requested amount
+   * 4. copy partial range to local buffer
+   * 5. acquire pointer to rest of data
+   * 6. copy the remaining range to continuation of local buffer
+   * 7. execute read action using local buffer or initial provided pointer
+   * 8. release latch read (in case local buffer not used)
+   */
   int packing_stream::read (const stream_position first_pos, const size_t byte_count, read_func_t &read_action)
   {
     int err = NO_ERROR;
@@ -348,6 +369,20 @@ namespace cubstream
     return (err < 0) ? err : read_bytes;
   }
 
+  /*
+   * read_serial API:
+   * 1. wait for data to be committed for the whole requested range
+   * 2. acquire pointer to data range
+   * 3. if actual range is same as requested continue with (8)
+   * 4. (actual range < requested range) allocate new local memory buffer for requested amount
+   * 5. copy partial range to local buffer
+   * 6. acquire pointer to rest of data
+   * 7. copy the remaining range to continuation of local buffer
+   * 8. execute read_prepare_action action using local buffer or initial provided pointer
+   *    this is expected to read a header of data and return the size of payload
+   * 9. release latch read (in case local buffer not used)
+   * 10.wait for an amount of payload of data to be produced (committed)
+   */
   int packing_stream::read_serial (const size_t amount, read_prepare_func_t &read_prepare_action)
   {
     int err = NO_ERROR;
@@ -450,6 +485,14 @@ namespace cubstream
     return (err < 0) ? err : read_bytes;
   }
 
+  /*
+   * Commit phase of a stream append (all operations are protected by same mutex) :
+   *  1. queue->consume : marks the reserved context as completed and if the context is in the head
+   *     of queue, it collapses all elements until a non-completed context is reached (or the queue is emptied);
+   *  2. (only if queue is collapsed) buffer->commit : advances the commit pointer of the bip_buffer
+   *  3. notifies the m_ready_pos_handler handler that new amount is ready to be read
+   *     (only if threshold is reached compared to previous notified position)
+   */
   int packing_stream::commit_append (stream_reserve_context *reserve_context)
   {
     stream_reserve_context *last_used_context = NULL;
@@ -494,6 +537,21 @@ namespace cubstream
     return NO_ERROR;
   }
 
+  /*
+   * Reserve phase of append:
+   *  1. queue->produce : tries adds slot in queue (further data is filled later);
+   *     it repeats this steps until successfull
+   *  2. buffer->reserve : tries to reserve the amount in buffer;
+   *     if unsuccessfull, reverts the first step (still under mutex), release the mutex and restarts from (1)
+   *     (this allows other threads to unlatch reads, advance commit pointer - to unblock the situation)
+   *  3. increase the m_append_position of stream
+   *  4. init/fills-in reserve context data (reserved position, reserved pointer, amount)
+   *  5. release mutex
+   *  6. if needed, notifies m_filled_stream_handler that too much data was appended since drop position
+   *     drop_position is a logical position in past of stream; this is set by an aggregator of "interested" clients
+   *     of stream data and instructs the stream up to which position is safe to drop the data;
+   *     the interested clients may be : normal readers or the readers which saves the data to disk (for persistence)
+   */
   char *packing_stream::reserve_with_buffer (const size_t amount, stream_reserve_context *&reserved_context)
   {
     char *ptr = NULL;
@@ -553,6 +611,11 @@ namespace cubstream
     return ptr;
   }
 
+  /* 
+   * This is used in context of serial reading and performs an action when not enough data is committed.
+   * The action may be : block (until data is commited) or actively fetch data (from disk or other on-demand producer)
+   * skip_mode argument indicates which action to take after data becomes available.
+   */
   int packing_stream::wait_for_data (const size_t amount, const STREAM_SKIP_MODE skip_mode)
   {
     int err = NO_ERROR;
@@ -593,6 +656,22 @@ namespace cubstream
     return err;
   }
 
+  /*
+   * starts a range read from a position in stream
+   * this must be in the same scope with a unlatch_read_data call (to make sure the read latch is released)
+   * if portion of range is still in buffer, it reads the available amount, returning the actual read amount and
+   * a read latch id
+   * if no range can be found in bip_buffer, the stream_io is used to provide the range from disk
+   * TODO: read_latch_page_idx type will change to account of reading from stream_file source.
+   *
+   *  1. if needed, wait for data to be committed
+   *  2. if part of range is not in bip_buffer, use stream_io to get range
+   *  3. acquire mutex
+   *  4. bip_buffer.get_read_ranges : get available readable ranges from bip_buffer
+   *  5. convert logical range into physical range
+   *  6. try to read-latch the read range in bip_buffer
+   *  7. release mutex
+   */
   char *packing_stream::get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
       size_t &actual_read_bytes, mem::buffer_latch_read_id &read_latch_page_idx)
   {

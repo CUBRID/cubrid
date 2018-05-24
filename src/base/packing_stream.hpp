@@ -41,6 +41,7 @@ namespace cubstream
 {
   /* stream with capability to pack/unpack objects concurrently
    * the read, read_partial, read_serial, write require a function argument to perform the packing/unpacking;
+   * Interface:
    *
    * write (amount, write_function):
    *   - the amount needs to be pre-computed
@@ -58,6 +59,13 @@ namespace cubstream
    *
    * read_partial (pos, amount, read_amount, read_function):
    *    - similar with read, but it provides only 'read_amount' in case of range spans across buffer boundary
+   *
+   * Internals:
+   *  The reserved position are stored in a circular queue of stream_reserve_context elements.
+   *  The memory storage is implemented using bip_buffer.
+   *  reserve_with_buffer/commit_append : internal methods used by write;
+   *  get_data_from_pos/unlatch_read_data : internal methods used by read;
+   *  wait_for_data : used by read when requested range is not yet produced
    */
   class packing_stream : public stream
   {
@@ -144,6 +152,28 @@ namespace cubstream
 
     };
 
+  /*
+   * entry of a stream: this is an abstract class which encapsulates a collection of objects packable into a stream
+   * 
+   * it has a mandatory header structure to be implemented by derived class along with associated methods:
+   *  - get_header_size,
+   *  - set_header_data_size, 
+   *  - pack_stream_entry_header
+   *  - unpack_stream_entry_header
+   *  - get_packable_entry_count_from_header
+   * The header size must be aligned at MAX_ALIGNEMENT.
+   * The objects must derive from packable_object.
+   * The concrete class (of entry) must provide the factory get_builder method to build objects
+   * 
+   * As a "protocol", each object has an integer identifier which is packed before actual object packaging:
+   * at unpack, this identifier is used to instanciate an object (using the integrated factory), before calling
+   * object.unpack
+   *
+   * get_packer method needs to be implemented (it should be per instance object for multi-threaded usage)
+   *
+   * is_equal methods is mainly needed for unit testing (is expected to validate that the entire trees of two entries
+   * are equivalent)
+   */
   class entry
   {
     private:
