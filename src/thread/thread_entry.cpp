@@ -175,8 +175,9 @@ namespace cubthread
 	return;
       }
 
-    // force wakeup
-    thread_wakeup_already_had_mutex (this, THREAD_RESUME_DUE_TO_SHUTDOWN);
+    // interrupt & force wakeup
+    interrupted = true;
+    thread_wakeup_already_had_mutex (this, THREAD_RESUME_DUE_TO_INTERRUPT);
     unlock ();
   }
 
