@@ -210,7 +210,7 @@ std::vector<func_signature> func_signature::sequence_r_any = {
 };
 
 
-std::vector<func_signature>* func_signature::get_signature(FUNC_TYPE ft){
+std::vector<func_signature>* func_signature::get_signatures(FUNC_TYPE ft){
     switch(ft){
         case PT_MIN                 :
         case PT_MAX                 : return &type0_nr_or_str;

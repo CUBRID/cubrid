@@ -44,7 +44,7 @@ struct func_signature
   static std::vector<func_signature> multiset_r_any;//multiset, table_multiset
   static std::vector<func_signature> sequence_r_any;//sequence, table_sequence
 
-  static std::vector<func_signature>* get_signature(FUNC_TYPE ft);
+  static std::vector<func_signature>* get_signatures(FUNC_TYPE ft);
 };
 
 #endif
