@@ -319,7 +319,6 @@ int
 proxy_context_send_error (T_PROXY_CONTEXT * ctx_p)
 {
   int error;
-  char *error_msg = NULL;
   T_PROXY_EVENT *event_p;
   T_CLIENT_INFO *client_info_p = NULL;
   char *driver_info;
@@ -379,7 +378,6 @@ proxy_handler_process_cas_response (T_PROXY_EVENT * event_p)
   int error = NO_ERROR;
   int error_ind;
   char *response_p;
-  char **argv = NULL;
   T_PROXY_CONTEXT *ctx_p = NULL;
   T_CLIENT_INFO *client_info_p;
   char func_code;
@@ -1561,19 +1559,19 @@ proxy_handler_process (void)
   /* process cas response message */
   while ((msg = shard_queue_dequeue (&handler_p->cas_rcv_q)) != NULL)
     {
-      proxy_handler_process_cas_event (msg);
+      proxy_handler_process_cas_event ((T_PROXY_EVENT *) msg);
     }
 
   /* process client retry message */
   while ((msg = shard_queue_dequeue (&handler_p->cli_ret_q)) != NULL)
     {
-      proxy_handler_process_client_event (msg);
+      proxy_handler_process_client_event ((T_PROXY_EVENT *) msg);
     }
 
   /* process client request message */
   while ((msg = shard_queue_dequeue (&handler_p->cli_rcv_q)) != NULL)
     {
-      proxy_handler_process_client_event (msg);
+      proxy_handler_process_client_event ((T_PROXY_EVENT *) msg);
     }
 
   return;
@@ -1967,8 +1965,8 @@ char *
 shard_str_sqls (char *sql)
 {
   static char buffer[LINE_MAX];
-  int len;
-  int head_len, ws_len, tail_len;
+  size_t len;
+  size_t head_len, ws_len, tail_len;
   char *from, *to;
 
   if (sql == NULL)

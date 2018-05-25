@@ -161,7 +161,7 @@ broker_stat_alloc_init (const char *bname, int num_as, int br_pid, int *as_pids,
   int i, nitem = 0;
   T_CM_BROKER_PROC_STAT *bp;
 
-  bp = malloc (sizeof (T_CM_BROKER_PROC_STAT) + (num_as - 1) * sizeof (T_CM_PROC_STAT));
+  bp = (T_CM_BROKER_PROC_STAT *) malloc (sizeof (T_CM_BROKER_PROC_STAT) + (num_as - 1) * sizeof (T_CM_PROC_STAT));
   if (bp == NULL)
     {
       cm_set_error (err_buf, CM_OUT_OF_MEMORY);
@@ -287,7 +287,7 @@ cm_get_broker_proc_stat_all (T_CM_ERROR * err_buf)
       return NULL;
     }
 
-  all_stat = calloc (1, sizeof (T_CM_BROKER_PROC_STAT_ALL));
+  all_stat = (T_CM_BROKER_PROC_STAT_ALL *) calloc (1, sizeof (T_CM_BROKER_PROC_STAT_ALL));
   p = (T_CM_BROKER_PROC_STAT **) calloc (broker_info_all.num_info, sizeof (T_CM_BROKER_PROC_STAT *));
 
   if (all_stat == NULL || p == NULL)
@@ -663,7 +663,7 @@ cm_get_host_disk_partition_stat (T_CM_ERROR * err_buf)
     }
 
 
-  res = malloc (sizeof (T_CM_DISK_PARTITION_STAT_ALL));
+  res = (T_CM_DISK_PARTITION_STAT_ALL *) malloc (sizeof (T_CM_DISK_PARTITION_STAT_ALL));
 
   if (res == NULL)
     {
@@ -671,7 +671,7 @@ cm_get_host_disk_partition_stat (T_CM_ERROR * err_buf)
     }
 
   res->num_stat = i;
-  res->partitions = malloc (sizeof (T_CM_DISK_PARTITION_STAT) * i);
+  res->partitions = (T_CM_DISK_PARTITION_STAT *) malloc (sizeof (T_CM_DISK_PARTITION_STAT) * i);
 
   if (res->partitions == NULL)
     {
@@ -812,7 +812,7 @@ cm_get_proc_stat (T_CM_PROC_STAT * stat, int pid)
       return -1;
     }
 
-  fscanf (cpufp, "%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%llu%llu", &stat->cpu_user, &stat->cpu_kernel);
+  fscanf (cpufp, "%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%lu%lu", &stat->cpu_user, &stat->cpu_kernel);
   fscanf (memfp, "%lu%lu", &vmem_pages, &rmem_pages);	/* 'size' and 'resident' in stat file */
   stat->mem_virtual = vmem_pages * get_pagesize ();
   stat->mem_physical = rmem_pages * get_pagesize ();
@@ -867,7 +867,7 @@ cm_get_host_stat (T_CM_HOST_STAT * stat, T_CM_ERROR * err_buf)
       sscanf (linebuf, "%49s", prefix);
       if (!strcmp (prefix, "cpu"))
 	{
-	  sscanf (linebuf, "%*s%llu%llu%llu%llu%llu", &stat->cpu_user, &nice, &stat->cpu_kernel, &stat->cpu_idle,
+	  sscanf (linebuf, "%*s%lu%lu%lu%lu%lu", &stat->cpu_user, &nice, &stat->cpu_kernel, &stat->cpu_idle,
 		  &stat->cpu_iowait);
 	  stat->cpu_user += nice;
 	  n_cpuitem++;
@@ -884,30 +884,30 @@ cm_get_host_stat (T_CM_HOST_STAT * stat, T_CM_ERROR * err_buf)
       sscanf (linebuf, "%49s", prefix);
       if (!strcmp (prefix, "MemTotal:"))
 	{
-	  sscanf (linebuf, "%*s%llu", &stat->mem_physical_total);
+	  sscanf (linebuf, "%*s%lu", &stat->mem_physical_total);
 	  n_memitem++;
 	}
       if (!strcmp (prefix, "MemFree:"))
 	{
-	  sscanf (linebuf, "%*s%llu", &stat->mem_physical_free);
+	  sscanf (linebuf, "%*s%lu", &stat->mem_physical_free);
 	  n_memitem++;
 	}
       if (!strcmp (prefix, "Buffers:"))
 	{
-	  sscanf (linebuf, "%*s%llu", &buffers);
+	  sscanf (linebuf, "%*s%lu", &buffers);
 	}
       if (!strcmp (prefix, "Cached:"))
 	{
-	  sscanf (linebuf, "%*s%llu", &cached);
+	  sscanf (linebuf, "%*s%lu", &cached);
 	}
       if (!strcmp (prefix, "SwapTotal:"))
 	{
-	  sscanf (linebuf, "%*s%llu", &stat->mem_swap_total);
+	  sscanf (linebuf, "%*s%lu", &stat->mem_swap_total);
 	  n_memitem++;
 	}
       if (!strcmp (prefix, "SwapFree:"))
 	{
-	  sscanf (linebuf, "%*s%llu", &stat->mem_swap_free);
+	  sscanf (linebuf, "%*s%lu", &stat->mem_swap_free);
 	  n_memitem++;
 	}
     }
@@ -1017,12 +1017,13 @@ extract_host_partition_stat (FILE * fp, const char *arg1, T_CM_ERROR * err_buf)
       if (nitem >= nalloc)
 	{
 	  nalloc *= 2;
-	  stat->partitions = realloc (stat->partitions, nalloc * sizeof (T_CM_DISK_PARTITION_STAT));
+	  stat->partitions =
+	    (T_CM_DISK_PARTITION_STAT *) realloc (stat->partitions, nalloc * sizeof (T_CM_DISK_PARTITION_STAT));
 	}
       if (stat->partitions)
 	{
 	  p = stat->partitions + nitem;
-	  sscanf (linebuf, "%255s%*s%llu%llu%llu", p->name, &p->size, &p->used, &p->avail);
+	  sscanf (linebuf, "%255s%*s%lu%lu%lu", p->name, &p->size, &p->used, &p->avail);
 	  nitem++;
 	}
       else
@@ -1055,18 +1056,16 @@ static STATDUMP_PROP statdump_offset[] = {
   {"Num_data_page_dirties", offsetof (T_CM_DB_EXEC_STAT, pb_num_dirties)},
   {"Num_data_page_ioreads", offsetof (T_CM_DB_EXEC_STAT, pb_num_ioreads)},
   {"Num_data_page_iowrites", offsetof (T_CM_DB_EXEC_STAT, pb_num_iowrites)},
-  {"Num_data_page_victims", offsetof (T_CM_DB_EXEC_STAT, pb_num_victims)},
-  {"Num_data_page_iowrites_for_replacement", offsetof (T_CM_DB_EXEC_STAT, pb_num_replacements)},
   {"Num_data_page_hash_anchor_waits", offsetof (T_CM_DB_EXEC_STAT, pb_num_hash_anchor_waits)},
   {"Time_data_page_hash_anchor_wait", offsetof (T_CM_DB_EXEC_STAT, pb_time_hash_anchor_wait)},
   {"Num_data_page_fixed", offsetof (T_CM_DB_EXEC_STAT, pb_fixed_cnt)},
   {"Num_data_page_dirty", offsetof (T_CM_DB_EXEC_STAT, pb_dirty_cnt)},
   {"Num_data_page_lru1", offsetof (T_CM_DB_EXEC_STAT, pb_lru1_cnt)},
   {"Num_data_page_lru2", offsetof (T_CM_DB_EXEC_STAT, pb_lru2_cnt)},
-  {"Num_data_page_ain", offsetof (T_CM_DB_EXEC_STAT, pb_ain_cnt)},
+  {"Num_data_page_lru3", offsetof (T_CM_DB_EXEC_STAT, pb_lru3_cnt)},
   {"Num_data_page_avoid_dealloc", offsetof (T_CM_DB_EXEC_STAT, pb_avoid_dealloc_cnt)},
   {"Num_data_page_avoid_victim", offsetof (T_CM_DB_EXEC_STAT, pb_avoid_victim_cnt)},
-  {"Num_data_page_victim_cand", offsetof (T_CM_DB_EXEC_STAT, pb_victim_cand_cnt)},
+  {"Num_data_page_victim_candidate", offsetof (T_CM_DB_EXEC_STAT, pb_victim_cand_cnt)},
   {"Num_log_page_fetches", offsetof (T_CM_DB_EXEC_STAT, log_num_fetches)},
   {"Num_log_page_ioreads", offsetof (T_CM_DB_EXEC_STAT, log_num_ioreads)},
   {"Num_log_page_iowrites", offsetof (T_CM_DB_EXEC_STAT, log_num_iowrites)},
@@ -1411,12 +1410,17 @@ extract_db_stat (FILE * fp, const char *tdbname, T_CM_ERROR * err_buf)
 	{
 	  if (nitem >= nalloc)
 	    {
-	      nalloc *= 2;
-	      if (!(all_stat->db_stats = realloc (all_stat->db_stats, nalloc * sizeof (T_CM_DB_PROC_STAT))))
+	      T_CM_DB_PROC_STAT *db_stats_newptr = NULL;
+	      int nalloc_new = nalloc * 2;
+	      db_stats_newptr =
+		(T_CM_DB_PROC_STAT *) realloc (all_stat->db_stats, nalloc_new * sizeof (T_CM_DB_PROC_STAT));
+	      if (db_stats_newptr == NULL)
 		{
 		  cm_set_error (err_buf, CM_OUT_OF_MEMORY);
 		  return NULL;
 		}
+	      all_stat->db_stats = db_stats_newptr;
+	      nalloc = nalloc_new;
 	    }
 	  if (cm_get_proc_stat (&pstat, pid) == 0)
 	    {

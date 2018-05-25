@@ -28,7 +28,6 @@
 
 #ident "$Id$"
 
-#include "thread.h"
 #include "connection_defs.h"
 
 #if defined(WINDOWS)
@@ -45,6 +44,7 @@
 	} while(0)
 #endif
 
+// todo: MASTER_ER_... shouldn't be necessary anymore. each thread has own error context
 #define MASTER_ER_SET(...) \
   do { \
       if (css_Master_er_log_enabled == true) { \
@@ -103,6 +103,5 @@ extern bool css_Master_er_log_enabled;
 #define IS_MASTER_CONN_NAME_HA_SERVER(name)     (*((char *)name) == '#')
 #define IS_MASTER_CONN_NAME_HA_COPYLOG(name)    (*((char *)name) == '$')
 #define IS_MASTER_CONN_NAME_HA_APPLYLOG(name)   (*((char *)name) == '%')
-#define IS_MASTER_CONN_NAME_HA_PREFETCHLOG(name) (*((char *)name) == '_')
 
 #endif /* _MASTER_UTIL_H_ */

@@ -363,7 +363,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 18 Server %1$s benachrichtigt über Abschaltung.\nDas könnte mehrere Minuten dauern. Bitte warten.
 19 Server %1$s nicht gefunden.
 20 Master fährt runter in %1$d Minuten\n
-21 The heartbeat feature has been deactivated. Please wait until all shutdown processes of cub_servers are completed.\n
+21 Die Heartbeat-Funktion wurde deaktiviert. Bitte warten Sie, bis alle Shutdown-Prozesse von cub_servers abgeschlossen sind.\n
 
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
 11 Ausgabedatei '%1$s' konnte nicht geöffnet werden\n
@@ -440,8 +440,8 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 114 Fehler-Kontroll-Datei
 115 Eingangsdatei für Fehlerkontrolle während Ladung 
 116 Total %8d object(s) inserted, %d object(s) failed.\n
-117 Load failed.\n
-118 Maximum length of class name is %1$d bytes.\n
+117 Laden fehlgeschlagen.\n
+118 Maximale Länge des Klassennamens ist %1$d Bytes.\n
 120 \
 loaddb: Import von Objekten und Schemas in die Datenbank.\n\
 Anwendung: %1$s loaddb [OPTION] Datenbanknamen\n\
@@ -626,7 +626,7 @@ gültige Optionen:\n\
 $set 18 MSGCAT_UTIL_SET_CHECKDB
 20 Einige Widersprüche wurden in der Datenbank festgestellt.\n Bitte error_log_file %1$s für zusätzliche Informationen einsehen.\n
 21 %1$s: Klasse konnte nicht gefunden werden. Es wird weggelassen werden.\n
-22 %1$s: Cannot find the index on class %2$s.\n
+22 %1$s: Der Index kann nicht gefunden werden. Class: %2$s.\n
 60 \
 checkdb: Konsistenz der Datenbank prüfen.\n\
 Anwendung: %1$s checkdb [OPTION] Datenbanknamen [Klassenname1 Klassenname 2 ...]\n\
@@ -650,27 +650,26 @@ gültige Optionen:\n\
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 Speicherbeschreibung für Datenbank '%1$s' mit Seitengröße %2$s. (Log-Seitengröße: %3$s)\n\n
-16 %1$5d %2$9s  %3$s %4$s  %5$s\n
-17 Ausgangdatei konnte nicht geöffnet werden '%1$s'\n
-18 Speicherbeschreibung für temporäre Datenträger der Datenbank '%1$s' mit Seitengröße %2$s.\n\n
-19 Volid  Zweck   total_pages  free_pages  Vol Name\n\n
-20 Volid  Zweck    total_size   free_size  Vol Name\n\n
-21 LOB Speicherbeschreibung %1$s \n\n
-22 -------------------------------------------------------------------------------\n
-30 Zusammengefasste Speicherbeschreibung für Datenbank '%1$s' mit Seitengröße %2$s. (Log-Seitengröße: %3$s)\n\n
-31 Zweck    total_pages  used_pages  free_pages  volume_count\n
-32 Zweck     total_size   used_size   free_size  volume_count\n
-33 %1$10s %2$s %3$s %4$s %5$10d\n
-34 -------------------------------------------------------------\n
-40 Volid  Purpose   total_pages  free_pages  data_pages index_pages  temp_pages  Vol Name\n\n
-41 Volid  Purpose    total_size   free_size   data_size  index_size   temp_size  Vol Name\n\n
-42 %1$5d %2$9s  %3$s %4$s %5$s %6$s %7$s  %8$s\n
-43 ----------------------------------------------------------------------------------------------------\n
-50 Purpose    total_pages  used_pages  free_pages  data_pages index_pages  temp_pages  volume_count\n
-51 Purpose     total_size   used_size   free_size   data_size  index_size   temp_size  volume_count\n
-52 %1$10s %2$s %3$s %4$s %5$s %6$s %7$s %8$10d\n
-53 -------------------------------------------------------------------------------------------------\n
+10 Speicherbeschreibung für Datenbank '%1$s' mit Seitengröße %2$s. (Log-Seitengröße: %3$s)\n\n
+11 Ausgangdatei konnte nicht geöffnet werden '%1$s'\n
+12 LOB Speicherbeschreibung %1$s \n\n
+20 type                purpose            volume_count        used_pages          free_pages          total_pages\n
+21 type                purpose            volume_count         used_size           free_size           total_size\n
+22 PERMANENT           PERMANENT DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+23 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+24 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+25 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
+30 Raumbeschreibung für alle Bände:\n
+31 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
+32 volid               type                purpose             used_size           free_size           total_size         volume_name\n
+33 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+34 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+35 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+40 Detaillierte Raumbeschreibung für Dateien:\n
+41 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
+42 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
+43 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
+50 -----------------------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: Belegter/freier Speicher der Datenbank anzeigen.\n\
 Anwendung: %1$s spacedb [OPTION] Datenbanknamen\n\
@@ -683,7 +682,6 @@ gültige Optionen:\n\
                                Anzeigeeinheit setzen (Seite, mega, giga, terra, Mensch-lesbar); Standard: H\n\
   -s, --summarize              nur eine Zusammenfassung für jedes Datenträgerzweck anzeigen\n\
   -p, --purpose                Anzeige des verwendeten Größe der einzelnen Zwecke (data/index/temp) jedes Volumen\n
-
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
 15 Geschätzte Anzahl der Seiten = %1$d\n
@@ -755,7 +753,7 @@ Anwendung: %1$s diagdb [OPTION] Datenbanknamen\n\
 \n\
 gültige Optionen:\n\
   -o, --output-file=DATEI     Umleiten der Ausgabemeldungen in DATEI; Standard: keine\n\
-      --emergency             emergency restart; default: none\n\
+      --emergency             Notfall neu starten; Standard: keine\n\
   -d, --dump-type=TYP         Export TYP \n\
                                -1 alles exportieren\n\
                                 1 Dateitabellen exportieren \n\
@@ -947,7 +945,7 @@ gültige Optionen:\n\
   -L, --copied-log-path=PFAD  Pfad der kopierten Logdatenträger; kopierte Loginformation anzeigen \n\
   -p, --page=ID               Seiten-ID; Standard: 0\n\
   -v, --verbose               ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
-  -i, --interval=S            print information every S secs\n
+  -i, --interval=S            Druckinformationen alle S secs\n
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb kann nicht in Stand-Alone-Modus ausgeführt werden.\n
@@ -1029,8 +1027,8 @@ Anwendung: %1$s synccolldb [OPTION] database-name\n\
 \n\
 gültige Optionen:\n\
   -c, --check-only    Überprüft die Kollationen der Datenbank mit der Systemkollation.\n\
-		      Wenn Kollationen Synchronisierung  ist erforderlich, Fehlerkode 1 wird zurückgegeben.\n\
-		      Zeigt einen Bericht der inkompatiblen Kollationen.\n\
+              Wenn Kollationen Synchronisierung  ist erforderlich, Fehlerkode 1 wird zurückgegeben.\n\
+              Zeigt einen Bericht der inkompatiblen Kollationen.\n\
   -f, --force-only    Aktualisiert die Kollationen in der Datenbank, so dass sie gleich mit den Kollationen einer neuen Systemkonfiguration sind.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
@@ -1061,26 +1059,13 @@ gültige Optionen:\n\
       --sort-key=SPALTENNUMMER Spalte zu sortieren\n\
       --reverse                Ergebnisse umgekehrt sortieren\n
 
-$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
-22 Der Server war nicht für HA konfiguriert.\n
-23 Vorababruf ist deaktiviert.\n
-58 HA wird in dieser Plattform nicht unterstützt.\n
-59 prefetchlogdb nicht ausführen können als Stand-Alone-Modus.\n
-60 \
-prefetchlogdb: Vorauslese Protokollseiten vom Server.\n\
-verwendung: %1$s prefetchlogdb [OPTION] database-name\n\
-\n\
-gültigen Optionen:\n\
-  -L, --log-path=PATH         Verzeichnispfad für Protokolldatenträger kopiert\n
-
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
 59 Erzeugungsmodus Ungültig geliefert.\n
 60 Ungültige oder Eingangsordner beschädigte.\n
 61 \
 gen_tz: Generieren Sie Quelldateien enthält, Zeitzone Daten, die in einer gemeinsamen\n\
         Bibliothek kompiliert werden.\n\
-Anwendung: %s gen_tz [OPTION]\n\
-           %s gen_tz -g extend [OPTION] [Datenbank-Name]\n\
+Anwendung: %s gen_tz -g [new|extend] [Datenbank-Name] (Nur für Erweiterungsmodus)\n\
 \n\
 gültigen Optionen:\n\
   -i, --input-folder    Pfad zu einem Eingangsordner enthält eine Version von IANA\n\
@@ -1093,18 +1078,15 @@ gültigen Optionen:\n\
                         eine Quelldatei mit allen Ländern und Zeitzone-Namen zu \n\
                         generieren auch (für Entwicklerzwecke bestimmt ist, um in\n\
                         Zukunft CUBRID Versionen integriert werden).\n\
-                        2. EXTEND : Zeitzone zu erzeugen Quelldateien mit den Daten\n\
-                        aus dem Eingangsordner; Zeitzone IDs in CUBRID codiert werden\n\
-                        beibehalten; neue Zeitzonen in den Eingabedateien gefunden\n\
-                        werden, um die, die auch erzeugte sekundäre Quelldatei\n\
-                        hinzugefügt; GMT versetzt und Sommer Informationen aktualisiert\n\
-                        (oder hinzugefügt, für die neue Zeitzonen); Zonen sind nie\n\
-                        entfernt wenn eine Zeitzone in CUBRID codiert wird von den\n\
-                        Eingabedateien fehlen, die zugehörigen Daten aus dem vorhandenen\n\
-                        Zone Bibliothek abgerufen wird. Eine neue C-Datei, die alle\n\
-                        Zeitzone Namen erzeugt wird, und es muss in CUBRID Quell-Ordner\n\
-                        aufgenommen werden, bevor die neue Zeitzone-Bibliothek verwendet\n\
-                        werden.\n\
+                        2. EXTEND : Generiere Zeitzonen-Quelldateien mit dem\n\
+                        Daten aus dem Eingabeordner; Neue Zeitzonen in der Eingabe gefunden\n\
+                        Dateien werden hinzugefügt; GMT-Offsets und Sommerzeit\n\
+                        Informationen werden aktualisiert (oder hinzugefügt, für neue Zeitzonen);\n\
+                        Zeitzonen werden nie entfernt, wenn eine Zeitzone verschlüsselt wird\n\
+                        CUBRID fehlt in den Eingabedateien Daten werden aus der\n\
+                        vorhandenen Zeitzonenbibliothek abgerufen.\n\
+                        Wenn die erste Phase der Erweiterung nicht alle Daten rückwärts kompatibel macht,\n\
+                        Alle Zeilen in allen Tabellen mit Zeitzonendatentypen werden aktualisiert.\n\
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 Die mitgelieferte Zonen-ID außerhalb des Bereichs ist.\n\
@@ -1115,8 +1097,8 @@ Anwendung: %s dump_tz [OPTION]\n\
 \n\
 gültigen Optionen:\n\
   -c, --list-countries      zeigt die Liste der Länder, die derzeit nicht unterstützt\n\
-  -l, --leap-seconds	    zeigt die Liste der Schaltsekunden\n\
-  -s, --summary		        zeigt eine Zusammenfassung der Dump-Zeitzone-Daten\n\
+  -l, --leap-seconds        zeigt die Liste der Schaltsekunden\n\
+  -s, --summary             zeigt eine Zusammenfassung der Dump-Zeitzone-Daten\n\
   -z, --list-zones          zeigt die Liste der aktuell unterstützten Zeitzonen\n\
   -d, --zone-id=ZONE_ID|ALL Anzeigen vorhanden Zeitzoneninformationen zu einer\n\
                             Zeitzone mit dem mitgelieferten zone_id oder für alle\n\

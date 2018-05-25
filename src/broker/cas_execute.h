@@ -161,6 +161,7 @@ extern void ux_set_utype_for_datetimetz (char u_type);
 extern void ux_set_utype_for_timeltz (char u_type);
 extern void ux_set_utype_for_timestampltz (char u_type);
 extern void ux_set_utype_for_datetimeltz (char u_type);
+extern void ux_set_utype_for_json (char u_type);
 extern int ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * net_buf,
 			   T_REQ_INFO * req_info, unsigned int query_seq_num);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */

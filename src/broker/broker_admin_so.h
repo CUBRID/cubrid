@@ -47,7 +47,6 @@
 #define SRV_CON_DBNAME_SIZE		32
 #endif /* !SRV_CON_DBNAME_SIZE */
 
-typedef enum t_as_status T_AS_STATUS;
 enum t_as_status
 {
   AS_STATUS_IDLE,
@@ -56,6 +55,7 @@ enum t_as_status
   AS_STATUS_CLIENT_WAIT,
   AS_STATUS_CLOSE_WAIT
 };
+typedef enum t_as_status T_AS_STATUS;
 
 typedef struct t_job_info T_JOB_INFO;
 struct t_job_info

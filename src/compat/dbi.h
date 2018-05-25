@@ -28,15 +28,24 @@
 
 #ident "$Id$"
 
+#if defined (SERVER_MODE)
+#error Does not belong to server module
+#endif /* defined (SERVER_MODE) */
+
 #include <stdio.h>
 #include <time.h>
-#include "error_code.h"
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "dbdef.h"
 #include "db_date.h"
 #include "db_elo.h"
 #include "db_query.h"
 #include "databases_file.h"
+#include "error_code.h"
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
 #define db_utime_to_string db_timestamp_to_string
 #define db_string_to_utime db_string_to_timestamp
@@ -171,9 +180,6 @@ extern int db_check_authorization (DB_OBJECT * op, DB_AUTH auth);
 extern int db_check_authorization_and_grant_option (MOP op, DB_AUTH auth);
 extern int db_get_class_privilege (DB_OBJECT * op, unsigned int *auth);
 
-extern int db_set_compare (const DB_VALUE * value1, const DB_VALUE * value2);
-extern void db_value_fprint (FILE * fp, const DB_VALUE * value);
-
 /*  Serial value manipulation */
 extern int db_get_serial_current_value (const char *serial_name, DB_VALUE * serial_value);
 extern int db_get_serial_next_value (const char *serial_name, DB_VALUE * serial_value);
@@ -192,7 +198,8 @@ extern DB_OBJECT *db_find_unique (DB_OBJECT * classobj, const char *attname, DB_
 extern DB_OBJECT *db_find_unique_write_mode (DB_OBJECT * classobj, const char *attname, DB_VALUE * value);
 extern DB_OBJECT *db_find_multi_unique (DB_OBJECT * classobj, int size, char *attnames[], DB_VALUE * values[],
 					DB_FETCH_MODE purpose);
-extern DB_OBJECT *db_dfind_unique (DB_OBJECT * classobj, DB_ATTDESC * attdesc, DB_VALUE * value, DB_FETCH_MODE purpose);
+  extern DB_OBJECT *db_dfind_unique (DB_OBJECT * classobj, DB_ATTDESC * attdesc, DB_VALUE * value,
+				     DB_FETCH_MODE purpose);
 extern DB_OBJECT *db_dfind_multi_unique (DB_OBJECT * classobj, int size, DB_ATTDESC * attdesc[], DB_VALUE * values[],
 					 DB_FETCH_MODE purpose);
 extern DB_OBJECT *db_find_primary_key (MOP classmop, const DB_VALUE ** values, int size, DB_FETCH_MODE purpose);
@@ -210,65 +217,6 @@ extern int db_fetch_list (DB_OBJLIST * objects, DB_FETCH_MODE mode, int quit_on_
 extern int db_fetch_set (DB_COLLECTION * set, DB_FETCH_MODE mode, int quit_on_error);
 extern int db_fetch_seq (DB_SEQ * set, DB_FETCH_MODE mode, int quit_on_error);
 extern int db_fetch_composition (DB_OBJECT * object, DB_FETCH_MODE mode, int max_level, int quit_on_error);
-
-/* Collection functions */
-extern DB_COLLECTION *db_col_create (DB_TYPE type, int size, DB_DOMAIN * domain);
-extern DB_COLLECTION *db_col_copy (DB_COLLECTION * col);
-extern int db_col_filter (DB_COLLECTION * col);
-extern int db_col_free (DB_COLLECTION * col);
-
-extern int db_col_coerce (DB_COLLECTION * col, DB_DOMAIN * domain);
-
-extern int db_col_size (DB_COLLECTION * col);
-extern int db_col_cardinality (DB_COLLECTION * col);
-extern DB_TYPE db_col_type (DB_COLLECTION * col);
-extern DB_DOMAIN *db_col_domain (DB_COLLECTION * col);
-extern int db_col_ismember (DB_COLLECTION * col, DB_VALUE * value);
-extern int db_col_find (DB_COLLECTION * col, DB_VALUE * value, int starting_index, int *found_index);
-extern int db_col_add (DB_COLLECTION * col, DB_VALUE * value);
-extern int db_col_drop (DB_COLLECTION * col, DB_VALUE * value, int all);
-extern int db_col_drop_element (DB_COLLECTION * col, int element_index);
-
-extern int db_col_drop_nulls (DB_COLLECTION * col);
-
-extern int db_col_get (DB_COLLECTION * col, int element_index, DB_VALUE * value);
-extern int db_col_put (DB_COLLECTION * col, int element_index, DB_VALUE * value);
-extern int db_col_insert (DB_COLLECTION * col, int element_index, DB_VALUE * value);
-
-extern int db_col_print (DB_COLLECTION * col);
-extern int db_col_fprint (FILE * fp, DB_COLLECTION * col);
-
-/* Set and sequence functions.
-   These are now obsolete. Please use the generic collection functions
-   "db_col*" instead */
-extern DB_COLLECTION *db_set_create (DB_OBJECT * classobj, const char *name);
-extern DB_COLLECTION *db_set_create_basic (DB_OBJECT * classobj, const char *name);
-extern DB_COLLECTION *db_set_create_multi (DB_OBJECT * classobj, const char *name);
-extern DB_COLLECTION *db_seq_create (DB_OBJECT * classobj, const char *name, int size);
-extern int db_set_free (DB_COLLECTION * set);
-extern int db_set_filter (DB_COLLECTION * set);
-extern int db_set_add (DB_COLLECTION * set, DB_VALUE * value);
-extern int db_set_get (DB_COLLECTION * set, int element_index, DB_VALUE * value);
-extern int db_set_drop (DB_COLLECTION * set, DB_VALUE * value);
-extern int db_set_size (DB_COLLECTION * set);
-extern int db_set_cardinality (DB_COLLECTION * set);
-extern int db_set_ismember (DB_COLLECTION * set, DB_VALUE * value);
-extern int db_set_isempty (DB_COLLECTION * set);
-extern int db_set_has_null (DB_COLLECTION * set);
-extern int db_set_print (DB_COLLECTION * set);
-extern DB_TYPE db_set_type (DB_COLLECTION * set);
-extern DB_COLLECTION *db_set_copy (DB_COLLECTION * set);
-extern int db_seq_get (DB_COLLECTION * set, int element_index, DB_VALUE * value);
-extern int db_seq_put (DB_COLLECTION * set, int element_index, DB_VALUE * value);
-extern int db_seq_insert (DB_COLLECTION * set, int element_index, DB_VALUE * value);
-extern int db_seq_drop (DB_COLLECTION * set, int element_index);
-extern int db_seq_size (DB_COLLECTION * set);
-extern int db_seq_cardinality (DB_COLLECTION * set);
-extern int db_seq_print (DB_COLLECTION * set);
-extern int db_seq_find (DB_COLLECTION * set, DB_VALUE * value, int element_index);
-extern int db_seq_free (DB_SEQ * seq);
-extern int db_seq_filter (DB_SEQ * seq);
-extern DB_SEQ *db_seq_copy (DB_SEQ * seq);
 
 /* Class definition */
 extern DB_OBJECT *db_create_class (const char *name);
@@ -406,7 +354,6 @@ extern int db_attribute_is_indexed (DB_ATTRIBUTE * attribute);
 extern int db_attribute_is_reverse_indexed (DB_ATTRIBUTE * attribute);
 extern int db_attribute_is_shared (DB_ATTRIBUTE * attribute);
 extern int db_attribute_length (DB_ATTRIBUTE * attribute);
-extern DB_DOMAIN *db_type_to_db_domain (DB_TYPE type);
 
 extern DB_DOMAIN *db_domain_next (const DB_DOMAIN * domain);
 extern DB_TYPE db_domain_type (const DB_DOMAIN * domain);
@@ -416,6 +363,7 @@ extern int db_domain_precision (const DB_DOMAIN * domain);
 extern int db_domain_scale (const DB_DOMAIN * domain);
 extern int db_domain_codeset (const DB_DOMAIN * domain);
 extern int db_domain_collation_id (const DB_DOMAIN * domain);
+  extern const char *db_domain_raw_json_schema (const DB_DOMAIN * domain);
 
 extern DB_METHOD *db_method_next (DB_METHOD * method);
 extern const char *db_method_name (DB_METHOD * method);
@@ -466,7 +414,8 @@ extern int db_rename_trigger (DB_OBJECT * obj, const char *newname);
 
 extern DB_OBJECT *db_find_trigger (const char *name);
 extern int db_find_all_triggers (DB_OBJLIST ** list);
-extern int db_find_event_triggers (DB_TRIGGER_EVENT event, DB_OBJECT * class_obj, const char *attr, DB_OBJLIST ** list);
+  extern int db_find_event_triggers (DB_TRIGGER_EVENT event, DB_OBJECT * class_obj, const char *attr,
+				     DB_OBJLIST ** list);
 extern int db_alter_trigger_priority (DB_OBJECT * trobj, double priority);
 extern int db_alter_trigger_status (DB_OBJECT * trobj, DB_TRIGGER_STATUS status);
 
@@ -811,4 +760,7 @@ extern int db_get_ha_server_state (char *buffer, int maxlen);
 
 extern void db_clear_host_connected (void);
 extern char *db_get_database_version (void);
+#ifdef __cplusplus
+}
+#endif
 #endif /* _DBI_H_ */

@@ -1,0 +1,21 @@
+language: cpp
+
+compiler:
+  - gcc
+
+os:
+- linux
+
+addons:
+  apt:
+    sources:
+      kalakris-cmake
+    packages:
+      - cmake
+      - systemtap-sdt-dev
+      - libelf-dev
+
+script:
+  - cmake -E make_directory build
+  - cmake -E chdir build cmake ..
+  - cmake --build build

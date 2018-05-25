@@ -922,7 +922,7 @@ $ LOADDB
 853 객체(%1$d|%2$d|%3$d)에 대해 Uncommitted Read 트랜잭션(%4$d)이 잘못된 로크(%5$s)를 잡았습니다.
 854 경고: lock holder는 없지만 lock waiter는 존재하는 상태. %1$s를 참조하세요.
 855 경고: 둘 이상의 스레드가 하나의 트랜잭션(%1$d)를 위해 lock-waiting 중입니다.
-856 경고: 이상한 로크 대기 상태(%1$d|%2$d), 스레드는 (%3$d|%4$d), 트랜잭션은 (%5$d).
+856 경고: 이상한 로크 대기 상태(%1$d|%2$d), 스레드는 (%3$d|%4$lld), 트랜잭션은 (%5$d).
 857 볼륨 "%2$s"의 %1$d 페이지를 잘라내는 도중에 I/O 에러 발생.
 858 서버 재수행시 볼륨 "%1$s"는 알 수 없는 볼륨입니다. 
 859 페이지(%1$d|%2$d)에 대한 래치 획득 요청이 취소되었습니다.
@@ -1260,9 +1260,30 @@ $ LOADDB
 1191 독립 모드의 vacuum 작업 종료
 1192 %1$zu의 값 정밀도가 최대 허용치인 %2$s를 초과했습니다.
 1193 분할 표현식의 길이가 최대 허용치인 %1$s를 초과했습니다.
-1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
-1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
-1196 마지막 에러
+1194 클래스 %3$d|%4$d|%5$d 에 대한 잠금이 즉시 부여되지 않았기 때문에 파일 %1$d|%2$d 에 대해서 검사할 수 없습니다.
+1195 CTE의 재귀 부분은 GROUP BY 절이 없는 집계 함수를 포함할 수 없습니다.
+1196 CTE 수행 중에 반복 수행 최대 횟수 %1$d를 초과했습니다.
+1197 Invalid json: %1$s (%2$d)
+1198 A json object must be provided
+1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
+1200 Invalid JSON path
+1201 Json object name cannot be NULL.
+1202 Json PATH "%1$s" does not exist in %2$s
+1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
+1204 Json KEY "%1$s" is duplicate
+1205 Reserved error for JSON.
+1206 Reserved error for JSON.
+1207 Reserved error for JSON.
+1208 Reserved error for JSON.
+1209 Reserved error for JSON.
+1210 Reserved error for JSON.
+1211 Reserved error for JSON.
+1212 Reserved error for JSON.
+1213 Reserved error for JSON.
+1214 Reserved error for JSON.
+
+1215 마지막 에러
+
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
 2 에러 메시지를 사용할 수 없습니다.
@@ -1713,6 +1734,12 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 잘못된 집계 함수입니다.
 293 분할 경계값은 각 분할에 대해서 항상 증가해야 합니다.
 294 local timezone 타입에 대해서 함수 인덱스나 필터링된 인덱스를 사용할 수 없습니다.
+295 부질의 내에 SELECT INTO 는 허용되지 않습니다.
+296 CTE 이름이 모호합니다. 같은 이름의 CTE가 하나 이상 존재합니다.: '%1$s'.
+297 WITH 절을 중첩해서 사용할 수 없습니다.
+298 재귀 CTE  '%1$s’는 재귀 질의에서 직접 참조되어야 합니다.
+299 CTE '%1$s’의 에러: 비재귀 부분과 재귀 부분은 반드시 UNION ALL로 연결되어야 합니다.
+300 DEFAULT 절에 부질의는 허용되지 않습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.

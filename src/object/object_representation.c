@@ -31,26 +31,23 @@
 #include <winsock2.h>
 #endif /* WINDOWS */
 #include <setjmp.h>
+#include <assert.h>
 
-#include "porting.h"
-#if !defined (SERVER_MODE)
-#include "locator_cl.h"
-#endif /* !SERVER_MODE */
 #include "object_representation.h"
-#include "object_domain.h"
 #include "error_manager.h"
 #include "oid.h"
-#include "storage_common.h"
-#include "query_opfunc.h"
-#include "class_object.h"
-#include "db.h"
 #include "set_object.h"
-#if defined (SERVER_MODE)
-#include "thread.h"
-#endif /* !SERVER_MODE */
+#include "file_io.h"
+#include "regu_var.h"
+#include "object_primitive.h"
+#include "query_list.h"
+#include "db_json.hpp"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 /* simple macro to calculate minimum bytes to contain given bits */
 #define BITS_TO_BYTES(bit_cnt)		(((bit_cnt) + 7) / 8)
@@ -159,13 +156,13 @@ classobj_get_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
 	  continue;
 	}
 
-      if (DB_VALUE_TYPE (&value) != DB_TYPE_STRING || DB_GET_STRING (&value) == NULL)
+      if (DB_VALUE_TYPE (&value) != DB_TYPE_STRING || db_get_string (&value) == NULL)
 	{
 	  error = ER_SM_INVALID_PROPERTY;
 	}
       else
 	{
-	  tmp_str = DB_GET_STRING (&value);
+	  tmp_str = db_get_string (&value);
 	  if (tmp_str && strcmp (name, tmp_str) == 0)
 	    {
 	      if ((i + 1) >= max)
@@ -394,8 +391,6 @@ int
 or_set_rep_id (RECDES * record, int repid)
 {
   OR_BUF orep, *buf;
-  bool is_bound_bit = false;
-  int offset_size = 0;
   unsigned int new_bits = 0;
 
   if (record->length < OR_HEADER_SIZE (record->data))
@@ -613,7 +608,6 @@ static void
 or_mvcc_set_flag (RECDES * record, char flags)
 {
   OR_BUF orep, *buf;
-  int mvcc_flag = 1;
   int repid_and_flag = 0;
 
   assert (record != NULL && record->data != NULL && record->length >= OR_MVCC_REP_SIZE);
@@ -860,7 +854,6 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
   int mvcc_old_flag = 0;
   int repid_and_flag_bits = 0;
   int old_mvcc_size = 0, new_mvcc_size = 0;
-  bool is_bigone = false;
 
   assert (record != NULL && record->data != NULL && record->length != 0 && record->length >= OR_MVCC_MIN_HEADER_SIZE);
 
@@ -943,10 +936,6 @@ or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int boun
 {
   OR_BUF orep, *buf;
   int error = NO_ERROR;
-  int mvcc_old_flag = 0;
-  int repid_and_flag_bits = 0;
-  int old_mvcc_size = 0, new_mvcc_size = 0;
-  bool is_bigone = false;
 
   assert (record != NULL && record->data != NULL && record->length == 0);
 
@@ -1224,7 +1213,6 @@ int
 or_get_align (OR_BUF * buf, int align)
 {
   char *ptr;
-  int rc = NO_ERROR;
 
   ptr = PTR_ALIGN (buf->ptr, align);
   if (ptr > buf->endptr)
@@ -1273,7 +1261,7 @@ or_varchar_length_internal (int charlen, int align)
 {
   int len;
 
-  if (charlen < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+  if (charlen < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       len = OR_BYTE_SIZE + charlen;
     }
@@ -1343,13 +1331,13 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
   buf->error_abort = 0;
 
   /* store the size prefix */
-  if (charlen < PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+  if (charlen < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
       rc = or_put_byte (buf, charlen);
     }
   else
     {
-      rc = or_put_byte (buf, PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
+      rc = or_put_byte (buf, OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
       compressable = true;
     }
 
@@ -1378,7 +1366,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 
       /* Alloc memory for the compressed string */
       /* Worst case LZO compression size from their FAQ */
-      compressed_string = malloc (LZO_COMPRESSED_STRING_SIZE (charlen));
+      compressed_string = (char *) malloc (LZO_COMPRESSED_STRING_SIZE (charlen));
       if (compressed_string == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
@@ -1437,7 +1425,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
       else
 	{
 	  /* Store the compressed string bytes */
-	  rc = or_put_data (buf, compressed_string, compressed_length);
+	  rc = or_put_data (buf, compressed_string, (int) compressed_length);
 	  if (rc != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -1554,7 +1542,7 @@ or_get_varchar (OR_BUF * buf, int *length_ptr)
 int
 or_get_varchar_length (OR_BUF * buf, int *rc)
 {
-  int net_charlen, charlen, compressed_length = 0, decompressed_length = 0;
+  int charlen, compressed_length = 0, decompressed_length = 0;
 
   *rc = or_get_varchar_compression_lengths (buf, &compressed_length, &decompressed_length);
 
@@ -2761,7 +2749,7 @@ or_get_data (OR_BUF * buf, char *data, int length)
  * or_put_string - write string to or buf
  *    return: NO_ERROR or error code
  *    buf(in/out): or buffer
- *    str(in): string to wirte
+ *    str(in): string to write
  *
  * Note:
  *    Does byte padding on strings to bring them up to 4 byte boundary.
@@ -2774,7 +2762,7 @@ or_get_data (OR_BUF * buf, char *data, int length)
  *    the total length may be more than that returned by strlen.
  */
 int
-or_put_string (OR_BUF * buf, char *str)
+or_put_string_aligned (OR_BUF * buf, char *str)
 {
   int len, bits, pad;
   int rc = NO_ERROR;
@@ -3019,7 +3007,6 @@ static char *
 or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars, int offset_size)
 {
   int i, offset, offset2;
-  int rc = NO_ERROR;
 
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
@@ -3732,7 +3719,7 @@ or_unpack_ehid (char *ptr, EHID * ehid)
  *    btid(in): BTID value
  */
 char *
-or_pack_btid (char *ptr, BTID * btid)
+or_pack_btid (char *ptr, const BTID * btid)
 {
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
@@ -4031,7 +4018,7 @@ or_unpack_string (char *ptr, char **string)
     }
   else
     {
-      new_ = db_private_alloc (NULL, length);
+      new_ = (char *) db_private_alloc (NULL, length);
       /* need to handle allocation errors */
       if (new_ == NULL)
 	{
@@ -4281,7 +4268,7 @@ or_unpack_bool_array (char *ptr, bool ** bools)
     }
   else
     {
-      new_ = db_private_alloc (NULL, length);
+      new_ = (bool *) db_private_alloc (NULL, length);
       /* need to handle allocation errors */
       if (new_ == NULL)
 	{
@@ -4428,6 +4415,7 @@ or_decode (const char *buffer, char *dest, int size)
 #define OR_DOMAIN_BUILTIN_FLAG		(0x100)	/* for NULL type only */
 #define OR_DOMAIN_ENUMERATION_FLAG	(0x100)	/* for enumeration type only */
 #define OR_DOMAIN_ENUM_COLL_FLAG	(0x200)	/* for enumeration type only */
+#define OR_DOMAIN_SCHEMA_FLAG		(0x400)	/* for json */
 
 #define OR_DOMAIN_SCALE_MASK		(0xFF00)
 #define OR_DOMAIN_SCALE_SHIFT		(8)
@@ -4546,6 +4534,13 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	  size += or_packed_enumeration_size (&DOM_GET_ENUMERATION (d));
 	  break;
 
+	case DB_TYPE_JSON:
+	  if (d->json_validator != NULL)
+	    {
+	      size += or_packed_string_length (db_json_get_schema_raw_from_validator (d->json_validator), NULL);
+	    }
+	  break;
+
 	default:
 	  break;
 	}
@@ -4589,6 +4584,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
   unsigned int carrier, extended_precision, extended_scale;
   int precision, scale;
   int has_oid, has_subdomain, has_enum;
+  bool has_schema;
   bool has_collation;
   TP_DOMAIN *d;
   DB_TYPE id;
@@ -4648,6 +4644,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
       has_subdomain = 0;
       has_enum = 0;
       has_collation = false;
+      has_schema = false;
 
       switch (id)
 	{
@@ -4706,9 +4703,8 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	   * in or_packed_domain_size above.
 	   */
 	  if ((id == DB_TYPE_VARCHAR && d->precision == DB_MAX_VARCHAR_PRECISION)
-	      || (id == DB_TYPE_VARNCHAR && d->precision == DB_MAX_VARNCHAR_PRECISION) || (id == DB_TYPE_VARBIT
-											   && d->precision ==
-											   DB_MAX_VARBIT_PRECISION))
+	      || (id == DB_TYPE_VARNCHAR && d->precision == DB_MAX_VARNCHAR_PRECISION)
+	      || (id == DB_TYPE_VARBIT && d->precision == DB_MAX_VARBIT_PRECISION))
 	    {
 	      precision = 0;
 	    }
@@ -4766,6 +4762,14 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	    {
 	      carrier |= OR_DOMAIN_ENUMERATION_FLAG;
 	      has_enum = 1;
+	    }
+	  break;
+
+	case DB_TYPE_JSON:
+	  if (d->json_validator != NULL)
+	    {
+	      carrier |= OR_DOMAIN_SCHEMA_FLAG;
+	      has_schema = true;
 	    }
 	  break;
 
@@ -4852,6 +4856,15 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	    }
 	}
 
+      if (has_schema)
+	{
+	  rc = or_put_json_validator (buf, d->json_validator);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
+	}
+
       /* 
        * Recurse on the sub domains if necessary, note that we don't
        * pass the NULL bit down here because that applies only to the
@@ -4882,6 +4895,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
   TP_DOMAIN *domain, *last, *d;
   unsigned int carrier, precision, scale, codeset, has_classoid, has_setdomain, has_enum, collation_id,
     collation_storage;
+  bool has_schema;
   bool more, auto_precision, is_desc, has_collation;
   DB_TYPE type;
   int index;
@@ -4920,7 +4934,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	    {
 	      goto error;
 	    }
-	  domain = tp_domain_resolve_default (index - 1);
+	  domain = tp_domain_resolve_default ((DB_TYPE) (index - 1));
 	  /* stop the loop */
 	  more = false;
 	}
@@ -4935,6 +4949,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	  has_classoid = 0;
 	  has_setdomain = 0;
 	  has_enum = 0;
+	  has_schema = false;
 	  auto_precision = false;
 	  has_collation = false;
 
@@ -5022,6 +5037,10 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_ENUMERATION:
 	      has_enum = carrier & OR_DOMAIN_ENUMERATION_FLAG;
 	      has_collation = ((carrier & OR_DOMAIN_ENUM_COLL_FLAG) == OR_DOMAIN_ENUM_COLL_FLAG);
+	      break;
+
+	    case DB_TYPE_JSON:
+	      has_schema = (carrier & OR_DOMAIN_SCHEMA_FLAG) != 0;
 	      break;
 
 	    default:
@@ -5129,18 +5148,27 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	      d->codeset = codeset;
 	      d->collation_id = collation_id;
 	      d->enumeration.collation_id = collation_id;
-	      d->collation_flag = collation_flag;
+	      d->collation_flag = (TP_DOMAIN_COLL_ACTION) collation_flag;
 	    }
 	  else
 	    {
 	      d->codeset = codeset;
 	      d->collation_id = collation_id;
-	      d->collation_flag = collation_flag;
+	      d->collation_flag = (TP_DOMAIN_COLL_ACTION) collation_flag;
 	    }
 
 	  if (has_enum)
 	    {
 	      rc = or_get_enumeration (buf, &DOM_GET_ENUMERATION (d));
+	      if (rc != NO_ERROR)
+		{
+		  goto error;
+		}
+	    }
+
+	  if (has_schema)
+	    {
+	      rc = or_get_json_validator (buf, d->json_validator);
 	      if (rc != NO_ERROR)
 		{
 		  goto error;
@@ -5216,13 +5244,14 @@ unpack_domain (OR_BUF * buf, int *is_null)
   OID class_oid;
   struct db_object *class_mop = NULL;
   int rc = NO_ERROR;
-  int enum_vals_cnt = 0;
   DB_ENUMERATION db_enum = { NULL, 0, 0 };
   unsigned int collation_storage;
   unsigned char collation_flag;
 
   domain = last = dom = setdomain = NULL;
   precision = scale = 0;
+
+  char *schema_raw = NULL;
 
   more = true;
   while (more)
@@ -5247,7 +5276,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	  index = (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
 	  /* Recall that the builtin domain indexes are 1 based rather than zero based, must adjust prior to indexing
 	   * the table. */
-	  domain = tp_domain_resolve_default (index - 1);
+	  domain = tp_domain_resolve_default ((DB_TYPE) (index - 1));
 	  if (domain == NULL)
 	    {
 	      goto error;
@@ -5438,43 +5467,54 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	      break;
 
 	    case DB_TYPE_ENUMERATION:
-	      {
-		if ((carrier & OR_DOMAIN_ENUM_COLL_FLAG) == OR_DOMAIN_ENUM_COLL_FLAG)
-		  {
-		    LANG_COLLATION *lc;
-		    collation_id = or_get_int (buf, &rc);
-		    assert (collation_id != LANG_COLL_ISO_BINARY);
-		    if (rc != NO_ERROR)
-		      {
-			goto error;
-		      }
-		    lc = lang_get_collation (collation_id);
-		    assert (lc != NULL);
-		    codeset = lc->codeset;
-		  }
-		else
-		  {
-		    collation_id = LANG_COLL_ISO_BINARY;
-		    codeset = INTL_CODESET_ISO88591;
-		  }
+	      if ((carrier & OR_DOMAIN_ENUM_COLL_FLAG) == OR_DOMAIN_ENUM_COLL_FLAG)
+		{
+		  LANG_COLLATION *lc;
+		  collation_id = or_get_int (buf, &rc);
+		  assert (collation_id != LANG_COLL_ISO_BINARY);
+		  if (rc != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		  lc = lang_get_collation (collation_id);
+		  assert (lc != NULL);
+		  codeset = lc->codeset;
+		}
+	      else
+		{
+		  collation_id = LANG_COLL_ISO_BINARY;
+		  codeset = INTL_CODESET_ISO88591;
+		}
 
-		db_enum.collation_id = collation_id;
+	      db_enum.collation_id = collation_id;
 
-		if (carrier & OR_DOMAIN_ENUMERATION_FLAG)
-		  {
-		    rc = or_get_enumeration (buf, &db_enum);
-		    if (rc != NO_ERROR)
-		      {
-			goto error;
-		      }
-		    dom = tp_domain_find_enumeration (&db_enum, is_desc);
-		    if (dom != NULL)
-		      {
-			/* we have to free the memory allocated for the enum above since we already have it cached */
-			tp_domain_clear_enumeration (&db_enum);
-		      }
-		  }
-	      }
+	      if (carrier & OR_DOMAIN_ENUMERATION_FLAG)
+		{
+		  rc = or_get_enumeration (buf, &db_enum);
+		  if (rc != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		  dom = tp_domain_find_enumeration (&db_enum, is_desc);
+		  if (dom != NULL)
+		    {
+		      /* we have to free the memory allocated for the enum above since we already have it cached */
+		      tp_domain_clear_enumeration (&db_enum);
+		    }
+		}
+	      break;
+
+	    case DB_TYPE_JSON:
+	      if ((carrier & OR_DOMAIN_SCHEMA_FLAG) != 0)
+		{
+		  rc = or_get_json_schema (buf, schema_raw);
+		  if (rc != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		  or_align (buf, OR_INT_SIZE);
+		  assert (er_errid () == NO_ERROR);
+		}
 	      break;
 
 	    default:
@@ -5494,12 +5534,28 @@ unpack_domain (OR_BUF * buf, int *is_null)
 
 	      switch (type)
 		{
+		case DB_TYPE_JSON:
+		  if (schema_raw != NULL)
+		    {
+		      rc = db_json_load_validator (schema_raw, dom->json_validator);
+		      db_private_free_and_init (NULL, schema_raw);
+		      if (rc != NO_ERROR)
+			{
+			  ASSERT_ERROR ();
+			  goto error;
+			}
+		    }
+		  else
+		    {
+		      dom->json_validator = NULL;
+		    }
+		  break;
 		case DB_TYPE_NCHAR:
 		case DB_TYPE_VARNCHAR:
 		case DB_TYPE_CHAR:
 		case DB_TYPE_VARCHAR:
 		  dom->collation_id = collation_id;
-		  dom->collation_flag = collation_flag;
+		  dom->collation_flag = (TP_DOMAIN_COLL_ACTION) collation_flag;
 		case DB_TYPE_BIT:
 		case DB_TYPE_VARBIT:
 		  dom->codeset = codeset;
@@ -5514,7 +5570,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		  dom->collation_id = collation_id;
 		  dom->enumeration.collation_id = collation_id;
 		  dom->codeset = codeset;
-		  dom->collation_flag = collation_flag;
+		  dom->collation_flag = (TP_DOMAIN_COLL_ACTION) collation_flag;
 		default:
 		  break;
 		}
@@ -6817,6 +6873,7 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
 	{
 	  /* this was a tagged NULL value, restore the domain but set the null flag */
 	  db_value_put_null (value);
+
 	  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)))
 	    {
 	      db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
@@ -6824,6 +6881,11 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
 	  else if (TP_DOMAIN_TYPE (domain) == DB_TYPE_ENUMERATION)
 	    {
 	      db_enum_put_cs_and_collation (value, TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	    }
+	  else if (TP_DOMAIN_TYPE (domain) == DB_TYPE_JSON)
+	    {
+	      /* TODO find if schema_raw set here is ever used */
+	      value->data.json.schema_raw = NULL;
 	    }
 	}
       else
@@ -7620,7 +7682,7 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
   int str_size = 0;
   LANG_COLLATION *lc;
 
-  DB_MAKE_NULL (&value);
+  db_make_null (&value);
 
   if (enumeration == NULL)
     {
@@ -7639,7 +7701,7 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
       return ER_FAILED;
     }
 
-  enum_vals = malloc (sizeof (DB_ENUM_ELEMENT) * count);
+  enum_vals = (DB_ENUM_ELEMENT *) malloc (sizeof (DB_ENUM_ELEMENT) * count);
   if (enum_vals == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_ENUM_ELEMENT) * count);
@@ -7666,7 +7728,7 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
 
       DB_GET_ENUM_ELEM_DBCHAR (db_enum).info = value.data.ch.info;
       str_size = db_get_string_size (&value);
-      enum_str = malloc (str_size + 1);
+      enum_str = (char *) malloc (str_size + 1);
       if (enum_str == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -8125,8 +8187,6 @@ or_unpack_sha1 (char *ptr, SHA1Hash * sha1)
 STATIC_INLINE int
 or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 {
-  int error_code = NO_ERROR;
-
   assert (buf != NULL);
 
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
@@ -8158,7 +8218,6 @@ or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 STATIC_INLINE int
 or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_version_lsa)
 {
-  int error_code = NO_ERROR;
   assert (buf != NULL);
 
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
@@ -8386,58 +8445,323 @@ htond (double from)
 
 #endif /* OR_BYTE_ORDER == OR_LITTLE_ENDIAN */
 
-/* or_get_varchar_comp_lengths()  :   Function to get the compressed length
- *				      and the uncompressed length of a compressed string.
+/*
+ * or_packed_spacedb_size () - compute the size required to pack all space info
  *
- * return			  :   NO_ERROR or error_code.
- * buf(in)			  :   The buffer where the string is stored.
- * compressed_size(out)		  :   The compressed size of the string. Set to 0 if the string was not compressed.
- * decompressed_size(out)	  :   The uncompressed size of the string.
+ * return     : total required size
+ * all (in)   : aggregated space information
+ * vols (in)  : space information for each volume (may be NULL)
+ * files (in) : space information for files (may be NULL)
  */
-
 int
-or_get_varchar_compression_lengths (OR_BUF * buf, int *compressed_size, int *decompressed_size)
+or_packed_spacedb_size (const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files)
 {
-  int compressed_length = 0, decompressed_length = 0, rc = NO_ERROR, net_charlen = 0;
-  int size_prefix = 0;
+  int size_total = 0;
 
-  /* Check if the string is compressed */
-  size_prefix = or_get_byte (buf, &rc);
+  /* for each type without any, pack nvols, npage_used, npage_free */
+  size_total = SPACEDB_ALL_COUNT * 3 * OR_INT_SIZE;
+
+  if (vols != NULL)
+    {
+      /* we need to pack information on each volume. */
+      int size_onevol = 5 * OR_INT_SIZE;	/* we have 5 int values without the name */
+      int i;
+
+      size_total += size_onevol * all[SPACEDB_TOTAL_ALL].nvols;
+
+      /* also volume names */
+      for (i = 0; i < all[SPACEDB_TOTAL_ALL].nvols; i++)
+	{
+	  size_total += or_packed_string_length (vols[i].name, NULL);
+	}
+    }
+
+  if (files != NULL)
+    {
+      /* for each type without any, pack nfile, npage_used, npage_ftab and npage_reserved */
+      size_total += SPACEDB_FILE_COUNT * 4 * OR_INT_SIZE;
+    }
+
+  return size_total;
+}
+
+/*
+ * or_pack_spacedb () - pack space info
+ *
+ * return     : new pointer after packed space info
+ * ptr (in)   : destination pointer for packed space info
+ * all (in)   : aggregated space information
+ * vols (in)  : space information for each volume (may be NULL)
+ * files (in) : space information for files (may be NULL)
+ */
+char *
+or_pack_spacedb (char *ptr, const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files)
+{
+  int i;
+
+  /* all */
+  for (i = 0; i < SPACEDB_ALL_COUNT; i++)
+    {
+      ptr = or_pack_int (ptr, (int) all[i].nvols);
+      ptr = or_pack_int (ptr, (int) all[i].npage_used);
+      ptr = or_pack_int (ptr, (int) all[i].npage_free);
+    }
+
+  /* vols */
+  if (vols != NULL)
+    {
+      int iter_vol = 0;
+      for (iter_vol = 0; iter_vol < all[SPACEDB_TOTAL_ALL].nvols; iter_vol++)
+	{
+	  ptr = or_pack_int (ptr, (int) vols[iter_vol].volid);
+	  ptr = or_pack_int (ptr, (int) vols[iter_vol].type);
+	  ptr = or_pack_int (ptr, (int) vols[iter_vol].purpose);
+	  ptr = or_pack_int (ptr, (int) vols[iter_vol].npage_used);
+	  ptr = or_pack_int (ptr, (int) vols[iter_vol].npage_free);
+	  ptr = or_pack_string (ptr, vols[iter_vol].name);
+	}
+    }
+
+  if (files != NULL)
+    {
+      for (i = 0; i < SPACEDB_FILE_COUNT; i++)
+	{
+	  ptr = or_pack_int (ptr, files[i].nfile);
+	  ptr = or_pack_int (ptr, (int) files[i].npage_user);
+	  ptr = or_pack_int (ptr, (int) files[i].npage_ftab);
+	  ptr = or_pack_int (ptr, (int) files[i].npage_reserved);
+	}
+    }
+
+  return ptr;
+}
+
+/*
+ * or_unpack_spacedb () - document me!
+ *
+ * return :
+ * char * ptr (in) :
+ * SPACEDB_ALL * all (in) :
+ * SPACEDB_ONEVOL * * vols (in) :
+ * SPACEDB_FILES * files (in) :
+ */
+char *
+or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB_FILES * files)
+{
+  int i;
+  int unpacked_value;
+  char *volname;
+
+  assert (all != NULL);
+  assert (vols == NULL || *vols == NULL);
+
+  /* note: for all/files, total values are not packed. we'll compute them here, while unpacking */
+
+  /* all */
+  for (i = 0; i < SPACEDB_ALL_COUNT; i++)
+    {
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      all[i].nvols = (DKNVOLS) unpacked_value;
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      all[i].npage_used = (DKNPAGES) unpacked_value;
+      ptr = or_unpack_int (ptr, &unpacked_value);
+      all[i].npage_free = (DKNPAGES) unpacked_value;
+    }
+
+  /* vols */
+  if (vols != NULL)
+    {
+      int iter_vol = 0;
+
+      *vols = (SPACEDB_ONEVOL *) malloc (all[SPACEDB_TOTAL_ALL].nvols * sizeof (SPACEDB_ONEVOL));
+      if (*vols == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  all[SPACEDB_TOTAL_ALL].nvols * sizeof (SPACEDB_ONEVOL));
+	  return NULL;
+	}
+
+      for (iter_vol = 0; iter_vol < all[SPACEDB_TOTAL_ALL].nvols; iter_vol++)
+	{
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  (*vols)[iter_vol].volid = (VOLID) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  (*vols)[iter_vol].type = (DB_VOLTYPE) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  (*vols)[iter_vol].purpose = (DB_VOLPURPOSE) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  (*vols)[iter_vol].npage_used = (DKNPAGES) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  (*vols)[iter_vol].npage_free = (DKNSECTS) unpacked_value;
+	  ptr = or_unpack_string_nocopy (ptr, &volname);
+	  if (volname == NULL)
+	    {
+	      return NULL;
+	    }
+	  strncpy ((*vols)[iter_vol].name, volname, DB_MAX_PATH_LENGTH);
+	}
+    }
+
+  /* files */
+  if (files != NULL)
+    {
+      for (i = 0; i < SPACEDB_FILE_COUNT; i++)
+	{
+	  ptr = or_unpack_int (ptr, &files[i].nfile);
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  files[i].npage_user = (DKNPAGES) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  files[i].npage_ftab = (DKNPAGES) unpacked_value;
+	  ptr = or_unpack_int (ptr, &unpacked_value);
+	  files[i].npage_reserved = (DKNPAGES) unpacked_value;
+	}
+    }
+
+  return ptr;
+}
+
+/*
+ *  this function also adds
+ *  the length of the string to the buffer
+ */
+int
+or_put_string_aligned_with_length (OR_BUF * buf, char *str)
+{
+  int len;
+  int rc = NO_ERROR;
+
+  if (str == NULL)
+    {
+      return rc;
+    }
+  len = (int) strlen (str) + 1;
+
+  rc = or_put_int (buf, len);
   if (rc != NO_ERROR)
     {
-      assert (size_prefix == 0);
       return rc;
     }
 
-  if (size_prefix == PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+  rc = or_put_data (buf, str, len);
+  if (rc == NO_ERROR)
     {
-      /* String was compressed */
-      /* Get the compressed size */
-      rc = or_get_data (buf, (char *) &net_charlen, OR_INT_SIZE);
-      compressed_length = OR_GET_INT ((char *) &net_charlen);
-      if (rc != NO_ERROR)
-	{
-	  return rc;
-	}
-      *compressed_size = compressed_length;
+      or_align (buf, OR_INT_SIZE);
+    }
+  return rc;
+}
 
-      net_charlen = 0;
+/*
+ * classobj_initialize_default_expr() - Initializes default expression
+ *   return: nothing
+ *
+ *   default_expr(out): default expression
+ */
+void
+classobj_initialize_default_expr (DB_DEFAULT_EXPR * default_expr)
+{
+  assert (default_expr != NULL);
 
-      /* Get the decompressed size */
-      rc = or_get_data (buf, (char *) &net_charlen, OR_INT_SIZE);
-      decompressed_length = OR_GET_INT ((char *) &net_charlen);
-      if (rc != NO_ERROR)
-	{
-	  return rc;
-	}
-      *decompressed_size = decompressed_length;
+  default_expr->default_expr_type = DB_DEFAULT_NONE;
+  default_expr->default_expr_format = NULL;
+  default_expr->default_expr_op = NULL_DEFAULT_EXPRESSION_OPERATOR;
+}
+
+int
+or_get_json_validator (OR_BUF * buf, REFPTR (JSON_VALIDATOR, validator))
+{
+  int rc;
+  char *str = NULL;
+
+  rc = or_get_json_schema (buf, str);
+  if (rc != NO_ERROR)
+    {
+      validator = NULL;
+      goto exit;
+    }
+
+  if (str == NULL || strlen (str) == 0)
+    {
+      rc = NO_ERROR;
+      validator = NULL;
+      goto exit;
     }
   else
     {
-      /* String was not compressed so we set compressed_size to 0 to know that no compression happened. */
-      *compressed_size = 0;
-      *decompressed_size = size_prefix;
+      rc = db_json_load_validator (str, validator);
+      if (rc != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  assert (validator == NULL);
+	  goto exit;
+	}
+      rc = NO_ERROR;
     }
 
+exit:
+  if (str != NULL)
+    {
+      db_private_free_and_init (NULL, str);
+    }
+  return rc;
+}
+
+int
+or_put_json_validator (OR_BUF * buf, JSON_VALIDATOR * validator)
+{
+  return or_put_json_schema (buf, db_json_get_schema_raw_from_validator (validator));
+}
+
+int
+or_get_json_schema (OR_BUF * buf, REFPTR (char, schema))
+{
+  DB_VALUE schema_value;
+  int rc;
+
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  rc = (*(tp_String.data_readval)) (buf, &schema_value, NULL, -1, false, NULL, 0);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  if (db_get_string_size (&schema_value) == 0)
+    {
+      schema = NULL;
+    }
+  else
+    {
+      schema = db_private_strdup (NULL, db_get_string (&schema_value));
+    }
+
+  pr_clear_value (&schema_value);
+  return NO_ERROR;
+}
+
+int
+or_put_json_schema (OR_BUF * buf, const char *schema)
+{
+  int rc = NO_ERROR;
+  DB_VALUE schema_raw;
+
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  if (schema == NULL)
+    {
+      db_make_string (&schema_raw, "");
+    }
+  else
+    {
+      db_make_string_by_const_str (&schema_raw, schema);
+    }
+
+  rc = (*(tp_String.data_writeval)) (buf, &schema_raw);
+  if (rc != NO_ERROR)
+    {
+      goto exit;
+    }
+
+exit:
+  pr_clear_value (&schema_raw);
   return rc;
 }

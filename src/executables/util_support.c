@@ -23,16 +23,14 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
 #include <stdio.h>
 #include <string.h>
-#include <getopt.h>
 #include <errno.h>
 #if !defined(WINDOWS)
-#include <unistd.h>
 #include <dlfcn.h>
 #endif
+
+#include "cubrid_getopt.h"
 #include "error_code.h"
 #include "util_support.h"
 #include "utility.h"
@@ -90,6 +88,7 @@ utility_load_library (DSO_HANDLE * handle, const char *path)
 #endif
   if ((*handle) == 0)
     {
+      // todo: generate verbose error
       return ER_GENERIC_ERROR;
     }
 
@@ -379,5 +378,7 @@ util_hide_password (char *arg)
     }
 
   memset (arg, '*', strlen (arg));
+#else
+  (void) arg;
 #endif /* LINUX */
 }

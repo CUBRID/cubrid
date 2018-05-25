@@ -922,7 +922,7 @@ $ LOADDB
 853 Per un oggetto (%1$d|%2$d|%3$d), transazione (%4$d) di una lettura non commessa stava tenendo uno blocco diffetoso (%5$s).
 854 ATTENZIONE: Nessun possessore di blocco, ma waiters di blocco esistono. Fare riferimento a %1$s.
 855 ATTENZIONE: Due o più dei threads sono in attesa di blocco per una operazione (%1$d).
-856 ATTENZIONE: Strano stato di lockwait (%1$d|%2$d), thread (%3$d|%4$d) e transazione (%5$d).
+856 ATTENZIONE: Strano stato di lockwait (%1$d|%2$d), thread (%3$d|%4$lld) e transazione (%5$d).
 857 Un errore I/O durante il troncamento della pagina %1$d di volume "%2$s".
 858 Volume "%1$s" è sconosciuto al riavvio del server.
 859 Blocco sulla pagina (%1$d|%2$d) è annulatto.
@@ -1044,7 +1044,7 @@ $ LOADDB
 975 La versione attuale di replicazione non permette modificare righe multiple con una singola istruzione UPDATE che può violare il vincolo UNIQUE.
 976 Errore interno: tabella troppo piena (dimensione allocata: %1$d, dimensione accessibile: %2$d) a pagina della tabella di file %3$d|%4$d (volume "%5$s")
 977 Checkpoint ha iniziato (id della pagina precedente di checkpoint: %1$lld, id della pagina REDO precedente: %2$lld).
-978 Checkpoint finished (checkpoint page id: %1$lld, checkpoint redo page id: %2$lld, flushed page count: %3$d).
+978 Checkpoint finito (ID pagine del checkpoint: %1$lld, ID pagine del checkpoint REDO: %2$lld, conteggio delle pagine flushed: %3$d).
 979 Ciclo CONNECT BY nelle dati dell'utente.
 980 Un thread è in attesa nel %1$s più di %2$d msec.
 981 Transazione %1$d ha raggiunto alla soglia di statistiche di monitoraggio %2$s.
@@ -1260,9 +1260,30 @@ $ LOADDB
 1191 Stand-alone vacuum esecuzione è finita.
 1192 La precisione di valore di %1$zu supera il massimo consentito %2$d
 1193 La lunghezza dell'espressione partizione trasformati supera il massimo consentito(%1$d).
-1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
-1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
-1196 Ultimo errore
+1194 Impossibile verificare il file %1$d|%2$d perché il blocco sulla classe %3$d|%4$d|%5$d non viene immediatamente concesso.
+1195 La parte ricorsiva di un CTE non dovrebbe contenere funzioni aggregate senza la clausola GROUP BY.
+1196 Le ricorrenze massime %1$d estate raggiunto mentre l'esecuzione di CTE.
+1197 Invalid json: %1$s (%2$d)
+1198 A json object must be provided
+1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
+1200 Invalid JSON path
+1201 Json object name cannot be NULL.
+1202 Json PATH "%1$s" does not exist in %2$s
+1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
+1204 Json KEY "%1$s" is duplicate
+1205 Reserved error for JSON.
+1206 Reserved error for JSON.
+1207 Reserved error for JSON.
+1208 Reserved error for JSON.
+1209 Reserved error for JSON.
+1210 Reserved error for JSON.
+1211 Reserved error for JSON.
+1212 Reserved error for JSON.
+1213 Reserved error for JSON.
+1214 Reserved error for JSON.
+
+1215 Ultimo errore
+
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):
 2 Nessun messaggio di errore disponibile.
@@ -1713,6 +1734,12 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 Utilizzo non valido di funzioni di aggregazione.
 293 Il valore deve essere strettamente crescente per ogni partizione.
 294 Non è possibile utilizzare gli indici di funzione o di filtro su colonne fuso orario locale.
+295 SELECT INTO non è consentito nelle sottoquery.
+296 Ambiguità del nome di CTE, esistono più di un CTE con lo stesso nome: '%1$s'.
+297 Le clausole WITH nidificate non sono supportate
+298 CTE '%1$s' ricorsivo deve essere fatto riferimento direttamente nella sua query ricorsiva.
+299 Errore nel CTE '%1$s': la parte non ricorsiva e la parte ricorsiva devono essere collegati con UNION ALL.
+300 La sottoquery non è consentita nella clausola DEFAULT.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Fuori di memoria virtuale: Impossibile allocare %1$d byte.

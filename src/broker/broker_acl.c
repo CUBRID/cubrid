@@ -48,7 +48,6 @@ static int access_control_check_right_internal (T_SHM_APPL_SERVER * shm_as_p, ch
 						unsigned char *address);
 static int access_control_check_ip (T_SHM_APPL_SERVER * shm_as_p, IP_INFO * ip_info, unsigned char *address,
 				    int info_index);
-static char *access_control_trim (char *str);
 static int record_ip_access_time (T_SHM_APPL_SERVER * shm_as_p, int info_index, int list_index);
 
 int

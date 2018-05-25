@@ -28,20 +28,22 @@
 
 #include <string.h>
 
-#include "xasl_support.h"
-#include "network.h"
-#include "network_interface_sr.h"
+#include "method_scan.h"
+
+#include "network_interface_sr.h"	/* TODO: should not be here */
 #ifndef	SERVER_MODE
 #include "object_accessor.h"
-#endif
+#include "dbi.h"
 #include "authenticate.h"
-#include "jsp_cl.h"
-#include "scan_manager.h"
-#include "method_scan.h"
-#include "xserver_interface.h"
+#endif
+#include "xasl.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#if defined (SA_MODE)
+#include "jsp_cl.h"
+#include "xasl_support.h"
+#endif /* defined (SA_MODE) */
+
+#include "dbtype.h"
 
 #if !defined(SERVER_MODE)
 extern unsigned int db_on_server;
@@ -299,7 +301,7 @@ method_invoke_from_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
    */
   for (i = 0; i < val_cnt; i++)
     {
-      DB_MAKE_NULL (&scan_buffer_p->vallist[i]);
+      db_make_null (&scan_buffer_p->vallist[i]);
     }
 
   scan_buffer_p->valptrs = (DB_VALUE **) malloc (sizeof (DB_VALUE *) * (val_cnt + 1));
@@ -381,7 +383,7 @@ method_receive_results_for_server (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER *
 	}
       else
 	{
-	  DB_MAKE_NULL (dbval_p);
+	  db_make_null (dbval_p);
 	  result = method_receive_value (thread_p, dbval_p, scan_buffer_p->vacomm_buffer);
 	}
 
@@ -468,7 +470,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 	    }
 
 	  scan_buffer_p->valptrs[num_args] = NULL;
-	  DB_MAKE_NULL (&val);
+	  db_make_null (&val);
 
 	  if (meth_sig->class_name != NULL)
 	    {
@@ -476,10 +478,10 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 	       * NULL. */
 	      if (!DB_IS_NULL (scan_buffer_p->valptrs[0]))
 		{
-		  error = db_is_any_class (DB_GET_OBJECT (scan_buffer_p->valptrs[0]));
+		  error = db_is_any_class (db_get_object (scan_buffer_p->valptrs[0]));
 		  if (error == 0)
 		    {
-		      error = db_is_instance (DB_GET_OBJECT (scan_buffer_p->valptrs[0]));
+		      error = db_is_instance (db_get_object (scan_buffer_p->valptrs[0]));
 		    }
 		}
 	      if (error == ER_HEAP_UNKNOWN_OBJECT)
@@ -493,7 +495,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 		  AU_ENABLE (turn_on_auth);
 		  db_disable_modification ();
 		  ++method_Num_method_jsp_calls;
-		  error = obj_send_array (DB_GET_OBJECT (scan_buffer_p->valptrs[0]), meth_sig->method_name, &val,
+		  error = obj_send_array (db_get_object (scan_buffer_p->valptrs[0]), meth_sig->method_name, &val,
 					  &scan_buffer_p->valptrs[1]);
 		  --method_Num_method_jsp_calls;
 		  db_enable_modification ();
@@ -544,7 +546,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 	  /* Don't forget to translate any OBJECTS to OIDs. */
 	  if (DB_VALUE_DOMAIN_TYPE (&val) == DB_TYPE_OBJECT)
 	    {
-	      DB_MAKE_OID (dbval_list->val, ws_oid (DB_GET_OBJECT (&val)));
+	      db_make_oid (dbval_list->val, ws_oid (db_get_object (&val)));
 	    }
 	  else if (db_value_clone (&val, dbval_list->val) != NO_ERROR)
 	    {
@@ -572,7 +574,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
     {
       method_clear_scan_buffer (scan_buffer_p);
       ENTER_SERVER_IN_METHOD_CALL (save_pri_heap_id);
-      return crs_result;
+      return (SCAN_CODE) crs_result;
     }
 }
 #endif /* !SERVER_MODE */

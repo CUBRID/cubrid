@@ -27,9 +27,14 @@
 
 #ident "$Id$"
 
-#include "dbtype.h"
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
+#include "dbtype_def.h"
 #include "statistics.h"
 #include "system_catalog.h"
+#include "object_representation_sr.h"
 
 extern unsigned int stats_get_time_stamp (void);
 extern const BTREE_STATS *stats_find_inherited_index_stats (OR_CLASSREP * cls_rep, OR_CLASSREP * subcls_rep,

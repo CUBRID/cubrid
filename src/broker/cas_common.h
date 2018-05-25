@@ -33,7 +33,6 @@
 #endif
 
 #include "porting.h"
-
 #define makestring1(x) #x
 #define makestring(x) makestring1(x)
 
@@ -122,7 +121,7 @@
 #if defined(WINDOWS)
 #define THREAD_BEGIN(THR_ID, FUNC, ARG)				\
 	do {							\
-	  THR_ID = _beginthread(FUNC, 0, (void*) (ARG));	\
+	  THR_ID = (pthread_t) _beginthread(FUNC, 0, (void*) (ARG));	\
 	} while(0)
 #else
 #define THREAD_BEGIN(THR_ID, FUNC, ARG)		\

@@ -36,6 +36,11 @@ if(WIN32)
   list(APPEND CASCCI_SOURCES ${BASE_DIR}/rand.c)
 endif(WIN32)
 
+SET_SOURCE_FILES_PROPERTIES(
+  ${CASCCI_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
+
 add_library(cascci SHARED ${CASCCI_SOURCES})
 set_target_properties(cascci PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 set_target_properties(cascci PROPERTIES PUBLIC_HEADER "${CCI_DIR}/cas_cci.h;${BROKER_DIR}/cas_error.h")
@@ -51,9 +56,8 @@ if(WIN32)
   set_target_properties(cascci PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cascci/cascci.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
   target_link_libraries(cascci LINK_PRIVATE ws2_32)
 endif(WIN32)
-if(UNIX)
-  add_dependencies(cascci ${EP_TARGETS})
-endif(UNIX)
+
+add_dependencies(cascci ${EP_TARGETS})
 
 install(TARGETS cascci
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT CCI

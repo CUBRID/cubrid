@@ -27,6 +27,10 @@
 
 #ident "$Id$"
 
+#if defined (SERVER_MODE)
+#error Does not belong to server module
+#endif /* defined (SERVER_MODE) */
+
 #include "config.h"
 
 #include "error_manager.h"
@@ -34,6 +38,11 @@
 #include "object_primitive.h"
 #include "class_object.h"
 #include "cursor.h"
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
 /* QUERY TYPE/FORMAT STRUCTURES */
 typedef enum
@@ -201,10 +210,11 @@ extern void db_dump_query_result (DB_QUERY_RESULT * r);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern char **db_cp_colname_list (char **colname_list, int cnt);
 extern SM_DOMAIN **db_cp_domain_list (SM_DOMAIN ** domain_list, int cnt);
-extern DB_QUERY_TYPE *db_get_query_type (DB_TYPE * type_list, int *size_list, char **colname_list, char **attrname_list,
-					 SM_DOMAIN ** domain_list, SM_DOMAIN ** src_domain_list, int cnt,
-					 bool oid_included);
-extern int db_query_execute_immediate (const char *CSQL_query, DB_QUERY_RESULT ** result, DB_QUERY_ERROR * query_error);
+  extern DB_QUERY_TYPE *db_get_query_type (DB_TYPE * type_list, int *size_list, char **colname_list,
+					   char **attrname_list, SM_DOMAIN ** domain_list, SM_DOMAIN ** src_domain_list,
+					   int cnt, bool oid_included);
+  extern int db_query_execute_immediate (const char *CSQL_query, DB_QUERY_RESULT ** result,
+					 DB_QUERY_ERROR * query_error);
 extern DB_QUERY_RESULT *db_get_objfetch_query_result (DB_VALUE * val_list, int val_cnt, int *size_list,
 						      char **colname_list, char **attrname_list);
 extern int db_query_stmt_id (DB_QUERY_RESULT * result);
@@ -218,14 +228,15 @@ extern void db_clear_client_query_result (int notify_server, bool end_holdable);
 extern void db_init_prepare_info (DB_PREPARE_INFO * info);
 extern int db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer);
 extern int db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern void db_final_client_query_result (void);
-#endif
 
 extern void db_set_execution_plan (char *plan, int length);
 extern char *db_get_execution_plan (void);
 extern void db_free_execution_plan (void);
 extern DB_QUERY_EXECUTION_ENDING_TYPE db_get_end_type_after_query_execution (int end_query_result, bool committed,
 									     int reset_on_commit);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _DB_QUERY_H_ */

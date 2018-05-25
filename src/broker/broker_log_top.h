@@ -29,12 +29,12 @@
 
 #define LINE_BUF_SIZE           30000
 
-typedef enum t_log_top_mode T_LOG_TOP_MODE;
 enum t_log_top_mode
 {
   MODE_PROC_TIME = 0,
   MODE_MAX_HANDLE = 1
 };
+typedef enum t_log_top_mode T_LOG_TOP_MODE;
 
 enum log_top_error_code
 {

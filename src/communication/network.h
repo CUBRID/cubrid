@@ -27,11 +27,9 @@
 
 #ident "$Id$"
 
-#include "query_opfunc.h"
 #include "perf_monitor.h"
 #include "locator.h"
 #include "log_comm.h"
-#include "thread.h"
 
 
 /* Server statistics structure size, used to make sure the pack/unpack
@@ -107,8 +105,6 @@ enum net_server_request
   NET_SERVER_LC_CHECK_FK_VALIDITY,
   NET_SERVER_LC_REM_CLASS_FROM_INDEX,
   NET_SERVER_LC_UPGRADE_INSTANCES_DOMAIN,
-  NET_SERVER_LC_PREFETCH_REPL_INSERT,
-  NET_SERVER_LC_PREFETCH_REPL_UPDATE_OR_DELETE,
   NET_SERVER_LC_REPL_FORCE,
   NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA,
 
@@ -145,9 +141,7 @@ enum net_server_request
   NET_SERVER_DISK_TOTALPGS,
   NET_SERVER_DISK_FREEPGS,
   NET_SERVER_DISK_REMARKS,
-  NET_SERVER_DISK_GET_PURPOSE_AND_SPACE_INFO,
   NET_SERVER_DISK_VLABEL,
-  NET_SERVER_DISK_IS_EXIST,
 
   NET_SERVER_QST_GET_STATISTICS,
   NET_SERVER_QST_UPDATE_STATISTICS,
@@ -189,13 +183,10 @@ enum net_server_request
 
   NET_SERVER_REPL_INFO,
   NET_SERVER_REPL_LOG_GET_APPEND_LSA,
-  NET_SERVER_REPL_BTREE_FIND_UNIQUE,
   NET_SERVER_LOG_SET_SUPPRESS_REPL_ON_TRANSACTION,
   NET_SERVER_CHKSUM_REPL,
 
   NET_SERVER_LOGWR_GET_LOG_PAGES,
-
-  NET_SERVER_TEST_PERFORMANCE,
 
   NET_SERVER_SHUTDOWN,
 
@@ -235,6 +226,8 @@ enum net_server_request
   NET_SERVER_TZ_GET_CHECKSUM,
   NET_SERVER_QM_QUERY_EXECUTE_AND_COMMIT,
 
+  NET_SERVER_SPACEDB,
+
   /* Followings are not grouped because they are appended after the above. It is necessary to rearrange with changing
    * network compatibility. */
 
@@ -258,6 +251,16 @@ enum net_server_request
 #define NET_CAP_HA_REPL_DELAY           0x00000008
 #define NET_CAP_HA_REPLICA              0x00000004
 #define NET_CAP_HA_IGNORE_REPL_DELAY	0x00000002
+
+typedef enum
+{				/* Responses to a query */
+  QUERY_END = 1,		/* Normal end of query */
+  METHOD_CALL,			/* Invoke methods */
+  ASYNC_OBTAIN_USER_INPUT,	/* server needs info from operator */
+  GET_NEXT_LOG_PAGES,		/* log writer uses this type of request */
+  END_CALLBACK,			/* normal end of non-query callback */
+  CONSOLE_OUTPUT
+} QUERY_SERVER_REQUEST;
 
 /* Server startup */
 extern int net_server_start (const char *name);

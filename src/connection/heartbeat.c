@@ -30,6 +30,7 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <assert.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -54,11 +55,15 @@
 
 #if defined(SOLARIS) || defined(LINUX)
 #include <unistd.h>
+#include <pthread.h>
 #endif /* SOLARIS || LINUX */
 
 #include "environment_variable.h"
+#include "error_context.hpp"
 #include "porting.h"
+#if !defined(WINDOWS)
 #include "log_impl.h"
+#endif
 #include "system_parameter.h"
 #include "error_manager.h"
 #include "connection_defs.h"
@@ -68,6 +73,7 @@
 #else /* WINDOWS */
 #include "tcp.h"
 #endif /* WINDOWS */
+#include "release_string.h"
 #include "heartbeat.h"
 
 extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id, const char *server_name, int name_length);
@@ -249,7 +255,12 @@ css_receive_heartbeat_data (CSS_CONN_ENTRY * conn, char *data, int size)
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 hb_thread_master_reader (void *arg)
 {
+#if !defined(WINDOWS)
   int error;
+
+  /* *INDENT-OFF* */
+  cuberr::context er_context (true);
+  /* *INDENT-ON* */
 
   error = hb_process_master_request ();
   if (error != NO_ERROR)
@@ -263,7 +274,7 @@ hb_thread_master_reader (void *arg)
       /* is it ok? */
       kill (getpid (), SIGTERM);
     }
-
+#endif
   return (THREAD_RET_T) 0;
 }
 
@@ -277,8 +288,6 @@ hb_thread_master_reader (void *arg)
 static HBP_PROC_REGISTER *
 hb_make_set_hbp_register (int type)
 {
-  int error;
-
   HBP_PROC_REGISTER *hbp_register;
   char *p, *last;
   int argc;
@@ -427,10 +436,6 @@ hb_type_to_str (HB_PROC_TYPE type)
     {
       return "applylogdb";
     }
-  else if (type == HB_PTYPE_PREFETCHLOGDB)
-    {
-      return "prefetchlogdb";
-    }
   else
     {
       return "";
@@ -460,7 +465,7 @@ hb_process_master_request (void)
     {
       po[0].fd = hb_Conn->fd;
       po[0].events = POLLIN;
-      r = poll (po, 1, (prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000));
+      r = css_platform_independent_poll (po, 1, (prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000));
 
       switch (r)
 	{
@@ -533,7 +538,7 @@ hb_pack_server_name (const char *server_name, int *name_length, const char *log_
       p_len = strlen (pid_string) + 1;
       *name_length = n_len + l_len + r_len + e_len + p_len + 5;
 
-      packed_name = malloc (*name_length);
+      packed_name = (char *) malloc (*name_length);
       if (packed_name == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (*name_length));
@@ -547,10 +552,6 @@ hb_pack_server_name (const char *server_name, int *name_length, const char *log_
       else if (type == HB_PTYPE_APPLYLOGDB)
 	{
 	  packed_name[0] = '%';
-	}
-      else if (type == HB_PTYPE_PREFETCHLOGDB)
-	{
-	  packed_name[0] = '_';
 	}
       else
 	{
@@ -583,7 +584,6 @@ static CSS_CONN_ENTRY *
 hb_connect_to_master (const char *server_name, const char *log_path, HB_PROC_TYPE type)
 {
   CSS_CONN_ENTRY *conn;
-  int error = NO_ERROR;
   char *packed_name;
   int name_length = 0;
 
@@ -613,6 +613,7 @@ hb_connect_to_master (const char *server_name, const char *log_path, HB_PROC_TYP
 static int
 hb_create_master_reader (void)
 {
+#if !defined (WINDOWS)
   int rv;
   pthread_attr_t thread_attr;
   size_t ts_size;
@@ -669,6 +670,9 @@ hb_create_master_reader (void)
     }
 
   return (NO_ERROR);
+#else
+  return ER_FAILED;
+#endif
 }
 
 /*    
@@ -682,10 +686,10 @@ hb_create_master_reader (void)
 int
 hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE type)
 {
+#if !defined(SERVER_MODE)
   int error;
   static bool is_first = true;
 
-#if !defined(SERVER_MODE)
   if (is_first == false)
     {
       return (NO_ERROR);
@@ -720,8 +724,9 @@ hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE typ
 
   is_first = false;
   return (NO_ERROR);
-#endif
+#else
   return (ER_FAILED);
+#endif
 }
 
 
@@ -740,4 +745,33 @@ hb_process_term (void)
       hb_Conn = NULL;
     }
   hb_Proc_shutdown = true;
+}
+
+/*
+ * hb_node_state_string -
+ *   return: node state sring
+*
+ *   nstate(in):
+ */
+const char *
+hb_node_state_string (HB_NODE_STATE_TYPE nstate)
+{
+  switch (nstate)
+    {
+    case HB_NSTATE_UNKNOWN:
+      return HB_NSTATE_UNKNOWN_STR;
+    case HB_NSTATE_SLAVE:
+      return HB_NSTATE_SLAVE_STR;
+    case HB_NSTATE_TO_BE_MASTER:
+      return HB_NSTATE_TO_BE_MASTER_STR;
+    case HB_NSTATE_TO_BE_SLAVE:
+      return HB_NSTATE_TO_BE_SLAVE_STR;
+    case HB_NSTATE_MASTER:
+      return HB_NSTATE_MASTER_STR;
+    case HB_NSTATE_REPLICA:
+      return HB_NSTATE_REPLICA_STR;
+
+    default:
+      return "invalid";
+    }
 }

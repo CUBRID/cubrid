@@ -65,7 +65,7 @@ ut_trim (char *str)
   *++p = '\0';
 
   if (s != str)
-    memcpy (str, s, strlen (s) + 1);
+    memmove (str, s, strlen (s) + 1);
 
   return (str);
 }
@@ -306,7 +306,7 @@ ut_get_line (FILE * fp, T_STRING * t_str, char **out_str, int *lineno)
 	}
       else
 	{
-	  if (t_string_add (t_str, buf, strlen (buf)) < 0)
+	  if (t_string_add (t_str, buf, (int) strlen (buf)) < 0)
 	    {
 	      fprintf (stderr, "memory allocation error.\n");
 	      return -1;

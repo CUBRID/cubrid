@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <assert.h>
 #if defined(WINDOWS)
 #include <direct.h>
 #include <io.h>
@@ -61,10 +62,15 @@
 #include "network_interface_cl.h"
 #include "utility.h"
 #include "tsc_timer.h"
+#include "dbtype.h"
 
 #if defined(WINDOWS)
 #include "file_io.h"		/* needed for _wyield() */
 #endif /* WINDOWS */
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 /* input type specification for csql_execute_statements() */
 enum
@@ -188,7 +194,6 @@ static int initialize_csql_column_width_info_list ();
 static int get_column_name_argument (char **column_name, char **val_str, char *argument);
 static void csql_pipe_handler (int sig_no);
 static void display_buffer (void);
-static void csql_execute_rcfile (CSQL_ARGUMENT * csql_arg);
 static void start_csql (CSQL_ARGUMENT * csql_arg);
 static void csql_read_file (const char *file_name);
 static void csql_write_file (const char *file_name, int append_flag);
@@ -206,6 +211,7 @@ static void csql_exit_session (int error);
 
 static int csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *stream, int line_no);
 
+static char *csql_get_external_command (SESSION_CMD cmd_no);
 static int csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg);
 static void csql_set_trace (const char *arg_str);
 static void csql_display_trace (void);
@@ -333,7 +339,8 @@ initialize_csql_column_width_info_list ()
 {
   int i;
 
-  csql_column_width_info_list = malloc (sizeof (CSQL_COLUMN_WIDTH_INFO) * COLUMN_WIDTH_INFO_LIST_INIT_SIZE);
+  csql_column_width_info_list =
+    (CSQL_COLUMN_WIDTH_INFO *) malloc (sizeof (CSQL_COLUMN_WIDTH_INFO) * COLUMN_WIDTH_INFO_LIST_INIT_SIZE);
   if (csql_column_width_info_list == NULL)
     {
       csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
@@ -456,9 +463,6 @@ display_buffer (void)
 static void
 start_csql (CSQL_ARGUMENT * csql_arg)
 {
-#if !defined(WINDOWS)
-  int i;
-#endif /* !WINDOWS */
   unsigned char line_buf[LINE_BUFFER_SIZE];
   unsigned char utf8_line_buf[INTL_UTF8_MAX_CHAR_SIZE * LINE_BUFFER_SIZE];
   char *line_read = NULL;
@@ -755,6 +759,24 @@ fatal_error:
   csql_exit (EXIT_FAILURE);
 }
 
+static char *
+csql_get_external_command (SESSION_CMD cmd_no)
+{
+  switch (cmd_no)
+    {
+    case S_CMD_SHELL_CMD:
+      return csql_Shell_cmd;
+    case S_CMD_EDIT_CMD:
+      return csql_Editor_cmd;
+    case S_CMD_PRINT_CMD:
+      return csql_Print_cmd;
+    case S_CMD_PAGER_CMD:
+      return csql_Pager_cmd;
+    default:
+      assert (false);
+      return NULL;
+    }
+}
 
 static int
 csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
@@ -977,9 +999,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	  db_shutdown ();
 	}
       er_init ("./csql.err", ER_NEVER_EXIT);
-      if (db_restart_ex
-	  (UTIL_CSQL_NAME, csql_arg->db_name, csql_arg->user_name, csql_arg->passwd, NULL,
-	   db_get_client_type ()) != NO_ERROR)
+      if (db_restart_ex (UTIL_CSQL_NAME, csql_arg->db_name, csql_arg->user_name, csql_arg->passwd, NULL,
+			 db_get_client_type ()) != NO_ERROR)
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  csql_display_csql_err (0, 0);
@@ -1009,18 +1030,11 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
     case S_CMD_PAGER_CMD:
       if (*argument == '\0')
 	{
-	  fprintf (csql_Output_fp, "\n\t%s\n\n",
-		   (cmd_no == S_CMD_SHELL_CMD) ? csql_Shell_cmd : (cmd_no ==
-								   S_CMD_EDIT_CMD) ? csql_Editor_cmd : (cmd_no ==
-													S_CMD_PRINT_CMD)
-		   ? csql_Print_cmd : csql_Pager_cmd);
+	  fprintf (csql_Output_fp, "\n\t%s\n\n", csql_get_external_command ((SESSION_CMD) cmd_no));
 	}
       else
 	{
-	  strncpy ((cmd_no == S_CMD_SHELL_CMD) ? csql_Shell_cmd : (cmd_no ==
-								   S_CMD_EDIT_CMD) ? csql_Editor_cmd : (cmd_no ==
-													S_CMD_PRINT_CMD)
-		   ? csql_Print_cmd : csql_Pager_cmd, argument, PATH_MAX - 1);
+	  strncpy (csql_get_external_command ((SESSION_CMD) cmd_no), argument, PATH_MAX - 1);
 	}
       break;
 
@@ -1385,18 +1399,14 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 #if !defined(WINDOWS)
       if (csql_Is_interactive)
 	{
-	  /* rewind history */
-	  int i;
-
-	  while (next_history ())
+	  for (int i = 0; i < history_length; i++)
 	    {
-	      ;
-	    }
-
-	  for (i = 0, hist_entry = current_history (); hist_entry; hist_entry = previous_history (), i++)
-	    {
-	      fprintf (csql_Output_fp, "----< %d >----\n", i + 1);
-	      fprintf (csql_Output_fp, "%s\n\n", hist_entry->line);
+	      hist_entry = history_get (i + 1);
+	      if (hist_entry != NULL && hist_entry->line != NULL)
+		{
+		  fprintf (csql_Output_fp, "----< %d >----\n", i + 1);
+		  fprintf (csql_Output_fp, "%s\n\n", hist_entry->line);
+		}
 	    }
 	}
 #else
@@ -2148,13 +2158,13 @@ csql_print_database (void)
        * if there is hostname or ip address in db_name,
        * it will only use db_name except for hostname or ip address.
        */
-      pstr = strchr (db_name, '@');
+      pstr = (char *) strchr (db_name, '@');
       if (pstr != NULL)
 	{
 	  *pstr = '\0';
 	}
 
-      if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+      if (HA_DISABLED ())
 	{
 	  fprintf (csql_Output_fp, "\n\t%s@%s\n\n", db_name, converted_host_name);
 	}
@@ -2789,6 +2799,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
 error:
   nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
+  er_final (ER_ALL_FINAL);
   csql_exit (EXIT_FAILURE);
   return EXIT_FAILURE;		/* won't get here really */
 }
@@ -2836,7 +2847,8 @@ csql_set_column_width_info (const char *column_name, int column_width)
   if (csql_column_width_info_list_index >= csql_column_width_info_list_size)
     {
       temp_list =
-	realloc (csql_column_width_info_list, sizeof (CSQL_COLUMN_WIDTH_INFO) * (csql_column_width_info_list_size * 2));
+	(CSQL_COLUMN_WIDTH_INFO *) realloc (csql_column_width_info_list,
+					    sizeof (CSQL_COLUMN_WIDTH_INFO) * (csql_column_width_info_list_size * 2));
       if (temp_list == NULL)
 	{
 	  csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;

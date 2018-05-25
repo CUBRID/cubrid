@@ -29,6 +29,12 @@
 
 #ident "$Id$"
 
+#if defined (SERVER_MODE)
+#error Does not belong to server module.
+#endif /* SERVER_MODE */
+
+#include "parse_tree.h"
+
 #define SP_CLASS_NAME           "_db_stored_procedure"
 #define SP_ARG_CLASS_NAME       "_db_stored_procedure_args"
 

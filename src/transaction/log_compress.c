@@ -30,6 +30,7 @@
 
 #include "log_compress.h"
 #include "error_manager.h"
+#include "memory_alloc.h"
 
 /*
  * log_zip - compress(zip) log data into LOG_ZIP
@@ -81,7 +82,7 @@ log_zip (LOG_ZIP * log_zip, LOG_ZIP_SIZE_T length, const void *data)
 		      log_zip->wrkmem);
   if (rc == LZO_E_OK)
     {
-      log_zip->data_length = zip_len + sizeof (LOG_ZIP_SIZE_T);
+      log_zip->data_length = (LOG_ZIP_SIZE_T) zip_len + sizeof (LOG_ZIP_SIZE_T);
       /* if the compressed data length >= orginal length, then it means that compression failed */
       if (log_zip->data_length < length)
 	{
@@ -146,7 +147,7 @@ log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, void *data)
 
   if (rc == LZO_E_OK)
     {
-      log_unzip->data_length = unzip_len;
+      log_unzip->data_length = (LOG_ZIP_SIZE_T) unzip_len;
       /* if the uncompressed data length != original length, then it means that uncompression failed */
       if (unzip_len == (lzo_uint) org_len)
 	{

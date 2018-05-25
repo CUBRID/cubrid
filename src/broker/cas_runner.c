@@ -39,12 +39,8 @@
 #include <pthread.h>
 #include <unistd.h>
 #endif
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#else
-#include "getopt.h"
-#endif
 
+#include "cubrid_getopt.h"
 #include "cas_common.h"
 #include "porting.h"
 #include "cas_cci.h"
@@ -1526,7 +1522,7 @@ make_sql_stmt (char *src)
   else
     {
       trim (tmp);
-      query_len = strlen (tmp);
+      query_len = (int) strlen (tmp);
       if (query_len > 0)
 	{
 	  if (tmp[query_len - 1] != ';')

@@ -131,9 +131,6 @@ css_set_pipe_signal (void)
  * css_client_init() - initialize the network portion of the client interface
  *   return:
  *   sockid(in): sSocket number for remote host
- *   alloc_function(in): function for memory allocation
- *   free_function(in): function to return memory
- *   oob_function(in): function to call on receipt of an out of band message
  *   server_name(in):
  *   host_name(in):
  */
@@ -182,7 +179,7 @@ css_send_request_to_server (char *host, int request, char *arg_buffer, int arg_b
   entry = css_return_open_entry (host, &css_Client_anchor);
   if (entry != NULL)
     {
-      entry->conn->transaction_id = tm_Tran_index;
+      entry->conn->set_tran_index (tm_Tran_index);
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
       css_Errno = css_send_request (entry->conn, (int) request, &rid, arg_buffer, (int) arg_buffer_size);
       if (css_Errno != NO_ERRORS)
@@ -226,7 +223,7 @@ css_send_request_to_server_with_buffer (char *host, int request, char *arg_buffe
   entry = css_return_open_entry (host, &css_Client_anchor);
   if (entry != NULL)
     {
-      entry->conn->transaction_id = tm_Tran_index;
+      entry->conn->set_tran_index (tm_Tran_index);
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
       css_Errno =
 	css_send_request_with_data_buffer (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data_buffer,
@@ -273,7 +270,7 @@ css_send_req_to_server (char *host, int request, char *arg_buffer, int arg_buffe
   entry = css_return_open_entry (host, &css_Client_anchor);
   if (entry != NULL)
     {
-      entry->conn->transaction_id = tm_Tran_index;
+      entry->conn->set_tran_index (tm_Tran_index);
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
       css_Errno =
 	css_send_req_with_2_buffers (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data_buffer,
@@ -374,7 +371,7 @@ css_send_req_to_server_2_data (char *host, int request, char *arg_buffer, int ar
   entry = css_return_open_entry (host, &css_Client_anchor);
   if (entry != NULL)
     {
-      entry->conn->transaction_id = tm_Tran_index;
+      entry->conn->set_tran_index (tm_Tran_index);
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
       css_Errno =
 	css_send_req_with_3_buffers (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data1_buffer,
@@ -413,7 +410,7 @@ css_send_req_to_server_no_reply (char *host, int request, char *arg_buffer, int 
   entry = css_return_open_entry (host, &css_Client_anchor);
   if (entry != NULL)
     {
-      entry->conn->transaction_id = tm_Tran_index;
+      entry->conn->set_tran_index (tm_Tran_index);
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
       css_Errno = css_send_request_no_reply (entry->conn, request, &rid, arg_buffer, arg_buffer_size);
       if (css_Errno == NO_ERRORS)
@@ -486,7 +483,7 @@ css_send_error_to_server (char *host, unsigned int eid, char *buffer, int buffer
   entry = css_return_open_entry (host, &css_Client_anchor);
   if (entry != NULL)
     {
-      entry->conn->transaction_id = tm_Tran_index;
+      entry->conn->set_tran_index (tm_Tran_index);
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
       entry->conn->db_error = er_errid ();
       css_Errno = css_send_error (entry->conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
@@ -523,7 +520,7 @@ css_send_data_to_server (char *host, unsigned int eid, char *buffer, int buffer_
   entry = css_return_open_entry (host, &css_Client_anchor);
   if (entry != NULL)
     {
-      entry->conn->transaction_id = tm_Tran_index;
+      entry->conn->set_tran_index (tm_Tran_index);
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
       css_Errno = css_send_data (entry->conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
       if (css_Errno == NO_ERRORS)
@@ -556,7 +553,7 @@ css_test_for_server_errors (CSS_MAP_ENTRY * entry, unsigned int eid)
 
   if (css_return_queued_error (entry->conn, CSS_RID_FROM_EID (eid), &error_buffer, &error_size, &rc))
     {
-      errid = er_set_area_error ((void *) error_buffer);
+      errid = er_set_area_error (error_buffer);
       free_and_init (error_buffer);
     }
   return errid;

@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <fcntl.h>
+#include <assert.h>
 #if defined(WINDOWS)
 #include <io.h>
 #else
@@ -58,8 +59,7 @@
 #include "porting.h"
 #endif
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #define MIGRATION_CHUNK 4096
 static char migration_buffer[MIGRATION_CHUNK];
@@ -127,7 +127,7 @@ make_desc_obj (SM_CLASS * class_)
 	}
       for (i = 0, att = class_->attributes; i < class_->att_count; i++, att = (SM_ATTRIBUTE *) att->header.next)
 	{
-	  DB_MAKE_NULL (&obj->values[i]);
+	  db_make_null (&obj->values[i]);
 	  obj->atts[i] = att;
 	}
     }
@@ -544,8 +544,8 @@ desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
   int error, status;
   bool has_index = false;
   unsigned int repid_bits;
-  volatile int expected_disk_size;
-  volatile int offset_size;
+  int expected_disk_size;
+  int offset_size;
 
   buf = &orep;
   or_init (buf, record->data, record->area_size);
@@ -1138,7 +1138,7 @@ bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
   };
 
   /* Get the buffer and the length from the_db_bit */
-  bstring = DB_GET_BIT (the_db_bit, &length);
+  bstring = db_get_bit (the_db_bit, &length);
 
   switch (bfmt)
     {
@@ -1396,7 +1396,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 	  /* flush remaining buffer */
 	  CHECK_PRINT_ERROR (text_print_flush (tout));
 	}
-      CHECK_PRINT_ERROR (itoa_print (tout, DB_GET_BIGINT (value), 10 /* base */ ));
+      CHECK_PRINT_ERROR (itoa_print (tout, db_get_bigint (value), 10 /* base */ ));
       break;
     case DB_TYPE_INTEGER:
       if (tout->iosize - tout->count < INTERNAL_BUFFER_SIZE)
@@ -1404,7 +1404,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 	  /* flush remaining buffer */
 	  CHECK_PRINT_ERROR (text_print_flush (tout));
 	}
-      CHECK_PRINT_ERROR (itoa_print (tout, DB_GET_INTEGER (value), 10 /* base */ ));
+      CHECK_PRINT_ERROR (itoa_print (tout, db_get_int (value), 10 /* base */ ));
       break;
     case DB_TYPE_SMALLINT:
       if (tout->iosize - tout->count < INTERNAL_BUFFER_SIZE)
@@ -1412,7 +1412,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 	  /* flush remaining buffer */
 	  CHECK_PRINT_ERROR (text_print_flush (tout));
 	}
-      CHECK_PRINT_ERROR (itoa_print (tout, DB_GET_SMALLINT (value), 10 /* base */ ));
+      CHECK_PRINT_ERROR (itoa_print (tout, db_get_short (value), 10 /* base */ ));
       break;
 
     case DB_TYPE_FLOAT:
@@ -1423,7 +1423,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 	pos = tout->ptr;
 	CHECK_PRINT_ERROR (text_print
 			   (tout, NULL, 0, "%.*g", (type == DB_TYPE_FLOAT) ? 10 : 17,
-			    (type == DB_TYPE_FLOAT) ? DB_GET_FLOAT (value) : DB_GET_DOUBLE (value)));
+			    (type == DB_TYPE_FLOAT) ? db_get_float (value) : db_get_double (value)));
 
 	/* if tout flushed, then this float/double should be the first content */
 	if ((pos < tout->ptr && !strchr (pos, '.')) || (pos > tout->ptr && !strchr (tout->buffer, '.')))
@@ -1439,58 +1439,58 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 	  /* flush remaining buffer */
 	  CHECK_PRINT_ERROR (text_print_flush (tout));
 	}
-      CHECK_PRINT_ERROR (itoa_print (tout, DB_GET_ENUM_SHORT (value), 10 /* base */ ));
+      CHECK_PRINT_ERROR (itoa_print (tout, db_get_enum_short (value), 10 /* base */ ));
       break;
 
     case DB_TYPE_DATE:
-      db_date_to_string (buf, MAX_DISPLAY_COLUMN, DB_GET_DATE (value));
+      db_date_to_string (buf, MAX_DISPLAY_COLUMN, db_get_date (value));
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "date '%s'", buf));
       break;
 
     case DB_TYPE_TIME:
-      db_time_to_string (buf, MAX_DISPLAY_COLUMN, DB_GET_TIME (value));
+      db_time_to_string (buf, MAX_DISPLAY_COLUMN, db_get_time (value));
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "time '%s'", buf));
       break;
 
     case DB_TYPE_TIMELTZ:
-      db_timeltz_to_string (buf, MAX_DISPLAY_COLUMN, DB_GET_TIME (value));
+      db_timeltz_to_string (buf, MAX_DISPLAY_COLUMN, db_get_time (value));
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timeltz '%s'", buf));
       break;
 
     case DB_TYPE_TIMETZ:
-      time_tz = DB_GET_TIMETZ (value);
+      time_tz = db_get_timetz (value);
       db_timetz_to_string (buf, MAX_DISPLAY_COLUMN, &time_tz->time, &time_tz->tz_id);
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timetz '%s'", buf));
       break;
 
     case DB_TYPE_TIMESTAMP:
-      db_timestamp_to_string (buf, MAX_DISPLAY_COLUMN, DB_GET_UTIME (value));
+      db_timestamp_to_string (buf, MAX_DISPLAY_COLUMN, db_get_timestamp (value));
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timestamp '%s'", buf));
       break;
 
     case DB_TYPE_TIMESTAMPLTZ:
-      db_timestampltz_to_string (buf, MAX_DISPLAY_COLUMN, DB_GET_UTIME (value));
+      db_timestampltz_to_string (buf, MAX_DISPLAY_COLUMN, db_get_timestamp (value));
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timestampltz '%s'", buf));
       break;
 
     case DB_TYPE_TIMESTAMPTZ:
-      ts_tz = DB_GET_TIMESTAMPTZ (value);
+      ts_tz = db_get_timestamptz (value);
       db_timestamptz_to_string (buf, MAX_DISPLAY_COLUMN, &ts_tz->timestamp, &ts_tz->tz_id);
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timestamptz '%s'", buf));
       break;
 
     case DB_TYPE_DATETIME:
-      db_datetime_to_string (buf, MAX_DISPLAY_COLUMN, DB_GET_DATETIME (value));
+      db_datetime_to_string (buf, MAX_DISPLAY_COLUMN, db_get_datetime (value));
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "datetime '%s'", buf));
       break;
 
     case DB_TYPE_DATETIMELTZ:
-      db_datetimeltz_to_string (buf, MAX_DISPLAY_COLUMN, DB_GET_DATETIME (value));
+      db_datetimeltz_to_string (buf, MAX_DISPLAY_COLUMN, db_get_datetime (value));
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "datetimeltz '%s'", buf));
       break;
 
     case DB_TYPE_DATETIMETZ:
-      dt_tz = DB_GET_DATETIMETZ (value);
+      dt_tz = db_get_datetimetz (value);
       db_datetimetz_to_string (buf, MAX_DISPLAY_COLUMN, &dt_tz->datetime, &dt_tz->tz_id);
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "datetimetz '%s'", buf));
       break;
@@ -1498,9 +1498,9 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
     case DB_TYPE_MONETARY:
       /* Always print symbol before value, even if for turkish lira the user format is after value :
        * intl_get_currency_symbol_position */
-      CHECK_PRINT_ERROR (text_print
-			 (tout, NULL, 0, "%s%.*f", intl_get_money_esc_ISO_symbol (DB_GET_MONETARY (value)->type), 2,
-			  DB_GET_MONETARY (value)->amount));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%s%.*f",
+				     intl_get_money_esc_ISO_symbol (db_get_monetary (value)->type), 2,
+				     db_get_monetary (value)->amount));
       break;
 
     case DB_TYPE_NCHAR:
@@ -1509,12 +1509,12 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       /* fall through */
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-      ptr = DB_PULL_STRING (value);
+      ptr = db_get_string (value);
 
       len = db_get_string_size (value);
       if (len < 0)
 	{
-	  len = strlen (ptr);
+	  len = (int) strlen (ptr);
 	}
 
       CHECK_PRINT_ERROR (print_quoted_str (tout, ptr, len, MAX_DISPLAY_COLUMN));
@@ -1560,11 +1560,15 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 
       /* other stubs */
     case DB_TYPE_ERROR:
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%d", DB_GET_ERROR (value)));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%d", db_get_error (value)));
       break;
 
     case DB_TYPE_POINTER:
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%lx", (unsigned long) DB_GET_POINTER (value)));
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "%p", db_get_pointer (value)));
+      break;
+
+    case DB_TYPE_JSON:
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "'%s'", db_get_json_raw_body (value)));	//, strlen (db_get_json_raw_body (value)), NULL));
       break;
 
     default:
@@ -1600,7 +1604,7 @@ desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-      CHECK_PRINT_ERROR (fprint_special_set (tout, DB_GET_SET (value)));
+      CHECK_PRINT_ERROR (fprint_special_set (tout, db_get_set (value)));
       break;
 
     case DB_TYPE_BLOB:
@@ -1640,7 +1644,7 @@ desc_value_fprint (FILE * fp, DB_VALUE * value)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-      fprint_set (fp, DB_GET_SET (value));
+      fprint_set (fp, db_get_set (value));
       break;
 
     case DB_TYPE_BLOB:
@@ -1781,7 +1785,7 @@ er_filter_fileset (FILE * ef)
   return set_count;
 }
 
-
+// TODO: this is specific to loader. I don't think it belongs here.
 /*
  * er_filter_errid - check for ignorable errid
  *    return: NO_ERROR if ignorable errid. otherwise, error-code clear
@@ -1811,7 +1815,7 @@ er_filter_errid (bool ignore_warning)
 
   if (filter_ignore_errors[0])
     {
-      if (ignore_warning && er_severity () == ER_WARNING_SEVERITY)
+      if (ignore_warning && er_get_severity () == ER_WARNING_SEVERITY)
 	{
 	  goto clear_errid;
 	}

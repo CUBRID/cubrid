@@ -1,4 +1,16 @@
+#
+# Lock-free module scripts
+#
 
+#
+# Lock-free hashes
+#
+
+# lf_print_counters
+# No arguments -
+#
+# Prints all lock-free counters
+#
 define lf_print_counters
   printf "lf_hash_size                   %d\n", lf_hash_size
   printf "lf_inserts                     %d\n", lf_inserts
@@ -26,3 +38,64 @@ define lf_print_counters
   printf "lf_transports                  %d\n", lf_transports
   printf "lf_temps                       %d\n", lf_temps
   end
+
+#
+# Lock-free circular queues
+#
+
+# lfcq_print
+# $arg0 (in) : lock-free circular queue
+#
+# Print all entry states
+#
+define lfcq_print
+  set $lfcq = $arg0
+  # print info
+  printf "capacity = %d\n", $lfcq.m_capacity
+  printf "produce_cursor = %d", $lfcq.m_produce_cursor
+  printf "consume_cursor = %d", $lfcq.m_consume_cursor
+  end
+
+# lfcq_at_index
+# $arg0 (in) : lock-free circular queue
+# $arg1 (in) : data index
+#
+# Print data in lfcq at index
+#
+define lfcq_at_index
+  set $lfcq = $arg0
+  set $index = $arg1
+  p $lfcq.m_data[$index]
+  end
+
+# lfcq_get_cursor_index
+# $arg0 (in)  : lfcq
+# $arg1 (in)  : cursor
+# $arg2 (out) : index
+#
+# Get index of cursor
+#
+define lfcq_get_cursor_index
+  set $lfcq = $arg0
+  set $cursor = $arg1
+  set $index = $cursor & $lfcq.m_index_mask
+  #output
+  set $arg2 = $index
+  end
+
+# lfcq_print_data
+# $arg0 (in) : lfcq
+#
+# Print all data in lfcq
+#
+define lfcq_print_data
+  set $lfcq = $arg0
+  set $cursor = $lfcq.m_produce_cursor
+  printf "Data between %d-%d:\n", $lfcq.m_produce_cursor, $lfcq.m_consume_cursor
+  while $cursor < $lfcq.m_consume_cursor
+    lfcq_get_cursor_index $lfcq $cursor $index
+    lfcq_at_index $lfcq $index
+    set $cursor = $cursor + 1
+    end
+  end
+

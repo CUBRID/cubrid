@@ -26,8 +26,10 @@
 #ifndef _UTILITY_H_
 #define _UTILITY_H_
 
-#include <config.h>
 #include <stdio.h>
+
+#include "config.h"
+#include "cubrid_getopt.h"
 #include "util_func.h"
 #include "dynamic_array.h"
 
@@ -81,7 +83,6 @@ typedef enum
   MSGCAT_UTIL_SET_DUMPLOCALE = 47,
   MSGCAT_UTIL_SET_SYNCCOLLDB = 48,
   MSGCAT_UTIL_SET_TRANLIST = 49,
-  MSGCAT_UTIL_SET_PREFETCHLOGDB = 50,	/* currently, unused */
   MSGCAT_UTIL_SET_GEN_TZ = 51,
   MSGCAT_UTIL_SET_DUMP_TZ = 52,
   MSGCAT_UTIL_SET_RESTORESLAVE = 53,
@@ -240,32 +241,30 @@ typedef enum
 /* Message id in the set MSGCAT_UTIL_SET_SPACEDB */
 typedef enum
 {
-  SPACEDB_OUTPUT_TITLE = 15,
-  SPACEDB_OUTPUT_FORMAT = 16,
-  SPACEDB_MSG_BAD_OUTPUT = 17,
-  SPACEDB_OUTPUT_TITLE_TMP_VOL = 18,
-  SPACEDB_OUTPUT_TITLE_PAGE = 19,
-  SPACEDB_OUTPUT_TITLE_SIZE = 20,
-  SPACEDB_OUTPUT_TITLE_LOB = 21,
-  SPACEDB_OUTPUT_UNDERLINE = 22,
+  SPACEDB_OUTPUT_TITLE = 10,
+  SPACEDB_MSG_BAD_OUTPUT = 11,
+  SPACEDB_OUTPUT_TITLE_LOB = 12,
 
-  SPACEDB_OUTPUT_SUMMARIZED_TITLE = 30,
-  SPACEDB_OUTPUT_SUMMARIZED_TITLE_PAGE = 31,
-  SPACEDB_OUTPUT_SUMMARIZED_TITLE_SIZE = 32,
-  SPACEDB_OUTPUT_SUMMARIZED_FORMAT = 33,
-  SPACEDB_OUTPUT_SUMMARIZED_UNDERLINE = 34,
+  SPACEDB_MSG_ALL_HEADER_PAGES = 20,
+  SPACEDB_MSG_ALL_HEADER_SIZE = 21,
+  SPACEDB_MSG_PERM_PERM_FORMAT = 22,
+  SPACEDB_MSG_PERM_TEMP_FORMAT = 23,
+  SPACEDB_MSG_TEMP_TEMP_FORMAT = 24,
+  SPACEDB_MSG_TOTAL_FORMAT = 25,
 
-  SPACEDB_OUTPUT_PURPOSE_TITLE = SPACEDB_OUTPUT_TITLE,
-  SPACEDB_OUTPUT_PURPOSE_TITLE_PAGE = 40,
-  SPACEDB_OUTPUT_PURPOSE_TITLE_SIZE = 41,
-  SPACEDB_OUTPUT_PURPOSE_FORMAT = 42,
-  SPACEDB_OUTPUT_PURPOSE_UNDERLINE = 43,
+  SPACEDB_MSG_VOLS_TITLE = 30,
+  SPACEDB_MSG_VOLS_HEADER_PAGES = 31,
+  SPACEDB_MSG_VOLS_HEADER_SIZE = 32,
+  SPACEDB_MSG_VOLS_PERM_PERM_FORMAT = 33,
+  SPACEDB_MSG_VOLS_PERM_TEMP_FORMAT = 34,
+  SPACEDB_MSG_VOLS_TEMP_TEMP_FORMAT = 35,
 
-  SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_TITLE = SPACEDB_OUTPUT_SUMMARIZED_TITLE,
-  SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_TITLE_PAGE = 50,
-  SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_TITLE_SIZE = 51,
-  SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_FORMAT = 52,
-  SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_UNDERLINE = 53,
+  SPACEDB_MSG_FILES_TITLE = 40,
+  SPACEDB_MSG_FILES_HEADER_PAGES = 41,
+  SPACEDB_MSG_FILES_HEADER_SIZE = 42,
+  SPACEDB_MSG_FILES_FORMAT = 43,
+
+  SPACEDB_MSG_END_UNDERLINE = 50,
   SPACEDB_MSG_USAGE = 60
 } MSGCAT_SPACEDB_MSG;
 
@@ -626,16 +625,6 @@ typedef enum
   SYNCCOLLDB_MSG_USAGE = 60
 } MSGCAT_SYNCCOLLDB_MSG;
 
-/* Message id in the set MSGCAT_UTIL_SET_PREFETCHLOGDB */
-typedef enum
-{
-  PREFETCHLOGDB_MSG_NOT_HA_MODE = 22,
-  PREFETCHLOGDB_MSG_FEATURE_DISABLE = 23,
-  PREFETCHLOGDB_MSG_HA_NOT_SUPPORT = 58,
-  PREFETCHLOGDB_MSG_NOT_IN_STANDALONE = 59,
-  PREFETCHLOGDB_MSG_USAGE = 60
-} MSGCAT_PREFETCHLOGDB_MSG;
-
 /* Message id in the set MSGCAT_UTIL_SET_GEN_TZ */
 typedef enum
 {
@@ -731,7 +720,6 @@ typedef enum
   DUMPLOCALE,
   SYNCCOLLDB,
   TRANLIST,
-  PREFETCHLOGDB,		/* currently, unused */
   GEN_TZ,
   DUMP_TZ,
   RESTORESLAVE,
@@ -755,8 +743,6 @@ typedef enum
   ARG_BIGINT
 } UTIL_ARG_TYPE;
 
-typedef struct option GETOPT_LONG;
-
 typedef struct
 {
   int arg_ch;
@@ -767,9 +753,9 @@ typedef struct
   } value_info;
   union
   {
+    void *p;
     int i;
     INT64 l;
-    void *p;
   } arg_value;
 } UTIL_ARG_MAP;
 
@@ -827,7 +813,7 @@ typedef struct _ha_config
 #define UTIL_CUBRID             "cubrid" UTIL_EXE_EXT
 #define UTIL_COPYLOGDB          "copylogdb" UTIL_EXE_EXT
 #define UTIL_APPLYLOGDB         "applylogdb" UTIL_EXE_EXT
-#define UTIL_PREFETCHLOGDB      "prefetchlogdb" UTIL_EXE_EXT
+#define UTIL_DDL_PROXY_CLIENT   "ddl_proxy_client" UTIL_EXE_EXT
 
 #define PROPERTY_ON             "on"
 #define PROPERTY_OFF            "off"
@@ -854,7 +840,6 @@ typedef struct _ha_config
 #define PRINT_CMD_ACL           "acl"
 #define PRINT_CMD_COPYLOGDB     "copylogdb"
 #define PRINT_CMD_APPLYLOGDB    "applylogdb"
-#define PRINT_CMD_PREFETCHLOGDB "prefetchlogdb"
 #define PRINT_CMD_GETID         "getid"
 #define PRINT_CMD_TEST          "test"
 #define PRINT_CMD_REPLICATION	"replication"
@@ -936,7 +921,6 @@ typedef struct _ha_config
 #define UTIL_OPTION_GENERATE_LOCALE		"genlocale"
 #define UTIL_OPTION_DUMP_LOCALE			"dumplocale"
 #define UTIL_OPTION_SYNCCOLLDB			"synccolldb"
-#define UTIL_OPTION_PREFETCHLOGDB		"prefetchlogdb"
 #define UTIL_OPTION_GEN_TZ			"gen_tz"
 #define UTIL_OPTION_DUMP_TZ			"dump_tz"
 #define UTIL_OPTION_RESTORESLAVE                "restoreslave"
@@ -1393,6 +1377,16 @@ typedef struct _ha_config
 #define COMMDB_HA_START_UTIL_PROCESS_S          't'
 #define COMMDB_HA_START_UTIL_PROCESS_L          "start-ha-util-process"
 
+/* ddl_proxy_client option list */
+#define DDL_PROXY_USER_L "user"
+#define DDL_PROXY_USER_S 'u'
+#define DDL_PROXY_PASSWORD_L "password"
+#define DDL_PROXY_PASSWORD_S 'p'
+#define DDL_PROXY_OUTPUT_FILE_L "output-file"
+#define DDL_PROXY_OUTPUT_FILE_S 'o'
+#define DDL_PROXY_COMMAND_L "command"
+#define DDL_PROXY_COMMAND_S 'c'
+
 /* paramdump option list */
 #define PARAMDUMP_OUTPUT_FILE_S                 'o'
 #define PARAMDUMP_OUTPUT_FILE_L                 "output-file"
@@ -1515,10 +1509,6 @@ typedef struct _ha_config
 #define VERSION_S                               20000
 #define VERSION_L                               "version"
 
-/* prepatchlogdb option list */
-#define PREFETCH_LOG_PATH_S                      'L'
-#define PREFETCH_LOG_PATH_L                      "log-path"
-
 /* restoreslave option list */
 #define RESTORESLAVE_SOURCE_STATE_S                  's'
 #define RESTORESLAVE_SOURCE_STATE_L                  "source-state"
@@ -1584,112 +1574,118 @@ typedef struct _ha_config
 typedef int (*UTILITY_INIT_FUNC) (void);
 
 /* extern functions */
-extern int utility_initialize (void);
-extern const char *utility_get_generic_message (int message_index);
-extern int check_database_name (const char *name);
-extern int check_new_database_name (const char *name);
-extern int check_volume_name (const char *name);
-extern int utility_get_option_int_value (UTIL_ARG_MAP * arg_map, int arg_ch);
-extern bool utility_get_option_bool_value (UTIL_ARG_MAP * arg_map, int arg_ch);
-extern char *utility_get_option_string_value (UTIL_ARG_MAP * arg_map, int arg_ch, int index);
-extern INT64 utility_get_option_bigint_value (UTIL_ARG_MAP * arg_map, int arg_ch);
-extern int utility_get_option_string_table_size (UTIL_ARG_MAP * arg_map);
-
-extern FILE *fopen_ex (const char *filename, const char *type);
-
-extern bool util_is_localhost (char *host);
-
-extern void util_free_ha_conf (HA_CONF * ha_conf);
-extern int util_make_ha_conf (HA_CONF * ha_conf);
-extern int util_get_ha_mode_for_sa_utils (void);
-extern int util_get_num_of_ha_nodes (const char *node_list);
-#if !defined(WINDOWS)
-extern void util_redirect_stdout_to_null (void);
-#endif /* !defined(WINDOWS) */
-extern int util_byte_to_size_string (char *buf, size_t len, UINT64 size_num);
-extern int util_size_string_to_byte (UINT64 * size_num, const char *size_str);
-extern int util_msec_to_time_string (char *buf, size_t len, INT64 msec_num);
-extern int util_time_string_to_msec (INT64 * msec_num, char *time_str);
-extern void util_print_deprecated (const char *option);
-extern int util_get_table_list_from_file (char *fname, dynamic_array * darray);
-
-typedef struct
+#ifdef __cplusplus
+extern "C"
 {
-  int keyval;
-  const char *keystr;
-} UTIL_KEYWORD;
+#endif
+  extern int utility_initialize (void);
+  extern const char *utility_get_generic_message (int message_index);
+  extern int check_database_name (const char *name);
+  extern int check_new_database_name (const char *name);
+  extern int check_volume_name (const char *name);
+  extern int utility_get_option_int_value (UTIL_ARG_MAP * arg_map, int arg_ch);
+  extern bool utility_get_option_bool_value (UTIL_ARG_MAP * arg_map, int arg_ch);
+  extern char *utility_get_option_string_value (UTIL_ARG_MAP * arg_map, int arg_ch, int index);
+  extern INT64 utility_get_option_bigint_value (UTIL_ARG_MAP * arg_map, int arg_ch);
+  extern int utility_get_option_string_table_size (UTIL_ARG_MAP * arg_map);
 
-extern int changemode_keyword (int *keyval_p, char **keystr_p);
-extern int copylogdb_keyword (int *keyval_p, char **keystr_p);
+  extern FILE *fopen_ex (const char *filename, const char *type);
 
-extern int utility_keyword_value (UTIL_KEYWORD * keywords, int *keyval_p, char **keystr_p);
-extern int utility_keyword_search (UTIL_KEYWORD * keywords, int *keyval_p, char **keystr_p);
+  extern bool util_is_localhost (char *host);
 
-extern int utility_localtime (const time_t * ts, struct tm *result);
+  extern void util_free_ha_conf (HA_CONF * ha_conf);
+  extern int util_make_ha_conf (HA_CONF * ha_conf);
+  extern int util_get_ha_mode_for_sa_utils (void);
+  extern int util_get_num_of_ha_nodes (const char *node_list);
+#if !defined(WINDOWS)
+  extern void util_redirect_stdout_to_null (void);
+#endif				/* !defined(WINDOWS) */
+  extern int util_byte_to_size_string (char *buf, size_t len, UINT64 size_num);
+  extern int util_size_string_to_byte (UINT64 * size_num, const char *size_str);
+  extern int util_msec_to_time_string (char *buf, size_t len, INT64 msec_num);
+  extern int util_time_string_to_msec (INT64 * msec_num, char *time_str);
+  extern void util_print_deprecated (const char *option);
+  extern int util_get_table_list_from_file (char *fname, dynamic_array * darray);
+
+  typedef struct
+  {
+    int keyval;
+    const char *keystr;
+  } UTIL_KEYWORD;
+
+  extern int changemode_keyword (int *keyval_p, char **keystr_p);
+  extern int copylogdb_keyword (int *keyval_p, char **keystr_p);
+
+  extern int utility_keyword_value (UTIL_KEYWORD * keywords, int *keyval_p, char **keystr_p);
+  extern int utility_keyword_search (UTIL_KEYWORD * keywords, int *keyval_p, char **keystr_p);
+
+  extern int utility_localtime (const time_t * ts, struct tm *result);
 
 /* admin utility main functions */
-typedef struct
-{
-  UTIL_ARG_MAP *arg_map;
-  const char *command_name;
-  char *argv0;
-  char **argv;
-  bool valid_arg;
-} UTIL_FUNCTION_ARG;
-typedef int (*UTILITY_FUNCTION) (UTIL_FUNCTION_ARG *);
+  typedef struct
+  {
+    UTIL_ARG_MAP *arg_map;
+    const char *command_name;
+    char *argv0;
+    char **argv;
+    bool valid_arg;
+  } UTIL_FUNCTION_ARG;
+  typedef int (*UTILITY_FUNCTION) (UTIL_FUNCTION_ARG *);
 
-extern int compactdb (UTIL_FUNCTION_ARG * arg_map);
+  extern int compactdb (UTIL_FUNCTION_ARG * arg_map);
 #if defined (ENABLE_UNUSED_FUNCTION)
-extern int loaddb_dba (UTIL_FUNCTION_ARG * arg_map);
+  extern int loaddb_dba (UTIL_FUNCTION_ARG * arg_map);
 #endif
-extern int loaddb_user (UTIL_FUNCTION_ARG * arg_map);
-extern int unloaddb (UTIL_FUNCTION_ARG * arg_map);
-extern int backupdb (UTIL_FUNCTION_ARG * arg_map);
-extern int addvoldb (UTIL_FUNCTION_ARG * arg_map);
+  extern int loaddb_user (UTIL_FUNCTION_ARG * arg_map);
+  extern int unloaddb (UTIL_FUNCTION_ARG * arg_map);
+  extern int backupdb (UTIL_FUNCTION_ARG * arg_map);
+  extern int addvoldb (UTIL_FUNCTION_ARG * arg_map);
 #if 0
-extern int delvoldb (UTIL_FUNCTION_ARG * arg_map);
+  extern int delvoldb (UTIL_FUNCTION_ARG * arg_map);
 #endif
-extern int checkdb (UTIL_FUNCTION_ARG * arg_map);
-extern int spacedb (UTIL_FUNCTION_ARG * arg_map);
-extern int lockdb (UTIL_FUNCTION_ARG * arg_map);
-extern int tranlist (UTIL_FUNCTION_ARG * arg_map);
-extern int killtran (UTIL_FUNCTION_ARG * arg_map);
-extern int restartevnt (UTIL_FUNCTION_ARG * arg_map);
-extern int prestartldb (UTIL_FUNCTION_ARG * arg_map);
-extern int shutdownldb (UTIL_FUNCTION_ARG * arg_map);
-extern int mqueueldb (UTIL_FUNCTION_ARG * arg_map);
-extern int plandump (UTIL_FUNCTION_ARG * arg_map);
-extern int createdb (UTIL_FUNCTION_ARG * arg_map);
-extern int deletedb (UTIL_FUNCTION_ARG * arg_map);
-extern int restoredb (UTIL_FUNCTION_ARG * arg_map);
-extern int renamedb (UTIL_FUNCTION_ARG * arg_map);
-extern int installdb (UTIL_FUNCTION_ARG * arg_map);
-extern int copydb (UTIL_FUNCTION_ARG * arg_map);
-extern int optimizedb (UTIL_FUNCTION_ARG * arg_map);
-extern int diagdb (UTIL_FUNCTION_ARG * arg_map);
-extern int patchdb (UTIL_FUNCTION_ARG * arg_map);
-extern int estimatedb_data (UTIL_FUNCTION_ARG * arg_map);
-extern int estimatedb_index (UTIL_FUNCTION_ARG * arg_map);
-extern int estimatedb_hash (UTIL_FUNCTION_ARG * arg_map);
-extern int alterdbhost (UTIL_FUNCTION_ARG * arg_map);
-extern int paramdump (UTIL_FUNCTION_ARG * arg_map);
-extern int statdump (UTIL_FUNCTION_ARG * arg_map);
-extern int changemode (UTIL_FUNCTION_ARG * arg_map);
-extern int copylogdb (UTIL_FUNCTION_ARG * arg_map);
-extern int applylogdb (UTIL_FUNCTION_ARG * arg_map);
-extern int applyinfo (UTIL_FUNCTION_ARG * arg_map);
-extern int acldb (UTIL_FUNCTION_ARG * arg_map);
-extern int genlocale (UTIL_FUNCTION_ARG * arg_map);
-extern int dumplocale (UTIL_FUNCTION_ARG * arg_map);
-extern int synccolldb (UTIL_FUNCTION_ARG * arg_map);
-extern int gen_tz (UTIL_FUNCTION_ARG * arg_map);
-extern int dump_tz (UTIL_FUNCTION_ARG * arg_map);
-extern int synccoll_force (void);
-extern int prefetchlogdb (UTIL_FUNCTION_ARG * arg_map);
-extern int restoreslave (UTIL_FUNCTION_ARG * arg_map);
-extern int vacuumdb (UTIL_FUNCTION_ARG * arg_map);
-extern int checksumdb (UTIL_FUNCTION_ARG * arg_map);
+  extern int checkdb (UTIL_FUNCTION_ARG * arg_map);
+  extern int spacedb (UTIL_FUNCTION_ARG * arg_map);
+  extern int lockdb (UTIL_FUNCTION_ARG * arg_map);
+  extern int tranlist (UTIL_FUNCTION_ARG * arg_map);
+  extern int killtran (UTIL_FUNCTION_ARG * arg_map);
+  extern int restartevnt (UTIL_FUNCTION_ARG * arg_map);
+  extern int prestartldb (UTIL_FUNCTION_ARG * arg_map);
+  extern int shutdownldb (UTIL_FUNCTION_ARG * arg_map);
+  extern int mqueueldb (UTIL_FUNCTION_ARG * arg_map);
+  extern int plandump (UTIL_FUNCTION_ARG * arg_map);
+  extern int createdb (UTIL_FUNCTION_ARG * arg_map);
+  extern int deletedb (UTIL_FUNCTION_ARG * arg_map);
+  extern int restoredb (UTIL_FUNCTION_ARG * arg_map);
+  extern int renamedb (UTIL_FUNCTION_ARG * arg_map);
+  extern int installdb (UTIL_FUNCTION_ARG * arg_map);
+  extern int copydb (UTIL_FUNCTION_ARG * arg_map);
+  extern int optimizedb (UTIL_FUNCTION_ARG * arg_map);
+  extern int diagdb (UTIL_FUNCTION_ARG * arg_map);
+  extern int patchdb (UTIL_FUNCTION_ARG * arg_map);
+  extern int estimatedb_data (UTIL_FUNCTION_ARG * arg_map);
+  extern int estimatedb_index (UTIL_FUNCTION_ARG * arg_map);
+  extern int estimatedb_hash (UTIL_FUNCTION_ARG * arg_map);
+  extern int alterdbhost (UTIL_FUNCTION_ARG * arg_map);
+  extern int paramdump (UTIL_FUNCTION_ARG * arg_map);
+  extern int statdump (UTIL_FUNCTION_ARG * arg_map);
+  extern int changemode (UTIL_FUNCTION_ARG * arg_map);
+  extern int copylogdb (UTIL_FUNCTION_ARG * arg_map);
+  extern int applylogdb (UTIL_FUNCTION_ARG * arg_map);
+  extern int applyinfo (UTIL_FUNCTION_ARG * arg_map);
+  extern int acldb (UTIL_FUNCTION_ARG * arg_map);
+  extern int genlocale (UTIL_FUNCTION_ARG * arg_map);
+  extern int dumplocale (UTIL_FUNCTION_ARG * arg_map);
+  extern int synccolldb (UTIL_FUNCTION_ARG * arg_map);
+  extern int gen_tz (UTIL_FUNCTION_ARG * arg_map);
+  extern int dump_tz (UTIL_FUNCTION_ARG * arg_map);
+  extern int synccoll_force (void);
+  extern int restoreslave (UTIL_FUNCTION_ARG * arg_map);
+  extern int vacuumdb (UTIL_FUNCTION_ARG * arg_map);
+  extern int checksumdb (UTIL_FUNCTION_ARG * arg_map);
 
-extern void util_admin_usage (const char *argv0);
-extern void util_admin_version (const char *argv0);
-#endif /* _UTILITY_H_ */
+  extern void util_admin_usage (const char *argv0);
+  extern void util_admin_version (const char *argv0);
+#ifdef __cplusplus
+}
+#endif
+#endif				/* _UTILITY_H_ */

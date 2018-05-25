@@ -1,8 +1,8 @@
-Copyright (C) 2008-2016 Search Solution Corporation. All rights reserved.
+Copyright (C) 2008-2017 Search Solution Corporation. All rights reserved.
 CUBRID is registered trademark of Search Solution Corporation.
 
 This Software is released under GNU GPL v2, BSD and GPL v3 according to CUBRID components.
-For brevity, CUBRID Server Engine is under GPL v2, CUBRID Web Manager is under GPL v3, and CUBRID APIs and Connectors are under BSD License.
+For brevity, CUBRID Server Engine is under GPL v2 and CUBRID APIs and Connectors are under BSD License.
 For details, please refer to the CUBRID License Page(http://www.cubrid.org/license).
 
 * CUBRID APIs and Connectors under BSD 3-Clause License(http://opensource.org/licenses/BSD-3-Clause)
@@ -141,8 +141,6 @@ Yoyodyne, Inc., hereby disclaims all copyright interest in the program `Gnomovis
 This General Public License does not permit incorporating your program into proprietary programs. If your program is a subroutine library, you may consider it more useful to permit linking proprietary applications with the library. If this is what you want to do, use the GNU Library General Public License instead of this License.
 --------------------------------------------------------------------------------
 
-* CUBRID Web Manager under GPL v3(http://opensource.org/licenses/GPL-3.0)
---------------------------------------------------------------------------------
 GNU GENERAL PUBLIC LICENSE
  Version 3, 29 June 2007
 

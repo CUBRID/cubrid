@@ -34,59 +34,12 @@
 #include "log_manager.h"
 #include "vacuum.h"
 
-#define PEEK          true	/* Peek for a slotted record */
-#define COPY          false	/* Don't peek, but copy a slotted record */
-
 enum
 {
   ANCHORED = 1,
   ANCHORED_DONT_REUSE_SLOTS = 2,
   UNANCHORED_ANY_SEQUENCE = 3,
   UNANCHORED_KEEP_SEQUENCE = 4
-};
-
-enum
-{
-/* Unknown record type */
-  REC_UNKNOWN = 0,
-
-/* Record without content, just the address */
-  REC_ASSIGN_ADDRESS = 1,
-
-/* Home of record */
-  REC_HOME = 2,
-
-/* No the original home of record.  part of relocation process */
-  REC_NEWHOME = 3,
-
-/* Record describe new home of record */
-  REC_RELOCATION = 4,
-
-/* Record describe location of big record */
-  REC_BIGONE = 5,
-
-/* Slot does not describe any record.
- * A record was stored in this slot.  Slot cannot be reused. 
- */
-  REC_MARKDELETED = 6,
-
-/* Slot does not describe any record.
- * A record was stored in this slot.  Slot will be reused. 
- */
-  REC_DELETED_WILL_REUSE = 7,
-
-/* unused reserved record type */
-  REC_RESERVED_TYPE_8 = 8,
-  REC_RESERVED_TYPE_9 = 9,
-  REC_RESERVED_TYPE_10 = 10,
-  REC_RESERVED_TYPE_11 = 11,
-  REC_RESERVED_TYPE_12 = 12,
-  REC_RESERVED_TYPE_13 = 13,
-  REC_RESERVED_TYPE_14 = 14,
-  REC_RESERVED_TYPE_15 = 15,
-/* 4bit record type max */
-  REC_4BIT_USED_TYPE_MAX = REC_DELETED_WILL_REUSE,
-  REC_4BIT_TYPE_MAX = REC_RESERVED_TYPE_15
 };
 
 /* Some platform like windows used their own SP_ERROR. */
@@ -174,7 +127,8 @@ extern SCAN_CODE spage_previous_record (PAGE_PTR pgptr, PGSLOTID * slotid, RECDE
 extern SCAN_CODE spage_previous_record_dont_skip_empty (PAGE_PTR pgptr, PGSLOTID * slotid, RECDES * recdes,
 							int ispeeking);
 extern SCAN_CODE spage_get_page_header_info (PAGE_PTR page_p, DB_VALUE ** page_header_info);
-extern SCAN_CODE spage_get_record (PAGE_PTR pgptr, PGSLOTID slotid, RECDES * recdes, int ispeeking);
+extern SCAN_CODE spage_get_record (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid, RECDES * recdes,
+				   int ispeeking);
 extern bool spage_is_slot_exist (PAGE_PTR pgptr, PGSLOTID slotid);
 extern void spage_dump (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR pgptr, int isrecord_printed);
 extern SPAGE_SLOT *spage_get_slot (PAGE_PTR page_p, PGSLOTID slot_id);
@@ -182,15 +136,15 @@ extern SPAGE_SLOT *spage_get_slot (PAGE_PTR page_p, PGSLOTID slot_id);
 extern bool spage_check_num_slots (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
 #endif
 extern int spage_check (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
-extern int spage_get_record_length (PAGE_PTR pgptr, PGSLOTID slotid);
-extern int spage_get_record_offset (PAGE_PTR page_p, PGSLOTID slot_id);
-extern int spage_get_space_for_record (PAGE_PTR page_p, PGSLOTID slot_id);
+extern int spage_get_record_length (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid);
+extern int spage_get_record_offset (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id);
+extern int spage_get_space_for_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id);
 extern INT16 spage_get_record_type (PAGE_PTR pgptr, PGSLOTID slotid);
 extern int spage_max_space_for_new_record (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern void spage_collect_statistics (PAGE_PTR pgptr, int *npages, int *nrecords, int *rec_length);
 extern int spage_max_record_size (void);
 extern int spage_check_slot_owner (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGSLOTID slotid);
-extern int spage_compact (PAGE_PTR pgptr);
+extern int spage_compact (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern bool spage_is_valid_anchor_type (const INT16 anchor_type);
 extern const char *spage_anchor_flag_string (const INT16 anchor_type);
 extern const char *spage_alignment_string (unsigned short alignment);
@@ -211,6 +165,6 @@ extern SCAN_CODE spage_slots_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_
 					void *ctx);
 extern int spage_slots_end_scan (THREAD_ENTRY * thread_p, void **ctx);
 
-extern int spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid, bool reusable);
+extern void spage_vacuum_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slotid, bool reusable);
 extern bool spage_need_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
 #endif /* _SLOTTED_PAGE_H_ */

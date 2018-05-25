@@ -33,20 +33,30 @@
 #include <assert.h>
 #include <math.h>
 
+#include "db_value_printer.hpp"
 #include "porting.h"
 #include "parser.h"
 #include "parser_message.h"
 #include "misc_string.h"
 #include "csql_grammar_scan.h"
+#include "mem_block.hpp"
 #include "memory_alloc.h"
 #include "language_support.h"
 #include "object_print.h"
 #include "optimizer.h"
-#include "serial.h"
 #include "system_parameter.h"
 #include "show_meta.h"
 #include "virtual_object.h"
 #include "set_object.h"
+#include "dbi.h"
+#include "string_buffer.hpp"
+#include "dbtype.h"
+
+#include <malloc.h>
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define SAFENUM(node, field)    ((node) ? (node)->field : -1)
 #define PT_MEMB_BUF_SIZE        100
@@ -127,7 +137,6 @@ static PARSER_VARCHAR *pt_append_quoted_string (const PARSER_CONTEXT * parser, P
 						size_t str_length);
 static PARSER_VARCHAR *pt_append_string_prefix (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buf,
 						const PT_NODE * value);
-static bool pt_is_function_indexable_op (PT_OP_TYPE op);
 static bool pt_is_nested_expr (const PT_NODE * node);
 static bool pt_is_allowed_as_function_index (const PT_NODE * expr);
 
@@ -458,9 +467,11 @@ static void pt_clean_tree_copy_info (PT_TREE_COPY_INFO * tree_copy_info);
 
 static PARSER_PRINT_NODE_FUNC pt_print_func_array[PT_NODE_NUMBER];
 
-extern char *g_query_string;
-extern int g_query_string_len;
-
+extern "C"
+{
+  extern char *g_query_string;
+  extern int g_query_string_len;
+}
 /*
  * strcat_with_realloc () -
  *   return:
@@ -476,7 +487,7 @@ strcat_with_realloc (PT_STRING_BLOCK * sb, const char *tail)
   if (sb->size - sb->length < strlen (tail) + margin)
     {
       sb->size = (sb->size + strlen (tail) + margin) * 2;
-      sb->body = realloc (sb->body, sb->size);
+      sb->body = (char *) realloc (sb->body, sb->size);
       cp = sb->body;
     }
 
@@ -793,7 +804,7 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
       /* the pair old_node and new_node addresses is added to copy_tree_info */
       PT_CTE_COPY_INFO *curr_cte_copy_info;
 
-      curr_cte_copy_info = malloc (sizeof (PT_CTE_COPY_INFO));
+      curr_cte_copy_info = (PT_CTE_COPY_INFO *) malloc (sizeof (PT_CTE_COPY_INFO));
       if (curr_cte_copy_info == NULL)
 	{
 	  PT_INTERNAL_ERROR (parser, "allocate new node");
@@ -826,7 +837,8 @@ copy_node_in_tree_post (PARSER_CONTEXT * parser, PT_NODE * new_node, void *arg, 
 
   if (new_node->node_type == PT_SPEC && PT_SPEC_IS_CTE (new_node))
     {
-      /* the new cte_pointer must point to the new_cte; new_cte address should be found in tree_copy_info->cte_structures_list */
+      /* the new cte_pointer may have to point to a new cte; it depends if the copied tree includes the CTE too
+       * (should be in cte_structures_list) */
       PT_NODE *cte_pointer = new_node->info.spec.cte_pointer;
       PT_CTE_COPY_INFO *cte_info_it;
 
@@ -838,13 +850,11 @@ copy_node_in_tree_post (PARSER_CONTEXT * parser, PT_NODE * new_node, void *arg, 
 	      break;
 	    }
 	}
-      if (cte_info_it == NULL)
+      if (cte_info_it != NULL)
 	{
-	  assert (false);
-	  PT_INTERNAL_ERROR (parser, "incorrect CTE pointer");
-	  return NULL;
+	  /* the old value of the pointer was found in the list; update the pointer to the new cte address */
+	  cte_pointer->info.pointer.node = cte_info_it->new_cte_node;
 	}
-      cte_pointer->info.pointer.node = cte_info_it->new_cte_node;
     }
 
   return new_node;
@@ -1974,7 +1984,6 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no, int col_no, 
        * parameter "%1$s", of size 4 */
       int before_context_len = strlen (before_context_str) - 4;
       int context_len = strlen (context);
-      int msg_len = strlen (msg);
       int end_of_statement = 0;
       int str_len = 0;
       char *s = NULL;
@@ -2005,7 +2014,7 @@ pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no, int col_no, 
 
       /* parser_allocate_string_buffer() returns the start pointer of the string buffer. It is guaranteed that the
        * length of the buffer 's' is equal to 'str_len + 1'. */
-      s = parser_allocate_string_buffer (parser, str_len, sizeof (char));
+      s = (char *) parser_allocate_string_buffer (parser, str_len, sizeof (char));
       if (s == NULL)
 	{
 	  PT_INTERNAL_ERROR (parser, "insufficient memory");
@@ -2340,7 +2349,7 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
       return prev;
     }
 
-  sb.body = malloc (sb.size);
+  sb.body = (char *) malloc (sb.size);
   if (sb.body == NULL)
     {
       return NULL;
@@ -2349,7 +2358,7 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
   sb.body[0] = 0;
   if (prev)
     {
-      strcat_with_realloc (&sb, prev->bytes);
+      strcat_with_realloc (&sb, (const char *) prev->bytes);
     }
 
   while (p->next)
@@ -2363,7 +2372,7 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
 	      strcat_with_realloc (&sb, ", ");
 	    }
 
-	  strcat_with_realloc (&sb, r->bytes);
+	  strcat_with_realloc (&sb, (const char *) r->bytes);
 	  prev = r;
 	}
       if (0 < parser->max_print_len && parser->max_print_len < sb.length)
@@ -2509,101 +2518,112 @@ pt_print_node_value (PARSER_CONTEXT * parser, const PT_NODE * val)
 PARSER_VARCHAR *
 pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
 {
-  PARSER_VARCHAR *temp = NULL, *result = NULL, *elem;
+  PARSER_VARCHAR *temp = NULL, *result = NULL;
   int i, size = 0;
   DB_VALUE element;
   int error = NO_ERROR;
-  PT_NODE foo;
   unsigned int save_custom = parser->custom_print;
 
+/* *INDENT-OFF* */
+#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
+  string_buffer sb{
+    [&parser] (mem::block& block, size_t len)
+    {
+      size_t dim = block.dim ? block.dim : 1;
+      for (; dim < block.dim + len; dim *= 2); //calc next power of 2 >= b.dim
+        mem::block b{dim, (char*) parser_alloc (parser, block.dim + len)};
+      memcpy (b.ptr, block.ptr, block.dim);
+      block = std::move (b);
+    },
+    [](mem::block& block){} //no need to deallocate for parser_context
+  };
+#else
+  string_buffer sb;
+#endif
+/* *INDENT-ON* */
+
+  db_value_printer printer (sb);
   if (val == NULL)
     {
       return NULL;
     }
 
-  memset (&foo, 0, sizeof (foo));
-
   /* set custom_print here so describe_data() will know to pad bit strings to full bytes */
   parser->custom_print = parser->custom_print | PT_PAD_BYTE;
-
   switch (DB_VALUE_TYPE (val))
     {
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
-      temp = pt_append_nulstring (parser, NULL,
-				  pt_show_type_enum ((PT_TYPE_ENUM) pt_db_to_type_enum (DB_VALUE_TYPE (val))));
-
+      sb ("%s", pt_show_type_enum (pt_db_to_type_enum (DB_VALUE_TYPE (val))));
       /* fall thru */
     case DB_TYPE_SEQUENCE:
-      temp = pt_append_nulstring (parser, temp, "{");
+      sb ("{");
 
       size = db_set_size (db_get_set ((DB_VALUE *) val));
       if (size > 0)
 	{
 	  error = db_set_get (db_get_set ((DB_VALUE *) val), 0, &element);
-	  elem = describe_value (parser, NULL, &element);
-	  temp = pt_append_varchar (parser, temp, elem);
+	  printer.describe_value (&element);
 	  for (i = 1; i < size; i++)
 	    {
 	      error = db_set_get (db_get_set ((DB_VALUE *) val), i, &element);
-	      temp = pt_append_nulstring (parser, temp, ", ");
-	      elem = describe_value (parser, NULL, &element);
-	      temp = pt_append_varchar (parser, temp, elem);
+	      sb (", ");
+	      printer.describe_value (&element);
 	    }
 	}
-      temp = pt_append_nulstring (parser, temp, "}");
-      result = temp;
+      sb ("}");
       break;
 
     case DB_TYPE_OBJECT:
       /* no printable representation!, should not get here */
-      result = pt_append_nulstring (parser, NULL, "NULL");
+      sb ("NULL");
       break;
 
     case DB_TYPE_MONETARY:
       /* This is handled explicitly because describe_value will add a currency symbol, and it isn't needed here. */
-      result = pt_append_varchar (parser, NULL, describe_money (parser, NULL, DB_GET_MONETARY ((DB_VALUE *) val)));
+      printer.describe_money (db_get_monetary ((DB_VALUE *) val));
       break;
 
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       /* csql & everyone else get X'some_hex_string' */
-      result = describe_value (parser, NULL, val);
+      printer.describe_value (val);
       break;
 
     case DB_TYPE_DATE:
       /* csql & everyone else want DATE'mm/dd/yyyy' */
-      result = describe_value (parser, NULL, val);
+      printer.describe_value (val);
       break;
 
     case DB_TYPE_TIME:
     case DB_TYPE_TIMETZ:
     case DB_TYPE_TIMELTZ:
       /* csql & everyone else get time 'hh:mi:ss' */
-      result = describe_value (parser, NULL, val);
+      printer.describe_value (val);
       break;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
       /* everyone else gets csql's utime format */
-      result = describe_value (parser, NULL, val);
-
+      printer.describe_value (val);
       break;
 
     case DB_TYPE_DATETIME:
     case DB_TYPE_DATETIMETZ:
     case DB_TYPE_DATETIMELTZ:
       /* everyone else gets csql's utime format */
-      result = describe_value (parser, NULL, val);
+      printer.describe_value (val);
       break;
 
     default:
-      result = describe_value (parser, NULL, val);
+      printer.describe_value (val);
       break;
     }
+
   /* restore custom print */
   parser->custom_print = save_custom;
+  result = pt_append_nulstring (parser, NULL, sb.get_buffer ());
   return result;
 }
 
@@ -3909,6 +3929,22 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "crc32 ";
     case PT_SCHEMA_DEF:
       return "schema_def";
+    case PT_CONV_TZ:
+      return "conv_tz";
+    case PT_JSON_CONTAINS:
+      return "json_contains";
+    case PT_JSON_TYPE:
+      return "json_type";
+    case PT_JSON_EXTRACT:
+      return "json_extract";
+    case PT_JSON_VALID:
+      return "json_valid";
+    case PT_JSON_LENGTH:
+      return "json_length";
+    case PT_JSON_DEPTH:
+      return "json_depth";
+    case PT_JSON_SEARCH:
+      return "json_search";
     default:
       return "unknown opcode";
     }
@@ -4008,6 +4044,26 @@ pt_show_function (FUNC_TYPE c)
       return "insert";
     case F_ELT:
       return "elt";
+    case F_JSON_OBJECT:
+      return "json_object";
+    case F_JSON_ARRAY:
+      return "json_array";
+    case F_JSON_INSERT:
+      return "json_insert";
+    case F_JSON_REPLACE:
+      return "json_replace";
+    case F_JSON_SET:
+      return "json_set";
+    case F_JSON_KEYS:
+      return "json_keys";
+    case F_JSON_REMOVE:
+      return "json_remove";
+    case F_JSON_ARRAY_APPEND:
+      return "json_array_append";
+    case F_JSON_MERGE:
+      return "json_merge";
+    case F_JSON_GET_ALL_PATHS:
+      return "json_get_all_paths";
     default:
       return "unknown function";
     }
@@ -4118,7 +4174,8 @@ pt_show_type_enum (PT_TYPE_ENUM t)
       return "bit varying";
     case PT_TYPE_MONETARY:
       return "monetary";
-
+    case PT_TYPE_JSON:
+      return "json";
     case PT_TYPE_MAYBE:
       return "uncertain";
 
@@ -7761,7 +7818,7 @@ pt_apply_table_option (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
 static PT_NODE *
 pt_init_table_option (PT_NODE * p)
 {
-  p->info.table_option.option = 0;
+  p->info.table_option.option = PT_TABLE_OPTION_NONE;
   p->info.table_option.val = NULL;
   return p;
 }
@@ -8424,9 +8481,9 @@ pt_apply_data_default (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g,
 static PT_NODE *
 pt_init_data_default (PT_NODE * p)
 {
-  p->info.data_default.default_value = 0;
+  p->info.data_default.default_value = (PT_NODE *) 0;
   p->info.data_default.shared = (PT_MISC_TYPE) 0;
-  p->info.data_default.default_expr = DB_DEFAULT_NONE;
+  p->info.data_default.default_expr_type = DB_DEFAULT_NONE;
   return p;
 }
 
@@ -8498,7 +8555,7 @@ pt_init_datatype (PT_NODE * p)
   p->info.data_type.dec_precision = 0;
   p->info.data_type.units = (int) LANG_COERCIBLE_CODESET;
   p->info.data_type.collation_id = LANG_COERCIBLE_COLL;
-  p->info.data_type.collation_flag = 0;
+  p->info.data_type.collation_flag = TP_DOMAIN_COLL_NORMAL;
   p->info.data_type.enumeration = NULL;
   return p;
 }
@@ -8848,6 +8905,14 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_varchar (parser, q, r1);
 	}
     }
+
+  if (p->info.delete_.limit && p->info.delete_.rewrite_limit)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.delete_.limit);
+      q = pt_append_nulstring (parser, q, " limit ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+
   return q;
 }
 
@@ -8914,6 +8979,12 @@ static PARSER_VARCHAR *
 pt_print_difference (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
+
+  if (p->info.query.with != NULL)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.query.with);
+      q = pt_append_varchar (parser, q, r1);
+    }
 
   r1 = pt_print_bytes (parser, p->info.query.q.union_.arg1);
   q = pt_append_nulstring (parser, q, "(");
@@ -9398,7 +9469,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
     }
 
   /* check if a partition pruned SPEC */
-  if (p->info.spec.entity_name && p->partition_pruned)
+  if (PT_SPEC_IS_ENTITY (p) && p->partition_pruned)
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
@@ -9409,7 +9480,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       parser->custom_print = save_custom;
     }
   /* check if a sublist */
-  else if (p->info.spec.entity_name && p->info.spec.entity_name->next)
+  else if (PT_SPEC_IS_ENTITY (p) && p->info.spec.entity_name->next)
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
@@ -9420,7 +9491,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       parser->custom_print = save_custom;
     }
   /* else is a single class entity spec */
-  else if (p->info.spec.entity_name)
+  else if (PT_SPEC_IS_ENTITY (p))
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_META_ATTR_CLASS;
@@ -9453,7 +9524,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, ")");
 	}
     }
-  else
+  else if (PT_SPEC_IS_DERIVED (p))
     {				/* should be a derived table */
       if (p->info.spec.derived_table_type == PT_IS_SET_EXPR)
 	{
@@ -9492,7 +9563,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       parser->custom_print = save_custom;
     }
-  if (p->info.spec.as_attr_list)
+  if (p->info.spec.as_attr_list && !PT_SPEC_IS_CTE (p))
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
@@ -9885,16 +9956,16 @@ pt_print_range_op (PARSER_CONTEXT * parser, PT_STRING_BLOCK * sb, PT_NODE * t, P
 
   if (lhs && rhs1)
     {
-      strcat_with_realloc (sb, lhs->bytes);
+      strcat_with_realloc (sb, (const char *) lhs->bytes);
       strcat_with_realloc (sb, (char *) op1);
-      strcat_with_realloc (sb, rhs1->bytes);
+      strcat_with_realloc (sb, (const char *) rhs1->bytes);
 
       if (rhs2)
 	{
 	  strcat_with_realloc (sb, " and ");
-	  strcat_with_realloc (sb, lhs->bytes);
+	  strcat_with_realloc (sb, (const char *) lhs->bytes);
 	  strcat_with_realloc (sb, (char *) op2);
-	  strcat_with_realloc (sb, rhs2->bytes);
+	  strcat_with_realloc (sb, (const char *) rhs2->bytes);
 	}
     }
 }
@@ -10039,6 +10110,80 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_nulstring (parser, q, " abs(");
       q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_JSON_CONTAINS:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+
+      q = pt_append_nulstring (parser, q, " json_contains(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      q = pt_append_varchar (parser, q, r2);
+      if (p->info.expr.arg3 != NULL)
+	{
+	  r3 = pt_print_bytes (parser, p->info.expr.arg3);
+
+	  q = pt_append_nulstring (parser, q, ", ");
+	  q = pt_append_varchar (parser, q, r3);
+	}
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_JSON_EXTRACT:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+
+      q = pt_append_nulstring (parser, q, " json_extract(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_JSON_TYPE:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+
+      q = pt_append_nulstring (parser, q, " json_type(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_JSON_VALID:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+
+      q = pt_append_nulstring (parser, q, " json_valid(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_JSON_LENGTH:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+
+      q = pt_append_nulstring (parser, q, " json_length(");
+      q = pt_append_varchar (parser, q, r1);
+      if (p->info.expr.arg2 != NULL)
+	{
+	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
+
+	  q = pt_append_nulstring (parser, q, ", ");
+	  q = pt_append_varchar (parser, q, r2);
+	}
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_JSON_DEPTH:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+
+      q = pt_append_nulstring (parser, q, " json_depth(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_JSON_SEARCH:
+      q = pt_append_nulstring (parser, q, "json_search(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ", ");
+      r2 = pt_print_bytes (parser, p->info.expr.arg2);
+      q = pt_append_varchar (parser, q, r2);
+      q = pt_append_nulstring (parser, q, ", ");
+      r3 = pt_print_bytes (parser, p->info.expr.arg3);
+      q = pt_append_varchar (parser, q, r3);
       q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_POWER:
@@ -11852,7 +11997,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  sb.size = 1024;
 	  sb.body = NULL;
 
-	  sb.body = malloc (sb.size);
+	  sb.body = (char *) malloc (sb.size);
 	  if (sb.body == NULL)
 	    {
 	      return NULL;
@@ -13044,6 +13189,12 @@ static PARSER_VARCHAR *
 pt_print_intersection (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1, *r2;
+
+  if (p->info.query.with != NULL)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.query.with);
+      q = pt_append_varchar (parser, q, r1);
+    }
 
   r1 = pt_print_bytes (parser, p->info.query.q.union_.arg1);
   r2 = pt_print_bytes (parser, p->info.query.q.union_.arg2);
@@ -14526,23 +14677,45 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, "distinct ");
 	}
 
-      if (!(parser->custom_print & PT_SUPPRESS_SELECT_LIST) || p->info.query.is_subquery == PT_IS_SUBQUERY)
+      if (PT_SELECT_INFO_IS_FLAGED (p, PT_SELECT_INFO_IS_UPD_DEL_QUERY))
 	{
-	  r1 = pt_print_bytes_l (parser, p->info.query.q.select.list);
-	  q = pt_append_varchar (parser, q, r1);
-	}
-      else
-	{
-	  temp = p->info.query.q.select.list;
-	  while (temp)
+	  /* print select list with column alias for system generated select of update query */
+	  for (temp = p->info.query.q.select.list; temp != NULL; temp = temp->next)
 	    {
-	      q = pt_append_nulstring (parser, q, "NA");
-	      if (temp->next)
+	      r1 = pt_print_bytes (parser, temp);
+	      q = pt_append_varchar (parser, q, r1);
+
+	      if (temp->alias_print != NULL)
+		{
+		  q = pt_append_nulstring (parser, q, " as [");
+		  q = pt_append_nulstring (parser, q, temp->alias_print);
+		  q = pt_append_nulstring (parser, q, "]");
+		}
+
+	      if (temp->next != NULL)
 		{
 		  q = pt_append_nulstring (parser, q, ",");
 		}
-	      temp = temp->next;
 	    }
+	}
+      else if ((parser->custom_print & PT_SUPPRESS_SELECT_LIST) != 0 && p->info.query.is_subquery != PT_IS_SUBQUERY)
+	{
+	  /* suppress select list: print NA */
+	  for (temp = p->info.query.q.select.list; temp != NULL; temp = temp->next)
+	    {
+	      q = pt_append_nulstring (parser, q, "NA");
+
+	      if (temp->next != NULL)
+		{
+		  q = pt_append_nulstring (parser, q, ",");
+		}
+	    }
+	}
+      else
+	{
+	  /* ordinary cases */
+	  r1 = pt_print_bytes_l (parser, p->info.query.q.select.list);
+	  q = pt_append_varchar (parser, q, r1);
 	}
 
       if (parser->custom_print & PT_PRINT_ALIAS)
@@ -14566,8 +14739,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  /* for derived_table alias should be printed e.g.  create table t2(id int primary key) as select id from
 	   * (select count(*) id from t1) */
-	  derived_table = from->info.spec.derived_table;
-	  if (derived_table != NULL)
+	  if (PT_SPEC_IS_DERIVED (from))
 	    {
 	      save_custom = parser->custom_print;
 	      parser->custom_print |= PT_PRINT_ALIAS;
@@ -14575,7 +14747,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  r1 = pt_print_bytes_spec_list (parser, from);
 
-	  if (derived_table != NULL)
+	  if (PT_SPEC_IS_DERIVED (from))
 	    {
 	      parser->custom_print = save_custom;
 	    }
@@ -15475,6 +15647,12 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1, *r2;
 
+  if (p->info.query.with != NULL)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.query.with);
+      q = pt_append_varchar (parser, q, r1);
+    }
+
   r1 = pt_print_bytes (parser, p->info.query.q.union_.arg1);
   r2 = pt_print_bytes (parser, p->info.query.q.union_.arg2);
   q = pt_append_nulstring (parser, q, "(");
@@ -15753,6 +15931,13 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       r1 = pt_print_bytes_l (parser, p->info.update.orderby_for);
       b = pt_append_nulstring (parser, b, " for ");
+      b = pt_append_varchar (parser, b, r1);
+    }
+
+  if (p->info.update.limit && p->info.update.rewrite_limit)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.update.limit);
+      b = pt_append_nulstring (parser, b, " limit ");
       b = pt_append_varchar (parser, b, r1);
     }
 
@@ -16231,8 +16416,8 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 
       if ((p->info.value.print_collation == false
 	   && !(parser->custom_print & (PT_CHARSET_COLLATE_FULL | PT_CHARSET_COLLATE_USER_ONLY)))
-	  || (p->info.value.is_collate_allowed == false) || (prt_coll_id == LANG_SYS_COLLATION
-							     && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT))
+	  || (p->info.value.is_collate_allowed == false)
+	  || (prt_coll_id == LANG_SYS_COLLATION && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT))
 	  || (parser->custom_print & PT_CHARSET_COLLATE_USER_ONLY && PT_GET_COLLATION_MODIFIER (p) == -1))
 	{
 	  prt_coll_id = -1;
@@ -16243,10 +16428,8 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       /* do not print charset introducer for NCHAR and VARNCHAR */
       if ((p->info.value.print_charset == false
 	   && !(parser->custom_print & (PT_CHARSET_COLLATE_FULL | PT_CHARSET_COLLATE_USER_ONLY)))
-	  || (p->type_enum != PT_TYPE_CHAR && p->type_enum != PT_TYPE_VARCHAR) || (prt_cs == LANG_SYS_CODESET
-										   && (parser->
-										       custom_print &
-										       PT_SUPPRESS_CHARSET_PRINT))
+	  || (p->type_enum != PT_TYPE_CHAR && p->type_enum != PT_TYPE_VARCHAR)
+	  || (prt_cs == LANG_SYS_CODESET && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT))
 	  || (parser->custom_print & PT_CHARSET_COLLATE_USER_ONLY && p->info.value.has_cs_introducer == false))
 	{
 	  prt_cs = INTL_CODESET_NONE;
@@ -16299,13 +16482,13 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	  switch (p->type_enum)
 	    {
 	    case PT_TYPE_FLOAT:
-	      OBJ_SPRINT_DB_FLOAT (s, p->info.value.data_value.f);
+	      sprintf (s, db_value_printer::DECIMAL_FORMAT, DB_FLOAT_DECIMAL_PRECISION, p->info.value.data_value.f);
 	      break;
 	    case PT_TYPE_DOUBLE:
-	      OBJ_SPRINT_DB_DOUBLE (s, p->info.value.data_value.d);
+	      sprintf (s, db_value_printer::DECIMAL_FORMAT, DB_DOUBLE_DECIMAL_PRECISION, p->info.value.data_value.d);
 	      break;
 	    case PT_TYPE_NUMERIC:
-	      strcpy (s, p->info.value.data_value.str->bytes);
+	      strcpy (s, (const char *) p->info.value.data_value.str->bytes);
 	      break;
 	    case PT_TYPE_INTEGER:
 	      sprintf (s, "%ld", p->info.value.data_value.i);
@@ -16498,7 +16681,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       if (r1)
 	{
-	  q = pt_append_quoted_string (parser, q, r1->bytes, r1->length);
+	  q = pt_append_quoted_string (parser, q, (const char *) r1->bytes, r1->length);
 	}
       else
 	{
@@ -16574,6 +16757,12 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, s);
 	}
 
+      break;
+    case PT_TYPE_JSON:
+      assert (p->info.value.data_value.str != NULL);
+      q = pt_append_nulstring (parser, q, "json \'");
+      q = pt_append_nulstring (parser, q, (char *) p->info.value.data_value.str->bytes);
+      q = pt_append_nulstring (parser, q, "\'");
       break;
     default:
       q = pt_append_nulstring (parser, q, "-- Unknown value type --");
@@ -17288,7 +17477,7 @@ static PT_NODE *
 pt_init_insert_value (PT_NODE * p)
 {
   p->info.insert_value.original_node = NULL;
-  DB_MAKE_NULL (&p->info.insert_value.value);
+  db_make_null (&p->info.insert_value.value);
   p->info.insert_value.is_evaluated = false;
   p->info.insert_value.replace_names = false;
 
@@ -17408,6 +17597,7 @@ pt_print_with_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL;
   PT_NODE *cte;
+  bool first_cte = true;
 
   q = pt_append_nulstring (parser, q, "with ");
   if (p->info.with_clause.recursive)
@@ -17418,7 +17608,12 @@ pt_print_with_clause (PARSER_CONTEXT * parser, PT_NODE * p)
   for (cte = p->info.with_clause.cte_definition_list; cte != NULL; cte = cte->next)
     {
       PARSER_VARCHAR *r = pt_print_cte (parser, cte);
+      if (!first_cte)
+	{
+	  q = pt_append_nulstring (parser, q, ", ");
+	}
       q = pt_append_varchar (parser, q, r);
+      first_cte = false;
     }
 
   return q;
@@ -17434,7 +17629,6 @@ static PARSER_VARCHAR *
 pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
-  PT_NODE *list;
 
   /* name of cte */
   r1 = pt_print_bytes_l (parser, p->info.cte.name);
@@ -17442,15 +17636,8 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
 
   /* attribute list */
   q = pt_append_nulstring (parser, q, "(");
-  for (list = p->info.cte.as_attr_list; list != NULL; list = list->next)
-    {
-      r1 = pt_print_bytes_l (parser, list);
-      q = pt_append_varchar (parser, q, r1);
-      if (list->next != NULL)
-	{
-	  q = pt_append_nulstring (parser, q, ", ");
-	}
-    }
+  r1 = pt_print_bytes_l (parser, p->info.cte.as_attr_list);
+  q = pt_append_varchar (parser, q, r1);
   q = pt_append_nulstring (parser, q, ")");
 
   /* AS keyword */
@@ -17644,7 +17831,6 @@ pt_is_const_expr_node (PT_NODE * node)
 	{
 	case PT_FUNCTION_HOLDER:
 	  {
-	    int err = NO_ERROR, num_args = 0, i = 0;
 	    bool const_function_holder = false;
 	    PT_NODE *function = node->info.expr.arg1;
 	    PT_NODE *f_arg = function->info.function.arg_list;
@@ -17740,6 +17926,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && pt_is_const_expr_node (node->info.expr.arg2)) ? true : false;
 	case PT_SUBSTRING_INDEX:
+	case PT_JSON_SEARCH:
 	  return (pt_is_const_expr_node (node->info.expr.arg1) && pt_is_const_expr_node (node->info.expr.arg2)
 		  && pt_is_const_expr_node (node->info.expr.arg3)) ? true : false;
 	case PT_SUBSTRING:
@@ -17762,6 +17949,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_FROM_BASE64:
 	case PT_TZ_OFFSET:
 	case PT_CRC32:
+	case PT_CONV_TZ:
 	  return pt_is_const_expr_node (node->info.expr.arg1);
 	case PT_TRIM:
 	case PT_LTRIM:
@@ -17919,13 +18107,27 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_INET_NTOA:
 	case PT_CHARSET:
 	case PT_COLLATION:
+	case PT_JSON_TYPE:
+	case PT_JSON_VALID:
+	case PT_JSON_DEPTH:
 	  return pt_is_const_expr_node (node->info.expr.arg1);
 	case PT_COERCIBILITY:
 	  /* coercibility is always folded to constant */
 	  assert (false);
 	case PT_WIDTH_BUCKET:
+
 	  return (pt_is_const_expr_node (node->info.expr.arg1) && pt_is_const_expr_node (node->info.expr.arg2)
 		  && pt_is_const_expr_node (node->info.expr.arg3));
+	case PT_JSON_EXTRACT:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && pt_is_const_expr_node (node->info.expr.arg2)) ? true : false;
+	case PT_JSON_CONTAINS:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && pt_is_const_expr_node (node->info.expr.arg2)
+		  && (node->info.expr.arg3 ? pt_is_const_expr_node (node->info.expr.arg3) : true)) ? true : false;
+	case PT_JSON_LENGTH:
+	  return (pt_is_const_expr_node (node->info.expr.arg1)
+		  && (node->info.expr.arg2 ? pt_is_const_expr_node (node->info.expr.arg2) : true)) ? true : false;
 	default:
 	  return false;
 	}
@@ -18349,7 +18551,6 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_IFNULL:
     case PT_LOCATE:
     case PT_SUBSTRING:
-    case PT_SUBSTR:
     case PT_NVL:
     case PT_NVL2:
     case PT_NULLIF:
@@ -18366,6 +18567,13 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_TO_TIMESTAMP_TZ:
     case PT_TO_TIME_TZ:
     case PT_CRC32:
+    case PT_JSON_CONTAINS:
+    case PT_JSON_TYPE:
+    case PT_JSON_EXTRACT:
+    case PT_JSON_VALID:
+    case PT_JSON_LENGTH:
+    case PT_JSON_DEPTH:
+    case PT_JSON_SEARCH:
       return true;
     case PT_TZ_OFFSET:
     default:
@@ -18387,8 +18595,6 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
 bool
 pt_is_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool report_error)
 {
-  PT_NODE *func = NULL;
-  PT_NODE *arg = NULL;
   if (!expr)
     {
       return false;
@@ -18698,7 +18904,7 @@ pt_init_vacuum (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_vacuum (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *q = NULL, *r1 = NULL;
+  PARSER_VARCHAR *q = NULL;
 
   assert (PT_IS_VACUUM_NODE (p));
 

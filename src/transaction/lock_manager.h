@@ -29,20 +29,18 @@
 #ident "$Id$"
 
 #include "config.h"
-
-#include <time.h>
-#include <stdio.h>
-
-#include "error_manager.h"
-#include "oid.h"
-#include "storage_common.h"
-#include "locator.h"
-#include "log_comm.h"
-
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */
-#include "thread.h"
+#include "error_manager.h"
+#include "locator.h"
+#include "log_comm.h"
+#include "oid.h"
+#include "storage_common.h"
+#include "thread_compat.hpp"
+
+#include <time.h>
+#include <stdio.h>
 
 enum
 {
@@ -207,7 +205,7 @@ extern int lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhi
 extern void lock_remove_object_lock (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock);
 extern void lock_unlock_object_donot_move_to_non2pl (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
 						     LOCK lock);
-extern void lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock, int force);
+extern void lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock, bool force);
 extern void lock_unlock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset);
 extern void lock_unlock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint);
 extern void lock_unlock_all (THREAD_ENTRY * thread_p);
@@ -217,13 +215,9 @@ extern bool lock_has_xlock (THREAD_ENTRY * thread_p);
 extern bool lock_has_lock_transaction (int tran_index);
 #endif
 extern bool lock_is_waiting_transaction (int tran_index);
-extern LK_ENTRY *lock_get_class_lock (const OID * class_oid, int tran_index);
-extern void lock_force_timeout_lock_wait_transactions (unsigned short stop_phase);
-extern bool lock_force_timeout_expired_wait_transactions (void *thrd_entry);
+extern LK_ENTRY *lock_get_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, int tran_index);
 extern void lock_notify_isolation_incons (THREAD_ENTRY * thread_p,
 					  bool (*fun) (const OID * class_oid, const OID * oid, void *args), void *args);
-extern bool lock_check_local_deadlock_detection (void);
-extern void lock_detect_local_deadlock (THREAD_ENTRY * thread_p);
 extern int lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlocks, int tran_index);
 extern void lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlocks);
 extern void lock_dump_acquired (FILE * fp, LK_ACQUIRED_LOCKS * acqlocks);
@@ -240,13 +234,14 @@ extern int lock_add_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK *
 				    const OID * class_oid);
 extern int lock_finalize_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_lock);
 extern void lock_abort_composite_lock (LK_COMPOSITE_LOCK * comp_lock);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern LOCK lock_get_total_holders_mode (const OID * oid, const OID * class_oid);
-extern LOCK lock_get_all_except_transaction (const OID * oid, const OID * class_oid, int tran_index);
-#endif /* ENABLE_UNUSED_FUNCTION */
 extern int lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int waiter_index, LK_RES * res);
 extern int lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index, LOCK lock);
 extern int lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock, int cond_flag);
 extern void lock_demote_read_class_lock_for_checksumdb (THREAD_ENTRY * thread_p, int tran_index, const OID * class_oid);
 extern const char *lock_wait_state_to_string (int state);
+extern void lock_force_thread_timeout_lock (THREAD_ENTRY * thread_p);
+
+#if defined (SERVER_MODE)
+extern void lock_deadlock_detect_daemon_get_stats (UINT64 * statsp);
+#endif // SERVER_MODE
 #endif /* _LOCK_MANAGER_H_ */

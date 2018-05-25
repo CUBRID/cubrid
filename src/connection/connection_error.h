@@ -27,18 +27,18 @@
 
 #ident "$Id$"
 
-#include <stdio.h>
-#ifdef SERVER_MODE
-#include <errno.h>
-#if !defined(WINDOWS)
-#include <pthread.h>
-#endif /* not WINDOWS */
-
-#include "thread.h"
-#include "error_manager.h"
+#if defined (SERVER_MODE)
 #include "connection_defs.h"
-#include "thread.h"
+#include "error_manager.h"
 #endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+#include <errno.h>
+#endif // SERVER_MODE
+#if defined (SERVER_MODE) && !defined(WINDOWS)
+#include <pthread.h>
+#endif // SERVER_MODE and not WINDOWS
+#include <stdio.h>
 
 /* TODO: ER_CSS_NOERROR -> NO_ERROR */
 #define ER_CSS_NOERROR  0
@@ -50,17 +50,6 @@
       if ((r) != 0) \
 	{ \
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, (e), 0); \
-	} \
-    } \
-  while (0)
-
-#define CSS_CHECK_EXIT(r, e) \
-  do \
-    { \
-      if ((r) != 0) \
-	{ \
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, (e), 0); \
-	  THREAD_EXIT (-1); \
 	} \
     } \
   while (0)

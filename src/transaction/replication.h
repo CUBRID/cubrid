@@ -29,14 +29,16 @@
 #ident "$Id$"
 
 #include "config.h"
-
-#include "system_parameter.h"
-#include "oid.h"
-#include "log_impl.h"
-#include "memory_alloc.h"
-#include "page_buffer.h"
 #include "error_manager.h"
-#include "thread.h"
+#if defined(SERVER_MODE) || defined(SA_MODE)
+#include "log_impl.h"
+#endif /* defined(SERVER_MODE) || defined(SA_MODE) */
+#include "memory_alloc.h"
+#include "oid.h"
+#include "system_parameter.h"
+#if defined(SERVER_MODE) || defined(SA_MODE)
+#include "thread_compat.hpp"
+#endif /* defined(SERVER_MODE) || defined(SA_MODE) */
 
 typedef enum
 {

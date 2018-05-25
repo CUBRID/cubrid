@@ -33,6 +33,10 @@
 #include "uca_support.h"
 #include "unicode_support.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define DUCET_FILE "ducet.txt"
 
 #define MAX_WEIGHT_LEVELS 4
@@ -659,7 +663,6 @@ static int
 destroy_uca_instance (void)
 {
   int i;
-  int err_status = NO_ERROR;
 
   if (curr_uca.coll_cp != NULL)
     {
@@ -1119,9 +1122,8 @@ apply_tailoring_rules (LOCALE_COLLATION * lc)
 
 	  while (tailor_next < tailor_end)
 	    {
-	      unsigned int tailor_cp = intl_utf8_to_cp (tailor_curr,
-							tailor_end - tailor_curr,
-							&tailor_next);
+	      unsigned int tailor_cp =
+		intl_utf8_to_cp (tailor_curr, CAST_STRLEN (tailor_end - tailor_curr), &tailor_next);
 
 	      assert (lc->tail_coll.sett_max_cp >= 0);
 	      if (tailor_cp >= (unsigned int) lc->tail_coll.sett_max_cp)
@@ -1623,7 +1625,6 @@ create_opt_weights (LOCALE_COLLATION * lc)
   unsigned int current_weight;
   int err_status = NO_ERROR;
   UCA_COLL_KEY *prev_key = NULL;
-  UCA_COLL_KEY *curr_key = NULL;
   UCA_COLL_KEY max_cp_key;
   UCA_COLL_CE_LIST *prev_ce_list = NULL;
 
@@ -2078,7 +2079,7 @@ add_opt_coll_contraction (LOCALE_COLLATION * lc, const UCA_COLL_KEY * contr_key,
 
   opt_contr->wv = wv;
   assert (p_buf - opt_contr->c_buf < (int) sizeof (opt_contr->c_buf));
-  opt_contr->size = p_buf - opt_contr->c_buf;
+  opt_contr->size = (unsigned char) (p_buf - opt_contr->c_buf);
 
   if (use_expansions)
     {
@@ -2977,7 +2978,8 @@ new_contraction (UCA_STORAGE * storage)
   if (storage->count_contr >= storage->max_contr)
     {
       storage->coll_contr =
-	realloc (storage->coll_contr, sizeof (UCA_CONTRACTION) * (storage->max_contr + UCA_CONTR_EXP_CNT_GROW));
+	(UCA_CONTRACTION *) realloc (storage->coll_contr,
+				     sizeof (UCA_CONTRACTION) * (storage->max_contr + UCA_CONTR_EXP_CNT_GROW));
 
       if (storage->coll_contr == NULL)
 	{
@@ -3014,7 +3016,8 @@ new_expansion (UCA_STORAGE * storage)
   if (storage->count_exp >= storage->max_exp)
     {
       storage->coll_exp =
-	realloc (storage->coll_exp, sizeof (UCA_EXPANSION) * (storage->max_exp + UCA_CONTR_EXP_CNT_GROW));
+	(UCA_EXPANSION *) realloc (storage->coll_exp,
+				   sizeof (UCA_EXPANSION) * (storage->max_exp + UCA_CONTR_EXP_CNT_GROW));
 
       if (storage->coll_exp == NULL)
 	{

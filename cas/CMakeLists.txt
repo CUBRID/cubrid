@@ -39,6 +39,11 @@ if(WIN32)
   list(APPEND LIBCAS_SOURCES ${BROKER_DIR}/broker_wsa_init.c)
 endif(WIN32)
 
+SET_SOURCE_FILES_PROPERTIES(
+  ${LIBCAS_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
+
 add_library(cas STATIC ${LIBCAS_SOURCES})
 if(UNIX)
   set_target_properties(cas PROPERTIES COMPILE_FLAGS "-fPIC")
@@ -52,3 +57,5 @@ if(WIN32)
   endif(TARGET_PLATFORM_BITS EQUAL 32)
 endif(WIN32)
 target_link_libraries(cas ${SYS_LIBS})
+
+add_dependencies(cas ${EP_TARGETS})

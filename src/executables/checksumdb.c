@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <assert.h>
 
 #include "error_code.h"
 #include "system_parameter.h"
@@ -43,7 +44,12 @@
 #include "client_support.h"
 #include "connection_support.h"
 #include "environment_variable.h"
+#include "network_interface_cl.h"
 #include "locator_cl.h"
+#include "db_value_printer.hpp"
+#include "mem_block.hpp"
+#include "string_buffer.hpp"
+#include "dbtype.h"
 
 #define CHKSUM_DEFAULT_LIST_SIZE	10
 #define CHKSUM_MIN_CHUNK_SIZE		100
@@ -242,7 +248,7 @@ chksum_report_schema_diff (FILE * fp)
 	    }
 	  else
 	    {
-	      db_datetime_to_string (time_buf, sizeof (time_buf), DB_GET_DATETIME (&out_value));
+	      db_datetime_to_string (time_buf, sizeof (time_buf), db_get_datetime (&out_value));
 	    }
 	  db_value_clear (&out_value);
 
@@ -354,7 +360,7 @@ chksum_report_diff (FILE * fp)
 	      db_query_end (query_result);
 	      return error;
 	    }
-	  CHKSUM_PRINT_AND_LOG (fp, "%-15d ", DB_GET_INT (&out_value));
+	  CHKSUM_PRINT_AND_LOG (fp, "%-15d ", db_get_int (&out_value));
 	  db_value_clear (&out_value);
 
 	  /* lower bound */
@@ -438,7 +444,7 @@ chksum_report_summary (FILE * fp)
 	      db_query_end (query_result);
 	      return error;
 	    }
-	  num_chunks = DB_GET_INT (&out_value);
+	  num_chunks = db_get_int (&out_value);
 	  CHKSUM_PRINT_AND_LOG (fp, "%-23d ", num_chunks);
 	  db_value_clear (&out_value);
 
@@ -449,7 +455,7 @@ chksum_report_summary (FILE * fp)
 	      db_query_end (query_result);
 	      return error;
 	    }
-	  CHKSUM_PRINT_AND_LOG (fp, "%-23d ", DB_GET_INT (&out_value));
+	  CHKSUM_PRINT_AND_LOG (fp, "%-23d ", db_get_int (&out_value));
 	  db_value_clear (&out_value);
 
 	  /* total elapsed time */
@@ -460,7 +466,7 @@ chksum_report_summary (FILE * fp)
 	      return error;
 	    }
 
-	  CHKSUM_PRINT_AND_LOG (fp, "%d / %d ", DB_GET_INT (&out_value), DB_GET_INT (&out_value) / num_chunks);
+	  CHKSUM_PRINT_AND_LOG (fp, "%d / %d ", db_get_int (&out_value), db_get_int (&out_value) / num_chunks);
 	  db_value_clear (&out_value);
 
 	  /* min elapsed time */
@@ -471,7 +477,7 @@ chksum_report_summary (FILE * fp)
 	      return error;
 	    }
 
-	  CHKSUM_PRINT_AND_LOG (fp, "/ %d ", DB_GET_INT (&out_value));
+	  CHKSUM_PRINT_AND_LOG (fp, "/ %d ", db_get_int (&out_value));
 	  db_value_clear (&out_value);
 
 	  /* max elapsed time */
@@ -482,7 +488,7 @@ chksum_report_summary (FILE * fp)
 	      return error;
 	    }
 
-	  CHKSUM_PRINT_AND_LOG (fp, "/ %d (ms)\n", DB_GET_INT (&out_value));
+	  CHKSUM_PRINT_AND_LOG (fp, "/ %d (ms)\n", db_get_int (&out_value));
 	  db_value_clear (&out_value);
 
 	  pos = db_query_next_tuple (query_result);
@@ -857,7 +863,7 @@ chksum_get_prev_checksum_results (void)
 	      return error;
 	    }
 
-	  checksum_result->last_chunk_id = DB_GET_INT (&value);
+	  checksum_result->last_chunk_id = db_get_int (&value);
 	  db_value_clear (&value);
 
 	  /* chunk_lower_bound */
@@ -883,7 +889,7 @@ chksum_get_prev_checksum_results (void)
 	      return error;
 	    }
 
-	  checksum_result->last_chunk_cnt = DB_GET_INT (&value);
+	  checksum_result->last_chunk_cnt = db_get_int (&value);
 	  db_value_clear (&value);
 
 	  checksum_result->next = chksum_Prev_results;
@@ -1156,6 +1162,9 @@ chksum_print_lower_bound_string (PARSER_CONTEXT * parser, DB_VALUE values[], DB_
     }
 
   col_cnt = pk_col_cnt;
+
+  string_buffer sb;
+  db_value_printer printer (sb);
   while (col_cnt > 0)
     {
       if (col_cnt < pk_col_cnt)
@@ -1170,8 +1179,6 @@ chksum_print_lower_bound_string (PARSER_CONTEXT * parser, DB_VALUE values[], DB_
 	    {
 	      buffer = pt_append_nulstring (parser, buffer, " AND ");
 	    }
-
-	  value = describe_value (parser, NULL, &values[i]);
 
 	  buffer = pt_append_nulstring (parser, buffer, db_attribute_name (pk_attrs[i]));
 
@@ -1189,7 +1196,9 @@ chksum_print_lower_bound_string (PARSER_CONTEXT * parser, DB_VALUE values[], DB_
 	      buffer = pt_append_nulstring (parser, buffer, "=");
 	    }
 
-	  buffer = pt_append_varchar (parser, buffer, value);
+	  sb.clear ();
+	  printer.describe_value (&values[i]);
+	  buffer = pt_append_nulstring (parser, buffer, sb.get_buffer ());
 	}
 
       buffer = pt_append_nulstring (parser, buffer, ")");
@@ -1503,7 +1512,7 @@ chksum_update_master_checksum (PARSER_CONTEXT * parser, const char *table_name, 
 	      break;
 	    }
 
-	  master_checksum = DB_GET_INT (&value);
+	  master_checksum = db_get_int (&value);
 	  db_value_clear (&value);
 	  break;
 	case DB_CURSOR_END:
@@ -1555,8 +1564,8 @@ chksum_set_repl_info_and_demote_table_lock (const char *table_name, const char *
   REPL_INFO_SBR repl_stmt;
 
   repl_stmt.statement_type = CUBRID_STMT_INSERT;
-  repl_stmt.name = table_name;
-  repl_stmt.stmt_text = checksum_query;
+  repl_stmt.name = (char *) table_name;
+  repl_stmt.stmt_text = (char *) checksum_query;
   repl_stmt.db_user = db_get_user_name ();
   repl_stmt.sys_prm_context = NULL;
 
@@ -1622,7 +1631,6 @@ chksum_insert_schema_definition (const char *table_name, int repid)
   DB_QUERY_ERROR query_error;
   int res, error = NO_ERROR;
   char query_buf[QUERY_BUF_SIZE];
-  char err_msg[LINE_MAX];
 
   snprintf (query_buf, sizeof (query_buf), "REPLACE INTO %s " "SELECT '%s', %d, NULL, SCHEMA_DEF ('%s'), NULL;",
 	    chksum_schema_Table_name, table_name, repid, table_name);
@@ -1664,12 +1672,8 @@ chksum_calculate_checksum (PARSER_CONTEXT * parser, const OID * class_oidp, cons
 			   DB_ATTRIBUTE * attributes, PARSER_VARCHAR * lower_bound, int chunk_id, int chunk_size)
 {
   PARSER_VARCHAR *checksum_query = NULL;
-  PARSER_VARCHAR *update_checksum_query = NULL;
   DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
-  DB_VALUE value;
-  DB_OBJECT *obj;
-  int checksum_result = 0;
   char err_msg[LINE_MAX];
   const char *query;
   int res;
@@ -2190,7 +2194,7 @@ begin:
     }
 
   /* initialize system parameters */
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
       error = ER_FAILED;
@@ -2208,7 +2212,7 @@ begin:
   db_set_isolation (TRAN_REPEATABLE_READ);
 
   /* initialize system parameters */
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       (void) db_shutdown ();
 

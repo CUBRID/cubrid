@@ -185,7 +185,7 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
       addr.pgptr = pgbuf_fix (thread_p, &vpids[i], OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (addr.pgptr == NULL)
 	{
-	  ASSERT_ERROR ();
+	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit_on_error;
 	}
       (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);

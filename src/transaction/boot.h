@@ -29,7 +29,6 @@
 #include "es_common.h"
 
 /* this enumeration should be matched with DB_CLIENT_TYPE_XXX in db.h */
-typedef enum boot_client_type BOOT_CLIENT_TYPE;
 enum boot_client_type
 {
   BOOT_CLIENT_UNKNOWN = -1,
@@ -48,8 +47,8 @@ enum boot_client_type
   BOOT_CLIENT_RO_BROKER_REPLICA_ONLY = 12,
   BOOT_CLIENT_SO_BROKER_REPLICA_ONLY = 13,
   BOOT_CLIENT_ADMIN_CSQL_WOS = 14,	/* admin csql that can write on standby */
-  BOOT_CLIENT_LOG_PREFETCHER = 15
 };
+typedef enum boot_client_type BOOT_CLIENT_TYPE;
 
 #define BOOT_NORMAL_CLIENT_TYPE(client_type) \
         ((client_type) == BOOT_CLIENT_DEFAULT \
@@ -74,8 +73,7 @@ enum boot_client_type
 
 #define BOOT_LOG_REPLICATOR_TYPE(client_type) \
         ((client_type) == BOOT_CLIENT_LOG_COPIER \
-         || (client_type) == BOOT_CLIENT_LOG_APPLIER \
-         || (client_type) == BOOT_CLIENT_LOG_PREFETCHER)
+         || (client_type) == BOOT_CLIENT_LOG_APPLIER)
 
 #define BOOT_CSQL_CLIENT_TYPE(client_type) \
         ((client_type) == BOOT_CLIENT_CSQL \
@@ -141,6 +139,29 @@ struct boot_db_path_info
   char *db_comments;
 };
 
+/*
+ * HA server state
+ */
+enum ha_server_state
+{
+  HA_SERVER_STATE_NA = -1,	/* N/A */
+  HA_SERVER_STATE_IDLE = 0,	/* initial state */
+  HA_SERVER_STATE_ACTIVE = 1,
+  HA_SERVER_STATE_TO_BE_ACTIVE = 2,
+  HA_SERVER_STATE_STANDBY = 3,
+  HA_SERVER_STATE_TO_BE_STANDBY = 4,
+  HA_SERVER_STATE_MAINTENANCE = 5,	/* maintenance mode */
+  HA_SERVER_STATE_DEAD = 6	/* server is dead - virtual state; not exists */
+};
+typedef enum ha_server_state HA_SERVER_STATE;
+#define HA_SERVER_STATE_IDLE_STR                "idle"
+#define HA_SERVER_STATE_ACTIVE_STR              "active"
+#define HA_SERVER_STATE_TO_BE_ACTIVE_STR        "to-be-active"
+#define HA_SERVER_STATE_STANDBY_STR             "standby"
+#define HA_SERVER_STATE_TO_BE_STANDBY_STR       "to-be-standby"
+#define HA_SERVER_STATE_MAINTENANCE_STR         "maintenance"
+#define HA_SERVER_STATE_DEAD_STR                "dead"
+
 typedef struct boot_server_credential BOOT_SERVER_CREDENTIAL;
 struct boot_server_credential
 {
@@ -153,7 +174,7 @@ struct boot_server_credential
   PGLENGTH page_size;
   PGLENGTH log_page_size;
   float disk_compatibility;
-  int ha_server_state;		/* HA_SERVER_STATE */
+  HA_SERVER_STATE ha_server_state;	/* HA_SERVER_STATE */
   char server_session_key[SERVER_SESSION_KEY_SIZE];
   int db_charset;
   char *db_lang;

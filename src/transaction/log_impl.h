@@ -28,37 +28,730 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
-#include <signal.h>
-#include <assert.h>
-
-#include "storage_common.h"
-#include "mvcc.h"
-#include "log_comm.h"
-#include "recovery.h"
-#include "porting.h"
 #include "boot.h"
-#include "critical_section.h"
-#include "release_string.h"
-#include "file_io.h"
-#include "thread.h"
-#include "es.h"
-#include "rb_tree.h"
-#include "query_list.h"
-#include "lock_manager.h"
+#include "config.h"
 #include "connection_globals.h"
-#include "vacuum.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "critical_section.h"
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "es.h"
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#include "file_io.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "lock_free.h"
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "lock_manager.h"
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#include "log_comm.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "mvcc.h"
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#include "porting.h"
+#include "rb_tree.h"
+#include "recovery.h"
+#include "release_string.h"
+#include "storage_common.h"
+#if defined (SERVER_MODE)
+#include "thread_entry.hpp"
+#else // not SERVER_MODE = SA_MODE or CS_MODE
+#include "thread_compat.hpp"
+#endif // not SERVER_MODE = SA_MODE or CS_MODE
 
+#include <assert.h>
 #if defined(SOLARIS)
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
 #endif /* SOLARIS */
+#include <signal.h>
+
+/************************************************************************/
+/* Section shared with client... TODO: remove any code accessing log    */
+/* module on client. Most are used by log_writer.c and log_applier.c    */
+/************************************************************************/
+
+#define LOGPB_HEADER_PAGE_ID             (-9)	/* The first log page in the infinite log sequence. It is always kept
+						 * on the active portion of the log. Log records are not stored on this
+						 * page. This page is backed up in all archive logs */
+
+#define LOGPB_IO_NPAGES                  4
+
+#define LOGPB_BUFFER_NPAGES_LOWER        128
+
+/*
+ * Message id in the set MSGCAT_SET_LOG
+ * in the message catalog MSGCAT_CATALOG_CUBRID (file cubrid.msg).
+ */
+#define MSGCAT_LOG_STARTS                               1
+#define MSGCAT_LOG_LOGARCHIVE_NEEDED                    2
+#define MSGCAT_LOG_BACKUPINFO_NEEDED                    3
+#define MSGCAT_LOG_NEWLOCATION                          4
+#define MSGCAT_LOG_LOGINFO_COMMENT                      5
+#define MSGCAT_LOG_LOGINFO_COMMENT_ARCHIVE_NONEEDED     6
+#define MSGCAT_LOG_LOGINFO_COMMENT_MANY_ARCHIVES_NONEEDED 7
+#define MSGCAT_LOG_LOGINFO_COMMENT_FROM_RENAMED         8
+#define MSGCAT_LOG_LOGINFO_ARCHIVE                      9
+#define MSGCAT_LOG_LOGINFO_KEYWORD_ARCHIVE              10
+#define MSGCAT_LOG_LOGINFO_REMOVE_REASON                11
+#define MSGCAT_LOG_LOGINFO_ACTIVE                       12
+#define MSGCAT_LOG_FINISH_COMMIT                        13
+#define MSGCAT_LOG_FINISH_ABORT                         14
+#define MSGCAT_LOG_INCOMPLTE_MEDIA_RECOVERY             15
+#define MSGCAT_LOG_RESETLOG_DUE_INCOMPLTE_MEDIA_RECOVERY 16
+#define MSGCAT_LOG_DATABASE_BACKUP_WAS_TAKEN            17
+#define MSGCAT_LOG_MEDIACRASH_NOT_IMPORTANT             18
+#define MSGCAT_LOG_DELETE_BKVOLS                        19
+#define MSGCAT_LOG_ENTER_Y2_CONFIRM                     20
+#define MSGCAT_LOG_BACKUP_HALTED_BY_USER                21
+#define MSGCAT_LOG_LOGINFO_ARCHIVES_NEEDED_FOR_RESTORE  22
+#define MSGCAT_LOG_LOGINFO_PENDING_ARCHIVES_RELEASED    23
+#define MSGCAT_LOG_LOGINFO_NOTPENDING_ARCHIVE_COMMENT   24
+#define MSGCAT_LOG_LOGINFO_MULT_NOTPENDING_ARCHIVES_COMMENT 25
+#define MSGCAT_LOG_READ_ERROR_DURING_RESTORE            26
+#define MSGCAT_LOG_INPUT_RANGE_ERROR                    27
+#define MSGCAT_LOG_UPTODATE_ERROR                       28
+#define MSGCAT_LOG_LOGINFO_COMMENT_UNUSED_ARCHIVE_NAME	29
+#define MSGCAT_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED	30
+
+/*
+ * LOG PAGE
+ */
+
+typedef struct log_hdrpage LOG_HDRPAGE;
+struct log_hdrpage
+{
+  LOG_PAGEID logical_pageid;	/* Logical pageid in infinite log */
+  PGLENGTH offset;		/* Offset of first log record in this page. This may be useful when previous log page
+				 * is corrupted and an archive of that page does not exist. Instead of losing the whole 
+				 * log because of such bad page, we could salvage the log starting at the offset
+				 * address, that is, at the next log record */
+  short dummy1;			/* Dummy field for 8byte align */
+  int dummy2;			/* Dummy field for 8byte align */
+};
+
+/* WARNING:
+ * Don't use sizeof(LOG_PAGE) or of any structure that contains it
+ * Use macro LOG_PAGESIZE instead.
+ * It is also bad idea to allocate a variable for LOG_PAGE on the stack.
+ */
+
+typedef struct log_page LOG_PAGE;
+struct log_page
+{				/* The log page */
+  LOG_HDRPAGE hdr;
+  char area[1];
+};
+
+/*
+ * This structure encapsulates various information and metrics related
+ * to each backup level.
+ * Estimates and heuristics are not currently used but are placeholder
+ * for the future to avoid changing the physical representation again.
+ */
+typedef struct log_hdr_bkup_level_info LOG_HDR_BKUP_LEVEL_INFO;
+struct log_hdr_bkup_level_info
+{
+  INT64 bkup_attime;		/* Timestamp when this backup lsa taken */
+  INT64 io_baseln_time;		/* time (secs.) to write a single page */
+  INT64 io_bkuptime;		/* total time to write the backup */
+  int ndirty_pages_post_bkup;	/* number of pages written since the lsa for this backup level. */
+  int io_numpages;		/* total number of pages in last backup */
+};
+
+#define MAXLOGNAME          (30 - 12)
 
 #define NUM_NORMAL_TRANS (prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS))
 #define NUM_SYSTEM_TRANS 1
 #define NUM_NON_SYSTEM_TRANS (css_get_max_conn ())
 #define MAX_NTRANS \
   (NUM_NON_SYSTEM_TRANS + NUM_SYSTEM_TRANS)
+
+// vacuum blocks
+typedef INT64 VACUUM_LOG_BLOCKID;
+#define VACUUM_NULL_LOG_BLOCKID -1
+
+/*
+ * LOG HEADER INFORMATION
+ */
+typedef struct log_header LOG_HEADER;
+struct log_header
+{				/* Log header information */
+  char magic[CUBRID_MAGIC_MAX_LENGTH];	/* Magic value for file/magic Unix utility */
+  /* Here exists 3 bytes */
+  INT32 dummy;			/* for 8byte align */
+  INT64 db_creation;		/* Database creation time. For safety reasons, this value is set on all volumes and the
+				 * log. The value is generated by the log manager */
+  char db_release[REL_MAX_RELEASE_LENGTH];	/* CUBRID Release */
+  /* Here exists 1 byte */
+  float db_compatibility;	/* Compatibility of the database against the current release of CUBRID */
+  PGLENGTH db_iopagesize;	/* Size of pages in the database. For safety reasons this value is recorded in the log
+				 * to make sure that the database is always run with the same page size */
+  PGLENGTH db_logpagesize;	/* Size of log pages in the database. */
+  bool is_shutdown;		/* Was the log shutdown ? */
+  /* Here exists 3 bytes */
+  TRANID next_trid;		/* Next Transaction identifier */
+  MVCCID mvcc_next_id;		/* Next MVCC ID */
+  int avg_ntrans;		/* Number of average transactions */
+  int avg_nlocks;		/* Average number of object locks */
+  DKNPAGES npages;		/* Number of pages in the active log portion. Does not include the log header page. */
+  INT8 db_charset;
+  INT8 dummy2;			/* Dummy fields for 8byte align */
+  INT8 dummy3;
+  INT8 dummy4;
+  LOG_PAGEID fpageid;		/* Logical pageid at physical location 1 in active log */
+  LOG_LSA append_lsa;		/* Current append location */
+  LOG_LSA chkpt_lsa;		/* Lowest log sequence address to start the recovery process */
+  LOG_PAGEID nxarv_pageid;	/* Next logical page to archive */
+  LOG_PHY_PAGEID nxarv_phy_pageid;	/* Physical location of logical page to archive */
+  int nxarv_num;		/* Next log archive number */
+  int last_arv_num_for_syscrashes;	/* Last log archive needed for system crashes */
+  int last_deleted_arv_num;	/* Last deleted archive number */
+  LOG_LSA bkup_level0_lsa;	/* Lsa of backup level 0 */
+  LOG_LSA bkup_level1_lsa;	/* Lsa of backup level 1 */
+  LOG_LSA bkup_level2_lsa;	/* Lsa of backup level 2 */
+  char prefix_name[MAXLOGNAME];	/* Log prefix name */
+  bool has_logging_been_skipped;	/* Has logging been skipped ? */
+  /* Here exists 5 bytes */
+  VACUUM_LOG_BLOCKID vacuum_last_blockid;	/* Last processed blockid needed for vacuum. */
+  int perm_status;		/* Reserved for future expansion and permanent status indicators, e.g. to mark
+				 * RESTORE_IN_PROGRESS */
+  /* Here exists 4 bytes */
+  LOG_HDR_BKUP_LEVEL_INFO bkinfo[FILEIO_BACKUP_UNDEFINED_LEVEL];
+  /* backup specific info for future growth */
+
+  int ha_server_state;
+  int ha_file_status;
+  LOG_LSA eof_lsa;
+
+  LOG_LSA smallest_lsa_at_last_chkpt;
+
+  LOG_LSA mvcc_op_log_lsa;	/* Used to link log entries for mvcc operations. Vacuum will then process these entries */
+  MVCCID last_block_oldest_mvccid;	/* Used to find the oldest MVCCID in a block of log data. */
+  MVCCID last_block_newest_mvccid;	/* Used to find the newest MVCCID in a block of log data. */
+
+  INT64 ha_promotion_time;
+  INT64 db_restore_time;
+  bool mark_will_del;
+};
+#define LOG_HEADER_INITIALIZER                   \
+  {                                              \
+     /* magic */                                 \
+     {'0'},                                      \
+     0, 0,                                       \
+     /* db_release */                            \
+     {'0'},                                      \
+     /* db_compatibility */                      \
+     0.0,                                        \
+     0, 0, 0,                                    \
+     /* next_trid */                             \
+     (LOG_SYSTEM_TRANID + 1),                    \
+     /* mvcc_id */				 \
+     MVCCID_NULL,                                \
+     0, 0, 0,					 \
+     /* db_charset */				 \
+     0,						 \
+     0, 0, 0, 0,				 \
+     /* append_lsa */                            \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* chkpt_lsa */                             \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* nxarv_pageid */                          \
+     0,                                          \
+     /* nxarv_phy_pageid */                      \
+     0,                                          \
+     0, 0, 0,                                    \
+     /* bkup_level0_lsa */                       \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* bkup_level1_lsa */                       \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* bkup_level2_lsa */                       \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* prefix_name */                           \
+     {'0'},                                      \
+     /* has_logging_been_skipped */              \
+     false,                                      \
+     0, 0,                                       \
+     /* bkinfo */                                \
+     {{0, 0, 0, 0, 0}},                          \
+     0, 0,                                       \
+     /* eof_lsa */                               \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* smallest_lsa_at_last_chkpt */            \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* mvcc_op_log_lsa */			 \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* last_block_oldest_mvccid */		 \
+     MVCCID_NULL,				 \
+     /* last_block_newest_mvccid */		 \
+     MVCCID_NULL,				 \
+     /* ha_promotion_time */ 			 \
+     0, 					 \
+     /* db_restore_time */			 \
+     0,						 \
+     /* mark_will_del */			 \
+     false					 \
+  }
+
+#define LOGWR_HEADER_INITIALIZER                 \
+  {                                              \
+     /* magic */                                 \
+     {'0'},                                      \
+     0, 0,                                       \
+     /* db_release */                            \
+     {'0'},                                      \
+     /* db_compatibility */                      \
+     0.0,                                        \
+     0, 0, 0,                                    \
+     /* next_trid */                             \
+     NULL_TRANID,                                \
+     /* mvcc_next_id */                          \
+     MVCCID_NULL,                                \
+     0, 0, 0,					 \
+     /* db_charset */				 \
+     0,						 \
+     0, 0, 0, 0,				 \
+     /* append_lsa */                            \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* chkpt_lsa */                             \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* nxarv_pageid */                          \
+     NULL_PAGEID,                                \
+     /* nxarv_phy_pageid */                      \
+     NULL_PAGEID,                                \
+     -1, -1, -1,                                 \
+     /* bkup_level0_lsa */                       \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* bkup_level1_lsa */                       \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* bkup_level2_lsa */                       \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* prefix_name */                           \
+     {'0'},                                      \
+     /* has_logging_been_skipped */              \
+     false,                                      \
+     0, 0,                                       \
+     /* bkinfo */                                \
+     {{0, 0, 0, 0, 0}},                          \
+     0, 0,                                       \
+     /* eof_lsa */                               \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* smallest_lsa_at_last_chkpt */            \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* mvcc_op_log_lsa */			 \
+     {NULL_PAGEID, NULL_OFFSET},                 \
+     /* last_block_oldest_mvccid */		 \
+     MVCCID_NULL,				 \
+     /* last_block_newest_mvccid */		 \
+     MVCCID_NULL,				 \
+     /* ha_promotion_time */ 			 \
+     0, 					 \
+     /* db_restore_time */			 \
+     0,						 \
+     /* mark_will_del */			 \
+     false					 \
+  }
+
+enum logwr_mode
+{
+  LOGWR_MODE_ASYNC = 1,
+  LOGWR_MODE_SEMISYNC,
+  LOGWR_MODE_SYNC
+};
+typedef enum logwr_mode LOGWR_MODE;
+#define LOGWR_COPY_FROM_FIRST_PHY_PAGE_MASK	(0x80000000)
+
+typedef struct background_archiving_info BACKGROUND_ARCHIVING_INFO;
+struct background_archiving_info
+{
+  LOG_PAGEID start_page_id;
+  LOG_PAGEID current_page_id;
+  LOG_PAGEID last_sync_pageid;
+  int vdes;
+};
+#define BACKGROUND_ARCHIVING_INFO_INITIALIZER \
+  { NULL_PAGEID, NULL_PAGEID, NULL_PAGEID, NULL_VOLDES }
+
+typedef struct log_bgarv_header LOG_BGARV_HEADER;
+struct log_bgarv_header
+{				/* Background log archive header information */
+  char magic[CUBRID_MAGIC_MAX_LENGTH];
+
+  INT32 dummy;
+  INT64 db_creation;
+
+  LOG_PAGEID start_page_id;
+  LOG_PAGEID current_page_id;
+  LOG_PAGEID last_sync_pageid;
+};
+#define LOG_BGARV_HEADER_INITIALIZER \
+  { /* magic */ {'0'}, 0, 0, NULL_PAGEID, NULL_PAGEID, NULL_PAGEID }
+
+typedef struct log_arv_header LOG_ARV_HEADER;
+struct log_arv_header
+{				/* Log archive header information */
+  char magic[CUBRID_MAGIC_MAX_LENGTH];	/* Magic value for file/magic Unix utility */
+  INT32 dummy;			/* for 8byte align */
+  INT64 db_creation;		/* Database creation time. For safety reasons, this value is set on all volumes and the
+				 * log. The value is generated by the log manager */
+  TRANID next_trid;		/* Next Transaction identifier */
+  DKNPAGES npages;		/* Number of pages in the archive log */
+  LOG_PAGEID fpageid;		/* Logical pageid at physical location 1 in archive log */
+  int arv_num;			/* The archive number */
+  INT32 dummy2;			/* Dummy field for 8byte align */
+};
+#define LOG_ARV_HEADER_INITIALIZER \
+  { /* magic */ {'0'}, 0, 0, 0, 0, 0, 0, 0 }
+
+/* there can be following transitions in transient lobs
+
+   -------------------------------------------------------------------------
+   | 	       locator  | created               | deleted		   |
+   |--------------------|-----------------------|--------------------------|
+   | in     | transient | LOB_TRANSIENT_CREATED i LOB_UNKNOWN		   |
+   | tran   |-----------|-----------------------|--------------------------|
+   |        | permanent | LOB_PERMANENT_CREATED | LOB_PERMANENT_DELETED    |
+   |--------------------|-----------------------|--------------------------|
+   | out of | transient | LOB_UNKNOWN		| LOB_UNKNOWN		   |
+   | tran   |-----------|-----------------------|--------------------------|
+   |        | permanent | LOB_UNKNOWN 		| LOB_TRANSIENT_DELETED    |
+   -------------------------------------------------------------------------
+
+   s1: create a transient locator and delete it
+       LOB_TRANSIENT_CREATED -> LOB_UNKNOWN
+
+   s2: create a transient locator and bind it to a row in table
+       LOB_TRANSIENT_CREATED -> LOB_PERMANENT_CREATED
+
+   s3: bind a transient locator to a row and delete the locator
+       LOB_PERMANENT_CREATED -> LOB_PERMANENT_DELETED
+
+   s4: delete a locator to be create out of transaction
+       LOB_UNKNOWN -> LOB_TRANSIENT_DELETED
+
+ */
+enum lob_locator_state
+{
+  LOB_UNKNOWN,
+  LOB_TRANSIENT_CREATED,
+  LOB_TRANSIENT_DELETED,
+  LOB_PERMANENT_CREATED,
+  LOB_PERMANENT_DELETED,
+  LOB_NOT_FOUND
+};
+typedef enum lob_locator_state LOB_LOCATOR_STATE;
+
+enum LOG_HA_FILESTAT
+{
+  LOG_HA_FILESTAT_CLEAR = 0,
+  LOG_HA_FILESTAT_ARCHIVED = 1,
+  LOG_HA_FILESTAT_SYNCHRONIZED = 2
+};
+
+/*
+ * NOTE: NULL_VOLID generally means a bad volume identifier
+ *       Negative volume identifiers are used to identify auxilary files and
+ *       volumes (e.g., logs, backups)
+ */
+
+#define LOG_MAX_DBVOLID          (VOLID_MAX - 1)
+
+/* Volid of database.txt */
+#define LOG_DBTXT_VOLID          (SHRT_MIN + 1)
+#define LOG_DBFIRST_VOLID        0
+
+/* Volid of volume information */
+#define LOG_DBVOLINFO_VOLID      (LOG_DBFIRST_VOLID - 5)
+/* Volid of info log */
+#define LOG_DBLOG_INFO_VOLID     (LOG_DBFIRST_VOLID - 4)
+/* Volid of backup info log */
+#define LOG_DBLOG_BKUPINFO_VOLID (LOG_DBFIRST_VOLID - 3)
+/* Volid of active log */
+#define LOG_DBLOG_ACTIVE_VOLID   (LOG_DBFIRST_VOLID - 2)
+/* Volid of background archive logs */
+#define LOG_DBLOG_BG_ARCHIVE_VOLID  (LOG_DBFIRST_VOLID - 21)
+/* Volid of archive logs */
+#define LOG_DBLOG_ARCHIVE_VOLID  (LOG_DBFIRST_VOLID - 20)
+/* Volid of copies */
+#define LOG_DBCOPY_VOLID         (LOG_DBFIRST_VOLID - 19)
+
+/*
+ * Specify up to int bits of permanent status indicators.
+ * Restore in progress is the only one so far, the rest are reserved
+ * for future use.  Note these must be specified and used as mask values
+ * to test and set individual bits.
+ */
+enum LOG_PSTATUS
+{
+  LOG_PSTAT_CLEAR = 0x00,
+  LOG_PSTAT_BACKUP_INPROGRESS = 0x01,	/* only one backup at a time */
+  LOG_PSTAT_RESTORE_INPROGRESS = 0x02,	/* unset upon successful restore */
+  LOG_PSTAT_HDRFLUSH_INPPROCESS = 0x04	/* need to flush log header */
+};
+
+typedef struct tran_query_exec_info TRAN_QUERY_EXEC_INFO;
+struct tran_query_exec_info
+{
+  char *wait_for_tran_index_string;
+  float query_time;
+  float tran_time;
+  char *query_stmt;
+  char *sql_id;
+  XASL_ID xasl_id;
+};
+
+enum log_rectype
+{
+  /* In order of likely of appearance in the log */
+  LOG_SMALLER_LOGREC_TYPE = 0,	/* A lower bound check */
+
+#if 0
+  LOG_CLIENT_NAME = 1,		/* Obsolete */
+#endif
+  LOG_UNDOREDO_DATA = 2,	/* An undo and redo data record */
+  LOG_UNDO_DATA = 3,		/* Only undo data */
+  LOG_REDO_DATA = 4,		/* Only redo data */
+  LOG_DBEXTERN_REDO_DATA = 5,	/* Only database external redo data */
+  LOG_POSTPONE = 6,		/* Postpone redo data */
+  LOG_RUN_POSTPONE = 7,		/* Run/redo a postpone data. Only for transactions committed with postpone operations */
+  LOG_COMPENSATE = 8,		/* Compensation record (compensate a undo record of an aborted tran) */
+#if 0
+  LOG_LCOMPENSATE = 9,		/* Obsolete */
+  LOG_CLIENT_USER_UNDO_DATA = 10,	/* Obsolete */
+  LOG_CLIENT_USER_POSTPONE_DATA = 11,	/* Obsolete */
+  LOG_RUN_NEXT_CLIENT_UNDO = 12,	/* Obsolete */
+  LOG_RUN_NEXT_CLIENT_POSTPONE = 13,	/* Obsolete */
+#endif
+  LOG_WILL_COMMIT = 14,		/* Transaction will be committed */
+  LOG_COMMIT_WITH_POSTPONE = 15,	/* Committing server postpone operations */
+#if 0
+  LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS = 16,	/* Obsolete */
+#endif
+  LOG_COMMIT = 17,		/* A commit record */
+  LOG_SYSOP_START_POSTPONE = 18,	/* Committing server top system postpone operations */
+#if 0
+  LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS = 19,	/* Obsolete */
+#endif
+  LOG_SYSOP_END = 20,		/* end of system operation record. Its functionality can vary based on LOG_SYSOP_END_TYPE:
+				 *
+				 * - LOG_SYSOP_END_COMMIT: the usual functionality. changes under system operation become
+				 *   permanent immediately
+				 *
+				 * - LOG_SYSOP_END_LOGICAL_UNDO: system operation is used for complex logical operation (that
+				 *   usually affects more than one page). end system operation also includes undo data that
+				 *   is processed during rollback or undo.
+				 *
+				 * - LOG_SYSOP_END_LOGICAL_COMPENSATE: system operation is used for complex logical operation
+				 *   that has the purpose of compensating a change on undo or rollback. end system operation
+				 *   also includes the LSA of previous undo log record.
+				 *
+				 * - LOG_SYSOP_END_LOGICAL_RUN_POSTPONE: system operation is used for complex logical operation
+				 *   that has the purpose of running a postpone record. end system operation also includes the
+				 *   postpone LSA and is_sysop_postpone (recovery is different for logical run postpones during
+				 *   system operation postpone compared to transaction postpone).
+				 *
+				 * - LOG_SYSOP_END_ABORT: any of the above system operations are not ended due to crash or
+				 *   errors. the system operation is rollbacked and ended with this type.
+				 */
+#if 0
+  LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS = 21,	/* Obsolete */
+#endif
+  LOG_ABORT = 22,		/* An abort record */
+#if 0
+  LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS = 23,	/* Obsolete */
+#endif
+  LOG_ABORT_TOPOPE = 24,	/* obsolete */
+  LOG_START_CHKPT = 25,		/* Start a checkpoint */
+  LOG_END_CHKPT = 26,		/* Checkpoint information */
+  LOG_SAVEPOINT = 27,		/* A user savepoint record */
+  LOG_2PC_PREPARE = 28,		/* A prepare to commit record */
+  LOG_2PC_START = 29,		/* Start the 2PC protocol by sending vote request messages to participants of
+				 * distributed tran. */
+  LOG_2PC_COMMIT_DECISION = 30,	/* Beginning of the second phase of 2PC, need to perform local & global commits. */
+  LOG_2PC_ABORT_DECISION = 31,	/* Beginning of the second phase of 2PC, need to perform local & global aborts. */
+  LOG_2PC_COMMIT_INFORM_PARTICPS = 32,	/* Committing, need to inform the participants */
+  LOG_2PC_ABORT_INFORM_PARTICPS = 33,	/* Aborting, need to inform the participants */
+  LOG_2PC_RECV_ACK = 34,	/* Received ack. from the participant that it received the decision on the fate of
+				 * dist. trans. */
+  LOG_END_OF_LOG = 35,		/* End of log */
+  LOG_DUMMY_HEAD_POSTPONE = 36,	/* A dummy log record. No-op */
+  LOG_DUMMY_CRASH_RECOVERY = 37,	/* A dummy log record which indicate the start of crash recovery. No-op */
+
+#if 0				/* not used */
+  LOG_DUMMY_FILLPAGE_FORARCHIVE = 38,	/* Indicates logical end of current page so it could be archived safely. No-op
+					 * This record is not generated no more. It's kept for backward compatibility. */
+#endif
+  LOG_REPLICATION_DATA = 39,	/* Replication log for insert, delete or update */
+  LOG_REPLICATION_STATEMENT = 40,	/* Replication log for schema, index, trigger or system catalog updates */
+#if 0
+  LOG_UNLOCK_COMMIT = 41,	/* for repl_agent to guarantee the order of */
+  LOG_UNLOCK_ABORT = 42,	/* transaction commit, we append the unlock info. before calling lock_unlock_all() */
+#endif
+  LOG_DIFF_UNDOREDO_DATA = 43,	/* diff undo redo data */
+  LOG_DUMMY_HA_SERVER_STATE = 44,	/* HA server state */
+  LOG_DUMMY_OVF_RECORD = 45,	/* indicator of the first part of an overflow record */
+
+  LOG_MVCC_UNDOREDO_DATA = 46,	/* Undoredo for MVCC operations (will require more fields than a regular undo-redo. */
+  LOG_MVCC_UNDO_DATA = 47,	/* Undo for MVCC operations */
+  LOG_MVCC_REDO_DATA = 48,	/* Redo for MVCC operations */
+  LOG_MVCC_DIFF_UNDOREDO_DATA = 49,	/* diff undo redo data for MVCC operations */
+  LOG_SYSOP_ATOMIC_START = 50,	/* Log marker to start atomic operations that need to be rollbacked immediately after
+				 * redo phase of recovery and before finishing postpones */
+
+  LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
+				 * case. we should find a different approach */
+
+  LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
+};
+typedef enum log_rectype LOG_RECTYPE;
+
+/* Description of a log record */
+typedef struct log_rec_header LOG_RECORD_HEADER;
+struct log_rec_header
+{
+  LOG_LSA prev_tranlsa;		/* Address of previous log record for the same transaction */
+  LOG_LSA back_lsa;		/* Backward log address */
+  LOG_LSA forw_lsa;		/* Forward log address */
+  TRANID trid;			/* Transaction identifier of the log record */
+  LOG_RECTYPE type;		/* Log record type (e.g., commit, abort) */
+};
+
+/* Common information of log data records */
+typedef struct log_data LOG_DATA;
+struct log_data
+{
+  LOG_RCVINDEX rcvindex;	/* Index to recovery function */
+  PAGEID pageid;		/* Pageid of recovery data */
+  PGLENGTH offset;		/* offset of recovery data in pageid */
+  VOLID volid;			/* Volume identifier of recovery data */
+};
+
+/* Information of undo_redo log records */
+typedef struct log_rec_undoredo LOG_REC_UNDOREDO;
+struct log_rec_undoredo
+{
+  LOG_DATA data;		/* Location of recovery data */
+  int ulength;			/* Length of undo data */
+  int rlength;			/* Length of redo data */
+};
+
+/* Information of undo log records */
+typedef struct log_rec_undo LOG_REC_UNDO;
+struct log_rec_undo
+{
+  LOG_DATA data;		/* Location of recovery data */
+  int length;			/* Length of undo data */
+};
+
+/* Information of redo log records */
+typedef struct log_rec_redo LOG_REC_REDO;
+struct log_rec_redo
+{
+  LOG_DATA data;		/* Location of recovery data */
+  int length;			/* Length of redo data */
+};
+
+/* Log information required for vacuum */
+typedef struct log_vacuum_info LOG_VACUUM_INFO;
+struct log_vacuum_info
+{
+  LOG_LSA prev_mvcc_op_log_lsa;	/* Log lsa of previous MVCC operation log record. Used by vacuum to process log data. */
+  VFID vfid;			/* File identifier. Will be used by vacuum for heap files (TODO: maybe b-tree too).
+				 * Used to: - Find if the file was dropped/reused. - Find the type of objects in heap
+				 * file (reusable or referable). */
+};
+
+/* Information of undo_redo log records for MVCC operations */
+typedef struct log_rec_mvcc_undoredo LOG_REC_MVCC_UNDOREDO;
+struct log_rec_mvcc_undoredo
+{
+  LOG_REC_UNDOREDO undoredo;	/* Undoredo information */
+  MVCCID mvccid;		/* MVCC Identifier for transaction */
+  LOG_VACUUM_INFO vacuum_info;	/* Info required for vacuum */
+};
+
+/* Information of undo log records for MVCC operations */
+typedef struct log_rec_mvcc_undo LOG_REC_MVCC_UNDO;
+struct log_rec_mvcc_undo
+{
+  LOG_REC_UNDO undo;		/* Undo information */
+  MVCCID mvccid;		/* MVCC Identifier for transaction */
+  LOG_VACUUM_INFO vacuum_info;	/* Info required for vacuum */
+};
+
+/* Information of redo log records for MVCC operations */
+typedef struct log_rec_mvcc_redo LOG_REC_MVCC_REDO;
+struct log_rec_mvcc_redo
+{
+  LOG_REC_REDO redo;		/* Location of recovery data */
+  MVCCID mvccid;		/* MVCC Identifier for transaction */
+};
+
+/* replication log structure */
+typedef struct log_rec_replication LOG_REC_REPLICATION;
+struct log_rec_replication
+{
+  LOG_LSA lsa;
+  int length;
+  int rcvindex;
+};
+
+/* Log the time of termination of transaction */
+typedef struct log_rec_donetime LOG_REC_DONETIME;
+struct log_rec_donetime
+{
+  INT64 at_time;		/* Database creation time. For safety reasons */
+};
+
+#define LOG_GET_LOG_RECORD_HEADER(log_page_p, lsa) \
+  ((LOG_RECORD_HEADER *) ((log_page_p)->area + (lsa)->offset))
+
+/* Definitions used to identify UNDO/REDO/UNDOREDO log record data types */
+
+/* Is record type UNDO */
+#define LOG_IS_UNDO_RECORD_TYPE(type) \
+  (((type) == LOG_UNDO_DATA) || ((type) == LOG_MVCC_UNDO_DATA))
+
+/* Is record type REDO */
+#define LOG_IS_REDO_RECORD_TYPE(type) \
+  (((type) == LOG_REDO_DATA) || ((type) == LOG_MVCC_REDO_DATA))
+
+/* Is record type UNDOREDO */
+#define LOG_IS_UNDOREDO_RECORD_TYPE(type) \
+  (((type) == LOG_UNDOREDO_DATA) || ((type) == LOG_MVCC_UNDOREDO_DATA) \
+   || ((type) == LOG_DIFF_UNDOREDO_DATA) || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
+
+#define LOG_IS_DIFF_UNDOREDO_TYPE(type) \
+  ((type) == LOG_DIFF_UNDOREDO_DATA || (type) == LOG_MVCC_DIFF_UNDOREDO_DATA)
+
+/* Is record type used a MVCC operation */
+#define LOG_IS_MVCC_OP_RECORD_TYPE(type) \
+  (((type) == LOG_MVCC_UNDO_DATA) \
+   || ((type) == LOG_MVCC_REDO_DATA) \
+   || ((type) == LOG_MVCC_UNDOREDO_DATA) \
+   || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
+
+/* Log the change of the server's HA state */
+typedef struct log_rec_ha_server_state LOG_REC_HA_SERVER_STATE;
+struct log_rec_ha_server_state
+{
+  int state;			/* ha_Server_state */
+  int dummy;			/* dummy for alignment */
+
+  INT64 at_time;		/* time recorded by active server */
+};
+
+#define LOG_SYSTEM_TRAN_INDEX 0	/* The recovery & vacuum worker system transaction index. */
+#define LOG_SYSTEM_TRANID     0	/* The recovery & vacuum worker system transaction. */
+
+#if !defined (NDEBUG) && !defined (WINDOWS)
+extern int logtb_collect_local_clients (int **local_client_pids);
+#endif /* !defined (NDEBUG) && !defined (WINDOWS) */
+
+/************************************************************************/
+/* End of part shared with client.                                      */
+/************************************************************************/
+
+#if !defined (CS_MODE)
 
 /* TRANS_STATUS_HISTORY_MAX_SIZE must be a power of 2*/
 #define TRANS_STATUS_HISTORY_MAX_SIZE 2048
@@ -109,9 +802,10 @@
 /* TODO: Vacuum workers never hold CSECT_LOG lock. Investigate any possible
  *	 unwanted consequences.
  * NOTE: It is considered that a vacuum worker holds a "shared" lock.
+ * TODO: remove vacuum code from LOG_CS_OWN
  */
 #define LOG_CS_OWN(thread_p) \
-  (VACUUM_IS_PROCESS_LOG_FOR_VACUUM (thread_p) \
+  (vacuum_is_process_log_for_vacuum (thread_p) \
    || csect_check_own (thread_p, CSECT_LOG) >= 1)
 #define LOG_CS_OWN_WRITE_MODE(thread_p) \
   (csect_check_own (thread_p, CSECT_LOG) == 1)
@@ -161,9 +855,6 @@
 #define LOG_APPEND_PTR() ((char *)log_Gl.append.log_pgptr->area \
                           + log_Gl.hdr.append_lsa.offset)
 
-#define LOG_GET_LOG_RECORD_HEADER(log_page_p, lsa) \
-  ((LOG_RECORD_HEADER *) ((log_page_p)->area + (lsa)->offset))
-
 #define LOG_READ_ALIGN(thread_p, lsa, log_pgptr) \
   do \
     { \
@@ -212,17 +903,13 @@
 #define LOG_2PC_OBTAIN_LOCKS      true
 #define LOG_2PC_DONT_OBTAIN_LOCKS false
 
-#define LOG_SYSTEM_TRAN_INDEX 0	/* The recovery & vacuum worker system transaction index. */
-#define LOG_SYSTEM_TRANID     0	/* The recovery & vacuum worker system transaction. */
-
 #if defined(SERVER_MODE)
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) \
-  ((thrd) ? (thrd)->tran_index : thread_get_current_tran_index())
+  ((thrd) ? (thrd)->tran_index : logtb_get_current_tran_index ())
 #endif
 #define LOG_SET_CURRENT_TRAN_INDEX(thrd, index) \
-  ((thrd) ? (thrd)->tran_index = (index) : \
-            thread_set_current_tran_index ((thrd), (index)))
+  ((thrd) ? (void) ((thrd)->tran_index = (index)) : logtb_set_current_tran_index ((thrd), (index)))
 #else /* SERVER_MODE */
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) (log_Tran_index)
@@ -311,15 +998,6 @@
     } \
   while (0)
 
-#define MAXLOGNAME          (30 - 12)
-
-#define LOGPB_HEADER_PAGE_ID             (-9)	/* The first log page in the infinite log sequence. It is always kept
-						 * on the active portion of the log. Log records are not stored on this
-						 * page. This page is backed up in all archive logs */
-#define LOGPB_IO_NPAGES                  4
-
-#define LOGPB_BUFFER_NPAGES_LOWER        128
-
 #define LOG_READ_NEXT_TRANID (log_Gl.hdr.next_trid)
 #define LOG_READ_NEXT_MVCCID (log_Gl.hdr.mvcc_next_id)
 #define LOG_HAS_LOGGING_BEEN_IGNORED() \
@@ -334,15 +1012,6 @@
    && logtb_find_client_type (thread_p->tran_index) == BOOT_CLIENT_LOG_APPLIER)
 #else
 #define LOG_CHECK_LOG_APPLIER(thread_p) (0)
-#endif /* !SERVER_MODE */
-
-/* special action for log prefetcher */
-#if defined (SERVER_MODE)
-#define LOG_CHECK_LOG_PREFETCHER(thread_p) \
-  (thread_p != NULL \
-   && logtb_find_client_type (thread_p->tran_index) == BOOT_CLIENT_LOG_PREFETCHER)
-#else
-#define LOG_CHECK_LOG_PREFETCHER(thread_p) (0)
 #endif /* !SERVER_MODE */
 
 #if !defined(_DB_DISABLE_MODIFICATIONS_)
@@ -377,79 +1046,23 @@ extern int db_Disable_modifications;
 #endif /* !SA_MODE */
 #endif /* CHECK_MODIFICATION_NO_RETURN */
 
-/*
- * Message id in the set MSGCAT_SET_LOG
- * in the message catalog MSGCAT_CATALOG_CUBRID (file cubrid.msg).
- */
-#define MSGCAT_LOG_STARTS                               1
-#define MSGCAT_LOG_LOGARCHIVE_NEEDED                    2
-#define MSGCAT_LOG_BACKUPINFO_NEEDED                    3
-#define MSGCAT_LOG_NEWLOCATION                          4
-#define MSGCAT_LOG_LOGINFO_COMMENT                      5
-#define MSGCAT_LOG_LOGINFO_COMMENT_ARCHIVE_NONEEDED     6
-#define MSGCAT_LOG_LOGINFO_COMMENT_MANY_ARCHIVES_NONEEDED 7
-#define MSGCAT_LOG_LOGINFO_COMMENT_FROM_RENAMED         8
-#define MSGCAT_LOG_LOGINFO_ARCHIVE                      9
-#define MSGCAT_LOG_LOGINFO_KEYWORD_ARCHIVE              10
-#define MSGCAT_LOG_LOGINFO_REMOVE_REASON                11
-#define MSGCAT_LOG_LOGINFO_ACTIVE                       12
-#define MSGCAT_LOG_FINISH_COMMIT                        13
-#define MSGCAT_LOG_FINISH_ABORT                         14
-#define MSGCAT_LOG_INCOMPLTE_MEDIA_RECOVERY             15
-#define MSGCAT_LOG_RESETLOG_DUE_INCOMPLTE_MEDIA_RECOVERY 16
-#define MSGCAT_LOG_DATABASE_BACKUP_WAS_TAKEN            17
-#define MSGCAT_LOG_MEDIACRASH_NOT_IMPORTANT             18
-#define MSGCAT_LOG_DELETE_BKVOLS                        19
-#define MSGCAT_LOG_ENTER_Y2_CONFIRM                     20
-#define MSGCAT_LOG_BACKUP_HALTED_BY_USER                21
-#define MSGCAT_LOG_LOGINFO_ARCHIVES_NEEDED_FOR_RESTORE  22
-#define MSGCAT_LOG_LOGINFO_PENDING_ARCHIVES_RELEASED    23
-#define MSGCAT_LOG_LOGINFO_NOTPENDING_ARCHIVE_COMMENT   24
-#define MSGCAT_LOG_LOGINFO_MULT_NOTPENDING_ARCHIVES_COMMENT 25
-#define MSGCAT_LOG_READ_ERROR_DURING_RESTORE            26
-#define MSGCAT_LOG_INPUT_RANGE_ERROR                    27
-#define MSGCAT_LOG_UPTODATE_ERROR                       28
-#define MSGCAT_LOG_LOGINFO_COMMENT_UNUSED_ARCHIVE_NAME	29
-#define MSGCAT_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED	30
-
 #define MAX_NUM_EXEC_QUERY_HISTORY                      100
 
-typedef enum log_flush LOG_FLUSH;
 enum log_flush
 { LOG_DONT_NEED_FLUSH, LOG_NEED_FLUSH };
+typedef enum log_flush LOG_FLUSH;
 
-typedef enum log_setdirty LOG_SETDIRTY;
 enum log_setdirty
 { LOG_DONT_SET_DIRTY, LOG_SET_DIRTY };
+typedef enum log_setdirty LOG_SETDIRTY;
 
-typedef enum log_getnewtrid LOG_GETNEWTRID;
 enum log_getnewtrid
 { LOG_DONT_NEED_NEWTRID, LOG_NEED_NEWTRID };
+typedef enum log_getnewtrid LOG_GETNEWTRID;
 
-typedef enum log_wrote_eot_log LOG_WRITE_EOT_LOG;
 enum log_wrote_eot_log
 { LOG_NEED_TO_WRITE_EOT_LOG, LOG_ALREADY_WROTE_EOT_LOG };
-
-/*
- * Specify up to int bits of permanent status indicators.
- * Restore in progress is the only one so far, the rest are reserved
- * for future use.  Note these must be specified and used as mask values
- * to test and set individual bits.
- */
-enum LOG_PSTATUS
-{
-  LOG_PSTAT_CLEAR = 0x00,
-  LOG_PSTAT_BACKUP_INPROGRESS = 0x01,	/* only one backup at a time */
-  LOG_PSTAT_RESTORE_INPROGRESS = 0x02,	/* unset upon successful restore */
-  LOG_PSTAT_HDRFLUSH_INPPROCESS = 0x04	/* need to flush log header */
-};
-
-enum LOG_HA_FILESTAT
-{
-  LOG_HA_FILESTAT_CLEAR = 0,
-  LOG_HA_FILESTAT_ARCHIVED = 1,
-  LOG_HA_FILESTAT_SYNCHRONIZED = 2
-};
+typedef enum log_wrote_eot_log LOG_WRITE_EOT_LOG;
 
 enum LOG_PRIOR_LSA_LOCK
 {
@@ -468,35 +1081,6 @@ struct log_clientids		/* see BOOT_CLIENT_CREDENTIAL */
   char host_name[MAXHOSTNAMELEN + 1];
   int process_id;
   bool is_user_active;
-};
-
-/*
- * LOG PAGE
- */
-
-typedef struct log_hdrpage LOG_HDRPAGE;
-struct log_hdrpage
-{
-  LOG_PAGEID logical_pageid;	/* Logical pageid in infinite log */
-  PGLENGTH offset;		/* Offset of first log record in this page. This may be useful when previous log page
-				 * is corrupted and an archive of that page does not exist. Instead of losing the whole 
-				 * log because of such bad page, we could salvage the log starting at the offset
-				 * address, that is, at the next log record */
-  short dummy1;			/* Dummy field for 8byte align */
-  int dummy2;			/* Dummy field for 8byte align */
-};
-
-/* WARNING:
- * Don't use sizeof(LOG_PAGE) or of any structure that contains it
- * Use macro LOG_PAGESIZE instead.
- * It is also bad idea to allocate a variable for LOG_PAGE on the stack.
- */
-
-typedef struct log_page LOG_PAGE;
-struct log_page
-{				/* The log page */
-  LOG_HDRPAGE hdr;
-  char area[1];
 };
 
 /*
@@ -532,16 +1116,6 @@ struct log_group_commit_info
 #define LOG_GROUP_COMMIT_INFO_INITIALIZER \
   { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER }
 
-typedef enum logwr_mode LOGWR_MODE;
-enum logwr_mode
-{
-  LOGWR_MODE_ASYNC = 1,
-  LOGWR_MODE_SEMISYNC,
-  LOGWR_MODE_SYNC
-};
-#define LOGWR_COPY_FROM_FIRST_PHY_PAGE_MASK	(0x80000000)
-
-typedef enum logwr_status LOGWR_STATUS;
 enum logwr_status
 {
   LOGWR_STATUS_WAIT,
@@ -550,6 +1124,7 @@ enum logwr_status
   LOGWR_STATUS_DELAY,
   LOGWR_STATUS_ERROR
 };
+typedef enum logwr_status LOGWR_STATUS;
 
 typedef struct logwr_entry LOGWR_ENTRY;
 struct logwr_entry
@@ -638,7 +1213,6 @@ struct log_append_info
     PTHREAD_MUTEX_INITIALIZER}
 #endif
 
-typedef enum log_2pc_execute LOG_2PC_EXECUTE;
 enum log_2pc_execute
 {
   LOG_2PC_EXECUTE_FULL,		/* For the root coordinator */
@@ -649,6 +1223,7 @@ enum log_2pc_execute
 					 * phase of 2PC. The root coordinator has decided an abort decision with or
 					 * without going to the first phase (i.e., prepare) of the 2PC */
 };
+typedef enum log_2pc_execute LOG_2PC_EXECUTE;
 
 typedef struct log_2pc_gtrinfo LOG_2PC_GTRINFO;
 struct log_2pc_gtrinfo
@@ -675,7 +1250,6 @@ struct log_topops_addresses
 				 * since it is reset during recovery to the last reference postpone address. */
 };
 
-typedef enum log_topops_type LOG_TOPOPS_TYPE;
 enum log_topops_type
 {
   LOG_TOPOPS_NORMAL,
@@ -683,6 +1257,7 @@ enum log_topops_type
   LOG_TOPOPS_COMPENSATE_SYSOP_ABORT,
   LOG_TOPOPS_POSTPONE
 };
+typedef enum log_topops_type LOG_TOPOPS_TYPE;
 
 typedef struct log_topops_stack LOG_TOPOPS_STACK;
 struct log_topops_stack
@@ -701,44 +1276,6 @@ struct modified_class_entry
   LOG_LSA m_last_modified_lsa;
 };
 
-/* there can be following transitions in transient lobs
-
-   -------------------------------------------------------------------------
-   | 	       locator  | created               | deleted		   |
-   |--------------------|-----------------------|--------------------------|
-   | in     | transient | LOB_TRANSIENT_CREATED i LOB_UNKNOWN		   |
-   | tran   |-----------|-----------------------|--------------------------|
-   |        | permanent | LOB_PERMANENT_CREATED | LOB_PERMANENT_DELETED    |
-   |--------------------|-----------------------|--------------------------|
-   | out of | transient | LOB_UNKNOWN		| LOB_UNKNOWN		   |
-   | tran   |-----------|-----------------------|--------------------------|
-   |        | permanent | LOB_UNKNOWN 		| LOB_TRANSIENT_DELETED    |
-   -------------------------------------------------------------------------
-
-   s1: create a transient locator and delete it
-       LOB_TRANSIENT_CREATED -> LOB_UNKNOWN
-
-   s2: create a transient locator and bind it to a row in table
-       LOB_TRANSIENT_CREATED -> LOB_PERMANENT_CREATED
-
-   s3: bind a transient locator to a row and delete the locator
-       LOB_PERMANENT_CREATED -> LOB_PERMANENT_DELETED
-
-   s4: delete a locator to be create out of transaction
-       LOB_UNKNOWN -> LOB_TRANSIENT_DELETED
-
- */
-typedef enum lob_locator_state LOB_LOCATOR_STATE;
-enum lob_locator_state
-{
-  LOB_UNKNOWN,
-  LOB_TRANSIENT_CREATED,
-  LOB_TRANSIENT_DELETED,
-  LOB_PERMANENT_CREATED,
-  LOB_PERMANENT_DELETED,
-  LOB_NOT_FOUND
-};
-
 /* lob entry */
 typedef struct lob_locator_entry LOB_LOCATOR_ENTRY;
 
@@ -751,13 +1288,13 @@ typedef struct lob_locator_entry LOB_LOCATOR_ENTRY;
  */
 RB_HEAD (lob_rb_root, lob_locator_entry);
 
-typedef enum tran_abort_reason TRAN_ABORT_REASON;
 enum tran_abort_reason
 {
   TRAN_NORMAL = 0,
   TRAN_ABORT_DUE_DEADLOCK = 1,
   TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION = 2
 };
+typedef enum tran_abort_reason TRAN_ABORT_REASON;
 
 typedef struct log_unique_stats LOG_UNIQUE_STATS;
 struct log_unique_stats
@@ -777,13 +1314,13 @@ struct log_tran_btid_unique_stats
   LOG_UNIQUE_STATS global_stats;	/* statistics loaded from index */
 };
 
-typedef enum count_optim_state COUNT_OPTIM_STATE;
 enum count_optim_state
 {
   COS_NOT_LOADED = 0,		/* the global statistics was not loaded yet */
   COS_TO_LOAD = 1,		/* the global statistics must be loaded when snapshot is taken */
   COS_LOADED = 2		/* the global statistics were loaded */
 };
+typedef enum count_optim_state COUNT_OPTIM_STATE;
 
 #define TRAN_UNIQUE_STATS_CHUNK_SIZE  128	/* size of the memory chunk for unique statistics */
 
@@ -900,380 +1437,17 @@ struct mvcctable
   { MVCC_STATUS_INITIALIZER, NULL, NULL, 0, PTHREAD_MUTEX_INITIALIZER }
 #endif
 
-/*
- * This structure encapsulates various information and metrics related
- * to each backup level.
- * Estimates and heuristics are not currently used but are placeholder
- * for the future to avoid changing the physical representation again.
- */
-typedef struct log_hdr_bkup_level_info LOG_HDR_BKUP_LEVEL_INFO;
-struct log_hdr_bkup_level_info
-{
-  INT64 bkup_attime;		/* Timestamp when this backup lsa taken */
-  INT64 io_baseln_time;		/* time (secs.) to write a single page */
-  INT64 io_bkuptime;		/* total time to write the backup */
-  int ndirty_pages_post_bkup;	/* number of pages written since the lsa for this backup level. */
-  int io_numpages;		/* total number of pages in last backup */
-};
-
-/*
- * LOG HEADER INFORMATION
- */
-typedef struct log_header LOG_HEADER;
-struct log_header
-{				/* Log header information */
-  char magic[CUBRID_MAGIC_MAX_LENGTH];	/* Magic value for file/magic Unix utility */
-  INT32 dummy;			/* for 8byte align */
-  INT64 db_creation;		/* Database creation time. For safety reasons, this value is set on all volumes and the
-				 * log. The value is generated by the log manager */
-  char db_release[REL_MAX_RELEASE_LENGTH];	/* CUBRID Release */
-  float db_compatibility;	/* Compatibility of the database against the current release of CUBRID */
-  PGLENGTH db_iopagesize;	/* Size of pages in the database. For safety reasons this value is recorded in the log
-				 * to make sure that the database is always run with the same page size */
-  PGLENGTH db_logpagesize;	/* Size of log pages in the database. */
-  int is_shutdown;		/* Was the log shutdown ? */
-  TRANID next_trid;		/* Next Transaction identifier */
-  MVCCID mvcc_next_id;		/* Next MVCC ID */
-  int avg_ntrans;		/* Number of average transactions */
-  int avg_nlocks;		/* Average number of object locks */
-  DKNPAGES npages;		/* Number of pages in the active log portion. Does not include the log header page. */
-  INT8 db_charset;
-  INT8 dummy2;			/* Dummy fields for 8byte align */
-  INT8 dummy3;
-  INT8 dummy4;
-  LOG_PAGEID fpageid;		/* Logical pageid at physical location 1 in active log */
-  LOG_LSA append_lsa;		/* Current append location */
-  LOG_LSA chkpt_lsa;		/* Lowest log sequence address to start the recovery process */
-  LOG_PAGEID nxarv_pageid;	/* Next logical page to archive */
-  LOG_PHY_PAGEID nxarv_phy_pageid;	/* Physical location of logical page to archive */
-  int nxarv_num;		/* Next log archive number */
-  int last_arv_num_for_syscrashes;	/* Last log archive needed for system crashes */
-  int last_deleted_arv_num;	/* Last deleted archive number */
-  LOG_LSA bkup_level0_lsa;	/* Lsa of backup level 0 */
-  LOG_LSA bkup_level1_lsa;	/* Lsa of backup level 1 */
-  LOG_LSA bkup_level2_lsa;	/* Lsa of backup level 2 */
-  char prefix_name[MAXLOGNAME];	/* Log prefix name */
-  bool has_logging_been_skipped;	/* Has logging been skipped ? */
-  int reserved_int_1;		/* for backward compatibility - previously used for lowest_arv_num_for_backup */
-  int reserved_int_2;		/* for backward compatibility - previously used for highest_arv_num_for_backup */
-  int perm_status;		/* Reserved for future expansion and permanent status indicators, e.g. to mark
-				 * RESTORE_IN_PROGRESS */
-  LOG_HDR_BKUP_LEVEL_INFO bkinfo[FILEIO_BACKUP_UNDEFINED_LEVEL];
-  /* backup specific info for future growth */
-
-  int ha_server_state;
-  int ha_file_status;
-  LOG_LSA eof_lsa;
-
-  LOG_LSA smallest_lsa_at_last_chkpt;
-
-  LOG_LSA mvcc_op_log_lsa;	/* Used to link log entries for mvcc operations. Vacuum will then process these entries */
-  MVCCID last_block_oldest_mvccid;	/* Used to find the oldest MVCCID in a block of log data. */
-  MVCCID last_block_newest_mvccid;	/* Used to find the newest MVCCID in a block of log data. */
-
-  /* TODO VACUUM_DATA_COMPATIBILITY: remove vacuum_data_first_vpid and all its references ==> */
-  VPID vacuum_data_first_vpid;	/* First vacuum data page VPID. */
-  /* TODO VACUUM_DATA_COMPATIBILITY: <=== */
-
-  INT64 ha_promotion_time;
-  INT64 db_restore_time;
-  bool mark_will_del;
-};
-
-#define LOG_HEADER_INITIALIZER                   \
-  {                                              \
-     /* magic */                                 \
-     {'0'},                                      \
-     0, 0,                                       \
-     /* db_release */                            \
-     {'0'},                                      \
-     /* db_compatibility */                      \
-     0.0,                                        \
-     0, 0, 0,                                    \
-     /* next_trid */                             \
-     (LOG_SYSTEM_TRANID + 1),                    \
-     /* mvcc_id */				 \
-     MVCCID_NULL,                                \
-     0, 0, 0,					 \
-     /* db_charset */				 \
-     0,						 \
-     0, 0, 0, 0,				 \
-     /* append_lsa */                            \
-     {NULL_PAGEID, NULL_OFFSET},                 \
-     /* chkpt_lsa */                             \
-     {NULL_PAGEID, NULL_OFFSET},                 \
-     /* nxarv_pageid */                          \
-     0,                                          \
-     /* nxarv_phy_pageid */                      \
-     0,                                          \
-     0, 0, 0,                                    \
-     /* bkup_level0_lsa */                       \
-     {NULL_PAGEID, NULL_OFFSET},                 \
-     /* bkup_level1_lsa */                       \
-     {NULL_PAGEID, NULL_OFFSET},                 \
-     /* bkup_level2_lsa */                       \
-     {NULL_PAGEID, NULL_OFFSET},                 \
-     /* prefix_name */                           \
-     {'0'},                                      \
-     /* has_logging_been_skipped */              \
-     false,                                      \
-     0, 0, 0,                                    \
-     /* bkinfo */                                \
-     {{0, 0, 0, 0, 0}},                          \
-     0, 0,                                       \
-     /* eof_lsa */                               \
-     {NULL_PAGEID, NULL_OFFSET},                 \
-     /* smallest_lsa_at_last_chkpt */            \
-     {NULL_PAGEID, NULL_OFFSET},                 \
-     /* mvcc_op_log_lsa */			 \
-     {NULL_PAGEID, NULL_OFFSET},                 \
-     /* last_block_oldest_mvccid */		 \
-     MVCCID_NULL,				 \
-     /* last_block_newest_mvccid */		 \
-     MVCCID_NULL,				 \
-     /* vacuum_data_first_vpid */		 \
-     VPID_INITIALIZER,				 \
-     /* ha_promotion_time */ 			 \
-     0, 					 \
-     /* db_restore_time */			 \
-     0,						 \
-     /* mark_will_del */			 \
-     false					 \
-  }
-
-#define LOGWR_HEADER_INITIALIZER                 \
-  {                                              \
-     /* magic */                                 \
-     {'0'},                                      \
-     0, 0,                                       \
-     /* db_release */                            \
-     {'0'},                                      \
-     /* db_compatibility */                      \
-     0.0,                                        \
-     0, 0, 0,                                    \
-     /* next_trid */                             \
-     NULL_TRANID,                                \
-     /* mvcc_next_id */                          \
-     MVCCID_NULL,                                \
-     0, 0, 0,					 \
-     /* db_charset */				 \
-     0,						 \
-     0, 0, 0, 0,				 \
-     /* append_lsa */                            \
-     {NULL_PAGEID, NULL_OFFSET},                 \
-     /* chkpt_lsa */                             \
-     {NULL_PAGEID, NULL_OFFSET},                 \
-     /* nxarv_pageid */                          \
-     NULL_PAGEID,                                \
-     /* nxarv_phy_pageid */                      \
-     NULL_PAGEID,                                \
-     -1, -1, -1,                                 \
-     /* bkup_level0_lsa */                       \
-     {NULL_PAGEID, NULL_OFFSET},                 \
-     /* bkup_level1_lsa */                       \
-     {NULL_PAGEID, NULL_OFFSET},                 \
-     /* bkup_level2_lsa */                       \
-     {NULL_PAGEID, NULL_OFFSET},                 \
-     /* prefix_name */                           \
-     {'0'},                                      \
-     /* has_logging_been_skipped */              \
-     false,                                      \
-     0, 0, 0,                                    \
-     /* bkinfo */                                \
-     {{0, 0, 0, 0, 0}},                          \
-     0, 0,                                       \
-     /* eof_lsa */                               \
-     {NULL_PAGEID, NULL_OFFSET},                 \
-     /* smallest_lsa_at_last_chkpt */            \
-     {NULL_PAGEID, NULL_OFFSET},                 \
-     /* mvcc_op_log_lsa */			 \
-     {NULL_PAGEID, NULL_OFFSET},                 \
-     /* last_block_oldest_mvccid */		 \
-     MVCCID_NULL,				 \
-     /* last_block_newest_mvccid */		 \
-     MVCCID_NULL,				 \
-     /* vacuum_data_first_vpid */		 \
-     VPID_INITIALIZER,				 \
-     /* ha_promotion_time */ 			 \
-     0, 					 \
-     /* db_restore_time */			 \
-     0,						 \
-     /* mark_will_del */			 \
-     false					 \
-  }
-
-typedef struct log_arv_header LOG_ARV_HEADER;
-struct log_arv_header
-{				/* Log archive header information */
-  char magic[CUBRID_MAGIC_MAX_LENGTH];	/* Magic value for file/magic Unix utility */
-  INT32 dummy;			/* for 8byte align */
-  INT64 db_creation;		/* Database creation time. For safety reasons, this value is set on all volumes and the
-				 * log. The value is generated by the log manager */
-  TRANID next_trid;		/* Next Transaction identifier */
-  DKNPAGES npages;		/* Number of pages in the archive log */
-  LOG_PAGEID fpageid;		/* Logical pageid at physical location 1 in archive log */
-  int arv_num;			/* The archive number */
-  INT32 dummy2;			/* Dummy field for 8byte align */
-};
-
-#define LOG_ARV_HEADER_INITIALIZER \
-  { /* magic */ {'0'}, 0, 0, 0, 0, 0, 0, 0 }
-
-typedef struct log_bgarv_header LOG_BGARV_HEADER;
-struct log_bgarv_header
-{				/* Background log archive header information */
-  char magic[CUBRID_MAGIC_MAX_LENGTH];
-
-  INT32 dummy;
-  INT64 db_creation;
-
-  LOG_PAGEID start_page_id;
-  LOG_PAGEID current_page_id;
-  LOG_PAGEID last_sync_pageid;
-};
-
-#define LOG_BGARV_HEADER_INITIALIZER \
-  { /* magic */ {'0'}, 0, 0, NULL_PAGEID, NULL_PAGEID, NULL_PAGEID }
-
-typedef enum log_rectype LOG_RECTYPE;
-enum log_rectype
-{
-  /* In order of likely of appearance in the log */
-  LOG_SMALLER_LOGREC_TYPE = 0,	/* A lower bound check */
-
-#if 0
-  LOG_CLIENT_NAME = 1,		/* Obsolete */
-#endif
-  LOG_UNDOREDO_DATA = 2,	/* An undo and redo data record */
-  LOG_UNDO_DATA = 3,		/* Only undo data */
-  LOG_REDO_DATA = 4,		/* Only redo data */
-  LOG_DBEXTERN_REDO_DATA = 5,	/* Only database external redo data */
-  LOG_POSTPONE = 6,		/* Postpone redo data */
-  LOG_RUN_POSTPONE = 7,		/* Run/redo a postpone data. Only for transactions committed with postpone operations */
-  LOG_COMPENSATE = 8,		/* Compensation record (compensate a undo record of an aborted tran) */
-#if 0
-  LOG_LCOMPENSATE = 9,		/* Obsolete */
-  LOG_CLIENT_USER_UNDO_DATA = 10,	/* Obsolete */
-  LOG_CLIENT_USER_POSTPONE_DATA = 11,	/* Obsolete */
-  LOG_RUN_NEXT_CLIENT_UNDO = 12,	/* Obsolete */
-  LOG_RUN_NEXT_CLIENT_POSTPONE = 13,	/* Obsolete */
-#endif
-  LOG_WILL_COMMIT = 14,		/* Transaction will be committed */
-  LOG_COMMIT_WITH_POSTPONE = 15,	/* Committing server postpone operations */
-#if 0
-  LOG_COMMIT_WITH_CLIENT_USER_LOOSE_ENDS = 16,	/* Obsolete */
-#endif
-  LOG_COMMIT = 17,		/* A commit record */
-  LOG_SYSOP_START_POSTPONE = 18,	/* Committing server top system postpone operations */
-#if 0
-  LOG_COMMIT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS = 19,	/* Obsolete */
-#endif
-  LOG_SYSOP_END = 20,		/* end of system operation record. Its functionality can vary based on LOG_SYSOP_END_TYPE:
-				 *
-				 * - LOG_SYSOP_END_COMMIT: the usual functionality. changes under system operation become
-				 *   permanent immediately
-				 *
-				 * - LOG_SYSOP_END_LOGICAL_UNDO: system operation is used for complex logical operation (that
-				 *   usually affects more than one page). end system operation also includes undo data that
-				 *   is processed during rollback or undo.
-				 *
-				 * - LOG_SYSOP_END_LOGICAL_COMPENSATE: system operation is used for complex logical operation
-				 *   that has the purpose of compensating a change on undo or rollback. end system operation
-				 *   also includes the LSA of previous undo log record.
-				 *
-				 * - LOG_SYSOP_END_LOGICAL_RUN_POSTPONE: system operation is used for complex logical operation
-				 *   that has the purpose of running a postpone record. end system operation also includes the
-				 *   postpone LSA and is_sysop_postpone (recovery is different for logical run postpones during
-				 *   system operation postpone compared to transaction postpone).
-				 *
-				 * - LOG_SYSOP_END_ABORT: any of the above system operations are not ended due to crash or
-				 *   errors. the system operation is rollbacked and ended with this type.
-				 */
-#if 0
-  LOG_ABORT_WITH_CLIENT_USER_LOOSE_ENDS = 21,	/* Obsolete */
-#endif
-  LOG_ABORT = 22,		/* An abort record */
-#if 0
-  LOG_ABORT_TOPOPE_WITH_CLIENT_USER_LOOSE_ENDS = 23,	/* Obsolete */
-#endif
-  LOG_ABORT_TOPOPE = 24,	/* obsolete */
-  LOG_START_CHKPT = 25,		/* Start a checkpoint */
-  LOG_END_CHKPT = 26,		/* Checkpoint information */
-  LOG_SAVEPOINT = 27,		/* A user savepoint record */
-  LOG_2PC_PREPARE = 28,		/* A prepare to commit record */
-  LOG_2PC_START = 29,		/* Start the 2PC protocol by sending vote request messages to participants of
-				 * distributed tran. */
-  LOG_2PC_COMMIT_DECISION = 30,	/* Beginning of the second phase of 2PC, need to perform local & global commits. */
-  LOG_2PC_ABORT_DECISION = 31,	/* Beginning of the second phase of 2PC, need to perform local & global aborts. */
-  LOG_2PC_COMMIT_INFORM_PARTICPS = 32,	/* Committing, need to inform the participants */
-  LOG_2PC_ABORT_INFORM_PARTICPS = 33,	/* Aborting, need to inform the participants */
-  LOG_2PC_RECV_ACK = 34,	/* Received ack. from the participant that it received the decision on the fate of
-				 * dist. trans. */
-  LOG_END_OF_LOG = 35,		/* End of log */
-  LOG_DUMMY_HEAD_POSTPONE = 36,	/* A dummy log record. No-op */
-  LOG_DUMMY_CRASH_RECOVERY = 37,	/* A dummy log record which indicate the start of crash recovery. No-op */
-
-#if 0				/* not used */
-  LOG_DUMMY_FILLPAGE_FORARCHIVE = 38,	/* Indicates logical end of current page so it could be archived safely. No-op
-					 * This record is not generated no more. It's kept for backward compatibility. */
-#endif
-  LOG_REPLICATION_DATA = 39,	/* Replication log for insert, delete or update */
-  LOG_REPLICATION_STATEMENT = 40,	/* Replication log for schema, index, trigger or system catalog updates */
-#if 0
-  LOG_UNLOCK_COMMIT = 41,	/* for repl_agent to guarantee the order of */
-  LOG_UNLOCK_ABORT = 42,	/* transaction commit, we append the unlock info. before calling lock_unlock_all() */
-#endif
-  LOG_DIFF_UNDOREDO_DATA = 43,	/* diff undo redo data */
-  LOG_DUMMY_HA_SERVER_STATE = 44,	/* HA server state */
-  LOG_DUMMY_OVF_RECORD = 45,	/* indicator of the first part of an overflow record */
-
-  LOG_MVCC_UNDOREDO_DATA = 46,	/* Undoredo for MVCC operations (will require more fields than a regular undo-redo. */
-  LOG_MVCC_UNDO_DATA = 47,	/* Undo for MVCC operations */
-  LOG_MVCC_REDO_DATA = 48,	/* Redo for MVCC operations */
-  LOG_MVCC_DIFF_UNDOREDO_DATA = 49,	/* diff undo redo data for MVCC operations */
-
-  LOG_DUMMY_GENERIC,		/* used for flush for now. it is ridiculous to create dummy log records for every single
-				 * case. we should find a different approach */
-
-  LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
-};
-
-typedef enum log_repl_flush LOG_REPL_FLUSH;
 enum log_repl_flush
 {
   LOG_REPL_DONT_NEED_FLUSH = -1,	/* no flush */
   LOG_REPL_COMMIT_NEED_FLUSH = 0,	/* log must be flushed at commit */
   LOG_REPL_NEED_FLUSH = 1	/* log must be flushed at commit and rollback */
 };
-
-/* Definitions used to identify UNDO/REDO/UNDOREDO log record data types */
-
-/* Is record type UNDO */
-#define LOG_IS_UNDO_RECORD_TYPE(type) \
-  (((type) == LOG_UNDO_DATA) || ((type) == LOG_MVCC_UNDO_DATA))
-
-/* Is record type REDO */
-#define LOG_IS_REDO_RECORD_TYPE(type) \
-  (((type) == LOG_REDO_DATA) || ((type) == LOG_MVCC_REDO_DATA))
-
-/* Is record type UNDOREDO */
-#define LOG_IS_UNDOREDO_RECORD_TYPE(type) \
-  (((type) == LOG_UNDOREDO_DATA) || ((type) == LOG_MVCC_UNDOREDO_DATA) \
-   || ((type) == LOG_DIFF_UNDOREDO_DATA) || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
-
-#define LOG_IS_DIFF_UNDOREDO_TYPE(type) \
-  ((type) == LOG_DIFF_UNDOREDO_DATA || (type) == LOG_MVCC_DIFF_UNDOREDO_DATA)
+typedef enum log_repl_flush LOG_REPL_FLUSH;
 
 /* Definitions used to identify MVCC log records. Used by log manager and
  * vacuum.
  */
-
-/* Is record type used a MVCC operation */
-#define LOG_IS_MVCC_OP_RECORD_TYPE(type) \
-  (((type) == LOG_MVCC_UNDO_DATA) \
-   || ((type) == LOG_MVCC_REDO_DATA) \
-   || ((type) == LOG_MVCC_UNDOREDO_DATA) \
-   || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
 
 /* Is log record for a heap MVCC operation */
 #define LOG_IS_MVCC_HEAP_OPERATION(rcvindex) \
@@ -1297,14 +1471,6 @@ enum log_repl_flush
    || LOG_IS_MVCC_BTREE_OPERATION (rcvindex) \
    || ((rcvindex) == RVES_NOTIFY_VACUUM))
 
-/* Is log record for a change on vacuum data */
-#define LOG_IS_VACUUM_DATA_RECOVERY(rcvindex) \
-  ((rcvindex) == RVVAC_LOG_BLOCK_APPEND	\
-   || (rcvindex) == RVVAC_LOG_BLOCK_REMOVE \
-   || (rcvindex) == RVVAC_LOG_BLOCK_SAVE \
-   || (rcvindex) == RVVAC_START_OR_END_JOB \
-   || (rcvindex) == RVVAC_COMPLETE)
-
 #define LOG_IS_VACUUM_DATA_BUFFER_RECOVERY(rcvindex) \
   (((rcvindex) == RVVAC_LOG_BLOCK_APPEND || (rcvindex) == RVVAC_LOG_BLOCK_SAVE) \
    && log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
@@ -1319,88 +1485,6 @@ struct log_repl
   char *repl_data;		/* the content of the replication log record */
   int length;
   LOG_REPL_FLUSH must_flush;
-};
-
-/* Description of a log record */
-typedef struct log_rec_header LOG_RECORD_HEADER;
-struct log_rec_header
-{
-  LOG_LSA prev_tranlsa;		/* Address of previous log record for the same transaction */
-  LOG_LSA back_lsa;		/* Backward log address */
-  LOG_LSA forw_lsa;		/* Forward log address */
-  TRANID trid;			/* Transaction identifier of the log record */
-  LOG_RECTYPE type;		/* Log record type (e.g., commit, abort) */
-};
-
-/* Common information of log data records */
-typedef struct log_data LOG_DATA;
-struct log_data
-{
-  LOG_RCVINDEX rcvindex;	/* Index to recovery function */
-  PAGEID pageid;		/* Pageid of recovery data */
-  PGLENGTH offset;		/* offset of recovery data in pageid */
-  VOLID volid;			/* Volume identifier of recovery data */
-};
-
-/* Information of undo_redo log records */
-typedef struct log_rec_undoredo LOG_REC_UNDOREDO;
-struct log_rec_undoredo
-{
-  LOG_DATA data;		/* Location of recovery data */
-  int ulength;			/* Length of undo data */
-  int rlength;			/* Length of redo data */
-};
-
-/* Information of undo log records */
-typedef struct log_rec_undo LOG_REC_UNDO;
-struct log_rec_undo
-{
-  LOG_DATA data;		/* Location of recovery data */
-  int length;			/* Length of undo data */
-};
-
-/* Information of redo log records */
-typedef struct log_rec_redo LOG_REC_REDO;
-struct log_rec_redo
-{
-  LOG_DATA data;		/* Location of recovery data */
-  int length;			/* Length of redo data */
-};
-
-/* Log information required for vacuum */
-typedef struct log_vacuum_info LOG_VACUUM_INFO;
-struct log_vacuum_info
-{
-  LOG_LSA prev_mvcc_op_log_lsa;	/* Log lsa of previous MVCC operation log record. Used by vacuum to process log data. */
-  VFID vfid;			/* File identifier. Will be used by vacuum for heap files (TODO: maybe b-tree too).
-				 * Used to: - Find if the file was dropped/reused. - Find the type of objects in heap
-				 * file (reusable or referable). */
-};
-
-/* Information of undo_redo log records for MVCC operations */
-typedef struct log_rec_mvcc_undoredo LOG_REC_MVCC_UNDOREDO;
-struct log_rec_mvcc_undoredo
-{
-  LOG_REC_UNDOREDO undoredo;	/* Undoredo information */
-  MVCCID mvccid;		/* MVCC Identifier for transaction */
-  LOG_VACUUM_INFO vacuum_info;	/* Info required for vacuum */
-};
-
-/* Information of undo log records for MVCC operations */
-typedef struct log_rec_mvcc_undo LOG_REC_MVCC_UNDO;
-struct log_rec_mvcc_undo
-{
-  LOG_REC_UNDO undo;		/* Undo information */
-  MVCCID mvccid;		/* MVCC Identifier for transaction */
-  LOG_VACUUM_INFO vacuum_info;	/* Info required for vacuum */
-};
-
-/* Information of redo log records for MVCC operations */
-typedef struct log_rec_mvcc_redo LOG_REC_MVCC_REDO;
-struct log_rec_mvcc_redo
-{
-  LOG_REC_REDO redo;		/* Location of recovery data */
-  MVCCID mvccid;		/* MVCC Identifier for transaction */
 };
 
 /* Information of database external redo log records */
@@ -1428,7 +1512,6 @@ struct log_rec_start_postpone
 };
 
 /* types of end system operation */
-typedef enum log_sysop_end_type LOG_SYSOP_END_TYPE;
 enum log_sysop_end_type
 {
   LOG_SYSOP_END_COMMIT,		/* permanent changes */
@@ -1438,6 +1521,7 @@ enum log_sysop_end_type
   LOG_SYSOP_END_LOGICAL_COMPENSATE,	/* logical compensate */
   LOG_SYSOP_END_LOGICAL_RUN_POSTPONE	/* logical run postpone */
 };
+typedef enum log_sysop_end_type LOG_SYSOP_END_TYPE;
 #define LOG_SYSOP_END_TYPE_CHECK(type) \
   assert ((type) == LOG_SYSOP_END_COMMIT \
           || (type) == LOG_SYSOP_END_ABORT \
@@ -1493,15 +1577,6 @@ struct log_rec_chkpt
   int ntops;			/* Total number of system operations */
 };
 
-/* replication log structure */
-typedef struct log_rec_replication LOG_REC_REPLICATION;
-struct log_rec_replication
-{
-  LOG_LSA lsa;
-  int length;
-  int rcvindex;
-};
-
 /* Transaction descriptor */
 typedef struct log_info_chkpt_trans LOG_INFO_CHKPT_TRANS;
 struct log_info_chkpt_trans
@@ -1521,11 +1596,12 @@ struct log_info_chkpt_trans
 
 };
 
-typedef struct log_info_chkpt_sysop_start_postpone LOG_INFO_CHKPT_SYSOP_START_POSTPONE;
-struct log_info_chkpt_sysop_start_postpone
+typedef struct log_info_chkpt_sysop LOG_INFO_CHKPT_SYSOP;
+struct log_info_chkpt_sysop
 {
   TRANID trid;			/* Transaction identifier */
   LOG_LSA sysop_start_postpone_lsa;	/* saved lsa of system op start postpone log record */
+  LOG_LSA atomic_sysop_start_lsa;	/* saved lsa of atomic system op start */
 };
 
 typedef struct log_rec_savept LOG_REC_SAVEPT;
@@ -1567,23 +1643,6 @@ struct log_rec_2pc_particp_ack
   int particp_index;		/* Index of the acknowledging participant */
 };
 
-/* Log the time of termination of transaction */
-typedef struct log_rec_donetime LOG_REC_DONETIME;
-struct log_rec_donetime
-{
-  INT64 at_time;		/* Database creation time. For safety reasons */
-};
-
-/* Log the change of the server's HA state */
-typedef struct log_rec_ha_server_state LOG_REC_HA_SERVER_STATE;
-struct log_rec_ha_server_state
-{
-  int state;			/* ha_Server_state */
-  int dummy;			/* dummy for alignment */
-
-  INT64 at_time;		/* time recorded by active server */
-};
-
 typedef struct log_rcv_tdes LOG_RCV_TDES;
 struct log_rcv_tdes
 {
@@ -1593,6 +1652,10 @@ struct log_rcv_tdes
   LOG_LSA sysop_start_postpone_lsa;
   /* we need to know where transaction postpone has started. */
   LOG_LSA tran_start_postpone_lsa;
+  /* we need to know if file_perm_alloc or file_perm_dealloc operations have been interrupted. these operation must be
+   * executed atomically (all changes applied or all rollbacked) before executing finish all postpones. to know what
+   * to abort, we remember the starting LSA of such operation. */
+  LOG_LSA atomic_sysop_start_lsa;
 };
 
 typedef struct log_tdes LOG_TDES;
@@ -1604,7 +1667,7 @@ struct log_tdes
   int tran_index;		/* Index onto transaction table */
   TRANID trid;			/* Transaction identifier */
 
-  int isloose_end;
+  bool isloose_end;
   TRAN_STATE state;		/* Transaction state (e.g., Active, aborted) */
   TRAN_ISOLATION isolation;	/* Isolation level */
   int wait_msecs;		/* Wait until this number of milliseconds for locks; also see xlogtb_reset_wait_msecs */
@@ -1719,7 +1782,6 @@ struct log_crumb
 };
 
 /* state of recovery process */
-typedef enum log_recvphase LOG_RECVPHASE;
 enum log_recvphase
 {
   LOG_RESTARTED,		/* Normal processing.. recovery has been executed. */
@@ -1728,6 +1790,7 @@ enum log_recvphase
   LOG_RECOVERY_UNDO_PHASE,	/* Undoing phase */
   LOG_RECOVERY_FINISH_2PC_PHASE	/* Finishing up transactions that were in 2PC protocol at the time of the crash */
 };
+typedef enum log_recvphase LOG_RECVPHASE;
 
 typedef struct log_archives LOG_ARCHIVES;
 struct log_archives
@@ -1741,18 +1804,6 @@ struct log_archives
 
 #define LOG_ARCHIVES_INITIALIZER \
   { NULL_VOLDES, LOG_ARV_HEADER_INITIALIZER, 0, 0, NULL /* unav_archives */ }
-
-typedef struct background_archiving_info BACKGROUND_ARCHIVING_INFO;
-struct background_archiving_info
-{
-  LOG_PAGEID start_page_id;
-  LOG_PAGEID current_page_id;
-  LOG_PAGEID last_sync_pageid;
-  int vdes;
-};
-
-#define BACKGROUND_ARCHIVING_INFO_INITIALIZER \
-  { NULL_PAGEID, NULL_PAGEID, NULL_PAGEID, NULL_VOLDES }
 
 typedef struct log_data_addr LOG_DATA_ADDR;
 struct log_data_addr
@@ -1872,7 +1923,7 @@ struct log_global
   LOG_LSA rcv_phase_lsa;	/* LSA of phase (e.g. Restart) */
 
 #if defined(SERVER_MODE)
-  int backup_in_progress;
+  bool backup_in_progress;
 #else				/* SERVER_MODE */
   LOG_LSA final_restored_lsa;
 #endif				/* SERVER_MODE */
@@ -1964,9 +2015,9 @@ typedef struct log_logging_stat
 } LOG_LOGGING_STAT;
 
 
-typedef enum log_cs_access_mode LOG_CS_ACCESS_MODE;
 enum log_cs_access_mode
 { LOG_CS_FORCE_USE, LOG_CS_SAFE_READER };
+typedef enum log_cs_access_mode LOG_CS_ACCESS_MODE;
 
 
 #if !defined(SERVER_MODE)
@@ -1979,11 +2030,6 @@ extern int log_Tran_index;	/* Index onto transaction table for current thread of
 extern LOG_GLOBAL log_Gl;
 
 extern LOG_LOGGING_STAT log_Stat;
-
-#if defined(HAVE_ATOMIC_BUILTINS)
-/* Current time in seconds */
-extern UINT64 log_Clock_msec;
-#endif /* HAVE_ATOMIC_BUILTINS */
 
 /* Name of the database and logs */
 extern char log_Path[];
@@ -2018,6 +2064,18 @@ extern char log_Name_removed_archive[];
 
 #define LOG_RV_RECORD_UPDPARTIAL_ALIGNED_SIZE(new_data_size) \
   (DB_ALIGN (new_data_size + OR_SHORT_SIZE + 2 * OR_BYTE_SIZE, INT_ALIGNMENT))
+
+/* logging */
+#if defined (SA_MODE)
+#define LOG_THREAD_TRAN_MSG "%s"
+#define LOG_THREAD_TRAN_ARGS(thread_p) "(SA_MODE)"
+#else	/* !SA_MODE */	       /* SERVER_MODE */
+#define LOG_THREAD_TRAN_MSG "(thr=%d, trid=%d)"
+#define LOG_THREAD_TRAN_ARGS(thread_p) \
+  thread_get_current_entry_index (), \
+  vacuum_is_thread_vacuum (thread_p) && vacuum_get_vacuum_worker (thread_p) != NULL ? \
+  vacuum_get_worker_tdes (thread_p)->trid : LOG_FIND_CURRENT_TDES (thread_p)->trid
+#endif /* SERVER_MODE */
 
 extern int logpb_initialize_pool (THREAD_ENTRY * thread_p);
 extern void logpb_finalize_pool (THREAD_ENTRY * thread_p);
@@ -2090,9 +2148,6 @@ extern int logpb_initialize_log_names (THREAD_ENTRY * thread_p, const char *db_f
 				       const char *prefix_logname);
 extern bool logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 			     const char *prefix_logname);
-#if defined(SERVER_MODE)
-extern void logpb_do_checkpoint (void);
-#endif /* SERVER_MODE */
 extern LOG_PAGEID logpb_checkpoint (THREAD_ENTRY * thread_p);
 extern void logpb_dump_checkpoint_trans (FILE * out_fp, int length, void *data);
 extern int logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_path,
@@ -2107,7 +2162,7 @@ extern int logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 extern int logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *to_db_fullname,
 					   const char *to_logpath, const char *to_prefix_logname,
 					   const char *toext_path, const char *fileof_vols_and_renamepaths,
-					   int extern_rename, bool force_delete);
+					   bool extern_rename, bool force_delete);
 extern int logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fullname, const char *logpath,
 			 const char *prefix_logname, bool force_delete);
 extern int logpb_check_exist_any_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -2228,6 +2283,10 @@ extern char *logtb_find_client_hostname (int tran_index);
 extern void logtb_set_current_user_active (THREAD_ENTRY * thread_p, bool is_user_active);
 extern int logtb_find_client_name_host_pid (int tran_index, char **client_prog_name, char **client_user_name,
 					    char **client_host_name, int *client_pid);
+#if defined (SERVER_MODE)
+extern int logtb_find_client_tran_name_host_pid (int &tran_index, char **client_prog_name, char **client_user_name,
+						 char **client_host_name, int *client_pid);
+#endif // SERVER_MODE
 extern int logtb_find_current_client_name_host_pid (char **client_prog_name, char **client_user_name,
 						    char **client_host_name, int *client_pid);
 extern int logtb_get_client_ids (int tran_index, LOG_CLIENTIDS * client_info);
@@ -2238,11 +2297,11 @@ extern char *logtb_find_current_client_hostname (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p);
 extern TRAN_STATE logtb_find_state (int tran_index);
 extern int logtb_find_wait_msecs (int tran_index);
-extern int logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p);
+
 extern int logtb_find_interrupt (int tran_index, bool * interrupt);
 extern TRAN_ISOLATION logtb_find_isolation (int tran_index);
 extern TRAN_ISOLATION logtb_find_current_isolation (THREAD_ENTRY * thread_p);
-extern bool logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, int set);
+extern bool logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool set);
 extern bool logtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int tran_index, int set);
 extern bool logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking);
 extern bool logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking, int tran_index);
@@ -2329,12 +2388,29 @@ extern void logtb_reset_bit_area_start_mvccid (void);
 extern void log_set_ha_promotion_time (THREAD_ENTRY * thread_p, INT64 ha_promotion_time);
 extern void log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time);
 
-#if !defined (NDEBUG)
-extern int logtb_collect_local_clients (int **local_client_pids);
-#endif /* !NDEBUG */
-
 extern int logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p);
 
 extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 
+extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr);
+
+extern VACUUM_LOG_BLOCKID logpb_last_complete_blockid (void);
+
+extern void logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index);
+extern int xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user, char *kill_host,
+				   int kill_pid);
+extern int xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_id, bool is_dba_group_member,
+					  bool interrupt_only);
+extern THREAD_ENTRY *logtb_find_thread_by_tran_index (int tran_index);
+extern THREAD_ENTRY *logtb_find_thread_by_tran_index_except_me (int tran_index);
+extern int logtb_get_current_tran_index (void);
+extern void logtb_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index);
+#if defined (SERVER_MODE)
+extern void logtb_wakeup_thread_with_tran_index (int tran_index, thread_resume_suspend_status resume_reason);
+#endif // SERVER_MODE
+
+extern bool logtb_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
+extern bool logtb_get_check_interrupt (THREAD_ENTRY * thread_p);
+
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #endif /* _LOG_IMPL_H_ */

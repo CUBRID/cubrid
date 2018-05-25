@@ -27,7 +27,7 @@
     <DirectoryRef Id="TARGETDIR">
       <Merge Id="VCRedist" SourceFile="$(env.ProgramFiles)\Common Files\Merge Modules\@WIX_VCREDIST_MSM@" DiskId="1" Language="0"/>
     </DirectoryRef>
-    <Feature Id="VCRedist" Title="Visual C++ 9.0 Runtime" AllowAdvertise="no" Display="hidden" Level="1">
+    <Feature Id="VCRedist" Title="Visual C++ Runtime" AllowAdvertise="no" Display="hidden" Level="1">
       <MergeRef Id="VCRedist"/>
 <?endif?>
     </Feature>

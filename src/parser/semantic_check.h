@@ -27,6 +27,13 @@
 
 #ident "$Id$"
 
+typedef enum
+{
+  STATEMENT_SET_FOLD_NOTHING = 0,
+  STATEMENT_SET_FOLD_AS_NULL,
+  STATEMENT_SET_FOLD_AS_ARG1,
+  STATEMENT_SET_FOLD_AS_ARG2
+} STATEMENT_SET_FOLD;
 
 extern int pt_class_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_class, const PT_NODE * s_class);
 
@@ -62,5 +69,9 @@ extern int pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * att
 extern PT_NODE *pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 							int *continue_walk);
 extern void pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query);
+
+extern STATEMENT_SET_FOLD pt_check_union_is_foldable (PARSER_CONTEXT * parser, PT_NODE * union_node);
+
+extern PT_NODE *pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD fold_as);
 
 #endif /* _SEMANTIC_CHECK_H_ */

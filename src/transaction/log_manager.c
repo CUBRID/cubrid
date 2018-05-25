@@ -43,44 +43,40 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include "porting.h"
+#include <cstdint>
+
 #include "log_manager.h"
-#include "log_impl.h"
-#include "log_comm.h"
+
 #include "recovery.h"
-#include "lock_manager.h"
-#include "memory_alloc.h"
-#include "storage_common.h"
-#include "release_string.h"
-#include "system_parameter.h"
-#include "error_manager.h"
 #include "xserver_interface.h"
 #include "page_buffer.h"
-#include "file_io.h"
-#include "disk_manager.h"
-#include "file_manager.h"
 #include "query_manager.h"
 #include "message_catalog.h"
 #include "environment_variable.h"
-#include "wait_for_graph.h"
 #if defined(SERVER_MODE)
-#include "connection_defs.h"
-#include "connection_error.h"
-#include "thread.h"
-#include "job_queue.h"
 #include "server_support.h"
 #endif /* SERVER_MODE */
 #include "log_compress.h"
-#include "object_print.h"
-#include "replication.h"
-#include "es.h"
-#include "memory_hash.h"
-#include "partition.h"
-#include "connection_support.h"
+#include "partition_sr.h"
 #include "log_writer.h"
 #include "filter_pred_cache.h"
-
+#include "heap_file.h"
+#include "slotted_page.h"
+#include "object_primitive.h"
+#include "db_date.h"
 #include "fault_injection.h"
+#if defined (SA_MODE)
+#include "connection_support.h"
+#endif /* defined (SA_MODE) */
+#include "db_value_printer.hpp"
+#include "mem_block.hpp"
+#include "string_buffer.hpp"
+#include "boot_sr.h"
+#include "thread_daemon.hpp"
+#include "thread_entry_task.hpp"
+#include "thread_manager.hpp"
+
+#include "dbtype.h"
 
 #if !defined(SERVER_MODE)
 
@@ -208,11 +204,40 @@ extern INT32 vacuum_Global_oldest_active_blockers_counter;
 #define LOG_TDES_LAST_SYSOP_PARENT_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->lastparent_lsa)
 #define LOG_TDES_LAST_SYSOP_POSP_LSA(tdes) (&LOG_TDES_LAST_SYSOP(tdes)->posp_lsa)
 
+#if defined (SERVER_MODE)
+/* Current time in milliseconds */
+// *INDENT-OFF*
+std::atomic<std::int64_t> log_Clock_msec = {0};
+// *INDENT-ON*
+#endif /* SERVER_MODE */
+
+// *INDENT-OFF*
+#if defined (SERVER_MODE)
+class log_abort_task : public cubthread::entry_task
+{
+public:
+  log_abort_task (void) = delete;
+
+  log_abort_task (log_tdes &tdes)
+  : m_tdes (tdes)
+  {
+  }
+
+  void execute (context_type &thread_ref) final override;
+
+  // retire deletes me
+    
+private:
+  log_tdes &m_tdes;
+};
+#endif // SERVER_MODE
+// *INDENT-ON*
+
 static bool log_verify_dbcreation (THREAD_ENTRY * thread_p, VOLID volid, const INT64 * log_dbcreation);
 static int log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				const char *prefix_logname, DKNPAGES npages, INT64 * db_creation);
 static int log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-				    const char *prefix_logname, int ismedia_crash, BO_RESTART_ARG * r_args,
+				    const char *prefix_logname, bool ismedia_crash, BO_RESTART_ARG * r_args,
 				    bool init_emergency);
 #if defined(SERVER_MODE)
 static int log_abort_by_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
@@ -308,7 +333,7 @@ static int log_is_valid_locator (const char *locator);
 
 static void log_cleanup_modified_class (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * t, void *arg);
 static void log_map_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa, bool release,
-					 void (*map_func) (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * class,
+					 void (*map_func) (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * clazz,
 							   void *arg), void *arg);
 static void log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa,
 					     bool release, bool decache_classrepr);
@@ -331,6 +356,24 @@ STATIC_INLINE int log_sysop_get_level (THREAD_ENTRY * thread_p) __attribute__ ((
 static void log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
 				   int data_size, const char *data);
+
+#if defined(SERVER_MODE)
+// *INDENT-OFF*
+static cubthread::daemon *log_Clock_daemon = NULL;
+static cubthread::daemon *log_Checkpoint_daemon = NULL;
+static cubthread::daemon *log_Remove_log_archive_daemon = NULL;
+static cubthread::daemon *log_Check_ha_delay_info_daemon = NULL;
+
+static cubthread::daemon *log_Flush_daemon = NULL;
+static std::atomic_bool log_Flush_has_been_requested = {false};
+// *INDENT-ON*
+
+static void log_daemons_init ();
+static void log_daemons_destroy ();
+
+// used by log_Check_ha_delay_info_daemon
+extern int catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_record_time);
+#endif /* SERVER_MODE */
 
 /*
  * log_rectype_string - RETURN TYPE OF LOG RECORD IN STRING FORMAT
@@ -444,6 +487,9 @@ log_to_string (LOG_RECTYPE type)
     case LOG_REPLICATION_STATEMENT:
       return "LOG_REPLICATION_STATEMENT";
 
+    case LOG_SYSOP_ATOMIC_START:
+      return "LOG_SYSOP_ATOMIC_START";
+
     case LOG_DUMMY_HA_SERVER_STATE:
       return "LOG_DUMMY_HA_SERVER_STATE";
     case LOG_DUMMY_OVF_RECORD:
@@ -483,7 +529,6 @@ log_is_in_crash_recovery (void)
       return true;
     }
 }
-
 
 /*
  * log_get_restart_lsa - FIND RESTART LOG SEQUENCE ADDRESS
@@ -541,7 +586,6 @@ log_get_append_lsa (void)
 {
   return (&log_Gl.hdr.append_lsa);
 }
-
 
 /*
  * log_get_eof_lsa -
@@ -987,7 +1031,17 @@ void
 log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath, const char *prefix_logname,
 		int ismedia_crash, BO_RESTART_ARG * r_args)
 {
+  er_log_debug (ARG_FILE_LINE, "LOG INITIALIZE\n" "\tdb_fullname = %s \n" "\tlogpath = %s \n"
+		"\tprefix_logname = %s \n" "\tismedia_crash = %d \n",
+		db_fullname != NULL ? db_fullname : "(UNKNOWN)",
+		logpath != NULL ? logpath : "(UNKNOWN)",
+		prefix_logname != NULL ? prefix_logname : "(UNKNOWN)", ismedia_crash);
+
   (void) log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, ismedia_crash, r_args, false);
+
+#if defined(SERVER_MODE)
+  log_daemons_init ();
+#endif // SERVER_MODE
 
   log_No_logging = prm_get_bool_value (PRM_ID_LOG_NO_LOGGING);
 #if !defined(NDEBUG)
@@ -1015,7 +1069,7 @@ log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *lo
  */
 static int
 log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-			 const char *prefix_logname, int ismedia_crash, BO_RESTART_ARG * r_args, bool init_emergency)
+			 const char *prefix_logname, bool ismedia_crash, BO_RESTART_ARG * r_args, bool init_emergency)
 {
   LOG_RECORD_HEADER *eof;	/* End of log record */
   REL_FIXUP_FUNCTION *disk_compatibility_functions = NULL;
@@ -1240,7 +1294,6 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       strncpy (log_Gl.hdr.db_release, rel_release_string (), REL_MAX_RELEASE_LENGTH);
     }
 
-
   /* 
    * Create the transaction table and make sure that data volumes and log
    * volumes belong to the same database
@@ -1303,7 +1356,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     {
       if (init_emergency == true && log_Gl.hdr.is_shutdown == false)
 	{
-	  if (LSA_GT (&log_Gl.hdr.append_lsa, &log_Gl.hdr.eof_lsa))
+	  if (!LSA_ISNULL (&log_Gl.hdr.eof_lsa) && LSA_GT (&log_Gl.hdr.append_lsa, &log_Gl.hdr.eof_lsa))
 	    {
 	      /* We cannot believe in append_lsa for this case. It points to an unflushed log page. Since we are
 	       * going to skip recovery for emergency startup, just replace it with eof_lsa. */
@@ -1386,7 +1439,6 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
   if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
-      int vdes = NULL_VOLDES;
       BACKGROUND_ARCHIVING_INFO *bg_arv_info;
 
       bg_arv_info = &log_Gl.bg_archive_info;
@@ -1525,8 +1577,6 @@ log_abort_all_active_transaction (THREAD_ENTRY * thread_p)
   LOG_TDES *tdes;		/* Transaction descriptor */
 #if defined(SERVER_MODE)
   int repeat_loop;
-  CSS_CONN_ENTRY *conn = NULL;
-  CSS_JOB_ENTRY *job_entry = NULL;
   int *abort_thread_running;
   static int already_called = 0;
 
@@ -1558,21 +1608,14 @@ loop:
     {
       if (i != LOG_SYSTEM_TRAN_INDEX && (tdes = LOG_FIND_TDES (i)) != NULL && tdes->trid != NULL_TRANID)
 	{
-	  if (thread_has_threads (thread_p, i, tdes->client_id) > 0)
+	  if (css_count_transaction_worker_threads (thread_p, i, tdes->client_id) > 0)
 	    {
 	      repeat_loop = true;
 	    }
 	  else if (LOG_ISTRAN_ACTIVE (tdes) && abort_thread_running[i] == 0)
 	    {
-	      conn = css_find_conn_by_tran_index (i);
-	      job_entry = css_make_job_entry (conn, (CSS_THREAD_FN) log_abort_by_tdes, (CSS_THREAD_ARG) tdes,
-					      -1 /* implicit: DEFAULT */ );
-	      if (job_entry != NULL)
-		{
-		  css_add_to_job_queue (job_entry);
-		  abort_thread_running[i] = 1;
-		}
-
+	      css_push_external_task (*thread_p, css_find_conn_by_tran_index (i), new log_abort_task (*tdes));
+	      abort_thread_running[i] = 1;
 	      repeat_loop = true;
 	    }
 	}
@@ -1616,7 +1659,7 @@ loop:
 	  if (LOG_ISTRAN_ACTIVE (tdes))
 	    {
 	      log_Tran_index = i;
-	      (void) log_abort (NULL, log_Tran_index);
+	      (void) log_abort (thread_p, log_Tran_index);
 	    }
 	}
     }
@@ -1644,7 +1687,14 @@ log_final (THREAD_ENTRY * thread_p)
   bool anyloose_ends = false;
   int error_code = NO_ERROR;
 
+#if defined(SERVER_MODE)
+  log_daemons_destroy ();
+#endif /* SERVER_MODE */
+
   LOG_CS_ENTER (thread_p);
+
+  /* reset log_Gl.rcv_phase */
+  log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
 
   if (log_Gl.trantable.area == NULL)
     {
@@ -2027,11 +2077,11 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  if (VACUUM_IS_THREAD_VACUUM (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p) && vacuum_worker_state_is_topop (thread_p))
     {
       /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
        * instead of system tdes. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      tdes = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -2090,6 +2140,10 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 	  return;
 	}
     }
+  if (addr->pgptr != NULL && LOG_IS_MVCC_OPERATION (rcvindex))
+    {
+      pgbuf_notify_vacuum_follows (thread_p, addr->pgptr);
+    }
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p) && log_does_allow_replication () == true)
     {
@@ -2122,7 +2176,6 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
-  int i = 0;
   int error_code = NO_ERROR;
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
@@ -2149,11 +2202,11 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p) && vacuum_worker_state_is_topop (thread_p))
     {
       /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
        * instead of system tdes. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      tdes = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -2197,6 +2250,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
   node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, num_crumbs, crumbs, 0, NULL);
   if (node == NULL)
     {
+      assert (false);
       return;
     }
 
@@ -2209,6 +2263,10 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 	  assert (false);
 	  return;
 	}
+    }
+  if (addr->pgptr != NULL && LOG_IS_MVCC_OPERATION (rcvindex))
+    {
+      pgbuf_notify_vacuum_follows (thread_p, addr->pgptr);
     }
 }
 
@@ -2282,11 +2340,11 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM (thread_p) && VACUUM_WORKER_STATE_IS_TOPOP (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p) && vacuum_worker_state_is_topop (thread_p))
     {
       /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
        * instead of system tdes. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      tdes = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -2691,9 +2749,9 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
     {
       /* Vacuum worker */
       /* Must be under a system operation, otherwise postpone records will not work. */
-      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p));
+      assert (vacuum_worker_state_is_topop (thread_p));
       /* Use reserved transaction descriptor instead of system tdes. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      tdes = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -2824,9 +2882,9 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
     {
       /* Vacuum worker */
       /* Must be at the end of a system operation or during recovery. */
-      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p) || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
+      assert (vacuum_worker_state_is_topop (thread_p) || vacuum_worker_state_is_recovery (thread_p));
       /* Use reserved transaction descriptor instead of system tdes. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      tdes = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -3050,9 +3108,22 @@ log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec_type, LOG_D
   LOG_PRIOR_NODE *node;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
+    {
+      /* Vacuum worker */
+      /* Must be under a system operation, otherwise postpone records will not work. */
+      assert (vacuum_worker_state_is_topop (thread_p));
+      /* Use reserved transaction descriptor instead of system tdes. */
+      tdes = vacuum_get_worker_tdes (thread_p);
+    }
+  else
+    {
+      /* Find tdes in transaction table. */
+      tdes = LOG_FIND_TDES (tran_index);
+    }
   if (tdes == NULL)
     {
+      assert (false);
       return;
     }
 
@@ -3313,7 +3384,7 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
       return NULL;
     }
 
-  length = strlen (savept_name) + 1;
+  length = (int) strlen (savept_name) + 1;
 
   node =
     prior_lsa_alloc_and_copy_data (thread_p, LOG_SAVEPOINT, RV_NOT_DEFINED, NULL, length, (char *) savept_name, 0,
@@ -3519,21 +3590,21 @@ log_sysop_start (THREAD_ENTRY * thread_p)
     {
       /* System operations must be isolated and allow undo. It is impossible to use system tdes for more than one
        * thread, so vacuum workers use a reserved tdes instead. */
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      tdes = vacuum_get_worker_tdes (thread_p);
 
       /* Vacuum worker state should be either VACUUM_WORKER_STATE_EXECUTE or VACUUM_WORKER_STATE_TOPOP (or
        * VACUUM_WORKER_STATE_RECOVERY during database recovery phase). */
-      assert (VACUUM_WORKER_STATE_IS_EXECUTE (thread_p) || VACUUM_WORKER_STATE_IS_TOPOP (thread_p)
-	      || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
+      assert (vacuum_worker_state_is_execute (thread_p) || vacuum_worker_state_is_topop (thread_p)
+	      || vacuum_worker_state_is_recovery (thread_p));
 
       vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
-		     "VACUUM: Start system operation. Current worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
-		     "tdes->tail_lsa=(%lld, %d). Worker state=%d.\n", tdes->trid, tdes->topops.last,
+		     "Start system operation. Current worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
+		     "tdes->tail_lsa=(%lld, %d). Worker state=%d.", tdes->trid, tdes->topops.last,
 		     (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
-		     VACUUM_GET_WORKER_STATE (thread_p));
+		     vacuum_get_worker_state (thread_p));
 
       /* Change worker state to VACUUM_WORKER_STATE_TOPOP */
-      VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_TOPOP);
+      vacuum_set_worker_state (thread_p, VACUUM_WORKER_STATE_TOPOP);
 
       if (tdes->topops.last < 0)
 	{
@@ -3585,7 +3656,7 @@ log_sysop_start (THREAD_ENTRY * thread_p)
 	      /* Restore state */
 	      if (tdes->topops.last < 0)
 		{
-		  VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_EXECUTE);
+		  vacuum_set_worker_state (thread_p, VACUUM_WORKER_STATE_EXECUTE);
 		}
 	      /* Else */
 	      /* Leave state as VACUUM_WORKER_STATE_TOPOP */
@@ -3602,6 +3673,49 @@ log_sysop_start (THREAD_ENTRY * thread_p)
   LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
 
   perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_START_TOPOPS);
+}
+
+/*
+ * log_sysop_start_atomic () - start a system operation that required to be atomic. it is aborted during recovery before
+ *                             all postpones are finished.
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ */
+void
+log_sysop_start_atomic (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes = NULL;
+  int tran_index;
+
+  log_sysop_start (thread_p);
+  log_sysop_get_tran_index_and_tdes (thread_p, &tran_index, &tdes);
+  if (tdes == NULL || tdes->topops.last < 0)
+    {
+      /* not a good context. must be in a system operation */
+      assert_release (false);
+      return;
+    }
+  if (LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa))
+    {
+      LOG_PRIOR_NODE *node =
+	prior_lsa_alloc_and_copy_data (thread_p, LOG_SYSOP_ATOMIC_START, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+      if (node == NULL)
+	{
+	  return;
+	}
+
+      (void) prior_lsa_next_record (thread_p, node, tdes);
+    }
+  else
+    {
+      /* this must be a nested atomic system operation. If parent is atomic, we'll be atomic too. */
+      assert (tdes->topops.last > 0);
+
+      /* oh, and please tell me this is not a nested system operation during postpone of system operation nested to
+       * another atomic system operation... */
+      assert (LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa));
+    }
 }
 
 /*
@@ -3692,23 +3806,23 @@ log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  if (LOG_ISRESTARTED ())
 	    {
 	      /* Change the worker state back to VACUUM_WORKER_STATE_EXECUTE. */
-	      VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_EXECUTE);
+	      vacuum_set_worker_state (thread_p, VACUUM_WORKER_STATE_EXECUTE);
 	    }
 	  else
 	    {
 	      /* Change the worker state back to VACUUM_WORKER_STATE_RECOVERY. */
-	      VACUUM_SET_WORKER_STATE (thread_p, VACUUM_WORKER_STATE_RECOVERY);
+	      vacuum_set_worker_state (thread_p, VACUUM_WORKER_STATE_RECOVERY);
 	    }
 
 	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS,
-			 "VACUUM: Ended all top operations. Tdes: tdes->trid=%d tdes->head_lsa=(%lld, %d), "
+			 "Ended all top operations. Tdes: tdes->trid=%d tdes->head_lsa=(%lld, %d), "
 			 "tdes->tail_lsa=(%lld, %d), tdes->undo_nxlsa=(%lld, %d), "
-			 "tdes->tail_topresult_lsa=(%lld, %d). Worker state=%d.\n", tdes->trid,
+			 "tdes->tail_topresult_lsa=(%lld, %d). Worker state=%d.", tdes->trid,
 			 (long long int) tdes->head_lsa.pageid, (int) tdes->head_lsa.offset,
 			 (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
 			 (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset,
 			 (long long int) tdes->tail_topresult_lsa.pageid, (int) tdes->tail_topresult_lsa.offset,
-			 VACUUM_GET_WORKER_STATE (thread_p));
+			 vacuum_get_worker_state (thread_p));
 
 	  /* Vacuum workers/master don't have a parent transaction that is committed. Different system operations that
 	   * are not nested shouldn't be linked between them. Otherwise, undo recovery, in the attempt to find log
@@ -3727,7 +3841,7 @@ log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   if (LOG_ISCHECKPOINT_TIME ())
     {
 #if defined(SERVER_MODE)
-      logpb_do_checkpoint ();
+      log_wakeup_checkpoint_daemon ();
 #else /* SERVER_MODE */
       (void) logpb_checkpoint (thread_p);
 #endif /* SERVER_MODE */
@@ -3771,16 +3885,11 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
     }
   else
     {
-      LOG_PRIOR_NODE *node = NULL;
-      TRAN_STATE save_state;
-
       /* we are here because either system operation is not empty, or this is the end of a logical system operation.
        * we don't actually allow empty logical system operation because it might hide a logic flaw. however, there are
        * unusual cases when a logical operation does not really require logging (see RVPGBUF_FLUSH_PAGE). if you create
        * such a case, you should add a dummy log record to trick this assert. */
       assert (!LSA_ISNULL (&tdes->tail_lsa) && LSA_GT (&tdes->tail_lsa, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes)));
-
-      save_state = tdes->state;
 
       /* now that we have access to tdes, we can do some updates on log record and sanity checks */
       if (log_record->type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
@@ -3797,7 +3906,8 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	{
 	  /* we should be doing rollback or undo recovery */
 	  assert (tdes->state == TRAN_UNACTIVE_ABORTED || tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED
-		  || (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE && is_rv_finish_postpone));
+		  || (is_rv_finish_postpone && (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE
+						|| tdes->state == TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)));
 	}
       else if (log_record->type == LOG_SYSOP_END_LOGICAL_UNDO || log_record->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 	{
@@ -3829,9 +3939,6 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 
       /* Remember last partial result */
       LSA_COPY (&tdes->tail_topresult_lsa, &tdes->tail_lsa);
-
-      /* Restore transaction state. */
-      tdes->state = save_state;
     }
 
   log_sysop_end_final (thread_p, tdes);
@@ -3952,7 +4059,7 @@ void
 log_sysop_end_recovery_postpone (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_record, int data_size,
 				 const char *data)
 {
-  return log_sysop_commit_internal (thread_p, log_record, data_size, data, true);
+  log_sysop_commit_internal (thread_p, log_record, data_size, data, true);
 }
 
 /*
@@ -3982,7 +4089,6 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
     }
   else
     {
-      LOG_PRIOR_NODE *node = NULL;
       TRAN_STATE save_state;
 
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
@@ -4101,8 +4207,8 @@ log_sysop_get_tran_index_and_tdes (THREAD_ENTRY * thread_p, int *tran_index_out,
 
   if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
-      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p) || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
-      *tdes_out = VACUUM_GET_WORKER_TDES (thread_p);
+      assert (vacuum_worker_state_is_topop (thread_p) || vacuum_worker_state_is_recovery (thread_p));
+      *tdes_out = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -4131,8 +4237,8 @@ log_check_system_op_is_started (THREAD_ENTRY * thread_p)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
-      assert (VACUUM_WORKER_STATE_IS_TOPOP (thread_p) || VACUUM_WORKER_STATE_IS_RECOVERY (thread_p));
-      tdes = VACUUM_GET_WORKER_TDES (thread_p);
+      assert (vacuum_worker_state_is_topop (thread_p) || vacuum_worker_state_is_recovery (thread_p));
+      tdes = vacuum_get_worker_tdes (thread_p);
     }
   else
     {
@@ -4250,7 +4356,7 @@ log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const
       return false;
     }
 
-  if (VACUUM_IS_SKIP_UNDO_ALLOWED (thread_p))
+  if (vacuum_is_skip_undo_allowed (thread_p))
     {
       /* If vacuum worker has not started a system operation, it can skip using undo logging. */
       return true;
@@ -4825,7 +4931,7 @@ extern int locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p, L
  */
 static void
 log_map_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa, bool release,
-			     void (*map_func) (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * class, void *arg),
+			     void (*map_func) (THREAD_ENTRY * thread_p, MODIFIED_CLASS_ENTRY * clazz, void *arg),
 			     void *arg)
 {
   MODIFIED_CLASS_ENTRY *t = NULL;
@@ -4917,8 +5023,8 @@ log_is_valid_locator (const char *locator)
     {
       char *key, *meta;
 
-      key = LOCATOR_KEY (locator);
-      meta = LOCATOR_META (locator);
+      key = (char *) LOCATOR_KEY (locator);
+      meta = (char *) LOCATOR_META (locator);
       if (key && meta && (key > meta))
 	{
 	  return true;
@@ -4954,7 +5060,7 @@ xlog_find_lob_locator (THREAD_ENTRY * thread_p, const char *locator, char *real_
     {
       LOB_LOCATOR_ENTRY *entry, find;
 
-      find.key = LOCATOR_KEY (locator);
+      find.key = (char *) LOCATOR_KEY (locator);
       find.key_hash = (int) mht_5strhash (find.key, INT_MAX);
       /* Find entry from red-black tree (see base/rb_tree.h) */
       entry = RB_FIND (lob_rb_root, &tdes->lob_locator_root, &find);
@@ -4988,7 +5094,7 @@ xlog_add_lob_locator (THREAD_ENTRY * thread_p, const char *locator, LOB_LOCATOR_
   LOB_LOCATOR_ENTRY *entry;
   LOB_SAVEPOINT_ENTRY *savept;
   char *key;
-  int key_len;
+  size_t key_len;
 
   assert (log_is_valid_locator (locator));
 
@@ -5000,17 +5106,17 @@ xlog_add_lob_locator (THREAD_ENTRY * thread_p, const char *locator, LOB_LOCATOR_
       return ER_LOG_UNKNOWN_TRANINDEX;
     }
 
-  key = LOCATOR_KEY (locator);
+  key = (char *) LOCATOR_KEY (locator);
   key_len = strlen (key);
 
-  entry = malloc (sizeof (LOB_LOCATOR_ENTRY) + key_len);
+  entry = (LOB_LOCATOR_ENTRY *) malloc (sizeof (LOB_LOCATOR_ENTRY) + key_len);
   if (entry == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOB_LOCATOR_ENTRY) + key_len);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  savept = malloc (sizeof (LOB_SAVEPOINT_ENTRY));
+  savept = (LOB_SAVEPOINT_ENTRY *) malloc (sizeof (LOB_SAVEPOINT_ENTRY));
   if (savept == NULL)
     {
       free_and_init (entry);
@@ -5064,7 +5170,7 @@ xlog_change_state_of_locator (THREAD_ENTRY * thread_p, const char *locator, cons
       return ER_LOG_UNKNOWN_TRANINDEX;
     }
 
-  find.key = LOCATOR_KEY (locator);
+  find.key = (char *) LOCATOR_KEY (locator);
   find.key_hash = (int) mht_5strhash (find.key, INT_MAX);
   entry = RB_FIND (lob_rb_root, &tdes->lob_locator_root, &find);
 
@@ -5079,7 +5185,7 @@ xlog_change_state_of_locator (THREAD_ENTRY * thread_p, const char *locator, cons
 	{
 	  LOB_SAVEPOINT_ENTRY *savept;
 
-	  savept = malloc (sizeof (LOB_SAVEPOINT_ENTRY));
+	  savept = (LOB_SAVEPOINT_ENTRY *) malloc (sizeof (LOB_SAVEPOINT_ENTRY));
 	  if (savept == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOB_SAVEPOINT_ENTRY));
@@ -5133,7 +5239,7 @@ xlog_drop_lob_locator (THREAD_ENTRY * thread_p, const char *locator)
       return ER_LOG_UNKNOWN_TRANINDEX;
     }
 
-  find.key = LOCATOR_KEY (locator);
+  find.key = (char *) LOCATOR_KEY (locator);
   find.key_hash = (int) mht_5strhash (find.key, INT_MAX);
   /* Remove entry that matches 'find' entry from the red-black tree. see base/rb_tree.h for more information */
   entry = RB_FIND (lob_rb_root, &tdes->lob_locator_root, &find);
@@ -5173,6 +5279,30 @@ log_free_lob_locator (LOB_LOCATOR_ENTRY * entry)
   free_and_init (entry);
 }
 
+#if 0
+static const char *
+lob_state_to_string (LOB_LOCATOR_STATE state)
+{
+  switch (state)
+    {
+    case LOB_TRANSIENT_CREATED:
+      return "LOB_TRANSIENT_CREATED";
+
+    case LOB_TRANSIENT_DELETED:
+      return "LOB_TRANSIENT_DELETED";
+
+    case LOB_PERMANENT_CREATED:
+      return "LOB_PERMANENT_CREATED";
+
+    case LOB_PERMANENT_DELETED:
+      return "LOB_PERMANENT_DELETED";
+
+    default:
+      return "LOB_UNKNOWN";
+    }
+}
+#endif
+
 /*
  * log_clear_lob_locator_list -
  *
@@ -5203,17 +5333,8 @@ log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool at_co
     {
 #if 0
       er_log_debug (ARG_FILE_LINE, "   locator=%s, state=%s\n, savept_lsa=(%d,%d)", entry->key,
-		    (entry->top->state ==
-		     LOB_TRANSIENT_CREATED) ? "LOB_TRANSIENT_CREATED" : ((entry->top->state ==
-									  LOB_TRANSIENT_DELETED) ?
-									 "LOB_TRANSIENT_DELETED"
-									 : ((entry->top->state ==
-									     LOB_PERMANENT_CREATED) ?
-									    "LOB_PERMANENT_CREATED" : (entry->
-												       top->state ==
-												       LOB_PERMANENT_DELETED)
-									    ? "LOB_PERMANENT_DELETED" : "LOB_UNKNOWN")),
-		    entry->top->savept_lsa.pageid, entry->top->savept_lsa.offset);
+		    lob_state_to_string (entry->top->state), entry->top->savept_lsa.pageid,
+		    entry->top->savept_lsa.offset);
 #endif
       /* setup next link before destroy */
       next = RB_NEXT (lob_rb_root, &tdes->lob_locator_root, entry);
@@ -5275,7 +5396,7 @@ log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool at_co
 #if defined (SERVER_MODE)
 	  if (at_commit && entry->top->state == LOB_PERMANENT_DELETED)
 	    {
-	      es_notify_vacuum_for_delete (thread_p, entry->top->locator);
+	      vacuum_notify_es_deleted (thread_p, entry->top->locator);
 	    }
 	  else
 	    {
@@ -5957,7 +6078,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
   if (LOG_ISCHECKPOINT_TIME ())
     {
 #if defined(SERVER_MODE)
-      logpb_do_checkpoint ();
+      log_wakeup_checkpoint_daemon ();
 #else /* SERVER_MODE */
       (void) logpb_checkpoint (thread_p);
 #endif /* SERVER_MODE */
@@ -6120,7 +6241,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	      if (LOG_ISCHECKPOINT_TIME ())
 		{
 #if defined(SERVER_MODE)
-		  logpb_do_checkpoint ();
+		  log_wakeup_checkpoint_daemon ();
 #else /* SERVER_MODE */
 		  (void) logpb_checkpoint (thread_p);
 #endif /* SERVER_MODE */
@@ -6270,7 +6391,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
   if (LOG_ISCHECKPOINT_TIME ())
     {
 #if defined(SERVER_MODE)
-      logpb_do_checkpoint ();
+      log_wakeup_checkpoint_daemon ();
 #else /* SERVER_MODE */
       (void) logpb_checkpoint (thread_p);
 #endif /* SERVER_MODE */
@@ -6337,23 +6458,18 @@ log_hexa_dump (FILE * out_fp, int length, void *data)
 static void
 log_repl_data_dump (FILE * out_fp, int length, void *data)
 {
-  char *ptr;
+  char *ptr = (char *) data;
   char *class_name;
   DB_VALUE value;
-  PARSER_VARCHAR *buf;
-  PARSER_CONTEXT *parser;
 
-  ptr = data;
   ptr = or_unpack_string_nocopy (ptr, &class_name);
   ptr = or_unpack_mem_value (ptr, &value);
 
-  parser = parser_create_parser ();
-  if (parser != NULL)
-    {
-      buf = describe_value (parser, NULL, &value);
-      fprintf (out_fp, "C[%s] K[%s]\n", class_name, pt_get_varchar_bytes (buf));
-      parser_free_parser (parser);
-    }
+  string_buffer sb;
+  db_value_printer printer (sb);
+
+  printer.describe_value (&value);
+  fprintf (out_fp, "C[%s] K[%s]\n", class_name, sb.get_buffer ());
   pr_clear_value (&value);
 }
 
@@ -6365,7 +6481,7 @@ log_repl_schema_dump (FILE * out_fp, int length, void *data)
   char *class_name;
   char *sql;
 
-  ptr = data;
+  ptr = (char *) data;
   ptr = or_unpack_int (ptr, &statement_type);
   ptr = or_unpack_string_nocopy (ptr, &class_name);
   ptr = or_unpack_string_nocopy (ptr, &sql);
@@ -6488,9 +6604,8 @@ log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 	   (long long) offsetof (LOG_PAGE, area), time_val, log_header_p->db_release, log_header_p->db_compatibility,
 	   log_header_p->db_iopagesize, log_header_p->db_logpagesize, log_header_p->is_shutdown,
 	   log_header_p->next_trid, (long long int) log_header_p->mvcc_next_id, log_header_p->avg_ntrans,
-	   log_header_p->avg_nlocks, log_header_p->npages, (long long int) log_header_p->fpageid,
-	   (long long int) log_header_p->append_lsa.pageid, log_header_p->append_lsa.offset,
-	   (long long int) log_header_p->chkpt_lsa.pageid, log_header_p->chkpt_lsa.offset);
+	   log_header_p->avg_nlocks, log_header_p->npages, (long long) log_header_p->fpageid,
+	   LSA_AS_ARGS (&log_header_p->append_lsa), LSA_AS_ARGS (&log_header_p->chkpt_lsa));
 
   fprintf (out_fp,
 	   "     Next_archive_pageid = %lld at active_phy_pageid = %d,\n"
@@ -6499,10 +6614,9 @@ log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 	   "     bkup_lsa: level0 = %lld|%d, level1 = %lld|%d, level2 = %lld|%d,\n     Log_prefix = %s\n",
 	   (long long int) log_header_p->nxarv_pageid, log_header_p->nxarv_phy_pageid, log_header_p->nxarv_num,
 	   log_header_p->last_arv_num_for_syscrashes, log_header_p->last_deleted_arv_num,
-	   log_header_p->has_logging_been_skipped, (long long int) log_header_p->bkup_level0_lsa.pageid,
-	   (int) log_header_p->bkup_level0_lsa.offset, (long long int) log_header_p->bkup_level1_lsa.pageid,
-	   (int) log_header_p->bkup_level1_lsa.offset, (long long int) log_header_p->bkup_level2_lsa.pageid,
-	   (int) log_header_p->bkup_level2_lsa.offset, log_header_p->prefix_name);
+	   log_header_p->has_logging_been_skipped, LSA_AS_ARGS (&log_header_p->bkup_level0_lsa),
+	   LSA_AS_ARGS (&log_header_p->bkup_level1_lsa), LSA_AS_ARGS (&log_header_p->bkup_level2_lsa),
+	   log_header_p->prefix_name);
 }
 
 static LOG_PAGE *
@@ -6609,7 +6723,7 @@ log_dump_record_mvcc_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA *
 	   "     Volid = %d Pageid = %d Offset = %d,\n     Undo(Before) length = %d, Redo(After) length = %d,\n",
 	   mvcc_undoredo->undoredo.data.volid, mvcc_undoredo->undoredo.data.pageid, mvcc_undoredo->undoredo.data.offset,
 	   (int) GET_ZIP_LEN (mvcc_undoredo->undoredo.ulength), (int) GET_ZIP_LEN (mvcc_undoredo->undoredo.rlength));
-  fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = (%lld, %d), \n     VFID = (%d, %d)",
+  fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)",
 	   (long long int) mvcc_undoredo->mvccid,
 	   (long long int) mvcc_undoredo->vacuum_info.prev_mvcc_op_log_lsa.pageid,
 	   (int) mvcc_undoredo->vacuum_info.prev_mvcc_op_log_lsa.offset, mvcc_undoredo->vacuum_info.vfid.volid,
@@ -6646,7 +6760,7 @@ log_dump_record_mvcc_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
   fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Undo (Before) length = %d,\n",
 	   mvcc_undo->undo.data.volid, mvcc_undo->undo.data.pageid, mvcc_undo->undo.data.offset,
 	   (int) GET_ZIP_LEN (mvcc_undo->undo.length));
-  fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = (%lld, %d), \n     VFID = (%d, %d)",
+  fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)",
 	   (long long int) mvcc_undo->mvccid, (long long int) mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa.pageid,
 	   (int) mvcc_undo->vacuum_info.prev_mvcc_op_log_lsa.offset, mvcc_undo->vacuum_info.vfid.volid,
 	   mvcc_undo->vacuum_info.vfid.fileid);
@@ -6705,7 +6819,7 @@ log_dump_record_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_
   fprintf (out_fp,
 	   "     Volid = %d Pageid = %d Offset = %d,\n     Run postpone (Redo/After) length = %d, corresponding"
 	   " to\n         Postpone record with LSA = %lld|%d\n", run_posp->data.volid, run_posp->data.pageid,
-	   run_posp->data.offset, run_posp->length, (long long int) run_posp->ref_lsa.pageid, run_posp->ref_lsa.offset);
+	   run_posp->data.offset, run_posp->length, LSA_AS_ARGS (&run_posp->ref_lsa));
 
   redo_length = run_posp->length;
   rcvindex = run_posp->data.rcvindex;
@@ -6757,7 +6871,7 @@ log_dump_record_compensate (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
   fprintf (out_fp, ", Recv_index = %s,\n", rv_rcvindex_string (compensate->data.rcvindex));
   fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Compensate length = %d, Next_to_UNDO = %lld|%d\n",
 	   compensate->data.volid, compensate->data.pageid, compensate->data.offset, compensate->length,
-	   (long long int) compensate->undo_nxlsa.pageid, compensate->undo_nxlsa.offset);
+	   LSA_AS_ARGS (&compensate->undo_nxlsa));
 
   length_compensate = compensate->length;
   rcvindex = compensate->data.rcvindex;
@@ -6779,7 +6893,7 @@ log_dump_record_commit_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*start_posp), log_lsa, log_page_p);
   start_posp = (LOG_REC_START_POSTPONE *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", First postpone record at before or after Page = %lld and offset = %d\n",
-	   (long long int) start_posp->posp_lsa.pageid, start_posp->posp_lsa.offset);
+	   LSA_AS_ARGS (&start_posp->posp_lsa));
 
   return log_page_p;
 }
@@ -6811,7 +6925,7 @@ log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * l
 
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*repl_log), log_lsa, log_page_p);
   repl_log = (LOG_REC_REPLICATION *) ((char *) log_page_p->area + log_lsa->offset);
-  fprintf (out_fp, ", Target log lsa = %lld|%d\n", (long long int) repl_log->lsa.pageid, repl_log->lsa.offset);
+  fprintf (out_fp, ", Target log lsa = %lld|%d\n", LSA_AS_ARGS (&repl_log->lsa));
   length = repl_log->length;
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*repl_log), log_lsa, log_page_p);
@@ -6931,7 +7045,7 @@ log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END *
       fprintf (out_fp, "     Volid = %d Pageid = %d Offset = %d,\n     Undo (Before) length = %d,\n",
 	       sysop_end->mvcc_undo.undo.data.volid, sysop_end->mvcc_undo.undo.data.pageid,
 	       sysop_end->mvcc_undo.undo.data.offset, (int) GET_ZIP_LEN (sysop_end->mvcc_undo.undo.length));
-      fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = (%lld, %d), \n     VFID = (%d, %d)",
+      fprintf (out_fp, "     MVCCID = %llu, \n     Prev_mvcc_op_log_lsa = %lld|%d, \n     VFID = (%d, %d)",
 	       (unsigned long long int) sysop_end->mvcc_undo.mvccid,
 	       LSA_AS_ARGS (&sysop_end->mvcc_undo.vacuum_info.prev_mvcc_op_log_lsa),
 	       VFID_AS_ARGS (&sysop_end->mvcc_undo.vacuum_info.vfid));
@@ -6987,11 +7101,11 @@ static void
 log_dump_checkpoint_topops (FILE * out_fp, int length, void *data)
 {
   int ntops, i;
-  LOG_INFO_CHKPT_SYSOP_START_POSTPONE *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
-							 * mode */
-  LOG_INFO_CHKPT_SYSOP_START_POSTPONE *chkpt_topone;	/* One top system ope */
+  LOG_INFO_CHKPT_SYSOP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
+					 * mode */
+  LOG_INFO_CHKPT_SYSOP *chkpt_topone;	/* One top system ope */
 
-  chkpt_topops = (LOG_INFO_CHKPT_SYSOP_START_POSTPONE *) data;
+  chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) data;
   ntops = length / sizeof (*chkpt_topops);
 
   /* Start dumping each checkpoint top system operation */
@@ -7018,10 +7132,10 @@ log_dump_record_checkpoint (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
 
   chkpt = (LOG_REC_CHKPT *) ((char *) log_page_p->area + log_lsa->offset);
   fprintf (out_fp, ", Num_trans = %d,\n", chkpt->ntrans);
-  fprintf (out_fp, "     Redo_LSA = %lld|%d\n", (long long int) chkpt->redo_lsa.pageid, chkpt->redo_lsa.offset);
+  fprintf (out_fp, "     Redo_LSA = %lld|%d\n", LSA_AS_ARGS (&chkpt->redo_lsa));
 
   length_active_tran = sizeof (LOG_INFO_CHKPT_TRANS) * chkpt->ntrans;
-  length_topope = (sizeof (LOG_INFO_CHKPT_SYSOP_START_POSTPONE) * chkpt->ntops);
+  length_topope = (sizeof (LOG_INFO_CHKPT_SYSOP) * chkpt->ntops);
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*chkpt), log_lsa, log_page_p);
   log_dump_data (thread_p, out_fp, length_active_tran, log_lsa, log_page_p, logpb_dump_checkpoint_trans, NULL);
   if (length_topope > 0)
@@ -7042,8 +7156,7 @@ log_dump_record_save_point (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*savept), log_lsa, log_page_p);
   savept = (LOG_REC_SAVEPT *) ((char *) log_page_p->area + log_lsa->offset);
 
-  fprintf (out_fp, ", Prev_savept_Lsa = %lld|%d, length = %d,\n", (long long int) savept->prv_savept.pageid,
-	   savept->prv_savept.offset, savept->length);
+  fprintf (out_fp, ", Prev_savept_Lsa = %lld|%d, length = %d,\n", LSA_AS_ARGS (&savept->prv_savept), savept->length);
 
   length_save_point = savept->length;
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*savept), log_lsa, log_page_p);
@@ -7236,6 +7349,7 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
     case LOG_2PC_ABORT_DECISION:
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
     case LOG_2PC_ABORT_INFORM_PARTICPS:
+    case LOG_SYSOP_ATOMIC_START:
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
@@ -7309,7 +7423,6 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
   LOG_CS_ENTER (thread_p);
 
   xlogtb_dump_trantable (thread_p, out_fp);
-  logpb_dump (thread_p, out_fp);
   logpb_flush_pages_direct (thread_p);
   logpb_flush_header (thread_p);
 
@@ -7417,8 +7530,8 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
 		|| (!LSA_EQ (&next_lsa, &log_rec->forw_lsa) && !LSA_ISNULL (&log_rec->forw_lsa)))
 	      {
 		fprintf (out_fp, "\n\n>>>>>****\n");
-		fprintf (out_fp, "Guess next address = %lld|%d for LSA = %lld|%d\n", (long long int) next_lsa.pageid,
-			 next_lsa.offset, (long long int) lsa.pageid, lsa.offset);
+		fprintf (out_fp, "Guess next address = %lld|%d for LSA = %lld|%d\n",
+			 LSA_AS_ARGS (&next_lsa), LSA_AS_ARGS (&lsa));
 		fprintf (out_fp, "<<<<<****\n");
 	      }
 	  }
@@ -7889,7 +8002,6 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
   int data_header_size = 0;
   bool is_mvcc_op = false;
 
-
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   /* 
@@ -8157,6 +8269,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_2PC_ABORT_INFORM_PARTICPS:
 	    case LOG_REPLICATION_DATA:
 	    case LOG_REPLICATION_STATEMENT:
+	    case LOG_SYSOP_ATOMIC_START:
 	    case LOG_DUMMY_HA_SERVER_STATE:
 	    case LOG_DUMMY_OVF_RECORD:
 	    case LOG_DUMMY_GENERIC:
@@ -8385,6 +8498,7 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
 		       const char *data)
 {
   LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;
+  TRAN_STATE save_state = tdes->state;
 
   if (LSA_ISNULL (LOG_TDES_LAST_SYSOP_POSP_LSA (tdes)))
     {
@@ -8399,17 +8513,19 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
 
   sysop_start_postpone.sysop_end = *sysop_end;
   sysop_start_postpone.posp_lsa = *LOG_TDES_LAST_SYSOP_POSP_LSA (tdes);
-  tdes->state = TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE;
   log_append_sysop_start_postpone (thread_p, tdes, &sysop_start_postpone, data_size, data);
 
   if (VACUUM_IS_THREAD_VACUUM (thread_p)
       && vacuum_do_postpone_from_cache (thread_p, LOG_TDES_LAST_SYSOP_POSP_LSA (tdes)))
     {
       /* Do postpone was run from cached postpone entries. */
+      tdes->state = save_state;
       return;
     }
 
   log_do_postpone (thread_p, tdes, LOG_TDES_LAST_SYSOP_POSP_LSA (tdes));
+
+  tdes->state = save_state;
 }
 
 /*
@@ -8573,6 +8689,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_DUMMY_HEAD_POSTPONE:
 		    case LOG_REPLICATION_DATA:
 		    case LOG_REPLICATION_STATEMENT:
+		    case LOG_SYSOP_ATOMIC_START:
 		    case LOG_DUMMY_HA_SERVER_STATE:
 		    case LOG_DUMMY_OVF_RECORD:
 		    case LOG_DUMMY_GENERIC:
@@ -8670,7 +8787,6 @@ log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 {
   LOG_LSA ref_lsa;		/* The address of a postpone record */
   LOG_REC_REDO redo;		/* A redo log record */
-  int rcv_length = 0;
   char *rcv_data = NULL;
   char *area = NULL;
 
@@ -8971,7 +9087,7 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
   const char *vlabel;
   INT64 db_creation;
   DISK_VOLPURPOSE vol_purpose;
-  VOL_SPACE_INFO space_info;
+  DISK_VOLUME_SPACE_INFO space_info;
   VOLID volid;
   int vdes;
   LOG_LSA init_nontemp_lsa;
@@ -9028,7 +9144,8 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
 
       if (vol_purpose != DB_TEMPORARY_DATA_PURPOSE)
 	{
-	  (void) fileio_reset_volume (thread_p, vdes, vlabel, space_info.total_pages, &init_nontemp_lsa);
+	  (void) fileio_reset_volume (thread_p, vdes, vlabel, DISK_SECTS_NPAGES (space_info.n_total_sects),
+				      &init_nontemp_lsa);
 	}
 
       (void) disk_set_creation (thread_p, volid, vlabel, &log_Gl.hdr.db_creation, &log_Gl.hdr.chkpt_lsa, false,
@@ -9090,14 +9207,14 @@ PGLENGTH
 log_get_io_page_size (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath, const char *prefix_logname)
 {
   PGLENGTH db_iopagesize;
-  PGLENGTH ignore_log_page_size;
+  PGLENGTH log_page_size;
   INT64 ignore_dbcreation;
   float ignore_dbcomp;
   int dummy;
 
   LOG_CS_ENTER (thread_p);
   if (logpb_find_header_parameters (thread_p, db_fullname, logpath, prefix_logname, &db_iopagesize,
-				    &ignore_log_page_size, &ignore_dbcreation, &ignore_dbcomp, &dummy) == -1)
+				    &log_page_size, &ignore_dbcreation, &ignore_dbcomp, &dummy) == -1)
     {
       /* 
        * For case where active log could not be found, user still needs
@@ -9113,7 +9230,39 @@ log_get_io_page_size (THREAD_ENTRY * thread_p, const char *db_fullname, const ch
     }
   else
     {
+      if (IO_PAGESIZE != db_iopagesize || LOG_PAGESIZE != log_page_size)
+	{
+	  if (db_set_page_size (db_iopagesize, log_page_size) != NO_ERROR)
+	    {
+	      LOG_CS_EXIT (thread_p);
+	      return -1;
+	    }
+	  else
+	    {
+	      if (sysprm_reload_and_init (NULL, NULL) != NO_ERROR)
+		{
+		  LOG_CS_EXIT (thread_p);
+		  return -1;
+		}
+
+	      /* page size changed, reinit tran tables only if previously initialized */
+	      if (log_Gl.trantable.area == NULL)
+		{
+		  LOG_CS_EXIT (thread_p);
+		  return db_iopagesize;
+		}
+
+	      if (logtb_define_trantable_log_latch (thread_p, log_Gl.trantable.num_total_indices) != NO_ERROR)
+		{
+		  LOG_CS_EXIT (thread_p);
+		  return -1;
+		}
+	    }
+
+	}
+
       LOG_CS_EXIT (thread_p);
+
       return db_iopagesize;
     }
 }
@@ -9289,7 +9438,6 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flush_data_pages
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-
 /*
  * log_active_log_header_start_scan () -
  *   return: NO_ERROR, or ER_code
@@ -9305,7 +9453,6 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
 				  void **ptr)
 {
   int error = NO_ERROR;
-  int idx_val = 0;
   const char *path;
   int fd = -1;
   ACTIVE_LOG_HEADER_SCAN_CTX *ctx = NULL;
@@ -9541,8 +9688,8 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   db_make_int (out_values[idx], header->has_logging_been_skipped);
   idx++;
 
-  str = logpb_perm_status_to_string (header->perm_status);
-  db_make_string (out_values[idx], str);
+  str = logpb_perm_status_to_string ((LOG_PSTATUS) header->perm_status);
+  db_make_string_by_const_str (out_values[idx], str);
   idx++;
 
   logpb_backup_level_info_to_string (buf, sizeof (buf), header->bkinfo + FILEIO_BACKUP_FULL_LEVEL);
@@ -9569,12 +9716,12 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
       goto exit_on_error;
     }
 
-  str = css_ha_server_state_string (header->ha_server_state);
-  db_make_string (out_values[idx], str);
+  str = css_ha_server_state_string ((HA_SERVER_STATE) header->ha_server_state);
+  db_make_string_by_const_str (out_values[idx], str);
   idx++;
 
-  str = logwr_log_ha_filestat_to_string (header->ha_file_status);
-  db_make_string (out_values[idx], str);
+  str = logwr_log_ha_filestat_to_string ((LOG_HA_FILESTAT) header->ha_file_status);
+  db_make_string_by_const_str (out_values[idx], str);
   idx++;
 
   lsa_to_string (buf, sizeof (buf), &header->eof_lsa);
@@ -9664,7 +9811,7 @@ int
 log_archive_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt,
 				   void **ptr)
 {
-  int idx = 0, error = NO_ERROR;
+  int error = NO_ERROR;
   const char *path;
   int fd;
   char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
@@ -9845,7 +9992,6 @@ log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time)
 
   LOG_CS_EXIT (thread_p);
 }
-
 
 /*
  * log_get_undo_record () - gets undo record from log lsa adress
@@ -10115,3 +10261,548 @@ log_read_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_P
     }
   return NO_ERROR;
 }
+
+/*
+ * log_get_log_group_commit_interval () - setup flush daemon period based on system parameter
+ */
+void
+log_get_log_group_commit_interval (bool & is_timed_wait, cubthread::delta_time & period)
+{
+  is_timed_wait = true;
+
+#if defined (SERVER_MODE)
+  if (log_Flush_has_been_requested)
+    {
+      period = std::chrono::milliseconds (0);
+      return;
+    }
+#endif /* SERVER_MODE */
+
+  const int MAX_WAIT_TIME_MSEC = 1000;
+  int log_group_commit_interval_msec = prm_get_integer_value (PRM_ID_LOG_GROUP_COMMIT_INTERVAL_MSECS);
+
+  assert (log_group_commit_interval_msec >= 0);
+
+  if (log_group_commit_interval_msec == 0)
+    {
+      period = std::chrono::milliseconds (MAX_WAIT_TIME_MSEC);
+    }
+  else
+    {
+      period = std::chrono::milliseconds (log_group_commit_interval_msec);
+    }
+}
+
+/*
+ * log_get_checkpoint_interval () - setup log checkpoint daemon period based on system parameter
+ */
+void
+log_get_checkpoint_interval (bool & is_timed_wait, cubthread::delta_time & period)
+{
+  int log_checkpoint_interval_sec = prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_INTERVAL_SECS);
+
+  assert (log_checkpoint_interval_sec >= 0);
+
+  if (log_checkpoint_interval_sec > 0)
+    {
+      // if log_checkpoint_interval_sec > 0 (zero) then loop for fixed interval
+      is_timed_wait = true;
+      period = std::chrono::seconds (log_checkpoint_interval_sec);
+    }
+  else
+    {
+      // infinite wait
+      is_timed_wait = false;
+    }
+}
+
+#if defined (SERVER_MODE)
+/*
+ * log_wakeup_remove_log_archive_daemon () - wakeup remove log archive daemon
+ */
+void
+log_wakeup_remove_log_archive_daemon ()
+{
+  if (log_Remove_log_archive_daemon)
+    {
+      log_Remove_log_archive_daemon->wakeup ();
+    }
+}
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+/*
+ * log_wakeup_checkpoint_daemon () - wakeup checkpoint daemon
+ */
+void
+log_wakeup_checkpoint_daemon ()
+{
+  if (log_Checkpoint_daemon)
+    {
+      log_Checkpoint_daemon->wakeup ();
+    }
+}
+#endif /* SERVER_MODE */
+
+/*
+ * log_wakeup_log_flush_daemon () - wakeup log flush daemon
+ */
+void
+log_wakeup_log_flush_daemon ()
+{
+  if (log_is_log_flush_daemon_available ())
+    {
+#if defined (SERVER_MODE)
+      log_Flush_has_been_requested = true;
+      log_Flush_daemon->wakeup ();
+#endif /* SERVER_MODE */
+    }
+}
+
+/*
+ * log_is_log_flush_daemon_available () - check if log flush daemon is available
+ */
+bool
+log_is_log_flush_daemon_available ()
+{
+#if defined (SERVER_MODE)
+  return log_Flush_daemon != NULL;
+#else
+  return false;
+#endif
+}
+
+#if defined (SERVER_MODE)
+/*
+ * log_flush_daemon_get_stats () - get log flush daemon thread statistics into statsp
+ */
+void
+log_flush_daemon_get_stats (UINT64 * statsp)
+{
+  if (log_Flush_daemon != NULL)
+    {
+      log_Flush_daemon->get_stats (statsp);
+    }
+}
+#endif // SERVER_MODE
+
+// *INDENT-OFF*
+#if defined(SERVER_MODE)
+// class log_checkpoint_daemon_task
+//
+//  description:
+//    log checkpoint daemon task
+//
+class log_checkpoint_daemon_task : public cubthread::entry_task
+{
+  public:
+    void execute (cubthread::entry & thread_ref) override
+    {
+      if (!BO_IS_SERVER_RESTARTED ())
+	{
+	  // wait for boot to finish
+	  return;
+	}
+
+      logpb_checkpoint (&thread_ref);
+    }
+};
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+// class log_remove_log_archive_daemon_task
+//
+//  description:
+//    remove archive logs daemon task
+//
+class log_remove_log_archive_daemon_task : public cubthread::entry_task
+{
+  private:
+    using clock = std::chrono::system_clock;
+
+    bool m_is_timed_wait;
+    cubthread::delta_time m_period;
+    std::chrono::milliseconds m_param_period;
+    clock::time_point m_log_deleted_time;
+
+    void compute_period ()
+    {
+      // fetch remove log archives interval
+      int remove_log_archives_interval_sec = prm_get_integer_value (PRM_ID_REMOVE_LOG_ARCHIVES_INTERVAL);
+      assert (remove_log_archives_interval_sec >= 0);
+
+      // cache interval for later use
+      m_param_period = std::chrono::milliseconds (remove_log_archives_interval_sec * 1000);
+
+      if (m_param_period > std::chrono::milliseconds (0))
+	{
+	  m_is_timed_wait = true;
+	  clock::time_point now = clock::now ();
+
+	  // now - m_log_deleted_time: represents time elapsed since last log archive deletion
+	  if ((now - m_log_deleted_time) > m_param_period)
+	    {
+	      m_period = m_param_period;
+	    }
+	  else
+	    {
+	      m_period = m_param_period - (now - m_log_deleted_time);
+	    }
+	}
+      else
+	{
+	  // infinite wait
+	  m_is_timed_wait = false;
+	}
+    }
+
+  public:
+    log_remove_log_archive_daemon_task ()
+      : m_is_timed_wait (true)
+      , m_period (0)
+      , m_param_period (0)
+      , m_log_deleted_time ()
+    {
+      // initialize period
+      compute_period ();
+    }
+
+    void get_remove_log_archives_interval (bool & is_timed_wait, cubthread::delta_time & period)
+    {
+      period = m_period;
+      is_timed_wait = m_is_timed_wait;
+    }
+
+    void execute (cubthread::entry & thread_ref) override
+    {
+      if (!BO_IS_SERVER_RESTARTED ())
+	{
+	  // wait for boot to finish
+	  return;
+	}
+
+      // compute wait period based on configured interval
+      compute_period ();
+
+      if (m_is_timed_wait)
+	{
+	  if (m_period != m_param_period)
+	    {
+	      // do not delete logs. wait more time
+	      return;
+	    }
+	  if (logpb_remove_archive_logs_exceed_limit (&thread_ref, 1) > 0)
+	    {
+	      // a log was deleted
+	      m_log_deleted_time = clock::now ();
+	    }
+	}
+      else
+	{
+	  // remove all unnecessary logs
+	  logpb_remove_archive_logs_exceed_limit (&thread_ref, 0);
+	}
+    }
+};
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+// class log_clock_daemon_task
+//
+//  description:
+//    log clock daemon task
+//
+class log_clock_daemon_task : public cubthread::entry_task
+{
+  public:
+    void execute (cubthread::entry & thread_ref) override
+    {
+      if (!BO_IS_SERVER_RESTARTED ())
+	{
+	  // wait for boot to finish
+	  return;
+	}
+
+      struct timeval now;
+      gettimeofday (&now, NULL);
+
+      log_Clock_msec = (now.tv_sec * 1000LL) + (now.tv_usec / 1000LL);
+    }
+};
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+// class log_check_ha_delay_info_daemon_task
+//
+//  description:
+//    log check ha delay info daemon_task
+//
+class log_check_ha_delay_info_daemon_task : public cubthread::entry_task
+{
+  public:
+    void execute (cubthread::entry &thread_ref) override
+    {
+#if defined(WINDOWS)
+      return;
+#endif /* WINDOWS */
+
+      if (!BO_IS_SERVER_RESTARTED ())
+	{
+	  // wait for boot to finish
+	  return;
+	}
+
+      time_t log_record_time = 0;
+      int error_code;
+      int delay_limit_in_secs;
+      int acceptable_delay_in_secs;
+      int curr_delay_in_secs;
+      HA_SERVER_STATE server_state;
+
+      csect_enter (&thread_ref, CSECT_HA_SERVER_STATE, INF_WAIT);
+
+      server_state = css_ha_server_state ();
+
+      if (server_state == HA_SERVER_STATE_ACTIVE || server_state == HA_SERVER_STATE_TO_BE_STANDBY)
+	{
+	  css_unset_ha_repl_delayed ();
+	  perfmon_set_stat (&thread_ref, PSTAT_HA_REPL_DELAY, 0, true);
+
+	  log_append_ha_server_state (&thread_ref, server_state);
+
+	  csect_exit (&thread_ref, CSECT_HA_SERVER_STATE);
+	}
+      else
+	{
+	  csect_exit (&thread_ref, CSECT_HA_SERVER_STATE);
+
+	  delay_limit_in_secs = prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_IN_SECS);
+	  acceptable_delay_in_secs = delay_limit_in_secs - prm_get_integer_value (PRM_ID_HA_DELAY_LIMIT_DELTA_IN_SECS);
+
+	  if (acceptable_delay_in_secs < 0)
+	    {
+	      acceptable_delay_in_secs = 0;
+	    }
+
+	  error_code = catcls_get_apply_info_log_record_time (&thread_ref, &log_record_time);
+
+	  if (error_code == NO_ERROR && log_record_time > 0)
+	    {
+	      curr_delay_in_secs = (int) (time (NULL) - log_record_time);
+	      if (curr_delay_in_secs > 0)
+		{
+		  curr_delay_in_secs -= HA_DELAY_ERR_CORRECTION;
+		}
+
+	      if (delay_limit_in_secs > 0)
+		{
+		  if (curr_delay_in_secs > delay_limit_in_secs)
+		    {
+		      if (!css_is_ha_repl_delayed ())
+			{
+			  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_DELAY_DETECTED, 2,
+				  curr_delay_in_secs, delay_limit_in_secs);
+
+			  css_set_ha_repl_delayed ();
+			}
+		    }
+		  else if (curr_delay_in_secs <= acceptable_delay_in_secs)
+		    {
+		      if (css_is_ha_repl_delayed ())
+			{
+			  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_DELAY_RESOLVED, 2,
+				  curr_delay_in_secs, acceptable_delay_in_secs);
+
+			  css_unset_ha_repl_delayed ();
+			}
+		    }
+		}
+
+	      perfmon_set_stat (&thread_ref, PSTAT_HA_REPL_DELAY, curr_delay_in_secs, true);
+	    }
+	}
+    }
+};
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+// class log_flush_daemon_task
+//
+//  description:
+//    log flush daemon task
+//
+class log_flush_daemon_task : public cubthread::entry_task
+{
+  public:
+    void execute (cubthread::entry & thread_ref) override
+    {
+      if (!BO_IS_SERVER_RESTARTED () || !log_Flush_has_been_requested)
+	{
+	  return;
+	}
+
+      // refresh log trace flush time
+      thread_ref.event_stats.trace_log_flush_time = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
+
+      LOG_CS_ENTER (&thread_ref);
+      logpb_flush_pages_direct (&thread_ref);
+      LOG_CS_EXIT (&thread_ref);
+
+      log_Stat.gc_flush_count++;
+
+      pthread_mutex_lock (&log_Gl.group_commit_info.gc_mutex);
+      pthread_cond_broadcast (&log_Gl.group_commit_info.gc_cond);
+      log_Flush_has_been_requested = false;
+      pthread_mutex_unlock (&log_Gl.group_commit_info.gc_mutex);
+    }
+};
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * log_checkpoint_daemon_init () - initialize checkpoint daemon
+ */
+void
+log_checkpoint_daemon_init ()
+{
+  assert (log_Checkpoint_daemon == NULL);
+
+  cubthread::looper looper = cubthread::looper (log_get_checkpoint_interval);
+  log_checkpoint_daemon_task *daemon_task = new log_checkpoint_daemon_task ();
+
+  // create checkpoint daemon thread
+  log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_checkpoint");
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * log_remove_log_archive_daemon_init () - initialize remove log archive daemon
+ */
+void
+log_remove_log_archive_daemon_init ()
+{
+  assert (log_Remove_log_archive_daemon == NULL);
+
+  log_remove_log_archive_daemon_task *daemon_task = new log_remove_log_archive_daemon_task ();
+  cubthread::period_function setup_period_function = std::bind (
+      &log_remove_log_archive_daemon_task::get_remove_log_archives_interval,
+      daemon_task,
+      std::placeholders::_1,
+      std::placeholders::_2);
+
+  cubthread::looper looper = cubthread::looper (setup_period_function);
+
+  // create log archive remover daemon thread
+  log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
+                                                                            "log_remove_log_archive");
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * log_clock_daemon_init () - initialize log clock daemon
+ */
+void
+log_clock_daemon_init ()
+{
+  assert (log_Clock_daemon == NULL);
+
+  cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (200));
+  log_Clock_daemon = cubthread::get_manager ()->create_daemon (looper, new log_clock_daemon_task (), "log_clock");
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * log_check_ha_delay_info_daemon_init () - initialize check ha delay info daemon
+ */
+void
+log_check_ha_delay_info_daemon_init ()
+{
+  assert (log_Check_ha_delay_info_daemon == NULL);
+
+  cubthread::looper looper = cubthread::looper (std::chrono::seconds (1));
+  log_check_ha_delay_info_daemon_task *daemon_task = new log_check_ha_delay_info_daemon_task ();
+
+  log_Check_ha_delay_info_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
+                                                                             "log_check_ha_delay_info");
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * log_flush_daemon_init () - initialize log flush daemon
+ */
+void
+log_flush_daemon_init ()
+{
+  assert (log_Flush_daemon == NULL);
+
+  cubthread::looper looper = cubthread::looper (log_get_log_group_commit_interval);
+  log_flush_daemon_task *daemon_task = new log_flush_daemon_task ();
+
+  log_Flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_flush");
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * log_daemons_init () - initialize daemon threads
+ */
+static void
+log_daemons_init ()
+{
+  log_remove_log_archive_daemon_init ();
+  log_checkpoint_daemon_init ();
+  log_check_ha_delay_info_daemon_init ();
+  log_clock_daemon_init ();
+  log_flush_daemon_init ();
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * log_daemons_destroy () - destroy daemon threads
+ */
+static void
+log_daemons_destroy ()
+{
+  cubthread::get_manager ()->destroy_daemon (log_Remove_log_archive_daemon);
+  cubthread::get_manager ()->destroy_daemon (log_Checkpoint_daemon);
+  cubthread::get_manager ()->destroy_daemon (log_Check_ha_delay_info_daemon);
+  cubthread::get_manager ()->destroy_daemon (log_Clock_daemon);
+  cubthread::get_manager ()->destroy_daemon (log_Flush_daemon);
+}
+#endif /* SERVER_MODE */
+// *INDENT-ON*
+
+/*
+ * log_get_clock_msec () - get current system time in milliseconds.
+ *   return cached value by log_Clock_daemon if SERVER_MODE is defined
+ */
+INT64
+log_get_clock_msec (void)
+{
+#if defined (SERVER_MODE)
+  if (log_Clock_msec > 0)
+    {
+      return log_Clock_msec;
+    }
+#endif /* SERVER_MODE */
+
+  struct timeval now;
+  gettimeofday (&now, NULL);
+
+  return (now.tv_sec * 1000LL) + (now.tv_usec / 1000LL);
+}
+
+// *INDENT-OFF*
+#if defined (SERVER_MODE)
+void
+log_abort_task::execute (context_type &thread_ref)
+{
+  (void) log_abort_by_tdes (&thread_ref, &m_tdes);
+}
+#endif // SERVER_MODE
+// *INDENT-ON*

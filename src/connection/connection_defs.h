@@ -28,9 +28,21 @@
 
 #ident "$Id$"
 
-#include <stdio.h>
+#include "boot.h"
+#if defined(SERVER_MODE)
+#include "connection_list_sr.h"
+#include "critical_section.h"
+#endif
+#include "error_manager.h"
+#include "memory_alloc.h"
+#include "porting.h"
+#include "thread_compat.hpp"
+
 #if defined(WINDOWS)
 #include <dos.h>
+#endif // WINDOWS
+#include <stdio.h>
+#if defined(WINDOWS)
 #include <process.h>
 #else
 #include <poll.h>
@@ -38,16 +50,6 @@
 #if !defined(WINDOWS) && defined(SERVER_MODE)
 #include <pthread.h>
 #endif /* !WINDOWS && SERVER_MODE */
-
-#include "porting.h"
-#include "memory_alloc.h"
-#include "error_manager.h"
-#if defined(SERVER_MODE)
-#include "connection_list_sr.h"
-#include "critical_section.h"
-#endif
-#include "thread.h"
-#include "boot.h"
 
 #define NUM_MASTER_CHANNEL 1
 
@@ -58,12 +60,16 @@
  */
 enum css_command_type
 {
+  NULL_REQUEST = 0,
   INFO_REQUEST = 1,		/* get runtime info from the master server */
   DATA_REQUEST = 2,		/* get data from the database server */
   SERVER_REQUEST = 3,		/* let new server attach */
-  MSQL_REQUEST = 4,		/* A request to start a new M driver. */
-  SERVER_REQUEST_NEW = 5	/* new-style server request */
+  UNUSED_REQUEST = 4,		/* unused request - leave it for compatibility */
+  SERVER_REQUEST_NEW = 5,	/* new-style server request */
+  SERVER_REQUEST_CONNECT_NEW_SLAVE = 6,	/* slave server wants to connect to master server */
+  MAX_REQUEST
 };
+typedef enum css_command_type CSS_COMMAND_TYPE;
 
 /*
  * These are the responses from the master to a server
@@ -143,8 +149,11 @@ enum css_server_request
   SERVER_REGISTER_HA_PROCESS = 10,
   SERVER_CHANGE_HA_MODE = 11,
   SERVER_DEREGISTER_HA_PROCESS = 12,
-  SERVER_GET_EOF = 13
+  SERVER_GET_EOF = 13,
+  SERVER_RECEIVE_MASTER_HOSTNAME = 14,
+  SERVER_CONNECT_NEW_SLAVE = 15
 };
+typedef enum css_server_request CSS_SERVER_REQUEST;
 
 /*
  * These are the status codes for the connection structure which represent
@@ -218,7 +227,8 @@ enum css_error_code
   INTERRUPTED_READ = 14,
   CANT_ALLOC_BUFFER = 15,
   OS_ERROR = 16,
-  TIMEDOUT_ON_QUEUE = 17
+  TIMEDOUT_ON_QUEUE = 17,
+  INTERNAL_CSS_ERROR = 18
 };
 
 /*
@@ -252,7 +262,6 @@ enum css_check_peer_alive
 /*
  * HA mode
  */
-typedef enum ha_mode HA_MODE;
 enum ha_mode
 {
   HA_MODE_OFF = 0,
@@ -262,6 +271,7 @@ enum ha_mode
   HA_MODE_ROLE_CHANGE = 4,
   HA_MODE_REPLICA = 5
 };
+typedef enum ha_mode HA_MODE;
 #define HA_MODE_OFF_STR		"off"
 #define HA_MODE_FAIL_OVER_STR	"fail-over"
 #define HA_MODE_FAIL_BACK_STR	"fail-back"
@@ -270,13 +280,14 @@ enum ha_mode
 #define HA_MODE_REPLICA_STR     "replica"
 #define HA_MODE_ON_STR          "on"
 
+#define HA_GET_MODE() ((HA_MODE) prm_get_integer_value (PRM_ID_HA_MODE))
+#define HA_DISABLED() (HA_GET_MODE () == HA_MODE_OFF)
+
 /*
  * HA server mode
  */
-typedef enum ha_server_mode HA_SERVER_MODE;
 enum ha_server_mode
 {
-  HA_SERVER_MODE_NA = -1,
   HA_SERVER_MODE_ACTIVE = 0,
   HA_SERVER_MODE_STANDBY = 1,
   HA_SERVER_MODE_BACKUP = 2,
@@ -284,6 +295,7 @@ enum ha_server_mode
   HA_SERVER_MODE_SECONDARY = 1,	/* alias of standby */
   HA_SERVER_MODE_TERNARY = 2	/* alias of backup */
 };
+typedef enum ha_server_mode HA_SERVER_MODE;
 #define HA_SERVER_MODE_ACTIVE_STR      "active"
 #define HA_SERVER_MODE_STANDBY_STR     "standby"
 #define HA_SERVER_MODE_BACKUP_STR      "backup"
@@ -292,32 +304,8 @@ enum ha_server_mode
 #define HA_SERVER_MODE_TERNARY_STR      "ternary"
 
 /*
- * HA server state
- */
-typedef enum ha_server_state HA_SERVER_STATE;
-enum ha_server_state
-{
-  HA_SERVER_STATE_NA = -1,	/* N/A */
-  HA_SERVER_STATE_IDLE = 0,	/* initial state */
-  HA_SERVER_STATE_ACTIVE = 1,
-  HA_SERVER_STATE_TO_BE_ACTIVE = 2,
-  HA_SERVER_STATE_STANDBY = 3,
-  HA_SERVER_STATE_TO_BE_STANDBY = 4,
-  HA_SERVER_STATE_MAINTENANCE = 5,	/* maintenance mode */
-  HA_SERVER_STATE_DEAD = 6	/* server is dead - virtual state; not exists */
-};
-#define HA_SERVER_STATE_IDLE_STR                "idle"
-#define HA_SERVER_STATE_ACTIVE_STR              "active"
-#define HA_SERVER_STATE_TO_BE_ACTIVE_STR        "to-be-active"
-#define HA_SERVER_STATE_STANDBY_STR             "standby"
-#define HA_SERVER_STATE_TO_BE_STANDBY_STR       "to-be-standby"
-#define HA_SERVER_STATE_MAINTENANCE_STR         "maintenance"
-#define HA_SERVER_STATE_DEAD_STR                "dead"
-
-/*
  * HA log applier state
  */
-typedef enum ha_log_applier_state HA_LOG_APPLIER_STATE;
 enum ha_log_applier_state
 {
   HA_LOG_APPLIER_STATE_NA = -1,
@@ -327,6 +315,7 @@ enum ha_log_applier_state
   HA_LOG_APPLIER_STATE_DONE = 3,
   HA_LOG_APPLIER_STATE_ERROR = 4
 };
+typedef enum ha_log_applier_state HA_LOG_APPLIER_STATE;
 #define HA_LOG_APPLIER_STATE_UNREGISTERED_STR   "unregistered"
 #define HA_LOG_APPLIER_STATE_RECOVERING_STR     "recovering"
 #define HA_LOG_APPLIER_STATE_WORKING_STR        "working"
@@ -437,7 +426,6 @@ struct css_conn_entry
   SOCKET fd;
   unsigned short request_id;
   int status;			/* CONN_OPEN, CONN_CLOSED, CONN_CLOSING = 3 */
-  int transaction_id;
   int invalidate_snapshot;
   int client_id;
   int db_error;
@@ -455,8 +443,6 @@ struct css_conn_entry
 
   char *version_string;		/* client version string */
 
-  int prefetcher_thread_count;	/* number of active thread */
-  int prefetchlogdb_max_thread_count;	/* max number of active thread */
   CSS_QUEUE_ENTRY *free_queue_list;
   struct css_wait_queue_entry *free_wait_queue_list;
   char *free_net_header_list;
@@ -482,6 +468,18 @@ struct css_conn_entry
 #endif
   SESSION_ID session_id;
   CSS_CONN_ENTRY *next;
+
+#if defined __cplusplus
+  // transaction ID manipulation
+  void set_tran_index (int tran_index);
+  int get_tran_index (void);
+
+private:
+  // note - I want to protect this.
+  int transaction_id;
+#else				// not c++ = c
+  int transaction_id;
+#endif				// not c++ = c
 };
 
 /*
@@ -511,9 +509,5 @@ struct last_access_status
   char program_name[32];
   LAST_ACCESS_STATUS *next;
 };
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern void css_shutdown (int exit_reason);
-#endif
 
 #endif /* _CONNECTION_DEFS_H_ */

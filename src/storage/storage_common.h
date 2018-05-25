@@ -33,13 +33,14 @@
 #include <limits.h>
 #include <time.h>
 #include <stdio.h>
+#include <assert.h>
 
 #include "porting.h"
-
 #include "dbdef.h"
-#include "dbtype.h"
+#include "dbtype_def.h"
+#include "sha1.h"
 
-/* LIMITS AND NULL VALUES ON DISK RELATED DATATYPES */
+  /* LIMITS AND NULL VALUES ON DISK RELATED DATATYPES */
 
 #define NULL_VOLID  (-1)	/* Value of an invalid volume identifier */
 #define NULL_SECTID (-1)	/* Value of an invalid sector identifier */
@@ -68,7 +69,7 @@ enum
 
 #define COMPOSE_FULL_NAME(buf, buf_size, path, name) \
   do { \
-    int len = strlen(path); \
+    size_t len = strlen(path); \
     if (len > 0 && path[len - 1] != PATH_SEPARATOR) { \
       snprintf(buf, buf_size - 1, "%s%c%s", path, PATH_SEPARATOR, name); \
     } else { \
@@ -79,6 +80,7 @@ enum
 /* Type definitions related to disk information	*/
 
 typedef INT16 VOLID;		/* Volume identifier */
+typedef VOLID DKNVOLS;		/* Number of volumes */
 
 typedef INT32 PAGEID;		/* Data page identifier */
 typedef PAGEID DKNPAGES;	/* Number of disk pages */
@@ -98,7 +100,6 @@ typedef INT32 LOLENGTH;		/* Length for a large object */
 
 /* Log address structure */
 
-typedef struct log_lsa LOG_LSA;	/* Log address identifier */
 struct log_lsa
 {
   INT64 pageid:48;		/* Log page identifier : 6 bytes length */
@@ -106,7 +107,14 @@ struct log_lsa
   /* The offset field is defined as 16bit-INT64 type (not short), because of alignment in windows */
 };
 
-#define LSA_COPY(lsa_ptr1, lsa_ptr2) *(lsa_ptr1) = *(lsa_ptr2)
+typedef struct log_lsa LOG_LSA;	/* Log address identifier */
+STATIC_INLINE void
+LSA_COPY (LOG_LSA * plsa1, const LOG_LSA * plsa2)
+{
+  plsa1->pageid = plsa2->pageid;
+  plsa1->offset = plsa2->offset;
+}
+
 #define LSA_SET_NULL(lsa_ptr)\
   do {									      \
     (lsa_ptr)->pageid = NULL_PAGEID;                                          \
@@ -485,6 +493,13 @@ typedef int TRANID;		/* Transaction identifier */
 
 typedef enum
 {
+  LOCK_COMPAT_NO = 0,
+  LOCK_COMPAT_YES,
+  LOCK_COMPAT_UNKNOWN,
+} LOCK_COMPATIBILITY;
+
+typedef enum
+{
   /* Don't change the initialization since they reflect the elements of lock_Conv and lock_Comp */
   NA_LOCK = 0,			/* N/A lock */
   INCON_NON_TWO_PHASE_LOCK = 1,	/* Incompatible 2 phase lock. */
@@ -565,6 +580,7 @@ struct bo_restart_arg
   bool restore_upto_bktime;
 
   bool restore_slave;		/* restore slave */
+  bool is_restore_from_backup;
   INT64 db_creation;		/* database creation time */
   LOG_LSA restart_repl_lsa;	/* restart replication lsa after restoreslave */
 };
@@ -721,6 +737,94 @@ typedef enum
 				 * ER_HEAP_UNKNOWN_OBJECT is set in er_errid */
 } NON_EXISTENT_HANDLING;
 
+/************************************************************************/
+/* spacedb                                                              */
+/************************************************************************/
+
+/* database space info */
+typedef enum
+{
+  SPACEDB_PERM_PERM_ALL,
+  SPACEDB_PERM_TEMP_ALL,
+  SPACEDB_TEMP_TEMP_ALL,
+
+  SPACEDB_TOTAL_ALL,
+  SPACEDB_ALL_COUNT,
+} SPACEDB_ALL_TYPE;
+
+typedef struct spacedb_all SPACEDB_ALL;
+struct spacedb_all
+{
+  DKNVOLS nvols;
+  DKNPAGES npage_used;
+  DKNPAGES npage_free;
+};
+
+typedef struct spacedb_onevol SPACEDB_ONEVOL;
+struct spacedb_onevol
+{
+  VOLID volid;
+  DB_VOLTYPE type;
+  DB_VOLPURPOSE purpose;
+  DKNPAGES npage_used;
+  DKNPAGES npage_free;
+  char name[DB_MAX_PATH_LENGTH];
+};
+
+/* files */
+typedef enum
+{
+  SPACEDB_INDEX_FILE,
+  SPACEDB_HEAP_FILE,
+  SPACEDB_SYSTEM_FILE,
+  SPACEDB_TEMP_FILE,
+
+  SPACEDB_TOTAL_FILE,
+  SPACEDB_FILE_COUNT,
+} SPACEDB_FILE_TYPE;
+
+typedef struct spacedb_files SPACEDB_FILES;
+struct spacedb_files
+{
+  int nfile;
+  DKNPAGES npage_ftab;
+  DKNPAGES npage_user;
+  DKNPAGES npage_reserved;
+};
+
+/************************************************************************/
+/* client & catalog common                                              */
+/************************************************************************/
+
+typedef int REPR_ID;		/* representation identifier */
+typedef int ATTR_ID;		/* attribute identifier */
+
+#define NULL_REPRID       -1	/* Null Representation Identifier */
+#define NULL_ATTRID       -1	/* Null Attribute Identifier */
+
+/************************************************************************/
+/* b-tree common                                                        */
+/************************************************************************/
+
+typedef enum
+{
+  BTREE_CONSTRAINT_UNIQUE = 0x01,
+  BTREE_CONSTRAINT_PRIMARY_KEY = 0x02
+} BTREE_CONSTRAINT_TYPE;
+
+typedef enum
+{
+  BTREE_UNIQUE,
+  BTREE_INDEX,
+  BTREE_REVERSE_UNIQUE,
+  BTREE_REVERSE_INDEX,
+  BTREE_PRIMARY_KEY,
+  BTREE_FOREIGN_KEY
+} BTREE_TYPE;
+
+/************************************************************************/
+/* storage common functions                                             */
+/************************************************************************/
 extern INT16 db_page_size (void);
 extern INT16 db_io_page_size (void);
 extern INT16 db_log_page_size (void);
@@ -738,5 +842,532 @@ extern char *vpid_to_string (char *buf, int buf_size, VPID * vpid);
 extern char *vfid_to_string (char *buf, int buf_size, VFID * vfid);
 extern char *hfid_to_string (char *buf, int buf_size, HFID * hfid);
 extern char *btid_to_string (char *buf, int buf_size, BTID * btid);
+
+/************************************************************************/
+/* next has nothing to do with storage. however, we lack a clear place  */
+/* for global stuff that affect everything. this is closest...          */
+/************************************************************************/
+
+typedef enum
+{
+  T_ADD,
+  T_SUB,
+  T_MUL,
+  T_DIV,
+  T_UNPLUS,
+  T_UNMINUS,
+  T_PRIOR,
+  T_CONNECT_BY_ROOT,
+  T_QPRIOR,
+  T_BIT_NOT,
+  T_BIT_AND,
+  T_BIT_OR,
+  T_BIT_XOR,
+  T_BIT_COUNT,
+  T_BITSHIFT_LEFT,
+  T_BITSHIFT_RIGHT,
+  T_INTDIV,
+  T_INTMOD,
+  T_IF,
+  T_IFNULL,
+  T_ISNULL,
+  T_ACOS,
+  T_ASIN,
+  T_ATAN,
+  T_ATAN2,
+  T_COS,
+  T_SIN,
+  T_TAN,
+  T_COT,
+  T_PI,
+  T_DEGREES,
+  T_RADIANS,
+  T_FORMAT,
+  T_CONCAT,
+  T_CONCAT_WS,
+  T_FIELD,
+  T_LEFT,
+  T_RIGHT,
+  T_REPEAT,
+  T_SPACE,
+  T_LOCATE,
+  T_MID,
+  T_STRCMP,
+  T_REVERSE,
+  T_DISK_SIZE,
+  T_LN,
+  T_LOG2,
+  T_LOG10,
+  T_ADDDATE,
+  T_DATE_ADD,
+  T_SUBDATE,
+  T_DATE_SUB,
+  T_DATE_FORMAT,
+  T_STR_TO_DATE,
+  T_MOD,
+  T_POSITION,
+  T_SUBSTRING,
+  T_SUBSTRING_INDEX,
+  T_OCTET_LENGTH,
+  T_BIT_LENGTH,
+  T_CHAR_LENGTH,
+  T_MD5,
+  T_LOWER,
+  T_UPPER,
+  T_LIKE_LOWER_BOUND,
+  T_LIKE_UPPER_BOUND,
+  T_TRIM,
+  T_LTRIM,
+  T_RTRIM,
+  T_LPAD,
+  T_RPAD,
+  T_REPLACE,
+  T_TRANSLATE,
+  T_ADD_MONTHS,
+  T_LAST_DAY,
+  T_MONTHS_BETWEEN,
+  T_SYS_DATE,
+  T_SYS_TIME,
+  T_SYS_TIMESTAMP,
+  T_UTC_TIME,
+  T_UTC_DATE,
+  T_TIME_FORMAT,
+  T_TIMESTAMP,
+  T_UNIX_TIMESTAMP,
+  T_FROM_UNIXTIME,
+  T_SYS_DATETIME,
+  T_YEAR,
+  T_MONTH,
+  T_DAY,
+  T_HOUR,
+  T_MINUTE,
+  T_SECOND,
+  T_QUARTER,
+  T_WEEKDAY,
+  T_DAYOFWEEK,
+  T_DAYOFYEAR,
+  T_TODAYS,
+  T_FROMDAYS,
+  T_TIMETOSEC,
+  T_SECTOTIME,
+  T_MAKEDATE,
+  T_MAKETIME,
+  T_WEEK,
+  T_TO_CHAR,
+  T_TO_DATE,
+  T_TO_TIME,
+  T_TO_TIMESTAMP,
+  T_TO_DATETIME,
+  T_TO_NUMBER,
+  T_CURRENT_VALUE,
+  T_NEXT_VALUE,
+  T_CAST,
+  T_CAST_NOFAIL,
+  T_CASE,
+  T_EXTRACT,
+  T_LOCAL_TRANSACTION_ID,
+  T_FLOOR,
+  T_CEIL,
+  T_SIGN,
+  T_POWER,
+  T_ROUND,
+  T_LOG,
+  T_EXP,
+  T_SQRT,
+  T_TRUNC,
+  T_ABS,
+  T_CHR,
+  T_INSTR,
+  T_LEAST,
+  T_GREATEST,
+  T_STRCAT,
+  T_NULLIF,
+  T_COALESCE,
+  T_NVL,
+  T_NVL2,
+  T_DECODE,
+  T_RAND,
+  T_DRAND,
+  T_RANDOM,
+  T_DRANDOM,
+  T_INCR,
+  T_DECR,
+  T_SYS_CONNECT_BY_PATH,
+  T_DATE,
+  T_TIME,
+  T_DATEDIFF,
+  T_TIMEDIFF,
+  T_ROW_COUNT,
+  T_LAST_INSERT_ID,
+  T_DEFAULT,
+  T_LIST_DBS,
+  T_BIT_TO_BLOB,
+  T_BLOB_TO_BIT,
+  T_CHAR_TO_CLOB,
+  T_CLOB_TO_CHAR,
+  T_LOB_LENGTH,
+  T_TYPEOF,
+  T_INDEX_CARDINALITY,
+  T_EVALUATE_VARIABLE,
+  T_DEFINE_VARIABLE,
+  T_PREDICATE,
+  T_EXEC_STATS,
+  T_ADDTIME,
+  T_BIN,
+  T_FINDINSET,
+  T_HEX,
+  T_ASCII,
+  T_CONV,
+  T_INET_ATON,
+  T_INET_NTOA,
+  T_TO_ENUMERATION_VALUE,
+  T_CHARSET,
+  T_COLLATION,
+  T_WIDTH_BUCKET,
+  T_TRACE_STATS,
+  T_AES_ENCRYPT,
+  T_AES_DECRYPT,
+  T_SHA_ONE,
+  T_SHA_TWO,
+  T_INDEX_PREFIX,
+  T_TO_BASE64,
+  T_FROM_BASE64,
+  T_SYS_GUID,
+  T_SLEEP,
+  T_DBTIMEZONE,
+  T_SESSIONTIMEZONE,
+  T_TZ_OFFSET,
+  T_NEW_TIME,
+  T_FROM_TZ,
+  T_TO_DATETIME_TZ,
+  T_TO_TIMESTAMP_TZ,
+  T_TO_TIME_TZ,
+  T_UTC_TIMESTAMP,
+  T_CRC32,
+  T_CURRENT_DATETIME,
+  T_CURRENT_TIMESTAMP,
+  T_CURRENT_DATE,
+  T_CURRENT_TIME,
+  T_CONV_TZ,
+  T_JSON_CONTAINS,
+  T_JSON_TYPE,
+  T_JSON_EXTRACT,
+  T_JSON_VALID,
+  T_JSON_LENGTH,
+  T_JSON_DEPTH,
+  T_JSON_SEARCH,
+} OPERATOR_TYPE;		/* arithmetic operator types */
+
+typedef enum
+{
+  /* aggregate functions */
+  PT_MIN = 900, PT_MAX, PT_SUM, PT_AVG,
+  PT_STDDEV, PT_VARIANCE,
+  PT_STDDEV_POP, PT_VAR_POP,
+  PT_STDDEV_SAMP, PT_VAR_SAMP,
+  PT_COUNT, PT_COUNT_STAR,
+  PT_GROUPBY_NUM,
+  PT_AGG_BIT_AND, PT_AGG_BIT_OR, PT_AGG_BIT_XOR,
+  PT_GROUP_CONCAT,
+  PT_ROW_NUMBER,
+  PT_RANK,
+  PT_DENSE_RANK,
+  PT_NTILE,
+  PT_TOP_AGG_FUNC,
+  /* only aggregate functions should be below PT_TOP_AGG_FUNC */
+
+  /* analytic only functions */
+  PT_LEAD, PT_LAG,
+
+  /* foreign functions */
+  PT_GENERIC,
+
+  /* from here down are function code common to parser and xasl */
+  /* "table" functions argument(s) are tables */
+  F_TABLE_SET, F_TABLE_MULTISET, F_TABLE_SEQUENCE,
+  F_TOP_TABLE_FUNC,
+  F_MIDXKEY,
+
+  /* "normal" functions, arguments are values */
+  F_SET, F_MULTISET, F_SEQUENCE, F_VID, F_GENERIC, F_CLASS_OF,
+  F_INSERT_SUBSTRING, F_ELT, F_JSON_OBJECT, F_JSON_ARRAY, F_JSON_MERGE,
+  F_JSON_INSERT, F_JSON_REMOVE, F_JSON_ARRAY_APPEND, F_JSON_GET_ALL_PATHS,
+  F_JSON_REPLACE, F_JSON_SET, F_JSON_KEYS,
+
+  /* only for FIRST_VALUE. LAST_VALUE, NTH_VALUE analytic functions */
+  PT_FIRST_VALUE, PT_LAST_VALUE, PT_NTH_VALUE,
+  /* aggregate and analytic functions */
+  PT_MEDIAN,
+  PT_CUME_DIST,
+  PT_PERCENT_RANK,
+  PT_PERCENTILE_CONT,
+  PT_PERCENTILE_DISC
+} FUNC_TYPE;
+
+/************************************************************************/
+/* QUERY                                                                */
+/************************************************************************/
+
+/*
+ * CACHE TIME RELATED DEFINITIONS
+ */
+typedef struct cache_time CACHE_TIME;
+struct cache_time
+{
+  int sec;
+  int usec;
+};
+
+#define CACHE_TIME_AS_ARGS(ct)	(ct)->sec, (ct)->usec
+
+#define CACHE_TIME_EQ(T1, T2) \
+  (((T1)->sec != 0) && ((T1)->sec == (T2)->sec) && ((T1)->usec == (T2)->usec))
+
+#define CACHE_TIME_RESET(T) \
+  do \
+    { \
+      (T)->sec = 0; \
+      (T)->usec = 0; \
+    } \
+  while (0)
+
+#define CACHE_TIME_MAKE(CT, TV) \
+  do \
+    { \
+      (CT)->sec = (TV)->tv_sec; \
+      (CT)->usec = (TV)->tv_usec; \
+    } \
+  while (0)
+
+#define OR_CACHE_TIME_SIZE (OR_INT_SIZE * 2)
+
+#define OR_PACK_CACHE_TIME(PTR, T) \
+  do \
+    { \
+      if ((CACHE_TIME *) (T) != NULL) \
+        { \
+          PTR = or_pack_int (PTR, (T)->sec); \
+          PTR = or_pack_int (PTR, (T)->usec); \
+        } \
+    else \
+      { \
+        PTR = or_pack_int (PTR, 0); \
+        PTR = or_pack_int (PTR, 0); \
+      } \
+    } \
+  while (0)
+
+#define OR_UNPACK_CACHE_TIME(PTR, T) \
+  do \
+    { \
+      if ((CACHE_TIME *) (T) != NULL) \
+        { \
+          PTR = or_unpack_int (PTR, &((T)->sec)); \
+          PTR = or_unpack_int (PTR, &((T)->usec)); \
+        } \
+    } \
+  while (0)
+
+/* XASL identifier */
+typedef struct xasl_id XASL_ID;
+struct xasl_id
+{
+  SHA1Hash sha1;		/* SHA-1 hash generated from query string. */
+  INT32 cache_flag;
+  /* Multiple-purpose field used to handle XASL cache. */
+  CACHE_TIME time_stored;	/* when this XASL plan stored */
+};				/* XASL plan file identifier */
+
+typedef enum
+{
+  Q_DISTINCT,			/* no duplicate values */
+  Q_ALL				/* all values */
+} QUERY_OPTIONS;
+
+typedef enum
+{
+  R_KEY = 1,			/* key value search */
+  R_RANGE,			/* range search with the two key values and range spec */
+  R_KEYLIST,			/* a list of key value searches */
+  R_RANGELIST			/* a list of range searches */
+} RANGE_TYPE;
+
+typedef enum
+{
+  SHOWSTMT_START = 0,
+  SHOWSTMT_NULL = SHOWSTMT_START,
+  SHOWSTMT_ACCESS_STATUS,
+  SHOWSTMT_VOLUME_HEADER,
+  SHOWSTMT_ACTIVE_LOG_HEADER,
+  SHOWSTMT_ARCHIVE_LOG_HEADER,
+  SHOWSTMT_SLOTTED_PAGE_HEADER,
+  SHOWSTMT_SLOTTED_PAGE_SLOTS,
+  SHOWSTMT_HEAP_HEADER,
+  SHOWSTMT_ALL_HEAP_HEADER,
+  SHOWSTMT_HEAP_CAPACITY,
+  SHOWSTMT_ALL_HEAP_CAPACITY,
+  SHOWSTMT_INDEX_HEADER,
+  SHOWSTMT_INDEX_CAPACITY,
+  SHOWSTMT_ALL_INDEXES_HEADER,
+  SHOWSTMT_ALL_INDEXES_CAPACITY,
+  SHOWSTMT_GLOBAL_CRITICAL_SECTIONS,
+  SHOWSTMT_JOB_QUEUES,
+  SHOWSTMT_TIMEZONES,
+  SHOWSTMT_FULL_TIMEZONES,
+  SHOWSTMT_TRAN_TABLES,
+  SHOWSTMT_THREADS,
+
+  /* append the new show statement types in here */
+
+  SHOWSTMT_END
+} SHOWSTMT_TYPE;
+
+#define NUM_F_GENERIC_ARGS 32
+#define NUM_F_INSERT_SUBSTRING_ARGS 4
+
+extern const int SM_MAX_STRING_LENGTH;
+
+/*
+ * These are the names for the system defined properties on classes,
+ * attributes and methods.  For the built in properties, try
+ * to use short names.  User properties if they are ever allowed
+ * should have more descriptive names.
+ *
+ * Lets adopt the convention that names beginning with a '*' are
+ * reserved for system properties.
+ */
+#define SM_PROPERTY_UNIQUE "*U"
+#define SM_PROPERTY_INDEX "*I"
+#define SM_PROPERTY_NOT_NULL "*N"
+#define SM_PROPERTY_REVERSE_UNIQUE "*RU"
+#define SM_PROPERTY_REVERSE_INDEX "*RI"
+#define SM_PROPERTY_VID_KEY "*V_KY"
+#define SM_PROPERTY_PRIMARY_KEY "*P"
+#define SM_PROPERTY_FOREIGN_KEY "*FK"
+
+#define SM_PROPERTY_NUM_INDEX_FAMILY         6
+
+#define SM_FILTER_INDEX_ID "*FP*"
+#define SM_FUNCTION_INDEX_ID "*FI*"
+#define SM_PREFIX_INDEX_ID "*PLID*"
+
+/*
+ *    Bit field identifiers for attribute flags.  These could be defined
+ *    with individual unsigned bit fields but this makes it easier
+ *    to save them as a single integer.
+ *    The "new" flag is used only at run time and shouldn't be here.
+ *    Need to re-design the template functions to operate from a different
+ *    memory structure during flattening.
+ */
+typedef enum
+{
+
+  SM_ATTFLAG_INDEX = 1,		/* attribute has an index 0x01 */
+  SM_ATTFLAG_UNIQUE = 2,	/* attribute has UNIQUE constraint 0x02 */
+  SM_ATTFLAG_NON_NULL = 4,	/* attribute has NON_NULL constraint 0x04 */
+  SM_ATTFLAG_VID = 8,		/* attribute is part of virtual object id 0x08 */
+  SM_ATTFLAG_NEW = 16,		/* is a new attribute 0x10 */
+  SM_ATTFLAG_REVERSE_INDEX = 32,	/* attribute has a reverse index 0x20 */
+  SM_ATTFLAG_REVERSE_UNIQUE = 64,	/* attribute has a reverse unique 0x40 */
+  SM_ATTFLAG_PRIMARY_KEY = 128,	/* attribute has a primary key 0x80 */
+  SM_ATTFLAG_AUTO_INCREMENT = 256,	/* auto increment attribute 0x0100 */
+  SM_ATTFLAG_FOREIGN_KEY = 512,	/* attribute has a primary key 0x200 */
+  SM_ATTFLAG_PARTITION_KEY = 1024	/* attribute is the partitioning key for the class 0x400 */
+} SM_ATTRIBUTE_FLAG;
+
+/* delete or update action type for foreign key */
+typedef enum
+{
+  SM_FOREIGN_KEY_CASCADE,
+  SM_FOREIGN_KEY_RESTRICT,
+  SM_FOREIGN_KEY_NO_ACTION,
+  SM_FOREIGN_KEY_SET_NULL
+} SM_FOREIGN_KEY_ACTION;
+
+/*
+ *    These identify "namespaces" for class components like attributes
+ *    and methods.  A name_space identifier is frequently used
+ *    in conjunction with a name so the correct component can be found
+ *    in a class definition.  Since the namespaces for classes and
+ *    instances can overlap, a name alone is not enough to uniquely
+ *    identify a component.
+ */
+typedef enum
+{
+  ID_ATTRIBUTE,
+  ID_SHARED_ATTRIBUTE,
+  ID_CLASS_ATTRIBUTE,
+  ID_METHOD,
+  ID_CLASS_METHOD,
+  ID_INSTANCE,			/* attributes/shared attributes/methods */
+  ID_CLASS,			/* class methods/class attributes */
+  ID_NULL
+} SM_NAME_SPACE;
+
+/*
+ *    This constant defines the maximum size in bytes of a class name,
+ *    attribute name, method name, or any other named entity in the schema.
+ */
+#define SM_MAX_IDENTIFIER_LENGTH 255
+
+#define SERIAL_ATTR_NAME          "name"
+#define SERIAL_ATTR_OWNER         "owner"
+#define SERIAL_ATTR_CURRENT_VAL   "current_val"
+#define SERIAL_ATTR_INCREMENT_VAL "increment_val"
+#define SERIAL_ATTR_MAX_VAL       "max_val"
+#define SERIAL_ATTR_MIN_VAL       "min_val"
+#define SERIAL_ATTR_CYCLIC        "cyclic"
+#define SERIAL_ATTR_STARTED       "started"
+#define SERIAL_ATTR_CLASS_NAME    "class_name"
+#define SERIAL_ATTR_ATT_NAME      "att_name"
+#define SERIAL_ATTR_CACHED_NUM    "cached_num"
+#define SERIAL_ATTR_COMMENT       "comment"
+
+#define PEEK          true	/* Peek for a slotted record */
+#define COPY          false	/* Don't peek, but copy a slotted record */
+
+enum
+{
+/* Unknown record type */
+  REC_UNKNOWN = 0,
+
+/* Record without content, just the address */
+  REC_ASSIGN_ADDRESS = 1,
+
+/* Home of record */
+  REC_HOME = 2,
+
+/* No the original home of record.  part of relocation process */
+  REC_NEWHOME = 3,
+
+/* Record describe new home of record */
+  REC_RELOCATION = 4,
+
+/* Record describe location of big record */
+  REC_BIGONE = 5,
+
+/* Slot does not describe any record.
+ * A record was stored in this slot.  Slot cannot be reused. 
+ */
+  REC_MARKDELETED = 6,
+
+/* Slot does not describe any record.
+ * A record was stored in this slot.  Slot will be reused. 
+ */
+  REC_DELETED_WILL_REUSE = 7,
+
+/* unused reserved record type */
+  REC_RESERVED_TYPE_8 = 8,
+  REC_RESERVED_TYPE_9 = 9,
+  REC_RESERVED_TYPE_10 = 10,
+  REC_RESERVED_TYPE_11 = 11,
+  REC_RESERVED_TYPE_12 = 12,
+  REC_RESERVED_TYPE_13 = 13,
+  REC_RESERVED_TYPE_14 = 14,
+  REC_RESERVED_TYPE_15 = 15,
+/* 4bit record type max */
+  REC_4BIT_USED_TYPE_MAX = REC_DELETED_WILL_REUSE,
+  REC_4BIT_TYPE_MAX = REC_RESERVED_TYPE_15
+};
 
 #endif /* _STORAGE_COMMON_H_ */

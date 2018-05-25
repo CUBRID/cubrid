@@ -25,9 +25,14 @@
 #ifndef _BINARYHEAP_H_
 #define _BINARYHEAP_H_
 
-#include "config.h"
-#include "thread.h"
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
+#include "config.h"
+#include "thread_compat.hpp"
+
+// TODO: which c-code compiled file reaches this header?
 #ifdef __cplusplus
 extern "C"
 {

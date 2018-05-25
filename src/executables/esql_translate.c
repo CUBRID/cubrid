@@ -1280,7 +1280,7 @@ emit_put_db_value (HOST_REF * host)
 
     case C_TYPE_COLLECTION:
       {
-	type_str = (char *) pp_malloc (sizeof (fmt) + strlen (pp_get_expr (host)));
+	type_str = (char *) pp_malloc ((int) (sizeof (fmt) + strlen (pp_get_expr (host))));
 	sprintf (type_str, fmt, pp_get_expr (host));
 	ctype_str = "DB_TYPE_C_SET";
 	buf_str = pp_get_addr_expr (host);
@@ -1602,9 +1602,9 @@ escape_string (const char *in_str, int length, int *counter)
   *temp = '\0';
   if (out_str == temp_buffer)
     {
-      int sz = temp - out_str + 1;
+      int sz = (int) (temp - out_str) + 1;
 
-      out_str = pp_malloc (sz);
+      out_str = (char *) pp_malloc (sz);
       memcpy (out_str, temp_buffer, sz);
     }
   *counter = add_count;

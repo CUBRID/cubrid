@@ -30,6 +30,7 @@
 #include <ctype.h>
 #include <signal.h>
 #include <errno.h>
+#include <assert.h>
 
 #include "dbi.h"
 #include "porting.h"

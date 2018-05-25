@@ -26,14 +26,18 @@
 
 #ident "$Id$"
 
+#if defined (SERVER_MODE)
+#error Does not belong to server module
+#endif /* SERVER_MODE */
+
 #include <stdarg.h>
+#include <assert.h>
 
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "parser.h"
 #include "release_string.h"
 #include "parser.h"
-#include "query_executor.h"
 
 /*
  * These #defines are used in conjunction with assert() to announce

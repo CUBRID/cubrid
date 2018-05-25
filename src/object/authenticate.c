@@ -37,6 +37,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <assert.h>
 
 #include "porting.h"
 #include "misc_string.h"
@@ -68,7 +69,11 @@
 #include "execute_statement.h"
 #include "optimizer.h"
 #include "network_interface_cl.h"
-#include "dbval.h"		/* this must be the last header file included */
+#include "dbtype.h"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #if defined(SA_MODE)
 extern bool catcls_Enable;
@@ -174,13 +179,13 @@ const char *AU_DBA_USER_NAME = "DBA";
          strcmp(name, CT_AUTHORIZATIONS_NAME) == 0 || \
 	 strcmp(name, CT_CHARSET_NAME) == 0)
 
-typedef enum fetch_by FETCH_BY;
 enum fetch_by
 {
   DONT_KNOW,			/* Don't know the mop is a class os an instance */
   BY_INSTANCE_MOP,		/* fetch a class by an instance mop */
   BY_CLASS_MOP			/* fetch a class by the class mop */
 };
+typedef enum fetch_by FETCH_BY;
 
 /*
  * AU_GRANT
@@ -441,20 +446,16 @@ static DB_METHOD_LINK au_static_links[] = {
   {"au_add_member_method", (METHOD_LINK_FUNCTION) au_add_member_method},
   {"au_drop_member_method", (METHOD_LINK_FUNCTION) au_drop_member_method},
   {"au_set_password_method", (METHOD_LINK_FUNCTION) au_set_password_method},
-  {"au_set_password_encoded_method",
-   (METHOD_LINK_FUNCTION) au_set_password_encoded_method},
-  {"au_set_password_encoded_sha1_method",
-   (METHOD_LINK_FUNCTION) au_set_password_encoded_sha1_method},
+  {"au_set_password_encoded_method", (METHOD_LINK_FUNCTION) au_set_password_encoded_method},
+  {"au_set_password_encoded_sha1_method", (METHOD_LINK_FUNCTION) au_set_password_encoded_sha1_method},
   {"au_describe_user_method", (METHOD_LINK_FUNCTION) au_describe_user_method},
   {"au_describe_root_method", (METHOD_LINK_FUNCTION) au_describe_root_method},
   {"au_info_method", (METHOD_LINK_FUNCTION) au_info_method},
   {"au_login_method", (METHOD_LINK_FUNCTION) au_login_method},
   {"au_change_owner_method", (METHOD_LINK_FUNCTION) au_change_owner_method},
-  {"au_change_trigger_owner_method",
-   (METHOD_LINK_FUNCTION) au_change_trigger_owner_method},
+  {"au_change_trigger_owner_method", (METHOD_LINK_FUNCTION) au_change_trigger_owner_method},
   {"au_get_owner_method", (METHOD_LINK_FUNCTION) au_get_owner_method},
-  {"au_check_authorization_method",
-   (METHOD_LINK_FUNCTION) au_check_authorization_method},
+  {"au_check_authorization_method", (METHOD_LINK_FUNCTION) au_check_authorization_method},
 
   /* 
    * qo_set_cost
@@ -477,10 +478,8 @@ static DB_METHOD_LINK au_static_links[] = {
   {"get_attribute_number", (METHOD_LINK_FUNCTION) get_attribute_number},
   {"dbmeth_class_name", (METHOD_LINK_FUNCTION) dbmeth_class_name},
   {"dbmeth_print", (METHOD_LINK_FUNCTION) dbmeth_print},
-  {"au_change_sp_owner_method",
-   (METHOD_LINK_FUNCTION) au_change_sp_owner_method},
-  {"au_change_serial_owner_method",
-   (METHOD_LINK_FUNCTION) au_change_serial_owner_method},
+  {"au_change_sp_owner_method", (METHOD_LINK_FUNCTION) au_change_sp_owner_method},
+  {"au_change_serial_owner_method", (METHOD_LINK_FUNCTION) au_change_serial_owner_method},
 
   {NULL, NULL}
 };
@@ -1515,9 +1514,7 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
   DB_VALUE value, class_name_val;
   DB_AUTH type;
   int i;
-  const char *type_set[] = { "SELECT", "INSERT", "UPDATE", "DELETE",
-    "ALTER", "INDEX", "EXECUTE"
-  };
+  const char *type_set[] = { "SELECT", "INSERT", "UPDATE", "DELETE", "ALTER", "INDEX", "EXECUTE" };
 
   if (au_obj == NULL)
     {
@@ -1549,11 +1546,12 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
       return er_errid ();
     }
 
-  db_make_string (&class_name_val, sm_get_ch_name (class_mop));
+  db_make_string_by_const_str (&class_name_val, sm_get_ch_name (class_mop));
   db_class_inst = obj_find_unique (db_class, "class_name", &class_name_val, AU_FETCH_READ);
   if (db_class_inst == NULL)
     {
       assert (er_errid () != NO_ERROR);
+      pr_clear_value (&class_name_val);
       return er_errid ();
     }
 
@@ -1571,6 +1569,7 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
   db_make_int (&value, (int) grant_option);
   obj_set (au_obj, "is_grantable", &value);
 
+  pr_clear_value (&class_name_val);
   return NO_ERROR;
 }
 
@@ -1607,9 +1606,7 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
   DB_QUERY_RESULT *result = NULL;
   DB_SESSION *session = NULL;
   STATEMENT_ID stmt_id;
-  const char *type_set[] = { "SELECT", "INSERT", "UPDATE", "DELETE",
-    "ALTER", "INDEX", "EXECUTE"
-  };
+  const char *type_set[] = { "SELECT", "INSERT", "UPDATE", "DELETE", "ALTER", "INDEX", "EXECUTE" };
 
   for (i = 0; i < COUNT_FOR_VARIABLES; i++)
     {
@@ -1652,13 +1649,13 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CLASS, 0);
       goto exit;
     }
-  db_make_string (&val[INDEX_FOR_CLASS_NAME], class_name);
+  db_make_string_by_const_str (&val[INDEX_FOR_CLASS_NAME], class_name);
 
   for (type = DB_AUTH_SELECT, i = 0; type != auth_type; type = (DB_AUTH) (type << 1), i++)
     {
       ;
     }
-  db_make_string (&val[INDEX_FOR_AUTH_TYPE], type_set[i]);
+  db_make_string_by_const_str (&val[INDEX_FOR_AUTH_TYPE], type_set[i]);
 
   session = db_open_buffer (sql_query);
   if (session == NULL)
@@ -2053,7 +2050,7 @@ au_delete_auth_of_dropping_table (const char *class_name)
       goto release;
     }
 
-  db_make_string (&val, class_name);
+  db_make_string_by_const_str (&val, class_name);
   error = db_push_values (session, 1, &val);
   if (error != NO_ERROR)
     {
@@ -2075,6 +2072,8 @@ release:
     }
 
 exit:
+  pr_clear_value (&val);
+
   AU_ENABLE (save);
 
   return error;
@@ -2840,8 +2839,9 @@ au_set_user_comment (MOP user, const char *comment)
 	}
       else
 	{
-	  db_make_string (&value, comment);
+	  db_make_string_by_const_str (&value, comment);
 	  error = obj_set (user, "comment", &value);
+	  pr_clear_value (&value);
 	}
     }
   AU_RESTORE (save);
@@ -3809,11 +3809,7 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 
   *grant_ptr = NULL;
 
-  error = er_stack_push ();
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
+  er_stack_push ();
 
   need_pop_er_stack = true;
 
@@ -3857,7 +3853,7 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
       grantor = NULL;
       if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value))
 	{
-	  grantor = db_pull_object (&value);
+	  grantor = db_get_object (&value);
 	  if (WS_IS_DELETED (grantor))
 	    {
 	      grantor = NULL;
@@ -3875,7 +3871,7 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 
 	  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value))
 	    {
-	      class_ = db_pull_object (&value);
+	      class_ = db_get_object (&value);
 	      if (WS_IS_DELETED (class_))
 		{
 		  class_ = NULL;
@@ -3967,11 +3963,11 @@ end:
     {
       if (error == NO_ERROR)
 	{
-	  (void) er_stack_pop ();
+	  er_stack_pop ();
 	}
       else
 	{
-	  er_stack_clear ();
+	  er_stack_pop_and_keep_error ();
 	}
     }
 
@@ -4045,11 +4041,7 @@ update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
    */
   AU_DISABLE (save);
 
-  error = er_stack_push ();
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
+  er_stack_push ();
 
   need_pop_er_stack = true;
 
@@ -4180,11 +4172,11 @@ end:
     {
       if (error == NO_ERROR)
 	{
-	  (void) er_stack_pop ();
+	  er_stack_pop ();
 	}
       else
 	{
-	  er_stack_clear ();
+	  er_stack_pop_and_keep_error ();
 	}
     }
 
@@ -4497,13 +4489,15 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 		  if (ins_bits)
 		    {
 		      error =
-			au_insert_new_auth (Au_user, user, class_mop, ins_bits, (grant_option) ? ins_bits : false);
+			au_insert_new_auth (Au_user, user, class_mop, ins_bits,
+					    (grant_option) ? ins_bits : DB_AUTH_NONE);
 		    }
 		  upd_bits = (DB_AUTH) (~ins_bits & (int) type);
 		  if ((error == NO_ERROR) && upd_bits)
 		    {
 		      error =
-			au_update_new_auth (Au_user, user, class_mop, upd_bits, (grant_option) ? upd_bits : false);
+			au_update_new_auth (Au_user, user, class_mop, upd_bits,
+					    (grant_option) ? upd_bits : DB_AUTH_NONE);
 		    }
 		}
 
@@ -5243,16 +5237,22 @@ au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VAL
 	{
 	  error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_OWNER);
 	  if (error != NO_ERROR)
-	    goto fail_return;
+	    {
+	      goto fail_return;
+	    }
 	  savepoint_owner = 1;
 	  for (i = 0; sub_partitions[i]; i++)
 	    {
 	      error = au_change_owner (sub_partitions[i], user);
 	      if (error != NO_ERROR)
-		break;
+		{
+		  break;
+		}
 	    }
 	  if (error != NO_ERROR)
-	    goto fail_return;
+	    {
+	      goto fail_return;
+	    }
 	}
     }
 
@@ -5320,6 +5320,11 @@ au_change_serial_owner (MOP * object, MOP new_owner)
   return NO_ERROR;
 
 exit_on_error:
+  if (obt_p != NULL)
+    {
+      dbt_abort_object (obt_p);
+    }
+
   AU_ENABLE (au_save);
 
   assert (er_errid () != NO_ERROR);
@@ -5341,7 +5346,7 @@ au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial,
   MOP serial_class_mop;
   DB_IDENTIFIER serial_obj_id;
   char *serial_name, *owner_name;
-  int error = NO_ERROR, found = 0;
+  int error = NO_ERROR;
 
   db_make_null (returnval);
 
@@ -5446,7 +5451,9 @@ au_change_trigger_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * trigge
 		{
 		  error = au_change_trigger_owner (trigger_mop, user);
 		  if (error == NO_ERROR)
-		    ok = 1;
+		    {
+		      ok = 1;
+		    }
 		}
 	    }
 	}
@@ -5514,7 +5521,7 @@ au_get_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_)
   db_make_null (returnval);
   if (class_ != NULL && IS_STRING (class_) && !DB_IS_NULL (class_) && db_get_string (class_) != NULL)
     {
-      classmop = sm_find_class (db_pull_string (class_));
+      classmop = sm_find_class (db_get_string (class_));
       if (classmop != NULL)
 	{
 	  user = au_get_class_owner (classmop);
@@ -5564,7 +5571,7 @@ au_check_authorization_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_,
   if (class_ != NULL && IS_STRING (class_) && !DB_IS_NULL (class_) && db_get_string (class_) != NULL)
     {
 
-      classmop = sm_find_class (db_pull_string (class_));
+      classmop = sm_find_class (db_get_string (class_));
       if (classmop != NULL)
 	{
 	  error = au_check_authorization (classmop, (DB_AUTH) db_get_int (auth));
@@ -5646,7 +5653,8 @@ au_change_sp_owner (MOP sp, MOP owner)
   else
     {
       db_make_object (&value, owner);
-      if ((error = obj_set (sp, SP_ATTR_OWNER, &value)) < 0)
+      error = obj_set (sp, SP_ATTR_OWNER, &value);
+      if (error < 0)
 	{
 	  goto end;
 	}
@@ -5677,15 +5685,17 @@ au_change_sp_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * sp, DB_VALU
     {
       if (owner != NULL && IS_STRING (owner) && !DB_IS_NULL (owner) && db_get_string (owner) != NULL)
 	{
-
 	  sp_mop = jsp_find_stored_procedure (db_get_string (sp));
 	  if (sp_mop != NULL)
 	    {
 	      user = au_find_user (db_get_string (owner));
 	      if (user != NULL)
 		{
-		  if ((error = au_change_sp_owner (sp_mop, user)) == NO_ERROR)
-		    ok = 1;
+		  error = au_change_sp_owner (sp_mop, user);
+		  if (error == NO_ERROR)
+		    {
+		      ok = 1;
+		    }
 		}
 	    }
 	}
@@ -6008,12 +6018,14 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class, AU_FETCHMODE fe
 	case AU_FETCH_UPDATE:
 	  class_ = (SM_CLASS *) locator_fetch_class_of_instance (op, &classmop, DB_FETCH_WRITE);
 	  if (class_ != NULL)
-	    /* 
-	     * all this appreciably does is set the dirty flag in the MOP
-	     * should have the "dirty after getting write lock" operation
-	     * separated
-	     */
-	    class_ = (SM_CLASS *) locator_update_class (classmop);
+	    {
+	      /* 
+	       * all this appreciably does is set the dirty flag in the MOP
+	       * should have the "dirty after getting write lock" operation
+	       * separated
+	       */
+	      class_ = (SM_CLASS *) locator_update_class (classmop);
+	    }
 	  break;
 	}
     }
@@ -6992,7 +7004,7 @@ au_export_users (FILE * outfp)
 		       * copy password string using malloc
 		       * to be consistent with encrypt_password
 		       */
-		      str = db_pull_string (&value);
+		      str = db_get_string (&value);
 		      if (IS_ENCODED_DES (str))
 			{
 			  /* strip off the prefix so its readable */
@@ -8655,7 +8667,7 @@ au_check_serial_authorization (MOP serial_object)
       return ret_val;
     }
 
-  creator = DB_GET_OBJECT (&creator_val);
+  creator = db_get_object (&creator_val);
 
   ret_val = ER_QPROC_CANNOT_UPDATE_SERIAL;
 

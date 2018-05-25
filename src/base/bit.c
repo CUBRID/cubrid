@@ -328,7 +328,13 @@ bit32_count_trailing_zeros (UINT32 i)
     }
 
   /* leave last trailing 1 */
+#ifdef WINDOWS
+#pragma warning(disable:4146)
+#endif
   i &= -i;
+#ifdef WINDOWS
+#pragma warning(default:4146)
+#endif
 
   if (i & 0x0000FFFF)		/* 00000000000000001111111111111111 */
     {
@@ -469,7 +475,13 @@ bit64_count_trailing_zeros (UINT64 i)
     }
 
   /* leave last trailing 1 */
+#ifdef WINDOWS
+#pragma warning(disable:4146)
+#endif
   i &= -i;
+#ifdef WINDOWS
+#pragma warning(default:4146)
+#endif
 
   if (i & 0x00000000FFFFFFFF)	/* 0000000000000000000000000000000011111111111111111111111111111111 */
     {

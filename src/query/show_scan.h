@@ -26,8 +26,8 @@
 
 #ident "$Id$"
 
-#include "thread.h"
-#include "dbtype.h"
+#include "dbtype_def.h"
+#include "thread_compat.hpp"
 
 typedef struct showstmt_array_context SHOWSTMT_ARRAY_CONTEXT;
 struct showstmt_array_context
@@ -41,5 +41,7 @@ struct showstmt_array_context
 extern SHOWSTMT_ARRAY_CONTEXT *showstmt_alloc_array_context (THREAD_ENTRY * thread_p, int num_capacity, int num_cols);
 extern void showstmt_free_array_context (THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx);
 extern DB_VALUE *showstmt_alloc_tuple_in_context (THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx);
+
+extern int thread_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ctx);
 
 #endif /* _SHOW_SCAN_H_ */

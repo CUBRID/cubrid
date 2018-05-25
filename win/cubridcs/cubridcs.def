@@ -139,6 +139,7 @@ EXPORTS
     db_execute_and_keep_statement
     db_execute_and_keep_statement_ex
     db_execute_statement
+    db_execute_statement_ex
     db_find_all_triggers
     db_find_class
     db_find_user
@@ -662,7 +663,6 @@ EXPORTS
     db_fetch_list
     db_fetch_seq
     db_fetch_set
-    db_final_client_query_result
     db_find_class_of_index
     db_find_event_triggers
     db_find_multi_unique
@@ -914,6 +914,7 @@ EXPORTS
     dbt_set_object_id
     db_get_execution_plan
     db_set_execution_plan
+    db_default_expression_string
     db_init_statement_execution_end_type
 ; elo
 	db_elo_copy_structure
@@ -955,3 +956,7 @@ EXPORTS
   mht_1strhash
   mht_compare_strings_are_equal
   mht_rem
+;
+; other
+;
+  setobj_type

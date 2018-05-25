@@ -47,7 +47,6 @@ enum sp_error_code
   ER_SP_DUPLICATED_HINT = -5
 };
 
-typedef enum sp_hint_type SP_HINT_TYPE;
 enum sp_hint_type
 {
   HT_INVAL = -1,
@@ -58,22 +57,22 @@ enum sp_hint_type
   HT_ID,
   HT_EOF
 };
+typedef enum sp_hint_type SP_HINT_TYPE;
 
-typedef enum sp_bind_type SP_BIND_TYPE;
 enum sp_bind_type
 {
   BT_STATIC,
   BT_DYNAMIC
 };
+typedef enum sp_bind_type SP_BIND_TYPE;
 
-typedef enum sp_value_type SP_VALUE_TYPE;
 enum sp_value_type
 {
   VT_INTEGER,			/* this type means INT64 to support 64bit integer key value */
   VT_STRING
 };
+typedef enum sp_value_type SP_VALUE_TYPE;
 
-typedef enum sp_token SP_TOKEN;
 enum sp_token
 {
   TT_NONE,
@@ -93,6 +92,7 @@ enum sp_token
   TT_RIGHT_BRAKET,
   TT_BIND_CHAR
 };
+typedef enum sp_token SP_TOKEN;
 
 typedef struct sp_cursor SP_CURSOR;
 struct sp_cursor
@@ -143,7 +143,7 @@ struct sp_parser_ctx
   int bind_count;
   SP_CURSOR cursor;
   SP_CURSOR prv_cursor;
-  SP_TOKEN operator;
+  SP_TOKEN operator_;
   SP_PARSER_HINT_LIST list_a;
   SP_PARSER_HINT_LIST list_t[2];
 };

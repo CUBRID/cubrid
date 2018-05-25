@@ -115,6 +115,11 @@ extern int yybuffer_pos;
 #endif /* WINDOWS */
 #include "memory_alloc.h"
 #include "db_elo.h"
+#include "dbtype.h"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 /* Bit mask to be used to check constraints of a column.
  * COLUMN_CONSTRAINT_SHARED_DEFAULT_AI is special-purpose mask
@@ -148,7 +153,7 @@ typedef struct function_map FUNCTION_MAP;
 struct function_map
 {
   const char *keyword;
-  PT_OP_TYPE op;
+  int op;
 };
 
 
@@ -302,7 +307,15 @@ static FUNCTION_MAP functions[] = {
   {"to_timestamp_tz", PT_TO_TIMESTAMP_TZ},
   {"utc_timestamp", PT_UTC_TIMESTAMP},
   {"crc32", PT_CRC32},
-  {"schema_def", PT_SCHEMA_DEF}
+  {"schema_def", PT_SCHEMA_DEF},
+  {"conv_tz", PT_CONV_TZ},
+  {"json_contains", PT_JSON_CONTAINS},
+  {"json_type", PT_JSON_TYPE},
+  {"json_extract", PT_JSON_EXTRACT},
+  {"json_valid", PT_JSON_VALID},
+  {"json_length", PT_JSON_LENGTH},
+  {"json_depth", PT_JSON_DEPTH},
+  {"json_search", PT_JSON_SEARCH},
 };
 
 
@@ -520,6 +533,8 @@ static PT_NODE * pt_create_char_string_literal (PARSER_CONTEXT *parser,
 						const INTL_CODESET codeset);
 static PT_NODE * pt_create_date_value (PARSER_CONTEXT *parser,
 				       const PT_TYPE_ENUM type,
+				       const char *str);
+static PT_NODE * pt_create_json_value (PARSER_CONTEXT *parser,
 				       const char *str);
 static void pt_value_set_charset_coll (PARSER_CONTEXT *parser,
 				       PT_NODE *node,
@@ -913,6 +928,7 @@ int g_original_buffer_len;
 %type <node> unsigned_real
 %type <node> monetary_literal
 %type <node> date_or_time_literal
+%type <node> json_literal
 %type <node> partition_clause
 %type <node> partition_def_list
 %type <node> partition_def
@@ -950,7 +966,6 @@ int g_original_buffer_len;
 %type <node> incr_arg_name__dec
 %type <node> search_condition_query
 %type <node> search_condition_expression
-%type <node> opt_uint_or_host_input
 %type <node> opt_select_limit_clause
 %type <node> limit_options
 %type <node> opt_upd_del_limit_clause
@@ -1005,6 +1020,9 @@ int g_original_buffer_len;
 %type <node> cte_definition_list
 %type <node> cte_definition
 %type <node> cte_query_list
+%type <node> limit_expr
+%type <node> limit_term
+%type <node> limit_factor
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -1012,6 +1030,7 @@ int g_original_buffer_len;
 %type <cptr> uint_text
 %type <cptr> of_integer_real_literal
 %type <cptr> integer_text
+%type <cptr> json_schema
 /*}}}*/
 
 /* define rule type (container) */
@@ -1097,7 +1116,6 @@ int g_original_buffer_len;
 %token CLASS
 %token CLASSES
 %token CLOB_
-%token CLOSE
 %token COALESCE
 %token COLLATE
 %token COLUMN
@@ -1126,7 +1144,7 @@ int g_original_buffer_len;
 %token CYCLE
 %token DATA
 %token DATABASE
-%token DATA_TYPE_
+%token DATA_TYPE___
 %token Date
 %token DATETIME
 %token DATETIMETZ
@@ -1184,6 +1202,16 @@ int g_original_buffer_len;
 %token FROM
 %token FULL
 %token FUNCTION
+%token FUN_JSON_ARRAY
+%token FUN_JSON_OBJECT
+%token FUN_JSON_MERGE
+%token FUN_JSON_INSERT
+%token FUN_JSON_REPLACE
+%token FUN_JSON_SET
+%token FUN_JSON_KEYS
+%token FUN_JSON_REMOVE
+%token FUN_JSON_ARRAY_APPEND
+%token FUN_JSON_GET_ALL_PATHS
 %token GENERAL
 %token GET
 %token GLOBAL
@@ -1270,7 +1298,6 @@ int g_original_buffer_len;
 %token OFF_
 %token ON_
 %token ONLY
-%token OPEN
 %token OPTIMIZATION
 %token OPTION
 %token OR
@@ -1419,6 +1446,7 @@ int g_original_buffer_len;
 %token YEAR_
 %token YEAR_MONTH
 %token ZONE
+%token JSON
 
 %token YEN_SIGN
 %token DOLLAR_SIGN
@@ -1468,6 +1496,7 @@ int g_original_buffer_len;
 %token <cptr> CHARSET
 %token <cptr> CHR
 %token <cptr> CLOB_TO_CHAR
+%token <cptr> CLOSE
 %token <cptr> COLLATION
 %token <cptr> COLUMNS
 %token <cptr> COMMENT
@@ -1510,7 +1539,6 @@ int g_original_buffer_len;
 %token <cptr> KILL
 %token <cptr> JAVA
 %token <cptr> JOB
-%token <cptr> JSON
 %token <cptr> LAG
 %token <cptr> LAST_VALUE
 %token <cptr> LCASE
@@ -1532,6 +1560,7 @@ int g_original_buffer_len;
 %token <cptr> NTILE
 %token <cptr> NULLS
 %token <cptr> OFFSET
+%token <cptr> OPEN
 %token <cptr> OWNER
 %token <cptr> PAGE
 %token <cptr> PARTITIONING
@@ -1694,7 +1723,7 @@ stmt
 				pos = g_original_buffer_len;
 			      }
 
-			    g_query_string = this_parser->original_buffer + pos;
+			    g_query_string = (char*) (this_parser->original_buffer + pos);
 			
 			    while (char_isspace (*g_query_string))
 			      {
@@ -1851,7 +1880,7 @@ stmt_
 		{ $$ = $1; }
 	| kill_stmt
 		{ $$ = $1; }
-	| DATA_TYPE_ data_type
+	| DATA_TYPE___ data_type
 		{{
 
 			PT_NODE *dt, *set_dt;
@@ -2809,13 +2838,13 @@ create_stmt
 			    node->info.serial.start_val = CONTAINER_AT_0($6);
 			    node->info.serial.increment_val = CONTAINER_AT_1($6);
 			    node->info.serial.max_val = CONTAINER_AT_2 ($6);
-			    node->info.serial.no_max = TO_NUMBER (CONTAINER_AT_3 ($6));
+			    node->info.serial.no_max = (int) TO_NUMBER (CONTAINER_AT_3 ($6));
 			    node->info.serial.min_val = CONTAINER_AT_4 ($6);
-			    node->info.serial.no_min = TO_NUMBER (CONTAINER_AT_5 ($6));
-			    node->info.serial.cyclic = TO_NUMBER (CONTAINER_AT_6 ($6));
-			    node->info.serial.no_cyclic = TO_NUMBER (CONTAINER_AT_7 ($6));
+			    node->info.serial.no_min = (int) TO_NUMBER (CONTAINER_AT_5 ($6));
+			    node->info.serial.cyclic = (int) TO_NUMBER (CONTAINER_AT_6 ($6));
+			    node->info.serial.no_cyclic = (int) TO_NUMBER (CONTAINER_AT_7 ($6));
 			    node->info.serial.cached_num_val = CONTAINER_AT_8 ($6);
-			    node->info.serial.no_cache = TO_NUMBER (CONTAINER_AT_9 ($6));
+			    node->info.serial.no_cache = (int) TO_NUMBER (CONTAINER_AT_9 ($6));
 			    node->info.serial.comment = $7;
 			  }
 
@@ -5748,52 +5777,71 @@ alter_column_clause_mysql_specific
 				PARSER_SAVE_ERR_CONTEXT (node, @4.buffer_pos)
 
 				def = node->info.data_default.default_value;
-
 				if (def && def->node_type == PT_EXPR)
 				  {
+					if (def->info.expr.op == PT_TO_CHAR)
+					  {					    
+						if (def->info.expr.arg3)
+						  {							
+						    bool dummy;						
+						    bool has_user_lang = false;
+						    assert (def->info.expr.arg3->node_type == PT_VALUE);
+							(void) lang_get_lang_id_from_flag (def->info.expr.arg3->info.value.data_value.i, &dummy, &has_user_lang);
+							if (has_user_lang)
+							  {
+								PT_ERROR (this_parser, def->info.expr.arg3, "do not allow lang format in default to_char");
+							  }
+						  }
+						
+						if (def->info.expr.arg1 && def->info.expr.arg1->node_type == PT_EXPR)
+						  {
+						    def = def->info.expr.arg1;
+						  }
+					  }
+							
 				    switch (def->info.expr.op)
 				      {
 				      case PT_SYS_TIME:
-					node->info.data_default.default_expr = DB_DEFAULT_SYSTIME;
+					node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIME;
 					break;
 				      case PT_SYS_DATE:
-					node->info.data_default.default_expr = DB_DEFAULT_SYSDATE;
+					node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATE;
 					break;
 				      case PT_SYS_DATETIME:
-					node->info.data_default.default_expr = DB_DEFAULT_SYSDATETIME;
+					node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATETIME;
 					break;
 				      case PT_SYS_TIMESTAMP:
-					node->info.data_default.default_expr = DB_DEFAULT_SYSTIMESTAMP;
+					node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIMESTAMP;
 					break;
 				      case PT_CURRENT_TIME:
-					node->info.data_default.default_expr = DB_DEFAULT_CURRENTTIME;
+					node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIME;
 					break;
 				      case PT_CURRENT_DATE:
-					node->info.data_default.default_expr = DB_DEFAULT_CURRENTDATE;
+					node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATE;
 					break;
 				      case PT_CURRENT_DATETIME:
-					node->info.data_default.default_expr = DB_DEFAULT_CURRENTDATETIME;
+					node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATETIME;
 					break;
 				      case PT_CURRENT_TIMESTAMP:
-					node->info.data_default.default_expr = DB_DEFAULT_CURRENTTIMESTAMP;
+					node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIMESTAMP;
 					break;
 				      case PT_USER:
-					node->info.data_default.default_expr = DB_DEFAULT_USER;
+					node->info.data_default.default_expr_type = DB_DEFAULT_USER;
 					break;
 				      case PT_CURRENT_USER:
-					node->info.data_default.default_expr = DB_DEFAULT_CURR_USER;
+					node->info.data_default.default_expr_type = DB_DEFAULT_CURR_USER;
 					break;
 				      case PT_UNIX_TIMESTAMP:
-					node->info.data_default.default_expr = DB_DEFAULT_UNIX_TIMESTAMP;
+					node->info.data_default.default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
 					break;
 				      default:
-					node->info.data_default.default_expr = DB_DEFAULT_NONE;
+					node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
 					break;
 				      }
 				  }
 				else
 				  {
-				    node->info.data_default.default_expr = DB_DEFAULT_NONE;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
 				  }
 			      }
 			    
@@ -10087,52 +10135,72 @@ column_default_constraint_def
 			    PARSER_SAVE_ERR_CONTEXT (node, @2.buffer_pos)
 
 			    def = node->info.data_default.default_value;
-
 			    if (def && def->node_type == PT_EXPR)
 			      {
+					if (def->info.expr.op == PT_TO_CHAR)
+					  {					  
+						if (def->info.expr.arg3)
+						  {
+							bool has_user_lang = false;
+							bool dummy;
+							
+							assert (def->info.expr.arg3->node_type == PT_VALUE);
+							(void) lang_get_lang_id_from_flag (def->info.expr.arg3->info.value.data_value.i, &dummy, &has_user_lang);
+							 if (has_user_lang)
+							   {
+								 PT_ERROR (this_parser, def->info.expr.arg3, "do not allow lang format in default to_char");
+							   }
+							}
+						
+						if (def->info.expr.arg1  && def->info.expr.arg1->node_type == PT_EXPR)
+						  {
+							def = def->info.expr.arg1;
+						  }						
+					  }					  
+						  
 				switch (def->info.expr.op)
 				  {
 				  case PT_SYS_TIME:
-				    node->info.data_default.default_expr = DB_DEFAULT_SYSTIME;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIME;
 				    break;
 				  case PT_SYS_DATE:
-				    node->info.data_default.default_expr = DB_DEFAULT_SYSDATE;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATE;
 				    break;
 				  case PT_SYS_DATETIME:
-				    node->info.data_default.default_expr = DB_DEFAULT_SYSDATETIME;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATETIME;
 				    break;
 				  case PT_SYS_TIMESTAMP:
-				    node->info.data_default.default_expr = DB_DEFAULT_SYSTIMESTAMP;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIMESTAMP;
 				    break;
 				  case PT_CURRENT_TIME:
-				    node->info.data_default.default_expr = DB_DEFAULT_CURRENTTIME;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIME;
 				    break;
 				  case PT_CURRENT_DATE:
-				    node->info.data_default.default_expr = DB_DEFAULT_CURRENTDATE;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATE;
 				    break;
 				  case PT_CURRENT_DATETIME:
-				    node->info.data_default.default_expr = DB_DEFAULT_CURRENTDATETIME;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATETIME;
 				    break;
 				  case PT_CURRENT_TIMESTAMP:
-				    node->info.data_default.default_expr = DB_DEFAULT_CURRENTTIMESTAMP;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIMESTAMP;
 				    break;
 				  case PT_USER:
-				    node->info.data_default.default_expr = DB_DEFAULT_USER;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_USER;
 				    break;
 				  case PT_CURRENT_USER:
-				    node->info.data_default.default_expr = DB_DEFAULT_CURR_USER;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_CURR_USER;
 				    break;
 				  case PT_UNIX_TIMESTAMP:
-				    node->info.data_default.default_expr = DB_DEFAULT_UNIX_TIMESTAMP;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
 				    break;
 				  default:
-				    node->info.data_default.default_expr = DB_DEFAULT_NONE;
+				    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
 				    break;
 				  }
 			      }
 			    else
 			      {
-				node->info.data_default.default_expr = DB_DEFAULT_NONE;
+				node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
 			      }
 			  }
 
@@ -12000,6 +12068,27 @@ values_query
 				    node->info.query.all_distinct = PT_ALL;
 				  }
 				  
+				/* We don't want to allow subqueries for VALUES query */
+				if (PT_IS_VALUE_QUERY (node))
+				  {
+				    PT_NODE *node_list, *attrs;
+
+				    for (node_list = node->info.query.q.select.list; node_list;
+					 node_list = node_list->next)
+				      {
+					/* node_list->node_type should be PT_NODE_LIST */
+					for (attrs = node_list->info.node_list.list; attrs; attrs = attrs->next)
+					  {
+					    if (PT_IS_QUERY (attrs))
+					      {
+						PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+							    MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+						break;
+					      }
+					  }
+				      }
+				  }
+
 				parser_restore_found_Oracle_outer ();
 				if (parser_select_level >= 0)
 				  parser_select_level--;
@@ -13224,7 +13313,7 @@ index_name_list
 	;
 	
 index_name_keylimit
-	: index_name KEYLIMIT opt_uint_or_host_input
+	: index_name KEYLIMIT limit_expr
 		{{
 		
 			PT_NODE *node = $1;
@@ -13250,7 +13339,7 @@ index_name_keylimit
 			$$ = node;
 			
 		DBG_PRINT}}
-	| index_name KEYLIMIT opt_uint_or_host_input ',' opt_uint_or_host_input
+	| index_name KEYLIMIT limit_expr ',' limit_expr
 		{{
 		
 			PT_NODE *node = $1;
@@ -13737,22 +13826,78 @@ opt_siblings
 		DBG_PRINT}}
 	;
 
-opt_uint_or_host_input
-	: unsigned_integer
-		{{
+limit_expr
+        : limit_expr '+' limit_term
+                {{
+                        $$ = parser_make_expression (this_parser, PT_PLUS, $1, $3, NULL);
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-			$$ = $1;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT}}
+        | limit_expr '-' limit_term
+                {{
+                        $$ = parser_make_expression (this_parser, PT_MINUS, $1, $3, NULL);
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
-	| host_param_input
-		{{
+                DBG_PRINT}}
+        | limit_term
+                {{
+                        $$ = $1;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-			$$ = $1;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT}}
+        ;
 
-		DBG_PRINT}}
-	;
+limit_term
+        : limit_term '*' limit_factor
+                {{
+                        $$ = parser_make_expression (this_parser, PT_TIMES, $1, $3, NULL);
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+        | limit_term '/' limit_factor
+                {{
+                        $$ = parser_make_expression (this_parser, PT_DIVIDE, $1, $3, NULL);
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+        | limit_factor
+                {{
+                        $$ = $1;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+          ;
+
+limit_factor
+        : host_param_input
+                {{
+
+                        $$ = $1;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+        | unsigned_integer
+                {{
+
+                        $$ = $1;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+
+        | '(' limit_expr ')'
+                {{
+			PT_NODE *exp = $2;
+
+			if (exp && exp->node_type == PT_EXPR)
+			  {
+			    exp->info.expr.paren_type = 1;
+			  }
+
+                        $$ = exp;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
+        ;
 
 opt_select_limit_clause
 	: /* empty */
@@ -13826,7 +13971,7 @@ opt_select_limit_clause
 	;
 
 limit_options
-	: opt_uint_or_host_input
+	: limit_expr
 		{{
 
 			PT_NODE *node = parser_top_orderby_node ();
@@ -13839,7 +13984,7 @@ limit_options
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| opt_uint_or_host_input ',' opt_uint_or_host_input
+	| limit_expr ',' limit_expr
 		{{
 
 			PT_NODE *node = parser_top_orderby_node ();
@@ -13858,7 +14003,7 @@ limit_options
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| opt_uint_or_host_input OFFSET opt_uint_or_host_input
+	| limit_expr OFFSET limit_expr
 		{{
 
 			PT_NODE *node = parser_top_orderby_node ();
@@ -13882,7 +14027,7 @@ limit_options
 opt_upd_del_limit_clause
 	: /* empty */
 		{ $$ = NULL; }
-	| LIMIT opt_uint_or_host_input
+	| LIMIT limit_expr
 		{{
 
 			  $$ = $2;
@@ -14492,7 +14637,7 @@ pseudo_column
 
 
 reserved_func
-	: COUNT '(' '*' ')'
+        : COUNT '(' '*' ')'
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
@@ -15146,7 +15291,7 @@ reserved_func
 			arg2 = parser_new_node(this_parser, PT_VALUE);
 			if (arg2)
 			  {
-			    DB_MAKE_INT(&arg2->info.value.db_value, 0);
+			    db_make_int(&arg2->info.value.db_value, 0);
 			    arg2->type_enum = PT_TYPE_INTEGER;
 			  }
 			node = parser_make_expression (this_parser, PT_TIMESTAMP, $4, arg2, NULL); /* will call timestamp(arg1, 0) */
@@ -15825,6 +15970,196 @@ reserved_func
 			$$ = parser_make_expression (this_parser, PT_INDEX_PREFIX, $4, $6, $8);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
+		DBG_PRINT}}
+        | FUN_JSON_OBJECT '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_OBJECT, args_list);
+		    if (len < 1 || len % 2 != 0)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_object");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+        | FUN_JSON_ARRAY '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_ARRAY, args_list);
+		    if (len < 1)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_array");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+        | FUN_JSON_MERGE '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_MERGE, args_list);
+		    if (len < 2)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_merge");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+        | FUN_JSON_INSERT '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_INSERT, args_list);
+		    if (len < 3 || len % 2 != 1)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_insert");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+		| FUN_JSON_REPLACE '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_REPLACE, args_list);
+		    if (len < 3 || len % 2 != 1)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_replace");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+		| FUN_JSON_SET '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_SET, args_list);
+		    if (len < 3 || len % 2 != 1)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_set");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+		| FUN_JSON_KEYS '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_KEYS, args_list);
+		    if (len > 2)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_keys");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+        | FUN_JSON_REMOVE '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_REMOVE, args_list);
+		    if (len < 2)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_remove");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+		| FUN_JSON_ARRAY_APPEND '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_ARRAY_APPEND, args_list);
+		    if (len < 3 || len % 2 != 1)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_array_append");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+		| FUN_JSON_GET_ALL_PATHS '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_GET_ALL_PATHS, args_list);
+		    if (len != 1)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_get_all_paths");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	;
 
@@ -18557,6 +18892,21 @@ opt_varying
 		DBG_PRINT}}
 	;
 
+json_schema
+		: /* empty */
+			{{
+
+				$$ = 0;
+
+			DBG_PRINT}}
+		| '(' CHAR_STRING ')'
+			{{
+
+				$$ = $2;
+
+			DBG_PRINT}}
+		;
+
 primitive_type
 	: INTEGER opt_padding
 		{{
@@ -18710,9 +19060,31 @@ primitive_type
 			$$ = ctn;
 
 		DBG_PRINT}}
+	| JSON json_schema
+	    {{
+			const char * json_schema_str = $2;
+			container_2 ctn;
+			PT_TYPE_ENUM type = PT_TYPE_JSON;
+			PT_NODE * dt = parser_new_node (this_parser, PT_DATA_TYPE);
+
+			if (dt && json_schema_str)
+				{
+					dt->type_enum = type;
+					dt->info.data_type.json_schema = pt_append_bytes (this_parser,
+                                                                                          NULL,
+                                                                                          json_schema_str,
+                                                                                          strlen (json_schema_str));
+					SET_CONTAINER_2 (ctn, FROM_NUMBER (type), dt);
+				}
+			else
+				{
+					SET_CONTAINER_2 (ctn, FROM_NUMBER (type), NULL);
+				}
+
+			$$ = ctn;
+		DBG_PRINT}}
 	| OBJECT
 		{{
-
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_OBJECT), NULL);
 			$$ = ctn;
@@ -19823,6 +20195,12 @@ literal_w_o_param
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| json_literal
+		{{
+			
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
 	;
 
 boolean
@@ -20172,6 +20550,16 @@ identifier
 
 		DBG_PRINT}}
 	| CLOB_TO_CHAR
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			    p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}		
+	| CLOSE
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -20531,15 +20919,7 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| JSON
-		{{
 
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-
-		DBG_PRINT}}
 	| KEYS
 		{{
 
@@ -20671,6 +21051,16 @@ identifier
 
 		DBG_PRINT}}
 	| OFFSET
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| OPEN
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -22412,7 +22802,16 @@ date_or_time_literal
 
 		DBG_PRINT}}
 	;
-
+	
+json_literal
+        : JSON CHAR_STRING
+                {{
+                	PT_NODE *val;
+			val = pt_create_json_value (this_parser, $2);
+			$$ = val;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)	
+                
+                DBG_PRINT}};
 create_as_clause
 	: opt_replace AS csql_query
 		{{
@@ -23907,7 +24306,7 @@ parser_main (PARSER_CONTEXT * parser)
 	    }
 	  for (i = 0; i < parser->host_var_count; i++)
 	    {
-	      DB_MAKE_NULL (&parser->host_variables[i]);
+	      db_make_null (&parser->host_variables[i]);
 	    }
 	}
     }
@@ -25117,6 +25516,17 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
       node = parser_make_expression (this_parser, key->op, a1, a2, a3);
       return node;
+    case PT_JSON_EXTRACT:
+      if (c != 2)
+	return NULL;
+
+      a1 = args;
+      a2 = a1->next;
+      a1->next = NULL;
+      a2->next = NULL;
+
+      node = parser_make_expression (this_parser, key->op, a1, a2, NULL);
+      return node;
 
 	case PT_DISK_SIZE:
  		if (c != 1)
@@ -25125,7 +25535,31 @@ parser_keyword_func (const char *name, PT_NODE * args)
        a1 = args;
        node = parser_make_expression (this_parser, key->op, a1, NULL, NULL);
        return node;
-	   
+    case PT_JSON_TYPE:
+    case PT_JSON_VALID:
+    case PT_JSON_LENGTH:
+    case PT_JSON_DEPTH:
+      if (c != 1)
+        return NULL;
+
+      a1 = args;
+      a1->next = NULL;
+
+      node = parser_make_expression (this_parser, key->op, a1, NULL, NULL);
+      return node;
+    case PT_JSON_SEARCH:
+      if (c != 3)
+	return NULL;
+
+      a1 = args;
+      a2 = a1->next;
+      a3 = a2->next;
+      a1->next = NULL;
+      a2->next = NULL;
+      a3->next = NULL;
+
+      node = parser_make_expression (this_parser, key->op, a1, a2, a3);
+      return node;
     case PT_STRCMP:
       if (c != 2)
 	return NULL;
@@ -25139,6 +25573,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
     case PT_REVERSE:
     case PT_TZ_OFFSET:
+    case PT_CONV_TZ:
       if (c != 1)
 	return NULL;
 
@@ -25192,6 +25627,22 @@ parser_keyword_func (const char *name, PT_NODE * args)
           node->do_not_fold = 1;
         }
       
+      return node;
+
+    case PT_JSON_CONTAINS:
+      if (c != 3 && c != 2)
+          return NULL;
+
+        a1 = args;
+        a2 = a1->next;
+        a3 = a2->next;
+        a1->next = NULL;
+        a2->next = NULL;
+        if (a3)
+          {
+            a3->next = NULL;
+          }
+      node = parser_make_expression (this_parser, key->op, a1, a2, a3);
       return node;
 
     default:
@@ -25306,8 +25757,7 @@ pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str,
   char *invalid_pos = NULL;
   int composed_size;
 
-  if (intl_check_string ((char *) str, str_size, &invalid_pos,
-			 LANG_SYS_CODESET) == 1)
+  if (intl_check_string ((char *) str, str_size, &invalid_pos, LANG_SYS_CODESET) == INTL_UTF8_INVALID)
     {
       PT_ERRORmf (parser, NULL, MSGCAT_SET_ERROR, -(ER_INVALID_CHAR),
 		  (invalid_pos != NULL) ? invalid_pos - str : 0);
@@ -25357,7 +25807,7 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
   char *invalid_pos = NULL;
   int composed_size;
 
-  if (intl_check_string (str, str_size, &invalid_pos, codeset) != 0)
+  if (intl_check_string (str, str_size, &invalid_pos, codeset) != INTL_UTF8_VALID)
     {
       PT_ERRORmf (parser, NULL,
 		  MSGCAT_SET_ERROR, -(ER_INVALID_CHAR),
@@ -25692,5 +26142,20 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
   return node;
 }
 
+static PT_NODE *
+pt_create_json_value (PARSER_CONTEXT *parser, const char *str)
+{
+  PT_NODE *node = NULL;
 
+  node = parser_new_node (parser, PT_VALUE);
 
+  if (node)
+    {
+      node->type_enum = PT_TYPE_JSON;
+
+      node->info.value.data_value.str = pt_append_bytes (parser, NULL, str, strlen (str));
+      PT_NODE_PRINT_VALUE_TO_TEXT (parser, node);
+    }
+
+  return node;
+}

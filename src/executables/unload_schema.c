@@ -35,6 +35,7 @@
 #endif
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <assert.h>
 
 #include "db.h"
 #include "authenticate.h"
@@ -52,9 +53,7 @@
 #include "jsp_cl.h"
 #include "class_object.h"
 #include "object_print.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #define CLASS_NAME_MAX 80
 
@@ -588,10 +587,10 @@ emit_class_owner (FILE * fp, MOP class_)
 	{
 	  if (db_get (owner, "name", &value) == NO_ERROR)
 	    {
-	      if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && DB_GET_STRING (&value) != NULL)
+	      if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && db_get_string (&value) != NULL)
 		{
 		  fprintf (fp, "call [change_owner]('%s', '%s') on class [db_root];\n", classname,
-			   DB_GET_STRING (&value));
+			   db_get_string (&value));
 		}
 	      db_value_clear (&value);
 	    }
@@ -623,8 +622,8 @@ export_serial (FILE * outfp)
     "select [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], " "[cyclic], "
     "[started], " "[cached_num], " "[comment] " "from [db_serial] where [class_name] is null and [att_name] is null";
 
-  DB_MAKE_NULL (&diff_value);
-  DB_MAKE_NULL (&answer_value);
+  db_make_null (&diff_value);
+  db_make_null (&answer_value);
 
   error = db_compile_and_execute_local (query, &query_result, &query_error);
   if (error < 0)
@@ -716,7 +715,7 @@ export_serial (FILE * outfp)
 	    }
 	}
 
-      if (DB_GET_INTEGER (&values[SERIAL_STARTED]) == 1)
+      if (db_get_int (&values[SERIAL_STARTED]) == 1)
 	{
 	  /* Calculate next value of serial */
 	  error = numeric_db_value_sub (&values[SERIAL_MAX_VAL], &values[SERIAL_CURRENT_VAL], &diff_value);
@@ -731,10 +730,10 @@ export_serial (FILE * outfp)
 	      goto err;
 	    }
 	  /* increment > diff */
-	  if (DB_GET_INTEGER (&answer_value) > 0)
+	  if (db_get_int (&answer_value) > 0)
 	    {
 	      /* no cyclic case */
-	      if (DB_GET_INTEGER (&values[SERIAL_CYCLIC]) == 0)
+	      if (db_get_int (&values[SERIAL_CYCLIC]) == 0)
 		{
 		  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
@@ -761,21 +760,21 @@ export_serial (FILE * outfp)
 	}
 
       fprintf (outfp, "call [find_user]('%s') on class [db_user] to [auser];\n",
-	       DB_PULL_STRING (&values[SERIAL_OWNER_NAME]));
-      fprintf (outfp, "create serial %s%s%s\n", PRINT_IDENTIFIER (DB_PULL_STRING (&values[SERIAL_NAME])));
+	       db_get_string (&values[SERIAL_OWNER_NAME]));
+      fprintf (outfp, "create serial %s%s%s\n", PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
       fprintf (outfp, "\t start with %s\n", numeric_db_value_print (&values[SERIAL_CURRENT_VAL], str_buf));
       fprintf (outfp, "\t increment by %s\n", numeric_db_value_print (&values[SERIAL_INCREMENT_VAL], str_buf));
       fprintf (outfp, "\t minvalue %s\n", numeric_db_value_print (&values[SERIAL_MIN_VAL], str_buf));
       fprintf (outfp, "\t maxvalue %s\n", numeric_db_value_print (&values[SERIAL_MAX_VAL], str_buf));
-      fprintf (outfp, "\t %scycle\n", (DB_GET_INTEGER (&values[SERIAL_CYCLIC]) == 0 ? "no" : ""));
-      if (DB_GET_INTEGER (&values[SERIAL_CACHED_NUM]) <= 1)
+      fprintf (outfp, "\t %scycle\n", (db_get_int (&values[SERIAL_CYCLIC]) == 0 ? "no" : ""));
+      if (db_get_int (&values[SERIAL_CACHED_NUM]) <= 1)
 	{
 	  fprintf (outfp, "\t nocache\n");
 
 	}
       else
 	{
-	  fprintf (outfp, "\t cache %d\n", DB_GET_INTEGER (&values[SERIAL_CACHED_NUM]));
+	  fprintf (outfp, "\t cache %d\n", db_get_int (&values[SERIAL_CACHED_NUM]));
 
 	}
       if (DB_IS_NULL (&values[SERIAL_COMMENT]) == false)
@@ -785,7 +784,7 @@ export_serial (FILE * outfp)
 	}
       fprintf (outfp, ";\n");
       fprintf (outfp, "call [change_serial_owner] ('%s', '%s') on class [db_serial];\n\n",
-	       DB_PULL_STRING (&values[SERIAL_NAME]), DB_PULL_STRING (&values[SERIAL_OWNER_NAME]));
+	       db_get_string (&values[SERIAL_NAME]), db_get_string (&values[SERIAL_OWNER_NAME]));
 
       db_value_clear (&diff_value);
       db_value_clear (&answer_value);
@@ -814,7 +813,8 @@ extractschema (const char *exec_name, int do_auth, EMIT_STORAGE_ORDER storage_or
 {
   char output_filename[PATH_MAX * 2];
   DB_OBJLIST *classes = NULL;
-  int has_indexes, total;
+  int has_indexes;
+  size_t total;
   DB_OBJLIST *vclass_list_has_using_index = NULL;
   int err_count = 0;
 
@@ -825,7 +825,7 @@ extractschema (const char *exec_name, int do_auth, EMIT_STORAGE_ORDER storage_or
 
   total = strlen (output_dirname) + strlen (output_prefix) + strlen (SCHEMA_SUFFIX) + 8;
 
-  if ((size_t) total > sizeof (output_filename))
+  if (total > sizeof (output_filename))
     {
       return 1;
     }
@@ -904,7 +904,7 @@ extractschema (const char *exec_name, int do_auth, EMIT_STORAGE_ORDER storage_or
    */
   total = strlen (output_dirname) + strlen (output_prefix) + strlen (TRIGGER_SUFFIX) + 8;
 
-  if ((size_t) total > sizeof (output_filename))
+  if (total > sizeof (output_filename))
     {
       if (vclass_list_has_using_index != NULL)
 	{
@@ -998,7 +998,7 @@ emit_indexes (DB_OBJLIST * classes, int has_indexes, DB_OBJLIST * vclass_list_ha
   char output_filename[PATH_MAX * 2];
   DB_OBJLIST *cl;
   FILE *fp;
-  int total;
+  size_t total;
 
   if (output_dirname == NULL)
     {
@@ -1007,7 +1007,7 @@ emit_indexes (DB_OBJLIST * classes, int has_indexes, DB_OBJLIST * vclass_list_ha
 
   total = strlen (output_dirname) + strlen (output_prefix) + strlen (INDEX_SUFFIX) + 8;
 
-  if ((size_t) total > sizeof (output_filename))
+  if (total > sizeof (output_filename))
     {
       return 1;
     }
@@ -1854,12 +1854,12 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type, int *has_i
 	    {
 	      int sr_error = NO_ERROR;
 
-	      DB_MAKE_NULL (&sr_name);
-	      DB_MAKE_NULL (&cur_val);
-	      DB_MAKE_NULL (&started_val);
-	      DB_MAKE_NULL (&min_val);
-	      DB_MAKE_NULL (&max_val);
-	      DB_MAKE_NULL (&inc_val);
+	      db_make_null (&sr_name);
+	      db_make_null (&cur_val);
+	      db_make_null (&started_val);
+	      db_make_null (&min_val);
+	      db_make_null (&max_val);
+	      db_make_null (&inc_val);
 
 	      sr_error = db_get (a->auto_increment, "name", &sr_name);
 	      if (sr_error < 0)
@@ -1902,7 +1902,7 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type, int *has_i
 		  continue;
 		}
 
-	      if (DB_GET_INTEGER (&started_val) == 1)
+	      if (db_get_int (&started_val) == 1)
 		{
 		  DB_VALUE diff_val, answer_val;
 
@@ -1919,7 +1919,7 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type, int *has_i
 		      continue;
 		    }
 		  /* auto_increment is always non-cyclic */
-		  if (DB_GET_INTEGER (&answer_val) > 0)
+		  if (db_get_int (&answer_val) > 0)
 		    {
 		      pr_clear_value (&sr_name);
 		      continue;
@@ -1943,7 +1943,7 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type, int *has_i
 		}
 
 	      fprintf (output_file, "ALTER SERIAL %s%s%s START WITH %s;\n",
-		       PRINT_IDENTIFIER (DB_PULL_STRING (&sr_name)), start_with);
+		       PRINT_IDENTIFIER (db_get_string (&sr_name)), start_with);
 
 	      pr_clear_value (&sr_name);
 	    }
@@ -2225,11 +2225,11 @@ ex_contains_object_reference (DB_VALUE * value)
     {
       if (DB_VALUE_TYPE (value) == DB_TYPE_OBJECT)
 	{
-	  has_object = DB_GET_OBJECT (value) != NULL;
+	  has_object = db_get_object (value) != NULL;
 	}
       else if (TP_IS_SET_TYPE (DB_VALUE_TYPE (value)))
 	{
-	  set = DB_GET_SET (value);
+	  set = db_get_set (value);
 	  size = db_set_size (set);
 	  type = db_set_type (set);
 
@@ -2315,49 +2315,27 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
 
   default_value = db_attribute_default (attribute);
   if ((default_value != NULL && !DB_IS_NULL (default_value))
-      || attribute->default_value.default_expr != DB_DEFAULT_NONE)
+      || attribute->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
     {
+      const char *default_expr_type_str;
+
       if (qualifier != SHARED_ATTRIBUTE)
 	{
 	  fprintf (output_file, " DEFAULT ");
 	}
 
-      switch (attribute->default_value.default_expr)
+      if (attribute->default_value.default_expr.default_expr_op == T_TO_CHAR)
 	{
-	case DB_DEFAULT_SYSTIME:
-	  fprintf (output_file, "SYS_TIME");
-	  break;
-	case DB_DEFAULT_SYSDATE:
-	  fprintf (output_file, "SYS_DATE");
-	  break;
-	case DB_DEFAULT_CURRENTDATE:
-	  fprintf (output_file, "CURRENT_DATE");
-	  break;
-	case DB_DEFAULT_CURRENTTIME:
-	  fprintf (output_file, "CURRENT_TIME");
-	  break;
-	case DB_DEFAULT_SYSDATETIME:
-	  fprintf (output_file, "SYS_DATETIME");
-	  break;
-	case DB_DEFAULT_SYSTIMESTAMP:
-	  fprintf (output_file, "SYS_TIMESTAMP");
-	  break;
-	case DB_DEFAULT_UNIX_TIMESTAMP:
-	  fprintf (output_file, "UNIX_TIMESTAMP()");
-	  break;
-	case DB_DEFAULT_USER:
-	  fprintf (output_file, "USER()");
-	  break;
-	case DB_DEFAULT_CURR_USER:
-	  fprintf (output_file, "CURRENT_USER");
-	  break;
-	case DB_DEFAULT_CURRENTDATETIME:
-	  fprintf (output_file, "CURRENT_DATETIME");
-	  break;
-	case DB_DEFAULT_CURRENTTIMESTAMP:
-	  fprintf (output_file, "CURRENT_TIMESTAMP");
-	  break;
-	default:
+	  fprintf (output_file, "TO_CHAR(");
+	}
+
+      default_expr_type_str = db_default_expression_string (attribute->default_value.default_expr.default_expr_type);
+      if (default_expr_type_str != NULL)
+	{
+	  fprintf (output_file, default_expr_type_str);
+	}
+      else
+	{
 	  /* these are set during the object load phase */
 	  if (ex_contains_object_reference (default_value))
 	    {
@@ -2368,7 +2346,18 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
 	      /* use the desc_ printer, need to have this in a better place */
 	      desc_value_fprint (output_file, default_value);
 	    }
-	  break;
+	}
+
+      if (attribute->default_value.default_expr.default_expr_op == T_TO_CHAR)
+	{
+	  if (attribute->default_value.default_expr.default_expr_format != NULL)
+	    {
+	      fprintf (output_file, ", \'");
+	      fprintf (output_file, attribute->default_value.default_expr.default_expr_format);
+	      fprintf (output_file, "\'");
+	    }
+
+	  fprintf (output_file, ")");
 	}
     }
 
@@ -2710,8 +2699,9 @@ emit_domain_def (DB_DOMAIN * domains)
   DB_DOMAIN *domain;
   DB_OBJECT *class_;
   int precision;
-  const char *name;
   int has_collation;
+  const char *name;
+  const char *json_schema;
 
   for (domain = domains; domain != NULL; domain = db_domain_next (domain))
     {
@@ -2791,6 +2781,14 @@ emit_domain_def (DB_DOMAIN * domains)
 	      fprintf (output_file, ")");
 	      break;
 
+	    case DB_TYPE_JSON:
+	      json_schema = db_domain_raw_json_schema (domain);
+	      if (json_schema != NULL)
+		{
+		  fprintf (output_file, "('%s')", json_schema);
+		}
+	      break;
+
 	    default:
 	      break;
 	    }
@@ -2822,8 +2820,8 @@ emit_autoincrement_def (DB_ATTRIBUTE * attribute)
 
   if (attribute->auto_increment != NULL)
     {
-      DB_MAKE_NULL (&min_val);
-      DB_MAKE_NULL (&inc_val);
+      db_make_null (&min_val);
+      db_make_null (&inc_val);
 
       error = db_get (attribute->auto_increment, "min_val", &min_val);
       if (error < 0)
@@ -3022,7 +3020,6 @@ emit_partition_info (MOP clsobj)
   const char *name;
   SM_CLASS *class_, *subclass;
   DB_OBJLIST *user;
-  char *pexpr_str = NULL;
 
   if (clsobj == NULL)
     {
@@ -3053,7 +3050,7 @@ emit_partition_info (MOP clsobj)
 	  break;
 	}
 
-      ptr = strstr (class_->partition->expr, "SELECT ");
+      ptr = (char *) strstr (class_->partition->expr, "SELECT ");
       if (ptr)
 	{
 	  ptr2 = strstr (ptr + 7, " FROM ");
@@ -3122,7 +3119,7 @@ emit_stored_procedure_args (int arg_cnt, DB_SET * arg_set)
 	  continue;
 	}
 
-      arg = DB_GET_OBJECT (&arg_val);
+      arg = db_get_object (&arg_val);
 
       if ((err = db_get (arg, SP_ATTR_ARG_NAME, &arg_name_val)) != NO_ERROR
 	  || (err = db_get (arg, SP_ATTR_MODE, &arg_mode_val)) != NO_ERROR
@@ -3133,12 +3130,12 @@ emit_stored_procedure_args (int arg_cnt, DB_SET * arg_set)
 	  continue;
 	}
 
-      fprintf (output_file, "%s%s%s ", PRINT_IDENTIFIER (DB_PULL_STRING (&arg_name_val)));
+      fprintf (output_file, "%s%s%s ", PRINT_IDENTIFIER (db_get_string (&arg_name_val)));
 
-      arg_mode = DB_GET_INT (&arg_mode_val);
+      arg_mode = db_get_int (&arg_mode_val);
       fprintf (output_file, "%s ", arg_mode == SP_MODE_IN ? "IN" : arg_mode == SP_MODE_OUT ? "OUT" : "INOUT");
 
-      arg_type = DB_GET_INT (&arg_type_val);
+      arg_type = db_get_int (&arg_type_val);
 
       if (arg_type == DB_TYPE_RESULTSET)
 	{
@@ -3210,13 +3207,13 @@ emit_stored_procedure (void)
 	  continue;
 	}
 
-      sp_type = DB_GET_INT (&sp_type_val);
+      sp_type = db_get_int (&sp_type_val);
       fprintf (output_file, "\nCREATE %s", sp_type == SP_TYPE_PROCEDURE ? "PROCEDURE" : "FUNCTION");
 
-      fprintf (output_file, " %s%s%s (", PRINT_IDENTIFIER (DB_PULL_STRING (&sp_name_val)));
+      fprintf (output_file, " %s%s%s (", PRINT_IDENTIFIER (db_get_string (&sp_name_val)));
 
-      arg_cnt = DB_GET_INT (&arg_cnt_val);
-      arg_set = DB_GET_SET (&args_val);
+      arg_cnt = db_get_int (&arg_cnt_val);
+      arg_set = db_get_set (&args_val);
       if (emit_stored_procedure_args (arg_cnt, arg_set) > 0)
 	{
 	  err_count++;
@@ -3227,7 +3224,7 @@ emit_stored_procedure (void)
 
       if (sp_type == SP_TYPE_FUNCTION)
 	{
-	  rtn_type = DB_GET_INT (&rtn_type_val);
+	  rtn_type = db_get_int (&rtn_type_val);
 
 	  if (rtn_type == DB_TYPE_RESULTSET)
 	    {
@@ -3239,7 +3236,7 @@ emit_stored_procedure (void)
 	    }
 	}
 
-      fprintf (output_file, "AS LANGUAGE JAVA NAME '%s'", DB_GET_STRING (&method_val));
+      fprintf (output_file, "AS LANGUAGE JAVA NAME '%s'", db_get_string (&method_val));
 
       if (!DB_IS_NULL (&comment_val))
 	{
@@ -3249,7 +3246,7 @@ emit_stored_procedure (void)
 
       fprintf (output_file, ";\n");
 
-      owner = DB_GET_OBJECT (&owner_val);
+      owner = db_get_object (&owner_val);
       err = db_get (owner, "name", &owner_name_val);
       if (err != NO_ERROR)
 	{
@@ -3257,8 +3254,8 @@ emit_stored_procedure (void)
 	  continue;
 	}
 
-      fprintf (output_file, "call [change_sp_owner]('%s', '%s') on class [db_root];\n", DB_GET_STRING (&sp_name_val),
-	       DB_GET_STRING (&owner_name_val));
+      fprintf (output_file, "call [change_sp_owner]('%s', '%s') on class [db_root];\n", db_get_string (&sp_name_val),
+	       db_get_string (&owner_name_val));
 
       db_value_clear (&owner_name_val);
     }

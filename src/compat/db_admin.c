@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include <assert.h>
 
 #include "porting.h"
 #include "system_parameter.h"
@@ -61,12 +62,15 @@
 #if !defined(CS_MODE)
 #include "session.h"
 #endif
-
-#include "dbval.h"		/* this must be the last header file included!!! */
+#include "dbtype.h"
 
 #if !defined(WINDOWS)
 void (*prev_sigfpe_handler) (int) = SIG_DFL;
+#else
+#include "wintcp.h"
 #endif /* !WINDOWS */
+
+#include "db_admin.h"
 
 /* Some like to assume that the db_ layer is able to recognize that a
  database has not been successfully restarted.  For now, check every
@@ -246,9 +250,9 @@ db_init (const char *program, int print_version, const char *dbname, const char 
   db_path_info.db_host = (char *) host_name;
   db_path_info.db_comments = (char *) comments;
 
-  error =
-    boot_initialize_client (&client_credential, &db_path_info, (bool) overwrite, addmore_vols_file, npages,
-			    (PGLENGTH) desired_pagesize, log_npages, (PGLENGTH) desired_log_page_size, lang_charset);
+  error = boot_initialize_client (&client_credential, &db_path_info, (bool) overwrite, addmore_vols_file, npages,
+				  (PGLENGTH) desired_pagesize, log_npages, (PGLENGTH) desired_log_page_size,
+				  lang_charset);
 
   if (more_vol_info_file != NULL)
     {
@@ -560,9 +564,7 @@ db_disable_trigger (void)
 void
 db_clear_host_status (void)
 {
-  int i = 0;
-
-  for (i = 0; i < DIM (db_Host_status_list.hostlist); i++)
+  for (size_t i = 0; i < DIM (db_Host_status_list.hostlist); i++)
     {
       db_Host_status_list.hostlist[i].hostname[0] = '\0';
       db_Host_status_list.hostlist[i].status = DB_HS_NORMAL;
@@ -631,7 +633,6 @@ db_add_host_status (char *hostname, int status)
 void
 db_set_host_status (char *hostname, int status)
 {
-  bool found = false;
   DB_HOST_STATUS *host_status;
 
   host_status = db_find_host_status (hostname);
@@ -932,18 +933,7 @@ db_restart_ex (const char *program, const char *db_name, const char *db_user, co
     }
 
   db_set_client_type (client_type);
-#if !defined(CS_MODE)
-  /* if we're in SERVER_MODE, this is the only place where we can initialize the sessions state module */
-  switch (client_type)
-    {
-    case DB_CLIENT_TYPE_ADMIN_CSQL:
-    case DB_CLIENT_TYPE_READ_ONLY_CSQL:
-    case DB_CLIENT_TYPE_CSQL:
-      session_states_init (NULL);
-    default:
-      break;
-    }
-#endif
+
   /* For backward compatibility. Do not use the parameter, preferred_hosts. A caller is supposed to use
    * db_set_preferred_hosts before db_restart_ex is called. */
   if (preferred_hosts != NULL)
@@ -1957,7 +1947,7 @@ db_get_user_and_host_name (void)
       return NULL;
     }
 
-  len = strlen (hostname) + strlen (username) + 2;
+  len = (int) strlen (hostname) + (int) strlen (username) + 2;
   user = (char *) db_private_alloc (NULL, len);
   if (!user)
     {
@@ -2344,9 +2334,9 @@ fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_error)
 	  error = set_get_element (set, i, &value);
 	  if (error == NO_ERROR)
 	    {
-	      if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && DB_GET_OBJECT (&value) != NULL)
+	      if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && db_get_object (&value) != NULL)
 		{
-		  mops[cnt] = DB_GET_OBJECT (&value);
+		  mops[cnt] = db_get_object (&value);
 		  cnt++;
 		}
 	      db_value_clear (&value);
@@ -2691,7 +2681,7 @@ db_chn (DB_OBJECT * obj, DB_FETCH_MODE purpose)
 int
 db_set_system_parameters (const char *data)
 {
-  int rc;
+  SYSPRM_ERR rc;
   int error = NO_ERROR;
   SYSPRM_ASSIGN_VALUE *assignments = NULL;
 
@@ -2751,7 +2741,7 @@ db_set_system_parameters_for_ha_repl (const char *data)
 int
 db_reset_system_parameters_from_assignments (const char *data)
 {
-  int rc;
+  SYSPRM_ERR rc;
   int error = NO_ERROR;
   char buf[LINE_MAX];
 
@@ -2779,7 +2769,7 @@ db_reset_system_parameters_from_assignments (const char *data)
 int
 db_get_system_parameters (char *data, int len)
 {
-  int rc;
+  SYSPRM_ERR rc;
   int error = NO_ERROR;
   SYSPRM_ASSIGN_VALUE *prm_values = NULL;
 
@@ -2833,14 +2823,14 @@ db_get_host_connected (void)
 int
 db_get_ha_server_state (char *buffer, int maxlen)
 {
-  int ha_state;
+  HA_SERVER_STATE ha_state;
 
   CHECK_CONNECT_ERROR ();
 
 #if defined(CS_MODE)
   ha_state = boot_get_ha_server_state ();
 #else
-  ha_state = -1;
+  ha_state = HA_SERVER_STATE_NA;
 #endif
   if (buffer)
     {

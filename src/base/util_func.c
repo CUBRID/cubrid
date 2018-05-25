@@ -513,7 +513,8 @@ util_log_write_errstr (const char *format, ...)
 int
 util_log_write_command (int argc, char *argv[])
 {
-  int i, remained_buf_length, str_len;
+  int i;
+  size_t remained_buf_length, str_len;
   char command_buf[UTIL_LOG_MAX_MSG_SIZE];
   char *p;
 
@@ -625,7 +626,7 @@ util_log_header (char *buf, size_t buf_len)
 
   tm_p = localtime_r (&sec, &tm);
 
-  len = strftime (buf, buf_len, "%y-%m-%d %H:%M:%S", tm_p);
+  len = (int) strftime (buf, buf_len, "%y-%m-%d %H:%M:%S", tm_p);
   p = buf + len;
   buf_len -= len;
 

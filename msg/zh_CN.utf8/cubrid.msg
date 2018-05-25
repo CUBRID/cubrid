@@ -922,7 +922,7 @@ $ LOADDB
 853 对于对象 (%1$d|%2$d|%3$d), 事务(%4$d) 的非提交读出现故障锁定(%5$s).
 854 警告: 没有锁的持有者, 但存在锁的等待者. 参阅 %1$s.
 855 警告: 两个或更多的线程在为一个事务(%1$d)而等待锁.
-856 警告: 异常的锁等待状态(%1$d|%2$d), 线程(%3$d|%4$d)和事务(%5$d).
+856 警告: 异常的锁等待状态(%1$d|%2$d), 线程(%3$d|%4$lld)和事务(%5$d).
 857 发生一个I/O错误在截断卷 "%2$s" 的页 %1$d 时 .
 858 卷 "%1$s" 在服务端重启后是未知的.
 859 LATCH ON PAGE(%1$d|%2$d) ABORTED
@@ -1260,9 +1260,29 @@ $ LOADDB
 1191 独立清空(Stand-alone vacuum) 执行结束.
 1192 值 %1$zu 的精度超过了允许的最大值 %2$d.
 1193 处理的分区表达式的长度超过了允许的最大值(%1$d).
-1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
-1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
-1196 Last Error
+1194 无法检查文件 %1$d|%2$d , 因为在类 %3$d|%4$d|%5$d 上的锁未被授权.
+1195 CTE的递归部分不能包含没有GROUP BY子句的聚合函数.
+1196 已达到CTE执行的最大递归次数%1$d.
+1197 Invalid json: %1$s (%2$d)
+1198 A json object must be provided
+1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
+1200 Invalid JSON path
+1201 Json object name cannot be NULL.
+1202 Json PATH "%1$s" does not exist in %2$s
+1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
+1204 Json KEY "%1$s" is duplicate
+1205 Reserved error for JSON.
+1206 Reserved error for JSON.
+1207 Reserved error for JSON.
+1208 Reserved error for JSON.
+1209 Reserved error for JSON.
+1210 Reserved error for JSON.
+1211 Reserved error for JSON.
+1212 Reserved error for JSON.
+1213 Reserved error for JSON.
+1214 Reserved error for JSON.
+
+1215 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
@@ -1714,6 +1734,12 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 非法使用聚集函数.
 293 每一个分区的值都必须是严格递增的.
 294 在本地时区类型的列上不能使用函数或索引筛选(filter indexes).
+295 子查询中不允许使用SELECT INTO.
+296 CTE名称不明确，有不止一个名称相同的CTE: '%1$s'.
+297 不支持嵌套WITH子句.
+298 递归的CTE'%1$s'必须直接在其递归查询中引用.
+299 CTE'%1$s'错误: 非递归部分和递归部分必须使用UNION ALL连接.
+300 DEFAULT子句中不允许使用子查询.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.

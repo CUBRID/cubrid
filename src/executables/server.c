@@ -34,6 +34,7 @@
 #include <winsock2.h>
 #include <windows.h>
 #include <dbgHelp.h>
+#include <assert.h>
 
 #else /* WINDOWS */
 #include <sys/resource.h>
@@ -50,15 +51,13 @@
 #include "system_parameter.h"
 #include "perf_monitor.h"
 #include "util_func.h"
-#include "log_impl.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
-#else /* WINDOWS */
+#else /* !defined (WINDOWS) */
 #include "tcp.h"
-#endif /* WINDOWS */
-#if !defined(WINDOWS)
 #include "heartbeat.h"
-#endif
+#include "log_impl.h"
+#endif /* !defined (WINDOWS) */
 
 #if defined(WINDOWS)
 LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException, char *db_name);
@@ -229,7 +228,6 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
   pid = fork ();
   if (pid == 0)
     {
-      char *installed_path;
       char err_log[PATH_MAX];
       int ppid;
       int fd, fd_max;
@@ -319,9 +317,6 @@ main (int argc, char **argv)
 {
   char *binary_name;
   int ret_val = 0;
-#if !defined(WINDOWS)
-  sigset_t sigurg_mask;
-#endif
 
 #if defined(WINDOWS)
   FreeConsole ();
@@ -341,13 +336,6 @@ main (int argc, char **argv)
 #endif /* WINDOWS */
 
   {				/* to make indent happy */
-#if !defined(WINDOWS)
-    /* Block SIGURG signal except oob-handler thread */
-    sigemptyset (&sigurg_mask);
-    sigaddset (&sigurg_mask, SIGURG);
-    sigprocmask (SIG_BLOCK, &sigurg_mask, NULL);
-#endif /* !WINDOWS */
-
     if (argc < 2)
       {
 	PRINT_AND_LOG_ERR_MSG ("Usage: server databasename\n");

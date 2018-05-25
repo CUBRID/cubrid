@@ -42,7 +42,7 @@
 bool
 master_util_config_startup (const char *db_name, int *port_id)
 {
-  if (sysprm_load_and_init (db_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS) != NO_ERROR)
     {
       return false;
     }

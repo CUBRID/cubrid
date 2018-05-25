@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 
 /* for performance metering */
 #if !defined(WINDOWS)
@@ -63,10 +64,6 @@
  * calling function to continue whereas other errors disconnect and escape
  * the function.
  */
-
-#define SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS(err, rc, num_packets) \
-  set_alloc_err_and_read_expected_packets((err), (rc), (num_packets), \
-					  __FILE__, __LINE__)
 
 #define COMPARE_SIZE_AND_BUFFER(replysize, size, replybuf, buf)       \
   compare_size_and_buffer((replysize), (size), (replybuf), (buf),     \
@@ -115,15 +112,12 @@ static void return_error_to_server (char *host, unsigned int eid);
 static int client_capabilities (void);
 static int check_server_capabilities (int server_cap, int client_type, int rel_compare,
 				      REL_COMPATIBILITY * compatibility, const char *server_host, int opt_cap);
-static void set_alloc_err_and_read_expected_packets (int *err, int rc, int num_packets, const char *file,
-						     const int line);
+static int net_set_alloc_err_if_not_set (int err, const char *file, const int line);
+static void net_consume_expected_packets (int rc, int num_packets);
 static int compare_size_and_buffer (int *replysize, int size, char **replybuf, char *buf, const char *file,
 				    const int line);
 static int net_client_request_internal (int request, char *argbuf, int argsize, char *replybuf, int replysize,
 					char *databuf, int datasize, char *replydata, int replydatasize);
-#if defined(ENABLE_UNUSED_FUNCTION)
-static int net_client_request_buffer (unsigned int rc, char **buf_ptr, int expected_size);
-#endif
 static int set_server_error (int error);
 
 static void net_histo_setup_names (void);
@@ -213,14 +207,17 @@ set_server_error (int error)
 static void
 return_error_to_server (char *host, unsigned int eid)
 {
-  void *area;
-  char buffer[1024];
+  char *area;
+  OR_ALIGNED_BUF (1024) a_buffer;
+  char *buffer;
   int length = 1024;
+
+  buffer = OR_ALIGNED_BUF_START (a_buffer);
 
   area = er_get_area_error (buffer, &length);
   if (area != NULL)
     {
-      css_send_error_to_server (host, eid, (char *) area, length);
+      css_send_error_to_server (host, eid, area, length);
     }
 }
 
@@ -372,36 +369,37 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare, REL
 }
 
 /*
- * set_alloc_err_and_read_expected_packets -
+ * net_set_alloc_err_if_not_set
  *
  * return:
  *
  *   err(in):
- *   rc(in):
- *   num_packets(in):
  *   file(in):
  *   line(in):
  *
- * Note:
- *    Allocation failures are recorded and any outstanding data packets
- *    will try to be read.  Called by macro of the same name.
  */
+static int
+net_set_alloc_err_if_not_set (int err, const char *file, const int line)
+{
+  /* don't set error if there already is one */
+  if (err == NO_ERROR)
+    {
+      err = ER_NET_CANT_ALLOC_BUFFER;
+      er_set (ER_ERROR_SEVERITY, file, line, err, 0);
+    }
+
+  return err;
+}
+
 static void
-set_alloc_err_and_read_expected_packets (int *err, int rc, int num_packets, const char *file, const int line)
+net_consume_expected_packets (int rc, int num_packets)
 {
   char *reply = NULL;
   int i, size = 0;
 
-  /* don't set error if there already is one */
-  if (!(*err))
+  for (i = 0; i < num_packets; i++)
     {
-      *err = ER_NET_CANT_ALLOC_BUFFER;
-      er_set (ER_ERROR_SEVERITY, file, line, *err, 0);
-    }
-
-  for (i = 0; i < (num_packets); i++)
-    {
-      css_receive_data_from_server ((rc), &reply, &size);
+      css_receive_data_from_server (rc, &reply, &size);
       if (reply != NULL)
 	{
 	  free_and_init (reply);
@@ -566,9 +564,7 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_DISK_TOTALPGS].name = "NET_SERVER_DISK_TOTALPGS";
   net_Req_buffer[NET_SERVER_DISK_FREEPGS].name = "NET_SERVER_DISK_FREEPGS";
   net_Req_buffer[NET_SERVER_DISK_REMARKS].name = "NET_SERVER_DISK_REMARKS";
-  net_Req_buffer[NET_SERVER_DISK_GET_PURPOSE_AND_SPACE_INFO].name = "NET_SERVER_DISK_GET_PURPOSE_AND_SPACE_INFO";
   net_Req_buffer[NET_SERVER_DISK_VLABEL].name = "NET_SERVER_DISK_VLABEL";
-  net_Req_buffer[NET_SERVER_DISK_IS_EXIST].name = "NET_SERVER_DISK_IS_EXIST";
 
   net_Req_buffer[NET_SERVER_QST_GET_STATISTICS].name = "NET_SERVER_QST_GET_STATISTICS";
   net_Req_buffer[NET_SERVER_QST_UPDATE_STATISTICS].name = "NET_SERVER_QST_UPDATE_STATISTICS";
@@ -608,7 +604,6 @@ net_histo_setup_names (void)
 
   net_Req_buffer[NET_SERVER_REPL_INFO].name = "NET_SERVER_REPL_INFO";
   net_Req_buffer[NET_SERVER_REPL_LOG_GET_APPEND_LSA].name = "NET_SERVER_REPL_LOG_GET_APPEND_LSA";
-  net_Req_buffer[NET_SERVER_REPL_BTREE_FIND_UNIQUE].name = "NET_SERVER_REPL_BTREE_FIND_UNIQUE";
 
   net_Req_buffer[NET_SERVER_LOGWR_GET_LOG_PAGES].name = "NET_SERVER_LOGWR_GET_LOG_PAGES";
 
@@ -619,8 +614,6 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_ES_COPY_FILE].name = "NET_SERVER_ES_COPY_FILE";
   net_Req_buffer[NET_SERVER_ES_RENAME_FILE].name = "NET_SERVER_ES_RENAME_FILE";
   net_Req_buffer[NET_SERVER_ES_GET_FILE_SIZE].name = "NET_SERVER_ES_GET_FILE_SIZE";
-
-  net_Req_buffer[NET_SERVER_TEST_PERFORMANCE].name = "NET_SERVER_TEST_PERFORMANCE";
 
   net_Req_buffer[NET_SERVER_SHUTDOWN].name = "NET_SERVER_SHUTDOWN";
 
@@ -642,6 +635,8 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_VACUUM].name = "NET_SERVER_VACUUM";
   net_Req_buffer[NET_SERVER_GET_MVCC_SNAPSHOT].name = "NET_SERVER_GET_MVCC_SNAPSHOT";
   net_Req_buffer[NET_SERVER_LOCK_RR].name = "NET_SERVER_LOCK_RR";
+  net_Req_buffer[NET_SERVER_TZ_GET_CHECKSUM].name = "NET_SERVER_TZ_GET_CHECKSUM";
+  net_Req_buffer[NET_SERVER_SPACEDB].name = "NET_SERVER_SPACEDB";
   net_Req_buffer[NET_SERVER_QM_QUERY_EXECUTE_AND_COMMIT].name = "NET_SERVER_QM_QUERY_EXECUTE_AND_COMMIT";
 }
 
@@ -933,7 +928,6 @@ net_client_get_server_host (void)
  *
  * return: error status
  *
- *   send_by_oob(in): flag, if true, to send request via oob mesasge.
  *   request(in): server request id
  *   argbuf(in): argument buffer (small)
  *   argsize(in): byte size of argbuf
@@ -1345,7 +1339,9 @@ net_client_request2 (int request, char *argbuf, int argsize, char *replybuf, int
 	}
       else
 	{
-	  SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rc, 1);
+	  error = net_set_alloc_err_if_not_set (error, ARG_FILE_LINE);
+
+	  net_consume_expected_packets (rc, 1);
 	}
     }
 
@@ -1588,15 +1584,13 @@ net_client_request_3_data (int request, char *argbuf, int argsize, char *databuf
  *   replydata_ptr2(in): second receive data buffer (large)
  *   replydatasize_ptr2(in): size of second expected reply data
  *
- * Note: This is one of the functions that is called to perform a server
- *    request.
+ * Note: This is one of the functions that is called to perform a server request.
  *    This is similar to net_client_request2, but the first
  *    field in the reply argument buffer is a request code which can
  *    cause the client to perform actions such as call methods.  When
  *    the actions are completed, a reply is sent to the server.  Eventually
  *    the server responds to the original request with a request code
- *    that indicates that the request is complete and this routine
- *    returns.
+ *    that indicates that the request is complete and this routine returns.
  */
 int
 net_client_request_with_callback (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf1,
@@ -1605,13 +1599,13 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				  char **replydata_plan, int *replydatasize_plan)
 {
   unsigned int rc;
-  int size;
-  int reply_datasize_listid, reply_datasize_page, reply_datasize_plan, error;
+  int size, error;
+  int reply_datasize_listid, reply_datasize_page, reply_datasize_plan, remaining_size;
   char *reply = NULL, *replydata, *ptr;
   QUERY_SERVER_REQUEST server_request;
   int server_request_num;
 
-  error = 0;
+  error = NO_ERROR;
   *replydata_listid = NULL;
   *replydata_page = NULL;
   if (replydata_plan != NULL)
@@ -1675,11 +1669,17 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 	      ptr = or_unpack_int (ptr, &reply_datasize_plan);
 	      COMPARE_AND_FREE_BUFFER (replybuf, reply);
 
-	      if (reply_datasize_listid + reply_datasize_page + reply_datasize_plan)
+	      remaining_size = reply_datasize_listid + reply_datasize_page + reply_datasize_plan;
+
+	      // 1. Read list_id
+	      if (0 < remaining_size)
 		{
+		  if (0 < reply_datasize_listid)
+		    {
 		  if ((error == NO_ERROR) && (replydata = (char *) malloc (reply_datasize_listid)) != NULL)
 		    {
 		      css_queue_receive_data_buffer (rc, replydata, reply_datasize_listid);
+
 		      error = css_receive_data_from_server (rc, &reply, &size);
 		      if (error != NO_ERROR)
 			{
@@ -1687,26 +1687,42 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 			  free_and_init (replydata);
 			  return set_server_error (error);
 			}
-		      else
-			{
+
 			  error = COMPARE_SIZE_AND_BUFFER (&reply_datasize_listid, size, &replydata, reply);
-			}
 
 		      *replydata_listid = reply;
 		      *replydatasize_listid = size;
+
 		      reply = NULL;
 		    }
 		  else
 		    {
-		      SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rc, 1);
+			  error = net_set_alloc_err_if_not_set (error, ARG_FILE_LINE);
+
+			  net_consume_expected_packets (rc, 1);
 		    }
 		}
+		  else
+		    {
+		      // Even though its size is 0, it should also be consumed.
+		      assert (reply_datasize_listid == 0);
+		      net_consume_expected_packets (rc, 1);
+		    }
 
-	      if (reply_datasize_page + reply_datasize_plan)
+		  remaining_size -= reply_datasize_listid;
+		}
+
+	      // 2. Read page if exists
+	      //
+	      // Note that not all list files have a page. list file for insert may not have one.
+	      if (0 < remaining_size)
 		{
+		  if (0 < reply_datasize_page)
+		    {
 		  if ((error == NO_ERROR) && (replydata = (char *) malloc (DB_PAGESIZE)) != NULL)
 		    {
 		      css_queue_receive_data_buffer (rc, replydata, reply_datasize_page);
+
 		      error = css_receive_data_from_server (rc, &reply, &size);
 		      if (error != NO_ERROR)
 			{
@@ -1714,25 +1730,40 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 			  free_and_init (replydata);
 			  return set_server_error (error);
 			}
-		      else
-			{
+
 			  error = COMPARE_SIZE_AND_BUFFER (&reply_datasize_page, size, &replydata, reply);
-			}
+
 		      *replydata_page = reply;
 		      *replydatasize_page = size;
+
 		      reply = NULL;
 		    }
 		  else
 		    {
-		      SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rc, 1);
+			  error = net_set_alloc_err_if_not_set (error, ARG_FILE_LINE);
+
+			  net_consume_expected_packets (rc, 1);
 		    }
 		}
+		  else
+		    {
+		      // Even though its size is 0, it should also be consumed.
+		      assert (reply_datasize_page == 0);
+		      net_consume_expected_packets (rc, 1);
+		    }
 
-	      if (reply_datasize_plan)
+		  remaining_size -= reply_datasize_page;
+		}
+
+	      // 3. Read plan if exists
+	      if (0 < remaining_size)
 		{
+		  if (0 < reply_datasize_plan)
+		    {
 		  if ((error == NO_ERROR) && (replydata = (char *) malloc (reply_datasize_plan + 1)) != NULL)
 		    {
 		      css_queue_receive_data_buffer (rc, replydata, reply_datasize_plan);
+
 		      error = css_receive_data_from_server (rc, &reply, &size);
 		      if (error != NO_ERROR)
 			{
@@ -1740,10 +1771,8 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 			  free_and_init (replydata);
 			  return set_server_error (error);
 			}
-		      else
-			{
+
 			  error = COMPARE_SIZE_AND_BUFFER (&reply_datasize_plan, size, &replydata, reply);
-			}
 
 		      if (replydata_plan != NULL)
 			{
@@ -1759,9 +1788,22 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		    }
 		  else
 		    {
-		      SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rc, 1);
+			  error = net_set_alloc_err_if_not_set (error, ARG_FILE_LINE);
+
+			  net_consume_expected_packets (rc, 1);
 		    }
 		}
+		  else
+		    {
+		      // When you want to append a reply argument,
+		      // you should remove the assertion and handle zero-size case.
+		      assert (0 < reply_datasize_plan);
+		    }
+
+		  remaining_size -= reply_datasize_plan;
+		}
+
+	      assert (remaining_size == 0);
 	      break;
 
 	    case METHOD_CALL:
@@ -1836,7 +1878,9 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		  }
 		else
 		  {
-		    SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rc, 1);
+		    error = net_set_alloc_err_if_not_set (error, ARG_FILE_LINE);
+
+		    net_consume_expected_packets (rc, 1);
 		  }
 
 		if (error != NO_ERROR)
@@ -2033,7 +2077,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		     * or whatever is necessary and provide indication of local errors (pr_status), as well as provide
 		     * a string in user_response.  We send back to the server an int (status) followed by a string. */
 		    /* check for overflow, could be dangerous */
-		    pr_len = strlen (user_response_buffer);
+		    pr_len = (int) strlen (user_response_buffer);
 		    if (pr_len > FILEIO_MAX_USER_RESPONSE_SIZE)
 		      {
 			error = ER_NET_DATA_TRUNCATED;
@@ -2076,7 +2120,9 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		else
 		  {
 		    /* send back some kind of error to server */
-		    SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rc, 1);
+		    error = net_set_alloc_err_if_not_set (error, ARG_FILE_LINE);
+
+		    net_consume_expected_packets (rc, 1);
 
 		    /* Do we need to tell the server? */
 		    server_request = END_CALLBACK;	/* force a stop */
@@ -2368,7 +2414,7 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, cha
 		    {
 		      error = logwr_write_log_pages ();
 		    }
-		  logwr_Gl.action &= LOGWR_ACTION_DELAYED_WRITE;
+		  logwr_Gl.action = (LOGWR_ACTION) (logwr_Gl.action & LOGWR_ACTION_DELAYED_WRITE);
 		}
 
 	      ptr = or_unpack_int (ptr, &request_error);
@@ -2395,7 +2441,7 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, cha
 		    {
 		      error = logwr_write_log_pages ();
 		    }
-		  logwr_Gl.action &= LOGWR_ACTION_DELAYED_WRITE;
+		  logwr_Gl.action = (LOGWR_ACTION) (logwr_Gl.action & LOGWR_ACTION_DELAYED_WRITE);
 		}
 
 	      error = ER_NET_SERVER_DATA_RECEIVE;
@@ -2493,7 +2539,7 @@ net_client_get_next_log_pages (int rc, char *replybuf, int replysize, int length
 	  error = logwr_write_log_pages ();
 	  break;
 	case LOGWR_MODE_ASYNC:
-	  logwr_Gl.action |= LOGWR_ACTION_ASYNC_WRITE;
+	  logwr_Gl.action = (LOGWR_ACTION) (logwr_Gl.action | LOGWR_ACTION_ASYNC_WRITE);
 	  break;
 	default:
 	  break;
@@ -2503,178 +2549,6 @@ net_client_get_next_log_pages (int rc, char *replybuf, int replysize, int length
   COMPARE_AND_FREE_BUFFER (logwr_Gl.logpg_area, reply);
   return error;
 }
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * net_client_request_buffer -
- *
- * return: error status
- *
- *   rc(in): pre-allocated data buffer
- *   buf_ptr(in): pre-allocated data buffer
- *   expected_size(in): size of data buffer
- *
- * Note: This is used to read an expected network buffer.
- *    Returns non-zero if an error condition was detected.
- *
- *    the other two client request functions should use this, re-write after
- *    1.1 release
- */
-static int
-net_client_request_buffer (unsigned int rc, char **buf_ptr, int expected_size)
-{
-  int error;
-  int reply_size;
-  char *buffer, *reply = NULL;
-
-  error = 0;
-  *buf_ptr = NULL;
-
-  buffer = (char *) malloc (expected_size);
-  if (buffer != NULL)
-    {
-      css_queue_receive_data_buffer (rc, buffer, expected_size);
-      error = css_receive_data_from_server (rc, &reply, &reply_size);
-      if (error != NO_ERROR)
-	{
-	  COMPARE_AND_FREE_BUFFER (buffer, reply);
-	  free_and_init (buffer);
-	  return set_server_error (error);
-	}
-      else
-	{
-	  error = COMPARE_SIZE_AND_BUFFER (&expected_size, reply_size, &buffer, reply);
-	}
-
-      if (error)
-	{
-	  free_and_init (buffer);
-	}
-      else
-	{
-	  *buf_ptr = buffer;
-	}
-    }
-  else
-    {
-      SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rc, 1);
-    }
-
-  return error;
-}
-
-/*
- * net_client_request3 -
- *
- * return: error status
- *
- *   request(in): request id
- *   argbuf(in): request argument buffer
- *   argsize(in): request argument buffer size
- *   replybuf(in): reply argument buffer
- *   replysize(in): reply argument buffer size
- *   databuf(in): send data buffer
- *   datasize(in): send data buffer size
- *   replydata_ptr(in): returned data buffer pointer
- *   replydatasize_ptr(in): returned data buffer size
- *   replydata_ptr2(in): second reply data buffer pointer
- *   replydatasize_ptr2(in): second reply buffer size
- *
- * Note: Like net_client_request2 but expectes two reply data buffers.
- *    Need to generalize this.
- */
-int
-net_client_request3 (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf, int datasize,
-		     char **replydata_ptr, int *replydatasize_ptr, char **replydata_ptr2, int *replydatasize_ptr2)
-{
-  unsigned int rc;
-  int size;
-  int reply_datasize, reply_datasize2, error;
-  char *reply = NULL, *replydata, *replydata2;
-  char *ptr;
-
-  error = 0;
-  *replydata_ptr = NULL;
-  *replydata_ptr2 = NULL;
-  *replydatasize_ptr = 0;
-  *replydatasize_ptr2 = 0;
-
-  if (net_Server_name[0] == '\0')
-    {
-      /* need to have a more appropriate "unexpected disconnect" message */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_CRASHED, 0);
-      error = -1;
-    }
-  else
-    {
-#if defined(HISTO)
-      if (net_Histo_setup)
-	{
-	  net_histo_add_entry (request, argsize + datasize);
-	}
-#endif /* HISTO */
-      rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize, databuf, datasize, replybuf, replysize);
-      if (rc == 0)
-	{
-	  return set_server_error (css_Errno);
-	}
-
-      error = css_receive_data_from_server (rc, &reply, &size);
-      if (error != NO_ERROR || reply == NULL)
-	{
-	  COMPARE_AND_FREE_BUFFER (replybuf, reply);
-	  return set_server_error (error);
-	}
-      else
-	{
-	  error = COMPARE_SIZE_AND_BUFFER (&replysize, size, &replybuf, reply);
-	}
-
-      /* here we assume that the first two integers in the reply are the lengths of the following data blocks */
-      ptr = or_unpack_int (reply, &reply_datasize);
-      (void) or_unpack_int (ptr, &reply_datasize2);
-
-      replydata = NULL;
-      replydata2 = NULL;
-
-      if (reply_datasize)
-	{
-	  error = net_client_request_buffer (rc, &replydata, reply_datasize);
-	}
-
-      if ((error == NO_ERROR) && reply_datasize2)
-	{
-	  error = net_client_request_buffer (rc, &replydata2, reply_datasize2);
-	}
-
-      if (error)
-	{
-	  if (replydata != NULL)
-	    {
-	      free_and_init (replydata);
-	      replydata = NULL;
-	    }
-	  if (replydata2)
-	    {
-	      free_and_init (replydata2);
-	      replydata2 = NULL;
-	    }
-	}
-
-      *replydata_ptr = replydata;
-      *replydatasize_ptr = reply_datasize;
-      *replydata_ptr2 = replydata2;
-      *replydatasize_ptr2 = reply_datasize2;
-#if defined(HISTO)
-      if (net_Histo_setup)
-	{
-	  net_histo_request_finished (request, replysize + *replydatasize_ptr + *replydatasize_ptr2);
-	}
-#endif /* HISTO */
-    }
-  return error;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * net_client_request_recv_copyarea -
@@ -2704,15 +2578,14 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
   char *packed_desc = NULL;
   int packed_desc_size;
 
-  error = 0;
+  error = NO_ERROR;
   if (net_Server_name[0] == '\0')
     {
       /* need to have a more appropriate "unexpected disconnect" message */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_CRASHED, 0);
-      error = -1;
+      return ER_FAILED;
     }
-  else
-    {
+
 #if defined(HISTO)
       if (net_Histo_setup)
 	{
@@ -2736,10 +2609,8 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
 	  COMPARE_AND_FREE_BUFFER (replybuf, reply);
 	  return set_server_error (error);
 	}
-      else
-	{
+
 	  error = COMPARE_SIZE_AND_BUFFER (&replysize, size, &replybuf, reply);
-	}
 
       /* 
        * Receive copyarea
@@ -2751,8 +2622,11 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
       reply = or_unpack_int (reply, &packed_desc_size);
       reply = or_unpack_int (reply, &content_size);
 
-      if (packed_desc_size != 0 || content_size != 0)
+  if (packed_desc_size == 0 && content_size == 0)
 	{
+      return error;
+    }
+
 	  if (error == NO_ERROR && reply_copy_area != NULL)
 	    {
 	      *reply_copy_area = locator_recv_allocate_copyarea (num_objs, &packed_desc, packed_desc_size, &content_ptr,
@@ -2784,7 +2658,7 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
 		      error = css_queue_receive_data_buffer (rc, content_ptr, content_size);
 		      if (error != NO_ERROR)
 			{
-			  SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rc, 1);
+		  net_consume_expected_packets (rc, 1);
 			}
 		      else
 			{
@@ -2809,6 +2683,8 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
 		{
 		  int num_packets = 0;
 
+	  ASSERT_ERROR_AND_SET (error);
+
 		  if (packed_desc_size > 0)
 		    {
 		      num_packets++;
@@ -2817,7 +2693,7 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
 		    {
 		      num_packets++;
 		    }
-		  SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rc, num_packets);
+	  net_consume_expected_packets (rc, num_packets);
 		}
 
 	      if (packed_desc != NULL)
@@ -2829,6 +2705,11 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
 	    {
 	      int num_packets = 0;
 
+      if (error == NO_ERROR)
+	{
+	  error = ER_FAILED;
+	}
+
 	      if (packed_desc_size > 0)
 		{
 		  num_packets++;
@@ -2837,17 +2718,16 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
 		{
 		  num_packets++;
 		}
-	      SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rc, num_packets);
+      net_consume_expected_packets (rc, num_packets);
+    }
 
-	    }
-	}
 #if defined(HISTO)
       if (net_Histo_setup)
 	{
 	  net_histo_request_finished (request, replysize + content_size + packed_desc_size);
 	}
 #endif /* HISTO */
-    }
+
   return error;
 }
 
@@ -2885,14 +2765,14 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
   char *packed_desc = NULL;
   int packed_desc_size;
 
-  error = 0;
+  error = NO_ERROR;
   if (net_Server_name[0] == '\0')
     {
       /* need to have a more appropriate "unexpected disconnect" message */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_CRASHED, 0);
-      error = -1;
-      return error;
+      return ER_FAILED;
     }
+
 #if defined(HISTO)
   if (net_Histo_setup)
     {
@@ -2994,8 +2874,11 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
 
   /* allocate the copyarea */
   *reply_copy_area = NULL;
-  if (packed_desc_size != 0 || content_size != 0)
+  if (packed_desc_size == 0 && content_size == 0)
     {
+      return error;
+    }
+
       if (error == NO_ERROR)
 	{
 	  *reply_copy_area = locator_recv_allocate_copyarea (num_objs, &packed_desc, packed_desc_size, &content_ptr,
@@ -3039,6 +2922,8 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
 	    {
 	      int num_packets = 0;
 
+	  ASSERT_ERROR_AND_SET (error);
+
 	      if (packed_desc_size > 0)
 		{
 		  num_packets++;
@@ -3047,7 +2932,7 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
 		{
 		  num_packets++;
 		}
-	      SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rc, num_packets);
+	  net_consume_expected_packets (rc, num_packets);
 	    }
 
 	  if (packed_desc != NULL)
@@ -3059,6 +2944,8 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
 	{
 	  int num_packets = 0;
 
+      assert (error != NO_ERROR);
+
 	  if (packed_desc_size > 0)
 	    {
 	      num_packets++;
@@ -3067,10 +2954,8 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
 	    {
 	      num_packets++;
 	    }
-	  SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rc, num_packets);
-
+      net_consume_expected_packets (rc, num_packets);
 	}
-    }
 
 #if defined(HISTO)
   if (net_Histo_setup)
@@ -3078,6 +2963,7 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
       net_histo_request_finished (request, replysize + recvbuffer_size + content_size + packed_desc_size);
     }
 #endif /* HISTO */
+
   return error;
 }
 
@@ -3116,14 +3002,14 @@ net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize,
   // test code
   int success;
 
-  error = 0;
+  error = NO_ERROR;
   if (net_Server_name[0] == '\0')
     {
       /* need to have a more appropriate "unexpected disconnect" message */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_CRASHED, 0);
-      error = -1;
-      return error;
+      return ER_FAILED;
     }
+
 #if defined(HISTO)
   if (net_Histo_setup)
     {
@@ -3156,8 +3042,11 @@ net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize,
   replybuf = or_unpack_int (replybuf, &success);
 
   *reply_copy_area = NULL;
-  if (packed_desc_size != 0 || content_size != 0)
+  if (packed_desc_size == 0 && content_size == 0)
     {
+      return error;
+    }
+
       if (error == NO_ERROR)
 	{
 	  *reply_copy_area = locator_recv_allocate_copyarea (num_objs, &packed_desc, packed_desc_size, &content_ptr,
@@ -3201,6 +3090,8 @@ net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize,
 	    {
 	      int num_packets = 0;
 
+	  ASSERT_ERROR_AND_SET (error);
+
 	      if (packed_desc_size > 0)
 		{
 		  num_packets++;
@@ -3209,7 +3100,7 @@ net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize,
 		{
 		  num_packets++;
 		}
-	      SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rid, num_packets);
+	  net_consume_expected_packets (rid, num_packets);
 	    }
 
 	  if (packed_desc != NULL)
@@ -3221,6 +3112,8 @@ net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize,
 	{
 	  int num_packets = 0;
 
+      assert (error != NO_ERROR);
+
 	  if (packed_desc_size > 0)
 	    {
 	      num_packets++;
@@ -3229,10 +3122,8 @@ net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize,
 	    {
 	      num_packets++;
 	    }
-	  SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rid, num_packets);
-
+      net_consume_expected_packets (rid, num_packets);
 	}
-    }
 
 #if defined(HISTO)
   if (net_Histo_setup)
@@ -3240,6 +3131,7 @@ net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize,
       net_histo_request_finished (request, replysize + recvbuffer_size + content_size + packed_desc_size);
     }
 #endif /* HISTO */
+
   return error;
 }
 
@@ -3271,14 +3163,14 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
   char *packed_desc = NULL;
   int packed_desc_size;
 
-  error = 0;
+  error = NO_ERROR;
   if (net_Server_name[0] == '\0')
     {
       /* need to have a more appropriate "unexpected disconnect" message */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_CRASHED, 0);
-      error = -1;
-      return error;
+      return ER_FAILED;
     }
+
 #if defined(HISTO)
   if (net_Histo_setup)
     {
@@ -3330,14 +3222,14 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
       else
 	{
 	  css_queue_receive_data_buffer (rc, recvbuffer, p_size);
+
 	  error = css_receive_data_from_server (rc, &reply, &size);
 	  if (error != NO_ERROR)
 	    {
 	      COMPARE_AND_FREE_BUFFER (recvbuffer, reply);
 	      return set_server_error (error);
 	    }
-	  else
-	    {
+
 	      if (recvbuffer_size < size)
 		{
 		  /* we expect that the sizes won't match, but we must be sure that the we can accomodate the data in
@@ -3358,7 +3250,6 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
 		}
 	    }
 	}
-    }
 
   /* 
    * Receive copyarea
@@ -3372,8 +3263,11 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
 
   /* allocate the copyarea */
   *reply_copy_area = NULL;
-  if (packed_desc_size != 0 || content_size != 0)
+  if (packed_desc_size == 0 && content_size == 0)
     {
+      return error;
+    }
+
       if (error == NO_ERROR)
 	{
 	  *reply_copy_area =
@@ -3383,6 +3277,7 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
 	      if (packed_desc != NULL && packed_desc_size > 0)
 		{
 		  css_queue_receive_data_buffer (rc, packed_desc, packed_desc_size);
+
 		  error = css_receive_data_from_server (rc, &reply, &size);
 		  if (error != NO_ERROR)
 		    {
@@ -3390,13 +3285,11 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
 		      free_and_init (packed_desc);
 		      return set_server_error (error);
 		    }
-		  else
-		    {
+
 		      locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc);
 		      COMPARE_AND_FREE_BUFFER (packed_desc, reply);
 		      free_and_init (packed_desc);
 		    }
-		}
 
 	      if (content_size > 0)
 		{
@@ -3417,6 +3310,8 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
 	    {
 	      int num_packets = 0;
 
+	  ASSERT_ERROR_AND_SET (error);
+
 	      if (packed_desc_size > 0)
 		{
 		  num_packets++;
@@ -3425,7 +3320,7 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
 		{
 		  num_packets++;
 		}
-	      SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rc, num_packets);
+	  net_consume_expected_packets (rc, num_packets);
 	    }
 
 	  if (packed_desc != NULL)
@@ -3437,6 +3332,8 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
 	{
 	  int num_packets = 0;
 
+      assert (error != NO_ERROR);
+
 	  if (packed_desc_size > 0)
 	    {
 	      num_packets++;
@@ -3445,9 +3342,8 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
 	    {
 	      num_packets++;
 	    }
-	  SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rc, num_packets);
+      net_consume_expected_packets (rc, num_packets);
 	}
-    }
 
 #if defined(HISTO)
   if (net_Histo_setup)
@@ -3492,7 +3388,7 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
   char *packed_desc = NULL;
   int packed_desc_size;
 
-  error = 0;
+  error = NO_ERROR;
   *recvbuffer = NULL;
   *recvbuffer_size = 0;
 
@@ -3500,9 +3396,9 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
     {
       /* need to have a more appropriate "unexpected disconnect" message */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_CRASHED, 0);
-      error = -1;
-      return error;
+      return ER_FAILED;
     }
+
 #if defined(HISTO)
   if (net_Histo_setup)
     {
@@ -3562,7 +3458,10 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
       else
 	{
 	  *recvbuffer_size = 0;
-	  SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rc, 1);
+
+	  error = net_set_alloc_err_if_not_set (error, ARG_FILE_LINE);
+
+	  net_consume_expected_packets (rc, 1);
 	}
     }
 
@@ -3578,12 +3477,13 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
 
   /* allocate the copyarea */
   *reply_copy_area = NULL;
-  if (packed_desc_size != 0 || content_size != 0)
+  if (packed_desc_size == 0 && content_size == 0)
     {
+      return error;
+    }
+
       if ((error == NO_ERROR)
-	  &&
-	  ((*reply_copy_area =
-	    locator_recv_allocate_copyarea (num_objs, &packed_desc, packed_desc_size, &content_ptr,
+      && ((*reply_copy_area = locator_recv_allocate_copyarea (num_objs, &packed_desc, packed_desc_size, &content_ptr,
 					    content_size)) != NULL))
 	{
 	  if (packed_desc != NULL && packed_desc_size > 0)
@@ -3596,13 +3496,11 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
 		  free_and_init (packed_desc);
 		  return set_server_error (error);
 		}
-	      else
-		{
+
 		  locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc);
 		  COMPARE_AND_FREE_BUFFER (packed_desc, reply);
 		  free_and_init (packed_desc);
 		}
-	    }
 
 	  if (content_size > 0)
 	    {
@@ -3628,6 +3526,11 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
 	{
 	  int num_packets = 0;
 
+      if (error == NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	}
+
 	  if (packed_desc_size > 0)
 	    {
 	      num_packets++;
@@ -3636,11 +3539,8 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
 	    {
 	      num_packets++;
 	    }
-	  SET_ALLOC_ERR_AND_READ_EXPECTED_PACKETS (&error, rc, num_packets);
-
+      net_consume_expected_packets (rc, num_packets);
 	}
-    }
-
 
 #if defined(HISTO)
   if (net_Histo_setup)
@@ -3737,8 +3637,7 @@ net_client_request_recv_stream (int request, char *argbuf, int argsize, char *re
       error = set_server_error (css_Errno);
       goto end;
     }
-  else
-    {
+
       error = css_receive_data_from_server (rc, &reply, &size);
       if (error != NO_ERROR)
 	{
@@ -3769,6 +3668,7 @@ net_client_request_recv_stream (int request, char *argbuf, int argsize, char *re
       while (file_size > 0)
 	{
 	  css_queue_receive_data_buffer (rc, reply_streamdata, reply_streamdata_size);
+
 	  error = css_receive_data_from_server (rc, &reply, &size);
 	  if (error != NO_ERROR)
 	    {
@@ -3776,8 +3676,7 @@ net_client_request_recv_stream (int request, char *argbuf, int argsize, char *re
 	      error = set_server_error (error);
 	      goto end;
 	    }
-	  else
-	    {
+
 	      if (reply != reply_streamdata)
 		{
 		  error = ER_NET_UNUSED_BUFFER;
@@ -3791,14 +3690,12 @@ net_client_request_recv_stream (int request, char *argbuf, int argsize, char *re
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, reply_streamdata_size, size);
 		  break;
 		}
+
 	      file_size -= size;
 	      fwrite (reply_streamdata, 1, size, outfp);
 	    }
-	}
-    }
 
 end:
-
   free_and_init (send_argbuffer);
   free_and_init (recv_replybuf);
 
@@ -4134,10 +4031,9 @@ net_client_receive_action (int rc, int *action)
     {
       /* need to have a more appropriate "unexpected disconnect" message */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_CRASHED, 0);
-      error = ER_NET_SERVER_CRASHED;
+      return ER_NET_SERVER_CRASHED;
     }
-  else
-    {
+
       error = css_receive_data_from_server (rc, &reply, &size);
       if (error != NO_ERROR || reply == NULL)
 	{
@@ -4159,9 +4055,9 @@ net_client_receive_action (int rc, int *action)
 	    }
 	  return set_server_error (error);
 	}
+
       or_unpack_int (reply, action);
       free_and_init (reply);
-    }
 
   return error;
 }

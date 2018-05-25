@@ -25,19 +25,23 @@
 #ifndef _PARSE_TREE_H_
 #define _PARSE_TREE_H_
 
+#if defined (SERVER_MODE)
+#error Does not belong to server module
+#endif /* SERVER_MODE */
+
 #ident "$Id$"
 
 #include <setjmp.h>
-#include "jansson.h"
+#include <assert.h>
 
 #include "config.h"
-
-#include "query_evaluator.h"
+#include "jansson.h"
 #include "cursor.h"
 #include "string_opfunc.h"
 #include "message_catalog.h"
 #include "authenticate.h"
 #include "system_parameter.h"
+#include "xasl.h"
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
@@ -506,7 +510,7 @@
 #define PT_IS_NUMBERING_AFTER_EXECUTION(op) \
         ( ((op) == PT_INST_NUM || \
            (op) == PT_ROWNUM || \
-           (op) == PT_GROUPBY_NUM || \
+           /*(int)(op) == (int)PT_GROUPBY_NUM || - TODO: this does not belong here. */ \
            (op) == PT_ORDERBY_NUM) ? true : false )
 
 #define PT_IS_SERIAL(op) \
@@ -741,15 +745,15 @@
 
 /* PT_SPEC node contains a derived table */
 #define PT_SPEC_IS_DERIVED(spec_) \
-  (spec_->info.spec.derived_table != NULL)
+  ((spec_)->info.spec.derived_table != NULL)
 
 /* PT_SPEC node contains a CTE pointer */
 #define PT_SPEC_IS_CTE(spec_) \
-  (spec_->info.spec.cte_pointer != NULL)
+  ((spec_)->info.spec.cte_pointer != NULL)
 
 /* PT_SPEC node contains an entity spec */
 #define PT_SPEC_IS_ENTITY(spec_) \
-  (spec_->info.spec.entity_name != NULL)
+  ((spec_)->info.spec.entity_name != NULL)
 
 #define PT_IS_FALSE_WHERE_VALUE(node) \
  (((node) != NULL && (node)->node_type == PT_VALUE \
@@ -757,6 +761,7 @@
        || ((node)->type_enum == PT_TYPE_SET \
            && ((node)->info.value.data_value.set == NULL)))) ? true : false)
 
+#define PT_IS_SPEC_REAL_TABLE(spec_) PT_SPEC_IS_ENTITY(spec_)
 
 /*
  Enumerated types of parse tree statements
@@ -833,9 +838,9 @@ enum pt_custom_print
 };
 
 /* all statement node types should be assigned their API statement enumeration */
-typedef enum pt_node_type PT_NODE_TYPE;
 enum pt_node_type
 {
+  PT_NODE_NONE = CUBRID_STMT_NONE,
   PT_ALTER = CUBRID_STMT_ALTER_CLASS,
   PT_ALTER_INDEX = CUBRID_STMT_ALTER_INDEX,
   PT_ALTER_USER = CUBRID_STMT_ALTER_USER,
@@ -948,10 +953,10 @@ enum pt_node_type
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
+typedef enum pt_node_type PT_NODE_TYPE;
 
 
 /* Enumerated Data Types for expressions with a VALUE */
-typedef enum pt_type_enum PT_TYPE_ENUM;
 enum pt_type_enum
 {
   PT_TYPE_NONE = 1000,		/* type not known yet */
@@ -975,6 +980,7 @@ enum pt_type_enum
   PT_TYPE_VARBIT,
   PT_TYPE_LOGICAL,
   PT_TYPE_MAYBE,
+  PT_TYPE_JSON,
 
   /* special values */
   PT_TYPE_NA,			/* in SELECT NA */
@@ -1010,6 +1016,7 @@ enum pt_type_enum
   PT_TYPE_TIMETZ,
   PT_TYPE_TIMELTZ,
 };
+typedef enum pt_type_enum PT_TYPE_ENUM;
 
 /* Enumerated priviledges for Grant, Revoke */
 typedef enum
@@ -1032,6 +1039,7 @@ typedef enum
 /* Enumerated Misc Types */
 typedef enum
 {
+  PT_MISC_NONE = 0,
   PT_MISC_DUMMY = 3000,
   PT_ALL,
   PT_ONLY,
@@ -1353,6 +1361,7 @@ typedef enum
 
 typedef enum
 {
+  PT_TABLE_OPTION_NONE = 0,
   PT_TABLE_OPTION_REUSE_OID = 9000,
   PT_TABLE_OPTION_AUTO_INCREMENT,
   PT_TABLE_OPTION_CHARSET,
@@ -1522,6 +1531,14 @@ typedef enum
   PT_UTC_TIMESTAMP,
   PT_CRC32,
   PT_SCHEMA_DEF,
+  PT_CONV_TZ,
+  PT_JSON_CONTAINS,
+  PT_JSON_TYPE,
+  PT_JSON_EXTRACT,
+  PT_JSON_VALID,
+  PT_JSON_LENGTH,
+  PT_JSON_DEPTH,
+  PT_JSON_SEARCH,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
@@ -2054,7 +2071,7 @@ struct pt_data_default_info
 {
   PT_NODE *default_value;	/* PT_VALUE (list) */
   PT_MISC_TYPE shared;		/* will PT_SHARED or PT_DEFAULT */
-  DB_DEFAULT_EXPR_TYPE default_expr;	/* if it is a pseudocolumn, do not evaluate expr */
+  DB_DEFAULT_EXPR_TYPE default_expr_type;	/* if it is a pseudocolumn, do not evaluate expr */
 };
 
 /* Info for the AUTO_INCREMENT node */
@@ -2102,6 +2119,7 @@ struct pt_data_type_info
   bool has_cs_spec;		/* this is used only when defining collatable types: true if charset was explicitly
 				 * set, false otherwise (charset defaulted to that of the system) */
   PT_MISC_TYPE inout;		/* input or output method parameter */
+  PARSER_VARCHAR *json_schema;
 };
 
 
@@ -2616,7 +2634,7 @@ struct pt_name_info
 #define PT_NAME_ALLOW_REUSABLE_OID 512	/* ignore the REUSABLE_OID restrictions for this name */
 #define PT_NAME_GENERATED_DERIVED_SPEC 1024	/* attribute generated from derived spec */
 #define PT_NAME_FOR_UPDATE	   2048	/* Table name in FOR UPDATE clause */
-
+#define PT_NAME_REAL_TABLE	   4096	/* name of table/column belongs to a real table */
 
   short flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))
@@ -2792,7 +2810,8 @@ struct pt_query_info
 {
   int correlation_level;	/* for correlated subqueries */
   PT_MISC_TYPE all_distinct;	/* enum value is PT_ALL or PT_DISTINCT */
-  PT_MISC_TYPE is_subquery;	/* PT_IS_SUB_QUERY, PT_IS_UNION_QUERY, or 0 */
+  PT_MISC_TYPE is_subquery;	/* PT_IS_SUB_QUERY, PT_IS_UNION_QUERY, PT_IS_CTE_NON_REC_SUBQUERY, 
+				 * PT_IS_CTE_REC_SUBQUERY or 0 */
   char is_view_spec;		/* 0 - normal, 1 - view query spec */
   char oids_included;		/* DB_NO_OIDS/0 DB_ROW_OIDS/1 */
   SCAN_OPERATION_TYPE scan_op_type;	/* scan operation type */
@@ -3166,12 +3185,12 @@ struct pt_constraint_info
 };
 
 /* POINTER node types */
-typedef enum pt_pointer_type PT_POINTER_TYPE;
 enum pt_pointer_type
 {
   PT_POINTER_NORMAL = 0,	/* normal pointer, gets resolved to node */
   PT_POINTER_REF = 1		/* reference pointer - node gets walked by pt_walk_tree */
 };
+typedef enum pt_pointer_type PT_POINTER_TYPE;
 
 /* Info for the POINTER node */
 struct pt_pointer_info
@@ -3538,27 +3557,6 @@ typedef struct pt_plan_trace_info
 typedef int (*PT_CASECMP_FUN) (const char *s1, const char *s2);
 typedef int (*PT_INT_FUNCTION) (PARSER_CONTEXT * c);
 
-/*
- * COMPILE_CONTEXT cover from user input query string to gnerated xasl
- */
-typedef struct compile_context COMPILE_CONTEXT;
-struct compile_context
-{
-  struct xasl_node *xasl;
-
-  char *sql_user_text;		/* original query statement that user input */
-  int sql_user_text_len;	/* length of sql_user_text */
-
-  char *sql_hash_text;		/* rewrited query string which is used as hash key */
-
-  char *sql_plan_text;		/* plans for this query */
-  int sql_plan_alloc_size;	/* query_plan alloc size */
-  bool is_xasl_pinned_reference;	/* to pin xasl cache entry */
-  bool recompile_xasl_pinned;	/* whether recompile again after xasl cache entry has been pinned */
-  bool recompile_xasl;
-  SHA1Hash sha1;
-};
-
 struct parser_context
 {
   PT_INT_FUNCTION next_char;	/* the next character function */
@@ -3666,7 +3664,6 @@ struct pt_assignments_helper
 };
 
 /* Collation coercibility levels associated with parse tree nodes */
-typedef enum pt_coll_coerc_lev PT_COLL_COERC_LEV;
 enum pt_coll_coerc_lev
 {
   PT_COLLATION_L0_COERC = 0,	/* expressions with COLLATE modifier */
@@ -3693,6 +3690,7 @@ enum pt_coll_coerc_lev
   PT_COLLATION_NOT_COERC = PT_COLLATION_L0_COERC,
   PT_COLLATION_FULLY_COERC = PT_COLLATION_L5_COERC
 };
+typedef enum pt_coll_coerc_lev PT_COLL_COERC_LEV;
 
 typedef struct pt_coll_infer PT_COLL_INFER;
 struct pt_coll_infer
@@ -3706,7 +3704,20 @@ struct pt_coll_infer
 				 * to another charset (of another argument) if this flag is set */
 };
 
-void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align);
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align);
+  bool pt_is_json_value_type (PT_TYPE_ENUM type);
+  bool pt_is_json_doc_type (PT_TYPE_ENUM type);
+  bool pt_is_json_object_name (PT_TYPE_ENUM type);
+  bool pt_is_json_path (PT_TYPE_ENUM type);
+#ifdef __cplusplus
+}
+#endif
+
 
 #if !defined (SERVER_MODE)
 #ifdef __cplusplus

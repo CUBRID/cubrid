@@ -27,34 +27,20 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 
-#include "storage_common.h"
-#include "system_parameter.h"
-#include "xserver_interface.h"
-#include "error_manager.h"
-#include "log_manager.h"
-#if defined(SERVER_MODE)
-#include "log_impl.h"
-#endif /* SERVER_MODE */
-#include "critical_section.h"
-#include "wait_for_graph.h"
-#include "page_buffer.h"
 #include "query_manager.h"
-#include "query_opfunc.h"
+#include "object_primitive.h"
+#include "xserver_interface.h"
+#include "query_executor.h"
+#include "stream_to_xasl.h"
 #include "session.h"
-#include "xasl_cache.h"
 #include "filter_pred_cache.h"
-
-#if defined (SERVER_MODE)
-#include "connection_defs.h"
-#include "job_queue.h"
-#include "connection_error.h"
-#endif
-#include "thread.h"
 #include "md5.h"
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
+#include "thread_entry.hpp"
 
 #if !defined (SERVER_MODE)
 
@@ -78,13 +64,13 @@ extern int method_Num_method_jsp_calls;
 /* We have two valid types of membuf used by temporary file. */
 #define QMGR_IS_VALID_MEMBUF_TYPE(m)    ((m) == TEMP_FILE_MEMBUF_NORMAL || (m) == TEMP_FILE_MEMBUF_KEY_BUFFER)
 
-typedef enum qmgr_page_type QMGR_PAGE_TYPE;
 enum qmgr_page_type
 {
   QMGR_UNKNOWN_PAGE,
   QMGR_MEMBUF_PAGE,
   QMGR_TEMP_FILE_PAGE
 };
+typedef enum qmgr_page_type QMGR_PAGE_TYPE;
 
 /*
  *       		     ALLOCATION STRUCTURES
@@ -92,6 +78,14 @@ enum qmgr_page_type
  * A resource mechanism used to effectively handle memory allocation for the
  * query entry structures.
  */
+
+#define OID_BLOCK_ARRAY_SIZE    10
+typedef struct oid_block_list
+{
+  struct oid_block_list *next;
+  int last_oid_idx;
+  OID oid_array[OID_BLOCK_ARRAY_SIZE];
+} OID_BLOCK_LIST;
 
 typedef struct qmgr_tran_entry QMGR_TRAN_ENTRY;
 struct qmgr_tran_entry
@@ -278,6 +272,11 @@ static QMGR_QUERY_ENTRY *
 qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry_p)
 {
   QMGR_QUERY_ENTRY *query_p;
+  QUERY_ID hint_query_id;
+  int i;
+  bool usable = false;
+
+  static_assert (QMGR_MAX_QUERY_ENTRY_PER_TRAN < SHRT_MAX, "Bad query entry count");
 
   query_p = tran_entry_p->free_query_entry_list_p;
 
@@ -287,6 +286,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
     }
   else if (QMGR_MAX_QUERY_ENTRY_PER_TRAN < tran_entry_p->num_query_entries)
     {
+      assert (QMGR_MAX_QUERY_ENTRY_PER_TRAN >= tran_entry_p->num_query_entries);
       return NULL;
     }
   else
@@ -304,11 +304,32 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
     }
 
   /* assign query id */
-  if (tran_entry_p->query_id_generator >= SHRT_MAX - 2)	/* overflow happened */
+  hint_query_id = 0;
+  for (i = 0; i < QMGR_MAX_QUERY_ENTRY_PER_TRAN; i++)
     {
-      tran_entry_p->query_id_generator = 0;
+      if (tran_entry_p->query_id_generator >= SHRT_MAX - 2)	/* overflow happened */
+	{
+	  tran_entry_p->query_id_generator = 0;
+	}
+      query_p->query_id = ++tran_entry_p->query_id_generator;
+
+      usable = session_is_queryid_idle (thread_p, query_p->query_id, &hint_query_id);
+      if (usable == true)
+	{
+	  /* it is usable */
+	  break;
+	}
+
+      if (i == 0)
+	{
+	  /* optimization: The second try uses the current max query_id as hint. 
+	   * This may help us to quickly locate an available id.
+	   */
+	  assert (hint_query_id != 0);
+	  tran_entry_p->query_id_generator = (int) hint_query_id;
+	}
     }
-  query_p->query_id = ++tran_entry_p->query_id_generator;
+  assert (usable == true);
 
   /* initialize per query temp file VFID structure */
   query_p->next = NULL;
@@ -324,6 +345,15 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
   query_p->query_flag = 0;
   query_p->is_holdable = false;
   query_p->is_preserved = false;
+
+#if defined (NDEBUG)
+  /* just a safe guard for a release build. I don't expect it will be hit. */
+  if (usable == false)
+    {
+      qmgr_free_query_entry (thread_p, tran_entry_p, query_p);
+      return NULL;
+    }
+#endif /* NDEBUG */
 
   return query_p;
 }
@@ -914,7 +944,7 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
    * returned if found in the cache. 
    */
 
-  if (stream->xasl_stream == NULL && context->recompile_xasl)
+  if (stream->buffer == NULL && context->recompile_xasl)
     {
       /* Recompile requested by no xasl_stream is provided. */
       assert_release (false);
@@ -924,7 +954,9 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
   XASL_ID_SET_NULL (stream->xasl_id);
   if (!context->recompile_xasl)
     {
-      error_code = xcache_find_sha1 (thread_p, &context->sha1, &cache_entry_p, &recompile_due_to_threshold);
+      error_code =
+	xcache_find_sha1 (thread_p, &context->sha1, XASL_CACHE_SEARCH_FOR_PREPARE, &cache_entry_p,
+			  &recompile_due_to_threshold);
       if (error_code != NO_ERROR)
 	{
 	  assert (false);
@@ -932,17 +964,27 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
 	}
       if (cache_entry_p != NULL)
 	{
-	  /* Found entry. */
-	  XASL_ID_COPY (stream->xasl_id, &cache_entry_p->xasl_id);
-	  if (stream->xasl_stream == NULL && stream->xasl_header != NULL)
+	  if (recompile_due_to_threshold)
 	    {
-	      /* also header was requested. */
-	      qfile_load_xasl_node_header (thread_p, stream->xasl_stream, stream->xasl_header);
+	      XASL_ID_COPY (stream->xasl_id, &cache_entry_p->xasl_id);
+	      xcache_unfix (thread_p, cache_entry_p);
+	      context->recompile_xasl = true;
+	      return NO_ERROR;
 	    }
-	  xcache_unfix (thread_p, cache_entry_p);
-	  goto exit_on_end;
+	  else
+	    {
+	      /* Found entry. */
+	      XASL_ID_COPY (stream->xasl_id, &cache_entry_p->xasl_id);
+	      if (stream->buffer == NULL && stream->xasl_header != NULL)
+		{
+		  /* also header was requested. */
+		  qfile_load_xasl_node_header (thread_p, stream->buffer, stream->xasl_header);
+		}
+	      xcache_unfix (thread_p, cache_entry_p);
+	      goto exit_on_end;
+	    }
 	}
-      if (stream->xasl_stream == NULL)
+      if (stream->buffer == NULL)
 	{
 	  /* No entry found. */
 	  if (recompile_due_to_threshold)
@@ -955,10 +997,10 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
     }
   /* Add new entry to xasl cache. */
   assert (cache_entry_p == NULL);
-  assert (stream->xasl_stream != NULL);
+  assert (stream->buffer != NULL);
 
   /* get some information from the XASL stream */
-  p = or_unpack_int ((char *) stream->xasl_stream, &header_size);
+  p = or_unpack_int ((char *) stream->buffer, &header_size);
   p = or_unpack_int (p, &dbval_cnt);
   p = or_unpack_oid (p, &creator_oid);
   p = or_unpack_int (p, &n_oid_list);
@@ -1473,7 +1515,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	    {
 	      char *s;
 
-	      s = (params.size > 0) ? pr_valstring (&params.vals[0]) : NULL;
+	      s = (params.size > 0) ? pr_valstring (thread_p, &params.vals[0]) : NULL;
 	      er_log_debug (ARG_FILE_LINE,
 			    "xqmgr_execute_query: ls_update_xasl failed "
 			    "xasl_id { sha1 { %08x | %08x | %08x | %08x | %08x } time_stored { %d sec %d usec } } "
@@ -1482,7 +1524,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 			    params.size, s ? s : "(null)");
 	      if (s)
 		{
-		  free_and_init (s);
+		  db_private_free (thread_p, s);
 		}
 
 	      goto end;
@@ -1518,7 +1560,7 @@ end:
     {
       for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
 	{
-	  db_value_clear (dbval);
+	  pr_clear_value (dbval);
 	}
       db_private_free_and_init (thread_p, dbvals_p);
     }
@@ -1795,7 +1837,7 @@ end:
     {
       for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
 	{
-	  db_value_clear (dbval);
+	  pr_clear_value (dbval);
 	}
       db_private_free_and_init (thread_p, dbvals_p);
     }
@@ -2297,7 +2339,7 @@ qmgr_get_old_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
 
 	  /* interrupt check */
 #if defined (SERVER_MODE)
-	  if (thread_get_check_interrupt (thread_p) == true
+	  if (logtb_get_check_interrupt (thread_p) == true
 	      && logtb_is_interrupted_tran (thread_p, true, &dummy, tran_index) == true)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
@@ -2394,7 +2436,7 @@ qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int free_page, LO
       pgbuf_set_dirty (thread_p, page_p, free_page);
     }
 #if defined (SERVER_MODE)
-  else if (free_page == FREE)
+  else if (free_page == (int) FREE)
     {
       assert (page_type == QMGR_MEMBUF_PAGE);
     }
@@ -2516,6 +2558,7 @@ qmgr_allocate_tempfile_with_buffer (int num_buffer_pages)
   if (tempfile_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+      return NULL;
     }
   memset (tempfile_p, 0x00, size);
 
@@ -2641,6 +2684,7 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   tfile_vfid_p = (QMGR_TEMP_FILE *) malloc (sizeof (QMGR_TEMP_FILE));
   if (tfile_vfid_p == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QMGR_TEMP_FILE));
       return NULL;
     }
 
@@ -2942,7 +2986,7 @@ qmgr_is_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_id)
       return true;
     }
 
-  return (thread_get_check_interrupt (thread_p) && logtb_is_interrupted_tran (thread_p, true, &dummy, tran_index));
+  return (logtb_get_check_interrupt (thread_p) && logtb_is_interrupted_tran (thread_p, true, &dummy, tran_index));
 }
 #endif /* SERVER_MODE */
 
@@ -3245,7 +3289,7 @@ qmgr_set_query_exec_info_to_tdes (int tran_index, int query_timeout, const XASL_
   if (tdes_p != NULL)
     {
       /* We use log_Clock_msec instead of calling gettimeofday if the system supports atomic built-ins. */
-      tdes_p->query_start_time = thread_get_log_clock_msec ();
+      tdes_p->query_start_time = log_get_clock_msec ();
 
       if (query_timeout > 0)
 	{
@@ -3317,7 +3361,7 @@ qmgr_reset_query_exec_info (int tran_index)
  *   So the SQL_ID of a query is different in CUBRID and oracle, even though the length is same.
  */
 int
-qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf, char *query, int sql_len)
+qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf, char *query, size_t sql_len)
 {
   char hashstring[32 + 1] = { '\0' };
   char *ret_buf;
@@ -3355,10 +3399,6 @@ struct drand48_data *
 qmgr_get_rand_buf (THREAD_ENTRY * thread_p)
 {
 #if defined(SERVER_MODE)
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
   return &thread_p->rand_buf;
 #else
   return &qmgr_rand_buf;

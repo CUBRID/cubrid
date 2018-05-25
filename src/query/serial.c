@@ -28,22 +28,15 @@
 #include <assert.h>
 #include <errno.h>
 
-#include "intl_support.h"
-#include "error_code.h"
-#include "db.h"
-#include "memory_alloc.h"
-#include "arithmetic.h"
 #include "serial.h"
-#include "query_evaluator.h"
-#include "query_executor.h"
+#include "memory_hash.h"
+#include "storage_common.h"
 #include "heap_file.h"
-#include "page_buffer.h"
-#include "log_manager.h"
-#include "transaction_sr.h"
-#include "replication.h"
+#include "object_primitive.h"
 #include "server_interface.h"
 #include "xserver_interface.h"
-#include "transform.h"
+#include "slotted_page.h"
+#include "dbtype.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -282,7 +275,6 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OI
 			int num_alloc, int is_auto_increment, bool force_set_last_insert_id)
 {
   int ret = NO_ERROR, granted;
-  const char *oid_str = NULL;
   SERIAL_CACHE_ENTRY *entry;
   bool is_cache_mutex_locked = false;
   bool is_oid_locked = false;
@@ -430,7 +422,7 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
 	{
 	  return error;
 	}
-      if (DB_GET_INT (&cmp_result) == 0)
+      if (db_get_int (&cmp_result) == 0)
 	{
 	  /* entry is cached to number of cached_num */
 	  exhausted = true;
@@ -448,7 +440,7 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
 	  return error;
 	}
 
-      if (DB_GET_INT (&cmp_result) >= 0)
+      if (db_get_int (&cmp_result) >= 0)
 	{
 	  exhausted = true;
 	}
@@ -513,7 +505,7 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
   ATTR_ID attrid;
   OID serial_class_oid;
 
-  DB_MAKE_NULL (&key_val);
+  db_make_null (&key_val);
 
   CHECK_MODIFICATION_NO_RETURN (thread_p, ret);
   if (ret != NO_ERROR)
@@ -627,7 +619,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   ATTR_ID attrid;
   OID serial_class_oid;
 
-  DB_MAKE_NULL (&key_val);
+  db_make_null (&key_val);
 
   oid_get_serial_oid (&serial_class_oid);
   heap_scancache_quick_start_modify_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
@@ -666,7 +658,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   else
     {
       val = heap_attrinfo_access (attrid, attr_info_p);
-      cached_num = DB_GET_INT (val);
+      cached_num = db_get_int (val);
     }
 
   attrid = serial_get_attrid (thread_p, SERIAL_ATTR_NAME_INDEX);
@@ -704,12 +696,12 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   val = heap_attrinfo_access (attrid, attr_info_p);
   PR_SHARE_VALUE (val, &started);
 
-  DB_MAKE_NULL (&last_val);
+  db_make_null (&last_val);
 
-  if (DB_GET_INT (&started) == 0)
+  if (db_get_int (&started) == 0)
     {
       /* This is the first time to generate the serial value. */
-      DB_MAKE_INT (&started, 1);
+      db_make_int (&started, 1);
       attrid = serial_get_attrid (thread_p, SERIAL_ATTR_STARTED_INDEX);
       assert (attrid != NOT_FOUND);
       ret = heap_attrinfo_set (serial_oidp, attrid, &started, attr_info_p);
@@ -961,7 +953,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
   if (nth > 1)
     {
       numeric_coerce_int_to_num (nth, num);
-      DB_MAKE_NUMERIC (&tmp_val, num, DB_MAX_NUMERIC_PRECISION, 0);
+      db_make_numeric (&tmp_val, num, DB_MAX_NUMERIC_PRECISION, 0);
       numeric_db_value_mul (inc_val, &tmp_val, &add_val);
     }
   else
@@ -984,9 +976,9 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 	}
 
       /* cur_val + inc_val * cached_num > max_val */
-      if (DB_GET_INT (&cmp_result) > 0)
+      if (db_get_int (&cmp_result) > 0)
 	{
-	  if (DB_GET_INT (cyclic))
+	  if (db_get_int (cyclic))
 	    {
 	      PR_SHARE_VALUE (min_val, result_val);
 	    }
@@ -1015,9 +1007,9 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 	}
 
       /* cur_val + inc_val * cached_num < min_val */
-      if (DB_GET_INT (&cmp_result) < 0)
+      if (db_get_int (&cmp_result) < 0)
 	{
-	  if (DB_GET_INT (cyclic))
+	  if (db_get_int (cyclic))
 	    {
 	      PR_SHARE_VALUE (max_val, result_val);
 	    }

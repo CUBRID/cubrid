@@ -34,6 +34,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdarg.h>
+#include <assert.h>
 
 #include "db.h"
 #include "dbtype.h"
@@ -59,8 +60,7 @@
 #include "execute_statement.h"
 #include "network_interface_cl.h"
 
-/* Include this last; it redefines some macros! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #define OBJ_INTERNAL_SAVEPOINT_NAME "*template-unique*"
 
@@ -125,7 +125,6 @@ static int check_constraints (SM_ATTRIBUTE * att, DB_VALUE * value, unsigned for
 static int quick_validate (SM_VALIDATION * valid, DB_VALUE * value);
 static void cache_validation (SM_VALIDATION * valid, DB_VALUE * value);
 static void begin_template_traversal (void);
-static void reset_template (OBJ_TEMPLATE * template_ptr);
 static OBJ_TEMPLATE *make_template (MOP object, MOP classobj);
 static int validate_template (OBJ_TEMPLATE * temp);
 static OBJ_TEMPASSIGN *obt_make_assignment (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att);
@@ -392,7 +391,7 @@ check_constraints (SM_ATTRIBUTE * att, DB_VALUE * value, unsigned force_check_no
 
   /* check NOT NULL constraint */
   if (value == NULL || DB_IS_NULL (value)
-      || (att->domain->type == tp_Type_object && (mop = DB_GET_OBJECT (value)) && WS_MOP_IS_NULL (mop)))
+      || (att->domain->type == tp_Type_object && (mop = db_get_object (value)) && WS_MOP_IS_NULL (mop)))
     {
       if (att->flags & SM_ATTFLAG_NON_NULL)
 	{
@@ -731,39 +730,6 @@ begin_template_traversal (void)
     }
 }
 
-
-/*
- * reset_template -
- *    return: none
- *    template(in):
- *
- */
-
-static void
-reset_template (OBJ_TEMPLATE * template_ptr)
-{
-  template_ptr->object = NULL;
-  template_ptr->base_object = NULL;
-  template_ptr->traversal = 0;
-  template_ptr->traversed = 0;
-  template_ptr->is_old_template = 0;
-  if (TM_TRAN_ISOLATION () >= TRAN_REPEATABLE_READ)
-    {
-      template_ptr->check_serializable_conflict = 1;
-    }
-  else
-    {
-      template_ptr->check_serializable_conflict = 0;
-    }
-  template_ptr->uniques_were_modified = 0;
-  template_ptr->shared_was_modified = 0;
-  template_ptr->fkeys_were_modified = 0;
-  template_ptr->force_flush = 0;
-  template_ptr->force_check_not_null = 0;
-  template_ptr->function_key_modified = 0;
-  template_ptr->is_autoincrement_set = 0;
-}
-
 /*
  * make_template - This initializes a new object template.
  *    return: new object template
@@ -1058,13 +1024,13 @@ obt_free_assignment (OBJ_TEMPASSIGN * assign)
 	  av_type = DB_VALUE_TYPE (assign->variable);
 	  if (av_type == DB_TYPE_POINTER)
 	    {
-	      obt_free_template ((OBJ_TEMPLATE *) DB_GET_POINTER (assign->variable));
-	      DB_MAKE_POINTER (assign->variable, NULL);
+	      obt_free_template ((OBJ_TEMPLATE *) db_get_pointer (assign->variable));
+	      db_make_pointer (assign->variable, NULL);
 	    }
-	  else if (TP_IS_SET_TYPE (av_type) && DB_GET_SET (assign->variable) != NULL)
+	  else if (TP_IS_SET_TYPE (av_type) && db_get_set (assign->variable) != NULL)
 	    {
 	      /* must go through and free any elements that may be template pointers */
-	      setref = DB_PULL_SET (assign->variable);
+	      setref = db_get_set (assign->variable);
 	      if (setref->set != NULL)
 		{
 		  set_size = setobj_size (setref->set);
@@ -1073,8 +1039,8 @@ obt_free_assignment (OBJ_TEMPASSIGN * assign)
 		      setobj_get_element_ptr (setref->set, i, &value);
 		      if (value != NULL && DB_VALUE_TYPE (value) == DB_TYPE_POINTER)
 			{
-			  obt_free_template ((OBJ_TEMPLATE *) DB_GET_POINTER (value));
-			  DB_MAKE_POINTER (value, NULL);
+			  obt_free_template ((OBJ_TEMPLATE *) db_get_pointer (value));
+			  db_make_pointer (value, NULL);
 			}
 		    }
 		}
@@ -1239,7 +1205,7 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
 	  goto auto_increment_error;
 	}
 
-      DB_MAKE_NULL (&val);
+      db_make_null (&val);
       /* Do not update LAST_INSERT_ID during executing a trigger. */
       if (do_Trigger_involved == true || obt_Last_insert_id_generated == true)
 	{
@@ -1305,7 +1271,7 @@ populate_defaults (OBJ_TEMPLATE * template_ptr)
   DB_VALUE base_value;
   const char *base_name;
 
-  DB_MAKE_NULL (&base_value);
+  db_make_null (&base_value);
 
   if (!template_ptr->is_class_update)
     {
@@ -1563,7 +1529,7 @@ obt_assign (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att, int base_assignment
   DB_AUTH auth;
   DB_OBJECT *object;
 
-  DB_MAKE_NULL (&base_value);
+  db_make_null (&base_value);
 
   if ((template_ptr == NULL) || (att == NULL) || (value == NULL))
     {
@@ -1707,8 +1673,8 @@ obt_assign_obt (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att, int base_assign
   const char *base_name;
   DB_AUTH auth;
 
-  DB_MAKE_NULL (&base_value);
-  DB_MAKE_NULL (&dummy_value);
+  db_make_null (&base_value);
+  db_make_null (&dummy_value);
 
   if (value == NULL)
     {
@@ -1823,7 +1789,7 @@ obt_set (OBJ_TEMPLATE * template_ptr, const char *attname, DB_VALUE * value)
 
       if (DB_VALUE_TYPE (value) == DB_TYPE_POINTER)
 	{
-	  error = obt_assign_obt (template_ptr, att, 0, (OBJ_TEMPLATE *) DB_GET_POINTER (value));
+	  error = obt_assign_obt (template_ptr, att, 0, (OBJ_TEMPLATE *) db_get_pointer (value));
 	}
       else
 	{
@@ -1848,7 +1814,7 @@ obt_set_obt (OBJ_TEMPLATE * template_ptr, const char *attname, OBJ_TEMPLATE * va
 {
   DB_VALUE v;
 
-  DB_MAKE_POINTER (&v, value);
+  db_make_pointer (&v, value);
 
   return (obt_set (template_ptr, attname, &v));
 }
@@ -1895,7 +1861,7 @@ obt_desc_set (OBJ_TEMPLATE * template_ptr, SM_DESCRIPTOR * desc, DB_VALUE * valu
 
       if (DB_VALUE_TYPE (value) == DB_TYPE_POINTER)
 	{
-	  error = obt_assign_obt (template_ptr, att, 0, (OBJ_TEMPLATE *) DB_GET_POINTER (value));
+	  error = obt_assign_obt (template_ptr, att, 0, (OBJ_TEMPLATE *) db_get_pointer (value));
 	}
       else
 	{
@@ -1964,7 +1930,7 @@ create_template_object (OBJ_TEMPLATE * template_ptr)
       /* set the label if one is defined */
       if (template_ptr->label != NULL)
 	{
-	  DB_MAKE_OBJECT (template_ptr->label, mop);
+	  db_make_object (template_ptr->label, mop);
 	}
 
       /* if this is a virtual instance insert, cache the base instance too */
@@ -2113,12 +2079,12 @@ obt_convert_set_templates (SETREF * setref, int check_uniques)
 	      if (value != NULL && DB_VALUE_TYPE (value) == DB_TYPE_POINTER)
 		{
 		  /* apply the template for this element */
-		  template_ptr = (OBJ_TEMPLATE *) DB_GET_POINTER (value);
+		  template_ptr = (OBJ_TEMPLATE *) db_get_pointer (value);
 		  error = obt_apply_assignments (template_ptr, check_uniques, 1);
 		  /* 1 means do eager flushing of (set-nested) proxy objects */
 		  if (error == NO_ERROR && template_ptr != NULL)
 		    {
-		      DB_MAKE_OBJECT (value, template_ptr->object);
+		      db_make_object (value, template_ptr->object);
 		      obt_free_template (template_ptr);
 		    }
 		}
@@ -2163,7 +2129,7 @@ obt_final_check_set (SETREF * setref, int *has_uniques)
 	      setobj_get_element_ptr (set, i, &value);
 	      if (value != NULL && DB_VALUE_TYPE (value) == DB_TYPE_POINTER)
 		{
-		  template_ptr = (OBJ_TEMPLATE *) DB_GET_POINTER (value);
+		  template_ptr = (OBJ_TEMPLATE *) db_get_pointer (value);
 		  error = obt_final_check (template_ptr, 1, has_uniques);
 		}
 	    }
@@ -2206,7 +2172,8 @@ obt_check_missing_assignments (OBJ_TEMPLATE * template_ptr)
 	{
 
 	  if (((att->flags & SM_ATTFLAG_NON_NULL) && DB_IS_NULL (&att->default_value.value)
-	       && att->default_value.default_expr == DB_DEFAULT_NONE) || (att->flags & SM_ATTFLAG_VID))
+	       && att->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE)
+	      || (att->flags & SM_ATTFLAG_VID))
 	    {
 	      ass = template_ptr->assignments[att->order];
 	      if (ass == NULL)
@@ -2318,7 +2285,7 @@ obt_final_check (OBJ_TEMPLATE * template_ptr, int check_non_null, int *has_uniqu
 	      av_type = DB_VALUE_TYPE (a->variable);
 	      if (TP_IS_SET_TYPE (av_type))
 		{
-		  error = obt_final_check_set (DB_GET_SET (a->variable), has_uniques);
+		  error = obt_final_check_set (db_get_set (a->variable), has_uniques);
 		}
 	    }
 	}
@@ -2362,7 +2329,7 @@ obt_apply_assignment (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * value, i
   else
     {
       /* for sets, first apply any templates in the set */
-      error = obt_convert_set_templates (DB_GET_SET (value), check_uniques);
+      error = obt_convert_set_templates (db_get_set (value), check_uniques);
       if (error == NO_ERROR)
 	{
 
@@ -2653,7 +2620,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 	      error = obt_apply_assignments (a->obj, check_uniques, level + 1);
 	      if (error == NO_ERROR)
 		{
-		  DB_MAKE_OBJECT (&val, a->obj->object);
+		  db_make_object (&val, a->obj->object);
 		  error = obt_apply_assignment (object, a->att, mem, &val, check_uniques);
 		}
 	    }
@@ -2867,7 +2834,6 @@ obt_reset_force_flush (OBJ_TEMPLATE * template_ptr)
   template_ptr->force_flush = 0;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * obt_retain_after_finish
  *    return: none
@@ -2877,12 +2843,10 @@ obt_reset_force_flush (OBJ_TEMPLATE * template_ptr)
 void
 obt_retain_after_finish (OBJ_TEMPLATE * template_ptr)
 {
-  if (template_ptr)
-    {
-      template_ptr->discard_on_finish = 0;
-    }
+  assert (template_ptr != NULL);
+
+  template_ptr->discard_on_finish = 0;
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * obt_update_internal
@@ -2892,7 +2856,6 @@ obt_retain_after_finish (OBJ_TEMPLATE * template_ptr)
  *    check_non_null(in): set if this is an internally defined template
  *
  */
-
 int
 obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj, int check_non_null)
 {
@@ -2950,13 +2913,10 @@ obt_update_internal (OBJ_TEMPLATE * template_ptr, MOP * newobj, int check_non_nu
 		      *newobj = template_ptr->object;
 		    }
 
+		  /* When discard_on_finish is false, caller should explictly free template */
 		  if (template_ptr->discard_on_finish)
 		    {
 		      obt_free_template (template_ptr);
-		    }
-		  else
-		    {
-		      reset_template (template_ptr);
 		    }
 		}
 	    }

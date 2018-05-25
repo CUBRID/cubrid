@@ -23,6 +23,8 @@
 
 #ident "$Id$"
 
+#include <assert.h>
+
 #include "config.h"
 
 #include "misc_string.h"
@@ -44,7 +46,10 @@
 #include "locator_cl.h"
 #include "transaction_cl.h"
 
-#include "dbval.h"		/* this must be the last header file included!!! */
+#include "dbtype.h"
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define TR_EXECUTION_ENABLED (tr_Execution_enabled == true)
 #define UNIQUE_SAVEPOINT_RENAME_TRIGGER "rENAMEtRIGGER"
@@ -1006,7 +1011,7 @@ trigger_to_object (TR_TRIGGER * trigger)
   DB_OBJECT *object_p, *class_p;
   DB_OTMPL *obt_p;
   DB_VALUE value;
-  int save;
+  int save, err;
   MOBJ obj;
 
   AU_DISABLE (save);
@@ -1027,49 +1032,49 @@ trigger_to_object (TR_TRIGGER * trigger)
     }
 
   db_make_object (&value, trigger->owner);
-  if (dbt_put_internal (obt_p, TR_ATT_OWNER, &value))
+  if (dbt_put_internal (obt_p, TR_ATT_OWNER, &value) != NO_ERROR)
     {
       goto error;
     }
 
   db_make_string (&value, trigger->name);
-  if (dbt_put_internal (obt_p, TR_ATT_NAME, &value))
+  if (dbt_put_internal (obt_p, TR_ATT_NAME, &value) != NO_ERROR)
     {
       goto error;
     }
 
   db_make_int (&value, trigger->status);
-  if (dbt_put_internal (obt_p, TR_ATT_STATUS, &value))
+  if (dbt_put_internal (obt_p, TR_ATT_STATUS, &value) != NO_ERROR)
     {
       goto error;
     }
 
   db_make_float (&value, (float) trigger->priority);
-  if (dbt_put_internal (obt_p, TR_ATT_PRIORITY, &value))
+  if (dbt_put_internal (obt_p, TR_ATT_PRIORITY, &value) != NO_ERROR)
     {
       goto error;
     }
 
   db_make_int (&value, trigger->event);
-  if (dbt_put_internal (obt_p, TR_ATT_EVENT, &value))
+  if (dbt_put_internal (obt_p, TR_ATT_EVENT, &value) != NO_ERROR)
     {
       goto error;
     }
 
   db_make_object (&value, trigger->class_mop);
-  if (dbt_put_internal (obt_p, TR_ATT_CLASS, &value))
+  if (dbt_put_internal (obt_p, TR_ATT_CLASS, &value) != NO_ERROR)
     {
       goto error;
     }
 
   db_make_string (&value, trigger->attribute);
-  if (dbt_put_internal (obt_p, TR_ATT_ATTRIBUTE, &value))
+  if (dbt_put_internal (obt_p, TR_ATT_ATTRIBUTE, &value) != NO_ERROR)
     {
       goto error;
     }
 
   db_make_int (&value, trigger->class_attribute);
-  if (dbt_put_internal (obt_p, TR_ATT_CLASS_ATTRIBUTE, &value))
+  if (dbt_put_internal (obt_p, TR_ATT_CLASS_ATTRIBUTE, &value) != NO_ERROR)
     {
       goto error;
     }
@@ -1077,19 +1082,19 @@ trigger_to_object (TR_TRIGGER * trigger)
   if (trigger->condition != NULL)
     {
       db_make_int (&value, trigger->condition->type);
-      if (dbt_put_internal (obt_p, TR_ATT_CONDITION_TYPE, &value))
+      if (dbt_put_internal (obt_p, TR_ATT_CONDITION_TYPE, &value) != NO_ERROR)
 	{
 	  goto error;
 	}
 
       db_make_int (&value, trigger->condition->time);
-      if (dbt_put_internal (obt_p, TR_ATT_CONDITION_TIME, &value))
+      if (dbt_put_internal (obt_p, TR_ATT_CONDITION_TIME, &value) != NO_ERROR)
 	{
 	  goto error;
 	}
 
       db_make_string (&value, trigger->condition->source);
-      if (dbt_put_internal (obt_p, TR_ATT_CONDITION, &value))
+      if (dbt_put_internal (obt_p, TR_ATT_CONDITION, &value) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1098,30 +1103,36 @@ trigger_to_object (TR_TRIGGER * trigger)
   if (trigger->action != NULL)
     {
       db_make_int (&value, trigger->action->type);
-      if (dbt_put_internal (obt_p, TR_ATT_ACTION_TYPE, &value))
+      if (dbt_put_internal (obt_p, TR_ATT_ACTION_TYPE, &value) != NO_ERROR)
 	{
 	  goto error;
 	}
 
       db_make_int (&value, trigger->action->time);
-      if (dbt_put_internal (obt_p, TR_ATT_ACTION_TIME, &value))
+      if (dbt_put_internal (obt_p, TR_ATT_ACTION_TIME, &value) != NO_ERROR)
 	{
 	  goto error;
 	}
 
-      db_make_string (&value, trigger->action->source);
-      if (dbt_put_internal (obt_p, TR_ATT_ACTION, &value))
+      db_make_string_copy (&value, trigger->action->source);
+      err = dbt_put_internal (obt_p, TR_ATT_ACTION, &value);
+      if (err != NO_ERROR)
 	{
 	  /* hack, try old name before aborting */
-	  if (dbt_put_internal (obt_p, TR_ATT_ACTION_OLD, &value))
+	  err = dbt_put_internal (obt_p, TR_ATT_ACTION_OLD, &value);
+	  if (err != NO_ERROR)
 	    {
+	      pr_clear_value (&value);
 	      goto error;
 	    }
 	}
+      pr_clear_value (&value);
     }
 
-  db_make_string (&value, trigger->comment);
-  if (dbt_put_internal (obt_p, TR_ATT_COMMENT, &value))
+  db_make_string_copy (&value, trigger->comment);
+  err = dbt_put_internal (obt_p, TR_ATT_COMMENT, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
     {
       goto error;
     }
@@ -1211,7 +1222,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 	}
       else
 	{
-	  trigger->owner = DB_GET_OBJECT (&value);
+	  trigger->owner = db_get_object (&value);
 	}
     }
 
@@ -1223,7 +1234,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 
   if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value))
     {
-      tmp = DB_GET_STRING (&value);
+      tmp = db_get_string (&value);
       if (tmp)
 	{
 	  trigger->name = strdup (tmp);
@@ -1239,7 +1250,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 
   if (DB_VALUE_TYPE (&value) == DB_TYPE_INTEGER)
     {
-      trigger->status = (DB_TRIGGER_STATUS) DB_GET_INTEGER (&value);
+      trigger->status = (DB_TRIGGER_STATUS) db_get_int (&value);
     }
 
   /* PRIORITY */
@@ -1250,7 +1261,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 
   if (DB_VALUE_TYPE (&value) == DB_TYPE_DOUBLE)
     {
-      trigger->priority = DB_GET_DOUBLE (&value);
+      trigger->priority = db_get_double (&value);
     }
 
   /* EVENT */
@@ -1261,7 +1272,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 
   if (DB_VALUE_TYPE (&value) == DB_TYPE_INTEGER)
     {
-      trigger->event = (DB_TRIGGER_EVENT) DB_GET_INTEGER (&value);
+      trigger->event = (DB_TRIGGER_EVENT) db_get_int (&value);
     }
 
   /* CLASS */
@@ -1278,7 +1289,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 	}
       else
 	{
-	  trigger->class_mop = DB_GET_OBJECT (&value);
+	  trigger->class_mop = db_get_object (&value);
 	}
       /* 
        * Check to make sure the class is still available.  It is possible
@@ -1302,7 +1313,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 
   if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value))
     {
-      tmp = DB_GET_STRING (&value);
+      tmp = db_get_string (&value);
       if (tmp)
 	{
 	  trigger->attribute = strdup (tmp);
@@ -1319,7 +1330,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 
   if (DB_VALUE_TYPE (&value) == DB_TYPE_INTEGER)
     {
-      trigger->class_attribute = DB_GET_INTEGER (&value);
+      trigger->class_attribute = db_get_int (&value);
     }
 
   /* CONDITION TYPE */
@@ -1336,7 +1347,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 	  goto error;
 	}
 
-      trigger->condition->type = (DB_TRIGGER_ACTION) DB_GET_INTEGER (&value);
+      trigger->condition->type = (DB_TRIGGER_ACTION) db_get_int (&value);
 
       /* CONDITION TIME */
       if (db_get (object, TR_ATT_CONDITION_TIME, &value))
@@ -1346,7 +1357,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 
       if (DB_VALUE_TYPE (&value) == DB_TYPE_INTEGER)
 	{
-	  trigger->condition->time = (DB_TRIGGER_TIME) DB_GET_INTEGER (&value);
+	  trigger->condition->time = (DB_TRIGGER_TIME) db_get_int (&value);
 	}
 
       /* CONDITION SOURCE */
@@ -1357,7 +1368,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 
       if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value))
 	{
-	  tmp = DB_GET_STRING (&value);
+	  tmp = db_get_string (&value);
 	  if (tmp)
 	    {
 	      trigger->condition->source = strdup (tmp);
@@ -1380,7 +1391,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 	  goto error;
 	}
 
-      trigger->action->type = (DB_TRIGGER_ACTION) DB_GET_INTEGER (&value);
+      trigger->action->type = (DB_TRIGGER_ACTION) db_get_int (&value);
 
       /* ACTION TIME */
       if (db_get (object, TR_ATT_ACTION_TIME, &value))
@@ -1390,7 +1401,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 
       if (DB_VALUE_TYPE (&value) == DB_TYPE_INTEGER)
 	{
-	  trigger->action->time = (DB_TRIGGER_TIME) DB_GET_INTEGER (&value);
+	  trigger->action->time = (DB_TRIGGER_TIME) db_get_int (&value);
 	}
 
       /* ACTION SOURCE */
@@ -1405,7 +1416,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 
       if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value))
 	{
-	  tmp = DB_GET_STRING (&value);
+	  tmp = db_get_string (&value);
 	  if (tmp)
 	    {
 	      trigger->action->source = strdup (tmp);
@@ -1422,7 +1433,7 @@ object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger)
 
   if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value))
     {
-      tmp = DB_GET_STRING (&value);
+      tmp = db_get_string (&value);
       if (tmp != NULL)
 	{
 	  trigger->comment = strdup (tmp);
@@ -1928,7 +1939,7 @@ register_user_trigger (DB_OBJECT * object)
 	}
       else
 	{
-	  table = DB_GET_SET (&value);
+	  table = db_get_set (&value);
 	}
 
       if (table == NULL)
@@ -1948,7 +1959,7 @@ register_user_trigger (DB_OBJECT * object)
 	    }
 	  else
 	    {
-	      table = DB_GET_SET (&value);
+	      table = db_get_set (&value);
 	    }
 	}
 
@@ -2009,7 +2020,7 @@ unregister_user_trigger (TR_TRIGGER * trigger, int rollback)
 	}
       else
 	{
-	  table = DB_GET_SET (&value);
+	  table = db_get_set (&value);
 	}
 
       if (table != NULL)
@@ -2070,7 +2081,7 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
     }
   else
     {
-      table = DB_GET_SET (&value);
+      table = db_get_set (&value);
     }
 
   if (table != NULL)
@@ -2083,10 +2094,10 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
 	  error = set_get_element (table, i, &value);
 	  if (error == NO_ERROR)
 	    {
-	      if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value) && DB_GET_OBJECT (&value) != NULL)
+	      if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value) && db_get_object (&value) != NULL)
 		{
 		  /* deleted objects should have been filtered by now */
-		  trigger = tr_map_trigger (DB_GET_OBJECT (&value), 1);
+		  trigger = tr_map_trigger (db_get_object (&value), 1);
 		  if (trigger == NULL)
 		    {
 		      ASSERT_ERROR_AND_SET (error);
@@ -2098,17 +2109,17 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
 			  if (event == TR_EVENT_NULL)
 			    {
 			      /* unconditionally collect all the trigger objects */
-			      error = ml_ext_add (trigger_list, DB_GET_OBJECT (&value), NULL);
+			      error = ml_ext_add (trigger_list, db_get_object (&value), NULL);
 			    }
 			  else
 			    {
 			      /* must check for a specific event */
-			      error = tr_trigger_event (DB_GET_OBJECT (&value), &e);
+			      error = tr_trigger_event (db_get_object (&value), &e);
 			      if (error == NO_ERROR)
 				{
 				  if (e == event)
 				    {
-				      error = ml_ext_add (trigger_list, DB_GET_OBJECT (&value), NULL);
+				      error = ml_ext_add (trigger_list, db_get_object (&value), NULL);
 				    }
 				}
 			    }
@@ -2162,7 +2173,7 @@ tr_update_user_cache (void)
 	}
       else
 	{
-	  table = DB_GET_SET (&value);
+	  table = db_get_set (&value);
 	}
 
       if (table != NULL)
@@ -2176,10 +2187,10 @@ tr_update_user_cache (void)
 	      if (error == NO_ERROR)
 		{
 		  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value)
-		      && DB_GET_OBJECT (&value) != NULL)
+		      && db_get_object (&value) != NULL)
 		    {
 		      /* deleted objects will have been filtered by now */
-		      trigger = tr_map_trigger (DB_GET_OBJECT (&value), 1);
+		      trigger = tr_map_trigger (db_get_object (&value), 1);
 		      if (trigger == NULL)
 			{
 			  assert (er_errid () != NO_ERROR);
@@ -2598,9 +2609,8 @@ int
 tr_validate_schema_cache (TR_SCHEMA_CACHE * cache, MOP class_mop)
 {
   int error = NO_ERROR;
-  DB_OBJLIST *object_list, *prev, *next, *u = NULL;
+  DB_OBJLIST *object_list, *prev, *next;
   TR_TRIGGER *trigger;
-  SM_CLASS *class_ = NULL;
   bool mop_found;
 
   if (cache == NULL)
@@ -3020,7 +3030,7 @@ trigger_table_add (const char *name, DB_OBJECT * trigger)
     }
   else
     {
-      table = DB_GET_SET (&value);
+      table = db_get_set (&value);
     }
 
   if (table == NULL)
@@ -3070,13 +3080,14 @@ trigger_table_add (const char *name, DB_OBJECT * trigger)
 	}
       else
 	{
-	  table = DB_GET_SET (&value);
+	  table = db_get_set (&value);
 	}
     }
   max = set_size (table);
 
-  db_make_string (&value, name);
+  db_make_string_copy (&value, name);
   error = set_put_element (table, max, &value);
+  pr_clear_value (&value);
   if (error == NO_ERROR)
     {
       db_make_object (&value, trigger);
@@ -3139,7 +3150,7 @@ trigger_table_find (const char *name, DB_OBJECT ** trigger_p)
     }
   else
     {
-      table = DB_GET_SET (&value);
+      table = db_get_set (&value);
     }
 
   if (table == NULL)
@@ -3156,8 +3167,8 @@ trigger_table_find (const char *name, DB_OBJECT ** trigger_p)
       error = set_get_element (table, i, &value);
       if (error == NO_ERROR)
 	{
-	  if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value) && DB_GET_STRING (&value) != NULL
-	      && COMPARE_TRIGGER_NAMES (DB_PULL_STRING (&value), name) == 0)
+	  if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value) && db_get_string (&value) != NULL
+	      && COMPARE_TRIGGER_NAMES (db_get_string (&value), name) == 0)
 	    {
 	      found = i;
 	    }
@@ -3178,7 +3189,7 @@ trigger_table_find (const char *name, DB_OBJECT ** trigger_p)
 		}
 	      else
 		{
-		  *trigger_p = DB_GET_OBJECT (&value);
+		  *trigger_p = db_get_object (&value);
 		}
 	    }
 	  pr_clear_value (&value);
@@ -3248,7 +3259,7 @@ trigger_table_rename (DB_OBJECT * trigger_object, const char *newname)
     }
   else
     {
-      table = DB_GET_SET (&value);
+      table = db_get_set (&value);
     }
 
   if (table == NULL)
@@ -3266,7 +3277,7 @@ trigger_table_rename (DB_OBJECT * trigger_object, const char *newname)
       error = set_get_element (table, i, &value);
       if (error == NO_ERROR)
 	{
-	  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && DB_GET_OBJECT (&value) == trigger_object)
+	  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && db_get_object (&value) == trigger_object)
 	    {
 	      found = i;
 	    }
@@ -3282,8 +3293,9 @@ trigger_table_rename (DB_OBJECT * trigger_object, const char *newname)
   else
     {
       /* the name is the kept in the element immediately preceeding this one */
-      db_make_string (&value, newname);
+      db_make_string_copy (&value, newname);
       error = set_put_element (table, found - 1, &value);
+      pr_clear_value (&value);
     }
 
   set_free (table);
@@ -3332,7 +3344,7 @@ trigger_table_drop (const char *name)
     }
   else
     {
-      table = DB_GET_SET (&value);
+      table = db_get_set (&value);
     }
 
   if (table == NULL)
@@ -3349,8 +3361,8 @@ trigger_table_drop (const char *name)
       error = set_get_element (table, i, &value);
       if (error == NO_ERROR)
 	{
-	  if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value) && DB_GET_STRING (&value) != NULL
-	      && COMPARE_TRIGGER_NAMES (DB_PULL_STRING (&value), name) == 0)
+	  if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value) && db_get_string (&value) != NULL
+	      && COMPARE_TRIGGER_NAMES (db_get_string (&value), name) == 0)
 	    {
 	      found = i;
 	    }
@@ -3490,7 +3502,7 @@ find_all_triggers (bool active_filter, bool alter_filter, DB_OBJLIST ** list)
     }
   else
     {
-      table = DB_GET_SET (&value);
+      table = db_get_set (&value);
     }
 
   if (table == NULL)
@@ -3505,10 +3517,10 @@ find_all_triggers (bool active_filter, bool alter_filter, DB_OBJLIST ** list)
       error = set_get_element (table, i, &value);
       if (error == NO_ERROR)
 	{
-	  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value) && DB_GET_OBJECT (&value) != NULL)
+	  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value) && db_get_object (&value) != NULL)
 	    {
 	      /* think about possibly avoiding this, especially if we're going to turn around and delete it */
-	      trigger = tr_map_trigger (DB_GET_OBJECT (&value), 1);
+	      trigger = tr_map_trigger (db_get_object (&value), 1);
 	      if (trigger == NULL)
 		{
 		  ASSERT_ERROR_AND_SET (error);
@@ -3518,7 +3530,7 @@ find_all_triggers (bool active_filter, bool alter_filter, DB_OBJLIST ** list)
 		  if ((!active_filter || trigger->status == TR_STATUS_ACTIVE)
 		      && check_authorization (trigger, alter_filter))
 		    {
-		      error = ml_ext_add (list, DB_GET_OBJECT (&value), NULL);
+		      error = ml_ext_add (list, db_get_object (&value), NULL);
 		    }
 		}
 	    }
@@ -4520,58 +4532,58 @@ value_as_boolean (DB_VALUE * value)
       status = false;
       break;
     case DB_TYPE_SHORT:
-      status = (DB_GET_SHORT (value) == 0) ? false : true;
+      status = (db_get_short (value) == 0) ? false : true;
       break;
     case DB_TYPE_INTEGER:
-      status = (DB_GET_INT (value) == 0) ? false : true;
+      status = (db_get_int (value) == 0) ? false : true;
       break;
     case DB_TYPE_BIGINT:
-      status = (DB_GET_BIGINT (value) == 0) ? false : true;
+      status = (db_get_bigint (value) == 0) ? false : true;
       break;
     case DB_TYPE_FLOAT:
-      status = (DB_GET_FLOAT (value) == 0) ? false : true;
+      status = (db_get_float (value) == 0) ? false : true;
       break;
     case DB_TYPE_DOUBLE:
-      status = (DB_GET_DOUBLE (value) == 0) ? false : true;
+      status = (db_get_double (value) == 0) ? false : true;
       break;
     case DB_TYPE_TIME:
     case DB_TYPE_TIMELTZ:
-      status = (*DB_GET_TIME (value) == 0) ? false : true;
+      status = (*db_get_time (value) == 0) ? false : true;
       break;
     case DB_TYPE_TIMETZ:
       {
-	DB_TIMETZ *time_tz = DB_GET_TIMETZ (value);
+	DB_TIMETZ *time_tz = db_get_timetz (value);
 
 	status = (time_tz->time == 0) ? false : true;
       }
       break;
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
-      status = (*DB_GET_UTIME (value) == 0) ? false : true;
+      status = (*db_get_timestamp (value) == 0) ? false : true;
       break;
     case DB_TYPE_TIMESTAMPTZ:
       {
-	DB_TIMESTAMPTZ *ts_tz = DB_GET_TIMESTAMPTZ (value);
+	DB_TIMESTAMPTZ *ts_tz = db_get_timestamptz (value);
 
 	status = (ts_tz->timestamp == 0) ? false : true;
       }
       break;
     case DB_TYPE_DATETIME:
     case DB_TYPE_DATETIMELTZ:
-      status = (DB_GET_DATETIME (value)->date == 0 && DB_GET_DATETIME (value)->time == 0) ? false : true;
+      status = (db_get_datetime (value)->date == 0 && db_get_datetime (value)->time == 0) ? false : true;
       break;
     case DB_TYPE_DATETIMETZ:
       {
-	DB_DATETIMETZ *dt_tz = DB_GET_DATETIMETZ (value);
+	DB_DATETIMETZ *dt_tz = db_get_datetimetz (value);
 
 	status = (dt_tz->datetime.date == 0 && dt_tz->datetime.time == 0) ? false : true;
       }
       break;
     case DB_TYPE_DATE:
-      status = (*DB_GET_DATE (value) == 0) ? false : true;
+      status = (*db_get_date (value) == 0) ? false : true;
       break;
     case DB_TYPE_MONETARY:
-      status = (DB_GET_MONETARY (value)->amount == 0) ? false : true;
+      status = (db_get_monetary (value)->amount == 0) ? false : true;
       break;
 
     default:
@@ -4907,7 +4919,7 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 	       */
 	      if (pt_status == ER_QPROC_INVALID_XASLNODE && used_cached_statement)
 		{
-		  parser_free_parser (act->parser);
+		  parser_free_parser ((PARSER_CONTEXT *) act->parser);
 		  act->parser = NULL;
 		  act->statement = NULL;
 
@@ -6538,7 +6550,6 @@ const char *
 tr_time_as_string (DB_TRIGGER_TIME time)
 {
   const char *string;
-
   switch (time)
     {
     case TR_TIME_BEFORE:
@@ -6768,13 +6779,13 @@ get_user_name (DB_OBJECT * user)
       return namebuf;
     }
 
-  if (DB_VALUE_TYPE (&value) != DB_TYPE_STRING || DB_IS_NULL (&value) || DB_GET_STRING (&value) == NULL)
+  if (DB_VALUE_TYPE (&value) != DB_TYPE_STRING || DB_IS_NULL (&value) || db_get_string (&value) == NULL)
     {
       strcpy (namebuf, "???");
     }
   else
     {
-      tmp = DB_GET_STRING (&value);
+      tmp = db_get_string (&value);
       if (tmp)
 	{
 	  strncpy (namebuf, tmp, sizeof (namebuf) - 1);
@@ -6820,7 +6831,7 @@ tr_dump_all_triggers (FILE * fp, bool quoted_id_flag)
 	}
       else
 	{
-	  table = DB_GET_SET (&value);
+	  table = db_get_set (&value);
 	}
       if (table != NULL)
 	{
@@ -6831,9 +6842,9 @@ tr_dump_all_triggers (FILE * fp, bool quoted_id_flag)
 	      if ((error = set_get_element (table, i, &value)) == NO_ERROR)
 		{
 		  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value)
-		      && DB_GET_OBJECT (&value) != NULL)
+		      && db_get_object (&value) != NULL)
 		    {
-		      trigger_object = DB_GET_OBJECT (&value);
+		      trigger_object = db_get_object (&value);
 		      trigger = tr_map_trigger (trigger_object, 1);
 		      if (trigger == NULL)
 			{
@@ -6921,7 +6932,7 @@ tr_dump_selective_triggers (FILE * fp, DB_OBJLIST * classes)
     }
   else
     {
-      table = DB_GET_SET (&value);
+      table = db_get_set (&value);
     }
 
   if (table == NULL)
@@ -6936,9 +6947,9 @@ tr_dump_selective_triggers (FILE * fp, DB_OBJLIST * classes)
       error = set_get_element (table, i, &value);
       if (error == NO_ERROR)
 	{
-	  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value) && DB_GET_OBJECT (&value) != NULL)
+	  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value) && db_get_object (&value) != NULL)
 	    {
-	      trigger_object = DB_GET_OBJECT (&value);
+	      trigger_object = db_get_object (&value);
 	      trigger = tr_map_trigger (trigger_object, 1);
 	      if (trigger == NULL)
 		{
@@ -6999,7 +7010,6 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
   char *newname, *oldname;
   char *tr_name = NULL;
   int save;
-  MOP mop1, mop2;
   bool has_savepoint = false;
 
   /* Do we need to disable authorization just for check_authorization ? */
@@ -7274,7 +7284,7 @@ tr_set_comment (DB_OBJECT * trigger_object, const char *comment, bool call_from_
 
   if (error == NO_ERROR)
     {
-      oldcomment = trigger->comment;
+      oldcomment = (char *) trigger->comment;
       assert (comment != NULL);
       trigger->comment = strdup (comment);
       if (trigger->comment == NULL)
@@ -7285,7 +7295,7 @@ tr_set_comment (DB_OBJECT * trigger_object, const char *comment, bool call_from_
 	}
       else
 	{
-	  db_make_string (&value, comment);
+	  db_make_string_copy (&value, comment);
 	  if (db_put_internal (trigger_object, TR_ATT_COMMENT, &value))
 	    {
 	      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
@@ -7298,6 +7308,7 @@ tr_set_comment (DB_OBJECT * trigger_object, const char *comment, bool call_from_
 		  free_and_init (oldcomment);
 		}
 	    }
+	  pr_clear_value (&value);
 	}
     }
 
@@ -7690,7 +7701,7 @@ tr_downcase_all_trigger_info (void)
 
       if (!DB_IS_NULL (&value))
 	{
-	  attribute = DB_GET_STRING (&value);
+	  attribute = db_get_string (&value);
 	  sm_downcase_name (attribute, attribute, SM_MAX_IDENTIFIER_LENGTH);
 	  if (obj_set (obj, "target_attribute", &value) != NO_ERROR)
 	    break;

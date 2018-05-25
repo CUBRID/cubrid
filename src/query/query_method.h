@@ -26,7 +26,7 @@
 #define _QUERY_METHOD_H_
 
 #ident "$Id$"
-#include "dbtype.h"
+#include "dbtype_def.h"
 
 #define VACOMM_BUFFER_SIZE 4096
 

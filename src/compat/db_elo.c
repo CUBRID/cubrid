@@ -31,6 +31,7 @@
 #include "object_primitive.h"
 #include "db.h"
 #include "db_elo.h"
+#include "dbtype.h"
 
 /*
  * db_elo.c - DB_API for ELO layer
@@ -98,7 +99,7 @@ db_elo_free_structure (DB_ELO * elo)
  * dest(out):
  */
 int
-db_elo_copy (const DB_ELO * src, DB_ELO * dest)
+db_elo_copy (DB_ELO * src, DB_ELO * dest)
 {
   CHECK_2ARGS_ERROR (src, dest);
 

@@ -31,8 +31,11 @@
 
 #include <stdio.h>
 #include "error_manager.h"
-#include "object_representation.h"
 #include "area_alloc.h"
+
+#if defined (__cplusplus)
+class JSON_VALIDATOR;
+#endif
 
 #define DOM_GET_ENUMERATION(dom) \
     ((dom)->enumeration)
@@ -106,15 +109,15 @@ typedef struct tp_domain
 
   /* run-time flag used during domain comparison */
   unsigned is_visited:1;
+
+  JSON_VALIDATOR *json_validator;	/* schema validator if type is json */
 } TP_DOMAIN;
 
-
-
-/*
- * We probably should make this 0 rather than -1 so that we can more easily
- * represent precisions with unsigned integers.  Zero is not a valid
- * precision.
- */
+  /*
+   * We probably should make this 0 rather than -1 so that we can more easily
+   * represent precisions with unsigned integers.  Zero is not a valid
+   * precision.
+   */
 #define TP_FLOATING_PRECISION_VALUE -1
 
 /*
@@ -141,7 +144,6 @@ typedef struct tp_alloc_context
 
 /* DOMAIN ALLOCATION */
 extern AREA *tp_Domain_area;
-
 
 /*
  * BUILT IN DOMAINS
@@ -178,6 +180,7 @@ extern TP_DOMAIN tp_Bit_domain;
 extern TP_DOMAIN tp_VarBit_domain;
 extern TP_DOMAIN tp_Midxkey_domain;
 extern TP_DOMAIN tp_Enumeration_domain;
+extern TP_DOMAIN tp_Json_domain;
 
 /*
  * TP_DOMAIN_STATUS
@@ -373,7 +376,7 @@ typedef enum tp_match
 #define TP_TYPE_HAS_COLLATION(typeid) \
   (TP_IS_CHAR_TYPE(typeid) || (typeid) == DB_TYPE_ENUMERATION)
 
-#define TP_DOMAIN_CODESET(dom) ((dom) ? (dom)->codeset : LANG_SYS_CODESET)
+#define TP_DOMAIN_CODESET(dom) (((dom) ? (INTL_CODESET)(dom)->codeset : LANG_SYS_CODESET))
 #define TP_DOMAIN_COLLATION(dom) \
     ((dom) ? (dom)->collation_id : LANG_SYS_COLLATION)
 #define TP_DOMAIN_COLLATION_FLAG(dom) \
@@ -383,126 +386,136 @@ typedef enum tp_match
    ((typeid) == DB_TYPE_TIMESTAMPTZ || (typeid) == DB_TYPE_DATETIMETZ ||\
     (typeid) == DB_TYPE_TIMETZ)
 
+
 /*
  * FUNCTIONS
  */
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
 /* called during workspace initialization */
 
-extern void tp_area_init (void);
+  extern void tp_area_init (void);
 
 /* Domain support functions */
 
-extern int tp_init (void);
-extern void tp_apply_sys_charset (void);
-extern void tp_final (void);
-extern TP_DOMAIN *tp_domain_resolve (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, int scale,
-				     TP_DOMAIN * setdomain, int collation);
-extern TP_DOMAIN *tp_domain_resolve_default (DB_TYPE type);
-extern TP_DOMAIN *tp_domain_resolve_default_w_coll (DB_TYPE type, int coll_id, TP_DOMAIN_COLL_ACTION coll_flag);
+  extern int tp_init (void);
+  extern void tp_apply_sys_charset (void);
+  extern void tp_final (void);
+  extern TP_DOMAIN *tp_domain_resolve (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, int scale,
+				       TP_DOMAIN * setdomain, int collation);
+  extern TP_DOMAIN *tp_domain_resolve_default (DB_TYPE type);
+  extern TP_DOMAIN *tp_domain_resolve_default_w_coll (DB_TYPE type, int coll_id, TP_DOMAIN_COLL_ACTION coll_flag);
 
-extern void tp_domain_free (TP_DOMAIN * dom);
-extern TP_DOMAIN *tp_domain_new (DB_TYPE type);
-extern int tp_domain_copy_enumeration (DB_ENUMERATION * dest, const DB_ENUMERATION * src);
-extern TP_DOMAIN *tp_domain_copy (const TP_DOMAIN * dom, bool check_cache);
-extern TP_DOMAIN *tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, int scale,
-				       TP_DOMAIN * setdomain);
+  extern void tp_domain_free (TP_DOMAIN * dom);
+  extern TP_DOMAIN *tp_domain_new (DB_TYPE type);
+  extern int tp_domain_copy_enumeration (DB_ENUMERATION * dest, const DB_ENUMERATION * src);
+  extern TP_DOMAIN *tp_domain_copy (const TP_DOMAIN * dom, bool check_cache);
+  extern TP_DOMAIN *tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, int scale,
+					 TP_DOMAIN * setdomain);
 
-extern void tp_init_value_domain (TP_DOMAIN * domain, DB_VALUE * value);
+  extern void tp_init_value_domain (TP_DOMAIN * domain, DB_VALUE * value);
 
-extern TP_DOMAIN *tp_domain_cache (TP_DOMAIN * domain);
+  extern TP_DOMAIN *tp_domain_cache (TP_DOMAIN * domain);
 
-extern int tp_domain_add (TP_DOMAIN ** dlist, TP_DOMAIN * domain);
+  extern int tp_domain_add (TP_DOMAIN ** dlist, TP_DOMAIN * domain);
 
-extern int tp_domain_drop (TP_DOMAIN ** dlist, TP_DOMAIN * domain);
+  extern int tp_domain_drop (TP_DOMAIN ** dlist, TP_DOMAIN * domain);
 
-extern int tp_domain_filter_list (TP_DOMAIN * dlist, int *list_changes);
+  extern int tp_domain_filter_list (TP_DOMAIN * dlist, int *list_changes);
 
-extern int tp_domain_size (const TP_DOMAIN * domain);
+  extern int tp_domain_size (const TP_DOMAIN * domain);
 
-extern int tp_setdomain_size (const TP_DOMAIN * domain);
+  extern int tp_setdomain_size (const TP_DOMAIN * domain);
 
-extern int tp_domain_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MATCH exact);
-extern int tp_domain_match_ignore_order (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MATCH exact);
-extern int tp_domain_compatible (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2);
+  extern int tp_domain_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MATCH exact);
+  extern int tp_domain_match_ignore_order (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MATCH exact);
+  extern int tp_domain_compatible (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2);
 
-extern TP_DOMAIN *tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int allow_coercion,
-				    TP_MATCH exact_match);
+  extern TP_DOMAIN *tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int allow_coercion,
+				      TP_MATCH exact_match);
 
 #if !defined (SERVER_MODE)
-extern TP_DOMAIN *tp_domain_select_type (const TP_DOMAIN * domain_list, DB_TYPE type, DB_OBJECT * class_mop,
-					 int allow_coercion);
+  extern TP_DOMAIN *tp_domain_select_type (const TP_DOMAIN * domain_list, DB_TYPE type, DB_OBJECT * class_mop,
+					   int allow_coercion);
 #endif
 
-extern TP_DOMAIN_STATUS tp_domain_check (const TP_DOMAIN * domain, const DB_VALUE * value, TP_MATCH exact_match);
-TP_DOMAIN *tp_domain_find_noparam (DB_TYPE type, bool is_desc);
-TP_DOMAIN *tp_domain_find_numeric (DB_TYPE type, int precision, int scale, bool is_desc);
-TP_DOMAIN *tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id, unsigned char collation_flag,
-				   int precision, bool is_desc);
-TP_DOMAIN *tp_domain_find_object (DB_TYPE type, OID * class_oid, struct db_object *class_, bool is_desc);
-TP_DOMAIN *tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain, bool is_desc);
-TP_DOMAIN *tp_domain_find_enumeration (const DB_ENUMERATION * enumeration, bool is_desc);
-TP_DOMAIN *tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf);
+  extern TP_DOMAIN_STATUS tp_domain_check (const TP_DOMAIN * domain, const DB_VALUE * value, TP_MATCH exact_match);
+  TP_DOMAIN *tp_domain_find_noparam (DB_TYPE type, bool is_desc);
+  TP_DOMAIN *tp_domain_find_numeric (DB_TYPE type, int precision, int scale, bool is_desc);
+  TP_DOMAIN *tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id, unsigned char collation_flag,
+				     int precision, bool is_desc);
+  TP_DOMAIN *tp_domain_find_object (DB_TYPE type, OID * class_oid, struct db_object *class_, bool is_desc);
+  TP_DOMAIN *tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain, bool is_desc);
+  TP_DOMAIN *tp_domain_find_enumeration (const DB_ENUMERATION * enumeration, bool is_desc);
+  TP_DOMAIN *tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf);
 #if defined(ENABLE_UNUSED_FUNCTION)
-TP_DOMAIN *tp_create_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * domain);
-#endif /* ENABLE_UNUSED_FUNCTION */
-int tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain);
-int tp_domain_references_objects (const TP_DOMAIN * dom);
+  TP_DOMAIN *tp_create_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * domain);
+#endif				/* ENABLE_UNUSED_FUNCTION */
+  int tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain);
+  bool tp_domain_references_objects (const TP_DOMAIN * dom);
 
-int tp_get_fixed_precision (DB_TYPE domain_type);
+  int tp_get_fixed_precision (DB_TYPE domain_type);
 
 /* value functions */
 
-extern TP_DOMAIN_STATUS tp_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain);
-extern int tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain);
+  extern TP_DOMAIN_STATUS tp_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain);
+  extern int tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain);
 
-extern TP_DOMAIN_STATUS tp_value_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
-				       bool implicit_coercion);
+  extern TP_DOMAIN_STATUS tp_value_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
+					 bool implicit_coercion);
 
-extern TP_DOMAIN_STATUS tp_value_cast_preserve_domain (const DB_VALUE * src, DB_VALUE * dest,
-						       const TP_DOMAIN * desired_domain, bool implicit_coercion,
-						       bool preserve_domain);
+  extern TP_DOMAIN_STATUS tp_value_cast_preserve_domain (const DB_VALUE * src, DB_VALUE * dest,
+							 const TP_DOMAIN * desired_domain, bool implicit_coercion,
+							 bool preserve_domain);
 
-extern TP_DOMAIN_STATUS tp_value_cast_no_domain_select (const DB_VALUE * src, DB_VALUE * dest,
-							const TP_DOMAIN * desired_domain, bool implicit_coercion);
-TP_DOMAIN_STATUS tp_value_change_coll_and_codeset (DB_VALUE * src, DB_VALUE * dest, int coll_id, int codeset);
+  extern TP_DOMAIN_STATUS tp_value_cast_no_domain_select (const DB_VALUE * src, DB_VALUE * dest,
+							  const TP_DOMAIN * desired_domain, bool implicit_coercion);
+  TP_DOMAIN_STATUS tp_value_change_coll_and_codeset (DB_VALUE * src, DB_VALUE * dest, int coll_id, int codeset);
 
-extern int tp_value_equal (const DB_VALUE * value1, const DB_VALUE * value2, int allow_coercion);
+  extern int tp_value_equal (const DB_VALUE * value1, const DB_VALUE * value2, int allow_coercion);
 
-extern int tp_more_general_type (const DB_TYPE type1, const DB_TYPE type2);
+  extern int tp_more_general_type (const DB_TYPE type1, const DB_TYPE type2);
 
-extern int tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2, int allow_coercion, int total_order);
+  extern DB_VALUE_COMPARE_RESULT tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2, int allow_coercion,
+						   int total_order);
 
-extern int tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, int allow_coercion,
-					int total_order, bool * can_compare);
+  extern DB_VALUE_COMPARE_RESULT tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2,
+							      int allow_coercion, int total_order, bool * can_compare);
 
-extern int tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2, int allow_coercion, int total_order);
+  extern DB_VALUE_COMPARE_RESULT tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2, int allow_coercion,
+						 int total_order);
 
 /* printed representations */
 
-extern int tp_domain_name (const TP_DOMAIN * domain, char *buffer, int maxlen);
-extern int tp_value_domain_name (const DB_VALUE * value, char *buffer, int maxlen);
+  extern int tp_domain_name (const TP_DOMAIN * domain, char *buffer, int maxlen);
+  extern int tp_value_domain_name (const DB_VALUE * value, char *buffer, int maxlen);
 
 /* misc info */
 
-extern int tp_domain_disk_size (TP_DOMAIN * domain);
-extern int tp_domain_memory_size (TP_DOMAIN * domain);
-extern TP_DOMAIN_STATUS tp_check_value_size (TP_DOMAIN * domain, DB_VALUE * value);
+  extern int tp_domain_disk_size (TP_DOMAIN * domain);
+  extern int tp_domain_memory_size (TP_DOMAIN * domain);
+  extern TP_DOMAIN_STATUS tp_check_value_size (TP_DOMAIN * domain, DB_VALUE * value);
 
-extern int tp_valid_indextype (DB_TYPE type);
+  extern int tp_valid_indextype (DB_TYPE type);
 #if defined(CUBRID_DEBUG)
-extern void tp_dump_domain (TP_DOMAIN * domain);
-extern void tp_domain_print (TP_DOMAIN * domain);
-extern void tp_domain_fprint (FILE * fp, TP_DOMAIN * domain);
+  extern void tp_dump_domain (TP_DOMAIN * domain);
+  extern void tp_domain_print (TP_DOMAIN * domain);
+  extern void tp_domain_fprint (FILE * fp, TP_DOMAIN * domain);
 #endif
-extern int tp_domain_attach (TP_DOMAIN ** dlist, TP_DOMAIN * domain);
+  extern int tp_domain_attach (TP_DOMAIN ** dlist, TP_DOMAIN * domain);
 
-extern TP_DOMAIN_STATUS tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain);
-extern int tp_value_str_auto_cast_to_number (DB_VALUE * src, DB_VALUE * dest, DB_TYPE * val_type);
-extern TP_DOMAIN *tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2);
-extern int tp_value_string_to_double (const DB_VALUE * value, DB_VALUE * result);
-extern void tp_domain_clear_enumeration (DB_ENUMERATION * enumeration);
-extern int tp_enumeration_to_varchar (const DB_VALUE * src, DB_VALUE * result);
-extern int tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name, const int line_no,
-				    const DB_VALUE * src, const TP_DOMAIN * domain);
-#endif /* _OBJECT_DOMAIN_H_ */
+  extern TP_DOMAIN_STATUS tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain);
+  extern int tp_value_str_auto_cast_to_number (DB_VALUE * src, DB_VALUE * dest, DB_TYPE * val_type);
+  extern TP_DOMAIN *tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2);
+  extern int tp_value_string_to_double (const DB_VALUE * value, DB_VALUE * result);
+  extern void tp_domain_clear_enumeration (DB_ENUMERATION * enumeration);
+  extern int tp_enumeration_to_varchar (const DB_VALUE * src, DB_VALUE * result);
+  extern int tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name, const int line_no,
+				      const DB_VALUE * src, const TP_DOMAIN * domain);
+#ifdef __cplusplus
+}
+#endif
+#endif				/* _OBJECT_DOMAIN_H_ */

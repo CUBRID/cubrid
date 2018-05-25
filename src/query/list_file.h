@@ -27,20 +27,21 @@
 
 #ident "$Id$"
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include "config.h"
-
-#include <stdio.h>
-
-#include "dbtype.h"
-#include "storage_common.h"
-#include "system_parameter.h"
+#include "dbtype_def.h"
 #include "external_sort.h"
-#include "query_executor.h"
-#include "query_list.h"
-#include "query_evaluator.h"
 #include "log_comm.h"
 #include "object_domain.h"
-#include "thread.h"
+#include "storage_common.h"
+#include "system_parameter.h"
+#include "thread_compat.hpp"
+#include "xasl.h"
+
+#include <stdio.h>
 
 extern int qfile_Is_list_cache_disabled;
 
@@ -211,4 +212,5 @@ extern int qfile_set_tuple_column_value (THREAD_ENTRY * thread_p, QFILE_LIST_ID 
 					 TP_DOMAIN * domain);
 extern int qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page, QFILE_TUPLE tuplep,
 				  QFILE_TUPLE_RECORD * tplrec, QFILE_LIST_ID * list_idp);
+extern void qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p, int inc);
 #endif /* _LIST_FILE_H_ */

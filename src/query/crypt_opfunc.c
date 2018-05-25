@@ -39,12 +39,15 @@
 #include <arpa/inet.h>
 #endif
 
-#include "thread.h"
+#include "thread_compat.hpp"
 #include "porting.h"
 #include "error_code.h"
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "crypt_opfunc.h"
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#endif // SERVER_MODE
 
 #define GCRYPT_NO_MPI_MACROS
 #define GCRYPT_NO_DEPRECATED
@@ -91,10 +94,6 @@ static void aes_default_gen_key (const char *key, int key_len, char *dest_key, i
 static int
 init_gcrypt (void)
 {
-  /* if gcrypt init success, it doesn't return GPG_ERR_NO_ERROR. It's kind of weird! */
-#define GCRYPT_INIT_SUCCESS gcry_error(GPG_ERR_GENERAL)
-
-  gcry_error_t i_gcrypt_err;
   if (gcrypt_initialized == 0)
     {
 #if defined(SERVER_MODE)
@@ -108,8 +107,7 @@ init_gcrypt (void)
 	  return NO_ERROR;
 	}
 
-      i_gcrypt_err = gcry_control (GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
-      if (i_gcrypt_err != GPG_ERR_NO_ERROR)
+      if (gcry_control (GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread) != GPG_ERR_NO_ERROR)
 	{
 	  pthread_mutex_unlock (&gcrypt_init_mutex);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
@@ -123,11 +121,10 @@ init_gcrypt (void)
       gcry_control (GCRYCTL_SUSPEND_SECMEM_WARN);
       gcry_control (GCRYCTL_INIT_SECMEM, GCRYPT_SECURE_MEMORY_LEN, 0);
       gcry_control (GCRYCTL_RESUME_SECMEM_WARN);
-
+      // tell gcrypt that initialization has completed.
       gcry_control (GCRYCTL_INITIALIZATION_FINISHED, 0);
-
-      i_gcrypt_err = gcry_control (GCRYCTL_INITIALIZATION_FINISHED_P);
-      if (i_gcrypt_err != GCRYPT_INIT_SUCCESS)
+      // check indeed initialization was finished. it returns 1 on success, 0 on failure.
+      if (!gcry_control (GCRYCTL_INITIALIZATION_FINISHED_P))
 	{
 #if defined(SERVER_MODE)
 	  pthread_mutex_unlock (&gcrypt_init_mutex);
@@ -136,7 +133,8 @@ init_gcrypt (void)
 		  crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
 	  return ER_ENCRYPTION_LIB_FAILED;
 	}
-      gcrypt_initialized = (i_gcrypt_err == GCRYPT_INIT_SUCCESS) ? 1 : 0;
+      // init successful
+      gcrypt_initialized = 1;
 #if defined(SERVER_MODE)
       pthread_mutex_unlock (&gcrypt_init_mutex);
 #endif
@@ -167,10 +165,12 @@ str_to_hex (THREAD_ENTRY * thread_p, const char *src, int src_len, char **dest_p
 
   assert (src != NULL);
 
+#if defined (SERVER_MODE)
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
+#endif // SERVER_MODE
 
   dest = (char *) db_private_alloc (thread_p, dest_len * sizeof (char));
   if (dest == NULL)
@@ -248,10 +248,12 @@ crypt_aes_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len
   assert (src != NULL);
   assert (key != NULL);
 
+#if defined (SERVER_MODE)
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
+#endif // SERVER_MODE
 
   *dest_p = NULL;
   *dest_len_p = 0;
@@ -277,7 +279,7 @@ crypt_aes_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len
     }
   else
     {
-      padding_src_len = ceil ((double) src_len / AES128_BLOCK_LEN) * AES128_BLOCK_LEN;
+      padding_src_len = (int) ceil ((double) src_len / AES128_BLOCK_LEN) * AES128_BLOCK_LEN;
       pad = padding_src_len - src_len;
     }
 
@@ -359,10 +361,12 @@ crypt_aes_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len
   assert (src != NULL);
   assert (key != NULL);
 
+#if defined (SERVER_MODE)
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
+#endif // SERVER_MODE
 
   *dest_p = NULL;
   *dest_len_p = 0;
@@ -480,10 +484,12 @@ crypt_sha_one (THREAD_ENTRY * thread_p, const char *src, int src_len, char **des
 
   assert (src != NULL);
 
+#if defined (SERVER_MODE)
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
+#endif // SERVER_MODE
 
   *dest_p = NULL;
 
@@ -544,10 +550,12 @@ crypt_sha_two (THREAD_ENTRY * thread_p, const char *src, int src_len, int need_h
 
   assert (src != NULL);
 
+#if defined (SERVER_MODE)
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
+#endif // SERVER_MODE
 
   *dest_p = NULL;
 
@@ -621,10 +629,12 @@ crypt_crc32 (THREAD_ENTRY * thread_p, const char *src, int src_len, int *dest)
 
   assert (src != NULL);
 
+#if defined (SERVER_MODE)
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
+#endif // SERVER_MODE
 
   if (init_gcrypt () != NO_ERROR)
     {
@@ -665,11 +675,6 @@ crypt_generate_random_bytes (THREAD_ENTRY * thread_p, char *dest, int length)
   int error_status = NO_ERROR;
 
   assert (dest != NULL);
-
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
 
   if (init_gcrypt () != NO_ERROR)
     {

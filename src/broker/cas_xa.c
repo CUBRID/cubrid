@@ -51,7 +51,7 @@ static int compare_xid (XID * xid1, XID * xid2);
 
 static bool xa_prepare_flag = false;
 
-int
+FN_RETURN
 fn_xa_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
 #ifdef CAS_SUPPORT_XA
@@ -62,7 +62,7 @@ fn_xa_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
-      return 0;
+      return FN_KEEP_CONN;
     }
 
   gtrid = db_2pc_start_transaction ();
@@ -70,7 +70,7 @@ fn_xa_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
     {
       ERROR_INFO_SET (gtrid, DBMS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
-      return 0;
+      return FN_KEEP_CONN;
     }
 
   err_code = db_set_global_transaction_info (gtrid, (void *) &xid, sizeof (XID));
@@ -78,7 +78,7 @@ fn_xa_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
     {
       ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
-      return 0;
+      return FN_KEEP_CONN;
     }
 
   err_code = db_2pc_prepare_transaction ();
@@ -86,7 +86,7 @@ fn_xa_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
     {
       ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
-      return 0;
+      return FN_KEEP_CONN;
     }
 
   set_xa_prepare_flag ();
@@ -104,10 +104,10 @@ fn_xa_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
   ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
   NET_BUF_ERR_SET (net_buf);
 #endif /* CAS_SUPPORT_XA */
-  return 0;
+  return FN_KEEP_CONN;
 }
 
-int
+FN_RETURN
 fn_xa_recover (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
 #ifdef CAS_SUPPORT_XA
@@ -121,7 +121,7 @@ fn_xa_recover (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
     {
       ERROR_INFO_SET (count, DBMS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
-      return 0;
+      return FN_KEEP_CONN;
     }
 
   net_buf_cp_int (net_buf, count, NULL);
@@ -133,7 +133,7 @@ fn_xa_recover (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
 	{
 	  ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	  NET_BUF_ERR_SET (net_buf);
-	  return 0;
+	  return FN_KEEP_CONN;
 	}
       net_buf_cp_xid (net_buf, &xid);
     }
@@ -148,10 +148,10 @@ fn_xa_recover (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
   ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
   NET_BUF_ERR_SET (net_buf);
 #endif /* CAS_SUPPORT_XA */
-  return 0;
+  return FN_KEEP_CONN;
 }
 
-int
+FN_RETURN
 fn_xa_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
 #ifdef CAS_SUPPORT_XA
@@ -164,14 +164,14 @@ fn_xa_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
-      return 0;
+      return FN_KEEP_CONN;
     }
   net_arg_get_char (tran_type, argv[1]);
   if (tran_type != CCI_TRAN_COMMIT && tran_type != CCI_TRAN_ROLLBACK)
     {
       ERROR_INFO_SET (CAS_ER_TRAN_TYPE, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
-      return 0;
+      return FN_KEEP_CONN;
     }
 
   count = db_2pc_prepared_transactions (gtrids, MAX_GTRIDS);
@@ -179,7 +179,7 @@ fn_xa_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
     {
       ERROR_INFO_SET (count, DBMS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
-      return 0;
+      return FN_KEEP_CONN;
     }
 
   for (gtrid = -1, i = 0; i < count; i++)
@@ -189,7 +189,7 @@ fn_xa_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
 	{
 	  ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	  NET_BUF_ERR_SET (net_buf);
-	  return 0;
+	  return FN_KEEP_CONN;
 	}
       if (compare_xid (&xid, &tmp_xid) == 0)
 	{
@@ -209,7 +209,7 @@ fn_xa_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
 	{
 	  ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	  NET_BUF_ERR_SET (net_buf);
-	  return 0;
+	  return FN_KEEP_CONN;
 	}
 
       ux_end_tran (tran_type, true, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
@@ -228,7 +228,7 @@ fn_xa_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
   ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
   NET_BUF_ERR_SET (net_buf);
 #endif /* CAS_SUPPORT_XA */
-  return -1;
+  return FN_CLOSE_CONN;
 }
 
 #ifdef CAS_SUPPORT_XA

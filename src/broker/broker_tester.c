@@ -45,7 +45,7 @@
 #include "broker_filename.h"
 #include "cas_protocol.h"
 #include "cas_common.h"
-
+#include "cubrid_getopt.h"
 #include "cas_cci.h"
 
 #if defined(WINDOWS)
@@ -669,7 +669,7 @@ print_result_set (int req, T_CCI_ERROR * err_buf, T_CCI_COL_INFO * col_info, int
     {
       col_name = CCI_GET_RESULT_INFO_NAME (col_info, i);
       col_size_arr[i - 1] = MIN (MAX_DISPLAY_LENGTH, CCI_GET_RESULT_INFO_PRECISION (col_info, i));
-      col_size_arr[i - 1] = MAX (col_size_arr[i - 1], strlen (col_name));
+      col_size_arr[i - 1] = MAX (col_size_arr[i - 1], (int) strlen (col_name));
       col_type_arr[i - 1] = CCI_GET_RESULT_INFO_TYPE (col_info, i);
 
       PRINT_TITLE (title_len, "  %-*s", col_size_arr[i - 1], col_name);
@@ -711,13 +711,13 @@ print_result_set (int req, T_CCI_ERROR * err_buf, T_CCI_COL_INFO * col_info, int
 	      goto end;
 	    }
 
-	  if (is_number_type (col_type_arr[i - 1]))
+	  if (is_number_type ((T_CCI_U_TYPE) col_type_arr[i - 1]))
 	    {
 	      PRINT_RESULT ("  %-*s", col_size_arr[i - 1], data);
 	    }
 	  else
 	    {
-	      int len = strlen (data) + 3;
+	      int len = (int) strlen (data) + 3;
 	      if (malloc_size < len)
 		{
 		  FREE_MEM (data_with_quot);

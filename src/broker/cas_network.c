@@ -696,8 +696,8 @@ unset_net_timeout_flag (void)
 }
 
 void
-net_write_error (int sock, int version, char *driver_info, char *cas_info, int cas_info_size, int indicator, int code,
-		 char *msg)
+net_write_error (SOCKET sock, int version, char *driver_info, char *cas_info, int cas_info_size, int indicator,
+		 int code, char *msg)
 {
   size_t len = NET_SIZE_INT;
   size_t err_msg_len = 0;

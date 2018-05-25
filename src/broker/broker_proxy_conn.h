@@ -33,13 +33,12 @@
 
 #if !defined(WINDOWS)
 
-enum
+enum T_BROKER_PROXY_CONN_STATUS
 {
   PROXY_CONN_NOT_CONNECTED = 0,
   PROXY_CONN_CONNECTED = 1,
   PROXY_CONN_AVAILABLE = 2
-} T_BROKER_PROXY_CONN_STATUS;
-
+};
 typedef struct t_proxy_conn_ent T_PROXY_CONN_ENT;
 struct t_proxy_conn_ent
 {

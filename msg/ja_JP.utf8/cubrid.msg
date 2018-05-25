@@ -922,7 +922,7 @@ $ LOADDB
 853 オブジェクト(%1$d|%2$d|%3$d)に対して「Uncommitted Read」トランザクション(%4$d)が正しくないロック(%5$s)を獲得しました。
 854 警告: ロックホルダーはないけれど。ロックウエーターは存在する状態です。%1$sを参照してください。
 855 警告: ２つ以上のスレッドが一つのトランザクション(%1$d)のためにロックウエーティング中です。
-856 警告: おかしいロック待機状態(%1$d|%2$d)、スレッドは(%3$d|%4$d)、トランザクションは(%5$d).
+856 警告: おかしいロック待機状態(%1$d|%2$d)、スレッドは(%3$d|%4$lld)、トランザクションは(%5$d).
 857 ボリューム「%2$s」の「%1$d」ページを縮める途中にI/Oエラー発生。
 858 サーバーをリスタートする時ボリューム「%1$s」がわかりません。
 859 ページ(%1$d|%2$d)に対するラッチリクエストがキャンセルされました。
@@ -1260,9 +1260,30 @@ $ LOADDB
 1191 スタンドアロン真空スイープの実行が終了しました。
 1192 %1$zuの値の精度は最大許容%2$dを超えていました。
 1193 処理されたパーティション式の長さが許容される最大「%1$d」を超えていました。
-1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
+1194 Unable to check file %1$d|%2$d because lock on class %3$d|%4$d|%5$d is not immediately granted.
 1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
-1196 ラストエラー
+1196 Maximum recursions %1$d reached executing CTE.
+1197 Invalid json: %1$s (%2$d)
+1198 A json object must be provided
+1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
+1200 Invalid JSON path
+1201 Json object name cannot be NULL.
+1202 Json PATH "%1$s" does not exist in %2$s
+1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
+1204 Json KEY "%1$s" is duplicate
+1205 Reserved error for JSON.
+1206 Reserved error for JSON.
+1207 Reserved error for JSON.
+1208 Reserved error for JSON.
+1209 Reserved error for JSON.
+1210 Reserved error for JSON.
+1211 Reserved error for JSON.
+1212 Reserved error for JSON.
+1213 Reserved error for JSON.
+1214 Reserved error for JSON.
+
+1215 ラストエラー
+
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
 2 エラーメッセージが使用できません。
@@ -1713,6 +1734,12 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 集計関数の使用が無効です。
 293 値は厳密に各パーティションに増加しなければなりません。
 294 ローカルタイムゾーン型指定された列に関数やフィルタ索引を使用することはできません。
+295 SELECT INTO is not allowed in subqueries.
+296 CTE name ambiguity, there are more than one CTEs with the same name: '%1$s'.
+297 Nested WITH clauses are not supported.
+298 Recursive CTE '%1$s' must be referenced directly in its recursive query.
+299 Error in CTE '%1$s': The non-recursive part and the recursive part must be connected with UNION ALL.
+300 Subquery is not allowed in DEFAULT clause.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %1$dバイトがアロケーションできません。

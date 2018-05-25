@@ -27,6 +27,10 @@
 
 #ident "$Id$"
 
+#if defined (SERVER_MODE)
+#error Does not belong to server module
+#endif /* SERVER_MODE */
+
 #include <stdio.h>
 
 #include "dbdef.h"
@@ -40,15 +44,16 @@
 #include "connection_defs.h"
 #include "log_writer.h"
 #include "language_support.h"
-#include "log_comm.h"
-#include "query_executor.h"
+#include "log_impl.h"
+#include "parse_tree.h"
+#include "xasl.h"
 
 /* killtran supporting structures and functions */
 typedef struct one_tran_info ONE_TRAN_INFO;
 struct one_tran_info
 {
   int tran_index;
-  int state;
+  TRAN_STATE state;
   int process_id;
   char *db_user;
   char *program_name;
@@ -100,7 +105,6 @@ extern int locator_fetch_lockhint_classes (LC_LOCKHINT * lockhint, LC_COPYAREA *
 extern int locator_check_fk_validity (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type, int n_attrs, int *attr_ids,
 				      OID * pk_cls_oid, BTID * pk_btid, char *fk_name);
 extern int locator_prefetch_repl_insert (OID * class_oid, RECDES * recdes);
-extern int locator_prefetch_repl_update_or_delete (OID * class_oid, BTID * btid, DB_VALUE * key_value);
 extern int heap_create (HFID * hfid, const OID * class_oid, bool reuse_oid);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int heap_destroy (const HFID * hfid);
@@ -110,9 +114,7 @@ extern int heap_reclaim_addresses (const HFID * hfid);
 extern DKNPAGES disk_get_total_numpages (VOLID volid);
 extern DKNPAGES disk_get_free_numpages (VOLID volid);
 extern char *disk_get_remarks (VOLID volid);
-extern int disk_get_purpose_and_space_info (VOLID volid, DISK_VOLPURPOSE * vol_purpose, VOL_SPACE_INFO * space_info);
 extern char *disk_get_fullname (VOLID volid, char *vol_fullname);
-extern bool disk_is_volume_exist (VOLID volid);
 extern int log_reset_wait_msecs (int wait_msecs);
 extern int log_reset_isolation (TRAN_ISOLATION isolation);
 extern void log_set_interrupt (int set);
@@ -126,7 +128,14 @@ extern int log_drop_lob_locator (const char *locator);
 
 extern TRAN_STATE tran_server_commit (bool retain_lock);
 extern TRAN_STATE tran_server_abort (void);
-extern bool tran_is_blocked (int tran_index);
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  extern bool tran_is_blocked (int tran_index);
+#ifdef __cplusplus
+}
+#endif
 extern int tran_server_has_updated (void);
 extern int tran_server_is_active_and_has_updated (void);
 extern int tran_wait_server_active_trans (void);
@@ -144,7 +153,14 @@ extern TRAN_STATE tran_server_end_topop (LOG_RESULT_TOPOP result, LOG_LSA * topo
 extern int tran_server_savepoint (const char *savept_name, LOG_LSA * savept_lsa);
 extern TRAN_STATE tran_server_partial_abort (const char *savept_name, LOG_LSA * savept_lsa);
 extern const char *tran_get_tranlist_state_name (TRAN_STATE state);
-extern void lock_dump (FILE * outfp);
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  extern void lock_dump (FILE * outfp);
+#ifdef __cplusplus
+}
+#endif
 extern int acl_reload (void);
 extern void acl_dump (FILE * outfp);
 
@@ -274,8 +290,6 @@ extern int net_client_request (int request, char *argbuf, int argsize, char *rep
 extern int net_client_request_send_large_data (int request, char *argbuf, int argsize, char *replybuf, int replysize,
 					       char *databuf, INT64 datasize, char *replydata, int replydatasize);
 #endif
-extern int net_client_request_via_oob (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-				       char *databuf, int datasize, char *replydata, int replydatasize);
 extern int net_client_request2 (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf,
 				int datasize, char **replydata_ptr, int *replydatasize_ptr);
 extern int net_client_request2_no_malloc (int request, char *argbuf, int argsize, char *replybuf, int replysize,
@@ -389,4 +403,6 @@ extern int tran_lock_rep_read (LOCK lock_rr_tran);
 extern int chksum_insert_repl_log_and_demote_table_lock (REPL_INFO * repl_info, const OID * class_oidp);
 
 extern int log_does_active_user_exist (const char *user_name, bool * existed);
+
+extern int netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILES * spacefiles);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

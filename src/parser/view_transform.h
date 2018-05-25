@@ -34,7 +34,6 @@ typedef enum PT_FETCH_AS
 { PT_NORMAL_SELECT, PT_INVERTED_ASSIGNMENTS, PT_PARTIAL_SELECT }
 PT_FETCH_AS;
 
-typedef enum pt_updatability PT_UPDATABILITY;
 enum pt_updatability
 {
   PT_NOT_UPDATABLE = 0x0,	/* non-updatable query */
@@ -42,6 +41,7 @@ enum pt_updatability
 				 * otherwise updatable) */
   PT_UPDATABLE = 0x3		/* fully updatable query */
 };
+typedef enum pt_updatability PT_UPDATABILITY;
 
 extern PT_NODE *mq_bump_correlation_level (PARSER_CONTEXT * parser, PT_NODE * node, int increment, int match);
 

@@ -26,7 +26,7 @@ end
 define logpb_get_page
   set $idx = $arg0 % log_Pb.num_buffers
   set $arg1 = 0
-  if $idx == $arg0
+  if log_Pb.buffers[$idx].pageid == $arg0
 	set $arg1 = log_Pb.buffers[$idx]->logpage
   end
 end
@@ -386,4 +386,40 @@ define log_next_record_for_oid
       end
     end
   end
-    
+
+# log_find_prior_node
+# $arg0 (in) : LOG_PAGEID
+# #arg1 (in) : LOG_OFFSET
+#
+# Find a node in log prior list to match the given LSA
+#
+define log_find_prior_node
+  set $log_pageid = $arg0
+  set $log_offset = $arg1
+  
+  set $node = log_Gl.prior_info.prior_list_header
+  while $node != 0
+    if $node.start_lsa.pageid == $log_pageid && $node.start_lsa.offset == $log_offset
+      p *$node
+      loop_break
+      end
+    set $node = $node->next
+    end
+  end
+
+# log_find_prior_node
+# $arg0 (in) : VOLID
+# #arg1 (in) : PAGEID
+#
+# Print all nodes in log prior list for the given page
+#
+define log_find_prior_node_by_page
+  set $node = log_Gl.prior_info.prior_list_header
+  while $node != 0
+    set $log_data = (LOG_DATA *) $node->data_header
+    if $log_data != 0 && $log_data.pageid == $arg1 && $log_data.volid == $arg0
+      p *$node
+      end
+    set $node = $node->next
+    end
+  end

@@ -27,24 +27,28 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 #if !defined(WINDOWS)
 #include <langinfo.h>
 #endif
 
-#include "chartype.h"
-#include "misc_string.h"
 #include "language_support.h"
-#include "authenticate.h"
+
+#include "chartype.h"
 #include "environment_variable.h"
-#include "db.h"
 #include "memory_hash.h"
 #include "util_func.h"
 #if !defined(WINDOWS)
 #include <dlfcn.h>
-#endif
+#endif /* !defined (WINDOWS) */
+#include "db_date.h"
+#include "string_opfunc.h"
 
-/* this must be the last header file included! */
-#include "dbval.h"
+#if !defined (SERVER_MODE)
+#include "authenticate.h"
+#include "db.h"
+#endif /* !defined (SERVER_MODE) */
+#include "dbtype.h"
 
 static INTL_LANG lang_Lang_id = INTL_LANG_ENGLISH;
 static INTL_CODESET lang_Loc_charset = INTL_CODESET_ISO88591;
@@ -53,16 +57,31 @@ static char lang_Msg_loc_name[LANG_MAX_LANGNAME] = LANG_NAME_DEFAULT;
 static char lang_Lang_name[LANG_MAX_LANGNAME] = LANG_NAME_DEFAULT;
 static DB_CURRENCY lang_Loc_currency = DB_CURRENCY_DOLLAR;
 
-/* locale data */
-static LANG_LOCALE_DATA lc_English_iso88591;
-static LANG_LOCALE_DATA lc_English_utf8;
-static LANG_LOCALE_DATA lc_Turkish_iso88591;
-static LANG_LOCALE_DATA lc_Turkish_utf8;
-static LANG_LOCALE_DATA lc_Korean_iso88591;
-static LANG_LOCALE_DATA lc_Korean_utf8;
-static LANG_LOCALE_DATA lc_Korean_euckr;
-static LANG_LOCALE_DATA lc_English_binary;
-static LANG_LOCALE_DATA *lang_Loc_data = &lc_English_iso88591;
+/* built-in collations */
+/* number of characters in the (extended) alphabet per language */
+#define LANG_CHAR_COUNT_EN 256
+#define LANG_CHAR_COUNT_TR 352
+
+#define LANG_COLL_GENERIC_SORT_OPT \
+  {TAILOR_UNDEFINED, false, false, 1, false, CONTR_IGNORE, false, \
+   MATCH_CONTR_BOUND_ALLOW}
+#define LANG_COLL_NO_EXP 0, NULL, NULL, NULL
+#define LANG_COLL_NO_CONTR NULL, 0, 0, NULL, 0, 0
+
+#define LANG_NO_NORMALIZATION {NULL, 0, NULL, NULL, 0}
+
+static unsigned int lang_Weight_EN_cs[LANG_CHAR_COUNT_EN];
+static unsigned int lang_Next_alpha_char_EN_cs[LANG_CHAR_COUNT_EN];
+
+static unsigned int lang_Weight_EN_ci[LANG_CHAR_COUNT_EN];
+static unsigned int lang_Next_alpha_char_EN_ci[LANG_CHAR_COUNT_EN];
+
+static unsigned int lang_Weight_TR[LANG_CHAR_COUNT_TR];
+static unsigned int lang_Next_alpha_char_TR[LANG_CHAR_COUNT_TR];
+
+#define DEFAULT_COLL_OPTIONS {true, true, true}
+#define CI_COLL_OPTIONS {false, false, true}
+
 
 static bool lang_Builtin_initialized = false;
 static bool lang_Initialized = false;
@@ -97,6 +116,20 @@ LANG_DEFAULTS builtin_Langs[] = {
   /* Turkish - ISO-8859-1 : contains romanized names for months, days */
   {LANG_NAME_TURKISH, INTL_LANG_TURKISH, INTL_CODESET_ISO88591}
 };
+
+/* Turkish collation */
+static unsigned int lang_upper_TR[LANG_CHAR_COUNT_TR];
+static unsigned int lang_lower_TR[LANG_CHAR_COUNT_TR];
+static unsigned int lang_upper_i_TR[LANG_CHAR_COUNT_TR];
+static unsigned int lang_lower_i_TR[LANG_CHAR_COUNT_TR];
+
+static char lang_time_format_TR[] = "HH24:MI:SS";
+static char lang_date_format_TR[] = "DD.MM.YYYY";
+static char lang_datetime_format_TR[] = "HH24:MI:SS.FF DD.MM.YYYY";
+static char lang_timestamp_format_TR[] = "HH24:MI:SS DD.MM.YYYY";
+static char lang_timetz_format_TR[] = "HH24:MI:SS TZR";
+static char lang_datetimetz_format_TR[] = "HH24:MI:SS.FF DD.MM.YYYY TZR";
+static char lang_timestamptz_format_TR[] = "HH24:MI:SS DD.MM.YYYY TZR";
 
 static void **loclib_Handle = NULL;
 static int loclib_Handle_size = 0;
@@ -134,6 +167,21 @@ static const DB_CHARSET lang_Db_charsets[] = {
    "utf8", INTL_CODESET_UTF8, 1},
   {"", "", "", "", "", INTL_CODESET_NONE, 0}
 };
+
+
+/* 
+ * Locales data
+ */
+
+#define LOCALE_DUMMY_ALPHABET(codeset)  \
+  {ALPHABET_TAILORED, (codeset), 0, 0, NULL, 0, NULL, false}
+
+#define LOCALE_NULL_DATE_FORMATS NULL, NULL, NULL, NULL, NULL, NULL, NULL
+
+/* Calendar names and parsing order of these names */
+#define LOCALE_NULL_CALENDAR_NAMES  \
+  {NULL}, {NULL}, {NULL}, {NULL}, {NULL}, \
+  NULL, NULL, NULL, NULL, NULL
 
 static int set_current_locale (void);
 static int set_msg_lang_from_env (void);
@@ -251,30 +299,389 @@ static int lang_locale_load_normalization_from_lib (UNICODE_NORMALIZATION * norm
 						    const LOCALE_FILE * lf);
 static void lang_free_collations (void);
 
-/* built-in collations */
-/* number of characters in the (extended) alphabet per language */
-#define LANG_CHAR_COUNT_EN 256
-#define LANG_CHAR_COUNT_TR 352
+/* English collation */
+static unsigned int lang_upper_EN[LANG_CHAR_COUNT_EN];
+static unsigned int lang_lower_EN[LANG_CHAR_COUNT_EN];
 
-#define LANG_COLL_GENERIC_SORT_OPT \
-  {TAILOR_UNDEFINED, false, false, 1, false, CONTR_IGNORE, false, \
-   MATCH_CONTR_BOUND_ALLOW}
-#define LANG_COLL_NO_EXP 0, NULL, NULL, NULL
-#define LANG_COLL_NO_CONTR NULL, 0, 0, NULL, 0, 0
+#if !defined(LANG_W_MAP_COUNT_EN)
+#define	LANG_W_MAP_COUNT_EN 256
+#endif
+static int lang_w_map_EN[LANG_W_MAP_COUNT_EN];
 
-#define LANG_NO_NORMALIZATION {NULL, 0, NULL, NULL, 0}
 
-static unsigned int lang_Weight_EN_cs[LANG_CHAR_COUNT_EN];
-static unsigned int lang_Next_alpha_char_EN_cs[LANG_CHAR_COUNT_EN];
+static void lang_initloc_en_iso88591 (LANG_LOCALE_DATA * ld);
 
-static unsigned int lang_Weight_EN_ci[LANG_CHAR_COUNT_EN];
-static unsigned int lang_Next_alpha_char_EN_ci[LANG_CHAR_COUNT_EN];
+static void lang_initloc_en_binary (LANG_LOCALE_DATA * ld);
 
-static unsigned int lang_Weight_TR[LANG_CHAR_COUNT_TR];
-static unsigned int lang_Next_alpha_char_TR[LANG_CHAR_COUNT_TR];
+static void lang_init_common_en_cs (void);
 
-#define DEFAULT_COLL_OPTIONS {true, true, true}
-#define CI_COLL_OPTIONS {false, false, true}
+
+static LANG_COLLATION coll_Utf8_en_cs = {
+  INTL_CODESET_UTF8, 1, 1, DEFAULT_COLL_OPTIONS, NULL,
+  /* collation data */
+  {LANG_COLL_UTF8_EN_CS, "utf8_en_cs",
+   LANG_COLL_GENERIC_SORT_OPT,
+   lang_Weight_EN_cs, lang_Next_alpha_char_EN_cs, LANG_CHAR_COUNT_EN,
+   LANG_COLL_NO_EXP,
+   LANG_COLL_NO_CONTR,
+   "1bdb1b1f630edc508be37f66dfdce7b0"},
+  lang_fastcmp_byte,
+  lang_strmatch_utf8,
+  lang_next_coll_char_utf8,
+  lang_split_key_utf8,
+  lang_mht2str_byte,
+  lang_init_coll_Utf8_en_cs
+};
+
+/*
+ * lang_init_common_en_ci () - init collation data for English case
+ *			       insensitive (no matter the charset)
+ *   return:
+ */
+static void lang_init_common_en_ci (void);
+
+static void lang_initloc_en_utf8 (LANG_LOCALE_DATA * ld);
+
+static void lang_initloc_tr_iso (LANG_LOCALE_DATA * ld);
+
+static void lang_initloc_ko_iso (LANG_LOCALE_DATA * ld);
+
+static void lang_initloc_ko_utf8 (LANG_LOCALE_DATA * ld);
+
+static void lang_initloc_ko_euc (LANG_LOCALE_DATA * ld);
+
+static void lang_initloc_tr_utf8 (LANG_LOCALE_DATA * ld);
+
+static LANG_COLLATION coll_Iso88591_en_cs = {
+  INTL_CODESET_ISO88591, 1, 0, DEFAULT_COLL_OPTIONS, NULL,
+  /* collation data */
+  {LANG_COLL_ISO_EN_CS, "iso88591_en_cs",
+   LANG_COLL_GENERIC_SORT_OPT,
+   NULL, NULL, 0,
+   LANG_COLL_NO_EXP,
+   LANG_COLL_NO_CONTR,
+   "707cef004e58be204d999d8a2abb4cc3"},
+  lang_fastcmp_iso_88591,
+  lang_strmatch_iso_88591,
+  lang_next_alpha_char_iso88591,
+  lang_split_key_iso,
+  lang_mht2str_default,
+  NULL
+};
+
+/* locale data */
+static LANG_LOCALE_DATA lc_English_iso88591 = {
+  NULL,
+  LANG_NAME_ENGLISH,
+  INTL_LANG_ENGLISH,
+  INTL_CODESET_ISO88591,
+  /* alphabet for user strings */
+  {ALPHABET_TAILORED, INTL_CODESET_ISO88591, 0, 0, NULL, 0, NULL, false},
+  /* alphabet for identifiers strings */
+  {ALPHABET_TAILORED, INTL_CODESET_ISO88591, 0, 0, NULL, 0, NULL, false},
+  &coll_Iso88591_en_cs,
+  NULL,				/* console text conversion */
+  false,
+  NULL,				/* time, date, date-time, timestamp */
+  NULL,				/* timetz, datetimetz, timestamptz format */
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  '.',
+  ',',
+  DB_CURRENCY_DOLLAR,
+  LANG_NO_NORMALIZATION,
+  (char *) "6ae1bf7f15e6f132c4361761d203c1b4",
+  lang_initloc_en_iso88591,
+  false
+};
+
+static LANG_LOCALE_DATA lc_English_utf8 = {
+  NULL,
+  LANG_NAME_ENGLISH,
+  INTL_LANG_ENGLISH,
+  INTL_CODESET_UTF8,
+  {ALPHABET_ASCII, INTL_CODESET_UTF8, LANG_CHAR_COUNT_EN, 1, lang_lower_EN, 1,
+   lang_upper_EN,
+   false},
+  {ALPHABET_ASCII, INTL_CODESET_UTF8, LANG_CHAR_COUNT_EN, 1, lang_lower_EN, 1,
+   lang_upper_EN,
+   false},
+  &coll_Utf8_en_cs,
+  &con_Iso_8859_1_conv,		/* text conversion */
+  false,
+  NULL,				/* time, date, date-time, timestamp */
+  NULL,				/* timetz, datetimetz, timestamptz format */
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  '.',
+  ',',
+  DB_CURRENCY_DOLLAR,
+  LANG_NO_NORMALIZATION,
+  (char *) "945bead220ece6f4d020403835308785",
+  lang_initloc_en_utf8,
+  false
+};
+
+/* Turkish in ISO-8859-1 charset : limited support (only date - formats) */
+static LANG_LOCALE_DATA lc_Turkish_iso88591 = {
+  NULL,
+  LANG_NAME_TURKISH,
+  INTL_LANG_TURKISH,
+  INTL_CODESET_ISO88591,
+  /* user alphabet : same as English ISO */
+  {ALPHABET_TAILORED, INTL_CODESET_ISO88591, 0, 0, NULL, 0, NULL, false},
+  /* identifiers alphabet : same as English ISO */
+  {ALPHABET_TAILORED, INTL_CODESET_ISO88591, 0, 0, NULL, 0, NULL, false},
+  &coll_Iso88591_en_cs,		/* collation : same as English ISO */
+  NULL,				/* console text conversion */
+  false,
+  lang_time_format_TR,
+  lang_date_format_TR,
+  lang_datetime_format_TR,
+  lang_timestamp_format_TR,
+  lang_timetz_format_TR,
+  lang_datetimetz_format_TR,
+  lang_timestamptz_format_TR,
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  ',',
+  '.',
+  DB_CURRENCY_TL,
+  LANG_NO_NORMALIZATION,
+  (char *) "b9ac135bdf8100b205ebb6b7e0e9c3df",
+  lang_initloc_tr_iso,
+  false
+};
+
+
+static LANG_LOCALE_DATA lc_Korean_iso88591 = {
+  NULL,
+  LANG_NAME_KOREAN,
+  INTL_LANG_KOREAN,
+  INTL_CODESET_ISO88591,
+  /* alphabet : same as English ISO */
+  {ALPHABET_TAILORED, INTL_CODESET_ISO88591, 0, 0, NULL, 0, NULL, false},
+  /* identifiers alphabet : same as English ISO */
+  {ALPHABET_TAILORED, INTL_CODESET_ISO88591, 0, 0, NULL, 0, NULL, false},
+  &coll_Iso88591_en_cs,		/* collation : same as English ISO */
+  NULL,				/* console text conversion */
+  false,
+  NULL,				/* time, date, date-time, timestamp */
+  NULL,				/* timetz, datetimetz, timestamptz format */
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  '.',
+  ',',
+  DB_CURRENCY_WON,
+  LANG_NO_NORMALIZATION,
+  (char *) "8710ffb79b191c2158d4c498e8bc7dea",
+  lang_initloc_ko_iso,
+  false
+};
+
+static LANG_COLLATION coll_Utf8_ko_cs = {
+  INTL_CODESET_UTF8, 1, 1, DEFAULT_COLL_OPTIONS, NULL,
+  /* collation data - same as en_US.utf8 */
+  {LANG_COLL_UTF8_KO_CS, "utf8_ko_cs",
+   LANG_COLL_GENERIC_SORT_OPT,
+   lang_Weight_EN_cs, lang_Next_alpha_char_EN_cs, LANG_CHAR_COUNT_EN,
+   LANG_COLL_NO_EXP,
+   LANG_COLL_NO_CONTR,
+   "422c85ede1e265a761078763d2240c81"},
+  lang_strcmp_utf8,
+  lang_strmatch_utf8,
+  lang_next_coll_char_utf8,
+  lang_split_key_utf8,
+  lang_mht2str_utf8,
+  lang_init_coll_Utf8_en_cs
+};
+
+/* built-in support of Korean in UTF-8 : date-time conversions as in English
+ * collation : by codepoints
+ * this needs to be overriden by user defined locale */
+static LANG_LOCALE_DATA lc_Korean_utf8 = {
+  NULL,
+  LANG_NAME_KOREAN,
+  INTL_LANG_KOREAN,
+  INTL_CODESET_UTF8,
+  {ALPHABET_ASCII, INTL_CODESET_UTF8, LANG_CHAR_COUNT_EN, 1, lang_lower_EN, 1,
+   lang_upper_EN, false},
+  {ALPHABET_ASCII, INTL_CODESET_UTF8, LANG_CHAR_COUNT_EN, 1, lang_lower_EN, 1,
+   lang_upper_EN, false},
+  &coll_Utf8_ko_cs,		/* collation */
+  NULL,				/* console text conversion */
+  false,
+  NULL,				/* time, date, date-time, timestamp */
+  NULL,				/* timetz, datetimetz, timestamptz format */
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  '.',
+  ',',
+  DB_CURRENCY_WON,
+  LANG_NO_NORMALIZATION,
+  (char *) "802cff8e10d857952241d19b50a13a27",
+  lang_initloc_ko_utf8,
+  false
+};
+
+
+static LANG_COLLATION coll_Euckr_bin = {
+  INTL_CODESET_KSC5601_EUC, 1, 0, DEFAULT_COLL_OPTIONS, NULL,
+  /* collation data */
+  {LANG_COLL_EUCKR_BINARY, "euckr_bin",
+   LANG_COLL_GENERIC_SORT_OPT,
+   NULL, NULL, 0,
+   LANG_COLL_NO_EXP,
+   LANG_COLL_NO_CONTR,
+   "18fb633e87f0a3a785ef38cf2a6a7789"},
+  lang_fastcmp_ko,
+  lang_strmatch_ko,
+  lang_next_alpha_char_ko,
+  lang_split_key_euc,
+  lang_mht2str_ko,
+  NULL
+};
+
+
+/* built-in support of Korean in EUC-KR : date-time conversions as in English
+ * collation : binary */
+static LANG_LOCALE_DATA lc_Korean_euckr = {
+  NULL,
+  LANG_NAME_KOREAN,
+  INTL_LANG_KOREAN,
+  INTL_CODESET_KSC5601_EUC,
+  /* alphabet */
+  {ALPHABET_TAILORED, INTL_CODESET_KSC5601_EUC, 0, 0, NULL, 0, NULL, false},
+  /* identifiers alphabet */
+  {ALPHABET_TAILORED, INTL_CODESET_KSC5601_EUC, 0, 0, NULL, 0, NULL, false},
+  &coll_Euckr_bin,		/* collation */
+  NULL,				/* console text conversion */
+  false,
+  NULL,				/* time, date, date-time, timestamp */
+  NULL,				/* timetz, datetimetz, timestamptz */
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  '.',
+  ',',
+  DB_CURRENCY_WON,
+  LANG_NO_NORMALIZATION,
+  (char *) "c46ff948b4147323edfba0c51f96fe47",
+  lang_initloc_ko_euc,
+  false
+};
+
+static LANG_COLLATION coll_Binary = {
+  INTL_CODESET_BINARY, 1, 0, DEFAULT_COLL_OPTIONS, NULL,
+  /* collation data */
+  {LANG_COLL_BINARY, "binary",
+   LANG_COLL_GENERIC_SORT_OPT,
+   NULL, NULL, 0,
+   LANG_COLL_NO_EXP,
+   LANG_COLL_NO_CONTR,
+   "93fbdcc87193d2783b2396c6bec068bb"},
+  lang_fastcmp_binary,
+  lang_strmatch_binary,
+  lang_next_alpha_char_iso88591,
+  lang_split_key_binary,
+  lang_mht2str_default,
+  NULL
+};
+
+static LANG_LOCALE_DATA lc_English_binary = {
+  NULL,
+  LANG_NAME_ENGLISH,
+  INTL_LANG_ENGLISH,
+  INTL_CODESET_BINARY,
+  LOCALE_DUMMY_ALPHABET (INTL_CODESET_BINARY),
+  LOCALE_DUMMY_ALPHABET (INTL_CODESET_BINARY),
+  &coll_Binary,			/* collation */
+  NULL,				/* console text conversion */
+  false,
+  LOCALE_NULL_DATE_FORMATS,	/* time, date, date-time, timestamp format */
+  LOCALE_NULL_CALENDAR_NAMES,
+  '.',
+  ',',
+  DB_CURRENCY_DOLLAR,
+  LANG_NO_NORMALIZATION,
+  (char *) "390462b716493cbd74c77f545a77a2bf",
+  lang_initloc_en_binary,
+  false
+};
+
+static LANG_LOCALE_DATA *lang_Loc_data = &lc_English_iso88591;
 
 static LANG_COLLATION coll_Iso_binary = {
   INTL_CODESET_ISO88591, 1, 0, DEFAULT_COLL_OPTIONS, NULL,
@@ -312,23 +719,6 @@ static LANG_COLLATION coll_Utf8_binary = {
   NULL
 };
 
-static LANG_COLLATION coll_Iso88591_en_cs = {
-  INTL_CODESET_ISO88591, 1, 0, DEFAULT_COLL_OPTIONS, NULL,
-  /* collation data */
-  {LANG_COLL_ISO_EN_CS, "iso88591_en_cs",
-   LANG_COLL_GENERIC_SORT_OPT,
-   NULL, NULL, 0,
-   LANG_COLL_NO_EXP,
-   LANG_COLL_NO_CONTR,
-   "707cef004e58be204d999d8a2abb4cc3"},
-  lang_fastcmp_iso_88591,
-  lang_strmatch_iso_88591,
-  lang_next_alpha_char_iso88591,
-  lang_split_key_iso,
-  lang_mht2str_default,
-  NULL
-};
-
 static LANG_COLLATION coll_Iso88591_en_ci = {
   INTL_CODESET_ISO88591, 1, 0, CI_COLL_OPTIONS, NULL,
   /* collation data */
@@ -344,23 +734,6 @@ static LANG_COLLATION coll_Iso88591_en_ci = {
   lang_split_key_byte,
   lang_mht2str_byte,
   lang_init_coll_en_ci
-};
-
-static LANG_COLLATION coll_Utf8_en_cs = {
-  INTL_CODESET_UTF8, 1, 1, DEFAULT_COLL_OPTIONS, NULL,
-  /* collation data */
-  {LANG_COLL_UTF8_EN_CS, "utf8_en_cs",
-   LANG_COLL_GENERIC_SORT_OPT,
-   lang_Weight_EN_cs, lang_Next_alpha_char_EN_cs, LANG_CHAR_COUNT_EN,
-   LANG_COLL_NO_EXP,
-   LANG_COLL_NO_CONTR,
-   "1bdb1b1f630edc508be37f66dfdce7b0"},
-  lang_fastcmp_byte,
-  lang_strmatch_utf8,
-  lang_next_coll_char_utf8,
-  lang_split_key_utf8,
-  lang_mht2str_byte,
-  lang_init_coll_Utf8_en_cs
 };
 
 static LANG_COLLATION coll_Utf8_en_ci = {
@@ -397,55 +770,43 @@ static LANG_COLLATION coll_Utf8_tr_cs = {
   lang_init_coll_Utf8_tr_cs
 };
 
-static LANG_COLLATION coll_Utf8_ko_cs = {
-  INTL_CODESET_UTF8, 1, 1, DEFAULT_COLL_OPTIONS, NULL,
-  /* collation data - same as en_US.utf8 */
-  {LANG_COLL_UTF8_KO_CS, "utf8_ko_cs",
-   LANG_COLL_GENERIC_SORT_OPT,
-   lang_Weight_EN_cs, lang_Next_alpha_char_EN_cs, LANG_CHAR_COUNT_EN,
-   LANG_COLL_NO_EXP,
-   LANG_COLL_NO_CONTR,
-   "422c85ede1e265a761078763d2240c81"},
-  lang_strcmp_utf8,
-  lang_strmatch_utf8,
-  lang_next_coll_char_utf8,
-  lang_split_key_utf8,
-  lang_mht2str_utf8,
-  lang_init_coll_Utf8_en_cs
-};
 
-static LANG_COLLATION coll_Euckr_bin = {
-  INTL_CODESET_KSC5601_EUC, 1, 0, DEFAULT_COLL_OPTIONS, NULL,
-  /* collation data */
-  {LANG_COLL_EUCKR_BINARY, "euckr_bin",
-   LANG_COLL_GENERIC_SORT_OPT,
-   NULL, NULL, 0,
-   LANG_COLL_NO_EXP,
-   LANG_COLL_NO_CONTR,
-   "18fb633e87f0a3a785ef38cf2a6a7789"},
-  lang_fastcmp_ko,
-  lang_strmatch_ko,
-  lang_next_alpha_char_ko,
-  lang_split_key_euc,
-  lang_mht2str_ko,
-  NULL
-};
-
-static LANG_COLLATION coll_Binary = {
-  INTL_CODESET_BINARY, 1, 0, DEFAULT_COLL_OPTIONS, NULL,
-  /* collation data */
-  {LANG_COLL_BINARY, "binary",
-   LANG_COLL_GENERIC_SORT_OPT,
-   NULL, NULL, 0,
-   LANG_COLL_NO_EXP,
-   LANG_COLL_NO_CONTR,
-   "93fbdcc87193d2783b2396c6bec068bb"},
-  lang_fastcmp_binary,
-  lang_strmatch_binary,
-  lang_next_alpha_char_iso88591,
-  lang_split_key_binary,
-  lang_mht2str_default,
-  NULL
+static LANG_LOCALE_DATA lc_Turkish_utf8 = {
+  NULL,
+  LANG_NAME_TURKISH,
+  INTL_LANG_TURKISH,
+  INTL_CODESET_UTF8,
+  {ALPHABET_ASCII, INTL_CODESET_UTF8, LANG_CHAR_COUNT_TR, 1, lang_lower_TR, 1,
+   lang_upper_TR, false},
+  {ALPHABET_TAILORED, INTL_CODESET_UTF8, LANG_CHAR_COUNT_TR, 1,
+   lang_lower_i_TR, 1, lang_upper_i_TR, false},
+  &coll_Utf8_tr_cs,
+  &con_Iso_8859_9_conv,		/* console text conversion */
+  false,
+  lang_time_format_TR,
+  lang_date_format_TR,
+  lang_datetime_format_TR,
+  lang_timestamp_format_TR,
+  lang_timetz_format_TR,
+  lang_datetimetz_format_TR,
+  lang_timestamptz_format_TR,
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  {NULL},
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  ',',
+  '.',
+  DB_CURRENCY_TL,
+  LANG_NO_NORMALIZATION,
+  (char *) "a6c90a844ad44f78d0b1a3a9a87ddb2f",
+  lang_initloc_tr_utf8,
+  false
 };
 
 static LANG_COLLATION *built_In_collations[] = {
@@ -1015,7 +1376,7 @@ init_user_locales (void)
     }
   assert (num_user_loc > 0);
 
-  loclib_Handle = (void *) malloc (loclib_Handle_size * sizeof (void *));
+  loclib_Handle = (void **) malloc (loclib_Handle_size * sizeof (void *));
   if (loclib_Handle == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, loclib_Handle_size * sizeof (void *));
@@ -1084,7 +1445,7 @@ init_user_locales (void)
 		}
 	    }
 
-	  lld = malloc (sizeof (LANG_LOCALE_DATA));
+	  lld = (LANG_LOCALE_DATA *) malloc (sizeof (LANG_LOCALE_DATA));
 	  if (lld == NULL)
 	    {
 	      er_status = ER_LOC_INIT;
@@ -2272,12 +2633,14 @@ lang_db_put_charset (void)
   server_lang = lang_id ();
 
   AU_DISABLE (au_save);
-  db_make_string (&value, lang_get_lang_name_from_id (server_lang));
+  db_make_string_by_const_str (&value, lang_get_lang_name_from_id (server_lang));
   if (db_put_internal (Au_root, "lang", &value) != NO_ERROR)
     {
       /* Error Setting the language */
       assert (false);
     }
+
+  pr_clear_value (&value);
 
   db_make_int (&value, (int) server_codeset);
   if (db_put_internal (Au_root, "charset", &value) != NO_ERROR)
@@ -2323,7 +2686,6 @@ INTL_CODESET
 lang_get_client_charset (void)
 {
   INTL_CODESET charset = LANG_SYS_CODESET;
-  int coll_id = LANG_SYS_COLLATION;
   char *coll_name = prm_get_string_value (PRM_ID_INTL_COLLATION);
 
   if (coll_name != NULL)
@@ -3528,7 +3890,7 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *st
   const int alpha_cnt = coll_data->w_count;
   const int exp_num = coll_data->uca_exp_num;
   unsigned int pseudo_key = 0;
-  T_LEVEL level;
+  unsigned int level;
   int str_size;
 
   str_end = str + size;
@@ -3598,7 +3960,7 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *st
 	  break;
 	}
 
-      for (level = 0; level < coll_data->uca_opt.sett_strength; level++)
+      for (level = 0; level < (unsigned int) coll_data->uca_opt.sett_strength; level++)
 	{
 	  w = GET_UCA_WEIGHT (level, ce_index, uca_w_l13, uca_w_l4);
 	  ADD_TO_HASH (pseudo_key, w);
@@ -4817,32 +5179,10 @@ lang_split_key_euc (const LANG_COLLATION * lang_coll, const bool is_desc, const 
   return NO_ERROR;
 }
 
-/* 
- * Locales data
- */
-
-#define LOCALE_DUMMY_ALPHABET(codeset)  \
-  {ALPHABET_TAILORED, (codeset), 0, 0, NULL, 0, NULL, false}
-
-#define LOCALE_NULL_DATE_FORMATS NULL, NULL, NULL, NULL, NULL, NULL, NULL
-
-/* Calendar names and parsing order of these names */
-#define LOCALE_NULL_CALENDAR_NAMES  \
-  {NULL}, {NULL}, {NULL}, {NULL}, {NULL}, \
-  NULL, NULL, NULL, NULL, NULL
-
 /*
  * English Locale Data
  */
 
-/* English collation */
-static unsigned int lang_upper_EN[LANG_CHAR_COUNT_EN];
-static unsigned int lang_lower_EN[LANG_CHAR_COUNT_EN];
-
-#if !defined(LANG_W_MAP_COUNT_EN)
-#define	LANG_W_MAP_COUNT_EN 256
-#endif
-static int lang_w_map_EN[LANG_W_MAP_COUNT_EN];
 
 /*
  * lang_initloc_en () - init locale data for English language
@@ -5379,7 +5719,6 @@ lang_next_coll_byte (const LANG_COLLATION * lang_coll, const unsigned char *seq,
   unsigned int cp_alpha_char, cp_next_alpha_char;
   const int alpha_cnt = lang_coll->coll.w_count;
   const unsigned int *next_alpha_char = lang_coll->coll.next_cp;
-  unsigned char *dummy = NULL;
 
   assert (seq != NULL);
   assert (next_seq != NULL);
@@ -5406,122 +5745,9 @@ lang_next_coll_byte (const LANG_COLLATION * lang_coll, const unsigned char *seq,
 }
 
 
-static LANG_LOCALE_DATA lc_English_iso88591 = {
-  NULL,
-  LANG_NAME_ENGLISH,
-  INTL_LANG_ENGLISH,
-  INTL_CODESET_ISO88591,
-  /* alphabet for user strings */
-  {ALPHABET_TAILORED, INTL_CODESET_ISO88591, 0, 0, NULL, 0, NULL, false},
-  /* alphabet for identifiers strings */
-  {ALPHABET_TAILORED, INTL_CODESET_ISO88591, 0, 0, NULL, 0, NULL, false},
-  &coll_Iso88591_en_cs,
-  NULL,				/* console text conversion */
-  false,
-  NULL,				/* time, date, date-time, timestamp */
-  NULL,				/* timetz, datetimetz, timestamptz format */
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  '.',
-  ',',
-  DB_CURRENCY_DOLLAR,
-  LANG_NO_NORMALIZATION,
-  (char *) "6ae1bf7f15e6f132c4361761d203c1b4",
-  lang_initloc_en_iso88591,
-  false
-};
-
-static LANG_LOCALE_DATA lc_English_utf8 = {
-  NULL,
-  LANG_NAME_ENGLISH,
-  INTL_LANG_ENGLISH,
-  INTL_CODESET_UTF8,
-  {ALPHABET_ASCII, INTL_CODESET_UTF8, LANG_CHAR_COUNT_EN, 1, lang_lower_EN, 1,
-   lang_upper_EN,
-   false},
-  {ALPHABET_ASCII, INTL_CODESET_UTF8, LANG_CHAR_COUNT_EN, 1, lang_lower_EN, 1,
-   lang_upper_EN,
-   false},
-  &coll_Utf8_en_cs,
-  &con_Iso_8859_1_conv,		/* text conversion */
-  false,
-  NULL,				/* time, date, date-time, timestamp */
-  NULL,				/* timetz, datetimetz, timestamptz format */
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  '.',
-  ',',
-  DB_CURRENCY_DOLLAR,
-  LANG_NO_NORMALIZATION,
-  (char *) "945bead220ece6f4d020403835308785",
-  lang_initloc_en_utf8,
-  false
-};
-
-static LANG_LOCALE_DATA lc_English_binary = {
-  NULL,
-  LANG_NAME_ENGLISH,
-  INTL_LANG_ENGLISH,
-  INTL_CODESET_BINARY,
-  LOCALE_DUMMY_ALPHABET (INTL_CODESET_BINARY),
-  LOCALE_DUMMY_ALPHABET (INTL_CODESET_BINARY),
-  &coll_Binary,			/* collation */
-  NULL,				/* console text conversion */
-  false,
-  LOCALE_NULL_DATE_FORMATS,	/* time, date, date-time, timestamp format */
-  LOCALE_NULL_CALENDAR_NAMES,
-  '.',
-  ',',
-  DB_CURRENCY_DOLLAR,
-  LANG_NO_NORMALIZATION,
-  (char *) "390462b716493cbd74c77f545a77a2bf",
-  lang_initloc_en_binary,
-  false
-};
-
 /*
  * Turkish Locale Data
  */
-
-/* Turkish collation */
-static unsigned int lang_upper_TR[LANG_CHAR_COUNT_TR];
-static unsigned int lang_lower_TR[LANG_CHAR_COUNT_TR];
-static unsigned int lang_upper_i_TR[LANG_CHAR_COUNT_TR];
-static unsigned int lang_lower_i_TR[LANG_CHAR_COUNT_TR];
-
-static char lang_time_format_TR[] = "HH24:MI:SS";
-static char lang_date_format_TR[] = "DD.MM.YYYY";
-static char lang_datetime_format_TR[] = "HH24:MI:SS.FF DD.MM.YYYY";
-static char lang_timestamp_format_TR[] = "HH24:MI:SS DD.MM.YYYY";
-static char lang_timetz_format_TR[] = "HH24:MI:SS TZR";
-static char lang_datetimetz_format_TR[] = "HH24:MI:SS.FF DD.MM.YYYY TZR";
-static char lang_timestamptz_format_TR[] = "HH24:MI:SS DD.MM.YYYY TZR";
 
 /*
  * lang_init_coll_Utf8_tr_cs () - init collation data for Turkish
@@ -5672,8 +5898,6 @@ lang_initloc_tr_utf8 (LANG_LOCALE_DATA * ld)
     0xdc			/* capital letter U with diaeresis */
   };
 
-  const unsigned int special_prev_upper_cp[] = { 'C', 'G', 'I', 'O', 'S', 'U' };
-
   const unsigned int special_lower_cp[] = {
     0xe7,			/* small c with cedilla */
     0x11f,			/* small letter g with breve */
@@ -5682,8 +5906,6 @@ lang_initloc_tr_utf8 (LANG_LOCALE_DATA * ld)
     0x15f,			/* small letter s with cedilla */
     0xfc			/* small letter u with diaeresis */
   };
-
-  const unsigned int special_prev_lower_cp[] = { 'c', 'g', 'h', 'o', 's', 'u' };
 
   assert (ld != NULL);
 
@@ -5740,82 +5962,6 @@ lang_initloc_tr_utf8 (LANG_LOCALE_DATA * ld)
   ld->is_initialized = true;
 }
 
-/* Turkish in ISO-8859-1 charset : limited support (only date - formats) */
-static LANG_LOCALE_DATA lc_Turkish_iso88591 = {
-  NULL,
-  LANG_NAME_TURKISH,
-  INTL_LANG_TURKISH,
-  INTL_CODESET_ISO88591,
-  /* user alphabet : same as English ISO */
-  {ALPHABET_TAILORED, INTL_CODESET_ISO88591, 0, 0, NULL, 0, NULL, false},
-  /* identifiers alphabet : same as English ISO */
-  {ALPHABET_TAILORED, INTL_CODESET_ISO88591, 0, 0, NULL, 0, NULL, false},
-  &coll_Iso88591_en_cs,		/* collation : same as English ISO */
-  NULL,				/* console text conversion */
-  false,
-  lang_time_format_TR,
-  lang_date_format_TR,
-  lang_datetime_format_TR,
-  lang_timestamp_format_TR,
-  lang_timetz_format_TR,
-  lang_datetimetz_format_TR,
-  lang_timestamptz_format_TR,
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  ',',
-  '.',
-  DB_CURRENCY_TL,
-  LANG_NO_NORMALIZATION,
-  (char *) "b9ac135bdf8100b205ebb6b7e0e9c3df",
-  lang_initloc_tr_iso,
-  false
-};
-
-static LANG_LOCALE_DATA lc_Turkish_utf8 = {
-  NULL,
-  LANG_NAME_TURKISH,
-  INTL_LANG_TURKISH,
-  INTL_CODESET_UTF8,
-  {ALPHABET_ASCII, INTL_CODESET_UTF8, LANG_CHAR_COUNT_TR, 1, lang_lower_TR, 1,
-   lang_upper_TR, false},
-  {ALPHABET_TAILORED, INTL_CODESET_UTF8, LANG_CHAR_COUNT_TR, 1,
-   lang_lower_i_TR, 1, lang_upper_i_TR, false},
-  &coll_Utf8_tr_cs,
-  &con_Iso_8859_9_conv,		/* console text conversion */
-  false,
-  lang_time_format_TR,
-  lang_date_format_TR,
-  lang_datetime_format_TR,
-  lang_timestamp_format_TR,
-  lang_timetz_format_TR,
-  lang_datetimetz_format_TR,
-  lang_timestamptz_format_TR,
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  ',',
-  '.',
-  DB_CURRENCY_TL,
-  LANG_NO_NORMALIZATION,
-  (char *) "a6c90a844ad44f78d0b1a3a9a87ddb2f",
-  lang_initloc_tr_utf8,
-  false
-};
 
 /*
  * Korean Locale Data
@@ -6507,127 +6653,9 @@ lang_split_key_binary (const LANG_COLLATION * lang_coll, const bool is_desc, con
   return NO_ERROR;
 }
 
-static LANG_LOCALE_DATA lc_Korean_iso88591 = {
-  NULL,
-  LANG_NAME_KOREAN,
-  INTL_LANG_KOREAN,
-  INTL_CODESET_ISO88591,
-  /* alphabet : same as English ISO */
-  {ALPHABET_TAILORED, INTL_CODESET_ISO88591, 0, 0, NULL, 0, NULL, false},
-  /* identifiers alphabet : same as English ISO */
-  {ALPHABET_TAILORED, INTL_CODESET_ISO88591, 0, 0, NULL, 0, NULL, false},
-  &coll_Iso88591_en_cs,		/* collation : same as English ISO */
-  NULL,				/* console text conversion */
-  false,
-  NULL,				/* time, date, date-time, timestamp */
-  NULL,				/* timetz, datetimetz, timestamptz format */
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  '.',
-  ',',
-  DB_CURRENCY_WON,
-  LANG_NO_NORMALIZATION,
-  (char *) "8710ffb79b191c2158d4c498e8bc7dea",
-  lang_initloc_ko_iso,
-  false
-};
-
-/* built-in support of Korean in UTF-8 : date-time conversions as in English
- * collation : by codepoints
- * this needs to be overriden by user defined locale */
-static LANG_LOCALE_DATA lc_Korean_utf8 = {
-  NULL,
-  LANG_NAME_KOREAN,
-  INTL_LANG_KOREAN,
-  INTL_CODESET_UTF8,
-  {ALPHABET_ASCII, INTL_CODESET_UTF8, LANG_CHAR_COUNT_EN, 1, lang_lower_EN, 1,
-   lang_upper_EN, false},
-  {ALPHABET_ASCII, INTL_CODESET_UTF8, LANG_CHAR_COUNT_EN, 1, lang_lower_EN, 1,
-   lang_upper_EN, false},
-  &coll_Utf8_ko_cs,		/* collation */
-  NULL,				/* console text conversion */
-  false,
-  NULL,				/* time, date, date-time, timestamp */
-  NULL,				/* timetz, datetimetz, timestamptz format */
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  '.',
-  ',',
-  DB_CURRENCY_WON,
-  LANG_NO_NORMALIZATION,
-  (char *) "802cff8e10d857952241d19b50a13a27",
-  lang_initloc_ko_utf8,
-  false
-};
-
-/* built-in support of Korean in EUC-KR : date-time conversions as in English
- * collation : binary */
-static LANG_LOCALE_DATA lc_Korean_euckr = {
-  NULL,
-  LANG_NAME_KOREAN,
-  INTL_LANG_KOREAN,
-  INTL_CODESET_KSC5601_EUC,
-  /* alphabet */
-  {ALPHABET_TAILORED, INTL_CODESET_KSC5601_EUC, 0, 0, NULL, 0, NULL, false},
-  /* identifiers alphabet */
-  {ALPHABET_TAILORED, INTL_CODESET_KSC5601_EUC, 0, 0, NULL, 0, NULL, false},
-  &coll_Euckr_bin,		/* collation */
-  NULL,				/* console text conversion */
-  false,
-  NULL,				/* time, date, date-time, timestamp */
-  NULL,				/* timetz, datetimetz, timestamptz */
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  {NULL},
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  '.',
-  ',',
-  DB_CURRENCY_WON,
-  LANG_NO_NORMALIZATION,
-  (char *) "c46ff948b4147323edfba0c51f96fe47",
-  lang_initloc_ko_euc,
-  false
-};
 
 #if defined(WINDOWS)
-#define GET_SYM_ADDR(lib, sym) GetProcAddress(lib, sym)
+#define GET_SYM_ADDR(lib, sym) GetProcAddress((HMODULE)lib, sym)
 #else
 #define GET_SYM_ADDR(lib, sym) dlsym(lib, sym)
 #endif
@@ -6760,7 +6788,10 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld, void *lib_handle, const 
 
   SHLIB_GET_VAL (lld->number_group_sym, "number_group_sym", char, lib_handle, lld->lang_name);
 
-  SHLIB_GET_VAL (lld->default_currency_code, "default_currency_code", int, lib_handle, lld->lang_name);
+  int currency_code;
+  SHLIB_GET_VAL (currency_code, "default_currency_code", int, lib_handle, lld->lang_name);
+
+  lld->default_currency_code = (DB_CURRENCY) currency_code;
 
   /* alphabet */
   SHLIB_GET_ADDR (temp_num_sym, "alphabet_a_type", int *, lib_handle, lld->lang_name);
@@ -6841,7 +6872,7 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld, void *lib_handle, const 
 	}
       memset (lld->txt_conv, 0, sizeof (TEXT_CONVERSION));
 
-      lld->txt_conv->conv_type = txt_conv_type;
+      lld->txt_conv->conv_type = (TEXT_CONV_TYPE) txt_conv_type;
 
       SHLIB_GET_ADDR (is_lead_byte, "tc_is_lead_byte", unsigned char *, lib_handle, lld->lang_name);
       memcpy (lld->txt_conv->byte_flag, is_lead_byte, 256);
@@ -7271,7 +7302,8 @@ lang_load_library (const char *lib_file, void **handle)
       err_status = ER_LOC_INIT;
 #if defined(WINDOWS)
       FormatMessage (FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ARGUMENT_ARRAY, NULL,
-		     loading_err, MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), (char *) &lpMsgBuf, 1, &lib_file);
+		     loading_err, MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), (char *) &lpMsgBuf, 1,
+		     (va_list *) & lib_file);
       snprintf (err_msg, sizeof (err_msg) - 1,
 		"Library file is invalid or not accessible.\n" " Unable to load %s !\n %s", lib_file, lpMsgBuf);
       LocalFree (lpMsgBuf);
@@ -7299,7 +7331,7 @@ lang_unload_libraries (void)
     {
       assert (loclib_Handle[i] != NULL);
 #if defined(WINDOWS)
-      FreeLibrary (loclib_Handle[i]);
+      FreeLibrary ((HMODULE) loclib_Handle[i]);
 #else
       dlclose (loclib_Handle[i]);
 #endif

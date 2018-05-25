@@ -114,7 +114,6 @@ shard_println_2 (FILE * fp)
 static int
 shard_metadata_read_user (T_SHM_PROXY * shm_proxy_p, char *db_name, char *db_user, char *db_password)
 {
-  int error = NO_ERROR;
   int max_user;
 
   T_SHM_SHARD_USER *shm_user_p = NULL;
@@ -142,7 +141,6 @@ shard_metadata_read_user (T_SHM_PROXY * shm_proxy_p, char *db_name, char *db_use
 static int
 shard_metadata_read_key (const char *filename, T_SHM_PROXY * shm_proxy_p)
 {
-  int error = NO_ERROR;
   int nargs;
   int idx_key, idx_range, max_key;
   char path[BROKER_PATH_MAX];
@@ -183,7 +181,7 @@ shard_metadata_read_key (const char *filename, T_SHM_PROXY * shm_proxy_p)
 	  *p = '\0';
 	}
 
-      len = strlen (line);
+      len = (int) strlen (line);
       if (line[0] == '\0' || len <= 0)
 	{
 	  continue;
@@ -266,7 +264,6 @@ error_return:
 static int
 shard_metadata_read_conn (const char *filename, T_SHM_PROXY * shm_proxy_p)
 {
-  int error = NO_ERROR;
   int nargs;
   int idx_conn, max_conn;
   char line[LINE_MAX], *p;
@@ -302,7 +299,7 @@ shard_metadata_read_conn (const char *filename, T_SHM_PROXY * shm_proxy_p)
 	  *p = '\0';
 	}
 
-      len = strlen (line);
+      len = (int) strlen (line);
       if (line[0] == '\0')
 	{
 	  continue;
@@ -405,7 +402,6 @@ shard_metadata_sort_conn (T_SHM_SHARD_CONN * shm_conn_p)
 T_SHM_SHARD_USER *
 shard_metadata_get_user (T_SHM_PROXY * shm_proxy_p)
 {
-  int offset = 0;
   T_SHM_SHARD_USER *shm_user_p;
 
   assert (shm_proxy_p);
@@ -926,7 +922,7 @@ load_shard_key_function (const char *library_name, const char *function_name)
   fn_get_shard_key = (FN_GET_SHARD_KEY) GetProcAddress ((HMODULE) handle, function_name);
 #else
   dlerror ();
-  fn_get_shard_key = dlsym (handle, function_name);
+  fn_get_shard_key = (FN_GET_SHARD_KEY) dlsym (handle, function_name);
 #endif
   if (fn_get_shard_key == NULL)
     {

@@ -27,6 +27,7 @@
 
 #if defined(WINDOWS)
 #include <windows.h>
+#define DELAYIMP_INSECURE_WRITABLE_HOOKS
 #include <Delayimp.h>
 #pragma comment(lib, "delayimp")
 #pragma comment(lib, "jvm")
@@ -35,15 +36,16 @@
 #endif /* !WINDOWS */
 
 #include <jni.h>
+#include <locale.h>
+#include <assert.h>
 
-#include "db.h"
+#include "jsp_sr.h"
+
 #include "environment_variable.h"
 #include "system_parameter.h"
 #include "release_string.h"
 #include "memory_alloc.h"
-#include "storage_common.h"
 #include "error_manager.h"
-#include "jsp_sr.h"
 
 #if defined(sparc)
 #define JVM_LIB_PATH "jre/lib/sparc/client"

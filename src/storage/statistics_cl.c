@@ -160,6 +160,7 @@ stats_client_unpack_statistics (char *buf_p)
 	  stats_free_statistics (class_stats_p);
 	  return NULL;
 	}
+      memset (attr_stats_p->bt_stats, 0, attr_stats_p->n_btstats * sizeof (BTREE_STATS));
 
       for (j = 0, btree_stats_p = attr_stats_p->bt_stats; j < attr_stats_p->n_btstats; j++, btree_stats_p++)
 	{
@@ -390,8 +391,8 @@ stats_dump (const char *class_name_p, FILE * file_p)
 	  fprintf (file_p, "DB_TYPE_TIMETZ\n");
 	  break;
 
-	case DB_TYPE_UTIME:
-	  fprintf (file_p, "DB_TYPE_UTIME\n");
+	case DB_TYPE_TIMESTAMP:
+	  fprintf (file_p, "DB_TYPE_TIMESTAMP\n");
 	  break;
 
 	case DB_TYPE_TIMESTAMPLTZ:

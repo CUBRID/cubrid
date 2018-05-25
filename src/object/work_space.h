@@ -31,10 +31,10 @@
 #include <stdio.h>
 #include "oid.h"
 #include "storage_common.h"
-#include "dbtype.h"
 #include "dbdef.h"
 #include "quick_fit.h"
 #include "locator.h"
+#include "dbtype_def.h"
 
 /*
  * VID_INFO
@@ -47,7 +47,6 @@ struct vid_info
   DB_VALUE keys;
 };
 
-typedef enum vid_info_flag VID_INFO_FLAG;
 enum vid_info_flag
 {
   VID_BASE = 1,			/* whether the VID is a base instance */
@@ -55,6 +54,7 @@ enum vid_info_flag
   VID_NEW = 4,			/* whether the VID is new */
   VID_INSERTING = 8		/* whether the VID is in an insert */
 };
+typedef enum vid_info_flag VID_INFO_FLAG;
 
 typedef union vid_oid VID_OID;
 union vid_oid
@@ -401,7 +401,6 @@ struct ws_statistics
  */
 
 
-typedef enum ws_map_status WS_MAP_STATUS;
 enum ws_map_status
 {
   WS_MAP_CONTINUE = 0,
@@ -409,17 +408,18 @@ enum ws_map_status
   WS_MAP_STOP = 2,
   WS_MAP_SUCCESS = 3
 };
+typedef enum ws_map_status WS_MAP_STATUS;
 
 /*
  * WS_FIND_MOP constants
  *    These are returned as status codes by the ws_find function.
  */
-typedef enum ws_find_mop_status WS_FIND_MOP_STATUS;
 enum ws_find_mop_status
 {
   WS_FIND_MOP_DELETED = 0,
   WS_FIND_MOP_NOTDELETED = 1
 };
+typedef enum ws_find_mop_status WS_FIND_MOP_STATUS;
 
 /*
  * WS_MOP_TABLE_ENTRY

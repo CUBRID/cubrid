@@ -18,7 +18,7 @@
  */
 
 /*
- * xasl_support.h - Query processor memory management module
+ * xasl_support.h - Query processor memory management module.
  */
 
 #ifndef _XASL_SUPPORT_H_
@@ -26,12 +26,16 @@
 
 #ident "$Id$"
 
+#if defined (SERVER_MODE)
+#error Does not belong to server module
+#endif /* defined (SERVER_MODE) */
+
 #include "oid.h"
 #include "storage_common.h"
 #include "object_representation.h"
 #include "object_domain.h"
-#include "query_executor.h"
-#include "heap_file.h"
+#include "xasl.h"
+#include "class_object.h"
 
 /* for regu_machead () */
 extern DB_VALUE *regu_dbval_alloc (void);

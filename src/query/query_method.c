@@ -30,14 +30,10 @@
 #include "query_method.h"
 #include "object_accessor.h"
 #include "jsp_cl.h"
-
 #include "object_representation.h"
 #include "network.h"
 #include "network_interface_cl.h"
-#include "scan_manager.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 static int method_initialize_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer, unsigned int rc, char *host,
 					    char *server_name);
@@ -289,7 +285,7 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QF
   int count;
   DB_VALUE *value_p;
 
-  DB_MAKE_NULL (&value);
+  db_make_null (&value);
 
   if (method_initialize_vacomm_buffer (&vacomm_buffer, rc, host_p, server_name_p) != NO_ERROR)
     {
@@ -320,7 +316,7 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QF
 
   for (count = 0, value_p = val_list_p; count < value_count; count++, value_p++)
     {
-      DB_MAKE_NULL (value_p);
+      db_make_null (value_p);
     }
 
   values_p = (DB_VALUE **) malloc (sizeof (DB_VALUE *) * (value_count + 1));
@@ -390,7 +386,7 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QF
 	    }
 
 	  values_p[num_args] = (DB_VALUE *) 0;
-	  DB_MAKE_NULL (&value);
+	  db_make_null (&value);
 
 	  if (meth_sig_p->class_name != NULL)
 	    {
@@ -398,10 +394,10 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QF
 	       * NULL. */
 	      if (!DB_IS_NULL (values_p[0]))
 		{
-		  error = db_is_any_class (DB_GET_OBJECT (values_p[0]));
+		  error = db_is_any_class (db_get_object (values_p[0]));
 		  if (error == 0)
 		    {
-		      error = db_is_instance (DB_GET_OBJECT (values_p[0]));
+		      error = db_is_instance (db_get_object (values_p[0]));
 		    }
 		}
 	      if (error == ER_HEAP_UNKNOWN_OBJECT)
@@ -414,7 +410,7 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QF
 		  turn_on_auth = 0;
 		  AU_ENABLE (turn_on_auth);
 		  db_disable_modification ();
-		  error = obj_send_array (DB_GET_OBJECT (values_p[0]), meth_sig_p->method_name, &value, &values_p[1]);
+		  error = obj_send_array (db_get_object (values_p[0]), meth_sig_p->method_name, &value, &values_p[1]);
 		  db_enable_modification ();
 		  AU_DISABLE (turn_on_auth);
 		}

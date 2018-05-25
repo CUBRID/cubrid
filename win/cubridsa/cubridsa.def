@@ -111,6 +111,7 @@ EXPORTS
     sysprm_set_er_log_file
     sysprm_check_range
     sysprm_get_range
+    timezone_compile_data
     utility_get_generic_message
     util_make_ha_conf
     util_get_ha_mode_for_sa_utils
@@ -133,6 +134,7 @@ EXPORTS
     sm_get_ch_name
     tr_map_trigger
     er_init
+    er_final
     prm_get_name
 ; utility functions
 	createdb
@@ -342,6 +344,7 @@ EXPORTS
     db_execute_deferred_activities
     db_execute_oid
     db_execute_statement
+    db_execute_statement_ex
     db_execute_with_values
     db_fetch_all_classes
     db_fetch_all_objects
@@ -351,7 +354,6 @@ EXPORTS
     db_fetch_list
     db_fetch_seq
     db_fetch_set
-    db_final_client_query_result
     db_find_class
     db_find_class_of_index
     db_find_event_triggers
@@ -788,6 +790,7 @@ EXPORTS
     catcls_get_db_collation
     lang_get_collation
     lang_init
+    db_default_expression_string
     db_init_statement_execution_end_type
 ; db private
 	db_private_alloc_debug

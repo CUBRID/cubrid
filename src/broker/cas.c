@@ -76,9 +76,11 @@
 #include "broker_process_size.h"
 #include "cas_sql_log2.h"
 #include "broker_acl.h"
+#include "dbtype.h"
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "environment_variable.h"
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#include "error_manager.h"
 
 static const int DEFAULT_CHECK_INTERVAL = 1;
 
@@ -338,6 +340,7 @@ cas_make_session_for_driver (char *out)
   size_t size = 0;
   SESSION_ID session;
 
+
   memcpy (out + size, db_get_server_session_key (), SERVER_SESSION_KEY_SIZE);
   size += SERVER_SESSION_KEY_SIZE;
   session = db_get_session_id ();
@@ -363,7 +366,8 @@ cas_set_session_id (T_CAS_PROTOCOL protocol, char *session)
   else
     {
       /* always create new session for old drivers */
-      char key[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+      char key[] =
+	{ (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF };
 
       cas_log_write_and_end (0, false, "session id (old protocol) for connection 0");
       db_set_server_session_key (key);
@@ -498,20 +502,11 @@ shard_cas_main (void)
   T_NET_BUF net_buf;
   SOCKET proxy_sock_fd = INVALID_SOCKET;
   int err_code;
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-  SESSION_ID session_id = DB_EMPTY_SESSION;
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
   int one = 1;
-  char cas_info[CAS_INFO_SIZE] = { CAS_INFO_STATUS_INACTIVE,
-    CAS_INFO_RESERVED_DEFAULT,
-    CAS_INFO_RESERVED_DEFAULT,
-    CAS_INFO_RESERVED_DEFAULT
-  };
   FN_RETURN fn_ret = FN_KEEP_CONN;
 
   struct timeval cas_start_time;
 
-  char func_code = 0x01;
   int error;
 
   bool is_first = true;
@@ -671,9 +666,6 @@ conn_retry:
 
     for (;;)
       {
-#if !defined(WINDOWS)
-      retry:
-#endif
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 	cas_log_error_handler_begin ();
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
@@ -870,15 +862,15 @@ cas_main (void)
 
   stripped_column_name = shm_appl->stripped_column_name;
 
+  // init error manager with default arguments; should be reinitialized later
+  er_init (NULL, ER_NEVER_EXIT);
+
 #if defined(WINDOWS)
   __try
   {
 #endif /* WINDOWS */
     for (;;)
       {
-#if !defined(WINDOWS)
-      retry:
-#endif
 	error_info_clear ();
 	cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
 
@@ -960,7 +952,10 @@ cas_main (void)
 	    set_cubrid_file (FID_CUBRID_ERR_DIR, shm_appl->err_log_dir);
 
 	    as_db_err_log_set (broker_name, shm_proxy_id, shm_shard_id, shm_shard_cas_id, shm_as_index, cas_shard_flag);
+
+	    // reload error manager; call er_final first to make sure even sticky error manager is reloaded
 	    er_final (ER_ALL_FINAL);
+	    er_init (NULL, ER_NEVER_EXIT);
 	    as_info->cas_err_log_reset = 0;
 	  }
 #endif
@@ -1096,7 +1091,8 @@ cas_main (void)
 	      }
 	    cas_log_write_and_end (0, false, "CLIENT VERSION %s", as_info->driver_version);
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-	    cas_set_session_id (req_info.client_version, db_sessionid);
+	    /* todo: casting T_BROKER_VERSION to T_CAS_PROTOCOL */
+	    cas_set_session_id ((T_CAS_PROTOCOL) req_info.client_version, db_sessionid);
 	    if (db_get_session_id () != DB_EMPTY_SESSION)
 	      {
 		is_new_connection = false;
@@ -1224,7 +1220,8 @@ cas_main (void)
 	    cas_bi_set_cci_pconnect (shm_appl->cci_pconnect);
 
 	    cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
-	    cas_send_connect_reply_to_driver (req_info.client_version, client_sock_fd, cas_info);
+	    /* todo: casting T_BROKER_VERSION to T_CAS_PROTOCOL */
+	    cas_send_connect_reply_to_driver ((T_CAS_PROTOCOL) req_info.client_version, client_sock_fd, cas_info);
 
 	    as_info->cci_default_autocommit = shm_appl->cci_default_autocommit;
 	    req_info.need_rollback = TRUE;
@@ -1366,7 +1363,7 @@ libcas_main (SOCKET jsp_sock_fd)
   memset (&req_info, 0, sizeof (req_info));
 
   req_info.client_version = CAS_PROTO_CURRENT_VER;
-  req_info.driver_info[DRIVER_INFO_FUNCTION_FLAG] = BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT;
+  req_info.driver_info[DRIVER_INFO_FUNCTION_FLAG] = (char) (BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT);
   client_sock_fd = jsp_sock_fd;
 
   net_buf_init (&net_buf, cas_get_client_version ());
@@ -1511,6 +1508,7 @@ cas_final (void)
   cas_free (false);
   as_info->pid = 0;
   as_info->uts_status = UTS_STATUS_RESTART;
+  er_final (ER_ALL_FINAL);
   exit (0);
 }
 
@@ -1957,6 +1955,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     }
 #endif
 
+  /* Since DB_TYPE_JSON is mapped into CCI_U_TYPE_STRING, legacy drivers are also able to access JSON type. */
+
   net_buf->client_version = req_info->client_version;
   set_hang_check_time ();
 
@@ -2203,7 +2203,6 @@ static int
 net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info)
 {
   int ret_value = 0;
-  int elapsed_sec = 0, elapsed_msec = 0;
   int timeout = 0, remained_timeout = 0;
   bool is_proxy_conn_wait_timeout = false;
 
@@ -2352,8 +2351,9 @@ static int
 net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info)
 {
   int ret_value = 0;
-  int elapsed_sec = 0, elapsed_msec = 0;
+#if defined(CAS_FOR_MYSQL)
   int timeout = 0, remained_timeout = 0;
+#endif /* CAS_FOR_MYSQL */
 
   if (as_info->con_status == CON_STATUS_IN_TRAN)
     {

@@ -105,7 +105,6 @@
 #define BROKER_INFO_PATH_MAX             (PATH_MAX)
 #define BROKER_INFO_NAME_MAX             (BROKER_INFO_PATH_MAX)
 
-typedef enum t_sql_log_mode_value T_SQL_LOG_MODE_VALUE;
 enum t_sql_log_mode_value
 {
   SQL_LOG_MODE_NONE = 0,
@@ -115,41 +114,41 @@ enum t_sql_log_mode_value
   SQL_LOG_MODE_ALL = 4,
   SQL_LOG_MODE_DEFAULT = SQL_LOG_MODE_ERROR
 };
+typedef enum t_sql_log_mode_value T_SQL_LOG_MODE_VALUE;
 
-typedef enum t_slow_log_value T_SLOW_LOG_VALUE;
 enum t_slow_log_value
 {
   SLOW_LOG_MODE_OFF = 0,
   SLOW_LOG_MODE_ON = 1,
   SLOW_LOG_MODE_DEFAULT = SLOW_LOG_MODE_ON
 };
+typedef enum t_slow_log_value T_SLOW_LOG_VALUE;
 
-typedef enum t_keep_con_value T_KEEP_CON_VALUE;
 enum t_keep_con_value
 {
   KEEP_CON_ON = 1,
   KEEP_CON_AUTO = 2,
   KEEP_CON_DEFAULT = KEEP_CON_AUTO
 };
+typedef enum t_keep_con_value T_KEEP_CON_VALUE;
 
-typedef enum t_access_mode_value T_ACCESS_MODE_VALUE;
 enum t_access_mode_value
 {
   READ_WRITE_ACCESS_MODE = 0,
   READ_ONLY_ACCESS_MODE = 1,
   SLAVE_ONLY_ACCESS_MODE = 2,
 };
+typedef enum t_access_mode_value T_ACCESS_MODE_VALUE;
 
 /* dbi.h must be updated when a new order is added */
-typedef enum t_connect_order_value T_CONNECT_ORDER_VALUE;
 enum t_connect_order_value
 {
   CONNECT_ORDER_SEQ = 0,
   CONNECT_ORDER_RANDOM = 1,
   CONNECT_ORDER_DEFAULT = CONNECT_ORDER_SEQ
 };
+typedef enum t_connect_order_value T_CONNECT_ORDER_VALUE;
 
-typedef enum t_proxy_log_value T_PROXY_LOG_MODE_VALUE;
 enum t_proxy_log_mode_value
 {
   PROXY_LOG_MODE_NONE = 0,
@@ -162,6 +161,8 @@ enum t_proxy_log_mode_value
   PROXY_LOG_MODE_ALL = 7,
   PROXY_LOG_MODE_DEFAULT = SQL_LOG_MODE_ERROR
 };
+
+typedef enum t_proxy_log_mode_value T_PROXY_LOG_MODE_VALUE;
 
 typedef struct t_broker_info T_BROKER_INFO;
 struct t_broker_info
@@ -295,19 +296,19 @@ extern void dir_repath (char *path, size_t path_len);
 #if defined(SHARD_VERBOSE_DEBUG)
 #if defined (WINDOWS)
 #define SHARD_ERR(f, ...) do { \
-fprintf(stdout, "[%-35s:%05d] <ERR> "f, __FILE__, __LINE__, _VA_ARGS_); \
+fprintf(stdout, "[%-35s:%05d] <ERR> " f, __FILE__, __LINE__, _VA_ARGS_); \
 } while (0);
 
 #define SHARD_INF(f, ...)	do { \
-fprintf(stdout, "[%-35s:%05d] <INF> "f, __FILE__, __LINE__, _VA_ARGS_); \
+fprintf(stdout, "[%-35s:%05d] <INF> " f, __FILE__, __LINE__, _VA_ARGS_); \
 } while (0);
 #else /* WINDOWS */
 #define SHARD_ERR(f, a...) do { \
-fprintf(stdout, "[%-35s:%05d] <ERR> "f, __FILE__, __LINE__, ##a); \
+fprintf(stdout, "[%-35s:%05d] <ERR> " f, __FILE__, __LINE__, ##a); \
 } while (0);
 
 #define SHARD_INF(f, a...)	do { \
-fprintf(stdout, "[%-35s:%05d] <INF> "f, __FILE__, __LINE__, ##a); \
+fprintf(stdout, "[%-35s:%05d] <INF> " f, __FILE__, __LINE__, ##a); \
 } while (0);
 #endif /* !WINDOWS */
 #else /* SHARD_VERBOSE_DEBUG */

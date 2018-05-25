@@ -65,7 +65,7 @@ pp_new_cursor (char *name, char *static_stmt, int length, STMT * dynamic_stmt, H
       return NULL;
     }
 
-  cursor = es_ht_alloc_new_symbol (sizeof (CURSOR));
+  cursor = (CURSOR *) es_ht_alloc_new_symbol (sizeof (CURSOR));
 
   cursor->name = (unsigned char *) strdup (name);
   cursor->cid = next_cid++;
@@ -121,7 +121,7 @@ pp_lookup_cursor (char *name)
   CURSOR dummy;
 
   dummy.name = (unsigned char *) name;
-  return pp_cursor_table->find_symbol (pp_cursor_table, &dummy);
+  return (CURSOR *) pp_cursor_table->find_symbol (pp_cursor_table, &dummy);
 
 }
 
@@ -207,7 +207,7 @@ pp_print_cursors (FILE * fp)
   if (pp_cursor_table->get_symbol_count (pp_cursor_table))
     {
       fputs (pp_get_msg (EX_CURSOR_SET, MSG_TABLE_TITLE), fp);
-      pp_cursor_table->print_table (pp_cursor_table, pp_print_cursor, fp, 1);
+      pp_cursor_table->print_table (pp_cursor_table, (void (*)()) pp_print_cursor, fp, 1);	//TODO: get rid of function pointer conversion
     }
 }
 
@@ -266,13 +266,13 @@ pp_new_stmt (char *name)
   STMT dummy;
 
   dummy.name = (unsigned char *) name;
-  stmt = pp_stmt_table->find_symbol (pp_stmt_table, &dummy);
+  stmt = (STMT *) pp_stmt_table->find_symbol (pp_stmt_table, &dummy);
   if (stmt != NULL)
     {
       return stmt;
     }
 
-  stmt = es_ht_alloc_new_symbol (sizeof (STMT));
+  stmt = (STMT *) es_ht_alloc_new_symbol (sizeof (STMT));
 
   stmt->name = (unsigned char *) strdup (name);
   stmt->sid = sid++;

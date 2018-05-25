@@ -29,9 +29,8 @@
 
 #ident "$Id$"
 
-#include "memory_alloc.h"
-#include "lzoconf.h"
-#include "lzo1x.h"
+#include "lzo/lzoconf.h"
+#include "lzo/lzo1x.h"
 
 #define MAKE_ZIP_LEN(length)                                                  \
          ((length) | 0x80000000)

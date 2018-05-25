@@ -41,17 +41,17 @@
 
 
 
-namespace Kingsley {
+namespace Kingsley
+{
 
   size_t class2Size (const int i);
 
 #if defined(__sparc) && defined(__GNUC__)
-  inline int popc (int v) {
+  inline int popc (int v)
+  {
     int r;
-    asm volatile ("popc %1, %0"
-		  : "=r" (r)
-		  : "r" (v));
-    return r;
+    asm volatile ("popc %1, %0":"=r" (r):"r" (v));
+      return r;
   }
 #endif
 
@@ -62,7 +62,8 @@ namespace Kingsley {
    */
   const int cl[16] = { 0, 1, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4 };
 
-  inline size_t size2Class (const size_t sz) {
+  inline size_t size2Class (const size_t sz)
+  {
 #if defined(__sparc) && defined(__GNUC__)
     // Adapted from _Hacker's Delight_, by Henry Warren (p.80)
     size_t x = sz;
@@ -71,34 +72,40 @@ namespace Kingsley {
     x = x | (x >> 4);
     x = x | (x >> 8);
     x = x | (x >> 16);
-    return popc(x) - 3;
+    return popc (x) - 3;
 #else
-    if (sz < 128 ) {
-      assert (class2Size(cl[sz >> 3]) >= sz);
-      return cl[(sz - 1) >> 3];
-    } else {
-      //
-      // We know that the object is more than 128 bytes long,
-      // so we can avoid iterating 5 times.
-      //
-      int c = 5;
-      size_t sz1 = ((sz - 1) >> 5);
-      while (sz1 > 7) {
-	sz1 >>= 1;
-	c++;
+    if (sz < 128)
+      {
+	assert (class2Size (cl[sz >> 3]) >= sz);
+	return cl[(sz - 1) >> 3];
       }
-      assert (class2Size(c) >= sz);
-      return c;
-    }
+    else
+      {
+	//
+	// We know that the object is more than 128 bytes long,
+	// so we can avoid iterating 5 times.
+	//
+	int c = 5;
+	size_t sz1 = ((sz - 1) >> 5);
+	while (sz1 > 7)
+	  {
+	    sz1 >>= 1;
+	    c++;
+	  }
+	assert (class2Size (c) >= sz);
+	return c;
+      }
 #endif
 
   }
 
-  inline size_t class2Size (const int i) {
-    return (size_t) (1 << (i+3));
+  inline size_t class2Size (const int i)
+  {
+    return ((size_t) 1 << (i + 3));
   }
 
-  enum { NUMBINS = 29 };
+  enum
+  { NUMBINS = 29 };
 
 };
 
@@ -110,15 +117,14 @@ namespace Kingsley {
  * @see Kingsley
  */
 
-namespace HL {
+namespace HL
+{
 
-template <class PerClassHeap, class BigHeap>
-  class KingsleyHeap : 
-   public StrictSegHeap<Kingsley::NUMBINS,
-			Kingsley::size2Class,
-			Kingsley::class2Size,
-			PerClassHeap,
-			BigHeap> {};
+  template < class PerClassHeap, class BigHeap >
+    class KingsleyHeap:public StrictSegHeap < Kingsley::NUMBINS,
+    Kingsley::size2Class, Kingsley::class2Size, PerClassHeap, BigHeap >
+  {
+  };
 
 };
 

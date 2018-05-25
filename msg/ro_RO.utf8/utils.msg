@@ -669,27 +669,26 @@ opţiuni valide:\n\
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 Descrierea spaţiului pentru baza de date '%1$s' cu pagini de dimensiune %2$s. (dimensiunea unei pagini de log: %3$s)\n\n
-16 %1$5d %2$9s  %3$s %4$s  %5$s\n
-17 Nu s-a putut deschide fişierul de ieşire '%1$s'\n
-18 Descrierea spaţiului pentru volumele temporare ale bazei de date '%1$s' cu pagini de dimensiune %2$s.\n\n
-19 Volid  Purpose   total_pages  free_pages  Vol Name\n\n
-20 Volid  Purpose    total_size   free_size  Vol Name\n\n
-21 Descrierea spaţiului pentru LOB %1$s \n\n
-22 -------------------------------------------------------------------------------\n
-30 Descrierea sumarizată a spaţiului pentru baza de date '%1$s' cu pagini de dimensiune %2$s. (dimensiunea unei pagini de log: %3$s)\n\n
-31 Purpose    total_pages  used_pages  free_pages  volume_count\n
-32 Purpose     total_size   used_size   free_size  volume_count\n
-33 %1$10s %2$s %3$s %4$s %5$10d\n
-34 -------------------------------------------------------------\n
-40 Volid  Purpose   total_pages  free_pages  data_pages index_pages  temp_pages  Vol Name\n\n
-41 Volid  Purpose    total_size   free_size   data_size  index_size   temp_size  Vol Name\n\n
-42 %1$5d %2$9s  %3$s %4$s %5$s %6$s %7$s  %8$s\n
-43 ----------------------------------------------------------------------------------------------------\n
-50 Purpose    total_pages  used_pages  free_pages  data_pages index_pages  temp_pages  volume_count\n
-51 Purpose     total_size   used_size   free_size   data_size  index_size   temp_size  volume_count\n
-52 %1$10s %2$s %3$s %4$s %5$s %6$s %7$s %8$10d\n
-53 -------------------------------------------------------------------------------------------------\n
+10 Descrierea spaţiului pentru baza de date '%1$s' cu pagini de dimensiune %2$s. (dimensiunea unei pagini de log: %3$s)\n\n
+11 Nu s-a putut deschide fişierul de ieşire '%1$s'\n
+12 Descrierea spaţiului pentru LOB %1$s \n\n
+20 type                purpose            volume_count        used_pages          free_pages          total_pages\n
+21 type                purpose            volume_count         used_size           free_size           total_size\n
+22 PERMANENT           PERMANENT DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+23 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+24 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+25 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
+30 Descrierea spaţiului pentru toate volumele:\n
+31 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
+32 volid               type                purpose             used_size           free_size           total_size         volume_name\n
+33 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+34 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+35 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+40 Decrierea detaliată a spaţiului folosit de fișiere:\n
+41 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
+42 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
+43 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
+50 -----------------------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: Afişează spaţiul utilizat/liber al bazei de date.\n\
 utilizare: %1$s spacedb [OPŢIUNI] nume-bază-de-date\n\
@@ -702,7 +701,6 @@ opţiuni valide:\n\
                                setează unitatea de afişare (pagina, mega, giga, tera, format lizibil); implicit: H\n\
   -s, --summarize              afişează doar un sumar pentru fiecare scop de volum\n\
   -p, --purpose                afişează dimensiunea fiecărui scop(data/index/temp) al fiecărui volum\n
-
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
 15 Numărul estimat de pagini = %1$d\n
@@ -774,7 +772,7 @@ utilizare: %1$s diagdb [OPŢIUNI] nume-bază-de-date\n\
 \n\
 opţiuni valide:\n\
   -o, --output-file=FIŞIER    redirecţionează mesajele de ieşire către un FIŞIER; implicit: nul\n\
-      --emergency              emergency restart; default: none\n\
+      --emergency             restartare de urgență; implicit: nu\n\
   -d, --dump-type=TIP      TIP de vărsare\n\
                             -1 varsă tot\n\
                              1 varsă tabelele fişier\n\
@@ -1084,26 +1082,13 @@ opţiuni valide:\n\
       --sort-key=NUMAR_COLOANA numărul coloanei de sortare\n\
       --reverse                inversează rezultatul sortării\n
 
-$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
-22 Serverul nu a fost configurat pentru HA.\n
-23 Funcţionalitatea de prefetch este dezactivată.\n
-58 HA nu este suportat pe această platformă.\n
-59 prefetchlogdb nu poate rula în modul de execuţie independent.\n
-60 \
-prefetchlogdb: Pre-citirea paginilor de log de la server.\n\
-utilizare: %1$s prefetchlogdb [OPTION] nume-bază-de-date\n\
-\n\
-opțiuni valide:\n\
-  -L, --log-path=CALE         calea către directorul pentru volume de log copiate\n
-
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
 59 Modul de generare introdus este invalid.\n
 60 Folder-ul input este invalid sau corupt.\n
 61 \
 gen_tz: Generează fișiere ce conțin informații timezone, pentru a fi compilate\n\
         într-o librărie shared.\n\
-utilizare: %s gen_tz [OPTION]\n\
-       %s gen_tz -g extend [OPTION] [database-name]\n\
+utilizare: %s gen_tz -g [new|extend] [database-name] (doar pentru modul extend)\n\
 \n\
 opțiuni valide:\n\
   -i, --input-folder    calea pentru un fișier input ce conține o versiune a\n\
@@ -1115,19 +1100,14 @@ opțiuni valide:\n\
                         librăria shared, fără nicio asociere cu versiunile\n\
                         anterioare; deasemenea generează un fișier cu toate\n\
                         țările și denumirile timezone.\n\
-                        2. EXTEND : generează fișierele timezone folosind\n\
-                        datele din fișierul input; id-urile timezone actuale\n\
-                        din CUBRID sunt păstrate; deasemenea este generat un\n\
-                        fișier timezone secundar cu noile timezone-uri din\n\
-                        fișierul input; offset-urile GMT și informațiile\n\
-                        daylight saving sunt actualizate (sau adăugate, pentru\n\
-                        fiecare timezone nou); vechile timezone-uri integrate\n\
-                        deja în CUBRID nu sunt înlăturate, chiar dacă nu există\n\
-                        în fișierul input.\n\
-                        Este generat un nou fișier C, ce conține toate\n\
-                        denumirile timezone, care trebuie inclus în fișierele\n\
-                        sursă CUBRID, înainte ca noua librarie timezone să\n\
-                        poată fi folosită.\n
+                        2. EXTEND : genereaza libraria de timezone folosind libraria anterioara\n\
+                        astfel incat sa se asigure compatibilitate cu datele existente in tabele;\n\
+                        Noile zone geografice gasite in fisierele IANA vor fi adaugate; offset-urile GMT\n\
+                        si regulile de daylight saving sunt modificate conform noilor fisiere de la IANA;\n\
+                        Zonele geografice care nu mai apar in noile fisiere IANA sunt pastrate astfel incat\n\
+                        sa se asigure compatibilitatea cu datele din tabele; Daca e necesar, atunci cand prima\n\
+                        faza a operatiei de extend nu reuseste sa faca toate datele compatibile o actualizare\n\
+                        a tabelelor care contin coloane cu tipuri timezone este realizata.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 ID-ul de zonă introdus este în afara intervalului acceptat. Folosește -z\n\

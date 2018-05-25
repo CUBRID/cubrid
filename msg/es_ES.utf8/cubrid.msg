@@ -922,7 +922,7 @@ $ LOADDB
 853 Para un objeto (%1$d|%2$d|%3$d), transaccion (%4$d) de tipo Uncomitted Read, contenia un error de "lock" (%5$s).
 854 ADVERTENCIA: Ningun holder de bloqueo existente, en cambio hay waiters de bloqueo. Referir a %1$s.
 855 ADVERTENCIA: Dos o mas hilos estan en la espera de bloqueo para una transaccion (%1$d).
-856 ADVERTENCIA: Estado (%1$d|%2$d) extrano de espera de bloqueo, hilo (%3$d|%4$d) y transaccion (%5$d).
+856 ADVERTENCIA: Estado (%1$d|%2$d) extrano de espera de bloqueo, hilo (%3$d|%4$lld) y transaccion (%5$d).
 857 Un error de E/S ha ocurrido mientras truncando pagina %1$d del volumen "%2$s".
 858 Volumen "%1$s" es desconocido al reinicio del servidor.
 859 Pestillo en la pagina (%1$d|%2$d) abortado.
@@ -1043,8 +1043,8 @@ $ LOADDB
 974 Registro de carpeta "%1$s" es creado para archivar paginas de %2$lld a %3$lld.
 975 Version actual de replicacion no permite cambiar filas multiples con una sola declaracion UPDATE que puede violar la restriccion UNIQUE.
 976 Error interno: Sobreflujo del tamano de tabla (tamano asignado: %1$d, tamano accesado: %2$d) a la pagina %3$d|%4$d(volumen "%5$s") de la tabla de archivos. 
-977 Punto de control iniciado (id de pagina del punto de control anterior: %1$lld, id de pagina de rehacer anterior : %2$lld).
-978 Checkpoint finished (checkpoint page id: %1$lld, checkpoint redo page id: %2$lld, flushed page count: %3$d).
+977 Punto de control iniciado (id de página del punto de control anterior: %1$lld, id de pagina de rehacer anterior : %2$lld).
+978 Punto de control terminado (id de página del punto de control: %1$lld, Id de página de rehacer punto de control: %2$lld, Número de páginas flushed: %3$d).
 979 Bucle CONNECT BY en los datos de usuario.
 980 Un hilo esta esperando en %1$s mas que %2$d msec.
 981 Transacción %1$d ha llegado al umbral de estadísticas de supervisión %2$s.
@@ -1090,9 +1090,9 @@ $ LOADDB
 1021 Un ciclo de deadlock es detectado. %1$s.
 1022 Valor "%1$d" no valido para la longitud de prefijo del indice.
 1023 log applier filter: %1$s.
-1024 log writer: failed to get log page(s) starting from page id %1$lld.
-1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
-1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
+1024 log writer: no se puede obtener la páginas de registro a partir de id de página %1$lld.
+1025 HA delay info: El retraso de replicación (%1$d secs) ha excedido el límite (%2$d secs).
+1026 HA delay info: El retraso de replicación (%1$d secs) se reduce por debajo del nivel aceptable (%2$d secs).
 1027 Aplicador de registro: fracaso al cambiar el estado de aplicar de '%1$s' a '%2$s'.
 1028 Aplicador de registro: registro EOF inesperado en la carpeta de registros. LSA: %1$lld|%2$d.
 1029 Aplicador de registro: pagina/offset de registro de replicacion no valida. pagina HDR: %1$1lld|%2$d, final: %3$lld|%4$d,, anexar LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, estado de archivo HA: %9$d, es fin-del-registro: %10$d. 
@@ -1198,7 +1198,7 @@ $ LOADDB
 1129 La recuperacion de anotaciones ha terminado.
 1130 Transaccion es abortada porque el numero de llaves asociado a la transaccion excede %1$d.
 1131 Error interno: La pagina %1$d del volumen "%2$s" puede ser corrota. \n%3$s
-1132 Encryption library failure: %1$s
+1132 Error de la biblioteca de cifrado: %1$s
 1133 Copylog for %1$s ya existe.
 1134 Applylogdb para %1$s ya existe.
 1135 Un enlace anterior de B+tree(%1$s) es corrompido: vpid = (%2$d, %3$d)
@@ -1260,9 +1260,30 @@ $ LOADDB
 1191 Ejecucion stand-alone de aspirar finalizada.
 1192 La precision de %1$zu del valor excede lo maximo permitido %2$d
 1193 La longitud de la expresion de particion procesada excede lo maximo permitido (%1$d).
-1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
-1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
-1196 Ultimo error
+1194 No se puede comprobar el archivo %1$d|%2$d porque el bloqueo en la clase %3$d|%4$d|%5$d no se concede inmediatamente.
+1195 La parte recursiva de un CTE no debe contener funciones agregadas sin la cláusula GROUP BY.
+1196 Recursiones máximas %1$d alcanzó la ejecución del CTE.
+1197 Invalid json: %1$s (%2$d)
+1198 A json object must be provided
+1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
+1200 Invalid JSON path
+1201 Json object name cannot be NULL.
+1202 Json PATH "%1$s" does not exist in %2$s
+1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
+1204 Json KEY "%1$s" is duplicate
+1205 Reserved error for JSON.
+1206 Reserved error for JSON.
+1207 Reserved error for JSON.
+1208 Reserved error for JSON.
+1209 Reserved error for JSON.
+1210 Reserved error for JSON.
+1211 Reserved error for JSON.
+1212 Reserved error for JSON.
+1213 Reserved error for JSON.
+1214 Reserved error for JSON.
+
+1215 Ultimo error
+
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):
 2 Ningun mensaje de error disponible.
@@ -1713,6 +1734,12 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 Uso invalido de funciones de agregado.
 293 El valor debe ser estrictamente cresciente para cada particion.
 294 No se pueden utilizar indices de funcion o filtro en columnas cuyo tipo de datos es dependiente de la zona horaria.
+295 SELECT INTO no está permitido en subconsultas.
+296 CTE ambigüedad de nombre, hay más de un CTE con el mismo nombre: '%1$s'.
+297 Las cláusulas anidadas WITH no son compatibles.
+298 El CTE recursivo '%1$s' debe referenciarse directamente en su consulta recursiva.
+299 Error en CTE '%1$s': La parte no recursiva y la parte recursiva deben estar conectadas con UNION ALL.
+300 La subconsulta no está permitida en la cláusula DEFAULT.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sin memoria virtual: incapaz de asignar %1$d bytes.
@@ -1793,8 +1820,8 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 77 El patrocinador o DBA puede solamente alterar la definicion de un serial de destino.
 78 Los utilizadores no son permitidos modificar el objeto serial creado por una restriccion de incremento automatico.
 79 Nivel de aislamiento no valido: %1$s esquema, %2$s instancias.
-80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
-81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
+80 El valor del nivel de aislamiento en MVCC debe ser 'read committed', 'readable read' o 'serializable'.
+81 '%1$s' es un objeto 'auto_increment', que no se puede alterar como serial.
 
 
 $set 11 MSGCAT_SET_AUTHORIZATION

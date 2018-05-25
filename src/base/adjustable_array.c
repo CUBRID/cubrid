@@ -63,17 +63,17 @@ adj_ar_concat_strings (const char *string1, const char *string2, ...)
     {
       string1 = "?";
     }
-  (void) adj_ar_append (string_buffer, string1, strlen (string1));
+  (void) adj_ar_append (string_buffer, string1, (int) strlen (string1));
   if (!string2)
     {
       string2 = "?";
     }
-  (void) adj_ar_append (string_buffer, string2, strlen (string2));
+  (void) adj_ar_append (string_buffer, string2, (int) strlen (string2));
 
   va_start (next_arg, string2);
   while ((next_string = va_arg (next_arg, const char *)))
     {
-      (void) adj_ar_append (string_buffer, next_string, strlen (next_string));
+      (void) adj_ar_append (string_buffer, next_string, (int) strlen (next_string));
     }
 
   (void) adj_ar_append (string_buffer, "\0", 1);

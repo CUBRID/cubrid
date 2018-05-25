@@ -46,13 +46,13 @@ libedit.pc
 *.pch
 
 # Libraries
-*.lib
+# *.lib # we have external dependencies
 *.a
 *.la
 *.lo
 
 # Shared objects (inc. Windows DLLs)
-*.dll
+# *.dll # we have external dependencies
 *.so
 *.so.*
 *.dylib
@@ -90,20 +90,6 @@ external/expat-2.0.1/examples/outline
 external/expat-2.0.1/xmlwf/xmlwf
 external/include/
 external/lib/
-/external/libedit-20120601-3.0/doc/editline.3
-/external/libedit-20120601-3.0/doc/editrc.5
-/external/libedit-20120601-3.0/examples/fileman
-/external/libedit-20120601-3.0/examples/tc1
-/external/libedit-20120601-3.0/examples/wtc1
-/external/libedit-20120601-3.0/src/common.h
-/external/libedit-20120601-3.0/src/emacs.h
-/external/libedit-20120601-3.0/src/fcns.c
-/external/libedit-20120601-3.0/src/fcns.h
-/external/libedit-20120601-3.0/src/help.c
-/external/libedit-20120601-3.0/src/help.h
-/external/libedit-20120601-3.0/src/historyn.c
-/external/libedit-20120601-3.0/src/tokenizern.c
-/external/libedit-20120601-3.0/src/vi.h
 /external/libgcrypt-1.5.2/src/dumpsexp
 /external/libgcrypt-1.5.2/src/hmac256
 /external/libgpg-error-1.11/lang/cl/gpg-error-codes.lisp
@@ -121,18 +107,19 @@ external/lib/
 /external/libgpg-error-1.11/tests/t-strerror
 /external/libgpg-error-1.11/tests/t-syserror
 /external/libgpg-error-1.11/tests/t-version
-/external/lzo-2.03/examples/dict
-/external/lzo-2.03/examples/lzopack
-/external/lzo-2.03/examples/overlap
-/external/lzo-2.03/examples/precomp
-/external/lzo-2.03/examples/precomp2
-/external/lzo-2.03/examples/simple
-/external/lzo-2.03/lzotest/lzotest
-/external/lzo-2.03/minilzo/testmini
-/external/lzo-2.03/tests/align
-/external/lzo-2.03/tests/chksum
-/external/lzo-2.03/tests/promote
-/external/lzo-2.03/tests/sizes
+!/external/lzo-2.10/Makefile.in
+/external/lzo-2.10/examples/dict
+/external/lzo-2.10/examples/lzopack
+/external/lzo-2.10/examples/overlap
+/external/lzo-2.10/examples/precomp
+/external/lzo-2.10/examples/precomp2
+/external/lzo-2.10/examples/simple
+/external/lzo-2.10/lzotest/lzotest
+/external/lzo-2.10/minilzo/testmini
+/external/lzo-2.10/tests/align
+/external/lzo-2.10/tests/chksum
+/external/lzo-2.10/tests/promote
+/external/lzo-2.10/tests/sizes
 /external/man/
 /external/share/
 /java/bin/
@@ -187,7 +174,7 @@ x86
 *.ncb
 *.suo
 *.ilk
-*.pdb
+# *.pdb # we have external dependencies
 /win/install/CUBRID_Debug_Win32/
 /win/install/CUBRID_Release_Win32/
 /win/install/CUBRID_Debug_x86/
@@ -200,9 +187,12 @@ x86
 *.swp
 *.bak
 *.*~
+*.*.orig
 tags
 cscope.out
 
 ## popular build directories
 Debug/
 Release/
+build_x86_64_debug/
+build_x86_64_release/

@@ -32,7 +32,6 @@
 #if !defined (SERVER_MODE)
 #else /* SERVER_MODE */
 #include "connection_defs.h"
-#include "thread.h"
 #endif /* SERVER_MODE */
 #include "lock_free.h"
 
@@ -88,22 +87,31 @@ struct area
   void (*failure_function) (void);
 };
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
 /* system startup, shutdown */
-extern void area_init (void);
-extern void area_final (void);
+  extern void area_init (void);
+  extern void area_final (void);
 
 /* area definition */
-extern AREA *area_create (const char *name, size_t element_size, size_t alloc_count);
-extern void area_destroy (AREA * area);
+  extern AREA *area_create (const char *name, size_t element_size, size_t alloc_count);
+  extern void area_destroy (AREA * area);
 
 /* allocation functions */
-extern void *area_alloc (AREA * area);
-extern int area_validate (AREA * area, const void *address);
-extern int area_free (AREA * area, void *ptr);
-extern void area_flush (AREA * area);
+  extern void *area_alloc (AREA * area);
+  extern int area_validate (AREA * area, const void *address);
+  extern int area_free (AREA * area, void *ptr);
+  extern void area_flush (AREA * area);
 
 /* debug functions */
-extern void area_dump (FILE * fpp);
+  extern void area_dump (FILE * fpp);
 
-#endif /* _AREA_ALLOC_H_ */
+#ifdef __cplusplus
+}
+#endif
+
+
+#endif				/* _AREA_ALLOC_H_ */

@@ -31,7 +31,7 @@
 #include "config.h"
 
 #include "intl_support.h"
-#include "dbtype.h"
+#include "dbtype_def.h"
 #include "error_manager.h"
 
 typedef enum
@@ -42,6 +42,11 @@ typedef enum
 } DB_DATA_STATUS;
 
 #define NUMERIC_MAX_STRING_SIZE (80 + 1)
+
+#define SECONDS_OF_ONE_DAY      86400	/* 24 * 60 * 60 */
+#define MILLISECONDS_OF_ONE_DAY 86400000	/* 24 * 60 * 60 * 1000 */
+
+#define db_locate_numeric(value) ((const DB_C_NUMERIC) ((value)->data.num.d.buf))
 
 #if defined(SERVER_MODE)
 extern void numeric_init_power_value_string (void);
@@ -84,7 +89,7 @@ extern int numeric_coerce_num_to_num (DB_C_NUMERIC src_num, int src_prec, int sr
 extern int numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_stat);
 extern int numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_stat);
 extern int numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest);
-extern char *numeric_db_value_print (DB_VALUE * val, char *buf);
+extern char *numeric_db_value_print (const DB_VALUE * val, char *buf);
 
 /* Testing Routines */
 extern bool numeric_db_value_is_zero (const DB_VALUE * arg);

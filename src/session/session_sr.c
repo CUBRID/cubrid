@@ -23,6 +23,7 @@
 
 #include "xserver_interface.h"
 #include "session.h"
+#include "dbtype.h"
 
 /*
  *  xsession_create_new () - create a new session
@@ -34,8 +35,6 @@
 int
 xsession_create_new (THREAD_ENTRY * thread_p, SESSION_ID * id)
 {
-  int status = NO_ERROR;
-
   assert (id != NULL);
 
   return session_state_create (thread_p, id);
@@ -131,7 +130,7 @@ xsession_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value, bool upd
   err = session_get_last_insert_id (thread_p, value, update_last_insert_id);
   if (err != NO_ERROR)
     {
-      DB_MAKE_NULL (value);
+      db_make_null (value);
     }
   return err;
 }
@@ -209,7 +208,7 @@ xsession_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char
       if (xasl_header_p != NULL)
 	{
 	  /* get XASL node header from XASL stream */
-	  qfile_load_xasl_node_header (thread_p, xasl_entry->stream.xasl_stream, xasl_header_p);
+	  qfile_load_xasl_node_header (thread_p, xasl_entry->stream.buffer, xasl_header_p);
 	}
 
       xcache_unfix (thread_p, xasl_entry);

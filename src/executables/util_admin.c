@@ -25,12 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "config.h"
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#else
-#include "getopt.h"
-#endif
+#include "cubrid_getopt.h"
 #include "utility.h"
 #include "error_code.h"
 #include "util_support.h"
@@ -38,7 +33,7 @@
 
 static UTIL_ARG_MAP ua_Create_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
-  {CREATE_PAGES_S, {ARG_INTEGER}, {-1}},
+  {CREATE_PAGES_S, {ARG_INTEGER}, {(void *) -1}},
   {CREATE_COMMENT_S, {ARG_STRING}, {0}},
   {CREATE_FILE_PATH_S, {ARG_STRING}, {0}},
   {CREATE_LOG_PATH_S, {ARG_STRING}, {0}},
@@ -50,8 +45,8 @@ static UTIL_ARG_MAP ua_Create_Option_Map[] = {
   {CREATE_CSQL_INITIALIZATION_FILE_S, {ARG_STRING}, {0}},
   {CREATE_OUTPUT_FILE_S, {ARG_STRING}, {0}},
   {CREATE_VERBOSE_S, {ARG_BOOLEAN}, {0}},
-  {CREATE_LOG_PAGE_COUNT_S, {ARG_INTEGER}, {-1}},
-  {CREATE_PAGE_SIZE_S, {ARG_INTEGER}, {-1}},
+  {CREATE_LOG_PAGE_COUNT_S, {ARG_INTEGER}, {(void *) -1}},
+  {CREATE_PAGE_SIZE_S, {ARG_INTEGER}, {(void *) -1}},
   {CREATE_DB_PAGE_SIZE_S, {ARG_STRING}, {0}},
   {CREATE_LOG_PAGE_SIZE_S, {ARG_STRING}, {0}},
   {CREATE_DB_VOLUME_SIZE_S, {ARG_STRING}, {0}},
@@ -143,7 +138,7 @@ static UTIL_ARG_MAP ua_Backup_Option_Map[] = {
   {BACKUP_DESTINATION_PATH_S, {ARG_STRING}, {0}},
   {BACKUP_OUTPUT_FILE_S, {ARG_STRING}, {0}},
   {BACKUP_REMOVE_ARCHIVE_S, {ARG_BOOLEAN}, {0}},
-  {BACKUP_LEVEL_S, {ARG_INTEGER}, {FILEIO_BACKUP_FULL_LEVEL}},
+  {BACKUP_LEVEL_S, {ARG_INTEGER}, {(void *) FILEIO_BACKUP_FULL_LEVEL}},
   {BACKUP_SA_MODE_S, {ARG_BOOLEAN}, {0}},
   {BACKUP_CS_MODE_S, {ARG_BOOLEAN}, {0}},
   {BACKUP_NO_CHECK_S, {ARG_BOOLEAN}, {0}},
@@ -199,11 +194,7 @@ static UTIL_ARG_MAP ua_Addvol_Option_Map[] = {
   {ADDVOL_VOLUME_SIZE_S, {ARG_STRING}, {0}},
   {ADDVOL_FILE_PATH_S, {ARG_STRING}, {0}},
   {ADDVOL_COMMENT_S, {ARG_STRING}, {0}},
-#if defined(LINUX) || defined(AIX)
-  {ADDVOL_PURPOSE_S, {ARG_STRING}, {.p = (void *) "generic"}},
-#else
   {ADDVOL_PURPOSE_S, {ARG_STRING}, {(void *) "generic"}},
-#endif
   {ADDVOL_SA_MODE_S, {ARG_BOOLEAN}, {0}},
   {ADDVOL_CS_MODE_S, {ARG_BOOLEAN}, {0}},
   {ADDVOL_MAX_WRITESIZE_IN_SEC_S, {ARG_STRING}, {0}},
@@ -250,11 +241,7 @@ static UTIL_ARG_MAP ua_Space_Option_Map[] = {
   {SPACE_OUTPUT_FILE_S, {ARG_STRING}, {0}},
   {SPACE_SA_MODE_S, {ARG_BOOLEAN}, {0}},
   {SPACE_CS_MODE_S, {ARG_BOOLEAN}, {0}},
-#if defined(LINUX) || defined(AIX)
-  {SPACE_SIZE_UNIT_S, {ARG_STRING}, {.p = (void *) "h"}},
-#else
   {SPACE_SIZE_UNIT_S, {ARG_STRING}, {(void *) "h"}},
-#endif
   {SPACE_SUMMARIZE_S, {ARG_BOOLEAN}, {0}},
   {SPACE_PURPOSE_S, {ARG_BOOLEAN}, {0}},
   {0, {0}, {0}}
@@ -320,7 +307,7 @@ static GETOPT_LONG ua_Install_Option[] = {
 
 static UTIL_ARG_MAP ua_Diag_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
-  {DIAG_DUMP_TYPE_S, {ARG_INTEGER}, {-1}},
+  {DIAG_DUMP_TYPE_S, {ARG_INTEGER}, {(void *) -1}},
   {DIAG_DUMP_RECORDS_S, {ARG_BOOLEAN}, {0}},
   {DIAG_OUTPUT_FILE_S, {ARG_STRING}, {0}},
   {DIAG_EMERGENCY_S, {ARG_BOOLEAN}, {0}},
@@ -412,19 +399,11 @@ static GETOPT_LONG ua_Plandump_Option[] = {
 static UTIL_ARG_MAP ua_Killtran_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
   {KILLTRAN_KILL_TRANSACTION_INDEX_S, {ARG_STRING}, {0}},
-#if defined(LINUX) || defined(AIX)
-  {KILLTRAN_KILL_USER_NAME_S, {ARG_STRING}, {.p = (void *) ""}},
-  {KILLTRAN_KILL_HOST_NAME_S, {ARG_STRING}, {.p = (void *) ""}},
-  {KILLTRAN_KILL_PROGRAM_NAME_S, {ARG_STRING}, {.p = (void *) ""}},
-  {KILLTRAN_KILL_SQL_ID_S, {ARG_STRING}, {0}},
-  {KILLTRAN_DBA_PASSWORD_S, {ARG_STRING}, {.p = (void *) ""}},
-#else
   {KILLTRAN_KILL_USER_NAME_S, {ARG_STRING}, {(void *) ""}},
   {KILLTRAN_KILL_HOST_NAME_S, {ARG_STRING}, {(void *) ""}},
   {KILLTRAN_KILL_PROGRAM_NAME_S, {ARG_STRING}, {(void *) ""}},
   {KILLTRAN_KILL_SQL_ID_S, {ARG_STRING}, {0}},
   {KILLTRAN_DBA_PASSWORD_S, {ARG_STRING}, {(void *) ""}},
-#endif
   {KILLTRAN_DISPLAY_INFORMATION_S, {ARG_BOOLEAN}, {0}},
   {KILLTRAN_DISPLAY_QUERY_INFO_S, {ARG_BOOLEAN}, {0}},
   {KILLTRAN_FORCE_S, {ARG_BOOLEAN}, {0}},
@@ -464,17 +443,6 @@ static GETOPT_LONG ua_Tranlist_Option[] = {
   {0, 0, 0, 0}
 };
 
-static UTIL_ARG_MAP ua_Prefetchlogdb_Option_Map[] = {
-  {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
-  {PREFETCH_LOG_PATH_S, {ARG_STRING}, {0}},
-  {0, {0}, {0}}
-};
-
-static GETOPT_LONG ua_Prefetchlogdb_Option[] = {
-  {PREFETCH_LOG_PATH_L, 1, 0, PREFETCH_LOG_PATH_S},
-  {0, 0, 0, 0}
-};
-
 static UTIL_ARG_MAP ua_Load_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
   {LOAD_USER_S, {ARG_STRING}, {0}},
@@ -493,7 +461,7 @@ static UTIL_ARG_MAP ua_Load_Option_Map[] = {
   {LOAD_ERROR_CONTROL_FILE_S, {ARG_STRING}, {0}},
   {LOAD_IGNORE_CLASS_S, {ARG_STRING}, {0}},
   {LOAD_CS_MODE_S, {ARG_BOOLEAN}, {0}},
-  {LOAD_SA_MODE_S, {ARG_BOOLEAN}, {1}},
+  {LOAD_SA_MODE_S, {ARG_BOOLEAN}, {(void *) 1}},
   {LOAD_TABLE_NAME_S, {ARG_STRING}, {0}},
   {LOAD_COMPARE_STORAGE_ORDER_S, {ARG_BOOLEAN}, {0}},
   {0, {0}, {0}}
@@ -529,7 +497,7 @@ static UTIL_ARG_MAP ua_Unload_Option_Map[] = {
   {UNLOAD_INPUT_CLASS_ONLY_S, {ARG_BOOLEAN}, {0}},
   {UNLOAD_LO_COUNT_S, {ARG_INTEGER}, {0}},
   {UNLOAD_ESTIMATED_SIZE_S, {ARG_INTEGER}, {0}},
-  {UNLOAD_CACHED_PAGES_S, {ARG_INTEGER}, {100}},
+  {UNLOAD_CACHED_PAGES_S, {ARG_INTEGER}, {(void *) 100}},
   {UNLOAD_OUTPUT_PATH_S, {ARG_STRING}, {0}},
   {UNLOAD_SCHEMA_ONLY_S, {ARG_BOOLEAN}, {0}},
   {UNLOAD_DATA_ONLY_S, {ARG_BOOLEAN}, {0}},
@@ -575,10 +543,10 @@ static UTIL_ARG_MAP ua_Compact_Option_Map[] = {
   {COMPACT_INPUT_CLASS_FILE_S, {ARG_STRING}, {0}},
   {COMPACT_SA_MODE_S, {ARG_BOOLEAN}, {0}},
   {COMPACT_CS_MODE_S, {ARG_BOOLEAN}, {0}},
-  {COMPACT_PAGES_COMMITED_ONCE_S, {ARG_INTEGER}, {10}},
+  {COMPACT_PAGES_COMMITED_ONCE_S, {ARG_INTEGER}, {(void *) 10}},
   {COMPACT_DELETE_OLD_REPR_S, {ARG_BOOLEAN}, {0}},
-  {COMPACT_INSTANCE_LOCK_TIMEOUT_S, {ARG_INTEGER}, {2}},
-  {COMPACT_CLASS_LOCK_TIMEOUT_S, {ARG_INTEGER}, {10}},
+  {COMPACT_INSTANCE_LOCK_TIMEOUT_S, {ARG_INTEGER}, {(void *) 2}},
+  {COMPACT_CLASS_LOCK_TIMEOUT_S, {ARG_INTEGER}, {(void *) 10}},
   {0, {0}, {0}}
 };
 
@@ -632,7 +600,7 @@ static UTIL_ARG_MAP ua_Changemode_Option_Map[] = {
   {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
   {CHANGEMODE_MODE_S, {ARG_STRING}, {0}},
   {CHANGEMODE_FORCE_S, {ARG_BOOLEAN}, {0}},
-  {CHANGEMODE_TIMEOUT_S, {ARG_INTEGER}, {-1}},
+  {CHANGEMODE_TIMEOUT_S, {ARG_INTEGER}, {(void *) -1}},
   {0, {0}, {0}}
 };
 
@@ -647,11 +615,7 @@ static UTIL_ARG_MAP ua_Copylog_Option_Map[] = {
   {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
   {COPYLOG_LOG_PATH_S, {ARG_STRING}, {0}},
   {COPYLOG_MODE_S, {ARG_STRING}, {0}},
-#if defined(LINUX) || defined(AIX)
-  {COPYLOG_START_PAGEID_S, {ARG_BIGINT}, {.l = (-2L)}},
-#else
-  {COPYLOG_START_PAGEID_S, {ARG_BIGINT}, {(INT64) (-2L)}},
-#endif
+  {COPYLOG_START_PAGEID_S, {ARG_BIGINT}, {(void *) (-2L)}},
   {0, {0}, {0}}
 };
 
@@ -678,11 +642,7 @@ static GETOPT_LONG ua_Applylog_Option[] = {
 static UTIL_ARG_MAP ua_ApplyInfo_Option_Map[] = {
   {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
   {APPLYINFO_COPIED_LOG_PATH_S, {ARG_STRING}, {0}},
-#if defined(LINUX) || defined(AIX)
-  {APPLYINFO_PAGE_S, {ARG_BIGINT}, {.l = (-1L)}},
-#else
-  {APPLYINFO_PAGE_S, {ARG_BIGINT}, {(INT64) (-1L)}},
-#endif
+  {APPLYINFO_PAGE_S, {ARG_BIGINT}, {(void *) (-1L)}},
   {APPLYINFO_REMOTE_NAME_S, {ARG_STRING}, {0}},
   {APPLYINFO_APPLIED_INFO_S, {ARG_BOOLEAN}, {0}},
   {APPLYINFO_VERBOSE_S, {ARG_BOOLEAN}, {0}},
@@ -826,13 +786,13 @@ static GETOPT_LONG ua_Vacuum_Option[] = {
 
 static UTIL_ARG_MAP ua_Checksum_Option_Map[] = {
   {OPTION_STRING_TABLE, {ARG_INTEGER}, {0}},
-  {CHECKSUM_CHUNK_SIZE_S, {ARG_INTEGER}, {500}},
+  {CHECKSUM_CHUNK_SIZE_S, {ARG_INTEGER}, {(void *) 500}},
   {CHECKSUM_RESUME_S, {ARG_BOOLEAN}, {0}},
-  {CHECKSUM_SLEEP_S, {ARG_INTEGER}, {100}},
+  {CHECKSUM_SLEEP_S, {ARG_INTEGER}, {(void *) 100}},
   {CHECKSUM_CONT_ON_ERROR_S, {ARG_BOOLEAN}, {0}},
   {CHECKSUM_INCLUDE_CLASS_FILE_S, {ARG_STRING}, {0}},
   {CHECKSUM_EXCLUDE_CLASS_FILE_S, {ARG_STRING}, {0}},
-  {CHECKSUM_TIMEOUT_S, {ARG_INTEGER}, {1000}},
+  {CHECKSUM_TIMEOUT_S, {ARG_INTEGER}, {(void *) 1000}},
   {CHECKSUM_TABLE_NAME_S, {ARG_STRING}, {0}},
   {CHECKSUM_REPORT_ONLY_S, {ARG_BOOLEAN}, {0}},
   {CHECKSUM_SCHEMA_ONLY_S, {ARG_BOOLEAN}, {0}},
@@ -920,8 +880,6 @@ static UTIL_MAP ua_Utility_Map[] = {
    ua_SyncCollDB_Option, ua_SyncCollDB_Map},
   {TRANLIST, CS_ONLY, 1, UTIL_OPTION_TRANLIST, "tranlist",
    ua_Tranlist_Option, ua_Tranlist_Option_Map},
-  {PREFETCHLOGDB, CS_ONLY, 1, UTIL_OPTION_PREFETCHLOGDB, "prefetchlogdb",
-   ua_Prefetchlogdb_Option, ua_Prefetchlogdb_Option_Map},
   {GEN_TZ, SA_ONLY, 1, UTIL_OPTION_GEN_TZ, "gen_tz",
    ua_GenTz_Option, ua_GenTz_Map},
   {DUMP_TZ, SA_ONLY, 1, UTIL_OPTION_DUMP_TZ, "dump_tz",

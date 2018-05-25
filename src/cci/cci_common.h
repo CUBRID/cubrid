@@ -36,11 +36,6 @@
 #ifndef	_CCI_COMMON_H_
 #define	_CCI_COMMON_H_
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 #ident "$Id$"
 
 /************************************************************************
@@ -229,7 +224,7 @@ extern "C"
   } while (0)
 
 #if defined(WINDOWS)
-  typedef unsigned long in_addr_t;
+typedef unsigned long in_addr_t;
 #endif
 
 
@@ -238,7 +233,10 @@ extern "C"
 /************************************************************************
  * PUBLIC TYPE DEFINITIONS						*
  ************************************************************************/
-
+#ifdef __cplusplus
+extern "C"
+{
+#endif
   typedef struct
   {
     char *key;

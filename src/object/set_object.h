@@ -29,40 +29,20 @@
 
 #include "config.h"
 
+
+#include "dbtype_def.h"
 #include "error_manager.h"
 #include "object_representation.h"
 #include "object_domain.h"	/* for TP_DOMAIN */
-#include "parser.h"		/* for PT_OP_TYPE */
 #include "locator.h"		/* for LC_OIDSET */
 #include "area_alloc.h"
 
+#if !defined (SERVER_MODE)
+#include "parser.h"		/* for PT_OP_TYPE */
+#endif /* CS_MODE */
+
 #define SET_DUPLICATE_VALUE (1)
 #define IMPLICIT (1)
-
-/* Quick set argument check */
-
-#define CHECKNULL(thing) \
-  if ((thing) == NULL) { \
-    er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0); \
-    return(ER_OBJ_INVALID_ARGUMENTS); \
-    }
-
-/* this needs to go into the pr_ level */
-
-#define SET_FIX_VALUE(value) \
-  if ((DB_VALUE_TYPE(value) == DB_TYPE_STRING && \
-       DB_GET_STRING(value) == NULL) || \
-      (TP_IS_SET_TYPE (DB_VALUE_TYPE(value)) && \
-       DB_GET_SET(value) == NULL) || \
-      (DB_VALUE_TYPE(value) == DB_TYPE_OBJECT && \
-       DB_GET_OBJECT(value) == NULL) || \
-      (DB_VALUE_TYPE(value) == DB_TYPE_BLOB && \
-       DB_GET_ELO(value) == NULL) || \
-      (DB_VALUE_TYPE(value) == DB_TYPE_CLOB && \
-       DB_GET_ELO(value) == NULL) || \
-      (DB_VALUE_TYPE(value) == DB_TYPE_ELO && \
-       DB_GET_ELO(value) == NULL)) \
-    DB_MAKE_NULL(value);
 
 #define COL_BLOCK_SIZE (64)
 
@@ -77,7 +57,7 @@
 #define OFFSET(collection_index) ((int) ((collection_index)%COL_BLOCK_SIZE))
 #define INDEX(collection,index) (&(collection->array[BLOCK(index)][OFFSET(index)]))
 #define BLOCKING_LESS1 (COL_BLOCK_SIZE -1)
-#define VALUETOP(col) ((col->topblock*COL_BLOCK_SIZE)+col->topblockcount)
+#define VALUETOP(col) ((col->topblock * COL_BLOCK_SIZE) + col->topblockcount)
 #define COLBLOCKSIZE(n) (sizeof(COL_BLOCK) + (n * sizeof(DB_VALUE)))
 #define BLOCK_START(block)      ((COL_BLOCK *) \
             ((char *)block - offsetof(struct collect_block, val)))
@@ -100,13 +80,7 @@ typedef struct set_iterator
   int position;			/* current element index */
 } SET_ITERATOR;
 
-/*
- * struct setobj
- * The internal structure of a setobj data struct is private to this module.
- * all access to this structure should be encapsulated via function calls.
- */
-typedef SETOBJ COL;
-
+  /* From set_object.h */
 struct setobj
 {
 
@@ -115,12 +89,12 @@ struct setobj
 				 * collection */
   int lastinsert;		/* the last value insertion point 0 to size. */
   int topblock;			/* maximum index of an allocated block. This is the maximum non-NULL db_value pointer
-				 * index of array. array[topblock] should be non-NULL. array[topblock+1] will be a NULL 
+				 * index of array. array[topblock] should be non-NULL. array[topblock+1] will be a NULL
 				 * pointer for future expansion. */
   int arraytop;			/* maximum indexable pointer in array the valid indexes for array are 0 to arraytop
 				 * inclusive Generally this may be greater than topblock */
-  int topblockcount;		/* This is the max index of the top block Since it may be shorter than a standard sized 
-				 * block for space efficicency. */
+  int topblockcount;		/* This is the max index of the top block Since it may be shorter than a standard sized
+				 * block for space efficiency. */
   DB_VALUE **array;
 
   /* not stored on disk, attached at run time by the schema */
@@ -129,10 +103,10 @@ struct setobj
   /* external reference list */
   DB_COLLECTION *references;
 
-  /* clear if we can't guarentee sort order, always on for sequences */
+  /* clear if we can't guarantee sort order, always on for sequences */
   unsigned sorted:1;
 
-  /* set if we can't guarentee that there are no temporary OID's in here */
+  /* set if we can't guarantee that there are no temporary OID's in here */
   unsigned may_have_temporary_oids:1;
 };
 
@@ -190,21 +164,31 @@ extern bool set_is_all_null (DB_COLLECTION * set);
 #endif
 extern bool set_has_null (DB_COLLECTION * set);
 extern bool set_ismember (DB_COLLECTION * set, DB_VALUE * value);
+#if !defined (SERVER_MODE)
 extern int set_issome (DB_VALUE * value, DB_COLLECTION * set, PT_OP_TYPE op, int do_coercion);
+#endif /* !defined (SERVER_MODE) */
 extern int set_convert_oids_to_objects (DB_COLLECTION * set);
 extern DB_TYPE set_get_type (DB_COLLECTION * set);
-extern int set_compare_order (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion, int total_order);
-extern int set_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion);
-extern int set_seq_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion, int total_order);
-extern int vobj_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion, int total_order);
+extern DB_VALUE_COMPARE_RESULT set_compare_order (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion,
+						  int total_order);
+extern DB_VALUE_COMPARE_RESULT set_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion);
+extern DB_VALUE_COMPARE_RESULT set_seq_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion,
+						int total_order);
+extern DB_VALUE_COMPARE_RESULT vobj_compare (DB_COLLECTION * set1, DB_COLLECTION * set2, int do_coercion,
+					     int total_order);
 extern TP_DOMAIN_STATUS set_check_domain (DB_COLLECTION * set, TP_DOMAIN * domain);
 extern TP_DOMAIN *set_get_domain (DB_COLLECTION * set);
 
 /* Debugging functions */
-
-extern void set_fprint (FILE * fp, DB_COLLECTION * set);
-extern void set_print (DB_COLLECTION * set);
-
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  extern void set_fprint (FILE * fp, DB_COLLECTION * set);
+  extern void set_print (DB_COLLECTION * set);
+#ifdef __cplusplus
+}
+#endif
 /* shut down */
 
 extern void set_final (void);
@@ -215,7 +199,7 @@ extern int set_optimize (DB_COLLECTION * ref);
 
 /* These are lower level functions intended only for the transformer */
 
-extern int setvobj_compare (COL * set1, COL * set2, int do_coercion, int total_order);
+extern DB_VALUE_COMPARE_RESULT setvobj_compare (COL * set1, COL * set2, int do_coercion, int total_order);
 
 /* intended for use only by the object manager (obj) */
 
@@ -273,12 +257,14 @@ extern int setobj_size (COL * col);
 extern int setobj_cardinality (COL * col);
 extern bool setobj_isempty (COL * col);
 extern bool setobj_ismember (COL * col, DB_VALUE * proposed_value, int check_null);
-extern int setobj_compare (COL * set1, COL * set2, int do_coercion);
-extern int setobj_compare_order (COL * set1, COL * set2, int do_coercion, int total_order);
+extern DB_VALUE_COMPARE_RESULT setobj_compare (COL * set1, COL * set2, int do_coercion);
+extern DB_VALUE_COMPARE_RESULT setobj_compare_order (COL * set1, COL * set2, int do_coercion, int total_order);
 extern int setobj_difference (COL * set1, COL * set2, COL * result);
 extern int setobj_union (COL * set1, COL * set2, COL * result);
 extern int setobj_intersection (COL * set1, COL * set2, COL * result);
+#if !defined (SERVER_MODE)
 extern int setobj_issome (DB_VALUE * value, COL * set, PT_OP_TYPE op, int do_coercion);
+#endif /* defined (CS_MODE) */
 extern int setobj_convert_oids_to_objects (COL * col);
 extern int setobj_get_element_ptr (COL * col, int index, DB_VALUE ** result);
 extern int setobj_get_element (COL * set, int index, DB_VALUE * value);
@@ -290,7 +276,6 @@ extern int setobj_drop_seq_element (COL * col, int index);
 extern int setobj_find_seq_element (COL * col, DB_VALUE * value, int index);
 extern COL *setobj_coerce (COL * col, TP_DOMAIN * domain, bool implicit_coercion);
 extern void setobj_print (FILE * fp, COL * col);
-extern DB_TYPE setobj_type (COL * set);
 extern TP_DOMAIN *setobj_domain (COL * set);
 extern void setobj_put_domain (COL * set, TP_DOMAIN * domain);
 extern int setobj_put_value (COL * col, int index, DB_VALUE * value);

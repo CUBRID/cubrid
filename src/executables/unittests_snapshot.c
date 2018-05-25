@@ -22,9 +22,13 @@
  */
 
 #include "porting.h"
+
 #include <stdio.h>
 #include <pthread.h>
 #include <log_impl.h>
+#include <sys/time.h>
+
+#define strlen(s1) ((int) strlen(s1))
 
 #define NOPS_SNAPSHOT   1000000
 #define NOPS_COMPLPETE  1000000
@@ -90,9 +94,6 @@ static int
 logtb_initialize_mvcctable (void)
 {
   MVCCTABLE *mvcc_table = &log_Gl.mvcc_table;
-  MVCC_INFO *curr_mvcc_info = NULL;
-  MVCC_SNAPSHOT *p_mvcc_snapshot = NULL;
-  LOG_TDES *tdes = NULL;
   int error_code = NO_ERROR;
   int size, i, size2;
   MVCC_TRANS_STATUS *current_trans_status, *trans_status_history;
@@ -505,7 +506,6 @@ test_new_mvcc_complete (void *param)
   bool committed = true;
   volatile MVCCID *p_transaction_lowest_active_mvccid =
     LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-  MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
   MVCCID mvccid;
 
   for (i = 0; i < NOPS_COMPLPETE; i++)
@@ -541,7 +541,6 @@ test_mvcc_get_oldest (void *param)
 {
   int i;
   THREAD_ENTRY *thread_p = (THREAD_ENTRY *) param;
-  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   unsigned int local_count_oldest = 0;
   MVCCID prev_oldest, curr_oldest = MVCCID_NULL;
 

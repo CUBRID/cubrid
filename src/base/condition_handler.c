@@ -41,7 +41,6 @@
 #include "intl_support.h"
 
 /* format type of condition argument */
-typedef enum co_format_type CO_FORMAT_TYPE;
 enum co_format_type
 {
   FORMAT_INTEGER = 0,
@@ -53,6 +52,7 @@ enum co_format_type
   FORMAT_LONG_DOUBLE,
   FORMAT_UNKNOWN
 };
+typedef enum co_format_type CO_FORMAT_TYPE;
 
 /* condition argument value structure */
 typedef struct co_argument CO_ARGUMENT;
@@ -480,7 +480,7 @@ co_signalv (int code, const char *format, va_list args)
   co_Message_completed = 0;
 
   /* Save default message */
-  adj_ar_append (co_Current_message, format, strlen (format) + 1);
+  adj_ar_append (co_Current_message, format, (int) strlen (format) + 1);
 
   /* Initialize args for new condition. */
   for (error = 0, start = 0; !error; start = end)
@@ -511,7 +511,7 @@ co_signalv (int code, const char *format, va_list args)
 	    {
 	    case FORMAT_STRING:
 	      string = va_arg (args, char *);
-	      nchars = strlen (string) + 1;
+	      nchars = (int) strlen (string) + 1;
 
 	      /* Save offset to arg in array of string values. */
 	      adj_ar_append (co_String_values, (void *) string, nchars);

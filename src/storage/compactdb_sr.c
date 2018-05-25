@@ -32,11 +32,11 @@
 
 #include <assert.h>
 
-#include "porting.h"
+#include "thread_compat.hpp"
+#include "heap_file.h"
+#include "dbtype.h"
 #include "boot_sr.h"
-#include "memory_alloc.h"
 #include "locator_sr.h"
-#include "query_manager.h"
 #include "set_object.h"
 #include "xserver_interface.h"
 #include "server_interface.h"
@@ -45,8 +45,8 @@ static bool compact_started = false;
 static int last_tran_index = -1;
 
 static bool is_class (OID * obj_oid, OID * class_oid);
-static int process_set (DB_SET * set);
-static int process_value (DB_VALUE * value);
+static int process_set (THREAD_ENTRY * thread_p, DB_SET * set);
+static int process_value (THREAD_ENTRY * thread_p, DB_VALUE * value);
 static int process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CACHE_ATTRINFO * attr_info,
 			   OID * oid);
 static int desc_disk_to_attr_info (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdes,
@@ -54,8 +54,6 @@ static int desc_disk_to_attr_info (THREAD_ENTRY * thread_p, OID * oid, RECDES * 
 static int process_class (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, int max_space_to_process,
 			  int *instance_lock_timeout, int *space_to_process, OID * last_processed_oid,
 			  int *total_objects, int *failed_objects, int *modified_objects, int *big_objects);
-static void free_att_id (THREAD_ENTRY * thread_p);
-
 
 /*
  * is_class () - check if an object is a class
@@ -83,7 +81,7 @@ is_class (OID * obj_oid, OID * class_oid)
  *
  */
 static int
-process_value (DB_VALUE * value)
+process_value (THREAD_ENTRY * thread_p, DB_VALUE * value)
 {
   int return_value = 0;
   SCAN_CODE scan_code;
@@ -96,7 +94,7 @@ process_value (DB_VALUE * value)
 	OID ref_class_oid;
 	HEAP_SCANCACHE scan_cache;
 
-	ref_oid = DB_GET_OID (value);
+	ref_oid = db_get_oid (value);
 
 	if (OID_ISNULL (ref_oid))
 	  {
@@ -104,9 +102,9 @@ process_value (DB_VALUE * value)
 	  }
 
 	heap_scancache_quick_start (&scan_cache);
-	scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (NULL);
-	scan_code = heap_get_visible_version (NULL, ref_oid, &ref_class_oid, NULL, &scan_cache, PEEK, NULL_CHN);
-	heap_scancache_end (NULL, &scan_cache);
+	scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+	scan_code = heap_get_visible_version (thread_p, ref_oid, &ref_class_oid, NULL, &scan_cache, PEEK, NULL_CHN);
+	heap_scancache_end (thread_p, &scan_cache);
 
 	if (scan_code == S_ERROR)
 	  {
@@ -138,7 +136,7 @@ process_value (DB_VALUE * value)
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
       {
-	return_value = process_set (DB_GET_SET (value));
+	return_value = process_set (thread_p, db_get_set (value));
 	break;
       }
 
@@ -155,7 +153,7 @@ process_value (DB_VALUE * value)
  *    set(in): the set to process
  */
 static int
-process_set (DB_SET * set)
+process_set (THREAD_ENTRY * thread_p, DB_SET * set)
 {
   SET_ITERATOR *it;
   DB_VALUE *element_value;
@@ -165,7 +163,7 @@ process_set (DB_SET * set)
   it = set_iterate (set);
   while ((element_value = set_iterator_value (it)) != NULL)
     {
-      error_code = process_value (element_value);
+      error_code = process_value (thread_p, element_value);
       if (error_code > 0)
 	{
 	  return_value += error_code;
@@ -195,7 +193,6 @@ static int
 process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CACHE_ATTRINFO * attr_info, OID * oid)
 {
   int i, result = 0;
-  int updated_flag = 0;
   HEAP_ATTRVALUE *value = NULL;
   int force_count = 0, updated_n_attrs_id = 0;
   int *atts_id = NULL;
@@ -237,7 +234,7 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CA
 
   for (i = 0, value = attr_info->values; i < attr_info->num_values; i++, value++)
     {
-      error_code = process_value (&value->dbvalue);
+      error_code = process_value (thread_p, &value->dbvalue);
       if (error_code > 0)
 	{
 	  value->state = HEAP_WRITTEN_ATTRVALUE;
@@ -523,7 +520,7 @@ boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes, int s
 {
   int result = NO_ERROR;
   int i, j, start_index = -1;
-  int max_space_to_process, current_tran_index = -1;
+  int max_space_to_process;
   int lock_ret;
   HFID hfid;
 

@@ -25,6 +25,7 @@
 
 #include "config.h"
 
+#include <assert.h>
 #if !defined(WINDOWS)
 #include <sys/types.h>
 #include <sys/param.h>
@@ -57,8 +58,10 @@
 #include "system_parameter.h"
 #include "network_interface_cl.h"
 #include "unicode_support.h"
-
-#include "dbval.h"		/* this must be the last header file included!!! */
+#include "dbtype.h"
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #if !defined(INADDR_NONE)
 #define INADDR_NONE 0xffffffff
@@ -108,6 +111,7 @@ typedef struct
 } SP_ARGS;
 
 static SOCKET sock_fds[MAX_CALL_COUNT] = { INVALID_SOCKET };
+
 static int call_cnt = 0;
 static bool is_prepare_call[MAX_CALL_COUNT];
 
@@ -117,11 +121,11 @@ static int windows_socket_startup (void);
 static void windows_socket_shutdown (void);
 #endif /* WINDOWS */
 
-static unsigned int jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
+static SP_TYPE_ENUM jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
 static int jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum);
 static int jsp_get_argument_count (const SP_ARGS * sp_args);
 static int jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index,
-					      int data_type, int mode, const char *arg_comment);
+					      PT_TYPE_ENUM data_type, PT_MISC_TYPE mode, const char *arg_comment);
 static char *jsp_check_stored_procedure_name (const char *str);
 static int jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TYPE_ENUM ret_type,
 				     PT_NODE * param_list, const char *java_method, const char *comment);
@@ -603,7 +607,8 @@ jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   int err = NO_ERROR;
   PT_NODE *sp_name, *sp_owner, *sp_comment;
   const char *name_str, *owner_str, *comment_str = NULL;
-  PT_MISC_TYPE type, real_type;
+  PT_MISC_TYPE type;
+  SP_TYPE_ENUM real_type;
   MOP sp_mop, new_owner;
   DB_VALUE user_val, sp_type_val;
   int save;
@@ -617,6 +622,8 @@ jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BLOCK_DDL_STMT, 0);
       return ER_BLOCK_DDL_STMT;
     }
+
+  db_make_null (&user_val);
 
   type = PT_NODE_SP_TYPE (statement);
   sp_name = statement->info.sp.name;
@@ -675,7 +682,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto error;
     }
 
-  real_type = (PT_MISC_TYPE) DB_GET_INT (&sp_type_val);
+  real_type = (SP_TYPE_ENUM) db_get_int (&sp_type_val);
   if (real_type != jsp_map_pt_misc_to_sp_type (type))
     {
       err = ER_SP_INVALID_TYPE;
@@ -699,7 +706,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* change the comment */
   if (sp_comment != NULL)
     {
-      db_make_string (&user_val, comment_str);
+      db_make_string_by_const_str (&user_val, comment_str);
       err = obj_set (sp_mop, SP_ATTR_COMMENT, &user_val);
       if (err < 0)
 	{
@@ -724,7 +731,7 @@ error:
  * Note:
  */
 
-static unsigned int
+static SP_TYPE_ENUM
 jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum)
 {
   if (pt_enum == PT_SP_PROCEDURE)
@@ -799,8 +806,8 @@ jsp_get_argument_count (const SP_ARGS * sp_args)
  */
 
 static int
-jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index, int data_type,
-				   int mode, const char *arg_comment)
+jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index,
+				   PT_TYPE_ENUM data_type, PT_MISC_TYPE mode, const char *arg_comment)
 {
   DB_OBJECT *classobj_p, *object_p;
   DB_OTMPL *obt_p = NULL;
@@ -826,7 +833,7 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char 
       goto error;
     }
 
-  db_make_string (&value, sp_name);
+  db_make_string_by_const_str (&value, sp_name);
   err = dbt_put_internal (obt_p, SP_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -834,7 +841,7 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char 
       goto error;
     }
 
-  db_make_string (&value, arg_name);
+  db_make_string_by_const_str (&value, arg_name);
   err = dbt_put_internal (obt_p, SP_ATTR_ARG_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -856,14 +863,14 @@ jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char 
       goto error;
     }
 
-  db_make_int (&value, jsp_map_pt_misc_to_sp_mode ((PT_MISC_TYPE) mode));
+  db_make_int (&value, jsp_map_pt_misc_to_sp_mode (mode));
   err = dbt_put_internal (obt_p, SP_ATTR_MODE, &value);
   if (err != NO_ERROR)
     {
       goto error;
     }
 
-  db_make_string (&value, arg_comment);
+  db_make_string_by_const_str (&value, arg_comment);
   err = dbt_put_internal (obt_p, SP_ATTR_ARG_COMMENT, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -1073,7 +1080,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
       goto error;
     }
 
-  db_make_string (&value, java_method);
+  db_make_string_by_const_str (&value, java_method);
   err = dbt_put_internal (obt_p, SP_ATTR_TARGET, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -1089,7 +1096,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
       goto error;
     }
 
-  db_make_string (&value, comment);
+  db_make_string_by_const_str (&value, comment);
   err = dbt_put_internal (obt_p, SP_ATTR_COMMENT, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -1153,7 +1160,7 @@ drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
 {
   MOP sp_mop, arg_mop, owner;
   DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, temp;
-  PT_MISC_TYPE real_type;
+  SP_TYPE_ENUM real_type;
   DB_SET *arg_set_p;
   int save, i, arg_cnt;
   int err;
@@ -1176,7 +1183,7 @@ drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
     {
       goto error;
     }
-  owner = DB_GET_OBJECT (&owner_val);
+  owner = db_get_object (&owner_val);
 
   if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
     {
@@ -1191,11 +1198,11 @@ drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
       goto error;
     }
 
-  real_type = (PT_MISC_TYPE) DB_GET_INT (&sp_type_val);
+  real_type = (SP_TYPE_ENUM) db_get_int (&sp_type_val);
   if (real_type != jsp_map_pt_misc_to_sp_type (expected_type))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_TYPE, 2, name,
-	      real_type == PT_SP_FUNCTION ? "FUNCTION" : "PROCEDURE");
+	      real_type == SP_TYPE_FUNCTION ? "FUNCTION" : "PROCEDURE");
 
       err = er_errid ();
       goto error;
@@ -1207,7 +1214,7 @@ drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
       goto error;
     }
 
-  arg_cnt = DB_GET_INT (&arg_cnt_val);
+  arg_cnt = db_get_int (&arg_cnt_val);
 
   err = db_get (sp_mop, SP_ATTR_ARGS, &args_val);
   if (err != NO_ERROR)
@@ -1215,12 +1222,12 @@ drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
       goto error;
     }
 
-  arg_set_p = DB_GET_SET (&args_val);
+  arg_set_p = db_get_set (&args_val);
 
   for (i = 0; i < arg_cnt; i++)
     {
       set_get_element (arg_set_p, i, &temp);
-      arg_mop = DB_GET_OBJECT (&temp);
+      arg_mop = db_get_object (&temp);
       err = obj_delete (arg_mop);
       pr_clear_value (&temp);
       if (err != NO_ERROR)
@@ -1464,7 +1471,7 @@ jsp_get_value_size (DB_VALUE * value)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_STRING:
-      size = or_packed_string_length (DB_GET_STRING (value), NULL);
+      size = or_packed_string_length (db_get_string (value), NULL);
       break;
 
     case DB_TYPE_BIT:
@@ -1493,7 +1500,7 @@ jsp_get_value_size (DB_VALUE * value)
 	int ncol, i;
 	DB_VALUE v;
 
-	set = DB_GET_SET (value);
+	set = db_get_set (value);
 	ncol = set_size (set);
 	size += 4;		/* set size */
 
@@ -1558,7 +1565,7 @@ jsp_pack_int_argument (char *buffer, DB_VALUE * value)
 
   ptr = buffer;
   ptr = or_pack_int (ptr, sizeof (int));
-  v = DB_GET_INT (value);
+  v = db_get_int (value);
   ptr = or_pack_int (ptr, v);
 
   return ptr;
@@ -1579,7 +1586,7 @@ jsp_pack_bigint_argument (char *buffer, DB_VALUE * value)
   char *ptr;
 
   ptr = or_pack_int (buffer, sizeof (DB_BIGINT));
-  tmp_value = DB_GET_BIGINT (value);
+  tmp_value = db_get_bigint (value);
   OR_PUT_BIGINT (ptr, &tmp_value);
 
   return ptr + OR_BIGINT_SIZE;
@@ -1602,7 +1609,7 @@ jsp_pack_short_argument (char *buffer, DB_VALUE * value)
 
   ptr = buffer;
   ptr = or_pack_int (ptr, sizeof (int));
-  v = DB_GET_SHORT (value);
+  v = db_get_short (value);
   ptr = or_pack_short (ptr, v);
 
   return ptr;
@@ -1625,7 +1632,7 @@ jsp_pack_float_argument (char *buffer, DB_VALUE * value)
 
   ptr = buffer;
   ptr = or_pack_int (ptr, sizeof (float));
-  v = DB_GET_FLOAT (value);
+  v = db_get_float (value);
   ptr = or_pack_float (ptr, v);
 
   return ptr;
@@ -1647,7 +1654,7 @@ jsp_pack_double_argument (char *buffer, DB_VALUE * value)
   char *ptr;
 
   ptr = or_pack_int (buffer, sizeof (double));
-  v = DB_GET_DOUBLE (value);
+  v = db_get_double (value);
   OR_PUT_DOUBLE (&pack_value, &v);
   memcpy (ptr, (char *) (&pack_value), OR_DOUBLE_SIZE);
 
@@ -1696,10 +1703,10 @@ jsp_pack_string_argument (char *buffer, DB_VALUE * value)
 
 
   ptr = buffer;
-  v = DB_GET_STRING (value);
+  v = db_get_string (value);
   v_size = (v != NULL) ? strlen (v) : 0;
 
-  if (v_size > 0 && DB_GET_STRING_CODESET (value) == INTL_CODESET_UTF8
+  if (v_size > 0 && db_get_string_codeset (value) == INTL_CODESET_UTF8
       && unicode_string_need_decompose (v, v_size, &decomp_size, lang_get_generic_unicode_norm ()))
     {
       char *decomposed;
@@ -1750,7 +1757,7 @@ jsp_pack_date_argument (char *buffer, DB_VALUE * value)
   char *ptr;
 
   ptr = buffer;
-  date = DB_GET_DATE (value);
+  date = db_get_date (value);
   db_date_decode (date, &month, &day, &year);
 
   ptr = or_pack_int (ptr, sizeof (int) * 3);
@@ -1778,7 +1785,7 @@ jsp_pack_time_argument (char *buffer, DB_VALUE * value)
   char *ptr;
 
   ptr = buffer;
-  time = DB_GET_TIME (value);
+  time = db_get_time (value);
   db_time_decode (time, &hour, &min, &sec);
 
   ptr = or_pack_int (ptr, sizeof (int) * 3);
@@ -1808,7 +1815,7 @@ jsp_pack_timestamp_argument (char *buffer, DB_VALUE * value)
   char *ptr;
 
   ptr = buffer;
-  timestamp = DB_GET_TIMESTAMP (value);
+  timestamp = db_get_timestamp (value);
   (void) db_timestamp_decode_ses (timestamp, &date, &time);
   db_date_decode (&date, &mon, &day, &year);
   db_time_decode (&time, &hour, &min, &sec);
@@ -1841,7 +1848,7 @@ jsp_pack_datetime_argument (char *buffer, DB_VALUE * value)
   char *ptr;
 
   ptr = buffer;
-  datetime = DB_GET_DATETIME (value);
+  datetime = db_get_datetime (value);
   db_datetime_decode (datetime, &mon, &day, &year, &hour, &min, &sec, &msec);
 
   ptr = or_pack_int (ptr, sizeof (int) * 7);
@@ -1874,7 +1881,7 @@ jsp_pack_set_argument (char *buffer, DB_VALUE * value)
   char *ptr;
 
   ptr = buffer;
-  set = DB_GET_SET (value);
+  set = db_get_set (value);
   ncol = set_size (set);
 
   ptr = or_pack_int (ptr, sizeof (int));
@@ -1911,7 +1918,7 @@ jsp_pack_object_argument (char *buffer, DB_VALUE * value)
   MOP mop;
 
   ptr = buffer;
-  mop = DB_GET_OBJECT (value);
+  mop = db_get_object (value);
   if (mop != NULL)
     {
       oid = WS_OID (mop);
@@ -1946,7 +1953,7 @@ jsp_pack_monetary_argument (char *buffer, DB_VALUE * value)
   char *ptr;
 
   ptr = or_pack_int (buffer, sizeof (double));
-  v = DB_GET_MONETARY (value);
+  v = db_get_monetary (value);
   OR_PUT_DOUBLE (&pack_value, &v->amount);
   memcpy (ptr, (char *) (&pack_value), OR_DOUBLE_SIZE);
 
@@ -2225,7 +2232,8 @@ jsp_unpack_float_value (char *buffer, DB_VALUE * retval)
 static char *
 jsp_unpack_double_value (char *buffer, DB_VALUE * retval)
 {
-  double val, result;
+  UINT64 val;
+  double result;
 
   memcpy ((char *) (&val), buffer, OR_DOUBLE_SIZE);
   OR_GET_DOUBLE (&val, &result);
@@ -2281,7 +2289,7 @@ jsp_unpack_string_value (char *buffer, DB_VALUE * retval)
 
   size_in = strlen (val);
 
-  if (intl_check_string (val, size_in, &invalid_pos, lang_get_client_charset ()) != 0)
+  if (intl_check_string (val, size_in, &invalid_pos, lang_get_client_charset ()) != INTL_UTF8_VALID)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1, invalid_pos - val);
       return NULL;
@@ -2293,7 +2301,7 @@ jsp_unpack_string_value (char *buffer, DB_VALUE * retval)
       char *composed;
       bool is_composed = false;
 
-      composed = db_private_alloc (NULL, composed_size + 1);
+      composed = (char *) db_private_alloc (NULL, composed_size + 1);
       if (composed == NULL)
 	{
 	  return NULL;
@@ -2440,7 +2448,7 @@ jsp_unpack_datetime_value (char *buffer, DB_VALUE * retval)
     }
   else
     {
-      DB_MAKE_DATETIME (retval, &datetime);
+      db_make_datetime (retval, &datetime);
     }
 
   return ptr;
@@ -2534,7 +2542,8 @@ jsp_unpack_object_value (char *buffer, DB_VALUE * retval)
 static char *
 jsp_unpack_monetary_value (char *buffer, DB_VALUE * retval)
 {
-  double val, result;
+  UINT64 val;
+  double result;
   char *ptr;
 
   ptr = buffer;
@@ -2789,7 +2798,7 @@ redo:
 	  goto error;
 	}
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, DB_GET_STRING (&error_msg));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, db_get_string (&error_msg));
       error_code = er_errid ();
       db_value_clear (&error_msg);
     }
@@ -3020,7 +3029,7 @@ jsp_do_call_stored_procedure (DB_VALUE * returnval, DB_ARG_LIST * args, const ch
       goto error;
     }
 
-  sp_args.name = DB_GET_STRING (&method);
+  sp_args.name = db_get_string (&method);
   if (!sp_args.name)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVAILD_JAVA_METHOD, 0);
@@ -3036,7 +3045,7 @@ jsp_do_call_stored_procedure (DB_VALUE * returnval, DB_ARG_LIST * args, const ch
       goto error;
     }
 
-  param_cnt = DB_GET_INT (&param_cnt_val);
+  param_cnt = db_get_int (&param_cnt_val);
   arg_cnt = jsp_get_argument_count (&sp_args);
   if (param_cnt != arg_cnt)
     {
@@ -3052,12 +3061,12 @@ jsp_do_call_stored_procedure (DB_VALUE * returnval, DB_ARG_LIST * args, const ch
       goto error;
     }
 
-  param_set = DB_GET_SET (&param);
+  param_set = db_get_set (&param);
 
   for (i = 0; i < arg_cnt; i++)
     {
       set_get_element (param_set, i, &temp);
-      arg_mop_p = DB_GET_OBJECT (&temp);
+      arg_mop_p = db_get_object (&temp);
 
       err = db_get (arg_mop_p, SP_ATTR_MODE, &mode);
       if (err != NO_ERROR)
@@ -3066,7 +3075,7 @@ jsp_do_call_stored_procedure (DB_VALUE * returnval, DB_ARG_LIST * args, const ch
 	  goto error;
 	}
 
-      sp_args.arg_mode[i] = DB_GET_INT (&mode);
+      sp_args.arg_mode[i] = db_get_int (&mode);
 
       err = db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type);
       if (err != NO_ERROR)
@@ -3075,7 +3084,7 @@ jsp_do_call_stored_procedure (DB_VALUE * returnval, DB_ARG_LIST * args, const ch
 	  goto error;
 	}
 
-      sp_args.arg_type[i] = DB_GET_INT (&arg_type);
+      sp_args.arg_type[i] = db_get_int (&arg_type);
       pr_clear_value (&temp);
 
       if (sp_args.arg_type[i] == DB_TYPE_RESULTSET && !is_prepare_call[call_cnt])
@@ -3092,7 +3101,7 @@ jsp_do_call_stored_procedure (DB_VALUE * returnval, DB_ARG_LIST * args, const ch
       goto error;
     }
 
-  sp_args.return_type = DB_GET_INT (&return_type);
+  sp_args.return_type = db_get_int (&return_type);
 
   if (sp_args.return_type == DB_TYPE_RESULTSET && !is_prepare_call[call_cnt])
     {

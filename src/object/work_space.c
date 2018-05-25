@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 
 #include "memory_alloc.h"
 #include "area_alloc.h"
@@ -52,9 +53,7 @@
 #include "object_template.h"
 #include "server_interface.h"
 #include "view_transform.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 extern unsigned int db_on_server;
 
@@ -180,7 +179,6 @@ static void ws_print_oid (OID * oid);
 #if defined (CUBRID_DEBUG)
 static int ws_describe_mop (MOP mop, void *args);
 #endif
-static void ws_flush_properties (MOP op);
 static int ws_check_hash_link (int slot);
 static void ws_insert_mop_on_hash_link (MOP mop, int slot);
 static void ws_insert_mop_on_hash_link_with_position (MOP mop, int slot, MOP prev);
@@ -963,16 +961,16 @@ ws_rehash_vmop (MOP mop, MOBJ classobj, DB_VALUE * newkey)
 	{
 	  if ((att->flags & SM_ATTFLAG_VID) && (classobj_get_prop (att->properties, SM_PROPERTY_VID_KEY, &val)))
 	    {
-	      att_seq_val = DB_GET_INTEGER (&val);
+	      att_seq_val = db_get_int (&val);
 	      if (att_seq_val == key_index)
 		{
 		  /* Sets won't work as key components */
 		  mem = inst + att->offset;
 		  db_value_domain_init (&val, att->type->id, att->domain->precision, att->domain->scale);
 		  PRIM_GETMEM (att->type, att->domain, mem, &val);
-		  if ((DB_VALUE_TYPE (value) == DB_TYPE_STRING) && (DB_GET_STRING (value) == NULL))
+		  if ((DB_VALUE_TYPE (value) == DB_TYPE_STRING) && (db_get_string (value) == NULL))
 		    {
-		      DB_MAKE_NULL (value);
+		      db_make_null (value);
 		    }
 
 		  if (no_keys > 1)
@@ -2022,7 +2020,6 @@ ws_map_class_dirty (MOP class_op, MAPFUNC function, void *args)
   MOP op, op2, next, prev;
   DB_OBJLIST *l;
   int status = WS_MAP_CONTINUE;
-  int num_ws_continue_on_error = 0;
 
   if (class_op == sm_Root_class_mop)
     {
@@ -2602,7 +2599,7 @@ ws_cache (MOBJ obj, MOP mop, MOP class_mop)
 
       if (prm_get_bool_value (PRM_ID_CLIENT_CLASS_CACHE_DEBUG))
 	{
-	  er_print_callstack (ARG_FILE_LINE, "Cache class %s mop %d|%d|%d.\n", sm_ch_name (mop->object),
+	  er_print_callstack (ARG_FILE_LINE, "Cache class %s mop %d|%d|%d.\n", sm_ch_name ((MOBJ) mop->object),
 			      ws_oid (mop)->volid, ws_oid (mop)->pageid, ws_oid (mop)->slotid);
 	}
     }
@@ -2724,7 +2721,7 @@ ws_decache (MOP mop)
     {
       if (prm_get_bool_value (PRM_ID_CLIENT_CLASS_CACHE_DEBUG))
 	{
-	  er_print_callstack (ARG_FILE_LINE, "Decache class %s " "mop %d|%d|%d.\n", sm_ch_name (mop->object),
+	  er_print_callstack (ARG_FILE_LINE, "Decache class %s " "mop %d|%d|%d.\n", sm_ch_name ((MOBJ) mop->object),
 			      ws_oid (mop)->volid, ws_oid (mop)->pageid, ws_oid (mop)->slotid);
 	}
       /* free class object, not sure if this should be done here */
@@ -2950,8 +2947,8 @@ ws_set_lock (MOP mop, LOCK lock)
       && mop != sm_Root_class_mop && mop->object != NULL && lock != mop->lock)
     {
       er_print_callstack (ARG_FILE_LINE, "Change class %s mop %d|%d|%d " "lock from %d to %d.\n",
-			  sm_ch_name (mop->object), ws_oid (mop)->volid, ws_oid (mop)->pageid, ws_oid (mop)->slotid,
-			  mop->lock, lock);
+			  sm_ch_name ((MOBJ) mop->object), ws_oid (mop)->volid, ws_oid (mop)->pageid,
+			  ws_oid (mop)->slotid, mop->lock, lock);
     }
   if (mop != NULL)
     {
@@ -3256,7 +3253,7 @@ ws_clear_hints (MOP mop, bool leave_pinned)
   if (prm_get_bool_value (PRM_ID_CLIENT_CLASS_CACHE_DEBUG) && mop->class_mop == sm_Root_class_mop
       && mop != sm_Root_class_mop && mop->object != NULL)
     {
-      er_print_callstack (ARG_FILE_LINE, "Clear class %s mop %d|%d|%d.\n", sm_ch_name (mop->object),
+      er_print_callstack (ARG_FILE_LINE, "Clear class %s mop %d|%d|%d.\n", sm_ch_name ((MOBJ) mop->object),
 			  ws_oid (mop)->volid, ws_oid (mop)->pageid, ws_oid (mop)->slotid);
     }
 

@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include <assert.h>
 
 #include "system_parameter.h"
 #include "storage_common.h"
@@ -199,7 +200,7 @@ db_add_attribute_internal (MOP class_, const char *name, const char *domain, DB_
     }
   else
     {
-      error = smt_add_attribute_any (def, name, domain, (DB_DOMAIN *) 0, name_space, false, NULL);
+      error = smt_add_attribute_any (def, name, domain, (DB_DOMAIN *) 0, name_space, false, NULL, NULL);
       if (error)
 	{
 	  smt_quit (def);
@@ -210,11 +211,11 @@ db_add_attribute_internal (MOP class_, const char *name, const char *domain, DB_
 	    {
 	      if (name_space == ID_CLASS || name_space == ID_CLASS_ATTRIBUTE)
 		{
-		  error = smt_set_attribute_default (def, name, 1, default_value, DB_DEFAULT_NONE);
+		  error = smt_set_attribute_default (def, name, 1, default_value, NULL);
 		}
 	      else
 		{
-		  error = smt_set_attribute_default (def, name, 0, default_value, DB_DEFAULT_NONE);
+		  error = smt_set_attribute_default (def, name, 0, default_value, NULL);
 		}
 	    }
 	  if (error)
@@ -598,7 +599,7 @@ db_change_default (MOP class_, const char *name, DB_VALUE * value)
     }
   else
     {
-      error = smt_set_attribute_default (def, name, false, value, DB_DEFAULT_NONE);
+      error = smt_set_attribute_default (def, name, false, value, NULL);
       if (error)
 	{
 	  smt_quit (def);

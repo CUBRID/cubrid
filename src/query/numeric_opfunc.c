@@ -34,20 +34,22 @@
 #include <string.h>
 
 #include "mprec.h"
-#include "query_opfunc.h"
 #include "numeric_opfunc.h"
-#include "db.h"
 #include "db_date.h"
 #include "memory_alloc.h"
 #include "system_parameter.h"
 #include "byte_order.h"
+#include "object_primitive.h"
 
-#if defined(SERVER_MODE)
-#include "thread.h"
+#if defined (__cplusplus)
+#include <cmath>
 #endif
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 /* the multipler of long NUMERIC, internal used */
 #define DB_LONG_NUMERIC_MULTIPLIER 2
@@ -79,18 +81,6 @@ static unsigned char powers_of_10[TWICE_NUM_MAX_PREC + 1][DB_NUMERIC_BUF_SIZE];
 static bool initialized_10 = false;
 #endif
 
-static double numeric_Upper_limit[10] = {
-  (double) DB_INT32_MAX,
-  (double) DB_INT32_MAX / 1e1,
-  (double) DB_INT32_MAX / 1e2,
-  (double) DB_INT32_MAX / 1e3,
-  (double) DB_INT32_MAX / 1e4,
-  (double) DB_INT32_MAX / 1e5,
-  (double) DB_INT32_MAX / 1e6,
-  (double) DB_INT32_MAX / 1e7,
-  (double) DB_INT32_MAX / 1e8,
-  (double) DB_INT32_MAX / 1e9
-};
 static double numeric_Pow_of_10[10] = {
   1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9
 };
@@ -423,7 +413,7 @@ numeric_init_pow_of_2 (void)
 static DEC_STRING *
 numeric_get_pow_of_2 (int exp)
 {
-  assert (exp < DB_NUMERIC_BUF_SIZE * 16 - 3);	/* exp < 253 */
+  assert (exp < (int) (DB_NUMERIC_BUF_SIZE * 16 - 3));	/* exp < 253 */
 
 #if !defined(SERVER_MODE)
   /* If this is the first time to call this routine, initialize */
@@ -1380,8 +1370,8 @@ numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALU
   if (scale1 == scale2)
     {
       cprec = MAX (prec1, prec2);
-      DB_MAKE_NUMERIC (dbv1_common, db_locate_numeric (dbv1), cprec, scale1);
-      DB_MAKE_NUMERIC (dbv2_common, db_locate_numeric (dbv2), cprec, scale2);
+      db_make_numeric (dbv1_common, db_locate_numeric (dbv1), cprec, scale1);
+      db_make_numeric (dbv2_common, db_locate_numeric (dbv2), cprec, scale2);
     }
 
   /* Otherwise scale and reset the numbers */
@@ -1397,8 +1387,8 @@ numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALU
 	}
       numeric_scale_dec (db_locate_numeric (dbv1), scale_diff, temp);
       cprec = MAX (prec1, prec2);
-      DB_MAKE_NUMERIC (dbv1_common, temp, cprec, scale2);
-      DB_MAKE_NUMERIC (dbv2_common, db_locate_numeric (dbv2), cprec, scale2);
+      db_make_numeric (dbv1_common, temp, cprec, scale2);
+      db_make_numeric (dbv2_common, db_locate_numeric (dbv2), cprec, scale2);
     }
   else
     {
@@ -1412,8 +1402,8 @@ numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALU
 	}
       numeric_scale_dec (db_locate_numeric (dbv2), scale_diff, temp);
       cprec = MAX (prec1, prec2);
-      DB_MAKE_NUMERIC (dbv2_common, temp, cprec, scale1);
-      DB_MAKE_NUMERIC (dbv1_common, db_locate_numeric (dbv1), cprec, scale1);
+      db_make_numeric (dbv2_common, temp, cprec, scale1);
+      db_make_numeric (dbv1_common, db_locate_numeric (dbv1), cprec, scale1);
     }
 
   return NO_ERROR;
@@ -1453,14 +1443,14 @@ numeric_prec_scale_when_overflow (const DB_VALUE * dbv1, const DB_VALUE * dbv2, 
     {
       return ret;
     }
-  DB_MAKE_NUMERIC (dbv1_common, temp, prec, scale);
+  db_make_numeric (dbv1_common, temp, prec, scale);
 
   ret = numeric_coerce_num_to_num (num2, prec2, scale2, prec, scale, temp);
   if (ret != NO_ERROR)
     {
       return ret;
     }
-  DB_MAKE_NUMERIC (dbv2_common, temp, prec, scale);
+  db_make_numeric (dbv2_common, temp, prec, scale);
 
   return ret;
 }
@@ -1615,12 +1605,12 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
     }
   if (dbv1 == NULL || DB_VALUE_TYPE (dbv1) != DB_TYPE_NUMERIC)
     {
-      DB_MAKE_NULL (answer);
+      db_make_null (answer);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
   if (dbv2 == NULL || DB_VALUE_TYPE (dbv2) != DB_TYPE_NUMERIC)
     {
-      DB_MAKE_NULL (answer);
+      db_make_null (answer);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
@@ -1667,7 +1657,7 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 	  goto exit_on_error;
 	}
     }
-  DB_MAKE_NUMERIC (answer, temp, prec, DB_VALUE_SCALE (&dbv1_common));
+  db_make_numeric (answer, temp, prec, DB_VALUE_SCALE (&dbv1_common));
 
   return ret;
 
@@ -1711,12 +1701,12 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
     }
   if (dbv1 == NULL || DB_VALUE_TYPE (dbv1) != DB_TYPE_NUMERIC)
     {
-      DB_MAKE_NULL (answer);
+      db_make_null (answer);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
   if (dbv2 == NULL || DB_VALUE_TYPE (dbv2) != DB_TYPE_NUMERIC)
     {
-      DB_MAKE_NULL (answer);
+      db_make_null (answer);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
@@ -1763,7 +1753,7 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 	  goto exit_on_error;
 	}
     }
-  DB_MAKE_NUMERIC (answer, temp, prec, DB_VALUE_SCALE (&dbv1_common));
+  db_make_numeric (answer, temp, prec, DB_VALUE_SCALE (&dbv1_common));
 
   return ret;
 
@@ -1809,12 +1799,12 @@ numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
     }
   if (dbv1 == NULL || DB_VALUE_TYPE (dbv1) != DB_TYPE_NUMERIC)
     {
-      DB_MAKE_NULL (answer);
+      db_make_null (answer);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
   if (dbv2 == NULL || DB_VALUE_TYPE (dbv2) != DB_TYPE_NUMERIC)
     {
-      DB_MAKE_NULL (answer);
+      db_make_null (answer);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
@@ -1841,7 +1831,7 @@ numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
     {
       numeric_negate (result);
     }
-  DB_MAKE_NUMERIC (answer, result, prec, scale);
+  db_make_numeric (answer, result, prec, scale);
 
   return ret;
 
@@ -1893,12 +1883,12 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
     }
   if (dbv1 == NULL || DB_VALUE_TYPE (dbv1) != DB_TYPE_NUMERIC)
     {
-      DB_MAKE_NULL (answer);
+      db_make_null (answer);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
   if (dbv2 == NULL || DB_VALUE_TYPE (dbv2) != DB_TYPE_NUMERIC)
     {
-      DB_MAKE_NULL (answer);
+      db_make_null (answer);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
@@ -2023,7 +2013,7 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 	}
     }
 
-  DB_MAKE_NUMERIC (answer, temp_quo, prec, scale);
+  db_make_numeric (answer, temp_quo, prec, scale);
 
   return ret;
 
@@ -2134,12 +2124,12 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
     }
   if (dbv1 == NULL || DB_VALUE_TYPE (dbv1) != DB_TYPE_NUMERIC)
     {
-      DB_MAKE_NULL (answer);
+      db_make_null (answer);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
   if (dbv2 == NULL || DB_VALUE_TYPE (dbv2) != DB_TYPE_NUMERIC)
     {
-      DB_MAKE_NULL (answer);
+      db_make_null (answer);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
@@ -2159,7 +2149,7 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
     {
       /* Simple case. Just compare two numbers. */
       cmp_rez = numeric_compare (db_locate_numeric (dbv1), db_locate_numeric (dbv2));
-      DB_MAKE_INTEGER (answer, cmp_rez);
+      db_make_int (answer, cmp_rez);
       return NO_ERROR;
     }
   else
@@ -2171,7 +2161,7 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
       if (ret == NO_ERROR)
 	{
 	  cmp_rez = numeric_compare (db_locate_numeric (&dbv1_common), db_locate_numeric (&dbv2_common));
-	  DB_MAKE_INTEGER (answer, cmp_rez);
+	  db_make_int (answer, cmp_rez);
 	  return NO_ERROR;
 	}
       else if (ret == ER_IT_DATA_OVERFLOW)
@@ -2211,7 +2201,7 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
 	  if (cmp_rez != 0)
 	    {
 	      /* if the integral parts differ, we don't need to compare fractional parts */
-	      DB_MAKE_INT (answer, cmp_rez);
+	      db_make_int (answer, cmp_rez);
 	      return NO_ERROR;
 	    }
 
@@ -2221,11 +2211,11 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
 
 	  /* compare fractional parts and return the result */
 	  cmp_rez = numeric_compare (num1_frac, num2_frac);
-	  DB_MAKE_INT (answer, cmp_rez);
+	  db_make_int (answer, cmp_rez);
 	}
       else
 	{
-	  DB_MAKE_NULL (answer);
+	  db_make_null (answer);
 	  return ER_FAILED;
 	}
     }
@@ -2567,8 +2557,6 @@ numeric_coerce_num_to_double (DB_C_NUMERIC num, int scale, double *adouble)
 static int
 numeric_fast_convert (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale)
 {
-
-
   double scaled_double;
   int scaled_int, estimated_precision;
   scaled_double = (adouble * numeric_Pow_of_10[dst_scale]) + (adouble < 0.0 ? -0.5 : 0.5);
@@ -2834,7 +2822,7 @@ get_fp_value_type (double d)
       return FP_VALUE_TYPE_NUMBER;
     }
 #else
-  switch (fpclassify (d))
+  switch (std::fpclassify (d))
     {
     case FP_INFINITE:
       return FP_VALUE_TYPE_INFINITE;
@@ -3209,7 +3197,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
     {
       numeric_negate (num);
     }
-  DB_MAKE_NUMERIC (result, num, prec, scale);
+  db_make_numeric (result, num, prec, scale);
 
   return ret;
 
@@ -3398,14 +3386,14 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
     {
     case DB_TYPE_DOUBLE:
       {
-	double adouble = DB_GET_DOUBLE (src);
+	double adouble = db_get_double (src);
 	ret = numeric_internal_double_to_num (adouble, desired_scale, num, &precision, &scale);
 	break;
       }
 
     case DB_TYPE_FLOAT:
       {
-	float adouble = (float) DB_GET_FLOAT (src);
+	float adouble = (float) db_get_float (src);
 	ret = numeric_internal_float_to_num (adouble, desired_scale, num, &precision, &scale);
 	break;
       }
@@ -3419,7 +3407,7 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
 
     case DB_TYPE_INTEGER:
       {
-	int anint = DB_GET_INT (src);
+	int anint = db_get_int (src);
 
 	numeric_coerce_int_to_num (anint, num);
 	precision = get_significant_digit (anint);
@@ -3429,7 +3417,7 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
 
     case DB_TYPE_SMALLINT:
       {
-	int anint = (int) DB_GET_SMALLINT (src);
+	int anint = (int) db_get_short (src);
 
 	numeric_coerce_int_to_num (anint, num);
 	precision = get_significant_digit (anint);
@@ -3439,7 +3427,7 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
 
     case DB_TYPE_BIGINT:
       {
-	DB_BIGINT bigint = DB_GET_BIGINT (src);
+	DB_BIGINT bigint = db_get_bigint (src);
 
 	numeric_coerce_bigint_to_num (bigint, num);
 	precision = get_significant_digit (bigint);
@@ -3458,7 +3446,7 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
 
     case DB_TYPE_ENUMERATION:
       {
-	int anint = DB_GET_ENUM_SHORT (src);
+	int anint = db_get_enum_short (src);
 	numeric_coerce_int_to_num (anint, num);
 	precision = 5;
 	scale = 0;
@@ -3474,7 +3462,7 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
   if (ret == NO_ERROR)
     {
       /* Make the intermediate value */
-      DB_MAKE_NUMERIC (dest, num, precision, scale);
+      db_make_numeric (dest, num, precision, scale);
       ret =
 	numeric_coerce_num_to_num (db_locate_numeric (dest), DB_VALUE_PRECISION (dest), DB_VALUE_SCALE (dest),
 				   desired_precision, desired_scale, num);
@@ -3483,7 +3471,7 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
 	  goto exit_on_error;
 	}
 
-      DB_MAKE_NUMERIC (dest, num, desired_precision, desired_scale);
+      db_make_numeric (dest, num, desired_precision, desired_scale);
     }
 
   if (ret == ER_IT_DATA_OVERFLOW)
@@ -3532,7 +3520,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	    ret = ER_IT_DATA_OVERFLOW;
 	    goto exit_on_error;
 	  }
-	DB_MAKE_DOUBLE (dest, adouble);
+	db_make_double (dest, adouble);
 	break;
       }
 
@@ -3545,7 +3533,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	    ret = ER_IT_DATA_OVERFLOW;
 	    goto exit_on_error;
 	  }
-	DB_MAKE_FLOAT (dest, (float) adouble);
+	db_make_float (dest, (float) adouble);
 	break;
       }
 
@@ -3553,7 +3541,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
       {
 	double adouble;
 	numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_SCALE (src), &adouble);
-	DB_MAKE_MONETARY_AMOUNT (dest, adouble);
+	db_make_monetary (dest, DB_CURRENCY_DEFAULT, adouble);
 	break;
       }
 
@@ -3566,7 +3554,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	    ret = ER_IT_DATA_OVERFLOW;
 	    goto exit_on_error;
 	  }
-	DB_MAKE_INTEGER (dest, (int) ROUND (adouble));
+	db_make_int (dest, (int) ROUND (adouble));
 	break;
       }
 
@@ -3580,7 +3568,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	    goto exit_on_error;
 	  }
 
-	DB_MAKE_BIGINT (dest, bint);
+	db_make_bigint (dest, bint);
 	break;
       }
 
@@ -3593,7 +3581,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	    ret = ER_IT_DATA_OVERFLOW;
 	    goto exit_on_error;
 	  }
-	DB_MAKE_SMALLINT (dest, (DB_C_SHORT) ROUND (adouble));
+	db_make_short (dest, (DB_C_SHORT) ROUND (adouble));
 	break;
       }
 
@@ -3626,19 +3614,19 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	type = DB_VALUE_DOMAIN_TYPE (dest);
 	if (type == DB_TYPE_CHAR)
 	  {
-	    DB_MAKE_CHAR (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	    db_make_char (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	  }
 	else if (type == DB_TYPE_VARCHAR)
 	  {
-	    DB_MAKE_VARCHAR (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	    db_make_varchar (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	  }
 	else if (type == DB_TYPE_NCHAR)
 	  {
-	    DB_MAKE_NCHAR (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	    db_make_nchar (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	  }
 	else if (type == DB_TYPE_VARNCHAR)
 	  {
-	    DB_MAKE_VARNCHAR (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	    db_make_varnchar (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	  }
 	dest->need_clear = true;
 	break;
@@ -3653,7 +3641,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_SCALE (src), &adouble);
 	v_time = (int) (adouble + 0.5) % SECONDS_IN_A_DAY;
 	db_time_decode (&v_time, &hour, &minute, &second);
-	DB_MAKE_TIME (dest, hour, minute, second);
+	db_make_time (dest, hour, minute, second);
 	break;
       }
 
@@ -3666,7 +3654,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_SCALE (src), &adouble);
 	v_date = (DB_DATE) (adouble);
 	db_date_decode (&v_date, &month, &day, &year);
-	DB_MAKE_DATE (dest, month, day, year);
+	db_make_date (dest, month, day, year);
 	break;
       }
 
@@ -3677,7 +3665,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 
 	numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_SCALE (src), &adouble);
 	v_timestamp = (DB_TIMESTAMP) (adouble);
-	DB_MAKE_TIMESTAMP (dest, v_timestamp);
+	db_make_timestamp (dest, v_timestamp);
 	break;
       }
 
@@ -3739,7 +3727,7 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
 	  {
 	    return ER_FAILED;
 	  }
-	DB_MAKE_DOUBLE (dest, adouble);
+	db_make_double (dest, adouble);
 	break;
       }
 
@@ -3751,7 +3739,7 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
 	  {
 	    return ER_FAILED;
 	  }
-	DB_MAKE_FLOAT (dest, (float) adouble);
+	db_make_float (dest, (float) adouble);
 	break;
       }
 
@@ -3763,7 +3751,7 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
 	  {
 	    return ER_FAILED;
 	  }
-	DB_MAKE_MONETARY_AMOUNT (dest, adouble);
+	db_make_monetary (dest, DB_CURRENCY_DEFAULT, adouble);
 	break;
       }
 
@@ -3779,7 +3767,7 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
 	  {
 	    return ER_FAILED;
 	  }
-	DB_MAKE_INTEGER (dest, (int) (adouble));
+	db_make_int (dest, (int) (adouble));
 	break;
       }
 
@@ -3797,7 +3785,7 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
 	  {
 	    return ER_FAILED;
 	  }
-	DB_MAKE_BIGINT (dest, bint);
+	db_make_bigint (dest, bint);
 	break;
       }
 
@@ -3813,7 +3801,7 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
 	  {
 	    return ER_FAILED;
 	  }
-	DB_MAKE_SMALLINT (dest, (DB_C_SHORT) ROUND (adouble));
+	db_make_short (dest, (DB_C_SHORT) ROUND (adouble));
 	break;
       }
 
@@ -3841,7 +3829,7 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
  * Note: returns the null-terminated string form of val
  */
 char *
-numeric_db_value_print (DB_VALUE * val, char *buf)
+numeric_db_value_print (const DB_VALUE * val, char *buf)
 {
   char temp[80];
   int nbuf;
@@ -3859,7 +3847,7 @@ numeric_db_value_print (DB_VALUE * val, char *buf)
     }
 
   /* Retrieve raw decimal string */
-  numeric_coerce_num_to_dec_str (DB_PULL_NUMERIC (val), temp);
+  numeric_coerce_num_to_dec_str (db_get_numeric (val), temp);
 
   /* Remove the extra padded zeroes and add the decimal point */
   nbuf = 0;
@@ -3919,7 +3907,7 @@ numeric_db_value_is_zero (const DB_VALUE * arg)
     }
   else
     {
-      return (numeric_is_zero ((DB_C_NUMERIC) DB_PULL_NUMERIC (arg)));
+      return (numeric_is_zero (db_get_numeric (arg)));
     }
 }
 
@@ -3940,7 +3928,7 @@ numeric_db_value_increase (DB_VALUE * arg)
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  numeric_increase ((DB_C_NUMERIC) DB_PULL_NUMERIC (arg));
+  numeric_increase (db_get_numeric (arg));
 
   return NO_ERROR;
 }

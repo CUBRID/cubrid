@@ -41,6 +41,11 @@
 #include "set_object.h"
 #include "cci_applier.h"
 #include "schema_manager.h"
+#include "dbtype.h"
+
+#include "db_value_printer.hpp"
+#include "mem_block.hpp"
+#include "string_buffer.hpp"
 
 #define SL_LOG_FILE_MAX_SIZE   \
   (prm_get_integer_value (PRM_ID_HA_SQL_LOG_MAX_SIZE_IN_MB) * 1024 * 1024)
@@ -62,31 +67,50 @@ static FILE *catalog_fp;
 static char sql_log_base_path[PATH_MAX];
 static char sql_catalog_path[PATH_MAX];
 
+static int sl_write_sql (string_buffer & query, string_buffer * select);
+static void sl_print_insert_att_names (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments);
+static void sl_print_insert_att_values (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments);
+static int sl_print_pk (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key);
+static void sl_print_midxkey (string_buffer & strbuf, SM_ATTRIBUTE ** attributes, const DB_MIDXKEY * midxkey);
+static void sl_print_update_att_set (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments);
+static void sl_print_att_value (string_buffer & strbuf, const char *att_name, OBJ_TEMPASSIGN ** assignments,
+				int num_assignments);
+static DB_VALUE *sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments);
+
 static FILE *sl_open_next_file (FILE * old_fp);
 static FILE *sl_log_open (void);
-static int sl_write_sql (PARSER_VARCHAR * query, PARSER_VARCHAR * select);
 static int sl_read_catalog (void);
 static int sl_write_catalog (void);
-static void trim_single_quote (PARSER_VARCHAR * name);
 static int create_dir (const char *new_dir);
 
-static PARSER_VARCHAR *sl_print_midxkey (const PARSER_CONTEXT * parser, SM_ATTRIBUTE ** attributes,
-					 const DB_MIDXKEY * midxkey);
-static PARSER_VARCHAR *sl_print_pk (PARSER_CONTEXT * parser, SM_CLASS * sm_class, DB_VALUE * key);
-static PARSER_VARCHAR *sl_print_insert_att_values (PARSER_CONTEXT * parser, OBJ_TEMPASSIGN ** assignments,
-						   int num_assignments);
-static PARSER_VARCHAR *sl_print_insert_att_names (PARSER_CONTEXT * parser, OBJ_TEMPASSIGN ** assignments,
-						  int num_assignments);
-static PARSER_VARCHAR *sl_print_update_att_set (PARSER_CONTEXT * parser, OBJ_TEMPASSIGN ** assignments,
-						int num_assignments);
-static DB_VALUE *sl_find_att_value (PARSER_CONTEXT * parser, const char *att_name, OBJ_TEMPASSIGN ** assignments,
-				    int num_assignments);
-static PARSER_VARCHAR *sl_print_att_value (PARSER_CONTEXT * parser, const char *att_name, OBJ_TEMPASSIGN ** assignments,
-					   int num_assignments);
-static PARSER_VARCHAR *sl_print_select (const PARSER_CONTEXT * parser, const char *class_name, PARSER_VARCHAR * key);
+static char *
+trim_single_quote (char *str, size_t len)
+{
+  if (len < 2 || str[0] != '\'' || str[len - 1] != '\'')
+    {
+      return str;
+    }
+  str[len - 1] = '\0';
+  return str + 1;
+}
 
 static int
-sl_write_catalog ()
+sl_print_select (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key)
+{
+  strbuf ("SELECT * FROM [%s] WHERE ", sm_ch_name ((MOBJ) sm_class));
+
+  if (sl_print_pk (strbuf, sm_class, key) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  strbuf (";");
+
+  return NO_ERROR;
+}
+
+static int
+sl_write_catalog (void)
 {
   if (catalog_fp == NULL)
     {
@@ -101,6 +125,7 @@ sl_write_catalog ()
       er_log_debug (ARG_FILE_LINE, "Cannot open SQL catalog file: %s", strerror (errno));
       return ER_FAILED;
     }
+
   fseek (catalog_fp, 0, SEEK_SET);
   fprintf (catalog_fp, CATALOG_FORMAT, sl_Info.curr_file_id, sl_Info.last_inserted_sql_id);
 
@@ -109,8 +134,9 @@ sl_write_catalog ()
 
   return NO_ERROR;
 }
+
 static int
-sl_read_catalog ()
+sl_read_catalog (void)
 {
   FILE *catalog_fp;
   char info[LINE_MAX];
@@ -173,392 +199,285 @@ sl_init (const char *db_name, const char *repl_log_path)
   return NO_ERROR;
 }
 
-static PARSER_VARCHAR *
-sl_print_pk (PARSER_CONTEXT * parser, SM_CLASS * sm_class, DB_VALUE * key)
+static int
+sl_print_pk (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key)
 {
-  PARSER_VARCHAR *buffer = NULL;
-  PARSER_VARCHAR *value = NULL;
   DB_MIDXKEY *midxkey;
   SM_ATTRIBUTE *pk_att;
-  SM_CLASS_CONSTRAINT *pk_cons;
+  SM_CLASS_CONSTRAINT *pk_cons = classobj_find_class_primary_key (sm_class);
 
-  pk_cons = classobj_find_class_primary_key (sm_class);
   if (pk_cons == NULL || pk_cons->attributes == NULL || pk_cons->attributes[0] == NULL)
     {
-      return NULL;
+      return ER_FAILED;
     }
 
   if (DB_VALUE_TYPE (key) == DB_TYPE_MIDXKEY)
     {
       midxkey = db_get_midxkey (key);
-      buffer = sl_print_midxkey (parser, pk_cons->attributes, midxkey);
+      sl_print_midxkey (strbuf, pk_cons->attributes, midxkey);
     }
   else
     {
       pk_att = pk_cons->attributes[0];
-
-      value = describe_value (parser, NULL, key);
-      buffer = pt_append_nulstring (parser, buffer, "\"");
-      buffer = pt_append_nulstring (parser, buffer, pk_att->header.name);
-      buffer = pt_append_nulstring (parser, buffer, "\"");
-      buffer = pt_append_nulstring (parser, buffer, "=");
-      buffer = pt_append_varchar (parser, buffer, value);
+      strbuf ("\"%s\"=", pk_att->header.name);
+      db_value_printer printer (strbuf);
+      printer.describe_value (key);
     }
-  return buffer;
+
+  return NO_ERROR;
 }
 
-static PARSER_VARCHAR *
-sl_print_insert_att_names (PARSER_CONTEXT * parser, OBJ_TEMPASSIGN ** assignments, int num_assignments)
+static void
+sl_print_insert_att_names (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments)
 {
-  PARSER_VARCHAR *buffer = NULL;
-  int i;
-
-  for (i = 0; i < num_assignments; i++)
+  if (num_assignments > 0)
     {
-      buffer = pt_append_nulstring (parser, buffer, "\"");
-      buffer = pt_append_nulstring (parser, buffer, assignments[i]->att->header.name);
-      buffer = pt_append_nulstring (parser, buffer, "\"");
-      if (i != num_assignments - 1)
-	{
-	  buffer = pt_append_nulstring (parser, buffer, ", ");
-	}
+      strbuf ("\"%s\"", assignments[0]->att->header.name);
     }
-  return buffer;
-}
-
-
-static PARSER_VARCHAR *
-sl_print_insert_att_values (PARSER_CONTEXT * parser, OBJ_TEMPASSIGN ** assignments, int num_assignments)
-{
-  PARSER_VARCHAR *buffer = NULL;
-  PARSER_VARCHAR *value = NULL;
-  int i;
-
-  for (i = 0; i < num_assignments; i++)
+  for (int i = 1; i < num_assignments; i++)
     {
-      value = describe_value (parser, NULL, assignments[i]->variable);
-      buffer = pt_append_varchar (parser, buffer, value);
-
-      if (i != num_assignments - 1)
-	{
-	  buffer = pt_append_nulstring (parser, buffer, ",");
-	}
+      strbuf (", \"%s\"", assignments[i]->att->header.name);
     }
-  return buffer;
 }
 
-static PARSER_VARCHAR *
-sl_print_select (const PARSER_CONTEXT * parser, const char *class_name, PARSER_VARCHAR * key)
+static void
+sl_print_insert_att_values (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments)
 {
-  PARSER_VARCHAR *buffer = NULL;
-  buffer = pt_append_nulstring (parser, buffer, "SELECT * FROM [");
-  buffer = pt_append_nulstring (parser, buffer, class_name);
-  buffer = pt_append_nulstring (parser, buffer, "] WHERE ");
-  buffer = pt_append_varchar (parser, buffer, key);
-  buffer = pt_append_nulstring (parser, buffer, ";");
+  db_value_printer printer (strbuf);
 
-  return buffer;
+  if (num_assignments > 0)
+    {
+      printer.describe_value (assignments[0]->variable);
+    }
+
+  for (int i = 1; i < num_assignments; i++)
+    {
+      strbuf += ',';
+      printer.describe_value (assignments[i]->variable);
+    }
 }
 
 /*
- *  * sl_print_sql_midxkey -
- *   *      print midxkey in the following format.
- *    *      key1=value1 AND key2=value2 AND ...
- *     */
-static PARSER_VARCHAR *
-sl_print_midxkey (const PARSER_CONTEXT * parser, SM_ATTRIBUTE ** attributes, const DB_MIDXKEY * midxkey)
+ * sl_print_sql_midxkey - print midxkey in the following format.
+ *    key1=value1 AND key2=value2 AND ...
+ */
+static void
+sl_print_midxkey (string_buffer & strbuf, SM_ATTRIBUTE ** attributes, const DB_MIDXKEY * midxkey)
 {
-  int i = 0;
-  int prev_i_index;
-  char *prev_i_ptr;
+  int prev_i_index = 0;
+  char *prev_i_ptr = NULL;
   DB_VALUE value;
-  PARSER_VARCHAR *buffer = NULL;
 
-  prev_i_index = 0;
-  prev_i_ptr = NULL;
-
-  for (i = 0; i < midxkey->ncolumns && attributes[i] != NULL; i++)
+  for (int i = 0; i < midxkey->ncolumns && attributes[i] != NULL; i++)
     {
       if (i > 0)
 	{
-	  buffer = pt_append_nulstring (parser, buffer, " AND ");
+	  strbuf (" AND ");
 	}
 
       pr_midxkey_get_element_nocopy (midxkey, i, &value, &prev_i_index, &prev_i_ptr);
+      strbuf ("\"%s\"=", attributes[i]->header.name);
+      db_value_printer printer (strbuf);
 
-      buffer = pt_append_nulstring (parser, buffer, "\"");
-      buffer = pt_append_nulstring (parser, buffer, attributes[i]->header.name);
-      buffer = pt_append_nulstring (parser, buffer, "\"");
-      buffer = pt_append_nulstring (parser, buffer, "=");
-      buffer = describe_value (parser, buffer, &value);
+      printer.describe_value (&value);
     }
-
-  return buffer;
 }
 
 static DB_VALUE *
-sl_find_att_value (PARSER_CONTEXT * parser, const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments)
+sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments)
 {
-  int i;
-
-  for (i = 0; i < num_assignments; i++)
+  for (int i = 0; i < num_assignments; i++)
     {
       if (!strcmp (att_name, assignments[i]->att->header.name))
 	{
 	  return assignments[i]->variable;
 	}
     }
+
   return NULL;
 }
 
-static PARSER_VARCHAR *
-sl_print_att_value (PARSER_CONTEXT * parser, const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments)
+static void
+sl_print_att_value (string_buffer & strbuf, const char *att_name, OBJ_TEMPASSIGN ** assignments, int num_assignments)
 {
-  DB_VALUE *val;
+  DB_VALUE *val = sl_find_att_value (att_name, assignments, num_assignments);
 
-  val = sl_find_att_value (parser, att_name, assignments, num_assignments);
   if (val != NULL)
     {
-      return describe_value (parser, NULL, val);
+      db_value_printer printer (strbuf);
+      printer.describe_value (val);
     }
-  return NULL;
 }
 
-static PARSER_VARCHAR *
-sl_print_update_att_set (PARSER_CONTEXT * parser, OBJ_TEMPASSIGN ** assignments, int num_assignments)
+static void
+sl_print_update_att_set (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments)
 {
-  PARSER_VARCHAR *buffer = NULL;
-  PARSER_VARCHAR *value = NULL;
-  int i;
+  db_value_printer printer (strbuf);
 
-  for (i = 0; i < num_assignments; i++)
+  for (int i = 0; i < num_assignments; i++)
     {
-      value = describe_value (parser, NULL, assignments[i]->variable);
-      buffer = pt_append_nulstring (parser, buffer, "\"");
-      buffer = pt_append_nulstring (parser, buffer, assignments[i]->att->header.name);
-      buffer = pt_append_nulstring (parser, buffer, "\"");
-      buffer = pt_append_nulstring (parser, buffer, "=");
-      buffer = pt_append_varchar (parser, buffer, value);
-
+      strbuf ("\"%s\"=", assignments[i]->att->header.name);
+      printer.describe_value (assignments[i]->variable);
       if (i != num_assignments - 1)
 	{
-	  buffer = pt_append_nulstring (parser, buffer, ", ");
+	  strbuf (", ");
 	}
     }
-  return buffer;
 }
 
 int
 sl_write_insert_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 {
-  PARSER_CONTEXT *parser;
-  PARSER_VARCHAR *buffer = NULL;
-  PARSER_VARCHAR *att_names, *att_values;
-  PARSER_VARCHAR *pkey;
-  PARSER_VARCHAR *select;
+  string_buffer insert_strbuf;
 
-  parser = parser_create_parser ();
+  insert_strbuf ("INSERT INTO [%s](", sm_ch_name ((MOBJ) (inst_tp->class_)));
+  sl_print_insert_att_names (insert_strbuf, inst_tp->assignments, inst_tp->nassigns);
+  insert_strbuf (") VALUES (");
+  sl_print_insert_att_values (insert_strbuf, inst_tp->assignments, inst_tp->nassigns);
+  insert_strbuf (");");
 
-  att_names = sl_print_insert_att_names (parser, inst_tp->assignments, inst_tp->nassigns);
-  att_values = sl_print_insert_att_values (parser, inst_tp->assignments, inst_tp->nassigns);
+  string_buffer select_strbuf;
 
-  buffer = pt_append_nulstring (parser, buffer, "INSERT INTO [");
-  buffer = pt_append_nulstring (parser, buffer, sm_ch_name ((MOBJ) (inst_tp->class_)));
-  buffer = pt_append_nulstring (parser, buffer, "](");
-  buffer = pt_append_varchar (parser, buffer, att_names);
-  buffer = pt_append_nulstring (parser, buffer, ") VALUES (");
-  buffer = pt_append_varchar (parser, buffer, att_values);
-  buffer = pt_append_nulstring (parser, buffer, ");");
-
-  pkey = sl_print_pk (parser, inst_tp->class_, key);
-  if (pkey == NULL)
+  if (sl_print_select (select_strbuf, inst_tp->class_, key) != NO_ERROR)
     {
-      parser_free_parser (parser);
       return ER_FAILED;
     }
 
-  select = sl_print_select (parser, sm_ch_name ((MOBJ) (inst_tp->class_)), pkey);
-
-  if (sl_write_sql (buffer, select) != NO_ERROR)
+  if (sl_write_sql (insert_strbuf, &select_strbuf) != NO_ERROR)
     {
-      parser_free_parser (parser);
       return ER_FAILED;
     }
 
-  parser_free_parser (parser);
   return NO_ERROR;
 }
 
 int
 sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 {
-  PARSER_CONTEXT *parser;
-  PARSER_VARCHAR *buffer = NULL, *select = NULL;
-  PARSER_VARCHAR *att_set, *pkey;
-  PARSER_VARCHAR *serial_name, *serial_value;
-  DB_VALUE *cur_value, *incr_value;
-  DB_VALUE next_value;
-  char str_next_value[NUMERIC_MAX_STRING_SIZE];
-  bool is_db_serial = false;
   int result;
-
-  parser = parser_create_parser ();
 
   if (strcmp (sm_ch_name ((MOBJ) (inst_tp->class_)), "db_serial") != 0)
     {
       /* ordinary tables */
-      att_set = sl_print_update_att_set (parser, inst_tp->assignments, inst_tp->nassigns);
-      pkey = sl_print_pk (parser, inst_tp->class_, key);
-      if (pkey == NULL)
+      string_buffer update_strbuf;
+
+      update_strbuf ("UPDATE [%s] SET ", sm_ch_name ((MOBJ) (inst_tp->class_)));
+      sl_print_update_att_set (update_strbuf, inst_tp->assignments, inst_tp->nassigns);
+      update_strbuf (" WHERE ");
+      if (sl_print_pk (update_strbuf, inst_tp->class_, key) != NO_ERROR)
 	{
-	  result = ER_FAILED;
-	  goto end;
+	  return ER_FAILED;
+	}
+      update_strbuf (";");
+
+      string_buffer select_strbuf;
+
+      if (sl_print_select (select_strbuf, inst_tp->class_, key) != NO_ERROR)
+	{
+	  return ER_FAILED;
 	}
 
-      buffer = pt_append_nulstring (parser, buffer, "UPDATE [");
-      buffer = pt_append_nulstring (parser, buffer, sm_ch_name ((MOBJ) (inst_tp->class_)));
-      buffer = pt_append_nulstring (parser, buffer, "] SET ");
-      buffer = pt_append_varchar (parser, buffer, att_set);
-      buffer = pt_append_nulstring (parser, buffer, " WHERE ");
-      buffer = pt_append_varchar (parser, buffer, pkey);
-      buffer = pt_append_nulstring (parser, buffer, ";");
-
-      select = sl_print_select (parser, sm_ch_name ((MOBJ) (inst_tp->class_)), pkey);
-
-      result = sl_write_sql (buffer, select);
+      return sl_write_sql (update_strbuf, &select_strbuf);
     }
   else
     {
       /* db_serial */
-      serial_name = sl_print_att_value (parser, "name", inst_tp->assignments, inst_tp->nassigns);
-      trim_single_quote (serial_name);
+      DB_VALUE *cur_value = sl_find_att_value ("current_val", inst_tp->assignments, inst_tp->nassigns);
+      DB_VALUE *incr_value = sl_find_att_value ("increment_val", inst_tp->assignments, inst_tp->nassigns);
 
-      cur_value = sl_find_att_value (parser, "current_val", inst_tp->assignments, inst_tp->nassigns);
-      incr_value = sl_find_att_value (parser, "increment_val", inst_tp->assignments, inst_tp->nassigns);
       if (cur_value == NULL || incr_value == NULL)
 	{
-	  result = ER_FAILED;
-	  goto end;
+	  return ER_FAILED;
 	}
+
+      DB_VALUE next_value;
 
       result = numeric_db_value_add (cur_value, incr_value, &next_value);
       if (result != NO_ERROR)
 	{
-	  goto end;
+	  return ER_FAILED;
 	}
-      numeric_db_value_print (&next_value, str_next_value);
 
-      buffer = pt_append_nulstring (parser, buffer, "ALTER SERIAL [");
-      buffer = pt_append_varchar (parser, buffer, serial_name);
-      buffer = pt_append_nulstring (parser, buffer, "] START WITH ");
-      buffer = pt_append_nulstring (parser, buffer, str_next_value);
-      buffer = pt_append_nulstring (parser, buffer, ";");
+      string_buffer serial_name_strbuf;
 
-      result = sl_write_sql (buffer, NULL);
+      sl_print_att_value (serial_name_strbuf, "name", inst_tp->assignments, inst_tp->nassigns);
+      char *serial_name = trim_single_quote ((char *) serial_name_strbuf.get_buffer (), serial_name_strbuf.len ());
+
+      string_buffer alter_strbuf;
+      char str_next_value[NUMERIC_MAX_STRING_SIZE];
+
+      alter_strbuf ("ALTER SERIAL [%s] START WITH %s;", serial_name,
+		    numeric_db_value_print (&next_value, str_next_value));
+
+      return sl_write_sql (alter_strbuf, NULL);
     }
-
-end:
-  parser_free_parser (parser);
-
-  if (result != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  return NO_ERROR;
 }
 
 int
 sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
 {
-  PARSER_CONTEXT *parser;
-  PARSER_VARCHAR *buffer = NULL, *pkey;
-  PARSER_VARCHAR *select;
+  string_buffer delete_strbuf;
 
-  parser = parser_create_parser ();
-
-  pkey = sl_print_pk (parser, (SM_CLASS *) mclass, key);
-  if (pkey == NULL)
+  delete_strbuf ("DELETE FROM [%s] WHERE ", class_name);
+  if (sl_print_pk (delete_strbuf, (SM_CLASS *) mclass, key) != NO_ERROR)
     {
-      parser_free_parser (parser);
+      return ER_FAILED;
+    }
+  delete_strbuf (";");
+
+  string_buffer select_strbuf;
+
+  if (sl_print_select (select_strbuf, (SM_CLASS *) mclass, key) != NO_ERROR)
+    {
       return ER_FAILED;
     }
 
-  buffer = pt_append_nulstring (parser, buffer, "DELETE FROM [");
-  buffer = pt_append_nulstring (parser, buffer, class_name);
-  buffer = pt_append_nulstring (parser, buffer, "] WHERE ");
-  buffer = pt_append_varchar (parser, buffer, pkey);
-  buffer = pt_append_nulstring (parser, buffer, ";");
-
-  select = sl_print_select (parser, class_name, pkey);
-
-  if (sl_write_sql (buffer, select) != NO_ERROR)
-    {
-      parser_free_parser (parser);
-      return ER_FAILED;
-    }
-
-  parser_free_parser (parser);
-  return NO_ERROR;
+  return sl_write_sql (delete_strbuf, &select_strbuf);
 }
 
 int
 sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *stmt_text, char *ha_sys_prm)
 {
-  int rc, error = NO_ERROR;
-  PARSER_CONTEXT *parser;
-  PARSER_VARCHAR *buffer = NULL, *grant = NULL;
-  PARSER_VARCHAR *set_param = NULL, *restore_param = NULL;
+  int error = NO_ERROR;
   char default_ha_prm[LINE_MAX];
+  SYSPRM_ERR rc;
 
-  parser = parser_create_parser ();
-
-  buffer = pt_append_nulstring (parser, buffer, stmt_text);
-  buffer = pt_append_nulstring (parser, buffer, ";");
+  string_buffer statement_strbuf;
+  statement_strbuf ("%s;", stmt_text);
 
   if (ha_sys_prm != NULL)
     {
-      set_param = pt_append_nulstring (parser, set_param, CA_MARK_TRAN_START);
-      set_param = pt_append_nulstring (parser, set_param, " SET SYSTEM PARAMETERS '");
-      set_param = pt_append_nulstring (parser, set_param, ha_sys_prm);
-      set_param = pt_append_nulstring (parser, set_param, "';");
-
       rc = sysprm_make_default_values (ha_sys_prm, default_ha_prm, sizeof (default_ha_prm));
       if (rc != PRM_ERR_NO_ERROR)
 	{
-	  error = sysprm_set_error (rc, ha_sys_prm);
-	  goto end;
+	  return sysprm_set_error (rc, ha_sys_prm);
 	}
 
-      restore_param = pt_append_nulstring (parser, restore_param, CA_MARK_TRAN_END);
-      restore_param = pt_append_nulstring (parser, restore_param, " SET SYSTEM PARAMETERS '");
-      restore_param = pt_append_nulstring (parser, restore_param, default_ha_prm);
-      restore_param = pt_append_nulstring (parser, restore_param, "';");
+      string_buffer setprm_strbuf;
 
-      if (sl_write_sql (set_param, NULL) != NO_ERROR)
+      setprm_strbuf ("%s SET SYSTEM PARAMETERS '%s';", CA_MARK_TRAN_START, ha_sys_prm);	//set param
+      if (sl_write_sql (setprm_strbuf, NULL) != NO_ERROR)
 	{
-	  error = ER_FAILED;
-	  goto end;
+	  return ER_FAILED;
+	}
+      if (sl_write_sql (statement_strbuf, NULL) != NO_ERROR)
+	{
+	  sl_write_sql (setprm_strbuf, NULL);
+	  return ER_FAILED;
 	}
 
-      if (sl_write_sql (buffer, NULL) != NO_ERROR)
+      setprm_strbuf.clear ();
+      setprm_strbuf ("%s SET SYSTEM PARAMETERS '%s';", CA_MARK_TRAN_END, default_ha_prm);	//restore param
+      if (sl_write_sql (setprm_strbuf, NULL) != NO_ERROR)
 	{
-	  sl_write_sql (restore_param, NULL);
-	  error = ER_FAILED;
-	  goto end;
-	}
-
-      if (sl_write_sql (restore_param, NULL) != NO_ERROR)
-	{
-	  error = ER_FAILED;
-	  goto end;
+	  return ER_FAILED;
 	}
     }
   else
     {
-      if (sl_write_sql (buffer, NULL) != NO_ERROR)
+      if (sl_write_sql (statement_strbuf, NULL) != NO_ERROR)
 	{
-	  error = ER_FAILED;
-	  goto end;
+	  return ER_FAILED;
 	}
     }
 
@@ -566,31 +485,25 @@ sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *st
     {
       if (db_user != NULL && strlen (db_user) > 0)
 	{
-	  grant = pt_append_nulstring (parser, grant, "GRANT ALL PRIVILEGES ON ");
-	  grant = pt_append_nulstring (parser, grant, class_name);
-	  grant = pt_append_nulstring (parser, grant, " TO ");
-	  grant = pt_append_nulstring (parser, grant, db_user);
-	  grant = pt_append_nulstring (parser, grant, ";");
-
-	  if (sl_write_sql (grant, NULL) != NO_ERROR)
+	  statement_strbuf.clear ();
+	  statement_strbuf ("GRANT ALL PRIVILEGES ON %s TO %s;", class_name, db_user);
+	  if (sl_write_sql (statement_strbuf, NULL) != NO_ERROR)
 	    {
-	      error = ER_FAILED;
-	      goto end;
+	      return ER_FAILED;
 	    }
 	}
     }
-end:
-  parser_free_parser (parser);
-  return error;
+
+  return NO_ERROR;
 }
 
 static int
-sl_write_sql (PARSER_VARCHAR * query, PARSER_VARCHAR * select)
+sl_write_sql (string_buffer & query, string_buffer * select)
 {
   time_t curr_time;
   char time_buf[20];
 
-  assert (query != NULL);
+  assert (query.get_buffer () != NULL);
 
   if (log_fp == NULL)
     {
@@ -603,22 +516,21 @@ sl_write_sql (PARSER_VARCHAR * query, PARSER_VARCHAR * select)
   curr_time = time (NULL);
   strftime (time_buf, sizeof (time_buf), "%Y-%m-%d %H:%M:%S", localtime (&curr_time));
 
-
   /* -- datetime | sql_id | is_ddl | select length | query length */
-  fprintf (log_fp, "-- %s | %u | %d | %d\n", time_buf, ++sl_Info.last_inserted_sql_id,
-	   (select == NULL) ? 0 : select->length, query->length);
+  fprintf (log_fp, "-- %s | %u | %zu | %zu\n", time_buf, ++sl_Info.last_inserted_sql_id,
+	   (select == NULL) ? 0 : select->len (), query.len ());
 
   /* print select for verifying data consistency */
   if (select != NULL)
     {
       /* -- select_length select * from tbl_name */
       fprintf (log_fp, "-- ");
-      fwrite (select->bytes, sizeof (char), select->length, log_fp);
+      fwrite (select->get_buffer (), sizeof (char), select->len (), log_fp);
       fputc ('\n', log_fp);
     }
 
   /* print SQL query */
-  fwrite (query->bytes, sizeof (char), query->length, log_fp);
+  fwrite (query.get_buffer (), sizeof (char), query.len (), log_fp);
   fputc ('\n', log_fp);
 
   fflush (log_fp);
@@ -635,7 +547,7 @@ sl_write_sql (PARSER_VARCHAR * query, PARSER_VARCHAR * select)
 }
 
 static FILE *
-sl_log_open ()
+sl_log_open (void)
 {
   char cur_sql_log_path[PATH_MAX];
   FILE *fp;
@@ -685,21 +597,6 @@ sl_open_next_file (FILE * old_fp)
     }
 
   return new_fp;
-}
-
-
-static void
-trim_single_quote (PARSER_VARCHAR * name)
-{
-  if (name->length == 0 || name->bytes[0] != '\'' || name->bytes[name->length - 1] != '\'')
-    {
-      return;
-    }
-
-  memmove (name->bytes, name->bytes + 1, name->length - 1);
-  name->length = name->length - 2;
-
-  return;
 }
 
 static int

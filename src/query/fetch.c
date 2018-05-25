@@ -34,25 +34,24 @@
 #include <sys/time.h>
 #endif
 
-#include "porting.h"
+#include "fetch.h"
+
 #include "error_manager.h"
 #include "system_parameter.h"
-#include "db.h"
 #include "storage_common.h"
-#include "memory_alloc.h"
-#include "oid.h"
 #include "object_primitive.h"
-#include "object_representation.h"
 #include "arithmetic.h"
 #include "serial.h"
 #include "session.h"
-#include "fetch.h"
-#include "list_file.h"
 #include "string_opfunc.h"
 #include "server_interface.h"
+#include "query_opfunc.h"
+#include "db_date.h"
+#include "xasl.h"
+#include "query_executor.h"
+#include "thread_entry.hpp"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 static int fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd, OID * obj_oid,
 			     QFILE_TUPLE tpl, DB_VALUE ** peek_dbval);
@@ -63,7 +62,9 @@ static int fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_
 							  DB_VALUE ** min, DB_VALUE ** max);
 
 static bool is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var);
-static int get_hour_minute_or_second (const DB_VALUE * datetime, const PT_OP_TYPE op_type, DB_VALUE * db_value);
+static int get_hour_minute_or_second (const DB_VALUE * datetime, OPERATOR_TYPE op_type, DB_VALUE * db_value);
+static int get_year_month_or_day (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result);
+static int get_date_weekday (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result);
 
 /*
  * fetch_peek_arith () -
@@ -201,6 +202,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TIMEDIFF:
     case T_CURRENT_VALUE:
     case T_CHR:
+    case T_JSON_EXTRACT:
       /* fetch lhs and rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
 	{
@@ -499,6 +501,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TZ_OFFSET:
     case T_SLEEP:
     case T_CRC32:
+    case T_CONV_TZ:
       /* fetch rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
 	{
@@ -647,6 +650,49 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	}
       break;
 
+    case T_JSON_TYPE:
+    case T_JSON_VALID:
+    case T_JSON_DEPTH:
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_JSON_SEARCH:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "JSON_SEARCH");
+      goto error;
+
+    case T_JSON_CONTAINS:
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (arithptr->thirdptr)
+	{
+	  if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tpl, &peek_third) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+    case T_JSON_LENGTH:
+      if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (arithptr->rightptr)
+	{
+	  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       goto error;
@@ -1221,7 +1267,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       else
 	{
 	  /* must be a char string type */
-	  db_make_int (arithptr->value, 8 * DB_GET_STRING_SIZE (peek_right));
+	  db_make_int (arithptr->value, 8 * db_get_string_size (peek_right));
 	}
       break;
 
@@ -1232,7 +1278,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	}
       else
 	{
-	  db_make_int (arithptr->value, DB_GET_STRING_LENGTH (peek_right));
+	  db_make_int (arithptr->value, db_get_string_length (peek_right));
 	}
       break;
 
@@ -1398,8 +1444,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  && !DB_IS_NULL (peek_right))
 	{
 	  TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_right, peek_right,
-								      DB_GET_STRING_COLLATION (peek_left),
-								      DB_GET_STRING_CODESET (peek_left));
+								      db_get_string_collation (peek_left),
+								      db_get_string_codeset (peek_left));
 
 	  if (status != DOMAIN_COMPATIBLE)
 	    {
@@ -1423,8 +1469,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  && !DB_IS_NULL (peek_right))
 	{
 	  TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_right, peek_right,
-								      DB_GET_STRING_COLLATION (peek_left),
-								      DB_GET_STRING_CODESET (peek_left));
+								      db_get_string_collation (peek_left),
+								      db_get_string_codeset (peek_left));
 
 	  if (status != DOMAIN_COMPATIBLE)
 	    {
@@ -1448,8 +1494,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  && !DB_IS_NULL (peek_right))
 	{
 	  TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_right, peek_right,
-								      DB_GET_STRING_COLLATION (peek_left),
-								      DB_GET_STRING_CODESET (peek_left));
+								      db_get_string_collation (peek_left),
+								      db_get_string_codeset (peek_left));
 
 	  if (status != DOMAIN_COMPATIBLE)
 	    {
@@ -1484,8 +1530,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  && !DB_IS_NULL (peek_third))
 	{
 	  TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_third, peek_third,
-								      DB_GET_STRING_COLLATION (peek_left),
-								      DB_GET_STRING_CODESET (peek_left));
+								      db_get_string_collation (peek_left),
+								      db_get_string_codeset (peek_left));
 
 	  if (status != DOMAIN_COMPATIBLE)
 	    {
@@ -1509,8 +1555,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  && !DB_IS_NULL (peek_third))
 	{
 	  TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_third, peek_third,
-								      DB_GET_STRING_COLLATION (peek_left),
-								      DB_GET_STRING_CODESET (peek_left));
+								      db_get_string_collation (peek_left),
+								      db_get_string_codeset (peek_left));
 
 	  if (status != DOMAIN_COMPATIBLE)
 	    {
@@ -1534,8 +1580,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  && !DB_IS_NULL (peek_third))
 	{
 	  TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_third, peek_third,
-								      DB_GET_STRING_COLLATION (peek_left),
-								      DB_GET_STRING_CODESET (peek_left));
+								      db_get_string_collation (peek_left),
+								      db_get_string_codeset (peek_left));
 
 	  if (status != DOMAIN_COMPATIBLE)
 	    {
@@ -1558,8 +1604,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION) && !DB_IS_NULL (peek_left))
 	{
 	  TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_third, peek_third,
-								      DB_GET_STRING_COLLATION (peek_left),
-								      DB_GET_STRING_CODESET (peek_left));
+								      db_get_string_collation (peek_left),
+								      db_get_string_codeset (peek_left));
 
 	  if (status != DOMAIN_COMPATIBLE)
 	    {
@@ -1612,33 +1658,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       break;
 
     case T_YEAR:
-      if (DB_IS_NULL (peek_right))
-	{
-	  PRIM_SET_NULL (arithptr->value);
-	}
-      else if (db_get_date_item (peek_right, PT_YEARF, arithptr->value) != NO_ERROR)
-	{
-	  goto error;
-	}
-      break;
-
     case T_MONTH:
-      if (DB_IS_NULL (peek_right))
-	{
-	  PRIM_SET_NULL (arithptr->value);
-	}
-      else if (db_get_date_item (peek_right, PT_MONTHF, arithptr->value) != NO_ERROR)
-	{
-	  goto error;
-	}
-      break;
-
     case T_DAY:
       if (DB_IS_NULL (peek_right))
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_get_date_item (peek_right, PT_DAYF, arithptr->value) != NO_ERROR)
+      else if (get_year_month_or_day (peek_right, arithptr->opcode, arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1648,11 +1674,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_MINUTE:
     case T_SECOND:
       {
-	PT_OP_TYPE v[] = { PT_HOURF, PT_MINUTEF, PT_SECONDF };
-	OPERATOR_TYPE base = T_HOUR;
-
 	/* T_HOUR, T_MINUTE and T_SECOND must be kept consecutive in OPERATOR_TYPE enum */
-	if (get_hour_minute_or_second (peek_right, v[arithptr->opcode - base], arithptr->value) != NO_ERROR)
+	if (get_hour_minute_or_second (peek_right, arithptr->opcode, arithptr->value) != NO_ERROR)
 	  {
 	    goto error;
 	  }
@@ -1671,22 +1694,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       break;
 
     case T_WEEKDAY:
-      if (DB_IS_NULL (peek_right))
-	{
-	  PRIM_SET_NULL (arithptr->value);
-	}
-      else if (db_get_date_weekday (peek_right, PT_WEEKDAY, arithptr->value) != NO_ERROR)
-	{
-	  goto error;
-	}
-      break;
-
     case T_DAYOFWEEK:
       if (DB_IS_NULL (peek_right))
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_get_date_weekday (peek_right, PT_DAYOFWEEK, arithptr->value) != NO_ERROR)
+      else if (get_date_weekday (peek_right, arithptr->opcode, arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -2017,7 +2030,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       break;
 
     case T_SYS_DATE:
-      DB_MAKE_ENCODED_DATE (arithptr->value, &vd->sys_datetime.date);
+      db_value_put_encoded_date (arithptr->value, &vd->sys_datetime.date);
       break;
 
     case T_SYS_TIME:
@@ -2025,13 +2038,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	DB_TIME db_time;
 
 	db_time = vd->sys_datetime.time / 1000;
-	DB_MAKE_ENCODED_TIME (arithptr->value, &db_time);
+	db_value_put_encoded_time (arithptr->value, &db_time);
 	break;
       }
 
     case T_SYS_DATETIME:
       {
-	DB_MAKE_DATETIME (arithptr->value, &vd->sys_datetime);
+	db_make_datetime (arithptr->value, &vd->sys_datetime);
       }
       break;
 
@@ -2062,7 +2075,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  {
 	    return err_status;
 	  }
-	DB_MAKE_ENCODED_DATE (arithptr->value, &dest_dt.date);
+	db_value_put_encoded_date (arithptr->value, &dest_dt.date);
 	break;
       }
 
@@ -2074,8 +2087,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
 	t_source = tz_get_system_timezone ();
 	t_dest = tz_get_session_local_timezone ();
-	len_source = strlen (t_source);
-	len_dest = strlen (t_dest);
+	len_source = (int) strlen (t_source);
+	len_dest = (int) strlen (t_dest);
 	db_time = vd->sys_datetime.time / 1000;
 
 	err_status = tz_conv_tz_time_w_zone_name (&db_time, t_source, len_source, t_dest, len_dest, &cur_time);
@@ -2083,7 +2096,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  {
 	    return err_status;
 	  }
-	DB_MAKE_ENCODED_TIME (arithptr->value, &cur_time);
+	db_value_put_encoded_time (arithptr->value, &cur_time);
 	break;
       }
 
@@ -2114,7 +2127,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  {
 	    return err_status;
 	  }
-	DB_MAKE_DATETIME (arithptr->value, &dest_dt);
+	db_make_datetime (arithptr->value, &dest_dt);
       }
       break;
 
@@ -2122,7 +2135,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       {
 	DB_TIME db_time;
 	db_time = (DB_TIME) (vd->sys_epochtime % SECONDS_OF_ONE_DAY);
-	DB_MAKE_ENCODED_TIME (arithptr->value, &db_time);
+	db_value_put_encoded_time (arithptr->value, &db_time);
 	break;
       }
 
@@ -2133,7 +2146,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
 	tz_timestamp_decode_no_leap_sec (vd->sys_epochtime, &year, &month, &day, &hour, &minute, &second);
 	date = julian_encode (month + 1, day, year);
-	DB_MAKE_ENCODED_DATE (arithptr->value, &date);
+	db_value_put_encoded_date (arithptr->value, &date);
 	break;
       }
 
@@ -2307,8 +2320,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  OID *serial_oid;
 	  int cached_num;
 
-	  serial_oid = DB_GET_OID (peek_left);
-	  cached_num = DB_GET_INTEGER (peek_right);
+	  serial_oid = db_get_oid (peek_left);
+	  cached_num = db_get_int (peek_right);
 
 	  if (xserial_get_current_value (thread_p, arithptr->value, serial_oid, cached_num) != NO_ERROR)
 	    {
@@ -2331,9 +2344,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  int cached_num;
 	  int num_alloc;
 
-	  serial_oid = DB_GET_OID (peek_left);
-	  cached_num = DB_GET_INTEGER (peek_right);
-	  num_alloc = DB_GET_INTEGER (peek_third);
+	  serial_oid = db_get_oid (peek_left);
+	  cached_num = db_get_int (peek_right);
+	  num_alloc = db_get_int (peek_third);
 
 	  if (xserial_get_next_value (thread_p, arithptr->value, serial_oid, cached_num, num_alloc, GENERATE_SERIAL,
 				      false) != NO_ERROR)
@@ -2353,7 +2366,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	      if (!DB_IS_NULL (arithptr->value))
 		{
 		  assert (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (arithptr->value)));
-		  assert (regu_var->domain->codeset == DB_GET_STRING_CODESET (arithptr->value));
+		  assert (regu_var->domain->codeset == db_get_string_codeset (arithptr->value));
 		}
 	      db_string_put_cs_and_collation (arithptr->value, regu_var->domain->codeset,
 					      regu_var->domain->collation_id);
@@ -2365,7 +2378,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	      if (!DB_IS_NULL (arithptr->value))
 		{
 		  assert (DB_VALUE_DOMAIN_TYPE (arithptr->value) == DB_TYPE_ENUMERATION);
-		  assert (regu_var->domain->codeset == DB_GET_ENUM_CODESET (arithptr->value));
+		  assert (regu_var->domain->codeset == db_get_enum_codeset (arithptr->value));
 		}
 	      db_enum_put_cs_and_collation (arithptr->value, regu_var->domain->codeset, regu_var->domain->collation_id);
 
@@ -2392,7 +2405,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	      if (!DB_IS_NULL (arithptr->value))
 		{
 		  assert (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (arithptr->value)));
-		  assert (regu_var->domain->codeset == DB_GET_STRING_CODESET (arithptr->value));
+		  assert (regu_var->domain->codeset == db_get_string_codeset (arithptr->value));
 		}
 	      db_string_put_cs_and_collation (arithptr->value, regu_var->domain->codeset,
 					      regu_var->domain->collation_id);
@@ -2404,7 +2417,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	      if (!DB_IS_NULL (arithptr->value))
 		{
 		  assert (DB_VALUE_DOMAIN_TYPE (arithptr->value) == DB_TYPE_ENUMERATION);
-		  assert (regu_var->domain->codeset == DB_GET_ENUM_CODESET (arithptr->value));
+		  assert (regu_var->domain->codeset == db_get_enum_codeset (arithptr->value));
 		}
 	      db_enum_put_cs_and_collation (arithptr->value, regu_var->domain->codeset, regu_var->domain->collation_id);
 
@@ -2468,13 +2481,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       switch (eval_pred (thread_p, arithptr->pred, vd, obj_oid))
 	{
 	case V_UNKNOWN:
-	  DB_MAKE_NULL (peek_left);
+	  db_make_null (peek_left);
 	  break;
 	case V_FALSE:
-	  DB_MAKE_INT (peek_left, 0);
+	  db_make_int (peek_left, 0);
 	  break;
 	case V_TRUE:
-	  DB_MAKE_INT (peek_left, 1);
+	  db_make_int (peek_left, 1);
 	  break;
 	default:
 	  goto error;
@@ -2609,11 +2622,55 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_ISNULL:
       if (DB_IS_NULL (peek_right))
 	{
-	  DB_MAKE_INTEGER (arithptr->value, 1);
+	  db_make_int (arithptr->value, 1);
 	}
       else
 	{
-	  DB_MAKE_INTEGER (arithptr->value, 0);
+	  db_make_int (arithptr->value, 0);
+	}
+      break;
+
+    case T_JSON_CONTAINS:
+      if (qdata_json_contains_dbval (peek_left, peek_right, (arithptr->thirdptr == NULL ? NULL : peek_third),
+				     arithptr->value, regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_JSON_TYPE:
+      if (qdata_json_type_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_JSON_EXTRACT:
+      if (qdata_json_extract_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_JSON_VALID:
+      if (qdata_json_valid_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_JSON_LENGTH:
+      if (qdata_json_length_dbval (peek_left, (arithptr->rightptr == NULL ? NULL : peek_right), arithptr->value,
+				   regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_JSON_DEPTH:
+      if (qdata_json_depth_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
 	}
       break;
 
@@ -2670,7 +2727,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	    {
 	      DB_VALUE tmp_val;
 
-	      DB_MAKE_NULL (&tmp_val);
+	      db_make_null (&tmp_val);
 	      if (qdata_strcat_dbval (peek_left, peek_third, &tmp_val, regu_var->domain) != NO_ERROR)
 		{
 		  goto error;
@@ -2894,7 +2951,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	      DB_VALUE tmp_len, tmp_val, tmp_arg3;
 	      int tmp;
 
-	      DB_MAKE_NULL (&tmp_val);
+	      db_make_null (&tmp_val);
 
 	      tmp = db_get_int (peek_third);
 	      if (tmp < 1)
@@ -3116,35 +3173,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
     case T_LEAST:
       {
-	int cmp_result;
+	int error;
 	TP_DOMAIN *target_domain;
-	bool can_compare = false;
 
-	cmp_result = tp_value_compare_with_error (peek_left, peek_right, 1, 0, &can_compare);
-	if (cmp_result == DB_EQ || cmp_result == DB_LT)
-	  {
-	    pr_clone_value (peek_left, arithptr->value);
-	  }
-	else if (cmp_result == DB_GT)
-	  {
-	    pr_clone_value (peek_right, arithptr->value);
-	  }
-	else if (cmp_result == DB_UNK && can_compare == false)
+	error = db_least_or_greatest (peek_left, peek_right, arithptr->value, true);
+	if (error != NO_ERROR)
 	  {
 	    goto error;
-	  }
-	else
-	  {
-	    if (DB_IS_NULL (peek_right) || DB_IS_NULL (peek_left))
-	      {
-		pr_clear_value (arithptr->value);
-		PRIM_SET_NULL (arithptr->value);
-	      }
-	    else
-	      {
-		assert_release (false);
-	      }
-	    break;
 	  }
 
 	target_domain = regu_var->domain;
@@ -3169,35 +3204,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
     case T_GREATEST:
       {
-	int cmp_result;
+	int error;
 	TP_DOMAIN *target_domain;
-	bool can_compare = false;
 
-	cmp_result = tp_value_compare_with_error (peek_left, peek_right, 1, 0, &can_compare);
-	if (cmp_result == DB_EQ || cmp_result == DB_GT)
-	  {
-	    pr_clone_value (peek_left, arithptr->value);
-	  }
-	else if (cmp_result == DB_LT)
-	  {
-	    pr_clone_value (peek_right, arithptr->value);
-	  }
-	else if (cmp_result == DB_UNK && can_compare == false)
+	error = db_least_or_greatest (peek_left, peek_right, arithptr->value, false);
+	if (error != NO_ERROR)
 	  {
 	    goto error;
-	  }
-	else
-	  {
-	    if (DB_IS_NULL (peek_right) || DB_IS_NULL (peek_left))
-	      {
-		pr_clear_value (arithptr->value);
-		PRIM_SET_NULL (arithptr->value);
-	      }
-	    else
-	      {
-		assert_release (false);
-	      }
-	    break;
 	  }
 
 	target_domain = regu_var->domain;
@@ -3258,7 +3271,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  {
 	    goto error;
 	  }
-	DB_MAKE_INTEGER (arithptr->value, row_count);
+	db_make_int (arithptr->value, row_count);
       }
       break;
 
@@ -3559,7 +3572,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  {
 	    goto error;
 	  }
-	timezone_milis = DB_GET_INT (&timezone) * 60000;
+	timezone_milis = db_get_int (&timezone) * 60000;
 	tmp_datetime = vd->sys_datetime;
 	db_add_int_to_datetime (&tmp_datetime, timezone_milis, &utc_datetime);
 
@@ -3599,6 +3612,20 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       else
 	{
 	  if (db_from_tz (peek_left, peek_right, arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+      break;
+
+    case T_CONV_TZ:
+      if (DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else
+	{
+	  if (db_conv_tz (peek_right, arithptr->value) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -3649,7 +3676,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	date = julian_encode (month + 1, day, year);
 	db_time_encode (&time, hour, minute, second);
 	db_timestamp_encode_ses (&date, &time, &timestamp, NULL);
-	DB_MAKE_TIMESTAMP (arithptr->value, timestamp);
+	db_make_timestamp (arithptr->value, timestamp);
 	break;
       }
 
@@ -3870,14 +3897,14 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_ALL_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
       *peek_dbval = &regu_var->value.dbval;
-      DB_MAKE_OID (*peek_dbval, obj_oid);
+      db_make_oid (*peek_dbval, obj_oid);
       break;
 
     case TYPE_CLASSOID:	/* fetch class identifier value */
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_ALL_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
       *peek_dbval = &regu_var->value.dbval;
-      DB_MAKE_OID (*peek_dbval, class_oid);
+      db_make_oid (*peek_dbval, class_oid);
       break;
 
     case TYPE_POSITION:	/* fetch list file tuple value */
@@ -4017,6 +4044,33 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
 	  switch (funcp->ftype)
 	    {
+	    case F_JSON_ARRAY:
+	    case F_JSON_OBJECT:
+	    case F_JSON_INSERT:
+	    case F_JSON_REPLACE:
+	    case F_JSON_SET:
+	    case F_JSON_KEYS:
+	    case F_JSON_REMOVE:
+	    case F_JSON_ARRAY_APPEND:
+	    case F_JSON_MERGE:
+	    case F_JSON_GET_ALL_PATHS:
+	      {
+		REGU_VARIABLE_LIST operand;
+
+		operand = funcp->operand;
+
+		while (operand != NULL)
+		  {
+		    if (!REGU_VARIABLE_IS_FLAGED (&(operand->value), REGU_VARIABLE_FETCH_ALL_CONST))
+		      {
+			not_const++;
+			break;
+		      }
+		    operand = operand->next;
+		  }
+	      }
+	      break;
+
 	    case F_INSERT_SUBSTRING:
 	      /* should sync with qdata_insert_substring_function () */
 	      {
@@ -4080,13 +4134,13 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 		    switch (index_type)
 		      {
 		      case DB_TYPE_SMALLINT:
-			idx = DB_GET_SMALLINT (index);
+			idx = db_get_short (index);
 			break;
 		      case DB_TYPE_INTEGER:
-			idx = DB_GET_INTEGER (index);
+			idx = db_get_int (index);
 			break;
 		      case DB_TYPE_BIGINT:
-			idx = DB_GET_BIGINT (index);
+			idx = db_get_bigint (index);
 			break;
 		      case DB_TYPE_NULL:
 			is_null_elt = true;
@@ -4182,6 +4236,16 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
 	case F_INSERT_SUBSTRING:
 	case F_ELT:
+	case F_JSON_OBJECT:
+	case F_JSON_ARRAY:
+	case F_JSON_INSERT:
+	case F_JSON_REPLACE:
+	case F_JSON_SET:
+	case F_JSON_KEYS:
+	case F_JSON_REMOVE:
+	case F_JSON_ARRAY_APPEND:
+	case F_JSON_MERGE:
+	case F_JSON_GET_ALL_PATHS:
 	  break;
 
 	default:
@@ -4206,7 +4270,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  if (!DB_IS_NULL (*peek_dbval))
 	    {
 	      assert (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (*peek_dbval)));
-	      assert (regu_var->domain->codeset == DB_GET_STRING_CODESET (*peek_dbval));
+	      assert (regu_var->domain->codeset == db_get_string_codeset (*peek_dbval));
 	    }
 	  db_string_put_cs_and_collation (*peek_dbval, regu_var->domain->codeset, regu_var->domain->collation_id);
 	}
@@ -4217,7 +4281,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  if (!DB_IS_NULL (*peek_dbval))
 	    {
 	      assert (DB_VALUE_DOMAIN_TYPE (*peek_dbval) == DB_TYPE_ENUMERATION);
-	      assert (regu_var->domain->codeset == DB_GET_ENUM_CODESET (*peek_dbval));
+	      assert (regu_var->domain->codeset == db_get_enum_codeset (*peek_dbval));
 	    }
 	  db_enum_put_cs_and_collation (*peek_dbval, regu_var->domain->codeset, regu_var->domain->collation_id);
 
@@ -4625,6 +4689,10 @@ is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var)
   return false;
 }
 
+/* TODO: next functions are duplicate from string op func that get as argument PT_OP_TYPE. Please try to merge
+ *       PT_OP_TYPE and OPERATOR_TYPE.
+ */
+
 /*
  * get_hour_minute_or_second () - extract hour, minute or second
  *				  information from datetime depending on
@@ -4635,30 +4703,197 @@ is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var)
  *   db_value(out): output of the operation
  */
 static int
-get_hour_minute_or_second (const DB_VALUE * datetime, const PT_OP_TYPE op_type, DB_VALUE * db_value)
+get_hour_minute_or_second (const DB_VALUE * datetime, OPERATOR_TYPE op_type, DB_VALUE * db_value)
 {
   int error = NO_ERROR;
+  int hour, minute, second, millisecond;
 
   if (DB_IS_NULL (datetime))
     {
       PRIM_SET_NULL (db_value);
+      return NO_ERROR;
     }
-  else if (DB_VALUE_DOMAIN_TYPE (datetime) == DB_TYPE_DATE)
+
+  if (DB_VALUE_DOMAIN_TYPE (datetime) == DB_TYPE_DATE)
     {
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
 	{
-	  DB_MAKE_NULL (db_value);
+	  db_make_null (db_value);
 	}
       else
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
 	  error = ER_TIME_CONVERSION;
 	}
+      return error;
     }
-  else if (db_get_time_item (datetime, op_type, db_value) != NO_ERROR)
+
+  error = db_get_time_from_dbvalue (datetime, &hour, &minute, &second, &millisecond);
+  if (error != NO_ERROR)
     {
-      error = ER_TIME_CONVERSION;
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
+	{
+	  db_make_null (db_value);
+	  error = NO_ERROR;
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+	  error = ER_TIME_CONVERSION;
+	}
+      return error;
+    }
+  switch (op_type)
+    {
+    case T_HOUR:
+      db_make_int (db_value, hour);
+      break;
+    case T_MINUTE:
+      db_make_int (db_value, minute);
+      break;
+    case T_SECOND:
+      db_make_int (db_value, second);
+      break;
+    default:
+      assert (false);
+      db_make_null (db_value);
+      error = ER_FAILED;
+      break;
     }
 
   return error;
+}
+
+/*
+ * get_year_month_or_day () - get year or month or day from value
+ *
+ * return        : error code
+ * src_date (in) : input value
+ * op (in)       : operation type - year, month or day
+ * result (out)  : value with year, month or day
+ */
+static int
+get_year_month_or_day (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result)
+{
+  int month = 0, day = 0, year = 0;
+  int second = 0, minute = 0, hour = 0;
+  int ms = 0;
+
+  assert (op == T_YEAR || op == T_MONTH || op == T_DAY);
+
+  if (DB_IS_NULL (src_date))
+    {
+      db_make_null (result);
+      return NO_ERROR;
+    }
+
+  /* get the date/time information from src_date */
+  if (db_get_datetime_from_dbvalue (src_date, &year, &month, &day, &hour, &minute, &second, &ms, NULL) != NO_ERROR)
+    {
+      /* This function should return NULL if src_date is an invalid parameter. Clear the error generated by the
+       * function call and return null. */
+      er_clear ();
+      db_make_null (result);
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	{
+	  return NO_ERROR;
+	}
+      /* set ER_DATE_CONVERSION */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      return ER_DATE_CONVERSION;
+    }
+
+  switch (op)
+    {
+    case T_YEAR:
+      db_make_int (result, year);
+      break;
+    case T_MONTH:
+      db_make_int (result, month);
+      break;
+    case T_DAY:
+      db_make_int (result, day);
+      break;
+    default:
+      assert (false);
+      db_make_null (result);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+int
+get_date_weekday (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result)
+{
+  int error_status = NO_ERROR;
+  int month = 0, day = 0, year = 0;
+  int second = 0, minute = 0, hour = 0;
+  int ms = 0;
+  int day_of_week = 0;
+
+  if (DB_IS_NULL (src_date))
+    {
+      db_make_null (result);
+      return NO_ERROR;
+    }
+
+  /* get the date/time information from src_date */
+  error_status = db_get_datetime_from_dbvalue (src_date, &year, &month, &day, &hour, &minute, &second, &ms, NULL);
+  if (error_status != NO_ERROR)
+    {
+      error_status = ER_DATE_CONVERSION;
+      goto error_exit;
+    }
+
+  if (year == 0 && month == 0 && day == 0 && hour == 0 && minute == 0 && second == 0 && ms == 0)
+    {
+      error_status = ER_ATTEMPT_TO_USE_ZERODATE;
+      goto error_exit;
+    }
+
+  /* 0 = Sunday, 1 = Monday, etc */
+  day_of_week = db_get_day_of_week (year, month, day);
+
+  switch (op)
+    {
+    case T_WEEKDAY:
+      /* 0 = Monday, 1 = Tuesday, ..., 6 = Sunday */
+      if (day_of_week == 0)
+	{
+	  day_of_week = 6;
+	}
+      else
+	{
+	  day_of_week--;
+	}
+      db_make_int (result, day_of_week);
+      break;
+
+    case T_DAYOFWEEK:
+      /* 1 = Sunday, 2 = Monday, ..., 7 = Saturday */
+      day_of_week++;
+      db_make_int (result, day_of_week);
+      break;
+
+    default:
+      assert (false);
+      db_make_null (result);
+      break;
+    }
+
+  return NO_ERROR;
+
+error_exit:
+  /* This function should return NULL if src_date is an invalid parameter or zero date. Clear the error generated by
+   * the function call and return null. */
+  er_clear ();
+  db_make_null (result);
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+    {
+      return NO_ERROR;
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+  return error_status;
 }

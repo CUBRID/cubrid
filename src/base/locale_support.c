@@ -48,6 +48,10 @@
 #endif /* !WINDOWS */
 #include "locale_support.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define TXT_CONV_LINE_SIZE 512
 #define TXT_CONV_ITEM_GROW_COUNT 128
 
@@ -157,7 +161,6 @@ static TRANSFORM_RULE *new_transform_rule (LOCALE_DATA * ld);
 static CUBRID_TAILOR_RULE *new_collation_cubrid_rule (LOCALE_DATA * ld);
 static void locale_alloc_collation_id (COLL_TAILORING * coll_tail);
 static int locale_check_collation_id (const COLL_TAILORING * coll_tail);
-static void locale_destroy_collation (LOCALE_COLLATION * lc);
 
 static void print_debug_start_el (void *data, const char **attrs, const char *msg, const int status);
 static void print_debug_end_el (void *data, const char *msg, const int status);
@@ -242,13 +245,13 @@ static int common_collation_start_rule (void *data, const char **attr, LOCALE_DA
 
 #define PRINT_VAR_TO_C_FILE(fp, type, valname, val, format, d)	      \
   do {								      \
-    fprintf (fp, "\n"DLL_EXPORT_PREFIX"const "			      \
-	     type" "valname"_%s = "format";\n", d, val);	      \
+    fprintf (fp, "\n" DLL_EXPORT_PREFIX "const "			      \
+	     type " " valname "_%s = " format ";\n", d, val);	      \
   } while (0);
 
 #define PRINT_STRING_VAR_TO_C_FILE(fp, valname, val, d)			  \
   do {                                                                    \
-    fprintf (fp, "\n"DLL_EXPORT_PREFIX"const char "valname"_%s[] = ", d); \
+    fprintf (fp, "\n" DLL_EXPORT_PREFIX "const char " valname "_%s[] = ", d); \
     PRINT_STRING_TO_C_FILE (fp, val, strlen (val));			  \
     fprintf (fp, ";\n");                                                  \
   } while (0);
@@ -256,7 +259,7 @@ static int common_collation_start_rule (void *data, const char **attr, LOCALE_DA
 #define PRINT_STRING_ARRAY_TO_C_FILE(fp, valname, arrcount, val, d)	    \
   do {									    \
     int istrarr;							    \
-    fprintf(fp, "\n"DLL_EXPORT_PREFIX"const char* "valname"_%s[] = {\n", d);\
+    fprintf(fp, "\n" DLL_EXPORT_PREFIX"const char* " valname "_%s[] = {\n", d);\
     for (istrarr = 0; istrarr < arrcount; istrarr++)			    \
       {									    \
 	fprintf(fp, "\t");						    \
@@ -278,7 +281,7 @@ static int common_collation_start_rule (void *data, const char **attr, LOCALE_DA
   do {									    \
     int i_arr, j_arr;							    \
     fprintf(fp,								    \
-	    "\n"DLL_EXPORT_PREFIX"const "vtype" "vname"_%s[] = {\n", d);    \
+	    "\n" DLL_EXPORT_PREFIX "const " vtype " " vname "_%s[] = {\n", d);    \
     j_arr = 1;								    \
     for (i_arr = 0; i_arr < arrcount; i_arr++)				    \
       {									    \
@@ -315,10 +318,10 @@ static int common_collation_start_rule (void *data, const char **attr, LOCALE_DA
 	if (j_uarr > PRINT_TO_C_FILE_MAX_INT_LINE)			    \
 	  {								    \
 	    j_uarr = 1;							    \
-	    fprintf(fp, "\n"tab);					    \
+	    fprintf(fp, "\n" tab);					    \
 	  }								    \
       }									    \
-    fprintf(fp, "\n"tab"}");						    \
+    fprintf(fp, "\n" tab "}");						    \
   } while (0);
 
 
@@ -342,9 +345,11 @@ XML_ELEMENT_DEF ldml_elem_ldml = { "ldml", 1, (ELEM_START_FUNC) (&start_element_
 XML_ELEMENT_DEF ldml_elem_dates = { "ldml dates", 2, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_calendars = { "ldml dates calendars", 3, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_calendar = { "ldml dates calendars calendar", 4, (ELEM_START_FUNC) (&start_calendar),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
@@ -353,46 +358,56 @@ XML_ELEMENT_DEF ldml_elem_dateFormatCUBRID = { "ldml dates calendars calendar da
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_dateFormatCUBRID), (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_timeFormatCUBRID = { "ldml dates calendars calendar timeFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_timeFormatCUBRID), (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_datetimeFormatCUBRID = { "ldml dates calendars calendar datetimeFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_datetimeFormatCUBRID), (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_timestampFormatCUBRID = { "ldml dates calendars calendar timestampFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_timestampFormatCUBRID),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_timetzFormatCUBRID = { "ldml dates calendars calendar timetzFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_timetzFormatCUBRID),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_datetimetzFormatCUBRID = { "ldml dates calendars calendar datetimetzFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_datetimetzFormatCUBRID),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_timestamptzFormatCUBRID = { "ldml dates calendars calendar timestamptzFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_timestamptzFormatCUBRID),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_months = { "ldml dates calendars calendar months", 5,
   (ELEM_START_FUNC) (&start_element_ok), (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_monthContext = { "ldml dates calendars calendar months monthContext", 6,
   (ELEM_START_FUNC) (&start_calendar_name_context),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_monthWidth = { "ldml dates calendars calendar months monthContext monthWidth", 7,
   (ELEM_START_FUNC) (&start_month_day_Width),
   (ELEM_END_FUNC) (&end_month_day_Width), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_month = { "ldml dates calendars calendar months monthContext monthWidth month", 8,
   (ELEM_START_FUNC) (&start_month), (ELEM_END_FUNC) (&end_month),
   (ELEM_DATA_FUNC) (&handle_data)
@@ -402,14 +417,17 @@ XML_ELEMENT_DEF ldml_elem_days = { "ldml dates calendars calendar days", 5,
   (ELEM_START_FUNC) (&start_element_ok), (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_dayContext = { "ldml dates calendars calendar days dayContext", 6,
   (ELEM_START_FUNC) (&start_calendar_name_context),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_dayWidth = { "ldml dates calendars calendar days dayContext dayWidth", 7,
   (ELEM_START_FUNC) (&start_month_day_Width),
   (ELEM_END_FUNC) (&end_month_day_Width), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_day = { "ldml dates calendars calendar days dayContext dayWidth day", 8,
   (ELEM_START_FUNC) (&start_day), (ELEM_END_FUNC) (&end_day),
   (ELEM_DATA_FUNC) (&handle_data)
@@ -419,10 +437,12 @@ XML_ELEMENT_DEF ldml_elem_dayPeriods = { "ldml dates calendars calendar dayPerio
   (ELEM_START_FUNC) (&start_element_ok), (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_dayPeriodContext = { "ldml dates calendars calendar dayPeriods dayPeriodContext", 6,
   (ELEM_START_FUNC) (&start_calendar_name_context),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_dayPeriodWidth = {
   "ldml dates calendars calendar dayPeriods dayPeriodContext dayPeriodWidth",
   7,
@@ -430,6 +450,7 @@ XML_ELEMENT_DEF ldml_elem_dayPeriodWidth = {
   (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_dayPeriod = {
   "ldml dates calendars calendar dayPeriods dayPeriodContext dayPeriodWidth dayPeriod",
   8,
@@ -440,18 +461,23 @@ XML_ELEMENT_DEF ldml_elem_dayPeriod = {
 XML_ELEMENT_DEF ldml_elem_numbers = { "ldml numbers", 2, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_numbers_symbols = { "ldml numbers symbols", 3, (ELEM_START_FUNC) (&start_numbers_symbols),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_symbol_decimal = { "ldml numbers symbols decimal", 4, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_number_symbol), (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_symbol_group = { "ldml numbers symbols group", 4, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_number_symbol), (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_currencies = { "ldml numbers currencies", 3, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_currency = { "ldml numbers currencies currency", 4,
   (ELEM_START_FUNC) (&start_currency),
   (ELEM_END_FUNC) (&end_element_ok), NULL
@@ -460,56 +486,68 @@ XML_ELEMENT_DEF ldml_elem_currency = { "ldml numbers currencies currency", 4,
 XML_ELEMENT_DEF ldml_elem_collations = { "ldml collations", 2, (ELEM_START_FUNC) (&start_collations),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation = { "ldml collations collation", 3, (ELEM_START_FUNC) (&start_one_collation),
   (ELEM_END_FUNC) (&end_one_collation), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_rules = { "ldml collations collation rules", 4,
   (ELEM_START_FUNC) (&start_element_ok), (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_settings = { "ldml collations collation settings", 4,
   (ELEM_START_FUNC) (&start_collation_settings),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset = { "ldml collations collation rules reset", 5,
   (ELEM_START_FUNC) (&start_collation_reset),
   (ELEM_END_FUNC) (&end_collation_reset), (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_p = { "ldml collations collation rules p", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_s = { "ldml collations collation rules s", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_t = { "ldml collations collation rules t", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_i = { "ldml collations collation rules i", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_pc = { "ldml collations collation rules pc", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_sc = { "ldml collations collation rules sc", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_tc = { "ldml collations collation rules tc", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_ic = { "ldml collations collation rules ic", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
@@ -520,30 +558,36 @@ XML_ELEMENT_DEF ldml_elem_collation_x = { "ldml collations collation rules x", 5
   (ELEM_START_FUNC) (&start_collation_x), (ELEM_END_FUNC) (&end_collation_x),
   NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_x_p = { "ldml collations collation rules x p", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_rule),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_x_s = { "ldml collations collation rules x s", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_rule),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_x_t = { "ldml collations collation rules x t", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_rule),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_x_i = { "ldml collations collation rules x i", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_rule),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_x_extend = { "ldml collations collation rules x extend", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_extend), (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_x_context = { "ldml collations collation rules x context", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_context), (ELEM_DATA_FUNC) (&handle_data)
@@ -553,138 +597,168 @@ XML_ELEMENT_DEF ldml_elem_collation_reset_first_variable = { "ldml collations co
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_last_variable = { "ldml collations collation rules reset last_variable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_first_primary_ignorable =
   { "ldml collations collation rules reset first_primary_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_last_primary_ignorable =
   { "ldml collations collation rules reset last_primary_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_first_secondary_ignorable =
   { "ldml collations collation rules reset first_secondary_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_last_secondary_ignorable =
   { "ldml collations collation rules reset last_secondary_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_first_tertiary_ignorable =
   { "ldml collations collation rules reset first_tertiary_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_last_tertiary_ignorable =
   { "ldml collations collation rules reset last_tertiary_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_first_non_ignorable =
   { "ldml collations collation rules reset first_non_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_last_non_ignorable =
   { "ldml collations collation rules reset last_non_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_first_trailing = { "ldml collations collation rules reset first_trailing", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_reset_last_trailing = { "ldml collations collation rules reset last_trailing", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules = {
   "ldml collations collation cubridrules", 4,
   (ELEM_START_FUNC) (&start_element_ok), (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set = { "ldml collations collation cubridrules set", 5,
   (ELEM_START_FUNC) (&start_collation_cubrid_rule),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_ch = { "ldml collations collation cubridrules set ch", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_cp_ch),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_sch = { "ldml collations collation cubridrules set sch", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_cp_ch),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_ech = { "ldml collations collation cubridrules set ech", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_ech_ecp),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_cp = { "ldml collations collation cubridrules set cp", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_cp_ch),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_scp = { "ldml collations collation cubridrules set scp", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_cp_ch),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_ecp = { "ldml collations collation cubridrules set ecp", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_ech_ecp),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_w = { "ldml collations collation cubridrules set w", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_w_wr),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_wr = { "ldml collations collation cubridrules set wr", 6,
   (ELEM_START_FUNC) (&start_collation_cubrid_rule_set_wr),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_w_wr),
   (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_alphabets = { "ldml alphabets", 2, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_include_collation = { "ldml collations include", 3,
   (ELEM_START_FUNC) (&start_include_collation),
   (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_alphabet = { "ldml alphabets alphabet", 3, (ELEM_START_FUNC) (&start_one_alphabet),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_alphabet_upper = { "ldml alphabets alphabet u", 4,
   (ELEM_START_FUNC) (&start_upper_case_rule),
   (ELEM_END_FUNC) (&end_case_rule), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_alphabet_upper_src =
   { "ldml alphabets alphabet u s", 5, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_transform_buffer), (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_alphabet_upper_dest =
   { "ldml alphabets alphabet u d", 5, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_transform_buffer), (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_alphabet_lower = { "ldml alphabets alphabet l", 4,
   (ELEM_START_FUNC) (&start_lower_case_rule),
   (ELEM_END_FUNC) (&end_case_rule), NULL
 };
+
 XML_ELEMENT_DEF ldml_elem_alphabet_lower_src =
   { "ldml alphabets alphabet l s", 5, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_transform_buffer), (ELEM_DATA_FUNC) (&handle_data)
 };
+
 XML_ELEMENT_DEF ldml_elem_alphabet_lower_dest =
   { "ldml alphabets alphabet l d", 5, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_transform_buffer), (ELEM_DATA_FUNC) (&handle_data)
@@ -878,7 +952,7 @@ end_dateFormatCUBRID (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   /* copy data buffer to locale */
   assert (ld->data_buf_count < (int) sizeof (ld->dateFormat));
@@ -893,7 +967,7 @@ end_dateFormatCUBRID (void *data, const char *el_name)
       return -1;
     }
 
-  clear_data_buffer (data);
+  clear_data_buffer ((XML_PARSER_DATA *) data);
 
   PRINT_DEBUG_END (data, "", 0);
 
@@ -916,7 +990,7 @@ end_timeFormatCUBRID (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   /* copy data buffer to locale */
   assert (ld->data_buf_count < (int) sizeof (ld->timeFormat));
@@ -931,7 +1005,7 @@ end_timeFormatCUBRID (void *data, const char *el_name)
       return -1;
     }
 
-  clear_data_buffer (data);
+  clear_data_buffer ((XML_PARSER_DATA *) data);
 
   PRINT_DEBUG_END (data, "", 0);
 
@@ -954,7 +1028,7 @@ end_datetimeFormatCUBRID (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   /* copy data buffer to locale */
   assert (ld->data_buf_count < (int) sizeof (ld->datetimeFormat));
@@ -969,7 +1043,7 @@ end_datetimeFormatCUBRID (void *data, const char *el_name)
       return -1;
     }
 
-  clear_data_buffer (data);
+  clear_data_buffer ((XML_PARSER_DATA *) data);
 
   PRINT_DEBUG_END (data, "", 0);
 
@@ -992,7 +1066,7 @@ end_timestampFormatCUBRID (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   /* copy data buffer to locale */
   assert (ld->data_buf_count < (int) sizeof (ld->timestampFormat));
@@ -1007,7 +1081,7 @@ end_timestampFormatCUBRID (void *data, const char *el_name)
       return -1;
     }
 
-  clear_data_buffer (data);
+  clear_data_buffer ((XML_PARSER_DATA *) data);
 
   PRINT_DEBUG_END (data, "", 0);
 
@@ -1030,7 +1104,7 @@ end_timetzFormatCUBRID (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   /* copy data buffer to locale */
   assert (ld->data_buf_count < (int) sizeof (ld->timetzFormat));
@@ -1045,7 +1119,7 @@ end_timetzFormatCUBRID (void *data, const char *el_name)
       return -1;
     }
 
-  clear_data_buffer (data);
+  clear_data_buffer ((XML_PARSER_DATA *) data);
 
   PRINT_DEBUG_END (data, "", 0);
 
@@ -1068,7 +1142,7 @@ end_datetimetzFormatCUBRID (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   /* copy data buffer to locale */
   assert (ld->data_buf_count < (int) sizeof (ld->datetimetzFormat));
@@ -1083,7 +1157,7 @@ end_datetimetzFormatCUBRID (void *data, const char *el_name)
       return -1;
     }
 
-  clear_data_buffer (data);
+  clear_data_buffer ((XML_PARSER_DATA *) data);
 
   PRINT_DEBUG_END (data, "", 0);
 
@@ -1106,7 +1180,7 @@ end_timestamptzFormatCUBRID (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   /* copy data buffer to locale */
   assert (ld->data_buf_count < (int) sizeof (ld->timestamptzFormat));
@@ -1121,7 +1195,7 @@ end_timestamptzFormatCUBRID (void *data, const char *el_name)
       return -1;
     }
 
-  clear_data_buffer (data);
+  clear_data_buffer ((XML_PARSER_DATA *) data);
 
   PRINT_DEBUG_END (data, "", 0);
 
@@ -1145,7 +1219,7 @@ start_calendar_name_context (void *data, const char **attr)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   if (xml_check_att_value (attr, "type", "format") == 0)
     {
@@ -1174,7 +1248,7 @@ start_month_day_Width (void *data, const char **attr)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   assert (ld->name_type == 0);
 
@@ -1211,7 +1285,7 @@ end_month_day_Width (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   assert (ld->name_type != 0);
 
@@ -1239,7 +1313,7 @@ start_month (void *data, const char **attr)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   if (xml_get_att_value (attr, "type", &month_count) == 0)
     {
@@ -1282,7 +1356,7 @@ end_month (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   /* copy data buffer to locale */
   assert (ld->curr_period >= 0 && ld->curr_period < CAL_MONTH_COUNT);
@@ -1319,7 +1393,7 @@ end_month (void *data, const char *el_name)
 
   ld->curr_period = -1;
 
-  clear_data_buffer (data);
+  clear_data_buffer ((XML_PARSER_DATA *) data);
 
   PRINT_DEBUG_END (data, "", 0);
   return 0;
@@ -1344,7 +1418,7 @@ start_day (void *data, const char **attr)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   if (xml_get_att_value (attr, "type", &day_ref_name) != 0)
     {
@@ -1394,7 +1468,7 @@ end_day (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   /* copy data buffer to locale */
   assert (ld->curr_period >= 0 && ld->curr_period < CAL_DAY_COUNT);
@@ -1430,7 +1504,7 @@ end_day (void *data, const char *el_name)
 
   ld->curr_period = -1;
 
-  clear_data_buffer (data);
+  clear_data_buffer ((XML_PARSER_DATA *) data);
 
   PRINT_DEBUG_END (data, "", 0);
   return 0;
@@ -1477,7 +1551,7 @@ start_dayPeriod (void *data, const char **attr)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   if (xml_get_att_value (attr, "type", &am_pm_ref_name) != 0)
     {
@@ -1527,7 +1601,7 @@ end_dayPeriod (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   /* copy data buffer to locale */
   assert (ld->curr_period >= 0 && ld->curr_period < CAL_AM_PM_COUNT);
@@ -1545,7 +1619,7 @@ end_dayPeriod (void *data, const char *el_name)
 
   ld->curr_period = -1;
 
-  clear_data_buffer (data);
+  clear_data_buffer ((XML_PARSER_DATA *) data);
 
   PRINT_DEBUG_END (data, "", 0);
   return 0;
@@ -1568,7 +1642,7 @@ start_numbers_symbols (void *data, const char **attr)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   if (xml_check_att_value (attr, "numberSystem", "latn") != 0)
     {
@@ -1596,7 +1670,7 @@ end_number_symbol (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   /* number symbol is exactly one character (ASCII compatible) */
   if (ld->data_buf_count == 1 && (*(ld->data_buffer) >= ' ' && (unsigned char) *(ld->data_buffer) < 0x80))
@@ -1616,7 +1690,7 @@ end_number_symbol (void *data, const char *el_name)
       return -1;
     }
 
-  clear_data_buffer (data);
+  clear_data_buffer ((XML_PARSER_DATA *) data);
 
   PRINT_DEBUG_END (data, "", 0);
   return 0;
@@ -1641,7 +1715,7 @@ start_currency (void *data, const char **attr)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   /* all setting are optional */
   if (xml_get_att_value (attr, "type", &att_val) == 0)
@@ -1700,7 +1774,7 @@ start_collations (void *data, const char **attr)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   if (xml_get_att_value (attr, "validSubLocales", &valid_locales) != 0)
     {
@@ -1772,7 +1846,7 @@ start_one_collation (void *data, const char **attr)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   locale_coll = new_locale_collation (ld);
   if (locale_coll == NULL)
@@ -1820,7 +1894,7 @@ end_one_collation (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   ld->coll_cnt++;
 
@@ -1848,7 +1922,7 @@ start_collation_settings (void *data, const char **attr)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
   curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
   att_val = NULL;
@@ -2015,7 +2089,7 @@ start_collation_reset (void *data, const char **attr)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   *(ld->last_anchor_buf) = '\0';
 
@@ -2074,19 +2148,19 @@ end_collation_reset (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   assert (ld->data_buf_count < LOC_DATA_COLL_TWO_CHARS);
 
   if (ld->data_buf_count < LOC_DATA_COLL_TWO_CHARS)
     {
       strcpy (ld->last_anchor_buf, ld->data_buffer);
-      clear_data_buffer (data);
+      clear_data_buffer ((XML_PARSER_DATA *) data);
       PRINT_DEBUG_END (data, "", 0);
       return 0;
     }
 
-  clear_data_buffer (data);
+  clear_data_buffer ((XML_PARSER_DATA *) data);
 
   PRINT_DEBUG_END (data, "Too much data", -1);
   return -1;
@@ -2111,7 +2185,7 @@ start_collation_rule (void *data, const char **attr)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   t_rule = new_collation_rule (ld);
 
@@ -2157,12 +2231,10 @@ start_collation_cubrid_rule (void *data, const char **attr)
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
   CUBRID_TAILOR_RULE *ct_rule = NULL;
-  char *ref_buf_p = NULL;
-  int ref_buf_size = 0;
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   ct_rule = new_collation_cubrid_rule (ld);
 
@@ -2200,7 +2272,7 @@ start_collation_cubrid_rule_set_wr (void *data, const char **attr)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
@@ -2242,7 +2314,7 @@ end_collation_cubrid_rule_set (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
   curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
   rule_id = curr_coll_tail->cub_count_rules;
@@ -2283,7 +2355,7 @@ end_collation_cubrid_rule_set_cp_ch (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
   curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
   rule_id = curr_coll_tail->cub_count_rules;
@@ -2348,7 +2420,7 @@ end_collation_cubrid_rule_set_ech_ecp (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
   curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
   if (ld->data_buf_count > LOC_DATA_BUFF_SIZE)
@@ -2406,7 +2478,7 @@ end_collation_cubrid_rule_set_w_wr (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
   curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
   rule_id = curr_coll_tail->cub_count_rules;
@@ -2454,13 +2526,13 @@ handle_data_collation_rule (void *data, const char *s, int len)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
   curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
   assert (len >= 0);
 
   t_rule = &(curr_coll_tail->rules[curr_coll_tail->count_rules]);
-  t_rule->t_buf = realloc (t_rule->t_buf, t_rule->t_buf_size + len);
+  t_rule->t_buf = (char *) realloc (t_rule->t_buf, t_rule->t_buf_size + len);
   if (t_rule->t_buf == NULL)
     {
       pd->xml_error = XML_CUB_OUT_OF_MEMORY;
@@ -2515,7 +2587,7 @@ end_collation_rule (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
   curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
   /* rule finished, increase count */
@@ -2594,7 +2666,7 @@ start_collation_x (void *data, const char **attr)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   t_rule = new_collation_rule (ld);
 
@@ -2641,7 +2713,7 @@ end_collation_x (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
   curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
   /* rule finished, increase count */
@@ -2682,7 +2754,7 @@ end_collation_x_rule (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
   curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
   rule_id = curr_coll_tail->count_rules;
@@ -2690,7 +2762,7 @@ end_collation_x_rule (void *data, const char *el_name)
 
   assert (strlen (ld->data_buffer) == ld->data_buf_count);
 
-  t_rule->t_buf = realloc (t_rule->t_buf, t_rule->t_buf_size + ld->data_buf_count);
+  t_rule->t_buf = (char *) realloc (t_rule->t_buf, t_rule->t_buf_size + ld->data_buf_count);
   if (t_rule->t_buf == NULL)
     {
       pd->xml_error = XML_CUB_OUT_OF_MEMORY;
@@ -2732,7 +2804,7 @@ end_collation_x_rule (void *data, const char *el_name)
       return status;
     }
 
-  clear_data_buffer (data);
+  clear_data_buffer ((XML_PARSER_DATA *) data);
 
   return 0;
 }
@@ -2756,7 +2828,7 @@ end_collation_x_extend (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
   curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
   rule_id = curr_coll_tail->count_rules;
@@ -2765,7 +2837,7 @@ end_collation_x_extend (void *data, const char *el_name)
   assert (t_rule->r_buf != NULL);
   assert (ld->data_buf_count > 0);
 
-  t_rule->r_buf = realloc (t_rule->r_buf, t_rule->r_buf_size + ld->data_buf_count);
+  t_rule->r_buf = (char *) realloc (t_rule->r_buf, t_rule->r_buf_size + ld->data_buf_count);
 
   if (t_rule->r_buf == NULL)
     {
@@ -2778,7 +2850,7 @@ end_collation_x_extend (void *data, const char *el_name)
 
   t_rule->r_buf_size += ld->data_buf_count;
 
-  clear_data_buffer (data);
+  clear_data_buffer ((XML_PARSER_DATA *) data);
 
   PRINT_DEBUG_END (data, "", 0);
 
@@ -2804,7 +2876,7 @@ end_collation_x_context (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
   curr_coll_tail = LOC_CURRENT_COLL_TAIL (ld);
 
   rule_id = curr_coll_tail->count_rules;
@@ -2832,12 +2904,11 @@ end_collation_x_context (void *data, const char *el_name)
   memcpy (t_rule->t_buf, ld->data_buffer, ld->data_buf_count);
   t_rule->t_buf_size = ld->data_buf_count;
 
-  clear_data_buffer (data);
+  clear_data_buffer ((XML_PARSER_DATA *) data);
   if (pd->verbose)
     {
       char msg[ERR_MSG_SIZE];
       int rule_id = curr_coll_tail->count_rules;
-      TAILOR_RULE *t_rule = &(curr_coll_tail->rules[rule_id]);
 
       snprintf (msg, sizeof (msg) - 1, "* Rule %d *", rule_id);
       PRINT_DEBUG_END (data, msg, 0);
@@ -2864,11 +2935,10 @@ start_collation_logical_pos (void *data, const char **attr)
 {
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;
   LOCALE_DATA *ld = NULL;
-  char *att_val = NULL;
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   PRINT_DEBUG_START (data, attr, "", 0);
   return 0;
@@ -2890,7 +2960,7 @@ end_collation_logical_pos (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   if (strcmp (el_name, "first_variable") == 0)
     {
@@ -2972,7 +3042,7 @@ start_one_alphabet (void *data, const char **attr)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   if (ld->alpha_tailoring.alphabet_mode != 0 || ld->alpha_tailoring.count_rules != 0
       || ld->alpha_tailoring.sett_max_letters != -1)
@@ -3033,7 +3103,7 @@ start_upper_case_rule (void *data, const char **attr)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   tf_rule = new_transform_rule (ld);
 
@@ -3068,7 +3138,7 @@ end_case_rule (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   /* rule finished, increase count */
   rule_id = ld->alpha_tailoring.count_rules++;
@@ -3112,7 +3182,7 @@ start_lower_case_rule (void *data, const char **attr)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   tf_rule = new_transform_rule (ld);
 
@@ -3147,7 +3217,7 @@ end_transform_buffer (void *data, const char *el_name)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   assert (ld->alpha_tailoring.count_rules < ld->alpha_tailoring.max_rules);
   tf_rule = &(ld->alpha_tailoring.rules[ld->alpha_tailoring.count_rules]);
@@ -3205,13 +3275,13 @@ end_transform_buffer (void *data, const char *el_name)
 
   PRINT_DEBUG_END (data, "", 0);
 
-  clear_data_buffer (data);
+  clear_data_buffer ((XML_PARSER_DATA *) data);
 
   return 0;
 
 error_exit:
 
-  clear_data_buffer (data);
+  clear_data_buffer ((XML_PARSER_DATA *) data);
 
   return -1;
 }
@@ -3234,7 +3304,7 @@ start_consoleconversion (void *data, const char **attr)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   if (*(ld->txt_conv_prm.nl_lang_str) != '\0' || *(ld->txt_conv_prm.conv_file) != '\0'
       || *(ld->txt_conv_prm.win_codepages) != '\0')
@@ -3335,7 +3405,7 @@ handle_data (void *data, const char *s, int len)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   assert (len >= 0);
 
@@ -3388,7 +3458,7 @@ clear_data_buffer (XML_PARSER_DATA * pd)
 
   assert (pd != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   ld->data_buf_count = 0;
   *(ld->data_buffer) = '\0';
@@ -3408,7 +3478,7 @@ new_locale_collation (LOCALE_DATA * ld)
   assert (ld != NULL);
 
   /* check number of rules, increase array if necessary */
-  ld->collations = realloc (ld->collations, sizeof (LOCALE_COLLATION) * (ld->coll_cnt + 1));
+  ld->collations = (LOCALE_COLLATION *) realloc (ld->collations, sizeof (LOCALE_COLLATION) * (ld->coll_cnt + 1));
 
   if (ld->collations == NULL)
     {
@@ -3443,7 +3513,7 @@ new_collation_rule (LOCALE_DATA * ld)
   /* check number of rules, increase array if necessary */
   if (curr_coll_tail->count_rules + 1 >= curr_coll_tail->max_rules)
     {
-      curr_coll_tail->rules =
+      curr_coll_tail->rules = (TAILOR_RULE *)
 	realloc (curr_coll_tail->rules,
 		 sizeof (TAILOR_RULE) * (curr_coll_tail->max_rules + LOC_DATA_TAILOR_RULES_COUNT_GROW));
 
@@ -3478,7 +3548,7 @@ new_transform_rule (LOCALE_DATA * ld)
   /* check number of rules, increase array if necessary */
   if (ld->alpha_tailoring.count_rules + 1 >= ld->alpha_tailoring.max_rules)
     {
-      ld->alpha_tailoring.rules =
+      ld->alpha_tailoring.rules = (TRANSFORM_RULE *)
 	realloc (ld->alpha_tailoring.rules,
 		 sizeof (TRANSFORM_RULE) * (ld->alpha_tailoring.max_rules + LOC_DATA_TAILOR_RULES_COUNT_GROW));
 
@@ -3515,7 +3585,7 @@ new_collation_cubrid_rule (LOCALE_DATA * ld)
   /* check number of absolute rules, increase array if necessary */
   if (curr_coll_tail->cub_count_rules + 1 >= curr_coll_tail->cub_max_rules)
     {
-      curr_coll_tail->cub_rules =
+      curr_coll_tail->cub_rules = (CUBRID_TAILOR_RULE *)
 	realloc (curr_coll_tail->cub_rules,
 		 sizeof (CUBRID_TAILOR_RULE) * (curr_coll_tail->max_rules + LOC_DATA_COLL_CUBRID_TAILOR_COUNT_GROW));
 
@@ -5054,7 +5124,7 @@ locale_get_cfg_locales (LOCALE_FILE ** p_locale_files, int *p_num_locales, bool 
   locale_files = NULL;
   num_locales = 0;
 
-  locale_files = malloc (max_locales * sizeof (LOCALE_FILE));
+  locale_files = (LOCALE_FILE *) malloc (max_locales * sizeof (LOCALE_FILE));
   if (locale_files == NULL)
     {
       LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT, true);
@@ -5077,7 +5147,7 @@ locale_get_cfg_locales (LOCALE_FILE ** p_locale_files, int *p_num_locales, bool 
       if (num_locales >= max_locales)
 	{
 	  max_locales *= 2;
-	  locale_files = realloc (locale_files, max_locales * sizeof (LOCALE_FILE));
+	  locale_files = (LOCALE_FILE *) realloc (locale_files, max_locales * sizeof (LOCALE_FILE));
 
 	  if (locale_files == NULL)
 	    {
@@ -5176,7 +5246,7 @@ locale_check_and_set_default_files (LOCALE_FILE * lf, bool is_lang_init)
 	  free (lf->ldml_file);
 	}
 
-      lf->ldml_file = malloc (PATH_MAX + 1);
+      lf->ldml_file = (char *) malloc (PATH_MAX + 1);
       if (lf->ldml_file == NULL)
 	{
 	  er_status = is_lang_init ? ER_LOC_INIT : ER_LOC_GEN;
@@ -5201,7 +5271,7 @@ locale_check_and_set_default_files (LOCALE_FILE * lf, bool is_lang_init)
 	  free (lf->lib_file);
 	}
 
-      lf->lib_file = malloc (PATH_MAX + 1);
+      lf->lib_file = (char *) malloc (PATH_MAX + 1);
       if (lf->lib_file == NULL)
 	{
 	  er_status = is_lang_init ? ER_LOC_INIT : ER_LOC_GEN;
@@ -5264,8 +5334,6 @@ error:
 static int
 save_contraction_to_C_file (FILE * fp, COLL_CONTRACTION * c, bool use_expansion, bool use_level_4)
 {
-  int res = 0;
-
   assert (c != NULL);
   assert (fp != NULL);
 
@@ -5720,7 +5788,6 @@ static int
 locale_save_console_conv_to_C_file (FILE * fp, LOCALE_DATA * ld)
 {
   int i;
-  int res = 0;
 
   TEXT_CONVERSION *tc;
 
@@ -6754,7 +6821,9 @@ locale_check_and_set_shared_data (const LOC_SHARED_DATA_TYPE lsd_type, const cha
   /* set new shared data */
   if (alloced_shared_data <= count_shared_data)
     {
-      shared_data = realloc (shared_data, sizeof (LOC_SHARED_DATA) * (alloced_shared_data + SHARED_DATA_INCR_SIZE));
+      shared_data =
+	(LOC_SHARED_DATA *) realloc (shared_data,
+				     sizeof (LOC_SHARED_DATA) * (alloced_shared_data + SHARED_DATA_INCR_SIZE));
       if (shared_data == NULL)
 	{
 	  LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
@@ -6771,7 +6840,7 @@ locale_check_and_set_shared_data (const LOC_SHARED_DATA_TYPE lsd_type, const cha
 
   if (data != NULL)
     {
-      shared_data[count_shared_data].data = strdup (data);
+      shared_data[count_shared_data].data = strdup ((const char *) data);
       if (shared_data[count_shared_data].data == NULL)
 	{
 	  LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
@@ -6854,7 +6923,7 @@ start_unicode_file (void *data, const char **attr)
 
   assert (data != NULL);
 
-  ld = XML_USER_DATA (pd);
+  ld = (LOCALE_DATA *) XML_USER_DATA (pd);
 
   if (strlen (ld->unicode_data_file) != 0)
     {
@@ -7511,7 +7580,7 @@ locale_alphabet_data_to_buf (ALPHABET_DATA * a, char *buf)
 	}
     }
 
-  return buf_pos - buf;
+  return CAST_BUFLEN (buf_pos - buf);
 }
 
 /*

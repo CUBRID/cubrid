@@ -1,12 +1,12 @@
 @echo off
+setlocal EnableDelayedExpansion
 
 set APP_NAME=%0
 
 set BUILD_TARGET=x64
 set BUILD_MODE=.
 set TZ_MODE=.
-set DATABASE=.
-set ALL=.
+set DB_FOUND=.
 
 set VS80_VC_FOLDER=
 set VS90_VC_FOLDER=
@@ -47,29 +47,18 @@ if "%1" == "/?"            (GOTO :SHOW_USAGE)
 if "%1" == "/help"         (GOTO :SHOW_USAGE)
 GOTO :ERROR
 ) else (
-if "%TZ_MODE%" == "." set TZ_MODE=new
-GOTO :GET_DATABASE_NAME
+if "%TZ_MODE%" == "." ( 
+GOTO :CHECK_ENV
+) else (
+if not "%1" == "" (
+GOTO :ERROR
+) else (GOTO :CHECK_ENV)
+)
 )
 
 :DO_SHIFT
 shift
-GOTO :GET_DATABASE_NAME
-
-:GET_DATABASE_NAME
-if not "%1" == "" (
-if "%1" == "-d" (
-set DATABASE=%2
-shift
-shift
 GOTO :CHECK_OPTION
-) else (if "%1" == "-all" (
-set ALL=all
-shift
-GOTO :CHECK_OPTION
-) else (GOTO :ERROR_BUILD_MODE)
-)
-) else (if "%TZ_MODE%" == "extend" ( GOTO :ERROR_BUILD_MODE
-) else ( GOTO :CHECK_OPTION ))
 
 :CHECK_ENV
 
@@ -88,6 +77,10 @@ if NOT "%VS90COMNTOOLS%"=="" (
 )
 if NOT "%VS100COMNTOOLS%"=="" (
 @echo. Found installation for Visual Studio 2010
+)
+if NOT "%VS140COMNTOOLS%"=="" (
+@echo. Found installation for Visual Studio 2017
+set VS2017_ARCH=-arch=amd64
 )
 
 @echo. Checking for %BUILD_TARGET% configuration...
@@ -110,6 +103,24 @@ call "%VS100COMNTOOLS%..\..\VC\%VCVARS%"
 goto :BUILD
 )
 
+if exist "%VS140COMNTOOLS%..\..\..\..\2017\Community\Common7\Tools\VsDevCmd.bat" (
+echo Found %BUILD_TARGET% configuration in Visual Studio 2017 Community.
+call "%VS140COMNTOOLS%..\..\..\..\2017\Community\Common7\Tools\VsDevCmd.bat" %VS2017_ARCH%
+goto :BUILD
+)
+
+if exist "%VS140COMNTOOLS%..\..\..\..\2017\Professional\Common7\Tools\VsDevCmd.bat" (
+echo Found %BUILD_TARGET% configuration in Visual Studio 2017 Professional.
+call "%VS140COMNTOOLS%..\..\..\..\2017\Professional\Common7\Tools\VsDevCmd.bat" %VS2017_ARCH%
+goto :BUILD
+)
+
+if exist "%VS140COMNTOOLS%..\..\..\..\2017\Enterprise\Common7\Tools\VsDevCmd.bat" (
+echo Found %BUILD_TARGET% configuration in Visual Studio 2017 Enterprise.
+call "%VS140COMNTOOLS%..\..\..\..\2017\Enterprise\Common7\Tools\VsDevCmd.bat" %VS2017_ARCH%
+goto :BUILD
+)
+
 goto :ENV_ERROR
 
 :BUILD
@@ -117,18 +128,28 @@ goto :ENV_ERROR
 @echo.         BUILD_TARGET = %BUILD_TARGET%
 @echo.         BUILD_MODE = %BUILD_MODE%
 @echo.         TZ_MODE = %TZ_MODE%
-if "%TZ_MODE%" == "extend" ( 
-if not "%DATABASE%" == "." (
-echo          DATABASE_NAME = %DATABASE%
-)
-)
-@echo.
-
 @echo. Generating timezone C file with mode %TZ_MODE% ...
 
-if not "%DATABASE%" == "." (
-%CUBRID%\bin\cubrid gen_tz -g %TZ_MODE% %DATABASE%
-) else (%CUBRID%\bin\cubrid gen_tz -g %TZ_MODE%)
+if not "%TZ_MODE%" == "extend" (
+%CUBRID%\bin\cubrid gen_tz -g %TZ_MODE%
+) else (
+FOR /F %%i IN (%CUBRID_DATABASES%\databases.txt) DO (
+if not "%%i" == "#db-name" (
+set DB_FOUND=f
+)
+)
+
+if "!DB_FOUND!" == "." (
+@echo. Error, there are no databases stored!
+GOTO :ERROR
+) else (
+FOR /F %%i IN (%CUBRID_DATABASES%\databases.txt) DO (
+if not "%%i" == "#db-name" (
+%CUBRID%\bin\cubrid gen_tz -g %TZ_MODE% %%i
+)
+)
+)
+)
 
 if %ERRORLEVEL% NEQ 0 goto :ERROR_GENTZ
 
@@ -195,7 +216,7 @@ goto :GENERIC_ERROR
 
 :SHOW_USAGE
 @echo.
-@echo.USAGE: %APP_NAME% [/release^|/debug] [/new^|/extend] [-d database_name^|-all] (only for extend mode)
+@echo.USAGE: %APP_NAME% [/release^|/debug] [/new^|/extend]
 @echo.Build timezone shared 32bit DLL for CUBRID
 @echo. OPTIONS
 @echo.  /release or /debug    Build with release or debug mode (default: release)
@@ -213,14 +234,13 @@ goto :GENERIC_ERROR
 @echo.                   associated data is imported from the old timezone library.
 @echo.                   a new C file containing all timezone names is generated,
 @echo.                   and it must be included in CUBRID src before the new
-@echo.                   timezone library can be used.
-@echo.        -d = the flag tells that next is the database name
-@echo.        database_name = optional parameter when using extend mode;
-@echo.                        the computed timezone checksum is written in
-@echo.                        the timezone_checksum column of the db_root
-@echo.                        system table;
-@echo.        -all = flag that signals that all the databases available on disk
-@echo.               will be updated with the new checksum
+@echo.                   timezone library can be used. After the timezone
+@echo.                   library is built in memory an update of the timezone
+@echo                    data available in all the databases on disk is performed.
+@echo                    The reason for this is to make the data in the tables
+@echo                    compatible with the new timezone library. An example
+@echo                    would be when the daylight saving information is changed
+@echo                    for a timezone region.
 @echo.  /help /h /?      Display this help message and exit
 @echo.
 @echo. Examples:

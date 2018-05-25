@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 
 #include "virtual_object.h"
 #include "set_object.h"
@@ -36,8 +37,7 @@
 #include "view_transform.h"
 #include "transaction_cl.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #define ENCODED_LEN(siz) (2*(siz))
 #define MAX_STRING_OID_LENGTH 4096
@@ -296,7 +296,7 @@ vid_convert_object_attr_value (SM_ATTRIBUTE * attribute_p, DB_VALUE * source_val
     case DB_TYPE_OBJECT:
       {
 	db_value_domain_init (destination_value, DB_TYPE_STRING, DB_DEFAULT_PRECISION, 0);
-	temp_object = DB_GET_OBJECT (source_value);
+	temp_object = db_get_object (source_value);
 	if (temp_object != NULL)
 	  {
 	    ref_vid_info = temp_object->oid_info.vid_info;
@@ -325,9 +325,9 @@ vid_convert_object_attr_value (SM_ATTRIBUTE * attribute_p, DB_VALUE * source_val
 	  {
 	    DB_VALUE setval;
 
-	    set = DB_GET_SET (source_value);
+	    set = db_get_set (source_value);
 	    (void) db_seq_get (set, 1, &setval);
-	    proxy_class_mop = DB_GET_OBJECT (&setval);
+	    proxy_class_mop = db_get_object (&setval);
 
 	    if (proxy_class_mop == NULL)
 	      {
@@ -347,8 +347,8 @@ vid_convert_object_attr_value (SM_ATTRIBUTE * attribute_p, DB_VALUE * source_val
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
       {
-	set = DB_GET_SET (source_value);
-	new_set = DB_GET_SET (destination_value);
+	set = db_get_set (source_value);
+	new_set = db_get_set (destination_value);
 	set_size = db_set_cardinality (set);
 	for (set_index = 0; set_index < set_size; ++set_index)
 	  {
@@ -370,8 +370,8 @@ vid_convert_object_attr_value (SM_ATTRIBUTE * attribute_p, DB_VALUE * source_val
 
     case DB_TYPE_SEQUENCE:
       {
-	set = DB_GET_SET (source_value);
-	new_set = DB_GET_SET (destination_value);
+	set = db_get_set (source_value);
+	new_set = db_get_set (destination_value);
 	set_size = db_seq_size (set);
 	for (set_index = 0; set_index < set_size; ++set_index)
 	  {
@@ -542,7 +542,7 @@ vid_flush_and_rehash_lbl (DB_VALUE * value)
       return value;
     }
 
-  mop = DB_GET_OBJECT (value);
+  mop = db_get_object (value);
 
   /* if val has anything other than a new dirty proxy object then do nothing */
   if (mop == NULL || !vid_is_new_pobj (mop))
@@ -689,7 +689,7 @@ vid_get_referenced_mop (MOP mop)
 
   if (DB_VALUE_TYPE (&mop_vid_info->keys) == DB_TYPE_OBJECT)
     {
-      return DB_GET_OBJECT (&mop_vid_info->keys);
+      return db_get_object (&mop_vid_info->keys);
     }
 
 end:
@@ -960,8 +960,8 @@ vid_compare_non_updatable_objects (MOP mop1, MOP mop2)
 	  db_value_domain_init (&val2, att1->type->id, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  PRIM_GETMEM (att1->type, att1->domain, mem1, &val1);
 	  PRIM_GETMEM (att2->type, att2->domain, mem2, &val2);
-	  set1 = DB_GET_SET (&val1);
-	  set2 = DB_GET_SET (&val2);
+	  set1 = db_get_set (&val1);
+	  set2 = db_get_set (&val2);
 	  db_value_put_null (&val1);
 	  db_value_put_null (&val2);
 	  if ((set1 != NULL) && (set2 != NULL))
@@ -982,8 +982,8 @@ vid_compare_non_updatable_objects (MOP mop1, MOP mop2)
 	  db_value_domain_init (&val2, DB_TYPE_OBJECT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  PRIM_GETMEM (att1->type, att1->domain, mem1, &val1);
 	  PRIM_GETMEM (att2->type, att2->domain, mem2, &val2);
-	  attobj1 = DB_GET_OBJECT (&val1);
-	  attobj2 = DB_GET_OBJECT (&val2);
+	  attobj1 = db_get_object (&val1);
+	  attobj2 = db_get_object (&val2);
 	  db_value_put_null (&val1);
 	  db_value_put_null (&val2);
 	  if (attobj1 != NULL && WS_IS_DELETED (attobj1))
@@ -1135,7 +1135,7 @@ vid_build_non_upd_object (MOP mop, DB_VALUE * seq)
     }
 
   mop->object = inst;
-  col = DB_GET_SET (seq);
+  col = db_get_set (seq);
   for (attribute_p = class_p->attributes; attribute_p != NULL; attribute_p = (SM_ATTRIBUTE *) attribute_p->header.next)
     {
       error = db_seq_get (col, attribute_p->order, &val);
@@ -1160,7 +1160,7 @@ vid_build_non_upd_object (MOP mop, DB_VALUE * seq)
 	case DB_TYPE_MULTISET:
 	case DB_TYPE_SEQUENCE:
 	  {
-	    error = set_convert_oids_to_objects (DB_GET_SET (&val));
+	    error = set_convert_oids_to_objects (db_get_set (&val));
 	  }
 	  break;
 	default:
@@ -1303,7 +1303,7 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
   /* put together a query to get all instances of class_p */
   class_type = sm_get_class_type (class_p);
   class_name = db_get_class_name (class_mop);
-  snprintf (query, sizeof (query) - 1, "SELECT %s FROM %s", class_name, class_name);
+  snprintf (query, sizeof (query) - 1, "SELECT [%s] FROM [%s]", class_name, class_name);
 
   /* run the query */
   error = db_compile_and_execute_local (query, &qres, &query_error);
@@ -1344,7 +1344,7 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
 	}
 
       /* save instance mop into objlist */
-      new1->op = mop = DB_GET_OBJECT (&value);
+      new1->op = mop = db_get_object (&value);
       new1->next = objlst;
       objlst = new1;
     }
@@ -1401,7 +1401,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
   MOBJ inst;
 
   /* make sure we have a good input argument */
-  if (!vobj || !mop || DB_VALUE_TYPE (vobj) != DB_TYPE_VOBJ || (seq = DB_GET_SEQUENCE (vobj)) == NULL
+  if (!vobj || !mop || DB_VALUE_TYPE (vobj) != DB_TYPE_VOBJ || (seq = db_get_set (vobj)) == NULL
       || (size = db_set_size (seq)) != 3)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DL_ESYS, 1, "virtual object inconsistent");
@@ -1503,7 +1503,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	   * The vclass refers to a class, but we left
 	   * the class oid feild empty in the vobj.
 	   */
-	  obj = DB_GET_OBJECT (&keys);
+	  obj = db_get_object (&keys);
 	}
       else if (keys.domain.general_info.type == DB_TYPE_VOBJ)
 	{
@@ -1594,7 +1594,7 @@ vid_oid_to_object (const DB_VALUE * value, DB_OBJECT ** mop)
   switch (DB_VALUE_TYPE (value))
     {
     case DB_TYPE_OID:
-      oid = (OID *) DB_GET_OID (value);
+      oid = (OID *) db_get_oid (value);
       if (oid != NULL && !OID_ISNULL (oid))
 	{
 	  *mop = ws_mop (oid, NULL);
@@ -1604,7 +1604,7 @@ vid_oid_to_object (const DB_VALUE * value, DB_OBJECT ** mop)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-      return set_convert_oids_to_objects (DB_GET_SET (value));
+      return set_convert_oids_to_objects (db_get_set (value));
 
     default:
       break;
@@ -1780,7 +1780,7 @@ vid_pack_db_value (char *lbuf, DB_VALUE * dbval)
 {
   OR_BUF buf;
   PR_TYPE *pr_type;
-  int val_size, rc = NO_ERROR;
+  int val_size;
   DB_TYPE dbval_type;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (dbval);
@@ -2057,7 +2057,8 @@ vid_decode_object (const char *string, DB_OBJECT ** object)
 {
   OID obj_id;
   DB_VALUE val;
-  int vobj_len = 0, len, rc = NO_ERROR;
+  int vobj_len = 0, rc = NO_ERROR;
+  size_t len;
   OR_BUF buf;
   char vobj_buf[MAX_STRING_OID_LENGTH], *bufp = vobj_buf;
 
@@ -2074,11 +2075,11 @@ vid_decode_object (const char *string, DB_OBJECT ** object)
       return ER_OBJ_INVALID_ARGUMENT;
     }
 
-  /* guard against overruning vobj_buf */
+  /* guard against overrunning vobj_buf */
   len = strlen (string);
   if (len >= MAX_STRING_OID_LENGTH && (bufp = (char *) malloc (len)) == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) len);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, len);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -2107,7 +2108,7 @@ vid_decode_object (const char *string, DB_OBJECT ** object)
 	}
       else
 	{
-	  *object = DB_GET_OBJECT (&val);
+	  *object = db_get_object (&val);
 	}
       break;
     default:

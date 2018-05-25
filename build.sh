@@ -30,17 +30,17 @@ script_dir=$(dirname $(readlink -f $0))
 build_target="x86_64"
 build_mode="release"
 source_dir=`pwd`
-default_java_dir="/usr/java/default"
+default_java_dir="/usr/lib/jvm/java"
 java_dir=""
 configure_options=""
 # default build_dir = "$source_dir/build_${build_target}_${build_mode}"
 build_dir=""
-install_dir=""
 prefix_dir=""
 output_dir=""
 build_args="all"
 default_packages="all"
 packages=""
+print_version_only=0
 
 # variables
 product_name="CUBRID"
@@ -55,6 +55,7 @@ without_cmserver=""
 
 function print_check ()
 {
+  [ -n "$print_version_only" ] && return
   echo ""
   last_checking_msg="$@"
   echo "  $last_checking_msg..."
@@ -62,6 +63,7 @@ function print_check ()
 
 function print_result ()
 {
+  [ -n "$print_version_only" ] && return
   [ -n "$last_checking_msg" ] && echo -n "  "
   echo "  [$@] $last_checking_msg."
   last_checking_msg=""
@@ -69,6 +71,7 @@ function print_result ()
 
 function print_info ()
 {
+  [ -n "$print_version_only" ] && return
   [ -n "$last_checking_msg" ] && echo -n "  "
   echo "  [INFO] $@"
 }
@@ -122,15 +125,23 @@ function build_initialize ()
   if [ "x$extra_version" != "x" ]; then
     serial_number=$(echo $extra_version | cut -d - -f 1)
   elif [ -d $source_dir/.git ]; then
-    serial_number=$(cd $source_dir && git rev-list --count HEAD)
+    serial_number=$(cd $source_dir && git rev-list --count HEAD 2> /dev/null)
+    [ $? -ne 0 ] && serial_number=$(cd $source_dir && git log --oneline | wc -l)
     hash_tag=$(cd $source_dir && git rev-parse --short HEAD)
     extra_version="$serial_number-$hash_tag"
   else
     extra_version=0000-unknown
     serial_number=0000
   fi
+
   print_info "version: $version ($major_version.$minor_version.$patch_version.$extra_version)"
   version="$major_version.$minor_version.$patch_version.$extra_version"
+
+  if [ $print_version_only -eq 1 ]; then
+    echo $version
+    exit 0
+  fi
+
   # old style version string (digital only version string) for legacy codes
   build_number="$major_version.$minor_version.$patch_version.$serial_number"
   print_result "OK"
@@ -140,13 +151,13 @@ function build_initialize ()
 function build_clean ()
 {
   print_check "Cleaning packaging directory"
-  if [ -d $install_dir ]; then
-    if [ "$install_dir" = "/" ]; then
+  if [ -d $prefix_dir ]; then
+    if [ "$prefix_dir" = "/" ]; then
       print_fatal "Do not set root dir as install directory"
     fi
     
-    print_info "All files in $install_dir is removing"
-    rm -rf $install_dir/*
+    print_info "All files in $prefix_dir is removing"
+    rm -rf $prefix_dir/*
   fi
   print_result "OK"
 
@@ -157,7 +168,7 @@ function build_clean ()
     fi
 
     if [ $build_dir -ef $source_dir ]; then
-      [ -f "$build_dir/Makefile" ] && make -C $build_dir clean
+      [ -f "$build_dir/Makefile" ] && cmake --build $build_dir --target clean
     else
       print_info "All files in $build_dir is removing"
       rm -rf $build_dir/*
@@ -225,7 +236,7 @@ function build_configure ()
   else
     configure_dir="$source_dir"
   fi
-  (cd $build_dir && cmake $configure_prefix $configure_options $source_dir)
+  cmake -E chdir $build_dir cmake $configure_prefix $configure_options $source_dir
   [ $? -eq 0 ] && print_result "OK" || print_fatal "Configuring failed"
 }
 
@@ -234,7 +245,8 @@ function build_compile ()
 {
   # make
   print_check "Building"
-  (cd $build_dir && make -j)
+  # Add '-j' into MAKEFLAGS environment variable to specify the number of compile jobs to run simultaneously 
+  cmake --build $build_dir
   [ $? -eq 0 ] && print_result "OK" || print_fatal "Building failed"
 }
 
@@ -243,7 +255,7 @@ function build_install ()
 {
   # make install
   print_check "Installing"
-  (cd $build_dir && make install)
+  cmake --build $build_dir --target install
   [ $? -eq 0 ] && print_result "OK" || print_fatal "Installation failed"
 }
 
@@ -293,8 +305,8 @@ function build_package ()
 	fi
       ;;
       tarball|shell|cci|rpm)
-	if [ ! -d "$install_dir" -o ! -d "$prefix_dir" ]; then
-	  print_fatal "Installed directory or prefix directory not found"
+	if [ ! -d "$prefix_dir" ]; then
+	  print_fatal "Prefix directory not found"
 	fi
 
 	if [ "$package" = "cci" ]; then
@@ -397,7 +409,7 @@ function show_usage ()
 
 function get_options ()
 {
-  while getopts ":t:m:is:b:p:o:aj:c:z:h" opt; do
+  while getopts ":t:m:is:b:p:o:aj:c:z:vh" opt; do
     case $opt in
       t ) build_target="$OPTARG" ;;
       m ) build_mode="$OPTARG" ;;
@@ -418,6 +430,7 @@ function get_options ()
 	  packages="$packages $optval"
 	done
       ;;
+      v ) print_version_only=1 ;;
       h|\?|* ) show_usage; exit 1;;
     esac
   done
@@ -440,11 +453,9 @@ function get_options ()
   # convert paths to absolute path
   [ ! -d "$build_dir" ] && mkdir -p $build_dir
   build_dir=$(readlink -f $build_dir)
-  install_dir="$build_dir/_install"
-  [ ! -d "$install_dir" ] && mkdir -p $install_dir
 
   if [ "x$prefix_dir" = "x" ]; then
-    prefix_dir="$install_dir/$product_name"
+    prefix_dir="$build_dir/_install/$product_name"
   else
     [ ! -d "$prefix_dir" ] && mkdir -p $prefix_dir
     prefix_dir=$(readlink -f $prefix_dir)

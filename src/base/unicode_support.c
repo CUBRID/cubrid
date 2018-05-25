@@ -511,8 +511,6 @@ load_unicode_data (const LOCALE_DATA * ld)
 
 	      do
 		{
-		  bool is_format_tag = false;
-
 		  /* if no decomposition available, or decomposition is a compatibility one, discard the specified
 		   * decomposition */
 		  if (str_p[0] == ';' || str_p[0] == '<')
@@ -735,7 +733,7 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
       goto exit;
     }
 
-  unicode_decomp_map_count = malloc (MAX_UNICODE_CHARS * sizeof (int));
+  unicode_decomp_map_count = (int *) malloc (MAX_UNICODE_CHARS * sizeof (int));
   if (unicode_decomp_map_count == NULL)
     {
       LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
@@ -772,7 +770,8 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
     }
 
   /* Prepare the generation of all decomposition steps for all codepoints */
-  temp_list_unicode_decomp_maps = malloc (norm->unicode_mappings_count * sizeof (UNICODE_CP_MAPPING));
+  temp_list_unicode_decomp_maps =
+    (UNICODE_CP_MAPPING *) malloc (norm->unicode_mappings_count * sizeof (UNICODE_CP_MAPPING));
   if (temp_list_unicode_decomp_maps == NULL)
     {
       LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
@@ -791,7 +790,7 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
 	  um = &(temp_list_unicode_decomp_maps[orig_mapping_count]);
 	  um->cp = cp;
 	  um->size = unicode_data[cp].unicode_mapping_cp_count;
-	  um->map = malloc (um->size * sizeof (uint32));
+	  um->map = (uint32 *) malloc (um->size * sizeof (uint32));
 	  if (um->map == NULL)
 	    {
 	      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
@@ -824,7 +823,7 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
 	    {
 	      new_map->size = um->size - 1 + unicode_data[um->map[0]].unicode_mapping_cp_count;
 	      new_map->cp = um->cp;
-	      new_map->map = malloc (new_map->size * sizeof (uint32));
+	      new_map->map = (uint32 *) malloc (new_map->size * sizeof (uint32));
 	      if (new_map->map == NULL)
 		{
 		  LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
@@ -875,7 +874,7 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
 	 comp_func_grouping_unicode_cp_mapping);
 
   /* Build starting indexes for each cp which is the first cp in a compact group of mappings */
-  norm->unicode_mapping_index = malloc ((MAX_UNICODE_CHARS + 1) * sizeof (int));
+  norm->unicode_mapping_index = (int *) malloc ((MAX_UNICODE_CHARS + 1) * sizeof (int));
   if (norm->unicode_mapping_index == NULL)
     {
       LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
@@ -1046,7 +1045,7 @@ unicode_make_normalization_data (UNICODE_CP_MAPPING * decomp_maps, LOCALE_DATA *
 
   /* Prepare the unicode_mappings array for storing the data from decomp_maps as utf8 buffers + length + original
    * codepoint. */
-  norm->unicode_mappings = malloc (norm->unicode_mappings_count * sizeof (UNICODE_MAPPING));
+  norm->unicode_mappings = (UNICODE_MAPPING *) malloc (norm->unicode_mappings_count * sizeof (UNICODE_MAPPING));
   if (norm->unicode_mappings == NULL)
     {
       LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
@@ -1056,7 +1055,7 @@ unicode_make_normalization_data (UNICODE_CP_MAPPING * decomp_maps, LOCALE_DATA *
   memset (norm->unicode_mappings, 0, norm->unicode_mappings_count * sizeof (UNICODE_MAPPING));
 
   /* Prepare the index list for fully decomposed mappings */
-  norm->list_full_decomp = malloc (MAX_UNICODE_CHARS * sizeof (int));
+  norm->list_full_decomp = (int *) malloc (MAX_UNICODE_CHARS * sizeof (int));
   if (norm->list_full_decomp == NULL)
     {
       LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
@@ -1204,7 +1203,7 @@ unicode_compose_string (const char *str_in, const int size_in, char *str_out, in
 
       cp = intl_utf8_to_cp ((unsigned char *) str_cursor, remaining_bytes, (unsigned char **) &str_next);
 
-      first_cp_size = str_next - str_cursor;
+      first_cp_size = CAST_STRLEN (str_next - str_cursor);
       remaining_bytes -= first_cp_size;
 
       match_found = false;
@@ -1242,7 +1241,7 @@ unicode_compose_string (const char *str_in, const int size_in, char *str_out, in
     match_not_found:
       if (!match_found)
 	{
-	  byte_count = str_next - str_cursor;
+	  byte_count = CAST_STRLEN (str_next - str_cursor);
 	  memcpy (&(composed_str[composed_index]), str_cursor, byte_count);
 	  composed_index += byte_count;
 	  str_cursor += byte_count;
@@ -1275,7 +1274,6 @@ unicode_compose_string (const char *str_in, const int size_in, char *str_out, in
 bool
 unicode_string_need_decompose (char *str_in, const int size_in, int *decomp_size, const UNICODE_NORMALIZATION * norm)
 {
-  int err_status = NO_ERROR;
   int bytes_read, decomp_index, decomposed_size = 0;
   unsigned int cp;
   char *src_cursor;
@@ -1313,8 +1311,8 @@ unicode_string_need_decompose (char *str_in, const int size_in, int *decomp_size
   src_end = str_in + size_in;
   while (src_cursor < src_end)
     {
-      cp = intl_utf8_to_cp ((unsigned char *) src_cursor, src_end - src_cursor, (unsigned char **) &next);
-      bytes_read = next - src_cursor;
+      cp = intl_utf8_to_cp ((unsigned char *) src_cursor, CAST_STRLEN (src_end - src_cursor), (unsigned char **) &next);
+      bytes_read = CAST_STRLEN (next - src_cursor);
 
       decomp_index = (cp < MAX_UNICODE_CHARS) ? norm->list_full_decomp[cp] : -1;
       if (decomp_index > -1)
@@ -1380,8 +1378,8 @@ unicode_decompose_string (char *str_in, const int size_in, char *str_out, int *s
   src_end = str_in + size_in;
   while (src_cursor < src_end)
     {
-      cp = intl_utf8_to_cp ((unsigned char *) src_cursor, src_end - src_cursor, (unsigned char **) &next);
-      bytes_read = next - src_cursor;
+      cp = intl_utf8_to_cp ((unsigned char *) src_cursor, CAST_STRLEN (src_end - src_cursor), (unsigned char **) &next);
+      bytes_read = CAST_STRLEN (next - src_cursor);
       decomp_index = (cp < MAX_UNICODE_CHARS) ? norm->list_full_decomp[cp] : -1;
       if (decomp_index > -1)
 	{
@@ -1396,7 +1394,7 @@ unicode_decompose_string (char *str_in, const int size_in, char *str_out, int *s
       src_cursor = next;
     }
 
-  *size_out = dest_cursor - str_out;
+  *size_out = CAST_STRLEN (dest_cursor - str_out);
 }
 #endif /* SERVER_MODE */
 /*

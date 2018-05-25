@@ -27,61 +27,71 @@
 
 #ident "$Id$"
 
-#include "config.h"
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
-#include "error_manager.h"
-#include "storage_common.h"
-#include "locator.h"
+#include "config.h"
 #include "file_manager.h"
-#include "disk_manager.h"
-#include "slotted_page.h"
-#include "oid.h"
-#include "object_representation_sr.h"
-#include "thread.h"
-#include "system_catalog.h"
+#include "heap_attrinfo.h"
 #include "page_buffer.h"
 #include "perf_monitor.h"
+#include "storage_common.h"
+#include "thread_compat.hpp"
 
 #define HFID_EQ(hfid_ptr1, hfid_ptr2) \
-  ((hfid_ptr1) == (hfid_ptr2) || \
-   ((hfid_ptr1)->hpgid == (hfid_ptr2)->hpgid && \
-    VFID_EQ(&((hfid_ptr1)->vfid), &((hfid_ptr2)->vfid))))
+  ((hfid_ptr1) == (hfid_ptr2) \
+   || ((hfid_ptr1)->hpgid == (hfid_ptr2)->hpgid && VFID_EQ (&((hfid_ptr1)->vfid), &((hfid_ptr2)->vfid))))
 
-#define HEAP_SET_RECORD(recdes, record_area_size, record_length, record_type, \
-			record_data)	\
-  do  {	\
-  (recdes)->area_size = record_area_size;  \
-  (recdes)->length    = record_length;  \
-  (recdes)->type      = record_type; \
-  (recdes)->data      = (char *)record_data; \
-  }while(0)
+#define HEAP_SET_RECORD(recdes, record_area_size, record_length, record_type, record_data) \
+  do \
+    { \
+      (recdes)->area_size = (record_area_size); \
+      (recdes)->length    = (record_length); \
+      (recdes)->type      = (record_type); \
+      (recdes)->data      = (char *) (record_data); \
+    } \
+  while (0)
 
 #define HEAP_HEADER_AND_CHAIN_SLOTID  0	/* Slot for chain and header */
 
 #define HEAP_MAX_ALIGN INT_ALIGNMENT	/* maximum alignment for heap record */
 
 #define HEAP_ISJUNK_OID(oid) \
-  ((oid)->slotid == HEAP_HEADER_AND_CHAIN_SLOTID || \
-   (oid)->slotid < 0 || (oid)->volid < 0 || (oid)->pageid < 0)
+  ((oid)->slotid == HEAP_HEADER_AND_CHAIN_SLOTID \
+   || (oid)->slotid < 0 || (oid)->volid < 0 || (oid)->pageid < 0)
 
 #if defined (NDEBUG)
-#define HEAP_ISVALID_OID(oid) \
-  (HEAP_ISJUNK_OID(oid)       \
-   ? DISK_INVALID             \
+#define HEAP_ISVALID_OID(thread_p, oid) \
+  (HEAP_ISJUNK_OID (oid) \
+   ? DISK_INVALID \
    : DISK_VALID)
 #else
 /* todo: fix me */
-#define HEAP_ISVALID_OID(oid) \
-  (HEAP_ISJUNK_OID(oid)       \
-   ? DISK_INVALID             \
-   : disk_is_page_sector_reserved (NULL, (oid)->volid, (oid)->pageid))
+#define HEAP_ISVALID_OID(thread_p, oid) \
+  (HEAP_ISJUNK_OID (oid) \
+   ? DISK_INVALID \
+   : disk_is_page_sector_reserved ((thread_p), (oid)->volid, (oid)->pageid))
 #endif
 
 #define HEAP_SCANCACHE_SET_NODE(scan_cache, class_oid_p, hfid_p) \
-  do  {	\
-  COPY_OID (&(scan_cache)->node.class_oid, class_oid_p); \
-  HFID_COPY (&(scan_cache)->node.hfid, hfid_p); \
-  }while(0)
+  do \
+    { \
+      COPY_OID (&(scan_cache)->node.class_oid, class_oid_p); \
+      HFID_COPY (&(scan_cache)->node.hfid, hfid_p); \
+    } \
+  while (0)
+
+#define heap_classrepr_free_and_init(class_repr, idxp) \
+  do \
+    { \
+      if ((class_repr) != NULL) \
+        { \
+          heap_classrepr_free ((class_repr), (idxp)); \
+          (class_repr) = NULL; \
+        } \
+    } \
+  while (0)
 
 /*
  * Heap scan structures
@@ -126,7 +136,7 @@ struct heap_scancache
   LOCK page_latch;		/* Indicates the latch/lock to be acquired on heap pages. Its value may be NULL_LOCK
 				 * when it is secure to skip lock on heap pages. For example, the class of the heap has 
 				 * been locked with either S_LOCK, SIX_LOCK, or X_LOCK */
-  int cache_last_fix_page;	/* Indicates if page buffers and memory are cached (left fixed) */
+  bool cache_last_fix_page;	/* Indicates if page buffers and memory are cached (left fixed) */
   PGBUF_WATCHER page_watcher;
   char *area;			/* Pointer to last left fixed memory allocated */
   int area_size;		/* Size of allocated area */
@@ -171,49 +181,9 @@ struct heap_hfid_table_entry
   FILE_TYPE ftype;		/* value - FILE_HEAP or FILE_HEAP_REUSE_SLOTS */
 };
 
-typedef enum
-{
-  HEAP_READ_ATTRVALUE,
-  HEAP_WRITTEN_ATTRVALUE,
-  HEAP_UNINIT_ATTRVALUE,
-  HEAP_WRITTEN_LOB_ATTRVALUE
-} HEAP_ATTRVALUE_STATE;
 
-typedef enum
-{
-  HEAP_INSTANCE_ATTR,
-  HEAP_SHARED_ATTR,
-  HEAP_CLASS_ATTR
-} HEAP_ATTR_TYPE;
 
-typedef struct heap_attrvalue HEAP_ATTRVALUE;
-struct heap_attrvalue
-{
-  ATTR_ID attrid;		/* attribute identifier */
-  HEAP_ATTRVALUE_STATE state;	/* State of the attribute value. Either of has been read, has been updated, or is
-				 * unitialized */
-  int do_increment;
-  HEAP_ATTR_TYPE attr_type;	/* Instance, class, or shared attribute */
-  OR_ATTRIBUTE *last_attrepr;	/* Used for default values */
-  OR_ATTRIBUTE *read_attrepr;	/* Pointer to a desired attribute information */
-  DB_VALUE dbvalue;		/* DB values of the attribute in memory */
-};
 
-typedef struct heap_cache_attrinfo HEAP_CACHE_ATTRINFO;
-struct heap_cache_attrinfo
-{
-  OID class_oid;		/* Class object identifier */
-  int last_cacheindex;		/* An index identifier when the last_classrepr was obtained from the classrepr cache.
-				 * Otherwise, -1 */
-  int read_cacheindex;		/* An index identifier when the read_classrepr was obtained from the classrepr cache.
-				 * Otherwise, -1 */
-  OR_CLASSREP *last_classrepr;	/* Currently cached catalog attribute info. */
-  OR_CLASSREP *read_classrepr;	/* Currently cached catalog attribute info. */
-  OID inst_oid;			/* Instance Object identifier */
-  int inst_chn;			/* Current chn of instance object */
-  int num_values;		/* Number of desired attribute values */
-  HEAP_ATTRVALUE *values;	/* Value for the attributes */
-};
 
 typedef struct function_index_info FUNCTION_INDEX_INFO;
 struct function_index_info
@@ -261,13 +231,13 @@ typedef enum
   HEAP_OPERATION_UPDATE
 } HEAP_OPERATION_TYPE;
 
-typedef enum update_inplace_style UPDATE_INPLACE_STYLE;
 enum update_inplace_style
 {
   UPDATE_INPLACE_NONE = 0,	/* None */
   UPDATE_INPLACE_CURRENT_MVCCID = 1,	/* non-MVCC in-place update style with current MVCC ID. */
   UPDATE_INPLACE_OLD_MVCCID = 2	/* non-MVCC in-place update style with old MVCC ID. Preserves old MVCC ID */
 };
+typedef enum update_inplace_style UPDATE_INPLACE_STYLE;
 
 /* Currently mvcc update is also executed inplace, but coresponds to UPDATE_INPLACE_NONE. TODO: Refactor */
 #define HEAP_IS_UPDATE_INPLACE(update_inplace_style) \
@@ -377,7 +347,7 @@ struct heap_get_context
   PGBUF_WATCHER fwd_page_watcher;	/* forward page */
 
   /* retrieving parameters */
-  int ispeeking;		/* PEEK or COPY */
+  bool ispeeking;		/* PEEK or COPY */
   int old_chn;			/* Cache number coherency */
 
   PGBUF_LATCH_MODE latch_mode;	/* normally, we need READ latch for get_context, but some operations
@@ -603,8 +573,8 @@ extern SCAN_CODE heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid,
 				 DB_VALUE ** cache_pageinfo);
 extern SCAN_CODE heap_page_next (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfid, VPID * next_vpid,
 				 DB_VALUE ** cache_pageinfo);
-extern int heap_vpid_next (const HFID * hfid, PAGE_PTR pgptr, VPID * next_vpid);
-extern int heap_vpid_prev (const HFID * hfid, PAGE_PTR pgptr, VPID * prev_vpid);
+extern int heap_vpid_next (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr, VPID * next_vpid);
+extern int heap_vpid_prev (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr, VPID * prev_vpid);
 extern SCAN_CODE heap_get_mvcc_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 				       MVCC_REC_HEADER * mvcc_header);
 extern int heap_get_mvcc_rec_header_from_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_header,
@@ -662,8 +632,7 @@ extern void heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
 				   int old_chn);
 extern int heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * page_watcher_p,
 				     PGBUF_LATCH_MODE latch_mode);
-extern SCAN_CODE heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
-					   PGBUF_LATCH_MODE latch_mode, bool is_heap_scan,
+extern SCAN_CODE heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_heap_scan,
 					   NON_EXISTENT_HANDLING non_ex_handling_type);
 extern SCAN_CODE heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern SCAN_CODE heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
@@ -675,4 +644,5 @@ extern int heap_get_best_space_num_stats_entries (void);
 
 extern int heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, HFID * hfid);
 extern int heap_scan_cache_allocate_area (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, int size);
+extern bool heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page);
 #endif /* _HEAP_FILE_H_ */

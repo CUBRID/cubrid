@@ -36,7 +36,6 @@
 #include <wchar.h>
 
 #include "porting.h"
-#include "db.h"
 #include "adjustable_array.h"
 #include "intl_support.h"
 #include "memory_alloc.h"
@@ -48,10 +47,17 @@
 #include "cnvlex.h"
 #include "cnverr.h"
 #if defined(SERVER_MODE)
-#include "thread.h"
-#endif
 #include "critical_section.h"
-#include "dbval.h"		/* this must be the last header file included!!! */
+#endif
+#include "db_date.h"
+#include "dbtype.h"
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#endif // SERVER_MODE
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define BITS_IN_BYTE		8
 #define HEX_IN_BYTE		2
@@ -126,6 +132,12 @@
 #define KOREAN_EUC_YEAR_SYMBOL      "\xb3\xe2"	/* nyeon */
 #define KOREAN_EUC_MONTH_SYMBOL     "\xbf\xf9"	/* wol */
 #define KOREAN_EUC_DAY_SYMBOL       "\xc0\xcf"	/* il */
+
+#if !defined (SERVER_MODE)
+/* no critical section */
+#define csect_enter(a, b, c) NO_ERROR
+#define csect_exit(a, b)
+#endif /* !defined (SERVER_MODE) */
 
 
 /* Format Descriptors */
@@ -360,6 +372,11 @@ static int nfmt_fractional_value (FORMAT_DIGIT digit_type, int ndigits, char *th
 #endif
 static int fmt_max_digits;
 
+#if defined (SERVER_MODE)
+static ADJ_ARRAY *cnv_get_thread_local_adj_buffer (int idx);
+static void cnv_set_thread_local_adj_buffer (int idx, ADJ_ARRAY * buffer_p);
+#endif // SERVER_MODE
+
 /* Internal buffers.
  *
  * These were formerly declared as static within the functions that used
@@ -487,7 +504,7 @@ us_date_string (int month, int day, int year)
   static char date_string[FMT_MAX_DATE_STRING * MB_LEN_MAX + 1];
 
   sprintf (date_string, "%d/%d/%d", month, day, year);
-  assert (strlen (date_string) < sizeof date_string);
+  assert (strlen (date_string) < (int) sizeof (date_string));
 
   return date_string;
 }
@@ -631,7 +648,7 @@ us_time_string (const DB_TIME * the_time)
   db_time_decode ((DB_TIME *) the_time, &hour, &min, &sec);
 
   sprintf (time_string, "%d:%02d:%02d %s", hour % 12 ? hour % 12 : 12, min, sec, local_am_pm_string (the_time));
-  assert (strlen (time_string) < sizeof time_string);
+  assert (strlen (time_string) < (int) sizeof (time_string));
 
   return time_string;
 }
@@ -1082,7 +1099,7 @@ ko_date_string (int month, int day, int year)
   static char date_string[FMT_MAX_DATE_STRING * MB_LEN_MAX + 1];
 
   sprintf (date_string, "%04d/%02d/%02d", year, month, day);
-  assert (strlen (date_string) < sizeof date_string);
+  assert (strlen (date_string) < (int) sizeof (date_string));
 
   return date_string;
 }
@@ -1324,7 +1341,7 @@ ko_time_string (const DB_TIME * the_time)
 
   sprintf (time_string, "%s %d\xbd\xc3%02d\xba\xd0%02d\xc3\xca",	/* ????/????/???? */
 	   local_am_pm_string (the_time), (hour % 12 ? hour % 12 : 12), min, sec);
-  assert (strlen (time_string) < sizeof time_string);
+  assert (strlen (time_string) < (int) sizeof (time_string));
 
   return time_string;
 }
@@ -2339,7 +2356,7 @@ static const wchar_t *
 cnv_wcs (const char *mbs)
 {
 #if defined(SERVER_MODE)
-  ADJ_ARRAY *buffer = css_get_cnv_adj_buffer (0);
+  ADJ_ARRAY *buffer = cnv_get_thread_local_adj_buffer (0);
 #else
   ADJ_ARRAY *buffer = cnv_adj_buffer1;
 #endif
@@ -2353,7 +2370,7 @@ cnv_wcs (const char *mbs)
     {
 #if defined(SERVER_MODE)
       buffer = adj_ar_new (sizeof (wchar_t), 0, 1.0);
-      css_set_cnv_adj_buffer (0, buffer);
+      cnv_set_thread_local_adj_buffer (0, buffer);
 #else
       buffer = cnv_adj_buffer1 = adj_ar_new (sizeof (wchar_t), 0, 1.0);
 #endif
@@ -2362,7 +2379,7 @@ cnv_wcs (const char *mbs)
 
   wchars = (wchar_t *) adj_ar_get_buffer (buffer);
   nchars = mbstowcs (wchars, mbs, adj_ar_length (buffer));
-  assert (nchars < adj_ar_length (buffer));
+  assert ((int) nchars < adj_ar_length (buffer));
 
   return (const wchar_t *) wchars;
 }
@@ -2580,7 +2597,7 @@ static ADJ_ARRAY *
 cnv_get_string_buffer (int nchars)
 {
 #if defined(SERVER_MODE)
-  ADJ_ARRAY *buffer = css_get_cnv_adj_buffer (1);
+  ADJ_ARRAY *buffer = cnv_get_thread_local_adj_buffer (1);
 #else
   ADJ_ARRAY *buffer = cnv_adj_buffer2;
 #endif
@@ -2593,7 +2610,7 @@ cnv_get_string_buffer (int nchars)
     {
 #if defined(SERVER_MODE)
       buffer = adj_ar_new (sizeof (char), nchars, 1.0);
-      css_set_cnv_adj_buffer (1, buffer);
+      cnv_set_thread_local_adj_buffer (1, buffer);
 #else
       buffer = cnv_adj_buffer2 = adj_ar_new (sizeof (char), nchars, 1.0);
 #endif
@@ -2615,7 +2632,7 @@ static ADJ_ARRAY *
 cnv_get_value_string_buffer (int nchars)
 {
 #if defined(SERVER_MODE)
-  ADJ_ARRAY *buffer = css_get_cnv_adj_buffer (2);
+  ADJ_ARRAY *buffer = cnv_get_thread_local_adj_buffer (2);
 #else
   ADJ_ARRAY *buffer = cnv_adj_buffer3;
 #endif
@@ -2631,7 +2648,7 @@ cnv_get_value_string_buffer (int nchars)
     {
 #if defined(SERVER_MODE)
       buffer = adj_ar_new (sizeof (char), nchars, 1.0);
-      css_set_cnv_adj_buffer (2, buffer);
+      cnv_set_thread_local_adj_buffer (2, buffer);
 #else
       buffer = cnv_adj_buffer3 = adj_ar_new (sizeof (char), nchars, 1.0);
 #endif
@@ -2666,7 +2683,7 @@ cnv_bad_char (const char *string, bool unknown)
   /* Create 1-char string. */
   strncpy (the_char, string, nbytes);
   strcpy (the_char + nbytes, "");
-  assert (strlen (the_char) < sizeof the_char);
+  assert (strlen (the_char) < (int) sizeof (the_char));
 
   co_signal (error, unknown ? CNV_ER_FMT_BAD_CHAR : CNV_ER_FMT_BAD_POSITION, the_char);
   return error;
@@ -3374,12 +3391,12 @@ cnvutil_cleanup (void)
 
   for (i = 0; i < 3; i++)
     {
-      buffer = css_get_cnv_adj_buffer (i);
+      buffer = cnv_get_thread_local_adj_buffer (i);
       if (buffer)
 	{
 	  adj_ar_free (buffer);
 	}
-      css_set_cnv_adj_buffer (i, NULL);
+      cnv_set_thread_local_adj_buffer (i, NULL);
     }
 
 #else
@@ -3852,8 +3869,9 @@ fmt_weekday_date (int month, int day, int year, int weekday)
 static const char *
 fmt_time_string (const DB_TIME * the_time, const char *descriptor)
 {
+#if defined (ENABLE_UNUSED_FUNCTION)
   static char time_string[FMT_MAX_TIME_STRING * MB_LEN_MAX + 1];
-
+#endif
   const char *string = NULL;
 
   assert (mbs_eql (descriptor, "R") || mbs_eql (descriptor, "r") || mbs_eql (descriptor, "T")
@@ -4286,7 +4304,7 @@ fmt_timestamp_string (const DB_TIMESTAMP * the_timestamp, const char *descriptor
 
       sprintf (timestamp_string, "%s%s%s", fmt_date_string (&the_date, "x"), LOCAL_SPACE,
 	       fmt_time_string (&the_time, "X"));
-      assert (strlen (timestamp_string) < sizeof timestamp_string);
+      assert (strlen (timestamp_string) < (int) sizeof (timestamp_string));
       string = timestamp_string;
     }
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -5936,7 +5954,7 @@ bfmt_print (BIT_STRING_FORMAT * bfmt, const DB_VALUE * the_db_bit, char *string,
   };
 
   /* Get the buffer and the length from the_db_bit */
-  bstring = DB_GET_BIT (the_db_bit, &length);
+  bstring = db_get_bit (the_db_bit, &length);
 
   switch (*bfmt)
     {
@@ -6595,7 +6613,7 @@ db_string_value (const char *string, int str_size, const char *format, DB_VALUE 
 	    {
 	      return NULL;
 	    }
-	  next = db_string_monetary (string, format, DB_GET_MONETARY (value));
+	  next = db_string_monetary (string, format, db_get_monetary (value));
 	  csect_exit (NULL, CSECT_CNV_FMT_LEXER);
 	  break;
 
@@ -6822,7 +6840,7 @@ db_value_string (const DB_VALUE * value, const char *format, char *string, int m
   switch (DB_VALUE_TYPE (value))
     {
     case DB_TYPE_DATE:
-      error = db_date_string (DB_GET_DATE (value), format, string, max_size);
+      error = db_date_string (db_get_date (value), format, string, max_size);
       break;
 
     case DB_TYPE_NUMERIC:
@@ -6830,22 +6848,22 @@ db_value_string (const DB_VALUE * value, const char *format, char *string, int m
       break;
 
     case DB_TYPE_DOUBLE:
-      error = db_double_string (DB_GET_DOUBLE (value), format, string, max_size);
+      error = db_double_string (db_get_double (value), format, string, max_size);
       break;
 
     case DB_TYPE_FLOAT:
-      error = db_float_string (DB_GET_FLOAT (value), format, string, max_size);
+      error = db_float_string (db_get_float (value), format, string, max_size);
       break;
 
     case DB_TYPE_INTEGER:
-      error = db_integer_string (DB_GET_INTEGER (value), format, string, max_size);
+      error = db_integer_string (db_get_int (value), format, string, max_size);
       break;
     case DB_TYPE_BIGINT:
-      error = db_bigint_string (DB_GET_BIGINT (value), format, string, max_size);
+      error = db_bigint_string (db_get_bigint (value), format, string, max_size);
       break;
 
     case DB_TYPE_MONETARY:
-      error = db_monetary_string (DB_GET_MONETARY (value), format, string, max_size);
+      error = db_monetary_string (db_get_monetary (value), format, string, max_size);
       break;
 
     case DB_TYPE_NULL:
@@ -6853,7 +6871,7 @@ db_value_string (const DB_VALUE * value, const char *format, char *string, int m
       break;
 
     case DB_TYPE_SHORT:
-      error = db_short_string (DB_GET_SHORT (value), format, string, max_size);
+      error = db_short_string (db_get_short (value), format, string, max_size);
       break;
 
     case DB_TYPE_VARCHAR:
@@ -6878,7 +6896,7 @@ db_value_string (const DB_VALUE * value, const char *format, char *string, int m
 
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_NCHAR:
-      p = DB_GET_NCHAR (value, &dummy);
+      p = db_get_nchar (value, &dummy);
       if (p != NULL)
 	{
 	  if ((int) strlen (p) + 1 > max_size)
@@ -6894,15 +6912,15 @@ db_value_string (const DB_VALUE * value, const char *format, char *string, int m
       break;
 
     case DB_TYPE_TIME:
-      error = db_time_string (DB_GET_TIME (value), format, string, max_size);
+      error = db_time_string (db_get_time (value), format, string, max_size);
       break;
 
     case DB_TYPE_TIMESTAMP:
-      error = db_timestamp_string (DB_GET_TIMESTAMP (value), format, string, max_size);
+      error = db_timestamp_string (db_get_timestamp (value), format, string, max_size);
       break;
 
     case DB_TYPE_DATETIME:
-      error = db_datetime_string (DB_GET_DATETIME (value), format, string, max_size);
+      error = db_datetime_string (db_get_datetime (value), format, string, max_size);
       break;
     case DB_TYPE_VARBIT:
     case DB_TYPE_BIT:
@@ -8671,3 +8689,38 @@ cnv_cleanup (void)
   cnv_fmt_exit ();
   cnvutil_cleanup ();
 }
+
+#if defined (SERVER_MODE)
+/*
+ * cnv_get_thread_local_adj_buffer() -
+ *   return:
+ *   idx(in):
+ */
+static ADJ_ARRAY *
+cnv_get_thread_local_adj_buffer (int idx)
+{
+  THREAD_ENTRY *thread_p;
+
+  thread_p = thread_get_thread_entry_info ();
+  assert (thread_p != NULL);
+
+  return thread_p->cnv_adj_buffer[idx];
+}
+
+/*
+ * cnv_set_thread_local_adj_buffer() -
+ *   return: void
+ *   idx(in):
+ *   buffer_p(in):
+ */
+static void
+cnv_set_thread_local_adj_buffer (int idx, ADJ_ARRAY * buffer_p)
+{
+  THREAD_ENTRY *thread_p;
+
+  thread_p = thread_get_thread_entry_info ();
+  assert (thread_p != NULL);
+
+  thread_p->cnv_adj_buffer[idx] = buffer_p;
+}
+#endif // SERVER_MODE

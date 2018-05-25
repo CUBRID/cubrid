@@ -73,18 +73,18 @@
 #include "storage_common.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
-#include "critical_section.h"
 #include "system_parameter.h"
 #include "message_catalog.h"
 #include "util_func.h"
 #include "perf_monitor.h"
 #include "environment_variable.h"
-#include "page_buffer.h"
 #include "connection_error.h"
 #include "release_string.h"
-#include "xserver_interface.h"
-#include "log_manager.h"
-#include "perf_monitor.h"
+#include "log_impl.h"
+#include "fault_injection.h"
+#if defined (SERVER_MODE)
+#include "vacuum.h"
+#endif /* SERVER_MODE */
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -93,12 +93,29 @@
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #include "network_interface_sr.h"
-#include "job_queue.h"
 #endif /* SERVER_MODE */
+
+#if !defined (CS_MODE)
+#include "page_buffer.h"
+#include "xserver_interface.h"
+#endif /* !defined (CS_MODE) */
 
 #include "intl_support.h"
 #include "tsc_timer.h"
 
+#if defined (SERVER_MODE)
+#include "server_support.h"
+#endif // SERVER_MODE
+#if defined (SERVER_MODE)
+#include "thread_entry_task.hpp"
+#endif // SERVER_MODE
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
+#endif // SERVER_MODE
+
+/************************************************************************/
+/* TODO: why is this in client module?                                  */
+/************************************************************************/
 
 /*
  * Message id in the set MSGCAT_SET_IO
@@ -707,6 +724,8 @@ fileio_flush_control_get_token (THREAD_ENTRY * thread_p, int ntoken)
   int nreq;
   bool log_cs_own = false;
 
+  PERF_UTIME_TRACKER time_tracker = PERF_UTIME_TRACKER_INITIALIZER;
+
   if (tb == NULL)
     {
       return NO_ERROR;
@@ -757,11 +776,15 @@ fileio_flush_control_get_token (THREAD_ENTRY * thread_p, int ntoken)
 	  return NO_ERROR;
 	}
 
+      PERF_UTIME_TRACKER_START (thread_p, &time_tracker);
+
       /* Wait for signal */
       rv = pthread_cond_wait (&tb->waiter_cond, &tb->token_mutex);
 
       pthread_mutex_unlock (&tb->token_mutex);
       retry_count++;
+
+      PERF_UTIME_TRACKER_BULK_TIME (thread_p, &time_tracker, PSTAT_PB_COMPENSATE_FLUSH, nreq);
     }
 
   /* I am very very unlucky (unlikely to happen) */
@@ -785,7 +808,6 @@ fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, INT64 diff_usec, int *
 #else
   TOKEN_BUCKET *tb = fc_Token_bucket;
   int gen_tokens;
-  int overflow_tokens = 0, overflow_capacity = 0;
   int rv = NO_ERROR;
 
   assert (token_gen != NULL);
@@ -1648,7 +1670,7 @@ error_return:
 FILEIO_LOCKF_TYPE
 fileio_unlock_la_dbname (int *lockf_vdes, char *db_name, bool clear_owner)
 {
-  int result;
+  FILEIO_LOCKF_TYPE result;
   int error;
   off_t end_offset;
   FILE *fp = NULL;
@@ -1884,7 +1906,7 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, D
 	  time_to_sleep = allowed_millis_for_a_sleep - previous_elapsed_millis;
 	  if (time_to_sleep > 0)
 	    {
-	      thread_sleep ((int) time_to_sleep);
+	      thread_sleep ((double) time_to_sleep);
 	    }
 
 	  tsc_getticks (&start_tick);
@@ -2355,6 +2377,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
   (void) fileio_initialize_res (thread_p, &(malloc_io_page_p->prv));
 
   vol_fd = fileio_create (thread_p, db_full_name_p, vol_label_p, vol_id, is_do_lock, is_do_sync);
+  FI_TEST (thread_p, FI_TEST_FILE_IO_FORMAT, 0);
   if (vol_fd != NULL_VOLDES)
     {
       /* initialize the pages of the volume. */
@@ -2418,54 +2441,79 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
   return vol_fd;
 }
 
+#if !defined (CS_MODE)
 /*
- * fileio_expand () -  Expand a volume with the given number of data pages
- *   return: npages
- *   volid(in): Volume identifier
- *   npages_toadd(in): Number of pages to add
+ * fileio_expand_to () -  Expand a volume to the given number of pages.
  *
- * Note: Pages are not sweep_clean/initialized if they are part of
- *       temporary volumes.
+ *  return:
  *
- *       NOTE: No checking for temporary volumes is performed by this function.
+ *    error code or NO_ERROR
  *
- *	 NOTE: On WINDOWS && SERVER MODE io_mutex lock must be obtained before
- *	  calling lseek. Otherwise, expanding can interfere with fileio_read
- *	  and fileio_write calls. This caused corruptions in the temporary
- *	  file, random pages being written at the end of file instead of being
- *	  written at their designated places.
+ *
+ *  arguments:
+ *
+ *    vol_id      : Volume identifier
+ *    size_npages : New size in pages
+ *    voltype     : temporary or permanent volume type
+ *
+ *
+ *  How it works:
+ *
+ *    A new size for file is provided. The new size is expected to be bigger than current size (with the exception of
+ *    recovery cases). This approach replaced extending by a given size to fix recovery errors (file extension could
+ *    be executed twice).
+ *
+ *    Enough disk space is checked first before doing extend.
+ *
+ *  Notes:
+ *
+ *    Pages are not sweep_clean/initialized if they are part of temporary volumes.
+ *
+ *    No checking for temporary volumes is performed by this function.
+ *
+ *    On WINDOWS && SERVER MODE io_mutex lock must be obtained before calling lseek. Otherwise, expanding can
+ *    interfere with fileio_read and fileio_write calls. This caused corruptions in the temporary file, random pages
+ *    being written at the end of file instead of being written at their designated places.
  */
-DKNPAGES
-fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd, DB_VOLTYPE voltype)
+int
+fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, DB_VOLTYPE voltype)
 {
   int vol_fd;
   const char *vol_label_p;
-  FILEIO_PAGE *malloc_io_page_p;
-  off_t start_offset, last_offset;
+  FILEIO_PAGE *io_page_p;
   DKNPAGES max_npages;
-  DKNPAGES start_pageid, last_pageid;
+  size_t max_size;
+  PAGEID start_pageid;
+  size_t current_size;
+  PAGEID last_pageid;
+  size_t new_size;
+  size_t desired_extend_size;
+  size_t max_extend_size;
 #if defined(WINDOWS) && defined(SERVER_MODE)
   int rv;
   pthread_mutex_t *io_mutex;
   static pthread_mutex_t io_mutex_instance = PTHREAD_MUTEX_INITIALIZER;
-#endif
+#endif /* WINDOWS && SERVER_MODE */
+
+  int error_code = NO_ERROR;
+
+  assert (size_npages > 0);
 
   vol_fd = fileio_get_volume_descriptor (vol_id);
   vol_label_p = fileio_get_volume_label (vol_id, PEEK);
 
   if (vol_fd == NULL_VOLDES || vol_label_p == NULL)
     {
-      return -1;
-    }
-
-  /* Check for bad number of pages and overflow */
-  if (npages_toadd <= 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_FORMAT_BAD_NPAGES, 2, vol_label_p, npages_toadd);
-      return -1;
+      assert (false);		/* I don't think we can accept this case */
+      return ER_FAILED;
     }
 
   max_npages = fileio_get_number_of_partition_free_pages (vol_label_p, IO_PAGESIZE);
+  if (max_npages < 0)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
 
 #if defined(WINDOWS) && defined(SERVER_MODE)
   io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
@@ -2477,61 +2525,73 @@ fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd, DB_
   rv = pthread_mutex_lock (io_mutex);
   if (rv != 0)
     {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, rv, 0);
-      return -1;
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
     }
-#endif
+#endif /* WINDOWS && SERVER_MODE */
 
-  /* Find the offset to the end of the file, then add the given number of pages */
-  start_offset = lseek (vol_fd, 0, SEEK_END);
+  /* get current size */
+  current_size = lseek (vol_fd, 0, SEEK_END);
 #if defined(WINDOWS) && defined(SERVER_MODE)
   pthread_mutex_unlock (io_mutex);
-#endif
-  last_offset = start_offset + FILEIO_GET_FILE_SIZE (IO_PAGESIZE, npages_toadd - 1);
+#endif /* WINDOWS && SERVER_MODE */
+  /* safe-guard: current size is rounded to IO_PAGESIZE... unless it crashed during an expand */
+  assert (!LOG_ISRESTARTED () || (current_size % IO_PAGESIZE) == 0);
 
-  /* 
-   * Make sure that there is enough pages on the given partition before we
-   * create and initialize the volume.
-   * We should also check for overflow condition.
-   */
-  if (npages_toadd > max_npages || last_offset < npages_toadd)
+  /* compute new size */
+  new_size = ((size_t) size_npages) * IO_PAGESIZE;
+
+  if (new_size <= current_size)
     {
-      if (last_offset < npages_toadd)
-	{
-	  /* Overflow */
-	  last_offset = FILEIO_GET_FILE_SIZE (IO_PAGESIZE, VOL_MAX_NPAGES (IO_PAGESIZE));
-	}
-      if (npages_toadd > max_npages && max_npages >= 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_EXPAND_OUT_OF_SPACE, 5, vol_label_p, npages_toadd,
-		  last_offset / 1024, max_npages, FILEIO_GET_FILE_SIZE (IO_PAGESIZE / 1024, max_npages));
-	}
-      else
-	{
-	  /* There was an error in fileio_get_number_of_partition_free_pages */
-	}
-      return -1;
+      /* this is possible in limited cases. we cannot link file expand to a page, so sometimes we may expand but volume
+       * header does not reflect this change. also, once expanded, we don't undo the expansion.
+       * however next time volume wants to expand (this case), it just notices file is already expanded and all is
+       * good. */
+      er_log_debug (ARG_FILE_LINE, "skip extending volume %d with current size %zu to new size %zu\n",
+		    vol_id, current_size, new_size);
+      return NO_ERROR;
     }
 
-  malloc_io_page_p = (FILEIO_PAGE *) malloc (IO_PAGESIZE);
-  if (malloc_io_page_p == NULL)
+  /* overflow safety check */
+  /* is this necessary? we dropped support for 32-bits systems. for now, I'll leave this check */
+  max_size = ((size_t) VOL_MAX_NPAGES (IO_PAGESIZE)) * IO_PAGESIZE;
+  new_size = MIN (new_size, max_size);
+
+  /* consider disk free space */
+  desired_extend_size = new_size - current_size;
+  max_extend_size = ((size_t) max_npages) * IO_PAGESIZE;
+
+  if (max_extend_size < desired_extend_size)
     {
+      const size_t ONE_KILO = 1024;
+      error_code = ER_IO_EXPAND_OUT_OF_SPACE;
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_EXPAND_OUT_OF_SPACE, 5, vol_label_p,
+	      desired_extend_size / IO_PAGESIZE, new_size / ONE_KILO, max_npages,
+	      FILEIO_GET_FILE_SIZE (IO_PAGESIZE / ONE_KILO, max_npages));
+    }
+
+  /* init page */
+  io_page_p = (FILEIO_PAGE *) db_private_alloc (thread_p, IO_PAGESIZE);
+  if (io_page_p == NULL)
+    {
+      /* TBD: remove memory allocation manual checks. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) IO_PAGESIZE);
-      return -1;
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  memset ((char *) malloc_io_page_p, 0, IO_PAGESIZE);
-  (void) fileio_initialize_res (thread_p, &(malloc_io_page_p->prv));
+  memset (io_page_p, 0, IO_PAGESIZE);
+  (void) fileio_initialize_res (thread_p, &(io_page_p->prv));
 
-  start_pageid = (DKNPAGES) (start_offset / IO_PAGESIZE);
-  last_pageid = (DKNPAGES) (last_offset / IO_PAGESIZE);
+  start_pageid = (PAGEID) (current_size / IO_PAGESIZE);
+  last_pageid = ((PAGEID) (new_size / IO_PAGESIZE) - 1);
 
   if (voltype == DB_TEMPORARY_VOLTYPE)
     {
       /* Write the last page */
-      if (fileio_write (thread_p, vol_fd, malloc_io_page_p, last_pageid, IO_PAGESIZE) != malloc_io_page_p)
+      if (fileio_write (thread_p, vol_fd, io_page_p, last_pageid, IO_PAGESIZE) != io_page_p)
 	{
-	  npages_toadd = -1;
+	  ASSERT_ERROR_AND_SET (error_code);
 	}
     }
   else
@@ -2539,26 +2599,31 @@ fileio_expand (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES npages_toadd, DB_
       /* support generic volume only */
       assert_release (voltype == DB_PERMANENT_VOLTYPE);
 
-      if (fileio_initialize_pages (thread_p, vol_fd, malloc_io_page_p, start_pageid, last_pageid - start_pageid + 1,
+      if (fileio_initialize_pages (thread_p, vol_fd, io_page_p, start_pageid, last_pageid - start_pageid + 1,
 				   IO_PAGESIZE, -1) == NULL)
 	{
-	  npages_toadd = -1;
+	  ASSERT_ERROR_AND_SET (error_code);
 	}
     }
 
-  if (npages_toadd < 0 && er_errid () != ER_INTERRUPTED)
+  if (error_code != NO_ERROR && error_code != ER_INTERRUPTED)
     {
+      /* I don't like below assumption, it can be misleading. From what I have seen, errors are already set. */
+#if 0
       /* It is likely that we run of space. The partition where the volume was created has been used since we checked
-       * above. */
+       * above.
+       */
       max_npages = fileio_get_number_of_partition_free_pages (vol_label_p, IO_PAGESIZE);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_EXPAND_OUT_OF_SPACE, 5, vol_label_p, npages_toadd,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_EXPAND_OUT_OF_SPACE, 5, vol_label_p, size_npages,
 	      last_offset / 1024, max_npages, FILEIO_GET_FILE_SIZE (IO_PAGESIZE / 1024, max_npages));
+#endif /* 0 */
     }
 
-  free_and_init (malloc_io_page_p);
+  db_private_free (thread_p, io_page_p);
 
-  return npages_toadd;
+  return NO_ERROR;
 }
+#endif /* not CS_MODE */
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
@@ -3633,7 +3698,7 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_i
 
       /* Read the desired page */
       nbytes = read (vol_fd, io_page_p, (unsigned int) page_size);
-      if (nbytes != page_size)
+      if (nbytes != (ssize_t) page_size)
 #elif defined(WINDOWS)
       io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
       if (io_mutex == NULL)
@@ -3783,7 +3848,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_
 	}
 
       /* write the page */
-      if (write (vol_fd, io_page_p, (unsigned int) page_size) != page_size)
+      if (write (vol_fd, io_page_p, (unsigned int) page_size) != (int) page_size)
 #elif defined(WINDOWS)
       io_mutex = fileio_get_volume_mutex (thread_p, vol_fd);
       if (io_mutex == NULL)
@@ -3891,7 +3956,6 @@ fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID
   off_t offset;
   ssize_t nbytes;
   size_t read_bytes;
-  bool is_retry = true;
 
 #if defined(WINDOWS) && defined(SERVER_MODE)
   int rv;
@@ -4401,6 +4465,11 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
 {
   int success = NO_ERROR;
   APPLY_ARG arg = { 0 };
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  PERF_UTIME_TRACKER time_track;
+
+  PERF_UTIME_TRACKER_START (thread_p, &time_track);
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
   arg.vol_id = NULL_VOLID;
 
@@ -4419,6 +4488,10 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
     }
 
   er_stack_pop ();
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_FILE_IOSYNC_ALL);
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
   return success;
 }
@@ -5529,7 +5602,7 @@ fileio_make_log_active_name (char *log_active_name_p, const char *log_path_p, co
 }
 
 /*
- * fileio_make_log_active_temp_name () - Build the name of volumes
+ * fileio_make_temp_log_files_from_backup () - Build the name of volumes
  *   return: void
  *   logactive_name(out):
  *   level(in):
@@ -5540,9 +5613,23 @@ fileio_make_log_active_name (char *log_active_name_p, const char *log_path_p, co
  *       DB_MAX_PATH_LENGTH length.
  */
 void
-fileio_make_log_active_temp_name (char *log_active_name_p, FILEIO_BACKUP_LEVEL level, const char *active_name_p)
+fileio_make_temp_log_files_from_backup (char *temp_log_name, VOLID to_volid, FILEIO_BACKUP_LEVEL level,
+					const char *base_log_name)
 {
-  sprintf (log_active_name_p, "%s_%03d_tmp", active_name_p, level);
+  switch (to_volid)
+    {
+    case LOG_DBLOG_ACTIVE_VOLID:
+      sprintf (temp_log_name, "%s_%03d_tmp", base_log_name, level);
+      break;
+    case LOG_DBLOG_INFO_VOLID:
+      sprintf (temp_log_name, "%s_%03d_tmp", base_log_name, level);
+      break;
+    case LOG_DBLOG_ARCHIVE_VOLID:
+      sprintf (temp_log_name, "%s_%03d_tmp", base_log_name, level);
+      break;
+    default:
+      break;
+    }
 }
 
 /*
@@ -6085,7 +6172,7 @@ fileio_is_temp_volume (THREAD_ENTRY * thread_p, VOLID volid)
       return false;
     }
 
-  FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (NULL_VOLID);
+  FILEIO_CHECK_AND_INITIALIZE_VOLUME_HEADER_CACHE (false);
 
   arg.vol_id = volid;
   vol_info_p = fileio_traverse_temporary_volume (thread_p, fileio_is_volume_id_equal, &arg);
@@ -6444,15 +6531,15 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
   session_p->bkup.buffer = NULL;
   session_p->bkup.bkuphdr = NULL;
   session_p->dbfile.area = NULL;
+
   /* Now find out the type of backup_destination and the best page I/O for the backup. The accepted types are either
    * file, directory, or raw device. */
   while (stat (backup_destination_p, &stbuf) == -1)
     {
       /* 
-       * Could not stat or backup_destination is a file or directory that does
-       * not exist.
-       * If the backup_destination does not exist, try to create it to make
-       * sure that we can write at this backup destination.
+       * Could not stat or backup_destination is a file or directory that does not exist.
+       * If the backup_destination does not exist, try to create it to make sure that we can write at this backup
+       * destination.
        */
       vol_fd = fileio_open (backup_destination_p, FILEIO_DISK_FORMAT_MODE, FILEIO_DISK_PROTECTION_MODE);
       if (vol_fd == NULL_VOLDES)
@@ -6466,11 +6553,10 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
 
   if (S_ISDIR (stbuf.st_mode))
     {
-      /* 
+      /*
        * This is a DIRECTORY where the backup is going to be sent.
-       * The name of the backup file in this directory is labeled as
-       * databasename.bkLvNNN (Unix). In this case, we may destroy any previous
-       * backup in this directory.
+       * The name of the backup file in this directory is labeled as databasename.bkLvNNN (Unix).
+       * In this case, we may destroy any previous backup in this directory.
        */
       session_p->bkup.dtype = FILEIO_BACKUP_VOL_DIRECTORY;
       db_nopath_name_p = fileio_get_base_file_name (db_full_name_p);
@@ -6485,11 +6571,9 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
     }
   else
     {
-      /* 
-       * ASSUME that everything else is a special file such as a
-       * raw device (character or block special file) which is
-       * not named for I/O purposes. That is, the name of the device or
-       * regular file is used as the backup.
+      /*
+       * ASSUME that everything else is a special file such as a FIFO file, a device(character or block special file)
+       * which is not named for I/O purposes. That is, the name of the device or regular file is used as the backup.
        */
       session_p->bkup.dtype = FILEIO_BACKUP_VOL_DEVICE;
     }
@@ -7856,14 +7940,34 @@ exit_on_error:
   goto exit_on_end;
 }
 
+// *INDENT-OFF*
+class fileio_read_backup_volume_task : public cubthread::entry_task
+{
+public:
+  fileio_read_backup_volume_task (void) = delete;
+
+  fileio_read_backup_volume_task (FILEIO_BACKUP_SESSION *session_p)
+  : m_backup_session (session_p)
+  {
+  }
+
+  void
+  execute (context_type &thread_ref) override final
+  {
+    fileio_read_backup_volume (&thread_ref, m_backup_session);
+  }
+
+private:
+  FILEIO_BACKUP_SESSION *m_backup_session;
+};
+// *INDENT-ON*
+
 static int
 fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
 			    FILEIO_THREAD_INFO * thread_info_p, int from_npages, bool is_only_updated_pages,
 			    int check_ratio, int check_npages, FILEIO_QUEUE * queue_p)
 {
   CSS_CONN_ENTRY *conn_p;
-  int conn_index;
-  CSS_JOB_ENTRY *job_entry_p;
   int i;
 
   /* Initialize global MT variables */
@@ -7877,22 +7981,10 @@ fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * ses
   thread_info_p->check_npages = check_npages;
   thread_info_p->tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   /* start read threads */
-  conn_p = thread_get_current_conn_entry ();
-  conn_index = (conn_p) ? conn_p->idx : 0;
+  conn_p = css_get_current_conn_entry ();
   for (i = 1; i <= thread_info_p->act_r_threads; i++)
     {
-      job_entry_p =
-	css_make_job_entry (conn_p, (CSS_THREAD_FN) fileio_read_backup_volume, (CSS_THREAD_ARG) session_p,
-			    conn_index + i
-			    /* explicit job queue index */
-	);
-
-      if (job_entry_p == NULL)
-	{
-	  return ER_FAILED;
-	}
-
-      css_add_to_job_queue (job_entry_p);
+      css_push_external_task (*thread_p, conn_p, new fileio_read_backup_volume_task (session_p));
     }
 
   /* work as write thread */
@@ -8652,8 +8744,7 @@ fileio_write_backup_header (FILEIO_BACKUP_SESSION * session_p)
 }
 
 /*
- * fileio_initialize_restore () - Initialize the restore session structure with the given
- *                      information
+ * fileio_initialize_restore () - Initialize the restore session structure with the given information
  *   return: session or NULL
  *   db_fullname(in): Name of the database to backup
  *   backup_src(in): Name of backup device (file or directory)
@@ -8693,8 +8784,8 @@ fileio_initialize_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, 
   session_p->type = FILEIO_BACKUP_READ;	/* access backup device for read */
   /* save database full-pathname specified in the database-loc-file */
   strncpy (session_p->bkup.loc_db_fullname, is_new_vol_path ? db_full_name_p : "", PATH_MAX);
-  return (fileio_initialize_backup (db_full_name_p, (const char *) backup_source_p, session_p, level, restore_verbose_file_path, 0,	/* no multi-thread */
-				    0 /* no sleep */ ));
+  return (fileio_initialize_backup (db_full_name_p, (const char *) backup_source_p, session_p, level,
+				    restore_verbose_file_path, 0 /* no multi-thread */ , 0 /* no sleep */ ));
 }
 
 /*
@@ -9643,14 +9734,16 @@ fileio_get_backup_volume (THREAD_ENTRY * thread_p, const char *db_fullname, cons
       if (fileio_read_backup_info_entries (backup_volinfo_fp, FILEIO_FIRST_BACKUP_VOL_INFO) == NO_ERROR)
 	{
 	  volnameptr =
-	    fileio_get_backup_info_volume_name (try_level, FILEIO_INITIAL_BACKUP_UNITS, FILEIO_FIRST_BACKUP_VOL_INFO);
+	    fileio_get_backup_info_volume_name ((FILEIO_BACKUP_LEVEL) try_level, FILEIO_INITIAL_BACKUP_UNITS,
+						FILEIO_FIRST_BACKUP_VOL_INFO);
 	  if (volnameptr != NULL)
 	    {
 	      strcpy (from_volbackup, volnameptr);
 	    }
 	  else
 	    {
-	      fileio_make_backup_name (from_volbackup, nopath_name, logpath, try_level, FILEIO_INITIAL_BACKUP_UNITS);
+	      fileio_make_backup_name (from_volbackup, nopath_name, logpath, (FILEIO_BACKUP_LEVEL) try_level,
+				       FILEIO_INITIAL_BACKUP_UNITS);
 	    }
 	}
       else
@@ -11095,7 +11188,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE
   int x;
   int result = 0;
   bool is_retry_in = true;
-  bool rc;
+  int rc;
   char format_string[32];
 
   /* we're pretending to jump to the client */

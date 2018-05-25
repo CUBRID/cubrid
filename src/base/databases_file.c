@@ -47,6 +47,7 @@
 #include "error_manager.h"
 #include "databases_file.h"
 #include "boot.h"
+#include "connection_defs.h"
 #include "memory_alloc.h"
 #include "environment_variable.h"
 #include "system_parameter.h"
@@ -404,7 +405,7 @@ cfg_read_directory (DB_INFO ** info_p, bool write_flag)
   databases = last = NULL;
 
 #if defined(SERVER_MODE)
-  if (prm_get_integer_value (PRM_ID_HA_MODE) && prm_get_string_value (PRM_ID_HA_NODE_LIST))
+  if (!HA_DISABLED () && prm_get_string_value (PRM_ID_HA_NODE_LIST))
     {
       str = strchr (prm_get_string_value (PRM_ID_HA_NODE_LIST), '@');
       ha_node_list = (str) ? str + 1 : NULL;
@@ -519,7 +520,7 @@ cfg_read_directory_ex (int vdes, DB_INFO ** info_p, bool write_flag)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (stat_buffer.st_size + 1));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      read (vdes, line, stat_buffer.st_size);
+      read (vdes, line, (unsigned int) stat_buffer.st_size);
       line[stat_buffer.st_size] = '\0';
       str = cfg_next_char (line);
       while (*str != '\0')
@@ -1030,7 +1031,6 @@ cfg_add_db (DB_INFO ** dir, const char *name, const char *path, const char *logp
 	    const char *host)
 {
   DB_INFO *db_info_p;
-  int num_hosts = 0;
 
   if (host != NULL)
     {
@@ -1310,7 +1310,7 @@ cfg_host_exists (char *host_list, char *hostname, int num_items)
   char *next_sep;
   int i = 0, len, hostname_len;
 
-  hostname_len = strlen (hostname);
+  hostname_len = (int) strlen (hostname);
 
   current_host = host_list;
   while ((current_host != NULL) && (i < num_items))
@@ -1329,7 +1329,7 @@ cfg_host_exists (char *host_list, char *hostname, int num_items)
 	}
       else
 	{
-	  len = next_sep - current_host;
+	  len = CAST_STRLEN (next_sep - current_host);
 
 	  if (len == hostname_len && strncmp (current_host, hostname, len) == 0)
 	    {
@@ -1440,19 +1440,19 @@ cfg_create_host_list (const char *primary_host_name, bool include_local_host, in
 	}
 #else
       strcpy (local_host, "localhost");
-      host_list_length += strlen (local_host) + 1;
+      host_list_length += (int) strlen (local_host) + 1;
 #endif
     }
   /* check the given primary hosts list */
   if (primary_host_name != NULL && *primary_host_name != '\0')
     {
-      host_list_length += strlen (primary_host_name) + 1;
+      host_list_length += (int) strlen (primary_host_name) + 1;
     }
 
   /* get the hosts list from parameters */
   if (prm_get_string_value (PRM_ID_CFG_DB_HOSTS) != NULL && *prm_get_string_value (PRM_ID_CFG_DB_HOSTS) != '\0')
     {
-      host_list_length += strlen (prm_get_string_value (PRM_ID_CFG_DB_HOSTS)) + 1;
+      host_list_length += (int) strlen (prm_get_string_value (PRM_ID_CFG_DB_HOSTS)) + 1;
     }
 
   /* 

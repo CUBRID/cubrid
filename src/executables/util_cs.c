@@ -32,6 +32,7 @@
 #include <ctype.h>
 #include <signal.h>
 #include <errno.h>
+#include <assert.h>
 
 #include "utility.h"
 #include "error_manager.h"
@@ -103,7 +104,7 @@ static void intr_handler (int sig_no);
 #endif
 
 static void backupdb_sig_interrupt_handler (int sig_no);
-static int spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit);
+STATIC_INLINE char *spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit);
 static void print_timestamp (FILE * outfp);
 static int print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level);
 static int tranlist_cmp_f (const void *p1, const void *p2);
@@ -167,8 +168,8 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 
   if (sa_mode && backup_num_threads > 1)
     {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_INVALID_THREAD_NUM_OPT));
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB,
+					     BACKUPDB_INVALID_THREAD_NUM_OPT));
     }
 
   if (backup_num_threads < FILEIO_BACKUP_NUM_THREADS_AUTO)
@@ -201,11 +202,24 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 	  backup_path = real_pathbuf;
 	}
 
-      if (stat (backup_path, &st_buf) != 0 || !S_ISDIR (st_buf.st_mode))
+      // accept directory and FIFO (named pipe) file as backup destination.
+      if (stat (backup_path, &st_buf) != 0)
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_INVALID_PATH));
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB,
+						 BACKUPDB_INVALID_PATH));
 	  goto error_exit;
+	}
+      else if (!S_ISDIR (st_buf.st_mode))
+	{
+#if !defined (WINDOWS)
+	  // Unfortunately, Windows does not support FIFO file.
+	  if (!S_ISFIFO (st_buf.st_mode))
+#endif /* !WINDOWS */
+	    {
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB,
+						     BACKUPDB_INVALID_PATH));
+	      goto error_exit;
+	    }
 	}
     }
 
@@ -219,78 +233,75 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
 
-  if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
-    {
-      if (check)
-	{
-	  int check_flag = 0;
-
-	  check_flag |= CHECKDB_FILE_TRACKER_CHECK;
-	  check_flag |= CHECKDB_HEAP_CHECK_ALLHEAPS;
-	  check_flag |= CHECKDB_CT_CHECK_CAT_CONSISTENCY;
-	  check_flag |= CHECKDB_BTREE_CHECK_ALL_BTREES;
-	  check_flag |= CHECKDB_LC_CHECK_CLASSNAMES;
-
-	  if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR
-	      || boot_check_db_consistency (check_flag, 0, 0, NULL) != NO_ERROR)
-	    {
-	      const char *tmpname;
-	      if ((tmpname = er_get_msglog_filename ()) == NULL)
-		{
-		  tmpname = "/dev/null";
-		}
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message
-				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKDB, CHECKDB_MSG_INCONSISTENT),
-				     tmpname);
-	      db_shutdown ();
-	      goto error_exit;
-	    }
-	}
-
-      /* some other utilities may need interrupt handler too */
-      if (os_set_signal_handler (SIGINT, backupdb_sig_interrupt_handler) == SIG_ERR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  db_shutdown ();
-	  goto error_exit;
-	}
-
-      if (backup_verbose_file && *backup_verbose_file && *backup_verbose_file != '/')
-	{
-	  char dirname[PATH_MAX];
-
-	  /* resolve relative path */
-	  if (getcwd (dirname, PATH_MAX) != NULL)
-	    {
-	      snprintf (verbose_file_realpath, PATH_MAX - 1, "%s/%s", dirname, backup_verbose_file);
-	      backup_verbose_file = verbose_file_realpath;
-	    }
-	}
-
-      if (boot_backup
-	  (backup_path, (FILEIO_BACKUP_LEVEL) backup_level, remove_log_archives, backup_verbose_file,
-	   backup_num_threads, backup_zip_method, backup_zip_level, skip_activelog, sleep_msecs) == NO_ERROR)
-	{
-	  if (db_commit_transaction () != NO_ERROR)
-	    {
-	      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	    }
-	}
-      else
-	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  db_shutdown ();
-	  goto error_exit;
-	}
-
-      db_shutdown ();
-    }
-  else
+  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
     }
+
+  if (check)
+    {
+      int check_flag = 0;
+
+      check_flag |= CHECKDB_FILE_TRACKER_CHECK;
+      check_flag |= CHECKDB_HEAP_CHECK_ALLHEAPS;
+      check_flag |= CHECKDB_CT_CHECK_CAT_CONSISTENCY;
+      check_flag |= CHECKDB_BTREE_CHECK_ALL_BTREES;
+      check_flag |= CHECKDB_LC_CHECK_CLASSNAMES;
+
+      if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR
+	  || boot_check_db_consistency (check_flag, 0, 0, NULL) != NO_ERROR)
+	{
+	  const char *tmpname;
+
+	  tmpname = er_get_msglog_filename ();
+	  if (tmpname == NULL)
+	    {
+	      tmpname = "/dev/null";
+	    }
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKDB,
+						 CHECKDB_MSG_INCONSISTENT), tmpname);
+	  db_shutdown ();
+	  goto error_exit;
+	}
+    }
+
+  /* some other utilities may need interrupt handler too */
+  if (os_set_signal_handler (SIGINT, backupdb_sig_interrupt_handler) == SIG_ERR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      db_shutdown ();
+      goto error_exit;
+    }
+
+  if (backup_verbose_file && *backup_verbose_file && *backup_verbose_file != '/')
+    {
+      char dirname[PATH_MAX];
+
+      /* resolve relative path */
+      if (getcwd (dirname, PATH_MAX) != NULL)
+	{
+	  snprintf (verbose_file_realpath, PATH_MAX - 1, "%s/%s", dirname, backup_verbose_file);
+	  backup_verbose_file = verbose_file_realpath;
+	}
+    }
+
+  if (boot_backup (backup_path, (FILEIO_BACKUP_LEVEL) backup_level, remove_log_archives, backup_verbose_file,
+		   backup_num_threads, backup_zip_method, backup_zip_level, skip_activelog, sleep_msecs) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      db_shutdown ();
+      goto error_exit;
+    }
+
+  if (db_commit_transaction () != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+    }
+
+  db_shutdown ();
+
   return EXIT_SUCCESS;
 
 print_backup_usage:
@@ -448,9 +459,8 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
 
       if (ext_info.max_npages <= 0)
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ADDVOLDB, ADDVOLDB_MSG_BAD_NPAGES),
-				 ext_info.max_npages);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ADDVOLDB,
+						 ADDVOLDB_MSG_BAD_NPAGES), ext_info.max_npages);
 	  db_shutdown ();
 	  goto error_exit;
 	}
@@ -528,12 +538,12 @@ util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_na
       sm_downcase_name (table, name, SM_MAX_IDENTIFIER_LENGTH);
       cls_mop = locator_find_class (name);
 
-      obj = (void *) &cls_sm;
+      obj = (MOBJ *) & cls_sm;
       ws_find (cls_mop, obj);
       if (cls_sm == NULL || cls_sm->class_type != SM_CLASS_CT)
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKDB, CHECKDB_MSG_NO_SUCH_CLASS), table);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKDB,
+						 CHECKDB_MSG_NO_SUCH_CLASS), table);
 	  continue;
 	}
 
@@ -544,8 +554,8 @@ util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_na
 	}
       else
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKDB, CHECKDB_MSG_NO_SUCH_CLASS), table);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKDB,
+						 CHECKDB_MSG_NO_SUCH_CLASS), table);
 	  continue;
 	}
 
@@ -554,9 +564,8 @@ util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_na
 	  constraint = classobj_find_class_index (cls_sm, index_name);
 	  if (constraint == NULL)
 	    {
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message
-				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKDB, CHECKDB_MSG_NO_SUCH_INDEX),
-				     index_name, name);
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKDB,
+						     CHECKDB_MSG_NO_SUCH_INDEX), index_name, name);
 	      free_and_init (oids);
 	      return NULL;
 	    }
@@ -740,8 +749,8 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 	    {
 	      tmpname = "/dev/null";
 	    }
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKDB, CHECKDB_MSG_INCONSISTENT), tmpname);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKDB,
+						 CHECKDB_MSG_INCONSISTENT), tmpname);
 
 	  if (repair_plink || repair)
 	    {
@@ -800,37 +809,34 @@ error_exit:
 int
 spacedb (UTIL_FUNCTION_ARG * arg)
 {
+#define SPACEDB_TO_SIZE_ARG(no, npage) spacedb_get_size_str (size_str_##no, npage, size_unit_type)
+
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *database_name;
   const char *output_file = NULL;
   int i;
   const char *size_unit;
-  DB_VOLPURPOSE vol_purpose;
   T_SPACEDB_SIZE_UNIT size_unit_type;
-  char vol_label[PATH_MAX];
-
-  UINT64 db_ntotal_pages, db_nfree_pages;
-  UINT64 db_ndata_pages, db_nindex_pages, db_ntemp_pages;
-
-  UINT64 db_summarize_ntotal_pages[SPACEDB_NUM_VOL_PURPOSE];
-  UINT64 db_summarize_nfree_pages[SPACEDB_NUM_VOL_PURPOSE];
-  UINT64 db_summarize_ndata_pages[SPACEDB_NUM_VOL_PURPOSE];
-  UINT64 db_summarize_nindex_pages[SPACEDB_NUM_VOL_PURPOSE];
-  UINT64 db_summarize_ntemp_pages[SPACEDB_NUM_VOL_PURPOSE];
-  int db_summarize_nvols[SPACEDB_NUM_VOL_PURPOSE];
 
   bool summarize, purpose;
   FILE *outfp = NULL;
-  int nvols, last_perm;
-  VOLID temp_volid;
-  char num_total_str[64], num_free_str[64], num_used_str[64];
-  char num_data_used_str[64];
-  char num_index_used_str[64];
-  char num_temp_used_str[64];
   char io_size_str[64], log_size_str[64];
-  VOL_SPACE_INFO space_info;
-  MSGCAT_SPACEDB_MSG title_format, output_format, size_title_format, underline;
+
+  SPACEDB_ALL all[SPACEDB_ALL_COUNT];
+  SPACEDB_ONEVOL *vols = NULL;
+  SPACEDB_ONEVOL **volsp = NULL;
+  SPACEDB_FILES files[SPACEDB_FILE_COUNT];
+  SPACEDB_FILES *filesp = NULL;
+
+  char size_str_1[64];
+  char size_str_2[64];
+  char size_str_3[64];
+  char size_str_4[64];
+
+  const char *file_type_strings[] = {
+    "INDEX", "HEAP", "SYSTEM", "TEMP", "-"
+  };
 
   /* todo: there is a lot of work to do here */
 
@@ -912,345 +918,151 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 
   if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
     {
-      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (ER_WARNING_SEVERITY));
       goto error_exit;
     }
-
-  db_ntotal_pages = db_nfree_pages = 0;
-  db_ndata_pages = db_nindex_pages = db_ntemp_pages = 0;
 
   util_byte_to_size_string (io_size_str, 64, IO_PAGESIZE);
   util_byte_to_size_string (log_size_str, 64, LOG_PAGESIZE);
 
-  if (summarize && purpose)
+  if (!summarize)
     {
-      title_format = SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_TITLE;
-      size_title_format = ((size_unit_type == SPACEDB_SIZE_UNIT_PAGE)
-			   ? SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_TITLE_PAGE
-			   : SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_TITLE_SIZE);
-      output_format = SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_FORMAT;
-      underline = SPACEDB_OUTPUT_SUMMARIZED_PURPOSE_UNDERLINE;
+      /* we need space info per each volume. set volsp to non-NULL value */
+      volsp = &vols;
     }
-  else if (summarize && !purpose)
+  if (purpose)
     {
-      title_format = SPACEDB_OUTPUT_SUMMARIZED_TITLE;
-      size_title_format = ((size_unit_type == SPACEDB_SIZE_UNIT_PAGE)
-			   ? SPACEDB_OUTPUT_SUMMARIZED_TITLE_PAGE : SPACEDB_OUTPUT_SUMMARIZED_TITLE_SIZE);
-      output_format = SPACEDB_OUTPUT_SUMMARIZED_FORMAT;
-      underline = SPACEDB_OUTPUT_SUMMARIZED_UNDERLINE;
-    }
-  else if (!summarize && purpose)
-    {
-      title_format = SPACEDB_OUTPUT_PURPOSE_TITLE;
-      size_title_format = ((size_unit_type == SPACEDB_SIZE_UNIT_PAGE)
-			   ? SPACEDB_OUTPUT_PURPOSE_TITLE_PAGE : SPACEDB_OUTPUT_PURPOSE_TITLE_SIZE);
-      output_format = SPACEDB_OUTPUT_PURPOSE_FORMAT;
-      underline = SPACEDB_OUTPUT_PURPOSE_UNDERLINE;
-    }
-  else				/* !summarize && !purpose */
-    {
-      title_format = SPACEDB_OUTPUT_TITLE;
-      size_title_format = ((size_unit_type == SPACEDB_SIZE_UNIT_PAGE)
-			   ? SPACEDB_OUTPUT_TITLE_PAGE : SPACEDB_OUTPUT_TITLE_SIZE);
-      output_format = SPACEDB_OUTPUT_FORMAT;
-      underline = SPACEDB_OUTPUT_UNDERLINE;
+      /* we need detailed space info for file usage. set filesp to non-NULL value */
+      filesp = files;
     }
 
-  if (summarize)
+  if (netcl_spacedb (all, volsp, filesp) != NO_ERROR)
     {
-      for (i = 0; i < SPACEDB_NUM_VOL_PURPOSE; i++)
-	{
-	  db_summarize_ntotal_pages[i] = 0;
-	  db_summarize_nfree_pages[i] = 0;
-	  db_summarize_nvols[i] = 0;
-
-	  if (purpose)
-	    {
-	      db_summarize_ndata_pages[i] = 0;
-	      db_summarize_nindex_pages[i] = 0;
-	      db_summarize_ntemp_pages[i] = 0;
-	    }
-	}
+      ASSERT_ERROR ();
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (ER_WARNING_SEVERITY));
+      db_shutdown ();
+      goto error_exit;
     }
 
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, title_format), database_name,
+  /* print title */
+  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_OUTPUT_TITLE), database_name,
 	   io_size_str, log_size_str);
+  fprintf (outfp, "\n");
 
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, size_title_format));
-
-  nvols = 0;
-  last_perm = db_last_volume ();
-  for (i = 0; i <= last_perm; i++)
+  /* print aggregated info */
+  /* print header */
+  if (size_unit_type == SPACEDB_SIZE_UNIT_PAGE)
     {
-      /* we could get all info at once, you know */
-      if (disk_is_volume_exist (i) == false)
-	{
-	  continue;
-	}
-      nvols++;
-
-      if (disk_get_purpose_and_space_info (i, &vol_purpose, &space_info) == NO_ERROR)
-	{
-	  if (summarize)
-	    {
-	      assert (vol_purpose == DB_PERMANENT_DATA_PURPOSE || vol_purpose == DB_TEMPORARY_DATA_PURPOSE);
-	      if (vol_purpose < DISK_UNKNOWN_PURPOSE)
-		{
-		  db_summarize_ntotal_pages[vol_purpose] += DISK_SECTS_NPAGES (space_info.n_total_sects);
-		  db_summarize_nfree_pages[vol_purpose] += DISK_SECTS_NPAGES (space_info.n_free_sects);
-		  db_summarize_nvols[vol_purpose]++;
-		}
-	    }
-	  else
-	    {
-	      db_ntotal_pages += DISK_SECTS_NPAGES (space_info.n_total_sects);
-	      db_nfree_pages += DISK_SECTS_NPAGES (space_info.n_free_sects);
-
-	      if (db_vol_label (i, vol_label) == NULL)
-		{
-		  strcpy (vol_label, " ");
-		}
-
-	      spacedb_get_size_str (num_total_str, DISK_SECTS_NPAGES (space_info.n_total_sects), size_unit_type);
-	      spacedb_get_size_str (num_free_str, DISK_SECTS_NPAGES (space_info.n_free_sects), size_unit_type);
-
-	      if (purpose)
-		{
-		  /* FIXME: server just returns 0 */
-		  db_ndata_pages += space_info.used_data_npages;
-		  db_nindex_pages += space_info.used_index_npages;
-		  db_ntemp_pages += space_info.used_temp_npages;
-
-		  spacedb_get_size_str (num_data_used_str, (UINT64) space_info.used_data_npages, size_unit_type);
-		  spacedb_get_size_str (num_index_used_str, (UINT64) space_info.used_index_npages, size_unit_type);
-		  spacedb_get_size_str (num_temp_used_str, (UINT64) space_info.used_temp_npages, size_unit_type);
-
-		  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), i,
-			   VOL_PURPOSE_STRING (vol_purpose), num_total_str, num_free_str, num_data_used_str,
-			   num_index_used_str, num_temp_used_str, vol_label);
-		}
-	      else
-		{
-		  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), i,
-			   VOL_PURPOSE_STRING (vol_purpose), num_total_str, num_free_str, vol_label);
-		}
-	    }
-	}
-      else
-	{
-	  ASSERT_ERROR ();
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  db_shutdown ();
-	  goto error_exit;
-	}
-    }
-
-  if (nvols > 1 && !summarize)
-    {
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, underline));
-
-      spacedb_get_size_str (num_total_str, db_ntotal_pages, size_unit_type);
-      spacedb_get_size_str (num_free_str, db_nfree_pages, size_unit_type);
-
-      if (purpose)
-	{
-	  /* FIXME: server just returns 0 */
-	  spacedb_get_size_str (num_data_used_str, db_ndata_pages, size_unit_type);
-	  spacedb_get_size_str (num_index_used_str, db_nindex_pages, size_unit_type);
-	  spacedb_get_size_str (num_temp_used_str, db_ntemp_pages, size_unit_type);
-
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), nvols, " ",
-		   num_total_str, num_free_str, num_data_used_str, num_index_used_str, num_temp_used_str, " ");
-	}
-      else
-	{
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), nvols, " ",
-		   num_total_str, num_free_str, " ");
-	}
-    }
-
-  if (!summarize)
-    {
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_OUTPUT_TITLE_TMP_VOL),
-	       database_name, io_size_str);
-
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, size_title_format));
-      db_ntotal_pages = db_nfree_pages = 0;
-      db_ndata_pages = db_nindex_pages = db_ntemp_pages = 0;
-    }
-
-  /* Find info on temp volumes */
-  temp_volid = boot_find_last_temp ();
-  if (temp_volid == NULL_VOLID)
-    {
-      temp_volid = VOLID_MAX;
-    }
-
-  nvols = 0;
-  for (i = temp_volid; i < VOLID_MAX; i++)
-    {
-      if (disk_is_volume_exist (i) == false)
-	{
-	  continue;
-	}
-      nvols++;
-
-      if (disk_get_purpose_and_space_info (i, &vol_purpose, &space_info) != NULL_VOLID)
-	{
-	  assert (space_info.used_data_npages == 0 && space_info.used_index_npages == 0);
-
-	  if (summarize)
-	    {
-	      if (vol_purpose < DISK_UNKNOWN_PURPOSE)
-		{
-		  db_summarize_ntotal_pages[vol_purpose] += DISK_SECTS_NPAGES (space_info.n_total_sects);
-		  db_summarize_nfree_pages[vol_purpose] += DISK_SECTS_NPAGES (space_info.n_free_sects);
-		  db_summarize_nvols[vol_purpose]++;
-
-		  if (purpose)
-		    {
-		      /* FIXME: server just returns 0 */
-		      db_summarize_ntemp_pages[vol_purpose] += space_info.used_temp_npages;
-		    }
-		}
-	    }
-	  else
-	    {
-	      db_ntotal_pages += DISK_SECTS_NPAGES (space_info.n_total_sects);
-	      db_nfree_pages += DISK_SECTS_NPAGES (space_info.n_free_sects);
-
-	      if (db_vol_label (i, vol_label) == NULL)
-		{
-		  strcpy (vol_label, " ");
-		}
-
-	      spacedb_get_size_str (num_total_str, DISK_SECTS_NPAGES (space_info.n_total_sects), size_unit_type);
-	      spacedb_get_size_str (num_free_str, DISK_SECTS_NPAGES (space_info.n_free_sects), size_unit_type);
-
-	      if (purpose)
-		{
-		  /* FIXME: server just returns 0 */
-		  db_ntemp_pages += space_info.used_temp_npages;
-
-		  spacedb_get_size_str (num_data_used_str, (UINT64) 0, size_unit_type);
-		  spacedb_get_size_str (num_index_used_str, (UINT64) 0, size_unit_type);
-		  spacedb_get_size_str (num_temp_used_str, (UINT64) space_info.used_temp_npages, size_unit_type);
-
-		  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), i,
-			   VOL_PURPOSE_STRING (DB_TEMPORARY_DATA_PURPOSE), num_total_str, num_free_str,
-			   num_data_used_str, num_index_used_str, num_temp_used_str, vol_label);
-		}
-	      else
-		{
-		  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), i,
-			   VOL_PURPOSE_STRING (DB_TEMPORARY_DATA_PURPOSE), num_total_str, num_free_str, vol_label);
-		}
-	    }
-	}
-      else
-	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  db_shutdown ();
-	  goto error_exit;
-	}
-    }
-
-  if (!summarize)
-    {
-      if (nvols > 1)
-	{
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, underline));
-
-	  spacedb_get_size_str (num_total_str, db_ntotal_pages, size_unit_type);
-	  spacedb_get_size_str (num_free_str, db_nfree_pages, size_unit_type);
-
-	  if (purpose)
-	    {
-	      /* FIXME: server just returns 0 */
-	      spacedb_get_size_str (num_temp_used_str, db_ntemp_pages, size_unit_type);
-
-	      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), nvols, " ",
-		       num_total_str, num_free_str, num_data_used_str, num_index_used_str, num_temp_used_str, " ");
-	    }
-	  else
-	    {
-	      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), nvols, " ",
-		       num_total_str, num_free_str, " ");
-	    }
-	}
-
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_OUTPUT_TITLE_LOB),
-	       boot_get_lob_path ());
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_ALL_HEADER_PAGES));
     }
   else
     {
-      int total_volume_count = 0;
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_ALL_HEADER_SIZE));
+    }
+  /* print values. the format is:
+   * type, purpose, used pages/size, free pages/size, total pages/size */
+  /* print perm perm values */
+  for (i = 0; i < SPACEDB_ALL_COUNT; i++)
+    {
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_PERM_PERM_FORMAT + i),
+	       all[i].nvols, SPACEDB_TO_SIZE_ARG (1, all[i].npage_used),
+	       SPACEDB_TO_SIZE_ARG (2, all[i].npage_free),
+	       SPACEDB_TO_SIZE_ARG (3, all[i].npage_used + all[i].npage_free));
+    }
+  fprintf (outfp, "\n");
 
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, underline));
+  if (volsp != NULL)
+    {
+      /* print information on all volumes */
+      MSGCAT_SPACEDB_MSG msg_vols_format;
 
-      for (i = 0; i < SPACEDB_NUM_VOL_PURPOSE; i++)
+      /* print title */
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_VOLS_TITLE));
+      /* print header */
+      if (size_unit_type == SPACEDB_SIZE_UNIT_PAGE)
 	{
-	  spacedb_get_size_str (num_total_str, db_summarize_ntotal_pages[i], size_unit_type);
-
-	  spacedb_get_size_str (num_used_str, db_summarize_ntotal_pages[i] - db_summarize_nfree_pages[i],
-				size_unit_type);
-
-	  spacedb_get_size_str (num_free_str, db_summarize_nfree_pages[i], size_unit_type);
-
-	  db_ntotal_pages += db_summarize_ntotal_pages[i];
-	  db_nfree_pages += db_summarize_nfree_pages[i];
-	  total_volume_count += db_summarize_nvols[i];
-
-	  if (purpose)
-	    {
-	      /* FIXME: server just returns 0 */
-	      db_ndata_pages += db_summarize_ndata_pages[i];
-	      db_nindex_pages += db_summarize_nindex_pages[i];
-	      db_ntemp_pages += db_summarize_ntemp_pages[i];
-
-	      spacedb_get_size_str (num_data_used_str, db_summarize_ndata_pages[i], size_unit_type);
-	      spacedb_get_size_str (num_index_used_str, db_summarize_nindex_pages[i], size_unit_type);
-	      spacedb_get_size_str (num_temp_used_str, db_summarize_ntemp_pages[i], size_unit_type);
-
-	      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format),
-		       VOL_PURPOSE_STRING (i), num_total_str, num_used_str, num_free_str, num_data_used_str,
-		       num_index_used_str, num_temp_used_str, db_summarize_nvols[i]);
-	    }
-	  else
-	    {
-	      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format),
-		       VOL_PURPOSE_STRING (i), num_total_str, num_used_str, num_free_str, db_summarize_nvols[i]);
-	    }
-	}
-
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, underline));
-
-      spacedb_get_size_str (num_total_str, db_ntotal_pages, size_unit_type);
-      spacedb_get_size_str (num_used_str, db_ntotal_pages - db_nfree_pages, size_unit_type);
-      spacedb_get_size_str (num_free_str, db_nfree_pages, size_unit_type);
-
-      if (purpose)
-	{
-	  /* FIXME: server just returns 0 */
-	  spacedb_get_size_str (num_data_used_str, db_ndata_pages, size_unit_type);
-	  spacedb_get_size_str (num_index_used_str, db_nindex_pages, size_unit_type);
-	  spacedb_get_size_str (num_temp_used_str, db_ntemp_pages, size_unit_type);
-
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), "TOTAL",
-		   num_total_str, num_used_str, num_free_str, num_data_used_str, num_index_used_str, num_temp_used_str,
-		   total_volume_count);
+	  fprintf (outfp,
+		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_VOLS_HEADER_PAGES));
 	}
       else
 	{
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, output_format), "TOTAL",
-		   num_total_str, num_used_str, num_free_str, total_volume_count);
+	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_VOLS_HEADER_SIZE));
 	}
+
+      /* print each volume */
+      for (i = 0; i < all[SPACEDB_TOTAL_ALL].nvols; i++)
+	{
+	  if (vols[i].type == DB_PERMANENT_VOLTYPE)
+	    {
+	      if (vols[i].purpose == DB_PERMANENT_DATA_PURPOSE)
+		{
+		  msg_vols_format = SPACEDB_MSG_VOLS_PERM_PERM_FORMAT;
+		}
+	      else
+		{
+		  msg_vols_format = SPACEDB_MSG_VOLS_PERM_TEMP_FORMAT;
+		}
+	    }
+	  else
+	    {
+	      msg_vols_format = SPACEDB_MSG_VOLS_TEMP_TEMP_FORMAT;
+	    }
+	  /* the format is:
+	   * volid, type, purpose, used pages/size, free pages/size, total pages/size, volume name */
+	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, msg_vols_format),
+		   vols[i].volid, SPACEDB_TO_SIZE_ARG (1, vols[i].npage_used),
+		   SPACEDB_TO_SIZE_ARG (2, vols[i].npage_free),
+		   SPACEDB_TO_SIZE_ARG (3, vols[i].npage_used + vols[i].npage_free), vols[i].name);
+	}
+      fprintf (outfp, "\n");
+    }
+
+  if (filesp != NULL)
+    {
+      /* print detailed files information */
+
+      /* print title */
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_TITLE));
+      /* print header */
+      if (size_unit_type == SPACEDB_SIZE_UNIT_PAGE)
+	{
+	  fprintf (outfp,
+		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_HEADER_PAGES));
+	}
+      else
+	{
+	  fprintf (outfp,
+		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_HEADER_SIZE));
+	}
+
+      /* the format is:
+       * data_type, file_count, used pages/size, ftab pages/size, reserved pages/size, total pages/size */
+      for (i = 0; i < SPACEDB_FILE_COUNT; i++)
+	{
+	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_MSG_FILES_FORMAT),
+		   file_type_strings[i], files[i].nfile,
+		   SPACEDB_TO_SIZE_ARG (1, files[i].npage_user), SPACEDB_TO_SIZE_ARG (2, files[i].npage_ftab),
+		   SPACEDB_TO_SIZE_ARG (3, files[i].npage_reserved),
+		   SPACEDB_TO_SIZE_ARG (4, files[i].npage_user + files[i].npage_ftab + files[i].npage_reserved));
+	}
+      fprintf (outfp, "\n");
+    }
+
+  if (!summarize)
+    {
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SPACEDB, SPACEDB_OUTPUT_TITLE_LOB),
+	       boot_get_lob_path ());
     }
 
   db_shutdown ();
   if (outfp != stdout)
     {
       fclose (outfp);
+    }
+
+  if (vols != NULL)
+    {
+      free_and_init (vols);
     }
 
   return EXIT_SUCCESS;
@@ -1265,7 +1077,13 @@ error_exit:
     {
       fclose (outfp);
     }
+  if (vols != NULL)
+    {
+      free_and_init (vols);
+    }
   return EXIT_FAILURE;
+
+#undef SPACEDB_TO_SIZE_ARG
 }
 
 /*
@@ -1279,7 +1097,6 @@ acldb (UTIL_FUNCTION_ARG * arg)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *database_name;
-  const char *output_file = NULL;
   bool reload;
   int ret_code = EXIT_SUCCESS;
 
@@ -1466,26 +1283,27 @@ doesmatch_transaction (const ONE_TRAN_INFO * tran, int *tran_index_list, int ind
 {
   int i;
 
-  if (isvalid_transaction (tran))
+  if (!isvalid_transaction (tran))
     {
-      if ((username != NULL && strcmp (tran->login_name, username) == 0)
-	  || (hostname != NULL && strcmp (tran->host_name, hostname) == 0) || (progname != NULL
-									       && strcmp (tran->program_name,
-											  progname) == 0)
-	  || (sql_id != NULL && tran->query_exec_info.sql_id != NULL
-	      && strcmp (tran->query_exec_info.sql_id, sql_id) == 0))
+      return false;
+    }
+
+  if ((username != NULL && strcmp (tran->login_name, username) == 0)
+      || (hostname != NULL && strcmp (tran->host_name, hostname) == 0)
+      || (progname != NULL && strcmp (tran->program_name, progname) == 0)
+      || (sql_id != NULL && tran->query_exec_info.sql_id != NULL && strcmp (tran->query_exec_info.sql_id, sql_id) == 0))
+    {
+      return true;
+    }
+
+  for (i = 0; i < index_list_size; i++)
+    {
+      if (tran->tran_index == tran_index_list[i])
 	{
 	  return true;
 	}
-
-      for (i = 0; i < index_list_size; i++)
-	{
-	  if (tran->tran_index == tran_index_list[i])
-	    {
-	      return true;
-	    }
-	}
     }
+
   return false;
 }
 
@@ -1669,8 +1487,8 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 
 	  for (i = 0; i < info->num_trans; i++)
 	    {
-	      if (doesmatch_transaction
-		  (&info->tran[i], tran_index_list, list_size, username, hostname, progname, sql_id))
+	      if (doesmatch_transaction (&info->tran[i], tran_index_list, list_size, username, hostname, progname,
+					 sql_id))
 		{
 		  print_tran_entry (&info->tran[i], dump_level);
 		}
@@ -1691,15 +1509,14 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 	{
 	  for (i = 0; i < info->num_trans; i++)
 	    {
-	      if (doesmatch_transaction
-		  (&info->tran[i], tran_index_list, list_size, username, hostname, progname, sql_id))
+	      if (doesmatch_transaction (&info->tran[i], tran_index_list, list_size, username, hostname, progname,
+					 sql_id))
 		{
 		  fprintf (stdout,
 			   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN, KILLTRAN_MSG_KILLING),
 			   info->tran[i].tran_index);
-		  if (thread_kill_tran_index
-		      (info->tran[i].tran_index, info->tran[i].db_user, info->tran[i].host_name,
-		       info->tran[i].process_id) == NO_ERROR)
+		  if (thread_kill_tran_index (info->tran[i].tran_index, info->tran[i].db_user, info->tran[i].host_name,
+					      info->tran[i].process_id) == NO_ERROR)
 		    {
 		      info->tran[i].tran_index = -1;	/* Gone */
 		      nkills++;
@@ -1711,9 +1528,8 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 		       */
 		      if (nfailures == 0)
 			{
-			  fprintf (stdout,
-				   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
-						   KILLTRAN_MSG_KILL_FAILED));
+			  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
+							   KILLTRAN_MSG_KILL_FAILED));
 			  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, header));
 			  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, underscore));
 			}
@@ -1726,9 +1542,8 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 			}
 		      else	/* probably it is the case of timeout */
 			{
-			  PRINT_AND_LOG_ERR_MSG (msgcat_message
-						 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
-						  KILLTRAN_MSG_KILL_TIMEOUT));
+			  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
+								 KILLTRAN_MSG_KILL_TIMEOUT));
 			}
 		      nfailures++;
 		    }
@@ -1789,9 +1604,9 @@ print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level)
   else if (dump_level == TRANDUMP_QUERY_INFO)
     {
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, TRANLIST_MSG_QUERY_INFO_ENTRY),
-	       tran_info->tran_index, tran_get_tranlist_state_name (tran_info->state), tran_info->process_id,
-	       tran_info->program_name, tran_info->query_exec_info.query_time, tran_info->query_exec_info.tran_time,
-	       (buf == NULL ? "-1" : buf),
+	       tran_info->tran_index, tran_get_tranlist_state_name (tran_info->state),
+	       tran_info->process_id, tran_info->program_name, tran_info->query_exec_info.query_time,
+	       tran_info->query_exec_info.tran_time, (buf == NULL ? "-1" : buf),
 	       ((tran_info->query_exec_info.sql_id) ? tran_info->query_exec_info.sql_id : "*** empty ***"),
 	       ((tran_info->query_exec_info.query_stmt) ? query_buf : " "));
     }
@@ -1855,9 +1670,8 @@ tranlist (UTIL_FUNCTION_ARG * arg)
 
   if (tranlist_Sort_column > 10 || tranlist_Sort_column < 0 || (is_summary && tranlist_Sort_column > 5))
     {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, TRANLIST_MSG_INVALID_SORT_KEY),
-			     tranlist_Sort_column);
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST,
+					     TRANLIST_MSG_INVALID_SORT_KEY), tranlist_Sort_column);
       goto error_exit;
     }
 
@@ -1954,9 +1768,8 @@ print_tranlist_usage:
 error_exit:
   return EXIT_FAILURE;
 #else /* CS_MODE */
-  PRINT_AND_LOG_ERR_MSG (msgcat_message
-			 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, TRANLIST_MSG_NOT_IN_STANDALONE),
-			 basename (arg->argv0));
+  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST,
+					 TRANLIST_MSG_NOT_IN_STANDALONE), basename (arg->argv0));
   return EXIT_FAILURE;
 #endif /* !CS_MODE */
 }
@@ -2072,8 +1885,8 @@ killtran (UTIL_FUNCTION_ARG * arg)
 	   */
 
 	  /* get password interactively if interactive mode */
-	  passbuf =
-	    getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN, KILLTRAN_MSG_DBA_PASSWORD));
+	  passbuf = getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
+					     KILLTRAN_MSG_DBA_PASSWORD));
 	  if (passbuf[0] == '\0')	/* to fit into db_login protocol */
 	    {
 	      passbuf = (char *) NULL;
@@ -2132,7 +1945,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
 
 	  ptr = kill_tran_index;
 
-	  tmp = strchr (ptr, delimiter);
+	  tmp = (char *) strchr (ptr, delimiter);
 	  while (*ptr != '\0' && tmp)
 	    {
 	      if (list_size >= MAX_KILLTRAN_INDEX_LIST_NUM)
@@ -2144,10 +1957,8 @@ killtran (UTIL_FUNCTION_ARG * arg)
 	      result = parse_int (&value, ptr, 10);
 	      if (result != 0 || value <= 0)
 		{
-		  PRINT_AND_LOG_ERR_MSG (msgcat_message
-					 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
-					  KILLTRAN_MSG_INVALID_TRANINDEX), ptr);
-
+		  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
+							 KILLTRAN_MSG_INVALID_TRANINDEX), ptr);
 		  if (info)
 		    {
 		      logtb_free_trans_info (info);
@@ -2158,16 +1969,14 @@ killtran (UTIL_FUNCTION_ARG * arg)
 
 	      tran_index_list[list_size++] = value;
 	      ptr = tmp + 1;
-	      tmp = strchr (ptr, delimiter);
+	      tmp = (char *) strchr (ptr, delimiter);
 	    }
 
 	  result = parse_int (&value, ptr, 10);
 	  if (result != 0 || value <= 0)
 	    {
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message
-				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN, KILLTRAN_MSG_INVALID_TRANINDEX),
-				     ptr);
-
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
+						     KILLTRAN_MSG_INVALID_TRANINDEX), ptr);
 	      if (info)
 		{
 		  logtb_free_trans_info (info);
@@ -2211,9 +2020,8 @@ print_killtran_usage:
 error_exit:
   return EXIT_FAILURE;
 #else /* CS_MODE */
-  PRINT_AND_LOG_ERR_MSG (msgcat_message
-			 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN, KILLTRAN_MSG_NOT_IN_STANDALONE),
-			 basename (arg->argv0));
+  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
+					 KILLTRAN_MSG_NOT_IN_STANDALONE), basename (arg->argv0));
   return EXIT_FAILURE;
 #endif /* !CS_MODE */
 }
@@ -2256,9 +2064,8 @@ plandump (UTIL_FUNCTION_ARG * arg)
       outfp = fopen (output_file, "w");
       if (outfp == NULL)
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PLANDUMP, PLANDUMP_MSG_BAD_OUTPUT),
-				 output_file);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PLANDUMP,
+						 PLANDUMP_MSG_BAD_OUTPUT), output_file);
 	  goto error_exit;
 	}
     }
@@ -2357,9 +2164,8 @@ paramdump (UTIL_FUNCTION_ARG * arg)
       outfp = fopen (output_file, "w");
       if (outfp == NULL)
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_BAD_OUTPUT),
-				 output_file);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP,
+						 PARAMDUMP_MSG_BAD_OUTPUT), output_file);
 	  goto error_exit;
 	}
     }
@@ -2399,7 +2205,7 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   db_shutdown ();
 #else /* CS_MODE */
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PARAMDUMP, PARAMDUMP_MSG_STANDALONE_PARAMETER));
-  if (sysprm_load_and_init (database_name, NULL) == NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) == NO_ERROR)
     {
       sysprm_dump_parameters (outfp);
     }
@@ -2489,9 +2295,8 @@ statdump (UTIL_FUNCTION_ARG * arg)
       outfp = fopen (output_file, "w");
       if (outfp == NULL)
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_STATDUMP, STATDUMP_MSG_BAD_OUTPUT),
-				 output_file);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_STATDUMP,
+						 STATDUMP_MSG_BAD_OUTPUT), output_file);
 	  goto error_exit;
 	}
     }
@@ -2567,9 +2372,8 @@ error_exit:
     }
   return EXIT_FAILURE;
 #else /* CS_MODE */
-  PRINT_AND_LOG_ERR_MSG (msgcat_message
-			 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_STATDUMP, STATDUMP_MSG_NOT_IN_STANDALONE),
-			 basename (arg->argv0));
+  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_STATDUMP,
+					 STATDUMP_MSG_NOT_IN_STANDALONE), basename (arg->argv0));
 
   return EXIT_FAILURE;
 #endif /* !CS_MODE */
@@ -2603,14 +2407,16 @@ check_server_ha_mode (void)
 /*
  * changemode() - changemode main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
+ *
+ * TODO: this is really confusing. changemode utility actually changes HA state and not HA mode. They are two different
+ *       things.
  */
 int
 changemode (UTIL_FUNCTION_ARG * arg)
 {
 #if defined (WINDOWS)
-  PRINT_AND_LOG_ERR_MSG (msgcat_message
-			 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_HA_NOT_SUPPORT),
-			 basename (arg->argv0));
+  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE,
+					 CHANGEMODE_MSG_HA_NOT_SUPPORT), basename (arg->argv0));
 
   return EXIT_FAILURE;
 #else /* WINDOWS */
@@ -2619,7 +2425,8 @@ changemode (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *database_name;
   char *mode_name;
-  int mode = -1, error;
+  int error;
+  HA_SERVER_STATE ha_state = HA_SERVER_STATE_NA;
   bool force;
   int timeout;
 
@@ -2651,21 +2458,22 @@ changemode (UTIL_FUNCTION_ARG * arg)
   /* check mode_name option argument */
   if (mode_name != NULL)
     {
-      if (changemode_keyword (&mode, &mode_name) != NO_ERROR)
+      int keyval = -1;
+      if (changemode_keyword (&keyval, &mode_name) != NO_ERROR)
 	{
-	  if (sscanf (mode_name, "%d", &mode) != 1)
+	  if (sscanf (mode_name, "%d", &keyval) != 1)
 	    {
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message
-				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_BAD_MODE),
-				     mode_name);
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE,
+						     CHANGEMODE_MSG_BAD_MODE), mode_name);
 	      goto error_exit;
 	    }
 	}
-      if (!(mode == HA_SERVER_STATE_ACTIVE || mode == HA_SERVER_STATE_STANDBY || mode == HA_SERVER_STATE_MAINTENANCE))
+      ha_state = (HA_SERVER_STATE) keyval;
+      if (!(ha_state == HA_SERVER_STATE_ACTIVE || ha_state == HA_SERVER_STATE_STANDBY
+	    || ha_state == HA_SERVER_STATE_MAINTENANCE))
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_BAD_MODE),
-				 mode_name);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE,
+						 CHANGEMODE_MSG_BAD_MODE), mode_name);
 	  goto error_exit;
 	}
     }
@@ -2688,27 +2496,28 @@ changemode (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_NOT_HA_MODE));
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE,
+					     CHANGEMODE_MSG_NOT_HA_MODE));
       goto error_exit;
     }
 
   if (mode_name == NULL)
     {
-      /* display the value of current mode */
-      mode = boot_change_ha_mode (HA_SERVER_MODE_NA, false, timeout);
+      /* display the value of current ha_state */
+      ha_state = boot_change_ha_mode (HA_SERVER_STATE_NA, false, timeout);
     }
   else
     {
-      /* change server's HA mode */
-      mode = boot_change_ha_mode (mode, force, timeout);
+      /* change server's HA state */
+      ha_state = boot_change_ha_mode (ha_state, force, timeout);
     }
-  if (mode != HA_SERVER_MODE_NA)
+  if (ha_state != HA_SERVER_STATE_NA)
     {
+      int keyval = (int) ha_state;
       mode_name = NULL;
-      if (changemode_keyword (&mode, &mode_name) != NO_ERROR)
+      if (changemode_keyword (&keyval, &mode_name) != NO_ERROR)
 	{
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_BAD_MODE),
 		   (mode_name ? mode_name : "unknown"));
@@ -2719,6 +2528,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
 		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_SERVER_MODE),
 		   database_name, mode_name);
 	}
+      ha_state = (HA_SERVER_STATE) keyval;
     }
   else
     {
@@ -2737,212 +2547,8 @@ print_changemode_usage:
 error_exit:
   return EXIT_FAILURE;
 #else /* CS_MODE */
-  PRINT_AND_LOG_ERR_MSG (msgcat_message
-			 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE, CHANGEMODE_MSG_NOT_IN_STANDALONE),
-			 basename (arg->argv0));
-  return EXIT_FAILURE;
-#endif /* !CS_MODE */
-#endif /* !WINDOWS */
-}
-
-int
-prefetchlogdb (UTIL_FUNCTION_ARG * arg)
-{
-#if defined (WINDOWS)
-  PRINT_AND_LOG_ERR_MSG (msgcat_message
-			 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PREFETCHLOGDB, PREFETCHLOGDB_MSG_HA_NOT_SUPPORT),
-			 basename (arg->argv0));
-  return EXIT_FAILURE;
-#else /* WINDOWS */
-#if defined (CS_MODE)
-  int error = NO_ERROR;
-  int retried = 0, sleep_nsecs = 1;
-  bool need_er_reinit = false;
-  UTIL_ARG_MAP *arg_map = arg->arg_map;
-  char er_msg_file[PATH_MAX];
-  const char *database_name = NULL;
-  const char *log_path = NULL;
-  char *log_path_base = NULL;
-  char log_path_buf[PATH_MAX];
-  char *binary_name = NULL;
-  char executable_path[PATH_MAX];
-
-  if (utility_get_option_string_table_size (arg_map) != 1)
-    {
-      goto print_prefetchlog_usage;
-    }
-
-  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
-  if (database_name == NULL)
-    {
-      goto print_prefetchlog_usage;
-    }
-
-  log_path = utility_get_option_string_value (arg_map, PREFETCH_LOG_PATH_S, 0);
-  if (log_path != NULL)
-    {
-      log_path = realpath (log_path, log_path_buf);
-    }
-  if (log_path == NULL)
-    {
-      goto print_prefetchlog_usage;
-    }
-
-  if (check_database_name (database_name))
-    {
-      goto error_exit;
-    }
-
-#if defined(NDEBUG)
-  util_redirect_stdout_to_null ();
-#endif
-
-  /* error message log file */
-  log_path_base = strdup (log_path);
-  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s_%s.err", database_name, arg->command_name,
-	    basename (log_path_base));
-  free (log_path_base);
-  er_init (er_msg_file, ER_NEVER_EXIT);
-
-  AU_DISABLE_PASSWORDS ();
-  db_set_client_type (DB_CLIENT_TYPE_LOG_PREFETCHER);
-  if (db_login ("DBA", NULL) != NO_ERROR)
-    {
-      fprintf (stderr, "%s\n", db_error_string (3));
-      goto error_exit;
-    }
-
-  /* save executable path */
-  binary_name = basename (arg->argv0);
-  envvar_bindir_file (executable_path, PATH_MAX, binary_name);
-
-  hb_set_exec_path (executable_path);
-  hb_set_argv (arg->argv);
-
-  /* initialize system parameters */
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
-    {
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
-      error = ER_FAILED;
-      goto error_exit;
-    }
-
-  if (prm_get_bool_value (PRM_ID_HA_PREFETCHLOGDB_ENABLE) == false)
-    {
-      fprintf (stderr,
-	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PREFETCHLOGDB, PREFETCHLOGDB_MSG_FEATURE_DISABLE));
-      error = ER_FAILED;
-      goto error_exit;
-    }
-
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
-    {
-      /* initialize heartbeat */
-      error = hb_process_init (database_name, log_path, HB_PTYPE_PREFETCHLOGDB);
-      if (error != NO_ERROR)
-	{
-	  er_log_debug (ARG_FILE_LINE, "Cannot connect to cub_master for heartbeat. \n");
-	  if (er_errid () != NO_ERROR)
-	    {
-	      util_log_write_errstr ("%s\n", db_error_string (3));
-	    }
-	  return EXIT_FAILURE;
-	}
-    }
-  else
-    {
-      fprintf (stderr,
-	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PREFETCHLOGDB, PREFETCHLOGDB_MSG_NOT_HA_MODE));
-      error = ER_FAILED;
-      goto error_exit;
-    }
-
-retry:
-  error = db_restart (arg->command_name, TRUE, database_name);
-  if (error != NO_ERROR)
-    {
-      fprintf (stderr, "%s\n", db_error_string (3));
-      goto error_exit;
-    }
-
-  if (need_er_reinit)
-    {
-      er_init (er_msg_file, ER_NEVER_EXIT);
-      need_er_reinit = false;
-    }
-
-  db_set_lock_timeout (5);
-
-  /* initialize system parameters */
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
-    {
-      db_shutdown ();
-      error = ER_FAILED;
-      goto error_exit;
-    }
-
-  if (prm_get_bool_value (PRM_ID_HA_PREFETCHLOGDB_ENABLE) == false)
-    {
-      fprintf (stderr,
-	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PREFETCHLOGDB, PREFETCHLOGDB_MSG_FEATURE_DISABLE));
-      db_shutdown ();
-      goto error_exit;
-    }
-
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
-    {
-      fprintf (stderr,
-	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PREFETCHLOGDB, PREFETCHLOGDB_MSG_NOT_HA_MODE));
-      db_shutdown ();
-      goto error_exit;
-    }
-
-  error = lp_prefetch_log_file (database_name, log_path);
-  if (error != NO_ERROR)
-    {
-      fprintf (stderr, "%s\n", db_error_string (3));
-      (void) db_shutdown ();
-      goto error_exit;
-    }
-
-  db_shutdown ();
-  return EXIT_SUCCESS;
-
-print_prefetchlog_usage:
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PREFETCHLOGDB, PREFETCHLOGDB_MSG_USAGE),
-	   basename (arg->argv0));
-  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
-
-  return EXIT_FAILURE;
-
-error_exit:
-  if (hb_Proc_shutdown)
-    {
-      return EXIT_SUCCESS;
-    }
-
-  if (la_force_shutdown () == false
-      && (error == ER_NET_SERVER_CRASHED || error == ER_NET_CANT_CONNECT_SERVER
-	  || error == ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER || error == ER_BO_CONNECT_FAILED
-	  || error == ER_NET_SERVER_COMM_ERROR || error == ER_LC_PARTIALLY_FAILED_TO_FLUSH))
-    {
-      (void) sleep (sleep_nsecs);
-      /* sleep 1, 2, 4, 8, etc; don't wait for more than 10 sec */
-      if ((sleep_nsecs *= 2) > 10)
-	{
-	  sleep_nsecs = 1;
-	}
-      need_er_reinit = true;
-      ++retried;
-      goto retry;
-    }
-
-  return EXIT_FAILURE;
-
-#else /* CS_MODE */
-  PRINT_AND_LOG_ERR_MSG (msgcat_message
-			 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PREFETCHLOGDB, PREFETCHLOGDB_MSG_NOT_IN_STANDALONE),
-			 basename (arg->argv0));
+  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHANGEMODE,
+					 CHANGEMODE_MSG_NOT_IN_STANDALONE), basename (arg->argv0));
   return EXIT_FAILURE;
 #endif /* !CS_MODE */
 #endif /* !WINDOWS */
@@ -3011,16 +2617,15 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
 	{
 	  if (sscanf (mode_name, "%d", &mode) != 1)
 	    {
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message
-				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYLOGDB, COPYLOGDB_MSG_BAD_MODE),
-				     mode_name);
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYLOGDB,
+						     COPYLOGDB_MSG_BAD_MODE), mode_name);
 	      goto error_exit;
 	    }
 	}
       if (!(mode >= LOGWR_MODE_ASYNC && mode <= LOGWR_MODE_SYNC))
 	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYLOGDB, COPYLOGDB_MSG_BAD_MODE), mode_name);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYLOGDB,
+						 COPYLOGDB_MSG_BAD_MODE), mode_name);
 	  goto error_exit;
 	}
     }
@@ -3061,13 +2666,13 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
   hb_set_argv (arg->argv);
 
   /* initialize system parameters */
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       error = ER_FAILED;
       goto error_exit;
     }
 
-  if (start_pageid < NULL_PAGEID && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (start_pageid < NULL_PAGEID && !HA_DISABLED ())
     {
       error = hb_process_init (database_name, log_path, HB_PTYPE_COPYLOGDB);
       if (error != NO_ERROR)
@@ -3102,7 +2707,7 @@ retry:
     }
 
   /* initialize system parameters */
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       (void) db_shutdown ();
 
@@ -3113,7 +2718,7 @@ retry:
   /* PRM_LOG_BACKGROUND_ARCHIVING is always true in CUBRID HA */
   sysprm_set_to_default (prm_get_name (PRM_ID_LOG_BACKGROUND_ARCHIVING), true);
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYLOGDB, COPYLOGDB_MSG_NOT_HA_MODE));
       (void) db_shutdown ();
@@ -3170,9 +2775,8 @@ error_exit:
 
   return EXIT_FAILURE;
 #else /* CS_MODE */
-  PRINT_AND_LOG_ERR_MSG (msgcat_message
-			 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYLOGDB, COPYLOGDB_MSG_NOT_IN_STANDALONE),
-			 basename (arg->argv0));
+  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYLOGDB,
+					 COPYLOGDB_MSG_NOT_IN_STANDALONE), basename (arg->argv0));
   return EXIT_FAILURE;
 #endif /* !CS_MODE */
 #endif /* !WINDOWS */
@@ -3186,9 +2790,8 @@ int
 applylogdb (UTIL_FUNCTION_ARG * arg)
 {
 #if defined (WINDOWS)
-  PRINT_AND_LOG_ERR_MSG (msgcat_message
-			 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYLOGDB, APPLYLOGDB_MSG_HA_NOT_SUPPORT),
-			 basename (arg->argv0));
+  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYLOGDB,
+					 APPLYLOGDB_MSG_HA_NOT_SUPPORT), basename (arg->argv0));
 
   return EXIT_FAILURE;
 #else /* WINDOWS */
@@ -3268,14 +2871,14 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
   hb_set_argv (arg->argv);
 
   /* initialize system parameters */
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
       error = ER_FAILED;
       goto error_exit;
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (!HA_DISABLED ())
     {
       /* initialize heartbeat */
       error = hb_process_init (database_name, log_path, HB_PTYPE_APPLYLOGDB);
@@ -3290,19 +2893,17 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_REPLICA)
+  if (HA_GET_MODE () == HA_MODE_REPLICA)
     {
       replica_time_bound_str = prm_get_string_value (PRM_ID_HA_REPLICA_TIME_BOUND);
       if (replica_time_bound_str != NULL)
 	{
 	  if (util_str_to_time_since_epoch (replica_time_bound_str) == 0)
 	    {
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message
-				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
-				      MSGCAT_UTIL_GENERIC_INVALID_PARAMETER),
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
+						     MSGCAT_UTIL_GENERIC_INVALID_PARAMETER),
 				     prm_get_name (PRM_ID_HA_REPLICA_TIME_BOUND),
 				     "(the correct format: YYYY-MM-DD hh:mm:ss)");
-
 	      return EXIT_FAILURE;
 	    }
 	}
@@ -3330,7 +2931,7 @@ retry:
   db_set_lock_timeout (-1);
 
   /* initialize system parameters */
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       (void) db_shutdown ();
 
@@ -3338,7 +2939,7 @@ retry:
       goto error_exit;
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYLOGDB, APPLYLOGDB_MSG_NOT_HA_MODE));
       (void) db_shutdown ();
@@ -3387,9 +2988,8 @@ error_exit:
 
   return EXIT_FAILURE;
 #else /* CS_MODE */
-  PRINT_AND_LOG_ERR_MSG (msgcat_message
-			 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYLOGDB, APPLYLOGDB_MSG_NOT_IN_STANDALONE),
-			 basename (arg->argv0));
+  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYLOGDB,
+					 APPLYLOGDB_MSG_NOT_IN_STANDALONE), basename (arg->argv0));
 
 error_exit:
   return EXIT_FAILURE;
@@ -3408,9 +3008,10 @@ backupdb_sig_interrupt_handler (int sig_no)
   db_set_interrupt (1);
 }
 
-static int
+STATIC_INLINE char *
 spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit)
 {
+#define UNIT_STR(un) (((un) == SPACEDB_SIZE_UNIT_MBYTES) ? 'M' : ((un) == SPACEDB_SIZE_UNIT_GBYTES) ? 'G' : 'T')
   int pgsize, i;
   double size;
 
@@ -3418,7 +3019,7 @@ spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit
 
   if (size_unit == SPACEDB_SIZE_UNIT_PAGE)
     {
-      sprintf (buf, "%11llu", (long long unsigned int) num_pages);
+      sprintf (buf, "%13llu", (long long unsigned int) num_pages);
     }
   else
     {
@@ -3436,21 +3037,20 @@ spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit
 		  break;
 		}
 	    }
+	  sprintf (buf, "%9.1f %c", size, UNIT_STR (i));
 	}
       else
 	{
-	  i = size_unit;
-	  for (; size_unit > SPACEDB_SIZE_UNIT_PAGE; size_unit--)
+	  for (i = size_unit; i > (int) SPACEDB_SIZE_UNIT_PAGE; i--)
 	    {
 	      size /= 1024;
 	    }
+	  sprintf (buf, "%9.1f %c", size, UNIT_STR (size_unit));
 	}
-
-      sprintf (buf, "%9.1f %c", size,
-	       (i == SPACEDB_SIZE_UNIT_MBYTES) ? 'M' : (i == SPACEDB_SIZE_UNIT_GBYTES) ? 'G' : 'T');
     }
 
-  return NO_ERROR;
+  return buf;
+#undef UNIT_STR
 }
 
 /*
@@ -3478,7 +3078,6 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   bool verbose;
   const char *log_path;
   char log_path_buf[PATH_MAX];
-  char *log_path_base;
   int error = NO_ERROR;
   INT64 pageid = 0;
   int interval;
@@ -3514,7 +3113,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
     }
 
   /* initialize system parameters */
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
       return EXIT_FAILURE;
@@ -3542,7 +3141,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       goto print_applyinfo_usage;
     }
 
-  check_replica_info = (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_REPLICA);
+  check_replica_info = (HA_GET_MODE () == HA_MODE_REPLICA);
   pageid = utility_get_option_bigint_value (arg_map, APPLYINFO_PAGE_S);
   verbose = utility_get_option_bool_value (arg_map, APPLYINFO_VERBOSE_S);
 
@@ -3559,9 +3158,8 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	{
 	  if (util_str_to_time_since_epoch (replica_time_bound_str) == 0)
 	    {
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message
-				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
-				      MSGCAT_UTIL_GENERIC_INVALID_PARAMETER),
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
+						     MSGCAT_UTIL_GENERIC_INVALID_PARAMETER),
 				     prm_get_name (PRM_ID_HA_REPLICA_TIME_BOUND),
 				     "(the correct format: YYYY-MM-DD hh:mm:ss)");
 	      return EXIT_FAILURE;
@@ -3608,16 +3206,16 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	      goto check_applied_info_end;
 	    }
 
-	  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+	  if (HA_DISABLED ())
 	    {
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message
-				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO, APPLYINFO_MSG_NOT_HA_MODE));
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO,
+						     APPLYINFO_MSG_NOT_HA_MODE));
 	      goto check_applied_info_end;
 	    }
 
-	  error =
-	    la_log_page_check (local_database_name, log_path, pageid, check_applied_info, check_copied_info,
-			       check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa, &applied_final_lsa);
+	  error = la_log_page_check (local_database_name, log_path, pageid, check_applied_info, check_copied_info,
+				     check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa,
+				     &applied_final_lsa);
 	  (void) db_shutdown ();
 	}
       else if (check_copied_info)
@@ -3626,9 +3224,9 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  strcpy (local_database_name, database_name);
 	  strcat (local_database_name, "@localhost");
 
-	  error =
-	    la_log_page_check (local_database_name, log_path, pageid, check_applied_info, check_copied_info,
-			       check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa, &applied_final_lsa);
+	  error = la_log_page_check (local_database_name, log_path, pageid, check_applied_info, check_copied_info,
+				     check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa,
+				     &applied_final_lsa);
 	}
 
     check_applied_info_end:

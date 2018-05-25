@@ -39,7 +39,7 @@
 #include "cas.h"
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-#include "dbtype.h"
+#include "dbtype_def.h"
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 #if (defined(SOLARIS) && !defined(SOLARIS_X86)) || defined(HPUX) || defined(AIX) || defined(PPC_LINUX)

@@ -44,8 +44,8 @@ extern void *ehash_delete (THREAD_ENTRY * thread_p, EHID * ehid, void *key);
 extern int eh_size (EHID * ehid, int *num_bucket_pages, int *num_dir_pages);
 extern int eh_count (EHID * ehid);
 extern int eh_depth (EHID * ehid);
-extern int eh_capacity (EHID * ehid, int *num_recs, int *avg_reclength, int *num_bucket_pages, int *num_dir_pages,
-			int *dir_depth, int *avg_freespace_per_page, int *avg_overhead_per_page);
+extern int eh_capacity (THREAD_ENTRY * thread_p, EHID * ehid, int *num_recs, int *avg_reclength, int *num_bucket_pages,
+			int *num_dir_pages, int *dir_depth, int *avg_freespace_per_page, int *avg_overhead_per_page);
 #endif
 
 extern int ehash_map (THREAD_ENTRY * thread_p, EHID * ehid,

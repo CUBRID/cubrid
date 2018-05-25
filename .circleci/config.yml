@@ -1,0 +1,78 @@
+defaults: &defaults
+  working_directory: /home
+  docker:
+    - image: cubridci/cubridci:develop
+
+test_defaults: &test_defaults
+  steps:
+    - attach_workspace:
+        at: .
+    - run:
+        name: Test
+        shell: /bin/bash
+        environment:
+          _JAVA_OPTIONS: -Xmx1g
+        command: |
+          ulimit -c unlimited
+          /entrypoint.sh checkout
+          circleci tests glob cubrid-testcases/$TEST_SUITE/_* | circleci tests split | tee tc.list
+          find cubrid-testcases/$TEST_SUITE/_* -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
+          /entrypoint.sh test
+    - run:
+        name: Collect Logs
+        command: |
+          mkdir -p /tmp/logs
+          mv -f CUBRID/log /tmp/logs/cubrid_log
+          mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
+          find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
+          dmesg > /tmp/logs/dmesg.out
+        when: on_fail
+    - store_test_results:
+        path: /tmp/tests
+    - store_artifacts:
+        path: /tmp/logs
+
+version: 2
+jobs:
+  build:
+    <<: *defaults
+    environment:
+      MAKEFLAGS: -j2
+    
+    steps:
+      - checkout:
+          path: cubrid
+      - run:
+          name: Build
+          command: scl enable devtoolset-6 -- /entrypoint.sh build
+      - persist_to_workspace:
+          root: .
+          paths:
+            - CUBRID
+      - store_artifacts:
+          path: build.log
+
+  test_medium:
+    <<: *defaults
+    environment:
+      TEST_SUITE: medium
+    <<: *test_defaults
+
+  test_sql:
+    <<: *defaults
+    environment:
+      TEST_SUITE: sql
+    parallelism: 4
+    <<: *test_defaults
+
+workflows:
+  version: 2
+  build_test:
+    jobs:
+      - build
+      - test_medium:
+          requires:
+            - build
+      - test_sql:
+          requires:
+            - build

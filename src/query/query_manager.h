@@ -27,10 +27,16 @@
 
 #ident "$Id$"
 
-#include "storage_common.h"
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
+#include "dbtype_def.h"
+#include "file_manager.h"
 #include "list_file.h"
-#include "dbtype.h"
-#include "thread.h"
+#include "storage_common.h"
+#include "thread_compat.hpp"
+#include "xasl_cache.h"
 
 #define qmgr_free_old_page_and_init(thread_p, page_p, tfile_vfidp) \
   do \
@@ -160,7 +166,7 @@ extern bool qmgr_is_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_i
 extern void qmgr_set_query_error (THREAD_ENTRY * thread_p, QUERY_ID query_id);
 extern void qmgr_setup_empty_list_file (char *page_buf);
 extern int qmgr_get_temp_file_membuf_pages (QMGR_TEMP_FILE * temp_file_p);
-extern int qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf, char *query, int sql_len);
+extern int qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf, char *query, size_t sql_len);
 extern struct drand48_data *qmgr_get_rand_buf (THREAD_ENTRY * thread_p);
 extern QUERY_ID qmgr_get_current_query_id (THREAD_ENTRY * thread_p);
 extern char *qmgr_get_query_sql_user_text (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_index);

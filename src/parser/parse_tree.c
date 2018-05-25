@@ -39,9 +39,14 @@
 #include "memory_alloc.h"
 
 #if defined(SERVER_MODE)
-#include "thread.h"
 #include "connection_error.h"
 #endif /* SERVER_MODE */
+
+#include "dbtype.h"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 /*
  * this should be big enough for "largish" select statements to print.
@@ -602,7 +607,7 @@ pt_append_string_for (const PARSER_CONTEXT * parser, char *old_string, const cha
    * both to new string */
   if ((string == NULL) || ((string->block_end - string->last_string_end) < new_tail_length))
     {
-      s = parser_allocate_string_buffer (parser, strlen (old_string) + new_tail_length, sizeof (char));
+      s = (char *) parser_allocate_string_buffer (parser, strlen (old_string) + new_tail_length, sizeof (char));
       if (s == NULL)
 	{
 	  return NULL;
@@ -687,9 +692,10 @@ pt_append_bytes_for (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string,
    * both to new string */
   if ((string == NULL) || ((string->block_end - string->last_string_end) < new_tail_length))
     {
-      s = parser_allocate_string_buffer (parser,
-					 offsetof (PARSER_VARCHAR, bytes) + old_string->length + new_tail_length,
-					 sizeof (long));
+      s = (char *) parser_allocate_string_buffer (parser,
+						  offsetof (PARSER_VARCHAR,
+							    bytes) + old_string->length + new_tail_length,
+						  sizeof (long));
       if (s == NULL)
 	{
 	  return NULL;
@@ -893,7 +899,10 @@ parser_free_node (const PARSER_CONTEXT * parser, PT_NODE * node)
     {
       db_value_clear (&node->info.value.db_value);
     }
-
+  if (node->node_type == PT_INSERT_VALUE && node->info.insert_value.is_evaluated)
+    {
+      db_value_clear (&node->info.insert_value.value);
+    }
   /* 
    * Always set the node type to maximum.  This may
    * keep us from doing bad things to the free list if we try to free
@@ -961,7 +970,7 @@ pt_append_string (const PARSER_CONTEXT * parser, char *old_string, const char *n
     }
   else if (old_string == NULL)
     {
-      s = parser_allocate_string_buffer (parser, strlen (new_tail), sizeof (char));
+      s = (char *) parser_allocate_string_buffer (parser, strlen (new_tail), sizeof (char));
       if (s == NULL)
 	{
 	  return NULL;
@@ -1396,4 +1405,42 @@ pt_count_assignments (PARSER_CONTEXT * parser, PT_NODE * assignments)
     }
 
   return cnt;
+}
+
+bool
+pt_is_json_value_type (PT_TYPE_ENUM type)
+{
+  if (type == PT_TYPE_MAYBE || type == PT_TYPE_NULL)
+    {
+      return true;
+    }
+
+  DB_TYPE converted_type = pt_type_enum_to_db (type);
+
+  return db_is_json_value_type (converted_type);
+}
+
+bool
+pt_is_json_doc_type (PT_TYPE_ENUM type)
+{
+  if (type == PT_TYPE_MAYBE || type == PT_TYPE_NULL)
+    {
+      return true;
+    }
+
+  DB_TYPE converted_type = pt_type_enum_to_db (type);
+
+  return db_is_json_doc_type (converted_type);
+}
+
+bool
+pt_is_json_object_name (PT_TYPE_ENUM type)
+{
+  return (PT_IS_STRING_TYPE (type) || type == PT_TYPE_MAYBE);
+}
+
+bool
+pt_is_json_path (PT_TYPE_ENUM type)
+{
+  return (PT_IS_STRING_TYPE (type) || type == PT_TYPE_MAYBE || type == PT_TYPE_NULL);
 }

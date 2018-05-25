@@ -30,12 +30,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
-#ifdef HAVA_GETOPT_H
-#include <getopt.h>
-#else
-#include "getopt.h"
-#endif
 
+#include "cubrid_getopt.h"
 #include "error_code.h"
 #include "message_catalog.h"
 #include "utility.h"
@@ -264,7 +260,7 @@ main (int argc, char *argv[])
       goto error;
     }
 
-  for (i = strlen (Src_class); i >= 0; i--)
+  for (i = (int) strlen (Src_class); i >= 0; i--)
     {
       if (Src_class[i] == SEPERATOR)
 	break;

@@ -922,7 +922,7 @@ $ LOADDB
 853 Für ein Objekt (%1$d|%2$d|%3$d), Transaktion (%4$d) der Uncommitted-Read verursachte die Störabschaltung (%5$s).
 854 WARNING: Kein Sperrhalter, jedoch Sperrwarter existieren. Beziehen Sie sich auf %1$s.
 855 WARNING: Zwei oder mehrere Threads sperrwarten für eine Transaktion (%1$d).
-856 WARNING: Seltsamer LOCKWAIT Status (%1$d|%2$d), Thread (%3$d|%4$d) und Transaktion (%5$d).
+856 WARNING: Seltsamer LOCKWAIT Status (%1$d|%2$d), Thread (%3$d|%4$lld) und Transaktion (%5$d).
 857 Ein I/O-Fehler ist beim Abschneiden der Seite %1$d des Datenträgers "%2$s" aufgetreten.
 858 Datenträger "%1$s" ist unbekannt nach Serverneustart.
 859 LATCH ON PAGE(%1$d|%2$d) ABORTED
@@ -1044,7 +1044,7 @@ $ LOADDB
 975 Aktuelle Version der Nachbildung erlaubt die Änderung mehrerer Zeilen mit einer einzigen UPDATE Anweisung, die die UNIQUE-Einschränkung verletzen kann, nicht.
 976 Interner Fehler: Tabellengröße Überlauf (zugewiesener Speicher: %1$d, abgerufen: %2$d) au Seite %3$d|%4$d(Datenträger "%5$s")
 977 Checkpoint begonnen (voriger Checkpoint Seiten-ID: %1$lld, vorige Redo-Seiten-ID: %2$lld).
-978 Checkpoint finished (checkpoint page id: %1$lld, checkpoint redo page id: %2$lld, flushed page count: %3$d).
+978 Checkpoint beendet (Checkpoint Seiten-ID: %1$lld, Checkpoint Redo Seite id: %2$lld, flushed Seitenzahl: %3$d).
 979 CONNECT BY-Schleife in Benutzerdaten.
 980 Ein Thread wartet in %1$s seit mehr als %2$d msec.
 981 Transaktion %1$d hat die Schwelle der Statistik-Monitoring erreicht %2$s.
@@ -1090,17 +1090,17 @@ $ LOADDB
 1021 Ein Deadlock-Zyklus erkannt. %1$s.
 1022 Ungültiger Wert "%1$d" für Präfixlänge des Indexes.
 1023 log applier filter: %1$s.
-1024 log writer: failed to get log page(s) starting from page id %1$lld.
-1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
-1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
+1024 log writer: Fehler beim Abrufen von log pages ab Seite id %1$lld.
+1025 HA delay info: Die Replikationsverzögerung (%1$d secs) hat den Grenzwert überschritten (%2$d secs).
+1026 HA delay info: Die Replikationsverzögerung (%1$d secs) wird unterhalb des zulässigen Pegels verringert (%2$d secs).
 1027 Log-Applier: Apply-Zustand konnte von '%1$s' auf '%2$s' nicht geändert werden.
 1028 Log-Applier: unerwarteter EOF Eintrag im Archivprotokoll. LSA: %1$lld|%2$d.
 1029 Log-Applier: ungültige Replikation-Protokollseite/-offset. Seite HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha Dateistatus: %9$d, its end-of-log: %10$d.
 1030 Log-Applier: ungültiger Replikationseintrag. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, Typ: %10$d.
-1031 log applier: failed to apply the following statement. class: "%1$s", statement: "%2$s", server error: %3$d, %4$s. 
-1032 log applier: failed to apply insert replication log. class: "%1$s", key: "%2$s", server error: %3$d, %4$s
-1033 log applier: failed to apply update replication log. class: "%1$s", key: "%2$s", server error: %3$d, %4$s
-1034 log applier: failed to apply delete replication log. class: "%1$s", key: "%2$s", server error: %3$d, %4$s
+1031 log applier: Konnte die folgende Anweisung nicht anwenden. class: "%1$s", statement: "%2$s", Serverfehler: %3$d, %4$s. 
+1032 log applier: Das Insert-Replikationsprotokoll konnte nicht angewendet werden. class: "%1$s", key: "%2$s", Serverfehler: %3$d, %4$s
+1033 log applier: Das Update-Replikationsprotokoll konnte nicht angewendet werden. class: "%1$s", key: "%2$s", Serverfehler: %3$d, %4$s
+1034 log applier: Das Delete-Replikationsprotokoll konnet nicht angewendet werden. class: "%1$s", key: "%2$s", Serverfehler: %3$d, %4$s
 1035 Log-Applier: Die Speichergrösse (%1$d MB) des Log-Appliers ist größer als der gesamte Speicher (%2$d MB) oder ist mehr als zweimal (%3$d MB) gewachsen. erforderlich LSA: %4$lld|%5$d. Letzter Mal LSA festgeschrieben: %6$lld|%7$d.
 1036 Log-Applier: Log-Applier hat sich selber heruntergefahren.
 1037 Log-Schreiber: Der Log-Schreiber hat sich selber heruntergefahren.
@@ -1198,7 +1198,7 @@ $ LOADDB
 1129 Log-Wiederherstellung beendet.
 1130 Transaktion wird abgebrochen, weil die Anzahl der Transaktionssperre %1$d überschreitet.
 1131 Interner Fehler: Die Seite %1$d des Volumen "%2$s" könnte beschädigt sein.\n%3$s
-1132 Encryption library failure: %1$s
+1132 Verschlüsselung Bibliotheksfehler: %1$s
 1133 Copylogdb für %1$s existiert bereits.
 1134 Applylogdb für %1$s existiert bereits.
 1135 Ein vorhergehend Link von B+tree(%1$s) ist beschädigt: vpid = (%2$d, %3$d)
@@ -1260,9 +1260,30 @@ $ LOADDB
 1191 Stand-alone-Vakuumausführung wird beendet.
 1192 Value Genauigkeit von %1$zu überschreitet maximal zulässige %2$d.
 1193 Die Länge der bearbeiteten Partitionsausdruck die maximal zulässige (%1$d) übersteigt.
-1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
-1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
-1196 Letzter Fehler
+1194 Die Datei konnte nicht überprüft werden %1$d|%2$d Weil Sperre auf class %3$d|%4$d|%5$d Wird nicht sofort gewährt.
+1195 Der rekursive Teil eines CTE sollte keine aggregierten Funktionen ohne GROUP BY-Klausel enthalten.
+1196 Maximale Rekursionen %1$d erreichte die Ausführung von CTE.
+1197 Invalid json: %1$s (%2$d)
+1198 A json object must be provided
+1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
+1200 Invalid JSON path
+1201 Json object name cannot be NULL.
+1202 Json PATH "%1$s" does not exist in %2$s
+1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
+1204 Json KEY "%1$s" is duplicate
+1205 Reserved error for JSON.
+1206 Reserved error for JSON.
+1207 Reserved error for JSON.
+1208 Reserved error for JSON.
+1209 Reserved error for JSON.
+1210 Reserved error for JSON.
+1211 Reserved error for JSON.
+1212 Reserved error for JSON.
+1213 Reserved error for JSON.
+1214 Reserved error for JSON.
+
+1215 Letzter Fehler
+
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
 2 Keine Fehlermeldung vorhanden.
@@ -1713,6 +1734,12 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 Ungültige Verwendung von Aggregatfunktionen.
 293 Der Wert muss streng monoton wachsend werden für jede Partition.
 294 Kann nicht mit Funktion oder Filter Indizes auf Zeitzone Variante Spalten eingegeben.
+295 SELECT INTO ist bei Unterabfragen nicht erlaubt.
+296 CTE-Name Mehrdeutigkeit gibt es mehr als ein CTE mit dem gleichen Namen: '%1$s'.
+297 Verschachtelte WITH-Klauseln werden nicht unterstützt.
+298 Rekursive CTE '%1$s' muss direkt in ihrer rekursiven Abfrage referenziert werden.
+299 Fehler bei CTE '%1$s': Der nicht rekursive Teil und der rekursive Teil müssen mit UNION ALL verbunden sein.
+300 Unterabfrage ist in der DEFAULT-Klausel nicht erlaubt.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Außer virtuellem Speicher: %1$d Bytes können nicht zugewiesen werden.

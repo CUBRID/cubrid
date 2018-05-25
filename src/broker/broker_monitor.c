@@ -24,7 +24,10 @@
 
 #ident "$Id$"
 
-#include "config.h"
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,11 +36,6 @@
 #include <string.h>
 #include <stdarg.h>
 #include <assert.h>
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#else
-#include "getopt.h"
-#endif
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -60,6 +58,7 @@
 #include <sys/time.h>
 #endif
 
+#include "cubrid_getopt.h"
 #include "porting.h"
 #include "cas_common.h"
 #include "broker_config.h"
@@ -74,6 +73,10 @@
 #include "shard_shm.h"
 #include "shard_metadata.h"
 #include "util_func.h"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define		DEFAULT_CHECK_PERIOD		300	/* seconds */
 #define		MAX_APPL_NUM		100
@@ -91,7 +94,7 @@
 #define         UNUSABLE_DATABASES_FLAG_MASK 0x20
 
 #if defined(WINDOWS) && !defined(PRId64)
-# define PRId64 "lld"
+#define PRId64 "lld"
 #endif
 
 typedef enum
@@ -892,7 +895,9 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl, T_APPL_SERVER_INFO * as_info_p,
 #if !defined (WINDOWS)
   int psize;
 #endif
+#if defined (GET_PSINFO) || defined (WINDOWS)
   char buf[256];
+#endif
   int shard_flag = shm_appl->shard_flag;
 
   if (shm_appl->shard_flag == ON)
@@ -1009,7 +1014,8 @@ appl_info_display (T_SHM_APPL_SERVER * shm_appl, T_APPL_SERVER_INFO * as_info_p,
 
       if (as_info_p->cur_sql_log_mode != shm_appl->sql_log_mode)
 	{
-	  print_value (FIELD_SQL_LOG_MODE, get_sql_log_mode_string (as_info_p->cur_sql_log_mode), FIELD_T_STRING);
+	  print_value (FIELD_SQL_LOG_MODE, get_sql_log_mode_string ((T_SQL_LOG_MODE_VALUE) as_info_p->cur_sql_log_mode),
+		       FIELD_T_STRING);
 	}
       else
 	{
@@ -1548,9 +1554,11 @@ print_monitor_items (BR_MONITORING_ITEM * mnt_items_cur, BR_MONITORING_ITEM * mn
       if (full_info_flag && mnt_type == MONITOR_T_BROKER)
 	{
 	  print_value (FIELD_CANCELED, &mnt_item.its, FIELD_T_INT64);
-	  print_value (FIELD_ACCESS_MODE, get_access_mode_string (br_info_p->access_mode, br_info_p->replica_only_flag),
+	  print_value (FIELD_ACCESS_MODE,
+		       get_access_mode_string ((T_ACCESS_MODE_VALUE) br_info_p->access_mode,
+					       br_info_p->replica_only_flag), FIELD_T_STRING);
+	  print_value (FIELD_SQL_LOG, get_sql_log_mode_string ((T_SQL_LOG_MODE_VALUE) br_info_p->sql_log_mode),
 		       FIELD_T_STRING);
-	  print_value (FIELD_SQL_LOG, get_sql_log_mode_string (br_info_p->sql_log_mode), FIELD_T_STRING);
 	}
 
       if (mnt_type == MONITOR_T_BROKER)
@@ -2351,7 +2359,6 @@ free_and_error:
 static int
 client_monitor (void)
 {
-  T_SHM_APPL_SERVER *shm_appl = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
   T_PROXY_INFO *proxy_info_p = NULL;
   T_CLIENT_INFO *client_info_p = NULL;

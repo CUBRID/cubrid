@@ -83,6 +83,7 @@
 #include "tsc_timer.h"
 #include "show_meta.h"
 #include "tz_support.h"
+#include "dbtype.h"
 
 
 #if defined(CS_MODE)
@@ -94,6 +95,10 @@
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 /* TODO : Move .h */
 #if defined(SA_MODE)
@@ -132,8 +137,9 @@ static BOOT_SERVER_CREDENTIAL boot_Server_credential = {
   /* root_class_hfid */ {{NULL_FILEID, NULL_VOLID}, NULL_PAGEID},
   /* data page_size */ -1, /* log page_size */ -1,
   /* disk_compatibility */ 0.0,
-  /* ha_server_state */ -1,
-  /* server_session_key */ {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+  /* ha_server_state */ HA_SERVER_STATE_NA,
+  /* server_session_key */ {(char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF,
+			    (char) 0xFF},
   INTL_CODESET_NONE,
   NULL
 };
@@ -590,6 +596,9 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
       goto error_exit;
     }
 
+  // create session
+  (void) db_find_or_create_session (client_credential->db_user, client_credential->program_name);
+
   oid_set_root (&rootclass_oid);
   OID_INIT_TEMPID ();
 
@@ -764,10 +773,10 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   int i, optional_cap;
   char *ha_node_list = NULL;
   bool check_capabilities;
-#endif /* CS_MODE */
-  bool is_db_user_alloced = false;
   bool skip_preferred_hosts = false;
   bool skip_db_info = false;
+#endif /* CS_MODE */
+  bool is_db_user_alloced = false;
 
   assert (client_credential != NULL);
 
@@ -831,6 +840,15 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
       goto error;
     }
+
+  // reload with update file name
+  if (er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), prm_get_integer_value (PRM_ID_ER_EXIT_ASK)) != NO_ERROR)
+    {
+      assert_release (false);
+      goto error;
+    }
+
+  pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
   /* initialize the "areas" memory manager, requires prm_ */
   area_init ();
@@ -1195,7 +1213,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 
 #if defined(CS_MODE)
-  if (lang_set_charset (boot_Server_credential.db_charset) != NO_ERROR)
+  if (lang_set_charset ((INTL_CODESET) boot_Server_credential.db_charset) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
@@ -1493,6 +1511,13 @@ boot_shutdown_client_at_exit (void)
     {
       /* Avoid infinite looping if someone calls exit during shutdown */
       boot_Process_id++;
+
+      if (!er_is_initialized ())
+	{
+	  // we need error manager initialized
+	  er_init (NULL, ER_NEVER_EXIT);
+	}
+
       (void) boot_shutdown_client (true);
     }
 }
@@ -2187,6 +2212,12 @@ boot_define_domain (MOP class_mop)
       return error_code;
     }
 
+  error_code = smt_add_attribute (def, "json_schema", "string", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   error_code = sm_update_class (def, NULL);
   if (error_code != NO_ERROR)
     {
@@ -2729,9 +2760,9 @@ boot_define_index_key (MOP class_mop)
       return error_code;
     }
 
-  DB_MAKE_INTEGER (&prefix_default, -1);
+  db_make_int (&prefix_default, -1);
 
-  error_code = smt_set_attribute_default (def, "key_prefix_length", 0, &prefix_default, DB_DEFAULT_NONE);
+  error_code = smt_set_attribute_default (def, "key_prefix_length", 0, &prefix_default, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -2967,10 +2998,10 @@ boot_add_data_type (MOP class_mop)
 	      return er_errid ();
 	    }
 
-	  DB_MAKE_INTEGER (&val, i + 1);
+	  db_make_int (&val, i + 1);
 	  db_put_internal (obj, "type_id", &val);
 
-	  DB_MAKE_VARCHAR (&val, 16, (char *) names[i], strlen (names[i]), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	  db_make_varchar (&val, 16, (char *) names[i], strlen (names[i]), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	  db_put_internal (obj, "type_name", &val);
 	}
     }
@@ -3246,14 +3277,14 @@ boot_define_serial (MOP class_mop)
 
   sprintf (domain_string, "numeric(%d,0)", DB_MAX_NUMERIC_PRECISION);
   numeric_coerce_int_to_num (1, num);
-  DB_MAKE_NUMERIC (&default_value, num, DB_MAX_NUMERIC_PRECISION, 0);
+  db_make_numeric (&default_value, num, DB_MAX_NUMERIC_PRECISION, 0);
 
   error_code = smt_add_attribute (def, "current_val", domain_string, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
-  error_code = smt_set_attribute_default (def, "current_val", 0, &default_value, DB_DEFAULT_NONE);
+  error_code = smt_set_attribute_default (def, "current_val", 0, &default_value, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3264,7 +3295,7 @@ boot_define_serial (MOP class_mop)
     {
       return error_code;
     }
-  error_code = smt_set_attribute_default (def, "increment_val", 0, &default_value, DB_DEFAULT_NONE);
+  error_code = smt_set_attribute_default (def, "increment_val", 0, &default_value, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3282,14 +3313,14 @@ boot_define_serial (MOP class_mop)
       return error_code;
     }
 
-  DB_MAKE_INTEGER (&default_value, 0);
+  db_make_int (&default_value, 0);
 
   error_code = smt_add_attribute (def, "cyclic", "integer", NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
-  error_code = smt_set_attribute_default (def, "cyclic", 0, &default_value, DB_DEFAULT_NONE);
+  error_code = smt_set_attribute_default (def, "cyclic", 0, &default_value, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3300,7 +3331,7 @@ boot_define_serial (MOP class_mop)
     {
       return error_code;
     }
-  error_code = smt_set_attribute_default (def, "started", 0, &default_value, DB_DEFAULT_NONE);
+  error_code = smt_set_attribute_default (def, "started", 0, &default_value, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3329,7 +3360,7 @@ boot_define_serial (MOP class_mop)
     {
       return error_code;
     }
-  error_code = smt_set_attribute_default (def, "cached_num", 0, &default_value, DB_DEFAULT_NONE);
+  error_code = smt_set_attribute_default (def, "cached_num", 0, &default_value, NULL);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3684,30 +3715,30 @@ boot_add_collations (MOP class_mop)
 
       assert (lang_coll->coll.coll_id == i);
 
-      DB_MAKE_INTEGER (&val, i);
+      db_make_int (&val, i);
       db_put_internal (obj, CT_DBCOLL_COLL_ID_COLUMN, &val);
 
-      DB_MAKE_VARCHAR (&val, 32, lang_coll->coll.coll_name, strlen (lang_coll->coll.coll_name), LANG_SYS_CODESET,
+      db_make_varchar (&val, 32, lang_coll->coll.coll_name, strlen (lang_coll->coll.coll_name), LANG_SYS_CODESET,
 		       LANG_SYS_COLLATION);
       db_put_internal (obj, CT_DBCOLL_COLL_NAME_COLUMN, &val);
 
-      DB_MAKE_INTEGER (&val, (int) (lang_coll->codeset));
+      db_make_int (&val, (int) (lang_coll->codeset));
       db_put_internal (obj, CT_DBCOLL_CHARSET_ID_COLUMN, &val);
 
-      DB_MAKE_INTEGER (&val, lang_coll->built_in);
+      db_make_int (&val, lang_coll->built_in);
       db_put_internal (obj, CT_DBCOLL_BUILT_IN_COLUMN, &val);
 
-      DB_MAKE_INTEGER (&val, lang_coll->coll.uca_opt.sett_expansions ? 1 : 0);
+      db_make_int (&val, lang_coll->coll.uca_opt.sett_expansions ? 1 : 0);
       db_put_internal (obj, CT_DBCOLL_EXPANSIONS_COLUMN, &val);
 
-      DB_MAKE_INTEGER (&val, lang_coll->coll.count_contr);
+      db_make_int (&val, lang_coll->coll.count_contr);
       db_put_internal (obj, CT_DBCOLL_CONTRACTIONS_COLUMN, &val);
 
-      DB_MAKE_INTEGER (&val, (int) (lang_coll->coll.uca_opt.sett_strength));
+      db_make_int (&val, (int) (lang_coll->coll.uca_opt.sett_strength));
       db_put_internal (obj, CT_DBCOLL_UCA_STRENGTH, &val);
 
       assert (strlen (lang_coll->coll.checksum) == 32);
-      DB_MAKE_VARCHAR (&val, 32, lang_coll->coll.checksum, 32, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      db_make_varchar (&val, 32, lang_coll->coll.checksum, 32, LANG_SYS_CODESET, LANG_SYS_COLLATION);
       db_put_internal (obj, CT_DBCOLL_CHECKSUM_COLUMN, &val);
     }
 
@@ -3826,7 +3857,6 @@ boot_add_charsets (MOP class_mop)
 {
   int i;
   int count_collations;
-  int found_coll = 0;
 
   count_collations = lang_collation_count ();
 
@@ -3843,22 +3873,22 @@ boot_add_charsets (MOP class_mop)
 	  return er_errid ();
 	}
 
-      DB_MAKE_INTEGER (&val, i);
+      db_make_int (&val, i);
       db_put_internal (obj, CT_DBCHARSET_CHARSET_ID, &val);
 
-      charset_name = (char *) lang_charset_cubrid_name (i);
+      charset_name = (char *) lang_charset_cubrid_name ((INTL_CODESET) i);
       if (charset_name == NULL)
 	{
 	  return ER_LANG_CODESET_NOT_AVAILABLE;
 	}
 
-      DB_MAKE_VARCHAR (&val, 32, charset_name, strlen (charset_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      db_make_varchar (&val, 32, charset_name, strlen (charset_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
       db_put_internal (obj, CT_DBCHARSET_CHARSET_NAME, &val);
 
-      DB_MAKE_INTEGER (&val, LANG_GET_BINARY_COLLATION (i));
+      db_make_int (&val, LANG_GET_BINARY_COLLATION (i));
       db_put_internal (obj, CT_DBCHARSET_DEFAULT_COLLATION, &val);
 
-      DB_MAKE_INTEGER (&val, INTL_CODESET_MULT (i));
+      db_make_int (&val, INTL_CODESET_MULT (i));
       db_put_internal (obj, CT_DBCHARSET_CHAR_SIZE, &val);
     }
 
@@ -5369,8 +5399,7 @@ catcls_vclass_install (void)
     {"CTV_TRIGGER_NAME", boot_define_view_trigger},
     {"CTV_PARTITION_NAME", boot_define_view_partition},
     {"CTV_STORED_PROC_NAME", boot_define_view_stored_procedure},
-    {"CTV_STORED_PROC_ARGS_NAME",
-     boot_define_view_stored_procedure_arguments},
+    {"CTV_STORED_PROC_ARGS_NAME", boot_define_view_stored_procedure_arguments},
     {"CTV_DB_COLLATION_NAME", boot_define_view_db_collation},
     {"CTV_DB_CHARSET_NAME", boot_define_view_db_charset}
   };
@@ -5414,7 +5443,6 @@ boot_build_catalog_classes (const char *dbname)
   /* check if an old version database */
   if (locator_find_class (CT_CLASS_NAME) != NULL)
     {
-
       fprintf (stdout, "Database %s already has system catalog class/vclass\n", dbname);
       return 1;
     }
@@ -5589,14 +5617,14 @@ boot_get_host_connected (void)
   return boot_Host_connected;
 }
 
-int
+HA_SERVER_STATE
 boot_get_ha_server_state (void)
 {
   return boot_Server_credential.ha_server_state;
 }
 
 /*
- * boot_get_lob_path - return the lob path which is recevied from the server
+ * boot_get_lob_path - return the lob path which is received from the server
  */
 const char *
 boot_get_lob_path (void)
@@ -5710,9 +5738,8 @@ boot_set_server_session_key (const char *key)
 static int
 boot_check_timezone_checksum (BOOT_CLIENT_CREDENTIAL * client_credential)
 {
-#define CHECKSUM_SIZE 32
   int error_code = NO_ERROR;
-  char timezone_checksum[CHECKSUM_SIZE + 1];
+  char timezone_checksum[TZ_CHECKSUM_SIZE + 1];
   const TZ_DATA *tzd;
   char cli_text[PATH_MAX];
   char srv_text[DB_MAX_IDENTIFIER_LENGTH + 10];
@@ -5731,7 +5758,6 @@ boot_check_timezone_checksum (BOOT_CLIENT_CREDENTIAL * client_credential)
   error_code = check_timezone_compat (tzd->checksum, timezone_checksum, cli_text, srv_text);
 exit:
   return error_code;
-#undef CHECKSUM_SIZE
 }
 #endif /* CS_MODE */
 

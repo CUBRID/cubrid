@@ -102,7 +102,7 @@ sql_list_make (char *list_file)
 	      break;
 	    }
 
-	  if (t_string_add (sql_buf, linebuf, strlen (linebuf)) < 0)
+	  if (t_string_add (sql_buf, linebuf, (int) strlen (linebuf)) < 0)
 	    {
 	      fprintf (stderr, "malloc error\n");
 	      goto error;

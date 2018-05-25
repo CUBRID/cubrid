@@ -68,7 +68,6 @@
 #include "system_parameter.h"
 #include "object_template.h"
 #include "execute_schema.h"
-#include "transaction_cl.h"
 #include "release_string.h"
 #include "execute_statement.h"
 #include "md5.h"
@@ -76,6 +75,10 @@
 #include "db.h"
 #include "object_accessor.h"
 #include "boot_cl.h"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define UNIQUE_SAVEPOINT_NAME "aDDuNIQUEcONSTRAINT"
 #define UNIQUE_SAVEPOINT_NAME2 "dELETEcLASSmOP"
@@ -396,10 +399,9 @@ static char *sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_T
 
 static const char *sm_locate_method_file (SM_CLASS * class_, const char *function);
 
-static void sm_method_final ();
-
-static DB_OBJLIST *sm_get_all_objects (DB_OBJECT * op);
-static TP_DOMAIN *sm_get_set_domain (MOP classop, int att_id);
+#if defined (WINDOWS)
+static void sm_method_final (void);
+#endif
 
 static int sm_check_index_exist (MOP classop, char **out_shared_cons_name, DB_CONSTRAINT_TYPE constraint_type,
 				 const char *constraint_name, const char **att_names, const int *asc_desc,
@@ -426,6 +428,8 @@ static void sm_print (MOP classmop);
 #endif
 
 #if defined(ENABLE_UNUSED_FUNCTION)
+static DB_OBJLIST *sm_get_all_objects (DB_OBJECT * op);
+static TP_DOMAIN *sm_get_set_domain (MOP classop, int att_id);
 static DB_OBJLIST *sm_query_lock (MOP classop, DB_OBJLIST * exceptions, int only, int update);
 static DB_OBJLIST *sm_get_all_classes (int external_list);
 static DB_OBJLIST *sm_get_base_classes (int external_list);
@@ -1371,7 +1375,7 @@ load_dll (const char *name)
  */
 
 void
-sm_method_final ()
+sm_method_final (void)
 {
   PC_DLL *dll, *next;
 
@@ -1594,7 +1598,7 @@ sm_dynamic_link_class (SM_CLASS * class_, METHOD_LINK * links)
 #if defined(SOLARIS) || defined(LINUX) || defined(AIX)
       error = sm_link_dynamic_methods (links, (const char **) sorted_names);
 #else /* SOLARIS || LINUX || AIX */
-      error = sm_link_dynamic_methods (links, sorted_names, commands);
+      error = sm_link_dynamic_methods (links, (const char **) sorted_names, (const char **) commands);
 #endif /* SOLARIS || LINUX || AIX */
       if (commands != NULL)
 	{
@@ -1829,7 +1833,7 @@ sm_prelink_methods (DB_OBJLIST * classes)
 #if defined(SOLARIS) || defined(LINUX) || defined(AIX)
 	  error = sm_link_dynamic_methods (total_links, (const char **) names);
 #else /* SOLARIS || LINUX || AIX */
-	  error = sm_link_dynamic_methods (total_links, names, NULL);
+	  error = sm_link_dynamic_methods (total_links, (const char **) names, NULL);
 #endif /* SOLARIS || LINUX || AIX */
 	  db_ws_free (names);
 	}
@@ -2676,7 +2680,7 @@ sm_rename_class (MOP op, const char *new_name)
 			  break;
 			}
 
-		      class_name = DB_GET_STRING (&name_val);
+		      class_name = db_get_string (&name_val);
 		      if (class_name != NULL && (strcmp (current, class_name) == 0))
 			{
 			  int save;
@@ -3092,7 +3096,6 @@ sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type, char *keyat
 	{
 	  /* Fetch the root partition class. Partitions can only inherit from one class which is the partitioned table */
 	  MOP root_op = NULL;
-	  int au_save = 0;
 
 	  error = do_get_partition_parent (classop, &root_op);
 	  if (error != NO_ERROR || root_op == NULL)
@@ -3123,7 +3126,7 @@ sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type, char *keyat
 	  char *p = NULL;
 
 	  keyattr[0] = 0;
-	  if (DB_IS_NULL (&attrname) || (p = DB_GET_STRING (&attrname)) == NULL)
+	  if (DB_IS_NULL (&attrname) || (p = db_get_string (&attrname)) == NULL)
 	    {
 	      goto partition_failed;
 	    }
@@ -4767,7 +4770,7 @@ sm_print (MOP classmop)
  */
 
 const char *
-sm_ch_name (MOBJ clobj)
+sm_ch_name (const MOBJ clobj)
 {
   SM_CLASS_HEADER *header;
   const char *ch_name = NULL;
@@ -4847,7 +4850,6 @@ sm_get_ch_heap (MOP classmop)
 {
   SM_CLASS *class_ = NULL;
   HFID *ch_heap;
-  int is_class = 0;
 
   ch_heap = NULL;
   if (locator_is_class (classmop, DB_FETCH_READ) > 0)
@@ -5410,16 +5412,17 @@ sm_att_auto_increment (MOP classop, const char *name)
  *   classop(in): class object
  *   name(in): attribute
  *   value(out): the default value of the specified attribute
+ *   default_expr(out): default expression
  */
 
 int
-sm_att_default_value (MOP classop, const char *name, DB_VALUE * value, DB_DEFAULT_EXPR_TYPE * function_code)
+sm_att_default_value (MOP classop, const char *name, DB_VALUE * value, DB_DEFAULT_EXPR ** default_expr)
 {
   SM_CLASS *class_ = NULL;
   SM_ATTRIBUTE *att = NULL;
   int error = NO_ERROR;
 
-  assert (value != NULL);
+  assert (value != NULL && default_expr != NULL);
 
   error = db_value_clear (value);
   if (error != NO_ERROR)
@@ -5439,7 +5442,7 @@ sm_att_default_value (MOP classop, const char *name, DB_VALUE * value, DB_DEFAUL
       goto error_exit;
     }
 
-  *function_code = att->default_value.default_expr;
+  *default_expr = &att->default_value.default_expr;
   return error;
 
 error_exit:
@@ -5663,7 +5666,7 @@ sm_class_check_uniques (MOP classop)
 		    }
 		  else
 		    {
-		      buf_start = malloc (buf_size);
+		      buf_start = (char *) malloc (buf_size);
 		      if (buf_start == NULL)
 			{
 			  error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -8672,7 +8675,6 @@ retain_former_ids (SM_TEMPLATE * flat)
   if (flat->current != NULL)
     {
       bool is_partition = false;
-      int error = NO_ERROR;
 
       if (flat->current->partition)
 	{
@@ -8858,7 +8860,7 @@ flatten_trigger_cache (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 
   if (def->triggers != NULL)
     {
-      flat_triggers = tr_copy_schema_cache (def->triggers, NULL);
+      flat_triggers = tr_copy_schema_cache ((TR_SCHEMA_CACHE *) def->triggers, NULL);
     }
   else
     {
@@ -8880,7 +8882,7 @@ flatten_trigger_cache (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 	  /* if the class is being edited, be sure and get its updated trigger cache */
 	  if (class_->new_ != NULL)
 	    {
-	      super_triggers = class_->new_->triggers;
+	      super_triggers = (TR_SCHEMA_CACHE *) class_->new_->triggers;
 	    }
 	  else
 	    {
@@ -9038,7 +9040,7 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 		      int cnstr_exists = 0;
 
 		      /* Does the constraint exist in the subclass ? */
-		      DB_MAKE_NULL (&cnstr_val);
+		      db_make_null (&cnstr_val);
 		      cnstr_exists =
 			classobj_find_prop_constraint (flat->properties, classobj_map_constraint_to_property (c->type),
 						       c->name, &cnstr_val);
@@ -9050,8 +9052,8 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			  int is_global_index = 0;
 
 			  /* Get the BTID from the local constraint */
-			  DB_MAKE_NULL (&btid_val);
-			  local_property = DB_GET_SEQ (&cnstr_val);
+			  db_make_null (&btid_val);
+			  local_property = db_get_set (&cnstr_val);
 			  if (set_get_element (local_property, 0, &btid_val))
 			    {
 			      pr_clear_value (&cnstr_val);
@@ -10520,7 +10522,6 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT 
   SM_CLASS_CONSTRAINT *super_con, *shared_con;
   const int *asc_desc;
   int is_global = 0;
-  DB_CLASS_PARTITION_TYPE partition_type = DB_NOT_PARTITIONED_CLASS;
   SM_ATTRIBUTE *attr = NULL;
   SM_ATTRIBUTE *key_attr = NULL;
   int i = 0, j = 0;
@@ -13052,7 +13053,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 	  error = db_get (att->auto_increment, "class_name", &name_val);
 	  if (error == NO_ERROR)
 	    {
-	      class_name = DB_GET_STRING (&name_val);
+	      class_name = db_get_string (&name_val);
 	      if (class_name != NULL && (strcmp (sm_ch_name ((MOBJ) class_), class_name) == 0))
 		{
 		  int save;
@@ -14389,7 +14390,6 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 		   SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index, const char *comment)
 {
   int error = NO_ERROR;
-  char *shared_cons_name = NULL;
   SM_TEMPLATE *def;
   MOP newmop = NULL;
 
@@ -14955,7 +14955,6 @@ sm_save_function_index_info (SM_FUNCTION_INFO ** save_info, SM_FUNCTION_INFO * f
 
   if (func_index_info != NULL)
     {
-      int i = 0;
       int len = strlen (func_index_info->expr_str);
 
       new_func_index_info = (SM_FUNCTION_INFO *) calloc (1, sizeof (SM_FUNCTION_INFO));
@@ -15106,7 +15105,8 @@ sm_truncate_using_delete (MOP class_mop)
 
   /* We will run a DELETE statement with triggers disabled. */
   save_tr_state = tr_set_execution_state (false);
-  (void) snprintf (delete_query, sizeof (delete_query), "DELETE /*+ RECOMPILE */ FROM %s;", class_name);
+
+  (void) snprintf (delete_query, sizeof (delete_query), "DELETE /*+ RECOMPILE */ FROM [%s];", class_name);
 
   session = db_open_buffer (delete_query);
   if (session == NULL)
@@ -15550,8 +15550,8 @@ filter_local_constraints (SM_TEMPLATE * template_, SM_CLASS * super_class)
       return NO_ERROR;
     }
 
-  DB_MAKE_NULL (&oldval);
-  DB_MAKE_NULL (&newval);
+  db_make_null (&oldval);
+  db_make_null (&newval);
 
   /* get old constraints */
   error = classobj_make_class_constraints (super_class->properties, super_class->attributes, &old_constraints);
@@ -15603,7 +15603,7 @@ filter_local_constraints (SM_TEMPLATE * template_, SM_CLASS * super_class)
 	      goto cleanup;
 	    }
 
-	  seq = DB_GET_SEQ (&oldval);
+	  seq = db_get_set (&oldval);
 	  found = classobj_drop_prop (seq, c->name);
 	  if (found == 0)
 	    {
@@ -15614,7 +15614,7 @@ filter_local_constraints (SM_TEMPLATE * template_, SM_CLASS * super_class)
 		}
 	    }
 
-	  DB_MAKE_SEQ (&newval, seq);
+	  db_make_sequence (&newval, seq);
 
 	  classobj_put_prop (template_->properties, classobj_map_constraint_to_property (c->type), &newval);
 

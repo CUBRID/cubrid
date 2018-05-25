@@ -27,25 +27,24 @@
 
 #ident "$Id$"
 
-#include <stdio.h>
-
+#if defined (SERVER_MODE)
+#include "connection_defs.h"
+#include "dbtype_def.h"
+#endif /* SERVER_MODE */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "log_impl.h"
+#endif // SERVER_MODE or SA_MODE
 #include "memory_alloc.h"
 #include "storage_common.h"
+#include "thread_compat.hpp"
+#include "tsc_timer.h"
 
-#if defined (SERVER_MODE)
-#include "dbtype.h"
-#include "connection_defs.h"
-#endif /* SERVER_MODE */
-
-#include "thread.h"
-
-#include <time.h>
+#include <assert.h>
+#include <stdio.h>
 #if !defined(WINDOWS)
 #include <sys/time.h>
 #endif /* WINDOWS */
-
-#include "tsc_timer.h"
-#include <assert.h>
+#include <time.h>
 
 /* EXPORTED GLOBAL DEFINITIONS */
 #define MAX_DIAG_DATA_VALUE     0xfffffffffffffLL
@@ -55,21 +54,29 @@
 #define SH_MODE 0644
 
 /* Statistics activation flags */
+typedef enum
+{
+  PERFMON_ACTIVATION_FLAG_DEFAULT = 0,
+  PERFMON_ACTIVATION_FLAG_DETAILED_BTREE_PAGE = 1,
+  PERFMON_ACTIVATION_FLAG_MVCC_SNAPSHOT = 2,
+  PERFMON_ACTIVATION_FLAG_LOCK_OBJECT = 4,
+  PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR = 8,
+  PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION = 16,
+  PERFMON_ACTIVATION_FLAG_THREAD = 32,
+  PERFMON_ACTIVATION_FLAG_DAEMONS = 64,
 
-#define PERFMON_ACTIVE_DEFAULT 0
-#define PERFMON_ACTIVE_DETAILED_BTREE_PAGE 1
-#define PERFMON_ACTIVE_MVCC_SNAPSHOT 2
-#define PERFMON_ACTIVE_LOCK_OBJECT 4
-#define PERFMON_ACTIVE_PB_HASH_ANCHOR 8
+  /* must update when adding new conditions */
+  PERFMON_ACTIVATION_FLAG_LAST = PERFMON_ACTIVATION_FLAG_DAEMONS,
+
+  PERFMON_ACTIVATION_FLAG_MAX_VALUE = (PERFMON_ACTIVATION_FLAG_LAST << 1) - 1
+} PERFMON_ACTIVATION_FLAG;
 
 /* PERF_MODULE_TYPE x PERF_PAGE_TYPE x PAGE_FETCH_MODE x HOLDER_LATCH_MODE x COND_FIX_TYPE */
 #define PERF_PAGE_FIX_COUNTERS \
-  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) \
-   * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT))
+  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT))
 
 #define PERF_PAGE_PROMOTE_COUNTERS \
-  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PROMOTE_CONDITION_CNT) \
-  * (PERF_HOLDER_LATCH_CNT) * (2 /* success */))
+  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PROMOTE_CONDITION_CNT) * (PERF_HOLDER_LATCH_CNT) * (2 /* success */))
 
 /* PERF_MODULE_TYPE x PAGE_TYPE x DIRTY_OR_CLEAN x DIRTY_OR_CLEAN x READ_OR_WRITE_OR_MIX */
 #define PERF_PAGE_UNFIX_COUNTERS \
@@ -78,41 +85,32 @@
 #define PERF_PAGE_LOCK_TIME_COUNTERS PERF_PAGE_FIX_COUNTERS
 
 #define PERF_PAGE_HOLD_TIME_COUNTERS \
-    ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) \
-   * (PERF_HOLDER_LATCH_CNT))
+  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT))
 
 #define PERF_PAGE_FIX_TIME_COUNTERS PERF_PAGE_FIX_COUNTERS
 
-#define PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_found_mode,latch_mode,\
-				  cond_type) \
-  ((module) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
-    * (PERF_CONDITIONAL_FIX_CNT) \
-    + (page_type) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
-       * (PERF_CONDITIONAL_FIX_CNT) \
+#define PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_found_mode,latch_mode,cond_type) \
+  ((module) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT) \
+    + (page_type) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT) \
     + (page_found_mode) * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT) \
     + (latch_mode) * (PERF_CONDITIONAL_FIX_CNT) + (cond_type))
 
-#define PERF_PAGE_PROMOTE_STAT_OFFSET(module,page_type,promote_cond, \
-				      holder_latch,success) \
-  ((module) * (PERF_PAGE_CNT) * (PERF_PROMOTE_CONDITION_CNT) \
-    * (PERF_HOLDER_LATCH_CNT) * 2 /* success */ \
-    + (page_type) * (PERF_PROMOTE_CONDITION_CNT) * (PERF_HOLDER_LATCH_CNT) \
-    * 2 /* success */ \
+#define PERF_PAGE_PROMOTE_STAT_OFFSET(module,page_type,promote_cond,holder_latch,success) \
+  ((module) * (PERF_PAGE_CNT) * (PERF_PROMOTE_CONDITION_CNT) * (PERF_HOLDER_LATCH_CNT) * 2 /* success */ \
+    + (page_type) * (PERF_PROMOTE_CONDITION_CNT) * (PERF_HOLDER_LATCH_CNT) * 2 /* success */ \
     + (promote_cond) * (PERF_HOLDER_LATCH_CNT) * 2 /* success */ \
     + (holder_latch) * 2 /* success */ \
     + success)
 
-#define PERF_PAGE_UNFIX_STAT_OFFSET(module,page_type,buf_dirty,\
-				    dirtied_by_holder,holder_latch) \
-  ((module) * (PERF_PAGE_CNT) * 2 * 2 * (PERF_HOLDER_LATCH_CNT) + \
-   (page_type) * 2 * 2 * (PERF_HOLDER_LATCH_CNT) + \
-   (buf_dirty) * 2 * (PERF_HOLDER_LATCH_CNT) + \
-   (dirtied_by_holder) * (PERF_HOLDER_LATCH_CNT) + (holder_latch))
+#define PERF_PAGE_UNFIX_STAT_OFFSET(module,page_type,buf_dirty,dirtied_by_holder,holder_latch) \
+  ((module) * (PERF_PAGE_CNT) * 2 * 2 * (PERF_HOLDER_LATCH_CNT) \
+   + (page_type) * 2 * 2 * (PERF_HOLDER_LATCH_CNT) \
+   + (buf_dirty) * 2 * (PERF_HOLDER_LATCH_CNT) \
+   + (dirtied_by_holder) * (PERF_HOLDER_LATCH_CNT) \
+   + (holder_latch))
 
-#define PERF_PAGE_LOCK_TIME_OFFSET(module,page_type,page_found_mode,latch_mode,\
-				  cond_type) \
-	PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_found_mode,latch_mode,\
-				  cond_type)
+#define PERF_PAGE_LOCK_TIME_OFFSET(module,page_type,page_found_mode,latch_mode,cond_type) \
+  PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type)
 
 #define PERF_PAGE_HOLD_TIME_OFFSET(module,page_type,page_found_mode,latch_mode)\
   ((module) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
@@ -120,14 +118,11 @@
     + (page_found_mode) * (PERF_HOLDER_LATCH_CNT) \
     + (latch_mode))
 
-#define PERF_PAGE_FIX_TIME_OFFSET(module,page_type,page_found_mode,latch_mode,\
-				  cond_type) \
-	PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_found_mode,latch_mode,\
-				  cond_type)
+#define PERF_PAGE_FIX_TIME_OFFSET(module,page_type,page_found_mode,latch_mode,cond_type) \
+  PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type)
 
 #define PERF_MVCC_SNAPSHOT_COUNTERS \
-  (PERF_SNAPSHOT_CNT * PERF_SNAPSHOT_RECORD_TYPE_CNT \
-   * PERF_SNAPSHOT_VISIBILITY_CNT)
+  (PERF_SNAPSHOT_CNT * PERF_SNAPSHOT_RECORD_TYPE_CNT * PERF_SNAPSHOT_VISIBILITY_CNT)
 
 #define PERF_MVCC_SNAPSHOT_OFFSET(snapshot,rec_type,visibility) \
   ((snapshot) * PERF_SNAPSHOT_RECORD_TYPE_CNT * PERF_SNAPSHOT_VISIBILITY_CNT \
@@ -153,7 +148,7 @@ extern int log_Tran_index;	/* Index onto transaction table for current thread of
 #if defined (SERVER_MODE)
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) \
-  ((thrd) ? (thrd)->tran_index : thread_get_current_tran_index())
+  ((thrd) ? (thrd)->tran_index : logtb_get_current_tran_index())
 #endif
 #else
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
@@ -277,27 +272,26 @@ typedef enum
   PSTAT_FILE_NUM_IOREADS,
   PSTAT_FILE_NUM_IOWRITES,
   PSTAT_FILE_NUM_IOSYNCHES,
+  PSTAT_FILE_IOSYNC_ALL,
   PSTAT_FILE_NUM_PAGE_ALLOCS,
   PSTAT_FILE_NUM_PAGE_DEALLOCS,
 
+  /* Page buffer basic module */
   /* Execution statistics for the page buffer manager */
   PSTAT_PB_NUM_FETCHES,
   PSTAT_PB_NUM_DIRTIES,
   PSTAT_PB_NUM_IOREADS,
   PSTAT_PB_NUM_IOWRITES,
-  PSTAT_PB_NUM_VICTIMS,
-  PSTAT_PB_NUM_REPLACEMENTS,
-  PSTAT_PB_NUM_HASH_ANCHOR_WAITS,
-  PSTAT_PB_TIME_HASH_ANCHOR_WAIT,
+  PSTAT_PB_NUM_FLUSHED,
   /* peeked stats */
+  PSTAT_PB_PRIVATE_QUOTA,
+  PSTAT_PB_PRIVATE_COUNT,
   PSTAT_PB_FIXED_CNT,
   PSTAT_PB_DIRTY_CNT,
   PSTAT_PB_LRU1_CNT,
   PSTAT_PB_LRU2_CNT,
-  PSTAT_PB_AIN_CNT,
-  PSTAT_PB_AVOID_DEALLOC_CNT,
-  PSTAT_PB_AVOID_VICTIM_CNT,
-  PSTAT_PB_VICTIM_CAND_CNT,
+  PSTAT_PB_LRU3_CNT,
+  PSTAT_PB_VICT_CAND,
 
   /* Execution statistics for the log manager */
   PSTAT_LOG_NUM_FETCHES,
@@ -314,9 +308,9 @@ typedef enum
   /* Execution statistics for the lock manager */
   PSTAT_LK_NUM_ACQUIRED_ON_PAGES,
   PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS,
-  PSTAT_LK_NUM_CONVERTED_ON_PAGES,
+  PSTAT_LK_NUM_CONVERTED_ON_PAGES,	/* obsolete? */
   PSTAT_LK_NUM_CONVERTED_ON_OBJECTS,
-  PSTAT_LK_NUM_RE_REQUESTED_ON_PAGES,
+  PSTAT_LK_NUM_RE_REQUESTED_ON_PAGES,	/* obsolete? */
   PSTAT_LK_NUM_RE_REQUESTED_ON_OBJECTS,
   PSTAT_LK_NUM_WAITED_ON_PAGES,
   PSTAT_LK_NUM_WAITED_ON_OBJECTS,
@@ -512,6 +506,95 @@ typedef enum
   /* total promotion time */
   PSTAT_PB_PAGE_PROMOTE_TOTAL_TIME_10USEC,
 
+  /* Page buffer extended */
+  /* detailed unfix module */
+  PSTAT_PB_UNFIX_VOID_TO_PRIVATE_TOP,
+  PSTAT_PB_UNFIX_VOID_TO_PRIVATE_MID,
+  PSTAT_PB_UNFIX_VOID_TO_SHARED_MID,
+  PSTAT_PB_UNFIX_LRU_ONE_PRV_TO_SHR_MID,
+  PSTAT_PB_UNFIX_LRU_TWO_PRV_TO_SHR_MID,
+  PSTAT_PB_UNFIX_LRU_THREE_PRV_TO_SHR_MID,
+  PSTAT_PB_UNFIX_LRU_TWO_PRV_KEEP,
+  PSTAT_PB_UNFIX_LRU_TWO_SHR_KEEP,
+  PSTAT_PB_UNFIX_LRU_TWO_PRV_TO_TOP,
+  PSTAT_PB_UNFIX_LRU_TWO_SHR_TO_TOP,
+  PSTAT_PB_UNFIX_LRU_THREE_PRV_TO_TOP,
+  PSTAT_PB_UNFIX_LRU_THREE_SHR_TO_TOP,
+  PSTAT_PB_UNFIX_LRU_ONE_PRV_KEEP,
+  PSTAT_PB_UNFIX_LRU_ONE_SHR_KEEP,
+  /* vacuum */
+  PSTAT_PB_UNFIX_VOID_TO_PRIVATE_TOP_VAC,
+  PSTAT_PB_UNFIX_LRU_ONE_KEEP_VAC,
+  PSTAT_PB_UNFIX_LRU_TWO_KEEP_VAC,
+  PSTAT_PB_UNFIX_LRU_THREE_KEEP_VAC,
+  /* aout */
+  PSTAT_PB_UNFIX_VOID_AOUT_FOUND,
+  PSTAT_PB_UNFIX_VOID_AOUT_NOT_FOUND,
+  PSTAT_PB_UNFIX_VOID_AOUT_FOUND_VAC,
+  PSTAT_PB_UNFIX_VOID_AOUT_NOT_FOUND_VAC,
+  /* hash anchor */
+  PSTAT_PB_NUM_HASH_ANCHOR_WAITS,
+  PSTAT_PB_TIME_HASH_ANCHOR_WAIT,
+  /* flushing */
+  PSTAT_PB_FLUSH_COLLECT,
+  PSTAT_PB_FLUSH_FLUSH,
+  PSTAT_PB_FLUSH_SLEEP,
+  PSTAT_PB_FLUSH_COLLECT_PER_PAGE,
+  PSTAT_PB_FLUSH_FLUSH_PER_PAGE,
+  PSTAT_PB_FLUSH_PAGE_FLUSHED,
+  PSTAT_PB_FLUSH_SEND_DIRTY_TO_POST_FLUSH,
+  PSTAT_PB_NUM_SKIPPED_FLUSH,
+  PSTAT_PB_NUM_SKIPPED_NEED_WAL,
+  PSTAT_PB_NUM_SKIPPED_ALREADY_FLUSHED,
+  PSTAT_PB_NUM_SKIPPED_FIXED_OR_HOT,
+  PSTAT_PB_COMPENSATE_FLUSH,
+  PSTAT_PB_ASSIGN_DIRECT_BCB,
+  PSTAT_PB_WAKE_FLUSH_WAITER,
+  /* allocate and victim assignments */
+  PSTAT_PB_ALLOC_BCB,
+  PSTAT_PB_ALLOC_BCB_SEARCH_VICTIM,
+  PSTAT_PB_ALLOC_BCB_COND_WAIT_HIGH_PRIO,
+  PSTAT_PB_ALLOC_BCB_COND_WAIT_LOW_PRIO,
+  PSTAT_PB_ALLOC_BCB_PRIORITIZE_VACUUM,
+  PSTAT_PB_VICTIM_USE_INVALID_BCB,
+  /* direct assignments */
+  PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM_VOID,
+  PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM_LRU,
+  PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH,
+  PSTAT_PB_VICTIM_ASSIGN_DIRECT_PANIC,
+  PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST,
+  PSTAT_PB_VICTIM_ASSIGN_DIRECT_ADJUST_TO_VACUUM,
+  PSTAT_PB_VICTIM_ASSIGN_DIRECT_SEARCH_FOR_FLUSH,
+  /* successful searches */
+  PSTAT_PB_VICTIM_SHARED_LRU_SUCCESS,
+  PSTAT_PB_OWN_VICTIM_PRIVATE_LRU_SUCCESS,
+  PSTAT_PB_VICTIM_OTHER_PRIVATE_LRU_SUCCESS,
+  /* failed searches */
+  PSTAT_PB_VICTIM_SHARED_LRU_FAIL,
+  PSTAT_PB_VICTIM_OWN_PRIVATE_LRU_FAIL,
+  PSTAT_PB_VICTIM_OTHER_PRIVATE_LRU_FAIL,
+  PSTAT_PB_VICTIM_ALL_LRU_FAIL,
+  /* search lru's */
+  PSTAT_PB_VICTIM_GET_FROM_LRU,
+  PSTAT_PB_VICTIM_GET_FROM_LRU_LIST_WAS_EMPTY,
+  PSTAT_PB_VICTIM_GET_FROM_LRU_FAIL,
+  PSTAT_PB_VICTIM_GET_FROM_LRU_BAD_HINT,
+  /* lock-free circular queues with lru lists having victims */
+  PSTAT_PB_LFCQ_LRU_PRV_GET_CALLS,
+  PSTAT_PB_LFCQ_LRU_PRV_GET_EMPTY,
+  PSTAT_PB_LFCQ_LRU_PRV_GET_BIG,
+  PSTAT_PB_LFCQ_LRU_SHR_GET_CALLS,
+  PSTAT_PB_LFCQ_LRU_SHR_GET_EMPTY,
+  /* peeked stats */
+  PSTAT_PB_WAIT_THREADS_HIGH_PRIO,
+  PSTAT_PB_WAIT_THREADS_LOW_PRIO,
+  PSTAT_PB_FLUSHED_BCBS_WAIT_FOR_ASSIGN,
+  PSTAT_PB_LFCQ_BIG_PRV_NUM,
+  PSTAT_PB_LFCQ_PRV_NUM,
+  PSTAT_PB_LFCQ_SHR_NUM,
+  PSTAT_PB_AVOID_DEALLOC_CNT,
+  PSTAT_PB_AVOID_VICTIM_CNT,
+
   /* Complex statistics */
   PSTAT_PBX_FIX_COUNTERS,
   PSTAT_PBX_PROMOTE_COUNTERS,
@@ -522,8 +605,10 @@ typedef enum
   PSTAT_PBX_FIX_TIME_COUNTERS,
   PSTAT_MVCC_SNAPSHOT_COUNTERS,
   PSTAT_OBJ_LOCK_TIME_COUNTERS,
+  PSTAT_THREAD_STATS,
+  PSTAT_THREAD_DAEMON_STATS,
 
-  PSTAT_COUNT = PSTAT_OBJ_LOCK_TIME_COUNTERS + 1
+  PSTAT_COUNT
 } PERF_STAT_ID;
 
 /* All globals on statistics will be here. */
@@ -706,22 +791,35 @@ STATIC_INLINE bool perfmon_is_perf_tracking_and_active (int activation_flag) __a
 STATIC_INLINE bool perfmon_is_perf_tracking_force (bool always_collect) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
   __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_add_stat_to_global (PERF_STAT_ID psid, UINT64 amount) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_inc_stat_to_global (PERF_STAT_ID psid) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval, bool check_watchers)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, int statval, bool check_watchers)
   __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_add_at_offset_to_global (int offset, UINT64 amount) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_set_stat_to_global (PERF_STAT_ID psid, int statval) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_set_at_offset_to_global (int offset, int statval) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_time_bulk_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff, UINT64 count)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int perfmon_get_activation_flag (void) __attribute__ ((ALWAYS_INLINE));
 extern char *perfmon_pack_stats (char *buf, UINT64 * stats);
 extern char *perfmon_unpack_stats (char *buf, UINT64 * stats);
+
+STATIC_INLINE void perfmon_diff_timeval (struct timeval *elapsed, struct timeval *start, struct timeval *end)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_add_timeval (struct timeval *total, struct timeval *start, struct timeval *end)
+  __attribute__ ((ALWAYS_INLINE));
+
+#ifdef __cplusplus
+/* TODO: it looks ugly now, but it should be fixed with stat tool patch */
 
 /*
  *  Add/set stats section.
@@ -753,6 +851,29 @@ perfmon_add_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 amount)
 }
 
 /*
+ * perfmon_add_stat_to_global () - Accumulate amount only to global statistic.
+ *
+ * return	 : Void.
+ * psid (in)	 : Statistic ID.
+ * amount (in)	 : Amount to add.
+ */
+STATIC_INLINE void
+perfmon_add_stat_to_global (PERF_STAT_ID psid, UINT64 amount)
+{
+  assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
+
+  if (!pstat_Global.initialized)
+    {
+      return;
+    }
+
+  assert (pstat_Metadata[psid].valtype == PSTAT_ACCUMULATE_SINGLE_VALUE);
+
+  /* Update statistics. */
+  perfmon_add_at_offset_to_global (pstat_Metadata[psid].start_offset, amount);
+}
+
+/*
  * perfmon_inc_stat () - Increment statistic value by 1.
  *
  * return	 : Void.
@@ -763,6 +884,19 @@ STATIC_INLINE void
 perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid)
 {
   perfmon_add_stat (thread_p, psid, 1);
+}
+
+/*
+ * perfmon_inc_stat_to_global () - Increment global statistic value by 1.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * psid (in)	 : Statistic ID.
+ */
+STATIC_INLINE void
+perfmon_inc_stat_to_global (PERF_STAT_ID psid)
+{
+  perfmon_add_stat_to_global (psid, 1);
 }
 
 /*
@@ -796,6 +930,23 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
       pstat_Global.tran_stats[tran_index][offset] += amount;
     }
 #endif /* SERVER_MODE || SA_MODE */
+}
+
+/*
+ * perfmon_add_at_offset_to_global () - Add amount to statistic in global
+ *
+ * return	 : Void.
+ * offset (in)	 : Offset to statistics value.
+ * amount (in)	 : Amount to add.
+ */
+STATIC_INLINE void
+perfmon_add_at_offset_to_global (int offset, UINT64 amount)
+{
+  assert (offset >= 0 && offset < pstat_Global.n_stat_values);
+  assert (pstat_Global.initialized);
+
+  /* Update global statistic. */
+  ATOMIC_INC_64 (&(pstat_Global.global_stats[offset]), amount);
 }
 
 /*
@@ -940,11 +1091,11 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
 
   /* Update global statistics. */
   statvalp = pstat_Global.global_stats + offset;
-  ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp), 1);
+  ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp), 1ULL);
   ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp), timediff);
   do
     {
-      max_time = ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), 0);
+      max_time = ATOMIC_LOAD_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp));
       if (max_time >= timediff)
 	{
 	  /* No need to change max_time. */
@@ -968,6 +1119,94 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
       if (max_time < timediff)
 	{
 	  (*PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp)) = timediff;
+	}
+    }
+#endif /* SERVER_MODE || SA_MODE */
+}
+
+/*
+ * perfmon_time_bulk_stat () - Register statistic timer value. Counter, total time and maximum time are updated.
+ *                             Used to count and time multiple units at once (as opposed to perfmon_time_stat which
+ *                             increments count by one).
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * psid (in)	 : Statistic ID.
+ * timediff (in) : Time difference to register.
+ * count (in)    : Unit count.
+ */
+STATIC_INLINE void
+perfmon_time_bulk_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff, UINT64 count)
+{
+  assert (pstat_Global.initialized);
+  assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
+
+  assert (pstat_Metadata[psid].valtype == PSTAT_COUNTER_TIMER_VALUE);
+
+  perfmon_time_bulk_at_offset (thread_p, pstat_Metadata[psid].start_offset, timediff, count);
+}
+
+/*
+ * perfmon_time_bulk_at_offset () - Register timer statistics in global/local at offset for multiple units at once.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * offset (in)   : Offset to timer values.
+ * timediff (in) : Time difference to add to timer.
+ * count (in)    : Unit count timed at once
+ *
+ * NOTE: There will be three values modified: counter, total time and max time.
+ */
+STATIC_INLINE void
+perfmon_time_bulk_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff, UINT64 count)
+{
+  /* Update global statistics */
+  UINT64 *statvalp = NULL;
+  UINT64 max_time;
+  UINT64 time_per_unit;
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  int tran_index;
+#endif /* SERVER_MODE || SA_MODE */
+
+  assert (offset >= 0 && offset < pstat_Global.n_stat_values);
+  assert (pstat_Global.initialized);
+
+  if (count == 0)
+    {
+      return;
+    }
+  time_per_unit = timediff / count;
+
+  /* Update global statistics. */
+  statvalp = pstat_Global.global_stats + offset;
+  ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp), count);
+  ATOMIC_INC_64 (PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp), timediff);
+  do
+    {
+      max_time = ATOMIC_LOAD_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp));
+      if (max_time >= time_per_unit)
+	{
+	  /* No need to change max_time. */
+	  break;
+	}
+    }
+  while (!ATOMIC_CAS_64 (PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp), max_time, time_per_unit));
+  /* Average is not computed here. */
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  /* Update local statistic */
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
+  if (pstat_Global.is_watching[tran_index])
+    {
+      assert (pstat_Global.tran_stats[tran_index] != NULL);
+      statvalp = pstat_Global.tran_stats[tran_index] + offset;
+      (*PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp)) += count;
+      (*PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp)) += timediff;
+      max_time = *PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp);
+      if (max_time < time_per_unit)
+	{
+	  (*PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp)) = time_per_unit;
 	}
     }
 #endif /* SERVER_MODE || SA_MODE */
@@ -1024,6 +1263,8 @@ perfmon_is_perf_tracking_force (bool always_collect)
   return pstat_Global.initialized && (always_collect || pstat_Global.n_watchers > 0);
 }
 
+#endif /* __cplusplus */
+
 #if defined(CS_MODE) || defined(SA_MODE)
 /* Client execution statistic structure */
 typedef struct perfmon_client_stat_info PERFMON_CLIENT_STAT_INFO;
@@ -1049,121 +1290,39 @@ extern int perfmon_get_stats (void);
 extern int perfmon_get_global_stats (void);
 #endif /* CS_MODE || SA_MODE */
 
-#if defined (DIAG_DEVEL)
-#if defined(SERVER_MODE)
-
-typedef enum t_diag_obj_type T_DIAG_OBJ_TYPE;
-enum t_diag_obj_type
+STATIC_INLINE void
+perfmon_diff_timeval (struct timeval *elapsed, struct timeval *start, struct timeval *end)
 {
-  DIAG_OBJ_TYPE_QUERY_OPEN_PAGE = 0,
-  DIAG_OBJ_TYPE_QUERY_OPENED_PAGE = 1,
-  DIAG_OBJ_TYPE_QUERY_SLOW_QUERY = 2,
-  DIAG_OBJ_TYPE_QUERY_FULL_SCAN = 3,
-  DIAG_OBJ_TYPE_CONN_CLI_REQUEST = 4,
-  DIAG_OBJ_TYPE_CONN_ABORTED_CLIENTS = 5,
-  DIAG_OBJ_TYPE_CONN_CONN_REQ = 6,
-  DIAG_OBJ_TYPE_CONN_CONN_REJECT = 7,
-  DIAG_OBJ_TYPE_BUFFER_PAGE_READ = 8,
-  DIAG_OBJ_TYPE_BUFFER_PAGE_WRITE = 9,
-  DIAG_OBJ_TYPE_LOCK_DEADLOCK = 10,
-  DIAG_OBJ_TYPE_LOCK_REQUEST = 11
-};
+  elapsed->tv_sec = end->tv_sec - start->tv_sec;
+  elapsed->tv_usec = end->tv_usec - start->tv_usec;
 
-typedef enum t_diag_value_settype T_DIAG_VALUE_SETTYPE;
-enum t_diag_value_settype
+  if (elapsed->tv_usec < 0)
+    {
+      elapsed->tv_sec--;
+      elapsed->tv_usec += 1000000;
+    }
+}
+
+STATIC_INLINE void
+perfmon_add_timeval (struct timeval *total, struct timeval *start, struct timeval *end)
 {
-  DIAG_VAL_SETTYPE_INC,
-  DIAG_VAL_SETTYPE_DEC,
-  DIAG_VAL_SETTYPE_SET
-};
+  if (end->tv_usec - start->tv_usec >= 0)
+    {
+      total->tv_usec += end->tv_usec - start->tv_usec;
+      total->tv_sec += end->tv_sec - start->tv_sec;
+    }
+  else
+    {
+      total->tv_usec += 1000000 + (end->tv_usec - start->tv_usec);
+      total->tv_sec += end->tv_sec - start->tv_sec - 1;
+    }
 
-typedef int (*T_DO_FUNC) (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
-
-typedef struct t_diag_object_table T_DIAG_OBJECT_TABLE;
-struct t_diag_object_table
-{
-  char typestring[32];
-  T_DIAG_OBJ_TYPE type;
-  T_DO_FUNC func;
-};
-
-/* MACRO definition */
-#define SET_DIAG_VALUE(DIAG_EXEC_FLAG, ITEM_TYPE, VALUE, SET_TYPE, ERR_BUF)          \
-    do {                                                                             \
-        if (DIAG_EXEC_FLAG == true) {                                             \
-            set_diag_value(ITEM_TYPE , VALUE, SET_TYPE, ERR_BUF);                    \
-        }                                                                            \
-    } while(0)
-
-#define DIAG_GET_TIME(DIAG_EXEC_FLAG, TIMER)                                         \
-    do {                                                                             \
-        if (DIAG_EXEC_FLAG == true) {                                             \
-            gettimeofday(&TIMER, NULL);                                              \
-        }                                                                            \
-    } while(0)
-
-#define SET_DIAG_VALUE_SLOW_QUERY(DIAG_EXEC_FLAG, START_TIME, END_TIME, VALUE, SET_TYPE, ERR_BUF)\
-    do {                                                                                 \
-        if (DIAG_EXEC_FLAG == true) {                                                 \
-            struct timeval result = {0,0};                                               \
-            ADD_TIMEVAL(result, START_TIME, END_TIME);                                   \
-            if (result.tv_sec >= diag_long_query_time)                                   \
-                set_diag_value(DIAG_OBJ_TYPE_QUERY_SLOW_QUERY, VALUE, SET_TYPE, ERR_BUF);\
-        }                                                                                \
-    } while(0)
-
-#define SET_DIAG_VALUE_FULL_SCAN(DIAG_EXEC_FLAG, VALUE, SET_TYPE, ERR_BUF, XASL, SPECP) \
-    do {                                                                                \
-        if (DIAG_EXEC_FLAG == true) {                                                \
-            if (((XASL_TYPE(XASL) == BUILDLIST_PROC) ||                                 \
-                 (XASL_TYPE(XASL) == BUILDVALUE_PROC))                                  \
-                && ACCESS_SPEC_ACCESS(SPECP) == SEQUENTIAL) {                           \
-                set_diag_value(DIAG_OBJ_TYPE_QUERY_FULL_SCAN                            \
-                        , 1                                                             \
-                        , DIAG_VAL_SETTYPE_INC                                          \
-                        , NULL);                                                        \
-            }                                                                           \
-        }                                                                               \
-    } while(0)
-
-extern int diag_long_query_time;
-extern bool diag_executediag;
-
-extern bool init_diag_mgr (const char *server_name, int num_thread, char *err_buf);
-extern void close_diag_mgr (void);
-extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
-#endif /* SERVER_MODE */
-#endif /* DIAG_DEVEL */
-
-#ifndef DIFF_TIMEVAL
-#define DIFF_TIMEVAL(start, end, elapsed) \
-    do { \
-      (elapsed).tv_sec = (end).tv_sec - (start).tv_sec; \
-      (elapsed).tv_usec = (end).tv_usec - (start).tv_usec; \
-      if ((elapsed).tv_usec < 0) \
-        { \
-          (elapsed).tv_sec--; \
-          (elapsed).tv_usec += 1000000; \
-        } \
-    } while (0)
-#endif
-
-#define ADD_TIMEVAL(total, start, end) do {     \
-  total.tv_usec +=                              \
-    (end.tv_usec - start.tv_usec) >= 0 ?        \
-      (end.tv_usec-start.tv_usec)               \
-    : (1000000 + (end.tv_usec-start.tv_usec));  \
-  total.tv_sec +=                               \
-    (end.tv_usec - start.tv_usec) >= 0 ?        \
-      (end.tv_sec-start.tv_sec)                 \
-    : (end.tv_sec-start.tv_sec-1);              \
-  total.tv_sec +=                               \
-    total.tv_usec/1000000;                      \
-  total.tv_usec %= 1000000;                     \
-} while(0)
+  total->tv_sec += total->tv_usec / 1000000;
+  total->tv_usec %= 1000000;
+}
 
 #define TO_MSEC(elapsed) \
-  ((int)((elapsed.tv_sec * 1000) + (int) (elapsed.tv_usec / 1000)))
+  ((int)(((elapsed).tv_sec * 1000) + (int) ((elapsed).tv_usec / 1000)))
 
 #if defined (EnableThreadMonitoring)
 #define MONITOR_WAITING_THREAD(elapsed) \
@@ -1174,6 +1333,7 @@ extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYP
 #define MONITOR_WAITING_THREAD(elapsed) (0)
 #endif
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 typedef struct perf_utime_tracker PERF_UTIME_TRACKER;
 struct perf_utime_tracker
 {
@@ -1207,8 +1367,28 @@ struct perf_utime_tracker
       (track)->start_tick = (track)->end_tick; \
     } \
   while (false)
+/* Bulk time trackers - perfmon_time_bulk_stat is called. */
+#define PERF_UTIME_TRACKER_BULK_TIME(thread_p, track, psid, count) \
+  do \
+    { \
+      if (!(track)->is_perf_tracking) break; \
+      tsc_getticks (&(track)->end_tick); \
+      perfmon_time_bulk_stat (thread_p, psid, tsc_elapsed_utime ((track)->end_tick, (track)->start_tick), count); \
+    } \
+  while (false)
+#define PERF_UTIME_TRACKER_BULK_TIME_AND_RESTART(thread_p, track, psid, count) \
+  do \
+    { \
+      if (!(track)->is_perf_tracking) break; \
+      tsc_getticks (&(track)->end_tick); \
+      perfmon_time_bulk, stat (thread_p, psid, tsc_elapsed_utime ((track)->end_tick,  (track)->start_tick), count); \
+      (track)->start_tick = (track)->end_tick; \
+    } \
+  while (false)
 
 /* Time accumulators only - perfmon_add_stat is called. */
+/* todo: PERF_UTIME_TRACKER_ADD_TIME is never used and PERF_UTIME_TRACKER_ADD_TIME_AND_RESTART is similar to
+ * PERF_UTIME_TRACKER_TIME_AND_RESTART. they were supposed to collect just timers, but now have changed */
 #define PERF_UTIME_TRACKER_ADD_TIME(thread_p, track, psid) \
   do \
     { \
@@ -1226,6 +1406,7 @@ struct perf_utime_tracker
       (track)->start_tick = (track)->end_tick; \
     } \
   while (false)
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #if defined(SERVER_MODE) || defined (SA_MODE)
 /*

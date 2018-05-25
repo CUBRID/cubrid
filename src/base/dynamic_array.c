@@ -42,7 +42,7 @@ da_create (int count, size_t len)
     }
 
   da->max = -1;
-  da->len = len;
+  da->len = (int) len;
   da->count = count;
   da->array = (unsigned char *) calloc (len, count);
   if (da->array == NULL)

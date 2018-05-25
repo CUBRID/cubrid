@@ -21,13 +21,39 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnvlex.c
   ${COMPAT_DIR}/db_date.c
   ${COMPAT_DIR}/db_elo.c
+  ${COMPAT_DIR}/db_json.cpp
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_set.c
+  ${COMPAT_DIR}/db_value_printer.cpp
+  )
+set (COMPAT_HEADERS
+  ${COMPAT_DIR}/dbtype_def.h
+  ${COMPAT_DIR}/dbtype_function.i
+  ${COMPAT_DIR}/dbtype_function.h
   )
 
 set(THREAD_SOURCES
-  ${THREAD_DIR}/thread.c
   ${THREAD_DIR}/critical_section.c
+  ${THREAD_DIR}/critical_section_tracker.cpp
+  ${THREAD_DIR}/thread_daemon.cpp
+  ${THREAD_DIR}/thread_entry.cpp
+  ${THREAD_DIR}/thread_entry_task.cpp
+  ${THREAD_DIR}/thread_looper.cpp
+  ${THREAD_DIR}/thread_manager.cpp
+  ${THREAD_DIR}/thread_waiter.cpp
+  ${THREAD_DIR}/thread_worker_pool.cpp
+  )
+set(THREAD_HEADERS
+  ${THREAD_DIR}/critical_section_tracker.hpp
+  ${THREAD_DIR}/thread_compat.hpp
+  ${THREAD_DIR}/thread_daemon.hpp
+  ${THREAD_DIR}/thread_entry.hpp
+  ${THREAD_DIR}/thread_entry_task.hpp
+  ${THREAD_DIR}/thread_task.hpp
+  ${THREAD_DIR}/thread_looper.hpp
+  ${THREAD_DIR}/thread_manager.hpp
+  ${THREAD_DIR}/thread_waiter.hpp
+  ${THREAD_DIR}/thread_worker_pool.hpp
   )
 
 set(BASE_SOURCES
@@ -43,9 +69,11 @@ set(BASE_SOURCES
   ${BASE_DIR}/dynamic_array.c	
   ${BASE_DIR}/encryption.c
   ${BASE_DIR}/environment_variable.c
+  ${BASE_DIR}/error_context.cpp
   ${BASE_DIR}/error_manager.c
   ${BASE_DIR}/event_log.c
   ${BASE_DIR}/fault_injection.c
+  ${BASE_DIR}/fileline_location.cpp
   ${BASE_DIR}/fixed_alloc.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
@@ -59,20 +87,47 @@ set(BASE_SOURCES
   ${BASE_DIR}/misc_string.c
   ${BASE_DIR}/mprec.c
   ${BASE_DIR}/object_representation_sr.c
-  ${BASE_DIR}/perf.c
+  ${BASE_DIR}/packer.cpp
+  ${BASE_DIR}/get_clockfreq.c
+  ${BASE_DIR}/perf.cpp
+  ${BASE_DIR}/pinnable_buffer.cpp
+  ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/porting.c
+  ${BASE_DIR}/process_util.c
   ${BASE_DIR}/release_string.c
+  ${BASE_DIR}/resource_tracker.cpp
   ${BASE_DIR}/sha1.c
   ${BASE_DIR}/stack_dump.c
+  ${BASE_DIR}/string_buffer.cpp
   ${BASE_DIR}/system_parameter.c
   ${BASE_DIR}/tsc_timer.c
-  ${BASE_DIR}/tz_compile.c
   ${BASE_DIR}/tz_support.c
   ${BASE_DIR}/uca_support.c
   ${BASE_DIR}/unicode_support.c
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/xml_parser.c
+  ${BASE_DIR}/cubstream.cpp
+  )
+set (BASE_HEADERS
+  ${BASE_DIR}/contiguous_memory_buffer.hpp
+  ${BASE_DIR}/db_private_allocator.hpp
+  ${BASE_DIR}/error_code.h
+  ${BASE_DIR}/error_context.hpp
+  ${BASE_DIR}/error_manager.h
+  ${BASE_DIR}/extensible_array.hpp
+  ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/mem_block.hpp
+  ${BASE_DIR}/packer.hpp
+  ${BASE_DIR}/perf.hpp
+  ${BASE_DIR}/perf_def.hpp
+  ${BASE_DIR}/pinning.hpp
+  ${BASE_DIR}/pinnable_buffer.hpp
+  ${BASE_DIR}/packable_object.hpp
+  ${BASE_DIR}/process_util.h
+  ${BASE_DIR}/resource_tracker.hpp
+  ${BASE_DIR}/string_buffer.hpp
+  ${BASE_DIR}/cubstream.hpp
   )
 
 set(EXECUTABLE_SOURCES
@@ -95,10 +150,15 @@ set(CONNECTION_SOURCES
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
+  ${COMMUNICATION_DIR}/communication_channel.cpp
+  ${COMMUNICATION_DIR}/stream_transfer_receiver.cpp
+  ${COMMUNICATION_DIR}/stream_transfer_sender.cpp
   )
 
-set(PARSER_SOURCES
-  ${PARSER_DIR}/parse_tree.c
+set(COMMUNICATION_HEADERS
+  ${COMMUNICATION_DIR}/communication_channel.hpp
+  ${COMMUNICATION_DIR}/stream_transfer_receiver.hpp
+  ${COMMUNICATION_DIR}/stream_transfer_sender.hpp
   )
 
 set(QUERY_SOURCES
@@ -189,20 +249,25 @@ set(SESSION_SOURCES
   ${SESSION_DIR}/session_sr.c
   )
 
+list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
 if(UNIX)
-  list(APPEND BASE_SOURCES ${BASE_DIR}/getopt_long.c)
+  list(APPEND BASE_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/variable_string.c)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/tcp.c)
-  list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
   list(APPEND STORAGE_SOURCES ${STORAGE_DIR}/es_owfs.c)
 else(UNIX)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/wintcp.c)
+  list(APPEND BASE_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/rand.c)
 endif(UNIX)
 
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
 
-add_library(cubrid SHARED
+if(UNIX)
+set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+endif(UNIX)
+
+SET_SOURCE_FILES_PROPERTIES(
   ${COMPAT_SOURCES}
   ${THREAD_SOURCES}
   ${BASE_SOURCES}
@@ -219,7 +284,42 @@ add_library(cubrid SHARED
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${SESSION_SOURCES}
+  ${PROBES_OBJECT} PROPERTIES LANGUAGE CXX
+  )
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${BASE_DIR}/md5.c
+  PROPERTIES LANGUAGE C
+  )
+
+set (CUBRID_LIB_SOURCES
+  ${COMPAT_SOURCES}
+  ${THREAD_SOURCES}
+  ${BASE_SOURCES}
+  ${HEAPLAYER_SOURCES}
+  ${CONNECTION_SOURCES}
+  ${CONNECTION_TCP_SOURCE}
+  ${COMMUNICATION_SOURCES}
+  ${QUERY_SOURCES}
+  ${OBJECT_SOURCES}
+  ${JSP_SOURCES}
+  ${TRANSACTION_SOURCES}
+  ${STORAGE_SOURCES}
+  ${ES_SOURCES}
+  ${EXECUTABLE_SOURCES}
+  ${SESSION_SOURCES}
   ${PROBES_OBJECT}
+  )
+set (CUBRID_LIB_HEADERS
+  ${BASE_HEADERS}
+  ${COMMUNICATION_HEADERS}
+  ${COMPAT_HEADERS}
+  ${THREAD_HEADERS}
+  )
+
+add_library(cubrid SHARED
+  ${CUBRID_LIB_SOURCES}
+  ${CUBRID_LIB_HEADERS}
   )
 set_target_properties(cubrid PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 if(WIN32)
@@ -242,13 +342,43 @@ endif(WIN32)
 target_include_directories(cubrid PRIVATE ${CMAKE_SOURCE_DIR}/src/heaplayers/util ${JAVA_INC} ${EP_INCLUDES})
 if(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
-  target_link_libraries(cubrid LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
+  target_link_libraries(cubrid LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
-if(UNIX)
-  add_dependencies(cubrid ${EP_TARGETS})
-endif(UNIX)
+add_dependencies(cubrid ${EP_TARGETS})
+
+if(AT_LEAST_ONE_UNIT_TEST)
+  if (WIN32)
+  # in order to avoid adding all the functions used by unit tests in def file, it is more convenient to build a static
+  # lib too. more compile time, but less head-ache
+  # todo - is there any nicer way of doing this??
+  add_library (cubrid-win-lib STATIC
+    ${CUBRID_LIB_SOURCES}
+    ${CUBRID_LIB_HEADERS}
+    )
+
+  target_compile_definitions(cubrid-win-lib PRIVATE 
+    SERVER_MODE
+    ${COMMON_DEFS}
+    )
+
+  target_link_libraries(cubrid-win-lib PRIVATE
+    ws2_32
+    ${JVM_LIBS}
+    ${EP_LIBS}
+    )
+
+  target_include_directories(cubrid-win-lib PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/heaplayers/util
+    ${JAVA_INC}
+    ${EP_INCLUDES}
+    )
+
+  add_dependencies(cubrid-win-lib ${EP_TARGETS})
+
+  endif (WIN32)
+endif (AT_LEAST_ONE_UNIT_TEST)
 
 if(ENABLE_SYSTEMTAP)
   target_include_directories(cubrid PRIVATE ${CMAKE_BINARY_DIR})
@@ -262,10 +392,18 @@ install(TARGETS cubrid
 
 install(FILES
   ${COMPAT_DIR}/dbi_compat.h
-  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
   RENAME dbi.h
   )
-
+install(FILES
+  ${COMPAT_DIR}/dbtype_def.h
+  ${COMPAT_DIR}/dbtype_function.h
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
+  )
+install(FILES
+  ${BASE_DIR}/error_code.h
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
+  )  
 
 # install pdb files for debugging on windows
 if(WIN32)

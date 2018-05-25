@@ -34,6 +34,10 @@
 #include "system_parameter.h"
 #include "message_catalog.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 #define CSQL_MAXNAME	256
 
 static int parser_yyinput_single_line (char *buff, int max_size);
@@ -183,7 +187,9 @@ int yybuffer_pos;
 [cC][lL][oO][bB]_[tT][oO]_[cC][hH][aA][rR]				{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return CLOB_TO_CHAR; }
-[cC][lL][oO][sS][eE]							{ begin_token(yytext);   return CLOSE; }
+[cC][lL][oO][sS][eE]							{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return CLOSE; }
 [cC][oO][aA][lL][eE][sS][cC][eE]					{ begin_token(yytext);   return COALESCE; }
 [cC][oO][lL][lL][aA][tT][eE]						{ begin_token(yytext);   return COLLATE; }
 [cC][oO][lL][lL][aA][tT][iI][oO][nN]					{ begin_token(yytext);
@@ -215,6 +221,16 @@ int yybuffer_pos;
 										return COST; 
 									}
 [cC][oO][uU][nN][tT]							{ begin_token(yytext);   return COUNT; }
+[jJ][sS][oO][nN][_][oO][bB][jJ][eE][cC][tT]                             { begin_token(yytext);   return FUN_JSON_OBJECT;}
+[jJ][sS][oO][nN][_][aA][rR][rR][aA][yY]                                 { begin_token(yytext);   return FUN_JSON_ARRAY;}
+[jJ][sS][oO][nN][_][iI][nN][sS][eE][rR][tT]                             { begin_token(yytext);   return FUN_JSON_INSERT;}
+[jJ][sS][oO][nN][_][rR][eE][pP][lL][aA][cC][eE]                         { begin_token(yytext);   return FUN_JSON_REPLACE;}
+[jJ][sS][oO][nN][_][sS][eE][tT]						{ begin_token(yytext);   return FUN_JSON_SET;}
+[jJ][sS][oO][nN][_][kK][eE][yY][sS]					{ begin_token(yytext);   return FUN_JSON_KEYS;}
+[jJ][sS][oO][nN][_][rR][eE][mM][oO][vV][eE]                             { begin_token(yytext);   return FUN_JSON_REMOVE;}
+[jJ][sS][oO][nN][_][aA][rR][rR][aA][yY][_][aA][pP][pP][eE][nN][dD]      { begin_token(yytext);   return FUN_JSON_ARRAY_APPEND;}
+[jJ][sS][oO][nN][_][gG][eE][tT][_][aA][lL][lL][_][pP][aA][tT][hH][sS]	{ begin_token(yytext);   return FUN_JSON_GET_ALL_PATHS;}
+[jJ][sS][oO][nN][_][mM][eE][rR][gG][eE]                                 { begin_token(yytext);   return FUN_JSON_MERGE;}
 [cC][rR][eE][aA][tT][eE]						{ begin_token(yytext);   return CREATE; }
 [cC][rR][oO][sS][sS]							{ begin_token(yytext);   return CROSS; }
 [cC][rR][iI][tT][iI][cC][aA][lL]					{ begin_token(yytext);
@@ -234,7 +250,7 @@ int yybuffer_pos;
 [cC][hH][aA][rR]							{ begin_token(yytext);   return CHAR_; }
 [dD][aA][tT][aA]							{ begin_token(yytext);   return DATA; }
 [dD][aA][tT][aA][bB][aA][sS][eE]					{ begin_token(yytext);   return DATABASE; }
-[dD][aA][tT][aA]_[tT][yY][pP][eE]___					{ begin_token(yytext);   return DATA_TYPE_; }
+[dD][aA][tT][aA]_[tT][yY][pP][eE]___					{ begin_token(yytext);   return DATA_TYPE___; }
 [dD][aA][tT][eE]_[aA][dD][dD]						{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return DATE_ADD; }
@@ -427,7 +443,6 @@ int yybuffer_pos;
 										csql_yylval.cptr = pt_makename(yytext);
 										return JOB; }
 [jJ][sS][oO][nN]							{ begin_token(yytext);   
-										csql_yylval.cptr = pt_makename(yytext);
 										return JSON; }
 [kK][eE][yY]								{ begin_token(yytext);   return KEY; }
 [kK][eE][yY][sS]							{ begin_token(yytext);   
@@ -547,7 +562,9 @@ int yybuffer_pos;
 										return OFFSET; }
 [oO][nN]								{ begin_token(yytext);   return ON_; }
 [oO][nN][lL][yY]							{ begin_token(yytext);   return ONLY; }
-[oO][pP][eE][nN]							{ begin_token(yytext);   return OPEN; }
+[oO][pP][eE][nN]							{ begin_token(yytext);   
+										csql_yylval.cptr = pt_makename(yytext);
+										return OPEN; }
 [oO][pP][tT][iI][mM][iI][zZ][aA][tT][iI][oO][nN]			{ begin_token(yytext);   return OPTIMIZATION; }
 [oO][pP][tT][iI][oO][nN]						{ begin_token(yytext);   return OPTION; }
 [oO][rR]								{ begin_token(yytext);   return OR; }

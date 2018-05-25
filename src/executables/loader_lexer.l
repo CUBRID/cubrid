@@ -32,6 +32,10 @@
 #include "intl_support.h"
 #include "language_support.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 /*#define LEXER_DEBUG*/
 
 #ifdef LEXER_DEBUG
@@ -803,8 +807,7 @@ loader_make_string_by_yytext (void)
       str->need_free_val = true;
     }
 
-  if (intl_check_string (str->val, str->size, &invalid_pos,
-			 LANG_SYS_CODESET) != 0)
+  if (intl_check_string (str->val, str->size, &invalid_pos, LANG_SYS_CODESET) != INTL_UTF8_VALID)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1,
 	      invalid_pos - str->val);
@@ -866,8 +869,7 @@ loader_make_string_by_buffer (void)
 	}
     }
     
-  if (intl_check_string (str->val, str->size, &invalid_pos,
-			 LANG_SYS_CODESET) != 0)
+  if (intl_check_string (str->val, str->size, &invalid_pos, LANG_SYS_CODESET) != INTL_UTF8_VALID)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1,
 	      invalid_pos - str->val);

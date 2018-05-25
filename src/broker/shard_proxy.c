@@ -34,6 +34,9 @@
 #include "shard_proxy_handler.h"
 #include "shard_key_func.h"
 
+#if defined(WINDOWS)
+#include "broker_wsa_init.h"
+#endif
 #define ENDLESS 	1
 
 /* SHARD SHM */

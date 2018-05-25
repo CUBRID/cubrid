@@ -28,6 +28,8 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <assert.h>
+
 #include "porting.h"
 #include "dbtype.h"
 #include "dbdef.h"
@@ -49,8 +51,8 @@
 #include "authenticate.h"
 #include "transaction_cl.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
+#include "thread_manager.hpp"
 
 static int class_objects = 0;
 static int total_objects = 0;
@@ -58,10 +60,10 @@ static int failed_objects = 0;
 static RECDES *Diskrec = NULL;
 
 static int compactdb_start (bool verbose_flag);
-static void process_class (DB_OBJECT * class_, bool verbose_flag);
-static void process_object (DESC_OBJ * desc_obj, OID * obj_oid, bool verbose_flag);
-static int process_set (DB_SET * set);
-static int process_value (DB_VALUE * value);
+static void process_class (THREAD_ENTRY * thread_p, DB_OBJECT * class_, bool verbose_flag);
+static void process_object (THREAD_ENTRY * thread_p, DESC_OBJ * desc_obj, OID * obj_oid, bool verbose_flag);
+static int process_set (THREAD_ENTRY * thread_p, DB_SET * set);
+static int process_value (THREAD_ENTRY * thread_p, DB_VALUE * value);
 static DB_OBJECT *is_class (OID * obj_oid, OID * class_oid);
 static int disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid);
 static RECDES *alloc_recdes (int length);
@@ -149,6 +151,7 @@ compactdb_start (bool verbose_flag)
   MOBJ object = NULL;
   HFID *hfid;
   int status = 0;
+  THREAD_ENTRY *thread_p;
 
   /* 
    * Build class name table
@@ -177,6 +180,8 @@ compactdb_start (bool verbose_flag)
       printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS1));
     }
 
+  thread_p = thread_get_thread_entry_info ();
+
   /* 
    * Dump the object definitions
    */
@@ -185,7 +190,7 @@ compactdb_start (bool verbose_flag)
     {
       if (!WS_IS_DELETED (class_table->mops[i]) && class_table->mops[i] != sm_Root_class_mop)
 	{
-	  process_class (class_table->mops[i], verbose_flag);
+	  process_class (thread_p, class_table->mops[i], verbose_flag);
 	}
     }
   disk_final ();
@@ -243,10 +248,10 @@ phase2:
     }
 
 phase3:
-  catalog_reclaim_space (NULL);
+  catalog_reclaim_space (thread_p);
   db_commit_transaction ();
 
-  if (file_tracker_reclaim_marked_deleted (NULL) != NO_ERROR)
+  if (file_tracker_reclaim_marked_deleted (thread_p) != NO_ERROR)
     {
       /* how to handle error? */
       ASSERT_ERROR ();
@@ -270,7 +275,7 @@ phase3:
  *    verbose_flag(in)
  */
 static void
-process_class (DB_OBJECT * class_, bool verbose_flag)
+process_class (THREAD_ENTRY * thread_p, DB_OBJECT * class_, bool verbose_flag)
 {
   int i = 0;
   SM_CLASS *class_ptr;
@@ -312,7 +317,9 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
   if (hfid->vfid.fileid == NULL_FILEID)
     {
       if (verbose_flag)
-	printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_INSTANCES), 0);
+	{
+	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_INSTANCES), 0);
+	}
       return;
     }
 
@@ -321,7 +328,9 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
   if (locator_flush_all_instances (class_, DONT_DECACHE) != NO_ERROR)
     {
       if (verbose_flag)
-	printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_INSTANCES), 0);
+	{
+	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_INSTANCES), 0);
+	}
       return;
     }
 
@@ -333,8 +342,8 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
   desc_obj = make_desc_obj (class_ptr);
   while (nobjects != nfetched)
     {
-      if (locator_fetch_all
-	  (hfid, &lock, LC_FETCH_MVCC_VERSION, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area) == NO_ERROR)
+      if (locator_fetch_all (hfid, &lock, LC_FETCH_MVCC_VERSION, class_oid, &nobjects, &nfetched, &last_oid,
+			     &fetch_area) == NO_ERROR)
 	{
 	  if (fetch_area != NULL)
 	    {
@@ -348,7 +357,7 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
 		  LC_RECDES_TO_GET_ONEOBJ (fetch_area, obj, &recdes);
 		  if (desc_disk_to_obj (class_, class_ptr, &recdes, desc_obj) == NO_ERROR)
 		    {
-		      process_object (desc_obj, &obj->oid, verbose_flag);
+		      process_object (thread_p, desc_obj, &obj->oid, verbose_flag);
 		    }
 		  else
 		    {
@@ -376,7 +385,7 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
    */
   if (failed_objects == 0)
     {
-      if (catalog_drop_old_representations (NULL, class_oid) == NO_ERROR)
+      if (catalog_drop_old_representations (thread_p, class_oid) == NO_ERROR)
 	{
 	  (void) sm_destroy_representations (class_);
 	}
@@ -397,7 +406,7 @@ process_class (DB_OBJECT * class_, bool verbose_flag)
  *    verbose_flag(in)
  */
 static void
-process_object (DESC_OBJ * desc_obj, OID * obj_oid, bool verbose_flag)
+process_object (THREAD_ENTRY * thread_p, DESC_OBJ * desc_obj, OID * obj_oid, bool verbose_flag)
 {
   SM_CLASS *class_ptr;
   SM_ATTRIBUTE *attribute;
@@ -418,14 +427,16 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, bool verbose_flag)
   while (attribute)
     {
       value = &desc_obj->values[v++];
-      update_flag += process_value (value);
+      update_flag += process_value (thread_p, value);
       attribute = (SM_ATTRIBUTE *) attribute->header.next;
     }
 
   if ((desc_obj->updated_flag) || (update_flag))
     {
       if (verbose_flag)
-	printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_UPDATING));
+	{
+	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_UPDATING));
+	}
       disk_update_instance (desc_obj->classop, desc_obj, obj_oid);
     }
 }
@@ -437,7 +448,7 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, bool verbose_flag)
  *    value(in): the value to process
  */
 static int
-process_value (DB_VALUE * value)
+process_value (THREAD_ENTRY * thread_p, DB_VALUE * value)
 {
   int return_value = 0;
 
@@ -452,11 +463,11 @@ process_value (DB_VALUE * value)
 
 	if (DB_VALUE_TYPE (value) == DB_TYPE_OID)
 	  {
-	    ref_oid = DB_PULL_OID (value);
+	    ref_oid = db_get_oid (value);
 	  }
 	else
 	  {
-	    ref_oid = WS_OID (DB_PULL_OBJECT (value));
+	    ref_oid = WS_OID (db_get_object (value));
 	  }
 
 	if (OID_ISNULL (ref_oid))
@@ -465,9 +476,9 @@ process_value (DB_VALUE * value)
 	  }
 
 	heap_scancache_quick_start (&scan_cache);
-	scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (NULL);
-	scan_code = heap_get_visible_version (NULL, ref_oid, NULL, NULL, &scan_cache, PEEK, NULL_CHN);
-	heap_scancache_end (NULL, &scan_cache);
+	scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+	scan_code = heap_get_visible_version (thread_p, ref_oid, NULL, NULL, &scan_cache, PEEK, NULL_CHN);
+	heap_scancache_end (thread_p, &scan_cache);
 
 #if defined(CUBRID_DEBUG)
 	printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_REFOID), ref_oid->volid,
@@ -491,7 +502,7 @@ process_value (DB_VALUE * value)
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
       {
-	return_value = process_set (DB_GET_SET (value));
+	return_value = process_set (thread_p, db_get_set (value));
 	break;
       }
 
@@ -512,7 +523,7 @@ process_value (DB_VALUE * value)
  *    set(in): the set to process
  */
 static int
-process_set (DB_SET * set)
+process_set (THREAD_ENTRY * thread_p, DB_SET * set)
 {
   SET_ITERATOR *it;
   DB_VALUE *element_value;
@@ -521,7 +532,7 @@ process_set (DB_SET * set)
   it = set_iterate (set);
   while ((element_value = set_iterator_value (it)) != NULL)
     {
-      return_value += process_value (element_value);
+      return_value += process_value (thread_p, element_value);
       set_iterator_next (it);
     }
   set_iterator_free (it);

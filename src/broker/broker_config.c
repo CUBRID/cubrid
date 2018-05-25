@@ -306,9 +306,8 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 
 #endif /* !_UC_ADMIN_SO_ */
   int num_brs = 0;
-  int num_proxy = 0;
   int i, j;
-  int master_shm_id = 0, proxy_shm_id = 0;
+  int master_shm_id = 0;
   int error_flag;
 #if defined (WINDOWS)
   char appl_server_port_assigned[MAX_BROKER_NUM];

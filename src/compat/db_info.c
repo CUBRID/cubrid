@@ -26,27 +26,33 @@
 
 #include "config.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <ctype.h>
-
-#include "system_parameter.h"
-#include "storage_common.h"
-#include "db.h"
-#include "class_object.h"
-#include "object_print.h"
-#include "server_interface.h"
+#include "authenticate.h"
 #include "boot_cl.h"
+#include "class_object.h"
+#include "db.h"
+#include "dbdef.h"
+#include "dbtype.h"
 #include "locator_cl.h"
+#include "mem_block.hpp"
+#include "network_interface_cl.h"
+#include "object_accessor.h"
+#include "object_print.h"
+#include "object_printer.hpp"
+#include "parser.h"
 #include "schema_manager.h"
 #include "schema_template.h"
-#include "object_accessor.h"
+#include "server_interface.h"
 #include "set_object.h"
+#include "storage_common.h"
+#include "string_buffer.hpp"
+#include "system_parameter.h"
 #include "virtual_object.h"
-#include "parser.h"
-#include "authenticate.h"
-#include "network_interface_cl.h"
+
+#include <assert.h>
+#include <ctype.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 /*
  *  CLASS LOCATION
@@ -2401,27 +2407,15 @@ db_get_btree_statistics (DB_CONSTRAINT * cons, int *num_leaf_pages, int *num_tot
 int
 db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
 {
-  PARSER_CONTEXT *parser;
   DB_TYPE type;
-  DB_OBJECT *class_op;
-  CLASS_HELP *class_schema = NULL;
-  PARSER_VARCHAR *buffer;
   const char *table_name;
-  char *schema_str;
   int error_status = NO_ERROR;
 
   assert (result != (DB_VALUE *) NULL);
-
   if (DB_IS_NULL (name_val))
     {
       PRIM_SET_NULL (result);
       return NO_ERROR;
-    }
-
-  parser = parser_create_parser ();
-  if (parser == NULL)
-    {
-      goto error;
     }
 
   type = DB_VALUE_DOMAIN_TYPE (name_val);
@@ -2430,7 +2424,7 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
       table_name = db_get_string (name_val);
       assert (table_name != NULL);
 
-      class_op = sm_find_class (table_name);
+      MOP class_op = sm_find_class (table_name);
       if (class_op == NULL)
 	{
 	  goto error;
@@ -2442,20 +2436,10 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
 	  goto error;
 	}
 
-      class_schema = obj_print_help_class (class_op, OBJ_PRINT_SHOW_CREATE_TABLE);
-      if (class_schema == NULL)
-	{
-	  goto error;
-	}
-
-      buffer = obj_print_describe_class (parser, class_schema, class_op);
-      if (buffer == NULL)
-	{
-	  goto error;
-	}
-
-      schema_str = (char *) pt_get_varchar_bytes (buffer);
-      db_make_string_copy (result, schema_str);
+      string_buffer sb;
+      object_printer printer (sb);
+      printer.describe_class (class_op);
+      db_make_string_copy (result, sb.get_buffer ());
     }
   else
     {
@@ -2463,31 +2447,10 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
       goto error;
     }
 
-  if (parser != NULL)
-    {
-      parser_free_parser (parser);
-    }
-
-  if (class_schema != NULL)
-    {
-      obj_print_help_free_class (class_schema);
-    }
-
   return error_status;
 
 error:
   PRIM_SET_NULL (result);
-
-  if (parser != NULL)
-    {
-      parser_free_parser (parser);
-    }
-
-  if (class_schema != NULL)
-    {
-      obj_print_help_free_class (class_schema);
-    }
-
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       return NO_ERROR;

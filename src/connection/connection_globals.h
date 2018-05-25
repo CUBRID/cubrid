@@ -31,6 +31,8 @@
 
 #define CSS_CR_NORMAL_ONLY_IDX  0
 
+#define CSS_MAX_CLIENT_COUNT   2000
+
 typedef bool (*CSS_CHECK_CLIENT_TYPE) (BOOT_CLIENT_TYPE client_type);
 typedef int (*CSS_GET_MAX_CONN_NUM) (void);
 

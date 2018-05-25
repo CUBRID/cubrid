@@ -26,13 +26,13 @@
 #include "config.h"
 #include <stdio.h>
 
-#include "error_manager.h"
-#include "object_representation.h"
-#include "query_executor.h"
-#include "class_object.h"
+#include "query_dump.h"
+#include "object_primitive.h"
 #include "system_parameter.h"
-#include "scan_manager.h"
-#include "perf_monitor.h"
+#include "dbtype.h"
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#endif // SERVER_MODE
 
 #define foutput stdout
 
@@ -73,7 +73,6 @@ static const char *qdump_key_range_string (RANGE range);
 static bool qdump_print_key_info (KEY_INFO * key_info);
 static const char *qdump_range_type_string (RANGE_TYPE range_type);
 static bool qdump_print_index (INDX_INFO * indexptr);
-static bool qdump_print_index_id (INDX_ID id);
 static bool qdump_print_btid (BTID id);
 static bool qdump_print_class (CLS_SPEC_TYPE * ptr);
 static bool qdump_print_hfid (HFID id);
@@ -434,13 +433,13 @@ qdump_access_method_string (ACCESS_METHOD access)
 {
   switch (access)
     {
-    case SEQUENTIAL:
+    case ACCESS_METHOD_SEQUENTIAL:
       return "sequential";
-    case INDEX:
+    case ACCESS_METHOD_INDEX:
       return "index";
-    case SEQUENTIAL_RECORD_INFO:
+    case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
       return "sequential record info";
-    case SEQUENTIAL_PAGE_SCAN:
+    case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
       return "sequential page scan";
     default:
       return "undefined";
@@ -513,9 +512,10 @@ qdump_print_access_spec (ACCESS_SPEC_TYPE * spec_list_p)
       qdump_print_predicate (spec_list_p->where_range);
     }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
   fprintf (foutput, "\n  grouped scan=%d", spec_list_p->grouped_scan);
   fprintf (foutput, ",fixed scan=%d", spec_list_p->fixed_scan);
-  fprintf (foutput, ",qualified block=%d", spec_list_p->qualified_block);
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
   fprintf (foutput, ",single fetch=%d", spec_list_p->single_fetch);
 
   if (spec_list_p->s_dbval)
@@ -594,12 +594,14 @@ qdump_print_key_info (KEY_INFO * key_info_p)
       fprintf (foutput, "]");
     }
   fprintf (foutput, "<is constant:%d>", key_info_p->is_constant);
+  fprintf (foutput, "<is user given keylimit:%d>", key_info_p->is_user_given_keylimit);
+  fprintf (foutput, "<reset:%d>", key_info_p->key_limit_reset);
 
   fprintf (foutput, " key limit: [");
   qdump_print_value (key_info_p->key_limit_l);
   fprintf (foutput, "][");
   qdump_print_value (key_info_p->key_limit_u);
-  fprintf (foutput, "][reset:%d]", key_info_p->key_limit_reset);
+  fprintf (foutput, "]");
 
   return true;
 }
@@ -636,7 +638,7 @@ qdump_print_index (INDX_INFO * index_p)
     }
 
   fprintf (foutput, "<index id:");
-  if (!qdump_print_index_id (index_p->indx_id))
+  if (!qdump_print_btid (index_p->btid))
     {
       return false;
     }
@@ -650,28 +652,6 @@ qdump_print_index (INDX_INFO * index_p)
       return false;
     }
   fprintf (foutput, ">");
-
-  return true;
-}
-
-/*
- * qdump_print_index_id () -
- *   return:
- *   id(in):
- */
-static bool
-qdump_print_index_id (INDX_ID id)
-{
-  if (id.type == T_BTID)
-    {
-      fprintf (foutput, "<type: Btree>");
-      fprintf (foutput, "(%d;%d)", id.i.btid.vfid.fileid, id.i.btid.vfid.volid);
-    }
-  else
-    {
-      fprintf (foutput, "<type: Extendible Hashing>");
-      fprintf (foutput, "<%d;%d;%d>", id.i.ehid.vfid.volid, id.i.ehid.vfid.fileid, id.i.ehid.pageid);
-    }
 
   return true;
 }
@@ -1025,6 +1005,19 @@ qdump_print_db_value (DB_VALUE * value_p)
   return true;
 }
 
+const char *
+qdump_operator_type_string (OPERATOR_TYPE optype)
+{
+  switch (optype)
+    {
+    case T_TO_CHAR:
+      return "TO_CHAR";
+      /* TODO - fill */
+    default:
+      return NULL;
+    }
+}
+
 static const char *
 qdump_regu_type_string (REGU_DATATYPE type)
 {
@@ -1183,6 +1176,8 @@ qdump_data_type_string (DB_TYPE type)
       return "DB_TABLE";
     case DB_TYPE_ENUMERATION:
       return "ENUM";
+    case DB_TYPE_JSON:
+      return "JSON";
     default:
       return "[***UNKNOWN***]";
     }
@@ -1378,6 +1373,26 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "INSERT_SUBSTRING";
     case F_ELT:
       return "ELT";
+    case F_JSON_OBJECT:
+      return "JSON_OBJECT";
+    case F_JSON_ARRAY:
+      return "JSON_ARRAY";
+    case F_JSON_INSERT:
+      return "JSON_INSERT";
+    case F_JSON_REPLACE:
+      return "JSON_REPLACE";
+    case F_JSON_SET:
+      return "JSON_SET";
+    case F_JSON_KEYS:
+      return "JSON_KEYS";
+    case F_JSON_REMOVE:
+      return "JSON_REMOVE";
+    case F_JSON_ARRAY_APPEND:
+      return "JSON_ARRAY_APPEND";
+    case F_JSON_MERGE:
+      return "JSON_MERGE";
+    case F_JSON_GET_ALL_PATHS:
+      return "JSON_GET_ALL_PATHS";
     default:
       return "***UNKNOWN***";
     }
@@ -1560,9 +1575,8 @@ qdump_print_rlike_eval_term (EVAL_TERM * term_p)
 
   fprintf (foutput, "SOURCE");
   qdump_print_value (et_rlike_p->src);
-  fprintf (foutput,
-	   (et_rlike_p->case_sensitive->value.dbval.data.
-	    i ? "PATTERN (CASE SENSITIVE):" : "PATTERN (CASE INSENSITIVE):"));
+  fprintf (foutput, (et_rlike_p->case_sensitive->value.dbval.data.i
+		     ? "PATTERN (CASE SENSITIVE):" : "PATTERN (CASE INSENSITIVE):"));
 
   if (!qdump_print_value (et_rlike_p->pattern))
     {
@@ -2249,13 +2263,6 @@ qdump_print_build_list_node (XASL_NODE * xasl_p)
       fprintf (foutput, "\n");
     }
 
-  if (node_p->g_outarith_list)
-    {
-      fprintf (foutput, "-->having outarith list:");
-      qdump_print_arith (ARITH_EXP, (void *) node_p->g_outarith_list);
-      fprintf (foutput, "\n");
-    }
-
   if (node_p->eptr_list)
     {
       fprintf (foutput, "-->EPTR LIST:%p\n", node_p->eptr_list);
@@ -2881,6 +2888,9 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
   json_t *scan = NULL, *scan_array = NULL;
   int num_spec = 0;
   char spec_name[1024];
+  THREAD_ENTRY *thread_p;
+
+  thread_p = thread_get_thread_entry_info ();
 
   for (spec = spec_list_p; spec != NULL; spec = spec->next)
     {
@@ -2900,7 +2910,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
       if (type == TARGET_CLASS)
 	{
 	  cls_node = &ACCESS_SPEC_CLS_SPEC (spec);
-	  if (heap_get_class_name (NULL, &(cls_node->cls_oid), &class_name) != NO_ERROR)
+	  if (heap_get_class_name (thread_p, &(cls_node->cls_oid), &class_name) != NO_ERROR)
 	    {
 	      /* ignore */
 	      er_clear ();
@@ -2908,7 +2918,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 
 	  spec_name[0] = '\0';
 
-	  if (spec->access == SEQUENTIAL)
+	  if (spec->access == ACCESS_METHOD_SEQUENTIAL)
 	    {
 	      if (class_name != NULL)
 		{
@@ -2919,11 +2929,10 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 		  sprintf (spec_name, "table (unknown)");
 		}
 	    }
-	  else if (spec->access == INDEX)
+	  else if (spec->access == ACCESS_METHOD_INDEX)
 	    {
-	      if (heap_get_indexinfo_of_btid
-		  (NULL, &(cls_node->cls_oid), &spec->indexptr->indx_id.i.btid, NULL, NULL, NULL, NULL, &index_name,
-		   NULL) == NO_ERROR)
+	      if (heap_get_indexinfo_of_btid (thread_p, &cls_node->cls_oid, &spec->indexptr->btid, NULL, NULL, NULL,
+					      NULL, &index_name, NULL) == NO_ERROR)
 		{
 		  if (class_name != NULL && index_name != NULL)
 		    {
@@ -3229,7 +3238,7 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 	      er_clear ();
 	    }
 
-	  if (spec->access == SEQUENTIAL)
+	  if (spec->access == ACCESS_METHOD_SEQUENTIAL)
 	    {
 	      if (class_name != NULL)
 		{
@@ -3240,11 +3249,10 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		  fprintf (fp, "(table: unknown), ");
 		}
 	    }
-	  else if (spec->access == INDEX)
+	  else if (spec->access == ACCESS_METHOD_INDEX)
 	    {
-	      if (heap_get_indexinfo_of_btid
-		  (NULL, &(cls_node->cls_oid), &spec->indexptr->indx_id.i.btid, NULL, NULL, NULL, NULL, &index_name,
-		   NULL) == NO_ERROR)
+	      if (heap_get_indexinfo_of_btid (thread_p, &cls_node->cls_oid, &spec->indexptr->btid, NULL, NULL, NULL,
+					      NULL, &index_name, NULL) == NO_ERROR)
 		{
 		  if (class_name != NULL && index_name != NULL)
 		    {

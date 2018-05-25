@@ -32,16 +32,12 @@
 #if !defined(WINDOWS)
 #include <unistd.h>
 #endif
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#else
-#include "getopt.h"
-#endif
 
 #ifdef MT_MODE
 #include <pthread.h>
 #endif
 
+#include "cubrid_getopt.h"
 #include "cas_common.h"
 #include "cas_query_info.h"
 #include "broker_log_time.h"
@@ -49,6 +45,10 @@
 #include "log_top_string.h"
 #include "broker_log_top.h"
 #include "broker_log_util.h"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define MAX_SRV_HANDLE		3000
 #define CLIENT_MSG_BUF_SIZE	1024
@@ -253,7 +253,7 @@ alloc_file_list (int size)
 
   assert (size > 0);
 
-  file_list = MALLOC (sizeof (char *) * size);
+  file_list = (char **) MALLOC (sizeof (char *) * size);
   if (file_list == NULL)
     {
       fprintf (stderr, "fail memory allocation\n");
@@ -262,7 +262,7 @@ alloc_file_list (int size)
 
   for (i = 0; i < size; i++)
     {
-      file_list[i] = MALLOC (MAX_PATH);
+      file_list[i] = (char *) MALLOC (MAX_PATH);
 
       if (file_list[i] == NULL)
 	{
@@ -494,6 +494,7 @@ log_top (FILE * fp, char *filename, long start_offset, long end_offset)
     }
 
   cas_log_buf = t_string_make (1);
+
   sql_buf = t_string_make (1);
   linebuf_tstr = t_string_make (1000);
   if (cas_log_buf == NULL || sql_buf == NULL || linebuf_tstr == NULL)

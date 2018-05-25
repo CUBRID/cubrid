@@ -17,7 +17,6 @@
  *
  */
 
-
 /*
  * object_print.h - Routines to print dbvalues
  */
@@ -27,188 +26,53 @@
 
 #ident "$Id$"
 
-#include "parser.h"
+#include <stdio.h>
 
-#define OBJ_SPRINT_DB_FLOAT(buf, value)       \
-  sprintf(buf, "%#.*g", DB_FLOAT_DECIMAL_PRECISION, value)
-#define OBJ_SPRINT_DB_DOUBLE(buf, value)      \
-  sprintf(buf, "%#.*g", DB_DOUBLE_DECIMAL_PRECISION, value)
+#include "dbtype_def.h"
+#include "thread_compat.hpp"
 
 #if !defined (SERVER_MODE)
-/* HELP STRUCTURES */
-/*
- * CLASS_HELP
- *
- * Note :
- *    This structure contains information about a class defined in the
- *    database.  This will be built and returned by help_class or
- *    help_class_name.
- */
-typedef struct class_description CLASS_HELP;
-struct class_description
+#include "parse_tree.h"
+#endif /* !SERVER_MODE */
+
+class string_buffer;
+
+#ifdef __cplusplus
+extern "C"
 {
-  char *name;
-  char *class_type;
-  char *collation;
-  char **supers;
-  char **subs;
-  char **attributes;
-  char **class_attributes;
-  char **methods;
-  char **class_methods;
-  char **resolutions;
-  char **method_files;
-  char **query_spec;
-  char *object_id;
-  char **triggers;
-  char **constraints;
-  char **partition;
-  char *comment;
-};
+#endif
 
-/*
- * OBJ_HELP
- *
- * Note :
- *    This structure contains information about an instance.  This will
- *    built and returned by help_obj().
- */
-typedef struct object_description OBJ_HELP;
-struct object_description
-{
-  char *classname;
-  char *oid;
-  char **attributes;
-  char **shared;
-};
+#if !defined (SERVER_MODE)
 
-/*
- * TRIGGER_HELP
- *
- * Note :
- *    This structure contains a description of a trigger object.
- */
-
-typedef struct trigger_description TRIGGER_HELP;
-struct trigger_description
-{
-  char *name;
-  const char *event;
-  char *class_name;
-  char *attribute;
-  char *full_event;
-  const char *status;
-  char *priority;
-  const char *condition_time;
-  char *condition;
-  const char *action_time;
-  char *action;
-  const char *comment;
-};
-
-typedef enum obj_print_type
-{
-  OBJ_PRINT_CSQL_SCHEMA_COMMAND = 0,
-  OBJ_PRINT_SHOW_CREATE_TABLE
-} OBJ_PRINT_TYPE;
-
-/*
- * COMMAND_HELP
- *
- * Note :
- *    Structure containing a description of a command.  Returned by
- *    help_command().
- */
-
-typedef struct command_description COMMAND_HELP;
-struct command_description
-{
-  char *name;
-  char **description;
-  char **bnf;
-  char **example;
-};
+  struct trigger_description;
 
 /* HELP FUNCTIONS */
 
-/* Class help */
-extern void obj_print_help_free_class (CLASS_HELP * info);
-extern CLASS_HELP *obj_print_help_class (MOP op, OBJ_PRINT_TYPE prt_type);
-extern CLASS_HELP *obj_print_help_class_name (const char *name);
-
-/* Instance help */
-
-extern OBJ_HELP *help_obj (MOP op);
-extern void help_free_obj (OBJ_HELP * info);
-
-
 /* Trigger help */
-
-extern TRIGGER_HELP *help_trigger (DB_OBJECT * trobj);
-extern TRIGGER_HELP *help_trigger_name (const char *name);
-extern void help_free_trigger (TRIGGER_HELP * help);
-extern int help_trigger_names (char ***names_ptr);
+  int help_trigger_names (char ***names_ptr);
 
 /* This can be used to free the class name list or the trigger name list */
-extern void help_free_names (char **names);
+  void help_free_names (char **names);
 
 
 /* Class/Instance printing */
-
-extern void help_fprint_obj (FILE * fp, MOP obj);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern void help_print_obj (MOP obj);
-#endif /* ENABLE_UNUSED_FUNCTION */
-
-/* Command help */
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern void help_print_command (DB_HELP_COMMAND cmd);
-extern void help_fprint_command (FILE * fp, DB_HELP_COMMAND cmd);
-#endif /* ENABLE_UNUSED_FUNCTION */
+  void help_fprint_obj (FILE * fp, MOP obj);
 
 /* Class name help */
-
-extern char **help_class_names (const char *qualifier);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern char **help_base_class_names (void);
-extern void help_print_class_names (const char *qualifier);
-#endif /* ENABLE_UNUSED_FUNCTION */
-extern void help_free_class_names (char **names);
-extern void help_fprint_class_names (FILE * fp, const char *qualifier);
+  extern char **help_class_names (const char *qualifier);
+  extern void help_free_class_names (char **names);
 
 /* Misc help */
+  void help_print_info (const char *command, FILE * fpp);
+  int help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen);
+#endif				/* !SERVER_MODE */
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern void help_fprint_all_classes (FILE * fp);
-extern void help_fprint_resident_instances (FILE * fp, MOP op);
-#endif /* ENABLE_UNUSED_FUNCTION */
-extern void help_print_info (const char *command, FILE * fpp);
-extern int help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen);
+  void help_fprint_value (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value);
+  void help_sprint_value (const DB_VALUE * value, string_buffer & sb);
+  void help_fprint_describe_comment (FILE * fp, const char *comment);
 
-extern void help_print_trigger (const char *name, FILE * fpp);
-
-extern PARSER_VARCHAR *obj_print_describe_class (const PARSER_CONTEXT * parser, CLASS_HELP * class_schema,
-						 DB_OBJECT * class_op);
-#endif /* !SERVER_MODE */
-
-extern PARSER_VARCHAR *describe_money (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer,
-				       const DB_MONETARY * value);
-extern PARSER_VARCHAR *describe_data (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const DB_VALUE * value);
-extern PARSER_VARCHAR *describe_value (const PARSER_CONTEXT * inparser, PARSER_VARCHAR * buffer,
-				       const DB_VALUE * value);
-extern PARSER_VARCHAR *describe_value2 (const PARSER_CONTEXT * inparser, PARSER_VARCHAR * buffer,
-					const DB_VALUE * value);
-extern PARSER_VARCHAR *describe_string (const PARSER_CONTEXT * parser, PARSER_VARCHAR * buffer, const char *str,
-					size_t str_length, int max_token_length);
-extern void help_fprint_value (FILE * fp, const DB_VALUE * value);
-extern int help_sprint_value (const DB_VALUE * value, char *buffer, int max_length);
-
-extern char *describe_comment (PARSER_CONTEXT * parser, const char *comment);
-extern void help_fprint_describe_comment (FILE * fp, const char *comment);
-
-#if defined(CUBRID_DEBUG)
-extern char *dbg_value (const DB_VALUE * value);
+#ifdef __cplusplus
+}
 #endif
 
-#endif /* _OBJECT_PRINT_H */
+#endif				/* _OBJECT_PRINT_H */

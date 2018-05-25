@@ -89,7 +89,7 @@ realpath (const char *path, char *resolved_path)
   struct stat stat_buf;
   char *tmp_str = _fullpath (resolved_path, path, _MAX_PATH);
   char tmp_path[_MAX_PATH] = { 0 };
-  int len = 0;
+  size_t len = 0;
 
   if (tmp_str != NULL)
     {
@@ -132,7 +132,7 @@ poll (struct pollfd *fds, nfds_t nfds, int timeout)
   fd_set *rp, *wp, *ep;
   unsigned long int i;
   int r;
-  unsigned int max_fd;
+  unsigned long long max_fd;
 
   tp = NULL;
   if (timeout >= 0)
@@ -179,7 +179,7 @@ poll (struct pollfd *fds, nfds_t nfds, int timeout)
 	}
     }
 
-  r = select (max_fd + 1, rp, wp, ep, tp);
+  r = select ((int) max_fd + 1, rp, wp, ep, tp);
   for (i = 0; i < nfds; i++)
     {
       fds[i].revents = 0;
@@ -314,7 +314,8 @@ cuserid (char *string)
 int
 getlogin_r (char *buf, size_t bufsize)
 {
-  return GetUserName (buf, &bufsize);
+  DWORD wd = static_cast < DWORD > (bufsize);
+  return GetUserName (buf, &wd);
 }
 
 #if 0
@@ -1477,7 +1478,7 @@ cub_vsnprintf (char *buffer, size_t count, const char *format, va_list argptr)
 
   if (len > (int) count)
     {
-      char *cp = malloc (len);
+      char *cp = (char *) malloc (len);
       if (cp == NULL)
 	{
 	  return -1;
@@ -1664,7 +1665,7 @@ check_CONDITION_VARIABLE (void)
 static int
 timespec_to_msec (const struct timespec *abstime)
 {
-  int msec = 0;
+  long long msec = 0;
   struct timeval tv;
 
   if (abstime == NULL)
@@ -1681,7 +1682,7 @@ timespec_to_msec (const struct timespec *abstime)
       msec = 0;
     }
 
-  return msec;
+  return (int) msec;
 }
 
 
@@ -1893,15 +1894,15 @@ pthread_create (pthread_t * thread, const pthread_attr_t * attr,
 }
 
 void
-pthread_exit (void *ptr)
+pthread_exit (THREAD_RET_T ptr)
 {
-  _endthreadex ((unsigned int) ptr);
+  _endthreadex (ptr);
 }
 
 pthread_t
 pthread_self ()
 {
-  return GetCurrentThread ();
+  return (pthread_t) GetCurrentThreadId ();
 }
 
 int
@@ -2219,10 +2220,6 @@ port_open_memstream (char **ptr, size_t * sizeloc)
 void
 port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc)
 {
-  char *buff = NULL;
-  struct stat stat_buf;
-  size_t n;
-
   fflush (fp);
 
   if (fp)
@@ -2230,13 +2227,18 @@ port_close_memstream (FILE * fp, char **ptr, size_t * sizeloc)
 #ifdef HAVE_OPEN_MEMSTREAM
       fclose (fp);
 #else
+      char *buff = NULL;
+      struct stat stat_buf;
+
       if (fstat (fileno (fp), &stat_buf) == 0)
 	{
 	  *sizeloc = stat_buf.st_size;
 
-	  buff = malloc (*sizeloc + 1);
+	  buff = (char *) malloc (*sizeloc + 1);
 	  if (buff)
 	    {
+	      size_t n;
+
 	      fseek (fp, 0, SEEK_SET);
 	      n = fread (buff, 1, *sizeloc, fp);
 	      buff[n] = '\0';
@@ -2552,19 +2554,19 @@ strtof_win (const char *nptr, char **endptr)
   if (d_val > FLT_MAX)		/* overflow */
     {
       errno = ERANGE;
-      *endptr = nptr;
+      *endptr = const_cast < char *>(nptr);
       return (HUGE_VAL);
     }
   else if (d_val < (-FLT_MAX))	/* overflow */
     {
       errno = ERANGE;
-      *endptr = nptr;
+      *endptr = const_cast < char *>(nptr);
       return (-HUGE_VAL);
     }
   else if (((d_val > 0) && (d_val < FLT_MIN)) || ((d_val < 0) && (d_val > (-FLT_MIN))))	/* underflow */
     {
       errno = ERANGE;
-      *endptr = nptr;
+      *endptr = const_cast < char *>(nptr);
       return 0.0f;
     }
 

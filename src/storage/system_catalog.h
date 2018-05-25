@@ -27,6 +27,10 @@
 
 #ident "$Id$"
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include "config.h"
 
 #include "error_manager.h"
@@ -36,9 +40,6 @@
 #include "disk_manager.h"
 #include "object_representation.h"
 #include "storage_common.h"
-
-#define NULL_REPRID       -1	/* Null Representation Identifier */
-#define NULL_ATTRID       -1	/* Null Attribute Identifier */
 
 #define CATALOG_DIR_REPR_KEY -2
 
@@ -52,8 +53,7 @@ struct ctid
   PAGEID hpgid;			/* catalog header page identifier */
 };				/* catalog identifier */
 
-typedef int REPR_ID;		/* representation identifier */
-typedef int ATTR_ID;		/* attribute identifier */
+
 
 /*
  * disk_representation
@@ -88,8 +88,7 @@ struct disk_attribute
 				 * var attr. */
   DB_TYPE type;			/* datatype */
   int val_length;		/* default value length >= 0 */
-  void *value;			/* default value */
-  DB_DEFAULT_EXPR_TYPE default_expr;	/* default expression identifier */
+  void *value;			/* default value. Currently, we do not keep default expression. */
   int position;			/* storage position (fixed attributes only) */
   OID classoid;			/* source class object id */
   int n_btstats;		/* number of B+tree statistics information */
@@ -132,11 +131,32 @@ struct catalog_access_info
 #define CLS_INFO_INITIALIZER \
   { HFID_INITIALIZER, 0, 0, 0, { NULL_PAGEID, NULL_SLOTID, NULL_VOLID } }
 
+#define catalog_free_class_info_and_init(class_info_p) \
+  do \
+    { \
+      if ((class_info_p) != NULL) \
+        { \
+          catalog_free_class_info ((class_info_p)); \
+          (class_info_p) = NULL; \
+        } \
+    } \
+  while (0)
+
+#define catalog_free_representation_and_init(repr_p) \
+  do \
+    { \
+      if ((repr_p) != NULL) \
+        { \
+          catalog_free_representation ((repr_p)); \
+          (repr_p) = NULL; \
+        } \
+    } \
+  while (0)
+
 extern CTID catalog_Id;		/* global catalog identifier */
 
-extern void catalog_free_disk_attribute (DISK_ATTR * atr);
-extern void catalog_free_representation (DISK_REPR * dr);
-extern void catalog_free_class_info (CLS_INFO * Cls_Info);
+extern void catalog_free_representation (DISK_REPR * repr_p);
+extern void catalog_free_class_info (CLS_INFO * class_info_p);
 extern void catalog_initialize (CTID * catid);
 extern void catalog_finalize (void);
 

@@ -365,6 +365,7 @@ $set 9 MSGCAT_UTIL_SET_MASTER
 20 Master going down in %1$d minutes\n
 21 The heartbeat feature has been deactivated. Please wait until all shutdown processes of cub_servers are completed.\n
 
+
 $set 10 MSGCAT_UTIL_SET_OPTIMIZEDB
 11 Couldn't open output file '%1$s'\n
 60 \
@@ -593,6 +594,7 @@ valid options:\n\
 38 can't execute %1$s
 39 -i(--immediately) option must be used with --deact-stop-all option.\n
 
+
 $set 16 MSGCAT_UTIL_SET_PATCHDB
 60 \
 emergency_patchlog: Patch a database in case of emergency.\n\
@@ -651,27 +653,26 @@ valid options:\n\
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 Space description for database '%1$s' with pagesize %2$s. (log pagesize: %3$s)\n\n
-16 %1$5d %2$9s  %3$s %4$s  %5$s\n
-17 Couldn't open output file '%1$s'\n
-18 Space description for temporary volumes for database '%1$s' with pagesize %2$s.\n\n
-19 Volid  Purpose   total_pages  free_pages  Vol Name\n\n
-20 Volid  Purpose    total_size   free_size  Vol Name\n\n
-21 LOB space description %1$s \n\n
-22 -------------------------------------------------------------------------------\n
-30 Summarized space description for database '%1$s' with pagesize %2$s. (log pagesize: %3$s)\n\n
-31 Purpose    total_pages  used_pages  free_pages  volume_count\n
-32 Purpose     total_size   used_size   free_size  volume_count\n
-33 %1$10s %2$s %3$s %4$s %5$10d\n
-34 -------------------------------------------------------------\n
-40 Volid  Purpose   total_pages  free_pages  data_pages index_pages  temp_pages  Vol Name\n\n
-41 Volid  Purpose    total_size   free_size   data_size  index_size   temp_size  Vol Name\n\n
-42 %1$5d %2$9s  %3$s %4$s %5$s %6$s %7$s  %8$s\n
-43 ----------------------------------------------------------------------------------------------------\n
-50 Purpose    total_pages  used_pages  free_pages  data_pages index_pages  temp_pages  volume_count\n
-51 Purpose     total_size   used_size   free_size   data_size  index_size   temp_size  volume_count\n
-52 %1$10s %2$s %3$s %4$s %5$s %6$s %7$s %8$10d\n
-53 -------------------------------------------------------------------------------------------------\n
+10 Space description for database '%1$s' with pagesize %2$s. (log pagesize: %3$s)\n\n
+11 Couldn't open output file '%1$s'\n
+12 LOB space description %1$s \n\n
+20 type                purpose            volume_count        used_pages          free_pages          total_pages\n
+21 type                purpose            volume_count         used_size           free_size           total_size\n
+22 PERMANENT           PERMANENT DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+23 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+24 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+25 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
+30 Space description for all volumes:\n
+31 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
+32 volid               type                purpose             used_size           free_size           total_size         volume_name\n
+33 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+34 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+35 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+40 Detailed space description for files:\n
+41 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
+42 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
+43 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
+50 -----------------------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: Display usage/free space of the database.\n\
 usage: %1$s spacedb [OPTION] database-name\n\
@@ -684,7 +685,6 @@ valid options:\n\
                                set the display unit (page, mega, giga, tera, human readable); default: H\n\
   -s, --summarize              display only a summary for each volume purpose\n\
   -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
-
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
 15 Estimated Number of Pages = %1$d\n
@@ -1062,26 +1062,13 @@ valid options:\n\
       --sort-key=COLUMN_NUMBER column number to be sorted\n\
       --reverse                reverse the sort result\n
 
-$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
-22 The server was not configured for HA.\n
-23 Prefetch feature is disabled.\n
-58 HA feature is not supported in this platform.\n
-59 prefetchlogdb cannot run as standalone mode.\n
-60 \
-prefetchlogdb: Prefetch log pages from the server.\n\
-usage: %1$s prefetchlogdb [OPTION] database-name\n\
-\n\
-valid options:\n\
-  -L, --log-path=PATH         directory PATH for copied log volumes\n
-
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
 59 Invalid generation mode supplied.\n
 60 Invalid or corrupt input folder.\n
 61 \
 gen_tz: Generate source files containing timezone data to be compiled into\n\
         a shared library.\n\
-usage: %s gen_tz [OPTION]\n\
-       %s gen_tz -g extend [OPTION] [database-name]\n\
+usage: %s gen_tz -g [new|extend] [database-name] (only for extend mode)\n\
 \n\
 valid options:\n\
   -i, --input-folder    path to an input folder containing a version of\n\
@@ -1095,17 +1082,14 @@ valid options:\n\
                         and timezone names (intended for developer use, to\n\
                         be integrated into future CUBRID versions).\n\
                         2. EXTEND : generate timezone source file(s) using the\n\
-                        data from the input folder; timezone IDs encoded into\n\
-                        CUBRID are preserved; new timezones found in the input\n\
-                        files are added to the secondary source file that is\n\
-                        also generated; GMT offsets and daylight saving\n\
+                        data from the input folder; new timezones found in the input\n\
+                        files are added; GMT offsets and daylight saving\n\
                         information is updated (or added, for new timezones);\n\
                         timezones are never removed if a timezone encoded into\n\
                         CUBRID is missing from the input files, the associated\n\
                         data is retrieved from the existing timezone library.\n\
-                        A new C file containing all timezone names is generated,\n\
-                        and it must be included in CUBRID source file folder\n\
-                        before the new timezone library can be used.\n
+                        If first phase of extend fails to make all data backward compatible,\n\
+                        all rows in all tables having timezone data types will be updated.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 The supplied zone ID is out of range. Use -z to see all\n\

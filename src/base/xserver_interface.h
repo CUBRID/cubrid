@@ -33,28 +33,32 @@
 
 #include "config.h"
 
-#include "error_manager.h"
-#include "storage_common.h"
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include "boot.h"
+#include "error_manager.h"
+#include "file_io.h"
 #include "locator.h"
 #include "log_comm.h"
-#include "perf_monitor.h"
 #include "query_list.h"
-#include "file_io.h"
-#include "thread.h"
-#include "replication.h"
 #include "query_manager.h"
-extern int xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL * client_credential,
-				    BOOT_DB_PATH_INFO * db_path_info, bool db_overwrite, const char *file_addmore_vols,
-				    volatile DKNPAGES db_npages, PGLENGTH db_desired_pagesize,
-				    volatile DKNPAGES xlog_npages, PGLENGTH db_desired_log_page_size,
-				    OID * rootclass_oid, HFID * rootclass_hfid, int client_lock_wait,
-				    TRAN_ISOLATION client_isolation);
+#include "perf_monitor.h"
+#include "replication.h"
+#include "storage_common.h"
+#include "thread_compat.hpp"
+
+extern int xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
+				    bool db_overwrite, const char *file_addmore_vols, volatile DKNPAGES db_npages,
+				    PGLENGTH db_desired_pagesize, volatile DKNPAGES xlog_npages,
+				    PGLENGTH db_desired_log_page_size, OID * rootclass_oid, HFID * rootclass_hfid,
+				    int client_lock_wait, TRAN_ISOLATION client_isolation);
 extern const char *xboot_get_server_session_key (void);
 extern int xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_credential,
 				  int client_lock_wait, TRAN_ISOLATION client_isolation, TRAN_STATE * tran_state,
 				  BOOT_SERVER_CREDENTIAL * server_credential);
-extern int xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index);
+extern int xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index);
 extern int xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
 			 bool delete_unneeded_logarchives, const char *backup_verbose_file, int num_threads,
 			 FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs);
@@ -98,7 +102,7 @@ extern LC_FIND_CLASSNAME xlocator_find_lockhint_class_oids (THREAD_ENTRY * threa
 							    const char **many_classnames, LOCK * many_locks,
 							    int *many_need_subclasses, LC_PREFETCH_FLAGS * many_flags,
 							    OID * guessed_class_oids, int *guessed_class_chns,
-							    int quit_on_errors, LC_LOCKHINT ** hlock,
+							    bool quit_on_errors, LC_LOCKHINT ** hlock,
 							    LC_COPYAREA ** fetch_area);
 extern int xlocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint, LC_COPYAREA ** fetch_area);
 extern int xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
@@ -114,10 +118,6 @@ extern int xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * oid,
 
 extern int xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
 				       int n_attrs, int *attr_ids, OID * pk_cls_oid, BTID * pk_btid, char *fk_name);
-extern int xlocator_prefetch_repl_insert (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes,
-					  bool update_last_reprid);
-extern int xlocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid,
-						    DB_VALUE * key_value);
 extern LOG_LSA *xrepl_log_get_append_lsa (void);
 extern int xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info);
 
@@ -184,11 +184,11 @@ extern DKNPAGES xdisk_get_free_numpages (THREAD_ENTRY * thread_p, VOLID volid);
 extern bool xdisk_is_volume_exist (THREAD_ENTRY * thread_p, VOLID volid);
 
 extern char *xdisk_get_remarks (THREAD_ENTRY * thread_p, VOLID volid);
-extern int *disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid, int *db_charset);
+extern int disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid, INTL_CODESET * db_charset);
 extern char *xdisk_get_fullname (THREAD_ENTRY * thread_p, VOLID volid, char *vol_fullname);
 extern DISK_VOLPURPOSE xdisk_get_purpose (THREAD_ENTRY * thread_p, VOLID volid);
 extern int xdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, VOLID volid, DISK_VOLPURPOSE * vol_purpose,
-					     VOL_SPACE_INFO * space_info);
+					     DISK_VOLUME_SPACE_INFO * space_info);
 
 extern int xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id, VOLID volid, PAGEID pageid,
 				      char *page_bufp, int *page_sizep);

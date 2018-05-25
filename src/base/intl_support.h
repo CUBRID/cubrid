@@ -31,6 +31,7 @@
 #include <string.h>
 #include <locale.h>
 #include <limits.h>
+#include <assert.h>
 
 #if defined(AIX)
 #include <ctype.h>
@@ -46,7 +47,7 @@
 #include <wchar.h>
 #endif
 
-#include "dbtype.h"
+#include "dbtype_def.h"
 
 #ifndef MB_LEN_MAX
 #define MB_LEN_MAX            1
@@ -132,7 +133,6 @@ extern bool intl_String_validation;
  * It is not guaranteed that user defined languages keep their IDs */
 typedef unsigned int INTL_LANG;
 
-typedef enum intl_builtin_lang INTL_BUILTIN_LANG;
 enum intl_builtin_lang
 {
   INTL_LANG_ENGLISH = 0,
@@ -140,8 +140,8 @@ enum intl_builtin_lang
   INTL_LANG_TURKISH,
   INTL_LANG_USER_DEF_START
 };
+typedef enum intl_builtin_lang INTL_BUILTIN_LANG;
 
-typedef enum intl_zone INTL_ZONE;
 enum intl_zone
 {
   INTL_ZONE_US,
@@ -149,8 +149,31 @@ enum intl_zone
   INTL_ZONE_GB,
   INTL_ZONE_TR
 };
+typedef enum intl_zone INTL_ZONE;
 
-typedef enum intl_codeset INTL_CODESET;
+enum currency_check_mode
+{
+  CURRENCY_CHECK_MODE_NONE = 0,
+  CURRENCY_CHECK_MODE_CONSOLE = 0x1,
+  CURRENCY_CHECK_MODE_UTF8 = 0x2,
+  CURRENCY_CHECK_MODE_GRAMMAR = 0x4,
+  CURRENCY_CHECK_MODE_ISO = 0x8,
+  CURRENCY_CHECK_MODE_ESC_ISO = 0x10,
+  CURRENCY_CHECK_MODE_ISO88591 = 0x16
+};
+typedef enum currency_check_mode CURRENCY_CHECK_MODE;
+
+enum intl_utf8_validity
+{
+  INTL_UTF8_VALID,
+  INTL_UTF8_INVALID,
+  INTL_UTF8_TRUNCATED,
+};
+typedef enum intl_utf8_validity INTL_UTF8_VALIDITY;
+
+/* map of lengths of UTF-8 characters */
+extern const unsigned char *const intl_Len_utf8_char;
+
 enum intl_codeset
 {
   INTL_CODESET_ERROR = -2,
@@ -166,26 +189,14 @@ enum intl_codeset
 
   INTL_CODESET_LAST = INTL_CODESET_UTF8
 };
-
-typedef enum currency_check_mode CURRENCY_CHECK_MODE;
-enum currency_check_mode
-{
-  CURRENCY_CHECK_MODE_NONE = 0,
-  CURRENCY_CHECK_MODE_CONSOLE = 0x1,
-  CURRENCY_CHECK_MODE_UTF8 = 0x2,
-  CURRENCY_CHECK_MODE_GRAMMAR = 0x4,
-  CURRENCY_CHECK_MODE_ISO = 0x8,
-  CURRENCY_CHECK_MODE_ESC_ISO = 0x10,
-  CURRENCY_CHECK_MODE_ISO88591 = 0x16
-};
-
-/* map of lengths of UTF-8 characters */
-extern const unsigned char *const intl_Len_utf8_char;
+typedef enum intl_codeset INTL_CODESET;
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
+  extern int intl_char_count (unsigned char *src, int length_in_bytes, INTL_CODESET src_codeset, int *char_count);
+  extern int intl_char_size (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset, int *byte_count);
 
   extern int intl_tolower_iso8859 (unsigned char *s, int length);
   extern int intl_toupper_iso8859 (unsigned char *s, int length);
@@ -202,8 +213,6 @@ extern "C"
 
   extern int intl_convert_charset (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset,
 				   unsigned char *dest, INTL_CODESET dest_codeset, int *unconverted);
-  extern int intl_char_count (unsigned char *src, int length_in_bytes, INTL_CODESET src_codeset, int *char_count);
-  extern int intl_char_size (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset, int *byte_count);
 #if defined (ENABLE_UNUSED_FUNCTION)
   extern int intl_char_size_pseudo_kor (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset,
 					int *byte_count);
@@ -275,7 +284,7 @@ extern "C"
 #endif
   extern int intl_mbs_ncasecmp (const char *mbs1, const char *mbs2, size_t n);
 #if !defined (SERVER_MODE)
-  extern int intl_check_string (const char *buf, int size, char **pos, const INTL_CODESET codeset);
+  extern INTL_UTF8_VALIDITY intl_check_string (const char *buf, int size, char **pos, const INTL_CODESET codeset);
   extern bool intl_is_bom_magic (const char *buf, const int size);
 #endif
   extern int intl_cp_to_utf8 (const unsigned int codepoint, unsigned char *utf8_seq);
@@ -318,8 +327,8 @@ extern "C"
   extern char *intl_get_money_ISO88591_symbol (const DB_CURRENCY currency);
   extern int intl_get_currency_symbol_position (const DB_CURRENCY currency);
   extern int intl_count_utf8_chars (unsigned char *s, int length_in_bytes);
-  extern bool intl_check_utf8 (const unsigned char *buf, int size, char **pos);
-  extern bool intl_check_euckr (const unsigned char *buf, int size, char **pos);
+  extern INTL_UTF8_VALIDITY intl_check_utf8 (const unsigned char *buf, int size, char **pos);
+  extern INTL_UTF8_VALIDITY intl_check_euckr (const unsigned char *buf, int size, char **pos);
   extern int intl_utf8_to_iso88591 (const unsigned char *in_buf, const int in_size, unsigned char **out_buf,
 				    int *out_size);
   extern void intl_binary_to_utf8 (const unsigned char *in_buf, const int in_size, unsigned char **out_buf,

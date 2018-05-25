@@ -31,12 +31,16 @@
 #include <ctype.h>
 #include <string.h>
 #include <fcntl.h>
+#include <assert.h>
 #if defined (WINDOWS)
 #include <io.h>
 #else
 #include <unistd.h>
 #endif /* !WINDOWS */
 #include <errno.h>
+
+#include "loader.h"
+
 #include "porting.h"
 #include "utility.h"
 #include "dbi.h"
@@ -46,11 +50,9 @@
 #include "authenticate.h"
 #include "schema_manager.h"
 #include "object_accessor.h"
-
 #include "db.h"
 #include "loader_object_table.h"
 #include "load_object.h"
-#include "loader.h"
 #include "work_space.h"
 #include "message_catalog.h"
 #include "locator_cl.h"
@@ -63,12 +65,19 @@
 #include "execute_schema.h"
 #include "transaction_cl.h"
 #include "locator_cl.h"
+#include "db_json.hpp"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 extern bool No_oid_hint;
-extern int loader_yylineno;
+extern "C"
+{
+  extern int loader_yylineno;
+}
 
 #define LDR_MAX_ARGS 32
 
@@ -449,6 +458,8 @@ static DB_VALUE ldr_datetimetz_tmpl;
 static DB_VALUE ldr_blob_tmpl;
 static DB_VALUE ldr_clob_tmpl;
 static DB_VALUE ldr_bit_tmpl;
+static DB_VALUE ldr_json_tmpl;
+
 
 /* default for 64 bit signed big integers, i.e., 9223372036854775807 (0x7FFFFFFFFFFFFFFF) */
 #define MAX_DIGITS_FOR_BIGINT   19
@@ -592,6 +603,8 @@ static int ldr_init_loader (LDR_CONTEXT * context);
 static void ldr_abort (void);
 static void ldr_process_object_ref (LDR_OBJECT_REF * ref, int type);
 static int ldr_act_add_class_all_attrs (LDR_CONTEXT * context, const char *class_name);
+static int ldr_json_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
+static int ldr_json_db_json (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
 
 /* default action */
 void (*ldr_act) (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type) = ldr_act_attr;
@@ -1024,7 +1037,6 @@ ldr_find_class (const char *classname)
   LC_FIND_CLASSNAME find;
   DB_OBJECT *class_ = NULL;
   char realname[SM_MAX_IDENTIFIER_LENGTH];
-  int err = NO_ERROR;
 
   /* Check for internal error */
   if (classname == NULL)
@@ -1691,7 +1703,7 @@ error_exit:
 static int
 ldr_null_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
-  DB_MAKE_NULL (val);
+  db_make_null (val);
   return NO_ERROR;
 }
 
@@ -2165,7 +2177,8 @@ error_exit:
 static int
 ldr_str_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
-  DB_MAKE_STRING (val, str);
+  /* todo: switch this to db_make_string_copy and avoid any possible leaks */
+  db_make_string (val, (char *) str);
   return NO_ERROR;
 }
 
@@ -2188,7 +2201,7 @@ ldr_str_db_char (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE *
 
   precision = att->domain->precision;
 
-  intl_char_count ((unsigned char *) str, len, att->domain->codeset, &char_count);
+  intl_char_count ((unsigned char *) str, len, (INTL_CODESET) att->domain->codeset, &char_count);
 
   if (char_count > precision)
     {
@@ -2201,7 +2214,7 @@ ldr_str_db_char (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE *
       const char *p;
       int truncate_size;
 
-      intl_char_size ((unsigned char *) str, precision, att->domain->codeset, &truncate_size);
+      intl_char_size ((unsigned char *) str, precision, (INTL_CODESET) att->domain->codeset, &truncate_size);
 
       for (p = &str[truncate_size], safe = 1; p < &str[len]; p++)
 	{
@@ -2258,7 +2271,7 @@ ldr_str_db_varchar (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUT
   int char_count = 0;
 
   precision = att->domain->precision;
-  intl_char_count ((unsigned char *) str, len, att->domain->codeset, &char_count);
+  intl_char_count ((unsigned char *) str, len, (INTL_CODESET) att->domain->codeset, &char_count);
 
   if (char_count > precision)
     {
@@ -2271,7 +2284,7 @@ ldr_str_db_varchar (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUT
       const char *p;
       int truncate_size;
 
-      intl_char_size ((unsigned char *) str, precision, att->domain->codeset, &truncate_size);
+      intl_char_size ((unsigned char *) str, precision, (INTL_CODESET) att->domain->codeset, &truncate_size);
       for (p = &str[truncate_size], safe = 1; p < &str[len]; p++)
 	{
 	  if (*p != ' ')
@@ -2325,7 +2338,8 @@ ldr_str_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUT
 {
   DB_VALUE val;
 
-  DB_MAKE_STRING (&val, str);
+  /* todo: switch this to db_make_string_copy and avoid any possible leaks */
+  db_make_string (&val, (char *) str);
   return ldr_generic (context, &val);
 }
 
@@ -2349,7 +2363,7 @@ ldr_bstr_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 
   dest_size = (len + 7) / 8;
 
-  CHECK_PTR (err, bstring = db_private_alloc (NULL, dest_size + 1));
+  CHECK_PTR (err, bstring = (char *) db_private_alloc (NULL, dest_size + 1));
 
   if (qstr_bit_to_bin (bstring, dest_size, (char *) str, len) != len)
     {
@@ -2358,7 +2372,7 @@ ldr_bstr_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
       CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
     }
 
-  DB_MAKE_VARBIT (&temp, TP_FLOATING_PRECISION_VALUE, bstring, len);
+  db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, len);
   temp.need_clear = true;
 
   GET_DOMAIN (context, domain);
@@ -2427,11 +2441,11 @@ ldr_xstr_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
   DB_VALUE temp;
   TP_DOMAIN *domain_ptr, temp_domain;
 
-  DB_MAKE_NULL (&temp);
+  db_make_null (&temp);
 
   dest_size = (len + 1) / 2;
 
-  CHECK_PTR (err, bstring = db_private_alloc (NULL, dest_size + 1));
+  CHECK_PTR (err, bstring = (char *) db_private_alloc (NULL, dest_size + 1));
 
   if (qstr_hex_to_bin (bstring, dest_size, (char *) str, len) != len)
     {
@@ -2439,7 +2453,7 @@ ldr_xstr_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
       CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
     }
 
-  DB_MAKE_VARBIT (&temp, TP_FLOATING_PRECISION_VALUE, bstring, len * 4);
+  db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, len * 4);
   temp.need_clear = true;
 
   /* temp takes ownership of this piece of memory */
@@ -2509,7 +2523,8 @@ static int
 ldr_nstr_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
 
-  DB_MAKE_VARNCHAR (val, TP_FLOATING_PRECISION_VALUE, str, len, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) (str), len, LANG_SYS_CODESET,
+		    LANG_SYS_COLLATION);
   return NO_ERROR;
 }
 
@@ -3401,7 +3416,7 @@ ldr_elo_ext_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * va
   if (new_len > 0)
     {
       DB_TYPE type;
-      const char *size_sp, *size_ep;
+      char *size_sp, *size_ep;
       const char *locator_sp, *locator_ep;
       const char *meta_sp, *meta_ep;
 
@@ -3419,7 +3434,7 @@ ldr_elo_ext_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * va
 	}
 
       /* size */
-      size_sp = str + 1;
+      size_sp = (char *) (str + 1);
       size_ep = strchr (size_sp, '|');
       if (size_ep == NULL || size_ep - size_sp == 0)
 	{
@@ -3458,7 +3473,7 @@ ldr_elo_ext_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * va
 	  goto error_exit;
 	}
 
-      locator = db_private_alloc (NULL, locator_ep - locator_sp + 1);
+      locator = (char *) db_private_alloc (NULL, locator_ep - locator_sp + 1);
       if (locator == NULL)
 	{
 	  goto error_exit;
@@ -3468,7 +3483,7 @@ ldr_elo_ext_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * va
 
       if (meta_ep - meta_sp > 0)
 	{
-	  meta_data = db_private_alloc (NULL, meta_ep - meta_sp + 1);
+	  meta_data = (char *) db_private_alloc (NULL, meta_ep - meta_sp + 1);
 	  if (meta_data == NULL)
 	    {
 	      goto error_exit;
@@ -3533,7 +3548,7 @@ ldr_elo_ext_db_elo (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUT
   PARSE_ELO_STR (str, new_len);
   if (new_len >= 8196)
     {
-      name = malloc (new_len);
+      name = (char *) malloc (new_len);
 
       if (name == NULL)
 	{
@@ -3894,7 +3909,7 @@ ldr_class_oid_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * 
     }
 
   CHECK_ERR (err, check_class_domain (context));
-  DB_MAKE_OBJECT (val, context->attrs[context->next_attr].ref_class);
+  db_make_object (val, context->attrs[context->next_attr].ref_class);
 
 error_exit:
   return err;
@@ -3960,7 +3975,7 @@ ldr_oid_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
   err = find_instance (context, actual_class, &oid, context->attrs[context->next_attr].instance_id);
   if (err == ER_LDR_INTERNAL_REFERENCE)
     {
-      DB_MAKE_NULL (val);
+      db_make_null (val);
     }
   else
     {
@@ -3976,7 +3991,7 @@ ldr_oid_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 	  CHECK_ERR (err, err);
 	}
 
-      DB_MAKE_OBJECT (val, mop);
+      db_make_object (val, mop);
     }
 
 error_exit:
@@ -4031,7 +4046,7 @@ ldr_monetary_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * v
 
   if (len >= 2
       && intl_is_currency_symbol ((const char *) p, &currency_type, &symbol_size,
-				  CURRENCY_CHECK_MODE_ESC_ISO | CURRENCY_CHECK_MODE_GRAMMAR))
+				  (CURRENCY_CHECK_MODE) (CURRENCY_CHECK_MODE_ESC_ISO | CURRENCY_CHECK_MODE_GRAMMAR)))
     {
       token += symbol_size;
     }
@@ -4152,7 +4167,7 @@ ldr_collection_db_collection (LDR_CONTEXT * context, const char *str, int len, S
        */
       DB_VALUE tmp;
 
-      DB_MAKE_COLLECTION (&tmp, context->collection);
+      db_make_collection (&tmp, context->collection);
 
       context->collection = NULL;
       context->set_domain = NULL;
@@ -4837,7 +4852,7 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
   CHECK_ERR (err,
 	     db_get_attribute_descriptor (context->cls, attr_name, context->attribute_type == LDR_ATTRIBUTE_CLASS, true,
 					  &attdesc->attdesc));
-  comp_ptr = (void *) (&attdesc->att);
+  comp_ptr = (SM_COMPONENT **) (&attdesc->att);
   CHECK_ERR (err, sm_get_descriptor_component (context->cls, attdesc->attdesc, 1,	/* for update */
 					       &class_, comp_ptr));
 
@@ -5028,6 +5043,9 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
     case DB_TYPE_MONETARY:
       attdesc->setter[LDR_MONETARY] = &ldr_monetary_db_monetary;
       break;
+    case DB_TYPE_JSON:
+      attdesc->setter[LDR_STR] = &ldr_json_db_json;
+      break;
 
     default:
       break;
@@ -5081,7 +5099,7 @@ ldr_refresh_attrs (LDR_CONTEXT * context)
       db_free_attribute_descriptor (attdesc->attdesc);
       attdesc->attdesc = db_attdesc;
       /* Get refreshed attribute */
-      comp_ptr = (void *) &attdesc->att;
+      comp_ptr = (SM_COMPONENT **) & attdesc->att;
       CHECK_ERR (err, sm_get_descriptor_component (context->cls, attdesc->attdesc, 1,	/* for update */
 						   &class_, comp_ptr));
     }
@@ -5352,7 +5370,7 @@ construct_instance (LDR_CONTEXT * context)
 
   if (!err && DB_VALUE_TYPE (&retval) == DB_TYPE_OBJECT)
     {
-      obj = DB_GET_OBJECT (&retval);
+      obj = db_get_object (&retval);
       context->obj = obj;
       err = au_fetch_instance (context->obj, &context->mobj, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE);
       if (err == NO_ERROR)
@@ -5366,7 +5384,7 @@ construct_instance (LDR_CONTEXT * context)
 	{
 	  attdesc = &context->attrs[context->next_attr];
 
-	  comp_ptr = (void *) &attdesc->att;
+	  comp_ptr = (SM_COMPONENT **) & attdesc->att;
 	  err = sm_get_descriptor_component (context->cls, attdesc->attdesc, 1, &class_, comp_ptr);
 
 	  if (!err)
@@ -5826,6 +5844,7 @@ ldr_init_loader (LDR_CONTEXT * context)
   db_make_elo (&ldr_blob_tmpl, DB_TYPE_BLOB, null_elo);
   db_make_elo (&ldr_clob_tmpl, DB_TYPE_CLOB, null_elo);
   db_make_bit (&ldr_bit_tmpl, 1, "0", 1);
+  db_make_json (&ldr_json_tmpl, NULL, NULL, false);
 
   /* 
    * Set up the conversion functions for collection elements.  These
@@ -5862,6 +5881,7 @@ ldr_init_loader (LDR_CONTEXT * context)
   elem_converter[LDR_MONETARY] = &ldr_monetary_elem;
   elem_converter[LDR_ELO_EXT] = &ldr_elo_ext_elem;
   elem_converter[LDR_ELO_INT] = &ldr_elo_int_elem;
+  elem_converter[LDR_JSON] = &ldr_json_elem;
 
   /* Set up the lockhint array. Used by ldr_find_class() when locating a class. */
   ldr_Hint_locks[0] = locator_fetch_mode_to_lock (DB_FETCH_CLREAD_INSTWRITE, LC_CLASS, LC_FETCH_CURRENT_VERSION);
@@ -6260,7 +6280,7 @@ ldr_process_constants (LDR_CONSTANT * cons)
 	  {
 	    LDR_STRING *str = (LDR_STRING *) c->val;
 
-	    (*ldr_act) (ldr_Current_context, str->val, str->size, c->type);
+	    (*ldr_act) (ldr_Current_context, str->val, str->size, (LDR_TYPE) c->type);
 	    FREE_STRING (str);
 	  }
 	  break;
@@ -6273,7 +6293,7 @@ ldr_process_constants (LDR_CONSTANT * cons)
 	    char full_mon_str[NUM_BUF_SIZE + 3 + 1];
 	    char *full_mon_str_p = full_mon_str;
 	    /* In Loader grammar always print symbol before value (position of currency symbol is not localized) */
-	    char *curr_str = intl_get_money_esc_ISO_symbol (mon->currency_type);
+	    char *curr_str = intl_get_money_esc_ISO_symbol ((DB_CURRENCY) mon->currency_type);
 	    unsigned int full_mon_str_len = (strlen (str->val) + strlen (curr_str));
 
 	    if (full_mon_str_len >= sizeof (full_mon_str))
@@ -6284,7 +6304,7 @@ ldr_process_constants (LDR_CONSTANT * cons)
 	    strcpy (full_mon_str_p, curr_str);
 	    strcat (full_mon_str_p, str->val);
 
-	    (*ldr_act) (ldr_Current_context, full_mon_str_p, strlen (full_mon_str_p), c->type);
+	    (*ldr_act) (ldr_Current_context, full_mon_str_p, strlen (full_mon_str_p), (LDR_TYPE) c->type);
 	    if (full_mon_str_p != full_mon_str)
 	      {
 		free_and_init (full_mon_str_p);
@@ -6303,7 +6323,7 @@ ldr_process_constants (LDR_CONSTANT * cons)
 	  {
 	    LDR_STRING *str = (LDR_STRING *) c->val;
 
-	    (*ldr_act) (ldr_Current_context, str->val, strlen (str->val), c->type);
+	    (*ldr_act) (ldr_Current_context, str->val, strlen (str->val), (LDR_TYPE) c->type);
 	    FREE_STRING (str);
 	  }
 	  break;
@@ -6459,4 +6479,37 @@ error_exit:
     }
 
   return ER_FAILED;
+}
+
+static int
+ldr_json_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
+{
+  JSON_DOC *document = NULL;
+  char *json_body = NULL;
+  int error_code = NO_ERROR;
+
+  error_code = db_json_get_json_from_str (str, document);
+  if (error_code != NO_ERROR)
+    {
+      assert (document == NULL);
+      return error_code;
+    }
+
+  json_body = db_private_strdup (NULL, str);
+
+  db_make_json (val, json_body, document, true);
+  return NO_ERROR;
+}
+
+static int
+ldr_json_db_json (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
+{
+  int err = NO_ERROR;
+  DB_VALUE val;
+
+  CHECK_ERR (err, ldr_json_elem (context, str, len, &val));
+  CHECK_ERR (err, ldr_generic (context, &val));
+
+error_exit:
+  return err;
 }

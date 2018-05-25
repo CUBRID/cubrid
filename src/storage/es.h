@@ -46,9 +46,7 @@ extern int es_copy_file (const char *in_uri, const char *metaname, char *out_uri
 extern int es_rename_file (const char *in_uri, const char *metaname, char *out_uri);
 extern off_t es_get_file_size (const char *uri);
 
-extern int es_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
-#if defined (SERVER_MODE)
-extern void es_notify_vacuum_for_delete (THREAD_ENTRY * thread_p, const char *uri);
-#endif /* SERVER_MODE */
+
+
 #endif /* _ES_H_ */

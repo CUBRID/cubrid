@@ -14,9 +14,9 @@
 #
 define disk_get_volheader
   pgbuf_find_page 0 $arg0 $arg1
-  set $arg2 = (DISK_VAR_HEADER *) $arg1
+  set $arg2 = (DISK_VOLUME_HEADER *) $arg1
   p *$arg2
-  end
+end
 
 # disk_print_stab
 # $arg0 (in)  : VOLID
@@ -42,7 +42,8 @@ define disk_print_stab
     while $unit < $nunits && $unit < $next_page_start
       printf "sectid = %d, bitmap = 0x%016llx \n", $unit * 64, *(unsigned long long) ($stab_page + ($unit - $page_start))
       set $unit = $unit + 1
-      end
-    set $pageid = $pageid + 1
     end
+    set $pageid = $pageid + 1
   end
+end
+

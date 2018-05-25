@@ -26,8 +26,8 @@
 
 #ident "$Id$"
 
-#include "thread.h"
 #include "storage_common.h"
+#include "thread_compat.hpp"
 
 /* MVCC Header Macros */
 #define MVCC_GET_INSID(header) \
@@ -193,7 +193,6 @@
 #define MVCC_GET_PREV_VERSION_LSA(header) \
   ((header)->prev_version_lsa)
 
-typedef enum mvcc_satisfies_snapshot_result MVCC_SATISFIES_SNAPSHOT_RESULT;
 enum mvcc_satisfies_snapshot_result
 {
   TOO_OLD_FOR_SNAPSHOT,		/* not visible, deleted by me or deleted by inactive transaction */
@@ -203,6 +202,7 @@ enum mvcc_satisfies_snapshot_result
 				 * check previous versions in log (if there are previous versions).
 				 */
 };				/* Possible results by check versions against snapshots. */
+typedef enum mvcc_satisfies_snapshot_result MVCC_SATISFIES_SNAPSHOT_RESULT;
 typedef struct mvcc_snapshot MVCC_SNAPSHOT;
 
 typedef MVCC_SATISFIES_SNAPSHOT_RESULT (*MVCC_SNAPSHOT_FUNC) (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
@@ -245,7 +245,6 @@ struct mvcc_info
   bool is_sub_active;		/* true in case that sub-transaction is running */
 };
 
-typedef enum mvcc_satisfies_delete_result MVCC_SATISFIES_DELETE_RESULT;
 enum mvcc_satisfies_delete_result
 {
   DELETE_RECORD_INSERT_IN_PROGRESS,	/* invisible - created after scan started */
@@ -254,8 +253,8 @@ enum mvcc_satisfies_delete_result
   DELETE_RECORD_DELETE_IN_PROGRESS,	/* deleted by other in progress transaction */
   DELETE_RECORD_SELF_DELETED	/* deleted by the current transaction */
 };				/* Heap record satisfies delete result */
+typedef enum mvcc_satisfies_delete_result MVCC_SATISFIES_DELETE_RESULT;
 
-typedef enum mvcc_satisfies_vacuum_result MVCC_SATISFIES_VACUUM_RESULT;
 enum mvcc_satisfies_vacuum_result
 {
   VACUUM_RECORD_REMOVE,		/* record can be removed completely */
@@ -263,6 +262,7 @@ enum mvcc_satisfies_vacuum_result
   VACUUM_RECORD_CANNOT_VACUUM	/* record cannot be vacuumed because: 1. it was already vacuumed. 2. it was recently
 				 * inserted. 3. it was recently deleted and has no insert MVCCID. */
 };				/* Heap record satisfies vacuum result */
+typedef enum mvcc_satisfies_vacuum_result MVCC_SATISFIES_VACUUM_RESULT;
 
 extern MVCC_SATISFIES_SNAPSHOT_RESULT mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 							       MVCC_SNAPSHOT * snapshot);

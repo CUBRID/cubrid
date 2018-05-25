@@ -518,7 +518,7 @@ $set 5 MSGCAT_SET_ERROR
 450 Invalid set operator: %1$d.
 451 Heap file with no instances.
 452 Invalid XASL tree node content.
-453 No more acess specification nodes.
+453 No more access specification nodes.
 454 Invalid data type referenced.
 455 No more query file pages left.
 456 Data type references are incompatible.
@@ -704,7 +704,7 @@ $ LOADDB
 635 WARNING: Log Buffer pool of %1$d buffers seems very small for current environment.\n It is possible that some buffers are not freed by the system due to an UNKNOWN ERROR\n or that there are many concurrent transactions being aborted at the same time. The log buffer pool is expanded with %2$d more buffers.
 636 WARNING Num_buffers %1$d is too small. The minimum value of %2$d was assumed.
 637 System error: freeing a log buffer too much. Fix count is set to zero.
-638 Warning: Flushing an unupdatable log archive pageid = %1$d
+638 Warning: Flushing a non-updatable log archive pageid = %1$d
 639 System error: Previous log sequence page %1$d is not the delayed flush page %2$d.
 640 System Error: a savepoint cannot be added when the transaction is not active (e.g., during commit or rollback).
 641 A name must be given for a savepoint.
@@ -829,7 +829,7 @@ $ LOADDB
 760 Internal error: proxy object instance has NULL key during object encode.
 761 Internal error: vclass object instance maps to invalid real instance.
 762 Internal error in resolving vclass instance to a real instance.
-763 Internal error in encoding nonupdatable object instance.
+763 Internal error in encoding non-updatable object instance.
 764 Internal error in encoding object into internal vobj form.
 765 Output object argument has a NULL address.
 766 Internal error in decoding object.
@@ -922,7 +922,7 @@ $ LOADDB
 853 For an object(%1$d|%2$d|%3$d), tran(%4$d) of Uncommitted Read held fault lock(%5$s).
 854 WARNING: No lock holder, but lock waiters exist. refer to %1$s.
 855 WARNING: Two or more threads are lock-waiting for one transaction(%1$d).
-856 WARNING: Strange lockwait state(%1$d|%2$d), thread(%3$d|%4$d) and transaction(%5$d).
+856 WARNING: Strange lockwait state(%1$d|%2$d), thread(%3$d|%4$lld) and transaction(%5$d).
 857 An I/O error occurred while truncating page %1$d of volume "%2$s".
 858 Volume "%1$s" is unknown at server restart.
 859 LATCH ON PAGE(%1$d|%2$d) ABORTED
@@ -1213,8 +1213,8 @@ $ LOADDB
 1144 Timed out attempting to connect to %1$s. (timeout: %2$d sec(s))
 1145 To change the owner of a system class is not allowed.
 1146 volume identifier %1$d does not exist.
-1147 The size of XASL stream cache(%1$d) exceeds the max(%2$d). New entry is added although nothing is victimized bacause all cache entries are used.
-1148 The size of filter predicate stream cache(%1$d) exceeds the max(%2$d). New entry is added although nothing is victimized bacause all cache entries are used.
+1147 The size of XASL stream cache(%1$d) exceeds the max(%2$d). New entry is added although nothing is victimized because all cache entries are used.
+1148 The size of filter predicate stream cache(%1$d) exceeds the max(%2$d). New entry is added although nothing is victimized because all cache entries are used.
 1149 Cannot find the page %1$d of volume %2$d.
 1150 Context requires compatible collations.
 1151 The page %1$d of volume %2$d is not a slotted page.
@@ -1260,9 +1260,30 @@ $ LOADDB
 1191 Stand-alone vacuum execution is ended.
 1192 Value's precision of %1$zu exceeds maximum allowed %2$d
 1193 The length of the processed partition expression exceeds the maximum allowed(%1$d).
-1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
+1194 Unable to check file %1$d|%2$d because lock on class %3$d|%4$d|%5$d is not immediately granted.
 1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
-1196 Last Error
+1196 Maximum recursions %1$d reached executing CTE.
+1197 Invalid json: %1$s (%2$d)
+1198 A json object must be provided
+1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
+1200 Invalid JSON path
+1201 Json object name cannot be NULL.
+1202 Json PATH "%1$s" does not exist in %2$s
+1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
+1204 Json KEY "%1$s" is duplicate
+1205 Reserved error for JSON.
+1206 Reserved error for JSON.
+1207 Reserved error for JSON.
+1208 Reserved error for JSON.
+1209 Reserved error for JSON.
+1210 Reserved error for JSON.
+1211 Reserved error for JSON.
+1212 Reserved error for JSON.
+1213 Reserved error for JSON.
+1214 Reserved error for JSON.
+
+1215 Last Error
+
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
 2 No error message available.
@@ -1559,7 +1580,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 138 '%1$s' operator is not defined on type %2$s.
 139 '%1$s' operator is not defined on types %2$s with %3$s and %4$s.
 140 Operands of operator '%1$s' cannot both be dynamic host variables.
-141 Too many aguments to generic function %1$s.\nOnly %2$d arguments are allowed for generic functions.
+141 Too many arguments to generic function %1$s.\nOnly %2$d arguments are allowed for generic functions.
 142 Selector {%1$s} class '%2$s' is not a subclass of '%3$s'.
 143 Cannot extract '%1$s' field from type %2$s.
 144 Query specification must not have an ORDER BY clause.
@@ -1713,10 +1734,16 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 Invalid use of aggregate functions.
 293 Value must be strictly increasing for each partition.
 294 Cannot use function or filter indexes on local timezone typed columns.
+295 SELECT INTO is not allowed in subqueries.
+296 CTE name ambiguity, there are more than one CTEs with the same name: '%1$s'.
+297 Nested WITH clauses are not supported.
+298 Recursive CTE '%1$s' must be referenced directly in its recursive query.
+299 Error in CTE '%1$s': The non-recursive part and the recursive part must be connected with UNION ALL.
+300 Subquery is not allowed in DEFAULT clause.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.
-2 Transaction isolation level must be 1, 2, 3, 4, 5 or 6.
+2 Transaction isolation level must be 4, 5 or 6.
 3 Timeout value must be -1, 0, or >0.
 4 Isolation level set to:\n
 5          Unknown isolation.\n
@@ -1795,6 +1822,7 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 Invalid isolation level: %1$s schema, %2$s instances.
 80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
 81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
+
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** invalid cache ***

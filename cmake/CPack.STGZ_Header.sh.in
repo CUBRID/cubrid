@@ -150,14 +150,12 @@ echo "Unpacking finished successfully"
 # post-setup for CUBRID
 #
 
-# environment variables
-case "$SHELL" in
-  */csh | */tcsh )
-    cubrid_envfile="$HOME/.cubrid.csh"
-    cat << ____cubrid__here_doc____ > ${cubrid_envfile}-@CPACK_PACKAGE_VERSION@
+# environment variables for *csh
+cubrid_csh_envfile="$HOME/.cubrid.csh"
+cat << ____cubrid__here_doc____ > ${cubrid_csh_envfile}-@CPACK_PACKAGE_VERSION@
 setenv CUBRID ${toplevel}
 ____cubrid__here_doc____
-    cat << '____cubrid__here_doc____' >> ${cubrid_envfile}-@CPACK_PACKAGE_VERSION@
+cat << '____cubrid__here_doc____' >> ${cubrid_csh_envfile}-@CPACK_PACKAGE_VERSION@
 setenv CUBRID_DATABASES $CUBRID/databases
 if (${?LD_LIBRARY_PATH}) then
   setenv LD_LIBRARY_PATH $CUBRID/lib:${LD_LIBRARY_PATH}
@@ -166,15 +164,14 @@ else
 endif
 setenv SHLIB_PATH $LD_LIBRARY_PATH
 setenv LIBPATH $LD_LIBRARY_PATH
-set path=($CUBRID/bin} $path)
+set path=($CUBRID/bin $path)
 ____cubrid__here_doc____
-    ;;
-  *)
-    cubrid_envfile="$HOME/.cubrid.sh"
-    cat << ____cubrid__here_doc____ > ${cubrid_envfile}-@CPACK_PACKAGE_VERSION@
+# environment variables for *sh
+cubrid_sh_envfile="$HOME/.cubrid.sh"
+cat << ____cubrid__here_doc____ > ${cubrid_sh_envfile}-@CPACK_PACKAGE_VERSION@
 CUBRID=${toplevel}
 ____cubrid__here_doc____
-    cat << '____cubrid__here_doc____' >> ${cubrid_envfile}-@CPACK_PACKAGE_VERSION@
+cat << '____cubrid__here_doc____' >> ${cubrid_sh_envfile}-@CPACK_PACKAGE_VERSION@
 CUBRID_DATABASES=$CUBRID/databases
 if [ "x${LD_LIBRARY_PATH}x" = xx ]; then
   LD_LIBRARY_PATH=$CUBRID/lib
@@ -191,18 +188,18 @@ export SHLIB_PATH
 export LIBPATH
 export PATH
 ____cubrid__here_doc____
-    ;;
-esac
 
-if [ -r "${cubrid_envfile}" ]; then
-  echo "Copying old ${cubrid_envfile} to ${cubrid_envfile}.bak ..."
-  mv -f "${cubrid_envfile}" "${cubrid_envfile}.bak"
-fi
-mv "${cubrid_envfile}-@CPACK_PACKAGE_VERSION@" "${cubrid_envfile}"
+for e in "$cubrid_csh_envfile" "$cubrid_sh_envfile"; do
+  if [ -r "${e}" ]; then
+    echo "Copying old ${e} to ${e}.bak ..."
+    mv -f "${e}" "${e}.bak"
+  fi
+  mv "${e}-@CPACK_PACKAGE_VERSION@" "${e}"
+done
 
 # create a demo db
-source $cubrid_envfile
-if [ -x "$CUBRID/demo/make_cubrid_demo.sh" ]; then
+if [ -x "${toplevel}/demo/make_cubrid_demo.sh" ]; then
+  . ${cubrid_sh_envfile}
   (mkdir -p $CUBRID_DATABASES/demodb && cd $CUBRID_DATABASES/demodb && $CUBRID/demo/make_cubrid_demo.sh > /dev/null 2>&1)
   if [ $? = 0 ]; then
     echo "demodb has been successfully created."
@@ -214,7 +211,14 @@ fi
 echo ""
 echo "If you want to use CUBRID, run the following command to set required environment variables."
 echo "(or you can add the command into your current shell profile file to set permanently)"
-echo "  $ source $cubrid_envfile"
+case "$SHELL" in
+  */csh | */tcsh )
+    echo "  $ source $cubrid_csh_envfile"
+    ;;
+  *)
+    echo "  $ . $cubrid_sh_envfile"
+    ;;
+esac
 echo ""
 
 

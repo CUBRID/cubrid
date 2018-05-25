@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
-#include <unistd.h>
 #include <stdbool.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -10,7 +9,8 @@
 #include <ctype.h>
 #include <assert.h>
 #include <libgen.h>
-#include <getopt.h>
+
+#include "cubrid_getopt.h"
 #include "cas_cci.h"
 #include "cci_applier.h"
 #include "log_applier.h"
@@ -1014,9 +1014,6 @@ main (int argc, char *argv[])
   int opt, opt_index = 0;
   int error = ER_CA_NO_ERROR;
   int res;
-  bool ignore_serial = false;
-  bool retain_log = false;
-  char tmp_repl_log_path[PATH_MAX];
   char repl_log_path[PATH_MAX];
 
   CA_CON_INFO con_info;

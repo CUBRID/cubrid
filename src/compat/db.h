@@ -31,20 +31,20 @@
 
 #include <stdio.h>
 #include "error_manager.h"
-#include "dbi.h"
-#include "dbtype.h"
 #include "dbdef.h"
 #include "intl_support.h"
 #include "db_date.h"
-#include "db_query.h"
 #include "object_representation.h"
 #include "object_domain.h"
 #if !defined(SERVER_MODE)
 #include "authenticate.h"
 #include "trigger_manager.h"
+#include "dbi.h"
+#include "parser.h"
 #endif
 #include "log_comm.h"
-#include "parser.h"
+#include "dbtype_def.h"
+#include "db_admin.h"
 
 /* GLOBAL STATE */
 #define DB_CONNECTION_STATUS_NOT_CONNECTED      0
@@ -62,24 +62,6 @@ extern int db_Disable_modifications;
 #endif /* _DB_DISABLE_MODIFICATIONS_ */
 
 #if !defined(SERVER_MODE)
-#define DB_CLIENT_TYPE_DEFAULT          1
-#define DB_CLIENT_TYPE_CSQL             2
-#define DB_CLIENT_TYPE_READ_ONLY_CSQL   3
-#define DB_CLIENT_TYPE_BROKER           4
-#define DB_CLIENT_TYPE_READ_ONLY_BROKER 5
-#define DB_CLIENT_TYPE_SLAVE_ONLY_BROKER 6
-#define DB_CLIENT_TYPE_ADMIN_UTILITY    7
-#define DB_CLIENT_TYPE_ADMIN_CSQL       8
-#define DB_CLIENT_TYPE_LOG_COPIER       9
-#define DB_CLIENT_TYPE_LOG_APPLIER      10
-#define DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY   11
-#define DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY   12
-#define DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY   13
-#define DB_CLIENT_TYPE_ADMIN_CSQL_WOS   14	/* admin csql that can write on standby */
-#define DB_CLIENT_TYPE_LOG_PREFETCHER   15
-#define DB_CLIENT_TYPE_MAX              DB_CLIENT_TYPE_LOG_PREFETCHER
-extern int db_Client_type;
-
 extern char db_Database_name[];
 extern char db_Program_name[];
 #endif /* !SERVER_MODE */
@@ -166,7 +148,6 @@ extern char db_Program_name[];
 #endif /* !SA_MODE */
 #endif /* CHECK_MODIFICATION_NO_RETURN */
 
-/* Argument checking macros */
 #define CHECK_1ARG_RETURN_EXPR(obj, expr)                                      \
   do {                                                                         \
     if((obj) == NULL) {                                                        \
@@ -233,17 +214,6 @@ extern char db_Program_name[];
 #define CHECK_1ARG_UNKNOWN(obj1)        \
   CHECK_1ARG_RETURN_EXPR(obj1, DB_TYPE_UNKNOWN)
 
-#define DB_MAKE_OID(value, oid)						\
-  do {									\
-    if ((db_value_domain_init(value, DB_TYPE_OID, 0, 0)) == NO_ERROR)	\
-	(void)db_make_oid(value, oid);				        \
-  } while (0)
-
-#define DB_GET_OID(value)		(db_get_oid(value))
-
-#define db_locate_numeric(value) \
-  ((const DB_C_NUMERIC) ((value)->data.num.d.buf))
-
 extern int db_init (const char *program, int print_version, const char *dbname, const char *db_path,
 		    const char *vol_path, const char *log_path, const char *lob_path, const char *host_name,
 		    const bool overwrite, const char *comments, const char *addmore_vols_file, int npages,
@@ -263,7 +233,9 @@ extern int db_get_line_col_of_1st_error (DB_SESSION * session, DB_QUERY_ERROR * 
 extern DB_VALUE *db_get_hostvars (DB_SESSION * session);
 extern char **db_get_lock_classes (DB_SESSION * session);
 extern void db_drop_all_statements (DB_SESSION * session);
+#if !defined (SERVER_MODE)
 extern PARSER_CONTEXT *db_get_parser (DB_SESSION * session);
+#endif /* !defined (SERVER_MODE) */
 extern DB_NODE *db_get_statement (DB_SESSION * session, int id);
 extern DB_SESSION *db_make_session_for_one_statement_execution (FILE * file);
 extern int db_abort_to_savepoint_internal (const char *savepoint_name);
@@ -272,21 +244,11 @@ extern int db_error_code_test (void);
 
 extern const char *db_error_string_test (int level);
 
-extern int db_make_oid (DB_VALUE * value, const OID * oid);
-extern OID *db_get_oid (const DB_VALUE * value);
-extern int db_value_alter_type (DB_VALUE * value, DB_TYPE type);
-
-#if !defined(_DBTYPE_H_)
-extern int db_value_put_encoded_time (DB_VALUE * value, const DB_TIME * time);
-extern int db_value_put_encoded_date (DB_VALUE * value, const DB_DATE * date);
-#endif
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void *db_value_eh_key (DB_VALUE * value);
 extern int db_value_put_db_data (DB_VALUE * value, const DB_DATA * data);
 #endif
 extern DB_DATA *db_value_get_db_data (DB_VALUE * value);
-extern int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, const char *str,
-			    const int size);
 
 extern DB_OBJECT *db_create_internal (DB_OBJECT * obj);
 extern DB_OBJECT *db_create_by_name_internal (const char *name);

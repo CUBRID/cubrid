@@ -74,99 +74,99 @@ class _Logger;
 
 class _LogAppender
 {
-public:
-  _LogAppender(const _LoggerContext &context);
-  virtual ~_LogAppender() {}
+  public:
+    _LogAppender (const _LoggerContext &context);
+    virtual ~_LogAppender() {}
 
-  virtual void open() = 0;
-  virtual void close() = 0;
-  virtual void write(const char *msg) = 0;
-  virtual void flush() = 0;
+    virtual void open() = 0;
+    virtual void close() = 0;
+    virtual void write (const char *msg) = 0;
+    virtual void flush() = 0;
 
-protected:
-  const _LoggerContext &context;
+  protected:
+    const _LoggerContext &context;
 };
 
 class _LogAppenderBase : public _LogAppender
 {
-public:
-  _LogAppenderBase(const _LoggerContext &context);
-  virtual ~_LogAppenderBase();
+  public:
+    _LogAppenderBase (const _LoggerContext &context);
+    virtual ~_LogAppenderBase();
 
-  virtual void open();
-  virtual void close();
-  virtual void write(const char *msg);
-  virtual void flush();
+    virtual void open();
+    virtual void close();
+    virtual void write (const char *msg);
+    virtual void flush();
 
-protected:
-  virtual void roll() = 0;
-  virtual bool isRolling() = 0;
+  protected:
+    virtual void roll() = 0;
+    virtual bool isRolling() = 0;
 
-  std::string rename(const char *newPath, const char *postfix);
-  int getLogSizeKBytes();
-  std::string getCurrDate();
-  std::string getCurrDateTime();
-  void makeLogDir();
+    std::string rename (const char *newPath, const char *postfix);
+    int getLogSizeKBytes();
+    std::string getCurrDate();
+    std::string getCurrDateTime();
+    void makeLogDir();
 
-private:
-  void checkFileIsOpen();
+  private:
+    void checkFileIsOpen();
 
-protected:
-  std::ofstream out;
-  long int nextCheckTime;
+  protected:
+    std::ofstream out;
+    long int nextCheckTime;
 };
 
 class _PostFixAppender : public _LogAppenderBase
 {
-public:
-  _PostFixAppender(const _LoggerContext &context, CCI_LOG_POSTFIX postfix);
-  virtual ~_PostFixAppender() {}
+  public:
+    _PostFixAppender (const _LoggerContext &context, CCI_LOG_POSTFIX postfix);
+    virtual ~_PostFixAppender() {}
 
-  virtual void open();
+    virtual void open();
 
-protected:
-  virtual void roll();
-  virtual bool isRolling();
+  protected:
+    virtual void roll();
+    virtual bool isRolling();
 
-private:
-  void checkFileIsOpen();
-  std::string getNewPath();
+  private:
+    void checkFileIsOpen();
+    std::string getNewPath();
 
-private:
-  CCI_LOG_POSTFIX postfix;
-  int prevDate;
+  private:
+    CCI_LOG_POSTFIX postfix;
+    int prevDate;
 };
 
 class _MaxSizeLogAppender : public _LogAppenderBase
 {
-public:
-  _MaxSizeLogAppender(const _LoggerContext &context, int maxFileSizeKBytes,
-      int maxBackupCount);
-  virtual ~_MaxSizeLogAppender() {}
+  public:
+    _MaxSizeLogAppender (const _LoggerContext &context, int maxFileSizeKBytes,
+                         int maxBackupCount);
+    virtual ~_MaxSizeLogAppender() {}
 
-protected:
-  virtual void roll();
-  virtual bool isRolling();
+  protected:
+    virtual void roll();
+    virtual bool isRolling();
 
-private:
-  int maxFileSizeKBytes;
-  int maxBackupCount;
-  int currBackupCount;
-  std::list<std::string> backupList;
+  private:
+    int maxFileSizeKBytes;
+    int maxBackupCount;
+    int currBackupCount;
+    std::list<std::string> backupList;
 };
 
 class _DailyLogAppender : public _LogAppenderBase
 {
-public:
-  _DailyLogAppender(const _LoggerContext &context);
-  virtual ~_DailyLogAppender() {}
+  public:
+    _DailyLogAppender (const _LoggerContext &context);
+    virtual ~_DailyLogAppender() {}
 
-protected:
-  virtual void roll();
-  virtual bool isRolling();
+  protected:
+    virtual void roll();
+    virtual bool isRolling();
 
-private:
-  int prevDate;
+  private:
+    int prevDate;
 };
 
 struct _LoggerContext
@@ -177,45 +177,45 @@ struct _LoggerContext
 
 class _Logger
 {
-public:
-  _Logger(const char *path);
-  virtual ~_Logger();
+  public:
+    _Logger (const char *path);
+    virtual ~_Logger();
 
-  void setLogLevel(CCI_LOG_LEVEL level);
-  void setUseDefaultPrefix(bool useDefaultPrefix);
-  void setUseDefaultNewLine(bool useDefaultNewLine);
-  void setForceFlush(bool isForceFlush);
-  void log(CCI_LOG_LEVEL level, const char *msg);
-  void changeMaxFileSizeAppender(int maxFileSizeKBytes, int maxBackupCount);
-  void changePostfixAppender(CCI_LOG_POSTFIX postfix);
+    void setLogLevel (CCI_LOG_LEVEL level);
+    void setUseDefaultPrefix (bool useDefaultPrefix);
+    void setUseDefaultNewLine (bool useDefaultNewLine);
+    void setForceFlush (bool isForceFlush);
+    void log (CCI_LOG_LEVEL level, const char *msg);
+    void changeMaxFileSizeAppender (int maxFileSizeKBytes, int maxBackupCount);
+    void changePostfixAppender (CCI_LOG_POSTFIX postfix);
 
-public:
-  const char *getPath();
-  bool isWritable(CCI_LOG_LEVEL level);
+  public:
+    const char *getPath();
+    bool isWritable (CCI_LOG_LEVEL level);
 
-private:
-  void write(const char *msg);
-  void logPrefix(CCI_LOG_LEVEL level);
+  private:
+    void write (const char *msg);
+    void logPrefix (CCI_LOG_LEVEL level);
 
-private:
-  cci::_Mutex critical;
-  _LoggerContext context;
-  _LogAppender *logAppender;
-  CCI_LOG_LEVEL level;
-  bool useDefaultPrefix;
-  bool useDefaultNewLine;
-  bool isForceFlush;
-  int unflushedBytes;
-  unsigned long nextFlushTime;
+  private:
+    cci::_Mutex critical;
+    _LoggerContext context;
+    _LogAppender *logAppender;
+    CCI_LOG_LEVEL level;
+    bool useDefaultPrefix;
+    bool useDefaultNewLine;
+    bool isForceFlush;
+    int unflushedBytes;
+    unsigned long nextFlushTime;
 };
 
-_LogAppender::_LogAppender(const _LoggerContext &context) :
-  context(context)
+_LogAppender::_LogAppender (const _LoggerContext &context) :
+  context (context)
 {
 }
 
-_LogAppenderBase::_LogAppenderBase(const _LoggerContext &context) :
-  _LogAppender(context), nextCheckTime(0)
+_LogAppenderBase::_LogAppenderBase (const _LoggerContext &context) :
+  _LogAppender (context), nextCheckTime (0)
 {
   open();
 }
@@ -234,10 +234,10 @@ void _LogAppenderBase::open()
 
   makeLogDir();
 
-  out.open(context.path.c_str(), std::fstream::out | std::fstream::app);
+  out.open (context.path.c_str(), std::fstream::out | std::fstream::app);
   if (out.fail())
     {
-      out.open(context.path.c_str(), std::fstream::out | std::fstream::app);
+      out.open (context.path.c_str(), std::fstream::out | std::fstream::app);
       if (out.fail())
         {
           throw LOG_ER_OPEN;
@@ -255,7 +255,7 @@ void _LogAppenderBase::close()
   out.close();
 }
 
-void _LogAppenderBase::write(const char *msg)
+void _LogAppenderBase::write (const char *msg)
 {
   checkFileIsOpen();
 
@@ -288,19 +288,19 @@ void _LogAppenderBase::flush()
   out.flush();
 }
 
-std::string _LogAppenderBase::rename(const char *newPath, const char *postfix)
+std::string _LogAppenderBase::rename (const char *newPath, const char *postfix)
 {
   std::stringstream newPathStream;
   newPathStream << newPath;
 
   close();
 
-  if (access(newPath, F_OK) == 0 && postfix != NULL)
+  if (access (newPath, F_OK) == 0 && postfix != NULL)
     {
       newPathStream << postfix;
     }
 
-  int e = std::rename(context.path.c_str(), newPathStream.str().c_str());
+  int e = std::rename (context.path.c_str(), newPathStream.str().c_str());
   if (e != 0)
     {
     }
@@ -334,10 +334,10 @@ std::string _LogAppenderBase::getCurrDate()
   char buf[16];
   time_t t = context.now.tv_sec;
 
-  localtime_r(&t, &cal);
+  localtime_r (&t, &cal);
   cal.tm_year += 1900;
   cal.tm_mon += 1;
-  snprintf(buf, 16, "%d-%02d-%02d", cal.tm_year, cal.tm_mon, cal.tm_mday);
+  snprintf (buf, 16, "%d-%02d-%02d", cal.tm_year, cal.tm_mon, cal.tm_mday);
 
   return buf;
 }
@@ -348,11 +348,11 @@ std::string _LogAppenderBase::getCurrDateTime()
   char buf[16];
   time_t t = context.now.tv_sec;
 
-  localtime_r(&t, &cal);
+  localtime_r (&t, &cal);
   cal.tm_year += 1900;
   cal.tm_mon += 1;
-  snprintf(buf, 16, "%d%02d%02d%02d%02d%02d", cal.tm_year, cal.tm_mon,
-      cal.tm_mday, cal.tm_hour, cal.tm_min, cal.tm_sec);
+  snprintf (buf, 16, "%d%02d%02d%02d%02d%02d", cal.tm_year, cal.tm_mon,
+            cal.tm_mday, cal.tm_hour, cal.tm_min, cal.tm_sec);
 
   return buf;
 }
@@ -371,7 +371,7 @@ void _LogAppenderBase::makeLogDir()
       *p = '\0';
       if (*q == sep[0] || *q == sep[1])
         {
-          mkdir(dir, 0755);
+          mkdir (dir, 0755);
         }
       q++;
     }
@@ -383,7 +383,7 @@ void _LogAppenderBase::checkFileIsOpen()
 
   if (nextCheckTime == 0 || currentTime >= nextCheckTime)
     {
-      if (access(context.path.c_str(), F_OK) != 0)
+      if (access (context.path.c_str(), F_OK) != 0)
         {
           if (out.is_open())
             {
@@ -403,9 +403,9 @@ void _LogAppenderBase::checkFileIsOpen()
     }
 }
 
-_PostFixAppender::_PostFixAppender(const _LoggerContext &context,
-    CCI_LOG_POSTFIX postfix) :
-  _LogAppenderBase(context), postfix(postfix), prevDate(time(NULL) / ONE_DAY)
+_PostFixAppender::_PostFixAppender (const _LoggerContext &context,
+                                    CCI_LOG_POSTFIX postfix) :
+  _LogAppenderBase (context), postfix (postfix), prevDate (time (NULL) / ONE_DAY)
 {
 }
 
@@ -419,10 +419,10 @@ void _PostFixAppender::open()
   makeLogDir();
 
   std::string newPath = getNewPath();
-  out.open(newPath.c_str(), std::fstream::out | std::fstream::app);
+  out.open (newPath.c_str(), std::fstream::out | std::fstream::app);
   if (out.fail())
     {
-      out.open(newPath.c_str(), std::fstream::out | std::fstream::app);
+      out.open (newPath.c_str(), std::fstream::out | std::fstream::app);
       if (out.fail())
         {
           throw LOG_ER_OPEN;
@@ -463,7 +463,7 @@ void _PostFixAppender::checkFileIsOpen()
   if (nextCheckTime == 0 || currentTime >= nextCheckTime)
     {
       std::string newPath = getNewPath();
-      if (access(newPath.c_str(), F_OK) != 0)
+      if (access (newPath.c_str(), F_OK) != 0)
         {
           if (out.is_open())
             {
@@ -496,10 +496,10 @@ std::string _PostFixAppender::getNewPath()
   return newPath.str();
 }
 
-_MaxSizeLogAppender::_MaxSizeLogAppender(const _LoggerContext &context,
+_MaxSizeLogAppender::_MaxSizeLogAppender (const _LoggerContext &context,
     int maxFileSizeKBytes, int maxBackupCount) :
-  _LogAppenderBase(context), maxFileSizeKBytes(maxFileSizeKBytes),
-  maxBackupCount(maxBackupCount), currBackupCount(0)
+  _LogAppenderBase (context), maxFileSizeKBytes (maxFileSizeKBytes),
+  maxBackupCount (maxBackupCount), currBackupCount (0)
 {
 }
 
@@ -511,19 +511,19 @@ void _MaxSizeLogAppender::roll()
   std::stringstream postfix_stream;
   postfix_stream << "(" << currBackupCount++ << ")";
 
-  std::string newPath = rename(newPath_stream.str().c_str(),
-      postfix_stream.str().c_str());
-  backupList.push_back(newPath);
+  std::string newPath = rename (newPath_stream.str().c_str(),
+                                postfix_stream.str().c_str());
+  backupList.push_back (newPath);
 
   if (backupList.size() > (size_t) maxBackupCount)
     {
       std::string remove_path = backupList.front();
       backupList.pop_front();
 
-      int e = remove(remove_path.c_str());
+      int e = remove (remove_path.c_str());
       if (e != 0)
         {
-          perror("remove");
+          perror ("remove");
         }
     }
 }
@@ -533,8 +533,8 @@ bool _MaxSizeLogAppender::isRolling()
   return getLogSizeKBytes() > maxFileSizeKBytes;
 }
 
-_DailyLogAppender::_DailyLogAppender(const _LoggerContext &context) :
-  _LogAppenderBase(context), prevDate(time(NULL) / ONE_DAY)
+_DailyLogAppender::_DailyLogAppender (const _LoggerContext &context) :
+  _LogAppenderBase (context), prevDate (time (NULL) / ONE_DAY)
 {
 }
 
@@ -545,7 +545,7 @@ void _DailyLogAppender::roll()
   std::stringstream newPathStream;
   newPathStream << context.path << "." << getCurrDate();
 
-  rename(newPathStream.str().c_str(), NULL);
+  rename (newPathStream.str().c_str(), NULL);
 }
 
 bool _DailyLogAppender::isRolling()
@@ -554,21 +554,21 @@ bool _DailyLogAppender::isRolling()
   return prevDate < nowDay;
 }
 
-_Logger::_Logger(const char *path) :
-  logAppender(NULL), level(CCI_LOG_LEVEL_INFO), useDefaultPrefix(true),
-  useDefaultNewLine(true), isForceFlush(true), unflushedBytes(0),
-  nextFlushTime(0)
+_Logger::_Logger (const char *path) :
+  logAppender (NULL), level (CCI_LOG_LEVEL_INFO), useDefaultPrefix (true),
+  useDefaultNewLine (true), isForceFlush (true), unflushedBytes (0),
+  nextFlushTime (0)
 {
   context.path = path;
-  gettimeofday(&context.now, NULL);
+  gettimeofday (&context.now, NULL);
   nextFlushTime = context.now.tv_usec + LOG_FLUSH_USEC;
 
-  logAppender = new _DailyLogAppender(context);
+  logAppender = new _DailyLogAppender (context);
 }
 
 _Logger::~_Logger()
 {
-  cci::_MutexAutolock lock(&critical);
+  cci::_MutexAutolock lock (&critical);
 
   if (logAppender != NULL)
     {
@@ -576,69 +576,69 @@ _Logger::~_Logger()
     }
 }
 
-void _Logger::setLogLevel(CCI_LOG_LEVEL level)
+void _Logger::setLogLevel (CCI_LOG_LEVEL level)
 {
-  cci::_MutexAutolock lock(&critical);
+  cci::_MutexAutolock lock (&critical);
 
   this->level = level;
 }
 
-void _Logger::setUseDefaultPrefix(bool useDefaultPrefix)
+void _Logger::setUseDefaultPrefix (bool useDefaultPrefix)
 {
-  cci::_MutexAutolock lock(&critical);
+  cci::_MutexAutolock lock (&critical);
 
   this->useDefaultPrefix = useDefaultPrefix;
 }
 
-void _Logger::setUseDefaultNewLine(bool useDefaultNewLine)
+void _Logger::setUseDefaultNewLine (bool useDefaultNewLine)
 {
-  cci::_MutexAutolock lock(&critical);
+  cci::_MutexAutolock lock (&critical);
 
   this->useDefaultNewLine = useDefaultNewLine;
 }
 
-void _Logger::setForceFlush(bool isForceFlush)
+void _Logger::setForceFlush (bool isForceFlush)
 {
-  cci::_MutexAutolock lock(&critical);
+  cci::_MutexAutolock lock (&critical);
 
   this->isForceFlush = isForceFlush;
 }
 
-void _Logger::log(CCI_LOG_LEVEL level, const char *msg)
+void _Logger::log (CCI_LOG_LEVEL level, const char *msg)
 {
-  cci::_MutexAutolock lock(&critical);
+  cci::_MutexAutolock lock (&critical);
 
-  gettimeofday(&context.now, NULL);
+  gettimeofday (&context.now, NULL);
 
   if (useDefaultPrefix)
     {
-      logPrefix(level);
+      logPrefix (level);
     }
 
-  write(msg);
+  write (msg);
 
   if (useDefaultNewLine)
     {
-      write("\n");
+      write ("\n");
     }
 }
 
-void _Logger::changeMaxFileSizeAppender(int maxFileSizeKBytes, int maxBackupCount)
+void _Logger::changeMaxFileSizeAppender (int maxFileSizeKBytes, int maxBackupCount)
 {
-  cci::_MutexAutolock lock(&critical);
+  cci::_MutexAutolock lock (&critical);
 
   if (this->logAppender != NULL)
     {
       delete this->logAppender;
     }
 
-  this->logAppender = new _MaxSizeLogAppender(context, maxFileSizeKBytes,
+  this->logAppender = new _MaxSizeLogAppender (context, maxFileSizeKBytes,
       maxBackupCount);
 }
 
-void _Logger::changePostfixAppender(CCI_LOG_POSTFIX postfix)
+void _Logger::changePostfixAppender (CCI_LOG_POSTFIX postfix)
 {
-  cci::_MutexAutolock lock(&critical);
+  cci::_MutexAutolock lock (&critical);
 
   if (this->logAppender != NULL)
     {
@@ -647,33 +647,33 @@ void _Logger::changePostfixAppender(CCI_LOG_POSTFIX postfix)
 
   if (postfix == CCI_LOG_POSTFIX_NONE)
     {
-      this->logAppender = new _DailyLogAppender(context);
+      this->logAppender = new _DailyLogAppender (context);
     }
   else
     {
-      this->logAppender = new _PostFixAppender(context, postfix);
+      this->logAppender = new _PostFixAppender (context, postfix);
     }
 }
 
 const char *_Logger::getPath()
 {
-  cci::_MutexAutolock lock(&critical);
+  cci::_MutexAutolock lock (&critical);
 
   return context.path.c_str();
 }
 
-bool _Logger::isWritable(CCI_LOG_LEVEL level)
+bool _Logger::isWritable (CCI_LOG_LEVEL level)
 {
-  cci::_MutexAutolock lock(&critical);
+  cci::_MutexAutolock lock (&critical);
 
   return this->level >= level;
 }
 
-void _Logger::write(const char *msg)
+void _Logger::write (const char *msg)
 {
-  logAppender->write(msg);
+  logAppender->write (msg);
 
-  unflushedBytes += strlen(msg);
+  unflushedBytes += strlen (msg);
 
   if (isForceFlush || unflushedBytes >= LOG_FLUSH_SIZE
       || nextFlushTime >= (unsigned long) context.now.tv_usec)
@@ -684,25 +684,25 @@ void _Logger::write(const char *msg)
     }
 }
 
-void _Logger::logPrefix(CCI_LOG_LEVEL level)
+void _Logger::logPrefix (CCI_LOG_LEVEL level)
 {
   struct tm cal;
   time_t t;
 
   t = context.now.tv_sec;
 
-  localtime_r((const time_t *) &t, &cal);
+  localtime_r ((const time_t *) &t, &cal);
   cal.tm_year += 1900;
   cal.tm_mon += 1;
 
   char buf[128];
   unsigned long tid = gettid();
-  snprintf(buf, 128, "%d-%02d-%02d %02d:%02d:%02d.%03d [TID:%lu] [%5s]",
-      cal.tm_year, cal.tm_mon, cal.tm_mday, cal.tm_hour, cal.tm_min,
-      cal.tm_sec, (int)(context.now.tv_usec / 1000), tid,
-      cci_log_level_string[level]);
+  snprintf (buf, 128, "%d-%02d-%02d %02d:%02d:%02d.%03d [TID:%lu] [%5s]",
+            cal.tm_year, cal.tm_mon, cal.tm_mday, cal.tm_hour, cal.tm_min,
+            cal.tm_sec, (int) (context.now.tv_usec / 1000), tid,
+            cci_log_level_string[level]);
 
-  write(buf);
+  write (buf);
 }
 
 typedef std::pair<_Logger *, int> _LoggerReference;
@@ -711,30 +711,30 @@ typedef std::map<std::string, _LoggerReference> _LoggerMap;
 
 class _LoggerManager
 {
-public:
-  _LoggerManager() {}
-  virtual ~_LoggerManager() {}
+  public:
+    _LoggerManager() {}
+    virtual ~_LoggerManager() {}
 
-  _Logger *getLogger(const char *path);
-  void removeLogger(const char *path);
-  void clearLogger();
+    _Logger *getLogger (const char *path);
+    void removeLogger (const char *path);
+    void clearLogger();
 
-private:
-  cci::_Mutex critical;
-  _LoggerMap map;
+  private:
+    cci::_Mutex critical;
+    _LoggerMap map;
 };
 
-_Logger *_LoggerManager::getLogger(const char *path)
+_Logger *_LoggerManager::getLogger (const char *path)
 {
-  cci::_MutexAutolock lock(&critical);
+  cci::_MutexAutolock lock (&critical);
 
-  _LoggerMap::iterator it = map.find(path);
+  _LoggerMap::iterator it = map.find (path);
   if (it == map.end())
     {
       try
         {
-          _Logger *logger = new _Logger(path);
-          map[path] = _LoggerReference(logger, 1);
+          _Logger *logger = new _Logger (path);
+          map[path] = _LoggerReference (logger, 1);
           return logger;
         }
       catch (...)
@@ -750,25 +750,25 @@ _Logger *_LoggerManager::getLogger(const char *path)
   return it->second.first;
 }
 
-void _LoggerManager::removeLogger(const char *path)
+void _LoggerManager::removeLogger (const char *path)
 {
-  cci::_MutexAutolock lock(&critical);
+  cci::_MutexAutolock lock (&critical);
 
-  _LoggerMap::iterator it = map.find(path);
+  _LoggerMap::iterator it = map.find (path);
   if (it != map.end())
     {
       it->second.second--;
       if (it->second.second == 0)
         {
           delete it->second.first;
-          map.erase(it);
+          map.erase (it);
         }
     }
 }
 
 void _LoggerManager::clearLogger()
 {
-  cci::_MutexAutolock lock(&critical);
+  cci::_MutexAutolock lock (&critical);
 
   _LoggerMap::iterator it = map.begin();
   for (; it != map.end(); it++)
@@ -781,22 +781,22 @@ void _LoggerManager::clearLogger()
 
 static _LoggerManager loggerManager;
 
-Logger cci_log_add(const char *path)
+Logger cci_log_add (const char *path)
 {
-  return loggerManager.getLogger(path);
+  return loggerManager.getLogger (path);
 }
 
-Logger cci_log_get(const char *path)
+Logger cci_log_get (const char *path)
 {
-  return loggerManager.getLogger(path);
+  return loggerManager.getLogger (path);
 }
 
-void cci_log_finalize(void)
+void cci_log_finalize (void)
 {
   loggerManager.clearLogger();
 }
 
-void cci_log_writef(CCI_LOG_LEVEL level, Logger logger, const char *format, ...)
+void cci_log_writef (CCI_LOG_LEVEL level, Logger logger, const char *format, ...)
 {
   _Logger *l = (_Logger *) logger;
 
@@ -808,14 +808,14 @@ void cci_log_writef(CCI_LOG_LEVEL level, Logger logger, const char *format, ...)
   char buf[LOG_BUFFER_SIZE];
   va_list vl;
 
-  va_start(vl, format);
-  vsnprintf(buf, LOG_BUFFER_SIZE, format, vl);
-  va_end(vl);
+  va_start (vl, format);
+  vsnprintf (buf, LOG_BUFFER_SIZE, format, vl);
+  va_end (vl);
 
-  l->log(level, buf);
+  l->log (level, buf);
 }
 
-void cci_log_write(CCI_LOG_LEVEL level, Logger logger, const char *log)
+void cci_log_write (CCI_LOG_LEVEL level, Logger logger, const char *log)
 {
   _Logger *l = (_Logger *) logger;
 
@@ -824,15 +824,15 @@ void cci_log_write(CCI_LOG_LEVEL level, Logger logger, const char *log)
       return;
     }
 
-  l->log(level, (char *) log);
+  l->log (level, (char *) log);
 }
 
-void cci_log_remove(const char *path)
+void cci_log_remove (const char *path)
 {
-  loggerManager.removeLogger(path);
+  loggerManager.removeLogger (path);
 }
 
-void cci_log_set_level(Logger logger, CCI_LOG_LEVEL level)
+void cci_log_set_level (Logger logger, CCI_LOG_LEVEL level)
 {
   _Logger *l = (_Logger *) logger;
 
@@ -841,10 +841,10 @@ void cci_log_set_level(Logger logger, CCI_LOG_LEVEL level)
       return;
     }
 
-  l->setLogLevel(level);
+  l->setLogLevel (level);
 }
 
-bool cci_log_is_writable(Logger logger, CCI_LOG_LEVEL level)
+bool cci_log_is_writable (Logger logger, CCI_LOG_LEVEL level)
 {
   _Logger *l = (_Logger *) logger;
 
@@ -853,10 +853,10 @@ bool cci_log_is_writable(Logger logger, CCI_LOG_LEVEL level)
       return false;
     }
 
-  return l->isWritable(level);
+  return l->isWritable (level);
 }
 
-void cci_log_set_force_flush(Logger logger, bool force_flush)
+void cci_log_set_force_flush (Logger logger, bool force_flush)
 {
   _Logger *l = (_Logger *) logger;
 
@@ -865,10 +865,10 @@ void cci_log_set_force_flush(Logger logger, bool force_flush)
       return;
     }
 
-  l->setForceFlush(force_flush);
+  l->setForceFlush (force_flush);
 }
 
-void cci_log_use_default_newline(Logger logger, bool use_default_newline)
+void cci_log_use_default_newline (Logger logger, bool use_default_newline)
 {
   _Logger *l = (_Logger *) logger;
 
@@ -877,10 +877,10 @@ void cci_log_use_default_newline(Logger logger, bool use_default_newline)
       return;
     }
 
-  l->setUseDefaultNewLine(use_default_newline);
+  l->setUseDefaultNewLine (use_default_newline);
 }
 
-void cci_log_use_default_prefix(Logger logger, bool use_default_prefix)
+void cci_log_use_default_prefix (Logger logger, bool use_default_prefix)
 {
   _Logger *l = (_Logger *) logger;
 
@@ -889,10 +889,10 @@ void cci_log_use_default_prefix(Logger logger, bool use_default_prefix)
       return;
     }
 
-  l->setUseDefaultPrefix(use_default_prefix);
+  l->setUseDefaultPrefix (use_default_prefix);
 }
 
-void cci_log_change_max_file_size_appender(Logger logger,
+void cci_log_change_max_file_size_appender (Logger logger,
     int maxFileSizeKBytes, int maxBackupCount)
 {
   _Logger *l = (_Logger *) logger;
@@ -904,14 +904,14 @@ void cci_log_change_max_file_size_appender(Logger logger,
 
   try
     {
-      l->changeMaxFileSizeAppender(maxFileSizeKBytes, maxBackupCount);
+      l->changeMaxFileSizeAppender (maxFileSizeKBytes, maxBackupCount);
     }
   catch (...)
     {
     }
 }
 
-void cci_log_set_default_postfix(Logger logger, CCI_LOG_POSTFIX postfix)
+void cci_log_set_default_postfix (Logger logger, CCI_LOG_POSTFIX postfix)
 {
   _Logger *l = (_Logger *) logger;
 
@@ -920,5 +920,6 @@ void cci_log_set_default_postfix(Logger logger, CCI_LOG_POSTFIX postfix)
       return;
     }
 
-  l->changePostfixAppender(postfix);
+  l->changePostfixAppender (postfix);
 }
+

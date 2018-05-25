@@ -41,6 +41,7 @@
 #include "object_primitive.h"
 #include "db.h"
 #include "network_interface_cl.h"
+#include "dbtype.h"
 
 
 static int pt_find_size_from_dbtype (const DB_TYPE T_type);
@@ -1197,7 +1198,7 @@ int
 db_object_describe (DB_OBJECT * obj_mop, int num_attrs, const char **attrs, DB_QUERY_TYPE ** col_spec)
 {
   DB_QUERY_TYPE *t;
-  int i, bytes, attrid, shared, err = NO_ERROR;
+  int i, attrid, shared, err = NO_ERROR;
   MOP class_mop;
   const char **name;
   SM_DOMAIN *tmp_dom;
@@ -1211,20 +1212,28 @@ db_object_describe (DB_OBJECT * obj_mop, int num_attrs, const char **attrs, DB_Q
     }
 
   *col_spec = NULL;
-  if ((class_mop = WS_CLASS_MOP (obj_mop)) == NULL)
-    return -1;
+
+  class_mop = WS_CLASS_MOP (obj_mop);
+  if (class_mop == NULL)
+    {
+      return -1;
+    }
 
   *col_spec = db_alloc_query_format (num_attrs);
   if (*col_spec == NULL)
-    return -1;
+    {
+      return -1;
+    }
 
   for (i = 0, t = *col_spec, name = attrs; i < num_attrs && t && name && err == NO_ERROR; i++, t = t->next, name++)
     {
       t->db_type = sm_att_type_id (class_mop, *name);
       t->size = pt_find_size_from_dbtype (t->db_type);
-      t->name = (char *) malloc (bytes = 1 + strlen (*name));
+      t->name = (char *) malloc (1 + strlen (*name));
       if (t->name)
-	strcpy ((char *) t->name, *name);
+	{
+	  strcpy ((char *) t->name, *name);
+	}
       else
 	{
 	  db_free_query_format (*col_spec);
@@ -1264,7 +1273,7 @@ db_object_fetch (DB_OBJECT * obj_mop, int num_attrs, const char **attrs, DB_QUER
   MOP class_mop;
   DB_QUERY_RESULT *r;
   DB_QUERY_TYPE *t;
-  int k, bytes;
+  int k;
   const char **name;
   int err = NO_ERROR;
   DB_VALUE **v;
@@ -1279,12 +1288,17 @@ db_object_fetch (DB_OBJECT * obj_mop, int num_attrs, const char **attrs, DB_QUER
     }
 
   *result = NULL;
-  if ((class_mop = sm_get_class (obj_mop)) == NULL)
-    goto err_end;
+  class_mop = sm_get_class (obj_mop);
+  if (class_mop == NULL)
+    {
+      goto err_end;
+    }
 
   r = *result = db_alloc_query_result (T_OBJFETCH, num_attrs);
   if (r == NULL)
-    goto err_end;
+    {
+      goto err_end;
+    }
   r_inited = true;
 
   db_init_query_result (r, T_OBJFETCH);
@@ -1306,21 +1320,29 @@ db_object_fetch (DB_OBJECT * obj_mop, int num_attrs, const char **attrs, DB_QUER
     {
       t->db_type = sm_att_type_id (class_mop, *name);
       t->size = pt_find_size_from_dbtype (t->db_type);
-      t->name = (char *) malloc (bytes = 1 + strlen (*name));
+      t->name = (char *) malloc (1 + strlen (*name));
       if (t->name)
-	strcpy ((char *) t->name, *name);
+	{
+	  strcpy ((char *) t->name, *name);
+	}
       else
-	goto err_end;
+	{
+	  goto err_end;
+	}
 
       *v = pr_make_ext_value ();
       if (*v == NULL)
-	goto err_end;
+	{
+	  goto err_end;
+	}
 
       err = obj_get (obj_mop, *name, *v);
     }
 
   if (err != NO_ERROR)
-    goto err_end;
+    {
+      goto err_end;
+    }
 
   err = 0;
   goto end;
@@ -1378,7 +1400,9 @@ db_get_attributes_force (DB_OBJECT * obj)
     {
       atts = class_->ordered_attributes;
       if (atts == NULL)
-	er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS, 0);
+	{
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_NO_COMPONENTS, 0);
+	}
     }
   return ((DB_ATTRIBUTE *) atts);
 }

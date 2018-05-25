@@ -27,8 +27,10 @@
 
 #include <string.h>
 
-#include "fetch.h"
 #include "set_scan.h"
+
+#include "fetch.h"
+#include "dbtype.h"
 
 /*
  * qproc_next_set_scan () -
@@ -101,7 +103,7 @@ qproc_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	{
 	  return S_END;
 	}
-      setp = DB_GET_SET (&set_id->set);
+      setp = db_get_set (&set_id->set);
       if (!setp)
 	{
 	  return S_END;

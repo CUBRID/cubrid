@@ -638,40 +638,39 @@ opzioni valide:\n\
   -r, --repair                 riparare quando incoerenza si trova\n\
   -i, --input-class-file=FILE  FILE di input di nomi di classe\n\
                                predefinito: verificare tutte le classi\n\
-  -I, --index-name             index name that will be checked only\n\
-                               default: check all indices\n\
-      --check-prev-link        check only previous links of indices\n\
+  -I, --index-name             nome dell'indice che verrà controllato\n\
+                               default: controlla tutti gli indici\n\
+      --check-prev-link        controlla solo link precedenti di indici\n\
       --repair-prev-link       riparare precedente collegamenti degli indici\n\
-      --check-file-tracker     check all allocated pages of file\n\
-      --check-heap             check all pages of heap files\n\
-      --check-catalog          check catalog consistency\n\
-      --check-btree            check all btree indices\n\
-      --check-class-name       check class name consistency\n\
-      --check-btree-entries    check entries of btree consistency\n
+      --check-file-tracker     controllare tutte le pagine assegnate di file\n\
+      --check-heap             controllare tutte le pagine dei file heap\n\
+      --check-catalog          controllare la consistenza del catalogo\n\
+      --check-btree            controllare tutti gli indici btree\n\
+      --check-class-name       Controllare la coerenza del nome della classe\n\
+      --check-btree-entries    Controllare la consistenza delle registrazioni btree\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 Descrizione dello spazio per il database '%1$s' con pagesize %2$s. (log pagesize: %3$s)\n\n
-16 %1$5d %2$9s  %3$s %4$s  %5$s\n
-17 Impossibile aprire il file di output '%1$s'\n
-18 Descrizione dello spazio per volumi temporanee per database '%1$s' con pagesize %2$s.\n\n
-19 Volid  Purpose     total_pages  free_pages  Vol Name\n\n
-20 Volid  Purpose      total_size   free_size  Vol Name\n\n
-21 Descrizione dello spazio LOB %1$s \n\n
-22 -------------------------------------------------------------------------------\n
-30 Riassunto descrizione spazio per database '%1$s' con pagesize %2$s. (log pagesize: %3$s)\n\n
-31 Purpose   total_pages  used_pages  free_pages  volume_count\n
-32 Purpose    total_size   used_size   free_size  volume_count\n
-33 %1$10s %2$s %3$s %4$s %5$10d\n
-34 -------------------------------------------------------------\n
-40 Volid  Purpose   total_pages  free_pages  data_pages index_pages  temp_pages  Vol Name\n\n
-41 Volid  Purpose    total_size   free_size   data_size  index_size   temp_size  Vol Name\n\n
-42 %1$5d %2$9s  %3$s %4$s %5$s %6$s %7$s  %8$s\n
-43 ----------------------------------------------------------------------------------------------------\n
-50 Purpose      total_pages  used_pages  free_pages  data_pages index_pages  temp_pages  volume_count\n
-51 Purpose       total_size   used_size   free_size   data_size  index_size   temp_size  volume_count\n
-52 %1$10s %2$s %3$s %4$s %5$s %6$s %7$s %8$10d\n
-53 -------------------------------------------------------------------------------------------------\n
+10 Descrizione dello spazio per il database '%1$s' con pagesize %2$s. (log pagesize: %3$s)\n\n
+11 Impossibile aprire il file di output '%1$s'\n
+12 Descrizione dello spazio LOB %1$s \n\n
+20 type                purpose            volume_count        used_pages          free_pages          total_pages\n
+21 type                purpose            volume_count         used_size           free_size           total_size\n
+22 PERMANENT           PERMANENT DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+23 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+24 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+25 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
+30 Descrizione dello spazio per tutti i volumi:\n
+31 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
+32 volid               type                purpose             used_size           free_size           total_size         volume_name\n
+33 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+34 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+35 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+40 Descrizione spaziale dettagliata per i file:\n
+41 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
+42 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
+43 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
+50 -----------------------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: Visualizzazione utilizzo / spazio libero del database.\n\
 uso: %1$s spacedb [OPZIONE] nome-database\n\
@@ -684,7 +683,6 @@ opzioni valide:\n\
                                impostare l'unità di visualizzazione (page, mega, giga, tera, human readable); predefinito: H\n\
   -s, --summarize              visualizzare solo un riepilogo per ogni scopo del volume\n\
   -p, --purpose                visualizzare la dimensione di ciascun utilizzato scopo(data/index/temp) di ciascun volume\n
-
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
 15 Stima del numero di pagine = %1$d\n
@@ -756,7 +754,7 @@ uso: %1$s diagdb [OPZIONE] nome-database\n\
 \n\
 opzioni valide:\n\
   -o, --output-file=FILE       reindirizzare i messaggi di output a FILE; predefinito: nessuno\n\
-      --emergency              emergency restart; default: none\n\
+      --emergency              riavvio di emergenza; predefinito: nessuno\n\
   -d, --dump-type=TIPO         TIPO di dump\n\
                                -1 dump tutto\n\
                                 1 dump file tables\n\
@@ -944,7 +942,7 @@ uso: %1$s applyinfo [OPZIONE] nome-database\n\
 \n\
 opzioni valide:\n\
   -r, --remote-host-name      nome dell'host remoto; visualizzare le informazioni di log attivo del nodo remote \n\
-  -a, --applied-info 	      visualizzare applied infomation \n\
+  -a, --applied-info          visualizzare applied infomation \n\
   -L, --copied-log-path=PATH  path di volumi di registrazione copiate; informazioni del log copiate \n\
   -p, --page=ID               page id; predefinito : 0\n\
   -v, --verbose               attivare i messaggi dettagliati di stato; predefinito : non attivo\n\
@@ -964,11 +962,11 @@ $set 46 MSGCAT_UTIL_SET_GENLOCALE
 genlocale: Genera locale shared library usando file di input LDML.\n\
 uso: %1$s genlocale [OPZIONE] [language-string]\n\
 \n\
-language-string	      locale language string per quale si genera shared library.\n\
-		      Se language-string no è specificato, tutte le lingue da 'cubrid_locales.txt'\n\
-		      saranno trattati.\n\
+language-string       locale language string per quale si genera shared library.\n\
+                      Se language-string no è specificato, tutte le lingue da 'cubrid_locales.txt'\n\
+                      saranno trattati.\n\
 opzioni valide:\n\
-  -v, --verbose	              attivare i messaggi dettagliati di stato; predefinito : non attivo\n\
+  -v, --verbose               attivare i messaggi dettagliati di stato; predefinito : non attivo\n\
   -i, --input-ldml-file       percorso di file di input LDML. Solo quando la language-string è dato.\n
 61 Argumento nome locale non valido.\n
 
@@ -980,22 +978,22 @@ $set 47 MSGCAT_UTIL_SET_DUMPLOCALE
 dumplocale: Scarica il contenuto di locale shared library precedentemente generato utilizzando il file di input LDML.\n\
 uso: %1$s dumplocale [OPZIONE] [language-string]\n\
 \n\
-language-string	      locale language string per quale si genera shared library.\n\
-		      Se language-string no è specificato, tutte le lingue da 'cubrid_locales.txt'\n\
-		      saranno trattati.\n\
+language-string       locale language string per quale si genera shared library.\n\
+                      Se language-string no è specificato, tutte le lingue da 'cubrid_locales.txt'\n\
+                      saranno trattati.\n\
 opzioni valide:\n\
   -i, --input-file    path per input locale shared library (precedentemente generato).\n\
                       Può essere utilizzato solo quando il language-string non è dato.\n\
   -d, --calendar      scarica informazioni calendario e data / ora; predefinito : non attivo\n\
-  -n, --numeric		  dump informazioni numeriche; predefinito : non attivo\n\
-  -a, --alphabet=l|lower|u|upper|both	     dump di alfabeto e informazioni caso; predefinito : non attivo\n\
-      --identifier-alphabet=l|lower|u|upper	 dump di alfabeto e informazioni caso per identificatori; predefinito : non attivo\n\
-  -c, --codepoint-order	 discarica informazioni collation ordinati in base ai valori di codepoint\n\
+  -n, --numeric       dump informazioni numeriche; predefinito : non attivo\n\
+  -a, --alphabet=l|lower|u|upper|both        dump di alfabeto e informazioni caso; predefinito : non attivo\n\
+      --identifier-alphabet=l|lower|u|upper  dump di alfabeto e informazioni caso per identificatori; predefinito : non attivo\n\
+  -c, --codepoint-order  discarica informazioni collation ordinati in base ai valori di codepoint\n\
                          (cp, char, weight, next-cp, char e weight);\n\
                          predefinito : non attivo\n\
   -w, --weight-order  discarica info collation ordinati in base ai valori di peso\n\
                       (weight, cp, char); predefinito : non attivo\n\
-  -s, --start-value	  opzione di filtraggio; inizio codepoint per\n\
+  -s, --start-value   opzione di filtraggio; inizio codepoint per\n\
                       -a, --identifier-alphabet, -c, -w; predefinito : 0\n\
   -e, --end-value     opzione di filtraggio; fine codepoint per \n\
                       -a, --identifier-alphabet, -c, -w; \n\
@@ -1030,8 +1028,8 @@ usage: %1$s synccolldb [OPTION] nome-database\n\
 \n\
 opzioni valide:\n\
   -c, --check-only    Controlla le collations del database con collations di sistema.\n\
-		      Se la sincronizzazione di collations è necessario, il codice di errore 1 viene restituito.\n\
-		      Visualizza un rapporto di collations incompatibili.\n\
+                      Se la sincronizzazione di collations è necessario, il codice di errore 1 viene restituito.\n\
+                      Visualizza un rapporto di collations incompatibili.\n\
   -f, --force-only    Aggiornamenti delle collations di database per essere lo stesso le collations di nuova configurazione del sistema.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
@@ -1062,26 +1060,13 @@ opzioni valide:\n\
       --sort-key=COLUMN_NUMBER numero di colonna da ordinare\n\
       --reverse                invertire l'ordinamento\n
 
-$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
-22 Il server non è stato configurato per HA.\n
-23 Funzione Prefetch è disabilitata.\n
-58 Funzione HA feature non è supportato su questa piattaforma.\n
-59 prefetchlogdb non è possibile eseguire come modalità standalone.\n
-60 \
-prefetchlogdb: Prelettura pagine di log dal server.\n\
-uso: %1$s prefetchlogdb [OPZIONE] nome-database\n\
-\n\
-opzioni valide:\n\
-  -L, --log-path=PATH         cartella PATH per volumi di registrazione copiati\n
-
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
 59 Modalità generazione non valido.\n
 60 Cartella di input non valido o danneggiato.\n
 61 \
 gen_tz: Generare file sorgente contenenti dati fuso orario da elaborare in\n\
         una libreria condivisa.\n\
-uso: %s gen_tz [OPTION]\n\
-     %s gen_tz -g extend [OPTION] [nome-database]\n\
+uso: %s gen_tz -g [new|extend] [database-name] (only for extend mode)\n\
 \n\
 opzioni valide:\n\
   -i, --input-folder    path di una cartella di input che contiene una versione di\n\
@@ -1094,18 +1079,15 @@ opzioni valide:\n\
                         generare anche un file sorgente contenente tutti i paesi\n\
                         e nomi di fuso orario (destinato all'uso sviluppatore, a\n\
                         essere integrato nelle future versioni CUBRID).\n\
-                        2. EXTEND : generare file(s) sorgente fuso orario usando il\n\
-                        dati della cartella di input; ID timezone codificati in\n\
-                        CUBRID sono conservati; nuovi fusi orari che si trovano in ingresso\n\
-                        file vengono aggiunti al file di origine secondaria che è\n\
-                        anche generato; GMT compensa e ora legale\n\
-                        informazioni vengono aggiornate (o aggiunta, per i nuovi fusi orari);\n\
-                        usi orari non vengono mai eliminati se un fuso orario codificati in\n\
-                        CUBRID manca dai file di input, gli associati\n\
-                        dati vengono recuperati dalla libreria fuso orario esistente.\n\
-                        Viene generato un nuovo file C che contiene tutti i nomi di fusi orari\n\
-                        e deve essere incluso nella cartella di file di origine CUBRID\n\
-                        prima che la nuova biblioteca fuso orario può essere utilizzato.\n
+                        2. EXTEND : Generare file sorgente di timezone utilizzando dati\n\
+                        dalla cartella di input; nuovi valori di timezone  trovati nelli file\n\
+                        del'ingresso vengono aggiunti; gli offset GMT e le informazioni del'ora\n\
+                        legale vengono aggiornate (o aggiunte, per i nuovi campi temporali);\n\
+                        gli timezones non vengono mai rimossi se un fuso orario codificato in CUBRID\n\
+                        manca da un file di input, quelli dati vengono recuperati dalla libreria\n\
+                        di timezone esistente. Se la prima fase dell'estensione non riesce a rendere\n\
+                        compatibili tutti i dati indietro, verranno aggiornate tutte le righe in\n\
+                        tutte le tabelle con tipi di dati timezone.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 L'ID di area fornito è fuori portata. Utilizzare - z per vedi tutto\n\
@@ -1116,8 +1098,8 @@ uso: %s dump_tz [OPTION]\n\
 \n\
 opzioni valide:\n\
   -c, --list-countries      mostra la lista dei paesi attualmente supportati\n\
-  -l, --leap-seconds	    mostra la lista dei secondi bisestili\n\
-  -s, --summary		    mostra una sintesi dei dati di fuso orario discarica\n\
+  -l, --leap-seconds        mostra la lista dei secondi bisestili\n\
+  -s, --summary             mostra una sintesi dei dati di fuso orario discarica\n\
   -z, --list-zones          mostra l'elenco dei fusi orari attualmente supportati\n\
   -d, --zone-id=ZONE_ID|ALL visualizzazione delle informazioni sul fuso orario disponibili correlate\n\
                             a un fuso orario con la ZONE_ID o per\n\
@@ -1143,8 +1125,6 @@ opzioni valide:\n\
   -u, --use-database-location-path  ripristinare i volumi di database e di registro per il percorso specificato nel file di posizione del database\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
-21 Ready to remove the following volumes:\n\n
-22 Do you wish to proceed ? (Y/N)
 21 Pronti a rimuovere i seguenti volumi:\n\n
 22 Vuoi proseguire ? (Y/N)
 31 Impossibile rimuovere volume di sistema o il primo volume (Volid : %1$d).\n

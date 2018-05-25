@@ -27,20 +27,18 @@
 
 #include <assert.h>
 
-#include "db.h"
 #include "transaction_sr.h"
 #include "locator_sr.h"
 #include "log_manager.h"
-#include "log_impl.h"
-#include "wait_for_graph.h"
-#include "thread.h"
 #if defined(SERVER_MODE)
-#include "server_support.h"
 #endif
 #include "xserver_interface.h"
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
+#include "server_support.h"
+#include "dbtype.h"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
 
 /*
  * xtran_server_commit - Commit the current transaction
@@ -112,38 +110,11 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 TRAN_STATE
 xtran_server_abort (THREAD_ENTRY * thread_p)
 {
-  CSS_CONN_ENTRY *conn = NULL;
   TRAN_STATE state;
   int tran_index;
-#if defined(SERVER_MODE)
-  bool continue_check;
-#endif
 
-  /* 
-   * Execute some few remaining actions before the log manager is notified of
-   * the commit
-   */
-
+  /* Execute some few remaining actions before the log manager is notified of the commit */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-#if defined(SERVER_MODE)
-  conn = thread_p->conn_entry;
-  assert (conn);
-
-  if (conn->client_type == BOOT_CLIENT_LOG_PREFETCHER)
-    {
-      while (conn->prefetcher_thread_count > 0)
-	{
-	  if (logtb_is_interrupted (thread_p, true, &continue_check) == true)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	      return ER_INTERRUPTED;
-	    }
-
-	  thread_sleep (10);	/* 10 msec */
-	}
-    }
-#endif
 
   state = log_abort (thread_p, tran_index);
 
@@ -293,6 +264,7 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
       return TRAN_UNACTIVE_UNKNOWN;
     }
 
+  er_stack_push ();
   switch (result)
     {
     case LOG_RESULT_TOPOP_COMMIT:
@@ -327,6 +299,8 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
       state = tdes->state;
       break;
     }
+
+  er_stack_pop ();
   return state;
 }
 
@@ -616,7 +590,7 @@ int
 xtran_wait_server_active_trans (THREAD_ENTRY * thread_p)
 {
 #if defined(SERVER_MODE)
-  int prev_thrd_cnt, thrd_cnt;
+  size_t prev_thrd_cnt, thrd_cnt;
   CSS_CONN_ENTRY *p;
   int tran_index, client_id;
   bool continue_check;
@@ -636,7 +610,7 @@ xtran_wait_server_active_trans (THREAD_ENTRY * thread_p)
   client_id = p->client_id;
 
 loop:
-  prev_thrd_cnt = thread_has_threads (thread_p, tran_index, client_id);
+  prev_thrd_cnt = css_count_transaction_worker_threads (thread_p, tran_index, client_id);
   if (prev_thrd_cnt > 0)
     {
       if (!logtb_is_interrupted_tran (thread_p, false, &continue_check, tran_index))
@@ -645,7 +619,8 @@ loop:
 	}
     }
 
-  while ((thrd_cnt = thread_has_threads (thread_p, tran_index, client_id)) >= prev_thrd_cnt && thrd_cnt > 0)
+  while ((thrd_cnt = css_count_transaction_worker_threads (thread_p, tran_index, client_id)) >= prev_thrd_cnt
+	 && thrd_cnt > 0)
     {
       /* Some threads may wait for data from the m-driver. It's possible from the fact that css_server_thread() is
        * responsible for receiving every data from which is sent by a client and all m-drivers. We must have chance to
@@ -698,7 +673,7 @@ xtran_get_local_transaction_id (THREAD_ENTRY * thread_p, DB_VALUE * trid)
   error_code = db_value_domain_init (trid, DB_TYPE_INTEGER, 0, 0);
   if (error_code == NO_ERROR)
     {
-      DB_MAKE_INTEGER (trid, logtb_find_current_tranid (thread_p));
+      db_make_int (trid, logtb_find_current_tranid (thread_p));
     }
 
   return error_code;

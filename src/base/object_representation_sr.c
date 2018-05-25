@@ -31,22 +31,15 @@
 #include <string.h>
 #include <assert.h>
 
-#include "error_manager.h"
-#include "oid.h"
-#include "storage_common.h"
-#include "object_representation.h"
 #include "object_representation_sr.h"
-#include "system_catalog.h"
-#include "object_domain.h"
+
+#include "error_manager.h"
+#include "object_representation.h"
 #include "set_object.h"
 #include "btree_load.h"
-#include "page_buffer.h"
-#include "heap_file.h"
-#include "class_object.h"
-#include "partition.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
+#include "object_primitive.h"
+#include "dbtype.h"
 
 #define DATA_INIT(data, type) memset(data, 0, sizeof(DB_DATA))
 #define OR_ARRAY_EXTENT 10
@@ -139,26 +132,6 @@ orc_class_hfid_from_record (RECDES * record, HFID * hfid)
   hfid->hpgid = OR_GET_INT (ptr + ORC_HFID_PAGEID_OFFSET);
 }
 #endif
-
-/*
- * orc_class_is_system_class () - Get from record the class flag and check
- *				  if SM_CLASSFLAG_SYSTEM is set.
- *
- * return      : True if SM_CLASSFLAG_SYSTEM is set.
- * record (in) : Record descriptor containing class data.
- */
-bool
-orc_class_is_system_class (RECDES * record)
-{
-  char *ptr = NULL;
-  int flags;
-  assert (record != NULL && record->data != NULL);
-
-  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT) + ORC_CLASS_FLAGS;
-  flags = OR_GET_INT (ptr);
-
-  return ((flags & SM_CLASSFLAG_SYSTEM) != 0);
-}
 
 /*
  * orc_diskrep_from_record () - Calculate the corresponding DISK_REPR structure
@@ -272,11 +245,10 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
       att->position = or_att->position;
       att->val_length = or_att->default_value.val_length;
       att->value = or_att->default_value.value;
-      att->default_expr = or_att->default_value.default_expr;
       or_att->default_value.value = NULL;
       att->classoid = or_att->classoid;
 
-      /* initialize B+tree statisitcs information */
+      /* initialize B+tree statistics information */
 
       n_btstats = att->n_btstats = or_att->n_btids;
       if (n_btstats > 0)
@@ -287,6 +259,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (BTREE_STATS) * n_btstats);
 	      goto error;
 	    }
+	  memset (att->bt_stats, 0, sizeof (BTREE_STATS) * n_btstats);
 
 	  for (j = 0, bt_statsp = att->bt_stats; j < n_btstats; j++, bt_statsp++)
 	    {
@@ -338,7 +311,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 
 	      (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
 
-	      root_header = btree_get_root_header (root);
+	      root_header = btree_get_root_header (thread_p, root);
 	      if (root_header == NULL)
 		{
 		  pgbuf_unfix_and_init (thread_p, root);
@@ -1193,13 +1166,7 @@ or_get_domain_internal (char *ptr)
       new_ = tp_domain_new (typeid_);
       if (new_ == NULL)
 	{
-	  while (domain != NULL)
-	    {
-	      TP_DOMAIN *next = domain->next;
-	      tp_domain_free (domain);
-	      domain = next;
-	    }
-	  return NULL;
+	  goto error_cleanup;
 	}
 
       if (last == NULL)
@@ -1250,18 +1217,35 @@ or_get_domain_internal (char *ptr)
 	  error = or_get_enumeration (&buf, &DOM_GET_ENUMERATION (new_));
 	  if (error != NO_ERROR)
 	    {
-	      while (domain != NULL)
-		{
-		  TP_DOMAIN *next = domain->next;
-		  tp_domain_free (domain);
-		  domain = next;
-		}
-	      return NULL;
+	      goto error_cleanup;
+	    }
+	}
+
+      if (OR_VAR_TABLE_ELEMENT_LENGTH (dstart, ORC_DOMAIN_SCHEMA_JSON_OFFSET) != 0)
+	{
+	  OR_BUF buf;
+
+	  offset = OR_VAR_TABLE_ELEMENT_OFFSET (dstart, ORC_DOMAIN_SCHEMA_JSON_OFFSET);
+	  or_init (&buf, dstart + offset, 0);
+
+	  error = or_get_json_validator (&buf, domain->json_validator);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_cleanup;
 	    }
 	}
     }
 
   return domain;
+
+error_cleanup:
+  while (domain != NULL)
+    {
+      TP_DOMAIN *next = domain->next;
+      tp_domain_free (domain);
+      domain = next;
+    }
+  return NULL;
 }
 
 /*
@@ -1449,13 +1433,13 @@ or_cl_get_prop_nocopy (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
 	  error = set_get_element_nocopy (properties, i, &value);
 	  if (error == NO_ERROR)
 	    {
-	      if (DB_VALUE_TYPE (&value) != DB_TYPE_STRING || DB_GET_STRING (&value) == NULL)
+	      if (DB_VALUE_TYPE (&value) != DB_TYPE_STRING || db_get_string (&value) == NULL)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
 		}
 	      else
 		{
-		  prop_name = DB_PULL_STRING (&value);
+		  prop_name = db_get_string (&value);
 		  if (strcmp (name, prop_name) == 0)
 		    {
 		      if ((i + 1) >= max)
@@ -1511,7 +1495,7 @@ or_install_btids_foreign_key (const char *fkname, DB_SEQ * fk_seq, OR_INDEX * in
   index->fk->next = NULL;
   index->fk->fkname = strdup (fkname);
 
-  args = classobj_decompose_property_oid (DB_PULL_STRING (&val), &pageid, &slotid, &volid);
+  args = classobj_decompose_property_oid (db_get_string (&val), &pageid, &slotid, &volid);
   if (args != 3)
     {
       return;
@@ -1526,7 +1510,7 @@ or_install_btids_foreign_key (const char *fkname, DB_SEQ * fk_seq, OR_INDEX * in
       return;
     }
 
-  args = classobj_decompose_property_oid (DB_GET_STRING (&val), &volid, &fileid, &pageid);
+  args = classobj_decompose_property_oid (db_get_string (&val), &volid, &fileid, &pageid);
 
   if (args != 3)
     {
@@ -1538,10 +1522,10 @@ or_install_btids_foreign_key (const char *fkname, DB_SEQ * fk_seq, OR_INDEX * in
   index->fk->ref_class_pk_btid.vfid.fileid = (FILEID) fileid;
 
   set_get_element_nocopy (fk_seq, 2, &val);
-  index->fk->del_action = DB_GET_INT (&val);
+  index->fk->del_action = db_get_int (&val);
 
   set_get_element_nocopy (fk_seq, 3, &val);
-  index->fk->upd_action = DB_GET_INT (&val);
+  index->fk->upd_action = db_get_int (&val);
 }
 
 /*
@@ -1569,7 +1553,7 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	  return;
 	}
 
-      fk_seq = DB_PULL_SEQUENCE (&fkval);
+      fk_seq = db_get_set (&fkval);
 
       fk = (OR_FOREIGN_KEY *) malloc (sizeof (OR_FOREIGN_KEY));
       if (fk == NULL)
@@ -1586,7 +1570,7 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	  return;
 	}
 
-      args = classobj_decompose_property_oid (DB_PULL_STRING (&val), &pageid, &slotid, &volid);
+      args = classobj_decompose_property_oid (db_get_string (&val), &pageid, &slotid, &volid);
 
       if (args != 3)
 	{
@@ -1604,7 +1588,7 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	  return;
 	}
 
-      args = classobj_decompose_property_oid (DB_PULL_STRING (&val), &volid, &fileid, &pageid);
+      args = classobj_decompose_property_oid (db_get_string (&val), &volid, &fileid, &pageid);
 
       if (args != 3)
 	{
@@ -1621,21 +1605,21 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	  free_and_init (fk);
 	  return;
 	}
-      fk->del_action = DB_GET_INT (&val);
+      fk->del_action = db_get_int (&val);
 
       if (set_get_element_nocopy (fk_seq, 3, &val) != NO_ERROR)
 	{
 	  free_and_init (fk);
 	  return;
 	}
-      fk->upd_action = DB_GET_INT (&val);
+      fk->upd_action = db_get_int (&val);
 
       if (set_get_element_nocopy (fk_seq, 4, &val) != NO_ERROR)
 	{
 	  free_and_init (fk);
 	  return;
 	}
-      fkname = DB_PULL_STRING (&val);
+      fkname = db_get_string (&val);
       fk->fkname = strdup (fkname);
 
       if (i == 0)
@@ -1688,7 +1672,7 @@ or_install_btids_prefix_length (DB_SEQ * prefix_seq, OR_INDEX * index, int num_a
 	  return;
 	}
 
-      index->attrs_prefix_length[i] = DB_GET_INT (&val);
+      index->attrs_prefix_length[i] = db_get_int (&val);
     }
 }
 
@@ -1703,8 +1687,6 @@ or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
 {
   DB_VALUE val1, val2;
   int error = NO_ERROR;
-  char *pred_stream = NULL;
-  char *pred_string = NULL;
   int buffer_len = 0;
   char *buffer = NULL;
   OR_PREDICATE *filter_predicate = NULL;
@@ -1763,17 +1745,17 @@ or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  filter_predicate->pred_string = strdup (DB_PULL_STRING (&val1));
+  filter_predicate->pred_string = strdup (db_get_string (&val1));
   if (filter_predicate->pred_string == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      strlen (DB_PULL_STRING (&val1)) * sizeof (char));
+	      strlen (db_get_string (&val1)) * sizeof (char));
       goto err;
     }
 
-  buffer = DB_GET_STRING (&val2);
-  buffer_len = DB_GET_STRING_SIZE (&val2);
+  buffer = db_get_string (&val2);
+  buffer_len = db_get_string_size (&val2);
   filter_predicate->pred_stream = (char *) malloc (buffer_len * sizeof (char));
   if (filter_predicate->pred_stream == NULL)
     {
@@ -1895,7 +1877,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 	      break;
 	    }
 
-	  att_id = DB_GET_INTEGER (&att_val);
+	  att_id = db_get_int (&att_val);
 
 	  for (j = 0, att = rep->attributes, ptr = NULL; j < rep->n_attributes && ptr == NULL; j++, att++)
 	    {
@@ -1912,7 +1894,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
       /* asc_desc info */
       if (set_get_element_nocopy (constraint_seq, e++, &att_val) == NO_ERROR)
 	{
-	  index->asc_desc[i] = DB_GET_INTEGER (&att_val);
+	  index->asc_desc[i] = db_get_int (&att_val);
 	}
     }
   index->btname = strdup (cons_name);
@@ -1921,7 +1903,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
     {
       if (set_get_element_nocopy (constraint_seq, seq_size - 2, &att_val) == NO_ERROR)
 	{
-	  or_install_btids_foreign_key (cons_name, DB_PULL_SEQUENCE (&att_val), index);
+	  or_install_btids_foreign_key (cons_name, db_get_set (&att_val), index);
 	}
     }
   else if (type == BTREE_PRIMARY_KEY)
@@ -1930,7 +1912,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
 	    {
-	      or_install_btids_foreign_key_ref (DB_GET_SEQUENCE (&att_val), index);
+	      or_install_btids_foreign_key_ref (db_get_set (&att_val), index);
 	    }
 	}
     }
@@ -1940,19 +1922,19 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
 	    {
-	      DB_SEQ *seq = DB_GET_SEQUENCE (&att_val);
+	      DB_SEQ *seq = db_get_set (&att_val);
 	      DB_VALUE val;
 
 	      if (set_get_element_nocopy (seq, 0, &val) == NO_ERROR)
 		{
 		  if (DB_VALUE_TYPE (&val) == DB_TYPE_INTEGER)
 		    {
-		      or_install_btids_prefix_length (DB_GET_SEQUENCE (&att_val), index, att_cnt);
+		      or_install_btids_prefix_length (db_get_set (&att_val), index, att_cnt);
 		    }
 		  else if (DB_VALUE_TYPE (&val) == DB_TYPE_SEQUENCE)
 		    {
 		      DB_VALUE avalue;
-		      DB_SET *child_seq = DB_GET_SEQUENCE (&val);
+		      DB_SET *child_seq = db_get_set (&val);
 		      int seq_size = set_size (seq);
 		      int flag;
 
@@ -1970,15 +1952,15 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 			      goto next_child;
 			    }
 
-			  if (strcmp (DB_PULL_STRING (&avalue), SM_FILTER_INDEX_ID) == 0)
+			  if (strcmp (db_get_string (&avalue), SM_FILTER_INDEX_ID) == 0)
 			    {
 			      flag = 0x01;
 			    }
-			  else if (strcmp (DB_PULL_STRING (&avalue), SM_FUNCTION_INDEX_ID) == 0)
+			  else if (strcmp (db_get_string (&avalue), SM_FUNCTION_INDEX_ID) == 0)
 			    {
 			      flag = 0x02;
 			    }
-			  else if (strcmp (DB_PULL_STRING (&avalue), SM_PREFIX_INDEX_ID) == 0)
+			  else if (strcmp (db_get_string (&avalue), SM_PREFIX_INDEX_ID) == 0)
 			    {
 			      flag = 0x03;
 			    }
@@ -1996,15 +1978,15 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 			  switch (flag)
 			    {
 			    case 0x01:
-			      or_install_btids_filter_pred (DB_GET_SEQUENCE (&avalue), index);
+			      or_install_btids_filter_pred (db_get_set (&avalue), index);
 			      break;
 
 			    case 0x02:
-			      or_install_btids_function_info (DB_GET_SEQUENCE (&avalue), index);
+			      or_install_btids_function_info (db_get_set (&avalue), index);
 			      break;
 
 			    case 0x03:
-			      or_install_btids_prefix_length (DB_GET_SEQUENCE (&avalue), index, att_cnt);
+			      or_install_btids_prefix_length (db_get_set (&avalue), index, att_cnt);
 			      break;
 
 			    default:
@@ -2028,7 +2010,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 			      continue;
 			    }
 
-			  child_seq = DB_GET_SEQUENCE (&val);
+			  child_seq = db_get_set (&val);
 			}
 
 		      if (index->func_index_info)
@@ -2169,12 +2151,12 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
       return;
     }
 
-  if (DB_VALUE_TYPE (&id_val) != DB_TYPE_STRING || DB_GET_STRING (&id_val) == NULL)
+  if (DB_VALUE_TYPE (&id_val) != DB_TYPE_STRING || db_get_string (&id_val) == NULL)
     {
       return;
     }
 
-  args = classobj_decompose_property_oid (DB_PULL_STRING (&id_val), &volid, &fileid, &pageid);
+  args = classobj_decompose_property_oid (db_get_string (&id_val), &volid, &fileid, &pageid);
 
   if (args != 3)
     {
@@ -2194,7 +2176,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
   if (set_get_element_nocopy (constraint_seq, i, &att_val) == NO_ERROR)
     {
       assert (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER);
-      att_id = DB_GET_INTEGER (&att_val);	/* The first attrID */
+      att_id = db_get_int (&att_val);	/* The first attrID */
       (void) or_install_btids_attribute (rep, att_id, &id);
     }
 
@@ -2241,7 +2223,7 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
 	{
 	  if (DB_VALUE_TYPE (&vals[i]) == DB_TYPE_SEQUENCE)
 	    {
-	      property_vars[i].seq = DB_GET_SEQUENCE (&vals[i]);
+	      property_vars[i].seq = db_get_set (&vals[i]);
 	    }
 
 	  if (property_vars[i].seq)
@@ -2257,6 +2239,12 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
   if (n_btids > 0)
     {
       rep->indexes = (OR_INDEX *) malloc (sizeof (OR_INDEX) * n_btids);
+      if (rep->indexes == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OR_INDEX) * n_btids);
+	  return;
+	}
+      memset (rep->indexes, 0, sizeof (OR_INDEX) * n_btids);
     }
 
   /* Now extract the unique and index BTIDs from the property list and install them into the class and attribute
@@ -2276,7 +2264,7 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
 	      error = set_get_element_nocopy (property_vars[i].seq, j, &cons_name_val);
 	      if (error == NO_ERROR)
 		{
-		  cons_name = DB_PULL_STRING (&cons_name_val);
+		  cons_name = db_get_string (&cons_name_val);
 		}
 
 	      error = set_get_element_nocopy (property_vars[i].seq, j + 1, &ids_val);
@@ -2284,7 +2272,7 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
 		{
 		  if (DB_VALUE_TYPE (&ids_val) == DB_TYPE_SEQUENCE)
 		    {
-		      ids_seq = DB_PULL_SEQUENCE (&ids_val);
+		      ids_seq = db_get_set (&ids_val);
 		      or_install_btids_constraint (rep, ids_seq, property_vars[i].type, cons_name);
 		    }
 		}
@@ -2315,12 +2303,13 @@ or_get_current_representation (RECDES * record, int do_indexes)
   OR_CLASSREP *rep;
   OR_ATTRIBUTE *att;
   OID oid;
-  char *start, *ptr, *attset, *diskatt, *valptr, *dptr, *valptr1, *valptr2;
-  int i, start_offset, offset, vallen, n_fixed, n_variable, vallen1, vallen2;
+  char *start, *ptr, *attset, *diskatt, *original_val_ptr, *dptr, *properties_val_ptr, *current_val_ptr;
+  int i, start_offset, offset, original_val_len, n_fixed, n_variable, properties_val_len, current_val_len;
   int n_shared_attrs, n_class_attrs;
   OR_BUF buf;
-  DB_VALUE val, def_expr;
-  DB_SEQ *att_props = NULL;
+  DB_VALUE properties_val, def_expr_op, def_expr, def_expr_type, def_expr_format;
+  char *def_expr_format_str = NULL;
+  DB_SEQ *att_props = NULL, *def_expr_set = NULL;
 
   rep = (OR_CLASSREP *) malloc (sizeof (OR_CLASSREP));
   if (rep == NULL)
@@ -2346,13 +2335,14 @@ or_get_current_representation (RECDES * record, int do_indexes)
   n_variable = OR_GET_INT (ptr + ORC_VARIABLE_COUNT_OFFSET);
   n_shared_attrs = OR_GET_INT (ptr + ORC_SHARED_COUNT_OFFSET);
   n_class_attrs = OR_GET_INT (ptr + ORC_CLASS_ATTR_COUNT_OFFSET);
+
   rep->n_attributes = n_fixed + n_variable;
   rep->n_variable = n_variable;
   rep->n_shared_attrs = n_shared_attrs;
   rep->n_class_attrs = n_class_attrs;
   rep->n_indexes = 0;
 
-  if (rep->n_attributes)
+  if (rep->n_attributes > 0)
     {
       rep->attributes = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
       if (rep->attributes == NULL)
@@ -2361,9 +2351,10 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		  sizeof (OR_ATTRIBUTE) * rep->n_attributes);
 	  goto error_cleanup;
 	}
+      memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
     }
 
-  if (rep->n_shared_attrs)
+  if (rep->n_shared_attrs > 0)
     {
       rep->shared_attrs = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
       if (rep->shared_attrs == NULL)
@@ -2372,9 +2363,10 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		  sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
 	  goto error_cleanup;
 	}
+      memset (rep->shared_attrs, 0, sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
     }
 
-  if (rep->n_class_attrs)
+  if (rep->n_class_attrs > 0)
     {
       rep->class_attrs = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
       if (rep->class_attrs == NULL)
@@ -2383,6 +2375,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		  sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
 	  goto error_cleanup;
 	}
+      memset (rep->class_attrs, 0, sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
     }
 
 
@@ -2399,19 +2392,16 @@ or_get_current_representation (RECDES * record, int do_indexes)
       diskatt = attset + OR_SET_ELEMENT_OFFSET (attset, i);
 
       /* find out where the original default value is kept */
-      valptr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_ORIGINAL_VALUE_INDEX));
+      original_val_ptr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_ORIGINAL_VALUE_INDEX));
+      original_val_len = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_ORIGINAL_VALUE_INDEX);
 
-      vallen = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_ORIGINAL_VALUE_INDEX);
+      current_val_ptr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_CURRENT_VALUE_INDEX));
+      current_val_len = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_CURRENT_VALUE_INDEX);
 
-      valptr2 = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_CURRENT_VALUE_INDEX));
+      properties_val_ptr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_PROPERTIES_INDEX));
+      properties_val_len = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_PROPERTIES_INDEX);
 
-      vallen2 = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_CURRENT_VALUE_INDEX);
-
-      valptr1 = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_PROPERTIES_INDEX));
-
-      vallen1 = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_PROPERTIES_INDEX);
-
-      or_init (&buf, valptr1, vallen1);
+      or_init (&buf, properties_val_ptr, properties_val_len);
 
       /* set ptr to the beginning of the fixed attributes */
       ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
@@ -2479,40 +2469,115 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	  att->location = i - n_fixed;
 	}
 
-      /* get the current default value */
-      if (vallen2)
+      /* get the current default value - constant */
+      if (current_val_len > 0)
 	{
-	  if (or_get_current_default_value (att, valptr2, vallen2) == 0)
+	  if (or_get_current_default_value (att, current_val_ptr, current_val_len) == 0)
 	    {
 	      goto error_cleanup;
 	    }
 	}
 
-      /* get the default value, this could be using a new DB_VALUE ? */
-      if (vallen)
+      /* get the default value - constant, this could be using a new DB_VALUE ? */
+      if (original_val_len > 0)
 	{
-	  if (or_get_default_value (att, valptr, vallen) == 0)
+	  if (or_get_default_value (att, original_val_ptr, original_val_len) == 0)
 	    {
 	      goto error_cleanup;
 	    }
 	}
 
-      att->default_value.default_expr = DB_DEFAULT_NONE;
-      att->current_default_value.default_expr = DB_DEFAULT_NONE;
-      if (vallen1 > 0)
+      /* get the default expression. */
+      classobj_initialize_default_expr (&att->current_default_value.default_expr);
+      if (properties_val_len > 0)
 	{
-	  db_make_null (&val);
+	  db_make_null (&properties_val);
 	  db_make_null (&def_expr);
-	  or_get_value (&buf, &val, tp_domain_resolve_default (DB_TYPE_SEQUENCE), vallen1, true);
-	  att_props = DB_GET_SEQUENCE (&val);
+	  db_make_null (&def_expr_op);
+	  db_make_null (&def_expr_format);
+
+	  or_get_value (&buf, &properties_val, tp_domain_resolve_default (DB_TYPE_SEQUENCE), properties_val_len, true);
+	  att_props = db_get_set (&properties_val);
+
 	  if (att_props != NULL && classobj_get_prop (att_props, "default_expr", &def_expr) > 0)
 	    {
-	      att->default_value.default_expr = DB_GET_INT (&def_expr);
-	      att->current_default_value.default_expr = DB_GET_INT (&def_expr);
+	      /* We have two cases: simple and complex expression. */
+	      if (DB_VALUE_TYPE (&def_expr) == DB_TYPE_SEQUENCE)
+		{
+		  /*
+		   * We can't have an attribute with default expression and default value simultaneously. However,
+		   * in some situations attr->default_value.value contains the value of default expression. This happens
+		   * when the client executes the query on broker side and use attr->default_value.value to cache
+		   * the default expression value. Then the broker can modify the schema and send to server the default
+		   * expression and its cached value. Another option may be to clear default value on broker side,
+		   * but may lead to inconsistency.
+		   */
+
+		  /* Currently, we allow only (T_TO_CHAR(int), default_expr(int), default_expr_format(string)) */
+		  assert (set_size (db_get_set (&def_expr)) == 3);
+
+		  def_expr_set = db_get_set (&def_expr);
+
+		  /* get and cache default expression operator - op of expr */
+		  if (set_get_element_nocopy (def_expr_set, 0, &def_expr_op) != NO_ERROR)
+		    {
+		      assert (false);
+		      pr_clear_value (&def_expr);
+		      pr_clear_value (&properties_val);
+		      goto error_cleanup;
+		    }
+		  assert (DB_VALUE_TYPE (&def_expr_op) == DB_TYPE_INTEGER
+			  && db_get_int (&def_expr_op) == (int) T_TO_CHAR);
+		  att->default_value.default_expr.default_expr_op = db_get_int (&def_expr_op);
+		  att->current_default_value.default_expr.default_expr_op = db_get_int (&def_expr_op);
+
+		  /* get and cache default expression type - arg1 of expr */
+		  if (set_get_element_nocopy (def_expr_set, 1, &def_expr_type) != NO_ERROR)
+		    {
+		      assert (false);
+		      pr_clear_value (&def_expr);
+		      pr_clear_value (&properties_val);
+		      goto error_cleanup;
+		    }
+		  assert (DB_VALUE_TYPE (&def_expr_type) == DB_TYPE_INTEGER);
+		  att->default_value.default_expr.default_expr_type =
+		    (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr_type);
+		  att->current_default_value.default_expr.default_expr_type =
+		    (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr_type);
+
+		  /* get and cache default expression format - arg2 of expr */
+		  if (set_get_element_nocopy (def_expr_set, 2, &def_expr_format) != NO_ERROR)
+		    {
+		      assert (false);
+		      pr_clear_value (&def_expr);
+		      pr_clear_value (&properties_val);
+		      goto error_cleanup;
+		    }
+
+		  if (!db_value_is_null (&def_expr_format))
+		    {
+#if !defined (NDEBUG)
+		      DB_TYPE db_value_type_local = db_value_type (&def_expr_format);
+		      assert (db_value_type_local == DB_TYPE_NULL || TP_IS_CHAR_TYPE (db_value_type_local));
+#endif
+		      def_expr_format_str = db_get_string (&def_expr_format);
+		      att->default_value.default_expr.default_expr_format = strdup (def_expr_format_str);
+		      att->current_default_value.default_expr.default_expr_format = strdup (def_expr_format_str);
+		    }
+		}
+	      else
+		{
+		  /* simple expressions like SYS_DATE */
+		  assert (DB_VALUE_TYPE (&def_expr) == DB_TYPE_INTEGER);
+
+		  att->default_value.default_expr.default_expr_type = (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr);
+		  att->current_default_value.default_expr.default_expr_type =
+		    (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr);
+		}
 	    }
 
 	  pr_clear_value (&def_expr);
-	  pr_clear_value (&val);
+	  pr_clear_value (&properties_val);
 	}
     }
 
@@ -2526,9 +2591,8 @@ or_get_current_representation (RECDES * record, int do_indexes)
       diskatt = attset + OR_SET_ELEMENT_OFFSET (attset, i);
 
       /* find out where the current default value is kept */
-      valptr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_CURRENT_VALUE_INDEX));
-
-      vallen = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_CURRENT_VALUE_INDEX);
+      current_val_ptr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_CURRENT_VALUE_INDEX));
+      current_val_len = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_CURRENT_VALUE_INDEX);
 
       /* set ptr to the beginning of the fixed attributes */
       ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
@@ -2549,10 +2613,10 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->position = i;
       att->default_value.val_length = 0;
       att->default_value.value = NULL;
-      att->default_value.default_expr = DB_DEFAULT_NONE;
+      classobj_initialize_default_expr (&att->default_value.default_expr);
       att->current_default_value.val_length = 0;
       att->current_default_value.value = NULL;
-      att->current_default_value.default_expr = DB_DEFAULT_NONE;
+      classobj_initialize_default_expr (&att->current_default_value.default_expr);
       OR_GET_OID (ptr + ORC_ATT_CLASS_OFFSET, &oid);
       att->classoid = oid;	/* structure copy */
 
@@ -2580,9 +2644,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->location = 0;
 
       /* get the default value, it is the container for the shared value */
-      if (vallen)
+      if (current_val_len > 0)
 	{
-	  if (or_get_default_value (att, valptr, vallen) == 0)
+	  if (or_get_default_value (att, current_val_ptr, current_val_len) == 0)
 	    {
 	      goto error_cleanup;
 	    }
@@ -2611,9 +2675,8 @@ or_get_current_representation (RECDES * record, int do_indexes)
       diskatt = attset + OR_SET_ELEMENT_OFFSET (attset, i);
 
       /* find out where the current default value is kept */
-      valptr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_CURRENT_VALUE_INDEX));
-
-      vallen = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_CURRENT_VALUE_INDEX);
+      current_val_ptr = (diskatt + OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, ORC_ATT_CURRENT_VALUE_INDEX));
+      current_val_len = OR_VAR_TABLE_ELEMENT_LENGTH (diskatt, ORC_ATT_CURRENT_VALUE_INDEX);
 
       /* set ptr to the beginning of the fixed attributes */
       ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
@@ -2627,10 +2690,10 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->position = i;
       att->default_value.val_length = 0;
       att->default_value.value = NULL;
-      att->default_value.default_expr = DB_DEFAULT_NONE;
+      classobj_initialize_default_expr (&att->default_value.default_expr);
       att->current_default_value.val_length = 0;
       att->current_default_value.value = NULL;
-      att->current_default_value.default_expr = DB_DEFAULT_NONE;
+      classobj_initialize_default_expr (&att->current_default_value.default_expr);
       OR_GET_OID (ptr + ORC_ATT_CLASS_OFFSET, &oid);
       att->classoid = oid;
 
@@ -2658,9 +2721,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->location = 0;
 
       /* get the default value, it is the container for the class attr value */
-      if (vallen)
+      if (current_val_len > 0)
 	{
-	  if (or_get_default_value (att, valptr, vallen) == 0)
+	  if (or_get_default_value (att, current_val_ptr, current_val_len) == 0)
 	    {
 	      goto error_cleanup;
 	    }
@@ -2759,7 +2822,6 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
   char *repset, *disk_rep, *attset, *repatt, *dptr;
   int rep_count, i, n_fixed, n_variable, offset, start, id;
   char *fixed = NULL;
-  int has_partition_info = 0;
 
   if (repid == NULL_REPRID)
     {
@@ -2845,6 +2907,7 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       free_and_init (rep);
       return NULL;
     }
+  memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
 
   /* Calculate the beginning of the set_of(rep_attribute) in the representation object. Assume that the start of the
    * disk_rep points directly at the the substructure's variable offset table (which it does) and use
@@ -2869,10 +2932,10 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       att->position = i;
       att->default_value.val_length = 0;
       att->default_value.value = NULL;
-      att->default_value.default_expr = DB_DEFAULT_NONE;
+      classobj_initialize_default_expr (&att->default_value.default_expr);
       att->current_default_value.val_length = 0;
       att->current_default_value.value = NULL;
-      att->current_default_value.default_expr = DB_DEFAULT_NONE;
+      classobj_initialize_default_expr (&att->current_default_value.default_expr);
 
       /* We won't know if there are any B-tree ID's for unique constraints until we read the class property list later
        * on */
@@ -2962,7 +3025,6 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
   OR_CLASSREP *rep, **rep_arr = NULL;
   char *repset = NULL, *disk_rep, *attset, *repatt, *dptr, *fixed = NULL;
   int old_rep_count = 0, i, j, offset, start, n_variable, n_fixed;
-  int has_partition_info = 0;
 
   if (count)
     {
@@ -3043,6 +3105,7 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 		  (sizeof (OR_ATTRIBUTE) * rep->n_attributes));
 	  goto error;
 	}
+      memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
 
       /* Calculate the beginning of the set_of(rep_attribute) in the representation object. Assume that the start of
        * the disk_rep points directly at the the substructure's variable offset table (which it does) and use
@@ -3067,10 +3130,10 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	  att->position = j;
 	  att->default_value.val_length = 0;
 	  att->default_value.value = NULL;
-	  att->default_value.default_expr = DB_DEFAULT_NONE;
+	  classobj_initialize_default_expr (&att->default_value.default_expr);
 	  att->current_default_value.val_length = 0;
 	  att->current_default_value.value = NULL;
-	  att->current_default_value.default_expr = DB_DEFAULT_NONE;
+	  classobj_initialize_default_expr (&att->current_default_value.default_expr);
 
 	  /* We won't know if there are any B-tree ID's for unique constraints until we read the class property list
 	   * later on */
@@ -3274,7 +3337,6 @@ or_classrep_load_indexes (OR_CLASSREP * rep, RECDES * record)
 int
 or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info, REPR_ID * repr_id, int *has_partition_info)
 {
-  int error = NO_ERROR;
   char *partition_ptr = NULL, *ptr = NULL;
   OR_BUF buf;
   DB_VALUE val;
@@ -3307,7 +3369,7 @@ or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info, REP
     {
       return ER_FAILED;
     }
-  partition_info->values = db_seq_copy (DB_GET_SEQUENCE (&val));
+  partition_info->values = db_seq_copy (db_get_set (&val));
   if (partition_info->values == NULL)
     {
       pr_clear_value (&val);
@@ -3370,7 +3432,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	  goto error_exit;
 	}
 
-      prop_name = DB_PULL_STRING (&value);
+      prop_name = db_get_string (&value);
       if (prop_name == NULL)
 	{
 	  goto error_exit;
@@ -3392,7 +3454,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
       /* this sequence is an alternating pair of constraint name & info sequence, as by: { name, { BTID, [att_name,
        * asc_dsc], {fk_info | pk_info | prefix_length}, filter_predicate, comment}, name, { BTID, [att_name, asc_dsc],
        * {fk_info | pk_info | prefix_length}, filter_predicate, comment}, ... } */
-      props = DB_PULL_SEQUENCE (&value);
+      props = db_get_set (&value);
       len = set_size (props);
       for (j = 0; j < len; j += 2)
 	{
@@ -3402,7 +3464,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	      goto error_exit;
 	    }
 
-	  if (strcmp (constraint_name, DB_PULL_STRING (&uvalue)) != 0)
+	  if (strcmp (constraint_name, db_get_string (&uvalue)) != 0)
 	    {
 	      continue;
 	    }
@@ -3418,7 +3480,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	      goto error_exit;
 	    }
 
-	  info = DB_PULL_SEQUENCE (&uvalue);
+	  info = db_get_set (&uvalue);
 	  info_len = set_size (info);
 
 	  if (set_get_element_nocopy (info, info_len - 1, &cvalue) || DB_IS_NULL (&cvalue))
@@ -3429,7 +3491,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	  else if (DB_VALUE_TYPE (&cvalue) == DB_TYPE_STRING)
 	    {
 	      /* strdup, caller shall free it */
-	      char *cvalue_string = DB_GET_STRING (&cvalue);
+	      char *cvalue_string = db_get_string (&cvalue);
 	      comment = strdup (cvalue_string);
 	    }
 	  else
@@ -3475,144 +3537,166 @@ or_free_classrep (OR_CLASSREP * rep)
   OR_INDEX *index;
   OR_FOREIGN_KEY *fk, *fk_next;
 
-  if (rep != NULL)
+  if (rep == NULL)
     {
-      if (rep->attributes != NULL)
-	{
-	  for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
-	    {
-	      if (att->default_value.value != NULL)
-		{
-		  free_and_init (att->default_value.value);
-		}
-
-	      if (att->current_default_value.value != NULL)
-		{
-		  free_and_init (att->current_default_value.value);
-		}
-
-	      if (att->btids != NULL && att->btids != att->btid_pack)
-		{
-		  free_and_init (att->btids);
-		}
-	    }
-	  free_and_init (rep->attributes);
-	}
-
-      if (rep->shared_attrs != NULL)
-	{
-	  for (i = 0, att = rep->shared_attrs; i < rep->n_shared_attrs; i++, att++)
-	    {
-	      if (att->default_value.value != NULL)
-		{
-		  free_and_init (att->default_value.value);
-		}
-
-	      if (att->current_default_value.value != NULL)
-		{
-		  free_and_init (att->current_default_value.value);
-		}
-
-	      if (att->btids != NULL && att->btids != att->btid_pack)
-		{
-		  free_and_init (att->btids);
-		}
-	    }
-	  free_and_init (rep->shared_attrs);
-	}
-
-      if (rep->class_attrs != NULL)
-	{
-	  for (i = 0, att = rep->class_attrs; i < rep->n_class_attrs; i++, att++)
-	    {
-	      if (att->default_value.value != NULL)
-		{
-		  free_and_init (att->default_value.value);
-		}
-
-	      if (att->current_default_value.value != NULL)
-		{
-		  free_and_init (att->current_default_value.value);
-		}
-
-	      if (att->btids != NULL && att->btids != att->btid_pack)
-		{
-		  free_and_init (att->btids);
-		}
-	    }
-	  free_and_init (rep->class_attrs);
-	}
-
-      if (rep->indexes != NULL)
-	{
-	  for (i = 0, index = rep->indexes; i < rep->n_indexes; i++, index++)
-	    {
-	      if (index->atts != NULL)
-		{
-		  free_and_init (index->atts);
-		}
-
-	      if (index->btname != NULL)
-		{
-		  free_and_init (index->btname);
-		}
-
-	      if (index->filter_predicate)
-		{
-		  if (index->filter_predicate->pred_string)
-		    {
-		      free_and_init (index->filter_predicate->pred_string);
-		    }
-
-		  if (index->filter_predicate->pred_stream)
-		    {
-		      free_and_init (index->filter_predicate->pred_stream);
-		    }
-
-		  free_and_init (index->filter_predicate);
-		}
-
-	      if (index->asc_desc != NULL)
-		{
-		  free_and_init (index->asc_desc);
-		}
-
-	      if (index->attrs_prefix_length != NULL)
-		{
-		  free_and_init (index->attrs_prefix_length);
-		}
-
-	      if (index->fk)
-		{
-		  for (fk = index->fk; fk; fk = fk_next)
-		    {
-		      fk_next = fk->next;
-		      if (fk->fkname)
-			{
-			  free_and_init (fk->fkname);
-			}
-		      free_and_init (fk);
-		    }
-		}
-	      if (index->func_index_info)
-		{
-		  if (index->func_index_info->expr_string)
-		    {
-		      free_and_init (index->func_index_info->expr_string);
-		    }
-		  if (index->func_index_info->expr_stream)
-		    {
-		      free_and_init (index->func_index_info->expr_stream);
-		    }
-		  free_and_init (index->func_index_info);
-		}
-	    }
-
-	  free_and_init (rep->indexes);
-	}
-
-      free_and_init (rep);
+      return;
     }
+
+  if (rep->attributes != NULL)
+    {
+      for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
+	{
+	  if (att->default_value.value != NULL)
+	    {
+	      free_and_init (att->default_value.value);
+	    }
+
+	  if (att->default_value.default_expr.default_expr_format != NULL)
+	    {
+	      free_and_init (att->default_value.default_expr.default_expr_format);
+	    }
+
+	  if (att->current_default_value.value != NULL)
+	    {
+	      free_and_init (att->current_default_value.value);
+	    }
+
+	  if (att->current_default_value.default_expr.default_expr_format != NULL)
+	    {
+	      free_and_init (att->current_default_value.default_expr.default_expr_format);
+	    }
+
+	  if (att->btids != NULL && att->btids != att->btid_pack)
+	    {
+	      free_and_init (att->btids);
+	    }
+	}
+      free_and_init (rep->attributes);
+    }
+
+  if (rep->shared_attrs != NULL)
+    {
+      for (i = 0, att = rep->shared_attrs; i < rep->n_shared_attrs; i++, att++)
+	{
+	  if (att->default_value.value != NULL)
+	    {
+	      free_and_init (att->default_value.value);
+	    }
+
+	  if (att->default_value.default_expr.default_expr_format != NULL)
+	    {
+	      free_and_init (att->default_value.default_expr.default_expr_format);
+	    }
+
+	  if (att->current_default_value.value != NULL)
+	    {
+	      free_and_init (att->current_default_value.value);
+	    }
+
+	  if (att->current_default_value.default_expr.default_expr_format != NULL)
+	    {
+	      free_and_init (att->current_default_value.default_expr.default_expr_format);
+	    }
+
+	  if (att->btids != NULL && att->btids != att->btid_pack)
+	    {
+	      free_and_init (att->btids);
+	    }
+	}
+      free_and_init (rep->shared_attrs);
+    }
+
+  if (rep->class_attrs != NULL)
+    {
+      for (i = 0, att = rep->class_attrs; i < rep->n_class_attrs; i++, att++)
+	{
+	  if (att->default_value.value != NULL)
+	    {
+	      free_and_init (att->default_value.value);
+	    }
+
+	  if (att->current_default_value.value != NULL)
+	    {
+	      free_and_init (att->current_default_value.value);
+	    }
+
+	  if (att->btids != NULL && att->btids != att->btid_pack)
+	    {
+	      free_and_init (att->btids);
+	    }
+	}
+      free_and_init (rep->class_attrs);
+    }
+
+  if (rep->indexes != NULL)
+    {
+      for (i = 0, index = rep->indexes; i < rep->n_indexes; i++, index++)
+	{
+	  if (index->atts != NULL)
+	    {
+	      free_and_init (index->atts);
+	    }
+
+	  if (index->btname != NULL)
+	    {
+	      free_and_init (index->btname);
+	    }
+
+	  if (index->filter_predicate)
+	    {
+	      if (index->filter_predicate->pred_string)
+		{
+		  free_and_init (index->filter_predicate->pred_string);
+		}
+
+	      if (index->filter_predicate->pred_stream)
+		{
+		  free_and_init (index->filter_predicate->pred_stream);
+		}
+
+	      free_and_init (index->filter_predicate);
+	    }
+
+	  if (index->asc_desc != NULL)
+	    {
+	      free_and_init (index->asc_desc);
+	    }
+
+	  if (index->attrs_prefix_length != NULL)
+	    {
+	      free_and_init (index->attrs_prefix_length);
+	    }
+
+	  if (index->fk)
+	    {
+	      for (fk = index->fk; fk; fk = fk_next)
+		{
+		  fk_next = fk->next;
+		  if (fk->fkname)
+		    {
+		      free_and_init (fk->fkname);
+		    }
+		  free_and_init (fk);
+		}
+	    }
+	  if (index->func_index_info)
+	    {
+	      if (index->func_index_info->expr_string)
+		{
+		  free_and_init (index->func_index_info->expr_string);
+		}
+	      if (index->func_index_info->expr_stream)
+		{
+		  free_and_init (index->func_index_info->expr_stream);
+		}
+	      free_and_init (index->func_index_info);
+	    }
+	}
+
+      free_and_init (rep->indexes);
+    }
+
+  free_and_init (rep);
 }
 
 /*
@@ -3721,7 +3805,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
   int offset = 0, offset_next = 0;
   unsigned char len = 0;
   OR_BUF buffer;
-  int compressed_length = 0, decompressed_length = 0, net_charlen = 0, rc = NO_ERROR;
+  int compressed_length = 0, decompressed_length = 0, rc = NO_ERROR;
 
   assert (*alloced_string == 0);
 
@@ -3781,7 +3865,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	    }
 
 	  assert (*string == NULL);
-	  *string = db_private_alloc (NULL, decompressed_length + 1);
+	  *string = (char *) db_private_alloc (NULL, decompressed_length + 1);
 	  if (*string == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, decompressed_length + 1);
@@ -3910,16 +3994,16 @@ or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
       goto error;
     }
 
-  fi_info->expr_string = strdup (DB_PULL_STRING (&val1));
+  fi_info->expr_string = strdup (db_get_string (&val1));
   if (fi_info->expr_string == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      strlen (DB_PULL_STRING (&val1)) * sizeof (char));
+	      strlen (db_get_string (&val1)) * sizeof (char));
       goto error;
     }
 
-  buffer = DB_GET_STRING (&val);
-  fi_info->expr_stream_size = DB_GET_STRING_SIZE (&val);
+  buffer = db_get_string (&val);
+  fi_info->expr_stream_size = db_get_string_size (&val);
   fi_info->expr_stream = (char *) malloc (fi_info->expr_stream_size);
   if (fi_info->expr_stream == NULL)
     {
@@ -3933,14 +4017,14 @@ or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
       goto error;
     }
-  fi_info->col_id = DB_GET_INT (&val);
+  fi_info->col_id = db_get_int (&val);
 
   if (set_get_element_nocopy (fi_seq, 3, &val) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
       goto error;
     }
-  fi_info->attr_index_start = DB_GET_INT (&val);
+  fi_info->attr_index_start = db_get_int (&val);
 
   index->func_index_info = fi_info;
   return;

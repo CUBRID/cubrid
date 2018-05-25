@@ -55,8 +55,9 @@
 #include "set_object.h"
 #include "language_support.h"
 #include "intl_support.h"
-/* this must be the last header file included! */
-#include "dbval.h"
+#include "log_impl.h"
+#include "object_primitive.h"
+#include "dbtype.h"
 
 #if __WORDSIZE == 32
 #define GET_PTR_FOR_HASH(key) ((unsigned int)(key))
@@ -69,7 +70,6 @@ static const float MHT_REHASH_TRESHOLD = 0.7f;
 static const float MHT_REHASH_FACTOR = 1.3f;
 
 /* options for mht_put() */
-typedef enum mht_put_opt MHT_PUT_OPT;
 enum mht_put_opt
 {
   MHT_OPT_DEFAULT = 0,
@@ -77,6 +77,7 @@ enum mht_put_opt
   MHT_OPT_INSERT_ONLY = 2,
   MHT_OPT_INSERT_IF_NOT_EXISTS = 4
 };
+typedef enum mht_put_opt MHT_PUT_OPT;
 
 /*
  * A table of prime numbers.
@@ -617,22 +618,25 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  hash = (unsigned int) db_get_double (val);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  hash = mht_1str_pseudo_key (db_pull_numeric (val), -1);
+	  hash = mht_1str_pseudo_key (db_get_numeric (val), -1);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARNCHAR:
-	  hash = mht_1str_pseudo_key (db_pull_string (val), DB_GET_STRING_SIZE (val));
+	  hash = mht_1str_pseudo_key (db_get_string (val), db_get_string_size (val));
 	  break;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
-	  hash = mht_1str_pseudo_key (db_pull_bit (val, &t_n), -1);
+	  hash = mht_1str_pseudo_key (db_get_bit (val, &t_n), -1);
 	  break;
 	case DB_TYPE_TIME:
 	case DB_TYPE_TIMELTZ:
-	  hash = (unsigned int) *(db_get_time (val));
-	  break;
+	  {
+	    unsigned int *time = db_get_time (val);
+	    hash = (unsigned int) (*time);
+	    break;
+	  }
 	case DB_TYPE_TIMETZ:
 	  {
 	    DB_TIMETZ *time_tz = db_get_timetz (val);
@@ -641,8 +645,11 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  break;
 	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPLTZ:
-	  hash = (unsigned int) *(db_get_timestamp (val));
-	  break;
+	  {
+	    DB_TIMESTAMP *time_st = db_get_timestamp (val);
+	    hash = (unsigned int) (*time_st);
+	    break;
+	  }
 	case DB_TYPE_TIMESTAMPTZ:
 	  {
 	    DB_TIMESTAMPTZ *ts_tz = db_get_timestamptz (val);
@@ -665,11 +672,17 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  }
 	  break;
 	case DB_TYPE_DATE:
-	  hash = (unsigned int) *(db_get_date (val));
-	  break;
+	  {
+	    DB_DATE *date = db_get_date (val);
+	    hash = (unsigned int) (*date);
+	    break;
+	  }
 	case DB_TYPE_MONETARY:
-	  hash = (unsigned int) db_get_monetary (val)->amount;
-	  break;
+	  {
+	    DB_MONETARY *mon = db_get_monetary (val);
+	    hash = (unsigned int) mon->amount;
+	    break;
+	  }
 	case DB_TYPE_SET:
 	case DB_TYPE_MULTISET:
 	case DB_TYPE_SEQUENCE:
@@ -694,13 +707,13 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  hash = GET_PTR_FOR_HASH (db_get_object (val));
 	  break;
 	case DB_TYPE_OID:
-	  hash = (unsigned int) OID_PSEUDO_KEY (db_pull_oid (val));
+	  hash = (unsigned int) OID_PSEUDO_KEY (db_get_oid (val));
 	  break;
 	case DB_TYPE_MIDXKEY:
 	  db_make_null (&t_val);
 	  {
 	    DB_MIDXKEY *midxkey;
-	    midxkey = db_pull_midxkey (val);
+	    midxkey = db_get_midxkey (val);
 	    if (pr_midxkey_get_element_nocopy (midxkey, 0, &t_val, NULL, NULL) == NO_ERROR)
 	      {
 		hash = mht_valhash (&t_val, ht_size);
@@ -1156,8 +1169,9 @@ mht_clear (MHT_TABLE * ht, int (*rem_func) (const void *key, void *data, void *a
  *       print this information
  */
 int
-mht_dump (FILE * out_fp, const MHT_TABLE * ht, const int print_id_opt,
-	  int (*print_func) (FILE * fp, const void *key, void *data, void *args), void *func_args)
+mht_dump (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_TABLE * ht, const int print_id_opt,
+	  int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *key, void *data, void *args),
+	  void *func_args)
 {
   HENTRY_PTR *hvector;		/* Entries of hash table */
   HENTRY_PTR hentry;		/* A hash table entry. linked list */
@@ -1186,7 +1200,7 @@ mht_dump (FILE * out_fp, const MHT_TABLE * ht, const int print_id_opt,
 	      /* Go over the linked list */
 	      for (hentry = *hvector; cont == TRUE && hentry != NULL; hentry = hentry->next)
 		{
-		  cont = (*print_func) (out_fp, hentry->key, hentry->data, func_args);
+		  cont = (*print_func) (thread_p, out_fp, hentry->key, hentry->data, func_args);
 		}
 	    }
 	}
@@ -1196,7 +1210,7 @@ mht_dump (FILE * out_fp, const MHT_TABLE * ht, const int print_id_opt,
       /* Quick scan by following only the active entries */
       for (hentry = ht->act_head; cont == TRUE && hentry != NULL; hentry = hentry->act_next)
 	{
-	  cont = (*print_func) (out_fp, hentry->key, hentry->data, func_args);
+	  cont = (*print_func) (thread_p, out_fp, hentry->key, hentry->data, func_args);
 	}
     }
 
@@ -2120,15 +2134,14 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	  ptr = db_get_string (val);
 	  if (ptr)
 	    {
-
 	      len = db_get_string_size (val);
 	      if (len < 0)
 		{
-		  len = strlen (ptr);
+		  len = (int) strlen (ptr);
 		}
 
 	      i = len;
-	      for (i--; i && ptr[i]; i--)
+	      for (i--; 0 <= i && ptr[i]; i--)
 		{
 		  /* only the trailing ASCII space is ignored; the hashing for other characters depend on collation */
 		  if (ptr[i] != 0x20)
@@ -2168,7 +2181,25 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	case DB_TYPE_ENUMERATION:
 	  hashcode = mht_get_shiftmult32 (val->data.enumeration.short_val, ht_size);
 	  break;
+	case DB_TYPE_JSON:
+	  {
+	    char *json_body = NULL;
 
+	    json_body = db_get_json_raw_body (val);
+
+	    if (json_body == NULL)
+	      {
+		hashcode = 0;
+	      }
+	    else
+	      {
+		len = (int) strlen (json_body);
+
+		hashcode = MHT2STR_COLL (LANG_COLL_BINARY, (unsigned char *) json_body, len);
+		hashcode %= ht_size;
+	      }
+	  }
+	  break;
 	default:		/* impossible */
 	  /* 
 	   * TODO this is actually possible. See the QA scenario:

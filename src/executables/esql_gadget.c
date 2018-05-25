@@ -29,6 +29,7 @@
 #include "db.h"
 #include "esql_gadget.h"
 #include "parser.h"
+#include "dbtype.h"
 
 #define NOT_FOUND -1
 

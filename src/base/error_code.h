@@ -61,7 +61,7 @@
 #define ER_IO_RENAME_FAIL                            -16
 
 #define ER_PB_BAD_PAGEID                             -17
-#define ER_PB_ALL_BUFFERS_FIXED                      -18
+#define ER_PB_ALL_BUFFERS_FIXED                      -18	/* obsolete, I think */
 #define ER_PB_UNFIXED_PAGEPTR                        -19
 #define ER_PB_UNKNOWN_PAGEPTR                        -20
 
@@ -1537,8 +1537,29 @@
 #define ER_CANNOT_CHECK_FILE                        -1194
 
 #define ER_BUILDVALUE_IN_REC_CTE		    -1195
+#define ER_CTE_MAX_RECURSION_REACHED		    -1196
 
-#define ER_LAST_ERROR                               -1196
+#define ER_JSON_INVALID_JSON                        -1197
+#define ER_JSON_NO_JSON_OBJECT_PROVIDED             -1198
+#define ER_JSON_INVALIDATED_BY_SCHEMA               -1199
+#define ER_JSON_INVALID_PATH                        -1200
+#define ER_JSON_OBJECT_NAME_IS_NULL                 -1201
+#define ER_JSON_PATH_DOES_NOT_EXIST                 -1202
+#define ER_JSON_EXPECTED_OTHER_TYPE                 -1203
+#define ER_JSON_DUPLICATE_KEY                       -1204
+
+#define ER_JSON_RESERVED_ERROR_0                    -1205
+#define ER_JSON_RESERVED_ERROR_1                    -1206
+#define ER_JSON_RESERVED_ERROR_2                    -1207
+#define ER_JSON_RESERVED_ERROR_3                    -1208
+#define ER_JSON_RESERVED_ERROR_4                    -1209
+#define ER_JSON_RESERVED_ERROR_5                    -1210
+#define ER_JSON_RESERVED_ERROR_6                    -1211
+#define ER_JSON_RESERVED_ERROR_7                    -1212
+#define ER_JSON_RESERVED_ERROR_8                    -1213
+#define ER_JSON_RESERVED_ERROR_9                    -1214
+
+#define ER_LAST_ERROR                               -1215
 
 /*
  * CAUTION!
@@ -1546,7 +1567,6 @@
  * When an entry is added here please ensure that the msg/<locale>/cubrid.msg
  * files are updated with matching error strings. See message_catalog.c for
  * details.
- * The error codes must also be added to compat/dbi_compat.h
  * ER_LAST_ERROR must also be updated.
  */
 

@@ -1,0 +1,5 @@
+#StrBuf test reference 1
+"simple text, no format"
+"format int: 1973"
+"format double: 73.11"
+"format string: November"

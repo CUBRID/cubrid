@@ -25,7 +25,7 @@
 #define _LOCK_FREE_H_
 
 #include "porting.h"
-#include "dbtype.h"
+#include "dbtype_def.h"
 
 /*
  * Some common hash, copy and compare functions
@@ -43,9 +43,8 @@ extern int lf_callback_vpid_copy (void *src, void *dest);
  * Address mark macros
  */
 #define ADDR_WITH_MARK(p)   ((void * volatile) (((long long volatile) p) | 0x1))
-#define ADDR_HAS_MARK(p)    (((long long volatile) p) & 0x1)
-#define ADDR_STRIP_MARK(p)  ((void * volatile) (((long long volatile) p) & (~((long long) 0x1))))
-
+#define ADDR_HAS_MARK(p)    (((long long volatile)p) & 0x1)
+#define ADDR_STRIP_MARK(p)  ((void * volatile)(((long long volatile)p) & (~((long long)0x1))))
 /*
  * Entry descriptor
  */
@@ -152,12 +151,12 @@ struct lf_tran_entry
 
 #define LF_TRAN_ENTRY_INITIALIZER     { 0, LF_NULL_TRANSACTION_ID, NULL, NULL, NULL, -1, false }
 
-typedef enum lf_bitmap_style LF_BITMAP_STYLE;
 enum lf_bitmap_style
 {
   LF_BITMAP_ONE_CHUNK = 0,
   LF_BITMAP_LIST_OF_CHUNKS
 };
+typedef enum lf_bitmap_style LF_BITMAP_STYLE;
 
 typedef struct lf_bitmap LF_BITMAP;
 struct lf_bitmap
@@ -225,7 +224,7 @@ struct lf_tran_system
 };
 
 #define LF_TRAN_SYSTEM_INITIALIZER \
-  { NULL, 0, {NULL, 0, 0, 0, 1.0f, 0}, 0, 0, 100, 0, NULL }
+  { NULL, 0, {NULL, 0, 0, LF_BITMAP_ONE_CHUNK, 1.0f, 0}, 0, 0, 100, 0, NULL }
 
 #define LF_TRAN_CLEANUP_NECESSARY(e) ((e)->tran_system->min_active_transaction_id > (e)->last_cleanup_id)
 
@@ -399,43 +398,6 @@ struct lf_hash_table_iterator
 extern void lf_hash_create_iterator (LF_HASH_TABLE_ITERATOR * iterator, LF_TRAN_ENTRY * tran_entry,
 				     LF_HASH_TABLE * table);
 extern void *lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it);
-
-/*
- * Lock-free Circular Queue
- */
-
-/* Lock-free Circular Queue is actually an array of entries, where the last
- * entry in the array is considered as preceding the first entry in the array.
- * The two ends of the queue are stored (consume_cursor and produce_cursor).
- * New entries are "produced" at the end of the queue, while "consumers" will
- * pop entries from the consume_cursor of the queue.
- *
- * The queue has a fixed maximum capacity. When there is no more room for new
- * entries, the push function will return false.
- *
- * The size for entry data must be fixed.
- */
-typedef struct lock_free_circular_queue LOCK_FREE_CIRCULAR_QUEUE;
-struct lock_free_circular_queue
-{
-  char *data;
-  volatile UINT64 *entry_state;
-  int data_size;
-  volatile UINT64 consume_cursor;
-  volatile UINT64 produce_cursor;
-  UINT64 capacity;
-};
-
-extern bool lf_circular_queue_is_full (LOCK_FREE_CIRCULAR_QUEUE * queue);
-extern bool lf_circular_queue_is_empty (LOCK_FREE_CIRCULAR_QUEUE * queue);
-extern int lf_circular_queue_approx_size (LOCK_FREE_CIRCULAR_QUEUE * queue);
-extern bool lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data);
-extern bool lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data);
-extern void *lf_circular_queue_async_peek (LOCK_FREE_CIRCULAR_QUEUE * queue);
-extern bool lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data);
-extern LOCK_FREE_CIRCULAR_QUEUE *lf_circular_queue_create (unsigned int capacity, int data_size);
-extern void lf_circular_queue_destroy (LOCK_FREE_CIRCULAR_QUEUE * queue);
-extern void lf_circular_queue_async_reset (LOCK_FREE_CIRCULAR_QUEUE * queue);
 
 /* lock free bitmap */
 extern int lf_bitmap_init (LF_BITMAP * bitmap, LF_BITMAP_STYLE style, int entries_cnt, float usage_threshold);

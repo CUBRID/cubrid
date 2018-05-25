@@ -3007,7 +3007,7 @@ ksc5601_wctomb (unsigned char *r, ucs4_t wc, int n)
     {
       const Summary16 *summary = NULL;
 
-      if (wc >= 0x0000 && wc < 0x0460)
+      if (wc < 0x0460)
 	{
 	  summary = &ksc5601_uni2indx_page00[(wc >> 4)];
 	}

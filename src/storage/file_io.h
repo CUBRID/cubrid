@@ -29,18 +29,17 @@
 #ident "$Id$"
 
 #include "config.h"
+#include "dbtype_def.h"
+#include "lzo/lzoconf.h"
+#include "lzo/lzo1x.h"
+#include "memory_hash.h"
+#include "porting.h"
+#include "release_string.h"
+#include "storage_common.h"
+#include "thread_compat.hpp"
 
 #include <stdio.h>
 #include <time.h>
-
-#include "porting.h"
-#include "storage_common.h"
-#include "release_string.h"
-#include "dbtype.h"
-#include "memory_hash.h"
-#include "lzoconf.h"
-#include "lzo1x.h"
-#include "thread.h"
 
 #define NULL_VOLDES   (-1)	/* Value of a null (invalid) vol descriptor */
 
@@ -390,7 +389,9 @@ extern void fileio_close (int vdes);
 extern int fileio_format (THREAD_ENTRY * thread_p, const char *db_fullname, const char *vlabel, VOLID volid,
 			  DKNPAGES npages, bool sweep_clean, bool dolock, bool dosync, size_t page_size,
 			  int kbytes_to_be_written_per_sec, bool reuse_file);
-extern DKNPAGES fileio_expand (THREAD_ENTRY * threda_p, VOLID volid, DKNPAGES npages_toadd, DB_VOLTYPE voltype);
+#if !defined (CS_MODE)
+extern int fileio_expand_to (THREAD_ENTRY * threda_p, VOLID volid, DKNPAGES npages_toadd, DB_VOLTYPE voltype);
+#endif /* not CS_MODE */
 extern void *fileio_initialize_pages (THREAD_ENTRY * thread_p, int vdes, void *io_pgptr, DKNPAGES start_pageid,
 				      DKNPAGES npages, size_t page_size, int kbytes_to_be_written_per_sec);
 extern void fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE_RESERVED * prv_p);
@@ -452,8 +453,8 @@ extern void fileio_make_volume_ext_given_name (char *volext_fullname, const char
 extern void fileio_make_volume_temp_name (char *voltmp_fullname, const char *tmp_path, const char *tmp_name,
 					  VOLID volid);
 extern void fileio_make_log_active_name (char *logactive_name, const char *log_path, const char *dbname);
-extern void fileio_make_log_active_temp_name (char *logactive_tmpname, FILEIO_BACKUP_LEVEL level,
-					      const char *active_name);
+extern void fileio_make_temp_log_files_from_backup (char *temp_log_name, VOLID volid, FILEIO_BACKUP_LEVEL level,
+						    const char *base_log_name);
 extern void fileio_make_log_archive_name (char *logarchive_name, const char *log_path, const char *dbname, int arvnum);
 extern void fileio_make_removed_log_archive_name (char *logarchive_name, const char *log_path, const char *dbname);
 extern void fileio_make_log_archive_temp_name (char *log_archive_temp_name_p, const char *log_path_p,

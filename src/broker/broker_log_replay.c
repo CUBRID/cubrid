@@ -32,13 +32,9 @@
 #else /* WINDOWS */
 #include <unistd.h>
 #endif /* !WINDOWS */
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#else
-#include "getopt.h"
-#endif
 #include <assert.h>
 
+#include "cubrid_getopt.h"
 #include "cas_common.h"
 #include "cas_cci.h"
 #include "broker_log_util.h"
@@ -66,13 +62,13 @@
           } \
         } while (0)
 
-typedef enum temp_read_result READ_RESULT;
 enum temp_read_result
 {
   READ_STOP = -1,
   READ_CONTINUE = 0,
   READ_SUCCESS = 1
 };
+typedef enum temp_read_result READ_RESULT;
 
 typedef struct t_sql_info T_SQL_INFO;
 struct t_sql_info
@@ -474,7 +470,7 @@ get_query_stmt_from_plan (int req)
       goto error;
     }
 
-  rewrite_sql_len = strlen (sql_stmt);
+  rewrite_sql_len = (int) strlen (sql_stmt);
 
   result_sql = (char *) malloc (rewrite_sql_len);
   if (result_sql)
@@ -540,7 +536,7 @@ log_prepare (FILE * cci_errfp, FILE * pass_sql, int con, char *sql_log, T_SQL_IN
   char *endp;
   char *rewrite_query;
   T_CCI_ERROR err_buf;
-  T_CCI_CUBRID_STMT cmd_type = -1;
+  T_CCI_CUBRID_STMT cmd_type = CUBRID_STMT_NONE;
 
   sql_log = ut_get_execute_type (sql_log, &prepare_flag, &execute_flag);
   if (sql_log == NULL)
@@ -827,7 +823,7 @@ log_bind_value (int req, T_STRING * linebuf, char *sql_log, char *output_result,
     }
   else
     {
-      cci_bind_param (req, bind_idx, CCI_A_TYPE_STR, value_p, type, 0);
+      cci_bind_param (req, bind_idx, CCI_A_TYPE_STR, value_p, (T_CCI_U_TYPE) type, 0);
     }
 
   if (remain_bind_buf <= 0)
@@ -976,7 +972,7 @@ update_diff_time_statistics (double diff_time)
 static int
 print_temp_result (char *sql_log, T_SQL_INFO * info)
 {
-  int bind_len;
+  size_t bind_len;
   int line_len = 0;
   char *rewrite_sql = info->rewrite_sql;
   char *bind_str = info->bind_str;

@@ -27,13 +27,16 @@
 
 #ident "$Id$"
 
-#include "config.h"
+/* todo(rem) this doesn't belong to query module */
 
+#include "config.h"
+#include "dbtype_def.h"
 #include "intl_support.h"
-#include "dbtype.h"
-#include "numeric_opfunc.h"
-#include "regex38a.h"
 #include "language_support.h"
+#include "numeric_opfunc.h"
+#include "object_domain.h"
+#include "libregex38a/regex38a.h"
+#include "thread_compat.hpp"
 
 #define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
                                  ((s)==DB_TYPE_VARCHAR))
@@ -196,6 +199,16 @@ extern int db_string_space (DB_VALUE const *count, DB_VALUE * result);
 extern int db_string_insert_substring (DB_VALUE * src_string, const DB_VALUE * position, const DB_VALUE * length,
 				       DB_VALUE * sub_string, DB_VALUE * result);
 extern int db_string_elt (DB_VALUE * result, DB_VALUE * args[], int const num_args);
+extern int db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
+extern int db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
+extern int db_json_insert (DB_VALUE * result, DB_VALUE * arg[], const int num_args);
+extern int db_json_replace (DB_VALUE * result, DB_VALUE * arg[], const int num_args);
+extern int db_json_set (DB_VALUE * result, DB_VALUE * arg[], const int num_args);
+extern int db_json_keys (DB_VALUE * result, DB_VALUE * arg[], const int num_args);
+extern int db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
+extern int db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
+extern int db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
+extern int db_json_get_all_paths (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int db_string_byte_length (const DB_VALUE * string, DB_VALUE * byte_count);
@@ -221,14 +234,15 @@ extern int db_string_translate (const DB_VALUE * src_string, const DB_VALUE * fr
 				DB_VALUE * transed_string);
 extern int db_bit_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_DATA_STATUS * data_status);
 extern int db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_DATA_STATUS * data_status);
-extern int db_string_make_empty_typed_string (THREAD_ENTRY * thread_p, DB_VALUE * db_val, const DB_TYPE db_type,
-					      int precision, int codeset, int collation_id);
+extern int db_string_make_empty_typed_string (DB_VALUE * db_val, const DB_TYPE db_type, int precision, int codeset,
+					      int collation_id);
 extern int db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VALUE * result);
 extern int db_bigint_to_binary_string (const DB_VALUE * src_bigint, DB_VALUE * result);
 extern int db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, const TP_DOMAIN * domain);
 extern int db_tz_offset (const DB_VALUE * src_str, DB_VALUE * result_str, DB_DATETIME * date_time);
 extern int db_from_tz (DB_VALUE * time_val, DB_VALUE * tz, DB_VALUE * time_val_with_tz);
 extern int db_new_time (DB_VALUE * time_val, DB_VALUE * tz_source, DB_VALUE * tz_dest, DB_VALUE * result_time);
+extern int db_conv_tz (DB_VALUE * time_val, DB_VALUE * result_time);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int db_string_convert (const DB_VALUE * src_string, DB_VALUE * dest_string);
@@ -275,8 +289,8 @@ extern int db_format (const DB_VALUE * number_text, const DB_VALUE * decimals, c
 		      DB_VALUE * result, const TP_DOMAIN * domain);
 /* datetime functions */
 extern int db_date_add_interval_days (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * days);
-extern int db_date_add_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * expr, const int unit);
 extern int db_date_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * days);
+extern int db_date_add_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * expr, const int unit);
 extern int db_date_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * expr, const int unit);
 extern int db_date_format (const DB_VALUE * date_value, const DB_VALUE * format, const DB_VALUE * date_lang,
 			   DB_VALUE * result, const TP_DOMAIN * domain);
@@ -298,7 +312,9 @@ extern int db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * codeset
 extern int db_clob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value);
 extern int db_clob_length (const DB_VALUE * src_value, DB_VALUE * result_value);
 extern int db_get_date_quarter (const DB_VALUE * src_date, DB_VALUE * result);
+#if !defined (SERVER_MODE)
 extern int db_get_date_weekday (const DB_VALUE * src_date, const int type, DB_VALUE * result);
+#endif /* !defined (SERVER_MODE) */
 extern int db_get_date_dayofyear (const DB_VALUE * src_date, DB_VALUE * result);
 extern int db_get_date_totaldays (const DB_VALUE * src_date, DB_VALUE * result);
 extern int db_convert_time_to_sec (const DB_VALUE * src_date, DB_VALUE * result);
@@ -308,8 +324,10 @@ extern int db_add_days_to_year (const DB_VALUE * src_year, const DB_VALUE * src_
 extern int db_convert_to_time (const DB_VALUE * src_hour, const DB_VALUE * src_minute, const DB_VALUE * src_second,
 			       DB_VALUE * result);
 extern int db_get_date_week (const DB_VALUE * src_date, const DB_VALUE * mode, DB_VALUE * result);
+#if !defined (SERVER_MODE)
 extern int db_get_date_item (const DB_VALUE * src_date, const int item_type, DB_VALUE * result);
 extern int db_get_time_item (const DB_VALUE * src_date, const int item_type, DB_VALUE * result);
+#endif /* !defined (SERVER_MODE) */
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int db_null_terminate_string (const DB_VALUE * src_value, char **strp);
 #endif
@@ -326,7 +344,10 @@ extern int db_get_like_optimization_bounds (const DB_VALUE * const pattern, DB_V
 extern int db_like_bound (const DB_VALUE * const src_pattern, const DB_VALUE * const src_escape,
 			  DB_VALUE * const result_bound, const bool compute_lower_bound);
 extern int db_hex (const DB_VALUE * param, DB_VALUE * result);
+#if !defined (CS_MODE)
+/* todo(rem): this does not belong here */
 extern int db_guid (THREAD_ENTRY * thread_p, DB_VALUE * result);
+#endif /* !defined (CS_MODE) */
 extern int db_ascii (const DB_VALUE * param, DB_VALUE * result);
 extern int db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_base, DB_VALUE * result);
 extern void init_builtin_calendar_names (LANG_LOCALE_DATA * lld);
@@ -339,6 +360,9 @@ extern void qstr_trim_trailing (const unsigned char *trim_charset_ptr, int trim_
 				INTL_CODESET codeset, int *trail_trimmed_length, int *trail_trimmed_size,
 				bool skip_spaces);
 extern int db_get_date_format (const DB_VALUE * format_str, TIMESTAMP_FORMAT * format);
+extern int db_get_time_from_dbvalue (const DB_VALUE * src_date, int *hour, int *minute, int *second, int *millisecond);
+extern int db_get_datetime_from_dbvalue (const DB_VALUE * src_date, int *year, int *month, int *day, int *hour,
+					 int *minute, int *second, int *millisecond, const char **endp);
 extern int db_get_cs_coll_info (DB_VALUE * result, const DB_VALUE * val, const int mode);
 extern int db_string_index_prefix (const DB_VALUE * string1, const DB_VALUE * string2, const DB_VALUE * index_type,
 				   DB_VALUE * prefix_index);

@@ -29,31 +29,27 @@
 #include <string.h>
 #include <float.h>
 #include <math.h>
+#include <assert.h>
+
+#include "query_opfunc.h"
 
 #include "system_parameter.h"
-
 #include "error_manager.h"
-#include "memory_alloc.h"
-#include "object_representation.h"
-#include "external_sort.h"
-#include "extendible_hash.h"
-
 #include "fetch.h"
 #include "list_file.h"
-#include "xasl_support.h"
 #include "object_primitive.h"
-#include "object_domain.h"
 #include "set_object.h"
-#include "page_buffer.h"
-
 #include "query_executor.h"
 #include "databases_file.h"
-#include "partition.h"
 #include "tz_support.h"
+#include "numeric_opfunc.h"
+#include "db_date.h"
+#include "dbtype.h"
+#include "query_dump.h"
+#include "db_json.hpp"
+#include "arithmetic.h"
 
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #define NOT_NULL_VALUE(a, b)	((a) ? (a) : (b))
 #define INITIAL_OID_STACK_SIZE  1
@@ -86,8 +82,6 @@ static int qdata_add_short_to_timestamptz (DB_VALUE * ts_tz_val_p, short s, DB_V
 static int qdata_add_int_to_timestamptz (DB_VALUE * ts_tz_val_p, int i, DB_VALUE * result_p, TP_DOMAIN * domain_p);
 static int qdata_add_bigint_to_timestamptz (DB_VALUE * ts_tz_val_p, DB_BIGINT bi, DB_VALUE * result_p,
 					    TP_DOMAIN * domain_p);
-static int qdata_add_int_to_datetime_asymmetry (DB_VALUE * datetime_val_p, int i, DB_DATETIME * datetime,
-						DB_VALUE * result_p, TP_DOMAIN * domain_p);
 static int qdata_add_short_to_datetime (DB_VALUE * datetime_val_p, short s, DB_VALUE * result_p, TP_DOMAIN * domain_p);
 static int qdata_add_int_to_datetime (DB_VALUE * datetime_val_p, int i, DB_VALUE * result_p, TP_DOMAIN * domain_p);
 static int qdata_add_bigint_to_datetime (DB_VALUE * datetime_val_p, DB_BIGINT bi, DB_VALUE * result_p,
@@ -134,7 +128,6 @@ static int qdata_subtract_utime_to_short_asymmetry (DB_VALUE * utime_val_p, shor
 static int qdata_subtract_utime_to_int_asymmetry (DB_VALUE * utime_val_p, int i, unsigned int *utime,
 						  DB_VALUE * result_p, TP_DOMAIN * domain_p);
 static int qdata_subtract_datetime_to_int (DB_DATETIME * dt1, DB_BIGINT i2, DB_VALUE * result_p);
-static int qdata_subtract_datetimetz_to_int (DB_DATETIMETZ * dt_tz1, DB_BIGINT i2, DB_VALUE * result_p);
 static int qdata_subtract_datetime (DB_DATETIME * dt1, DB_DATETIME * dt2, DB_VALUE * result_p);
 static int qdata_subtract_datetime_to_int_asymmetry (DB_VALUE * datetime_val_p, DB_BIGINT i, DB_DATETIME * datetime,
 						     DB_VALUE * result_p, TP_DOMAIN * domain_p);
@@ -222,6 +215,50 @@ static int qdata_insert_substring_function (THREAD_ENTRY * thread_p, FUNCTION_TY
 static int qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
 		      QFILE_TUPLE tuple);
 
+static int
+qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
+					  OID * obj_oid_p, QFILE_TUPLE tuple,
+					  int (*function_to_call) (DB_VALUE *, DB_VALUE **, int const));
+
+static int
+qdata_json_object (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		   QFILE_TUPLE tuple);
+
+static int
+qdata_json_array (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		  QFILE_TUPLE tuple);
+static int
+qdata_json_insert (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		   QFILE_TUPLE tuple);
+
+static int
+qdata_json_replace (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		    QFILE_TUPLE tuple);
+
+static int
+qdata_json_set (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		QFILE_TUPLE tuple);
+
+static int
+qdata_json_keys (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		 QFILE_TUPLE tuple);
+
+static int
+qdata_json_remove (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		   QFILE_TUPLE tuple);
+
+static int
+qdata_json_array_append (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+			 QFILE_TUPLE tuple);
+
+static int
+qdata_json_get_all_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+			  QFILE_TUPLE tuple);
+
+static int
+qdata_json_merge (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		  QFILE_TUPLE tuple);
+
 static int (*generic_func_ptrs[]) (THREAD_ENTRY * thread_p, DB_VALUE *, int, DB_VALUE **) =
 {
 qdata_dummy};
@@ -246,7 +283,7 @@ static int qdata_evaluate_interpolation_function (THREAD_ENTRY * thread_p, void 
 static int
 qdata_dummy (THREAD_ENTRY * thread_p, DB_VALUE * result_p, int num_args, DB_VALUE ** args)
 {
-  DB_MAKE_NULL (result_p);
+  db_make_null (result_p);
   return ER_FAILED;
 }
 
@@ -270,22 +307,22 @@ qdata_is_zero_value_date (DB_VALUE * dbval_p)
     {
       switch (type)
 	{
-	case DB_TYPE_UTIME:
+	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPLTZ:
-	  utime = DB_GET_UTIME (dbval_p);
+	  utime = db_get_timestamp (dbval_p);
 	  return (*utime == 0);
 	case DB_TYPE_TIMESTAMPTZ:
-	  ts_tz = DB_GET_TIMESTAMPTZ (dbval_p);
+	  ts_tz = db_get_timestamptz (dbval_p);
 	  return (ts_tz->timestamp == 0);
 	case DB_TYPE_DATETIME:
 	case DB_TYPE_DATETIMELTZ:
-	  datetime = DB_GET_DATETIME (dbval_p);
+	  datetime = db_get_datetime (dbval_p);
 	  return (datetime->date == 0 && datetime->time == 0);
 	case DB_TYPE_DATETIMETZ:
-	  dt_tz = DB_GET_DATETIMETZ (dbval_p);
+	  dt_tz = db_get_datetimetz (dbval_p);
 	  return (dt_tz->datetime.date == 0 && dt_tz->datetime.time == 0);
 	case DB_TYPE_DATE:
-	  date = DB_GET_DATE (dbval_p);
+	  date = db_get_date (dbval_p);
 	  return (*date == 0);
 	default:
 	  break;
@@ -384,7 +421,6 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, bool clear_compressed_st
   OR_BUF buf;
   PR_TYPE *pr_type;
   DB_TYPE dbval_type;
-  bool temporary_clear;
 
   if (DB_IS_NULL (dbval_p))
     {
@@ -569,9 +605,7 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
   int i;
   int value_size;
   QPROC_TPLDESCR_STATUS status = QPROC_TPLDESCR_SUCCESS;
-  DB_VALUE *val_buffer;
   DB_TYPE dbval_type;
-  HL_HEAPID save_heapid = 0;
 
   tuple_desc_p->tpl_size = QFILE_TUPLE_LENGTH_SIZE;	/* set tuple size as header size */
   tuple_desc_p->f_cnt = 0;
@@ -619,18 +653,7 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST 
 	      goto exit_with_status;
 	    }
 
-	  /* The value has been peeked so it does not require any clear, but we still might have the compressed_string
-	   * alloced so we need to clear it.
-	   */
-	  val_buffer = tuple_desc_p->f_valp[tuple_desc_p->f_cnt];
-	  if (!DB_IS_NULL (val_buffer) && (dbval_type == DB_TYPE_VARCHAR || dbval_type == DB_TYPE_VARNCHAR))
-	    {
-	      if (!(tuple_desc_p->clear_f_val_at_clone_decache[tuple_desc_p->f_cnt]))
-		{
-		  /* Clear compressed string since val_buffer was allocated during XASL execution. */
-		  pr_clear_compressed_string (val_buffer);
-		}
-	    }
+	  /* The compressed string will be deallocated later, after copying db_value into tuple. */
 
 	  tuple_desc_p->tpl_size += value_size;
 	  tuple_desc_p->f_cnt += 1;	/* increase field number */
@@ -700,7 +723,7 @@ qdata_add_short (short s, DB_VALUE * dbval_p, DB_VALUE * result_p)
 {
   short result, tmp;
 
-  tmp = DB_GET_SHORT (dbval_p);
+  tmp = db_get_short (dbval_p);
   result = s + tmp;
 
   if (OR_CHECK_ADD_OVERFLOW (s, tmp, result))
@@ -709,7 +732,7 @@ qdata_add_short (short s, DB_VALUE * dbval_p, DB_VALUE * result_p)
       return ER_QPROC_OVERFLOW_ADDITION;
     }
 
-  DB_MAKE_SHORT (result_p, result);
+  db_make_short (result_p, result);
   return NO_ERROR;
 }
 
@@ -726,7 +749,7 @@ qdata_add_int (int i1, int i2, DB_VALUE * result_p)
       return ER_QPROC_OVERFLOW_ADDITION;
     }
 
-  DB_MAKE_INT (result_p, result);
+  db_make_int (result_p, result);
   return NO_ERROR;
 }
 
@@ -743,7 +766,7 @@ qdata_add_bigint (DB_BIGINT bi1, DB_BIGINT bi2, DB_VALUE * result_p)
       return ER_QPROC_OVERFLOW_ADDITION;
     }
 
-  DB_MAKE_BIGINT (result_p, result);
+  db_make_bigint (result_p, result);
   return NO_ERROR;
 }
 
@@ -760,7 +783,7 @@ qdata_add_float (float f1, float f2, DB_VALUE * result_p)
       return ER_QPROC_OVERFLOW_ADDITION;
     }
 
-  DB_MAKE_FLOAT (result_p, result);
+  db_make_float (result_p, result);
   return NO_ERROR;
 }
 
@@ -777,7 +800,7 @@ qdata_add_double (double d1, double d2, DB_VALUE * result_p)
       return ER_QPROC_OVERFLOW_ADDITION;
     }
 
-  DB_MAKE_DOUBLE (result_p, result);
+  db_make_double (result_p, result);
   return NO_ERROR;
 }
 
@@ -790,7 +813,7 @@ qdata_coerce_numeric_to_double (DB_VALUE * numeric_val_p)
   db_value_domain_init (&dbval_tmp, DB_TYPE_DOUBLE, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
   (void) numeric_db_value_coerce_from_num (numeric_val_p, &dbval_tmp, &data_stat);
 
-  return DB_GET_DOUBLE (&dbval_tmp);
+  return db_get_double (&dbval_tmp);
 }
 
 static void
@@ -824,11 +847,11 @@ qdata_add_numeric_to_monetary (DB_VALUE * numeric_val_p, DB_VALUE * monetary_val
   double d1, d2, dtmp;
 
   d1 = qdata_coerce_numeric_to_double (numeric_val_p);
-  d2 = (DB_GET_MONETARY (monetary_val_p))->amount;
+  d2 = (db_get_monetary (monetary_val_p))->amount;
 
   dtmp = d1 + d2;
 
-  DB_MAKE_MONETARY_TYPE_AMOUNT (result_p, (DB_GET_MONETARY (monetary_val_p))->type, dtmp);
+  db_make_monetary (result_p, (db_get_monetary (monetary_val_p))->type, dtmp);
 
   return NO_ERROR;
 }
@@ -846,7 +869,7 @@ qdata_add_monetary (double d1, double d2, DB_CURRENCY type, DB_VALUE * result_p)
       return ER_QPROC_OVERFLOW_ADDITION;
     }
 
-  DB_MAKE_MONETARY_TYPE_AMOUNT (result_p, type, result);
+  db_make_monetary (result_p, type, result);
   return NO_ERROR;
 }
 
@@ -858,7 +881,7 @@ qdata_add_int_to_time (DB_VALUE * time_val_p, unsigned int add_time, DB_VALUE * 
   DB_TIME *time;
   int hour, minute, second;
 
-  time = DB_GET_TIME (time_val_p);
+  time = db_get_time (time_val_p);
   utime = (unsigned int) *time % SECONDS_OF_ONE_DAY;
 
   result = (utime + add_time) % SECONDS_OF_ONE_DAY;
@@ -867,7 +890,7 @@ qdata_add_int_to_time (DB_VALUE * time_val_p, unsigned int add_time, DB_VALUE * 
 
   if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
     {
-      DB_MAKE_TIME (result_p, hour, minute, second);
+      db_make_time (result_p, hour, minute, second);
     }
   else
     {
@@ -876,15 +899,15 @@ qdata_add_int_to_time (DB_VALUE * time_val_p, unsigned int add_time, DB_VALUE * 
       switch (type)
 	{
 	case DB_TYPE_INTEGER:
-	  DB_MAKE_INT (result_p, (hour * 100 + minute) * 100 + second);
+	  db_make_int (result_p, (hour * 100 + minute) * 100 + second);
 	  break;
 
 	case DB_TYPE_SHORT:
-	  DB_MAKE_SHORT (result_p, (hour * 100 + minute) * 100 + second);
+	  db_make_short (result_p, (hour * 100 + minute) * 100 + second);
 	  break;
 
 	default:
-	  DB_MAKE_TIME (result_p, hour, minute, second);
+	  db_make_time (result_p, hour, minute, second);
 	  break;
 	}
     }
@@ -900,7 +923,7 @@ qdata_add_bigint_to_time (DB_VALUE * time_val_p, DB_BIGINT add_time, DB_VALUE * 
   int hour, minute, second;
   int error = NO_ERROR;
 
-  utime = *(DB_GET_TIME (time_val_p)) % SECONDS_OF_ONE_DAY;
+  utime = *(db_get_time (time_val_p)) % SECONDS_OF_ONE_DAY;
   add_time = add_time % SECONDS_OF_ONE_DAY;
   if (add_time < 0)
     {
@@ -912,7 +935,7 @@ qdata_add_bigint_to_time (DB_VALUE * time_val_p, DB_BIGINT add_time, DB_VALUE * 
 
   if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
     {
-      error = DB_MAKE_TIME (result_p, hour, minute, second);
+      error = db_make_time (result_p, hour, minute, second);
     }
   else
     {
@@ -921,15 +944,15 @@ qdata_add_bigint_to_time (DB_VALUE * time_val_p, DB_BIGINT add_time, DB_VALUE * 
       switch (type)
 	{
 	case DB_TYPE_BIGINT:
-	  error = DB_MAKE_BIGINT (result_p, (hour * 100 + minute) * 100 + second);
+	  error = db_make_bigint (result_p, (hour * 100 + minute) * 100 + second);
 	  break;
 
 	case DB_TYPE_INTEGER:
-	  error = DB_MAKE_INTEGER (result_p, (hour * 100 + minute) * 100 + second);
+	  error = db_make_int (result_p, (hour * 100 + minute) * 100 + second);
 	  break;
 
 	default:
-	  error = DB_MAKE_TIME (result_p, hour, minute, second);
+	  error = db_make_time (result_p, hour, minute, second);
 	  break;
 	}
     }
@@ -946,7 +969,7 @@ qdata_add_bigint_to_timetz (DB_VALUE * time_tz_val_p, DB_BIGINT add_time, DB_VAL
   int error = NO_ERROR;
   DB_VALUE time_val_res;
 
-  time_tz_p = DB_GET_TIMETZ (time_tz_val_p);
+  time_tz_p = db_get_timetz (time_tz_val_p);
   utime = (time_tz_p->time) % SECONDS_OF_ONE_DAY;
   add_time = add_time % SECONDS_OF_ONE_DAY;
   if (add_time < 0)
@@ -957,7 +980,7 @@ qdata_add_bigint_to_timetz (DB_VALUE * time_tz_val_p, DB_BIGINT add_time, DB_VAL
 	  goto exit;
 	}
       assert (DB_VALUE_TYPE (&time_val_res) == DB_TYPE_TIME);
-      time_res = *DB_GET_TIME (&time_val_res);
+      time_res = *db_get_time (&time_val_res);
       goto return_time_tz;
     }
 
@@ -987,11 +1010,11 @@ qdata_add_bigint_to_timetz (DB_VALUE * time_tz_val_p, DB_BIGINT add_time, DB_VAL
 
 	  if (type == DB_TYPE_BIGINT)
 	    {
-	      error = DB_MAKE_BIGINT (result_p, (hour * 100 + minute) * 100 + second);
+	      error = db_make_bigint (result_p, (hour * 100 + minute) * 100 + second);
 	    }
 	  else
 	    {
-	      error = DB_MAKE_INTEGER (result_p, (hour * 100 + minute) * 100 + second);
+	      error = db_make_int (result_p, (hour * 100 + minute) * 100 + second);
 	    }
 	  break;
 
@@ -1010,7 +1033,7 @@ return_time_tz:
     {
       return error;
     }
-  DB_MAKE_TIMETZ (result_p, &time_tz_fixed);
+  db_make_timetz (result_p, &time_tz_fixed);
 
 exit:
   return error;
@@ -1034,7 +1057,7 @@ qdata_add_short_to_utime_asymmetry (DB_VALUE * utime_val_p, short s, unsigned in
       s++;
     }
 
-  DB_MAKE_SHORT (&tmp, -(s));
+  db_make_short (&tmp, -(s));
   return (qdata_subtract_dbval (utime_val_p, &tmp, result_p, domain_p));
 }
 
@@ -1056,7 +1079,7 @@ qdata_add_int_to_utime_asymmetry (DB_VALUE * utime_val_p, int i, unsigned int *u
       i++;
     }
 
-  DB_MAKE_INT (&tmp, -i);
+  db_make_int (&tmp, -i);
   return (qdata_subtract_dbval (utime_val_p, &tmp, result_p, domain_p));
 }
 
@@ -1078,7 +1101,7 @@ qdata_add_bigint_to_utime_asymmetry (DB_VALUE * utime_val_p, DB_BIGINT bi, unsig
       bi++;
     }
 
-  DB_MAKE_BIGINT (&tmp, -bi);
+  db_make_bigint (&tmp, -bi);
   return (qdata_subtract_dbval (utime_val_p, &tmp, result_p, domain_p));
 }
 
@@ -1093,7 +1116,7 @@ qdata_add_short_to_utime (DB_VALUE * utime_val_p, short s, DB_VALUE * result_p, 
   DB_BIGINT bigint = 0;
   int d, m, y, h, mi, sec;
 
-  utime = DB_GET_UTIME (utime_val_p);
+  utime = db_get_timestamp (utime_val_p);
 
   if (s < 0)
     {
@@ -1112,7 +1135,7 @@ qdata_add_short_to_utime (DB_VALUE * utime_val_p, short s, DB_VALUE * result_p, 
 
   if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
     {
-      DB_MAKE_UTIME (result_p, utmp);
+      db_make_timestamp (result_p, utmp);
     }
   else
     {
@@ -1126,11 +1149,11 @@ qdata_add_short_to_utime (DB_VALUE * utime_val_p, short s, DB_VALUE * result_p, 
 	  db_time_decode (&time, &h, &mi, &sec);
 	  bigint = (y * 100 + m) * 100 + d;
 	  bigint = ((bigint * 100 + h) * 100 + mi) * 100 + sec;
-	  DB_MAKE_BIGINT (result_p, bigint);
+	  db_make_bigint (result_p, bigint);
 	  break;
 
 	default:
-	  DB_MAKE_UTIME (result_p, utmp);
+	  db_make_timestamp (result_p, utmp);
 	  break;
 	}
     }
@@ -1149,7 +1172,7 @@ qdata_add_int_to_utime (DB_VALUE * utime_val_p, int i, DB_VALUE * result_p, TP_D
   DB_BIGINT bigint;
   int d, m, y, h, mi, s;
 
-  utime = DB_GET_UTIME (utime_val_p);
+  utime = db_get_timestamp (utime_val_p);
 
   if (i < 0)
     {
@@ -1168,7 +1191,7 @@ qdata_add_int_to_utime (DB_VALUE * utime_val_p, int i, DB_VALUE * result_p, TP_D
 
   if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
     {
-      DB_MAKE_UTIME (result_p, utmp);
+      db_make_timestamp (result_p, utmp);
     }
   else
     {
@@ -1182,11 +1205,11 @@ qdata_add_int_to_utime (DB_VALUE * utime_val_p, int i, DB_VALUE * result_p, TP_D
 	  db_time_decode (&time, &h, &mi, &s);
 	  bigint = (y * 100 + m) * 100 + d;
 	  bigint = ((bigint * 100 + h) * 100 + mi) * 100 + s;
-	  DB_MAKE_BIGINT (result_p, bigint);
+	  db_make_bigint (result_p, bigint);
 	  break;
 
 	default:
-	  DB_MAKE_UTIME (result_p, utmp);
+	  db_make_timestamp (result_p, utmp);
 	  break;
 	}
     }
@@ -1205,7 +1228,7 @@ qdata_add_bigint_to_utime (DB_VALUE * utime_val_p, DB_BIGINT bi, DB_VALUE * resu
   DB_BIGINT bigint;
   int d, m, y, h, mi, s;
 
-  utime = DB_GET_UTIME (utime_val_p);
+  utime = db_get_timestamp (utime_val_p);
 
   if (bi < 0)
     {
@@ -1223,7 +1246,7 @@ qdata_add_bigint_to_utime (DB_VALUE * utime_val_p, DB_BIGINT bi, DB_VALUE * resu
     }
   if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
     {
-      DB_MAKE_UTIME (result_p, (unsigned int) utmp);	/* truncate to 4bytes time_t */
+      db_make_timestamp (result_p, (unsigned int) utmp);	/* truncate to 4bytes time_t */
     }
   else
     {
@@ -1239,12 +1262,12 @@ qdata_add_bigint_to_utime (DB_VALUE * utime_val_p, DB_BIGINT bi, DB_VALUE * resu
 	    db_time_decode (&time, &h, &mi, &s);
 	    bigint = (y * 100 + m) * 100 + d;
 	    bigint = ((bigint * 100 + h) * 100 + mi) * 100 + s;
-	    DB_MAKE_BIGINT (result_p, bigint);
+	    db_make_bigint (result_p, bigint);
 	  }
 	  break;
 
 	default:
-	  DB_MAKE_UTIME (result_p, (unsigned int) utmp);
+	  db_make_timestamp (result_p, (unsigned int) utmp);
 	  break;
 	}
     }
@@ -1267,22 +1290,22 @@ qdata_add_short_to_timestamptz (DB_VALUE * ts_tz_val_p, short s, DB_VALUE * resu
   int d, m, y, h, mi, sec;
   DB_VALUE tmp_utime_val, tmp_utime_val_res;
 
-  ts_tz_p = DB_GET_TIMESTAMPTZ (ts_tz_val_p);
+  ts_tz_p = db_get_timestamptz (ts_tz_val_p);
   utime = ts_tz_p->timestamp;
 
   if (s < 0)
     {
-      DB_MAKE_UTIME (&tmp_utime_val, utime);
+      db_make_timestamp (&tmp_utime_val, utime);
       err =
 	qdata_add_short_to_utime_asymmetry (&tmp_utime_val, s, &utime, &tmp_utime_val_res,
-					    tp_domain_resolve_default (DB_TYPE_UTIME));
+					    tp_domain_resolve_default (DB_TYPE_TIMESTAMP));
       if (err != NO_ERROR)
 	{
 	  goto exit;
 	}
 
-      assert (DB_VALUE_TYPE (&tmp_utime_val_res) == DB_TYPE_UTIME);
-      utmp = *DB_GET_UTIME (&tmp_utime_val_res);
+      assert (DB_VALUE_TYPE (&tmp_utime_val_res) == DB_TYPE_TIMESTAMP);
+      utmp = *db_get_timestamp (&tmp_utime_val_res);
 
       goto return_timestamp_tz;
     }
@@ -1325,7 +1348,7 @@ qdata_add_short_to_timestamptz (DB_VALUE * ts_tz_val_p, short s, DB_VALUE * resu
 	  db_time_decode (&time, &h, &mi, &sec);
 	  bigint = (y * 100 + m) * 100 + d;
 	  bigint = ((bigint * 100 + h) * 100 + mi) * 100 + sec;
-	  DB_MAKE_BIGINT (result_p, bigint);
+	  db_make_bigint (result_p, bigint);
 	  break;
 
 	default:
@@ -1342,7 +1365,7 @@ return_timestamp_tz:
     {
       return err;
     }
-  DB_MAKE_TIMESTAMPTZ (result_p, &ts_tz_fixed);
+  db_make_timestamptz (result_p, &ts_tz_fixed);
 
 exit:
   return err;
@@ -1363,22 +1386,22 @@ qdata_add_int_to_timestamptz (DB_VALUE * ts_tz_val_p, int i, DB_VALUE * result_p
   int d, m, y, h, mi, sec;
   DB_VALUE tmp_utime_val, tmp_utime_val_res;
 
-  ts_tz_p = DB_GET_TIMESTAMPTZ (ts_tz_val_p);
+  ts_tz_p = db_get_timestamptz (ts_tz_val_p);
   utime = ts_tz_p->timestamp;
 
   if (i < 0)
     {
-      DB_MAKE_UTIME (&tmp_utime_val, utime);
+      db_make_timestamp (&tmp_utime_val, utime);
       err =
 	qdata_add_int_to_utime_asymmetry (&tmp_utime_val, i, &utime, &tmp_utime_val_res,
-					  tp_domain_resolve_default (DB_TYPE_UTIME));
+					  tp_domain_resolve_default (DB_TYPE_TIMESTAMP));
       if (err != NO_ERROR)
 	{
 	  goto exit;
 	}
 
-      assert (DB_VALUE_TYPE (&tmp_utime_val_res) == DB_TYPE_UTIME);
-      utmp = *DB_GET_UTIME (&tmp_utime_val_res);
+      assert (DB_VALUE_TYPE (&tmp_utime_val_res) == DB_TYPE_TIMESTAMP);
+      utmp = *db_get_timestamp (&tmp_utime_val_res);
 
       goto return_timestamp_tz;
     }
@@ -1421,7 +1444,7 @@ qdata_add_int_to_timestamptz (DB_VALUE * ts_tz_val_p, int i, DB_VALUE * result_p
 	  db_time_decode (&time, &h, &mi, &sec);
 	  bigint = (y * 100 + m) * 100 + d;
 	  bigint = ((bigint * 100 + h) * 100 + mi) * 100 + sec;
-	  DB_MAKE_BIGINT (result_p, bigint);
+	  db_make_bigint (result_p, bigint);
 	  break;
 
 	default:
@@ -1438,7 +1461,7 @@ return_timestamp_tz:
     {
       return err;
     }
-  DB_MAKE_TIMESTAMPTZ (result_p, &ts_tz_fixed);
+  db_make_timestamptz (result_p, &ts_tz_fixed);
 
 exit:
   return err;
@@ -1458,22 +1481,22 @@ qdata_add_bigint_to_timestamptz (DB_VALUE * ts_tz_val_p, DB_BIGINT bi, DB_VALUE 
   int d, m, y, h, mi, sec;
   DB_VALUE tmp_utime_val, tmp_utime_val_res;
 
-  ts_tz_p = DB_GET_TIMESTAMPTZ (ts_tz_val_p);
+  ts_tz_p = db_get_timestamptz (ts_tz_val_p);
   utime = ts_tz_p->timestamp;
 
   if (bi < 0)
     {
-      DB_MAKE_UTIME (&tmp_utime_val, utime);
+      db_make_timestamp (&tmp_utime_val, utime);
       err =
 	qdata_add_bigint_to_utime_asymmetry (&tmp_utime_val, bi, &utime, &tmp_utime_val_res,
-					     tp_domain_resolve_default (DB_TYPE_UTIME));
+					     tp_domain_resolve_default (DB_TYPE_TIMESTAMP));
       if (err != NO_ERROR)
 	{
 	  goto exit;
 	}
 
-      assert (DB_VALUE_TYPE (&tmp_utime_val_res) == DB_TYPE_UTIME);
-      utmp = *DB_GET_UTIME (&tmp_utime_val_res);
+      assert (DB_VALUE_TYPE (&tmp_utime_val_res) == DB_TYPE_TIMESTAMP);
+      utmp = *db_get_timestamp (&tmp_utime_val_res);
 
       goto return_timestamp_tz;
     }
@@ -1517,7 +1540,7 @@ qdata_add_bigint_to_timestamptz (DB_VALUE * ts_tz_val_p, DB_BIGINT bi, DB_VALUE 
 	  db_time_decode (&time, &h, &mi, &sec);
 	  bigint = (y * 100 + m) * 100 + d;
 	  bigint = ((bigint * 100 + h) * 100 + mi) * 100 + sec;
-	  DB_MAKE_BIGINT (result_p, bigint);
+	  db_make_bigint (result_p, bigint);
 	  break;
 
 	default:
@@ -1535,7 +1558,7 @@ return_timestamp_tz:
     {
       return err;
     }
-  DB_MAKE_TIMESTAMPTZ (result_p, &ts_tz_fixed);
+  db_make_timestamptz (result_p, &ts_tz_fixed);
 
 exit:
   return err;
@@ -1548,12 +1571,12 @@ qdata_add_short_to_datetime (DB_VALUE * datetime_val_p, short s, DB_VALUE * resu
   DB_DATETIME tmp;
   int error = NO_ERROR;
 
-  datetime = DB_GET_DATETIME (datetime_val_p);
+  datetime = db_get_datetime (datetime_val_p);
 
   error = db_add_int_to_datetime (datetime, s, &tmp);
   if (error == NO_ERROR)
     {
-      DB_MAKE_DATETIME (result_p, &tmp);
+      db_make_datetime (result_p, &tmp);
     }
   return error;
 }
@@ -1565,12 +1588,12 @@ qdata_add_int_to_datetime (DB_VALUE * datetime_val_p, int i, DB_VALUE * result_p
   DB_DATETIME tmp;
   int error = NO_ERROR;
 
-  datetime = DB_GET_DATETIME (datetime_val_p);
+  datetime = db_get_datetime (datetime_val_p);
 
   error = db_add_int_to_datetime (datetime, i, &tmp);
   if (error == NO_ERROR)
     {
-      DB_MAKE_DATETIME (result_p, &tmp);
+      db_make_datetime (result_p, &tmp);
     }
   return error;
 }
@@ -1582,12 +1605,12 @@ qdata_add_bigint_to_datetime (DB_VALUE * datetime_val_p, DB_BIGINT bi, DB_VALUE 
   DB_DATETIME tmp;
   int error = NO_ERROR;
 
-  datetime = DB_GET_DATETIME (datetime_val_p);
+  datetime = db_get_datetime (datetime_val_p);
 
   error = db_add_int_to_datetime (datetime, bi, &tmp);
   if (error == NO_ERROR)
     {
-      DB_MAKE_DATETIME (result_p, &tmp);
+      db_make_datetime (result_p, &tmp);
     }
   return error;
 }
@@ -1599,7 +1622,7 @@ qdata_add_short_to_date (DB_VALUE * date_val_p, short s, DB_VALUE * result_p, TP
   unsigned int utmp, u1, u2;
   int day, month, year;
 
-  date = DB_GET_DATE (date_val_p);
+  date = db_get_date (date_val_p);
   if (s < 0)
     {
       return qdata_add_short_to_utime_asymmetry (date_val_p, s, date, result_p, domain_p);
@@ -1619,7 +1642,7 @@ qdata_add_short_to_date (DB_VALUE * date_val_p, short s, DB_VALUE * result_p, TP
 
   if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
     {
-      DB_MAKE_DATE (result_p, month, day, year);
+      db_make_date (result_p, month, day, year);
     }
   else
     {
@@ -1628,11 +1651,11 @@ qdata_add_short_to_date (DB_VALUE * date_val_p, short s, DB_VALUE * result_p, TP
       switch (type)
 	{
 	case DB_TYPE_SHORT:
-	  DB_MAKE_SHORT (result_p, (year * 100 + month) * 100 + day);
+	  db_make_short (result_p, (year * 100 + month) * 100 + day);
 	  break;
 
 	default:
-	  DB_MAKE_DATE (result_p, month, day, year);
+	  db_make_date (result_p, month, day, year);
 	  break;
 	}
     }
@@ -1647,7 +1670,7 @@ qdata_add_int_to_date (DB_VALUE * date_val_p, int i, DB_VALUE * result_p, TP_DOM
   unsigned int utmp, u1, u2;
   int day, month, year;
 
-  date = DB_GET_DATE (date_val_p);
+  date = db_get_date (date_val_p);
 
   if (i < 0)
     {
@@ -1667,7 +1690,7 @@ qdata_add_int_to_date (DB_VALUE * date_val_p, int i, DB_VALUE * result_p, TP_DOM
   db_date_decode (&utmp, &month, &day, &year);
   if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
     {
-      DB_MAKE_DATE (result_p, month, day, year);
+      db_make_date (result_p, month, day, year);
     }
   else
     {
@@ -1676,11 +1699,11 @@ qdata_add_int_to_date (DB_VALUE * date_val_p, int i, DB_VALUE * result_p, TP_DOM
       switch (type)
 	{
 	case DB_TYPE_INTEGER:
-	  DB_MAKE_INT (result_p, (year * 100 + month) * 100 + day);
+	  db_make_int (result_p, (year * 100 + month) * 100 + day);
 	  break;
 
 	default:
-	  DB_MAKE_DATE (result_p, month, day, year);
+	  db_make_date (result_p, month, day, year);
 	  break;
 	}
     }
@@ -1696,7 +1719,7 @@ qdata_add_bigint_to_date (DB_VALUE * date_val_p, DB_BIGINT bi, DB_VALUE * result
   DB_DATE tmp_date;
   int day, month, year;
 
-  date = DB_GET_DATE (date_val_p);
+  date = db_get_date (date_val_p);
 
   if (bi < 0)
     {
@@ -1717,7 +1740,7 @@ qdata_add_bigint_to_date (DB_VALUE * date_val_p, DB_BIGINT bi, DB_VALUE * result
   db_date_decode (&tmp_date, &month, &day, &year);
   if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
     {
-      DB_MAKE_DATE (result_p, month, day, year);
+      db_make_date (result_p, month, day, year);
     }
   else
     {
@@ -1726,11 +1749,11 @@ qdata_add_bigint_to_date (DB_VALUE * date_val_p, DB_BIGINT bi, DB_VALUE * result
       switch (type)
 	{
 	case DB_TYPE_BIGINT:
-	  DB_MAKE_BIGINT (result_p, (year * 100 + month) * 100 + day);
+	  db_make_bigint (result_p, (year * 100 + month) * 100 + day);
 	  break;
 
 	default:
-	  DB_MAKE_DATE (result_p, month, day, year);
+	  db_make_date (result_p, month, day, year);
 	  break;
 	}
     }
@@ -1746,7 +1769,7 @@ qdata_add_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p, DB_VALUE *
   short s;
   DB_TYPE type;
 
-  s = DB_GET_SHORT (short_val_p);
+  s = db_get_short (short_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type)
@@ -1755,22 +1778,22 @@ qdata_add_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p, DB_VALUE *
       return qdata_add_short (s, dbval_p, result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_add_int (s, DB_GET_INT (dbval_p), result_p);
+      return qdata_add_int (s, db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_add_bigint (s, DB_GET_BIGINT (dbval_p), result_p);
+      return qdata_add_bigint (s, db_get_bigint (dbval_p), result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_add_float (s, DB_GET_FLOAT (dbval_p), result_p);
+      return qdata_add_float (s, db_get_float (dbval_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_add_double (s, DB_GET_DOUBLE (dbval_p), result_p);
+      return qdata_add_double (s, db_get_double (dbval_p), result_p);
 
     case DB_TYPE_NUMERIC:
       return qdata_add_numeric (dbval_p, short_val_p, result_p);
 
     case DB_TYPE_MONETARY:
-      return qdata_add_monetary (s, (DB_GET_MONETARY (dbval_p))->amount, (DB_GET_MONETARY (dbval_p))->type, result_p);
+      return qdata_add_monetary (s, (db_get_monetary (dbval_p))->amount, (db_get_monetary (dbval_p))->type, result_p);
 
     case DB_TYPE_TIME:
       return qdata_add_bigint_to_time (dbval_p, (DB_BIGINT) s, result_p);
@@ -1778,14 +1801,14 @@ qdata_add_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p, DB_VALUE *
     case DB_TYPE_TIMELTZ:
       {
 	DB_TIMETZ time_tz;
-	time_tz.time = *DB_GET_TIME (dbval_p);
+	time_tz.time = *db_get_time (dbval_p);
 
 	err = tz_create_session_tzid_for_time (&time_tz.time, true, &time_tz.tz_id);
 	if (err != NO_ERROR)
 	  {
 	    break;
 	  }
-	DB_MAKE_TIMETZ (&tmp_val, &time_tz);
+	db_make_timetz (&tmp_val, &time_tz);
 
 	err = qdata_add_bigint_to_timetz (&tmp_val, (DB_BIGINT) s, result_p);
 	if (err != NO_ERROR)
@@ -1794,8 +1817,8 @@ qdata_add_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p, DB_VALUE *
 	  }
 	if (DB_VALUE_TYPE (result_p) == DB_TYPE_TIMETZ)
 	  {
-	    time_tz = *DB_GET_TIMETZ (result_p);
-	    DB_MAKE_TIMELTZ (result_p, &time_tz.time);
+	    time_tz = *db_get_timetz (result_p);
+	    db_make_timeltz (result_p, &time_tz.time);
 	  }
 	break;
       }
@@ -1803,20 +1826,20 @@ qdata_add_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p, DB_VALUE *
     case DB_TYPE_TIMETZ:
       return qdata_add_bigint_to_timetz (dbval_p, (DB_BIGINT) s, result_p);
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       return qdata_add_short_to_utime (dbval_p, s, result_p, domain_p);
 
     case DB_TYPE_TIMESTAMPLTZ:
       {
 	DB_TIMESTAMPTZ ts_tz;
-	ts_tz.timestamp = *DB_GET_UTIME (dbval_p);
+	ts_tz.timestamp = *db_get_timestamp (dbval_p);
 
 	err = tz_create_session_tzid_for_timestamp (&ts_tz.timestamp, &ts_tz.tz_id);
 	if (err != NO_ERROR)
 	  {
 	    break;
 	  }
-	DB_MAKE_TIMESTAMPTZ (&tmp_val, &ts_tz);
+	db_make_timestamptz (&tmp_val, &ts_tz);
 
 	err = qdata_add_short_to_timestamptz (&tmp_val, (DB_BIGINT) s, result_p, domain_p);
 	if (err != NO_ERROR)
@@ -1825,8 +1848,8 @@ qdata_add_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p, DB_VALUE *
 	  }
 	if (DB_VALUE_TYPE (result_p) == DB_TYPE_TIMESTAMPTZ)
 	  {
-	    ts_tz = *DB_GET_TIMESTAMPTZ (result_p);
-	    DB_MAKE_TIMESTAMPLTZ (result_p, ts_tz.timestamp);
+	    ts_tz = *db_get_timestamptz (result_p);
+	    db_make_timestampltz (result_p, ts_tz.timestamp);
 	  }
 	break;
       }
@@ -1839,12 +1862,12 @@ qdata_add_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p, DB_VALUE *
       err = qdata_add_short_to_datetime (dbval_p, s, &tmp_val, domain_p);
       if (err == NO_ERROR && type == DB_TYPE_DATETIMELTZ)
 	{
-	  DB_MAKE_DATETIMELTZ (result_p, DB_GET_DATETIME (&tmp_val));
+	  db_make_datetimeltz (result_p, db_get_datetime (&tmp_val));
 	}
       return err;
 
     case DB_TYPE_DATETIMETZ:
-      DB_MAKE_SHORT (&tmp_val, s);
+      db_make_short (&tmp_val, s);
       return qdata_add_datetimetz_to_dbval (dbval_p, &tmp_val, result_p);
 
     case DB_TYPE_DATE:
@@ -1865,32 +1888,32 @@ qdata_add_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p, DB_VALUE * res
   DB_TYPE type;
   DB_VALUE tmp_val;
 
-  i = DB_GET_INT (int_val_p);
+  i = db_get_int (int_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type)
     {
     case DB_TYPE_SHORT:
-      return qdata_add_int (i, DB_GET_SHORT (dbval_p), result_p);
+      return qdata_add_int (i, db_get_short (dbval_p), result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_add_int (i, DB_GET_INT (dbval_p), result_p);
+      return qdata_add_int (i, db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_add_bigint (i, DB_GET_BIGINT (dbval_p), result_p);
+      return qdata_add_bigint (i, db_get_bigint (dbval_p), result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_add_float ((float) i, DB_GET_FLOAT (dbval_p), result_p);
+      return qdata_add_float ((float) i, db_get_float (dbval_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_add_double (i, DB_GET_DOUBLE (dbval_p), result_p);
+      return qdata_add_double (i, db_get_double (dbval_p), result_p);
 
     case DB_TYPE_NUMERIC:
       return qdata_add_numeric (dbval_p, int_val_p, result_p);
       break;
 
     case DB_TYPE_MONETARY:
-      return qdata_add_monetary (i, (DB_GET_MONETARY (dbval_p))->amount, (DB_GET_MONETARY (dbval_p))->type, result_p);
+      return qdata_add_monetary (i, (db_get_monetary (dbval_p))->amount, (db_get_monetary (dbval_p))->type, result_p);
 
     case DB_TYPE_TIME:
       return qdata_add_bigint_to_time (dbval_p, (DB_BIGINT) i, result_p);
@@ -1898,14 +1921,14 @@ qdata_add_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p, DB_VALUE * res
     case DB_TYPE_TIMELTZ:
       {
 	DB_TIMETZ time_tz;
-	time_tz.time = *DB_GET_TIME (dbval_p);
+	time_tz.time = *db_get_time (dbval_p);
 
 	err = tz_create_session_tzid_for_time (&time_tz.time, true, &time_tz.tz_id);
 	if (err != NO_ERROR)
 	  {
 	    break;
 	  }
-	DB_MAKE_TIMETZ (&tmp_val, &time_tz);
+	db_make_timetz (&tmp_val, &time_tz);
 
 	err = qdata_add_bigint_to_timetz (&tmp_val, (DB_BIGINT) i, result_p);
 	if (err != NO_ERROR)
@@ -1914,8 +1937,8 @@ qdata_add_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p, DB_VALUE * res
 	  }
 	if (DB_VALUE_TYPE (result_p) == DB_TYPE_TIMETZ)
 	  {
-	    time_tz = *DB_GET_TIMETZ (result_p);
-	    DB_MAKE_TIMELTZ (result_p, &time_tz.time);
+	    time_tz = *db_get_timetz (result_p);
+	    db_make_timeltz (result_p, &time_tz.time);
 	  }
 	break;
       }
@@ -1923,20 +1946,20 @@ qdata_add_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p, DB_VALUE * res
     case DB_TYPE_TIMETZ:
       return qdata_add_bigint_to_timetz (dbval_p, (DB_BIGINT) i, result_p);
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       return qdata_add_int_to_utime (dbval_p, i, result_p, domain_p);
 
     case DB_TYPE_TIMESTAMPLTZ:
       {
 	DB_TIMESTAMPTZ ts_tz;
-	ts_tz.timestamp = *DB_GET_UTIME (dbval_p);
+	ts_tz.timestamp = *db_get_timestamp (dbval_p);
 
 	err = tz_create_session_tzid_for_timestamp (&ts_tz.timestamp, &ts_tz.tz_id);
 	if (err != NO_ERROR)
 	  {
 	    break;
 	  }
-	DB_MAKE_TIMESTAMPTZ (&tmp_val, &ts_tz);
+	db_make_timestamptz (&tmp_val, &ts_tz);
 
 	err = qdata_add_int_to_timestamptz (&tmp_val, (DB_BIGINT) i, result_p, domain_p);
 	if (err != NO_ERROR)
@@ -1945,8 +1968,8 @@ qdata_add_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p, DB_VALUE * res
 	  }
 	if (DB_VALUE_TYPE (result_p) == DB_TYPE_TIMESTAMPTZ)
 	  {
-	    ts_tz = *DB_GET_TIMESTAMPTZ (result_p);
-	    DB_MAKE_TIMESTAMPLTZ (result_p, ts_tz.timestamp);
+	    ts_tz = *db_get_timestamptz (result_p);
+	    db_make_timestampltz (result_p, ts_tz.timestamp);
 	  }
 	break;
       }
@@ -1959,12 +1982,12 @@ qdata_add_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p, DB_VALUE * res
       err = qdata_add_int_to_datetime (dbval_p, i, &tmp_val, domain_p);
       if (err == NO_ERROR && type == DB_TYPE_DATETIMELTZ)
 	{
-	  DB_MAKE_DATETIMELTZ (result_p, DB_GET_DATETIME (&tmp_val));
+	  db_make_datetimeltz (result_p, db_get_datetime (&tmp_val));
 	}
       return err;
 
     case DB_TYPE_DATETIMETZ:
-      DB_MAKE_INT (&tmp_val, i);
+      db_make_int (&tmp_val, i);
       return qdata_add_datetimetz_to_dbval (dbval_p, &tmp_val, result_p);
 
     case DB_TYPE_DATE:
@@ -1985,32 +2008,32 @@ qdata_add_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_VALUE
   DB_TYPE type;
   DB_VALUE tmp_val;
 
-  bi = DB_GET_BIGINT (bigint_val_p);
+  bi = db_get_bigint (bigint_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type)
     {
     case DB_TYPE_SHORT:
-      return qdata_add_bigint (bi, DB_GET_SHORT (dbval_p), result_p);
+      return qdata_add_bigint (bi, db_get_short (dbval_p), result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_add_bigint (bi, DB_GET_INT (dbval_p), result_p);
+      return qdata_add_bigint (bi, db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_add_bigint (bi, DB_GET_BIGINT (dbval_p), result_p);
+      return qdata_add_bigint (bi, db_get_bigint (dbval_p), result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_add_float ((float) bi, DB_GET_FLOAT (dbval_p), result_p);
+      return qdata_add_float ((float) bi, db_get_float (dbval_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_add_double ((double) bi, DB_GET_DOUBLE (dbval_p), result_p);
+      return qdata_add_double ((double) bi, db_get_double (dbval_p), result_p);
 
     case DB_TYPE_NUMERIC:
       return qdata_add_numeric (dbval_p, bigint_val_p, result_p);
       break;
 
     case DB_TYPE_MONETARY:
-      return qdata_add_monetary ((double) bi, (DB_GET_MONETARY (dbval_p))->amount, (DB_GET_MONETARY (dbval_p))->type,
+      return qdata_add_monetary ((double) bi, (db_get_monetary (dbval_p))->amount, (db_get_monetary (dbval_p))->type,
 				 result_p);
 
     case DB_TYPE_TIME:
@@ -2019,14 +2042,14 @@ qdata_add_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_VALUE
     case DB_TYPE_TIMELTZ:
       {
 	DB_TIMETZ time_tz;
-	time_tz.time = *DB_GET_TIME (dbval_p);
+	time_tz.time = *db_get_time (dbval_p);
 
 	err = tz_create_session_tzid_for_time (&time_tz.time, true, &time_tz.tz_id);
 	if (err != NO_ERROR)
 	  {
 	    break;
 	  }
-	DB_MAKE_TIMETZ (&tmp_val, &time_tz);
+	db_make_timetz (&tmp_val, &time_tz);
 
 	err = qdata_add_bigint_to_timetz (&tmp_val, bi, result_p);
 	if (err != NO_ERROR)
@@ -2035,8 +2058,8 @@ qdata_add_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_VALUE
 	  }
 	if (DB_VALUE_TYPE (result_p) == DB_TYPE_TIMETZ)
 	  {
-	    time_tz = *DB_GET_TIMETZ (result_p);
-	    DB_MAKE_TIMELTZ (result_p, &time_tz.time);
+	    time_tz = *db_get_timetz (result_p);
+	    db_make_timeltz (result_p, &time_tz.time);
 	  }
 	break;
       }
@@ -2044,20 +2067,20 @@ qdata_add_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_VALUE
     case DB_TYPE_TIMETZ:
       return qdata_add_bigint_to_timetz (dbval_p, bi, result_p);
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       return qdata_add_bigint_to_utime (dbval_p, bi, result_p, domain_p);
 
     case DB_TYPE_TIMESTAMPLTZ:
       {
 	DB_TIMESTAMPTZ ts_tz;
-	ts_tz.timestamp = *DB_GET_UTIME (dbval_p);
+	ts_tz.timestamp = *db_get_timestamp (dbval_p);
 
 	err = tz_create_session_tzid_for_timestamp (&ts_tz.timestamp, &ts_tz.tz_id);
 	if (err != NO_ERROR)
 	  {
 	    break;
 	  }
-	DB_MAKE_TIMESTAMPTZ (&tmp_val, &ts_tz);
+	db_make_timestamptz (&tmp_val, &ts_tz);
 
 	err = qdata_add_bigint_to_timestamptz (&tmp_val, bi, result_p, domain_p);
 	if (err != NO_ERROR)
@@ -2066,8 +2089,8 @@ qdata_add_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_VALUE
 	  }
 	if (DB_VALUE_TYPE (result_p) == DB_TYPE_TIMESTAMPTZ)
 	  {
-	    ts_tz = *DB_GET_TIMESTAMPTZ (result_p);
-	    DB_MAKE_TIMESTAMPLTZ (result_p, ts_tz.timestamp);
+	    ts_tz = *db_get_timestamptz (result_p);
+	    db_make_timestampltz (result_p, ts_tz.timestamp);
 	  }
 	break;
       }
@@ -2085,12 +2108,12 @@ qdata_add_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_VALUE
       err = qdata_add_bigint_to_datetime (dbval_p, bi, &tmp_val, domain_p);
       if (err == NO_ERROR && type == DB_TYPE_DATETIMELTZ)
 	{
-	  DB_MAKE_DATETIMELTZ (result_p, DB_GET_DATETIME (&tmp_val));
+	  db_make_datetimeltz (result_p, db_get_datetime (&tmp_val));
 	}
       return err;
 
     case DB_TYPE_DATETIMETZ:
-      DB_MAKE_BIGINT (&tmp_val, bi);
+      db_make_bigint (&tmp_val, bi);
       return qdata_add_datetimetz_to_dbval (dbval_p, &tmp_val, result_p);
 
     default:
@@ -2106,31 +2129,31 @@ qdata_add_float_to_dbval (DB_VALUE * float_val_p, DB_VALUE * dbval_p, DB_VALUE *
   float f1;
   DB_TYPE type;
 
-  f1 = DB_GET_FLOAT (float_val_p);
+  f1 = db_get_float (float_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type)
     {
     case DB_TYPE_SHORT:
-      return qdata_add_float (f1, (float) DB_GET_SHORT (dbval_p), result_p);
+      return qdata_add_float (f1, (float) db_get_short (dbval_p), result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_add_float (f1, (float) DB_GET_INT (dbval_p), result_p);
+      return qdata_add_float (f1, (float) db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_add_double (f1, (double) DB_GET_BIGINT (dbval_p), result_p);
+      return qdata_add_double (f1, (double) db_get_bigint (dbval_p), result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_add_float (f1, DB_GET_FLOAT (dbval_p), result_p);
+      return qdata_add_float (f1, db_get_float (dbval_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_add_double (f1, DB_GET_DOUBLE (dbval_p), result_p);
+      return qdata_add_double (f1, db_get_double (dbval_p), result_p);
 
     case DB_TYPE_NUMERIC:
       return qdata_add_double (f1, qdata_coerce_numeric_to_double (dbval_p), result_p);
 
     case DB_TYPE_MONETARY:
-      return qdata_add_monetary (f1, (DB_GET_MONETARY (dbval_p))->amount, (DB_GET_MONETARY (dbval_p))->type, result_p);
+      return qdata_add_monetary (f1, (db_get_monetary (dbval_p))->amount, (db_get_monetary (dbval_p))->type, result_p);
 
     default:
       break;
@@ -2145,31 +2168,31 @@ qdata_add_double_to_dbval (DB_VALUE * double_val_p, DB_VALUE * dbval_p, DB_VALUE
   double d1;
   DB_TYPE type;
 
-  d1 = DB_GET_DOUBLE (double_val_p);
+  d1 = db_get_double (double_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type)
     {
     case DB_TYPE_SHORT:
-      return qdata_add_double (d1, DB_GET_SHORT (dbval_p), result_p);
+      return qdata_add_double (d1, db_get_short (dbval_p), result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_add_double (d1, DB_GET_INT (dbval_p), result_p);
+      return qdata_add_double (d1, db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_add_double (d1, (double) DB_GET_BIGINT (dbval_p), result_p);
+      return qdata_add_double (d1, (double) db_get_bigint (dbval_p), result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_add_double (d1, DB_GET_FLOAT (dbval_p), result_p);
+      return qdata_add_double (d1, db_get_float (dbval_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_add_double (d1, DB_GET_DOUBLE (dbval_p), result_p);
+      return qdata_add_double (d1, db_get_double (dbval_p), result_p);
 
     case DB_TYPE_NUMERIC:
       return qdata_add_double (d1, qdata_coerce_numeric_to_double (dbval_p), result_p);
 
     case DB_TYPE_MONETARY:
-      return qdata_add_monetary (d1, (DB_GET_MONETARY (dbval_p))->amount, (DB_GET_MONETARY (dbval_p))->type, result_p);
+      return qdata_add_monetary (d1, (db_get_monetary (dbval_p))->amount, (db_get_monetary (dbval_p))->type, result_p);
 
     default:
       break;
@@ -2201,10 +2224,10 @@ qdata_add_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VAL
       break;
 
     case DB_TYPE_FLOAT:
-      return qdata_add_double (qdata_coerce_numeric_to_double (numeric_val_p), DB_GET_FLOAT (dbval_p), result_p);
+      return qdata_add_double (qdata_coerce_numeric_to_double (numeric_val_p), db_get_float (dbval_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_add_double (qdata_coerce_numeric_to_double (numeric_val_p), DB_GET_DOUBLE (dbval_p), result_p);
+      return qdata_add_double (qdata_coerce_numeric_to_double (numeric_val_p), db_get_double (dbval_p), result_p);
 
     case DB_TYPE_MONETARY:
       return qdata_add_numeric_to_monetary (numeric_val_p, dbval_p, result_p);
@@ -2223,34 +2246,34 @@ qdata_add_monetary_to_dbval (DB_VALUE * monetary_val_p, DB_VALUE * dbval_p, DB_V
   double d1;
   DB_CURRENCY currency;
 
-  d1 = (DB_GET_MONETARY (monetary_val_p))->amount;
-  currency = (DB_GET_MONETARY (monetary_val_p))->type;
+  d1 = (db_get_monetary (monetary_val_p))->amount;
+  currency = (db_get_monetary (monetary_val_p))->type;
 
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type)
     {
     case DB_TYPE_SHORT:
-      return qdata_add_monetary (d1, DB_GET_SHORT (dbval_p), currency, result_p);
+      return qdata_add_monetary (d1, db_get_short (dbval_p), currency, result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_add_monetary (d1, DB_GET_INT (dbval_p), currency, result_p);
+      return qdata_add_monetary (d1, db_get_int (dbval_p), currency, result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_add_monetary (d1, (double) DB_GET_BIGINT (dbval_p), currency, result_p);
+      return qdata_add_monetary (d1, (double) db_get_bigint (dbval_p), currency, result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_add_monetary (d1, DB_GET_FLOAT (dbval_p), currency, result_p);
+      return qdata_add_monetary (d1, db_get_float (dbval_p), currency, result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_add_monetary (d1, DB_GET_DOUBLE (dbval_p), currency, result_p);
+      return qdata_add_monetary (d1, db_get_double (dbval_p), currency, result_p);
 
     case DB_TYPE_NUMERIC:
       return qdata_add_numeric_to_monetary (dbval_p, monetary_val_p, result_p);
 
     case DB_TYPE_MONETARY:
       /* Note: we probably should return an error if the two monetaries have different monetary types. */
-      return qdata_add_monetary (d1, (DB_GET_MONETARY (dbval_p))->amount, currency, result_p);
+      return qdata_add_monetary (d1, (db_get_monetary (dbval_p))->amount, currency, result_p);
 
     default:
       break;
@@ -2296,7 +2319,7 @@ qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE 
       return ER_FAILED;
     }
 
-  DB_MAKE_NULL (&dbval_tmp);
+  db_make_null (&dbval_tmp);
 
   if (TP_DOMAIN_TYPE (domain_p) == DB_TYPE_SEQUENCE)
     {
@@ -2305,9 +2328,9 @@ qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE 
 	  return ER_FAILED;
 	}
 
-      seq_tmp = DB_GET_SEQUENCE (dbval_p);
+      seq_tmp = db_get_set (dbval_p);
       card = db_seq_size (seq_tmp);
-      seq_tmp1 = DB_GET_SEQUENCE (result_p);
+      seq_tmp1 = db_get_set (result_p);
       card1 = db_seq_size (seq_tmp1);
 
       for (i = 0; i < card; i++)
@@ -2329,7 +2352,7 @@ qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE 
   else
     {
       /* set or multiset */
-      if (set_union (DB_GET_SET (seq_val_p), DB_GET_SET (dbval_p), &set_tmp, domain_p) < 0)
+      if (set_union (db_get_set (seq_val_p), db_get_set (dbval_p), &set_tmp, domain_p) < 0)
 	{
 	  return ER_FAILED;
 	}
@@ -2351,13 +2374,13 @@ qdata_add_time_to_dbval (DB_VALUE * time_val_p, DB_VALUE * dbval_p, DB_VALUE * r
   switch (type)
     {
     case DB_TYPE_SHORT:
-      return qdata_add_bigint_to_time (time_val_p, (DB_BIGINT) DB_GET_SHORT (dbval_p), result_p);
+      return qdata_add_bigint_to_time (time_val_p, (DB_BIGINT) db_get_short (dbval_p), result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_add_bigint_to_time (time_val_p, (DB_BIGINT) DB_GET_INT (dbval_p), result_p);
+      return qdata_add_bigint_to_time (time_val_p, (DB_BIGINT) db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_add_bigint_to_time (time_val_p, DB_GET_BIGINT (dbval_p), result_p);
+      return qdata_add_bigint_to_time (time_val_p, db_get_bigint (dbval_p), result_p);
 
     default:
       break;
@@ -2376,13 +2399,13 @@ qdata_add_timetz_to_dbval (DB_VALUE * time_tz_val_p, DB_VALUE * dbval_p, DB_VALU
   switch (type)
     {
     case DB_TYPE_SHORT:
-      return qdata_add_bigint_to_timetz (time_tz_val_p, (DB_BIGINT) DB_GET_SHORT (dbval_p), result_p);
+      return qdata_add_bigint_to_timetz (time_tz_val_p, (DB_BIGINT) db_get_short (dbval_p), result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_add_bigint_to_timetz (time_tz_val_p, (DB_BIGINT) DB_GET_INT (dbval_p), result_p);
+      return qdata_add_bigint_to_timetz (time_tz_val_p, (DB_BIGINT) db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_add_bigint_to_timetz (time_tz_val_p, DB_GET_BIGINT (dbval_p), result_p);
+      return qdata_add_bigint_to_timetz (time_tz_val_p, db_get_bigint (dbval_p), result_p);
 
     default:
       break;
@@ -2401,13 +2424,13 @@ qdata_add_utime_to_dbval (DB_VALUE * utime_val_p, DB_VALUE * dbval_p, DB_VALUE *
   switch (type)
     {
     case DB_TYPE_SHORT:
-      return qdata_add_short_to_utime (utime_val_p, DB_GET_SHORT (dbval_p), result_p, domain_p);
+      return qdata_add_short_to_utime (utime_val_p, db_get_short (dbval_p), result_p, domain_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_add_int_to_utime (utime_val_p, DB_GET_INT (dbval_p), result_p, domain_p);
+      return qdata_add_int_to_utime (utime_val_p, db_get_int (dbval_p), result_p, domain_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_add_bigint_to_utime (utime_val_p, DB_GET_BIGINT (dbval_p), result_p, domain_p);
+      return qdata_add_bigint_to_utime (utime_val_p, db_get_bigint (dbval_p), result_p, domain_p);
 
     default:
       break;
@@ -2429,13 +2452,13 @@ qdata_add_timestamptz_to_dbval (DB_VALUE * ts_tz_val_p, DB_VALUE * dbval_p, DB_V
   switch (type)
     {
     case DB_TYPE_SHORT:
-      return qdata_add_short_to_timestamptz (ts_tz_val_p, DB_GET_SHORT (dbval_p), result_p, domain_p);
+      return qdata_add_short_to_timestamptz (ts_tz_val_p, db_get_short (dbval_p), result_p, domain_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_add_int_to_timestamptz (ts_tz_val_p, DB_GET_INT (dbval_p), result_p, domain_p);
+      return qdata_add_int_to_timestamptz (ts_tz_val_p, db_get_int (dbval_p), result_p, domain_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_add_bigint_to_timestamptz (ts_tz_val_p, DB_GET_BIGINT (dbval_p), result_p, domain_p);
+      return qdata_add_bigint_to_timestamptz (ts_tz_val_p, db_get_bigint (dbval_p), result_p, domain_p);
 
     default:
       break;
@@ -2454,13 +2477,13 @@ qdata_add_datetime_to_dbval (DB_VALUE * datetime_val_p, DB_VALUE * dbval_p, DB_V
   switch (type)
     {
     case DB_TYPE_SHORT:
-      return qdata_add_short_to_datetime (datetime_val_p, DB_GET_SHORT (dbval_p), result_p, domain_p);
+      return qdata_add_short_to_datetime (datetime_val_p, db_get_short (dbval_p), result_p, domain_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_add_int_to_datetime (datetime_val_p, DB_GET_INT (dbval_p), result_p, domain_p);
+      return qdata_add_int_to_datetime (datetime_val_p, db_get_int (dbval_p), result_p, domain_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_add_bigint_to_datetime (datetime_val_p, DB_GET_BIGINT (dbval_p), result_p, domain_p);
+      return qdata_add_bigint_to_datetime (datetime_val_p, db_get_bigint (dbval_p), result_p, domain_p);
 
     default:
       break;
@@ -2474,17 +2497,17 @@ qdata_add_datetimetz_to_dbval (DB_VALUE * datetimetz_val_p, DB_VALUE * dbval_p, 
 {
   int error = NO_ERROR;
   DB_VALUE dt_val, dt_val_res;
-  DB_DATETIMETZ *dt_tz_p = DB_GET_DATETIMETZ (datetimetz_val_p);
+  DB_DATETIMETZ *dt_tz_p = db_get_datetimetz (datetimetz_val_p);
   DB_DATETIMETZ dt_tz_res, dt_tz_fixed;
 
-  DB_MAKE_DATETIME (&dt_val, &dt_tz_p->datetime);
+  db_make_datetime (&dt_val, &dt_tz_p->datetime);
   error = qdata_add_datetime_to_dbval (&dt_val, dbval_p, &dt_val_res, tp_domain_resolve_default (DB_TYPE_DATETIME));
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  dt_tz_res.datetime = *DB_GET_DATETIME (&dt_val_res);
+  dt_tz_res.datetime = *db_get_datetime (&dt_val_res);
   dt_tz_res.tz_id = dt_tz_p->tz_id;
 
   error = tz_datetimetz_fix_zone (&dt_tz_res, &dt_tz_fixed);
@@ -2493,7 +2516,7 @@ qdata_add_datetimetz_to_dbval (DB_VALUE * datetimetz_val_p, DB_VALUE * dbval_p, 
       return error;
     }
 
-  DB_MAKE_DATETIMETZ (result_p, &dt_tz_fixed);
+  db_make_datetimetz (result_p, &dt_tz_fixed);
   return NO_ERROR;
 }
 
@@ -2507,13 +2530,13 @@ qdata_add_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p, DB_VALUE * r
   switch (type)
     {
     case DB_TYPE_SHORT:
-      return qdata_add_short_to_date (date_val_p, DB_GET_SHORT (dbval_p), result_p, domain_p);
+      return qdata_add_short_to_date (date_val_p, db_get_short (dbval_p), result_p, domain_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_add_int_to_date (date_val_p, DB_GET_INT (dbval_p), result_p, domain_p);
+      return qdata_add_int_to_date (date_val_p, db_get_int (dbval_p), result_p, domain_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_add_bigint_to_date (date_val_p, DB_GET_BIGINT (dbval_p), result_p, domain_p);
+      return qdata_add_bigint_to_date (date_val_p, db_get_bigint (dbval_p), result_p, domain_p);
 
     default:
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
@@ -2593,7 +2616,6 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
   TP_DOMAIN *cast_dom1 = NULL;
   TP_DOMAIN *cast_dom2 = NULL;
   TP_DOMAIN_STATUS dom_status;
-  bool reverse_operands = false;
 
   if (domain_p != NULL && TP_DOMAIN_TYPE (domain_p) == DB_TYPE_NULL)
     {
@@ -2660,8 +2682,8 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
       return NO_ERROR;
     }
 
-  DB_MAKE_NULL (&cast_value1);
-  DB_MAKE_NULL (&cast_value2);
+  db_make_null (&cast_value1);
+  db_make_null (&cast_value2);
 
   /* not all pairs of operands types can be handled; for some of these pairs, reverse the order of operands to match
    * the handled case */
@@ -2733,7 +2755,7 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
   if (qdata_is_zero_value_date (dbval1_p) || qdata_is_zero_value_date (dbval2_p))
     {
       /* add operation with zero date returns null */
-      DB_MAKE_NULL (result_p);
+      db_make_null (result_p);
       if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
@@ -2811,7 +2833,7 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
       error = qdata_add_time_to_dbval (dbval1_p, dbval2_p, result_p);
       if (error == NO_ERROR && type1 == DB_TYPE_TIMELTZ)
 	{
-	  DB_MAKE_TIMELTZ (result_p, DB_GET_TIME (result_p));
+	  db_make_timeltz (result_p, db_get_time (result_p));
 	}
       break;
 
@@ -2819,7 +2841,7 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
       error = qdata_add_timetz_to_dbval (dbval1_p, dbval2_p, result_p);
       break;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       error = qdata_add_utime_to_dbval (dbval1_p, dbval2_p, result_p, domain_p);
       break;
 
@@ -2828,7 +2850,7 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
 	DB_TIMESTAMPTZ ts_tz, *ts_tz_p;
 	DB_VALUE ts_tz_val, tmp_val_res;
 
-	ts_tz.timestamp = *DB_GET_UTIME (dbval1_p);
+	ts_tz.timestamp = *db_get_timestamp (dbval1_p);
 
 	error = tz_create_session_tzid_for_timestamp (&ts_tz.timestamp, &ts_tz.tz_id);
 	if (error != NO_ERROR)
@@ -2836,7 +2858,7 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
 	    break;
 	  }
 
-	DB_MAKE_TIMESTAMPTZ (&ts_tz_val, &ts_tz);
+	db_make_timestamptz (&ts_tz_val, &ts_tz);
 
 	error = qdata_add_timestamptz_to_dbval (&ts_tz_val, dbval2_p, &tmp_val_res);
 	if (error != NO_ERROR)
@@ -2845,8 +2867,8 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
 	  }
 	if (DB_VALUE_TYPE (&tmp_val_res) == DB_TYPE_TIMESTAMPTZ)
 	  {
-	    ts_tz_p = DB_GET_TIMESTAMPTZ (&tmp_val_res);
-	    DB_MAKE_TIMESTAMPLTZ (result_p, ts_tz_p->timestamp);
+	    ts_tz_p = db_get_timestamptz (&tmp_val_res);
+	    db_make_timestampltz (result_p, ts_tz_p->timestamp);
 	  }
 	else
 	  {
@@ -2866,7 +2888,7 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
       error = qdata_add_datetime_to_dbval (dbval1_p, dbval2_p, result_p, domain_p);
       if (error == NO_ERROR && type1 == DB_TYPE_DATETIMELTZ)
 	{
-	  DB_MAKE_DATETIMELTZ (result_p, DB_GET_DATETIME (result_p));
+	  db_make_datetimeltz (result_p, db_get_datetime (result_p));
 	}
       break;
 
@@ -2935,10 +2957,10 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
       return ER_QPROC_INVALID_DATATYPE;
     }
-  DB_MAKE_NULL (&arg_val);
-  DB_MAKE_NULL (&db_temp);
+  db_make_null (&arg_val);
+  db_make_null (&db_temp);
 
-  res_size = DB_GET_STRING_SIZE (dbval1_p);
+  res_size = db_get_string_size (dbval1_p);
 
   switch (type2)
     {
@@ -2948,7 +2970,7 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-      val_size = DB_GET_STRING_SIZE (dbval2_p);
+      val_size = db_get_string_size (dbval2_p);
       if (res_size >= max_allowed_size)
 	{
 	  assert (warning_size_exceeded == false);
@@ -2973,8 +2995,8 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
 	       * aggregate. */
 	      save_need_clear = result_p->need_clear;
 	      qstr_make_typed_string (DB_VALUE_DOMAIN_TYPE (result_p), result_p, DB_VALUE_PRECISION (result_p),
-				      DB_PULL_STRING (result_p), DB_GET_STRING_SIZE (result_p) + spare_bytes,
-				      DB_GET_STRING_CODESET (dbval1_p), DB_GET_STRING_COLLATION (dbval1_p));
+				      db_get_string (result_p), db_get_string_size (result_p) + spare_bytes,
+				      db_get_string_codeset (dbval1_p), db_get_string_collation (dbval1_p));
 	      result_p->need_clear = save_need_clear;
 	    }
 	}
@@ -2997,7 +3019,7 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
     case DB_TYPE_DATETIME:
     case DB_TYPE_DATETIMELTZ:
     case DB_TYPE_DATETIMETZ:
-    case DB_TYPE_TIMESTAMP:	/* == DB_TYPE_UTIME */
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_ENUMERATION:
@@ -3007,7 +3029,7 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
 
 	if (err_dom == DOMAIN_COMPATIBLE)
 	  {
-	    val_size = DB_GET_STRING_SIZE (&arg_val);
+	    val_size = db_get_string_size (&arg_val);
 
 	    if (res_size >= max_allowed_size)
 	      {
@@ -3029,8 +3051,8 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
 		  {
 		    save_need_clear = result_p->need_clear;
 		    qstr_make_typed_string (DB_VALUE_DOMAIN_TYPE (result_p), result_p, DB_VALUE_PRECISION (result_p),
-					    DB_PULL_STRING (result_p), DB_GET_STRING_SIZE (result_p) + spare_bytes,
-					    DB_GET_STRING_CODESET (dbval1_p), DB_GET_STRING_COLLATION (dbval1_p));
+					    db_get_string (result_p), db_get_string_size (result_p) + spare_bytes,
+					    db_get_string_codeset (dbval1_p), db_get_string_collation (dbval1_p));
 		    result_p->need_clear = save_need_clear;
 		  }
 	      }
@@ -3085,7 +3107,7 @@ qdata_increment_dbval (DB_VALUE * dbval_p, DB_VALUE * result_p, int inc_val)
   switch (type1)
     {
     case DB_TYPE_SHORT:
-      s1 = DB_GET_SHORT (dbval_p);
+      s1 = db_get_short (dbval_p);
       stmp = s1 + inc_val;
       if ((inc_val > 0 && OR_CHECK_ADD_OVERFLOW (s1, inc_val, stmp))
 	  || (inc_val < 0 && OR_CHECK_SUB_UNDERFLOW (s1, -inc_val, stmp)))
@@ -3093,11 +3115,11 @@ qdata_increment_dbval (DB_VALUE * dbval_p, DB_VALUE * result_p, int inc_val)
 	  stmp = 0;
 	}
 
-      DB_MAKE_SHORT (result_p, stmp);
+      db_make_short (result_p, stmp);
       break;
 
     case DB_TYPE_INTEGER:
-      i1 = DB_GET_INT (dbval_p);
+      i1 = db_get_int (dbval_p);
       itmp = i1 + inc_val;
       if ((inc_val > 0 && OR_CHECK_ADD_OVERFLOW (i1, inc_val, itmp))
 	  || (inc_val < 0 && OR_CHECK_SUB_UNDERFLOW (i1, -inc_val, itmp)))
@@ -3105,11 +3127,11 @@ qdata_increment_dbval (DB_VALUE * dbval_p, DB_VALUE * result_p, int inc_val)
 	  itmp = 0;
 	}
 
-      DB_MAKE_INT (result_p, itmp);
+      db_make_int (result_p, itmp);
       break;
 
     case DB_TYPE_BIGINT:
-      bi1 = DB_GET_BIGINT (dbval_p);
+      bi1 = db_get_bigint (dbval_p);
       bitmp = bi1 + inc_val;
       if ((inc_val > 0 && OR_CHECK_ADD_OVERFLOW (bi1, inc_val, bitmp))
 	  || (inc_val < 0 && OR_CHECK_SUB_UNDERFLOW (bi1, -inc_val, bitmp)))
@@ -3117,7 +3139,7 @@ qdata_increment_dbval (DB_VALUE * dbval_p, DB_VALUE * result_p, int inc_val)
 	  bitmp = 0;
 	}
 
-      DB_MAKE_BIGINT (result_p, bitmp);
+      db_make_bigint (result_p, bitmp);
       break;
 
     default:
@@ -3141,7 +3163,7 @@ qdata_subtract_short (short s1, short s2, DB_VALUE * result_p)
       return ER_FAILED;
     }
 
-  DB_MAKE_SHORT (result_p, stmp);
+  db_make_short (result_p, stmp);
   return NO_ERROR;
 }
 
@@ -3158,7 +3180,7 @@ qdata_subtract_int (int i1, int i2, DB_VALUE * result_p)
       return ER_FAILED;
     }
 
-  DB_MAKE_INT (result_p, itmp);
+  db_make_int (result_p, itmp);
   return NO_ERROR;
 }
 
@@ -3175,7 +3197,7 @@ qdata_subtract_bigint (DB_BIGINT bi1, DB_BIGINT bi2, DB_VALUE * result_p)
       return ER_FAILED;
     }
 
-  DB_MAKE_BIGINT (result_p, bitmp);
+  db_make_bigint (result_p, bitmp);
   return NO_ERROR;
 }
 
@@ -3192,7 +3214,7 @@ qdata_subtract_float (float f1, float f2, DB_VALUE * result_p)
       return ER_FAILED;
     }
 
-  DB_MAKE_FLOAT (result_p, ftmp);
+  db_make_float (result_p, ftmp);
   return NO_ERROR;
 }
 
@@ -3209,7 +3231,7 @@ qdata_subtract_double (double d1, double d2, DB_VALUE * result_p)
       return ER_FAILED;
     }
 
-  DB_MAKE_DOUBLE (result_p, dtmp);
+  db_make_double (result_p, dtmp);
   return NO_ERROR;
 }
 
@@ -3226,7 +3248,7 @@ qdata_subtract_monetary (double d1, double d2, DB_CURRENCY currency, DB_VALUE * 
       return ER_FAILED;
     }
 
-  DB_MAKE_MONETARY_TYPE_AMOUNT (result_p, currency, dtmp);
+  db_make_monetary (result_p, currency, dtmp);
   return NO_ERROR;
 }
 
@@ -3243,7 +3265,7 @@ qdata_subtract_time (DB_TIME u1, DB_TIME u2, DB_VALUE * result_p)
 
   utmp = u1 - u2;
   db_time_decode (&utmp, &hour, &minute, &second);
-  DB_MAKE_TIME (result_p, hour, minute, second);
+  db_make_time (result_p, hour, minute, second);
 
   return NO_ERROR;
 }
@@ -3260,7 +3282,7 @@ qdata_subtract_utime (DB_UTIME u1, DB_UTIME u2, DB_VALUE * result_p)
       return ER_FAILED;
     }
 
-  DB_MAKE_UTIME (result_p, utmp);
+  db_make_timestamp (result_p, utmp);
   return NO_ERROR;
 }
 
@@ -3283,7 +3305,7 @@ qdata_subtract_utime_to_short_asymmetry (DB_VALUE * utime_val_p, short s, unsign
       s++;
     }
 
-  DB_MAKE_SHORT (&tmp, -(s));
+  db_make_short (&tmp, -(s));
   error = qdata_add_dbval (utime_val_p, &tmp, result_p, domain_p);
 
   return error;
@@ -3308,7 +3330,7 @@ qdata_subtract_utime_to_int_asymmetry (DB_VALUE * utime_val_p, int i, unsigned i
       i++;
     }
 
-  DB_MAKE_INT (&tmp, -(i));
+  db_make_int (&tmp, -(i));
   error = qdata_add_dbval (utime_val_p, &tmp, result_p, domain_p);
 
   return error;
@@ -3333,7 +3355,7 @@ qdata_subtract_utime_to_bigint_asymmetry (DB_VALUE * utime_val_p, DB_BIGINT bi, 
       bi++;
     }
 
-  DB_MAKE_BIGINT (&tmp, -(bi));
+  db_make_bigint (&tmp, -(bi));
   error = qdata_add_dbval (utime_val_p, &tmp, result_p, domain_p);
 
   return error;
@@ -3351,7 +3373,7 @@ qdata_subtract_datetime_to_int (DB_DATETIME * dt1, DB_BIGINT i2, DB_VALUE * resu
       return error;
     }
 
-  DB_MAKE_DATETIME (result_p, &datetime_tmp);
+  db_make_datetime (result_p, &datetime_tmp);
   return NO_ERROR;
 }
 
@@ -3370,7 +3392,7 @@ qdata_subtract_datetime (DB_DATETIME * dt1, DB_DATETIME * dt2, DB_VALUE * result
       return ER_FAILED;
     }
 
-  DB_MAKE_BIGINT (result_p, tmp);
+  db_make_bigint (result_p, tmp);
   return NO_ERROR;
 }
 
@@ -3393,7 +3415,7 @@ qdata_subtract_datetime_to_int_asymmetry (DB_VALUE * datetime_val_p, DB_BIGINT i
       i++;
     }
 
-  DB_MAKE_BIGINT (&tmp, -(i));
+  db_make_bigint (&tmp, -(i));
   error = qdata_add_dbval (datetime_val_p, &tmp, result_p, domain_p);
 
   return error;
@@ -3412,25 +3434,25 @@ qdata_subtract_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p, DB_VA
   int err = NO_ERROR;
   DB_VALUE tmp_val;
 
-  s = DB_GET_SHORT (short_val_p);
+  s = db_get_short (short_val_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type2)
     {
     case DB_TYPE_SHORT:
-      return qdata_subtract_short (s, DB_GET_SHORT (dbval_p), result_p);
+      return qdata_subtract_short (s, db_get_short (dbval_p), result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_subtract_int (s, DB_GET_INT (dbval_p), result_p);
+      return qdata_subtract_int (s, db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_subtract_bigint (s, DB_GET_BIGINT (dbval_p), result_p);
+      return qdata_subtract_bigint (s, db_get_bigint (dbval_p), result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_subtract_float (s, DB_GET_FLOAT (dbval_p), result_p);
+      return qdata_subtract_float (s, db_get_float (dbval_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_subtract_double (s, DB_GET_DOUBLE (dbval_p), result_p);
+      return qdata_subtract_double (s, db_get_double (dbval_p), result_p);
 
     case DB_TYPE_NUMERIC:
       qdata_coerce_dbval_to_numeric (short_val_p, &dbval_tmp);
@@ -3443,7 +3465,7 @@ qdata_subtract_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p, DB_VA
       break;
 
     case DB_TYPE_MONETARY:
-      return qdata_subtract_monetary (s, (DB_GET_MONETARY (dbval_p))->amount, (DB_GET_MONETARY (dbval_p))->type,
+      return qdata_subtract_monetary (s, (db_get_monetary (dbval_p))->amount, (db_get_monetary (dbval_p))->type,
 				      result_p);
 
     case DB_TYPE_TIME:
@@ -3462,48 +3484,48 @@ qdata_subtract_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p, DB_VA
 	{
 	  DB_TIMETZ *timetz_p;
 
-	  timetz_p = DB_GET_TIMETZ (dbval_p);
+	  timetz_p = db_get_timetz (dbval_p);
 	  timeval = &timetz_p->time;
 	}
       else
 	{
-	  timeval = DB_GET_TIME (dbval_p);
+	  timeval = db_get_time (dbval_p);
 	}
 
       err = qdata_subtract_time (timetmp, (DB_TIME) (*timeval % SECONDS_OF_ONE_DAY), result_p);
       if (err == NO_ERROR && type2 == DB_TYPE_TIMELTZ)
 	{
-	  DB_MAKE_TIMELTZ (result_p, DB_GET_TIME (result_p));
+	  db_make_timeltz (result_p, db_get_time (result_p));
 	}
       else if (err == NO_ERROR && type2 == DB_TYPE_TIMETZ)
 	{
 	  DB_TIMETZ time_tz, time_tz_fixed;
 
-	  time_tz = *DB_GET_TIMETZ (dbval_p);
-	  time_tz.time = *DB_GET_TIME (result_p);
+	  time_tz = *db_get_timetz (dbval_p);
+	  time_tz.time = *db_get_time (result_p);
 	  err = tz_timetz_fix_zone (&time_tz, &time_tz_fixed);
 	  if (err != NO_ERROR)
 	    {
 	      break;
 	    }
-	  DB_MAKE_TIMETZ (result_p, &time_tz_fixed);
+	  db_make_timetz (result_p, &time_tz_fixed);
 	}
       return err;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_TIMESTAMPTZ:
-      DB_MAKE_BIGINT (&tmp_val, (DB_BIGINT) s);
+      db_make_bigint (&tmp_val, (DB_BIGINT) s);
       return qdata_subtract_bigint_to_dbval (&tmp_val, dbval_p, result_p);
 
     case DB_TYPE_DATETIME:
     case DB_TYPE_DATETIMELTZ:
     case DB_TYPE_DATETIMETZ:
-      DB_MAKE_INT (&tmp_val, (int) s);
+      db_make_int (&tmp_val, (int) s);
       return qdata_subtract_int_to_dbval (&tmp_val, dbval_p, result_p);
 
     case DB_TYPE_DATE:
-      date = DB_GET_DATE (dbval_p);
+      date = db_get_date (dbval_p);
 
       u1 = (unsigned int) s;
       u2 = (unsigned int) *date;
@@ -3516,7 +3538,7 @@ qdata_subtract_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p, DB_VA
 	}
 
       db_time_decode (&utmp, &hour, &minute, &second);
-      DB_MAKE_TIME (result_p, hour, minute, second);
+      db_make_time (result_p, hour, minute, second);
       break;
 
     default:
@@ -3539,25 +3561,25 @@ qdata_subtract_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p, DB_VALUE 
   DB_VALUE tmp_val;
   int err = NO_ERROR;
 
-  i = DB_GET_INT (int_val_p);
+  i = db_get_int (int_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type)
     {
     case DB_TYPE_SHORT:
-      return qdata_subtract_int (i, DB_GET_SHORT (dbval_p), result_p);
+      return qdata_subtract_int (i, db_get_short (dbval_p), result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_subtract_int (i, DB_GET_INT (dbval_p), result_p);
+      return qdata_subtract_int (i, db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_subtract_bigint (i, DB_GET_BIGINT (dbval_p), result_p);
+      return qdata_subtract_bigint (i, db_get_bigint (dbval_p), result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_subtract_float ((float) i, DB_GET_FLOAT (dbval_p), result_p);
+      return qdata_subtract_float ((float) i, db_get_float (dbval_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_subtract_double (i, DB_GET_DOUBLE (dbval_p), result_p);
+      return qdata_subtract_double (i, db_get_double (dbval_p), result_p);
 
     case DB_TYPE_NUMERIC:
       qdata_coerce_dbval_to_numeric (int_val_p, &dbval_tmp);
@@ -3570,20 +3592,20 @@ qdata_subtract_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p, DB_VALUE 
       break;
 
     case DB_TYPE_MONETARY:
-      return qdata_subtract_monetary (i, (DB_GET_MONETARY (dbval_p))->amount, (DB_GET_MONETARY (dbval_p))->type,
+      return qdata_subtract_monetary (i, (db_get_monetary (dbval_p))->amount, (db_get_monetary (dbval_p))->type,
 				      result_p);
 
     case DB_TYPE_TIME:
     case DB_TYPE_TIMELTZ:
     case DB_TYPE_TIMETZ:
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_TIMESTAMPTZ:
-      DB_MAKE_BIGINT (&tmp_val, (DB_BIGINT) i);
+      db_make_bigint (&tmp_val, (DB_BIGINT) i);
       return qdata_subtract_bigint_to_dbval (&tmp_val, dbval_p, result_p);
 
     case DB_TYPE_DATETIME:
-      datetime = DB_GET_DATETIME (dbval_p);
+      datetime = db_get_datetime (dbval_p);
 
       datetime_tmp.date = i / MILLISECONDS_OF_ONE_DAY;
       datetime_tmp.time = i % MILLISECONDS_OF_ONE_DAY;
@@ -3594,7 +3616,7 @@ qdata_subtract_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p, DB_VALUE 
       {
 	DB_DATETIME dt_local;
 
-	datetime = DB_GET_DATETIME (dbval_p);
+	datetime = db_get_datetime (dbval_p);
 	err = tz_datetimeltz_to_local (datetime, &dt_local);
 	if (err != NO_ERROR)
 	  {
@@ -3612,7 +3634,7 @@ qdata_subtract_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p, DB_VALUE 
 	DB_DATETIMETZ dt_tz;
 	DB_DATETIME dt_local;
 
-	dt_tz = *DB_GET_DATETIMETZ (dbval_p);
+	dt_tz = *db_get_datetimetz (dbval_p);
 
 	err = tz_utc_datetimetz_to_local (&dt_tz.datetime, &dt_tz.tz_id, &dt_local);
 	if (err != NO_ERROR)
@@ -3627,7 +3649,7 @@ qdata_subtract_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p, DB_VALUE 
       }
 
     case DB_TYPE_DATE:
-      date = DB_GET_DATE (dbval_p);
+      date = db_get_date (dbval_p);
 
       u1 = (unsigned int) i;
       u2 = (unsigned int) *date;
@@ -3640,7 +3662,7 @@ qdata_subtract_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p, DB_VALUE 
 	}
 
       db_date_decode (&utmp, &month, &day, &year);
-      DB_MAKE_DATE (result_p, month, day, year);
+      db_make_date (result_p, month, day, year);
       break;
 
     default:
@@ -3663,25 +3685,25 @@ qdata_subtract_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_
   int day, month, year;
   int err = NO_ERROR;
 
-  bi = DB_GET_BIGINT (bigint_val_p);
+  bi = db_get_bigint (bigint_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type)
     {
     case DB_TYPE_SHORT:
-      return qdata_subtract_bigint (bi, DB_GET_SHORT (dbval_p), result_p);
+      return qdata_subtract_bigint (bi, db_get_short (dbval_p), result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_subtract_bigint (bi, DB_GET_INT (dbval_p), result_p);
+      return qdata_subtract_bigint (bi, db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_subtract_bigint (bi, DB_GET_BIGINT (dbval_p), result_p);
+      return qdata_subtract_bigint (bi, db_get_bigint (dbval_p), result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_subtract_float ((float) bi, DB_GET_FLOAT (dbval_p), result_p);
+      return qdata_subtract_float ((float) bi, db_get_float (dbval_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_subtract_double ((double) bi, DB_GET_DOUBLE (dbval_p), result_p);
+      return qdata_subtract_double ((double) bi, db_get_double (dbval_p), result_p);
 
     case DB_TYPE_NUMERIC:
       qdata_coerce_dbval_to_numeric (bigint_val_p, &dbval_tmp);
@@ -3694,8 +3716,8 @@ qdata_subtract_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_
       break;
 
     case DB_TYPE_MONETARY:
-      return qdata_subtract_monetary ((double) bi, (DB_GET_MONETARY (dbval_p))->amount,
-				      (DB_GET_MONETARY (dbval_p))->type, result_p);
+      return qdata_subtract_monetary ((double) bi, (db_get_monetary (dbval_p))->amount,
+				      (db_get_monetary (dbval_p))->type, result_p);
 
     case DB_TYPE_TIME:
       if (bi < 0)
@@ -3711,35 +3733,35 @@ qdata_subtract_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_
 	{
 	  DB_TIMETZ *timetz_p;
 
-	  timetz_p = DB_GET_TIMETZ (dbval_p);
+	  timetz_p = db_get_timetz (dbval_p);
 	  timeval = &timetz_p->time;
 	}
       else
 	{
-	  timeval = DB_GET_TIME (dbval_p);
+	  timeval = db_get_time (dbval_p);
 	}
       err = qdata_subtract_time ((DB_TIME) bi, (DB_TIME) (*timeval % SECONDS_OF_ONE_DAY), result_p);
       if (err == NO_ERROR && type == DB_TYPE_TIMELTZ)
 	{
-	  DB_MAKE_TIMELTZ (result_p, DB_GET_TIME (result_p));
+	  db_make_timeltz (result_p, db_get_time (result_p));
 	}
       else if (err == NO_ERROR && type == DB_TYPE_TIMETZ)
 	{
 	  DB_TIMETZ time_tz, time_tz_fixed;
 
-	  time_tz = *DB_GET_TIMETZ (dbval_p);
-	  time_tz.time = *DB_GET_TIME (result_p);
+	  time_tz = *db_get_timetz (dbval_p);
+	  time_tz.time = *db_get_time (result_p);
 	  err = tz_timetz_fix_zone (&time_tz, &time_tz_fixed);
 	  if (err != NO_ERROR)
 	    {
 	      break;
 	    }
-	  DB_MAKE_TIMETZ (result_p, &time_tz_fixed);
+	  db_make_timetz (result_p, &time_tz_fixed);
 	}
       return err;
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
-      utime = DB_GET_UTIME (dbval_p);
+      utime = db_get_timestamp (dbval_p);
       err = qdata_subtract_utime ((DB_UTIME) bi, *utime, result_p);
       if (err != NO_ERROR)
 	{
@@ -3747,7 +3769,7 @@ qdata_subtract_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_
 	}
       if (err == NO_ERROR && type == DB_TYPE_TIMESTAMPLTZ)
 	{
-	  DB_MAKE_TIMESTAMPLTZ (result_p, *DB_GET_UTIME (result_p));
+	  db_make_timestampltz (result_p, *db_get_timestamp (result_p));
 	}
       return err;
 
@@ -3755,26 +3777,26 @@ qdata_subtract_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_
       {
 	DB_TIMESTAMPTZ ts_tz_res, ts_tz_fixed, *ts_tz_p;
 
-	ts_tz_p = DB_GET_TIMESTAMPTZ (dbval_p);
+	ts_tz_p = db_get_timestamptz (dbval_p);
 	utime = &ts_tz_p->timestamp;
 	err = qdata_subtract_utime ((DB_UTIME) bi, *utime, result_p);
 	if (err != NO_ERROR)
 	  {
 	    break;
 	  }
-	ts_tz_res.timestamp = *DB_GET_UTIME (result_p);
+	ts_tz_res.timestamp = *db_get_timestamp (result_p);
 	ts_tz_res.tz_id = ts_tz_p->tz_id;
 	err = tz_timestamptz_fix_zone (&ts_tz_res, &ts_tz_fixed);
 	if (err != NO_ERROR)
 	  {
 	    break;
 	  }
-	DB_MAKE_TIMESTAMPTZ (result_p, &ts_tz_fixed);
+	db_make_timestamptz (result_p, &ts_tz_fixed);
 	return err;
       }
 
     case DB_TYPE_DATE:
-      date = DB_GET_DATE (dbval_p);
+      date = db_get_date (dbval_p);
 
       u1 = (unsigned int) bi;
       u2 = (unsigned int) *date;
@@ -3787,7 +3809,7 @@ qdata_subtract_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_
 	}
 
       db_date_decode (&utmp, &month, &day, &year);
-      DB_MAKE_DATE (result_p, month, day, year);
+      db_make_date (result_p, month, day, year);
       break;
 
     default:
@@ -3803,31 +3825,31 @@ qdata_subtract_float_to_dbval (DB_VALUE * float_val_p, DB_VALUE * dbval_p, DB_VA
   float f;
   DB_TYPE type;
 
-  f = DB_GET_FLOAT (float_val_p);
+  f = db_get_float (float_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type)
     {
     case DB_TYPE_SHORT:
-      return qdata_subtract_float (f, DB_GET_SHORT (dbval_p), result_p);
+      return qdata_subtract_float (f, db_get_short (dbval_p), result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_subtract_float (f, (float) DB_GET_INT (dbval_p), result_p);
+      return qdata_subtract_float (f, (float) db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_subtract_float (f, (float) DB_GET_BIGINT (dbval_p), result_p);
+      return qdata_subtract_float (f, (float) db_get_bigint (dbval_p), result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_subtract_float (f, DB_GET_FLOAT (dbval_p), result_p);
+      return qdata_subtract_float (f, db_get_float (dbval_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_subtract_double (f, DB_GET_DOUBLE (dbval_p), result_p);
+      return qdata_subtract_double (f, db_get_double (dbval_p), result_p);
 
     case DB_TYPE_NUMERIC:
       return qdata_subtract_double (f, qdata_coerce_numeric_to_double (dbval_p), result_p);
 
     case DB_TYPE_MONETARY:
-      return qdata_subtract_monetary (f, (DB_GET_MONETARY (dbval_p))->amount, (DB_GET_MONETARY (dbval_p))->type,
+      return qdata_subtract_monetary (f, (db_get_monetary (dbval_p))->amount, (db_get_monetary (dbval_p))->type,
 				      result_p);
 
     default:
@@ -3843,31 +3865,31 @@ qdata_subtract_double_to_dbval (DB_VALUE * double_val_p, DB_VALUE * dbval_p, DB_
   double d;
   DB_TYPE type;
 
-  d = DB_GET_DOUBLE (double_val_p);
+  d = db_get_double (double_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type)
     {
     case DB_TYPE_SHORT:
-      return qdata_subtract_double (d, DB_GET_SHORT (dbval_p), result_p);
+      return qdata_subtract_double (d, db_get_short (dbval_p), result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_subtract_double (d, DB_GET_INT (dbval_p), result_p);
+      return qdata_subtract_double (d, db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_subtract_double (d, (double) DB_GET_BIGINT (dbval_p), result_p);
+      return qdata_subtract_double (d, (double) db_get_bigint (dbval_p), result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_subtract_double (d, DB_GET_FLOAT (dbval_p), result_p);
+      return qdata_subtract_double (d, db_get_float (dbval_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_subtract_double (d, DB_GET_DOUBLE (dbval_p), result_p);
+      return qdata_subtract_double (d, db_get_double (dbval_p), result_p);
 
     case DB_TYPE_NUMERIC:
       return qdata_subtract_double (d, qdata_coerce_numeric_to_double (dbval_p), result_p);
 
     case DB_TYPE_MONETARY:
-      return qdata_subtract_monetary (d, (DB_GET_MONETARY (dbval_p))->amount, (DB_GET_MONETARY (dbval_p))->type,
+      return qdata_subtract_monetary (d, (db_get_monetary (dbval_p))->amount, (db_get_monetary (dbval_p))->type,
 				      result_p);
 
     default:
@@ -3908,16 +3930,16 @@ qdata_subtract_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, D
       break;
 
     case DB_TYPE_FLOAT:
-      return qdata_subtract_double (qdata_coerce_numeric_to_double (numeric_val_p), DB_GET_FLOAT (dbval_p), result_p);
+      return qdata_subtract_double (qdata_coerce_numeric_to_double (numeric_val_p), db_get_float (dbval_p), result_p);
       break;
 
     case DB_TYPE_DOUBLE:
-      return qdata_subtract_double (qdata_coerce_numeric_to_double (numeric_val_p), DB_GET_DOUBLE (dbval_p), result_p);
+      return qdata_subtract_double (qdata_coerce_numeric_to_double (numeric_val_p), db_get_double (dbval_p), result_p);
       break;
 
     case DB_TYPE_MONETARY:
       return qdata_subtract_monetary (qdata_coerce_numeric_to_double (numeric_val_p),
-				      (DB_GET_MONETARY (dbval_p))->amount, (DB_GET_MONETARY (dbval_p))->type, result_p);
+				      (db_get_monetary (dbval_p))->amount, (db_get_monetary (dbval_p))->type, result_p);
       break;
 
     default:
@@ -3934,33 +3956,33 @@ qdata_subtract_monetary_to_dbval (DB_VALUE * monetary_val_p, DB_VALUE * dbval_p,
   DB_CURRENCY currency;
   DB_TYPE type;
 
-  d = (DB_GET_MONETARY (monetary_val_p))->amount;
-  currency = (DB_GET_MONETARY (monetary_val_p))->type;
+  d = (db_get_monetary (monetary_val_p))->amount;
+  currency = (db_get_monetary (monetary_val_p))->type;
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type)
     {
     case DB_TYPE_SHORT:
-      return qdata_subtract_monetary (d, DB_GET_SHORT (dbval_p), currency, result_p);
+      return qdata_subtract_monetary (d, db_get_short (dbval_p), currency, result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_subtract_monetary (d, DB_GET_INT (dbval_p), currency, result_p);
+      return qdata_subtract_monetary (d, db_get_int (dbval_p), currency, result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_subtract_monetary (d, (double) DB_GET_BIGINT (dbval_p), currency, result_p);
+      return qdata_subtract_monetary (d, (double) db_get_bigint (dbval_p), currency, result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_subtract_monetary (d, DB_GET_FLOAT (dbval_p), currency, result_p);
+      return qdata_subtract_monetary (d, db_get_float (dbval_p), currency, result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_subtract_monetary (d, DB_GET_DOUBLE (dbval_p), currency, result_p);
+      return qdata_subtract_monetary (d, db_get_double (dbval_p), currency, result_p);
 
     case DB_TYPE_NUMERIC:
       return qdata_subtract_monetary (d, qdata_coerce_numeric_to_double (dbval_p), currency, result_p);
 
     case DB_TYPE_MONETARY:
       /* Note: we probably should return an error if the two monetaries have different monetary types. */
-      return qdata_subtract_monetary (d, (DB_GET_MONETARY (dbval_p))->amount, currency, result_p);
+      return qdata_subtract_monetary (d, (db_get_monetary (dbval_p))->amount, currency, result_p);
 
     default:
       break;
@@ -3990,7 +4012,7 @@ qdata_subtract_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_V
       return ER_FAILED;
     }
 
-  if (set_difference (DB_GET_SET (seq_val_p), DB_GET_SET (dbval_p), &set_tmp, domain_p) < 0)
+  if (set_difference (db_get_set (seq_val_p), db_get_set (dbval_p), &set_tmp, domain_p) < 0)
     {
       return ER_FAILED;
     }
@@ -4007,13 +4029,13 @@ qdata_subtract_time_to_dbval (DB_VALUE * time_val_p, DB_VALUE * dbval_p, DB_VALU
   int subval;
   int err = NO_ERROR;
 
-  timeval = DB_GET_TIME (time_val_p);
+  timeval = db_get_time (time_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type)
     {
     case DB_TYPE_SHORT:
-      subval = (int) DB_GET_SHORT (dbval_p);
+      subval = (int) db_get_short (dbval_p);
       if (subval < 0)
 	{
 	  return qdata_add_bigint_to_time (time_val_p, (DB_BIGINT) (-subval), result_p);
@@ -4021,7 +4043,7 @@ qdata_subtract_time_to_dbval (DB_VALUE * time_val_p, DB_VALUE * dbval_p, DB_VALU
       return qdata_subtract_time ((DB_TIME) (*timeval % SECONDS_OF_ONE_DAY), (DB_TIME) subval, result_p);
 
     case DB_TYPE_INTEGER:
-      subval = (int) (DB_GET_INT (dbval_p) % SECONDS_OF_ONE_DAY);
+      subval = (int) (db_get_int (dbval_p) % SECONDS_OF_ONE_DAY);
       if (subval < 0)
 	{
 	  return qdata_add_bigint_to_time (time_val_p, (DB_BIGINT) (-subval), result_p);
@@ -4029,7 +4051,7 @@ qdata_subtract_time_to_dbval (DB_VALUE * time_val_p, DB_VALUE * dbval_p, DB_VALU
       return qdata_subtract_time ((DB_TIME) (*timeval % SECONDS_OF_ONE_DAY), (DB_TIME) subval, result_p);
 
     case DB_TYPE_BIGINT:
-      subval = (int) (DB_GET_BIGINT (dbval_p) % SECONDS_OF_ONE_DAY);
+      subval = (int) (db_get_bigint (dbval_p) % SECONDS_OF_ONE_DAY);
       if (subval < 0)
 	{
 	  return qdata_add_bigint_to_time (time_val_p, (DB_BIGINT) (-subval), result_p);
@@ -4037,8 +4059,8 @@ qdata_subtract_time_to_dbval (DB_VALUE * time_val_p, DB_VALUE * dbval_p, DB_VALU
       return qdata_subtract_time ((DB_TIME) (*timeval % SECONDS_OF_ONE_DAY), (DB_TIME) subval, result_p);
 
     case DB_TYPE_TIME:
-      timeval1 = DB_GET_TIME (dbval_p);
-      DB_MAKE_INT (result_p, ((int) *timeval - (int) *timeval1));
+      timeval1 = db_get_time (dbval_p);
+      db_make_int (result_p, ((int) *timeval - (int) *timeval1));
       break;
 
     case DB_TYPE_TIMELTZ:
@@ -4048,7 +4070,7 @@ qdata_subtract_time_to_dbval (DB_VALUE * time_val_p, DB_VALUE * dbval_p, DB_VALU
 	  break;
 	}
       assert (DB_VALUE_TYPE (result_p) == DB_TYPE_INTEGER);
-      DB_MAKE_INT (result_p, -(DB_GET_INTEGER (result_p)));
+      db_make_int (result_p, -(db_get_int (result_p)));
       break;
     case DB_TYPE_TIMETZ:
       err = qdata_subtract_timetz_to_dbval (dbval_p, time_val_p, result_p);
@@ -4057,7 +4079,7 @@ qdata_subtract_time_to_dbval (DB_VALUE * time_val_p, DB_VALUE * dbval_p, DB_VALU
 	  break;
 	}
       assert (DB_VALUE_TYPE (result_p) == DB_TYPE_INTEGER);
-      DB_MAKE_INT (result_p, -(DB_GET_INTEGER (result_p)));
+      db_make_int (result_p, -(db_get_int (result_p)));
       break;
 
     default:
@@ -4074,7 +4096,7 @@ qdata_subtract_timetz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p, DB_
   DB_TYPE type;
   DB_TIMETZ *time_tz_p;
 
-  time_tz_p = DB_GET_TIMETZ (timetz_val_p);
+  time_tz_p = db_get_timetz (timetz_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type)
@@ -4086,14 +4108,14 @@ qdata_subtract_timetz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p, DB_
 	DB_VALUE time_val, time_val_res;
 	DB_TIMETZ time_tz_res, time_tz_fixed;
 
-	DB_MAKE_ENCODED_TIME (&time_val, &time_tz_p->time);
+	db_value_put_encoded_time (&time_val, &time_tz_p->time);
 
 	err = qdata_subtract_time_to_dbval (&time_val, dbval_p, &time_val_res);
 	if (err != NO_ERROR)
 	  {
 	    break;
 	  }
-	time_tz_res.time = *DB_GET_TIME (&time_val_res);
+	time_tz_res.time = *db_get_time (&time_val_res);
 	time_tz_res.tz_id = time_tz_p->tz_id;
 
 	err = tz_timetz_fix_zone (&time_tz_res, &time_tz_fixed);
@@ -4102,7 +4124,7 @@ qdata_subtract_timetz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p, DB_
 	    break;
 	  }
 
-	DB_MAKE_TIMETZ (result_p, &time_tz_fixed);
+	db_make_timetz (result_p, &time_tz_fixed);
 	break;
       }
 
@@ -4111,7 +4133,7 @@ qdata_subtract_timetz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p, DB_
 	DB_TIME *time_2_p;
 	DB_TIMETZ timetz_2;
 
-	time_2_p = DB_GET_TIME (dbval_p);
+	time_2_p = db_get_time (dbval_p);
 
 	err = tz_create_timetz_from_ses (time_2_p, &timetz_2);
 	if (err != NO_ERROR)
@@ -4119,7 +4141,7 @@ qdata_subtract_timetz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p, DB_
 	    break;
 	  }
 
-	DB_MAKE_INT (result_p, ((int) time_tz_p->time - (int) timetz_2.time));
+	db_make_int (result_p, ((int) time_tz_p->time - (int) timetz_2.time));
 	break;
       }
 
@@ -4127,8 +4149,8 @@ qdata_subtract_timetz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p, DB_
       {
 	DB_TIME *time_2_p;
 
-	time_2_p = DB_GET_TIME (dbval_p);
-	DB_MAKE_INT (result_p, ((int) time_tz_p->time - (int) *time_2_p));
+	time_2_p = db_get_time (dbval_p);
+	db_make_int (result_p, ((int) time_tz_p->time - (int) *time_2_p));
 	break;
       }
     case DB_TYPE_TIMETZ:
@@ -4136,11 +4158,11 @@ qdata_subtract_timetz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p, DB_
 	DB_TIMETZ *time_tz_2_p;
 	int day1, day2;
 
-	time_tz_2_p = DB_GET_TIMETZ (dbval_p);
+	time_tz_2_p = db_get_timetz (dbval_p);
 	day1 = get_day_from_timetz (time_tz_p);
 	day2 = get_day_from_timetz (time_tz_2_p);
 
-	DB_MAKE_INT (result_p,
+	db_make_int (result_p,
 		     ((int) time_tz_p->time + day1 * SECONDS_OF_ONE_DAY - (int) time_tz_2_p->time -
 		      day2 * SECONDS_OF_ONE_DAY));
 	break;
@@ -4160,7 +4182,7 @@ qdata_subtract_timeltz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p, DB
   DB_TYPE type;
   DB_TIME *time_p;
 
-  time_p = DB_GET_TIME (timetz_val_p);
+  time_p = db_get_time (timetz_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type)
@@ -4172,13 +4194,13 @@ qdata_subtract_timeltz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p, DB
 	DB_VALUE time_val, time_val_res;
 
 	/* create a simple TIME value and perform the operation with it */
-	DB_MAKE_ENCODED_TIME (&time_val, time_p);
+	db_value_put_encoded_time (&time_val, time_p);
 	err = qdata_subtract_time_to_dbval (&time_val, dbval_p, &time_val_res);
 	if (err != NO_ERROR)
 	  {
 	    break;
 	  }
-	DB_MAKE_TIMELTZ (result_p, DB_GET_TIME (&time_val_res));
+	db_make_timeltz (result_p, db_get_time (&time_val_res));
 	break;
       }
 
@@ -4196,7 +4218,7 @@ qdata_subtract_timeltz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p, DB
 	  {
 	    break;
 	  }
-	DB_MAKE_TIMETZ (&timetz_val, &timetz);
+	db_make_timetz (&timetz_val, &timetz);
 
 	err = qdata_subtract_timetz_to_dbval (&timetz_val, dbval_p, result_p);
 	break;
@@ -4206,7 +4228,7 @@ qdata_subtract_timeltz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p, DB
 	TZ_ID ses_tz_id1, ses_tz_id2;
 	DB_TIME *t2_utc, t1_local, t2_local;
 
-	t2_utc = DB_GET_TIME (dbval_p);
+	t2_utc = db_get_time (dbval_p);
 	err = tz_create_session_tzid_for_time (time_p, true, &ses_tz_id1);
 	if (err != NO_ERROR)
 	  {
@@ -4231,7 +4253,7 @@ qdata_subtract_timeltz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p, DB
 	    break;
 	  }
 
-	DB_MAKE_INT (result_p, t1_local - t2_local);
+	db_make_int (result_p, t1_local - t2_local);
 	break;
       }
 
@@ -4256,14 +4278,14 @@ qdata_subtract_utime_to_dbval (DB_VALUE * utime_val_p, DB_VALUE * dbval_p, DB_VA
   int i2;
   DB_BIGINT bi2;
 
-  utime = DB_GET_UTIME (utime_val_p);
+  utime = db_get_timestamp (utime_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type)
     {
     case DB_TYPE_SHORT:
       u1 = (unsigned int) *utime;
-      s2 = DB_GET_SHORT (dbval_p);
+      s2 = db_get_short (dbval_p);
       if (s2 < 0)
 	{
 	  /* We're really adding.  */
@@ -4274,7 +4296,7 @@ qdata_subtract_utime_to_dbval (DB_VALUE * utime_val_p, DB_VALUE * dbval_p, DB_VA
 
     case DB_TYPE_INTEGER:
       u1 = (unsigned int) *utime;
-      i2 = DB_GET_INT (dbval_p);
+      i2 = db_get_int (dbval_p);
       if (i2 < 0)
 	{
 	  /* We're really adding.  */
@@ -4285,7 +4307,7 @@ qdata_subtract_utime_to_dbval (DB_VALUE * utime_val_p, DB_VALUE * dbval_p, DB_VA
 
     case DB_TYPE_BIGINT:
       u1 = (unsigned int) *utime;
-      bi2 = DB_GET_BIGINT (dbval_p);
+      bi2 = db_get_bigint (dbval_p);
       if (bi2 < 0)
 	{
 	  /* We're really adding. */
@@ -4294,32 +4316,32 @@ qdata_subtract_utime_to_dbval (DB_VALUE * utime_val_p, DB_VALUE * dbval_p, DB_VA
 
       return qdata_subtract_utime (*utime, (DB_UTIME) bi2, result_p);
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
-      utime1 = DB_GET_UTIME (dbval_p);
-      DB_MAKE_INT (result_p, ((int) *utime - (int) *utime1));
+      utime1 = db_get_timestamp (dbval_p);
+      db_make_int (result_p, ((int) *utime - (int) *utime1));
       break;
 
     case DB_TYPE_TIMESTAMPTZ:
-      ts_tz1 = DB_GET_TIMESTAMPTZ (dbval_p);
-      DB_MAKE_INT (result_p, ((int) *utime - (int) ts_tz1->timestamp));
+      ts_tz1 = db_get_timestamptz (dbval_p);
+      db_make_int (result_p, ((int) *utime - (int) ts_tz1->timestamp));
       break;
 
     case DB_TYPE_DATETIME:
-      datetime = DB_GET_DATETIME (dbval_p);
+      datetime = db_get_datetime (dbval_p);
 
       (void) db_timestamp_decode_ses (utime, &tmp_datetime.date, &tmp_datetime.time);
 
       return qdata_subtract_datetime (&tmp_datetime, datetime, result_p);
 
     case DB_TYPE_DATETIMELTZ:
-      datetime = DB_GET_DATETIME (dbval_p);
+      datetime = db_get_datetime (dbval_p);
       (void) db_timestamp_decode_utc (utime, &tmp_datetime.date, &tmp_datetime.time);
 
       return qdata_subtract_datetime (&tmp_datetime, datetime, result_p);
 
     case DB_TYPE_DATETIMETZ:
-      datetime_tz_1 = *DB_GET_DATETIMETZ (dbval_p);
+      datetime_tz_1 = *db_get_datetimetz (dbval_p);
       (void) db_timestamp_decode_utc (utime, &tmp_datetime.date, &tmp_datetime.time);
 
       return qdata_subtract_datetime (&tmp_datetime, &datetime_tz_1.datetime, result_p);
@@ -4340,7 +4362,7 @@ qdata_subtract_timestampltz_to_dbval (DB_VALUE * ts_ltz_val_p, DB_VALUE * dbval_
   DB_VALUE utime_val, tmp_val_res;
   int err = NO_ERROR;
 
-  utime_p = DB_GET_UTIME (ts_ltz_val_p);
+  utime_p = db_get_timestamp (ts_ltz_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type)
@@ -4348,24 +4370,25 @@ qdata_subtract_timestampltz_to_dbval (DB_VALUE * ts_ltz_val_p, DB_VALUE * dbval_
     case DB_TYPE_SHORT:
     case DB_TYPE_INTEGER:
     case DB_TYPE_BIGINT:
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_DATETIME:
     case DB_TYPE_DATETIMELTZ:
     case DB_TYPE_DATETIMETZ:
       /* perform operation as simple UTIME */
-      DB_MAKE_UTIME (&utime_val, *utime_p);
+      db_make_timestamp (&utime_val, *utime_p);
       err =
-	qdata_subtract_utime_to_dbval (&utime_val, dbval_p, &tmp_val_res, tp_domain_resolve_default (DB_TYPE_UTIME));
+	qdata_subtract_utime_to_dbval (&utime_val, dbval_p, &tmp_val_res,
+				       tp_domain_resolve_default (DB_TYPE_TIMESTAMP));
       if (err != NO_ERROR)
 	{
 	  break;
 	}
 
-      if (DB_VALUE_TYPE (&tmp_val_res) == DB_TYPE_UTIME)
+      if (DB_VALUE_TYPE (&tmp_val_res) == DB_TYPE_TIMESTAMP)
 	{
-	  DB_MAKE_TIMESTAMPLTZ (result_p, *DB_GET_UTIME (&tmp_val_res));
+	  db_make_timestampltz (result_p, *db_get_timestamp (&tmp_val_res));
 	}
       else
 	{
@@ -4399,7 +4422,7 @@ qdata_subtract_timestamptz_to_dbval (DB_VALUE * ts_tz_val_p, DB_VALUE * dbval_p,
   DB_BIGINT bi2;
   DB_VALUE tmp_val_res;
 
-  ts_tz1_p = DB_GET_TIMESTAMPTZ (ts_tz_val_p);
+  ts_tz1_p = db_get_timestamptz (ts_tz_val_p);
   utime1 = &ts_tz1_p->timestamp;
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
@@ -4407,7 +4430,7 @@ qdata_subtract_timestamptz_to_dbval (DB_VALUE * ts_tz_val_p, DB_VALUE * dbval_p,
     {
     case DB_TYPE_SHORT:
       u1 = (unsigned int) *utime1;
-      s2 = DB_GET_SHORT (dbval_p);
+      s2 = db_get_short (dbval_p);
       if (s2 < 0)
 	{
 	  /* We're really adding.  */
@@ -4419,7 +4442,7 @@ qdata_subtract_timestamptz_to_dbval (DB_VALUE * ts_tz_val_p, DB_VALUE * dbval_p,
 
     case DB_TYPE_INTEGER:
       u1 = (unsigned int) *utime1;
-      i2 = DB_GET_INT (dbval_p);
+      i2 = db_get_int (dbval_p);
       if (i2 < 0)
 	{
 	  /* We're really adding.  */
@@ -4431,7 +4454,7 @@ qdata_subtract_timestamptz_to_dbval (DB_VALUE * ts_tz_val_p, DB_VALUE * dbval_p,
 
     case DB_TYPE_BIGINT:
       u1 = (unsigned int) *utime1;
-      bi2 = DB_GET_BIGINT (dbval_p);
+      bi2 = db_get_bigint (dbval_p);
       if (bi2 < 0)
 	{
 	  /* We're really adding. */
@@ -4441,19 +4464,19 @@ qdata_subtract_timestamptz_to_dbval (DB_VALUE * ts_tz_val_p, DB_VALUE * dbval_p,
       err = qdata_subtract_utime (*utime1, (DB_UTIME) bi2, &tmp_val_res);
       break;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
-      utime2 = DB_GET_UTIME (dbval_p);
-      DB_MAKE_INT (result_p, ((int) *utime1 - (int) *utime2));
+      utime2 = db_get_timestamp (dbval_p);
+      db_make_int (result_p, ((int) *utime1 - (int) *utime2));
       return err;
 
     case DB_TYPE_TIMESTAMPTZ:
-      ts_tz2_p = DB_GET_TIMESTAMPTZ (dbval_p);
-      DB_MAKE_INT (result_p, ((int) *utime1 - (int) ts_tz2_p->timestamp));
+      ts_tz2_p = db_get_timestamptz (dbval_p);
+      db_make_int (result_p, ((int) *utime1 - (int) ts_tz2_p->timestamp));
       return err;
 
     case DB_TYPE_DATETIME:
-      datetime = DB_GET_DATETIME (dbval_p);
+      datetime = db_get_datetime (dbval_p);
 
       err = db_timestamp_decode_w_tz_id (utime1, &ts_tz1_p->tz_id, &date, &time);
       if (err != NO_ERROR)
@@ -4467,7 +4490,7 @@ qdata_subtract_timestamptz_to_dbval (DB_VALUE * ts_tz_val_p, DB_VALUE * dbval_p,
       return qdata_subtract_datetime (&tmp_datetime, datetime, result_p);
 
     case DB_TYPE_DATETIMELTZ:
-      datetime = DB_GET_DATETIME (dbval_p);
+      datetime = db_get_datetime (dbval_p);
       db_timestamp_decode_utc (utime1, &date, &time);
 
       tmp_datetime.date = date;
@@ -4476,7 +4499,7 @@ qdata_subtract_timestamptz_to_dbval (DB_VALUE * ts_tz_val_p, DB_VALUE * dbval_p,
       return qdata_subtract_datetime (&tmp_datetime, datetime, result_p);
 
     case DB_TYPE_DATETIMETZ:
-      datetime_tz_1 = *DB_GET_DATETIMETZ (dbval_p);
+      datetime_tz_1 = *db_get_datetimetz (dbval_p);
       db_timestamp_decode_utc (utime1, &date, &time);
 
       if (err != NO_ERROR)
@@ -4495,9 +4518,9 @@ qdata_subtract_timestamptz_to_dbval (DB_VALUE * ts_tz_val_p, DB_VALUE * dbval_p,
 
   if (err == NO_ERROR)
     {
-      assert (DB_VALUE_TYPE (&tmp_val_res) == DB_TYPE_UTIME);
+      assert (DB_VALUE_TYPE (&tmp_val_res) == DB_TYPE_TIMESTAMP);
       /* create TIMESTAMPTZ from result UTIME by adjusting TZ_ID */
-      ts_tz_res.timestamp = *DB_GET_UTIME (&tmp_val_res);
+      ts_tz_res.timestamp = *db_get_timestamp (&tmp_val_res);
       ts_tz_res.tz_id = ts_tz1_p->tz_id;
       err = tz_timestamptz_fix_zone (&ts_tz_res, &ts_tz_res_fixed);
       if (err != NO_ERROR)
@@ -4505,7 +4528,7 @@ qdata_subtract_timestamptz_to_dbval (DB_VALUE * ts_tz_val_p, DB_VALUE * dbval_p,
 	  return err;
 	}
 
-      DB_MAKE_TIMESTAMPTZ (result_p, &ts_tz_res_fixed);
+      db_make_timestamptz (result_p, &ts_tz_res_fixed);
     }
   return err;
 }
@@ -4517,7 +4540,7 @@ qdata_subtract_datetime_to_dbval (DB_VALUE * datetime_val_p, DB_VALUE * dbval_p,
   DB_TYPE type;
   DB_DATETIME *datetime1_p;
 
-  datetime1_p = DB_GET_DATETIME (datetime_val_p);
+  datetime1_p = db_get_datetime (datetime_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type)
@@ -4525,7 +4548,7 @@ qdata_subtract_datetime_to_dbval (DB_VALUE * datetime_val_p, DB_VALUE * dbval_p,
     case DB_TYPE_SHORT:
       {
 	short s2;
-	s2 = DB_GET_SHORT (dbval_p);
+	s2 = db_get_short (dbval_p);
 	if (s2 < 0)
 	  {
 	    /* We're really adding.  */
@@ -4538,7 +4561,7 @@ qdata_subtract_datetime_to_dbval (DB_VALUE * datetime_val_p, DB_VALUE * dbval_p,
     case DB_TYPE_INTEGER:
       {
 	int i2;
-	i2 = DB_GET_INT (dbval_p);
+	i2 = db_get_int (dbval_p);
 	if (i2 < 0)
 	  {
 	    /* We're really adding.  */
@@ -4552,7 +4575,7 @@ qdata_subtract_datetime_to_dbval (DB_VALUE * datetime_val_p, DB_VALUE * dbval_p,
       {
 	DB_BIGINT bi2;
 
-	bi2 = DB_GET_BIGINT (dbval_p);
+	bi2 = db_get_bigint (dbval_p);
 	if (bi2 < 0)
 	  {
 	    /* We're really adding.  */
@@ -4562,12 +4585,12 @@ qdata_subtract_datetime_to_dbval (DB_VALUE * datetime_val_p, DB_VALUE * dbval_p,
 	return qdata_subtract_datetime_to_int (datetime1_p, bi2, result_p);
       }
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       {
 	DB_BIGINT u1, u2;
 	DB_DATETIME datetime2;
 
-	(void) db_timestamp_decode_ses (DB_GET_UTIME (dbval_p), &datetime2.date, &datetime2.time);
+	(void) db_timestamp_decode_ses (db_get_timestamp (dbval_p), &datetime2.date, &datetime2.time);
 
 	u1 = ((DB_BIGINT) datetime1_p->date) * MILLISECONDS_OF_ONE_DAY + datetime1_p->time;
 	u2 = ((DB_BIGINT) datetime2.date) * MILLISECONDS_OF_ONE_DAY + datetime2.time;
@@ -4580,7 +4603,7 @@ qdata_subtract_datetime_to_dbval (DB_VALUE * datetime_val_p, DB_VALUE * dbval_p,
 	DB_BIGINT u1, u2;
 	DB_DATETIME datetime2;
 
-	(void) db_timestamp_decode_ses (DB_GET_UTIME (dbval_p), &datetime2.date, &datetime2.time);
+	(void) db_timestamp_decode_ses (db_get_timestamp (dbval_p), &datetime2.date, &datetime2.time);
 
 	u1 = ((DB_BIGINT) datetime1_p->date) * MILLISECONDS_OF_ONE_DAY + datetime1_p->time;
 	u2 = ((DB_BIGINT) datetime2.date) * MILLISECONDS_OF_ONE_DAY + datetime2.time;
@@ -4594,7 +4617,7 @@ qdata_subtract_datetime_to_dbval (DB_VALUE * datetime_val_p, DB_VALUE * dbval_p,
 	DB_DATETIME datetime2;
 	DB_TIMESTAMPTZ ts_tz2;
 
-	ts_tz2 = *DB_GET_TIMESTAMPTZ (dbval_p);
+	ts_tz2 = *db_get_timestamptz (dbval_p);
 
 	(void) db_timestamp_decode_ses (&ts_tz2.timestamp, &datetime2.date, &datetime2.time);
 
@@ -4609,7 +4632,7 @@ qdata_subtract_datetime_to_dbval (DB_VALUE * datetime_val_p, DB_VALUE * dbval_p,
 	DB_BIGINT u1, u2;
 	DB_DATETIME *datetime2_p;
 
-	datetime2_p = DB_GET_DATETIME (dbval_p);
+	datetime2_p = db_get_datetime (dbval_p);
 
 	u1 = ((DB_BIGINT) datetime1_p->date) * MILLISECONDS_OF_ONE_DAY + datetime1_p->time;
 	u2 = ((DB_BIGINT) datetime2_p->date) * MILLISECONDS_OF_ONE_DAY + datetime2_p->time;
@@ -4630,7 +4653,7 @@ qdata_subtract_datetime_to_dbval (DB_VALUE * datetime_val_p, DB_VALUE * dbval_p,
 	    return err;
 	  }
 
-	dt_utc2_p = DB_GET_DATETIME (dbval_p);
+	dt_utc2_p = db_get_datetime (dbval_p);
 
 	u1 = ((DB_BIGINT) dt_tz1.datetime.date) * MILLISECONDS_OF_ONE_DAY + dt_tz1.datetime.time;
 	u2 = ((DB_BIGINT) dt_utc2_p->date) * MILLISECONDS_OF_ONE_DAY + dt_utc2_p->time;
@@ -4645,7 +4668,7 @@ qdata_subtract_datetime_to_dbval (DB_VALUE * datetime_val_p, DB_VALUE * dbval_p,
 	DB_DATETIME datetime2;
 	int err;
 
-	datetimetz2_p = DB_GET_DATETIMETZ (dbval_p);
+	datetimetz2_p = db_get_datetimetz (dbval_p);
 	err = tz_utc_datetimetz_to_local (&datetimetz2_p->datetime, &datetimetz2_p->tz_id, &datetime2);
 
 	if (err != NO_ERROR)
@@ -4664,7 +4687,7 @@ qdata_subtract_datetime_to_dbval (DB_VALUE * datetime_val_p, DB_VALUE * dbval_p,
 	DB_BIGINT u1, u2;
 
 	u1 = ((DB_BIGINT) datetime1_p->date) * MILLISECONDS_OF_ONE_DAY + datetime1_p->time;
-	u2 = ((DB_BIGINT) * DB_GET_DATE (dbval_p)) * MILLISECONDS_OF_ONE_DAY;
+	u2 = ((DB_BIGINT) * db_get_date (dbval_p)) * MILLISECONDS_OF_ONE_DAY;
 
 	return db_make_bigint (result_p, u1 - u2);
       }
@@ -4685,7 +4708,7 @@ qdata_subtract_datetimetz_to_dbval (DB_VALUE * dt_tz_val_p, DB_VALUE * dbval_p, 
   DB_DATETIMETZ *dt_tz1_p;
   DB_DATETIME *datetime1_p;
 
-  dt_tz1_p = DB_GET_DATETIMETZ (dt_tz_val_p);
+  dt_tz1_p = db_get_datetimetz (dt_tz_val_p);
   datetime1_p = &(dt_tz1_p->datetime);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
@@ -4698,7 +4721,7 @@ qdata_subtract_datetimetz_to_dbval (DB_VALUE * dt_tz_val_p, DB_VALUE * dbval_p, 
 	DB_VALUE dt_val, dt_val_res;
 	DB_DATETIMETZ dt_tz, dt_tz_fixed;
 
-	DB_MAKE_DATETIME (&dt_val, datetime1_p);
+	db_make_datetime (&dt_val, datetime1_p);
 
 	err =
 	  qdata_subtract_datetime_to_dbval (&dt_val, dbval_p, &dt_val_res,
@@ -4708,7 +4731,7 @@ qdata_subtract_datetimetz_to_dbval (DB_VALUE * dt_tz_val_p, DB_VALUE * dbval_p, 
 	    break;
 	  }
 
-	dt_tz.datetime = *DB_GET_DATETIME (&dt_val_res);
+	dt_tz.datetime = *db_get_datetime (&dt_val_res);
 	dt_tz.tz_id = dt_tz1_p->tz_id;
 
 	err = tz_datetimetz_fix_zone (&dt_tz, &dt_tz_fixed);
@@ -4717,11 +4740,11 @@ qdata_subtract_datetimetz_to_dbval (DB_VALUE * dt_tz_val_p, DB_VALUE * dbval_p, 
 	    break;
 	  }
 
-	DB_MAKE_DATETIMETZ (result_p, &dt_tz_fixed);
+	db_make_datetimetz (result_p, &dt_tz_fixed);
 	break;
       }
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_TIMESTAMPTZ:
       {
@@ -4734,12 +4757,12 @@ qdata_subtract_datetimetz_to_dbval (DB_VALUE * dt_tz_val_p, DB_VALUE * dbval_p, 
 	  {
 	    DB_TIMESTAMPTZ *ts_tz2_p;
 
-	    ts_tz2_p = DB_GET_TIMESTAMPTZ (dbval_p);
+	    ts_tz2_p = db_get_timestamptz (dbval_p);
 	    utime2_p = &(ts_tz2_p->timestamp);
 	  }
 	else
 	  {
-	    utime2_p = DB_GET_UTIME (dbval_p);
+	    utime2_p = db_get_timestamp (dbval_p);
 	  }
 	(void) db_timestamp_decode_utc (utime2_p, &datetime2.date, &datetime2.time);
 
@@ -4756,7 +4779,7 @@ qdata_subtract_datetimetz_to_dbval (DB_VALUE * dt_tz_val_p, DB_VALUE * dbval_p, 
 	DB_DATETIME datetime1;
 
 	/* from DT with TZ to local */
-	datetime2_p = DB_GET_DATETIME (dbval_p);
+	datetime2_p = db_get_datetime (dbval_p);
 
 	err = tz_utc_datetimetz_to_local (&dt_tz1_p->datetime, &dt_tz1_p->tz_id, &datetime1);
 	if (err != NO_ERROR)
@@ -4780,12 +4803,12 @@ qdata_subtract_datetimetz_to_dbval (DB_VALUE * dt_tz_val_p, DB_VALUE * dbval_p, 
 	/* both datetimes are in UTC, no need to consider timezones */
 	if (type == DB_TYPE_DATETIMETZ)
 	  {
-	    dt_tz2_p = DB_GET_DATETIMETZ (dbval_p);
+	    dt_tz2_p = db_get_datetimetz (dbval_p);
 	    datetime2_p = &(dt_tz2_p->datetime);
 	  }
 	else
 	  {
-	    datetime2_p = DB_GET_DATETIME (dbval_p);
+	    datetime2_p = db_get_datetime (dbval_p);
 	  }
 
 	u1 = ((DB_BIGINT) datetime1_p->date) * MILLISECONDS_OF_ONE_DAY + datetime1_p->time;
@@ -4801,7 +4824,7 @@ qdata_subtract_datetimetz_to_dbval (DB_VALUE * dt_tz_val_p, DB_VALUE * dbval_p, 
 	DB_DATETIME datetime1;
 
 	/* from DT with TZ to local */
-	datetime2_p = DB_GET_DATETIME (dbval_p);
+	datetime2_p = db_get_datetime (dbval_p);
 
 	err = tz_utc_datetimetz_to_local (&dt_tz1_p->datetime, &dt_tz1_p->tz_id, &datetime1);
 	if (err != NO_ERROR)
@@ -4810,7 +4833,7 @@ qdata_subtract_datetimetz_to_dbval (DB_VALUE * dt_tz_val_p, DB_VALUE * dbval_p, 
 	  }
 
 	u1 = ((DB_BIGINT) datetime1.date) * MILLISECONDS_OF_ONE_DAY + datetime1.time;
-	u2 = ((DB_BIGINT) * DB_GET_DATE (dbval_p)) * MILLISECONDS_OF_ONE_DAY;
+	u2 = ((DB_BIGINT) * db_get_date (dbval_p)) * MILLISECONDS_OF_ONE_DAY;
 
 	return db_make_bigint (result_p, u1 - u2);
       }
@@ -4833,14 +4856,14 @@ qdata_subtract_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p, DB_VALU
   DB_BIGINT bi1, bi2, bitmp;
   int day, month, year;
 
-  date = DB_GET_DATE (date_val_p);
+  date = db_get_date (date_val_p);
   type = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type)
     {
     case DB_TYPE_SHORT:
       u1 = (unsigned int) *date;
-      s2 = DB_GET_SHORT (dbval_p);
+      s2 = db_get_short (dbval_p);
 
       if (s2 < 0)
 	{
@@ -4857,12 +4880,12 @@ qdata_subtract_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p, DB_VALU
 	}
 
       db_date_decode (&utmp, &month, &day, &year);
-      DB_MAKE_DATE (result_p, month, day, year);
+      db_make_date (result_p, month, day, year);
       break;
 
     case DB_TYPE_BIGINT:
       bi1 = (DB_BIGINT) * date;
-      bi2 = DB_GET_BIGINT (dbval_p);
+      bi2 = db_get_bigint (dbval_p);
 
       if (bi2 < 0)
 	{
@@ -4879,12 +4902,12 @@ qdata_subtract_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p, DB_VALU
 
       utmp = (unsigned int) bitmp;
       db_date_decode (&utmp, &month, &day, &year);
-      DB_MAKE_DATE (result_p, month, day, year);
+      db_make_date (result_p, month, day, year);
       break;
 
     case DB_TYPE_INTEGER:
       u1 = (unsigned int) *date;
-      i2 = DB_GET_INT (dbval_p);
+      i2 = db_get_int (dbval_p);
 
       if (i2 < 0)
 	{
@@ -4901,12 +4924,12 @@ qdata_subtract_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p, DB_VALU
 	}
 
       db_date_decode (&utmp, &month, &day, &year);
-      DB_MAKE_DATE (result_p, month, day, year);
+      db_make_date (result_p, month, day, year);
       break;
 
     case DB_TYPE_DATE:
-      date1 = DB_GET_DATE (dbval_p);
-      DB_MAKE_INT (result_p, (int) *date - (int) *date1);
+      date1 = db_get_date (dbval_p);
+      db_make_int (result_p, (int) *date - (int) *date1);
       break;
 
     default:
@@ -4950,8 +4973,8 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
       return NO_ERROR;
     }
 
-  DB_MAKE_NULL (&cast_value1);
-  DB_MAKE_NULL (&cast_value2);
+  db_make_null (&cast_value1);
+  db_make_null (&cast_value2);
 
   type1 = DB_VALUE_DOMAIN_TYPE (dbval1_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval2_p);
@@ -5081,7 +5104,7 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
   if (qdata_is_zero_value_date (dbval1_p) || qdata_is_zero_value_date (dbval2_p))
     {
       /* subtract operation with zero date returns null */
-      DB_MAKE_NULL (result_p);
+      db_make_null (result_p);
       if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
@@ -5156,7 +5179,7 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
       error = qdata_subtract_timetz_to_dbval (dbval1_p, dbval2_p, result_p);
       break;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       error = qdata_subtract_utime_to_dbval (dbval1_p, dbval2_p, result_p, domain_p);
       break;
 
@@ -5178,14 +5201,14 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
 	DB_VALUE tmp_val;
 	DB_DATETIMETZ dt_tz1;
 
-	dt_tz1.datetime = *DB_GET_DATETIME (dbval1_p);
+	dt_tz1.datetime = *db_get_datetime (dbval1_p);
 	error = tz_create_session_tzid_for_datetime (&dt_tz1.datetime, true, &dt_tz1.tz_id);
 	if (error != NO_ERROR)
 	  {
 	    break;
 	  }
 
-	DB_MAKE_DATETIMETZ (&tmp_val, &dt_tz1);
+	db_make_datetimetz (&tmp_val, &dt_tz1);
 
 	error = qdata_subtract_datetimetz_to_dbval (&tmp_val, dbval2_p, result_p, domain_p);
       }
@@ -5219,9 +5242,10 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
 static int
 qdata_multiply_short (DB_VALUE * short_val_p, short s2, DB_VALUE * result_p)
 {
-  short s1, stmp;
+  /* NOTE that we need volatile to prevent optimizer from generating division expression as multiplication */
+  volatile short s1, stmp;
 
-  s1 = DB_GET_SHORT (short_val_p);
+  s1 = db_get_short (short_val_p);
   stmp = s1 * s2;
 
   if (OR_CHECK_MULT_OVERFLOW (s1, s2, stmp))
@@ -5230,7 +5254,7 @@ qdata_multiply_short (DB_VALUE * short_val_p, short s2, DB_VALUE * result_p)
       return ER_FAILED;
     }
 
-  DB_MAKE_SHORT (result_p, stmp);
+  db_make_short (result_p, stmp);
 
   return NO_ERROR;
 }
@@ -5238,9 +5262,10 @@ qdata_multiply_short (DB_VALUE * short_val_p, short s2, DB_VALUE * result_p)
 static int
 qdata_multiply_int (DB_VALUE * int_val_p, int i2, DB_VALUE * result_p)
 {
-  int i1, itmp;
+  /* NOTE that we need volatile to prevent optimizer from generating division expression as multiplication */
+  volatile int i1, itmp;
 
-  i1 = DB_GET_INT (int_val_p);
+  i1 = db_get_int (int_val_p);
   itmp = i1 * i2;
 
   if (OR_CHECK_MULT_OVERFLOW (i1, i2, itmp))
@@ -5249,16 +5274,17 @@ qdata_multiply_int (DB_VALUE * int_val_p, int i2, DB_VALUE * result_p)
       return ER_FAILED;
     }
 
-  DB_MAKE_INT (result_p, itmp);
+  db_make_int (result_p, itmp);
   return NO_ERROR;
 }
 
 static int
 qdata_multiply_bigint (DB_VALUE * bigint_val_p, DB_BIGINT bi2, DB_VALUE * result_p)
 {
-  DB_BIGINT bi1, bitmp;
+  /* NOTE that we need volatile to prevent optimizer from generating division expression as multiplication */
+  volatile DB_BIGINT bi1, bitmp;
 
-  bi1 = DB_GET_BIGINT (bigint_val_p);
+  bi1 = db_get_bigint (bigint_val_p);
   bitmp = bi1 * bi2;
 
   if (OR_CHECK_MULT_OVERFLOW (bi1, bi2, bitmp))
@@ -5267,7 +5293,7 @@ qdata_multiply_bigint (DB_VALUE * bigint_val_p, DB_BIGINT bi2, DB_VALUE * result
       return ER_FAILED;
     }
 
-  DB_MAKE_BIGINT (result_p, bitmp);
+  db_make_bigint (result_p, bitmp);
   return NO_ERROR;
 }
 
@@ -5276,7 +5302,7 @@ qdata_multiply_float (DB_VALUE * float_val_p, float f2, DB_VALUE * result_p)
 {
   float f1, ftmp;
 
-  f1 = DB_GET_FLOAT (float_val_p);
+  f1 = db_get_float (float_val_p);
   ftmp = f1 * f2;
 
   if (OR_CHECK_FLOAT_OVERFLOW (ftmp))
@@ -5285,7 +5311,7 @@ qdata_multiply_float (DB_VALUE * float_val_p, float f2, DB_VALUE * result_p)
       return ER_FAILED;
     }
 
-  DB_MAKE_FLOAT (result_p, ftmp);
+  db_make_float (result_p, ftmp);
   return NO_ERROR;
 }
 
@@ -5302,7 +5328,7 @@ qdata_multiply_double (double d1, double d2, DB_VALUE * result_p)
       return ER_FAILED;
     }
 
-  DB_MAKE_DOUBLE (result_p, dtmp);
+  db_make_double (result_p, dtmp);
   return NO_ERROR;
 }
 
@@ -5327,7 +5353,7 @@ qdata_multiply_monetary (DB_VALUE * monetary_val_p, double d, DB_VALUE * result_
 {
   double dtmp;
 
-  dtmp = (DB_GET_MONETARY (monetary_val_p))->amount * d;
+  dtmp = (db_get_monetary (monetary_val_p))->amount * d;
 
   if (OR_CHECK_DOUBLE_OVERFLOW (dtmp))
     {
@@ -5335,7 +5361,7 @@ qdata_multiply_monetary (DB_VALUE * monetary_val_p, double d, DB_VALUE * result_
       return ER_FAILED;
     }
 
-  DB_MAKE_MONETARY_TYPE_AMOUNT (result_p, (DB_GET_MONETARY (monetary_val_p))->type, dtmp);
+  db_make_monetary (result_p, (db_get_monetary (monetary_val_p))->type, dtmp);
 
   return NO_ERROR;
 }
@@ -5346,7 +5372,7 @@ qdata_multiply_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p, DB_VA
   short s;
   DB_TYPE type2;
 
-  s = DB_GET_SHORT (short_val_p);
+  s = db_get_short (short_val_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type2)
@@ -5364,7 +5390,7 @@ qdata_multiply_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p, DB_VA
       return qdata_multiply_float (dbval_p, s, result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_multiply_double (DB_GET_DOUBLE (dbval_p), s, result_p);
+      return qdata_multiply_double (db_get_double (dbval_p), s, result_p);
 
     case DB_TYPE_NUMERIC:
       return qdata_multiply_numeric (dbval_p, short_val_p, result_p);
@@ -5389,25 +5415,25 @@ qdata_multiply_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p, DB_VALUE 
   switch (type2)
     {
     case DB_TYPE_SHORT:
-      return qdata_multiply_int (int_val_p, DB_GET_SHORT (dbval_p), result_p);
+      return qdata_multiply_int (int_val_p, db_get_short (dbval_p), result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_multiply_int (int_val_p, DB_GET_INT (dbval_p), result_p);
+      return qdata_multiply_int (int_val_p, db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_multiply_bigint (dbval_p, DB_GET_INT (int_val_p), result_p);
+      return qdata_multiply_bigint (dbval_p, db_get_int (int_val_p), result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_multiply_float (dbval_p, (float) DB_GET_INT (int_val_p), result_p);
+      return qdata_multiply_float (dbval_p, (float) db_get_int (int_val_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_multiply_double (DB_GET_DOUBLE (dbval_p), DB_GET_INT (int_val_p), result_p);
+      return qdata_multiply_double (db_get_double (dbval_p), db_get_int (int_val_p), result_p);
 
     case DB_TYPE_NUMERIC:
       return qdata_multiply_numeric (dbval_p, int_val_p, result_p);
 
     case DB_TYPE_MONETARY:
-      return qdata_multiply_monetary (dbval_p, DB_GET_INT (int_val_p), result_p);
+      return qdata_multiply_monetary (dbval_p, db_get_int (int_val_p), result_p);
 
     default:
       break;
@@ -5426,25 +5452,25 @@ qdata_multiply_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_
   switch (type2)
     {
     case DB_TYPE_SHORT:
-      return qdata_multiply_bigint (bigint_val_p, DB_GET_SHORT (dbval_p), result_p);
+      return qdata_multiply_bigint (bigint_val_p, db_get_short (dbval_p), result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_multiply_bigint (bigint_val_p, DB_GET_INT (dbval_p), result_p);
+      return qdata_multiply_bigint (bigint_val_p, db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_multiply_bigint (bigint_val_p, DB_GET_BIGINT (dbval_p), result_p);
+      return qdata_multiply_bigint (bigint_val_p, db_get_bigint (dbval_p), result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_multiply_float (dbval_p, (float) DB_GET_BIGINT (bigint_val_p), result_p);
+      return qdata_multiply_float (dbval_p, (float) db_get_bigint (bigint_val_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_multiply_double (DB_GET_DOUBLE (dbval_p), (double) DB_GET_BIGINT (bigint_val_p), result_p);
+      return qdata_multiply_double (db_get_double (dbval_p), (double) db_get_bigint (bigint_val_p), result_p);
 
     case DB_TYPE_NUMERIC:
       return qdata_multiply_numeric (dbval_p, bigint_val_p, result_p);
 
     case DB_TYPE_MONETARY:
-      return qdata_multiply_monetary (dbval_p, (double) DB_GET_BIGINT (bigint_val_p), result_p);
+      return qdata_multiply_monetary (dbval_p, (double) db_get_bigint (bigint_val_p), result_p);
 
     default:
       break;
@@ -5463,25 +5489,25 @@ qdata_multiply_float_to_dbval (DB_VALUE * float_val_p, DB_VALUE * dbval_p, DB_VA
   switch (type2)
     {
     case DB_TYPE_SHORT:
-      return qdata_multiply_float (float_val_p, DB_GET_SHORT (dbval_p), result_p);
+      return qdata_multiply_float (float_val_p, db_get_short (dbval_p), result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_multiply_float (float_val_p, (float) DB_GET_INT (dbval_p), result_p);
+      return qdata_multiply_float (float_val_p, (float) db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_multiply_float (float_val_p, (float) DB_GET_BIGINT (dbval_p), result_p);
+      return qdata_multiply_float (float_val_p, (float) db_get_bigint (dbval_p), result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_multiply_float (float_val_p, DB_GET_FLOAT (dbval_p), result_p);
+      return qdata_multiply_float (float_val_p, db_get_float (dbval_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_multiply_double (DB_GET_FLOAT (float_val_p), DB_GET_DOUBLE (dbval_p), result_p);
+      return qdata_multiply_double (db_get_float (float_val_p), db_get_double (dbval_p), result_p);
 
     case DB_TYPE_NUMERIC:
-      return qdata_multiply_double (DB_GET_FLOAT (float_val_p), qdata_coerce_numeric_to_double (dbval_p), result_p);
+      return qdata_multiply_double (db_get_float (float_val_p), qdata_coerce_numeric_to_double (dbval_p), result_p);
 
     case DB_TYPE_MONETARY:
-      return qdata_multiply_monetary (dbval_p, DB_GET_FLOAT (float_val_p), result_p);
+      return qdata_multiply_monetary (dbval_p, db_get_float (float_val_p), result_p);
 
     default:
       break;
@@ -5496,26 +5522,26 @@ qdata_multiply_double_to_dbval (DB_VALUE * double_val_p, DB_VALUE * dbval_p, DB_
   double d;
   DB_TYPE type2;
 
-  d = DB_GET_DOUBLE (double_val_p);
+  d = db_get_double (double_val_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type2)
 
     {
     case DB_TYPE_SHORT:
-      return qdata_multiply_double (d, DB_GET_SHORT (dbval_p), result_p);
+      return qdata_multiply_double (d, db_get_short (dbval_p), result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_multiply_double (d, DB_GET_INT (dbval_p), result_p);
+      return qdata_multiply_double (d, db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_multiply_double (d, (double) DB_GET_BIGINT (dbval_p), result_p);
+      return qdata_multiply_double (d, (double) db_get_bigint (dbval_p), result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_multiply_double (d, DB_GET_FLOAT (dbval_p), result_p);
+      return qdata_multiply_double (d, db_get_float (dbval_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_multiply_double (d, DB_GET_DOUBLE (dbval_p), result_p);
+      return qdata_multiply_double (d, db_get_double (dbval_p), result_p);
 
     case DB_TYPE_NUMERIC:
       return qdata_multiply_double (d, qdata_coerce_numeric_to_double (dbval_p), result_p);
@@ -5553,10 +5579,10 @@ qdata_multiply_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, D
       break;
 
     case DB_TYPE_FLOAT:
-      return qdata_multiply_double (qdata_coerce_numeric_to_double (numeric_val_p), DB_GET_FLOAT (dbval_p), result_p);
+      return qdata_multiply_double (qdata_coerce_numeric_to_double (numeric_val_p), db_get_float (dbval_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_multiply_double (qdata_coerce_numeric_to_double (numeric_val_p), DB_GET_DOUBLE (dbval_p), result_p);
+      return qdata_multiply_double (qdata_coerce_numeric_to_double (numeric_val_p), db_get_double (dbval_p), result_p);
 
     case DB_TYPE_MONETARY:
       return qdata_multiply_monetary (dbval_p, qdata_coerce_numeric_to_double (numeric_val_p), result_p);
@@ -5578,26 +5604,26 @@ qdata_multiply_monetary_to_dbval (DB_VALUE * monetary_val_p, DB_VALUE * dbval_p,
   switch (type2)
     {
     case DB_TYPE_SHORT:
-      return qdata_multiply_monetary (monetary_val_p, DB_GET_SHORT (dbval_p), result_p);
+      return qdata_multiply_monetary (monetary_val_p, db_get_short (dbval_p), result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_multiply_monetary (monetary_val_p, DB_GET_INT (dbval_p), result_p);
+      return qdata_multiply_monetary (monetary_val_p, db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_multiply_monetary (monetary_val_p, (double) DB_GET_BIGINT (dbval_p), result_p);
+      return qdata_multiply_monetary (monetary_val_p, (double) db_get_bigint (dbval_p), result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_multiply_monetary (monetary_val_p, DB_GET_FLOAT (dbval_p), result_p);
+      return qdata_multiply_monetary (monetary_val_p, db_get_float (dbval_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_multiply_monetary (monetary_val_p, DB_GET_DOUBLE (dbval_p), result_p);
+      return qdata_multiply_monetary (monetary_val_p, db_get_double (dbval_p), result_p);
 
     case DB_TYPE_NUMERIC:
       return qdata_multiply_monetary (monetary_val_p, qdata_coerce_numeric_to_double (dbval_p), result_p);
 
     case DB_TYPE_MONETARY:
       /* Note: we probably should return an error if the two monetaries have different montetary types. */
-      return qdata_multiply_monetary (monetary_val_p, (DB_GET_MONETARY (dbval_p))->amount, result_p);
+      return qdata_multiply_monetary (monetary_val_p, (db_get_monetary (dbval_p))->amount, result_p);
 
     default:
       break;
@@ -5622,7 +5648,7 @@ qdata_multiply_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_V
   assert (TP_IS_SET_TYPE (type2));
 #endif
 
-  if (set_intersection (DB_GET_SET (seq_val_p), DB_GET_SET (dbval_p), &set_tmp, domain_p) < 0)
+  if (set_intersection (db_get_set (seq_val_p), db_get_set (dbval_p), &set_tmp, domain_p) < 0)
     {
       return ER_FAILED;
     }
@@ -5661,8 +5687,8 @@ qdata_multiply_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
   type1 = DB_VALUE_DOMAIN_TYPE (dbval1_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval2_p);
 
-  DB_MAKE_NULL (&cast_value1);
-  DB_MAKE_NULL (&cast_value2);
+  db_make_null (&cast_value1);
+  db_make_null (&cast_value2);
 
   /* number * string : cast string to DOUBLE, multiply as number * DOUBLE */
   if (TP_IS_NUMERIC_TYPE (type1) && TP_IS_CHAR_TYPE (type2))
@@ -5771,7 +5797,7 @@ qdata_multiply_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
     case DB_TYPE_TIME:
     case DB_TYPE_TIMELTZ:
     case DB_TYPE_TIMETZ:
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_DATE:
@@ -5805,22 +5831,22 @@ qdata_is_divided_zero (DB_VALUE * dbval_p)
   switch (type)
     {
     case DB_TYPE_SHORT:
-      return DB_GET_SHORT (dbval_p) == 0;
+      return db_get_short (dbval_p) == 0;
 
     case DB_TYPE_INTEGER:
-      return DB_GET_INT (dbval_p) == 0;
+      return db_get_int (dbval_p) == 0;
 
     case DB_TYPE_BIGINT:
-      return DB_GET_BIGINT (dbval_p) == 0;
+      return db_get_bigint (dbval_p) == 0;
 
     case DB_TYPE_FLOAT:
-      return fabs ((double) DB_GET_FLOAT (dbval_p)) <= DBL_EPSILON;
+      return fabs ((double) db_get_float (dbval_p)) <= DBL_EPSILON;
 
     case DB_TYPE_DOUBLE:
-      return fabs (DB_GET_DOUBLE (dbval_p)) <= DBL_EPSILON;
+      return fabs (db_get_double (dbval_p)) <= DBL_EPSILON;
 
     case DB_TYPE_MONETARY:
-      return DB_GET_MONETARY (dbval_p)->amount <= DBL_EPSILON;
+      return db_get_monetary (dbval_p)->amount <= DBL_EPSILON;
 
     case DB_TYPE_NUMERIC:
       return numeric_db_value_is_zero (dbval_p);
@@ -5838,7 +5864,7 @@ qdata_divide_short (short s1, short s2, DB_VALUE * result_p)
   short stmp;
 
   stmp = s1 / s2;
-  DB_MAKE_SHORT (result_p, stmp);
+  db_make_short (result_p, stmp);
 
   return NO_ERROR;
 }
@@ -5849,7 +5875,7 @@ qdata_divide_int (int i1, int i2, DB_VALUE * result_p)
   int itmp;
 
   itmp = i1 / i2;
-  DB_MAKE_INT (result_p, itmp);
+  db_make_int (result_p, itmp);
 
   return NO_ERROR;
 }
@@ -5860,7 +5886,7 @@ qdata_divide_bigint (DB_BIGINT bi1, DB_BIGINT bi2, DB_VALUE * result_p)
   DB_BIGINT bitmp;
 
   bitmp = bi1 / bi2;
-  DB_MAKE_BIGINT (result_p, bitmp);
+  db_make_bigint (result_p, bitmp);
 
   return NO_ERROR;
 }
@@ -5878,7 +5904,7 @@ qdata_divide_float (float f1, float f2, DB_VALUE * result_p)
       return ER_FAILED;
     }
 
-  DB_MAKE_FLOAT (result_p, ftmp);
+  db_make_float (result_p, ftmp);
   return NO_ERROR;
 }
 
@@ -5895,7 +5921,7 @@ qdata_divide_double (double d1, double d2, DB_VALUE * result_p, bool is_check_ov
       return ER_FAILED;
     }
 
-  DB_MAKE_DOUBLE (result_p, dtmp);
+  db_make_double (result_p, dtmp);
   return NO_ERROR;
 }
 
@@ -5912,7 +5938,7 @@ qdata_divide_monetary (double d1, double d2, DB_CURRENCY currency, DB_VALUE * re
       return ER_FAILED;
     }
 
-  DB_MAKE_MONETARY_TYPE_AMOUNT (result_p, currency, dtmp);
+  db_make_monetary (result_p, currency, dtmp);
   return NO_ERROR;
 }
 
@@ -5923,25 +5949,25 @@ qdata_divide_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p, DB_VALU
   DB_TYPE type2;
   DB_VALUE dbval_tmp;
 
-  s = DB_GET_SHORT (short_val_p);
+  s = db_get_short (short_val_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type2)
     {
     case DB_TYPE_SHORT:
-      return qdata_divide_short (s, DB_GET_SHORT (dbval_p), result_p);
+      return qdata_divide_short (s, db_get_short (dbval_p), result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_divide_int (s, DB_GET_INT (dbval_p), result_p);
+      return qdata_divide_int (s, db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_divide_bigint (s, DB_GET_BIGINT (dbval_p), result_p);
+      return qdata_divide_bigint (s, db_get_bigint (dbval_p), result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_divide_float (s, DB_GET_FLOAT (dbval_p), result_p);
+      return qdata_divide_float (s, db_get_float (dbval_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_divide_double (s, DB_GET_DOUBLE (dbval_p), result_p, true);
+      return qdata_divide_double (s, db_get_double (dbval_p), result_p, true);
 
     case DB_TYPE_NUMERIC:
       qdata_coerce_dbval_to_numeric (short_val_p, &dbval_tmp);
@@ -5953,7 +5979,7 @@ qdata_divide_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p, DB_VALU
       break;
 
     case DB_TYPE_MONETARY:
-      return qdata_divide_monetary (s, (DB_GET_MONETARY (dbval_p))->amount, (DB_GET_MONETARY (dbval_p))->type, result_p,
+      return qdata_divide_monetary (s, (db_get_monetary (dbval_p))->amount, (db_get_monetary (dbval_p))->type, result_p,
 				    true);
 
     default:
@@ -5970,25 +5996,25 @@ qdata_divide_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p, DB_VALUE * 
   DB_TYPE type2;
   DB_VALUE dbval_tmp;
 
-  i = DB_GET_INT (int_val_p);
+  i = db_get_int (int_val_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type2)
     {
     case DB_TYPE_SHORT:
-      return qdata_divide_int (i, DB_GET_SHORT (dbval_p), result_p);
+      return qdata_divide_int (i, db_get_short (dbval_p), result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_divide_int (i, DB_GET_INT (dbval_p), result_p);
+      return qdata_divide_int (i, db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_divide_bigint (i, DB_GET_BIGINT (dbval_p), result_p);
+      return qdata_divide_bigint (i, db_get_bigint (dbval_p), result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_divide_float ((float) i, DB_GET_FLOAT (dbval_p), result_p);
+      return qdata_divide_float ((float) i, db_get_float (dbval_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_divide_double (i, DB_GET_DOUBLE (dbval_p), result_p, true);
+      return qdata_divide_double (i, db_get_double (dbval_p), result_p, true);
 
     case DB_TYPE_NUMERIC:
       qdata_coerce_dbval_to_numeric (int_val_p, &dbval_tmp);
@@ -6000,7 +6026,7 @@ qdata_divide_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p, DB_VALUE * 
       break;
 
     case DB_TYPE_MONETARY:
-      return qdata_divide_monetary (i, (DB_GET_MONETARY (dbval_p))->amount, (DB_GET_MONETARY (dbval_p))->type, result_p,
+      return qdata_divide_monetary (i, (db_get_monetary (dbval_p))->amount, (db_get_monetary (dbval_p))->type, result_p,
 				    true);
 
     default:
@@ -6017,25 +6043,25 @@ qdata_divide_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_VA
   DB_TYPE type2;
   DB_VALUE dbval_tmp;
 
-  bi = DB_GET_BIGINT (bigint_val_p);
+  bi = db_get_bigint (bigint_val_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type2)
     {
     case DB_TYPE_SHORT:
-      return qdata_divide_bigint (bi, DB_GET_SHORT (dbval_p), result_p);
+      return qdata_divide_bigint (bi, db_get_short (dbval_p), result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_divide_bigint (bi, DB_GET_INT (dbval_p), result_p);
+      return qdata_divide_bigint (bi, db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_divide_bigint (bi, DB_GET_BIGINT (dbval_p), result_p);
+      return qdata_divide_bigint (bi, db_get_bigint (dbval_p), result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_divide_float ((float) bi, DB_GET_FLOAT (dbval_p), result_p);
+      return qdata_divide_float ((float) bi, db_get_float (dbval_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_divide_double ((double) bi, DB_GET_DOUBLE (dbval_p), result_p, true);
+      return qdata_divide_double ((double) bi, db_get_double (dbval_p), result_p, true);
 
     case DB_TYPE_NUMERIC:
       qdata_coerce_dbval_to_numeric (bigint_val_p, &dbval_tmp);
@@ -6047,7 +6073,7 @@ qdata_divide_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_VA
       break;
 
     case DB_TYPE_MONETARY:
-      return qdata_divide_monetary ((double) bi, (DB_GET_MONETARY (dbval_p))->amount, (DB_GET_MONETARY (dbval_p))->type,
+      return qdata_divide_monetary ((double) bi, (db_get_monetary (dbval_p))->amount, (db_get_monetary (dbval_p))->type,
 				    result_p, true);
 
     default:
@@ -6063,31 +6089,31 @@ qdata_divide_float_to_dbval (DB_VALUE * float_val_p, DB_VALUE * dbval_p, DB_VALU
   float f;
   DB_TYPE type2;
 
-  f = DB_GET_FLOAT (float_val_p);
+  f = db_get_float (float_val_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type2)
     {
     case DB_TYPE_SHORT:
-      return qdata_divide_float (f, DB_GET_SHORT (dbval_p), result_p);
+      return qdata_divide_float (f, db_get_short (dbval_p), result_p);
 
     case DB_TYPE_INTEGER:
-      return qdata_divide_float (f, (float) DB_GET_INT (dbval_p), result_p);
+      return qdata_divide_float (f, (float) db_get_int (dbval_p), result_p);
 
     case DB_TYPE_BIGINT:
-      return qdata_divide_float (f, (float) DB_GET_BIGINT (dbval_p), result_p);
+      return qdata_divide_float (f, (float) db_get_bigint (dbval_p), result_p);
 
     case DB_TYPE_FLOAT:
-      return qdata_divide_float (f, DB_GET_FLOAT (dbval_p), result_p);
+      return qdata_divide_float (f, db_get_float (dbval_p), result_p);
 
     case DB_TYPE_DOUBLE:
-      return qdata_divide_double (f, DB_GET_DOUBLE (dbval_p), result_p, true);
+      return qdata_divide_double (f, db_get_double (dbval_p), result_p, true);
 
     case DB_TYPE_NUMERIC:
       return qdata_divide_double (f, qdata_coerce_numeric_to_double (dbval_p), result_p, false);
 
     case DB_TYPE_MONETARY:
-      return qdata_divide_monetary (f, (DB_GET_MONETARY (dbval_p))->amount, (DB_GET_MONETARY (dbval_p))->type, result_p,
+      return qdata_divide_monetary (f, (db_get_monetary (dbval_p))->amount, (db_get_monetary (dbval_p))->type, result_p,
 				    true);
 
     default:
@@ -6103,31 +6129,31 @@ qdata_divide_double_to_dbval (DB_VALUE * double_val_p, DB_VALUE * dbval_p, DB_VA
   double d;
   DB_TYPE type2;
 
-  d = DB_GET_DOUBLE (double_val_p);
+  d = db_get_double (double_val_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type2)
     {
     case DB_TYPE_SHORT:
-      return qdata_divide_double (d, DB_GET_SHORT (dbval_p), result_p, false);
+      return qdata_divide_double (d, db_get_short (dbval_p), result_p, false);
 
     case DB_TYPE_INTEGER:
-      return qdata_divide_double (d, DB_GET_INT (dbval_p), result_p, false);
+      return qdata_divide_double (d, db_get_int (dbval_p), result_p, false);
 
     case DB_TYPE_BIGINT:
-      return qdata_divide_double (d, (double) DB_GET_BIGINT (dbval_p), result_p, false);
+      return qdata_divide_double (d, (double) db_get_bigint (dbval_p), result_p, false);
 
     case DB_TYPE_FLOAT:
-      return qdata_divide_double (d, DB_GET_FLOAT (dbval_p), result_p, true);
+      return qdata_divide_double (d, db_get_float (dbval_p), result_p, true);
 
     case DB_TYPE_DOUBLE:
-      return qdata_divide_double (d, DB_GET_DOUBLE (dbval_p), result_p, true);
+      return qdata_divide_double (d, db_get_double (dbval_p), result_p, true);
 
     case DB_TYPE_NUMERIC:
       return qdata_divide_double (d, qdata_coerce_numeric_to_double (dbval_p), result_p, false);
 
     case DB_TYPE_MONETARY:
-      return qdata_divide_monetary (d, (DB_GET_MONETARY (dbval_p))->amount, (DB_GET_MONETARY (dbval_p))->type, result_p,
+      return qdata_divide_monetary (d, (db_get_monetary (dbval_p))->amount, (db_get_monetary (dbval_p))->type, result_p,
 				    true);
 
     default:
@@ -6167,16 +6193,16 @@ qdata_divide_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_
       break;
 
     case DB_TYPE_FLOAT:
-      return qdata_divide_double (qdata_coerce_numeric_to_double (numeric_val_p), DB_GET_FLOAT (dbval_p), result_p,
+      return qdata_divide_double (qdata_coerce_numeric_to_double (numeric_val_p), db_get_float (dbval_p), result_p,
 				  false);
 
     case DB_TYPE_DOUBLE:
-      return qdata_divide_double (qdata_coerce_numeric_to_double (numeric_val_p), DB_GET_DOUBLE (dbval_p), result_p,
+      return qdata_divide_double (qdata_coerce_numeric_to_double (numeric_val_p), db_get_double (dbval_p), result_p,
 				  true);
 
     case DB_TYPE_MONETARY:
-      return qdata_divide_monetary (qdata_coerce_numeric_to_double (numeric_val_p), (DB_GET_MONETARY (dbval_p))->amount,
-				    (DB_GET_MONETARY (dbval_p))->type, result_p, true);
+      return qdata_divide_monetary (qdata_coerce_numeric_to_double (numeric_val_p), (db_get_monetary (dbval_p))->amount,
+				    (db_get_monetary (dbval_p))->type, result_p, true);
 
     default:
       break;
@@ -6192,33 +6218,33 @@ qdata_divide_monetary_to_dbval (DB_VALUE * monetary_val_p, DB_VALUE * dbval_p, D
   DB_CURRENCY currency;
   DB_TYPE type2;
 
-  d = (DB_GET_MONETARY (monetary_val_p))->amount;
-  currency = (DB_GET_MONETARY (monetary_val_p))->type;
+  d = (db_get_monetary (monetary_val_p))->amount;
+  currency = (db_get_monetary (monetary_val_p))->type;
   type2 = DB_VALUE_DOMAIN_TYPE (dbval_p);
 
   switch (type2)
     {
     case DB_TYPE_SHORT:
-      return qdata_divide_monetary (d, DB_GET_SHORT (dbval_p), currency, result_p, false);
+      return qdata_divide_monetary (d, db_get_short (dbval_p), currency, result_p, false);
 
     case DB_TYPE_INTEGER:
-      return qdata_divide_monetary (d, DB_GET_INT (dbval_p), currency, result_p, false);
+      return qdata_divide_monetary (d, db_get_int (dbval_p), currency, result_p, false);
 
     case DB_TYPE_BIGINT:
-      return qdata_divide_monetary (d, (double) DB_GET_BIGINT (dbval_p), currency, result_p, false);
+      return qdata_divide_monetary (d, (double) db_get_bigint (dbval_p), currency, result_p, false);
 
     case DB_TYPE_FLOAT:
-      return qdata_divide_monetary (d, DB_GET_FLOAT (dbval_p), currency, result_p, true);
+      return qdata_divide_monetary (d, db_get_float (dbval_p), currency, result_p, true);
 
     case DB_TYPE_DOUBLE:
-      return qdata_divide_monetary (d, DB_GET_DOUBLE (dbval_p), currency, result_p, true);
+      return qdata_divide_monetary (d, db_get_double (dbval_p), currency, result_p, true);
 
     case DB_TYPE_NUMERIC:
       return qdata_divide_monetary (d, qdata_coerce_numeric_to_double (dbval_p), currency, result_p, true);
 
     case DB_TYPE_MONETARY:
       /* Note: we probably should return an error if the two monetaries have different montetary types. */
-      return qdata_divide_monetary (d, (DB_GET_MONETARY (dbval_p))->amount, currency, result_p, true);
+      return qdata_divide_monetary (d, (db_get_monetary (dbval_p))->amount, currency, result_p, true);
 
     default:
       break;
@@ -6267,8 +6293,8 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
   type1 = DB_VALUE_DOMAIN_TYPE (dbval1_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval2_p);
 
-  DB_MAKE_NULL (&cast_value1);
-  DB_MAKE_NULL (&cast_value2);
+  db_make_null (&cast_value1);
+  db_make_null (&cast_value2);
 
   /* number / string : cast string to DOUBLE, divide as number / DOUBLE */
   if (TP_IS_NUMERIC_TYPE (type1) && TP_IS_CHAR_TYPE (type2))
@@ -6362,7 +6388,7 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
     case DB_TYPE_TIME:
     case DB_TYPE_TIMELTZ:
     case DB_TYPE_TIMETZ:
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_DATETIME:
@@ -6414,27 +6440,27 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
   switch (res_type)
     {
     case DB_TYPE_INTEGER:
-      itmp = DB_GET_INT (dbval_p);
+      itmp = db_get_int (dbval_p);
       if (itmp == INT_MIN)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_UMINUS, 0);
 	  return ER_QPROC_OVERFLOW_UMINUS;
 	}
-      DB_MAKE_INT (result_p, (-1) * itmp);
+      db_make_int (result_p, (-1) * itmp);
       break;
 
     case DB_TYPE_BIGINT:
-      bitmp = DB_GET_BIGINT (dbval_p);
+      bitmp = db_get_bigint (dbval_p);
       if (bitmp == DB_BIGINT_MIN)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_UMINUS, 0);
 	  return ER_QPROC_OVERFLOW_UMINUS;
 	}
-      DB_MAKE_BIGINT (result_p, (-1) * bitmp);
+      db_make_bigint (result_p, (-1) * bitmp);
       break;
 
     case DB_TYPE_FLOAT:
-      DB_MAKE_FLOAT (result_p, (-1) * DB_GET_FLOAT (dbval_p));
+      db_make_float (result_p, (-1) * db_get_float (dbval_p));
       break;
 
     case DB_TYPE_CHAR:
@@ -6455,11 +6481,11 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
       /* fall through */
 
     case DB_TYPE_DOUBLE:
-      DB_MAKE_DOUBLE (result_p, (-1) * DB_GET_DOUBLE (dbval_p));
+      db_make_double (result_p, (-1) * db_get_double (dbval_p));
       break;
 
     case DB_TYPE_NUMERIC:
-      DB_MAKE_NUMERIC (result_p, DB_GET_NUMERIC (dbval_p), DB_VALUE_PRECISION (dbval_p), DB_VALUE_SCALE (dbval_p));
+      db_make_numeric (result_p, db_get_numeric (dbval_p), DB_VALUE_PRECISION (dbval_p), DB_VALUE_SCALE (dbval_p));
       if (numeric_db_value_negate (result_p) != NO_ERROR)
 	{
 	  return ER_FAILED;
@@ -6467,18 +6493,18 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
       break;
 
     case DB_TYPE_MONETARY:
-      dtmp = (-1) * (DB_GET_MONETARY (dbval_p))->amount;
-      DB_MAKE_MONETARY_TYPE_AMOUNT (result_p, (DB_GET_MONETARY (dbval_p))->type, dtmp);
+      dtmp = (-1) * (db_get_monetary (dbval_p))->amount;
+      db_make_monetary (result_p, (db_get_monetary (dbval_p))->type, dtmp);
       break;
 
     case DB_TYPE_SHORT:
-      stmp = DB_GET_SHORT (dbval_p);
+      stmp = db_get_short (dbval_p);
       if (stmp == SHRT_MIN)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_UMINUS, 0);
 	  return ER_QPROC_OVERFLOW_UMINUS;
 	}
-      DB_MAKE_SHORT (result_p, (-1) * stmp);
+      db_make_short (result_p, (-1) * stmp);
       break;
 
     default:
@@ -6511,6 +6537,64 @@ qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval_p, DB_VAL
       return ER_FAILED;
     }
   return NO_ERROR;
+}
+
+int
+qdata_json_contains_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * dbval3_p, DB_VALUE * result_p,
+			   TP_DOMAIN * domain_p)
+{
+  int error_code = db_json_contains_dbval (dbval1_p, dbval2_p, dbval3_p, result_p);
+
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return qdata_coerce_result_to_domain (result_p, domain_p);
+}
+
+int
+qdata_json_type_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  int error_code = db_json_type_dbval (dbval1_p, result_p);
+
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return qdata_coerce_result_to_domain (result_p, domain_p);
+}
+
+int
+qdata_json_valid_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  int error_code = db_json_valid_dbval (dbval1_p, result_p);
+
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return qdata_coerce_result_to_domain (result_p, domain_p);
+}
+
+int
+qdata_json_length_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  return db_json_length_dbval (dbval1_p, dbval2_p, result_p);
+}
+
+int
+qdata_json_depth_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  return db_json_depth_dbval (dbval1_p, result_p);
+}
+
+int
+qdata_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res, TP_DOMAIN * domain_p)
+{
+  return db_json_extract_dbval (json, path, json_res);
 }
 
 /*
@@ -6551,8 +6635,8 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       cast_dom1 = tp_domain_resolve_value (dbval2_p, NULL);
     }
 
-  DB_MAKE_NULL (&cast_value1);
-  DB_MAKE_NULL (&cast_value2);
+  db_make_null (&cast_value1);
+  db_make_null (&cast_value2);
 
   if (cast_dom1 != NULL)
     {
@@ -6665,7 +6749,7 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       error = qdata_add_time_to_dbval (dbval1_p, dbval2_p, result_p);
       if (error != NO_ERROR && type1 == DB_TYPE_TIMELTZ)
 	{
-	  DB_MAKE_TIMELTZ (result_p, DB_GET_TIME (result_p));
+	  db_make_timeltz (result_p, db_get_time (result_p));
 	}
       break;
 
@@ -6673,12 +6757,12 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       error = qdata_add_timetz_to_dbval (dbval1_p, dbval2_p, result_p);
       break;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
       error = qdata_add_utime_to_dbval (dbval1_p, dbval2_p, result_p, domain_p);
       if (error == NO_ERROR && type1 == DB_TYPE_TIMESTAMPLTZ)
 	{
-	  DB_MAKE_TIMESTAMPLTZ (result_p, *DB_GET_UTIME (result_p));
+	  db_make_timestampltz (result_p, *db_get_timestamp (result_p));
 	}
       break;
 
@@ -6691,7 +6775,7 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       error = qdata_add_datetime_to_dbval (dbval1_p, dbval2_p, result_p, domain_p);
       if (error != NO_ERROR && type1 == DB_TYPE_DATETIMELTZ)
 	{
-	  DB_MAKE_DATETIMELTZ (result_p, DB_GET_DATETIME (result_p));
+	  db_make_datetimeltz (result_p, db_get_datetime (result_p));
 	}
       break;
 
@@ -6817,7 +6901,7 @@ qdata_initialize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_l
       /* This set is made, because if class is empty, aggregate results should return NULL, except count(*) and count */
       if (agg_p->function == PT_COUNT_STAR || agg_p->function == PT_COUNT)
 	{
-	  DB_MAKE_INT (agg_p->accumulator.value, 0);
+	  db_make_int (agg_p->accumulator.value, 0);
 	}
 
       /* create temporary list file to handle distincts */
@@ -6963,7 +7047,6 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
 				      AGGREGATE_ACCUMULATOR_DOMAIN * domain, FUNC_TYPE func_type,
 				      TP_DOMAIN * func_domain, DB_VALUE * value)
 {
-  TP_DOMAIN *double_domain = NULL;
   DB_VALUE squared;
   bool copy_operator = false;
   int coll_id;
@@ -6998,12 +7081,12 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
       if (acc->curr_cnt < 1)
 	{
 	  /* first value */
-	  DB_MAKE_INT (acc->value, 1);
+	  db_make_int (acc->value, 1);
 	}
       else
 	{
 	  /* increment */
-	  DB_MAKE_INT (acc->value, DB_GET_INT (acc->value) + 1);
+	  db_make_int (acc->value, db_get_int (acc->value) + 1);
 	}
       break;
 
@@ -7013,7 +7096,7 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
       {
 	int error;
 	DB_VALUE tmp_val;
-	DB_MAKE_BIGINT (&tmp_val, (DB_BIGINT) 0);
+	db_make_bigint (&tmp_val, (DB_BIGINT) 0);
 
 	if (acc->curr_cnt < 1)
 	  {
@@ -7192,7 +7275,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
   int dbval_size, i, error;
   AGGREGATE_PERCENTILE_INFO *percentile = NULL;
 
-  DB_MAKE_NULL (&dbval);
+  db_make_null (&dbval);
 
   for (agg_p = agg_list_p, i = 0; agg_p != NULL; agg_p = agg_p->next, i++)
     {
@@ -7248,7 +7331,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  if ((agg_p->function == PT_COUNT || agg_p->function == PT_COUNT_STAR) && DB_IS_NULL (accumulator->value))
 	    {
 	      /* we might get a NULL count if aggregating with hash table and group has only one tuple; correct that */
-	      DB_MAKE_INT (accumulator->value, 0);
+	      db_make_int (accumulator->value, 0);
 	    }
 	  continue;
 	}
@@ -7349,7 +7432,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		      return ER_FAILED;
 		    }
 
-		  percentile->cur_group_percentile = DB_GET_DOUBLE (percentile_val);
+		  percentile->cur_group_percentile = db_get_double (percentile_val);
 		  if (percentile->cur_group_percentile < 0 || percentile->cur_group_percentile > 1)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PERCENTILE_FUNC_INVALID_PERCENTILE_RANGE, 1,
@@ -7422,7 +7505,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		    }
 
 		  pr_clear_value (agg_p->accumulator.value);
-		  error = db_value_clone (&dbval, agg_p->accumulator.value);
+		  error = pr_clone_value (&dbval, agg_p->accumulator.value);
 		  if (error != NO_ERROR)
 		    {
 		      pr_clear_value (&dbval);
@@ -7438,7 +7521,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  if (agg_p->function == PT_PERCENTILE_CONT || agg_p->function == PT_PERCENTILE_DISC)
 	    {
 	      if (DB_VALUE_TYPE (percentile_val) != DB_TYPE_DOUBLE
-		  || DB_GET_DOUBLE (percentile_val) != percentile->cur_group_percentile)
+		  || db_get_double (percentile_val) != percentile->cur_group_percentile)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PERCENTILE_FUNC_PERCENTILE_CHANGED_IN_GROUP, 0);
 		  return ER_FAILED;
@@ -7544,11 +7627,11 @@ qdata_evaluate_aggregate_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg
     case PT_COUNT:
       if (agg_p->option == Q_ALL)
 	{
-	  DB_MAKE_INT (agg_p->accumulator.value, oid_count - null_count);
+	  db_make_int (agg_p->accumulator.value, oid_count - null_count);
 	}
       else
 	{
-	  DB_MAKE_INT (agg_p->accumulator.value, key_count);
+	  db_make_int (agg_p->accumulator.value, key_count);
 	}
       break;
 
@@ -7591,9 +7674,7 @@ int
 qdata_evaluate_aggregate_hierarchy (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, HFID * root_hfid, BTID * root_btid,
 				    HIERARCHY_AGGREGATE_HELPER * helper)
 {
-  bool is_btree_stats_needed = false;
   int error = NO_ERROR, i, cmp = DB_EQ, cur_cnt = 0;
-  HFID *hfidp = NULL;
   DB_VALUE result;
   if (!agg_p->flag_agg_optimize)
     {
@@ -7607,7 +7688,7 @@ qdata_evaluate_aggregate_hierarchy (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
       return error;
     }
 
-  DB_MAKE_NULL (&result);
+  db_make_null (&result);
   error = pr_clone_value (agg_p->accumulator.value, &result);
   if (error != NO_ERROR)
     {
@@ -7743,14 +7824,14 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
   OR_BUF buf;
   double dbl;
 
-  DB_MAKE_NULL (&sqr_val);
-  DB_MAKE_NULL (&dbval);
-  DB_MAKE_NULL (&xavgval);
-  DB_MAKE_NULL (&xavg_1val);
-  DB_MAKE_NULL (&x2avgval);
-  DB_MAKE_NULL (&xavg2val);
-  DB_MAKE_NULL (&varval);
-  DB_MAKE_NULL (&dval);
+  db_make_null (&sqr_val);
+  db_make_null (&dbval);
+  db_make_null (&xavgval);
+  db_make_null (&xavg_1val);
+  db_make_null (&x2avgval);
+  db_make_null (&xavg2val);
+  db_make_null (&varval);
+  db_make_null (&dval);
 
   for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
     {
@@ -7765,7 +7846,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
       /* set count-star aggregate values */
       if (agg_p->function == PT_COUNT_STAR)
 	{
-	  DB_MAKE_INT (agg_p->accumulator.value, agg_p->accumulator.curr_cnt);
+	  db_make_int (agg_p->accumulator.value, agg_p->accumulator.curr_cnt);
 	}
 
       /* the value of groupby_num() remains unchanged; it will be changed while evaluating groupby_num predicates
@@ -7781,7 +7862,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  /* calculate the result for CUME_DIST */
 	  dbl = (double) (agg_p->info.dist_percent.nlargers + 1) / (agg_p->accumulator.curr_cnt + 1);
 	  assert (dbl <= 1.0 && dbl > 0.0);
-	  DB_MAKE_DOUBLE (agg_p->accumulator.value, dbl);
+	  db_make_double (agg_p->accumulator.value, dbl);
 
 	  /* free const_array */
 	  if (agg_p->info.dist_percent.const_array != NULL)
@@ -7803,7 +7884,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	      dbl = (double) (agg_p->info.dist_percent.nlargers) / agg_p->accumulator.curr_cnt;
 	    }
 	  assert (dbl <= 1.0 && dbl >= 0.0);
-	  DB_MAKE_DOUBLE (agg_p->accumulator.value, dbl);
+	  db_make_double (agg_p->accumulator.value, dbl);
 
 	  /* free const_array */
 	  if (agg_p->info.dist_percent.const_array != NULL)
@@ -7829,8 +7910,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 
 	  if (agg_p->flag_agg_optimize == false)
 	    {
-	      list_id_p = agg_p->list_id =
-		qfile_sort_list (thread_p, agg_p->list_id, agg_p->sort_list, agg_p->option, false);
+	      list_id_p = qfile_sort_list (thread_p, agg_p->list_id, agg_p->sort_list, agg_p->option, false);
 
 	      if (list_id_p != NULL && er_has_error ())
 		{
@@ -7841,8 +7921,6 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		  error = er_errid ();
 		  goto exit;
 		}
-
-	      agg_p->list_id = list_id_p;
 
 	      if (list_id_p == NULL)
 		{
@@ -7855,9 +7933,11 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		  goto exit;
 		}
 
+	      agg_p->list_id = list_id_p;
+
 	      if (agg_p->function == PT_COUNT)
 		{
-		  DB_MAKE_INT (agg_p->accumulator.value, list_id_p->tuple_cnt);
+		  db_make_int (agg_p->accumulator.value, list_id_p->tuple_cnt);
 		}
 	      else
 		{
@@ -8086,7 +8166,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  TP_DOMAIN *double_domain_ptr = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
 	  /* compute AVG(X) = SUM(X)/COUNT(X) */
-	  DB_MAKE_DOUBLE (&dbval, agg_p->accumulator.curr_cnt);
+	  db_make_double (&dbval, agg_p->accumulator.curr_cnt);
 	  error = qdata_divide_dbval (agg_p->accumulator.value, &dbval, &xavgval, double_domain_ptr);
 	  if (error != NO_ERROR)
 	    {
@@ -8109,12 +8189,12 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	      /* compute SUM(X^2) / (n-1) */
 	      if (agg_p->accumulator.curr_cnt > 1)
 		{
-		  DB_MAKE_DOUBLE (&dbval, agg_p->accumulator.curr_cnt - 1);
+		  db_make_double (&dbval, agg_p->accumulator.curr_cnt - 1);
 		}
 	      else
 		{
 		  /* when not enough samples, return NULL */
-		  DB_MAKE_NULL (agg_p->accumulator.value);
+		  db_make_null (agg_p->accumulator.value);
 		  continue;
 		}
 	    }
@@ -8123,7 +8203,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	      assert (agg_p->function == PT_STDDEV || agg_p->function == PT_STDDEV_POP || agg_p->function == PT_VARIANCE
 		      || agg_p->function == PT_VAR_POP);
 	      /* compute SUM(X^2) / n */
-	      DB_MAKE_DOUBLE (&dbval, agg_p->accumulator.curr_cnt);
+	      db_make_double (&dbval, agg_p->accumulator.curr_cnt);
 	    }
 
 	  error = qdata_divide_dbval (agg_p->accumulator.value2, &dbval, &x2avgval, double_domain_ptr);
@@ -8174,14 +8254,14 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		  goto exit;
 		}
 
-	      dtmp = DB_GET_DOUBLE (&dval);
+	      dtmp = db_get_double (&dval);
 
 	      /* mathematically, dtmp should be zero or positive; however, due to some precision errors, in some cases
 	       * it can be a very small negative number of which we cannot extract the square root */
 	      dtmp = (dtmp < 0.0f ? 0.0f : dtmp);
 
 	      dtmp = sqrt (dtmp);
-	      DB_MAKE_DOUBLE (&dval, dtmp);
+	      db_make_double (&dval, dtmp);
 
 	      pr_clone_value (&dval, agg_p->accumulator.value);
 	    }
@@ -8245,7 +8325,7 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
 	      if (pr_is_string_type (dbval_type))
 		{
 		  int precision = DB_VALUE_PRECISION (dbval_p);
-		  int string_length = DB_GET_STRING_LENGTH (dbval_p);
+		  int string_length = db_get_string_length (dbval_p);
 
 		  if (precision == TP_FLOATING_PRECISION_VALUE)
 		    {
@@ -8547,7 +8627,7 @@ qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIAB
   result_p = regu_func_p->value.funcp->value;
   operand = regu_func_p->value.funcp->operand;
   domain_p = regu_func_p->domain;
-  DB_MAKE_NULL (&dbval);
+  db_make_null (&dbval);
 
   if (stype == DB_TYPE_SET)
     {
@@ -8678,7 +8758,7 @@ qdata_evaluate_generic_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * functi
       goto error;
     }
 
-  offset = DB_GET_INTEGER (offset_dbval_p);
+  offset = db_get_int (offset_dbval_p);
   if (offset >= (SSIZEOF (generic_func_ptrs) / SSIZEOF (generic_func_ptrs[0])))
     {
       goto error;
@@ -8753,7 +8833,7 @@ qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p
 
   if (DB_IS_NULL (val_p))
     {
-      DB_MAKE_NULL (function_p->value);
+      db_make_null (function_p->value);
       return NO_ERROR;
     }
 
@@ -8761,7 +8841,7 @@ qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p
   if (type == DB_TYPE_VOBJ)
     {
       /* grab the real oid */
-      if (db_seq_get (DB_GET_SEQUENCE (val_p), 2, &element) != NO_ERROR)
+      if (db_seq_get (db_get_set (val_p), 2, &element) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -8775,7 +8855,7 @@ qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p
       return ER_FAILED;
     }
 
-  instance_oid_p = DB_PULL_OID (val_p);
+  instance_oid_p = db_get_oid (val_p);
   err = heap_get_class_oid (thread_p, instance_oid_p, &class_oid);
   if (err != S_SUCCESS)
     {
@@ -8783,7 +8863,7 @@ qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p
       return err;
     }
 
-  DB_MAKE_OID (function_p->value, &class_oid);
+  db_make_oid (function_p->value, &class_oid);
 
   return NO_ERROR;
 }
@@ -8841,8 +8921,39 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, REGU_VARIABLE * function_p, VA
 
     case F_INSERT_SUBSTRING:
       return qdata_insert_substring_function (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
     case F_ELT:
       return qdata_elt (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
+    case F_JSON_OBJECT:
+      return qdata_json_object (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
+    case F_JSON_ARRAY:
+      return qdata_json_array (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
+    case F_JSON_INSERT:
+      return qdata_json_insert (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
+    case F_JSON_REPLACE:
+      return qdata_json_replace (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
+    case F_JSON_SET:
+      return qdata_json_set (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
+    case F_JSON_KEYS:
+      return qdata_json_keys (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
+    case F_JSON_REMOVE:
+      return qdata_json_remove (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
+    case F_JSON_ARRAY_APPEND:
+      return qdata_json_array_append (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
+    case F_JSON_GET_ALL_PATHS:
+      return qdata_json_get_all_paths (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
+    case F_JSON_MERGE:
+      return qdata_json_merge (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
@@ -8894,7 +9005,7 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
 
   domain_p = function_p->domain;
   list_id_p = operand->value.value.srlist_id->list_id;
-  DB_MAKE_NULL (&dbval);
+  db_make_null (&dbval);
 
   if (stype == DB_TYPE_SET)
     {
@@ -9064,7 +9175,7 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, REGU_VARI
 	  return false;
 	}
 
-      bitval = (QFILE_TUPLE_POSITION *) DB_GET_BIT (&p_pos_dbval, &length);
+      bitval = (QFILE_TUPLE_POSITION *) db_get_bit (&p_pos_dbval, &length);
 
       if (bitval)
 	{
@@ -9108,7 +9219,7 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, REGU_VARI
       /* TYPE_CONSTANT but not in val_list, check if it is inst_num() (orderby_num() is not allowed) */
       if (regu_p->value.dbvalptr == xasl->instnum_val)
 	{
-	  if (db_value_clone (xasl->instnum_val, result_val_p) != NO_ERROR)
+	  if (pr_clone_value (xasl->instnum_val, result_val_p) != NO_ERROR)
 	    {
 	      return false;
 	    }
@@ -9181,7 +9292,7 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, REGU_VARIABLE * re
       return false;
     }
 
-  bitval = (QFILE_TUPLE_POSITION *) DB_GET_BIT (&p_pos_dbval, &length);
+  bitval = (QFILE_TUPLE_POSITION *) db_get_bit (&p_pos_dbval, &length);
 
   if (bitval)
     {
@@ -9231,7 +9342,7 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, REGU_VARIABLE * re
     }
   else
     {
-      DB_MAKE_NULL (result_val_p);
+      db_make_null (result_val_p);
     }
 
   return true;
@@ -9260,12 +9371,14 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
   XASL_NODE *xasl, *xptr;
   int length, i;
   char *result_path = NULL, *path_tmp = NULL;
-  int len_result_path, len_tmp = 0, len;
+  int len_result_path;
+  size_t len_tmp = 0, len;
   char *sep = NULL;
-  DB_VALUE *arg_dbval_p;
+  DB_VALUE *arg_dbval_p = NULL;
   DB_VALUE **save_values = NULL;
   bool use_extended = false;	/* flag for using extended form, accepting an expression as the first argument of
 				 * SYS_CONNECT_BY_PATH() */
+  bool need_clear_arg_dbval = false;
 
   assert (DB_IS_NULL (result_p));
 
@@ -9317,11 +9430,11 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
   else
     {
       arg_dbval_p = &arg_dbval;
-      DB_MAKE_NULL (arg_dbval_p);
+      db_make_null (arg_dbval_p);
     }
 
   /* character */
-  i = strlen (DB_GET_STRING_SAFE (value_char));
+  i = (int) strlen (DB_GET_STRING_SAFE (value_char));
   sep = (char *) db_private_alloc (thread_p, sizeof (char) * (i + 1));
   if (sep == NULL)
     {
@@ -9399,6 +9512,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 
   do
     {
+      need_clear_arg_dbval = false;
       if (!use_extended)
 	{
 	  /* get the required column */
@@ -9408,6 +9522,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 		{
 		  goto error;
 		}
+	      need_clear_arg_dbval = true;
 	    }
 	}
       else
@@ -9433,7 +9548,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 
       if (DB_IS_NULL (arg_dbval_p))
 	{
-	  DB_MAKE_NULL (&cast_value);
+	  db_make_null (&cast_value);
 	}
       else
 	{
@@ -9442,9 +9557,15 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 	    {
 	      goto error;
 	    }
+
+	  if (need_clear_arg_dbval)
+	    {
+	      pr_clear_value (arg_dbval_p);
+	      need_clear_arg_dbval = false;
+	    }
 	}
 
-      len = (strlen (sep) + (DB_IS_NULL (&cast_value) ? 0 : DB_GET_STRING_SIZE (&cast_value))
+      len = (strlen (sep) + (DB_IS_NULL (&cast_value) ? 0 : db_get_string_size (&cast_value))
 	     + strlen (result_path) + 1);
       if (len > len_tmp || path_tmp == NULL)
 	{
@@ -9474,7 +9595,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 	  goto error;
 	}
 
-      while (strlen (path_tmp) + 1 > len_result_path)
+      while ((int) strlen (path_tmp) + 1 > len_result_path)
 	{
 	  len_result_path += SYS_CONNECT_BY_PATH_MEM_STEP;
 	  db_private_free_and_init (thread_p, result_path);
@@ -9494,7 +9615,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 	  goto error;
 	}
 
-      bitval = (QFILE_TUPLE_POSITION *) DB_GET_BIT (&p_pos_dbval, &length);
+      bitval = (QFILE_TUPLE_POSITION *) db_get_bit (&p_pos_dbval, &length);
 
       if (bitval)
 	{
@@ -9515,7 +9636,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 
   qfile_close_scan (thread_p, &s_id);
 
-  DB_MAKE_STRING (result_p, result_path);
+  db_make_string (result_p, result_path);
   result_p->need_clear = true;
 
   if (use_extended)
@@ -9529,7 +9650,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 		{
 		  goto error2;
 		}
-	      if (db_value_clone (save_values[i], valp->val) != NO_ERROR)
+	      if (pr_clone_value (save_values[i], valp->val) != NO_ERROR)
 		{
 		  goto error2;
 		}
@@ -9539,7 +9660,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 	    {
 	      if (save_values[i])
 		{
-		  if (db_value_free (save_values[i]) != NO_ERROR)
+		  if (pr_free_ext_value (save_values[i]) != NO_ERROR)
 		    {
 		      goto error2;
 		    }
@@ -9560,6 +9681,11 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
       db_private_free_and_init (thread_p, sep);
     }
 
+  if (need_clear_arg_dbval)
+    {
+      pr_clear_value (arg_dbval_p);
+    }
+
   return true;
 
 error:
@@ -9571,7 +9697,7 @@ error:
 	{
 	  if (save_values[i])
 	    {
-	      db_value_free (save_values[i]);
+	      pr_free_ext_value (save_values[i]);
 	    }
 	}
       db_private_free_and_init (thread_p, save_values);
@@ -9592,6 +9718,11 @@ error2:
   if (sep)
     {
       db_private_free_and_init (thread_p, sep);
+    }
+
+  if (need_clear_arg_dbval)
+    {
+      pr_clear_value (arg_dbval_p);
     }
 
   return false;
@@ -9624,15 +9755,15 @@ qdata_bit_not_dbval (DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain
       break;
 
     case DB_TYPE_INTEGER:
-      db_make_bigint (result_p, ~((INT64) DB_GET_INTEGER (dbval_p)));
+      db_make_bigint (result_p, ~((INT64) db_get_int (dbval_p)));
       break;
 
     case DB_TYPE_BIGINT:
-      db_make_bigint (result_p, ~DB_GET_BIGINT (dbval_p));
+      db_make_bigint (result_p, ~db_get_bigint (dbval_p));
       break;
 
     case DB_TYPE_SHORT:
-      db_make_bigint (result_p, ~((INT64) DB_GET_SHORT (dbval_p)));
+      db_make_bigint (result_p, ~((INT64) db_get_short (dbval_p)));
       break;
 
     default:
@@ -9680,15 +9811,15 @@ qdata_bit_and_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result
 	  break;
 
 	case DB_TYPE_INTEGER:
-	  bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
+	  bi[i] = (DB_BIGINT) db_get_int (dbval[i]);
 	  break;
 
 	case DB_TYPE_BIGINT:
-	  bi[i] = DB_GET_BIGINT (dbval[i]);
+	  bi[i] = db_get_bigint (dbval[i]);
 	  break;
 
 	case DB_TYPE_SHORT:
-	  bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
+	  bi[i] = (DB_BIGINT) db_get_short (dbval[i]);
 	  break;
 
 	default:
@@ -9742,15 +9873,15 @@ qdata_bit_or_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 	  break;
 
 	case DB_TYPE_INTEGER:
-	  bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
+	  bi[i] = (DB_BIGINT) db_get_int (dbval[i]);
 	  break;
 
 	case DB_TYPE_BIGINT:
-	  bi[i] = DB_GET_BIGINT (dbval[i]);
+	  bi[i] = db_get_bigint (dbval[i]);
 	  break;
 
 	case DB_TYPE_SHORT:
-	  bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
+	  bi[i] = (DB_BIGINT) db_get_short (dbval[i]);
 	  break;
 
 	default:
@@ -9804,15 +9935,15 @@ qdata_bit_xor_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result
 	  break;
 
 	case DB_TYPE_INTEGER:
-	  bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
+	  bi[i] = (DB_BIGINT) db_get_int (dbval[i]);
 	  break;
 
 	case DB_TYPE_BIGINT:
-	  bi[i] = DB_GET_BIGINT (dbval[i]);
+	  bi[i] = db_get_bigint (dbval[i]);
 	  break;
 
 	case DB_TYPE_SHORT:
-	  bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
+	  bi[i] = (DB_BIGINT) db_get_short (dbval[i]);
 	  break;
 
 	default:
@@ -9867,15 +9998,15 @@ qdata_bit_shift_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, OPERATOR_TYPE o
 	  break;
 
 	case DB_TYPE_INTEGER:
-	  bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
+	  bi[i] = (DB_BIGINT) db_get_int (dbval[i]);
 	  break;
 
 	case DB_TYPE_BIGINT:
-	  bi[i] = DB_GET_BIGINT (dbval[i]);
+	  bi[i] = db_get_bigint (dbval[i]);
 	  break;
 
 	case DB_TYPE_SHORT:
-	  bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
+	  bi[i] = (DB_BIGINT) db_get_short (dbval[i]);
 	  break;
 
 	default:
@@ -9944,15 +10075,15 @@ qdata_divmod_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, OPERATOR_TYPE op, 
 	  break;
 
 	case DB_TYPE_INTEGER:
-	  bi[i] = (DB_BIGINT) DB_GET_INTEGER (dbval[i]);
+	  bi[i] = (DB_BIGINT) db_get_int (dbval[i]);
 	  break;
 
 	case DB_TYPE_BIGINT:
-	  bi[i] = DB_GET_BIGINT (dbval[i]);
+	  bi[i] = db_get_bigint (dbval[i]);
 	  break;
 
 	case DB_TYPE_SHORT:
-	  bi[i] = (DB_BIGINT) DB_GET_SHORT (dbval[i]);
+	  bi[i] = (DB_BIGINT) db_get_short (dbval[i]);
 	  break;
 
 	default:
@@ -10130,7 +10261,7 @@ qdata_group_concat_first_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p,
   int max_allowed_size;
   DB_VALUE tmp_val;
 
-  DB_MAKE_NULL (&tmp_val);
+  db_make_null (&tmp_val);
 
   agg_type = DB_VALUE_DOMAIN_TYPE (agg_p->accumulator.value);
   /* init the aggregate value domain */
@@ -10140,9 +10271,9 @@ qdata_group_concat_first_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p,
       return ER_FAILED;
     }
 
-  if (db_string_make_empty_typed_string (thread_p, agg_p->accumulator.value, agg_type, DB_DEFAULT_PRECISION,
-					 TP_DOMAIN_CODESET (agg_p->domain),
-					 TP_DOMAIN_COLLATION (agg_p->domain)) != NO_ERROR)
+  if (db_string_make_empty_typed_string (agg_p->accumulator.value, agg_type, DB_DEFAULT_PRECISION,
+					 TP_DOMAIN_CODESET (agg_p->domain), TP_DOMAIN_COLLATION (agg_p->domain))
+      != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -10191,7 +10322,7 @@ qdata_group_concat_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, DB_VA
   int max_allowed_size;
   DB_VALUE tmp_val;
 
-  DB_MAKE_NULL (&tmp_val);
+  db_make_null (&tmp_val);
 
   agg_type = DB_VALUE_DOMAIN_TYPE (agg_p->accumulator.value);
 
@@ -10201,7 +10332,7 @@ qdata_group_concat_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, DB_VA
 
   if (DB_IS_NULL (agg_p->accumulator.value2) && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true)
     {
-      if (db_string_make_empty_typed_string (thread_p, agg_p->accumulator.value2, agg_type, DB_DEFAULT_PRECISION,
+      if (db_string_make_empty_typed_string (agg_p->accumulator.value2, agg_type, DB_DEFAULT_PRECISION,
 					     TP_DOMAIN_CODESET (agg_p->domain),
 					     TP_DOMAIN_COLLATION (agg_p->domain)) != NO_ERROR)
 	{
@@ -10312,11 +10443,8 @@ qdata_insert_substring_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * functi
 {
   DB_VALUE *args[NUM_F_INSERT_SUBSTRING_ARGS];
   REGU_VARIABLE *regu_array[NUM_F_INSERT_SUBSTRING_ARGS];
-  DB_VALUE *result_p = function_p->value;
-  REGU_VARIABLE_LIST operand = function_p->operand;
   int i, error_status = NO_ERROR;
   int num_regu = 0;
-
 
   /* initialize the argument array */
   for (i = 0; i < NUM_F_INSERT_SUBSTRING_ARGS; i++)
@@ -10393,16 +10521,16 @@ qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_
   switch (index_type)
     {
     case DB_TYPE_SMALLINT:
-      idx = DB_GET_SMALLINT (index);
+      idx = db_get_short (index);
       break;
     case DB_TYPE_INTEGER:
-      idx = DB_GET_INTEGER (index);
+      idx = db_get_int (index);
       break;
     case DB_TYPE_BIGINT:
-      idx = DB_GET_BIGINT (index);
+      idx = db_get_bigint (index);
       break;
     case DB_TYPE_NULL:
-      DB_MAKE_NULL (function_p->value);
+      db_make_null (function_p->value);
       goto fast_exit;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
@@ -10413,7 +10541,7 @@ qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_
   if (idx <= 0)
     {
       /* index is 0 or is negative */
-      DB_MAKE_NULL (function_p->value);
+      db_make_null (function_p->value);
       goto fast_exit;
     }
 
@@ -10429,7 +10557,7 @@ qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_
   if (operand == NULL)
     {
       /* index greater than number of arguments */
-      DB_MAKE_NULL (function_p->value);
+      db_make_null (function_p->value);
       goto fast_exit;
     }
 
@@ -10443,13 +10571,139 @@ qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_
    * operand should already be cast to the right type (CHAR
    * or NCHAR VARYING)
    */
-  error_status = db_value_clone (operand_value, function_p->value);
+  error_status = pr_clone_value (operand_value, function_p->value);
 
 fast_exit:
   return error_status;
 
 error_exit:
   return error_status;
+}
+
+static int
+qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
+					  OID * obj_oid_p, QFILE_TUPLE tuple,
+					  int (*function_to_call) (DB_VALUE *, DB_VALUE **, int const))
+{
+  DB_VALUE *value;
+  REGU_VARIABLE_LIST operand;
+  int error_status = NO_ERROR;
+  int no_args = 0, index = 0;
+  DB_VALUE **args;
+
+  /* should sync with fetch_peek_dbval () */
+
+  assert (function_p != NULL);
+  assert (function_p->value != NULL);
+  assert (function_p->operand != NULL);
+
+  operand = function_p->operand;
+
+  while (operand != NULL)
+    {
+      no_args++;
+      operand = operand->next;
+    }
+
+  args = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * no_args);
+
+  operand = function_p->operand;
+  while (operand != NULL)
+    {
+      error_status = fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &value);
+      if (error_status != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      args[index++] = value;
+
+      operand = operand->next;
+    }
+
+  assert (index == no_args);
+
+  error_status = function_to_call (function_p->value, args, no_args);
+  if (error_status != NO_ERROR)
+    {
+      goto exit;
+    }
+
+exit:
+  db_private_free (thread_p, args);
+  return error_status;
+}
+
+static int
+qdata_json_object (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		   QFILE_TUPLE tuple)
+{
+  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_object);
+}
+
+static int
+qdata_json_array (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		  QFILE_TUPLE tuple)
+{
+  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_array);
+}
+
+static int
+qdata_json_insert (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		   QFILE_TUPLE tuple)
+{
+  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_insert);
+}
+
+static int
+qdata_json_replace (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		    QFILE_TUPLE tuple)
+{
+  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_replace);
+}
+
+static int
+qdata_json_set (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		QFILE_TUPLE tuple)
+{
+  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_set);
+}
+
+static int
+qdata_json_keys (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		 QFILE_TUPLE tuple)
+{
+  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_keys);
+}
+
+static int
+qdata_json_remove (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		   QFILE_TUPLE tuple)
+{
+  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_remove);
+}
+
+static int
+qdata_json_array_append (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+			 QFILE_TUPLE tuple)
+{
+  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
+						   obj_oid_p, tuple, db_json_array_append);
+}
+
+static int
+qdata_json_get_all_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+			  QFILE_TUPLE tuple)
+{
+  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
+						   obj_oid_p, tuple, db_json_get_all_paths);
+}
+
+static int
+qdata_json_merge (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		  QFILE_TUPLE tuple)
+{
+  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_merge);
 }
 
 /*
@@ -10478,7 +10732,7 @@ qdata_get_cardinality (THREAD_ENTRY * thread_p, DB_VALUE * db_class_name, DB_VAL
   int str_class_name_len;
   int str_index_name_len;
 
-  DB_MAKE_NULL (result_p);
+  db_make_null (result_p);
 
   cl_name_arg_type = DB_VALUE_DOMAIN_TYPE (db_class_name);
   idx_name_arg_type = DB_VALUE_DOMAIN_TYPE (db_index_name);
@@ -10496,26 +10750,26 @@ qdata_get_cardinality (THREAD_ENTRY * thread_p, DB_VALUE * db_class_name, DB_VAL
       goto exit;
     }
 
-  str_class_name_len = MIN (SM_MAX_IDENTIFIER_LENGTH - 1, DB_GET_STRING_SIZE (db_class_name));
-  strncpy (class_name, DB_PULL_STRING (db_class_name), str_class_name_len);
+  str_class_name_len = MIN (SM_MAX_IDENTIFIER_LENGTH - 1, db_get_string_size (db_class_name));
+  strncpy (class_name, db_get_string (db_class_name), str_class_name_len);
   class_name[str_class_name_len] = '\0';
 
-  str_index_name_len = MIN (SM_MAX_IDENTIFIER_LENGTH - 1, DB_GET_STRING_SIZE (db_index_name));
-  strncpy (index_name, DB_PULL_STRING (db_index_name), str_index_name_len);
+  str_index_name_len = MIN (SM_MAX_IDENTIFIER_LENGTH - 1, db_get_string_size (db_index_name));
+  strncpy (index_name, db_get_string (db_index_name), str_index_name_len);
   index_name[str_index_name_len] = '\0';
 
-  key_pos = DB_GET_INT (db_key_position);
+  key_pos = db_get_int (db_key_position);
 
   error = catalog_get_cardinality_by_name (thread_p, class_name, index_name, key_pos, &cardinality);
   if (error == NO_ERROR)
     {
       if (cardinality < 0)
 	{
-	  DB_MAKE_NULL (result_p);
+	  db_make_null (result_p);
 	}
       else
 	{
-	  DB_MAKE_INT (result_p, cardinality);
+	  db_make_int (result_p, cardinality);
 	}
     }
 
@@ -10543,10 +10797,10 @@ qdata_initialize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
   if (func_p->function == PT_COUNT_STAR || func_p->function == PT_COUNT || func_p->function == PT_ROW_NUMBER
       || func_p->function == PT_RANK || func_p->function == PT_DENSE_RANK)
     {
-      DB_MAKE_INT (func_p->value, 0);
+      db_make_int (func_p->value, 0);
     }
 
-  DB_MAKE_NULL (&func_p->part_value);
+  db_make_null (&func_p->part_value);
 
   /* create temporary list file to handle distincts */
   if (func_p->option == Q_DISTINCT)
@@ -10609,8 +10863,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
   ANALYTIC_PERCENTILE_FUNCTION_INFO *percentile_info_p = NULL;
   DB_VALUE *peek_value_p = NULL;
 
-  DB_MAKE_NULL (&dbval);
-  DB_MAKE_NULL (&sqr_val);
+  db_make_null (&dbval);
+  db_make_null (&sqr_val);
 
   /* fetch operand value, analytic regulator variable should only contain constants */
   if (fetch_copy_dbval (thread_p, &func_p->operand, val_desc_p, NULL, NULL, NULL, &dbval) != NO_ERROR)
@@ -10750,7 +11004,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 
     case PT_NTILE:
       /* output value is not required now */
-      DB_MAKE_NULL (func_p->value);
+      db_make_null (func_p->value);
 
       if (func_p->curr_cnt < 1)
 	{
@@ -10765,7 +11019,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 	      goto exit;
 	    }
 
-	  ntile_bucket = DB_GET_DOUBLE (&dbval);
+	  ntile_bucket = db_get_double (&dbval);
 
 	  /* boundary check */
 	  if (ntile_bucket < 1.0 || ntile_bucket > DB_INT32_MAX)
@@ -10856,7 +11110,8 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 	{
 	  TP_DOMAIN *result_domain;
 	  DB_TYPE type =
-	    ((func_p->function == PT_AVG) ? func_p->value->domain.general_info.type : TP_DOMAIN_TYPE (func_p->domain));
+	    (func_p->function ==
+	     PT_AVG) ? (DB_TYPE) func_p->value->domain.general_info.type : TP_DOMAIN_TYPE (func_p->domain);
 
 	  result_domain = ((type == DB_TYPE_NUMERIC) ? NULL : func_p->domain);
 	  if (qdata_add_dbval (func_p->value, &dbval, func_p->value, result_domain) != NO_ERROR)
@@ -10872,24 +11127,24 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
       break;
 
     case PT_ROW_NUMBER:
-      DB_MAKE_INT (func_p->out_value, func_p->curr_cnt + 1);
+      db_make_int (func_p->out_value, func_p->curr_cnt + 1);
       break;
 
     case PT_COUNT:
       if (func_p->curr_cnt < 1)
 	{
-	  DB_MAKE_INT (func_p->value, 1);
+	  db_make_int (func_p->value, 1);
 	}
       else
 	{
-	  DB_MAKE_INT (func_p->value, DB_GET_INT (func_p->value) + 1);
+	  db_make_int (func_p->value, db_get_int (func_p->value) + 1);
 	}
       break;
 
     case PT_RANK:
       if (func_p->curr_cnt < 1)
 	{
-	  DB_MAKE_INT (func_p->value, 1);
+	  db_make_int (func_p->value, 1);
 	}
       else
 	{
@@ -10899,7 +11154,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 	    }
 	  else
 	    {
-	      DB_MAKE_INT (func_p->value, func_p->curr_cnt + 1);
+	      db_make_int (func_p->value, func_p->curr_cnt + 1);
 	    }
 	}
       break;
@@ -10907,7 +11162,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
     case PT_DENSE_RANK:
       if (func_p->curr_cnt < 1)
 	{
-	  DB_MAKE_INT (func_p->value, 1);
+	  db_make_int (func_p->value, 1);
 	}
       else
 	{
@@ -10917,7 +11172,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 	    }
 	  else
 	    {
-	      DB_MAKE_INT (func_p->value, DB_GET_INT (func_p->value) + 1);
+	      db_make_int (func_p->value, db_get_int (func_p->value) + 1);
 	    }
 	}
       break;
@@ -11031,7 +11286,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 		  goto exit;
 		}
 
-	      percentile_info_p->cur_group_percentile = DB_GET_DOUBLE (peek_value_p);
+	      percentile_info_p->cur_group_percentile = db_get_double (peek_value_p);
 	      if ((percentile_info_p->cur_group_percentile < 0) || (percentile_info_p->cur_group_percentile > 1))
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PERCENTILE_FUNC_INVALID_PERCENTILE_RANGE, 1,
@@ -11194,7 +11449,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 	    }
 
 	  if ((peek_value_p == NULL) || (DB_VALUE_TYPE (peek_value_p) != DB_TYPE_DOUBLE)
-	      || (DB_GET_DOUBLE (peek_value_p) != func_p->info.percentile.cur_group_percentile))
+	      || (db_get_double (peek_value_p) != func_p->info.percentile.cur_group_percentile))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PERCENTILE_FUNC_PERCENTILE_CHANGED_IN_GROUP, 0);
 	      error = ER_PERCENTILE_FUNC_PERCENTILE_CHANGED_IN_GROUP;
@@ -11264,14 +11519,14 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, b
   TP_DOMAIN *tmp_domain_ptr = NULL;
   int err = NO_ERROR;
 
-  DB_MAKE_NULL (&sqr_val);
-  DB_MAKE_NULL (&dbval);
-  DB_MAKE_NULL (&xavgval);
-  DB_MAKE_NULL (&xavg_1val);
-  DB_MAKE_NULL (&x2avgval);
-  DB_MAKE_NULL (&xavg2val);
-  DB_MAKE_NULL (&varval);
-  DB_MAKE_NULL (&dval);
+  db_make_null (&sqr_val);
+  db_make_null (&dbval);
+  db_make_null (&xavgval);
+  db_make_null (&xavg_1val);
+  db_make_null (&x2avgval);
+  db_make_null (&xavg2val);
+  db_make_null (&varval);
+  db_make_null (&dval);
 
   if (func_p->function == PT_VARIANCE || func_p->function == PT_VAR_POP || func_p->function == PT_VAR_SAMP
       || func_p->function == PT_STDDEV || func_p->function == PT_STDDEV_POP || func_p->function == PT_STDDEV_SAMP)
@@ -11282,7 +11537,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, b
   /* set count-star aggregate values */
   if (func_p->function == PT_COUNT_STAR)
     {
-      DB_MAKE_INT (func_p->value, func_p->curr_cnt);
+      db_make_int (func_p->value, func_p->curr_cnt);
     }
 
   /* process list file for distinct */
@@ -11308,7 +11563,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, b
 
       if (func_p->function == PT_COUNT)
 	{
-	  DB_MAKE_INT (func_p->value, list_id_p->tuple_cnt);
+	  db_make_int (func_p->value, list_id_p->tuple_cnt);
 	}
       else
 	{
@@ -11324,7 +11579,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, b
 
 	  (void) pr_clear_value (func_p->value);
 
-	  DB_MAKE_NULL (func_p->value);
+	  db_make_null (func_p->value);
 
 	  /* median and percentile funcs don't need to read all rows */
 	  if (list_id_p->tuple_cnt > 0 && QPROC_IS_INTERPOLATION_FUNC (func_p))
@@ -11484,7 +11739,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, b
       double_domain_ptr = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
       /* compute AVG(X) = SUM(X)/COUNT(X) */
-      DB_MAKE_DOUBLE (&dbval, func_p->curr_cnt);
+      db_make_double (&dbval, func_p->curr_cnt);
       if (qdata_divide_dbval (func_p->value, &dbval, &xavgval, double_domain_ptr) != NO_ERROR)
 	{
 	  goto error;
@@ -11506,13 +11761,13 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, b
 	  /* compute SUM(X^2) / (n-1) */
 	  if (func_p->curr_cnt > 1)
 	    {
-	      DB_MAKE_DOUBLE (&dbval, func_p->curr_cnt - 1);
+	      db_make_double (&dbval, func_p->curr_cnt - 1);
 	    }
 	  else
 	    {
 	      /* when not enough samples, return NULL */
 	      (void) pr_clear_value (func_p->value);
-	      DB_MAKE_NULL (func_p->value);
+	      db_make_null (func_p->value);
 	      goto exit;
 	    }
 	}
@@ -11521,7 +11776,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, b
 	  assert (func_p->function == PT_STDDEV || func_p->function == PT_STDDEV_POP || func_p->function == PT_VARIANCE
 		  || func_p->function == PT_VAR_POP);
 	  /* compute SUM(X^2) / n */
-	  DB_MAKE_DOUBLE (&dbval, func_p->curr_cnt);
+	  db_make_double (&dbval, func_p->curr_cnt);
 	}
 
       if (qdata_divide_dbval (func_p->value2, &dbval, &x2avgval, double_domain_ptr) != NO_ERROR)
@@ -11563,14 +11818,14 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, b
 	      goto error;
 	    }
 
-	  dtmp = DB_GET_DOUBLE (&dval);
+	  dtmp = db_get_double (&dval);
 
 	  /* mathematically, dtmp should be zero or positive; however, due to some precision errors, in some cases it
 	   * can be a very small negative number of which we cannot extract the square root */
 	  dtmp = (dtmp < 0.0f ? 0.0f : dtmp);
 
 	  dtmp = sqrt (dtmp);
-	  DB_MAKE_DOUBLE (&dval, dtmp);
+	  db_make_double (&dval, dtmp);
 
 	  pr_clone_value (&dval, func_p->value);
 	}
@@ -11612,7 +11867,7 @@ qdata_tuple_to_values_array (THREAD_ENTRY * thread_p, QFILE_TUPLE_DESCRIPTOR * t
   assert_release (tuple != NULL);
   assert_release (values != NULL);
 
-  vals = db_private_alloc (thread_p, tuple->f_cnt * sizeof (DB_VALUE));
+  vals = (DB_VALUE *) db_private_alloc (thread_p, tuple->f_cnt * sizeof (DB_VALUE));
   if (vals == NULL)
     {
       error = ER_FAILED;
@@ -11680,34 +11935,34 @@ qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, TP_DOMAIN ** re
 	{
 	  if (type == DB_TYPE_SHORT)
 	    {
-	      d_result = (double) DB_GET_SHORT (f_value);
+	      d_result = (double) db_get_short (f_value);
 	    }
 	  else if (type == DB_TYPE_INTEGER)
 	    {
-	      d_result = (double) DB_GET_INT (f_value);
+	      d_result = (double) db_get_int (f_value);
 	    }
 	  else if (type == DB_TYPE_BIGINT)
 	    {
-	      d_result = (double) DB_GET_BIGINT (f_value);
+	      d_result = (double) db_get_bigint (f_value);
 	    }
 	  else if (type == DB_TYPE_FLOAT)
 	    {
-	      d_result = (double) DB_GET_FLOAT (f_value);
+	      d_result = (double) db_get_float (f_value);
 	    }
 	  else if (type == DB_TYPE_DOUBLE)
 	    {
-	      d_result = (double) DB_GET_DOUBLE (f_value);
+	      d_result = (double) db_get_double (f_value);
 	    }
 	  else if (type == DB_TYPE_MONETARY)
 	    {
-	      d_result = (DB_GET_MONETARY (f_value))->amount;
+	      d_result = (db_get_monetary (f_value))->amount;
 	    }
 	  else if (type == DB_TYPE_NUMERIC)
 	    {
 	      numeric_coerce_num_to_double (db_locate_numeric (f_value), DB_VALUE_SCALE (f_value), &d_result);
 	    }
 
-	  DB_MAKE_DOUBLE (result, d_result);
+	  db_make_double (result, d_result);
 	}
       else
 	{
@@ -11832,68 +12087,68 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
   switch (type)
     {
     case DB_TYPE_SHORT:
-      d1 = (double) DB_GET_SHORT (f_value);
-      d2 = (double) DB_GET_SHORT (c_value);
+      d1 = (double) db_get_short (f_value);
+      d2 = (double) db_get_short (c_value);
 
       /* calculate */
       d_result = (c_row_num_d - row_num_d) * d1 + (row_num_d - f_row_num_d) * d2;
 
-      DB_MAKE_DOUBLE (result, d_result);
+      db_make_double (result, d_result);
 
       break;
 
     case DB_TYPE_INTEGER:
-      d1 = (double) DB_GET_INT (f_value);
-      d2 = (double) DB_GET_INT (c_value);
+      d1 = (double) db_get_int (f_value);
+      d2 = (double) db_get_int (c_value);
 
       /* calculate */
       d_result = (c_row_num_d - row_num_d) * d1 + (row_num_d - f_row_num_d) * d2;
 
-      DB_MAKE_DOUBLE (result, d_result);
+      db_make_double (result, d_result);
 
       break;
 
     case DB_TYPE_BIGINT:
-      d1 = (double) DB_GET_BIGINT (f_value);
-      d2 = (double) DB_GET_BIGINT (c_value);
+      d1 = (double) db_get_bigint (f_value);
+      d2 = (double) db_get_bigint (c_value);
 
       /* calculate */
       d_result = (c_row_num_d - row_num_d) * d1 + (row_num_d - f_row_num_d) * d2;
 
-      DB_MAKE_DOUBLE (result, d_result);
+      db_make_double (result, d_result);
 
       break;
 
     case DB_TYPE_FLOAT:
-      d1 = (double) DB_GET_FLOAT (f_value);
-      d2 = (double) DB_GET_FLOAT (c_value);
+      d1 = (double) db_get_float (f_value);
+      d2 = (double) db_get_float (c_value);
 
       /* calculate */
       d_result = (c_row_num_d - row_num_d) * d1 + (row_num_d - f_row_num_d) * d2;
 
-      DB_MAKE_DOUBLE (result, d_result);
+      db_make_double (result, d_result);
 
       break;
 
     case DB_TYPE_DOUBLE:
-      d1 = DB_GET_DOUBLE (f_value);
-      d2 = DB_GET_DOUBLE (c_value);
+      d1 = db_get_double (f_value);
+      d2 = db_get_double (c_value);
 
       /* calculate */
       d_result = (c_row_num_d - row_num_d) * d1 + (row_num_d - f_row_num_d) * d2;
 
-      DB_MAKE_DOUBLE (result, d_result);
+      db_make_double (result, d_result);
 
       break;
 
     case DB_TYPE_MONETARY:
-      d1 = (DB_GET_MONETARY (f_value))->amount;
-      d2 = (DB_GET_MONETARY (c_value))->amount;
+      d1 = (db_get_monetary (f_value))->amount;
+      d2 = (db_get_monetary (c_value))->amount;
 
       /* calculate */
       d_result = (c_row_num_d - row_num_d) * d1 + (row_num_d - f_row_num_d) * d2;
 
-      DB_MAKE_DOUBLE (result, d_result);
+      db_make_double (result, d_result);
 
       break;
 
@@ -11904,13 +12159,13 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
       /* calculate */
       d_result = (c_row_num_d - row_num_d) * d1 + (row_num_d - f_row_num_d) * d2;
 
-      DB_MAKE_DOUBLE (result, d_result);
+      db_make_double (result, d_result);
 
       break;
 
     case DB_TYPE_DATE:
-      d1 = (double) *(DB_GET_DATE (f_value));
-      d2 = (double) *(DB_GET_DATE (c_value));
+      d1 = (double) *(db_get_date (f_value));
+      d2 = (double) *(db_get_date (c_value));
       d_result = (c_row_num_d - row_num_d) * d1 + (row_num_d - f_row_num_d) * d2;
 
       date = (DB_DATE) floor (d_result);
@@ -11924,22 +12179,22 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
     case DB_TYPE_DATETIMETZ:
       if (type == DB_TYPE_DATETIMETZ)
 	{
-	  datetime = DB_GET_DATETIMETZ (f_value)->datetime;
+	  datetime = db_get_datetimetz (f_value)->datetime;
 	}
       else
 	{
-	  datetime = *(DB_GET_DATETIME (f_value));
+	  datetime = *(db_get_datetime (f_value));
 	}
 
       d1 = ((double) datetime.date) * MILLISECONDS_OF_ONE_DAY + datetime.time;
 
       if (type == DB_TYPE_DATETIMETZ)
 	{
-	  datetime = DB_GET_DATETIMETZ (c_value)->datetime;
+	  datetime = db_get_datetimetz (c_value)->datetime;
 	}
       else
 	{
-	  datetime = *(DB_GET_DATETIME (c_value));
+	  datetime = *(db_get_datetime (c_value));
 	}
 
       d2 = ((double) datetime.date) * MILLISECONDS_OF_ONE_DAY + datetime.time;
@@ -11951,11 +12206,11 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
 
       if (type == DB_TYPE_DATETIME)
 	{
-	  DB_MAKE_DATETIME (result, &datetime);
+	  db_make_datetime (result, &datetime);
 	}
       else if (type == DB_TYPE_DATETIMELTZ)
 	{
-	  DB_MAKE_DATETIMELTZ (result, &datetime);
+	  db_make_datetimeltz (result, &datetime);
 	}
       else
 	{
@@ -11963,7 +12218,7 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
 
 	  /* if the two timezones are different, we use the first timezone */
 	  dttz1.datetime = datetime;
-	  dttz1.tz_id = DB_GET_DATETIMETZ (f_value)->tz_id;
+	  dttz1.tz_id = db_get_datetimetz (f_value)->tz_id;
 
 	  error = tz_datetimetz_fix_zone (&dttz1, &dttz2);
 	  if (error != NO_ERROR)
@@ -11972,7 +12227,7 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
 	      goto end;
 	    }
 
-	  DB_MAKE_DATETIMETZ (result, &dttz2);
+	  db_make_datetimetz (result, &dttz2);
 	}
 
       break;
@@ -11982,22 +12237,22 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
     case DB_TYPE_TIMESTAMPTZ:
       if (type == DB_TYPE_TIMESTAMPTZ)
 	{
-	  db_timestamp_decode_utc (&DB_GET_TIMESTAMPTZ (f_value)->timestamp, &date, &time);
+	  db_timestamp_decode_utc (&db_get_timestamptz (f_value)->timestamp, &date, &time);
 	}
       else
 	{
-	  db_timestamp_decode_utc (DB_GET_TIMESTAMP (f_value), &date, &time);
+	  db_timestamp_decode_utc (db_get_timestamp (f_value), &date, &time);
 	}
 
       d1 = ((double) date) * MILLISECONDS_OF_ONE_DAY + time * 1000;
 
       if (type == DB_TYPE_TIMESTAMPTZ)
 	{
-	  db_timestamp_decode_utc (&DB_GET_TIMESTAMPTZ (c_value)->timestamp, &date, &time);
+	  db_timestamp_decode_utc (&db_get_timestamptz (c_value)->timestamp, &date, &time);
 	}
       else
 	{
-	  db_timestamp_decode_utc (DB_GET_TIMESTAMP (c_value), &date, &time);
+	  db_timestamp_decode_utc (db_get_timestamp (c_value), &date, &time);
 	}
 
       d2 = ((double) date) * MILLISECONDS_OF_ONE_DAY + time * 1000;
@@ -12017,11 +12272,11 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
 
       if (type == DB_TYPE_TIMESTAMP)
 	{
-	  DB_MAKE_TIMESTAMP (result, utime);
+	  db_make_timestamp (result, utime);
 	}
       else if (type == DB_TYPE_TIMESTAMPLTZ)
 	{
-	  DB_MAKE_TIMESTAMPLTZ (result, utime);
+	  db_make_timestampltz (result, utime);
 	}
       else
 	{
@@ -12029,7 +12284,7 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
 
 	  /* if the two timezones are different, we use the first timezone */
 	  tstz1.timestamp = utime;
-	  tstz1.tz_id = DB_GET_TIMESTAMPTZ (f_value)->tz_id;
+	  tstz1.tz_id = db_get_timestamptz (f_value)->tz_id;
 
 	  error = tz_timestamptz_fix_zone (&tstz1, &tstz2);
 	  if (error != NO_ERROR)
@@ -12038,7 +12293,7 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
 	      goto end;
 	    }
 
-	  DB_MAKE_TIMESTAMPTZ (result, &tstz2);
+	  db_make_timestamptz (result, &tstz2);
 	}
 
       break;
@@ -12048,13 +12303,13 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
     case DB_TYPE_TIMETZ:
       if (type == DB_TYPE_TIMETZ)
 	{
-	  d1 = (double) (DB_GET_TIMETZ (f_value)->time);
-	  d2 = (double) (DB_GET_TIMETZ (c_value)->time);
+	  d1 = (double) (db_get_timetz (f_value)->time);
+	  d2 = (double) (db_get_timetz (c_value)->time);
 	}
       else
 	{
-	  d1 = (double) (*DB_GET_TIME (f_value));
-	  d2 = (double) (*DB_GET_TIME (c_value));
+	  d1 = (double) (*db_get_time (f_value));
+	  d2 = (double) (*db_get_time (c_value));
 	}
 
       d_result = floor ((c_row_num_d - row_num_d) * d1 + (row_num_d - f_row_num_d) * d2);
@@ -12067,7 +12322,7 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
 	}
       else if (type == DB_TYPE_TIMELTZ)
 	{
-	  DB_MAKE_TIMELTZ (result, &time);
+	  db_make_timeltz (result, &time);
 	}
       else
 	{
@@ -12075,7 +12330,7 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
 
 	  /* if the two timezones are different, we use the first timezone */
 	  ttz1.time = time;
-	  ttz1.tz_id = DB_GET_TIMETZ (f_value)->tz_id;
+	  ttz1.tz_id = db_get_timetz (f_value)->tz_id;
 
 	  error = tz_timetz_fix_zone (&ttz1, &ttz2);
 	  if (error != NO_ERROR)
@@ -12084,7 +12339,7 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
 	      goto end;
 	    }
 
-	  DB_MAKE_TIMETZ (result, &ttz2);
+	  db_make_timetz (result, &ttz2);
 	}
 
       break;
@@ -12126,8 +12381,8 @@ qdata_get_interpolation_function_result (THREAD_ENTRY * thread_p, QFILE_LIST_SCA
 
   assert (scan_id != NULL && domain != NULL && result != NULL && result_dom != NULL);
 
-  DB_MAKE_NULL (&f_fetch_value);
-  DB_MAKE_NULL (&c_fetch_value);
+  db_make_null (&f_fetch_value);
+  db_make_null (&c_fetch_value);
 
   /* overflow check */
   if (OR_CHECK_BIGINT_OVERFLOW (f_row_num_d))
@@ -12801,6 +13056,7 @@ void
 qdata_load_agg_hvalue_in_agg_list (AGGREGATE_HASH_VALUE * value, AGGREGATE_TYPE * agg_list, bool copy_vals)
 {
   int i = 0;
+  DB_TYPE db_type;
 
   if (value == NULL)
     {
@@ -12839,13 +13095,28 @@ qdata_load_agg_hvalue_in_agg_list (AGGREGATE_HASH_VALUE * value, AGGREGATE_TYPE 
 	      /* set tuple count */
 	      agg_list->accumulator.curr_cnt = value->accumulators[i].curr_cnt;
 
-	      /* shallow copy dbval */
+	      /*
+	       * shallow, fast copy dbval. This may be unsafe. Internally, value->accumulators[i].value and
+	       * agg_list->accumulator.value values keeps the same pointer to a buffer. If a value is cleared, the other
+	       * value refer a invalid memory. Probably a safety way would be to use clone.
+	       */
 	      *(agg_list->accumulator.value) = *(value->accumulators[i].value);
 	      *(agg_list->accumulator.value2) = *(value->accumulators[i].value2);
 
-	      /* mark as container */
+	      /* reset accumulator values. */
 	      value->accumulators[i].value->need_clear = false;
+	      db_type = DB_VALUE_DOMAIN_TYPE (value->accumulators[i].value);
+	      if (db_type == DB_TYPE_VARCHAR || db_type == DB_TYPE_VARNCHAR)
+		{
+		  value->accumulators[i].value->data.ch.info.compressed_need_clear = false;
+		}
+
 	      value->accumulators[i].value2->need_clear = false;
+	      db_type = DB_VALUE_DOMAIN_TYPE (value->accumulators[i].value2);
+	      if (db_type == DB_TYPE_VARCHAR || db_type == DB_TYPE_VARNCHAR)
+		{
+		  value->accumulators[i].value2->data.ch.info.compressed_need_clear = false;
+		}
 	    }
 	}
 
@@ -12886,7 +13157,7 @@ qdata_save_agg_hentry_to_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_KEY * key
       list_id->tpl_descr.f_valp[col++] = value->accumulators[i].value;
       list_id->tpl_descr.f_valp[col++] = value->accumulators[i].value2;
 
-      DB_MAKE_INT (&temp_dbval_array[i], value->accumulators[i].curr_cnt);
+      db_make_int (&temp_dbval_array[i], value->accumulators[i].curr_cnt);
       list_id->tpl_descr.f_valp[col++] = &temp_dbval_array[i];
 
       tuple_size += qdata_get_tuple_value_size_from_dbval (value->accumulators[i].value);
@@ -12894,7 +13165,7 @@ qdata_save_agg_hentry_to_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_KEY * key
       tuple_size += qdata_get_tuple_value_size_from_dbval (&temp_dbval_array[i]);
     }
 
-  DB_MAKE_INT (&tuple_count, value->tuple_count);
+  db_make_int (&tuple_count, value->tuple_count);
   list_id->tpl_descr.f_valp[col++] = &tuple_count;
   tuple_size += qdata_get_tuple_value_size_from_dbval (&tuple_count);
 
@@ -12928,7 +13199,7 @@ qdata_load_agg_hentry_from_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE tuple, AG
   int i, rc;
 
   /* initialize buffer */
-  DB_MAKE_INT (&int_val, 0);
+  db_make_int (&int_val, 0);
   OR_BUF_INIT (iterator, tuple, QFILE_GET_TUPLE_LENGTH (tuple));
   rc = or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);
   if (rc != NO_ERROR)
@@ -12952,7 +13223,7 @@ qdata_load_agg_hentry_from_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE tuple, AG
 	}
       else
 	{
-	  DB_MAKE_NULL (key->values[i]);
+	  db_make_null (key->values[i]);
 	}
     }
 
@@ -12974,7 +13245,7 @@ qdata_load_agg_hentry_from_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE tuple, AG
 	}
       else
 	{
-	  DB_MAKE_NULL (value->accumulators[i].value);
+	  db_make_null (value->accumulators[i].value);
 	}
 
       /* read value2 */
@@ -12992,7 +13263,7 @@ qdata_load_agg_hentry_from_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE tuple, AG
 	}
       else
 	{
-	  DB_MAKE_NULL (value->accumulators[i].value2);
+	  db_make_null (value->accumulators[i].value2);
 	}
 
       /* read tuple count */

@@ -922,7 +922,7 @@ $ LOADDB
 853 Pour un objet(%1$d|%2$d|%3$d), tran(%4$d) d'une lecture pas enregistrée a détenu un verrou de faute(%5$s).
 854 ATTENTION: Titulaire de verrou manquant, mais il y a des attendeurs du verrou. Reportez-vous à %1$s.
 855 ATTENTION: Deux ou plusieurs fils d'exécution sont en attente de verrouillage pour une transaction(%1$d).
-856 ATTENTION: Etrange lockwait état(%1$d|%2$d), fil d'exécution(%3$d|%4$d) et transaction(%5$d).
+856 ATTENTION: Etrange lockwait état(%1$d|%2$d), fil d'exécution(%3$d|%4$lld) et transaction(%5$d).
 857 Une erreur d'E/S s'est produite lors de tronquer la page %1$d de volume "%2$s".
 858 Volume "%1$s" est inconnu au redémarrage du serveur.
 859 LATCH ON PAGE(%1$d|%2$d) ANNULÉ
@@ -1044,7 +1044,7 @@ $ LOADDB
 975 La version actuelle de la réplication ne permet pas de modifier plusieurs lignes avec une seule instruction UPDATE qui peuvent violer la contrainte UNIQUE.
 976 Erreur interne: dépassement de la taille du tableau (taille allouée: %1$d, taille consultée: %2$d) à la page de fichier de table de %3$d|%4$d(volume "%5$s")
 977 Point de contrôle commencé (id de la page précédente du point de contrôle: %1$lld, id de la page REDO précédente: %2$lld).
-978 Checkpoint finished (checkpoint page id: %1$lld, checkpoint redo page id: %2$lld, flushed page count: %3$d).
+978 Point de contrôle terminé (id de la page de point de contrôle: %1$lld, id de la page REDO du point de contrôle: %2$lld, nombre de pages écrit: %3$d).
 979 Boucle CONNECT BY dans les données d'utilisateur.
 980 Fil d'exécution est en attente en %1$s depuis plus de %2$d msec.
 981 Transaction %1$d a atteint le seuil des statistiques de surveillance %2$s.
@@ -1089,18 +1089,18 @@ $ LOADDB
 1020 Fichier externe "%1$s" n'a pas été trouvé.
 1021 Un cycle d'interblocage est détecté. %1$s.
 1022 Valeur non valide "%1$d" pour la longueur du préfixe de l'index.
-1023 log applier filter: %1$s.
-1024 log writer: failed to get log page(s) starting from page id %1$lld.
-1025 HA delay info: The replication delay (%1$d secs) has exceeded the limit (%2$d secs).
-1026 HA delay info: The replication delay (%1$d secs) is decreased below the acceptable level (%2$d secs).
+1023 log applier filtre: %1$s.
+1024 log writer: échec d'obtenir les pages de journal à partir de la page ID %1$lld.
+1025 HA delay info: Le délai de réplication (%1$d secs) a dépassé la limite (%2$d secs).
+1026 HA delay info: Le délai de réplication (%1$d secs) est diminué en dessous du niveau acceptable (%2$d secs).
 1027 Applicateur du journal: pas réussi à changer l'état d'application '%1$s' à '%2$s'.
 1028 Applicateur du journal: enregistrement EOF inattendu dans le journal de transactions. LSA: %1$lld|%2$d.
 1029 Applicateur du journal: invalide la page du journal de réplication. page HDR: %1$1lld|%2$d, finale: %3$lld|%4$d, LSA annexé: %5$lld|%6$d, LSA EOF: %7$lld|%8$d, l'état des fichiers ha: %9$d, est en fin de journal (end-of-log): %10$d.
 1030 Applicateur du journal: enregistrement invalide de réplication. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 log applier: failed to apply the following statement. class: "%1$s", statement: "%2$s", server error: %3$d, %4$s.
-1032 log applier: failed to apply insert replication log. class: "%1$s", key: "%2$s", server error: %3$d, %4$s
-1033 log applier: failed to apply update replication log. class: "%1$s", key: "%2$s", server error: %3$d, %4$s
-1034 log applier: failed to apply delete replication log. class: "%1$s", key: "%2$s", server error: %3$d, %4$s
+1031 log applier: n'a pas réussi à appliquer la déclaration suivante. classe: "%1$s", déclaration: "%2$s", erreur du serveur: %3$d, %4$s.
+1032 log applier: Défaut d'appliquer le journal de réplication INSERT. classe: "%1$s", clé: "%2$s", erreur du serveur: %3$d, %4$s
+1033 log applier: Défaut d'appliquer le journal de réplication UPDATE. classe: "%1$s", clé: "%2$s", erreur du serveur: %3$d, %4$s
+1034 log applier: Défaut d'appliquer le journal de réplication DELETE. classe: "%1$s", clé: "%2$s", erreur du serveur: %3$d, %4$s
 1035 Applicateur du journal: taille de la mémoire(%1$d Mo) d'applicateur de journal est supérieure à la taille maximale de la mémoire (%2$d Mo) ou a été augmenter de plus de 2 fois (%3$d Mo). LSA nécessaire: %4$lld|%5$d. Dernière LSA enregistré: %6$lld|%7$d.
 1036 Applicateur du journal: applicateur du journal s'est arrêté par un signal.
 1037 Écrivain du journal: écrivain du journal s'est arrêté par un signal.
@@ -1198,7 +1198,7 @@ $ LOADDB
 1129 Reprise du journal est finie.
 1130 Transaction est abandonnée parce que nombre de verrous de la transaction dépasse %1$d.
 1131 Erreur interne: La page %1$d du volume "%2$s" peut être corrompue.\n%3$s
-1132 Encryption library failure: %1$s
+1132 Echec de la bibliothèque de cryptage: %1$s
 1133 Copylogdb pour %1$s existe déjà.
 1134 Applylogdb pour %1$s existe déjà.
 1135 Un lien précédent de l'arbre B+(%1$s) est corrompu: vpid = (%2$d, %3$d)
@@ -1260,9 +1260,30 @@ $ LOADDB
 1191 Exécution de nettoyage autonome est terminé.
 1192 La précision de la valeur de %1$zu dépasse le maximum autorisé %2$d.
 1193 La dimension de l'expression de partition traité dépasse le maximum autorisé(%1$d).
-1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
-1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
-1196 Dernière erreur
+1194 Impossible de vérifier le fichier %1$d|%2$d car le verrou sur la classe %3$d|%4$d|%5$d n'est pas immédiatement accordé.
+1195 La partie récursive d'un CTE ne doit pas contenir de fonctions agrégées sans clause GROUP BY.
+1196 Récursions maximales %1$d atteint l'exécution de CTE.
+1197 Invalid json: %1$s (%2$d)
+1198 A json object must be provided
+1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
+1200 Invalid JSON path
+1201 Json object name cannot be NULL.
+1202 Json PATH "%1$s" does not exist in %2$s
+1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
+1204 Json KEY "%1$s" is duplicate
+1205 Reserved error for JSON.
+1206 Reserved error for JSON.
+1207 Reserved error for JSON.
+1208 Reserved error for JSON.
+1209 Reserved error for JSON.
+1210 Reserved error for JSON.
+1211 Reserved error for JSON.
+1212 Reserved error for JSON.
+1213 Reserved error for JSON.
+1214 Reserved error for JSON.
+
+1215 Dernière erreur
+
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
 2 Aucun message d'erreur disponible.
@@ -1713,6 +1734,12 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 Usage non valide de fonctions d'agrégation.
 293 La valeur doit être strictement croissante pour chaque partition.
 294 Impossible d'utiliser des index de fonction ou de filtre pour les colonnes avec local timezone type.
+295 SELECT INTO n'est pas autorisé dans les sous-requêtes.
+296 Le nom du CTE est ambigu, il y a plus d'un CTE avec le même nom: '%1$s'.
+297 Les clauses imbriquée WITH ne sont pas prises en charge.
+298 Le CTE récursif '%1$s' doit être référencé directement dans sa requête récursive.
+299 Erreur dans CTE '%1$s': la partie non récursive et la partie récursive doivent être connectées avec UNION ALL.
+300 La sous-requête n'est pas autorisée dans la clause DEFAULT.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Mémoire virtuelle épuisée: impossible d'allouer %1$d octets.
@@ -1793,8 +1820,8 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 77 Seulement le propriétaire ou DBA peut modifier la définition de la série cible.
 78 Il est interdit aux utilisateurs de modifier l'objet serialisé créée par une contrainte d'incrémentation automatique.
 79 Niveau d'isolement invalid: schéma %1$s, %2$s instances.
-80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
-81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
+80 La valeur de niveau d'isolement dans MVCC doit être 'read committed', 'repeatable read' ou 'serializable'.
+81 '%1$s' est un objet 'auto_increment', qui n'est pas autorisé à être modifié comme 'serial'.
 
 
 $set 11 MSGCAT_SET_AUTHORIZATION

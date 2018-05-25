@@ -64,7 +64,7 @@ struct t_io_buffer
   char *data;
 };
 
-enum
+enum E_PROXY_EVENT
 {
   PROXY_EVENT_IO_READ = 0,
   PROXY_EVENT_IO_WRITE = 1,
@@ -74,7 +74,7 @@ enum
   PROXY_EVENT_CAS_CONN_ERROR = 5,
   PROXY_EVENT_CLIENT_WAKEUP_BY_SHARD = 6,
   PROXY_EVENT_CLIENT_WAKEUP_BY_STATEMENT = 7
-} E_PROXY_EVENT;
+};
 
 typedef struct t_proxy_event T_PROXY_EVENT;
 struct t_proxy_event
@@ -100,13 +100,13 @@ struct t_wait_context
   time_t expire_time;
 };
 
-enum
+enum T_SOCKET_IO_STATUS
 {
   SOCK_IO_IDLE = 0,
   SOCK_IO_REG_WAIT = 1,
   SOCK_IO_ESTABLISHED = 2,
   SOCK_IO_CLOSE_WAIT = 3
-} T_SOCKET_IO_STATUS;
+};
 
 typedef struct t_socket_io T_SOCKET_IO;
 struct t_socket_io
@@ -167,12 +167,12 @@ struct t_client_io_global
   T_CLIENT_IO *ent;
 };
 
-enum
+enum T_CAS_IO_STATUS
 {
   CAS_IO_NOT_CONNECTED = 0,
   CAS_IO_CONNECTED = 1,
   CAS_IO_CLOSE_WAIT = 2
-} T_CAS_IO_STATUS;
+};
 
 typedef struct t_cas_io T_CAS_IO;
 struct t_cas_io

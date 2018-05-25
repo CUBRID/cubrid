@@ -30,13 +30,13 @@
 #include "error_manager.h"
 #include "parser.h"
 
-typedef enum cnf_mode CNF_MODE;
 enum cnf_mode
 {
   TRANSFORM_CNF_OR_COMPACT = 0,
   TRANSFORM_CNF_OR_PRUNE = 1,	/* -- not used */
   TRANSFORM_CNF_AND_OR = 2
 };
+typedef enum cnf_mode CNF_MODE;
 
 typedef struct find_id_info FIND_ID_INFO;
 struct find_id_info

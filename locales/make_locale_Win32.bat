@@ -23,9 +23,6 @@ set BUILD_MODE=.
 set SELECTED_LOCALE=.
 set LOCALE_PARAM=
 
-set VS80_VC_FOLDER=
-set VS90_VC_FOLDER=
-set VS100_VC_FOLDER=
 set VCVARS=bin\vcvars32.bat
 
 :CHECK_OPTION
@@ -82,6 +79,10 @@ if NOT "%VS90COMNTOOLS%"=="" (
 if NOT "%VS100COMNTOOLS%"=="" (
 @echo. Found installation for Visual Studio 2010
 )
+if NOT "%VS140COMNTOOLS%"=="" (
+@echo. Found installation for Visual Studio 2017
+set VS2017_ARCH=-arch=x86
+)
 
 @echo. Checking for %BUILD_TARGET% configuration...
 
@@ -100,6 +101,24 @@ goto :BUILD
 if exist "%VS100COMNTOOLS%..\..\VC\%VCVARS%" (
 echo Found %BUILD_TARGET% configuration in Visual Studio 2010.
 call "%VS100COMNTOOLS%..\..\VC\%VCVARS%"
+goto :BUILD
+)
+
+if exist "%VS140COMNTOOLS%..\..\..\..\2017\Community\Common7\Tools\VsDevCmd.bat" (
+echo Found %BUILD_TARGET% configuration in Visual Studio 2017 Community.
+call "%VS140COMNTOOLS%..\..\..\..\2017\Community\Common7\Tools\VsDevCmd.bat" %VS2017_ARCH%
+goto :BUILD
+)
+
+if exist "%VS140COMNTOOLS%..\..\..\..\2017\Professional\Common7\Tools\VsDevCmd.bat" (
+echo Found %BUILD_TARGET% configuration in Visual Studio 2017 Professional.
+call "%VS140COMNTOOLS%..\..\..\..\2017\Professional\Common7\Tools\VsDevCmd.bat" %VS2017_ARCH%
+goto :BUILD
+)
+
+if exist "%VS140COMNTOOLS%..\..\..\..\2017\Enterprise\Common7\Tools\VsDevCmd.bat" (
+echo Found %BUILD_TARGET% configuration in Visual Studio 2017 Enterprise.
+call "%VS140COMNTOOLS%..\..\..\..\2017\Enterprise\Common7\Tools\VsDevCmd.bat" %VS2017_ARCH%
 goto :BUILD
 )
 

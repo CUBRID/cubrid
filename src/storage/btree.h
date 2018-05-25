@@ -27,10 +27,13 @@
 
 #ident "$Id$"
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include "config.h"
 
 #include "storage_common.h"
-#include "error_manager.h"
 #include "oid.h"
 #include "statistics.h"
 #include "disk_manager.h"
@@ -64,13 +67,6 @@
 #define BTREE_GOTO_LOCKING_DONE		   -7
 #define BTREE_RESTART_SCAN                 -8
 
-
-typedef enum
-{
-  BTREE_CONSTRAINT_UNIQUE = 0x01,
-  BTREE_CONSTRAINT_PRIMARY_KEY = 0x02
-} BTREE_CONSTRAINT_TYPE;
-
 enum
 { BTREE_COERCE_KEY_WITH_MIN_VALUE = 1, BTREE_COERCE_KEY_WITH_MAX_VALUE = 2 };
 
@@ -84,7 +80,7 @@ typedef enum
 
 #define BTREE_IS_PRIMARY_KEY(unique_pk) ((unique_pk) & BTREE_CONSTRAINT_PRIMARY_KEY)
 #define BTREE_IS_UNIQUE(unique_pk)  ((unique_pk) & BTREE_CONSTRAINT_UNIQUE)
-#define BTREE_IS_PART_KEY_DESC(btid_int) ((btid_int)->part_key_desc == true)
+#define BTREE_IS_PART_KEY_DESC(btid_int) ((btid_int)->part_key_desc != 0)
 
 
 #define BTREE_NORMAL_KEY 0
@@ -142,14 +138,15 @@ struct btree_keyrange
 
 /* Forward definition. */
 struct indx_scan_id;
+typedef struct indx_scan_id INDX_SCAN_ID;
 
-typedef enum bts_key_status BTS_KEY_STATUS;
 enum bts_key_status
 {
   BTS_KEY_IS_NOT_VERIFIED,
   BTS_KEY_IS_VERIFIED,
   BTS_KEY_IS_CONSUMED,
 };
+typedef enum bts_key_status BTS_KEY_STATUS;
 
 /* Btree range search scan structure */
 /* TODO: Move fields used to select visible objects only from BTREE_SCAN to
@@ -258,7 +255,7 @@ struct btree_scan
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
     (bts)->common_prefix = COMMON_PREFIX_UNKNOWN;	\
-    DB_MAKE_NULL (&(bts)->cur_key);			\
+    db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
     (bts)->is_btid_int_valid = false;			\
     (bts)->read_uncommitted = false;			\
@@ -305,7 +302,7 @@ struct btree_scan
     (bts)->restart_scan = 0;                    	\
     (bts)->common_prefix = COMMON_PREFIX_UNKNOWN;	\
     pr_clear_value (&(bts)->cur_key);			\
-    DB_MAKE_NULL (&(bts)->cur_key);			\
+    db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
     (bts)->is_scan_started = false;			\
   } while (0)
@@ -461,7 +458,6 @@ struct btree_node_scan
  * be added or removed, delete MVCCID can be added/removed or insert MVCCID
  * can be removed.
  */
-typedef enum btree_op_purpose BTREE_OP_PURPOSE;
 enum btree_op_purpose
 {
   BTREE_OP_NO_OP,		/* No op. */
@@ -491,6 +487,7 @@ enum btree_op_purpose
 
   BTREE_OP_NOTIFY_VACUUM	/* Notify vacuum of an object in need of cleanup. */
 };
+typedef enum btree_op_purpose BTREE_OP_PURPOSE;
 
 /* BTREE_MVCC_INFO -
  * Structure used to store b-tree specific MVCC information.
@@ -580,8 +577,8 @@ extern TP_DOMAIN *btree_read_key_type (THREAD_ENTRY * thread_p, BTID * btid);
 extern int btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid);
 extern void btree_dump (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid, int level);
 /* Recovery routines */
-extern int btree_rv_util_save_page_records (PAGE_PTR page_ptr, INT16 first_slotid, int rec_cnt, INT16 ins_slotid,
-					    char *data, int *length);
+extern int btree_rv_util_save_page_records (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, INT16 first_slotid, int rec_cnt,
+					    INT16 ins_slotid, char *data, int *length);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void btree_rv_util_dump_leafrec (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, RECDES * Rec);
 extern void btree_rv_util_dump_nleafrec (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, RECDES * Rec);
@@ -650,9 +647,9 @@ extern int xbtree_get_key_type (THREAD_ENTRY * thread_p, BTID btid, TP_DOMAIN **
 
 extern int btree_leaf_get_first_object (BTID_INT * btid, RECDES * recp, OID * oidp, OID * class_oid,
 					BTREE_MVCC_INFO * mvcc_info);
-extern void btree_leaf_change_first_object (RECDES * recp, BTID_INT * btid, OID * oidp, OID * class_oidp,
-					    BTREE_MVCC_INFO * mvcc_info, int *key_offset, char **rv_undo_data_ptr,
-					    char **rv_redo_data_ptr);
+extern void btree_leaf_change_first_object (THREAD_ENTRY * thread_p, RECDES * recp, BTID_INT * btid, OID * oidp,
+					    OID * class_oidp, BTREE_MVCC_INFO * mvcc_info, int *key_offset,
+					    char **rv_undo_data_ptr, char **rv_redo_data_ptr);
 extern int btree_insert (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * cls_oid, OID * oid, int op_type,
 			 BTREE_UNIQUE_STATS * unique_stat_info, int *unique, MVCC_REC_HEADER * p_mvcc_rec_header);
 extern int btree_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid,
@@ -680,6 +677,9 @@ extern void btree_rv_read_keybuf_two_objects (THREAD_ENTRY * thread_p, char *dat
 					      OR_BUF * key_buf);
 extern int btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * recp, BTREE_NODE_TYPE node_type,
 				     DB_VALUE * key);
+extern int btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OID * oid, DB_VALUE * keyval,
+				    int n_attrs, OID * pk_cls_oid, BTID * pk_btid, const char *fk_name);
+
 extern void btree_get_root_vpid_from_btid (THREAD_ENTRY * thread_p, BTID * btid, VPID * root_vpid);
 extern int btree_get_btid_from_file (THREAD_ENTRY * thread_p, const VFID * vfid, BTID * btid_out);
 
@@ -705,4 +705,23 @@ extern unsigned int btree_hash_btid (void *btid, int hash_size);
 
 extern int btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, BTID * btid);
 extern int btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
+
+extern int btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, VPID * pg_vpid,
+			     INT16 * slot_id, PAGE_PTR * leaf_page_out, bool * found_p);
+extern int btree_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
+						    int offset_after_key, LEAF_REC * leaf_info, int *max_visible_oids,
+						    MVCC_SNAPSHOT * mvcc_snapshot, int *num_visible);
+
+extern int btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key,
+			       BTREE_NODE_TYPE node_type, int key_type, int key_len, bool during_loading,
+			       OID * class_oid, OID * oid, BTREE_MVCC_INFO * mvcc_info, RECDES * rec);
+extern int btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, RECDES * Rec, DB_VALUE * key,
+			      void *rec_header, BTREE_NODE_TYPE node_type, bool * clear_key, int *offset, int copy,
+			      BTREE_SCAN * bts);
+extern DB_VALUE_COMPARE_RESULT btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain,
+						  int do_coercion, int total_order, int *start_colp);
+extern PERF_PAGE_TYPE btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
+
+extern void btree_dump_key (THREAD_ENTRY * thread_p, FILE * fp, DB_VALUE * key);
+
 #endif /* _BTREE_H_ */

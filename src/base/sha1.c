@@ -146,9 +146,9 @@ SHA1Result (SHA1Context * context)
  *
  */
 void
-SHA1Input (SHA1Context * context, const unsigned char *message_array, unsigned length)
+SHA1Input (SHA1Context * context, const unsigned char *message_array, size_t length)
 {
-  if (!length)
+  if (length == 0)
     {
       return;
     }
@@ -159,7 +159,7 @@ SHA1Input (SHA1Context * context, const unsigned char *message_array, unsigned l
       return;
     }
 
-  while (length-- && !context->Corrupted)
+  while (length-- > 0 && !context->Corrupted)
     {
       context->Message_Block[context->Message_Block_Index++] = (*message_array & 0xFF);
 
@@ -369,7 +369,7 @@ SHA1PadMessage (SHA1Context * context)
 }
 
 int
-SHA1Compute (const unsigned char *message_array, unsigned length, SHA1Hash * hash)
+SHA1Compute (const unsigned char *message_array, size_t length, SHA1Hash * hash)
 {
   SHA1Context context;
 
@@ -382,7 +382,7 @@ SHA1Compute (const unsigned char *message_array, unsigned length, SHA1Hash * has
   if (!SHA1Result (&context))
     {
       assert (false);
-      /* TODO: Set an appropiate error message. */
+      /* TODO: Set an appropriate error message. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
     }

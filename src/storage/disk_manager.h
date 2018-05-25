@@ -44,71 +44,6 @@
 #define VSID_COPY(dest, src) *((VSID *) dest) = *((VSID *) src)
 #define VSID_EQ(first, second) ((first)->volid == (second)->volid && (first)->sectid == (second)->sectid)
 
-#define OR_VOL_SPACE_INFO_SIZE      (OR_INT_SIZE * 9)
-
-/* todo: fix me */
-#define OR_PACK_VOL_SPACE_INFO(PTR, INFO) \
-  do \
-    { \
-      if ((VOL_SPACE_INFO *) (INFO) != NULL) \
-	{ \
-	  PTR = or_pack_int (PTR, ((INFO)->total_pages)); \
-	  PTR = or_pack_int (PTR, ((INFO)->free_pages)); \
-	  PTR = or_pack_int (PTR, ((INFO)->max_pages)); \
-	  PTR = or_pack_int (PTR, ((INFO)->used_data_npages)); \
-	  PTR = or_pack_int (PTR, ((INFO)->used_index_npages)); \
-	  PTR = or_pack_int (PTR, ((INFO)->used_temp_npages)); \
-	  PTR = or_pack_int (PTR, ((INFO)->n_max_sects)); \
-	  PTR = or_pack_int (PTR, ((INFO)->n_total_sects)); \
-	  PTR = or_pack_int (PTR, ((INFO)->n_free_sects)); \
-	} \
-      else \
-	{ \
-	  PTR = or_pack_int (PTR, -1); \
-	  PTR = or_pack_int (PTR, -1); \
-	  PTR = or_pack_int (PTR, -1); \
-	  PTR = or_pack_int (PTR, -1); \
-	  PTR = or_pack_int (PTR, -1); \
-	  PTR = or_pack_int (PTR, -1); \
-	  PTR = or_pack_int (PTR, -1); \
-	  PTR = or_pack_int (PTR, -1); \
-	  PTR = or_pack_int (PTR, -1); \
-	} \
-    } \
-  while (0)
-
-/* todo: fix me */
-#define OR_UNPACK_VOL_SPACE_INFO(PTR, INFO) \
-  do \
-    { \
-      if ((VOL_SPACE_INFO *) (INFO) != NULL) \
-	{ \
-	  PTR = or_unpack_int (PTR, &((INFO)->total_pages)); \
-	  PTR = or_unpack_int (PTR, &((INFO)->free_pages)); \
-	  PTR = or_unpack_int (PTR, &((INFO)->max_pages)); \
-	  PTR = or_unpack_int (PTR, &((INFO)->used_data_npages)); \
-	  PTR = or_unpack_int (PTR, &((INFO)->used_index_npages)); \
-	  PTR = or_unpack_int (PTR, &((INFO)->used_temp_npages)); \
-	  PTR = or_unpack_int (PTR, &((INFO)->n_max_sects)); \
-	  PTR = or_unpack_int (PTR, &((INFO)->n_total_sects)); \
-	  PTR = or_unpack_int (PTR, &((INFO)->n_free_sects)); \
-	} \
-      else \
-	{ \
-	  int dummy; \
-	  PTR = or_unpack_int (PTR, &dummy); \
-	  PTR = or_unpack_int (PTR, &dummy); \
-	  PTR = or_unpack_int (PTR, &dummy); \
-	  PTR = or_unpack_int (PTR, &dummy); \
-	  PTR = or_unpack_int (PTR, &dummy); \
-	  PTR = or_unpack_int (PTR, &dummy); \
-	  PTR = or_pack_int (PTR, -1); \
-	  PTR = or_pack_int (PTR, -1); \
-	  PTR = or_pack_int (PTR, -1); \
-	} \
-    } \
-  while (0)
-
 typedef enum
 {
   DISK_DONT_FLUSH,
@@ -123,28 +58,17 @@ typedef enum
   DISK_ERROR
 } DISK_ISVALID;
 
-typedef struct vol_space_info VOL_SPACE_INFO;
-struct vol_space_info
+typedef struct disk_volume_space_info DISK_VOLUME_SPACE_INFO;
+struct disk_volume_space_info
 {
-  INT32 max_pages;		/* max page count of volume this is not equal to the total_pages, if this volume is
-				 * auto extended */
-  INT32 total_pages;		/* Total number of pages (no more that 4G) If page size is 4K, this means about 16
-				 * trillion bytes on the volume. */
-  INT32 free_pages;		/* Number of free pages */
-  INT32 used_data_npages;	/* allocated pages for data purpose */
-  INT32 used_index_npages;	/* allocated pages for index purpose */
-  INT32 used_temp_npages;	/* allocated pages for temp purpose */
-
-  /* new vol space info */
   INT32 n_max_sects;
   INT32 n_total_sects;
   INT32 n_free_sects;
 };
+#define DISK_VOLUME_SPACE_INFO_INITIALIZER { 0, 0, 0 }
 
-#define VOL_SPACE_INFO_INITIALIZER { 0, 0, 0, 0, 0, 0, 0, 0, 0 }
-
-#define DISK_SECTS_SIZE(nsects)  ((INT64) nsects * IO_SECTORSIZE)
-#define DISK_SECTS_NPAGES(nsects) (nsects * DISK_SECTOR_NPAGES)
+#define DISK_SECTS_SIZE(nsects)  ((INT64) (nsects) * IO_SECTORSIZE)
+#define DISK_SECTS_NPAGES(nsects) ((nsects) * DISK_SECTOR_NPAGES)
 #define DISK_PAGES_TO_SECTS(npages) (CEIL_PTVDIV (npages, DISK_SECTOR_NPAGES))
 
 /* structure used to clone disk sector bitmaps to cross check against file tables */
@@ -186,8 +110,6 @@ extern DISK_ISVALID disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY 
 								   bool debug_crash);
 extern DISK_ISVALID disk_check_sectors_are_reserved (THREAD_ENTRY * thread_p, VSID * vsids, int nsects);
 
-
-
 extern INT16 xdisk_get_purpose_and_sys_lastpage (THREAD_ENTRY * thread_p, INT16 volid, DISK_VOLPURPOSE * vol_purpose,
 						 INT32 * sys_lastpage);
 extern int disk_get_checkpoint (THREAD_ENTRY * thread_p, INT16 volid, LOG_LSA * vol_lsa);
@@ -197,12 +119,15 @@ extern HFID *disk_get_boot_hfid (THREAD_ENTRY * thread_p, INT16 volid, HFID * hf
 extern char *disk_get_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 * next_volid, char *next_volext_fullname);
 extern DISK_ISVALID disk_check (THREAD_ENTRY * thread_p, bool repair);
 extern int disk_dump_all (THREAD_ENTRY * thread_p, FILE * fp);
+extern int disk_spacedb (THREAD_ENTRY * thread_p, SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols);
 
 extern int disk_volume_header_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt,
 					  void **ctx);
 extern int disk_volume_header_end_scan (THREAD_ENTRY * thread_p, void **ctx);
 extern SCAN_CODE disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_values, int out_cnt,
 					       void *ctx);
+
+extern int disk_compare_vsids (const void *a, const void *b);
 
 #if defined (SA_MODE)
 extern int disk_map_clone_create (THREAD_ENTRY * thread_p, DISK_VOLMAP_CLONE ** disk_map_clone);
@@ -223,11 +148,12 @@ extern int disk_rv_undoredo_set_boot_hfid (THREAD_ENTRY * thread_p, LOG_RCV * rc
 extern void disk_rv_dump_set_boot_hfid (FILE * fp, int length_ignore, void *data);
 extern int disk_rv_undoredo_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void disk_rv_dump_link (FILE * fp, int length_ignore, void *data);
-extern int disk_rv_redo_dboutside_init_pages (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void disk_rv_dump_init_pages (FILE * fp, int length_ignore, void *data);
+extern int disk_rv_redo_volume_expand (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern void disk_rv_dump_volume_expand (FILE * fp, int length_ignore, void *data);
 extern int disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int disk_rv_volhead_extend_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int disk_rv_volhead_extend_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
 #if !defined (NDEBUG)
 extern void disk_volheader_check_magic (THREAD_ENTRY * thread_p, const PAGE_PTR page_volheader);

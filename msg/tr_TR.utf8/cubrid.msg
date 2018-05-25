@@ -922,7 +922,7 @@ $ LOADDB
 853 Bir nesne için (%1$d|%2$d|%3$d), okuma kaydedilmemiş düzenlenen arıza kilidi (%5$s) tran (%4$d).
 854 UYARI: kilit sahibi bulunmamaktadır, ama kilit bekleyenler mevcut. %1$s e başvurun.
 855 UYARI: İki veya daha fazla iş parçacığı kilit bekleyen bir işlem (%1$d) içindir.
-856 UYARI: Garip LOCKWAIT durumu (%1$d|%2$d), iplik (%3$d|%4$d) ve işlemler (%5$d).
+856 UYARI: Garip LOCKWAIT durumu (%1$d|%2$d), iplik (%3$d|%4$lld) ve işlemler (%5$d).
 857 Sayfa %1$d yoğunluk "%2$s" kesilmesi sırasında başka bir I/O hata oluştu.
 858 Cilt "%1$s" sunucu yeniden başlatma sırasında bilinmiyor.
 859 SAYFASINDA LATCH (%1$d|%2$d) BAŞARISISZLIĞA UĞRAMIŞ
@@ -1260,9 +1260,30 @@ $ LOADDB
 1191 Stand-alone vakum yürütme sona erer.
 1192 Değeri hassas %1$zu izin verilen maksimum %2$d aşıyor.
 1193 İşlenmiş bölüm ifade uzunluğu izin verilen sınırı (%1$d) aşıyor.
-1194 Unable to check file %1d|%2d because lock on class %3d|%4d|%5d is not immediately granted.
-1195 The recursive part of a CTE should not contain aggregate functions without GROUP BY clause.
-1196 Son Hata
+1194 Çünkü %3$d|%4$d|%5$d sınıfı kilidi hemen verilmez, %1$d|%2$d dosyası kontrol edilemez.
+1195 CTE'nin özyinelemeli kısmı, GROUP BY yan tümcesi olmayan toplama işlevlerini içermemelidir.
+1196 CTE yürütme azami özyinelemeli iterasyonlara ulaştı: %1$d.
+1197 Invalid json: %1$s (%2$d)
+1198 A json object must be provided
+1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
+1200 Invalid JSON path
+1201 Json object name cannot be NULL.
+1202 Json PATH "%1$s" does not exist in %2$s
+1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
+1204 Json KEY "%1$s" is duplicate
+1205 Reserved error for JSON.
+1206 Reserved error for JSON.
+1207 Reserved error for JSON.
+1208 Reserved error for JSON.
+1209 Reserved error for JSON.
+1210 Reserved error for JSON.
+1211 Reserved error for JSON.
+1212 Reserved error for JSON.
+1213 Reserved error for JSON.
+1214 Reserved error for JSON.
+
+1215 Son Hata
+
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
 2 Uygun hata mesajı bulunmamakta.
@@ -1713,6 +1734,12 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 292 Toplama işlevlerinin kullanımı geçersiz.
 293 Değeri kesinlikle her bölüm için artan olmalıdır.
 294 Yerel saat dilimi yazdığınız sütunlarda işlev veya filtre indeksleri kullanılamaz.
+295 SELECT INTO'ya alt sorgularda izin verilmiyor.
+296 CTE adı belirsizliği, aynı ada sahip birden fazla CTE var: '%1$s'.
+297 Yuvalanmış WITH yan tümcesi desteklenmiyor.
+298 Özyinelemeli CTE '%1$s', özyinelemeli sorgusunda doğrudan başvurulmalıdır.
+299 CTE '%1$s' hatası: yinelemesiz bölüm ve özyinelemeli bölüm UNION ALL ile bağlanmalıdır.
+300 DEFAULT yan tümcesi içinde alt sorguya izin verilmez.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.

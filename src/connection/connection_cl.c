@@ -84,7 +84,7 @@
         do {                       \
           er_log_debug(ARG_FILE_LINE, string, arg1);  \
         }                          \
-        while (0);
+        while (0)
 #else /* PACKET_TRACE */
 #define TRACE(string, arg1)
 #endif /* PACKET_TRACE */
@@ -148,7 +148,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->abort_queue = NULL;
   conn->buffer_queue = NULL;
   conn->error_queue = NULL;
-  conn->transaction_id = -1;
+  conn->set_tran_index (NULL_TRAN_INDEX);
   conn->invalidate_snapshot = 1;
   conn->db_error = 0;
   conn->cnxn = NULL;
@@ -244,8 +244,7 @@ css_find_exception_conn (void)
 }
 
 /*
- * css_find_conn_from_fd () - find the connection associated with the current
- *                            socket descriptor
+ * css_find_conn_from_fd () - find the connection associated with the current socket descriptor
  *   return: conn or NULL
  *   fd(in): Socket fd
  */
@@ -298,7 +297,7 @@ css_get_request_id (CSS_CONN_ENTRY * conn)
     }
 
   er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ERR_CSS_REQUEST_ID_FAILURE, 0);
-  return (0);
+  return 0;
 }
 
 /*
@@ -331,7 +330,7 @@ css_send_close_request (CSS_CONN_ENTRY * conn)
   if (conn->status == CONN_OPEN)
     {
       header.type = htonl (CLOSE_TYPE);
-      header.transaction_id = htonl (conn->transaction_id);
+      header.transaction_id = htonl (conn->get_tran_index ());
       flags = 0;
       if (conn->invalidate_snapshot)
 	{
@@ -379,25 +378,23 @@ css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header)
       return CONNECTION_CLOSED;
     }
 
-  conn->transaction_id = ntohl (local_header->transaction_id);
+  conn->set_tran_index (ntohl (local_header->transaction_id));
   flags = ntohs (local_header->flags);
   conn->invalidate_snapshot = flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
   conn->db_error = (int) ntohl (local_header->db_error);
 
-  return (rc);
+  return rc;
 }
 
 /*
- * css_read_one_request () - return a request if one is queued up or on the
- *                           socket
+ * css_read_one_request () - return a request if one is queued up or on the socket
  *   return:
  *   conn(in):
  *   rid(out):
  *   request(out):
  *   buffer_size(out):
  *
- * Note: If no input is available on the socket, it will block until something
- *       is available.
+ * Note: If no input is available on the socket, it will block until something is available.
  */
 static int
 css_read_one_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, int *buffer_size)
@@ -463,7 +460,7 @@ css_receive_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, i
 
   TRACE ("in css_receive_request, received request: %d\n", *request);
 
-  return (rc);
+  return rc;
 }
 
 /*
@@ -505,81 +502,92 @@ css_receive_data (CSS_CONN_ENTRY * conn, unsigned short req_id, char **buffer, i
 begin:
   header_size = sizeof (NET_HEADER);
   rc = css_net_read_header (conn->fd, (char *) &header, &header_size, timeout);
-  if (rc == NO_ERRORS)
+  if (rc != NO_ERRORS)
     {
-      rid = ntohl (header.request_id);
-      conn->transaction_id = ntohl (header.transaction_id);
-      conn->db_error = (int) ntohl (header.db_error);
-      type = ntohl (header.type);
-      if (DATA_TYPE == type)
+      return rc;
+    }
+
+  assert (header_size == sizeof (NET_HEADER));	// to make it sure.
+
+  rid = ntohl (header.request_id);
+  conn->db_error = (int) ntohl (header.db_error);
+
+  type = ntohl (header.type);
+  if (type == DATA_TYPE)
+    {
+      conn->set_tran_index (ntohl (header.transaction_id));
+
+      buf_size = ntohl (header.buffer_size);
+
+      if (rid == req_id)
 	{
-	  buf_size = ntohl (header.buffer_size);
-
-	  if (rid == req_id)
-	    {
-	      buf = (char *) css_return_data_buffer (conn, rid, &buf_size);
-	    }
-	  else
-	    {
-	      buf = (char *) css_return_data_buffer (conn, 0, &buf_size);
-	    }
-
-	  if (buf != NULL)
-	    {
-	      rc = css_net_recv (conn->fd, buf, &buf_size, timeout);
-	      if (rc == NO_ERRORS || rc == RECORD_TRUNCATED)
-		{
-		  if (req_id != rid)
-		    {
-		      /* We have some data for a different request id */
-		      css_queue_unexpected_data_packet (conn, rid, buf, buf_size, rc);
-		      goto begin;
-		    }
-		}
-	    }
-	  else
-	    {
-	      if (buf_size > 0)
-		{
-		  /* 
-		   * allocation error, buffer == NULL
-		   * cleanup received message and set error
-		   */
-		  css_read_remaining_bytes (conn->fd, sizeof (int) + buf_size);
-		  rc = CANT_ALLOC_BUFFER;
-		  if (req_id != rid)
-		    {
-		      css_queue_unexpected_data_packet (conn, rid, NULL, 0, rc);
-		      goto begin;
-		    }
-		}
-	    }
-
-	  *buffer = buf;
-	  *buffer_size = buf_size;
+	  buf = (char *) css_return_data_buffer (conn, rid, &buf_size);
 	}
       else
 	{
-#if defined(CS_MODE)
-	  if (type == ABORT_TYPE)
-	    {
-	      /* 
-	       * if the user registered a buffer, we should return the buffer
-	       */
-	      *buffer_size = ntohl (header.buffer_size);
-	      *buffer = css_return_data_buffer (conn, req_id, buffer_size);
-	      assert (*buffer_size == 0);
-
-	      return SERVER_ABORTED;
-	    }
-#endif /* CS_MODE */
-
-	  css_queue_unexpected_packet (type, conn, rid, &header, ntohl (header.buffer_size));
-	  goto begin;
+	  buf = (char *) css_return_data_buffer (conn, 0, &buf_size);
 	}
+
+      if (buf != NULL)
+	{
+	  rc = css_net_recv (conn->fd, buf, &buf_size, timeout);
+	  if (rc == NO_ERRORS || rc == RECORD_TRUNCATED)
+	    {
+	      if (req_id != rid)
+		{
+		  /* We have some data for a different request id */
+		  css_queue_unexpected_data_packet (conn, rid, buf, buf_size, rc);
+		  goto begin;
+		}
+	    }
+	}
+      else if (0 <= buf_size)
+	{
+	  // Two cases here:
+	  // 1. allocation failure: (buf == NULL && buf_size > 0)
+	  // 2. receives size 0 buffer: (buf == NULL && buf_size == 0)
+	  //    - sender sent size 0 for nil buffer and receiver should consume its size.
+
+	  css_read_remaining_bytes (conn->fd, sizeof (int) + buf_size);
+
+	  if (0 < buf_size)
+	    {
+	      rc = CANT_ALLOC_BUFFER;
+	    }
+
+	  if (req_id != rid)
+	    {
+	      css_queue_unexpected_data_packet (conn, rid, NULL, 0, rc);
+	      goto begin;
+	    }
+	}
+
+      *buffer = buf;
+      *buffer_size = buf_size;
+
+      return rc;
+    }
+#if defined(CS_MODE)
+  else if (type == ABORT_TYPE)
+    {
+      /* 
+       * if the user registered a buffer, we should return the buffer
+       */
+      *buffer_size = ntohl (header.buffer_size);
+      *buffer = css_return_data_buffer (conn, req_id, buffer_size);
+      assert (*buffer_size == 0);
+
+      return SERVER_ABORTED;
+    }
+#endif /* CS_MODE */
+  else
+    {
+      css_queue_unexpected_packet (type, conn, rid, &header, ntohl (header.buffer_size));
+      goto begin;
     }
 
-  return rc;
+  // unreachable
+  assert (0);
 }
 
 /*
@@ -618,67 +626,78 @@ css_receive_error (CSS_CONN_ENTRY * conn, unsigned short req_id, char **buffer, 
 begin:
   header_size = sizeof (NET_HEADER);
   rc = css_net_read_header (conn->fd, (char *) &header, &header_size, -1);
-  if (rc == NO_ERRORS)
+  if (rc != NO_ERRORS)
     {
-      rid = ntohl (header.request_id);
-      conn->transaction_id = ntohl (header.transaction_id);
-      conn->db_error = (int) ntohl (header.db_error);
-      type = ntohl (header.type);
-      if (ERROR_TYPE == type)
+      return rc;
+    }
+  assert (header_size == sizeof (NET_HEADER));
+
+  rid = ntohl (header.request_id);
+  conn->db_error = (int) ntohl (header.db_error);
+
+  type = ntohl (header.type);
+  if (type == ERROR_TYPE)
+    {
+      conn->set_tran_index (ntohl (header.transaction_id));
+
+      buf_size = ntohl (header.buffer_size);
+      if (buf_size != 0)
 	{
-	  buf_size = ntohl (header.buffer_size);
-	  if (buf_size != 0)
+	  buf = (char *) css_return_data_buffer (conn, rid, &buf_size);
+	  if (buf != NULL)
 	    {
-	      buf = (char *) css_return_data_buffer (conn, rid, &buf_size);
-	      if (buf != NULL)
+	      rc = css_net_recv (conn->fd, buf, &buf_size, -1);
+	      if (rc == NO_ERRORS || rc == RECORD_TRUNCATED)
 		{
-		  rc = css_net_recv (conn->fd, buf, &buf_size, -1);
-		  if (rc == NO_ERRORS || rc == RECORD_TRUNCATED)
-		    {
-		      if (req_id != rid)
-			{
-			  /* We have some data for a different request id */
-			  css_queue_unexpected_error_packet (conn, rid, buf, buf_size, rc);
-			  goto begin;
-			}
-		    }
-		}
-	      else
-		{
-		  /* 
-		   * allocation error, buffer == NULL
-		   * cleanup received message and set error
-		   */
-		  css_read_remaining_bytes (conn->fd, sizeof (int) + buf_size);
-		  rc = CANT_ALLOC_BUFFER;
 		  if (req_id != rid)
 		    {
-		      css_queue_unexpected_error_packet (conn, rid, NULL, 0, rc);
+		      /* We have some data for a different request id */
+		      css_queue_unexpected_error_packet (conn, rid, buf, buf_size, rc);
 		      goto begin;
 		    }
 		}
-	      *buffer = buf;
-	      *buffer_size = buf_size;
 	    }
 	  else
 	    {
 	      /* 
-	       * This is the case where data length is zero, but if the
-	       * user registered a buffer, we should return the buffer
+	       * allocation error, buffer == NULL
+	       * cleanup received message and set error
 	       */
-	      *buffer_size = ntohl (header.buffer_size);
-	      *buffer = css_return_data_buffer (conn, req_id, buffer_size);
-	      assert (*buffer_size == 0);
+	      css_read_remaining_bytes (conn->fd, sizeof (int) + buf_size);
+	      rc = CANT_ALLOC_BUFFER;
+	      if (req_id != rid)
+		{
+		  css_queue_unexpected_error_packet (conn, rid, NULL, 0, rc);
+		  goto begin;
+		}
 	    }
+
+	  *buffer = buf;
+	  *buffer_size = buf_size;
+
+	  return rc;
 	}
       else
 	{
-	  css_queue_unexpected_packet (type, conn, rid, &header, ntohl (header.buffer_size));
-	  goto begin;
+	  /* 
+	   * This is the case where data length is zero, but if the
+	   * user registered a buffer, we should return the buffer
+	   */
+	  *buffer_size = ntohl (header.buffer_size);
+	  *buffer = css_return_data_buffer (conn, req_id, buffer_size);
+	  assert (*buffer_size == 0);
+
+	  return rc;
 	}
     }
+  else
+    {
+      css_queue_unexpected_packet (type, conn, rid, &header, ntohl (header.buffer_size));
+      goto begin;
+    }
 
-  return rc;
+  // unreachable
+  assert (0);
 }
 
 /*
@@ -701,13 +720,18 @@ css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_ty
 
 #if !defined (WINDOWS)
   if (timeout > 0)
-    /* timeout in milli-seconds in css_tcp_client_open_with_timeout() */
-    fd = css_tcp_client_open_with_timeout (host_name, port, timeout * 1000);
+    {
+      /* timeout in milli-seconds in css_tcp_client_open_with_timeout() */
+      fd = css_tcp_client_open_with_timeout (host_name, port, timeout * 1000);
+    }
   else
-    fd = css_tcp_client_open_with_retry (host_name, port, true);
+    {
+      fd = css_tcp_client_open_with_retry (host_name, port, true);
+    }
 #else /* !WINDOWS */
   fd = css_tcp_client_open_with_retry (host_name, port, true);
 #endif /* WINDOWS */
+
   if (!IS_INVALID_SOCKET (fd))
     {
       conn->fd = fd;
@@ -751,7 +775,7 @@ css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, char *server_name, u
 
   if (server_name)
     {
-      length = strlen (server_name) + 1;
+      length = (int) strlen (server_name) + 1;
     }
   else
     {
@@ -790,28 +814,30 @@ css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn, int port_id
    */
 
   /* timeout in second in css_common_connect() */
-  if (css_common_connect (host_name, conn, DATA_REQUEST, NULL, 0, port_id, timeout, rid, false) != NULL)
+  if (css_common_connect (host_name, conn, DATA_REQUEST, NULL, 0, port_id, timeout, rid, false) == NULL)
     {
-      /* now ask for a reply from the server */
-      css_queue_user_data_buffer (conn, *rid, sizeof (int), (char *) &reason);
-      if (css_receive_data (conn, *rid, &buffer, &buffer_size, timeout * 1000) == NO_ERRORS)
+      return NULL;
+    }
+
+  /* now ask for a reply from the server */
+  css_queue_user_data_buffer (conn, *rid, sizeof (int), (char *) &reason);
+  if (css_receive_data (conn, *rid, &buffer, &buffer_size, timeout * 1000) == NO_ERRORS)
+    {
+      if (buffer_size == sizeof (int) && buffer == (char *) &reason)
 	{
-	  if (buffer_size == sizeof (int) && buffer == (char *) &reason)
+	  reason = ntohl (reason);
+	  if (reason == SERVER_CONNECTED)
 	    {
-	      reason = ntohl (reason);
-	      if (reason == SERVER_CONNECTED)
-		{
-		  return_status = conn;
-		}
-
-	      /* we shouldn't have to deal with SERVER_STARTED responses here ? */
+	      return_status = conn;
 	    }
-	}
 
-      if (buffer != NULL && buffer != (char *) &reason)
-	{
-	  free_and_init (buffer);
+	  /* we shouldn't have to deal with SERVER_STARTED responses here ? */
 	}
+    }
+
+  if (buffer != NULL && buffer != (char *) &reason)
+    {
+      free_and_init (buffer);
     }
 
   return return_status;
@@ -842,132 +868,127 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 #endif
 
   css_Service_id = master_port_id;
-  if (GETHOSTNAME (hname, MAXHOSTNAMELEN) == 0)
+  if (GETHOSTNAME (hname, MAXHOSTNAMELEN) != 0)
     {
-      conn = css_make_conn (0);
-      if (conn == NULL)
+      return NULL;
+    }
+
+  conn = css_make_conn (0);
+  if (conn == NULL)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+      return NULL;
+    }
+
+  /* select the connection protocol, for PC's this will always be new */
+  connection_protocol = ((css_Server_use_new_connection_protocol) ? SERVER_REQUEST_NEW : SERVER_REQUEST);
+
+  if (css_common_connect (hname, conn, connection_protocol, server_name, name_length, master_port_id, 0, &rid, true)
+      == NULL)
+    {
+      goto fail_end;
+    }
+
+  if (css_readn (conn->fd, (char *) &response_buff, sizeof (int), -1) != sizeof (int))
+    {
+      goto fail_end;
+    }
+
+  response = ntohl (response_buff);
+
+  TRACE ("connect_to_master received %d as response from master\n", response);
+
+  switch (response)
+    {
+    case SERVER_ALREADY_EXISTS:
+#if defined(CS_MODE)
+      if (IS_MASTER_CONN_NAME_HA_COPYLOG (server_name))
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
-	  return NULL;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_COPYLOG_ALREADY_EXISTS, 1,
+		  GET_REAL_MASTER_CONN_NAME (server_name));
+	}
+      else if (IS_MASTER_CONN_NAME_HA_APPLYLOG (server_name))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_APPLYLOG_ALREADY_EXISTS, 1,
+		  GET_REAL_MASTER_CONN_NAME (server_name));
+	}
+      else if (IS_MASTER_CONN_NAME_HA_SERVER (server_name))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1,
+		  GET_REAL_MASTER_CONN_NAME (server_name));
+	}
+      else
+#endif /* CS_MODE */
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1, server_name);
 	}
 
-      /* select the connection protocol, for PC's this will always be new */
-      connection_protocol = ((css_Server_use_new_connection_protocol) ? SERVER_REQUEST_NEW : SERVER_REQUEST);
+      goto fail_end;
 
-      if (css_common_connect (hname, conn, connection_protocol, server_name, name_length, master_port_id, 0, &rid, true)
-	  == NULL)
+    case SERVER_REQUEST_ACCEPTED_NEW:
+      /* 
+       * Master requests a new-style connect, must go get our port id and set up our connection socket.
+       * For drivers, we don't need a connection socket and we don't want to allocate a bunch of them.  
+       * Let a flag variable control whether or not we actually create one of these.
+       */
+      if (css_Server_inhibit_connection_socket)
 	{
-	  css_free_conn (conn);
-	  return NULL;
+	  server_port_id = -1;
 	}
       else
 	{
-	  if (css_readn (conn->fd, (char *) &response_buff, sizeof (int), -1) == sizeof (int))
-	    {
-	      response = ntohl (response_buff);
+	  server_port_id = css_open_server_connection_socket ();
+	}
 
-	      TRACE ("connect_to_master received %d as response from master\n", response);
+      response = htonl (server_port_id);
+      css_net_send (conn, (char *) &response, sizeof (int), -1);
 
-	      switch (response)
-		{
-		case SERVER_ALREADY_EXISTS:
-		  css_free_conn (conn);
+      /* this connection remains our only contact with the master */
+      return conn;
 
-#if defined(CS_MODE)
-		  if (IS_MASTER_CONN_NAME_HA_COPYLOG (server_name))
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_COPYLOG_ALREADY_EXISTS, 1,
-			      GET_REAL_MASTER_CONN_NAME (server_name));
-		    }
-		  else if (IS_MASTER_CONN_NAME_HA_APPLYLOG (server_name))
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_APPLYLOG_ALREADY_EXISTS, 1,
-			      GET_REAL_MASTER_CONN_NAME (server_name));
-		    }
-		  else if (IS_MASTER_CONN_NAME_HA_SERVER (server_name))
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1,
-			      GET_REAL_MASTER_CONN_NAME (server_name));
-		    }
-		  else
-#endif /* CS_MODE */
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SERVER_ALREADY_EXISTS, 1, server_name);
-		    }
-		  return NULL;
-
-		case SERVER_REQUEST_ACCEPTED_NEW:
-		  /* 
-		   * Master requests a new-style connect, must go get
-		   * our port id and set up our connection socket.
-		   * For drivers, we don't need a connection socket and we
-		   * don't want to allocate a bunch of them.  Let a flag variable
-		   * control whether or not we actually create one of these.
-		   */
-		  if (css_Server_inhibit_connection_socket)
-		    {
-		      server_port_id = -1;
-		    }
-		  else
-		    {
-		      server_port_id = css_open_server_connection_socket ();
-		    }
-
-		  response = htonl (server_port_id);
-		  css_net_send (conn, (char *) &response, sizeof (int), -1);
-
-		  /* this connection remains our only contact with the master */
-		  return conn;
-
-		case SERVER_REQUEST_ACCEPTED:
+    case SERVER_REQUEST_ACCEPTED:
 #if defined(WINDOWS)
-		  /* Windows can't handle this style of connection at all */
-		  css_free_conn (conn);
+      /* Windows can't handle this style of connection at all */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
 
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
-		  return NULL;
+      goto fail_end;
 #else /* WINDOWS */
-		  /* send the "pathname" for the datagram */
-		  /* be sure to open the datagram first.  */
-		  pname = tempnam (NULL, "usql");
-		  if (pname)
-		    {
-		      if (css_tcp_setup_server_datagram (pname, &socket_fd)
-			  && css_send_data (conn, rid, pname, strlen (pname) + 1) == NO_ERRORS
-			  && css_tcp_listen_server_datagram (socket_fd, &datagram_fd))
-			{
-			  (void) unlink (pname);
-			  /* don't use free_and_init on pname since it came from tempnam() */
-			  free (pname);
-			  css_free_conn (conn);
-			  close (socket_fd);
-			  return (css_make_conn (datagram_fd));
-			}
-		      else
-			{
-			  /* don't use free_and_init on pname since it came from tempnam() */
-			  free (pname);
-			  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1,
-					       server_name);
-			  css_free_conn (conn);
-			  return NULL;
-			}
-		    }
-		  else
-		    {
-		      /* Could not create the temporary file */
-		      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1,
-					   server_name);
-		      css_free_conn (conn);
-		      return NULL;
-		    }
-#endif /* WINDOWS */
-		}
+      /* send the "pathname" for the datagram */
+      /* be sure to open the datagram first.  */
+      pname = tempnam (NULL, "csql");
+      if (pname)
+	{
+	  if (css_tcp_setup_server_datagram (pname, &socket_fd)
+	      && css_send_data (conn, rid, pname, strlen (pname) + 1) == NO_ERRORS
+	      && css_tcp_listen_server_datagram (socket_fd, &datagram_fd))
+	    {
+	      (void) unlink (pname);
+	      /* don't use free_and_init on pname since it came from tempnam() */
+	      free (pname);
+	      css_free_conn (conn);
+	      close (socket_fd);
+	      return (css_make_conn (datagram_fd));
+	    }
+	  else
+	    {
+	      /* don't use free_and_init on pname since it came from tempnam() */
+	      free (pname);
+	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1,
+				   server_name);
+	      goto fail_end;
 	    }
 	}
-      css_free_conn (conn);
+      else
+	{
+	  /* Could not create the temporary file */
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+	  goto fail_end;
+	}
+#endif /* WINDOWS */
     }
 
+fail_end:
+  css_free_conn (conn);
   return NULL;
 }
 
@@ -1073,18 +1094,24 @@ css_connect_to_cubrid_server (char *host_name, char *server_name)
     case SERVER_IS_RECOVERING:
     case SERVER_CLIENTS_EXCEEDED:
     case SERVER_INACCESSIBLE_IP:
-      {
-	error_area = NULL;
-	if (css_receive_error (conn, rid, &error_area, &error_length))
-	  {
-	    if (error_area != NULL)
-	      {
-		er_set_area_error ((void *) error_area);
-		free_and_init (error_area);
-	      }
-	  }
-	break;
-      }
+      error_area = NULL;
+
+      /* TODO: We may need to change protocol to properly receive server error for the cases.
+       * Receiving error from server might not be completed because server disconnects the temporary connection.
+       */
+      css_err_code = css_receive_error (conn, rid, &error_area, &error_length);
+      if (css_err_code == NO_ERRORS && error_area != NULL)
+	{
+	  // properly received the server error
+	  er_set_area_error (error_area);
+	}
+
+      if (error_area != NULL)
+	{
+	  free_and_init (error_area);
+	}
+      break;
+
     case SERVER_NOT_FOUND:
     case SERVER_HANG:
     default:
@@ -1261,26 +1288,6 @@ css_return_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, int *b
     }
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * css_return_oob_buffer() - return an allocated buffer for out of band data
- *   return:
- *   buffer_size(in):
- */
-char *
-css_return_oob_buffer (int *buffer_size)
-{
-  if (*buffer_size == 0)
-    {
-      return NULL;
-    }
-  else
-    {
-      return (char *) malloc (*buffer_size);
-    }
-}
-#endif
-
 /*
  * css_return_queued_data () - return any data that has been queued
  *   return:
@@ -1297,46 +1304,47 @@ css_return_queued_data (CSS_CONN_ENTRY * conn, unsigned short request_id, char *
 
   data_q_entry_p = css_find_queue_entry (conn->data_queue, request_id);
 
-  if (data_q_entry_p != NULL)
+  if (data_q_entry_p == NULL)
     {
-      /* 
-       * We may have somehow already queued a receive buffer for this
-       * packet.  If so, it's important that we use *that* buffer, because
-       * upper level code will check to see that the buffer address that we
-       * return from this level is the same as the one that the upper level
-       * queued earlier.  If it isn't, it will raise an error and stop
-       * (error code -187, "Communications buffer not used").
-       */
-      buffer_q_entry_p = css_find_queue_entry (conn->buffer_queue, request_id);
-      if (buffer_q_entry_p != NULL)
-	{
-	  *buffer = buffer_q_entry_p->buffer;
-	  *buffer_size = data_q_entry_p->size;
-	  buffer_q_entry_p->buffer = NULL;
-	  memcpy (*buffer, data_q_entry_p->buffer, *buffer_size);
-	  css_queue_remove_header_entry_ptr (&conn->buffer_queue, buffer_q_entry_p);
-	}
-      else
-	{
-	  *buffer = data_q_entry_p->buffer;
-	  *buffer_size = data_q_entry_p->size;
-	  /* 
-	   * Null this out so that the call to css_queue_remove_header_entry_ptr()
-	   * below doesn't free the buffer out from underneath our caller.
-	   */
-	  data_q_entry_p->buffer = NULL;
-	}
-
-      *rc = data_q_entry_p->rc;
-      conn->transaction_id = data_q_entry_p->transaction_id;
-      conn->invalidate_snapshot = data_q_entry_p->invalidate_snapshot;
-      conn->db_error = data_q_entry_p->db_error;
-      css_queue_remove_header_entry_ptr (&conn->data_queue, data_q_entry_p);
-
-      return 1;
+      /* empty queue */
+      return 0;
     }
 
-  return 0;
+  /* 
+   * We may have somehow already queued a receive buffer for this
+   * packet.  If so, it's important that we use *that* buffer, because
+   * upper level code will check to see that the buffer address that we
+   * return from this level is the same as the one that the upper level
+   * queued earlier.  If it isn't, it will raise an error and stop
+   * (error code -187, "Communications buffer not used").
+   */
+  buffer_q_entry_p = css_find_queue_entry (conn->buffer_queue, request_id);
+  if (buffer_q_entry_p != NULL)
+    {
+      *buffer = buffer_q_entry_p->buffer;
+      *buffer_size = data_q_entry_p->size;
+      buffer_q_entry_p->buffer = NULL;
+      memcpy (*buffer, data_q_entry_p->buffer, *buffer_size);
+      css_queue_remove_header_entry_ptr (&conn->buffer_queue, buffer_q_entry_p);
+    }
+  else
+    {
+      *buffer = data_q_entry_p->buffer;
+      *buffer_size = data_q_entry_p->size;
+      /* 
+       * Null this out so that the call to css_queue_remove_header_entry_ptr()
+       * below doesn't free the buffer out from underneath our caller.
+       */
+      data_q_entry_p->buffer = NULL;
+    }
+
+  *rc = data_q_entry_p->rc;
+  conn->set_tran_index (data_q_entry_p->transaction_id);
+  conn->invalidate_snapshot = data_q_entry_p->invalidate_snapshot;
+  conn->db_error = data_q_entry_p->db_error;
+  css_queue_remove_header_entry_ptr (&conn->data_queue, data_q_entry_p);
+
+  return 1;
 }
 
 /*
@@ -1356,49 +1364,50 @@ css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id, char 
 
   error_q_entry_p = css_find_queue_entry (conn->error_queue, request_id);
 
-  if (error_q_entry_p != NULL)
+  if (error_q_entry_p == NULL)
     {
-      *buffer = error_q_entry_p->buffer;
-      *buffer_size = error_q_entry_p->size;
-      *rc = error_q_entry_p->db_error;
-      error_q_entry_p->buffer = NULL;
-      css_queue_remove_header_entry_ptr (&conn->error_queue, error_q_entry_p);
-
-      /* 
-       * Propagate ER_LK_UNILATERALLY_ABORTED error
-       * when it is set during method call.
-       */
-      if (*rc == ER_LK_UNILATERALLY_ABORTED)
-	{
-	  for (p = conn->error_queue; p; p = p->next)
-	    {
-	      entry = *p;
-
-	      if (p->size < *buffer_size)
-		{
-		  p->buffer = (char *) malloc (*buffer_size);
-		  if (p->buffer)
-		    {
-		      free_and_init (entry.buffer);
-		    }
-		  else
-		    {
-		      p->buffer = entry.buffer;
-		      p->db_error = *rc;
-		      continue;
-		    }
-		}
-
-	      p->size = *buffer_size;
-	      memcpy (p->buffer, *buffer, p->size);
-	      p->db_error = *rc;
-	    }
-	}
-
-      return 1;
+      /* empty queue */
+      return 0;
     }
 
-  return 0;
+  *buffer = error_q_entry_p->buffer;
+  *buffer_size = error_q_entry_p->size;
+  *rc = error_q_entry_p->db_error;
+  error_q_entry_p->buffer = NULL;
+  css_queue_remove_header_entry_ptr (&conn->error_queue, error_q_entry_p);
+
+  /* 
+   * Propagate ER_LK_UNILATERALLY_ABORTED error
+   * when it is set during method call.
+   */
+  if (*rc == ER_LK_UNILATERALLY_ABORTED)
+    {
+      for (p = conn->error_queue; p; p = p->next)
+	{
+	  entry = *p;
+
+	  if (p->size < *buffer_size)
+	    {
+	      p->buffer = (char *) malloc (*buffer_size);
+	      if (p->buffer)
+		{
+		  free_and_init (entry.buffer);
+		}
+	      else
+		{
+		  p->buffer = entry.buffer;
+		  p->db_error = *rc;
+		  continue;
+		}
+	    }
+
+	  p->size = *buffer_size;
+	  memcpy (p->buffer, *buffer, p->size);
+	  p->db_error = *rc;
+	}
+    }
+
+  return 1;
 }
 
 /*
@@ -1415,35 +1424,36 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *requ
 {
   CSS_QUEUE_ENTRY *request_q_entry_p;
   NET_HEADER *buffer;
-  int rc;
 
   TPRINTF ("Entered return queued request %d\n", 0);
-  rc = 0;
+
   request_q_entry_p = conn->request_queue;
 
-  if (request_q_entry_p != NULL)
+  if (request_q_entry_p == NULL)
     {
-      TPRINTF ("Found a queued request %d\n", 0);
-      rc = 1;
-      *rid = request_q_entry_p->key;
-      buffer = (NET_HEADER *) request_q_entry_p->buffer;
-
-      *request = ntohs (buffer->function_code);
-      *buffer_size = ntohl (buffer->buffer_size);
-      conn->transaction_id = request_q_entry_p->transaction_id;
-      conn->invalidate_snapshot = request_q_entry_p->invalidate_snapshot;
-      conn->db_error = request_q_entry_p->db_error;
-
-      /* This will remove both the entry and the buffer */
-      css_queue_remove_header_entry (&conn->request_queue, *rid);
+      /* empty queue */
+      return 0;
     }
 
-  return rc;
+  TPRINTF ("Found a queued request %d\n", 0);
+
+  *rid = request_q_entry_p->key;
+  buffer = (NET_HEADER *) request_q_entry_p->buffer;
+
+  *request = ntohs (buffer->function_code);
+  *buffer_size = ntohl (buffer->buffer_size);
+  conn->set_tran_index (request_q_entry_p->transaction_id);
+  conn->invalidate_snapshot = request_q_entry_p->invalidate_snapshot;
+  conn->db_error = request_q_entry_p->db_error;
+
+  /* This will remove both the entry and the buffer */
+  css_queue_remove_header_entry (&conn->request_queue, *rid);
+
+  return 1;
 }
 
 /*
- * css_remove_all_unexpected_packets () - remove all entries in all the queues
- *                                        associated with fd
+ * css_remove_all_unexpected_packets () - remove all entries in all the queues associated with fd
  *   return: void
  *   conn(in/out):
  *

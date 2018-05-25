@@ -349,7 +349,7 @@ css_fd_down (SOCKET fd)
 int
 css_gethostname (char *passed_name, int length)
 {
-  char *name = "PC";
+  const char *name = "PC";
   char hostname[MAXHOSTNAMELEN];
   int err = 0;
 
@@ -506,7 +506,7 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
  *       "new-style" multiple port-id connection interface
  */
 bool
-css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
+css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SERVER_REQUEST request)
 {
   return false;
 }
@@ -781,7 +781,7 @@ css_get_peer_name (SOCKET sockfd, char *hostname, size_t len)
     {
       return WSAGetLastError ();
     }
-  return getnameinfo (saddr, saddr_len, hostname, len, NULL, 0, NI_NOFQDN);
+  return getnameinfo (saddr, saddr_len, hostname, (DWORD) len, NULL, 0, NI_NOFQDN);
 }
 
 /*
@@ -803,7 +803,7 @@ css_get_sock_name (SOCKET sockfd, char *hostname, size_t len)
     {
       return WSAGetLastError ();
     }
-  return getnameinfo (saddr, saddr_len, hostname, len, NULL, 0, NI_NOFQDN);
+  return getnameinfo (saddr, saddr_len, hostname, (DWORD) len, NULL, 0, NI_NOFQDN);
 }
 
 /*
@@ -816,6 +816,14 @@ int
 css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 {
   unsigned int in_addr;
+  int err = NO_ERROR;
+
+#if !defined(SERVER_MODE)
+  if (css_windows_startup () < 0)
+    {
+      return ER_CSS_WINSOCK_STARTUP;
+    }
+#endif /* not SERVER_MODE */
 
   /* 
    * First try to convert to the host name as a dotted-decimal number.
@@ -825,7 +833,6 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
   if (in_addr != INADDR_NONE)
     {
       memcpy ((void *) ip_addr, (void *) &in_addr, sizeof (in_addr));
-      return NO_ERROR;
     }
   else
     {
@@ -834,10 +841,18 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       hp = gethostbyname (host);
       if (hp == NULL)
 	{
-	  return INVALID_SOCKET;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTNAME, 1, WSAGetLastError ());
+	  err = ER_CSS_WINSOCK_HOSTNAME;
 	}
-      memcpy ((void *) ip_addr, (void *) hp->h_addr, hp->h_length);
+      else
+	{
+	  memcpy ((void *) ip_addr, (void *) hp->h_addr, hp->h_length);
+	}
     }
 
-  return NO_ERROR;
+#if !defined(SERVER_MODE)
+  css_windows_shutdown ();
+#endif /* not SERVER_MODE */
+
+  return err;
 }

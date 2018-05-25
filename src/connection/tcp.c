@@ -193,38 +193,41 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
   else
     {
 #ifdef HAVE_GETHOSTBYNAME_R
-# if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
+#if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
       struct hostent *hp, hent;
       int herr;
       char buf[1024];
 
       if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
-	  return INVALID_SOCKET;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
-# elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
+#elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
       struct hostent hent;
       int herr;
       char buf[1024];
 
       if (gethostbyname_r (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
-	  return INVALID_SOCKET;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
-# elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
+#elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
       struct hostent hent;
       struct hostent_data ht_data;
 
       if (gethostbyname_r (host, &hent, &ht_data) == -1)
 	{
-	  return INVALID_SOCKET;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
-# else
-#   error "HAVE_GETHOSTBYNAME_R"
-# endif
+#else
+#error "HAVE_GETHOSTBYNAME_R"
+#endif
 #else /* HAVE_GETHOSTBYNAME_R */
       struct hostent *hp;
 
@@ -233,7 +236,8 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
-	  return INVALID_SOCKET;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hp->h_addr, hp->h_length);
       pthread_mutex_unlock (&gethostbyname_lock);
@@ -277,7 +281,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
   else
     {
 #ifdef HAVE_GETHOSTBYNAME_R
-# if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
+#if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
       struct hostent *hp, hent;
       int herr;
       char buf[1024];
@@ -288,7 +292,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr, hent.h_length);
-# elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
+#elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
       struct hostent hent;
       int herr;
       char buf[1024];
@@ -299,7 +303,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr, hent.h_length);
-# elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
+#elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
       struct hostent hent;
       struct hostent_data ht_data;
 
@@ -309,9 +313,9 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr, hent.h_length);
-# else
-#   error "HAVE_GETHOSTBYNAME_R"
-# endif
+#else
+#error "HAVE_GETHOSTBYNAME_R"
+#endif
 #else /* HAVE_GETHOSTBYNAME_R */
       struct hostent *hp;
       int r;
@@ -886,7 +890,7 @@ css_tcp_listen_server_datagram (SOCKET sockfd, SOCKET * newfd)
   while (true)
     {
       *newfd = accept (sockfd, (struct sockaddr *) &cli_addr, &clilen);
-      if (IS_INVALID_SOCKET (*newfd) < 0)
+      if (IS_INVALID_SOCKET (*newfd))
 	{
 	  if (errno == EINTR)
 	    {
@@ -1067,7 +1071,7 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
  *   rid(in):
  */
 bool
-css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
+css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SERVER_REQUEST request_for_server)
 {
   int request;
   unsigned short req_id;
@@ -1077,7 +1081,7 @@ css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
   static struct cmsghdr *cmptr = NULL;
 #endif /* LINUX || AIX */
 
-  request = htonl (SERVER_START_NEW_CLIENT);
+  request = htonl (request_for_server);
   if (send (server_fd, (char *) &request, sizeof (int), 0) < 0)
     {
       /* Master->Server link down. remove old link, and try again. */

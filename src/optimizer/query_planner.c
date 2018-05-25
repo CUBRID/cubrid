@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <assert.h>
 #if !defined(WINDOWS)
 #include <values.h>
 #endif /* !WINDOWS */
@@ -48,8 +49,7 @@
 #include "schema_manager.h"
 #include "network_interface_cl.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #define INDENT_INCR		4
 #define INDENT_FMT		"%*c"
@@ -392,7 +392,7 @@ unsigned char qo_type_qualifiers[] = {
   0,				/* DB_TYPE_SEQUENCE */
   0,				/* DB_TYPE_ELO */
   _INT + _NUM,			/* DB_TYPE_TIME */
-  _INT + _NUM,			/* DB_TYPE_UTIME */
+  _INT + _NUM,			/* DB_TYPE_TIMESTAMP */
   _INT + _NUM,			/* DB_TYPE_DATE */
   _NUM,				/* DB_TYPE_MONETARY */
   0,				/* DB_TYPE_VARIABLE */
@@ -3057,7 +3057,7 @@ qo_nljoin_cost (QO_PLAN * planp)
   if (outer->plan_type == QO_PLANTYPE_SORT && outer->plan_un.sort.sort_type == SORT_LIMIT)
     {
       /* cardinality of a SORT_LIMIT plan is given by the value of the query limit */
-      guessed_result_cardinality = (double) DB_GET_BIGINT (&QO_ENV_LIMIT_VALUE (outer->info->env));
+      guessed_result_cardinality = (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (outer->info->env));
     }
   else
     {
@@ -3234,7 +3234,7 @@ qo_mjoin_cost (QO_PLAN * planp)
   env = outer->info->env;
   if (outer->has_sort_limit)
     {
-      outer_cardinality = (double) DB_GET_BIGINT (&QO_ENV_LIMIT_VALUE (env));
+      outer_cardinality = (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (env));
     }
   else
     {
@@ -3243,7 +3243,7 @@ qo_mjoin_cost (QO_PLAN * planp)
 
   if (inner->has_sort_limit)
     {
-      inner_cardinality = (double) DB_GET_BIGINT (&QO_ENV_LIMIT_VALUE (env));
+      inner_cardinality = (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (env));
     }
   else
     {
@@ -4456,7 +4456,7 @@ qo_plan_fprint (QO_PLAN * plan, FILE * f, int howfar, const char *title)
   {
     int title_len;
 
-    title_len = title ? strlen (title) : 0;
+    title_len = title ? (int) strlen (title) : 0;
     howfar += (title_len + INDENT_INCR);
   }
 
@@ -4821,7 +4821,7 @@ qo_set_cost (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * plan, DB_VALUE * 
     case DB_TYPE_STRING:
     case DB_TYPE_CHAR:
     case DB_TYPE_NCHAR:
-      plan_string = DB_PULL_STRING (plan);
+      plan_string = db_get_string (plan);
       break;
     default:
       plan_string = "unknown";
@@ -4833,7 +4833,7 @@ qo_set_cost (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * plan, DB_VALUE * 
     case DB_TYPE_STRING:
     case DB_TYPE_CHAR:
     case DB_TYPE_NCHAR:
-      cost_string = DB_PULL_STRING (cost);
+      cost_string = db_get_string (cost);
       break;
     default:
       cost_string = "d";
@@ -4845,14 +4845,15 @@ qo_set_cost (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * plan, DB_VALUE * 
    * CONST string.  That way we don't need to dup it, and therefore we
    * won't leak it when the return value is discarded.
    */
-  if ((plan_string = qo_plan_set_cost_fn (plan_string, cost_string[0])) != NULL)
+  plan_string = qo_plan_set_cost_fn (plan_string, cost_string[0]);
+  if (plan_string != NULL)
     {
-      DB_MAKE_STRING (result, plan_string);
+      db_make_string_by_const_str (result, plan_string);
     }
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      DB_MAKE_ERROR (result, ER_GENERIC_ERROR);
+      db_make_error (result, ER_GENERIC_ERROR);
     }
 }
 
@@ -8329,7 +8330,7 @@ qo_search_planner (QO_PLANNER * planner)
 	   * Otherwise we clear it */
 	  else if (has_hint && node->info.sort_spec.asc_or_desc == PT_ASC)
 	    {
-	      *hint &= ~PT_HINT_USE_IDX_DESC;
+	      *hint = (PT_HINT_ENUM) (*hint & ~PT_HINT_USE_IDX_DESC);
 	    }
 	}
 
@@ -8342,7 +8343,7 @@ qo_search_planner (QO_PLANNER * planner)
 	   * Otherwise we clear it */
 	  else if (has_hint && node->info.sort_spec.asc_or_desc == PT_ASC)
 	    {
-	      *hint &= ~PT_HINT_USE_IDX_DESC;
+	      *hint = (PT_HINT_ENUM) (*hint & ~PT_HINT_USE_IDX_DESC);
 	    }
 	}
     }
@@ -8375,7 +8376,8 @@ qo_search_planner (QO_PLANNER * planner)
 	    {
 	      if (plan->info->env != NULL)
 		{
-		  plan->info->env->pt_tree->info.query.q.select.hint &= ~PT_HINT_USE_IDX_DESC;
+		  plan->info->env->pt_tree->info.query.q.select.hint =
+		    (PT_HINT_ENUM) (plan->info->env->pt_tree->info.query.q.select.hint & ~PT_HINT_USE_IDX_DESC);
 		}
 	    }
 	}
@@ -9925,7 +9927,7 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
   key_notnull = qo_validate_index_term_notnull (env, index_entryp);
   if (key_notnull)
     {
-      goto final;
+      goto final_;
     }
 
   pos = QO_ENV_PT_TREE (env)->info.query.order_by->info.sort_spec.pos_descr.pos_no;
@@ -9957,7 +9959,7 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
   key_notnull = qo_validate_index_attr_notnull (env, index_entryp, node);
   if (key_notnull)
     {
-      goto final;
+      goto final_;
     }
 
   /* Now we have the information we need: if the key column can be null and if there is a PT_IS_NULL or PT_IS_NOT_NULL
@@ -9967,7 +9969,7 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
    * false so we skip all, for safety) 3. If we have a term with other operator except isnull/isnotnull and does not
    * have an OR following we have a winner again! (because we cannot have a null value). 
    */
-final:
+final_:
   if (key_notnull)
     {
       return 1;
@@ -10338,7 +10340,7 @@ qo_check_orderby_skip_descending (QO_PLAN * plan)
   for (trav = plan->iscan_sort_list; trav; trav = trav->next)
     {
       /* change PT_ASC to PT_DESC and vice-versa */
-      trav->info.sort_spec.asc_or_desc = PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc;
+      trav->info.sort_spec.asc_or_desc = (PT_MISC_TYPE) (PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc);
     }
 
   /* test again the order by skip */
@@ -10348,7 +10350,7 @@ qo_check_orderby_skip_descending (QO_PLAN * plan)
   for (trav = plan->iscan_sort_list; trav; trav = trav->next)
     {
       /* change PT_ASC to PT_DESC and vice-versa */
-      trav->info.sort_spec.asc_or_desc = PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc;
+      trav->info.sort_spec.asc_or_desc = (PT_MISC_TYPE) (PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc);
     }
 
   return orderby_skip;
@@ -10478,7 +10480,7 @@ qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list)
   for (trav = list; trav; trav = trav->next)
     {
       /* change PT_ASC to PT_DESC and vice-versa */
-      trav->info.sort_spec.asc_or_desc = PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc;
+      trav->info.sort_spec.asc_or_desc = (PT_MISC_TYPE) (PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc);
     }
 
   /* test again the group by skip */
@@ -10488,7 +10490,7 @@ qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list)
   for (trav = list; trav; trav = trav->next)
     {
       /* change PT_ASC to PT_DESC and vice-versa */
-      trav->info.sort_spec.asc_or_desc = PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc;
+      trav->info.sort_spec.asc_or_desc = (PT_MISC_TYPE) (PT_ASC + PT_DESC - trav->info.sort_spec.asc_or_desc);
     }
 
   return groupby_skip;

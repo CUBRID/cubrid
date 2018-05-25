@@ -26,6 +26,10 @@
 #include "esql_grammar.h"
 #include "esql_scanner_support.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 //#define LEXER_DEBUG
 
 

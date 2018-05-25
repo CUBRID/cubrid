@@ -28,7 +28,7 @@
 #ident "$Id$"
 
 #include "storage_common.h"
-#include "dbtype.h"
+#include "dbtype_def.h"
 
 #define ROOTCLASS_NAME "Rootclass"	/* Name of Rootclass */
 

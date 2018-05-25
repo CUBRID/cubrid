@@ -27,8 +27,12 @@
 
 #ident "$Id$"
 
+#if defined (SERVER_MODE)
+#error Does not belong to server module
+#endif /* SERVER_MODE */
+
 #include "dbi.h"
-#include "query_executor.h"
+#include "xasl.h"
 #include "schema_manager.h"
 
 #define UNIQUE_PARTITION_SAVEPOINT_GRANT "pARTITIONgRANT"
@@ -42,7 +46,6 @@
 #define PARTITION_VARCHAR_LEN (DB_MAX_IDENTIFIER_LENGTH)
 #define CLASS_ATT_NAME "class_name"
 #define CLASS_IS_PARTITION "partition_of"
-#define MAX_PARTITIONS 1024
 
 #define CHECK_PARTITION_NONE    0x0000
 #define CHECK_PARTITION_PARENT  0x0001

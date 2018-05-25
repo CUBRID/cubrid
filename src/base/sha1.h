@@ -60,9 +60,9 @@ typedef struct SHA1Hash
  */
 void SHA1Reset (SHA1Context *);
 int SHA1Result (SHA1Context *);
-void SHA1Input (SHA1Context *, const unsigned char *, unsigned);
+void SHA1Input (SHA1Context *, const unsigned char *, size_t);
 
-int SHA1Compute (const unsigned char *, unsigned, SHA1Hash *);
+int SHA1Compute (const unsigned char *, size_t, SHA1Hash *);
 int SHA1Compare (void *a, void *b);
 
 #endif

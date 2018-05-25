@@ -90,6 +90,7 @@ typedef struct file_ovf_heap_des FILE_OVF_HEAP_DES;
 struct file_ovf_heap_des
 {
   HFID hfid;
+  OID class_oid;
 };
 
 /* Btree file descriptor */
@@ -105,6 +106,7 @@ typedef struct file_ovf_btree_des FILE_OVF_BTREE_DES;
 struct file_ovf_btree_des
 {
   BTID btid;
+  OID class_oid;
 };
 
 /* Extensible Hash file descriptor */
@@ -156,7 +158,7 @@ extern int file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLE
 			FILE_DESCRIPTORS * des, bool is_temp, bool is_numerable, VFID * vfid);
 extern int file_create_with_npages (THREAD_ENTRY * thread_p, FILE_TYPE file_type, int npages, FILE_DESCRIPTORS * des,
 				    VFID * vfid);
-extern int file_create_heap (THREAD_ENTRY * thread_p, FILE_HEAP_DES * des_heap, bool reuse_oid, VFID * vfid);
+extern int file_create_heap (THREAD_ENTRY * thread_p, bool reuse_oid, const OID * class_oid, VFID * vfid);
 extern int file_create_temp (THREAD_ENTRY * thread_p, int npages, VFID * vfid);
 extern int file_create_temp_numerable (THREAD_ENTRY * thread_p, int npages, VFID * vfid);
 extern int file_create_query_area (THREAD_ENTRY * thread_p, VFID * vfid);
@@ -166,7 +168,7 @@ extern int file_create_ehash_dir (THREAD_ENTRY * thread_p, int npages, bool is_t
 				  VFID * vfid);
 
 extern void file_postpone_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern int file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
+extern int file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp);
 extern int file_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_temp_retire_preserved (THREAD_ENTRY * thread_p, const VFID * vfid);
 
@@ -188,6 +190,7 @@ extern int file_is_temp (THREAD_ENTRY * thread_p, const VFID * vfid, bool * is_t
 extern int file_map_pages (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_MODE latch_mode,
 			   PGBUF_LATCH_CONDITION latch_cond, FILE_MAP_PAGE_FUNC func, void *args);
 extern int file_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp);
+extern int file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb);
 
 extern int file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bool auto_alloc,
 				    FILE_INIT_PAGE_FUNC f_init, void *f_init_args, VPID * vpid_nth);
@@ -200,7 +203,7 @@ extern int file_get_tran_num_temp_files (THREAD_ENTRY * thread_p);
 
 extern int file_tracker_create (THREAD_ENTRY * thread_p, VFID * vfid_tracker_out);
 extern int file_tracker_load (THREAD_ENTRY * thread_p, const VFID * vfid);
-extern int file_tracker_reuse_heap (THREAD_ENTRY * thread_p, VFID * vfid_out);
+extern int file_tracker_reuse_heap (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out);
 extern int file_tracker_interruptable_iterate (THREAD_ENTRY * thread_p, FILE_TYPE desired_ftype, VFID * vfid,
 					       OID * class_oid);
 extern DISK_ISVALID file_tracker_check (THREAD_ENTRY * thread_p);
@@ -231,6 +234,8 @@ extern int file_rv_extdata_remove (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_fhead_set_last_user_page_ftab (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_fhead_alloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_fhead_dealloc (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_fhead_convert_ftab_to_user_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_fhead_convert_user_to_ftab_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_user_page_mark_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_user_page_unmark_delete_logical (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_user_page_unmark_delete_physical (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
@@ -239,6 +244,7 @@ extern int file_rv_dealloc_on_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_dealloc_on_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_header_update_mark_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_fhead_sticky_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int file_rv_tracker_unregister_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_tracker_mark_heap_deleted (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_undo);
 extern int file_rv_tracker_mark_heap_deleted_compensate_or_run_postpone (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_rv_tracker_reuse_heap (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

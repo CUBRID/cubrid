@@ -38,6 +38,10 @@
 #include "error_manager.h"
 #include "loader.h"
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+
 /*#define PARSER_DEBUG*/
 #ifdef PARSER_DEBUG
 #define DBG_PRINT(s) printf("rule: %s\n", (s));
@@ -57,7 +61,7 @@ extern bool loader_In_instance_line;
 extern FILE *loader_yyin;
 
 extern int loader_yylex(void);
-extern void loader_yyerror(char* s);
+extern void loader_yyerror(const char* s);
 extern void loader_reset_string_pool (void);
 extern void loader_initialize_lexer (void);
 extern void do_loader_parse(FILE *fp);

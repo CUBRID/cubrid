@@ -34,8 +34,11 @@
 #include "string_opfunc.h"
 #include "unicode_support.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #ifndef UX_CHAR
 #define UX_CHAR wchar_t
@@ -986,7 +989,7 @@ set_to_string (DB_VALUE * value, char begin_notation, char end_notation, int max
   int set_error;
   DB_SET *set;
 
-  set = DB_GET_SET (value);
+  set = db_get_set (value);
   if (set == NULL)
     {
       return (NULL);
@@ -1301,7 +1304,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
     {
     case DB_TYPE_BIGINT:
       result =
-	bigint_to_string (DB_GET_BIGINT (value), default_bigint_profile.fieldwidth, default_bigint_profile.leadingzeros,
+	bigint_to_string (db_get_bigint (value), default_bigint_profile.fieldwidth, default_bigint_profile.leadingzeros,
 			  default_bigint_profile.leadingsymbol, default_bigint_profile.commas,
 			  default_bigint_profile.format);
       if (result)
@@ -1311,7 +1314,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       break;
     case DB_TYPE_INTEGER:
       result =
-	bigint_to_string (DB_GET_INTEGER (value), default_int_profile.fieldwidth, default_int_profile.leadingzeros,
+	bigint_to_string (db_get_int (value), default_int_profile.fieldwidth, default_int_profile.leadingzeros,
 			  default_int_profile.leadingsymbol, default_int_profile.commas, default_int_profile.format);
       if (result)
 	{
@@ -1320,7 +1323,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       break;
     case DB_TYPE_SHORT:
       result =
-	bigint_to_string (SHORT_TO_INT (DB_GET_SHORT (value)), default_short_profile.fieldwidth,
+	bigint_to_string (SHORT_TO_INT (db_get_short (value)), default_short_profile.fieldwidth,
 			  default_short_profile.leadingzeros, default_short_profile.leadingsymbol,
 			  default_short_profile.commas, default_short_profile.format);
       if (result)
@@ -1330,7 +1333,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       break;
     case DB_TYPE_FLOAT:
       result =
-	double_to_string ((double) DB_GET_FLOAT (value), default_float_profile.fieldwidth,
+	double_to_string ((double) db_get_float (value), default_float_profile.fieldwidth,
 			  default_float_profile.precision, default_float_profile.leadingsign, NULL, NULL,
 			  default_float_profile.leadingzeros, default_float_profile.trailingzeros,
 			  default_float_profile.commas, default_float_profile.format);
@@ -1341,7 +1344,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       break;
     case DB_TYPE_DOUBLE:
       result =
-	double_to_string (DB_GET_DOUBLE (value), default_double_profile.fieldwidth, default_double_profile.precision,
+	double_to_string (db_get_double (value), default_double_profile.fieldwidth, default_double_profile.precision,
 			  default_double_profile.leadingsign, NULL, NULL, default_double_profile.leadingzeros,
 			  default_double_profile.trailingzeros, default_double_profile.commas,
 			  default_double_profile.format);
@@ -1367,7 +1370,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 
 	str = db_get_char (value, &dummy);
 	bytes_size = db_get_string_size (value);
-	if (bytes_size > 0 && DB_GET_STRING_CODESET (value) == INTL_CODESET_UTF8)
+	if (bytes_size > 0 && db_get_string_codeset (value) == INTL_CODESET_UTF8)
 	  {
 	    need_decomp =
 	      unicode_string_need_decompose (str, bytes_size, &decomp_size, lang_get_generic_unicode_norm ());
@@ -1408,7 +1411,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 
 	str = db_get_char (value, &dummy);
 	bytes_size = db_get_string_size (value);
-	if (bytes_size > 0 && DB_GET_STRING_CODESET (value) == INTL_CODESET_UTF8)
+	if (bytes_size > 0 && db_get_string_codeset (value) == INTL_CODESET_UTF8)
 	  {
 	    need_decomp =
 	      unicode_string_need_decompose (str, bytes_size, &decomp_size, lang_get_generic_unicode_norm ());
@@ -1447,7 +1450,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	}
       break;
     case DB_TYPE_OBJECT:
-      result = object_to_string (DB_GET_OBJECT (value), get_object_print_format ());
+      result = object_to_string (db_get_object (value), get_object_print_format ());
       if (result == NULL)
 	{
 	  result = duplicate_string ("NULL");
@@ -1458,11 +1461,18 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	}
       break;
     case DB_TYPE_VOBJ:
-      result = object_to_string (DB_GET_OBJECT (value), get_object_print_format ());
+      result = object_to_string (db_get_object (value), get_object_print_format ());
       if (result == NULL)
 	{
 	  result = duplicate_string ("NULL");
 	}
+      if (result)
+	{
+	  len = strlen (result);
+	}
+      break;
+    case DB_TYPE_JSON:
+      result = duplicate_string (value->data.json.json_body);
       if (result)
 	{
 	  len = strlen (result);
@@ -1482,7 +1492,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
     case DB_TYPE_TIME:
       {
 	char buf[TIME_BUF_SIZE];
-	if (db_time_to_string (buf, sizeof (buf), DB_GET_TIME (value)))
+	if (db_time_to_string (buf, sizeof (buf), db_get_time (value)))
 	  {
 	    result = duplicate_string (buf);
 	  }
@@ -1495,7 +1505,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
     case DB_TYPE_TIMETZ:
       {
 	char buf[TIMETZ_BUF_SIZE];
-	DB_TIMETZ *time_tz = DB_GET_TIMETZ (value);
+	DB_TIMETZ *time_tz = db_get_timetz (value);
 	if (db_timetz_to_string (buf, sizeof (buf), &(time_tz->time), &time_tz->tz_id))
 	  {
 	    result = duplicate_string (buf);
@@ -1511,7 +1521,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       {
 	char buf[TIMETZ_BUF_SIZE];
 
-	if (db_timeltz_to_string (buf, sizeof (buf), DB_GET_TIME (value)))
+	if (db_timeltz_to_string (buf, sizeof (buf), db_get_time (value)))
 	  {
 	    result = duplicate_string (buf);
 	  }
@@ -1526,7 +1536,8 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       {
 	char *leading_str = NULL;
 	char *trailing_str = NULL;
-	DB_CURRENCY currency = ((DB_GET_MONETARY (value))->type);
+	DB_MONETARY *monetary_val = db_get_monetary (value);
+	DB_CURRENCY currency = monetary_val->type;
 
 	if (default_monetary_profile.currency_symbol)
 	  {
@@ -1540,16 +1551,18 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	      }
 	  }
 
-	result =
-	  (DB_GET_MONETARY (value) == NULL) ? NULL : double_to_string ((DB_GET_MONETARY (value))->amount,
-								       default_monetary_profile.fieldwidth,
-								       default_monetary_profile.decimalplaces,
-								       default_monetary_profile.leadingsign,
-								       leading_str, trailing_str,
-								       default_monetary_profile.leadingzeros,
-								       default_monetary_profile.trailingzeros,
-								       default_monetary_profile.commas,
-								       DOUBLE_FORMAT_DECIMAL);
+	if (db_get_monetary (value) == NULL)
+	  {
+	    result = NULL;
+	  }
+	else
+	  {
+	    result = double_to_string (monetary_val->amount, default_monetary_profile.fieldwidth,
+				       default_monetary_profile.decimalplaces, default_monetary_profile.leadingsign,
+				       leading_str, trailing_str, default_monetary_profile.leadingzeros,
+				       default_monetary_profile.trailingzeros, default_monetary_profile.commas,
+				       DOUBLE_FORMAT_DECIMAL);
+	  }
 
 	if (result)
 	  {
@@ -1559,16 +1572,16 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       break;
     case DB_TYPE_DATE:
       /* default format for all locales */
-      result = date_as_string (DB_GET_DATE (value), default_date_profile.format);
+      result = date_as_string (db_get_date (value), default_date_profile.format);
       if (result)
 	{
 	  len = strlen (result);
 	}
       break;
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
       {
 	char buf[TIMESTAMP_BUF_SIZE];
-	if (db_utime_to_string (buf, sizeof (buf), DB_GET_UTIME (value)))
+	if (db_utime_to_string (buf, sizeof (buf), db_get_timestamp (value)))
 	  {
 	    result = duplicate_string (buf);
 	  }
@@ -1582,7 +1595,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
     case DB_TYPE_TIMESTAMPTZ:
       {
 	char buf[TIMESTAMPTZ_BUF_SIZE];
-	DB_TIMESTAMPTZ *ts_tz = DB_GET_TIMESTAMPTZ (value);
+	DB_TIMESTAMPTZ *ts_tz = db_get_timestamptz (value);
 	if (db_timestamptz_to_string (buf, sizeof (buf), &(ts_tz->timestamp), &(ts_tz->tz_id)))
 	  {
 	    result = duplicate_string (buf);
@@ -1598,7 +1611,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       {
 	char buf[TIMESTAMPTZ_BUF_SIZE];
 
-	if (db_timestampltz_to_string (buf, sizeof (buf), DB_GET_UTIME (value)))
+	if (db_timestampltz_to_string (buf, sizeof (buf), db_get_timestamp (value)))
 	  {
 	    result = duplicate_string (buf);
 	  }
@@ -1612,7 +1625,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
     case DB_TYPE_DATETIME:
       {
 	char buf[DATETIME_BUF_SIZE];
-	if (db_datetime_to_string (buf, sizeof (buf), DB_GET_DATETIME (value)))
+	if (db_datetime_to_string (buf, sizeof (buf), db_get_datetime (value)))
 	  {
 	    result = duplicate_string (buf);
 	  }
@@ -1626,7 +1639,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
     case DB_TYPE_DATETIMETZ:
       {
 	char buf[DATETIMETZ_BUF_SIZE];
-	DB_DATETIMETZ *dt_tz = DB_GET_DATETIMETZ (value);
+	DB_DATETIMETZ *dt_tz = db_get_datetimetz (value);
 	if (db_datetimetz_to_string (buf, sizeof (buf), &(dt_tz->datetime), &(dt_tz->tz_id)))
 	  {
 	    result = duplicate_string (buf);
@@ -1642,7 +1655,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
       {
 	char buf[DATETIMETZ_BUF_SIZE];
 
-	if (db_datetimeltz_to_string (buf, sizeof (buf), DB_GET_DATETIME (value)))
+	if (db_datetimeltz_to_string (buf, sizeof (buf), db_get_datetime (value)))
 	  {
 	    result = duplicate_string (buf);
 	  }
@@ -1664,7 +1677,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
       {
-	DB_ELO *elo = DB_GET_ELO (value);
+	DB_ELO *elo = db_get_elo (value);
 
 	if (elo != NULL)
 	  {
@@ -1699,7 +1712,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	if (bytes_size > 0 && db_get_enum_codeset (value) == INTL_CODESET_UTF8)
 	  {
 	    need_decomp =
-	      unicode_string_need_decompose (str, bytes_size, &decomp_size, lang_get_generic_unicode_norm ());
+	      unicode_string_need_decompose ((char *) str, bytes_size, &decomp_size, lang_get_generic_unicode_norm ());
 	  }
 
 	if (need_decomp)
@@ -1707,7 +1720,8 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	    decomposed = (char *) malloc (decomp_size * sizeof (char));
 	    if (decomposed != NULL)
 	      {
-		unicode_decompose_string (str, bytes_size, decomposed, &decomp_size, lang_get_generic_unicode_norm ());
+		unicode_decompose_string ((char *) str, bytes_size, decomposed, &decomp_size,
+					  lang_get_generic_unicode_norm ());
 
 		str = decomposed;
 		bytes_size = decomp_size;

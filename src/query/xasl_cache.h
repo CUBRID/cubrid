@@ -26,8 +26,11 @@
 
 #ident "$Id$"
 
-#include "query_list.h"
-#include "query_opfunc.h"
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
+#include "xasl.h"
 
 /* Objects related to XASL cache entries. The information includes the object OID, the lock required to use the XASL
  * cache entry and the heap file cardinality.
@@ -41,13 +44,13 @@ struct xcache_related_object
   int tcard;
 };
 
-typedef enum xcache_cleanup_reason XCACHE_CLEANUP_REASON;
 enum xcache_cleanup_reason
 {
   XCACHE_CLEANUP_NONE,		/* no cleanup is required */
   XCACHE_CLEANUP_FULL,
   XCACHE_CLEANUP_TIMEOUT
 };
+typedef enum xcache_cleanup_reason XCACHE_CLEANUP_REASON;
 
 /* XASL cache clones - XASL nodes cached for fast usage.
  *
@@ -60,6 +63,23 @@ struct xasl_clone
 };
 #define XASL_CLONE_INITIALIZER { NULL, NULL }
 #define XASL_CLONE_AS_ARGS(clone) (clone)->xasl, (clone)->xasl_buf
+
+/*
+ * EXECUTION_INFO: query strings: user text, hash string and dumped plan.
+ */
+typedef struct execution_info EXECUTION_INFO;
+struct execution_info
+{
+  char *sql_hash_text;		/* rewritten query string which is used as hash key */
+  char *sql_user_text;		/* original query statement that user input */
+  char *sql_plan_text;		/* plans for this query */
+};
+#define EXEINFO_HASH_TEXT_STRING(einfo) ((einfo)->sql_hash_text ? (einfo)->sql_hash_text : "UNKNOWN HASH TEXT")
+#define EXEINFO_USER_TEXT_STRING(einfo) ((einfo)->sql_user_text ? (einfo)->sql_user_text : "UNKNOWN USER TEXT")
+#define EXEINFO_PLAN_TEXT_STRING(einfo) ((einfo)->sql_plan_text ? (einfo)->sql_plan_text : "UNKNOWN PLAN TEXT")
+
+#define EXEINFO_AS_ARGS(einfo)	\
+  EXEINFO_USER_TEXT_STRING(einfo), EXEINFO_PLAN_TEXT_STRING(einfo), EXEINFO_HASH_TEXT_STRING(einfo)
 
 /* This really belongs more to the query manager rather than query executor. */
 /* XASL cache entry type definition */
@@ -99,16 +119,25 @@ struct xasl_cache_ent
   pthread_mutex_t cache_clones_mutex;
 
   /* RT check */
-  struct timeval time_last_rt_check;
+  INT64 time_last_rt_check;
 
   bool initialized;
 };
 
+enum xasl_cache_search_mode
+{
+  XASL_CACHE_SEARCH_FOR_EXECUTE = 0,
+  XASL_CACHE_SEARCH_FOR_PREPARE = 1,
+
+  XASL_CACHE_SEARCH_GENERIC = XASL_CACHE_SEARCH_FOR_EXECUTE
+};
+typedef enum xasl_cache_search_mode XASL_CACHE_SEARCH_MODE;
+
 extern int xcache_initialize (THREAD_ENTRY * thread_p);
 extern void xcache_finalize (THREAD_ENTRY * thread_p);
 
-extern int xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, XASL_CACHE_ENTRY ** xcache_entry,
-			     bool * rt_check);
+extern int xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const XASL_CACHE_SEARCH_MODE search_mode,
+			     XASL_CACHE_ENTRY ** xcache_entry, bool * rt_check);
 extern int xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_ENTRY ** xcache_entry,
 				XASL_CLONE * xclone);
 extern void xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);

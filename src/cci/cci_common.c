@@ -53,6 +53,7 @@
 #if defined(sun)
 #include <sys/sockio.h>
 #endif /* sun */
+#include <assert.h>
 
 #include "cci_common.h"
 #include "cas_cci.h"
@@ -79,13 +80,13 @@ static const float CCI_MHT_REHASH_TRESHOLD = 0.7f;
 static const float CCI_MHT_REHASH_FACTOR = 1.3f;
 
 /* options for cci_mht_put() */
-typedef enum cci_mht_put_opt CCI_MHT_PUT_OPT;
 enum cci_mht_put_opt
 {
   CCI_MHT_OPT_DEFAULT,
   CCI_MHT_OPT_KEEP_KEY,
   CCI_MHT_OPT_INSERT_ONLY
 };
+typedef enum cci_mht_put_opt CCI_MHT_PUT_OPT;
 
 /*
  * A table of prime numbers.
@@ -481,7 +482,6 @@ cci_mht_rem (CCI_MHT_TABLE * ht, void *key, bool free_key, bool free_data)
   unsigned int hash;
   CCI_HENTRY_PTR prev_hentry;
   CCI_HENTRY_PTR hentry;
-  int error_code = CCI_ER_NO_ERROR;
   void *data = NULL;
 
   assert (ht != NULL && key != NULL);
@@ -766,7 +766,7 @@ hostname2uchar (char *host, unsigned char *ip_addr)
   else
     {
 #ifdef HAVE_GETHOSTBYNAME_R
-# if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
+#if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
       struct hostent *hp, hent;
       int herr;
       char buf[1024];
@@ -776,7 +776,7 @@ hostname2uchar (char *host, unsigned char *ip_addr)
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
-# elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
+#elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
       struct hostent hent;
       int herr;
       char buf[1024];
@@ -786,7 +786,7 @@ hostname2uchar (char *host, unsigned char *ip_addr)
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
-# elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
+#elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
       struct hostent hent;
       struct hostent_data ht_data;
 
@@ -795,9 +795,9 @@ hostname2uchar (char *host, unsigned char *ip_addr)
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
-# else
-#   error "HAVE_GETHOSTBYNAME_R"
-# endif
+#else
+#error "HAVE_GETHOSTBYNAME_R"
+#endif
 #else /* HAVE_GETHOSTBYNAME_R */
       struct hostent *hp;
 

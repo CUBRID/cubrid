@@ -27,8 +27,13 @@
 
 #ident "$Id$"
 
-#include "query_opfunc.h"	/* for VACOMM stuff */
-#include "thread.h"
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
+#include "list_file.h"
+#include "thread_compat.hpp"
+#include "xasl.h"
 
 extern void return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid);
 extern int server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -108,15 +113,12 @@ extern void sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *
 extern void sbtree_delete_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_remove_class_from_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_find_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void srepl_btree_find_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_find_multi_uniques (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_class_test_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sdk_totalpgs (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sdk_freepgs (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sdk_remarks (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void sdisk_get_purpose_and_space_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sdk_vlabel (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void sdisk_is_volume_exist (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqfile_get_list_file_page (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_prepare_query (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_execute_query (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
@@ -140,7 +142,6 @@ extern int xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, QFILE_LI
 extern int xs_receive_data_from_client (THREAD_ENTRY * thread_p, char **area, int *datasize);
 extern int xs_receive_data_from_client_with_timeout (THREAD_ENTRY * thread_p, char **area, int *datasize, int timeout);
 extern int xs_send_action_to_client (THREAD_ENTRY * thread_p, VACOMM_BUFFER_CLIENT_ACTION action);
-extern void stest_performance (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_assign_oid_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -207,13 +208,11 @@ extern void ssession_set_session_variables (THREAD_ENTRY * thread_p, unsigned in
 extern void ssession_get_session_variable (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void ssession_drop_session_variables (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sboot_get_locales_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void slocator_prefetch_repl_insert (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void slocator_prefetch_repl_update_or_delete (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
-						     int reqlen);
 extern void svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void stran_lock_rep_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sboot_get_timezone_checksum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void netsr_spacedb (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
 extern void schksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 							   int reqlen);

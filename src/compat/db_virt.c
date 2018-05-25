@@ -29,6 +29,8 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include <assert.h>
+
 #include "system_parameter.h"
 #include "storage_common.h"
 #include "db.h"

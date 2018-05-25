@@ -45,14 +45,28 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_date.c
   ${COMPAT_DIR}/db_elo.c
   ${COMPAT_DIR}/db_info.c
+  ${COMPAT_DIR}/db_json.cpp
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_obj.c
   ${COMPAT_DIR}/db_old.c
   ${COMPAT_DIR}/db_query.c
   ${COMPAT_DIR}/db_set.c
   ${COMPAT_DIR}/db_temp.c
+  ${COMPAT_DIR}/db_value_printer.cpp
   ${COMPAT_DIR}/db_vdb.c
   ${COMPAT_DIR}/db_virt.c
+  ${COMPAT_DIR}/dbtype_function.c 
+  )
+
+set(COMPAT_SOURCES_C
+  ${COMPAT_DIR}/dbtype_function.c
+  )
+  
+set (COMPAT_HEADERS  
+  ${COMPAT_DIR}/dbtype_def.h
+  ${COMPAT_DIR}/dbtype_function.h
+  ${COMPAT_DIR}/dbtype_function.i
+  ${COMPAT_DIR}/db_admin.h
   )
 
 set(BASE_SOURCES
@@ -66,10 +80,12 @@ set(BASE_SOURCES
   ${BASE_DIR}/dynamic_array.c
   ${BASE_DIR}/encryption.c
   ${BASE_DIR}/environment_variable.c
+  ${BASE_DIR}/error_context.cpp
   ${BASE_DIR}/error_manager.c
   ${BASE_DIR}/fault_injection.c
+  ${BASE_DIR}/fileline_location.cpp
   ${BASE_DIR}/fixed_alloc.c
-  ${BASE_DIR}/getopt_long.c
+  ${BASE_DIR}/cubrid_getopt_long.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
   ${BASE_DIR}/language_support.c
@@ -81,12 +97,18 @@ set(BASE_SOURCES
   ${BASE_DIR}/message_catalog.c
   ${BASE_DIR}/misc_string.c
   ${BASE_DIR}/mprec.c
-  ${BASE_DIR}/perf.c
+  ${BASE_DIR}/packer.cpp
+  ${BASE_DIR}/get_clockfreq.c
+  ${BASE_DIR}/perf.cpp
+  ${BASE_DIR}/pinnable_buffer.cpp
+  ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/release_string.c
+  ${BASE_DIR}/resource_tracker.cpp
   ${BASE_DIR}/sha1.c
   ${BASE_DIR}/stack_dump.c
+  ${BASE_DIR}/string_buffer.cpp
   ${BASE_DIR}/system_parameter.c
   ${BASE_DIR}/tsc_timer.c
   ${BASE_DIR}/tz_support.c
@@ -96,6 +118,19 @@ set(BASE_SOURCES
   ${BASE_DIR}/variable_string.c
   ${BASE_DIR}/xml_parser.c
   )
+set(BASE_HEADERS
+  ${BASE_DIR}/error_code.h
+  ${BASE_DIR}/error_context.hpp
+  ${BASE_DIR}/error_manager.h
+  ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/packer.hpp
+  ${BASE_DIR}/perf.hpp
+  ${BASE_DIR}/perf_def.hpp
+  ${BASE_DIR}/pinning.hpp
+  ${BASE_DIR}/pinnable_buffer.hpp
+  ${BASE_DIR}/packable_object.hpp
+  ${BASE_DIR}/resource_tracker.hpp
+)
 
 set(HEAPLAYER_SOURCES
   ${HEAPLAYERS_DIR}/customheaps.cpp
@@ -155,30 +190,35 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/query_dump.c
   ${QUERY_DIR}/query_method.c
   ${QUERY_DIR}/numeric_opfunc.c
-  ${QUERY_DIR}/query.c
+  ${QUERY_DIR}/query_cl.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/xasl_to_stream.c
   ${QUERY_DIR}/crypt_opfunc.c
   )
 
 set(OBJECT_SOURCES
-  ${OBJECT_DIR}/elo.c
   ${OBJECT_DIR}/authenticate.c
-  ${OBJECT_DIR}/object_print.c
-  ${OBJECT_DIR}/object_accessor.c
-  ${OBJECT_DIR}/object_template.c
-  ${OBJECT_DIR}/set_object.c
-  ${OBJECT_DIR}/trigger_manager.c
-  ${OBJECT_DIR}/virtual_object.c
+  ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c
+  ${OBJECT_DIR}/elo.c
+  ${OBJECT_DIR}/object_accessor.c
+  ${OBJECT_DIR}/object_description.cpp
+  ${OBJECT_DIR}/object_domain.c
+  ${OBJECT_DIR}/object_primitive.c
+  ${OBJECT_DIR}/object_print.c
+  ${OBJECT_DIR}/object_printer.cpp
+  ${OBJECT_DIR}/object_print_util.cpp
+  ${OBJECT_DIR}/object_representation.c
+  ${OBJECT_DIR}/object_template.c
+  ${OBJECT_DIR}/quick_fit.c
   ${OBJECT_DIR}/schema_manager.c
   ${OBJECT_DIR}/schema_template.c
-  ${OBJECT_DIR}/object_representation.c
-  ${OBJECT_DIR}/object_primitive.c
-  ${OBJECT_DIR}/quick_fit.c
-  ${OBJECT_DIR}/transform_cl.c
+  ${OBJECT_DIR}/set_object.c
   ${OBJECT_DIR}/transform.c
-  ${OBJECT_DIR}/object_domain.c
+  ${OBJECT_DIR}/transform_cl.c
+  ${OBJECT_DIR}/trigger_description.cpp
+  ${OBJECT_DIR}/trigger_manager.c
+  ${OBJECT_DIR}/virtual_object.c
   ${OBJECT_DIR}/work_space.c
   )
 
@@ -207,14 +247,18 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/es_posix.c
   )
 
+list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
 if(UNIX)
   list(APPEND EXECUTABLE_SOURCES ${EXECUTABLES_DIR}/checksumdb.c)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/tcp.c)
-  list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/dynamic_load.c)
   list(APPEND TRANSACTION_SOURCES ${TRANSACTION_DIR}/log_applier_sql_log.c)
   list(APPEND TRANSACTION_SOURCES ${TRANSACTION_DIR}/log_applier.c)
   list(APPEND STORAGE_SOURCES ${STORAGE_DIR}/es_owfs.c)
+  SET_SOURCE_FILES_PROPERTIES(
+    ${EXECUTABLES_DIR}/checksumdb.c
+    PROPERTIES LANGUAGE CXX
+  )
 else(UNIX)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/wintcp.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/rand.c)
@@ -227,10 +271,79 @@ set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED
 set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
 
+if(UNIX)
+set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+endif(UNIX)
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${EXECUTABLES_DIR}/compactdb_cl.c
+  ${EXECUTABLES_DIR}/csql.c
+  ${EXECUTABLES_DIR}/csql_result.c
+  ${EXECUTABLES_DIR}/csql_result_format.c
+  ${EXECUTABLES_DIR}/csql_session.c
+  ${EXECUTABLES_DIR}/csql_support.c
+  ${EXECUTABLES_DIR}/file_hash.c
+  ${EXECUTABLES_DIR}/load_object.c
+  ${EXECUTABLES_DIR}/loaddb.c
+  ${EXECUTABLES_DIR}/loader.c
+  ${EXECUTABLES_DIR}/loader_object_table.c
+  ${EXECUTABLES_DIR}/unload_object.c
+  ${EXECUTABLES_DIR}/unload_schema.c
+  ${EXECUTABLES_DIR}/unloaddb.c
+  ${EXECUTABLES_DIR}/util_common.c
+  ${EXECUTABLES_DIR}/util_cs.c
+  ${COMPAT_SOURCES}
+  ${BASE_SOURCES}
+  ${HEAPLAYER_SOURCES}
+  ${CONNECTION_SOURCES}
+  ${CONNECTION_TCP_SOURCE}
+  ${COMMUNICATION_SOURCES}
+  ${PARSER_DIR}/cnf.c
+  ${PARSER_DIR}/compile.c
+  ${PARSER_DIR}/double_byte_support.c
+  ${PARSER_DIR}/keyword.c
+  ${PARSER_DIR}/method_transform.c
+  ${PARSER_DIR}/name_resolution.c
+  ${PARSER_DIR}/parse_dbi.c
+  ${PARSER_DIR}/parse_evaluate.c
+  ${PARSER_DIR}/parse_tree.c
+  ${PARSER_DIR}/parse_tree_cl.c
+  ${PARSER_DIR}/parser_support.c
+  ${PARSER_DIR}/query_result.c
+  ${PARSER_DIR}/scanner_support.c
+  ${PARSER_DIR}/semantic_check.c
+  ${PARSER_DIR}/show_meta.c
+  ${PARSER_DIR}/type_checking.c
+  ${PARSER_DIR}/view_transform.c
+  ${PARSER_DIR}/xasl_generation.c
+  ${OPTIMIZER_SOURCES}
+  ${QUERY_SOURCES}
+  ${OBJECT_SOURCES}
+  ${JSP_SOURCES}
+  ${TRANSACTION_SOURCES}
+  ${STORAGE_SOURCES}
+  ${ES_SOURCES}
+  ${PROBES_OBJECT}
+  PROPERTIES LANGUAGE CXX
+  )
+SET_SOURCE_FILES_PROPERTIES(
+  ${BASE_DIR}/md5.c
+  ${CSQL_GRAMMAR_OUTPUT}
+  ${LOADER_GRAMMAR_OUTPUT}
+  ${CSQL_LEXER_OUTPUT}
+  ${LOADER_LEXER_OUTPUT}
+  ${ESQL_GRAMMAR_OUTPUT}
+  ${ESQL_LEXER_OUTPUT} 
+  ${COMPAT_SOURCES_C}
+  PROPERTIES LANGUAGE C
+  )
+
 add_library(cubridcs SHARED
   ${EXECUTABLE_SOURCES}
   ${COMPAT_SOURCES}
+  ${COMPAT_SOURCES_C}
   ${BASE_SOURCES}
+  ${BASE_HEADERS}
   ${HEAPLAYER_SOURCES}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
@@ -253,7 +366,16 @@ if(NOT USE_CUBRID_ENV)
 endif(NOT USE_CUBRID_ENV)
 if(WIN32)
   set_source_files_properties(${HEAPLAYERS_DIR}/customheaps.cpp PROPERTIES COMPILE_FLAGS -Od)
-  set_source_files_properties(${BISON_csql_grammar_OUTPUTS} PROPERTIES COMPILE_FLAGS -Og-)
+  SET_SOURCE_FILES_PROPERTIES(
+    ${CSQL_GRAMMAR_OUTPUT}
+    ${LOADER_GRAMMAR_OUTPUT}
+    ${CSQL_LEXER_OUTPUT}
+    ${LOADER_LEXER_OUTPUT}
+    ${ESQL_GRAMMAR_OUTPUT}
+    ${ESQL_LEXER_OUTPUT}
+    PROPERTIES COMPILE_FLAGS /WX-
+  )
+  set_source_files_properties(${BISON_csql_grammar_OUTPUTS} PROPERTIES COMPILE_FLAGS "${COMPILE_FLAGS} -Og-")
   target_compile_definitions(cubridcs PRIVATE YY_NO_UNISTD_H)
   if(TARGET_PLATFORM_BITS EQUAL 32)
     target_compile_definitions(cubridcs PRIVATE _USE_32BIT_TIME_T)
@@ -268,12 +390,10 @@ if(UNIX)
 else(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE cas ${EP_LIBS})
 endif(UNIX)
-if(USE_BISON_FLEX)
-  add_dependencies(cubridcs gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
-endif(USE_BISON_FLEX)
-if(UNIX)
-  add_dependencies(cubridcs ${EP_TARGETS})
-endif(UNIX)
+
+add_dependencies(cubridcs gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
+
+add_dependencies(cubridcs ${EP_TARGETS})
 
 if(ENABLE_SYSTEMTAP)
   target_include_directories(cubridcs PRIVATE ${CMAKE_BINARY_DIR})

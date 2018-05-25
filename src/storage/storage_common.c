@@ -36,6 +36,7 @@
 #include "environment_variable.h"
 #include "file_io.h"
 #include "db_date.h"
+#include "dbtype.h"
 
 
 /* RESERVED_SIZE_IN_PAGE should be aligned */
@@ -237,7 +238,7 @@ db_print_data (DB_TYPE type, DB_DATA * data, FILE * fd)
       fprintf (fd, "%d:%d:%d Z:%X", hour, minute, second, data->timetz.tz_id);
       break;
 
-    case DB_TYPE_UTIME:
+    case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
       fprintf (fd, "%d", data->utime);
       break;
@@ -378,7 +379,7 @@ recdes_set_data_area (RECDES * rec, char *data, int size)
 char *
 lsa_to_string (char *buf, int buf_size, LOG_LSA * lsa)
 {
-  snprintf (buf, buf_size, "(%lld|%d)", (long long int) lsa->pageid, lsa->offset);
+  snprintf (buf, buf_size, "(%lld|%d)", LSA_AS_ARGS (lsa));
   buf[buf_size - 1] = 0;
   return buf;
 }

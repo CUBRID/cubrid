@@ -28,6 +28,10 @@
 
 #ident "$Id$"
 
+#if defined (SERVER_MODE)
+#error Does not belong to server module
+#endif /* defined (SERVER_MODE) */
+
 #include "object_domain.h"
 #include "work_space.h"
 #include "object_primitive.h"
@@ -137,12 +141,6 @@
 
 #define SM_FIND_NAME_IN_COMPONENT_LIST(complist, name) \
         classobj_complist_search((SM_COMPONENT *)complist, name)
-
-/*
- *    This constant defines the maximum size in bytes of a class name,
- *    attribute name, method name, or any other named entity in the schema.
- */
-#define SM_MAX_IDENTIFIER_LENGTH 255
 
 #define SM_MAX_CLASS_COMMENT_LENGTH 2048	/* max comment length for class */
 /* max comment length for column/index/partition/sp/trigger/serial/user */
@@ -268,50 +266,6 @@ typedef void (*METHOD_FUNC_ARG33) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE
 
 typedef struct tp_domain SM_DOMAIN;
 
-/*
- *    These identify "namespaces" for class components like attributes
- *    and methods.  A name_space identifier is frequently used
- *    in conjunction with a name so the correct component can be found
- *    in a class definition.  Since the namespaces for classes and
- *    instances can overlap, a name alone is not enough to uniquely
- *    identify a component.
- */
-typedef enum
-{
-  ID_ATTRIBUTE,
-  ID_SHARED_ATTRIBUTE,
-  ID_CLASS_ATTRIBUTE,
-  ID_METHOD,
-  ID_CLASS_METHOD,
-  ID_INSTANCE,			/* attributes/shared attributes/methods */
-  ID_CLASS,			/* class methods/class attributes */
-  ID_NULL
-} SM_NAME_SPACE;
-
-/*
- *    Bit field identifiers for attribute flags.  These could be defined
- *    with individual unsigned bit fields but this makes it easier
- *    to save them as a single integer.
- *    The "new" flag is used only at run time and shouldn't be here.
- *    Need to re-design the template functions to operate from a different
- *    memory structure during flattening.
- */
-typedef enum
-{
-
-  SM_ATTFLAG_INDEX = 1,		/* attribute has an index 0x01 */
-  SM_ATTFLAG_UNIQUE = 2,	/* attribute has UNIQUE constraint 0x02 */
-  SM_ATTFLAG_NON_NULL = 4,	/* attribute has NON_NULL constraint 0x04 */
-  SM_ATTFLAG_VID = 8,		/* attribute is part of virtual object id 0x08 */
-  SM_ATTFLAG_NEW = 16,		/* is a new attribute 0x10 */
-  SM_ATTFLAG_REVERSE_INDEX = 32,	/* attribute has a reverse index 0x20 */
-  SM_ATTFLAG_REVERSE_UNIQUE = 64,	/* attribute has a reverse unique 0x40 */
-  SM_ATTFLAG_PRIMARY_KEY = 128,	/* attribute has a primary key 0x80 */
-  SM_ATTFLAG_AUTO_INCREMENT = 256,	/* auto increment attribute 0x0100 */
-  SM_ATTFLAG_FOREIGN_KEY = 512,	/* attribute has a primary key 0x200 */
-  SM_ATTFLAG_PARTITION_KEY = 1024	/* attribute is the partitioning key for the class 0x400 */
-} SM_ATTRIBUTE_FLAG;
-
 /* attribute constraint types */
 typedef enum
 {
@@ -323,15 +277,6 @@ typedef enum
   SM_CONSTRAINT_PRIMARY_KEY,
   SM_CONSTRAINT_FOREIGN_KEY
 } SM_CONSTRAINT_TYPE;
-
-/* delete or update action type for foreign key */
-typedef enum
-{
-  SM_FOREIGN_KEY_CASCADE,
-  SM_FOREIGN_KEY_RESTRICT,
-  SM_FOREIGN_KEY_NO_ACTION,
-  SM_FOREIGN_KEY_SET_NULL
-} SM_FOREIGN_KEY_ACTION;
 
 /*
  *    These are used as tags in the SM_CLASS structure and indicates one
@@ -443,7 +388,7 @@ struct sm_default_value
 {
   DB_VALUE original_value;	/* initial default value; */
   DB_VALUE value;		/* current default/shared/class value */
-  DB_DEFAULT_EXPR_TYPE default_expr;	/* identifier for the default expression */
+  DB_DEFAULT_EXPR default_expr;	/* default expression */
 };
 
 typedef struct sm_attribute SM_ATTRIBUTE;
@@ -795,7 +740,7 @@ struct sm_class
   unsigned int flags;
   unsigned int virtual_cache_local_schema_id;
   unsigned int virtual_cache_global_schema_id;
-  unsigned int virtual_cache_snapshot_version;
+  int virtual_cache_snapshot_version;
 
   unsigned methods_loaded:1;	/* set when dynamic linking was performed */
   unsigned post_load_cleanup:1;	/* set if post load cleanup has occurred */
@@ -935,33 +880,6 @@ struct sm_descriptor
   SM_NAME_SPACE name_space;	/* component type */
 };
 
-
-extern const int SM_MAX_STRING_LENGTH;
-
-/*
- * These are the names for the system defined properties on classes,
- * attributes and methods.  For the built in properties, try
- * to use short names.  User properties if they are ever allowed
- * should have more descriptive names.
- *
- * Lets adopt the convention that names beginning with a '*' are
- * reserved for system properties.
- */
-#define SM_PROPERTY_UNIQUE "*U"
-#define SM_PROPERTY_INDEX "*I"
-#define SM_PROPERTY_NOT_NULL "*N"
-#define SM_PROPERTY_REVERSE_UNIQUE "*RU"
-#define SM_PROPERTY_REVERSE_INDEX "*RI"
-#define SM_PROPERTY_VID_KEY "*V_KY"
-#define SM_PROPERTY_PRIMARY_KEY "*P"
-#define SM_PROPERTY_FOREIGN_KEY "*FK"
-
-#define SM_PROPERTY_NUM_INDEX_FAMILY         6
-
-#define SM_FILTER_INDEX_ID "*FP*"
-#define SM_FUNCTION_INDEX_ID "*FI*"
-#define SM_PREFIX_INDEX_ID "*PLID*"
-
 /* free_and_init routine */
 #define classobj_free_threaded_array_and_init(list, clear) \
   do \
@@ -999,7 +917,6 @@ extern void classobj_free_threaded_array (DB_LIST * array, LFREEER clear);
 extern DB_SEQ *classobj_make_prop (void);
 extern int classobj_copy_props (DB_SEQ * properties, MOP filter_class, DB_SEQ ** new_);
 extern void classobj_free_prop (DB_SEQ * properties);
-extern int classobj_get_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue);
 extern int classobj_put_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue);
 extern int classobj_drop_prop (DB_SEQ * properties, const char *name);
 extern int classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name,
@@ -1025,7 +942,6 @@ extern int classobj_get_cached_constraint (SM_CONSTRAINT * constraints, SM_CONST
 extern bool classobj_has_class_unique_constraint (SM_CLASS_CONSTRAINT * constraints);
 extern bool classobj_has_unique_constraint (SM_CONSTRAINT * constraints);
 extern bool classobj_has_function_constraint (SM_CONSTRAINT * constraints);
-extern int classobj_decompose_property_oid (const char *buffer, int *volid, int *fileid, int *pageid);
 extern int classobj_btid_from_property_value (DB_VALUE * value, BTID * btid, char **shared_cons_name);
 extern int classobj_oid_from_property_value (DB_VALUE * value, OID * oid);
 
@@ -1168,6 +1084,7 @@ extern int classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char *
 				       const char *constraint_name, const char **att_names, const int *asc_desc,
 				       SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * func_index_info);
 extern void classobj_initialize_attributes (SM_ATTRIBUTE * attributes);
+extern int classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src);
 extern void classobj_initialize_methods (SM_METHOD * methods);
 extern SM_PARTITION *classobj_make_partition_info (void);
 extern void classobj_free_partition_info (SM_PARTITION * partition_info);

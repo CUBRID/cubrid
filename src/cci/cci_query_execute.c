@@ -44,6 +44,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/stat.h>
+#include <assert.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -1782,7 +1783,7 @@ qe_get_data (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle, int col_no, i
 	  data_size -= NET_SIZE_BYTE;
 	  col_value_p += NET_SIZE_BYTE;
 
-	  u_ext_type = get_ext_utype_from_net_bytes (basic_type, set_type);
+	  u_ext_type = get_ext_utype_from_net_bytes ((T_CCI_U_TYPE) basic_type, (T_CCI_U_TYPE) set_type);
 	}
       else
 	{
@@ -2528,7 +2529,7 @@ qe_get_last_insert_id (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, voi
       valsize--;
 
       NET_STR_TO_BYTE (set_type, ptr);
-      u_ext_type = get_ext_utype_from_net_bytes (type, set_type);
+      u_ext_type = get_ext_utype_from_net_bytes ((T_CCI_U_TYPE) type, (T_CCI_U_TYPE) set_type);
       type = CCI_GET_COLLECTION_DOMAIN (u_ext_type);
     }
   else
@@ -2548,7 +2549,7 @@ qe_get_last_insert_id (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, voi
   if (con_handle->last_insert_id == NULL)
     {
       /* 2 for sign & null termination */
-      con_handle->last_insert_id = MALLOC (MAX_NUMERIC_PRECISION + 2);
+      con_handle->last_insert_id = (char *) MALLOC (MAX_NUMERIC_PRECISION + 2);
       if (con_handle->last_insert_id == NULL)
 	{
 	  err_code = CCI_ER_NO_MORE_MEMORY;
@@ -2597,7 +2598,7 @@ qe_col_size (T_CON_HANDLE * con_handle, char *oid_str, const char *col_attr, int
 
   ADD_ARG_BYTES (&net_buf, &col_cmd, 1);
   ADD_ARG_OBJECT (&net_buf, &oid);
-  ADD_ARG_STR (&net_buf, col_attr, strlen (col_attr) + 1, con_handle->charset);
+  ADD_ARG_STR (&net_buf, (char *) col_attr, strlen (col_attr) + 1, con_handle->charset);
 
   if (net_buf.err_code < 0)
     {
@@ -2656,7 +2657,7 @@ qe_col_set_add_drop (T_CON_HANDLE * con_handle, char col_cmd, char *oid_str, con
 
   ADD_ARG_BYTES (&net_buf, &col_cmd, 1);
   ADD_ARG_OBJECT (&net_buf, &oid);
-  ADD_ARG_STR (&net_buf, col_attr, strlen (col_attr) + 1, con_handle->charset);
+  ADD_ARG_STR (&net_buf, (char *) col_attr, strlen (col_attr) + 1, con_handle->charset);
   ADD_ARG_BYTES (&net_buf, &u_type, 1);
   if (value == NULL)
     ADD_ARG_BYTES (&net_buf, NULL, 0);
@@ -2706,7 +2707,7 @@ qe_col_seq_op (T_CON_HANDLE * con_handle, char col_cmd, char *oid_str, const cha
   ADD_ARG_BYTES (&net_buf, &col_cmd, 1);
   ADD_ARG_OBJECT (&net_buf, &oid);
   ADD_ARG_INT (&net_buf, index);
-  ADD_ARG_STR (&net_buf, col_attr, strlen (col_attr) + 1, con_handle->charset);
+  ADD_ARG_STR (&net_buf, (char *) col_attr, strlen (col_attr) + 1, con_handle->charset);
   if (col_cmd == CCI_COL_SEQ_INSERT || col_cmd == CCI_COL_SEQ_PUT)
     {
       ADD_ARG_BYTES (&net_buf, &u_type, 1);
@@ -2716,7 +2717,7 @@ qe_col_seq_op (T_CON_HANDLE * con_handle, char col_cmd, char *oid_str, const cha
 	}
       else
 	{
-	  ADD_ARG_STR (&net_buf, value, strlen (value) + 1, con_handle->charset);
+	  ADD_ARG_STR (&net_buf, (char *) value, strlen (value) + 1, con_handle->charset);
 	}
     }
 
@@ -2955,7 +2956,7 @@ qe_execute_array (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, T_CCI_QU
 		case CCI_A_TYPE_CLOB:
 		  {
 		    T_LOB **value;
-		    value = req_handle->bind_value[idx].value;
+		    value = (T_LOB **) req_handle->bind_value[idx].value;
 		    err_code =
 		      bind_value_conversion ((T_CCI_A_TYPE) a_type, u_type, CCI_BIND_PTR, value[row], UNMEASURED_LENGTH,
 					     &cur_cell);
@@ -3995,7 +3996,7 @@ qe_get_data_lob (T_CCI_U_TYPE u_type, char *col_value_p, int col_val_size, void 
 
   lob->type = u_type;
   lob->handle_size = col_val_size;
-  lob->handle = MALLOC (col_val_size);
+  lob->handle = (char *) MALLOC (col_val_size);
   if (lob->handle == NULL)
     {
       FREE_MEM (lob);
@@ -4016,7 +4017,6 @@ qe_get_data_req_handle (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle, ch
   int error = CCI_ER_NO_ERROR;
   int statement_id = -1;
   int srv_handle = 0;
-  int out_srv_handle = 0;
   char *result_msg = NULL;
   int result_msg_size;
 
@@ -4224,7 +4224,7 @@ qe_savepoint_cmd (T_CON_HANDLE * con_handle, char cmd, const char *savepoint_nam
   net_buf_cp_str (&net_buf, &func_code, 1);
 
   ADD_ARG_BYTES (&net_buf, &cmd, 1);
-  ADD_ARG_STR (&net_buf, savepoint_name, strlen (savepoint_name) + 1, con_handle->charset);
+  ADD_ARG_STR (&net_buf, (char *) savepoint_name, strlen (savepoint_name) + 1, con_handle->charset);
 
   if (net_buf.err_code < 0)
     {
@@ -4704,7 +4704,7 @@ qe_is_shard (T_CON_HANDLE * con_handle)
 
 #if defined(WINDOWS)
 int
-encode_string (char *str, int size, char **target, char *charset)
+encode_string (const char *str, int size, char **target, char *charset)
 {
   int nLength;
   char *tmp_string;
@@ -4979,7 +4979,9 @@ fetch_info_decode (char *buf, int size, int num_cols, T_TUPLE_VALUE ** tuple_val
   int err_code = 0;
   int num_tuple, i, j;
   T_TUPLE_VALUE *tmp_tuple_value = NULL;
+#if defined (WINDOWS)
   char *charset = con_handle->charset;
+#endif
 
   if (fetch_type == FETCH_FETCH || fetch_type == FETCH_COL_GET)
     {
@@ -5310,7 +5312,7 @@ get_column_info (char *buf_p, int *size, T_CCI_COL_INFO ** ret_col_info, char **
 		  goto get_column_info_error;
 		}
 	      NET_STR_TO_BYTE (set_type, cur_p);
-	      col_info[i].ext_type = get_ext_utype_from_net_bytes (type, set_type);
+	      col_info[i].ext_type = get_ext_utype_from_net_bytes ((T_CCI_U_TYPE) type, (T_CCI_U_TYPE) set_type);
 	      remain_size -= NET_SIZE_BYTE;
 	      cur_p += NET_SIZE_BYTE;
 	    }
@@ -5732,7 +5734,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
 	case CCI_U_TYPE_ENUM:
 	  if (length == UNMEASURED_LENGTH)
 	    {
-	      bind_value->size = strlen (value);
+	      bind_value->size = strlen ((const char *) value);
 	    }
 	  else
 	    {
@@ -5935,7 +5937,6 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
 	case CCI_U_TYPE_TIMESTAMPTZ:
 	case CCI_U_TYPE_TIMESTAMPLTZ:
 	  {
-	    const char *p_tz = NULL;
 	    T_CCI_DATE_TZ date_tz = { 0, 0, 0, 0, 0, 0, 0, "" };
 
 	    err_code = ut_str_to_timestamptz ((char *) value, &date_tz);
@@ -6664,7 +6665,7 @@ bind_value_to_net_buf (T_NET_BUF * net_buf, T_CCI_U_TYPE u_type, void *value, in
 	}
       else
 	{
-	  ADD_ARG_BIND_STR (net_buf, value, size, charset);
+	  ADD_ARG_BIND_STR (net_buf, (char *) value, size, charset);
 	}
       break;
     case CCI_U_TYPE_NUMERIC:
@@ -6674,7 +6675,7 @@ bind_value_to_net_buf (T_NET_BUF * net_buf, T_CCI_U_TYPE u_type, void *value, in
 	}
       else
 	{
-	  ADD_ARG_BIND_STR (net_buf, value, size, charset);
+	  ADD_ARG_BIND_STR (net_buf, (char *) value, size, charset);
 	}
       break;
     case CCI_U_TYPE_SET:
@@ -6998,7 +6999,7 @@ get_basic_utype (T_CCI_U_EXT_TYPE u_ext_type)
     }
   else
     {
-      return CCI_GET_COLLECTION_DOMAIN (u_ext_type);
+      return (T_CCI_U_TYPE) CCI_GET_COLLECTION_DOMAIN (u_ext_type);
     }
 }
 

@@ -23,19 +23,17 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <assert.h>
+
 #include "porting.h"
 #include "dbtype.h"
 #include "dbdef.h"
 #include "load_object.h"
 #include "db.h"
 #include "locator_cl.h"
-#include "locator_sr.h"
 #include "schema_manager.h"
-#include "heap_file.h"
-#include "system_catalog.h"
 #include "object_accessor.h"
 #include "set_object.h"
-#include "btree.h"
 #include "message_catalog.h"
 #include "network_interface_cl.h"
 #include "server_interface.h"
@@ -209,7 +207,7 @@ static int
 get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *num_class_mops)
 {
   int status = NO_ERROR;
-  int i = 0, j = 0;
+  int i = 0;
   FILE *input_file;
   char buffer[DB_MAX_IDENTIFIER_LENGTH];
   char **class_names = NULL;
@@ -266,7 +264,7 @@ get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *nu
 	}
       else
 	{
-	  len = strlen (buffer);
+	  len = (int) strlen (buffer);
 	}
 
       if (len < 1)
@@ -481,7 +479,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
 		 DB_TRAN_ISOLATION tran_isolation)
 {
   int status = NO_ERROR;
-  OID **class_oids = NULL, *next_oid = NULL;
+  OID **class_oids = NULL;
   int i, num_classes = 0;
   LIST_MOPS *class_table = NULL;
   OID last_processed_class_oid, last_processed_oid;
@@ -1017,8 +1015,6 @@ compactdb (UTIL_FUNCTION_ARG * arg)
   const char *database_name;
   bool verbose_flag = 0, delete_old_repr_flag = 0;
   char *input_filename = NULL;
-  DB_OBJECT **req_class_table = NULL;
-  LIST_MOPS *all_class_table = NULL;
   int maximum_processed_space = 10 * DB_PAGESIZE, pages;
   int instance_lock_timeout, class_lock_timeout;
   char **tables = NULL;

@@ -651,27 +651,26 @@ checkdb: 监测数据库一致性.\n\
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
-15 数据库 '%1$s' 的空间描述 页大小 %2$s. (日志页大小: %3$s)\n\n
-16 %1$5d %2$9s  %3$s %4$s  %5$s\n
-17 无法打开输出文件 '%1$s'\n
-18 数据库 '%1$s' 临时卷的空间描述 页大小 %2$s.\n\n
-19 卷标识  用途  页总数  空闲页  卷名\n\n
-20 卷标识  用途  总大小  空闲空间  卷名\n\n
-21 LOB 空间描述 %1$s \n\n
-22 -------------------------------------------------------------------------------\n
-30 数据库 '%1$s' 的 汇总空间描述 页大小 %2$s. (日志页大小: %3$s)\n\n
-31 设定的    总页数  已用页数  空闲页数  卷数\n
-32 设定的     总大小   已用大小   空闲大小  卷数\n
-33 %1$10s %2$s %3$s %4$s %5$10d\n
-34 -------------------------------------------------------------\n
-40 Volid  Purpose   total_pages  free_pages  data_pages index_pages  temp_pages  Vol Name\n\n
-41 Volid  Purpose    total_size   free_size   data_size  index_size   temp_size  Vol Name\n\n
-42 %1$5d %2$9s  %3$s %4$s %5$s %6$s %7$s  %8$s\n
-43 ----------------------------------------------------------------------------------------------------\n
-50 Purpose    total_pages  used_pages  free_pages  data_pages index_pages  temp_pages  volume_count\n
-51 Purpose     total_size   used_size   free_size   data_size  index_size   temp_size  volume_count\n
-52 %1$10s %2$s %3$s %4$s %5$s %6$s %7$s %8$10d\n
-53 -------------------------------------------------------------------------------------------------\n
+10 数据库 '%1$s' 的空间描述 页大小 %2$s. (日志页大小: %3$s)\n\n
+11 无法打开输出文件 '%1$s'\n
+12 LOB 空间描述 %1$s \n\n
+20 type                purpose            volume_count        used_pages          free_pages          total_pages\n
+21 type                purpose            volume_count         used_size           free_size           total_size\n
+22 PERMANENT           PERMANENT DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+23 PERMANENT           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+24 TEMPORARY           TEMPORARY DATA            %1$5d     %2$13s       %3$13s        %4$13s\n
+25 -                   -                         %1$5d     %2$13s       %3$13s        %4$13s\n
+30 所有卷的空间描述:\n
+31 volid               type                purpose            used_pages          free_pages          total_pages         volume_name\n
+32 volid               type                purpose             used_size           free_size           total_size         volume_name\n
+33 %1$5d               PERMANENT           PERMANENT DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+34 %1$5d               PERMANENT           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+35 %1$5d               TEMPORARY           TEMPORARY DATA  %2$13s       %3$13s        %4$13s         %5$-64s\n
+40 文件的详细空间描述:\n
+41 data_type           file_count          used_pages         file_table_pages    reserved_pages      total_pages\n
+42 data_type           file_count           used_size          file_table_size     reserved_size       total_size\n
+43 %1$-10s               %2$5d       %3$13s            %4$13s     %5$13s    %6$13s\n
+50 -----------------------------------------------------------------------------------------------------------------\n
 60 \
 spacedb: 显示数据库的使用/空闲空间.\n\
 用法: %1$s spacedb [选项] 数据库名\n\
@@ -684,7 +683,6 @@ spacedb: 显示数据库的使用/空闲空间.\n\
                                设置显示单元 (页, M, G, T, 人类可读);默认 : 人类可读\n\
   -s, --summarize              为每个设定的卷只显示一个总结\n\
   -p, --purpose                显示每个卷上的每个 purpose(data/index/temp) 已使用的大小\n
-
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
 15 预计页的数目 = %1$d\n
@@ -755,8 +753,8 @@ diagdb: 转储一个数据库.\n\
 用法: %1$s diagdb [选项] 数据库名\n\
 \n\
 可用选项:\n\
-  -o, --output-file=FILE       重定向输出信息到文件 FILE ; 默认: 空\n\
-      --emergency              emergency restart; default: none\n\
+  -o, --output-file=FILE       重定向输出信息到文件 FILE; 默认: 空\n\
+      --emergency              紧急重启; 默认: 空\n\
   -d, --dump-type=TYPE         转储类型\n\
                                -1 转储所有\n\
                                 1 转储文件表\n\
@@ -1062,25 +1060,12 @@ tranlist: 输出活动事务信息.\n\
       --sort-key=COLUMN_NUMBER 列序号将被排序\n\
       --reverse                反转排序结果\n
 
-$set 50 MSGCAT_UTIL_SET_PREFETCHLOGDB
-22 服务器没有配置成 HA 模式.\n
-23 预取功能已经被禁用.\n
-58 HA 功能不支持此平台.\n
-59 prefetchlogdb 不能作为 standalone 模式运行.\n
-60 \
-prefetchlogdb: 从服务器中预取日志页.\n\
-用法: %1$s prefetchlogdb [选项] 数据库名\n\
-\n\
-可用选项:\n\
-  -L, --log-path=PATH         指定拷贝日志卷的路径为 PATH\n
-
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
 59 提供的生成模式无效.\n
 60 无效的或损坏的输入文件夹.\n
 61 \
 gen_tz: 生成包含时区数据的源文件并编译成一个共享库.\n\
-用法: %s gen_tz [选项]\n\
-       %s gen_tz -g extend [选项] [数据库名]\n\
+用法: %s gen_tz -g [new|extend] [database-name] (仅用于 extend 模式)\n\
 \n\
 可用选项:\n\
   -i, --input-folder    指定一个输入文件夹的路径，文件夹必须包含一个IANA的时区\n\
@@ -1091,14 +1076,12 @@ gen_tz: 生成包含时区数据的源文件并编译成一个共享库.\n\
                         1. NEW (默认): 不考虑之前的版本，直接生成共享库所需的时\n\
                         区源文件; 也会生成包含所有国家和时区名字的源文件 (只为\n\
                         开发者使用, 将来会集成到CUBRID新版本中).\n\
-                        2. EXTEND: 用输入文件夹中的数据生成时区源文件; 已经编\n\
-                        入CUBRID中的时区ID会被保留; 输入文件夹中找到的新的时区\n\
-                        会被增加到第二个源文件(如果没有也会生成)中; GMT偏移和\n\
-                        夏令时信息会被更新(或者为新的时区增加); 如果已编入CUBRID\n\
-                        的时区在输入文件中缺失, 该时区也绝不会被移除, 其相关的\n\
-                        数据会从已存在的时区库中恢复. 新时区库使用之前, 必须确\n\
-                        保新生成的包含所有时区名字的C文件已经存放到了CUBRID的源\n\
-                        代码文件夹中.\n
+                        2. EXTEND : 使用输入文件夹中的数据生成时区源文件;\n\
+			添加输入文件夹中找到的新时区; GMT偏移和夏令时信息会\n\
+			被更新(或者为新的时区增加); 如果已编入CUBRID的时区在\n\
+			输入文件中缺失, 该时区也绝不会被移除, 其相关的数据\n\
+			会从已存在的时区库中恢复. 如果不能保证所有数据后向兼容,\n\
+			则数据库中所有包含时区类型的列将被更新.\n
 
 $set 52 MSGCAT_UTIL_SET_DUMP_TZ
 59 提供的区域ID超出了范围, 用 -z 可以查看所有的时区和它们的ID.\n

@@ -23,7 +23,14 @@
 
 #ident "$Id$"
 
+#include "server_support.h"
+
 #include "config.h"
+#include "session.h"
+#include "thread_entry_task.hpp"
+#include "thread_entry.hpp"
+#include "thread_manager.hpp"
+#include "thread_worker_pool.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,7 +49,6 @@
 #include <assert.h>
 
 #include "porting.h"
-#include "thread.h"
 #include "memory_alloc.h"
 #include "boot_sr.h"
 #include "connection_defs.h"
@@ -51,8 +57,6 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "error_manager.h"
-#include "job_queue.h"
-#include "thread.h"
 #include "connection_error.h"
 #include "message_catalog.h"
 #include "critical_section.h"
@@ -68,12 +72,12 @@
 #endif /* WINDOWS */
 #include "connection_sr.h"
 #include "xserver_interface.h"
-#include "server_support.h"
 #include "utility.h"
+#include "vacuum.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
-#include "dbval.h"		/* this must be the last header file included */
+#include "dbtype.h"
 
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"
@@ -91,9 +95,6 @@ static struct timeval css_Shutdown_timeout = { 0, 0 };
 static char *css_Master_server_name = NULL;	/* database identifier */
 static int css_Master_port_id;
 static CSS_CONN_ENTRY *css_Master_conn;
-#if defined(WINDOWS)
-static int css_Win_kill_signaled = 0;
-#endif /* WINDOWS */
 static IP_INFO *css_Server_accessible_ip_info;
 static char *ip_list_file_name = NULL;
 static char ip_file_real_path[PATH_MAX];
@@ -106,85 +107,7 @@ static HA_SERVER_STATE ha_Server_state = HA_SERVER_STATE_IDLE;
 static bool ha_Repl_delay_detected = false;
 
 static int ha_Server_num_of_hosts = 0;
-
-typedef struct job_queue JOB_QUEUE;
-struct job_queue
-{
-  pthread_mutex_t job_lock;
-  CSS_LIST job_list;
-  THREAD_ENTRY *worker_thrd_list;
-  pthread_mutex_t free_lock;
-  CSS_JOB_ENTRY *free_list;
-#if !defined(HAVE_ATOMIC_BUILTINS)
-  pthread_mutex_t counter_lock;	/* protect job queue counter */
-#endif				/* !HAVE_ATOMIC_BUILTINS */
-  int num_total_workers;	/* Num of total workers in this job queue */
-  int num_busy_workers;		/* Num of busy threads in this job queue */
-  int num_conn_workers;		/* Num of connection threads in this job queue */
-};
-
-static JOB_QUEUE css_Job_queue[CSS_NUM_JOB_QUEUE] = {
-  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
-#if !defined(HAVE_ATOMIC_BUILTINS)
-   PTHREAD_MUTEX_INITIALIZER,
-#endif /* !HAVE_ATOMIC_BUILTINS */
-   0, 0, 0},
-  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
-#if !defined(HAVE_ATOMIC_BUILTINS)
-   PTHREAD_MUTEX_INITIALIZER,
-#endif /* !HAVE_ATOMIC_BUILTINS */
-   0, 0, 0},
-  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
-#if !defined(HAVE_ATOMIC_BUILTINS)
-   PTHREAD_MUTEX_INITIALIZER,
-#endif /* !HAVE_ATOMIC_BUILTINS */
-   0, 0, 0},
-  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
-#if !defined(HAVE_ATOMIC_BUILTINS)
-   PTHREAD_MUTEX_INITIALIZER,
-#endif /* !HAVE_ATOMIC_BUILTINS */
-   0, 0, 0},
-  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
-#if !defined(HAVE_ATOMIC_BUILTINS)
-   PTHREAD_MUTEX_INITIALIZER,
-#endif /* !HAVE_ATOMIC_BUILTINS */
-   0, 0, 0},
-  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
-#if !defined(HAVE_ATOMIC_BUILTINS)
-   PTHREAD_MUTEX_INITIALIZER,
-#endif /* !HAVE_ATOMIC_BUILTINS */
-   0, 0, 0},
-  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
-#if !defined(HAVE_ATOMIC_BUILTINS)
-   PTHREAD_MUTEX_INITIALIZER,
-#endif /* !HAVE_ATOMIC_BUILTINS */
-   0, 0, 0},
-  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
-#if !defined(HAVE_ATOMIC_BUILTINS)
-   PTHREAD_MUTEX_INITIALIZER,
-#endif /* !HAVE_ATOMIC_BUILTINS */
-   0, 0, 0},
-  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
-#if !defined(HAVE_ATOMIC_BUILTINS)
-   PTHREAD_MUTEX_INITIALIZER,
-#endif /* !HAVE_ATOMIC_BUILTINS */
-   0, 0, 0},
-  {PTHREAD_MUTEX_INITIALIZER, {NULL, NULL, NULL, 0, 0},
-   NULL, PTHREAD_MUTEX_INITIALIZER, NULL,
-#if !defined(HAVE_ATOMIC_BUILTINS)
-   PTHREAD_MUTEX_INITIALIZER,
-#endif /* !HAVE_ATOMIC_BUILTINS */
-   0, 0, 0}
-};
+static char ha_Server_master_hostname[MAXHOSTNAMELEN];
 
 #define HA_LOG_APPLIER_STATE_TABLE_MAX  5
 typedef struct ha_log_applier_state_table HA_LOG_APPLIER_STATE_TABLE;
@@ -204,8 +127,81 @@ static HA_LOG_APPLIER_STATE_TABLE ha_Log_applier_state[HA_LOG_APPLIER_STATE_TABL
 
 static int ha_Log_applier_state_num = 0;
 
-static int css_free_job_entry_func (void *data, void *dummy);
-static void css_empty_job_queue (void);
+// *INDENT-OFF*
+static cubthread::entry_workpool *css_Server_request_worker_pool = NULL;
+static cubthread::entry_workpool *css_Connection_worker_pool = NULL;
+
+class css_server_task : public cubthread::entry_task
+{
+public:
+
+  css_server_task (void) = delete;
+
+  css_server_task (CSS_CONN_ENTRY &conn)
+  : m_conn (conn)
+  {
+  }
+
+  void execute (context_type &thread_ref) override final;
+
+  // retire not overwritten; task is automatically deleted
+
+private:
+  CSS_CONN_ENTRY &m_conn;
+};
+
+// css_server_external_task - class used for legacy desgin; external modules may push tasks on css worker pool and we
+//                            need to make sure conn_entry is properly initialized.
+//
+// TODO: remove me
+class css_server_external_task : public cubthread::entry_task
+{
+public:
+  css_server_external_task (void) = delete;
+
+  css_server_external_task (CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
+  : m_conn (conn)
+  , m_task (task)
+  {
+  }
+
+  ~css_server_external_task (void)
+  {
+    m_task->retire ();
+  }
+
+  void execute (context_type &thread_ref) override final;
+
+  // retire not overwritten; task is automatically deleted
+
+private:
+  CSS_CONN_ENTRY *m_conn;
+  cubthread::entry_task *m_task;
+};
+
+class css_connection_task : public cubthread::entry_task
+{
+public:
+
+  css_connection_task (void) = delete;
+
+  css_connection_task (CSS_CONN_ENTRY & conn)
+  : m_conn (conn)
+  {
+    //
+  }
+
+  void execute (context_type & thread_ref) override final;
+
+  // retire not overwritten; task is automatically deleted
+
+private:
+  CSS_CONN_ENTRY &m_conn;
+};
+// *INDENT-ON*
+
+static const size_t CSS_JOB_QUEUE_SCAN_COLUMN_COUNT = 4;
+
 static void css_setup_server_loop (void);
 static int css_check_conn (CSS_CONN_ENTRY * p);
 static void css_set_shutdown_timeout (int timeout);
@@ -219,262 +215,40 @@ static void css_process_get_eof_request (SOCKET master_fd);
 
 static void css_close_connection_to_master (void);
 static int css_reestablish_connection_to_master (void);
-static void dummy_sigurg_handler (int sig);
 static int css_connection_handler_thread (THREAD_ENTRY * thrd, CSS_CONN_ENTRY * conn);
-static int css_internal_connection_handler (CSS_CONN_ENTRY * conn);
-static int css_internal_request_handler (THREAD_ENTRY * thrd, CSS_THREAD_ARG arg);
+static css_error_code css_internal_connection_handler (CSS_CONN_ENTRY * conn);
+static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
-static int css_wait_worker_thread_on_jobq (THREAD_ENTRY * thrd, int jobq_index);
-static bool css_can_occupy_worker_thread_on_jobq (int jobq_index);
-static int css_wakeup_worker_thread_on_jobq (int jobq_index);
 static int css_check_accessibility (SOCKET new_fd);
 
 #if defined(WINDOWS)
 static int css_process_new_connection_request (void);
-static BOOL WINAPI ctrl_sig_handler (DWORD ctrl_event);
 #endif /* WINDOWS */
 
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
+static void css_process_new_slave (SOCKET master_fd);
 
-/*
- * css_make_job_entry () -
- *   return:
- *   conn(in):
- *   func(in):
- *   arg(in):
- *   index(in):
- */
-CSS_JOB_ENTRY *
-css_make_job_entry (CSS_CONN_ENTRY * conn, CSS_THREAD_FN func, CSS_THREAD_ARG arg, int index)
-{
-  CSS_JOB_ENTRY *job_entry_p;
-  int jobq_index;
-  int rv;
+static void css_push_server_task (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
+static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopper_thread_ref);
+static void css_stop_log_writer (THREAD_ENTRY & thread_ref, bool &);
+static void css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool is_log_writer, bool & found);
+static bool css_is_log_writer (const THREAD_ENTRY & thread_arg);
+static void css_stop_all_workers (THREAD_ENTRY & thread_ref, css_thread_stop_type stop_phase);
+static void css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapper, int &busy_count);
+// *INDENT-OFF*
+// cubthread::entry_workpool::core confuses indent
+static void css_wp_core_job_scan_mapper (const cubthread::entry_workpool::core & wp_core, bool & stop_mapper,
+                                         THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx, size_t & core_index,
+                                         int & error_code);
+// *INDENT-ON*
+static void css_is_any_thread_not_suspended_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, size_t & count,
+						     bool & found);
+static void css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
+							  THREAD_ENTRY * caller_thread, int tran_index, int client_id,
+							  size_t & count);
 
-  if (index >= 0)
-    {
-      /* explicit index */
-      jobq_index = index % CSS_NUM_JOB_QUEUE;
-    }
-  else
-    {
-      if (conn == NULL)
-	{
-	  THREAD_ENTRY *thrd = thread_get_thread_entry_info ();
-	  jobq_index = thrd->index % CSS_NUM_JOB_QUEUE;
-	}
-      else
-	{
-	  jobq_index = conn->idx % CSS_NUM_JOB_QUEUE;
-	}
-    }
-
-  if (css_Job_queue[jobq_index].free_list == NULL)
-    {
-      job_entry_p = (CSS_JOB_ENTRY *) malloc (sizeof (CSS_JOB_ENTRY));
-      if (job_entry_p == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CSS_JOB_ENTRY));
-	  return NULL;
-	}
-
-      job_entry_p->jobq_index = jobq_index;
-    }
-  else
-    {
-      rv = pthread_mutex_lock (&css_Job_queue[jobq_index].free_lock);
-      if (css_Job_queue[jobq_index].free_list == NULL)
-	{
-	  pthread_mutex_unlock (&css_Job_queue[jobq_index].free_lock);
-	  job_entry_p = (CSS_JOB_ENTRY *) malloc (sizeof (CSS_JOB_ENTRY));
-	  if (job_entry_p == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CSS_JOB_ENTRY));
-	      return NULL;
-	    }
-
-	  job_entry_p->jobq_index = jobq_index;
-	}
-      else
-	{
-	  job_entry_p = css_Job_queue[jobq_index].free_list;
-	  css_Job_queue[jobq_index].free_list = job_entry_p->next;
-	  pthread_mutex_unlock (&css_Job_queue[jobq_index].free_lock);
-	}
-    }
-
-  if (job_entry_p != NULL)
-    {
-      job_entry_p->conn_entry = conn;
-      job_entry_p->func = func;
-      job_entry_p->arg = arg;
-    }
-
-  return job_entry_p;
-}
-
-/*
- * css_free_job_entry () -
- *   return:
- *   p(in):
- */
-void
-css_free_job_entry (CSS_JOB_ENTRY * job_entry_p)
-{
-  int rv, jobq_index;
-
-  if (job_entry_p != NULL)
-    {
-      jobq_index = job_entry_p->jobq_index;
-
-      rv = pthread_mutex_lock (&css_Job_queue[jobq_index].free_lock);
-
-      job_entry_p->next = css_Job_queue[jobq_index].free_list;
-      css_Job_queue[jobq_index].free_list = job_entry_p;
-
-      pthread_mutex_unlock (&css_Job_queue[jobq_index].free_lock);
-    }
-}
-
-/*
- * css_init_job_queue () -
- *   return:
- */
-void
-css_init_job_queue (void)
-{
-  int i, j;
-#if defined(WINDOWS) || !defined(HAVE_ATOMIC_BUILTINS)
-  int r;
-#endif /* WINDOWS */
-  CSS_JOB_ENTRY *job_entry_p;
-  int num_job_list;
-  int total_workers;
-  int thrd_idx, jobq_idx;
-
-  num_job_list = NUM_NON_SYSTEM_TRANS;
-  for (i = 0; i < CSS_NUM_JOB_QUEUE; i++)
-    {
-#if defined(WINDOWS)
-      r = pthread_mutex_init (&css_Job_queue[i].job_lock, NULL);
-      CSS_CHECK_RETURN (r, ER_CSS_PTHREAD_MUTEX_INIT);
-      r = pthread_mutex_init (&css_Job_queue[i].free_lock, NULL);
-      CSS_CHECK_RETURN (r, ER_CSS_PTHREAD_MUTEX_INIT);
-#endif /* WINDOWS */
-
-#if !defined(HAVE_ATOMIC_BUILTINS)
-      r = pthread_mutex_init (&css_Job_queue[i].counter_lock, NULL);
-      CSS_CHECK_RETURN (r, ER_CSS_PTHREAD_MUTEX_INIT);
-#endif /* !HAVE_ATOMIC_BUILTINS */
-
-      css_initialize_list (&css_Job_queue[i].job_list, num_job_list);
-      css_Job_queue[i].free_list = NULL;
-
-      for (j = 0; j < num_job_list; j++)
-	{
-	  job_entry_p = (CSS_JOB_ENTRY *) malloc (sizeof (CSS_JOB_ENTRY));
-	  if (job_entry_p == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CSS_JOB_ENTRY));
-	      break;
-	    }
-
-	  job_entry_p->jobq_index = i;
-	  job_entry_p->next = css_Job_queue[i].free_list;
-	  css_Job_queue[i].free_list = job_entry_p;
-	}
-    }
-
-  total_workers = thread_num_worker_threads ();
-
-  for (thrd_idx = 1; thrd_idx <= total_workers; thrd_idx++)
-    {
-      jobq_idx = thrd_idx % CSS_NUM_JOB_QUEUE;
-
-      css_Job_queue[jobq_idx].num_total_workers++;
-    }
-}
-
-/*
- * css_broadcast_shutdown_thread () -
- *   return:
- */
-void
-css_broadcast_shutdown_thread (void)
-{
-  THREAD_ENTRY *thrd = NULL;
-  int rv;
-  int i, thread_count;
-
-  /* idle worker threads are blocked on the job queue. */
-  for (i = 0; i < CSS_NUM_JOB_QUEUE; i++)
-    {
-      rv = pthread_mutex_lock (&css_Job_queue[i].job_lock);
-
-      thrd = css_Job_queue[i].worker_thrd_list;
-      thread_count = 0;
-
-      while (thrd)
-	{
-	  thread_wakeup (thrd, THREAD_RESUME_DUE_TO_SHUTDOWN);
-	  thrd = thrd->worker_thrd_list;
-	  thread_count++;
-
-	  if (thread_count > thread_num_worker_threads ())
-	    {
-	      /* prevent infinite loop */
-	      assert (0);
-	      break;
-	    }
-	}
-
-      pthread_mutex_unlock (&css_Job_queue[i].job_lock);
-    }
-}
-
-/*
- * css_add_to_job_queue () -
- *   return:
- *   job_entry_p(in):
- */
-void
-css_add_to_job_queue (CSS_JOB_ENTRY * job_entry_p)
-{
-  int rv;
-  int i, j, jobq_index;
-  const int MAX_NTRIES = 100;
-
-  jobq_index = job_entry_p->jobq_index;
-
-  for (i = 0; i <= MAX_NTRIES; i++)
-    {
-      for (j = 0; j < CSS_NUM_JOB_QUEUE; j++)
-	{
-	  rv = pthread_mutex_lock (&css_Job_queue[jobq_index].job_lock);
-
-	  if (css_can_occupy_worker_thread_on_jobq (jobq_index) || i == MAX_NTRIES)
-	    {
-	      /* If there's no available thread even though it has probed the entire job queues, just add the job to
-	       * the original job queue. */
-	      css_add_list (&css_Job_queue[jobq_index].job_list, job_entry_p);
-	      css_wakeup_worker_thread_on_jobq (jobq_index);
-
-	      pthread_mutex_unlock (&css_Job_queue[jobq_index].job_lock);
-	      return;
-	    }
-
-	  pthread_mutex_unlock (&css_Job_queue[jobq_index].job_lock);
-
-	  /* linear probing */
-	  jobq_index++;
-	  jobq_index %= CSS_NUM_JOB_QUEUE;
-	}
-
-      thread_sleep (10 * ((i / 10) + 1));	/* sleep 10ms upto 100ms */
-    }
-}
-
+#if defined (SERVER_MODE)
 /*
  * css_job_queues_start_scan() - start scan function for 'SHOW JOB QUEUES'
  *   return: NO_ERROR, or ER_code
@@ -483,253 +257,44 @@ css_add_to_job_queue (CSS_JOB_ENTRY * job_entry_p)
  *   arg_values(in):
  *   arg_cnt(in):
  *   ptr(in/out): 'show job queues' context
+ *
+ * NOTE: job queues don't really exist anymore, at least not the way SHOW JOB QUEUES statement was created for.
+ *       we now have worker pool "cores" that act as partitions of workers and queued tasks.
+ *       for backward compatibility, the statement is not changed; only its columns are reinterpreted
+ *       1. job queue index => core index
+ *       2. job queue max workers => core max workers
+ *       3. job queue busy workers => core busy workers
+ *       4. job queue connection workers => 0    // connection workers are separated in a different worker pool
  */
 int
 css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
 {
   int error = NO_ERROR;
   SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
-  DB_VALUE *vals = NULL;
-  JOB_QUEUE *jobq = NULL;
-  int idx, jobq_idx;
-  int num_busy_workers, num_conn_workers;
-  const int col_num = 4;
 
   *ptr = NULL;
 
-  ctx = showstmt_alloc_array_context (thread_p, CSS_NUM_JOB_QUEUE, col_num);
+  ctx = showstmt_alloc_array_context (thread_p, (int) css_Server_request_worker_pool->get_core_count (),
+				      (int) CSS_JOB_QUEUE_SCAN_COLUMN_COUNT);
   if (ctx == NULL)
     {
-      error = er_errid ();
+      ASSERT_ERROR_AND_SET (error);
       return error;
     }
 
-  for (jobq_idx = 0; jobq_idx < CSS_NUM_JOB_QUEUE; jobq_idx++)
+  size_t core_index = 0;	// core index starts with 0
+  css_Server_request_worker_pool->map_cores (css_wp_core_job_scan_mapper, thread_p, ctx, core_index, error);
+  if (error != NO_ERROR)
     {
-      vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
-      if (vals == NULL)
-	{
-	  error = er_errid ();
-	  goto exit_on_error;
-	}
-
-      idx = 0;
-      jobq = &css_Job_queue[jobq_idx];
-
-      /* job queue index */
-      db_make_int (&vals[idx], jobq_idx);
-      idx++;
-
-      /* num of total workers in this queue */
-      db_make_int (&vals[idx], jobq->num_total_workers);
-      idx++;
-
-#if defined(HAVE_ATOMIC_BUILTINS)
-      num_busy_workers = jobq->num_busy_workers;
-      num_conn_workers = jobq->num_conn_workers;
-#else /* HAVE_ATOMIC_BUILTINS */
-      (void) pthread_mutex_lock (&jobq->counter_lock);
-
-      num_busy_workers = jobq->num_busy_workers;
-      num_conn_workers = jobq->num_conn_workers;
-
-      (void) pthread_mutex_unlock (&jobq->counter_lock);
-#endif /* HAVE_ATOMIC_BUILTINS */
-
-      /* num of busy workers in this queue */
-      db_make_int (&vals[idx], num_busy_workers);
-      idx++;
-
-      /* num of connection workers in this queue */
-      db_make_int (&vals[idx], num_conn_workers);
-      idx++;
-
-      assert (idx == col_num);
+      ASSERT_ERROR ();
+      showstmt_free_array_context (thread_p, ctx);
+      return error;
     }
-
   *ptr = ctx;
 
   return NO_ERROR;
-
-exit_on_error:
-
-  if (ctx != NULL)
-    {
-      showstmt_free_array_context (thread_p, ctx);
-    }
-
-  return error;
 }
-
-/*
- * css_get_new_job() - fetch a job from the queue
- *   return:
- */
-CSS_JOB_ENTRY *
-css_get_new_job (void)
-{
-  CSS_JOB_ENTRY *job_entry_p;
-  THREAD_ENTRY *thrd = thread_get_thread_entry_info ();
-  int jobq_index = thrd->index % CSS_NUM_JOB_QUEUE;
-  int r;
-
-  r = pthread_mutex_lock (&css_Job_queue[jobq_index].job_lock);
-
-  if (css_Job_queue[jobq_index].job_list.count == 0)
-    {
-      r = css_wait_worker_thread_on_jobq (thrd, jobq_index);
-      if (r != NO_ERROR)
-	{
-	  pthread_mutex_unlock (&css_Job_queue[jobq_index].job_lock);
-	  r = pthread_mutex_lock (&thrd->tran_index_lock);
-
-	  return NULL;
-	}
-    }
-
-  job_entry_p = (CSS_JOB_ENTRY *) css_remove_list_from_head (&css_Job_queue[jobq_index].job_list);
-
-  pthread_mutex_unlock (&css_Job_queue[jobq_index].job_lock);
-
-  r = pthread_mutex_lock (&thrd->tran_index_lock);
-
-  /* if job_entry_p == NULL, system will be shutdown soon. */
-  return job_entry_p;
-}
-
-/*
- * css_incr_job_queue_counter() - Increase the counter of job queue.
- *   return: void
- *   jobq_index(in): the index of job queue
- *   job_func(in): job func
- */
-void
-css_incr_job_queue_counter (int jobq_index, CSS_THREAD_FN job_func)
-{
-  JOB_QUEUE *jobq = &css_Job_queue[jobq_index];
-
-#if defined(HAVE_ATOMIC_BUILTINS)
-  ATOMIC_INC_32 (&jobq->num_busy_workers, 1);
-
-  if (job_func == (CSS_THREAD_FN) css_connection_handler_thread)
-    {
-      ATOMIC_INC_32 (&jobq->num_conn_workers, 1);
-    }
-#else /* HAVE_ATOMIC_BUILTINS */
-  (void) pthread_mutex_lock (&jobq->counter_lock);
-
-  jobq->num_busy_workers++;
-
-  if (job_func == (CSS_THREAD_FN) css_connection_handler_thread)
-    {
-      jobq->num_conn_workers++;
-    }
-
-  (void) pthread_mutex_unlock (&jobq->counter_lock);
-#endif /* HAVE_ATOMIC_BUILTINS */
-}
-
-/*
- * css_decr_job_queue_counter() - Decrease the counter of job queue.
- *   return: void
- *   jobq_index(in): the index of job queue
- *   job_func(in): job func
- */
-void
-css_decr_job_queue_counter (int jobq_index, CSS_THREAD_FN job_func)
-{
-  JOB_QUEUE *jobq = &css_Job_queue[jobq_index];
-
-#if defined(HAVE_ATOMIC_BUILTINS)
-  ATOMIC_INC_32 (&jobq->num_busy_workers, -1);
-
-  if (job_func == (CSS_THREAD_FN) css_connection_handler_thread)
-    {
-      ATOMIC_INC_32 (&jobq->num_conn_workers, -1);
-    }
-#else /* HAVE_ATOMIC_BUILTINS */
-  (void) pthread_mutex_lock (&jobq->counter_lock);
-
-  jobq->num_busy_workers--;
-
-  if (job_func == (CSS_THREAD_FN) css_connection_handler_thread)
-    {
-      jobq->num_conn_workers--;
-    }
-
-  (void) pthread_mutex_unlock (&jobq->counter_lock);
-#endif /* HAVE_ATOMIC_BUILTINS */
-}
-
-/*
- * css_free_job_entry_func () -
- *   return:
- *   data(in):
- *   user(in):
- */
-static int
-css_free_job_entry_func (void *data, void *dummy)
-{
-  CSS_JOB_ENTRY *job_entry_p = (CSS_JOB_ENTRY *) data;
-  int rv;
-
-  rv = pthread_mutex_lock (&css_Job_queue[job_entry_p->jobq_index].free_lock);
-
-  job_entry_p->next = css_Job_queue[job_entry_p->jobq_index].free_list;
-  css_Job_queue[job_entry_p->jobq_index].free_list = job_entry_p;
-
-  pthread_mutex_unlock (&css_Job_queue[job_entry_p->jobq_index].free_lock);
-
-  return TRAV_CONT_DELETE;
-}
-
-/*
- * css_empty_job_queue() - delete all job from the job queue
- *   return:
- */
-static void
-css_empty_job_queue (void)
-{
-  int rv;
-  int i;
-
-  for (i = 0; i < CSS_NUM_JOB_QUEUE; i++)
-    {
-      rv = pthread_mutex_lock (&css_Job_queue[i].job_lock);
-
-      css_traverse_list (&css_Job_queue[i].job_list, css_free_job_entry_func, NULL);
-
-      pthread_mutex_unlock (&css_Job_queue[i].job_lock);
-    }
-}
-
-/*
- * css_final_job_queue() -
- *   return:
- */
-void
-css_final_job_queue (void)
-{
-  int rv;
-  CSS_JOB_ENTRY *p;
-  int i;
-
-  for (i = 0; i < CSS_NUM_JOB_QUEUE; i++)
-    {
-      rv = pthread_mutex_lock (&css_Job_queue[i].job_lock);
-
-      css_traverse_list (&css_Job_queue[i].job_list, css_free_job_entry_func, NULL);
-      css_finalize_list (&css_Job_queue[i].job_list);
-      while (css_Job_queue[i].free_list != NULL)
-	{
-	  p = css_Job_queue[i].free_list;
-	  css_Job_queue[i].free_list = p->next;
-	  free_and_init (p);
-	}
-
-      pthread_mutex_unlock (&css_Job_queue[i].job_lock);
-    }
-}
+#endif // SERVER_MODE
 
 /*
  * css_setup_server_loop() -
@@ -812,13 +377,8 @@ css_set_shutdown_timeout (int timeout)
  *   return:
  *   arg(in):
  */
-#if defined(WINDOWS)
-unsigned __stdcall
+THREAD_RET_T THREAD_CALLING_CONVENTION
 css_master_thread (void)
-#else /* WINDOWS */
-void *
-css_master_thread (void)
-#endif				/* WINDOWS */
 {
   int r, run_code = 1, status = 0, nfds;
   struct pollfd po[] = { {0, 0, 0}, {0, 0, 0} };
@@ -886,10 +446,10 @@ css_master_thread (void)
 		{
 		  css_close_connection_to_master ();
 		  /* shutdown message received */
-		  run_code = (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF) ? 0 : 1;
+		  run_code = (!HA_DISABLED ())? 0 : 1;
 		}
 
-	      if (run_code == 0 && prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+	      if (run_code == 0 && !HA_DISABLED ())
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
 			  "Disconnected with the cub_master and will shut itself down", "");
@@ -923,9 +483,6 @@ css_master_thread (void)
     }
 
   css_set_shutdown_timeout (prm_get_integer_value (PRM_ID_SHUTDOWN_WAIT_TIME_IN_SECS));
-
-  /* going down, so stop dispatching request */
-  css_empty_job_queue ();
 
 #if defined(WINDOWS)
   return 0;
@@ -999,6 +556,12 @@ css_process_master_request (SOCKET master_fd)
     case SERVER_GET_EOF:
       css_process_get_eof_request (master_fd);
       break;
+    case SERVER_RECEIVE_MASTER_HOSTNAME:
+      css_process_master_hostname ();
+      break;
+    case SERVER_CONNECT_NEW_SLAVE:
+      css_process_new_slave (master_fd);
+      break;
 #endif
     default:
       /* master do not respond */
@@ -1045,8 +608,9 @@ css_process_new_client (SOCKET master_fd)
   CSS_CONN_ENTRY *conn;
   unsigned short rid;
   CSS_CONN_ENTRY temp_conn;
-  void *area;
-  char buffer[1024];
+  char *area;
+  OR_ALIGNED_BUF (1024) a_buffer;
+  char *buffer;
   int length = 1024;
 
   /* receive new socket descriptor from the master */
@@ -1055,6 +619,8 @@ css_process_new_client (SOCKET master_fd)
     {
       return;
     }
+
+  buffer = OR_ALIGNED_BUF_START (a_buffer);
 
   if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && css_check_accessibility (new_fd) != NO_ERROR)
     {
@@ -1071,7 +637,7 @@ css_process_new_client (SOCKET master_fd)
       area = er_get_area_error (buffer, &length);
 
       temp_conn.db_error = ER_INACCESSIBLE_IP;
-      css_send_error (&temp_conn, rid, (const char *) area, length);
+      css_send_error (&temp_conn, rid, area, length);
       css_shutdown_conn (&temp_conn);
       css_dealloc_conn_rmutex (&temp_conn);
       er_clear ();
@@ -1095,7 +661,7 @@ css_process_new_client (SOCKET master_fd)
       area = er_get_area_error (buffer, &length);
 
       temp_conn.db_error = ER_CSS_CLIENTS_EXCEEDED;
-      css_send_error (&temp_conn, rid, (const char *) area, length);
+      css_send_error (&temp_conn, rid, area, length);
       css_shutdown_conn (&temp_conn);
       css_dealloc_conn_rmutex (&temp_conn);
       er_clear ();
@@ -1107,7 +673,14 @@ css_process_new_client (SOCKET master_fd)
 
   if (css_Connect_handler)
     {
-      (*css_Connect_handler) (conn);
+      if ((*css_Connect_handler) (conn) != NO_ERRORS)
+	{
+	  assert_release (false);
+	}
+    }
+  else
+    {
+      assert_release (false);
     }
 }
 
@@ -1121,7 +694,7 @@ css_process_get_server_ha_mode_request (SOCKET master_fd)
   int r;
   int response;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       response = htonl (HA_SERVER_STATE_NA);
     }
@@ -1147,12 +720,10 @@ static void
 css_process_change_server_ha_mode_request (SOCKET master_fd)
 {
 #if !defined(WINDOWS)
-  int rv;
-  int state;
-  int response;
+  HA_SERVER_STATE state;
   THREAD_ENTRY *thread_p;
 
-  state = (int) css_get_master_request (master_fd);
+  state = (HA_SERVER_STATE) css_get_master_request (master_fd);
 
   thread_p = thread_get_thread_entry_info ();
   assert (thread_p != NULL);
@@ -1169,7 +740,7 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
       er_log_debug (ARG_FILE_LINE, "ERROR : unexpected state. (state :%d). \n", state);
     }
 
-  state = htonl ((int) css_ha_server_state ());
+  state = (HA_SERVER_STATE) htonl ((int) css_ha_server_state ());
 
   css_send_heartbeat_request (css_Master_conn, SERVER_CHANGE_HA_MODE);
   css_send_heartbeat_data (css_Master_conn, (char *) &state, sizeof (state));
@@ -1204,6 +775,43 @@ css_process_get_eof_request (SOCKET master_fd)
   css_send_heartbeat_request (css_Master_conn, SERVER_GET_EOF);
   css_send_heartbeat_data (css_Master_conn, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 #endif
+}
+
+int
+css_process_master_hostname ()
+{
+  int hostname_length, error;
+
+  error = css_receive_heartbeat_data (css_Master_conn, (char *) &hostname_length, sizeof (int));
+  if (error != NO_ERRORS)
+    {
+      return error;
+    }
+
+  if (hostname_length == 0)
+    {
+      return NO_ERRORS;
+    }
+  else if (hostname_length < 0)
+    {
+      return ER_FAILED;
+    }
+
+  error = css_receive_heartbeat_data (css_Master_conn, ha_Server_master_hostname, hostname_length);
+  if (error != NO_ERRORS)
+    {
+      return error;
+    }
+  ha_Server_master_hostname[hostname_length] = '\0';
+
+  assert (hostname_length > 0 && ha_Server_state == HA_SERVER_STATE_STANDBY);
+
+  //create slave replication channel and connect to hostname
+
+  er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
+		ha_Server_master_hostname);
+
+  return NO_ERRORS;
 }
 
 /*
@@ -1260,8 +868,11 @@ css_process_new_connection_request (void)
   int reason, buffer_size, rc;
   CSS_CONN_ENTRY *conn;
   unsigned short rid;
-  char *buffer[1024];
+  OR_ALIGNED_BUF (1024) a_buffer;
+  char *buffer;
   int length = 1024, r;
+  CSS_CONN_ENTRY new_conn;
+  char *error_string;
 
   NET_HEADER header = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
@@ -1269,11 +880,10 @@ css_process_new_connection_request (void)
 
   if (!IS_INVALID_SOCKET (new_fd))
     {
+      buffer = OR_ALIGNED_BUF_START (a_buffer);
+
       if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && css_check_accessibility (new_fd) != NO_ERROR)
 	{
-	  CSS_CONN_ENTRY new_conn;
-	  void *error_string;
-
 	  css_initialize_conn (&new_conn, new_fd);
 	  r = rmutex_initialize (&new_conn.rmutex, RMUTEX_NAME_TEMP_CONN_ENTRY);
 	  assert (r == NO_ERROR);
@@ -1286,7 +896,7 @@ css_process_new_connection_request (void)
 
 	  error_string = er_get_area_error (buffer, &length);
 	  new_conn.db_error = ER_INACCESSIBLE_IP;
-	  css_send_error (&new_conn, rid, (const char *) error_string, length);
+	  css_send_error (&new_conn, rid, error_string, length);
 	  css_shutdown_conn (&new_conn);
 	  css_dealloc_conn_rmutex (&new_conn);
 
@@ -1301,9 +911,6 @@ css_process_new_connection_request (void)
 	   * all pre-allocated connection entries are being used now.
 	   * create a new entry and send error message throuth it.
 	   */
-	  CSS_CONN_ENTRY new_conn;
-	  void *error_string;
-
 	  css_initialize_conn (&new_conn, new_fd);
 	  r = rmutex_initialize (&new_conn.rmutex, RMUTEX_NAME_TEMP_CONN_ENTRY);
 	  assert (r == NO_ERROR);
@@ -1316,7 +923,7 @@ css_process_new_connection_request (void)
 
 	  error_string = er_get_area_error (buffer, &length);
 	  new_conn.db_error = ER_CSS_CLIENTS_EXCEEDED;
-	  css_send_error (&new_conn, rid, (const char *) error_string, length);
+	  css_send_error (&new_conn, rid, error_string, length);
 	  css_shutdown_conn (&new_conn);
 	  css_dealloc_conn_rmutex (&new_conn);
 
@@ -1362,7 +969,10 @@ css_process_new_connection_request (void)
 
 	      if (css_Connect_handler)
 		{
-		  (*css_Connect_handler) (conn);
+		  if ((*css_Connect_handler) (conn) != NO_ERRORS)
+		    {
+		      assert_release (false);
+		    }
 		}
 	    }
 	  else
@@ -1423,18 +1033,7 @@ css_reestablish_connection_to_master (void)
 }
 
 /*
- * dummy_sigurg_handler () - SIGURG signal handling thread
- *   return:
- *   sig(in):
- */
-static void
-dummy_sigurg_handler (int sig)
-{
-}
-
-/*
- * css_connection_handler_thread () - Accept/process request from
- *                                    one client
+ * css_connection_handler_thread () - Accept/process request from one client
  *   return:
  *   arg(in):
  *
@@ -1443,11 +1042,10 @@ dummy_sigurg_handler (int sig)
 static int
 css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 {
-  CSS_JOB_ENTRY *job;
   int n, type, rv, status;
+  volatile int conn_status;
   int css_peer_alive_timeout, poll_timeout;
   int max_num_loop, num_loop;
-  int prefetchlogdb_max_thread_count = 0;
   SOCKET fd;
   struct pollfd po[1] = { {0, 0, 0} };
 
@@ -1462,8 +1060,6 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 
   thread_p->type = TT_SERVER;	/* server thread */
 
-  prefetchlogdb_max_thread_count = prm_get_integer_value (PRM_ID_HA_PREFETCHLOGDB_MAX_THREAD_COUNT);
-
   css_peer_alive_timeout = 5000;
   poll_timeout = 100;
   max_num_loop = css_peer_alive_timeout / poll_timeout;
@@ -1474,9 +1070,26 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
   while (thread_p->shutdown == false && conn->stop_talk == false)
     {
       /* check the connection */
-      if (conn->status != CONN_OPEN)
+      conn_status = conn->status;
+      if (conn_status == CONN_CLOSING)
 	{
-	  er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: " "conn->status is not CONN_OPEN.");
+	  /* There's an interesting race condition among client, worker thread and connection handler.
+	   * Please find CBRD-21375 for detail and also see sboot_notify_unregister_client.
+	   * 
+	   * We have to synchronize here with worker thread which may be in sboot_notify_unregister_client
+	   * to let it have a chance to send reply to client.
+	   */
+	  rmutex_lock (thread_p, &conn->rmutex);
+
+	  conn_status = conn->status;
+
+	  rmutex_unlock (thread_p, &conn->rmutex);
+	}
+
+      if (conn_status != CONN_OPEN)
+	{
+	  er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: conn->status (%d) is not CONN_OPEN.",
+			conn_status);
 	  status = CONNECTION_CLOSED;
 	  break;
 	}
@@ -1500,7 +1113,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	    {
 	      if (css_peer_alive (fd, css_peer_alive_timeout) == false)
 		{
-		  er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: " "css_peer_alive() error\n");
+		  er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: css_peer_alive() error\n");
 		  status = CONNECTION_CLOSED;
 		  break;
 		}
@@ -1508,7 +1121,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 
 	  /* check server's HA state */
 	  if (ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY && conn->in_transaction == false
-	      && thread_has_threads (thread_p, conn->transaction_id, conn->client_id) == 0)
+	      && css_count_transaction_worker_threads (thread_p, conn->get_tran_index (), conn->client_id) == 0)
 	    {
 	      status = REQUEST_REFUSED;
 	      break;
@@ -1526,7 +1139,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	    }
 	  else
 	    {
-	      er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: " "select() error\n");
+	      er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: select() error\n");
 	      status = ERROR_ON_READ;
 	      break;
 	    }
@@ -1545,7 +1158,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	  status = css_read_and_queue (conn, &type);
 	  if (status != NO_ERRORS)
 	    {
-	      er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: " "css_read_and_queue() error\n");
+	      er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: css_read_and_queue() error\n");
 	      break;
 	    }
 	  else
@@ -1553,24 +1166,8 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	      /* if new command request has arrived, make new job and add it to job queue */
 	      if (type == COMMAND_TYPE)
 		{
-		  do
-		    {
-		      if (conn->client_type == BOOT_CLIENT_LOG_PREFETCHER && (prefetchlogdb_max_thread_count > 0)
-			  && (conn->prefetcher_thread_count >= prefetchlogdb_max_thread_count))
-			{
-			  thread_sleep (10);	/* 10 msec */
-			  continue;
-			}
-
-		      break;
-		    }
-		  while (thread_p->shutdown == false && conn->stop_talk == false);
-
-		  job = css_make_job_entry (conn, css_Request_handler, (CSS_THREAD_ARG) conn, -1);
-		  if (job)
-		    {
-		      css_add_to_job_queue (job);
-		    }
+		  // push new task
+		  css_push_server_task (*thread_p, *conn);
 		}
 	    }
 	}
@@ -1580,8 +1177,8 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
   if (status != NO_ERRORS || css_check_conn (conn) != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE,
-		    "css_connection_handler_thread: " "status %d conn { status %d transaction_id %d "
-		    "db_error %d stop_talk %d stop_phase %d }\n", status, conn->status, conn->transaction_id,
+		    "css_connection_handler_thread: status %d conn { status %d transaction_id %d "
+		    "db_error %d stop_talk %d stop_phase %d }\n", status, conn->status, conn->get_tran_index (),
 		    conn->db_error, conn->stop_talk, conn->stop_phase);
       rv = pthread_mutex_lock (&thread_p->tran_index_lock);
       (*css_Connection_error_handler) (thread_p, conn);
@@ -1591,91 +1188,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
       assert (thread_p->shutdown == true || conn->stop_talk == true);
     }
 
-  thread_p->type = TT_WORKER;
-
   return 0;
-}
-
-#if defined(WINDOWS)
-/*
- * ctrl_sig_handler () -
- *   return:
- *   ctrl_event(in):
- */
-static BOOL WINAPI
-ctrl_sig_handler (DWORD ctrl_event)
-{
-  if (ctrl_event == CTRL_BREAK_EVENT)
-    {
-      ;
-    }
-  else
-    {
-      css_Win_kill_signaled = 1;
-    }
-
-  return TRUE;			/* Continue */
-}
-#endif /* WINDOWS */
-
-/*
- * css_oob_handler_thread() -
- *   return:
- *   arg(in):
- */
-#if defined(WINDOWS)
-unsigned __stdcall
-css_oob_handler_thread (void *arg)
-#else /* WINDOWS */
-void *
-css_oob_handler_thread (void *arg)
-#endif				/* WINDOWS */
-{
-  THREAD_ENTRY *thrd_entry;
-  int r;
-#if !defined(WINDOWS)
-  int sig;
-  sigset_t sigurg_mask;
-  struct sigaction act;
-#endif /* !WINDOWS */
-
-  thrd_entry = (THREAD_ENTRY *) arg;
-
-  /* wait until THREAD_CREATE finish */
-  r = pthread_mutex_lock (&thrd_entry->th_entry_lock);
-  pthread_mutex_unlock (&thrd_entry->th_entry_lock);
-
-  thread_set_thread_entry_info (thrd_entry);
-  thrd_entry->status = TS_RUN;
-
-#if !defined(WINDOWS)
-  sigemptyset (&sigurg_mask);
-  sigaddset (&sigurg_mask, SIGURG);
-
-  memset (&act, 0, sizeof (act));
-  act.sa_handler = dummy_sigurg_handler;
-  sigaction (SIGURG, &act, NULL);
-
-  pthread_sigmask (SIG_UNBLOCK, &sigurg_mask, NULL);
-#else /* !WINDOWS */
-  SetConsoleCtrlHandler (ctrl_sig_handler, TRUE);
-#endif /* !WINDOWS */
-
-  while (!thrd_entry->shutdown)
-    {
-#if !defined(WINDOWS)
-      r = sigwait (&sigurg_mask, &sig);
-#else /* WINDOWS */
-      Sleep (1000);
-#endif /* WINDOWS */
-    }
-  thrd_entry->status = TS_DEAD;
-
-#if defined(WINDOWS)
-  return 0;
-#else /* WINDOWS */
-  return NULL;
-#endif /* WINDOWS */
 }
 
 /*
@@ -1707,7 +1220,7 @@ css_block_all_active_conn (unsigned short stop_phase)
       if (!IS_INVALID_SOCKET (conn->fd) && conn->fd != css_Pipe_to_master)
 	{
 	  conn->stop_talk = true;
-	  logtb_set_tran_index_interrupt (NULL, conn->transaction_id, 1);
+	  logtb_set_tran_index_interrupt (NULL, conn->get_tran_index (), 1);
 	}
 
       r = rmutex_unlock (NULL, &conn->rmutex);
@@ -1722,26 +1235,22 @@ css_block_all_active_conn (unsigned short stop_phase)
  *   return:
  *   conn(in):
  *
- * Note: This routine is "registered" to be called when a new connection is
- *       requested by the client
+ * Note: This routine is "registered" to be called when a new connection is requested by the client
  */
-static int
+static css_error_code
 css_internal_connection_handler (CSS_CONN_ENTRY * conn)
 {
-  CSS_JOB_ENTRY *job;
-
   css_insert_into_active_conn_list (conn);
 
-  job = css_make_job_entry (conn, (CSS_THREAD_FN) css_connection_handler_thread, (CSS_THREAD_ARG) conn,
-			    -1 /* implicit: DEFAULT */ );
-  assert (job != NULL);
-
-  if (job != NULL)
+  // push connection handler task
+  if (!cubthread::get_manager ()->try_task (cubthread::get_entry (), css_Connection_worker_pool,
+					    new css_connection_task (*conn)))
     {
-      css_add_to_job_queue (job);
+      assert_release (false);
+      return REQUEST_REFUSED;
     }
 
-  return 1;
+  return NO_ERRORS;
 }
 
 /*
@@ -1758,9 +1267,8 @@ css_internal_connection_handler (CSS_CONN_ENTRY * conn)
  *       thread that is blocking for data.
  */
 static int
-css_internal_request_handler (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
+css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
 {
-  CSS_CONN_ENTRY *conn;
   unsigned short rid;
   unsigned int eid;
   int request, rc, size = 0;
@@ -1768,48 +1276,42 @@ css_internal_request_handler (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
   int local_tran_index;
   int status = CSS_UNPLANNED_SHUTDOWN;
 
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
+  assert (thread_ref.conn_entry == &conn_ref);
 
-  local_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  local_tran_index = thread_ref.tran_index;
 
-  conn = (CSS_CONN_ENTRY *) arg;
-  assert (conn != NULL);
-
-  rc = css_receive_request (conn, &rid, &request, &size);
+  rc = css_receive_request (&conn_ref, &rid, &request, &size);
   if (rc == NO_ERRORS)
     {
       /* 1. change thread's transaction id to this connection's */
-      thread_p->tran_index = conn->transaction_id;
+      thread_ref.tran_index = conn_ref.get_tran_index ();
 
-      pthread_mutex_unlock (&thread_p->tran_index_lock);
+      pthread_mutex_unlock (&thread_ref.tran_index_lock);
 
       if (size)
 	{
-	  rc = css_receive_data (conn, rid, &buffer, &size, -1);
+	  rc = css_receive_data (&conn_ref, rid, &buffer, &size, -1);
 	  if (rc != NO_ERRORS)
 	    {
 	      return status;
 	    }
 	}
 
-      conn->db_error = 0;	/* This will reset the error indicator */
+      conn_ref.db_error = 0;	/* This will reset the error indicator */
 
-      eid = css_return_eid_from_conn (conn, rid);
+      eid = css_return_eid_from_conn (&conn_ref, rid);
       /* 2. change thread's client, rid, tran_index for this request */
-      thread_set_info (thread_p, conn->client_id, eid, conn->transaction_id, request);
+      css_set_thread_info (&thread_ref, conn_ref.client_id, eid, conn_ref.get_tran_index (), request);
 
       /* 3. Call server_request() function */
-      status = (*css_Server_request_handler) (thread_p, eid, request, size, buffer);
+      status = css_Server_request_handler (&thread_ref, eid, request, size, buffer);
 
       /* 4. reset thread transaction id(may be NULL_TRAN_INDEX) */
-      thread_set_info (thread_p, -1, 0, local_tran_index, -1);
+      css_set_thread_info (&thread_ref, -1, 0, local_tran_index, -1);
     }
   else
     {
-      pthread_mutex_unlock (&thread_p->tran_index_lock);
+      pthread_mutex_unlock (&thread_ref.tran_index_lock);
 
       if (rc == ERROR_WHEN_READING_SIZE || rc == NO_DATA_AVAILABLE)
 	{
@@ -1836,13 +1338,13 @@ css_initialize_server_interfaces (int (*request_handler) (THREAD_ENTRY * thrd, u
 				  CSS_THREAD_FN connection_error_function)
 {
   css_Server_request_handler = request_handler;
-  css_register_handler_routines (css_internal_connection_handler, css_internal_request_handler,
-				 connection_error_function);
+  css_register_handler_routines (css_internal_connection_handler, NULL /* disabled */ , connection_error_function);
 }
 
 /*
  * css_init() -
  *   return:
+ *   thread_p(in):
  *   server_name(in):
  *   name_length(in):
  *   port_id(in):
@@ -1853,11 +1355,10 @@ css_initialize_server_interfaces (int (*request_handler) (THREAD_ENTRY * thrd, u
  *       css_initialize_server_interfaces before calling this function.
  */
 int
-css_init (char *server_name, int name_length, int port_id)
+css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_id)
 {
-  THREAD_ENTRY *thread_p;
   CSS_CONN_ENTRY *conn;
-  int status = ER_FAILED;
+  int status = NO_ERROR;
 
   if (server_name == NULL || port_id <= 0)
     {
@@ -1872,16 +1373,28 @@ css_init (char *server_name, int name_length, int port_id)
     }
 #endif /* WINDOWS */
 
-  /* startup worker/daemon threads */
-  status = thread_start_workers ();
-  if (status != NO_ERROR)
+  // initialize worker pool for server requests
+  const std::size_t MAX_WORKERS = NUM_NON_SYSTEM_TRANS;
+  const std::size_t MAX_TASK_COUNT = 2 * NUM_NON_SYSTEM_TRANS;	// not that it matters...
+
+  css_Server_request_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT, NULL,
+										  cubthread::system_core_count (),
+										  false);
+  if (css_Server_request_worker_pool == NULL)
     {
-      if (status == ER_CSS_PTHREAD_CREATE)
-	{
-	  /* thread creation error */
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_THREAD_STACK, 1, NUM_NORMAL_TRANS);
-	}
-      return ER_FAILED;
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      status = ER_FAILED;
+      goto shutdown;
+    }
+
+  css_Connection_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_WORKERS, NULL, 1, false);
+  if (css_Connection_worker_pool == NULL)
+    {
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      status = ER_FAILED;
+      goto shutdown;
     }
 
   css_Server_connection_socket = INVALID_SOCKET;
@@ -1898,39 +1411,36 @@ css_init (char *server_name, int name_length, int port_id)
       css_Master_conn = conn;
 
 #if !defined(WINDOWS)
-      if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+      if (!HA_DISABLED ())
 	{
 	  status = hb_register_to_master (css_Master_conn, HB_PTYPE_SERVER);
 	  if (status != NO_ERROR)
 	    {
 	      fprintf (stderr, "failed to heartbeat register.\n");
-	      goto shutdown;
 	    }
 	}
 #endif
 
-      css_setup_server_loop ();
-
-      status = NO_ERROR;
+      if (status == NO_ERROR)
+	{
+	  // server message loop
+	  css_setup_server_loop ();
+	}
     }
 
+shutdown:
   /* 
    * start to shutdown server
    */
-#if !defined(WINDOWS)
-shutdown:
-#endif
-  /* stop threads */
-  thread_stop_active_workers (THREAD_STOP_WORKERS_EXCEPT_LOGWR);
+
+  // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
+  // all log is transfered
+  css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
 
   /* stop vacuum threads. */
-  vacuum_notify_server_shutdown ();
-  thread_stop_vacuum_daemons ();
+  vacuum_stop (thread_p);
 
   /* we should flush all append pages before stop log writer */
-  thread_p = thread_get_thread_entry_info ();
-  assert_release (thread_p != NULL);
-
   LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);
 
@@ -1955,14 +1465,17 @@ shutdown:
 
   LOG_CS_EXIT (thread_p);
 
-  thread_stop_active_workers (THREAD_STOP_LOGWR);
+  // stop log writers
+  css_stop_all_workers (*thread_p, THREAD_STOP_LOGWR);
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  // destroy thread worker pools
+  thread_get_manager ()->destroy_worker_pool (css_Server_request_worker_pool);
+  thread_get_manager ()->destroy_worker_pool (css_Connection_worker_pool);
+
+  if (!HA_DISABLED ())
     {
       css_close_connection_to_master ();
     }
-
-  css_close_server_connection_socket ();
 
   if (css_Master_server_name)
     {
@@ -1971,27 +1484,13 @@ shutdown:
 
   /* If this was opened for the new style connection protocol, make sure it gets closed. */
   css_close_server_connection_socket ();
+
 #if defined(WINDOWS)
   css_windows_shutdown ();
 #endif /* WINDOWS */
 
   return status;
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * css_shutdown() - Shuts down the communication interface
- *   return:
- *   exit_reason(in):
- *
- * Note: This is the routine to call when the server is going down
- */
-void
-css_shutdown (int exit_reason)
-{
-  thread_exit (exit_reason);
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * css_send_data_to_client() - send a data buffer to the server
@@ -2250,7 +1749,7 @@ css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid)
 
   if (css_return_queued_error (conn, CSS_RID_FROM_EID (eid), &error_buffer, &error_size, &rc))
     {
-      errid = er_set_area_error ((void *) error_buffer);
+      errid = er_set_area_error (error_buffer);
       free_and_init (error_buffer);
     }
   return errid;
@@ -2363,11 +1862,11 @@ css_pack_server_name (const char *server_name, int *name_length)
 
       sprintf (pid_string, "%d", getpid ());
       *name_length =
-	strlen (server_name) + 1 + strlen (rel_major_release_string ()) + 1 + strlen (env_name) + 1 +
-	strlen (pid_string) + 1;
+	(int) (strlen (server_name) + 1 + strlen (rel_major_release_string ()) + 1 + strlen (env_name) + 1 +
+	       strlen (pid_string) + 1);
 
       /* in order to prepend '#' */
-      if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+      if (!HA_DISABLED ())
 	{
 	  (*name_length)++;
 	}
@@ -2382,7 +1881,7 @@ css_pack_server_name (const char *server_name, int *name_length)
       s = packed_name;
       t = server_name;
 
-      if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+      if (!HA_DISABLED ())
 	{
 	  *s++ = '#';
 	}
@@ -2469,7 +1968,7 @@ css_get_client_version_string (void)
 {
   CSS_CONN_ENTRY *entry;
 
-  entry = thread_get_current_conn_entry ();
+  entry = css_get_current_conn_entry ();
   if (entry != NULL)
     {
       return entry->version_string;
@@ -2492,218 +1991,6 @@ css_cleanup_server_queues (unsigned int eid)
   int idx = CSS_ENTRYID_FROM_EID (eid);
 
   css_remove_all_unexpected_packets (&css_Conn_array[idx]);
-}
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * css_number_of_clients() - Returns the number of clients connected to
- *                           the server
- *   return:
- */
-int
-css_number_of_clients (void)
-{
-  int n = 0, r;
-  CSS_CONN_ENTRY *conn;
-
-  START_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
-
-  for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
-    {
-      if (conn != css_Master_conn)
-	{
-	  n++;
-	}
-    }
-
-  END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
-
-  return n;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
-/*
- * css_wait_worker_thread_on_jobq () -
- *   return:
- *   thrd(in):
- *   jobq_index(in):
- */
-static int
-css_wait_worker_thread_on_jobq (THREAD_ENTRY * thrd, int jobq_index)
-{
-#if defined(DEBUG)
-  THREAD_ENTRY *t;
-#endif /* DEBUG */
-
-#if defined(DEBUG)
-  /* to detect whether the job queue has a cycle or not */
-  t = css_Job_queue[jobq_index].worker_thrd_list;
-  while (t)
-    {
-      assert (t != thrd);
-      t = t->worker_thrd_list;
-    }
-#endif /* DEBUG */
-
-  /* add thrd at the front of job queue */
-  thrd->worker_thrd_list = css_Job_queue[jobq_index].worker_thrd_list;
-  css_Job_queue[jobq_index].worker_thrd_list = thrd;
-
-  thrd->resume_status = THREAD_JOB_QUEUE_SUSPENDED;
-
-  /* sleep on the thrd's condition variable with the mutex of the job queue */
-  pthread_cond_wait (&thrd->wakeup_cond, &css_Job_queue[jobq_index].job_lock);
-
-  if (thrd->shutdown == false && thrd->resume_status != THREAD_JOB_QUEUE_RESUMED)
-    {
-      char notimsg[LINE_MAX];
-      THREAD_ENTRY *current, *prev = NULL;
-
-      /* something is wrong!!! My entry in the job queue must be removed. */
-      assert (thrd->resume_status == THREAD_JOB_QUEUE_RESUMED);
-
-      snprintf (notimsg, LINE_MAX, "Thread %p's resume status is" " not JOB QUEUE RESUMED but %d (job Q index : %d)",
-		thrd, thrd->resume_status, jobq_index);
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, notimsg);
-
-      current = css_Job_queue[jobq_index].worker_thrd_list;
-      while (current)
-	{
-	  if (current == thrd)
-	    {
-	      if (prev == NULL)
-		{
-		  css_Job_queue[jobq_index].worker_thrd_list = thrd->worker_thrd_list;
-		}
-	      else
-		{
-		  prev->worker_thrd_list = thrd->worker_thrd_list;
-		}
-	      thrd->worker_thrd_list = NULL;
-	      break;
-	    }
-	  else
-	    {
-	      prev = current;
-	    }
-
-	  current = current->worker_thrd_list;
-	}
-    }
-
-  if (thrd->resume_status == THREAD_RESUME_DUE_TO_SHUTDOWN || thrd->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
-    {
-      assert_release (thrd->shutdown == true);
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * css_wakeup_worker_thread_on_jobq () -
- *   return:
- *   jobq_index(in):
- */
-static int
-css_wakeup_worker_thread_on_jobq (int jobq_index)
-{
-  THREAD_ENTRY *wait_thrd = NULL, *prev_thrd = NULL;
-  int r = NO_ERROR;
-  THREAD_ENTRY *worker = NULL;
-
-  for (wait_thrd = css_Job_queue[jobq_index].worker_thrd_list; wait_thrd; wait_thrd = wait_thrd->worker_thrd_list)
-    {
-      /* wakeup a free worker thread */
-      if (wait_thrd->status == TS_FREE)
-	{
-	  r = thread_wakeup (wait_thrd, THREAD_JOB_QUEUE_RESUMED);
-	  if (r == NO_ERROR)
-	    {
-	      if (prev_thrd == NULL)
-		{
-		  css_Job_queue[jobq_index].worker_thrd_list = wait_thrd->worker_thrd_list;
-		}
-	      else
-		{
-		  prev_thrd->worker_thrd_list = wait_thrd->worker_thrd_list;
-		}
-
-	      wait_thrd->worker_thrd_list = NULL;
-	      worker = wait_thrd;
-
-	      break;
-	    }
-	}
-
-      prev_thrd = wait_thrd;
-    }
-
-  if (worker == NULL)
-    {
-      int thread_index, num_workers;
-
-      /* Defence code of a bug. Find an available worker thread that is not in the list of job queue, but is waiting
-       * for a job. */
-      thread_index = jobq_index;
-      if (thread_index == 0)
-	{
-	  thread_index += CSS_NUM_JOB_QUEUE;
-	}
-
-      num_workers = thread_num_worker_threads ();
-
-      for (; thread_index <= num_workers; thread_index += CSS_NUM_JOB_QUEUE)
-	{
-	  THREAD_ENTRY *thread_p;
-
-	  thread_p = thread_find_entry_by_index (thread_index);
-	  assert_release (thread_p->index % CSS_NUM_JOB_QUEUE == jobq_index);
-
-	  if (thread_p->resume_status == THREAD_JOB_QUEUE_SUSPENDED && thread_p->status == TS_FREE)
-	    {
-	      r = thread_wakeup (thread_p, THREAD_JOB_QUEUE_RESUMED);
-	      if (r == NO_ERROR)
-		{
-		  char notimsg[LINE_MAX];
-
-		  snprintf (notimsg, LINE_MAX,
-			    "Wakes up thread %p. " "It was suspended in the job queue (index : %d), "
-			    "but was not in the joq Q's worker thread list", thread_p, jobq_index);
-
-		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, notimsg);
-		  thread_p->worker_thrd_list = NULL;
-		  break;
-		}
-	    }
-	}
-    }
-
-  return r;
-}
-
-/*
- * css_can_occupy_worker_thread_on_jobq () -
- *   return:
- *   jobq_index(in):
- *
- * NOTE: The caller should hold mutex on css_Job_queue[jobq_index]
- *       to call this function.
- */
-static bool
-css_can_occupy_worker_thread_on_jobq (int jobq_index)
-{
-  THREAD_ENTRY *wait_thrd;
-
-  for (wait_thrd = css_Job_queue[jobq_index].worker_thrd_list; wait_thrd; wait_thrd = wait_thrd->worker_thrd_list)
-    {
-      if (wait_thrd->status == TS_FREE)
-	{
-	  return true;
-	}
-    }
-
-  return false;
 }
 
 /*
@@ -2842,7 +2129,7 @@ css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE req_state)
 	  new_state = table->next_state;
 	  /* append a dummy log record for LFT to wake LWTs up */
 	  log_append_ha_server_state (thread_p, new_state);
-	  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+	  if (!HA_DISABLED ())
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_SERVER_HA_MODE_CHANGE, 2,
 		      css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (new_state));
@@ -3023,7 +2310,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  ha_Server_state = state;
 	  /* append a dummy log record for LFT to wake LWTs up */
 	  log_append_ha_server_state (thread_p, state);
-	  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+	  if (!HA_DISABLED ())
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_SERVER_HA_MODE_CHANGE, 2,
 		      css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state));
@@ -3056,6 +2343,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_enable_update() \n");
 	  logtb_enable_update (thread_p);
 	}
+      // init master replication channel manager
       break;
 
     case HA_SERVER_STATE_STANDBY:
@@ -3126,7 +2414,8 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 
 	  /* try to kill transaction. */
 	  TR_TABLE_CS_ENTER (thread_p);
-	  for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
+	  // start from transaction index i = 1; system transaction cannot be killed
+	  for (i = 1; i < log_Gl.trantable.num_total_indices; i++)
 	    {
 	      tdes = log_Gl.trantable.all_tdes[i];
 	      if (tdes != NULL && tdes->trid != NULL_TRANID)
@@ -3134,7 +2423,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.host_name, boot_Host_name,
 							       tdes->client.client_type))
 		    {
-		      thread_slam_tran_index (thread_p, tdes->tran_index);
+		      logtb_slam_transaction (thread_p, tdes->tran_index);
 		    }
 		}
 	    }
@@ -3170,9 +2459,9 @@ css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE s
 
   csect_enter (thread_p, CSECT_HA_SERVER_STATE, INF_WAIT);
 
-  client_id = thread_get_client_id (thread_p);
+  client_id = css_get_client_id (thread_p);
   er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: client %d state %s\n", client_id,
-		css_ha_server_state_string (state));
+		css_ha_applier_state_string (state));
   for (i = 0, table = ha_Log_applier_state; i < ha_Log_applier_state_num; i++, table++)
     {
       if (table->client_id == client_id)
@@ -3388,3 +2677,639 @@ xacl_reload (THREAD_ENTRY * thread_p)
   return css_set_accessible_ip_info ();
 }
 #endif
+
+static void
+css_process_new_slave (SOCKET master_fd)
+{
+
+  SOCKET new_fd;
+  unsigned short rid;
+
+  /* receive new socket descriptor from the master */
+  new_fd = css_open_new_socket_from_master (master_fd, &rid);
+  if (IS_INVALID_SOCKET (new_fd))
+    {
+      assert (false);
+      return;
+    }
+  er_log_debug (ARG_FILE_LINE, "css_process_new_slave:" "received new slave fd from master fd=%d, current_state=%d\n",
+		new_fd, ha_Server_state);
+
+  assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
+
+  // add slave to master replication channel manager
+#if 1
+  // remove this after master/slave repl chn impl
+  css_shutdown_socket (new_fd);
+#endif
+}
+
+const char *
+get_master_hostname ()
+{
+  return ha_Server_master_hostname;
+}
+
+/*
+ * css_get_client_id() - returns the unique client identifier
+ *   return: returns the unique client identifier, on error, returns -1
+ *
+ * Note: WARN: this function doesn't lock on thread_entry
+ */
+int
+css_get_client_id (THREAD_ENTRY * thread_p)
+{
+  CSS_CONN_ENTRY *conn_p;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert (thread_p != NULL);
+
+  conn_p = thread_p->conn_entry;
+  if (conn_p != NULL)
+    {
+      return conn_p->client_id;
+    }
+  else
+    {
+      return -1;
+    }
+}
+
+/*
+ * css_set_thread_info () -
+ *   return:
+ *   thread_p(out):
+ *   client_id(in):
+ *   rid(in):
+ *   tran_index(in):
+ */
+void
+css_set_thread_info (THREAD_ENTRY * thread_p, int client_id, int rid, int tran_index, int net_request_index)
+{
+  thread_p->client_id = client_id;
+  thread_p->rid = rid;
+  thread_p->tran_index = tran_index;
+  thread_p->net_request_index = net_request_index;
+  thread_p->victim_request_fail = false;
+  thread_p->next_wait_thrd = NULL;
+  thread_p->wait_for_latch_promote = false;
+  thread_p->lockwait = NULL;
+  thread_p->lockwait_state = -1;
+  thread_p->query_entry = NULL;
+  thread_p->tran_next_wait = NULL;
+
+  thread_p->end_resource_tracks ();
+  thread_clear_recursion_depth (thread_p);
+}
+
+/*
+ * css_get_comm_request_id() - returns the request id that started the current thread
+ *   return: returns the comm system request id for the client request that
+ *           started the thread. On error, returns -1
+ *
+ * Note: WARN: this function doesn't lock on thread_entry
+ */
+unsigned int
+css_get_comm_request_id (THREAD_ENTRY * thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert (thread_p != NULL);
+
+  return thread_p->rid;
+}
+
+/*
+ * css_get_current_conn_entry() -
+ *   return:
+ */
+CSS_CONN_ENTRY *
+css_get_current_conn_entry (void)
+{
+  THREAD_ENTRY *thread_p;
+
+  thread_p = thread_get_thread_entry_info ();
+  assert (thread_p != NULL);
+
+  return thread_p->conn_entry;
+}
+
+// *INDENT-OFF*
+/*
+ * css_push_server_task () - push a task on server request worker pool
+ *
+ * return          : void
+ * thread_ref (in) : thread context
+ * task (in)       : task to execute
+ *
+ * TODO: this is also used externally due to legacy design; should be internalized completely
+ */
+static void
+css_push_server_task (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
+{
+  // push the task
+  //
+  // note: cores are partitioned by connection index. this is particularly important in order to avoid having tasks
+  //       randomly pushed to cores that are full. some of those tasks may belong to threads holding locks. as a
+  //       consequence, lock waiters may wait longer or even indefinitely if we are really unlucky.
+  //
+  thread_get_manager ()->push_task_on_core (thread_ref, css_Server_request_worker_pool,
+                                            new css_server_task (conn_ref), static_cast<size_t> (conn_ref.idx));
+}
+
+void
+css_push_external_task (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
+{
+  thread_get_manager ()->push_task (thread_ref, css_Server_request_worker_pool,
+				    new css_server_external_task (conn, task));
+}
+
+void
+css_server_task::execute (context_type &thread_ref)
+{
+  thread_ref.conn_entry = &m_conn;
+
+  if (thread_ref.conn_entry->session_p != NULL)
+    {
+      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
+    }
+  else
+    {
+      assert (thread_ref.private_lru_index == -1);
+    }
+
+  thread_ref.m_status = cubthread::entry::status::TS_RUN;
+
+  // TODO: we lock tran_index_lock because css_internal_request_handler expects it to be locked. however, I am not
+  //       convinced we really need this
+  pthread_mutex_lock (&thread_ref.tran_index_lock);
+  (void) css_internal_request_handler (thread_ref, m_conn);
+
+  thread_ref.private_lru_index = -1;
+  thread_ref.conn_entry = NULL;
+  thread_ref.m_status = cubthread::entry::status::TS_FREE;
+}
+
+void
+css_server_external_task::execute (context_type &thread_ref)
+{
+  thread_ref.conn_entry = m_conn;
+  if (thread_ref.conn_entry != NULL && thread_ref.conn_entry->session_p != NULL)
+    {
+      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
+    }
+  else
+    {
+      assert (thread_ref.private_lru_index == -1);
+    }
+
+  // TODO: We lock tran_index_lock because external task expects it to be locked.
+  //       However, I am not convinced we really need this
+  pthread_mutex_lock (&thread_ref.tran_index_lock);
+
+  m_task->execute (thread_ref);
+
+  thread_ref.private_lru_index = -1;
+  thread_ref.conn_entry = NULL;
+}
+
+void
+css_connection_task::execute (context_type & thread_ref)
+{
+  thread_ref.conn_entry = &m_conn;
+
+  // todo: we lock tran_index_lock because css_connection_handler_thread expects it to be locked. however, I am not
+  //       convinced we really need this
+  pthread_mutex_lock (&thread_ref.tran_index_lock);
+  (void) css_connection_handler_thread (&thread_ref, &m_conn);
+
+  thread_ref.conn_entry = NULL;
+}
+
+//
+// css_stop_non_log_writer () - function mapped over worker pools to search and stop non-log writer workers
+//
+// thread_ref (in)         : entry of thread to check and stop
+// stop_mapper (out)       : ignored; part of expected signature of mapper function
+// stopper_thread_ref (in) : entry of thread mapping this function over worker pool
+//
+static void
+css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY & stopper_thread_ref)
+{
+  (void) stop_mapper;    // suppress unused warning
+
+  // porting of legacy code
+
+  if (css_is_log_writer (thread_ref))
+    {
+      // not log writer
+      return;
+    }
+  if (thread_ref.tran_index == -1)
+    {
+      // no transaction, no stop
+      return;
+    }
+
+  (void) logtb_set_tran_index_interrupt (&stopper_thread_ref, thread_ref.tran_index, true);
+
+  if (thread_ref.m_status == cubthread::entry::status::TS_WAIT && logtb_is_current_active (&thread_ref))
+    {
+      thread_lock_entry (&thread_ref);
+
+      if (thread_ref.tran_index != -1 && thread_ref.m_status == cubthread::entry::status::TS_WAIT
+          && thread_ref.lockwait == NULL && thread_ref.check_interrupt)
+        {
+          thread_ref.interrupted = true;
+          thread_wakeup_already_had_mutex (&thread_ref, THREAD_RESUME_DUE_TO_INTERRUPT);
+        }
+      thread_unlock_entry (&thread_ref);
+    }
+  // make sure not blocked in locks
+  lock_force_thread_timeout_lock (&thread_ref);
+}
+
+//
+// css_stop_log_writer () - function mapped over worker pools to search and stop log writer workers
+//
+// thread_ref (in)         : entry of thread to check and stop
+// stop_mapper (out)       : ignored; part of expected signature of mapper function
+// stopper_thread_ref (in) : entry of thread mapping this function over worker pool
+//
+static void
+css_stop_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper)
+{
+  (void) stop_mapper; // suppress unused warning
+
+  if (!css_is_log_writer (thread_ref))
+    {
+      // this is not log writer
+      return;
+    }
+  if (thread_ref.tran_index == -1)
+    {
+      // no transaction, no stop
+      return;
+    }
+  if (thread_ref.m_status == cubthread::entry::status::TS_WAIT && logtb_is_current_active (&thread_ref))
+    {
+      thread_check_suspend_reason_and_wakeup (&thread_ref, THREAD_RESUME_DUE_TO_INTERRUPT, THREAD_LOGWR_SUSPENDED);
+      thread_ref.interrupted = true;
+    }
+  // make sure not blocked in locks
+  lock_force_thread_timeout_lock (&thread_ref);
+}
+
+
+//
+// css_find_not_stopped () - find any target thread that is not stopped
+//
+// thread_ref (in)    : entry of thread that should be stopped
+// stop_mapper (out)  : output true to stop mapping
+// is_log_writer (in) : true to target log writers, false to target non-log writers
+// found (out)        : output true if target thread is not stopped
+//
+static void
+css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop_mapper, bool is_log_writer, bool & found)
+{
+  if (is_log_writer != css_is_log_writer (thread_ref))
+    {
+      // don't care
+      return;
+    }
+  if (thread_ref.m_status != cubthread::entry::status::TS_FREE)
+    {
+      found = true;
+      stop_mapper = true;
+    }
+}
+
+//
+// css_is_log_writer () - does thread entry belong to a log writer?
+//
+// return          : true for log writer, false otherwise
+// thread_arg (in) : thread entry
+//
+static bool
+css_is_log_writer (const THREAD_ENTRY &thread_arg)
+{
+  return thread_arg.conn_entry != NULL && thread_arg.conn_entry->stop_phase == THREAD_STOP_LOGWR;
+}
+
+//
+// css_stop_all_workers () - stop target workers based on phase (log writers or non-log writers)
+//
+// thread_ref (in) : thread local entry
+// stop_phase (in) : THREAD_STOP_WORKERS_EXCEPT_LOGWR or THREAD_STOP_LOGWR
+//
+static void
+css_stop_all_workers (THREAD_ENTRY &thread_ref, css_thread_stop_type stop_phase)
+{
+  bool is_not_stopped;
+
+  if (css_Server_request_worker_pool == NULL)
+    {
+      // nothing to stop
+      return;
+    }
+
+  // note: this is legacy code ported from thread.c; the whole log writer management seems complicated, but hopefully
+  //       it can be removed after HA refactoring.
+  //
+  // question: is it possible to have more than one log writer thread?
+  //
+
+  if (stop_phase == THREAD_STOP_WORKERS_EXCEPT_LOGWR)
+    {
+      // first block all connections
+      css_block_all_active_conn (stop_phase);
+    }
+
+  // loop until all are stopped
+  while (true)
+    {
+      // tell all to stop
+      if (stop_phase == THREAD_STOP_LOGWR)
+        {
+          css_Server_request_worker_pool->map_running_contexts (css_stop_log_writer);
+          css_Connection_worker_pool->map_running_contexts (css_stop_log_writer);
+        }
+      else
+        {
+          css_Server_request_worker_pool->map_running_contexts (css_stop_non_log_writer, thread_ref);
+          css_Connection_worker_pool->map_running_contexts (css_stop_non_log_writer, thread_ref);
+        }
+
+      // sleep for 50 milliseconds
+      std::this_thread::sleep_for (std::chrono::milliseconds (50));
+
+      // check if any thread is not stopped
+      is_not_stopped = false;
+      css_Server_request_worker_pool->map_running_contexts (css_find_not_stopped, stop_phase == THREAD_STOP_LOGWR,
+                                                            is_not_stopped);
+      if (!is_not_stopped)
+        {
+          // check connection threads too
+          css_Connection_worker_pool->map_running_contexts (css_find_not_stopped, stop_phase == THREAD_STOP_LOGWR,
+                                                            is_not_stopped);
+        }
+      if (!is_not_stopped)
+        {
+          // all threads are stopped, break loop
+          break;
+        }
+
+      if (css_is_shutdown_timeout_expired ())
+        {
+          er_log_debug (ARG_FILE_LINE, "could not stop all active workers");
+          _exit (0);
+        }
+    }
+
+  // we must not block active connection before terminating log writer thread
+  if (stop_phase == THREAD_STOP_LOGWR)
+    {
+      css_block_all_active_conn (stop_phase);
+    }
+}
+
+//
+// css_get_thread_stats () - get statistics for server request handlers
+//
+// stats_out (out) : output statistics
+//
+void
+css_get_thread_stats (UINT64 *stats_out)
+{
+  css_Server_request_worker_pool->get_stats (stats_out);
+}
+
+//
+// css_get_num_request_workers () - get number of workers executing server requests
+//
+size_t
+css_get_num_request_workers (void)
+{
+  return css_Server_request_worker_pool->get_max_count ();
+}
+
+//
+// css_get_num_connection_workers () - get number of workers handling connections
+//
+size_t
+css_get_num_connection_workers (void)
+{
+  return css_Connection_worker_pool->get_max_count ();
+}
+
+//
+// css_get_num_total_workers () - get total number of workers (request and connection handlers)
+//
+size_t
+css_get_num_total_workers (void)
+{
+  return css_get_num_request_workers () + css_get_num_connection_workers ();
+}
+
+//
+// css_wp_worker_get_busy_count_mapper () - function to map through worker pool entries and count busy workers
+//
+// thread_ref (in)      : thread entry (context)
+// stop_mapper (in/out) : normally used to stop mapping early, ignored here
+// busy_count (out)     : increment when busy worker is found
+//
+static void
+css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapper, int & busy_count)
+{
+  (void) stop_mapper;   // suppress unused parameter warning
+
+  if (thread_ref.tran_index != NULL_TRAN_INDEX)
+    {
+      // busy thread
+      busy_count++;
+    }
+  else
+    {
+      // must be waiting for task; not busy
+    }
+}
+
+//
+// css_wp_core_job_scan_mapper () - function to map worker pool cores and get info required for "job scan"
+//
+// wp_core (in)         : worker pool core
+// stop_mapper (in/out) : output true to stop mapper early
+// thread_p (in)        : thread entry of job scan
+// ctx (in)             : job scan context
+// core_index (in/out)  : current core index; is incremented on each call
+// error_code (out)     : output error_code if any errors occur
+//
+static void
+css_wp_core_job_scan_mapper (const cubthread::entry_workpool::core & wp_core, bool & stop_mapper,
+                             THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx, size_t & core_index,
+                             int & error_code)
+{
+  DB_VALUE *vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
+  if (vals == NULL)
+    {
+      assert (false);
+      error_code = ER_FAILED;
+      stop_mapper = true;
+      return;
+    }
+
+  // add core index; it used to be job queue index
+  size_t val_index = 0;
+  (void) db_make_int (&vals[val_index++], (int) core_index);
+
+  // add max worker count; it used to be max thread workers per job queue
+  (void) db_make_int (&vals[val_index++], (int) wp_core.get_max_worker_count ());
+
+  // number of busy workers; core does not keep it, we need to count them manually
+  int busy_count = 0;
+  wp_core.map_running_contexts (stop_mapper, css_wp_worker_get_busy_count_mapper, busy_count);
+  (void) db_make_int (&vals[val_index++], (int) busy_count);
+
+  // number of connection workers; just for backward compatibility, there are no connections workers here
+  (void) db_make_int (&vals[val_index++], 0);
+
+  // increment core_index
+  ++core_index;
+
+  assert (val_index == CSS_JOB_QUEUE_SCAN_COLUMN_COUNT);
+}
+
+//
+// css_is_any_thread_not_suspended_mapfunc
+//
+// thread_ref (in)   : current thread entry
+// stop_mapper (out) : output true to stop mapper
+// count (out)       : count number of threads
+// found (out)       : output true when not suspended thread is found
+//
+static void
+css_is_any_thread_not_suspended_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, size_t & count, bool & found)
+{
+  if (thread_ref.m_status != cubthread::entry::status::TS_WAIT)
+    {
+      // found not suspended; stop
+      stop_mapper = true;
+      found = true;
+      return;
+    }
+  ++count;
+}
+
+//
+// css_are_all_request_handlers_suspended - are all request handlers suspended?
+//
+bool
+css_are_all_request_handlers_suspended (void)
+{
+  // assume all are suspended
+  bool is_any_not_suspended = false;
+  size_t checked_threads_count = 0;
+
+  css_Server_request_worker_pool->map_running_contexts (css_is_any_thread_not_suspended_mapfunc, checked_threads_count,
+                                                        is_any_not_suspended);
+  if (is_any_not_suspended)
+    {
+      // found a thread that was not suspended
+      return false;
+    }
+
+  if (checked_threads_count == css_Server_request_worker_pool->get_max_count ())
+    {
+      // all threads are suspended
+      return true;
+    }
+  else
+    {
+      // at least one thread is free
+      return false;
+    }
+}
+
+//
+// css_count_transaction_worker_threads_mapfunc () - mapper function for worker pool thread entries. tries to identify
+//                                                   entries belonging to given transaction/client and increment
+//                                                   counter
+//
+// thread_ref (in)    : thread entry belonging to running worker
+// stop_mapper (out)  : ignored
+// caller_thread (in) : thread entry of caller
+// tran_index (in)    : transaction index
+// client_id (in)     : client id
+// count (out)        : increment counter if thread entry belongs to transaction/client
+//
+static void
+css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
+                                              THREAD_ENTRY * caller_thread, int tran_index, int client_id,
+                                              size_t & count)
+{
+  (void) stop_mapper;   // suppress unused parameter warning
+
+  CSS_CONN_ENTRY *conn_p;
+  bool does_belong = false;
+
+  if (caller_thread == &thread_ref || thread_ref.type != TT_WORKER)
+    {
+      // not what we need
+      return;
+    }
+
+  (void) pthread_mutex_lock (&thread_ref.tran_index_lock);
+
+  if (!thread_ref.is_on_current_thread ()
+      && thread_ref.m_status != cubthread::entry::status::TS_DEAD
+      && thread_ref.m_status != cubthread::entry::status::TS_FREE
+      && thread_ref.m_status != cubthread::entry::status::TS_CHECK)
+    {
+      conn_p = thread_ref.conn_entry;
+      if (tran_index == NULL_TRAN_INDEX)
+        {
+          // exact match client ID is required
+          does_belong = (conn_p != NULL && conn_p->client_id == client_id);
+        }
+      else if (tran_index == thread_ref.tran_index)
+        {
+          // match client ID or null connection
+          does_belong = (conn_p == NULL || conn_p->client_id == client_id);
+        }
+    }
+
+  pthread_mutex_unlock (&thread_ref.tran_index_lock);
+
+  if (does_belong)
+    {
+      count++;
+    }
+}
+
+//
+// css_count_transaction_worker_threads () - count thread entries belonging to transaction/client (exclude current
+//                                           thread)
+//
+// return          : thread entries count
+// thread_p (in)   : thread entry of caller
+// tran_index (in) : transaction index
+// client_id (in)  : client id
+//
+size_t
+css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, int client_id)
+{
+  size_t count = 0;
+
+  css_Server_request_worker_pool->map_running_contexts (css_count_transaction_worker_threads_mapfunc, thread_p,
+                                                        tran_index, client_id, count);
+
+  return count;
+}
+// *INDENT-ON*

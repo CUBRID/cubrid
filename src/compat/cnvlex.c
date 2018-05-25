@@ -262,7 +262,7 @@ return t;
  */
 #define YY_DO_BEFORE_ACTION \
 	yytext = yy_bp; \
-	yyleng = yy_cp - yy_bp; \
+	yyleng = (int)(yy_cp - yy_bp); \
 	yy_hold_char = *yy_cp; \
 	*yy_cp = '\0'; \
 	yy_c_buf_p = yy_cp;
@@ -1360,7 +1360,7 @@ YY_DECL
 	  YY_BREAK case YY_END_OF_BUFFER:
 	  {
 	    /* amount of text matched not including the EOB char */
-	    int yy_amount_of_matched_text = yy_cp - yytext - 1;
+	    int yy_amount_of_matched_text = (int) (yy_cp - yytext - 1);
 
 	    /* undo the effects of YY_DO_BEFORE_ACTION */
 	     *yy_cp = yy_hold_char;
@@ -1483,7 +1483,7 @@ yy_get_next_buffer ()
   /* try to read more data */
 
   /* first move last chars to start of buffer */
-  number_to_move = yy_c_buf_p - yytext;
+  number_to_move = (int) (yy_c_buf_p - yytext);
 
   for (i = 0; i < number_to_move; ++i)
     *(dest++) = *(source++);

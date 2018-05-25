@@ -27,10 +27,11 @@
 
 #ident "$Id$"
 
-#include <stdio.h>
-
-#include "thread.h"
 #include "query_list.h"
+#include "log_impl.h"
+#include "thread_compat.hpp"
+
+#include <stdio.h>
 
 #define EVENT_EMPTY_QUERY "***EMPTY***"
 
@@ -40,7 +41,7 @@ extern FILE *event_log_start (THREAD_ENTRY * thread_p, const char *event_name);
 extern void event_log_end (THREAD_ENTRY * thread_p);
 extern void event_log_print_client_info (int tran_index, int indent);
 extern void event_log_sql_string (THREAD_ENTRY * thread_p, FILE * log_fp, XASL_ID * xasl_id, int indent);
-extern void event_log_bind_values (FILE * log_fp, int tran_index, int bind_index);
+extern void event_log_bind_values (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, int bind_index);
 extern void event_log_log_flush_thr_wait (THREAD_ENTRY * thread_p, int flush_count, LOG_CLIENTIDS * client_info,
 					  int flush_time, int flush_wait_time, int writer_time);
 #endif /* _EVENT_LOG_H_ */

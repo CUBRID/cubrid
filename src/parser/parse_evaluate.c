@@ -47,9 +47,7 @@
 #include "network_interface_cl.h"
 #include "xasl_support.h"
 #include "transform.h"
-
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 /* associates labels with DB_VALUES */
 static MHT_TABLE *pt_Label_table = NULL;
@@ -273,7 +271,7 @@ pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * val)
   int is_class = 0;
 
   assert (parser != NULL);
-  DB_MAKE_NULL (&val1);
+  db_make_null (&val1);
 
   if (tree == NULL || val == NULL)
     {
@@ -296,7 +294,7 @@ pt_eval_path_expr (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * val)
 	    {
 	      result = true;
 	    }
-	  else if (DB_VALUE_TYPE (&val1) == DB_TYPE_OBJECT && (obj1 = DB_GET_OBJECT (&val1)) != NULL)
+	  else if (DB_VALUE_TYPE (&val1) == DB_TYPE_OBJECT && (obj1 = db_get_object (&val1)) != NULL)
 	    {
 	      int error;
 
@@ -635,7 +633,7 @@ pt_is_reference_to_reusable_oid (DB_VALUE * val)
 
   if (vtype == DB_TYPE_OBJECT)
     {
-      DB_OBJECT *obj = DB_GET_OBJECT (val);
+      DB_OBJECT *obj = db_get_object (val);
       int is_class = 0;
 
       if (obj == NULL)
@@ -661,7 +659,7 @@ pt_is_reference_to_reusable_oid (DB_VALUE * val)
     }
   else if (vtype == DB_TYPE_POINTER)
     {
-      DB_OTMPL *obj_tmpl = (DB_OTMPL *) DB_GET_POINTER (val);
+      DB_OTMPL *obj_tmpl = (DB_OTMPL *) db_get_pointer (val);
 
       if (obj_tmpl == NULL)
 	{
@@ -686,7 +684,7 @@ pt_is_reference_to_reusable_oid (DB_VALUE * val)
       return ret_val;
     }
 
-  if (ret_val == true)
+  if (ret_val != 0)
     {
       return 1;
     }
@@ -934,7 +932,6 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
   QUERY_ID query_id_self = parser->query_id;
   MOP serial_mop;
   DB_IDENTIFIER *serial_oid_p;
-  const char *serial_name = NULL;
   int cached_num;
   int r = 0;
   int error_code;
@@ -1103,7 +1100,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 			  int num_alloc;
 
 			  val = pt_value_to_db (parser, arg2);
-			  num_alloc = DB_GET_INTEGER (val);
+			  num_alloc = db_get_int (val);
 			  if (num_alloc < 1)
 			    {
 			      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC,
@@ -1165,7 +1162,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 	    {
 	      pt_evaluate_tree_having_serial (parser, arg1, &opd1, 1);
 	    }
-	  type1 = (PT_TYPE_ENUM) pt_db_to_type_enum ((DB_TYPE) opd1.domain.general_info.type);
+	  type1 = pt_db_to_type_enum ((DB_TYPE) opd1.domain.general_info.type);
 	  if (arg2 && !pt_has_error (parser))
 	    {
 	      pt_evaluate_tree_having_serial (parser, arg2, &opd2, 1);
@@ -1173,8 +1170,8 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 	    }
 	  else
 	    {
-	      INTL_CODESET opd1_cs = DB_IS_NULL (&opd1) ? LANG_SYS_CODESET : DB_GET_STRING_CODESET (&opd1);
-	      int opd1_coll = DB_IS_NULL (&opd1) ? LANG_SYS_COLLATION : DB_GET_STRING_COLLATION (&opd1);
+	      INTL_CODESET opd1_cs = DB_IS_NULL (&opd1) ? LANG_SYS_CODESET : db_get_string_codeset (&opd1);
+	      int opd1_coll = DB_IS_NULL (&opd1) ? LANG_SYS_COLLATION : db_get_string_collation (&opd1);
 
 	      switch (op)
 		{
@@ -1208,8 +1205,8 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 	    }
 	  else
 	    {
-	      INTL_CODESET opd1_cs = DB_IS_NULL (&opd1) ? LANG_SYS_CODESET : DB_GET_STRING_CODESET (&opd1);
-	      int opd1_coll = DB_IS_NULL (&opd1) ? LANG_SYS_COLLATION : DB_GET_STRING_COLLATION (&opd1);
+	      INTL_CODESET opd1_cs = DB_IS_NULL (&opd1) ? LANG_SYS_CODESET : db_get_string_codeset (&opd1);
+	      int opd1_coll = DB_IS_NULL (&opd1) ? LANG_SYS_COLLATION : db_get_string_collation (&opd1);
 
 	      switch (op)
 		{

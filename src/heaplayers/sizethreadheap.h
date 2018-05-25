@@ -25,7 +25,7 @@ public:
     Super::free (origPtr);
   }
 
-  static inline volatile int getThreadId (void);
+  static inline /*volatile*/ int getThreadId (void);
 
   static inline size_t& size (void * ptr) {
 		return getOrigPtr(ptr)->size;
@@ -62,7 +62,7 @@ private:
 #endif
 
 template <class SuperHeap>
-inline volatile int
+inline /*volatile*/ int
 SizeThreadHeap<SuperHeap>::getThreadId (void) {
 #if defined(WIN32)
   return GetCurrentThreadId();

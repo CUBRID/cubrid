@@ -36,8 +36,10 @@
 #include "esql_misc.h"
 #include "esql_translate.h"
 
-extern FILE *esql_yyout;
-
+extern "C"
+{
+  extern FILE *esql_yyout;
+}
 /*
  * This struct is used as a catchall struct for all of the various
  * structures that are put in hash tables. We take care that each such
@@ -197,7 +199,7 @@ pp_new_ptr_vec (PTR_VEC * vec)
 {
   if (vec == NULL)
     {
-      vec = malloc (sizeof (PTR_VEC));
+      vec = (PTR_VEC *) malloc (sizeof (PTR_VEC));
       if (vec == NULL)
 	{
 	  esql_yyverror (pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
@@ -261,7 +263,7 @@ grow_ptr_vec (PTR_VEC * vec)
   int new_max_elems;
   void **new_elems;
 
-  new_max_elems = vec->max_elems + vec->chunk_size;
+  new_max_elems = (int) (vec->max_elems + vec->chunk_size);
   if (vec->elems == vec->inline_elems)
     {
       new_elems = (void **) pp_malloc (sizeof (vec->elems[0]) * new_max_elems);
@@ -353,7 +355,7 @@ pp_malloc (int n)
 {
   char *tmp;
 
-  tmp = malloc (n);
+  tmp = (char *) malloc (n);
   if (tmp == NULL)
     {
       fprintf (stderr, "%s: %s\n", prog_name, pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
@@ -378,8 +380,8 @@ pp_strdup (const char *str)
       return NULL;
     }
   /* includes the null terminator of 'str' */
-  n = strlen (str) + 1;
-  tmp = pp_malloc (n);
+  n = (int) strlen (str) + 1;
+  tmp = (char *) pp_malloc (n);
   memcpy (tmp, str, n);
   return tmp;
 }

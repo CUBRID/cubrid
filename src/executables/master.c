@@ -88,8 +88,9 @@ static void css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, S
 				    char *server_name, int server_name_length);
 static void css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid);
 static void css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid);
-static bool css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid);
-static void css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid);
+static bool css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid,
+					    CSS_SERVER_REQUEST request);
+static void css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERVER_REQUEST request);
 static void css_process_new_connection (SOCKET fd);
 static int css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
 static int css_enroll_write_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
@@ -98,7 +99,6 @@ static int css_enroll_exception_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set *
 static int css_enroll_master_read_sockets (fd_set * fd_var);
 static int css_enroll_master_write_sockets (fd_set * fd_var);
 static int css_enroll_master_exception_sockets (fd_set * fd_var);
-static void css_select_error (SOCKET_QUEUE_ENTRY ** anchor_p);
 static void css_master_select_error (void);
 static void css_check_master_socket_input (int *count, fd_set * fd_var);
 static void css_check_master_socket_output (void);
@@ -165,7 +165,7 @@ static int
 css_master_timeout (void)
 {
 #if !defined(WINDOWS)
-  int pid, rv;
+  int rv;
   SOCKET_QUEUE_ENTRY *temp;
 #endif
   struct timeval timeout;
@@ -224,7 +224,7 @@ css_master_cleanup (int sig)
 #if !defined(WINDOWS)
   unlink (css_get_master_domain_path ());
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (!HA_DISABLED ())
     {
       MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_STOPPED, 0);
     }
@@ -347,7 +347,7 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *server_
 #endif
 	  css_add_request_to_socket_queue (datagram_conn, false, server_name, server_fd, READ_WRITE, 0,
 					   &css_Master_socket_anchor);
-	  length = strlen (server_name) + 1;
+	  length = (int) strlen (server_name) + 1;
 	  if (length < server_name_length)
 	    {
 	      entry = css_return_entry_of_server (server_name, css_Master_socket_anchor);
@@ -414,7 +414,7 @@ css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_
 	  entry->fd = server_fd;
 	  css_free_conn (entry->conn_ptr);
 	  entry->conn_ptr = datagram_conn;
-	  length = strlen (server_name) + 1;
+	  length = (int) strlen (server_name) + 1;
 	  if (length < server_name_length)
 	    {
 	      server_name += length;
@@ -547,7 +547,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 	      if (entry != NULL)
 		{
 		  entry->port_id = ntohl (buffer);
-		  length = strlen (server_name) + 1;
+		  length = (int) strlen (server_name) + 1;
 		  /* read server version_string, env_var, pid */
 		  if (length < server_name_length)
 		    {
@@ -611,9 +611,9 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
  *   rid(in)
  */
 static bool
-css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
+css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SERVER_REQUEST request)
 {
-  return (css_transfer_fd (server_fd, client_fd, rid));
+  return (css_transfer_fd (server_fd, client_fd, rid, request));
 }
 
 /*
@@ -634,7 +634,7 @@ css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned sho
  *   to the server.
  */
 static void
-css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid)
+css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERVER_REQUEST request)
 {
   SOCKET_QUEUE_ENTRY *temp;
   char *server_name = NULL;
@@ -671,7 +671,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 		      return;
 		    }
 #endif
-		  if (css_send_new_request_to_server (temp->fd, conn->fd, rid))
+		  if (css_send_new_request_to_server (temp->fd, conn->fd, rid, request))
 		    {
 		      free_and_init (server_name);
 		      css_free_conn (conn);
@@ -755,7 +755,7 @@ css_process_new_connection (SOCKET fd)
 	  css_add_request_to_socket_queue (conn, true, NULL, fd, READ_WRITE, 0, &css_Master_socket_anchor);
 	  break;
 	case DATA_REQUEST:	/* request from a remote client */
-	  css_send_to_existing_server (conn, rid);
+	  css_send_to_existing_server (conn, rid, SERVER_START_NEW_CLIENT);
 	  break;
 	case SERVER_REQUEST:	/* request from a new server */
 	  css_register_new_server (conn, rid);
@@ -763,6 +763,9 @@ css_process_new_connection (SOCKET fd)
 	case SERVER_REQUEST_NEW:	/* request from a new server */
 	  /* here the server wants to manage its own connection port */
 	  css_register_new_server2 (conn, rid);
+	  break;
+	case SERVER_REQUEST_CONNECT_NEW_SLAVE:
+	  css_send_to_existing_server (conn, rid, SERVER_CONNECT_NEW_SLAVE);
 	  break;
 	default:
 	  css_free_conn (conn);
@@ -787,7 +790,7 @@ static int
 css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
 {
   SOCKET_QUEUE_ENTRY *temp;
-  int max_fd = 0;
+  SOCKET max_fd = 0;
 
   FD_ZERO (fd_var);
   for (temp = anchor_p; temp; temp = temp->next)
@@ -802,7 +805,7 @@ css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
 	}
     }
 
-  return max_fd;
+  return (int) max_fd;
 }
 
 /*
@@ -856,7 +859,7 @@ static int
 css_enroll_exception_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
 {
   SOCKET_QUEUE_ENTRY *temp;
-  int max_fd = 0;
+  SOCKET max_fd = 0;
 
   FD_ZERO (fd_var);
   for (temp = anchor_p; temp; temp = temp->next)
@@ -871,7 +874,7 @@ css_enroll_exception_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var)
 	}
     }
 
-  return max_fd;
+  return (int) max_fd;
 }
 
 /*
@@ -1031,7 +1034,7 @@ again:
 #if !defined(WINDOWS)
 					     (fcntl (temp->fd, F_GETFL, 0) < 0) ||
 #endif /* !WINDOWS */
-					     (temp->error_p == true) || (temp->conn_ptr == NULL)
+					     (temp->error_p != 0) || (temp->conn_ptr == NULL)
 					     || (temp->conn_ptr->status == CONN_CLOSED))))
 	{
 #if defined(DEBUG)
@@ -1212,7 +1215,7 @@ main (int argc, char **argv)
     }
 
 #if !defined(WINDOWS)
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (!HA_DISABLED ())
     {
       if (hb_master_init () != NO_ERROR)
 	{
@@ -1238,6 +1241,8 @@ cleanup:
   css_windows_shutdown ();
 #endif /* WINDOWS */
   msgcat_final ();
+
+  er_final (ER_ALL_FINAL);
 
   return status;
 }
@@ -1349,7 +1354,7 @@ css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p, char *name
 	  strcpy (p->name, name_p);
 #if !defined(WINDOWS)
 	  if (IS_MASTER_CONN_NAME_HA_SERVER (p->name) || IS_MASTER_CONN_NAME_HA_COPYLOG (p->name)
-	      || IS_MASTER_CONN_NAME_HA_APPLYLOG (p->name) || IS_MASTER_CONN_NAME_HA_PREFETCHLOG (p->name))
+	      || IS_MASTER_CONN_NAME_HA_APPLYLOG (p->name))
 	    {
 	      p->ha_mode = TRUE;
 	    }

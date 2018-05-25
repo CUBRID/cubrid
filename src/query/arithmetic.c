@@ -30,22 +30,25 @@
 #include <string.h>
 #include <float.h>
 #include <math.h>
+#include <assert.h>
 #if defined(SOLARIS)
 #include <ieeefp.h>
 #endif
 
 #include "arithmetic.h"
 #include "error_manager.h"
-#include "memory_alloc.h"
-#include "object_representation.h"
-#include "object_domain.h"
+#include "object_primitive.h"
 #include "numeric_opfunc.h"
-#include "db.h"
-#include "query_opfunc.h"
 #include "crypt_opfunc.h"
+#include "string_opfunc.h"
+#include "db_date.h"
+#include "db_json.hpp"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 static int db_mod_short (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
 static int db_mod_int (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
@@ -89,23 +92,23 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
   switch (res_type)
     {
     case DB_TYPE_SHORT:
-      DB_MAKE_SHORT (result, DB_GET_SHORT (value));
+      db_make_short (result, db_get_short (value));
       break;
     case DB_TYPE_INTEGER:
-      DB_MAKE_INT (result, DB_GET_INT (value));
+      db_make_int (result, db_get_int (value));
       break;
     case DB_TYPE_BIGINT:
-      DB_MAKE_BIGINT (result, DB_GET_BIGINT (value));
+      db_make_bigint (result, db_get_bigint (value));
       break;
     case DB_TYPE_FLOAT:
-      dtmp = floor (DB_GET_FLOAT (value));
-      DB_MAKE_FLOAT (result, (float) dtmp);
+      dtmp = floor (db_get_float (value));
+      db_make_float (result, (float) dtmp);
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      DB_MAKE_NULL (&cast_value);
+      db_make_null (&cast_value);
       er_status = tp_value_str_auto_cast_to_number (value, &cast_value, &res_type);
       if (er_status != NO_ERROR
 	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && res_type != DB_TYPE_DOUBLE))
@@ -120,8 +123,8 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
       /* fall through */
 
     case DB_TYPE_DOUBLE:
-      dtmp = floor (DB_GET_DOUBLE (value));
-      DB_MAKE_DOUBLE (result, (double) dtmp);
+      dtmp = floor (db_get_double (value));
+      db_make_double (result, (double) dtmp);
       break;
     case DB_TYPE_NUMERIC:
       {
@@ -136,7 +139,7 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 	    bool decrement = false;
 
 	    num_str_p = num_str + 1;
-	    numeric_coerce_num_to_dec_str (DB_PULL_NUMERIC (value), num_str_p);
+	    numeric_coerce_num_to_dec_str (db_get_numeric (value), num_str_p);
 	    num_str_len = strlen (num_str_p);
 
 	    num_str_p += num_str_len - s;
@@ -199,27 +202,27 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 		  }
 
 		numeric_coerce_dec_str_to_num (num_str_p, num);
-		DB_MAKE_NUMERIC (result, num, p, s);
+		db_make_numeric (result, num, p, s);
 	      }
 	    else
 	      {
 		/* given numeric is positive or already rounded */
 		numeric_coerce_dec_str_to_num (num_str + 1, num);
-		DB_MAKE_NUMERIC (result, num, p, s);
+		db_make_numeric (result, num, p, s);
 	      }
 	  }
 	else
 	  {
 	    /* given numeric number is already of integral type */
-	    DB_MAKE_NUMERIC (result, DB_PULL_NUMERIC (value), p, 0);
+	    db_make_numeric (result, db_get_numeric (value), p, 0);
 	  }
 
 	break;
       }
     case DB_TYPE_MONETARY:
-      dtmp = (DB_GET_MONETARY (value))->amount;
+      dtmp = (db_get_monetary (value))->amount;
       dtmp = floor (dtmp);
-      DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value))->type, dtmp);
+      db_make_monetary (result, (db_get_monetary (value))->type, dtmp);
       break;
     default:
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
@@ -256,23 +259,23 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
   switch (res_type)
     {
     case DB_TYPE_SHORT:
-      DB_MAKE_SHORT (result, DB_GET_SHORT (value));
+      db_make_short (result, db_get_short (value));
       break;
     case DB_TYPE_INTEGER:
-      DB_MAKE_INT (result, DB_GET_INT (value));
+      db_make_int (result, db_get_int (value));
       break;
     case DB_TYPE_BIGINT:
-      DB_MAKE_BIGINT (result, DB_GET_BIGINT (value));
+      db_make_bigint (result, db_get_bigint (value));
       break;
     case DB_TYPE_FLOAT:
-      dtmp = ceil (DB_GET_FLOAT (value));
-      DB_MAKE_FLOAT (result, (float) dtmp);
+      dtmp = ceil (db_get_float (value));
+      db_make_float (result, (float) dtmp);
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      DB_MAKE_NULL (&cast_value);
+      db_make_null (&cast_value);
       er_status = tp_value_str_auto_cast_to_number (value, &cast_value, &res_type);
       if (er_status != NO_ERROR
 	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && res_type != DB_TYPE_DOUBLE))
@@ -287,8 +290,8 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
       /* fall through */
 
     case DB_TYPE_DOUBLE:
-      dtmp = ceil (DB_GET_DOUBLE (value));
-      DB_MAKE_DOUBLE (result, (double) dtmp);
+      dtmp = ceil (db_get_double (value));
+      db_make_double (result, (double) dtmp);
       break;
     case DB_TYPE_NUMERIC:
       {
@@ -329,7 +332,7 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 		  {
 		    /* CEIL(-3.1) is -3.0, as opposed to CEIL(+3.1) which is 4 */
 		    numeric_coerce_dec_str_to_num (num_str + 1, num);
-		    DB_MAKE_NUMERIC (result, num, p, s);
+		    db_make_numeric (result, num, p, s);
 		  }
 		else
 		  {
@@ -374,27 +377,27 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 		      }
 
 		    numeric_coerce_dec_str_to_num (num_str_p, num);
-		    DB_MAKE_NUMERIC (result, num, p, s);
+		    db_make_numeric (result, num, p, s);
 		  }
 	      }
 	    else
 	      {
 		/* the given numeric value is already an integer */
-		DB_MAKE_NUMERIC (result, db_locate_numeric (value), p, s);
+		db_make_numeric (result, db_locate_numeric (value), p, s);
 	      }
 	  }
 	else
 	  {
 	    /* the given numeric value has a scale of 0 */
-	    DB_MAKE_NUMERIC (result, db_locate_numeric (value), p, 0);
+	    db_make_numeric (result, db_locate_numeric (value), p, 0);
 	  }
 
 	break;
       }
     case DB_TYPE_MONETARY:
-      dtmp = (DB_GET_MONETARY (value))->amount;
+      dtmp = (db_get_monetary (value))->amount;
       dtmp = ceil (dtmp);
-      DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value))->type, dtmp);
+      db_make_monetary (result, (db_get_monetary (value))->type, dtmp);
       break;
     default:
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
@@ -433,108 +436,108 @@ db_sign_dbval (DB_VALUE * result, DB_VALUE * value)
   switch (res_type)
     {
     case DB_TYPE_SHORT:
-      itmp = DB_GET_SHORT (value);
+      itmp = db_get_short (value);
       if (itmp == 0)
 	{
-	  DB_MAKE_INT (result, 0);
+	  db_make_int (result, 0);
 	}
       else if (itmp < 0)
 	{
-	  DB_MAKE_INT (result, -1);
+	  db_make_int (result, -1);
 	}
       else
 	{
-	  DB_MAKE_INT (result, 1);
+	  db_make_int (result, 1);
 	}
       break;
     case DB_TYPE_INTEGER:
-      itmp = DB_GET_INTEGER (value);
+      itmp = db_get_int (value);
       if (itmp == 0)
 	{
-	  DB_MAKE_INT (result, 0);
+	  db_make_int (result, 0);
 	}
       else if (itmp < 0)
 	{
-	  DB_MAKE_INT (result, -1);
+	  db_make_int (result, -1);
 	}
       else
 	{
-	  DB_MAKE_INT (result, 1);
+	  db_make_int (result, 1);
 	}
       break;
     case DB_TYPE_BIGINT:
-      bitmp = DB_GET_BIGINT (value);
+      bitmp = db_get_bigint (value);
       if (bitmp == 0)
 	{
-	  DB_MAKE_INT (result, 0);
+	  db_make_int (result, 0);
 	}
       else if (bitmp < 0)
 	{
-	  DB_MAKE_INT (result, -1);
+	  db_make_int (result, -1);
 	}
       else
 	{
-	  DB_MAKE_INT (result, 1);
+	  db_make_int (result, 1);
 	}
       break;
     case DB_TYPE_FLOAT:
-      dtmp = DB_GET_FLOAT (value);
+      dtmp = db_get_float (value);
       if (dtmp == 0)
 	{
-	  DB_MAKE_INT (result, 0);
+	  db_make_int (result, 0);
 	}
       else if (dtmp < 0)
 	{
-	  DB_MAKE_INT (result, -1);
+	  db_make_int (result, -1);
 	}
       else
 	{
-	  DB_MAKE_INT (result, 1);
+	  db_make_int (result, 1);
 	}
       break;
     case DB_TYPE_DOUBLE:
-      dtmp = DB_GET_DOUBLE (value);
+      dtmp = db_get_double (value);
       if (dtmp == 0)
 	{
-	  DB_MAKE_INT (result, 0);
+	  db_make_int (result, 0);
 	}
       else if (dtmp < 0)
 	{
-	  DB_MAKE_INT (result, -1);
+	  db_make_int (result, -1);
 	}
       else
 	{
-	  DB_MAKE_INT (result, 1);
+	  db_make_int (result, 1);
 	}
       break;
     case DB_TYPE_NUMERIC:
       numeric_coerce_num_to_double (db_locate_numeric (value), DB_VALUE_SCALE (value), &dtmp);
       if (dtmp == 0)
 	{
-	  DB_MAKE_INT (result, 0);
+	  db_make_int (result, 0);
 	}
       else if (dtmp < 0)
 	{
-	  DB_MAKE_INT (result, -1);
+	  db_make_int (result, -1);
 	}
       else
 	{
-	  DB_MAKE_INT (result, 1);
+	  db_make_int (result, 1);
 	}
       break;
     case DB_TYPE_MONETARY:
-      dtmp = (DB_GET_MONETARY (value))->amount;
+      dtmp = (db_get_monetary (value))->amount;
       if (dtmp == 0)
 	{
-	  DB_MAKE_INT (result, 0);
+	  db_make_int (result, 0);
 	}
       else if (dtmp < 0)
 	{
-	  DB_MAKE_INT (result, -1);
+	  db_make_int (result, -1);
 	}
       else
 	{
-	  DB_MAKE_INT (result, 1);
+	  db_make_int (result, 1);
 	}
       break;
     default:
@@ -570,31 +573,31 @@ db_abs_dbval (DB_VALUE * result, DB_VALUE * value)
   switch (res_type)
     {
     case DB_TYPE_SHORT:
-      stmp = DB_GET_SHORT (value);
+      stmp = db_get_short (value);
       stmp = abs (stmp);
-      DB_MAKE_SHORT (result, stmp);
+      db_make_short (result, stmp);
       break;
     case DB_TYPE_INTEGER:
-      itmp = DB_GET_INT (value);
+      itmp = db_get_int (value);
       itmp = abs (itmp);
-      DB_MAKE_INT (result, itmp);
+      db_make_int (result, itmp);
       break;
     case DB_TYPE_BIGINT:
-      bitmp = DB_GET_BIGINT (value);
+      bitmp = db_get_bigint (value);
       bitmp = llabs (bitmp);
-      DB_MAKE_BIGINT (result, bitmp);
+      db_make_bigint (result, bitmp);
       break;
     case DB_TYPE_FLOAT:
-      dtmp = DB_GET_FLOAT (value);
+      dtmp = db_get_float (value);
       dtmp = fabs (dtmp);
-      DB_MAKE_FLOAT (result, (float) dtmp);
+      db_make_float (result, (float) dtmp);
       break;
 
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      DB_MAKE_NULL (&cast_value);
+      db_make_null (&cast_value);
       er_status = tp_value_str_auto_cast_to_number (value, &cast_value, &res_type);
       if (er_status != NO_ERROR
 	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && res_type != DB_TYPE_DOUBLE))
@@ -609,22 +612,22 @@ db_abs_dbval (DB_VALUE * result, DB_VALUE * value)
       /* fall through */
 
     case DB_TYPE_DOUBLE:
-      dtmp = DB_GET_DOUBLE (value);
+      dtmp = db_get_double (value);
       dtmp = fabs (dtmp);
-      DB_MAKE_DOUBLE (result, (double) dtmp);
+      db_make_double (result, (double) dtmp);
       break;
     case DB_TYPE_NUMERIC:
       {
 	unsigned char num[DB_NUMERIC_BUF_SIZE];
 
 	numeric_db_value_abs (db_locate_numeric (value), num);
-	DB_MAKE_NUMERIC (result, num, DB_VALUE_PRECISION (value), DB_VALUE_SCALE (value));
+	db_make_numeric (result, num, DB_VALUE_PRECISION (value), DB_VALUE_SCALE (value));
 	break;
       }
     case DB_TYPE_MONETARY:
-      dtmp = (DB_GET_MONETARY (value))->amount;
+      dtmp = (db_get_monetary (value))->amount;
       dtmp = fabs (dtmp);
-      DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value))->type, dtmp);
+      db_make_monetary (result, (db_get_monetary (value))->type, dtmp);
       break;
     default:
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
@@ -665,23 +668,23 @@ db_exp_dbval (DB_VALUE * result, DB_VALUE * value)
   switch (type)
     {
     case DB_TYPE_SHORT:
-      s = DB_GET_SHORT (value);
+      s = db_get_short (value);
       dtmp = exp ((double) s);
       break;
     case DB_TYPE_INTEGER:
-      i = DB_GET_INT (value);
+      i = db_get_int (value);
       dtmp = exp ((double) i);
       break;
     case DB_TYPE_BIGINT:
-      bi = DB_GET_BIGINT (value);
+      bi = db_get_bigint (value);
       dtmp = exp ((double) bi);
       break;
     case DB_TYPE_FLOAT:
-      f = DB_GET_FLOAT (value);
+      f = db_get_float (value);
       dtmp = exp (f);
       break;
     case DB_TYPE_DOUBLE:
-      d = DB_GET_DOUBLE (value);
+      d = db_get_double (value);
       dtmp = exp (d);
       break;
     case DB_TYPE_NUMERIC:
@@ -689,7 +692,7 @@ db_exp_dbval (DB_VALUE * result, DB_VALUE * value)
       dtmp = exp (d);
       break;
     case DB_TYPE_MONETARY:
-      d = (DB_GET_MONETARY (value))->amount;
+      d = (db_get_monetary (value))->amount;
       dtmp = exp (d);
       break;
     default:
@@ -702,7 +705,7 @@ db_exp_dbval (DB_VALUE * result, DB_VALUE * value)
       goto exp_overflow;
     }
 
-  DB_MAKE_DOUBLE (result, dtmp);
+  db_make_double (result, dtmp);
   return NO_ERROR;
 
 exp_overflow:
@@ -737,7 +740,7 @@ db_sqrt_dbval (DB_VALUE * result, DB_VALUE * value)
   switch (type)
     {
     case DB_TYPE_SHORT:
-      s = DB_GET_SHORT (value);
+      s = db_get_short (value);
       if (s < 0)
 	{
 	  goto sqrt_error;
@@ -745,7 +748,7 @@ db_sqrt_dbval (DB_VALUE * result, DB_VALUE * value)
       dtmp = sqrt ((double) s);
       break;
     case DB_TYPE_INTEGER:
-      i = DB_GET_INT (value);
+      i = db_get_int (value);
       if (i < 0)
 	{
 	  goto sqrt_error;
@@ -753,7 +756,7 @@ db_sqrt_dbval (DB_VALUE * result, DB_VALUE * value)
       dtmp = sqrt ((double) i);
       break;
     case DB_TYPE_BIGINT:
-      bi = DB_GET_BIGINT (value);
+      bi = db_get_bigint (value);
       if (bi < 0)
 	{
 	  goto sqrt_error;
@@ -761,7 +764,7 @@ db_sqrt_dbval (DB_VALUE * result, DB_VALUE * value)
       dtmp = sqrt ((double) bi);
       break;
     case DB_TYPE_FLOAT:
-      f = DB_GET_FLOAT (value);
+      f = db_get_float (value);
       if (f < 0)
 	{
 	  goto sqrt_error;
@@ -769,7 +772,7 @@ db_sqrt_dbval (DB_VALUE * result, DB_VALUE * value)
       dtmp = sqrt (f);
       break;
     case DB_TYPE_DOUBLE:
-      d = DB_GET_DOUBLE (value);
+      d = db_get_double (value);
       if (d < 0)
 	{
 	  goto sqrt_error;
@@ -785,7 +788,7 @@ db_sqrt_dbval (DB_VALUE * result, DB_VALUE * value)
       dtmp = sqrt (d);
       break;
     case DB_TYPE_MONETARY:
-      d = (DB_GET_MONETARY (value))->amount;
+      d = (db_get_monetary (value))->amount;
       if (d < 0)
 	{
 	  goto sqrt_error;
@@ -798,13 +801,13 @@ db_sqrt_dbval (DB_VALUE * result, DB_VALUE * value)
       break;
     }
 
-  DB_MAKE_DOUBLE (result, dtmp);
+  db_make_double (result, dtmp);
   return NO_ERROR;
 
 sqrt_error:
   if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       return NO_ERROR;
     }
   else
@@ -830,7 +833,7 @@ db_power_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
   if (DB_IS_NULL (value1) || DB_IS_NULL (value2))
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       return NO_ERROR;
     }
 
@@ -857,14 +860,14 @@ db_power_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       goto pow_overflow;
     }
 
-  DB_MAKE_DOUBLE (result, dtmp);
+  db_make_double (result, dtmp);
 
   return NO_ERROR;
 
 pow_overflow:
   if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       return NO_ERROR;
     }
   else
@@ -876,7 +879,7 @@ pow_overflow:
 pow_error:
   if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       return NO_ERROR;
     }
   else
@@ -913,60 +916,60 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
   assert (result != NULL && value1 != NULL && value2 != NULL);
 
-  DB_MAKE_NULL (&cast_value2);
+  db_make_null (&cast_value2);
 
 #if !defined(NDEBUG)
   type1 = DB_VALUE_DOMAIN_TYPE (value1);
   assert (type1 == DB_TYPE_SHORT);
 #endif
 
-  s1 = DB_GET_SHORT (value1);
+  s1 = db_get_short (value1);
 
   type2 = DB_VALUE_DOMAIN_TYPE (value2);
   switch (type2)
     {
     case DB_TYPE_SHORT:
-      s2 = DB_GET_SHORT (value2);
+      s2 = db_get_short (value2);
       if (s2 == 0)
 	{
-	  DB_MAKE_SHORT (result, s1);
+	  db_make_short (result, s1);
 	}
       else
 	{
-	  DB_MAKE_SHORT (result, (short) (s1 % s2));
+	  db_make_short (result, (short) (s1 % s2));
 	}
       break;
     case DB_TYPE_INTEGER:
-      i2 = DB_GET_INT (value2);
+      i2 = db_get_int (value2);
       if (i2 == 0)
 	{
-	  DB_MAKE_INT (result, s1);
+	  db_make_int (result, s1);
 	}
       else
 	{
-	  DB_MAKE_INT (result, (int) (s1 % i2));
+	  db_make_int (result, (int) (s1 % i2));
 	}
       break;
     case DB_TYPE_BIGINT:
-      bi2 = DB_GET_BIGINT (value2);
+      bi2 = db_get_bigint (value2);
       if (bi2 == 0)
 	{
-	  DB_MAKE_BIGINT (result, s1);
+	  db_make_bigint (result, s1);
 	}
       else
 	{
-	  DB_MAKE_BIGINT (result, (DB_BIGINT) (s1 % bi2));
+	  db_make_bigint (result, (DB_BIGINT) (s1 % bi2));
 	}
       break;
     case DB_TYPE_FLOAT:
-      f2 = DB_GET_FLOAT (value2);
+      f2 = db_get_float (value2);
       if (f2 == 0)
 	{
-	  DB_MAKE_FLOAT (result, s1);
+	  db_make_float (result, s1);
 	}
       else
 	{
-	  DB_MAKE_FLOAT (result, (float) fmod (s1, f2));
+	  db_make_float (result, (float) fmod ((float) s1, f2));
 	}
       break;
     case DB_TYPE_CHAR:
@@ -987,14 +990,14 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       /* fall through */
 
     case DB_TYPE_DOUBLE:
-      d2 = DB_GET_DOUBLE (value2);
+      d2 = db_get_double (value2);
       if (d2 == 0)
 	{
-	  DB_MAKE_DOUBLE (result, s1);
+	  db_make_double (result, s1);
 	}
       else
 	{
-	  DB_MAKE_DOUBLE (result, (double) fmod (s1, d2));
+	  db_make_double (result, (double) fmod ((double) s1, d2));
 	}
       break;
     case DB_TYPE_NUMERIC:
@@ -1005,20 +1008,20 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  dtmp = fmod (s1, d2);
+	  dtmp = fmod ((double) s1, d2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s);
-	  DB_MAKE_NUMERIC (result, num, p, s);
+	  db_make_numeric (result, num, p, s);
 	}
       break;
     case DB_TYPE_MONETARY:
-      d2 = (DB_GET_MONETARY (value2))->amount;
+      d2 = (db_get_monetary (value2))->amount;
       if (d2 == 0)
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, s1);
+	  db_make_monetary (result, (db_get_monetary (value2))->type, s1);
 	}
       else
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, (double) fmod (s1, d2));
+	  db_make_monetary (result, (db_get_monetary (value2))->type, (double) fmod (s1, d2));
 	}
       break;
     default:
@@ -1062,60 +1065,60 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
   assert (result != NULL && value1 != NULL && value2 != NULL);
 
-  DB_MAKE_NULL (&cast_value2);
+  db_make_null (&cast_value2);
 
 #if !defined(NDEBUG)
   type1 = DB_VALUE_DOMAIN_TYPE (value1);
   assert (type1 == DB_TYPE_INTEGER);
 #endif
 
-  i1 = DB_GET_INT (value1);
+  i1 = db_get_int (value1);
 
   type2 = DB_VALUE_DOMAIN_TYPE (value2);
   switch (type2)
     {
     case DB_TYPE_SHORT:
-      s2 = DB_GET_SHORT (value2);
+      s2 = db_get_short (value2);
       if (s2 == 0)
 	{
-	  DB_MAKE_INT (result, i1);
+	  db_make_int (result, i1);
 	}
       else
 	{
-	  DB_MAKE_INT (result, (int) (i1 % s2));
+	  db_make_int (result, (int) (i1 % s2));
 	}
       break;
     case DB_TYPE_INTEGER:
-      i2 = DB_GET_INT (value2);
+      i2 = db_get_int (value2);
       if (i2 == 0)
 	{
-	  DB_MAKE_INT (result, i1);
+	  db_make_int (result, i1);
 	}
       else
 	{
-	  DB_MAKE_INT (result, (int) (i1 % i2));
+	  db_make_int (result, (int) (i1 % i2));
 	}
       break;
     case DB_TYPE_BIGINT:
-      bi2 = DB_GET_BIGINT (value2);
+      bi2 = db_get_bigint (value2);
       if (bi2 == 0)
 	{
-	  DB_MAKE_BIGINT (result, i1);
+	  db_make_bigint (result, i1);
 	}
       else
 	{
-	  DB_MAKE_BIGINT (result, (DB_BIGINT) (i1 % bi2));
+	  db_make_bigint (result, (DB_BIGINT) (i1 % bi2));
 	}
       break;
     case DB_TYPE_FLOAT:
-      f2 = DB_GET_FLOAT (value2);
+      f2 = db_get_float (value2);
       if (f2 == 0)
 	{
-	  DB_MAKE_FLOAT (result, (float) i1);
+	  db_make_float (result, (float) i1);
 	}
       else
 	{
-	  DB_MAKE_FLOAT (result, (float) fmod (i1, f2));
+	  db_make_float (result, (float) fmod ((float) i1, f2));
 	}
       break;
     case DB_TYPE_CHAR:
@@ -1136,14 +1139,14 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       /* fall through */
 
     case DB_TYPE_DOUBLE:
-      d2 = DB_GET_DOUBLE (value2);
+      d2 = db_get_double (value2);
       if (d2 == 0)
 	{
-	  DB_MAKE_DOUBLE (result, i1);
+	  db_make_double (result, i1);
 	}
       else
 	{
-	  DB_MAKE_DOUBLE (result, (double) fmod (i1, d2));
+	  db_make_double (result, (double) fmod ((double) i1, d2));
 	}
       break;
     case DB_TYPE_NUMERIC:
@@ -1154,20 +1157,20 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       else
 	{
-	  dtmp = fmod (i1, d2);
+	  dtmp = fmod ((double) i1, d2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s);
-	  DB_MAKE_NUMERIC (result, num, p, s);
+	  db_make_numeric (result, num, p, s);
 	}
       break;
     case DB_TYPE_MONETARY:
-      d2 = (DB_GET_MONETARY (value2))->amount;
+      d2 = (db_get_monetary (value2))->amount;
       if (d2 == 0)
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, i1);
+	  db_make_monetary (result, (db_get_monetary (value2))->type, i1);
 	}
       else
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, (double) fmod (i1, d2));
+	  db_make_monetary (result, (db_get_monetary (value2))->type, (double) fmod ((double) i1, d2));
 	}
       break;
     default:
@@ -1211,60 +1214,60 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
   assert (result != NULL && value1 != NULL && value2 != NULL);
 
-  DB_MAKE_NULL (&cast_value2);
+  db_make_null (&cast_value2);
 
 #if !defined(NDEBUG)
   type1 = DB_VALUE_DOMAIN_TYPE (value1);
   assert (type1 == DB_TYPE_BIGINT);
 #endif
 
-  bi1 = DB_GET_BIGINT (value1);
+  bi1 = db_get_bigint (value1);
 
   type2 = DB_VALUE_DOMAIN_TYPE (value2);
   switch (type2)
     {
     case DB_TYPE_SHORT:
-      s2 = DB_GET_SHORT (value2);
+      s2 = db_get_short (value2);
       if (s2 == 0)
 	{
-	  DB_MAKE_BIGINT (result, bi1);
+	  db_make_bigint (result, bi1);
 	}
       else
 	{
-	  DB_MAKE_BIGINT (result, (DB_BIGINT) (bi1 % s2));
+	  db_make_bigint (result, (DB_BIGINT) (bi1 % s2));
 	}
       break;
     case DB_TYPE_INTEGER:
-      i2 = DB_GET_INT (value2);
+      i2 = db_get_int (value2);
       if (i2 == 0)
 	{
-	  DB_MAKE_BIGINT (result, bi1);
+	  db_make_bigint (result, bi1);
 	}
       else
 	{
-	  DB_MAKE_BIGINT (result, (DB_BIGINT) (bi1 % i2));
+	  db_make_bigint (result, (DB_BIGINT) (bi1 % i2));
 	}
       break;
     case DB_TYPE_BIGINT:
-      bi2 = DB_GET_BIGINT (value2);
+      bi2 = db_get_bigint (value2);
       if (bi2 == 0)
 	{
-	  DB_MAKE_BIGINT (result, bi1);
+	  db_make_bigint (result, bi1);
 	}
       else
 	{
-	  DB_MAKE_BIGINT (result, (DB_BIGINT) (bi1 % bi2));
+	  db_make_bigint (result, (DB_BIGINT) (bi1 % bi2));
 	}
       break;
     case DB_TYPE_FLOAT:
-      f2 = DB_GET_FLOAT (value2);
+      f2 = db_get_float (value2);
       if (f2 == 0)
 	{
-	  DB_MAKE_FLOAT (result, (float) bi1);
+	  db_make_float (result, (float) bi1);
 	}
       else
 	{
-	  DB_MAKE_FLOAT (result, (float) fmod ((double) bi1, f2));
+	  db_make_float (result, (float) fmod ((double) bi1, (double) f2));
 	}
       break;
     case DB_TYPE_CHAR:
@@ -1285,14 +1288,14 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       /* fall through */
 
     case DB_TYPE_DOUBLE:
-      d2 = DB_GET_DOUBLE (value2);
+      d2 = db_get_double (value2);
       if (d2 == 0)
 	{
-	  DB_MAKE_DOUBLE (result, (double) bi1);
+	  db_make_double (result, (double) bi1);
 	}
       else
 	{
-	  DB_MAKE_DOUBLE (result, (double) fmod ((double) bi1, d2));
+	  db_make_double (result, (double) fmod ((double) bi1, d2));
 	}
       break;
     case DB_TYPE_NUMERIC:
@@ -1305,18 +1308,18 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  dtmp = fmod ((double) bi1, d2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s);
-	  DB_MAKE_NUMERIC (result, num, p, s);
+	  db_make_numeric (result, num, p, s);
 	}
       break;
     case DB_TYPE_MONETARY:
-      d2 = (DB_GET_MONETARY (value2))->amount;
+      d2 = (db_get_monetary (value2))->amount;
       if (d2 == 0)
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, (double) bi1);
+	  db_make_monetary (result, (db_get_monetary (value2))->type, (double) bi1);
 	}
       else
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, (double) fmod ((double) bi1, d2));
+	  db_make_monetary (result, (db_get_monetary (value2))->type, (double) fmod ((double) bi1, d2));
 	}
       break;
     default:
@@ -1356,60 +1359,60 @@ db_mod_float (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
   assert (result != NULL && value1 != NULL && value2 != NULL);
 
-  DB_MAKE_NULL (&cast_value2);
+  db_make_null (&cast_value2);
 
 #if !defined(NDEBUG)
   type1 = DB_VALUE_DOMAIN_TYPE (value1);
   assert (type1 == DB_TYPE_FLOAT);
 #endif
 
-  f1 = DB_GET_FLOAT (value1);
+  f1 = db_get_float (value1);
 
   type2 = DB_VALUE_DOMAIN_TYPE (value2);
   switch (type2)
     {
     case DB_TYPE_SHORT:
-      s2 = DB_GET_SHORT (value2);
+      s2 = db_get_short (value2);
       if (s2 == 0)
 	{
-	  DB_MAKE_FLOAT (result, f1);
+	  db_make_float (result, f1);
 	}
       else
 	{
-	  DB_MAKE_FLOAT (result, (float) fmod (f1, s2));
+	  db_make_float (result, (float) fmod (f1, (float) s2));
 	}
       break;
     case DB_TYPE_INTEGER:
-      i2 = DB_GET_INT (value2);
+      i2 = db_get_int (value2);
       if (i2 == 0)
 	{
-	  DB_MAKE_FLOAT (result, f1);
+	  db_make_float (result, f1);
 	}
       else
 	{
-	  DB_MAKE_FLOAT (result, (float) fmod (f1, i2));
+	  db_make_float (result, (float) fmod (f1, (float) i2));
 	}
       break;
     case DB_TYPE_BIGINT:
-      bi2 = DB_GET_BIGINT (value2);
+      bi2 = db_get_bigint (value2);
       if (bi2 == 0)
 	{
-	  DB_MAKE_FLOAT (result, f1);
+	  db_make_float (result, f1);
 	}
       else
 	{
-	  DB_MAKE_FLOAT (result, (float) fmod (f1, (double) bi2));
+	  db_make_float (result, (float) fmod ((double) f1, (double) bi2));
 	}
       break;
     case DB_TYPE_FLOAT:
-      f2 = DB_GET_FLOAT (value2);
+      f2 = db_get_float (value2);
       if (f2 == 0)
 	{
-	  DB_MAKE_FLOAT (result, f1);
+	  db_make_float (result, f1);
 	}
       else
 	{
-	  DB_MAKE_FLOAT (result, (float) fmod (f1, f2));
+	  db_make_float (result, (float) fmod (f1, f2));
 	}
       break;
     case DB_TYPE_CHAR:
@@ -1430,14 +1433,14 @@ db_mod_float (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       /* fall through */
 
     case DB_TYPE_DOUBLE:
-      d2 = DB_GET_DOUBLE (value2);
+      d2 = db_get_double (value2);
       if (d2 == 0)
 	{
-	  DB_MAKE_DOUBLE (result, f1);
+	  db_make_double (result, f1);
 	}
       else
 	{
-	  DB_MAKE_DOUBLE (result, (double) fmod ((double) f1, d2));
+	  db_make_double (result, (double) fmod ((double) f1, d2));
 	}
       break;
     case DB_TYPE_NUMERIC:
@@ -1445,22 +1448,22 @@ db_mod_float (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       /* common type of float and numeric is double. */
       if (d2 == 0)
 	{
-	  DB_MAKE_DOUBLE (result, f1);
+	  db_make_double (result, f1);
 	}
       else
 	{
-	  DB_MAKE_DOUBLE (result, fmod (f1, d2));
+	  db_make_double (result, fmod ((double) f1, d2));
 	}
       break;
     case DB_TYPE_MONETARY:
-      d2 = (DB_GET_MONETARY (value2))->amount;
+      d2 = (db_get_monetary (value2))->amount;
       if (d2 == 0)
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, f1);
+	  db_make_monetary (result, (db_get_monetary (value2))->type, f1);
 	}
       else
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, (double) fmod ((double) f1, d2));
+	  db_make_monetary (result, (db_get_monetary (value2))->type, (double) fmod ((double) f1, d2));
 	}
       break;
     default:
@@ -1500,60 +1503,60 @@ db_mod_double (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
   assert (result != NULL && value1 != NULL && value2 != NULL);
 
-  DB_MAKE_NULL (&cast_value2);
+  db_make_null (&cast_value2);
 
 #if !defined(NDEBUG)
   type1 = DB_VALUE_DOMAIN_TYPE (value1);
   assert (type1 == DB_TYPE_DOUBLE);
 #endif
 
-  d1 = DB_GET_DOUBLE (value1);
+  d1 = db_get_double (value1);
 
   type2 = DB_VALUE_DOMAIN_TYPE (value2);
   switch (type2)
     {
     case DB_TYPE_SHORT:
-      s2 = DB_GET_SHORT (value2);
+      s2 = db_get_short (value2);
       if (s2 == 0)
 	{
-	  DB_MAKE_DOUBLE (result, d1);
+	  db_make_double (result, d1);
 	}
       else
 	{
-	  DB_MAKE_DOUBLE (result, (double) fmod (d1, s2));
+	  db_make_double (result, (double) fmod (d1, (double) s2));
 	}
       break;
     case DB_TYPE_INTEGER:
-      i2 = DB_GET_INT (value2);
+      i2 = db_get_int (value2);
       if (i2 == 0)
 	{
-	  DB_MAKE_DOUBLE (result, d1);
+	  db_make_double (result, d1);
 	}
       else
 	{
-	  DB_MAKE_DOUBLE (result, (double) fmod (d1, i2));
+	  db_make_double (result, (double) fmod (d1, (double) i2));
 	}
       break;
     case DB_TYPE_BIGINT:
-      bi2 = DB_GET_BIGINT (value2);
+      bi2 = db_get_bigint (value2);
       if (bi2 == 0)
 	{
-	  DB_MAKE_DOUBLE (result, d1);
+	  db_make_double (result, d1);
 	}
       else
 	{
-	  DB_MAKE_DOUBLE (result, (double) fmod (d1, (double) bi2));
+	  db_make_double (result, (double) fmod (d1, (double) bi2));
 	}
       break;
     case DB_TYPE_FLOAT:
-      f2 = DB_GET_FLOAT (value2);
+      f2 = db_get_float (value2);
       if (f2 == 0)
 	{
-	  DB_MAKE_DOUBLE (result, d1);
+	  db_make_double (result, d1);
 	}
       else
 	{
-	  DB_MAKE_DOUBLE (result, (double) fmod (d1, (double) f2));
+	  db_make_double (result, (double) fmod (d1, (double) f2));
 	}
       break;
     case DB_TYPE_CHAR:
@@ -1574,36 +1577,36 @@ db_mod_double (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       /* fall through */
 
     case DB_TYPE_DOUBLE:
-      d2 = DB_GET_DOUBLE (value2);
+      d2 = db_get_double (value2);
       if (d2 == 0)
 	{
-	  DB_MAKE_DOUBLE (result, d1);
+	  db_make_double (result, d1);
 	}
       else
 	{
-	  DB_MAKE_DOUBLE (result, (double) fmod (d1, d2));
+	  db_make_double (result, (double) fmod (d1, d2));
 	}
       break;
     case DB_TYPE_NUMERIC:
       numeric_coerce_num_to_double (db_locate_numeric (value2), DB_VALUE_SCALE (value2), &d2);
       if (d2 == 0)
 	{
-	  DB_MAKE_DOUBLE (result, d1);
+	  db_make_double (result, d1);
 	}
       else
 	{
-	  DB_MAKE_DOUBLE (result, (double) fmod (d1, d2));
+	  db_make_double (result, (double) fmod (d1, d2));
 	}
       break;
     case DB_TYPE_MONETARY:
-      d2 = (DB_GET_MONETARY (value2))->amount;
+      d2 = (db_get_monetary (value2))->amount;
       if (d2 == 0)
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, d1);
+	  db_make_monetary (result, (db_get_monetary (value2))->type, d1);
 	}
       else
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, (double) fmod (d1, d2));
+	  db_make_monetary (result, (db_get_monetary (value2))->type, (double) fmod (d1, d2));
 	}
       break;
     default:
@@ -1635,7 +1638,7 @@ db_mod_string (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
   assert (result != NULL && value1 != NULL && value2 != NULL);
 
-  DB_MAKE_NULL (&cast_value1);
+  db_make_null (&cast_value1);
 
 #if !defined(NDEBUG)
   type1 = DB_VALUE_DOMAIN_TYPE (value1);
@@ -1684,7 +1687,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
   assert (result != NULL && value1 != NULL && value2 != NULL);
 
-  DB_MAKE_NULL (&cast_value2);
+  db_make_null (&cast_value2);
 
 #if !defined(NDEBUG)
   type1 = DB_VALUE_DOMAIN_TYPE (value1);
@@ -1697,33 +1700,33 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   switch (type2)
     {
     case DB_TYPE_SHORT:
-      s2 = DB_GET_SHORT (value2);
+      s2 = db_get_short (value2);
       if (s2 == 0)
 	{
 	  (void) numeric_db_value_coerce_to_num (value1, result, &data_stat);
 	}
       else
 	{
-	  dtmp = fmod (d1, s2);
+	  dtmp = fmod (d1, (double) s2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s);
-	  DB_MAKE_NUMERIC (result, num, p, s);
+	  db_make_numeric (result, num, p, s);
 	}
       break;
     case DB_TYPE_INTEGER:
-      i2 = DB_GET_INT (value2);
+      i2 = db_get_int (value2);
       if (i2 == 0)
 	{
 	  (void) numeric_db_value_coerce_to_num (value1, result, &data_stat);
 	}
       else
 	{
-	  dtmp = fmod (d1, i2);
+	  dtmp = fmod (d1, (double) i2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s);
-	  DB_MAKE_NUMERIC (result, num, p, s);
+	  db_make_numeric (result, num, p, s);
 	}
       break;
     case DB_TYPE_BIGINT:
-      bi2 = DB_GET_BIGINT (value2);
+      bi2 = db_get_bigint (value2);
       if (bi2 == 0)
 	{
 	  (void) numeric_db_value_coerce_to_num (value1, result, &data_stat);
@@ -1732,19 +1735,19 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  dtmp = fmod (d1, (double) bi2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s);
-	  DB_MAKE_NUMERIC (result, num, p, s);
+	  db_make_numeric (result, num, p, s);
 	}
       break;
     case DB_TYPE_FLOAT:
-      f2 = DB_GET_FLOAT (value2);
+      f2 = db_get_float (value2);
       /* common type of float and numeric is double */
       if (f2 == 0)
 	{
-	  DB_MAKE_DOUBLE (result, d1);
+	  db_make_double (result, d1);
 	}
       else
 	{
-	  DB_MAKE_DOUBLE (result, fmod (d1, f2));
+	  db_make_double (result, fmod (d1, (double) f2));
 	}
       break;
     case DB_TYPE_CHAR:
@@ -1765,14 +1768,14 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       /* fall through */
 
     case DB_TYPE_DOUBLE:
-      d2 = DB_GET_DOUBLE (value2);
+      d2 = db_get_double (value2);
       if (d2 == 0)
 	{
-	  DB_MAKE_DOUBLE (result, d1);
+	  db_make_double (result, d1);
 	}
       else
 	{
-	  DB_MAKE_DOUBLE (result, (double) fmod (d1, d2));
+	  db_make_double (result, (double) fmod (d1, d2));
 	}
       break;
     case DB_TYPE_NUMERIC:
@@ -1786,18 +1789,18 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = fmod (d1, d2);
 	  (void) numeric_internal_double_to_num (dtmp, MAX (DB_VALUE_SCALE (value1), DB_VALUE_SCALE (value2)), num, &p,
 						 &s);
-	  DB_MAKE_NUMERIC (result, num, p, s);
+	  db_make_numeric (result, num, p, s);
 	}
       break;
     case DB_TYPE_MONETARY:
-      d2 = (DB_GET_MONETARY (value2))->amount;
+      d2 = (db_get_monetary (value2))->amount;
       if (d2 == 0)
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, d1);
+	  db_make_monetary (result, (db_get_monetary (value2))->type, d1);
 	}
       else
 	{
-	  DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value2))->type, (double) fmod (d1, d2));
+	  db_make_monetary (result, (db_get_monetary (value2))->type, (double) fmod (d1, d2));
 	}
       break;
     default:
@@ -1833,30 +1836,30 @@ db_mod_monetary (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
   assert (result != NULL && value1 != NULL && value2 != NULL);
 
-  DB_MAKE_NULL (&cast_value2);
+  db_make_null (&cast_value2);
 
 #if !defined(NDEBUG)
   type1 = DB_VALUE_DOMAIN_TYPE (value1);
   assert (type1 == DB_TYPE_MONETARY);
 #endif
 
-  d1 = (DB_GET_MONETARY (value1))->amount;
+  d1 = (db_get_monetary (value1))->amount;
   d2 = 0;
 
   type2 = DB_VALUE_DOMAIN_TYPE (value2);
   switch (type2)
     {
     case DB_TYPE_SHORT:
-      d2 = DB_GET_SHORT (value2);
+      d2 = db_get_short (value2);
       break;
     case DB_TYPE_INTEGER:
-      d2 = DB_GET_INT (value2);
+      d2 = db_get_int (value2);
       break;
     case DB_TYPE_BIGINT:
-      d2 = (double) DB_GET_BIGINT (value2);
+      d2 = (double) db_get_bigint (value2);
       break;
     case DB_TYPE_FLOAT:
-      d2 = DB_GET_FLOAT (value2);
+      d2 = db_get_float (value2);
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
@@ -1876,13 +1879,13 @@ db_mod_monetary (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       /* fall through */
 
     case DB_TYPE_DOUBLE:
-      d2 = DB_GET_DOUBLE (value2);
+      d2 = db_get_double (value2);
       break;
     case DB_TYPE_NUMERIC:
       numeric_coerce_num_to_double (db_locate_numeric (value2), DB_VALUE_SCALE (value2), &d2);
       break;
     case DB_TYPE_MONETARY:
-      d2 = (DB_GET_MONETARY (value2))->amount;
+      d2 = (db_get_monetary (value2))->amount;
       break;
     default:
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
@@ -1895,11 +1898,11 @@ db_mod_monetary (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
   if (d2 == 0)
     {
-      DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value1))->type, d1);
+      db_make_monetary (result, (db_get_monetary (value1))->type, d1);
     }
   else
     {
-      DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value1))->type, (double) fmod (d1, d2));
+      db_make_monetary (result, (db_get_monetary (value1))->type, (double) fmod (d1, d2));
     }
 
 exit:
@@ -2286,13 +2289,13 @@ round_date (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     }
 
   /* re-create new date */
-  error = DB_MAKE_DATE (result, month, day, year);
+  error = db_make_date (result, month, day, year);
 
 end:
   if (error != NO_ERROR && prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       error = NO_ERROR;
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       er_clear ();
     }
 
@@ -2326,8 +2329,8 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   int er_status = NO_ERROR;
   TP_DOMAIN *domain = NULL;
 
-  DB_MAKE_NULL (&cast_value);
-  DB_MAKE_NULL (&cast_format);
+  db_make_null (&cast_value);
+  db_make_null (&cast_format);
 
   if (DB_IS_NULL (value1) || DB_IS_NULL (value2))
     {
@@ -2344,7 +2347,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     {				/* round date */
       if (QSTR_IS_ANY_CHAR (type2) && strcasecmp (DB_GET_STRING_SAFE (value2), "default") == 0)
 	{
-	  DB_MAKE_STRING (&cast_format, "dd");
+	  db_make_string (&cast_format, "dd");
 	  value2 = &cast_format;
 	}
       return round_date (result, value1, value2);
@@ -2376,25 +2379,25 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   /* get value2 */
   if (type2 == DB_TYPE_INTEGER)
     {
-      d2 = (double) DB_GET_INT (value2);
+      d2 = (double) db_get_int (value2);
     }
   else if (type2 == DB_TYPE_BIGINT)
     {
-      d2 = (double) DB_GET_BIGINT (value2);
+      d2 = (double) db_get_bigint (value2);
     }
   else if (type2 == DB_TYPE_SHORT)
     {
-      d2 = (double) DB_GET_SHORT (value2);
+      d2 = (double) db_get_short (value2);
     }
   else if (type2 == DB_TYPE_DOUBLE)
     {
-      d2 = DB_GET_DOUBLE (value2);
+      d2 = db_get_double (value2);
     }
   else				/* cast to INTEGER */
     {
       if (QSTR_IS_ANY_CHAR (type2) && strcasecmp (DB_GET_STRING_SAFE (value2), "default") == 0)
 	{
-	  DB_MAKE_INT (&cast_format, 0);
+	  db_make_int (&cast_format, 0);
 	  value2 = &cast_format;
 	  type2 = DB_TYPE_INTEGER;
 	  d2 = 0;
@@ -2419,7 +2422,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	    }
 	  type2 = DB_TYPE_INTEGER;
 	  value2 = &cast_format;
-	  d2 = DB_GET_INTEGER (value2);
+	  d2 = db_get_int (value2);
 	}
     }
 
@@ -2427,17 +2430,17 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   switch (type1)
     {
     case DB_TYPE_SHORT:
-      s1 = DB_GET_SHORT (value1);
+      s1 = db_get_short (value1);
       dtmp = round_double (s1, d2);
-      DB_MAKE_SHORT (result, (short) dtmp);
+      db_make_short (result, (short) dtmp);
       break;
     case DB_TYPE_INTEGER:
-      i1 = DB_GET_INT (value1);
+      i1 = db_get_int (value1);
       dtmp = round_double (i1, d2);
-      DB_MAKE_INT (result, (int) dtmp);
+      db_make_int (result, (int) dtmp);
       break;
     case DB_TYPE_BIGINT:
-      bi1 = DB_GET_BIGINT (value1);
+      bi1 = db_get_bigint (value1);
       dtmp = round_double ((double) bi1, d2);
       bi_tmp = (DB_BIGINT) dtmp;
 #if defined(AIX)
@@ -2447,18 +2450,18 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  bi_tmp = DB_BIGINT_MIN;
 	}
 #endif
-      DB_MAKE_BIGINT (result, bi_tmp);
+      db_make_bigint (result, bi_tmp);
       break;
     case DB_TYPE_FLOAT:
-      f1 = DB_GET_FLOAT (value1);
+      f1 = db_get_float (value1);
       dtmp = round_double (f1, d2);
-      DB_MAKE_FLOAT (result, (float) dtmp);
+      db_make_float (result, (float) dtmp);
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      DB_MAKE_NULL (&cast_value);
+      db_make_null (&cast_value);
       er_status = tp_value_str_auto_cast_to_number (value1, &cast_value, &type1);
       if (er_status != NO_ERROR
 	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && type1 != DB_TYPE_DOUBLE))
@@ -2471,9 +2474,9 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
       /* fall through */
     case DB_TYPE_DOUBLE:
-      d1 = DB_GET_DOUBLE (value1);
+      d1 = db_get_double (value1);
       dtmp = round_double (d1, d2);
-      DB_MAKE_DOUBLE (result, (double) dtmp);
+      db_make_double (result, (double) dtmp);
       break;
     case DB_TYPE_NUMERIC:
       memset (num_string, 0, sizeof (num_string));
@@ -2484,19 +2487,19 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
       if (type2 == DB_TYPE_BIGINT)
 	{
-	  bi2 = DB_GET_BIGINT (value2);
+	  bi2 = db_get_bigint (value2);
 	}
       else if (type2 == DB_TYPE_INTEGER)
 	{
-	  bi2 = DB_GET_INT (value2);
+	  bi2 = db_get_int (value2);
 	}
       else if (type2 == DB_TYPE_SHORT)
 	{
-	  bi2 = DB_GET_SHORT (value2);
+	  bi2 = db_get_short (value2);
 	}
       else			/* double */
 	{
-	  bi2 = (DB_BIGINT) DB_GET_DOUBLE (value2);
+	  bi2 = (DB_BIGINT) db_get_double (value2);
 	}
       ptr = end - s + bi2;
 
@@ -2564,12 +2567,12 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
 
       numeric_coerce_dec_str_to_num (num_string, num);
-      DB_MAKE_NUMERIC (result, num, p, s);
+      db_make_numeric (result, num, p, s);
       break;
     case DB_TYPE_MONETARY:
-      d1 = (DB_GET_MONETARY (value1))->amount;
+      d1 = (db_get_monetary (value1))->amount;
       dtmp = round_double (d1, d2);
-      DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value1))->type, dtmp);
+      db_make_monetary (result, (db_get_monetary (value1))->type, dtmp);
       break;
     default:
       if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
@@ -2583,7 +2586,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   if (er_errid () != NO_ERROR && prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       er_clear ();
-      DB_MAKE_NULL (result);
+      db_make_null (result);
     }
 
   return er_errid ();
@@ -2618,7 +2621,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   switch (type1)
     {
     case DB_TYPE_SHORT:
-      s1 = DB_GET_SHORT (value1);
+      s1 = db_get_short (value1);
       if (s1 <= 1)
 	{
 	  goto log_error;
@@ -2627,7 +2630,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       switch (type2)
 	{
 	case DB_TYPE_SHORT:
-	  s2 = DB_GET_SHORT (value2);
+	  s2 = db_get_short (value2);
 	  if (s2 <= 0)
 	    {
 	      goto log_error;
@@ -2635,7 +2638,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) s2) / log10 ((double) s1);
 	  break;
 	case DB_TYPE_INTEGER:
-	  i2 = DB_GET_INT (value2);
+	  i2 = db_get_int (value2);
 	  if (i2 <= 0)
 	    {
 	      goto log_error;
@@ -2643,7 +2646,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) i2) / log10 ((double) s1);
 	  break;
 	case DB_TYPE_BIGINT:
-	  bi2 = DB_GET_BIGINT (value2);
+	  bi2 = db_get_bigint (value2);
 	  if (bi2 <= 0)
 	    {
 	      goto log_error;
@@ -2651,7 +2654,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) bi2) / log10 ((double) s1);
 	  break;
 	case DB_TYPE_FLOAT:
-	  f2 = DB_GET_FLOAT (value2);
+	  f2 = db_get_float (value2);
 	  if (f2 <= 0)
 	    {
 	      goto log_error;
@@ -2659,7 +2662,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) f2) / log10 ((double) s1);
 	  break;
 	case DB_TYPE_DOUBLE:
-	  d2 = DB_GET_DOUBLE (value2);
+	  d2 = db_get_double (value2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -2675,7 +2678,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) d2) / log10 ((double) s1);
 	  break;
 	case DB_TYPE_MONETARY:
-	  d2 = (DB_GET_MONETARY (value2))->amount;
+	  d2 = (db_get_monetary (value2))->amount;
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -2689,7 +2692,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       break;
 
     case DB_TYPE_BIGINT:
-      bi1 = DB_GET_BIGINT (value1);
+      bi1 = db_get_bigint (value1);
       if (bi1 <= 1)
 	{
 	  goto log_error;
@@ -2698,7 +2701,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       switch (type2)
 	{
 	case DB_TYPE_SHORT:
-	  s2 = DB_GET_SHORT (value2);
+	  s2 = db_get_short (value2);
 	  if (s2 <= 0)
 	    {
 	      goto log_error;
@@ -2706,7 +2709,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) s2) / log10 ((double) bi1);
 	  break;
 	case DB_TYPE_INTEGER:
-	  i2 = DB_GET_INT (value2);
+	  i2 = db_get_int (value2);
 	  if (i2 <= 0)
 	    {
 	      goto log_error;
@@ -2714,7 +2717,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) i2) / log10 ((double) bi1);
 	  break;
 	case DB_TYPE_BIGINT:
-	  bi2 = DB_GET_BIGINT (value2);
+	  bi2 = db_get_bigint (value2);
 	  if (bi2 <= 0)
 	    {
 	      goto log_error;
@@ -2722,7 +2725,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) bi2) / log10 ((double) bi1);
 	  break;
 	case DB_TYPE_FLOAT:
-	  f2 = DB_GET_FLOAT (value2);
+	  f2 = db_get_float (value2);
 	  if (f2 <= 0)
 	    {
 	      goto log_error;
@@ -2730,7 +2733,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) f2) / log10 ((double) bi1);
 	  break;
 	case DB_TYPE_DOUBLE:
-	  d2 = DB_GET_DOUBLE (value2);
+	  d2 = db_get_double (value2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -2746,7 +2749,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) d2) / log10 ((double) bi1);
 	  break;
 	case DB_TYPE_MONETARY:
-	  d2 = (DB_GET_MONETARY (value2))->amount;
+	  d2 = (db_get_monetary (value2))->amount;
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -2760,7 +2763,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       break;
 
     case DB_TYPE_INTEGER:
-      i1 = DB_GET_INT (value1);
+      i1 = db_get_int (value1);
       if (i1 <= 1)
 	{
 	  goto log_error;
@@ -2769,7 +2772,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       switch (type2)
 	{
 	case DB_TYPE_SHORT:
-	  s2 = DB_GET_SHORT (value2);
+	  s2 = db_get_short (value2);
 	  if (s2 <= 0)
 	    {
 	      goto log_error;
@@ -2777,7 +2780,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) s2) / log10 ((double) i1);
 	  break;
 	case DB_TYPE_INTEGER:
-	  i2 = DB_GET_INT (value2);
+	  i2 = db_get_int (value2);
 	  if (i2 <= 0)
 	    {
 	      goto log_error;
@@ -2785,7 +2788,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) i2) / log10 ((double) i1);
 	  break;
 	case DB_TYPE_BIGINT:
-	  bi2 = DB_GET_BIGINT (value2);
+	  bi2 = db_get_bigint (value2);
 	  if (bi2 <= 0)
 	    {
 	      goto log_error;
@@ -2793,7 +2796,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) bi2) / log10 ((double) i1);
 	  break;
 	case DB_TYPE_FLOAT:
-	  f2 = DB_GET_FLOAT (value2);
+	  f2 = db_get_float (value2);
 	  if (f2 <= 0)
 	    {
 	      goto log_error;
@@ -2801,7 +2804,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) f2) / log10 ((double) i1);
 	  break;
 	case DB_TYPE_DOUBLE:
-	  d2 = DB_GET_DOUBLE (value2);
+	  d2 = db_get_double (value2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -2817,7 +2820,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 ((double) i1);
 	  break;
 	case DB_TYPE_MONETARY:
-	  d2 = (DB_GET_MONETARY (value2))->amount;
+	  d2 = (db_get_monetary (value2))->amount;
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -2831,7 +2834,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       break;
 
     case DB_TYPE_FLOAT:
-      f1 = DB_GET_FLOAT (value1);
+      f1 = db_get_float (value1);
       if (f1 <= 1)
 	{
 	  goto log_error;
@@ -2840,7 +2843,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       switch (type2)
 	{
 	case DB_TYPE_SHORT:
-	  s2 = DB_GET_SHORT (value2);
+	  s2 = db_get_short (value2);
 	  if (s2 <= 0)
 	    {
 	      goto log_error;
@@ -2848,7 +2851,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) s2) / log10 ((double) f1);
 	  break;
 	case DB_TYPE_INTEGER:
-	  i2 = DB_GET_INT (value2);
+	  i2 = db_get_int (value2);
 	  if (i2 <= 0)
 	    {
 	      goto log_error;
@@ -2856,7 +2859,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) i2) / log10 ((double) f1);
 	  break;
 	case DB_TYPE_BIGINT:
-	  bi2 = DB_GET_BIGINT (value2);
+	  bi2 = db_get_bigint (value2);
 	  if (bi2 <= 0)
 	    {
 	      goto log_error;
@@ -2864,7 +2867,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) bi2) / log10 ((double) f1);
 	  break;
 	case DB_TYPE_FLOAT:
-	  f2 = DB_GET_FLOAT (value2);
+	  f2 = db_get_float (value2);
 	  if (f2 <= 0)
 	    {
 	      goto log_error;
@@ -2872,7 +2875,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) f2) / log10 ((double) f1);
 	  break;
 	case DB_TYPE_DOUBLE:
-	  d2 = DB_GET_DOUBLE (value2);
+	  d2 = db_get_double (value2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -2888,7 +2891,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 (f1);
 	  break;
 	case DB_TYPE_MONETARY:
-	  d2 = (DB_GET_MONETARY (value2))->amount;
+	  d2 = (db_get_monetary (value2))->amount;
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -2902,7 +2905,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       break;
 
     case DB_TYPE_DOUBLE:
-      d1 = DB_GET_DOUBLE (value1);
+      d1 = db_get_double (value1);
       if (d1 <= 1)
 	{
 	  goto log_error;
@@ -2911,7 +2914,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       switch (type2)
 	{
 	case DB_TYPE_SHORT:
-	  s2 = DB_GET_SHORT (value2);
+	  s2 = db_get_short (value2);
 	  if (s2 <= 0)
 	    {
 	      goto log_error;
@@ -2919,7 +2922,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) s2) / log10 (d1);
 	  break;
 	case DB_TYPE_INTEGER:
-	  i2 = DB_GET_INT (value2);
+	  i2 = db_get_int (value2);
 	  if (i2 <= 0)
 	    {
 	      goto log_error;
@@ -2927,7 +2930,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) i2) / log10 (d1);
 	  break;
 	case DB_TYPE_BIGINT:
-	  bi2 = DB_GET_BIGINT (value2);
+	  bi2 = db_get_bigint (value2);
 	  if (bi2 <= 0)
 	    {
 	      goto log_error;
@@ -2935,7 +2938,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) bi2) / log10 (d1);
 	  break;
 	case DB_TYPE_FLOAT:
-	  f2 = DB_GET_FLOAT (value2);
+	  f2 = db_get_float (value2);
 	  if (f2 <= 0)
 	    {
 	      goto log_error;
@@ -2943,7 +2946,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) f2) / log10 (d1);
 	  break;
 	case DB_TYPE_DOUBLE:
-	  d2 = DB_GET_DOUBLE (value2);
+	  d2 = db_get_double (value2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -2959,7 +2962,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 (d1);
 	  break;
 	case DB_TYPE_MONETARY:
-	  d2 = (DB_GET_MONETARY (value2))->amount;
+	  d2 = (db_get_monetary (value2))->amount;
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -2982,7 +2985,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       switch (type2)
 	{
 	case DB_TYPE_SHORT:
-	  s2 = DB_GET_SHORT (value2);
+	  s2 = db_get_short (value2);
 	  if (s2 <= 0)
 	    {
 	      goto log_error;
@@ -2990,7 +2993,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) s2) / log10 (d1);
 	  break;
 	case DB_TYPE_INTEGER:
-	  i2 = DB_GET_INT (value2);
+	  i2 = db_get_int (value2);
 	  if (i2 <= 0)
 	    {
 	      goto log_error;
@@ -2998,7 +3001,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) i2) / log10 (d1);
 	  break;
 	case DB_TYPE_BIGINT:
-	  bi2 = DB_GET_BIGINT (value2);
+	  bi2 = db_get_bigint (value2);
 	  if (bi2 <= 0)
 	    {
 	      goto log_error;
@@ -3006,7 +3009,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) bi2) / log10 (d1);
 	  break;
 	case DB_TYPE_FLOAT:
-	  f2 = DB_GET_FLOAT (value2);
+	  f2 = db_get_float (value2);
 	  if (f2 <= 0)
 	    {
 	      goto log_error;
@@ -3014,7 +3017,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) f2) / log10 (d1);
 	  break;
 	case DB_TYPE_DOUBLE:
-	  d2 = DB_GET_DOUBLE (value2);
+	  d2 = db_get_double (value2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -3030,7 +3033,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 (d1);
 	  break;
 	case DB_TYPE_MONETARY:
-	  d2 = (DB_GET_MONETARY (value2))->amount;
+	  d2 = (db_get_monetary (value2))->amount;
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -3044,7 +3047,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       break;
 
     case DB_TYPE_MONETARY:
-      d1 = (DB_GET_MONETARY (value1))->amount;
+      d1 = (db_get_monetary (value1))->amount;
       if (d1 <= 1)
 	{
 	  goto log_error;
@@ -3053,7 +3056,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       switch (type2)
 	{
 	case DB_TYPE_SHORT:
-	  s2 = DB_GET_SHORT (value2);
+	  s2 = db_get_short (value2);
 	  if (s2 <= 0)
 	    {
 	      goto log_error;
@@ -3061,7 +3064,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) s2) / log10 (d1);
 	  break;
 	case DB_TYPE_INTEGER:
-	  i2 = DB_GET_INT (value2);
+	  i2 = db_get_int (value2);
 	  if (i2 <= 0)
 	    {
 	      goto log_error;
@@ -3069,7 +3072,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) i2) / log10 (d1);
 	  break;
 	case DB_TYPE_BIGINT:
-	  bi2 = DB_GET_BIGINT (value2);
+	  bi2 = db_get_bigint (value2);
 	  if (bi2 <= 0)
 	    {
 	      goto log_error;
@@ -3077,7 +3080,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) bi2) / log10 (d1);
 	  break;
 	case DB_TYPE_FLOAT:
-	  f2 = DB_GET_FLOAT (value2);
+	  f2 = db_get_float (value2);
 	  if (f2 <= 0)
 	    {
 	      goto log_error;
@@ -3085,7 +3088,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) f2) / log10 (d1);
 	  break;
 	case DB_TYPE_DOUBLE:
-	  d2 = DB_GET_DOUBLE (value2);
+	  d2 = db_get_double (value2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -3101,7 +3104,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 (d1);
 	  break;
 	case DB_TYPE_MONETARY:
-	  d2 = (DB_GET_MONETARY (value2))->amount;
+	  d2 = (db_get_monetary (value2))->amount;
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -3119,7 +3122,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       return ER_FAILED;
     }
 
-  DB_MAKE_DOUBLE (result, dtmp);
+  db_make_double (result, dtmp);
   return NO_ERROR;
 
 log_error:
@@ -3316,8 +3319,8 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   TP_DOMAIN *domain;
   TP_DOMAIN_STATUS cast_status;
 
-  DB_MAKE_NULL (&cast_value);
-  DB_MAKE_NULL (&cast_format);
+  db_make_null (&cast_value);
+  db_make_null (&cast_format);
 
   if (DB_IS_NULL (value1) || DB_IS_NULL (value2))
     {
@@ -3357,7 +3360,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       type1 = DB_TYPE_UNKNOWN;
 
       /* try type double */
-      DB_MAKE_NULL (&cast_value);
+      db_make_null (&cast_value);
       domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
       cast_status = tp_value_coerce (value1, &cast_value, domain);
       if (cast_status == DOMAIN_COMPATIBLE)
@@ -3371,7 +3374,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
 	    {
-	      DB_MAKE_NULL (result);
+	      db_make_null (result);
 	      er_clear ();
 	      er_status = NO_ERROR;
 	    }
@@ -3386,15 +3389,15 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     }
 
   /* translate default fmt */
-  if (type2 == DB_TYPE_CHAR && strcasecmp (DB_PULL_STRING (value2), "default") == 0)
+  if (type2 == DB_TYPE_CHAR && strcasecmp (db_get_string (value2), "default") == 0)
     {
       if (TP_IS_DATE_TYPE (type1))
 	{
-	  DB_MAKE_STRING (&cast_format, "dd");
+	  db_make_string (&cast_format, "dd");
 	}
       else
 	{
-	  DB_MAKE_INT (&cast_format, 0);
+	  db_make_int (&cast_format, 0);
 	  type2 = DB_TYPE_INTEGER;
 	}
 
@@ -3403,15 +3406,15 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
   if (type2 == DB_TYPE_INTEGER)
     {
-      bi2 = DB_GET_INT (value2);
+      bi2 = db_get_int (value2);
     }
   else if (type2 == DB_TYPE_BIGINT)
     {
-      bi2 = DB_GET_BIGINT (value2);
+      bi2 = db_get_bigint (value2);
     }
   else if (type2 == DB_TYPE_SHORT)
     {
-      bi2 = DB_GET_SHORT (value2);
+      bi2 = db_get_short (value2);
     }
   else if (type1 != DB_TYPE_DATE && type1 != DB_TYPE_DATETIME && type1 != DB_TYPE_DATETIMELTZ
 	   && type1 != DB_TYPE_DATETIMETZ && type1 != DB_TYPE_TIMESTAMP && type1 != DB_TYPE_TIMESTAMPLTZ
@@ -3423,7 +3426,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
 	    {
-	      DB_MAKE_NULL (result);
+	      db_make_null (result);
 	      er_clear ();
 	      er_status = NO_ERROR;
 	    }
@@ -3436,7 +3439,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  goto end;
 	}
 
-      bi2 = DB_GET_BIGINT (&cast_format);
+      bi2 = db_get_bigint (&cast_format);
     }
   else
     {
@@ -3449,36 +3452,36 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       {
 	short s1;
 
-	s1 = DB_GET_SHORT (value1);
+	s1 = db_get_short (value1);
 	dtmp = truncate_double (s1, (double) bi2);
-	DB_MAKE_SHORT (result, (short) dtmp);
+	db_make_short (result, (short) dtmp);
       }
       break;
     case DB_TYPE_INTEGER:
       {
 	int i1;
 
-	i1 = DB_GET_INT (value1);
+	i1 = db_get_int (value1);
 	dtmp = truncate_double (i1, (double) bi2);
-	DB_MAKE_INT (result, (int) dtmp);
+	db_make_int (result, (int) dtmp);
       }
       break;
     case DB_TYPE_BIGINT:
       {
 	DB_BIGINT bi1;
 
-	bi1 = DB_GET_BIGINT (value1);
+	bi1 = db_get_bigint (value1);
 	bi1 = truncate_bigint (bi1, bi2);
-	DB_MAKE_BIGINT (result, bi1);
+	db_make_bigint (result, bi1);
       }
       break;
     case DB_TYPE_FLOAT:
       {
 	float f1;
 
-	f1 = DB_GET_FLOAT (value1);
+	f1 = db_get_float (value1);
 	dtmp = truncate_double (f1, (double) bi2);
-	DB_MAKE_FLOAT (result, (float) dtmp);
+	db_make_float (result, (float) dtmp);
       }
       break;
 
@@ -3486,9 +3489,9 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       {
 	double d1;
 
-	d1 = DB_GET_DOUBLE (value1);
+	d1 = db_get_double (value1);
 	dtmp = truncate_double (d1, (double) bi2);
-	DB_MAKE_DOUBLE (result, (double) dtmp);
+	db_make_double (result, (double) dtmp);
       }
       break;
     case DB_TYPE_NUMERIC:
@@ -3524,16 +3527,16 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	      }
 	  }
 	numeric_coerce_dec_str_to_num (num_string, num);
-	DB_MAKE_NUMERIC (result, num, p, s);
+	db_make_numeric (result, num, p, s);
       }
       break;
     case DB_TYPE_MONETARY:
       {
 	double d1;
 
-	d1 = (DB_GET_MONETARY (value1))->amount;
+	d1 = (db_get_monetary (value1))->amount;
 	dtmp = truncate_double (d1, (double) bi2);
-	DB_MAKE_MONETARY_TYPE_AMOUNT (result, (DB_GET_MONETARY (value1))->type, dtmp);
+	db_make_monetary (result, (db_get_monetary (value1))->type, dtmp);
       }
       break;
     case DB_TYPE_DATE:
@@ -3545,17 +3548,17 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_TIMESTAMPTZ:
       if (type1 == DB_TYPE_DATE)
 	{
-	  date = *(DB_GET_DATE (value1));
+	  date = *(db_get_date (value1));
 	}
       else if (type1 == DB_TYPE_DATETIME)
 	{
-	  date = DB_GET_DATETIME (value1)->date;
+	  date = db_get_datetime (value1)->date;
 	}
       else if (type1 == DB_TYPE_DATETIMELTZ)
 	{
 	  DB_DATETIME local_dt, *p_dt;
 
-	  p_dt = DB_GET_DATETIME (value1);
+	  p_dt = db_get_datetime (value1);
 
 	  er_status = tz_datetimeltz_to_local (p_dt, &local_dt);
 	  if (er_status != NO_ERROR)
@@ -3563,7 +3566,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
 		{
 		  er_clear ();
-		  DB_MAKE_NULL (result);
+		  db_make_null (result);
 		  er_status = NO_ERROR;
 		}
 	      goto end;
@@ -3576,7 +3579,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  DB_DATETIME local_dt;
 	  DB_DATETIMETZ *p_dt_tz;
 
-	  p_dt_tz = DB_GET_DATETIMETZ (value1);
+	  p_dt_tz = db_get_datetimetz (value1);
 
 	  er_status = tz_utc_datetimetz_to_local (&p_dt_tz->datetime, &p_dt_tz->tz_id, &local_dt);
 
@@ -3585,7 +3588,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
 		{
 		  er_clear ();
-		  DB_MAKE_NULL (result);
+		  db_make_null (result);
 		  er_status = NO_ERROR;
 		}
 	      goto end;
@@ -3604,7 +3607,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
 		{
 		  er_clear ();
-		  DB_MAKE_NULL (result);
+		  db_make_null (result);
 		  er_status = NO_ERROR;
 		}
 	      goto end;
@@ -3613,7 +3616,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       else
 	{
 	  assert (type1 == DB_TYPE_TIMESTAMP || type1 == DB_TYPE_TIMESTAMPLTZ);
-	  (void) db_timestamp_decode_ses (DB_GET_TIMESTAMP (value1), &date, NULL);
+	  (void) db_timestamp_decode_ses (db_get_timestamp (value1), &date, NULL);
 	}
 
       er_status = truncate_date (&date, value2);
@@ -3655,7 +3658,7 @@ end:
 int
 db_random_dbval (DB_VALUE * result)
 {
-  DB_MAKE_INTEGER (result, lrand48 ());
+  db_make_int (result, lrand48 ());
 
   return NO_ERROR;
 }
@@ -3668,7 +3671,7 @@ db_random_dbval (DB_VALUE * result)
 int
 db_drandom_dbval (DB_VALUE * result)
 {
-  DB_MAKE_DOUBLE (result, drand48 ());
+  db_make_double (result, drand48 ());
 
   return NO_ERROR;
 }
@@ -3691,29 +3694,29 @@ get_number_dbval_as_double (double *d, const DB_VALUE * value)
   switch (DB_VALUE_DOMAIN_TYPE (value))
     {
     case DB_TYPE_SHORT:
-      s = DB_GET_SHORT (value);
+      s = db_get_short (value);
       dtmp = (double) s;
       break;
     case DB_TYPE_INTEGER:
-      i = DB_GET_INT (value);
+      i = db_get_int (value);
       dtmp = (double) i;
       break;
     case DB_TYPE_BIGINT:
-      bi = DB_GET_BIGINT (value);
+      bi = db_get_bigint (value);
       dtmp = (double) bi;
       break;
     case DB_TYPE_FLOAT:
-      f = DB_GET_FLOAT (value);
+      f = db_get_float (value);
       dtmp = (double) f;
       break;
     case DB_TYPE_DOUBLE:
-      dtmp = DB_GET_DOUBLE (value);
+      dtmp = db_get_double (value);
       break;
     case DB_TYPE_NUMERIC:
       numeric_coerce_num_to_double ((DB_C_NUMERIC) db_locate_numeric (value), DB_VALUE_SCALE (value), &dtmp);
       break;
     case DB_TYPE_MONETARY:
-      dtmp = (DB_GET_MONETARY (value))->amount;
+      dtmp = (db_get_monetary (value))->amount;
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
@@ -3740,7 +3743,7 @@ db_cos_dbval (DB_VALUE * result, DB_VALUE * value)
   type = DB_VALUE_DOMAIN_TYPE (value);
   if (type == DB_TYPE_NULL || DB_IS_NULL (value))
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       return NO_ERROR;
     }
 
@@ -3752,7 +3755,7 @@ db_cos_dbval (DB_VALUE * result, DB_VALUE * value)
 
   dtmp = cos (dtmp);
 
-  DB_MAKE_DOUBLE (result, dtmp);
+  db_make_double (result, dtmp);
   return NO_ERROR;
 }
 
@@ -3772,7 +3775,7 @@ db_sin_dbval (DB_VALUE * result, DB_VALUE * value)
   type = DB_VALUE_DOMAIN_TYPE (value);
   if (type == DB_TYPE_NULL || DB_IS_NULL (value))
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       return NO_ERROR;
     }
 
@@ -3784,7 +3787,7 @@ db_sin_dbval (DB_VALUE * result, DB_VALUE * value)
 
   dtmp = sin (dtmp);
 
-  DB_MAKE_DOUBLE (result, dtmp);
+  db_make_double (result, dtmp);
   return NO_ERROR;
 }
 
@@ -3804,7 +3807,7 @@ db_tan_dbval (DB_VALUE * result, DB_VALUE * value)
   type = DB_VALUE_DOMAIN_TYPE (value);
   if (type == DB_TYPE_NULL || DB_IS_NULL (value))
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       return NO_ERROR;
     }
 
@@ -3816,7 +3819,7 @@ db_tan_dbval (DB_VALUE * result, DB_VALUE * value)
 
   dtmp = tan (dtmp);
 
-  DB_MAKE_DOUBLE (result, dtmp);
+  db_make_double (result, dtmp);
   return NO_ERROR;
 }
 
@@ -3836,7 +3839,7 @@ db_cot_dbval (DB_VALUE * result, DB_VALUE * value)
   type = DB_VALUE_DOMAIN_TYPE (value);
   if (type == DB_TYPE_NULL || DB_IS_NULL (value))
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       return NO_ERROR;
     }
 
@@ -3848,12 +3851,12 @@ db_cot_dbval (DB_VALUE * result, DB_VALUE * value)
 
   if (dtmp == 0)
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
     }
   else
     {
       dtmp = 1 / tan (dtmp);
-      DB_MAKE_DOUBLE (result, dtmp);
+      db_make_double (result, dtmp);
     }
 
   return NO_ERROR;
@@ -3875,7 +3878,7 @@ db_acos_dbval (DB_VALUE * result, DB_VALUE * value)
   type = DB_VALUE_DOMAIN_TYPE (value);
   if (type == DB_TYPE_NULL || DB_IS_NULL (value))
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       return NO_ERROR;
     }
 
@@ -3892,13 +3895,13 @@ db_acos_dbval (DB_VALUE * result, DB_VALUE * value)
 
   dtmp = acos (dtmp);
 
-  DB_MAKE_DOUBLE (result, dtmp);
+  db_make_double (result, dtmp);
   return NO_ERROR;
 
 error:
   if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       return NO_ERROR;
     }
   else
@@ -3924,7 +3927,7 @@ db_asin_dbval (DB_VALUE * result, DB_VALUE * value)
   type = DB_VALUE_DOMAIN_TYPE (value);
   if (type == DB_TYPE_NULL || DB_IS_NULL (value))
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       return NO_ERROR;
     }
 
@@ -3941,13 +3944,13 @@ db_asin_dbval (DB_VALUE * result, DB_VALUE * value)
 
   dtmp = asin (dtmp);
 
-  DB_MAKE_DOUBLE (result, dtmp);
+  db_make_double (result, dtmp);
   return NO_ERROR;
 
 error:
   if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       return NO_ERROR;
     }
   else
@@ -3973,7 +3976,7 @@ db_atan_dbval (DB_VALUE * result, DB_VALUE * value)
   type = DB_VALUE_DOMAIN_TYPE (value);
   if (type == DB_TYPE_NULL || DB_IS_NULL (value))
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       return NO_ERROR;
     }
 
@@ -3985,7 +3988,7 @@ db_atan_dbval (DB_VALUE * result, DB_VALUE * value)
 
   dtmp = atan (dtmp);
 
-  DB_MAKE_DOUBLE (result, dtmp);
+  db_make_double (result, dtmp);
   return NO_ERROR;
 }
 
@@ -4010,7 +4013,7 @@ db_atan2_dbval (DB_VALUE * result, DB_VALUE * value, DB_VALUE * value2)
   type = DB_VALUE_DOMAIN_TYPE (value);
   if (type == DB_TYPE_NULL || DB_IS_NULL (value))
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       return NO_ERROR;
     }
 
@@ -4024,7 +4027,7 @@ db_atan2_dbval (DB_VALUE * result, DB_VALUE * value, DB_VALUE * value2)
   type2 = DB_VALUE_DOMAIN_TYPE (value2);
   if (type2 == DB_TYPE_NULL || DB_IS_NULL (value2))
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       return NO_ERROR;
     }
 
@@ -4037,7 +4040,7 @@ db_atan2_dbval (DB_VALUE * result, DB_VALUE * value, DB_VALUE * value2)
   /* function call, all is double type */
   dtmp = atan2 (d, d2);
 
-  DB_MAKE_DOUBLE (result, dtmp);
+  db_make_double (result, dtmp);
   return NO_ERROR;
 }
 
@@ -4057,7 +4060,7 @@ db_degrees_dbval (DB_VALUE * result, DB_VALUE * value)
   type = DB_VALUE_DOMAIN_TYPE (value);
   if (type == DB_TYPE_NULL || DB_IS_NULL (value))
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       return NO_ERROR;
     }
 
@@ -4068,7 +4071,7 @@ db_degrees_dbval (DB_VALUE * result, DB_VALUE * value)
     }
 
   dtmp = dtmp * (double) 57.295779513082320876798154814105;	/* 180 / PI */
-  DB_MAKE_DOUBLE (result, dtmp);
+  db_make_double (result, dtmp);
 
   return NO_ERROR;
 }
@@ -4089,7 +4092,7 @@ db_radians_dbval (DB_VALUE * result, DB_VALUE * value)
   type = DB_VALUE_DOMAIN_TYPE (value);
   if (type == DB_TYPE_NULL || DB_IS_NULL (value))
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       return NO_ERROR;
     }
 
@@ -4100,7 +4103,7 @@ db_radians_dbval (DB_VALUE * result, DB_VALUE * value)
     }
 
   dtmp = dtmp * (double) 0.017453292519943295769236907684886;	/* PI / 180 */
-  DB_MAKE_DOUBLE (result, dtmp);
+  db_make_double (result, dtmp);
 
   return NO_ERROR;
 }
@@ -4122,7 +4125,7 @@ db_log_generic_dbval (DB_VALUE * result, DB_VALUE * value, long b)
   type = DB_VALUE_DOMAIN_TYPE (value);
   if (type == DB_TYPE_NULL || DB_IS_NULL (value))
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       return NO_ERROR;
     }
 
@@ -4135,7 +4138,7 @@ db_log_generic_dbval (DB_VALUE * result, DB_VALUE * value, long b)
   if (dtmp > 0)
     {
       dtmp = log10 (dtmp) / log10 (base);
-      DB_MAKE_DOUBLE (result, dtmp);
+      db_make_double (result, dtmp);
     }
   else
     {
@@ -4192,14 +4195,14 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 
   if (DB_IS_NULL (value))
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
     }
   else
     {
       switch (type)
 	{
 	case DB_TYPE_SHORT:
-	  s = DB_GET_SHORT (value);
+	  s = db_get_short (value);
 	  for (c = 0; s; c++)
 	    {
 	      s &= s - 1;
@@ -4207,7 +4210,7 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	  break;
 
 	case DB_TYPE_INTEGER:
-	  i = DB_GET_INTEGER (value);
+	  i = db_get_int (value);
 	  for (c = 0; i; c++)
 	    {
 	      i &= i - 1;
@@ -4215,7 +4218,7 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	  break;
 
 	case DB_TYPE_BIGINT:
-	  bi = DB_GET_BIGINT (value);
+	  bi = db_get_bigint (value);
 	  for (c = 0; bi; c++)
 	    {
 	      bi &= bi - 1;
@@ -4223,7 +4226,7 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	  break;
 
 	case DB_TYPE_FLOAT:
-	  f = DB_GET_FLOAT (value);
+	  f = db_get_float (value);
 	  if (f < 0)
 	    {
 	      i = (int) (f - 0.5f);
@@ -4239,7 +4242,7 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	  break;
 
 	case DB_TYPE_MONETARY:
-	  d = (DB_GET_MONETARY (value))->amount;
+	  d = (db_get_monetary (value))->amount;
 	  if (d < 0)
 	    {
 	      bi = (DB_BIGINT) (d - 0.5f);
@@ -4263,7 +4266,7 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	  tmpval_p = &tmpval;
 	  /* no break here */
 	case DB_TYPE_DOUBLE:
-	  d = DB_GET_DOUBLE (tmpval_p);
+	  d = db_get_double (tmpval_p);
 	  if (d < 0)
 	    {
 	      bi = (DB_BIGINT) (d - 0.5f);
@@ -4283,7 +4286,7 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	  return ER_QPROC_INVALID_DATATYPE;
 	}
 
-      DB_MAKE_INT (result, c);
+      db_make_int (result, c);
     }
 
   return NO_ERROR;
@@ -4319,7 +4322,7 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
     case DB_TYPE_NUMERIC:
-      buf = db_private_alloc (NULL, 128);
+      buf = (char *) db_private_alloc (NULL, 128);
       if (buf == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 128);
@@ -4341,7 +4344,7 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
       break;
 
     default:
-      db_make_string (result, type_name);
+      db_make_string_by_const_str (result, type_name);
     }
 
   return NO_ERROR;
@@ -4367,27 +4370,27 @@ get_number_dbval_as_long_double (long double *ld, const DB_VALUE * value)
   switch (DB_VALUE_DOMAIN_TYPE (value))
     {
     case DB_TYPE_SHORT:
-      s = DB_GET_SHORT (value);
+      s = db_get_short (value);
       dtmp = (long double) s;
       break;
 
     case DB_TYPE_INTEGER:
-      i = DB_GET_INT (value);
+      i = db_get_int (value);
       dtmp = (long double) i;
       break;
 
     case DB_TYPE_BIGINT:
-      bi = DB_GET_BIGINT (value);
+      bi = db_get_bigint (value);
       dtmp = (long double) bi;
       break;
 
     case DB_TYPE_FLOAT:
-      f = DB_GET_FLOAT (value);
+      f = db_get_float (value);
       dtmp = (long double) f;
       break;
 
     case DB_TYPE_DOUBLE:
-      dtmp = (long double) DB_GET_DOUBLE (value);
+      dtmp = (long double) db_get_double (value);
       break;
 
     case DB_TYPE_NUMERIC:
@@ -4400,7 +4403,7 @@ get_number_dbval_as_long_double (long double *ld, const DB_VALUE * value)
       break;
 
     case DB_TYPE_MONETARY:
-      dtmp = (long double) (DB_GET_MONETARY (value))->amount;
+      dtmp = (long double) (db_get_monetary (value))->amount;
       break;
 
     default:
@@ -4433,11 +4436,11 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
   assert (DB_VALUE_TYPE (value1) == DB_TYPE_NUMERIC && DB_VALUE_TYPE (value2) == DB_TYPE_NUMERIC
 	  && DB_VALUE_TYPE (value3) == DB_TYPE_NUMERIC && DB_VALUE_TYPE (value4) == DB_TYPE_NUMERIC);
 
-  DB_MAKE_NULL (&cmp_result);
-  DB_MAKE_NULL (&n1);
-  DB_MAKE_NULL (&n2);
-  DB_MAKE_NULL (&n3);
-  DB_MAKE_NULL (&n4);
+  db_make_null (&cmp_result);
+  db_make_null (&n1);
+  db_make_null (&n2);
+  db_make_null (&n3);
+  db_make_null (&n4);
 
   er_status = numeric_db_value_compare (value2, value3, &cmp_result);
   if (er_status != NO_ERROR)
@@ -4445,7 +4448,7 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
       return er_status;
     }
 
-  c = DB_GET_INTEGER (&cmp_result);
+  c = db_get_int (&cmp_result);
   if (c == 0 || c == -1)
     {
       /* value2 <= value3 */
@@ -4456,7 +4459,7 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
 	  return er_status;
 	}
 
-      if (DB_GET_INTEGER (&cmp_result) < 0)
+      if (db_get_int (&cmp_result) < 0)
 	{
 	  res = 0.0;
 	}
@@ -4468,9 +4471,9 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
 	      return er_status;
 	    }
 
-	  if (DB_GET_INTEGER (&cmp_result) < 1)
+	  if (db_get_int (&cmp_result) < 1)
 	    {
-	      numeric_coerce_num_to_double ((DB_C_NUMERIC) DB_GET_NUMERIC (value4), DB_VALUE_SCALE (value4), &res);
+	      numeric_coerce_num_to_double ((DB_C_NUMERIC) db_get_numeric (value4), DB_VALUE_SCALE (value4), &res);
 	      res += 1.0;
 	    }
 	  else
@@ -4500,7 +4503,7 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
 		  return er_status;
 		}
 
-	      numeric_coerce_num_to_double (DB_GET_NUMERIC (&n4), DB_VALUE_SCALE (&n4), &res);
+	      numeric_coerce_num_to_double (db_get_numeric (&n4), DB_VALUE_SCALE (&n4), &res);
 	      if (OR_CHECK_DOUBLE_OVERFLOW (res))
 		{
 		  return ER_IT_DATA_OVERFLOW;
@@ -4521,7 +4524,7 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
 	  return er_status;
 	}
 
-      if (DB_GET_INTEGER (&cmp_result) < 0)
+      if (db_get_int (&cmp_result) < 0)
 	{
 	  res = 0.0;
 	}
@@ -4533,9 +4536,9 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
 	      return er_status;
 	    }
 
-	  if (DB_GET_INTEGER (&cmp_result) < 1)
+	  if (db_get_int (&cmp_result) < 1)
 	    {
-	      numeric_coerce_num_to_double ((DB_C_NUMERIC) DB_GET_NUMERIC (value4), DB_VALUE_SCALE (value4), &res);
+	      numeric_coerce_num_to_double ((DB_C_NUMERIC) db_get_numeric (value4), DB_VALUE_SCALE (value4), &res);
 	      res += 1.0;
 	    }
 	  else
@@ -4565,7 +4568,7 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
 		  return er_status;
 		}
 
-	      numeric_coerce_num_to_double (DB_GET_NUMERIC (&n4), DB_VALUE_SCALE (&n4), &res);
+	      numeric_coerce_num_to_double (db_get_numeric (&n4), DB_VALUE_SCALE (&n4), &res);
 	      if (OR_CHECK_DOUBLE_OVERFLOW (res))
 		{
 		  return ER_IT_DATA_OVERFLOW;
@@ -4600,7 +4603,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
     { \
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true) \
 	{ \
-	  DB_MAKE_NULL (result); \
+	  db_make_null (result); \
 	  er_clear (); \
 	  return NO_ERROR; \
 	} \
@@ -4617,7 +4620,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
     { \
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true) \
         { \
-          DB_MAKE_NULL (result); \
+          db_make_null (result); \
           er_clear (); \
           return NO_ERROR; \
         } \
@@ -4645,19 +4648,19 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
 
   assert (result != NULL && value1 != NULL && value2 != NULL && value3 != NULL && value4 != NULL);
 
-  DB_MAKE_NULL (&cast_value1);
-  DB_MAKE_NULL (&cast_value2);
-  DB_MAKE_NULL (&cast_value3);
-  DB_MAKE_NULL (&cast_value4);
+  db_make_null (&cast_value1);
+  db_make_null (&cast_value2);
+  db_make_null (&cast_value3);
+  db_make_null (&cast_value4);
 
   if (DB_VALUE_TYPE (value1) == DB_TYPE_NULL || DB_VALUE_TYPE (value2) == DB_TYPE_NULL
       || DB_VALUE_TYPE (value3) == DB_TYPE_NULL || DB_VALUE_TYPE (value4) == DB_TYPE_NULL)
     {
-      DB_MAKE_NULL (result);
+      db_make_null (result);
       return NO_ERROR;
     }
 
-  d4 = DB_GET_DOUBLE (value4);
+  d4 = db_get_double (value4);
   if (d4 < 1 || d4 >= DB_INT32_MAX)
     {
       RETURN_ERROR (ER_PROC_WIDTH_BUCKET_COUNT);
@@ -4744,61 +4747,61 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
   switch (type)
     {
     case DB_TYPE_DATE:
-      d1 = (double) *DB_GET_DATE (value1);
-      d2 = (double) *DB_GET_DATE (value2);
-      d3 = (double) *DB_GET_DATE (value3);
+      d1 = (double) *db_get_date (value1);
+      d2 = (double) *db_get_date (value2);
+      d3 = (double) *db_get_date (value3);
       break;
 
     case DB_TYPE_DATETIME:
     case DB_TYPE_DATETIMELTZ:
       /* double can hold datetime type */
-      d1 = ((double) DB_GET_DATETIME (value1)->date) * MILLISECONDS_OF_ONE_DAY + DB_GET_DATETIME (value1)->time;
-      d2 = ((double) DB_GET_DATETIME (value2)->date) * MILLISECONDS_OF_ONE_DAY + DB_GET_DATETIME (value2)->time;
-      d3 = ((double) DB_GET_DATETIME (value3)->date) * MILLISECONDS_OF_ONE_DAY + DB_GET_DATETIME (value3)->time;
+      d1 = ((double) db_get_datetime (value1)->date) * MILLISECONDS_OF_ONE_DAY + db_get_datetime (value1)->time;
+      d2 = ((double) db_get_datetime (value2)->date) * MILLISECONDS_OF_ONE_DAY + db_get_datetime (value2)->time;
+      d3 = ((double) db_get_datetime (value3)->date) * MILLISECONDS_OF_ONE_DAY + db_get_datetime (value3)->time;
       break;
 
     case DB_TYPE_DATETIMETZ:
       /* double can hold datetime type */
-      d1 = (((double) DB_GET_DATETIMETZ (value1)->datetime.date) * MILLISECONDS_OF_ONE_DAY
-	    + DB_GET_DATETIMETZ (value1)->datetime.time);
-      d2 = (((double) DB_GET_DATETIMETZ (value2)->datetime.date) * MILLISECONDS_OF_ONE_DAY
-	    + DB_GET_DATETIMETZ (value2)->datetime.time);
-      d3 = (((double) DB_GET_DATETIMETZ (value3)->datetime.date) * MILLISECONDS_OF_ONE_DAY
-	    + DB_GET_DATETIMETZ (value3)->datetime.time);
+      d1 = (((double) db_get_datetimetz (value1)->datetime.date) * MILLISECONDS_OF_ONE_DAY
+	    + db_get_datetimetz (value1)->datetime.time);
+      d2 = (((double) db_get_datetimetz (value2)->datetime.date) * MILLISECONDS_OF_ONE_DAY
+	    + db_get_datetimetz (value2)->datetime.time);
+      d3 = (((double) db_get_datetimetz (value3)->datetime.date) * MILLISECONDS_OF_ONE_DAY
+	    + db_get_datetimetz (value3)->datetime.time);
       break;
 
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
-      d1 = (double) *DB_GET_TIMESTAMP (value1);
-      d2 = (double) *DB_GET_TIMESTAMP (value2);
-      d3 = (double) *DB_GET_TIMESTAMP (value3);
+      d1 = (double) *db_get_timestamp (value1);
+      d2 = (double) *db_get_timestamp (value2);
+      d3 = (double) *db_get_timestamp (value3);
       break;
 
     case DB_TYPE_TIMESTAMPTZ:
-      d1 = (double) (DB_GET_TIMESTAMPTZ (value1)->timestamp);
-      d2 = (double) (DB_GET_TIMESTAMPTZ (value2)->timestamp);
-      d3 = (double) (DB_GET_TIMESTAMPTZ (value3)->timestamp);
+      d1 = (double) (db_get_timestamptz (value1)->timestamp);
+      d2 = (double) (db_get_timestamptz (value2)->timestamp);
+      d3 = (double) (db_get_timestamptz (value3)->timestamp);
       break;
 
 
     case DB_TYPE_TIME:
-      d1 = (double) *DB_GET_TIME (value1);
-      d2 = (double) *DB_GET_TIME (value2);
-      d3 = (double) *DB_GET_TIME (value3);
+      d1 = (double) *db_get_time (value1);
+      d2 = (double) *db_get_time (value2);
+      d3 = (double) *db_get_time (value3);
       break;
 
     case DB_TYPE_TIMELTZ:
-      er_status = tz_timeltz_to_local (DB_GET_TIME (value1), &time_local);
+      er_status = tz_timeltz_to_local (db_get_time (value1), &time_local);
       if (er_status == NO_ERROR)
 	{
 	  d1 = (double) time_local;
-	  er_status = tz_timeltz_to_local (DB_GET_TIME (value2), &time_local);
+	  er_status = tz_timeltz_to_local (db_get_time (value2), &time_local);
 	}
 
       if (er_status == NO_ERROR)
 	{
 	  d2 = (double) time_local;
-	  er_status = tz_timeltz_to_local (DB_GET_TIME (value3), &time_local);
+	  er_status = tz_timeltz_to_local (db_get_time (value3), &time_local);
 	}
 
       if (er_status == NO_ERROR)
@@ -4812,19 +4815,19 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
       break;
 
     case DB_TYPE_TIMETZ:
-      er_status = tz_utc_timetz_to_local (&DB_GET_TIMETZ (value1)->time, &DB_GET_TIMETZ (value1)->tz_id, &time_local);
+      er_status = tz_utc_timetz_to_local (&db_get_timetz (value1)->time, &db_get_timetz (value1)->tz_id, &time_local);
       if (er_status == NO_ERROR)
 	{
 	  d1 = (double) time_local;
 	  er_status =
-	    tz_utc_timetz_to_local (&DB_GET_TIMETZ (value2)->time, &DB_GET_TIMETZ (value2)->tz_id, &time_local);
+	    tz_utc_timetz_to_local (&db_get_timetz (value2)->time, &db_get_timetz (value2)->tz_id, &time_local);
 	}
 
       if (er_status == NO_ERROR)
 	{
 	  d2 = (double) time_local;
 	  er_status =
-	    tz_utc_timetz_to_local (&DB_GET_TIMETZ (value3)->time, &DB_GET_TIMETZ (value3)->tz_id, &time_local);
+	    tz_utc_timetz_to_local (&db_get_timetz (value3)->time, &db_get_timetz (value3)->tz_id, &time_local);
 	}
 
       if (er_status == NO_ERROR)
@@ -4917,7 +4920,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
 	  value3 = &cast_value3;
 	}
 
-      DB_MAKE_INT (&cast_value4, ((int) d4));
+      db_make_int (&cast_value4, ((int) d4));
       cast_domain->precision = DB_INTEGER_PRECISION;
       cast_domain->scale = 0;
       cast_status = tp_value_coerce (&cast_value4, &cast_value4, cast_domain);
@@ -5005,7 +5008,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
       RETURN_ERROR (ER_QPROC_OVERFLOW_ADDITION);
     }
 
-  DB_MAKE_INT (result, ((int) d_ret));
+  db_make_int (result, ((int) d_ret));
 
   return er_status;
 
@@ -5028,9 +5031,9 @@ db_sleep (DB_VALUE * result, DB_VALUE * value)
   assert (result != NULL && value != NULL);
   assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_NULL || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_DOUBLE);
 
-  DB_MAKE_NULL (result);
+  db_make_null (result);
 
-  if (DB_IS_NULL (value) || DB_GET_DOUBLE (value) < 0.0)
+  if (DB_IS_NULL (value) || db_get_double (value) < 0.0)
     {
       error = ER_OBJ_INVALID_ARGUMENTS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -5038,16 +5041,16 @@ db_sleep (DB_VALUE * result, DB_VALUE * value)
       goto end;
     }
 
-  million_sec = (long) (DB_GET_DOUBLE (value) * 1000L);
+  million_sec = (long) (db_get_double (value) * 1000L);
 
   error = msleep (million_sec);
   if (error == NO_ERROR)
     {
-      DB_MAKE_INT (result, 0);
+      db_make_int (result, 0);
     }
   else
     {
-      DB_MAKE_INT (result, 1);
+      db_make_int (result, 1);
 
       error = NO_ERROR;
     }
@@ -5083,13 +5086,13 @@ db_crc32_dbval (DB_VALUE * result, DB_VALUE * value)
 
       if (QSTR_IS_ANY_CHAR (type))
 	{
-	  error_status = crypt_crc32 (NULL, DB_PULL_STRING (value), DB_GET_STRING_SIZE (value), &hash_result);
+	  error_status = crypt_crc32 (NULL, db_get_string (value), db_get_string_size (value), &hash_result);
 	  if (error_status != NO_ERROR)
 	    {
 	      goto error;
 	    }
 
-	  DB_MAKE_INT (result, hash_result);
+	  db_make_int (result, hash_result);
 	}
       else
 	{
@@ -5115,4 +5118,246 @@ error:
 	}
       return error_status;
     }
+}
+
+int
+db_json_contains_dbval (const DB_VALUE * json, const DB_VALUE * value, const DB_VALUE * path, DB_VALUE * result)
+{
+  int error_code = NO_ERROR;
+  JSON_DOC *result_doc = NULL;
+  JSON_DOC *this_doc;
+  bool doc_needs_clear = false;
+
+  if (DB_IS_NULL (json) || DB_IS_NULL (value) || (path != NULL && DB_IS_NULL (path)))
+    {
+      return db_make_null (result);
+    }
+
+  this_doc = db_get_json_document (json);
+
+  if (path != NULL)
+    {
+      const char *raw_path = db_get_string (path);
+
+      error_code = db_json_extract_document_from_path (this_doc, raw_path, result_doc);
+      if (error_code != NO_ERROR)
+	{
+	  assert (result_doc == NULL);
+	  return error_code;
+	}
+      doc_needs_clear = true;
+    }
+  else
+    {
+      result_doc = db_get_json_document (json);
+    }
+
+  if (result_doc != NULL)
+    {
+      int error_code;
+      bool has_member = false;
+
+      assert (value->domain.general_info.type == DB_TYPE_JSON);
+
+      error_code = db_json_value_is_contained_in_doc (result_doc, db_get_json_document (value), has_member);
+      if (doc_needs_clear)
+	{
+	  db_json_delete_doc (result_doc);
+	}
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+      return db_make_int (result, has_member ? 1 : 0);
+    }
+  else
+    {
+      return db_make_null (result);
+    }
+}
+
+int
+db_json_type_dbval (const DB_VALUE * json, DB_VALUE * type_res)
+{
+  if (DB_IS_NULL (json))
+    {
+      return db_make_null (type_res);
+    }
+  else
+    {
+      const char *type;
+      unsigned int length;
+
+      assert (db_get_json_raw_body (json) != NULL);
+
+      type = db_json_get_type_as_str (db_get_json_document (json));
+      length = strlen (type);
+
+      return db_make_char (type_res, length, (DB_C_CHAR) type, length, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+    }
+}
+
+int
+db_json_valid_dbval (const DB_VALUE * json, DB_VALUE * type_res)
+{
+  if (DB_IS_NULL (json))
+    {
+      return db_make_null (type_res);
+    }
+  else
+    {
+      bool valid = db_json_is_valid (db_get_string (json));
+
+      return db_make_int (type_res, (int) valid);
+    }
+}
+
+int
+db_json_length_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * res)
+{
+  JSON_DOC *this_doc = NULL;
+  int error_code;
+  bool doc_needs_clear = false;
+
+  if (DB_IS_NULL (json) || (path != NULL && DB_IS_NULL (path)))
+    {
+      return db_make_null (res);
+    }
+  else
+    {
+      unsigned int length;
+
+      if (path != NULL)
+	{
+	  const char *raw_path = db_get_string (path);
+
+	  error_code = db_json_extract_document_from_path (db_get_json_document (json), raw_path, this_doc);
+	  if (error_code != NO_ERROR)
+	    {
+	      assert (this_doc == NULL);
+	      return error_code;
+	    }
+	  doc_needs_clear = true;
+	}
+      else
+	{
+	  this_doc = db_get_json_document (json);
+	}
+
+      if (this_doc != NULL)
+	{
+	  length = db_json_get_length (this_doc);
+
+	  if (doc_needs_clear)
+	    {
+	      db_json_delete_doc (this_doc);
+	    }
+	  return db_make_int (res, length);
+	}
+      else
+	{
+	  return db_make_null (res);
+	}
+    }
+}
+
+int
+db_json_depth_dbval (DB_VALUE * json, DB_VALUE * res)
+{
+  if (DB_IS_NULL (json))
+    {
+      return db_make_null (res);
+    }
+  else
+    {
+      unsigned int depth = db_json_get_depth (db_get_json_document (json));
+
+      return db_make_int (res, depth);
+    }
+}
+
+int
+db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res)
+{
+  JSON_DOC *this_doc;
+  const char *raw_path;
+  char *json_body;
+  JSON_DOC *result_doc = NULL;
+  int error_code;
+
+  if (DB_IS_NULL (json) || DB_IS_NULL (path))
+    {
+      return db_make_null (json_res);
+    }
+
+  this_doc = db_get_json_document (json);
+  raw_path = db_get_string (path);
+
+  error_code = db_json_extract_document_from_path (this_doc, raw_path, result_doc);
+  if (error_code != NO_ERROR)
+    {
+      assert (result_doc == NULL);
+      return error_code;
+    }
+
+  if (result_doc != NULL)
+    {
+      json_body = db_json_get_raw_json_body_from_document (result_doc);
+      db_make_json (json_res, json_body, result_doc, true);
+    }
+  else
+    {
+      db_make_null (json_res);
+    }
+
+  return NO_ERROR;
+}
+
+int
+db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool least)
+{
+  int error_code = NO_ERROR;
+  bool can_compare = false;
+  DB_VALUE_COMPARE_RESULT cmp_result = DB_UNK;
+
+  cmp_result = tp_value_compare_with_error (arg1, arg2, 1, 0, &can_compare);
+
+  if (cmp_result == DB_EQ)
+    {
+      pr_clone_value (arg1, result);
+    }
+  else if (cmp_result == DB_GT)
+    {
+      if (least)
+	{
+	  pr_clone_value (arg2, result);
+	}
+      else
+	{
+	  pr_clone_value (arg1, result);
+	}
+    }
+  else if (cmp_result == DB_LT)
+    {
+      if (least)
+	{
+	  pr_clone_value (arg1, result);
+	}
+      else
+	{
+	  pr_clone_value (arg2, result);
+	}
+    }
+  else if (cmp_result == DB_UNK && can_compare == false)
+    {
+      return ER_FAILED;
+    }
+  else
+    {
+      assert_release (DB_IS_NULL (arg1) || DB_IS_NULL (arg2));
+      db_make_null (result);
+      return NO_ERROR;
+    }
+
+  return error_code;
 }

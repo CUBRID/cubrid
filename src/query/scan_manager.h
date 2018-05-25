@@ -21,6 +21,16 @@
 /*
  * Scan (Server Side)
  */
+
+#ifndef _SCAN_MANAGER_H_
+#define _SCAN_MANAGER_H_
+
+#ident "$Id$"
+
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include <time.h>
 #if defined(SERVER_MODE)
 #include "jansson.h"
@@ -28,15 +38,11 @@
 
 #include "btree.h"		/* TODO: for BTREE_SCAN */
 
-#ifndef _SCAN_MANAGER_H_
-#define _SCAN_MANAGER_H_
-
-#ident "$Id$"
-
 #include "oid.h"		/* for OID */
 #include "storage_common.h"	/* for PAGEID */
 #include "heap_file.h"		/* for HEAP_SCANCACHE */
 #include "method_scan.h"	/* for METHOD_SCAN_BUFFER */
+#include "query_evaluator.h"
 
 /*
  *       	TYPEDEFS RELATED TO THE SCAN DATA STRUCTURES
@@ -91,16 +97,6 @@ struct heap_page_scan_id
   REGU_VARIABLE_LIST page_info_regu_list;	/* regulator variable for page info */
 };				/* Heap File Scan Identifier used to scan pages only (e.g. headers) */
 
-typedef struct key_val_range KEY_VAL_RANGE;
-struct key_val_range
-{
-  RANGE range;
-  DB_VALUE key1;
-  DB_VALUE key2;
-  bool is_truncated;
-  int num_index_term;		/* #terms associated with index key range */
-};
-
 typedef struct indx_cov INDX_COV;
 struct indx_cov
 {
@@ -130,6 +126,7 @@ typedef struct multi_range_opt MULTI_RANGE_OPT;
 struct multi_range_opt
 {
   bool use;			/* true/false */
+  bool has_null_domain;		/* true, if sort col has null domain */
   int cnt;			/* current number of entries */
   int size;			/* expected number of entries */
   int num_attrs;		/* number of order by attributes */
@@ -157,15 +154,12 @@ ISS_OP_TYPE;
 typedef struct index_skip_scan INDEX_SKIP_SCAN;
 struct index_skip_scan
 {
-  int use;
+  bool use;
   ISS_OP_TYPE current_op;	/* one of the ISS_OP_ flags */
   KEY_RANGE *skipped_range;	/* range used for iterating the distinct values on the first index column */
 };
 
-/* Forward definition. */
-struct btree_iscan_oid_list;
-
-typedef struct indx_scan_id INDX_SCAN_ID;
+/* typedef struct indx_scan_id INDX_SCAN_ID; - already defined in btree.h */
 struct indx_scan_id
 {
   INDX_INFO *indx_info;		/* index information */
@@ -176,12 +170,12 @@ struct indx_scan_id
   ATTR_ID *vstr_ids;		/* attr id array of variable string */
   int num_vstr;			/* num of variable string attrs */
   BTREE_SCAN bt_scan;		/* index scan info. structure */
-  int one_range;		/* a single range? */
+  bool one_range;		/* a single range? */
   int curr_keyno;		/* current key number */
   int curr_oidno;		/* current oid number */
   OID *curr_oidp;		/* current oid pointer */
   char *copy_buf;		/* index key copy_buf pointer info */
-  struct btree_iscan_oid_list *oid_list;	/* list of object OID's */
+  BTREE_ISCAN_OID_LIST *oid_list;	/* list of object OID's */
   int oids_count;		/* Generic value of OID count that should be common for all index scan types. */
   OID cls_oid;			/* class object identifier */
   int copy_buf_len;		/* index key copy_buf length info */
@@ -342,17 +336,6 @@ struct scan_id_struct
   SCAN_STATS scan_stats;
   bool scan_immediately_stop;
 };				/* Scan Identifier */
-
-/* Structure used in condition reevaluation at SELECT */
-typedef struct mvcc_scan_reev_data MVCC_SCAN_REEV_DATA;
-struct mvcc_scan_reev_data
-{
-  FILTER_INFO *range_filter;	/* filter for range predicate. Used only at index scan */
-  FILTER_INFO *key_filter;	/* key filter */
-  FILTER_INFO *data_filter;	/* data filter */
-
-  QPROC_QUALIFICATION *qualification;	/* address of a variable that contains qualification value */
-};
 
 #define SCAN_IS_INDEX_COVERED(iscan_id_p) \
   ((iscan_id_p)->indx_cov.list_id != NULL)

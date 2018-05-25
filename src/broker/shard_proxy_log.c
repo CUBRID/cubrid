@@ -36,8 +36,6 @@ static char *make_proxy_log_filename (char *filepath_buf, size_t buf_size, const
 static void proxy_log_backup (void);
 static void proxy_log_write_internal (int level, char *svc_code, bool do_flush, const char *fmt, va_list ap);
 static void proxy_log_reset (void);
-static void proxy_access_log_backup (void);
-static void proxy_access_log_end (void);
 
 static FILE *log_open (char *log_file_name);
 
@@ -220,7 +218,7 @@ proxy_log_write_internal (int level, char *svc_code, bool do_flush, const char *
 	}
     }
 
-  write_len = MIN ((p - buf), PROXY_LOG_BUFFER_SIZE);
+  write_len = MIN ((int) (p - buf), PROXY_LOG_BUFFER_SIZE);
   fwrite (buf, write_len, 1, log_fp);
   fputc ('\n', log_fp);
 
@@ -364,9 +362,7 @@ static FILE *
 log_open (char *log_file_name)
 {
   FILE *fp;
-  int log_file_len = 0;
   int ret;
-  int tmp_dirlen = 0;
   char *tmp_dirname;
   char *tmp_filename;
 

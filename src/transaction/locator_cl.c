@@ -139,7 +139,7 @@ static int locator_cache (LC_COPYAREA * copy_area, MOP hint_class_mop, MOBJ hint
 			  void (*fun) (MOP mop, MOBJ object, void *args), void *args);
 static LC_FIND_CLASSNAME locator_find_class_by_name (const char *classname, LOCK lock, MOP * class_mop);
 static int locator_mflush (MOP mop, void *mf);
-static int locator_mflush_initialize (LOCATOR_MFLUSH_CACHE * mflush, MOP class_mop, MOBJ class, HFID * hfid,
+static int locator_mflush_initialize (LOCATOR_MFLUSH_CACHE * mflush, MOP class_mop, MOBJ clazz, HFID * hfid,
 				      bool decache, bool isone_mflush);
 static void locator_mflush_reset (LOCATOR_MFLUSH_CACHE * mflush);
 static int locator_mflush_reallocate_copy_area (LOCATOR_MFLUSH_CACHE * mflush, int minsize);
@@ -190,7 +190,7 @@ locator_reserve_class_name (const char *class_name, OID * class_oid)
 void
 locator_set_sig_interrupt (int set)
 {
-  if (set != false || lc_Is_siginterrupt == true)
+  if (set != 0 || lc_Is_siginterrupt != 0)
     {
       lc_Is_siginterrupt = set;
       log_set_interrupt (set);
@@ -252,11 +252,7 @@ locator_is_class (MOP mop, DB_FETCH_MODE hint_purpose)
 
       if (er_errid () != NO_ERROR)
 	{
-	  error = er_stack_push ();
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
+	  er_stack_push ();
 	  error_saved = true;
 	}
       /* 
@@ -271,15 +267,11 @@ locator_is_class (MOP mop, DB_FETCH_MODE hint_purpose)
 	{
 	  if (error == NO_ERROR)
 	    {
-	      error = er_stack_pop ();
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
+	      er_stack_pop ();
 	    }
 	  else
 	    {
-	      er_stack_clear ();
+	      er_stack_pop_and_keep_error ();
 	    }
 	}
       if (error != NO_ERROR)
@@ -5110,7 +5102,7 @@ locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 	}
 
       mflush->mobjs->num_objs++;
-      mflush->obj->operation = repl_obj->operation;
+      mflush->obj->operation = (LC_COPYAREA_OPERATION) repl_obj->operation;
       if (repl_obj->has_index == true)
 	{
 	  LC_ONEOBJ_SET_HAS_INDEX (mflush->obj);
@@ -5546,7 +5538,6 @@ locator_all_flush (void)
   LOCATOR_MFLUSH_CACHE mflush;	/* Structure which describes objects to flush */
   int error_code;
   int map_status;
-  int num_failed_to_flush = 0;
 
   /* flush dirty vclass objects */
   if (vid_allflush () != NO_ERROR)
@@ -6309,7 +6300,7 @@ locator_cache_lock_lockhint_classes (LC_LOCKHINT * lockhint)
 	  class_mop = ws_mop (&lockhint->classes[i].oid, sm_Root_class_mop);
 	  if (class_mop != NULL)
 	    {
-	      status = ws_find (class_mop, &class_obj);
+	      status = (WS_FIND_MOP_STATUS) ws_find (class_mop, &class_obj);
 	      if (status != WS_FIND_MOP_DELETED && class_obj != NULL)
 		{
 		  lock = ws_get_lock (class_mop);

@@ -30,6 +30,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <assert.h>
 #if defined(WINDOWS)
 #include <io.h>
 #endif
@@ -66,6 +67,13 @@
 #else
 #include <dlfcn.h>
 #endif
+
+#include "dbtype.h"
+#include "thread_manager.hpp"
+
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define MAX_LINE_LEN            4096
 
@@ -327,7 +335,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   char *db_page_str;
   char *log_volume_str;
   char *log_page_str;
-  TZ_DATA *tzd;
+  const TZ_DATA *tzd;
 
   char required_size[16];
 
@@ -346,7 +354,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (sysprm_load_and_init (database_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
       goto error_exit;
@@ -607,7 +615,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   (void) lang_db_put_charset ();
 
   tzd = tz_get_data ();
-  if (put_timezone_checksum (tzd->checksum) != NO_ERROR)
+  if (put_timezone_checksum ((char *) tzd->checksum) != NO_ERROR)
     {
       goto error_exit;
     }
@@ -881,7 +889,9 @@ print_backup_info (char *database_name, BO_RESTART_ARG * restart_arg)
       goto exit;
     }
 
-  error_code = fileio_list_restore (NULL, BO_DB_FULLNAME, from_volbackup, restart_arg->level, restart_arg->newvolpath);
+  error_code =
+    fileio_list_restore (NULL, BO_DB_FULLNAME, from_volbackup, (FILEIO_BACKUP_LEVEL) restart_arg->level,
+			 restart_arg->newvolpath);
 exit:
   if (dir != NULL)
     {
@@ -918,6 +928,7 @@ restoredb (UTIL_FUNCTION_ARG * arg)
   restart_arg.newvolpath = utility_get_option_bool_value (arg_map, RESTORE_USE_DATABASE_LOCATION_PATH_S);
   restart_arg.restore_upto_bktime = false;
   restart_arg.restore_slave = false;
+  restart_arg.is_restore_from_backup = true;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -1431,6 +1442,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   FILE *outfp = NULL;
   bool is_emergency = false;
   DIAGDUMP_TYPE diag;
+  THREAD_ENTRY *thread_p;
 
   db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (db_name == NULL)
@@ -1461,7 +1473,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  diag = utility_get_option_int_value (arg_map, DIAG_DUMP_TYPE_S);
+  diag = (DIAGDUMP_TYPE) utility_get_option_int_value (arg_map, DIAG_DUMP_TYPE_S);
 
   if (diag != DIAGDUMP_LOG && utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -1493,53 +1505,55 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       goto print_diag_usage;
     }
 
+  thread_p = thread_get_thread_entry_info ();
+
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_FILE_TABLES)
     {
       /* this dumps the allocated file stats */
       fprintf (outfp, "\n*** DUMP OF FILE STATISTICS ***\n");
-      (void) file_tracker_dump (NULL, outfp);
+      (void) file_tracker_dump (thread_p, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_FILE_CAPACITIES)
     {
       /* this dumps the allocated file stats */
       fprintf (outfp, "\n*** DUMP OF FILE DESCRIPTIONS ***\n");
-      (void) file_tracker_dump_all_capacities (NULL, outfp);
+      (void) file_tracker_dump_all_capacities (thread_p, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_HEAP_CAPACITIES)
     {
       /* this dumps lower level info about capacity of all heaps */
       fprintf (outfp, "\n*** DUMP CAPACITY OF ALL HEAPS ***\n");
-      (void) file_tracker_dump_all_heap_capacities (NULL, outfp);
+      (void) file_tracker_dump_all_heap_capacities (thread_p, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_INDEX_CAPACITIES)
     {
       /* this dumps lower level info about capacity of all indices */
       fprintf (outfp, "\n*** DUMP CAPACITY OF ALL INDICES ***\n");
-      (void) file_tracker_dump_all_btree_capacities (NULL, outfp);
+      (void) file_tracker_dump_all_btree_capacities (thread_p, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_CLASSNAMES)
     {
       /* this dumps the known classnames */
       fprintf (outfp, "\n*** DUMP CLASSNAMES ***\n");
-      locator_dump_class_names (NULL, outfp);
+      locator_dump_class_names (thread_p, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_DISK_BITMAPS)
     {
       /* this dumps lower level info about the disk */
       fprintf (outfp, "\n*** DUMP OF DISK STATISTICS ***\n");
-      disk_dump_all (NULL, outfp);
+      disk_dump_all (thread_p, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_CATALOG)
     {
       /* this dumps the content of catalog */
       fprintf (outfp, "\n*** DUMP OF CATALOG ***\n");
-      catalog_dump (NULL, outfp, 1);
+      catalog_dump (thread_p, outfp, 1);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_LOG)
@@ -1604,7 +1618,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	  goto print_diag_usage;
 	}
       fprintf (outfp, "\n*** DUMP OF LOG ***\n");
-      xlog_dump (NULL, outfp, isforward, start_logpageid, dump_npages, desired_tranid);
+      xlog_dump (thread_p, outfp, isforward, start_logpageid, dump_npages, desired_tranid);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_HEAP)
@@ -1613,7 +1627,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       /* this dumps the contents of all heaps */
       dump_records = utility_get_option_bool_value (arg_map, DIAG_DUMP_RECORDS_S);
       fprintf (outfp, "\n*** DUMP OF ALL HEAPS ***\n");
-      (void) file_tracker_dump_all_heap (NULL, outfp, dump_records);
+      (void) file_tracker_dump_all_heap (thread_p, outfp, dump_records);
     }
 
   db_shutdown ();
@@ -2269,7 +2283,6 @@ dumplocale (UTIL_FUNCTION_ARG * arg)
   char *alphabet_type = NULL;
   LANG_LOCALE_DATA lld;
   void *loclib_handle = NULL;
-  bool is_scan_locales = false;
   LOCALE_FILE *lf = NULL;
   LOCALE_FILE lf_one;
   int dl_settings = 0;
@@ -2414,7 +2427,7 @@ dumplocale (UTIL_FUNCTION_ARG * arg)
 			    err_status, true);
 	  goto error;
 	}
-      lf->locale_name = malloc (strlen (locale_str) + 1);
+      lf->locale_name = (char *) malloc (strlen (locale_str) + 1);
       if (lf->locale_name == NULL)
 	{
 	  err_status = ER_LOC_INIT;
@@ -2503,7 +2516,7 @@ dumplocale (UTIL_FUNCTION_ARG * arg)
 	}
 
 #if defined(WINDOWS)
-      FreeLibrary (loclib_handle);
+      FreeLibrary ((HMODULE) loclib_handle);
 #else
       dlclose (loclib_handle);
 #endif
@@ -2709,6 +2722,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
   int part_tables_used = 0;
   int part_tables_alloced = 0;
   bool need_manual_sync = false;
+  THREAD_ENTRY *thread_p;
 
   assert (db_name != NULL);
   assert (db_obs_coll_cnt != NULL);
@@ -2717,13 +2731,15 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
   *db_obs_coll_cnt = 0;
   *new_sys_coll_cnt = 0;
 
+  thread_p = thread_get_thread_entry_info ();
+
   /* read all collations from DB : id, name, checksum */
-  db_status = catcls_get_db_collation (NULL, &db_collations, &db_coll_cnt);
+  db_status = catcls_get_db_collation (thread_p, &db_collations, &db_coll_cnt);
   if (db_status != NO_ERROR)
     {
       if (db_collations != NULL)
 	{
-	  db_private_free (NULL, db_collations);
+	  db_private_free (thread_p, db_collations);
 	}
       status = EXIT_FAILURE;
       goto exit;
@@ -2840,15 +2856,15 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 		  assert (DB_VALUE_TYPE (&class_name) == DB_TYPE_STRING);
 		  assert (DB_VALUE_TYPE (&ct) == DB_TYPE_INTEGER);
 
-		  if (DB_GET_INTEGER (&ct) != 0)
+		  if (db_get_int (&ct) != 0)
 		    {
 		      continue;
 		    }
-		  fprintf (stdout, "%s\n", DB_GET_STRING (&class_name));
+		  fprintf (stdout, "%s\n", db_get_string (&class_name));
 
 		  /* output query to fix schema */
 		  snprintf (query, sizeof (query) - 1, "ALTER TABLE [%s] " "COLLATE utf8_bin;",
-			    DB_GET_STRING (&class_name));
+			    db_get_string (&class_name));
 		  fprintf (f_stmt, "%s\n", query);
 		  need_manual_sync = true;
 		}
@@ -2901,9 +2917,9 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 		    }
 		  assert (DB_VALUE_TYPE (&class_name) == DB_TYPE_STRING);
 		  assert (DB_VALUE_TYPE (&index_name) == DB_TYPE_STRING);
-		  fprintf (stdout, "%s | %s\n", DB_GET_STRING (&class_name), DB_GET_STRING (&index_name));
+		  fprintf (stdout, "%s | %s\n", db_get_string (&class_name), db_get_string (&index_name));
 		  snprintf (query, sizeof (query) - 1, "ALTER TABLE [%s] DROP FOREIGN KEY [%s];",
-			    DB_GET_STRING (&class_name), DB_GET_STRING (&index_name));
+			    db_get_string (&class_name), db_get_string (&index_name));
 		  fprintf (f_stmt, "%s\n", query);
 		  need_manual_sync = true;
 		}
@@ -2976,26 +2992,26 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 		  assert (DB_VALUE_TYPE (&attr_data_type) == DB_TYPE_STRING);
 		  assert (DB_VALUE_TYPE (&has_part) == DB_TYPE_INTEGER);
 
-		  fprintf (stdout, "%s | %s %s\n", DB_GET_STRING (&class_name), DB_GET_STRING (&attr),
-			   DB_GET_STRING (&attr_data_type));
+		  fprintf (stdout, "%s | %s %s\n", db_get_string (&class_name), db_get_string (&attr),
+			   db_get_string (&attr_data_type));
 
 		  /* output query to fix schema */
-		  if (DB_GET_INTEGER (&ct) == 0)
+		  if (db_get_int (&ct) == 0)
 		    {
-		      if (DB_GET_INTEGER (&has_part) == 1)
+		      if (db_get_int (&has_part) == 1)
 			{
 			  /* class is partitioned, remove partition; we cannot change the collation of an attribute
 			   * having partitions */
-			  fprintf (f_stmt, "ALTER TABLE [%s] REMOVE PARTITIONING;\n", DB_GET_STRING (&class_name));
+			  fprintf (f_stmt, "ALTER TABLE [%s] REMOVE PARTITIONING;\n", db_get_string (&class_name));
 			  add_to_part_tables = true;
 			}
 
 		      snprintf (query, sizeof (query) - 1, "ALTER TABLE [%s] " "MODIFY [%s] %s COLLATE utf8_bin;",
-				DB_GET_STRING (&class_name), DB_GET_STRING (&attr), DB_GET_STRING (&attr_data_type));
+				db_get_string (&class_name), db_get_string (&attr), db_get_string (&attr_data_type));
 		    }
 		  else
 		    {
-		      snprintf (query, sizeof (query) - 1, "DROP VIEW [%s];", DB_GET_STRING (&class_name));
+		      snprintf (query, sizeof (query) - 1, "DROP VIEW [%s];", db_get_string (&class_name));
 
 		      if (vclass_names == NULL || vclass_names_alloced <= vclass_names_used)
 			{
@@ -3003,7 +3019,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 			    {
 			      vclass_names_alloced = 1 + DB_MAX_IDENTIFIER_LENGTH;
 			    }
-			  vclass_names = (char *) db_private_realloc (NULL, vclass_names, 2 * vclass_names_alloced);
+			  vclass_names = (char *) db_private_realloc (thread_p, vclass_names, 2 * vclass_names_alloced);
 
 			  if (vclass_names == NULL)
 			    {
@@ -3013,9 +3029,9 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 			  vclass_names_alloced *= 2;
 			}
 
-		      memcpy (vclass_names + vclass_names_used, DB_GET_STRING (&class_name),
-			      DB_GET_STRING_SIZE (&class_name));
-		      vclass_names_used += DB_GET_STRING_SIZE (&class_name);
+		      memcpy (vclass_names + vclass_names_used, db_get_string (&class_name),
+			      db_get_string_size (&class_name));
+		      vclass_names_used += db_get_string_size (&class_name);
 		      memcpy (vclass_names + vclass_names_used, "\0", 1);
 		      vclass_names_used += 1;
 		    }
@@ -3030,7 +3046,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 			    {
 			      part_tables_alloced = 1 + DB_MAX_IDENTIFIER_LENGTH;
 			    }
-			  part_tables = (char *) db_private_realloc (NULL, part_tables, 2 * part_tables_alloced);
+			  part_tables = (char *) db_private_realloc (thread_p, part_tables, 2 * part_tables_alloced);
 
 			  if (part_tables == NULL)
 			    {
@@ -3040,9 +3056,9 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 			  part_tables_alloced *= 2;
 			}
 
-		      memcpy (part_tables + part_tables_used, DB_GET_STRING (&class_name),
-			      DB_GET_STRING_SIZE (&class_name));
-		      part_tables_used += DB_GET_STRING_SIZE (&class_name);
+		      memcpy (part_tables + part_tables_used, db_get_string (&class_name),
+			      db_get_string_size (&class_name));
+		      part_tables_used += db_get_string_size (&class_name);
 		      memcpy (part_tables + part_tables_used, "\0", 1);
 		      part_tables_used += 1;
 		    }
@@ -3114,18 +3130,18 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 		  assert (DB_VALUE_TYPE (&view) == DB_TYPE_STRING);
 		  assert (DB_VALUE_TYPE (&query_spec) == DB_TYPE_STRING);
 
-		  fprintf (stdout, "%s | %s\n", DB_GET_STRING (&view), DB_GET_STRING (&query_spec));
+		  fprintf (stdout, "%s | %s\n", db_get_string (&view), db_get_string (&query_spec));
 
 		  /* output query to fix schema */
 		  if (vclass_names != NULL)
 		    {
 		      char *search = vclass_names;
-		      int view_name_size = DB_GET_STRING_SIZE (&view);
+		      int view_name_size = db_get_string_size (&view);
 
 		      /* search if the view was already put in .SQL file */
 		      while (search + view_name_size < vclass_names + vclass_names_used)
 			{
-			  if (memcmp (search, DB_GET_STRING (&view), view_name_size) == 0
+			  if (memcmp (search, db_get_string (&view), view_name_size) == 0
 			      && *(search + view_name_size) == '\0')
 			    {
 			      already_dropped = true;
@@ -3141,7 +3157,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 
 		  if (!already_dropped)
 		    {
-		      snprintf (query, sizeof (query) - 1, "DROP VIEW [%s];", DB_GET_STRING (&view));
+		      snprintf (query, sizeof (query) - 1, "DROP VIEW [%s];", db_get_string (&view));
 		      fprintf (f_stmt, "%s\n", query);
 		    }
 		  need_manual_sync = true;
@@ -3190,10 +3206,10 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 		  assert (DB_VALUE_TYPE (&trig_name) == DB_TYPE_STRING);
 		  assert (DB_VALUE_TYPE (&trig_cond) == DB_TYPE_STRING);
 
-		  fprintf (stdout, "%s | %s\n", DB_GET_STRING (&trig_name), DB_GET_STRING (&trig_cond));
+		  fprintf (stdout, "%s | %s\n", db_get_string (&trig_name), db_get_string (&trig_cond));
 
 		  /* output query to fix schema */
-		  snprintf (query, sizeof (query) - 1, "DROP TRIGGER [%s];", DB_GET_STRING (&trig_name));
+		  snprintf (query, sizeof (query) - 1, "DROP TRIGGER [%s];", db_get_string (&trig_name));
 		  fprintf (f_stmt, "%s\n", query);
 		  need_manual_sync = true;
 		}
@@ -3249,12 +3265,12 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 		  assert (DB_VALUE_TYPE (&func_expr) == DB_TYPE_STRING);
 		  assert (DB_VALUE_TYPE (&class_name) == DB_TYPE_STRING);
 
-		  fprintf (stdout, "%s | %s | %s\n", DB_GET_STRING (&class_name), DB_GET_STRING (&index_name),
-			   DB_GET_STRING (&func_expr));
+		  fprintf (stdout, "%s | %s | %s\n", db_get_string (&class_name), db_get_string (&index_name),
+			   db_get_string (&func_expr));
 
 		  /* output query to fix schema */
 		  snprintf (query, sizeof (query) - 1, "ALTER TABLE [%s] " "DROP INDEX [%s];",
-			    DB_GET_STRING (&class_name), DB_GET_STRING (&index_name));
+			    db_get_string (&class_name), db_get_string (&index_name));
 		  fprintf (f_stmt, "%s\n", query);
 		  need_manual_sync = true;
 		}
@@ -3345,13 +3361,13 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 exit:
   if (vclass_names != NULL)
     {
-      db_private_free (NULL, vclass_names);
+      db_private_free (thread_p, vclass_names);
       vclass_names = NULL;
     }
 
   if (part_tables != NULL)
     {
-      db_private_free (NULL, part_tables);
+      db_private_free (thread_p, part_tables);
       part_tables = NULL;
     }
 
@@ -3368,7 +3384,7 @@ exit:
     }
   if (db_collations != NULL)
     {
-      db_private_free (NULL, db_collations);
+      db_private_free (thread_p, db_collations);
     }
 
   return status;
@@ -3473,7 +3489,7 @@ insert_ha_apply_info (char *database_name, char *master_host_name, INT64 databas
   copy_log_base = prm_get_string_value (PRM_ID_HA_COPY_LOG_BASE);
   if (copy_log_base == NULL || *copy_log_base == '\0')
     {
-      copy_log_base = envvar_get ("DATABASES");
+      copy_log_base = (char *) envvar_get ("DATABASES");
       if (copy_log_base == NULL)
 	{
 	  return ER_FAILED;
@@ -3609,7 +3625,7 @@ delete_all_slave_ha_apply_info (char *database_name, char *master_host_name)
   copy_log_base = prm_get_string_value (PRM_ID_HA_COPY_LOG_BASE);
   if (copy_log_base == NULL || *copy_log_base == '\0')
     {
-      copy_log_base = envvar_get ("DATABASES");
+      copy_log_base = (char *) envvar_get ("DATABASES");
       if (copy_log_base == NULL)
 	{
 	  return ER_FAILED;
@@ -3720,7 +3736,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
   char *master_host_name;
   BO_RESTART_ARG restart_arg;
 
-  if (sysprm_load_and_init (NULL, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (NULL, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
       util_log_write_errid (MSGCAT_UTIL_GENERIC_SERVICE_PROPERTY_FAIL);
       goto error_exit;
@@ -3759,6 +3775,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
   restart_arg.newvolpath = utility_get_option_bool_value (arg_map, RESTORESLAVE_USE_DATABASE_LOCATION_PATH_S);
   restart_arg.restore_upto_bktime = false;
   restart_arg.stopat = time (NULL);
+  restart_arg.is_restore_from_backup = false;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -3885,14 +3902,12 @@ error_exit:
 int
 gen_tz (UTIL_FUNCTION_ARG * arg)
 {
-#define CHECKSUM_SIZE 32
   UTIL_ARG_MAP *arg_map = NULL;
   char *input_path = NULL;
   char *tz_gen_mode = NULL;
   TZ_GEN_TYPE tz_gen_type = TZ_GEN_TYPE_NEW;
   int exit_status = EXIT_SUCCESS;
-  bool write_checksum = false;
-  char checksum[CHECKSUM_SIZE + 1];
+  char checksum[TZ_CHECKSUM_SIZE + 1];
   bool need_db_shutdown = false;
   bool er_inited = false;
   DB_INFO *dir = NULL;
@@ -3920,6 +3935,16 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
       tz_gen_type = TZ_GEN_TYPE_EXTEND;
 
       db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+
+#if !defined (WINDOWS)
+      /* workaround for Linux: gen_tz process should be restarted after each database migration, since globals variables
+       * from shared libcubrid.so are not properly reset at db_shutdown */
+      if (db_name == NULL)
+	{
+	  goto print_gen_tz_usage;
+	}
+#endif /* !WINDOWS */
+
       if (db_name != NULL && check_database_name (db_name) != NO_ERROR)
 	{
 	  exit_status = EXIT_FAILURE;
@@ -3965,7 +3990,7 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
   er_inited = true;
 
   memset (checksum, 0, sizeof (checksum));
-  if (timezone_compile_data (input_path, tz_gen_type, checksum) != NO_ERROR)
+  if (timezone_compile_data (input_path, tz_gen_type, db_name, NULL, checksum) != NO_ERROR)
     {
       exit_status = EXIT_FAILURE;
       goto exit;
@@ -4034,7 +4059,10 @@ exit:
 
   if (exit_status != EXIT_SUCCESS)
     {
-      fprintf (stderr, "%s\n", db_error_string (3));
+      if (er_inited == true)
+	{
+	  fprintf (stderr, "%s\n", db_error_string (3));
+	}
 
       if (need_db_shutdown == true)
 	{
@@ -4054,7 +4082,6 @@ print_gen_tz_usage:
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GEN_TZ, GEN_TZ_MSG_USAGE),
 	   basename (arg->argv0), basename (arg->argv0));
   return EXIT_FAILURE;
-#undef CHECKSUM_SIZE
 }
 
 /*
@@ -4067,7 +4094,6 @@ dump_tz (UTIL_FUNCTION_ARG * arg)
 {
   long int zone_id = -1;
   UTIL_ARG_MAP *arg_map = NULL;
-  int tz_gen_type = TZ_GEN_TYPE_NEW;
   int err_status = EXIT_SUCCESS;
   char *zone = NULL;
   char *str_next = NULL;

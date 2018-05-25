@@ -30,6 +30,8 @@
 #include <stdarg.h>
 #include <sys/timeb.h>
 #include <time.h>
+#include <assert.h>
+
 #include "db.h"
 #include "dbi.h"
 #include "db_query.h"
@@ -44,13 +46,12 @@
 #include "schema_manager.h"
 #include "view_transform.h"
 #include "execute_statement.h"
-#include "xasl_generation.h"	/* TODO: remove */
 #include "locator_cl.h"
 #include "server_interface.h"
-#include "query_manager.h"
 #include "api_compat.h"
 #include "network_interface_cl.h"
 #include "transaction_cl.h"
+#include "dbtype.h"
 
 #define BUF_SIZE 1024
 
@@ -91,6 +92,9 @@ static int do_process_deallocate_prepare (DB_SESSION * session, PT_NODE * statem
 static bool is_allowed_as_prepared_statement (PT_NODE * node);
 static bool is_allowed_as_prepared_statement_with_hv (PT_NODE * node);
 static bool db_check_limit_need_recompile (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag);
+
+static DB_CLASS_MODIFICATION_STATUS pt_has_modified_class (PARSER_CONTEXT * parser, PT_NODE * statement);
+static PT_NODE *pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 
 /*
  * get_dimemsion_of() - returns the number of elements of a null-terminated
@@ -455,8 +459,8 @@ db_calculate_current_server_time (PARSER_CONTEXT * parser)
 			      c_time_struct->tm_year + 1900, c_time_struct->tm_hour, c_time_struct->tm_min,
 			      c_time_struct->tm_sec, curr_server_timeb.millitm);
 
-	  DB_MAKE_DATETIME (&parser->sys_datetime, &datetime);
-	  DB_MAKE_TIMESTAMP (&parser->sys_epochtime, (DB_TIMESTAMP) curr_server_timeb.time);
+	  db_make_datetime (&parser->sys_datetime, &datetime);
+	  db_make_timestamp (&parser->sys_epochtime, (DB_TIMESTAMP) curr_server_timeb.time);
 	}
     }
 }
@@ -495,7 +499,7 @@ db_compile_statement_local (DB_SESSION * session)
   PT_NODE *statement = NULL;
   PT_NODE *statement_result = NULL;
   DB_QUERY_TYPE *qtype;
-  int cmd_type;
+  CUBRID_STMT_TYPE cmd_type;
   int err;
   static long seed = 0;
 
@@ -1295,7 +1299,7 @@ db_get_query_type_list (DB_SESSION * session, int stmt_ndx)
 {
   PT_NODE *statement;
   DB_QUERY_TYPE *qtype;
-  int cmd_type;
+  CUBRID_STMT_TYPE cmd_type;
 
   /* obvious error checking - invalid parameter */
   if (!session || !session->parser)
@@ -1366,6 +1370,8 @@ db_get_query_type_list (DB_SESSION * session, int stmt_ndx)
 	      /* the type of result of some command is integer */
 	      qtype->db_type = DB_TYPE_INTEGER;
 	      break;
+	    default:
+	      break;
 	    }
 	}
     }
@@ -1417,6 +1423,8 @@ db_get_start_line (DB_SESSION * session, int stmt)
  * return : stmt's node type
  * session(in): contains the SQL query that has been compiled
  * stmt(in): statement id returned by a successful compilation
+ *
+ * todo: is this acceptable? to return both error code and statement type?
  */
 int
 db_get_statement_type (DB_SESSION * session, int stmt)
@@ -1752,6 +1760,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	      /* forget all errors */
 	      er_clear ();
 	      pt_reset_error (parser);
+	      parser->query_id = NULL_QUERY_ID;	/* reset to re-try */
 
 	      /* retry the statement by calling do_prepare/execute_statement() */
 	      if (do_prepare_statement (parser, statement) == NO_ERROR)
@@ -2054,7 +2063,7 @@ values_list_to_values_array (PARSER_CONTEXT * parser, PT_NODE * values_list, DB_
       current_value = current_value->next;
     }
 
-  values.vals = malloc (values.size * sizeof (DB_VALUE));
+  values.vals = (DB_VALUE *) malloc (values.size * sizeof (DB_VALUE));
   if (values.vals == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, values.size * sizeof (DB_VALUE));
@@ -2077,7 +2086,7 @@ values_list_to_values_array (PARSER_CONTEXT * parser, PT_NODE * values_list, DB_
 	  assert (current_value->info.expr.arg1->node_type == PT_VALUE);
 
 	  name = pt_value_to_db (parser, current_value->info.expr.arg1);
-	  DB_MAKE_NULL (&val);
+	  db_make_null (&val);
 	  if (db_get_variable (name, &val) != NO_ERROR)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -2090,7 +2099,7 @@ values_list_to_values_array (PARSER_CONTEXT * parser, PT_NODE * values_list, DB_
       else
 	{
 	  DB_VALUE *db_val = NULL;
-	  int more_type_info_needed = 0;
+
 	  db_val = pt_value_to_db (parser, current_value);
 	  if (db_val == NULL)
 	    {
@@ -2233,7 +2242,6 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   DB_SESSION *prepared_session = NULL;
   int prepared_statement_ndx = 0;
   PT_NODE *prepared_stmt = NULL;
-  int include_oids = 0;
   const char *const name = statement->info.prepare.name->info.name.original;
   const char *const statement_literal = (char *) statement->info.prepare.statement->info.value.data_value.str->bytes;
   int err = NO_ERROR;
@@ -2519,7 +2527,7 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 	}
       if (tp_value_cast_preserve_domain (hv, hv, hv_dom, false, true) != DOMAIN_COMPATIBLE)
 	{
-	  d = pt_type_enum_to_db_domain (TP_DOMAIN_TYPE (hv_dom));
+	  d = pt_type_enum_to_db_domain (pt_db_to_type_enum (TP_DOMAIN_TYPE (hv_dom)));
 	  PT_ERRORmf2 (session->parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
 		       d);
 	  tp_domain_free (d);
@@ -2589,9 +2597,7 @@ static bool
 db_check_limit_need_recompile (PARSER_CONTEXT * parent_parser, PT_NODE * statement, int xasl_flag)
 {
   DB_SESSION *session = NULL;
-  PT_NODE *query = NULL, *limit = NULL, *orderby_for = NULL;
-  bool cannot_eval = false;
-  bool use_mro = false;
+  PT_NODE *query = NULL;
   bool do_recompile = false;
   DB_VALUE *save_host_variables = NULL;
   TP_DOMAIN **save_host_var_expected_domains = NULL;
@@ -3635,7 +3641,7 @@ db_validate (DB_OBJECT * vc)
       strcpy (buffer, "select count(*) from ");
       strcat (buffer, db_get_class_name (vc));
       attributes = db_get_attributes (vc);
-      len = strlen (buffer);
+      len = (int) strlen (buffer);
       bufp = buffer;
 
       while (attributes)
@@ -3644,7 +3650,7 @@ db_validate (DB_OBJECT * vc)
 	  if (pred)
 	    {
 	      /* make sure we have enough room in the buffer */
-	      len += (strlen (separator) + strlen (pred));
+	      len += (int) (strlen (separator) + strlen (pred));
 	      if (len >= limit)
 		{
 		  /* increase buffer by BUF_SIZE */
@@ -3732,6 +3738,7 @@ db_check_single_query (DB_SESSION * session)
   return NO_ERROR;
 }
 
+#if !defined (SERVER_MODE)
 /*
  * db_get_parser() - This function returns session's parser
  * returns: session->parser
@@ -3744,6 +3751,7 @@ db_get_parser (DB_SESSION * session)
 {
   return session->parser;
 }
+#endif /* !defined (SERVER_MODE) */
 
 /*
  * db_get_statement() - This function returns session's statement for id
@@ -3932,6 +3940,110 @@ void
 db_set_read_fetch_instance_version (LC_FETCH_VERSION_TYPE read_Fetch_Instance_Version)
 {
   tm_Tran_read_fetch_instance_version = read_Fetch_Instance_Version;
+}
+
+/*
+ * pt_has_modified_class -
+ *   return:
+ *
+ *   parser(in):
+ *   statement(in/out):
+ */
+static DB_CLASS_MODIFICATION_STATUS
+pt_has_modified_class (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  DB_CLASS_MODIFICATION_STATUS status = DB_CLASS_NOT_MODIFIED;
+
+  parser_walk_tree (parser, statement, pt_has_modified_class_helper, &status, NULL, NULL);
+
+  return status;
+}
+
+/*
+ * pt_has_modified_class_helper -
+ *   return:
+ *
+ *   parser(in):
+ *   node(in/out):
+ *   arg(in/out):
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  DB_CLASS_MODIFICATION_STATUS *status = (DB_CLASS_MODIFICATION_STATUS *) arg;
+  PT_NODE *class_;
+  MOP clsmop = NULL;
+  SM_CLASS *sm_class = NULL;
+  int error = NO_ERROR;
+
+  if (*status != DB_CLASS_NOT_MODIFIED)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  *continue_walk = PT_CONTINUE_WALK;
+  if (node->node_type == PT_SPEC)
+    {
+      for (class_ = node->info.spec.flat_entity_list; class_; class_ = class_->next)
+	{
+	  clsmop = class_->info.name.db_object;
+
+	  if (clsmop == NULL)
+	    {
+	      continue;
+	    }
+
+	  if (clsmop->decached)
+	    {
+	      /* the class might be aborted. */
+	      *status = DB_CLASS_MODIFIED;
+	    }
+	  else
+	    {
+	      error = au_fetch_class_force (clsmop, &sm_class, AU_FETCH_READ);
+	      if (error != NO_ERROR)
+		{
+		  if (error == ER_HEAP_UNKNOWN_OBJECT)
+		    {
+		      /* the class might be dropped. */
+		      *status = DB_CLASS_MODIFIED;
+		    }
+		  else
+		    {
+		      *status = DB_CLASS_ERROR;
+		    }
+		}
+	    }
+	  if (*status != DB_CLASS_NOT_MODIFIED)
+	    {
+	      /* don't revisit leaves */
+	      *continue_walk = PT_STOP_WALK;
+	      break;
+	    }
+
+	  if (sm_get_class_type (sm_class) != SM_CLASS_CT)
+	    {
+	      continue;
+	    }
+
+	  if (class_->info.name.db_object_chn == NULL_CHN)
+	    {
+	      class_->info.name.db_object_chn = locator_get_cache_coherency_number (clsmop);
+	    }
+	  else if (class_->info.name.db_object_chn != locator_get_cache_coherency_number (clsmop))
+	    {
+	      *status = DB_CLASS_MODIFIED;
+
+	      /* don't revisit leaves */
+	      *continue_walk = PT_STOP_WALK;
+	      break;
+	    }
+	}
+    }
+
+  return node;
 }
 
 /*

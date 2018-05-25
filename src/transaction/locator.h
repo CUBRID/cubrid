@@ -28,10 +28,10 @@
 
 #ident "$Id$"
 
-#include "storage_common.h"
-#include "oid.h"
 #include "object_representation.h"
-#include "thread.h"
+#include "oid.h"
+#include "storage_common.h"
+#include "thread_compat.hpp"
 
 #define LC_AREA_ONEOBJ_PACKED_SIZE (OR_INT_SIZE * 4 + \
                                     OR_HFID_SIZE + \
@@ -326,12 +326,12 @@ struct lc_lock_hint
   bool first_fetch_lockhint_call;	/* First client call to fetch_lockhint */
 };
 
-typedef enum lc_prefetch_flags LC_PREFETCH_FLAGS;
 enum lc_prefetch_flags
 {
   LC_PREF_FLAG_LOCK = 0x00000001,
   LC_PREF_FLAG_COUNT_OPTIM = 0x00000002
 };
+typedef enum lc_prefetch_flags LC_PREFETCH_FLAGS;
 
 
 
@@ -412,7 +412,7 @@ extern LC_LOCKSET *locator_allocate_and_unpack_lockset (char *unpacked, int unpa
 							bool unpack_objects, bool reg_unpacked);
 extern int locator_pack_lockset (LC_LOCKSET * lockset, bool pack_classes, bool pack_objects);
 extern int locator_unpack_lockset (LC_LOCKSET * lockset, bool unpack_classes, bool unpack_objects);
-extern LC_LOCKHINT *locator_allocate_lockhint (int max_classes, int quit_on_errors);
+extern LC_LOCKHINT *locator_allocate_lockhint (int max_classes, bool quit_on_errors);
 extern LC_LOCKHINT *locator_reallocate_lockhint (LC_LOCKHINT * lockhint, int max_classes);
 extern void locator_free_lockhint (LC_LOCKHINT * lockhint);
 extern int locator_pack_lockhint (LC_LOCKHINT * lockhint, bool pack_classes);

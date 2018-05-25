@@ -58,6 +58,7 @@
 
 #include "broker_filename.h"
 #include "cas_sql_log2.h"
+#include "dbtype.h"
 
 static FN_RETURN fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 				      int *ret_srv_h_id);
@@ -142,7 +143,7 @@ static const char *type_str_tbl[] = {
   "TIMESTAMPLTZ",		/* CCI_U_TYPE_TIMESTAMPLTZ */
   "DATETIMETZ",			/* CCI_U_TYPE_DATETIMETZ */
   "DATETIMELTZ",		/* CCI_U_TYPE_DATETIMELTZ */
-  "TIMETZ"			/* CCI_U_TYPE_TIMETZ */
+  "TIMETZ",			/* CCI_U_TYPE_TIMETZ */
 };
 
 FN_RETURN
@@ -529,7 +530,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	  fetch_flag = 0;
 	}
 
-      if (srv_handle->auto_commit_mode == true)
+      if (srv_handle->auto_commit_mode != 0)
 	{
 	  auto_commit_mode = true;
 	  forward_only_cursor = true;
@@ -637,7 +638,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   cas_log_write_nonl (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "%s srv_h_id %d ", exec_func_name, srv_h_id);
   if (srv_handle->sql_stmt != NULL)
     {
-      cas_log_write_query_string (srv_handle->sql_stmt, strlen (srv_handle->sql_stmt));
+      cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
     }
   cas_log_debug (ARG_FILE_LINE, "%s%s", auto_commit_mode ? "auto_commit_mode " : "",
 		 forward_only_cursor ? "forward_only_cursor " : "");
@@ -723,7 +724,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 			      exec_func_name, srv_h_id);
 	  if (srv_handle->sql_stmt != NULL)
 	    {
-	      cas_slow_log_write_query_string (srv_handle->sql_stmt, strlen (srv_handle->sql_stmt));
+	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
 	      bind_value_log (&query_start_time, bind_value_index, argc, argv, param_mode_size, param_mode,
 			      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), true);
 	    }
@@ -1422,7 +1423,7 @@ fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO *
       net_buf_cp_int (net_buf, err_code, NULL);
       if (cmd == CCI_OID_CLASS_NAME)
 	{
-	  net_buf_cp_str (net_buf, res_msg, strlen (res_msg) + 1);
+	  net_buf_cp_str (net_buf, res_msg, (int) strlen (res_msg) + 1);
 	}
     }
 
@@ -1528,7 +1529,7 @@ fn_collection (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
   if (err_code < 0)
     {
       NET_BUF_ERR_SET (net_buf);
-      return 0;
+      return FN_KEEP_CONN;
     }
 
   if (attr_name_size < 1)
@@ -1736,7 +1737,9 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval exec_begin, exec_end;
   char *eid_string;
-  char *plan;
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  char *plan = NULL;
+#endif /* !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) */
   int driver_query_timeout;
   int arg_index = 0;
   char auto_commit_mode;
@@ -1800,7 +1803,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 		      (argc - arg_index) / 2);
   if (srv_handle->sql_stmt != NULL)
     {
-      cas_log_write_query_string (srv_handle->sql_stmt, strlen (srv_handle->sql_stmt));
+      cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
     }
 #ifndef LIBCAS_FOR_JSP
   if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
@@ -1844,7 +1847,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 			      "execute_array srv_h_id %d %d ", srv_h_id, (argc - 2) / 2);
 	  if (srv_handle->sql_stmt != NULL)
 	    {
-	      cas_slow_log_write_query_string (srv_handle->sql_stmt, strlen (srv_handle->sql_stmt));
+	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
 	      bind_value_log (&query_start_time, 2, argc - 1, argv, 0, NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle),
 			      true);
 	    }
@@ -2090,7 +2093,7 @@ fn_savepoint (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
     {
       ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
-      return 0;
+      return FN_KEEP_CONN;
     }
 
   if (err_code < 0)
@@ -2664,6 +2667,7 @@ fn_lob_write (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
   int err_code, data_length = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval lob_new_begin, lob_new_end;
+  DB_ELO *elo_debug;
 
   if (argc != 3)
     {
@@ -2680,8 +2684,8 @@ fn_lob_write (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
   net_arg_get_bigint (&offset, argv[1]);
   net_arg_get_str (&data_buf, &data_length, argv[2]);
 
-  cas_log_write (0, false, "lob_write lob_type=%d offset=%lld, length=%d", db_get_elo (&lob_dbval)->type, offset,
-		 data_length);
+  elo_debug = db_get_elo (&lob_dbval);
+  cas_log_write (0, false, "lob_write lob_type=%d offset=%lld, length=%d", elo_debug->type, offset, data_length);
   gettimeofday (&lob_new_begin, NULL);
 
   err_code = ux_lob_write (&lob_dbval, offset, data_length, data_buf, net_buf);
@@ -2710,6 +2714,7 @@ fn_lob_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
   int err_code, data_length = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval lob_new_begin, lob_new_end;
+  DB_ELO *elo_debug;
 
   if (argc != 3)
     {
@@ -2726,8 +2731,8 @@ fn_lob_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
   net_arg_get_bigint (&offset, argv[1]);
   net_arg_get_int (&data_length, argv[2]);
 
-  cas_log_write (0, false, "lob_read lob_type=%d offset=%lld, length=%d", db_get_elo (&lob_dbval)->type, offset,
-		 data_length);
+  elo_debug = db_get_elo (&lob_dbval);
+  cas_log_write (0, false, "lob_read lob_type=%d offset=%lld, length=%d", elo_debug->type, offset, data_length);
   gettimeofday (&lob_new_begin, NULL);
 
   err_code = ux_lob_read (&lob_dbval, offset, data_length, net_buf);

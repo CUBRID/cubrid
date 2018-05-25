@@ -42,6 +42,8 @@
 #include <netinet/tcp.h>
 #include <sys/time.h>
 #include <sys/un.h>
+#else
+#include  <io.h>
 #endif
 
 #ifdef BROKER_DEBUG
@@ -66,9 +68,8 @@
 #include "broker_access_list.h"
 #include "broker_filename.h"
 #include "broker_er_html.h"
-
 #include "broker_send_fd.h"
-
+#include "error_manager.h"
 #include "shard_shm.h"
 #include "shard_metadata.h"
 #include "broker_proxy_conn.h"
@@ -1027,17 +1028,12 @@ shard_dispatch_thr_f (void *arg)
 {
   T_MAX_HEAP_NODE *job_queue;
   T_MAX_HEAP_NODE cur_job;
-#if !defined(WINDOWS)
-  SOCKET srv_sock_fd;
-#endif /* !WINDOWS */
-
   int ip_addr;
 #if defined(WINDOWS)
   int proxy_port;
 #else
   SOCKET proxy_fd;
   int proxy_status;
-  unsigned int len;
   int ret_val;
 #endif
 
@@ -1723,7 +1719,6 @@ connect_srv (char *br_name, int as_index)
   struct sockaddr_in sock_addr;
 #else
   struct sockaddr_un sock_addr;
-  struct timeval tv;
 #endif
   SOCKET srv_sock_fd;
   int one = 1;
@@ -1907,9 +1902,6 @@ cas_monitor_thr_f (void *ar)
 {
   int i, tmp_num_busy_uts;
 
-  T_PROXY_INFO *proxy_info_p = NULL;
-  T_SHARD_INFO *shard_info_p = NULL;
-
   while (process_flag)
     {
       tmp_num_busy_uts = 0;
@@ -1934,7 +1926,7 @@ connect_to_master_for_server_monitor (const char *db_name, const char *db_host)
   int port_id;
   unsigned short rid;
 
-  if (sysprm_load_and_init (db_name, NULL) != NO_ERROR)
+  if (sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS) != NO_ERROR)
     {
       return NULL;
     }
@@ -1963,7 +1955,7 @@ get_server_state_from_master (CSS_CONN_ENTRY * conn, const char *db_name)
       return SERVER_STATE_DEAD;
     }
 
-  error = css_send_request (conn, GET_SERVER_STATE, &request_id, db_name, strlen (db_name) + 1);
+  error = css_send_request (conn, GET_SERVER_STATE, &request_id, db_name, (int) strlen (db_name) + 1);
   if (error != NO_ERRORS)
     {
       return SERVER_STATE_DEAD;
@@ -2018,7 +2010,7 @@ insert_db_server_check_list (T_DB_SERVER * list_p, int check_list_cnt, const cha
 static THREAD_FUNC
 server_monitor_thr_f (void *arg)
 {
-  int i, j, cnt, port_id;
+  int i, j, cnt;
   int u_index;
   int check_list_cnt = 0;
   T_APPL_SERVER_INFO *as_info_p;
@@ -2030,7 +2022,9 @@ server_monitor_thr_f (void *arg)
   char *unusable_db_host;
   char busy_cas_db_name[SRV_CON_DBNAME_SIZE];
 
-  check_list = malloc (sizeof (T_DB_SERVER) * UNUSABLE_DATABASE_MAX);
+  er_init (NULL, ER_NEVER_EXIT);
+
+  check_list = (T_DB_SERVER *) malloc (sizeof (T_DB_SERVER) * UNUSABLE_DATABASE_MAX);
 
   while (process_flag)
     {
@@ -2134,6 +2128,8 @@ server_monitor_thr_f (void *arg)
     }
 
   free_and_init (check_list);
+
+  er_final (ER_ALL_FINAL);
 
 #if !defined(WINDOWS)
   return NULL;

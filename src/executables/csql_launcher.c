@@ -25,11 +25,6 @@
 
 #include <stdio.h>
 #include <stdarg.h>
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#else
-#include "getopt.h"
-#endif
 
 #include "csql.h"
 #include "message_catalog.h"
@@ -37,12 +32,13 @@
 #include "intl_support.h"
 #include "utility.h"
 #include "util_support.h"
+#include "cubrid_getopt.h"
 
 typedef const char *(*CSQL_GET_MESSAGE) (int message_index);
 typedef int (*CSQL) (const char *argv0, CSQL_ARGUMENT * csql_arg);
 
 static void utility_csql_usage (void);
-static void utility_csql_version (void);
+static void utility_csql_print (void);
 
 /*
  * utility_csql_usage() - display csql usage
@@ -71,7 +67,7 @@ utility_csql_usage (void)
 }
 
 /*
- * utility_csql_version - display a version of this utility
+ * utility_csql_print - display a version of this utility
  *
  * return:
  *
@@ -99,7 +95,7 @@ utility_csql_print (int message_num, ...)
       return;
     }
 
-  get_message_fn = symbol;
+  get_message_fn = (GET_MESSAGE) symbol;
 
   {
     va_list ap;

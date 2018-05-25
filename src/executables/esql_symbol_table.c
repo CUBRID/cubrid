@@ -205,7 +205,7 @@ pp_new_link (void)
 
   if (link_free_list == NULL)
     {
-      LINKCHUNK *new_chunk = malloc (sizeof (LINKCHUNK));
+      LINKCHUNK *new_chunk = (LINKCHUNK *) malloc (sizeof (LINKCHUNK));
       if (new_chunk == NULL)
 	{
 	  esql_yyverror (pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
@@ -466,7 +466,7 @@ pp_add_declarator (SYMBOL * sym, int type)
       return;
     }
 
-  link->decl.d.dcl_type = type;
+  link->decl.d.dcl_type = (DCL_TYPE) type;
 
   if (sym->type == NULL)
     {
@@ -809,13 +809,13 @@ pp_print_syms (FILE * fp)
   if (pp_Symbol_table->get_symbol_count (pp_Symbol_table))
     {
       fprintf (fp, " *\n * Symbol table:\n *\n");
-      pp_Symbol_table->print_table (pp_Symbol_table, es_print_symbol, fp, 1);
+      pp_Symbol_table->print_table (pp_Symbol_table, (void (*)()) es_print_symbol, fp, 1);	//TODO: get rid of function pointer conversion
     }
 
   if (pp_Struct_table->get_symbol_count (pp_Struct_table))
     {
       fprintf (fp, " *\n * Structure table:\n *\n");
-      pp_Struct_table->print_table (pp_Struct_table, (void (*)()) es_print_struct, fp, 1);
+      pp_Struct_table->print_table (pp_Struct_table, (void (*)()) es_print_struct, fp, 1);	//TODO: get rid of function pointer conversion
     }
 }
 
@@ -832,7 +832,7 @@ pp_findsym (SYMTAB * symtab, unsigned char *name)
   SYMBOL dummy;
 
   dummy.name = name;
-  return symtab->find_symbol (symtab, &dummy);
+  return (SYMBOL *) symtab->find_symbol (symtab, &dummy);
 }
 
 /*

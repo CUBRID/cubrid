@@ -56,11 +56,11 @@
 #endif /* ! WINDOWS */
 #include "master_util.h"
 #include "master_request.h"
-
-#if !defined(WINDOWS)
 #include "master_heartbeat.h"
-#endif
 
+#if defined (SUPPRESS_STRLEN_WARNING)
+#define strlen(s1)  ((int) strlen(s1))
+#endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #define IS_MASTER_SOCKET_FD(FD)         \
       ((FD) == css_Master_socket_fd[0] || (FD) == css_Master_socket_fd[1])
@@ -236,7 +236,7 @@ css_process_server_count_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
     {
       if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) && temp->name
 	  && !IS_MASTER_CONN_NAME_DRIVER (temp->name) && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name)
-	  && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
+	  && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
 	{
 	  count++;
 	}
@@ -293,7 +293,7 @@ css_process_server_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
     {
       if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) && temp->name != NULL
 	  && !IS_MASTER_CONN_NAME_DRIVER (temp->name) && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name)
-	  && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
+	  && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
 	{
 	  required_size = 0;
 
@@ -317,7 +317,7 @@ css_process_server_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 
 	  if (buffer == NULL)
 	    {
-	      buffer = malloc (bufsize * sizeof (char));
+	      buffer = (char *) malloc (bufsize * sizeof (char));
 	      if (buffer == NULL)
 		{
 		  goto error_return;
@@ -327,7 +327,7 @@ css_process_server_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 	  else
 	    {
 	      char *oldbuffer = buffer;	/* save pointer in case realloc fails */
-	      buffer = realloc (buffer, bufsize * sizeof (char));
+	      buffer = (char *) realloc (buffer, bufsize * sizeof (char));
 	      if (buffer == NULL)
 		{
 		  free_and_init (oldbuffer);
@@ -421,7 +421,7 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 
 	  if (buffer == NULL)
 	    {
-	      buffer = malloc (bufsize * sizeof (char));
+	      buffer = (char *) malloc (bufsize * sizeof (char));
 	      if (buffer == NULL)
 		{
 		  goto error_return;
@@ -431,7 +431,7 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 	  else
 	    {
 	      char *oldbuffer = buffer;	/* save pointer in case realloc fails */
-	      buffer = realloc (buffer, bufsize * sizeof (char));
+	      buffer = (char *) realloc (buffer, bufsize * sizeof (char));
 	      if (buffer == NULL)
 		{
 		  free_and_init (oldbuffer);
@@ -576,8 +576,7 @@ css_process_kill_immediate (CSS_CONN_ENTRY * conn, unsigned short request_id, ch
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
       if ((temp->name != NULL) && (strcmp (temp->name, server_name) == 0) && !IS_MASTER_CONN_NAME_HA_SERVER (temp->name)
-	  && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name)
-	  && !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
+	  && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
 	{
 	  css_send_command_to_server (temp, SERVER_SHUTDOWN_IMMEDIATE);
 
@@ -646,11 +645,13 @@ css_process_kill_master (void)
       hb_cluster_shutdown_and_cleanup ();
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (!HA_DISABLED ())
     {
       MASTER_ER_SET (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HB_STOPPED, 0);
     }
 #endif
+
+  er_final (ER_ALL_FINAL);
 
   exit (1);
 }
@@ -715,8 +716,7 @@ css_process_shutdown (char *time_buffer)
       /* do not send shutdown command to master and connector, only to servers: cause connector crash */
       if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) && temp->name
 	  && !IS_MASTER_CONN_NAME_DRIVER (temp->name) && !IS_MASTER_CONN_NAME_HA_SERVER (temp->name)
-	  && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name)
-	  && !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
+	  && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
 	{
 	  css_process_start_shutdown (temp, timeout * 60, buffer);
 
@@ -765,8 +765,7 @@ css_process_stop_shutdown (void)
       /* do not send shutdown command to master and connector, only to servers: cause connector crash */
       if (!IS_INVALID_SOCKET (temp->fd) && !IS_MASTER_SOCKET_FD (temp->fd) && temp->name
 	  && !IS_MASTER_CONN_NAME_DRIVER (temp->name) && !IS_MASTER_CONN_NAME_HA_SERVER (temp->name)
-	  && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name)
-	  && !IS_MASTER_CONN_NAME_HA_PREFETCHLOG (temp->name))
+	  && !IS_MASTER_CONN_NAME_HA_COPYLOG (temp->name) && !IS_MASTER_CONN_NAME_HA_APPLYLOG (temp->name))
 	{
 	  css_send_command_to_server (temp, SERVER_STOP_SHUTDOWN);
 	}
@@ -787,7 +786,8 @@ css_process_get_server_ha_mode (CSS_CONN_ENTRY * conn, unsigned short request_id
   char ha_state_str[64];
   char buffer[MASTER_TO_SRV_MSG_SIZE];
   int len;
-  int response, ha_state;
+  int response;
+  HA_SERVER_STATE ha_state;
 
   for (temp = css_Master_socket_anchor; temp; temp = temp->next)
     {
@@ -801,7 +801,7 @@ css_process_get_server_ha_mode (CSS_CONN_ENTRY * conn, unsigned short request_id
 	      return;
 	    }
 
-	  ha_state = htonl (response);
+	  ha_state = (HA_SERVER_STATE) htonl (response);
 
 	  if (ha_state == HA_SERVER_STATE_NA)
 	    {
@@ -909,7 +909,7 @@ css_process_ha_ping_host_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
   char *buffer = NULL;
   int result;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       goto error_return;
     }
@@ -975,7 +975,7 @@ css_process_ha_admin_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
   char *buffer = NULL;
   int result;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       goto error_return;
     }
@@ -1056,7 +1056,7 @@ css_process_ha_node_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id,
   char *buffer = NULL;
   int result;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       goto error_return;
     }
@@ -1124,7 +1124,7 @@ css_process_ha_process_list_info (CSS_CONN_ENTRY * conn, unsigned short request_
   char *buffer = NULL;
   int result;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       goto error_return;
     }
@@ -1189,7 +1189,7 @@ css_process_kill_all_ha_process (CSS_CONN_ENTRY * conn, unsigned short request_i
 #if !defined(WINDOWS)
   char *buffer = NULL;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       goto error_return;
     }
@@ -1245,7 +1245,7 @@ static void
 css_process_is_registered_ha_proc (CSS_CONN_ENTRY * conn, unsigned short request_id, char *buf)
 {
 #if !defined(WINDOWS)
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (!HA_DISABLED ())
     {
       if (hb_is_registered_process (conn, buf))
 	{
@@ -1289,7 +1289,7 @@ css_process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn, unsigned short request_
   pid_t pid;
   int result;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (!HA_DISABLED ())
     {
       result = hb_check_request_eligibility (conn->fd);
       if (result != HB_HC_ELIGIBLE_LOCAL && result != HB_HC_ELIGIBLE_REMOTE)
@@ -1346,7 +1346,7 @@ css_process_ha_deregister_by_args (CSS_CONN_ENTRY * conn, unsigned short request
 #if !defined(WINDOWS)
   int result;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) != HA_MODE_OFF)
+  if (!HA_DISABLED ())
     {
       result = hb_check_request_eligibility (conn->fd);
       if (result != HB_HC_ELIGIBLE_LOCAL && result != HB_HC_ELIGIBLE_REMOTE)
@@ -1403,7 +1403,7 @@ css_process_reconfig_heartbeat (CSS_CONN_ENTRY * conn, unsigned short request_id
 #if !defined(WINDOWS)
   char *buffer = NULL;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       goto error_return;
     }
@@ -1462,7 +1462,7 @@ css_process_deactivate_heartbeat (CSS_CONN_ENTRY * conn, unsigned short request_
   char error_string[LINE_MAX];
   char request_from[MAXHOSTNAMELEN] = "";
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       goto error_return;
     }
@@ -1624,7 +1624,7 @@ css_process_deact_stop_all (CSS_CONN_ENTRY * conn, unsigned short request_id, ch
   char error_string[LINE_MAX];
   char request_from[MAXHOSTNAMELEN] = "";
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       goto error_return;
     }
@@ -1713,7 +1713,7 @@ css_process_activate_heartbeat (CSS_CONN_ENTRY * conn, unsigned short request_id
 #if !defined(WINDOWS)
   int error = NO_ERROR;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       goto error_return;
     }
@@ -1763,7 +1763,7 @@ css_process_ha_start_util_process (CSS_CONN_ENTRY * conn, unsigned short request
   int error = NO_ERROR;
   int result;
 
-  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_OFF)
+  if (HA_DISABLED ())
     {
       goto error_return;
     }
@@ -1837,9 +1837,9 @@ css_process_server_state (CSS_CONN_ENTRY * conn, unsigned short request_id, char
     }
 
   state = hb_return_proc_state_by_fd (temp->fd);
+send_to_client:
 #endif
 
-send_to_client:
   state = htonl (state);
   if (css_send_data (conn, request_id, (char *) &state, sizeof (int)) != NO_ERRORS)
     {
@@ -2048,4 +2048,53 @@ css_process_heartbeat_request (CSS_CONN_ENTRY * conn)
 #endif
 
   return;
+}
+
+int
+css_send_to_my_server_the_master_hostname (const char *master_current_hostname, HB_PROC_ENTRY * proc,
+					   CSS_CONN_ENTRY * conn)
+{
+#if !defined (WINDOWS)
+  int rc = NO_ERROR, rv;
+  int master_hostname_length = master_current_hostname == NULL ? 0 : strlen (master_current_hostname);
+  char master_hostname[sizeof (int) + MAXHOSTNAMELEN];
+
+  if (proc == NULL || conn == NULL || IS_INVALID_SOCKET (conn->fd))
+    {
+      /* smth went terribly wrong */
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (master_current_hostname == NULL || strlen (master_current_hostname) == 0)
+    {
+      proc->knows_master_hostname = false;
+      return NO_ERROR;
+    }
+
+  rc = css_send_heartbeat_request (conn, SERVER_RECEIVE_MASTER_HOSTNAME);
+  if (rc != NO_ERRORS)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  assert (master_hostname_length != 0);
+
+  *((int *) master_hostname) = master_hostname_length;
+  memcpy (master_hostname + sizeof (int), master_current_hostname, master_hostname_length);
+
+  rc = css_send_heartbeat_data (conn, master_hostname, sizeof (int) + master_hostname_length);
+  if (rc != NO_ERRORS)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  proc->knows_master_hostname = true;
+
+  return NO_ERROR;
+#else
+  return ER_FAILED;
+#endif
 }

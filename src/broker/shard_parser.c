@@ -85,7 +85,7 @@ sp_create_parser (const char *sql_stmt)
   parser_p->cursor.token = TT_NONE;
   parser_p->prv_cursor.pos = parser_p->sql_stmt;
   parser_p->prv_cursor.token = TT_NONE;
-  parser_p->operator = TT_NONE;
+  parser_p->operator_ = TT_NONE;
   sp_init_praser_hint_list (&parser_p->list_a);
   sp_init_praser_hint_list (&parser_p->list_t[BT_STATIC]);
   sp_init_praser_hint_list (&parser_p->list_t[BT_DYNAMIC]);
@@ -718,19 +718,19 @@ sp_process_token (SP_PARSER_CTX * parser_p, SP_TOKEN token_type)
 	    }
 	}
 
-      if (parser_p->operator == TT_ASSIGN_OP)
+      if (parser_p->operator_ == TT_ASSIGN_OP)
 	{
-	  parser_p->operator = TT_NONE;
+	  parser_p->operator_ = TT_NONE;
 	}
 
       sp_append_parser_hint_to_ctx (parser_p, hint_p);
       break;
     case TT_IN_OP:
     case TT_ASSIGN_OP:
-      parser_p->operator = token_type;
+      parser_p->operator_ = token_type;
       break;
     case TT_RIGHT_BRAKET:
-      parser_p->operator = TT_NONE;
+      parser_p->operator_ = TT_NONE;
       break;
     default:
       break;
@@ -829,7 +829,7 @@ sp_is_valid_hint (SP_PARSER_CTX * parser_p, SP_PARSER_HINT * hint_p)
 {
   if (parser_p->is_select)
     {
-      if (hint_p->hint_type == HT_KEY && parser_p->operator != TT_ASSIGN_OP && parser_p->operator != TT_IN_OP)
+      if (hint_p->hint_type == HT_KEY && parser_p->operator_ != TT_ASSIGN_OP && parser_p->operator_ != TT_IN_OP)
 	{
 	  return ER_SP_INVALID_SYNTAX;
 	}

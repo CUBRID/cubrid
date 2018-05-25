@@ -295,6 +295,6 @@ extern int net_read_header (SOCKET sock_fd, MSG_HEADER * header);
 extern int net_write_header (SOCKET sock_fd, MSG_HEADER * header);
 extern bool is_net_timed_out (void);
 
-extern void net_write_error (int sock, int version, char *driver_info, char *cas_info, int cas_info_size, int indicator,
-			     int code, char *msg);
+extern void net_write_error (SOCKET sock, int version, char *driver_info, char *cas_info, int cas_info_size,
+			     int indicator, int code, char *msg);
 #endif /* _CAS_NETWORK_H_ */

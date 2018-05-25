@@ -29,8 +29,9 @@
 #define TZ_COUNTRY_NAME_SIZE	  50
 #define TZ_DS_RULESET_NAME_SIZE	  16
 #define TZ_GENERIC_NAME_SIZE	  40
-#define TZ_MAX_FORMAT_SIZE	  10
+#define TZ_MAX_FORMAT_SIZE	  32
 #define TZ_WINDOWS_ZONE_NAME_SIZE 70
+#define TZ_CHECKSUM_SIZE          32
 
 /*
  * The defines below are types of the data representation for the "ON" column
@@ -94,19 +95,19 @@ struct tz_country
   char full_name[TZ_COUNTRY_NAME_SIZE];
 };
 
-typedef enum tz_until_flag TZ_UNTIL_FLAG;
 enum tz_until_flag
 {
   UNTIL_INFINITE = 0,
   UNTIL_EXPLICIT = 1
 };
+typedef enum tz_until_flag TZ_UNTIL_FLAG;
 
-typedef enum ds_type DS_TYPE;
 enum ds_type
 {
   DS_TYPE_FIXED = 0,
   DS_TYPE_RULESET_ID = 1
 };
+typedef enum ds_type DS_TYPE;
 
 typedef struct tz_offset_rule TZ_OFFSET_RULE;
 struct tz_offset_rule
@@ -228,7 +229,7 @@ struct tz_data
   /* 
    * 32 digits for the md5 checksum
    */
-  char checksum[32 + 1];
+  char checksum[TZ_CHECKSUM_SIZE + 1];
 };
 
 #endif /* _TIMEZONE_LIB_COMMON_H_ */

@@ -22,13 +22,15 @@
  */
 
 #include <assert.h>
-#include "partition.h"
+#include "partition_sr.h"
+
 #include "heap_file.h"
-#include "object_representation.h"
-#include "object_representation_sr.h"
-#include "object_domain.h"
 #include "fetch.h"
-#include "dbval.h"
+#include "dbtype.h"
+#include "stream_to_xasl.h"
+#include "query_executor.h"
+#include "object_primitive.h"
+#include "dbtype.h"
 
 typedef enum match_status
 {
@@ -133,7 +135,6 @@ static MATCH_STATUS partition_prune (PRUNING_CONTEXT * pinfo, const REGU_VARIABL
 				     PRUNING_BITSET * pruned);
 static MATCH_STATUS partition_prune_db_val (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNING_OP op,
 					    PRUNING_BITSET * pruned);
-static bool partition_is_reguvar_constant (const REGU_VARIABLE * regu_var);
 static int partition_get_value_from_key (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key, DB_VALUE * attr_key,
 					 bool * is_present);
 static int partition_get_value_from_inarith (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * src, DB_VALUE * value_p,
@@ -457,7 +458,7 @@ partition_cache_entry_to_pruning_context (PRUNING_CONTEXT * pinfo, PARTITION_CAC
 
   pinfo->attr_id = entry_p->attr_id;
 
-  pinfo->partition_type = pinfo->partitions[0].partition_type;
+  pinfo->partition_type = (DB_PARTITION_TYPE) pinfo->partitions[0].partition_type;
 
   return NO_ERROR;
 }
@@ -769,8 +770,6 @@ partition_cache_finalize (THREAD_ENTRY * thread_p)
 void
 partition_decache_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
-  int error = NO_ERROR;
-
   if (!PARTITION_IS_CACHE_INITIALIZED ())
     {
       return;
@@ -876,12 +875,12 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo, const PRUNING_BITSET * pruned)
       goto cleanup;
     }
 
-  if (pinfo->spec->access == INDEX || pinfo->spec->access == INDEX_KEY_INFO)
+  if (pinfo->spec->access == ACCESS_METHOD_INDEX || pinfo->spec->access == ACCESS_METHOD_INDEX_KEY_INFO)
     {
       /* we have to load information about the index used so we can duplicate it for each partition */
       is_index = true;
       master_oid = &ACCESS_SPEC_CLS_OID (pinfo->spec);
-      master_btid = &pinfo->spec->indexptr->indx_id.i.btid;
+      master_btid = &pinfo->spec->indexptr->btid;
       error =
 	heap_get_indexinfo_of_btid (pinfo->thread_p, master_oid, master_btid, NULL, NULL, NULL, NULL, &btree_name,
 				    NULL);
@@ -917,8 +916,7 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo, const PRUNING_BITSET * pruned)
 
       if (is_index)
 	{
-	  error = heap_get_index_with_name (pinfo->thread_p, &spec[i].oid, btree_name, &spec[i].indx_id.i.btid);
-	  spec[i].indx_id.type = T_BTID;
+	  error = heap_get_index_with_name (pinfo->thread_p, &spec[i].oid, btree_name, &spec[i].btid);
 
 	  if (error != NO_ERROR)
 	    {
@@ -1024,7 +1022,7 @@ partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 	}
 
       /* check misc_operand for EXTRACT, etc */
-      if (left->value.arithptr->misc_operand != left->value.arithptr->misc_operand)
+      if (left->value.arithptr->misc_operand != right->value.arithptr->misc_operand)
 	{
 	  return false;
 	}
@@ -1102,7 +1100,7 @@ partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNI
 		return MATCH_NOT_FOUND;
 	      }
 
-	    val_collection = DB_GET_COLLECTION (val);
+	    val_collection = db_get_set (val);
 	    for (j = 0; j < size; j++)
 	      {
 		db_set_get (part_collection, j, &col);
@@ -1137,7 +1135,7 @@ partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNI
 		status = MATCH_NOT_FOUND;
 	      }
 
-	    val_collection = DB_GET_COLLECTION (val);
+	    val_collection = db_get_set (val);
 	    for (j = 0; j < size; j++)
 	      {
 		db_set_get (part_collection, j, &col);
@@ -1212,7 +1210,7 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p, const PRU
   DB_VALUE val;
   MATCH_STATUS status = MATCH_NOT_FOUND;
 
-  DB_MAKE_NULL (&val);
+  db_make_null (&val);
 
   col_domain = pinfo->partition_pred->func_regu->domain;
   switch (op)
@@ -1256,7 +1254,7 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p, const PRU
 	    goto cleanup;
 	  }
 
-	values = DB_GET_COLLECTION (val_p);
+	values = db_get_set (val_p);
 	size = db_set_size (values);
 	if (size < 0)
 	  {
@@ -1332,8 +1330,8 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
   int rmin = DB_UNK, rmax = DB_UNK;
   MATCH_STATUS status;
 
-  DB_MAKE_NULL (&min);
-  DB_MAKE_NULL (&max);
+  db_make_null (&min);
+  db_make_null (&max);
 
   for (i = 0; i < PARTITIONS_COUNT (pinfo); i++)
     {
@@ -1520,7 +1518,7 @@ partition_prune (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * arg, const PRUNI
 
   if (op == PO_IS_NULL)
     {
-      DB_MAKE_NULL (&val);
+      db_make_null (&val);
       is_value = true;
     }
   else if (partition_get_value_from_regu_var (pinfo, arg, &val, &is_value) != NO_ERROR)
@@ -1588,7 +1586,7 @@ partition_get_value_from_regu_var (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 	if (regu->value.funcp->ftype != F_MIDXKEY)
 	  {
 	    *is_value = false;
-	    DB_MAKE_NULL (value_p);
+	    db_make_null (value_p);
 	    return NO_ERROR;
 	  }
 	if (partition_get_value_from_key (pinfo, regu, value_p, is_value) != NO_ERROR)
@@ -1609,7 +1607,7 @@ partition_get_value_from_regu_var (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
       break;
 
     default:
-      DB_MAKE_NULL (value_p);
+      db_make_null (value_p);
       *is_value = false;
       return NO_ERROR;
     }
@@ -1617,7 +1615,7 @@ partition_get_value_from_regu_var (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
   return NO_ERROR;
 
 error:
-  DB_MAKE_NULL (value_p);
+  db_make_null (value_p);
   *is_value = false;
 
   return ER_FAILED;
@@ -1726,7 +1724,7 @@ partition_get_value_from_key (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key
 
 	if (regu_list == NULL)
 	  {
-	    DB_MAKE_NULL (attr_key);
+	    db_make_null (attr_key);
 	    error = NO_ERROR;
 
 	    *is_present = false;
@@ -1745,7 +1743,7 @@ partition_get_value_from_key (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key
     case TYPE_CONSTANT:
       /* TYPE_CONSTANT comes from an index join. Since we haven't actually scanned anything yet, this value is not set
        * so we cannot use it here */
-      DB_MAKE_NULL (attr_key);
+      db_make_null (attr_key);
       error = NO_ERROR;
       *is_present = false;
       break;
@@ -1753,7 +1751,7 @@ partition_get_value_from_key (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key
     default:
       assert (false);
 
-      DB_MAKE_NULL (attr_key);
+      db_make_null (attr_key);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       error = ER_FAILED;
@@ -1780,15 +1778,14 @@ partition_get_value_from_inarith (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE *
 				  bool * is_value)
 {
   int error = NO_ERROR;
-  DB_VALUE *val_backup = NULL, *peek_val = NULL;
-  ARITH_TYPE *arithptr = NULL;
+  DB_VALUE *peek_val = NULL;
 
   assert_release (src != NULL);
   assert_release (value_p != NULL);
   assert_release (src->type == TYPE_INARITH);
 
   *is_value = false;
-  DB_MAKE_NULL (value_p);
+  db_make_null (value_p);
 
   if (!partition_is_reguvar_const (src))
     {
@@ -2118,8 +2115,7 @@ static MATCH_STATUS
 partition_match_index_key (PRUNING_CONTEXT * pinfo, const KEY_INFO * key, RANGE_TYPE range_type,
 			   PRUNING_BITSET * pruned)
 {
-  int error = NO_ERROR, i;
-  int ptype = pinfo->partitions[0].partition_type;
+  int i;
   PRUNING_BITSET key_pruned;
   MATCH_STATUS status;
 
@@ -2247,7 +2243,6 @@ partition_load_pruning_context (THREAD_ENTRY * thread_p, const OID * class_oid, 
 {
   int error = NO_ERROR;
   OR_PARTITION *master = NULL;
-  MATCH_STATUS status = MATCH_NOT_FOUND;
   bool is_modified = false;
   bool already_exists = false;
 
@@ -2320,7 +2315,7 @@ reload_from_cache:
       goto error_return;
     }
 
-  pinfo->partition_type = master->partition_type;
+  pinfo->partition_type = (DB_PARTITION_TYPE) master->partition_type;
   pinfo->root_repr_id = master->rep_id;
 
   pinfo->attr_id = partition_get_attribute_id (pinfo->partition_pred->func_regu);
@@ -2447,8 +2442,8 @@ partition_load_partition_predicate (PRUNING_CONTEXT * pinfo, OR_PARTITION * mast
     }
 
   assert (DB_VALUE_TYPE (&val) == DB_TYPE_CHAR);
-  expr_stream = DB_PULL_STRING (&val);
-  stream_len = DB_GET_STRING_SIZE (&val);
+  expr_stream = db_get_string (&val);
+  stream_len = db_get_string_size (&val);
 
   /* unpack partition expression */
   error =
@@ -2855,7 +2850,8 @@ partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd, ACCESS_SPEC_TYPE 
   pinfo.spec = spec;
   pinfo.vd = vd;
 
-  if (spec->access == SEQUENTIAL || spec->access == SEQUENTIAL_RECORD_INFO || spec->access == SEQUENTIAL_PAGE_SCAN)
+  if (spec->access == ACCESS_METHOD_SEQUENTIAL || spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
+      || spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
     {
       error = partition_prune_heap_scan (&pinfo);
     }
@@ -2879,7 +2875,7 @@ partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd, ACCESS_SPEC_TYPE 
 	}
       else
 	{
-	  BTID *btid = &spec->indexptr->indx_id.i.btid;
+	  BTID *btid = &spec->indexptr->btid;
 	  error = partition_get_position_in_key (&pinfo, btid);
 	  if (error != NO_ERROR)
 	    {
@@ -3157,7 +3153,6 @@ partition_prune_update (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES *
 {
   PRUNING_CONTEXT pinfo;
   int error = NO_ERROR;
-  int super_count = 0;
   OID super_class;
   bool keep_pruning_context = false;
 
@@ -3399,7 +3394,7 @@ cleanup:
     }
   if (classrepr != NULL)
     {
-      (void) heap_classrepr_free (classrepr, &classrepr_cacheindex);
+      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
     }
   if (error != NO_ERROR)
     {
@@ -3516,58 +3511,17 @@ partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * key, OID * c
 			     BTID * btid)
 {
   int error = NO_ERROR, pos = 0;
-  MATCH_STATUS status = MATCH_NOT_FOUND;
-  PRUNING_BITSET pruned;
-  PRUNING_BITSET_ITERATOR it;
   OID partition_oid;
   HFID partition_hfid;
   BTID partition_btid;
-  int is_global_index = 0;
-  DB_VALUE partition_key;
 
-  if (pcontext == NULL)
-    {
-      assert_release (pcontext != NULL);
-      return ER_FAILED;
-    }
+  error = partition_prune_partition_index (pcontext, key, class_oid, btid, &pos);
 
-  if (pcontext->pruning_type == DB_PARTITION_CLASS)
-    {
-      /* btid is the BTID of the index corresponding to the partition. Find the BTID of the root class and use that one 
-       */
-      error = partition_find_inherited_btid (pcontext->thread_p, class_oid, &pcontext->root_oid, btid, btid);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-
-  error = partition_attrinfo_get_key (pcontext->thread_p, pcontext, key, &pcontext->root_oid, btid, &partition_key);
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  pruningset_init (&pruned, PARTITIONS_COUNT (pcontext));
-  status = partition_prune_db_val (pcontext, &partition_key, PO_EQ, &pruned);
-  pr_clear_value (&partition_key);
-
-  if (status == MATCH_NOT_FOUND)
-    {
-      /* This can happen only if there's no partition that can hold the key value (for example, if this is called by ON 
-       * DUPLICATE KEY UPDATE but the value that is being inserted will throw an error anyway) */
-      return NO_ERROR;
-    }
-  else if (pruningset_popcount (&pruned) != 1)
-    {
-      /* a key value should always return at most one partition */
-      assert (false);
-      OID_SET_NULL (class_oid);
-      return NO_ERROR;
-    }
-
-  pruningset_iterator_init (&pruned, &it);
-  pos = pruningset_iterator_next (&it);
   COPY_OID (&partition_oid, &pcontext->partitions[pos + 1].class_oid);
   HFID_COPY (&partition_hfid, &pcontext->partitions[pos + 1].class_hfid);
 
@@ -3815,7 +3769,7 @@ cleanup:
 
 /*
  * partition_attrinfo_get_key () - retrieves the appropiate partitioning key
- *			    from a given index key, by which prunning will be
+ *			    from a given index key, by which pruning will be
  *			    performed.
  * return : error code or NO_ERROR
  * thread_p (in) :
@@ -3906,5 +3860,80 @@ cleanup:
       db_private_free_and_init (thread_p, btree_attr_ids);
     }
 
+  return error;
+}
+
+/*
+ *  partition_prune_partition_index ():     - Gets the index of the partition where the key resides.
+ *
+ *  return :                              - NO_ERROR or error code.
+ *
+ *  pcontext (in)                         - Context of the partitions.
+ *  key(in)                               - The key to be located.
+ *  class_oid(in/out)                     - The correct OID of the object that contains the key.
+ *  btid(in/out)                          - The correct BTID of the tree that contains the key.
+ *  position(out)                         - The number of the partition that holds the key.
+ *
+ *  NOTE:
+ *            - At the entry of the function, btid and class_oid should refer to the btid and oid, respectively,
+ *              of the root table on which the partitions are created. This ensures the correctness of the btid,
+ *              and class_oid on function exit.
+ */
+int
+partition_prune_partition_index (PRUNING_CONTEXT * pcontext, DB_VALUE * key, OID * class_oid, BTID * btid,
+				 int *position)
+{
+  int error = NO_ERROR;
+  int pos = 0;
+  DB_VALUE partition_key;
+  PRUNING_BITSET pruned;
+  PRUNING_BITSET_ITERATOR it;
+  MATCH_STATUS status = MATCH_NOT_FOUND;
+
+  if (pcontext == NULL)
+    {
+      assert_release (pcontext != NULL);
+      return ER_FAILED;
+    }
+
+  if (pcontext->pruning_type == DB_PARTITION_CLASS)
+    {
+      /* btid is the BTID of the index corresponding to the partition. Find the BTID of the root class and use that one */
+      error = partition_find_inherited_btid (pcontext->thread_p, class_oid, &pcontext->root_oid, btid, btid);
+
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  error = partition_attrinfo_get_key (pcontext->thread_p, pcontext, key, &pcontext->root_oid, btid, &partition_key);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  pruningset_init (&pruned, PARTITIONS_COUNT (pcontext));
+  status = partition_prune_db_val (pcontext, &partition_key, PO_EQ, &pruned);
+  pr_clear_value (&partition_key);
+
+  if (status == MATCH_NOT_FOUND)
+    {
+      /* This can happen only if there's no partition that can hold the key value (for example, if this is called by ON
+       * DUPLICATE KEY UPDATE but the value that is being inserted will throw an error anyway) */
+      return NO_ERROR;
+    }
+  else if (pruningset_popcount (&pruned) != 1)
+    {
+      /* a key value should always return at most one partition */
+      assert (false);
+      OID_SET_NULL (class_oid);
+      return NO_ERROR;
+    }
+
+  pruningset_iterator_init (&pruned, &it);
+  pos = pruningset_iterator_next (&it);
+
+  *position = pos;
   return error;
 }

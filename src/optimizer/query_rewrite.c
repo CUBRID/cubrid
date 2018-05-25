@@ -23,6 +23,8 @@
 
 #ident "$Id$"
 
+#include <assert.h>
+
 #include "parser.h"
 #include "parser_message.h"
 #include "parse_tree.h"
@@ -35,8 +37,7 @@
 #include "view_transform.h"
 #include "parser.h"
 
-/* this must be the last header file included!!! */
-#include "dbval.h"
+#include "dbtype.h"
 
 #define DB_MAX_LITERAL_PRECISION 255
 
@@ -91,6 +92,13 @@ struct qo_reset_location_info
 };
 
 static PT_NODE *qo_reset_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+
+static void qo_move_on_clause_of_explicit_join_to_where_clause (PARSER_CONTEXT * parser, PT_NODE ** fromp,
+								PT_NODE ** wherep);
+static PT_NODE *qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static void qo_do_auto_parameterize_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
+static void qo_do_auto_parameterize_keylimit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
+static PT_NODE *qo_optimize_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 
 /*
  * qo_find_best_path_type () -
@@ -1599,7 +1607,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		      *wherep = save_where_next;
 		      continue;	/* give up */
 		    }
-		  DB_MAKE_NULL (&dbval_res);
+		  db_make_null (&dbval_res);
 		  if (tp_value_cast (dbval, &dbval_res, dom, false) != DOMAIN_COMPATIBLE)
 		    {
 		      PT_ERRORmf2 (parser, arg2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
@@ -1765,17 +1773,15 @@ qo_reduce_order_by_for (PARSER_CONTEXT * parser, PT_NODE * node)
       grp_num->info.function.all_or_distinct = PT_ALL;
 
       /* replace orderby_num() to groupby_num() */
-      node->info.query.orderby_for = pt_lambda_with_arg (parser, node->info.query.orderby_for, ord_num, grp_num, false	/* loc_check: 
-															 * DEFAULT 
-															 */ ,
+      node->info.query.orderby_for = pt_lambda_with_arg (parser, node->info.query.orderby_for, ord_num, grp_num,
+							 false /* loc_check: DEFAULT */ ,
 							 0 /* type: DEFAULT */ ,
 							 false /* dont_replace: DEFAULT */ );
 
       /* Even though node->info.q.query.q.select has no orderby_num so far, it is a safe guard to prevent potential
        * rewrite problem. */
-      node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, ord_num, grp_num, false	/* loc_check: 
-																 * DEFAULT 
-																 */ ,
+      node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, ord_num, grp_num,
+							   false /* loc_check: DEFAULT */ ,
 							   0 /* type: DEFAULT */ ,
 							   false /* dont_replace: DEFAULT */ );
 
@@ -2055,17 +2061,17 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 		  PT_EXPR_INFO_SET_FLAG (ins_num, PT_EXPR_INFO_INSTNUM_C);
 
 		  /* replace orderby_num() to inst_num() */
-		  node->info.query.orderby_for = pt_lambda_with_arg (parser, node->info.query.orderby_for, ord_num, ins_num, false	/* loc_check: 
-																	 * DEFAULT 
-																	 */ ,
-								     0 /* type: DEFAULT */ ,
-								     false /* dont_replace: DEFAULT */ );
+		  node->info.query.orderby_for =
+		    pt_lambda_with_arg (parser, node->info.query.orderby_for, ord_num, ins_num,
+					false /* loc_check: DEFAULT */ ,
+					0 /* type: DEFAULT */ ,
+					false /* dont_replace: DEFAULT */ );
 
-		  node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, ord_num, ins_num, false	/* loc_check: 
-																	 * DEFAULT 
-																	 */ ,
-								       0 /* type: DEFAULT */ ,
-								       false /* dont_replace: DEFAULT */ );
+		  node->info.query.q.select.list =
+		    pt_lambda_with_arg (parser, node->info.query.q.select.list, ord_num, ins_num,
+					false /* loc_check: DEFAULT */ ,
+					0 /* type: DEFAULT */ ,
+					false /* dont_replace: DEFAULT */ );
 
 		  node->info.query.q.select.where =
 		    parser_append_node (node->info.query.orderby_for, node->info.query.q.select.where);
@@ -2104,9 +2110,8 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 		  grp_num->info.function.all_or_distinct = PT_ALL;
 
 		  /* replace orderby_num() to groupby_num() */
-		  node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, ord_num, grp_num, false	/* loc_check: 
-																	 * DEFAULT 
-																	 */ ,
+		  node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, ord_num,
+								       grp_num, false /* loc_check: DEFAULT */ ,
 								       0 /* type: DEFAULT */ ,
 								       false /* dont_replace: DEFAULT */ );
 
@@ -2667,7 +2672,7 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	      truefalse = (node->info.expr.op == PT_IS_NOT_NULL);
 	    }
 
-	  DB_MAKE_INTEGER (&value, truefalse);
+	  db_make_int (&value, truefalse);
 	  fold = pt_dbval_to_value (parser, &value);
 	  if (fold == NULL)
 	    {
@@ -3033,7 +3038,7 @@ qo_find_like_rewrite_bound (PARSER_CONTEXT * const parser, PT_NODE * const patte
   PT_NODE *bound;
   DB_VALUE tmp_result;
 
-  DB_MAKE_NULL (&tmp_result);
+  db_make_null (&tmp_result);
 
   assert (parser != NULL);
   if (parser == NULL)
@@ -3065,15 +3070,15 @@ qo_find_like_rewrite_bound (PARSER_CONTEXT * const parser, PT_NODE * const patte
       bound->data_type = parser_copy_tree (parser, pattern->data_type);
     }
   bound->info.value.data_value.str =
-    pt_append_bytes (parser, NULL, DB_GET_STRING (&tmp_result), DB_GET_STRING_SIZE (&tmp_result));
+    pt_append_bytes (parser, NULL, db_get_string (&tmp_result), db_get_string_size (&tmp_result));
   PT_NODE_PRINT_VALUE_TO_TEXT (parser, bound);
   (void) pt_value_to_db (parser, bound);
 
   assert (bound->info.value.db_value_is_initialized);
   assert (PT_HAS_COLLATION (pattern->type_enum));
 
-  db_string_put_cs_and_collation (&(bound->info.value.db_value), DB_GET_STRING_CODESET (&tmp_result),
-				  DB_GET_STRING_COLLATION (&tmp_result));
+  db_string_put_cs_and_collation (&(bound->info.value.db_value), db_get_string_codeset (&tmp_result),
+				  db_get_string_collation (&tmp_result));
 
   db_value_clear (&tmp_result);
   return bound;
@@ -3129,7 +3134,7 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like, P
   int collation_id;
   INTL_CODESET codeset;
 
-  DB_MAKE_NULL (&compressed_pattern);
+  db_make_null (&compressed_pattern);
 
   *perform_generic_rewrite = false;
 
@@ -3141,8 +3146,8 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like, P
 
   assert (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (&pattern->info.value.db_value)));
 
-  collation_id = DB_GET_STRING_COLLATION (&pattern->info.value.db_value);
-  codeset = DB_GET_STRING_CODESET (&pattern->info.value.db_value);
+  collation_id = db_get_string_collation (&pattern->info.value.db_value);
+  codeset = db_get_string_codeset (&pattern->info.value.db_value);
 
   if (escape != NULL)
     {
@@ -3190,7 +3195,7 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like, P
     }
 
   pattern->info.value.data_value.str =
-    pt_append_bytes (parser, NULL, DB_GET_STRING (&compressed_pattern), DB_GET_STRING_SIZE (&compressed_pattern));
+    pt_append_bytes (parser, NULL, db_get_string (&compressed_pattern), db_get_string_size (&compressed_pattern));
   pattern_str = (char *) pattern->info.value.data_value.str->bytes;
   pattern_size = pattern->info.value.data_value.str->length;
   intl_char_count ((unsigned char *) pattern_str, pattern_size, codeset, &pattern_length);
@@ -3433,7 +3438,6 @@ qo_rewrite_like_for_index_scan (PARSER_CONTEXT * const parser, PT_NODE * like, P
 {
   PT_NODE *between = NULL;
   PT_NODE *between_and = NULL;
-  PT_NODE *escape_expr = NULL;
   PT_NODE *lower = NULL;
   PT_NODE *upper = NULL;
   PT_NODE *match_col = NULL;
@@ -4126,7 +4130,7 @@ qo_compare_dbvalue_with_optype (DB_VALUE * val1, PT_OP_TYPE op1, DB_VALUE * val2
       return (op2 == op1) ? CompResultEqual : CompResultLess;
     }
 
-  rc = (DB_VALUE_COMPARE_RESULT) tp_value_compare (val1, val2, 1, 1);
+  rc = tp_value_compare (val1, val2, 1, 1);
   if (rc == DB_EQ)
     {
       /* (val1, op1) == (val2, op2) */
@@ -4714,7 +4718,7 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 		      DB_VALUE db_zero;
 		      parser_free_tree (parser, dnf_node->info.expr.arg1);
 		      parser_free_tree (parser, dnf_node->info.expr.arg2);
-		      DB_MAKE_INT (&db_zero, 0);
+		      db_make_int (&db_zero, 0);
 
 		      dnf_node->info.expr.arg1 = pt_dbval_to_value (parser, &db_zero);
 		      dnf_node->info.expr.arg2 = pt_dbval_to_value (parser, &db_zero);
@@ -6413,8 +6417,6 @@ qo_can_generate_single_table_connect_by (PARSER_CONTEXT * parser, PT_NODE * node
   PT_NODE *name = NULL;
   PT_NODE *spec = NULL;
   PT_NODE *select = NULL;
-  DB_OBJECT *mobj = NULL;
-  SM_CLASS *class_ = NULL;
 
   assert (node->node_type == PT_SELECT && node->info.query.q.select.connect_by != NULL);
 
@@ -6476,6 +6478,53 @@ qo_can_generate_single_table_connect_by (PARSER_CONTEXT * parser, PT_NODE * node
   return true;
 }
 
+
+/*
+ * qo_move_on_clause_of_explicit_join_to_where_clause () - move on clause of explicit join to where clause
+ *   return: void
+ *   parser(in): parser environment
+ *   fromp(in/out): &from of SELECT, &spec of UPDATE/DELETE
+ *   wherep(in/out): &where of SELECT/UPDATE/DELETE
+ *
+ * NOTE: It moves on clause of explicit join for SELECT/UPDATE/DELETE to where clase for temporary purpose.
+ *       qo_optimize_queries_post will restore them after several optimizations, for instance, range merge/intersection,
+ *       auto-parameterization.
+ *
+ */
+static void
+qo_move_on_clause_of_explicit_join_to_where_clause (PARSER_CONTEXT * parser, PT_NODE ** fromp, PT_NODE ** wherep)
+{
+  PT_NODE *t_node, *spec;
+
+  t_node = *wherep;
+  while (t_node != NULL && t_node->next != NULL)
+    {
+      t_node = t_node->next;
+    }
+
+  for (spec = *fromp; spec != NULL; spec = spec->next)
+    {
+      if (spec->node_type == PT_SPEC && spec->info.spec.on_cond != NULL)
+	{
+	  if (t_node == NULL)
+	    {
+	      t_node = *wherep = spec->info.spec.on_cond;
+	    }
+	  else
+	    {
+	      t_node->next = spec->info.spec.on_cond;
+	    }
+
+	  spec->info.spec.on_cond = NULL;
+
+	  while (t_node->next != NULL)
+	    {
+	      t_node = t_node->next;
+	    }
+	}
+    }
+}
+
 /*
  * qo_optimize_queries () - checks all subqueries for rewrite optimizations
  *   return: PT_NODE *
@@ -6489,12 +6538,11 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 {
   int level, seqno = 0;
   PT_NODE *next, *pred, **wherep, **havingp, *dummy;
-  PT_NODE *t_node, *spec, *derived_table;
+  PT_NODE *spec, *derived_table;
   PT_NODE **startwithp, **connectbyp, **aftercbfilterp;
   PT_NODE *limit, *derived;
   PT_NODE **merge_upd_wherep, **merge_ins_wherep, **merge_del_wherep;
   PT_NODE **orderby_for_p;
-  PT_NODE **limit_ptr;
   PT_NODE **show_argp;
   bool call_auto_parameterize = false;
 
@@ -6537,30 +6585,9 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
       /* Put all join conditions together with WHERE clause for rewrite optimization. But we can distinguish a join
        * condition from each other and from WHERE clause by location information that were marked at 'pt_bind_names()'. 
        * We'll recover the parse tree of join conditions using the location information in shortly. */
-      t_node = node->info.query.q.select.where;
-      while (t_node && t_node->next)
-	{
-	  t_node = t_node->next;
-	}
-      for (spec = node->info.query.q.select.from; spec; spec = spec->next)
-	{
-	  if (spec->node_type == PT_SPEC && spec->info.spec.on_cond)
-	    {
-	      if (!t_node)
-		{
-		  t_node = node->info.query.q.select.where = spec->info.spec.on_cond;
-		}
-	      else
-		{
-		  t_node->next = spec->info.spec.on_cond;
-		}
-	      spec->info.spec.on_cond = NULL;
-	      while (t_node->next)
-		{
-		  t_node = t_node->next;
-		}
-	    }
-	}
+      qo_move_on_clause_of_explicit_join_to_where_clause (parser, &node->info.query.q.select.from,
+							  &node->info.query.q.select.where);
+
       wherep = &node->info.query.q.select.where;
       havingp = &node->info.query.q.select.having;
       if (node->info.query.q.select.start_with)
@@ -6586,12 +6613,18 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
       break;
 
     case PT_UPDATE:
+      qo_move_on_clause_of_explicit_join_to_where_clause (parser, &node->info.update.spec,
+							  &node->info.update.search_cond);
+
       wherep = &node->info.update.search_cond;
       orderby_for_p = &node->info.update.orderby_for;
       qo_rewrite_index_hints (parser, node);
       break;
 
     case PT_DELETE:
+      qo_move_on_clause_of_explicit_join_to_where_clause (parser, &node->info.delete_.spec,
+							  &node->info.delete_.search_cond);
+
       wherep = &node->info.delete_.search_cond;
       qo_rewrite_index_hints (parser, node);
       break;
@@ -6629,18 +6662,28 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	  limit = pt_limit_to_numbering_expr (parser, node->info.query.limit, PT_INST_NUM, false);
 	  if (limit != NULL)
 	    {
+	      PT_NODE *limit_node;
+
 	      node->info.query.rewrite_limit = 0;
+
+	      /* to move limit clause to derived */
+	      limit_node = node->info.query.limit;
+	      node->info.query.limit = NULL;
 
 	      derived = mq_rewrite_query_as_derived (parser, node);
 	      if (derived != NULL)
 		{
 		  PT_NODE_MOVE_NUMBER_OUTERLINK (derived, node);
+
 		  assert (derived->info.query.q.select.where == NULL);
 		  derived->info.query.q.select.where = limit;
-		  derived->info.query.limit = parser_copy_tree_list (parser, node->info.query.limit);
+
+		  wherep = &derived->info.query.q.select.where;
 
 		  node = derived;
 		}
+
+	      node->info.query.limit = limit_node;
 	    }
 	}
 
@@ -7205,52 +7248,16 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
       *show_argp = result_list;
     }
 
-  limit_ptr = NULL;
   /* auto parameterize for limit clause */
-  switch (node->node_type)
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type) || node->node_type == PT_UPDATE || node->node_type == PT_DELETE)
     {
-    case PT_UNION:
-    case PT_DIFFERENCE:
-    case PT_INTERSECTION:
-    case PT_SELECT:
-      if (node->info.query.limit)
+      qo_do_auto_parameterize_limit_clause (parser, node);
+
+      /* auto parameterize for keylimit clause */
+      if (node->node_type == PT_SELECT || node->node_type == PT_UPDATE || node->node_type == PT_DELETE)
 	{
-	  limit_ptr = &node->info.query.limit;
-	  /* It is enough to check only the count of limit clause whether the query generates an empty result set. */
-	  if (node->info.query.limit->next)
-	    {
-	      limit_ptr = &node->info.query.limit->next;
-	    }
+	  qo_do_auto_parameterize_keylimit_clause (parser, node);
 	}
-      break;
-    case PT_UPDATE:
-      if (node->info.update.limit)
-	{
-	  limit_ptr = &node->info.update.limit;
-	  /* It is enough to check only the count of limit clause whether the query generates an empty result set. */
-	  if (node->info.update.limit->next)
-	    {
-	      limit_ptr = &node->info.update.limit->next;
-	    }
-	}
-      break;
-    case PT_DELETE:
-      if (node->info.delete_.limit)
-	{
-	  limit_ptr = &node->info.delete_.limit;
-	  /* It is enough to check only the count of limit clause whether the query generates an empty result set. */
-	  if (node->info.delete_.limit->next)
-	    {
-	      limit_ptr = &node->info.delete_.limit->next;
-	    }
-	}
-      break;
-    default:
-      break;
-    }
-  if (limit_ptr != NULL && pt_is_const_not_hostvar (*limit_ptr) && !PT_IS_NULL_NODE (*limit_ptr))
-    {
-      *limit_ptr = pt_rewrite_to_auto_param (parser, *limit_ptr);
     }
 
   if (node->node_type == PT_SELECT)
@@ -7267,6 +7274,236 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
   return node;
 }
 
+static void
+qo_do_auto_parameterize_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *limit_offsetp, *limit_row_countp;
+  PT_NODE *new_limit_offsetp, *new_limit_row_countp;
+
+  if (node == NULL)
+    {
+      return;
+    }
+
+  limit_offsetp = NULL;
+  limit_row_countp = NULL;
+
+  switch (node->node_type)
+    {
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+    case PT_SELECT:
+      if (node->info.query.limit == NULL)
+	{
+	  return;
+	}
+
+      if (node->info.query.limit->next != NULL)
+	{
+	  limit_offsetp = node->info.query.limit;
+	  limit_row_countp = node->info.query.limit->next;
+	  limit_offsetp->next = NULL;	/* cut */
+	}
+      else
+	{
+	  limit_offsetp = NULL;
+	  limit_row_countp = node->info.query.limit;
+	}
+      break;
+
+    case PT_UPDATE:
+      if (node->info.update.limit == NULL)
+	{
+	  return;
+	}
+
+      if (node->info.update.limit->next != NULL)
+	{
+	  limit_offsetp = node->info.update.limit;
+	  limit_row_countp = node->info.update.limit->next;
+	  limit_offsetp->next = NULL;	/* cut */
+	}
+      else
+	{
+	  limit_offsetp = NULL;
+	  limit_row_countp = node->info.update.limit;
+	}
+      break;
+
+    case PT_DELETE:
+      if (node->info.delete_.limit == NULL)
+	{
+	  return;
+	}
+
+      if (node->info.delete_.limit->next != NULL)
+	{
+	  limit_offsetp = node->info.delete_.limit;
+	  limit_row_countp = node->info.delete_.limit->next;
+	  limit_offsetp->next = NULL;	/* cut */
+	}
+      else
+	{
+	  limit_offsetp = NULL;
+	  limit_row_countp = node->info.delete_.limit;
+	}
+      break;
+
+    default:
+      return;
+    }
+
+  new_limit_offsetp = limit_offsetp;
+  if (limit_offsetp != NULL && !PT_IS_NULL_NODE (limit_offsetp))
+    {
+      if (pt_is_const_not_hostvar (limit_offsetp))
+	{
+	  new_limit_offsetp = pt_rewrite_to_auto_param (parser, limit_offsetp);
+	}
+#if 0
+      else if (PT_IS_EXPR_NODE (limit_offsetp))
+	{
+	  /* We may optimize to auto parameterize expressions in limit clause. However, I don't think it is practical.
+	   * Full constant expressions, e.g, (0+2) is folded as constant and eventually parameterized as a hostvar.
+	   * Expressions which include a const would be mixed use of a constant and a hostvar, e.g, (0+?).
+	   * If you really want to optimize this case too, you can add a function to parameterize an expression node.
+	   */
+	}
+#endif
+    }
+
+  new_limit_row_countp = limit_row_countp;
+  if (limit_row_countp != NULL && !PT_IS_NULL_NODE (limit_row_countp))
+    {
+      if (pt_is_const_not_hostvar (limit_row_countp))
+	{
+	  new_limit_row_countp = pt_rewrite_to_auto_param (parser, limit_row_countp);
+	}
+#if 0
+      else if (PT_IS_EXPR_NODE (limit_row_countp))
+	{
+	  /* We may optimize to auto parameterize expressions in limit clause. However, I don't think it is practical.
+	   * Full constant expressions, e.g, (0+2) is folded as constant and eventually parameterized as a hostvar.
+	   * Expressions which include a const would be mixed use of a constant and a hostvar, e.g, (0+?).
+	   * If you really want to optimize this case too, you can add a function to parameterize an expression node.
+	   */
+	}
+#endif
+    }
+
+  switch (node->node_type)
+    {
+    case PT_UPDATE:
+      if (limit_offsetp != NULL)
+	{
+	  node->info.update.limit = new_limit_offsetp;
+	  node->info.update.limit->next = new_limit_row_countp;
+	}
+      else
+	{
+	  node->info.update.limit = new_limit_row_countp;
+	  node->info.update.limit->next = NULL;
+	}
+      break;
+    case PT_DELETE:
+      if (limit_offsetp != NULL)
+	{
+	  node->info.delete_.limit = new_limit_offsetp;
+	  node->info.delete_.limit->next = new_limit_row_countp;
+	}
+      else
+	{
+	  node->info.delete_.limit = new_limit_row_countp;
+	  node->info.delete_.limit->next = NULL;
+	}
+      break;
+    default:
+      if (limit_offsetp != NULL)
+	{
+	  node->info.query.limit = new_limit_offsetp;
+	  node->info.query.limit->next = new_limit_row_countp;
+	}
+      else
+	{
+	  node->info.query.limit = new_limit_row_countp;
+	  node->info.query.limit->next = NULL;
+	}
+      break;
+    }
+}
+
+static void
+qo_do_auto_parameterize_keylimit_clause (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *using_index = NULL;
+  PT_NODE *key_limit_lower_boundp, *key_limit_upper_boundp;
+
+  if (node == NULL)
+    {
+      return;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      using_index = node->info.query.q.select.using_index;
+      break;
+
+    case PT_UPDATE:
+      using_index = node->info.update.using_index;
+      break;
+
+    case PT_DELETE:
+      using_index = node->info.delete_.using_index;
+      break;
+
+    default:
+      return;
+    }
+
+  while (using_index != NULL)
+    {
+      /* it may include keylimit clause */
+
+      key_limit_lower_boundp = key_limit_upper_boundp = NULL;
+
+      if (using_index->info.name.indx_key_limit != NULL)
+	{
+	  key_limit_upper_boundp = using_index->info.name.indx_key_limit;
+	  key_limit_lower_boundp = using_index->info.name.indx_key_limit->next;
+
+	  using_index->info.name.indx_key_limit->next = NULL;
+	}
+
+      if (key_limit_upper_boundp != NULL)
+	{
+	  if (pt_is_const_not_hostvar (key_limit_upper_boundp) && !PT_IS_NULL_NODE (key_limit_upper_boundp))
+	    {
+	      using_index->info.name.indx_key_limit = pt_rewrite_to_auto_param (parser, key_limit_upper_boundp);
+	    }
+	  else
+	    {
+	      using_index->info.name.indx_key_limit = key_limit_upper_boundp;
+	    }
+	}
+
+      if (key_limit_lower_boundp != NULL)
+	{
+	  if (pt_is_const_not_hostvar (key_limit_lower_boundp) && !PT_IS_NULL_NODE (key_limit_lower_boundp))
+	    {
+	      using_index->info.name.indx_key_limit->next = pt_rewrite_to_auto_param (parser, key_limit_lower_boundp);
+	    }
+	  else
+	    {
+	      using_index->info.name.indx_key_limit->next = key_limit_lower_boundp;
+	    }
+	}
+
+      using_index = using_index->next;
+    }
+}
+
 /*
  * qo_optimize_queries_post () -
  *   return:
@@ -7274,35 +7511,64 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
  *   tree(in):
  *   arg(in):
  *   continue_walk(in):
+ * NOTE: see qo_move_on_clause_of_explicit_join_to_where_clause
  */
 static PT_NODE *
 qo_optimize_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   PT_NODE *node, *prev, *next, *spec;
+  PT_NODE **fromp, **wherep;
   short location;
 
   switch (tree->node_type)
     {
     case PT_SELECT:
+      fromp = &tree->info.query.q.select.from;
+      wherep = &tree->info.query.q.select.where;
+      break;
+    case PT_UPDATE:
+      fromp = &tree->info.update.spec;
+      wherep = &tree->info.update.search_cond;
+      break;
+    case PT_DELETE:
+      fromp = &tree->info.delete_.spec;
+      wherep = &tree->info.delete_.search_cond;
+      break;
+    default:
+      fromp = NULL;
+      wherep = NULL;
+      break;
+    }
+
+  if (wherep != NULL)
+    {
+      assert (fromp != NULL);
+
       prev = NULL;
-      for (node = tree->info.query.q.select.where; node; node = next)
+      for (node = *wherep; node != NULL; node = next)
 	{
 	  next = node->next;
 	  node->next = NULL;
 
 	  if (node->node_type == PT_EXPR)
-	    location = node->info.expr.location;
+	    {
+	      location = node->info.expr.location;
+	    }
 	  else if (node->node_type == PT_VALUE)
-	    location = node->info.value.location;
+	    {
+	      location = node->info.value.location;
+	    }
 	  else
-	    location = -1;
+	    {
+	      location = -1;
+	    }
 
 	  if (location > 0)
 	    {
-	      for (spec = tree->info.query.q.select.from; spec && spec->info.spec.location != location;
-		   spec = spec->next)
-		/* nop */ ;
-	      if (spec)
+	      for (spec = *fromp; spec && spec->info.spec.location != location; spec = spec->next)
+		;		/* nop */
+
+	      if (spec != NULL)
 		{
 		  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER
 		      || spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER || spec->info.spec.join_type == PT_JOIN_INNER)
@@ -7310,13 +7576,13 @@ qo_optimize_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, in
 		      node->next = spec->info.spec.on_cond;
 		      spec->info.spec.on_cond = node;
 
-		      if (prev)
+		      if (prev != NULL)
 			{
 			  prev->next = next;
 			}
 		      else
 			{
-			  tree->info.query.q.select.where = next;
+			  *wherep = next;
 			}
 		    }
 		  else
@@ -7336,13 +7602,13 @@ qo_optimize_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, in
 			{
 			  parser_free_tree (parser, node);
 
-			  if (prev)
+			  if (prev != NULL)
 			    {
 			      prev->next = next;
 			    }
 			  else
 			    {
-			      tree->info.query.q.select.where = next;
+			      *wherep = next;
 			    }
 			}
 		      else
@@ -7368,13 +7634,13 @@ qo_optimize_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, in
 		{
 		  parser_free_tree (parser, node);
 
-		  if (prev)
+		  if (prev != NULL)
 		    {
 		      prev->next = next;
 		    }
 		  else
 		    {
-		      tree->info.query.q.select.where = next;
+		      *wherep = next;
 		    }
 		}
 	      else
@@ -7384,10 +7650,6 @@ qo_optimize_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, in
 		}
 	    }
 	}
-
-      break;
-    default:
-      break;
     }
 
   return tree;

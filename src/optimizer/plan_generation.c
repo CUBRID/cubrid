@@ -37,6 +37,7 @@
 #include "query_planner.h"
 #include "query_bitset.h"
 #include "system_parameter.h"
+#include "parser_support.h"
 
 typedef int (*ELIGIBILITY_FN) (QO_TERM *);
 
@@ -3385,7 +3386,7 @@ qo_check_iscan_for_multi_range_opt (QO_PLAN * plan)
   int first_col_idx_pos = -1, i = 0;
   PT_NODE *orderby_nodes = NULL, *point = NULL, *name = NULL;
   PARSER_CONTEXT *parser = NULL;
-  bool seen = false, reverse = false;
+  bool reverse = false;
   PT_NODE *order_by = NULL;
   PT_MISC_TYPE all_distinct;
 
@@ -3532,7 +3533,7 @@ static int
 qo_check_plan_index_for_multi_range_opt (PT_NODE * orderby_nodes, PT_NODE * orderby_sort_list, QO_PLAN * plan,
 					 bool * is_valid, int *first_col_idx_pos, bool * reverse)
 {
-  int error = NO_ERROR, i = 0, seg_idx = -1;
+  int i = 0, seg_idx = -1;
   QO_INDEX_ENTRY *index_entryp = NULL;
   QO_ENV *env = NULL;
   PT_NODE *orderby_node = NULL;
@@ -3996,7 +3997,6 @@ qo_check_seg_belongs_to_range_term (QO_PLAN * subplan, QO_ENV * env, int seg_idx
 	{
 	  if (u == seg_idx)
 	    {
-	      QO_SEGMENT *seg = QO_ENV_SEG (env, u);
 	      PT_NODE *node = QO_TERM_PT_EXPR (termp);
 	      if (!node)
 		{
@@ -4027,7 +4027,6 @@ qo_check_seg_belongs_to_range_term (QO_PLAN * subplan, QO_ENV * env, int seg_idx
 	{
 	  if (u == seg_idx)
 	    {
-	      QO_SEGMENT *seg = QO_ENV_SEG (env, u);
 	      PT_NODE *node = QO_TERM_PT_EXPR (termp);
 	      if (!node)
 		{
@@ -4058,7 +4057,6 @@ qo_check_seg_belongs_to_range_term (QO_PLAN * subplan, QO_ENV * env, int seg_idx
 	{
 	  if (u == seg_idx)
 	    {
-	      QO_SEGMENT *seg = QO_ENV_SEG (env, u);
 	      PT_NODE *node = QO_TERM_PT_EXPR (termp);
 	      if (!node)
 		{
@@ -4549,7 +4547,6 @@ make_sort_limit_proc (QO_ENV * env, QO_PLAN * plan, PT_NODE * namelist, XASL_NOD
     {
       /* If orderbynum_val is NULL, we're probably somewhere in a subplan and orderbynum_val is set for the upper XASL
        * level. Try to find the ORDERBY_NUM node and use the node->etc pointer which is set to the orderby_num val */
-      PT_NODE *orderby_num = NULL;
       if (statement->info.query.orderby_for == NULL)
 	{
 	  /* we should not create a sort_limit proc without an orderby_for predicate. */
@@ -4622,9 +4619,8 @@ cleanup:
 static PT_NODE *
 qo_get_orderby_num_upper_bound_node (PARSER_CONTEXT * parser, PT_NODE * orderby_for, bool * is_new_node)
 {
-  PT_NODE *upper_bound = NULL, *left = NULL, *right = NULL;
+  PT_NODE *left = NULL, *right = NULL;
   PT_NODE *save_next;
-  PT_NODE *orderby_num = NULL, *value_node = NULL;
   PT_OP_TYPE op;
   bool free_left = false, free_right = false;
   *is_new_node = false;

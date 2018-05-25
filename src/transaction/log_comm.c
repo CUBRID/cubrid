@@ -40,6 +40,9 @@
 #include "misc_string.h"
 #include "intl_support.h"
 #include "log_impl.h"
+#if defined (SERVER_MODE)
+#include "vacuum.h"
+#endif /* SERVER_MODE */
 #if !defined(WINDOWS)
 #if defined(CS_MODE)
 #include "db.h"
@@ -49,6 +52,9 @@
 #include "connection_defs.h"
 #endif /* SERVER_MODE */
 #endif /* !WINDOWS */
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"
+#endif // SERVER_MODE
 
 struct tran_state_name
 {
@@ -278,19 +284,18 @@ log_does_allow_replication (void)
   return true;
 
 #elif defined(SERVER_MODE)	/* CS_MODE */
-  static int ha_mode = -1;
-  int ha_state;
+  HA_SERVER_STATE ha_state;
 
   /* Vacuum workers are not allowed to reach this code */
   assert (!VACUUM_IS_THREAD_VACUUM (thread_get_thread_entry_info ()));
 
-  if (ha_mode == -1)
+  if (HA_DISABLED ())
     {
-      ha_mode = prm_get_integer_value (PRM_ID_HA_MODE);
+      return false;
     }
 
   ha_state = css_ha_server_state ();
-  if (ha_mode == HA_MODE_OFF || (ha_state != HA_SERVER_STATE_ACTIVE && ha_state != HA_SERVER_STATE_TO_BE_STANDBY))
+  if (ha_state != HA_SERVER_STATE_ACTIVE && ha_state != HA_SERVER_STATE_TO_BE_STANDBY)
     {
       return false;
     }

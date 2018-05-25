@@ -27,6 +27,7 @@
 #include "config.h"
 #include <stdlib.h>
 #include "error_code.h"
+#include "dbtype_def.h"
 
 #define IS_VALID_ISOLATION_LEVEL(isolation_level) \
     (TRAN_MINVALUE_ISOLATION <= (isolation_level) \
@@ -34,102 +35,8 @@
 
 #define TRAN_DEFAULT_ISOLATION_LEVEL()	(TRAN_DEFAULT_ISOLATION)
 
-typedef enum
-{
-  TRAN_UNKNOWN_ISOLATION = 0x00,	/* 0 0000 */
+/* UNUSED PART --> */
 
-  TRAN_READ_COMMITTED = 0x04,	/* 0 0100 */
-  TRAN_REP_CLASS_COMMIT_INSTANCE = 0x04,	/* Alias of above */
-  TRAN_CURSOR_STABILITY = 0x04,	/* Alias of above */
-
-  TRAN_REPEATABLE_READ = 0x05,	/* 0 0101 */
-  TRAN_REP_READ = 0x05,		/* Alias of above */
-  TRAN_REP_CLASS_REP_INSTANCE = 0x05,	/* Alias of above */
-  TRAN_DEGREE_2_9999_CONSISTENCY = 0x05,	/* Alias of above */
-
-  TRAN_SERIALIZABLE = 0x06,	/* 0 0110 */
-  TRAN_DEGREE_3_CONSISTENCY = 0x06,	/* Alias of above */
-  TRAN_NO_PHANTOM_READ = 0x06,	/* Alias of above */
-
-  TRAN_DEFAULT_ISOLATION = TRAN_READ_COMMITTED,
-  MVCC_TRAN_DEFAULT_ISOLATION = TRAN_READ_COMMITTED,
-
-  TRAN_MINVALUE_ISOLATION = 0x04,	/* internal use only */
-  TRAN_MAXVALUE_ISOLATION = 0x06	/* internal use only */
-} DB_TRAN_ISOLATION;
-
-typedef enum
-{
-  CUBRID_STMT_ALTER_CLASS,
-  CUBRID_STMT_ALTER_SERIAL,
-  CUBRID_STMT_COMMIT_WORK,
-  CUBRID_STMT_REGISTER_DATABASE,
-  CUBRID_STMT_CREATE_CLASS,
-  CUBRID_STMT_CREATE_INDEX,
-  CUBRID_STMT_CREATE_TRIGGER,
-  CUBRID_STMT_CREATE_SERIAL,
-  CUBRID_STMT_DROP_DATABASE,
-  CUBRID_STMT_DROP_CLASS,
-  CUBRID_STMT_DROP_INDEX,
-  CUBRID_STMT_DROP_LABEL,
-  CUBRID_STMT_DROP_TRIGGER,
-  CUBRID_STMT_DROP_SERIAL,
-  CUBRID_STMT_EVALUATE,
-  CUBRID_STMT_RENAME_CLASS,
-  CUBRID_STMT_ROLLBACK_WORK,
-  CUBRID_STMT_GRANT,
-  CUBRID_STMT_REVOKE,
-  CUBRID_STMT_UPDATE_STATS,
-  CUBRID_STMT_INSERT,
-  CUBRID_STMT_SELECT,
-  CUBRID_STMT_UPDATE,
-  CUBRID_STMT_DELETE,
-  CUBRID_STMT_CALL,
-  CUBRID_STMT_GET_ISO_LVL,
-  CUBRID_STMT_GET_TIMEOUT,
-  CUBRID_STMT_GET_OPT_LVL,
-  CUBRID_STMT_SET_OPT_LVL,
-  CUBRID_STMT_SCOPE,
-  CUBRID_STMT_GET_TRIGGER,
-  CUBRID_STMT_SET_TRIGGER,
-  CUBRID_STMT_SAVEPOINT,
-  CUBRID_STMT_PREPARE,
-  CUBRID_STMT_ATTACH,
-  CUBRID_STMT_USE,
-  CUBRID_STMT_REMOVE_TRIGGER,
-  CUBRID_STMT_RENAME_TRIGGER,
-  CUBRID_STMT_ON_LDB,
-  CUBRID_STMT_GET_LDB,
-  CUBRID_STMT_SET_LDB,
-  CUBRID_STMT_GET_STATS,
-  CUBRID_STMT_CREATE_USER,
-  CUBRID_STMT_DROP_USER,
-  CUBRID_STMT_ALTER_USER,
-  CUBRID_STMT_SET_SYS_PARAMS,
-  CUBRID_STMT_ALTER_INDEX,
-
-  CUBRID_STMT_CREATE_STORED_PROCEDURE,
-  CUBRID_STMT_DROP_STORED_PROCEDURE,
-  CUBRID_STMT_PREPARE_STATEMENT,
-  CUBRID_STMT_EXECUTE_PREPARE,
-  CUBRID_STMT_DEALLOCATE_PREPARE,
-  CUBRID_STMT_TRUNCATE,
-  CUBRID_STMT_DO,
-  CUBRID_STMT_SELECT_UPDATE,
-  CUBRID_STMT_SET_SESSION_VARIABLES,
-  CUBRID_STMT_DROP_SESSION_VARIABLES,
-  CUBRID_STMT_MERGE,
-  CUBRID_STMT_SET_NAMES,
-  CUBRID_STMT_ALTER_STORED_PROCEDURE,
-  CUBRID_STMT_ALTER_STORED_PROCEDURE_OWNER = CUBRID_STMT_ALTER_STORED_PROCEDURE,
-  CUBRID_STMT_KILL,
-  CUBRID_STMT_VACUUM,
-  CUBRID_STMT_SET_TIMEZONE,
-
-  CUBRID_MAX_STMT_TYPE
-} CUBRID_STMT_TYPE;
-
-typedef enum ci_type CI_TYPE;
 typedef UINT64 CI_CONNECTION;
 typedef UINT64 CI_STATEMENT;
 typedef UINT64 CI_PARAMETER_METADATA;
@@ -151,12 +58,6 @@ struct ci_time_s
   short millisecond;
 };
 
-typedef enum ci_conn_option CI_CONNECTION_OPTION;
-typedef enum ci_stmt_option CI_STATEMENT_OPTION;
-typedef enum ci_fetch_position CI_FETCH_POSITION;
-typedef enum ci_rmeta_info_type CI_RMETA_INFO_TYPE;
-typedef enum ci_pmeta_info_type CI_PMETA_INFO_TYPE;
-typedef enum ci_param_mode CI_PARAMETER_MODE;
 
 struct ci_oid_s
 {
@@ -171,6 +72,7 @@ enum ci_fetch_position
   CI_FETCH_POSITION_CURRENT = 2,
   CI_FETCH_POSITION_LAST = 3
 };
+typedef enum ci_fetch_position CI_FETCH_POSITION;
 
 enum ci_type
 {
@@ -195,6 +97,7 @@ enum ci_type
   CI_TYPE_BIGINT,
   CI_TYPE_DATETIME
 };
+typedef enum ci_type CI_TYPE;
 
 enum ci_conn_option
 {
@@ -204,6 +107,7 @@ enum ci_conn_option
   CI_CONNECTION_OPTION_TRAN_ISOLATION_LV = 4,
   CI_CONNECTION_OPTION_AUTOCOMMIT = 5
 };
+typedef enum ci_conn_option CI_CONNECTION_OPTION;
 
 enum ci_stmt_option
 {
@@ -214,6 +118,7 @@ enum ci_stmt_option
   CI_STATEMENT_OPTION_GET_GENERATED_KEYS = 5,
   CI_STATEMENT_OPTION_LAZY_EXEC = 6,
 };
+typedef enum ci_stmt_option CI_STATEMENT_OPTION;
 
 enum ci_rmeta_info_type
 {
@@ -227,6 +132,7 @@ enum ci_rmeta_info_type
   CI_RMETA_INFO_IS_NULLABLE = 9,
   CI_RMETA_INFO_IS_WRITABLE = 10
 };
+typedef enum ci_rmeta_info_type CI_RMETA_INFO_TYPE;
 
 enum ci_pmeta_info_type
 {
@@ -236,12 +142,14 @@ enum ci_pmeta_info_type
   CI_PMETA_INFO_SCALE = 4,
   CI_PMETA_INFO_NULLABLE = 5
 };
+typedef enum ci_pmeta_info_type CI_PMETA_INFO_TYPE;
 
 enum ci_param_mode
 {
   CI_PARAM_MODE_IN = 0,
   CI_PARAM_MODE_OUT = 1
 };
+typedef enum ci_param_mode CI_PARAMETER_MODE;
 
 extern int ci_create_connection (CI_CONNECTION * conn);
 extern int ci_conn_connect (CI_CONNECTION conn, const char *host, unsigned short port, const char *databasename,
@@ -321,5 +229,7 @@ extern int ci_collection_get_elem_domain_info (CI_COLLECTION coll, long pos, CI_
 					       int *scale);
 extern int ci_collection_get (CI_COLLECTION coll, long pos, CI_TYPE type, void *addr, size_t len, size_t * outlen,
 			      bool * isnull);
+
+/* UNUSED PART <-- */
 
 #endif /* _CUBRID_API_H_ */

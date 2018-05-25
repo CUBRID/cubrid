@@ -1,0 +1,18 @@
+image:
+  - Visual Studio 2017
+
+environment:
+  CMAKE_GENERATOR: "Visual Studio 15 2017 Win64"
+  BUILD_TYPE: RelWithDebInfo
+
+matrix:
+  fast_finish: true
+
+install:
+  - cinst ant -i
+  - cinst winflexbison -i
+
+build_script:
+  - cmake -E make_directory build
+  - cmake -E chdir build cmake -G "%CMAKE_GENERATOR%" -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ..
+  - cmake --build build --config %BUILD_TYPE%

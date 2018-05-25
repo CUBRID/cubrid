@@ -32,6 +32,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <assert.h>
 
 #include "chartype.h"
 #include "error_manager.h"
@@ -55,8 +56,7 @@
 #include "view_transform.h"
 #include "network_interface_cl.h"
 
-/* Include this last; it redefines some macros! */
-#include "dbval.h"
+#include "dbtype.h"
 
 /*
  * OBJ_MAX_ARGS
@@ -554,15 +554,15 @@ assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, SETREF * setref)
 	    {
 	    case DB_TYPE_SET:
 	    default:
-	      DB_MAKE_SET (&val, new_set);
+	      db_make_set (&val, new_set);
 	      break;
 
 	    case DB_TYPE_MULTISET:
-	      DB_MAKE_MULTISET (&val, new_set);
+	      db_make_multiset (&val, new_set);
 	      break;
 
 	    case DB_TYPE_SEQUENCE:
-	      DB_MAKE_SEQUENCE (&val, new_set);
+	      db_make_sequence (&val, new_set);
 	      break;
 	    }
 
@@ -583,7 +583,7 @@ assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, SETREF * setref)
 	   * remove ownership information in the current set,
 	   * need to be able to free this !!!
 	   */
-	  current_set = DB_GET_SET (&att->default_value.value);
+	  current_set = db_get_set (&att->default_value.value);
 	  if (current_set != NULL)
 	    {
 	      error = set_disconnect (current_set);
@@ -599,21 +599,21 @@ assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, SETREF * setref)
 		    {
 		    case DB_TYPE_SET:
 		    default:
-		      DB_MAKE_SET (&att->default_value.value, new_set);
+		      db_make_set (&att->default_value.value, new_set);
 		      break;
 
 		    case DB_TYPE_MULTISET:
-		      DB_MAKE_MULTISET (&att->default_value.value, new_set);
+		      db_make_multiset (&att->default_value.value, new_set);
 		      break;
 
 		    case DB_TYPE_SEQUENCE:
-		      DB_MAKE_SEQUENCE (&att->default_value.value, new_set);
+		      db_make_sequence (&att->default_value.value, new_set);
 		      break;
 		    }
 		}
 	      else
 		{
-		  DB_MAKE_NULL (&att->default_value.value);
+		  db_make_null (&att->default_value.value);
 		}
 
 	      if (new_set != NULL)
@@ -662,11 +662,11 @@ obj_assign_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * value)
     {
       if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (att->domain)))
 	{
-	  error = assign_set_value (op, att, mem, DB_GET_SET (value));
+	  error = assign_set_value (op, att, mem, db_get_set (value));
 	}
       else
 	{
-	  if (att->domain->type == tp_Type_object && !op->is_vid && (mop = DB_GET_OBJECT (value))
+	  if (att->domain->type == tp_Type_object && !op->is_vid && (mop = db_get_object (value))
 	      && WS_MOP_IS_NULL (mop))
 	    {
 	      error = assign_null_value (op, att, mem);
@@ -732,7 +732,7 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE * value, SM
   MOBJ obj, ref_obj;
   MOP class_mop = NULL;
 
-  DB_MAKE_NULL (&base_value);
+  db_make_null (&base_value);
 
   if (op->is_temp)
     {
@@ -744,7 +744,7 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE * value, SM
 
       if (class_->triggers != NULL)
 	{
-	  is_class = locator_is_class (op, 1);
+	  is_class = locator_is_class (op, DB_FETCH_WRITE);
 	  if (is_class < 0)
 	    {
 	      return is_class;
@@ -1085,17 +1085,17 @@ get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * source, DB_V
   current = NULL;
   if (mem != NULL)
     {
-      DB_MAKE_OBJECT (&curval, NULL);
+      db_make_object (&curval, NULL);
       if (PRIM_GETMEM (att->domain->type, att->domain, mem, &curval))
 	{
 	  ASSERT_ERROR_AND_SET (rc);
 	  return rc;
 	}
-      current = DB_GET_OBJECT (&curval);
+      current = db_get_object (&curval);
     }
   else if (TP_DOMAIN_TYPE (att->domain) == DB_VALUE_TYPE (source))
     {
-      current = DB_GET_OBJECT (source);
+      current = db_get_object (source);
     }
 
   /* check for existence of the object this is expensive so only do this if enabled by a parameter. */
@@ -1134,7 +1134,7 @@ get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * source, DB_V
   if (current != NULL && WS_IS_DELETED (current))
     {
       /* convert deleted MOPs to NULL values */
-      DB_MAKE_NULL (dest);
+      db_make_null (dest);
 
       /* 
        * set the attribute value so we don't hit this condition again,
@@ -1155,7 +1155,7 @@ get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * source, DB_V
 	    }
 	  else
 	    {
-	      DB_MAKE_NULL (source);
+	      db_make_null (source);
 	    }
 	}
     }
@@ -1163,11 +1163,11 @@ get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * source, DB_V
     {
       if (current != NULL)
 	{
-	  DB_MAKE_OBJECT (dest, current);
+	  db_make_object (dest, current);
 	}
       else
 	{
-	  DB_MAKE_NULL (dest);
+	  db_make_null (dest);
 	}
     }
 
@@ -1221,7 +1221,7 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * source, DB_VALU
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
-      set = DB_GET_SET (&setval);
+      set = db_get_set (&setval);
       db_value_put_null (&setval);
     }
   else
@@ -1239,7 +1239,7 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * source, DB_VALU
 	}
       if (TP_DOMAIN_TYPE (att->domain) == DB_VALUE_TYPE (source))
 	{
-	  set = DB_GET_SET (source);
+	  set = db_get_set (source);
 	  /* KLUDGE: shouldn't be doing this at this level */
 	  if (set != NULL)
 	    {
@@ -1264,7 +1264,7 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * source, DB_VALU
   /* convert NULL sets to DB_TYPE_NULL */
   if (set == NULL)
     {
-      DB_MAKE_NULL (dest);
+      db_make_null (dest);
     }
   else
     {
@@ -1272,15 +1272,15 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * source, DB_VALU
 	{
 	case DB_TYPE_SET:
 	default:
-	  DB_MAKE_SET (dest, set);
+	  db_make_set (dest, set);
 	  break;
 
 	case DB_TYPE_MULTISET:
-	  DB_MAKE_MULTISET (dest, set);
+	  db_make_multiset (dest, set);
 	  break;
 
 	case DB_TYPE_SEQUENCE:
-	  DB_MAKE_SEQUENCE (dest, set);
+	  db_make_sequence (dest, set);
 	  break;
 	}
     }
@@ -1330,7 +1330,7 @@ obj_get_value (MOP op, SM_ATTRIBUTE * att, void *mem, DB_VALUE * source, DB_VALU
   /* first check the bound bits */
   if (!att->domain->type->variable_p && mem != NULL && OBJ_GET_BOUND_BIT (object, att->storage_order) == 0)
     {
-      DB_MAKE_NULL (dest);
+      db_make_null (dest);
     }
   else
     {
@@ -1347,17 +1347,17 @@ obj_get_value (MOP op, SM_ATTRIBUTE * att, void *mem, DB_VALUE * source, DB_VALU
 	  if (mem != NULL)
 	    {
 	      error = PRIM_GETMEM (att->domain->type, att->domain, mem, dest);
-	      if (!error)
-		{
-		  OBJ_FORCE_SIMPLE_NULL_TO_UNBOUND (dest);
-		}
 	    }
 	  else
 	    {
 	      error = pr_clone_value (source, dest);
-	      if (!error)
+	    }
+
+	  if (error == NO_ERROR)
+	    {
+	      if (DB_VALUE_TYPE (dest) == DB_TYPE_STRING && db_get_string (dest) == NULL)
 		{
-		  OBJ_FORCE_SIMPLE_NULL_TO_UNBOUND (dest);
+		  db_make_null (dest);
 		}
 	    }
 	}
@@ -1597,7 +1597,7 @@ obj_get_path (DB_OBJECT * object, const char *attpath, DB_VALUE * value)
   error = NO_ERROR;
   (void) strcpy (&buf[0], attpath);
   delimiter = '.';		/* start with implicit dot */
-  DB_MAKE_OBJECT (&temp_value, object);
+  db_make_object (&temp_value, object);
   for (token = &buf[0]; char_isspace (*token) && *token != '\0'; token++);
   end = token;
 
@@ -1631,7 +1631,7 @@ obj_get_path (DB_OBJECT * object, const char *attpath, DB_VALUE * value)
 		}
 	      else
 		{
-		  error = obj_get (DB_GET_OBJECT (&temp_value), token, &temp_value);
+		  error = obj_get (db_get_object (&temp_value), token, &temp_value);
 		}
 	    }
 	}
@@ -1660,11 +1660,11 @@ obj_get_path (DB_OBJECT * object, const char *attpath, DB_VALUE * value)
 		  index = atoi (token);
 		  if (temp_type == DB_TYPE_SEQUENCE)
 		    {
-		      error = db_seq_get (DB_GET_SET (&temp_value), index, &temp_value);
+		      error = db_seq_get (db_get_set (&temp_value), index, &temp_value);
 		    }
 		  else
 		    {
-		      error = db_set_get (DB_GET_SET (&temp_value), index, &temp_value);
+		      error = db_set_get (db_get_set (&temp_value), index, &temp_value);
 		    }
 
 		  if (error == NO_ERROR)
@@ -1780,7 +1780,7 @@ obj_get_temp (DB_OBJECT * obj, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE *
 	       * there was no base object so we must be performing an insertion,
 	       * in this case, the value is considered to be NULL
 	       */
-	      DB_MAKE_NULL (value);
+	      db_make_null (value);
 	    }
 	}
     }
@@ -1990,7 +1990,7 @@ obj_copy (MOP op)
   DB_VALUE value;
 
   new_mop = NULL;
-  DB_MAKE_NULL (&value);
+  db_make_null (&value);
 
   /* op must be an object */
   if (op != NULL)
@@ -2292,7 +2292,8 @@ argstate_from_list (ARGSTATE * state, DB_VALUE_LIST * arglist)
   state->overflow = arg;
   state->free_overflow = 0;
   state->save_overflow = NULL;
-  for (i = 0; arg != NULL; arg = arg->next, i++);
+  for (i = 0; arg != NULL; arg = arg->next, i++)
+    ;
   state->noverflow = i;
 }
 
@@ -2327,7 +2328,8 @@ argstate_from_array (ARGSTATE * state, DB_VALUE ** argarray)
 	}
       state->nargs = i;
       /* need to handle overflow arguments ! */
-      for (j = 0; argarray[i] != NULL; i++, j++);
+      for (j = 0; argarray[i] != NULL; i++, j++)
+	;
       state->noverflow = j;
     }
 }
@@ -2431,7 +2433,10 @@ call_method (METHOD_FUNCTION method, MOP obj, DB_VALUE * returnval, int nargs, D
     }
 
   if (!forge_flag_pat)
-    DB_MAKE_NULL (returnval);
+    {
+      db_make_null (returnval);
+    }
+
   switch (nargs)
     {
     case 0:
@@ -2613,7 +2618,7 @@ call_method (METHOD_FUNCTION method, MOP obj, DB_VALUE * returnval, int nargs, D
   if (!forge_flag_pat)
     if (DB_VALUE_TYPE (returnval) == DB_TYPE_ERROR)
       {
-	error = DB_GET_ERROR (returnval);
+	error = db_get_error (returnval);
 	if (error >= 0)
 	  {
 	    /* it's not a system error, it's a user error */
@@ -3494,7 +3499,7 @@ flush_temporary_OID (MOP classop, DB_VALUE * key)
 {
   MOP mop;
 
-  mop = DB_GET_OBJECT (key);
+  mop = db_get_object (key);
   if (mop == NULL || WS_ISVID (mop))
     {
       /* if this is a virtual object, we don't support that */
@@ -3649,7 +3654,7 @@ obj_make_key_value (DB_VALUE * key, const DB_VALUE * values[], int size)
 	  return NULL;
 	}
 
-      DB_MAKE_SEQUENCE (key, mc_seq);
+      db_make_sequence (key, mc_seq);
     }
 
   return key;
@@ -3684,7 +3689,7 @@ obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE 
       return NULL;
     }
 
-  DB_MAKE_NULL (&key);
+  db_make_null (&key);
   if (obj_make_key_value (&key, values, size) == NULL)
     {
       return NULL;
@@ -3771,7 +3776,7 @@ obj_find_multi_desc (MOP op, int size, const SM_DESCRIPTOR * desc[], const DB_VA
       return NULL;
     }
 
-  DB_MAKE_NULL (&key);
+  db_make_null (&key);
   if (obj_make_key_value (&key, values, size) == NULL)
     {
       return NULL;
@@ -3925,7 +3930,7 @@ obj_find_object_by_cons_and_key (MOP classop, SM_CLASS_CONSTRAINT * cons, DB_VAL
   else
     {
       /* multi column */
-      keyset = DB_GET_SEQUENCE (key);
+      keyset = db_get_set (key);
       if (keyset == NULL)
 	return NULL;
 
@@ -4046,7 +4051,7 @@ obj_find_primary_key (MOP op, const DB_VALUE ** values, int size, AU_FETCHMODE f
 	      goto notfound;
 	    }
 	}
-      DB_MAKE_SEQUENCE (&tmp, mc_seq);
+      db_make_sequence (&tmp, mc_seq);
       key = &tmp;
     }
 
@@ -4123,7 +4128,7 @@ obj_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode)
     }
   else if (value_type == DB_TYPE_OBJECT)
     {
-      mop = DB_GET_OBJECT (key);
+      mop = db_get_object (key);
       if (mop == NULL || WS_ISVID (mop))
 	{
 	  /* if this is a virtual object, we don't support that */
@@ -4180,67 +4185,6 @@ notfound:
     }
 
   return obj;
-}
-
-int
-obj_prefetch_repl_update_or_delete_object (MOP classop, DB_VALUE * key_value)
-{
-  int error = NO_ERROR;
-  SM_CLASS *class_;
-  SM_CLASS_CONSTRAINT *cons;
-  DB_TYPE value_type;
-  OID *oid = NULL;
-
-  if (classop == NULL || key_value == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      return ER_OBJ_INVALID_ARGUMENTS;
-    }
-
-  oid = ws_oid (classop);
-
-  error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  if (!TM_TRAN_ASYNC_WS ())
-    {
-      error = sm_flush_objects (classop);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-
-  cons = classobj_find_class_primary_key (class_);
-  if (cons == NULL)
-    {
-      goto error_return;
-    }
-
-  value_type = DB_VALUE_TYPE (key_value);
-
-  if (value_type == DB_TYPE_NULL)
-    {
-      goto error_return;
-    }
-  else if (value_type == DB_TYPE_OBJECT)
-    {
-      error = flush_temporary_OID (classop, key_value);
-      if (error != TEMPOID_FLUSH_OK)
-	{
-	  goto error_return;
-	}
-    }
-
-  error = locator_prefetch_repl_update_or_delete (oid, &cons->index_btid, key_value);
-  return error;
-
-error_return:
-  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
-  return ER_OBJ_OBJECT_NOT_FOUND;
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -4406,7 +4350,7 @@ obj_is_instance_of (MOP obj, MOP class_mop)
 int
 obj_lock (MOP op, int for_write)
 {
-  int error = NO_ERROR, is_class = 0;
+  int is_class = 0;
   DB_FETCH_MODE class_purpose;
 
   if (op->is_temp)

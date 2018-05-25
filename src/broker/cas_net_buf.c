@@ -46,6 +46,7 @@
 #include "cas_dbms_util.h"
 #endif
 #include "error_code.h"
+#include "dbtype.h"
 
 static int net_buf_realloc (T_NET_BUF * net_buf, int size);
 
@@ -415,8 +416,8 @@ net_buf_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec, ch
       else
 	{
 	  ut_trim (tmp_str);
-	  net_buf_cp_int (net_buf, strlen (tmp_str) + 1, NULL);
-	  net_buf_cp_str (net_buf, tmp_str, strlen (tmp_str) + 1);
+	  net_buf_cp_int (net_buf, (int) strlen (tmp_str) + 1, NULL);
+	  net_buf_cp_str (net_buf, tmp_str, (int) strlen (tmp_str) + 1);
 	  FREE_MEM (tmp_str);
 	}
     }
@@ -784,7 +785,7 @@ net_arg_get_lob_value (DB_VALUE * db_lob, void *arg)
   elo.size = lob_handle.lob_size;
   elo.type = ELO_FBO;
   elo.locator = db_private_strdup (NULL, lob_handle.locator);
-  db_make_elo (db_lob, lob_handle.db_type, &elo);
+  db_make_elo (db_lob, (DB_TYPE) lob_handle.db_type, &elo);
   db_lob->need_clear = true;
 }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */

@@ -27,17 +27,17 @@
 
 #ident "$Id$"
 
+#include "connection_defs.h"
+#include "connection_support.h"
+#include "critical_section.h"
+#include "error_manager.h"
+#include "porting.h"
+#include "thread_compat.hpp"
+
+#include <assert.h>
 #if !defined(WINDOWS)
 #include <pthread.h>
 #endif /* not WINDOWS */
-
-#include "porting.h"
-#include "thread.h"
-#include "connection_defs.h"
-#include "connection_support.h"
-#include "error_manager.h"
-#include "critical_section.h"
-#include "thread.h"
 
 #define IP_BYTE_COUNT 5
 
@@ -127,9 +127,17 @@ extern SYNC_RWLOCK css_Rwlock_free_conn_anchor;
 
 extern int css_Num_access_user;
 
-extern int (*css_Connect_handler) (CSS_CONN_ENTRY *);
+typedef void *CSS_THREAD_ARG;
+typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
+
+extern css_error_code (*css_Connect_handler) (CSS_CONN_ENTRY *);
 extern CSS_THREAD_FN css_Request_handler;
 extern CSS_THREAD_FN css_Connection_error_handler;
+
+#define CSS_LOG(msg_arg, ...) \
+  if (prm_get_bool_value (PRM_ID_CONNECTION_LOGGING)) _er_log_debug (ARG_FILE_LINE, msg_arg "\n", __VA_ARGS__)
+#define CSS_LOG_STACK(msg_arg, ...) \
+  if (prm_get_bool_value (PRM_ID_CONNECTION_LOGGING)) er_print_callstack (ARG_FILE_LINE, msg_arg "\n", __VA_ARGS__)
 
 extern int css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd);
 extern void css_shutdown_conn (CSS_CONN_ENTRY * conn);
@@ -146,13 +154,11 @@ extern int css_increment_num_conn (BOOT_CLIENT_TYPE client_type);
 extern void css_decrement_num_conn (BOOT_CLIENT_TYPE client_type);
 
 extern void css_free_conn (CSS_CONN_ENTRY * conn);
-extern void css_inc_prefetcher_thread_count (THREAD_ENTRY * thread_entry);
-extern void css_dec_prefetcher_thread_count (THREAD_ENTRY * thread_entry);
 extern void css_print_conn_entry_info (CSS_CONN_ENTRY * p);
 extern void css_print_conn_list (void);
 extern void css_print_free_conn_list (void);
 extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id, const char *server_name, int name_length);
-extern void css_register_handler_routines (int (*connect_handler) (CSS_CONN_ENTRY * conn),
+extern void css_register_handler_routines (css_error_code (*connect_handler) (CSS_CONN_ENTRY * conn),
 					   CSS_THREAD_FN request_handler, CSS_THREAD_FN connection_error_handler);
 
 extern CSS_CONN_ENTRY *css_find_conn_by_tran_index (int tran_index);
@@ -186,4 +192,5 @@ extern int css_check_ip (IP_INFO * ip_info, unsigned char *address);
 extern void css_set_user_access_status (const char *db_user, const char *host, const char *program_name);
 extern void css_get_user_access_status (int num_user, LAST_ACCESS_STATUS ** access_status_array);
 extern void css_free_user_access_status (void);
+
 #endif /* _CONNECTION_SR_H_ */

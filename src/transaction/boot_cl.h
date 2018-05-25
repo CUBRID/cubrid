@@ -60,7 +60,7 @@ extern void boot_server_die_or_changed (void);
 extern void boot_client_all_finalize (bool iserfinal);
 #if defined(CS_MODE)
 extern char *boot_get_host_connected (void);
-extern int boot_get_ha_server_state (void);
+extern HA_SERVER_STATE boot_get_ha_server_state (void);
 extern const char *boot_get_lob_path (void);
 #endif /* CS_MODE */
 

@@ -28,45 +28,21 @@
 
 #ident "$Id$"
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
 #include "config.h"
+#include "disk_manager.h"
+#include "error_manager.h"
+#include "file_io.h"
+#include "log_comm.h"
+#include "log_impl.h"
+#include "recovery.h"
+#include "storage_common.h"
+#include "thread_compat.hpp"
 
 #include <time.h>
-
-#include "log_impl.h"
-#include "error_manager.h"
-#include "storage_common.h"
-#include "log_comm.h"
-#include "recovery.h"
-#include "disk_manager.h"
-#include "file_io.h"
-#include "thread.h"
-
-/*
- * NOTE: NULL_VOLID generally means a bad volume identifier
- *       Negative volume identifiers are used to identify auxilary files and
- *       volumes (e.g., logs, backups)
- */
-
-#define LOG_MAX_DBVOLID          (VOLID_MAX - 1)
-
-/* Volid of database.txt */
-#define LOG_DBTXT_VOLID          (SHRT_MIN + 1)
-#define LOG_DBFIRST_VOLID        0
-
-/* Volid of volume information */
-#define LOG_DBVOLINFO_VOLID      (LOG_DBFIRST_VOLID - 5)
-/* Volid of info log */
-#define LOG_DBLOG_INFO_VOLID     (LOG_DBFIRST_VOLID - 4)
-/* Volid of backup info log */
-#define LOG_DBLOG_BKUPINFO_VOLID (LOG_DBFIRST_VOLID - 3)
-/* Volid of active log */
-#define LOG_DBLOG_ACTIVE_VOLID   (LOG_DBFIRST_VOLID - 2)
-/* Volid of background archive logs */
-#define LOG_DBLOG_BG_ARCHIVE_VOLID  (LOG_DBFIRST_VOLID - 21)
-/* Volid of archive logs */
-#define LOG_DBLOG_ARCHIVE_VOLID  (LOG_DBFIRST_VOLID - 20)
-/* Volid of copies */
-#define LOG_DBCOPY_VOLID         (LOG_DBFIRST_VOLID - 19)
 
 #define LOG_TOPOP_STACK_INIT_SIZE 1024
 
@@ -208,6 +184,7 @@ extern SCAN_CODE log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_pa
 				      RECDES * recdes);
 
 extern void log_sysop_start (THREAD_ENTRY * thread_p);
+extern void log_sysop_start_atomic (THREAD_ENTRY * thread_p);
 extern void log_sysop_abort (THREAD_ENTRY * thread_p);
 extern void log_sysop_attach_to_outer (THREAD_ENTRY * thread_p);
 extern void log_sysop_commit (THREAD_ENTRY * thread_p);
@@ -222,4 +199,16 @@ extern int log_read_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log
 					  int *undo_buffer_size, char **undo_buffer, int *undo_size, char **undo_data);
 
 extern const char *log_sysop_end_type_string (LOG_SYSOP_END_TYPE end_type);
+
+extern INT64 log_get_clock_msec (void);
+
+extern void log_wakeup_remove_log_archive_daemon ();
+extern void log_wakeup_checkpoint_daemon ();
+extern void log_wakeup_log_flush_daemon ();
+
+extern bool log_is_log_flush_daemon_available ();
+#if defined (SERVER_MODE)
+extern void log_flush_daemon_get_stats (UINT64 * statsp);
+#endif // SERVER_MODE
+
 #endif /* _LOG_MANAGER_H_ */

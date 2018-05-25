@@ -36,6 +36,11 @@
 #if !defined (SERVER_MODE)
 #include "work_space.h"
 #endif
+#include "thread_compat.hpp"
+
+#ifdef __cplusplus
+class string_buffer;
+#endif
 
 /*
  * PR_TYPE
@@ -52,9 +57,14 @@ typedef struct pr_type
   int disksize;
   int alignment;
   /* print dbvalue to file */
-  void (*fptrfunc) (FILE * fp, const DB_VALUE * value);
+  void (*fptrfunc) (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value);
   /* print dbvalue to buffer */
-  int (*sptrfunc) (const DB_VALUE * value, char *buffer, int buflen);
+#ifdef __cplusplus
+  void (*sptrfunc) (const DB_VALUE * value, string_buffer & sb);
+#else
+  void *sptrfunc;
+#endif
+
   /* initialize memory */
   void (*initmem) (void *memptr, struct tp_domain * domain);
   /* initialize DB_VALUE */
@@ -87,15 +97,16 @@ typedef struct pr_type
   int (*index_readval) (OR_BUF * buf, DB_VALUE * value, struct tp_domain * domain, int size, bool copy, char *copy_buf,
 			int copy_buf_len);
   /* btree value compare */
-  int (*index_cmpdisk) (void *memptr1, void *memptr2, struct tp_domain * domain, int do_coercion, int total_order,
-			int *start_colp);
+    DB_VALUE_COMPARE_RESULT (*index_cmpdisk) (void *memptr1, void *memptr2, struct tp_domain * domain, int do_coercion,
+					      int total_order, int *start_colp);
   /* free memory for swap or GC */
   void (*freemem) (void *memptr);
   /* memory value compare */
-  int (*data_cmpdisk) (void *memptr1, void *memptr2, struct tp_domain * domain, int do_coercion, int total_order,
-		       int *start_colp);
+    DB_VALUE_COMPARE_RESULT (*data_cmpdisk) (void *memptr1, void *memptr2, struct tp_domain * domain, int do_coercion,
+					     int total_order, int *start_colp);
   /* db value compare */
-  int (*cmpval) (DB_VALUE * value, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation);
+    DB_VALUE_COMPARE_RESULT (*cmpval) (DB_VALUE * value, DB_VALUE * value2, int do_coercion, int total_order,
+				       int *start_colp, int collation);
 } PR_TYPE, *PRIM;
 
 
@@ -145,6 +156,7 @@ extern PR_TYPE tp_Datetimetz;
 extern PR_TYPE tp_Datetimeltz;
 extern PR_TYPE tp_Timetz;
 extern PR_TYPE tp_Timeltz;
+extern PR_TYPE tp_Json;
 
 extern PR_TYPE *tp_Type_null;
 extern PR_TYPE *tp_Type_integer;
@@ -179,6 +191,7 @@ extern PR_TYPE *tp_Type_resultset;
 extern PR_TYPE *tp_Type_midxkey;
 extern PR_TYPE *tp_Type_bigint;
 extern PR_TYPE *tp_Type_datetime;
+extern PR_TYPE *tp_Type_json;
 
 extern PR_TYPE *tp_Type_id_map[];
 
@@ -266,7 +279,7 @@ extern PR_TYPE *pr_type_from_id (DB_TYPE id);
 extern PR_TYPE *pr_find_type (const char *name);
 extern const char *pr_type_name (DB_TYPE id);
 
-extern int pr_is_set_type (DB_TYPE type);
+extern bool pr_is_set_type (DB_TYPE type);
 extern int pr_is_string_type (DB_TYPE type);
 extern int pr_is_prefix_key_type (DB_TYPE type);
 extern int pr_is_variable_type (DB_TYPE type);
@@ -284,7 +297,18 @@ extern int pr_value_mem_size (DB_VALUE * value);
 
 extern DB_VALUE *pr_make_value (void);
 extern DB_VALUE *pr_copy_value (DB_VALUE * var);
-extern int pr_clone_value (const DB_VALUE * src, DB_VALUE * dest);
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+  extern int pr_clone_value (const DB_VALUE * src, DB_VALUE * dest);
+
+#ifdef __cplusplus
+}
+#endif
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int pr_share_value (DB_VALUE * src, DB_VALUE * dest);
 #endif
@@ -308,16 +332,27 @@ extern int pr_share_value (DB_VALUE * src, DB_VALUE * dest);
     } \
   while (0)
 
-extern int pr_clear_value (DB_VALUE * var);
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+  extern int pr_clear_value (DB_VALUE * var);
+
+#ifdef __cplusplus
+}
+#endif
+
 extern int pr_free_value (DB_VALUE * var);
 extern DB_VALUE *pr_make_ext_value (void);
 extern int pr_free_ext_value (DB_VALUE * value);
 
 /* Special transformation functions */
 
-extern int pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int total_order,
-			       int num_index_term, int *start_colp, int *result_size1, int *result_size2,
-			       int *diff_column, bool * dom_is_desc, bool * next_dom_is_desc);
+extern DB_VALUE_COMPARE_RESULT pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion,
+						   int total_order, int num_index_term, int *start_colp,
+						   int *result_size1, int *result_size2, int *diff_column,
+						   bool * dom_is_desc, bool * next_dom_is_desc);
 extern int pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain);
 extern int pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey, int index, DB_VALUE * value, int *prev_indexp,
 					  char **prev_ptrp);
@@ -344,8 +379,10 @@ extern char *pr_copy_string (const char *str);
 extern void pr_free_string (char *str);
 #endif
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /* Helper function for DB_VALUE printing; caller must free_and_init result. */
-extern char *pr_valstring (DB_VALUE *);
+extern char *pr_valstring (THREAD_ENTRY *, DB_VALUE *);
+#endif //defined (SERVER_MODE) || defined (SA_MODE)
 
 /* area init */
 extern int pr_area_init (void);
@@ -360,9 +397,6 @@ extern int pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB
 extern int pr_data_compress_string (char *string, int str_length, char *compressed_string, int *compressed_length);
 extern int pr_clear_compressed_string (DB_VALUE * value);
 extern int pr_do_db_value_string_compression (DB_VALUE * value);
-
-/* Because of the VARNCHAR and STRING encoding, this one could not be changed for over 255, just lower. */
-#define PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION 255
 
 #define PRIM_TEMPORARY_DISK_SIZE 256
 #define PRIM_COMPRESSION_LENGTH_OFFSET 4
