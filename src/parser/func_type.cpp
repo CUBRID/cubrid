@@ -12,12 +12,12 @@ std::vector<func_signature> func_signature::bigint = {
 
 std::vector<func_signature> func_signature::percentile_cont = {
 #if 1
-  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_NUMBER  }, {}},
-  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_STRING  }, {}},
-  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_DATETIME}, {}},
-  {PT_TYPE_MAYBE, {PT_TYPE_MAYBE           }, {}},
-  {PT_TYPE_MAYBE, {PT_TYPE_NULL            }, {}},
-  {PT_TYPE_MAYBE, {PT_TYPE_NA              }, {}},
+  {PT_TYPE_DOUBLE   , {PT_GENERIC_TYPE_NUMBER  }, {}},
+  {0                , {PT_GENERIC_TYPE_DATETIME}, {}},
+  {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_STRING  }, {}},
+  {0                , {PT_TYPE_MAYBE           }, {}},
+  {0                , {PT_TYPE_NULL            }, {}},
+  {0                , {PT_TYPE_NA              }, {}},
 #else //use double as return type (as documentation says)... but tests are failing (adjust doc or tests)
   {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER  }, {}},
   {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_STRING  }, {}},
@@ -87,7 +87,7 @@ std::vector<func_signature> func_signature::ntile = {//why original code cast ar
   MEDIAN('123456')     <=> MEDIAN(double) -> double
   MEDIAN('2018-03-14') <=> MEDIAN(date)   -> date  */
 std::vector<func_signature> func_signature::median = {
-  {0                , {PT_GENERIC_TYPE_NUMBER}  , {}},
+  {PT_TYPE_DOUBLE   , {PT_GENERIC_TYPE_NUMBER}  , {}},
   {0                , {PT_GENERIC_TYPE_DATETIME}, {}},
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_STRING}  , {}}, //DISCUSSION: can we get rid of MAYBE???
   {0                , {PT_TYPE_NULL}            , {}},
