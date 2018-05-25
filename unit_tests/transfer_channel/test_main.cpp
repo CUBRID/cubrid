@@ -64,9 +64,9 @@ class stream_mock : public cubstream::stream
     }
 
     void produce (const size_t amount)
-      {
-        m_last_committed_pos += amount;   
-      }
+    {
+      m_last_committed_pos += amount;
+    }
 
     int write (const size_t byte_count, cubstream::stream::write_func_t &write_action)
     {
@@ -81,7 +81,7 @@ class stream_mock : public cubstream::stream
     }
 
     int read (const cubstream::stream_position first_pos, const size_t byte_count,
-              cubstream::stream::read_func_t &read_action)
+	      cubstream::stream::read_func_t &read_action)
     {
       char *ptr = (char *) malloc (byte_count);
       int err = NO_ERROR;

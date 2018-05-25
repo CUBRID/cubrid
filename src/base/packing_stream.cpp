@@ -636,7 +636,7 @@ namespace cubstream
     return ptr;
   }
 
-  /* 
+  /*
    * This is used in context of serial reading and performs an action when not enough data is committed.
    * The action may be : block (until data is commited) or actively fetch data (from disk or other on-demand producer)
    * skip_mode argument indicates which action to take after data becomes available.
