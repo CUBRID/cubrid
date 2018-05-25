@@ -12,7 +12,7 @@ std::vector<func_signature> func_signature::bigint = {
 
 std::vector<func_signature> func_signature::percentile_cont = {
 #if 1
-  {PT_TYPE_DOUBLE   , {PT_GENERIC_TYPE_NUMBER  }, {}},
+  {PT_TYPE_MAYBE   , {PT_GENERIC_TYPE_NUMBER  }, {}},
   {0                , {PT_GENERIC_TYPE_DATETIME}, {}},
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_STRING  }, {}},
   {0                , {PT_TYPE_MAYBE           }, {}},
@@ -29,12 +29,12 @@ std::vector<func_signature> func_signature::percentile_cont = {
 };
 
 std::vector<func_signature> func_signature::percentile_disc = {
-  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_NUMBER  }, {}},
-  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_STRING  }, {}},
-  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_DATETIME}, {}},
-  {PT_TYPE_MAYBE, {PT_TYPE_MAYBE           }, {}},
-  {PT_TYPE_MAYBE, {PT_TYPE_NULL            }, {}},
-  {PT_TYPE_MAYBE, {PT_TYPE_NA              }, {}},
+  {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_NUMBER  }, {}},
+  {0                , {PT_GENERIC_TYPE_DATETIME}, {}},
+  {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_STRING  }, {}},
+  {0                , {PT_TYPE_MAYBE           }, {}},
+  {0                , {PT_TYPE_NULL            }, {}},
+  {0                , {PT_TYPE_NA              }, {}},
 };
 
 std::vector<func_signature> func_signature::bigint_discrete = {
@@ -87,7 +87,7 @@ std::vector<func_signature> func_signature::ntile = {//why original code cast ar
   MEDIAN('123456')     <=> MEDIAN(double) -> double
   MEDIAN('2018-03-14') <=> MEDIAN(date)   -> date  */
 std::vector<func_signature> func_signature::median = {
-  {PT_TYPE_DOUBLE   , {PT_GENERIC_TYPE_NUMBER}  , {}},
+  {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_NUMBER}  , {}}, //if ret type is double => tests with median(int) will fail
   {0                , {PT_GENERIC_TYPE_DATETIME}, {}},
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_STRING}  , {}}, //DISCUSSION: can we get rid of MAYBE???
   {0                , {PT_TYPE_NULL}            , {}},
