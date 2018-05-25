@@ -73,8 +73,9 @@ namespace cubstream
   int entry::pack (void)
   {
     size_t total_stream_entry_size;
-    size_t data_size, header_size;
+    size_t data_size;
     int err;
+    static size_t header_size = get_header_size ();
 
     assert (m_is_packable == true);
     if (m_packable_entries.size() == 0)
@@ -83,7 +84,6 @@ namespace cubstream
       }
 
     cubpacking::packer *serializator = get_packer ();
-    header_size = get_header_size ();
     assert (DB_WASTED_ALIGN (header_size, MAX_ALIGNMENT) == 0);
 
     data_size = get_entries_size ();
@@ -144,8 +144,8 @@ namespace cubstream
    */
   int entry::prepare (void)
   {
+    static size_t stream_entry_header_size = get_header_size ();
     cubpacking::packer *serializator = get_packer ();
-    size_t stream_entry_header_size = get_header_size ();
     size_t aligned_stream_entry_header_size;
     int err;
 
