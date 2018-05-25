@@ -64,11 +64,18 @@ namespace cubstream
     m_packable_entries.clear ();
   }
 
+  /*
+   * pack method:
+   *  1. compute header and data size
+   *  2. set data size value in header field (before packing)
+   *  3. stream.write using packing_function as argument
+   */
   int entry::pack (void)
   {
     size_t total_stream_entry_size;
-    size_t data_size, header_size;
+    size_t data_size;
     int err;
+    static size_t header_size = get_header_size ();
 
     assert (m_is_packable == true);
     if (m_packable_entries.size () == 0)
@@ -77,8 +84,6 @@ namespace cubstream
       }
 
     cubpacking::packer *serializator = get_packer ();
-
-    header_size = get_header_size ();
     assert (DB_WASTED_ALIGN (header_size, MAX_ALIGNMENT) == 0);
 
     data_size = get_entries_size ();
@@ -93,6 +98,14 @@ namespace cubstream
     return (err < 0) ? err : NO_ERROR;
   }
 
+  /*
+   * packing_function :
+   *  1. init packer (set start pointer and amount of buffer)
+   *  2. pack header of entry
+   *  3. pack each object of entry
+   *  Header is aligned at MAX_ALIGNMENT.
+   *  Each packed object is aligned at MAX_ALIGNMENT.
+   */
   int entry::packing_func (const stream_position &pos, char *ptr, const size_t reserved_amount)
   {
     int i;
@@ -132,8 +145,8 @@ namespace cubstream
    */
   int entry::prepare (void)
   {
+    static size_t stream_entry_header_size = get_header_size ();
     cubpacking::packer *serializator = get_packer ();
-    size_t stream_entry_header_size = get_header_size ();
     size_t aligned_stream_entry_header_size;
     int err;
 
@@ -144,7 +157,12 @@ namespace cubstream
     return (err < 0) ? err : NO_ERROR;
   }
 
-  /* callback header-read function for entry (called with packing_stream::read_serial) */
+  /* callback header-read function for entry (called with packing_stream::read_serial)
+   * 1. init packer
+   * 2. unpack entry header
+   * 3. saves start of data payload logical position in entry object (to be retrieved at unpack of entry)
+   * 4. returns size of payload (value unpacked in header)
+  */
   int entry::prepare_func (const stream_position &data_start_pos, char *ptr, const size_t header_size,
 			   size_t &payload_size)
   {
@@ -179,6 +197,12 @@ namespace cubstream
 
   /* unpack function for entry;
    * this unpacks only the payload (objects) of the the entry, the header was unpacked with entry::prepare_func
+   * 1. init (un-)packer
+   * 2. reads count of packed objects to expect from entry header (previously decoded at prepare_func)
+   * 3. peeks the id of next object (the current pointer of packer is not advanced)
+   * 4. creates an object using the id
+   * 5. unpacks the object
+   * 6. adds the object to entry
    */
   int entry::unpack_func (char *ptr, const size_t data_size)
   {
