@@ -31,50 +31,50 @@
 namespace cubstream
 {
 
-entry::entry (packing_stream *stream)
-{
+  entry::entry (packing_stream *stream)
+  {
     m_stream = stream;
     m_data_start_position = 0;
     set_packable (false);
 
     m_packing_func = std::bind (&entry::packing_func, std::ref (*this),
-                                std::placeholders::_1,
-                                std::placeholders::_2,
-                                std::placeholders::_3);
+				std::placeholders::_1,
+				std::placeholders::_2,
+				std::placeholders::_3);
 
     m_prepare_func = std::bind (&entry::prepare_func, std::ref (*this),
-                                std::placeholders::_1,
-                                std::placeholders::_2,
-                                std::placeholders::_3,
-                                std::placeholders::_4);
+				std::placeholders::_1,
+				std::placeholders::_2,
+				std::placeholders::_3,
+				std::placeholders::_4);
     m_unpack_func = std::bind (&entry::unpack_func, std::ref (*this),
-                               std::placeholders::_1,
-                               std::placeholders::_2);
-}
+			       std::placeholders::_1,
+			       std::placeholders::_2);
+  }
 
-void entry::destroy_objects ()
-{
+  void entry::destroy_objects ()
+  {
     for (int i = 0; i < m_packable_entries.size (); i++)
-    {
-        if (m_packable_entries[i] != NULL)
-        {
-            delete (m_packable_entries[i]);
-        }
-    }
+      {
+	if (m_packable_entries[i] != NULL)
+	  {
+	    delete (m_packable_entries[i]);
+	  }
+      }
     m_packable_entries.clear ();
-}
+  }
 
-int entry::pack (void)
-{
+  int entry::pack (void)
+  {
     size_t total_stream_entry_size;
     size_t data_size, header_size;
     int err;
 
     assert (m_is_packable == true);
     if (m_packable_entries.size () == 0)
-    {
-        return NO_ERROR;
-    }
+      {
+	return NO_ERROR;
+      }
 
     cubpacking::packer *serializator = get_packer ();
 
@@ -91,10 +91,10 @@ int entry::pack (void)
     err = m_stream->write (total_stream_entry_size, m_packing_func);
 
     return (err < 0) ? err : NO_ERROR;
-}
+  }
 
-int entry::packing_func (const stream_position &pos, char *ptr, const size_t reserved_amount)
-{
+  int entry::packing_func (const stream_position &pos, char *ptr, const size_t reserved_amount)
+  {
     int i;
     cubpacking::packer *serializator = get_packer ();
 
@@ -104,34 +104,34 @@ int entry::packing_func (const stream_position &pos, char *ptr, const size_t res
     pack_stream_entry_header ();
 
     for (i = 0; i < m_packable_entries.size (); i++)
-    {
-        serializator->align (MAX_ALIGNMENT);
+      {
+	serializator->align (MAX_ALIGNMENT);
 #if !defined (NDEBUG)
-        const char *start_ptr = serializator->get_curr_ptr ();
-        const char *curr_ptr;
-        size_t entry_size = m_packable_entries[i]->get_packed_size (serializator);
+	const char *start_ptr = serializator->get_curr_ptr ();
+	const char *curr_ptr;
+	size_t entry_size = m_packable_entries[i]->get_packed_size (serializator);
 #endif
 
-        m_packable_entries[i]->pack (serializator);
+	m_packable_entries[i]->pack (serializator);
 
 #if !defined (NDEBUG)
-        curr_ptr = serializator->get_curr_ptr ();
-        assert (curr_ptr - start_ptr == entry_size);
+	curr_ptr = serializator->get_curr_ptr ();
+	assert (curr_ptr - start_ptr == entry_size);
 #endif
-    }
+      }
     serializator->align (MAX_ALIGNMENT);
 
     int packed_amount = (int) (serializator->get_curr_ptr () - serializator->get_packer_buffer ());
 
     return packed_amount;
-}
+  }
 
-/*
- * this is pre-unpack method : it fetches enough data to unpack stream header contents,
- * then fetches (receive from socket) the actual amount of data without unpacking it.
- */
-int entry::prepare (void)
-{
+  /*
+   * this is pre-unpack method : it fetches enough data to unpack stream header contents,
+   * then fetches (receive from socket) the actual amount of data without unpacking it.
+   */
+  int entry::prepare (void)
+  {
     cubpacking::packer *serializator = get_packer ();
     size_t stream_entry_header_size = get_header_size ();
     size_t aligned_stream_entry_header_size;
@@ -142,12 +142,12 @@ int entry::prepare (void)
     err = m_stream->read_serial (aligned_stream_entry_header_size, m_prepare_func);
 
     return (err < 0) ? err : NO_ERROR;
-}
+  }
 
-/* callback header-read function for entry (called with packing_stream::read_serial) */
-int entry::prepare_func (const stream_position &data_start_pos, char *ptr, const size_t header_size,
-                         size_t &payload_size)
-{
+  /* callback header-read function for entry (called with packing_stream::read_serial) */
+  int entry::prepare_func (const stream_position &data_start_pos, char *ptr, const size_t header_size,
+			   size_t &payload_size)
+  {
     cubpacking::packer *serializator = get_packer ();
     int error_code;
 
@@ -157,31 +157,31 @@ int entry::prepare_func (const stream_position &data_start_pos, char *ptr, const
 
     error_code = unpack_stream_entry_header ();
     if (error_code != NO_ERROR)
-    {
-        return error_code;
-    }
+      {
+	return error_code;
+      }
 
     m_data_start_position = data_start_pos;
     payload_size = get_data_packed_size ();
 
     return error_code;
-}
+  }
 
-int entry::unpack (void)
-{
+  int entry::unpack (void)
+  {
     int err = NO_ERROR;
 
     /* position the serializator range to data contents */
     err = m_stream->read (m_data_start_position, get_data_packed_size (), m_unpack_func);
 
     return (err < 0) ? err : NO_ERROR;
-}
+  }
 
-/* unpack function for entry;
- * this unpacks only the payload (objects) of the the entry, the header was unpacked with entry::prepare_func
- */
-int entry::unpack_func (char *ptr, const size_t data_size)
-{
+  /* unpack function for entry;
+   * this unpacks only the payload (objects) of the the entry, the header was unpacked with entry::prepare_func
+   */
+  int entry::unpack_func (char *ptr, const size_t data_size)
+  {
     int i;
     int error_code = NO_ERROR;
     int object_id;
@@ -191,62 +191,62 @@ int entry::unpack_func (char *ptr, const size_t data_size)
     serializator->init (ptr, data_size);
 
     for (i = 0 ; i < count_packable_entries; i++)
-    {
-        serializator->align (MAX_ALIGNMENT);
-        /* peek type of object : it will be consumed by object's unpack */
-        serializator->peek_unpack_int (&object_id);
+      {
+	serializator->align (MAX_ALIGNMENT);
+	/* peek type of object : it will be consumed by object's unpack */
+	serializator->peek_unpack_int (&object_id);
 
-        cubpacking::packable_object *packable_entry = get_builder()->create_object (object_id);
-        if (packable_entry == NULL)
-        {
-            error_code = ER_STREAM_UNPACKING_INV_OBJ_ID;
-            er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_UNPACKING_INV_OBJ_ID, 1, object_id);
-            return error_code;
-        }
+	cubpacking::packable_object *packable_entry = get_builder()->create_object (object_id);
+	if (packable_entry == NULL)
+	  {
+	    error_code = ER_STREAM_UNPACKING_INV_OBJ_ID;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_UNPACKING_INV_OBJ_ID, 1, object_id);
+	    return error_code;
+	  }
 
-        assert (packable_entry != NULL);
+	assert (packable_entry != NULL);
 
-        /* unpack one replication entry */
-        add_packable_entry (packable_entry);
-        packable_entry->unpack (serializator); // TODO - might be better to handle errors
-    }
+	/* unpack one replication entry */
+	add_packable_entry (packable_entry);
+	packable_entry->unpack (serializator); // TODO - might be better to handle errors
+      }
     serializator->align (MAX_ALIGNMENT);
 
     assert (serializator->get_curr_ptr () - ptr == data_size);
 
     return error_code;
-}
+  }
 
-int entry::add_packable_entry (cubpacking::packable_object *entry)
-{
+  int entry::add_packable_entry (cubpacking::packable_object *entry)
+  {
     m_packable_entries.push_back (entry);
 
     return NO_ERROR;
-}
+  }
 
-size_t entry::get_entries_size (void)
-{
+  size_t entry::get_entries_size (void)
+  {
     size_t entry_size, total_size = 0;
     int i;
 
     cubpacking::packer *serializator = get_packer ();
     for (i = 0; i < m_packable_entries.size (); i++)
-    {
-        total_size = DB_ALIGN (total_size, MAX_ALIGNMENT);
-        entry_size = m_packable_entries[i]->get_packed_size (serializator);
-        total_size += entry_size;
-    }
+      {
+	total_size = DB_ALIGN (total_size, MAX_ALIGNMENT);
+	entry_size = m_packable_entries[i]->get_packed_size (serializator);
+	total_size += entry_size;
+      }
 
     return total_size;
-}
+  }
 
 
 ////////////////////////////////////////
 
-packing_stream::packing_stream (const size_t buffer_capacity, const int max_appenders)
+  packing_stream::packing_stream (const size_t buffer_capacity, const int max_appenders)
     : m_bip_buffer (buffer_capacity),
       m_reserved_positions (max_appenders)
-{
+  {
     m_oldest_readable_position = 0;
 
     /* TODO : system parameter */
@@ -260,22 +260,22 @@ packing_stream::packing_stream (const size_t buffer_capacity, const int max_appe
     m_stat_read_not_in_buffer_cnt = 0;
     m_stat_read_no_readable_pos_cnt = 0;
     m_stat_read_buffer_failed_cnt = 0;
-}
+  }
 
-packing_stream::~packing_stream ()
-{
+  packing_stream::~packing_stream ()
+  {
     assert (m_append_position - m_read_position == 0);
-}
+  }
 
-/*
- * write API for stream:
- * 1. reserve position (with pointer in bip_buffer)
- * 2. call write action
- * 3. commit the reserve position
- *  the write_function is expected to return error code (negative value) or number of written bytes (positive)
- */
-int packing_stream::write (const size_t byte_count, write_func_t &write_action)
-{
+  /*
+   * write API for stream:
+   * 1. reserve position (with pointer in bip_buffer)
+   * 2. call write action
+   * 3. commit the reserve position
+   *  the write_function is expected to return error code (negative value) or number of written bytes (positive)
+   */
+  int packing_stream::write (const size_t byte_count, write_func_t &write_action)
+  {
     int err = NO_ERROR;
     stream_reserve_context *reserve_context = NULL;
     char *ptr;
@@ -284,37 +284,37 @@ int packing_stream::write (const size_t byte_count, write_func_t &write_action)
 
     ptr = reserve_with_buffer (byte_count, reserve_context);
     if (ptr == NULL)
-    {
-        err = ER_FAILED;
-        return err;
-    }
+      {
+	err = ER_FAILED;
+	return err;
+      }
     reserved_pos = reserve_context->start_pos;
 
     written_bytes = write_action (reserved_pos, ptr, byte_count);
     if (written_bytes < 0)
-    {
-        return ER_FAILED;
-    }
+      {
+	return ER_FAILED;
+      }
     reserve_context->written_bytes = err; // TODO - err??
 
     err = commit_append (reserve_context);
 
     return (err < 0) ? err : written_bytes;
-}
+  }
 
-/*
- * read API:
- * 1. acquire pointer to data range
- * 2. if actual range is same as requested continue with (7)
- * 3. (actual range < requested range) allocate new local memory buffer for requested amount
- * 4. copy partial range to local buffer
- * 5. acquire pointer to rest of data
- * 6. copy the remaining range to continuation of local buffer
- * 7. execute read action using local buffer or initial provided pointer
- * 8. release latch read (in case local buffer not used)
- */
-int packing_stream::read (const stream_position first_pos, const size_t byte_count, read_func_t &read_action)
-{
+  /*
+   * read API:
+   * 1. acquire pointer to data range
+   * 2. if actual range is same as requested continue with (7)
+   * 3. (actual range < requested range) allocate new local memory buffer for requested amount
+   * 4. copy partial range to local buffer
+   * 5. acquire pointer to rest of data
+   * 6. copy the remaining range to continuation of local buffer
+   * 7. execute read action using local buffer or initial provided pointer
+   * 8. release latch read (in case local buffer not used)
+   */
+  int packing_stream::read (const stream_position first_pos, const size_t byte_count, read_func_t &read_action)
+  {
     int err = NO_ERROR;
     char *ptr;
     size_t actual_read_bytes = 0;
@@ -324,70 +324,70 @@ int packing_stream::read (const stream_position first_pos, const size_t byte_cou
 
     ptr = get_data_from_pos (first_pos, byte_count, actual_read_bytes, read_latch_page_idx);
     if (ptr == NULL)
-    {
-        err = ER_FAILED;
-        return err;
-    }
+      {
+	err = ER_FAILED;
+	return err;
+      }
 
     /* the start of requested stream position may be located at the end of bip_buffer, use local buffer */
     if (actual_read_bytes < byte_count)
-    {
-        stream_position next_pos = first_pos + actual_read_bytes;
-        size_t next_actual_read_bytes = 0;
-        local_buffer = new char[byte_count];
+      {
+	stream_position next_pos = first_pos + actual_read_bytes;
+	size_t next_actual_read_bytes = 0;
+	local_buffer = new char[byte_count];
 
-        memcpy (local_buffer, ptr, actual_read_bytes);
-        unlatch_read_data (read_latch_page_idx);
+	memcpy (local_buffer, ptr, actual_read_bytes);
+	unlatch_read_data (read_latch_page_idx);
 
-        ptr = get_data_from_pos (next_pos, byte_count - actual_read_bytes, next_actual_read_bytes,
-                                 read_latch_page_idx);
-        if (ptr == NULL || next_actual_read_bytes != byte_count - actual_read_bytes)
-        {
-            err = ER_FAILED;
+	ptr = get_data_from_pos (next_pos, byte_count - actual_read_bytes, next_actual_read_bytes,
+				 read_latch_page_idx);
+	if (ptr == NULL || next_actual_read_bytes != byte_count - actual_read_bytes)
+	  {
+	    err = ER_FAILED;
 
-            delete [] local_buffer;
-            return err;
-        }
+	    delete [] local_buffer;
+	    return err;
+	  }
 
-        assert (next_actual_read_bytes + actual_read_bytes == byte_count);
+	assert (next_actual_read_bytes + actual_read_bytes == byte_count);
 
-        memcpy (local_buffer + actual_read_bytes, ptr, next_actual_read_bytes);
+	memcpy (local_buffer + actual_read_bytes, ptr, next_actual_read_bytes);
 
-        unlatch_read_data (read_latch_page_idx);
+	unlatch_read_data (read_latch_page_idx);
 
-        ptr = local_buffer;
-    }
+	ptr = local_buffer;
+      }
 
     read_bytes = read_action (ptr, byte_count);
 
     if (ptr != local_buffer)
-    {
-        err = unlatch_read_data (read_latch_page_idx);
-    }
+      {
+	err = unlatch_read_data (read_latch_page_idx);
+      }
     else
-    {
-        delete [] local_buffer;
-    }
+      {
+	delete [] local_buffer;
+      }
 
     return (err < 0) ? err : read_bytes;
-}
+  }
 
-/*
- * read_serial API:
- * 1. wait for data to be committed for the whole requested range
- * 2. acquire pointer to data range
- * 3. if actual range is same as requested continue with (8)
- * 4. (actual range < requested range) allocate new local memory buffer for requested amount
- * 5. copy partial range to local buffer
- * 6. acquire pointer to rest of data
- * 7. copy the remaining range to continuation of local buffer
- * 8. execute read_prepare_action action using local buffer or initial provided pointer
- *    this is expected to read a header of data and return the size of payload
- * 9. release latch read (in case local buffer not used)
- * 10. wait for an amount of payload of data to be produced (committed)
- */
-int packing_stream::read_serial (const size_t amount, read_prepare_func_t &read_prepare_action)
-{
+  /*
+   * read_serial API:
+   * 1. wait for data to be committed for the whole requested range
+   * 2. acquire pointer to data range
+   * 3. if actual range is same as requested continue with (8)
+   * 4. (actual range < requested range) allocate new local memory buffer for requested amount
+   * 5. copy partial range to local buffer
+   * 6. acquire pointer to rest of data
+   * 7. copy the remaining range to continuation of local buffer
+   * 8. execute read_prepare_action action using local buffer or initial provided pointer
+   *    this is expected to read a header of data and return the size of payload
+   * 9. release latch read (in case local buffer not used)
+   * 10. wait for an amount of payload of data to be produced (committed)
+   */
+  int packing_stream::read_serial (const size_t amount, read_prepare_func_t &read_prepare_action)
+  {
     int err = NO_ERROR;
     char *ptr;
     size_t actual_read_bytes = 0;
@@ -400,74 +400,74 @@ int packing_stream::read_serial (const size_t amount, read_prepare_func_t &read_
 
     /* wait for stream to receive data */
     if (m_read_position + amount > m_last_committed_pos)
-    {
-        err = wait_for_data (amount, STREAM_DONT_SKIP);
+      {
+	err = wait_for_data (amount, STREAM_DONT_SKIP);
 
-        /* fetch is expect to return NO_ERROR upon completion of fetch with success */
-        if (err != NO_ERROR)
-        {
-            return err;
-        }
-    }
+	/* fetch is expect to return NO_ERROR upon completion of fetch with success */
+	if (err != NO_ERROR)
+	  {
+	    return err;
+	  }
+      }
 
     to_read_pos = m_read_position;
 
     ptr = get_data_from_pos (to_read_pos, amount, actual_read_bytes, read_latch_page_idx);
     if (ptr == NULL)
-    {
-        err = ER_FAILED;
-        return err;
-    }
+      {
+	err = ER_FAILED;
+	return err;
+      }
 
     /* the start of requested stream position may be located at the end of bip_buffer, use local buffer */
     if (actual_read_bytes < amount)
-    {
-        stream_position next_pos = to_read_pos + actual_read_bytes;
-        size_t next_actual_read_bytes = 0;
-        local_buffer = new char[amount];
+      {
+	stream_position next_pos = to_read_pos + actual_read_bytes;
+	size_t next_actual_read_bytes = 0;
+	local_buffer = new char[amount];
 
-        memcpy (local_buffer, ptr, actual_read_bytes);
-        unlatch_read_data (read_latch_page_idx);
+	memcpy (local_buffer, ptr, actual_read_bytes);
+	unlatch_read_data (read_latch_page_idx);
 
-        ptr = get_data_from_pos (next_pos, amount - actual_read_bytes, next_actual_read_bytes,
-                                 read_latch_page_idx);
-        if (ptr == NULL || next_actual_read_bytes != amount - actual_read_bytes)
-        {
-            err = ER_FAILED;
+	ptr = get_data_from_pos (next_pos, amount - actual_read_bytes, next_actual_read_bytes,
+				 read_latch_page_idx);
+	if (ptr == NULL || next_actual_read_bytes != amount - actual_read_bytes)
+	  {
+	    err = ER_FAILED;
 
-            delete [] local_buffer;
-            return err;
-        }
+	    delete [] local_buffer;
+	    return err;
+	  }
 
-        assert (next_actual_read_bytes + actual_read_bytes == amount);
+	assert (next_actual_read_bytes + actual_read_bytes == amount);
 
-        memcpy (local_buffer + actual_read_bytes, ptr, next_actual_read_bytes);
+	memcpy (local_buffer + actual_read_bytes, ptr, next_actual_read_bytes);
 
-        unlatch_read_data (read_latch_page_idx);
+	unlatch_read_data (read_latch_page_idx);
 
-        ptr = local_buffer;
-    }
+	ptr = local_buffer;
+      }
 
     trail_pos = to_read_pos + amount;
     read_bytes = read_prepare_action (trail_pos, ptr, amount, payload_size);
 
     if (ptr != local_buffer)
-    {
-        unlatch_read_data (read_latch_page_idx);
-    }
+      {
+	unlatch_read_data (read_latch_page_idx);
+      }
     else
-    {
-        delete [] local_buffer;
-    }
+      {
+	delete [] local_buffer;
+      }
 
     err = wait_for_data (amount + payload_size, STREAM_SKIP);
 
     return (err < 0) ? err : read_bytes;
-}
+  }
 
-int packing_stream::read_partial (const stream_position first_pos, const size_t byte_count, size_t &actual_read_bytes,
-                                  read_partial_func_t &read_partial_action)
-{
+  int packing_stream::read_partial (const stream_position first_pos, const size_t byte_count, size_t &actual_read_bytes,
+				    read_partial_func_t &read_partial_action)
+  {
     int err = NO_ERROR;
     char *ptr;
     size_t contiguous_bytes_in_buffer = 0;
@@ -476,28 +476,28 @@ int packing_stream::read_partial (const stream_position first_pos, const size_t 
 
     ptr = get_data_from_pos (first_pos, byte_count, contiguous_bytes_in_buffer, read_latch_page_idx);
     if (ptr == NULL)
-    {
-        err = ER_FAILED;
-        return err;
-    }
+      {
+	err = ER_FAILED;
+	return err;
+      }
 
     read_bytes = read_partial_action (ptr, contiguous_bytes_in_buffer, actual_read_bytes);
 
     err = unlatch_read_data (read_latch_page_idx);
 
     return (err < 0) ? err : read_bytes;
-}
+  }
 
-/*
- * Commit phase of a stream append (all operations are protected by same mutex) :
- *  1. queue->consume : marks the reserved context as completed and if the context is in the head
- *     of queue, it collapses all elements until a non-completed context is reached (or the queue is emptied);
- *  2. (only if queue is collapsed) buffer->commit : advances the commit pointer of the bip_buffer
- *  3. notifies the m_ready_pos_handler handler that new amount is ready to be read
- *     (only if threshold is reached compared to previous notified position)
- */
-int packing_stream::commit_append (stream_reserve_context *reserve_context)
-{
+  /*
+   * Commit phase of a stream append (all operations are protected by same mutex) :
+   *  1. queue->consume : marks the reserved context as completed and if the context is in the head
+   *     of queue, it collapses all elements until a non-completed context is reached (or the queue is emptied);
+   *  2. (only if queue is collapsed) buffer->commit : advances the commit pointer of the bip_buffer
+   *  3. notifies the m_ready_pos_handler handler that new amount is ready to be read
+   *     (only if threshold is reached compared to previous notified position)
+   */
+  int packing_stream::commit_append (stream_reserve_context *reserve_context)
+  {
     stream_reserve_context *last_used_context = NULL;
     bool collapsed_reserve;
     char *ptr_commit;
@@ -506,87 +506,87 @@ int packing_stream::commit_append (stream_reserve_context *reserve_context)
     m_buffer_mutex.lock ();
     collapsed_reserve = m_reserved_positions.consume (reserve_context, last_used_context);
     if (collapsed_reserve)
-    {
-        assert (last_used_context != NULL);
+      {
+	assert (last_used_context != NULL);
 
-        assert (new_completed_position <= last_used_context->start_pos + last_used_context->reserved_amount);
-        new_completed_position = last_used_context->start_pos + last_used_context->reserved_amount;
+	assert (new_completed_position <= last_used_context->start_pos + last_used_context->reserved_amount);
+	new_completed_position = last_used_context->start_pos + last_used_context->reserved_amount;
 
-        ptr_commit = last_used_context->ptr + last_used_context->reserved_amount;
-        m_bip_buffer.commit (ptr_commit);
+	ptr_commit = last_used_context->ptr + last_used_context->reserved_amount;
+	m_bip_buffer.commit (ptr_commit);
 
-        assert (new_completed_position > m_last_committed_pos);
-        m_last_committed_pos = new_completed_position;
-    }
+	assert (new_completed_position > m_last_committed_pos);
+	m_last_committed_pos = new_completed_position;
+      }
 
     /* notify readers of the new completed position */
     if (new_completed_position > m_last_notified_committed_pos + m_trigger_min_to_read_size)
-    {
-        if (m_ready_pos_handler)
-        {
-            int err;
-            err = m_ready_pos_handler (m_last_notified_committed_pos,
-                                       new_completed_position - m_last_notified_committed_pos);
-            if (err != NO_ERROR)
-            {
-                return err;
-            }
-        }
-        m_last_notified_committed_pos = new_completed_position;
-    }
+      {
+	if (m_ready_pos_handler)
+	  {
+	    int err;
+	    err = m_ready_pos_handler (m_last_notified_committed_pos,
+				       new_completed_position - m_last_notified_committed_pos);
+	    if (err != NO_ERROR)
+	      {
+		return err;
+	      }
+	  }
+	m_last_notified_committed_pos = new_completed_position;
+      }
 
     m_buffer_mutex.unlock ();
 
     return NO_ERROR;
-}
+  }
 
-/*
- * Reserve phase of append:
- *  1. queue->produce : tries adds slot in queue (further data is filled later);
- *     it repeats this steps until successfull
- *  2. buffer->reserve : tries to reserve the amount in buffer;
- *     if unsuccessfull, reverts the first step (still under mutex), release the mutex and restarts from (1)
- *     (this allows other threads to unlatch reads, advance commit pointer - to unblock the situation)
- *  3. increase the m_append_position of stream
- *  4. init/fills-in reserve context data (reserved position, reserved pointer, amount)
- *  5. release mutex
- *  6. if needed, notifies m_filled_stream_handler that too much data was appended since drop position
- *     drop_position is a logical position in past of stream; this is set by an aggregator of "interested" clients
- *     of stream data and instructs the stream up to which position is safe to drop the data;
- *     the interested clients may be : normal readers or the readers which saves the data to disk (for persistence)
- */
-char *packing_stream::reserve_with_buffer (const size_t amount, stream_reserve_context *&reserved_context)
-{
+  /*
+   * Reserve phase of append:
+   *  1. queue->produce : tries adds slot in queue (further data is filled later);
+   *     it repeats this steps until successfull
+   *  2. buffer->reserve : tries to reserve the amount in buffer;
+   *     if unsuccessfull, reverts the first step (still under mutex), release the mutex and restarts from (1)
+   *     (this allows other threads to unlatch reads, advance commit pointer - to unblock the situation)
+   *  3. increase the m_append_position of stream
+   *  4. init/fills-in reserve context data (reserved position, reserved pointer, amount)
+   *  5. release mutex
+   *  6. if needed, notifies m_filled_stream_handler that too much data was appended since drop position
+   *     drop_position is a logical position in past of stream; this is set by an aggregator of "interested" clients
+   *     of stream data and instructs the stream up to which position is safe to drop the data;
+   *     the interested clients may be : normal readers or the readers which saves the data to disk (for persistence)
+   */
+  char *packing_stream::reserve_with_buffer (const size_t amount, stream_reserve_context *&reserved_context)
+  {
     char *ptr = NULL;
 
     assert (amount > 0);
 
     m_buffer_mutex.lock ();
     while (1)
-    {
-        reserved_context = m_reserved_positions.produce ();
-        if (reserved_context == NULL)
-        {
-            /* this may happen due to a very slow commiter, which may cause to fill up the queue */
-            m_buffer_mutex.unlock ();
-            std::this_thread::sleep_for (std::chrono::microseconds (100));
-            m_stat_reserve_queue_spins++;
-            m_buffer_mutex.lock ();
-            continue;
-        }
+      {
+	reserved_context = m_reserved_positions.produce ();
+	if (reserved_context == NULL)
+	  {
+	    /* this may happen due to a very slow commiter, which may cause to fill up the queue */
+	    m_buffer_mutex.unlock ();
+	    std::this_thread::sleep_for (std::chrono::microseconds (100));
+	    m_stat_reserve_queue_spins++;
+	    m_buffer_mutex.lock ();
+	    continue;
+	  }
 
-        ptr = (char *) m_bip_buffer.reserve (amount);
-        if (ptr != NULL)
-        {
-            break;
-        }
-        m_reserved_positions.undo_produce (reserved_context);
+	ptr = (char *) m_bip_buffer.reserve (amount);
+	if (ptr != NULL)
+	  {
+	    break;
+	  }
+	m_reserved_positions.undo_produce (reserved_context);
 
-        m_buffer_mutex.unlock ();
-        std::this_thread::sleep_for (std::chrono::microseconds (100));
-        m_stat_reserve_buffer_spins++;
-        m_buffer_mutex.lock ();
-    }
+	m_buffer_mutex.unlock ();
+	std::this_thread::sleep_for (std::chrono::microseconds (100));
+	m_stat_reserve_buffer_spins++;
+	m_buffer_mutex.lock ();
+      }
 
     assert (reserved_context != NULL);
 
@@ -607,111 +607,111 @@ char *packing_stream::reserve_with_buffer (const size_t amount, stream_reserve_c
 
     /* notify that stream content needs to be saved, otherwise it may be overwritten in bip_buffer */
     if (m_filled_stream_handler && stream_fill >= 1.0f)
-    {
-        m_filled_stream_handler (drop_pos, produced_since_drop);
-    }
+      {
+	m_filled_stream_handler (drop_pos, produced_since_drop);
+      }
 
     return ptr;
-}
+  }
 
-/*
- * This is used in context of serial reading and performs an action when not enough data is committed.
- * The action may be : block (until data is commited) or actively fetch data (from disk or other on-demand producer)
- * skip_mode argument indicates which action to take after data becomes available.
- */
-int packing_stream::wait_for_data (const size_t amount, const STREAM_SKIP_MODE skip_mode)
-{
+  /*
+   * This is used in context of serial reading and performs an action when not enough data is committed.
+   * The action may be : block (until data is commited) or actively fetch data (from disk or other on-demand producer)
+   * skip_mode argument indicates which action to take after data becomes available.
+   */
+  int packing_stream::wait_for_data (const size_t amount, const STREAM_SKIP_MODE skip_mode)
+  {
     int err = NO_ERROR;
     size_t dummy;
 
     if (m_read_position + amount <= m_last_committed_pos)
-    {
-        if (skip_mode == STREAM_SKIP)
-        {
-            m_read_position += amount;
-        }
-        return NO_ERROR;
-    }
+      {
+	if (skip_mode == STREAM_SKIP)
+	  {
+	    m_read_position += amount;
+	  }
+	return NO_ERROR;
+      }
 
     m_stat_read_not_enough_data_cnt++;
     if (m_fetch_data_handler)
-    {
-        err = m_fetch_data_handler (m_read_position, NULL, amount, dummy);
-        if (err != NO_ERROR)
-        {
-            return err;
-        }
-    }
+      {
+	err = m_fetch_data_handler (m_read_position, NULL, amount, dummy);
+	if (err != NO_ERROR)
+	  {
+	    return err;
+	  }
+      }
     else
-    {
-        err = ER_STREAM_NO_MORE_DATA;
-        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (), m_read_position,
-                amount);
-        return err;
-    }
+      {
+	err = ER_STREAM_NO_MORE_DATA;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (), m_read_position,
+		amount);
+	return err;
+      }
 
     if (skip_mode == STREAM_SKIP)
-    {
-        assert (err == NO_ERROR);
-        m_read_position += amount;
-    }
+      {
+	assert (err == NO_ERROR);
+	m_read_position += amount;
+      }
 
     return err;
-}
+  }
 
-/*
- * starts a range read from a position in stream
- * this must be in the same scope with a unlatch_read_data call (to make sure the read latch is released)
- * if portion of range is still in buffer, it reads the available amount, returning the actual read amount and
- * a read latch id
- * if no range can be found in bip_buffer, the stream_io is used to provide the range from disk
- * TODO: read_latch_page_idx type will change to account of reading from stream_file source.
- *
- *  1. if needed, wait for data to be committed
- *  2. if part of range is not in bip_buffer, use stream_io to get range
- *  3. acquire mutex
- *  4. bip_buffer.get_read_ranges : get available readable ranges from bip_buffer
- *  5. convert logical range into physical range
- *  6. try to read-latch the read range in bip_buffer
- *  7. release mutex
- */
-char *packing_stream::get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
-        size_t &actual_read_bytes, mem::buffer_latch_read_id &read_latch_page_idx)
-{
+  /*
+   * starts a range read from a position in stream
+   * this must be in the same scope with a unlatch_read_data call (to make sure the read latch is released)
+   * if portion of range is still in buffer, it reads the available amount, returning the actual read amount and
+   * a read latch id
+   * if no range can be found in bip_buffer, the stream_io is used to provide the range from disk
+   * TODO: read_latch_page_idx type will change to account of reading from stream_file source.
+   *
+   *  1. if needed, wait for data to be committed
+   *  2. if part of range is not in bip_buffer, use stream_io to get range
+   *  3. acquire mutex
+   *  4. bip_buffer.get_read_ranges : get available readable ranges from bip_buffer
+   *  5. convert logical range into physical range
+   *  6. try to read-latch the read range in bip_buffer
+   *  7. release mutex
+   */
+  char *packing_stream::get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
+      size_t &actual_read_bytes, mem::buffer_latch_read_id &read_latch_page_idx)
+  {
     int err = NO_ERROR;
     char *ptr = NULL;
 
     if (req_start_pos + amount > m_last_committed_pos && m_fetch_data_handler)
-    {
-        m_stat_read_not_enough_data_cnt++;
-        /* not yet produced */
-        /* try asking for more data : */
+      {
+	m_stat_read_not_enough_data_cnt++;
+	/* not yet produced */
+	/* try asking for more data : */
 
-        size_t actual_read_bytes;
+	size_t actual_read_bytes;
 
-        err = m_fetch_data_handler (req_start_pos, ptr, amount, actual_read_bytes);
-        if (err != NO_ERROR)
-        {
-            return NULL;
-        }
+	err = m_fetch_data_handler (req_start_pos, ptr, amount, actual_read_bytes);
+	if (err != NO_ERROR)
+	  {
+	    return NULL;
+	  }
 
-        if (actual_read_bytes != amount)
-        {
-            /* TODO [arnia] : what could be the reason ? */
-            return NULL;
-        }
+	if (actual_read_bytes != amount)
+	  {
+	    /* TODO [arnia] : what could be the reason ? */
+	    return NULL;
+	  }
 
-        return NULL;
-    }
+	return NULL;
+      }
 
     if (req_start_pos < m_oldest_readable_position)
-    {
-        m_stat_read_not_in_buffer_cnt++;
-        /* not in buffer anymore request it from stream_io */
-        /* TODO[arnia] */
-        // m_io->read (req_start_pos, buf, amount);
-        return NULL;
-    }
+      {
+	m_stat_read_not_in_buffer_cnt++;
+	/* not in buffer anymore request it from stream_io */
+	/* TODO[arnia] */
+	// m_io->read (req_start_pos, buf, amount);
+	return NULL;
+      }
 
     std::unique_lock<std::mutex> ulock (m_buffer_mutex);
     /* update mapped positions according to buffer pointers */
@@ -721,54 +721,54 @@ char *packing_stream::get_data_from_pos (const stream_position &req_start_pos, c
 
     m_bip_buffer.get_read_ranges (ptr_trail_b, amount_trail_b, ptr_trail_a, amount_trail_a);
     if (amount_trail_a == 0 && amount_trail_b == 0)
-    {
-        /* no readable regions */
-        m_stat_read_no_readable_pos_cnt++;
-        return NULL;
-    }
+      {
+	/* no readable regions */
+	m_stat_read_no_readable_pos_cnt++;
+	return NULL;
+      }
 
     total_in_buffer = amount_trail_b + amount_trail_a;
 
     m_oldest_readable_position = m_last_committed_pos - total_in_buffer;
 
     if (req_start_pos < m_oldest_readable_position)
-    {
-        m_stat_read_not_in_buffer_cnt++;
-        /* not in buffer anymore request it from stream_io */
-        /* TODO: */
-        // m_io->read (req_start_pos, buf, amount);
-        return NULL;
-    }
+      {
+	m_stat_read_not_in_buffer_cnt++;
+	/* not in buffer anymore request it from stream_io */
+	/* TODO: */
+	// m_io->read (req_start_pos, buf, amount);
+	return NULL;
+      }
 
     if (m_last_committed_pos - req_start_pos <= amount_trail_b)
-    {
-        /* the area may be found in trail of region B
-         * this includes case when B does not exit - from start of buffer) */
-        ptr = (char *) ptr_trail_b + amount_trail_b - (m_last_committed_pos - req_start_pos);
-        actual_read_bytes = MIN (amount, amount_trail_b);
-    }
+      {
+	/* the area may be found in trail of region B
+	 * this includes case when B does not exit - from start of buffer) */
+	ptr = (char *) ptr_trail_b + amount_trail_b - (m_last_committed_pos - req_start_pos);
+	actual_read_bytes = MIN (amount, amount_trail_b);
+      }
     else
-    {
-        ptr = (char *) ptr_trail_a + amount_trail_a - (m_last_committed_pos - req_start_pos - amount_trail_b);
-        actual_read_bytes = MIN (amount, amount_trail_a);
-    }
+      {
+	ptr = (char *) ptr_trail_a + amount_trail_a - (m_last_committed_pos - req_start_pos - amount_trail_b);
+	actual_read_bytes = MIN (amount, amount_trail_a);
+      }
 
     err = m_bip_buffer.start_read (ptr, actual_read_bytes, read_latch_page_idx);
     if (err != NO_ERROR)
-    {
-        m_stat_read_buffer_failed_cnt++;
-        return NULL;
-    }
+      {
+	m_stat_read_buffer_failed_cnt++;
+	return NULL;
+      }
 
     return ptr;
-}
+  }
 
-int packing_stream::unlatch_read_data (const mem::buffer_latch_read_id &read_latch_page_idx)
-{
+  int packing_stream::unlatch_read_data (const mem::buffer_latch_read_id &read_latch_page_idx)
+  {
     std::unique_lock<std::mutex> ulock (m_buffer_mutex);
     m_bip_buffer.end_read (read_latch_page_idx);
 
     return NO_ERROR;
-}
+  }
 
 } /* namespace cubstream */
