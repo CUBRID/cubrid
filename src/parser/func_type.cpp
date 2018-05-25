@@ -11,14 +11,14 @@ std::vector<func_signature> func_signature::bigint = {
 };
 
 std::vector<func_signature> func_signature::percentile_cont = {
-#if 0
+#if 1
   {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_NUMBER  }, {}},
   {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_STRING  }, {}},
   {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_DATETIME}, {}},
   {PT_TYPE_MAYBE, {PT_TYPE_MAYBE           }, {}},
   {PT_TYPE_MAYBE, {PT_TYPE_NULL            }, {}},
   {PT_TYPE_MAYBE, {PT_TYPE_NA              }, {}},
-#else //use double as return type (as documentation says)
+#else //use double as return type (as documentation says)... but tests are failing (adjust doc or tests)
   {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER  }, {}},
   {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_STRING  }, {}},
   {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_DATETIME}, {}},
@@ -28,7 +28,7 @@ std::vector<func_signature> func_signature::percentile_cont = {
 #endif
 };
 
-std::vector<func_signature> func_signature::percentile_dis = {
+std::vector<func_signature> func_signature::percentile_disc = {
   {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_NUMBER  }, {}},
   {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_STRING  }, {}},
   {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_DATETIME}, {}},
@@ -84,17 +84,14 @@ std::vector<func_signature> func_signature::ntile = {//why original code cast ar
 };
 
 /*cannot define a clear signature because casting depends on actual value
-  MEDIAN('123456')     => MEDIAN(double)
-  MEDIAN('2018-03-14') => MEDIAN(date)*/
+  MEDIAN('123456')     <=> MEDIAN(double) -> double
+  MEDIAN('2018-03-14') <=> MEDIAN(date)   -> date  */
 std::vector<func_signature> func_signature::median = {
-//{PT_TYPE_DOUBLE , {PT_GENERIC_TYPE_NUMBER}  , {}},
-  {PT_TYPE_MAYBE  , {PT_GENERIC_TYPE_NUMBER}  , {}},
-  {0              , {PT_GENERIC_TYPE_DATETIME}, {}},
-
-//{PT_TYPE_MAYBE  , {PT_GENERIC_TYPE_ANY}     , {}}, //let evaluation select the return type
-  {PT_TYPE_MAYBE  , {PT_TYPE_NULL}            , {}},
-  {PT_TYPE_MAYBE  , {PT_TYPE_MAYBE}           , {}},
-  {PT_TYPE_MAYBE  , {PT_GENERIC_TYPE_STRING}  , {}},
+  {0                , {PT_GENERIC_TYPE_NUMBER}  , {}},
+  {0                , {PT_GENERIC_TYPE_DATETIME}, {}},
+  {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_STRING}  , {}}, //DISCUSSION: can we get rid of MAYBE???
+  {0                , {PT_TYPE_NULL}            , {}},
+  {0                , {PT_TYPE_MAYBE}           , {}},
 };
 
 std::vector<func_signature> func_signature::type0_nr_or_str = {
@@ -276,7 +273,7 @@ std::vector<func_signature>* func_signature::get_signatures(FUNC_TYPE ft){
         case PT_CUME_DIST           :
         case PT_PERCENT_RANK        : return &double_r_any;
         case PT_PERCENTILE_CONT     : return &percentile_cont;
-        case PT_PERCENTILE_DISC     : return &percentile_dis;
+        case PT_PERCENTILE_DISC     : return &percentile_disc;
         default:
             assert(false);
             return nullptr;
