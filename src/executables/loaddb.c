@@ -47,7 +47,6 @@
 #include "schema_manager.h"
 #include "transform.h"
 #include "server_interface.h"
-#include "load_object.h"
 #include "authenticate.h"
 #include "dbi.h"
 #include "network_interface_cl.h"
@@ -100,7 +99,7 @@ static int index_file_start_line = 1;
 static int compare_Storage_order = 0;
 
 #define LOADDB_LOG_FILENAME_SUFFIX "loaddb.log"
-FILE *loaddb_log_file = NULL;
+static FILE *loaddb_log_file;
 
 bool No_oid_hint = false;
 
@@ -616,7 +615,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   Verbose = utility_get_option_bool_value (arg_map, LOAD_VERBOSE_S);
   Disable_statistics = utility_get_option_bool_value (arg_map, LOAD_NO_STATISTICS_S);
   Periodic_commit = utility_get_option_int_value (arg_map, LOAD_PERIODIC_COMMIT_S);
-  Verbose_commit = Periodic_commit > 0 ? true : false;
+  Verbose_commit = Periodic_commit > 0;
   No_oid_hint = utility_get_option_bool_value (arg_map, LOAD_NO_OID_S);
   Schema_file = utility_get_option_string_value (arg_map, LOAD_SCHEMA_FILE_S, 0);
   Index_file = utility_get_option_string_value (arg_map, LOAD_INDEX_FILE_S, 0);
@@ -662,7 +661,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  if (error == ER_AU_INVALID_PASSWORD)
 	    {
 	      /* prompt for password and try again */
-	      error = NO_ERROR;
 	      passwd =
 		getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_PASSWORD_PROMPT));
 	      if (!strlen (passwd))
@@ -681,6 +679,13 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
       (void) db_login ("DBA", NULL);
       error = db_restart (arg->command_name, true, Volume);
+    }
+
+  if (error != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("Cannot restart database %s\n", Volume);
+      status = 3;
+      goto error_return;
     }
 
   /* disable trigger actions to be fired */
@@ -896,13 +901,12 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  errors = 0;
 	}
 
-
       if (errors)
 	{
 	  print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_ERROR_COUNT),
 			 errors);
 	}
-      else if (ldr_init_ret == NO_ERROR && Syntax_check == false)
+      else if (ldr_init_ret == NO_ERROR && !Syntax_check)
 	{
 	  /* now do it for real if there were no errors and we aren't doing a simple syntax check */
 	  ldr_start (Periodic_commit);
@@ -1129,7 +1133,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 {
   DB_SESSION *session = NULL;
   DB_QUERY_RESULT *res = NULL;
-  int error = 0;
+  int error = NO_ERROR;
   int stmt_cnt, stmt_id = 0, stmt_type;
   int executed_cnt = 0;
   int parser_start_line_no;
