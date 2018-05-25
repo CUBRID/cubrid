@@ -13368,6 +13368,7 @@ static PT_NODE* pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       case F_VID:
         assert(false);
         return NULL;
+      default:;
     }
 
   PT_NODE *arg_list = node->info.function.arg_list;
