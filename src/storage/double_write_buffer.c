@@ -3673,6 +3673,7 @@ end:
   return error_code;
 }
 
+#if !defined (NDEBUG)
 /*
  * dwb_debug_check_dwb () - check sanity of ordered slots
  *
@@ -3750,6 +3751,7 @@ dwb_debug_check_dwb (THREAD_ENTRY * thread_p, DWB_SLOT * p_dwb_ordered_slots, un
 
   return NO_ERROR;
 }
+#endif // DEBUG
 
 /*
  * dwb_check_data_page_is_sane () - Check whether the data page is corrupted.
