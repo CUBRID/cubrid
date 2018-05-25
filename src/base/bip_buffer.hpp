@@ -102,7 +102,7 @@ namespace mem
 
       ~bip_buffer ()
       {
-        assert (m_read_flags.any () == false);
+	assert (m_read_flags.any () == false);
 	delete [] m_buffer;
       };
 
@@ -146,7 +146,7 @@ namespace mem
 
 		activate_region_b ();
 	      }
-            switch_to_region_b ();
+	    switch_to_region_b ();
 	    /* fall through */
 	  }
 

@@ -77,10 +77,10 @@ namespace cubstream
     m_receiver_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
 			new transfer_receiver_task (*this), "stream_transfer_receiver");
     m_write_action_function = std::bind (&transfer_receiver::write_action,
-                                         std::ref (*this),
-                                         std::placeholders::_1,
-                                         std::placeholders::_2,
-                                         std::placeholders::_3);
+					 std::ref (*this),
+					 std::placeholders::_1,
+					 std::placeholders::_2,
+					 std::placeholders::_3);
   }
 
   transfer_receiver::~transfer_receiver ()

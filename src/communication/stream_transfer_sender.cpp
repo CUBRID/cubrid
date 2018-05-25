@@ -84,8 +84,8 @@ namespace cubstream
 		      new transfer_sender_task (*this),
 		      "stream_transfer_sender");
     m_read_action_function =
-      std::bind (&transfer_sender::read_action, std::ref (*this), std::placeholders::_1,
-                 std::placeholders::_2);
+	    std::bind (&transfer_sender::read_action, std::ref (*this), std::placeholders::_1,
+		       std::placeholders::_2);
   }
 
   transfer_sender::~transfer_sender ()

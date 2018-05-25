@@ -82,10 +82,10 @@ namespace cubstream
       /* structure capturing context of a stream reserve-commit scope */
       struct stream_reserve_context
       {
-        stream_position start_pos;
-        char *ptr;
-        size_t reserved_amount;
-        size_t written_bytes;
+	stream_position start_pos;
+	char *ptr;
+	size_t reserved_amount;
+	size_t written_bytes;
       };
 
       mem::bip_buffer<BIP_BUFFER_READ_PAGES_COUNT> m_bip_buffer;
@@ -150,21 +150,21 @@ namespace cubstream
 	return ((float) m_append_position - (float) m_last_dropable_pos) / (float) m_trigger_flush_to_disk_size;
       };
 
-    };
+  };
 
   /*
    * entry of a stream: this is an abstract class which encapsulates a collection of objects packable into a stream
-   * 
+   *
    * it has a mandatory header structure to be implemented by derived class along with associated methods:
    *  - get_header_size,
-   *  - set_header_data_size, 
+   *  - set_header_data_size,
    *  - pack_stream_entry_header
    *  - unpack_stream_entry_header
    *  - get_packable_entry_count_from_header
    * The header size must be aligned at MAX_ALIGNEMENT.
    * The objects must derive from packable_object.
    * The concrete class (of entry) must provide the factory get_builder method to build objects
-   * 
+   *
    * As a "protocol", each object has an integer identifier which is packed before actual object packaging:
    * at unpack, this identifier is used to instanciate an object (using the integrated factory), before calling
    * object.unpack

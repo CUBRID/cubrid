@@ -47,167 +47,167 @@ namespace mem
   {
     private:
       struct CCQ_SLOT
-        {
-          T value;
-          char flags;
-        };
+      {
+	T value;
+	char flags;
+      };
 
       enum CCQ_SLOT_FLAG
-        {
-          CCQ_FREE = 0,
-          CCQ_USED
-        };
+      {
+	CCQ_FREE = 0,
+	CCQ_USED
+      };
 
     public:
       collapsable_circular_queue (const size_t capacity)
-        {
-          init (capacity);
-        };
+      {
+	init (capacity);
+      };
 
       ~collapsable_circular_queue ()
-        {
-          clear ();
-        };
+      {
+	clear ();
+      };
 
       int size (void)
-        {
-          return (m_tail >= m_head) ? (m_tail - m_head) : (m_capacity + m_tail - m_head);
-        };
+      {
+	return (m_tail >= m_head) ? (m_tail - m_head) : (m_capacity + m_tail - m_head);
+      };
 
       /* returns position in queue reserved */
-      T* produce (T &elem)
-        {
-          int pos;
+      T *produce (T &elem)
+      {
+	int pos;
 
-          if (size () >= m_capacity - 1)
-            {
-              /* is full */
-              return NULL;
-            }
-          pos = m_tail;
+	if (size () >= m_capacity - 1)
+	  {
+	    /* is full */
+	    return NULL;
+	  }
+	pos = m_tail;
 
-          assert (m_buffer[pos].flags == CCQ_FREE);
-          m_buffer[pos].flags = CCQ_USED;
+	assert (m_buffer[pos].flags == CCQ_FREE);
+	m_buffer[pos].flags = CCQ_USED;
 
-          m_tail = (m_tail + 1) % m_capacity;
+	m_tail = (m_tail + 1) % m_capacity;
 
-          assert (m_head != m_tail);
-  
-          m_buffer[pos].value = elem;
+	assert (m_head != m_tail);
 
-          return &(m_buffer[pos].value);
-        };
+	m_buffer[pos].value = elem;
 
-      T* produce (void)
-        {
-          int pos;
+	return & (m_buffer[pos].value);
+      };
 
-          if (size () >= m_capacity - 1)
-            {
-              /* is full */
-              return NULL;
-            }
-          pos = m_tail;
+      T *produce (void)
+      {
+	int pos;
 
-          assert (m_buffer[pos].flags == CCQ_FREE);
-          m_buffer[pos].flags = CCQ_USED;
+	if (size () >= m_capacity - 1)
+	  {
+	    /* is full */
+	    return NULL;
+	  }
+	pos = m_tail;
 
-          m_tail = (m_tail + 1) % m_capacity;
+	assert (m_buffer[pos].flags == CCQ_FREE);
+	m_buffer[pos].flags = CCQ_USED;
 
-          assert (m_head != m_tail);
+	m_tail = (m_tail + 1) % m_capacity;
 
-          return &(m_buffer[pos].value);
-        };
+	assert (m_head != m_tail);
 
-      T* peek_head (void)
-        {
-          if (m_head != m_tail)
-            {
-              return &(m_buffer[m_head].value);
-            }
-          return NULL; 
-        };
+	return & (m_buffer[pos].value);
+      };
 
-      bool consume (T *elem, T* &last_used_elem)
-        {
-          CCQ_SLOT *slot = reinterpret_cast <CCQ_SLOT *> (elem);
-          int pos = (int) (slot - m_buffer);
+      T *peek_head (void)
+      {
+	if (m_head != m_tail)
+	  {
+	    return & (m_buffer[m_head].value);
+	  }
+	return NULL;
+      };
 
-          return consume (pos, last_used_elem);
-        };
+      bool consume (T *elem, T *&last_used_elem)
+      {
+	CCQ_SLOT *slot = reinterpret_cast <CCQ_SLOT *> (elem);
+	int pos = (int) (slot - m_buffer);
+
+	return consume (pos, last_used_elem);
+      };
 
       /* deletes the last element of queue (this needs to be produced-undo without release the mutex) */
       void undo_produce (T *elem)
-        {
-          CCQ_SLOT *slot = reinterpret_cast <CCQ_SLOT *> (elem);
-          int pos = (int) (slot - m_buffer);
+      {
+	CCQ_SLOT *slot = reinterpret_cast <CCQ_SLOT *> (elem);
+	int pos = (int) (slot - m_buffer);
 
-          int last_element = (m_tail == 0) ? (m_capacity - 1) : (m_tail - 1);
-          
-          assert (pos = last_element);
+	int last_element = (m_tail == 0) ? (m_capacity - 1) : (m_tail - 1);
 
-          assert (m_buffer[pos].flags == CCQ_USED);
+	assert (pos = last_element);
 
-          m_buffer[pos].flags = CCQ_FREE;
-          m_tail = last_element;
-        };
+	assert (m_buffer[pos].flags == CCQ_USED);
+
+	m_buffer[pos].flags = CCQ_FREE;
+	m_tail = last_element;
+      };
 
     protected:
       void init (const size_t capacity)
-        {
-          m_capacity = (int) capacity;
-          m_buffer = new CCQ_SLOT[capacity];
+      {
+	m_capacity = (int) capacity;
+	m_buffer = new CCQ_SLOT[capacity];
 
-          std::memset (m_buffer, 0, capacity * sizeof (CCQ_SLOT));
+	std::memset (m_buffer, 0, capacity * sizeof (CCQ_SLOT));
 
-          m_head = 0;
-          m_tail = 0;
-        };
+	m_head = 0;
+	m_tail = 0;
+      };
 
       void clear ()
-        {
-          delete[] m_buffer;
-          m_capacity = 0;
-        };
+      {
+	delete[] m_buffer;
+	m_capacity = 0;
+      };
 
       /* returns count of collapsed positions and if last used element (or last before tail) */
-      bool consume (const int pos, T* &last_used_elem)
+      bool consume (const int pos, T *&last_used_elem)
       {
-        if (m_buffer[pos].flags != CCQ_USED)
-          {
-            assert (false);
-            return false;
-          }
+	if (m_buffer[pos].flags != CCQ_USED)
+	  {
+	    assert (false);
+	    return false;
+	  }
 
-        m_buffer[pos].flags = CCQ_FREE;
+	m_buffer[pos].flags = CCQ_FREE;
 
-        if (pos == m_head)
-          {
-            int collapsed_count = 0;
-            int prev_used_pos;
-            while (m_buffer[m_head].flags == CCQ_FREE)
-              {
-                prev_used_pos = m_head;
-                m_head = (m_head + 1) % m_capacity;
-                collapsed_count++;
+	if (pos == m_head)
+	  {
+	    int collapsed_count = 0;
+	    int prev_used_pos;
+	    while (m_buffer[m_head].flags == CCQ_FREE)
+	      {
+		prev_used_pos = m_head;
+		m_head = (m_head + 1) % m_capacity;
+		collapsed_count++;
 
-                if (m_head == m_tail)
-                  {
-                    /* queue becomes free */
-                    break;
-                  }
-              }
+		if (m_head == m_tail)
+		  {
+		    /* queue becomes free */
+		    break;
+		  }
+	      }
 
-            assert (m_head == m_tail || m_buffer[m_head].flags == CCQ_USED);
+	    assert (m_head == m_tail || m_buffer[m_head].flags == CCQ_USED);
 
-            last_used_elem = &(m_buffer[prev_used_pos].value);
+	    last_used_elem = & (m_buffer[prev_used_pos].value);
 
-            return true;
-          }
-        
-        /* do not collapse tail : is allowed only to advance */
-    
-        return false;
+	    return true;
+	  }
+
+	/* do not collapse tail : is allowed only to advance */
+
+	return false;
       };
     private:
       int m_head;
@@ -216,7 +216,7 @@ namespace mem
       int m_capacity;
 
       CCQ_SLOT *m_buffer;
-    };
+  };
 
 } /* namespace mem */
 
