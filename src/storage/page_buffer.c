@@ -53,6 +53,7 @@
 #include "xserver_interface.h"
 #include "btree_load.h"
 #include "boot_sr.h"
+#include "resource_tracker.hpp"
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */
@@ -62,7 +63,7 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
-#include "thread.h"		// for resource tracker
+#include "thread_entry.hpp"
 
 const VPID vpid_Null_vpid = { NULL_PAGEID, NULL_VOLID };
 
@@ -2045,8 +2046,8 @@ try_again:
     }
 
 #if !defined (NDEBUG)
-  thread_rc_track_meter (thread_p, caller_file, caller_line, 1, pgptr, RC_PGBUF, MGR_DEF);
-#endif /* NDEBUG */
+  thread_p->get_pgbuf_tracker ().increment (caller_file, caller_line, pgptr);
+#endif // !NDEBUG
 
   if (bufptr->iopage_buffer->iopage.prv.ptype == PAGE_UNKNOWN)
     {
@@ -2539,9 +2540,9 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 
   PGBUF_BCB_LOCK (bufptr);
 
-#if !defined(NDEBUG)
-  thread_rc_track_meter (thread_p, caller_file, caller_line, -1, pgptr, RC_PGBUF, MGR_DEF);
-#endif /* NDEBUG */
+#if !defined (NDEBUG)
+  thread_p->get_pgbuf_tracker ().decrement (pgptr);
+#endif // !NDEBUG
   (void) pgbuf_unlatch_bcb_upon_unfix (thread_p, bufptr, holder_status);
   /* bufptr->mutex has been released in above function. */
 
@@ -2755,9 +2756,9 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
     {
       holder_status = pgbuf_unlatch_thrd_holder (thread_p, bufptr, NULL);
 
-#if !defined(NDEBUG)
-      thread_rc_track_meter (thread_p, caller_file, caller_line, -1, pgptr, RC_PGBUF, MGR_DEF);
-#endif /* NDEBUG */
+#if !defined (NDEBUG)
+      thread_p->get_pgbuf_tracker ().decrement (pgptr);
+#endif // !NDEBUG
       /* If the page has been fixed more than one time, just unfix it. */
       /* todo: is this really safe? */
       if (pgbuf_unlatch_bcb_upon_unfix (thread_p, bufptr, holder_status) != NO_ERROR)
@@ -2782,9 +2783,9 @@ pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 
   holder_status = pgbuf_unlatch_thrd_holder (thread_p, bufptr, NULL);
 
-#if !defined(NDEBUG)
-  thread_rc_track_meter (thread_p, caller_file, caller_line, -1, pgptr, RC_PGBUF, MGR_DEF);
-#endif /* NDEBUG */
+#if !defined (NDEBUG)
+  thread_p->get_pgbuf_tracker ().decrement (pgptr);
+#endif // !NDEBUG
   if (pgbuf_unlatch_bcb_upon_unfix (thread_p, bufptr, holder_status) != NO_ERROR)
     {
       return ER_FAILED;
@@ -14157,9 +14158,9 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
 
   holder_status = pgbuf_unlatch_thrd_holder (thread_p, bcb, NULL);
 
-#if !defined(NDEBUG)
-  thread_rc_track_meter (thread_p, __FILE__, __LINE__, -1, page_dealloc, RC_PGBUF, MGR_DEF);
-#endif /* NDEBUG */
+#if !defined (NDEBUG)
+  thread_p->get_pgbuf_tracker ().decrement (page_dealloc);
+#endif // !NDEBUG
   (void) pgbuf_unlatch_bcb_upon_unfix (thread_p, bcb, holder_status);
   /* bufptr->mutex has been released in above function. */
 }

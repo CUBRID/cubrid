@@ -23,6 +23,7 @@
 
 #ident "$Id$"
 
+#include "binaryheap.h"
 #include "filter_pred_cache.h"
 #include "lock_free.h"
 #include "query_executor.h"
