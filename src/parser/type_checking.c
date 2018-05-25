@@ -13426,7 +13426,7 @@ static PT_NODE* pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
         {
           PT_NODE *arg = arg_list;
           //printf("1: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
-          auto func_sigs = func_signature::get_signature(fcode);
+          auto func_sigs = func_signature::get_signatures(fcode);
           assert("ERR no function signature" && func_sigs != NULL);
           if(!func_sigs){
             //printf("ERR no function signature for fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
