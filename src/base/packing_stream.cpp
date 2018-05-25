@@ -83,7 +83,6 @@ namespace cubstream
 	return NO_ERROR;
       }
 
-    cubpacking::packer *serializator = get_packer ();
     assert (DB_WASTED_ALIGN (header_size, MAX_ALIGNMENT) == 0);
 
     data_size = get_entries_size ();
@@ -146,7 +145,6 @@ namespace cubstream
   int entry::prepare (void)
   {
     static size_t stream_entry_header_size = get_header_size ();
-    cubpacking::packer *serializator = get_packer ();
     size_t aligned_stream_entry_header_size;
     int err;
 
@@ -189,7 +187,7 @@ namespace cubstream
   {
     int err = NO_ERROR;
 
-    /* position the serializator range to data contents */
+    /* read the stream starting from data contents */
     err = m_stream->read (m_data_start_position, get_data_packed_size (), m_unpack_func);
 
     return (err < 0) ? err : NO_ERROR;
