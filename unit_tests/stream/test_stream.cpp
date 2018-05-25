@@ -1021,6 +1021,8 @@ namespace test_stream
 			size_t &processed_bytes)
       {
 	int err = ER_FAILED;
+        /* for this test, hack processed_bytes as byte_count to avoid stream code assert */
+        processed_bytes = byte_count;
 	if (pos >= m_prev_fetch_pos)
 	  {
 	    m_prev_fetch_pos = pos;

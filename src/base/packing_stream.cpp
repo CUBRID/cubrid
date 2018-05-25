@@ -232,7 +232,11 @@ namespace cubstream
 
 	/* unpack one replication entry */
 	add_packable_entry (packable_entry);
-	packable_entry->unpack (serializator); // TODO - might be better to handle errors
+	error_code = packable_entry->unpack (serializator);
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
       }
     serializator->align (MAX_ALIGNMENT);
 
@@ -319,7 +323,7 @@ namespace cubstream
       {
 	return ER_FAILED;
       }
-    reserve_context->written_bytes = err; // TODO - err??
+    reserve_context->written_bytes = written_bytes;
 
     err = commit_append (reserve_context);
 
@@ -719,9 +723,10 @@ namespace cubstream
 	    return NULL;
 	  }
 
-	if (actual_read_bytes != amount)
+	if (actual_read_bytes < amount)
 	  {
-	    /* TODO [arnia] : what could be the reason ? */
+	    /* force fetch handler to acquire at least the requested amount or return error (above code) */
+	    assert (false);
 	    return NULL;
 	  }
 
