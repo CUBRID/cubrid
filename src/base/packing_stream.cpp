@@ -156,7 +156,7 @@ namespace cubstream
     return (err < 0) ? err : NO_ERROR;
   }
 
-  /* callback header-read function for entry (called with packing_stream::read_serial) 
+  /* callback header-read function for entry (called with packing_stream::read_serial)
    * 1. init packer
    * 2. unpack entry header
    * 3. saves start of data payload logical position in entry object (to be retrieved at unpack of entry)
