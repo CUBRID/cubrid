@@ -11,12 +11,21 @@ std::vector<func_signature> func_signature::bigint = {
 };
 
 std::vector<func_signature> func_signature::percentile_cont = {
+#if 0
   {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_NUMBER  }, {}},
   {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_STRING  }, {}},
   {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_DATETIME}, {}},
   {PT_TYPE_MAYBE, {PT_TYPE_MAYBE           }, {}},
   {PT_TYPE_MAYBE, {PT_TYPE_NULL            }, {}},
   {PT_TYPE_MAYBE, {PT_TYPE_NA              }, {}},
+#else //use double as return type (as documentation says)
+  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER  }, {}},
+  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_STRING  }, {}},
+  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_DATETIME}, {}},
+  {PT_TYPE_DOUBLE, {PT_TYPE_MAYBE           }, {}},
+  {PT_TYPE_DOUBLE, {PT_TYPE_NULL            }, {}},
+  {PT_TYPE_DOUBLE, {PT_TYPE_NA              }, {}},
+#endif
 };
 
 std::vector<func_signature> func_signature::percentile_dis = {

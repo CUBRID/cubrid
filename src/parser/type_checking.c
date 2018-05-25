@@ -13342,7 +13342,7 @@ namespace Func
  *   node(in): a parse tree node of type PT_FUNCTION denoting an
  *             an expression with aggregate functions.
  */
-static PT_NODE* pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
+static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
 {
   FUNC_TYPE fcode = node->info.function.function_type;
 
@@ -13402,7 +13402,7 @@ static PT_NODE* pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
   if (pt_list_has_logical_nodes (arg_list))
     {
       PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-		   pt_show_function (fcode), "boolean");
+		   pt_show_function(fcode), "boolean");
       return node;
     }
 
