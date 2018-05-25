@@ -13145,7 +13145,7 @@ namespace Func
      *   return: success
      *   func_signature (in): function signature
      */
-    bool apply_signature (const func_signature& signature)
+    bool apply_signature(const func_signature& signature)
     {
       FUNC_TYPE func_type = m_node->info.function.function_type;
       parser_node* arg = m_node->info.function.arg_list;
@@ -13203,11 +13203,6 @@ namespace Func
     }
   }; //class Node
 
-  bool cmp_types_normal(const pt_arg_type& type, pt_type_enum type_enum)
-  {
-    return (type.type == pt_arg_type::NORMAL && type.val.type == type_enum);
-  }
-
   bool cmp_types_generic(const pt_arg_type& type, pt_type_enum type_enum)
   {
     assert(type.type != pt_arg_type::INDEX);
@@ -13263,7 +13258,7 @@ namespace Func
   /*
    * get_signature () - get function signature using a function to compare types
    */
-  const func_signature* get_signature (
+  const func_signature* get_signature(
     parser_node* node,
     const std::vector<func_signature>& signatures,
     bool(*cmp_types)(const pt_arg_type&, pt_type_enum)
@@ -13329,17 +13324,9 @@ namespace Func
     /*
    * get_signature () - get function signature using a function to compare types
    */
-  const func_signature* get_signature (parser_node* node, const std::vector<func_signature>& signatures)
+  const func_signature* get_signature(parser_node* node, const std::vector<func_signature>& signatures)
   {
-#if 0 /// try without exact matching
-    const func_signature* signature = get_signature(node, signatures, &cmp_types_normal);
-#else
-    const func_signature* signature = nullptr;
-#endif
-    if(signature == NULL)
-      {
-        signature = get_signature(node, signatures, &cmp_types_generic);
-      }
+    const func_signature* signature = get_signature(node, signatures, &cmp_types_generic);
     if(signature == NULL)
       {
         signature = get_signature(node, signatures, &cmp_types_castable);
