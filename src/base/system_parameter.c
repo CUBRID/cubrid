@@ -2106,7 +2106,7 @@ int PRM_THREAD_LOGGING_FLAG = 0;
 static int prm_thread_logging_flag_default = 0;
 static unsigned int prm_thread_logging_flag_flag = 0;
 
-int PRM_LOG_QUERY_LISTS = 0;
+bool PRM_LOG_QUERY_LISTS = false;
 static bool prm_log_query_lists_default = false;
 static unsigned int prm_log_query_lists_flag = 0;
 
