@@ -48,8 +48,22 @@ struct log_zip;
 // from vacuum.h
 struct vacuum_worker;
 
-// from thread.h - FIXME
-struct thread_resource_track;
+// forward resource trackers
+namespace cubbase
+{
+  template <typename Res>
+  class resource_tracker;
+
+  // trackers
+  // memory allocations
+  using alloc_tracker = resource_tracker<const void *>;
+  // page fix
+  using pgbuf_tracker = resource_tracker<const char *>;
+}
+namespace cubsync
+{
+  class critical_section_tracker;
+}
 
 // for lock-free - FIXME
 enum
@@ -237,12 +251,6 @@ namespace cubthread
 
       struct vacuum_worker *vacuum_worker;	/* Vacuum worker info */
 
-      /* resource track info */
-      thread_resource_track *track;
-      int track_depth;
-      int track_threshold;		/* for future work, get PRM */
-      thread_resource_track *track_free_list;
-
       bool sort_stats_active;
 
       EVENT_STAT event_stats;
@@ -260,12 +268,13 @@ namespace cubthread
 
       int count_private_allocators;
 #endif
+      int m_qlist_count;
 
       thread_id_t get_id ();
       pthread_t get_posix_id ();
       void register_id ();
       void unregister_id ();
-      bool is_on_current_thread ();
+      bool is_on_current_thread () const;
 
       void return_lock_free_transaction_entries (void);
 
@@ -277,6 +286,23 @@ namespace cubthread
 	return m_error;
       }
 
+      cubbase::alloc_tracker &get_alloc_tracker (void)
+      {
+	return m_alloc_tracker;
+      }
+      cubbase::pgbuf_tracker &get_pgbuf_tracker (void)
+      {
+	return m_pgbuf_tracker;
+      }
+      cubsync::critical_section_tracker &get_csect_tracker (void)
+      {
+	return m_csect_tracker;
+      }
+
+      void end_resource_tracks (void);
+      void push_resource_tracks (void);
+      void pop_resource_tracks (void);
+
     private:
       void clear_resources (void);
 
@@ -287,6 +313,11 @@ namespace cubthread
 
       // TODO: move all members her
       bool m_cleared;
+
+      // trackers
+      cubbase::alloc_tracker &m_alloc_tracker;
+      cubbase::pgbuf_tracker &m_pgbuf_tracker;
+      cubsync::critical_section_tracker &m_csect_tracker;
   };
 
 } // namespace cubthread

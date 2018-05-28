@@ -18,25 +18,40 @@
  */
 
 /*
- * stream_io.hpp
+ * fileline_location.hpp - interface of file & line location
  */
 
-#ifndef _STREAM_IO_HPP_
-#define _STREAM_IO_HPP_
+#ifndef _FILELINE_LOCATION_HPP_
+#define _FILELINE_LOCATION_HPP_
 
-#ident "$Id$"
+#include <iostream>
 
-namespace cubstream
+namespace cubbase
 {
-
-  class stream_io
+  // file_line - holder of file/line location
+  //
+  // probably should be moved elsewhere
+  //
+  struct fileline_location
   {
-    public:
-      virtual int write (const stream_position &pos, const char *buf, const size_t amount) = 0;
+    fileline_location (const char *fn_arg = "", int l_arg = 0);
 
-      virtual int read (const stream_position &pos, const char *buf, const size_t amount) = 0;
+    static const std::size_t MAX_FILENAME_SIZE = 20;
+
+    static const char *print_format (void)
+    {
+      return "%s:%d";
+    }
+
+    void set (const char *fn_arg, int l_arg);
+
+    char m_file[MAX_FILENAME_SIZE];
+    int m_line;
   };
 
-} /*  namespace cubstream */
+#define FILELINE_LOCATION_AS_ARGS(fileline) (fileline).m_file, (fileline).m_line
 
-#endif /* _STREAM_IO_HPP_ */
+  std::ostream &operator<< (std::ostream &os, const fileline_location &fileline);
+} // namespace cubbase
+
+#endif // _FILELINE_LOCATION_HPP_

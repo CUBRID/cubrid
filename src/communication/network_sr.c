@@ -40,7 +40,6 @@
 #include "boot_sr.h"
 #include "network_interface_sr.h"
 #include "query_list.h"
-#include "thread.h"		// for resource tracker
 #include "critical_section.h"
 #include "release_string.h"
 #include "server_support.h"
@@ -57,6 +56,7 @@
 #else /* WINDOWS */
 #include "wintcp.h"
 #endif
+#include "thread_entry.hpp"
 #include "thread_manager.hpp"
 
 enum net_req_act
@@ -921,9 +921,6 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   int status = CSS_NO_ERRORS;
   int error_code;
   CSS_CONN_ENTRY *conn;
-#if !defined(NDEBUG)
-  int track_id;
-#endif
 
   if (buffer == NULL && size > 0)
     {
@@ -1019,9 +1016,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   assert (func != NULL);
   if (func)
     {
-#if !defined(NDEBUG)
-      track_id = thread_rc_track_enter (thread_p);
-#endif
+      thread_p->push_resource_tracks ();
 
       if (conn->invalidate_snapshot != 0)
 	{
@@ -1029,13 +1024,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 	}
       (*func) (thread_p, rid, buffer, size);
 
-#if !defined(NDEBUG)
-      if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
-	{
-	  assert_release (false);
-	}
-      assert (thread_p->count_private_allocators == 0);
-#endif
+      thread_p->pop_resource_tracks ();
 
       /* defence code: let other threads continue. */
       pgbuf_unfix_all (thread_p);

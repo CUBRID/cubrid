@@ -83,6 +83,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/error_context.cpp
   ${BASE_DIR}/error_manager.c
   ${BASE_DIR}/fault_injection.c
+  ${BASE_DIR}/fileline_location.cpp
   ${BASE_DIR}/fixed_alloc.c
   ${BASE_DIR}/cubrid_getopt_long.c
   ${BASE_DIR}/ini_parser.c
@@ -104,6 +105,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/release_string.c
+  ${BASE_DIR}/resource_tracker.cpp
   ${BASE_DIR}/sha1.c
   ${BASE_DIR}/stack_dump.c
   ${BASE_DIR}/string_buffer.cpp
@@ -120,12 +122,14 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
+  ${BASE_DIR}/fileline_location.hpp
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
   ${BASE_DIR}/perf_def.hpp
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/packable_object.hpp
+  ${BASE_DIR}/resource_tracker.hpp
 )
 
 set(HEAPLAYER_SOURCES

@@ -34,6 +34,7 @@
 
 #include "query_executor.h"
 
+#include "binaryheap.h"
 #include "porting.h"
 #include "error_manager.h"
 #include "partition_sr.h"
@@ -63,9 +64,8 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "db_json.hpp"
-#include "thread.h"		// for resource tracker
-
 #include "dbtype.h"
+#include "thread_entry.hpp"
 
 #define GOTO_EXIT_ON_ERROR \
   do \
@@ -8256,13 +8256,8 @@ qexec_setup_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
       VFID_COPY (&(list_id->temp_vfid), &(list_id->tfile_vfid->temp_vfid));
     }
 
-#if !defined (NDEBUG)
   assert (list_id->type_list.type_cnt == 1);
-  if (list_id->type_list.type_cnt != 0)
-    {
-      thread_rc_track_meter (thread_p, __FILE__, __LINE__, 1, list_id, RC_QLIST, MGR_DEF);
-    }
-#endif /* NDEBUG */
+  qfile_update_qlist_count (thread_p, list_id, 1);
 
   return NO_ERROR;
 }
@@ -14466,11 +14461,9 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 
   struct drand48_data *rand_buf_p;
 
-#if !defined (NDEBUG)
-  int amount_qlist_enter;
-  int amount_qlist_exit;
-  int amount_qlist_new;
-#endif /* NDEBUG */
+#if defined (SERVER_MODE)
+  int qlist_enter_count;
+#endif // SERVER_MODE
 
 #if defined(ENABLE_SYSTEMTAP)
   const char *query_str = NULL;
@@ -14547,9 +14540,13 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
     }
 #endif /* CUBRID_DEBUG */
 
-#if !defined (NDEBUG)
-  amount_qlist_enter = thread_rc_track_amount_qlist (thread_p);
-#endif /* NDEBUG */
+#if defined (SERVER_MODE)
+  qlist_enter_count = thread_p->m_qlist_count;
+  if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
+    {
+      er_print_callstack (ARG_FILE_LINE, "starting query execution with qlist_count = %d\n", qlist_enter_count);
+    }
+#endif // SERVER_MODE
 
   /* this routine should not be called if an outstanding error condition already exists. */
   er_clear ();
@@ -14652,22 +14649,6 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 
 	  (void) qexec_clear_xasl (thread_p, xasl, true);
 
-#if !defined (NDEBUG)
-	  amount_qlist_exit = thread_rc_track_amount_qlist (thread_p);
-	  amount_qlist_new = amount_qlist_exit - amount_qlist_enter;
-	  if (thread_rc_track_need_to_trace (thread_p))
-	    {
-	      if (list_id && list_id->type_list.type_cnt != 0)
-		{
-		  assert_release (amount_qlist_new == 1);
-		}
-	      else
-		{
-		  assert_release (amount_qlist_new == 0);
-		}
-	    }
-#endif /* NDEBUG */
-
 	  /* caller will detect the error condition and free the listid */
 	  goto end;
 	}
@@ -14699,22 +14680,6 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
   /* clear XASL tree */
   (void) qexec_clear_xasl (thread_p, xasl, true);
 
-#if !defined (NDEBUG)
-  amount_qlist_exit = thread_rc_track_amount_qlist (thread_p);
-  amount_qlist_new = amount_qlist_exit - amount_qlist_enter;
-  if (thread_rc_track_need_to_trace (thread_p))
-    {
-      if (list_id && list_id->type_list.type_cnt != 0)
-	{
-	  assert_release (amount_qlist_new == 1);
-	}
-      else
-	{
-	  assert_release (amount_qlist_new == 0);
-	}
-    }
-#endif /* NDEBUG */
-
 #if defined(CUBRID_DEBUG)
   if (trace && fp)
     {
@@ -14737,6 +14702,24 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 #endif /* CUBRID_DEBUG */
 
 end:
+
+#if defined (SERVER_MODE)
+  if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
+    {
+      er_print_callstack (ARG_FILE_LINE, "ending query execution with qlist_count = %d\n", thread_p->m_qlist_count);
+    }
+  if (list_id && list_id->type_list.type_cnt != 0)
+    {
+      // one new list file
+      assert (thread_p->m_qlist_count == qlist_enter_count + 1);
+    }
+  else
+    {
+      // no new list files
+      assert (thread_p->m_qlist_count == qlist_enter_count);
+    }
+#endif // SERVER_MODE
+
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user, (er_errid () != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
