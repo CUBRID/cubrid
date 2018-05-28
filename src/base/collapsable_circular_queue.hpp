@@ -35,7 +35,7 @@
  * - head value points to the first used element, tail points to the insert pointer
  * - queue is empty when tail == head
  * - elements of the queue may be flagged as free (consumed) from the middle of queue
- * - when consuming or freeing the head (consume pointer), will collpase all free elements
+ * - when consuming or freeing the head (consume pointer), will collapse all free elements
  * - consuming from middle or tail does not move tail/head pointers
  * - the capacity of queue is fixed
  * - the actual maximum size is (capacity - 1)
@@ -95,7 +95,7 @@ namespace mem
 
 	m_buffer[pos].value = elem;
 
-	return & (m_buffer[pos].value);
+	return &(m_buffer[pos].value);
       };
 
       T *produce (void)
@@ -116,14 +116,14 @@ namespace mem
 
 	assert (m_head != m_tail);
 
-	return & (m_buffer[pos].value);
+	return &(m_buffer[pos].value);
       };
 
       T *peek_head (void)
       {
 	if (m_head != m_tail)
 	  {
-	    return & (m_buffer[m_head].value);
+	    return &(m_buffer[m_head].value);
 	  }
 	return NULL;
       };
@@ -166,7 +166,7 @@ namespace mem
 
       void clear ()
       {
-	delete[] m_buffer;
+	delete [] m_buffer;
 	m_capacity = 0;
       };
 
@@ -185,6 +185,7 @@ namespace mem
 	  {
 	    int collapsed_count = 0;
 	    int prev_used_pos;
+
 	    while (m_buffer[m_head].flags == CCQ_FREE)
 	      {
 		prev_used_pos = m_head;
@@ -200,7 +201,7 @@ namespace mem
 
 	    assert (m_head == m_tail || m_buffer[m_head].flags == CCQ_USED);
 
-	    last_used_elem = & (m_buffer[prev_used_pos].value);
+	    last_used_elem = &(m_buffer[prev_used_pos].value);
 
 	    return true;
 	  }
@@ -209,6 +210,7 @@ namespace mem
 
 	return false;
       };
+
     private:
       int m_head;
       int m_tail;

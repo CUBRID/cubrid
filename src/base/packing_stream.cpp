@@ -160,7 +160,7 @@ namespace cubstream
    * 2. unpack entry header
    * 3. saves start of data payload logical position in entry object (to be retrieved at unpack of entry)
    * 4. returns size of payload (value unpacked in header)
-  */
+   */
   int entry::prepare_func (const stream_position &data_start_pos, char *ptr, const size_t header_size,
 			   size_t &payload_size)
   {
@@ -218,7 +218,7 @@ namespace cubstream
 	/* peek type of object : it will be consumed by object's unpack */
 	serializator->peek_unpack_int (&object_id);
 
-	cubpacking::packable_object *packable_entry = get_builder()->create_object (object_id);
+	cubpacking::packable_object *packable_entry = get_builder ()->create_object (object_id);
 	if (packable_entry == NULL)
 	  {
 	    error_code = ER_STREAM_UNPACKING_INV_OBJ_ID;
@@ -530,6 +530,7 @@ namespace cubstream
     stream_position new_completed_position = reserve_context->start_pos + reserve_context->reserved_amount;
 
     m_buffer_mutex.lock ();
+
     collapsed_reserve = m_reserved_positions.consume (reserve_context, last_used_context);
     if (collapsed_reserve)
       {
@@ -555,6 +556,7 @@ namespace cubstream
 				       new_completed_position - m_last_notified_committed_pos);
 	    if (err != NO_ERROR)
 	      {
+		// TODO - check m_buffer_mutex leak
 		return err;
 	      }
 	  }
@@ -593,7 +595,7 @@ namespace cubstream
 	reserved_context = m_reserved_positions.produce ();
 	if (reserved_context == NULL)
 	  {
-	    /* this may happen due to a very slow commiter, which may cause to fill up the queue */
+	    /* this may happen due to a very slow committer, which may cause to fill up the queue */
 	    m_buffer_mutex.unlock ();
 	    std::this_thread::sleep_for (std::chrono::microseconds (100));
 	    m_stat_reserve_queue_spins++;
@@ -642,7 +644,7 @@ namespace cubstream
 
   /*
    * This is used in context of serial reading and performs an action when not enough data is committed.
-   * The action may be : block (until data is commited) or actively fetch data (from disk or other on-demand producer)
+   * The action may be : block (until data is committed) or actively fetch data (from disk or other on-demand producer)
    * skip_mode argument indicates which action to take after data becomes available.
    */
   int packing_stream::wait_for_data (const size_t amount, const STREAM_SKIP_MODE skip_mode)

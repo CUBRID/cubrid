@@ -181,10 +181,11 @@ namespace mem
       {
 	assert (ptr >= m_buffer);
 
-	if (ptr >= m_ptr_start_a && ptr <= m_ptr_end_a)
+	if (m_ptr_start_a <= ptr && ptr <= m_ptr_end_a)
 	  {
 	    /* a later reserve is committed before the commit of a earlier reserve */
 	    assert (m_ptr_prev_gen_committed <= m_ptr_prev_gen_last_reserved);
+
 	    if (m_ptr_prev_gen_committed < m_ptr_prev_gen_last_reserved)
 	      {
 		m_ptr_prev_gen_committed = m_ptr_prev_gen_last_reserved;
@@ -197,7 +198,7 @@ namespace mem
 	    assert (m_ptr_prev_gen_committed != NULL);
 	    assert (m_ptr_prev_gen_last_reserved != NULL);
 
-	    assert (ptr >= m_ptr_prev_gen_committed && ptr <= m_ptr_prev_gen_last_reserved);
+	    assert (m_ptr_prev_gen_committed <= ptr && ptr <= m_ptr_prev_gen_last_reserved);
 
 	    m_ptr_prev_gen_committed = ptr;
 	  }
@@ -493,7 +494,7 @@ namespace mem
       /* for reading, we split the entire buffer in equal fixed sized pages:
        * - each page has read fix count (the counter is incremented each time a read starts,
        *   is decremented when a read ends)
-       * - a page read cannot be validated if at has at least one part of the page covered by any of
+       * - a page read cannot be validated if it has at least one part of the page covered by any of
        *   the "write" regions (A or B)
        * - the append pointer of A region cannot advance into a page having non-zero fix count (write is blocked)
        * - the "spare" interval (an amount of space after the current append pointer) can be advanced

@@ -41,7 +41,7 @@ namespace cubstream
    * stream is a contiguous stream (flow) of bytes
    * at one time, a part of it has a storage support (buffer) which can be read or written
    * a stream can be read/written when packing/unpacking objects or by higher level objects (files, communication channels)
-   * if an operation would exceed the storage range, the stream needs to fetch aditional data or
+   * if an operation would exceed the storage range, the stream needs to fetch additional data or
    * append new storage (for writting)
    *
    */
@@ -94,12 +94,14 @@ namespace cubstream
 
     public:
       stream ();
+
       int init (const stream_position &start_position = 0);
 
       virtual int write (const size_t byte_count, write_func_t &write_action) = 0;
 
       virtual int read_partial (const stream_position first_pos, const size_t byte_count, size_t &actual_read_bytes,
 				read_partial_func_t &read_partial_action) = 0;
+
       virtual int read (const stream_position first_pos, const size_t byte_count, read_func_t &read_action) = 0;
 
       const stream_position &get_curr_read_position (void)
@@ -126,10 +128,12 @@ namespace cubstream
       {
 	m_filled_stream_handler = handler;
       };
+
       void set_fetch_data_handler (fetch_func_t handler)
       {
 	m_fetch_data_handler = handler;
       };
+
       void set_ready_pos_handler (notify_func_t handler)
       {
 	m_ready_pos_handler = handler;

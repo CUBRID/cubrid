@@ -93,16 +93,18 @@ namespace cubstream
       /* oldest readable position : updated according to buffer availability:
        * oldest stream position available from bip_buffer
        * after reserve, this value is expected to increase, so if any reader needs to get a position
-       * older than this, there is no need to check the buffer or reserved queue */
+       * older than this, there is no need to check the buffer or reserved queue 
+       */
       stream_position m_oldest_readable_position;
 
       mem::collapsable_circular_queue<stream_reserve_context> m_reserved_positions;
 
       /* threshold size of unread stream content not read which triggers signalling "filled" event
-       * such event may be throttling the reserve calls on stream (the stream content needs to saved to disk) */
+       * such event may be throttling the reserve calls on stream (the stream content needs to be saved to disk) 
+       */
       size_t m_trigger_flush_to_disk_size;
 
-      /* the minimum amount commited to stream which may be read (to avoid notifications in case of too small data) */
+      /* the minimum amount committed to stream which may be read (to avoid notifications in case of too small data) */
       size_t m_trigger_min_to_read_size;
 
       std::mutex m_buffer_mutex;
@@ -144,7 +146,7 @@ namespace cubstream
 	m_bip_buffer.set_reserve_margin (margin);
       };
 
-      /* fill factor : if < 1 : no need to flush or throtle the appenders ; if > 1 : need to flush and/or throttle */
+      /* fill factor : if < 1 : no need to flush or throttle the appenders ; if > 1 : need to flush and/or throttle */
       float stream_fill_factor (void)
       {
 	return ((float) m_append_position - (float) m_last_dropable_pos) / (float) m_trigger_flush_to_disk_size;
