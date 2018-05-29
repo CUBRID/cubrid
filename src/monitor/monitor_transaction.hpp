@@ -61,6 +61,7 @@ namespace cubmonitor
       ~transaction_dynamic_collectors (void);
 
       collector_type &get_collector (std::size_t index);
+      std::size_t get_size (void);
 
     private:
       void extend (std::size_t index);
@@ -158,6 +159,12 @@ namespace cubmonitor
       }
     else
       {
+	if (m_dynamic_collectors.get_size () <= index)
+	  {
+	    // it was never collected. fetch is zero.
+	    // early out and avoid extending dynamic collectors.
+	    return 0;
+	  }
 	return m_dynamic_collectors.get_collector (index).fetch ();
       }
   }
@@ -191,6 +198,13 @@ namespace cubmonitor
       }
 
     return m_collectors[index];
+  }
+
+  template <typename Col>
+  std::size_t
+  transaction_dynamic_collectors<Col>::get_size (void)
+  {
+    return m_size;
   }
 
   template <typename Col>
