@@ -1068,7 +1068,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		}
 
 	      pt_get_default_expression_from_data_default_node (parser, d, &default_expr);
-	      smt_set_attribute_default (ctemplate, attr_name, 0, &src_val, &default_expr);
+	      smt_set_attribute_default (ctemplate, attr_name, 0, &src_val, &default_expr, NULL);
 	    }
 	  if (pt_has_error (parser))
 	    {
@@ -7025,12 +7025,14 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
       name_space = ID_ATTRIBUTE;
     }
 
+  DB_DEFAULT_EXPR on_update_expr;
+  pt_get_default_expression_from_on_update_node (parser, attribute->info.attr_def.on_update, &on_update_expr);
   pt_get_default_expression_from_data_default_node (parser, attribute->info.attr_def.data_default, &default_expr);
   default_value = &stack_value;
 
   error =
     smt_add_attribute_w_dflt_w_order (ctemplate, attr_name, NULL, attr_db_domain, default_value, name_space, add_first,
-				      add_after_attr, &default_expr, NULL);
+				      add_after_attr, &default_expr, &on_update_expr, NULL);
 
   db_value_clear (&stack_value);
 
@@ -7108,6 +7110,7 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
   const char *attr_name;
   MOP class_obj = NULL;
   DB_DEFAULT_EXPR *default_expr = NULL;
+  DB_DEFAULT_EXPR *on_update_default_expr = NULL;
 
   db_make_null (&default_value);
 
@@ -7151,7 +7154,8 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
 	  goto error_exit;
 	}
 
-      error = sm_att_default_value (class_obj, column->attr_name, &default_value, &default_expr);
+      error =
+	sm_att_default_value (class_obj, column->attr_name, &default_value, &default_expr, &on_update_default_expr);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -7159,7 +7163,7 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
     }
 
   error = smt_add_attribute_w_dflt (ctemplate, attr_name, NULL, column->domain, &default_value, ID_ATTRIBUTE,
-				    default_expr, NULL);
+				    default_expr, on_update_default_expr, NULL);
   if (error != NO_ERROR)
     {
       goto error_exit;

@@ -67,6 +67,7 @@ struct or_attribute
   int position;			/* storage position (list index) */
   OID classoid;			/* source class object id */
 
+  DB_DEFAULT_EXPR on_update;
   OR_DEFAULT_VALUE default_value;	/* default value */
   OR_DEFAULT_VALUE current_default_value;	/* default value */
   BTID *btids;			/* B-tree ID's for indexes and constraints */

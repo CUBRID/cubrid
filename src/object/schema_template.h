@@ -51,13 +51,13 @@ extern SM_CLASS_TYPE smt_get_class_type (SM_TEMPLATE * template_);
 /* Attribute definition */
 extern int smt_add_attribute_w_dflt (DB_CTMPL * def, const char *name, const char *domain_string, DB_DOMAIN * domain,
 				     DB_VALUE * default_value, const SM_NAME_SPACE name_space,
-				     DB_DEFAULT_EXPR * default_expr, const char *comment);
+				     DB_DEFAULT_EXPR * default_expr, DB_DEFAULT_EXPR * on_update, const char *comment);
 
 extern int smt_add_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const char *domain_string,
 					     DB_DOMAIN * domain, DB_VALUE * default_value,
 					     const SM_NAME_SPACE name_space, const bool add_first,
 					     const char *add_after_attribute, DB_DEFAULT_EXPR * default_expr,
-					     const char *comment);
+					     DB_DEFAULT_EXPR * on_update, const char *comment);
 
 extern int smt_add_attribute_any (SM_TEMPLATE * template_, const char *name, const char *domain_string,
 				  DB_DOMAIN * domain, const SM_NAME_SPACE name_space, const bool add_first,
@@ -74,7 +74,7 @@ extern int smt_delete_set_attribute_domain (SM_TEMPLATE * template_, const char 
 extern int smt_reset_attribute_domain (SM_TEMPLATE * template_, const char *name, int class_attribute);
 
 extern int smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_attribute, DB_VALUE * value,
-				      DB_DEFAULT_EXPR * default_expr);
+				      DB_DEFAULT_EXPR * default_expr, DB_DEFAULT_EXPR * on_update);
 
 extern int smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
 			       const char **att_names, const int *asc_desc, int class_attribute,

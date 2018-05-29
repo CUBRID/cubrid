@@ -7776,6 +7776,14 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 		   * DB_DEFAULT_NONE */
 		  continue;
 		}
+	      PT_NODE *on_update_default_expr;
+	      if (col_attr->on_update_default_expr.default_expr_type != DB_DEFAULT_NONE)
+		{
+		  on_update_default_expr = parser_new_node (parser, PT_EXPR);
+
+		  on_update_default_expr->info.expr.op =
+		    pt_op_type_from_default_expr_type (col_attr->on_update_default_expr.default_expr_type);
+		}
 
 	      if (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE)
 		{
@@ -7864,6 +7872,7 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 		    col_attr->default_value.default_expr.default_expr_type;
 		}
 	      attr->info.attr_def.data_default = default_data;
+	      attr->info.attr_def.on_update = on_update_default_expr;
 	    }
 	}
     }

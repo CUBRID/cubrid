@@ -22764,6 +22764,34 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		}
 	    }
 
+	  if (attrepr->on_update.default_expr_type != DB_DEFAULT_NONE)
+	    {
+	      char *saved = db_get_string (out_values[idx_val - 1]);
+	      size_t len = saved ? strlen (saved) : 0;
+
+	      const char *default_expr_op_string = db_default_expression_string (attrepr->on_update.default_expr_type);
+
+	      char *str_val =
+		(char *) db_private_alloc (thread_p, len + strlen (default_expr_op_string) + (saved ? 11 : 10) + 1);
+	      if (saved)
+		{
+		  strcpy (str_val, saved);
+		  strcat (str_val, " ON_UPDATE ");
+		}
+	      else
+		{
+		  strcpy (str_val, "ON_UPDATE ");
+		}
+
+	      strcat (str_val, default_expr_op_string);
+	      if (default_expr_op_string)
+		{
+		  db_make_string_by_const_str (out_values[idx_val - 1], str_val);
+		}
+
+	      db_private_free (thread_p, str_val);
+	    }
+
 	  /* attribute has auto_increment or not */
 	  if (attrepr->is_autoincrement == 0)
 	    {

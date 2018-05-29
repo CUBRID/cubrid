@@ -134,6 +134,7 @@ extern int yybuffer_pos;
 #define COLUMN_CONSTRAINT_AUTO_INCREMENT	(0x40)
 #define COLUMN_CONSTRAINT_SHARED_DEFAULT_AI	(0x70)
 #define COLUMN_CONSTRAINT_COMMENT       (0x80)
+#define COLUMN_CONSTRAINT_ON_UPDATE     (0x100)
 
 #ifdef PARSER_DEBUG
 #define DBG_PRINT printf("rule matched at line: %d\n", __LINE__);
@@ -1158,6 +1159,7 @@ int g_original_buffer_len;
 %token DEALLOCATE
 %token DECLARE
 %token DEFAULT
+%token ON_UPDATE
 %token DEFERRABLE
 %token DEFERRED
 %token DELETE_
@@ -9722,9 +9724,9 @@ opt_constraint_list_and_opt_column_comment
 constraint_list_and_column_comment
 	: constraint_list_and_column_comment column_constraint_and_comment_def
 		{{
-			unsigned char mask = $1;
-			unsigned char new_bit = $2;
-			unsigned char merged = mask | new_bit;
+			unsigned int mask = $1;
+			unsigned int new_bit = $2;
+			unsigned int merged = mask | new_bit;
 
 			/* Check the constraints according to the following rules:
 			 *   1. A constraint should be specified once.
@@ -9792,6 +9794,10 @@ column_constraint_and_comment_def
 	| column_comment_def
 		{{
 			$$ = COLUMN_CONSTRAINT_COMMENT;
+		}}
+	| column_on_update_def
+		{{
+			$$ = COLUMN_CONSTRAINT_ON_UPDATE;
 		}}
 	;
 
@@ -10116,6 +10122,40 @@ column_shared_constraint_def
 			attr_node = parser_get_attr_def_one ();
 			attr_node->info.attr_def.data_default = node;
 			attr_node->info.attr_def.attr_type = PT_SHARED;
+
+		DBG_PRINT}}
+	;
+
+column_on_update_def
+	: ON_UPDATE expression_
+		{{
+			PT_NODE *attr_node;
+			PT_NODE *node = parser_new_node (this_parser, PT_ON_UPDATE);
+
+			if (node)
+			  {
+				PT_NODE *def;
+			    node->info.on_update.default_value = $2;
+			    PARSER_SAVE_ERR_CONTEXT (node, @2.buffer_pos)
+
+				def = node->info.on_update.default_value;
+			    if (def && def->node_type == PT_EXPR)
+			      {
+				  switch (def->info.expr.op)
+				  {
+					  case PT_CURRENT_TIMESTAMP:
+						node->info.on_update.default_expr_type = DB_DEFAULT_CURRENTTIMESTAMP;
+						break;
+					  }
+				  }
+			  }
+			else
+			  {
+ 			    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+			  }
+
+			attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.on_update = node;
 
 		DBG_PRINT}}
 	;

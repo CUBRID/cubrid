@@ -1369,79 +1369,140 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   att_props = db_get_set (&val);
   attr_val_p = &attrs[8].value;
   db_make_null (&default_expr);
-  if (att_props != NULL && classobj_get_prop (att_props, "default_expr", &default_expr) > 0)
+  if (att_props != NULL)
     {
-      char *str_val = NULL;
-      size_t len;
-
-      if (DB_VALUE_TYPE (&default_expr) == DB_TYPE_SEQUENCE)
+      size_t default_value_len = 0;
+      char *default_str_val = NULL;
+      if (classobj_get_prop (att_props, "default_expr", &default_expr) > 0)
 	{
-	  assert (set_size (db_get_set (&default_expr)) == 3);
-	  def_expr_seq = db_get_set (&default_expr);
 
-	  error = set_get_element_nocopy (def_expr_seq, 0, &db_value_default_expr_op);
-	  if (error != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	  assert (DB_VALUE_TYPE (&db_value_default_expr_op) == DB_TYPE_INTEGER
-		  && db_get_int (&db_value_default_expr_op) == (int) T_TO_CHAR);
-	  with_to_char = true;
+	  size_t len;
 
-	  error = set_get_element_nocopy (def_expr_seq, 1, &db_value_default_expr_type);
-	  if (error != NO_ERROR)
+	  if (DB_VALUE_TYPE (&default_expr) == DB_TYPE_SEQUENCE)
 	    {
-	      goto error;
-	    }
-	  default_expr_type = (DB_DEFAULT_EXPR_TYPE) db_get_int (&db_value_default_expr_type);
+	      assert (set_size (db_get_set (&default_expr)) == 3);
+	      def_expr_seq = db_get_set (&default_expr);
 
-	  error = set_get_element_nocopy (def_expr_seq, 2, &db_value_default_expr_format);
-	  if (error != NO_ERROR)
-	    {
-	      goto error;
-	    }
+	      error = set_get_element_nocopy (def_expr_seq, 0, &db_value_default_expr_op);
+	      if (error != NO_ERROR)
+		{
+		  goto error;
+		}
+	      assert (DB_VALUE_TYPE (&db_value_default_expr_op) == DB_TYPE_INTEGER
+		      && db_get_int (&db_value_default_expr_op) == (int) T_TO_CHAR);
+	      with_to_char = true;
 
-	  if (!db_value_is_null (&db_value_default_expr_format))
-	    {
+	      error = set_get_element_nocopy (def_expr_seq, 1, &db_value_default_expr_type);
+	      if (error != NO_ERROR)
+		{
+		  goto error;
+		}
+	      default_expr_type = (DB_DEFAULT_EXPR_TYPE) db_get_int (&db_value_default_expr_type);
+
+	      error = set_get_element_nocopy (def_expr_seq, 2, &db_value_default_expr_format);
+	      if (error != NO_ERROR)
+		{
+		  goto error;
+		}
+
+	      if (!db_value_is_null (&db_value_default_expr_format))
+		{
 #if !defined(NDEBUG)
-	      {
-		DB_TYPE db_value_type_local = db_value_type (&db_value_default_expr_format);
-		assert (db_value_type_local == DB_TYPE_NULL || db_value_type_local == DB_TYPE_CHAR
-			|| db_value_type_local == DB_TYPE_NCHAR || db_value_type_local == DB_TYPE_VARCHAR
-			|| db_value_type_local == DB_TYPE_VARNCHAR);
-	      }
+		  {
+		    DB_TYPE db_value_type_local = db_value_type (&db_value_default_expr_format);
+		    assert (db_value_type_local == DB_TYPE_NULL || db_value_type_local == DB_TYPE_CHAR
+			    || db_value_type_local == DB_TYPE_NCHAR || db_value_type_local == DB_TYPE_VARCHAR
+			    || db_value_type_local == DB_TYPE_VARNCHAR);
+		  }
 #endif
-	      assert (DB_VALUE_TYPE (&db_value_default_expr_format) == DB_TYPE_STRING);
-	      def_expr_format_string = db_get_string (&db_value_default_expr_format);
+		  assert (DB_VALUE_TYPE (&db_value_default_expr_format) == DB_TYPE_STRING);
+		  def_expr_format_string = db_get_string (&db_value_default_expr_format);
+		}
 	    }
+	  else
+	    {
+	      default_expr_type = (DB_DEFAULT_EXPR_TYPE) db_get_int (&default_expr);
+	    }
+
+	  default_expr_type_string = db_default_expression_string (default_expr_type);
+	  if (default_expr_type_string == NULL)
+	    {
+	      pr_clear_value (&default_expr);
+	      pr_clear_value (&val);
+	      assert (false);
+	      error = ER_GENERIC_ERROR;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      goto error;
+	    }
+	  len = strlen (default_expr_type_string);
+
+	  if (with_to_char)
+	    {
+	      const char *default_expr_op_string = qdump_operator_type_string (T_TO_CHAR);
+	      assert (default_expr_op_string != NULL);
+
+	      len += (default_expr_op_string ? strlen (default_expr_op_string) : 0)	/* to_char */
+		+ 6		/* parenthesis, a comma, a blank and quotes */
+		+ (def_expr_format_string ? strlen (def_expr_format_string) : 0);	/* nothing or format */
+
+	      default_str_val = (char *) db_private_alloc (thread_p, len + 1);
+	      if (default_str_val == NULL)
+		{
+		  pr_clear_value (&default_expr);
+		  pr_clear_value (&val);
+		  error = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto error;
+		}
+
+	      strcpy (default_str_val, default_expr_op_string);
+	      strcat (default_str_val, "(");
+	      strcat (default_str_val, default_expr_type_string);
+	      if (def_expr_format_string)
+		{
+		  strcat (default_str_val, ", \'");
+		  strcat (default_str_val, def_expr_format_string);
+		  strcat (default_str_val, "\'");
+		}
+	      strcat (default_str_val, ")");
+	    }
+	  else
+	    {
+	      default_str_val = (char *) db_private_alloc (thread_p, len + 1);
+	      if (default_str_val == NULL)
+		{
+		  pr_clear_value (&default_expr);
+		  pr_clear_value (&val);
+		  error = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto error;
+		}
+	      strcpy (default_str_val, default_expr_type_string);
+	    }
+
+	  pr_clear_value (attr_val_p);	/* clean old default value */
+	  db_make_string (attr_val_p, default_str_val);
+	  attr_val_p->need_clear = true;
+	  default_value_len = len;
 	}
-      else
+
+      if (classobj_get_prop (att_props, "update_default", &default_expr) > 0)
 	{
 	  default_expr_type = (DB_DEFAULT_EXPR_TYPE) db_get_int (&default_expr);
-	}
 
-      default_expr_type_string = db_default_expression_string (default_expr_type);
-      if (default_expr_type_string == NULL)
-	{
-	  pr_clear_value (&default_expr);
-	  pr_clear_value (&val);
-	  assert (false);
-	  error = ER_GENERIC_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  goto error;
-	}
-      len = strlen (default_expr_type_string);
+	  char *str_val = NULL;
+	  size_t len;
+	  default_expr_type_string = db_default_expression_string (default_expr_type);
+	  if (default_expr_type_string == NULL)
+	    {
+	      pr_clear_value (&default_expr);
+	      pr_clear_value (&val);
+	      assert (false);
+	      error = ER_GENERIC_ERROR;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      goto error;
+	    }
+	  len = strlen (default_expr_type_string);
 
-      if (with_to_char)
-	{
-	  const char *default_expr_op_string = qdump_operator_type_string (T_TO_CHAR);
-	  assert (default_expr_op_string != NULL);
-
-	  len += (default_expr_op_string ? strlen (default_expr_op_string) : 0)	/* to_char */
-	    + 6			/* parenthesis, a comma, a blank and quotes */
-	    + (def_expr_format_string ? strlen (def_expr_format_string) : 0);	/* nothing or format */
-
-	  str_val = (char *) db_private_alloc (thread_p, len + 1);
+	  str_val = (char *) db_private_alloc (thread_p, (default_value_len ? default_value_len + 11 : 10) + len + 1);
 	  if (str_val == NULL)
 	    {
 	      pr_clear_value (&default_expr);
@@ -1449,39 +1510,28 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto error;
 	    }
-
-	  strcpy (str_val, default_expr_op_string);
-	  strcat (str_val, "(");
-	  strcat (str_val, default_expr_type_string);
-	  if (def_expr_format_string)
+	  if (default_str_val != NULL)
 	    {
-	      strcat (str_val, ", \'");
-	      strcat (str_val, def_expr_format_string);
-	      strcat (str_val, "\'");
+	      strcpy (str_val, default_str_val);
+	      strcat (str_val, " ON_UPDATE ");
+	      strcat (str_val, default_expr_type_string);
 	    }
-	  strcat (str_val, ")");
-	}
-      else
-	{
-	  str_val = (char *) db_private_alloc (thread_p, len + 1);
-	  if (str_val == NULL)
+	  else
 	    {
-	      pr_clear_value (&default_expr);
-	      pr_clear_value (&val);
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto error;
+	      strcpy (str_val, "ON_UPDATE ");
+	      strcat (str_val, default_expr_type_string);
 	    }
-	  strcpy (str_val, default_expr_type_string);
-	}
 
-      pr_clear_value (attr_val_p);	/* clean old default value */
-      db_make_string (attr_val_p, str_val);
-      attr_val_p->need_clear = true;
+	  pr_clear_value (attr_val_p);	/* clean old default value */
+	  db_make_string (attr_val_p, str_val);
+	  attr_val_p->need_clear = true;
+	}
     }
   else
     {
       valcnv_convert_value_to_string (attr_val_p);
     }
+
   pr_clear_value (&default_expr);
   pr_clear_value (&val);
   attr_val_p->need_clear = true;

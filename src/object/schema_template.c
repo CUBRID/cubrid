@@ -80,7 +80,7 @@ static int smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAIN
 					   SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index,
 					   const char *comment);
 static int smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_value,
-						 DB_DEFAULT_EXPR * default_expr);
+						 DB_DEFAULT_EXPR * default_expr, DB_DEFAULT_EXPR * on_update);
 static int smt_drop_constraint_from_property (SM_TEMPLATE * template_, const char *constraint_name,
 					      SM_ATTRIBUTE_FLAG constraint);
 static int smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_ATTRIBUTE ** atts,
@@ -959,7 +959,8 @@ smt_quit (SM_TEMPLATE * template_)
 int
 smt_add_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const char *domain_string, DB_DOMAIN * domain,
 				  DB_VALUE * default_value, const SM_NAME_SPACE name_space, const bool add_first,
-				  const char *add_after_attribute, DB_DEFAULT_EXPR * default_expr, const char *comment)
+				  const char *add_after_attribute, DB_DEFAULT_EXPR * default_expr,
+				  DB_DEFAULT_EXPR * on_update, const char *comment)
 {
   int error = NO_ERROR;
 
@@ -967,7 +968,8 @@ smt_add_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const char *
   if (error == NO_ERROR && default_value != NULL)
     {
       error =
-	smt_set_attribute_default (def, name, (name_space == ID_CLASS_ATTRIBUTE ? 1 : 0), default_value, default_expr);
+	smt_set_attribute_default (def, name, (name_space == ID_CLASS_ATTRIBUTE ? 1 : 0), default_value, default_expr,
+				   on_update);
     }
 
   return error;
@@ -988,10 +990,10 @@ smt_add_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const char *
 int
 smt_add_attribute_w_dflt (DB_CTMPL * def, const char *name, const char *domain_string, DB_DOMAIN * domain,
 			  DB_VALUE * default_value, const SM_NAME_SPACE name_space, DB_DEFAULT_EXPR * default_expr,
-			  const char *comment)
+			  DB_DEFAULT_EXPR * on_update, const char *comment)
 {
   return smt_add_attribute_w_dflt_w_order (def, name, domain_string, domain, default_value, name_space, false, NULL,
-					   default_expr, comment);
+					   default_expr, on_update, comment);
 }
 
 /*
@@ -1332,7 +1334,7 @@ smt_delete_set_attribute_domain (SM_TEMPLATE * template_, const char *name, int 
 
 int
 smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_attribute, DB_VALUE * proposed_value,
-			   DB_DEFAULT_EXPR * default_expr)
+			   DB_DEFAULT_EXPR * default_expr, DB_DEFAULT_EXPR * on_update)
 {
   int error = NO_ERROR;
   SM_ATTRIBUTE *att;
@@ -1402,6 +1404,15 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 		  classobj_copy_default_expr (&att->default_value.default_expr, default_expr);
 		}
 
+	      if (default_expr == NULL)
+		{
+		  classobj_initialize_default_expr (&att->on_update_default_expr);
+		}
+	      else
+		{
+		  classobj_copy_default_expr (&att->on_update_default_expr, on_update);
+		}
+
 	      /* if there wasn't an previous original value, take this one. This can only happen for new templates OR
 	       * if this is a new attribute that was added during this template OR if this is the first time setting a
 	       * default value to the attribute. This should be handled by using candidates in the template and storing 
@@ -1409,7 +1420,7 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	       * about "original_value". */
 	      if (att->flags & SM_ATTFLAG_NEW)
 		{
-		  error = smt_set_attribute_orig_default_value (att, value, default_expr);
+		  error = smt_set_attribute_orig_default_value (att, value, default_expr, on_update);
 		}
 	    }
 	}
@@ -1442,7 +1453,8 @@ end:
  *	   default value is stored as att->original_value.
  */
 static int
-smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_value, DB_DEFAULT_EXPR * default_expr)
+smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_value, DB_DEFAULT_EXPR * default_expr,
+				      DB_DEFAULT_EXPR * on_update)
 {
   assert (att != NULL);
   assert (new_orig_value != NULL);
@@ -1450,13 +1462,30 @@ smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_va
   pr_clear_value (&att->default_value.original_value);
   pr_clone_value (new_orig_value, &att->default_value.original_value);
 
+  int error = NO_ERROR;
   if (default_expr == NULL)
     {
       classobj_initialize_default_expr (&att->default_value.default_expr);
-      return NO_ERROR;
+    }
+  else
+    {
+      error = classobj_copy_default_expr (&att->default_value.default_expr, default_expr);
+
+      if (error)
+	{
+	  return error;
+	}
     }
 
-  return classobj_copy_default_expr (&att->default_value.default_expr, default_expr);
+  if (on_update == NULL)
+    {
+      classobj_initialize_default_expr (&att->on_update_default_expr);
+    }
+  else
+    {
+      error = classobj_copy_default_expr (&att->on_update_default_expr, on_update);
+    }
+  return error;
 }
 
 /*
@@ -4379,7 +4408,8 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
       assert (((*found_att)->flags & SM_ATTFLAG_NEW) == 0);
       error =
 	smt_set_attribute_default (def, ((new_name != NULL) ? new_name : name),
-				   name_space == (ID_CLASS_ATTRIBUTE) ? 1 : 0, new_default_value, new_default_expr);
+				   name_space == (ID_CLASS_ATTRIBUTE) ? 1 : 0, new_default_value, new_default_expr,
+				   NULL);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -4418,7 +4448,8 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
   error = db_value_coerce (orig_value, new_orig_value, (*found_att)->domain);
   if (error == NO_ERROR)
     {
-      smt_set_attribute_orig_default_value (*found_att, new_orig_value, new_default_expr);
+      // TODO: change this!
+      smt_set_attribute_orig_default_value (*found_att, new_orig_value, new_default_expr, new_default_expr);
     }
   else
     {

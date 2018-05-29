@@ -12045,3 +12045,25 @@ pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NO
 	}
     }
 }
+
+void
+pt_get_default_expression_from_on_update_node (PARSER_CONTEXT * parser, PT_NODE * on_update_node,
+					       DB_DEFAULT_EXPR * default_expr)
+{
+  PT_NODE *pt_default_expr = NULL;
+  DB_VALUE *db_value_default_expr_format = NULL;
+  assert (parser != NULL && default_expr != NULL);
+
+  classobj_initialize_default_expr (default_expr);
+  if (on_update_node != NULL)
+    {
+      assert (on_update_node->node_type == PT_ON_UPDATE);
+      default_expr->default_expr_type = on_update_node->info.on_update.default_expr_type;
+
+      pt_default_expr = on_update_node->info.on_update.default_value;
+      if (pt_default_expr && pt_default_expr->node_type == PT_EXPR)
+	{
+	  assert (pt_default_expr->info.expr.op != PT_TO_CHAR);
+	}
+    }
+}
