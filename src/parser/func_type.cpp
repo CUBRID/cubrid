@@ -12,19 +12,19 @@ std::vector<func_signature> func_signature::bigint = {
 
 std::vector<func_signature> func_signature::percentile_cont = {
 #if 1
-  {PT_TYPE_MAYBE   , {PT_GENERIC_TYPE_NUMBER  }, {}},
+  {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_NUMBER  }, {}},
   {0                , {PT_GENERIC_TYPE_DATETIME}, {}},
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_STRING  }, {}},
   {0                , {PT_TYPE_MAYBE           }, {}},
   {0                , {PT_TYPE_NULL            }, {}},
   {0                , {PT_TYPE_NA              }, {}},
 #else //use double as return type (as documentation says)... but tests are failing (adjust doc or tests)
-  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER  }, {}},
-  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_STRING  }, {}},
-  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_DATETIME}, {}},
-  {PT_TYPE_DOUBLE, {PT_TYPE_MAYBE           }, {}},
-  {PT_TYPE_DOUBLE, {PT_TYPE_NULL            }, {}},
-  {PT_TYPE_DOUBLE, {PT_TYPE_NA              }, {}},
+  {PT_TYPE_DOUBLE   , {PT_GENERIC_TYPE_NUMBER  }, {}},
+  {0                , {PT_GENERIC_TYPE_STRING  }, {}},
+  {PT_TYPE_DOUBLE   , {PT_GENERIC_TYPE_DATETIME}, {}},
+  {0                , {PT_TYPE_MAYBE           }, {}},
+  {0                , {PT_TYPE_NULL            }, {}},
+  {0                , {PT_TYPE_NA              }, {}},
 #endif
 };
 
@@ -221,7 +221,7 @@ std::vector<func_signature>* func_signature::get_signatures(FUNC_TYPE ft){
         case PT_MIN                 :
         case PT_MAX                 : return &type0_nr_or_str;
         case PT_SUM                 : return &sum;
-        case PT_AVG                 : 
+        case PT_AVG                 :
         case PT_STDDEV              :
         case PT_VARIANCE            :
         case PT_STDDEV_POP          :
@@ -231,7 +231,7 @@ std::vector<func_signature>* func_signature::get_signatures(FUNC_TYPE ft){
         case PT_COUNT               : return &count;
         case PT_COUNT_STAR          : return &count_star;
         case PT_GROUPBY_NUM         : return &bigint;
-        case PT_AGG_BIT_AND         : 
+        case PT_AGG_BIT_AND         :
         case PT_AGG_BIT_OR          :
         case PT_AGG_BIT_XOR         : return &bigint_discrete;
         case PT_GROUP_CONCAT        : return &group_concat;
