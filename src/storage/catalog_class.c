@@ -1375,7 +1375,6 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
       char *default_str_val = NULL;
       if (classobj_get_prop (att_props, "default_expr", &default_expr) > 0)
 	{
-
 	  size_t len;
 
 	  if (DB_VALUE_TYPE (&default_expr) == DB_TYPE_SEQUENCE)

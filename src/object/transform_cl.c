@@ -4655,58 +4655,15 @@ tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
 		}
 	    }
 
-	  if (update_default->default_expr_op != NULL_DEFAULT_EXPRESSION_OPERATOR)
-	    {
-	      DB_SEQ *default_expr_sequence = NULL;
-	      DB_VALUE value;
-
-	      default_expr_sequence = set_create_sequence (3);
-	      if (default_expr_sequence == NULL)
-		{
-		  if (attr->properties)
-		    {
-		      classobj_free_prop (attr->properties);
-		      attr->properties = NULL;
-		    }
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, sizeof (DB_SEQ));
-		  return er_errid ();
-		}
-
-	      // TODO: clean this stuff
-
-	      /* currently, only T_TO_CHAR operator is allowed  */
-	      assert (update_default->default_expr_op == T_TO_CHAR);
-	      db_make_int (&value, (int) T_TO_CHAR);
-	      set_put_element (default_expr_sequence, 0, &value);
-
-	      /* default expression type */
-	      db_make_int (&value, update_default->default_expr_type);
-	      set_put_element (default_expr_sequence, 1, &value);
-
-	      /* default expression format */
-	      if (update_default->default_expr_format)
-		{
-		  db_make_string (&value, update_default->default_expr_format);
-		}
-	      else
-		{
-		  db_make_null (&value);
-		}
-
-	      set_put_element (default_expr_sequence, 2, &value);
-
-	      /* create and put sequence */
-	      db_make_sequence (&default_expr_value, default_expr_sequence);
-	      default_expr_sequence = NULL;
-	      classobj_put_prop (attr->properties, "update_default", &default_expr_value);
-	      pr_clear_value (&default_expr_value);
-
-	    }
-	  else
+	  if (update_default->default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
 	    {
 	      /* add default_expr property to sequence */
 	      db_make_int (&default_expr_value, update_default->default_expr_type);
 	      classobj_put_prop (attr->properties, "update_default", &default_expr_value);
+	    }
+	  else
+	    {
+	      assert (false);
 	    }
 	}
       else if (attr->properties != NULL)

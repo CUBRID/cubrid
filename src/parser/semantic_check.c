@@ -7733,6 +7733,7 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
   PT_NODE *columns = pt_get_select_list (parser, qry);
   PT_NODE *default_data = NULL;
   PT_NODE *default_value = NULL, *default_op_value = NULL;
+  PT_NODE *on_update_default_expr;
   PT_NODE *spec, *entity_name;
   DB_OBJECT *obj;
   DB_ATTRIBUTE *col_attr;
@@ -7769,20 +7770,23 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 		  continue;
 		}
 
+	      on_update_default_expr = parser_new_node (parser, PT_ON_UPDATE);
+	      if (!on_update_default_expr)
+		{
+		  parser_free_tree (parser, on_update_default_expr);
+		  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  goto error;
+		}
+	      on_update_default_expr->info.on_update.default_expr_type =
+		col_attr->on_update_default_expr.default_expr_type;
+	      attr->info.attr_def.on_update = on_update_default_expr;
+
 	      if (DB_IS_NULL (&col_attr->default_value.value)
 		  && (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE))
 		{
 		  /* don't create any default node if default value is null unless default expression type is not
 		   * DB_DEFAULT_NONE */
 		  continue;
-		}
-	      PT_NODE *on_update_default_expr;
-	      if (col_attr->on_update_default_expr.default_expr_type != DB_DEFAULT_NONE)
-		{
-		  on_update_default_expr = parser_new_node (parser, PT_EXPR);
-
-		  on_update_default_expr->info.expr.op =
-		    pt_op_type_from_default_expr_type (col_attr->on_update_default_expr.default_expr_type);
 		}
 
 	      if (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE)
@@ -7872,7 +7876,6 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 		    col_attr->default_value.default_expr.default_expr_type;
 		}
 	      attr->info.attr_def.data_default = default_data;
-	      attr->info.attr_def.on_update = on_update_default_expr;
 	    }
 	}
     }
