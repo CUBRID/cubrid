@@ -683,7 +683,16 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
   if (error != NO_ERROR)
     {
-      PRINT_AND_LOG_ERR_MSG ("Cannot restart database %s\n", Volume);
+      if (er_errid () < ER_FAILED)
+	{
+	  // an error was set.
+	  print_log_msg (1, "%s\n", db_error_string (3));
+	  util_log_write_errstr ("%s\n", db_error_string (3));
+	}
+      else
+	{
+	  PRINT_AND_LOG_ERR_MSG ("Cannot restart database %s\n", Volume);
+	}
       status = 3;
       goto error_return;
     }
