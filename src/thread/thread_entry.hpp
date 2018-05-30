@@ -190,10 +190,6 @@ namespace cubthread
       };
 
       // public functions
-
-      // Context template requirement
-      void interrupt_execution (void);
-
       void request_lock_free_transactions (void);   // todo: lock-free refactoring
 
       // The rules of thumbs is to always use private members. Until a complete refactoring, these members will remain
