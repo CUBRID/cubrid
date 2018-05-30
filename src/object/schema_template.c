@@ -1404,7 +1404,7 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 		  classobj_copy_default_expr (&att->default_value.default_expr, default_expr);
 		}
 
-	      if (default_expr == NULL)
+	      if (on_update == NULL)
 		{
 		  classobj_initialize_default_expr (&att->on_update_default_expr);
 		}
