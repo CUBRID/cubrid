@@ -8516,8 +8516,8 @@ pt_print_on_update (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r1;
 
-  r1 = pt_print_bytes (parser, p->info.data_default.default_value);
-  if (p->info.data_default.default_value && PT_IS_QUERY_NODE_TYPE (p->info.data_default.default_value->node_type))
+  r1 = pt_print_bytes (parser, p->info.on_update.default_value);
+  if (p->info.on_update.default_value && PT_IS_QUERY_NODE_TYPE (p->info.on_update.default_value->node_type))
     {
       q = pt_append_nulstring (parser, q, " on update ");
       q = pt_append_nulstring (parser, q, "(");
