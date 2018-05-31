@@ -651,6 +651,16 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
+  /* open loaddb log file */
+  sprintf (log_file_name, "%s_%s", Volume, LOADDB_LOG_FILENAME_SUFFIX);
+  loaddb_log_file = fopen (log_file_name, "w+");
+  if (loaddb_log_file == NULL)
+    {
+      PRINT_AND_LOG_ERR_MSG ("Cannot open log file %s\n", log_file_name);
+      status = 2;
+      goto error_return;
+    }
+
   /* login */
   if (User_name != NULL || !dba_mode)
     {
@@ -699,16 +709,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
   /* disable trigger actions to be fired */
   db_disable_trigger ();
-
-  /* open loaddb log file */
-  sprintf (log_file_name, "%s_%s", Volume, LOADDB_LOG_FILENAME_SUFFIX);
-  loaddb_log_file = fopen (log_file_name, "w+");
-  if (loaddb_log_file == NULL)
-    {
-      PRINT_AND_LOG_ERR_MSG ("Cannot open log file %s\n", log_file_name);
-      status = 2;
-      goto error_return;
-    }
 
   /* check if schema/index/object files exist */
   ldr_check_file_name_and_line_no ();
@@ -1063,12 +1063,20 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       db_commit_transaction ();
     }
 
+  if (index_file != NULL)
+    {
+      fclose (index_file);
+      index_file = NULL;
+    }
+
   print_log_msg ((int) Verbose, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CLOSING));
   (void) db_shutdown ();
 
   free_ignoreclasslist ();
 
-  return (status);
+  fclose (loaddb_log_file);
+
+  return status;
 
 error_return:
   if (schema_file != NULL)
@@ -1082,6 +1090,11 @@ error_return:
   if (index_file != NULL)
     {
       fclose (index_file);
+    }
+
+  if (loaddb_log_file == NULL)
+    {
+      fclose (loaddb_log_file);
     }
 
   free_ignoreclasslist ();
