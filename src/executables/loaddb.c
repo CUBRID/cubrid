@@ -1092,7 +1092,7 @@ error_return:
       fclose (index_file);
     }
 
-  if (loaddb_log_file == NULL)
+  if (loaddb_log_file != NULL)
     {
       fclose (loaddb_log_file);
     }
