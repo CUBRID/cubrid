@@ -8928,7 +8928,7 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser, PT_NODE * original_cls_id, 
   sub_query->info.query.q.select.list = value_list;
   value_list = NULL;
 
-  from_item = pt_add_table_name_to_from_list (parser, sub_query, lower_table_name, NULL, DB_AUTH_SELECT);
+  from_item = pt_add_table_name_to_from_list (parser, sub_query, lower_table_name, NULL, DB_AUTH_NONE);
   if (from_item == NULL)
     {
       goto error;
@@ -10103,7 +10103,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   query->info.query.q.select.list = value_list;
   value_list = NULL;
 
-  from_item = pt_add_table_name_to_from_list (parser, query, lower_table_name, NULL, DB_AUTH_SELECT);
+  from_item = pt_add_table_name_to_from_list (parser, query, lower_table_name, NULL, DB_AUTH_NONE);
   if (from_item == NULL)
     {
       goto error;
