@@ -507,7 +507,8 @@ static int dwb_flush_next_block (THREAD_ENTRY * thread_p);
 #if !defined (NDEBUG)
 static int dwb_debug_check_dwb (THREAD_ENTRY * thread_p, DWB_SLOT * p_dwb_ordered_slots, unsigned int num_pages);
 #endif // DEBUG
-static int dwb_check_data_page_is_sane (THREAD_ENTRY * thread_p, DWB_BLOCK * rcv_block, DWB_SLOT * p_dwb_ordered_slots);
+static int dwb_check_data_page_is_sane (THREAD_ENTRY * thread_p, DWB_BLOCK * rcv_block, DWB_SLOT * p_dwb_ordered_slots,
+					int *p_num_recoverable_pages);
 
 /* Slots entry descriptor */
 static LF_ENTRY_DESCRIPTOR slots_entry_Descriptor = {
@@ -3756,14 +3757,16 @@ dwb_debug_check_dwb (THREAD_ENTRY * thread_p, DWB_SLOT * p_dwb_ordered_slots, un
 /*
  * dwb_check_data_page_is_sane () - Check whether the data page is corrupted.
  *
- * return   : Error code or the number of recoverable corrupted pages
+ * return   : Error code
  * thread_p (in): The thread entry.
- * block(in): 
- * p_dwb_ordered_slots(in): 
+ * block(in): DWB recovery block.
+ * p_dwb_ordered_slots(in): DWB ordered slots
+ * p_num_recoverable_pages(out): number of recoverable corrupted pages
  *
  */
 static int
-dwb_check_data_page_is_sane (THREAD_ENTRY * thread_p, DWB_BLOCK * rcv_block, DWB_SLOT * p_dwb_ordered_slots)
+dwb_check_data_page_is_sane (THREAD_ENTRY * thread_p, DWB_BLOCK * rcv_block, DWB_SLOT * p_dwb_ordered_slots,
+			     int *p_num_recoverable_pages)
 {
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   FILEIO_PAGE *iopage;
@@ -3775,6 +3778,7 @@ dwb_check_data_page_is_sane (THREAD_ENTRY * thread_p, DWB_BLOCK * rcv_block, DWB
   int num_recoverable_pages = 0;
   bool is_page_corrupted;
 
+  assert (rcv_block != NULL && p_dwb_ordered_slots != NULL && p_num_recoverable_pages != NULL);
   iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
   memset (iopage, 0, IO_PAGESIZE);
 
@@ -3854,7 +3858,8 @@ dwb_check_data_page_is_sane (THREAD_ENTRY * thread_p, DWB_BLOCK * rcv_block, DWB
       num_recoverable_pages++;
     }
 
-  return num_recoverable_pages;
+  *p_num_recoverable_pages = num_recoverable_pages;
+  return NO_ERROR;
 }
 
 /*
@@ -3944,8 +3949,8 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 #endif // DEBUG
 
 	  /* Check whether the data page is corrupted. If the case, it will be replaced with the DWB page. */
-	  num_recoverable_pages = dwb_check_data_page_is_sane (thread_p, rcv_block, p_dwb_ordered_slots);
-	  if (num_recoverable_pages != NO_ERROR)
+	  error_code = dwb_check_data_page_is_sane (thread_p, rcv_block, p_dwb_ordered_slots, &num_recoverable_pages);
+	  if (error_code != NO_ERROR)
 	    {
 	      goto end;
 	    }
