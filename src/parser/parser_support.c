@@ -8706,6 +8706,16 @@ pt_make_query_showstmt (PARSER_CONTEXT * parser, unsigned int type, PT_NODE * ar
 
   /* get show column info */
   meta = showstmt_get_metadata ((SHOWSTMT_TYPE) type);
+
+  if (meta->only_for_dba)
+    {
+      if (!au_is_dba_group_member (Au_user))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, meta->alias_print);
+	  return NULL;
+	}
+    }
+
   orderby = meta->orderby;
   num_orderby = meta->num_orderby;
 
