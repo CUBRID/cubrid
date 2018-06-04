@@ -45,90 +45,45 @@
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
-#define PT_ERROR( parser, node, msg ) \
-    pt_frob_error( parser, node, msg )
+//this could be a variadic template function; directly use pt_frob_error() for formatted messages without catalog
+#define pt_cat_error(parser, node, setNo, msgNo, ...) \
+    pt_frob_error(parser, node, msgcat_message(MSGCAT_CATALOG_CUBRID, setNo, msgNo), __VA_ARGS__)
 
-#define PT_ERRORm(parser, node, setNo, msgNo) \
-    pt_frob_error(parser, node, \
-                  msgcat_message (MSGCAT_CATALOG_CUBRID, setNo, msgNo))
+#if 1 //not necessary anymore thanks to new pt_cat_error() and existing pt_frob_error()
+#define PT_ERROR(parser, node, msg) pt_frob_error(parser, node, msg)
+#define PT_ERRORc(parser, node, msg) pt_frob_error( parser, node, "%s", msg)
 
+#define PT_ERRORf(parser, node, msg, arg1) pt_frob_error(parser, node, msg, arg1)
+#define PT_ERRORf2(parser, node, msg, arg1, arg2) pt_frob_error(parser, node, msg, arg1, arg2)
+#define PT_ERRORf3(parser, node, msg, arg1, arg2, arg3) pt_frob_error(parser, node, msg, arg1, arg2, arg3)
+#define PT_ERRORf4(parser, node, msg, arg1, arg2, arg3, arg4) pt_frob_error(parser, node, msg, arg1, arg2, arg3, arg4)
+#define PT_ERRORf5(parser, node, msg, arg1, arg2, arg3, arg4, arg5) pt_frob_error(parser, node, msg, arg1, arg2, arg3, arg4, arg5)
 
-#define PT_ERRORc( parser, node, msg ) \
-    pt_frob_error( parser, node, "%s", msg )
+#define PT_ERRORm(parser, node, setNo, msgNo) pt_cat_error(parser, node, setNo, msgNo)
+#define PT_ERRORmf(parser, node, setNo, msgNo, arg1) pt_cat_error(parser, node, setNo, msgNo, arg1)
+#define PT_ERRORmf2(parser, node, setNo, msgNo, arg1, arg2) pt_cat_error(parser, node, setNo, msgNo, arg1, arg2)
+#define PT_ERRORmf3(parser, node, setNo, msgNo, arg1, arg2, arg3) pt_cat_error(parser, node, setNo, msgNo, arg1, arg2, arg3)
+#define PT_ERRORmf4(parser, node, setNo, msgNo, arg1, arg2, arg3, arg4) pt_cat_error(parser, node, setNo, msgNo, arg1, arg2, arg3, arg4)
+#define PT_ERRORmf5(parser, node, setNo, msgNo, arg1, arg2, arg3, arg4 , arg5) pt_cat_error(parser, node, setNo, msgNo, arg1, arg2, arg3, arg4, arg5)
+#endif
 
-#define PT_ERRORf( parser, node, msg, arg1) \
-    pt_frob_error( parser, node, msg, arg1 )
+//this could be a variadic template function; directly use pt_frob_warning() for formatted messages without catalog
+#define pt_cat_warning(parser, node, setNo, msgNo, ...) \
+    pt_frob_warning(parser, node, msgcat_message(MSGCAT_CATALOG_CUBRID, setNo, msgNo), __VA_ARGS__)
 
-#define PT_ERRORmf(parser, node, setNo, msgNo, arg1) \
-    PT_ERRORf(parser, node, \
-              msgcat_message (MSGCAT_CATALOG_CUBRID, setNo, msgNo), arg1)
+#if 1 //not necessary anymore thanks to pt_cat_warning() and existing pt_frob_warning()
+#define PT_WARNING( parser, node, msg ) pt_frob_warning(parser, node, msg)
+#define PT_WARNINGm(parser, node, setNo, msgNo) pt_cat_warning(parser, node, setNo, msgNo))
+#define PT_WARNINGc( parser, node, msg ) pt_frob_warning(parser, node, msg)
 
-#define PT_ERRORf2( parser, node, msg, arg1, arg2) \
-    pt_frob_error( parser, node, msg, arg1, arg2 )
+#define PT_WARNINGf( parser, node, msg, arg1) pt_cat_warning(parser, node, msg, arg1)
+#define PT_WARNINGf2( parser, node, msg, arg1, arg2) pt_cat_warning(parser, node, msg, arg1, arg2)
+#define PT_WARNINGf3( parser, node, msg, arg1, arg2, arg3) pt_cat_warning(parser, node, msg, arg1, arg2, arg3)
 
-#define PT_ERRORmf2(parser, node, setNo, msgNo, arg1, arg2) \
-    PT_ERRORf2(parser, node, \
-               msgcat_message (MSGCAT_CATALOG_CUBRID, setNo, msgNo), \
-               arg1, arg2)
-
-#define PT_ERRORf3( parser, node, msg, arg1, arg2, arg3) \
-    pt_frob_error( parser, node, msg, arg1, arg2, arg3 )
-
-#define PT_ERRORmf3(parser, node, setNo, msgNo, arg1, arg2, arg3) \
-    PT_ERRORf3(parser, node, \
-               msgcat_message (MSGCAT_CATALOG_CUBRID, setNo, msgNo), \
-               arg1, arg2, arg3)
-
-#define PT_ERRORf4( parser, node, msg, arg1, arg2, arg3, arg4) \
-    pt_frob_error( parser, node, msg, arg1, arg2, arg3, arg4 )
-
-#define PT_ERRORmf4(parser, node, setNo, msgNo, arg1, arg2, arg3, arg4) \
-    PT_ERRORf4(parser, node, \
-               msgcat_message (MSGCAT_CATALOG_CUBRID, setNo, msgNo), \
-               arg1, arg2, arg3, arg4)
-
-#define PT_ERRORf5( parser, node, msg, arg1, arg2, arg3, arg4, arg5) \
-    pt_frob_error( parser, node, msg, arg1, arg2, arg3, arg4 , arg5)
-
-#define PT_ERRORmf5(parser, node, setNo, msgNo, arg1, arg2, arg3, arg4 , \
-		    arg5) \
-    PT_ERRORf5(parser, node, \
-               msgcat_message (MSGCAT_CATALOG_CUBRID, setNo, msgNo), \
-               arg1, arg2, arg3, arg4 ,arg5)
-
-#define PT_WARNING( parser, node, msg ) \
-    pt_frob_warning( parser, node, msg )
-
-#define PT_WARNINGm(parser, node, setNo, msgNo) \
-    PT_WARNING(parser, node, \
-               msgcat_message (MSGCAT_CATALOG_CUBRID, setNo, msgNo))
-
-#define PT_WARNINGc( parser, node, msg ) \
-    PT_WARNING( parser, node, msg )
-
-#define PT_WARNINGf( parser, node, msg, arg1) \
-    pt_frob_warning( parser, node, msg, arg1 )
-
-#define PT_WARNINGmf(parser, node, setNo, msgNo, arg1) \
-    PT_WARNINGf(parser, node, \
-                msgcat_message (MSGCAT_CATALOG_CUBRID, setNo, msgNo), arg1)
-
-#define PT_WARNINGf2( parser, node, msg, arg1, arg2) \
-    pt_frob_warning( parser, node, msg, arg1, arg2 )
-
-#define PT_WARNINGmf2(parser, node, setNo, msgNo, arg1, arg2) \
-    PT_WARNINGf2(parser, node, \
-                 msgcat_message (MSGCAT_CATALOG_CUBRID, setNo, msgNo), \
-                 arg1, arg2)
-
-#define PT_WARNINGf3( parser, node, msg, arg1, arg2, arg3) \
-    pt_frob_warning( parser, node, msg, arg1, arg2, arg3 )
-
-#define PT_WARNINGmf3(parser, node, setNo, msgNo, arg1, arg2, arg3) \
-    PT_WARNINGf3(parser, node, \
-                 msgcat_message (MSGCAT_CATALOG_CUBRID, setNo, msgNo), \
-                 arg1, arg2, arg3)
-
+#define PT_WARNINGmf(parser, node, setNo, msgNo, arg1) pt_cat_warning(parser, node, setNo, msgNo, arg1)
+#define PT_WARNINGmf2(parser, node, setNo, msgNo, arg1, arg2) pt_cat_warning(parser, node, setNo, msgNo, arg1, arg2)
+#define PT_WARNINGmf3(parser, node, setNo, msgNo, arg1, arg2, arg3) pt_cat_warning(parser, node, setNo, msgNo, arg1, arg2, arg3)
+#endif
 
 #define PT_SET_JMP_ENV(parser) \
     do { \
