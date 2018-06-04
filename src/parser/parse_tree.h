@@ -73,7 +73,7 @@
 
 #if 1 //not necessary anymore thanks to pt_cat_warning() and existing pt_frob_warning()
 #define PT_WARNING( parser, node, msg ) pt_frob_warning(parser, node, msg)
-#define PT_WARNINGm(parser, node, setNo, msgNo) pt_cat_warning(parser, node, setNo, msgNo))
+#define PT_WARNINGm(parser, node, setNo, msgNo) pt_cat_warning(parser, node, setNo, msgNo)
 #define PT_WARNINGc( parser, node, msg ) pt_frob_warning(parser, node, msg)
 
 #define PT_WARNINGf( parser, node, msg, arg1) pt_cat_warning(parser, node, msg, arg1)
@@ -2239,7 +2239,7 @@ struct pt_expr_info
 #define PT_EXPR_INFO_TRANSITIVE    64	/* always true transitive join term ? */
 #define PT_EXPR_INFO_LEFT_OUTER   128	/* Oracle's left outer join operator */
 #define PT_EXPR_INFO_RIGHT_OUTER  256	/* Oracle's right outer join operator */
-#define PT_EXPR_INFO_COPYPUSH     512	/* term which is copy-pushed into the derived subquery ? is removed at the last 
+#define PT_EXPR_INFO_COPYPUSH     512	/* term which is copy-pushed into the derived subquery ? is removed at the last
 					 * rewrite stage of query optimizer */
 #if 1				/* unused anymore - DO NOT DELETE ME */
 #define PT_EXPR_INFO_FULL_RANGE  1024	/* non-null full RANGE term ? */
@@ -2252,7 +2252,7 @@ struct pt_expr_info
 
 #define PT_EXPR_INFO_CAST_COLL_MODIFIER 16384	/* CAST is for COLLATION modifier */
 
-#define PT_EXPR_INFO_GROUPBYNUM_LIMIT 32768	/* flag that marks if the expression resulted from a GROUP BY ... LIMIT 
+#define PT_EXPR_INFO_GROUPBYNUM_LIMIT 32768	/* flag that marks if the expression resulted from a GROUP BY ... LIMIT
 						 * statement */
   int flag;			/* flags */
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
@@ -2765,7 +2765,7 @@ struct pt_query_info
 {
   int correlation_level;	/* for correlated subqueries */
   PT_MISC_TYPE all_distinct;	/* enum value is PT_ALL or PT_DISTINCT */
-  PT_MISC_TYPE is_subquery;	/* PT_IS_SUB_QUERY, PT_IS_UNION_QUERY, PT_IS_CTE_NON_REC_SUBQUERY, 
+  PT_MISC_TYPE is_subquery;	/* PT_IS_SUB_QUERY, PT_IS_UNION_QUERY, PT_IS_CTE_NON_REC_SUBQUERY,
 				 * PT_IS_CTE_REC_SUBQUERY or 0 */
   char is_view_spec;		/* 0 - normal, 1 - view query spec */
   char oids_included;		/* DB_NO_OIDS/0 DB_ROW_OIDS/1 */
@@ -3072,7 +3072,7 @@ union pt_data_value
 /* Info for the VALUE node */
 struct pt_value_info
 {
-  const char *text;		/* printed text of a value or of an expression folded to a value. NOTE: this is not the 
+  const char *text;		/* printed text of a value or of an expression folded to a value. NOTE: this is not the
 				 * actual value of the node. Use value in data_value instead. */
   PT_DATA_VALUE data_value;	/* see above UNION defs */
   DB_VALUE db_value;
@@ -3083,7 +3083,7 @@ struct pt_value_info
   bool print_charset;
   bool print_collation;
   bool has_cs_introducer;	/* 1 if charset introducer is used for string node e.g. _utf8'a'; 0 otherwise. */
-  bool is_collate_allowed;	/* 1 if this is a PT_VALUE allowed to have the COLLATE modifier (the grammar context in 
+  bool is_collate_allowed;	/* 1 if this is a PT_VALUE allowed to have the COLLATE modifier (the grammar context in
 				 * which is created allows it) */
   int coll_modifier;		/* collation modifier = collation + 1 */
   int host_var_index;		/* save the host_var index which it comes from. -1 means it is a normal value. it does
@@ -3460,7 +3460,7 @@ struct parser_node
   unsigned is_hidden_column:1;
   unsigned is_paren:1;
   unsigned with_rollup:1;	/* WITH ROLLUP clause for GROUP BY */
-  unsigned force_auto_parameterize:1;	/* forces a call to qo_do_auto_parameterize (); this is a special flag used for 
+  unsigned force_auto_parameterize:1;	/* forces a call to qo_do_auto_parameterize (); this is a special flag used for
 					 * processing ON DUPLICATE KEY UPDATE */
   unsigned do_not_fold:1;	/* disables constant folding on the node */
   unsigned is_cnf_start:1;
@@ -3652,7 +3652,7 @@ struct pt_coll_infer
   int coll_id;
   INTL_CODESET codeset;
   PT_COLL_COERC_LEV coerc_level;
-  bool can_force_cs;		/* used as a weak-modifier for collation coercibility (when node is a host variable). + 
+  bool can_force_cs;		/* used as a weak-modifier for collation coercibility (when node is a host variable). +
 				 * for auto-CAST expressions around numbers: initially the string data type of CAST is
 				 * created with system charset by generic type checking but that charset can be forced
 				 * to another charset (of another argument) if this flag is set */
