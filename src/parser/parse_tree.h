@@ -47,7 +47,7 @@
 
 //this could be a variadic template function; directly use pt_frob_error() for formatted messages without catalog
 #define pt_cat_error(parser, node, setNo, msgNo, ...) \
-    pt_frob_error(parser, node, msgcat_message(MSGCAT_CATALOG_CUBRID, setNo, msgNo), __VA_ARGS__)
+    pt_frob_error(parser, node, msgcat_message(MSGCAT_CATALOG_CUBRID, setNo, msgNo), ##__VA_ARGS__)
 
 #if 1 //not necessary anymore thanks to new pt_cat_error() and existing pt_frob_error()
 #define PT_ERROR(parser, node, msg) pt_frob_error(parser, node, msg)
@@ -69,7 +69,7 @@
 
 //this could be a variadic template function; directly use pt_frob_warning() for formatted messages without catalog
 #define pt_cat_warning(parser, node, setNo, msgNo, ...) \
-    pt_frob_warning(parser, node, msgcat_message(MSGCAT_CATALOG_CUBRID, setNo, msgNo), __VA_ARGS__)
+    pt_frob_warning(parser, node, msgcat_message(MSGCAT_CATALOG_CUBRID, setNo, msgNo), ##__VA_ARGS__)
 
 #if 1 //not necessary anymore thanks to pt_cat_warning() and existing pt_frob_warning()
 #define PT_WARNING( parser, node, msg ) pt_frob_warning(parser, node, msg)
