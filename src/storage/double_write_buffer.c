@@ -3909,11 +3909,11 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	}
 
       num_dwb_pages = fileio_get_number_of_volume_pages (read_fd, IO_PAGESIZE);
+      dwb_log ("dwb_load_and_recover_pages: The number of pages in DWB %d\n", num_dwb_pages);
 
-      /* If num_dwb_pages = 0, DWB is corrupted. */
-      if (num_dwb_pages > 0)
+      /* If num_dwb_pages is zero or not a power of 2, DWB is corrupted - created but partially flushed. */
+      if ((num_dwb_pages > 0) && IS_POWER_OF_2 (num_dwb_pages))
 	{
-	  assert (IS_POWER_OF_2 (num_dwb_pages));
 	  assert ((num_dwb_pages * IO_PAGESIZE) % (DWB_MIN_SIZE) == 0);
 
 	  /* Create DWB block for recovery purpose. */
