@@ -4411,7 +4411,7 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
       error =
 	smt_set_attribute_default (def, ((new_name != NULL) ? new_name : name),
 				   name_space == (ID_CLASS_ATTRIBUTE) ? 1 : 0, new_default_value, new_default_expr,
-				   NULL);
+				   new_on_update_expr);
       if (error != NO_ERROR)
 	{
 	  return error;
