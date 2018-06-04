@@ -3275,6 +3275,15 @@ dwb_compute_block_checksums (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool * 
 	{
 	  requested_checksums_elem = DWB_GET_REQUESTED_CHECKSUMS_ELEMENT (element_position);
 	  computed_slots_checksum_elem = DWB_GET_COMPUTED_CHECKSUMS_ELEMENT (element_position);
+	  position_in_checksum_element = DWB_GET_POSITION_IN_CHECKSUMS_ELEMENT (element_position);
+
+	  /* Before checksum computation, check whether the block was flushed. */
+	  if (DWB_GET_BLOCK_VERSION (block) != block_version)
+	    {
+	      dwb_log ("Can't computed checksums for block %d. Block version updated from %lld to %lld.\n",
+		       block->block_no, block_version, DWB_GET_BLOCK_VERSION (block));
+	      break;
+	    }
 
 	  if (requested_checksums_elem == 0ULL || requested_checksums_elem == computed_slots_checksum_elem)
 	    {
@@ -3283,7 +3292,6 @@ dwb_compute_block_checksums (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool * 
 	    }
 
 	  /* The checksum bits modified meanwhile, we needs to compute new checksum. */
-	  position_in_checksum_element = DWB_GET_POSITION_IN_CHECKSUMS_ELEMENT (element_position);
 	  if (position_in_checksum_element >= DWB_CHECKSUM_ELEMENT_NO_BITS)
 	    {
 	      break;
@@ -3332,6 +3340,7 @@ dwb_compute_block_checksums (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool * 
 	    {
 	      /* Check that no other transaction computed the current slot checksum. */
 	      assert (DWB_IS_ADDED_TO_REQUESTED_CHECKSUMS_ELEMENT (element_position, computed_checksum_bits));
+	      assert (!DWB_IS_ADDED_TO_COMPUTED_CHECKSUMS_ELEMENT (element_position, computed_checksum_bits));
 
 	      /* Update start bit position, if possible */
 	      do
@@ -3350,8 +3359,8 @@ dwb_compute_block_checksums (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool * 
 
 	      DWB_ADD_TO_COMPUTED_CHECKSUMS_ELEMENT (element_position, computed_checksum_bits);
 
-	      dwb_log ("Successfully computed checksums for slots %d in block %d\n",
-		       computed_checksum_bits, block->block_no);
+	      dwb_log ("Successfully computed checksums for slots %d in block %d having version = %lld\n",
+		       computed_checksum_bits, block->block_no, block_version);
 	    }
 	}
 
