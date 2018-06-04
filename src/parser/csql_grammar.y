@@ -10127,7 +10127,7 @@ column_shared_constraint_def
 	;
 
 column_on_update_def
-	: ON_UPDATE expression_
+	: ON_ UPDATE expression_
 		{{
 			PT_NODE *attr_node;
 			PT_NODE *node = parser_new_node (this_parser, PT_ON_UPDATE);
@@ -10135,8 +10135,8 @@ column_on_update_def
 			if (node)
 			  {
 				PT_NODE *def;
-			    node->info.on_update.default_value = $2;
-			    PARSER_SAVE_ERR_CONTEXT (node, @2.buffer_pos)
+			    node->info.on_update.default_value = $3;
+			    PARSER_SAVE_ERR_CONTEXT (node, @3.buffer_pos)
 
 				def = node->info.on_update.default_value;
 			    if (def && def->node_type == PT_EXPR)
