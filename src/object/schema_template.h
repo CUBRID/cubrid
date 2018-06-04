@@ -154,8 +154,9 @@ extern int smt_change_query_spec (SM_TEMPLATE * def, const char *query, const in
 extern int smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const char *new_name,
 						const char *new_domain_string, DB_DOMAIN * new_domain,
 						const SM_NAME_SPACE name_space, DB_VALUE * new_default_value,
-						DB_DEFAULT_EXPR * new_def_expr, const bool change_first,
-						const char *change_after_attribute, SM_ATTRIBUTE ** found_att);
+						DB_DEFAULT_EXPR * new_def_expr, DB_DEFAULT_EXPR * new_on_update_expr,
+						const bool change_first, const char *change_after_attribute,
+						SM_ATTRIBUTE ** found_att);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void smt_downcase_all_class_info (void);

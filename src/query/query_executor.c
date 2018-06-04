@@ -22773,6 +22773,11 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
 	      char *str_val =
 		(char *) db_private_alloc (thread_p, len + strlen (default_expr_op_string) + (saved ? 11 : 10) + 1);
+	      if (!str_val)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+
 	      if (saved)
 		{
 		  strcpy (str_val, saved);

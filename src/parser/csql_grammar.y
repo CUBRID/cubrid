@@ -10140,18 +10140,33 @@ column_on_update_def
 
 				def = node->info.on_update.default_value;
 			    if (def && def->node_type == PT_EXPR)
-			      {
-				  switch (def->info.expr.op)
-				  {
+			      {						
+					switch (def->info.expr.op)
+					  {
 					  case PT_CURRENT_TIMESTAMP:
 						node->info.on_update.default_expr_type = DB_DEFAULT_CURRENTTIMESTAMP;
+						break;
+					  case PT_CURRENT_DATE:
+						node->info.on_update.default_expr_type = DB_DEFAULT_CURRENTDATE;
+						break;
+					  case PT_CURRENT_DATETIME:
+						node->info.on_update.default_expr_type = DB_DEFAULT_CURRENTDATETIME;
+						break;
+					  case PT_SYS_TIMESTAMP:
+						node->info.on_update.default_expr_type = DB_DEFAULT_SYSTIMESTAMP;
+						break;
+					  case PT_UNIX_TIMESTAMP:
+						node->info.on_update.default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
+						break;
+					  default:
+					    node->info.on_update.default_expr_type = DB_DEFAULT_NONE;
 						break;
 					  }
 				  }
 			  }
 			else
 			  {
- 			    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+ 			     node->info.on_update.default_expr_type = DB_DEFAULT_NONE;
 			  }
 
 			attr_node = parser_get_attr_def_one ();

@@ -4369,6 +4369,7 @@ error_exit:
  *   name_space(in): class, shared or normal attribute
  *   new_default_value(in): default value
  *   new_default_expr(in): default expression
+ *   new_on_update_expr(in): on update default expression
  *   change_first(in): the attribute should be added at the beginning of the
  *                  attributes list
  *   change_after_attribute(in): the attribute should be added in the
@@ -4380,8 +4381,9 @@ int
 smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const char *new_name,
 				     const char *new_domain_string, DB_DOMAIN * new_domain,
 				     const SM_NAME_SPACE name_space, DB_VALUE * new_default_value,
-				     DB_DEFAULT_EXPR * new_default_expr, const bool change_first,
-				     const char *change_after_attribute, SM_ATTRIBUTE ** found_att)
+				     DB_DEFAULT_EXPR * new_default_expr, DB_DEFAULT_EXPR * new_on_update_expr,
+				     const bool change_first, const char *change_after_attribute,
+				     SM_ATTRIBUTE ** found_att)
 {
   int error = NO_ERROR;
   DB_VALUE *orig_value = NULL;
@@ -4448,8 +4450,7 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
   error = db_value_coerce (orig_value, new_orig_value, (*found_att)->domain);
   if (error == NO_ERROR)
     {
-      // TODO: change this!
-      smt_set_attribute_orig_default_value (*found_att, new_orig_value, new_default_expr, new_default_expr);
+      smt_set_attribute_orig_default_value (*found_att, new_orig_value, new_default_expr, new_on_update_expr);
     }
   else
     {

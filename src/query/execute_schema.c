@@ -10018,6 +10018,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   const char *attr_name = NULL;
   PARSER_VARCHAR *comment_str = NULL;
   DB_DEFAULT_EXPR new_default_expr;
+  DB_DEFAULT_EXPR new_on_update_expr;
   PT_NODE *comment = NULL;
 
   assert (attr_chg_prop != NULL);
@@ -10095,6 +10096,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   assert (default_value == NULL || default_value == &stack_value);
   new_default = default_value;
   pt_get_default_expression_from_data_default_node (parser, attribute->info.attr_def.data_default, &new_default_expr);
+  pt_get_default_expression_from_on_update_node (parser, attribute->info.attr_def.on_update, &new_on_update_expr);
 
   attr_db_domain = pt_node_to_db_domain (parser, attribute, ctemplate->name);
   if (attr_db_domain == NULL)
@@ -10112,8 +10114,8 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
   error =
     smt_change_attribute_w_dflt_w_order (ctemplate, attr_name, new_name, NULL, attr_db_domain,
-					 attr_chg_prop->name_space, new_default, &new_default_expr, change_first,
-					 change_after_attr, &found_att);
+					 attr_chg_prop->name_space, new_default, &new_default_expr, &new_on_update_expr,
+					 change_first, change_after_attr, &found_att);
   if (error != NO_ERROR)
     {
       goto exit;
