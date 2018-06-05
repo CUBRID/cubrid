@@ -13355,7 +13355,7 @@ static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
       case F_TOP_TABLE_FUNC:
       case F_VID:
         assert(false);
-        PT_ERRORf(parser, node, "ERR unsupported function code: %d", fcode);
+        pt_frob_error(parser, node, "ERR unsupported function code: %d", fcode);
         return NULL;
       default:;
     }
@@ -13370,8 +13370,8 @@ static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
       fcode != PT_CUME_DIST &&
       fcode != PT_PERCENT_RANK)
     {
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_NO_ARGS,
-		  pt_short_print (parser, node));
+      pt_cat_error(parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_NO_ARGS,
+          pt_short_print (parser, node));
       return node;
     }
 
@@ -13403,8 +13403,7 @@ static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
 
   if (pt_list_has_logical_nodes (arg_list))
     {
-      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-		   pt_show_function(fcode), "boolean");
+      pt_cat_error(parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON, pt_show_function(fcode), "boolean");
       return node;
     }
 
@@ -13419,7 +13418,7 @@ static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
           assert("ERR no function signature" && func_sigs != NULL);
           if(!func_sigs){
             //printf("ERR no function signature for fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
-            PT_ERRORf(parser, node, "ERR no function signature found for fcode=%d args: %s", fcode, parser_print_tree_list(parser, arg_list));
+            pt_frob_error(parser, node, "ERR no function signature found for fcode=%d args: %s", fcode, parser_print_tree_list(parser, arg_list));
             return node;
           }
           const func_signature* func_sig = funcNode.get_signature(node, *func_sigs);
@@ -13432,7 +13431,7 @@ static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
             {
               node->type_enum = PT_TYPE_NA;//to avoid entering here 2nd time
               //arg_type = PT_TYPE_NONE;//unused!?
-              PT_ERRORf(parser, node, "========== NO FUNCTION SIGNATURE MATCHES fcode=%d=%s args: %s ==========\n", fcode, "..."/*Func::type_str[fcode-PT_MIN]*/, parser_print_tree_list(parser, arg_list));
+              pt_frob_error(parser, node, "========== NO FUNCTION SIGNATURE MATCHES fcode=%d=%s args: %s ==========\n", fcode, "..."/*Func::type_str[fcode-PT_MIN]*/, parser_print_tree_list(parser, arg_list));
             }
         }
     }
