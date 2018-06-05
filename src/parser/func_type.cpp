@@ -162,10 +162,12 @@ std::vector<func_signature> func_signature::elt = {
 };
 
 std::vector<func_signature> func_signature::insert = {
+#if 0 //test without NULL in signature for insert()
   {PT_TYPE_VARCHAR  , {PT_TYPE_NULL           , PT_GENERIC_TYPE_ANY , PT_GENERIC_TYPE_ANY , PT_GENERIC_TYPE_ANY}  , {}},
   {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_ANY    , PT_TYPE_NULL        , PT_GENERIC_TYPE_ANY , PT_GENERIC_TYPE_ANY}  , {}},
   {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_ANY    , PT_GENERIC_TYPE_ANY , PT_TYPE_NULL        , PT_GENERIC_TYPE_ANY}  , {}},
   {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_ANY    , PT_GENERIC_TYPE_ANY , PT_GENERIC_TYPE_ANY , PT_TYPE_NULL       }  , {}},
+#endif
 
   {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_CHAR   , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , PT_GENERIC_TYPE_CHAR} , {}},
 //{PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_NCHAR  , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , PT_GENERIC_TYPE_NCHAR}, {}},
