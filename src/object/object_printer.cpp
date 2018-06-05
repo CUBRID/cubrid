@@ -553,7 +553,7 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
 	{
 	  const char *default_expr_type_str;
 
-	  m_buf (" ON_UPDATE ");
+	  m_buf (" ON UPDATE ");
 	  default_expr_type_str = db_default_expression_string (attribute.on_update_default_expr.default_expr_type);
 	  if (attribute.on_update_default_expr.default_expr_type != NULL)
 	    {
@@ -562,7 +562,6 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
 	  else
 	    {
 	      assert (attribute.on_update_default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR);
-	      printer.describe_value (&attribute.default_value.value);
 	    }
 	}
     }
