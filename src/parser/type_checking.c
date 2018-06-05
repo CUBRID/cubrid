@@ -13011,6 +13011,7 @@ namespace Func
           return false;
       }
     //see where the error is found in EXPR for: select concat('char', n'nchar');
+  }
 
   class Node
   {
@@ -13279,7 +13280,7 @@ namespace Func
                     if(!cmp_types(fix, arg->type_enum))
                     {
                         match = false;//current arg doesn't match coresponding type => try next signature
-                        PT_ERRORf(m_parser, m_node);
+                        //PT_ERRORf(m_parser, m_node);
                         break;
                     }
                 }
@@ -13335,8 +13336,6 @@ namespace Func
 
 } //namespace Func
 
-}//namespace Func
-
 /*
  * pt_eval_function_type () -
  *   return: returns a node of the same type.
@@ -13383,23 +13382,23 @@ static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
   for (arg = arg_list; arg != NULL; prev = arg, arg = arg->next)
     {
       if (arg->type_enum == PT_TYPE_LOGICAL)
-	{
-	  arg = pt_wrap_with_cast_op (parser, arg, PT_TYPE_INTEGER, 0, 0, NULL);
-	  if (arg == NULL)
 	    {
-	      /* the error message is set by pt_wrap_with_cast_op */
-	      node->type_enum = PT_TYPE_NONE;
-	      return node;
+	      arg = pt_wrap_with_cast_op (parser, arg, PT_TYPE_INTEGER, 0, 0, NULL);
+	      if (arg == NULL)
+	        {
+	          /* the error message is set by pt_wrap_with_cast_op */
+	          node->type_enum = PT_TYPE_NONE;
+	          return node;
+	        }
+	      if (prev != NULL)
+	        {
+	          prev->next = arg;
+	        }
+	      else
+	        {
+	          node->info.function.arg_list = arg_list = arg;
+	        }
 	    }
-	  if (prev != NULL)
-	    {
-	      prev->next = arg;
-	    }
-	  else
-	    {
-	      node->info.function.arg_list = arg_list = arg;
-	    }
-	}
     }
 
   if (pt_list_has_logical_nodes (arg_list))
@@ -13423,7 +13422,7 @@ static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
             PT_ERRORf(parser, node, "ERR no function signature found for fcode=%d args: %s", fcode, parser_print_tree_list(parser, arg_list));
             return node;
           }
-          const func_signature* func_sig = Func::get_signature(node, *func_sigs);
+          const func_signature* func_sig = funcNode.get_signature(node, *func_sigs);
           if(func_sig != NULL)
             {
               funcNode.apply_signature(*func_sig);
