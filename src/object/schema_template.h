@@ -74,7 +74,10 @@ extern int smt_delete_set_attribute_domain (SM_TEMPLATE * template_, const char 
 extern int smt_reset_attribute_domain (SM_TEMPLATE * template_, const char *name, int class_attribute);
 
 extern int smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_attribute, DB_VALUE * value,
-				      DB_DEFAULT_EXPR * default_expr, DB_DEFAULT_EXPR * on_update);
+				      DB_DEFAULT_EXPR * default_expr);
+
+extern int smt_set_attribute_on_update (SM_TEMPLATE * template_, const char *name, int class_attribute,
+					DB_DEFAULT_EXPR * on_update);
 
 extern int smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
 			       const char **att_names, const int *asc_desc, int class_attribute,

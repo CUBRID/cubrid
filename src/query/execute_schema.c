@@ -1068,7 +1068,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		}
 
 	      pt_get_default_expression_from_data_default_node (parser, d, &default_expr);
-	      smt_set_attribute_default (ctemplate, attr_name, 0, &src_val, &default_expr, NULL);
+	      smt_set_attribute_default (ctemplate, attr_name, 0, &src_val, &default_expr);
 	    }
 	  if (pt_has_error (parser))
 	    {

@@ -617,7 +617,7 @@ dbt_change_default (DB_CTMPL * def, const char *name, int class_attribute, DB_VA
   CHECK_2ARGS_ERROR (def, name);
   CHECK_MODIFICATION_ERROR ();
 
-  error = smt_set_attribute_default (def, name, class_attribute, value, NULL, NULL);
+  error = smt_set_attribute_default (def, name, class_attribute, value, NULL);
 
   return (error);
 }
