@@ -1524,7 +1524,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 			    params.size, s ? s : "(null)");
 	      if (s)
 		{
-		  db_private_free (s, thread_p);
+		  db_private_free (thread_p, s);
 		}
 
 	      goto end;

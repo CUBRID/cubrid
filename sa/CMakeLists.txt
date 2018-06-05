@@ -112,6 +112,8 @@ set(BASE_SOURCES
   ${BASE_DIR}/binaryheap.c
   ${BASE_DIR}/tsc_timer.c
   ${BASE_DIR}/lock_free.c
+  ${BASE_DIR}/fileline_location.cpp
+  ${BASE_DIR}/resource_tracker.cpp
   ${BASE_DIR}/tz_compile.c
   ${BASE_DIR}/tz_support.c
   )
@@ -119,12 +121,14 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
+  ${BASE_DIR}/fileline_location.hpp
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
   ${BASE_DIR}/perf_def.hpp
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/packable_object.hpp
+  ${BASE_DIR}/resource_tracker.hpp
 )
 
 set(HEAPLAYER_SOURCES
@@ -239,11 +243,13 @@ set(JSP_SOURCES
   )
 
 set(THREAD_SOURCES
+  ${THREAD_DIR}/critical_section_tracker.cpp
   ${THREAD_DIR}/thread_entry.cpp
   ${THREAD_DIR}/thread_entry_task.cpp
   ${THREAD_DIR}/thread_manager.cpp
   )
 set(THREAD_HEADERS
+  ${THREAD_DIR}/critical_section_tracker.hpp
   ${THREAD_DIR}/thread_compat.hpp
   ${THREAD_DIR}/thread_entry.hpp
   ${THREAD_DIR}/thread_manager.hpp

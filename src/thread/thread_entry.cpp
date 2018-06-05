@@ -25,13 +25,15 @@
 
 #include "adjustable_array.h"
 #include "critical_section.h"  // for INF_WAIT
+#include "critical_section_tracker.hpp"
 #include "error_manager.h"
 #include "fault_injection.h"
+#include "list_file.h"
 #include "lock_free.h"
 #include "log_compress.h"
 #include "memory_alloc.h"
 #include "page_buffer.h"
-#include "thread.h"     // for resource tracker
+#include "resource_tracker.hpp"
 
 #include <cstring>
 #include <sstream>
@@ -42,8 +44,37 @@
 
 namespace cubthread
 {
+  //////////////////////////////////////////////////////////////////////////
+  // resource tracker dedicated section
+  // todo - normally each tracker should be moved to its own module
+  //////////////////////////////////////////////////////////////////////////
+
+  // enable trackers in SERVER_MODE && debug
+  static const bool ENABLE_TRACKERS =
+#if !defined (NDEBUG) && defined (SERVER_MODE)
+	  true;
+#else // RELEASE or !SERVER_MODE
+	  false;
+#endif // RELEASE or !SERVER_MODE
+
+  // tracker constants
+  // alloc
+  const char *ALLOC_TRACK_NAME = "Virtual Memory";
+  const char *ALLOC_TRACK_RES_NAME = "res_ptr";
+  const std::size_t ALLOC_TRACK_MAX_ITEMS = 32767;
+
+  // page buffer
+  const char *PGBUF_TRACK_NAME = "Page Buffer";
+  const char *PGBUF_TRACK_RES_NAME = "pgptr";
+  const std::size_t PGBUF_TRACK_MAX_ITEMS = 1024;
+  const unsigned PGBUF_TRACK_MAX_AMOUNT = 16;       // re-fix is possible... how many to accept is debatable
+
+  //////////////////////////////////////////////////////////////////////////
+  // entry implementation
+  //////////////////////////////////////////////////////////////////////////
 
   entry::entry ()
+  // public:
     : index (-1)
     , type (TT_WORKER)
     , emulate_tid ()
@@ -85,10 +116,6 @@ namespace cubthread
     , log_data_length (0)
     , net_request_index (-1)
     , vacuum_worker (NULL)
-    , track (NULL)
-    , track_depth (-1)
-    , track_threshold (0x7f)  // 127
-    , track_free_list (NULL)
     , sort_stats_active (false)
     , event_stats ()
     , trace_format (0)
@@ -99,9 +126,16 @@ namespace cubthread
     , fi_test_array (NULL)
     , count_private_allocators (0)
 #endif /* DEBUG */
+    , m_qlist_count (0)
+      // private:
     , m_id ()
     , m_error ()
     , m_cleared (false)
+    , m_alloc_tracker (*new cubbase::alloc_tracker (ALLOC_TRACK_NAME, ENABLE_TRACKERS, ALLOC_TRACK_MAX_ITEMS,
+		       ALLOC_TRACK_RES_NAME))
+    , m_pgbuf_tracker (*new cubbase::pgbuf_tracker (PGBUF_TRACK_NAME, ENABLE_TRACKERS, PGBUF_TRACK_MAX_ITEMS,
+		       PGBUF_TRACK_RES_NAME, PGBUF_TRACK_MAX_AMOUNT))
+    , m_csect_tracker (*new cubsync::critical_section_tracker (ENABLE_TRACKERS))
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)
       {
@@ -152,33 +186,10 @@ namespace cubthread
   entry::~entry (void)
   {
     clear_resources ();
-  }
 
-  void
-  entry::interrupt_execution (void)
-  {
-    shutdown = true;
-
-    // wakeup if waiting
-    if (m_status != status::TS_WAIT)
-      {
-	// not waiting
-	return;
-      }
-
-    lock ();
-    // check again
-    if (m_status != status::TS_WAIT)
-      {
-	// not waiting
-	unlock ();
-	return;
-      }
-
-    // interrupt & force wakeup
-    interrupted = true;
-    thread_wakeup_already_had_mutex (this, THREAD_RESUME_DUE_TO_INTERRUPT);
-    unlock ();
+    delete &m_alloc_tracker;
+    delete &m_pgbuf_tracker;
+    delete &m_csect_tracker;
   }
 
   void
@@ -237,9 +248,7 @@ namespace cubthread
 	free (log_data_ptr);
       }
 
-#if defined (SERVER_MODE)
-    thread_rc_track_finalize (this);
-#endif // SERVER_MODE
+    end_resource_tracks ();
 
     db_destroy_private_heap (this, private_heap_id);
 
@@ -296,7 +305,7 @@ namespace cubthread
   }
 
   bool
-  entry::is_on_current_thread ()
+  entry::is_on_current_thread () const
   {
     return m_id == std::this_thread::get_id ();
   }
@@ -329,6 +338,46 @@ namespace cubthread
     pthread_mutex_unlock (&th_entry_lock);
   }
 
+  void
+  entry::end_resource_tracks (void)
+  {
+    if (!ENABLE_TRACKERS)
+      {
+	// all trackers are activated by this flag
+	return;
+      }
+    m_alloc_tracker.clear_all ();
+    m_pgbuf_tracker.clear_all ();
+    m_csect_tracker.clear_all ();
+    m_qlist_count = 0;
+  }
+
+  void
+  entry::push_resource_tracks (void)
+  {
+    if (!ENABLE_TRACKERS)
+      {
+	// all trackers are activated by this flag
+	return;
+      }
+    m_alloc_tracker.push_track ();
+    m_pgbuf_tracker.push_track ();
+    m_csect_tracker.start ();
+  }
+
+  void
+  entry::pop_resource_tracks (void)
+  {
+    if (!ENABLE_TRACKERS)
+      {
+	// all trackers are activated by this flag
+	return;
+      }
+    m_alloc_tracker.pop_track ();
+    m_pgbuf_tracker.pop_track ();
+    m_csect_tracker.stop ();
+  }
+
 } // namespace cubthread
 
 //////////////////////////////////////////////////////////////////////////
@@ -339,7 +388,7 @@ using thread_clock_type = std::chrono::system_clock;
 
 static void thread_wakeup_internal (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason,
 				    bool had_mutex);
-static void thread_check_suspend_reason_and_wakeup_internal (THREAD_ENTRY *thread_p,
+static void thread_check_suspend_reason_and_wakeup_internal (cubthread::entry *thread_p,
     thread_resume_suspend_status resume_reason,
     thread_resume_suspend_status suspend_reason,
     bool had_mutex);
@@ -697,6 +746,10 @@ thread_resume_status_to_string (thread_resume_suspend_status resume_status)
       return "LOGWR_SUSPENDED";
     case THREAD_LOGWR_RESUMED:
       return "LOGWR_RESUMED";
+    case THREAD_ALLOC_BCB_SUSPENDED:
+      return "ALLOC_BCB_SUSPENDED";
+    case THREAD_ALLOC_BCB_RESUMED:
+      return "ALLOC_BCB_RESUMED";
     }
   return "UNKNOWN";
 }
