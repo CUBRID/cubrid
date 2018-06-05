@@ -22788,7 +22788,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		  GOTO_EXIT_ON_ERROR;
 		}
 
-	      if (saved)
+	      if (len)
 		{
 		  strcpy (str_val, saved);
 		  strcat (str_val, " ON UPDATE ");

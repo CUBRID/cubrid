@@ -1512,12 +1512,12 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	  if (default_str_val != NULL)
 	    {
 	      strcpy (str_val, default_str_val);
-	      strcat (str_val, " ON_UPDATE ");
+	      strcat (str_val, " ON UPDATE ");
 	      strcat (str_val, default_expr_type_string);
 	    }
 	  else
 	    {
-	      strcpy (str_val, "ON_UPDATE ");
+	      strcpy (str_val, "ON UPDATE ");
 	      strcat (str_val, default_expr_type_string);
 	    }
 

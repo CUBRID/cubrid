@@ -4671,7 +4671,6 @@ tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
 	  /* make sure property is unset for existing attributes */
 	  classobj_drop_prop (attr->properties, "update_default");
 	}
-
     }
 
   /* all ok */
