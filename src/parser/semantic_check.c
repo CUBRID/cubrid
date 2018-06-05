@@ -7741,7 +7741,7 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
   int flag = 0;
   bool has_user_format;
 
-  /* Import default value from referenced table for those attributes in the the view that have no default value. */
+  /* Import default value and on update default expr from referenced table for those attributes in the the view that don't have them. */
   for (attr = attrs, col = columns; attr && col; attr = attr->next, col = col->next)
     {
       if (!attr->info.attr_def.data_default)
@@ -7769,17 +7769,6 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 		{
 		  continue;
 		}
-
-	      on_update_default_expr = parser_new_node (parser, PT_ON_UPDATE);
-	      if (!on_update_default_expr)
-		{
-		  parser_free_tree (parser, on_update_default_expr);
-		  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		  goto error;
-		}
-	      on_update_default_expr->info.on_update.default_expr_type =
-		col_attr->on_update_default_expr.default_expr_type;
-	      attr->info.attr_def.on_update = on_update_default_expr;
 
 	      if (DB_IS_NULL (&col_attr->default_value.value)
 		  && (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE))
@@ -7877,6 +7866,19 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 		}
 	      attr->info.attr_def.data_default = default_data;
 	    }
+	}
+
+      if (!attr->info.attr_def.on_update)
+	{
+	  on_update_default_expr = parser_new_node (parser, PT_ON_UPDATE);
+	  if (!on_update_default_expr)
+	    {
+	      parser_free_tree (parser, on_update_default_expr);
+	      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      goto error;
+	    }
+	  on_update_default_expr->info.on_update.default_expr_type = col_attr->on_update_default_expr.default_expr_type;
+	  attr->info.attr_def.on_update = on_update_default_expr;
 	}
     }
 

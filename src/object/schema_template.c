@@ -955,6 +955,7 @@ smt_quit (SM_TEMPLATE * template_)
  *   add_after_attribute(in): the attribute should be added in the attributes
  *                            list after the attribute with the given name
  *   default_expr(in): default expression
+ *   on_update(in): on_update default expression
  */
 int
 smt_add_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const char *domain_string, DB_DOMAIN * domain,
@@ -1330,6 +1331,7 @@ smt_delete_set_attribute_domain (SM_TEMPLATE * template_, const char *name, int 
  *   class_attribute(in): non-zero if looking at class attributes
  *   proposed_value(in): default value to assign
  *   default_expr(in): default expression
+ *   on_update(in): on_update default expression
  */
 
 int
@@ -1436,6 +1438,28 @@ end:
   return error;
 }
 
+int
+smt_set_attribute_on_update (SM_TEMPLATE * template_, const char *name, int class_attribute,
+			     DB_DEFAULT_EXPR * on_update)
+{
+  int error = NO_ERROR;
+  SM_ATTRIBUTE *att;
+  error = smt_find_attribute (template_, name, class_attribute, &att);
+
+  if (error == NO_ERROR)
+    {
+      if (on_update == NULL)
+	{
+	  classobj_initialize_default_expr (&att->on_update_default_expr);
+	}
+      else
+	{
+	  classobj_copy_default_expr (&att->on_update_default_expr, on_update);
+	}
+    }
+  return error;
+}
+
 /*
  * smt_set_attribute_orig_default_value() - Sets the original default value of the attribute.
  *					    No domain checking is performed.
@@ -1443,6 +1467,7 @@ end:
  *   att(in/out): attribute
  *   new_orig_value(in): original value to set
  *   default_expr(in): default expression
+ *   on_update(in): on update default expression
  *
  *  Note : This function modifies the initial default value of the attribute.
  *	   The initial default value is the default value assigned when adding
@@ -1461,7 +1486,6 @@ smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_va
 
   pr_clear_value (&att->default_value.original_value);
   pr_clone_value (new_orig_value, &att->default_value.original_value);
-
   int error = NO_ERROR;
   if (default_expr == NULL)
     {
