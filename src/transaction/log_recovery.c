@@ -2359,9 +2359,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 {
   LOG_LSA checkpoint_lsa = { -1, -1 };
   LOG_LSA lsa;			/* LSA of log record to analyse */
-  const int block_size = 4 * ONE_K;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
-  char null_buffer[block_size + MAX_ALIGNMENT], *null_block;
   LOG_PAGE *log_page_p = NULL;	/* Log page pointer where LSA is located */
   LOG_LSA log_lsa, prev_lsa, first_corrupted_rec_lsa;
   LOG_RECTYPE log_rtype;	/* Log record type */
@@ -2376,12 +2374,9 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
   TRANID tran_id;
   LOG_TDES *tdes;		/* Transaction descriptor */
   void *area = NULL;
-  int size;
-  int i;
-  int max_num_blocks = LOG_PAGESIZE / block_size;
+  int size, i;
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
-  null_block = PTR_ALIGN (null_buffer, MAX_ALIGNMENT);
 
   if (num_redo_log_records != NULL)
     {
@@ -2402,7 +2397,6 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
   *did_incom_recovery = false;
 
   log_page_p = (LOG_PAGE *) aligned_log_pgbuf;
-  memset (null_block, LOG_PAGE_INIT_VALUE, block_size);
 
   while (!LSA_ISNULL (&lsa))
     {
@@ -2470,27 +2464,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	    }
 
 	  /* Set first corrupted record lsa, if a block is corrupted. */
-	  for (i = 0; i < max_num_blocks; i++)
-	    {
-	      /* Checks null blocks. Additional checking for each record may be done,
-	       * but, for partial page flush, checking blocks should be enough.
-	       */
-	      if (memcmp (((char *) log_page_p) + (i * block_size), null_block, block_size) == 0)
-		{
-		  /* The block is corrupted, do not analyze it. */
-		  first_corrupted_rec_lsa.pageid = log_lsa.pageid;
-		  first_corrupted_rec_lsa.offset = i * block_size;
-
-		  if (first_corrupted_rec_lsa.offset > 0)
-		    {
-		      /* Skip log header size. */
-		      first_corrupted_rec_lsa.offset -= sizeof (LOG_HDRPAGE);
-		    }
-
-		  assert (first_corrupted_rec_lsa.offset >= 0);
-		  break;
-		}
-	    }
+	  logpb_page_get_first_null_block_lsa (thread_p, log_page_p, &first_corrupted_rec_lsa);
+	  assert (!LSA_ISNULL (&first_corrupted_rec_lsa));
 
 	  /* Found corrupted log page. */
 	  if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
@@ -2531,6 +2506,21 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	  /* Find the log record */
 	  log_lsa.offset = lsa.offset;
 	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_page_p, &log_lsa);
+
+	  /* Check whether null LSA is reached. */
+	  if (LSA_ISNULL (&log_rec->forw_lsa) && !is_log_page_corrupted
+	      && log_rec->type != LOG_END_OF_LOG && !logpb_is_page_in_archive (log_lsa.pageid))
+	    {
+	      /* Can't find the end of log. The next log is null. Consider the page corrupted. */
+	      er_log_debug (ARG_FILE_LINE,
+			    "log_recovery_analysis: ** WARNING: An end of the log record was not found."
+			    "Latest log record at lsa = %lld|%d \n", log_lsa.pageid, log_lsa.offset);
+
+	      logpb_page_get_first_null_block_lsa (thread_p, log_page_p, &first_corrupted_rec_lsa);
+	      assert (!LSA_ISNULL (&first_corrupted_rec_lsa));
+
+	      is_log_page_corrupted = true;
+	    }
 
 	  if (is_log_page_corrupted && !LSA_ISNULL (&first_corrupted_rec_lsa))
 	    {

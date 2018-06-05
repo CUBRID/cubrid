@@ -2407,6 +2407,8 @@ extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HE
 extern VACUUM_LOG_BLOCKID logpb_last_complete_blockid (void);
 extern int logpb_page_check_corruption (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * is_page_corrupted);
 extern void logpb_dump_log_page_area (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int offset, int length);
+extern void logpb_page_get_first_null_block_lsa (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr,
+						 LOG_LSA * first_null_block_lsa);
 
 extern void logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index);
 extern int xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user, char *kill_host,

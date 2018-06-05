@@ -4242,6 +4242,49 @@ logpb_dump_log_page_area (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int off
 }
 
 /*
+* logpb_page_get_first_null_block_lsa - Get LSA of first null block in log page.
+*
+* return: nothing
+*   thread_p(in): thread entry
+*   log_pgptr(in): log page
+*   first_null_block_lsa(out): LSA of first null block.
+*/
+void
+logpb_page_get_first_null_block_lsa (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_LSA * first_null_block_lsa)
+{
+  const int block_size = 4 * ONE_K;
+  char null_buffer[block_size + MAX_ALIGNMENT], *null_block;
+  int i, max_num_blocks = LOG_PAGESIZE / block_size;
+
+  assert (log_pgptr != NULL && first_null_block_lsa != NULL);
+
+  null_block = PTR_ALIGN (null_buffer, MAX_ALIGNMENT);
+  memset (null_block, LOG_PAGE_INIT_VALUE, block_size);
+
+  LSA_SET_NULL (first_null_block_lsa);
+  /* Set LSA of first NULL block. */
+  for (i = 0; i < max_num_blocks; i++)
+    {
+      /* Search for null blocks. */
+      if (memcmp (((char *) log_pgptr) + (i * block_size), null_block, block_size) == 0)
+	{
+	  /* Found the null block. Computes its LSA. */
+	  first_null_block_lsa->pageid = log_pgptr->hdr.logical_pageid;
+	  first_null_block_lsa->offset = i * block_size;
+
+	  if (first_null_block_lsa->offset > 0)
+	    {
+	      /* Skip log header size. */
+	      first_null_block_lsa->offset -= sizeof (LOG_HDRPAGE);
+	    }
+
+	  assert (first_null_block_lsa->offset >= 0);
+	  break;
+	}
+    }
+}
+
+/*
  * logpb_flush_all_append_pages - Flush log append pages
  *
  * return: 1 : log flushed, 0 : do not need log flush, < 0 : error code
