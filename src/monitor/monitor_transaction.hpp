@@ -48,7 +48,6 @@ namespace cubmonitor
 {
   // for separate sheets of statistics
   using transaction_sheet = std::size_t;
-  const transaction_sheet INVALID_SHEET = std::numeric_limits<transaction_sheet>::max ();
 
   //
   // sheet_manager - manage opened sheets and thread sheets
@@ -166,7 +165,7 @@ namespace cubmonitor
   transaction_collector<StatCollector>::fetch_sheet (void) const
   {
     transaction_sheet sheet = transaction_sheet_manager::get_sheet ();
-    if (sheet == INVALID_SHEET)
+    if (sheet == transaction_sheet_manager::INVALID_SHEET)
       {
 	// invalid... is this acceptable?
 	return 0;
@@ -189,7 +188,7 @@ namespace cubmonitor
     m_global_collector.collect (change);
 
     transaction_sheet sheet = transaction_sheet_manager::get_sheet ();
-    if (sheet != INVALID_SHEET)
+    if (sheet != transaction_sheet_manager::INVALID_SHEET)
       {
 	if (sheet >= m_sheet_collectors_count)
 	  {

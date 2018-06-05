@@ -25,10 +25,26 @@
 #define _MONITOR_COLLECT_HPP_
 
 #include "monitor_collect_forward.hpp"
+#include "monitor_transaction.hpp"
 
 namespace cubmonitor
 {
-  // statistics manipulation functions
+
+  //////////////////////////////////////////////////////////////////////////
+  // grouped statistics
+  //////////////////////////////////////////////////////////////////////////
+
+  class timer
+  {
+    public:
+      timer (void);
+
+      void reset (void);
+      duration time (void);
+
+    private:
+      time_point m_timept;
+  };
 
 
   //////////////////////////////////////////////////////////////////////////
