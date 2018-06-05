@@ -2249,10 +2249,20 @@ ws_add_classname (MOBJ classobj, MOP classmop, const char *cl_name)
 void
 ws_drop_classname (MOBJ classobj)
 {
-  if (classobj != NULL)
+  const char *class_name = NULL;
+
+  if (classobj == NULL)
     {
-      mht_rem (Classname_cache, sm_ch_name (classobj), NULL, NULL);
+      return;
     }
+
+  class_name = sm_ch_name (classobj);
+  if (class_name == NULL)
+    {
+      return;			// ignore
+    }
+
+  mht_rem (Classname_cache, class_name, NULL, NULL);
 }
 
 /*
