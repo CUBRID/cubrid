@@ -215,67 +215,114 @@ std::vector<func_signature> func_signature::sequence_r_any = {
   {PT_TYPE_SEQUENCE, {}, {PT_GENERIC_TYPE_ANY}},
 };
 
-
 std::vector<func_signature>* func_signature::get_signatures(FUNC_TYPE ft){
     switch(ft){
-        case PT_MIN                 :
-        case PT_MAX                 : return &type0_nr_or_str;
-        case PT_SUM                 : return &sum;
-        case PT_AVG                 :
-        case PT_STDDEV              :
-        case PT_VARIANCE            :
-        case PT_STDDEV_POP          :
-        case PT_VAR_POP             :
-        case PT_STDDEV_SAMP         :
-        case PT_VAR_SAMP            : return &double_number;
-        case PT_COUNT               : return &count;
-        case PT_COUNT_STAR          : return &count_star;
-        case PT_GROUPBY_NUM         : return &bigint;
-        case PT_AGG_BIT_AND         :
-        case PT_AGG_BIT_OR          :
-        case PT_AGG_BIT_XOR         : return &bigint_discrete;
-        case PT_GROUP_CONCAT        : return &group_concat;
-        case PT_ROW_NUMBER          :
-        case PT_RANK                :
-        case PT_DENSE_RANK          : return &integer;
-        case PT_NTILE               : return &ntile;
-        case PT_TOP_AGG_FUNC        : return nullptr;
-        case PT_LEAD                :
-        case PT_LAG                 : return &lead_lag;
-        case PT_GENERIC             : return nullptr;
-        case F_SET                  :
-        case F_TABLE_SET            : return &set_r_any;
-        case F_MULTISET             :
-        case F_TABLE_MULTISET       : return &multiset_r_any;
-        case F_SEQUENCE             :
-        case F_TABLE_SEQUENCE       : return &sequence_r_any;
-        case F_TOP_TABLE_FUNC       : return nullptr;
-        case F_MIDXKEY              : return nullptr;
-        case F_VID                  :
-        case F_GENERIC              :
-        case F_CLASS_OF             : return nullptr;
-        case F_INSERT_SUBSTRING     : return &insert;
-        case F_ELT                  : return &elt;
-        case F_JSON_OBJECT          : return &json_r_key_val;
-        case F_JSON_ARRAY           : return &json_r_val;
-        case F_JSON_MERGE           : return &json_doc_r_doc;
-        case F_JSON_INSERT          : return &json_doc_r_path_doc;
-        case F_JSON_REMOVE          : return &json_doc_r_path;
-        case F_JSON_ARRAY_APPEND    : return &json_doc_r_path_doc;
-        case F_JSON_GET_ALL_PATHS   : return &json_doc;
-        case F_JSON_REPLACE         : return &json_doc_r_path_doc;
-        case F_JSON_SET             : return &json_doc_r_path_doc;
-        case F_JSON_KEYS            : return &json_doc_path;
-        case PT_FIRST_VALUE         :
-        case PT_LAST_VALUE          : return &type0_nr_or_str;
-        case PT_NTH_VALUE           : return &type0_nr_or_str_discrete;
-        case PT_MEDIAN              : return &median;
-        case PT_CUME_DIST           :
-        case PT_PERCENT_RANK        : return &double_r_any;
-        case PT_PERCENTILE_CONT     : return &percentile_cont;
-        case PT_PERCENTILE_DISC     : return &percentile_disc;
+        case PT_MIN:
+        case PT_MAX:
+            return &type0_nr_or_str;
+        case PT_SUM:
+            return &sum;
+        case PT_AVG:
+        case PT_STDDEV:
+        case PT_VARIANCE:
+        case PT_STDDEV_POP:
+        case PT_VAR_POP:
+        case PT_STDDEV_SAMP:
+        case PT_VAR_SAMP:
+            return &double_number;
+        case PT_COUNT:
+            return &count;
+        case PT_COUNT_STAR:
+            return &count_star;
+        case PT_GROUPBY_NUM:
+            return &bigint;
+        case PT_AGG_BIT_AND:
+        case PT_AGG_BIT_OR:
+        case PT_AGG_BIT_XOR:
+            return &bigint_discrete;
+        case PT_GROUP_CONCAT:
+            return &group_concat;
+        case PT_ROW_NUMBER:
+        case PT_RANK:
+        case PT_DENSE_RANK:
+            return &integer;
+        case PT_NTILE:
+            return &ntile;
+        case PT_TOP_AGG_FUNC:
+            return nullptr;
+        case PT_LEAD:
+        case PT_LAG:
+            return &lead_lag;
+        case PT_GENERIC:
+            return nullptr;
+        case F_SET:
+        case F_TABLE_SET:
+            return &set_r_any;
+        case F_MULTISET:
+        case F_TABLE_MULTISET:
+            return &multiset_r_any;
+        case F_SEQUENCE:
+        case F_TABLE_SEQUENCE:
+            return &sequence_r_any;
+        case F_TOP_TABLE_FUNC:
+            return nullptr;
+        case F_MIDXKEY:
+            return nullptr;
+        case F_VID:
+        case F_GENERIC:
+        case F_CLASS_OF:
+            return nullptr;
+        case F_INSERT_SUBSTRING:
+            return &insert;
+        case F_ELT:
+            return &elt;
+        case F_JSON_OBJECT:
+            return &json_r_key_val;
+        case F_JSON_ARRAY:
+            return &json_r_val;
+        case F_JSON_MERGE:
+            return &json_doc_r_doc;
+        case F_JSON_INSERT
+        : return &json_doc_r_path_doc;
+        case F_JSON_REMOVE:
+            return &json_doc_r_path;
+        case F_JSON_ARRAY_APPEND
+        : return &json_doc_r_path_doc;
+        case F_JSON_GET_ALL_PATHS:
+            return &json_doc;
+        case F_JSON_REPLACE:
+            return &json_doc_r_path_doc;
+        case F_JSON_SET:
+            return &json_doc_r_path_doc;
+        case F_JSON_KEYS:
+            return &json_doc_path;
+        case PT_FIRST_VALUE:
+        case PT_LAST_VALUE:
+            return &type0_nr_or_str;
+        case PT_NTH_VALUE:
+            return &type0_nr_or_str_discrete;
+        case PT_MEDIAN:
+            return &median;
+        case PT_CUME_DIST:
+        case PT_PERCENT_RANK:
+            return &double_r_any;
+        case PT_PERCENTILE_CONT:
+            return &percentile_cont;
+        case PT_PERCENTILE_DISC:
+            return &percentile_disc;
         default:
             assert(false);
             return nullptr;
     }
+}
+
+const char* func_signature::str(const func_signature& signature, string_buffer& sb){
+    ::str(signature.ret, sb);
+    sb(" (");
+    for(auto i: signature.fix)
+    {
+        ::str(i, sb);
+    }
+    sb(")");
+    return sb.get_buffer();
 }

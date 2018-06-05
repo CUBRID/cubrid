@@ -2,6 +2,7 @@
 #define _FUNC_TYPE_HPP_
 
 #include "parse_type.hpp"
+#include "string_buffer.hpp"
 #include <vector>
 
 struct parser_context;
@@ -45,6 +46,9 @@ struct func_signature
   static std::vector<func_signature> sequence_r_any;//sequence, table_sequence
 
   static std::vector<func_signature>* get_signatures(FUNC_TYPE ft);
+
+  static const char* str(const func_signature& signature, string_buffer& sb);
 };
+
 
 #endif

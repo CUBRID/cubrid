@@ -2,9 +2,11 @@
 #define _PARSER_TYPE_HPP_
 
 #include "parse_tree.h"
+#include <string>
+class string_buffer;
 
 /* generic types */
-typedef enum pt_generic_type_enum
+enum pt_generic_type_enum
 {
   PT_GENERIC_TYPE_NONE,
   PT_GENERIC_TYPE_STRING,           // any type of string
@@ -24,7 +26,9 @@ typedef enum pt_generic_type_enum
   PT_GENERIC_TYPE_JSON_VAL,         // PT_TYPE_VARCHAR, PT_TYPE_VARCHAR, PT_TYPE_CHAR, PT_TYPE_NCHAR, PT_TYPE_NUMERIC, PT_TYPE_INTEGER, PT_TYPE_LOGICAL, PT_TYPE_DOUBLE, PT_TYPE_NUMERIC, PT_TYPE_JSON, PT_TYPE_MAYBE, PT_TYPE_NULL
   PT_GENERIC_TYPE_JSON_DOC,         // PT_TYPE_VARCHAR, PT_TYPE_VARNCHAR, PT_TYPE_CHAR, PT_TYPE_NCHAR, PT_TYPE_JSON, PT_TYPE_MAYBE, PT_TYPE_NULL
   PT_GENERIC_TYPE_JSON_PATH,        // PT_TYPE_VARCHAR, PT_TYPE_VARNCHAR, PT_TYPE_CHAR, PT_TYPE_NCHAR, PT_TYPE_BIT, PT_TYPE_VARBIT, PT_TYPE_MAYBE, PT_TYPE_NULL
-} PT_GENERIC_TYPE_ENUM;
+};
+
+const char* str(pt_generic_type_enum type);
 
 
 /* expression argument type */
@@ -35,7 +39,7 @@ struct pt_arg_type
   union pt_arg_type_val
   {
     PT_TYPE_ENUM type;
-    PT_GENERIC_TYPE_ENUM generic_type;
+    pt_generic_type_enum generic_type;
     size_t index; //index type
 
     pt_arg_type_val(pt_type_enum type)
@@ -85,5 +89,8 @@ struct pt_arg_type
   }
 };
 typedef pt_arg_type PT_ARG_TYPE;
+
+const char* str(PT_TYPE_ENUM type);
+const char* str(const pt_arg_type& type, string_buffer& sb);
 
 #endif // _PARSER_TYPE_HPP_

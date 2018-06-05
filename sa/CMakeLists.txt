@@ -46,7 +46,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_admin.c
   ${COMPAT_DIR}/db_class.c
   ${COMPAT_DIR}/db_date.c
-  ${COMPAT_DIR}/db_elo.c 
+  ${COMPAT_DIR}/db_elo.c
   ${COMPAT_DIR}/db_info.c
   ${COMPAT_DIR}/db_json.cpp
   ${COMPAT_DIR}/db_macro.c
@@ -167,6 +167,7 @@ set(PARSER_SOURCES
   ${PARSER_DIR}/scanner_support.c
   ${PARSER_DIR}/view_transform.c
   ${PARSER_DIR}/func_type.cpp
+  ${PARSER_DIR}/parse_type.cpp
   )
 
 set(OPTIMIZER_SOURCES
