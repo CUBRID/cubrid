@@ -4242,13 +4242,13 @@ logpb_dump_log_page_area (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int off
 }
 
 /*
-* logpb_page_get_first_null_block_lsa - Get LSA of first null block in log page.
-*
-* return: nothing
-*   thread_p(in): thread entry
-*   log_pgptr(in): log page
-*   first_null_block_lsa(out): LSA of first null block.
-*/
+ * logpb_page_get_first_null_block_lsa - Get LSA of first null block in log page.
+ *
+ * return: nothing
+ *   thread_p(in): thread entry
+ *   log_pgptr(in): log page
+ *   first_null_block_lsa(out): LSA of first null block.
+ */
 void
 logpb_page_get_first_null_block_lsa (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_LSA * first_null_block_lsa)
 {
@@ -4262,6 +4262,7 @@ logpb_page_get_first_null_block_lsa (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgp
   memset (null_block, LOG_PAGE_INIT_VALUE, block_size);
 
   LSA_SET_NULL (first_null_block_lsa);
+
   /* Set LSA of first NULL block. */
   for (i = 0; i < max_num_blocks; i++)
     {
