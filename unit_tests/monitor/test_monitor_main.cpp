@@ -27,14 +27,12 @@
 
 static void test_single_statistics_no_concurrency (void);
 static void test_multithread_accumulation (void);
-static void test_transaction_stats (void);
 
 int
 main (int, char **)
 {
   test_single_statistics_no_concurrency ();
   test_multithread_accumulation ();
-  test_transaction_stats ();
 
   std::cout << "test successful" << std::endl;
 }
@@ -267,101 +265,4 @@ test_multithread_accumulation (void)
   assert (expected == statcol.fetch ());
 
   std::cout << "test_multithread_accumulation passed" << std::endl;
-}
-
-//////////////////////////////////////////////////////////////////////////
-//
-//////////////////////////////////////////////////////////////////////////
-
-void
-test_transaction_stats (void)
-{
-  using namespace cubmonitor;
-
-  // start one transaction - static
-  {
-    transaction_watcher trw (1);
-    assert (Transaction_watcher_count == 1);
-
-    transaction_collector<amount_accumulator> trancol;
-
-    trancol.collect (1, 1);  // it is counted
-    trancol.collect (2, 1);  // is is ignored
-
-    assert (trancol.fetch (1) == 1);
-    assert (trancol.fetch (2) == 0);
-  }
-  assert (Transaction_watcher_count == 0);
-
-  // start two transactions - dynamic
-  {
-    transaction_watcher trw1 (1);
-    assert (Transaction_watcher_count == 1);
-
-    transaction_collector<amount_accumulator> trancol;
-
-    trancol.collect (1, 1);  // it is counted
-    trancol.collect (2, 1);  // is is ignored
-
-    transaction_watcher trw2 (2);
-    assert (Transaction_watcher_count == 2);
-
-    trancol.collect (1, 1);  // it is counted
-    trancol.collect (2, 1);  // is is counted
-
-    assert (trancol.fetch (1) == 2);
-    assert (trancol.fetch (2) == 1);
-  }
-  assert (Transaction_watcher_count == 0);
-
-  // re-use a transaction
-  {
-    start_transaction_watcher (1);
-    assert (Transaction_watcher_count == 1);
-
-    transaction_collector<amount_accumulator> trancol;
-
-    trancol.collect (1, 1);  // it is counted
-    trancol.collect (2, 1);  // is is ignored
-
-    start_transaction_watcher (2);
-    start_transaction_watcher (3);
-    start_transaction_watcher (4);
-    assert (Transaction_watcher_count == 4);
-
-    trancol.collect (1, 1);  // it is counted
-    trancol.collect (2, 1);  // is is counted
-    trancol.collect (3, 1);  // it is counted
-    trancol.collect (4, 1);  // is is counted
-
-    // stop 1 and 3
-    end_transaction_watcher (1);
-    end_transaction_watcher (3);
-    assert (Transaction_watcher_count == 2);
-
-    // start two new transaction 5 and 6
-    // 5 will inherit 1's slot - fetch would currently be 2
-    // 6 will inherit 3's slot - fetch would currently be 1
-    start_transaction_watcher (5);
-    start_transaction_watcher (6);
-    assert (Transaction_watcher_count == 4);
-
-    trancol.collect (5, 1);
-    trancol.collect (6, 1);
-
-    assert (trancol.fetch (1) == 0); // stopped
-    assert (trancol.fetch (2) == 1);
-    assert (trancol.fetch (3) == 0);
-    assert (trancol.fetch (4) == 1);
-    assert (trancol.fetch (5) == 3);
-    assert (trancol.fetch (6) == 2);
-
-    end_transaction_watcher (2);
-    end_transaction_watcher (4);
-    end_transaction_watcher (5);
-    end_transaction_watcher (6);
-    assert (Transaction_watcher_count == 0);
-  }
-
-  std::cout << "test_transaction_stats passed" << std::endl;
 }

@@ -86,14 +86,14 @@ namespace cubmonitor
     public:
 
       using rep = Rep;
-      stat_synchronization sync = Sync;
+      static const stat_synchronization sync = Sync;
 
       stat_collector (void)
 	: m_value { 0 }
       {
       }
 
-      statistic_value fetch (void)
+      statistic_value fetch (void) const
       {
 	return rep_to_statistic_value (m_value);
       }
@@ -196,7 +196,7 @@ namespace cubmonitor
 
   template <>
   statistic_value
-  stat_collector<stat_synchronization::NONE, time_rep>::fetch (void)
+  stat_collector<stat_synchronization::NONE, time_rep>::fetch (void) const
   {
     // time statistics are usually fetched as microseconds
     duration d (m_value);
@@ -206,7 +206,7 @@ namespace cubmonitor
 
   template <>
   statistic_value
-  stat_collector<stat_synchronization::ATOMIC, time_rep>::fetch (void)
+  stat_collector<stat_synchronization::ATOMIC, time_rep>::fetch (void) const
   {
     // time statistics are usually fetched as microseconds
     duration d (m_value.load ());

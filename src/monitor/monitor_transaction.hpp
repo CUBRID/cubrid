@@ -18,7 +18,19 @@
  */
 
 //
-// monitor_transcation.hpp - interface for managing transaction separate sheets of statistics
+// monitor_watchers.hpp - interface for managing separate sheets of statistics
+//
+//    description - the purpose of this header is to provide a way to follow the work of specific(s) thread.
+//                  legacy performance monitor behavior is to provide separate sheets for transaction entries.
+//                  this is an abstraction of the sheet concept that can be used in any context.
+//
+// note - this should replace perfmon_start_watcher/perfmon_stop_watcher functionality. the difference between this
+//        implementation and previous is that sheets are no longer directly linked to transaction indexes. transaction
+//        should manage its separate sheet.
+//
+//        these sheets are not limited to using them as transaction sheets. they may be used in different contexts
+//
+//        there is a limitation of one separate sheet per thread per sheet manager.
 //
 
 #if !defined _MONITOR_TRANSACTION_HPP_
@@ -26,75 +38,68 @@
 
 #include "monitor_collect_forward.hpp"
 
+#include <limits>
 #include <mutex>
 
+#include <cassert>
 #include <cstring>
 
 namespace cubmonitor
 {
-  extern std::size_t Transaction_watcher_count;
-  bool start_transaction_watcher (int tran_index);
-  void end_transaction_watcher (int tran_index);
-  bool is_transaction_watching (int tran_index, bool &is_static, std::size_t &dynamic_index);
+  // for separate sheets of statistics
+  using transaction_sheet = std::size_t;
+  const transaction_sheet INVALID_SHEET = std::numeric_limits<transaction_sheet>::max ();
 
-  class transaction_watcher
+  //
+  // sheet_manager - manage opened sheets and thread sheets
+  //
+  class transaction_sheet_manager
   {
     public:
-      transaction_watcher (int tran_index);
-      transaction_watcher (void) = delete;
-      ~transaction_watcher (void);
+
+      static const transaction_sheet INVALID_SHEET = std::numeric_limits<std::size_t>::max ();
+      static const std::size_t MAX_SHEETS = 1024;
+
+      static bool start_watch (void);
+      static void end_watch (bool end_all = false);
+      static transaction_sheet get_sheet (void);
 
     private:
-      // private members
-      int m_tran_index;
-      bool m_watching;
+      transaction_sheet_manager (void) = delete;    // entirely static class; no instances are permitted
+
+      static void static_init (void);
+
+      static std::size_t s_current_sheet_count;
+      static unsigned s_sheet_start_count[MAX_SHEETS];
+
+      static std::size_t s_transaction_count;
+      static transaction_sheet *s_transaction_sheets;
+
+      static std::mutex s_sheets_mutex;
   };
 
-  // forward definition; implementation is entirely in monitor_transaction.cpp
-  template <typename Col>
-  class transaction_dynamic_collectors
-  {
-    public:
-      using collector_type = Col;
-
-      transaction_dynamic_collectors (void);
-      ~transaction_dynamic_collectors (void);
-
-      collector_type &get_collector (std::size_t index);
-      std::size_t get_size (void);
-
-    private:
-      void extend (std::size_t index);
-
-      std::size_t m_size;
-      collector_type *m_collectors;
-      std::mutex m_extend_mutex;
-  };
-
-  template <class Col>
+  template <class StatCollector>
   class transaction_collector
   {
     public:
+      using collector_type = StatCollector;
 
-      transaction_collector (void)
-	: m_static_collector ()
-	, m_dynamic_collectors ()
-      {
-	//
-      }
+      transaction_collector (void);
+      ~transaction_collector (void);
 
-      using collector_type = Col;
+      statistic_value fetch (void) const;
+      statistic_value fetch_sheet (void) const;
 
-      inline void collect (int tran_index, const typename collector_type::rep &change);
-      statistic_value fetch (int tran_index);
+      void collect (const typename collector_type::rep &change);
 
     private:
 
-      void collect_internal (int tran_index, const typename collector_type::rep &change);
+      void extend (std::size_t to);
 
-
-      collector_type m_static_collector;
-      transaction_dynamic_collectors<collector_type> m_dynamic_collectors;
+      collector_type m_global_collector;
+      collector_type *m_sheet_collectors;
+      std::size_t m_sheet_collectors_count;
+      std::mutex m_extend_mutex;
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -105,129 +110,93 @@ namespace cubmonitor
   // transaction_collector
   //////////////////////////////////////////////////////////////////////////
 
-  template <class Col>
-  void
-  transaction_collector<Col>::collect (int tran_index, const typename collector_type::rep &change)
-  {
-    if (Transaction_watcher_count == 0)
-      {
-	return;
-      }
-
-    collect_internal (tran_index, change);
-  }
-
-  template <class Col>
-  void
-  transaction_collector<Col>::collect_internal (int tran_index, const typename collector_type::rep &change)
-  {
-    bool is_static = false;
-    std::size_t index = 0;
-
-    if (!is_transaction_watching (tran_index, is_static, index))
-      {
-	// not watching
-	return;
-      }
-
-    if (is_static)
-      {
-	m_static_collector.collect (change);
-      }
-    else
-      {
-	m_dynamic_collectors.get_collector (index).collect (change);
-      }
-  }
-
-  template <typename Col>
-  statistic_value
-  transaction_collector<Col>::fetch (int tran_index)
-  {
-    bool is_static = false;
-    std::size_t index = 0;
-
-    if (!is_transaction_watching (tran_index, is_static, index))
-      {
-	// not watching
-	return 0;
-      }
-
-    if (is_static)
-      {
-	return m_static_collector.fetch ();
-      }
-    else
-      {
-	if (m_dynamic_collectors.get_size () <= index)
-	  {
-	    // it was never collected. fetch is zero.
-	    // early out and avoid extending dynamic collectors.
-	    return 0;
-	  }
-	return m_dynamic_collectors.get_collector (index).fetch ();
-      }
-  }
-
-  //////////////////////////////////////////////////////////////////////////
-  // transaction_dynamic_collectors
-  //////////////////////////////////////////////////////////////////////////
-
-  template <typename Col>
-  transaction_dynamic_collectors<Col>::transaction_dynamic_collectors (void)
-    : m_size (0)
-    , m_collectors (NULL)
-    , m_extend_mutex ()
+  template <class StatCollector>
+  transaction_collector<StatCollector>::transaction_collector (void)
+    : m_global_collector ()
+    , m_sheet_collectors (NULL)
+    , m_sheet_collectors_count (0)
   {
     //
   }
 
-  template <typename Col>
-  transaction_dynamic_collectors<Col>::~transaction_dynamic_collectors (void)
+  template <class StatCollector>
+  transaction_collector<StatCollector>::~transaction_collector (void)
   {
-    delete [] m_collectors;
+    delete [] m_sheet_collectors;
   }
 
-  template <typename Col>
-  typename transaction_dynamic_collectors<Col>::collector_type &
-  transaction_dynamic_collectors<Col>::get_collector (std::size_t index)
+  template <class StatCollector>
+  void
+  transaction_collector<StatCollector>::extend (std::size_t to)
   {
-    if (index >= m_size)
+    assert (to > 0);
+
+    std::unique_lock<std::mutex> ulock (m_extend_mutex);
+    if (to > transaction_sheet_manager::MAX_SHEETS)
       {
-	extend (index);
+	// to be on safe side
+	assert (false);
+	to = transaction_sheet_manager::MAX_SHEETS;
       }
 
-    return m_collectors[index];
-  }
-
-  template <typename Col>
-  std::size_t
-  transaction_dynamic_collectors<Col>::get_size (void)
-  {
-    return m_size;
-  }
-
-  template <typename Col>
-  void
-  transaction_dynamic_collectors<Col>::extend (std::size_t index)
-  {
-    std::unique_lock<std::mutex> ulock (m_extend_mutex);
-    if (index < m_size)
+    if (to <= m_sheet_collectors_count)
       {
 	// already extended
 	return;
       }
 
-    collector_type *new_collectors = new collector_type[index + 1];
-
-    if (m_collectors != NULL)
+    collector_type *new_collectors = new collector_type[to];
+    if (m_sheet_collectors_count != 0)
       {
-	std::memcpy (new_collectors, m_collectors, m_size * sizeof (collector_type));
-	delete [] m_collectors;
+	std::memcpy (new_collectors, m_sheet_collectors, m_sheet_collectors_count * sizeof (collector_type));
+      }
+    delete [] m_sheet_collectors;
+    m_sheet_collectors_count = to;
+  }
+
+  template <class StatCollector>
+  statistic_value
+  transaction_collector<StatCollector>::fetch (void) const
+  {
+    return m_global_collector.fetch ();
+  }
+
+  template <class StatCollector>
+  statistic_value
+  transaction_collector<StatCollector>::fetch_sheet (void) const
+  {
+    transaction_sheet sheet = transaction_sheet_manager::get_sheet ();
+    if (sheet == INVALID_SHEET)
+      {
+	// invalid... is this acceptable?
+	return 0;
       }
 
-    m_collectors = new_collectors;
-    m_size = index + 1;
+    if (m_sheet_collectors_count <= sheet)
+      {
+	// nothing was collected
+	return 0;
+      }
+
+    // return collected value
+    return m_sheet_collectors[shid].fetch ();
+  }
+
+  template <class StatCollector>
+  void
+  transaction_collector<StatCollector>::collect (const typename collector_type::rep &change)
+  {
+    m_global_collector.collect (change);
+
+    transaction_sheet sheet = transaction_sheet_manager::get_sheet ();
+    if (sheet != INVALID_SHEET)
+      {
+	if (sheet >= m_sheet_collectors_count)
+	  {
+	    extend (sheet + 1);
+	  }
+	m_sheet_collectors[sheet].collect (change);
+      }
   }
 
 } // namespace cubmonitor

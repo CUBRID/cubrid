@@ -22,13 +22,13 @@
 set (TEST_MONITOR_SOURCES
   test_monitor_main.cpp
   ${MONITOR_DIR}/monitor_collect.cpp
-  ${MONITOR_DIR}/monitor_transaction.cpp
+  #${MONITOR_DIR}/monitor_transaction.cpp     # engine dependencies
   )
 set (TEST_MONITOR_HEADERS
   ${MONITOR_DIR}/monitor_collect.hpp
   ${MONITOR_DIR}/monitor_collect_forward.hpp
   ${MONITOR_DIR}/monitor_definition.hpp
-  ${MONITOR_DIR}/monitor_transaction.hpp
+  #${MONITOR_DIR}/monitor_transaction.hpp     # engine dependencies
   )
 
 SET_SOURCE_FILES_PROPERTIES(
