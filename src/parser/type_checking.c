@@ -13437,7 +13437,7 @@ static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
           const func_signature* func_sig = funcNode.get_signature(*func_sigs, sb);
           if(func_sig != NULL)
             {
-              pt_reset_error(parser);//clear all errors accumulated during signature matching
+              //pt_reset_error(parser);//clear all errors accumulated during signature matching
               {
                   sb.clear();
                   //printf("DBG matching signature for %s: %s\n", str(fcode), str(*func_sig, sb));
@@ -13449,8 +13449,7 @@ static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
             {
               node->type_enum = PT_TYPE_NA;//to avoid entering here 2nd time
               //arg_type = PT_TYPE_NONE;//unused!?
-              pt_frob_error(parser, node, "========== NO FUNCTION SIGNATURE MATCHES fcode=%d=%s args: %s ==========\n", fcode, "..."/*Func::type_str[fcode-PT_MIN]*/, parser_print_tree_list(parser, arg_list));
-              pt_frob_error(parser, node, "%s", sb.get_buffer());
+              pt_frob_error(parser, node, "ERR NO FUNCTION SIGNATURE MATCHES %s\n args: %s", sb.get_buffer(), parser_print_tree_list(parser, arg_list));
             }
         }
     }
