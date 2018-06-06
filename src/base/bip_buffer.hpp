@@ -36,7 +36,7 @@
 namespace mem
 {
   /*
-   * Implementation of a enhanced BI-Partite circular buffer : returns a contiguous memory for append
+   * Implementation of a enhanced Bipartite circular buffer : returns a contiguous memory for append
    * and allows reads in past appended (and committed) data.
    *
    * The buffer has an active region (m_ptr_start_a -> m_ptr_end_a) which servers the appends
@@ -51,7 +51,7 @@ namespace mem
    *     (which is the range : m_ptr_prev_gen_committed -> m_ptr_prev_gen_last_reserved), depending on the value of ptr
    *
    *  Interlaced commit/reserve calls may be performed (concurrent calls are handled at upper layer).
-   *  For proper functionallity of the buffer, it is assumed that commits are always performed in the same order
+   *  For proper functionality of the buffer, it is assumed that commits are always performed in the same order
    *  as original reserve :  R1, R2, C1, R3, C2, C3;  (an invalid order would be: R1, R2, C2, C1). This should be
    *  handled by upper layer.
    *
@@ -66,7 +66,7 @@ namespace mem
    *        till m_ptr_prev_gen_committed.
    * 2. start_read (ptr, amount) : the buffer is split into equal sized pages (template parameter);
    *    each page has a fixed count (m_read_fcnt) and a bit flag in m_read_flags.
-   *    start_read increments the fix count of only the first of the affected pages, and sets the correspoding bit
+   *    start_read increments the fix count of only the first of the affected pages, and sets the corresponding bit
    *    it returns the page id which was latched (to be used by the end_read function)
    * 3. end_read (page_id) : the reverse of start_read (decrements the fix count,
    *    and clears the bit if count reaches zero)
@@ -74,7 +74,7 @@ namespace mem
    * The reserve may fail for several reasons:
    *  a) amount is too big - static condition (amount > threshold)
    *     (this is subject to change, we should probably set by configuration/ratio of capacity)
-   *  b) amount is too big - dynamic condition : the active region (difference between reserved and commited)
+   *  b) amount is too big - dynamic condition : the active region (difference between reserved and committed)
    *     is too large, and no contiguous range may be served
    *  c) the append pointer cannot be extended because readers are pending
    *  in all cases, NULL is returned; it is the responsibility of upper layer to handle this cases
@@ -84,10 +84,6 @@ namespace mem
 
   /* latch read position id */
   typedef int buffer_latch_read_id;
-  enum BUFFER_READ_LATCH_ID
-  {
-    BUFFER_NO_READ_LATCH = -1
-  };
 
   /* TODO: template parameter is required by bitset; a solution would be to define a biset with a maximum size
    * and let the code use only as much as it needs */
@@ -225,7 +221,7 @@ namespace mem
 
 	start_page_idx = get_page_from_ptr (ptr);
 	/* since append/reserve pointers always cycle in future of the buffer, it is enough to latch only
-	 * the first page (coresponding to start of read range),
+	 * the first page (corresponding to start of read range),
 	 * the appender will not be able to pass beyond a latched page
 	 */
 
