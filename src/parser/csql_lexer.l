@@ -843,9 +843,6 @@ int yybuffer_pos;
 [uU][nN][iI][qQ][uU][eE]						{ begin_token(yytext);   return UNIQUE; }
 [uU][nN][kK][nN][oO][wW][nN]						{ begin_token(yytext);   return UNKNOWN; }
 [uU][pP][dD][aA][tT][eE]						{ begin_token(yytext);   return UPDATE; }
-[oO][nN][_][uU][pP][dD][aA][tT][eE]					{ begin_token(yytext);
-										csql_yylval.cptr = pt_makename(yytext); 
-										return ON_UPDATE; }
 [uU][pP][pP][eE][rR]							{ begin_token(yytext);   return UPPER; }
 [uU][sS][aA][gG][eE]							{ begin_token(yytext);   return USAGE; }
 [uU][sS][eE]								{ begin_token(yytext);   return USE; }
