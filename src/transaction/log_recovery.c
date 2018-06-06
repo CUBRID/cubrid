@@ -2465,7 +2465,6 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 
 	  /* Set first corrupted record lsa, if a block is corrupted. */
 	  logpb_page_get_first_null_block_lsa (thread_p, log_page_p, &first_corrupted_rec_lsa);
-	  assert (!LSA_ISNULL (&first_corrupted_rec_lsa));
 
 	  /* Found corrupted log page. */
 	  if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
@@ -2517,7 +2516,6 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 			    "Latest log record at lsa = %lld|%d \n", log_lsa.pageid, log_lsa.offset);
 
 	      logpb_page_get_first_null_block_lsa (thread_p, log_page_p, &first_corrupted_rec_lsa);
-	      assert (!LSA_ISNULL (&first_corrupted_rec_lsa));
 
 	      is_log_page_corrupted = true;
 	    }
