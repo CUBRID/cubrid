@@ -26,12 +26,11 @@
 
 #ident "$Id$"
 
-#include "collapsable_circular_queue.hpp"
+#include "error_code.h"
 #include "memory_alloc.h"
-#include <algorithm>
-#include <bitset>
-#include <assert.h>
 
+#include <assert.h>
+#include <bitset>
 
 namespace mem
 {

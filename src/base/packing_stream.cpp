@@ -571,9 +571,9 @@ namespace cubstream
   /*
    * Reserve phase of append:
    *  1. queue->produce : tries adds slot in queue (further data is filled later);
-   *     it repeats this steps until successfull
+   *     it repeats this steps until successful
    *  2. buffer->reserve : tries to reserve the amount in buffer;
-   *     if unsuccessfull, reverts the first step (still under mutex), release the mutex and restarts from (1)
+   *     if unsuccessful, reverts the first step (still under mutex), release the mutex and restarts from (1)
    *     (this allows other threads to unlatch reads, advance commit pointer - to unblock the situation)
    *  3. increase the m_append_position of stream
    *  4. init/fills-in reserve context data (reserved position, reserved pointer, amount)
@@ -595,7 +595,7 @@ namespace cubstream
 	reserved_context = m_reserved_positions.produce ();
 	if (reserved_context == NULL)
 	  {
-	    /* this may happen due to a very slow committer, which may cause to fill up the queue */
+	    /* this may happen due to a very slow committee, which may cause to fill up the queue */
 	    m_buffer_mutex.unlock ();
 	    std::this_thread::sleep_for (std::chrono::microseconds (100));
 	    m_stat_reserve_queue_spins++;

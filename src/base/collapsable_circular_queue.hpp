@@ -28,7 +28,6 @@
 
 #include <assert.h>
 #include <cstring>
-#include <mutex>
 
 /*
  * Collapsable circular queue : this is similar to circular queue, with some particularities:

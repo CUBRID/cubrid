@@ -34,8 +34,10 @@
 #include "packer.hpp"
 #include "stream_io.hpp"
 #include "storage_common.h"
-#include <vector>
+
+#include <mutex>
 #include <functional>
+#include <vector>
 
 namespace cubstream
 {
@@ -99,7 +101,7 @@ namespace cubstream
 
       mem::collapsable_circular_queue<stream_reserve_context> m_reserved_positions;
 
-      /* threshold size of unread stream content not read which triggers signalling "filled" event
+      /* threshold size of unread stream content not read which triggers signaling "filled" event
        * such event may be throttling the reserve calls on stream (the stream content needs to be saved to disk) 
        */
       size_t m_trigger_flush_to_disk_size;
@@ -168,7 +170,7 @@ namespace cubstream
    * The concrete class (of entry) must provide the factory get_builder method to build objects
    *
    * As a "protocol", each object has an integer identifier which is packed before actual object packaging:
-   * at unpack, this identifier is used to instanciate an object (using the integrated factory), before calling
+   * at unpack, this identifier is used to instantiate an object (using the integrated factory), before calling
    * object.unpack
    *
    * get_packer method needs to be implemented (it should be per instance object for multi-threaded usage)
@@ -230,7 +232,7 @@ namespace cubstream
 	m_is_packable = is_packable;
       };
 
-      /* stream entry header methods : header is implemention dependent, is not known here ! */
+      /* stream entry header methods : header is implementation dependent, is not known here ! */
       virtual cubpacking::packer *get_packer () = 0;
       virtual size_t get_header_size (void) = 0;
       virtual void set_header_data_size (const size_t &data_size) = 0;
