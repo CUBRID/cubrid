@@ -13278,14 +13278,18 @@ namespace Func
         string_buffer& sb
     )
     {
+        int sigIndex = 0;
         for(auto& sig: signatures)
         {
+            ++sigIndex;
             parser_node* arg = m_node->info.function.arg_list;
             bool match = true;
 
             //check fixed part of the function signature
+            int argIndex = 0;
             for(auto& fix: sig.fix)
             {
+                ++argIndex;
                 if(arg == NULL)
                 {
                     //printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
@@ -13296,11 +13300,11 @@ namespace Func
                     if(!cmp_types(fix, arg->type_enum))
                     {
                         match = false;//current arg doesn't match coresponding type => try next signature
-                        sb("  signature ");
+                        sb("  signature#%02d ", sigIndex);
                         str(sig, sb);
-                        sb(" formal arg type ");
+                        sb(", arg#%02d, formal arg type ", argIndex);
                         str(fix, sb);
-                        sb(" actual arg type %s\n", str(arg->type_enum));
+                        sb(", actual arg type %s\n", str(arg->type_enum));
                         break;
                     }
                 }
@@ -13318,17 +13322,18 @@ namespace Func
             int index = 0;
             for(; arg; arg=arg->next, index=(index+1)%sig.rep.size())
             {
+                ++argIndex;
                 auto& type = sig.rep[index];
                 if(type.type == pt_arg_type::NORMAL || type.type == pt_arg_type::GENERIC)
                 {
                     if(!cmp_types(type, arg->type_enum))
                     {
                         match = false;//current arg doesn't match coresponding type => try next signature
-                        sb("signature ");
+                        sb("  signature#%02d ", sigIndex);
                         str(sig, sb);
-                        sb("formal arg type ");
+                        sb(", arg#%02d, formal arg type ", argIndex);
                         str(type, sb);
-                        sb("actual arg type %s\n", str(arg->type_enum));
+                        sb(", actual arg type %s\n", str(arg->type_enum));
                         break;
                     }
                 }
@@ -13429,7 +13434,7 @@ static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
           assert("ERR no function signature" && func_sigs != NULL);
           if(!func_sigs){
             //printf("ERR no function signature for fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
-            pt_frob_error(parser, node, "ERR no function signature found for fcode=%d args: %s", fcode, parser_print_tree_list(parser, arg_list));
+            pt_frob_error(parser, node, "ERR no function signature found for function %s (fcode=%d) with args: %s", str(fcode), fcode, parser_print_tree_list(parser, arg_list));
             return node;
           }
           string_buffer sb;
@@ -13449,7 +13454,7 @@ static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
             {
               node->type_enum = PT_TYPE_NA;//to avoid entering here 2nd time
               //arg_type = PT_TYPE_NONE;//unused!?
-              pt_frob_error(parser, node, "ERR NO FUNCTION SIGNATURE MATCHES %s\n args: %s", sb.get_buffer(), parser_print_tree_list(parser, arg_list));
+              pt_frob_error(parser, node, "ERR no existing function signature matches %s\n args: %s", sb.get_buffer(), parser_print_tree_list(parser, arg_list));
             }
         }
     }
