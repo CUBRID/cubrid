@@ -19,6 +19,7 @@
 
 #include "monitor_collect.hpp"
 #include "monitor_transaction.hpp"
+#include "thread_manager.hpp"
 
 #include <thread>
 #include <iostream>
@@ -27,12 +28,14 @@
 
 static void test_single_statistics_no_concurrency (void);
 static void test_multithread_accumulation (void);
+static void test_transaction (void);
 
 int
 main (int, char **)
 {
   test_single_statistics_no_concurrency ();
   test_multithread_accumulation ();
+  test_transaction ();
 
   std::cout << "test successful" << std::endl;
 }
@@ -265,4 +268,92 @@ test_multithread_accumulation (void)
   assert (expected == statcol.fetch ());
 
   std::cout << "test_multithread_accumulation passed" << std::endl;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// test_transaction
+//////////////////////////////////////////////////////////////////////////
+
+using test_trancol = cubmonitor::transaction_collector<cubmonitor::amount_accumulator>;
+
+void
+test_collect_statistic (int tran_index, test_trancol &acc)
+{
+  // we need thread local context
+  cubthread::entry my_entry;
+  my_entry.tran_index = tran_index;
+
+  cubthread::set_thread_local_entry (my_entry);
+
+  acc.collect (1);
+
+  cubthread::clear_thread_local_entry ();
+}
+
+void
+test_transaction (void)
+{
+#define check() assert (acc.fetch () == global_expected_value && acc.fetch_sheet () == sheet_expected_value)
+
+  using namespace cubmonitor;
+
+  test_trancol acc;
+  statistic_value global_expected_value = 0;
+  statistic_value sheet_expected_value = 0;
+
+  // we need a thread local context
+  cubthread::entry my_entry;
+  my_entry.tran_index = 1;
+
+  cubthread::set_thread_local_entry (my_entry);
+
+  // don't start watcher yet
+  acc.collect (1);
+  ++global_expected_value;
+  // no watcher means no transaction sheet means nil statistic
+  check ();
+
+  // start watching
+  transaction_sheet_manager::start_watch ();
+  acc.collect (1);
+  ++global_expected_value;
+  // should be collected on transaction sheet too
+  ++sheet_expected_value;
+  check ();
+
+  // collect on different transaction
+  std::thread (test_collect_statistic, 2, std::ref (acc)).join ();
+  ++global_expected_value;
+  // should not be counted on this transaction's sheet
+  check ();
+
+  // collect on different thread but same transaction
+  std::thread (test_collect_statistic, 1, std::ref (acc)).join ();
+  ++global_expected_value;
+  // should be counted on this transaction's sheet
+  ++sheet_expected_value;
+  check ();
+
+  // stop watching
+  transaction_sheet_manager::end_watch ();
+  acc.collect (1);
+  ++global_expected_value;
+  // if not watching, expected sheet value is 0
+  assert (acc.fetch () == global_expected_value);
+  assert (acc.fetch_sheet () == 0);
+
+  // test nested starts
+  transaction_sheet_manager::start_watch ();
+  transaction_sheet_manager::start_watch ();
+  transaction_sheet_manager::end_watch ();
+  acc.collect (1);
+  ++global_expected_value;
+  // still watching
+  ++sheet_expected_value;
+  check ();
+  transaction_sheet_manager::end_watch ();
+
+  cubthread::clear_thread_local_entry ();
+
+#undef check
 }

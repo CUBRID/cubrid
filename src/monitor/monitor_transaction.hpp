@@ -150,6 +150,7 @@ namespace cubmonitor
 	std::memcpy (new_collectors, m_sheet_collectors, m_sheet_collectors_count * sizeof (collector_type));
       }
     delete [] m_sheet_collectors;
+    m_sheet_collectors = new_collectors;
     m_sheet_collectors_count = to;
   }
 
@@ -178,7 +179,7 @@ namespace cubmonitor
       }
 
     // return collected value
-    return m_sheet_collectors[shid].fetch ();
+    return m_sheet_collectors[sheet].fetch ();
   }
 
   template <class StatCollector>

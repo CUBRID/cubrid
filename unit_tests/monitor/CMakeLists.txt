@@ -38,6 +38,7 @@ add_executable(test_monitor
 
 target_compile_definitions(test_monitor PRIVATE
   ${COMMON_DEFS}
+  SERVER_MODE
   )
 
 target_include_directories(test_monitor PRIVATE

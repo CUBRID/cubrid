@@ -28,17 +28,18 @@
 
 #include <cassert>
 
-//#include "log_impl.h" // for NULL_TRAN_INDEX & LOG_SYSTEM_TRAN_INDEX
-#define NULL_TRAN_INDEX -1
-#define LOG_SYSTEM_TRAN_INDEX 0
-
 namespace cubmonitor
 {
   //////////////////////////////////////////////////////////////////////////
   // transaction_sheet_manager
   //////////////////////////////////////////////////////////////////////////
 
+  // static members
   std::size_t transaction_sheet_manager::s_current_sheet_count = 0;
+  unsigned transaction_sheet_manager::s_sheet_start_count[MAX_SHEETS] = { 0 };
+  std::size_t transaction_sheet_manager::s_transaction_count = 0;
+  transaction_sheet *transaction_sheet_manager::s_transaction_sheets = NULL;
+  std::mutex transaction_sheet_manager::s_sheets_mutex = {};
 
   void
   transaction_sheet_manager::static_init (void)
@@ -87,7 +88,7 @@ namespace cubmonitor
 		s_transaction_sheets[index] = sheet_index;
 		s_sheet_start_count[sheet_index] = 1;
 		++s_current_sheet_count;
-		return;
+		return true;
 	      }
 	  }
 	assert (false);
@@ -98,6 +99,7 @@ namespace cubmonitor
 	// already have a sheet
 	assert (s_sheet_start_count[s_transaction_sheets[index]] > 0);
 	++s_sheet_start_count[s_transaction_sheets[index]];
+	return true;
       }
   }
 

@@ -44,7 +44,6 @@
 
 namespace cubthread
 {
-
   thread_local entry *tl_Entry_p = NULL;
 
   manager::manager (void)
@@ -563,6 +562,20 @@ namespace cubthread
     // todo
     assert (tl_Entry_p != NULL);
     return *tl_Entry_p;
+  }
+
+  void
+  set_thread_local_entry (entry &tl_entry)
+  {
+    assert (tl_Entry_p == NULL);
+    tl_Entry_p = &tl_entry;
+  }
+
+  void
+  clear_thread_local_entry (void)
+  {
+    assert (tl_Entry_p != NULL);
+    tl_Entry_p = NULL;
   }
 
   bool
