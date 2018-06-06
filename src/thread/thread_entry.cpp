@@ -193,33 +193,6 @@ namespace cubthread
   }
 
   void
-  entry::interrupt_execution (void)
-  {
-    shutdown = true;
-
-    // wakeup if waiting
-    if (m_status != status::TS_WAIT)
-      {
-	// not waiting
-	return;
-      }
-
-    lock ();
-    // check again
-    if (m_status != status::TS_WAIT)
-      {
-	// not waiting
-	unlock ();
-	return;
-      }
-
-    // interrupt & force wakeup
-    interrupted = true;
-    thread_wakeup_already_had_mutex (this, THREAD_RESUME_DUE_TO_INTERRUPT);
-    unlock ();
-  }
-
-  void
   entry::request_lock_free_transactions (void)
   {
     /* lock-free transaction entries */

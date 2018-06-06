@@ -250,6 +250,7 @@ showstmt_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
   int i;
 
   assert (show_type == show_Requests[show_type].show_type);
+
   next_func = show_Requests[show_type].next_func;
   if (next_func == NULL)
     {
@@ -261,6 +262,7 @@ showstmt_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     {
       pr_clear_value (stsidp->out_values[i]);
     }
+
   code = (*next_func) (thread_p, stsidp->cursor++, stsidp->out_values, stsidp->out_cnt, stsidp->ctx);
   return code;
 }
@@ -280,6 +282,7 @@ showstmt_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
   int error;
 
   assert (show_type == show_Requests[show_type].show_type);
+
   start_func = show_Requests[show_type].start_func;
   if (start_func == NULL)
     {
@@ -305,11 +308,13 @@ showstmt_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
   int error;
 
   assert (show_type == show_Requests[show_type].show_type);
+
   end_func = show_Requests[show_type].end_func;
   if (end_func == NULL)
     {
       return NO_ERROR;
     }
+
   error = (*end_func) (thread_p, &stsidp->ctx);
   return error;
 }
