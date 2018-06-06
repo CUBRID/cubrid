@@ -21,16 +21,9 @@
 
 set (TEST_MONITOR_SOURCES
   test_monitor_main.cpp
-  ${MONITOR_DIR}/monitor_collect.cpp
-  ${MONITOR_DIR}/monitor_registration.cpp
-  #${MONITOR_DIR}/monitor_transaction.cpp     # engine dependencies
   )
 set (TEST_MONITOR_HEADERS
   ${MONITOR_DIR}/monitor_collect.hpp
-  ${MONITOR_DIR}/monitor_collect_forward.hpp
-  ${MONITOR_DIR}/monitor_definition.hpp
-  ${MONITOR_DIR}/monitor_registration.hpp
-  #${MONITOR_DIR}/monitor_transaction.hpp     # engine dependencies
   )
 
 SET_SOURCE_FILES_PROPERTIES(
@@ -46,3 +39,22 @@ add_executable(test_monitor
 target_compile_definitions(test_monitor PRIVATE
   ${COMMON_DEFS}
   )
+
+target_include_directories(test_monitor PRIVATE
+  ${TEST_INCLUDES}
+  )
+
+target_link_libraries(test_monitor PRIVATE
+  test_common
+  )
+if(UNIX)
+  target_link_libraries(test_monitor PRIVATE
+    cubrid
+    )
+elseif(WIN32)
+  target_link_libraries(test_monitor PRIVATE
+    cubrid-win-lib
+    )
+else()
+  message( SEND_ERROR "Transfer channel unit testing is for unix/windows")
+endif ()

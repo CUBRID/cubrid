@@ -161,6 +161,19 @@ set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/stream_transfer_sender.hpp
   )
 
+set(MONITOR_SOURCES
+  ${MONITOR_DIR}/monitor_collect.cpp
+  ${MONITOR_DIR}/monitor_registration.cpp
+  ${MONITOR_DIR}/monitor_transaction.cpp
+)
+set(MONITOR_HEADERS
+  ${MONITOR_DIR}/monitor_collect.hpp
+  ${MONITOR_DIR}/monitor_collect_forward.hpp
+  ${MONITOR_DIR}/monitor_definition.hpp
+  ${MONITOR_DIR}/monitor_registration.hpp
+  ${MONITOR_DIR}/monitor_transaction.hpp
+)
+
 set(QUERY_SOURCES
   ${QUERY_DIR}/arithmetic.c
   ${QUERY_DIR}/crypt_opfunc.c
