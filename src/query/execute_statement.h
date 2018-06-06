@@ -151,7 +151,6 @@ extern int do_drop_session_variables (PARSER_CONTEXT * parser, PT_NODE * stateme
 extern int do_prepare_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name);
-extern int do_evaluate_on_update_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name);
 extern bool is_stmt_based_repl_type (const PT_NODE * node);
 
 extern int do_merge (PARSER_CONTEXT * parser, PT_NODE * statement);

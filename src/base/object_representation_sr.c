@@ -2580,10 +2580,8 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
 	  if (att_props != NULL && classobj_get_prop (att_props, "update_default", &def_expr) > 0)
 	    {
-
 	      /* simple expressions like SYS_DATE */
 	      assert (DB_VALUE_TYPE (&def_expr) == DB_TYPE_INTEGER);
-
 	      att->on_update.default_expr_type = (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr);
 	    }
 

@@ -1530,7 +1530,6 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
     {
       valcnv_convert_value_to_string (attr_val_p);
     }
-
   pr_clear_value (&default_expr);
   pr_clear_value (&val);
   attr_val_p->need_clear = true;
