@@ -90,7 +90,7 @@ struct pt_arg_type
 };
 typedef pt_arg_type PT_ARG_TYPE;
 
-const char* str(PT_TYPE_ENUM type);
+const char* str(pt_type_enum type);
 const char* str(const pt_arg_type& type, string_buffer& sb);
 
 #endif // _PARSER_TYPE_HPP_

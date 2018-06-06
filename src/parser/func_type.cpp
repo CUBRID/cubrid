@@ -284,12 +284,12 @@ std::vector<func_signature>* func_signature::get_signatures(FUNC_TYPE ft){
             return &json_r_val;
         case F_JSON_MERGE:
             return &json_doc_r_doc;
-        case F_JSON_INSERT
-        : return &json_doc_r_path_doc;
+        case F_JSON_INSERT:
+            return &json_doc_r_path_doc;
         case F_JSON_REMOVE:
             return &json_doc_r_path;
-        case F_JSON_ARRAY_APPEND
-        : return &json_doc_r_path_doc;
+        case F_JSON_ARRAY_APPEND:
+            return &json_doc_r_path_doc;
         case F_JSON_GET_ALL_PATHS:
             return &json_doc;
         case F_JSON_REPLACE:
@@ -318,7 +318,8 @@ std::vector<func_signature>* func_signature::get_signatures(FUNC_TYPE ft){
     }
 }
 
-const char* func_signature::str(const func_signature& signature, string_buffer& sb){
+const char* str(const func_signature& signature, string_buffer& sb)
+{
     ::str(signature.ret, sb);
     sb(" (");
     for(auto i: signature.fix)
@@ -327,4 +328,125 @@ const char* func_signature::str(const func_signature& signature, string_buffer& 
     }
     sb(")");
     return sb.get_buffer();
+}
+
+const char* str(FUNC_TYPE ft)
+{
+    switch(ft){
+        case PT_MIN:
+            return "PT_MIN";
+        case PT_MAX:
+            return "PT_MAX";
+        case PT_SUM:
+            return "PT_SUM";
+        case PT_AVG:
+            return "PT_AVG";
+        case PT_STDDEV:
+            return "PT_STDDEV";
+        case PT_VARIANCE:
+            return "PT_VARIANCE";
+        case PT_STDDEV_POP:
+            return "PT_STDDEV_POP";
+        case PT_VAR_POP:
+            return "PT_VAR_POP";
+        case PT_STDDEV_SAMP:
+            return "PT_STDDEV_SAMP";
+        case PT_VAR_SAMP:
+            return "PT_VAR_SAMP";
+        case PT_COUNT:
+            return "PT_COUNT";
+        case PT_COUNT_STAR:
+            return "PT_COUNT_STAR";
+        case PT_GROUPBY_NUM:
+            return "PT_GROUPBY_NUM";
+        case PT_AGG_BIT_AND:
+            return "PT_AGG_BIT_AND";
+        case PT_AGG_BIT_OR:
+            return "PT_AGG_BIT_OR";
+        case PT_AGG_BIT_XOR:
+            return "PT_AGG_BIT_XOR";
+        case PT_GROUP_CONCAT:
+            return "PT_GROUP_CONCAT";
+        case PT_ROW_NUMBER:
+            return "PT_ROW_NUMBER";
+        case PT_RANK:
+            return "PT_RANK";
+        case PT_DENSE_RANK:
+            return "PT_DENSE_RANK";
+        case PT_NTILE:
+            return "PT_NTILE";
+        case PT_TOP_AGG_FUNC:
+            return "PT_TOP_AGG_FUNC";
+        case PT_LEAD:
+            return "PT_LEAD";
+        case PT_LAG:
+            return "PT_LAG";
+        case PT_GENERIC:
+            return "PT_GENERIC";
+        case F_SET:
+            return "F_SET";
+        case F_TABLE_SET:
+            return "F_TABLE_SET";
+        case F_MULTISET:
+            return "F_MULTISET";
+        case F_TABLE_MULTISET:
+            return "F_TABLE_MULTISET";
+        case F_SEQUENCE:
+            return "F_SEQUENCE";
+        case F_TABLE_SEQUENCE:
+            return "F_TABLE_SEQUENCE";
+        case F_TOP_TABLE_FUNC:
+            return "F_TOP_TABLE_FUNC";
+        case F_MIDXKEY:
+            return "F_MIDXKEY";
+        case F_VID:
+            return "F_VID";
+        case F_GENERIC:
+            return "F_GENERIC";
+        case F_CLASS_OF:
+            return "F_CLASS_OF";
+        case F_INSERT_SUBSTRING:
+            return "F_INSERT_SUBSTRING";
+        case F_ELT:
+            return "F_ELT";
+        case F_JSON_OBJECT:
+            return "F_JSON_OBJECT";
+        case F_JSON_ARRAY:
+            return "F_JSON_ARRAY";
+        case F_JSON_MERGE:
+            return "F_JSON_MERGE";
+        case F_JSON_INSERT:
+            return "F_JSON_INSERT";
+        case F_JSON_REMOVE:
+            return "F_JSON_REMOVE";
+        case F_JSON_ARRAY_APPEND:
+            return "F_JSON_ARRAY_APPEND";
+        case F_JSON_GET_ALL_PATHS:
+            return "F_JSON_GET_ALL_PATHS";
+        case F_JSON_REPLACE:
+            return "F_JSON_REPLACE";
+        case F_JSON_SET:
+            return "F_JSON_SET";
+        case F_JSON_KEYS:
+            return "F_JSON_KEYS";
+        case PT_FIRST_VALUE:
+            return "PT_FIRST_VALUE";
+        case PT_LAST_VALUE:
+            return "PT_LAST_VALUE";
+        case PT_NTH_VALUE:
+            return "PT_NTH_VALUE";
+        case PT_MEDIAN:
+            return "PT_MEDIAN";
+        case PT_CUME_DIST:
+            return "PT_CUME_DIST";
+        case PT_PERCENT_RANK:
+            return "PT_PERCENT_RANK";
+        case PT_PERCENTILE_CONT:
+            return "PT_PERCENTILE_CONT";
+        case PT_PERCENTILE_DISC:
+            return "PT_PERCENTILE_DISC";
+        default:
+            assert(false);
+            return nullptr;
+    }
 }

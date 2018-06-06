@@ -45,10 +45,11 @@ struct func_signature
   static std::vector<func_signature> multiset_r_any;//multiset, table_multiset
   static std::vector<func_signature> sequence_r_any;//sequence, table_sequence
 
-  static std::vector<func_signature>* get_signatures(FUNC_TYPE ft);
+  static std::vector<func_signature>* get_signatures(FUNC_TYPE ft);//get all valid signatures for a given type
 
-  static const char* str(const func_signature& signature, string_buffer& sb);
 };
 
+const char* str(const func_signature& signature, string_buffer& sb);
+const char* str(FUNC_TYPE ft);
 
 #endif

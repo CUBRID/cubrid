@@ -12964,7 +12964,7 @@ namespace Func
   bool cmp_types_generic(const pt_arg_type& type, pt_type_enum type_enum)
   {
     assert(type.type != pt_arg_type::INDEX);
-    return type_enum==PT_TYPE_NULL || pt_are_equivalent_types(type, type_enum);
+    return type_enum==PT_TYPE_NULL || pt_are_equivalent_types(type, type_enum);//PT_TYPE_NULL is equivalent to any type
   }
 
   bool cmp_types_castable(const pt_arg_type& type, pt_type_enum type_enum)//is possible to cast type_enum -> type?
@@ -13015,9 +13015,6 @@ namespace Func
 
   class Node
   {
-    private:
-      parser_context* m_parser;
-      parser_node* m_node;
     public:
       Node(parser_context* parser, parser_node* node)
         : m_parser(parser)
@@ -13111,6 +13108,21 @@ namespace Func
           }
           return true;
       }
+
+    /*
+    * get_signature () - get matching function signature using a function to compare types
+    */
+    const func_signature* get_signature(const std::vector<func_signature>& signatures, string_buffer& sb)
+    {
+        sb("matching equivalent:\n");
+        const func_signature* signature = get_signature(signatures, &cmp_types_generic, sb);
+        if(signature == NULL)
+        {
+            sb("matching castable:\n");
+            signature = get_signature(signatures, &cmp_types_castable, sb);
+        }
+        return signature;
+    }
 
     //set return type for current node in current context
     void set_return_type(const func_signature& signature)
@@ -13253,18 +13265,22 @@ namespace Func
       return true;
     }
 
+  private:
+    parser_context* m_parser;
+    parser_node* m_node;
+
     /*
     * get_signature () - get function signature using a function to compare types
     */
     const func_signature* get_signature(
-        parser_node* node,
         const std::vector<func_signature>& signatures,
-        bool(*cmp_types)(const pt_arg_type&, pt_type_enum)
+        bool(*cmp_types)(const pt_arg_type&, pt_type_enum),
+        string_buffer& sb
     )
     {
         for(auto& sig: signatures)
         {
-            parser_node* arg = node->info.function.arg_list;
+            parser_node* arg = m_node->info.function.arg_list;
             bool match = true;
 
             //check fixed part of the function signature
@@ -13280,7 +13296,11 @@ namespace Func
                     if(!cmp_types(fix, arg->type_enum))
                     {
                         match = false;//current arg doesn't match coresponding type => try next signature
-                        //PT_ERRORf(m_parser, m_node);
+                        sb("  signature ");
+                        str(sig, sb);
+                        sb(" formal arg type ");
+                        str(fix, sb);
+                        sb(" actual arg type %s\n", str(arg->type_enum));
                         break;
                     }
                 }
@@ -13304,6 +13324,11 @@ namespace Func
                     if(!cmp_types(type, arg->type_enum))
                     {
                         match = false;//current arg doesn't match coresponding type => try next signature
+                        sb("signature ");
+                        str(sig, sb);
+                        sb("formal arg type ");
+                        str(type, sb);
+                        sb("actual arg type %s\n", str(arg->type_enum));
                         break;
                     }
                 }
@@ -13319,19 +13344,6 @@ namespace Func
         }
         return NULL;
     }
-
-    /*
-    * get_signature () - get function signature using a function to compare types
-    */
-    const func_signature* get_signature(parser_node* node, const std::vector<func_signature>& signatures)
-    {
-        const func_signature* signature = get_signature(node, signatures, &cmp_types_generic);
-        if(signature == NULL)
-        {
-            signature = get_signature(node, signatures, &cmp_types_castable);
-        }
-        return signature;
-    }
   }; //class Node
 
 } //namespace Func
@@ -13346,8 +13358,7 @@ namespace Func
 static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
 {
   FUNC_TYPE fcode = node->info.function.function_type;
-
-  switch(fcode)
+    switch(fcode)
     {
       case PT_TOP_AGG_FUNC:
       case PT_GENERIC:
@@ -13421,9 +13432,16 @@ static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
             pt_frob_error(parser, node, "ERR no function signature found for fcode=%d args: %s", fcode, parser_print_tree_list(parser, arg_list));
             return node;
           }
-          const func_signature* func_sig = funcNode.get_signature(node, *func_sigs);
+          string_buffer sb;
+          sb("function %s\n", str(fcode));
+          const func_signature* func_sig = funcNode.get_signature(*func_sigs, sb);
           if(func_sig != NULL)
             {
+              pt_reset_error(parser);//clear all errors accumulated during signature matching
+              {
+                  sb.clear();
+                  //printf("DBG matching signature for %s: %s\n", str(fcode), str(*func_sig, sb));
+              }
               funcNode.apply_signature(*func_sig);
               funcNode.set_return_type(*func_sig);
             }
@@ -13432,6 +13450,7 @@ static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
               node->type_enum = PT_TYPE_NA;//to avoid entering here 2nd time
               //arg_type = PT_TYPE_NONE;//unused!?
               pt_frob_error(parser, node, "========== NO FUNCTION SIGNATURE MATCHES fcode=%d=%s args: %s ==========\n", fcode, "..."/*Func::type_str[fcode-PT_MIN]*/, parser_print_tree_list(parser, arg_list));
+              pt_frob_error(parser, node, "%s", sb.get_buffer());
             }
         }
     }
