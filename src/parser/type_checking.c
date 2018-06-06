@@ -12964,7 +12964,7 @@ namespace Func
   bool cmp_types_generic(const pt_arg_type& type, pt_type_enum type_enum)
   {
     assert(type.type != pt_arg_type::INDEX);
-    return type.type==PT_TYPE_NULL || pt_are_equivalent_types(type, type_enum);
+    return type_enum==PT_TYPE_NULL || pt_are_equivalent_types(type, type_enum);
   }
 
   bool cmp_types_castable(const pt_arg_type& type, pt_type_enum type_enum)//is possible to cast type_enum -> type?
