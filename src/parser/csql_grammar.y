@@ -10158,15 +10158,24 @@ column_on_update_def
 					  case PT_UNIX_TIMESTAMP:
 						node->info.on_update.default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
 						break;
+					  case PT_SYS_DATE:
+						node->info.on_update.default_expr_type = DB_DEFAULT_SYSDATE;
+						break;
+					  case PT_SYS_DATETIME:
+					    node->info.on_update.default_expr_type = DB_DEFAULT_SYSDATETIME;
+						break;
+					  case PT_SYS_TIME:
+					    node->info.on_update.default_expr_type = DB_DEFAULT_SYSTIMESTAMP;
+						break;						
 					  default:
 					    node->info.on_update.default_expr_type = DB_DEFAULT_NONE;
 						break;
 					  }
 				  }
-			  }
-			else
-			  {
- 			     node->info.on_update.default_expr_type = DB_DEFAULT_NONE;
+				else
+				  {
+					PT_ERROR (this_parser, node, "on update must be a expression");
+				  }
 			  }
 
 			attr_node = parser_get_attr_def_one ();
