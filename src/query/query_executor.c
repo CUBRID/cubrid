@@ -22777,34 +22777,37 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  if (attrepr->on_update.default_expr_type != DB_DEFAULT_NONE)
 	    {
 	      char *saved = db_get_string (out_values[idx_val]);
-	      size_t len = saved ? strlen (saved) : 0;
+	      size_t len = strlen (saved);
 
 	      const char *default_expr_op_string = db_default_expression_string (attrepr->on_update.default_expr_type);
+	      if (!default_expr_op_string)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
 
-	      char *str_val =
-		(char *) db_private_alloc (thread_p, len + strlen (default_expr_op_string) + (len ? 11 : 10) + 1);
+	      /* add whitespace character if saved is not an empty string */
+	      const char *on_update_string = "ON_UPDATE ";
+	      char *str_val = (char *) db_private_alloc (thread_p,
+							 len + (len ? 1 : 0) + strlen (on_update_string) +
+							 strlen (default_expr_op_string) + 1);
 	      if (!str_val)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
 
+	      strcpy (str_val, saved);
 	      if (len)
 		{
-		  strcpy (str_val, saved);
-		  strcat (str_val, " ON UPDATE ");
+		  strcat (str_val, " ");
 		}
-	      else
-		{
-		  strcpy (str_val, "ON UPDATE ");
-		}
-
+	      strcat (str_val, on_update_string);
 	      strcat (str_val, default_expr_op_string);
+
 	      if (default_expr_op_string)
 		{
-		  db_make_string_by_const_str (out_values[idx_val], str_val);
+		  pr_clear_value (out_values[idx_val]);
+		  db_make_string (out_values[idx_val], str_val);
 		}
-
-	      db_private_free (thread_p, str_val);
 	    }
 	  idx_val++;
 

@@ -1501,7 +1501,11 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	    }
 	  len = strlen (default_expr_type_string);
 
-	  str_val = (char *) db_private_alloc (thread_p, (default_value_len ? default_value_len + 11 : 10) + len + 1);
+	  /* add whitespace character if default_str_val is not an empty string */
+	  str_val =
+	    (char *) db_private_alloc (thread_p,
+				       default_value_len + (default_value_len ? 1 : 0) + len + strlen ("ON UPDATE ") +
+				       1);
 	  if (str_val == NULL)
 	    {
 	      pr_clear_value (&default_expr);
