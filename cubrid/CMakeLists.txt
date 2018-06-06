@@ -59,6 +59,15 @@ set(THREAD_HEADERS
 set(STREAM_SOURCES
   ${BASE_DIR}/cubstream.cpp
   ${BASE_DIR}/packing_stream.cpp
+  ${BASE_DIR}/stream_entry.cpp
+  )
+set (STREAM_HEADERS
+  ${BASE_DIR}/bip_buffer.hpp
+  ${BASE_DIR}/collapsable_circular_queue.hpp
+  ${BASE_DIR}/cubstream.hpp
+  ${BASE_DIR}/packing_stream.hpp
+  ${BASE_DIR}/stream_entry.hpp
+  ${BASE_DIR}/stream_io.hpp
   )
 
 set(BASE_SOURCES
@@ -131,14 +140,6 @@ set (BASE_HEADERS
   ${BASE_DIR}/process_util.h
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/string_buffer.hpp
-  )
-
-set (STREAM_HEADERS
-  ${BASE_DIR}/bip_buffer.hpp
-  ${BASE_DIR}/collapsable_circular_queue.hpp
-  ${BASE_DIR}/cubstream.hpp
-  ${BASE_DIR}/packing_stream.hpp
-  ${BASE_DIR}/stream_io.hpp
   )
 
 set(EXECUTABLE_SOURCES

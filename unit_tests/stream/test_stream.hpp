@@ -22,6 +22,7 @@
 
 #include "packable_object.hpp"
 #include "packing_stream.hpp"
+#include "stream_entry.hpp"
 #include "thread_task.hpp"
 #include "thread_worker_pool.hpp"
 #include "thread_entry_task.hpp"

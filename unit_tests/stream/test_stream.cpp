@@ -46,7 +46,7 @@ namespace test_stream
 	ptr++;
       }
 
-    return ptr - start_ptr;
+    return (int) (ptr - start_ptr);
   }
 
   int stream_read_partial_context::read_action (char *ptr, const size_t byte_count, size_t &processed_bytes)
@@ -236,7 +236,7 @@ namespace test_stream
     entry_size += serializator->get_packed_short_size (entry_size);
     entry_size += serializator->get_packed_bigint_size (entry_size);
     entry_size += serializator->get_packed_int_vector_size (entry_size, sizeof (int_a) / sizeof (int_a[0]));
-    entry_size += serializator->get_packed_int_vector_size (entry_size, int_v.size ());
+    entry_size += serializator->get_packed_int_vector_size (entry_size, (int) int_v.size ());
     for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	entry_size += serializator->get_packed_db_value_size (values[i], entry_size);
@@ -280,7 +280,7 @@ namespace test_stream
 	  case 4:
 	    str_size = std::rand () % 1000 + 1;
 	    tmp_str = (char *) db_private_alloc (NULL, str_size + 1);
-	    db_make_char (&values[i], str_size, tmp_str, str_size, INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY);
+	    db_make_char (&values[i], (int) str_size, tmp_str, (int) str_size, INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY);
 	    values[i].need_clear = true;
 	    break;
 	  }
@@ -428,7 +428,7 @@ namespace test_stream
 	int amount = 5 + std::rand () % max_data_size;
 	size_t processed_amount;
 
-	amount = MIN (writted_amount - curr_read_pos, amount);
+	amount = MIN ((int) (writted_amount - curr_read_pos), amount);
 
 	res = my_stream->read_partial (curr_read_pos, amount, processed_amount, reader_context.m_reader_partial_func);
 	if (res != 0)
@@ -501,13 +501,13 @@ namespace test_stream
       int read_action (char *ptr, const size_t byte_count)
       {
 	memcpy (m_buffer, ptr, byte_count);
-	return byte_count;
+	return (int) byte_count;
       };
 
       int write_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count)
       {
 	memcpy (ptr, m_buffer, byte_count);
-	return byte_count;
+	return (int) byte_count;
       };
 
     public:
