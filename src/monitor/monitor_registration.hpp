@@ -37,8 +37,9 @@ namespace cubmonitor
   class monitor
   {
     public:
-      using single_fetch_function = std::function<statistic_value (void)>;
-      using multistat_fetch_function = std::function<statistic_value (std::size_t)>;
+      using fetch_function = std::function<void (statistic_value *)>;
+
+      monitor ();
 
       template <typename Fetchable>
       void register_single_statistic (const char *name, const Fetchable &fetchable);
@@ -46,6 +47,13 @@ namespace cubmonitor
       // with transactions sheets
       template <typename Fetchable>
       void register_single_transaction_statistic (const char *name, const Fetchable &fetchable);
+
+      std::size_t get_statistics_count (void);
+      std::size_t get_registered_count (void);
+
+      statistic_value *allocate_statistics_buffer (void);
+      void fetch_global_statistics (statistic_value *destination);
+      void fetch_transaction_statistics (statistic_value *destination);
 
       // todo - add multi-statistics
 
@@ -56,22 +64,22 @@ namespace cubmonitor
 	std::size_t m_offset;
 	std::size_t m_statistics_count;
 
-	multistat_fetch_function m_fetch_func;
-	multistat_fetch_function m_tran_fetch_func;
+	fetch_function m_fetch_func;
+	fetch_function m_tran_fetch_func;
 
 	registered_statistics_holder (void);
 
 	// todo: add here more meta-information on each statistic
       };
 
-      void register_single_function (const char *name, const single_fetch_function &fetch_f);
-      void register_single_function_with_transaction (const char *name, const single_fetch_function &fetch_func,
-	  const single_fetch_function &tran_fetch_func);
-      void register_statistics (std::size_t count, const multistat_fetch_function &fetch_func,
-				const multistat_fetch_function &tran_fetch_func);
+      void register_single_function (const char *name, const fetch_function &fetch_f);
+      void register_single_function_with_transaction (const char *name, const fetch_function &fetch_func,
+	  const fetch_function &tran_fetch_func);
+      void register_statistics (std::size_t count, const fetch_function &fetch_func,
+				const fetch_function &tran_fetch_func);
       void check_name_count (void);
 
-      std::size_t m_all_count;
+      std::size_t m_total_statistics_count;
       std::vector<std::string> m_all_names;
       std::vector<registered_statistics_holder> m_registered;
   };
@@ -84,7 +92,10 @@ namespace cubmonitor
   void
   monitor::register_single_statistic (const char *name, const Fetchable &fetchable)
   {
-    single_fetch_function fetch_func = std::bind (&Fetchable::fetch, fetchable);
+    fetch_function fetch_func = [&] (statistic_value * destination)
+    {
+      *destination = fetchable.fetch ();
+    };
     register_single_function (name, fetch_func);
   }
 
@@ -92,8 +103,14 @@ namespace cubmonitor
   void
   monitor::register_single_transaction_statistic (const char *name, const Fetchable &fetchable)
   {
-    single_fetch_function fetch_func = std::bind (&Fetchable::fetch, fetchable);
-    single_fetch_function tran_fetch_func = std::bind (&Fetchable::fetch_sheet, fetchable);
+    fetch_function fetch_func = [&] (statistic_value * destination)
+    {
+      *destination = fetchable.fetch ();
+    };
+    fetch_function tran_fetch_func = [&] (statistic_value * destination)
+    {
+      *destination = fetchable.fetch_sheet ();
+    };
 
     register_single_function_with_transaction (name, fetch_func, tran_fetch_func);
   }

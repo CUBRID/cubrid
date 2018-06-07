@@ -18,6 +18,7 @@
  */
 
 #include "monitor_collect.hpp"
+#include "monitor_registration.hpp"
 #include "monitor_transaction.hpp"
 #include "thread_manager.hpp"
 
@@ -29,6 +30,7 @@
 static void test_single_statistics_no_concurrency (void);
 static void test_multithread_accumulation (void);
 static void test_transaction (void);
+static void test_registration (void);
 
 int
 main (int, char **)
@@ -36,6 +38,7 @@ main (int, char **)
   test_single_statistics_no_concurrency ();
   test_multithread_accumulation ();
   test_transaction ();
+  test_registration ();
 
   std::cout << "test successful" << std::endl;
 }
@@ -356,4 +359,76 @@ test_transaction (void)
   cubthread::clear_thread_local_entry ();
 
 #undef check
+}
+
+//////////////////////////////////////////////////////////////////////////
+// test_registration
+//////////////////////////////////////////////////////////////////////////
+
+void
+test_registration (void)
+{
+  using namespace cubmonitor;
+
+  monitor my_monitor;
+
+  // a regular statistic
+  amount_accumulator acc;
+  // a transaction statistic
+  test_trancol tran_acc;
+
+  // register statistics
+  my_monitor.register_single_statistic ("regular statistic", acc);
+  my_monitor.register_single_transaction_statistic ("transaction statistic", tran_acc);
+
+  // allocate a value buffer
+  assert (my_monitor.get_statistics_count () == 2);
+  statistic_value *statsp = my_monitor.allocate_statistics_buffer ();
+
+  // collect on acc
+  acc.collect (1);
+
+  // collect on tran_acc
+  // I also need a thread entry and a transaction
+  cubthread::entry my_entry;
+  my_entry.tran_index = 1;
+  cubthread::set_thread_local_entry (my_entry);
+
+  // without watcher
+  tran_acc.collect (2);
+
+  my_monitor.fetch_global_statistics (statsp);
+  assert (statsp[0] == 1);
+  assert (statsp[1] == 2);
+  my_monitor.fetch_transaction_statistics (statsp);
+  assert (statsp[0] == 0);
+  assert (statsp[1] == 0);
+
+  // start watcher
+  transaction_sheet_manager::start_watch ();
+
+  acc.collect (1);
+  tran_acc.collect (3);
+  my_monitor.fetch_global_statistics (statsp);
+  assert (statsp[0] == 2);
+  assert (statsp[1] == 5);
+  my_monitor.fetch_transaction_statistics (statsp);
+  assert (statsp[0] == 0);
+  assert (statsp[1] == 3);
+
+  // end watcher
+  transaction_sheet_manager::end_watch ();
+
+  acc.collect (1);
+  tran_acc.collect (4);
+
+  my_monitor.fetch_global_statistics (statsp);
+  assert (statsp[0] == 3);
+  assert (statsp[1] == 9);
+  my_monitor.fetch_transaction_statistics (statsp);
+  assert (statsp[0] == 0);
+  assert (statsp[1] == 0);
+
+  delete [] statsp;
+  cubthread::clear_thread_local_entry ();
 }

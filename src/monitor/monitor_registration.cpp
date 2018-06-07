@@ -27,22 +27,15 @@ namespace cubmonitor
   static std::vector<std::string> All_names;     // one per each value
   static std::size_t Statistics_count;
 
-  statistic_value
-  fetch_zero (std::size_t offset)
+  void
+  fetch_zero (statistic_value *destination)
   {
-    return 0;
+    *destination = 0;
   }
 
-  statistic_value
-  fetch_single_wrapper (const monitor::single_fetch_function &single_func, std::size_t offset)
-  {
-    // used to wrap a single statistic function as multi statistic function
-    assert (offset == 0);
-    return single_func ();
-  }
-
-  // bind fetch_zero function
-  static const monitor::multistat_fetch_function Zero_fetch_function = std::bind (fetch_zero, std::placeholders::_1);
+  //////////////////////////////////////////////////////////////////////////
+  // registered_statistics_holder
+  //////////////////////////////////////////////////////////////////////////
 
   monitor::registered_statistics_holder::registered_statistics_holder (void)
     : m_offset (0)
@@ -53,42 +46,92 @@ namespace cubmonitor
     //
   }
 
+  //////////////////////////////////////////////////////////////////////////
+  // monitor
+  //////////////////////////////////////////////////////////////////////////
+  monitor::monitor ()
+    : m_total_statistics_count (0)
+    , m_all_names ()
+    , m_registered ()
+  {
+
+  }
+
+  std::size_t
+  monitor::get_statistics_count (void)
+  {
+    return m_total_statistics_count;
+  }
+
+  std::size_t
+  monitor::get_registered_count (void)
+  {
+    return m_registered.size ();
+  }
+
+  statistic_value *
+  monitor::allocate_statistics_buffer (void)
+  {
+    return new statistic_value[get_statistics_count ()];
+  }
+
+  void
+  monitor::fetch_global_statistics (statistic_value *destination)
+  {
+    statistic_value *stats_iterp = destination;
+    for (auto it : m_registered)
+      {
+	it.m_fetch_func (stats_iterp);
+	stats_iterp += it.m_statistics_count;
+      }
+  }
+
+  void
+  monitor::fetch_transaction_statistics (statistic_value *destination)
+  {
+    statistic_value *stats_iterp = destination;
+    for (auto it : m_registered)
+      {
+	it.m_tran_fetch_func (stats_iterp);
+	stats_iterp += it.m_statistics_count;
+      }
+  }
+
   void
   monitor::check_name_count (void)
   {
-    assert (m_all_count == m_all_names.size ());
+    assert (m_total_statistics_count == m_all_names.size ());
   }
 
   void
-  monitor::register_single_function (const char *name, const single_fetch_function &fetch_func)
+  monitor::register_single_function (const char *name, const fetch_function &fetch_func)
   {
-    register_statistics (1, std::bind (fetch_single_wrapper, fetch_func, std::placeholders::_1), Zero_fetch_function);
+    register_statistics (1, fetch_func, fetch_zero);
     m_all_names.push_back (name);
 
     check_name_count ();
   }
 
   void
-  monitor::register_single_function_with_transaction (const char *name, const single_fetch_function &fetch_func,
-      const single_fetch_function &tran_fetch_func)
+  monitor::register_single_function_with_transaction (const char *name, const fetch_function &fetch_func,
+      const fetch_function &tran_fetch_func)
   {
-    register_statistics (1, std::bind (fetch_single_wrapper, fetch_func, std::placeholders::_1),
-			 std::bind (fetch_single_wrapper, tran_fetch_func, std::placeholders::_1));
+    register_statistics (1, fetch_func, tran_fetch_func);
     m_all_names.push_back (name);
 
     check_name_count ();
   }
 
   void
-  monitor::register_statistics (std::size_t count, const multistat_fetch_function &fetch_func,
-				const multistat_fetch_function &tran_fetch_func)
+  monitor::register_statistics (std::size_t count, const fetch_function &fetch_func,
+				const fetch_function &tran_fetch_func)
   {
     m_registered.emplace_back ();
     registered_statistics_holder &last = m_registered.back ();
 
-    last.m_offset = m_all_count;
+    last.m_offset = m_total_statistics_count;
     last.m_statistics_count = count;
-    m_all_count += count;
+    m_total_statistics_count += count;
 
     last.m_fetch_func = fetch_func;
     last.m_tran_fetch_func = tran_fetch_func;
