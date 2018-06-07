@@ -4657,7 +4657,7 @@ tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
 
 	  if (update_default->default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
 	    {
-	      /* add default_expr property to sequence */
+	      /* add update_default property to sequence */
 	      db_make_int (&default_expr_value, update_default->default_expr_type);
 	      classobj_put_prop (attr->properties, "update_default", &default_expr_value);
 	    }

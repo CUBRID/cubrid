@@ -1373,6 +1373,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
     {
       size_t default_value_len = 0;
       char *default_str_val = NULL;
+
       if (classobj_get_prop (att_props, "default_expr", &default_expr) > 0)
 	{
 	  size_t len;
@@ -1407,12 +1408,10 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	      if (!db_value_is_null (&db_value_default_expr_format))
 		{
 #if !defined(NDEBUG)
-		  {
-		    DB_TYPE db_value_type_local = db_value_type (&db_value_default_expr_format);
-		    assert (db_value_type_local == DB_TYPE_NULL || db_value_type_local == DB_TYPE_CHAR
-			    || db_value_type_local == DB_TYPE_NCHAR || db_value_type_local == DB_TYPE_VARCHAR
-			    || db_value_type_local == DB_TYPE_VARNCHAR);
-		  }
+		  DB_TYPE db_value_type_local = db_value_type (&db_value_default_expr_format);
+		  assert (db_value_type_local == DB_TYPE_NULL || db_value_type_local == DB_TYPE_CHAR
+			  || db_value_type_local == DB_TYPE_NCHAR || db_value_type_local == DB_TYPE_VARCHAR
+			  || db_value_type_local == DB_TYPE_VARNCHAR);
 #endif
 		  assert (DB_VALUE_TYPE (&db_value_default_expr_format) == DB_TYPE_STRING);
 		  def_expr_format_string = db_get_string (&db_value_default_expr_format);
@@ -1440,9 +1439,9 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	      const char *default_expr_op_string = qdump_operator_type_string (T_TO_CHAR);
 	      assert (default_expr_op_string != NULL);
 
-	      len += (default_expr_op_string ? strlen (default_expr_op_string) : 0)	/* to_char */
-		+ 6		/* parenthesis, a comma, a blank and quotes */
-		+ (def_expr_format_string ? strlen (def_expr_format_string) : 0);	/* nothing or format */
+	      len += ((default_expr_op_string ? strlen (default_expr_op_string) : 0)	/* to_char */
+		      + 6	/* parenthesis, a comma, a blank and quotes */
+		      + (def_expr_format_string ? strlen (def_expr_format_string) : 0));	/* nothing or format */
 
 	      default_str_val = (char *) db_private_alloc (thread_p, len + 1);
 	      if (default_str_val == NULL)
@@ -1504,8 +1503,8 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	  /* add whitespace character if default_str_val is not an empty string */
 	  str_val =
 	    (char *) db_private_alloc (thread_p,
-				       default_value_len + (default_value_len ? 1 : 0) + len + strlen ("ON UPDATE ") +
-				       1);
+				       (default_value_len + (default_value_len ? 1 : 0) + len + strlen ("ON UPDATE ")
+					+ 1));
 	  if (str_val == NULL)
 	    {
 	      pr_clear_value (&default_expr);

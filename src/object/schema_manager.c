@@ -5413,6 +5413,7 @@ sm_att_auto_increment (MOP classop, const char *name)
  *   name(in): attribute
  *   value(out): the default value of the specified attribute
  *   default_expr(out): default expression
+ *   on_update_expr(out): on_update default expression
  */
 
 int

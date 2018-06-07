@@ -6910,8 +6910,7 @@ get_attr_name (PT_NODE * attribute)
  *   ctemplate(in/out): Class template
  *   attribute(in/out): Attribute to add
  *   constraints(in/out): the constraints of the class
- *   error_on_not_normal(in): whether to flag an error on class and shared
- *                            attributes or not
+ *   error_on_not_normal(in): whether to flag an error on class and shared attributes or not
  *
  * Note : The class object is modified
  */
@@ -7030,9 +7029,8 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
   pt_get_default_expression_from_data_default_node (parser, attribute->info.attr_def.data_default, &default_expr);
   default_value = &stack_value;
 
-  error =
-    smt_add_attribute_w_dflt_w_order (ctemplate, attr_name, NULL, attr_db_domain, default_value, name_space, add_first,
-				      add_after_attr, &default_expr, &on_update_expr, NULL);
+  error = smt_add_attribute_w_dflt_w_order (ctemplate, attr_name, NULL, attr_db_domain, default_value, name_space,
+					    add_first, add_after_attr, &default_expr, &on_update_expr, NULL);
 
   db_value_clear (&stack_value);
 
@@ -7154,8 +7152,8 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
 	  goto error_exit;
 	}
 
-      error =
-	sm_att_default_value (class_obj, column->attr_name, &default_value, &default_expr, &on_update_default_expr);
+      error = sm_att_default_value (class_obj, column->attr_name, &default_value, &default_expr,
+				    &on_update_default_expr);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -10112,10 +10110,9 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
       goto exit;
     }
 
-  error =
-    smt_change_attribute_w_dflt_w_order (ctemplate, attr_name, new_name, NULL, attr_db_domain,
-					 attr_chg_prop->name_space, new_default, &new_default_expr, &new_on_update_expr,
-					 change_first, change_after_attr, &found_att);
+  error = smt_change_attribute_w_dflt_w_order (ctemplate, attr_name, new_name, NULL, attr_db_domain,
+					       attr_chg_prop->name_space, new_default, &new_default_expr,
+					       &new_on_update_expr, change_first, change_after_attr, &found_att);
   if (error != NO_ERROR)
     {
       goto exit;
