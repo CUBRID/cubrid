@@ -22773,6 +22773,42 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	    {
 	      db_make_string_by_const_str (out_values[idx_val], "auto_increment");
 	    }
+
+	  if (attrepr->on_update.default_expr_type != DB_DEFAULT_NONE)
+	    {
+	      char *saved = db_get_string (out_values[idx_val]);
+	      size_t len = strlen (saved);
+
+	      const char *default_expr_op_string = db_default_expression_string (attrepr->on_update.default_expr_type);
+	      if (!default_expr_op_string)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      /* add whitespace character if saved is not an empty string */
+	      const char *on_update_string = "ON_UPDATE ";
+	      char *str_val = (char *) db_private_alloc (thread_p,
+							 len + (len ? 1 : 0) + strlen (on_update_string) +
+							 strlen (default_expr_op_string) + 1);
+	      if (!str_val)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      strcpy (str_val, saved);
+	      if (len)
+		{
+		  strcat (str_val, " ");
+		}
+	      strcat (str_val, on_update_string);
+	      strcat (str_val, default_expr_op_string);
+
+	      if (default_expr_op_string)
+		{
+		  pr_clear_value (out_values[idx_val]);
+		  db_make_string (out_values[idx_val], str_val);
+		}
+	    }
 	  idx_val++;
 
 	  /* attribute's comment */
