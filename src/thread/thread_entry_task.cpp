@@ -88,6 +88,12 @@ namespace cubthread
   }
 
   void
+  entry_manager::stop_execution (entry &context)
+  {
+    context.shutdown = true;
+  }
+
+  void
   daemon_entry_manager::on_create (entry &context)
   {
     context.type = TT_DAEMON;

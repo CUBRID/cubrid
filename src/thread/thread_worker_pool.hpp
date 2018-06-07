@@ -284,10 +284,7 @@ namespace cubthread
       // return true if worker was found, false otherwise
       bool remove_worker_from_active_list (worker &worker_arg);
       // context management
-      // pass request from worker to worker pool context manager to create, recycle, retire contexts
-      context_type &create_context (void);
-      void recycle_context (context_type &context);
-      void retire_context (context_type &context);
+      context_manager<context_type> &get_context_manager (void);
 
       // getters
       std::size_t get_max_worker_count (void) const;
@@ -904,24 +901,10 @@ namespace cubthread
   }
 
   template <typename Context>
-  typename worker_pool<Context>::core::context_type &
-  worker_pool<Context>::core::create_context (void)
+  context_manager<typename worker_pool<Context>::core::context_type> &
+  worker_pool<Context>::core::get_context_manager (void)
   {
-    return m_parent_pool->m_context_manager.create_context ();
-  }
-
-  template <typename Context>
-  void
-  worker_pool<Context>::core::recycle_context (context_type &context)
-  {
-    m_parent_pool->m_context_manager.recycle_context (context);
-  }
-
-  template <typename Context>
-  void
-  worker_pool<Context>::core::retire_context (context_type &context)
-  {
-    m_parent_pool->m_context_manager.retire_context (context);
+    return m_parent_pool->m_context_manager;
   }
 
   template <typename Context>
@@ -1094,7 +1077,7 @@ namespace cubthread
     if (context_p != NULL)
       {
 	// notify context to stop
-	context_p->interrupt_execution ();
+	m_parent_core->get_context_manager ().stop_execution (*context_p);
       }
 
     // make sure thread is not waiting for tasks
@@ -1114,7 +1097,7 @@ namespace cubthread
     wp_worker_statset_time_and_increment (m_statistics, Wpstat_start_thread);
 
     // a context is required
-    m_context_p = &m_parent_core->create_context ();
+    m_context_p = &m_parent_core->get_context_manager ().create_context ();
     wp_worker_statset_time_and_increment (m_statistics, Wpstat_create_context);
   }
 
@@ -1126,7 +1109,7 @@ namespace cubthread
     assert (m_context_p != NULL);
 
     // retire context
-    m_parent_core->retire_context (*m_context_p);
+    m_parent_core->get_context_manager ().retire_context (*m_context_p);
     m_context_p = NULL;
     wp_worker_statset_time_and_increment (m_statistics, Wpstat_retire_context);
   }
@@ -1189,7 +1172,7 @@ namespace cubthread
 	m_task_p = task_p;
 
 	// we need to recycle context before reusing
-	m_parent_core->recycle_context (*m_context_p);
+	m_parent_core->get_context_manager ().recycle_context (*m_context_p);
 	wp_worker_statset_time_and_increment (m_statistics, Wpstat_recycle_context);
 	return true;
       }
@@ -1248,7 +1231,7 @@ namespace cubthread
 	wp_worker_statset_time_and_increment (m_statistics, Wpstat_wakeup_with_task);
 
 	// we need to recycle context before reusing
-	m_parent_core->recycle_context (*m_context_p);
+	m_parent_core->get_context_manager ().recycle_context (*m_context_p);
 	wp_worker_statset_time_and_increment (m_statistics, Wpstat_recycle_context);
 	return true;
       }
