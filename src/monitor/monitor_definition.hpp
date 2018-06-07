@@ -24,8 +24,6 @@
 #if !defined _MONITOR_DEFINITION_HPP_
 #define _MONITOR_DEFINITION_HPP_
 
-#include <limits>
-
 #include <cstdint>
 
 namespace cubmonitor

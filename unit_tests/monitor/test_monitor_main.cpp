@@ -74,7 +74,7 @@ test_single_statistics_no_concurrency_amount (void)
 
   // test accumulator
   {
-    amount_accumulator statcol;
+    amount_accumulator_statistic statcol;
 
     statcol.collect (2);
     assert (statcol.fetch () == 2);
@@ -86,7 +86,7 @@ test_single_statistics_no_concurrency_amount (void)
 
   // test gauge
   {
-    amount_gauge statcol;
+    amount_gauge_statistic statcol;
 
     statcol.collect (2);
     assert (statcol.fetch () == 2);
@@ -98,7 +98,7 @@ test_single_statistics_no_concurrency_amount (void)
 
   // test max
   {
-    amount_max statcol;
+    amount_max_statistic statcol;
 
     statcol.collect (2);
     assert (statcol.fetch () == 2);
@@ -110,7 +110,7 @@ test_single_statistics_no_concurrency_amount (void)
 
   // test min
   {
-    amount_min statcol;
+    amount_min_statistic statcol;
 
     statcol.collect (2);
     assert (statcol.fetch () == 2);
@@ -128,7 +128,7 @@ test_single_statistics_no_concurrency_double (void)
 
   // test accumulator
   {
-    floating_accumulator statcol;
+    floating_accumulator_statistic statcol;
 
     statcol.collect (2.0);
     assert (1.9 <= statcol.fetch () &&  statcol.fetch () <= 2.1);
@@ -140,7 +140,7 @@ test_single_statistics_no_concurrency_double (void)
 
   // test gauge
   {
-    floating_gauge statcol;
+    floating_gauge_statistic statcol;
 
     statcol.collect (2.0);
     assert (1.9 <= statcol.fetch () &&  statcol.fetch () <= 2.1);
@@ -152,7 +152,7 @@ test_single_statistics_no_concurrency_double (void)
 
   // test max
   {
-    floating_max statcol;
+    floating_max_statistic statcol;
 
     statcol.collect (2.0);
     assert (1.9 <= statcol.fetch () &&  statcol.fetch () <= 2.1);
@@ -164,7 +164,7 @@ test_single_statistics_no_concurrency_double (void)
 
   // test min
   {
-    floating_min statcol;
+    floating_min_statistic statcol;
 
     statcol.collect (2.0);
     assert (1.9 <= statcol.fetch () &&  statcol.fetch () <= 2.1);
@@ -182,7 +182,7 @@ test_single_statistics_no_concurrency_time (void)
 
   // test accumulator
   {
-    time_accumulator statcol;
+    time_accumulator_statistic statcol;
 
     // everything is recored in nanoseconds; fetch returns in microseconds
 
@@ -196,7 +196,7 @@ test_single_statistics_no_concurrency_time (void)
 
   // test gauge
   {
-    time_gauge statcol;
+    time_gauge_statistic statcol;
 
     statcol.collect (2000);
     assert (statcol.fetch () == 2);
@@ -208,7 +208,7 @@ test_single_statistics_no_concurrency_time (void)
 
   // test max
   {
-    time_max statcol;
+    time_max_statistic statcol;
 
     statcol.collect (2000);
     assert (statcol.fetch () == 2);
@@ -220,7 +220,7 @@ test_single_statistics_no_concurrency_time (void)
 
   // test min
   {
-    time_min statcol;
+    time_min_statistic statcol;
 
     statcol.collect (2000);
     assert (statcol.fetch () == 2);
@@ -246,7 +246,7 @@ test_single_statistics_no_concurrency (void)
 //////////////////////////////////////////////////////////////////////////
 
 static void
-test_multithread_accumulation_task (cubmonitor::atomic_amount_accumulator &acc)
+test_multithread_accumulation_task (cubmonitor::amount_accumulator_atomic_statistic &acc)
 {
   using namespace cubmonitor;
   for (amount_rep amount = 1; amount < 1000; amount++)
@@ -261,7 +261,7 @@ test_multithread_accumulation (void)
 {
   using namespace cubmonitor;
 
-  atomic_amount_accumulator statcol;
+  amount_accumulator_atomic_statistic statcol;
   const std::size_t THREAD_COUNT = 20;
 
   execute_multi_thread (THREAD_COUNT, test_multithread_accumulation_task, std::ref (statcol));
@@ -277,7 +277,7 @@ test_multithread_accumulation (void)
 // test_transaction
 //////////////////////////////////////////////////////////////////////////
 
-using test_trancol = cubmonitor::transaction_collector<cubmonitor::amount_accumulator>;
+using test_trancol = cubmonitor::transaction_collector<cubmonitor::amount_accumulator_statistic>;
 
 void
 test_collect_statistic (int tran_index, test_trancol &acc)
@@ -373,7 +373,7 @@ test_registration (void)
   monitor my_monitor;
 
   // a regular statistic
-  amount_accumulator acc;
+  amount_accumulator_statistic acc;
   // a transaction statistic
   test_trancol tran_acc;
 

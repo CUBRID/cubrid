@@ -28,6 +28,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <limits>
 
 #include <cinttypes>
 
@@ -42,7 +43,7 @@ namespace cubmonitor
   // Statistic memory representation
   //////////////////////////////////////////////////////////////////////////
 
-  // aliases for usual memory representation of statistics:
+  // aliases for usual memory representation of statistics (and the atomic counterparts):
   // amount type
   using amount_rep = std::uint64_t;
   // floating type
@@ -50,106 +51,135 @@ namespace cubmonitor
   // time type
   using time_rep = duration::rep;
 
-  template <class Rep>
-  inline statistic_value rep_to_statistic_value (const Rep &memrep)
-  {
-    // reinterpret memory as statistic_value
-    return static_cast<statistic_value> (memrep);
-  }
-
   //////////////////////////////////////////////////////////////////////////
-  // Synchronous / asynchronous collecting modes
   //
-  // Use synchronous mode for shared statistics that can be accessed concurrently by multiple threads. Statistic will
-  // be atomic type
+  // single statistic collectors
   //
-  // Use asynchronous mode for statistics that are not shared between multiple threads or if access on statistic is
-  // synchronized in other ways.
+  // cubmonitor statistic collector is a concept that provides two methods:
+  //
+  //  1. how to collect statistic (through collect function)
+  //  2. how to fetch statistic (through fetch function)
+  //
+  // Other classes use this template interface
   //
   //////////////////////////////////////////////////////////////////////////
 
-  // sync term is used for statistics manipulated by multiple transactions concurrently
-  enum class stat_synchronization
-  {
-    NONE,
-    ATOMIC
-  };
-
-  // collected statistics representation - sync mode + memory representation
-  template <stat_synchronization Sync, class Rep>
-  using stat_collect_rep = typename std::conditional<Sync == stat_synchronization::NONE, Rep, std::atomic<Rep>>::type;
-
-  // collector concept - collect function
-  template <stat_synchronization Sync, class Rep>
-  class stat_collector
+  //
+  // Fetch-able is the concept on which cubmonitor::monitor is based. Any fetchable statstics can be registered to
+  // monitor, it does not care how it is "collected".
+  //
+  // T - the type of stored value. It must be casted to statistic_value.
+  //
+  template <class T>
+  class fetchable_statistic
   {
     public:
-
-      using rep = Rep;
-      static const stat_synchronization sync = Sync;
-
-      stat_collector (void)
-	: m_value { 0 }
-      {
-      }
-
-      statistic_value fetch (void) const
-      {
-	return rep_to_statistic_value (m_value);
-      }
+      fetchable_statistic (void);           // default constructor
+      fetchable_statistic (const T &value);     // constructor with value
+      statistic_value fetch (void) const;   // fetch value
 
     protected:
-      stat_collect_rep<Sync, Rep> m_value;
+      T m_value;                            // stored value
   };
 
-  template <stat_synchronization Sync, class Rep>
-  class stat_accumulator : public stat_collector<Sync, Rep>
+  //////////////////////////////////////////////////////////////////////////
+  // Accumulator statistics
+  //////////////////////////////////////////////////////////////////////////
+
+  // accumulator statistic - add change to existing value
+  template<class Rep>
+  class accumulator_statistic : public fetchable_statistic<Rep>
   {
     public:
-      inline void collect (const Rep &change);
+      using rep = Rep;
+
+      void collect (const Rep &change);
   };
 
-  template <stat_synchronization Sync, class Rep>
-  class stat_gauge : public stat_collector<Sync, Rep>
+  // accumulator atomic statistic - atomic add change to existing value
+  template<class Rep>
+  class accumulator_atomic_statistic : public fetchable_statistic<std::atomic<Rep>>
   {
     public:
-      inline void collect (const Rep &change);
+      using rep = Rep;
+
+      void collect (const Rep &change);
   };
 
-  template <stat_synchronization Sync, class Rep>
-  class stat_max : public stat_collector<Sync, Rep>
+  //////////////////////////////////////////////////////////////////////////
+  // Gauge statistics
+  //////////////////////////////////////////////////////////////////////////
+
+  // gauge statistic - replace current value with change
+  template<class Rep>
+  class gauge_statistic : public fetchable_statistic<Rep>
   {
     public:
+      using rep = Rep;
 
-      stat_max (void)
-	: stat_collector ()
-	, m_first_value (true)
-      {
-	//
-      }
-
-      inline void collect (const Rep &change);
-
-    private:
-      bool m_first_value;
+      void collect (const Rep &change);
   };
 
-  template <stat_synchronization Sync, class Rep>
-  class stat_min : public stat_collector<Sync, Rep>
+  // gauge atomic statistic - test and set current value
+  template<class Rep>
+  class gauge_atomic_statistic : public fetchable_statistic<std::atomic<Rep>>
   {
     public:
+      using rep = Rep;
 
-      stat_min (void)
-	: stat_collector ()
-	, m_first_value (true)
-      {
-	//
-      }
+      void collect (const Rep &change);
+  };
 
-      inline void collect (const Rep &change);
+  //////////////////////////////////////////////////////////////////////////
+  // Max statistics
+  //////////////////////////////////////////////////////////////////////////
 
-    private:
-      bool m_first_value;
+  // max statistic - compare with current value and set if change is bigger
+  template<class Rep>
+  class max_statistic : public fetchable_statistic<Rep>
+  {
+    public:
+      using rep = Rep;
+
+      max_statistic (void);
+      void collect (const Rep &change);
+  };
+
+  // max atomic statistic - compare and exchange with current value if change is bigger
+  template<class Rep>
+  class max_atomic_statistic : public fetchable_statistic<std::atomic<Rep>>
+  {
+    public:
+      using rep = Rep;
+
+      max_atomic_statistic (void);
+      void collect (const Rep &change);
+  };
+
+  //////////////////////////////////////////////////////////////////////////
+  // Min statistics
+  //////////////////////////////////////////////////////////////////////////
+
+  // min statistic - compare with current value and set if change is smaller
+  template<class Rep>
+  class min_statistic : public fetchable_statistic<Rep>
+  {
+    public:
+      using rep = Rep;
+
+      min_statistic (void);
+      void collect (const Rep &change);
+  };
+
+  // gauge atomic statistic - test and set current value
+  template<class Rep>
+  class min_atomic_statistic : public fetchable_statistic<std::atomic<Rep>>
+  {
+    public:
+      using rep = Rep;
+
+      min_atomic_statistic (void);
+      void collect (const Rep &change);
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -157,101 +187,181 @@ namespace cubmonitor
   //////////////////////////////////////////////////////////////////////////
 
   // no synchronization specializations
-  using amount_accumulator = stat_accumulator<stat_synchronization::NONE, amount_rep>;
-  using floating_accumulator = stat_accumulator<stat_synchronization::NONE, floating_rep>;
-  using time_accumulator = stat_accumulator<stat_synchronization::NONE, time_rep>;
+  using amount_accumulator_statistic = accumulator_statistic<amount_rep>;
+  using floating_accumulator_statistic = accumulator_statistic<floating_rep>;
+  using time_accumulator_statistic = accumulator_statistic<time_rep>;
 
-  using amount_gauge = stat_gauge<stat_synchronization::NONE, amount_rep>;
-  using floating_gauge = stat_gauge<stat_synchronization::NONE, floating_rep>;
-  using time_gauge = stat_gauge<stat_synchronization::NONE, time_rep>;
+  using amount_gauge_statistic = gauge_statistic<amount_rep>;
+  using floating_gauge_statistic = gauge_statistic<floating_rep>;
+  using time_gauge_statistic = gauge_statistic<time_rep>;
 
-  using amount_max = stat_max<stat_synchronization::NONE, amount_rep>;
-  using floating_max = stat_max<stat_synchronization::NONE, floating_rep>;
-  using time_max = stat_max<stat_synchronization::NONE, time_rep>;
+  using amount_max_statistic = max_statistic<amount_rep>;
+  using floating_max_statistic = max_statistic<floating_rep>;
+  using time_max_statistic = max_statistic<time_rep>;
 
-  using amount_min = stat_min<stat_synchronization::NONE, amount_rep>;
-  using floating_min = stat_min<stat_synchronization::NONE, floating_rep>;
-  using time_min = stat_min<stat_synchronization::NONE, time_rep>;
+  using amount_min_statistic = max_statistic<amount_rep>;
+  using floating_min_statistic = max_statistic<floating_rep>;
+  using time_min_statistic = max_statistic<time_rep>;
 
   // atomic synchronization specializations
-  using atomic_amount_accumulator = stat_accumulator<stat_synchronization::ATOMIC, amount_rep>;
-  using atomic_floating_accumulator = stat_accumulator<stat_synchronization::ATOMIC, floating_rep>;
-  using atomic_time_accumulator = stat_accumulator<stat_synchronization::ATOMIC, time_rep>;
+  using amount_accumulator_atomic_statistic = accumulator_atomic_statistic<amount_rep>;
+  using floating_accumulator_atomic_statistic = accumulator_atomic_statistic<floating_rep>;
+  using time_accumulator_atomic_statistic = accumulator_atomic_statistic<time_rep>;
 
-  using atomic_amount_gauge = stat_gauge<stat_synchronization::ATOMIC, amount_rep>;
-  using atomic_floating_gauge = stat_gauge<stat_synchronization::ATOMIC, floating_rep>;
-  using atomic_time_gauge = stat_gauge<stat_synchronization::ATOMIC, time_rep>;
+  using amount_gauge_atomic_statistic = gauge_atomic_statistic<amount_rep>;
+  using floating_gauge_atomic_statistic = gauge_atomic_statistic<floating_rep>;
+  using time_gauge_atomic_statistic = gauge_atomic_statistic<time_rep>;
 
-  using atomic_amount_max = stat_max<stat_synchronization::ATOMIC, amount_rep>;
-  using atomic_floating_max = stat_max<stat_synchronization::ATOMIC, floating_rep>;
-  using atomic_time_max = stat_max<stat_synchronization::ATOMIC, time_rep>;
+  using amount_max_atomic_statistic = max_atomic_statistic<amount_rep>;
+  using floating_max_atomic_statistic = max_atomic_statistic<floating_rep>;
+  using time_max_atomic_statistic = max_atomic_statistic<time_rep>;
 
-  using atomic_amount_min = stat_min<stat_synchronization::ATOMIC, amount_rep>;
-  using atomic_floating_min = stat_min<stat_synchronization::ATOMIC, floating_rep>;
-  using atomic_time_min = stat_min<stat_synchronization::ATOMIC, time_rep>;
+  using amount_min_atomic_statistic = min_atomic_statistic<amount_rep>;
+  using floating_min_atomic_statistic = min_atomic_statistic<floating_rep>;
+  using time_min_atomic_statistic = min_atomic_statistic<time_rep>;
 
   //////////////////////////////////////////////////////////////////////////
   // template/inline implementation
   //////////////////////////////////////////////////////////////////////////
 
-  template <>
-  statistic_value
-  stat_collector<stat_synchronization::NONE, time_rep>::fetch (void) const
+  template <typename T>
+  fetchable_statistic<T>::fetchable_statistic (void)
+    : m_value { 0 }
   {
-    // time statistics are usually fetched as microseconds
-    duration d (m_value);
-    std::chrono::microseconds usec = std::chrono::duration_cast<std::chrono::microseconds> (d);
-    return usec.count ();
+    //
   }
 
-  template <>
-  statistic_value
-  stat_collector<stat_synchronization::ATOMIC, time_rep>::fetch (void) const
+  template <typename T>
+  fetchable_statistic<T>::fetchable_statistic (const T &value)
+    : m_value { value }
   {
-    // time statistics are usually fetched as microseconds
-    duration d (m_value.load ());
-    std::chrono::microseconds usec = std::chrono::duration_cast<std::chrono::microseconds> (d);
-    return usec.count ();
+    //
   }
 
-  template<stat_synchronization Sync, class Rep>
+  template <typename T>
+  statistic_value
+  fetchable_statistic<T>::fetch (void) const
+  {
+    return static_cast<statistic_value> (m_value);
+  }
+
+  template <typename Rep>
   void
-  stat_accumulator<Sync, Rep>::collect (const Rep &change)
+  accumulator_statistic<Rep>::collect (const Rep &change)
   {
     m_value += change;
   }
 
-  template<stat_synchronization Sync, class Rep>
+  template <typename Rep>
   void
-  stat_gauge<Sync, Rep>::collect (const Rep &change)
+  accumulator_atomic_statistic<Rep>::collect (const Rep &change)
+  {
+    (void) m_value.fetch_add (change);
+  }
+
+  template <typename Rep>
+  void
+  gauge_statistic<Rep>::collect (const Rep &change)
   {
     m_value = change;
   }
 
-  template<stat_synchronization Sync, class Rep>
+  template <typename Rep>
   void
-  stat_max<Sync, Rep>::collect (const Rep &change)
+  gauge_atomic_statistic<Rep>::collect (const Rep &change)
   {
-    if (m_value < change || m_first_value)
-      {
-	// note - atomic synchronization is perfect. it is possible to overwrite a bigger value here
-	m_value = change;
+    m_value.store (change);
+  }
 
-	m_first_value = false;
+  template <typename Rep>
+  max_statistic<Rep>::max_statistic (void)
+    : fetchable_statistic<Rep> (std::numeric_limits<Rep>::min ())
+  {
+    //
+  }
+
+  template <typename Rep>
+  void
+  max_statistic<Rep>::collect (const Rep &change)
+  {
+    if (change > m_value)
+      {
+	m_value = change;
       }
   }
 
-  template<stat_synchronization Sync, class Rep>
-  void
-  stat_min<Sync, Rep>::collect (const Rep &change)
+  template <typename Rep>
+  max_atomic_statistic<Rep>::max_atomic_statistic (void)
+    : fetchable_statistic<std::atomic<Rep>> (std::numeric_limits<Rep>::min ())
   {
-    if (m_value > change || m_first_value)
-      {
-	// note - atomic synchronization is perfect. it is possible to overwrite a smaller value here
-	m_value = change;
+    //
+  }
 
-	m_first_value = false;
+  template <typename Rep>
+  void
+  max_atomic_statistic<Rep>::collect (const Rep &change)
+  {
+    Rep loaded;
+    // loop until either:
+    // 1. current value is better
+    // 2. successfully replaced value
+    do
+      {
+	loaded = m_value.load ();
+	if (loaded >= change)
+	  {
+	    // not bigger
+	    return;
+	  }
+	// exchange
       }
+    while (!m_value.compare_exchange_strong (loaded, change));
+  }
+
+  template <typename Rep>
+  min_statistic<Rep>::min_statistic (void)
+    : fetchable_statistic<Rep> (std::numeric_limits<Rep>::max ())
+  {
+    //
+  }
+
+  template <typename Rep>
+  void
+  min_statistic<Rep>::collect (const Rep &change)
+  {
+    if (change < m_value)
+      {
+	m_value = change;
+      }
+  }
+
+  template <typename Rep>
+  min_atomic_statistic<Rep>::min_atomic_statistic (void)
+    : fetchable_statistic<std::atomic<Rep>> (std::numeric_limits<Rep>::max ())
+  {
+    //
+  }
+
+  template <typename Rep>
+  void
+  min_atomic_statistic<Rep>::collect (const Rep &change)
+  {
+    Rep loaded;
+    // loop until either:
+    // 1. current value is better
+    // 2. successfully replaced value
+    do
+      {
+	loaded = m_value.load ();
+	if (loaded <= change)
+	  {
+	    // not smaller
+	    return;
+	  }
+	// try exchange
+      }
+    while (!m_value.compare_exchange_strong (loaded, change));
+    // exchange successful
   }
 
 } // namespace cubmonitor
