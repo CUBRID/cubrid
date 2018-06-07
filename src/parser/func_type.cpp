@@ -141,7 +141,7 @@ std::vector<func_signature> func_signature::group_concat = {
   {PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_DATETIME , PT_GENERIC_TYPE_NCHAR }, {}},
 #endif
 #endif
-  {PT_TYPE_VARCHAR  , {PT_TYPE_NULL                                     }, {}},
+//{PT_TYPE_VARCHAR  , {PT_TYPE_NULL                                     }, {}},
 };
 
 std::vector<func_signature> func_signature::lead_lag = {//original code doesn't do anything!!!
@@ -150,7 +150,6 @@ std::vector<func_signature> func_signature::lead_lag = {//original code doesn't 
   {0, {PT_GENERIC_TYPE_DATETIME }, {}},
   {0, {PT_GENERIC_TYPE_BIT      }, {}},
   {0, {PT_GENERIC_TYPE_SEQUENCE }, {}},
-//{0, {PT_TYPE_NULL             }, {}},//test without PT_TYPE_NULL
 };
 
 std::vector<func_signature> func_signature::elt = {
