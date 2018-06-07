@@ -36,7 +36,7 @@
 #if !defined _MONITOR_TRANSACTION_HPP_
 #define _MONITOR_TRANSACTION_HPP_
 
-#include "monitor_collect_forward.hpp"
+#include "monitor_statistic.hpp"
 
 #include <limits>
 #include <mutex>

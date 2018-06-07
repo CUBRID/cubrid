@@ -24,7 +24,7 @@
 #if !defined _MONITOR_COLLECT_HPP_
 #define _MONITOR_COLLECT_HPP_
 
-#include "monitor_collect_forward.hpp"
+#include "monitor_statistic.hpp"
 #include "monitor_transaction.hpp"
 
 namespace cubmonitor

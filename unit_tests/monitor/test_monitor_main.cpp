@@ -186,11 +186,11 @@ test_single_statistics_no_concurrency_time (void)
 
     // everything is recored in nanoseconds; fetch returns in microseconds
 
-    statcol.collect (2000);
+    statcol.collect (cubmonitor::time_rep (2000));
     assert (statcol.fetch () == 2);
-    statcol.collect (5000);
+    statcol.collect (cubmonitor::time_rep (5000));
     assert (statcol.fetch () == 7);
-    statcol.collect (1000);
+    statcol.collect (cubmonitor::time_rep (1000));
     assert (statcol.fetch () == 8);
   }
 
@@ -198,11 +198,11 @@ test_single_statistics_no_concurrency_time (void)
   {
     time_gauge_statistic statcol;
 
-    statcol.collect (2000);
+    statcol.collect (cubmonitor::time_rep (2000));
     assert (statcol.fetch () == 2);
-    statcol.collect (5000);
+    statcol.collect (cubmonitor::time_rep (5000));
     assert (statcol.fetch () == 5);
-    statcol.collect (1000);
+    statcol.collect (cubmonitor::time_rep (1000));
     assert (statcol.fetch () == 1);
   }
 
@@ -210,11 +210,11 @@ test_single_statistics_no_concurrency_time (void)
   {
     time_max_statistic statcol;
 
-    statcol.collect (2000);
+    statcol.collect (cubmonitor::time_rep (2000));
     assert (statcol.fetch () == 2);
-    statcol.collect (5000);
+    statcol.collect (cubmonitor::time_rep (5000));
     assert (statcol.fetch () == 5);
-    statcol.collect (1000);
+    statcol.collect (cubmonitor::time_rep (1000));
     assert (statcol.fetch () == 5);
   }
 
@@ -222,11 +222,11 @@ test_single_statistics_no_concurrency_time (void)
   {
     time_min_statistic statcol;
 
-    statcol.collect (2000);
+    statcol.collect (cubmonitor::time_rep (2000));
     assert (statcol.fetch () == 2);
-    statcol.collect (5000);
+    statcol.collect (cubmonitor::time_rep (5000));
     assert (statcol.fetch () == 2);
-    statcol.collect (1000);
+    statcol.collect (cubmonitor::time_rep (1000));
     assert (statcol.fetch () == 1);
   }
 }

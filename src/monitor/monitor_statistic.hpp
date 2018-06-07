@@ -18,11 +18,59 @@
  */
 
 //
-// monitor_collect_forward.hpp - class forward definitions for monitor collecting interface
+// monitor_statistic.hpp - base interface for monitoring statistics
+//
+//  in this header can be found the most basic statistics definitions
+//
+//  cubmonitor statistic concept is defined by two functions: fetch and collect.
+//
+//      collect (change) can vary on type of statistics and is called by active transactions and other engine threads.
+//      as a rule, it should be fast and non-intrusive.
+//
+//      fetch function returns the statistic's value. it is also the function used by monitor to fetch registered
+//      statistics.
+//
+//  Based on type of collections, there are currently four types of statistics:
+//
+//      1. accumulator - values are added up in stored value.
+//      2. gauge - updates stored value.
+//      3. max - stores maximum value of all given values.
+//      4. min - stores minimum value of all given values.
+//
+//  Based on statistic's collected data representation, there are three types:
+//
+//      1. amount (e.g. counters and other types of units).
+//      2. floating (e.g. ratio, percentage).
+//      3. time (all timers).
+//
+//  For all statistic types, an atomic way of synchronizing is also defined.
+//
+//  Templates are used to define each type of collector. Fully specialized statistics will each have one fetch and one
+//  collect function. Fully specialized statistic are named:
+//
+//          valuetype_collectype[_atomic]_statistic.
+//
+//  So a time accumulator that is shared by many transactions and requires atomic access is called:
+//
+//          time_accumulator_atomic_statistic.
+//
+//  How to use:
+//
+//          // use a statistic to time execution
+//          cubmonitor::time_accumulator_atomic_statistic my_timer_stat;
+//
+//          cubmonitor::time_point start_pt = cubmonitor::clock_type::now ();
+//
+//          // do some operations
+//
+//          cubmonitor::time_point end_pt = cubmonitor::clock_type::now ();
+//          my_timer_stat.collect (end_pt - start_pt);
+//          // fetch and print time value
+//          std::cout << "execution time is " << my_timer_stat.fetch () << " microseconds." << std::endl;
 //
 
-#if !defined _MONITOR_COLLECT_FORWARD_HPP_
-#define _MONITOR_COLLECT_FORWARD_HPP_
+#if !defined _MONITOR_STATISTIC_HPP_
+#define _MONITOR_STATISTIC_HPP_
 
 #include "monitor_definition.hpp"
 
@@ -34,13 +82,8 @@
 
 namespace cubmonitor
 {
-  // clocking
-  using clock_type = std::chrono::high_resolution_clock;
-  using time_point = clock_type::time_point;
-  using duration = clock_type::duration;
-
   //////////////////////////////////////////////////////////////////////////
-  // Statistic memory representation
+  // Statistic collected data memory representation
   //////////////////////////////////////////////////////////////////////////
 
   // aliases for usual memory representation of statistics (and the atomic counterparts):
@@ -49,111 +92,95 @@ namespace cubmonitor
   // floating type
   using floating_rep = double;
   // time type
-  using time_rep = duration::rep;
+  using time_rep = duration;
 
   //////////////////////////////////////////////////////////////////////////
-  //
-  // single statistic collectors
-  //
-  // cubmonitor statistic collector is a concept that provides two methods:
-  //
-  //  1. how to collect statistic (through collect function)
-  //  2. how to fetch statistic (through fetch function)
-  //
-  // Other classes use this template interface
-  //
+  // Statistic fetching
   //////////////////////////////////////////////////////////////////////////
-
   //
-  // Fetch-able is the concept on which cubmonitor::monitor is based. Any fetchable statstics can be registered to
-  // monitor, it does not care how it is "collected".
+  // Fetch-able is the concept on which cubmonitor::monitor relies. Any fetchable statstics can be registered to
+  // monitor and it does not care how it is collected.
   //
   // T - the type of stored value. It must be casted to statistic_value.
   //
+  // fetchable_statistic - return value cast as statistic_value
   template <class T>
   class fetchable_statistic
   {
     public:
-      fetchable_statistic (void);           // default constructor
-      fetchable_statistic (const T &value);     // constructor with value
-      statistic_value fetch (void) const;   // fetch value
-
+      fetchable_statistic (void);               // default constructor
+      statistic_value fetch (void) const;       // fetch value
+      // note - all possible specializations are found in implementation file
     protected:
-      T m_value;                            // stored value
+      T m_value;                                // stored value
   };
 
   //////////////////////////////////////////////////////////////////////////
   // Accumulator statistics
   //////////////////////////////////////////////////////////////////////////
-
   // accumulator statistic - add change to existing value
   template<class Rep>
   class accumulator_statistic : public fetchable_statistic<Rep>
   {
     public:
-      using rep = Rep;
+      using rep = Rep;                            // collected data representation
 
-      void collect (const Rep &change);
+      void collect (const Rep &value);            // collect value
   };
-
   // accumulator atomic statistic - atomic add change to existing value
   template<class Rep>
   class accumulator_atomic_statistic : public fetchable_statistic<std::atomic<Rep>>
   {
     public:
-      using rep = Rep;
+      using rep = Rep;                            // collected data representation
 
-      void collect (const Rep &change);
+      void collect (const Rep &value);            // collect value
   };
 
   //////////////////////////////////////////////////////////////////////////
   // Gauge statistics
   //////////////////////////////////////////////////////////////////////////
-
   // gauge statistic - replace current value with change
   template<class Rep>
   class gauge_statistic : public fetchable_statistic<Rep>
   {
     public:
-      using rep = Rep;
+      using rep = Rep;                            // collected data representation
 
-      void collect (const Rep &change);
+      void collect (const Rep &value);            // collect value
   };
-
   // gauge atomic statistic - test and set current value
   template<class Rep>
   class gauge_atomic_statistic : public fetchable_statistic<std::atomic<Rep>>
   {
     public:
-      using rep = Rep;
+      using rep = Rep;                            // collected data representation
 
-      void collect (const Rep &change);
+      void collect (const Rep &value);            // collect value
   };
 
   //////////////////////////////////////////////////////////////////////////
   // Max statistics
   //////////////////////////////////////////////////////////////////////////
-
   // max statistic - compare with current value and set if change is bigger
   template<class Rep>
   class max_statistic : public fetchable_statistic<Rep>
   {
     public:
-      using rep = Rep;
+      using rep = Rep;                            // collected data representation
 
-      max_statistic (void);
-      void collect (const Rep &change);
+      max_statistic (void);                       // constructor
+      void collect (const Rep &value);            // collect value
   };
-
   // max atomic statistic - compare and exchange with current value if change is bigger
   template<class Rep>
   class max_atomic_statistic : public fetchable_statistic<std::atomic<Rep>>
   {
     public:
-      using rep = Rep;
+      using rep = Rep;                            // collected data representation
 
-      max_atomic_statistic (void);
-      void collect (const Rep &change);
+      max_atomic_statistic (void);                // constructor
+      void collect (const Rep &value);            // collect value
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -165,21 +192,20 @@ namespace cubmonitor
   class min_statistic : public fetchable_statistic<Rep>
   {
     public:
-      using rep = Rep;
+      using rep = Rep;                            // collected data representation
 
-      min_statistic (void);
-      void collect (const Rep &change);
+      min_statistic (void);                       // constructor
+      void collect (const Rep &value);
   };
-
-  // gauge atomic statistic - test and set current value
+  // max atomic statistic - compare and exchange with current value if change is bigger
   template<class Rep>
   class min_atomic_statistic : public fetchable_statistic<std::atomic<Rep>>
   {
     public:
-      using rep = Rep;
+      using rep = Rep;                            // collected data representation
 
-      min_atomic_statistic (void);
-      void collect (const Rep &change);
+      min_atomic_statistic (void);                // constructor
+      void collect (const Rep &value);            // collect value
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -224,82 +250,68 @@ namespace cubmonitor
   // template/inline implementation
   //////////////////////////////////////////////////////////////////////////
 
-  template <typename T>
+  template <class T>
   fetchable_statistic<T>::fetchable_statistic (void)
     : m_value { 0 }
   {
     //
   }
 
-  template <typename T>
-  fetchable_statistic<T>::fetchable_statistic (const T &value)
-    : m_value { value }
+  template <typename Rep>
+  void
+  accumulator_statistic<Rep>::collect (const Rep &value)
   {
-    //
-  }
-
-  template <typename T>
-  statistic_value
-  fetchable_statistic<T>::fetch (void) const
-  {
-    return static_cast<statistic_value> (m_value);
+    m_value += value;
   }
 
   template <typename Rep>
   void
-  accumulator_statistic<Rep>::collect (const Rep &change)
+  accumulator_atomic_statistic<Rep>::collect (const Rep &value)
   {
-    m_value += change;
+    (void) m_value.fetch_add (value);
   }
 
   template <typename Rep>
   void
-  accumulator_atomic_statistic<Rep>::collect (const Rep &change)
+  gauge_statistic<Rep>::collect (const Rep &value)
   {
-    (void) m_value.fetch_add (change);
+    m_value = value;
   }
 
   template <typename Rep>
   void
-  gauge_statistic<Rep>::collect (const Rep &change)
+  gauge_atomic_statistic<Rep>::collect (const Rep &value)
   {
-    m_value = change;
-  }
-
-  template <typename Rep>
-  void
-  gauge_atomic_statistic<Rep>::collect (const Rep &change)
-  {
-    m_value.store (change);
+    m_value.store (value);
   }
 
   template <typename Rep>
   max_statistic<Rep>::max_statistic (void)
-    : fetchable_statistic<Rep> (std::numeric_limits<Rep>::min ())
+    : fetchable_statistic<Rep> ()
   {
-    //
+    m_value = std::numeric_limits<Rep>::min ();
   }
 
   template <typename Rep>
   void
-  max_statistic<Rep>::collect (const Rep &change)
+  max_statistic<Rep>::collect (const Rep &value)
   {
-    if (change > m_value)
+    if (value > m_value)
       {
-	m_value = change;
+	m_value = value;
       }
   }
 
   template <typename Rep>
   max_atomic_statistic<Rep>::max_atomic_statistic (void)
-    : fetchable_statistic<std::atomic<Rep>> (std::numeric_limits<Rep>::min ())
+    : fetchable_statistic<std::atomic<Rep>> ()
   {
-    //
+    m_value = std::numeric_limits<Rep>::min ();
   }
 
   template <typename Rep>
   void
-  max_atomic_statistic<Rep>::collect (const Rep &change)
+  max_atomic_statistic<Rep>::collect (const Rep &value)
   {
     Rep loaded;
     // loop until either:
@@ -308,43 +320,43 @@ namespace cubmonitor
     do
       {
 	loaded = m_value.load ();
-	if (loaded >= change)
+	if (loaded >= value)
 	  {
 	    // not bigger
 	    return;
 	  }
 	// exchange
       }
-    while (!m_value.compare_exchange_strong (loaded, change));
+    while (!m_value.compare_exchange_strong (loaded, value));
   }
 
   template <typename Rep>
   min_statistic<Rep>::min_statistic (void)
-    : fetchable_statistic<Rep> (std::numeric_limits<Rep>::max ())
+    : fetchable_statistic<Rep> ()
   {
-    //
+    m_value = std::numeric_limits<Rep>::max ();
   }
 
   template <typename Rep>
   void
-  min_statistic<Rep>::collect (const Rep &change)
+  min_statistic<Rep>::collect (const Rep &value)
   {
-    if (change < m_value)
+    if (value < m_value)
       {
-	m_value = change;
+	m_value = value;
       }
   }
 
   template <typename Rep>
   min_atomic_statistic<Rep>::min_atomic_statistic (void)
-    : fetchable_statistic<std::atomic<Rep>> (std::numeric_limits<Rep>::max ())
+    : fetchable_statistic<std::atomic<Rep>> ()
   {
-    //
+    m_value = std::numeric_limits<Rep>::max ();
   }
 
   template <typename Rep>
   void
-  min_atomic_statistic<Rep>::collect (const Rep &change)
+  min_atomic_statistic<Rep>::collect (const Rep &value)
   {
     Rep loaded;
     // loop until either:
@@ -353,17 +365,17 @@ namespace cubmonitor
     do
       {
 	loaded = m_value.load ();
-	if (loaded <= change)
+	if (loaded <= value)
 	  {
 	    // not smaller
 	    return;
 	  }
 	// try exchange
       }
-    while (!m_value.compare_exchange_strong (loaded, change));
+    while (!m_value.compare_exchange_strong (loaded, value));
     // exchange successful
   }
 
 } // namespace cubmonitor
 
-#endif // _MONITOR_COLLECT_FORWARD_HPP_
+#endif // _MONITOR_STATISTIC_HPP_

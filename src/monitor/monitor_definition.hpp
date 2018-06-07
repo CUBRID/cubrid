@@ -24,12 +24,19 @@
 #if !defined _MONITOR_DEFINITION_HPP_
 #define _MONITOR_DEFINITION_HPP_
 
+#include <chrono>
+
 #include <cstdint>
 
 namespace cubmonitor
 {
   // statistic common representation used on monitor fetching its values
   using statistic_value = std::uint64_t;
+
+  // clocking
+  using clock_type = std::chrono::high_resolution_clock;
+  using time_point = clock_type::time_point;
+  using duration = clock_type::duration;
 
 } // namespace cubmonitor
 
