@@ -17,6 +17,10 @@
  *
  */
 
+//
+// monitor_registration.cpp - implementation of cubrid monitor and statistic registration
+//
+
 #include "monitor_registration.hpp"
 
 #include <string>

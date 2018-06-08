@@ -18,7 +18,24 @@
  */
 
 //
-// monitor_collect.hpp - interface for collecting statistics
+// monitor_registration.hpp - interface for cubrid monitor and statistic registration
+//
+//    this interface defines the cubrid statistics monitor and how to register statistics.
+//
+//      all statistics that should be inspected by cubrid statdump tool should be registered to performance monitoring.
+//      to register a statistic, one must provide:
+//
+//        1. statistic name
+//        2. a way to fetch its value (a bound function)
+//        3. TODO: other statistic properties.
+//
+//      TODO: currently, we only provide registering for single statistics. we will have to extend to fully cover
+//            performance monitoring requirements.
+//
+//            Extensions
+//
+//              - extending statistic properties
+//              - registering group of statistics
 //
 
 #if !defined _MONITOR_REGISTRATION_HPP_
@@ -41,13 +58,15 @@ namespace cubmonitor
 
       monitor ();
 
-      template <typename Fetchable>
-      void register_single_statistic (const char *name, const Fetchable &fetchable);
+      // register a single statistic (without transaction sheets)
+      template <typename S>
+      void register_single_statistic (const char *name, const S &statistic);
 
-      // with transactions sheets
-      template <typename Fetchable>
-      void register_single_transaction_statistic (const char *name, const Fetchable &fetchable);
+      // register a single statistic with transactions sheets
+      template <typename S>
+      void register_single_transaction_statistic (const char *name, const S &statistic);
 
+      // get the total count of registered statistics
       std::size_t get_statistics_count (void);
       std::size_t get_registered_count (void);
 
@@ -88,28 +107,28 @@ namespace cubmonitor
   // implementation
   //////////////////////////////////////////////////////////////////////////
 
-  template <typename Fetchable>
+  template <typename S>
   void
-  monitor::register_single_statistic (const char *name, const Fetchable &fetchable)
+  monitor::register_single_statistic (const char *name, const S &statistic)
   {
     fetch_function fetch_func = [&] (statistic_value * destination)
     {
-      *destination = fetchable.fetch ();
+      *destination = statistic.fetch ();
     };
     register_single_function (name, fetch_func);
   }
 
-  template <typename Fetchable>
+  template <typename S>
   void
-  monitor::register_single_transaction_statistic (const char *name, const Fetchable &fetchable)
+  monitor::register_single_transaction_statistic (const char *name, const S &statistic)
   {
     fetch_function fetch_func = [&] (statistic_value * destination)
     {
-      *destination = fetchable.fetch ();
+      *destination = statistic.fetch ();
     };
     fetch_function tran_fetch_func = [&] (statistic_value * destination)
     {
-      *destination = fetchable.fetch_sheet ();
+      *destination = statistic.fetch_sheet ();
     };
 
     register_single_function_with_transaction (name, fetch_func, tran_fetch_func);
