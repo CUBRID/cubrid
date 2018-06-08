@@ -46,7 +46,6 @@ std::vector<func_signature> func_signature::bigint_discrete = {
 std::vector<func_signature> func_signature::double_number = {
   {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER}, {}},
   {PT_TYPE_DOUBLE, {PT_TYPE_MAYBE}, {}},
-  {PT_TYPE_DOUBLE, {PT_TYPE_NULL}, {}},
   {PT_TYPE_DOUBLE, {PT_TYPE_NA}, {}},
 };
 
