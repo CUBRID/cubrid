@@ -40,7 +40,6 @@ std::vector<func_signature> func_signature::percentile_disc = {
 std::vector<func_signature> func_signature::bigint_discrete = {
   {PT_TYPE_BIGINT, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
   {PT_TYPE_BIGINT, {PT_TYPE_MAYBE                  }, {}},
-  {PT_TYPE_BIGINT, {PT_TYPE_NULL                   }, {}},
   {PT_TYPE_BIGINT, {PT_TYPE_NA                     }, {}},
 };
 
@@ -65,7 +64,6 @@ std::vector<func_signature> func_signature::count = {
 std::vector<func_signature> func_signature::sum = {
   {0, {PT_GENERIC_TYPE_NUMBER}, {}},
   {0, {PT_TYPE_MAYBE}, {}},
-//{0, {PT_TYPE_NULL}, {}},
   {0, {PT_TYPE_NA}, {}},
   {0, {PT_TYPE_SET}, {}},
   {0, {PT_TYPE_MULTISET}, {}},
