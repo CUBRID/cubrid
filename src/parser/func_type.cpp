@@ -65,7 +65,7 @@ std::vector<func_signature> func_signature::count = {
 std::vector<func_signature> func_signature::sum = {
   {0, {PT_GENERIC_TYPE_NUMBER}, {}},
   {0, {PT_TYPE_MAYBE}, {}},
-  {0, {PT_TYPE_NULL}, {}},
+//{0, {PT_TYPE_NULL}, {}},
   {0, {PT_TYPE_NA}, {}},
   {0, {PT_TYPE_SET}, {}},
   {0, {PT_TYPE_MULTISET}, {}},
