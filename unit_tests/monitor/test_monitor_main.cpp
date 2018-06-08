@@ -129,49 +129,65 @@ test_single_statistics_no_concurrency_double (void)
   // test accumulator
   {
     floating_accumulator_statistic statcol;
+    floating_rep value;
 
     statcol.collect (2.0);
-    assert (1.9 <= statcol.fetch () &&  statcol.fetch () <= 2.1);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (1.9 <= value && value <= 2.1);
     statcol.collect (5.0);
-    assert (6.9 <= statcol.fetch () &&  statcol.fetch () <= 7.1);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (6.9 <= value &&  value <= 7.1);
     statcol.collect (1.0);
-    assert (7.9 <= statcol.fetch () &&  statcol.fetch () <= 8.1);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (7.9 <= value && value <= 8.1);
   }
 
   // test gauge
   {
     floating_gauge_statistic statcol;
+    floating_rep value;
 
     statcol.collect (2.0);
-    assert (1.9 <= statcol.fetch () &&  statcol.fetch () <= 2.1);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (1.9 <= value &&  value <= 2.1);
     statcol.collect (5.0);
-    assert (4.9 <= statcol.fetch () &&  statcol.fetch () <= 5.1);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (4.9 <= value &&  value <= 5.1);
     statcol.collect (1.0);
-    assert (0.9 <= statcol.fetch () &&  statcol.fetch () <= 1.1);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (0.9 <= value &&  value <= 1.1);
   }
 
   // test max
   {
     floating_max_statistic statcol;
+    floating_rep value;
 
     statcol.collect (2.0);
-    assert (1.9 <= statcol.fetch () &&  statcol.fetch () <= 2.1);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (1.9 <= value &&  value <= 2.1);
     statcol.collect (5.0);
-    assert (4.9 <= statcol.fetch () &&  statcol.fetch () <= 5.1);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (4.9 <= value &&  value <= 5.1);
     statcol.collect (1.0);
-    assert (4.9 <= statcol.fetch () &&  statcol.fetch () <= 5.1);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (4.9 <= value &&  value <= 5.1);
   }
 
   // test min
   {
     floating_min_statistic statcol;
+    floating_rep value;
 
     statcol.collect (2.0);
-    assert (1.9 <= statcol.fetch () &&  statcol.fetch () <= 2.1);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (1.9 <= value &&  value <= 2.1);
     statcol.collect (5.0);
-    assert (1.9 <= statcol.fetch () &&  statcol.fetch () <= 2.1);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (1.9 <= value &&  value <= 2.1);
     statcol.collect (1.0);
-    assert (0.9 <= statcol.fetch () &&  statcol.fetch () <= 1.1);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (0.9 <= value &&  value <= 1.1);
   }
 }
 

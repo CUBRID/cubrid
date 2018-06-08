@@ -40,7 +40,101 @@ namespace cubmonitor
   statistic_value
   fetch_statistic_representation (const floating_rep &value)
   {
-    return *reinterpret_cast<statistic_value *>
+    return *reinterpret_cast<const statistic_value *> (&value);
+  }
+
+  amount_rep
+  statistic_value_to_amount (statistic_value value)
+  {
+    return static_cast<amount_rep> (value);
+  }
+
+  floating_rep
+  statistic_value_to_floating (statistic_value value)
+  {
+    return *reinterpret_cast<floating_rep *> (&value);
+  }
+
+  time_rep
+  statistic_value_to_time_rep (statistic_value value)
+  {
+    return std::chrono::duration_cast<time_rep> (std::chrono::microseconds (value));
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // fully specialized constructors for max/min
+  //////////////////////////////////////////////////////////////////////////
+
+  max_statistic<amount_rep>::max_statistic (void)
+    : m_value (std::numeric_limits<amount_rep>::min ())
+  {
+    //
+  }
+
+  max_statistic<floating_rep>::max_statistic (void)
+    : m_value (std::numeric_limits<floating_rep>::min ())
+  {
+    //
+  }
+
+  max_statistic<time_rep>::max_statistic (void)
+    : m_value (time_rep::min ())
+  {
+    //
+  }
+
+  max_atomic_statistic<amount_rep>::max_atomic_statistic (void)
+    : m_value { std::numeric_limits<amount_rep>::min () }
+  {
+    //
+  }
+
+  max_atomic_statistic<floating_rep>::max_atomic_statistic (void)
+    : m_value { std::numeric_limits<floating_rep>::min () }
+  {
+    //
+  }
+
+  max_atomic_statistic<time_rep>::max_atomic_statistic (void)
+    : m_value { time_rep::min () }
+  {
+    //
+  }
+
+  min_statistic<amount_rep>::min_statistic (void)
+    : m_value (std::numeric_limits<amount_rep>::max ())
+  {
+    //
+  }
+
+  min_statistic<floating_rep>::min_statistic (void)
+    : m_value (std::numeric_limits<floating_rep>::max ())
+  {
+    //
+  }
+
+  min_statistic<time_rep>::min_statistic (void)
+    : m_value (time_rep::max ())
+  {
+    //
+  }
+
+  min_atomic_statistic<amount_rep>::min_atomic_statistic (void)
+    : m_value { std::numeric_limits<amount_rep>::min () }
+  {
+    //
+  }
+
+  min_atomic_statistic<floating_rep>::min_atomic_statistic (void)
+    : m_value { std::numeric_limits<floating_rep>::min () }
+  {
+    //
+  }
+
+  min_atomic_statistic<time_rep>::min_atomic_statistic (void)
+    : m_value { time_rep::min () }
+  {
+    //
   }
 
 } // namespace cubmonitor
