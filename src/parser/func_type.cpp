@@ -80,7 +80,6 @@ std::vector<func_signature> func_signature::double_r_any = {//original code does
 std::vector<func_signature> func_signature::ntile = {//why original code cast args to double instead int???
   {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
   {PT_TYPE_INTEGER, {PT_TYPE_MAYBE}, {}},
-  {PT_TYPE_INTEGER, {PT_TYPE_NULL}, {}},
 };
 
 /*cannot define a clear signature because casting depends on actual value
@@ -141,7 +140,6 @@ std::vector<func_signature> func_signature::group_concat = {
   {PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_DATETIME , PT_GENERIC_TYPE_NCHAR }, {}},
 #endif
 #endif
-//{PT_TYPE_VARCHAR  , {PT_TYPE_NULL                                     }, {}},
 };
 
 std::vector<func_signature> func_signature::lead_lag = {//original code doesn't do anything!!!
