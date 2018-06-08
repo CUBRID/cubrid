@@ -144,8 +144,6 @@ std::vector<func_signature> func_signature::lead_lag = {//original code doesn't 
 std::vector<func_signature> func_signature::elt = {
   {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARCHAR     }},//get_current_result() expects args to be VCHAR, not just equivalent
   {PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARNCHAR    }},//get_current_result() expects args to be VNCHAR, not just equivalent
-//{PT_TYPE_NULL     , {PT_TYPE_NULL                   }, {PT_GENERIC_TYPE_ANY }},
-//{PT_TYPE_NULL     , {PT_TYPE_NULL                   }, {                    }},
   {PT_TYPE_NULL     , {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {                    }},
 };
 
@@ -302,12 +300,19 @@ std::vector<func_signature>* func_signature::get_signatures(FUNC_TYPE ft){
 const char* str(const func_signature& signature, string_buffer& sb)
 {
     ::str(signature.ret, sb);
-    sb(" (");
+    sb("(");
     for(auto i: signature.fix)
     {
         ::str(i, sb);
+        sb(",");
     }
-    sb(")");
+    sb("{");
+    for(auto i: signature.rep)
+    {
+        ::str(i, sb);
+        sb(",");
+    }
+    sb("})");
     return sb.get_buffer();
 }
 

@@ -12970,6 +12970,10 @@ namespace Func
   bool cmp_types_castable(const pt_arg_type& type, pt_type_enum type_enum)//is possible to cast type_enum -> type?
   {
     assert(type.type != pt_arg_type::INDEX);
+    if(type_enum == PT_TYPE_NULL)//PT_TYPE_NULL is castable to any type
+      {
+        return true;
+      }
     if (type.type == pt_arg_type::NORMAL)
       {
         switch(type.val.type)
@@ -13280,7 +13284,7 @@ namespace Func
     {
         int sigIndex = 0;
         for(auto& sig: signatures)
-        {
+          {
             ++sigIndex;
             parser_node* arg = m_node->info.function.arg_list;
             bool match = true;
@@ -13288,40 +13292,47 @@ namespace Func
             //check fixed part of the function signature
             int argIndex = 0;
             for(auto& fix: sig.fix)
-            {
+              {
                 ++argIndex;
                 if(arg == NULL)
-                {
+                  {
                     //printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
                     break;
-                }
+                  }
                 if(fix.type == pt_arg_type::NORMAL || fix.type == pt_arg_type::GENERIC)
-                {
+                  {
                     if(!cmp_types(fix, arg->type_enum))
-                    {
+                      {
                         match = false;//current arg doesn't match coresponding type => try next signature
                         sb("  signature#%02d ", sigIndex);
                         str(sig, sb);
-                        sb(", arg#%02d, formal arg type ", argIndex);
+                        sb(": arg#%02d, formal arg type ", argIndex);
                         str(fix, sb);
                         sb(", actual arg type %s\n", str(arg->type_enum));
                         break;
-                    }
-                }
+                      }
+                  }
                 else if(fix.type == pt_arg_type::INDEX)
                     {
                     //do nothing!?
                     }
                 arg = arg->next;
             }
-            if(!match || (arg!=NULL && sig.rep.size()==0) || (arg==NULL && sig.rep.size()!=0))
+            if(match && (arg!=NULL && sig.rep.size()==0) || (arg==NULL && sig.rep.size()!=0))//number of arguments don't match
+              {
+                match = false;
+                sb("  signature#%02d ", sigIndex);
+                str(sig, sb);
+                sb(": number of arguments don't match\n", sigIndex);
+              }
+            if(!match)
             {
                 continue;
             }
             //check repetitive args
             int index = 0;
             for(; arg; arg=arg->next, index=(index+1)%sig.rep.size())
-            {
+              {
                 ++argIndex;
                 auto& type = sig.rep[index];
                 if(type.type == pt_arg_type::NORMAL || type.type == pt_arg_type::GENERIC)
@@ -13338,15 +13349,15 @@ namespace Func
                     }
                 }
                 else if(type.type == pt_arg_type::INDEX)
-                    {
+                  {
                     //do nothing!?
-                    }
-            }
+                  }
+              }
             if(match && index==0)
-            {
+              {
                 return &sig;
-            }
-        }
+              }
+          }
         return NULL;
     }
   }; //class Node
@@ -13432,18 +13443,17 @@ static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
           //printf("1: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
           auto func_sigs = func_signature::get_signatures(fcode);
           assert("ERR no function signature" && func_sigs != NULL);
-          if(!func_sigs){
+          if(!func_sigs)
+          {
             //printf("ERR no function signature for fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
             pt_frob_error(parser, node, "ERR no function signature found for function %s (fcode=%d) with args: %s", str(fcode), fcode, parser_print_tree_list(parser, arg_list));
             return node;
           }
           string_buffer sb;
-          sb("function %s\n", str(fcode));
           const func_signature* func_sig = funcNode.get_signature(*func_sigs, sb);
           if(func_sig != NULL)
             {
-              //pt_reset_error(parser);//clear all errors accumulated during signature matching
-              {
+              {//debug only
                   sb.clear();
                   //printf("DBG matching signature for %s: %s\n", str(fcode), str(*func_sig, sb));
               }
@@ -13454,7 +13464,7 @@ static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
             {
               node->type_enum = PT_TYPE_NA;//to avoid entering here 2nd time
               //arg_type = PT_TYPE_NONE;//unused!?
-              pt_frob_error(parser, node, "ERR no existing function signature matches %s\n args: %s", sb.get_buffer(), parser_print_tree_list(parser, arg_list));
+              pt_frob_error(parser, node, "No existing function signature matches %s(%s)\n%s", str(fcode), parser_print_tree_list(parser, arg_list), sb.get_buffer());
             }
         }
     }
