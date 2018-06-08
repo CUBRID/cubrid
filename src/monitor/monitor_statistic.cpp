@@ -25,42 +25,22 @@
 
 namespace cubmonitor
 {
-  // all fetchable_statistic::fetch specializations
   statistic_value
-  fetchable_statistic<amount_rep>::fetch (void) const
+  fetch_statistic_representation (const time_rep &value)
   {
-    return static_cast<statistic_value> (m_value);
+    return static_cast<statistic_value> (std::chrono::duration_cast<std::chrono::microseconds> (value).count ());
   }
 
   statistic_value
-  fetchable_statistic<std::atomic<amount_rep>>::fetch (void) const
+  fetch_statistic_representation (const amount_rep &value)
   {
-    return static_cast<statistic_value> (m_value);
+    return static_cast<statistic_value> (value);
   }
 
   statistic_value
-  fetchable_statistic<floating_rep>::fetch (void) const
+  fetch_statistic_representation (const floating_rep &value)
   {
-    return static_cast<statistic_value> (m_value);
+    return *reinterpret_cast<statistic_value *>
   }
 
-  statistic_value
-  fetchable_statistic<std::atomic<floating_rep>>::fetch (void) const
-  {
-    return static_cast<statistic_value> (m_value);
-  }
-
-  statistic_value
-  fetchable_statistic<time_rep>::fetch (void) const
-  {
-    std::chrono::microseconds us = std::chrono::duration_cast<std::chrono::microseconds> (m_value);
-    return static_cast<statistic_value> (us.count ());
-  }
-
-  statistic_value
-  fetchable_statistic<std::atomic<time_rep>>::fetch (void) const
-  {
-    std::chrono::microseconds us = std::chrono::duration_cast<std::chrono::microseconds> (m_value.load ());
-    return static_cast<statistic_value> (us.count ());
-  }
 } // namespace cubmonitor

@@ -44,16 +44,23 @@ namespace cubmonitor
   void
   transaction_sheet_manager::static_init (void)
   {
+    // note - should be protected by mutex
+
     if (s_transaction_sheets == NULL)
       {
+	// get transaction count
 	std::size_t tran_count = NUM_NORMAL_TRANS;
+	// all transaction start with invalid sheets
 	s_transaction_sheets = new transaction_sheet[tran_count];
 	for (std::size_t it = 0; it < tran_count; it++)
 	  {
 	    s_transaction_sheets[it] = INVALID_SHEET;
 	  }
-
 	s_transaction_count = tran_count;
+      }
+    else
+      {
+	// already initialized
       }
   }
 
@@ -62,31 +69,38 @@ namespace cubmonitor
   {
     std::unique_lock<std::mutex> ulock (s_sheets_mutex);
 
+    // make sure it is initialized
     static_init ();
 
-    int tran_index = logtb_get_current_tran_index ();
+    // get current transaction
+    int transaction = logtb_get_current_tran_index ();
 
-    if (tran_index <= LOG_SYSTEM_TRAN_INDEX || tran_index >= (int) s_transaction_count)
+    if (transaction <= LOG_SYSTEM_TRAN_INDEX || transaction >= (int) s_transaction_count)
       {
+	// invalid transaction
 	assert (false);
 	return false;
       }
 
-    std::size_t index = std::size_t (tran_index - 1);
-    if (s_transaction_sheets[index] == INVALID_SHEET)
+    std::size_t tran_array_index = std::size_t (transaction - 1);
+    if (s_transaction_sheets[tran_array_index] == INVALID_SHEET)
       {
-	// find new sheet
+	// transaction doesn't have a sheet assigned
+	// find unused sheet
 	if (s_current_sheet_count >= MAX_SHEETS)
 	  {
+	    // already maxed
 	    return false;
 	  }
+	// iterate sheets. must have counter 0 if unused
 	for (std::size_t sheet_index = 0; sheet_index < MAX_SHEETS; sheet_index++)
 	  {
 	    if (s_sheet_start_count[sheet_index] == 0)
 	      {
-		// found free sheet
-		s_transaction_sheets[index] = sheet_index;
+		// found free sheet; assign to current transaction
+		s_transaction_sheets[tran_array_index] = sheet_index;
 		s_sheet_start_count[sheet_index] = 1;
+		// increment used sheets count
 		++s_current_sheet_count;
 		return true;
 	      }
@@ -96,9 +110,9 @@ namespace cubmonitor
       }
     else
       {
-	// already have a sheet
-	assert (s_sheet_start_count[s_transaction_sheets[index]] > 0);
-	++s_sheet_start_count[s_transaction_sheets[index]];
+	// already have a sheet; increment its count
+	assert (s_sheet_start_count[s_transaction_sheets[tran_array_index]] > 0);
+	++s_sheet_start_count[s_transaction_sheets[tran_array_index]];
 	return true;
       }
   }
@@ -108,17 +122,20 @@ namespace cubmonitor
   {
     std::unique_lock<std::mutex> ulock (s_sheets_mutex);
 
+    // make sure it is initialized
     static_init ();
 
-    int tran_index = logtb_get_current_tran_index ();
+    // get current transaction
+    int transaction = logtb_get_current_tran_index ();
 
-    if (tran_index <= LOG_SYSTEM_TRAN_INDEX || tran_index >= (int) s_transaction_count)
+    if (transaction <= LOG_SYSTEM_TRAN_INDEX || transaction >= (int) s_transaction_count)
       {
+	// invalid transaction
 	assert (false);
 	return;
       }
 
-    std::size_t index = tran_index - 1;
+    std::size_t index = transaction - 1;
     if (s_transaction_sheets[index] == INVALID_SHEET)
       {
 	// no sheet open... might have been cleared
@@ -155,19 +172,21 @@ namespace cubmonitor
   {
     if (s_current_sheet_count == 0)
       {
-	// no sheets
+	// no sheets; early out
 	return INVALID_SHEET;
       }
     assert (s_transaction_sheets != NULL && s_transaction_count > 0);
 
-    int tran_index = logtb_get_current_tran_index ();
+    int transaction = logtb_get_current_tran_index ();
 
-    if (tran_index <= LOG_SYSTEM_TRAN_INDEX || tran_index >= (int) s_transaction_count)
+    if (transaction <= LOG_SYSTEM_TRAN_INDEX || transaction >= (int) s_transaction_count)
       {
+	// invalid transaction; may be a daemon or vacuum worker
 	return INVALID_SHEET;
       }
 
-    return s_transaction_sheets[tran_index - 1];
+    // return transaction's sheets if open or invalid sheet
+    return s_transaction_sheets[transaction - 1];
   }
 
 } // namespace cubmonitor

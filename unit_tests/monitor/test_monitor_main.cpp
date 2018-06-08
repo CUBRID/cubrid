@@ -277,7 +277,7 @@ test_multithread_accumulation (void)
 // test_transaction
 //////////////////////////////////////////////////////////////////////////
 
-using test_trancol = cubmonitor::transaction_collector<cubmonitor::amount_accumulator_statistic>;
+using test_trancol = cubmonitor::transaction_statistic<cubmonitor::amount_accumulator_statistic>;
 
 void
 test_collect_statistic (int tran_index, test_trancol &acc)

@@ -18,19 +18,20 @@
  */
 
 //
-// monitor_watchers.hpp - interface for managing separate sheets of statistics
+// monitor_transaction.hpp - interface for managing separate sheets of statistics for active transactions.
 //
-//    description - the purpose of this header is to provide a way to follow the work of specific(s) thread.
-//                  legacy performance monitor behavior is to provide separate sheets for transaction entries.
-//                  this is an abstraction of the sheet concept that can be used in any context.
+//    cubrid monitoring module collects by default so called global statistics. in special circumstances, separate set
+//    of statistics may be tracked for one or more transactions.
 //
-// note - this should replace perfmon_start_watcher/perfmon_stop_watcher functionality. the difference between this
-//        implementation and previous is that sheets are no longer directly linked to transaction indexes. transaction
-//        should manage its separate sheet.
+//    this interface provides statistics that can collect to separate transaction sheets automatically.
 //
-//        these sheets are not limited to using them as transaction sheets. they may be used in different contexts
+//    to keep memory footprint as reduced as possible, statistics extend the number of sheets dynamically, based on
+//    requirements. in most workloads, no or just few extra sheets will be created.
 //
-//        there is a limitation of one separate sheet per thread per sheet manager.
+//    IMPORTANT - sheets are reused in order to avoid allocating more than necessary. as consequence, a reused sheet
+//                will inherit values from previous usage. the correct way of inspecting the execution of a transaction
+//                or thread is to fetch two snapshots, once at the beginning and once at the end and do the difference
+//                between snapshots.
 //
 
 #if !defined _MONITOR_TRANSACTION_HPP_
@@ -46,59 +47,79 @@
 
 namespace cubmonitor
 {
-  // for separate sheets of statistics
-  using transaction_sheet = std::size_t;
+  using transaction_sheet = std::size_t;    // transaction sheet identifier type
 
   //
-  // sheet_manager - manage opened sheets and thread sheets
+  // sheet_manager - manage statistic sheets for transaction watchers
   //
   class transaction_sheet_manager
   {
     public:
-
+      // INVALID_SHEET - value to define no or invalid sheet
       static const transaction_sheet INVALID_SHEET = std::numeric_limits<std::size_t>::max ();
-      static const std::size_t MAX_SHEETS = 1024;
+      static const std::size_t MAX_SHEETS = 1024;     // maximum number of sheets allowed
+      // note - we can consider reducing this
 
-      static bool start_watch (void);
-      static void end_watch (bool end_all = false);
-      static transaction_sheet get_sheet (void);
+      static bool start_watch (void);                 // start watching on current transaction
+      // note - current thread should be assigned a transaction
+      //        watch is re-entrant
+
+      static void end_watch (bool end_all = false);   // end watching on current transaction
+      // note - current thread should be assigned a transaction
+      //        when end_all is true, all started watches are cleared
+
+      static transaction_sheet get_sheet (void);      // get current transaction sheet
+      // note - if current thread is not assigned a transaction or
+      //        if transaction is not watching, INVALID_SHEET is
+      //        returned.
 
     private:
+
       transaction_sheet_manager (void) = delete;    // entirely static class; no instances are permitted
 
-      static void static_init (void);
+      static void static_init (void);               // automatically initialized on first usage
 
-      static std::size_t s_current_sheet_count;
-      static unsigned s_sheet_start_count[MAX_SHEETS];
+      static std::size_t s_current_sheet_count;         // current count of opened sheets
+      static unsigned s_sheet_start_count[MAX_SHEETS];  // watch counts for each [open] sheet
 
-      static std::size_t s_transaction_count;
-      static transaction_sheet *s_transaction_sheets;
+      static std::size_t s_transaction_count;           // total transaction count
+      static transaction_sheet *s_transaction_sheets;   // assigned sheets to each transaction
 
-      static std::mutex s_sheets_mutex;
+      static std::mutex s_sheets_mutex;                 // mutex to protect concurrent start/end watch
   };
 
-  template <class StatCollector>
-  class transaction_collector
+  //
+  // transaction_statistic - wrapper class over one statistic that can store statistics for transaction sheets
+  //
+  //    transaction statistic instance always starts with a single statistic - the global statistic. if transactions
+  //    start separate sheets during collection, the statistics storage is extended to required size.
+  //
+  //    fetching a value for a sheet that does not exist return 0 without extending
+  //
+  template <class S>
+  class transaction_statistic
   {
     public:
-      using collector_type = StatCollector;
+      using statistic_type = S;                                       // base statistic type
 
-      transaction_collector (void);
-      ~transaction_collector (void);
+      transaction_statistic (void);                                   // constructor
+      ~transaction_statistic (void);                                  // destructor
 
-      statistic_value fetch (void) const;
-      statistic_value fetch_sheet (void) const;
+      statistic_value fetch (void) const;                             // fetch global statistic
+      statistic_value fetch_sheet (void) const;                       // fetch from transaction sheet (if open)
 
-      void collect (const typename collector_type::rep &change);
+      void collect (const typename statistic_type::rep &value);       // collect to global statistic and to transaction
+      // sheet (if open)
 
     private:
 
-      void extend (std::size_t to);
+      void extend (std::size_t to);                                   // extend statistics array to given size
+      // note - extensions are synchronized
 
-      collector_type m_global_collector;
-      collector_type *m_sheet_collectors;
-      std::size_t m_sheet_collectors_count;
-      std::mutex m_extend_mutex;
+      statistic_type m_global_stat;                                   // global statistic
+      statistic_type *m_sheet_stats;                                  // separate sheet statistics
+      std::size_t m_sheet_stats_count;                                // current size of m_sheet_stats
+      std::mutex m_extend_mutex;                                      // mutex protecting extensions
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -106,27 +127,28 @@ namespace cubmonitor
   //////////////////////////////////////////////////////////////////////////
 
   //////////////////////////////////////////////////////////////////////////
-  // transaction_collector
+  // transaction_statistic
   //////////////////////////////////////////////////////////////////////////
 
-  template <class StatCollector>
-  transaction_collector<StatCollector>::transaction_collector (void)
-    : m_global_collector ()
-    , m_sheet_collectors (NULL)
-    , m_sheet_collectors_count (0)
+  template <class S>
+  transaction_statistic<S>::transaction_statistic (void)
+    : m_global_stat ()
+    , m_sheet_stats (NULL)
+    , m_sheet_stats_count (0)
+    , m_extend_mutex ()
   {
     //
   }
 
-  template <class StatCollector>
-  transaction_collector<StatCollector>::~transaction_collector (void)
+  template <class S>
+  transaction_statistic<S>::~transaction_statistic (void)
   {
-    delete [] m_sheet_collectors;
+    delete [] m_sheet_stats;
   }
 
-  template <class StatCollector>
+  template <class S>
   void
-  transaction_collector<StatCollector>::extend (std::size_t to)
+  transaction_statistic<S>::extend (std::size_t to)
   {
     assert (to > 0);
 
@@ -138,64 +160,68 @@ namespace cubmonitor
 	to = transaction_sheet_manager::MAX_SHEETS;
       }
 
-    if (to <= m_sheet_collectors_count)
+    if (to <= m_sheet_stats_count)
       {
 	// already extended
 	return;
       }
 
-    collector_type *new_collectors = new collector_type[to];
-    if (m_sheet_collectors_count != 0)
+    // allocate new buffer
+    statistic_type *new_collectors = new statistic_type[to];
+    if (m_sheet_stats_count != 0)
       {
-	std::memcpy (new_collectors, m_sheet_collectors, m_sheet_collectors_count * sizeof (collector_type));
+	// copy old buffer
+	std::memcpy (new_collectors, m_sheet_stats, m_sheet_stats_count * sizeof (statistic_type));
       }
-    delete [] m_sheet_collectors;
-    m_sheet_collectors = new_collectors;
-    m_sheet_collectors_count = to;
+    // delete old buffer
+    delete [] m_sheet_stats;
+    // update buffer
+    m_sheet_stats = new_collectors;
+    m_sheet_stats_count = to;
   }
 
-  template <class StatCollector>
+  template <class S>
   statistic_value
-  transaction_collector<StatCollector>::fetch (void) const
+  transaction_statistic<S>::fetch (void) const
   {
-    return m_global_collector.fetch ();
+    return m_global_stat.fetch ();
   }
 
-  template <class StatCollector>
+  template <class S>
   statistic_value
-  transaction_collector<StatCollector>::fetch_sheet (void) const
+  transaction_statistic<S>::fetch_sheet (void) const
   {
     transaction_sheet sheet = transaction_sheet_manager::get_sheet ();
     if (sheet == transaction_sheet_manager::INVALID_SHEET)
       {
-	// invalid... is this acceptable?
+	// transaction is not watching; return 0
 	return 0;
       }
 
-    if (m_sheet_collectors_count <= sheet)
+    if (m_sheet_stats_count <= sheet)
       {
-	// nothing was collected
+	// nothing was collected; return 0
 	return 0;
       }
 
     // return collected value
-    return m_sheet_collectors[sheet].fetch ();
+    return m_sheet_stats[sheet].fetch ();
   }
 
-  template <class StatCollector>
+  template <class S>
   void
-  transaction_collector<StatCollector>::collect (const typename collector_type::rep &change)
+  transaction_statistic<S>::collect (const typename statistic_type::rep &value)
   {
-    m_global_collector.collect (change);
+    m_global_stat.collect (value);
 
     transaction_sheet sheet = transaction_sheet_manager::get_sheet ();
     if (sheet != transaction_sheet_manager::INVALID_SHEET)
       {
-	if (sheet >= m_sheet_collectors_count)
+	if (sheet >= m_sheet_stats_count)
 	  {
 	    extend (sheet + 1);
 	  }
-	m_sheet_collectors[sheet].collect (change);
+	m_sheet_stats[sheet].collect (value);
       }
   }
 
