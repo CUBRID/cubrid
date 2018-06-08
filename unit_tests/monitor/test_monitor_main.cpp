@@ -22,8 +22,6 @@
 #include "monitor_transaction.hpp"
 #include "thread_manager.hpp"
 
-#include "perf_monitor.h"
-
 #include <thread>
 #include <iostream>
 
@@ -37,7 +35,6 @@ static void test_registration (void);
 int
 main (int, char **)
 {
-  perfmon_server_is_stats_on (NULL);
   test_single_statistics_no_concurrency ();
   test_multithread_accumulation ();
   test_transaction ();
