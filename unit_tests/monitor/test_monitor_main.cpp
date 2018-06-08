@@ -22,6 +22,8 @@
 #include "monitor_transaction.hpp"
 #include "thread_manager.hpp"
 
+#include "perf_monitor.h"
+
 #include <thread>
 #include <iostream>
 
@@ -35,6 +37,7 @@ static void test_registration (void);
 int
 main (int, char **)
 {
+  perfmon_server_is_stats_on (NULL);
   test_single_statistics_no_concurrency ();
   test_multithread_accumulation ();
   test_transaction ();
@@ -401,6 +404,16 @@ test_registration (void)
   assert (my_monitor.get_statistics_count () == 2);
   statistic_value *statsp = my_monitor.allocate_statistics_buffer ();
 
+  // lambda to reset local statistics before fetching again
+  auto reset_stats = [&]
+  {
+    for (std::size_t it = 0; it < my_monitor.get_statistics_count (); it++)
+      {
+	statsp[it] = 0;
+      }
+  };
+  reset_stats ();
+
   // collect on acc
   acc.collect (1);
 
@@ -416,6 +429,7 @@ test_registration (void)
   my_monitor.fetch_global_statistics (statsp);
   assert (statsp[0] == 1);
   assert (statsp[1] == 2);
+  reset_stats ();
   my_monitor.fetch_transaction_statistics (statsp);
   assert (statsp[0] == 0);
   assert (statsp[1] == 0);
@@ -425,9 +439,11 @@ test_registration (void)
 
   acc.collect (1);
   tran_acc.collect (3);
+  reset_stats ();
   my_monitor.fetch_global_statistics (statsp);
   assert (statsp[0] == 2);
   assert (statsp[1] == 5);
+  reset_stats ();
   my_monitor.fetch_transaction_statistics (statsp);
   assert (statsp[0] == 0);
   assert (statsp[1] == 3);
@@ -438,9 +454,11 @@ test_registration (void)
   acc.collect (1);
   tran_acc.collect (4);
 
+  reset_stats ();
   my_monitor.fetch_global_statistics (statsp);
   assert (statsp[0] == 3);
   assert (statsp[1] == 9);
+  reset_stats ();
   my_monitor.fetch_transaction_statistics (statsp);
   assert (statsp[0] == 0);
   assert (statsp[1] == 0);

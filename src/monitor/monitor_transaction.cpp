@@ -54,7 +54,7 @@ namespace cubmonitor
 	s_transaction_sheets = new transaction_sheet[tran_count];
 	for (std::size_t it = 0; it < tran_count; it++)
 	  {
-	    s_transaction_sheets[it] = INVALID_SHEET;
+	    s_transaction_sheets[it] = INVALID_TRANSACTION_SHEET;
 	  }
 	s_transaction_count = tran_count;
       }
@@ -83,7 +83,7 @@ namespace cubmonitor
       }
 
     std::size_t tran_array_index = std::size_t (transaction - 1);
-    if (s_transaction_sheets[tran_array_index] == INVALID_SHEET)
+    if (s_transaction_sheets[tran_array_index] == INVALID_TRANSACTION_SHEET)
       {
 	// transaction doesn't have a sheet assigned
 	// find unused sheet
@@ -136,7 +136,7 @@ namespace cubmonitor
       }
 
     std::size_t index = transaction - 1;
-    if (s_transaction_sheets[index] == INVALID_SHEET)
+    if (s_transaction_sheets[index] == INVALID_TRANSACTION_SHEET)
       {
 	// no sheet open... might have been cleared
 	return;
@@ -162,7 +162,7 @@ namespace cubmonitor
     if (s_sheet_start_count[sheet] == 0)
       {
 	// sheet is now free
-	s_transaction_sheets[index] = INVALID_SHEET;
+	s_transaction_sheets[index] = INVALID_TRANSACTION_SHEET;
 	--s_current_sheet_count;
       }
   }
@@ -173,7 +173,7 @@ namespace cubmonitor
     if (s_current_sheet_count == 0)
       {
 	// no sheets; early out
-	return INVALID_SHEET;
+	return INVALID_TRANSACTION_SHEET;
       }
     assert (s_transaction_sheets != NULL && s_transaction_count > 0);
 
@@ -182,7 +182,7 @@ namespace cubmonitor
     if (transaction <= LOG_SYSTEM_TRAN_INDEX || transaction >= (int) s_transaction_count)
       {
 	// invalid transaction; may be a daemon or vacuum worker
-	return INVALID_SHEET;
+	return INVALID_TRANSACTION_SHEET;
       }
 
     // return transaction's sheets if open or invalid sheet

@@ -56,7 +56,7 @@ namespace cubmonitor
   {
     public:
       // INVALID_SHEET - value to define no or invalid sheet
-      static const transaction_sheet INVALID_SHEET = std::numeric_limits<std::size_t>::max ();
+      static const transaction_sheet INVALID_TRANSACTION_SHEET = std::numeric_limits<std::size_t>::max ();
       static const std::size_t MAX_SHEETS = 1024;     // maximum number of sheets allowed
       // note - we can consider reducing this
 
@@ -192,7 +192,7 @@ namespace cubmonitor
   transaction_statistic<S>::fetch_sheet (void) const
   {
     transaction_sheet sheet = transaction_sheet_manager::get_sheet ();
-    if (sheet == transaction_sheet_manager::INVALID_SHEET)
+    if (sheet == transaction_sheet_manager::INVALID_TRANSACTION_SHEET)
       {
 	// transaction is not watching; return 0
 	return 0;
@@ -215,7 +215,7 @@ namespace cubmonitor
     m_global_stat.collect (value);
 
     transaction_sheet sheet = transaction_sheet_manager::get_sheet ();
-    if (sheet != transaction_sheet_manager::INVALID_SHEET)
+    if (sheet != transaction_sheet_manager::INVALID_TRANSACTION_SHEET)
       {
 	if (sheet >= m_sheet_stats_count)
 	  {

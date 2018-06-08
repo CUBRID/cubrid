@@ -38,10 +38,10 @@ namespace cubmonitor
   }
 
   //////////////////////////////////////////////////////////////////////////
-  // registered_statistics_holder
+  // registration
   //////////////////////////////////////////////////////////////////////////
 
-  monitor::registered_statistics_holder::registered_statistics_holder (void)
+  monitor::registration::registration (void)
     : m_offset (0)
     , m_statistics_count (0)
     , m_fetch_func ()
@@ -56,7 +56,7 @@ namespace cubmonitor
   monitor::monitor ()
     : m_total_statistics_count (0)
     , m_all_names ()
-    , m_registered ()
+    , m_registrations ()
   {
 
   }
@@ -70,7 +70,7 @@ namespace cubmonitor
   std::size_t
   monitor::get_registered_count (void)
   {
-    return m_registered.size ();
+    return m_registrations.size ();
   }
 
   statistic_value *
@@ -83,7 +83,7 @@ namespace cubmonitor
   monitor::fetch_global_statistics (statistic_value *destination)
   {
     statistic_value *stats_iterp = destination;
-    for (auto it : m_registered)
+    for (auto it : m_registrations)
       {
 	it.m_fetch_func (stats_iterp);
 	stats_iterp += it.m_statistics_count;
@@ -93,8 +93,13 @@ namespace cubmonitor
   void
   monitor::fetch_transaction_statistics (statistic_value *destination)
   {
+    if (transaction_sheet_manager::get_sheet () == transaction_sheet_manager::INVALID_TRANSACTION_SHEET)
+      {
+	// no transaction sheet, nothing to fetch
+	return;
+      }
     statistic_value *stats_iterp = destination;
-    for (auto it : m_registered)
+    for (auto it : m_registrations)
       {
 	it.m_tran_fetch_func (stats_iterp);
 	stats_iterp += it.m_statistics_count;
@@ -110,6 +115,7 @@ namespace cubmonitor
   void
   monitor::register_single_function (const char *name, const fetch_function &fetch_func)
   {
+    // use fetch_zero as tran_fetch_func
     register_statistics (1, fetch_func, fetch_zero);
     m_all_names.push_back (name);
 
@@ -130,8 +136,8 @@ namespace cubmonitor
   monitor::register_statistics (std::size_t count, const fetch_function &fetch_func,
 				const fetch_function &tran_fetch_func)
   {
-    m_registered.emplace_back ();
-    registered_statistics_holder &last = m_registered.back ();
+    m_registrations.emplace_back ();
+    registration &last = m_registrations.back ();
 
     last.m_offset = m_total_statistics_count;
     last.m_statistics_count = count;

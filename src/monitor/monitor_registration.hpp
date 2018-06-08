@@ -26,16 +26,16 @@
 //      to register a statistic, one must provide:
 //
 //        1. statistic name
-//        2. a way to fetch its value (a bound function)
+//        2. a way to fetch its value (bound function)
 //        3. TODO: other statistic properties.
 //
-//      TODO: currently, we only provide registering for single statistics. we will have to extend to fully cover
-//            performance monitoring requirements.
+//    TODO: currently, we only provide registering for single statistics. we will have to extend to fully cover
+//          performance monitoring requirements.
 //
-//            Extensions
+//          Extensions
 //
-//              - extending statistic properties
-//              - registering group of statistics
+//            - extending statistic properties
+//            - registering group of statistics
 //
 
 #if !defined _MONITOR_REGISTRATION_HPP_
@@ -51,9 +51,24 @@
 
 namespace cubmonitor
 {
+  //
+  // monitor - centralize statistics and fetch all their values on request
+  //
+  //    monitor can register single or group of statistics by saving meta-information for the group and its statistics.
+  //    info per group (registration):
+  //
+  //      1.  fetch global statistics [and fetch transaction sheet statistics]
+  //
+  //    info per statistic:
+  //
+  //      1. name
+  //
   class monitor
   {
     public:
+      // function format to fetch registered statistics. one such function is bound for each registration and should
+      // fetch all registered statistics
+      //
       using fetch_function = std::function<void (statistic_value *)>;
 
       monitor ();
@@ -70,15 +85,19 @@ namespace cubmonitor
       std::size_t get_statistics_count (void);
       std::size_t get_registered_count (void);
 
+      // allocate a buffer to hold values for all statistics
       statistic_value *allocate_statistics_buffer (void);
+      // fetch global statistics to buffer
       void fetch_global_statistics (statistic_value *destination);
+      // fetch current transaction statistics to buffer
       void fetch_transaction_statistics (statistic_value *destination);
 
       // todo - add multi-statistics
 
     private:
 
-      struct registered_statistics_holder
+      // internal structure to hold information on registered statistics
+      struct registration
       {
 	std::size_t m_offset;
 	std::size_t m_statistics_count;
@@ -86,21 +105,28 @@ namespace cubmonitor
 	fetch_function m_fetch_func;
 	fetch_function m_tran_fetch_func;
 
-	registered_statistics_holder (void);
+	registration (void);
 
 	// todo: add here more meta-information on each statistic
       };
 
+      // register a single statistics
       void register_single_function (const char *name, const fetch_function &fetch_f);
+      // register a single statistics with transaction sheets
       void register_single_function_with_transaction (const char *name, const fetch_function &fetch_func,
 	  const fetch_function &tran_fetch_func);
+      // register a number of statistics that can be fetched with fetch_func/tran_fetch_func
       void register_statistics (std::size_t count, const fetch_function &fetch_func,
 				const fetch_function &tran_fetch_func);
+      // debug function to verify the number of statistics match the number of names
       void check_name_count (void);
 
+      // total number of statistics
       std::size_t m_total_statistics_count;
+      // vector with statistic names
       std::vector<std::string> m_all_names;
-      std::vector<registered_statistics_holder> m_registered;
+      // registrations
+      std::vector<registration> m_registrations;
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -111,6 +137,7 @@ namespace cubmonitor
   void
   monitor::register_single_statistic (const char *name, const S &statistic)
   {
+    // convert statistic::fetch to fetch_func format
     fetch_function fetch_func = [&] (statistic_value * destination)
     {
       *destination = statistic.fetch ();
@@ -122,6 +149,7 @@ namespace cubmonitor
   void
   monitor::register_single_transaction_statistic (const char *name, const S &statistic)
   {
+    // convert statistic::fetch and statistic::fetch_sheet to fetch_func format
     fetch_function fetch_func = [&] (statistic_value * destination)
     {
       *destination = statistic.fetch ();
@@ -130,7 +158,6 @@ namespace cubmonitor
     {
       *destination = statistic.fetch_sheet ();
     };
-
     register_single_function_with_transaction (name, fetch_func, tran_fetch_func);
   }
 
