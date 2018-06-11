@@ -78,13 +78,15 @@ namespace cubstream
     reserved_pos = reserve_context->start_pos;
 
     written_bytes = write_action (reserved_pos, ptr, byte_count);
-    if (written_bytes < 0)
-      {
-	return ER_FAILED;
-      }
+
     reserve_context->written_bytes = written_bytes;
 
     err = commit_append (reserve_context);
+
+    if (written_bytes < 0)
+      {
+	err = ER_FAILED;
+      }
 
     return (err < 0) ? err : written_bytes;
   }
@@ -131,6 +133,11 @@ namespace cubstream
 	if (ptr == NULL || next_actual_read_bytes != byte_count - actual_read_bytes)
 	  {
 	    err = ER_FAILED;
+
+            if (ptr != NULL)
+              {
+                unlatch_read_data (read_latch_page_idx);
+              }
 
 	    delete [] local_buffer;
 	    return err;
@@ -221,6 +228,11 @@ namespace cubstream
 	if (ptr == NULL || next_actual_read_bytes != amount - actual_read_bytes)
 	  {
 	    err = ER_FAILED;
+
+            if (ptr != NULL)
+              {
+                unlatch_read_data (read_latch_page_idx);
+              }
 
 	    delete [] local_buffer;
 	    return err;
@@ -322,7 +334,6 @@ namespace cubstream
 	  }
 	m_last_notified_committed_pos = new_completed_position;
       }
-
 
     return NO_ERROR;
   }
