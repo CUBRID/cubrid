@@ -134,10 +134,10 @@ namespace cubstream
 	  {
 	    err = ER_FAILED;
 
-            if (ptr != NULL)
-              {
-                unlatch_read_data (read_latch_page_idx);
-              }
+	    if (ptr != NULL)
+	      {
+		unlatch_read_data (read_latch_page_idx);
+	      }
 
 	    delete [] local_buffer;
 	    return err;
@@ -229,10 +229,10 @@ namespace cubstream
 	  {
 	    err = ER_FAILED;
 
-            if (ptr != NULL)
-              {
-                unlatch_read_data (read_latch_page_idx);
-              }
+	    if (ptr != NULL)
+	      {
+		unlatch_read_data (read_latch_page_idx);
+	      }
 
 	    delete [] local_buffer;
 	    return err;
