@@ -6410,6 +6410,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
   OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_PTR_ALIGNED_SIZE + OR_CACHE_TIME_SIZE) a_reply;
   int i, request_len;
   const DB_VALUE *dbval;
+  int reset_on_commit, end_query_result, tran_state;
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -6495,6 +6496,10 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
       ptr = or_unpack_ptr (reply + OR_INT_SIZE * 4, query_idp);
       OR_UNPACK_CACHE_TIME (ptr, srv_cache_time);
 
+      ptr = or_unpack_int (ptr, &end_query_result);
+      ptr = or_unpack_int (ptr, &tran_state);
+      ptr = or_unpack_int (ptr, &reset_on_commit);
+
       if (replydata_listid && replydata_size_listid)
 	{
 	  /* unpack list file id of query result from the reply data */
@@ -6510,6 +6515,13 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	    }
 	  free_and_init (replydata_listid);
 	}
+
+      if (tran_state == TRAN_UNACTIVE_COMMITTED || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+	{
+	  net_cleanup_client_queues ();
+	}
+
+      /* TO DO - set latest query execution result - ended, committed, with reset */
     }
 
   return list_id;

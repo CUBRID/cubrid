@@ -4644,6 +4644,9 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   EXECUTION_INFO info = { NULL, NULL, NULL };
 
+  bool end_query_allowed;
+  TRAN_STATE tran_state;
+
   trace_slow_msec = prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS);
   trace_ioreads = prm_get_integer_value (PRM_ID_SQL_TRACE_IOREADS);
 
@@ -4703,7 +4706,11 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	}
     }
 
+  /* TO DO - handle net_Deferred_end_queries */
+
   CACHE_TIME_RESET (&srv_cache_time);
+
+  /* TO DO - check and update commit state on session state */
 
   /* call the server routine of query execute */
   list_id =
@@ -4720,6 +4727,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       info = xasl_cache_entry_p->sql_info;
     }
 
+  end_query_allowed = IS_QUERY_EXECUTE_WITH_COMMIT (query_flag);
 #if 0
   if (list_id == NULL && !CACHE_TIME_EQ (&clt_cache_time, &srv_cache_time))
 #else
@@ -4728,6 +4736,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     {
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
+      end_query_allowed = false;
 
       if (error_code != NO_ERROR)
 	{
@@ -4796,6 +4805,12 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	      memcpy (aligned_page_buf, page_ptr, page_size);
 	      qmgr_free_old_page_and_init (thread_p, page_ptr, list_id->tfile_vfid);
 	      page_ptr = aligned_page_buf;
+
+	      /* for now, allow end query if there is only one page */
+	      if (!VPID_EQ (&list_id->first_vpid, &list_id->last_vpid))
+		{
+		  end_query_allowed = false;
+		}
 	    }
 	  else
 	    {
@@ -4815,6 +4830,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	}
       else
 	{
+	  end_query_allowed = false;
 	  replydata_size = 0;
 	  return_error_to_client (thread_p, rid);
 	}
@@ -4891,12 +4907,42 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       xasl_cache_entry_p = NULL;
     }
 
+  if (end_query_allowed)
+    {
+      /* TO DO - handle end query */
+
+      tran_state = xtran_server_commit (thread_p, false);
+      net_cleanup_server_queues (rid);
+      if (tran_state != TRAN_UNACTIVE_COMMITTED && tran_state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+	{
+	  /* Likely the commit failed.. somehow */
+	  return_error_to_client (thread_p, rid);
+	}
+      /* TO DO - computes reset on commit */
+    }
+
   ptr = or_pack_int (ptr, queryinfo_string_length);
 
   /* query id to return as a fourth argument of the reply */
   ptr = or_pack_ptr (ptr, query_id);
   /* result cache created time */
   OR_PACK_CACHE_TIME (ptr, &srv_cache_time);
+
+  /* pack end query result */
+  if (end_query_allowed)
+    {
+      /* query ended */
+      ptr = or_pack_int (ptr, NO_ERROR);
+    }
+  else
+    {
+      /* query not ended */
+      ptr = or_pack_int (ptr, ER_FAILED);
+    }
+
+  /* pack commit result - TO DO handle reset on commit */
+  ptr = or_pack_int (ptr, (int) tran_state);
+  ptr = or_pack_int (ptr, (int) true);
 
 #if !defined(NDEBUG)
   /* suppress valgrind UMW error */
@@ -4915,6 +4961,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     {
       QFILE_FREE_AND_INIT_LIST_ID (list_id);
     }
+  /* TO DO - cleanup deferrer end queries */
 
 exit:
   if (base_stats != NULL)

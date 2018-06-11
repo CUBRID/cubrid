@@ -9143,6 +9143,11 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      query_flag |= XASL_CACHE_PINNED_REFERENCE;
 	    }
 
+	  if (statement->use_auto_commit)
+	    {
+	      query_flag |= EXECUTE_QUERY_WITH_COMMIT;
+	    }
+
 	  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true && parser->query_trace == true)
 	    {
 	      do_set_trace_to_query_flag (&query_flag);
@@ -10374,6 +10379,16 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (parser->is_xasl_pinned_reference)
 	{
 	  query_flag |= XASL_CACHE_PINNED_REFERENCE;
+	}
+
+      if (statement->use_auto_commit)
+	{
+	  query_flag |= EXECUTE_QUERY_WITH_COMMIT;
+	}
+
+      if (statement->use_auto_commit)
+	{
+	  query_flag |= EXECUTE_QUERY_WITH_COMMIT;
 	}
 
       if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true && parser->query_trace == true)
@@ -13419,6 +13434,11 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_flag |= XASL_CACHE_PINNED_REFERENCE;
     }
 
+  if (statement->use_auto_commit)
+    {
+      query_flag |= EXECUTE_QUERY_WITH_COMMIT;
+    }
+
   if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true && parser->query_trace == true)
     {
       do_set_trace_to_query_flag (&query_flag);
@@ -14320,6 +14340,11 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (parser->dont_collect_exec_stats)
     {
       query_flag |= DONT_COLLECT_EXEC_STATS;
+    }
+
+  if (statement->use_auto_commit)
+    {
+      query_flag |= EXECUTE_QUERY_WITH_COMMIT;
     }
 
   if (query_trace == true)
@@ -16009,6 +16034,11 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       query_flag |= NOT_FROM_RESULT_CACHE;
       query_flag |= RESULT_CACHE_INHIBITED;
+
+      if (statement->use_auto_commit)
+	{
+	  query_flag |= EXECUTE_QUERY_WITH_COMMIT;
+	}
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
       if (statement->info.merge.insert.value_clauses)
