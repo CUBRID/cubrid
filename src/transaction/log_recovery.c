@@ -2453,6 +2453,16 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	    }
 	}
 
+#if !defined(NDEBUG)
+      if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "logpb_recovery_analysis: log page %lld, checksum %d\n",
+			 log_page_p->hdr.logical_pageid, log_page_p->hdr.checksum);
+	  page_hexa_dump ((char *) log_page_p, LOG_PAGESIZE);
+	}
+#endif /* !NDEBUG */
+
       /* Check whether active log pages are corrupted. This may happen in case of partial page flush for instance. */
       if (logpb_page_check_corruption (thread_p, log_page_p, &is_log_page_corrupted) != NO_ERROR)
 	{

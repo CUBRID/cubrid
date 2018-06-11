@@ -3532,6 +3532,36 @@ fileio_is_system_volume_label_equal (THREAD_ENTRY * thread_p, FILEIO_SYSTEM_VOLU
   return (util_compare_filepath (sys_vol_info_p->vlabel, arg->vol_label) == 0);
 }
 
+/*
+* page_hexa_dump () - Hexa dump the page.
+*     return: nothing.
+*   data(in): The length of the data.
+*   length(in): The length of the data.
+*/
+void
+page_hexa_dump (void *data, int length)
+{
+  char log_block_string[IO_MAX_PAGE_SIZE * 4], *src_ptr, *dest_ptr;
+  int line_no = 0, i;
+
+  src_ptr = (char *) data;
+  dest_ptr = log_block_string;
+  for (i = 0; i < length; i++, src_ptr++)
+    {
+      if (i % 32 == 0)
+	{
+	  sprintf (dest_ptr, "\n  %05d: ", line_no++);
+	  dest_ptr += 10;
+	}
+
+      sprintf (dest_ptr, "%02X ", (unsigned char) (*src_ptr));
+      dest_ptr += 3;
+    }
+
+  sprintf (dest_ptr, "\n");
+  er_log_debug (ARG_FILE_LINE, "page_hexa_dump: data = %s\n", log_block_string);
+}
+
 #if !defined (WINDOWS)
 /*
  * pwrite_write_with_injected_fault () - Write buffer to file descriptor with fault injection.
@@ -3601,6 +3631,12 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
 	      // exit handler
 	      (void) fileio_synchronize (thread_p, fd, vlabel, FILEIO_SYNC_ONLY);
 
+#if !defined(NDEBUG)
+	      if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+		{
+		  page_hexa_dump (buf, count);
+		}
+#endif
 	      // exit
 	      _exit (0);
 	    }
