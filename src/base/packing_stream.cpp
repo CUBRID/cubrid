@@ -78,13 +78,15 @@ namespace cubstream
     reserved_pos = reserve_context->start_pos;
 
     written_bytes = write_action (reserved_pos, ptr, byte_count);
-    if (written_bytes < 0)
-      {
-	return ER_FAILED;
-      }
+
     reserve_context->written_bytes = written_bytes;
 
     err = commit_append (reserve_context);
+
+    if (written_bytes < 0)
+      {
+	err = ER_FAILED;
+      }
 
     return (err < 0) ? err : written_bytes;
   }
@@ -131,6 +133,11 @@ namespace cubstream
 	if (ptr == NULL || next_actual_read_bytes != byte_count - actual_read_bytes)
 	  {
 	    err = ER_FAILED;
+
+	    if (ptr != NULL)
+	      {
+		unlatch_read_data (read_latch_page_idx);
+	      }
 
 	    delete [] local_buffer;
 	    return err;
@@ -222,6 +229,11 @@ namespace cubstream
 	  {
 	    err = ER_FAILED;
 
+	    if (ptr != NULL)
+	      {
+		unlatch_read_data (read_latch_page_idx);
+	      }
+
 	    delete [] local_buffer;
 	    return err;
 	  }
@@ -290,7 +302,7 @@ namespace cubstream
     char *ptr_commit;
     stream_position new_completed_position = reserve_context->start_pos + reserve_context->reserved_amount;
 
-    m_buffer_mutex.lock ();
+    std::unique_lock<std::mutex> ulock (m_buffer_mutex);
 
     collapsed_reserve = m_reserved_positions.consume (reserve_context, last_used_context);
     if (collapsed_reserve)
@@ -317,14 +329,11 @@ namespace cubstream
 				       new_completed_position - m_last_notified_committed_pos);
 	    if (err != NO_ERROR)
 	      {
-		// TODO - check m_buffer_mutex leak
 		return err;
 	      }
 	  }
 	m_last_notified_committed_pos = new_completed_position;
       }
-
-    m_buffer_mutex.unlock ();
 
     return NO_ERROR;
   }

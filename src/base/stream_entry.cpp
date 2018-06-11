@@ -51,7 +51,7 @@ namespace cubstream
 
   void entry::destroy_objects ()
   {
-    for (int i = 0; i < m_packable_entries.size (); i++)
+    for (unsigned int i = 0; i < m_packable_entries.size (); i++)
       {
 	if (m_packable_entries[i] != NULL)
 	  {
@@ -104,7 +104,7 @@ namespace cubstream
    */
   int entry::packing_func (const stream_position &pos, char *ptr, const size_t reserved_amount)
   {
-    int i;
+    unsigned int i;
     cubpacking::packer *serializator = get_packer ();
 
     size_t aligned_amount = DB_ALIGN (reserved_amount, MAX_ALIGNMENT);
@@ -125,7 +125,7 @@ namespace cubstream
 
 #if !defined (NDEBUG)
 	curr_ptr = serializator->get_curr_ptr ();
-	assert (curr_ptr - start_ptr == entry_size);
+	assert (curr_ptr - start_ptr == (int) entry_size);
 #endif
       }
     serializator->align (MAX_ALIGNMENT);
@@ -201,7 +201,7 @@ namespace cubstream
    */
   int entry::unpack_func (char *ptr, const size_t data_size)
   {
-    int i;
+    unsigned int i;
     int error_code = NO_ERROR;
     int object_id;
     cubpacking::packer *serializator = get_packer ();
@@ -235,7 +235,7 @@ namespace cubstream
       }
     serializator->align (MAX_ALIGNMENT);
 
-    assert (serializator->get_curr_ptr () - ptr == data_size);
+    assert (serializator->get_curr_ptr () - ptr == (int) data_size);
 
     return error_code;
   }
@@ -250,7 +250,7 @@ namespace cubstream
   size_t entry::get_entries_size (void)
   {
     size_t entry_size, total_size = 0;
-    int i;
+    unsigned int i;
 
     cubpacking::packer *serializator = get_packer ();
     for (i = 0; i < m_packable_entries.size (); i++)
