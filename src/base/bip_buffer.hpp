@@ -326,7 +326,7 @@ namespace mem
 	  }
       };
 
-      const size_t get_page_size (void)
+      size_t get_page_size (void)
       {
 	return m_read_page_size;
       };
