@@ -5517,6 +5517,7 @@ pt_are_equivalent_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type)
 
     case PT_GENERIC_TYPE_SCALAR:
       return (
+        (op_type == PT_TYPE_ENUMERATION) ||
         PT_IS_NUMERIC_TYPE(op_type) ||
         PT_IS_STRING_TYPE(op_type) ||
         PT_IS_DATE_TIME_TYPE(op_type)
