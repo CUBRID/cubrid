@@ -12964,15 +12964,15 @@ namespace Func
   bool cmp_types_generic(const pt_arg_type& type, pt_type_enum type_enum)
   {
     assert(type.type != pt_arg_type::INDEX);
-    return type_enum==PT_TYPE_NULL || type_enum==PT_TYPE_MAYBE || pt_are_equivalent_types(type, type_enum);//PT_TYPE_NULL is equivalent to any type
+    return type_enum==PT_TYPE_NULL || pt_are_equivalent_types(type, type_enum);//PT_TYPE_NULL is equivalent to any type
   }
 
   bool cmp_types_castable(const pt_arg_type& type, pt_type_enum type_enum)//is possible to cast type_enum -> type?
   {
     assert(type.type != pt_arg_type::INDEX);
-    if(type_enum == PT_TYPE_NULL)//PT_TYPE_NULL is castable to any type
+    if(type_enum == PT_TYPE_NULL || type_enum == PT_TYPE_MAYBE)
       {
-        return true;
+        return true; //PT_TYPE_NULL, PT_TYPE_MAYBE are castable to any type
       }
     if (type.type == pt_arg_type::NORMAL)
       {
@@ -13230,15 +13230,12 @@ namespace Func
 #else//get index type from actual argument
           auto t = (type.type == pt_arg_type::INDEX ? get_arg(type.val.index)->type_enum : type);
 #endif
-          if(arg->type_enum != PT_TYPE_MAYBE)
+          pt_type_enum equivalent_type = pt_get_equivalent_type(t, arg->type_enum);
+          arg = cast(prev, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+          if(arg == NULL)
             {
-              pt_type_enum equivalent_type = pt_get_equivalent_type(t, arg->type_enum);
-              arg = cast(prev, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
-              if(arg == NULL)
-                  {
-                  printf("ERR\n");
-                  return false;
-                  }
+              printf("ERR\n");
+              return false;
             }
           ++arg_pos;
           prev = arg;
@@ -13253,7 +13250,7 @@ namespace Func
 
       //check repetitive part of the function signature
       int index = 0;
-      for(; arg; prev = arg, arg=arg->next, index=(index+1)%signature.rep.size(), ++arg_pos)
+      for(; arg; prev=arg, arg=arg->next, index=(index+1)%signature.rep.size(), ++arg_pos)
         {
           auto& type = signature.rep[index];
 #if 1//get index type from signature

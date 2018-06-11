@@ -15,13 +15,13 @@ std::vector<func_signature> func_signature::percentile_cont = {
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_NUMBER  }, {}},
   {0                , {PT_GENERIC_TYPE_DATETIME}, {}},
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_STRING  }, {}},
-  {0                , {PT_TYPE_MAYBE           }, {}},
+//{0                , {PT_TYPE_MAYBE           }, {}},
   {0                , {PT_TYPE_NA              }, {}},
 #else //use double as return type (as documentation says)... but tests are failing (adjust doc or tests)
   {PT_TYPE_DOUBLE   , {PT_GENERIC_TYPE_NUMBER  }, {}},
   {0                , {PT_GENERIC_TYPE_STRING  }, {}},
   {PT_TYPE_DOUBLE   , {PT_GENERIC_TYPE_DATETIME}, {}},
-  {0                , {PT_TYPE_MAYBE           }, {}},
+//{0                , {PT_TYPE_MAYBE           }, {}},
   {0                , {PT_TYPE_NA              }, {}},
 #endif
 };
@@ -30,19 +30,19 @@ std::vector<func_signature> func_signature::percentile_disc = {
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_NUMBER  }, {}},
   {0                , {PT_GENERIC_TYPE_DATETIME}, {}},
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_STRING  }, {}},
-  {0                , {PT_TYPE_MAYBE           }, {}},
+//{0                , {PT_TYPE_MAYBE           }, {}},
   {0                , {PT_TYPE_NA              }, {}},
 };
 
 std::vector<func_signature> func_signature::bigint_discrete = {
   {PT_TYPE_BIGINT, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
-  {PT_TYPE_BIGINT, {PT_TYPE_MAYBE                  }, {}},
+//{PT_TYPE_BIGINT, {PT_TYPE_MAYBE                  }, {}},
   {PT_TYPE_BIGINT, {PT_TYPE_NA                     }, {}},
 };
 
 std::vector<func_signature> func_signature::double_number = {
   {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER}, {}},
-  {PT_TYPE_DOUBLE, {PT_TYPE_MAYBE}, {}},
+//{PT_TYPE_DOUBLE, {PT_TYPE_MAYBE}, {}},
   {PT_TYPE_DOUBLE, {PT_TYPE_NA}, {}},
 };
 
@@ -59,7 +59,7 @@ std::vector<func_signature> func_signature::count = {
 
 std::vector<func_signature> func_signature::sum = {
   {0, {PT_GENERIC_TYPE_NUMBER}, {}},
-  {0, {PT_TYPE_MAYBE}, {}},
+//{0, {PT_TYPE_MAYBE}, {}},
   {0, {PT_TYPE_NA}, {}},
   {0, {PT_TYPE_SET}, {}},
   {0, {PT_TYPE_MULTISET}, {}},
@@ -73,7 +73,7 @@ std::vector<func_signature> func_signature::double_r_any = {//original code does
 
 std::vector<func_signature> func_signature::ntile = {//why original code cast args to double instead int???
   {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
-  {PT_TYPE_INTEGER, {PT_TYPE_MAYBE}, {}},
+//{PT_TYPE_INTEGER, {PT_TYPE_MAYBE}, {}},
 };
 
 /*cannot define a clear signature because casting depends on actual value
@@ -83,7 +83,7 @@ std::vector<func_signature> func_signature::median = {
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_NUMBER}  , {}}, //if ret type is double => tests with median(int) will fail
   {0                , {PT_GENERIC_TYPE_DATETIME}, {}},
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_STRING}  , {}}, //DISCUSSION: can we get rid of MAYBE???
-  {0                , {PT_TYPE_MAYBE}           , {}},
+//{0                , {PT_TYPE_MAYBE}           , {}},
 };
 
 std::vector<func_signature> func_signature::type0_nr_or_str = {
@@ -92,7 +92,7 @@ std::vector<func_signature> func_signature::type0_nr_or_str = {
   {0, {PT_GENERIC_TYPE_DATETIME}, {}},
   {0, {PT_GENERIC_TYPE_STRING}, {}},
   {0, {PT_GENERIC_TYPE_BIT}, {}},
-  {0, {PT_TYPE_MAYBE}, {}},
+//{0, {PT_TYPE_MAYBE}, {}},
   {0, {PT_TYPE_NA}, {}},
 };
 
@@ -102,7 +102,7 @@ std::vector<func_signature> func_signature::type0_nr_or_str_discrete = {
   {0, {PT_GENERIC_TYPE_STRING   , PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
   {0, {PT_GENERIC_TYPE_BIT      , PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
   {0, {PT_TYPE_ENUMERATION      , PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
-  {0, {PT_TYPE_MAYBE            , PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
+//{0, {PT_TYPE_MAYBE            , PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
   {0, {PT_TYPE_NA               , PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
 };
 
@@ -148,12 +148,12 @@ std::vector<func_signature> func_signature::elt = {
 };
 
 std::vector<func_signature> func_signature::insert = {
-  {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_CHAR   , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , PT_GENERIC_TYPE_CHAR} , {}},
-//{PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_NCHAR  , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , PT_GENERIC_TYPE_NCHAR}, {}},
-  {PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_NCHAR  , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , 0                    }, {}},
+  {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_CHAR   , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , PT_GENERIC_TYPE_CHAR  }, {}},
+//{PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_NCHAR  , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , PT_GENERIC_TYPE_NCHAR }, {}},
+  {PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_NCHAR  , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , 0                     }, {}},
 
-  {0                , {3                      , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , PT_GENERIC_TYPE_NCHAR}, {}},
-  {0                , {3                      , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , PT_GENERIC_TYPE_STRING}, {}},
+  {0                , {3                      , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , PT_GENERIC_TYPE_NCHAR }, {}},//for insert(?, i, i, n'nchar')
+  {0                , {3                      , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , PT_GENERIC_TYPE_STRING}, {}},//for insert(?, i, i, 'char or anything else')
 };
 
 std::vector<func_signature> func_signature::json_r_key_val = {//(jsonKey, jsonVal[, jsonKey, jsonVal])
