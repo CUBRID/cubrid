@@ -220,7 +220,7 @@ namespace mem
 	  }
 
 	if (m_ptr_prev_gen_committed != NULL
-            && is_range_overlap (ptr, amount, m_ptr_prev_gen_committed, m_buffer_end - m_ptr_prev_gen_committed))
+	    && is_range_overlap (ptr, amount, m_ptr_prev_gen_committed, m_buffer_end - m_ptr_prev_gen_committed))
 	  {
 	    return ER_FAILED;
 	  }
