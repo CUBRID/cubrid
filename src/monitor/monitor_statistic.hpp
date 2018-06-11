@@ -138,6 +138,22 @@ namespace cubmonitor
       std::atomic<Rep> m_value;
   };
 
+  template <>
+  class accumulator_atomic_statistic<time_rep>
+  {
+    public:
+      using rep = time_rep;
+
+      accumulator_atomic_statistic ();
+      statistic_value fetch (void) const;
+      void collect (const time_rep &value)
+      {
+	m_value.fetch_add (value.count ());
+      }
+    private:
+      std::atomic<time_rep::rep> m_value;
+  };
+
   //////////////////////////////////////////////////////////////////////////
   // Gauge statistics
   //////////////////////////////////////////////////////////////////////////
@@ -300,7 +316,7 @@ namespace cubmonitor
 
   template <typename Rep>
   accumulator_atomic_statistic<Rep>::accumulator_atomic_statistic (void)
-    : m_value { 0 }
+    : m_value { Rep () }
   {
     //
   }
