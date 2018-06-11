@@ -290,7 +290,7 @@ namespace cubstream
     char *ptr_commit;
     stream_position new_completed_position = reserve_context->start_pos + reserve_context->reserved_amount;
 
-    m_buffer_mutex.lock ();
+    std::unique_lock<std::mutex> ulock (m_buffer_mutex);
 
     collapsed_reserve = m_reserved_positions.consume (reserve_context, last_used_context);
     if (collapsed_reserve)
@@ -317,14 +317,12 @@ namespace cubstream
 				       new_completed_position - m_last_notified_committed_pos);
 	    if (err != NO_ERROR)
 	      {
-		// TODO - check m_buffer_mutex leak
 		return err;
 	      }
 	  }
 	m_last_notified_committed_pos = new_completed_position;
       }
 
-    m_buffer_mutex.unlock ();
 
     return NO_ERROR;
   }
