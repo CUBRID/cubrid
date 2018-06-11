@@ -205,6 +205,7 @@ namespace mem
       {
 	int start_page_idx;
 
+#if !defined(NDEBUG)
 	if (is_region_b_used ())
 	  {
 	    if (is_range_overlap (ptr, amount, m_buffer, m_ptr_end_b - m_buffer))
@@ -217,6 +218,13 @@ namespace mem
 	  {
 	    return ER_FAILED;
 	  }
+
+	if (m_ptr_prev_gen_committed != NULL
+            && is_range_overlap (ptr, amount, m_ptr_prev_gen_committed, m_buffer_end - m_ptr_prev_gen_committed))
+	  {
+	    return ER_FAILED;
+	  }
+#endif
 
 	start_page_idx = get_page_from_ptr (ptr);
 	/* since append/reserve pointers always cycle in future of the buffer, it is enough to latch only
