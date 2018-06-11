@@ -5160,6 +5160,9 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
     case PT_GENERIC_TYPE_DATE:
       return PT_TYPE_DATETIME;
 
+    case PT_GENERIC_TYPE_SCALAR:
+      return arg_type;
+
     default:
       return PT_TYPE_NONE;
     }
@@ -5511,6 +5514,13 @@ pt_are_equivalent_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type)
 
     case PT_GENERIC_TYPE_JSON_PATH:
       return pt_is_json_path(op_type);
+
+    case PT_GENERIC_TYPE_SCALAR:
+      return (
+        PT_IS_NUMERIC_TYPE(op_type) ||
+        PT_IS_STRING_TYPE(op_type) ||
+        PT_IS_DATE_TIME_TYPE(op_type)
+      );
 
     default:
       return false;
