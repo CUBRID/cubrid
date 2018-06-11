@@ -40,7 +40,7 @@ namespace test_stream
     OR_PUT_INT (ptr, byte_count);
     ptr += OR_INT_SIZE;
 
-    for (i = 0; i < byte_count - OR_INT_SIZE; i++)
+    for (i = 0; i < (int) byte_count - OR_INT_SIZE; i++)
       {
 	*ptr = byte_count % 255;
 	ptr++;
@@ -74,7 +74,7 @@ namespace test_stream
 
 	to_read = MIN (byte_count_rem, m_remaining_to_read);
 
-	for (i = 0; i < to_read; i++)
+	for (i = 0; i < (int) to_read; i++)
 	  {
 	    if (*ptr != expected_val)
 	      {
@@ -121,7 +121,7 @@ namespace test_stream
     serializator->pack_bigint (&b1);
     serializator->pack_int_array (int_a, sizeof (int_a) / sizeof (int_a[0]));
     serializator->pack_int_vector (int_v);
-    for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
+    for (unsigned int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	serializator->pack_db_value (values[i]);
       }
@@ -155,7 +155,7 @@ namespace test_stream
 
     serializator->unpack_int_vector (int_v);
 
-    for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
+    for (unsigned int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	serializator->unpack_db_value (&values[i]);
       }
@@ -187,7 +187,7 @@ namespace test_stream
       {
 	return false;
       }
-    for (int i = 0; i < sizeof (int_a) / sizeof (int_a[0]); i++)
+    for (unsigned int i = 0; i < sizeof (int_a) / sizeof (int_a[0]); i++)
       {
 	if (int_a[i] != other_po1->int_a[i])
 	  {
@@ -195,7 +195,7 @@ namespace test_stream
 	  }
       }
 
-    for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
+    for (unsigned int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	if (db_value_compare (&values[i], &other_po1->values[i]) != DB_EQ)
 	  {
@@ -237,7 +237,7 @@ namespace test_stream
     entry_size += serializator->get_packed_bigint_size (entry_size);
     entry_size += serializator->get_packed_int_vector_size (entry_size, sizeof (int_a) / sizeof (int_a[0]));
     entry_size += serializator->get_packed_int_vector_size (entry_size, (int) int_v.size ());
-    for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
+    for (unsigned int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	entry_size += serializator->get_packed_db_value_size (values[i], entry_size);
       }
@@ -257,11 +257,11 @@ namespace test_stream
     i1 = std::rand ();
     sh1 = std::rand ();
     b1 = std::rand ();
-    for (int i = 0; i < sizeof (int_a) / sizeof (int_a[0]); i++)
+    for (unsigned int i = 0; i < sizeof (int_a) / sizeof (int_a[0]); i++)
       {
 	int_a[i] = std::rand ();
       }
-    for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
+    for (unsigned int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	switch (std::rand () % 5)
 	  {
@@ -305,7 +305,7 @@ namespace test_stream
 
   po1::~po1()
   {
-    for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
+    for (unsigned int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	if (values[i].need_clear)
 	  {

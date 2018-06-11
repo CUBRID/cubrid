@@ -239,7 +239,7 @@ namespace test_stream
 
       bool is_equal (const cubstream::entry *other)
       {
-	int i;
+	unsigned int i;
 	const test_stream_entry *other_t = dynamic_cast <const test_stream_entry *> (other);
 
 	if (other_t == NULL)
