@@ -44,7 +44,7 @@ namespace cubstream
    *  - pack_stream_entry_header
    *  - unpack_stream_entry_header
    *  - get_packable_entry_count_from_header
-   * The header size must be aligned at MAX_ALIGNEMENT.
+   * The header size must be aligned at MAX_ALIGNMENT.
    * The objects must derive from packable_object.
    * The concrete class (of entry) must provide the factory get_builder method to build objects
    *
@@ -85,7 +85,7 @@ namespace cubstream
 
       entry (packing_stream *stream);
 
-      virtual ~entry()
+      virtual ~entry ()
       {
 	reset ();
       };
