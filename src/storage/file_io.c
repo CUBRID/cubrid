@@ -3542,7 +3542,7 @@ void
 fileio_page_hexa_dump (const char *src_data, int length)
 {
   char *log_block_string, *dest_ptr;
-  const size_t size = IO_MAX_PAGE_SIZE * 4;
+  const size_t size = length * 4;
   int line_no, i;
 
   dest_ptr = log_block_string = (char *) malloc (size);
