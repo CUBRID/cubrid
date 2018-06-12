@@ -10129,58 +10129,50 @@ column_shared_constraint_def
 column_on_update_def
 	: ON_ UPDATE expression_
 		{{
-			PT_NODE *attr_node;
-			PT_NODE *node = parser_new_node (this_parser, PT_ON_UPDATE);
+			DB_DEFAULT_EXPR_TYPE default_expr_type = DB_DEFAULT_NONE;
+			PT_NODE *attr_node = parser_get_attr_def_one ();
+			PT_NODE *on_update_default_value = $3;
+			PARSER_SAVE_ERR_CONTEXT (attr_node, @3.buffer_pos)
 
-			if (node)
+			if (on_update_default_value && on_update_default_value->node_type == PT_EXPR)
 			  {
-			    PT_NODE *def;
-
-			    node->info.on_update.default_value = $3;
-			    PARSER_SAVE_ERR_CONTEXT (node, @3.buffer_pos)
-
-			    def = node->info.on_update.default_value;
-			    if (def && def->node_type == PT_EXPR)
-			      {						
-				switch (def->info.expr.op)
-				  {
-				  case PT_CURRENT_TIMESTAMP:
-				    node->info.on_update.default_expr_type = DB_DEFAULT_CURRENTTIMESTAMP;
-				    break;
-				  case PT_CURRENT_DATE:
-				    node->info.on_update.default_expr_type = DB_DEFAULT_CURRENTDATE;
-				    break;
-				  case PT_CURRENT_DATETIME:
-				    node->info.on_update.default_expr_type = DB_DEFAULT_CURRENTDATETIME;
-				    break;
-				  case PT_SYS_TIMESTAMP:
-				    node->info.on_update.default_expr_type = DB_DEFAULT_SYSTIMESTAMP;
-				    break;
-				  case PT_UNIX_TIMESTAMP:
-				    node->info.on_update.default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
-				    break;
-				  case PT_SYS_DATE:
-				    node->info.on_update.default_expr_type = DB_DEFAULT_SYSDATE;
-				    break;
-				  case PT_SYS_DATETIME:
-				    node->info.on_update.default_expr_type = DB_DEFAULT_SYSDATETIME;
-				    break;
-				  case PT_SYS_TIME:
-				    node->info.on_update.default_expr_type = DB_DEFAULT_SYSTIME;
-				    break;
-				  default:
-				    node->info.on_update.default_expr_type = DB_DEFAULT_NONE;
-				    break;
-				  }
-			      }
-			    else
-			      {
-				PT_ERROR (this_parser, node, "on update must be an expression");
-			      }
+			switch (on_update_default_value->info.expr.op)
+			  {
+			  case PT_CURRENT_TIMESTAMP:
+			    default_expr_type = DB_DEFAULT_CURRENTTIMESTAMP;
+			    break;
+			  case PT_CURRENT_DATE:
+			    default_expr_type = DB_DEFAULT_CURRENTDATE;
+			    break;
+			  case PT_CURRENT_DATETIME:
+			    default_expr_type = DB_DEFAULT_CURRENTDATETIME;
+			    break;
+			  case PT_SYS_TIMESTAMP:
+			    default_expr_type = DB_DEFAULT_SYSTIMESTAMP;
+			    break;
+			  case PT_UNIX_TIMESTAMP:
+			    default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
+			    break;
+			  case PT_SYS_DATE:
+			    default_expr_type = DB_DEFAULT_SYSDATE;
+			    break;
+			  case PT_SYS_DATETIME:
+			    default_expr_type = DB_DEFAULT_SYSDATETIME;
+			    break;
+			  case PT_SYS_TIME:
+			    default_expr_type = DB_DEFAULT_SYSTIME;
+			    break;
+			  default:
+			    PT_ERROR (this_parser, attr_node, "invalid expression type");
+			    break;
 			  }
-
-			attr_node = parser_get_attr_def_one ();
-			attr_node->info.attr_def.on_update = node;
+			  }
+			else
+			  {
+			PT_ERROR (this_parser, attr_node, "on update must be an expression");
+			  }
+			
+			attr_node->info.attr_def.on_update = default_expr_type;
 
 		DBG_PRINT}}
 	;

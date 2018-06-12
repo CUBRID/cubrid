@@ -7867,19 +7867,7 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 	      attr->info.attr_def.data_default = default_data;
 	    }
 	}
-
-      if (!attr->info.attr_def.on_update)
-	{
-	  on_update_default_expr = parser_new_node (parser, PT_ON_UPDATE);
-	  if (!on_update_default_expr)
-	    {
-	      parser_free_tree (parser, on_update_default_expr);
-	      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      goto error;
-	    }
-	  on_update_default_expr->info.on_update.default_expr_type = col_attr->on_update_default_expr.default_expr_type;
-	  attr->info.attr_def.on_update = on_update_default_expr;
-	}
+      attr->info.attr_def.on_update = col_attr->on_update_default_expr.default_expr_type;
     }
 
   return attrs;

@@ -49,7 +49,7 @@
 #define pt_cat_error(parser, node, setNo, msgNo, ...) \
     pt_frob_error(parser, node, msgcat_message(MSGCAT_CATALOG_CUBRID, setNo, msgNo), ##__VA_ARGS__)
 
-#if 1 //not necessary anymore thanks to new pt_cat_error() and existing pt_frob_error()
+#if 1				//not necessary anymore thanks to new pt_cat_error() and existing pt_frob_error()
 #define PT_ERROR(parser, node, msg) pt_frob_error(parser, node, msg)
 #define PT_ERRORc(parser, node, msg) pt_frob_error( parser, node, "%s", msg)
 
@@ -71,7 +71,7 @@
 #define pt_cat_warning(parser, node, setNo, msgNo, ...) \
     pt_frob_warning(parser, node, msgcat_message(MSGCAT_CATALOG_CUBRID, setNo, msgNo), ##__VA_ARGS__)
 
-#if 1 //not necessary anymore thanks to pt_cat_warning() and existing pt_frob_warning()
+#if 1				//not necessary anymore thanks to pt_cat_warning() and existing pt_frob_warning()
 #define PT_WARNING( parser, node, msg ) pt_frob_warning(parser, node, msg)
 #define PT_WARNINGm(parser, node, setNo, msgNo) pt_cat_warning(parser, node, setNo, msgNo)
 #define PT_WARNINGc( parser, node, msg ) pt_frob_warning(parser, node, msg)
@@ -1885,7 +1885,7 @@ struct pt_attr_def_info
 {
   PT_NODE *attr_name;		/* PT_NAME */
   PT_NODE *data_default;	/* PT_DATA_DEFAULT */
-  PT_NODE *on_update;
+  DB_DEFAULT_EXPR_TYPE on_update;
   PT_NODE *auto_increment;	/* PT_AUTO_INCREMENT */
   PT_NODE *ordering_info;	/* PT_ATTR_ORDERING */
   PT_NODE *comment;		/* PT_VALUE */

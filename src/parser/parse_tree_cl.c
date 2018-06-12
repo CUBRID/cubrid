@@ -6611,7 +6611,6 @@ pt_apply_attr_def (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, voi
 {
   p->info.attr_def.attr_name = g (parser, p->info.attr_def.attr_name, arg);
   p->info.attr_def.data_default = g (parser, p->info.attr_def.data_default, arg);
-  p->info.attr_def.on_update = g (parser, p->info.attr_def.on_update, arg);
   p->info.attr_def.auto_increment = g (parser, p->info.attr_def.auto_increment, arg);
   p->info.attr_def.ordering_info = g (parser, p->info.attr_def.ordering_info, arg);
   return p;

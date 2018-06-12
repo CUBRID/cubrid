@@ -22777,7 +22777,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  if (attrepr->on_update.default_expr_type != DB_DEFAULT_NONE)
 	    {
 	      char *saved = db_get_string (out_values[idx_val]);
-	      size_t len = saved ? strlen (saved) : 0;
+	      size_t len = strlen (saved);
 
 	      const char *default_expr_op_string = db_default_expression_string (attrepr->on_update.default_expr_type);
 	      if (default_expr_op_string == NULL)
@@ -22786,18 +22786,18 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		}
 
 	      /* add whitespace character if saved is not an empty string */
-	      const char *on_update_string = "ON_UPDATE ";
+	      const char *on_update_string = "ON UPDATE ";
 	      char *str_val = (char *) db_private_alloc (thread_p,
-							 (len + (len ? 1 : 0) + strlen (on_update_string)
-							  + strlen (default_expr_op_string) + 1));
+							 len + (len ? 1 : 0) + strlen (on_update_string)
+							 + strlen (default_expr_op_string) + 1);
 	      if (str_val == NULL)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
 
-	      if (saved)
+	      strcpy (str_val, saved);
+	      if (len)
 		{
-		  strcpy (str_val, saved);
 		  strcat (str_val, " ");
 		}
 	      strcat (str_val, on_update_string);
