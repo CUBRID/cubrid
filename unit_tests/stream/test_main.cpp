@@ -17,34 +17,39 @@
  *
  */
 
-/*
- * packable_object.hpp
- */
+#include "test_stream.hpp"
 
-#ifndef _PACKABLE_OBJECT_HPP_
-#define _PACKABLE_OBJECT_HPP_
+#include <iostream>
 
-#ident "$Id$"
-
-#include "packer.hpp"
-#include <map>
-
-namespace cubpacking
+template <typename Func, typename ... Args>
+int
+test_module (int &global_error, Func &&f, Args &&... args)
 {
+  std::cout << std::endl;
+  std::cout << "  start testing module ";
 
-  class packable_object
-  {
-    public:
-      virtual ~packable_object () {};
-      virtual int pack (packer *serializator) = 0;
-      virtual int unpack (packer *serializator) = 0;
+  int err = f (std::forward <Args> (args)...);
+  if (err == 0)
+    {
+      std::cout << "  test completed successfully" << std::endl;
+    }
+  else
+    {
+      std::cout << "  test failed" << std::endl;
+      global_error = global_error == 0 ? err : global_error;
+    }
+  return err;
+}
 
-      virtual bool is_equal (const packable_object *other) = 0;
+int main ()
+{
+  int global_error = 0;
 
-      /* used at packing to get info on how much memory to reserve */
-      virtual size_t get_packed_size (packer *serializator) = 0;
-  };
+  test_module (global_error, test_stream::test_stream1);
+  test_module (global_error, test_stream::test_stream2);
+  test_module (global_error, test_stream::test_stream3);
+  test_module (global_error, test_stream::test_stream_mt);
+  /* add more tests here */
 
-} /* namespace cubpacking */
-
-#endif /* _PACKABLE_OBJECT_HPP_ */
+  return global_error;
+}
