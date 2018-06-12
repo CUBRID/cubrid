@@ -153,6 +153,7 @@ namespace cubmonitor
     assert (to > 0);
 
     std::unique_lock<std::mutex> ulock (m_extend_mutex);
+
     if (to > transaction_sheet_manager::MAX_SHEETS)
       {
 	// to be on safe side
@@ -173,8 +174,10 @@ namespace cubmonitor
 	// copy old buffer
 	std::memcpy (new_collectors, m_sheet_stats, m_sheet_stats_count * sizeof (statistic_type));
       }
+
     // delete old buffer
     delete [] m_sheet_stats;
+
     // update buffer
     m_sheet_stats = new_collectors;
     m_sheet_stats_count = to;
@@ -192,6 +195,7 @@ namespace cubmonitor
   transaction_statistic<S>::fetch_sheet (void) const
   {
     transaction_sheet sheet = transaction_sheet_manager::get_sheet ();
+
     if (sheet == transaction_sheet_manager::INVALID_TRANSACTION_SHEET)
       {
 	// transaction is not watching; return 0

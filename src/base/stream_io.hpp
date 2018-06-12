@@ -17,27 +17,26 @@
  *
  */
 
-//
-// monitor_definition.hpp - definition interface for monitor
-//
+/*
+ * stream_io.hpp
+ */
 
-#if !defined _MONITOR_DEFINITION_HPP_
-#define _MONITOR_DEFINITION_HPP_
+#ifndef _STREAM_IO_HPP_
+#define _STREAM_IO_HPP_
 
-#include <chrono>
+#ident "$Id$"
 
-#include <cstdint>
-
-namespace cubmonitor
+namespace cubstream
 {
-  // statistic common representation used on monitor fetching its values
-  using statistic_value = std::uint64_t;
 
-  // clocking
-  using clock_type = std::chrono::high_resolution_clock;
-  using time_point = clock_type::time_point;
-  using duration = clock_type::duration;
+  class stream_io
+  {
+    public:
+      virtual int write (const stream_position &pos, const char *buf, const size_t amount) = 0;
 
-} // namespace cubmonitor
+      virtual int read (const stream_position &pos, const char *buf, const size_t amount) = 0;
+  };
 
-#endif // _MONITOR_DEFINITION_HPP_
+} /*  namespace cubstream */
+
+#endif /* _STREAM_IO_HPP_ */

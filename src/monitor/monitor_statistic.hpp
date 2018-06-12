@@ -231,7 +231,7 @@ namespace cubmonitor
     private:
       Rep m_value;
   };
-  // max atomic statistic - compare and exchange with current value if change is bigger
+  // min atomic statistic - compare and exchange with current value if change is smaller
   template<class Rep>
   class min_atomic_statistic
   {
@@ -406,9 +406,11 @@ namespace cubmonitor
   max_atomic_statistic<Rep>::collect (const Rep &value)
   {
     Rep loaded;
+
     // loop until either:
     // 1. current value is better
     // 2. successfully replaced value
+
     do
       {
 	loaded = m_value.load ();
@@ -451,9 +453,11 @@ namespace cubmonitor
   min_atomic_statistic<Rep>::collect (const Rep &value)
   {
     Rep loaded;
+
     // loop until either:
     // 1. current value is better
     // 2. successfully replaced value
+
     do
       {
 	loaded = m_value.load ();

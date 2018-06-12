@@ -50,8 +50,10 @@ namespace cubmonitor
       {
 	// get transaction count
 	std::size_t tran_count = NUM_NORMAL_TRANS;
+
 	// all transaction start with invalid sheets
 	s_transaction_sheets = new transaction_sheet[tran_count];
+
 	for (std::size_t it = 0; it < tran_count; it++)
 	  {
 	    s_transaction_sheets[it] = INVALID_TRANSACTION_SHEET;
@@ -92,6 +94,7 @@ namespace cubmonitor
 	    // already maxed
 	    return false;
 	  }
+
 	// iterate sheets. must have counter 0 if unused
 	for (std::size_t sheet_index = 0; sheet_index < MAX_SHEETS; sheet_index++)
 	  {
@@ -100,11 +103,13 @@ namespace cubmonitor
 		// found free sheet; assign to current transaction
 		s_transaction_sheets[tran_array_index] = sheet_index;
 		s_sheet_start_count[sheet_index] = 1;
+
 		// increment used sheets count
 		++s_current_sheet_count;
 		return true;
 	      }
 	  }
+
 	assert (false);
 	return false;
       }
@@ -112,6 +117,7 @@ namespace cubmonitor
       {
 	// already have a sheet; increment its count
 	assert (s_sheet_start_count[s_transaction_sheets[tran_array_index]] > 0);
+
 	++s_sheet_start_count[s_transaction_sheets[tran_array_index]];
 	return true;
       }
@@ -149,6 +155,7 @@ namespace cubmonitor
 	assert (false);
 	return;
       }
+
     if (end_all)
       {
 	// end all
@@ -159,6 +166,7 @@ namespace cubmonitor
 	// end once
 	--s_sheet_start_count[sheet];
       }
+
     if (s_sheet_start_count[sheet] == 0)
       {
 	// sheet is now free
@@ -175,6 +183,7 @@ namespace cubmonitor
 	// no sheets; early out
 	return INVALID_TRANSACTION_SHEET;
       }
+
     assert (s_transaction_sheets != NULL && s_transaction_count > 0);
 
     int transaction = logtb_get_current_tran_index ();
