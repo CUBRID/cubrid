@@ -2914,8 +2914,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 #endif
 
   log_final (thread_p);
-      /* Since all pages were flushed, now it's safe to destroy DWB. */
-      (void) dwb_destroy (thread_p);
+
+  /* Since all pages were flushed, now it's safe to destroy DWB. */
+  (void) dwb_destroy (thread_p);
 
   if (is_er_final == ER_ALL_FINAL)
     {
@@ -3700,33 +3701,24 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
  *
  * return : NO_ERROR if all OK, ER_ status otherwise
  *
- *   backup_path(in): Location where information volumes are
- *                    backed up. If NULL is given, the following
- *                    defaults are assumed to back up each
- *                    information volume:
- *                    - If file "fileof_vols_and_backup_paths" is
- *                      given, the path to backup each volume is
- *                      found in this file.
- *                    - All information volumes are backed up on
- *                      the same location where the log files are
- *                      located.
+ *   backup_path(in): Location where information volumes are backed up. If NULL is given, the following defaults 
+ *   		      are assumed to back up each information volume:
+ *                    - If file "fileof_vols_and_backup_paths" is given, the path to backup each volume is found in 
+ *                      this file.
+ *                    - All information volumes are backed up on the same location where the log files are located.
  *   backup_level(in): backup levels allowed: 0 - Full (default),
  *                     1 - Incremental1, 2 - Incremental
- *   deleted_unneeded_logarchives(in): Whetear to remove log archives that are
- *                                 not needed any longer to recovery from
- *                                 crashes when the backup just created is
- *                                 used.
+ *   deleted_unneeded_logarchives(in): Whether to remove log archives that are not needed any longer to recovery from 
+ *   				       crashes when the backup just created is used.
  *   backup_verbose_file(in): verbose mode file path
- *                    num_threads: number of threads
- *                    zip_method: compression method
- *                    zip_level: compression level
+ *   num_threads: number of threads
+ *   zip_method: compression method
+ *   zip_level: compression level
  *   sleep_msecs(in):
  *
- * Note: A fuzzy backup of the database is taken. The backup is written
- *       into the given backup_path location. If the backup_path
- *       location is omitted (i.e, NULL is given), the log path
- *       location which was specified at database creation is used to
- *       store the backup.
+ * Note: A fuzzy backup of the database is taken. The backup is written into the given backup_path location. 
+ *       If the backup_path location is omitted (i.e, NULL is given), the log path location which was specified at 
+ *       database creation is used to store the backup.
  */
 int
 xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
@@ -3750,28 +3742,18 @@ xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LE
  *   fromdb_name(in): The database from where the copy is made.
  *   newdb_name(in): Name of new database
  *   newdb_path(in): Directory where the new database will reside
- *   newlog_path(in): Directory where the log volumes of the new database
- *                    will reside
- *   newlob_path(in): Directory where the lob volumes of the new database
- *                    will reside
+ *   newlog_path(in): Directory where the log volumes of the new database will reside
+ *   newlob_path(in): Directory where the lob volumes of the new database will reside
  *   newdb_server_host(in): Server host where the new database reside
- *   new_volext_path(in): A path is included if all volumes are placed in one
- *                        place/directory. If NULL is given,
- *                        - If file "fileof_vols_and_wherepaths" is given, the
- *                          path is found in this file.
- *                        - Each volume is copied to same place where the
- *                          volume resides.
- *                      Note: This parameter should be NULL, if the above file
- *                            is given.
- *   fileof_vols_and_wherepaths(in): A file is given when the user decides to
- *                               control the copy/rename of the volume by
- *                               individual bases. That is, user decides to
- *                               spread the volumes over several locations and
- *                               or to label the volumes with specific names.
- *                               Each volume entry consists of:
- *                                 volid from_fullvolname to_fullvolname
- *   newdb_overwrite(in): Whether to overwrite the new database if it already
- *                        exist.
+ *   new_volext_path(in): A path is included if all volumes are placed in one place/directory. If NULL is given,
+ *                        - If file "fileof_vols_and_wherepaths" is given, the path is found in this file.
+ *                        - Each volume is copied to same place where the volume resides.
+ *                      Note: This parameter should be NULL, if the above file is given.
+ *   fileof_vols_and_wherepaths(in): A file is given when the user decides to control the copy/rename of the volume by
+ *                               individual bases. That is, user decides to spread the volumes over several locations 
+ *                               and or to label the volumes with specific names.
+ *                               Each volume entry consists of: volid from_fullvolname to_fullvolname
+ *   newdb_overwrite(in): Whether to overwrite the new database if it already exist.
  */
 int
 xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char *new_db_name, const char *new_db_path,

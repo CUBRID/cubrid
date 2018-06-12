@@ -2456,7 +2456,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 #if !defined(NDEBUG)
       er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld, checksum %d\n",
 		    log_page_p->hdr.logical_pageid, log_page_p->hdr.checksum);
-      if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
+      if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
 	{
 	  fileio_page_hexa_dump ((const char *) log_page_p, LOG_PAGESIZE);
 	}
@@ -2831,8 +2831,11 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 
   logtb_reset_bit_area_start_mvccid ();
 
-  _er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: end of analysis phase, append_lsa = (%lld|%d) \n",
-		 (long long int) log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset);
+  if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
+    {
+      _er_log_debug (ARG_FILE_LINE, "log_recovery_analysis: end of analysis phase, append_lsa = (%lld|%d) \n",
+		     (long long int) log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset);
+    }
 
   return;
 }
@@ -6285,13 +6288,16 @@ log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVIND
       ASSERT_ERROR ();
       return NULL;
     }
+
   if (page == NULL && RCV_IS_NEW_PAGE_INIT (rcvindex))
     {
       DISK_ISVALID isvalid;
+
       /* see case OLD_PAGE_MAYBE_DEALLOCATED of pgbuf_fix
        * redo recovery may try to fix an immature page, reserved, but which was not initialized
        * or it was reused (deallocated and allocated again).
        */
+
       if (er_errid () == ER_PB_BAD_PAGEID && er_get_severity () == ER_WARNING_SEVERITY)
 	{
 	  // forget the warning since we are going to fix the page as NEW and don't want it will bother us.
@@ -6313,7 +6319,9 @@ log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVIND
 	  /* not reserved */
 	  return NULL;
 	}
+
       assert (isvalid == DISK_VALID);
+
       page = pgbuf_fix (thread_p, vpid_rcv, NEW_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page == NULL)
 	{
@@ -6321,5 +6329,6 @@ log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVIND
 	  return NULL;
 	}
     }
+
   return page;
 }

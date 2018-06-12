@@ -511,7 +511,7 @@ log_to_string (LOG_RECTYPE type)
 }
 
 /*
- * log_isin_crash_recovery - are we in crash recovery ?
+ * log_is_in_crash_recovery - are we in crash recovery ?
  *
  * return:
  *
@@ -530,6 +530,12 @@ log_is_in_crash_recovery (void)
     }
 }
 
+/*
+ * log_is_in_crash_recovery_and_not_year_complets_redo - completes redo recovery?
+ *
+ * return:
+ *
+ */
 bool
 log_is_in_crash_recovery_and_not_yet_completes_redo (void)
 {
@@ -1482,8 +1488,8 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
   LOG_CS_EXIT (thread_p);
 
-  _er_log_debug (ARG_FILE_LINE, "log_initialize_internal: end of log initializaton, append_lsa = (%lld|%d) \n",
-		 (long long int) log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset);
+  er_log_debug (ARG_FILE_LINE, "log_initialize_internal: end of log initializaton, append_lsa = (%lld|%d) \n",
+		(long long int) log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset);
 
   return error_code;
 

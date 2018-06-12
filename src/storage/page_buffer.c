@@ -10595,8 +10595,8 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
 
       if (consistent != PGBUF_CONTENT_GOOD)
 	{
-	  if ((fileio_page_check_corruption (thread_get_thread_entry_info (), malloc_io_pgptr, &is_page_corrupted) !=
-	       NO_ERROR) || is_page_corrupted)
+	  if (fileio_page_check_corruption (thread_get_thread_entry_info (), malloc_io_pgptr,
+					    &is_page_corrupted) != NO_ERROR || is_page_corrupted)
 	    {
 	      consistent = PGBUF_CONTENT_BAD;
 	    }

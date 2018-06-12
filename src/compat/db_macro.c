@@ -5133,11 +5133,11 @@ db_is_json_doc_type (DB_TYPE type)
 }
 
 /*
-* db_value_is_corrupted(): Check whether the db_value is corrupted
-*
-*   returns: true if corrupted, false otherwise.
-*   value(in): the value to check
-*/
+ * db_value_is_corrupted(): Check whether the db_value is corrupted
+ *
+ *   returns: true if corrupted, false otherwise.
+ *   value(in): the value to check
+ */
 bool
 db_value_is_corrupted (const DB_VALUE * value)
 {

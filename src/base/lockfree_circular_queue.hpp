@@ -67,12 +67,12 @@ namespace lockfree
       inline bool produce (const T &element);         // produce an element to queue; returns false on fail
       inline void force_produce (const T &element);   // force produce (loop until successful)
 
-                                                      /*
-                                                      * lf_circular_queue_get_consumer_cursor () - Get consumer cursor.
-                                                      *
-                                                      * return     : consumer cursor.
-                                                      * queue (in) : Lock-free circular queue.
-                                                      */
+      /*
+      * lf_circular_queue_get_consumer_cursor () - Get consumer cursor.
+      *
+      * return     : consumer cursor.
+      * queue (in) : Lock-free circular queue.
+      */
       inline std::uint64_t get_consumer_cursor ();            // get consume cursor
 
       // note:

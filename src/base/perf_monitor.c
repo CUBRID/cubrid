@@ -1255,7 +1255,6 @@ perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int 
   perfmon_add_stat_at_offset (thread_p, PSTAT_MVCC_SNAPSHOT_COUNTERS, offset, 1);
 }
 
-
 /*
  *   perfmon_db_flushed_block_volumes - 
  *   return: none
@@ -1276,8 +1275,6 @@ perfmon_db_flushed_block_volumes (THREAD_ENTRY * thread_p, int num_volumes)
     }
   perfmon_add_stat_at_offset (thread_p, PSTAT_DWB_FLUSHED_BLOCK_NUM_VOLUMES, offset, 1);
 }
-
-
 #endif /* SERVER_MODE || SA_MODE */
 
 int
@@ -2829,6 +2826,7 @@ perfmon_stat_dump_in_buffer_flushed_block_volumes_array_stat (const UINT64 * sta
 
   assert (remaining_size != NULL);
   assert (s != NULL);
+
   if (*s != NULL)
     {
       for (flushed_block_volumes = (unsigned int) 0;

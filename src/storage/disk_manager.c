@@ -52,6 +52,7 @@
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 #include "double_write_buffer.h"
+
 /************************************************************************/
 /* Define structures, globals, and macro's                              */
 /************************************************************************/

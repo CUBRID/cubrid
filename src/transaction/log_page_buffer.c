@@ -6946,6 +6946,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
     }
 
   er_log_debug (ARG_FILE_LINE, "logpb_archive_active_log, arvhdr->fpageid = %lld\n", arvhdr->fpageid);
+
   error_code = logpb_set_page_checksum (thread_p, malloc_arv_hdr_pgptr);
   if (error_code != NO_ERROR)
     {
@@ -12482,6 +12483,7 @@ logpb_debug_check_log_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
       /* Do not check here since log page size may be not available */
       return;
     }
+
   err = logpb_page_check_corruption (thread_p, log_pgptr, &is_log_page_corrupted);
 
   assert (err == NO_ERROR && is_log_page_corrupted == false);

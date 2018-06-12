@@ -17,7 +17,6 @@
  *
  */
 
-
 /*
  * double_write_buffer.h
  */
@@ -57,6 +56,6 @@ extern int dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID 
 #if defined (SERVER_MODE)
 extern void dwb_daemons_init ();
 extern void dwb_daemons_destroy ();
-#endif	/* SERVER_MODE */
+#endif /* SERVER_MODE */
 
-#endif	/* _DOUBLE_WRITE_BUFFER_H_ */
+#endif /* _DOUBLE_WRITE_BUFFER_H_ */
