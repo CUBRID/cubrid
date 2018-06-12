@@ -10093,6 +10093,12 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	      || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PSEUDO_UPGRADE));
     }
 
+  error = check_on_update (parser, attribute, NULL);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
   /* default value: for CLASS and SHARED attributes this changes the value itself of the atribute */
   error = get_att_default_from_def (parser, attribute, &default_value, NULL);
   if (error != NO_ERROR)
@@ -12010,7 +12016,6 @@ build_att_coll_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 static int
 check_att_chg_allowed (const char *att_name, const PT_TYPE_ENUM t, const SM_ATTR_PROP_CHG * attr_chg_prop,
 		       SM_ATTR_CHG_SOL chg_how, bool log_error_allowed, bool * new_attempt)
-  //TODO: check on update somehow too !
 {
   int error = NO_ERROR;
 
@@ -12437,7 +12442,7 @@ check_on_update (PARSER_CONTEXT * parser, PT_NODE * attribute, const char *class
     }
 
   PT_OP_TYPE op = pt_op_type_from_default_expr_type (on_update_expr_type);
-  PT_NODE *on_update_default_expr = NULL;	// parser_make_expression(parser, op, NULL, NULL, NULL);
+  PT_NODE *on_update_default_expr = parser_make_expression (parser, op, NULL, NULL, NULL);
   if (on_update_default_expr == NULL)
     {
       PT_ERRORm (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
@@ -13404,6 +13409,12 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE *
   if (ctemplate->current->users != NULL && ctemplate->partition == NULL)
     {
       attr_chg_prop->class_has_subclass = true;
+    }
+
+  error = check_on_update (parser, attribute, NULL);
+  if (error != NO_ERROR)
+    {
+      goto exit;
     }
 
   error = get_att_default_from_def (parser, attribute, &ptr_def, NULL);
