@@ -1,3 +1,4 @@
+
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
@@ -25,6 +26,7 @@
 
 #include "cubstream.hpp"
 #include "error_code.h"
+
 #include <algorithm>
 
 namespace cubstream
@@ -32,13 +34,10 @@ namespace cubstream
 
   stream::stream ()
   {
-    m_last_reported_ready_pos = 0;
+    m_last_committed_pos = 0;
+    m_last_notified_committed_pos = 0;
     m_read_position = 0;
-
-
-    set_filled_stream_handler (NULL);
-    set_fetch_data_handler (NULL);
-    set_ready_pos_handler (NULL);
+    m_last_dropable_pos = 0;
 
     init (0);
   }

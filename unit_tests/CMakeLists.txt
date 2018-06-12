@@ -34,6 +34,7 @@ option (UNIT_TEST_THREAD "Unit testing: thread module")
 option (UNIT_TEST_COMM_CHN "Unit testing: communication channel module")
 option (UNIT_TEST_TRANS_CHN "Unit testing: transfer channel module")
 option (UNIT_TEST_DDL_CL "Unit testing: ddl proxy client module")
+option (UNIT_TEST_REPLICATION "Unit testing: replication channels module")
 
 message("  unit_tests/...")
 
@@ -86,3 +87,8 @@ if (UNIT_TESTS OR UNIT_TEST_DDL_CL)
   message("    ddl_proxy_client")
   add_subdirectory(ddl_proxy_client)
 endif(UNIT_TESTS OR UNIT_TEST_DDL_CL)
+
+if (UNIT_TESTS OR UNIT_TEST_REPLICATION)
+  message("    replication_channels")
+  add_subdirectory(replication_channels)
+endif(UNIT_TESTS OR UNIT_TEST_REPLICATION)

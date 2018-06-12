@@ -37,25 +37,34 @@ namespace cubstream
   {
     public:
       transfer_receiver_task (cubstream::transfer_receiver &consumer_channel)
-	: this_consumer_channel (consumer_channel)
+	: this_consumer_channel (consumer_channel), m_first_loop (true)
       {
       }
 
       void execute () override
       {
-	int rc = 0;
-	size_t max_len = MTU;
+	css_error_code rc = NO_ERRORS;
+	std::size_t max_len = MTU;
 
 	assert (this_consumer_channel.m_channel.is_connection_alive ());
 
-	rc = this_consumer_channel.m_channel.recv (this_consumer_channel.m_buffer, max_len);
+        if (m_first_loop)
+          {
+            rc = (css_error_code) this_consumer_channel.m_channel.send ((char *) &this_consumer_channel.m_last_received_position,
+                                                       sizeof (cubstream::stream_position));
+            assert (rc == NO_ERRORS);
+
+            m_first_loop = false;
+          }
+
+	rc = (css_error_code) this_consumer_channel.m_channel.recv (this_consumer_channel.m_buffer, max_len);
 	if (rc != NO_ERRORS)
 	  {
 	    this_consumer_channel.m_channel.close_connection ();
 	    return;
 	  }
 
-	rc = this_consumer_channel.m_stream.write (max_len, &this_consumer_channel);
+	rc = (css_error_code) this_consumer_channel.m_stream.write (max_len, this_consumer_channel.m_write_action_function);
 	if (rc != NO_ERRORS)
 	  {
 	    this_consumer_channel.m_channel.close_connection ();
@@ -65,10 +74,11 @@ namespace cubstream
 
     private:
       cubstream::transfer_receiver &this_consumer_channel;
+      bool m_first_loop; /* TODO[arnia] may be a good idea to use create_context instead */
   };
 
   transfer_receiver::transfer_receiver (communication_channel &chn,
-					cubstream::stream &stream,
+					stream &stream,
 					stream_position received_from_position)
     : m_channel (chn),
       m_stream (stream),
@@ -76,6 +86,12 @@ namespace cubstream
   {
     m_receiver_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
 			new transfer_receiver_task (*this), "stream_transfer_receiver");
+
+     m_write_action_function = std::bind (&transfer_receiver::write_action,
+					 std::ref (*this),
+					 std::placeholders::_1,
+					 std::placeholders::_2,
+					 std::placeholders::_3);
   }
 
   transfer_receiver::~transfer_receiver ()

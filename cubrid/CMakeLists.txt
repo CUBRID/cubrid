@@ -146,14 +146,28 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
   ${COMMUNICATION_DIR}/communication_channel.cpp
+  ${COMMUNICATION_DIR}/cub_server_communication_channel.cpp
   ${COMMUNICATION_DIR}/stream_transfer_receiver.cpp
   ${COMMUNICATION_DIR}/stream_transfer_sender.cpp
   )
 
 set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/communication_channel.hpp
+  ${COMMUNICATION_DIR}/cub_server_communication_channel.hpp
   ${COMMUNICATION_DIR}/stream_transfer_receiver.hpp
   ${COMMUNICATION_DIR}/stream_transfer_sender.hpp
+  )
+
+set (REPLICATION_SOURCES
+  ${REPLICATION_DIR}/master_replication_channel_manager.cpp
+  ${REPLICATION_DIR}/master_replication_channel.cpp
+  ${REPLICATION_DIR}/slave_replication_channel.cpp
+  )
+
+set (REPLICATION_HEADERS
+  ${REPLICATION_DIR}/master_replication_channel_manager.hpp
+  ${REPLICATION_DIR}/master_replication_channel.hpp
+  ${REPLICATION_DIR}/slave_replication_channel.hpp
   )
 
 set(QUERY_SOURCES
@@ -271,6 +285,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${CONNECTION_TCP_SOURCE}
   ${COMMUNICATION_SOURCES}
   ${PARSER_SOURCES}
+  ${REPLICATION_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${JSP_SOURCES}
@@ -295,6 +310,7 @@ set (CUBRID_LIB_SOURCES
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
   ${COMMUNICATION_SOURCES}
+  ${REPLICATION_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${JSP_SOURCES}
@@ -305,10 +321,12 @@ set (CUBRID_LIB_SOURCES
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
   )
+
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
   ${COMMUNICATION_HEADERS}
   ${COMPAT_HEADERS}
+  ${REPLICATION_HEADERS}
   ${THREAD_HEADERS}
   )
 

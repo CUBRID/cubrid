@@ -24,10 +24,13 @@
 #ident "$Id$"
 
 #include "config.h"
+#include "cubstream.hpp"
 #include "session.h"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
+#include "slave_replication_channel.hpp"
+#include "master_replication_channel_manager.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -108,6 +111,8 @@ static bool ha_Repl_delay_detected = false;
 
 static int ha_Server_num_of_hosts = 0;
 static char ha_Server_master_hostname[MAXHOSTNAMELEN];
+static cubreplication::slave_replication_channel *g_slave_replication_channel;
+static cubstream::mock_packing_stream mock_stream;
 
 #define HA_LOG_APPLIER_STATE_TABLE_MAX  5
 typedef struct ha_log_applier_state_table HA_LOG_APPLIER_STATE_TABLE;
@@ -776,6 +781,7 @@ int
 css_process_master_hostname ()
 {
   int hostname_length, error;
+  cub_server_communication_channel chn (css_Master_server_name);
 
   error = css_receive_heartbeat_data (css_Master_conn, (char *) &hostname_length, sizeof (int));
   if (error != NO_ERRORS)
@@ -802,6 +808,19 @@ css_process_master_hostname ()
   assert (hostname_length > 0 && ha_Server_state == HA_SERVER_STATE_STANDBY);
 
   //create slave replication channel and connect to hostname
+  error = chn.connect (ha_Server_master_hostname, css_Master_port_id);
+  if (error != NO_ERRORS)
+    {
+      assert (false);
+      return error;
+    }
+
+  cubreplication::master_replication_channel_manager::reset ();
+  delete g_slave_replication_channel;
+  g_slave_replication_channel = new cubreplication::slave_replication_channel (std::move (chn),
+                                                                                mock_stream,
+                                                                                0
+                                                                              );
 
   er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
 		 ha_Server_master_hostname);
@@ -2338,7 +2357,9 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_enable_update() \n");
 	  logtb_enable_update (thread_p);
 	}
-      // init master replication channel manager
+      delete g_slave_replication_channel;
+      cubreplication::master_replication_channel_manager::reset ();
+      cubreplication::master_replication_channel_manager::init (&mock_stream);
       break;
 
     case HA_SERVER_STATE_STANDBY:
@@ -2679,6 +2700,8 @@ css_process_new_slave (SOCKET master_fd)
 
   SOCKET new_fd;
   unsigned short rid;
+  css_error_code rc;
+  communication_channel chn;
 
   /* receive new socket descriptor from the master */
   new_fd = css_open_new_socket_from_master (master_fd, &rid);
@@ -2692,11 +2715,14 @@ css_process_new_slave (SOCKET master_fd)
 
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
-  // add slave to master replication channel manager
-#if 1
-  // remove this after master/slave repl chn impl
-  css_shutdown_socket (new_fd);
-#endif
+  rc = chn.accept (new_fd);
+  assert (rc == NO_ERRORS);
+  cubreplication::master_replication_channel_manager::add_master_replication_channel (cubreplication::master_replication_channel_entry (
+                                                                                        std::move (chn),
+                                                                                        mock_stream,
+                                                                                        cubreplication::CHECK_FOR_GC,
+                                                                                        new cubreplication::check_for_gc_task ())
+                                                                                      );
 }
 
 const char *

@@ -36,7 +36,7 @@ namespace cubthread
 namespace cubstream
 {
 
-  class transfer_sender : public cubstream::read_handler
+  class transfer_sender
   {
 
     public:
@@ -45,10 +45,14 @@ namespace cubstream
 		       cubstream::stream &stream,
 		       stream_position begin_sending_position = 0);
       virtual ~transfer_sender ();
-      virtual int read_action (const stream_position pos, char *ptr, const size_t byte_count) override;
+      int read_action (char *ptr, const size_t byte_count);
 
       stream_position get_last_sent_position ();
       communication_channel &get_communication_channel ();
+
+    protected:
+
+      cubstream::stream::read_func_t m_read_action_function;
 
     private:
 
