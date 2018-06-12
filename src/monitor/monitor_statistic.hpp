@@ -390,9 +390,11 @@ namespace cubmonitor
   max_atomic_statistic<Rep>::collect (const Rep &value)
   {
     Rep loaded;
+
     // loop until either:
     // 1. current value is better
     // 2. successfully replaced value
+
     do
       {
 	loaded = m_value.load ();
@@ -435,9 +437,11 @@ namespace cubmonitor
   min_atomic_statistic<Rep>::collect (const Rep &value)
   {
     Rep loaded;
+
     // loop until either:
     // 1. current value is better
     // 2. successfully replaced value
+
     do
       {
 	loaded = m_value.load ();
