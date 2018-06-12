@@ -33,9 +33,10 @@
 #include "list_file.h"
 #include "binaryheap.h"
 #include "statistics_sr.h"
-#include "thread.h"
 #include "query_manager.h"
 #include "stream_to_xasl.h"
+#include "thread_entry.hpp"
+#include "thread_manager.hpp"
 
 #define XCACHE_ENTRY_MARK_DELETED	    ((INT32) 0x80000000)
 #define XCACHE_ENTRY_TO_BE_RECOMPILED	    ((INT32) 0x40000000)
@@ -49,7 +50,7 @@
 
 #if defined (SERVER_MODE)
 #define XCACHE_ENTRY_DELETED_BY_ME \
-  ((XCACHE_ENTRY_MARK_DELETED | XCACHE_ENTRY_FIX_COUNT_MASK) - thread_get_current_tran_index ())
+  ((XCACHE_ENTRY_MARK_DELETED | XCACHE_ENTRY_FIX_COUNT_MASK) - logtb_get_current_tran_index ())
 #else	/* !SERVER_MODE */		   /* SA_MODE */
 #define XCACHE_ENTRY_DELETED_BY_ME (XCACHE_ENTRY_MARK_DELETED | XCACHE_ENTRY_FIX_COUNT_MASK)
 #endif /* SA_MODE */

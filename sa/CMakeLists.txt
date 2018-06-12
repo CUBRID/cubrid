@@ -112,6 +112,8 @@ set(BASE_SOURCES
   ${BASE_DIR}/binaryheap.c
   ${BASE_DIR}/tsc_timer.c
   ${BASE_DIR}/lock_free.c
+  ${BASE_DIR}/fileline_location.cpp
+  ${BASE_DIR}/resource_tracker.cpp
   ${BASE_DIR}/tz_compile.c
   ${BASE_DIR}/tz_support.c
   )
@@ -119,12 +121,14 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
+  ${BASE_DIR}/fileline_location.hpp
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
   ${BASE_DIR}/perf_def.hpp
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/packable_object.hpp
+  ${BASE_DIR}/resource_tracker.hpp
 )
 
 set(HEAPLAYER_SOURCES
@@ -237,11 +241,13 @@ set(JSP_SOURCES
   )
 
 set(THREAD_SOURCES
+  ${THREAD_DIR}/critical_section_tracker.cpp
   ${THREAD_DIR}/thread_entry.cpp
   ${THREAD_DIR}/thread_entry_task.cpp
   ${THREAD_DIR}/thread_manager.cpp
   )
 set(THREAD_HEADERS
+  ${THREAD_DIR}/critical_section_tracker.hpp
   ${THREAD_DIR}/thread_compat.hpp
   ${THREAD_DIR}/thread_entry.hpp
   ${THREAD_DIR}/thread_manager.hpp
@@ -435,17 +441,35 @@ if(WIN32)
   target_link_libraries(cubridsa LINK_PRIVATE ws2_32 ${JVM_LIBS})
   set_target_properties(cubridsa PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cubridsa/cubridsa.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
-target_include_directories(cubridsa PRIVATE ${CMAKE_SOURCE_DIR}/src/heaplayers/util ${JAVA_INC} ${EP_INCLUDES})
 if(UNIX)
-  target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
-  target_link_libraries(cubridsa LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_DL_LIBS})
-else(UNIX)
-  target_link_libraries(cubridsa LINK_PRIVATE cas ${EP_LIBS})
+target_external_dependencies(cubridsa
+  LIBNCURSES
+  )
 endif(UNIX)
-
+target_external_dependencies(cubridsa
+  LIBEXPAT
+  LIBJANSSON
+  LIBGPG_ERROR
+  LIBGCRYPT
+  LIBLZO
+  LIBEXPAT
+  LIBREGEX
+  LIBEDIT
+  )
+target_include_directories(cubridsa PRIVATE
+  ${CMAKE_SOURCE_DIR}/src/heaplayers/util  # this looks ugly
+  ${JAVA_INC}
+  )
+target_link_libraries(cubridsa LINK_PRIVATE
+    cas
+  )
+if(UNIX)
+  # find out what this means:
+  # target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
+  target_link_libraries(cubridsa LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_DL_LIBS})
+endif(UNIX)
 add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
-
-add_dependencies(cubridsa ${EP_TARGETS})
+#add_dependencies(cubridsa ${EP_TARGETS})
 
 if(ENABLE_SYSTEMTAP)
   target_include_directories(cubridsa PRIVATE ${CMAKE_BINARY_DIR})

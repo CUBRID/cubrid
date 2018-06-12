@@ -175,7 +175,7 @@ public class CUBRIDConnection implements Connection {
 	}
 
 	public String nativeSQL(String sql) throws SQLException {
-		throw new UnsupportedOperationException();
+		throw new SQLException(new UnsupportedOperationException());
 	}
 
 	public synchronized void setAutoCommit(boolean autoCommit)
@@ -418,11 +418,11 @@ public class CUBRIDConnection implements Connection {
 	}
 
 	public Map<String, Class<?>> getTypeMap() throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	public void setTypeMap(Map<String, Class<?>> map) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	// 3.0 api
@@ -432,7 +432,7 @@ public class CUBRIDConnection implements Connection {
 		if (holdable == ResultSet.HOLD_CURSORS_OVER_COMMIT) {
 			if (type == ResultSet.TYPE_SCROLL_SENSITIVE
 					|| concur == ResultSet.CONCUR_UPDATABLE) {
-				throw new java.lang.UnsupportedOperationException();
+				throw new SQLException(new java.lang.UnsupportedOperationException());
 			}
 		}
 		Statement stmt = new CUBRIDStatement(this, type, concur, holdable);
@@ -472,7 +472,7 @@ public class CUBRIDConnection implements Connection {
 		if (holdable == ResultSet.HOLD_CURSORS_OVER_COMMIT) {
 			if (type == ResultSet.TYPE_SCROLL_SENSITIVE
 					|| concur == ResultSet.CONCUR_UPDATABLE) {
-				throw new java.lang.UnsupportedOperationException();
+				throw new SQLException(new java.lang.UnsupportedOperationException());
 			}
 		}
 		return prepare(sql, type, concur, holdable, Statement.NO_GENERATED_KEYS);
@@ -492,7 +492,7 @@ public class CUBRIDConnection implements Connection {
 
 	public synchronized void releaseSavepoint(Savepoint savepoint)
 			throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 		/*
 		 * 3.0 checkIsOpen(); boolean flag=true;
 		 * 
@@ -506,7 +506,7 @@ public class CUBRIDConnection implements Connection {
 	}
 
 	public synchronized void rollback(Savepoint savepoint) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 		/*
 		 * 3.0 checkIsOpen();
 		 * 
@@ -530,7 +530,7 @@ public class CUBRIDConnection implements Connection {
 	}
 
 	public synchronized Savepoint setSavepoint() throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 		/*
 		 * 3.0 checkIsOpen();
 		 * 
@@ -551,7 +551,7 @@ public class CUBRIDConnection implements Connection {
 	}
 
 	public synchronized Savepoint setSavepoint(String name) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 		/*
 		 * 3.0 checkIsOpen(); sv_name = name;
 		 * 
@@ -959,84 +959,88 @@ public class CUBRIDConnection implements Connection {
 
 	/* JDK 1.6 */
 	public NClob createNClob() throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public Array createArrayOf(String arg0, Object[] arg1) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public SQLXML createSQLXML() throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public Struct createStruct(String arg0, Object[] arg1) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public Properties getClientInfo() throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public String getClientInfo(String arg0) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public boolean isValid(int arg0) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public void setClientInfo(Properties arg0) throws SQLClientInfoException {
-		throw new java.lang.UnsupportedOperationException();
+		SQLClientInfoException clientEx = new SQLClientInfoException();
+		clientEx.initCause(new java.lang.UnsupportedOperationException());
+		throw clientEx;
 	}
 
 	/* JDK 1.6 */
 	public void setClientInfo(String arg0, String arg1)
 			throws SQLClientInfoException {
-		throw new java.lang.UnsupportedOperationException();
+		SQLClientInfoException clientEx = new SQLClientInfoException();
+		clientEx.initCause(new java.lang.UnsupportedOperationException());
+		throw clientEx;
 	}
 
 	/* JDK 1.6 */
 	public boolean isWrapperFor(Class<?> arg0) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public <T> T unwrap(Class<T> arg0) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.7 */
 	public void setSchema(String schema) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.7 */
 	public String getSchema() throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.7 */
 	public void abort(Executor executor) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.7 */
 	public void setNetworkTimeout(Executor executor, int milliseconds)
 			throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.7 */
 	public int getNetworkTimeout() throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 }

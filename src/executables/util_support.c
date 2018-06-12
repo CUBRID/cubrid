@@ -88,6 +88,7 @@ utility_load_library (DSO_HANDLE * handle, const char *path)
 #endif
   if ((*handle) == 0)
     {
+      // todo: generate verbose error
       return ER_GENERIC_ERROR;
     }
 

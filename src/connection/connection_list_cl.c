@@ -316,7 +316,7 @@ css_queue_packet (CSS_CONN_ENTRY * conn, CSS_QUEUE_ENTRY ** queue_p, unsigned sh
 {
   if (!css_is_request_aborted (conn, request_id))
     {
-      return css_add_entry_to_header (queue_p, request_id, buffer, size, rc, conn->transaction_id,
+      return css_add_entry_to_header (queue_p, request_id, buffer, size, rc, conn->get_tran_index (),
 				      conn->invalidate_snapshot, conn->db_error);
     }
 
@@ -357,7 +357,7 @@ css_recv_and_queue_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, cha
     {
       if (!css_is_request_aborted (conn, request_id))
 	{
-	  css_add_entry_to_header (queue_p, request_id, buffer, size, rc, conn->transaction_id,
+	  css_add_entry_to_header (queue_p, request_id, buffer, size, rc, conn->get_tran_index (),
 				   conn->invalidate_snapshot, conn->db_error);
 	  return true;
 	}
@@ -490,7 +490,7 @@ css_queue_command_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, NET_
       if (temp != NULL)
 	{
 	  memcpy ((char *) temp, (char *) header, sizeof (NET_HEADER));
-	  css_add_entry_to_header (&conn->request_queue, request_id, (char *) temp, size, 0, conn->transaction_id,
+	  css_add_entry_to_header (&conn->request_queue, request_id, (char *) temp, size, 0, conn->get_tran_index (),
 				   conn->invalidate_snapshot, conn->db_error);
 	}
     }
@@ -511,7 +511,7 @@ css_process_abort_packet (CSS_CONN_ENTRY * conn, unsigned short request_id)
 
   if (css_find_queue_entry (conn->abort_queue, request_id) == NULL)
     {
-      css_add_entry_to_header (&conn->abort_queue, request_id, NULL, 0, 0, conn->transaction_id,
+      css_add_entry_to_header (&conn->abort_queue, request_id, NULL, 0, 0, conn->get_tran_index (),
 			       conn->invalidate_snapshot, conn->db_error);
     }
 }
@@ -549,7 +549,7 @@ css_queue_unexpected_packet (int type, CSS_CONN_ENTRY * conn, unsigned short req
 {
   unsigned short flags = 0;
 
-  conn->transaction_id = ntohl (header->transaction_id);
+  conn->set_tran_index (ntohl (header->transaction_id));
   flags = ntohs (header->flags);
   conn->invalidate_snapshot = flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
   conn->db_error = (int) ntohl (header->db_error);

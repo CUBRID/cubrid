@@ -88,8 +88,9 @@ static void css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, S
 				    char *server_name, int server_name_length);
 static void css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid);
 static void css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid);
-static bool css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid);
-static void css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid);
+static bool css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid,
+					    CSS_SERVER_REQUEST request);
+static void css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERVER_REQUEST request);
 static void css_process_new_connection (SOCKET fd);
 static int css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
 static int css_enroll_write_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
@@ -610,9 +611,9 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
  *   rid(in)
  */
 static bool
-css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
+css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SERVER_REQUEST request)
 {
-  return (css_transfer_fd (server_fd, client_fd, rid));
+  return (css_transfer_fd (server_fd, client_fd, rid, request));
 }
 
 /*
@@ -633,7 +634,7 @@ css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned sho
  *   to the server.
  */
 static void
-css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid)
+css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERVER_REQUEST request)
 {
   SOCKET_QUEUE_ENTRY *temp;
   char *server_name = NULL;
@@ -670,7 +671,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid)
 		      return;
 		    }
 #endif
-		  if (css_send_new_request_to_server (temp->fd, conn->fd, rid))
+		  if (css_send_new_request_to_server (temp->fd, conn->fd, rid, request))
 		    {
 		      free_and_init (server_name);
 		      css_free_conn (conn);
@@ -754,7 +755,7 @@ css_process_new_connection (SOCKET fd)
 	  css_add_request_to_socket_queue (conn, true, NULL, fd, READ_WRITE, 0, &css_Master_socket_anchor);
 	  break;
 	case DATA_REQUEST:	/* request from a remote client */
-	  css_send_to_existing_server (conn, rid);
+	  css_send_to_existing_server (conn, rid, SERVER_START_NEW_CLIENT);
 	  break;
 	case SERVER_REQUEST:	/* request from a new server */
 	  css_register_new_server (conn, rid);
@@ -762,6 +763,9 @@ css_process_new_connection (SOCKET fd)
 	case SERVER_REQUEST_NEW:	/* request from a new server */
 	  /* here the server wants to manage its own connection port */
 	  css_register_new_server2 (conn, rid);
+	  break;
+	case SERVER_REQUEST_CONNECT_NEW_SLAVE:
+	  css_send_to_existing_server (conn, rid, SERVER_CONNECT_NEW_SLAVE);
 	  break;
 	default:
 	  css_free_conn (conn);

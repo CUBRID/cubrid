@@ -52,16 +52,16 @@ target_include_directories(test_memory_alloc PRIVATE
 #  ${EP_INCLUDES}
   )
 
-target_link_libraries(test_memory_alloc PRIVATE
+target_link_libraries(test_memory_alloc LINK_PRIVATE
   test_common
   )
 
 if(UNIX)
-  target_link_libraries(test_memory_alloc PRIVATE
+  target_link_libraries(test_memory_alloc LINK_PRIVATE
     cubrid
     )
 elseif(WIN32)
-  target_link_libraries(test_memory_alloc PRIVATE
+  target_link_libraries(test_memory_alloc LINK_PRIVATE
     cubrid-win-lib
     )
 else()

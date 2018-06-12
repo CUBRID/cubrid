@@ -33,19 +33,19 @@
 #include "chartype.h"
 #include "error_context.hpp"
 #include "environment_variable.h"
+#if defined (SERVER_MODE)
+#include "log_impl.h"
+#endif /* !SERVER_MODE */
 #include "memory_alloc.h"
 #include "message_catalog.h"
 #if !defined (WINDOWS)
 #include "release_string.h"
 #endif // not WINDOWS
 #include "system_parameter.h"
-#if defined (SERVER_MODE)
-#include "log_impl.h"
-#endif /* !SERVER_MODE */
+#include "stack_dump.h"
 #if !defined (SERVER_MODE)
 #include "transaction_cl.h"
 #endif /* !SERVER_MODE */
-#include "stack_dump.h"
 
 // c++ headers
 #include <cassert>
@@ -85,11 +85,6 @@
 #if !defined (WINDOWS)
 #include <unistd.h>
 #endif /* !WINDOWS */
-
-// todo: remove me
-#if defined (SERVER_MODE)
-#include "thread.h"
-#endif // SERVER_MODE
 
 #include <mutex>
 
@@ -1091,13 +1086,6 @@ er_final (ER_FINAL_CODE do_global_final)
 
       er_Hasalready_initiated = false;
       er_Has_sticky_init = false;
-    }
-  else
-    {
-#if defined (SERVER_MODE)
-      // todo: remove me; temporary code due to old thread.c
-      thread_get_thread_entry_info ()->get_error_context ().deregister_thread_local ();
-#endif // SERVER_MODE
     }
 }
 

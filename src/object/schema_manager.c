@@ -68,7 +68,6 @@
 #include "system_parameter.h"
 #include "object_template.h"
 #include "execute_schema.h"
-#include "transaction_cl.h"
 #include "release_string.h"
 #include "execute_statement.h"
 #include "md5.h"

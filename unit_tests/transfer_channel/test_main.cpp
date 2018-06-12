@@ -5,7 +5,6 @@
 #include "stream_transfer_sender.hpp"
 #include "cubstream.hpp"
 
-#include "thread_manager.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
 #include "thread_looper.hpp"
@@ -83,7 +82,7 @@ class stream_mock : public cubstream::stream
 
       for (std::size_t i = 0; i < byte_count; i += sizeof (int))
 	{
-	  * ((int *) (ptr + i)) = first_pos / sizeof (int) + i / sizeof (int);
+	  * ((int *) (ptr + i)) = (int) (first_pos / sizeof (int) + i / sizeof (int));
 	}
 
       err = handler->read_action (first_pos, ptr, byte_count);
@@ -142,7 +141,7 @@ void master_listening_thread_func ()
 
   if ((revents & POLLIN) != 0)
     {
-      int new_sockfd = css_master_accept (listen_fd_platf_ind);
+      SOCKET new_sockfd = css_master_accept (listen_fd_platf_ind);
       communication_channel cc (MAX_TIMEOUT_IN_MS);
       rc = cc.accept (new_sockfd);
       if (rc != NO_ERRORS)
@@ -169,10 +168,6 @@ static int init_thread_system ()
       assert (false);
       return error_code;
     }
-
-  cubthread::set_manager (new cubthread::manager ());
-  cubthread::get_manager()->alloc_entries ();
-  cubthread::get_manager()->init_entries (0, false);
 
   return NO_ERROR;
 }

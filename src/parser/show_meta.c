@@ -120,7 +120,7 @@ metadata_of_volume_header (void)
   };
 
   static SHOWSTMT_METADATA md = {
-    SHOWSTMT_VOLUME_HEADER, "show volume header of ",
+    SHOWSTMT_VOLUME_HEADER, true /* only_for_dba */ , "show volume header of ",
     cols, DIM (cols), NULL, 0, args, DIM (args), NULL, NULL
   };
   return &md;
@@ -176,7 +176,7 @@ metadata_of_active_log_header (void)
   };
 
   static SHOWSTMT_METADATA md = {
-    SHOWSTMT_ACTIVE_LOG_HEADER, "show log header of ",
+    SHOWSTMT_ACTIVE_LOG_HEADER, true /* only_for_dba */ , "show log header of ",
     cols, DIM (cols), NULL, 0, args, DIM (args), NULL, NULL
   };
 
@@ -202,7 +202,7 @@ metadata_of_archive_log_header (void)
   };
 
   static SHOWSTMT_METADATA md = {
-    SHOWSTMT_ARCHIVE_LOG_HEADER, "show archive log header of ",
+    SHOWSTMT_ARCHIVE_LOG_HEADER, true /* only_for_dba */ , "show archive log header of ",
     cols, DIM (cols), NULL, 0, args, DIM (args), NULL, NULL
   };
 
@@ -233,7 +233,7 @@ metadata_of_slotted_page_header (void)
   };
 
   static SHOWSTMT_METADATA md = {
-    SHOWSTMT_SLOTTED_PAGE_HEADER, "show slotted page header of ",
+    SHOWSTMT_SLOTTED_PAGE_HEADER, true /* only_for_dba */ , "show slotted page header of ",
     cols, DIM (cols), NULL, 0, args, DIM (args), NULL, NULL
   };
 
@@ -263,7 +263,7 @@ metadata_of_slotted_page_slots (void)
   };
 
   static SHOWSTMT_METADATA md = {
-    SHOWSTMT_SLOTTED_PAGE_SLOTS, "show slotted page slots of ",
+    SHOWSTMT_SLOTTED_PAGE_SLOTS, true /* only_for_dba */ , "show slotted page slots of ",
     cols, DIM (cols), orderby, DIM (orderby), args, DIM (args), NULL, NULL
   };
 
@@ -285,9 +285,8 @@ metadata_of_access_status (void)
   };
 
   static SHOWSTMT_METADATA md = {
-    SHOWSTMT_ACCESS_STATUS, "show access status",
-    cols, DIM (cols), orderby, DIM (orderby), NULL, 0,
-    pt_check_access_status, NULL
+    SHOWSTMT_ACCESS_STATUS, true /* only_for_dba */ , "show access status",
+    cols, DIM (cols), orderby, DIM (orderby), NULL, 0, pt_check_access_status, NULL
   };
 
   return &md;
@@ -330,15 +329,13 @@ metadata_of_heap_header (SHOW_ONLY_ALL flag)
   };
 
   static SHOWSTMT_METADATA md_only = {
-    SHOWSTMT_HEAP_HEADER, "show heap header of ",
-    cols, DIM (cols), NULL, 0, args, DIM (args),
-    pt_check_table_in_show_heap, NULL
+    SHOWSTMT_HEAP_HEADER, true /* only_for_dba */ , "show heap header of ",
+    cols, DIM (cols), NULL, 0, args, DIM (args), pt_check_table_in_show_heap, NULL
   };
 
   static SHOWSTMT_METADATA md_all = {
-    SHOWSTMT_ALL_HEAP_HEADER, "show all heap header of ",
-    cols, DIM (cols), orderby, DIM (orderby), args, DIM (args),
-    pt_check_table_in_show_heap, NULL
+    SHOWSTMT_ALL_HEAP_HEADER, true /* only_for_dba */ , "show all heap header of ",
+    cols, DIM (cols), orderby, DIM (orderby), args, DIM (args), pt_check_table_in_show_heap, NULL
   };
 
   return (flag == SHOW_ALL) ? &md_all : &md_only;
@@ -379,15 +376,13 @@ metadata_of_heap_capacity (SHOW_ONLY_ALL flag)
   };
 
   static SHOWSTMT_METADATA md_only = {
-    SHOWSTMT_HEAP_CAPACITY, "show heap capacity of ",
-    cols, DIM (cols), orderby, DIM (orderby), args, DIM (args),
-    pt_check_table_in_show_heap, NULL
+    SHOWSTMT_HEAP_CAPACITY, true /* only_for_dba */ , "show heap capacity of ",
+    cols, DIM (cols), orderby, DIM (orderby), args, DIM (args), pt_check_table_in_show_heap, NULL
   };
 
   static SHOWSTMT_METADATA md_all = {
-    SHOWSTMT_ALL_HEAP_CAPACITY, "show all heap capacity of ",
-    cols, DIM (cols), orderby, DIM (orderby), args, DIM (args),
-    pt_check_table_in_show_heap, NULL
+    SHOWSTMT_ALL_HEAP_CAPACITY, true /* only_for_dba */ , "show all heap capacity of ",
+    cols, DIM (cols), orderby, DIM (orderby), args, DIM (args), pt_check_table_in_show_heap, NULL
   };
 
   return (flag == SHOW_ALL) ? &md_all : &md_only;
@@ -427,15 +422,13 @@ metadata_of_index_header (SHOW_ONLY_ALL flag)
   };
 
   static SHOWSTMT_METADATA md_all = {
-    SHOWSTMT_ALL_INDEXES_HEADER, "show all indexes header of ",
-    cols, DIM (cols), orderby, DIM (orderby), args1, DIM (args1),
-    pt_check_show_index, NULL
+    SHOWSTMT_ALL_INDEXES_HEADER, true /* only_for_dba */ , "show all indexes header of ",
+    cols, DIM (cols), orderby, DIM (orderby), args1, DIM (args1), pt_check_show_index, NULL
   };
 
   static SHOWSTMT_METADATA md_only = {
-    SHOWSTMT_INDEX_HEADER, "show index header of ",
-    cols, DIM (cols), NULL, 0, args2, DIM (args2),
-    pt_check_show_index, NULL
+    SHOWSTMT_INDEX_HEADER, true /* only_for_dba */ , "show index header of ",
+    cols, DIM (cols), NULL, 0, args2, DIM (args2), pt_check_show_index, NULL
   };
 
   return (flag == SHOW_ALL) ? &md_all : &md_only;
@@ -479,15 +472,13 @@ metadata_of_index_capacity (SHOW_ONLY_ALL flag)
   };
 
   static SHOWSTMT_METADATA md_all = {
-    SHOWSTMT_ALL_INDEXES_CAPACITY, "show all indexes capacity of ",
-    cols, DIM (cols), orderby, DIM (orderby), args1, DIM (args1),
-    pt_check_show_index, NULL
+    SHOWSTMT_ALL_INDEXES_CAPACITY, true /* only_for_dba */ , "show all indexes capacity of ",
+    cols, DIM (cols), orderby, DIM (orderby), args1, DIM (args1), pt_check_show_index, NULL
   };
 
   static SHOWSTMT_METADATA md_only = {
-    SHOWSTMT_INDEX_CAPACITY, "show index capacity of ",
-    cols, DIM (cols), NULL, 0, args2, DIM (args2),
-    pt_check_show_index, NULL
+    SHOWSTMT_INDEX_CAPACITY, true /* only_for_dba */ , "show index capacity of ",
+    cols, DIM (cols), NULL, 0, args2, DIM (args2), pt_check_show_index, NULL
   };
 
   return (flag == SHOW_ALL) ? &md_all : &md_only;
@@ -517,9 +508,8 @@ metadata_of_global_critical_sections (void)
   };
 
   static SHOWSTMT_METADATA md = {
-    SHOWSTMT_GLOBAL_CRITICAL_SECTIONS, "show critical sections",
-    cols, DIM (cols), orderby, DIM (orderby), NULL, 0,
-    NULL, NULL
+    SHOWSTMT_GLOBAL_CRITICAL_SECTIONS, true /* only_for_dba */ , "show critical sections",
+    cols, DIM (cols), orderby, DIM (orderby), NULL, 0, NULL, NULL
   };
 
   return &md;
@@ -540,7 +530,7 @@ metadata_of_job_queues (void)
   };
 
   static SHOWSTMT_METADATA md = {
-    SHOWSTMT_JOB_QUEUES, "show job queue",
+    SHOWSTMT_JOB_QUEUES, true /* only_for_dba */ , "show job queue",
     cols, DIM (cols), orderby, DIM (orderby), NULL, 0, NULL, NULL
   };
 
@@ -560,9 +550,8 @@ metadata_of_timezones (void)
   };
 
   static SHOWSTMT_METADATA md = {
-    SHOWSTMT_TIMEZONES, "show timezones",
-    cols, DIM (cols), orderby, DIM (orderby), NULL, 0,
-    NULL, NULL
+    SHOWSTMT_TIMEZONES, false /* only_for_dba */ , "show timezones",
+    cols, DIM (cols), orderby, DIM (orderby), NULL, 0, NULL, NULL
   };
 
   return &md;
@@ -584,9 +573,8 @@ metadata_of_full_timezones (void)
   };
 
   static SHOWSTMT_METADATA md = {
-    SHOWSTMT_FULL_TIMEZONES, "show full timezones",
-    cols, DIM (cols), orderby, DIM (orderby), NULL, 0,
-    NULL, NULL
+    SHOWSTMT_FULL_TIMEZONES, false /* only_for_dba */ , "show full timezones",
+    cols, DIM (cols), orderby, DIM (orderby), NULL, 0, NULL, NULL
   };
 
   return &md;
@@ -650,7 +638,7 @@ metadata_of_tran_tables (void)
   };
 
   static SHOWSTMT_METADATA md = {
-    SHOWSTMT_TRAN_TABLES, "show transaction tables",
+    SHOWSTMT_TRAN_TABLES, true /* only_for_dba */ , "show transaction tables",
     cols, DIM (cols), orderby, DIM (orderby), NULL, 0, NULL, NULL
   };
 
@@ -694,7 +682,7 @@ metadata_of_threads (void)
   };
 
   static SHOWSTMT_METADATA md = {
-    SHOWSTMT_THREADS, "show threads",
+    SHOWSTMT_THREADS, true /* only_for_dba */ , "show threads",
     cols, DIM (cols), orderby, DIM (orderby), NULL, 0, NULL, NULL
   };
   return &md;
@@ -920,6 +908,7 @@ showstmt_metadata_init (void)
     }
 
   memset (show_Metas, 0, sizeof (show_Metas));
+
   show_Metas[SHOWSTMT_VOLUME_HEADER] = metadata_of_volume_header ();
   show_Metas[SHOWSTMT_ACCESS_STATUS] = metadata_of_access_status ();
   show_Metas[SHOWSTMT_ACTIVE_LOG_HEADER] = metadata_of_active_log_header ();

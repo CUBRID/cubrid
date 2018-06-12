@@ -43,15 +43,15 @@ target_include_directories(test_thread PRIVATE
   ${TEST_INCLUDES}
   )
 
-target_link_libraries(test_thread PRIVATE
+target_link_libraries(test_thread LINK_PRIVATE
   test_common
   )
 if(UNIX)
-  target_link_libraries(test_thread PRIVATE
+  target_link_libraries(test_thread LINK_PRIVATE
     cubrid
     )
 elseif(WIN32)
-  target_link_libraries(test_thread PRIVATE
+  target_link_libraries(test_thread LINK_PRIVATE
     cubrid-win-lib
     )
 else()

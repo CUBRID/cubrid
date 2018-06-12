@@ -53,7 +53,11 @@
 #include "recovery.h"
 #include "release_string.h"
 #include "storage_common.h"
+#if defined (SERVER_MODE)
+#include "thread_entry.hpp"
+#else // not SERVER_MODE = SA_MODE or CS_MODE
 #include "thread_compat.hpp"
+#endif // not SERVER_MODE = SA_MODE or CS_MODE
 
 #include <assert.h>
 #if defined(SOLARIS)
@@ -902,10 +906,10 @@ extern int logtb_collect_local_clients (int **local_client_pids);
 #if defined(SERVER_MODE)
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) \
-  ((thrd) ? (thrd)->tran_index : thread_get_current_tran_index())
+  ((thrd) ? (thrd)->tran_index : logtb_get_current_tran_index ())
 #endif
 #define LOG_SET_CURRENT_TRAN_INDEX(thrd, index) \
-  ((thrd) ? (void) ((thrd)->tran_index = (index)) : thread_set_current_tran_index ((thrd), (index)))
+  ((thrd) ? (void) ((thrd)->tran_index = (index)) : logtb_set_current_tran_index ((thrd), (index)))
 #else /* SERVER_MODE */
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) (log_Tran_index)
@@ -2068,7 +2072,7 @@ extern char log_Name_removed_archive[];
 #else	/* !SA_MODE */	       /* SERVER_MODE */
 #define LOG_THREAD_TRAN_MSG "(thr=%d, trid=%d)"
 #define LOG_THREAD_TRAN_ARGS(thread_p) \
-  THREAD_GET_CURRENT_ENTRY_INDEX (thread_p), \
+  thread_get_current_entry_index (), \
   vacuum_is_thread_vacuum (thread_p) && vacuum_get_vacuum_worker (thread_p) != NULL ? \
   vacuum_get_worker_tdes (thread_p)->trid : LOG_FIND_CURRENT_TDES (thread_p)->trid
 #endif /* SERVER_MODE */
@@ -2391,6 +2395,22 @@ extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr);
 
 extern VACUUM_LOG_BLOCKID logpb_last_complete_blockid (void);
+
+extern void logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index);
+extern int xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user, char *kill_host,
+				   int kill_pid);
+extern int xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_id, bool is_dba_group_member,
+					  bool interrupt_only);
+extern THREAD_ENTRY *logtb_find_thread_by_tran_index (int tran_index);
+extern THREAD_ENTRY *logtb_find_thread_by_tran_index_except_me (int tran_index);
+extern int logtb_get_current_tran_index (void);
+extern void logtb_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index);
+#if defined (SERVER_MODE)
+extern void logtb_wakeup_thread_with_tran_index (int tran_index, thread_resume_suspend_status resume_reason);
+#endif // SERVER_MODE
+
+extern bool logtb_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
+extern bool logtb_get_check_interrupt (THREAD_ENTRY * thread_p);
 
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #endif /* _LOG_IMPL_H_ */

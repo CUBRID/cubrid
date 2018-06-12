@@ -37,16 +37,12 @@
 #include "page_buffer.h"
 #include "perf_monitor.h"
 #include "resource_shared_pool.hpp"
-#include "thread.h"
 #include "thread_entry_task.hpp"
 #if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
 #endif /* SERVER_MODE */
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
-#if defined (SA_MODE)
-#include "transaction_cl.h"	/* for interrupt */
-#endif /* defined (SA_MODE) */
 #include "util_func.h"
 
 #include <atomic>
@@ -627,8 +623,8 @@ static bool is_not_vacuumed_and_lost (THREAD_ENTRY * thread_p, MVCC_REC_HEADER *
 static void print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEADER * rec_header, int btree_node_type);
 
 static bool vacuum_is_empty (void);
-static void vacuum_convert_thread_to_master (THREAD_ENTRY * thread_p, THREAD_TYPE & save_type);
-static void vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, THREAD_TYPE & save_type);
+static void vacuum_convert_thread_to_master (THREAD_ENTRY * thread_p, thread_type & save_type);
+static void vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, thread_type & save_type);
 
 #if !defined (NDEBUG)
 /* Debug function to verify vacuum data. */
@@ -638,10 +634,11 @@ static void vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p);
 #else /* NDEBUG */
 #define VACUUM_VERIFY_VACUUM_DATA(thread_p)
 #endif /* NDEBUG */
+static void vacuum_check_shutdown_interruption (const THREAD_ENTRY * thread_p, int error_code);
 
 /* *INDENT-OFF* */
 void
-vacuum_init_thread_context (cubthread::entry &context, THREAD_TYPE type, VACUUM_WORKER *worker)
+vacuum_init_thread_context (cubthread::entry &context, thread_type type, VACUUM_WORKER *worker)
 {
   assert (worker != NULL);
 
@@ -765,6 +762,32 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
       context.tran_index = 0;
     }
 
+    void stop_execution (cubthread::entry & context) final
+    {
+      context.shutdown = true;
+
+      // wakeup if waiting
+      if (context.m_status != cubthread::entry::status::TS_WAIT)
+        {
+          // not waiting
+          return;
+        }
+
+      context.lock ();
+      // check again
+      if (context.m_status != cubthread::entry::status::TS_WAIT)
+        {
+          // not waiting
+          context.unlock ();
+          return;
+        }
+
+      // interrupt & force wakeup
+      context.interrupted = true;
+      thread_wakeup_already_had_mutex (&context, THREAD_RESUME_DUE_TO_INTERRUPT);
+      context.unlock ();
+    }
+
     // members
     resource_shared_pool<VACUUM_WORKER>* m_pool;
 };
@@ -824,7 +847,7 @@ xvacuum (THREAD_ENTRY * thread_p)
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VACUUM_CS_NOT_AVAILABLE, 0);
   return ER_VACUUM_CS_NOT_AVAILABLE;
 #else	/* !SERVER_MODE */		   /* SA_MODE */
-  THREAD_TYPE save_type = THREAD_TYPE::TT_NONE;
+  thread_type save_type = thread_type::TT_NONE;
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) || vacuum_Data.is_vacuum_complete)
     {
@@ -1218,13 +1241,23 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
 	vacuum_heap_page (thread_p, page_ptr, object_count, threshold_mvccid, &hfid, &reusable, was_interrupted);
       if (error_code != NO_ERROR)
 	{
+	  vacuum_check_shutdown_interruption (thread_p, error_code);
+
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Vacuum heap page %d|%d, error_code=%d.",
 			       page_ptr->oid.volid, page_ptr->oid.pageid);
 
-	  assert_release (false);
-	  er_clear ();
-	  error_code = NO_ERROR;
-	  /* Release should not stop. Continue. */
+#if defined (NDEBUG)
+	  if (!thread_p->shutdown)
+	    {
+	      // unexpected case
+	      // debug crashes; but can release do about it? just try to clean as much as possible
+	      er_clear ();
+	      error_code = NO_ERROR;
+	      continue;
+	    }
+#endif // not DEBUG
+
+	  return error_code;
 	}
       /* Advance to next page. */
       page_ptr = obj_ptr;
@@ -1297,6 +1330,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 				      &helper.home_page);
       if (error_code != NO_ERROR)
 	{
+	  vacuum_check_shutdown_interruption (thread_p, error_code);
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|%d.",
 			       helper.home_vpid.volid, helper.home_vpid.pageid);
 	  return error_code;
@@ -1333,6 +1367,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
       if (helper.home_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
+	  vacuum_check_shutdown_interruption (thread_p, error_code);
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|%d.",
 			       helper.home_vpid.volid, helper.home_vpid.pageid);
 	  return error_code;
@@ -1350,6 +1385,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
+	  vacuum_check_shutdown_interruption (thread_p, error_code);
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "%s", "Failed to get hfid.");
 	  return error_code;
 	}
@@ -1383,7 +1419,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 			       heap_objects[obj_index].oid.volid, heap_objects[obj_index].oid.pageid,
 			       heap_objects[obj_index].oid.slotid);
 
-	  assert_release (false);
+	  vacuum_check_shutdown_interruption (thread_p, error_code);
 	  if (helper.forward_page != NULL)
 	    {
 	      pgbuf_unfix_and_init (thread_p, helper.forward_page);
@@ -1546,7 +1582,8 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	    pgbuf_fix (thread_p, &helper.home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	  if (helper.home_page == NULL)
 	    {
-	      assert (false);
+	      ASSERT_ERROR_AND_SET (error_code);
+	      vacuum_check_shutdown_interruption (thread_p, error_code);
 	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|%d.",
 				   helper.home_vpid.volid, helper.home_vpid.pageid);
 	      goto end;
@@ -1676,6 +1713,7 @@ retry_prepare:
 	  if (helper->forward_page == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
+	      vacuum_check_shutdown_interruption (thread_p, error_code);
 	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|%d", VPID_AS_ARGS (&forward_vpid));
 	      return error_code;
 	    }
@@ -1685,6 +1723,7 @@ retry_prepare:
 	  if (helper->home_page == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
+	      vacuum_check_shutdown_interruption (thread_p, error_code);
 	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|d.", VPID_AS_ARGS (&forward_vpid));
 	      return error_code;
 	    }
@@ -1747,6 +1786,7 @@ retry_prepare:
 	      if (helper->home_page == NULL)
 		{
 		  ASSERT_ERROR_AND_SET (error_code);
+		  vacuum_check_shutdown_interruption (thread_p, error_code);
 		  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|%d.",
 				       VPID_AS_ARGS (&helper->home_vpid));
 		  return error_code;
@@ -1778,6 +1818,7 @@ retry_prepare:
       if (helper->forward_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
+	  vacuum_check_shutdown_interruption (thread_p, error_code);
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|%d", VPID_AS_ARGS (&forward_vpid));
 	  return error_code;
 	}
@@ -2619,9 +2660,9 @@ vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
 #if defined (SA_MODE)
   // we need a smarter thread manager that can do this automatically
   VACUUM_WORKER *worker_p = vacuum_Worker_context_manager->m_pool->claim ();
-  THREAD_TYPE save_type = THREAD_TYPE::TT_NONE;
+  thread_type save_type = thread_type::TT_NONE;
   vacuum_convert_thread_to_worker (thread_p, worker_p, save_type);
-  assert (save_type == THREAD_TYPE::TT_VACUUM_MASTER);
+  assert (save_type == thread_type::TT_VACUUM_MASTER);
 #endif // SA_MODE
   if (vacuum_Data.shutdown_requested)
     {
@@ -2632,7 +2673,7 @@ vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
 					new vacuum_worker_task (data_entry, is_partial_block));
 #if defined (SA_MODE)
   vacuum_convert_thread_to_master (thread_p, save_type);
-  assert (save_type == THREAD_TYPE::TT_VACUUM_WORKER);
+  assert (save_type == thread_type::TT_VACUUM_WORKER);
   vacuum_Worker_context_manager->m_pool->retire (*worker_p);
 #endif // SA_MODE
 }
@@ -2924,7 +2965,7 @@ restart:
     {
       /* Execute vacuum based on the block not generated yet. */
       /* We don't want to interrupt next operation. */
-      save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+      save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
 
       /* Create vacuum data entry for the job. */
       vacuum_data_entry.blockid = vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid);
@@ -2946,7 +2987,7 @@ restart:
       vacuum_push_task (thread_p, vacuum_data_entry, true);
 
       PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
-      (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
+      (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
     }
 
   /* All vacuum complete. */
@@ -3109,7 +3150,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	  goto end;
 	}
 #else	/* !SERVER_MODE */		   /* SA_MODE */
-      if (thread_get_check_interrupt (thread_p) && logtb_is_interrupted (thread_p, true, &dummy_continue_check))
+      if (logtb_get_check_interrupt (thread_p) && logtb_is_interrupted (thread_p, true, &dummy_continue_check))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	  error_code = ER_INTERRUPTED;
@@ -3141,8 +3182,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 				   &undo_data_size, &log_vacuum, &is_file_dropped, false);
       if (error_code != NO_ERROR)
 	{
-	  assert_release (false);
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_process_log_block");
+	  vacuum_check_shutdown_interruption (thread_p, error_code);
 	  goto end;
 	}
 
@@ -3281,6 +3321,12 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	  /* Did we have any errors? */
 	  if (error_code != NO_ERROR)
 	    {
+	      if (thread_p->shutdown)
+		{
+		  // interrupted on shutdown
+		  goto end;
+		}
+	      // unexpected case
 	      assert_release (false);
 	      vacuum_er_log (VACUUM_ER_LOG_BTREE | VACUUM_ER_LOG_WORKER,
 			     "Error deleting object or insert MVCCID: error_code=%d", error_code);
@@ -3321,8 +3367,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
   error_code = vacuum_heap (thread_p, worker, threshold_mvccid, was_interrupted);
   if (error_code != NO_ERROR)
     {
-      assert_release (false);
-      /* Release should not stop. Continue. */
+      vacuum_check_shutdown_interruption (thread_p, error_code);
+      goto end;
     }
   assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
   assert (worker->tdes->topops.last == -1);
@@ -3757,6 +3803,8 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
   bool is_zipped = false;
   volatile LOG_RECTYPE log_rec_type = LOG_SMALLER_LOGREC_TYPE;
 
+  int error_code = NO_ERROR;
+
   assert (log_lsa_p != NULL && log_page_p != NULL);
   assert (log_record_data != NULL);
   assert (mvccid != NULL);
@@ -3883,10 +3931,11 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
 	}
 
       /* Check if file is dropped */
-      if (vacuum_is_file_dropped (thread_p, is_file_dropped, &vacuum_info->vfid, *mvccid) != NO_ERROR)
+      error_code = vacuum_is_file_dropped (thread_p, is_file_dropped, &vacuum_info->vfid, *mvccid);
+      if (error_code != NO_ERROR)
 	{
-	  assert (false);
-	  return ER_FAILED;
+	  vacuum_check_shutdown_interruption (thread_p, error_code);
+	  return error_code;
 	}
       if (*is_file_dropped == true)
 	{
@@ -6491,13 +6540,13 @@ vacuum_find_dropped_file (THREAD_ENTRY * thread_p, bool * is_file_dropped, VFID 
 	  *is_file_dropped = false;	/* actually unknown but unimportant */
 
 	  assert (!VACUUM_IS_THREAD_VACUUM_MASTER (thread_p));
-	  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p) || er_errid () != ER_INTERRUPTED)
-	    {
-	      assert (false);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	    }
-
 	  ASSERT_ERROR_AND_SET (error);
+	  assert (error == ER_INTERRUPTED);
+
+	  if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
+	    {
+	      assert (thread_p->shutdown);
+	    }
 	  return error;
 	}
 
@@ -7835,7 +7884,7 @@ vacuum_log_last_blockid (THREAD_ENTRY * thread_p)
  * save_type (out) : thread entry old type
  */
 static void
-vacuum_convert_thread_to_master (THREAD_ENTRY * thread_p, THREAD_TYPE & save_type)
+vacuum_convert_thread_to_master (THREAD_ENTRY * thread_p, thread_type & save_type)
 {
   if (thread_p == NULL)
     {
@@ -7854,7 +7903,7 @@ vacuum_convert_thread_to_master (THREAD_ENTRY * thread_p, THREAD_TYPE & save_typ
  * save_type (out) : save previous thread type
  */
 static void
-vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, THREAD_TYPE & save_type)
+vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, thread_type & save_type)
 {
   if (thread_p == NULL)
     {
@@ -7877,7 +7926,7 @@ vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker
  * save_type (out) : save previous thread type
  */
 void
-vacuum_rv_convert_thread_to_vacuum (THREAD_ENTRY * thread_p, TRANID trid, THREAD_TYPE & save_type)
+vacuum_rv_convert_thread_to_vacuum (THREAD_ENTRY * thread_p, TRANID trid, thread_type & save_type)
 {
   if (trid == LOG_VACUUM_MASTER_TRANID)
     {
@@ -7899,7 +7948,7 @@ vacuum_rv_convert_thread_to_vacuum (THREAD_ENTRY * thread_p, TRANID trid, THREAD
  * save_type (in) : saved type of thread entry
  */
 void
-vacuum_restore_thread (THREAD_ENTRY * thread_p, THREAD_TYPE save_type)
+vacuum_restore_thread (THREAD_ENTRY * thread_p, thread_type save_type)
 {
   if (thread_p == NULL)
     {
@@ -7969,3 +8018,16 @@ vacuum_notify_es_deleted (THREAD_ENTRY * thread_p, const char *uri)
   log_append_undo_data (thread_p, RVES_NOTIFY_VACUUM, &addr, length, data);
 }
 #endif /* SERVER_MODE */
+
+//
+// vacuum_check_shutdown_interruption () - check error occurs due to shutdown interrupting
+//
+// thread_p (in)   : thread entry
+// error_code (in) : error code
+//
+static void
+vacuum_check_shutdown_interruption (const THREAD_ENTRY * thread_p, int error_code)
+{
+  ASSERT_ERROR ();
+  assert (thread_p->shutdown && error_code == ER_INTERRUPTED);
+}

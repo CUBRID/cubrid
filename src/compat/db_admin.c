@@ -70,6 +70,8 @@ void (*prev_sigfpe_handler) (int) = SIG_DFL;
 #include "wintcp.h"
 #endif /* !WINDOWS */
 
+#include "db_admin.h"
+
 /* Some like to assume that the db_ layer is able to recognize that a
  database has not been successfully restarted.  For now, check every
  time.  We'll want another functional layer for esql that doesn't
@@ -247,15 +249,6 @@ db_init (const char *program, int print_version, const char *dbname, const char 
   db_path_info.lob_path = (char *) lob_path;
   db_path_info.db_host = (char *) host_name;
   db_path_info.db_comments = (char *) comments;
-
-#if defined (SA_MODE)
-  error = session_states_init (NULL);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-  (void) db_find_or_create_session (client_credential.db_user, client_credential.program_name);
-#endif /* SA_MODE */
 
   error = boot_initialize_client (&client_credential, &db_path_info, (bool) overwrite, addmore_vols_file, npages,
 				  (PGLENGTH) desired_pagesize, log_npages, (PGLENGTH) desired_log_page_size,
@@ -940,18 +933,7 @@ db_restart_ex (const char *program, const char *db_name, const char *db_user, co
     }
 
   db_set_client_type (client_type);
-#if !defined(CS_MODE)
-  /* if we're in SERVER_MODE, this is the only place where we can initialize the sessions state module */
-  switch (client_type)
-    {
-    case DB_CLIENT_TYPE_ADMIN_CSQL:
-    case DB_CLIENT_TYPE_READ_ONLY_CSQL:
-    case DB_CLIENT_TYPE_CSQL:
-      session_states_init (NULL);
-    default:
-      break;
-    }
-#endif
+
   /* For backward compatibility. Do not use the parameter, preferred_hosts. A caller is supposed to use
    * db_set_preferred_hosts before db_restart_ex is called. */
   if (preferred_hosts != NULL)
