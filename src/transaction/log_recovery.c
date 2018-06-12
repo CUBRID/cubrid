@@ -2454,12 +2454,11 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	}
 
 #if !defined(NDEBUG)
+      er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld, checksum %d\n",
+		    log_page_p->hdr.logical_pageid, log_page_p->hdr.checksum);
       if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
 	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "logpb_recovery_analysis: log page %lld, checksum %d\n",
-			 log_page_p->hdr.logical_pageid, log_page_p->hdr.checksum);
-	  page_hexa_dump ((char *) log_page_p, LOG_PAGESIZE);
+	  fileio_page_hexa_dump ((const char *) log_page_p, LOG_PAGESIZE);
 	}
 #endif /* !NDEBUG */
 

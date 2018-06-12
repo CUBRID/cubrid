@@ -4227,15 +4227,13 @@ logpb_dump_log_page_area (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int off
 	{
 	  if (i % 32 == 0)
 	    {
-	      sprintf (dest_ptr, "\n  %05d: ", line_no++);
-	      dest_ptr += 10;
+	      dest_ptr += sprintf (dest_ptr, "\n  %05d: ", line_no++);
 	    }
 
-	  sprintf (dest_ptr, "%02X ", (unsigned char) (*src_ptr));
-	  dest_ptr += 3;
+	  dest_ptr += sprintf (dest_ptr, "%02X ", (unsigned char) (*src_ptr));
 	}
 
-      sprintf (dest_ptr, "\n");
+      dest_ptr += sprintf (dest_ptr, "\n");
       logpb_log ("logpb_dump_log_page_area: header = %s data = %s\n", log_header_string, log_block_string);
       count_remaining_bytes -= count_bytes_to_dump;
     }
