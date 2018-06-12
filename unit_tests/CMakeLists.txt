@@ -92,3 +92,8 @@ if (UNIT_TESTS OR UNIT_TEST_RESOURCE_TRACKER)
   message("    resource_tracker")
   add_subdirectory(resource_tracker)
 endif(UNIT_TESTS OR UNIT_TEST_RESOURCE_TRACKER)
+
+if (UNIT_TESTS OR UNIT_TEST_STREAM)
+  message("    stream")
+  add_subdirectory(stream)
+endif(UNIT_TESTS OR UNIT_TEST_STREAM)

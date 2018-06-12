@@ -84,18 +84,6 @@ namespace cubthread
     return;
 #else // not SA_MODE = SERVER_MODE
 
-    // todo: is there a better way to decide on the maximum number of thread entries?
-    std::size_t max_active_workers = NUM_NON_SYSTEM_TRANS;  // one per each connection
-    std::size_t max_conn_workers = NUM_NON_SYSTEM_TRANS;    // one per each connection
-    std::size_t max_vacuum_workers = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT);
-    std::size_t max_daemons = 128;  // magic number to cover predictable requirements; not cool
-
-    // note: thread entry initialization is slow, that is why we keep a static pool initialized from the beginning to
-    //       quickly claim entries. in my opinion, it would be better to have thread contexts that can be quickly
-    //       generated at "runtime" (after thread starts its task). however, with current thread entry design, that is
-    //       rather unlikely.
-
-    m_max_threads = max_active_workers + max_conn_workers + max_vacuum_workers + max_daemons;
     m_available_entries_count = m_max_threads;
 
     m_all_entries = new entry[m_max_threads];
@@ -407,6 +395,29 @@ namespace cubthread
   }
 
   void
+  manager::set_max_thread_count_from_config (void)
+  {
+    // todo: is there a better way to decide on the maximum number of thread entries?
+    std::size_t max_active_workers = NUM_NON_SYSTEM_TRANS;  // one per each connection
+    std::size_t max_conn_workers = NUM_NON_SYSTEM_TRANS;    // one per each connection
+    std::size_t max_vacuum_workers = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT);
+    std::size_t max_daemons = 128;  // magic number to cover predictable requirements; not cool
+
+    // note: thread entry initialization is slow, that is why we keep a static pool initialized from the beginning to
+    //       quickly claim entries. in my opinion, it would be better to have thread contexts that can be quickly
+    //       generated at "runtime" (after thread starts its task). however, with current thread entry design, that is
+    //       rather unlikely.
+
+    m_max_threads = max_active_workers + max_conn_workers + max_vacuum_workers + max_daemons;
+  }
+
+  void
+  manager::set_max_thread_count (std::size_t count)
+  {
+    m_max_threads = count;
+  }
+
+  void
   manager::return_lock_free_transaction_entries (void)
   {
     for (std::size_t index = 0; index < m_max_threads; index++)
@@ -500,7 +511,11 @@ namespace cubthread
 
     int error_code = NO_ERROR;
 #if defined (SERVER_MODE)
+    size_t old_manager_thread_count = 0;
+
     assert (Manager != NULL);
+
+    Manager->set_max_thread_count_from_config ();
     Manager->alloc_entries ();
 #endif // SERVER_MODE
 

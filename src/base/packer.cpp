@@ -54,6 +54,7 @@ namespace cubpacking
 
   int packer::init (char *storage, const size_t amount)
   {
+    m_packer_start_ptr = storage;
     m_ptr = storage;
     m_end_ptr = storage + amount;
 
@@ -245,7 +246,7 @@ namespace cubpacking
   {
     size_t aligned_offset = DB_ALIGN (curr_offset, MAX_ALIGNMENT);
     size_t unaligned_size = or_packed_value_size ((DB_VALUE *) &value, 1, 1, 0);
-    size_t aligned_size = DB_ALIGN (unaligned_size, MAX_ALIGNMENT);
+    size_t aligned_size = unaligned_size;
     return aligned_size + aligned_offset - curr_offset;
   }
 
@@ -444,13 +445,13 @@ namespace cubpacking
   {
     size_t entry_size;
 
-    if (str_size > MAX_SMALL_STRING_SIZE)
+    if (str_size < MAX_SMALL_STRING_SIZE)
       {
 	entry_size = OR_BYTE_SIZE + str_size;
       }
     else
       {
-	entry_size = OR_BYTE_SIZE + OR_INT_SIZE + str_size;
+	entry_size = DB_ALIGN (OR_BYTE_SIZE, INT_ALIGNMENT) + OR_INT_SIZE + str_size;
       }
 
     return DB_ALIGN (curr_offset + entry_size, INT_ALIGNMENT) - curr_offset;
