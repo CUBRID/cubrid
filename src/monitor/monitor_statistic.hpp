@@ -215,7 +215,7 @@ namespace cubmonitor
     private:
       Rep m_value;
   };
-  // max atomic statistic - compare and exchange with current value if change is bigger
+  // min atomic statistic - compare and exchange with current value if change is smaller
   template<class Rep>
   class min_atomic_statistic
   {

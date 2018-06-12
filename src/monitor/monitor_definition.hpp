@@ -40,4 +40,4 @@ namespace cubmonitor
 
 } // namespace cubmonitor
 
-#endif // _MONITOR_COLLECT_HPP_
+#endif // _MONITOR_DEFINITION_HPP_
