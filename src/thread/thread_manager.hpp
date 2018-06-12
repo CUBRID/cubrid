@@ -28,6 +28,7 @@
 #error Wrong module
 #endif // not SERVER_MODE and not SA_MODE
 
+#include "thread_entry.hpp"
 #include "thread_task.hpp"
 
 #include <mutex>
@@ -44,7 +45,6 @@ namespace cubthread
   class worker_pool;
   class looper;
   class daemon;
-  class entry;
   class entry_task;
   class entry_manager;
   class daemon_entry_manager;
@@ -104,7 +104,7 @@ namespace cubthread
       //////////////////////////////////////////////////////////////////////////
 
       void alloc_entries (void);
-      void init_entries (std::size_t starting_index = 0, bool with_lock_free = false);
+      void init_entries (bool with_lock_free = false);
 
       //////////////////////////////////////////////////////////////////////////
       // worker pool management
@@ -174,9 +174,6 @@ namespace cubthread
       // other member functions
       //////////////////////////////////////////////////////////////////////////
 
-      // get current thread's entry
-      entry &get_entry (void);
-
       // get the maximum thread count
       std::size_t get_max_thread_count (void) const;
 
@@ -189,6 +186,19 @@ namespace cubthread
       {
 	return m_all_entries;
       }
+
+      void set_max_thread_count_from_config ();
+      void set_max_thread_count (std::size_t count);
+      void return_lock_free_transaction_entries (void);
+      entry *find_by_tid (thread_id_t tid);
+
+      // mappers
+
+      // map all entries
+      // function signature is:
+      //    bool & stop_mapper - output true to stop mapping over threads
+      template <typename Func, typename ... Args>
+      void map_entries (Func &&func, Args &&... args);
 
     private:
 
@@ -240,8 +250,6 @@ namespace cubthread
   // thread global functions
   //////////////////////////////////////////////////////////////////////////
 
-  // TODO: gradually move functionality from thread.h here
-
   // initialize thread manager; note this creates a singleton cubthread::manager instance
   void initialize (entry *&my_entry);
 
@@ -255,7 +263,7 @@ namespace cubthread
   // get thread manager
   manager *get_manager (void);
 
-  //quick fix for unit test mockups
+  // quick fix for unit test mock-ups
   void set_manager (manager *manager);
 
   // get maximum thread count
@@ -267,8 +275,112 @@ namespace cubthread
   // safe-guard for multi-thread features not being used in single-thread context
   void check_not_single_thread (void);
 
+  // get current thread's entry
+  entry &get_entry (void);
+
+  void return_lock_free_transaction_entries (void);
+
+  //////////////////////////////////////////////////////////////////////////
+  // template / inline functions
+  //////////////////////////////////////////////////////////////////////////
+
+  template <typename Func, typename ... Args>
+  void
+  manager::map_entries (Func &&func, Args &&... args)
+  {
+    bool stop = false;
+    for (std::size_t i = 0; i < m_max_threads; i++)
+      {
+	func (m_all_entries[i], stop, std::forward<Args> (args)...);
+	if (stop)
+	  {
+	    break;
+	  }
+      }
+  }
+
 } // namespace cubthread
 
-#define THREAD_GET_MANAGER() cubthread::get_manager ()
+//////////////////////////////////////////////////////////////////////////
+// alias functions to be used in C legacy code
+//
+// use inline functions instead of definitions
+//////////////////////////////////////////////////////////////////////////
+
+inline cubthread::manager *
+thread_get_manager (void)
+{
+  return cubthread::get_manager ();
+}
+
+inline std::size_t
+thread_num_total_threads (void)
+{
+  return cubthread::get_max_thread_count ();
+}
+
+inline cubthread::entry *
+thread_get_thread_entry_info (void)
+{
+  cubthread::entry &te = cubthread::get_entry ();
+  return &te;
+}
+
+inline int
+thread_get_entry_index (cubthread::entry *thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  return thread_p->index;
+}
+
+inline int
+thread_get_current_entry_index (void)
+{
+  return thread_get_entry_index (thread_get_thread_entry_info ());
+}
+
+inline void
+thread_return_lock_free_transaction_entries (void)
+{
+  return cubthread::return_lock_free_transaction_entries ();
+}
+
+// todo - we really need to do some refactoring for lock-free structures
+inline lf_tran_entry *
+thread_get_tran_entry (cubthread::entry *thread_p, int entry_idx)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  if (entry_idx >= 0 && entry_idx < THREAD_TS_LAST)
+    {
+      return thread_p->tran_entries[entry_idx];
+    }
+  else
+    {
+      assert (false);
+      return NULL;
+    }
+}
+
+template <typename Duration>
+inline void
+thread_sleep_for (Duration d)
+{
+  std::this_thread::sleep_for (d);
+}
+
+inline void
+thread_sleep (double millisec)
+{
+  // try to avoid this and use thread_sleep_for instead
+  std::chrono::duration<double, std::milli> duration_millis (millisec);
+  thread_sleep_for (duration_millis);
+}
 
 #endif  // _THREAD_MANAGER_HPP_

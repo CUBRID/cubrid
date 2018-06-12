@@ -26,11 +26,16 @@
 
 #ident "$Id$"
 
-
 #include "system_parameter.h"
 #include "porting.h"
 #include "master_util.h"
 #include "heartbeat.h"
+
+#if defined (LINUX)
+#include <netinet/in.h>
+#elif defined (WINDOWS)
+#include <winsock2.h>
+#endif
 
 #if defined(WINDOWS)
 typedef int pid_t;

@@ -40,7 +40,7 @@
 #include "query_dump.h"
 #include "db_date.h"
 #include "dbtype.h"
-#include "thread.h"
+#include "thread_manager.hpp"
 
 #define IS_SUBSET(value)        (value).sub.count >= 0
 
@@ -233,9 +233,7 @@ catcls_free_entry_kv (const void *key, void *data, void *args)
 static int
 catcls_free_entry (CATCLS_ENTRY * entry_p)
 {
-  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-
-  assert (csect_check_own (thread_p, CSECT_CT_OID_TABLE) == 1);
+  assert (csect_check_own (NULL, CSECT_CT_OID_TABLE) == 1);
 
   entry_p->next = catcls_Free_entry_list;
   catcls_Free_entry_list = entry_p;
@@ -693,7 +691,7 @@ catcls_find_oid_by_class_name (THREAD_ENTRY * thread_p, const char *name_p, OID 
   int error = NO_ERROR;
 
   error =
-    db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, (char *) name_p, strlen (name_p), LANG_SYS_CODESET,
+    db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, (char *) name_p, (int) strlen (name_p), LANG_SYS_CODESET,
 		     LANG_SYS_COLLATION);
   if (error != NO_ERROR)
     {
@@ -4287,6 +4285,12 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
   int alloced_string = 0;
   int error = NO_ERROR;
 
+  if (thread_p == NULL)
+    {
+      // because SA_MODE client calls this directly with NULL argument...
+      thread_p = thread_get_thread_entry_info ();
+    }
+
   /* check if an old version database */
   if (catcls_find_class_oid_by_class_name (thread_p, CT_CLASS_NAME, &tmp_oid) != NO_ERROR)
     {
@@ -4572,7 +4576,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
 	      lang_str = db_get_string (&heap_value->dbvalue);
 	      lang_str_len = (lang_str != NULL) ? strlen (lang_str) : 0;
 
-	      assert (lang_str_len < lang_buf_size);
+	      assert ((int) lang_str_len < lang_buf_size);
 	      if (lang_str_len > 0)
 		{
 		  /* Copying length 0 from NULL pointer fails when DUMA is enabled. */

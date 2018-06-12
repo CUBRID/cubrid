@@ -63,6 +63,9 @@ namespace cubstream
       stream_position m_last_sent_position;
       cubthread::daemon *m_sender_daemon;
       char m_buffer[MTU];
+
+    protected:
+      cubstream::stream::read_func_t m_read_action_function;
   };
 
 } // namespace cubstream

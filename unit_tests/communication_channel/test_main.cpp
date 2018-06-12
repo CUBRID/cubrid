@@ -83,7 +83,7 @@ void master_listening_thread_func (std::vector <communication_channel> &channels
 
       if ((revents & POLLIN) != 0)
 	{
-	  int new_sockfd = css_master_accept (listen_fd_platf_ind);
+	  SOCKET new_sockfd = css_master_accept (listen_fd_platf_ind);
 	  communication_channel cc (MAX_TIMEOUT_IN_MS);
 	  rc = cc.accept (new_sockfd);
 	  if (rc != NO_ERRORS)

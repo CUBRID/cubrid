@@ -30,6 +30,9 @@
 #include "object_primitive.h"
 #include "system_parameter.h"
 #include "dbtype.h"
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#endif // SERVER_MODE
 
 #define foutput stdout
 

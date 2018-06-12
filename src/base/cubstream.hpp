@@ -29,7 +29,6 @@
 
 #include "connection_defs.h"
 #include "error_code.h"
-
 #include <atomic>
 #include <cinttypes>
 #include <cstddef>

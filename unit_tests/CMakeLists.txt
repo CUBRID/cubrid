@@ -27,7 +27,7 @@ set (TEST_INCLUDES
   ${CMAKE_CURRENT_SOURCE_DIR}/common  # todo: find a better solution
   )
 
-option (UNIT_TEST_MEMORY_ALLOC  "Unit testing for memory allocation")
+option (UNIT_TEST_MEMORY_ALLOC  "Unit testing: memory allocation")
 option (UNIT_TEST_STRING_BUFFER "Unit testing: string buffer with format")
 option (UNIT_TEST_LOCKFREE "Unit testing: lockfree module")
 option (UNIT_TEST_THREAD "Unit testing: thread module")
@@ -35,6 +35,7 @@ option (UNIT_TEST_COMM_CHN "Unit testing: communication channel module")
 option (UNIT_TEST_TRANS_CHN "Unit testing: transfer channel module")
 option (UNIT_TEST_DDL_CL "Unit testing: ddl proxy client module")
 option (UNIT_TEST_REPLICATION "Unit testing: replication channels module")
+option (UNIT_TEST_RESOURCE_TRACKER "Unit testing: resource tracker")
 
 message("  unit_tests/...")
 
@@ -92,3 +93,13 @@ if (UNIT_TESTS OR UNIT_TEST_REPLICATION)
   message("    replication_channels")
   add_subdirectory(replication_channels)
 endif(UNIT_TESTS OR UNIT_TEST_REPLICATION)
+
+if (UNIT_TESTS OR UNIT_TEST_RESOURCE_TRACKER)
+  message("    resource_tracker")
+  add_subdirectory(resource_tracker)
+endif(UNIT_TESTS OR UNIT_TEST_RESOURCE_TRACKER)
+
+if (UNIT_TESTS OR UNIT_TEST_STREAM)
+  message("    stream")
+  add_subdirectory(stream)
+endif(UNIT_TESTS OR UNIT_TEST_STREAM)

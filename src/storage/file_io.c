@@ -109,6 +109,9 @@
 #if defined (SERVER_MODE)
 #include "thread_entry_task.hpp"
 #endif // SERVER_MODE
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
+#endif // SERVER_MODE
 
 /************************************************************************/
 /* TODO: why is this in client module?                                  */
@@ -1903,7 +1906,7 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, D
 	  time_to_sleep = allowed_millis_for_a_sleep - previous_elapsed_millis;
 	  if (time_to_sleep > 0)
 	    {
-	      thread_sleep ((int) time_to_sleep);
+	      thread_sleep ((double) time_to_sleep);
 	    }
 
 	  tsc_getticks (&start_tick);
@@ -7978,7 +7981,7 @@ fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * ses
   thread_info_p->check_npages = check_npages;
   thread_info_p->tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   /* start read threads */
-  conn_p = thread_get_current_conn_entry ();
+  conn_p = css_get_current_conn_entry ();
   for (i = 1; i <= thread_info_p->act_r_threads; i++)
     {
       css_push_external_task (*thread_p, conn_p, new fileio_read_backup_volume_task (session_p));

@@ -23,10 +23,13 @@
 
 #ident "$Id$"
 
+#include "server_support.h"
+
 #include "config.h"
 #include "cubstream.hpp"
 #include "session.h"
 #include "thread_entry_task.hpp"
+#include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
 #include "slave_replication_channel.hpp"
@@ -49,7 +52,6 @@
 #include <assert.h>
 
 #include "porting.h"
-#include "thread.h"
 #include "memory_alloc.h"
 #include "boot_sr.h"
 #include "connection_defs.h"
@@ -73,14 +75,12 @@
 #endif /* WINDOWS */
 #include "connection_sr.h"
 #include "xserver_interface.h"
-#include "server_support.h"
 #include "utility.h"
 #include "vacuum.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
 #include "dbtype.h"
-
 
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"
@@ -111,18 +111,26 @@ static bool ha_Repl_delay_detected = false;
 
 static int ha_Server_num_of_hosts = 0;
 static char ha_Server_master_hostname[MAXHOSTNAMELEN];
-static cubreplication::slave_replication_channel *g_slave_replication_channel;
-static cubstream::mock_packing_stream mock_stream;
+static
+  cubreplication::slave_replication_channel *
+  g_slave_replication_channel;
+static
+  cubstream::mock_packing_stream
+  mock_stream;
 
 #define HA_LOG_APPLIER_STATE_TABLE_MAX  5
-typedef struct ha_log_applier_state_table HA_LOG_APPLIER_STATE_TABLE;
+typedef struct ha_log_applier_state_table
+  HA_LOG_APPLIER_STATE_TABLE;
 struct ha_log_applier_state_table
 {
-  int client_id;
-  HA_LOG_APPLIER_STATE state;
+  int
+    client_id;
+  HA_LOG_APPLIER_STATE
+    state;
 };
 
-static HA_LOG_APPLIER_STATE_TABLE ha_Log_applier_state[HA_LOG_APPLIER_STATE_TABLE_MAX] = {
+static HA_LOG_APPLIER_STATE_TABLE
+  ha_Log_applier_state[HA_LOG_APPLIER_STATE_TABLE_MAX] = {
   {-1, HA_LOG_APPLIER_STATE_NA},
   {-1, HA_LOG_APPLIER_STATE_NA},
   {-1, HA_LOG_APPLIER_STATE_NA},
@@ -130,7 +138,8 @@ static HA_LOG_APPLIER_STATE_TABLE ha_Log_applier_state[HA_LOG_APPLIER_STATE_TABL
   {-1, HA_LOG_APPLIER_STATE_NA}
 };
 
-static int ha_Log_applier_state_num = 0;
+static int
+  ha_Log_applier_state_num = 0;
 
 // *INDENT-OFF*
 static cubthread::entry_workpool *css_Server_request_worker_pool = NULL;
@@ -205,48 +214,83 @@ private:
 };
 // *INDENT-ON*
 
-static const size_t CSS_JOB_QUEUE_SCAN_COLUMN_COUNT = 4;
+static const size_t
+  CSS_JOB_QUEUE_SCAN_COLUMN_COUNT = 4;
 
-static void css_setup_server_loop (void);
-static int css_check_conn (CSS_CONN_ENTRY * p);
-static void css_set_shutdown_timeout (int timeout);
-static int css_get_master_request (SOCKET master_fd);
-static int css_process_master_request (SOCKET master_fd);
-static void css_process_shutdown_request (SOCKET master_fd);
-static void css_process_new_client (SOCKET master_fd);
-static void css_process_get_server_ha_mode_request (SOCKET master_fd);
-static void css_process_change_server_ha_mode_request (SOCKET master_fd);
-static void css_process_get_eof_request (SOCKET master_fd);
+static void
+css_setup_server_loop (void);
+static int
+css_check_conn (CSS_CONN_ENTRY * p);
+static void
+css_set_shutdown_timeout (int timeout);
+static int
+css_get_master_request (SOCKET master_fd);
+static int
+css_process_master_request (SOCKET master_fd);
+static void
+css_process_shutdown_request (SOCKET master_fd);
+static void
+css_process_new_client (SOCKET master_fd);
+static void
+css_process_get_server_ha_mode_request (SOCKET master_fd);
+static void
+css_process_change_server_ha_mode_request (SOCKET master_fd);
+static void
+css_process_get_eof_request (SOCKET master_fd);
 
-static void css_close_connection_to_master (void);
-static int css_reestablish_connection_to_master (void);
-static int css_connection_handler_thread (THREAD_ENTRY * thrd, CSS_CONN_ENTRY * conn);
-static css_error_code css_internal_connection_handler (CSS_CONN_ENTRY * conn);
-static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
-static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
-static int css_check_accessibility (SOCKET new_fd);
+static void
+css_close_connection_to_master (void);
+static int
+css_reestablish_connection_to_master (void);
+static int
+css_connection_handler_thread (THREAD_ENTRY * thrd, CSS_CONN_ENTRY * conn);
+static css_error_code
+css_internal_connection_handler (CSS_CONN_ENTRY * conn);
+static int
+css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
+static int
+css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
+static int
+css_check_accessibility (SOCKET new_fd);
 
 #if defined(WINDOWS)
-static int css_process_new_connection_request (void);
+static int
+css_process_new_connection_request (void);
 #endif /* WINDOWS */
 
-static bool css_check_ha_log_applier_done (void);
-static bool css_check_ha_log_applier_working (void);
-static void css_process_new_slave (SOCKET master_fd);
+static bool
+css_check_ha_log_applier_done (void);
+static bool
+css_check_ha_log_applier_working (void);
+static void
+css_process_new_slave (SOCKET master_fd);
 
-static void css_push_server_task (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
-static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopper_thread_ref);
-static void css_stop_log_writer (THREAD_ENTRY & thread_ref, bool &);
-static void css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool is_log_writer, bool & found);
-static bool css_is_log_writer (const THREAD_ENTRY & thread_arg);
-static void css_stop_all_workers (THREAD_ENTRY & thread_ref, thread_stop_type stop_phase);
-static void css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapper, int &busy_count);
+static void
+css_push_server_task (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
+static void
+css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopper_thread_ref);
+static void
+css_stop_log_writer (THREAD_ENTRY & thread_ref, bool &);
+static void
+css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool is_log_writer, bool & found);
+static bool
+css_is_log_writer (const THREAD_ENTRY & thread_arg);
+static void
+css_stop_all_workers (THREAD_ENTRY & thread_ref, css_thread_stop_type stop_phase);
+static void
+css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapper, int &busy_count);
 // *INDENT-OFF*
 // cubthread::entry_workpool::core confuses indent
 static void css_wp_core_job_scan_mapper (const cubthread::entry_workpool::core & wp_core, bool & stop_mapper,
                                          THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx, size_t & core_index,
                                          int & error_code);
 // *INDENT-ON*
+static void
+css_is_any_thread_not_suspended_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, size_t & count, bool & found);
+static void
+css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
+					      THREAD_ENTRY * caller_thread, int tran_index, int client_id,
+					      size_t & count);
 
 #if defined (SERVER_MODE)
 /*
@@ -269,8 +313,10 @@ static void css_wp_core_job_scan_mapper (const cubthread::entry_workpool::core &
 int
 css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
 {
-  int error = NO_ERROR;
-  SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
+  int
+    error = NO_ERROR;
+  SHOWSTMT_ARRAY_CONTEXT *
+    ctx = NULL;
 
   *ptr = NULL;
 
@@ -282,7 +328,8 @@ css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** a
       return error;
     }
 
-  size_t core_index = 0;	// core index starts with 0
+  size_t
+    core_index = 0;		// core index starts with 0
   css_Server_request_worker_pool->map_cores (css_wp_core_job_scan_mapper, thread_p, ctx, core_index, error);
   if (error != NO_ERROR)
     {
@@ -337,9 +384,11 @@ static int
 css_check_conn (CSS_CONN_ENTRY * p)
 {
 #if defined(WINDOWS)
-  u_long status = 0;
+  u_long
+    status = 0;
 #else
-  int status = 0;
+  int
+    status = 0;
 #endif
 
 #if defined(WINDOWS)
@@ -377,11 +426,15 @@ css_set_shutdown_timeout (int timeout)
  *   return:
  *   arg(in):
  */
-THREAD_RET_T THREAD_CALLING_CONVENTION
+THREAD_RET_T
+  THREAD_CALLING_CONVENTION
 css_master_thread (void)
 {
-  int r, run_code = 1, status = 0, nfds;
-  struct pollfd po[] = { {0, 0, 0}, {0, 0, 0} };
+  int
+    r,
+    run_code = 1, status = 0, nfds;
+  struct pollfd
+  po[] = { {0, 0, 0}, {0, 0, 0} };
 
   while (run_code)
     {
@@ -499,7 +552,9 @@ css_master_thread (void)
 static int
 css_get_master_request (SOCKET master_fd)
 {
-  int request, r;
+  int
+    request,
+    r;
 
   r = css_readn (master_fd, (char *) &request, sizeof (int), -1);
   if (r == sizeof (int))
@@ -522,7 +577,9 @@ css_get_master_request (SOCKET master_fd)
 static int
 css_process_master_request (SOCKET master_fd)
 {
-  int request, r;
+  int
+    request,
+    r;
 
   r = 1;
   request = (int) css_get_master_request (master_fd);
@@ -580,8 +637,11 @@ css_process_master_request (SOCKET master_fd)
 static void
 css_process_shutdown_request (SOCKET master_fd)
 {
-  char buffer[MASTER_TO_SRV_MSG_SIZE];
-  int r, timeout;
+  char
+    buffer[MASTER_TO_SRV_MSG_SIZE];
+  int
+    r,
+    timeout;
 
   timeout = (int) css_get_master_request (master_fd);
 
@@ -603,15 +663,24 @@ css_process_shutdown_request (SOCKET master_fd)
 static void
 css_process_new_client (SOCKET master_fd)
 {
-  SOCKET new_fd;
-  int reason, r;
-  CSS_CONN_ENTRY *conn;
-  unsigned short rid;
-  CSS_CONN_ENTRY temp_conn;
-  char *area;
+  SOCKET
+    new_fd;
+  int
+    reason,
+    r;
+  CSS_CONN_ENTRY *
+    conn;
+  unsigned short
+    rid;
+  CSS_CONN_ENTRY
+    temp_conn;
+  char *
+    area;
   OR_ALIGNED_BUF (1024) a_buffer;
-  char *buffer;
-  int length = 1024;
+  char *
+    buffer;
+  int
+    length = 1024;
 
   /* receive new socket descriptor from the master */
   new_fd = css_open_new_socket_from_master (master_fd, &rid);
@@ -691,8 +760,10 @@ css_process_new_client (SOCKET master_fd)
 static void
 css_process_get_server_ha_mode_request (SOCKET master_fd)
 {
-  int r;
-  int response;
+  int
+    r;
+  int
+    response;
 
   if (HA_DISABLED ())
     {
@@ -720,8 +791,10 @@ static void
 css_process_change_server_ha_mode_request (SOCKET master_fd)
 {
 #if !defined(WINDOWS)
-  HA_SERVER_STATE state;
-  THREAD_ENTRY *thread_p;
+  HA_SERVER_STATE
+    state;
+  THREAD_ENTRY *
+    thread_p;
 
   state = (HA_SERVER_STATE) css_get_master_request (master_fd);
 
@@ -755,10 +828,13 @@ static void
 css_process_get_eof_request (SOCKET master_fd)
 {
 #if !defined(WINDOWS)
-  LOG_LSA *eof_lsa;
+  LOG_LSA *
+    eof_lsa;
   OR_ALIGNED_BUF (OR_LOG_LSA_ALIGNED_SIZE) a_reply;
-  char *reply;
-  THREAD_ENTRY *thread_p;
+  char *
+    reply;
+  THREAD_ENTRY *
+    thread_p;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -780,8 +856,11 @@ css_process_get_eof_request (SOCKET master_fd)
 int
 css_process_master_hostname ()
 {
-  int hostname_length, error;
-  cub_server_communication_channel chn (css_Master_server_name);
+  int
+    hostname_length,
+    error;
+  cub_server_communication_channel
+  chn (css_Master_server_name);
 
   error = css_receive_heartbeat_data (css_Master_conn, (char *) &hostname_length, sizeof (int));
   if (error != NO_ERRORS)
@@ -816,14 +895,12 @@ css_process_master_hostname ()
     }
 
   cubreplication::master_replication_channel_manager::reset ();
-  delete g_slave_replication_channel;
-  g_slave_replication_channel = new cubreplication::slave_replication_channel (std::move (chn),
-                                                                                mock_stream,
-                                                                                0
-                                                                              );
+  delete
+    g_slave_replication_channel;
+  g_slave_replication_channel = new cubreplication::slave_replication_channel (std::move (chn), mock_stream, 0);
 
   er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
-		 ha_Server_master_hostname);
+		ha_Server_master_hostname);
 
   return NO_ERRORS;
 }
@@ -850,7 +927,8 @@ css_close_connection_to_master (void)
 bool
 css_is_shutdown_timeout_expired (void)
 {
-  struct timeval timeout;
+  struct timeval
+    timeout;
 
   /* css_Shutdown_timeout is set by shutdown request */
   if (css_Shutdown_timeout.tv_sec != 0 && gettimeofday (&timeout, NULL) == 0)
@@ -878,17 +956,28 @@ css_is_shutdown_timeout_expired (void)
 static int
 css_process_new_connection_request (void)
 {
-  SOCKET new_fd;
-  int reason, buffer_size, rc;
-  CSS_CONN_ENTRY *conn;
-  unsigned short rid;
+  SOCKET
+    new_fd;
+  int
+    reason,
+    buffer_size,
+    rc;
+  CSS_CONN_ENTRY *
+    conn;
+  unsigned short
+    rid;
   OR_ALIGNED_BUF (1024) a_buffer;
-  char *buffer;
-  int length = 1024, r;
-  CSS_CONN_ENTRY new_conn;
-  char *error_string;
+  char *
+    buffer;
+  int
+    length = 1024, r;
+  CSS_CONN_ENTRY
+    new_conn;
+  char *
+    error_string;
 
-  NET_HEADER header = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+  NET_HEADER
+  header = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
   new_fd = css_server_accept (css_Server_connection_socket);
 
@@ -1010,10 +1099,14 @@ css_process_new_connection_request (void)
 static int
 css_reestablish_connection_to_master (void)
 {
-  CSS_CONN_ENTRY *conn;
-  static int i = CSS_WAIT_COUNT;
-  char *packed_server_name;
-  int name_length;
+  CSS_CONN_ENTRY *
+    conn;
+  static int
+    i = CSS_WAIT_COUNT;
+  char *
+    packed_server_name;
+  int
+    name_length;
 
   if (i-- > 0)
     {
@@ -1056,12 +1149,23 @@ css_reestablish_connection_to_master (void)
 static int
 css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 {
-  int n, type, rv, status;
-  volatile int conn_status;
-  int css_peer_alive_timeout, poll_timeout;
-  int max_num_loop, num_loop;
-  SOCKET fd;
-  struct pollfd po[1] = { {0, 0, 0} };
+  int
+    n,
+    type,
+    rv,
+    status;
+  volatile int
+    conn_status;
+  int
+    css_peer_alive_timeout,
+    poll_timeout;
+  int
+    max_num_loop,
+    num_loop;
+  SOCKET
+    fd;
+  struct pollfd
+  po[1] = { {0, 0, 0} };
 
   if (thread_p == NULL)
     {
@@ -1135,7 +1239,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 
 	  /* check server's HA state */
 	  if (ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY && conn->in_transaction == false
-	      && thread_has_threads (thread_p, conn->transaction_id, conn->client_id) == 0)
+	      && css_count_transaction_worker_threads (thread_p, conn->get_tran_index (), conn->client_id) == 0)
 	    {
 	      status = REQUEST_REFUSED;
 	      break;
@@ -1192,7 +1296,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
     {
       er_log_debug (ARG_FILE_LINE,
 		    "css_connection_handler_thread: status %d conn { status %d transaction_id %d "
-		    "db_error %d stop_talk %d stop_phase %d }\n", status, conn->status, conn->transaction_id,
+		    "db_error %d stop_talk %d stop_phase %d }\n", status, conn->status, conn->get_tran_index (),
 		    conn->db_error, conn->stop_talk, conn->stop_phase);
       rv = pthread_mutex_lock (&thread_p->tran_index_lock);
       (*css_Connection_error_handler) (thread_p, conn);
@@ -1214,8 +1318,10 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 void
 css_block_all_active_conn (unsigned short stop_phase)
 {
-  CSS_CONN_ENTRY *conn;
-  int r;
+  CSS_CONN_ENTRY *
+    conn;
+  int
+    r;
 
   START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
@@ -1234,7 +1340,7 @@ css_block_all_active_conn (unsigned short stop_phase)
       if (!IS_INVALID_SOCKET (conn->fd) && conn->fd != css_Pipe_to_master)
 	{
 	  conn->stop_talk = true;
-	  logtb_set_tran_index_interrupt (NULL, conn->transaction_id, 1);
+	  logtb_set_tran_index_interrupt (NULL, conn->get_tran_index (), 1);
 	}
 
       r = rmutex_unlock (NULL, &conn->rmutex);
@@ -1251,13 +1357,14 @@ css_block_all_active_conn (unsigned short stop_phase)
  *
  * Note: This routine is "registered" to be called when a new connection is requested by the client
  */
-static css_error_code
+static
+  css_error_code
 css_internal_connection_handler (CSS_CONN_ENTRY * conn)
 {
   css_insert_into_active_conn_list (conn);
 
   // push connection handler task
-  if (!cubthread::get_manager ()->try_task (cubthread::get_manager ()->get_entry (), css_Connection_worker_pool,
+  if (!cubthread::get_manager ()->try_task (cubthread::get_entry (), css_Connection_worker_pool,
 					    new css_connection_task (*conn)))
     {
       assert_release (false);
@@ -1283,12 +1390,20 @@ css_internal_connection_handler (CSS_CONN_ENTRY * conn)
 static int
 css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
 {
-  unsigned short rid;
-  unsigned int eid;
-  int request, rc, size = 0;
-  char *buffer = NULL;
-  int local_tran_index;
-  int status = CSS_UNPLANNED_SHUTDOWN;
+  unsigned short
+    rid;
+  unsigned int
+    eid;
+  int
+    request,
+    rc,
+    size = 0;
+  char *
+    buffer = NULL;
+  int
+    local_tran_index;
+  int
+    status = CSS_UNPLANNED_SHUTDOWN;
 
   assert (thread_ref.conn_entry == &conn_ref);
 
@@ -1298,7 +1413,7 @@ css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_r
   if (rc == NO_ERRORS)
     {
       /* 1. change thread's transaction id to this connection's */
-      thread_ref.tran_index = conn_ref.transaction_id;
+      thread_ref.tran_index = conn_ref.get_tran_index ();
 
       pthread_mutex_unlock (&thread_ref.tran_index_lock);
 
@@ -1315,13 +1430,13 @@ css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_r
 
       eid = css_return_eid_from_conn (&conn_ref, rid);
       /* 2. change thread's client, rid, tran_index for this request */
-      thread_set_info (&thread_ref, conn_ref.client_id, eid, conn_ref.transaction_id, request);
+      css_set_thread_info (&thread_ref, conn_ref.client_id, eid, conn_ref.get_tran_index (), request);
 
       /* 3. Call server_request() function */
       status = css_Server_request_handler (&thread_ref, eid, request, size, buffer);
 
       /* 4. reset thread transaction id(may be NULL_TRAN_INDEX) */
-      thread_set_info (&thread_ref, -1, 0, local_tran_index, -1);
+      css_set_thread_info (&thread_ref, -1, 0, local_tran_index, -1);
     }
   else
     {
@@ -1371,8 +1486,10 @@ css_initialize_server_interfaces (int (*request_handler) (THREAD_ENTRY * thrd, u
 int
 css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_id)
 {
-  CSS_CONN_ENTRY *conn;
-  int status = NO_ERROR;
+  CSS_CONN_ENTRY *
+    conn;
+  int
+    status = NO_ERROR;
 
   if (server_name == NULL || port_id <= 0)
     {
@@ -1388,8 +1505,12 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 #endif /* WINDOWS */
 
   // initialize worker pool for server requests
-  const std::size_t MAX_WORKERS = NUM_NON_SYSTEM_TRANS;
-  const std::size_t MAX_TASK_COUNT = 2 * NUM_NON_SYSTEM_TRANS;	// not that it matters...
+  const
+    std::size_t
+    MAX_WORKERS = NUM_NON_SYSTEM_TRANS;
+  const
+    std::size_t
+    MAX_TASK_COUNT = 2 * NUM_NON_SYSTEM_TRANS;	// not that it matters...
 
   css_Server_request_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT, NULL,
 										  cubthread::system_core_count (),
@@ -1462,7 +1583,8 @@ shutdown:
   pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
   if (!LSA_EQ (&log_Gl.append.nxio_lsa, &log_Gl.prior_info.prior_lsa))
     {
-      LOG_PRIOR_NODE *node;
+      LOG_PRIOR_NODE *
+	node;
 
       assert (LSA_LT (&log_Gl.append.nxio_lsa, &log_Gl.prior_info.prior_lsa));
       node = log_Gl.prior_info.prior_list_header;
@@ -1483,8 +1605,8 @@ shutdown:
   css_stop_all_workers (*thread_p, THREAD_STOP_LOGWR);
 
   // destroy thread worker pools
-  THREAD_GET_MANAGER ()->destroy_worker_pool (css_Server_request_worker_pool);
-  THREAD_GET_MANAGER ()->destroy_worker_pool (css_Connection_worker_pool);
+  thread_get_manager ()->destroy_worker_pool (css_Server_request_worker_pool);
+  thread_get_manager ()->destroy_worker_pool (css_Connection_worker_pool);
 
   if (!HA_DISABLED ())
     {
@@ -1518,7 +1640,8 @@ shutdown:
 unsigned int
 css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size)
 {
-  int rc = 0;
+  int
+    rc = 0;
 
   assert (conn != NULL);
 
@@ -1543,7 +1666,8 @@ unsigned int
 css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size, char *buffer,
 				   int buffer_size)
 {
-  int rc = 0;
+  int
+    rc = 0;
 
   assert (conn != NULL);
 
@@ -1577,13 +1701,21 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char
 unsigned int
 css_send_reply_and_large_data_to_client (unsigned int eid, char *reply, int reply_size, char *buffer, INT64 buffer_size)
 {
-  CSS_CONN_ENTRY *conn;
-  int rc = 0;
-  int idx = CSS_ENTRYID_FROM_EID (eid);
-  int num_buffers;
-  char **buffers;
-  int *buffers_size, i;
-  INT64 pos = 0;
+  CSS_CONN_ENTRY *
+    conn;
+  int
+    rc = 0;
+  int
+    idx = CSS_ENTRYID_FROM_EID (eid);
+  int
+    num_buffers;
+  char **
+    buffers;
+  int *
+    buffers_size,
+    i;
+  INT64
+    pos = 0;
 
   conn = &css_Conn_array[idx];
   if (buffer_size > 0 && buffer != NULL)
@@ -1655,7 +1787,8 @@ unsigned int
 css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size,
 				     char *buffer1, int buffer1_size, char *buffer2, int buffer2_size)
 {
-  int rc = 0;
+  int
+    rc = 0;
 
   assert (conn != NULL);
 
@@ -1691,7 +1824,8 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 				     char *buffer1, int buffer1_size, char *buffer2, int buffer2_size, char *buffer3,
 				     int buffer3_size)
 {
-  int rc = 0;
+  int
+    rc = 0;
 
   assert (conn != NULL);
 
@@ -1721,7 +1855,8 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 unsigned int
 css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size)
 {
-  int rc;
+  int
+    rc;
 
   assert (conn != NULL);
 
@@ -1738,7 +1873,8 @@ css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer,
 unsigned int
 css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
 {
-  int rc = 0;
+  int
+    rc = 0;
 
   assert (conn != NULL);
 
@@ -1756,8 +1892,12 @@ css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
 static int
 css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid)
 {
-  char *error_buffer;
-  int error_size, rc, errid = NO_ERROR;
+  char *
+    error_buffer;
+  int
+    error_size,
+    rc,
+    errid = NO_ERROR;
 
   assert (conn != NULL);
 
@@ -1800,7 +1940,8 @@ unsigned int
 css_receive_data_from_client_with_timeout (CSS_CONN_ENTRY * conn, unsigned int eid, char **buffer, int *size,
 					   int timeout)
 {
-  int rc = 0;
+  int
+    rc = 0;
 
   assert (conn != NULL);
 
@@ -1825,7 +1966,8 @@ css_receive_data_from_client_with_timeout (CSS_CONN_ENTRY * conn, unsigned int e
 void
 css_end_server_request (CSS_CONN_ENTRY * conn)
 {
-  int r;
+  int
+    r;
 
   r = rmutex_lock (NULL, &conn->rmutex);
   assert (r == NO_ERROR);
@@ -1851,10 +1993,15 @@ css_end_server_request (CSS_CONN_ENTRY * conn)
 char *
 css_pack_server_name (const char *server_name, int *name_length)
 {
-  char *packed_name = NULL;
-  const char *env_name = NULL;
-  char pid_string[16], *s;
-  const char *t;
+  char *
+    packed_name = NULL;
+  const char *
+    env_name = NULL;
+  char
+  pid_string[16], *
+    s;
+  const char *
+    t;
 
   if (server_name != NULL)
     {
@@ -1939,8 +2086,10 @@ css_pack_server_name (const char *server_name, int *name_length)
 char *
 css_add_client_version_string (THREAD_ENTRY * thread_p, const char *version_string)
 {
-  char *ver_str = NULL;
-  CSS_CONN_ENTRY *conn;
+  char *
+    ver_str = NULL;
+  CSS_CONN_ENTRY *
+    conn;
 
   assert (thread_p != NULL);
 
@@ -1980,9 +2129,10 @@ css_add_client_version_string (THREAD_ENTRY * thread_p, const char *version_stri
 char *
 css_get_client_version_string (void)
 {
-  CSS_CONN_ENTRY *entry;
+  CSS_CONN_ENTRY *
+    entry;
 
-  entry = thread_get_current_conn_entry ();
+  entry = css_get_current_conn_entry ();
   if (entry != NULL)
     {
       return entry->version_string;
@@ -2002,7 +2152,8 @@ css_get_client_version_string (void)
 void
 css_cleanup_server_queues (unsigned int eid)
 {
-  int idx = CSS_ENTRYID_FROM_EID (eid);
+  int
+    idx = CSS_ENTRYID_FROM_EID (eid);
 
   css_remove_all_unexpected_packets (&css_Conn_array[idx]);
 }
@@ -2074,16 +2225,21 @@ css_unset_ha_repl_delayed (void)
  *   req_state(in): the state for the server to transit
  *
  */
-static HA_SERVER_STATE
+static
+  HA_SERVER_STATE
 css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE req_state)
 {
   struct ha_server_state_transition_table
   {
-    HA_SERVER_STATE cur_state;
-    HA_SERVER_STATE req_state;
-    HA_SERVER_STATE next_state;
+    HA_SERVER_STATE
+      cur_state;
+    HA_SERVER_STATE
+      req_state;
+    HA_SERVER_STATE
+      next_state;
   };
-  static struct ha_server_state_transition_table ha_Server_state_transition[] = {
+  static struct ha_server_state_transition_table
+    ha_Server_state_transition[] = {
     /* idle -> active */
     {HA_SERVER_STATE_IDLE, HA_SERVER_STATE_ACTIVE, HA_SERVER_STATE_ACTIVE},
 #if 0
@@ -2124,8 +2280,10 @@ css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE req_state)
     /* end of table */
     {HA_SERVER_STATE_NA, HA_SERVER_STATE_NA, HA_SERVER_STATE_NA}
   };
-  struct ha_server_state_transition_table *table;
-  HA_SERVER_STATE new_state = HA_SERVER_STATE_NA;
+  struct ha_server_state_transition_table *
+    table;
+  HA_SERVER_STATE
+    new_state = HA_SERVER_STATE_NA;
 
   if (ha_Server_state == req_state)
     {
@@ -2176,8 +2334,10 @@ css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int whence)
 #define FROM_OTHERS             0
 #define FROM_REGISTER_CLIENT    1
 #define FROM_UNREGISTER_CLIENT  2
-  int err = NO_ERROR;
-  HA_SERVER_STATE state;
+  int
+    err = NO_ERROR;
+  HA_SERVER_STATE
+    state;
 
   /* csect_enter (thread_p, CSECT_HA_SERVER_STATE, INF_WAIT); */
 
@@ -2232,10 +2392,12 @@ css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int whence)
  * css_check_ha_log_applier_done - check all log appliers have done
  *   return: true or false
  */
-static bool
+static
+  bool
 css_check_ha_log_applier_done (void)
 {
-  int i;
+  int
+    i;
 
   for (i = 0; i < ha_Server_num_of_hosts; i++)
     {
@@ -2256,10 +2418,12 @@ css_check_ha_log_applier_done (void)
  * css_check_ha_log_applier_working - check all log appliers are working
  *   return: true or false
  */
-static bool
+static
+  bool
 css_check_ha_log_applier_working (void)
 {
-  int i;
+  int
+    i;
 
   for (i = 0; i < ha_Server_num_of_hosts; i++)
     {
@@ -2288,8 +2452,10 @@ css_check_ha_log_applier_working (void)
 int
 css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool force, int timeout, bool heartbeat)
 {
-  HA_SERVER_STATE orig_state;
-  int i;
+  HA_SERVER_STATE
+    orig_state;
+  int
+    i;
 
   er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: ha_Server_state %s " "state %s force %c heartbeat %c\n",
 		css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state), (force ? 't' : 'f'),
@@ -2357,7 +2523,8 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_enable_update() \n");
 	  logtb_enable_update (thread_p);
 	}
-      delete g_slave_replication_channel;
+      delete
+	g_slave_replication_channel;
       cubreplication::master_replication_channel_manager::reset ();
       cubreplication::master_replication_channel_manager::init (&mock_stream);
       break;
@@ -2426,7 +2593,8 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 
       if (logtb_count_not_allowed_clients_in_maintenance_mode (thread_p) != 0)
 	{
-	  LOG_TDES *tdes;
+	  LOG_TDES *
+	    tdes;
 
 	  /* try to kill transaction. */
 	  TR_TABLE_CS_ENTER (thread_p);
@@ -2439,7 +2607,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.host_name, boot_Host_name,
 							       tdes->client.client_type))
 		    {
-		      thread_slam_tran_index (thread_p, tdes->tran_index);
+		      logtb_slam_transaction (thread_p, tdes->tran_index);
 		    }
 		}
 	    }
@@ -2467,15 +2635,19 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 int
 css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE state)
 {
-  HA_LOG_APPLIER_STATE_TABLE *table;
-  HA_SERVER_STATE server_state;
-  int i, client_id;
+  HA_LOG_APPLIER_STATE_TABLE *
+    table;
+  HA_SERVER_STATE
+    server_state;
+  int
+    i,
+    client_id;
 
   assert (state >= HA_LOG_APPLIER_STATE_UNREGISTERED && state <= HA_LOG_APPLIER_STATE_ERROR);
 
   csect_enter (thread_p, CSECT_HA_SERVER_STATE, INF_WAIT);
 
-  client_id = thread_get_client_id (thread_p);
+  client_id = css_get_client_id (thread_p);
   er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: client %d state %s\n", client_id,
 		css_ha_applier_state_string (state));
   for (i = 0, table = ha_Log_applier_state; i < ha_Log_applier_state_num; i++, table++)
@@ -2537,15 +2709,21 @@ static int
 css_check_accessibility (SOCKET new_fd)
 {
 #if defined(WINDOWS) || defined(SOLARIS)
-  int saddr_len;
+  int
+    saddr_len;
 #elif defined(UNIXWARE7)
-  size_t saddr_len;
+  size_t
+    saddr_len;
 #else
-  socklen_t saddr_len;
+  socklen_t
+    saddr_len;
 #endif
-  struct sockaddr_in clt_sock_addr;
-  unsigned char *ip_addr;
-  int err_code;
+  struct sockaddr_in
+    clt_sock_addr;
+  unsigned char *
+    ip_addr;
+  int
+    err_code;
 
   saddr_len = sizeof (clt_sock_addr);
 
@@ -2564,7 +2742,8 @@ css_check_accessibility (SOCKET new_fd)
 
   if (css_Server_accessible_ip_info == NULL)
     {
-      char ip_str[32];
+      char
+	ip_str[32];
 
       sprintf (ip_str, "%d.%d.%d.%d", (unsigned char) ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3]);
 
@@ -2579,7 +2758,8 @@ css_check_accessibility (SOCKET new_fd)
 
   if (err_code != NO_ERROR)
     {
-      char ip_str[32];
+      char
+	ip_str[32];
 
       sprintf (ip_str, "%d.%d.%d.%d", (unsigned char) ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3]);
 
@@ -2592,8 +2772,10 @@ css_check_accessibility (SOCKET new_fd)
 int
 css_set_accessible_ip_info (void)
 {
-  int ret_val;
-  IP_INFO *tmp_accessible_ip_info;
+  int
+    ret_val;
+  IP_INFO *
+    tmp_accessible_ip_info;
 
   if (prm_get_string_value (PRM_ID_ACCESS_IP_CONTROL_FILE) == NULL)
     {
@@ -2637,7 +2819,8 @@ css_set_accessible_ip_info (void)
 int
 css_free_accessible_ip_info (void)
 {
-  int ret_val;
+  int
+    ret_val;
 
   ret_val = css_free_ip_info (css_Server_accessible_ip_info);
   css_Server_accessible_ip_info = NULL;
@@ -2648,7 +2831,9 @@ css_free_accessible_ip_info (void)
 void
 xacl_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 {
-  int i, j;
+  int
+    i,
+    j;
 
   if (outfp == NULL)
     {
@@ -2667,7 +2852,8 @@ xacl_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 
   for (i = 0; i < css_Server_accessible_ip_info->num_list; i++)
     {
-      int address_index = i * IP_BYTE_COUNT;
+      int
+	address_index = i * IP_BYTE_COUNT;
 
       for (j = 0; j < css_Server_accessible_ip_info->address_list[address_index]; j++)
 	{
@@ -2698,10 +2884,14 @@ static void
 css_process_new_slave (SOCKET master_fd)
 {
 
-  SOCKET new_fd;
-  unsigned short rid;
-  css_error_code rc;
-  communication_channel chn;
+  SOCKET
+    new_fd;
+  unsigned short
+    rid;
+  css_error_code
+    rc;
+  communication_channel
+    chn;
 
   /* receive new socket descriptor from the master */
   new_fd = css_open_new_socket_from_master (master_fd, &rid);
@@ -2711,24 +2901,151 @@ css_process_new_slave (SOCKET master_fd)
       return;
     }
   er_log_debug (ARG_FILE_LINE, "css_process_new_slave:" "received new slave fd from master fd=%d, current_state=%d\n",
-		 new_fd, ha_Server_state);
+		new_fd, ha_Server_state);
 
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
   rc = chn.accept (new_fd);
   assert (rc == NO_ERRORS);
-  cubreplication::master_replication_channel_manager::add_master_replication_channel (cubreplication::master_replication_channel_entry (
-                                                                                        std::move (chn),
-                                                                                        mock_stream,
-                                                                                        cubreplication::CHECK_FOR_GC,
-                                                                                        new cubreplication::check_for_gc_task ())
-                                                                                      );
+  cubreplication::master_replication_channel_manager::add_master_replication_channel (cubreplication::
+										      master_replication_channel_entry
+										      (std::move (chn), mock_stream,
+										       cubreplication::CHECK_FOR_GC,
+										       new cubreplication::
+										       check_for_gc_task ()));
 }
 
 const char *
 get_master_hostname ()
 {
   return ha_Server_master_hostname;
+}
+
+static void
+css_process_new_slave (SOCKET master_fd)
+{
+
+  SOCKET
+    new_fd;
+  unsigned short
+    rid;
+
+  /* receive new socket descriptor from the master */
+  new_fd = css_open_new_socket_from_master (master_fd, &rid);
+  if (IS_INVALID_SOCKET (new_fd))
+    {
+      assert (false);
+      return;
+    }
+  er_log_debug (ARG_FILE_LINE, "css_process_new_slave:" "received new slave fd from master fd=%d, current_state=%d\n",
+		new_fd, ha_Server_state);
+
+  assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
+
+  // add slave to master replication channel manager
+#if 1
+  // remove this after master/slave repl chn impl
+  css_shutdown_socket (new_fd);
+#endif
+}
+
+const char *
+get_master_hostname ()
+{
+  return ha_Server_master_hostname;
+}
+
+/*
+ * css_get_client_id() - returns the unique client identifier
+ *   return: returns the unique client identifier, on error, returns -1
+ *
+ * Note: WARN: this function doesn't lock on thread_entry
+ */
+int
+css_get_client_id (THREAD_ENTRY * thread_p)
+{
+  CSS_CONN_ENTRY *
+    conn_p;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert (thread_p != NULL);
+
+  conn_p = thread_p->conn_entry;
+  if (conn_p != NULL)
+    {
+      return conn_p->client_id;
+    }
+  else
+    {
+      return -1;
+    }
+}
+
+/*
+ * css_set_thread_info () -
+ *   return:
+ *   thread_p(out):
+ *   client_id(in):
+ *   rid(in):
+ *   tran_index(in):
+ */
+void
+css_set_thread_info (THREAD_ENTRY * thread_p, int client_id, int rid, int tran_index, int net_request_index)
+{
+  thread_p->client_id = client_id;
+  thread_p->rid = rid;
+  thread_p->tran_index = tran_index;
+  thread_p->net_request_index = net_request_index;
+  thread_p->victim_request_fail = false;
+  thread_p->next_wait_thrd = NULL;
+  thread_p->wait_for_latch_promote = false;
+  thread_p->lockwait = NULL;
+  thread_p->lockwait_state = -1;
+  thread_p->query_entry = NULL;
+  thread_p->tran_next_wait = NULL;
+
+  thread_p->end_resource_tracks ();
+  thread_clear_recursion_depth (thread_p);
+}
+
+/*
+ * css_get_comm_request_id() - returns the request id that started the current thread
+ *   return: returns the comm system request id for the client request that
+ *           started the thread. On error, returns -1
+ *
+ * Note: WARN: this function doesn't lock on thread_entry
+ */
+unsigned int
+css_get_comm_request_id (THREAD_ENTRY * thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert (thread_p != NULL);
+
+  return thread_p->rid;
+}
+
+/*
+ * css_get_current_conn_entry() -
+ *   return:
+ */
+CSS_CONN_ENTRY *
+css_get_current_conn_entry (void)
+{
+  THREAD_ENTRY *
+    thread_p;
+
+  thread_p = thread_get_thread_entry_info ();
+  assert (thread_p != NULL);
+
+  return thread_p->conn_entry;
 }
 
 // *INDENT-OFF*
@@ -2750,14 +3067,14 @@ css_push_server_task (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
   //       randomly pushed to cores that are full. some of those tasks may belong to threads holding locks. as a
   //       consequence, lock waiters may wait longer or even indefinitely if we are really unlucky.
   //
-  THREAD_GET_MANAGER ()->push_task_on_core (thread_ref, css_Server_request_worker_pool,
+  thread_get_manager ()->push_task_on_core (thread_ref, css_Server_request_worker_pool,
                                             new css_server_task (conn_ref), static_cast<size_t> (conn_ref.idx));
 }
 
 void
 css_push_external_task (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
 {
-  THREAD_GET_MANAGER ()->push_task (thread_ref, css_Server_request_worker_pool,
+  thread_get_manager ()->push_task (thread_ref, css_Server_request_worker_pool,
 				    new css_server_external_task (conn, task));
 }
 
@@ -2775,7 +3092,7 @@ css_server_task::execute (context_type &thread_ref)
       assert (thread_ref.private_lru_index == -1);
     }
 
-  thread_ref.status = TS_RUN;
+  thread_ref.m_status = cubthread::entry::status::TS_RUN;
 
   // TODO: we lock tran_index_lock because css_internal_request_handler expects it to be locked. however, I am not
   //       convinced we really need this
@@ -2784,7 +3101,7 @@ css_server_task::execute (context_type &thread_ref)
 
   thread_ref.private_lru_index = -1;
   thread_ref.conn_entry = NULL;
-  thread_ref.status = TS_FREE;
+  thread_ref.m_status = cubthread::entry::status::TS_FREE;
 }
 
 void
@@ -2850,18 +3167,20 @@ css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_E
 
   (void) logtb_set_tran_index_interrupt (&stopper_thread_ref, thread_ref.tran_index, true);
 
-  if (thread_ref.status == TS_WAIT && logtb_is_current_active (&thread_ref))
+  if (thread_ref.m_status == cubthread::entry::status::TS_WAIT && logtb_is_current_active (&thread_ref))
     {
       thread_lock_entry (&thread_ref);
 
-      if (thread_ref.tran_index != -1 && thread_ref.status == TS_WAIT && thread_ref.lockwait == NULL
-          && thread_ref.check_interrupt)
+      if (thread_ref.tran_index != -1 && thread_ref.m_status == cubthread::entry::status::TS_WAIT
+          && thread_ref.lockwait == NULL && thread_ref.check_interrupt)
         {
           thread_ref.interrupted = true;
           thread_wakeup_already_had_mutex (&thread_ref, THREAD_RESUME_DUE_TO_INTERRUPT);
         }
       thread_unlock_entry (&thread_ref);
     }
+  // make sure not blocked in locks
+  lock_force_thread_timeout_lock (&thread_ref);
 }
 
 //
@@ -2886,14 +3205,13 @@ css_stop_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper)
       // no transaction, no stop
       return;
     }
-  if (thread_ref.status == TS_WAIT && logtb_is_current_active (&thread_ref))
+  if (thread_ref.m_status == cubthread::entry::status::TS_WAIT && logtb_is_current_active (&thread_ref))
     {
-      if (thread_check_suspend_reason_and_wakeup (&thread_ref, THREAD_RESUME_DUE_TO_INTERRUPT, THREAD_LOGWR_SUSPENDED)
-          == NO_ERROR)
-        {
-          thread_ref.interrupted = true;
-        }
+      thread_check_suspend_reason_and_wakeup (&thread_ref, THREAD_RESUME_DUE_TO_INTERRUPT, THREAD_LOGWR_SUSPENDED);
+      thread_ref.interrupted = true;
     }
+  // make sure not blocked in locks
+  lock_force_thread_timeout_lock (&thread_ref);
 }
 
 
@@ -2913,7 +3231,7 @@ css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop_mapper, bool is_log
       // don't care
       return;
     }
-  if (thread_ref.status != TS_FREE)
+  if (thread_ref.m_status != cubthread::entry::status::TS_FREE)
     {
       found = true;
       stop_mapper = true;
@@ -2939,7 +3257,7 @@ css_is_log_writer (const THREAD_ENTRY &thread_arg)
 // stop_phase (in) : THREAD_STOP_WORKERS_EXCEPT_LOGWR or THREAD_STOP_LOGWR
 //
 static void
-css_stop_all_workers (THREAD_ENTRY &thread_ref, thread_stop_type stop_phase)
+css_stop_all_workers (THREAD_ENTRY &thread_ref, css_thread_stop_type stop_phase)
 {
   bool is_not_stopped;
 
@@ -2975,9 +3293,6 @@ css_stop_all_workers (THREAD_ENTRY &thread_ref, thread_stop_type stop_phase)
           css_Server_request_worker_pool->map_running_contexts (css_stop_non_log_writer, thread_ref);
           css_Connection_worker_pool->map_running_contexts (css_stop_non_log_writer, thread_ref);
         }
-
-      // make sure none is blocked in lock waits
-      lock_force_timeout_lock_wait_transactions (stop_phase);
 
       // sleep for 50 milliseconds
       std::this_thread::sleep_for (std::chrono::milliseconds (50));
@@ -3021,6 +3336,33 @@ void
 css_get_thread_stats (UINT64 *stats_out)
 {
   css_Server_request_worker_pool->get_stats (stats_out);
+}
+
+//
+// css_get_num_request_workers () - get number of workers executing server requests
+//
+size_t
+css_get_num_request_workers (void)
+{
+  return css_Server_request_worker_pool->get_max_count ();
+}
+
+//
+// css_get_num_connection_workers () - get number of workers handling connections
+//
+size_t
+css_get_num_connection_workers (void)
+{
+  return css_Connection_worker_pool->get_max_count ();
+}
+
+//
+// css_get_num_total_workers () - get total number of workers (request and connection handlers)
+//
+size_t
+css_get_num_total_workers (void)
+{
+  return css_get_num_request_workers () + css_get_num_connection_workers ();
 }
 
 //
@@ -3089,5 +3431,132 @@ css_wp_core_job_scan_mapper (const cubthread::entry_workpool::core & wp_core, bo
   ++core_index;
 
   assert (val_index == CSS_JOB_QUEUE_SCAN_COLUMN_COUNT);
+}
+
+//
+// css_is_any_thread_not_suspended_mapfunc
+//
+// thread_ref (in)   : current thread entry
+// stop_mapper (out) : output true to stop mapper
+// count (out)       : count number of threads
+// found (out)       : output true when not suspended thread is found
+//
+static void
+css_is_any_thread_not_suspended_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, size_t & count, bool & found)
+{
+  if (thread_ref.m_status != cubthread::entry::status::TS_WAIT)
+    {
+      // found not suspended; stop
+      stop_mapper = true;
+      found = true;
+      return;
+    }
+  ++count;
+}
+
+//
+// css_are_all_request_handlers_suspended - are all request handlers suspended?
+//
+bool
+css_are_all_request_handlers_suspended (void)
+{
+  // assume all are suspended
+  bool is_any_not_suspended = false;
+  size_t checked_threads_count = 0;
+
+  css_Server_request_worker_pool->map_running_contexts (css_is_any_thread_not_suspended_mapfunc, checked_threads_count,
+                                                        is_any_not_suspended);
+  if (is_any_not_suspended)
+    {
+      // found a thread that was not suspended
+      return false;
+    }
+
+  if (checked_threads_count == css_Server_request_worker_pool->get_max_count ())
+    {
+      // all threads are suspended
+      return true;
+    }
+  else
+    {
+      // at least one thread is free
+      return false;
+    }
+}
+
+//
+// css_count_transaction_worker_threads_mapfunc () - mapper function for worker pool thread entries. tries to identify
+//                                                   entries belonging to given transaction/client and increment
+//                                                   counter
+//
+// thread_ref (in)    : thread entry belonging to running worker
+// stop_mapper (out)  : ignored
+// caller_thread (in) : thread entry of caller
+// tran_index (in)    : transaction index
+// client_id (in)     : client id
+// count (out)        : increment counter if thread entry belongs to transaction/client
+//
+static void
+css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
+                                              THREAD_ENTRY * caller_thread, int tran_index, int client_id,
+                                              size_t & count)
+{
+  (void) stop_mapper;   // suppress unused parameter warning
+
+  CSS_CONN_ENTRY *conn_p;
+  bool does_belong = false;
+
+  if (caller_thread == &thread_ref || thread_ref.type != TT_WORKER)
+    {
+      // not what we need
+      return;
+    }
+
+  (void) pthread_mutex_lock (&thread_ref.tran_index_lock);
+
+  if (!thread_ref.is_on_current_thread ()
+      && thread_ref.m_status != cubthread::entry::status::TS_DEAD
+      && thread_ref.m_status != cubthread::entry::status::TS_FREE
+      && thread_ref.m_status != cubthread::entry::status::TS_CHECK)
+    {
+      conn_p = thread_ref.conn_entry;
+      if (tran_index == NULL_TRAN_INDEX)
+        {
+          // exact match client ID is required
+          does_belong = (conn_p != NULL && conn_p->client_id == client_id);
+        }
+      else if (tran_index == thread_ref.tran_index)
+        {
+          // match client ID or null connection
+          does_belong = (conn_p == NULL || conn_p->client_id == client_id);
+        }
+    }
+
+  pthread_mutex_unlock (&thread_ref.tran_index_lock);
+
+  if (does_belong)
+    {
+      count++;
+    }
+}
+
+//
+// css_count_transaction_worker_threads () - count thread entries belonging to transaction/client (exclude current
+//                                           thread)
+//
+// return          : thread entries count
+// thread_p (in)   : thread entry of caller
+// tran_index (in) : transaction index
+// client_id (in)  : client id
+//
+size_t
+css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, int client_id)
+{
+  size_t count = 0;
+
+  css_Server_request_worker_pool->map_running_contexts (css_count_transaction_worker_threads_mapfunc, thread_p,
+                                                        tran_index, client_id, count);
+
+  return count;
 }
 // *INDENT-ON*

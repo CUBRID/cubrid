@@ -42,6 +42,9 @@
 #if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
 #endif // SERVER_MODE
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#endif // SERVER_MODE or SA_MODE
 
 #include <cstring>
 
@@ -65,7 +68,6 @@
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include <string.h>
 
-#include "thread.h"
 #include "log_impl.h"
 #include "session.h"
 #include "error_manager.h"

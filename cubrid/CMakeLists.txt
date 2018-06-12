@@ -26,15 +26,15 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_set.c
   ${COMPAT_DIR}/db_value_printer.cpp
   )
-set (COMPAT_HEADERS  
+set (COMPAT_HEADERS
   ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/dbtype_function.i
   ${COMPAT_DIR}/dbtype_function.h
   )
 
 set(THREAD_SOURCES
-  ${THREAD_DIR}/thread.c
   ${THREAD_DIR}/critical_section.c
+  ${THREAD_DIR}/critical_section_tracker.cpp
   ${THREAD_DIR}/thread_daemon.cpp
   ${THREAD_DIR}/thread_entry.cpp
   ${THREAD_DIR}/thread_entry_task.cpp
@@ -44,6 +44,7 @@ set(THREAD_SOURCES
   ${THREAD_DIR}/thread_worker_pool.cpp
   )
 set(THREAD_HEADERS
+  ${THREAD_DIR}/critical_section_tracker.hpp
   ${THREAD_DIR}/thread_compat.hpp
   ${THREAD_DIR}/thread_daemon.hpp
   ${THREAD_DIR}/thread_entry.hpp
@@ -53,6 +54,20 @@ set(THREAD_HEADERS
   ${THREAD_DIR}/thread_manager.hpp
   ${THREAD_DIR}/thread_waiter.hpp
   ${THREAD_DIR}/thread_worker_pool.hpp
+  )
+
+set(STREAM_SOURCES
+  ${BASE_DIR}/cubstream.cpp
+  ${BASE_DIR}/packing_stream.cpp
+  ${BASE_DIR}/stream_entry.cpp
+  )
+set (STREAM_HEADERS
+  ${BASE_DIR}/bip_buffer.hpp
+  ${BASE_DIR}/collapsable_circular_queue.hpp
+  ${BASE_DIR}/cubstream.hpp
+  ${BASE_DIR}/packing_stream.hpp
+  ${BASE_DIR}/stream_entry.hpp
+  ${BASE_DIR}/stream_io.hpp
   )
 
 set(BASE_SOURCES
@@ -72,6 +87,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/error_manager.c
   ${BASE_DIR}/event_log.c
   ${BASE_DIR}/fault_injection.c
+  ${BASE_DIR}/fileline_location.cpp
   ${BASE_DIR}/fixed_alloc.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
@@ -94,6 +110,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/process_util.c
   ${BASE_DIR}/release_string.c
+  ${BASE_DIR}/resource_tracker.cpp
   ${BASE_DIR}/sha1.c
   ${BASE_DIR}/stack_dump.c
   ${BASE_DIR}/string_buffer.cpp
@@ -104,7 +121,6 @@ set(BASE_SOURCES
   ${BASE_DIR}/unicode_support.c
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/xml_parser.c
-  ${BASE_DIR}/cubstream.cpp
   )
 set (BASE_HEADERS
   ${BASE_DIR}/contiguous_memory_buffer.hpp
@@ -113,6 +129,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
+  ${BASE_DIR}/fileline_location.hpp
   ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
@@ -121,8 +138,8 @@ set (BASE_HEADERS
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/packable_object.hpp
   ${BASE_DIR}/process_util.h
+  ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/string_buffer.hpp
-  ${BASE_DIR}/cubstream.hpp
   )
 
 set(EXECUTABLE_SOURCES
@@ -320,6 +337,7 @@ set (CUBRID_LIB_SOURCES
   ${EXECUTABLE_SOURCES}
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
+  ${STREAM_SOURCES}
   )
 
 set (CUBRID_LIB_HEADERS
@@ -328,6 +346,7 @@ set (CUBRID_LIB_HEADERS
   ${COMPAT_HEADERS}
   ${REPLICATION_HEADERS}
   ${THREAD_HEADERS}
+  ${STREAM_HEADERS}
   )
 
 add_library(cubrid SHARED
