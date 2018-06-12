@@ -72,79 +72,79 @@ namespace cubmonitor
     //
   }
 
-  template<>
+  template <>
   max_statistic<floating_rep>::max_statistic (void)
     : m_value (std::numeric_limits<floating_rep>::min ())
   {
     //
   }
 
-  template<>
+  template <>
   max_statistic<time_rep>::max_statistic (void)
     : m_value (time_rep::min ())
   {
     //
   }
 
-  template<>
+  template <>
   max_atomic_statistic<amount_rep>::max_atomic_statistic (void)
     : m_value { std::numeric_limits<amount_rep>::min () }
   {
     //
   }
 
-  template<>
+  template <>
   max_atomic_statistic<floating_rep>::max_atomic_statistic (void)
     : m_value { std::numeric_limits<floating_rep>::min () }
   {
     //
   }
 
-  template<>
+  template <>
   max_atomic_statistic<time_rep>::max_atomic_statistic (void)
     : m_value { time_rep::min () }
   {
     //
   }
 
-  template<>
+  template <>
   min_statistic<amount_rep>::min_statistic (void)
     : m_value (std::numeric_limits<amount_rep>::max ())
   {
     //
   }
 
-  template<>
+  template <>
   min_statistic<floating_rep>::min_statistic (void)
     : m_value (std::numeric_limits<floating_rep>::max ())
   {
     //
   }
 
-  template<>
+  template <>
   min_statistic<time_rep>::min_statistic (void)
     : m_value (time_rep::max ())
   {
     //
   }
 
-  template<>
+  template <>
   min_atomic_statistic<amount_rep>::min_atomic_statistic (void)
-    : m_value { std::numeric_limits<amount_rep>::min () }
+    : m_value { std::numeric_limits<amount_rep>::max () }
   {
     //
   }
 
-  template<>
+  template <>
   min_atomic_statistic<floating_rep>::min_atomic_statistic (void)
-    : m_value { std::numeric_limits<floating_rep>::min () }
+    : m_value { std::numeric_limits<floating_rep>::max () }
   {
     //
   }
 
-  template<>
+  template <>
   min_atomic_statistic<time_rep>::min_atomic_statistic (void)
-    : m_value { time_rep::min () }
+    : m_value { time_rep::max () }
   {
     //
   }
