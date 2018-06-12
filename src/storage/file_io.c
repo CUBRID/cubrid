@@ -3541,22 +3541,33 @@ fileio_is_system_volume_label_equal (THREAD_ENTRY * thread_p, FILEIO_SYSTEM_VOLU
 void
 fileio_page_hexa_dump (const char *src_data, int length)
 {
-  char log_block_string[IO_MAX_PAGE_SIZE * 4], *dest_ptr;
-  int line_no = 0, i;
+  char *log_block_string, *dest_ptr;
+  const size_t size = IO_MAX_PAGE_SIZE * 4;
+  int line_no, i;
 
-  dest_ptr = log_block_string;
-  for (i = 0; i < length; i++, src_data++)
+  dest_ptr = log_block_string = (char *) malloc (size);
+  if (log_block_string == NULL)
+    {
+      return;
+    }
+
+  for (i = 0, line_no = 0; i < length; i++, src_data++)
     {
       if (i % 32 == 0)
 	{
 	  dest_ptr += sprintf (dest_ptr, "\n%05d: ", line_no++);
 	}
 
-      dest_ptr += sprintf (dest_ptr, "%02X ", *src_data);
+      dest_ptr += sprintf (dest_ptr, "%02X ", (unsigned char) (*src_data));
     }
 
   dest_ptr += sprintf (dest_ptr, "\n");
+
+  assert ((size_t) (dest_ptr - log_block_string) < size);
+
   er_log_debug (ARG_FILE_LINE, "fileio_page_hexa_dump: data = %s\n", log_block_string);
+
+  free_and_init (log_block_string);
 }
 
 #if !defined (WINDOWS)
