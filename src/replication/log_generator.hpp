@@ -29,16 +29,12 @@
 /* TODO[arnia] : system parameter */
 #define LG_GLOBAL_INSTANCE_BUFFER_CAPACITY  (1 * 1024 * 1024)
 
-#include "stream_common.hpp"
-#include "buffer_provider.hpp"
 #include "packing_stream.hpp"
 #include "thread_compat.hpp"
-#include "replication_stream.hpp"
+#include "replication_stream_entry.hpp"
 #include <vector>
 
-class cubstream::stream_buffer;
 class cubpacking::packable_object;
-class cubstream::stream_packer;
 
 namespace cubreplication
 {
@@ -52,7 +48,7 @@ namespace cubreplication
  *        this will be supported later, but needs centralized stream_position in global log_generator
  */
 
-class log_generator : public cubstream::buffer_provider, public cubstream::notify_handler
+class log_generator
 {
 private:
   std::vector<replication_stream_entry*> m_stream_entries;
@@ -64,7 +60,6 @@ private:
 
   static log_generator *global_log_generator;
 
-  cubstream::stream_packer *m_serializator;
 
 public:
 
@@ -76,17 +71,11 @@ public:
 
   void set_ready_to_pack (THREAD_ENTRY *th_entry);
 
-  cubstream::stream_packer *get_serializator (void) { return m_serializator; };
-
   replication_stream_entry* get_stream_entry (THREAD_ENTRY *th_entry);
 
   int pack_stream_entries (THREAD_ENTRY *th_entry);
 
   static log_generator *new_instance (THREAD_ENTRY *th_entry, const cubstream::stream_position &start_position);
-
-  int notify (const cubstream::stream_position pos, const size_t byte_count)
-      { return flush_old_stream_data (); };
-  int flush_old_stream_data (void);
 
   cubstream::packing_stream * get_write_stream (void) { return m_stream; };
 };

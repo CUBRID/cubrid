@@ -23,7 +23,6 @@
 
 #ident "$Id$"
 
-#include "stream_packer.hpp"
 #include "replication_entry.hpp"
 #include "object_representation.h"
 
@@ -122,7 +121,7 @@ int single_row_repl_entry::pack (cubpacking::packer *serializator)
 {
   int i;
 
-  serializator->pack_int (get_create_id ());
+  serializator->pack_int (single_row_repl_entry::ID);
   serializator->pack_int ((int) m_type);
   serializator->pack_int_vector (changed_attributes);
   serializator->pack_small_string (m_class_name);
@@ -191,7 +190,7 @@ size_t sbr_repl_entry::get_packed_size (cubpacking::packer *serializator)
 
 int sbr_repl_entry::pack (cubpacking::packer *serializator)
 {
-  serializator->pack_int (get_create_id ());
+  serializator->pack_int (sbr_repl_entry::ID);
   serializator->pack_large_string (m_statement);
   return NO_ERROR;
 }
@@ -203,11 +202,5 @@ int sbr_repl_entry::unpack (cubpacking::packer *serializator)
   serializator->unpack_large_string (m_statement);
   return NO_ERROR;
 }
-//////////////////////////
- replication_object_builder::replication_object_builder ()
- {
-   add_pattern_object (new sbr_repl_entry());
-   add_pattern_object (new single_row_repl_entry());
- }
 
- } /* namespace cubreplication */
+} /* namespace cubreplication */

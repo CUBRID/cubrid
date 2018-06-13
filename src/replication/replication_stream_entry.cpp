@@ -18,14 +18,14 @@
  */
 
 /*
- * replication_stream.cpp
+ * replication_stream_entry.cpp
  */
 
 #ident "$Id$"
 
 #include "replication_entry.hpp"
-#include "replication_stream.hpp"
-#include "stream_packer.hpp"
+#include "replication_stream_entry.hpp"
+#include "stream_entry.hpp"
 #include "error_code.h"
 #include <algorithm>
 
@@ -35,7 +35,7 @@ namespace cubreplication
 size_t replication_stream_entry::get_header_size ()
 {
   size_t header_size = 0;
-  cubstream::stream_packer *serializator = get_packer ();
+  cubpacking::packer *serializator = get_packer ();
   header_size += serializator->get_packed_bigint_size (header_size);
   header_size += serializator->get_packed_bigint_size (header_size);
   header_size += serializator->get_packed_int_size (header_size);
@@ -54,10 +54,25 @@ void replication_stream_entry::set_header_data_size (const size_t &data_size)
   m_header.data_size = (int) data_size;
 }
 
+cubstream::entry::packable_factory *replication_stream_entry::get_builder ()
+{
+  static cubstream::entry::packable_factory replication_factory_po;
+  static bool created = false;
+  
+  if (created == false)
+    {
+      replication_factory_po.register_creator<sbr_repl_entry> (sbr_repl_entry::ID);
+      replication_factory_po.register_creator<single_row_repl_entry> (single_row_repl_entry::ID);
+      created = true;
+    }
+
+  return &replication_factory_po;
+}
+
 
 int replication_stream_entry::pack_stream_entry_header ()
 {
-  cubstream::stream_packer *serializator = get_packer ();
+  cubpacking::packer *serializator = get_packer ();
   m_header.count_replication_entries = (int) m_packable_entries.size ();
   serializator->pack_bigint ((DB_BIGINT *)&m_header.prev_record);
   serializator->pack_bigint ((DB_BIGINT *)&m_header.mvccid);
@@ -69,7 +84,7 @@ int replication_stream_entry::pack_stream_entry_header ()
 
 int replication_stream_entry::unpack_stream_entry_header ()
 {
-  cubstream::stream_packer *serializator = get_packer ();
+  cubpacking::packer *serializator = get_packer ();
   serializator->unpack_bigint ((DB_BIGINT *) &m_header.prev_record);
   serializator->unpack_bigint ((DB_BIGINT *) &m_header.mvccid);
   serializator->unpack_int ((int *) &m_header.count_replication_entries);

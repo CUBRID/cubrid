@@ -18,15 +18,15 @@
  */
 
 /*
- * replication_stream.hpp
+ * replication_stream_entry.hpp
  */
 
 #ident "$Id$"
 
-#ifndef _REPLICATION_STREAM_HPP_
-#define _REPLICATION_STREAM_HPP_
+#ifndef _REPLICATION_STREAM_ENTRY_HPP_
+#define _REPLICATION_STREAM_ENTRY_HPP_
 
-#include "packing_stream.hpp"
+#include "stream_entry.hpp"
 #include "replication_entry.hpp"
 #include "storage_common.h"
 #include <vector>
@@ -48,28 +48,29 @@ class replication_stream_entry : public cubstream::entry
 {
 private:
   replication_stream_entry_header m_header;
-
-  cubstream::stream_packer m_serializator;
+  cubpacking::packer m_serializator;
 
 public:
-  replication_stream_entry (cubstream::packing_stream *stream_p) : entry (stream_p), m_serializator (stream_p) { };
+  replication_stream_entry (cubstream::packing_stream *stream_p) : entry (stream_p) { };
 
   size_t get_header_size ();
   size_t get_data_packed_size (void);
   void set_header_data_size (const size_t &data_size);
 
-  cubpacking::object_builder *get_builder (void)
-    { static replication_object_builder repl_object_builder; return &repl_object_builder; };
+  cubstream::entry::packable_factory *get_builder ();
+
+  cubpacking::packer *get_packer ()
+    {
+      return &m_serializator;
+    };
 
   int pack_stream_entry_header ();
   int unpack_stream_entry_header ();
   int get_packable_entry_count_from_header (void);
-
-  cubstream::stream_packer *get_packer ()  { return &m_serializator; };
 
   bool is_equal (const cubstream::entry *other);
 };
 
 } /* namespace cubreplication */
 
-#endif /* _REPLICATION_STREAM_HPP_ */
+#endif /* _REPLICATION_STREAM_ENTRY_HPP_ */

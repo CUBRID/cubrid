@@ -24,9 +24,7 @@
 #ident "$Id$"
 
 #include "log_generator.hpp"
-#include "replication_stream.hpp"
-#include "stream_buffer.hpp"
-#include "stream_packer.hpp"
+#include "replication_stream_entry.hpp"
 #include "master_replication_channel.hpp"
 #include "thread_entry.hpp"
 #include "packing_stream.hpp"
@@ -58,9 +56,9 @@ log_generator* log_generator::new_instance (THREAD_ENTRY *th_entry, const cubstr
   log_generator *new_lg = new log_generator ();
   new_lg->m_append_position = start_position;
 
-  new_lg->m_stream = new cubstream::packing_stream (new_lg);
+  /* TODO : sys params */
+  new_lg->m_stream = new cubstream::packing_stream (100 * 1024 * 1024, 1000);
   new_lg->m_stream->init (new_lg->m_append_position);
-  new_lg->m_stream->set_filled_stream_handler (new_lg);
 
   if (th_entry == NULL)
     {
@@ -80,8 +78,6 @@ log_generator* log_generator::new_instance (THREAD_ENTRY *th_entry, const cubstr
       new_lg->m_stream_entries.resize (1);
       new_lg->m_stream_entries[0] = new replication_stream_entry (new_lg->m_stream);
     }
-
-  new_lg->m_stream->acquire_new_write_buffer (new_lg, new_lg->m_append_position, LG_GLOBAL_INSTANCE_BUFFER_CAPACITY, NULL);
 
   return new_lg;
 }
@@ -150,25 +146,6 @@ int log_generator::pack_stream_entries (THREAD_ENTRY *th_entry)
     }
 
   return NO_ERROR;
-}
-
-int log_generator::flush_old_stream_data (void)
-{
-  int error_code;
-  /* detach filled buffers from write stream and send them to MRC_Manager */
-  std::vector <cubstream::buffer_context> ready_buffers;
-
-  error_code = m_stream->collect_buffers (ready_buffers, cubstream::COLLECT_ONLY_FILLED_BUFFERS,
-                                          cubstream::COLLECT_AND_DETACH);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* re-attach the buffers to MRC_Manager */
-  master_replication_channel_manager::get_instance()->add_buffers (ready_buffers);
-
-  return error_code;
 }
 
 } /* namespace cubreplication */

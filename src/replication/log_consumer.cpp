@@ -24,7 +24,7 @@
 #ident "$Id$"
 
 #include "log_consumer.hpp"
-#include "replication_stream.hpp"
+#include "replication_stream_entry.hpp"
 
 namespace cubreplication
 {
@@ -81,11 +81,10 @@ log_consumer* log_consumer::new_instance (const CONSUMER_TYPE req_type,
   new_lc->curr_position = start_position;
   new_lc->m_type = req_type;
 
-  new_lc->consume_stream = new cubstream::packing_stream (new_lc);
+  /* TODO : sys params */
+  new_lc->consume_stream = new cubstream::packing_stream (10 * 1024 * 1024, 1);
   new_lc->consume_stream->init (new_lc->curr_position);
 
-  new_lc->consume_stream->acquire_new_write_buffer (new_lc, new_lc->curr_position, LC_BUFFER_CAPACITY, NULL);
-  new_lc->consume_stream->set_fetch_data_handler (new_lc);
 
   return new_lc; 
 }

@@ -24,7 +24,7 @@
 #ident "$Id$"
 
 #include "slave_replication_channel.hpp"
-#include "replication_stream.hpp"
+#include "replication_stream_entry.hpp"
 
 namespace cubreplication
 {

@@ -48,26 +48,4 @@ master_replication_channel_manager *master_replication_channel_manager::get_inst
   return &global_mrcm;
 }
 
-int master_replication_channel_manager::add_buffers (std::vector <cubstream::buffer_context> &bufferred_ranges)
-{
-  std::vector<cubstream::buffer_context>::iterator it;
-
-  for (it = bufferred_ranges.begin (); it != bufferred_ranges.end (); it++)
-    {
-      add_buffer (it->mapped_buffer);
-    }
-  
-  return NO_ERROR;
-}
-
-int master_replication_channel_manager::fetch_data (char *ptr, const size_t &amount)
-{
-  return NO_ERROR;
-}
-  
-int master_replication_channel_manager::flush_old_stream_data (void)
-{
-  return NO_ERROR;
-}
-
 } /* namespace cubreplication */

@@ -17,12 +17,9 @@
  *
  */
 
-#include "packing_common.hpp"
-#include "stream_common.hpp"
 #include "log_generator.hpp"
 #include "log_consumer.hpp"
 #include "replication_entry.hpp"
-#include "stream_packer.hpp"
 #include "thread_compat.hpp"
 #include "test_log_generator.hpp"
 #include "thread_manager.hpp"
@@ -32,15 +29,7 @@ namespace test_replication
 
 int move_buffers (cubstream::packing_stream *stream1, cubstream::packing_stream *stream2)
 {
-  std::vector <cubstream::buffer_context> buffered_ranges;
 
-  stream1->collect_buffers (buffered_ranges, cubstream::COLLECT_ALL_BUFFERS, cubstream::COLLECT_KEEP);
-
-  stream2->detach_all_buffers ();
-
-  stream2->attach_buffers (buffered_ranges);
-
-  stream2->update_contiguous_filled_pos (stream1->get_last_reported_ready_pos ());
 
   return NO_ERROR;
 }
@@ -121,7 +110,6 @@ int test_stream_packing (void)
 
   cubreplication::replication_stream_entry *se = NULL;
 
-  cubstream::stream_packer local_serializator (lc_stream);
   lc->fetch_stream_entry (&se);
   se->unpack ();
 

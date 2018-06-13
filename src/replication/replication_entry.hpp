@@ -38,10 +38,6 @@ class cubpacking::packer;
 namespace cubreplication
 {
 
-/* TODO[arnia] : change these as constants */
-#define STREAM_ENTRY_RBR 0
-#define STREAM_ENTRY_SBR 1
-
 enum repl_entry_type
 {
   REPL_UPDATE = 0,
@@ -50,12 +46,14 @@ enum repl_entry_type
 };
 typedef enum repl_entry_type REPL_ENTRY_TYPE;
 
-class sbr_repl_entry : public cubpacking::packable_object, public cubpacking::self_creating_object
+class sbr_repl_entry : public cubpacking::packable_object
 {
 private:
   std::string m_statement;
 
 public:
+  static const int ID = 1;
+
   sbr_repl_entry () {};
   ~sbr_repl_entry () {};
   sbr_repl_entry (const std::string &str) { set_statement (str); };
@@ -64,16 +62,13 @@ public:
 
   void set_statement (const std::string &str) { m_statement = str; };
 
-  int get_create_id (void) { return STREAM_ENTRY_SBR; };
-  cubpacking::self_creating_object *create (void) { return new sbr_repl_entry (); };
-
   int pack (cubpacking::packer *serializator);
   int unpack (cubpacking::packer *serializator);
 
   size_t get_packed_size (cubpacking::packer *serializator);
 };
 
-class single_row_repl_entry : public cubpacking::packable_object, public cubpacking::self_creating_object
+class single_row_repl_entry : public cubpacking::packable_object
 {
 private:
   REPL_ENTRY_TYPE m_type;
@@ -83,6 +78,8 @@ private:
   std::vector <DB_VALUE> new_values;
 
 public:
+  static const int ID = 2;
+
   single_row_repl_entry () {};
   ~single_row_repl_entry ();
   single_row_repl_entry (const REPL_ENTRY_TYPE m_type, const char *class_name);
@@ -96,20 +93,10 @@ public:
   void add_changed_value (const int att_id, DB_VALUE *db_val);
 
 
-  int get_create_id (void) { return STREAM_ENTRY_RBR; };
-  cubpacking::self_creating_object *create (void) { return new single_row_repl_entry (); };
-
   int pack (cubpacking::packer *serializator);
   int unpack (cubpacking::packer *serializator);
 
   size_t get_packed_size (cubpacking::packer *serializator);
-};
-
-
-class replication_object_builder : public cubpacking::object_builder
-{
-public:
-  replication_object_builder ();
 };
 
 } /* namespace cubreplication */
