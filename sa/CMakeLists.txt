@@ -88,6 +88,8 @@ set(BASE_SOURCES
   ${BASE_DIR}/get_clockfreq.c
   ${BASE_DIR}/perf.cpp
   ${BASE_DIR}/perf_monitor.c
+  ${BASE_DIR}/pinnable_buffer.cpp
+  ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/system_parameter.c
   ${BASE_DIR}/fault_injection.c
@@ -120,8 +122,12 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
   ${BASE_DIR}/perf_def.hpp
+  ${BASE_DIR}/pinning.hpp
+  ${BASE_DIR}/pinnable_buffer.hpp
+  ${BASE_DIR}/packable_object.hpp
   ${BASE_DIR}/resource_tracker.hpp
 )
 
