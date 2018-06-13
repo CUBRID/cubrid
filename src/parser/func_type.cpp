@@ -82,8 +82,8 @@ std::vector<func_signature> func_signature::ntile = {//why original code cast ar
 std::vector<func_signature> func_signature::median = {
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_NUMBER}  , {}}, //if ret type is double => tests with median(int) will fail
   {0                , {PT_GENERIC_TYPE_DATETIME}, {}},
-  {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_STRING}  , {}}, //DISCUSSION: can we get rid of MAYBE???
-//{0                , {PT_TYPE_MAYBE}           , {}},
+  {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_STRING}  , {}},
+  {0                , {PT_TYPE_MAYBE}           , {}}, //DISCUSSION: can we get rid of MAYBE here??? prepare median(?)...execute with date'2018-06-13'
 };
 
 std::vector<func_signature> func_signature::type0_nr_or_str = {
