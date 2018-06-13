@@ -12981,9 +12981,9 @@ namespace Func
   bool cmp_types_castable(const pt_arg_type& type, pt_type_enum type_enum)//is possible to cast type_enum -> type?
   {
     assert(type.type != pt_arg_type::INDEX);
-    if(type_enum == PT_TYPE_NULL || type_enum == PT_TYPE_MAYBE)
+    if(type_enum == PT_TYPE_NULL)
       {
-        return true; //PT_TYPE_NULL, PT_TYPE_MAYBE are castable to any type
+        return true; //PT_TYPE_NULL is castable to any type
       }
     if (type.type == pt_arg_type::NORMAL)
       {
