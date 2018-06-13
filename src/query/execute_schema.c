@@ -6925,6 +6925,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
   int meta, shared;
   DB_VALUE stack_value;
   DB_VALUE *default_value = &stack_value;
+  DB_DEFAULT_EXPR_TYPE on_update_expr = DB_DEFAULT_NONE;
   int error = NO_ERROR;
   TP_DOMAIN *attr_db_domain;
   MOP auto_increment_obj = NULL;
@@ -7033,7 +7034,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
       name_space = ID_ATTRIBUTE;
     }
 
-  DB_DEFAULT_EXPR_TYPE on_update_expr = attribute->info.attr_def.on_update;
+  on_update_expr = attribute->info.attr_def.on_update;
   pt_get_default_expression_from_data_default_node (parser, attribute->info.attr_def.data_default, &default_expr);
   default_value = &stack_value;
 
