@@ -7733,7 +7733,6 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
   PT_NODE *columns = pt_get_select_list (parser, qry);
   PT_NODE *default_data = NULL;
   PT_NODE *default_value = NULL, *default_op_value = NULL;
-  PT_NODE *on_update_default_expr;
   PT_NODE *spec, *entity_name;
   DB_OBJECT *obj;
   DB_ATTRIBUTE *col_attr;
@@ -7867,7 +7866,7 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 	      attr->info.attr_def.data_default = default_data;
 	    }
 	}
-      attr->info.attr_def.on_update = col_attr->on_update_default_expr.default_expr_type;
+      attr->info.attr_def.on_update = col_attr->on_update_default_expr;
     }
 
   return attrs;

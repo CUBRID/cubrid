@@ -7033,8 +7033,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
       name_space = ID_ATTRIBUTE;
     }
 
-  DB_DEFAULT_EXPR on_update_expr;
-  pt_get_default_expression_from_on_update_node (parser, attribute->info.attr_def.on_update, &on_update_expr);
+  DB_DEFAULT_EXPR_TYPE on_update_expr = attribute->info.attr_def.on_update;
   pt_get_default_expression_from_data_default_node (parser, attribute->info.attr_def.data_default, &default_expr);
   default_value = &stack_value;
 
@@ -7117,7 +7116,7 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
   const char *attr_name;
   MOP class_obj = NULL;
   DB_DEFAULT_EXPR *default_expr = NULL;
-  DB_DEFAULT_EXPR *on_update_default_expr = NULL;
+  DB_DEFAULT_EXPR_TYPE *on_update_default_expr = NULL;
 
   db_make_null (&default_value);
 
@@ -10025,7 +10024,6 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   const char *attr_name = NULL;
   PARSER_VARCHAR *comment_str = NULL;
   DB_DEFAULT_EXPR new_default_expr;
-  DB_DEFAULT_EXPR new_on_update_expr;
   PT_NODE *comment = NULL;
 
   assert (attr_chg_prop != NULL);
@@ -10109,7 +10107,6 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   assert (default_value == NULL || default_value == &stack_value);
   new_default = default_value;
   pt_get_default_expression_from_data_default_node (parser, attribute->info.attr_def.data_default, &new_default_expr);
-  pt_get_default_expression_from_on_update_node (parser, attribute->info.attr_def.on_update, &new_on_update_expr);
 
   attr_db_domain = pt_node_to_db_domain (parser, attribute, ctemplate->name);
   if (attr_db_domain == NULL)
@@ -10127,7 +10124,8 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
   error = smt_change_attribute_w_dflt_w_order (ctemplate, attr_name, new_name, NULL, attr_db_domain,
 					       attr_chg_prop->name_space, new_default, &new_default_expr,
-					       &new_on_update_expr, change_first, change_after_attr, &found_att);
+					       attribute->info.attr_def.on_update, change_first, change_after_attr,
+					       &found_att);
   if (error != NO_ERROR)
     {
       goto exit;
@@ -10171,7 +10169,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   /* on update expression */
   if (is_att_prop_set (attr_chg_prop->p[P_ON_UPDATE_EXPR], ATT_CHG_PROPERTY_LOST))
     {
-      classobj_initialize_default_expr (&found_att->on_update_default_expr);
+      found_att->on_update_default_expr = DB_DEFAULT_NONE;
 
       if (found_att->properties != NULL)
 	{
@@ -10470,7 +10468,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
     {
       attr_chg_properties->p[P_ON_UPDATE_EXPR] |= ATT_CHG_PROPERTY_PRESENT_NEW;
     }
-  if (att->on_update_default_expr.default_expr_type != DB_DEFAULT_NONE)
+  if (att->on_update_default_expr != DB_DEFAULT_NONE)
     {
       attr_chg_properties->p[P_ON_UPDATE_EXPR] |= ATT_CHG_PROPERTY_PRESENT_OLD;
     }
@@ -12486,15 +12484,18 @@ exit:
       data_type_print = pt_show_type_enum ((PT_TYPE_ENUM) desired_type);
     }
 
-  if (error == ER_IT_DATA_OVERFLOW)
+  if (error != NO_ERROR)
     {
-      PT_ERRORmf2 (parser, temp_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
-		   pt_short_print (parser, on_update_default_expr), data_type_print);
-    }
-  else
-    {
-      PT_ERRORmf2 (parser, temp_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-		   pt_short_print (parser, on_update_default_expr), data_type_print);
+      if (error == ER_IT_DATA_OVERFLOW)
+	{
+	  PT_ERRORmf2 (parser, temp_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
+		       pt_short_print (parser, on_update_default_expr), data_type_print);
+	}
+      else
+	{
+	  PT_ERRORmf2 (parser, temp_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+		       pt_short_print (parser, on_update_default_expr), data_type_print);
+	}
     }
 
   db_value_clear (&on_update_val);

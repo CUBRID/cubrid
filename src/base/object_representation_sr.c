@@ -2489,7 +2489,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       /* get the default expression. */
       classobj_initialize_default_expr (&att->current_default_value.default_expr);
-      classobj_initialize_default_expr (&att->on_update);
+      att->on_update_expr = DB_DEFAULT_NONE;
       if (properties_val_len > 0)
 	{
 	  db_make_null (&properties_val);
@@ -2582,7 +2582,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	    {
 	      /* simple expressions like SYS_DATE */
 	      assert (DB_VALUE_TYPE (&def_expr) == DB_TYPE_INTEGER);
-	      att->on_update.default_expr_type = (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr);
+	      att->on_update_expr = (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr);
 	    }
 
 	  pr_clear_value (&def_expr);
@@ -2626,7 +2626,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->current_default_value.val_length = 0;
       att->current_default_value.value = NULL;
       classobj_initialize_default_expr (&att->current_default_value.default_expr);
-      classobj_initialize_default_expr (&att->on_update);
+      att->on_update_expr = DB_DEFAULT_NONE;
 
       OR_GET_OID (ptr + ORC_ATT_CLASS_OFFSET, &oid);
       att->classoid = oid;	/* structure copy */
@@ -2702,7 +2702,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->default_value.val_length = 0;
       att->default_value.value = NULL;
       classobj_initialize_default_expr (&att->default_value.default_expr);
-      classobj_initialize_default_expr (&att->on_update);
+      att->on_update_expr = DB_DEFAULT_NONE;
       att->current_default_value.val_length = 0;
       att->current_default_value.value = NULL;
       classobj_initialize_default_expr (&att->current_default_value.default_expr);
@@ -3568,11 +3568,6 @@ or_free_classrep (OR_CLASSREP * rep)
 	      free_and_init (att->default_value.default_expr.default_expr_format);
 	    }
 
-	  if (att->on_update.default_expr_format != NULL)
-	    {
-	      free_and_init (att->on_update.default_expr_format);
-	    }
-
 	  if (att->current_default_value.value != NULL)
 	    {
 	      free_and_init (att->current_default_value.value);
@@ -3603,11 +3598,6 @@ or_free_classrep (OR_CLASSREP * rep)
 	  if (att->default_value.default_expr.default_expr_format != NULL)
 	    {
 	      free_and_init (att->default_value.default_expr.default_expr_format);
-	    }
-
-	  if (att->on_update.default_expr_format != NULL)
-	    {
-	      free_and_init (att->on_update.default_expr_format);
 	    }
 
 	  if (att->current_default_value.value != NULL)

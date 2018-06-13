@@ -22774,12 +22774,12 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	      db_make_string_by_const_str (out_values[idx_val], "auto_increment");
 	    }
 
-	  if (attrepr->on_update.default_expr_type != DB_DEFAULT_NONE)
+	  if (attrepr->on_update_expr != DB_DEFAULT_NONE)
 	    {
 	      char *saved = db_get_string (out_values[idx_val]);
 	      size_t len = strlen (saved);
 
-	      const char *default_expr_op_string = db_default_expression_string (attrepr->on_update.default_expr_type);
+	      const char *default_expr_op_string = db_default_expression_string (attrepr->on_update_expr);
 	      if (default_expr_op_string == NULL)
 		{
 		  GOTO_EXIT_ON_ERROR;

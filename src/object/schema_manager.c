@@ -5418,13 +5418,13 @@ sm_att_auto_increment (MOP classop, const char *name)
 
 int
 sm_att_default_value (MOP classop, const char *name, DB_VALUE * value, DB_DEFAULT_EXPR ** default_expr,
-		      DB_DEFAULT_EXPR ** on_update_expr)
+		      DB_DEFAULT_EXPR_TYPE ** on_update_expr)
 {
   SM_CLASS *class_ = NULL;
   SM_ATTRIBUTE *att = NULL;
   int error = NO_ERROR;
 
-  assert (value != NULL && default_expr != NULL && on_update_expr != NULL);
+  assert (value != NULL && default_expr != NULL && on_update_expr != NULL && on_update_expr != NULL);
 
   error = db_value_clear (value);
   if (error != NO_ERROR)

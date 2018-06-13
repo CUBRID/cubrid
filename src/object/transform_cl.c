@@ -3033,12 +3033,12 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
       att->properties = get_property_list (buf, vars[ORC_ATT_PROPERTIES_INDEX].length);
 
       classobj_initialize_default_expr (&att->default_value.default_expr);
-      classobj_initialize_default_expr (&att->on_update_default_expr);
+      att->on_update_default_expr = DB_DEFAULT_NONE;
       if (att->properties)
 	{
 	  if (classobj_get_prop (att->properties, "update_default", &value) > 0)
 	    {
-	      att->on_update_default_expr.default_expr_type = (DB_DEFAULT_EXPR_TYPE) db_get_int (&value);
+	      att->on_update_default_expr = (DB_DEFAULT_EXPR_TYPE) db_get_int (&value);
 	    }
 
 	  if (classobj_get_prop (att->properties, "default_expr", &value) > 0)
@@ -4639,13 +4639,11 @@ tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
 	  classobj_drop_prop (attr->properties, "default_expr");
 	}
 
-      DB_DEFAULT_EXPR *update_default = &attr->on_update_default_expr;
-      if (update_default->default_expr_type != DB_DEFAULT_NONE)
+      DB_DEFAULT_EXPR_TYPE update_default = attr->on_update_default_expr;
+      if (update_default != DB_DEFAULT_NONE)
 	{
-	  /* attr has default expression as default value */
 	  if (attr->properties == NULL)
 	    {
-	      /* allocate new property sequence */
 	      attr->properties = classobj_make_prop ();
 
 	      if (attr->properties == NULL)
@@ -4655,16 +4653,8 @@ tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
 		}
 	    }
 
-	  if (update_default->default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
-	    {
-	      /* add update_default property to sequence */
-	      db_make_int (&default_expr_value, update_default->default_expr_type);
-	      classobj_put_prop (attr->properties, "update_default", &default_expr_value);
-	    }
-	  else
-	    {
-	      assert (false);
-	    }
+	  db_make_int (&default_expr_value, update_default);
+	  classobj_put_prop (attr->properties, "update_default", &default_expr_value);
 	}
       else if (attr->properties != NULL)
 	{

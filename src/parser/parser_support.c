@@ -12055,21 +12055,3 @@ pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NO
 	}
     }
 }
-
-/*
- * pt_get_default_expression_from_on_update_node () - get default expression from on_update node
- * return : error code or NO_ERROR
- *
- * parser (in)		  : parser context
- * on_update_node (in)    : attribute node
- * default_expr (out)	  : default expression
- */
-void
-pt_get_default_expression_from_on_update_node (PARSER_CONTEXT * parser, DB_DEFAULT_EXPR_TYPE on_update_node,
-					       DB_DEFAULT_EXPR * default_expr)
-{
-  assert (parser != NULL && default_expr != NULL);
-
-  classobj_initialize_default_expr (default_expr);
-  default_expr->default_expr_type = on_update_node;
-}

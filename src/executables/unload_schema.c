@@ -2361,13 +2361,13 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
 	}
     }
 
-  if (attribute->on_update_default_expr.default_expr_type != DB_DEFAULT_NONE)
+  if (attribute->on_update_default_expr != DB_DEFAULT_NONE)
     {
       const char *default_expr_type_str;
 
       fprintf (output_file, " ON UPDATE ");
 
-      default_expr_type_str = db_default_expression_string (attribute->on_update_default_expr.default_expr_type);
+      default_expr_type_str = db_default_expression_string (attribute->on_update_default_expr);
       if (default_expr_type_str != NULL)
 	{
 	  fprintf (output_file, default_expr_type_str);

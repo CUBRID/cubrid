@@ -4698,7 +4698,7 @@ classobj_make_attribute (const char *name, PR_TYPE * type, SM_NAME_SPACE name_sp
   db_make_null (&att->default_value.original_value);
   db_make_null (&att->default_value.value);
   classobj_initialize_default_expr (&att->default_value.default_expr);
-  classobj_initialize_default_expr (&att->on_update_default_expr);
+  att->on_update_default_expr = DB_DEFAULT_NONE;
 
   att->constraints = NULL;
   att->order_link = NULL;
@@ -4762,7 +4762,7 @@ classobj_initialize_attributes (SM_ATTRIBUTE * attributes)
       db_value_put_null (&attr->default_value.value);
       db_value_put_null (&attr->default_value.original_value);
       classobj_initialize_default_expr (&attr->default_value.default_expr);
-      classobj_initialize_default_expr (&attr->on_update_default_expr);
+      attr->on_update_default_expr = DB_DEFAULT_NONE;
     }
 }
 
@@ -4824,7 +4824,7 @@ classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest, int copy)
   dest->properties = NULL;
   dest->auto_increment = src->auto_increment;
   classobj_copy_default_expr (&dest->default_value.default_expr, &src->default_value.default_expr);
-  classobj_copy_default_expr (&dest->on_update_default_expr, &src->on_update_default_expr);
+  dest->on_update_default_expr = src->on_update_default_expr;
   dest->comment = NULL;
 
   if (copy)
@@ -5125,12 +5125,6 @@ classobj_clear_attribute (SM_ATTRIBUTE * att)
     {
       ws_free_string (att->default_value.default_expr.default_expr_format);
       att->default_value.default_expr.default_expr_format = NULL;
-    }
-
-  if (att->on_update_default_expr.default_expr_format)
-    {
-      ws_free_string (att->on_update_default_expr.default_expr_format);
-      att->on_update_default_expr.default_expr_format = NULL;
     }
 
   att->header.name = NULL;
