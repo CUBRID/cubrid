@@ -54,7 +54,6 @@
 #include "message_catalog.h"
 #include "environment_variable.h"
 #if defined(SERVER_MODE)
-#include "job_queue.h"
 #include "server_support.h"
 #endif /* SERVER_MODE */
 #include "log_compress.h"
@@ -1609,7 +1608,7 @@ loop:
     {
       if (i != LOG_SYSTEM_TRAN_INDEX && (tdes = LOG_FIND_TDES (i)) != NULL && tdes->trid != NULL_TRANID)
 	{
-	  if (thread_has_threads (thread_p, i, tdes->client_id) > 0)
+	  if (css_count_transaction_worker_threads (thread_p, i, tdes->client_id) > 0)
 	    {
 	      repeat_loop = true;
 	    }
@@ -1660,7 +1659,7 @@ loop:
 	  if (LOG_ISTRAN_ACTIVE (tdes))
 	    {
 	      log_Tran_index = i;
-	      (void) log_abort (NULL, log_Tran_index);
+	      (void) log_abort (thread_p, log_Tran_index);
 	    }
 	}
     }
@@ -10672,7 +10671,7 @@ log_checkpoint_daemon_init ()
   log_checkpoint_daemon_task *daemon_task = new log_checkpoint_daemon_task ();
 
   // create checkpoint daemon thread
-  log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_checkpoint");
 }
 #endif /* SERVER_MODE */
 
@@ -10695,7 +10694,8 @@ log_remove_log_archive_daemon_init ()
   cubthread::looper looper = cubthread::looper (setup_period_function);
 
   // create log archive remover daemon thread
-  log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
+                                                                            "log_remove_log_archive");
 }
 #endif /* SERVER_MODE */
 
@@ -10709,7 +10709,7 @@ log_clock_daemon_init ()
   assert (log_Clock_daemon == NULL);
 
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (200));
-  log_Clock_daemon = cubthread::get_manager ()->create_daemon (looper, new log_clock_daemon_task ());
+  log_Clock_daemon = cubthread::get_manager ()->create_daemon (looper, new log_clock_daemon_task (), "log_clock");
 }
 #endif /* SERVER_MODE */
 
@@ -10725,7 +10725,8 @@ log_check_ha_delay_info_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::seconds (1));
   log_check_ha_delay_info_daemon_task *daemon_task = new log_check_ha_delay_info_daemon_task ();
 
-  log_Check_ha_delay_info_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  log_Check_ha_delay_info_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
+                                                                             "log_check_ha_delay_info");
 }
 #endif /* SERVER_MODE */
 
@@ -10741,7 +10742,7 @@ log_flush_daemon_init ()
   cubthread::looper looper = cubthread::looper (log_get_log_group_commit_interval);
   log_flush_daemon_task *daemon_task = new log_flush_daemon_task ();
 
-  log_Flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  log_Flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_flush");
 }
 #endif /* SERVER_MODE */
 

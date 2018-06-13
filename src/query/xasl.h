@@ -39,11 +39,15 @@
 #include "lock_manager.h"
 #endif /* defined (ENABLE_COMPOSITE_LOCK) */
 #include "external_sort.h"
-#include "binaryheap.h"
 #include "object_representation_sr.h"
 #include "scan_manager.h"
 #include "heap_file.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+// forward definition
+struct binary_heap;
+#endif // SERVER_MODE || SA_MODE
 
 /*
  * COMPILE_CONTEXT cover from user input query string to generated xasl
@@ -925,7 +929,7 @@ struct xasl_stat
 struct topn_tuples
 {
   SORT_LIST *sort_items;	/* sort items position in tuple and sort order */
-  BINARY_HEAP *heap;		/* heap used to hold top-n tuples */
+  struct binary_heap *heap;	/* heap used to hold top-n tuples */
   TOPN_TUPLE *tuples;		/* actual tuples stored in memory */
   int values_count;		/* number of values in a tuple */
   UINT64 total_size;		/* size in bytes of stored tuples */

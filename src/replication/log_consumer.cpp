@@ -25,8 +25,6 @@
 
 #include "log_consumer.hpp"
 #include "replication_stream.hpp"
-#include "stream_packer.hpp"
-#include "stream_buffer.hpp"
 
 namespace cubreplication
 {

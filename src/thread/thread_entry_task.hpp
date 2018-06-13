@@ -86,6 +86,7 @@ namespace cubthread
       entry &create_context (void) final;
       void retire_context (entry &context) final;
       void recycle_context (entry &context) final;
+      void stop_execution (entry &context) override;
 
     protected:
 

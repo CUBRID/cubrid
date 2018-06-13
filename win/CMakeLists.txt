@@ -109,23 +109,21 @@ install(TARGETS
   )
 
 # install external pre-built DLLs
-# TODO: add custom target for external dlls? 
-# ref. http://stackoverflow.com/questions/14474659/cmake-how-to-have-a-target-for-copying-files
-if(TARGET_PLATFORM_BITS EQUAL 32)
-  file(GLOB TARGET_DLLS
-    ${CMAKE_SOURCE_DIR}/win/external/dll/*.dll
-    ${CMAKE_SOURCE_DIR}/win/external/dll/Win32/*.dll
-    )
-else(TARGET_PLATFORM_BITS EQUAL 32)
-  file(GLOB TARGET_DLLS
-    ${CMAKE_SOURCE_DIR}/win/external/dll/*.dll
-    ${CMAKE_SOURCE_DIR}/win/external/dll/x64/*.dll
-    )
-endif(TARGET_PLATFORM_BITS EQUAL 32)
-
 install(FILES
-  ${TARGET_DLLS}
-  DESTINATION ${CUBRID_BINDIR} COMPONENT Library)
+  ${CMAKE_SOURCE_DIR}/win/external/gcrypt/bin/gcrypt.dll
+  ${CMAKE_SOURCE_DIR}/win/external/gpg-error/bin/gpg-error.dll
+  DESTINATION ${CUBRID_BINDIR} COMPONENT Library
+  )
+install(FILES
+  ${CMAKE_SOURCE_DIR}/win/external/dll/jansson64.dll
+  DESTINATION ${CUBRID_BINDIR} COMPONENT Library
+  RENAME jansson.dll
+  )
+install(FILES
+  ${CMAKE_SOURCE_DIR}/win/external/dll/libexpat64.dll
+  DESTINATION ${CUBRID_BINDIR} COMPONENT Library
+  RENAME libexpat.dll
+ )
 
 # install pdb files for debugging on windows
 install(DIRECTORY

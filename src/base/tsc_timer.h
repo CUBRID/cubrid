@@ -55,6 +55,6 @@ extern void tsc_elapsed_time_usec (TSCTIMEVAL * tv, TSC_TICKS end_tick, TSC_TICK
 extern UINT64 tsc_elapsed_utime (TSC_TICKS end_tick, TSC_TICKS start_tick);
 extern void tsc_start_time_usec (TSC_TICKS * tck);
 extern void tsc_end_time_usec (TSCTIMEVAL * tv, TSC_TICKS start_tick);
-extern TSC_UINT64 get_clockfreq (void);
 
+extern TSC_UINT64 get_clockfreq (void);
 #endif /* _TSC_TIMER_H_ */

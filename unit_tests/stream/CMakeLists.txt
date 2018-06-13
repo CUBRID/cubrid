@@ -48,12 +48,13 @@ target_link_libraries(test_stream PRIVATE
   )
 if(UNIX)
   target_link_libraries(test_stream PRIVATE
-    cubrid
-    )
+  cubrid
+  )
 elseif(WIN32)
-	target_link_libraries(test_stream PRIVATE
-    cubrid-win-lib
-    )
+  target_link_libraries(test_stream PRIVATE
+  cubrid-win-lib
+  )
 else()
   message( SEND_ERROR "Stream unit testing is for unix/windows")
 endif ()
+

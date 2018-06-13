@@ -51,12 +51,8 @@
 #include "object_primitive.h"
 #include "perf_monitor.h"
 #include "fault_injection.h"
-#if defined (SA_MODE)
-#include "transaction_cl.h"	/* for interrupt */
-#endif /* defined (SA_MODE) */
-#include "thread.h"
-
 #include "dbtype.h"
+#include "thread_manager.hpp"
 
 #define BTREE_HEALTH_CHECK
 
@@ -654,22 +650,23 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * b
     } \
   while (false)
 
-/* Reset b-tree scan for a new range scan (it can be called internally by
- * btree_range_scan).
- */
-#define BTS_RESET_SCAN(bts) \
-  do \
-    { \
-      /* Reset bts->is_scan_started. */ \
-      (bts)->is_scan_started = false; \
-      /* No current leaf node. */ \
-      VPID_SET_NULL (&(bts)->C_vpid); \
-      if (bts->C_page != NULL) \
-	{ \
-	  pgbuf_unfix_and_init (NULL, bts->C_page); \
-	} \
-    } \
-  while (false)
+//
+// bts_reset_scan - reset b-tree scan (clear progress)
+//
+// thread_p (in) : thread entry
+// bts (in)      : b-tree scan
+static void
+bts_reset_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
+{
+  /* Reset bts->is_scan_started. */
+  bts->is_scan_started = false;
+  /* No current leaf node. */
+  VPID_SET_NULL (&(bts)->C_vpid);
+  if (bts->C_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, bts->C_page);
+    }
+}
 
 /* BTREE_FIND_FK_OBJECT -
  * Structure used to find if a key of foreign key index has any objects.
@@ -19393,7 +19390,7 @@ btree_verify_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page_p
     }
 
   /* don't let interrupts break our verification */
-  check_interrupt = thread_set_check_interrupt (thread_p, false);
+  check_interrupt = logtb_set_check_interrupt (thread_p, false);
 
   node_type = (header->node_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
 
@@ -19407,7 +19404,7 @@ btree_verify_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page_p
     }
 
   assert_release (ret == NO_ERROR);
-  (void) thread_set_check_interrupt (thread_p, check_interrupt);
+  (void) logtb_set_check_interrupt (thread_p, check_interrupt);
 
   return ret;
 }
@@ -20405,7 +20402,8 @@ btree_index_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_
 
   class_name = db_get_string (arg_values[0]);
 
-  status = xlocator_find_class_oid (thread_p, class_name, &oid, NULL_LOCK);
+  // if you want consitent results, S_LOCK is required.
+  status = xlocator_find_class_oid (thread_p, class_name, &oid, ctx->is_all ? S_LOCK : SCH_S_LOCK);
   if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
     {
       error = ER_LC_UNKNOWN_CLASSNAME;
@@ -22949,7 +22947,7 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	  goto error_or_not_found;
 #else	/* !SA_MODE */	       /* SERVER_MODE */
 	  /* Object is being inserted/deleted. We need to lock and suspend until it's fate is decided. */
-	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, thread_get_current_tran_index (),
+	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, logtb_get_current_tran_index (),
 					    find_unique_helper->lock_mode));
 #endif /* SERVER_MODE */
 	  /* Fall through. */
@@ -22982,7 +22980,7 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	      goto error_or_not_found;
 	    }
 	  /* Object locked. */
-	  assert (lock_has_lock_on_object (&unique_oid, &unique_class_oid, thread_get_current_tran_index (),
+	  assert (lock_has_lock_on_object (&unique_oid, &unique_class_oid, logtb_get_current_tran_index (),
 					   find_unique_helper->lock_mode) > 0);
 	  COPY_OID (&find_unique_helper->locked_oid, &unique_oid);
 	  COPY_OID (&find_unique_helper->locked_class_oid, &unique_class_oid);
@@ -23263,7 +23261,7 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	  goto error_or_not_found;
 #else	/* !SA_MODE */	       /* SERVER_MODE */
 	  /* Object is being inserted/deleted. We need to lock and suspend until it's fate is decided. */
-	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, thread_get_current_tran_index (),
+	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, logtb_get_current_tran_index (),
 					    find_unique_helper->lock_mode));
 #endif /* SERVER_MODE */
 	  /* Fall through. */
@@ -23310,7 +23308,7 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	      goto error_or_not_found;
 	    }
 	  /* Object locked. */
-	  assert (lock_has_lock_on_object (&unique_oid, &unique_class_oid, thread_get_current_tran_index (),
+	  assert (lock_has_lock_on_object (&unique_oid, &unique_class_oid, logtb_get_current_tran_index (),
 					   find_unique_helper->lock_mode) > 0);
 	  COPY_OID (&find_unique_helper->locked_oid, &unique_oid);
 	  COPY_OID (&find_unique_helper->locked_class_oid, &unique_class_oid);
@@ -23978,7 +23976,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 #if defined (SERVER_MODE)
       /* Safe guard: object is supposed to be locked. */
       assert (scan_op_type == S_SELECT
-	      || lock_has_lock_on_object (oid, class_oid, thread_get_current_tran_index (),
+	      || lock_has_lock_on_object (oid, class_oid, logtb_get_current_tran_index (),
 					  find_unique_helper.lock_mode) > 0);
 #endif /* SERVER_MODE */
 
@@ -24839,7 +24837,7 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	  if (BTS_IS_INDEX_ILS (bts))
 	    {
 	      /* Reset scan to avoid using btree_range_scan_resume () */
-	      BTS_RESET_SCAN (bts);
+	      bts_reset_scan (thread_p, bts);
 	    }
 	  continue;
 	}
@@ -25462,7 +25460,7 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p, BTID_INT * 
 
 	  /* Since range scan must be moved on a totally different range, it must restart by looking for the first
 	   * eligible key of the new range. Trick it to think this a new call of btree_range_scan. */
-	  BTS_RESET_SCAN (bts);
+	  bts_reset_scan (thread_p, bts);
 
 	  /* Adjust range of scan. */
 	  error_code = btree_ils_adjust_range (thread_p, bts);
@@ -25697,7 +25695,7 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 	  if (OID_EQ (&find_fk_obj->locked_object, oid))
 	    {
 	      /* Object already locked. */
-	      assert (lock_has_lock_on_object (oid, class_oid, thread_get_current_tran_index (), find_fk_obj->lock_mode)
+	      assert (lock_has_lock_on_object (oid, class_oid, logtb_get_current_tran_index (), find_fk_obj->lock_mode)
 		      > 0);
 	      lock_result = LK_GRANTED;
 	    }
@@ -27285,7 +27283,7 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
 #if defined (SERVER_MODE)
   assert (!BTREE_IS_UNIQUE (btid_int->unique_pk) || log_is_in_crash_recovery ()
 	  || lock_has_lock_on_object (BTREE_INSERT_OID (insert_helper), BTREE_INSERT_CLASS_OID (insert_helper),
-				      thread_get_current_tran_index (), X_LOCK) > 0);
+				      logtb_get_current_tran_index (), X_LOCK) > 0);
 #endif /* SERVER_MODE */
 
   /* Insert new key. */
@@ -27565,7 +27563,7 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 #if defined (SERVER_MODE)
   assert (log_is_in_crash_recovery ()
 	  || lock_has_lock_on_object (BTREE_INSERT_OID (insert_helper), BTREE_INSERT_CLASS_OID (insert_helper),
-				      thread_get_current_tran_index (), X_LOCK) > 0);
+				      logtb_get_current_tran_index (), X_LOCK) > 0);
 #endif /* SERVER_MODE */
 
   /* Insert object in the beginning of leaf record if unique constraint is not violated. Step 1: Protect key by
@@ -29581,7 +29579,7 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
 
   /* Add more btree_delete_helper initialization here. */
 
-  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
+  old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
   FI_SET (thread_p, FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL, 1);
 
   error_code =
@@ -29589,7 +29587,7 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
 					  btree_merge_node_and_advance, &delete_helper, key_func, &delete_helper, NULL,
 					  NULL);
 
-  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+  (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
   FI_RESET (thread_p, FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL);
 
   if (delete_helper.printed_key != NULL)
@@ -30577,7 +30575,7 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 	  /* Cannot check if class OID is NULL. Get it in debug mode. */
 	  || OID_ISNULL (BTREE_DELETE_CLASS_OID (delete_helper))
 	  || lock_has_lock_on_object (BTREE_DELETE_OID (delete_helper), BTREE_DELETE_CLASS_OID (delete_helper),
-				      thread_get_current_tran_index (), X_LOCK) > 0);
+				      logtb_get_current_tran_index (), X_LOCK) > 0);
 #endif /* SERVER_MODE */
 
   /* Safe guard: if the index is unique and we want to physically delete the object and if operation type is not

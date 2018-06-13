@@ -1,25 +1,29 @@
 #define SERVER_MODE
 
 #include "communication_channel.hpp"
-#include "thread_manager.hpp"
+#include "connection_sr.h"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
 #include "thread_looper.hpp"
+#include "thread_task.hpp"
+#include "thread_daemon.hpp"
 #include "lock_free.h"
-#include <vector>
-#include <mutex>
-#include <iostream>
-#include <chrono>
-#include <thread>
-#include "connection_sr.h"
-#include <stdio.h>
-#include <stdlib.h>
 
 #if !defined (WINDOWS)
 #include "tcp.h"
 #else
 #include "wintcp.h"
 #endif
+
+#include <chrono>
+#include <iostream>
+#include <mutex>
+#include <thread>
+#include <vector>
+
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #define MAX_THREADS 16
 
@@ -30,7 +34,6 @@
 #define NUM_OF_MSGS 10
 #define MAX_TIMEOUT_IN_MS 1000
 
-static cubthread::entry *thread_p = NULL;
 static int *counters = NULL;
 static std::vector <cubthread::daemon *> initiator_daemons;
 static cubthread::daemon *listener_daemon;
@@ -80,7 +83,7 @@ void master_listening_thread_func (std::vector <communication_channel> &channels
 
       if ((revents & POLLIN) != 0)
 	{
-	  int new_sockfd = css_master_accept (listen_fd_platf_ind);
+	  SOCKET new_sockfd = css_master_accept (listen_fd_platf_ind);
 	  communication_channel cc (MAX_TIMEOUT_IN_MS);
 	  rc = cc.accept (new_sockfd);
 	  if (rc != NO_ERRORS)
@@ -94,7 +97,7 @@ void master_listening_thread_func (std::vector <communication_channel> &channels
     }
 }
 
-class conn_initiator_daemon_task : public cubthread::entry_task
+class conn_initiator_daemon_task : public cubthread::task_without_context
 {
   public:
     conn_initiator_daemon_task (int &counter, communication_channel &&chn) : m_counter (counter),
@@ -102,7 +105,12 @@ class conn_initiator_daemon_task : public cubthread::entry_task
     {
     }
 
-    void execute (cubthread::entry &context)
+    ~conn_initiator_daemon_task (void)
+    {
+      //
+    }
+
+    void execute (void) override
     {
       std::size_t length = MAX_MSG_LENGTH;
       char buff[MAX_MSG_LENGTH];
@@ -135,7 +143,7 @@ class conn_initiator_daemon_task : public cubthread::entry_task
     communication_channel m_channel;
 };
 
-class conn_listener_daemon_task : public cubthread::entry_task
+class conn_listener_daemon_task : public cubthread::task_without_context
 {
   public:
     conn_listener_daemon_task (std::vector <communication_channel> &&channels) : m_channels (
@@ -144,7 +152,12 @@ class conn_listener_daemon_task : public cubthread::entry_task
       assert (m_channels.size () == NUM_OF_INITIATORS);
     }
 
-    void execute (cubthread::entry &context)
+    ~conn_listener_daemon_task (void)
+    {
+      //
+    }
+
+    void execute (void) override
     {
       std::size_t length = MAX_MSG_LENGTH;
       char buff[MAX_MSG_LENGTH];
@@ -197,9 +210,9 @@ class conn_listener_daemon_task : public cubthread::entry_task
 static int init_thread_system ()
 {
   int error_code;
-  lf_initialize_transaction_systems (MAX_THREADS);
 
-  if (csect_initialize_static_critical_sections () != NO_ERROR)
+  error_code = csect_initialize_static_critical_sections ();
+  if (error_code != NO_ERROR)
     {
       assert (false);
       return error_code;
@@ -211,8 +224,6 @@ static int init_thread_system ()
       assert (false);
       return error_code;
     }
-
-  cubthread::initialize (thread_p);
 
   return NO_ERROR;
 }
@@ -229,15 +240,15 @@ static int init ()
       return error_code;
     }
 
-
   error_code = init_thread_system ();
   if (error_code != NO_ERROR)
     {
+      assert (false);
       return error_code;
     }
 
   std::vector <communication_channel> channels;
-  std::vector <cubthread::entry_task *> tasks;
+  std::vector <cubthread::task_without_context *> tasks;
   counters = (int *) calloc (NUM_OF_INITIATORS, sizeof (int));
 
   is_listening.store (false);
@@ -259,11 +270,12 @@ static int init ()
     }
   listening_thread.join ();
 
-  listener_daemon = cubthread::get_manager ()->create_daemon (std::chrono::seconds (0),
-		    new conn_listener_daemon_task (std::move (channels)));
+  listener_daemon = new cubthread::daemon (cubthread::looper (std::chrono::seconds (0)),
+      new conn_listener_daemon_task (std::move (channels)), "listener_daemon");
   for (unsigned int i = 0; i < NUM_OF_INITIATORS; i++)
     {
-      initiator_daemons.push_back (cubthread::get_manager ()->create_daemon (std::chrono::seconds (1), tasks[i]));
+      initiator_daemons.push_back (new cubthread::daemon (cubthread::looper (std::chrono::seconds (1)), tasks[i],
+				   "initiator_daemon"));
     }
 
   return NO_ERROR;
@@ -275,9 +287,9 @@ static int finish ()
 
   for (unsigned int i = 0; i < NUM_OF_INITIATORS; i++)
     {
-      cubthread::get_manager ()->destroy_daemon (initiator_daemons[i]);
+      delete initiator_daemons[i];
     }
-  cubthread::get_manager ()->destroy_daemon (listener_daemon);
+  delete listener_daemon;
 
   rc = csect_finalize_static_critical_sections();
   if (rc != NO_ERROR)
@@ -287,8 +299,6 @@ static int finish ()
     }
 
   css_final_conn_list();
-  lf_destroy_transaction_systems ();
-  cubthread::finalize ();
 
   er_final (ER_ALL_FINAL);
 

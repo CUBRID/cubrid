@@ -55,6 +55,7 @@ static char es_base_svc_code[MAXSVCCODELEN];
 
 pthread_mutex_t es_lock = PTHREAD_MUTEX_INITIALIZER;
 static es_list_head_t es_fslist = { &es_fslist, &es_fslist };
+
 static bool es_owfs_initialized = false;
 
 static const char *es_get_token (const char *base_path, char *token, size_t maxlen);

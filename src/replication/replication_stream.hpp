@@ -26,11 +26,9 @@
 #ifndef _REPLICATION_STREAM_HPP_
 #define _REPLICATION_STREAM_HPP_
 
-#include "stream_common.hpp"
 #include "packing_stream.hpp"
 #include "replication_entry.hpp"
 #include "storage_common.h"
-#include "stream_packer.hpp"
 #include <vector>
 
 namespace cubreplication

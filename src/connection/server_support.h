@@ -25,13 +25,14 @@
 #ifndef _SERVER_SUPPORT_H_
 #define _SERVER_SUPPORT_H_
 
-#ident "$Id$"
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error server_support.h belongs to server or stand-alone modules
+#endif // not SERVER_MODE and not SA_MODE
 
 #include "connection_defs.h"
 #include "connection_sr.h"
 #include "thread_compat.hpp"
-
-#define CSS_NUM_JOB_QUEUE 10	/* # of job queues */
+#include "master_heartbeat.h"
 
 // forward definitions
 namespace cubthread
@@ -39,15 +40,17 @@ namespace cubthread
   class entry_task;
 }				// namespace cubthread
 
+enum css_thread_stop_type
+{
+  THREAD_STOP_WORKERS_EXCEPT_LOGWR,
+  THREAD_STOP_LOGWR
+};
+
 extern void css_block_all_active_conn (unsigned short stop_phase);
-extern void css_broadcast_shutdown_thread (void);
 
 extern THREAD_RET_T THREAD_CALLING_CONVENTION css_master_thread (void);
 
 extern unsigned int css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern int css_number_of_clients (void);
-#endif
 extern unsigned int css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size);
 extern unsigned int css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply,
 						       int reply_size, char *buffer, int buffer_size);
@@ -90,7 +93,41 @@ extern int css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE 
 				       bool heartbeat);
 extern int css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE state);
 
+extern int css_process_master_hostname (void);
+extern const char *get_master_hostname ();
+
 extern void css_push_external_task (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY * conn, cubthread::entry_task * task);
 extern void css_get_thread_stats (UINT64 * stats_out);
+extern size_t css_get_num_request_workers (void);
+extern size_t css_get_num_connection_workers (void);
+extern size_t css_get_num_total_workers (void);
+extern bool css_are_all_request_handlers_suspended (void);
+extern size_t css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, int client_id);
+
+extern void css_set_thread_info (THREAD_ENTRY * thread_p, int client_id, int rid, int tran_index,
+				 int net_request_index);
+extern int css_get_client_id (THREAD_ENTRY * thread_p);
+extern unsigned int css_get_comm_request_id (THREAD_ENTRY * thread_p);
+extern struct css_conn_entry *css_get_current_conn_entry (void);
+
+#if defined (SERVER_MODE)
+extern int css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt,
+				      void **ptr);
+#else // not SERVER_MODE = SA_MODE
+// SA_MODE does not have access to server_support.c, but job scan is a common function
+// however, on SA_MODE, the result is always empty list
+inline int
+css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
+{
+  // suppress all unused parameter warnings
+  (void) thread_p;
+  (void) show_type;
+  (void) arg_values;
+  (void) arg_cnt;
+
+  *ptr = NULL;
+  return NO_ERROR;
+}
+#endif // not SERVER_MODE = SA_MODE
 
 #endif /* _SERVER_SUPPORT_H_ */

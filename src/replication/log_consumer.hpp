@@ -26,15 +26,9 @@
 #ifndef _LOG_CONSUMER_HPP_
 #define _LOG_CONSUMER_HPP_
 
-#include "buffer_provider.hpp"
-#include "stream_common.hpp"
 #include "packing_stream.hpp"
 #include <cstddef>
 
-
-
-class cubstream::stream_buffer;
-class cubstream::stream_packer;
 
 namespace cubreplication
 {
@@ -54,7 +48,7 @@ typedef enum consumer_type CONSUMER_TYPE;
  * main class for consuming log replication entries
  * it should be created only as a global instance
  */
-class log_consumer : public cubstream::buffer_provider, public cubstream::fetch_handler
+class log_consumer
 {
 protected:
   CONSUMER_TYPE m_type;

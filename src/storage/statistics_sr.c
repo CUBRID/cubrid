@@ -35,7 +35,7 @@
 #include "boot_sr.h"
 #include "partition_sr.h"
 #include "object_primitive.h"
-#include "thread.h"
+#include "thread_entry.hpp"
 
 #define SQUARE(n) ((n)*(n))
 
@@ -113,15 +113,10 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
   int i, j;
   OID *partitions = NULL;
   int count = 0, error_code = NO_ERROR;
-#if !defined(NDEBUG)
-  int track_id;
-#endif
   int lk_grant_code = 0;
   CATALOG_ACCESS_INFO catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
 
-#if !defined(NDEBUG)
-  track_id = thread_rc_track_enter (thread_p);
-#endif
+  thread_p->push_resource_tracks ();
 
   OID_SET_NULL (&dir_oid);
 
@@ -129,12 +124,7 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
     {
       /* something wrong. give up. */
       ASSERT_ERROR_AND_SET (error_code);
-#if !defined(NDEBUG)
-      if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
-	{
-	  assert_release (false);
-	}
-#endif
+      thread_p->pop_resource_tracks ();
 
       return error_code;
     }
@@ -335,12 +325,7 @@ end:
       free_and_init (class_name);
     }
 
-#if !defined(NDEBUG)
-  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
-    {
-      assert_release (false);
-    }
-#endif
+  thread_p->pop_resource_tracks ();
 
   return error_code;
 
@@ -466,18 +451,13 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
   char *buf_p, *start_p;
   int key_size;
   int lk_grant_code;
-#if !defined(NDEBUG)
-  int track_id;
-#endif
   CATALOG_ACCESS_INFO catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
 
   /* init */
   cls_info_p = NULL;
   disk_repr_p = NULL;
 
-#if !defined(NDEBUG)
-  track_id = thread_rc_track_enter (thread_p);
-#endif
+  thread_p->push_resource_tracks ();
 
   *length_p = -1;
 
@@ -790,12 +770,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 
   *length_p = CAST_STRLEN (buf_p - start_p);
 
-#if !defined(NDEBUG)
-  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
-    {
-      assert_release (false);
-    }
-#endif
+  thread_p->pop_resource_tracks ();
 
   return start_p;
 
@@ -815,12 +790,7 @@ exit_on_error:
       catalog_free_class_info_and_init (cls_info_p);
     }
 
-#if !defined(NDEBUG)
-  if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
-    {
-      assert_release (false);
-    }
-#endif
+  thread_p->pop_resource_tracks ();
 
   return NULL;
 }

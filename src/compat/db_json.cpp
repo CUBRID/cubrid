@@ -78,6 +78,7 @@
 #include <locale>
 #include <unordered_map>
 #include <vector>
+#include <climits>
 
 #include <cctype>
 
@@ -1984,13 +1985,36 @@ static void
 db_json_replace_token_special_chars (std::string &token,
 				     const std::unordered_map<std::string, std::string> &special_chars)
 {
-  for (auto it = special_chars.begin (); it != special_chars.end (); ++it)
+  bool replaced = false;
+
+  // iterate character by character and detect special characters
+  for (size_t token_idx = 0; token_idx < token.length (); /* incremented in for body */)
     {
-      size_t pos = 0;
-      while ((pos = token.find (it->first, pos)) != std::string::npos)
+      replaced = false;
+      // compare with special characters
+      for (auto special_it = special_chars.begin (); special_it != special_chars.end (); ++special_it)
 	{
-	  token.replace (pos, it->first.length (), it->second);
-	  pos += it->second.length ();
+	  // compare special characters with sequence following token_it
+	  if (token_idx + special_it->first.length () <= token.length ())
+	    {
+	      if (token.compare (token_idx, special_it->first.length (), special_it->first.c_str ()) == 0)
+		{
+		  // replace
+		  token.replace (token_idx, special_it->first.length (), special_it->second);
+		  // skip replaced
+		  token_idx += special_it->second.length ();
+
+		  replaced = true;
+		  // next loop
+		  break;
+		}
+	    }
+	}
+
+      if (!replaced)
+	{
+	  // no match; next character
+	  token_idx++;
 	}
     }
 }
@@ -2124,6 +2148,7 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
   json_pointer_out = "";
   for (unsigned int i = 0; i < tokens.size (); ++i)
     {
+      db_json_replace_token_special_chars (tokens[i], special_chars);
       json_pointer_out += "/" + tokens[i];
     }
 

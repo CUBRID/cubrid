@@ -15,6 +15,8 @@
 #  along with this program; if not, write to the Free Software
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
+message(STATUS "======== CMakeLists.txt")
+
 cmake_minimum_required(VERSION 2.8)
 
 function(with_unit_tests res) # checks for -DUNIT_TESTS=ON or -DUNIT_TEST_???=ON
@@ -29,6 +31,7 @@ function(with_unit_tests res) # checks for -DUNIT_TESTS=ON or -DUNIT_TEST_???=ON
 endfunction(with_unit_tests)
 
 with_unit_tests(AT_LEAST_ONE_UNIT_TEST)
+message("    ==== with_unit_tests() = ${AT_LEAST_ONE_UNIT_TEST}")
 
 #also searches for modules onto cubrid/cmake
 # add other Find[LIBRARY].cmake scripts in cubrid/cmake
@@ -45,6 +48,14 @@ project(CUBRID)
 #list(APPEND CMAKE_CXX_SOURCE_FILE_EXTENSIONS "c")
 #list(REMOVE_ITEM CMAKE_C_SOURCE_FILE_EXTENSIONS "c")
 
+if(UNIX)
+  message(STATUS "  OS = UNIX")
+elseif(WIN32)
+  message(STATUS "  OS = WIN32")
+else()
+  message(FATAL_ERROR "OS not supported")
+endif()
+
 # options
 if(UNIX)
   set(ENABLE_SYSTEMTAP_DEFAULT ON)
@@ -52,6 +63,52 @@ if(UNIX)
 else(UNIX)
   set(ENABLE_SYSTEMTAP_DEFAULT OFF)
 endif(UNIX)
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "  CMAKE_RUNTIME_OUTPUT_DIRECTORY=${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+
+if(WIN32)
+  set(WINDOWS_BASE_DIR ${CMAKE_SOURCE_DIR}/win)
+  set(WINDOWS_EXTERNAL_DIR ${WINDOWS_BASE_DIR}/external)
+  set(WINDOWS_EXTERNAL_LIB_DIR ${WINDOWS_EXTERNAL_DIR}/lib64)
+  set(WINDOWS_EXTERNAL_INCLUDE_DIR ${WINDOWS_EXTERNAL_DIR}/include)
+  # I could not load debug dll for jansson. disabled for now.
+  # if(CMAKE_BUILD_TYPE MATCHES "Debug")
+  #   set(WINDOWS_EXTERNAL_DLL_DIR ${WINDOWS_EXTERNAL_DIR}/dll_debug)
+  # else()
+    set(WINDOWS_EXTERNAL_DLL_DIR ${WINDOWS_EXTERNAL_DIR}/dll)
+  # endif()
+endif(WIN32)
+
+macro(_EXPAND_EXTERNAL_DEPENDENCY depender prefix_dependee)
+  message(STATUS "${depender} depends on external project ${prefix_dependee}")
+
+  set(DEPENDEE_INCLUDE_DIR ${${prefix_dependee}_INCLUDES})
+  if(DEFINED DEPENDEE_INCLUDE_DIR)
+    target_include_directories(${depender} PRIVATE ${DEPENDEE_INCLUDE_DIR})
+  else()
+    message(WARNING "include directory variable(${prefix_dependee}_INCLUDES) is not set for target ${prefix_dependee}")
+  endif()
+
+  set(DEPENDEE_LIBS_DIR ${${prefix_dependee}_LIBS})
+  if(DEFINED DEPENDEE_LIBS_DIR)
+    target_link_libraries(${depender} LINK_PRIVATE ${DEPENDEE_LIBS_DIR})
+  else()
+    message(WARNING "libraries directory variable(${prefix_dependee}_LIBS) is not set for target ${prefix_dependee}")
+  endif()
+
+  if (TARGET ${${prefix_dependee}_TARGET})
+    add_dependencies(${depender} ${${prefix_dependee}_TARGET})
+  else(TARGET ${${prefix_dependee}_TARGET})
+    message(STATUS "target ${prefix_dependee}_TARGET=${${prefix_dependee}_TARGET} doesn't exist")
+  endif(TARGET ${${prefix_dependee}_TARGET})
+endmacro(_EXPAND_EXTERNAL_DEPENDENCY)
+
+function(target_external_dependencies depender)
+  foreach (arg IN LISTS ARGN)
+    _EXPAND_EXTERNAL_DEPENDENCY(${depender} ${arg})
+  endforeach()
+endfunction(target_external_dependencies)
 
 # FIXME: linux 32bit build mode not working now
 option(ENABLE_32BIT "Build for 32-bit banaries (on 64-bit platform)" OFF)
@@ -62,17 +119,49 @@ option(WITH_JDBC "Build JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 option(UNIT_TESTS "Unit tests" OFF)
 
-# options for external libraries (BUNDLED or path)
+# options for external libraries (BUNDLED, EXTERAL or SYSTEM)
+# expat library sources URL
+set(WITH_LIBEXPAT_URL "https://github.com/libexpat/libexpat/releases/download/R_2_2_5/expat-2.2.5.tar.bz2")
 
-set(WITH_EXTERNAL_PREFIX "BUNDLED" CACHE STRING "External library prefix (default: BUNDLED)")
+# jansson library sources URL
+set(WITH_LIBJANSSON_URL "http://www.digip.org/jansson/releases/jansson-2.10.tar.gz")
 
-set(WITH_LIBREGEX     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with regex library (default: BUNDLED)")
-set(WITH_LIBEXPAT     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with expat library (default: BUNDLED)")
-set(WITH_LIBJANSSON   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with jansson library (default: BUNDLED)")
-set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editline library (default: BUNDLED)")
-set(WITH_LIBLZO       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lzo library (default: BUNDLED)")
-set(WITH_LIBGPGERROR  "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gpg-error library (default: BUNDLED)")
-set(WITH_LIBGCRYPT    "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gcrypt library (default: BUNDLED)")
+# editline library sources URL
+set(WITH_LIBEDIT_URL "http://thrysoee.dk/editline/libedit-20170329-3.1.tar.gz")
+
+# lzo library sources URL
+set(WITH_LIBLZO_URL "http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz")
+
+# gpg-error library sources URL
+set(WITH_LIBGPG_ERROR_URL "https://gnupg.org/ftp/gcrypt/libgpg-error/libgpg-error-1.27.tar.bz2")
+
+# gcrypt library sources URL
+set(WITH_LIBGCRYPT_URL "https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.5.6.tar.bz2")
+
+# rapidjson library git properties
+set(WITH_RAPIDJSON_GIT_REPOSITORY "https://github.com/miloyip/rapidjson.git")
+set(WITH_RAPIDJSON_GIT_TAG "v1.1.0")
+
+set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (default: EXTERNAL)")
+set(WITH_BUNDLED_PREFIX "BUNDLED" CACHE STRING "Bundled library prefix (default: BUNDLED)")
+set(WITH_SYSTEM_PREFIX "SYSTEM" CACHE STRING "System library prefix (default: SYSTEM)")
+
+set(WITH_LIBREGEX     "${WITH_BUNDLED_PREFIX}" CACHE STRING "Build with regex library (default: BUNDLED)")
+set(WITH_LIBEXPAT     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with expat library (default: EXTERNAL)")
+set(WITH_LIBJANSSON   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with jansson library (default: EXTERNAL)")
+set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editline library (default: EXTERNAL)")
+set(WITH_LIBLZO       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lzo library (default: EXTERNAL)")
+set(WITH_LIBGPG_ERROR "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gpg-error library (default: EXTERNAL)")
+set(WITH_LIBGCRYPT    "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with gcrypt library (default: EXTERNAL)")
+set(WITH_LIBNCURSES   "${WITH_SYSTEM_PREFIX}" CACHE STRING "Build with ncurses library (default: SYSTEM)")
+
+message(STATUS "Build with Curses library: ${WITH_LIBNCURSES}")
+message(STATUS "Build with editline library: ${WITH_LIBEDIT}")
+message(STATUS "Build with lzo library: ${WITH_LIBLZO}")
+message(STATUS "Build with gcrypt library: ${WITH_LIBGCRYPT}")
+message(STATUS "Build with gpg-error library: ${WITH_LIBGPG_ERROR}")
+message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
+message(STATUS "Build with jansson library: ${WITH_LIBJANSSON}")
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
@@ -202,7 +291,7 @@ endif(UNIX)
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
   set(TARGET_PLATFORM_BITS 64)
 else()
-  set(TARGET_PLATFORM_BITS 32)
+  message(FATAL_ERROR "Target platform 32bit is no longer supported")
 endif()
 
 # FIXME: remove unused checking rule
@@ -562,19 +651,7 @@ if(GCRYPT_LIBRARIES)
 endif(GCRYPT_LIBRARIES)
 
 if(UNIX)
-  include(FindCurses)
-  find_package(Curses REQUIRED)
-  include(CheckLibraryExists)
-  CHECK_LIBRARY_EXISTS("${CURSES_LIBRARIES}" wtimeout "" CURSES_HAS_WTIMEOUT)
-  if(NOT CURSES_HAS_WTIMEOUT)
-    find_library(TINFO_LIBRARY NAMES tinfo)
-    if(TINFO_LIBRARY)
-      CHECK_LIBRARY_EXISTS("${TINFO_LIBRARY}" wtimeout "" TINFO_HAS_WTIMEOUT)
-      if(TINFO_HAS_WTIMEOUT)
-        set(CURSES_LIBRARIES ${CURSES_LIBRARIES} ${TINFO_LIBRARY})
-      endif(TINFO_HAS_WTIMEOUT)
-    endif(TINFO_LIBRARY)
-  endif(NOT CURSES_HAS_WTIMEOUT)
+
   include(FindThreads)
 endif(UNIX)
 
@@ -769,9 +846,20 @@ include(ExternalProject)
 set_property(DIRECTORY PROPERTY EP_BASE "${CMAKE_BINARY_DIR}/external")
 set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/external --enable-static --disable-shared --with-pic CFLAGS=${CMAKE_C_FLAGS} CXXFLAGS=${CMAKE_CXX_FLAGS})
 
+# WITH_LIBREGEX can have multiple values with different meanings
+# on Linux:
+# * "BUNDLED" - (default) builds bundled (from external/libregex38a) regex library and uses the library created by the build
+# * "SYSTEM"   - use regex library located in:
+#                  ${WITH_EXTERNAL_LIBS_PATH}
+#                  ${WITH_LIBREGEX_ROOT_PATH}/lib
+#                use regex headers located in:
+#                  ${WITH_EXTERNAL_HEADERS_PATH}
+#                  ${WITH_LIBREGEX_ROOT_PATH}/include
+# on Windows:
+# * "BUNDLED" - (default) uses the prebuilt library from cubrid/win/external
 if(WITH_LIBREGEX STREQUAL "BUNDLED")
+  set(LIBREGEX_TARGET libregex)
   if(UNIX)
-    set(LIBREGEX_TARGET libregex)
     externalproject_add(${LIBREGEX_TARGET}
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libregex38a
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
@@ -784,209 +872,320 @@ if(WITH_LIBREGEX STREQUAL "BUNDLED")
     set(LIBREGEX_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libregex38a.a)
     set(LIBREGEX_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/libregex38a)
   else(UNIX)
-    if(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBREGEX_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib/libregex38a.lib)
-    else(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBREGEX_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/libregex38a.lib)
-    endif(TARGET_PLATFORM_BITS EQUAL 32)
+    set(LIBREGEX_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/libregex38a.lib)
     set(LIBREGEX_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
   endif(UNIX)
-  # TODO: support system or user provided library
-endif(WITH_LIBREGEX STREQUAL "BUNDLED")
+elseif(WITH_LIBREGEX STREQUAL "SYSTEM")
+  if(UNIX)
+    find_library(LIBREGEX_LIBS NAMES libregex38a.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBREGEX_ROOT_PATH}/lib REQUIRED)
+    find_path(LIBREGEX_INCLUDES NAMES libregex38a/regex38a.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBREGEX_ROOT_PATH}/include REQUIRED)
+
+    message(STATUS "Found regex library: ${LIBREGEX_LIBS}")
+    message(STATUS "Found regex headers: ${LIBREGEX_INCLUDES}")
+  else(UNIX)
+    message(FATAL_ERROR "WITH_LIBREGEX=SYSTEM is not supported on current OS")
+  endif(UNIX)
+endif()
 list(APPEND EP_INCLUDES ${LIBREGEX_INCLUDES})
 list(APPEND EP_LIBS ${LIBREGEX_LIBS})
 
-if(WITH_LIBEXPAT STREQUAL "BUNDLED")
+# WITH_LIBEXPAT can have multiple values with different meanings
+# on Linux:
+# * "EXTERNAL" - (default) builds expat library from URL stored in ${WITH_LIBEXPAT_URL} uses the library created by the build
+# * "SYSTEM"   - use expat library located in:
+#                  ${WITH_EXTERNAL_LIBS_PATH}
+#                  ${WITH_LIBEXPAT_ROOT_PATH}/lib
+#                use expat headers located in:
+#                  ${WITH_EXTERNAL_HEADERS_PATH}
+#                  ${WITH_LIBEXPAT_ROOT_PATH}/include
+# on Windows:
+# * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/external
+if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
+  set(LIBEXPAT_TARGET libexpat)
+  list(APPEND EP_TARGETS ${LIBEXPAT_TARGET})
   if(UNIX)
-    set(LIBEXPAT_TARGET libexpat)
     externalproject_add(${LIBEXPAT_TARGET}
-      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/expat-2.0.1
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND make buildlib AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND make installlib AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/external/lib
-      COMMAND ${CMAKE_COMMAND} -E copy .libs/libexpat.a ${CMAKE_CURRENT_BINARY_DIR}/external/lib/
+      URL               ${WITH_LIBEXPAT_URL}
+      TIMEOUT 300
+      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook
+      BUILD_COMMAND     make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     set(LIBEXPAT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libexpat.a)
     set(LIBEXPAT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/expat)
-    list(APPEND EP_TARGETS ${LIBEXPAT_TARGET})
-  else(UNIX)
-    if(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBEXPAT_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib/libexpat.lib)
-    else(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBEXPAT_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/libexpat.lib)
-    endif(TARGET_PLATFORM_BITS EQUAL 32)
-    set(LIBEXPAT_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include/expat)
+  elseif(WIN32)
+    set(LIBEXPAT_LIBS ${WINDOWS_EXTERNAL_LIB_DIR}/libexpat.lib)
+    set(LIBEXPAT_INCLUDES ${WINDOWS_EXTERNAL_INCLUDE_DIR})
+    add_custom_target(${LIBEXPAT_TARGET}
+      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${WINDOWS_EXTERNAL_DLL_DIR}/libexpat64.dll to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/libexpat.dll"
+      COMMAND ${CMAKE_COMMAND} -E copy ${WINDOWS_EXTERNAL_DLL_DIR}/libexpat64.dll ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/libexpat.dll
+    )
   endif(UNIX)
-  # TODO: support system or user provided library
-endif(WITH_LIBEXPAT STREQUAL "BUNDLED")
+elseif(WITH_LIBEXPAT STREQUAL "SYSTEM")
+  if(UNIX)
+    find_library(LIBEXPAT_LIBS NAMES libexpat.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBEXPAT_ROOT_PATH}/lib REQUIRED)
+    find_path(LIBEXPAT_INCLUDES NAMES expat.h expat_config.h expat_external.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBEXPAT_ROOT_PATH}/include REQUIRED)
+
+    message(STATUS "Found expat library: ${LIBEXPAT_LIBS}")
+    message(STATUS "Found expat headers: ${LIBEXPAT_INCLUDES}")
+  endif(UNIX)
+endif()
 list(APPEND EP_INCLUDES ${LIBEXPAT_INCLUDES})
 list(APPEND EP_LIBS ${LIBEXPAT_LIBS})
 
-if(WITH_LIBJANSSON STREQUAL "BUNDLED")
+# WITH_LIBJANSSON can have multiple values with different meanings
+# on Linux:
+# * "EXTERNAL" - (default) builds jansson library from URL stored in ${WITH_LIBJANSSON_URL} uses the library created by the build
+# * "SYSTEM"   - use jansson library located in:
+#                  ${WITH_EXTERNAL_LIBS_PATH}
+#                  ${WITH_LIBJANSSON_ROOT_PATH}/lib
+#                use jansson headers located in:
+#                  ${WITH_EXTERNAL_HEADERS_PATH}
+#                  ${WITH_LIBJANSSON_ROOT_PATH}/include
+# on Windows:
+# * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/external
+if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
+  set(LIBJANSSON_TARGET libjansson)
+  list(APPEND EP_TARGETS ${LIBJANSSON_TARGET})
   if(UNIX)
-    set(LIBJANSSON_TARGET libjansson)
     externalproject_add(${LIBJANSSON_TARGET}
-      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/jansson-2.4
+      URL               ${WITH_LIBJANSSON_URL}
+      TIMEOUT 300
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     set(LIBJANSSON_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libjansson.a)
     set(LIBJANSSON_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/jansson)
-    list(APPEND EP_TARGETS ${LIBJANSSON_TARGET})
   else(UNIX)
-    if(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBJANSSON_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib/jansson.lib)
-    else(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBJANSSON_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/jansson64.lib)
-    endif(TARGET_PLATFORM_BITS EQUAL 32)
-    set(LIBJANSSON_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
+    # WIN32
+    set(LIBJANSSON_LIBS ${WINDOWS_EXTERNAL_LIB_DIR}/jansson64.lib)
+    set(LIBJANSSON_INCLUDES ${WINDOWS_EXTERNAL_INCLUDE_DIR})
+    add_custom_target(${LIBJANSSON_TARGET}
+      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${WINDOWS_EXTERNAL_DLL_DIR}/jansson64.dll to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/jansson.dll"
+      COMMAND ${CMAKE_COMMAND} -E copy ${WINDOWS_EXTERNAL_DLL_DIR}/jansson64.dll ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/jansson.dll
+      COMMAND ${CMAKE_COMMAND} -E copy ${WINDOWS_EXTERNAL_DLL_DIR}/jansson64.dll ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/jansson64.dll
+    )
   endif(UNIX)
-  # TODO: support system or user provided library
-endif(WITH_LIBJANSSON STREQUAL "BUNDLED")
+elseif(WITH_LIBJANSSON STREQUAL "SYSTEM")
+  if(UNIX)
+    find_library(LIBJANSSON_LIBS NAMES libjansson.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBJANSSON_ROOT_PATH}/lib REQUIRED)
+    find_path(LIBJANSSON_INCLUDES NAMES jansson.h jansson_config.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBJANSSON_ROOT_PATH}/include REQUIRED)
+
+    message(STATUS "Found jansson library: ${LIBJANSSON_LIBS}")
+    message(STATUS "Found jansson headers: ${LIBJANSSON_INCLUDES}")
+  endif(UNIX)
+endif()
 list(APPEND EP_INCLUDES ${LIBJANSSON_INCLUDES})
 list(APPEND EP_LIBS ${LIBJANSSON_LIBS})
 
-if(WITH_LIBEDIT STREQUAL "BUNDLED")
-  if(UNIX)
+# WITH_LIBNCURSES can have multiple values with different meanings
+# on Linux:
+# * "SYSTEM"   - uses ncurses installed in the system (for more info check https://cmake.org/cmake/help/v3.10/module/FindCurses.html)
+set(LIBNCURSES_TARGET libncurses)
+if(UNIX)
+  if(WITH_LIBNCURSES STREQUAL "SYSTEM")
+    include(FindCurses)
+    find_package(Curses REQUIRED)
+    CHECK_LIBRARY_EXISTS("${CURSES_LIBRARIES}" wtimeout "" LIBNCURSES_HAS_WTIMEOUT)
+    set(LIBNCURSES_INCLUDES "${CURSES_INCLUDE_DIRS}")
+    set(LIBNCURSES_LIBS "${CURSES_LIBRARIES}")
+
+    if(NOT LIBNCURSES_HAS_WTIMEOUT)
+      message(STATUS "search for tinfo library")
+      find_library(TINFO_LIBRARY NAMES tinfo)
+      if(TINFO_LIBRARY)
+        message(STATUS "found tinfo library")
+        CHECK_LIBRARY_EXISTS("${TINFO_LIBRARY}" wtimeout "" TINFO_HAS_WTIMEOUT)
+        if(TINFO_HAS_WTIMEOUT)
+          set(CURSES_LIBRARIES ${CURSES_LIBRARIES} ${TINFO_LIBRARY})
+        else(TINFO_HAS_WTIMEOUT)
+          message(FATAL_ERROR "tinfo library does not have wtimeout")
+        endif(TINFO_HAS_WTIMEOUT)
+      else(TINFO_LIBRARY)
+        message(FATAL_ERROR "no tinfo library")
+      endif(TINFO_LIBRARY)
+    endif(NOT LIBNCURSES_HAS_WTIMEOUT)
+  else(WITH_LIBNCURSES STREQUAL "SYSTEM")
+    message(FATAL_ERROR "Invalid WITH_LIBNCURSES option value ${WITH_LIBNCURSES}")
+  endif(WITH_LIBNCURSES STREQUAL "SYSTEM")
+endif(UNIX)
+
+# WITH_LIBEDIT can have multiple values with different meanings
+# on Linux:
+# * "EXTERNAL" - (default) builds editline library from URL stored in ${WITH_LIBEDIT_URL} uses the library created by the build
+# * "SYSTEM"   - use editline library located in:
+#                  ${WITH_EXTERNAL_LIBS_PATH}
+#                  ${WITH_LIBEDIT_ROOT_PATH}/lib
+#                use editline headers located in:
+#                  ${WITH_EXTERNAL_HEADERS_PATH}
+#                  ${WITH_LIBEDIT_ROOT_PATH}/include
+if(UNIX)
+  if(WITH_LIBEDIT STREQUAL "EXTERNAL")
     set(LIBEDIT_TARGET libedit)
     externalproject_add(${LIBEDIT_TARGET}
-      URL http://thrysoee.dk/editline/libedit-20170329-3.1.tar.gz
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      URL               ${WITH_LIBEDIT_URL}
+      TIMEOUT 300
+      CONFIGURE_COMMAND "LDFLAGS=-L${CMAKE_CURRENT_BINARY_DIR}/external/lib" ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
+    if(TARGET ${LIBNCURSES_TARGET})
+      add_dependencies(${LIBEDIT_TARGET} ${LIBNCURSES_TARGET})
+    endif()
     set(LIBEDIT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libedit.a)
     set(LIBEDIT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
     list(APPEND EP_TARGETS ${LIBEDIT_TARGET})
-    list(APPEND EP_INCLUDES ${LIBEDIT_INCLUDES})
-    list(APPEND EP_LIBS ${LIBEDIT_LIBS})
-  endif(UNIX)
-  # TODO: support system or user provided library
-endif(WITH_LIBEDIT STREQUAL "BUNDLED")
+  elseif(WITH_LIBEDIT STREQUAL "SYSTEM")
+    find_library(LIBEDIT_LIBS NAMES libedit.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBEDIT_ROOT_PATH}/lib REQUIRED)
+    find_path(LIBEDIT_INCLUDES NAMES editline/readline.h histedit.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBEDIT_ROOT_PATH}/include REQUIRED)
+
+    message(STATUS "Found editline library: ${LIBEDIT_LIBS}")
+    message(STATUS "Found editline headers: ${LIBEDIT_INCLUDES}")
+  endif()
+endif(UNIX)
+list(APPEND EP_LIBS ${LIBEDIT_LIBS})
+list(APPEND EP_INCLUDES ${LIBEDIT_INCLUDES})
 
 # WITH_LIBLZO can have multiple values with different meanings
 # on Linux:
-# * "BUNDLED" - (default) builds lzo library from cubrid/external/lzo-2.10 and
-#               uses the library created by the build
-# * "BUNDLEDsome_name" - (e.g. BUNDLEDlzo-2.10) builds lzo library from 
-#               cubrid/external/some_name and  uses the library created by the build
-# * "" - use lzo library from the system (see cubrid/cmake/FindLZO.cmake)
-# * "/some/path" - use lzo library located in /some/path 
-#               /some/path/include/lzo should contain header files
-#               /some/path/lib should contain the library
-#               (see cubrid/cmake/FindLZO.cmake)
-# * "http://U/R/L/to/lzo.tar.gz" - downloads the library from specified URL and builds it
+# * "EXTERNAL" - (default) builds lzo library from URL stored in ${WITH_LIBLZO_URL} uses the library created by the build
+# * "SYSTEM"   - use lzo library located in:
+#                  ${WITH_EXTERNAL_LIBS_PATH}
+#                  ${WITH_LIBLZO_ROOT_PATH}/lib
+#                use lzo headers located in:
+#                  ${WITH_EXTERNAL_HEADERS_PATH}
+#                  ${WITH_LIBLZO_ROOT_PATH}/include
 # on Windows:
-# * BUNDLED - (default) uses the prebuilt library from cubrid/win/external/
-# * "" - searches for LZO library in some default system locations
-# * "/some/path" - searches for LZO library in the given path
-
-if(WITH_LIBLZO MATCHES "^BUNDLED")
-  string(SUBSTRING "${WITH_LIBLZO}" 7 -1 LZO_PATH)
-  
-  if(LZO_PATH STREQUAL "")
-    set(LZO_PATH "lzo-2.10")
-  endif()
-  
+# * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/external
+if(WITH_LIBLZO STREQUAL "EXTERNAL")
+  set(LIBLZO_TARGET liblzo)
   if(UNIX)
-    set(LIBLZO_TARGET liblzo)
-    # compile LZO library from cubrid/external/${LZO_PATH}
-    externalproject_add(${LIBLZO_TARGET}
-      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/${LZO_PATH}
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      )
-    set(LIBLZO_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/liblzo2.a)
-    set(LIBLZO_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/lzo)
-    list(APPEND EP_TARGETS ${LIBLZO_TARGET})
-  else(UNIX)
-    if(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBLZO_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib/lzo2.lib)
-    else(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBLZO_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/lzo2.lib)
-    endif(TARGET_PLATFORM_BITS EQUAL 32)
-    set(LIBLZO_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include/lzo)
-  endif(UNIX)
-elseif(WITH_LIBLZO MATCHES "^http")
-  if(UNIX)
-    set(LIBLZO_TARGET liblzo)
     #compile LZO library given an internet url to a LZO archive
     #e.g. http://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz
     externalproject_add(${LIBLZO_TARGET}
-      URL ${WITH_LIBLZO}
+      URL               ${WITH_LIBLZO_URL}
+      TIMEOUT 300
       CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     set(LIBLZO_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/liblzo2.a)
-    set(LIBLZO_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include/lzo)
+    set(LIBLZO_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
     list(APPEND EP_TARGETS ${LIBLZO_TARGET})
   else(UNIX)
+    set(LIBLZO_LIBS ${CMAKE_SOURCE_DIR}/win/external/lib64/lzo2.lib)
+    set(LIBLZO_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
   endif(UNIX)
-else()
-  set(LZO_ROOT ${WITH_LIBLZO})
-  #searches for LZO library within LZO_ROOT path and other system paths (see cubrid/cmake/FindLZO.cmake).
-  #calls cubrid/cmake/FindLZO.cmake
-  find_package(LZO REQUIRED)
-  if(LZO_FOUND)
-    set(LIBLZO_LIBS     ${LZO_LIBRARIES})
-    set(LIBLZO_INCLUDES ${LZO_INCLUDE_DIR})
-  endif()
-endif()
+else(WITH_LIBLZO STREQUAL "SYSTEM")
+  if(UNIX)
+    find_library(LIBLZO_LIBS NAMES liblzo2.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBLZO_ROOT_PATH}/lib REQUIRED)
+    find_path(LIBLZO_INCLUDES NAMES lzo/lzoconf.h lzo/lzo1x.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBLZO_ROOT_PATH}/include REQUIRED)
 
+    message(STATUS "Found lzo library: ${LIBLZO_LIBS}")
+    message(STATUS "Found lzo headers: ${LIBLZO_INCLUDES}")
+  endif(UNIX)
+endif()
 list(APPEND EP_INCLUDES ${LIBLZO_INCLUDES})
 list(APPEND EP_LIBS ${LIBLZO_LIBS})
 
-if(WITH_LIBGPGERROR STREQUAL "BUNDLED")
-  if(UNIX)
-    set(LIBGPGERROR_TARGET libgpg-error)
-    externalproject_add(${LIBGPGERROR_TARGET}
-      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libgpg-error-1.11
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+# WITH_LIBGPG_ERROR can have multiple values with different meanings
+# on Linux:
+# * "EXTERNAL" - (default) builds gpg-error library from URL stored in ${WITH_LIBGPG_ERROR_URL} uses the library created by the build
+# * "SYSTEM"   - use gpg-error library located in:
+#                  ${WITH_EXTERNAL_LIBS_PATH}
+#                  ${WITH_LIBGPG_ERROR_ROOT_PATH}/lib
+#                use gpg-error headers located in:
+#                  ${WITH_EXTERNAL_HEADERS_PATH}
+#                  ${WITH_LIBGPG_ERROR_ROOT_PATH}/include
+set(LIBGPG_ERROR_TARGET libgpg-error)
+if(UNIX)
+  if(WITH_LIBGPG_ERROR STREQUAL "EXTERNAL")
+    externalproject_add(${LIBGPG_ERROR_TARGET}
+      URL               ${WITH_LIBGPG_ERROR_URL}
+      TIMEOUT 300
+      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} --enable-maintainer-mode --disable-doc --disable-tests
+      BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
     set(LIBGPG_ERROR_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgpg-error.a)
     set(LIBGPG_ERROR_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
-    list(APPEND EP_TARGETS ${LIBGPGERROR_TARGET})
-  endif(UNIX)
-  list(APPEND EP_INCLUDES ${LIBGPG_ERROR_INCLUDES})
-  list(APPEND EP_LIBS ${LIBGPG_ERROR_LIBS})
-  # TODO: support system or user provided library
-endif(WITH_LIBGPGERROR STREQUAL "BUNDLED")
+  elseif(WITH_LIBGPG_ERROR STREQUAL "SYSTEM")
+    find_library(LIBGPG_ERROR_LIBS NAMES libgpg-error.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBGPG_ERROR_ROOT_PATH}/lib REQUIRED)
+    find_path(LIBGPG_ERROR_INCLUDES NAMES gpg-error.h gpgrt.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBGPG_ERROR_ROOT_PATH}/include REQUIRED)
 
-if(WITH_LIBGCRYPT STREQUAL "BUNDLED")
+    message(STATUS "Found gpg-error library: ${LIBGPG_ERROR_LIBS}")
+    message(STATUS "Found gpg-error headers: ${LIBGPG_ERROR_INCLUDES}")
+  endif()
+elseif(WIN32)
+  # use bundled
+  set (LIBGPG_ERROR_DIR ${WINDOWS_EXTERNAL_DIR}/gpg-error)
+  set (LIBGPG_ERROR_LIBS ${LIBGPG_ERROR_DIR}/lib/gpg-error.lib)
+  set (LIBGPG_ERROR_INCLUDES ${LIBGPG_ERROR_DIR}/include)
+  SET (LIBGPG_ERROR_DLL ${LIBGPG_ERROR_DIR}/bin/gpg-error.dll)
+  add_custom_target(${LIBGPG_ERROR_TARGET}
+      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${LIBGPG_ERROR_DLL} to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/gpg-error.dll"
+      COMMAND ${CMAKE_COMMAND} -E copy ${LIBGPG_ERROR_DLL} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/gpg-error.dll
+    )
+endif()
+list(APPEND EP_INCLUDES ${LIBGPG_ERROR_INCLUDES})
+list(APPEND EP_LIBS ${LIBGPG_ERROR_LIBS})
+if (TARGET ${LIBGPG_ERROR_TARGET})
+  list(APPEND EP_TARGETS ${LIBGPG_ERROR_TARGET})
+endif(TARGET ${LIBGPG_ERROR_TARGET})
+
+# WITH_LIBGCRYPT can have multiple values with different meanings
+# on Linux:
+# * "EXTERNAL" - (default) builds gcrypt library from URL stored in ${LIBGCRYPT_TARGET} uses the library created by the build
+# * "SYSTEM"   - use gcrypt library located in:
+#                  ${WITH_EXTERNAL_LIBS_PATH}
+#                  ${WITH_LIBGCRYPT_ROOT_PATH}/lib
+#                use gcrypt headers located in:
+#                  ${WITH_EXTERNAL_HEADERS_PATH}
+#                  ${WITH_LIBGCRYPT_ROOT_PATH}/include
+set(LIBGCRYPT_TARGET libgcrypt)
+if(WITH_LIBGCRYPT STREQUAL "EXTERNAL")
   if(UNIX)
-    set(LIBGCRYPT_TARGET libgcrypt)
-    if(ENABLE_32BIT OR CMAKE_C_FLAGS MATCHES "-m32")
-      set(GRCYPT_EXTRA_OPTION "--build=x86")
+    if(TARGET ${LIBGPG_ERROR_TARGET})
+      set(WITH_LIBGPG_ERROR_PREFIX "--with-gpg-error-prefix=${CMAKE_CURRENT_BINARY_DIR}/external")
     endif()
     externalproject_add(${LIBGCRYPT_TARGET}
-      DEPENDS libgpg-error
-      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libgcrypt-1.5.2
-      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} CPPFLAGS=-I${CMAKE_CURRENT_BINARY_DIR}/external/include ${GRCYPT_EXTRA_OPTION}
-      BUILD_COMMAND make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      URL               ${WITH_LIBGCRYPT_URL}
+      TIMEOUT 300
+      CONFIGURE_COMMAND ${DEFAULT_CONFIGURE_OPTS} CPPFLAGS=-I${CMAKE_CURRENT_BINARY_DIR}/external/include --enable-maintainer-mode ${WITH_LIBGPG_ERROR_PREFIX}
+      BUILD_COMMAND     make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND   make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       )
+
     set(LIBGCRYPT_LIBS ${CMAKE_CURRENT_BINARY_DIR}/external/lib/libgcrypt.a)
     set(LIBGCRYPT_INCLUDES ${CMAKE_CURRENT_BINARY_DIR}/external/include)
-    list(APPEND EP_TARGETS ${LIBGCRYPT_TARGET})
   else(UNIX)
-    if(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBGCRYPT_LIBS ${CMAKE_SOURCE_DIR}/win/external/dll/Win32/libgcrypt.lib)
-    else(TARGET_PLATFORM_BITS EQUAL 32)
-      set(LIBGCRYPT_LIBS ${CMAKE_SOURCE_DIR}/win/external/dll/x64/libgcrypt.lib)
-    endif(TARGET_PLATFORM_BITS EQUAL 32)
-    set(LIBGCRYPT_INCLUDES ${CMAKE_SOURCE_DIR}/win/external/include)
+    set(LIBGCRYPT_DIR ${WINDOWS_EXTERNAL_DIR}/gcrypt)
+    set(LIBGCRYPT_LIBS ${LIBGCRYPT_DIR}/lib/gcrypt.lib)
+    set(LIBGCRYPT_INCLUDES ${LIBGCRYPT_DIR}/include)
+    set(LIBGCRYPT_DLL ${LIBGCRYPT_DIR}/bin/gcrypt.dll)
+    add_custom_target(libgcrypt
+      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${LIBGCRYPT_DLL} to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/gcrypt.dll"
+      COMMAND ${CMAKE_COMMAND} -E copy ${LIBGCRYPT_DLL} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/gcrypt.dll
+    )
   endif(UNIX)
-  # TODO: support system or user provided library
-endif(WITH_LIBGCRYPT STREQUAL "BUNDLED")
+elseif(WITH_LIBGCRYPT STREQUAL "SYSTEM")
+  if(UNIX)
+    find_library(LIBGCRYPT_LIBS NAMES libgcrypt.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBGCRYPT_ROOT_PATH}/lib REQUIRED)
+    find_path(LIBGCRYPT_INCLUDES NAMES gcrypt.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBGCRYPT_ROOT_PATH}/include REQUIRED)
+
+    message(STATUS "Found gcrypt library: ${LIBGCRYPT_LIBS}")
+    message(STATUS "Found gcrypt headers: ${LIBGCRYPT_INCLUDES}")
+  endif(UNIX)
+endif()
 list(APPEND EP_INCLUDES ${LIBGCRYPT_INCLUDES})
 list(APPEND EP_LIBS ${LIBGCRYPT_LIBS})
-
+if (TARGET ${LIBGCRYPT_TARGET})
+  list(APPEND EP_TARGETS ${LIBGCRYPT_TARGET})
+  if(TARGET ${LIBGPG_ERROR_TARGET})
+    add_dependencies(${LIBGCRYPT_TARGET} ${LIBGPG_ERROR_TARGET})
+  endif(TARGET ${LIBGPG_ERROR_TARGET})
+endif(TARGET ${LIBGCRYPT_TARGET})
 
 # For JVM libraries
 if(WIN32)
@@ -999,9 +1198,11 @@ if(WIN32)
 endif(WIN32)
 
 # rapidjson
-externalproject_add(rapidjson
+set(RAPIDJSON_TARGET rapidjson)
+externalproject_add(${RAPIDJSON_TARGET}
   # tried URL but archive gets downloaded every time. URL_MD5 may help
   URL https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz
+  TIMEOUT 300
   # don't install
   INSTALL_COMMAND ""
   # don't build test, doc and examples
@@ -1012,7 +1213,7 @@ externalproject_add(rapidjson
 # add to include directories
 include_directories(${CMAKE_BINARY_DIR}/external/Source/rapidjson/include)
 # add to external project targets
-list(APPEND EP_TARGETS rapidjson)
+list(APPEND EP_TARGETS ${RAPIDJSON_TARGET})
 
 # include subdirectories
 add_subdirectory(cas)

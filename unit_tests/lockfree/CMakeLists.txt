@@ -42,15 +42,15 @@ target_include_directories(test_lockfree PRIVATE
   ${TEST_INCLUDES}
   )
 
-target_link_libraries(test_lockfree PRIVATE
+target_link_libraries(test_lockfree LINK_PRIVATE
   test_common
   )
 if(UNIX)
-  target_link_libraries(test_lockfree PRIVATE
+  target_link_libraries(test_lockfree LINK_PRIVATE
     cubrid
     )
 elseif(WIN32)
-  target_link_libraries(test_lockfree PRIVATE
+  target_link_libraries(test_lockfree LINK_PRIVATE
     cubrid-win-lib
     )
 else()

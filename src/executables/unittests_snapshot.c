@@ -22,7 +22,6 @@
  */
 
 #include "porting.h"
-#include "thread.h"
 
 #include <stdio.h>
 #include <pthread.h>

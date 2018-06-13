@@ -45,7 +45,8 @@
 #include "error_code.h"
 #include "es_posix.h"
 #if defined (SERVER_MODE)
-#include "thread.h"
+#include "thread_entry.hpp"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
 
 #if defined (SA_MODE) || defined (SERVER_MODE)
