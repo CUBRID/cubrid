@@ -3643,8 +3643,39 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
 	      if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
 		{
 		  fileio_page_hexa_dump ((const char *) buf, count);
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+		  /* Verify checksum correctness before the crash, for proper recovery purpose. */
+		  if (fileio_is_permanent_volume_descriptor (thread_p, fd))
+		    {
+		      /* Permanent data volume. */
+		      int error_code;
+		      bool is_page_corrupted;
+
+		      error_code = fileio_page_check_corruption (thread_p, (FILEIO_PAGE *) buf, &is_page_corrupted);
+		      assert (error_code == NO_ERROR && is_page_corrupted == false);
+		    }
+		  else
+		    {
+		      /* sys volume ? */
+		      int rv;
+		      FILEIO_SYSTEM_VOLUME_INFO *sys_volinfo;
+		      APPLY_ARG arg = { 0 };
+
+		      rv = pthread_mutex_lock (&fileio_Sys_vol_info_header.mutex);
+		      arg.vdes = fd;
+		      sys_volinfo =
+			fileio_find_system_volume (thread_p, fileio_is_system_volume_descriptor_equal, &arg);
+		      pthread_mutex_unlock (&fileio_Sys_vol_info_header.mutex);
+		      if (sys_volinfo)
+			{
+			  logpb_debug_check_log_page (thread_p, (void *) buf);
+			}
+		    }
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 		}
-#endif
+
+#endif /* defined (NDEBUG) */
 	      // exit
 	      _exit (0);
 	    }

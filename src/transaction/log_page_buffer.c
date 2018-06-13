@@ -419,8 +419,6 @@ STATIC_INLINE int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * l
   __attribute__ ((ALWAYS_INLINE));
 static int logpb_page_has_valid_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * has_valid_checksum);
 
-static void logpb_debug_check_log_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
-
 /*
  * FUNCTIONS RELATED TO LOG BUFFERING
  *
@@ -4807,7 +4805,9 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	{
 	  bufptr->logpage->hdr.checksum = log_Pb.partial_append.log_page_record_header->hdr.checksum;
 	  assert (!memcmp (bufptr->logpage, log_Pb.partial_append.log_page_record_header, LOG_PAGESIZE));
+#if !defined(NDEBUG)
 	  logpb_debug_check_log_page (thread_p, bufptr->logpage);
+#endif
 	}
 
       /* we need to also sync again */
@@ -12472,12 +12472,15 @@ logpb_page_check_corruption (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool
   return NO_ERROR;
 }
 
-static void
-logpb_debug_check_log_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
+#if !defined(NDEBUG)
+void
+logpb_debug_check_log_page (THREAD_ENTRY * thread_p, void *log_pgptr_ptr)
 {
   int err;
   bool is_log_page_corrupted;
+  LOG_PAGE *log_pgptr = (LOG_PAGE *) log_pgptr_ptr;
 
+  assert (log_pgptr != NULL);
   if (boot_Server_status != BOOT_SERVER_UP && log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID)
     {
       /* Do not check here since log page size may be not available */
@@ -12488,3 +12491,4 @@ logpb_debug_check_log_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 
   assert (err == NO_ERROR && is_log_page_corrupted == false);
 }
+#endif
