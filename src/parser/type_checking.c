@@ -12972,7 +12972,7 @@ pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coerce_type)
 namespace Func
 {
   //--------------------------------------------------------------------------------
-  bool cmp_types_generic(const pt_arg_type& type, pt_type_enum type_enum)
+  bool cmp_types_equivalent(const pt_arg_type& type, pt_type_enum type_enum)
   {
     assert(type.type != pt_arg_type::INDEX);
     return type_enum==PT_TYPE_NULL || pt_are_equivalent_types(type, type_enum);//PT_TYPE_NULL is equivalent to any type
@@ -13021,6 +13021,8 @@ namespace Func
           return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE);
         case PT_GENERIC_TYPE_NCHAR:
           return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_NATIONAL_CHAR_STRING_TYPE(type_enum));
+        case PT_GENERIC_TYPE_SCALAR:
+            return (type_enum == PT_TYPE_MAYBE);
 
         default:
           return false;
@@ -13130,7 +13132,7 @@ namespace Func
     const func_signature* get_signature(const std::vector<func_signature>& signatures, string_buffer& sb)
     {
         sb("matching equivalent:\n");
-        const func_signature* signature = get_signature(signatures, &cmp_types_generic, sb);
+        const func_signature* signature = get_signature(signatures, &cmp_types_equivalent, sb);
         if(signature == NULL)
         {
             sb("matching castable:\n");
