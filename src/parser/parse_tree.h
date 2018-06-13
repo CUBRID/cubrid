@@ -868,7 +868,6 @@ enum pt_node_type
   PT_CONSTRAINT,
   PT_CTE,
   PT_DATA_DEFAULT,
-  PT_ON_UPDATE,
   PT_DATA_TYPE,
   PT_DOT_,
   PT_EVENT_OBJECT,
@@ -1595,7 +1594,6 @@ typedef struct pt_cte_info PT_CTE_INFO;
 typedef struct pt_serial_info PT_SERIAL_INFO;
 typedef struct pt_data_default_info PT_DATA_DEFAULT_INFO;
 typedef struct pt_auto_increment_info PT_AUTO_INCREMENT_INFO;
-typedef struct pt_data_on_update_info PT_ON_UPDATE_INFO;
 typedef struct pt_partition_info PT_PARTITION_INFO;
 typedef struct pt_parts_info PT_PARTS_INFO;
 typedef struct pt_data_type_info PT_DATA_TYPE_INFO;
@@ -2029,12 +2027,6 @@ struct pt_data_default_info
 {
   PT_NODE *default_value;	/* PT_VALUE (list) */
   PT_MISC_TYPE shared;		/* will PT_SHARED or PT_DEFAULT */
-  DB_DEFAULT_EXPR_TYPE default_expr_type;	/* if it is a pseudocolumn, do not evaluate expr */
-};
-
-struct pt_data_on_update_info
-{
-  PT_NODE *default_value;
   DB_DEFAULT_EXPR_TYPE default_expr_type;	/* if it is a pseudocolumn, do not evaluate expr */
 };
 
@@ -3319,7 +3311,6 @@ union pt_statement_info
   PT_NAME_INFO name;
   PT_NAMED_ARG_INFO named_arg;
   PT_NODE_LIST_INFO node_list;
-  PT_ON_UPDATE_INFO on_update;
   PT_PARTITION_INFO partition;
   PT_PARTS_INFO parts;
   PT_PREPARE_INFO prepare;

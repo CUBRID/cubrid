@@ -195,7 +195,6 @@ static PT_NODE *pt_apply_create_entity (PARSER_CONTEXT * parser, PT_NODE * p, PT
 static PT_NODE *pt_apply_create_index (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_create_user (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_data_default (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
-static PT_NODE *pt_apply_on_update (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_datatype (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_delete (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_difference (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
@@ -2956,8 +2955,6 @@ pt_show_node_type (PT_NODE * node)
       return "CREATE_TRIGGER";
     case PT_DATA_DEFAULT:
       return "DATA_DEFAULT";
-    case PT_ON_UPDATE:
-      return "DATA_ON_UPDATE";
     case PT_DATA_TYPE:
       return "DATA_TYPE";
     case PT_DELETE:
@@ -3259,8 +3256,6 @@ pt_show_misc_type (PT_MISC_TYPE p)
       return "shared";
     case PT_DEFAULT:
       return "default";
-    case PT_ON_UPDATE:
-      return "on_update ";
     case PT_ASC:
       return "asc";
     case PT_DESC:
@@ -5015,7 +5010,6 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_CREATE_TRIGGER] = pt_apply_create_trigger;
   pt_apply_func_array[PT_CREATE_SERIAL] = pt_apply_create_serial;
   pt_apply_func_array[PT_DATA_DEFAULT] = pt_apply_data_default;
-  pt_apply_func_array[PT_ON_UPDATE] = pt_apply_on_update;
   pt_apply_func_array[PT_DATA_TYPE] = pt_apply_datatype;
   pt_apply_func_array[PT_DELETE] = pt_apply_delete;
   pt_apply_func_array[PT_DIFFERENCE] = pt_apply_difference;
@@ -5131,7 +5125,6 @@ pt_init_init_f (void)
   pt_init_func_array[PT_CREATE_TRIGGER] = pt_init_create_trigger;
   pt_init_func_array[PT_CREATE_SERIAL] = pt_init_create_serial;
   pt_init_func_array[PT_DATA_DEFAULT] = pt_init_data_default;
-  pt_init_func_array[PT_ON_UPDATE] = pt_init_on_update;
   pt_init_func_array[PT_DATA_TYPE] = pt_init_datatype;
   pt_init_func_array[PT_DELETE] = pt_init_delete;
   pt_init_func_array[PT_DIFFERENCE] = pt_init_difference;
@@ -6786,6 +6779,14 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       r1 = pt_print_bytes (parser, p->info.attr_def.data_default);
       q = pt_append_varchar (parser, q, r1);
+    }
+
+  if (p->info.attr_def.on_update != DB_DEFAULT_NONE)
+    {
+      const char *c = db_default_expression_string (p->info.attr_def.on_update);
+      q = pt_append_nulstring (parser, q, " ");
+      q = pt_append_nulstring (parser, q, c);
+      q = pt_append_nulstring (parser, q, " ");
     }
 
   if (p->info.attr_def.auto_increment)
@@ -8493,42 +8494,6 @@ pt_init_data_default (PT_NODE * p)
   p->info.data_default.shared = (PT_MISC_TYPE) 0;
   p->info.data_default.default_expr_type = DB_DEFAULT_NONE;
   return p;
-}
-
-static PT_NODE *
-pt_init_on_update (PT_NODE * p)
-{
-  p->info.on_update.default_value = (PT_NODE *) 0;
-  p->info.on_update.default_expr_type = DB_DEFAULT_NONE;
-  return p;
-}
-
-static PT_NODE *
-pt_apply_on_update (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
-{
-  p->info.on_update.default_value = g (parser, p->info.on_update.default_value, arg);
-  return p;
-}
-
-static PARSER_VARCHAR *
-pt_print_on_update (PARSER_CONTEXT * parser, PT_NODE * p)
-{
-  PARSER_VARCHAR *q = 0, *r1;
-
-  r1 = pt_print_bytes (parser, p->info.on_update.default_value);
-  if (p->info.on_update.default_value && PT_IS_QUERY_NODE_TYPE (p->info.on_update.default_value->node_type))
-    {
-      q = pt_append_nulstring (parser, q, " on update ");
-      q = pt_append_nulstring (parser, q, "(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
-    }
-  else
-    {
-      q = pt_append_varchar (parser, q, r1);
-    }
-
-  return q;
 }
 
 /*
