@@ -46,10 +46,10 @@ namespace cubstream
 	css_error_code rc = NO_ERRORS;
 	std::size_t max_len = MTU;
 
-	assert (this_consumer_channel.m_channel.is_connection_alive ());
-
         if (m_first_loop)
           {
+            assert (this_consumer_channel.m_channel.is_connection_alive ());
+
             rc = (css_error_code) this_consumer_channel.m_channel.send ((char *) &this_consumer_channel.m_last_received_position,
                                                        sizeof (cubstream::stream_position));
             assert (rc == NO_ERRORS);

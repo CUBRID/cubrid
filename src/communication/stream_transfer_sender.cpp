@@ -52,11 +52,11 @@ namespace cubstream
 	int rc = NO_ERRORS;
 	stream_position last_reported_ready_pos = this_producer_channel.m_stream.get_last_committed_pos ();
 
-	assert (this_producer_channel.m_channel.is_connection_alive ());
-
         if (m_first_loop)
           {
             std::size_t max_len = sizeof (cubstream::stream_position);
+
+            assert (this_producer_channel.m_channel.is_connection_alive ());
 
             m_first_loop = false;
 

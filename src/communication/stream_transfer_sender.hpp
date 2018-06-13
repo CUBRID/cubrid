@@ -50,10 +50,6 @@ namespace cubstream
       stream_position get_last_sent_position ();
       communication_channel &get_communication_channel ();
 
-    protected:
-
-      cubstream::stream::read_func_t m_read_action_function;
-
     private:
 
       friend class transfer_sender_task;

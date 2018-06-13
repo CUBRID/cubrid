@@ -49,10 +49,6 @@ namespace cubstream
 
       stream_position get_last_received_position ();
 
-    protected:
-
-      cubstream::stream::write_func_t m_write_action_function;
-
     private:
 
       friend class transfer_receiver_task;
