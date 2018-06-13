@@ -124,6 +124,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
   ${BASE_DIR}/perf_def.hpp
   ${BASE_DIR}/pinning.hpp
