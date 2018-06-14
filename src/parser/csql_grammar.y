@@ -10136,40 +10136,40 @@ column_on_update_def
 
 			if (on_update_default_value && on_update_default_value->node_type == PT_EXPR)
 			  {
-			switch (on_update_default_value->info.expr.op)
-			  {
-			  case PT_CURRENT_TIMESTAMP:
-			    default_expr_type = DB_DEFAULT_CURRENTTIMESTAMP;
-			    break;
-			  case PT_CURRENT_DATE:
-			    default_expr_type = DB_DEFAULT_CURRENTDATE;
-			    break;
-			  case PT_CURRENT_DATETIME:
-			    default_expr_type = DB_DEFAULT_CURRENTDATETIME;
-			    break;
-			  case PT_SYS_TIMESTAMP:
-			    default_expr_type = DB_DEFAULT_SYSTIMESTAMP;
-			    break;
-			  case PT_UNIX_TIMESTAMP:
-			    default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
-			    break;
-			  case PT_SYS_DATE:
-			    default_expr_type = DB_DEFAULT_SYSDATE;
-			    break;
-			  case PT_SYS_DATETIME:
-			    default_expr_type = DB_DEFAULT_SYSDATETIME;
-			    break;
-			  case PT_SYS_TIME:
-			    default_expr_type = DB_DEFAULT_SYSTIME;
-			    break;
-			  default:
-			    PT_ERROR (this_parser, attr_node, "invalid expression type");
-			    break;
-			  }
+			    switch (on_update_default_value->info.expr.op)
+			      {
+			      case PT_CURRENT_TIMESTAMP:
+			        default_expr_type = DB_DEFAULT_CURRENTTIMESTAMP;
+			        break;
+			      case PT_CURRENT_DATE:
+			        default_expr_type = DB_DEFAULT_CURRENTDATE;
+			        break;
+			      case PT_CURRENT_DATETIME:
+			        default_expr_type = DB_DEFAULT_CURRENTDATETIME;
+			        break;
+			      case PT_SYS_TIMESTAMP:
+			        default_expr_type = DB_DEFAULT_SYSTIMESTAMP;
+			        break;
+			      case PT_UNIX_TIMESTAMP:
+			        default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
+			        break;
+			      case PT_SYS_DATE:
+			        default_expr_type = DB_DEFAULT_SYSDATE;
+			        break;
+			      case PT_SYS_DATETIME:
+			        default_expr_type = DB_DEFAULT_SYSDATETIME;
+			        break;
+			      case PT_SYS_TIME:
+			        default_expr_type = DB_DEFAULT_SYSTIME;
+			        break;
+			      default:
+			        PT_ERROR (this_parser, attr_node, "invalid expression type");
+			        break;
+			      }
 			  }
 			else
 			  {
-			PT_ERROR (this_parser, attr_node, "on update must be an expression");
+			    PT_ERROR (this_parser, attr_node, "on update must be an expression");
 			  }
 			
 			attr_node->info.attr_def.on_update = default_expr_type;

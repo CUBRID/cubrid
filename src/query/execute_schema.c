@@ -286,7 +286,7 @@ static bool is_att_prop_set (const int prop, const int value);
 
 static int get_att_order_from_def (PT_NODE * attribute, bool * ord_first, const char **ord_after_name);
 
-static int check_on_update (PARSER_CONTEXT * parser, PT_NODE * attribute, const char *classname);
+static int check_on_update (PARSER_CONTEXT * parser, PT_NODE * attribute);
 
 static int get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE ** default_value,
 				     const char *classname);
@@ -7009,7 +7009,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
       goto error_exit;
     }
 
-  error = check_on_update (parser, attribute, ctemplate->name);
+  error = check_on_update (parser, attribute);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -10092,7 +10092,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	      || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PSEUDO_UPGRADE));
     }
 
-  error = check_on_update (parser, attribute, NULL);
+  error = check_on_update (parser, attribute);
   if (error != NO_ERROR)
     {
       goto exit;
@@ -12429,24 +12429,27 @@ get_att_order_from_def (PT_NODE * attribute, bool * ord_first, const char **ord_
 }
 
 static int
-check_on_update (PARSER_CONTEXT * parser, PT_NODE * attribute, const char *classname)
+check_on_update (PARSER_CONTEXT * parser, PT_NODE * attribute)
 {
   int error = NO_ERROR;
   PT_TYPE_ENUM desired_type = attribute->type_enum;
   DB_DEFAULT_EXPR_TYPE on_update_expr_type = attribute->info.attr_def.on_update;
   PT_NODE *temp_val = NULL;
+
   if (on_update_expr_type == DB_DEFAULT_NONE)
     {
       return error;
     }
 
   PT_OP_TYPE op = pt_op_type_from_default_expr_type (on_update_expr_type);
+
   PT_NODE *on_update_default_expr = parser_make_expression (parser, op, NULL, NULL, NULL);
   if (on_update_default_expr == NULL)
     {
       PT_ERRORm (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
       return ER_FAILED;
     }
+
   on_update_default_expr = pt_semantic_type (parser, on_update_default_expr, NULL);
   on_update_default_expr = pt_semantic_check (parser, on_update_default_expr);
   on_update_default_expr->buffer_pos = attribute->buffer_pos;
@@ -12500,11 +12503,11 @@ exit:
     }
 
   db_value_clear (&on_update_val);
-  if (temp_val == NULL)
+  if (temp_val != NULL)
     {
       parser_free_node (parser, temp_val);
     }
-  if (on_update_default_expr == NULL)
+  if (on_update_default_expr != NULL)
     {
       parser_free_node (parser, on_update_default_expr);
     }
@@ -13413,7 +13416,7 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE *
       attr_chg_prop->class_has_subclass = true;
     }
 
-  error = check_on_update (parser, attribute, NULL);
+  error = check_on_update (parser, attribute);
   if (error != NO_ERROR)
     {
       goto exit;
