@@ -2,6 +2,17 @@
 #include "parse_tree.h"
 #include "parser.h"
 
+#if 0 //PT_TYPE_MAYBE
+- for the moment I don't see how to eliminate PT_TYPE_MAYBE from functions with multiple signature
+- with PT_TYPE_MAYBE in signature, the final type will not be decided during type checking but later
+- without PT_TYPE_MAYBE in signature you must either:
+    1. choose one signature and apply cast
+        ... but what about "prepare median(?)... execute with date'2018-06-13... execute with 123'"?
+    2. handle from code 
+        ... but there are cases when the cast should be made
+but neither one of them is OK
+#endif
+
 std::vector<func_signature> func_signature::integer = {
   {PT_TYPE_INTEGER, {}, {}},
 };
@@ -15,13 +26,13 @@ std::vector<func_signature> func_signature::percentile_cont = {
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_NUMBER  }, {}},
   {0                , {PT_GENERIC_TYPE_DATETIME}, {}},
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_STRING  }, {}},
-//{0                , {PT_TYPE_MAYBE           }, {}},
+  {0                , {PT_TYPE_MAYBE           }, {}},
   {0                , {PT_TYPE_NA              }, {}},
 #else //use double as return type (as documentation says)... but tests are failing (adjust doc or tests)
   {PT_TYPE_DOUBLE   , {PT_GENERIC_TYPE_NUMBER  }, {}},
   {0                , {PT_GENERIC_TYPE_STRING  }, {}},
   {PT_TYPE_DOUBLE   , {PT_GENERIC_TYPE_DATETIME}, {}},
-//{0                , {PT_TYPE_MAYBE           }, {}},
+  {0                , {PT_TYPE_MAYBE           }, {}},
   {0                , {PT_TYPE_NA              }, {}},
 #endif
 };
@@ -30,7 +41,7 @@ std::vector<func_signature> func_signature::percentile_disc = {
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_NUMBER  }, {}},
   {0                , {PT_GENERIC_TYPE_DATETIME}, {}},
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_STRING  }, {}},
-//{0                , {PT_TYPE_MAYBE           }, {}},
+  {0                , {PT_TYPE_MAYBE           }, {}},
   {0                , {PT_TYPE_NA              }, {}},
 };
 
