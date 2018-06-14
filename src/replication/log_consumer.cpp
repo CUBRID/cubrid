@@ -29,8 +29,6 @@
 namespace cubreplication
 {
 
-#define LC_BUFFER_CAPACITY (1 * 1024 * 1024)
-
 int log_consumer::append_entry (replication_stream_entry *entry)
 {
   /* TODO : split list of entries by transaction */
@@ -38,11 +36,11 @@ int log_consumer::append_entry (replication_stream_entry *entry)
   return NO_ERROR;
 }
 
-int log_consumer::fetch_stream_entry (replication_stream_entry **entry)
+int log_consumer::fetch_stream_entry (replication_stream_entry *&entry)
 {
   int err = NO_ERROR;
 
-  replication_stream_entry* se = new replication_stream_entry (get_write_stream ());
+  replication_stream_entry* se = new replication_stream_entry (get_stream ());
 
   err = se->prepare ();
   if (err != NO_ERROR)
@@ -50,7 +48,7 @@ int log_consumer::fetch_stream_entry (replication_stream_entry **entry)
       return err;
     }
 
-  *entry = se;
+  entry = se;
 
   return err;
 }
@@ -62,7 +60,7 @@ int log_consumer::consume_thread (void)
    for (;;)
     {
       replication_stream_entry * se = NULL;
-      err = fetch_stream_entry (&se);
+      err = fetch_stream_entry (se);
       if (err != NO_ERROR)
         {
           break;
@@ -78,13 +76,12 @@ log_consumer* log_consumer::new_instance (const CONSUMER_TYPE req_type,
   int error_code = NO_ERROR;
 
   log_consumer *new_lc = new log_consumer ();
-  new_lc->curr_position = start_position;
+  new_lc->m_start_position = start_position;
   new_lc->m_type = req_type;
 
   /* TODO : sys params */
-  new_lc->consume_stream = new cubstream::packing_stream (10 * 1024 * 1024, 1);
-  new_lc->consume_stream->init (new_lc->curr_position);
-
+  new_lc->m_stream = new cubstream::packing_stream (10 * 1024 * 1024, 2);
+  new_lc->m_stream->init (new_lc->m_start_position);
 
   return new_lc; 
 }
@@ -95,10 +92,4 @@ int log_consumer::fetch_data (char *ptr, const size_t &amount)
   return NO_ERROR;
 }
  
-
-cubstream::packing_stream * log_consumer::get_write_stream (void)
-{
-  return consume_stream;
-}
-
 } /* namespace cubreplication */

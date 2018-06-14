@@ -42,6 +42,7 @@ enum consumer_type
   DATABASE_COPY,
   REPLICATION_DATA_DUMP
 };
+
 typedef enum consumer_type CONSUMER_TYPE;
 
 /* 
@@ -55,15 +56,15 @@ protected:
 
   std::vector<replication_stream_entry*> m_stream_entries;
 
-  /* file attached to log_generator (only for global instance) */
+  /* file attached to log_consumer */
   log_file *file;
 
-  cubstream::packing_stream *consume_stream;
+  cubstream::packing_stream *m_stream;
 
   slave_replication_channel *m_src;
 
-  /* current append position to be assigned to a new entry */
-  cubstream::stream_position curr_position;
+  /* start append position  */
+  cubstream::stream_position m_start_position;
 
 public:
 
@@ -71,7 +72,7 @@ public:
 
   int append_entry (replication_stream_entry *entry);
 
-  int fetch_stream_entry (replication_stream_entry **entry);
+  int fetch_stream_entry (replication_stream_entry *&entry);
 
   int consume_thread (void);
 
@@ -79,7 +80,10 @@ public:
 
   int fetch_data (char *ptr, const size_t &amount);
   
-  cubstream::packing_stream * get_write_stream (void);
+  cubstream::packing_stream * get_stream (void)
+    {
+      return m_stream;
+    };
 
   int fetch_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count, size_t *processed_bytes)
       { return fetch_data (ptr, byte_count); };

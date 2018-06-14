@@ -36,11 +36,9 @@ log_generator * log_generator::global_log_generator = NULL;
 
 log_generator::~log_generator()
 {
-  if (this == global_log_generator)
-    {
-      delete m_stream;
-      log_generator::global_log_generator = NULL;
-    }
+  assert (this == global_log_generator);
+  delete m_stream;
+  log_generator::global_log_generator = NULL;
 
   for (int i = 0; i < m_stream_entries.size (); i++)
     {
@@ -49,34 +47,24 @@ log_generator::~log_generator()
     }
 }
 
-log_generator* log_generator::new_instance (THREAD_ENTRY *th_entry, const cubstream::stream_position &start_position)
+log_generator* log_generator::new_instance (const cubstream::stream_position &start_position)
 {
-  int error_code = NO_ERROR;
-
   log_generator *new_lg = new log_generator ();
-  new_lg->m_append_position = start_position;
-
+  new_lg->m_start_append_position = start_position;
+  
+  /* create stream only for global instance */
   /* TODO : sys params */
   new_lg->m_stream = new cubstream::packing_stream (100 * 1024 * 1024, 1000);
-  new_lg->m_stream->init (new_lg->m_append_position);
+  new_lg->m_stream->init (new_lg->m_start_append_position);
 
-  if (th_entry == NULL)
+  /* this is the global instance */
+  assert (global_log_generator == NULL);
+  global_log_generator = new_lg;
+  /* TODO[arnia] : actual number of transactions */
+  new_lg->m_stream_entries.resize (1000);
+  for (int i = 0; i < 1000; i++)
     {
-      /* this is the global instance */
-      assert (global_log_generator == NULL);
-      global_log_generator = new_lg;
-      /* TODO[arnia] : actual number of transactions */
-      new_lg->m_stream_entries.resize (100);
-      for (int i = 0; i < 100; i++)
-        {
-          new_lg->m_stream_entries[i] = new replication_stream_entry (new_lg->m_stream);
-        }
-    }
-  else
-    {
-      /* TODO[arnia] : set instance per thread  */
-      new_lg->m_stream_entries.resize (1);
-      new_lg->m_stream_entries[0] = new replication_stream_entry (new_lg->m_stream);
+      new_lg->m_stream_entries[i] = new replication_stream_entry (new_lg->m_stream);
     }
 
   return new_lg;
@@ -112,7 +100,7 @@ void log_generator::set_ready_to_pack (THREAD_ENTRY *th_entry)
   if (th_entry == NULL)
     {
       int i;
-      /* TODO[arnia] : this should be used only for testing */
+      /* TODO : this should be used only for testing */
       for (i = 0; i < m_stream_entries.size (); i++)
         {
           m_stream_entries[i]->set_packable (true);

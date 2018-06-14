@@ -55,8 +55,8 @@ private:
 
   cubstream::packing_stream *m_stream;
 
-  /* current append position to be assigned to a new entry */
-  cubstream::stream_position m_append_position;
+  /* start append position of generator stream */
+  cubstream::stream_position m_start_append_position;
 
   static log_generator *global_log_generator;
 
@@ -75,9 +75,9 @@ public:
 
   int pack_stream_entries (THREAD_ENTRY *th_entry);
 
-  static log_generator *new_instance (THREAD_ENTRY *th_entry, const cubstream::stream_position &start_position);
+  static log_generator *new_instance (const cubstream::stream_position &start_position);
 
-  cubstream::packing_stream * get_write_stream (void) { return m_stream; };
+  cubstream::packing_stream * get_stream (void) { return m_stream; };
 };
 
 } /* namespace cubreplication */
