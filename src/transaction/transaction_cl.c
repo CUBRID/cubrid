@@ -75,7 +75,8 @@ LOCK tm_Tran_rep_read_lock = NULL_LOCK;	/* used in RR transaction locking to not
  * must be set before each transaction command.
  */
 LC_FETCH_VERSION_TYPE tm_Tran_read_fetch_instance_version = LC_FETCH_MVCC_VERSION;
-
+TM_TRAN_LATEST_QUERY_EXECUTION_TYPE tm_Tran_latest_query_execution_type =
+  TM_TRAN_NO_QUERY_OR_LATEST_QUERY_EXECUTED_NOT_ENDED;
 
 /* Timeout(milli seconds) for queries.
  *
@@ -250,6 +251,7 @@ tran_commit (bool retain_lock)
 {
   TRAN_STATE state;
   int error_code = NO_ERROR;
+  bool query_end_notify_server;
 
   /* check deferred trigger activities, these may prevent the transaction from being committed. */
   error_code = tr_check_commit_triggers (TR_TIME_BEFORE);
@@ -263,6 +265,7 @@ tran_commit (bool retain_lock)
 
   if (ws_need_flush ())
     {
+      assert (!TM_TRAN_IS_COMMITTED_LATEST_EXECUTED_QUERY ());
       if (tm_Use_OID_preflush)
 	{
 	  (void) locator_assign_all_permanent_oids ();
@@ -277,57 +280,69 @@ tran_commit (bool retain_lock)
 	}
     }
 
+  if (TM_TRAN_IS_ENDED_LATEST_EXECUTED_QUERY ())
+    {
+      query_end_notify_server = false;
+    }
+  else
+    {
+      query_end_notify_server = true;
+    }
+
   /* Clear all the queries */
-  db_clear_client_query_result (true, false);
+  db_clear_client_query_result (query_end_notify_server, false);
 
   /* if the commit fails or not, we should clear the clients savepoint list */
   tran_free_savepoint_list ();
 
-  /* Forward the commit the transaction manager in the server */
-  state = tran_server_commit (retain_lock);
-
-  switch (state)
+  if (!TM_TRAN_IS_COMMITTED_LATEST_EXECUTED_QUERY ())
     {
-    case TRAN_UNACTIVE_COMMITTED:
-    case TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS:
-      /* Successful commit */
-      error_code = NO_ERROR;
-      break;
+      /* Forward the commit the transaction manager in the server */
+      state = tran_server_commit (retain_lock);
 
-    case TRAN_UNACTIVE_ABORTED:
-    case TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS:
-    case TRAN_UNACTIVE_UNILATERALLY_ABORTED:
-      /* The commit failed */
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "tm_commit: Unable to commit. Transaction was aborted\n");
-#endif /* CUBRID_DEBUG */
-      break;
-
-    case TRAN_UNACTIVE_UNKNOWN:
-      if (!BOOT_IS_CLIENT_RESTARTED ())
+      switch (state)
 	{
+	case TRAN_UNACTIVE_COMMITTED:
+	case TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS:
+	  /* Successful commit */
+	  error_code = NO_ERROR;
+	  break;
+
+	case TRAN_UNACTIVE_ABORTED:
+	case TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS:
+	case TRAN_UNACTIVE_UNILATERALLY_ABORTED:
+	  /* The commit failed */
 	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
+#if defined(CUBRID_DEBUG)
+	  er_log_debug (ARG_FILE_LINE, "tm_commit: Unable to commit. Transaction was aborted\n");
+#endif /* CUBRID_DEBUG */
+	  break;
+
+	case TRAN_UNACTIVE_UNKNOWN:
+	  if (!BOOT_IS_CLIENT_RESTARTED ())
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error_code = er_errid ();
+	      break;
+	    }
+	  /* Fall Thru */
+	case TRAN_RECOVERY:
+	case TRAN_ACTIVE:
+	case TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE:
+	case TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE:
+	case TRAN_UNACTIVE_2PC_PREPARE:
+	case TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES:
+	case TRAN_UNACTIVE_2PC_ABORT_DECISION:
+	case TRAN_UNACTIVE_2PC_COMMIT_DECISION:
+	default:
+	  assert (er_errid () != NO_ERROR);
+	  error_code = er_errid ();
+#if defined(CUBRID_DEBUG)
+	  er_log_debug (ARG_FILE_LINE, "tm_commit: Unknown commit state = %s at client\n", log_state_string (state));
+#endif /* CUBRID_DEBUG */
 	  break;
 	}
-      /* Fall Thru */
-    case TRAN_RECOVERY:
-    case TRAN_ACTIVE:
-    case TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE:
-    case TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE:
-    case TRAN_UNACTIVE_2PC_PREPARE:
-    case TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES:
-    case TRAN_UNACTIVE_2PC_ABORT_DECISION:
-    case TRAN_UNACTIVE_2PC_COMMIT_DECISION:
-    default:
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "tm_commit: Unknown commit state = %s at client\n", log_state_string (state));
-#endif /* CUBRID_DEBUG */
-      break;
     }
 
   /* Increment snapshot version in work space */
@@ -347,6 +362,7 @@ tran_commit (bool retain_lock)
     }
 
   tm_Tran_rep_read_lock = NULL_LOCK;
+  tm_Tran_latest_query_execution_type = TM_TRAN_NO_QUERY_OR_LATEST_QUERY_EXECUTED_NOT_ENDED;
 
   return error_code;
 }
@@ -446,6 +462,8 @@ tran_abort (void)
 
   tm_Tran_rep_read_lock = NULL_LOCK;
 
+  tm_Tran_latest_query_execution_type = TM_TRAN_NO_QUERY_OR_LATEST_QUERY_EXECUTED_NOT_ENDED;
+
   return error_cod;
 }
 
@@ -524,6 +542,7 @@ tran_abort_only_client (bool is_server_down)
   db_clear_client_query_result (false, true);
 
   tm_Tran_rep_read_lock = NULL_LOCK;
+  tm_Tran_latest_query_execution_type = TM_TRAN_NO_QUERY_OR_LATEST_QUERY_EXECUTED_NOT_ENDED;
 
   if (is_server_down == false)
     {
@@ -1308,4 +1327,43 @@ bool
 tran_get_check_interrupt (void)
 {
   return tm_Tran_check_interrupt;
+}
+
+/*
+* tran_set_latest_query_execution_type : set latest transaction query execution type
+*     return: nothing
+*   end_query_result(in): end query result
+*   committed(in): true, if transaction was committed
+*   reset_on_commit(in): non zero, is reset needed
+*/
+void
+tran_set_latest_query_execution_type (int end_query_result, bool committed, int reset_on_commit)
+{
+  assert (!TM_TRAN_IS_COMMITTED_LATEST_EXECUTED_QUERY ());
+
+  if (end_query_result == NO_ERROR)
+    {
+      /* Query already ended */
+      if (committed)
+	{
+	  /* Transaction successfully committed */
+	  if (reset_on_commit)
+	    {
+	      tm_Tran_latest_query_execution_type = TM_TRAN_LATEST_QUERY_EXECUTED_ENDED_COMMITED_WITH_RESET;
+	    }
+	  else
+	    {
+	      tm_Tran_latest_query_execution_type = TM_TRAN_LATEST_QUERY_EXECUTED_ENDED_COMMITED;
+	    }
+	}
+      else
+	{
+	  /* Transaction successfully committed */
+	  tm_Tran_latest_query_execution_type = TM_TRAN_LATEST_QUERY_EXECUTED_ENDED_NOT_COMMITED;
+	}
+    }
+  else
+    {
+      assert (tm_Tran_latest_query_execution_type == TM_TRAN_NO_QUERY_OR_LATEST_QUERY_EXECUTED_NOT_ENDED);
+    }
 }

@@ -137,6 +137,7 @@ EXPORTS
     db_execute
     db_execute_and_keep_statement
     db_execute_statement
+    db_set_statement_auto_commit
     db_find_all_triggers
     db_find_class
     db_find_user

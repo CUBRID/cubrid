@@ -652,6 +652,8 @@ extern "C"
 
   extern void db_set_read_fetch_instance_version (LC_FETCH_VERSION_TYPE read_Fetch_Instance_Version);
 
+  extern int db_set_statement_auto_commit (DB_SESSION * session, char auto_commit);
+
   extern int db_query_set_copy_tplvalue (DB_QUERY_RESULT * result, int copy);
 
   extern void db_close_session (DB_SESSION * session);

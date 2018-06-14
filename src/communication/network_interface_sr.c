@@ -86,6 +86,8 @@
 #define STATDUMP_BUF_SIZE (2 * 16 * 1024)
 #define QUERY_INFO_BUF_SIZE (2048 + STATDUMP_BUF_SIZE)
 
+#define NET_DEFER_END_QUERIES_MAX 10
+
 /* This file is only included in the server.  So set the on_server flag on */
 unsigned int db_on_server = 1;
 
@@ -4619,7 +4621,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   PAGE_PTR page_ptr;
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_page_buf;
   QUERY_FLAG query_flag;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_PTR_ALIGNED_SIZE + OR_CACHE_TIME_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 7 + OR_PTR_ALIGNED_SIZE + OR_CACHE_TIME_SIZE) a_reply;
   CACHE_TIME clt_cache_time;
   CACHE_TIME srv_cache_time;
   int query_timeout;
@@ -4643,8 +4645,10 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   bool tran_abort = false;
 
   EXECUTION_INFO info = { NULL, NULL, NULL };
-
-  bool end_query_allowed;
+  QUERY_ID net_Deferred_end_queries[NET_DEFER_END_QUERIES_MAX], *p_net_Deferred_end_queries = net_Deferred_end_queries;
+  int n_query_ids = 0, i = 0;
+  bool end_query_allowed, reset_on_commit;
+  LOG_TDES *tdes;
   TRAN_STATE tran_state;
 
   trace_slow_msec = prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS);
@@ -4683,6 +4687,26 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   ptr = or_unpack_int (ptr, &query_flag);
   OR_UNPACK_CACHE_TIME (ptr, &clt_cache_time);
   ptr = or_unpack_int (ptr, &query_timeout);
+  if (IS_QUERY_EXECUTE_WITH_COMMIT (query_flag))
+    {
+      ptr = or_unpack_int (ptr, &n_query_ids);
+      if (n_query_ids + 1 > NET_DEFER_END_QUERIES_MAX)
+	{
+	  p_net_Deferred_end_queries = (QUERY_ID *) malloc ((n_query_ids + 1) * sizeof (QUERY_ID));
+	  if (p_net_Deferred_end_queries == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (size_t) (n_query_ids + 1) * sizeof (QUERY_ID));
+	      css_send_abort_to_client (thread_p->conn_entry, rid);
+	      return;
+	    }
+	}
+
+      for (i = 0; i < n_query_ids; i++)
+	{
+	  ptr = or_unpack_ptr (ptr, p_net_Deferred_end_queries + i);
+	}
+    }
   if (IS_QUERY_EXECUTED_WITHOUT_DATA_BUFFERS (query_flag))
     {
       assert (data_size < EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE);
@@ -4705,8 +4729,6 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	  return;		/* error */
 	}
     }
-
-  /* TO DO - handle net_Deferred_end_queries */
 
   CACHE_TIME_RESET (&srv_cache_time);
 
@@ -4907,18 +4929,39 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       xasl_cache_entry_p = NULL;
     }
 
+  reset_on_commit = false;
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  tran_state = tdes->state;
   if (end_query_allowed)
     {
-      /* TO DO - handle end query */
-
-      tran_state = xtran_server_commit (thread_p, false);
-      net_cleanup_server_queues (rid);
-      if (tran_state != TRAN_UNACTIVE_COMMITTED && tran_state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+      p_net_Deferred_end_queries[n_query_ids++] = query_id;
+      for (i = 0; i < n_query_ids; i++)
 	{
-	  /* Likely the commit failed.. somehow */
+	  if (p_net_Deferred_end_queries[i] > 0)
+	    {
+	      error_code = xqmgr_end_query (thread_p, p_net_Deferred_end_queries[i]);
+	      if (error_code != NO_ERROR)
+		{
+		  break;
+		}
+	    }
+	}
+
+      if (error_code != NO_ERROR)
+	{
 	  return_error_to_client (thread_p, rid);
 	}
-      /* TO DO - computes reset on commit */
+      else
+	{
+	  tran_state = xtran_server_commit (thread_p, false);
+	  net_cleanup_server_queues (rid);
+	  if (tran_state != TRAN_UNACTIVE_COMMITTED && tran_state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+	    {
+	      /* Likely the commit failed.. somehow */
+	      return_error_to_client (thread_p, rid);
+	    }
+	  /* TO DO - computes reset on commit */
+	}
     }
 
   ptr = or_pack_int (ptr, queryinfo_string_length);
@@ -4928,21 +4971,24 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   /* result cache created time */
   OR_PACK_CACHE_TIME (ptr, &srv_cache_time);
 
-  /* pack end query result */
-  if (end_query_allowed)
+  if (IS_QUERY_EXECUTED_WITHOUT_DATA_BUFFERS (query_flag))
     {
-      /* query ended */
-      ptr = or_pack_int (ptr, NO_ERROR);
-    }
-  else
-    {
-      /* query not ended */
-      ptr = or_pack_int (ptr, ER_FAILED);
-    }
+      /* pack end query result */
+      if (end_query_allowed)
+	{
+	  /* query ended */
+	  ptr = or_pack_int (ptr, NO_ERROR);
+	}
+      else
+	{
+	  /* query not ended */
+	  ptr = or_pack_int (ptr, ER_FAILED);
+	}
 
-  /* pack commit result - TO DO handle reset on commit */
-  ptr = or_pack_int (ptr, (int) tran_state);
-  ptr = or_pack_int (ptr, (int) true);
+      /* pack commit result */
+      ptr = or_pack_int (ptr, (int) tran_state);
+      ptr = or_pack_int (ptr, (int) reset_on_commit);
+    }
 
 #if !defined(NDEBUG)
   /* suppress valgrind UMW error */

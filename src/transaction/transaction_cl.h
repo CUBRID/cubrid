@@ -40,6 +40,19 @@
 #include "log_comm.h"
 #include "dbdef.h"
 
+/*
+* The TM_TRAN_LATEST_QUERY_EXECUTION_TYPE enumeration is used to reduce the number of message communication between
+* client and server. Thus, when possible, "execute query", "end query" and "commit" can be executed using only one
+* message. This optimization has a serious impact on performance.
+*/
+typedef enum tm_tran_latest_query_execution_type TM_TRAN_LATEST_QUERY_EXECUTION_TYPE;
+enum tm_tran_latest_query_execution_type
+{
+  TM_TRAN_NO_QUERY_OR_LATEST_QUERY_EXECUTED_NOT_ENDED,	/* transaction has no query or its latest query executed but not ended. */
+  TM_TRAN_LATEST_QUERY_EXECUTED_ENDED_NOT_COMMITED,	/* latest transaction query executed but not ended */
+  TM_TRAN_LATEST_QUERY_EXECUTED_ENDED_COMMITED,	/* latest transaction query executed, ended, committed */
+  TM_TRAN_LATEST_QUERY_EXECUTED_ENDED_COMMITED_WITH_RESET	/* latest transaction query executed, ended, committed with reset */
+};
 
 #define TM_TRAN_INDEX()      (tm_Tran_index)
 #define TM_TRAN_ISOLATION()  (tm_Tran_isolation)
@@ -48,6 +61,7 @@
 #define TM_TRAN_ID()         (tm_Tran_ID)
 #define TM_TRAN_REP_READ_LOCK() (tm_Tran_rep_read_lock)
 #define TM_TRAN_READ_FETCH_VERSION() (tm_Tran_read_fetch_instance_version)
+#define TM_TRAN_LATEST_QUERY_EXECUTION_TYPE() (tm_Tran_latest_query_execution_type)
 
 typedef enum savepoint_type
 {
@@ -65,6 +79,17 @@ extern bool tm_Use_OID_preflush;
 extern LOCK tm_Tran_rep_read_lock;
 extern LC_FETCH_VERSION_TYPE tm_Tran_read_fetch_instance_version;
 extern int tm_Tran_invalidate_snapshot;
+extern TM_TRAN_LATEST_QUERY_EXECUTION_TYPE tm_Tran_latest_query_execution_type;
+
+#define TM_TRAN_IS_ENDED_LATEST_EXECUTED_QUERY()  \
+  (tm_Tran_latest_query_execution_type != TM_TRAN_NO_QUERY_OR_LATEST_QUERY_EXECUTED_NOT_ENDED)
+
+#define TM_TRAN_IS_COMMITTED_WITH_RESET_LATEST_EXECUTED_QUERY()  \
+  (tm_Tran_latest_query_execution_type != TM_TRAN_LATEST_QUERY_EXECUTED_ENDED_COMMITED_WITH_RESET)
+
+#define TM_TRAN_IS_COMMITTED_LATEST_EXECUTED_QUERY()  \
+  (tm_Tran_latest_query_execution_type == TM_TRAN_LATEST_QUERY_EXECUTED_ENDED_COMMITED  \
+   || tm_Tran_latest_query_execution_type == TM_TRAN_LATEST_QUERY_EXECUTED_ENDED_COMMITED_WITH_RESET)
 
 extern void tran_cache_tran_settings (int tran_index, int lock_timeout, TRAN_ISOLATION tran_isolation);
 extern void tran_get_tran_settings (int *lock_timeout_in_msecs, TRAN_ISOLATION * tran_isolation, bool * async_ws);
@@ -97,4 +122,5 @@ extern void tran_end_libcas_function (void);
 extern bool tran_is_in_libcas (void);
 extern bool tran_set_check_interrupt (bool flag);
 extern bool tran_get_check_interrupt (void);
+extern void tran_set_latest_query_execution_type (int end_query_result, bool committed, int reset_on_commit);
 #endif /* _TRANSACTION_CL_H_ */

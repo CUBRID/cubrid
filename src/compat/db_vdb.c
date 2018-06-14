@@ -3950,3 +3950,109 @@ pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
 
   return node;
 }
+
+/*
+* db_set_statement_auto_commit () - Init statement auto commit.
+*
+* return : error code.
+* session(in): compiled session
+* auto_commit(in): true, if auto commit
+*/
+int
+db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
+{
+  PT_NODE *statement;
+  int stmt_ndx;
+
+  assert (session != NULL);
+  /* check parameters */
+  if (session->dimension == 0 || !session->statements)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_EMPTY_STATEMENT, 0);
+      return er_errid ();
+    }
+
+  stmt_ndx = session->stmt_ndx - 1;
+  statement = session->statements[stmt_ndx];
+  if (stmt_ndx < 0 || stmt_ndx >= session->dimension || !statement)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return er_errid ();
+    }
+
+  /* check if the statement is compiled and prepared */
+  if (session->stage[stmt_ndx] < StatementPreparedStage)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_INVALID_SESSION, 0);
+      return er_errid ();
+    }
+
+  /* Init statement auto commit. */
+  statement->use_auto_commit = 0;
+  if (!(auto_commit && db_session_is_last_statement (session)))
+    {
+      return NO_ERROR;
+    }
+
+  /* Check whether statement can uses auto commit. */
+  if (session->dimension > 1)
+    {
+      /* Do not use the optimization if have more than one statement and at least one is SELECT. */
+      for (stmt_ndx = 0; stmt_ndx < session->dimension; stmt_ndx++)
+	{
+	  if ((session->statements[stmt_ndx]) && ((session->statements[stmt_ndx])->node_type == PT_SELECT))
+	    {
+	      return NO_ERROR;
+	    }
+	}
+    }
+
+  if (tr_has_commit_triggers (TR_TIME_BEFORE))
+    {
+      /* Triggers must be excuted before commit. Disable optimization. */
+      return NO_ERROR;
+    }
+
+  /* Here you can add more statements, if you think that is safe to execute them with commit.
+   * For now, we care about optimizing most common queries.
+   */
+  switch (statement->node_type)
+    {
+    case PT_SELECT:
+      /* Do not use the optimization if OIDs included */
+      if (!statement->info.query.oids_included)
+	{
+	  statement->use_auto_commit = 1;
+	}
+      break;
+
+    case PT_INSERT:
+      /* Do not use optimization in case of insert execution on broker side */
+      if (statement->info.insert.server_allowed)
+	{
+	  statement->use_auto_commit = 1;
+	}
+      break;
+
+    case PT_UPDATE:
+      /* Do not use optimization in case of update execution on broker side */
+      if (statement->info.update.server_update)
+	{
+	  statement->use_auto_commit = 1;
+	}
+      break;
+
+    case PT_DELETE:
+      /* Do not use optimization in case of delete execution on broker side */
+      if (statement->info.delete_.server_delete)
+	{
+	  statement->use_auto_commit = 1;
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  return NO_ERROR;
+}
