@@ -2337,14 +2337,10 @@ stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 {
   TRAN_STATE state;
   int xretain_lock;
-  bool retain_lock, reset_on_commit = false;
+  bool retain_lock, reset_on_commit = false, has_updated;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
-  HA_SERVER_STATE ha_state;
-  int client_type;
-  char *hostname;
-  bool has_updated;
   int row_count = DB_ROW_COUNT_NOT_SET;
   int n_query_ids = 0, i = 0;
   QUERY_ID query_id;
@@ -2382,64 +2378,8 @@ stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     }
 
   ptr = or_pack_int (reply, (int) state);
-  client_type = logtb_find_current_client_type (thread_p);
-  hostname = logtb_find_current_client_hostname (thread_p);
-  ha_state = css_ha_server_state ();
-  if (has_updated && ha_state == HA_SERVER_STATE_TO_BE_STANDBY && BOOT_NORMAL_CLIENT_TYPE (client_type))
-    {
-      reset_on_commit = true;
-      er_log_debug (ARG_FILE_LINE,
-		    "stran_server_commit(): " "(has_updated && to-be-standby && normal client) "
-		    "DB_CONNECTION_STATUS_RESET\n");
-    }
-  else if (ha_state == HA_SERVER_STATE_STANDBY)
-    {
-      /* be aware that the order of if conditions is important */
-      if (BOOT_CSQL_CLIENT_TYPE (client_type))
-	{
-	  thread_p->conn_entry->reset_on_commit = false;
-	}
-      else if (client_type == BOOT_CLIENT_BROKER)
-	{
-	  reset_on_commit = true;
-	  er_log_debug (ARG_FILE_LINE,
-			"stran_server_commit(): " "(standby && read-write broker) " "DB_CONNECTION_STATUS_RESET\n");
-	}
-      else if (BOOT_NORMAL_CLIENT_TYPE (client_type) && thread_p->conn_entry->reset_on_commit == true)
-	{
-	  reset_on_commit = true;
-	  thread_p->conn_entry->reset_on_commit = false;
-	  er_log_debug (ARG_FILE_LINE,
-			"stran_server_commit: " "(standby && conn->reset_on_commit && normal client) "
-			"DB_CONNECTION_STATUS_RESET\n");
-	}
-      else if (BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE (client_type) && css_is_ha_repl_delayed () == true)
-	{
-	  if (thread_p->conn_entry->ignore_repl_delay == false)
-	    {
-	      reset_on_commit = true;
-	      er_log_debug (ARG_FILE_LINE,
-			    "stran_server_commit: " "(standby && replication delay " "&& broker and default client) "
-			    "DB_CONNECTION_STATUS_RESET\n");
-	    }
-	  thread_p->conn_entry->reset_on_commit = false;
-	}
-    }
-  else if (ha_state == HA_SERVER_STATE_ACTIVE && client_type == BOOT_CLIENT_SLAVE_ONLY_BROKER)
-    {
-      reset_on_commit = true;
-      er_log_debug (ARG_FILE_LINE,
-		    "stran_server_commit(): " "(active && slave only broker) " "DB_CONNECTION_STATUS_RESET\n");
-    }
-  else if (ha_state == HA_SERVER_STATE_MAINTENANCE
-	   && !BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (hostname, boot_Host_name, client_type))
-    {
-      reset_on_commit = true;
-      er_log_debug (ARG_FILE_LINE,
-		    "stran_server_commit(): " "(maintenance && remote normal client type) "
-		    "DB_CONNECTION_STATUS_RESET\n");
-    }
 
+  xtran_reset_on_commit (thread_p, has_updated, &reset_on_commit);
   ptr = or_pack_int (ptr, (int) reset_on_commit);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -2460,14 +2400,10 @@ void
 stran_server_abort (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   TRAN_STATE state;
-  int reset_on_commit = false;
+  bool reset_on_commit = false, has_updated;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
-  HA_SERVER_STATE ha_state;
-  int client_type;
-  char *hostname;
-  bool has_updated;
 
   has_updated = logtb_has_updated (thread_p);
 
@@ -2481,66 +2417,8 @@ stran_server_abort (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       return_error_to_client (thread_p, rid);
     }
 
+  xtran_reset_on_commit (thread_p, has_updated, &reset_on_commit);
   ptr = or_pack_int (reply, state);
-  client_type = logtb_find_current_client_type (thread_p);
-  hostname = logtb_find_current_client_hostname (thread_p);
-  ha_state = css_ha_server_state ();
-  if (has_updated && ha_state == HA_SERVER_STATE_TO_BE_STANDBY && BOOT_NORMAL_CLIENT_TYPE (client_type))
-    {
-      reset_on_commit = true;
-      er_log_debug (ARG_FILE_LINE,
-		    "stran_server_abort(): " "(has_updated && to-be-standby && normal client) "
-		    "DB_CONNECTION_STATUS_RESET\n");
-    }
-  else if (ha_state == HA_SERVER_STATE_STANDBY)
-    {
-      /* be aware that the order of if conditions is important */
-      if (BOOT_CSQL_CLIENT_TYPE (client_type))
-	{
-	  thread_p->conn_entry->reset_on_commit = false;
-	}
-      else if (client_type == BOOT_CLIENT_BROKER)
-	{
-	  reset_on_commit = true;
-	  er_log_debug (ARG_FILE_LINE,
-			"stran_server_abort(): " "(standby && read-write broker) " "DB_CONNECTION_STATUS_RESET\n");
-	}
-      else if (BOOT_NORMAL_CLIENT_TYPE (client_type) && thread_p->conn_entry->reset_on_commit == true)
-	{
-	  reset_on_commit = true;
-	  thread_p->conn_entry->reset_on_commit = false;
-	  er_log_debug (ARG_FILE_LINE,
-			"stran_server_abort(): " "(standby && conn->reset_on_commit && normal client) "
-			"DB_CONNECTION_STATUS_RESET\n");
-
-	}
-      else if (BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE (client_type) && css_is_ha_repl_delayed () == true)
-	{
-	  if (thread_p->conn_entry->ignore_repl_delay == false)
-	    {
-	      reset_on_commit = true;
-	      er_log_debug (ARG_FILE_LINE,
-			    "stran_server_abort(): " "(standby && replication delay " "&& default and broker client) "
-			    "DB_CONNECTION_STATUS_RESET\n");
-	    }
-	  thread_p->conn_entry->reset_on_commit = false;
-	}
-    }
-  else if (ha_state == HA_SERVER_STATE_ACTIVE && client_type == BOOT_CLIENT_SLAVE_ONLY_BROKER)
-    {
-      reset_on_commit = true;
-      er_log_debug (ARG_FILE_LINE,
-		    "stran_server_abort(): " "(active && slave only broker) " "DB_CONNECTION_STATUS_RESET\n");
-    }
-  else if (ha_state == HA_SERVER_STATE_MAINTENANCE
-	   && !BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (hostname, boot_Host_name, client_type))
-    {
-      reset_on_commit = true;
-      er_log_debug (ARG_FILE_LINE,
-		    "stran_server_abort(): " "(maintenance && remote normal client type) "
-		    "DB_CONNECTION_STATUS_RESET\n");
-    }
-
   ptr = or_pack_int (ptr, (int) reset_on_commit);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -4627,6 +4505,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   int query_timeout;
   XASL_CACHE_ENTRY *xasl_cache_entry_p = NULL;
   char data_buf[EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE + MAX_ALIGNMENT], *aligned_data_buf = NULL;
+  bool has_updated;
 
   int response_time = 0;
 
@@ -4953,6 +4832,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	}
       else
 	{
+	  has_updated = logtb_has_updated (thread_p);
 	  tran_state = xtran_server_commit (thread_p, false);
 	  net_cleanup_server_queues (rid);
 	  if (tran_state != TRAN_UNACTIVE_COMMITTED && tran_state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
@@ -4960,7 +4840,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	      /* Likely the commit failed.. somehow */
 	      return_error_to_client (thread_p, rid);
 	    }
-	  /* TO DO - computes reset on commit */
+	  xtran_reset_on_commit (thread_p, has_updated, &reset_on_commit);
 	}
     }
 
