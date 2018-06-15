@@ -7743,130 +7743,134 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
   /* Import default value and on update default expr from referenced table for those attributes in the the view that don't have them. */
   for (attr = attrs, col = columns; attr && col; attr = attr->next, col = col->next)
     {
+      if ((!attr->info.attr_def.data_default || attr->info.attr_def.on_update == DB_DEFAULT_NONE)
+	  && col->node_type == PT_NAME)
+	{
+	  /* found matching column */
+	  if (col->info.name.spec_id == 0)
+	    {
+	      continue;
+	    }
+	  spec = (PT_NODE *) col->info.name.spec_id;
+	  entity_name = spec->info.spec.entity_name;
+	  if (entity_name == NULL || !PT_IS_NAME_NODE (entity_name))
+	    {
+	      continue;
+	    }
+	  obj = entity_name->info.name.db_object;
+	  if (!obj)
+	    {
+	      continue;
+	    }
+	  col_attr = db_get_attribute_force (obj, col->info.name.original);
+	  if (!col_attr)
+	    {
+	      continue;
+	    }
+	}
+
+      if (attr->info.attr_def.on_update == DB_DEFAULT_NONE)
+	{
+	  attr->info.attr_def.on_update = col_attr->on_update_default_expr;
+	}
+
       if (!attr->info.attr_def.data_default)
 	{
-	  if (col->node_type == PT_NAME)
+	  if (DB_IS_NULL (&col_attr->default_value.value)
+	      && (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE))
 	    {
-	      /* found matching column */
-	      if (col->info.name.spec_id == 0)
+	      /* don't create any default node if default value is null unless default expression type is not
+	       * DB_DEFAULT_NONE */
+	      continue;
+	    }
+
+	  if (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE)
+	    {
+	      default_value = pt_dbval_to_value (parser, &col_attr->default_value.value);
+	      if (!default_value)
 		{
-		  continue;
-		}
-	      spec = (PT_NODE *) col->info.name.spec_id;
-	      entity_name = spec->info.spec.entity_name;
-	      if (entity_name == NULL || !PT_IS_NAME_NODE (entity_name))
-		{
-		  continue;
-		}
-	      obj = entity_name->info.name.db_object;
-	      if (!obj)
-		{
-		  continue;
-		}
-	      col_attr = db_get_attribute_force (obj, col->info.name.original);
-	      if (!col_attr)
-		{
-		  continue;
+		  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  goto error;
 		}
 
-	      if (DB_IS_NULL (&col_attr->default_value.value)
-		  && (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE))
+	      default_data = parser_new_node (parser, PT_DATA_DEFAULT);
+	      if (!default_data)
 		{
-		  /* don't create any default node if default value is null unless default expression type is not
-		   * DB_DEFAULT_NONE */
-		  continue;
+		  parser_free_tree (parser, default_value);
+		  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  goto error;
 		}
-
-	      if (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE)
+	      default_data->info.data_default.default_value = default_value;
+	      default_data->info.data_default.shared = PT_DEFAULT;
+	      default_data->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+	    }
+	  else
+	    {
+	      default_op_value = parser_new_node (parser, PT_EXPR);
+	      if (default_op_value != NULL)
 		{
-		  default_value = pt_dbval_to_value (parser, &col_attr->default_value.value);
-		  if (!default_value)
+		  default_op_value->info.expr.op =
+		    pt_op_type_from_default_expr_type (col_attr->default_value.default_expr.default_expr_type);
+
+		  if (col_attr->default_value.default_expr.default_expr_op != T_TO_CHAR)
 		    {
-		      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		      goto error;
-		    }
-
-		  default_data = parser_new_node (parser, PT_DATA_DEFAULT);
-		  if (!default_data)
-		    {
-		      parser_free_tree (parser, default_value);
-		      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		      goto error;
-		    }
-		  default_data->info.data_default.default_value = default_value;
-		  default_data->info.data_default.shared = PT_DEFAULT;
-		  default_data->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-		}
-	      else
-		{
-		  default_op_value = parser_new_node (parser, PT_EXPR);
-		  if (default_op_value != NULL)
-		    {
-		      default_op_value->info.expr.op =
-			pt_op_type_from_default_expr_type (col_attr->default_value.default_expr.default_expr_type);
-
-		      if (col_attr->default_value.default_expr.default_expr_op != T_TO_CHAR)
-			{
-			  default_value = default_op_value;
-			}
-		      else
-			{
-			  PT_NODE *arg1, *arg2, *arg3;
-			  arg1 = default_op_value;
-			  has_user_format = col_attr->default_value.default_expr.default_expr_format ? 1 : 0;
-			  arg2 = pt_make_string_value (parser,
-						       col_attr->default_value.default_expr.default_expr_format);
-			  if (arg2 == NULL)
-			    {
-			      parser_free_tree (parser, default_op_value);
-			      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-			      goto error;
-			    }
-
-			  arg3 = parser_new_node (parser, PT_VALUE);
-			  if (arg3 == NULL)
-			    {
-			      parser_free_tree (parser, default_op_value);
-			      parser_free_tree (parser, arg2);
-			    }
-			  arg3->type_enum = PT_TYPE_INTEGER;
-			  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-			  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
-			  arg3->info.value.data_value.i = (long) flag;
-
-			  default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
-			  if (default_value == NULL)
-			    {
-			      parser_free_tree (parser, default_op_value);
-			      parser_free_tree (parser, arg2);
-			      parser_free_tree (parser, arg3);
-			      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-			      goto error;
-			    }
-			}
+		      default_value = default_op_value;
 		    }
 		  else
 		    {
-		      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		      goto error;
-		    }
+		      PT_NODE *arg1, *arg2, *arg3;
+		      arg1 = default_op_value;
+		      has_user_format = col_attr->default_value.default_expr.default_expr_format ? 1 : 0;
+		      arg2 = pt_make_string_value (parser, col_attr->default_value.default_expr.default_expr_format);
+		      if (arg2 == NULL)
+			{
+			  parser_free_tree (parser, default_op_value);
+			  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+			  goto error;
+			}
 
-		  default_data = parser_new_node (parser, PT_DATA_DEFAULT);
-		  if (!default_data)
-		    {
-		      parser_free_tree (parser, default_value);
-		      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		      goto error;
+		      arg3 = parser_new_node (parser, PT_VALUE);
+		      if (arg3 == NULL)
+			{
+			  parser_free_tree (parser, default_op_value);
+			  parser_free_tree (parser, arg2);
+			}
+		      arg3->type_enum = PT_TYPE_INTEGER;
+		      lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+		      lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
+		      arg3->info.value.data_value.i = (long) flag;
+
+		      default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
+		      if (default_value == NULL)
+			{
+			  parser_free_tree (parser, default_op_value);
+			  parser_free_tree (parser, arg2);
+			  parser_free_tree (parser, arg3);
+			  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+			  goto error;
+			}
 		    }
-		  default_data->info.data_default.default_value = default_value;
-		  default_data->info.data_default.shared = PT_DEFAULT;
-		  default_data->info.data_default.default_expr_type =
-		    col_attr->default_value.default_expr.default_expr_type;
 		}
-	      attr->info.attr_def.data_default = default_data;
+	      else
+		{
+		  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  goto error;
+		}
+
+	      default_data = parser_new_node (parser, PT_DATA_DEFAULT);
+	      if (!default_data)
+		{
+		  parser_free_tree (parser, default_value);
+		  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  goto error;
+		}
+	      default_data->info.data_default.default_value = default_value;
+	      default_data->info.data_default.shared = PT_DEFAULT;
+	      default_data->info.data_default.default_expr_type =
+		col_attr->default_value.default_expr.default_expr_type;
 	    }
+	  attr->info.attr_def.data_default = default_data;
 	}
-      attr->info.attr_def.on_update = col_attr->on_update_default_expr;
     }
 
   return attrs;
