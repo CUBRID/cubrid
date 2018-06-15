@@ -26,11 +26,10 @@
 #ifndef _LOG_GENERATOR_HPP_
 #define _LOG_GENERATOR_HPP_
 
+#include "packable_object.hpp"
 #include "packing_stream.hpp"
 #include "thread_compat.hpp"
 #include <vector>
-
-class cubpacking::packable_object;
 
 namespace cubreplication
 {

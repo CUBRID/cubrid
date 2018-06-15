@@ -28,41 +28,105 @@
 
 #include "packing_stream.hpp"
 #include <cstddef>
+#include <queue>
 
 namespace cubreplication
 {
-  class slave_replication_channel;
   class replication_stream_entry;
 
   /*
    * main class for consuming log packing stream entries;
    * it should be created only as a global instance
    */
+  template <typename SE>
   class log_consumer
   {
     private:
-      std::vector<replication_stream_entry *> m_stream_entries;
+      std::queue<SE *> m_stream_entries;
 
       cubstream::packing_stream *m_stream;
 
       /* start append position */
       cubstream::stream_position m_start_position;
 
-      static log_consumer *global_instance;
+      static log_consumer *global_log_consumer;
 
     public:
 
       log_consumer () {} ;
 
-      ~log_consumer ();
+      ~log_consumer ()
+        {
+          assert (this == global_log_consumer);
 
-      int append_entry (replication_stream_entry *entry);
+          delete m_stream;
+          global_log_consumer = NULL;
+        };
 
-      int fetch_stream_entry (replication_stream_entry *&entry);
 
-      int consume_thread (void);
+      int append_entry (SE *entry)
+        {
+          /* TODO : split list of entries by transaction */
+          m_stream_entries.push_back (entry);
 
-      static log_consumer *new_instance (const cubstream::stream_position &start_position);
+          return NO_ERROR;
+        };
+
+      int fetch_stream_entry (SE *&entry)
+      {
+        int err = NO_ERROR;
+
+        SE *se = new SE (get_stream ());
+
+        err = se->prepare ();
+        if (err != NO_ERROR)
+          {
+	    return err;
+          }
+
+        entry = se;
+
+        return err;
+      };
+
+      int consume_thread (void)
+      {
+        int err = NO_ERROR;
+
+        for (;;)
+          {
+	    replication_stream_entry *se = NULL;
+
+	    err = fetch_stream_entry (se);
+	    if (err != NO_ERROR)
+	      {
+	        break;
+	      }
+
+	    append_entry (se);
+          }
+
+        return NO_ERROR;
+      };
+
+      static log_consumer *new_instance (const cubstream::stream_position &start_position)
+      {
+        int error_code = NO_ERROR;
+
+        log_consumer *new_lc = new log_consumer ();
+
+        new_lc->m_start_position = start_position;
+
+        /* TODO : sys params */
+        new_lc->m_stream = new cubstream::packing_stream (10 * 1024 * 1024, 2);
+        new_lc->m_stream->init (new_lc->m_start_position);
+
+        /* this is the global instance */
+        assert (global_log_consumer == NULL);
+        global_log_consumer = new_lc;
+
+        return new_lc;
+      };
 
       cubstream::packing_stream *get_stream (void)
       {
