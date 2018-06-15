@@ -6523,20 +6523,10 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 
 	  if (tran_state == TRAN_UNACTIVE_COMMITTED || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
 	    {
-	      if (log_does_allow_replication ())
-		{
-		  /*
-		   * fail-back action
-		   * make the client to reconnect to the active server
-		   */
-		  db_Connect_status = DB_CONNECTION_STATUS_RESET;
-		  er_log_debug (ARG_FILE_LINE, "tran_server_commit: DB_CONNECTION_STATUS_RESET\n");
-		}
-
 	      committed = true;
-	    }
 
-	  net_cleanup_client_queues ();
+	      net_cleanup_client_queues ();
+	    }
 
 	  tran_set_latest_query_execution_type (end_query_result, committed, reset_on_commit);
 	}

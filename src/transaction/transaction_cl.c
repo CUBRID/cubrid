@@ -345,6 +345,18 @@ tran_commit (bool retain_lock)
 	  break;
 	}
     }
+  else
+    {
+      if (TM_TRAN_IS_COMMITTED_WITH_RESET_LATEST_EXECUTED_QUERY () != 0 && log_does_allow_replication ())
+	{
+	  /*
+	   * fail-back action
+	   * make the client to reconnect to the active server
+	   */
+	  db_Connect_status = DB_CONNECTION_STATUS_RESET;
+	  er_log_debug (ARG_FILE_LINE, "tran_server_commit: DB_CONNECTION_STATUS_RESET\n");
+	}
+    }
 
   /* Increment snapshot version in work space */
   ws_increment_mvcc_snapshot_version ();

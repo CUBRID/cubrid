@@ -84,7 +84,7 @@ extern TM_TRAN_LATEST_QUERY_EXECUTION_TYPE tm_Tran_latest_query_execution_type;
   (tm_Tran_latest_query_execution_type != TM_TRAN_NO_QUERY_OR_LATEST_QUERY_EXECUTED_NOT_ENDED)
 
 #define TM_TRAN_IS_COMMITTED_WITH_RESET_LATEST_EXECUTED_QUERY()  \
-  (tm_Tran_latest_query_execution_type != TM_TRAN_LATEST_QUERY_EXECUTED_ENDED_COMMITED_WITH_RESET)
+  (tm_Tran_latest_query_execution_type == TM_TRAN_LATEST_QUERY_EXECUTED_ENDED_COMMITED_WITH_RESET)
 
 #define TM_TRAN_IS_COMMITTED_LATEST_EXECUTED_QUERY()  \
   (tm_Tran_latest_query_execution_type == TM_TRAN_LATEST_QUERY_EXECUTED_ENDED_COMMITED  \
