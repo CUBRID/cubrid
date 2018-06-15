@@ -56,76 +56,76 @@ namespace cubreplication
       log_consumer () {} ;
 
       ~log_consumer ()
-        {
-          assert (this == global_log_consumer);
+      {
+	assert (this == global_log_consumer);
 
-          delete m_stream;
-          global_log_consumer = NULL;
-        };
+	delete m_stream;
+	global_log_consumer = NULL;
+      };
 
 
       int append_entry (SE *entry)
-        {
-          /* TODO : split list of entries by transaction */
-          m_stream_entries.push_back (entry);
+      {
+	/* TODO : split list of entries by transaction */
+	m_stream_entries.push_back (entry);
 
-          return NO_ERROR;
-        };
+	return NO_ERROR;
+      };
 
       int fetch_stream_entry (SE *&entry)
       {
-        int err = NO_ERROR;
+	int err = NO_ERROR;
 
-        SE *se = new SE (get_stream ());
+	SE *se = new SE (get_stream ());
 
-        err = se->prepare ();
-        if (err != NO_ERROR)
-          {
+	err = se->prepare ();
+	if (err != NO_ERROR)
+	  {
 	    return err;
-          }
+	  }
 
-        entry = se;
+	entry = se;
 
-        return err;
+	return err;
       };
 
       int consume_thread (void)
       {
-        int err = NO_ERROR;
+	int err = NO_ERROR;
 
-        for (;;)
-          {
+	for (;;)
+	  {
 	    replication_stream_entry *se = NULL;
 
 	    err = fetch_stream_entry (se);
 	    if (err != NO_ERROR)
 	      {
-	        break;
+		break;
 	      }
 
 	    append_entry (se);
-          }
+	  }
 
-        return NO_ERROR;
+	return NO_ERROR;
       };
 
       static log_consumer *new_instance (const cubstream::stream_position &start_position)
       {
-        int error_code = NO_ERROR;
+	int error_code = NO_ERROR;
 
-        log_consumer *new_lc = new log_consumer ();
+	log_consumer *new_lc = new log_consumer ();
 
-        new_lc->m_start_position = start_position;
+	new_lc->m_start_position = start_position;
 
-        /* TODO : sys params */
-        new_lc->m_stream = new cubstream::packing_stream (10 * 1024 * 1024, 2);
-        new_lc->m_stream->init (new_lc->m_start_position);
+	/* TODO : sys params */
+	new_lc->m_stream = new cubstream::packing_stream (10 * 1024 * 1024, 2);
+	new_lc->m_stream->init (new_lc->m_start_position);
 
-        /* this is the global instance */
-        assert (global_log_consumer == NULL);
-        global_log_consumer = new_lc;
+	/* this is the global instance */
+	assert (global_log_consumer == NULL);
+	global_log_consumer = new_lc;
 
-        return new_lc;
+	return new_lc;
       };
 
       cubstream::packing_stream *get_stream (void)
