@@ -45,14 +45,13 @@
 * client and server. Thus, when possible, "execute query", "end query" and "commit" can be executed using only one
 * message. This optimization has a serious impact on performance.
 */
-typedef enum tm_tran_latest_query_execution_type TM_TRAN_LATEST_QUERY_EXECUTION_TYPE;
-enum tm_tran_latest_query_execution_type
+typedef enum
 {
   TM_TRAN_NO_QUERY_OR_LATEST_QUERY_EXECUTED_NOT_ENDED,	/* transaction has no query or its latest query executed but not ended. */
   TM_TRAN_LATEST_QUERY_EXECUTED_ENDED_NOT_COMMITED,	/* latest transaction query executed but not ended */
   TM_TRAN_LATEST_QUERY_EXECUTED_ENDED_COMMITED,	/* latest transaction query executed, ended, committed */
   TM_TRAN_LATEST_QUERY_EXECUTED_ENDED_COMMITED_WITH_RESET	/* latest transaction query executed, ended, committed with reset */
-};
+} TM_TRAN_LATEST_QUERY_EXECUTION_TYPE;
 
 #define TM_TRAN_INDEX()      (tm_Tran_index)
 #define TM_TRAN_ISOLATION()  (tm_Tran_isolation)

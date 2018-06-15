@@ -10386,11 +10386,6 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  query_flag |= EXECUTE_QUERY_WITH_COMMIT;
 	}
 
-      if (statement->use_auto_commit)
-	{
-	  query_flag |= EXECUTE_QUERY_WITH_COMMIT;
-	}
-
       if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true && parser->query_trace == true)
 	{
 	  do_set_trace_to_query_flag (&query_flag);
@@ -15499,7 +15494,7 @@ exit:
   if (list_id != NULL)
     {
       regu_free_listid (list_id);
-      if (upd_query_id != NULL_QUERY_ID)
+      if (upd_query_id != NULL_QUERY_ID && !TM_TRAN_IS_ENDED_LATEST_EXECUTED_QUERY ())
 	{
 	  qmgr_end_query (upd_query_id);
 	}
@@ -15510,7 +15505,7 @@ exit:
       if (ins_select_stmt->etc != NULL)
 	{
 	  regu_free_listid ((QFILE_LIST_ID *) ins_select_stmt->etc);
-	  if (ins_query_id != NULL_QUERY_ID)
+	  if (ins_query_id != NULL_QUERY_ID && !TM_TRAN_IS_ENDED_LATEST_EXECUTED_QUERY ())
 	    {
 	      qmgr_end_query (ins_query_id);
 	    }
@@ -16286,7 +16281,7 @@ exit:
       if (ins_select_stmt->etc != NULL)
 	{
 	  regu_free_listid ((QFILE_LIST_ID *) ins_select_stmt->etc);
-	  if (ins_query_id != NULL_QUERY_ID)
+	  if (ins_query_id != NULL_QUERY_ID && !TM_TRAN_IS_ENDED_LATEST_EXECUTED_QUERY ())
 	    {
 	      qmgr_end_query (ins_query_id);
 	    }

@@ -282,6 +282,7 @@ tran_commit (bool retain_lock)
 
   if (TM_TRAN_IS_ENDED_LATEST_EXECUTED_QUERY ())
     {
+      /* Query ended with latest executed query. No need to notify server. */
       query_end_notify_server = false;
     }
   else
@@ -412,6 +413,7 @@ tran_abort (void)
   tran_free_savepoint_list ();
 
   /* Clear any query cursor */
+  assert (!TM_TRAN_IS_ENDED_LATEST_EXECUTED_QUERY ());
   db_clear_client_query_result (true, true);
 
   /* Forward the abort the transaction manager in the server */
