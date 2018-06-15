@@ -32,7 +32,7 @@
 namespace cubreplication
 {
 
-  /* global instances of log_generator template 
+  /* global instances of log_generator template
    * - log_generator<replication_stream_entry> : specialization for replication data stream
    *
    *

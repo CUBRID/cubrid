@@ -63,108 +63,108 @@ namespace cubreplication
 
       ~log_generator ()
       {
-        assert (this == global_log_generator);
+	assert (this == global_log_generator);
 
-        delete m_stream;
-        log_generator::global_log_generator = NULL;
+	delete m_stream;
+	log_generator::global_log_generator = NULL;
 
-        for (int i = 0; i < m_stream_entries.size (); i++)
-          {
+	for (int i = 0; i < m_stream_entries.size (); i++)
+	  {
 	    delete m_stream_entries[i];
 	    m_stream_entries[i] = NULL;
-          }
+	  }
       }
 
       int append_repl_entry (THREAD_ENTRY *th_entry, cubpacking::packable_object *object)
-        {
-          replication_stream_entry *my_stream_entry = get_stream_entry (th_entry);
+      {
+	replication_stream_entry *my_stream_entry = get_stream_entry (th_entry);
 
-          my_stream_entry->add_packable_entry (object);
+	my_stream_entry->add_packable_entry (object);
 
-          return NO_ERROR;
-        }        
+	return NO_ERROR;
+      }
 
 
       void set_ready_to_pack (THREAD_ENTRY *th_entry)
-        {
-          if (th_entry == NULL)
-            {
-	      size_t i;
-	      for (i = 0; i < m_stream_entries.size (); i++)
-	        {
-	          m_stream_entries[i]->set_packable (true);
-	        }
-            }
-          else
-            {
-	      cubstream::entry *my_stream_entry = get_stream_entry (th_entry);
-	      my_stream_entry->set_packable (true);
-            }
-        }
+      {
+	if (th_entry == NULL)
+	  {
+	    size_t i;
+	    for (i = 0; i < m_stream_entries.size (); i++)
+	      {
+		m_stream_entries[i]->set_packable (true);
+	      }
+	  }
+	else
+	  {
+	    cubstream::entry *my_stream_entry = get_stream_entry (th_entry);
+	    my_stream_entry->set_packable (true);
+	  }
+      }
 
       SE *get_stream_entry (THREAD_ENTRY *th_entry)
-        {
-          int stream_entry_idx;
+      {
+	int stream_entry_idx;
 
-          if (th_entry == NULL)
-            {
-	      stream_entry_idx = 0;
-            }
-          else
-            {
-	      stream_entry_idx = th_entry->tran_index;
-            }
+	if (th_entry == NULL)
+	  {
+	    stream_entry_idx = 0;
+	  }
+	else
+	  {
+	    stream_entry_idx = th_entry->tran_index;
+	  }
 
-          replication_stream_entry *my_stream_entry = m_stream_entries[stream_entry_idx];
-          return my_stream_entry;
-        }
+	replication_stream_entry *my_stream_entry = m_stream_entries[stream_entry_idx];
+	return my_stream_entry;
+      }
 
       int pack_stream_entries (THREAD_ENTRY *th_entry)
-        {
-          size_t i;
-          size_t repl_entries_size = 0;
+      {
+	size_t i;
+	size_t repl_entries_size = 0;
 
-          if (th_entry == NULL)
-            {
-	      for (i = 0; i < m_stream_entries.size (); i++)
-	        {
-	          m_stream_entries[i]->pack ();
-	          m_stream_entries[i]->reset ();
-	        }
-            }
-          else
-            {
-	      cubstream::entry *my_stream_entry = get_stream_entry (th_entry);
-	      my_stream_entry->pack ();
-	      my_stream_entry->reset ();
-            }
+	if (th_entry == NULL)
+	  {
+	    for (i = 0; i < m_stream_entries.size (); i++)
+	      {
+		m_stream_entries[i]->pack ();
+		m_stream_entries[i]->reset ();
+	      }
+	  }
+	else
+	  {
+	    cubstream::entry *my_stream_entry = get_stream_entry (th_entry);
+	    my_stream_entry->pack ();
+	    my_stream_entry->reset ();
+	  }
 
-          return NO_ERROR;
-        }
+	return NO_ERROR;
+      }
 
       static log_generator *new_instance (const cubstream::stream_position &start_position)
-        {
-          log_generator *new_lg = new log_generator ();
-          new_lg->m_start_append_position = start_position;
+      {
+	log_generator *new_lg = new log_generator ();
+	new_lg->m_start_append_position = start_position;
 
-          /* create stream only for global instance */
-          /* TODO : sys params */
-          new_lg->m_stream = new cubstream::packing_stream (100 * 1024 * 1024, 1000);
-          new_lg->m_stream->init (new_lg->m_start_append_position);
+	/* create stream only for global instance */
+	/* TODO : sys params */
+	new_lg->m_stream = new cubstream::packing_stream (100 * 1024 * 1024, 1000);
+	new_lg->m_stream->init (new_lg->m_start_append_position);
 
-          /* this is the global instance */
-          assert (global_log_generator == NULL);
-          global_log_generator = new_lg;
+	/* this is the global instance */
+	assert (global_log_generator == NULL);
+	global_log_generator = new_lg;
 
-          /* TODO : actual number of transactions */
-          new_lg->m_stream_entries.resize (1000);
-          for (int i = 0; i < 1000; i++)
-            {
-	      new_lg->m_stream_entries[i] = new replication_stream_entry (new_lg->m_stream);
-            }
+	/* TODO : actual number of transactions */
+	new_lg->m_stream_entries.resize (1000);
+	for (int i = 0; i < 1000; i++)
+	  {
+	    new_lg->m_stream_entries[i] = new replication_stream_entry (new_lg->m_stream);
+	  }
 
-          return new_lg;
-        }
+	return new_lg;
+      }
 
       cubstream::packing_stream *get_stream (void)
       {

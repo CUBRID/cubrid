@@ -32,12 +32,12 @@ namespace cubreplication
   log_consumer *log_consumer::global_instance = NULL;
 
   log_consumer::~log_consumer ()
-    {
-      assert (this == global_instance);
+  {
+    assert (this == global_instance);
 
-      delete m_stream;
-      log_consumer::global_instance = NULL;
-    }
+    delete m_stream;
+    log_consumer::global_instance = NULL;
+  }
 
   int log_consumer::append_entry (replication_stream_entry *entry)
   {

@@ -157,7 +157,7 @@ namespace test_replication
     rbr2->add_changed_value (3, &new_att3_value);
 
     cubreplication::log_generator<cubreplication::replication_stream_entry> *lg =
-      cubreplication::log_generator<cubreplication::replication_stream_entry>::new_instance (0);
+	    cubreplication::log_generator<cubreplication::replication_stream_entry>::new_instance (0);
 
     lg->append_repl_entry (NULL, sbr1);
     lg->append_repl_entry (NULL, rbr1);

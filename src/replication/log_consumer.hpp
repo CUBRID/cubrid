@@ -69,7 +69,10 @@ namespace cubreplication
 	return m_stream;
       };
 
-      cubstream::stream_position& get_start_position () { return m_start_position; };
+      cubstream::stream_position &get_start_position ()
+      {
+	return m_start_position;
+      };
   };
 
 } /* namespace cubreplication */
