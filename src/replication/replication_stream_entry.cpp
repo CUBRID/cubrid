@@ -36,6 +36,7 @@ namespace cubreplication
   {
     size_t header_size = 0;
     cubpacking::packer *serializator = get_packer ();
+
     header_size += serializator->get_packed_bigint_size (header_size);
     header_size += serializator->get_packed_bigint_size (header_size);
     header_size += serializator->get_packed_int_size (header_size);
@@ -69,13 +70,13 @@ namespace cubreplication
     return &replication_factory_po;
   }
 
-
   int replication_stream_entry::pack_stream_entry_header ()
   {
     cubpacking::packer *serializator = get_packer ();
+
     m_header.count_replication_entries = (int) m_packable_entries.size ();
-    serializator->pack_bigint ((DB_BIGINT *)&m_header.prev_record);
-    serializator->pack_bigint ((DB_BIGINT *)&m_header.mvccid);
+    serializator->pack_bigint ((DB_BIGINT *) &m_header.prev_record);
+    serializator->pack_bigint ((DB_BIGINT *) &m_header.mvccid);
     serializator->pack_int (m_header.count_replication_entries);
     serializator->pack_int (m_header.data_size);
 
@@ -85,6 +86,7 @@ namespace cubreplication
   int replication_stream_entry::unpack_stream_entry_header ()
   {
     cubpacking::packer *serializator = get_packer ();
+
     serializator->unpack_bigint ((DB_BIGINT *) &m_header.prev_record);
     serializator->unpack_bigint ((DB_BIGINT *) &m_header.mvccid);
     serializator->unpack_int ((int *) &m_header.count_replication_entries);
@@ -107,6 +109,7 @@ namespace cubreplication
       {
 	return false;
       }
+
     if (m_header.prev_record != other_t->m_header.prev_record
 	|| m_header.mvccid != other_t->m_header.mvccid
 	|| m_header.data_size != other_t->m_header.data_size
@@ -123,6 +126,7 @@ namespace cubreplication
 	    return false;
 	  }
       }
+
     return true;
   }
 

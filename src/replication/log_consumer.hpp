@@ -94,4 +94,5 @@ namespace cubreplication
   };
 
 } /* namespace cubreplication */
+
 #endif /* _LOG_CONSUMER_HPP_ */

@@ -41,7 +41,12 @@ namespace cubreplication
     unsigned int count_replication_entries;
     int data_size;
 
-    replication_stream_entry_header () : prev_record (0), mvccid (-1), count_replication_entries (0) {};
+    replication_stream_entry_header ()
+      : prev_record (0),
+	mvccid (MVCCID_NULL),
+	count_replication_entries (0)
+    {
+    };
   };
 
   class replication_stream_entry : public cubstream::entry
@@ -51,7 +56,10 @@ namespace cubreplication
       cubpacking::packer m_serializator;
 
     public:
-      replication_stream_entry (cubstream::packing_stream *stream_p) : entry (stream_p) { };
+      replication_stream_entry (cubstream::packing_stream *stream_p)
+	: entry (stream_p)
+      {
+      };
 
       size_t get_header_size ();
       size_t get_data_packed_size (void);

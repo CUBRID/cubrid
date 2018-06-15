@@ -37,6 +37,7 @@ namespace cubreplication
   log_generator::~log_generator()
   {
     assert (this == global_log_generator);
+
     delete m_stream;
     log_generator::global_log_generator = NULL;
 
@@ -60,6 +61,7 @@ namespace cubreplication
     /* this is the global instance */
     assert (global_log_generator == NULL);
     global_log_generator = new_lg;
+
     /* TODO[arnia] : actual number of transactions */
     new_lg->m_stream_entries.resize (1000);
     for (int i = 0; i < 1000; i++)
@@ -82,6 +84,7 @@ namespace cubreplication
       {
 	stream_entry_idx = th_entry->tran_index;
       }
+
     replication_stream_entry *my_stream_entry = m_stream_entries[stream_entry_idx];
     return my_stream_entry;
   }

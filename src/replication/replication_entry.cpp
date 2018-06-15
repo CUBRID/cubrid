@@ -35,10 +35,11 @@ namespace cubreplication
     set_class_name (class_name);
   }
 
-  single_row_repl_entry::~single_row_repl_entry()
+  single_row_repl_entry::~single_row_repl_entry ()
   {
     /* TODO : clear DB_VALUE ? */
     pr_clear_value (&m_key_value);
+
     for (std::vector <DB_VALUE>::iterator it = new_values.begin (); it != new_values.end (); it++)
       {
 	pr_clear_value (& (*it));
@@ -102,14 +103,19 @@ namespace cubreplication
 
     /* we assume that offset start has already MAX_ALIGNMENT */
 
-    /* type of packed object  + type of RBR entry  */
+    /* type of packed object + type of RBR entry */
     entry_size += 2 * serializator->get_packed_int_size (entry_size);
+
     entry_size += serializator->get_packed_int_vector_size (entry_size, (int) changed_attributes.size ());
+
     entry_size += serializator->get_packed_small_string_size (m_class_name, entry_size);
+
     entry_size += serializator->get_packed_db_value_size (m_key_value, entry_size);
+
     /* count of new_values */
     entry_size += serializator->get_packed_int_size (entry_size);
-    for (i = 0; i < new_values.size() ; i++)
+
+    for (i = 0; i < new_values.size (); i++)
       {
 	entry_size += serializator->get_packed_db_value_size (new_values[i], entry_size);
       }
@@ -122,12 +128,18 @@ namespace cubreplication
     int i;
 
     serializator->pack_int (single_row_repl_entry::ID);
+
     serializator->pack_int ((int) m_type);
+
     serializator->pack_int_vector (changed_attributes);
+
     serializator->pack_small_string (m_class_name);
+
     serializator->pack_db_value (m_key_value);
+
     serializator->pack_int ((int) new_values.size ());
-    for (i = 0; i < new_values.size(); i++)
+
+    for (i = 0; i < new_values.size (); i++)
       {
 	serializator->pack_db_value (new_values[i]);
       }
@@ -143,26 +155,32 @@ namespace cubreplication
 
     /* create id */
     serializator->unpack_int (&int_val);
+
     /* RBR type */
     serializator->unpack_int (&int_val);
     m_type = (REPL_ENTRY_TYPE) int_val;
+
     serializator->unpack_int_vector (changed_attributes);
+
     serializator->unpack_small_string (m_class_name, sizeof (m_class_name) - 1);
 
     serializator->unpack_db_value (&m_key_value);
+
     serializator->unpack_int (&count_new_values);
+
     for (i = 0; i < count_new_values; i++)
       {
 	DB_VALUE val;
 
-	/* this copies the DB_VALUE to contains, should we avoid this ? */
+	/* this copies the DB_VALUE to contain, should we avoid this ? */
 	new_values.push_back (val);
 	serializator->unpack_db_value (&val);
       }
+
     return NO_ERROR;
   }
 
-/////////////////////////////////
+  /////////////////////////////////
 
   bool sbr_repl_entry::is_equal (const packable_object *other)
   {
@@ -192,14 +210,17 @@ namespace cubreplication
   {
     serializator->pack_int (sbr_repl_entry::ID);
     serializator->pack_large_string (m_statement);
+
     return NO_ERROR;
   }
 
   int sbr_repl_entry::unpack (cubpacking::packer *serializator)
   {
     int entry_type_not_used;
+
     serializator->unpack_int (&entry_type_not_used);
     serializator->unpack_large_string (m_statement);
+
     return NO_ERROR;
   }
 

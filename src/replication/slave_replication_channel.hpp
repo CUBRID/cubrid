@@ -34,7 +34,6 @@ namespace cubreplication
   struct stream_entry_header;
   class replication_stream;
 
-
   class slave_replication_channel
   {
     public:
@@ -46,9 +45,7 @@ namespace cubreplication
       };
 
     private:
-
       cubstream::stream *receiving_stream;
-
   };
 
 } /* namespace cubreplication */

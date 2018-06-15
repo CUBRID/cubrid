@@ -54,8 +54,14 @@ namespace cubreplication
     public:
       static const int ID = 1;
 
-      sbr_repl_entry () {};
-      ~sbr_repl_entry () {};
+      sbr_repl_entry ()
+      {
+      };
+
+      ~sbr_repl_entry ()
+      {
+      };
+
       sbr_repl_entry (const std::string &str)
       {
 	set_statement (str);
@@ -86,8 +92,12 @@ namespace cubreplication
     public:
       static const int ID = 2;
 
-      single_row_repl_entry () {};
+      single_row_repl_entry ()
+      {
+      };
+
       ~single_row_repl_entry ();
+
       single_row_repl_entry (const REPL_ENTRY_TYPE m_type, const char *class_name);
 
       bool is_equal (const cubpacking::packable_object *other);
@@ -97,7 +107,6 @@ namespace cubreplication
       void set_key_value (DB_VALUE *db_val);
 
       void add_changed_value (const int att_id, DB_VALUE *db_val);
-
 
       int pack (cubpacking::packer *serializator);
       int unpack (cubpacking::packer *serializator);

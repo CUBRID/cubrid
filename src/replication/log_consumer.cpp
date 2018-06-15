@@ -33,6 +33,7 @@ namespace cubreplication
   {
     /* TODO : split list of entries by transaction */
     m_stream_entries.push_back (entry);
+
     return NO_ERROR;
   }
 
@@ -60,13 +61,16 @@ namespace cubreplication
     for (;;)
       {
 	replication_stream_entry *se = NULL;
+
 	err = fetch_stream_entry (se);
 	if (err != NO_ERROR)
 	  {
 	    break;
 	  }
+
 	append_entry (se);
       }
+
     return NO_ERROR;
   }
 
@@ -76,6 +80,7 @@ namespace cubreplication
     int error_code = NO_ERROR;
 
     log_consumer *new_lc = new log_consumer ();
+
     new_lc->m_start_position = start_position;
     new_lc->m_type = req_type;
 
