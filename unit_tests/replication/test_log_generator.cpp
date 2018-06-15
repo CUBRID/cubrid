@@ -20,6 +20,7 @@
 #include "log_generator.hpp"
 #include "log_consumer.hpp"
 #include "replication_entry.hpp"
+#include "replication_stream_entry.hpp"
 #include "thread_compat.hpp"
 #include "test_log_generator.hpp"
 #include "thread_manager.hpp"
@@ -155,7 +156,8 @@ namespace test_replication
     rbr2->add_changed_value (2, &new_att2_value);
     rbr2->add_changed_value (3, &new_att3_value);
 
-    cubreplication::log_generator *lg = cubreplication::log_generator::new_instance (0);
+    cubreplication::log_generator<cubreplication::replication_stream_entry> *lg =
+      cubreplication::log_generator<cubreplication::replication_stream_entry>::new_instance (0);
 
     lg->append_repl_entry (NULL, sbr1);
     lg->append_repl_entry (NULL, rbr1);
@@ -166,8 +168,7 @@ namespace test_replication
 
     lg->pack_stream_entries (NULL);
 
-    cubreplication::log_consumer *lc =
-	    cubreplication::log_consumer::new_instance (cubreplication::REPLICATION_DATA_APPLIER, 0);
+    cubreplication::log_consumer *lc = cubreplication::log_consumer::new_instance (0);
 
     /* get stream from log_generator, get its buffer and attached it to log_consumer stream */
     cubstream::packing_stream *lg_stream = lg->get_stream ();
@@ -181,6 +182,13 @@ namespace test_replication
     se->unpack ();
 
     res = se->is_equal (lg->get_stream_entry (NULL));
+
+    /* workaround for seq read position : force read position to append position to avoid stream destructor
+     * assertion failure */
+    lg_stream->force_set_read_position (lg_stream->get_last_committed_pos ());
+
+    delete lg;
+    delete lc;
 
     return res;
   }

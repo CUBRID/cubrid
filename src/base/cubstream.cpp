@@ -43,6 +43,7 @@ namespace cubstream
   int stream::init (const stream_position &start_position)
   {
     m_append_position = start_position;
+    m_read_position = start_position;
 
     return NO_ERROR;
   }

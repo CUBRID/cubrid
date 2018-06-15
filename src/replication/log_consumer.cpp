@@ -29,6 +29,16 @@
 namespace cubreplication
 {
 
+  log_consumer *log_consumer::global_instance = NULL;
+
+  log_consumer::~log_consumer ()
+    {
+      assert (this == global_instance);
+
+      delete m_stream;
+      log_consumer::global_instance = NULL;
+    }
+
   int log_consumer::append_entry (replication_stream_entry *entry)
   {
     /* TODO : split list of entries by transaction */
@@ -74,27 +84,23 @@ namespace cubreplication
     return NO_ERROR;
   }
 
-  log_consumer *log_consumer::new_instance (const CONSUMER_TYPE req_type,
-      const cubstream::stream_position &start_position)
+  log_consumer *log_consumer::new_instance (const cubstream::stream_position &start_position)
   {
     int error_code = NO_ERROR;
 
     log_consumer *new_lc = new log_consumer ();
 
     new_lc->m_start_position = start_position;
-    new_lc->m_type = req_type;
 
     /* TODO : sys params */
     new_lc->m_stream = new cubstream::packing_stream (10 * 1024 * 1024, 2);
     new_lc->m_stream->init (new_lc->m_start_position);
 
-    return new_lc;
-  }
+    /* this is the global instance */
+    assert (global_instance == NULL);
+    global_instance = new_lc;
 
-  int log_consumer::fetch_data (char *ptr, const size_t &amount)
-  {
-    // m_src->receive (ptr, amount);
-    return NO_ERROR;
+    return new_lc;
   }
 
 } /* namespace cubreplication */
