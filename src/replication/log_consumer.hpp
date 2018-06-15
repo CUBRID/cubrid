@@ -29,65 +29,69 @@
 #include "packing_stream.hpp"
 #include <cstddef>
 
-
 namespace cubreplication
 {
-class log_file;
-class slave_replication_channel;
-class replication_stream_entry;
+  class log_file;
+  class slave_replication_channel;
+  class replication_stream_entry;
 
-enum consumer_type
-{
-  REPLICATION_DATA_APPLIER = 0,
-  DATABASE_COPY,
-  REPLICATION_DATA_DUMP
-};
+  enum consumer_type
+  {
+    REPLICATION_DATA_APPLIER = 0,
+    DATABASE_COPY,
+    REPLICATION_DATA_DUMP
+  };
 
-typedef enum consumer_type CONSUMER_TYPE;
+  typedef enum consumer_type CONSUMER_TYPE;
 
-/* 
- * main class for consuming log replication entries
- * it should be created only as a global instance
- */
-class log_consumer
-{
-protected:
-  CONSUMER_TYPE m_type;
+  /*
+   * main class for consuming log replication entries
+   * it should be created only as a global instance
+   */
+  class log_consumer
+  {
+    protected:
+      CONSUMER_TYPE m_type;
 
-  std::vector<replication_stream_entry*> m_stream_entries;
+      std::vector<replication_stream_entry *> m_stream_entries;
 
-  /* file attached to log_consumer */
-  log_file *file;
+      /* file attached to log_consumer */
+      log_file *file;
 
-  cubstream::packing_stream *m_stream;
+      cubstream::packing_stream *m_stream;
 
-  slave_replication_channel *m_src;
+      slave_replication_channel *m_src;
 
-  /* start append position  */
-  cubstream::stream_position m_start_position;
+      /* start append position  */
+      cubstream::stream_position m_start_position;
 
-public:
+    public:
 
-  log_consumer () { file = NULL; };
+      log_consumer ()
+      {
+	file = NULL;
+      };
 
-  int append_entry (replication_stream_entry *entry);
+      int append_entry (replication_stream_entry *entry);
 
-  int fetch_stream_entry (replication_stream_entry *&entry);
+      int fetch_stream_entry (replication_stream_entry *&entry);
 
-  int consume_thread (void);
+      int consume_thread (void);
 
-  static log_consumer* new_instance (const CONSUMER_TYPE req_type, const cubstream::stream_position &start_position);
+      static log_consumer *new_instance (const CONSUMER_TYPE req_type, const cubstream::stream_position &start_position);
 
-  int fetch_data (char *ptr, const size_t &amount);
-  
-  cubstream::packing_stream * get_stream (void)
-    {
-      return m_stream;
-    };
+      int fetch_data (char *ptr, const size_t &amount);
 
-  int fetch_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count, size_t *processed_bytes)
-      { return fetch_data (ptr, byte_count); };
-};
+      cubstream::packing_stream *get_stream (void)
+      {
+	return m_stream;
+      };
+
+      int fetch_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count, size_t *processed_bytes)
+      {
+	return fetch_data (ptr, byte_count);
+      };
+  };
 
 } /* namespace cubreplication */
 #endif /* _LOG_CONSUMER_HPP_ */

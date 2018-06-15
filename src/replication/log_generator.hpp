@@ -39,46 +39,52 @@ class cubpacking::packable_object;
 namespace cubreplication
 {
 
-/* 
- * main class for producing log replication entries
- * it may be created as a local (per transaction/thread) instance to hold a limited number of replication entries
- * or as a global instance
- *
- * TODO : local instance should only hold replication entries, but not pack into buffers
- *        this will be supported later, but needs centralized stream_position in global log_generator
- */
+  /*
+   * main class for producing log replication entries
+   * it may be created as a local (per transaction/thread) instance to hold a limited number of replication entries
+   * or as a global instance
+   *
+   * TODO : local instance should only hold replication entries, but not pack into buffers
+   *        this will be supported later, but needs centralized stream_position in global log_generator
+   */
 
-class log_generator
-{
-private:
-  std::vector<replication_stream_entry*> m_stream_entries;
+  class log_generator
+  {
+    private:
+      std::vector<replication_stream_entry *> m_stream_entries;
 
-  cubstream::packing_stream *m_stream;
+      cubstream::packing_stream *m_stream;
 
-  /* start append position of generator stream */
-  cubstream::stream_position m_start_append_position;
+      /* start append position of generator stream */
+      cubstream::stream_position m_start_append_position;
 
-  static log_generator *global_log_generator;
+      static log_generator *global_log_generator;
 
 
-public:
+    public:
 
-  log_generator () { m_stream = NULL; };
+      log_generator ()
+      {
+	m_stream = NULL;
+      };
 
-  ~log_generator ();
+      ~log_generator ();
 
-  int append_repl_entry (THREAD_ENTRY *th_entry, cubpacking::packable_object *repl_entry);
+      int append_repl_entry (THREAD_ENTRY *th_entry, cubpacking::packable_object *repl_entry);
 
-  void set_ready_to_pack (THREAD_ENTRY *th_entry);
+      void set_ready_to_pack (THREAD_ENTRY *th_entry);
 
-  replication_stream_entry* get_stream_entry (THREAD_ENTRY *th_entry);
+      replication_stream_entry *get_stream_entry (THREAD_ENTRY *th_entry);
 
-  int pack_stream_entries (THREAD_ENTRY *th_entry);
+      int pack_stream_entries (THREAD_ENTRY *th_entry);
 
-  static log_generator *new_instance (const cubstream::stream_position &start_position);
+      static log_generator *new_instance (const cubstream::stream_position &start_position);
 
-  cubstream::packing_stream * get_stream (void) { return m_stream; };
-};
+      cubstream::packing_stream *get_stream (void)
+      {
+	return m_stream;
+      };
+  };
 
 } /* namespace cubreplication */
 

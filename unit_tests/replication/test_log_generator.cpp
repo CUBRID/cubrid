@@ -26,7 +26,7 @@
 
 namespace test_replication
 {
- class stream_mover
+  class stream_mover
   {
     private:
       static const int BUF_SIZE = 1024;
@@ -63,125 +63,125 @@ namespace test_replication
       cubstream::stream::read_func_t m_reader_func;
       cubstream::stream::write_func_t m_writer_func;
   };
- 
 
 
-int move_buffers (cubstream::packing_stream *stream1, cubstream::packing_stream *stream2)
-{
-  stream_mover test_stream_mover;
-  cubstream::stream_position curr_pos;
-  cubstream::stream_position last_pos;
-  last_pos = stream1->get_last_committed_pos ();
-  
-  size_t copy_chunk_size = test_stream_mover.get_buf_size ();
-  int read_bytes, written_bytes;
 
-  for (curr_pos = 0; curr_pos <= last_pos;)
-    {
-      copy_chunk_size = MIN (copy_chunk_size, last_pos - curr_pos);
+  int move_buffers (cubstream::packing_stream *stream1, cubstream::packing_stream *stream2)
+  {
+    stream_mover test_stream_mover;
+    cubstream::stream_position curr_pos;
+    cubstream::stream_position last_pos;
+    last_pos = stream1->get_last_committed_pos ();
 
-      read_bytes = stream1->read (curr_pos, copy_chunk_size, test_stream_mover.m_reader_func);
-      if (read_bytes <= 0)
-        {
-          break;
-	}
+    size_t copy_chunk_size = test_stream_mover.get_buf_size ();
+    int read_bytes, written_bytes;
 
-      written_bytes = stream2->write (read_bytes, test_stream_mover.m_writer_func);
-      assert (read_bytes == written_bytes);
-      if (written_bytes <= 0)
+    for (curr_pos = 0; curr_pos <= last_pos;)
+      {
+	copy_chunk_size = MIN (copy_chunk_size, last_pos - curr_pos);
+
+	read_bytes = stream1->read (curr_pos, copy_chunk_size, test_stream_mover.m_reader_func);
+	if (read_bytes <= 0)
+	  {
+	    break;
+	  }
+
+	written_bytes = stream2->write (read_bytes, test_stream_mover.m_writer_func);
+	assert (read_bytes == written_bytes);
+	if (written_bytes <= 0)
 	  {
 	    break;
 	  }
 
 	curr_pos += read_bytes;
-    }
+      }
 
-  return NO_ERROR;
-}
+    return NO_ERROR;
+  }
 
-int init_common_cubrid_modules (void)
-{
-  int res;
-  THREAD_ENTRY * thread_p = NULL;
+  int init_common_cubrid_modules (void)
+  {
+    int res;
+    THREAD_ENTRY *thread_p = NULL;
 
 
-  lang_init ();
-  tp_init ();
-  lang_set_charset_lang ("en_US.iso88591");
-  
-  cubthread::initialize (thread_p);
-  res = cubthread::initialize_thread_entries ();
-  if (res != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return res;
-    }
-  return NO_ERROR;
-}
+    lang_init ();
+    tp_init ();
+    lang_set_charset_lang ("en_US.iso88591");
 
-int test_stream_packing (void)
-{
-  int res = 0;
+    cubthread::initialize (thread_p);
+    res = cubthread::initialize_thread_entries ();
+    if (res != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	return res;
+      }
+    return NO_ERROR;
+  }
 
-  init_common_cubrid_modules ();
+  int test_stream_packing (void)
+  {
+    int res = 0;
 
-  cubreplication::sbr_repl_entry *sbr1 = new cubreplication::sbr_repl_entry;
-  cubreplication::sbr_repl_entry *sbr2 = new cubreplication::sbr_repl_entry;
-  cubreplication::single_row_repl_entry * rbr1 =
-    new cubreplication::single_row_repl_entry (cubreplication::REPL_UPDATE, "t1");
-  cubreplication::single_row_repl_entry * rbr2 =
-    new cubreplication::single_row_repl_entry (cubreplication::REPL_INSERT, "t2");
+    init_common_cubrid_modules ();
 
-  DB_VALUE key_value;
-  DB_VALUE new_att1_value;
-  DB_VALUE new_att2_value;
-  DB_VALUE new_att3_value;
+    cubreplication::sbr_repl_entry *sbr1 = new cubreplication::sbr_repl_entry;
+    cubreplication::sbr_repl_entry *sbr2 = new cubreplication::sbr_repl_entry;
+    cubreplication::single_row_repl_entry *rbr1 =
+	    new cubreplication::single_row_repl_entry (cubreplication::REPL_UPDATE, "t1");
+    cubreplication::single_row_repl_entry *rbr2 =
+	    new cubreplication::single_row_repl_entry (cubreplication::REPL_INSERT, "t2");
 
-  db_make_int (&key_value, 123);
-  db_make_int (&new_att1_value, 2);
-  db_make_char (&new_att2_value, 4, "test", 4, INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY);
-  db_make_char (&new_att3_value, 5, "test2", 5, INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY);
+    DB_VALUE key_value;
+    DB_VALUE new_att1_value;
+    DB_VALUE new_att2_value;
+    DB_VALUE new_att3_value;
 
-  sbr1->set_statement ("CREATE TABLE t1 (i1 int)");
-  sbr2->set_statement ("CREATE TABLE t2 (i1 int)");
+    db_make_int (&key_value, 123);
+    db_make_int (&new_att1_value, 2);
+    db_make_char (&new_att2_value, 4, "test", 4, INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY);
+    db_make_char (&new_att3_value, 5, "test2", 5, INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY);
 
-  rbr1->set_key_value (&key_value);
-  rbr1->add_changed_value (1, &new_att2_value);
-  rbr1->add_changed_value (2, &new_att1_value);
-  rbr1->add_changed_value (3, &new_att3_value);
+    sbr1->set_statement ("CREATE TABLE t1 (i1 int)");
+    sbr2->set_statement ("CREATE TABLE t2 (i1 int)");
 
-  rbr2->set_key_value (&key_value);
-  rbr2->add_changed_value (1, &new_att1_value);
-  rbr2->add_changed_value (2, &new_att2_value);
-  rbr2->add_changed_value (3, &new_att3_value);
+    rbr1->set_key_value (&key_value);
+    rbr1->add_changed_value (1, &new_att2_value);
+    rbr1->add_changed_value (2, &new_att1_value);
+    rbr1->add_changed_value (3, &new_att3_value);
 
-  cubreplication::log_generator *lg = cubreplication::log_generator::new_instance (0);
+    rbr2->set_key_value (&key_value);
+    rbr2->add_changed_value (1, &new_att1_value);
+    rbr2->add_changed_value (2, &new_att2_value);
+    rbr2->add_changed_value (3, &new_att3_value);
 
-  lg->append_repl_entry (NULL, sbr1);
-  lg->append_repl_entry (NULL, rbr1);
-  lg->append_repl_entry (NULL, sbr2);
-  lg->append_repl_entry (NULL, rbr2);
+    cubreplication::log_generator *lg = cubreplication::log_generator::new_instance (0);
 
-  lg->set_ready_to_pack (NULL);
+    lg->append_repl_entry (NULL, sbr1);
+    lg->append_repl_entry (NULL, rbr1);
+    lg->append_repl_entry (NULL, sbr2);
+    lg->append_repl_entry (NULL, rbr2);
 
-  lg->pack_stream_entries (NULL);
+    lg->set_ready_to_pack (NULL);
 
-  cubreplication::log_consumer *lc =
-    cubreplication::log_consumer::new_instance (cubreplication::REPLICATION_DATA_APPLIER, 0);
-  
-  /* get stream from log_generator, get its buffer and attached it to log_consumer stream */
-  cubstream::packing_stream *lg_stream = lg->get_stream ();
-  cubstream::packing_stream *lc_stream = lc->get_stream ();
+    lg->pack_stream_entries (NULL);
 
-  move_buffers (lg_stream, lc_stream);
+    cubreplication::log_consumer *lc =
+	    cubreplication::log_consumer::new_instance (cubreplication::REPLICATION_DATA_APPLIER, 0);
 
-  cubreplication::replication_stream_entry *se = NULL;
+    /* get stream from log_generator, get its buffer and attached it to log_consumer stream */
+    cubstream::packing_stream *lg_stream = lg->get_stream ();
+    cubstream::packing_stream *lc_stream = lc->get_stream ();
 
-  lc->fetch_stream_entry (se);
-  se->unpack ();
+    move_buffers (lg_stream, lc_stream);
 
-  res = se->is_equal (lg->get_stream_entry (NULL));
+    cubreplication::replication_stream_entry *se = NULL;
 
-  return res;
-}
+    lc->fetch_stream_entry (se);
+    se->unpack ();
+
+    res = se->is_equal (lg->get_stream_entry (NULL));
+
+    return res;
+  }
 }

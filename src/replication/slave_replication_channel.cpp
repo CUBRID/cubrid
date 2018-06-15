@@ -29,9 +29,9 @@
 namespace cubreplication
 {
 
-int slave_replication_channel::init (void)
-{
-  return NO_ERROR;
-}
+  int slave_replication_channel::init (void)
+  {
+    return NO_ERROR;
+  }
 
 } /* namespace cubreplication */

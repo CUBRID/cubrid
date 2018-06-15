@@ -32,28 +32,31 @@
 namespace cubreplication
 {
 
-class log_file;
+  class log_file;
 
-class master_replication_channel_manager
-{
-public:
-  master_replication_channel_manager (const cubstream::stream_position &start_position);
+  class master_replication_channel_manager
+  {
+    public:
+      master_replication_channel_manager (const cubstream::stream_position &start_position);
 
-  int init (const cubstream::stream_position &start_position);
-
-
-
-  static master_replication_channel_manager *get_instance (void);
+      int init (const cubstream::stream_position &start_position);
 
 
-  cubstream::packing_stream * get_write_stream (void) { return generator_stream; };
 
-private:
-  /* file attached to log_generator (only for global instance) */
-  log_file *m_file; 
+      static master_replication_channel_manager *get_instance (void);
 
-  cubstream::packing_stream *generator_stream;
-};
+
+      cubstream::packing_stream *get_write_stream (void)
+      {
+	return generator_stream;
+      };
+
+    private:
+      /* file attached to log_generator (only for global instance) */
+      log_file *m_file;
+
+      cubstream::packing_stream *generator_stream;
+  };
 
 } /* namespace cubreplication */
 

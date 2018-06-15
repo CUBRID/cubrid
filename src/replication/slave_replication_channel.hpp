@@ -30,23 +30,26 @@
 
 namespace cubreplication
 {
-  
-struct stream_entry_header;
-class replication_stream;
+
+  struct stream_entry_header;
+  class replication_stream;
 
 
-class slave_replication_channel
-{
-public:
-  int init (void);
+  class slave_replication_channel
+  {
+    public:
+      int init (void);
 
-  cubstream::stream* get_write_stream (void) { return receiving_stream; };
+      cubstream::stream *get_write_stream (void)
+      {
+	return receiving_stream;
+      };
 
-private:
+    private:
 
-  cubstream::stream *receiving_stream;
+      cubstream::stream *receiving_stream;
 
-};
+  };
 
 } /* namespace cubreplication */
 

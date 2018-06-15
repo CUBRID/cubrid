@@ -28,24 +28,25 @@
 namespace cubreplication
 {
 
-master_replication_channel_manager::master_replication_channel_manager (const cubstream::stream_position &start_position)
-{
-  init (start_position);
-}
+  master_replication_channel_manager::master_replication_channel_manager (const cubstream::stream_position
+      &start_position)
+  {
+    init (start_position);
+  }
 
-int master_replication_channel_manager::init (const cubstream::stream_position &start_position)
-{
-  /* attach a log_file */
-  //m_file = new log_file ();
-  //m_file->open_file (log_file::get_filename (start_position));
-  return NO_ERROR;
-}
+  int master_replication_channel_manager::init (const cubstream::stream_position &start_position)
+  {
+    /* attach a log_file */
+    //m_file = new log_file ();
+    //m_file->open_file (log_file::get_filename (start_position));
+    return NO_ERROR;
+  }
 
-master_replication_channel_manager *master_replication_channel_manager::get_instance (void)
-{
-  static master_replication_channel_manager global_mrcm (0);
+  master_replication_channel_manager *master_replication_channel_manager::get_instance (void)
+  {
+    static master_replication_channel_manager global_mrcm (0);
 
-  return &global_mrcm;
-}
+    return &global_mrcm;
+  }
 
 } /* namespace cubreplication */

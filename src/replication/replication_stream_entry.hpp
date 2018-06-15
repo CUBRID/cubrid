@@ -34,42 +34,42 @@
 namespace cubreplication
 {
 
-struct replication_stream_entry_header
-{
-  cubstream::stream_position prev_record;
-  MVCCID mvccid;
-  unsigned int count_replication_entries;
-  int data_size;
+  struct replication_stream_entry_header
+  {
+    cubstream::stream_position prev_record;
+    MVCCID mvccid;
+    unsigned int count_replication_entries;
+    int data_size;
 
-  replication_stream_entry_header () : prev_record (0), mvccid (-1), count_replication_entries (0) {};
-};
+    replication_stream_entry_header () : prev_record (0), mvccid (-1), count_replication_entries (0) {};
+  };
 
-class replication_stream_entry : public cubstream::entry
-{
-private:
-  replication_stream_entry_header m_header;
-  cubpacking::packer m_serializator;
+  class replication_stream_entry : public cubstream::entry
+  {
+    private:
+      replication_stream_entry_header m_header;
+      cubpacking::packer m_serializator;
 
-public:
-  replication_stream_entry (cubstream::packing_stream *stream_p) : entry (stream_p) { };
+    public:
+      replication_stream_entry (cubstream::packing_stream *stream_p) : entry (stream_p) { };
 
-  size_t get_header_size ();
-  size_t get_data_packed_size (void);
-  void set_header_data_size (const size_t &data_size);
+      size_t get_header_size ();
+      size_t get_data_packed_size (void);
+      void set_header_data_size (const size_t &data_size);
 
-  cubstream::entry::packable_factory *get_builder ();
+      cubstream::entry::packable_factory *get_builder ();
 
-  cubpacking::packer *get_packer ()
-    {
-      return &m_serializator;
-    };
+      cubpacking::packer *get_packer ()
+      {
+	return &m_serializator;
+      };
 
-  int pack_stream_entry_header ();
-  int unpack_stream_entry_header ();
-  int get_packable_entry_count_from_header (void);
+      int pack_stream_entry_header ();
+      int unpack_stream_entry_header ();
+      int get_packable_entry_count_from_header (void);
 
-  bool is_equal (const cubstream::entry *other);
-};
+      bool is_equal (const cubstream::entry *other);
+  };
 
 } /* namespace cubreplication */
 

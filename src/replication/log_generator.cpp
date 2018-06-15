@@ -32,108 +32,108 @@
 namespace cubreplication
 {
 
-log_generator * log_generator::global_log_generator = NULL;
+  log_generator *log_generator::global_log_generator = NULL;
 
-log_generator::~log_generator()
-{
-  assert (this == global_log_generator);
-  delete m_stream;
-  log_generator::global_log_generator = NULL;
+  log_generator::~log_generator()
+  {
+    assert (this == global_log_generator);
+    delete m_stream;
+    log_generator::global_log_generator = NULL;
 
-  for (int i = 0; i < m_stream_entries.size (); i++)
-    {
-      delete m_stream_entries[i];
-      m_stream_entries[i] = NULL;
-    }
-}
+    for (int i = 0; i < m_stream_entries.size (); i++)
+      {
+	delete m_stream_entries[i];
+	m_stream_entries[i] = NULL;
+      }
+  }
 
-log_generator* log_generator::new_instance (const cubstream::stream_position &start_position)
-{
-  log_generator *new_lg = new log_generator ();
-  new_lg->m_start_append_position = start_position;
-  
-  /* create stream only for global instance */
-  /* TODO : sys params */
-  new_lg->m_stream = new cubstream::packing_stream (100 * 1024 * 1024, 1000);
-  new_lg->m_stream->init (new_lg->m_start_append_position);
+  log_generator *log_generator::new_instance (const cubstream::stream_position &start_position)
+  {
+    log_generator *new_lg = new log_generator ();
+    new_lg->m_start_append_position = start_position;
 
-  /* this is the global instance */
-  assert (global_log_generator == NULL);
-  global_log_generator = new_lg;
-  /* TODO[arnia] : actual number of transactions */
-  new_lg->m_stream_entries.resize (1000);
-  for (int i = 0; i < 1000; i++)
-    {
-      new_lg->m_stream_entries[i] = new replication_stream_entry (new_lg->m_stream);
-    }
+    /* create stream only for global instance */
+    /* TODO : sys params */
+    new_lg->m_stream = new cubstream::packing_stream (100 * 1024 * 1024, 1000);
+    new_lg->m_stream->init (new_lg->m_start_append_position);
 
-  return new_lg;
-}
+    /* this is the global instance */
+    assert (global_log_generator == NULL);
+    global_log_generator = new_lg;
+    /* TODO[arnia] : actual number of transactions */
+    new_lg->m_stream_entries.resize (1000);
+    for (int i = 0; i < 1000; i++)
+      {
+	new_lg->m_stream_entries[i] = new replication_stream_entry (new_lg->m_stream);
+      }
 
-replication_stream_entry* log_generator::get_stream_entry (THREAD_ENTRY *th_entry)
-{
-  int stream_entry_idx;
+    return new_lg;
+  }
 
-  if (th_entry == NULL)
-    {
-      stream_entry_idx = 0;
-    }
-  else
-    {
-      stream_entry_idx = th_entry->tran_index;
-    }
-  replication_stream_entry *my_stream_entry = m_stream_entries[stream_entry_idx];
-  return my_stream_entry;
-}
+  replication_stream_entry *log_generator::get_stream_entry (THREAD_ENTRY *th_entry)
+  {
+    int stream_entry_idx;
 
-int log_generator::append_repl_entry (THREAD_ENTRY *th_entry, cubpacking::packable_object *repl_entry)
-{
-  replication_stream_entry *my_stream_entry = get_stream_entry (th_entry);
+    if (th_entry == NULL)
+      {
+	stream_entry_idx = 0;
+      }
+    else
+      {
+	stream_entry_idx = th_entry->tran_index;
+      }
+    replication_stream_entry *my_stream_entry = m_stream_entries[stream_entry_idx];
+    return my_stream_entry;
+  }
 
-  my_stream_entry->add_packable_entry (repl_entry);
+  int log_generator::append_repl_entry (THREAD_ENTRY *th_entry, cubpacking::packable_object *repl_entry)
+  {
+    replication_stream_entry *my_stream_entry = get_stream_entry (th_entry);
 
-  return NO_ERROR;
-}
+    my_stream_entry->add_packable_entry (repl_entry);
 
-void log_generator::set_ready_to_pack (THREAD_ENTRY *th_entry)
-{
-  if (th_entry == NULL)
-    {
-      int i;
-      /* TODO : this should be used only for testing */
-      for (i = 0; i < m_stream_entries.size (); i++)
-        {
-          m_stream_entries[i]->set_packable (true);
-        }
-    }
-  else
-    {
-      cubstream::entry *my_stream_entry = get_stream_entry (th_entry);
-      my_stream_entry->set_packable (true);
-    }
-}
+    return NO_ERROR;
+  }
 
-int log_generator::pack_stream_entries (THREAD_ENTRY *th_entry)
-{
-  int i;
-  size_t repl_entries_size = 0;
+  void log_generator::set_ready_to_pack (THREAD_ENTRY *th_entry)
+  {
+    if (th_entry == NULL)
+      {
+	int i;
+	/* TODO : this should be used only for testing */
+	for (i = 0; i < m_stream_entries.size (); i++)
+	  {
+	    m_stream_entries[i]->set_packable (true);
+	  }
+      }
+    else
+      {
+	cubstream::entry *my_stream_entry = get_stream_entry (th_entry);
+	my_stream_entry->set_packable (true);
+      }
+  }
 
-  if (th_entry == NULL)
-    {
-      for (i = 0; i < m_stream_entries.size (); i++)
-        {
-          m_stream_entries[i]->pack ();
-          m_stream_entries[i]->reset ();
-        }
-    }
-  else
-    {
-      cubstream::entry *my_stream_entry = get_stream_entry (th_entry);
-      my_stream_entry->pack ();
-      my_stream_entry->reset ();
-    }
+  int log_generator::pack_stream_entries (THREAD_ENTRY *th_entry)
+  {
+    int i;
+    size_t repl_entries_size = 0;
 
-  return NO_ERROR;
-}
+    if (th_entry == NULL)
+      {
+	for (i = 0; i < m_stream_entries.size (); i++)
+	  {
+	    m_stream_entries[i]->pack ();
+	    m_stream_entries[i]->reset ();
+	  }
+      }
+    else
+      {
+	cubstream::entry *my_stream_entry = get_stream_entry (th_entry);
+	my_stream_entry->pack ();
+	my_stream_entry->reset ();
+      }
+
+    return NO_ERROR;
+  }
 
 } /* namespace cubreplication */

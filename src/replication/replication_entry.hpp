@@ -38,66 +38,72 @@ class cubpacking::packer;
 namespace cubreplication
 {
 
-enum repl_entry_type
-{
-  REPL_UPDATE = 0,
-  REPL_INSERT,
-  REPL_DELETE
-};
-typedef enum repl_entry_type REPL_ENTRY_TYPE;
+  enum repl_entry_type
+  {
+    REPL_UPDATE = 0,
+    REPL_INSERT,
+    REPL_DELETE
+  };
+  typedef enum repl_entry_type REPL_ENTRY_TYPE;
 
-class sbr_repl_entry : public cubpacking::packable_object
-{
-private:
-  std::string m_statement;
+  class sbr_repl_entry : public cubpacking::packable_object
+  {
+    private:
+      std::string m_statement;
 
-public:
-  static const int ID = 1;
+    public:
+      static const int ID = 1;
 
-  sbr_repl_entry () {};
-  ~sbr_repl_entry () {};
-  sbr_repl_entry (const std::string &str) { set_statement (str); };
+      sbr_repl_entry () {};
+      ~sbr_repl_entry () {};
+      sbr_repl_entry (const std::string &str)
+      {
+	set_statement (str);
+      };
 
-  bool is_equal (const cubpacking::packable_object *other);
+      bool is_equal (const cubpacking::packable_object *other);
 
-  void set_statement (const std::string &str) { m_statement = str; };
+      void set_statement (const std::string &str)
+      {
+	m_statement = str;
+      };
 
-  int pack (cubpacking::packer *serializator);
-  int unpack (cubpacking::packer *serializator);
+      int pack (cubpacking::packer *serializator);
+      int unpack (cubpacking::packer *serializator);
 
-  size_t get_packed_size (cubpacking::packer *serializator);
-};
+      size_t get_packed_size (cubpacking::packer *serializator);
+  };
 
-class single_row_repl_entry : public cubpacking::packable_object
-{
-private:
-  REPL_ENTRY_TYPE m_type;
-  std::vector <int> changed_attributes;
-  char m_class_name [SM_MAX_IDENTIFIER_LENGTH + 1];
-  DB_VALUE m_key_value;
-  std::vector <DB_VALUE> new_values;
+  class single_row_repl_entry : public cubpacking::packable_object
+  {
+    private:
+      REPL_ENTRY_TYPE m_type;
+      std::vector <int> changed_attributes;
+      char m_class_name [SM_MAX_IDENTIFIER_LENGTH + 1];
+      DB_VALUE m_key_value;
+      std::vector <DB_VALUE> new_values;
 
-public:
-  static const int ID = 2;
+    public:
+      static const int ID = 2;
 
-  single_row_repl_entry () {};
-  ~single_row_repl_entry ();
-  single_row_repl_entry (const REPL_ENTRY_TYPE m_type, const char *class_name);
+      single_row_repl_entry () {};
+      ~single_row_repl_entry ();
+      single_row_repl_entry (const REPL_ENTRY_TYPE m_type, const char *class_name);
 
-  bool is_equal (const cubpacking::packable_object *other);
+      bool is_equal (const cubpacking::packable_object *other);
 
-  void set_class_name (const char *class_name);
+      void set_class_name (const char *class_name);
 
-  void set_key_value (DB_VALUE *db_val);
+      void set_key_value (DB_VALUE *db_val);
 
-  void add_changed_value (const int att_id, DB_VALUE *db_val);
+      void add_changed_value (const int att_id, DB_VALUE *db_val);
 
 
-  int pack (cubpacking::packer *serializator);
-  int unpack (cubpacking::packer *serializator);
+      int pack (cubpacking::packer *serializator);
+      int unpack (cubpacking::packer *serializator);
 
-  size_t get_packed_size (cubpacking::packer *serializator);
-};
+      size_t get_packed_size (cubpacking::packer *serializator);
+  };
 
 } /* namespace cubreplication */
 
