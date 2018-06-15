@@ -7743,9 +7743,12 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
   /* Import default value and on update default expr from referenced table for those attributes in the the view that don't have them. */
   for (attr = attrs, col = columns; attr && col; attr = attr->next, col = col->next)
     {
-      if ((!attr->info.attr_def.data_default || attr->info.attr_def.on_update == DB_DEFAULT_NONE)
-	  && col->node_type == PT_NAME)
+      if (!attr->info.attr_def.data_default || attr->info.attr_def.on_update == DB_DEFAULT_NONE)
 	{
+	  if (col->node_type != PT_NAME)
+	    {
+	      continue;
+	    }
 	  /* found matching column */
 	  if (col->info.name.spec_id == 0)
 	    {
