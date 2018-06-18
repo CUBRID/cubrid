@@ -12434,7 +12434,7 @@ check_on_update (PARSER_CONTEXT * parser, PT_NODE * attribute)
   int error = NO_ERROR;
   PT_TYPE_ENUM desired_type = attribute->type_enum;
   DB_DEFAULT_EXPR_TYPE on_update_expr_type = attribute->info.attr_def.on_update;
-  PT_NODE *temp_val = NULL;
+  PT_NODE *temp_ptval = NULL;
 
   if (on_update_expr_type == DB_DEFAULT_NONE)
     {
@@ -12460,57 +12460,63 @@ check_on_update (PARSER_CONTEXT * parser, PT_NODE * attribute)
   db_make_null (&on_update_val);
 
   pt_evaluate_tree_having_serial (parser, on_update_default_expr, &on_update_val, 1);
-  temp_val = pt_dbval_to_value (parser, &on_update_val);
-  if (temp_val == NULL)
+  temp_ptval = pt_dbval_to_value (parser, &on_update_val);
+  if (temp_ptval == NULL)
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
       error = er_errid ();
-      goto exit;
+
+      db_value_clear (&on_update_val);
+      if (on_update_default_expr != NULL)
+	{
+	  parser_free_node (parser, on_update_default_expr);
+	}
+      return error;
     }
 
-  error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, desired_type, attribute->data_type,
+  error = pt_coerce_value_for_default_value (parser, temp_ptval, temp_ptval, desired_type, attribute->data_type,
 					     on_update_expr_type);
 
-exit:
   if (pt_has_error (parser))
     {
       /* forget previous one to set the better error */
       pt_reset_error (parser);
     }
 
-  const char *data_type_print;
-  if (attribute->data_type != NULL)
-    {
-      data_type_print = pt_short_print (parser, attribute->data_type);
-    }
-  else
-    {
-      data_type_print = pt_show_type_enum ((PT_TYPE_ENUM) desired_type);
-    }
-
   if (error != NO_ERROR)
     {
+      const char *data_type_print;
+      if (attribute->data_type != NULL)
+	{
+	  data_type_print = pt_short_print (parser, attribute->data_type);
+	}
+      else
+	{
+	  data_type_print = pt_show_type_enum ((PT_TYPE_ENUM) desired_type);
+	}
+
       if (error == ER_IT_DATA_OVERFLOW)
 	{
-	  PT_ERRORmf2 (parser, temp_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
+	  PT_ERRORmf2 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
 		       pt_short_print (parser, on_update_default_expr), data_type_print);
 	}
       else
 	{
-	  PT_ERRORmf2 (parser, temp_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+	  PT_ERRORmf2 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
 		       pt_short_print (parser, on_update_default_expr), data_type_print);
 	}
     }
 
   db_value_clear (&on_update_val);
-  if (temp_val != NULL)
+  if (temp_ptval != NULL)
     {
-      parser_free_node (parser, temp_val);
+      parser_free_node (parser, temp_ptval);
     }
   if (on_update_default_expr != NULL)
     {
       parser_free_node (parser, on_update_default_expr);
     }
+
   return error;
 }
 

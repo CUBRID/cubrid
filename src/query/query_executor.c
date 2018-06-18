@@ -22787,16 +22787,20 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
 	      /* add whitespace character if saved is not an empty string */
 	      const char *on_update_string = "ON UPDATE ";
-	      char *str_val = (char *) db_private_alloc (thread_p,
-							 len + (len ? 1 : 0) + strlen (on_update_string)
-							 + strlen (default_expr_op_string) + 1);
+	      size_t str_len = len + strlen (on_update_string) + strlen (default_expr_op_string) + 1;
+	      if (len != 0)
+		{
+		  str_len += 1;	// append space before
+		}
+	      char *str_val = (char *) db_private_alloc (thread_p, str_len);
+
 	      if (str_val == NULL)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
 
 	      strcpy (str_val, saved);
-	      if (len)
+	      if (len != 0)
 		{
 		  strcat (str_val, " ");
 		}
