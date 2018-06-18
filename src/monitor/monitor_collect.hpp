@@ -17,34 +17,42 @@
  *
  */
 
-/*
- * packable_object.hpp
- */
+//
+// monitor_collect.hpp - interface for collecting statistics
+//
 
-#ifndef _PACKABLE_OBJECT_HPP_
-#define _PACKABLE_OBJECT_HPP_
+#if !defined _MONITOR_COLLECT_HPP_
+#define _MONITOR_COLLECT_HPP_
 
-#ident "$Id$"
+#include "monitor_statistic.hpp"
+#include "monitor_transaction.hpp"
 
-#include "packer.hpp"
-#include <map>
-
-namespace cubpacking
+namespace cubmonitor
 {
 
-  class packable_object
+  //////////////////////////////////////////////////////////////////////////
+  // grouped statistics
+  //////////////////////////////////////////////////////////////////////////
+
+  class timer
   {
     public:
-      virtual ~packable_object () {};
-      virtual int pack (packer *serializator) = 0;
-      virtual int unpack (packer *serializator) = 0;
+      timer (void);
 
-      virtual bool is_equal (const packable_object *other) = 0;
+      void reset (void);
+      duration time (void);
 
-      /* used at packing to get info on how much memory to reserve */
-      virtual size_t get_packed_size (packer *serializator) = 0;
+    private:
+      time_point m_timept;
   };
 
-} /* namespace cubpacking */
 
-#endif /* _PACKABLE_OBJECT_HPP_ */
+  //////////////////////////////////////////////////////////////////////////
+  // template and inline implementation
+  //////////////////////////////////////////////////////////////////////////
+
+
+
+} // namespace cubmonitor
+
+#endif // _MONITOR_COLLECT_HPP_
