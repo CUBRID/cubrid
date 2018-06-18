@@ -2721,6 +2721,7 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
   new_session->parser->set_host_var = 1;
 
   new_session->parser->is_holdable = session->parser->is_holdable;
+  new_session->parser->is_auto_commit = session->parser->is_auto_commit;
   return db_execute_and_keep_statement_local (new_session, 1, result);
 }
 
@@ -3987,6 +3988,9 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_INVALID_SESSION, 0);
       return er_errid ();
     }
+
+  /* Set parser auto commit. */
+  session->parser->is_auto_commit = auto_commit ? 1 : 0;
 
   /* Init statement auto commit. */
   statement->use_auto_commit = 0;

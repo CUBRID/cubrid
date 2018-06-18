@@ -8135,6 +8135,11 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
 
       query_flag = DEFAULT_EXEC_MODE;
 
+      if (parser->is_auto_commit)
+	{
+	  query_flag |= TRAN_AUTO_COMMIT;
+	}
+
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
       error =
@@ -9183,6 +9188,11 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 	    }
 
+	  if (parser->is_auto_commit)
+	    {
+	      query_flag |= TRAN_AUTO_COMMIT;
+	    }
+
 	  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true && parser->query_trace == true)
 	    {
 	      do_set_trace_to_query_flag (&query_flag);
@@ -9743,6 +9753,11 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       QUERY_FLAG query_flag;
 
       query_flag = DEFAULT_EXEC_MODE;
+
+      if (parser->is_auto_commit)
+	{
+	  query_flag |= TRAN_AUTO_COMMIT;
+	}
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
@@ -10455,6 +10470,11 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
+      if (parser->is_auto_commit)
+	{
+	  query_flag |= TRAN_AUTO_COMMIT;
+	}
+
       if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true && parser->query_trace == true)
 	{
 	  do_set_trace_to_query_flag (&query_flag);
@@ -10972,6 +10992,11 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (do_Trigger_involved == true)
 	{
 	  query_flag |= TRIGGER_IS_INVOLVED;
+	}
+
+      if (parser->is_auto_commit)
+	{
+	  query_flag |= TRAN_AUTO_COMMIT;
 	}
 
       assert (stream.buffer_size > 0);
@@ -13519,6 +13544,11 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
+  if (parser->is_auto_commit)
+    {
+      query_flag |= TRAN_AUTO_COMMIT;
+    }
+
   if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true && parser->query_trace == true)
     {
       do_set_trace_to_query_flag (&query_flag);
@@ -13901,6 +13931,11 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_flag |= DONT_COLLECT_EXEC_STATS;
     }
 
+  if (parser->is_auto_commit)
+    {
+      query_flag |= TRAN_AUTO_COMMIT;
+    }
+
 #if defined(CUBRID_DEBUG)
   PT_NODE_PRINT_TO_ALIAS (parser, statement, PT_CONVERT_RANGE);
 #endif
@@ -14255,6 +14290,10 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       query_flag |= XASL_CACHE_PINNED_REFERENCE;
     }
+  if (parser->is_auto_commit)
+    {
+      query_flag |= TRAN_AUTO_COMMIT;
+    }
 
   if (query_trace == true)
     {
@@ -14441,6 +14480,11 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      return err;
 	    }
 	}
+    }
+
+  if (parser->is_auto_commit)
+    {
+      query_flag |= TRAN_AUTO_COMMIT;
     }
 
   if (query_trace == true)
@@ -14867,6 +14911,11 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* don't cache anything */
   query_flag |= NOT_FROM_RESULT_CACHE;
   query_flag |= RESULT_CACHE_INHIBITED;
+
+  if (parser->is_auto_commit)
+    {
+      query_flag |= TRAN_AUTO_COMMIT;
+    }
 
   pt_null_etc (statement);
 
@@ -16150,6 +16199,11 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  goto exit;
 		}
 	    }
+	}
+
+      if (parser->is_auto_commit)
+	{
+	  query_flag |= TRAN_AUTO_COMMIT;
 	}
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */

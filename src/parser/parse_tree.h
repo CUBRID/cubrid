@@ -3607,6 +3607,7 @@ struct parser_context
   unsigned dont_collect_exec_stats:1;
   unsigned return_generated_keys:1;
   unsigned is_system_generated_stmt:1;
+  unsigned is_auto_commit:1;	/* set to true, if auto commit. */
 };
 
 /* used in assignments enumeration */

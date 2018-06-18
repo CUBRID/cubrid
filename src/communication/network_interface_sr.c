@@ -4529,6 +4529,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   bool end_query_allowed, reset_on_commit;
   LOG_TDES *tdes;
   TRAN_STATE tran_state;
+  bool is_tran_auto_commit;
 
   trace_slow_msec = prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS);
   trace_ioreads = prm_get_integer_value (PRM_ID_SQL_TRACE_IOREADS);
@@ -4566,6 +4567,10 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   ptr = or_unpack_int (ptr, &query_flag);
   OR_UNPACK_CACHE_TIME (ptr, &clt_cache_time);
   ptr = or_unpack_int (ptr, &query_timeout);
+
+  is_tran_auto_commit = IS_TRAN_AUTO_COMMIT (query_flag);
+  xsession_set_tran_auto_commit (thread_p, is_tran_auto_commit);
+
   if (IS_QUERY_EXECUTE_WITH_COMMIT (query_flag))
     {
       ptr = or_unpack_int (ptr, &n_query_ids);
@@ -4586,6 +4591,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	  ptr = or_unpack_ptr (ptr, p_net_Deferred_end_queries + i);
 	}
     }
+
   if (IS_QUERY_EXECUTED_WITHOUT_DATA_BUFFERS (query_flag))
     {
       assert (data_size < EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE);
@@ -5124,6 +5130,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_page_buf;
   QUERY_FLAG flag;
   int query_timeout;
+  bool is_tran_auto_commit;
 
   aligned_page_buf = PTR_ALIGN (page_buf, MAX_ALIGNMENT);
 
@@ -5160,6 +5167,9 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char
 	  goto cleanup;
 	}
     }
+
+  is_tran_auto_commit = IS_TRAN_AUTO_COMMIT (flag);
+  xsession_set_tran_auto_commit (thread_p, is_tran_auto_commit);
 
   /* 
    * After this point, xqmgr_prepare_and_execute_query has assumed
