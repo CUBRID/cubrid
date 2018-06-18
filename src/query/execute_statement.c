@@ -8697,7 +8697,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
   int err;
   PT_NODE *flat, *not_nulls, *lhs, *spec = NULL;
   DB_OBJECT *class_obj;
-  int has_trigger, has_unique, au_save, has_virt = 0;
+  int has_trigger, has_unique, has_any_update_trigger, au_save, has_virt = 0;
   bool server_update;
 
   if (parser == NULL || statement == NULL)
@@ -8750,6 +8750,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
        * virtual */
       spec = statement->info.update.spec;
       has_trigger = 0;
+      has_any_update_trigger = 0;
       while (spec && !has_trigger && err == NO_ERROR)
 	{
 	  if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
@@ -8759,6 +8760,19 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      assert (class_obj);	/* safeguard */
 	      /* the presence of a proxy trigger should force the update to be performed through the workspace */
 	      err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_UPDATE);
+
+	      if (err = NO_ERROR)
+		{
+		  if (has_trigger)
+		    {
+		      has_any_update_trigger = has_trigger;
+		    }
+		  else if (!has_any_update_trigger)
+		    {
+		      /* Check for statement delete triggerrs. */
+		      err = sm_class_has_triggers (class_obj, &has_any_update_trigger, TR_EVENT_STATEMENT_UPDATE);
+		    }
+		}
 
 	      if (!has_virt)
 		{
@@ -8799,6 +8813,10 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  lhs = lhs->info.expr.arg1;
 	}
       statement->info.update.server_update = server_update;
+      if (server_update && !has_any_update_trigger)
+	{
+	  statement->info.update.execute_with_commit_allowed = 1;
+	}
 
       /* if we are updating class attributes, not need to prepare */
       if (lhs->info.name.meta_class == PT_META_ATTR)
@@ -9146,6 +9164,23 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (statement->use_auto_commit)
 	    {
 	      query_flag |= EXECUTE_QUERY_WITH_COMMIT;
+
+	      /* Flush all before commit. */
+	      if (ws_need_flush ())
+		{
+		  if (tm_Use_OID_preflush)
+		    {
+		      (void) locator_assign_all_permanent_oids ();
+		    }
+
+		  /* Flush all dirty objects */
+		  /* Flush virtual objects first so that locator_all_flush doesn't see any */
+		  err = locator_all_flush ();
+		  if (err != NO_ERROR)
+		    {
+		      break;
+		    }
+		}
 	    }
 
 	  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true && parser->query_trace == true)
@@ -10006,7 +10041,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
   int err;
   PT_NODE *flat;
   DB_OBJECT *class_obj;
-  int has_trigger, au_save;
+  int has_trigger, au_save, has_any_delete_trigger;
   bool server_delete, has_virt_obj;
   PT_NODE *node = NULL;
   PT_NODE *save_stmt = statement;
@@ -10062,6 +10097,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
       AU_SAVE_AND_DISABLE (au_save);	/* because sm_class_has_trigger() calls au_fetch_class() */
       has_virt_obj = false;
       has_trigger = 0;
+      has_any_delete_trigger = 0;
       node = (PT_NODE *) statement->info.delete_.spec;
       while (node && err == NO_ERROR && !has_trigger)
 	{
@@ -10081,6 +10117,19 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		  class_obj = NULL;
 		}
 	      err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_DELETE);
+
+	      if (err == NO_ERROR)
+		{
+		  if (has_trigger)
+		    {
+		      has_any_delete_trigger = has_trigger;
+		    }
+		  else if (!has_any_delete_trigger)
+		    {
+		      /* Check for statement delete triggerrs. */
+		      err = sm_class_has_triggers (class_obj, &has_any_delete_trigger, TR_EVENT_STATEMENT_DELETE);
+		    }
+		}
 	    }
 
 	  node = node->next;
@@ -10100,6 +10149,10 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
       server_delete = (!has_trigger && !has_virt_obj);
 
       statement->info.delete_.server_delete = server_delete;
+      if (server_delete && !has_any_delete_trigger)
+	{
+	  statement->info.delete_.execute_with_commit_allowed = 1;
+	}
 
       stream.xasl_id = NULL;
       if (server_delete)
@@ -10384,6 +10437,22 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (statement->use_auto_commit)
 	{
 	  query_flag |= EXECUTE_QUERY_WITH_COMMIT;
+
+	  if (ws_need_flush ())
+	    {
+	      if (tm_Use_OID_preflush)
+		{
+		  (void) locator_assign_all_permanent_oids ();
+		}
+
+	      /* Flush all dirty objects */
+	      /* Flush virtual objects first so that locator_all_flush doesn't see any */
+	      err = locator_all_flush ();
+	      if (err != NO_ERROR)
+		{
+		  break;
+		}
+	    }
 	}
 
       if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true && parser->query_trace == true)
@@ -13432,6 +13501,22 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement->use_auto_commit)
     {
       query_flag |= EXECUTE_QUERY_WITH_COMMIT;
+
+      if (ws_need_flush ())
+	{
+	  if (tm_Use_OID_preflush)
+	    {
+	      (void) locator_assign_all_permanent_oids ();
+	    }
+
+	  /* Flush all dirty objects */
+	  /* Flush virtual objects first so that locator_all_flush doesn't see any */
+	  err = locator_all_flush ();
+	  if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
+	}
     }
 
   if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true && parser->query_trace == true)
@@ -14340,6 +14425,22 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement->use_auto_commit)
     {
       query_flag |= EXECUTE_QUERY_WITH_COMMIT;
+
+      if (ws_need_flush ())
+	{
+	  if (tm_Use_OID_preflush)
+	    {
+	      (void) locator_assign_all_permanent_oids ();
+	    }
+
+	  /* Flush all dirty objects */
+	  /* Flush virtual objects first so that locator_all_flush doesn't see any */
+	  err = locator_all_flush ();
+	  if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
+	}
     }
 
   if (query_trace == true)
@@ -16033,6 +16134,22 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (statement->use_auto_commit)
 	{
 	  query_flag |= EXECUTE_QUERY_WITH_COMMIT;
+
+	  if (ws_need_flush ())
+	    {
+	      if (tm_Use_OID_preflush)
+		{
+		  (void) locator_assign_all_permanent_oids ();
+		}
+
+	      /* Flush all dirty objects */
+	      /* Flush virtual objects first so that locator_all_flush doesn't see any */
+	      err = locator_all_flush ();
+	      if (err != NO_ERROR)
+		{
+		  goto exit;
+		}
+	    }
 	}
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
@@ -17303,6 +17420,7 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
   int error = NO_ERROR;
   int upd_has_uniques = 0;
   bool has_default_values_list = false;
+  int trigger_involved = 0;
   *update = NULL;
 
   /* Check if server allows an insert. */
@@ -17313,6 +17431,23 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
       goto exit;
     }
 
+  /* Check whether the statement can be executed with commit. */
+  if ((statement->info.insert.server_allowed == SERVER_INSERT_IS_ALLOWED)
+      && (statement->info.insert.odku_assignments == NULL))
+    {
+      /* Check statement insert trigger. */
+      error = sm_class_has_triggers ((*class_)->info.name.db_object, &trigger_involved, TR_EVENT_STATEMENT_INSERT);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+
+      if (!trigger_involved)
+	{
+	  statement->info.insert.execute_with_commit_allowed = 1;
+	}
+    }
 
   /* Check non null attrs. */
   if (values->info.node_list.list_type == PT_IS_DEFAULT_VALUE)

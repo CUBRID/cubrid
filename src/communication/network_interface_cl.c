@@ -6509,11 +6509,11 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
       /* fourth argument should be query_id */
       ptr = or_unpack_ptr (reply + OR_INT_SIZE * 4, query_idp);
       OR_UNPACK_CACHE_TIME (ptr, &local_srv_cache_time);
-
       if (srv_cache_time)
 	{
 	  memcpy (srv_cache_time, &local_srv_cache_time, sizeof (CACHE_TIME));
 	}
+
       if (IS_QUERY_EXECUTE_WITH_COMMIT (flag))
 	{
 	  bool committed = false;

@@ -2099,6 +2099,7 @@ struct pt_delete_info
   unsigned has_trigger:1;	/* whether it has triggers */
   unsigned server_delete:1;	/* whether it can be server-side deletion */
   unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
+  unsigned execute_with_commit_allowed:1;	/* true, if execute with commit allowed. */
 };
 
 /* DOT_INFO*/
@@ -2365,6 +2366,7 @@ struct pt_insert_info
   PT_NODE *odku_non_null_attrs;	/* attributes with not null constraint in odku assignments */
   int has_uniques;		/* class has unique constraints */
   SERVER_INSERT_ALLOWED server_allowed;	/* is insert allowed on server */
+  unsigned execute_with_commit_allowed:1;	/* true, if execute with commit allowed. */
 };
 
 /* Info for Transaction Isolation Level */
@@ -2898,6 +2900,7 @@ struct pt_update_info
   unsigned server_update:1;	/* whether it can be server-side update */
   unsigned do_class_attrs:1;	/* whether it is on class attributes */
   unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
+  unsigned execute_with_commit_allowed:1;	/* true, if execute with commit allowed. */
 };
 
 /* UPDATE STATISTICS INFO */

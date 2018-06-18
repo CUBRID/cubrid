@@ -4519,7 +4519,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   UINT64 *current_stats = NULL;
   UINT64 *diff_stats = NULL;
   char *sql_id = NULL;
-  int error_code = NO_ERROR;
+  int error_code = NO_ERROR, all_error_code = NO_ERROR;
   int trace_slow_msec, trace_ioreads;
   bool tran_abort = false;
 
@@ -4637,7 +4637,6 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     {
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
-      end_query_allowed = false;
 
       if (error_code != NO_ERROR)
 	{
@@ -4672,6 +4671,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	    }
 	}
 
+      end_query_allowed = false;
       return_error_to_client (thread_p, rid);
     }
 
@@ -4715,6 +4715,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	    }
 	  else
 	    {
+	      end_query_allowed = false;
 	      return_error_to_client (thread_p, rid);
 	    }
 	}
@@ -4731,18 +4732,11 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	}
       else
 	{
-	  end_query_allowed = false;
 	  replydata_size = 0;
+	  end_query_allowed = false;
 	  return_error_to_client (thread_p, rid);
 	}
     }
-
-  /* pack 'QUERY_END' as a first argument of the reply */
-  ptr = or_pack_int (reply, QUERY_END);
-  /* pack size of list file id to return as a second argument of the reply */
-  ptr = or_pack_int (ptr, replydata_size);
-  /* pack size of a page to return as a third argumnet of the reply */
-  ptr = or_pack_int (ptr, page_size);
 
   /* We may release the xasl cache entry when the transaction aborted. To refer the contents of the freed entry for
    * the case will cause defects. */
@@ -4821,12 +4815,13 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	      error_code = xqmgr_end_query (thread_p, p_net_Deferred_end_queries[i]);
 	      if (error_code != NO_ERROR)
 		{
-		  break;
+		  all_error_code = error_code;
+		  /* Continue to try to close as many queries as possible. */
 		}
 	    }
 	}
 
-      if (error_code != NO_ERROR)
+      if (all_error_code != NO_ERROR)
 	{
 	  return_error_to_client (thread_p, rid);
 	}
@@ -4844,6 +4839,12 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	}
     }
 
+  /* pack 'QUERY_END' as a first argument of the reply */
+  ptr = or_pack_int (reply, QUERY_END);
+  /* pack size of list file id to return as a second argument of the reply */
+  ptr = or_pack_int (ptr, replydata_size);
+  /* pack size of a page to return as a third argumnet of the reply */
+  ptr = or_pack_int (ptr, page_size);
   ptr = or_pack_int (ptr, queryinfo_string_length);
 
   /* query id to return as a fourth argument of the reply */
@@ -4887,9 +4888,12 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     {
       QFILE_FREE_AND_INIT_LIST_ID (list_id);
     }
-  /* TO DO - cleanup deferrer end queries */
 
 exit:
+  if (p_net_Deferred_end_queries != net_Deferred_end_queries)
+    {
+      free_and_init (p_net_Deferred_end_queries);
+    }
   if (base_stats != NULL)
     {
       free_and_init (base_stats);

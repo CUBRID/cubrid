@@ -265,7 +265,6 @@ tran_commit (bool retain_lock)
 
   if (ws_need_flush ())
     {
-      assert (!TM_TRAN_IS_COMMITTED_LATEST_EXECUTED_QUERY ());
       if (tm_Use_OID_preflush)
 	{
 	  (void) locator_assign_all_permanent_oids ();
@@ -425,7 +424,7 @@ tran_abort (void)
   tran_free_savepoint_list ();
 
   /* Clear any query cursor */
-  assert (!TM_TRAN_IS_ENDED_LATEST_EXECUTED_QUERY ());
+  assert (!TM_TRAN_IS_COMMITTED_LATEST_EXECUTED_QUERY ());
   db_clear_client_query_result (true, true);
 
   /* Forward the abort the transaction manager in the server */

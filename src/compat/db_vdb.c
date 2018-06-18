@@ -3963,6 +3963,7 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
 {
   PT_NODE *statement;
   int stmt_ndx;
+  bool has_name_oid = false;
 
   assert (session != NULL);
   /* check parameters */
@@ -4022,13 +4023,22 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
       /* Do not use the optimization if OIDs included */
       if (!statement->info.query.oids_included)
 	{
-	  statement->use_auto_commit = 1;
+	  int info_hints = PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_PAGE_INFO | PT_HINT_SELECT_KEY_INFO;
+	  if (statement->info.query.q.select.hint && info_hints == 0)
+	    {
+	      (void) parser_walk_tree (session->parser, statement, pt_has_name_oid, &has_name_oid, NULL, NULL);
+	      if (!has_name_oid)
+		{
+		  statement->use_auto_commit = 1;
+		}
+	    }
 	}
+
       break;
 
     case PT_INSERT:
       /* Do not use optimization in case of insert execution on broker side */
-      if (statement->info.insert.server_allowed)
+      if (statement->info.insert.execute_with_commit_allowed)
 	{
 	  statement->use_auto_commit = 1;
 	}
@@ -4036,7 +4046,7 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
 
     case PT_UPDATE:
       /* Do not use optimization in case of update execution on broker side */
-      if (statement->info.update.server_update)
+      if (statement->info.update.execute_with_commit_allowed)
 	{
 	  statement->use_auto_commit = 1;
 	}
@@ -4044,7 +4054,7 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
 
     case PT_DELETE:
       /* Do not use optimization in case of delete execution on broker side */
-      if (statement->info.delete_.server_delete)
+      if (statement->info.delete_.execute_with_commit_allowed)
 	{
 	  statement->use_auto_commit = 1;
 	}
