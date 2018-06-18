@@ -28,68 +28,114 @@
 
 #include "packing_stream.hpp"
 #include <cstddef>
+#include <queue>
 
 namespace cubreplication
 {
-  class log_file;
-  class slave_replication_channel;
   class replication_stream_entry;
 
-  enum consumer_type
-  {
-    REPLICATION_DATA_APPLIER = 0,
-    DATABASE_COPY,
-    REPLICATION_DATA_DUMP
-  };
-
-  typedef enum consumer_type CONSUMER_TYPE;
-
   /*
-   * main class for consuming log replication entries
+   * main class for consuming log packing stream entries;
    * it should be created only as a global instance
    */
+  template <typename SE>
   class log_consumer
   {
-    protected:
-      CONSUMER_TYPE m_type;
-
-      std::vector<replication_stream_entry *> m_stream_entries;
-
-      /* file attached to log_consumer */
-      log_file *file;
+    private:
+      std::queue<SE *> m_stream_entries;
 
       cubstream::packing_stream *m_stream;
 
-      slave_replication_channel *m_src;
-
-      /* start append position  */
+      /* start append position */
       cubstream::stream_position m_start_position;
+
+      static log_consumer *global_log_consumer;
 
     public:
 
-      log_consumer ()
+      log_consumer () {} ;
+
+      ~log_consumer ()
       {
-	file = NULL;
+	assert (this == global_log_consumer);
+
+	delete m_stream;
+	global_log_consumer = NULL;
       };
 
-      int append_entry (replication_stream_entry *entry);
 
-      int fetch_stream_entry (replication_stream_entry *&entry);
+      int append_entry (SE *entry)
+      {
+	/* TODO : split list of entries by transaction */
+	m_stream_entries.push_back (entry);
 
-      int consume_thread (void);
+	return NO_ERROR;
+      };
 
-      static log_consumer *new_instance (const CONSUMER_TYPE req_type, const cubstream::stream_position &start_position);
+      int fetch_stream_entry (SE *&entry)
+      {
+	int err = NO_ERROR;
 
-      int fetch_data (char *ptr, const size_t &amount);
+	SE *se = new SE (get_stream ());
+
+	err = se->prepare ();
+	if (err != NO_ERROR)
+	  {
+	    return err;
+	  }
+
+	entry = se;
+
+	return err;
+      };
+
+      int consume_thread (void)
+      {
+	int err = NO_ERROR;
+
+	for (;;)
+	  {
+	    replication_stream_entry *se = NULL;
+
+	    err = fetch_stream_entry (se);
+	    if (err != NO_ERROR)
+	      {
+		break;
+	      }
+
+	    append_entry (se);
+	  }
+
+	return NO_ERROR;
+      };
+
+      static log_consumer *new_instance (const cubstream::stream_position &start_position)
+      {
+	int error_code = NO_ERROR;
+
+	log_consumer *new_lc = new log_consumer ();
+
+	new_lc->m_start_position = start_position;
+
+	/* TODO : sys params */
+	new_lc->m_stream = new cubstream::packing_stream (10 * 1024 * 1024, 2);
+	new_lc->m_stream->init (new_lc->m_start_position);
+
+	/* this is the global instance */
+	assert (global_log_consumer == NULL);
+	global_log_consumer = new_lc;
+
+	return new_lc;
+      };
 
       cubstream::packing_stream *get_stream (void)
       {
 	return m_stream;
       };
 
-      int fetch_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count, size_t *processed_bytes)
+      cubstream::stream_position &get_start_position ()
       {
-	return fetch_data (ptr, byte_count);
+	return m_start_position;
       };
   };
 

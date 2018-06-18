@@ -109,6 +109,11 @@ namespace cubstream
 	return m_read_position;
       };
 
+      void force_set_read_position (const stream_position &pos)
+      {
+	m_read_position = pos;
+      };
+
       const stream_position &get_last_committed_pos (void)
       {
 	return m_last_committed_pos;
