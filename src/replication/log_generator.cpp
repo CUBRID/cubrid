@@ -34,7 +34,7 @@ namespace cubreplication
 
   log_generator *log_generator::global_log_generator = NULL;
 
-  log_generator::~log_generator()
+  log_generator::~log_generator ()
   {
     assert (this == global_log_generator);
 
@@ -51,6 +51,7 @@ namespace cubreplication
   log_generator *log_generator::new_instance (const cubstream::stream_position &start_position)
   {
     log_generator *new_lg = new log_generator ();
+
     new_lg->m_start_append_position = start_position;
 
     /* create stream only for global instance */
@@ -86,6 +87,7 @@ namespace cubreplication
       }
 
     replication_stream_entry *my_stream_entry = m_stream_entries[stream_entry_idx];
+
     return my_stream_entry;
   }
 
@@ -112,6 +114,7 @@ namespace cubreplication
     else
       {
 	cubstream::entry *my_stream_entry = get_stream_entry (th_entry);
+
 	my_stream_entry->set_packable (true);
       }
   }
@@ -119,7 +122,6 @@ namespace cubreplication
   int log_generator::pack_stream_entries (THREAD_ENTRY *th_entry)
   {
     int i;
-    size_t repl_entries_size = 0;
 
     if (th_entry == NULL)
       {
@@ -132,6 +134,7 @@ namespace cubreplication
     else
       {
 	cubstream::entry *my_stream_entry = get_stream_entry (th_entry);
+
 	my_stream_entry->pack ();
 	my_stream_entry->reset ();
       }

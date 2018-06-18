@@ -60,7 +60,6 @@ namespace cubreplication
 
       static log_generator *global_log_generator;
 
-
     public:
 
       log_generator ()
