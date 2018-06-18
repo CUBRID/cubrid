@@ -169,7 +169,7 @@ namespace test_replication
     lg->pack_stream_entries (NULL);
 
     cubreplication::log_consumer<cubreplication::replication_stream_entry> *lc =
-      cubreplication::log_consumer<cubreplication::replication_stream_entry>::new_instance (0);
+	    cubreplication::log_consumer<cubreplication::replication_stream_entry>::new_instance (0);
 
     /* get stream from log_generator, get its buffer and attached it to log_consumer stream */
     cubstream::packing_stream *lg_stream = lg->get_stream ();

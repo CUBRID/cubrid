@@ -29,6 +29,9 @@
 namespace cubreplication
 {
 
+
   log_consumer<replication_stream_entry> *log_consumer<replication_stream_entry>::global_log_consumer = NULL;
+
+
 
 } /* namespace cubreplication */
