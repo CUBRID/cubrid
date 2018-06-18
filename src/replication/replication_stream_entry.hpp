@@ -49,7 +49,7 @@ namespace cubreplication
     };
   };
 
-  class replication_stream_entry : public cubstream::entry
+  class replication_stream_entry : public cubstream::entry<replication_object>
   {
     private:
       replication_stream_entry_header m_header;
@@ -65,7 +65,7 @@ namespace cubreplication
       size_t get_data_packed_size (void);
       void set_header_data_size (const size_t &data_size);
 
-      cubstream::entry::packable_factory *get_builder ();
+      cubstream::entry<replication_object>::packable_factory *get_builder ();
 
       cubpacking::packer *get_packer ()
       {
@@ -76,7 +76,7 @@ namespace cubreplication
       int unpack_stream_entry_header ();
       int get_packable_entry_count_from_header (void);
 
-      bool is_equal (const cubstream::entry *other);
+      bool is_equal (const cubstream::entry<replication_object> *other);
   };
 
 } /* namespace cubreplication */

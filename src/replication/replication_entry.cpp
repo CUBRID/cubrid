@@ -46,6 +46,12 @@ namespace cubreplication
       }
   }
 
+  int single_row_repl_entry::apply (void)
+  {
+    /* TODO */
+    return NO_ERROR;
+  }
+
   bool single_row_repl_entry::is_equal (const packable_object *other)
   {
     int i;
@@ -181,6 +187,11 @@ namespace cubreplication
   }
 
   /////////////////////////////////
+  int sbr_repl_entry::apply (void)
+  {
+    /* TODO */
+    return NO_ERROR;
+  }
 
   bool sbr_repl_entry::is_equal (const packable_object *other)
   {

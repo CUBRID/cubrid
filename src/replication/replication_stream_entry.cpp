@@ -55,9 +55,9 @@ namespace cubreplication
     m_header.data_size = (int) data_size;
   }
 
-  cubstream::entry::packable_factory *replication_stream_entry::get_builder ()
+  cubstream::entry<replication_object>::packable_factory *replication_stream_entry::get_builder ()
   {
-    static cubstream::entry::packable_factory replication_factory_po;
+    static cubstream::entry<replication_object>::packable_factory replication_factory_po;
     static bool created = false;
 
     if (created == false)
@@ -100,7 +100,7 @@ namespace cubreplication
     return m_header.count_replication_entries;
   }
 
-  bool replication_stream_entry::is_equal (const cubstream::entry *other)
+  bool replication_stream_entry::is_equal (const cubstream::entry<replication_object> *other)
   {
     int i;
     const replication_stream_entry *other_t = dynamic_cast <const replication_stream_entry *> (other);

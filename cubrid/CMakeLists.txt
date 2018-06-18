@@ -59,7 +59,6 @@ set(THREAD_HEADERS
 set(STREAM_SOURCES
   ${BASE_DIR}/cubstream.cpp
   ${BASE_DIR}/packing_stream.cpp
-  ${BASE_DIR}/stream_entry.cpp
   )
 set (STREAM_HEADERS
   ${BASE_DIR}/bip_buffer.hpp

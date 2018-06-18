@@ -26,7 +26,7 @@
 #ifndef _LOG_GENERATOR_HPP_
 #define _LOG_GENERATOR_HPP_
 
-#include "packable_object.hpp"
+#include "replication_entry.hpp"
 #include "packing_stream.hpp"
 #include "thread_compat.hpp"
 #include <vector>
@@ -74,7 +74,7 @@ namespace cubreplication
 	  }
       }
 
-      int append_repl_entry (THREAD_ENTRY *th_entry, cubpacking::packable_object *object)
+      int append_repl_entry (THREAD_ENTRY *th_entry, replication_object *object)
       {
 	replication_stream_entry *my_stream_entry = get_stream_entry (th_entry);
 
@@ -96,7 +96,7 @@ namespace cubreplication
 	  }
 	else
 	  {
-	    cubstream::entry *my_stream_entry = get_stream_entry (th_entry);
+	    cubstream::entry<replication_object> *my_stream_entry = get_stream_entry (th_entry);
 	    my_stream_entry->set_packable (true);
 	  }
       }
@@ -133,7 +133,7 @@ namespace cubreplication
 	  }
 	else
 	  {
-	    cubstream::entry *my_stream_entry = get_stream_entry (th_entry);
+	    cubstream::entry<replication_object> *my_stream_entry = get_stream_entry (th_entry);
 	    my_stream_entry->pack ();
 	    my_stream_entry->reset ();
 	  }
