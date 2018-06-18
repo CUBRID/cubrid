@@ -34,7 +34,7 @@
 
 namespace cubreplication
 {
-  
+
   template <typename SE>
   class log_consumer;
 
@@ -49,13 +49,13 @@ namespace cubreplication
 
       void execute () override
       {
-        SE *se = NULL;
+	SE *se = NULL;
 
-        int err = m_lc->fetch_stream_entry (se);
+	int err = m_lc->fetch_stream_entry (se);
 	if (err == NO_ERROR)
 	  {
 	    m_lc->push_entry (se);
-          }
+	  }
       };
 
     private:
@@ -73,20 +73,20 @@ namespace cubreplication
 
       void execute () override
       {
-        SE *se = NULL;
+	SE *se = NULL;
 
-        int err = m_lc->pop_entry (se);
+	int err = m_lc->pop_entry (se);
 	if (err == NO_ERROR)
 	  {
 	    se->unpack ();
 
-            /* TODO : apply stream entry */
-            delete se;
-          }
-        else
-          {
-            /* TODO : set error */
-          }
+	    /* TODO : apply stream entry */
+	    delete se;
+	  }
+	else
+	  {
+	    /* TODO : set error */
+	  }
       }
 
     private:
@@ -127,29 +127,29 @@ namespace cubreplication
 	delete m_stream;
 	global_log_consumer = NULL;
 
-        cubthread::get_manager ()->destroy_daemon_without_entry (m_prepare_daemon);
+	cubthread::get_manager ()->destroy_daemon_without_entry (m_prepare_daemon);
 
-        cubthread::get_manager ()->destroy_daemon_without_entry (m_apply_daemon);
+	cubthread::get_manager ()->destroy_daemon_without_entry (m_apply_daemon);
 
-        assert (m_stream_entries.empty ());
+	assert (m_stream_entries.empty ());
       };
 
 
       int push_entry (SE *entry)
       {
-        std::unique_lock<std::mutex> ulock (m_queue_mutex);
+	std::unique_lock<std::mutex> ulock (m_queue_mutex);
 	m_stream_entries.push (entry);
 
 	return NO_ERROR;
       };
 
       int pop_entry (SE *&entry)
-        {
-          std::unique_lock<std::mutex> ulock (m_queue_mutex);
-          entry = m_stream_entries.front ();
-	  m_stream_entries.pop ();
-          return NO_ERROR;
-        };
+      {
+	std::unique_lock<std::mutex> ulock (m_queue_mutex);
+	entry = m_stream_entries.front ();
+	m_stream_entries.pop ();
+	return NO_ERROR;
+      };
 
       int fetch_stream_entry (SE *&entry)
       {
@@ -169,15 +169,15 @@ namespace cubreplication
       };
 
       void start_daemons (void)
-        {
-          m_prepare_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
-		            new prepare_stream_entry_task<SE> (this),
-                            "prepare_stream_entry_daemon");
+      {
+	m_prepare_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
+			   new prepare_stream_entry_task<SE> (this),
+			   "prepare_stream_entry_daemon");
 
-          m_apply_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
-		            new apply_stream_entry_task<SE> (this),
-                            "apply_stream_entry_daemon");
-        };
+	m_apply_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
+			 new apply_stream_entry_task<SE> (this),
+			 "apply_stream_entry_daemon");
+      };
 
       static log_consumer *new_instance (const cubstream::stream_position &start_position)
       {
@@ -195,7 +195,7 @@ namespace cubreplication
 	assert (global_log_consumer == NULL);
 	global_log_consumer = new_lc;
 
-        new_lc->start_daemons ();
+	new_lc->start_daemons ();
 
 	return new_lc;
       };
