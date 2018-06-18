@@ -7,8 +7,8 @@
 - with PT_TYPE_MAYBE in signature, the final type will not be decided during type checking but later
 - without PT_TYPE_MAYBE in signature you must either:
     1. choose one signature and apply cast
-        ... but what about "prepare median(?)... execute with date'2018-06-13... execute with 123'"?
-    2. handle from code 
+        ... but what about "prepare median(?)... execute with date'2018-06-13'... execute with 123"?
+    2. handle from code
         ... but there are cases when the cast should be made
 but neither one of them is OK
 #endif
@@ -47,13 +47,11 @@ std::vector<func_signature> func_signature::percentile_disc = {
 
 std::vector<func_signature> func_signature::bigint_discrete = {
   {PT_TYPE_BIGINT, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
-//{PT_TYPE_BIGINT, {PT_TYPE_MAYBE                  }, {}},
   {PT_TYPE_BIGINT, {PT_TYPE_NA                     }, {}},
 };
 
 std::vector<func_signature> func_signature::double_number = {
   {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER}, {}},
-//{PT_TYPE_DOUBLE, {PT_TYPE_MAYBE}, {}},
   {PT_TYPE_DOUBLE, {PT_TYPE_NA}, {}},
 };
 
@@ -69,12 +67,12 @@ std::vector<func_signature> func_signature::count = {
 };
 
 std::vector<func_signature> func_signature::sum = {
-  {0, {PT_GENERIC_TYPE_NUMBER}, {}},
-//{0, {PT_TYPE_MAYBE}, {}},
-  {0, {PT_TYPE_NA}, {}},
-  {0, {PT_TYPE_SET}, {}},
-  {0, {PT_TYPE_MULTISET}, {}},
-  {0, {PT_TYPE_SEQUENCE}, {}},
+  {0, {PT_GENERIC_TYPE_NUMBER   }, {}},
+  {0, {PT_TYPE_MAYBE            }, {}},
+  {0, {PT_TYPE_SET              }, {}},
+  {0, {PT_TYPE_MULTISET         }, {}},
+  {0, {PT_TYPE_SEQUENCE         }, {}},
+  {0, {PT_TYPE_NA               }, {}},
 };
 
 std::vector<func_signature> func_signature::double_r_any = {//original code doesn't check arguments!!!
@@ -84,7 +82,6 @@ std::vector<func_signature> func_signature::double_r_any = {//original code does
 
 std::vector<func_signature> func_signature::ntile = {//why original code cast args to double instead int???
   {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
-//{PT_TYPE_INTEGER, {PT_TYPE_MAYBE}, {}},
 };
 
 /*cannot define a clear signature because casting depends on actual value
@@ -117,7 +114,6 @@ std::vector<func_signature> func_signature::type0_nr_or_str_discrete = {
   {0, {PT_GENERIC_TYPE_STRING   , PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
   {0, {PT_GENERIC_TYPE_BIT      , PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
   {0, {PT_TYPE_ENUMERATION      , PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
-//{0, {PT_TYPE_MAYBE            , PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
   {0, {PT_TYPE_NA               , PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
 };
 
@@ -164,7 +160,6 @@ std::vector<func_signature> func_signature::elt = {
 
 std::vector<func_signature> func_signature::insert = {
   {PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_CHAR   , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , PT_GENERIC_TYPE_CHAR  }, {}},
-//{PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_NCHAR  , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , PT_GENERIC_TYPE_NCHAR }, {}},
   {PT_TYPE_VARNCHAR , {PT_GENERIC_TYPE_NCHAR  , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , 0                     }, {}},
 
   {0                , {3                      , PT_TYPE_INTEGER     , PT_TYPE_INTEGER     , PT_GENERIC_TYPE_NCHAR }, {}},//for insert(?, i, i, n'nchar')
