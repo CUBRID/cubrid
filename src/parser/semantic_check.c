@@ -7740,36 +7740,38 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
   int flag = 0;
   bool has_user_format;
 
-  /* Import default value and on update default expr from referenced table for those attributes in the the view that don't have them. */
+  /* Import default value and on update default expr from referenced table 
+   * for those attributes in the the view that don't have them. */
   for (attr = attrs, col = columns; attr && col; attr = attr->next, col = col->next)
     {
-      if (!attr->info.attr_def.data_default || attr->info.attr_def.on_update == DB_DEFAULT_NONE)
+      if (attr->info.attr_def.data_default != NULL && attr->info.attr_def.on_update != DB_DEFAULT_NONE)
 	{
-	  if (col->node_type != PT_NAME)
-	    {
-	      continue;
-	    }
-	  /* found matching column */
-	  if (col->info.name.spec_id == 0)
-	    {
-	      continue;
-	    }
-	  spec = (PT_NODE *) col->info.name.spec_id;
-	  entity_name = spec->info.spec.entity_name;
-	  if (entity_name == NULL || !PT_IS_NAME_NODE (entity_name))
-	    {
-	      continue;
-	    }
-	  obj = entity_name->info.name.db_object;
-	  if (!obj)
-	    {
-	      continue;
-	    }
-	  col_attr = db_get_attribute_force (obj, col->info.name.original);
-	  if (!col_attr)
-	    {
-	      continue;
-	    }
+	  /* default values are overwritten */
+	  continue;
+	}
+      if (col->node_type != PT_NAME)
+	{
+	  continue;
+	}
+      if (col->info.name.spec_id == 0)
+	{
+	  continue;
+	}
+      spec = (PT_NODE *) col->info.name.spec_id;
+      entity_name = spec->info.spec.entity_name;
+      if (entity_name == NULL || !PT_IS_NAME_NODE (entity_name))
+	{
+	  continue;
+	}
+      obj = entity_name->info.name.db_object;
+      if (!obj)
+	{
+	  continue;
+	}
+      col_attr = db_get_attribute_force (obj, col->info.name.original);
+      if (!col_attr)
+	{
+	  continue;
 	}
 
       if (attr->info.attr_def.on_update == DB_DEFAULT_NONE)
