@@ -25,6 +25,57 @@
 
 namespace cubmonitor
 {
+  //////////////////////////////////////////////////////////////////////////
+  // class fetchable
+  //////////////////////////////////////////////////////////////////////////
+
+  template <>
+  void
+  fetchable<amount_rep>::fetch (statistic_value *destination)
+  {
+    *destination = static_cast<statistic_value> (m_value);
+  }
+
+  template <>
+  void
+  fetchable<floating_rep>::fetch (statistic_value *destination)
+  {
+    *destination = *reinterpret_cast<statistic_value *> (&m_value);
+  }
+
+  template <>
+  void
+  fetchable<time_rep>::fetch (statistic_value *destination)
+  {
+    // convert from collect representation - nanoseconds - to monitor representation - microseconds.
+    *destination =
+	    static_cast<statistic_value> (std::chrono::duration_cast<std::chrono::microseconds> (m_value).count ());
+  }
+
+  template <>
+  void
+  fetchable_atomic<amount_rep>::fetch (statistic_value *destination)
+  {
+    *destination = static_cast<statistic_value> (m_value);
+  }
+
+  template <>
+  void
+  fetchable_atomic<floating_rep>::fetch (statistic_value *destination)
+  {
+    *destination = *reinterpret_cast<statistic_value *> (&m_value);
+  }
+
+  template <>
+  void
+  fetchable_atomic<time_rep::rep>::fetch (statistic_value *destination)
+  {
+    // convert from collect representation - nanoseconds - to monitor representation - microseconds.
+    time_rep nanos (m_value.load ());
+    *destination =
+	    static_cast<statistic_value> (std::chrono::duration_cast<std::chrono::microseconds> (nanos).count ());
+  }
+
   statistic_value
   fetch_statistic_representation (const time_rep &value)
   {

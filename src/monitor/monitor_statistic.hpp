@@ -109,11 +109,112 @@ namespace cubmonitor
   time_rep statistic_value_to_time_rep (statistic_value value);
 
   //////////////////////////////////////////////////////////////////////////
+  // Fetch-able classes for each representation
+  //
+  // Fetch-able concept must implement two functions:
+  //
+  //    void fetch (statistic_value *);    // fetch global statistics
+  //    void fetch_transaction_sheet (statistic_value *);   // fetch transaction sheet statistics
+  //
+  //    std::size_t get_statistics_count (void);      // statistics count
+  //
+  // Fetch-able concept that can be extended by collectible should have a protected m_value field.
+  //
+  //////////////////////////////////////////////////////////////////////////
+
+  template <typename Rep>
+  class fetchable
+  {
+    public:
+      fetchable (Rep value = Rep ())
+	: m_value (value)
+      {
+	//
+      }
+
+      void fetch (statistic_value *destination);
+      void fetch_transaction_sheet (statistic_value *destination)
+      {
+	// do nothing
+	return;
+      }
+
+      std::size_t get_statistics_count (void)
+      {
+	return 1;
+      }
+
+    protected:
+      Rep m_value;
+  };
+
+  template <typename Rep>
+  class fetchable_atomic
+  {
+    public:
+      fetchable_atomic (Rep value = Rep ())
+	: m_value (value)
+      {
+	//
+      }
+
+      void fetch (statistic_value *destination);
+      void fetch_transaction_sheet (statistic_value *destination)
+      {
+	// do nothing
+	return;
+      }
+
+      std::size_t get_statistics_count (void)
+      {
+	return 1;
+      }
+
+    protected:
+      std::atomic<Rep> m_value;
+  };
+
+  // different specialization for time_rep because there is no such thing as atomic duration
+  template <>
+  class fetchable_atomic<time_rep>
+  {
+    public:
+      fetchable_atomic (time_rep value = time_rep ())
+	: m_value (value.count ())
+      {
+	//
+      }
+
+      void fetch (statistic_value *destination);
+      void fetch_transaction_sheet (statistic_value *destination)
+      {
+	// do nothing
+	return;
+      }
+
+      std::size_t get_statistics_count (void)
+      {
+	return 1;
+      }
+
+    protected:
+      std::atomic<time_rep::rep> m_value;
+  };
+
+  // specialize
+  template class fetchable<amount_rep>;
+  template class fetchable_atomic<amount_rep>;
+  template class fetchable<floating_rep>;
+  template class fetchable_atomic<floating_rep>;
+  template class fetchable<time_rep>;
+  // template class fetchable_atomic<time_rep>; // differentely specialized, see above
+
+  //////////////////////////////////////////////////////////////////////////
   // Accumulator statistics
   //////////////////////////////////////////////////////////////////////////
   // accumulator statistic - add change to existing value
   template<class Rep>
-  class accumulator_statistic
+  class accumulator_statistic : public fetchable<Rep>
   {
     public:
       using rep = Rep;                            // collected data representation
@@ -121,12 +222,10 @@ namespace cubmonitor
       accumulator_statistic ();
       statistic_value fetch (void) const;         // fetch collected value
       void collect (const Rep &value);            // collect value
-    private:
-      Rep m_value;
   };
   // accumulator atomic statistic - atomic add change to existing value
   template<class Rep>
-  class accumulator_atomic_statistic
+  class accumulator_atomic_statistic : public fetchable_atomic<Rep>
   {
     public:
       using rep = Rep;                            // collected data representation
@@ -134,12 +233,10 @@ namespace cubmonitor
       accumulator_atomic_statistic ();
       statistic_value fetch (void) const;         // fetch collected value
       void collect (const Rep &value);            // collect value
-    private:
-      std::atomic<Rep> m_value;
   };
 
   template <>
-  class accumulator_atomic_statistic<time_rep>
+  class accumulator_atomic_statistic<time_rep> : public fetchable_atomic<time_rep>
   {
     public:
       using rep = time_rep;
@@ -150,8 +247,6 @@ namespace cubmonitor
       {
 	m_value.fetch_add (value.count ());
       }
-    private:
-      std::atomic<time_rep::rep> m_value;
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -159,7 +254,7 @@ namespace cubmonitor
   //////////////////////////////////////////////////////////////////////////
   // gauge statistic - replace current value with change
   template<class Rep>
-  class gauge_statistic
+  class gauge_statistic : public fetchable<Rep>
   {
     public:
       using rep = Rep;                            // collected data representation
@@ -172,7 +267,7 @@ namespace cubmonitor
   };
   // gauge atomic statistic - test and set current value
   template<class Rep>
-  class gauge_atomic_statistic
+  class gauge_atomic_statistic : public fetchable_atomic<Rep>
   {
     public:
       using rep = Rep;                            // collected data representation
@@ -189,7 +284,7 @@ namespace cubmonitor
   //////////////////////////////////////////////////////////////////////////
   // max statistic - compare with current value and set if change is bigger
   template<class Rep>
-  class max_statistic
+  class max_statistic : public fetchable<Rep>
   {
     public:
       using rep = Rep;                            // collected data representation
@@ -202,7 +297,7 @@ namespace cubmonitor
   };
   // max atomic statistic - compare and exchange with current value if change is bigger
   template<class Rep>
-  class max_atomic_statistic
+  class max_atomic_statistic : public fetchable_atomic<Rep>
   {
     public:
       using rep = Rep;                            // collected data representation
@@ -220,7 +315,7 @@ namespace cubmonitor
 
   // min statistic - compare with current value and set if change is smaller
   template<class Rep>
-  class min_statistic
+  class min_statistic : public fetchable<Rep>
   {
     public:
       using rep = Rep;                            // collected data representation
@@ -233,7 +328,7 @@ namespace cubmonitor
   };
   // min atomic statistic - compare and exchange with current value if change is smaller
   template<class Rep>
-  class min_atomic_statistic
+  class min_atomic_statistic : public fetchable_atomic<Rep>
   {
     public:
       using rep = Rep;                            // collected data representation
