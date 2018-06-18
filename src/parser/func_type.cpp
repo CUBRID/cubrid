@@ -26,7 +26,7 @@ std::vector<func_signature> func_signature::percentile_cont = {
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_NUMBER  }, {}},
   {0                , {PT_GENERIC_TYPE_DATETIME}, {}},
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_STRING  }, {}},
-//{0                , {PT_TYPE_MAYBE           }, {}},
+  {0                , {PT_TYPE_MAYBE           }, {}},
   {0                , {PT_TYPE_NA              }, {}},
 #else //use double as return type (as documentation says)... but tests are failing (adjust doc or tests)
   {PT_TYPE_DOUBLE   , {PT_GENERIC_TYPE_NUMBER  }, {}},
@@ -41,7 +41,7 @@ std::vector<func_signature> func_signature::percentile_disc = {
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_NUMBER  }, {}},
   {0                , {PT_GENERIC_TYPE_DATETIME}, {}},
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_STRING  }, {}},
-//{0                , {PT_TYPE_MAYBE           }, {}},
+  {0                , {PT_TYPE_MAYBE           }, {}},
   {0                , {PT_TYPE_NA              }, {}},
 };
 
@@ -68,7 +68,7 @@ std::vector<func_signature> func_signature::count = {
 
 std::vector<func_signature> func_signature::sum = {
   {0, {PT_GENERIC_TYPE_NUMBER   }, {}},
-//{0, {PT_TYPE_MAYBE            }, {}},
+  {0, {PT_TYPE_MAYBE            }, {}},
   {0, {PT_TYPE_SET              }, {}},
   {0, {PT_TYPE_MULTISET         }, {}},
   {0, {PT_TYPE_SEQUENCE         }, {}},
@@ -91,21 +91,11 @@ std::vector<func_signature> func_signature::median = {
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_NUMBER}  , {}}, //if ret type is double => tests with median(int) will fail
   {0                , {PT_GENERIC_TYPE_DATETIME}, {}},
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_STRING}  , {}},
-//{0                , {PT_TYPE_MAYBE}           , {}}, //DISCUSSION: can we get rid of MAYBE here??? prepare median(?)...execute with date'2018-06-13'
+  {0                , {PT_TYPE_MAYBE}           , {}}, //DISCUSSION: can we get rid of MAYBE here??? prepare median(?)...execute with date'2018-06-13'
 };
 
 std::vector<func_signature> func_signature::type0_nr_or_str = {
-#if 0
-  {0, {PT_TYPE_ENUMERATION}     , {}},
-  {0, {PT_GENERIC_TYPE_NUMBER}  , {}},
-  {0, {PT_GENERIC_TYPE_DATETIME}, {}},
-  {0, {PT_GENERIC_TYPE_STRING}  , {}},
-  {0, {PT_GENERIC_TYPE_BIT}     , {}},
-//{0, {PT_TYPE_MAYBE}           , {}},
-  {0, {PT_TYPE_NA}              , {}},
-#else
   {0, {PT_GENERIC_TYPE_SCALAR}  , {}},
-#endif
 };
 
 std::vector<func_signature> func_signature::type0_nr_or_str_discrete = {

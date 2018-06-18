@@ -13244,14 +13244,12 @@ namespace Func
           auto t = (type.type == pt_arg_type::INDEX ? get_arg(type.val.index)->type_enum : type);
 #endif
           pt_type_enum equivalent_type = pt_get_equivalent_type(t, arg->type_enum);
-          if(arg->type_enum == PT_TYPE_MAYBE){//test: no cast over MAYBE
-              arg = cast(prev, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
-              if(arg == NULL)
-                {
-                  printf("ERR\n");
-                  return false;
-                }
-          }
+          arg = cast(prev, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+          if(arg == NULL)
+            {
+                printf("ERR\n");
+                return false;
+            }
           ++arg_pos;
           prev = arg;
           arg = arg->next;
