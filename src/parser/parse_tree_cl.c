@@ -297,7 +297,6 @@ static PT_NODE *pt_init_create_index (PT_NODE * p);
 static PT_NODE *pt_init_create_user (PT_NODE * p);
 static PT_NODE *pt_init_data_default (PT_NODE * p);
 static PT_NODE *pt_init_datatype (PT_NODE * p);
-static PT_NODE *pt_init_on_update (PT_NODE * p);
 static PT_NODE *pt_init_delete (PT_NODE * p);
 static PT_NODE *pt_init_difference (PT_NODE * p);
 static PT_NODE *pt_init_dot (PT_NODE * p);
@@ -374,7 +373,6 @@ static PARSER_VARCHAR *pt_print_create_stored_procedure (PARSER_CONTEXT * parser
 static PARSER_VARCHAR *pt_print_create_trigger (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_create_user (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_data_default (PARSER_CONTEXT * parser, PT_NODE * p);
-static PARSER_VARCHAR *pt_print_on_update (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_difference (PARSER_CONTEXT * parser, PT_NODE * p);
