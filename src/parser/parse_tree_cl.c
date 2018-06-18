@@ -6782,7 +6782,7 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.attr_def.on_update != DB_DEFAULT_NONE)
     {
       const char *c = db_default_expression_string (p->info.attr_def.on_update);
-      q = pt_append_nulstring (parser, q, " ");
+      q = pt_append_nulstring (parser, q, " on update ");
       q = pt_append_nulstring (parser, q, c);
       q = pt_append_nulstring (parser, q, " ");
     }
