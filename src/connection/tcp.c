@@ -89,7 +89,7 @@ static pthread_mutex_t gethostbyname_lock = PTHREAD_MUTEX_INITIALIZER;
 #define INADDR_NONE 0xffffffff
 #endif /* !INADDR_NONE */
 
-static const int css_Maximum_server_count = 50;
+static const int css_Maximum_server_count = 1000;
 
 #if !defined (WINDOWS)
 #define SET_NONBLOCKING(fd) { \

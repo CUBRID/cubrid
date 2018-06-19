@@ -36,6 +36,7 @@ option (UNIT_TEST_TRANS_CHN "Unit testing: transfer channel module")
 option (UNIT_TEST_DDL_CL "Unit testing: ddl proxy client module")
 option (UNIT_TEST_REPLICATION "Unit testing: replication channels module")
 option (UNIT_TEST_RESOURCE_TRACKER "Unit testing: resource tracker")
+option (UNIT_TEST_MONITOR "Unit testing: monitor")
 
 message("  unit_tests/...")
 
@@ -103,3 +104,8 @@ if (UNIT_TESTS OR UNIT_TEST_STREAM)
   message("    stream")
   add_subdirectory(stream)
 endif(UNIT_TESTS OR UNIT_TEST_STREAM)
+
+if (UNIT_TESTS OR UNIT_TEST_MONITOR)
+  message("    monitor")
+  add_subdirectory(monitor)
+endif(UNIT_TESTS OR UNIT_TEST_MONITOR)
