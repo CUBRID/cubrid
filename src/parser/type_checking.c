@@ -13141,6 +13141,83 @@ namespace Func
         return signature;
     }
 
+    const func_signature* get_signature(const std::vector<func_signature>& signatures)
+    {
+        const func_signature* signature = nullptr;
+        int sigIndex = 0;
+        for(auto& sig: signatures)
+          {
+            ++sigIndex;
+            parser_node* arg = m_node->info.function.arg_list;
+            bool matchEquivalent = true;
+            bool matchCastable = true;
+            int argIndex = 0;
+
+            //check fix part of the signature
+            for(auto& fix: sig.fix){
+                if(arg == NULL)
+                  {
+                    //printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
+                    break;
+                  }
+                ++argIndex;
+                auto t = ((fix.type==pt_arg_type::INDEX) ? sig.fix[fix.val.index] : fix);
+                matchEquivalent &= cmp_types_equivalent(t, arg->type_enum);
+                matchCastable &= cmp_types_castable(t, arg->type_enum);
+                //... accumulate error messages
+                if(!matchEquivalent && !matchCastable)
+                  {
+                    pt_frob_error(m_parser, m_node, "ERR fix argIndex=%d doesn't match", argIndex);
+                    break;//current arg doesn' match => current signature doesn't match
+                  }
+                arg = arg->next;
+            }
+            if((matchEquivalent || matchCastable) && ((arg!=NULL && sig.rep.size()==0) || (arg==NULL && sig.rep.size()!=0)))//number of arguments don't match
+              {
+                matchEquivalent = matchCastable = false;
+                string_buffer sb;
+                sb("  signature#%02d ", sigIndex);
+                str(sig, sb);
+                sb(": number of arguments don't match\n", sigIndex);
+                pt_frob_error(m_parser, m_node, "%s", sb.get_buffer());
+              }
+            if(!matchEquivalent && !matchCastable)
+              {
+                continue;
+              }
+
+            //check repetitive args
+            int index = 0;
+            for(; arg; arg=arg->next, index=(index+1)%sig.rep.size())
+              {
+                ++argIndex;
+                auto& rep = sig.rep[index];
+                auto t = ((rep.type==pt_arg_type::INDEX) ? sig.rep[rep.val.index] : rep);
+                matchEquivalent &= cmp_types_equivalent(t, arg->type_enum);
+                matchCastable &= cmp_types_castable(t, arg->type_enum);
+                //... accumulate error messages
+                if(!matchEquivalent && !matchCastable)
+                  {
+                    pt_frob_error(m_parser, m_node, "ERR rep argIndex=%d doesn't match", argIndex);
+                    break;//current arg doesn' match => current signature doesn't match
+                  }
+              }
+            if(matchEquivalent)
+              {
+                signature = &sig;
+                break;//stop at 1st equivalent signature
+              }
+            if(matchCastable && signature==nullptr){//don't stop, continue because it is possible to find an equivalent signature later
+                signature = &sig;
+            }
+          }
+        if(signature)
+          {
+            pt_reset_error(m_parser);//signature found => clear error messages accumulated during signature checking
+          }
+        return signature;
+    }
+
     //set return type for current node in current context
     void set_return_type(const func_signature& signature)
     {
@@ -13330,8 +13407,8 @@ namespace Func
                     //do nothing!?
                     }
                 arg = arg->next;
-            }
-            if(match && (arg!=NULL && sig.rep.size()==0) || (arg==NULL && sig.rep.size()!=0))//number of arguments don't match
+              }
+            if(match && ((arg!=NULL && sig.rep.size()==0) || (arg==NULL && sig.rep.size()!=0)))//number of arguments don't match
               {
                 match = false;
                 sb("  signature#%02d ", sigIndex);
@@ -13463,7 +13540,8 @@ static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
             return node;
           }
           string_buffer sb;
-          const func_signature* func_sig = funcNode.get_signature(*func_sigs, sb);
+          //const func_signature* func_sig = funcNode.get_signature(*func_sigs, sb);
+          const func_signature* func_sig = funcNode.get_signature(*func_sigs);
           if(func_sig != NULL)
             {
               {//debug only
