@@ -53,7 +53,7 @@
 #define HOST_ID_ARRAY_SIZE 8
 
 static const int css_Tcp_max_connect_tries = 3;
-static const int css_Maximum_server_count = 50;
+static const int css_Maximum_server_count = 1000;
 
 /* containing the last WSA error */
 static int css_Wsa_error = CSS_ER_WINSOCK_NOERROR;
