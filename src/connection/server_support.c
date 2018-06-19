@@ -1376,6 +1376,9 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   // initialize worker pool for server requests
   const std::size_t MAX_WORKERS = css_get_max_conn () + 1;	// = css_Num_max_conn in connection_sr.c
   const std::size_t MAX_TASK_COUNT = 2 * MAX_WORKERS;	// not that it matters...
+  const std::size_t MAX_CONNECTIONS = css_get_max_conn ();
+
+  // create request worker pool
   css_Server_request_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT, NULL,
 										  cubthread::system_core_count (),
 										  false);
@@ -1387,7 +1390,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
       goto shutdown;
     }
 
-  const std::size_t MAX_CONNECTIONS = css_get_max_conn ();
+  // create connection worker pool
   css_Connection_worker_pool =
     cubthread::get_manager ()->create_worker_pool (MAX_CONNECTIONS, MAX_CONNECTIONS, NULL, 1, false);
   if (css_Connection_worker_pool == NULL)
