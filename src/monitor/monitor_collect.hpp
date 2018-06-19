@@ -119,8 +119,6 @@ namespace cubmonitor
   {
     public:
 
-      using counter_timer_type = counter_timer_statistic<A, T>;
-
       counter_timer_max_statistic (void);
 
       inline void time_and_increment (const time_rep &d, const amount_rep &a = 1);
@@ -131,8 +129,10 @@ namespace cubmonitor
       inline void fetch_transaction_sheet (statistic_value *destination) const;
 
     private:
-      counter_timer_type m_counter_timer;
-      M m_max_statistic;
+      timer m_timer;
+      A m_amount_statistic;
+      T m_total_time_statistic;
+      M m_max_time_statistic;
   };
   // explicit instantiations
   template class counter_timer_max_statistic<amount_accumulator_statistic, time_accumulator_statistic,
@@ -147,8 +147,6 @@ namespace cubmonitor
   //////////////////////////////////////////////////////////////////////////
   // template and inline implementation
   //////////////////////////////////////////////////////////////////////////
-
-#if 0
 
   //////////////////////////////////////////////////////////////////////////
   // timer_statistic
@@ -269,8 +267,10 @@ namespace cubmonitor
 
   template <class A, class T, class M>
   counter_timer_max_statistic<A, T, M>::counter_timer_max_statistic (void)
-    : m_counter_timer ()
-    , m_max_statistic ()
+    : m_timer ()
+    , m_amount_statistic ()
+    , m_total_time_statistic ()
+    , m_max_time_statistic ()
   {
     //
   }
@@ -279,22 +279,25 @@ namespace cubmonitor
   void
   counter_timer_max_statistic<A, T, M>::time_and_increment (const time_rep &d, const amount_rep &a /* = 1 */)
   {
-    m_counter_timer.time_and_increment (d, a);
-    m_max_statistic.collect (d);
+    m_amount_statistic.collect (a);
+    m_total_time_statistic.collect (d);
+    m_max_time_statistic.collect (d / a);
   }
 
   template <class A, class T, class M>
   void
   counter_timer_max_statistic<A, T, M>::time_and_increment (const amount_rep &a /* = 1 */)
   {
-    time_and_increment (m_timer::time (), a);
+    time_and_increment (m_timer.time (), a);
   }
 
   template <class A, class T, class M>
   std::size_t
   counter_timer_max_statistic<A, T, M>::get_statistics_count (void) const
   {
-    return m_counter_timer.get_statistics_count () + m_max_statistic.get_statistics_count ();
+    return m_amount_statistic.get_statistics_count ()
+	   + m_total_time_statistic.get_statistics_count ()
+	   + m_max_time_statistic.get_statistics_count ();
   }
 
   template <class A, class T, class M>
@@ -303,11 +306,14 @@ namespace cubmonitor
   {
     std::size_t index = 0;
 
-    m_counter_timer.fetch (destination + index);
-    index += m_counter_timer.get_statistics_count ();
+    m_amount_statistic.fetch (destination + index);
+    index += m_amount_statistic.get_statistics_count ();
 
-    m_max_statistic.fetch (destination + index);
-    index += m_max_statistic.get_statistics_count ();
+    m_total_time_statistic.fetch (destination + index);
+    index += m_total_time_statistic.get_statistics_count ();
+
+    m_max_time_statistic.fetch (destination + index);
+    index += m_max_time_statistic.get_statistics_count ();
 
     assert (index == get_statistics_count ());
   }
@@ -318,16 +324,17 @@ namespace cubmonitor
   {
     std::size_t index = 0;
 
-    m_counter_timer.fetch_transaction_sheet (destination + index);
-    index += m_counter_timer.get_statistics_count ();
+    m_amount_statistic.fetch_transaction_sheet (destination + index);
+    index += m_amount_statistic.get_statistics_count ();
 
-    m_max_statistic.fetch_transaction_sheet (destination + index);
-    index += m_max_statistic.get_statistics_count ();
+    m_total_time_statistic.fetch_transaction_sheet (destination + index);
+    index += m_total_time_statistic.get_statistics_count ();
+
+    m_max_time_statistic.fetch_transaction_sheet (destination + index);
+    index += m_max_time_statistic.get_statistics_count ();
 
     assert (index == get_statistics_count ());
   }
-
-#endif // 0
 
 } // namespace cubmonitor
 

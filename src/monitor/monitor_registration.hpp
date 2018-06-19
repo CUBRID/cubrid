@@ -84,9 +84,16 @@ namespace cubmonitor
 	    assert (false);
 	    return;
 	  }
+	fetch_function fetch_func = [&] (statistic_value * destination)
+	{
+	  statistics.fetch (destination);
+	};
+	fetch_function fetch_tran_func = [&] (statistic_value * destination)
+	{
+	  statistics.fetch_transaction_sheet (destination);
+	};
 
-	register_statistics (C, std::bind (&S::fetch, statistics),
-			     std::bind (&S::fetch_transaction_sheet, statistics));
+	register_statistics (statistics.get_statistics_count (), fetch_func, fetch_tran_func);
 	m_all_names.insert (m_all_names.end (), names.cbegin (), names.cend ());
 
 	check_name_count ();
@@ -118,7 +125,7 @@ namespace cubmonitor
 
 	registration (void);
 
-	// todo: add here more meta-information on each statistic
+	// todo: add here more meta-information on each registration
       };
 
       // register a number of statistics that can be fetched with fetch_func/tran_fetch_func
@@ -138,34 +145,6 @@ namespace cubmonitor
   //////////////////////////////////////////////////////////////////////////
   // implementation
   //////////////////////////////////////////////////////////////////////////
-
-  template <typename S>
-  void
-  monitor::register_single_statistic (const char *name, const S &statistic)
-  {
-    // convert statistic::fetch to fetch_func format
-    fetch_function fetch_func = [&] (statistic_value * destination)
-    {
-      *destination = statistic.fetch ();
-    };
-    register_single_function (name, fetch_func);
-  }
-
-  template <typename S>
-  void
-  monitor::register_single_transaction_statistic (const char *name, const S &statistic)
-  {
-    // convert statistic::fetch and statistic::fetch_sheet to fetch_func format
-    fetch_function fetch_func = [&] (statistic_value * destination)
-    {
-      *destination = statistic.fetch ();
-    };
-    fetch_function tran_fetch_func = [&] (statistic_value * destination)
-    {
-      *destination = statistic.fetch_sheet ();
-    };
-    register_single_function_with_transaction (name, fetch_func, tran_fetch_func);
-  }
 
 } // namespace cubmonitor
 

@@ -233,14 +233,16 @@ namespace cubmonitor
     if (sheet == transaction_sheet_manager::INVALID_TRANSACTION_SHEET)
       {
 	// transaction is not watching
+	return;
       }
 
     if (m_sheet_stats_count <= sheet)
       {
 	// nothing was collected
+	return;
       }
 
-    m_sheet_stats[sheet].fetch ();
+    m_sheet_stats[sheet].fetch (destination);
   }
 
   template <class S>

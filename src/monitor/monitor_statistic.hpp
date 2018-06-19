@@ -94,20 +94,6 @@ namespace cubmonitor
   // time type
   using time_rep = duration;
 
-  // manipulating representations
-
-  // fetch
-  statistic_value fetch_statistic_representation (const amount_rep &value);
-  statistic_value fetch_statistic_representation (const floating_rep &value);
-  statistic_value fetch_statistic_representation (const time_rep &value);
-  template <typename Rep>
-  statistic_value fetch_atomic_representation (const std::atomic<Rep> &atomic_value);
-
-  // cast statistic_value to data reps
-  amount_rep statistic_value_to_amount (statistic_value value);
-  floating_rep statistic_value_to_floating (statistic_value value);
-  time_rep statistic_value_to_time_rep (statistic_value value);
-
   //////////////////////////////////////////////////////////////////////////
   // Fetch-able classes for each representation
   //
@@ -147,6 +133,11 @@ namespace cubmonitor
 	return 1;
       }
 
+      Rep get_value (void)
+      {
+	return m_value;
+      }
+
     protected:
       Rep m_value;
   };
@@ -155,6 +146,7 @@ namespace cubmonitor
   class fetchable_atomic
   {
     public:
+
       fetchable_atomic (Rep value = Rep ())
 	: m_value (value)
       {
@@ -173,6 +165,15 @@ namespace cubmonitor
 	return 1;
       }
 
+      Rep get_value (void)
+      {
+	return m_value.load ();
+      }
+      bool compare_exchange (Rep &compare_value, const Rep &replace_value)
+      {
+	return m_value.compare_exchange_strong (compare_value, replace_value);
+      }
+
     protected:
       std::atomic<Rep> m_value;
   };
@@ -182,6 +183,8 @@ namespace cubmonitor
   class fetchable_atomic<time_rep>
   {
     public:
+      using base_type = time_rep::rep;
+
       fetchable_atomic (time_rep value = time_rep ())
 	: m_value (value.count ())
       {
@@ -198,6 +201,16 @@ namespace cubmonitor
       std::size_t get_statistics_count (void) const
       {
 	return 1;
+      }
+
+      time_rep get_value (void)
+      {
+	return time_rep (m_value.load ());
+      }
+      bool compare_exchange (time_rep &compare_value, const time_rep &replace_value)
+      {
+	time_rep::rep compare_count = compare_value.count ();
+	return m_value.compare_exchange_strong (compare_count, replace_value.count ());
       }
 
     protected:
@@ -224,7 +237,6 @@ namespace cubmonitor
     public:
       using rep = Rep;                            // collected data representation
 
-      statistic_value fetch (void) const;         // fetch collected value
       void collect (const Rep &value);            // collect value
   };
   // accumulator atomic statistic - atomic add change to existing value
@@ -234,7 +246,6 @@ namespace cubmonitor
     public:
       using rep = Rep;                            // collected data representation
 
-      statistic_value fetch (void) const;         // fetch collected value
       void collect (const Rep &value);            // collect value
   };
 
@@ -244,7 +255,6 @@ namespace cubmonitor
     public:
       using rep = time_rep;
 
-      statistic_value fetch (void) const;
       void collect (const time_rep &value)
       {
 	m_value.fetch_add (value.count ());
@@ -261,10 +271,7 @@ namespace cubmonitor
     public:
       using rep = Rep;                            // collected data representation
 
-      statistic_value fetch (void) const;         // fetch collected value
       void collect (const Rep &value);            // collect value
-    private:
-      Rep m_value;
   };
   // gauge atomic statistic - test and set current value
   template<class Rep>
@@ -273,10 +280,7 @@ namespace cubmonitor
     public:
       using rep = Rep;                            // collected data representation
 
-      statistic_value fetch (void) const;         // fetch collected value
       void collect (const Rep &value);            // collect value
-    private:
-      std::atomic<Rep> m_value;
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -290,10 +294,7 @@ namespace cubmonitor
       using rep = Rep;                            // collected data representation
 
       max_statistic (void);                       // constructor
-      statistic_value fetch (void) const;         // fetch collected value
       void collect (const Rep &value);            // collect value
-    private:
-      Rep m_value;
   };
   // max atomic statistic - compare and exchange with current value if change is bigger
   template<class Rep>
@@ -303,10 +304,7 @@ namespace cubmonitor
       using rep = Rep;                            // collected data representation
 
       max_atomic_statistic (void);                // constructor
-      statistic_value fetch (void) const;         // fetch collected value
       void collect (const Rep &value);            // collect value
-    private:
-      std::atomic<Rep> m_value;
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -321,10 +319,7 @@ namespace cubmonitor
       using rep = Rep;                            // collected data representation
 
       min_statistic (void);                       // constructor
-      statistic_value fetch (void) const;         // fetch collected value
       void collect (const Rep &value);
-    private:
-      Rep m_value;
   };
   // min atomic statistic - compare and exchange with current value if change is smaller
   template<class Rep>
@@ -334,10 +329,7 @@ namespace cubmonitor
       using rep = Rep;                            // collected data representation
 
       min_atomic_statistic (void);                // constructor
-      statistic_value fetch (void) const;         // fetch collected value
       void collect (const Rep &value);            // collect value
-    private:
-      std::atomic<Rep> m_value;
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -433,31 +425,10 @@ namespace cubmonitor
   }
 
   template <typename Rep>
-  statistic_value
-  fetch_atomic_representation (const std::atomic<Rep> &atomic_value)
-  {
-    return fetch_statistic_representation (atomic_value.load ());
-  }
-
-  template <typename Rep>
-  statistic_value
-  accumulator_statistic<Rep>::fetch () const
-  {
-    return fetch_statistic_representation (m_value);
-  }
-
-  template <typename Rep>
   void
   accumulator_statistic<Rep>::collect (const Rep &value)
   {
     m_value += value;
-  }
-
-  template <typename Rep>
-  statistic_value
-  accumulator_atomic_statistic<Rep>::fetch (void) const
-  {
-    return fetch_atomic_representation (m_value);
   }
 
   template <typename Rep>
@@ -468,24 +439,10 @@ namespace cubmonitor
   }
 
   template <typename Rep>
-  statistic_value
-  gauge_statistic<Rep>::fetch () const
-  {
-    return fetch_statistic_representation (m_value);
-  }
-
-  template <typename Rep>
   void
   gauge_statistic<Rep>::collect (const Rep &value)
   {
     m_value = value;
-  }
-
-  template <typename Rep>
-  statistic_value
-  gauge_atomic_statistic<Rep>::fetch (void) const
-  {
-    return fetch_atomic_representation (m_value);
   }
 
   template <typename Rep>
@@ -496,13 +453,6 @@ namespace cubmonitor
   }
 
   template <typename Rep>
-  statistic_value
-  max_statistic<Rep>::fetch (void) const
-  {
-    return fetch_statistic_representation (m_value);
-  }
-
-  template <typename Rep>
   void
   max_statistic<Rep>::collect (const Rep &value)
   {
@@ -510,13 +460,6 @@ namespace cubmonitor
       {
 	m_value = value;
       }
-  }
-
-  template <typename Rep>
-  statistic_value
-  max_atomic_statistic<Rep>::fetch (void) const
-  {
-    return fetch_atomic_representation (m_value);
   }
 
   template <typename Rep>
@@ -531,7 +474,7 @@ namespace cubmonitor
 
     do
       {
-	loaded = m_value.load ();
+	loaded = get_value ();
 	if (loaded >= value)
 	  {
 	    // not bigger
@@ -539,14 +482,7 @@ namespace cubmonitor
 	  }
 	// exchange
       }
-    while (!m_value.compare_exchange_strong (loaded, value));
-  }
-
-  template <typename Rep>
-  statistic_value
-  min_statistic<Rep>::fetch (void) const
-  {
-    return fetch_statistic_representation (m_value);
+    while (!compare_exchange (loaded, value));
   }
 
   template <typename Rep>
@@ -557,13 +493,6 @@ namespace cubmonitor
       {
 	m_value = value;
       }
-  }
-
-  template <typename Rep>
-  statistic_value
-  min_atomic_statistic<Rep>::fetch (void) const
-  {
-    return fetch_atomic_representation (m_value);
   }
 
   template <typename Rep>
@@ -578,7 +507,7 @@ namespace cubmonitor
 
     do
       {
-	loaded = m_value.load ();
+	loaded = get_value ();
 	if (loaded <= value)
 	  {
 	    // not smaller
@@ -586,7 +515,7 @@ namespace cubmonitor
 	  }
 	// try exchange
       }
-    while (!m_value.compare_exchange_strong (loaded, value));
+    while (!compare_exchange (loaded, value));
     // exchange successful
   }
 
