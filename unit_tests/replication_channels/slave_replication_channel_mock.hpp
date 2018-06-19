@@ -5,6 +5,7 @@
 
 #include "slave_replication_channel.hpp"
 #include "connection_defs.h"
+#include "mock_stream.hpp"
 
 #include <vector>
 
@@ -15,7 +16,7 @@ class slave_replication_channel_mock
     ~slave_replication_channel_mock () = default;
 
     cubreplication::slave_replication_channel slave_channel;
-    cubstream::mock_packing_stream mock_stream;
+    mock_stream m_stream;
 };
 
 namespace slave

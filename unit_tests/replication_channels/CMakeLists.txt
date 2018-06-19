@@ -28,6 +28,7 @@ set (TEST_REPLICATION_CHANNELS_H
   slave_replication_channel_mock.hpp
   master_replication_channel_mock.hpp
 	cub_master_mock.hpp
+	mock_stream.hpp
   )
 SET_SOURCE_FILES_PROPERTIES(
   ${TEST_REPLICATION_CHANNELS_SRC}

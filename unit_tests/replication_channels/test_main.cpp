@@ -136,16 +136,16 @@ static int run ()
 
   for (slave_replication_channel_mock *slave : slaves)
     {
-      if (slave->mock_stream.last_position == MTU * MAX_CYCLES)
+      if (slave->m_stream.last_position == MTU * MAX_CYCLES)
 	{
 	  unsigned int sum = 0;
 
-	  for (std::size_t i = 0; i < slave->mock_stream.last_position; i += sizeof (int))
+	  for (std::size_t i = 0; i < slave->m_stream.last_position; i += sizeof (int))
 	    {
-	      sum += * ((int *) (slave->mock_stream.write_buffer + i));
+	      sum += * ((int *) (slave->m_stream.write_buffer + i));
 	    }
 
-	  if (sum == ((slave->mock_stream.last_position / sizeof (int)) * ((slave->mock_stream.last_position / sizeof (
+	  if (sum == ((slave->m_stream.last_position / sizeof (int)) * ((slave->m_stream.last_position / sizeof (
 			int)) - 1)) / 2)
 	    {
 	      return NO_ERROR;

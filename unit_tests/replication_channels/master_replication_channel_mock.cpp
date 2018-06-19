@@ -14,9 +14,9 @@
 #include "test_output.hpp"
 #include "connection_cl.h"
 #include "thread_looper.hpp"
-#include <iostream>
+#include "mock_stream.hpp"
 
-static cubstream::mock_packing_stream master_mock_stream;
+static mock_stream master_mock_stream;
 
 namespace master
 {

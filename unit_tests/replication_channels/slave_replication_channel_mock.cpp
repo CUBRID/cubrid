@@ -13,10 +13,10 @@ static std::mutex slave_vector_mutex;
 
 slave_replication_channel_mock::slave_replication_channel_mock (cub_server_communication_channel &&chn) :
   slave_channel (std::forward <cub_server_communication_channel> (chn),
-		 mock_stream,
+		 m_stream,
 		 0)
 {
-  mock_stream.init (0);
+  m_stream.init (0);
 }
 
 namespace slave
