@@ -105,6 +105,11 @@ namespace cubmonitor
       transaction_statistic (void);                                   // constructor
       ~transaction_statistic (void);                                  // destructor
 
+      // fetchable concept
+      void fetch (statistic_value *destination) const;
+      void fetch_transaction_sheet (statistic_value *destination) const;
+      std::size_t get_statistics_count (void) const;
+
       statistic_value fetch (void) const;                             // fetch global statistic
       statistic_value fetch_sheet (void) const;                       // fetch from transaction sheet (if open)
 
@@ -191,6 +196,13 @@ namespace cubmonitor
   }
 
   template <class S>
+  void
+  transaction_statistic<S>::fetch (statistic_value *destination) const
+  {
+    m_global_stat.fetch (destination);
+  }
+
+  template <class S>
   statistic_value
   transaction_statistic<S>::fetch_sheet (void) const
   {
@@ -210,6 +222,32 @@ namespace cubmonitor
 
     // return collected value
     return m_sheet_stats[sheet].fetch ();
+  }
+
+  template <class S>
+  void
+  transaction_statistic<S>::fetch_transaction_sheet (statistic_value *destination) const
+  {
+    transaction_sheet sheet = transaction_sheet_manager::get_sheet ();
+
+    if (sheet == transaction_sheet_manager::INVALID_TRANSACTION_SHEET)
+      {
+	// transaction is not watching
+      }
+
+    if (m_sheet_stats_count <= sheet)
+      {
+	// nothing was collected
+      }
+
+    m_sheet_stats[sheet].fetch ();
+  }
+
+  template <class S>
+  std::size_t
+  transaction_statistic<S>::get_statistics_count (void) const
+  {
+    return 1;
   }
 
   template <class S>

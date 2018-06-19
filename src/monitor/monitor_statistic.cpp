@@ -25,56 +25,6 @@
 
 namespace cubmonitor
 {
-  //////////////////////////////////////////////////////////////////////////
-  // class fetchable
-  //////////////////////////////////////////////////////////////////////////
-
-  template <>
-  void
-  fetchable<amount_rep>::fetch (statistic_value *destination)
-  {
-    *destination = static_cast<statistic_value> (m_value);
-  }
-
-  template <>
-  void
-  fetchable<floating_rep>::fetch (statistic_value *destination)
-  {
-    *destination = *reinterpret_cast<statistic_value *> (&m_value);
-  }
-
-  template <>
-  void
-  fetchable<time_rep>::fetch (statistic_value *destination)
-  {
-    // convert from collect representation - nanoseconds - to monitor representation - microseconds.
-    *destination =
-	    static_cast<statistic_value> (std::chrono::duration_cast<std::chrono::microseconds> (m_value).count ());
-  }
-
-  template <>
-  void
-  fetchable_atomic<amount_rep>::fetch (statistic_value *destination)
-  {
-    *destination = static_cast<statistic_value> (m_value);
-  }
-
-  template <>
-  void
-  fetchable_atomic<floating_rep>::fetch (statistic_value *destination)
-  {
-    *destination = *reinterpret_cast<statistic_value *> (&m_value);
-  }
-
-  template <>
-  void
-  fetchable_atomic<time_rep::rep>::fetch (statistic_value *destination)
-  {
-    // convert from collect representation - nanoseconds - to monitor representation - microseconds.
-    time_rep nanos (m_value.load ());
-    *destination =
-	    static_cast<statistic_value> (std::chrono::duration_cast<std::chrono::microseconds> (nanos).count ());
-  }
 
   statistic_value
   fetch_statistic_representation (const time_rep &value)
@@ -118,84 +68,84 @@ namespace cubmonitor
 
   template <>
   max_statistic<amount_rep>::max_statistic (void)
-    : m_value (std::numeric_limits<amount_rep>::min ())
+    : fetchable<amount_rep> (std::numeric_limits<amount_rep>::min ())
   {
     //
   }
 
   template <>
   max_statistic<floating_rep>::max_statistic (void)
-    : m_value (std::numeric_limits<floating_rep>::min ())
+    : fetchable<floating_rep> (std::numeric_limits<floating_rep>::min ())
   {
     //
   }
 
   template <>
   max_statistic<time_rep>::max_statistic (void)
-    : m_value (time_rep::min ())
+    : fetchable<time_rep> (time_rep::min ())
   {
     //
   }
 
   template <>
   max_atomic_statistic<amount_rep>::max_atomic_statistic (void)
-    : m_value { std::numeric_limits<amount_rep>::min () }
+    : fetchable_atomic<amount_rep> (std::numeric_limits<amount_rep>::min ())
   {
     //
   }
 
   template <>
   max_atomic_statistic<floating_rep>::max_atomic_statistic (void)
-    : m_value { std::numeric_limits<floating_rep>::min () }
+    : fetchable_atomic<floating_rep> (std::numeric_limits<floating_rep>::min ())
   {
     //
   }
 
   template <>
   max_atomic_statistic<time_rep>::max_atomic_statistic (void)
-    : m_value { time_rep::min () }
+    : fetchable_atomic<time_rep> (time_rep::min ())
   {
     //
   }
 
   template <>
   min_statistic<amount_rep>::min_statistic (void)
-    : m_value (std::numeric_limits<amount_rep>::max ())
+    : fetchable<amount_rep> (std::numeric_limits<amount_rep>::max ())
   {
     //
   }
 
   template <>
   min_statistic<floating_rep>::min_statistic (void)
-    : m_value (std::numeric_limits<floating_rep>::max ())
+    : fetchable<floating_rep> (std::numeric_limits<floating_rep>::max ())
   {
     //
   }
 
   template <>
   min_statistic<time_rep>::min_statistic (void)
-    : m_value (time_rep::max ())
+    : fetchable<time_rep> (time_rep::max ())
   {
     //
   }
 
   template <>
   min_atomic_statistic<amount_rep>::min_atomic_statistic (void)
-    : m_value { std::numeric_limits<amount_rep>::max () }
+    : fetchable_atomic<amount_rep> (std::numeric_limits<amount_rep>::max ())
   {
     //
   }
 
   template <>
   min_atomic_statistic<floating_rep>::min_atomic_statistic (void)
-    : m_value { std::numeric_limits<floating_rep>::max () }
+    : fetchable_atomic<floating_rep> (std::numeric_limits<floating_rep>::max ())
   {
     //
   }
 
   template <>
   min_atomic_statistic<time_rep>::min_atomic_statistic (void)
-    : m_value { time_rep::max () }
+    : fetchable_atomic<time_rep> (time_rep::max ())
   {
     //
   }

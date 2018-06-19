@@ -113,12 +113,15 @@ namespace cubmonitor
   //
   // Fetch-able concept must implement two functions:
   //
-  //    void fetch (statistic_value *);    // fetch global statistics
-  //    void fetch_transaction_sheet (statistic_value *);   // fetch transaction sheet statistics
+  //    void fetch (statistic_value *) const;    // fetch global statistics
+  //    void fetch_transaction_sheet (statistic_value *) const;   // fetch transaction sheet statistics
   //
-  //    std::size_t get_statistics_count (void);      // statistics count
+  //    std::size_t get_statistics_count (void) const;      // statistics count
   //
   // Fetch-able concept that can be extended by collectible should have a protected m_value field.
+  //
+  // NOTE: fetch_transaction_sheet is empty for all basic statistics implemented here. use transaction_statistic if
+  //       this functionality is required.
   //
   //////////////////////////////////////////////////////////////////////////
 
@@ -132,14 +135,14 @@ namespace cubmonitor
 	//
       }
 
-      void fetch (statistic_value *destination);
-      void fetch_transaction_sheet (statistic_value *destination)
+      inline void fetch (statistic_value *destination) const;
+      void fetch_transaction_sheet (statistic_value *destination) const
       {
 	// do nothing
 	return;
       }
 
-      std::size_t get_statistics_count (void)
+      std::size_t get_statistics_count (void) const
       {
 	return 1;
       }
@@ -158,14 +161,14 @@ namespace cubmonitor
 	//
       }
 
-      void fetch (statistic_value *destination);
-      void fetch_transaction_sheet (statistic_value *destination)
+      inline void fetch (statistic_value *destination) const;
+      void fetch_transaction_sheet (statistic_value *destination) const
       {
 	// do nothing
 	return;
       }
 
-      std::size_t get_statistics_count (void)
+      std::size_t get_statistics_count (void) const
       {
 	return 1;
       }
@@ -185,14 +188,14 @@ namespace cubmonitor
 	//
       }
 
-      void fetch (statistic_value *destination);
-      void fetch_transaction_sheet (statistic_value *destination)
+      inline void fetch (statistic_value *destination) const;
+      void fetch_transaction_sheet (statistic_value *destination) const
       {
 	// do nothing
 	return;
       }
 
-      std::size_t get_statistics_count (void)
+      std::size_t get_statistics_count (void) const
       {
 	return 1;
       }
@@ -209,6 +212,8 @@ namespace cubmonitor
   template class fetchable<time_rep>;
   // template class fetchable_atomic<time_rep>; // differentely specialized, see above
 
+  template <> void fetchable_atomic<amount_rep>::fetch (statistic_value *destination) const;
+
   //////////////////////////////////////////////////////////////////////////
   // Accumulator statistics
   //////////////////////////////////////////////////////////////////////////
@@ -219,7 +224,6 @@ namespace cubmonitor
     public:
       using rep = Rep;                            // collected data representation
 
-      accumulator_statistic ();
       statistic_value fetch (void) const;         // fetch collected value
       void collect (const Rep &value);            // collect value
   };
@@ -230,7 +234,6 @@ namespace cubmonitor
     public:
       using rep = Rep;                            // collected data representation
 
-      accumulator_atomic_statistic ();
       statistic_value fetch (void) const;         // fetch collected value
       void collect (const Rep &value);            // collect value
   };
@@ -241,7 +244,6 @@ namespace cubmonitor
     public:
       using rep = time_rep;
 
-      accumulator_atomic_statistic ();
       statistic_value fetch (void) const;
       void collect (const time_rep &value)
       {
@@ -259,7 +261,6 @@ namespace cubmonitor
     public:
       using rep = Rep;                            // collected data representation
 
-      gauge_statistic ();
       statistic_value fetch (void) const;         // fetch collected value
       void collect (const Rep &value);            // collect value
     private:
@@ -272,7 +273,6 @@ namespace cubmonitor
     public:
       using rep = Rep;                            // collected data representation
 
-      gauge_atomic_statistic ();
       statistic_value fetch (void) const;         // fetch collected value
       void collect (const Rep &value);            // collect value
     private:
@@ -381,18 +381,62 @@ namespace cubmonitor
   //////////////////////////////////////////////////////////////////////////
   // template/inline implementation
   //////////////////////////////////////////////////////////////////////////
+
+  //////////////////////////////////////////////////////////////////////////
+  // class fetchable
+  //////////////////////////////////////////////////////////////////////////
+
+  template <>
+  void
+  fetchable<amount_rep>::fetch (statistic_value *destination) const
+  {
+    *destination = static_cast<statistic_value> (m_value);
+  }
+
+  template <>
+  void
+  fetchable<floating_rep>::fetch (statistic_value *destination) const
+  {
+    *destination = *reinterpret_cast<const statistic_value *> (&m_value);
+  }
+
+  template <>
+  void
+  fetchable<time_rep>::fetch (statistic_value *destination) const
+  {
+    // convert from collect representation - nanoseconds - to monitor representation - microseconds.
+    *destination =
+	    static_cast<statistic_value> (std::chrono::duration_cast<std::chrono::microseconds> (m_value).count ());
+  }
+
+  template <>
+  void
+  fetchable_atomic<amount_rep>::fetch (statistic_value *destination) const
+  {
+    *destination = static_cast<statistic_value> (m_value);
+  }
+
+  template <>
+  void
+  fetchable_atomic<floating_rep>::fetch (statistic_value *destination) const
+  {
+    *destination = *reinterpret_cast<const statistic_value *> (&m_value);
+  }
+
+  void
+  fetchable_atomic<time_rep>::fetch (statistic_value *destination) const
+  {
+    // convert from collect representation - nanoseconds - to monitor representation - microseconds.
+    time_rep nanos (m_value.load ());
+    *destination =
+	    static_cast<statistic_value> (std::chrono::duration_cast<std::chrono::microseconds> (nanos).count ());
+  }
+
   template <typename Rep>
   statistic_value
   fetch_atomic_representation (const std::atomic<Rep> &atomic_value)
   {
     return fetch_statistic_representation (atomic_value.load ());
-  }
-
-  template <typename Rep>
-  accumulator_statistic<Rep>::accumulator_statistic (void)
-    : m_value (0)
-  {
-    //
   }
 
   template <typename Rep>
@@ -410,13 +454,6 @@ namespace cubmonitor
   }
 
   template <typename Rep>
-  accumulator_atomic_statistic<Rep>::accumulator_atomic_statistic (void)
-    : m_value { Rep () }
-  {
-    //
-  }
-
-  template <typename Rep>
   statistic_value
   accumulator_atomic_statistic<Rep>::fetch (void) const
   {
@@ -431,13 +468,6 @@ namespace cubmonitor
   }
 
   template <typename Rep>
-  gauge_statistic<Rep>::gauge_statistic (void)
-    : m_value { 0 }
-  {
-    //
-  }
-
-  template <typename Rep>
   statistic_value
   gauge_statistic<Rep>::fetch () const
   {
@@ -449,13 +479,6 @@ namespace cubmonitor
   gauge_statistic<Rep>::collect (const Rep &value)
   {
     m_value = value;
-  }
-
-  template <typename Rep>
-  gauge_atomic_statistic<Rep>::gauge_atomic_statistic (void)
-    : m_value { 0 }
-  {
-    //
   }
 
   template <typename Rep>

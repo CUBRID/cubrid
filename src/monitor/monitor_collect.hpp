@@ -53,28 +53,36 @@ namespace cubmonitor
   // Group statistics together to provide detailed information about events
   //////////////////////////////////////////////////////////////////////////
 
+  //////////////////////////////////////////////////////////////////////////
+  // Timer statistics - one statistic based on time_rep
+  //////////////////////////////////////////////////////////////////////////
+
   template <typename T = time_accumulator_statistic>
   class timer_statistic
   {
     public:
       timer_statistic (void);
 
-      void time (const time_rep &d);
-      void time (void);
+      inline void time (const time_rep &d);
+      inline void time (void);
 
-      static std::size_t get_statistics_count (void);
-      void fetch (statistic_value *destination);
-      void fetch_sheet (statistic_value *destination);  // !!! only defined for transaction versions.
+      inline void fetch (statistic_value *destination) const;
+      inline void fetch_transaction_sheet (statistic_value *destination) const;
+      inline std::size_t get_statistics_count (void) const;
 
     private:
       timer m_timer;
       T m_statistic;
   };
-  // specialized as time_accumulator[_atomic]_statistic with or without transaction sheets
+  // explicit instantiations as time_accumulator[_atomic]_statistic with or without transaction sheets
   template class timer_statistic<time_accumulator_statistic>;
   template class timer_statistic<time_accumulator_atomic_statistic>;
   template class timer_statistic<transaction_statistic<time_accumulator_statistic>>;
   template class timer_statistic<transaction_statistic<time_accumulator_atomic_statistic>>;
+
+  //////////////////////////////////////////////////////////////////////////
+  // Counter/timer statistic - two statistics that count and time events
+  //////////////////////////////////////////////////////////////////////////
 
   template <class A = amount_accumulator_statistic, class T = time_accumulator_statistic>
   class counter_timer_statistic
@@ -82,51 +90,244 @@ namespace cubmonitor
     public:
       counter_timer_statistic (void);
 
-      void time_and_increment (const time_rep &d, const amount_rep &a = 1);
-      void time_and_increment (const amount_rep &a = 1);
+      inline void time_and_increment (const time_rep &d, const amount_rep &a = 1);
+      inline void time_and_increment (const amount_rep &a = 1);
 
-      static std::size_t get_statistics_count (void);
-      void fetch (statistic_value *destination);
-      void fetch_sheet (statistic_value *destination);  // !!! only defined for transaction versions.
+      inline std::size_t get_statistics_count (void) const;
+      inline void fetch (statistic_value *destination) const;
+      inline void fetch_transaction_sheet (statistic_value *destination) const;
 
     private:
       timer m_timer;
       A m_amount_statistic;
       T m_time_statistic;
   };
-  // specialized classes atomic/non-atomic, with/without transactions
-  template <> class counter_timer_statistic<amount_accumulator_statistic, time_accumulator_statistic>;
-  template <> class counter_timer_statistic<amount_accumulator_atomic_statistic, time_accumulator_atomic_statistic>;
+  // explicit instantiations of counter_timer_statistic with atomic/non-atomic, with/without transactions
+  template class counter_timer_statistic<amount_accumulator_statistic, time_accumulator_statistic>;
+  template class counter_timer_statistic<amount_accumulator_atomic_statistic, time_accumulator_atomic_statistic>;
 
-  template <> class counter_timer_statistic<transaction_statistic<amount_accumulator_statistic>,
-	     transaction_statistic<time_accumulator_statistic>>;
-  template <> class counter_timer_statistic<transaction_statistic<amount_accumulator_atomic_statistic>,
-	     transaction_statistic<time_accumulator_atomic_statistic>>;
+  template class counter_timer_statistic<transaction_statistic<amount_accumulator_statistic>,
+					 transaction_statistic<time_accumulator_statistic>>;
+  template class counter_timer_statistic<transaction_statistic<amount_accumulator_atomic_statistic>,
+					 transaction_statistic<time_accumulator_atomic_statistic>>;
 
-  template <class A = amount_accumulator_statistic, class T = time_accumulator_statistic>
-  class counter_timer_max_statistic : protected counter_timer_statistic<A, T>
+  //////////////////////////////////////////////////////////////////////////
+  // Counter/timer/max statistic - three statistics that count, time and save events longest duration
+  //////////////////////////////////////////////////////////////////////////
+  template <class A = amount_accumulator_statistic, class T = time_accumulator_statistic, class M = time_max_statistic>
+  class counter_timer_max_statistic
   {
     public:
 
+      using counter_timer_type = counter_timer_statistic<A, T>;
+
       counter_timer_max_statistic (void);
 
-      void time_and_increment (const time_rep &d, const amount_rep &a = 1);
-      void time_and_increment (const amount_rep &a = 1);
+      inline void time_and_increment (const time_rep &d, const amount_rep &a = 1);
+      inline void time_and_increment (const amount_rep &a = 1);
 
-      static std::size_t get_statistics_count (void);
-      void fetch (statistic_value *destination);
-      void fetch_sheet (statistic_value *destination);  // !!! only defined for transaction versions.
+      inline std::size_t get_statistics_count (void) const;
+      inline void fetch (statistic_value *destination) const;
+      inline void fetch_transaction_sheet (statistic_value *destination) const;
 
     private:
-      T m_max_statistic;
+      counter_timer_type m_counter_timer;
+      M m_max_statistic;
   };
+  // explicit instantiations
+  template class counter_timer_max_statistic<amount_accumulator_statistic, time_accumulator_statistic,
+      time_max_statistic>;
+  template class counter_timer_max_statistic<amount_accumulator_atomic_statistic, time_accumulator_atomic_statistic,
+      time_max_atomic_statistic>;
+  template class counter_timer_max_statistic<transaction_statistic<amount_accumulator_statistic>,
+      transaction_statistic<time_accumulator_statistic>, transaction_statistic<time_max_statistic>>;
+  template class counter_timer_max_statistic<transaction_statistic<amount_accumulator_atomic_statistic>,
+      transaction_statistic<time_accumulator_atomic_statistic>, transaction_statistic<time_max_atomic_statistic>>;
 
   //////////////////////////////////////////////////////////////////////////
   // template and inline implementation
   //////////////////////////////////////////////////////////////////////////
 
+#if 0
 
+  //////////////////////////////////////////////////////////////////////////
+  // timer_statistic
+  //////////////////////////////////////////////////////////////////////////
 
+  template <typename T>
+  timer_statistic<T>::timer_statistic (void)
+    : m_timer ()
+    , m_statistic ()
+  {
+    //
+  }
+
+  template <class T>
+  void
+  timer_statistic<T>::time (const time_rep &d)
+  {
+    m_statistic.collect (d);
+  }
+
+  template <class T>
+  void
+  timer_statistic<T>::time (void)
+  {
+    m_statistic.collect (m_timer.time ());
+  }
+
+  template <class T>
+  std::size_t
+  timer_statistic<T>::get_statistics_count (void) const
+  {
+    return m_statistic.get_statistics_count ();
+  }
+
+  template <class T>
+  void
+  timer_statistic<T>::fetch (statistic_value *destination) const
+  {
+    m_statistic.fetch (destination);
+  }
+
+  template <class T>
+  void
+  timer_statistic<T>::fetch_transaction_sheet (statistic_value *destination) const
+  {
+    m_statistic.fetch_transaction_sheet (destination);
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // counter_timer_statistic
+  //////////////////////////////////////////////////////////////////////////
+
+  template <class A, class T>
+  counter_timer_statistic<A, T>::counter_timer_statistic (void)
+    : m_timer ()
+    , m_amount_statistic ()
+    , m_time_statistic ()
+  {
+    //
+  }
+
+  template <class A, class T>
+  void
+  counter_timer_statistic<A, T>::time_and_increment (const time_rep &d, const amount_rep &a /* = 1 */)
+  {
+    m_amount_statistic.collect (a);
+    m_time_statistic.collect (d);
+  }
+
+  template <class A, class T>
+  void
+  counter_timer_statistic<A, T>::time_and_increment (const amount_rep &a /* = 1 */)
+  {
+    m_amount_statistic.collect (a);
+    m_time_statistic.collect (m_timer.time ());
+  }
+
+  template <class A, class T>
+  std::size_t
+  counter_timer_statistic<A, T>::get_statistics_count (void) const
+  {
+    return m_amount_statistic.get_statistics_count () + m_time_statistic.get_statistics_count ();
+  }
+
+  template <class A, class T>
+  void
+  counter_timer_statistic<A, T>::fetch (statistic_value *destination) const
+  {
+    std::size_t index = 0;
+
+    m_amount_statistic.fetch (destination + index);
+    index += m_amount_statistic.get_statistics_count ();
+
+    m_time_statistic.fetch (destination + index);
+    index += m_time_statistic.get_statistics_count ();
+
+    assert (index == get_statistics_count ());
+  }
+
+  template <class A, class T>
+  void
+  counter_timer_statistic<A, T>::fetch_transaction_sheet (statistic_value *destination) const
+  {
+    std::size_t index = 0;
+
+    m_amount_statistic.fetch_transaction_sheet (destination + index);
+    index += m_amount_statistic.get_statistics_count ();
+
+    m_time_statistic.fetch_transaction_sheet (destination + index);
+    index += m_time_statistic.get_statistics_count ();
+
+    assert (index == get_statistics_count ());
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // counter_timer_max_statistic
+  //////////////////////////////////////////////////////////////////////////
+
+  template <class A, class T, class M>
+  counter_timer_max_statistic<A, T, M>::counter_timer_max_statistic (void)
+    : m_counter_timer ()
+    , m_max_statistic ()
+  {
+    //
+  }
+
+  template <class A, class T, class M>
+  void
+  counter_timer_max_statistic<A, T, M>::time_and_increment (const time_rep &d, const amount_rep &a /* = 1 */)
+  {
+    m_counter_timer.time_and_increment (d, a);
+    m_max_statistic.collect (d);
+  }
+
+  template <class A, class T, class M>
+  void
+  counter_timer_max_statistic<A, T, M>::time_and_increment (const amount_rep &a /* = 1 */)
+  {
+    time_and_increment (m_timer::time (), a);
+  }
+
+  template <class A, class T, class M>
+  std::size_t
+  counter_timer_max_statistic<A, T, M>::get_statistics_count (void) const
+  {
+    return m_counter_timer.get_statistics_count () + m_max_statistic.get_statistics_count ();
+  }
+
+  template <class A, class T, class M>
+  void
+  counter_timer_max_statistic<A, T, M>::fetch (statistic_value *destination) const
+  {
+    std::size_t index = 0;
+
+    m_counter_timer.fetch (destination + index);
+    index += m_counter_timer.get_statistics_count ();
+
+    m_max_statistic.fetch (destination + index);
+    index += m_max_statistic.get_statistics_count ();
+
+    assert (index == get_statistics_count ());
+  }
+
+  template <class A, class T, class M>
+  void
+  counter_timer_max_statistic<A, T, M>::fetch_transaction_sheet (statistic_value *destination) const
+  {
+    std::size_t index = 0;
+
+    m_counter_timer.fetch_transaction_sheet (destination + index);
+    index += m_counter_timer.get_statistics_count ();
+
+    m_max_statistic.fetch_transaction_sheet (destination + index);
+    index += m_max_statistic.get_statistics_count ();
+
+    assert (index == get_statistics_count ());
+  }
+
+#endif // 0
 
 } // namespace cubmonitor
 
