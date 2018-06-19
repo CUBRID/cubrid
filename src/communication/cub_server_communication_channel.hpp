@@ -3,22 +3,12 @@
 
 #include "communication_channel.hpp"
 
-/* so that unique_ptr knows to "free (char *)" and not to "delete char *" */
-struct c_free_deleter
-{
-  void operator() (char *ptr)
-  {
-    if (ptr != NULL)
-      {
-	free (ptr);
-      }
-  }
-};
+#include <string>
 
 class cub_server_communication_channel : public communication_channel
 {
   public:
-    cub_server_communication_channel (const char *server_name = "NO NAME", int max_timeout_in_ms = -1);
+    cub_server_communication_channel (const char *server_name, int max_timeout_in_ms = -1);
     ~cub_server_communication_channel () = default;
 
     cub_server_communication_channel (const cub_server_communication_channel &) = delete;
@@ -30,10 +20,8 @@ class cub_server_communication_channel : public communication_channel
     css_error_code connect (const char *hostname, int port) override;
 
   private:
-    std::unique_ptr <char, c_free_deleter> m_server_name;
-    unsigned short m_request_id;
-    enum css_command_type m_command_type;
+    std::string m_server_name;
+    std::size_t m_server_name_length;
 };
-
 
 #endif /* __CUB_SERVER_COMMUNICATION_CHANNEL_HPP */
