@@ -50,9 +50,9 @@ namespace cubreplication
 						  std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)),
 						new master_channels_supervisor_task (), "supervisor_daemon");
 	    master_channels.clear ();
-	    is_initialized = true;
 	    g_minimum_successful_stream_position = 0;
 	    g_stream = stream;
+	    is_initialized = true;
 	  }
       }
   }
