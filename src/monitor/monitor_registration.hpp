@@ -45,6 +45,7 @@
 #include "monitor_definition.hpp"
 #include "monitor_transaction.hpp"
 
+#include <array>
 #include <functional>
 #include <string>
 #include <vector>
@@ -73,13 +74,23 @@ namespace cubmonitor
 
       monitor ();
 
-      // register a single statistic (without transaction sheets)
-      template <typename S>
-      void register_single_statistic (const char *name, const S &statistic);
+      template <class S>
+      void
+      register_statistics (const S &statistics, const std::vector<const char *> &names)
+      {
+	if (names.size () != statistics.get_statistics_count ())
+	  {
+	    // names/statistics count miss-match
+	    assert (false);
+	    return;
+	  }
 
-      // register a single statistic with transactions sheets
-      template <typename S>
-      void register_single_transaction_statistic (const char *name, const S &statistic);
+	register_statistics (C, std::bind (&S::fetch, statistics),
+			     std::bind (&S::fetch_transaction_sheet, statistics));
+	m_all_names.insert (m_all_names.end (), names.cbegin (), names.cend ());
+
+	check_name_count ();
+      }
 
       // get the total count of registered statistics
       std::size_t get_statistics_count (void);
@@ -110,11 +121,6 @@ namespace cubmonitor
 	// todo: add here more meta-information on each statistic
       };
 
-      // register a single statistics
-      void register_single_function (const char *name, const fetch_function &fetch_f);
-      // register a single statistics with transaction sheets
-      void register_single_function_with_transaction (const char *name, const fetch_function &fetch_func,
-	  const fetch_function &tran_fetch_func);
       // register a number of statistics that can be fetched with fetch_func/tran_fetch_func
       void register_statistics (std::size_t count, const fetch_function &fetch_func,
 				const fetch_function &tran_fetch_func);

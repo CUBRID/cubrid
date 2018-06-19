@@ -70,6 +70,7 @@ execute_multi_thread (std::size_t thread_count, Func &&func, Args &&... args)
 static void
 test_single_statistics_no_concurrency_amount (void)
 {
+#define check(value) do { statistic_value read; statcol.fetch (&read); assert (read == value); } while (0)
   using namespace cubmonitor;
 
   // test accumulator
@@ -77,6 +78,7 @@ test_single_statistics_no_concurrency_amount (void)
     amount_accumulator_statistic statcol;
 
     statcol.collect (2);
+    check (2);
     assert (statcol.fetch () == 2);
     statcol.collect (5);
     assert (statcol.fetch () == 7);
@@ -394,8 +396,12 @@ test_registration (void)
   test_trancol tran_acc;
 
   // register statistics
-  my_monitor.register_single_statistic ("regular statistic", acc);
-  my_monitor.register_single_transaction_statistic ("transaction statistic", tran_acc);
+  std::vector<const char *> names;
+  names.push_back ("regular statistic");
+  my_monitor.register_statistics (acc, names);
+  names.clear ();
+  names.push_back ("transaction statistic");
+  my_monitor.register_statistics (tran_acc, names);
 
   // allocate a value buffer
   assert (my_monitor.get_statistics_count () == 2);
