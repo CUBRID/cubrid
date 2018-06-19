@@ -175,6 +175,21 @@ set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/stream_transfer_sender.hpp
   )
 
+set(MONITOR_SOURCES
+	${MONITOR_DIR}/monitor_collect.cpp
+	${MONITOR_DIR}/monitor_registration.cpp
+	${MONITOR_DIR}/monitor_statistic.cpp
+	${MONITOR_DIR}/monitor_transaction.cpp
+)
+
+set(MONITOR_HEADERS
+	${MONITOR_DIR}/monitor_collect.hpp
+	${MONITOR_DIR}/monitor_definition.hpp
+	${MONITOR_DIR}/monitor_registration.hpp
+	${MONITOR_DIR}/monitor_statistic.hpp
+	${MONITOR_DIR}/monitor_transaction.hpp
+)
+
 set (REPLICATION_SOURCES
   ${REPLICATION_DIR}/master_replication_channel_manager.cpp
   ${REPLICATION_DIR}/master_replication_channel.cpp
