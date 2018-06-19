@@ -187,8 +187,6 @@ set (REPLICATION_HEADERS
   ${REPLICATION_DIR}/slave_replication_channel.hpp
   )
 
-)
-
 set(QUERY_SOURCES
   ${QUERY_DIR}/arithmetic.c
   ${QUERY_DIR}/crypt_opfunc.c
