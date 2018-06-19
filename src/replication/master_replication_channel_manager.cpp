@@ -36,6 +36,7 @@ namespace cubreplication
   cubthread::daemon *master_replication_channel_manager::master_channels_supervisor_daemon = NULL;
   bool master_replication_channel_manager::is_initialized = false;
   std::mutex master_replication_channel_manager::mutex_for_singleton;
+  std::mutex master_replication_channel_manager::master_channels_mutex;
   cubstream::stream_position master_replication_channel_manager::g_minimum_successful_stream_position;
   cubstream::stream *master_replication_channel_manager::g_stream;
 
@@ -46,10 +47,10 @@ namespace cubreplication
 	std::lock_guard<std::mutex> guard (mutex_for_singleton);
 	if (is_initialized == false)
 	  {
+	    master_channels.clear ();
 	    master_channels_supervisor_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (
 						  std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)),
 						new master_channels_supervisor_task (), "supervisor_daemon");
-	    master_channels.clear ();
 	    g_minimum_successful_stream_position = 0;
 	    g_stream = stream;
 	    is_initialized = true;
@@ -59,6 +60,8 @@ namespace cubreplication
 
   void master_replication_channel_manager::add_master_replication_channel (master_replication_channel_entry &&channel)
   {
+    std::lock_guard<std::mutex> guard (master_channels_mutex);
+
     master_channels.push_back (std::forward<master_replication_channel_entry> (channel));
   }
 
@@ -83,7 +86,9 @@ namespace cubreplication
 
   unsigned int master_replication_channel_manager::get_number_of_channels ()
   {
-    return is_initialized ? master_channels.size () : 0;
+    std::lock_guard<std::mutex> guard (master_channels_mutex);
+
+    return master_channels.size ();
   }
 
   master_replication_channel_entry &master_replication_channel_entry::add_daemon (MASTER_DAEMON_THREAD_ID daemon_index,

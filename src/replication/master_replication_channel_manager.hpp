@@ -119,6 +119,8 @@ namespace cubreplication
 	    if (check_conn_delay_counter >
 		SUPERVISOR_DAEMON_CHECK_CONN_MS / SUPERVISOR_DAEMON_DELAY_MS)
 	      {
+		std::lock_guard<std::mutex> guard (master_channels_mutex);
+
 		auto new_end = std::remove_if (master_channels.begin (), master_channels.end (),
 					       [] (master_replication_channel_entry &entry)
 		{
@@ -131,6 +133,8 @@ namespace cubreplication
 
 	    master_replication_channel_manager::g_minimum_successful_stream_position =
 	      std::numeric_limits <cubstream::stream_position>::max();
+
+	    std::lock_guard<std::mutex> guard (master_channels_mutex);
 
 	    for (auto &entry : master_channels)
 	      {
@@ -152,7 +156,7 @@ namespace cubreplication
       static std::vector <master_replication_channel_entry> master_channels;
       static cubthread::daemon *master_channels_supervisor_daemon;
       static bool is_initialized;
-      static std::mutex mutex_for_singleton;
+      static std::mutex mutex_for_singleton, master_channels_mutex;
       static cubstream::stream *g_stream;
   };
 
