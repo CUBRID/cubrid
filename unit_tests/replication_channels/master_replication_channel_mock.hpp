@@ -13,10 +13,10 @@ namespace master
   void init ();
   void finish ();
 
-  class dummy_print_daemon : public cubthread::task_without_context
+  class dummy_test_daemon : public cubthread::task_without_context
   {
     public:
-      dummy_print_daemon ();
+      dummy_test_daemon ();
       void execute (void);
 
       void set_channel (std::shared_ptr<cubreplication::master_replication_channel> &ch);
@@ -25,7 +25,9 @@ namespace master
     private:
       std::shared_ptr<cubreplication::master_replication_channel> channel;
       int num_of_loops;
-    };
+  };
+
+  void stream_produce (unsigned int num_bytes);
 
 } /* namespace master */
 

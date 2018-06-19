@@ -10,6 +10,7 @@
 #include "thread_looper.hpp"
 #include "lock_free.h"
 #include "connection_sr.h"
+#include "thread_manager.hpp"
 
 #if !defined (WINDOWS)
 #include "tcp.h"
@@ -161,8 +162,13 @@ void master_listening_thread_func ()
 
 static int init_thread_system ()
 {
-  int error_code = csect_initialize_static_critical_sections ();
-  if (error_code != NO_ERROR)
+  int error_code;
+  THREAD_ENTRY *thread_p = NULL;
+  cubthread::manager *cub_th_m;
+
+  lf_initialize_transaction_systems (MAX_THREADS);
+
+  if (csect_initialize_static_critical_sections () != NO_ERROR)
     {
       assert (false);
       return error_code;
@@ -171,9 +177,16 @@ static int init_thread_system ()
   error_code = css_init_conn_list ();
   if (error_code != NO_ERROR)
     {
-      assert (false);
-      return error_code;
+    assert (false);
+    return error_code;
     }
+
+  cubthread::initialize (thread_p);
+  cub_th_m = cubthread::get_manager ();
+  cub_th_m->set_max_thread_count (100);
+
+  cub_th_m->alloc_entries ();
+  cub_th_m->init_entries (false);
 
   return NO_ERROR;
 }

@@ -16,13 +16,16 @@
 #include "thread_looper.hpp"
 #include <iostream>
 
+static cubstream::mock_packing_stream master_mock_stream;
+
 namespace master
 {
 
   void init ()
   {
-    /* TODO[arnia] add stream */
-    cubreplication::master_replication_channel_manager::init (NULL);
+    master_mock_stream.init (0);
+
+    cubreplication::master_replication_channel_manager::init (&master_mock_stream);
   }
 
   void finish ()
@@ -30,32 +33,33 @@ namespace master
     cubreplication::master_replication_channel_manager::reset ();
   }
 
-  dummy_print_daemon::dummy_print_daemon () : channel (NULL), num_of_loops (0)
+  dummy_test_daemon::dummy_test_daemon () : channel (NULL), num_of_loops (0)
   {
 
   }
 
-  void dummy_print_daemon::execute (void)
+  void dummy_test_daemon::execute (void)
   {
     num_of_loops++;
     std::this_thread::sleep_for (std::chrono::milliseconds (850));
   }
 
-  void dummy_print_daemon::retire ()
+  void dummy_test_daemon::retire ()
   {
-    /* each slave sends each second a message to be received,
-    * so a daemon running with an 850 ms sleeping pattern
-    * should have made about NUM_OF_MSG_SENT or more loops before
-    * being retired
-    */
-    // TODO[arnia] make a case here
+    /* test whether this ran */
+
     assert (num_of_loops > 0);
     delete this;
   }
 
-  void dummy_print_daemon::set_channel (std::shared_ptr<cubreplication::master_replication_channel> &ch)
+  void dummy_test_daemon::set_channel (std::shared_ptr<cubreplication::master_replication_channel> &ch)
   {
     channel = ch;
+  }
+
+  void stream_produce (unsigned int num_bytes)
+  {
+    master_mock_stream.produce (num_bytes);
   }
 
 } /* namespace master */

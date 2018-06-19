@@ -23,7 +23,7 @@ namespace slave
   slave_replication_channel_mock *init_mock (int port);
   int init ();
   int finish ();
-  
+
   std::vector <slave_replication_channel_mock *> &get_slaves ();
 } /* namespace slave */
 

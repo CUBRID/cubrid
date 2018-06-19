@@ -11,9 +11,10 @@ static cubthread::entry_workpool *workpool = NULL;
 static std::vector <slave_replication_channel_mock *> slaves;
 static std::mutex slave_vector_mutex;
 
-slave_replication_channel_mock::slave_replication_channel_mock (cub_server_communication_channel &&chn) : slave_channel (std::forward <cub_server_communication_channel> (chn),
-                                                                                                                         mock_stream,
-                                                                                                                         0)
+slave_replication_channel_mock::slave_replication_channel_mock (cub_server_communication_channel &&chn) :
+  slave_channel (std::forward <cub_server_communication_channel> (chn),
+		 mock_stream,
+		 0)
 {
   mock_stream.init (0);
 }
@@ -22,13 +23,13 @@ namespace slave
 {
   class start_slaves_task : public cubthread::entry_task
   {
-    void execute (cubthread::entry &context)
-    {
-      slave_replication_channel_mock *mock = slave::init_mock (LISTENING_PORT);
+      void execute (cubthread::entry &context)
+      {
+	slave_replication_channel_mock *mock = slave::init_mock (LISTENING_PORT);
 
-      std::lock_guard<std::mutex> guard (slave_vector_mutex);
-      slaves.push_back (mock);
-    }
+	std::lock_guard<std::mutex> guard (slave_vector_mutex);
+	slaves.push_back (mock);
+      }
   };
 
   slave_replication_channel_mock *init_mock (int port)
@@ -52,9 +53,9 @@ namespace slave
 
     for (int i = 0; i < NUM_MOCK_SLAVES; i++)
       {
-        cubthread::get_manager()->push_task (cubthread::get_entry (),
-                                             workpool, 
-                                             new start_slaves_task ());
+	cubthread::get_manager()->push_task (cubthread::get_entry (),
+					     workpool,
+					     new start_slaves_task ());
       }
 
     return NO_ERROR;
@@ -64,20 +65,20 @@ namespace slave
   {
     if (workpool != NULL)
       {
-        cubthread::get_manager()->destroy_worker_pool (workpool);
+	cubthread::get_manager()->destroy_worker_pool (workpool);
       }
 
     for (unsigned int i = 0; i < slaves.size(); i++)
       {
-        delete slaves[i];
+	delete slaves[i];
       }
 
-    return NO_ERROR;	
+    return NO_ERROR;
   }
 
   std::vector <slave_replication_channel_mock *> &get_slaves ()
-    {
-      return slaves;
-    }
+  {
+    return slaves;
+  }
 
 } /* namespace slave */

@@ -129,7 +129,8 @@ struct ha_log_applier_state_table
     state;
 };
 
-static HA_LOG_APPLIER_STATE_TABLE
+static
+  HA_LOG_APPLIER_STATE_TABLE
   ha_Log_applier_state[HA_LOG_APPLIER_STATE_TABLE_MAX] = {
   {-1, HA_LOG_APPLIER_STATE_NA},
   {-1, HA_LOG_APPLIER_STATE_NA},
@@ -214,7 +215,8 @@ private:
 };
 // *INDENT-ON*
 
-static const size_t
+static const
+  size_t
   CSS_JOB_QUEUE_SCAN_COLUMN_COUNT = 4;
 
 static void
@@ -244,7 +246,8 @@ static int
 css_reestablish_connection_to_master (void);
 static int
 css_connection_handler_thread (THREAD_ENTRY * thrd, CSS_CONN_ENTRY * conn);
-static css_error_code
+static
+  css_error_code
 css_internal_connection_handler (CSS_CONN_ENTRY * conn);
 static int
 css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
@@ -258,9 +261,11 @@ static int
 css_process_new_connection_request (void);
 #endif /* WINDOWS */
 
-static bool
+static
+  bool
 css_check_ha_log_applier_done (void);
-static bool
+static
+  bool
 css_check_ha_log_applier_working (void);
 static void
 css_process_new_slave (SOCKET master_fd);
@@ -273,7 +278,8 @@ static void
 css_stop_log_writer (THREAD_ENTRY & thread_ref, bool &);
 static void
 css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool is_log_writer, bool & found);
-static bool
+static
+  bool
 css_is_log_writer (const THREAD_ENTRY & thread_arg);
 static void
 css_stop_all_workers (THREAD_ENTRY & thread_ref, css_thread_stop_type stop_phase);
@@ -328,8 +334,7 @@ css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** a
       return error;
     }
 
-  size_t
-    core_index = 0;		// core index starts with 0
+  size_t core_index = 0;	// core index starts with 0
   css_Server_request_worker_pool->map_cores (css_wp_core_job_scan_mapper, thread_p, ctx, core_index, error);
   if (error != NO_ERROR)
     {
@@ -384,8 +389,7 @@ static int
 css_check_conn (CSS_CONN_ENTRY * p)
 {
 #if defined(WINDOWS)
-  u_long
-    status = 0;
+  u_long status = 0;
 #else
   int
     status = 0;
@@ -426,8 +430,7 @@ css_set_shutdown_timeout (int timeout)
  *   return:
  *   arg(in):
  */
-THREAD_RET_T
-  THREAD_CALLING_CONVENTION
+THREAD_RET_T THREAD_CALLING_CONVENTION
 css_master_thread (void)
 {
   int
@@ -663,8 +666,7 @@ css_process_shutdown_request (SOCKET master_fd)
 static void
 css_process_new_client (SOCKET master_fd)
 {
-  SOCKET
-    new_fd;
+  SOCKET new_fd;
   int
     reason,
     r;
@@ -672,8 +674,7 @@ css_process_new_client (SOCKET master_fd)
     conn;
   unsigned short
     rid;
-  CSS_CONN_ENTRY
-    temp_conn;
+  CSS_CONN_ENTRY temp_conn;
   char *
     area;
   OR_ALIGNED_BUF (1024) a_buffer;
@@ -791,8 +792,7 @@ static void
 css_process_change_server_ha_mode_request (SOCKET master_fd)
 {
 #if !defined(WINDOWS)
-  HA_SERVER_STATE
-    state;
+  HA_SERVER_STATE state;
   THREAD_ENTRY *
     thread_p;
 
@@ -859,8 +859,7 @@ css_process_master_hostname ()
   int
     hostname_length,
     error;
-  cub_server_communication_channel
-  chn (css_Master_server_name);
+  cub_server_communication_channel chn (css_Master_server_name);
 
   error = css_receive_heartbeat_data (css_Master_conn, (char *) &hostname_length, sizeof (int));
   if (error != NO_ERRORS)
@@ -895,8 +894,7 @@ css_process_master_hostname ()
     }
 
   cubreplication::master_replication_channel_manager::reset ();
-  delete
-    g_slave_replication_channel;
+  delete g_slave_replication_channel;
   g_slave_replication_channel = new cubreplication::slave_replication_channel (std::move (chn), mock_stream, 0);
 
   er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
@@ -956,8 +954,7 @@ css_is_shutdown_timeout_expired (void)
 static int
 css_process_new_connection_request (void)
 {
-  SOCKET
-    new_fd;
+  SOCKET new_fd;
   int
     reason,
     buffer_size,
@@ -971,13 +968,13 @@ css_process_new_connection_request (void)
     buffer;
   int
     length = 1024, r;
-  CSS_CONN_ENTRY
-    new_conn;
+  CSS_CONN_ENTRY new_conn;
   char *
     error_string;
 
-  NET_HEADER
-  header = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+  NET_HEADER header =
+  {
+  0, 0, 0, 0, 0, 0, 0, 0, 0};
 
   new_fd = css_server_accept (css_Server_connection_socket);
 
@@ -1162,8 +1159,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
   int
     max_num_loop,
     num_loop;
-  SOCKET
-    fd;
+  SOCKET fd;
   struct pollfd
   po[1] = { {0, 0, 0} };
 
@@ -1714,8 +1710,7 @@ css_send_reply_and_large_data_to_client (unsigned int eid, char *reply, int repl
   int *
     buffers_size,
     i;
-  INT64
-    pos = 0;
+  INT64 pos = 0;
 
   conn = &css_Conn_array[idx];
   if (buffer_size > 0 && buffer != NULL)
@@ -2282,8 +2277,7 @@ css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE req_state)
   };
   struct ha_server_state_transition_table *
     table;
-  HA_SERVER_STATE
-    new_state = HA_SERVER_STATE_NA;
+  HA_SERVER_STATE new_state = HA_SERVER_STATE_NA;
 
   if (ha_Server_state == req_state)
     {
@@ -2336,8 +2330,7 @@ css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int whence)
 #define FROM_UNREGISTER_CLIENT  2
   int
     err = NO_ERROR;
-  HA_SERVER_STATE
-    state;
+  HA_SERVER_STATE state;
 
   /* csect_enter (thread_p, CSECT_HA_SERVER_STATE, INF_WAIT); */
 
@@ -2452,8 +2445,7 @@ css_check_ha_log_applier_working (void)
 int
 css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool force, int timeout, bool heartbeat)
 {
-  HA_SERVER_STATE
-    orig_state;
+  HA_SERVER_STATE orig_state;
   int
     i;
 
@@ -2523,8 +2515,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_enable_update() \n");
 	  logtb_enable_update (thread_p);
 	}
-      delete
-	g_slave_replication_channel;
+      delete g_slave_replication_channel;
       cubreplication::master_replication_channel_manager::reset ();
       cubreplication::master_replication_channel_manager::init (&mock_stream);
       break;
@@ -2637,8 +2628,7 @@ css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE s
 {
   HA_LOG_APPLIER_STATE_TABLE *
     table;
-  HA_SERVER_STATE
-    server_state;
+  HA_SERVER_STATE server_state;
   int
     i,
     client_id;
@@ -2712,11 +2702,9 @@ css_check_accessibility (SOCKET new_fd)
   int
     saddr_len;
 #elif defined(UNIXWARE7)
-  size_t
-    saddr_len;
+  size_t saddr_len;
 #else
-  socklen_t
-    saddr_len;
+  socklen_t saddr_len;
 #endif
   struct sockaddr_in
     clt_sock_addr;
@@ -2884,14 +2872,11 @@ static void
 css_process_new_slave (SOCKET master_fd)
 {
 
-  SOCKET
-    new_fd;
+  SOCKET new_fd;
   unsigned short
     rid;
-  css_error_code
-    rc;
-  communication_channel
-    chn;
+  css_error_code rc;
+  communication_channel chn;
 
   /* receive new socket descriptor from the master */
   new_fd = css_open_new_socket_from_master (master_fd, &rid);
@@ -2907,12 +2892,10 @@ css_process_new_slave (SOCKET master_fd)
 
   rc = chn.accept (new_fd);
   assert (rc == NO_ERRORS);
-  cubreplication::master_replication_channel_manager::add_master_replication_channel (cubreplication::
-										      master_replication_channel_entry
-										      (std::move (chn), mock_stream,
-										       cubreplication::CHECK_FOR_GC,
-										       new cubreplication::
-										       check_for_gc_task ()));
+  cubreplication::master_replication_channel_manager::
+    add_master_replication_channel (cubreplication::master_replication_channel_entry
+				    (std::move (chn), cubreplication::CHECK_FOR_GC,
+				     new cubreplication::check_for_gc_task ()));
 }
 
 const char *

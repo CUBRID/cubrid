@@ -48,8 +48,8 @@ static int init_thread_system ()
   error_code = css_init_conn_list ();
   if (error_code != NO_ERROR)
     {
-    assert (false);
-    return error_code;
+      assert (false);
+      return error_code;
     }
 
   cubthread::initialize (thread_p);
@@ -128,7 +128,7 @@ static int run ()
 
   do
     {
-      cub_master_mock::stream_produce (MTU);
+      master::stream_produce (MTU);
       std::this_thread::sleep_for (std::chrono::milliseconds (100));
       cycles++;
     }
@@ -137,27 +137,28 @@ static int run ()
   for (slave_replication_channel_mock *slave : slaves)
     {
       if (slave->mock_stream.last_position == MTU * MAX_CYCLES)
-        {
-          unsigned int sum = 0;
+	{
+	  unsigned int sum = 0;
 
-          for (std::size_t i = 0; i < slave->mock_stream.last_position; i += sizeof (int))
-            {
-              sum += * ((int *) (slave->mock_stream.write_buffer + i));
-            }
+	  for (std::size_t i = 0; i < slave->mock_stream.last_position; i += sizeof (int))
+	    {
+	      sum += * ((int *) (slave->mock_stream.write_buffer + i));
+	    }
 
-          if (sum == ((slave->mock_stream.last_position / sizeof (int)) * ((slave->mock_stream.last_position / sizeof (int)) - 1)) / 2)
-            {
-              return NO_ERROR;
-            }
-          else
-            {
-              return ER_FAILED;
-            }
-        }
+	  if (sum == ((slave->mock_stream.last_position / sizeof (int)) * ((slave->mock_stream.last_position / sizeof (
+			int)) - 1)) / 2)
+	    {
+	      return NO_ERROR;
+	    }
+	  else
+	    {
+	      return ER_FAILED;
+	    }
+	}
       else
-        {
-          return ER_FAILED;
-        }
+	{
+	  return ER_FAILED;
+	}
     }
 
   return ER_FAILED;
@@ -180,7 +181,7 @@ int main (int argc, char **argv)
     {
       std::cout << "Test failed\n";
     }
-    else
+  else
     {
       std::cout << "Test succeeded\n";
     }
