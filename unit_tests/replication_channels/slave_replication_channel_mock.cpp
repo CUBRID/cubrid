@@ -6,13 +6,14 @@
 #include "cub_master_mock.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
+#include "thread_entry_task.hpp"
 
 static cubthread::entry_workpool *workpool = NULL;
 static std::vector <slave_replication_channel_mock *> slaves;
 static std::mutex slave_vector_mutex;
 
-slave_replication_channel_mock::slave_replication_channel_mock (cub_server_communication_channel &&chn) :
-  slave_channel (std::forward <cub_server_communication_channel> (chn),
+slave_replication_channel_mock::slave_replication_channel_mock (cubcomm::server_channel &&chn) :
+  slave_channel (std::forward <cubcomm::server_channel> (chn),
 		 m_stream,
 		 0)
 {
@@ -35,7 +36,7 @@ namespace slave
   slave_replication_channel_mock *init_mock (int port)
   {
     css_error_code err = NO_ERRORS;
-    cub_server_communication_channel chn ("", 1000);
+    cubcomm::server_channel chn ("", 1000);
     slave_replication_channel_mock *mock;
 
     err = chn.connect ("127.0.0.1", port);

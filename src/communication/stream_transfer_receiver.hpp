@@ -40,7 +40,7 @@ namespace cubstream
   {
     public:
 
-      transfer_receiver (communication_channel &chn,
+      transfer_receiver (cubcomm::channel &&chn,
 			 cubstream::stream &stream,
 			 stream_position received_from_position = 0);
       virtual ~transfer_receiver ();
@@ -53,11 +53,11 @@ namespace cubstream
 
       friend class transfer_receiver_task;
 
-      communication_channel &m_channel;
+      cubcomm::channel m_channel;
       cubstream::stream &m_stream;
       cubstream::stream_position m_last_received_position;
       cubthread::daemon *m_receiver_daemon;
-      char m_buffer[MTU];
+      char m_buffer[cubcomm::MTU];
 
     protected:
       cubstream::stream::write_func_t m_write_action_function;

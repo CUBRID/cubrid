@@ -41,24 +41,24 @@ namespace cubstream
 
     public:
 
-      transfer_sender (communication_channel &chn,
+      transfer_sender (cubcomm::channel &&chn,
 		       cubstream::stream &stream,
 		       stream_position begin_sending_position = 0);
       virtual ~transfer_sender ();
       int read_action (char *ptr, const size_t byte_count);
 
       stream_position get_last_sent_position ();
-      communication_channel &get_communication_channel ();
+      cubcomm::channel &get_channel ();
 
     private:
 
       friend class transfer_sender_task;
 
-      communication_channel &m_channel;
+      cubcomm::channel m_channel;
       cubstream::stream &m_stream;
       stream_position m_last_sent_position;
       cubthread::daemon *m_sender_daemon;
-      char m_buffer[MTU];
+      char m_buffer[cubcomm::MTU];
 
     protected:
       cubstream::stream::read_func_t m_read_action_function;

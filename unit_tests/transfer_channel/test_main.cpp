@@ -39,7 +39,7 @@ class stream_mock;
 static cubthread::entry *thread_p = NULL;
 
 static std::atomic_bool is_listening;
-static communication_channel *producer_communication_channel, *consumer_communication_channel;
+static cubcomm::channel *producer_communication_channel, *consumer_communication_channel;
 static cubstream::transfer_sender *producer = NULL;
 static cubstream::transfer_receiver *consumer = NULL;
 static stream_mock *stream = NULL;
@@ -130,7 +130,7 @@ void master_listening_thread_func ()
   listen_fd_platf_ind = listen_fd[0];
 #endif
 
-  communication_channel incom_conn (5000);
+  cubcomm::channel incom_conn (5000);
   rc = incom_conn.accept (listen_fd_platf_ind);
   if (rc != NO_ERRORS)
     {
@@ -149,14 +149,14 @@ void master_listening_thread_func ()
   if ((revents & POLLIN) != 0)
     {
       SOCKET new_sockfd = css_master_accept (listen_fd_platf_ind);
-      communication_channel cc (MAX_TIMEOUT_IN_MS);
+      cubcomm::channel cc (MAX_TIMEOUT_IN_MS);
       rc = cc.accept (new_sockfd);
       if (rc != NO_ERRORS)
 	{
 	  assert (false);
 	  return;
 	}
-      consumer_communication_channel = new communication_channel (std::move (cc));
+      consumer_communication_channel = new cubcomm::channel (std::move (cc));
     }
 }
 
@@ -197,7 +197,7 @@ static int init ()
 #if !defined (WINDOWS)
   signal (SIGPIPE, SIG_IGN);
 #endif
-  error_code = er_init ("communication_channel.log", ER_EXIT_DONT_ASK);
+  error_code = er_init ("channel.log", ER_EXIT_DONT_ASK);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -216,7 +216,7 @@ static int init ()
       std::this_thread::sleep_for (std::chrono::milliseconds (100));
     }
 
-  communication_channel chn (MAX_TIMEOUT_IN_MS);
+  cubcomm::channel chn (MAX_TIMEOUT_IN_MS);
 
   error_code = chn.connect ("127.0.0.1", LISTENING_PORT);
   if (error_code != NO_ERRORS)
@@ -224,15 +224,15 @@ static int init ()
       listening_thread.detach ();
       return error_code;
     }
-  producer_communication_channel = new communication_channel (std::move (chn));
+  producer_communication_channel = new cubcomm::channel (std::move (chn));
   listening_thread.join ();
 
   assert (producer_communication_channel->is_connection_alive () &&
 	  consumer_communication_channel->is_connection_alive ());
 
   stream = new stream_mock ();
-  producer = new cubstream::transfer_sender (*producer_communication_channel, *stream);
-  consumer = new cubstream::transfer_receiver (*consumer_communication_channel, *stream);
+  producer = new cubstream::transfer_sender (std::move (*producer_communication_channel), *stream);
+  consumer = new cubstream::transfer_receiver (std::move (*consumer_communication_channel), *stream);
 
   return NO_ERROR;
 }
@@ -267,13 +267,13 @@ static int run ()
 
   do
     {
-      stream->produce (MTU);
+      stream->produce (cubcomm::MTU);
       std::this_thread::sleep_for (std::chrono::milliseconds (100));
       cycles++;
     }
   while (cycles < MAX_CYCLES);
 
-  if (stream->last_position == MTU * MAX_CYCLES)
+  if (stream->last_position == cubcomm::MTU * MAX_CYCLES)
     {
       unsigned int sum = 0;
 

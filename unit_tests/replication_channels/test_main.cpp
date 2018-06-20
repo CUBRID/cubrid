@@ -3,7 +3,7 @@
 #include "master_replication_channel_mock.hpp"
 #include "slave_replication_channel_mock.hpp"
 
-#include "master_replication_channel_manager.hpp"
+#include "replication_master_senders_manager.hpp"
 #include "thread_manager.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
@@ -121,14 +121,14 @@ static int run ()
   int cycles = 0;
   std::vector <slave_replication_channel_mock *> &slaves = slave::get_slaves ();
 
-  if (cubreplication::master_replication_channel_manager::get_number_of_channels () == 0)
+  if (cubreplication::master_senders_manager::get_number_of_stream_senders () == 0)
     {
       return ER_FAILED;
     }
 
   do
     {
-      master::stream_produce (MTU);
+      master::stream_produce (cubcomm::MTU);
       std::this_thread::sleep_for (std::chrono::milliseconds (100));
       cycles++;
     }
@@ -136,7 +136,7 @@ static int run ()
 
   for (slave_replication_channel_mock *slave : slaves)
     {
-      if (slave->m_stream.last_position == MTU * MAX_CYCLES)
+      if (slave->m_stream.last_position == cubcomm::MTU * MAX_CYCLES)
 	{
 	  unsigned int sum = 0;
 

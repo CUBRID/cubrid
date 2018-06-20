@@ -44,7 +44,7 @@ namespace cubstream
       void execute () override
       {
 	css_error_code rc = NO_ERRORS;
-	std::size_t max_len = MTU;
+	std::size_t max_len = cubcomm::MTU;
 
         if (m_first_loop)
           {
@@ -77,10 +77,10 @@ namespace cubstream
       bool m_first_loop; /* TODO[arnia] may be a good idea to use create_context instead */
   };
 
-  transfer_receiver::transfer_receiver (communication_channel &chn,
+  transfer_receiver::transfer_receiver (cubcomm::channel &&chn,
 					stream &stream,
 					stream_position received_from_position)
-    : m_channel (chn),
+    : m_channel (std::move (chn)),
       m_stream (stream),
       m_last_received_position (received_from_position)
   {

@@ -83,7 +83,7 @@ namespace cub_master_mock
 	    conn->fd = INVALID_SOCKET;
 	    css_free_conn (conn);
 
-	    communication_channel listener_chn;
+	    cubcomm::channel listener_chn;
 
 	    err = listener_chn.accept (new_sockfd);
 	    if (err != NO_ERRORS)
@@ -92,12 +92,8 @@ namespace cub_master_mock
 		return;
 	      }
 
-	    cubreplication::master_replication_channel_manager::add_master_replication_channel (
-	      cubreplication::master_replication_channel_entry (std::move (listener_chn),
-		  cubreplication::CHECK_FOR_GC,
-		  new cubreplication::check_for_gc_task (),
-		  cubreplication::FOR_TESTING,
-		  new master::dummy_test_daemon ()));
+	    cubreplication::master_senders_manager::add_stream_sender (
+	      new cubstream::transfer_sender (std::move (listener_chn), cubreplication::master_senders_manager::get_stream ()));
 	  }
       }
   };

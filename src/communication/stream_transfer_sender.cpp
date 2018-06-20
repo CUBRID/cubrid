@@ -73,7 +73,7 @@ namespace cubstream
 
 	while (rc == NO_ERRORS && this_producer_channel.m_last_sent_position < last_reported_ready_pos)
 	  {
-	    std::size_t byte_count = std::min ((stream_position) MTU,
+	    std::size_t byte_count = std::min ((stream_position) cubcomm::MTU,
 					       last_reported_ready_pos - this_producer_channel.m_last_sent_position);
 
 	    rc = this_producer_channel.m_stream.read (this_producer_channel.m_last_sent_position, byte_count,
@@ -91,9 +91,9 @@ namespace cubstream
       bool m_first_loop;
   };
 
-  transfer_sender::transfer_sender (communication_channel &chn, cubstream::stream &stream,
+  transfer_sender::transfer_sender (cubcomm::channel &&chn, cubstream::stream &stream,
 				    cubstream::stream_position begin_sending_position)
-    : m_channel (chn),
+    : m_channel (std::move (chn)),
       m_stream (stream),
       m_last_sent_position (begin_sending_position)
   {
@@ -112,11 +112,12 @@ namespace cubstream
     cubthread::get_manager ()->destroy_daemon_without_entry (m_sender_daemon);
   }
 
-  communication_channel &transfer_sender::get_communication_channel ()
+  cubcomm::channel &transfer_sender::get_channel ()
   {
     return m_channel;
   }
 
+  //TODO[arnia] make this atomic
   stream_position transfer_sender::get_last_sent_position ()
   {
     return m_last_sent_position;

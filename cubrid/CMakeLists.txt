@@ -163,14 +163,14 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
   ${COMMUNICATION_DIR}/communication_channel.cpp
-  ${COMMUNICATION_DIR}/cub_server_communication_channel.cpp
+  ${COMMUNICATION_DIR}/communication_server_channel.cpp
   ${COMMUNICATION_DIR}/stream_transfer_receiver.cpp
   ${COMMUNICATION_DIR}/stream_transfer_sender.cpp
   )
 
 set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/communication_channel.hpp
-  ${COMMUNICATION_DIR}/cub_server_communication_channel.hpp
+  ${COMMUNICATION_DIR}/communication_server_channel.hpp
   ${COMMUNICATION_DIR}/stream_transfer_receiver.hpp
   ${COMMUNICATION_DIR}/stream_transfer_sender.hpp
   )
@@ -191,15 +191,11 @@ set(MONITOR_HEADERS
 )
 
 set (REPLICATION_SOURCES
-  ${REPLICATION_DIR}/master_replication_channel_manager.cpp
-  ${REPLICATION_DIR}/master_replication_channel.cpp
-  ${REPLICATION_DIR}/slave_replication_channel.cpp
+  ${REPLICATION_DIR}/replication_master_senders_manager.cpp
   )
 
 set (REPLICATION_HEADERS
-  ${REPLICATION_DIR}/master_replication_channel_manager.hpp
-  ${REPLICATION_DIR}/master_replication_channel.hpp
-  ${REPLICATION_DIR}/slave_replication_channel.hpp
+  ${REPLICATION_DIR}/replication_master_senders_manager.hpp
   )
 
 set(QUERY_SOURCES

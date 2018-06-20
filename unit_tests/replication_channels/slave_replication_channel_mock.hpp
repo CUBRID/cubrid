@@ -3,7 +3,8 @@
 
 #define SERVER_MODE
 
-#include "slave_replication_channel.hpp"
+#include "stream_transfer_receiver.hpp"
+#include "communication_server_channel.hpp"
 #include "connection_defs.h"
 #include "mock_stream.hpp"
 
@@ -12,10 +13,10 @@
 class slave_replication_channel_mock
 {
   public:
-    slave_replication_channel_mock (cub_server_communication_channel &&chn);
+    slave_replication_channel_mock (cubcomm::server_channel &&chn);
     ~slave_replication_channel_mock () = default;
 
-    cubreplication::slave_replication_channel slave_channel;
+    cubstream::transfer_receiver slave_channel;
     mock_stream m_stream;
 };
 

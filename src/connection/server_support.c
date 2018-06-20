@@ -32,8 +32,9 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
-#include "slave_replication_channel.hpp"
-#include "master_replication_channel_manager.hpp"
+#include "stream_transfer_receiver.hpp"
+#include "replication_master_senders_manager.hpp"
+#include "communication_server_channel.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -252,14 +253,14 @@ private:
   CSS_CONN_ENTRY &m_conn;
 };
 
-static cubreplication::slave_replication_channel *g_slave_replication_channel;
+static cubstream::transfer_receiver *g_slave_stream_receiver;
 static cubstream::packing_stream temporary_stream (10240, 0);
 
 int
 css_process_master_hostname ()
 {
   int hostname_length, error;
-  cub_server_communication_channel chn (css_Master_server_name);
+  cubcomm::server_channel chn (css_Master_server_name);
 
   error = css_receive_heartbeat_data (css_Master_conn, (char *) &hostname_length, sizeof (int));
   if (error != NO_ERRORS)
@@ -293,9 +294,9 @@ css_process_master_hostname ()
       return error;
     }
 
-  cubreplication::master_replication_channel_manager::reset ();
-  delete g_slave_replication_channel;
-  g_slave_replication_channel = new cubreplication::slave_replication_channel (std::move (chn), temporary_stream, 0);
+  cubreplication::master_senders_manager::reset ();
+  delete g_slave_stream_receiver;
+  g_slave_stream_receiver = new cubstream::transfer_receiver (std::move (chn), temporary_stream, 0);
 
   er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
 		ha_Server_master_hostname);
@@ -384,9 +385,9 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  logtb_enable_update (thread_p);
 	}
       delete
-	g_slave_replication_channel;
-      cubreplication::master_replication_channel_manager::reset ();
-      cubreplication::master_replication_channel_manager::init (&temporary_stream);
+	g_slave_stream_receiver;
+      cubreplication::master_senders_manager::reset ();
+      cubreplication::master_senders_manager::init (&temporary_stream);
       break;
 
     case HA_SERVER_STATE_STANDBY:
@@ -2710,7 +2711,7 @@ css_process_new_slave (SOCKET master_fd)
   SOCKET new_fd;
   unsigned short rid;
   css_error_code rc;
-  communication_channel chn;
+  cubcomm::channel chn;
 
   /* receive new socket descriptor from the master */
   new_fd = css_open_new_socket_from_master (master_fd, &rid);
@@ -2726,10 +2727,9 @@ css_process_new_slave (SOCKET master_fd)
 
   rc = chn.accept (new_fd);
   assert (rc == NO_ERRORS);
-  cubreplication::master_replication_channel_manager::
-    add_master_replication_channel (cubreplication::master_replication_channel_entry
-				    (std::move (chn), cubreplication::CHECK_FOR_GC,
-				     new cubreplication::check_for_gc_task ()));
+
+  cubreplication::master_senders_manager::
+    add_stream_sender (new cubstream::transfer_sender (std::move (chn), cubreplication::master_senders_manager::get_stream ()));
 }
 
 const char *

@@ -45,7 +45,7 @@ static int finish ();
 static int run ();
 static int init_thread_system ();
 
-void master_listening_thread_func (std::vector <communication_channel> &channels)
+void master_listening_thread_func (std::vector <channel> &channels)
 {
   int num_of_conns = 0;
   SOCKET listen_fd[2] = {0, 0};
@@ -63,7 +63,7 @@ void master_listening_thread_func (std::vector <communication_channel> &channels
   listen_fd_platf_ind = listen_fd[0];
 #endif
 
-  communication_channel incom_conn (5000);
+  channel incom_conn (5000);
   rc = incom_conn.accept (listen_fd_platf_ind);
   if (rc != NO_ERRORS)
     {
@@ -84,7 +84,7 @@ void master_listening_thread_func (std::vector <communication_channel> &channels
       if ((revents & POLLIN) != 0)
 	{
 	  SOCKET new_sockfd = css_master_accept (listen_fd_platf_ind);
-	  communication_channel cc (MAX_TIMEOUT_IN_MS);
+	  channel cc (MAX_TIMEOUT_IN_MS);
 	  rc = cc.accept (new_sockfd);
 	  if (rc != NO_ERRORS)
 	    {
@@ -100,8 +100,8 @@ void master_listening_thread_func (std::vector <communication_channel> &channels
 class conn_initiator_daemon_task : public cubthread::task_without_context
 {
   public:
-    conn_initiator_daemon_task (int &counter, communication_channel &&chn) : m_counter (counter),
-      m_channel (std::forward <communication_channel> (chn))
+    conn_initiator_daemon_task (int &counter, channel &&chn) : m_counter (counter),
+      m_channel (std::forward <channel> (chn))
     {
     }
 
@@ -140,14 +140,14 @@ class conn_initiator_daemon_task : public cubthread::task_without_context
     }
   private:
     int &m_counter;
-    communication_channel m_channel;
+    channel m_channel;
 };
 
 class conn_listener_daemon_task : public cubthread::task_without_context
 {
   public:
-    conn_listener_daemon_task (std::vector <communication_channel> &&channels) : m_channels (
-	      std::forward <std::vector <communication_channel>> (channels))
+    conn_listener_daemon_task (std::vector <channel> &&channels) : m_channels (
+	      std::forward <std::vector <channel>> (channels))
     {
       assert (m_channels.size () == NUM_OF_INITIATORS);
     }
@@ -204,7 +204,7 @@ class conn_listener_daemon_task : public cubthread::task_without_context
 	}
     }
   private:
-    std::vector <communication_channel> m_channels;
+    std::vector <channel> m_channels;
 };
 
 static int init_thread_system ()
@@ -234,7 +234,7 @@ static int init ()
 #if !defined (WINDOWS)
   signal (SIGPIPE, SIG_IGN);
 #endif
-  error_code = er_init ("communication_channel.log", ER_EXIT_DONT_ASK);
+  error_code = er_init ("channel.log", ER_EXIT_DONT_ASK);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -247,7 +247,7 @@ static int init ()
       return error_code;
     }
 
-  std::vector <communication_channel> channels;
+  std::vector <channel> channels;
   std::vector <cubthread::task_without_context *> tasks;
   counters = (int *) calloc (NUM_OF_INITIATORS, sizeof (int));
 
@@ -259,7 +259,7 @@ static int init ()
     }
   for (unsigned int i = 0; i < NUM_OF_INITIATORS; i++)
     {
-      communication_channel chn (MAX_TIMEOUT_IN_MS);
+      channel chn (MAX_TIMEOUT_IN_MS);
       error_code = chn.connect ("127.0.0.1", LISTENING_PORT);
       if (error_code != NO_ERRORS)
 	{
