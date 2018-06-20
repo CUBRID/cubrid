@@ -376,7 +376,6 @@ class PRIVATE_UNIQUE_PTR
 };
 // *INDENT-ON*
 
-#endif
-
+#endif /* cplusplus */
 
 #endif /* _MEMORY_ALLOC_H_ */
