@@ -6279,7 +6279,20 @@ log_rv_redo_fix_page (THREAD_ENTRY * thread_p, const VPID * vpid_rcv, LOG_RCVIND
    * some redo records are used to initialize a page for the first time (also setting its page type which is necessary
    * to consider a page allocated). even first attempt to fix page fails, but the page's sector is reserved, we will
    * fix the page as NEW_PAGE and apply its initialization redo log record.
+   * In case of RVPGBUF_COMPENSATE_DEALLOC, we expect deallocated page.
    */
+
+  if (rcvindex == RVPGBUF_COMPENSATE_DEALLOC)
+    {
+      page = pgbuf_fix (thread_p, vpid_rcv, OLD_PAGE_DEALLOCATED, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (page == NULL)
+	{
+	  assert_release (false);
+	  return NULL;
+	}
+
+      return page;
+    }
 
   /* let's first try to fix page if it is not deallocated. */
   if (pgbuf_fix_if_not_deallocated (thread_p, vpid_rcv, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH, &page)
