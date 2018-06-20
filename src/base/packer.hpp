@@ -35,7 +35,7 @@
  * the packer object packs or unpacks primitive objects from/into a buffer
  * the buffer is provided at initialization
  * each object is atomically packed into the buffer.
- * (atomically == means no other object could insert sub-objects in the midle of the packing of
+ * (atomically == means no other object could insert sub-objects in the middle of the packing of
  * currently serialized object)
  */
 namespace cubpacking
@@ -103,9 +103,20 @@ namespace cubpacking
 	m_ptr = PTR_ALIGN (m_ptr, req_alignment);
       };
 
+      const char *get_packer_buffer (void)
+      {
+	return m_packer_start_ptr;
+      };
+
+      const char *get_packer_end (void)
+      {
+	return m_end_ptr;
+      };
+
     private:
-      char *m_ptr;       /* current pointer of serialization */
-      char *m_end_ptr;     /* end of avaialable serialization scope */
+      char *m_packer_start_ptr; /* start of buffer */
+      char *m_ptr;         /* current pointer of serialization */
+      char *m_end_ptr;     /* end of available serialization scope */
   };
 
 } /* namespace cubpacking */
