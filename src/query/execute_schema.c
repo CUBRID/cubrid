@@ -146,6 +146,7 @@ enum
   P_NAME = 0,			/* name of attribute */
   P_NOT_NULL,			/* constraint NOT NULL */
   P_DEFAULT_VALUE,		/* DEFAULT VALUE of attribute */
+  P_ON_UPDATE_EXPR,		/* ON UPADTE default of attribute */
   P_CONSTR_CHECK,		/* constraint CHECK */
   P_DEFFERABLE,			/* DEFFERABLE */
   P_ORDER,			/* ORDERING definition */
@@ -284,6 +285,8 @@ static void reset_att_property_structure (SM_ATTR_PROP_CHG * attr_chg_properties
 static bool is_att_prop_set (const int prop, const int value);
 
 static int get_att_order_from_def (PT_NODE * attribute, bool * ord_first, const char **ord_after_name);
+
+static int check_default_on_update_clause (PARSER_CONTEXT * parser, PT_NODE * attribute);
 
 static int get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE ** default_value,
 				     const char *classname);
@@ -6910,8 +6913,7 @@ get_attr_name (PT_NODE * attribute)
  *   ctemplate(in/out): Class template
  *   attribute(in/out): Attribute to add
  *   constraints(in/out): the constraints of the class
- *   error_on_not_normal(in): whether to flag an error on class and shared
- *                            attributes or not
+ *   error_on_not_normal(in): whether to flag an error on class and shared attributes or not
  *
  * Note : The class object is modified
  */
@@ -6923,6 +6925,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
   int meta, shared;
   DB_VALUE stack_value;
   DB_VALUE *default_value = &stack_value;
+  DB_DEFAULT_EXPR_TYPE on_update_expr = DB_DEFAULT_NONE;
   int error = NO_ERROR;
   TP_DOMAIN *attr_db_domain;
   MOP auto_increment_obj = NULL;
@@ -7006,6 +7009,12 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
       goto error_exit;
     }
 
+  error = check_default_on_update_clause (parser, attribute);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
   error = get_att_order_from_def (attribute, &add_first, &add_after_attr);
   if (error != NO_ERROR)
     {
@@ -7025,12 +7034,12 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
       name_space = ID_ATTRIBUTE;
     }
 
+  on_update_expr = attribute->info.attr_def.on_update;
   pt_get_default_expression_from_data_default_node (parser, attribute->info.attr_def.data_default, &default_expr);
   default_value = &stack_value;
 
-  error =
-    smt_add_attribute_w_dflt_w_order (ctemplate, attr_name, NULL, attr_db_domain, default_value, name_space, add_first,
-				      add_after_attr, &default_expr, NULL);
+  error = smt_add_attribute_w_dflt_w_order (ctemplate, attr_name, NULL, attr_db_domain, default_value, name_space,
+					    add_first, add_after_attr, &default_expr, &on_update_expr, NULL);
 
   db_value_clear (&stack_value);
 
@@ -7108,6 +7117,7 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
   const char *attr_name;
   MOP class_obj = NULL;
   DB_DEFAULT_EXPR *default_expr = NULL;
+  DB_DEFAULT_EXPR_TYPE *on_update_default_expr = NULL;
 
   db_make_null (&default_value);
 
@@ -7151,7 +7161,8 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
 	  goto error_exit;
 	}
 
-      error = sm_att_default_value (class_obj, column->attr_name, &default_value, &default_expr);
+      error = sm_att_default_value (class_obj, column->attr_name, &default_value, &default_expr,
+				    &on_update_default_expr);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -7159,7 +7170,7 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
     }
 
   error = smt_add_attribute_w_dflt (ctemplate, attr_name, NULL, column->domain, &default_value, ID_ATTRIBUTE,
-				    default_expr, NULL);
+				    default_expr, on_update_default_expr, NULL);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -10081,6 +10092,12 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	      || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PSEUDO_UPGRADE));
     }
 
+  error = check_default_on_update_clause (parser, attribute);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
   /* default value: for CLASS and SHARED attributes this changes the value itself of the atribute */
   error = get_att_default_from_def (parser, attribute, &default_value, NULL);
   if (error != NO_ERROR)
@@ -10106,10 +10123,10 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
       goto exit;
     }
 
-  error =
-    smt_change_attribute_w_dflt_w_order (ctemplate, attr_name, new_name, NULL, attr_db_domain,
-					 attr_chg_prop->name_space, new_default, &new_default_expr, change_first,
-					 change_after_attr, &found_att);
+  error = smt_change_attribute_w_dflt_w_order (ctemplate, attr_name, new_name, NULL, attr_db_domain,
+					       attr_chg_prop->name_space, new_default, &new_default_expr,
+					       attribute->info.attr_def.on_update, change_first, change_after_attr,
+					       &found_att);
   if (error != NO_ERROR)
     {
       goto exit;
@@ -10147,6 +10164,17 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
       if (found_att->properties != NULL)
 	{
 	  classobj_drop_prop (found_att->properties, "default_expr");
+	}
+    }
+
+  /* on update expression */
+  if (is_att_prop_set (attr_chg_prop->p[P_ON_UPDATE_EXPR], ATT_CHG_PROPERTY_LOST))
+    {
+      found_att->on_update_default_expr = DB_DEFAULT_NONE;
+
+      if (found_att->properties != NULL)
+	{
+	  classobj_drop_prop (found_att->properties, "update_default");
 	}
     }
 
@@ -10433,6 +10461,17 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
       || att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
     {
       attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+
+  /* ON UPDATE expr */
+  attr_chg_properties->p[P_ON_UPDATE_EXPR] = 0;
+  if (attr_def->info.attr_def.on_update != DB_DEFAULT_NONE)
+    {
+      attr_chg_properties->p[P_ON_UPDATE_EXPR] |= ATT_CHG_PROPERTY_PRESENT_NEW;
+    }
+  if (att->on_update_default_expr != DB_DEFAULT_NONE)
+    {
+      attr_chg_properties->p[P_ON_UPDATE_EXPR] |= ATT_CHG_PROPERTY_PRESENT_OLD;
     }
 
   /* DEFFERABLE : not supported, just mark as checked */
@@ -12389,6 +12428,108 @@ get_att_order_from_def (PT_NODE * attribute, bool * ord_first, const char **ord_
   return NO_ERROR;
 }
 
+static int
+check_default_on_update_clause (PARSER_CONTEXT * parser, PT_NODE * attribute)
+{
+  int error = NO_ERROR;
+  PT_TYPE_ENUM desired_type = attribute->type_enum;
+  DB_DEFAULT_EXPR_TYPE on_update_expr_type = attribute->info.attr_def.on_update;
+  PT_NODE *temp_ptval = NULL;
+
+  if (on_update_expr_type == DB_DEFAULT_NONE)
+    {
+      return error;
+    }
+
+  PT_OP_TYPE op = pt_op_type_from_default_expr_type (on_update_expr_type);
+
+  PT_NODE *on_update_default_expr = parser_make_expression (parser, op, NULL, NULL, NULL);
+  if (on_update_default_expr == NULL)
+    {
+      PT_ERRORm (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return ER_FAILED;
+    }
+
+  on_update_default_expr = pt_semantic_type (parser, on_update_default_expr, NULL);
+  if (on_update_default_expr == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  on_update_default_expr = pt_semantic_check (parser, on_update_default_expr);
+  if (on_update_default_expr == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  on_update_default_expr->buffer_pos = attribute->buffer_pos;
+  on_update_default_expr->line_number = attribute->line_number;
+  on_update_default_expr->column_number = attribute->column_number;
+
+  DB_VALUE on_update_val;
+  db_make_null (&on_update_val);
+
+  pt_evaluate_tree_having_serial (parser, on_update_default_expr, &on_update_val, 1);
+  temp_ptval = pt_dbval_to_value (parser, &on_update_val);
+  if (temp_ptval == NULL)
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      error = er_errid ();
+
+      pr_clear_value (&on_update_val);
+      if (on_update_default_expr != NULL)
+	{
+	  parser_free_node (parser, on_update_default_expr);
+	}
+      return error;
+    }
+
+  error = pt_coerce_value_for_default_value (parser, temp_ptval, temp_ptval, desired_type, attribute->data_type,
+					     on_update_expr_type);
+
+  if (pt_has_error (parser))
+    {
+      /* forget previous one to set the better error */
+      pt_reset_error (parser);
+    }
+
+  if (error != NO_ERROR)
+    {
+      const char *data_type_print;
+      if (attribute->data_type != NULL)
+	{
+	  data_type_print = pt_short_print (parser, attribute->data_type);
+	}
+      else
+	{
+	  data_type_print = pt_show_type_enum ((PT_TYPE_ENUM) desired_type);
+	}
+
+      if (error == ER_IT_DATA_OVERFLOW)
+	{
+	  PT_ERRORmf2 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
+		       pt_short_print (parser, on_update_default_expr), data_type_print);
+	}
+      else
+	{
+	  PT_ERRORmf2 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+		       pt_short_print (parser, on_update_default_expr), data_type_print);
+	}
+    }
+
+  pr_clear_value (&on_update_val);
+  if (temp_ptval != NULL)
+    {
+      parser_free_node (parser, temp_ptval);
+    }
+  if (on_update_default_expr != NULL)
+    {
+      parser_free_node (parser, on_update_default_expr);
+    }
+
+  return error;
+}
+
 /*
  * get_att_default_from_def() - Retrieves the default value property from the
  *				attribute definition node
@@ -13289,6 +13430,12 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE *
   if (ctemplate->current->users != NULL && ctemplate->partition == NULL)
     {
       attr_chg_prop->class_has_subclass = true;
+    }
+
+  error = check_default_on_update_clause (parser, attribute);
+  if (error != NO_ERROR)
+    {
+      goto exit;
     }
 
   error = get_att_default_from_def (parser, attribute, &ptr_def, NULL);
