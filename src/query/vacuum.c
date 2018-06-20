@@ -762,32 +762,6 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
       context.tran_index = 0;
     }
 
-    void stop_execution (cubthread::entry & context) final
-    {
-      context.shutdown = true;
-
-      // wakeup if waiting
-      if (context.m_status != cubthread::entry::status::TS_WAIT)
-        {
-          // not waiting
-          return;
-        }
-
-      context.lock ();
-      // check again
-      if (context.m_status != cubthread::entry::status::TS_WAIT)
-        {
-          // not waiting
-          context.unlock ();
-          return;
-        }
-
-      // interrupt & force wakeup
-      context.interrupted = true;
-      thread_wakeup_already_had_mutex (&context, THREAD_RESUME_DUE_TO_INTERRUPT);
-      context.unlock ();
-    }
-
     // members
     resource_shared_pool<VACUUM_WORKER>* m_pool;
 };
