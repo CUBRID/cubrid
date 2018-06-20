@@ -4028,7 +4028,7 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
       if (!statement->info.query.oids_included)
 	{
 	  int info_hints = PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_PAGE_INFO | PT_HINT_SELECT_KEY_INFO;
-	  if (statement->info.query.q.select.hint && info_hints == 0)
+	  if ((statement->info.query.q.select.hint & info_hints) == 0)
 	    {
 	      (void) parser_walk_tree (session->parser, statement, pt_has_name_oid, &has_name_oid, NULL, NULL);
 	      if (!has_name_oid)
