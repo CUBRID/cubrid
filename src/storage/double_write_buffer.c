@@ -3948,6 +3948,51 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	      goto end;
 	    }
 
+	  /* Remove duplicates. Normally, we do not expect duplicates in DWB. However, this happens if
+	   * the system crashes in the middle of flushing into double write file. In this case, some pages in DWB
+	   * are from the last DWB flush and the other from the previous DWB flush.
+	   */
+	  for (i = 0; i < rcv_block->count_wb_pages - 1; i++)
+	    {
+	      if (!VPID_ISNULL (&p_dwb_ordered_slots[i].vpid)
+		  && VPID_EQ (&p_dwb_ordered_slots[i].vpid, &p_dwb_ordered_slots[i + 1].vpid))
+		{
+		  /* Next slot contains the same page. Search for the oldest version. */
+		  assert (LSA_LE (&p_dwb_ordered_slots[i].lsa, &p_dwb_ordered_slots[i + 1].lsa));
+
+		  dwb_log ("dwb_load_and_recover_pages: Found duplicates in DWB at positions = (%d,%d) %d\n",
+			   p_dwb_ordered_slots[i].position_in_block, p_dwb_ordered_slots[i + 1].position_in_block);
+		  if (LSA_LT (&p_dwb_ordered_slots[i].lsa, &p_dwb_ordered_slots[i + 1].lsa))
+		    {
+		      /* Invalidate the oldest page version. */
+		      VPID_SET_NULL (&p_dwb_ordered_slots[i].vpid);
+		      dwb_log ("dwb_load_and_recover_pages: Invalidated the page at position = (%d)\n",
+			       p_dwb_ordered_slots[i].position_in_block);
+		    }
+		  else
+		    {
+		      /* Same LSA. This is the case when page was modified without setting LSA.
+		       * The first appearance in DWB contains the oldest page modification - last flush in DWB!
+		       */
+		      assert (p_dwb_ordered_slots[i].position_in_block != p_dwb_ordered_slots[i + 1].position_in_block);
+		      if (p_dwb_ordered_slots[i].position_in_block < p_dwb_ordered_slots[i + 1].position_in_block)
+			{
+			  /* Page in position i is valid. */
+			  VPID_SET_NULL (&p_dwb_ordered_slots[i + 1].vpid);
+			  dwb_log ("dwb_load_and_recover_pages: Invalidated the page at position = (%d)\n",
+				   p_dwb_ordered_slots[i + 1].position_in_block);
+			}
+		      else
+			{
+			  /* Page in position i+1 is valid. */
+			  VPID_SET_NULL (&p_dwb_ordered_slots[i].vpid);
+			  dwb_log ("dwb_load_and_recover_pages: Invalidated the page at position = (%d)\n",
+				   p_dwb_ordered_slots[i].position_in_block);
+			}
+		    }
+		}
+	    }
+
 #if !defined (NDEBUG)
 	  // check sanity of ordered slots
 	  error_code = dwb_debug_check_dwb (thread_p, p_dwb_ordered_slots, num_dwb_pages);
