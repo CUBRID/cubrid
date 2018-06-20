@@ -31,6 +31,8 @@
 
 namespace test_memalloc
 {
+  const std::string TAB = std::string (4, ' ');
+
   void
   test_private_unique_ptr_swap()
   {
@@ -61,7 +63,7 @@ namespace test_memalloc
   void
   test_private_unique_ptr_free()
   {
-    std::cout << "start testing pointer is freed when the desctructor of PRIVATE_UNIQUE_PTR is called" << std::endl;
+    std::cout << TAB << "testing pointer is freed when the desctructor of PRIVATE_UNIQUE_PTR is called" << std::endl;
     custom_thread_entry cte;
     T *ptr = nullptr;
     db_private_allocator<T> private_alloc (cte.get_thread_entry());
@@ -77,7 +79,7 @@ namespace test_memalloc
   void
   test_private_unique_ptr_release()
   {
-    std::cout << "start testing release function of PRIVATE_UNIQUE_PTR" << std::endl;
+    std::cout << TAB << "testing release function of PRIVATE_UNIQUE_PTR" << std::endl;
     custom_thread_entry cte;
     T *ptr = nullptr;
     db_private_allocator<T> private_alloc (cte.get_thread_entry());
@@ -101,6 +103,33 @@ namespace test_memalloc
     private_alloc.deallocate (ptr_release);
   }
 
+  struct Foo
+  {
+    void test_arrow_operator()
+    {
+      std::cout << TAB << "testing arrow operator" << std::endl;
+    }
+  };
+
+  void
+  test_dereference_operator (const Foo &ptr)
+  {
+    std::cout << TAB << "testing dereference operator" << std::endl;
+  }
+
+  void
+  test_operators()
+  {
+    std::cout << TAB << "testing operators overload of PRIVATE_UNIQUE_PTR" << std::endl;
+
+    custom_thread_entry cte;
+    Foo *ptr = (Foo *) db_private_alloc (cte.get_thread_entry(), sizeof (Foo));
+    PRIVATE_UNIQUE_PTR<Foo> priv_uniq_ptr (ptr, cte.get_thread_entry());
+
+    priv_uniq_ptr->test_arrow_operator();
+    test_dereference_operator (*priv_uniq_ptr);
+  }
+
   int
   test_private_unique_ptr (void)
   {
@@ -112,6 +141,8 @@ namespace test_memalloc
     test_private_unique_ptr_release<char>();
 
     test_private_unique_ptr_swap();
+
+    test_operators();
 
     return global_error;
   }
