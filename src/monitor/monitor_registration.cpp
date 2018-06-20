@@ -113,26 +113,6 @@ namespace cubmonitor
   }
 
   void
-  monitor::register_single_function (const char *name, const fetch_function &fetch_func)
-  {
-    // use fetch_zero as tran_fetch_func
-    register_statistics (1, fetch_func, fetch_zero);
-    m_all_names.push_back (name);
-
-    check_name_count ();
-  }
-
-  void
-  monitor::register_single_function_with_transaction (const char *name, const fetch_function &fetch_func,
-      const fetch_function &tran_fetch_func)
-  {
-    register_statistics (1, fetch_func, tran_fetch_func);
-    m_all_names.push_back (name);
-
-    check_name_count ();
-  }
-
-  void
   monitor::register_statistics (std::size_t count, const fetch_function &fetch_func,
 				const fetch_function &tran_fetch_func)
   {

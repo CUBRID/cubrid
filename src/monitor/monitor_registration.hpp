@@ -128,11 +128,6 @@ namespace cubmonitor
 	// todo: add here more meta-information on each registration
       };
 
-      // register a single statistics
-      void register_single_function (const char *name, const fetch_function &fetch_f);
-      // register a single statistics with transaction sheets
-      void register_single_function_with_transaction (const char *name, const fetch_function &fetch_func,
-	  const fetch_function &tran_fetch_func);
       // register a number of statistics that can be fetched with fetch_func/tran_fetch_func
       void register_statistics (std::size_t count, const fetch_function &fetch_func,
 				const fetch_function &tran_fetch_func);
@@ -150,34 +145,6 @@ namespace cubmonitor
   //////////////////////////////////////////////////////////////////////////
   // implementation
   //////////////////////////////////////////////////////////////////////////
-
-  template <typename S>
-  void
-  monitor::register_single_statistic (const char *name, const S &statistic)
-  {
-    // convert statistic::fetch to fetch_func format
-    fetch_function fetch_func = [&] (statistic_value * destination)
-    {
-      *destination = statistic.fetch ();
-    };
-    register_single_function (name, fetch_func);
-  }
-
-  template <typename S>
-  void
-  monitor::register_single_transaction_statistic (const char *name, const S &statistic)
-  {
-    // convert statistic::fetch and statistic::fetch_sheet to fetch_func format
-    fetch_function fetch_func = [&] (statistic_value * destination)
-    {
-      *destination = statistic.fetch ();
-    };
-    fetch_function tran_fetch_func = [&] (statistic_value * destination)
-    {
-      *destination = statistic.fetch_sheet ();
-    };
-    register_single_function_with_transaction (name, fetch_func, tran_fetch_func);
-  }
 
 } // namespace cubmonitor
 
