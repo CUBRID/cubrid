@@ -57,7 +57,8 @@ namespace cubreplication
   class repl_applier_worker_task : public cubthread::entry_task
   {
     public:
-      repl_applier_worker_task (replication_stream_entry *repl_stream_entry)
+      repl_applier_worker_task (replication_stream_entry *repl_stream_entry, log_consumer *lc)
+	: m_lc (lc)
       {
 	add_repl_stream_entry (repl_stream_entry);
       }
@@ -80,6 +81,8 @@ namespace cubreplication
 	      }
 
 	    delete curr_stream_entry;
+
+	    m_lc->end_one_task ();
 	  }
       }
 
@@ -90,6 +93,7 @@ namespace cubreplication
 
     private:
       std::vector<replication_stream_entry *> m_repl_stream_entries;
+      log_consumer *m_lc;
   };
 
   class apply_stream_entry_task : public cubthread::entry_task
@@ -114,16 +118,23 @@ namespace cubreplication
 
 		if (se->is_group_commit ())
 		  {
+		    /* wait for all started tasks to finish */
+		    m_lc->wait_for_tasks ();
+
 		    /* start aplying with all existing */
 		    for (auto it : repl_tasks)
 		      {
-			m_lc->push_task (thread_ref, it.second);
+			m_lc->execute_task (thread_ref, it.second);
 		      }
+
+		    /* this stream entry is deleted now */
+		    delete se;
 		  }
 		else
 		  {
 		    MVCCID mvccid = se->get_mvccid ();
 		    auto it = repl_tasks.find (mvccid);
+
 		    if (it != repl_tasks.end ())
 		      {
 			/* already a task with same MVCCID, add it to existing task */
@@ -132,11 +143,12 @@ namespace cubreplication
 		      }
 		    else
 		      {
-			repl_applier_worker_task *my_repl_applier_worker_task = new repl_applier_worker_task (se);
+			repl_applier_worker_task *my_repl_applier_worker_task = new repl_applier_worker_task (se, m_lc);
 			repl_tasks.insert (std::make_pair (mvccid, my_repl_applier_worker_task));
 		      }
-		  }
 
+		    /* stream entry is deleted by applier task thread */
+		  }
 	      }
 	    else
 	      {
@@ -234,9 +246,11 @@ namespace cubreplication
     m_use_daemons = true;
   }
 
-  void log_consumer::push_task (cubthread::entry &thread, repl_applier_worker_task *task)
+  void log_consumer::execute_task (cubthread::entry &thread, repl_applier_worker_task *task)
   {
     cubthread::get_manager ()->push_task (thread, m_applier_workers_pool, task);
+
+    m_started_tasks++;
   }
 
   log_consumer *log_consumer::new_instance (const cubstream::stream_position &start_position, bool use_daemons)

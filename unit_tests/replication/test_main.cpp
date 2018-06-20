@@ -45,7 +45,7 @@ int main ()
 {
   int global_error = 0;
 
-  test_module (global_error, test_replication::test_stream_packing);
+  test_module (global_error, test_replication::test_log_generator1);
   /* add more tests here */
 
   return global_error;

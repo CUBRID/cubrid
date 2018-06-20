@@ -69,9 +69,11 @@ namespace cubreplication
 
       bool m_use_daemons;
 
+      std::atomic<int> m_started_tasks;
+
     public:
 
-      log_consumer () : m_use_daemons (false) { };
+      log_consumer () : m_use_daemons (false), m_started_tasks (0) { };
 
       ~log_consumer ();
 
@@ -82,7 +84,7 @@ namespace cubreplication
       int fetch_stream_entry (replication_stream_entry *&entry);
 
       void start_daemons (void);
-      void push_task (cubthread::entry &thread, repl_applier_worker_task *task);
+      void execute_task (cubthread::entry &thread, repl_applier_worker_task *task);
 
       static log_consumer *new_instance (const cubstream::stream_position &start_position, bool use_daemons = false);
 
@@ -94,6 +96,19 @@ namespace cubreplication
       cubstream::stream_position &get_start_position ()
       {
 	return m_start_position;
+      }
+
+      void end_one_task (void)
+      {
+	m_started_tasks--;
+      }
+
+      void wait_for_tasks (void)
+      {
+	while (m_started_tasks > 0)
+	  {
+	    thread_sleep (1);
+	  }
       }
   };
 

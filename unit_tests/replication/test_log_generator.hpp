@@ -23,7 +23,7 @@
 namespace test_replication
 {
 
-  int test_stream_packing (void);
+  int test_log_generator1 (void);
 
 }
 

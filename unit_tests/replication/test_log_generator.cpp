@@ -120,7 +120,7 @@ namespace test_replication
     return NO_ERROR;
   }
 
-  int test_stream_packing (void)
+  int test_log_generator1 (void)
   {
     int res = 0;
 
