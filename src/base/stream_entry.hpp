@@ -143,7 +143,6 @@ namespace cubstream
       };
 
 
-
       /* unpack function for entry;
        * this unpacks only the payload (objects) of the the entry, the header was unpacked with entry::prepare_func
        * 1. init (un-)packer
@@ -318,6 +317,11 @@ namespace cubstream
       {
 	m_is_packable = is_packable;
       };
+
+      PO * get_object_at (int pos)
+        {
+          return m_packable_entries[pos];
+        }
 
       /* stream entry header methods : header is implementation dependent, is not known here ! */
       virtual cubpacking::packer *get_packer () = 0;

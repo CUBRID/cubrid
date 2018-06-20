@@ -156,8 +156,7 @@ namespace test_replication
     rbr2->add_changed_value (2, &new_att2_value);
     rbr2->add_changed_value (3, &new_att3_value);
 
-    cubreplication::log_generator<cubreplication::replication_stream_entry> *lg =
-	    cubreplication::log_generator<cubreplication::replication_stream_entry>::new_instance (0);
+    cubreplication::log_generator *lg = cubreplication::log_generator::new_instance (0);
 
     lg->append_repl_entry (NULL, sbr1);
     lg->append_repl_entry (NULL, rbr1);
@@ -168,8 +167,7 @@ namespace test_replication
 
     lg->pack_stream_entries (NULL);
 
-    cubreplication::log_consumer<cubreplication::replication_stream_entry> *lc =
-	    cubreplication::log_consumer<cubreplication::replication_stream_entry>::new_instance (0);
+    cubreplication::log_consumer *lc = cubreplication::log_consumer::new_instance (0);
 
     /* get stream from log_generator, get its buffer and attached it to log_consumer stream */
     cubstream::packing_stream *lg_stream = lg->get_stream ();

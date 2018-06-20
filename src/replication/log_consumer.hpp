@@ -27,81 +27,26 @@
 #define _LOG_CONSUMER_HPP_
 
 #include "packing_stream.hpp"
+#include "replication_stream_entry.hpp"
 #include "thread_daemon.hpp"
 #include "thread_task.hpp"
+#include "thread_manager.hpp"
 #include <cstddef>
 #include <queue>
 
 namespace cubreplication
 {
-
-  template <typename SE>
-  class log_consumer;
-
-  template <typename SE>
-  class prepare_stream_entry_task : public cubthread::task_without_context
-  {
-    public:
-      prepare_stream_entry_task (log_consumer<SE> *lc)
-	: m_lc (lc)
-      {
-      };
-
-      void execute () override
-      {
-	SE *se = NULL;
-
-	int err = m_lc->fetch_stream_entry (se);
-	if (err == NO_ERROR)
-	  {
-	    m_lc->push_entry (se);
-	  }
-      };
-
-    private:
-      log_consumer<SE> *m_lc;
-  };
-
-  template <typename SE>
-  class apply_stream_entry_task : public cubthread::task_without_context
-  {
-    public:
-      apply_stream_entry_task (log_consumer <SE> *lc)
-	: m_lc (lc)
-      {
-      }
-
-      void execute () override
-      {
-	SE *se = NULL;
-
-	int err = m_lc->pop_entry (se);
-	if (err == NO_ERROR)
-	  {
-	    se->unpack ();
-
-	    /* TODO : apply stream entry */
-	    delete se;
-	  }
-	else
-	  {
-	    /* TODO : set error */
-	  }
-      }
-
-    private:
-      log_consumer<SE> *m_lc;
-  };
-
   /*
    * main class for consuming log packing stream entries;
    * it should be created only as a global instance
    */
-  template <typename SE>
+  class repl_applier_worker_context_manager;
+  class repl_applier_worker_task;
+
   class log_consumer
   {
     private:
-      std::queue<SE *> m_stream_entries;
+      std::queue<replication_stream_entry *> m_stream_entries;
 
       cubstream::packing_stream *m_stream;
 
@@ -116,99 +61,40 @@ namespace cubreplication
 
       cubthread::daemon *m_apply_daemon;
 
+      cubthread::entry_workpool *m_applier_workers_pool;
+
+      repl_applier_worker_context_manager *m_repl_applier_worker_context_manager;
+
+      int m_applier_worker_threads_count;
+
+      bool m_use_daemons;
+
     public:
 
-      log_consumer () {};
+      log_consumer () : m_use_daemons (false) { };
 
-      ~log_consumer ()
-      {
-	assert (this == global_log_consumer);
+      ~log_consumer ();
 
-	delete m_stream;
-	global_log_consumer = NULL;
+      int push_entry (replication_stream_entry *entry);
 
-	cubthread::get_manager ()->destroy_daemon_without_entry (m_prepare_daemon);
+      int pop_entry (replication_stream_entry *&entry);
 
-	cubthread::get_manager ()->destroy_daemon_without_entry (m_apply_daemon);
+      int fetch_stream_entry (replication_stream_entry *&entry);
 
-	assert (m_stream_entries.empty ());
-      };
+      void start_daemons (void);
+      void push_task (cubthread::entry &thread, repl_applier_worker_task *task);
 
-
-      int push_entry (SE *entry)
-      {
-	std::unique_lock<std::mutex> ulock (m_queue_mutex);
-	m_stream_entries.push (entry);
-
-	return NO_ERROR;
-      };
-
-      int pop_entry (SE *&entry)
-      {
-	std::unique_lock<std::mutex> ulock (m_queue_mutex);
-	entry = m_stream_entries.front ();
-	m_stream_entries.pop ();
-	return NO_ERROR;
-      };
-
-      int fetch_stream_entry (SE *&entry)
-      {
-	int err = NO_ERROR;
-
-	SE *se = new SE (get_stream ());
-
-	err = se->prepare ();
-	if (err != NO_ERROR)
-	  {
-	    return err;
-	  }
-
-	entry = se;
-
-	return err;
-      };
-
-      void start_daemons (void)
-      {
-	m_prepare_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
-			   new prepare_stream_entry_task<SE> (this),
-			   "prepare_stream_entry_daemon");
-
-	m_apply_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
-			 new apply_stream_entry_task<SE> (this),
-			 "apply_stream_entry_daemon");
-      };
-
-      static log_consumer *new_instance (const cubstream::stream_position &start_position)
-      {
-	int error_code = NO_ERROR;
-
-	log_consumer *new_lc = new log_consumer ();
-
-	new_lc->m_start_position = start_position;
-
-	/* TODO : sys params */
-	new_lc->m_stream = new cubstream::packing_stream (10 * 1024 * 1024, 2);
-	new_lc->m_stream->init (new_lc->m_start_position);
-
-	/* this is the global instance */
-	assert (global_log_consumer == NULL);
-	global_log_consumer = new_lc;
-
-	new_lc->start_daemons ();
-
-	return new_lc;
-      };
+      static log_consumer *new_instance (const cubstream::stream_position &start_position, bool use_daemons = false);
 
       cubstream::packing_stream *get_stream (void)
       {
 	return m_stream;
-      };
+      }
 
       cubstream::stream_position &get_start_position ()
       {
 	return m_start_position;
-      };
+      }
   };
 
 } /* namespace cubreplication */

@@ -75,6 +75,17 @@ namespace cubreplication
       {
       };
 
+      replication_stream_entry (cubstream::packing_stream *stream_p,
+                                MVCCID arg_mvccid,
+                                bool arg_commit_flag,
+                                bool arg_group_commit_flag)
+	: entry (stream_p)
+      {
+        m_header.mvccid = arg_mvccid;
+        m_header.commit_flag = arg_commit_flag;
+        m_header.group_commit_flag = arg_group_commit_flag;
+      };
+
       size_t get_header_size ();
       size_t get_data_packed_size (void);
       void set_header_data_size (const size_t &data_size);
@@ -84,7 +95,28 @@ namespace cubreplication
       cubpacking::packer *get_packer ()
       {
 	return &m_serializator;
-      };
+      }
+
+      void set_mvccid (MVCCID mvccid)
+        {
+          m_header.mvccid = mvccid;
+        }
+
+      MVCCID get_mvccid ()
+        {
+          return m_header.mvccid;
+        }
+
+
+      void set_commit_flag (bool commit)
+        {
+          m_header.commit_flag = commit;
+        }
+
+      bool is_group_commit (void)
+        {
+          return m_header.group_commit_flag;
+        }
 
       int pack_stream_entry_header ();
       int unpack_stream_entry_header ();
