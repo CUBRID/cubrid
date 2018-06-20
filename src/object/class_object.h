@@ -445,6 +445,7 @@ struct sm_attribute
   int offset;			/* memory offset */
 
   SM_DEFAULT_VALUE default_value;	/* default value */
+  DB_DEFAULT_EXPR_TYPE on_update_default_expr;
 
   SM_CONSTRAINT *constraints;	/* cached constraint list */
 

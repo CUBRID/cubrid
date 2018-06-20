@@ -25,6 +25,42 @@
 
 namespace cubmonitor
 {
+  statistic_value
+  fetch_statistic_representation (const time_rep &value)
+  {
+    return static_cast<statistic_value> (std::chrono::duration_cast<std::chrono::microseconds> (value).count ());
+  }
+
+  statistic_value
+  fetch_statistic_representation (const amount_rep &value)
+  {
+    return static_cast<statistic_value> (value);
+  }
+
+  statistic_value
+  fetch_statistic_representation (const floating_rep &value)
+  {
+    return *reinterpret_cast<const statistic_value *> (&value);
+  }
+
+  amount_rep
+  statistic_value_to_amount (statistic_value value)
+  {
+    return static_cast<amount_rep> (value);
+  }
+
+  floating_rep
+  statistic_value_to_floating (statistic_value value)
+  {
+    return *reinterpret_cast<floating_rep *> (&value);
+  }
+
+  time_rep
+  statistic_value_to_time_rep (statistic_value value)
+  {
+    return std::chrono::duration_cast<time_rep> (std::chrono::microseconds (value));
+  }
+
   //////////////////////////////////////////////////////////////////////////
   // fully specialized constructors for max/min
   //////////////////////////////////////////////////////////////////////////

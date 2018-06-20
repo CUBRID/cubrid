@@ -70,19 +70,30 @@ execute_multi_thread (std::size_t thread_count, Func &&func, Args &&... args)
 static void
 test_single_statistics_no_concurrency_amount (void)
 {
+  <<<<<<< HEAD
 #define check(value) do { statistic_value read; statcol.fetch (&read); assert (read == value); } while (0)
-  using namespace cubmonitor;
+  =======
+	  >>>>>>> upstream/develop
+	  using namespace cubmonitor;
 
   // test accumulator
   {
     amount_accumulator_statistic statcol;
 
     statcol.collect (2);
+    <<<<<<< HEAD
     check (2);
     statcol.collect (5);
     check (7);
     statcol.collect (1);
     check (8);
+    =======
+	    assert (statcol.fetch () == 2);
+    statcol.collect (5);
+    assert (statcol.fetch () == 7);
+    statcol.collect (1);
+    assert (statcol.fetch () == 8);
+    >>>>>>> upstream/develop
   }
 
   // test gauge
@@ -90,11 +101,19 @@ test_single_statistics_no_concurrency_amount (void)
     amount_gauge_statistic statcol;
 
     statcol.collect (2);
+    <<<<<<< HEAD
     check (2);
     statcol.collect (5);
     check (5);
     statcol.collect (1);
     check (1);
+    =======
+	    assert (statcol.fetch () == 2);
+    statcol.collect (5);
+    assert (statcol.fetch () == 5);
+    statcol.collect (1);
+    assert (statcol.fetch () == 1);
+    >>>>>>> upstream/develop
   }
 
   // test max
@@ -102,11 +121,19 @@ test_single_statistics_no_concurrency_amount (void)
     amount_max_statistic statcol;
 
     statcol.collect (2);
+    <<<<<<< HEAD
     check (2);
     statcol.collect (5);
     check (5);
     statcol.collect (1);
     check (5);
+    =======
+	    assert (statcol.fetch () == 2);
+    statcol.collect (5);
+    assert (statcol.fetch () == 5);
+    statcol.collect (1);
+    assert (statcol.fetch () == 5);
+    >>>>>>> upstream/develop
   }
 
   // test min
@@ -114,6 +141,7 @@ test_single_statistics_no_concurrency_amount (void)
     amount_min_statistic statcol;
 
     statcol.collect (2);
+    <<<<<<< HEAD
     check (2);
     statcol.collect (5);
     check (2);
@@ -121,19 +149,31 @@ test_single_statistics_no_concurrency_amount (void)
     check (1);
   }
 #undef check
+  =======
+	  assert (statcol.fetch () == 2);
+  statcol.collect (5);
+  assert (statcol.fetch () == 2);
+  statcol.collect (1);
+  assert (statcol.fetch () == 1);
+}
+>>>>>>> upstream/develop
 }
 
 static void
 test_single_statistics_no_concurrency_double (void)
 {
+  <<<<<<< HEAD
 #define check(value) do { statistic_value read; statcol.fetch (&read); \
                           floating_rep real = *reinterpret_cast<floating_rep*> (&read); floating_rep val = value; \
                           assert (real >= val - 0.01 && real <= val + 0.01); } while (0)
-  using namespace cubmonitor;
+  =======
+	  >>>>>>> upstream/develop
+	  using namespace cubmonitor;
 
   // test accumulator
   {
     floating_accumulator_statistic statcol;
+    <<<<<<< HEAD
 
     statcol.collect (2.0);
     check (2);
@@ -141,11 +181,25 @@ test_single_statistics_no_concurrency_double (void)
     check (7);
     statcol.collect (1.0);
     check (8);
+    =======
+	    floating_rep value;
+
+    statcol.collect (2.0);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (1.9 <= value && value <= 2.1);
+    statcol.collect (5.0);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (6.9 <= value &&  value <= 7.1);
+    statcol.collect (1.0);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (7.9 <= value && value <= 8.1);
+    >>>>>>> upstream/develop
   }
 
   // test gauge
   {
     floating_gauge_statistic statcol;
+    <<<<<<< HEAD
 
     statcol.collect (2.0);
     check (2);
@@ -153,11 +207,25 @@ test_single_statistics_no_concurrency_double (void)
     check (5);
     statcol.collect (1.0);
     check (1);
+    =======
+	    floating_rep value;
+
+    statcol.collect (2.0);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (1.9 <= value &&  value <= 2.1);
+    statcol.collect (5.0);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (4.9 <= value &&  value <= 5.1);
+    statcol.collect (1.0);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (0.9 <= value &&  value <= 1.1);
+    >>>>>>> upstream/develop
   }
 
   // test max
   {
     floating_max_statistic statcol;
+    <<<<<<< HEAD
 
     statcol.collect (2.0);
     check (2);
@@ -165,11 +233,25 @@ test_single_statistics_no_concurrency_double (void)
     check (5);
     statcol.collect (1.0);
     check (5);
+    =======
+	    floating_rep value;
+
+    statcol.collect (2.0);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (1.9 <= value &&  value <= 2.1);
+    statcol.collect (5.0);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (4.9 <= value &&  value <= 5.1);
+    statcol.collect (1.0);
+    value = statistic_value_to_floating (statcol.fetch ());
+    assert (4.9 <= value &&  value <= 5.1);
+    >>>>>>> upstream/develop
   }
 
   // test min
   {
     floating_min_statistic statcol;
+    <<<<<<< HEAD
 
     statcol.collect (2.0);
     check (2);
@@ -179,13 +261,30 @@ test_single_statistics_no_concurrency_double (void)
     check (1);
   }
 #undef check
+  =======
+	  floating_rep value;
+
+  statcol.collect (2.0);
+  value = statistic_value_to_floating (statcol.fetch ());
+  assert (1.9 <= value &&  value <= 2.1);
+  statcol.collect (5.0);
+  value = statistic_value_to_floating (statcol.fetch ());
+  assert (1.9 <= value &&  value <= 2.1);
+  statcol.collect (1.0);
+  value = statistic_value_to_floating (statcol.fetch ());
+  assert (0.9 <= value &&  value <= 1.1);
+}
+>>>>>>> upstream/develop
 }
 
 static void
 test_single_statistics_no_concurrency_time (void)
 {
+  <<<<<<< HEAD
 #define check(value) do { statistic_value read; statcol.fetch (&read); assert (read == value); } while (0)
-  using namespace cubmonitor;
+  =======
+	  >>>>>>> upstream/develop
+	  using namespace cubmonitor;
 
   // test accumulator
   {
@@ -194,11 +293,19 @@ test_single_statistics_no_concurrency_time (void)
     // everything is recored in nanoseconds; fetch returns in microseconds
 
     statcol.collect (cubmonitor::time_rep (2000));
+    <<<<<<< HEAD
     check (2);
     statcol.collect (cubmonitor::time_rep (5000));
     check (7);
     statcol.collect (cubmonitor::time_rep (1000));
     check (8);
+    =======
+	    assert (statcol.fetch () == 2);
+    statcol.collect (cubmonitor::time_rep (5000));
+    assert (statcol.fetch () == 7);
+    statcol.collect (cubmonitor::time_rep (1000));
+    assert (statcol.fetch () == 8);
+    >>>>>>> upstream/develop
   }
 
   // test gauge
@@ -206,11 +313,19 @@ test_single_statistics_no_concurrency_time (void)
     time_gauge_statistic statcol;
 
     statcol.collect (cubmonitor::time_rep (2000));
+    <<<<<<< HEAD
     check (2);
     statcol.collect (cubmonitor::time_rep (5000));
     check (5);
     statcol.collect (cubmonitor::time_rep (1000));
     check (1);
+    =======
+	    assert (statcol.fetch () == 2);
+    statcol.collect (cubmonitor::time_rep (5000));
+    assert (statcol.fetch () == 5);
+    statcol.collect (cubmonitor::time_rep (1000));
+    assert (statcol.fetch () == 1);
+    >>>>>>> upstream/develop
   }
 
   // test max
@@ -218,11 +333,19 @@ test_single_statistics_no_concurrency_time (void)
     time_max_statistic statcol;
 
     statcol.collect (cubmonitor::time_rep (2000));
+    <<<<<<< HEAD
     check (2);
     statcol.collect (cubmonitor::time_rep (5000));
     check (5);
     statcol.collect (cubmonitor::time_rep (1000));
     check (5);
+    =======
+	    assert (statcol.fetch () == 2);
+    statcol.collect (cubmonitor::time_rep (5000));
+    assert (statcol.fetch () == 5);
+    statcol.collect (cubmonitor::time_rep (1000));
+    assert (statcol.fetch () == 5);
+    >>>>>>> upstream/develop
   }
 
   // test min
@@ -230,6 +353,7 @@ test_single_statistics_no_concurrency_time (void)
     time_min_statistic statcol;
 
     statcol.collect (cubmonitor::time_rep (2000));
+    <<<<<<< HEAD
     check (2);
     statcol.collect (cubmonitor::time_rep (5000));
     check (2);
@@ -237,6 +361,14 @@ test_single_statistics_no_concurrency_time (void)
     check (1);
   }
 #undef check
+  =======
+	  assert (statcol.fetch () == 2);
+  statcol.collect (cubmonitor::time_rep (5000));
+  assert (statcol.fetch () == 2);
+  statcol.collect (cubmonitor::time_rep (1000));
+  assert (statcol.fetch () == 1);
+}
+>>>>>>> upstream/develop
 }
 
 void
@@ -276,9 +408,13 @@ test_multithread_accumulation (void)
 
   // should accumulate THREAD_COUNT * 999 * 500
   amount_rep expected = THREAD_COUNT * 999 * 500;
+  <<<<<<< HEAD
   statistic_value fetched;
   statcol.fetch (&fetched);
   assert (expected == fetched);
+  =======
+	  assert (expected == statcol.fetch ());
+  >>>>>>> upstream/develop
 
   std::cout << "test_multithread_accumulation passed" << std::endl;
 }
@@ -306,20 +442,27 @@ test_collect_statistic (int tran_index, test_trancol &acc)
 void
 test_transaction (void)
 {
+  <<<<<<< HEAD
 #define check_with_vals(global, tran) \
   do { fetched = 0; acc.fetch (&fetched); assert (fetched == (global)); \
        fetched = 0; acc.fetch_transaction_sheet (&fetched); assert (fetched == (tran)); } while (0)
 #define check() check_with_vals (global_expected_value, sheet_expected_value)
+  =======
+#define check() assert (acc.fetch () == global_expected_value && acc.fetch_sheet () == sheet_expected_value)
+	  >>>>>>> upstream/develop
 
-  using namespace cubmonitor;
+	  using namespace cubmonitor;
 
   test_trancol acc;
   statistic_value global_expected_value = 0;
   statistic_value sheet_expected_value = 0;
+  <<<<<<< HEAD
   statistic_value fetched;
+  =======
+	  >>>>>>> upstream/develop
 
-  // we need a thread local context
-  cubthread::entry my_entry;
+	  // we need a thread local context
+	  cubthread::entry my_entry;
   my_entry.tran_index = 1;
 
   cubthread::set_thread_local_entry (my_entry);
@@ -356,7 +499,12 @@ test_transaction (void)
   acc.collect (1);
   ++global_expected_value;
   // if not watching, expected sheet value is 0
+  <<<<<<< HEAD
   check_with_vals (global_expected_value, 0);
+  =======
+	  assert (acc.fetch () == global_expected_value);
+  assert (acc.fetch_sheet () == 0);
+  >>>>>>> upstream/develop
 
   // test nested starts
   transaction_sheet_manager::start_watch ();
@@ -372,7 +520,10 @@ test_transaction (void)
   cubthread::clear_thread_local_entry ();
 
 #undef check
+  <<<<<<< HEAD
 #undef check_with_vals
+  =======
+	  >>>>>>> upstream/develop
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -392,12 +543,17 @@ test_registration (void)
   test_trancol tran_acc;
 
   // register statistics
+  <<<<<<< HEAD
   std::vector<const char *> names;
   names.push_back ("regular statistic");
   my_monitor.register_statistics (acc, names);
   names.clear ();
   names.push_back ("transaction statistic");
   my_monitor.register_statistics (tran_acc, names);
+  =======
+	  my_monitor.register_single_statistic ("regular statistic", acc);
+  my_monitor.register_single_transaction_statistic ("transaction statistic", tran_acc);
+  >>>>>>> upstream/develop
 
   // allocate a value buffer
   assert (my_monitor.get_statistics_count () == 2);
