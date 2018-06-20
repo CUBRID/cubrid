@@ -28,14 +28,6 @@
 
 namespace cubmonitor
 {
-  static std::vector<std::string> All_names;     // one per each value
-  static std::size_t Statistics_count;
-
-  void
-  fetch_zero (statistic_value *destination)
-  {
-    *destination = 0;
-  }
 
   //////////////////////////////////////////////////////////////////////////
   // registration
@@ -141,6 +133,17 @@ namespace cubmonitor
     m_all_names.insert (m_all_names.end (), names.cbegin (), names.cend ());
 
     check_name_count ();
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // global monitor
+  //////////////////////////////////////////////////////////////////////////
+
+  static monitor Monitor;
+
+  monitor &get_global_monitor (void)
+  {
+    return Monitor;
   }
 
 }  // namespace cubmonitor
