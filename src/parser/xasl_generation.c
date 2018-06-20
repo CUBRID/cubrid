@@ -19783,6 +19783,23 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
       goto cleanup;
     }
 
+  /* loop through classes and attribs to update the assigns */
+  for (p = from; p; p = p->next)
+    {
+      PT_NODE *default_expr_attrs = NULL;
+      PT_NODE *cl_name_node = p->info.spec.flat_entity_list;
+      DB_OBJECT *class_obj = cl_name_node->info.name.db_object;
+      /* make attrs be the attrs of the assigned */
+      error =
+	check_for_on_update_expr (parser, assigns, &default_expr_attrs, class_obj, cl_name_node->info.name.spec_id);
+      if (error != NO_ERROR)
+	{
+	  return NULL;
+	}
+
+      parser_append_node (default_expr_attrs, assigns);
+    }
+
   /* Skip reevaluation if MVCC is not enbaled or at least a class referenced in UPDATE statement is partitioned. The
    * case of partitioned classes referenced in UPDATE will be handled in future */
   if (!has_partitioned)

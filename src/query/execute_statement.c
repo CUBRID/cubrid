@@ -8972,6 +8972,24 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  PT_NODE **links = NULL;
 	  int no_vals = 0, no_consts = 0;
 
+	  // inline for now:
+	  PT_NODE *assigns = statement->info.update.assignment;
+	  PT_NODE *from = statement->info.update.spec;
+	  PT_NODE *default_expr_attrs = NULL;
+	  for (PT_NODE * p = from; p; p = p->next)
+	    {
+	      PT_NODE *cl_name_node = p->info.spec.flat_entity_list;
+	      DB_OBJECT *class_obj = cl_name_node->info.name.db_object;
+	      /* make attrs be the attrs of the assigned */
+	      int error = check_for_on_update_expr (parser, assigns, &default_expr_attrs, class_obj,
+						    cl_name_node->info.name.spec_id);
+	      if (error != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+	      parser_append_node (default_expr_attrs, assigns);
+	    }
+
 	  err =
 	    pt_get_assignment_lists (parser, &select_names, &select_values, &const_names, &const_values, &no_vals,
 				     &no_consts, statement->info.update.assignment, &links);
@@ -11016,6 +11034,76 @@ check_for_default_expr (PARSER_CONTEXT * parser, PT_NODE * specified_attrs, PT_N
 	}
     }
   return NO_ERROR;
+}
+
+//TODO: description
+int
+check_for_on_update_expr (PARSER_CONTEXT * parser, PT_NODE * assigns,
+			  PT_NODE * *default_expr_attrs, DB_OBJECT * class_obj, UINTPTR spec_id)
+{
+  SM_CLASS *cls;
+  SM_ATTRIBUTE *att;
+  int error = NO_ERROR;
+  PT_NODE *new_ = NULL;
+  assert (default_expr_attrs != NULL);
+
+  PT_ASSIGNMENTS_HELPER assign_helper;
+
+  error = au_fetch_class_force (class_obj, &cls, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  else
+    {
+      for (att = cls->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+	{
+	  if (att->on_update_default_expr == DB_DEFAULT_NONE)
+	    {
+	      continue;
+	    }
+	  pt_init_assignments_helper (parser, &assign_helper, assigns);
+	  /* skip if already in the assign-list */
+	  PT_NODE *att_name_node = NULL;
+	  while ((att_name_node = pt_get_next_assignment (&assign_helper)) != NULL)
+	    {
+	      if (!pt_str_compare (att_name_node->info.name.original, att->header.name, CASE_INSENSITIVE))
+		{
+		  break;
+		}
+	    }
+	  if (att_name_node != NULL)
+	    {
+	      continue;
+	    }
+
+	  /* add attribute to default_expr_attrs list */
+	  new_ = parser_new_node (parser, PT_NAME);
+	  if (new_ == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return ER_FAILED;
+	    }
+	  new_->info.name.original = att->header.name;
+	  new_->info.name.spec_id = spec_id;
+
+	  PT_OP_TYPE op = pt_op_type_from_default_expr_type (att->on_update_default_expr);
+	  PT_NODE *expr = parser_make_expression (parser, op, NULL, NULL, NULL);
+	  PT_NODE *assign_expr = parser_make_expression (parser, PT_ASSIGN, new_, expr, NULL);
+
+	  if (*default_expr_attrs != NULL)
+	    {
+	      assign_expr->next = *default_expr_attrs;
+	      *default_expr_attrs = assign_expr;
+	    }
+	  else
+	    {
+	      *default_expr_attrs = assign_expr;
+	    }
+	}
+
+      return NO_ERROR;
+    }
 }
 
 /*
@@ -13981,7 +14069,6 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       XASL_NODE_HEADER xasl_header;
       stream.xasl_header = &xasl_header;
-
       err = prepare_query (contextp, &stream);
       if (err != NO_ERROR)
 	{
