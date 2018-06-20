@@ -40,7 +40,7 @@ namespace cubreplication
     const static unsigned int COMMIT_FLAG = 0x80000000;
     const static unsigned int GROUP_COMMIT_FLAG = 0x40000000;
 
-    const static unsigned int COUNT_VALUE_MASK = ~(COMMIT_FLAG | GROUP_COMMIT_FLAG);
+    const static unsigned int COUNT_VALUE_MASK = ~ (COMMIT_FLAG | GROUP_COMMIT_FLAG);
 
     cubstream::stream_position prev_record;
     MVCCID mvccid;
@@ -57,8 +57,8 @@ namespace cubreplication
       : prev_record (0),
 	mvccid (MVCCID_NULL),
 	count_replication_entries (0),
-        commit_flag (false),
-        group_commit_flag (false)
+	commit_flag (false),
+	group_commit_flag (false)
     {
     };
   };
@@ -76,14 +76,14 @@ namespace cubreplication
       };
 
       replication_stream_entry (cubstream::packing_stream *stream_p,
-                                MVCCID arg_mvccid,
-                                bool arg_commit_flag,
-                                bool arg_group_commit_flag)
+				MVCCID arg_mvccid,
+				bool arg_commit_flag,
+				bool arg_group_commit_flag)
 	: entry (stream_p)
       {
-        m_header.mvccid = arg_mvccid;
-        m_header.commit_flag = arg_commit_flag;
-        m_header.group_commit_flag = arg_group_commit_flag;
+	m_header.mvccid = arg_mvccid;
+	m_header.commit_flag = arg_commit_flag;
+	m_header.group_commit_flag = arg_group_commit_flag;
       };
 
       size_t get_header_size ();
@@ -98,25 +98,25 @@ namespace cubreplication
       }
 
       void set_mvccid (MVCCID mvccid)
-        {
-          m_header.mvccid = mvccid;
-        }
+      {
+	m_header.mvccid = mvccid;
+      }
 
       MVCCID get_mvccid ()
-        {
-          return m_header.mvccid;
-        }
+      {
+	return m_header.mvccid;
+      }
 
 
       void set_commit_flag (bool commit)
-        {
-          m_header.commit_flag = commit;
-        }
+      {
+	m_header.commit_flag = commit;
+      }
 
       bool is_group_commit (void)
-        {
-          return m_header.group_commit_flag;
-        }
+      {
+	return m_header.group_commit_flag;
+      }
 
       int pack_stream_entry_header ();
       int unpack_stream_entry_header ();
