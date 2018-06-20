@@ -113,8 +113,8 @@ namespace cubmonitor
   }
 
   void
-  monitor::register_statistics (std::size_t count, const fetch_function &fetch_func,
-				const fetch_function &tran_fetch_func)
+  monitor::add_registration (std::size_t count, const fetch_function &fetch_func,
+			     const fetch_function &tran_fetch_func)
   {
     m_registrations.emplace_back ();
     registration &last = m_registrations.back ();
@@ -125,6 +125,22 @@ namespace cubmonitor
 
     last.m_fetch_func = fetch_func;
     last.m_tran_fetch_func = tran_fetch_func;
+  }
+
+  void
+  monitor::register_statistics (std::size_t statistics_count, const fetch_function &fetch_global,
+				const fetch_function &fetch_transaction_sheet, const std::vector<const char *> &names)
+  {
+    if (statistics_count != names.size ())
+      {
+	// names/statistics count miss-match
+	assert (false);
+	return;
+      }
+    add_registration (statistics_count, fetch_global, fetch_transaction_statistics);
+    m_all_names.insert (m_all_names.end (), names.cbegin (), names.cend ());
+
+    check_name_count ();
   }
 
 }  // namespace cubmonitor

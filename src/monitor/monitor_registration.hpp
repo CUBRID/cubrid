@@ -45,7 +45,6 @@
 #include "monitor_definition.hpp"
 #include "monitor_transaction.hpp"
 
-#include <array>
 #include <functional>
 #include <string>
 #include <vector>
@@ -74,30 +73,12 @@ namespace cubmonitor
 
       monitor ();
 
+      void register_statistics (std::size_t statistics_count, const fetch_function &fetch_global,
+				const fetch_function &fetch_transaction_sheet,
+				const std::vector<const char *> &names);
+
       template <class S>
-      void
-      register_statistics (const S &statistics, const std::vector<const char *> &names)
-      {
-	if (names.size () != statistics.get_statistics_count ())
-	  {
-	    // names/statistics count miss-match
-	    assert (false);
-	    return;
-	  }
-	fetch_function fetch_func = [&] (statistic_value * destination)
-	{
-	  statistics.fetch (destination);
-	};
-	fetch_function fetch_tran_func = [&] (statistic_value * destination)
-	{
-	  statistics.fetch_transaction_sheet (destination);
-	};
-
-	register_statistics (statistics.get_statistics_count (), fetch_func, fetch_tran_func);
-	m_all_names.insert (m_all_names.end (), names.cbegin (), names.cend ());
-
-	check_name_count ();
-      }
+      void register_statistics (const S &statistics, const std::vector<const char *> &names);
 
       // get the total count of registered statistics
       std::size_t get_statistics_count (void);
@@ -129,8 +110,8 @@ namespace cubmonitor
       };
 
       // register a number of statistics that can be fetched with fetch_func/tran_fetch_func
-      void register_statistics (std::size_t count, const fetch_function &fetch_func,
-				const fetch_function &tran_fetch_func);
+      void add_registration (std::size_t count, const fetch_function &fetch_func,
+			     const fetch_function &tran_fetch_func);
       // debug function to verify the number of statistics match the number of names
       void check_name_count (void);
 
@@ -145,6 +126,21 @@ namespace cubmonitor
   //////////////////////////////////////////////////////////////////////////
   // implementation
   //////////////////////////////////////////////////////////////////////////
+
+  template <class S>
+  void
+  monitor::register_statistics (const S &statistics, const std::vector<const char *> &names)
+  {
+    fetch_function fetch_func = [&] (statistic_value * destination)
+    {
+      statistics.fetch (destination);
+    };
+    fetch_function fetch_tran_func = [&] (statistic_value * destination)
+    {
+      statistics.fetch_transaction_sheet (destination);
+    };
+    register_statistics (statistics.get_statistics_count (), fetch_func, fetch_tran_func, names);
+  }
 
 } // namespace cubmonitor
 
