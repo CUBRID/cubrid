@@ -308,7 +308,7 @@ test_transaction (void)
 {
 #define check_with_vals(global, tran) \
   do { fetched = 0; acc.fetch (&fetched); assert (fetched == (global)); \
-       fetched = 0; acc.fetch_transaction_sheet (&fetched); assert (fetched == (tran)); } while (0)
+       fetched = 0; acc.fetch (&fetched, FETCH_TRANSACTION_SHEET); assert (fetched == (tran)); } while (0)
 #define check() check_with_vals (global_expected_value, sheet_expected_value)
 
   using namespace cubmonitor;

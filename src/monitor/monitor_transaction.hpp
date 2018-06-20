@@ -106,12 +106,8 @@ namespace cubmonitor
       ~transaction_statistic (void);                                  // destructor
 
       // fetchable concept
-      void fetch (statistic_value *destination) const;
-      void fetch_transaction_sheet (statistic_value *destination) const;
+      void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
       std::size_t get_statistics_count (void) const;
-
-      statistic_value fetch (void) const;                             // fetch global statistic
-      statistic_value fetch_sheet (void) const;                       // fetch from transaction sheet (if open)
 
       void collect (const typename statistic_type::rep &value);       // collect to global statistic and to transaction
       // sheet (if open)
@@ -189,60 +185,32 @@ namespace cubmonitor
   }
 
   template <class S>
-  statistic_value
-  transaction_statistic<S>::fetch (void) const
-  {
-    return m_global_stat.fetch ();
-  }
-
-  template <class S>
   void
-  transaction_statistic<S>::fetch (statistic_value *destination) const
+  transaction_statistic<S>::fetch (statistic_value *destination, fetch_mode mode /* = FETCH_GLOBAL */) const
   {
-    m_global_stat.fetch (destination);
-  }
-
-  template <class S>
-  statistic_value
-  transaction_statistic<S>::fetch_sheet (void) const
-  {
-    transaction_sheet sheet = transaction_sheet_manager::get_sheet ();
-
-    if (sheet == transaction_sheet_manager::INVALID_TRANSACTION_SHEET)
+    if (mode == FETCH_GLOBAL)
       {
-	// transaction is not watching; return 0
-	return 0;
+	m_global_stat.fetch (destination);
       }
-
-    if (m_sheet_stats_count <= sheet)
+    else
       {
-	// nothing was collected; return 0
-	return 0;
+	transaction_sheet sheet = transaction_sheet_manager::get_sheet ();
+
+	if (sheet == transaction_sheet_manager::INVALID_TRANSACTION_SHEET)
+	  {
+	    // transaction is not watching
+	    return;
+	  }
+
+	if (m_sheet_stats_count <= sheet)
+	  {
+	    // nothing was collected
+	    return;
+	  }
+
+	// return collected value
+	return m_sheet_stats[sheet].fetch (destination, FETCH_GLOBAL);
       }
-
-    // return collected value
-    return m_sheet_stats[sheet].fetch ();
-  }
-
-  template <class S>
-  void
-  transaction_statistic<S>::fetch_transaction_sheet (statistic_value *destination) const
-  {
-    transaction_sheet sheet = transaction_sheet_manager::get_sheet ();
-
-    if (sheet == transaction_sheet_manager::INVALID_TRANSACTION_SHEET)
-      {
-	// transaction is not watching
-	return;
-      }
-
-    if (m_sheet_stats_count <= sheet)
-      {
-	// nothing was collected
-	return;
-      }
-
-    m_sheet_stats[sheet].fetch (destination);
   }
 
   template <class S>

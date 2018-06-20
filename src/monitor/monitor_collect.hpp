@@ -66,8 +66,7 @@ namespace cubmonitor
       inline void time (const time_rep &d);
       inline void time (void);
 
-      inline void fetch (statistic_value *destination) const;
-      inline void fetch_transaction_sheet (statistic_value *destination) const;
+      inline void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
       inline std::size_t get_statistics_count (void) const;
 
     private:
@@ -94,8 +93,7 @@ namespace cubmonitor
       inline void time_and_increment (const amount_rep &a = 1);
 
       inline std::size_t get_statistics_count (void) const;
-      inline void fetch (statistic_value *destination) const;
-      inline void fetch_transaction_sheet (statistic_value *destination) const;
+      inline void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
 
     private:
       timer m_timer;
@@ -125,8 +123,7 @@ namespace cubmonitor
       inline void time_and_increment (const amount_rep &a = 1);
 
       inline std::size_t get_statistics_count (void) const;
-      inline void fetch (statistic_value *destination) const;
-      inline void fetch_transaction_sheet (statistic_value *destination) const;
+      inline void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
 
     private:
       timer m_timer;
@@ -183,16 +180,9 @@ namespace cubmonitor
 
   template <class T>
   void
-  timer_statistic<T>::fetch (statistic_value *destination) const
+  timer_statistic<T>::fetch (statistic_value *destination, fetch_mode mode /* = FETCH_GLOBAL */) const
   {
-    m_statistic.fetch (destination);
-  }
-
-  template <class T>
-  void
-  timer_statistic<T>::fetch_transaction_sheet (statistic_value *destination) const
-  {
-    m_statistic.fetch_transaction_sheet (destination);
+    m_statistic.fetch (destination, mode);
   }
 
   //////////////////////////////////////////////////////////////////////////
@@ -233,29 +223,14 @@ namespace cubmonitor
 
   template <class A, class T>
   void
-  counter_timer_statistic<A, T>::fetch (statistic_value *destination) const
+  counter_timer_statistic<A, T>::fetch (statistic_value *destination, fetch_mode mode /* = FETCH_GLOBAL */) const
   {
     std::size_t index = 0;
 
-    m_amount_statistic.fetch (destination + index);
+    m_amount_statistic.fetch (destination + index, mode);
     index += m_amount_statistic.get_statistics_count ();
 
-    m_time_statistic.fetch (destination + index);
-    index += m_time_statistic.get_statistics_count ();
-
-    assert (index == get_statistics_count ());
-  }
-
-  template <class A, class T>
-  void
-  counter_timer_statistic<A, T>::fetch_transaction_sheet (statistic_value *destination) const
-  {
-    std::size_t index = 0;
-
-    m_amount_statistic.fetch_transaction_sheet (destination + index);
-    index += m_amount_statistic.get_statistics_count ();
-
-    m_time_statistic.fetch_transaction_sheet (destination + index);
+    m_time_statistic.fetch (destination + index, mode);
     index += m_time_statistic.get_statistics_count ();
 
     assert (index == get_statistics_count ());
@@ -302,35 +277,18 @@ namespace cubmonitor
 
   template <class A, class T, class M>
   void
-  counter_timer_max_statistic<A, T, M>::fetch (statistic_value *destination) const
+  counter_timer_max_statistic<A, T, M>::fetch (statistic_value *destination,
+      fetch_mode mode /* = FETCH_GLOBAL */) const
   {
     std::size_t index = 0;
 
-    m_amount_statistic.fetch (destination + index);
+    m_amount_statistic.fetch (destination + index, mode);
     index += m_amount_statistic.get_statistics_count ();
 
-    m_total_time_statistic.fetch (destination + index);
+    m_total_time_statistic.fetch (destination + index, mode);
     index += m_total_time_statistic.get_statistics_count ();
 
-    m_max_time_statistic.fetch (destination + index);
-    index += m_max_time_statistic.get_statistics_count ();
-
-    assert (index == get_statistics_count ());
-  }
-
-  template <class A, class T, class M>
-  void
-  counter_timer_max_statistic<A, T, M>::fetch_transaction_sheet (statistic_value *destination) const
-  {
-    std::size_t index = 0;
-
-    m_amount_statistic.fetch_transaction_sheet (destination + index);
-    index += m_amount_statistic.get_statistics_count ();
-
-    m_total_time_statistic.fetch_transaction_sheet (destination + index);
-    index += m_total_time_statistic.get_statistics_count ();
-
-    m_max_time_statistic.fetch_transaction_sheet (destination + index);
+    m_max_time_statistic.fetch (destination + index, mode);
     index += m_max_time_statistic.get_statistics_count ();
 
     assert (index == get_statistics_count ());

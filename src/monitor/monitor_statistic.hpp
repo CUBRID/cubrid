@@ -121,13 +121,7 @@ namespace cubmonitor
 	//
       }
 
-      inline void fetch (statistic_value *destination) const;
-      void fetch_transaction_sheet (statistic_value *destination) const
-      {
-	// do nothing
-	return;
-      }
-
+      inline void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
       std::size_t get_statistics_count (void) const
       {
 	return 1;
@@ -153,13 +147,7 @@ namespace cubmonitor
 	//
       }
 
-      inline void fetch (statistic_value *destination) const;
-      void fetch_transaction_sheet (statistic_value *destination) const
-      {
-	// do nothing
-	return;
-      }
-
+      inline void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
       std::size_t get_statistics_count (void) const
       {
 	return 1;
@@ -191,13 +179,7 @@ namespace cubmonitor
 	//
       }
 
-      inline void fetch (statistic_value *destination) const;
-      void fetch_transaction_sheet (statistic_value *destination) const
-      {
-	// do nothing
-	return;
-      }
-
+      inline void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
       std::size_t get_statistics_count (void) const
       {
 	return 1;
@@ -224,8 +206,6 @@ namespace cubmonitor
   template class fetchable_atomic<floating_rep>;
   template class fetchable<time_rep>;
   // template class fetchable_atomic<time_rep>; // differentely specialized, see above
-
-  template <> void fetchable_atomic<amount_rep>::fetch (statistic_value *destination) const;
 
   //////////////////////////////////////////////////////////////////////////
   // Accumulator statistics
@@ -380,22 +360,37 @@ namespace cubmonitor
 
   template <>
   void
-  fetchable<amount_rep>::fetch (statistic_value *destination) const
+  fetchable<amount_rep>::fetch (statistic_value *destination, fetch_mode mode /* = FETCH_GLOBAL */) const
   {
+    if (mode == FETCH_TRANSACTION_SHEET)
+      {
+	// no transaction sheet
+	return;
+      }
     *destination = static_cast<statistic_value> (m_value);
   }
 
   template <>
   void
-  fetchable<floating_rep>::fetch (statistic_value *destination) const
+  fetchable<floating_rep>::fetch (statistic_value *destination, fetch_mode mode /* = FETCH_GLOBAL */) const
   {
+    if (mode == FETCH_TRANSACTION_SHEET)
+      {
+	// no transaction sheet
+	return;
+      }
     *destination = *reinterpret_cast<const statistic_value *> (&m_value);
   }
 
   template <>
   void
-  fetchable<time_rep>::fetch (statistic_value *destination) const
+  fetchable<time_rep>::fetch (statistic_value *destination, fetch_mode mode /* = FETCH_GLOBAL */) const
   {
+    if (mode == FETCH_TRANSACTION_SHEET)
+      {
+	// no transaction sheet
+	return;
+      }
     // convert from collect representation - nanoseconds - to monitor representation - microseconds.
     *destination =
 	    static_cast<statistic_value> (std::chrono::duration_cast<std::chrono::microseconds> (m_value).count ());
@@ -403,21 +398,36 @@ namespace cubmonitor
 
   template <>
   void
-  fetchable_atomic<amount_rep>::fetch (statistic_value *destination) const
+  fetchable_atomic<amount_rep>::fetch (statistic_value *destination, fetch_mode mode /* = FETCH_GLOBAL */) const
   {
+    if (mode == FETCH_TRANSACTION_SHEET)
+      {
+	// no transaction sheet
+	return;
+      }
     *destination = static_cast<statistic_value> (m_value);
   }
 
   template <>
   void
-  fetchable_atomic<floating_rep>::fetch (statistic_value *destination) const
+  fetchable_atomic<floating_rep>::fetch (statistic_value *destination, fetch_mode mode /* = FETCH_GLOBAL */) const
   {
+    if (mode == FETCH_TRANSACTION_SHEET)
+      {
+	// no transaction sheet
+	return;
+      }
     *destination = *reinterpret_cast<const statistic_value *> (&m_value);
   }
 
   void
-  fetchable_atomic<time_rep>::fetch (statistic_value *destination) const
+  fetchable_atomic<time_rep>::fetch (statistic_value *destination, fetch_mode mode /* = FETCH_GLOBAL */) const
   {
+    if (mode == FETCH_TRANSACTION_SHEET)
+      {
+	// no transaction sheet
+	return;
+      }
     // convert from collect representation - nanoseconds - to monitor representation - microseconds.
     time_rep nanos (m_value.load ());
     *destination =
