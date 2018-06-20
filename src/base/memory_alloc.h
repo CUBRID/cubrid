@@ -304,17 +304,17 @@ enum
 
 #if defined (__cplusplus)
 
-class PRIVATE_UNIQUE_PTR_DELETER
+template < class T > class PRIVATE_UNIQUE_PTR_DELETER
 {
 public:
-  PRIVATE_UNIQUE_PTR_DELETER ():thread_p (NULL)
+PRIVATE_UNIQUE_PTR_DELETER ():thread_p (NULL)
   {
   }
-  PRIVATE_UNIQUE_PTR_DELETER (THREAD_ENTRY * thread_p):thread_p (thread_p)
+PRIVATE_UNIQUE_PTR_DELETER (THREAD_ENTRY * thread_p):thread_p (thread_p)
   {
   }
 
-  void operator  () (void *ptr) const
+  void operator   () (T * ptr) const
   {
     if (ptr != NULL)
       {
@@ -326,28 +326,37 @@ private:
     THREAD_ENTRY * thread_p;
 };
 
-class PRIVATE_UNIQUE_PTR
+template < class T > class PRIVATE_UNIQUE_PTR
 {
 public:
-  PRIVATE_UNIQUE_PTR (void *ptr, THREAD_ENTRY * thread_p):ptr (ptr), thread_p (thread_p)
+  PRIVATE_UNIQUE_PTR (T * ptr, THREAD_ENTRY * thread_p)
   {
-    smart_ptr = std::unique_ptr < void, PRIVATE_UNIQUE_PTR_DELETER > (ptr, PRIVATE_UNIQUE_PTR_DELETER (thread_p));
+    smart_ptr =
+      std::unique_ptr < T, PRIVATE_UNIQUE_PTR_DELETER < T > >(ptr, PRIVATE_UNIQUE_PTR_DELETER < T > (thread_p));
   }
 
-  void *Get ()
+  T *get ()
   {
     return smart_ptr.get ();
   }
 
-  void *Release ()
+  T *release ()
   {
     return smart_ptr.release ();
   }
 
+  void swap (PRIVATE_UNIQUE_PTR < T > &other)
+  {
+    smart_ptr.swap (other.smart_ptr);
+  }
+
+  void reset (T * ptr)
+  {
+    smart_ptr.reset (ptr);
+  }
+
 private:
-  void *ptr;
-  THREAD_ENTRY *thread_p;
-  std::unique_ptr < void, PRIVATE_UNIQUE_PTR_DELETER > smart_ptr;
+  std::unique_ptr < T, PRIVATE_UNIQUE_PTR_DELETER < T > >smart_ptr;
 };
 #endif
 
