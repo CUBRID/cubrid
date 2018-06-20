@@ -17,34 +17,29 @@
  *
  */
 
-/*
- * packable_object.hpp
- */
+#include "monitor_collect.hpp"
 
-#ifndef _PACKABLE_OBJECT_HPP_
-#define _PACKABLE_OBJECT_HPP_
-
-#ident "$Id$"
-
-#include "packer.hpp"
-#include <map>
-
-namespace cubpacking
+namespace cubmonitor
 {
-
-  class packable_object
+  timer::timer (void)
+    : m_timept (clock_type::now ())
   {
-    public:
-      virtual ~packable_object () {};
-      virtual int pack (packer *serializator) = 0;
-      virtual int unpack (packer *serializator) = 0;
+    //
+  }
 
-      virtual bool is_equal (const packable_object *other) = 0;
+  void
+  timer::reset (void)
+  {
+    m_timept = clock_type::now ();
+  }
 
-      /* used at packing to get info on how much memory to reserve */
-      virtual size_t get_packed_size (packer *serializator) = 0;
-  };
+  duration
+  timer::time (void)
+  {
+    time_point start_pt = m_timept;
+    m_timept = clock_type::now ();
+    return m_timept - start_pt;
+  }
 
-} /* namespace cubpacking */
 
-#endif /* _PACKABLE_OBJECT_HPP_ */
+}  // namespace cubmonitor
