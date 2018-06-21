@@ -1218,6 +1218,15 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
       db_set_client_cache_time (session, stmt_id, clt_cache_time);
     }
 
+#if !defined (LIBCAS_FOR_JSP) && !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
+  if (err_code != NO_ERROR)
+    {
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      goto execute_error;
+    }
+#endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
   n = db_execute_and_keep_statement (session, stmt_id, &result);
 
 #ifndef LIBCAS_FOR_JSP
@@ -1521,6 +1530,15 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	{
 	  db_set_client_cache_time (session, stmt_id, clt_cache_time);
 	}
+
+#if !defined (LIBCAS_FOR_JSP) && !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+      err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
+      if (err_code != NO_ERROR)
+	{
+	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	  goto execute_all_error;
+	}
+#endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       n = db_execute_and_keep_statement (session, stmt_id, &result);
@@ -2017,6 +2035,15 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       db_get_cacheinfo (session, stmt_id, &use_plan_cache, &use_query_cache);
       cas_log_write2_nonl (" %s\n", use_plan_cache ? "(PC)" : "");
+
+#if !defined (LIBCAS_FOR_JSP) && !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+      if (db_set_statement_auto_commit (session, auto_commit_mode) != NO_ERROR)
+	{
+	  cas_log_write2 ("");
+	  goto batch_error;
+	}
+#endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
       res_count = db_execute_statement (session, stmt_id, &result);
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, res_count);
 
@@ -2237,6 +2264,15 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	      goto exec_db_error;
 	    }
 	}
+
+#if !defined (LIBCAS_FOR_JSP) && !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+      err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
+      if (err_code != NO_ERROR)
+	{
+	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	  goto exec_db_error;
+	}
+#endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       res_count = db_execute_and_keep_statement (session, stmt_id, &result);

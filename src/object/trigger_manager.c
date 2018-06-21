@@ -5669,6 +5669,36 @@ tr_after (TR_STATE * state)
 }
 
 /*
+* tr_has_commit_triggers() - Check whether has triggers to execute at commit;
+*    return: true, if has triggers to execute, otherwise false
+*    time(in): trigger execution time
+*/
+bool
+tr_has_commit_triggers (DB_TRIGGER_TIME time)
+{
+  TR_TRIGLIST *t;
+  if (!TR_EXECUTION_ENABLED)
+    {
+      return false;
+    }
+
+  if (tr_Deferred_activities)
+    {
+      return true;
+    }
+
+  for (t = tr_User_triggers; t != NULL; t = t->next)
+    {
+      if (t->trigger->event == TR_EVENT_COMMIT && t->trigger->status == TR_STATUS_ACTIVE)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * tr_check_commit_triggers() - This is called by tran_commit() early in the commit sequence.
  *    return: error code
  *    time(in):

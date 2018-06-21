@@ -86,6 +86,8 @@
 #define STATDUMP_BUF_SIZE (2 * 16 * 1024)
 #define QUERY_INFO_BUF_SIZE (2048 + STATDUMP_BUF_SIZE)
 
+#define NET_DEFER_END_QUERIES_MAX 10
+
 /* This file is only included in the server.  So set the on_server flag on */
 unsigned int db_on_server = 1;
 
@@ -2335,14 +2337,10 @@ stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 {
   TRAN_STATE state;
   int xretain_lock;
-  bool retain_lock, reset_on_commit = false;
+  bool retain_lock, reset_on_commit = false, has_updated;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
-  HA_SERVER_STATE ha_state;
-  int client_type;
-  char *hostname;
-  bool has_updated;
   int row_count = DB_ROW_COUNT_NOT_SET;
   int n_query_ids = 0, i = 0;
   QUERY_ID query_id;
@@ -2380,64 +2378,8 @@ stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     }
 
   ptr = or_pack_int (reply, (int) state);
-  client_type = logtb_find_current_client_type (thread_p);
-  hostname = logtb_find_current_client_hostname (thread_p);
-  ha_state = css_ha_server_state ();
-  if (has_updated && ha_state == HA_SERVER_STATE_TO_BE_STANDBY && BOOT_NORMAL_CLIENT_TYPE (client_type))
-    {
-      reset_on_commit = true;
-      er_log_debug (ARG_FILE_LINE,
-		    "stran_server_commit(): " "(has_updated && to-be-standby && normal client) "
-		    "DB_CONNECTION_STATUS_RESET\n");
-    }
-  else if (ha_state == HA_SERVER_STATE_STANDBY)
-    {
-      /* be aware that the order of if conditions is important */
-      if (BOOT_CSQL_CLIENT_TYPE (client_type))
-	{
-	  thread_p->conn_entry->reset_on_commit = false;
-	}
-      else if (client_type == BOOT_CLIENT_BROKER)
-	{
-	  reset_on_commit = true;
-	  er_log_debug (ARG_FILE_LINE,
-			"stran_server_commit(): " "(standby && read-write broker) " "DB_CONNECTION_STATUS_RESET\n");
-	}
-      else if (BOOT_NORMAL_CLIENT_TYPE (client_type) && thread_p->conn_entry->reset_on_commit == true)
-	{
-	  reset_on_commit = true;
-	  thread_p->conn_entry->reset_on_commit = false;
-	  er_log_debug (ARG_FILE_LINE,
-			"stran_server_commit: " "(standby && conn->reset_on_commit && normal client) "
-			"DB_CONNECTION_STATUS_RESET\n");
-	}
-      else if (BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE (client_type) && css_is_ha_repl_delayed () == true)
-	{
-	  if (thread_p->conn_entry->ignore_repl_delay == false)
-	    {
-	      reset_on_commit = true;
-	      er_log_debug (ARG_FILE_LINE,
-			    "stran_server_commit: " "(standby && replication delay " "&& broker and default client) "
-			    "DB_CONNECTION_STATUS_RESET\n");
-	    }
-	  thread_p->conn_entry->reset_on_commit = false;
-	}
-    }
-  else if (ha_state == HA_SERVER_STATE_ACTIVE && client_type == BOOT_CLIENT_SLAVE_ONLY_BROKER)
-    {
-      reset_on_commit = true;
-      er_log_debug (ARG_FILE_LINE,
-		    "stran_server_commit(): " "(active && slave only broker) " "DB_CONNECTION_STATUS_RESET\n");
-    }
-  else if (ha_state == HA_SERVER_STATE_MAINTENANCE
-	   && !BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (hostname, boot_Host_name, client_type))
-    {
-      reset_on_commit = true;
-      er_log_debug (ARG_FILE_LINE,
-		    "stran_server_commit(): " "(maintenance && remote normal client type) "
-		    "DB_CONNECTION_STATUS_RESET\n");
-    }
 
+  xtran_reset_on_commit (thread_p, has_updated, &reset_on_commit);
   ptr = or_pack_int (ptr, (int) reset_on_commit);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -2458,14 +2400,10 @@ void
 stran_server_abort (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   TRAN_STATE state;
-  int reset_on_commit = false;
+  bool reset_on_commit = false, has_updated;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
-  HA_SERVER_STATE ha_state;
-  int client_type;
-  char *hostname;
-  bool has_updated;
 
   has_updated = logtb_has_updated (thread_p);
 
@@ -2479,66 +2417,8 @@ stran_server_abort (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       return_error_to_client (thread_p, rid);
     }
 
+  xtran_reset_on_commit (thread_p, has_updated, &reset_on_commit);
   ptr = or_pack_int (reply, state);
-  client_type = logtb_find_current_client_type (thread_p);
-  hostname = logtb_find_current_client_hostname (thread_p);
-  ha_state = css_ha_server_state ();
-  if (has_updated && ha_state == HA_SERVER_STATE_TO_BE_STANDBY && BOOT_NORMAL_CLIENT_TYPE (client_type))
-    {
-      reset_on_commit = true;
-      er_log_debug (ARG_FILE_LINE,
-		    "stran_server_abort(): " "(has_updated && to-be-standby && normal client) "
-		    "DB_CONNECTION_STATUS_RESET\n");
-    }
-  else if (ha_state == HA_SERVER_STATE_STANDBY)
-    {
-      /* be aware that the order of if conditions is important */
-      if (BOOT_CSQL_CLIENT_TYPE (client_type))
-	{
-	  thread_p->conn_entry->reset_on_commit = false;
-	}
-      else if (client_type == BOOT_CLIENT_BROKER)
-	{
-	  reset_on_commit = true;
-	  er_log_debug (ARG_FILE_LINE,
-			"stran_server_abort(): " "(standby && read-write broker) " "DB_CONNECTION_STATUS_RESET\n");
-	}
-      else if (BOOT_NORMAL_CLIENT_TYPE (client_type) && thread_p->conn_entry->reset_on_commit == true)
-	{
-	  reset_on_commit = true;
-	  thread_p->conn_entry->reset_on_commit = false;
-	  er_log_debug (ARG_FILE_LINE,
-			"stran_server_abort(): " "(standby && conn->reset_on_commit && normal client) "
-			"DB_CONNECTION_STATUS_RESET\n");
-
-	}
-      else if (BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE (client_type) && css_is_ha_repl_delayed () == true)
-	{
-	  if (thread_p->conn_entry->ignore_repl_delay == false)
-	    {
-	      reset_on_commit = true;
-	      er_log_debug (ARG_FILE_LINE,
-			    "stran_server_abort(): " "(standby && replication delay " "&& default and broker client) "
-			    "DB_CONNECTION_STATUS_RESET\n");
-	    }
-	  thread_p->conn_entry->reset_on_commit = false;
-	}
-    }
-  else if (ha_state == HA_SERVER_STATE_ACTIVE && client_type == BOOT_CLIENT_SLAVE_ONLY_BROKER)
-    {
-      reset_on_commit = true;
-      er_log_debug (ARG_FILE_LINE,
-		    "stran_server_abort(): " "(active && slave only broker) " "DB_CONNECTION_STATUS_RESET\n");
-    }
-  else if (ha_state == HA_SERVER_STATE_MAINTENANCE
-	   && !BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (hostname, boot_Host_name, client_type))
-    {
-      reset_on_commit = true;
-      er_log_debug (ARG_FILE_LINE,
-		    "stran_server_abort(): " "(maintenance && remote normal client type) "
-		    "DB_CONNECTION_STATUS_RESET\n");
-    }
-
   ptr = or_pack_int (ptr, (int) reset_on_commit);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -4619,12 +4499,13 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   PAGE_PTR page_ptr;
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_page_buf;
   QUERY_FLAG query_flag;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_PTR_ALIGNED_SIZE + OR_CACHE_TIME_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 7 + OR_PTR_ALIGNED_SIZE + OR_CACHE_TIME_SIZE) a_reply;
   CACHE_TIME clt_cache_time;
   CACHE_TIME srv_cache_time;
   int query_timeout;
   XASL_CACHE_ENTRY *xasl_cache_entry_p = NULL;
   char data_buf[EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE + MAX_ALIGNMENT], *aligned_data_buf = NULL;
+  bool has_updated;
 
   int response_time = 0;
 
@@ -4638,11 +4519,17 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   UINT64 *current_stats = NULL;
   UINT64 *diff_stats = NULL;
   char *sql_id = NULL;
-  int error_code = NO_ERROR;
+  int error_code = NO_ERROR, all_error_code = NO_ERROR;
   int trace_slow_msec, trace_ioreads;
   bool tran_abort = false;
 
   EXECUTION_INFO info = { NULL, NULL, NULL };
+  QUERY_ID net_Deferred_end_queries[NET_DEFER_END_QUERIES_MAX], *p_net_Deferred_end_queries = net_Deferred_end_queries;
+  int n_query_ids = 0, i = 0;
+  bool end_query_allowed, reset_on_commit;
+  LOG_TDES *tdes;
+  TRAN_STATE tran_state;
+  bool is_tran_auto_commit;
 
   trace_slow_msec = prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS);
   trace_ioreads = prm_get_integer_value (PRM_ID_SQL_TRACE_IOREADS);
@@ -4680,6 +4567,31 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   ptr = or_unpack_int (ptr, &query_flag);
   OR_UNPACK_CACHE_TIME (ptr, &clt_cache_time);
   ptr = or_unpack_int (ptr, &query_timeout);
+
+  is_tran_auto_commit = IS_TRAN_AUTO_COMMIT (query_flag);
+  xsession_set_tran_auto_commit (thread_p, is_tran_auto_commit);
+
+  if (IS_QUERY_EXECUTE_WITH_COMMIT (query_flag))
+    {
+      ptr = or_unpack_int (ptr, &n_query_ids);
+      if (n_query_ids + 1 > NET_DEFER_END_QUERIES_MAX)
+	{
+	  p_net_Deferred_end_queries = (QUERY_ID *) malloc ((n_query_ids + 1) * sizeof (QUERY_ID));
+	  if (p_net_Deferred_end_queries == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (size_t) (n_query_ids + 1) * sizeof (QUERY_ID));
+	      css_send_abort_to_client (thread_p->conn_entry, rid);
+	      return;
+	    }
+	}
+
+      for (i = 0; i < n_query_ids; i++)
+	{
+	  ptr = or_unpack_ptr (ptr, p_net_Deferred_end_queries + i);
+	}
+    }
+
   if (IS_QUERY_EXECUTED_WITHOUT_DATA_BUFFERS (query_flag))
     {
       assert (data_size < EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE);
@@ -4705,6 +4617,8 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   CACHE_TIME_RESET (&srv_cache_time);
 
+  /* TO DO - check and update commit state on session state */
+
   /* call the server routine of query execute */
   list_id =
     xqmgr_execute_query (thread_p, &xasl_id, &query_id, dbval_cnt, data, &query_flag, &clt_cache_time, &srv_cache_time,
@@ -4720,6 +4634,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       info = xasl_cache_entry_p->sql_info;
     }
 
+  end_query_allowed = IS_QUERY_EXECUTE_WITH_COMMIT (query_flag);
 #if 0
   if (list_id == NULL && !CACHE_TIME_EQ (&clt_cache_time, &srv_cache_time))
 #else
@@ -4762,6 +4677,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	    }
 	}
 
+      end_query_allowed = false;
       return_error_to_client (thread_p, rid);
     }
 
@@ -4796,9 +4712,16 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	      memcpy (aligned_page_buf, page_ptr, page_size);
 	      qmgr_free_old_page_and_init (thread_p, page_ptr, list_id->tfile_vfid);
 	      page_ptr = aligned_page_buf;
+
+	      /* for now, allow end query if there is only one page */
+	      if (!VPID_EQ (&list_id->first_vpid, &list_id->last_vpid))
+		{
+		  end_query_allowed = false;
+		}
 	    }
 	  else
 	    {
+	      end_query_allowed = false;
 	      return_error_to_client (thread_p, rid);
 	    }
 	}
@@ -4816,16 +4739,10 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       else
 	{
 	  replydata_size = 0;
+	  end_query_allowed = false;
 	  return_error_to_client (thread_p, rid);
 	}
     }
-
-  /* pack 'QUERY_END' as a first argument of the reply */
-  ptr = or_pack_int (reply, QUERY_END);
-  /* pack size of list file id to return as a second argument of the reply */
-  ptr = or_pack_int (ptr, replydata_size);
-  /* pack size of a page to return as a third argumnet of the reply */
-  ptr = or_pack_int (ptr, page_size);
 
   /* We may release the xasl cache entry when the transaction aborted. To refer the contents of the freed entry for
    * the case will cause defects. */
@@ -4891,12 +4808,74 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       xasl_cache_entry_p = NULL;
     }
 
+  reset_on_commit = false;
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  tran_state = tdes->state;
+  if (end_query_allowed)
+    {
+      p_net_Deferred_end_queries[n_query_ids++] = query_id;
+      for (i = 0; i < n_query_ids; i++)
+	{
+	  if (p_net_Deferred_end_queries[i] > 0)
+	    {
+	      error_code = xqmgr_end_query (thread_p, p_net_Deferred_end_queries[i]);
+	      if (error_code != NO_ERROR)
+		{
+		  all_error_code = error_code;
+		  /* Continue to try to close as many queries as possible. */
+		}
+	    }
+	}
+
+      if (all_error_code != NO_ERROR)
+	{
+	  return_error_to_client (thread_p, rid);
+	}
+      else
+	{
+	  has_updated = logtb_has_updated (thread_p);
+	  tran_state = xtran_server_commit (thread_p, false);
+	  net_cleanup_server_queues (rid);
+	  if (tran_state != TRAN_UNACTIVE_COMMITTED && tran_state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+	    {
+	      /* Likely the commit failed.. somehow */
+	      return_error_to_client (thread_p, rid);
+	    }
+	  xtran_reset_on_commit (thread_p, has_updated, &reset_on_commit);
+	}
+    }
+
+  /* pack 'QUERY_END' as a first argument of the reply */
+  ptr = or_pack_int (reply, QUERY_END);
+  /* pack size of list file id to return as a second argument of the reply */
+  ptr = or_pack_int (ptr, replydata_size);
+  /* pack size of a page to return as a third argumnet of the reply */
+  ptr = or_pack_int (ptr, page_size);
   ptr = or_pack_int (ptr, queryinfo_string_length);
 
   /* query id to return as a fourth argument of the reply */
   ptr = or_pack_ptr (ptr, query_id);
   /* result cache created time */
   OR_PACK_CACHE_TIME (ptr, &srv_cache_time);
+
+  if (IS_QUERY_EXECUTED_WITHOUT_DATA_BUFFERS (query_flag))
+    {
+      /* pack end query result */
+      if (end_query_allowed)
+	{
+	  /* query ended */
+	  ptr = or_pack_int (ptr, NO_ERROR);
+	}
+      else
+	{
+	  /* query not ended */
+	  ptr = or_pack_int (ptr, ER_FAILED);
+	}
+
+      /* pack commit result */
+      ptr = or_pack_int (ptr, (int) tran_state);
+      ptr = or_pack_int (ptr, (int) reset_on_commit);
+    }
 
 #if !defined(NDEBUG)
   /* suppress valgrind UMW error */
@@ -4917,6 +4896,10 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     }
 
 exit:
+  if (p_net_Deferred_end_queries != net_Deferred_end_queries)
+    {
+      free_and_init (p_net_Deferred_end_queries);
+    }
   if (base_stats != NULL)
     {
       free_and_init (base_stats);
@@ -5147,6 +5130,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_page_buf;
   QUERY_FLAG flag;
   int query_timeout;
+  bool is_tran_auto_commit;
 
   aligned_page_buf = PTR_ALIGN (page_buf, MAX_ALIGNMENT);
 
@@ -5183,6 +5167,9 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char
 	  goto cleanup;
 	}
     }
+
+  is_tran_auto_commit = IS_TRAN_AUTO_COMMIT (flag);
+  xsession_set_tran_auto_commit (thread_p, is_tran_auto_commit);
 
   /* 
    * After this point, xqmgr_prepare_and_execute_query has assumed
