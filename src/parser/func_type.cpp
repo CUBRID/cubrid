@@ -320,55 +320,55 @@ const char* str(FUNC_TYPE ft)
 {
     switch(ft){
         case PT_MIN:
-            return "PT_MIN";
+            return "MIN";
         case PT_MAX:
-            return "PT_MAX";
+            return "MAX";
         case PT_SUM:
-            return "PT_SUM";
+            return "SUM";
         case PT_AVG:
-            return "PT_AVG";
+            return "AVG";
         case PT_STDDEV:
-            return "PT_STDDEV";
+            return "STDDEV";
         case PT_VARIANCE:
-            return "PT_VARIANCE";
+            return "VARIANCE";
         case PT_STDDEV_POP:
-            return "PT_STDDEV_POP";
+            return "STDDEV_POP";
         case PT_VAR_POP:
-            return "PT_VAR_POP";
+            return "VAR_POP";
         case PT_STDDEV_SAMP:
-            return "PT_STDDEV_SAMP";
+            return "STDDEV_SAMP";
         case PT_VAR_SAMP:
-            return "PT_VAR_SAMP";
+            return "VAR_SAMP";
         case PT_COUNT:
-            return "PT_COUNT";
+            return "COUNT";
         case PT_COUNT_STAR:
-            return "PT_COUNT_STAR";
+            return "COUNT_STAR";
         case PT_GROUPBY_NUM:
-            return "PT_GROUPBY_NUM";
+            return "GROUPBY_NUM";
         case PT_AGG_BIT_AND:
-            return "PT_AGG_BIT_AND";
+            return "AGG_BIT_AND";
         case PT_AGG_BIT_OR:
-            return "PT_AGG_BIT_OR";
+            return "AGG_BIT_OR";
         case PT_AGG_BIT_XOR:
-            return "PT_AGG_BIT_XOR";
+            return "AGG_BIT_XOR";
         case PT_GROUP_CONCAT:
-            return "PT_GROUP_CONCAT";
+            return "GROUP_CONCAT";
         case PT_ROW_NUMBER:
-            return "PT_ROW_NUMBER";
+            return "ROW_NUMBER";
         case PT_RANK:
-            return "PT_RANK";
+            return "RANK";
         case PT_DENSE_RANK:
-            return "PT_DENSE_RANK";
+            return "DENSE_RANK";
         case PT_NTILE:
-            return "PT_NTILE";
+            return "NTILE";
         case PT_TOP_AGG_FUNC:
-            return "PT_TOP_AGG_FUNC";
+            return "TOP_AGG_FUNC";
         case PT_LEAD:
-            return "PT_LEAD";
+            return "LEAD";
         case PT_LAG:
-            return "PT_LAG";
+            return "LAG";
         case PT_GENERIC:
-            return "PT_GENERIC";
+            return "GENERIC";
         case F_SET:
             return "F_SET";
         case F_TABLE_SET:
@@ -392,45 +392,45 @@ const char* str(FUNC_TYPE ft)
         case F_CLASS_OF:
             return "F_CLASS_OF";
         case F_INSERT_SUBSTRING:
-            return "F_INSERT_SUBSTRING";
+            return "INSERT_SUBSTRING";
         case F_ELT:
-            return "F_ELT";
+            return "ELT";
         case F_JSON_OBJECT:
-            return "F_JSON_OBJECT";
+            return "JSON_OBJECT";
         case F_JSON_ARRAY:
-            return "F_JSON_ARRAY";
+            return "JSON_ARRAY";
         case F_JSON_MERGE:
-            return "F_JSON_MERGE";
+            return "JSON_MERGE";
         case F_JSON_INSERT:
-            return "F_JSON_INSERT";
+            return "JSON_INSERT";
         case F_JSON_REMOVE:
-            return "F_JSON_REMOVE";
+            return "JSON_REMOVE";
         case F_JSON_ARRAY_APPEND:
-            return "F_JSON_ARRAY_APPEND";
+            return "JSON_ARRAY_APPEND";
         case F_JSON_GET_ALL_PATHS:
-            return "F_JSON_GET_ALL_PATHS";
+            return "JSON_GET_ALL_PATHS";
         case F_JSON_REPLACE:
-            return "F_JSON_REPLACE";
+            return "JSON_REPLACE";
         case F_JSON_SET:
-            return "F_JSON_SET";
+            return "JSON_SET";
         case F_JSON_KEYS:
-            return "F_JSON_KEYS";
+            return "JSON_KEYS";
         case PT_FIRST_VALUE:
-            return "PT_FIRST_VALUE";
+            return "FIRST_VALUE";
         case PT_LAST_VALUE:
-            return "PT_LAST_VALUE";
+            return "LAST_VALUE";
         case PT_NTH_VALUE:
-            return "PT_NTH_VALUE";
+            return "NTH_VALUE";
         case PT_MEDIAN:
-            return "PT_MEDIAN";
+            return "MEDIAN";
         case PT_CUME_DIST:
-            return "PT_CUME_DIST";
+            return "CUME_DIST";
         case PT_PERCENT_RANK:
-            return "PT_PERCENT_RANK";
+            return "PERCENT_RANK";
         case PT_PERCENTILE_CONT:
-            return "PT_PERCENTILE_CONT";
+            return "PERCENTILE_CONT";
         case PT_PERCENTILE_DISC:
-            return "PT_PERCENTILE_DISC";
+            return "PERCENTILE_DISC";
         default:
             assert(false);
             return nullptr;

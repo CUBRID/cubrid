@@ -1760,6 +1760,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 재귀 CTE  '%1$s’는 재귀 질의에서 직접 참조되어야 합니다.
 299 CTE '%1$s’의 에러: 비재귀 부분과 재귀 부분은 반드시 UNION ALL로 연결되어야 합니다.
 300 DEFAULT 절에 부질의는 허용되지 않습니다.
+301 Could not find signatures for function %1$s()
+302 Incompatible argument type %1$s; expected types are: %2$s
+303 Number of arguments don't match
+304 Could not find compatible signature for function %1$s()
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.

@@ -1,4 +1,5 @@
 #include "parse_type.hpp"
+#include "parser.h"
 #include "string_buffer.hpp"
 
 const char* str(pt_generic_type_enum type)
@@ -22,6 +23,7 @@ const char* str(pt_generic_type_enum type)
         "GT_JSON_VAL",
         "GT_JSON_DOC",
         "GT_JSON_PATH",
+        "GT_SCALAR", 
     };
     return arr[type];
 }
@@ -127,7 +129,8 @@ const char* str(pt_type_enum type)
 const char* str(const pt_arg_type& type, string_buffer& sb){
     switch(type.type){
         case pt_arg_type::NORMAL:
-            sb("%s", str(type.val.type));
+            //sb("%s", str(type.val.type));
+            sb("%s", pt_show_type_enum(type.val.type));
             break;
         case pt_arg_type::GENERIC:
             sb("%s", str(type.val.generic_type));

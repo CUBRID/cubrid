@@ -13129,7 +13129,7 @@ namespace Func
     /*
     * get_signature () - get matching function signature
     */
-    const func_signature* get_signature(const std::vector<func_signature>& signatures, string_buffer& sb)
+    const func_signature* get_signature_OLD(const std::vector<func_signature>& signatures, string_buffer& sb)
     {
         sb("matching equivalent:\n");
         const func_signature* signature = get_signature(signatures, &cmp_types_equivalent, sb);
@@ -13141,8 +13141,33 @@ namespace Func
         return signature;
     }
 
-    const func_signature* get_signature(const std::vector<func_signature>& signatures)
+    const char* get_types(const std::vector<func_signature>& signatures, int index, string_buffer& sb)
     {
+        for(auto& signature: signatures)
+          {
+            int i = index;
+            if(index < signature.fix.size())
+              {
+                str(signature.fix[i], sb);
+                sb(", ");
+              }
+            else
+              {
+                i -= signature.fix.size();
+                if(signature.rep.size() > 0)
+                  {
+                    i %= signature.rep.size();
+                    str(signature.rep[i], sb);
+                    sb(", ");
+                  }
+              }
+          }
+        return sb.get_buffer();
+    }
+
+    const func_signature* get_signature(const std::vector<func_signature>& signatures, string_buffer& sb)
+    {
+        pt_reset_error(m_parser);
         const func_signature* signature = nullptr;
         int sigIndex = 0;
         for(auto& sig: signatures)
@@ -13165,21 +13190,20 @@ namespace Func
                 matchEquivalent &= cmp_types_equivalent(t, arg->type_enum);
                 matchCastable &= cmp_types_castable(t, arg->type_enum);
                 //... accumulate error messages
-                if(!matchEquivalent && !matchCastable)
+                if(!matchEquivalent && !matchCastable) //current arg doesn' match => current signature doesn't match
                   {
-                    pt_frob_error(m_parser, m_node, "ERR fix argIndex=%d doesn't match", argIndex);
-                    break;//current arg doesn' match => current signature doesn't match
+                    sb.clear();
+                    //pt_frob_error(m_parser, arg, "Incompatible argument type %s; expected types are: %s", str(arg->type_enum), get_types(signatures, argIndex-1, sb));
+                    pt_cat_error(m_parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_INCOMPATIBLE_TYPE, str(arg->type_enum), get_types(signatures, argIndex-1, sb));
+                    break;
                   }
                 arg = arg->next;
             }
             if((matchEquivalent || matchCastable) && ((arg!=NULL && sig.rep.size()==0) || (arg==NULL && sig.rep.size()!=0)))//number of arguments don't match
               {
                 matchEquivalent = matchCastable = false;
-                string_buffer sb;
-                sb("  signature#%02d ", sigIndex);
-                str(sig, sb);
-                sb(": number of arguments don't match\n", sigIndex);
-                pt_frob_error(m_parser, m_node, "%s", sb.get_buffer());
+                //pt_frob_error(m_parser, m_node, "Number of arguments don't match");
+                pt_cat_error(m_parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_ARGS_COUNT);
               }
             if(!matchEquivalent && !matchCastable)
               {
@@ -13196,10 +13220,11 @@ namespace Func
                 matchEquivalent &= cmp_types_equivalent(t, arg->type_enum);
                 matchCastable &= cmp_types_castable(t, arg->type_enum);
                 //... accumulate error messages
-                if(!matchEquivalent && !matchCastable)
+                if(!matchEquivalent && !matchCastable) //current arg doesn' match => current signature doesn't match
                   {
-                    pt_frob_error(m_parser, m_node, "ERR rep argIndex=%d doesn't match", argIndex);
-                    break;//current arg doesn' match => current signature doesn't match
+                    sb.clear();
+                    pt_cat_error(m_parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_INCOMPATIBLE_TYPE, pt_show_type_enum(arg->type_enum), get_types(signatures, argIndex-1, sb));
+                    break;
                   }
               }
             if(matchEquivalent)
@@ -13534,20 +13559,15 @@ static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
           auto func_sigs = func_signature::get_signatures(fcode);
           assert("ERR no function signature" && func_sigs != NULL);
           if(!func_sigs)
-          {
-            //printf("ERR no function signature for fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
-            pt_frob_error(parser, node, "ERR no function signature found for function %s (fcode=%d) with args: %s", str(fcode), fcode, parser_print_tree_list(parser, arg_list));
-            return node;
-          }
+            {
+              //pt_frob_error(parser, node, "Could not find signatures for function %s()", str(fcode)/*, parser_print_tree_list(parser, arg_list)*/);
+              pt_cat_error(parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_NO_SIGNATURES, str(fcode)/*, parser_print_tree_list(parser, arg_list)*/);
+              return node;
+           }
           string_buffer sb;
-          //const func_signature* func_sig = funcNode.get_signature(*func_sigs, sb);
-          const func_signature* func_sig = funcNode.get_signature(*func_sigs);
+          const func_signature* func_sig = funcNode.get_signature(*func_sigs, sb);
           if(func_sig != NULL)
             {
-              {//debug only
-                  sb.clear();
-                  //printf("DBG matching signature for %s: %s\n", str(fcode), str(*func_sig, sb));
-              }
               funcNode.apply_signature(*func_sig);
               funcNode.set_return_type(*func_sig);
             }
@@ -13555,7 +13575,7 @@ static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
             {
               node->type_enum = PT_TYPE_NA;//to avoid entering here 2nd time
               //arg_type = PT_TYPE_NONE;//unused!?
-              pt_frob_error(parser, node, "No existing function signature matches %s(%s)\n%s", str(fcode), parser_print_tree_list(parser, arg_list), sb.get_buffer());
+              pt_cat_error(parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_NO_SIGNATURE, str(fcode)/*, parser_print_tree_list(parser, arg_list)*/);
             }
         }
     }

@@ -1760,6 +1760,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 CTE '%1$s' ricorsivo deve essere fatto riferimento direttamente nella sua query ricorsiva.
 299 Errore nel CTE '%1$s': la parte non ricorsiva e la parte ricorsiva devono essere collegati con UNION ALL.
 300 La sottoquery non è consentita nella clausola DEFAULT.
+301 Could not find signatures for function %1$s()
+302 Incompatible argument type %1$s; expected types are: %2$s
+303 Number of arguments don't match
+304 Could not find compatible signature for function %1$s()
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Fuori di memoria virtuale: Impossibile allocare %1$d byte.

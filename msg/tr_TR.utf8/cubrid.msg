@@ -1760,6 +1760,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 Özyinelemeli CTE '%1$s', özyinelemeli sorgusunda doğrudan başvurulmalıdır.
 299 CTE '%1$s' hatası: yinelemesiz bölüm ve özyinelemeli bölüm UNION ALL ile bağlanmalıdır.
 300 DEFAULT yan tümcesi içinde alt sorguya izin verilmez.
+301 Could not find signatures for function %1$s()
+302 Incompatible argument type %1$s; expected types are: %2$s
+303 Number of arguments don't match
+304 Could not find compatible signature for function %1$s()
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.
