@@ -119,7 +119,7 @@ namespace cubmonitor
 
   void
   monitor::register_statistics (std::size_t statistics_count, const fetch_function &fetch_global,
-				const std::vector<const char *> &names)
+				const std::vector<std::string> &names)
   {
     if (statistics_count != names.size ())
       {

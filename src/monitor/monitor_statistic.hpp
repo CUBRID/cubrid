@@ -94,6 +94,15 @@ namespace cubmonitor
   // time type
   using time_rep = duration;
 
+  statistic_value statistic_value_cast (const amount_rep &rep);
+  amount_rep amount_rep_cast (statistic_value value);
+
+  statistic_value statistic_value_cast (const floating_rep &rep);
+  floating_rep floating_rep_cast (statistic_value value);
+
+  statistic_value statistic_value_cast (const time_rep &rep);
+  time_rep time_rep_cast (statistic_value value);
+
   //////////////////////////////////////////////////////////////////////////
   // Fetch-able classes for each representation
   //
@@ -115,6 +124,8 @@ namespace cubmonitor
   class fetchable
   {
     public:
+      using rep = Rep;
+
       fetchable (Rep value = Rep ())
 	: m_value (value)
       {
@@ -127,9 +138,16 @@ namespace cubmonitor
 	return 1;
       }
 
-      Rep get_value (void)
+      Rep get_value (fetch_mode mode = FETCH_GLOBAL) const
       {
-	return m_value;
+	if (mode == FETCH_GLOBAL)
+	  {
+	    return m_value;
+	  }
+	else
+	  {
+	    return Rep ();
+	  }
       }
 
     protected:
@@ -140,6 +158,7 @@ namespace cubmonitor
   class fetchable_atomic
   {
     public:
+      using rep = Rep;
 
       fetchable_atomic (Rep value = Rep ())
 	: m_value (value)
@@ -153,9 +172,16 @@ namespace cubmonitor
 	return 1;
       }
 
-      Rep get_value (void)
+      Rep get_value (fetch_mode mode = FETCH_GLOBAL) const
       {
-	return m_value.load ();
+	if (mode == FETCH_GLOBAL)
+	  {
+	    return m_value.load ();
+	  }
+	else
+	  {
+	    return Rep ();
+	  }
       }
       bool compare_exchange (Rep &compare_value, const Rep &replace_value)
       {
@@ -171,7 +197,7 @@ namespace cubmonitor
   class fetchable_atomic<time_rep>
   {
     public:
-      using base_type = time_rep::rep;
+      using rep = time_rep;
 
       fetchable_atomic (time_rep value = time_rep ())
 	: m_value (value.count ())
@@ -185,9 +211,16 @@ namespace cubmonitor
 	return 1;
       }
 
-      time_rep get_value (void)
+      time_rep get_value (fetch_mode mode = FETCH_GLOBAL) const
       {
-	return time_rep (m_value.load ());
+	if (mode == FETCH_GLOBAL)
+	  {
+	    return time_rep (m_value.load ());
+	  }
+	else
+	  {
+	    return time_rep ();
+	  }
       }
       bool compare_exchange (time_rep &compare_value, const time_rep &replace_value)
       {
@@ -367,7 +400,7 @@ namespace cubmonitor
 	// no transaction sheet
 	return;
       }
-    *destination = static_cast<statistic_value> (m_value);
+    *destination = statistic_value_cast (m_value);
   }
 
   template <>
@@ -379,7 +412,7 @@ namespace cubmonitor
 	// no transaction sheet
 	return;
       }
-    *destination = *reinterpret_cast<const statistic_value *> (&m_value);
+    *destination = statistic_value_cast (m_value);
   }
 
   template <>
@@ -392,8 +425,7 @@ namespace cubmonitor
 	return;
       }
     // convert from collect representation - nanoseconds - to monitor representation - microseconds.
-    *destination =
-	    static_cast<statistic_value> (std::chrono::duration_cast<std::chrono::microseconds> (m_value).count ());
+    *destination = statistic_value_cast (m_value);
   }
 
   template <>
@@ -405,7 +437,7 @@ namespace cubmonitor
 	// no transaction sheet
 	return;
       }
-    *destination = static_cast<statistic_value> (m_value);
+    *destination = statistic_value_cast (m_value.load ());
   }
 
   template <>
@@ -417,7 +449,7 @@ namespace cubmonitor
 	// no transaction sheet
 	return;
       }
-    *destination = *reinterpret_cast<const statistic_value *> (&m_value);
+    *destination = statistic_value_cast (m_value.load ());
   }
 
   void
@@ -429,9 +461,7 @@ namespace cubmonitor
 	return;
       }
     // convert from collect representation - nanoseconds - to monitor representation - microseconds.
-    time_rep nanos (m_value.load ());
-    *destination =
-	    static_cast<statistic_value> (std::chrono::duration_cast<std::chrono::microseconds> (nanos).count ());
+    *destination = statistic_value_cast (time_rep (m_value.load ()));
   }
 
   template <typename Rep>

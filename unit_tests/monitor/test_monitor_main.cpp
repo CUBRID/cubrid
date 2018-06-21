@@ -31,6 +31,7 @@ static void test_single_statistics_no_concurrency (void);
 static void test_multithread_accumulation (void);
 static void test_transaction (void);
 static void test_registration (void);
+static void test_collect (void);
 
 int
 main (int, char **)
@@ -39,6 +40,7 @@ main (int, char **)
   test_multithread_accumulation ();
   test_transaction ();
   test_registration ();
+  test_collect ();
 
   std::cout << "test successful" << std::endl;
 }
@@ -392,11 +394,11 @@ test_registration (void)
   test_trancol tran_acc;
 
   // register statistics
-  std::vector<const char *> names;
-  names.push_back ("regular statistic");
+  std::vector<std::string> names;
+  names.emplace_back ("regular statistic");
   my_monitor.register_statistics (acc, names);
   names.clear ();
-  names.push_back ("transaction statistic");
+  names.emplace_back ("transaction statistic");
   my_monitor.register_statistics (tran_acc, names);
 
   // allocate a value buffer
@@ -464,4 +466,44 @@ test_registration (void)
 
   delete [] statsp;
   cubthread::clear_thread_local_entry ();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// test_collect
+//////////////////////////////////////////////////////////////////////////
+
+void
+test_counter_timer_max (void)
+{
+  using namespace cubmonitor;
+
+  counter_timer_max_statistic<> my_stat;
+  monitor my_monitor;
+
+  // register
+  my_stat.register_to_monitor (my_monitor, "mystat");
+
+  // allocate statistics
+  statistic_value *statsp = my_monitor.allocate_statistics_buffer ();
+
+  auto reset_stats = [&]
+  {
+    std::memset (statsp, 0, my_monitor.get_statistics_count () * sizeof (statistic_value));
+  };
+
+  my_stat.time_and_increment (time_rep (2000));
+  my_stat.time_and_increment (time_rep (10000), 2);
+
+  // get statistics
+  my_monitor.fetch_global_statistics (statsp);
+  assert (statsp[0] == 3);    // count
+  assert (statsp[1] == 12);   // total 12 microseconds
+  assert (statsp[2] == 5);    // max 5 microseconds
+  assert (statsp[3] == 4);    // average of 4 microseconds
+}
+
+void
+test_collect (void)
+{
+  test_counter_timer_max ();
 }

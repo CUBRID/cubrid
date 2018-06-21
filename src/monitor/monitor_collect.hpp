@@ -24,8 +24,8 @@
 #if !defined _MONITOR_COLLECT_HPP_
 #define _MONITOR_COLLECT_HPP_
 
+#include "monitor_registration.hpp"
 #include "monitor_statistic.hpp"
-
 #include "monitor_transaction.hpp"
 
 namespace cubmonitor
@@ -46,6 +46,17 @@ namespace cubmonitor
     private:
       time_point m_timept;
   };
+
+  void
+  build_name_vector (std::vector<std::string> &names, const char *basename, const char *prefix);
+
+  template <typename ... Args>
+  void
+  build_name_vector (std::vector<std::string> &names, const char *basename, const char *prefix, Args &&... args)
+  {
+    names.push_back (std::string (prefix) + basename);
+    build_name_vector (names, basename, args...);
+  }
 
   //////////////////////////////////////////////////////////////////////////
   // Multi-statistics
@@ -68,6 +79,8 @@ namespace cubmonitor
 
       inline void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
       inline std::size_t get_statistics_count (void) const;
+
+      time_rep get_time (fetch_mode mode = FETCH_GLOBAL) const;
 
     private:
       timer m_timer;
@@ -94,6 +107,12 @@ namespace cubmonitor
 
       inline std::size_t get_statistics_count (void) const;
       inline void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
+
+      amount_rep get_count (fetch_mode mode = FETCH_GLOBAL) const;
+      time_rep get_time (fetch_mode mode = FETCH_GLOBAL) const;
+      time_rep get_average_time (fetch_mode mode = FETCH_GLOBAL) const;
+
+      void register_to_monitor (monitor &mon, const char *basename) const;
 
     private:
       timer m_timer;
@@ -124,6 +143,13 @@ namespace cubmonitor
 
       inline std::size_t get_statistics_count (void) const;
       inline void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
+
+      amount_rep get_count (fetch_mode mode = FETCH_GLOBAL) const;
+      time_rep get_time (fetch_mode mode = FETCH_GLOBAL) const;
+      time_rep get_average_time (fetch_mode mode = FETCH_GLOBAL) const;
+      time_rep get_max_time (fetch_mode mode = FETCH_GLOBAL) const;
+
+      void register_to_monitor (monitor &mon, const char *basename) const;
 
     private:
       timer m_timer;
@@ -185,6 +211,17 @@ namespace cubmonitor
     m_statistic.fetch (destination, mode);
   }
 
+  template <class T>
+  time_rep
+  timer_statistic<T>::get_time (fetch_mode mode /* = FETCH_GLOBAL */) const
+  {
+    return m_statistic.get_value (mode);
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // building name vector
+  //////////////////////////////////////////////////////////////////////////
+
   //////////////////////////////////////////////////////////////////////////
   // counter_timer_statistic
   //////////////////////////////////////////////////////////////////////////
@@ -234,6 +271,50 @@ namespace cubmonitor
     index += m_time_statistic.get_statistics_count ();
 
     assert (index == get_statistics_count ());
+  }
+
+  template <class A, class T>
+  amount_rep
+  counter_timer_statistic<A, T>::get_count (fetch_mode mode /* = FETCH_GLOBAL */) const
+  {
+    return m_amount_statistic.get_value (mode);
+  }
+
+  template <class A, class T>
+  time_rep
+  counter_timer_statistic<A, T>::get_time (fetch_mode mode /* = FETCH_GLOBAL */) const
+  {
+    return m_time_statistic.get_value (mode);
+  }
+
+  template <class A, class T>
+  time_rep
+  counter_timer_statistic<A, T>::get_average_time (fetch_mode mode /* = FETCH_GLOBAL */) const
+  {
+    return get_time (mode) / get_count (mode);
+  }
+
+  template <class A, class T>
+  void
+  counter_timer_statistic<A, T>::register_to_monitor (monitor &mon, const char *basename) const
+  {
+    // we register counter, timer and average
+
+    const char *count_prefix = "Num_";
+    const char *total_time_prefix = "Total_time_";
+    const char *average_time_prefix = "Avg_time_";
+    std::vector<std::string> names;
+    build_name_vector (names, basename, count_prefix, total_time_prefix, average_time_prefix);
+
+    std::size_t stat_count = get_statistics_count () + 1;
+    assert (stat_count == names.size ());
+
+    auto fetch_func = [&] (statistic_value * destination, fetch_mode mode)
+    {
+      this->fetch (destination, mode);
+      destination[get_statistics_count ()] = statistic_value_cast (this->get_average_time (mode));
+    };
+    mon.register_statistics (stat_count, fetch_func, names);
   }
 
   //////////////////////////////////////////////////////////////////////////
@@ -292,6 +373,58 @@ namespace cubmonitor
     index += m_max_time_statistic.get_statistics_count ();
 
     assert (index == get_statistics_count ());
+  }
+
+  template <class A, class T, class M>
+  amount_rep
+  counter_timer_max_statistic<A, T, M>::get_count (fetch_mode mode /* = FETCH_GLOBAL */) const
+  {
+    return m_amount_statistic.get_value (mode);
+  }
+
+  template <class A, class T, class M>
+  time_rep
+  counter_timer_max_statistic<A, T, M>::get_time (fetch_mode mode /* = FETCH_GLOBAL */) const
+  {
+    return m_total_time_statistic.get_value (mode);
+  }
+
+  template <class A, class T, class M>
+  time_rep
+  counter_timer_max_statistic<A, T, M>::get_max_time (fetch_mode mode /* = FETCH_GLOBAL */) const
+  {
+    return m_max_time_statistic.get_value (mode);
+  }
+
+  template <class A, class T, class M>
+  time_rep
+  counter_timer_max_statistic<A, T, M>::get_average_time (fetch_mode mode /* = FETCH_GLOBAL */) const
+  {
+    return get_time (mode) / get_count (mode);
+  }
+
+  template <class A, class T, class M>
+  void
+  counter_timer_max_statistic<A, T, M>::register_to_monitor (monitor &mon, const char *basename) const
+  {
+    // we register counter, timer, max and average
+
+    const char *count_prefix = "Num_";
+    const char *total_time_prefix = "Total_time_";
+    const char *max_time_prefix = "Max_time_";
+    const char *average_time_prefix = "Avg_time_";
+    std::vector<std::string> names;
+    build_name_vector (names, basename, count_prefix, total_time_prefix, max_time_prefix, average_time_prefix);
+
+    std::size_t stat_count = get_statistics_count () + 1;
+    assert (stat_count == names.size ());
+
+    auto fetch_func = [&] (statistic_value * destination, fetch_mode mode)
+    {
+      this->fetch (destination, mode);
+      destination[get_statistics_count ()] = statistic_value_cast (this->get_average_time (mode));
+    };
+    mon.register_statistics (stat_count, fetch_func, names);
   }
 
 } // namespace cubmonitor

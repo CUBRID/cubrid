@@ -41,7 +41,6 @@
 #if !defined _MONITOR_REGISTRATION_HPP_
 #define _MONITOR_REGISTRATION_HPP_
 
-#include "monitor_collect.hpp"
 #include "monitor_definition.hpp"
 #include "monitor_transaction.hpp"
 
@@ -75,10 +74,10 @@ namespace cubmonitor
 
       // register a statistics by providing fetch function
       void register_statistics (std::size_t statistics_count, const fetch_function &fetch_f,
-				const std::vector<const char *> &names);
+				const std::vector<std::string> &names);
 
       template <class S>
-      void register_statistics (const S &statistics, const std::vector<const char *> &names);
+      void register_statistics (const S &statistics, std::vector<std::string> &names);
 
       // get the total count of registered statistics
       std::size_t get_statistics_count (void) const;
@@ -132,7 +131,7 @@ namespace cubmonitor
 
   template <class S>
   void
-  monitor::register_statistics (const S &statistics, const std::vector<const char *> &names)
+  monitor::register_statistics (const S &statistics, std::vector<std::string> &names)
   {
     fetch_function fetch_f = [&] (statistic_value * destination, fetch_mode mode)
     {

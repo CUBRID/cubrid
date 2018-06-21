@@ -26,6 +26,49 @@
 namespace cubmonitor
 {
   //////////////////////////////////////////////////////////////////////////
+  // statistic_value <-> statistic rep casts
+  //////////////////////////////////////////////////////////////////////////
+
+  statistic_value
+  statistic_value_cast (const amount_rep &rep)
+  {
+    return static_cast<statistic_value> (rep);
+  }
+
+  amount_rep
+  amount_rep_cast (statistic_value value)
+  {
+    return static_cast<amount_rep> (value);
+  }
+
+  statistic_value
+  statistic_value_cast (const floating_rep &rep)
+  {
+    return *reinterpret_cast<const statistic_value *> (&rep);
+  }
+
+  floating_rep
+  floating_rep_cast (statistic_value value)
+  {
+    return *reinterpret_cast<const floating_rep *> (&value);
+  }
+
+  statistic_value
+  statistic_value_cast (const time_rep &rep)
+  {
+    // nanoseconds to microseconds
+    return static_cast<statistic_value> (std::chrono::duration_cast<std::chrono::microseconds> (rep).count ());
+  }
+
+  time_rep
+  time_rep_cast (statistic_value value)
+  {
+    // microseconds to nanoseconds
+    // careful: time_rep_cast (statistic_value_cast (stat)) != stat
+    return std::chrono::duration_cast<time_rep> (std::chrono::microseconds (value));
+  }
+
+  //////////////////////////////////////////////////////////////////////////
   // fully specialized constructors for max/min
   //////////////////////////////////////////////////////////////////////////
 

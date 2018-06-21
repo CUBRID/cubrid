@@ -109,6 +109,8 @@ namespace cubmonitor
       void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
       std::size_t get_statistics_count (void) const;
 
+      typename S::rep get_value (fetch_mode mode = FETCH_GLOBAL) const;
+
       void collect (const typename statistic_type::rep &value);       // collect to global statistic and to transaction
       // sheet (if open)
 
@@ -209,7 +211,36 @@ namespace cubmonitor
 	  }
 
 	// return collected value
-	return m_sheet_stats[sheet].fetch (destination, FETCH_GLOBAL);
+	m_sheet_stats[sheet].fetch (destination, FETCH_GLOBAL);
+      }
+  }
+
+  template <class S>
+  typename S::rep
+  transaction_statistic<S>::get_value (fetch_mode mode /* = FETCH_GLOBAL */) const
+  {
+    if (mode == FETCH_GLOBAL)
+      {
+	return m_global_stat.get_value ();
+      }
+    else
+      {
+	transaction_sheet sheet = transaction_sheet_manager::get_sheet ();
+
+	if (sheet == transaction_sheet_manager::INVALID_TRANSACTION_SHEET)
+	  {
+	    // transaction is not watching
+	    return S::rep ();
+	  }
+
+	if (m_sheet_stats_count <= sheet)
+	  {
+	    // nothing was collected
+	    return S::rep ();
+	  }
+
+	// return collected value
+	return m_sheet_stats[sheet].get_value ();
       }
   }
 
