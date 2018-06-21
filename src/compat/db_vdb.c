@@ -3965,6 +3965,7 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
   PT_NODE *statement;
   int stmt_ndx;
   bool has_name_oid = false;
+  int info_hints;
 
   assert (session != NULL);
   /* check parameters */
@@ -4024,10 +4025,11 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
   switch (statement->node_type)
     {
     case PT_SELECT:
-      /* Do not use the optimization if OIDs included */
-      if (!statement->info.query.oids_included)
+      /* Check whether the optimization can be used. */
+      if (!statement->info.query.oids_included && !statement->info.query.is_view_spec
+	  && !statement->info.query.has_system_class)
 	{
-	  int info_hints = PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_PAGE_INFO | PT_HINT_SELECT_KEY_INFO;
+	  info_hints = PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_PAGE_INFO | PT_HINT_SELECT_KEY_INFO;
 	  if ((statement->info.query.q.select.hint & info_hints) == 0)
 	    {
 	      (void) parser_walk_tree (session->parser, statement, pt_has_name_oid, &has_name_oid, NULL, NULL);
