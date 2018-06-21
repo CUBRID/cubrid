@@ -339,7 +339,7 @@ struct double_write_buffer
   DWB_WAIT_QUEUE wait_queue;	/* The wait queue, used when the DWB structure changed. */
 
   UINT64 volatile position_with_flags;	/* The current position in double write buffer and flags. Flags keep the
-					 * state of each block (started, ended), create DWB status, modify DWB status.                                   
+					 * state of each block (started, ended), create DWB status, modify DWB status.
 					 */
   DWB_SLOTS_HASH *slots_hash;	/* The slots hash. */
   int vdes;			/* The volume file descriptor. */
@@ -775,7 +775,7 @@ dwb_signal_waiting_threads (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex
  *
  * return   : Nothing.
  * wait_queue (in/out): The wait queue.
- * mutex(in): The mutex to protect the queue. 
+ * mutex(in): The mutex to protect the queue.
  */
 STATIC_INLINE void
 dwb_destroy_wait_queue (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex)
@@ -814,8 +814,8 @@ dwb_destroy_wait_queue (DWB_WAIT_QUEUE * wait_queue, pthread_mutex_t * mutex)
  * return   : Error code.
  * p_double_write_buffer_size (in/out) : Double write buffer size.
  * p_num_blocks (in/out): The number of blocks.
- * 
- *  Note: The buffer size must be a multiple of 512 K. The number of blocks must be a power of 2.  
+ *
+ *  Note: The buffer size must be a multiple of 512 K. The number of blocks must be a power of 2.
  */
 STATIC_INLINE void
 dwb_adjust_write_buffer_values (unsigned int *p_double_write_buffer_size, unsigned int *p_num_blocks)
@@ -893,7 +893,7 @@ dwb_adjust_write_buffer_values (unsigned int *p_double_write_buffer_size, unsign
  * thread_p (in): The thread entry.
  * current_position_with_flags(out): The current position with flags.
  *
- *  Note: This function must be called before changing structure of DWB. 
+ *  Note: This function must be called before changing structure of DWB.
  */
 STATIC_INLINE int
 dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * current_position_with_flags)
@@ -984,7 +984,7 @@ dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * current_pos
  *
  * return   : Error code.
  * thread_p (in): The thread entry.
- * current_position_with_flags(in): The current position with flags. 
+ * current_position_with_flags(in): The current position with flags.
  */
 STATIC_INLINE void
 dwb_ends_structure_modification (THREAD_ENTRY * thread_p, UINT64 current_position_with_flags)
@@ -2340,7 +2340,7 @@ dwb_compare_slots (const void *arg1, const void *arg2)
 /*
  * dwb_block_create_ordered_slots () - Create ordered slots from block slots.
  *
- * return   : Error code. 
+ * return   : Error code.
  * block(in): The block.
  * p_dwb_ordered_slots(out): The ordered slots.
  * p_ordered_slots_length(out): The ordered slots array length.
@@ -2381,7 +2381,7 @@ dwb_block_create_ordered_slots (DWB_BLOCK * block, DWB_SLOT ** p_dwb_ordered_slo
  *
  * return   : Error code.
  * thread_p (in): The thread entry.
- * slot(in): The DWB slot. 
+ * slot(in): The DWB slot.
  */
 STATIC_INLINE int
 dwb_slots_hash_delete (THREAD_ENTRY * thread_p, DWB_SLOT * slot)
@@ -2464,7 +2464,7 @@ dwb_compare_vol_fd (const void *v1, const void *v2)
 /*
  * dwb_add_volume_to_block_flush_area () - Add a volume to block flush area.
  *
- * return   : 
+ * return   :
  * thread_p (in): The thread entry.
  * block(in): The block where the flush area reside.
  * vol_fd(in): The volume to add.
@@ -3214,7 +3214,7 @@ dwb_get_next_block_for_flush (THREAD_ENTRY * thread_p, unsigned int *block_no)
 /*
  * dwb_block_has_all_checksums_computed(): Checks whether the block has all checksum computed.
  *
- *   returns: True, if all block checksums computed. 
+ * returns: True, if all block checksums computed.
  * block_no(out): The block number.
  */
 STATIC_INLINE bool
@@ -3591,7 +3591,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 /*
  * dwb_is_created () - Checks whether double write buffer was created.
  *
- * return   : True, if created. 
+ * return   : True, if created.
  */
 bool
 dwb_is_created (void)
@@ -3649,7 +3649,7 @@ end:
  * dwb_recreate () - Recreate double write buffer with new user parameter values.
  *
  * return   : Error code.
- * thread_p (in): The thread entry. 
+ * thread_p (in): The thread entry.
  */
 int
 dwb_recreate (THREAD_ENTRY * thread_p)
@@ -3691,10 +3691,10 @@ end:
 /*
  * dwb_debug_check_dwb () - check sanity of ordered slots
  *
- * return   : Error code 
+ * return   : Error code
  * thread_p (in): The thread entry.
- * p_dwb_ordered_slots(in): 
- * num_dwb_pages(in): 
+ * p_dwb_ordered_slots(in):
+ * num_dwb_pages(in):
  *
  */
 static int
@@ -4198,7 +4198,7 @@ start:
  *
  * return   : Error code.
  * thread_p (in): The thread entry.
- * all_sync (out): True, if everything synchronized. 
+ * all_sync (out): True, if everything synchronized.
  */
 int
 dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync)
