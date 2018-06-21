@@ -2736,28 +2736,33 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
   /* Remove duplicates */
   for (i = 0; i < block->count_wb_pages - 1; i++)
     {
-      assert (p_dwb_ordered_slots[i].io_page->prv.pflag_reserve_1 == '\0');
-      assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_2 == 0);
-      assert (p_dwb_ordered_slots[i].io_page->prv.p_reserve_3 == 0);
+      DWB_SLOT *s1, *s2;
 
-      if (!VPID_ISNULL (&p_dwb_ordered_slots[i].vpid)
-	  && VPID_EQ (&p_dwb_ordered_slots[i].vpid, &p_dwb_ordered_slots[i + 1].vpid))
+      s1 = &p_dwb_ordered_slots[i];
+      s2 = &p_dwb_ordered_slots[i + 1];
+
+      assert (s1->io_page->prv.pflag_reserve_1 == '\0');
+      assert (s1->io_page->prv.p_reserve_2 == 0);
+      assert (s1->io_page->prv.p_reserve_3 == 0);
+
+      if (!VPID_ISNULL (&s1->vpid) && VPID_EQ (&s1->vpid, &s2->vpid))
 	{
 	  /* Next slot contains the same page, but that page is newer than the current one. Invalidate the VPID to
 	   * avoid flushing the page twice. I'm sure that the current slot is not in hash.
 	   */
-	  assert (LSA_LE (&p_dwb_ordered_slots[i].lsa, &p_dwb_ordered_slots[i + 1].lsa));
+	  assert (LSA_LE (&s1->lsa, &s2->lsa));
 
-	  VPID_SET_NULL (&p_dwb_ordered_slots[i].vpid);
-	  assert (p_dwb_ordered_slots[i].position_in_block < DWB_BLOCK_NUM_PAGES);
-	  VPID_SET_NULL (&(block->slots[p_dwb_ordered_slots[i].position_in_block].vpid));
-	  fileio_initialize_res (thread_p, &(p_dwb_ordered_slots[i].io_page->prv));
+	  VPID_SET_NULL (&s1->vpid);
+
+	  assert (s1->position_in_block < DWB_BLOCK_NUM_PAGES);
+	  VPID_SET_NULL (&(block->slots[s1->position_in_block].vpid));
+
+	  fileio_initialize_res (thread_p, &(s1->io_page->prv));
 	}
 
       /* Check for WAL protocol. */
 #if !defined (NDEBUG)
-      if ((p_dwb_ordered_slots[i].io_page->prv.pageid != NULL_PAGEID)
-	  && (logpb_need_wal (&p_dwb_ordered_slots[i].io_page->prv.lsa)))
+      if (s1->io_page->prv.pageid != NULL_PAGEID && logpb_need_wal (&s1->io_page->prv.lsa))
 	{
 	  /* Need WAL. Check whether log buffer pool was destroyed. */
 	  logpb_get_nxio_lsa (&nxio_lsa);
@@ -3954,40 +3959,46 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	   */
 	  for (i = 0; i < rcv_block->count_wb_pages - 1; i++)
 	    {
-	      if (!VPID_ISNULL (&p_dwb_ordered_slots[i].vpid)
-		  && VPID_EQ (&p_dwb_ordered_slots[i].vpid, &p_dwb_ordered_slots[i + 1].vpid))
+	      DWB_SLOT *s1, *s2;
+
+	      s1 = &p_dwb_ordered_slots[i];
+	      s2 = &p_dwb_ordered_slots[i + 1];
+
+	      if (!VPID_ISNULL (&s1->vpid) && VPID_EQ (&s1->vpid, &s2->vpid))
 		{
 		  /* Next slot contains the same page. Search for the oldest version. */
-		  assert (LSA_LE (&p_dwb_ordered_slots[i].lsa, &p_dwb_ordered_slots[i + 1].lsa));
+		  assert (LSA_LE (&s1->lsa, &s2->lsa));
 
 		  dwb_log ("dwb_load_and_recover_pages: Found duplicates in DWB at positions = (%d,%d) %d\n",
-			   p_dwb_ordered_slots[i].position_in_block, p_dwb_ordered_slots[i + 1].position_in_block);
-		  if (LSA_LT (&p_dwb_ordered_slots[i].lsa, &p_dwb_ordered_slots[i + 1].lsa))
+			   s1->position_in_block, s2->position_in_block);
+
+		  if (LSA_LT (&s1->lsa, &s2->lsa))
 		    {
 		      /* Invalidate the oldest page version. */
-		      VPID_SET_NULL (&p_dwb_ordered_slots[i].vpid);
+		      VPID_SET_NULL (&s1->vpid);
 		      dwb_log ("dwb_load_and_recover_pages: Invalidated the page at position = (%d)\n",
-			       p_dwb_ordered_slots[i].position_in_block);
+			       s1->position_in_block);
 		    }
 		  else
 		    {
 		      /* Same LSA. This is the case when page was modified without setting LSA.
 		       * The first appearance in DWB contains the oldest page modification - last flush in DWB!
 		       */
-		      assert (p_dwb_ordered_slots[i].position_in_block != p_dwb_ordered_slots[i + 1].position_in_block);
-		      if (p_dwb_ordered_slots[i].position_in_block < p_dwb_ordered_slots[i + 1].position_in_block)
+		      assert (s1->position_in_block != s2->position_in_block);
+
+		      if (s1->position_in_block < s2->position_in_block)
 			{
-			  /* Page in position i is valid. */
-			  VPID_SET_NULL (&p_dwb_ordered_slots[i + 1].vpid);
+			  /* Page of s1 is valid. */
+			  VPID_SET_NULL (&s2->vpid);
 			  dwb_log ("dwb_load_and_recover_pages: Invalidated the page at position = (%d)\n",
-				   p_dwb_ordered_slots[i + 1].position_in_block);
+				   s2->position_in_block);
 			}
 		      else
 			{
-			  /* Page in position i+1 is valid. */
-			  VPID_SET_NULL (&p_dwb_ordered_slots[i].vpid);
+			  /* Page of s2 is valid. */
+			  VPID_SET_NULL (&s1->vpid);
 			  dwb_log ("dwb_load_and_recover_pages: Invalidated the page at position = (%d)\n",
-				   p_dwb_ordered_slots[i].position_in_block);
+				   s1->position_in_block);
 			}
 		    }
 		}
