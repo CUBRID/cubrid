@@ -22,8 +22,8 @@
  *                                        - it maintains the minimum successful sent position
  */
 
-#ifndef _MASTER_REPLICATION_CHANNEL_MANAGER_HPP
-#define _MASTER_REPLICATION_CHANNEL_MANAGER_HPP
+#ifndef _REPLICATION_MASTER_SENDERS_MANAGER_HPP_
+#define _REPLICATION_MASTER_SENDERS_MANAGER_HPP_
 
 #include "cubstream.hpp"
 #include "thread_manager.hpp"
@@ -99,7 +99,7 @@ namespace cubreplication
 
 #if 0
 	    master_senders_manager::g_minimum_successful_stream_position =
-	      std::numeric_limits <cubstream::stream_position>::max();
+		    std::numeric_limits <cubstream::stream_position>::max();
 
 	    std::lock_guard<std::mutex> guard (master_senders_mutex);
 
@@ -109,7 +109,7 @@ namespace cubreplication
 		    sender->get_last_sent_position ())
 		  {
 		    master_senders_manager::g_minimum_successful_stream_position =
-		      sender->get_last_sent_position ();
+			    sender->get_last_sent_position ();
 		  }
 	      }
 #endif
@@ -128,4 +128,4 @@ namespace cubreplication
 
 } /* namespace cubreplication */
 
-#endif /* _MASTER_REPLICATION_CHANNEL_MANAGER_HPP */
+#endif /* _REPLICATION_MASTER_SENDERS_MANAGER_HPP_ */

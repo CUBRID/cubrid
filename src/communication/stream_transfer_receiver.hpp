@@ -22,8 +22,8 @@
  *                                see stream_transfer_sender.cpp commentary for more details
  */
 
-#ifndef _STREAM_TRANSFER_RECEIVER_HPP
-#define _STREAM_TRANSFER_RECEIVER_HPP
+#ifndef _STREAM_TRANSFER_RECEIVER_HPP_
+#define _STREAM_TRANSFER_RECEIVER_HPP_
 
 #include "communication_channel.hpp"
 #include "cubstream.hpp"
@@ -65,4 +65,4 @@ namespace cubstream
 
 } // namespace cubstream
 
-#endif /* _STREAM_TRANSFER_RECEIVER_HPP */
+#endif /* _STREAM_TRANSFER_RECEIVER_HPP_ */

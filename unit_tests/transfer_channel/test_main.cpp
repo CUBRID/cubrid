@@ -89,7 +89,7 @@ class stream_mock : public cubstream::stream
 
       for (std::size_t i = 0; i < byte_count; i += sizeof (int))
 	{
-	  * ((int *) (ptr + i)) = (int) (first_pos / sizeof (int) + i / sizeof (int));
+	  *((int *) (ptr + i)) = (int) (first_pos / sizeof (int) + i / sizeof (int));
 	}
 
       err = read_action (ptr, byte_count);
@@ -177,8 +177,8 @@ static int init_thread_system ()
   error_code = css_init_conn_list ();
   if (error_code != NO_ERROR)
     {
-    assert (false);
-    return error_code;
+      assert (false);
+      return error_code;
     }
 
   cubthread::initialize (thread_p);

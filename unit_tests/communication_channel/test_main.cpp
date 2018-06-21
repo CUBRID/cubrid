@@ -100,8 +100,9 @@ void master_listening_thread_func (std::vector <cubcomm::channel> &channels)
 class conn_initiator_daemon_task : public cubthread::task_without_context
 {
   public:
-    conn_initiator_daemon_task (int &counter, cubcomm::channel &&chn) : m_counter (counter),
-      m_channel (std::forward <cubcomm::channel> (chn))
+    conn_initiator_daemon_task (int &counter, cubcomm::channel &&chn)
+      : m_counter (counter),
+        m_channel (std::forward <cubcomm::channel> (chn))
     {
     }
 
@@ -146,8 +147,8 @@ class conn_initiator_daemon_task : public cubthread::task_without_context
 class conn_listener_daemon_task : public cubthread::task_without_context
 {
   public:
-    conn_listener_daemon_task (std::vector <cubcomm::channel> &&channels) : m_channels (
-	      std::forward <std::vector <cubcomm::channel>> (channels))
+    conn_listener_daemon_task (std::vector <cubcomm::channel> &&channels)
+      : m_channels (std::forward <std::vector <cubcomm::channel>> (channels))
     {
       assert (m_channels.size () == NUM_OF_INITIATORS);
     }

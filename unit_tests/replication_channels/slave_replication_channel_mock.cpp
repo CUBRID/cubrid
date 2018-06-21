@@ -12,10 +12,8 @@ static cubthread::entry_workpool *workpool = NULL;
 static std::vector <slave_replication_channel_mock *> slaves;
 static std::mutex slave_vector_mutex;
 
-slave_replication_channel_mock::slave_replication_channel_mock (cubcomm::server_channel &&chn) :
-  slave_channel (std::forward <cubcomm::server_channel> (chn),
-		 m_stream,
-		 0)
+slave_replication_channel_mock::slave_replication_channel_mock (cubcomm::server_channel &&chn)
+  : slave_channel (std::forward <cubcomm::server_channel> (chn), m_stream, 0)
 {
   m_stream.init (0);
 }

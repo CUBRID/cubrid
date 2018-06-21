@@ -38,17 +38,18 @@
 
 #include <string>
 
-namespace cubcomm {
+namespace cubcomm
+{
 
-  channel::channel (int max_timeout_in_ms) :
-    m_max_timeout_in_ms (max_timeout_in_ms),
-    m_type (CHANNEL_TYPE::NO_TYPE),
-    m_socket (INVALID_SOCKET)
+  channel::channel (int max_timeout_in_ms)
+    : m_max_timeout_in_ms (max_timeout_in_ms),
+      m_type (CHANNEL_TYPE::NO_TYPE),
+      m_socket (INVALID_SOCKET)
   {
   }
 
-  channel::channel (channel &&comm) : m_max_timeout_in_ms (
-            comm.m_max_timeout_in_ms)
+  channel::channel (channel &&comm)
+    : m_max_timeout_in_ms (comm.m_max_timeout_in_ms)
   {
     m_type = comm.m_type;
     comm.m_type = NO_TYPE;
@@ -103,8 +104,8 @@ namespace cubcomm {
   {
     if (is_connection_alive ())
       {
-        assert (false);
-        return INTERNAL_CSS_ERROR;
+	assert (false);
+	return INTERNAL_CSS_ERROR;
       }
 
     m_type = CHANNEL_TYPE::INITIATOR;
@@ -117,7 +118,7 @@ namespace cubcomm {
   {
     if (is_connection_alive () || IS_INVALID_SOCKET (socket))
       {
-        return INTERNAL_CSS_ERROR;
+	return INTERNAL_CSS_ERROR;
       }
 
     m_type = CHANNEL_TYPE::LISTENER;
@@ -130,9 +131,9 @@ namespace cubcomm {
   {
     if (!IS_INVALID_SOCKET (m_socket))
       {
-        css_shutdown_socket (m_socket);
-        m_socket = INVALID_SOCKET;
-        m_type = NO_TYPE;
+	css_shutdown_socket (m_socket);
+	m_socket = INVALID_SOCKET;
+	m_type = NO_TYPE;
       }
   }
 
@@ -149,7 +150,7 @@ namespace cubcomm {
 
     if (!is_connection_alive ())
       {
-        return -1;
+	return -1;
       }
 
     poll_fd.fd = m_socket;

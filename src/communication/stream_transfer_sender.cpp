@@ -43,7 +43,8 @@ namespace cubstream
   {
     public:
       transfer_sender_task (cubstream::transfer_sender &producer_channel)
-	: this_producer_channel (producer_channel), m_first_loop (true)
+	: this_producer_channel (producer_channel),
+	  m_first_loop (true)
       {
       }
 
@@ -52,24 +53,24 @@ namespace cubstream
 	int rc = NO_ERRORS;
 	stream_position last_reported_ready_pos = this_producer_channel.m_stream.get_last_committed_pos ();
 
-        if (m_first_loop)
-          {
-            std::size_t max_len = sizeof (cubstream::stream_position);
+	if (m_first_loop)
+	  {
+	    std::size_t max_len = sizeof (cubstream::stream_position);
 
-            assert (this_producer_channel.m_channel.is_connection_alive ());
+	    assert (this_producer_channel.m_channel.is_connection_alive ());
 
-            m_first_loop = false;
+	    m_first_loop = false;
 
-            rc = this_producer_channel.m_channel.recv ((char *) &this_producer_channel.m_last_sent_position,
-                                                       max_len);
-            assert (max_len == sizeof (cubstream::stream_position));
+	    rc = this_producer_channel.m_channel.recv ((char *) &this_producer_channel.m_last_sent_position,
+		 max_len);
+	    assert (max_len == sizeof (cubstream::stream_position));
 
-            if (rc != NO_ERRORS)
-              {
-                this_producer_channel.m_channel.close_connection ();
-                return;
-              }
-          }
+	    if (rc != NO_ERRORS)
+	      {
+		this_producer_channel.m_channel.close_connection ();
+		return;
+	      }
+	  }
 
 	while (rc == NO_ERRORS && this_producer_channel.m_last_sent_position < last_reported_ready_pos)
 	  {

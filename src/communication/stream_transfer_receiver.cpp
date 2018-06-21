@@ -37,7 +37,8 @@ namespace cubstream
   {
     public:
       transfer_receiver_task (cubstream::transfer_receiver &consumer_channel)
-	: this_consumer_channel (consumer_channel), m_first_loop (true)
+	: this_consumer_channel (consumer_channel),
+	  m_first_loop (true)
       {
       }
 
@@ -46,16 +47,16 @@ namespace cubstream
 	css_error_code rc = NO_ERRORS;
 	std::size_t max_len = cubcomm::MTU;
 
-        if (m_first_loop)
-          {
-            assert (this_consumer_channel.m_channel.is_connection_alive ());
+	if (m_first_loop)
+	  {
+	    assert (this_consumer_channel.m_channel.is_connection_alive ());
 
-            rc = (css_error_code) this_consumer_channel.m_channel.send ((char *) &this_consumer_channel.m_last_received_position,
-                                                       sizeof (cubstream::stream_position));
-            assert (rc == NO_ERRORS);
+	    rc = (css_error_code) this_consumer_channel.m_channel.send ((char *) &this_consumer_channel.m_last_received_position,
+		 sizeof (cubstream::stream_position));
+	    assert (rc == NO_ERRORS);
 
-            m_first_loop = false;
-          }
+	    m_first_loop = false;
+	  }
 
 	rc = (css_error_code) this_consumer_channel.m_channel.recv (this_consumer_channel.m_buffer, max_len);
 	if (rc != NO_ERRORS)
@@ -87,7 +88,7 @@ namespace cubstream
     m_receiver_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
 			new transfer_receiver_task (*this), "stream_transfer_receiver");
 
-     m_write_action_function = std::bind (&transfer_receiver::write_action,
+    m_write_action_function = std::bind (&transfer_receiver::write_action,
 					 std::ref (*this),
 					 std::placeholders::_1,
 					 std::placeholders::_2,
