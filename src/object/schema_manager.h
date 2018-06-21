@@ -223,7 +223,8 @@ extern MOP sm_att_class (MOP classop, const char *name);
 extern int sm_att_info (MOP classop, const char *name, int *idp, TP_DOMAIN ** domainp, int *sharedp, int class_attr);
 extern int sm_att_constrained (MOP classop, const char *name, SM_ATTRIBUTE_FLAG cons);
 extern bool sm_att_auto_increment (MOP classop, const char *name);
-extern int sm_att_default_value (MOP classop, const char *name, DB_VALUE * value, DB_DEFAULT_EXPR ** default_expr);
+extern int sm_att_default_value (MOP classop, const char *name, DB_VALUE * value, DB_DEFAULT_EXPR ** default_expr,
+				 DB_DEFAULT_EXPR_TYPE ** on_update_expr);
 
 extern int sm_class_check_uniques (MOP classop);
 extern BTID *sm_find_index (MOP classop, char **att_names, int num_atts, bool unique_index_only,

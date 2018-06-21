@@ -645,6 +645,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_THREAD_LOGGING_FLAG "thread_logging_flag"
 
+#define PRM_NAME_LOG_QUERY_LISTS "log_query_lists"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2110,6 +2112,10 @@ static unsigned int prm_connection_logging_flag = 0;
 int PRM_THREAD_LOGGING_FLAG = 0;
 static int prm_thread_logging_flag_default = 0;
 static unsigned int prm_thread_logging_flag_flag = 0;
+
+bool PRM_LOG_QUERY_LISTS = false;
+static bool prm_log_query_lists_default = false;
+static unsigned int prm_log_query_lists_flag = 0;
 
 unsigned int PRM_DWB_SIZE = 2 * 1024 * 1024;	/* 2M */
 static unsigned int prm_dwb_size_flag = 0;
@@ -5389,6 +5395,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_LOG_QUERY_LISTS,
+   PRM_NAME_LOG_QUERY_LISTS,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_log_query_lists_flag,
+   (void *) &prm_log_query_lists_default,
+   (void *) &PRM_LOG_QUERY_LISTS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_DWB_SIZE,
    PRM_NAME_DWB_SIZE,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
@@ -5446,7 +5463,6 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))

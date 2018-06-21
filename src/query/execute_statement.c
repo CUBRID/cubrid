@@ -3998,8 +3998,7 @@ static int extract_bt_idx (const char *str);
 static int make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val);
 
 /*
- * do_update_stats() - Updates the statistics of a list of classes
- *		       or ALL classes
+ * do_update_stats() - Updates the statistics of a list of classes or ALL classes
  *   return: Error code
  *   parser(in): Parser context
  *   statement(in/out): Parse tree of a update statistics statement
@@ -4007,68 +4006,78 @@ static int make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_
 int
 do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  PT_NODE *cls = NULL;
   int error = NO_ERROR;
-  DB_OBJECT *obj;
 
   CHECK_MODIFICATION_ERROR ();
 
   if (statement->info.update_stats.all_classes > 0)
     {
-      if (statement->info.update_stats.with_fullscan)
+      // ALL CLASSES
+      if (!au_is_dba_group_member (Au_user))
 	{
-	  assert (statement->info.update_stats.with_fullscan == 1);
-	  error = sm_update_all_statistics (STATS_WITH_FULLSCAN);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "update statistics on all classes");
+	  return ER_AU_DBA_ONLY;
 	}
-      else
-	{
-	  assert (statement->info.update_stats.with_fullscan == 0);
-	  error = sm_update_all_statistics (STATS_WITH_SAMPLING);
-	}
+
+      error = sm_update_all_statistics (statement->info.update_stats.with_fullscan
+					? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING);
+      return error;
     }
   else if (statement->info.update_stats.all_classes < 0)
     {
-      if (statement->info.update_stats.with_fullscan)
+      // CATALOG CLASSES
+      if (!au_is_dba_group_member (Au_user))
 	{
-	  assert (statement->info.update_stats.with_fullscan == 1);
-	  error = sm_update_all_catalog_statistics (STATS_WITH_FULLSCAN);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "update statistics on catalog classes");
+	  return ER_AU_DBA_ONLY;
 	}
-      else
-	{
-	  assert (statement->info.update_stats.with_fullscan == 0);
-	  error = sm_update_all_catalog_statistics (STATS_WITH_SAMPLING);
-	}
+
+      error = sm_update_all_catalog_statistics (statement->info.update_stats.with_fullscan
+						? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING);
+      return error;
     }
   else
     {
+      // CLASS LISTS
+
+      PT_NODE *cls = NULL;
+      DB_OBJECT *class_mop;
+
+      // fetch classes and check authorization
       for (cls = statement->info.update_stats.class_list; cls != NULL && error == NO_ERROR; cls = cls->next)
 	{
-	  obj = db_find_class (cls->info.name.original);
-	  if (obj)
+	  class_mop = db_find_class (cls->info.name.original);
+	  if (class_mop != NULL)
 	    {
-	      cls->info.name.db_object = obj;
+	      cls->info.name.db_object = class_mop;
 	      pt_check_user_owns_class (parser, cls);
 	    }
 	  else
 	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
+	      ASSERT_ERROR_AND_SET (error);
+	      return error;
 	    }
 
-	  if (statement->info.update_stats.with_fullscan)
+	  error = au_check_authorization (class_mop, AU_ALTER);
+	  if (error != NO_ERROR)
 	    {
-	      assert (statement->info.update_stats.with_fullscan == 1);
-	      error = sm_update_statistics (obj, STATS_WITH_FULLSCAN);
+	      // set an error since only warning was set.
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_ALTER_FAILURE, 0);
+	      return error;
 	    }
-	  else
-	    {
-	      assert (statement->info.update_stats.with_fullscan == 0);
-	      error = sm_update_statistics (obj, STATS_WITH_SAMPLING);
-	    }
-	}			/* for (cls = ...) */
+	}
+
+      // update stats
+      for (cls = statement->info.update_stats.class_list; cls != NULL && error == NO_ERROR; cls = cls->next)
+	{
+	  class_mop = cls->info.name.db_object;
+
+	  error = sm_update_statistics (class_mop, (statement->info.update_stats.with_fullscan
+						    ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
+	}
+
+      return error;
     }
-
-  return error;
 }
 
 /*

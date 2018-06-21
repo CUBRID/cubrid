@@ -36,7 +36,7 @@ namespace cubthread
 namespace cubstream
 {
 
-  class transfer_receiver : public cubstream::write_handler
+  class transfer_receiver
   {
     public:
 
@@ -45,7 +45,7 @@ namespace cubstream
 			 stream_position received_from_position = 0);
       virtual ~transfer_receiver ();
 
-      virtual int write_action (const stream_position pos, char *ptr, const size_t byte_count) override;
+      int write_action (const stream_position pos, char *ptr, const size_t byte_count);
 
       stream_position get_last_received_position ();
 
@@ -58,6 +58,9 @@ namespace cubstream
       stream_position m_last_received_position;
       cubthread::daemon *m_receiver_daemon;
       char m_buffer[MTU];
+
+    protected:
+      cubstream::stream::write_func_t m_write_action_function;
   };
 
 } // namespace cubstream

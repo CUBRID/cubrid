@@ -6779,6 +6779,14 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
     }
 
+  if (p->info.attr_def.on_update != DB_DEFAULT_NONE)
+    {
+      const char *c = db_default_expression_string (p->info.attr_def.on_update);
+      q = pt_append_nulstring (parser, q, " on update ");
+      q = pt_append_nulstring (parser, q, c);
+      q = pt_append_nulstring (parser, q, " ");
+    }
+
   if (p->info.attr_def.auto_increment)
     {
       r1 = pt_print_bytes (parser, p->info.attr_def.auto_increment);
@@ -8485,7 +8493,6 @@ pt_init_data_default (PT_NODE * p)
   p->info.data_default.default_expr_type = DB_DEFAULT_NONE;
   return p;
 }
-
 
 /*
  * pt_print_data_default () -
@@ -14353,7 +14360,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (PT_SELECT_INFO_IS_FLAGED (p, PT_SELECT_INFO_IDX_SCHEMA))
     {
-      q = pt_append_nulstring (parser, q, "show index from  ");
+      q = pt_append_nulstring (parser, q, "show index from ");
       r1 = pt_print_bytes_spec_list (parser, p->info.query.q.select.from);
       q = pt_append_varchar (parser, q, r1);
       return q;
@@ -14365,13 +14372,22 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
       PT_NODE *from = p->info.query.q.select.from;
       if (from->info.spec.derived_table_type == PT_IS_SUBQUERY)
 	{
-	  char s[1000];
+	  char s[64];
 	  PT_NODE *subq = from->info.spec.derived_table;
+
 	  sprintf (s, "show %s columns from ", PT_SELECT_INFO_IS_FLAGED (p, PT_SELECT_INFO_COLS_SCHEMA) ? "" : "full");
 	  q = pt_append_nulstring (parser, q, s);
 
-	  r1 = pt_print_bytes_spec_list (parser, subq->info.query.q.select.from);
-	  q = pt_append_varchar (parser, q, r1);
+	  if (subq != NULL)
+	    {
+	      r1 = pt_print_bytes_spec_list (parser, subq->info.query.q.select.from);
+	      q = pt_append_varchar (parser, q, r1);
+	    }
+	  else
+	    {
+	      // immature parse tree probably due to an error.
+	      q = pt_append_nulstring (parser, q, "unknown");
+	    }
 
 	  where_list = p->info.query.q.select.where;
 	  if (where_list)

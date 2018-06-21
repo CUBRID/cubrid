@@ -105,7 +105,7 @@ namespace cubthread
       static std::size_t get_stats_value_count (void);
       static const char *get_stat_name (std::size_t stat_index);
       void get_stats (cubperf::stat_value *stats_out);
-      bool is_running(void);     // true, if running
+      bool is_running (void);    // true, if running
 
     private:
 
@@ -173,7 +173,8 @@ namespace cubthread
     Context &context = context_manager_arg->create_context ();
 
     // now that we have access to context we can set the callback function on stop
-    daemon_arg->m_func_on_stop = std::bind (&Context::interrupt_execution, std::ref (context));
+    daemon_arg->m_func_on_stop = std::bind (&context_manager<Context>::stop_execution, std::ref (*context_manager_arg),
+					    std::ref (context));
 
     daemon_arg->register_stat_start ();
 

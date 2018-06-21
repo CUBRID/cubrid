@@ -28,7 +28,6 @@
 
 #include "system_parameter.h"
 #include "double_write_buffer.h"
-#include "thread.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"

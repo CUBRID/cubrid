@@ -23,9 +23,12 @@
 
 #ident "$Id$"
 
+#include "server_support.h"
+
 #include "config.h"
 #include "session.h"
 #include "thread_entry_task.hpp"
+#include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
 
@@ -46,7 +49,6 @@
 #include <assert.h>
 
 #include "porting.h"
-#include "thread.h"		// for resource tracker
 #include "memory_alloc.h"
 #include "boot_sr.h"
 #include "connection_defs.h"
@@ -70,14 +72,12 @@
 #endif /* WINDOWS */
 #include "connection_sr.h"
 #include "xserver_interface.h"
-#include "server_support.h"
 #include "utility.h"
 #include "vacuum.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
 #include "dbtype.h"
-
 
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"
@@ -1374,9 +1374,11 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 #endif /* WINDOWS */
 
   // initialize worker pool for server requests
-  const std::size_t MAX_WORKERS = NUM_NON_SYSTEM_TRANS;
-  const std::size_t MAX_TASK_COUNT = 2 * NUM_NON_SYSTEM_TRANS;	// not that it matters...
+  const std::size_t MAX_WORKERS = css_get_max_conn () + 1;	// = css_Num_max_conn in connection_sr.c
+  const std::size_t MAX_TASK_COUNT = 2 * MAX_WORKERS;	// not that it matters...
+  const std::size_t MAX_CONNECTIONS = css_get_max_conn ();
 
+  // create request worker pool
   css_Server_request_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT, NULL,
 										  cubthread::system_core_count (),
 										  false);
@@ -1388,7 +1390,9 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
       goto shutdown;
     }
 
-  css_Connection_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_WORKERS, NULL, 1, false);
+  // create connection worker pool
+  css_Connection_worker_pool =
+    cubthread::get_manager ()->create_worker_pool (MAX_CONNECTIONS, MAX_CONNECTIONS, NULL, 1, false);
   if (css_Connection_worker_pool == NULL)
     {
       assert (false);
@@ -2762,7 +2766,7 @@ css_set_thread_info (THREAD_ENTRY * thread_p, int client_id, int rid, int tran_i
   thread_p->query_entry = NULL;
   thread_p->tran_next_wait = NULL;
 
-  (void) thread_rc_track_clear_all (thread_p);
+  thread_p->end_resource_tracks ();
   thread_clear_recursion_depth (thread_p);
 }
 

@@ -69,7 +69,6 @@ typedef enum
   PRM_ERR_BAD_PARAM = 31
 } SYSPRM_ERR;
 
-
 enum compat_mode
 {
   COMPAT_CUBRID,
@@ -407,6 +406,7 @@ enum param_id
   PRM_ID_CONNECTION_LOGGING,
 
   PRM_ID_THREAD_LOGGING_FLAG,
+  PRM_ID_LOG_QUERY_LISTS,
 
   PRM_ID_DWB_SIZE,
   PRM_ID_DWB_BLOCKS,

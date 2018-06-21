@@ -47,7 +47,6 @@
 #include "schema_manager.h"
 #include "transform.h"
 #include "server_interface.h"
-#include "load_object.h"
 #include "authenticate.h"
 #include "dbi.h"
 #include "network_interface_cl.h"
@@ -99,7 +98,7 @@ static int schema_file_start_line = 1;
 static int index_file_start_line = 1;
 static int compare_Storage_order = 0;
 
-#define LOADDB_LOG_FILENAME "loaddb.log"
+#define LOADDB_LOG_FILENAME_SUFFIX "loaddb.log"
 static FILE *loaddb_log_file;
 
 bool No_oid_hint = false;
@@ -149,10 +148,17 @@ print_log_msg (int verbose, const char *fmt, ...)
       va_end (ap);
     }
 
-  va_start (ap, fmt);
-  vfprintf (loaddb_log_file, fmt, ap);
-  fflush (loaddb_log_file);
-  va_end (ap);
+  if (loaddb_log_file != NULL)
+    {
+      va_start (ap, fmt);
+      vfprintf (loaddb_log_file, fmt, ap);
+      fflush (loaddb_log_file);
+      va_end (ap);
+    }
+  else
+    {
+      assert (false);
+    }
 }
 
 /*
@@ -609,7 +615,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   Verbose = utility_get_option_bool_value (arg_map, LOAD_VERBOSE_S);
   Disable_statistics = utility_get_option_bool_value (arg_map, LOAD_NO_STATISTICS_S);
   Periodic_commit = utility_get_option_int_value (arg_map, LOAD_PERIODIC_COMMIT_S);
-  Verbose_commit = Periodic_commit > 0 ? true : false;
+  Verbose_commit = Periodic_commit > 0;
   No_oid_hint = utility_get_option_bool_value (arg_map, LOAD_NO_OID_S);
   Schema_file = utility_get_option_string_value (arg_map, LOAD_SCHEMA_FILE_S, 0);
   Index_file = utility_get_option_string_value (arg_map, LOAD_INDEX_FILE_S, 0);
@@ -645,6 +651,16 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
+  /* open loaddb log file */
+  sprintf (log_file_name, "%s_%s", Volume, LOADDB_LOG_FILENAME_SUFFIX);
+  loaddb_log_file = fopen (log_file_name, "w+");
+  if (loaddb_log_file == NULL)
+    {
+      PRINT_AND_LOG_ERR_MSG ("Cannot open log file %s\n", log_file_name);
+      status = 2;
+      goto error_return;
+    }
+
   /* login */
   if (User_name != NULL || !dba_mode)
     {
@@ -655,7 +671,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  if (error == ER_AU_INVALID_PASSWORD)
 	    {
 	      /* prompt for password and try again */
-	      error = NO_ERROR;
 	      passwd =
 		getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_PASSWORD_PROMPT));
 	      if (!strlen (passwd))
@@ -676,18 +691,24 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       error = db_restart (arg->command_name, true, Volume);
     }
 
-  /* disable trigger actions to be fired */
-  db_disable_trigger ();
-
-  /* open loaddb log file */
-  sprintf (log_file_name, "%s_loaddb.log", Volume);
-  loaddb_log_file = fopen (log_file_name, "w+");
-  if (loaddb_log_file == NULL)
+  if (error != NO_ERROR)
     {
-      PRINT_AND_LOG_ERR_MSG ("Cannot open log file %s\n", log_file_name);
-      status = 2;
+      if (er_errid () < ER_FAILED)
+	{
+	  // an error was set.
+	  print_log_msg (1, "%s\n", db_error_string (3));
+	  util_log_write_errstr ("%s\n", db_error_string (3));
+	}
+      else
+	{
+	  PRINT_AND_LOG_ERR_MSG ("Cannot restart database %s\n", Volume);
+	}
+      status = 3;
       goto error_return;
     }
+
+  /* disable trigger actions to be fired */
+  db_disable_trigger ();
 
   /* check if schema/index/object files exist */
   ldr_check_file_name_and_line_no ();
@@ -889,13 +910,12 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  errors = 0;
 	}
 
-
       if (errors)
 	{
 	  print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_ERROR_COUNT),
 			 errors);
 	}
-      else if (ldr_init_ret == NO_ERROR && Syntax_check == false)
+      else if (ldr_init_ret == NO_ERROR && !Syntax_check)
 	{
 	  /* now do it for real if there were no errors and we aren't doing a simple syntax check */
 	  ldr_start (Periodic_commit);
@@ -1043,12 +1063,20 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       db_commit_transaction ();
     }
 
+  if (index_file != NULL)
+    {
+      fclose (index_file);
+      index_file = NULL;
+    }
+
   print_log_msg ((int) Verbose, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CLOSING));
   (void) db_shutdown ();
 
   free_ignoreclasslist ();
 
-  return (status);
+  fclose (loaddb_log_file);
+
+  return status;
 
 error_return:
   if (schema_file != NULL)
@@ -1062,6 +1090,11 @@ error_return:
   if (index_file != NULL)
     {
       fclose (index_file);
+    }
+
+  if (loaddb_log_file != NULL)
+    {
+      fclose (loaddb_log_file);
     }
 
   free_ignoreclasslist ();
@@ -1122,7 +1155,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 {
   DB_SESSION *session = NULL;
   DB_QUERY_RESULT *res = NULL;
-  int error = 0;
+  int error = NO_ERROR;
   int stmt_cnt, stmt_id = 0, stmt_type;
   int executed_cnt = 0;
   int parser_start_line_no;

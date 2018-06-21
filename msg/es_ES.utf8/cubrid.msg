@@ -1281,9 +1281,30 @@ $ LOADDB
 1212 Reserved error for JSON.
 1213 Reserved error for JSON.
 1214 Reserved error for JSON.
-1215 Double Write Buffer is disabled.
+1215 No more data to read from stream %1$s at position %2$lld, amount %3$zu.
+1216 Invalid object id %1$d when trying to unpack.
+1217 Reserved error for stream/replication.
+1218 Reserved error for stream/replication.
+1219 Reserved error for stream/replication.
+1220 Reserved error for stream/replication.
+1221 Reserved error for stream/replication.
+1222 Reserved error for stream/replication.
+1223 Reserved error for stream/replication.
+1224 Reserved error for stream/replication.
+1225 Reserved error for stream/replication.
+1226 Reserved error for stream/replication.
+1227 Reserved error for stream/replication.
+1228 Reserved error for stream/replication.
+1229 Reserved error for stream/replication.
+1230 Reserved error for stream/replication.
+1231 Reserved error for stream/replication.
+1232 Reserved error for stream/replication.
+1233 Reserved error for stream/replication.
+1234 Reserved error for stream/replication.
+1235 Reserved error for stream/replication.
+1236 Double Write Buffer is disabled.
 
-1216 Last Error
+1237 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

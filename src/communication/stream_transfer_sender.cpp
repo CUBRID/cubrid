@@ -27,7 +27,7 @@
  * - usage can be found in transfer_channel/test_main.cpp;
  *   on one machine will exist a transfer_sender instance and on the other a transfer_receiver.
  *   the instances are created using consumer/producer streams and connected communication channels.
- *   the stream will be sent automatically until m_last_reported_ready_pos
+ *   the stream will be sent automatically until m_last_committed_pos
  */
 
 #include "stream_transfer_sender.hpp"
@@ -50,7 +50,7 @@ namespace cubstream
       void execute () override
       {
 	int rc = NO_ERRORS;
-	stream_position last_reported_ready_pos = this_producer_channel.m_stream.get_last_reported_ready_pos ();
+	stream_position last_reported_ready_pos = this_producer_channel.m_stream.get_last_committed_pos ();
 
 	assert (this_producer_channel.m_channel.is_connection_alive ());
 
@@ -60,7 +60,7 @@ namespace cubstream
 					       last_reported_ready_pos - this_producer_channel.m_last_sent_position);
 
 	    rc = this_producer_channel.m_stream.read (this_producer_channel.m_last_sent_position, byte_count,
-		 &this_producer_channel);
+		 this_producer_channel.m_read_action_function);
 
 	    if (rc != NO_ERRORS)
 	      {
@@ -83,6 +83,9 @@ namespace cubstream
     m_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (daemon_period,
 		      new transfer_sender_task (*this),
 		      "stream_transfer_sender");
+    m_read_action_function =
+	    std::bind (&transfer_sender::read_action, std::ref (*this), std::placeholders::_1,
+		       std::placeholders::_2);
   }
 
   transfer_sender::~transfer_sender ()
@@ -100,7 +103,7 @@ namespace cubstream
     return m_last_sent_position;
   }
 
-  int transfer_sender::read_action (const stream_position pos, char *ptr, const size_t byte_count)
+  int transfer_sender::read_action (char *ptr, const size_t byte_count)
   {
     int rc = m_channel.send (ptr, byte_count);
 

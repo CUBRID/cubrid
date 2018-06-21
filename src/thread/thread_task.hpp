@@ -57,9 +57,6 @@ namespace cubthread
   //              task_p->retire (); // this will delete task_p
   //            }
   //
-  // NOTE: to use tasks with worker pools & daemons, Context should have interrupt_execution () method defined.
-  //       For long execution tasks, it is recommended to check the interrupt condition regularly.
-  //
   template <typename Context>
   class task
   {
@@ -126,6 +123,11 @@ namespace cubthread
   //
   //          context_mgr.retire_context (context_ref);
   //
+  //    [optional]
+  //    4. if task execution can take a very long time and you need to force stop it, you can use stop_execution:
+  //        4.1. implement context_manager::stop_execution; should notify context to stop.
+  //        4.2. you have to check stop notifications in custom_task::execute
+  //        4.3. call context_mgr.stop_execution (context_ref).
   //
   template <typename Context>
   class context_manager
@@ -139,6 +141,10 @@ namespace cubthread
       virtual context_type &create_context (void) = 0;      // create a new thread context; cannot fail
       virtual void retire_context (context_type &) = 0;     // retire the thread context
       virtual void recycle_context (context_type &)         // recycle context before reuse
+      {
+	// usage and implementation is optional
+      }
+      virtual void stop_execution (context_type &)          // notify context to stop execution
       {
 	// usage and implementation is optional
       }

@@ -19,7 +19,7 @@
 
 #include "test_memory_alloc_helper.hpp"
 
-#include "thread.h"
+#include "thread_entry.hpp"
 
 #include <iostream>
 #include <mutex>
@@ -27,49 +27,47 @@
 namespace test_memalloc
 {
 
-const test_common::string_collection allocator_names ("Private", "Standard", "Malloc");
-const test_common::string_collection &get_allocator_names (void)
-{
-  return allocator_names;
-}
+  const test_common::string_collection allocator_names ("Private", "Standard", "Malloc");
+  const test_common::string_collection &get_allocator_names (void)
+  {
+    return allocator_names;
+  }
 
-/************************************************************************/
-/* custom_thread_entry                                                  */
-/************************************************************************/
+  /************************************************************************/
+  /* custom_thread_entry                                                  */
+  /************************************************************************/
 
-custom_thread_entry::custom_thread_entry ()
-{
-  memset (&m_thread_entry, 0, sizeof (m_thread_entry));
+  custom_thread_entry::custom_thread_entry ()
+  {
+    memset (&m_thread_entry, 0, sizeof (m_thread_entry));
 
-  m_thread_entry.private_heap_id = db_create_private_heap ();
-  thread_rc_track_initialize (&m_thread_entry);
+    m_thread_entry.private_heap_id = db_create_private_heap ();
 
-  start_resource_tracking ();
-}
+    start_resource_tracking ();
+  }
 
-custom_thread_entry::~custom_thread_entry ()
-{
-  assert (m_thread_entry.count_private_allocators == 0);
-  check_resource_leaks ();
+  custom_thread_entry::~custom_thread_entry ()
+  {
+    assert (m_thread_entry.count_private_allocators == 0);
+    check_resource_leaks ();
 
-  db_clear_private_heap (&m_thread_entry, m_thread_entry.private_heap_id);
-  thread_rc_track_finalize (&m_thread_entry);
-}
+    db_clear_private_heap (&m_thread_entry, m_thread_entry.private_heap_id);
+  }
 
-THREAD_ENTRY *custom_thread_entry::get_thread_entry ()
-{
-  return &m_thread_entry;
-}
+  THREAD_ENTRY *custom_thread_entry::get_thread_entry ()
+  {
+    return &m_thread_entry;
+  }
 
-void custom_thread_entry::check_resource_leaks (void)
-{
-  thread_rc_track_exit (&m_thread_entry, m_rc_track_id);
-}
+  void custom_thread_entry::check_resource_leaks (void)
+  {
+    m_thread_entry.pop_resource_tracks ();
+  }
 
-void
-custom_thread_entry::start_resource_tracking (void)
-{
-  m_rc_track_id = thread_rc_track_enter (&m_thread_entry);
-}
+  void
+  custom_thread_entry::start_resource_tracking (void)
+  {
+    m_thread_entry.push_resource_tracks ();
+  }
 
 }  // namespace test_memalloc
