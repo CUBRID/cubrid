@@ -188,6 +188,7 @@ struct lk_res
 };
 
 #if defined(SERVER_MODE)
+extern int lock_demote_class_lock (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock);
 extern void lock_remove_all_inst_locks (THREAD_ENTRY * thread_p, int tran_index, const OID * class_oid, LOCK lock);
 #endif /* SERVER_MODE */
 extern int lock_initialize (void);

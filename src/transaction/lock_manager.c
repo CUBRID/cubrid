@@ -497,7 +497,7 @@ static void lock_unlock_object_by_isolation (THREAD_ENTRY * thread_p, int tran_i
 					     const OID * class_oid, const OID * oid);
 static void lock_unlock_inst_locks_of_class_by_isolation (THREAD_ENTRY * thread_p, int tran_index,
 							  TRAN_ISOLATION isolation, const OID * class_oid);
-static int lock_internal_demote_shared_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr);
+static int lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, LOCK to_be_lock);
 static void lock_demote_all_shared_class_locks (THREAD_ENTRY * thread_p, int tran_index);
 static void lock_unlock_shared_inst_lock (THREAD_ENTRY * thread_p, int tran_index, const OID * inst_oid);
 static void lock_remove_all_class_locks (THREAD_ENTRY * thread_p, int tran_index, LOCK lock);
@@ -4172,102 +4172,112 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 }
 #endif /* SERVER_MODE */
 
-/*
- *  Private Functions Group: demote, unlock and remove locks
- *
- *   - lock_internal_demote_shared_class_lock()
- *   - lock_demote_all_shared_class_locks()
- *   - lock_unlock_shared_inst_lock()
- *   - lock_remove_all_class_locks()
- *   - lock_remove_all_inst_locks()
- */
-
 #if defined(SERVER_MODE)
 /*
- * lock_internal_demote_shared_class_lock - Demote the shared class lock
+ * lock_demote_class_lock - Demote the class lock to to_be_lock
  *
  * return: error code
+ *   oid(in): class oid
+ *   lock(in): lock mode to be set
  *
+ * Note: This function demotes the lock mode of given class lock.
+ *       After the demotion, this function grants the blocked requestors if the blocked lock mode is grantable.
+ *
+ * WARNING: Demoting a write lock in the middle of a transaction may cause recovery issues.
+ *          It should be carefully used for some particular cases.
+ *          Since I don't see any usage of an instance lock and it is very DANGEROUS,
+ *          the current function only supports demotion of a class lock.
+ */
+int
+lock_demote_class_lock (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock)
+{
+  LK_ENTRY *entry_ptr;
+  int tran_index;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, true);
+  if (entry_ptr == NULL)
+    {
+      assert (entry_ptr != NULL);
+      return ER_FAILED;
+    }
+
+  return lock_internal_demote_class_lock (thread_p, entry_ptr, lock);
+}
+
+/*
+ * lock_internal_demote_class_lock - helper function to lock_demote_class_lock
+ *
+ * return: error code
  *   entry_ptr(in):
+ *   to_be_lock(in):
  *
- * Note:This function demotes the lock mode of given class lock
- *     if the lock mode is shared lock. After the demotion, this function
- *     grants the blocked requestors if the blocked lock mode is grantable.
- *
- *     demote shared class lock (S_LOCK => IS_LOCK, SIX_LOCK => IX_LOCK)
  */
 static int
-lock_internal_demote_shared_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
+lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, LOCK to_be_lock)
 {
   LK_RES *res_ptr;		/* lock resource entry pointer */
-  LK_ENTRY *check, *i;		/* lock entry pointer */
+  LK_ENTRY *holder, *h;		/* lock entry pointer */
   LOCK total_mode;
   int rv;
 
   /* The caller is not holding any mutex */
+  assert (entry_ptr != NULL);
 
   res_ptr = entry_ptr->res_head;
+
+  // expects a class lock entry
+  assert (res_ptr->key.type == LOCK_RESOURCE_CLASS);
+
   rv = pthread_mutex_lock (&res_ptr->res_mutex);
 
   /* find the given lock entry in the holder list */
-  for (check = res_ptr->holder; check != NULL; check = check->next)
+  for (holder = res_ptr->holder; holder != NULL; holder = holder->next)
     {
-      if (check == entry_ptr)
+      if (holder == entry_ptr)
 	{
 	  break;
 	}
     }
-  if (check == NULL)
-    {				/* not found */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_NOTFOUND_IN_LOCK_HOLDER_LIST, 5,
-	      LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), entry_ptr->tran_index, res_ptr->key.oid.volid,
-	      res_ptr->key.oid.pageid, res_ptr->key.oid.slotid);
+
+  if (holder == NULL)
+    {
+      /* not found */
+      assert (holder != NULL);
       pthread_mutex_unlock (&res_ptr->res_mutex);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_NOTFOUND_IN_LOCK_HOLDER_LIST, 5,
+	      LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), entry_ptr->tran_index,
+	      OID_AS_ARGS (&res_ptr->key.oid));
       return ER_LK_NOTFOUND_IN_LOCK_HOLDER_LIST;
     }
+
+  // to_be_lock mode should be weaker than the current lock.
+  assert (NULL_LOCK < to_be_lock && to_be_lock != U_LOCK && to_be_lock < holder->granted_mode);
 
 #if defined(LK_DUMP)
   if (lk_Gl.dump_level >= 1)
     {
-      fprintf (stderr,
-	       "LK_DUMP::lk_internal_demote_shared_class_lock()\n"
+      fprintf (stderr, "LK_DUMP::lk_demote_class_lock ()\n"
 	       "  tran(%2d) : oid(%d|%d|%d), class_oid(%d|%d|%d), LOCK(%7s -> %7s)\n", entry_ptr->tran_index,
-	       entry_ptr->res_head->key.oid.volid, entry_ptr->res_head->key.oid.pageid,
-	       entry_ptr->res_head->key.oid.slotid, entry_ptr->res_head->key.class_oid.volid,
-	       entry_ptr->res_head->key.class_oid.pageid, entry_ptr->res_head->key.class_oid.slotid,
-	       LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode),
-	       entry_ptr->granted_mode == S_LOCK ? LOCK_TO_LOCKMODE_STRING (IS_LOCK)
-	       : (entry_ptr->granted_mode == X_LOCK ? LOCK_TO_LOCKMODE_STRING (IX_LOCK)
-		  : LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode)));
+	       OID_AS_ARGS (&entry_ptr->res_head->key.oid), OID_AS_ARGS (&entry_ptr->res_head->key.class_oid),
+	       LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), LOCK_TO_LOCKMODE_STRING (to_be_lock));
     }
 #endif /* LK_DUMP */
 
-  /* demote the shared class lock(granted mode) of the lock entry */
-  switch (check->granted_mode)
-    {
-    case S_LOCK:
-      check->granted_mode = IS_LOCK;
-      break;
-
-    case SIX_LOCK:
-      check->granted_mode = IX_LOCK;
-      break;
-
-    default:
-      pthread_mutex_unlock (&res_ptr->res_mutex);
-      return NO_ERROR;
-    }
+  /* demote the class lock(granted mode) of the lock entry */
+  holder->granted_mode = to_be_lock;
 
   /* change total_holders_mode */
   total_mode = NULL_LOCK;
-  for (i = res_ptr->holder; i != NULL; i = i->next)
+  for (h = res_ptr->holder; h != NULL; h = h->next)
     {
-      assert (i->granted_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
-      total_mode = lock_Conv[i->granted_mode][total_mode];
+      assert (h->granted_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
+      total_mode = lock_Conv[h->granted_mode][total_mode];
       assert (total_mode != NA_LOCK);
 
-      assert (i->blocked_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
-      total_mode = lock_Conv[i->blocked_mode][total_mode];
+      assert (h->blocked_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
+      total_mode = lock_Conv[h->blocked_mode][total_mode];
       assert (total_mode != NA_LOCK);
     }
   res_ptr->total_holders_mode = total_mode;
@@ -4281,6 +4291,15 @@ lock_internal_demote_shared_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entr
   return NO_ERROR;
 }
 #endif /* SERVER_MODE */
+
+/*
+ *  Private Functions Group: demote, unlock and remove locks
+ *
+ *   - lock_demote_all_shared_class_locks()
+ *   - lock_unlock_shared_inst_lock()
+ *   - lock_remove_all_class_locks()
+ *   - lock_remove_all_inst_locks()
+ */
 
 #if defined(SERVER_MODE)
 /*
@@ -4313,7 +4332,7 @@ lock_demote_read_class_lock_for_checksumdb (THREAD_ENTRY * thread_p, int tran_in
 
   if (entry_ptr->granted_mode == S_LOCK)
     {
-      (void) lock_internal_demote_shared_class_lock (thread_p, entry_ptr);
+      (void) lock_internal_demote_class_lock (thread_p, entry_ptr, IS_LOCK);
     }
 }
 #endif /* SERVER_MODE */
@@ -4347,10 +4366,18 @@ lock_demote_all_shared_class_locks (THREAD_ENTRY * thread_p, int tran_index)
       assert (tran_index == curr->tran_index);
 
       next = curr->tran_next;
-      if (curr->granted_mode == S_LOCK || curr->granted_mode == SIX_LOCK)
+
+      if (curr->granted_mode == S_LOCK)
 	{
-	  (void) lock_internal_demote_shared_class_lock (thread_p, curr);
+	  // S -> IS
+	  (void) lock_internal_demote_class_lock (thread_p, curr, IS_LOCK);
 	}
+      else if (curr->granted_mode == SIX_LOCK)
+	{
+	  // SIX -> IX
+	  (void) lock_internal_demote_class_lock (thread_p, curr, IX_LOCK);
+	}
+
       curr = next;
     }
 
@@ -4360,9 +4387,15 @@ lock_demote_all_shared_class_locks (THREAD_ENTRY * thread_p, int tran_index)
     {
       assert (tran_index == curr->tran_index);
 
-      if (curr->granted_mode == S_LOCK || curr->granted_mode == SIX_LOCK)
+      if (curr->granted_mode == S_LOCK)
 	{
-	  (void) lock_internal_demote_shared_class_lock (thread_p, curr);
+	  // S -> IS
+	  (void) lock_internal_demote_class_lock (thread_p, curr, IS_LOCK);
+	}
+      else if (curr->granted_mode == SIX_LOCK)
+	{
+	  // SIX -> IX
+	  (void) lock_internal_demote_class_lock (thread_p, curr, IX_LOCK);
 	}
     }
 }
