@@ -4027,9 +4027,11 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
     case PT_SELECT:
       /* Check whether the optimization can be used. */
       if (!statement->info.query.oids_included && !statement->info.query.is_view_spec
-	  && !statement->info.query.has_system_class)
+	  && !statement->info.query.has_system_class && statement->info.query.into_list == NULL)
 	{
-	  info_hints = PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_PAGE_INFO | PT_HINT_SELECT_KEY_INFO;
+	  info_hints =
+	    PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_PAGE_INFO | PT_HINT_SELECT_KEY_INFO |
+	    PT_HINT_SELECT_BTREE_NODE_INFO;
 	  if ((statement->info.query.q.select.hint & info_hints) == 0)
 	    {
 	      (void) parser_walk_tree (session->parser, statement, pt_has_name_oid, &has_name_oid, NULL, NULL);
