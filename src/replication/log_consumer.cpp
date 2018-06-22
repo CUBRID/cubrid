@@ -47,6 +47,7 @@ namespace cubreplication
 	if (err == NO_ERROR)
 	  {
 	    m_lc->push_entry (se);
+            m_lc->signal_apply_ready ();
 	  }
       };
 
@@ -91,6 +92,19 @@ namespace cubreplication
 	m_repl_stream_entries.push_back (repl_stream_entry);
       }
 
+      bool has_commit (void)
+        {
+          assert (get_entries_cnt () > 0);
+          replication_stream_entry *se = m_repl_stream_entries.back ();
+
+          return se->is_tran_commit ();
+        }
+
+      bool get_entries_cnt (void)
+        {
+          return m_repl_stream_entries.size ();
+        }
+
     private:
       std::vector<replication_stream_entry *> m_repl_stream_entries;
       log_consumer *m_lc;
@@ -108,10 +122,12 @@ namespace cubreplication
       {
 	replication_stream_entry *se = NULL;
 	std::unordered_map <MVCCID, repl_applier_worker_task *> repl_tasks;
+        std::unordered_map <MVCCID, repl_applier_worker_task *> nonexecutable_repl_tasks;
 
 	while (true)
 	  {
 	    int err = m_lc->pop_entry (se);
+
 	    if (err == NO_ERROR)
 	      {
 		se->unpack ();
@@ -121,13 +137,30 @@ namespace cubreplication
 		    /* wait for all started tasks to finish */
 		    m_lc->wait_for_tasks ();
 
-		    /* start aplying with all existing */
-		    for (auto it : repl_tasks)
+		    for (std::unordered_map <MVCCID, repl_applier_worker_task *>::iterator it = repl_tasks.begin ();
+                         it != repl_tasks.end ();
+                         it++)
 		      {
-			m_lc->execute_task (thread_ref, it.second);
+                        /* check last stream entry of task */
+                        repl_applier_worker_task *my_repl_applier_worker_task = it->second;
+                        if (my_repl_applier_worker_task->has_commit ())
+                          {
+			    m_lc->execute_task (thread_ref, it->second);
+                          }
+                        else
+                          {
+                            assert (it->second->get_entries_cnt () > 0);
+                            nonexecutable_repl_tasks.insert (std::make_pair (it->first, it->second));
+                          }
 		      }
-
-		    /* this stream entry is deleted now */
+                    repl_tasks.clear ();
+                    if (nonexecutable_repl_tasks.size () > 0)
+                      {
+                        repl_tasks = nonexecutable_repl_tasks;
+                        nonexecutable_repl_tasks.clear ();
+                      }
+                    
+		    /* deleted the group commit stream entry */
 		    delete se;
 		  }
 		else
@@ -140,11 +173,15 @@ namespace cubreplication
 			/* already a task with same MVCCID, add it to existing task */
 			repl_applier_worker_task *my_repl_applier_worker_task = it->second;
 			my_repl_applier_worker_task->add_repl_stream_entry (se);
+
+                        assert (my_repl_applier_worker_task->get_entries_cnt () > 0);
 		      }
 		    else
 		      {
 			repl_applier_worker_task *my_repl_applier_worker_task = new repl_applier_worker_task (se, m_lc);
 			repl_tasks.insert (std::make_pair (mvccid, my_repl_applier_worker_task));
+
+                        assert (my_repl_applier_worker_task->get_entries_cnt () > 0);
 		      }
 
 		    /* stream entry is deleted by applier task thread */
@@ -152,7 +189,12 @@ namespace cubreplication
 	      }
 	    else
 	      {
-		/* TODO : set error */
+                if (m_lc->is_stopping ())
+                  {
+                    break;
+                  }
+
+                m_lc->wait_apply_ready ();
 	      }
 	  }
       }
@@ -160,8 +202,6 @@ namespace cubreplication
     private:
       log_consumer *m_lc;
   };
-
-
 
   class repl_applier_worker_context_manager : public cubthread::entry_manager
   {
@@ -171,27 +211,29 @@ namespace cubreplication
       }
   };
 
-
-
   log_consumer::~log_consumer ()
   {
     assert (this == global_log_consumer);
 
-    delete m_stream;
     global_log_consumer = NULL;
+
+    set_stop ();
 
     if (m_use_daemons)
       {
+        /* force condition variables wakeup */
+        signal_prepare_ready ();
 
 	cubthread::get_manager ()->destroy_daemon_without_entry (m_prepare_daemon);
 
+        signal_apply_ready ();
 	cubthread::get_manager ()->destroy_daemon (m_apply_daemon);
-
 	cubthread::get_manager ()->destroy_worker_pool (m_applier_workers_pool);
       }
 
-
     assert (m_stream_entries.empty ());
+
+    delete m_stream;
   }
 
   int log_consumer::push_entry (replication_stream_entry *entry)
@@ -205,6 +247,10 @@ namespace cubreplication
   int log_consumer::pop_entry (replication_stream_entry *&entry)
   {
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
+    if (m_stream_entries.empty ())
+      {
+        return ER_FAILED;
+      }
     entry = m_stream_entries.front ();
     m_stream_entries.pop ();
     return NO_ERROR;
@@ -226,6 +272,20 @@ namespace cubreplication
 
     return err;
   }
+
+  int log_consumer::fetch_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count,
+			          size_t &processed_bytes)
+  {
+    if (is_stopping ())
+      {
+        return NO_ERROR;
+      }
+
+    std::unique_lock<std::mutex> local_lock (m_prepare_mutex);
+    m_prepare_ready = false;
+    m_prepare_cv.wait_for (local_lock, std::chrono::milliseconds (1000), [this] { return m_prepare_ready; });
+    return NO_ERROR;
+  };
 
   void log_consumer::start_daemons (void)
   {
@@ -271,15 +331,12 @@ namespace cubreplication
 
     if (use_daemons)
       {
+        new_lc->m_stream->set_fetch_data_handler (new_lc->m_fetch_func);
 	new_lc->start_daemons ();
       }
 
     return new_lc;
   };
 
-
   log_consumer *log_consumer::global_log_consumer = NULL;
-
-
-
 } /* namespace cubreplication */

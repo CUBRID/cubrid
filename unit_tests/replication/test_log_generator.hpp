@@ -25,6 +25,8 @@ namespace test_replication
 
   int test_log_generator1 (void);
 
+  int test_log_generator2 (void);
+
 }
 
 #endif /* _TEST_LOG_GENERATOR_HPP_ */

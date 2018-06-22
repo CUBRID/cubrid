@@ -46,6 +46,7 @@ int main ()
   int global_error = 0;
 
   test_module (global_error, test_replication::test_log_generator1);
+  test_module (global_error, test_replication::test_log_generator2);
   /* add more tests here */
 
   return global_error;

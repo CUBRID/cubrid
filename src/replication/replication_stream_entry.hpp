@@ -107,7 +107,6 @@ namespace cubreplication
 	return m_header.mvccid;
       }
 
-
       void set_commit_flag (bool commit)
       {
 	m_header.commit_flag = commit;
@@ -116,6 +115,11 @@ namespace cubreplication
       bool is_group_commit (void)
       {
 	return m_header.group_commit_flag;
+      }
+
+      bool is_tran_commit (void)
+      {
+	return m_header.commit_flag;
       }
 
       int pack_stream_entry_header ();
