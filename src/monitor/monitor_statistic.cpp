@@ -74,84 +74,84 @@ namespace cubmonitor
 
   template <>
   max_statistic<amount_rep>::max_statistic (void)
-    : fetchable<amount_rep> (std::numeric_limits<amount_rep>::min ())
+    : primitive<amount_rep> (std::numeric_limits<amount_rep>::min ())
   {
     //
   }
 
   template <>
   max_statistic<floating_rep>::max_statistic (void)
-    : fetchable<floating_rep> (std::numeric_limits<floating_rep>::min ())
+    : primitive<floating_rep> (std::numeric_limits<floating_rep>::min ())
   {
     //
   }
 
   template <>
   max_statistic<time_rep>::max_statistic (void)
-    : fetchable<time_rep> (time_rep::min ())
+    : primitive<time_rep> (time_rep::min ())
   {
     //
   }
 
   template <>
   max_atomic_statistic<amount_rep>::max_atomic_statistic (void)
-    : fetchable_atomic<amount_rep> (std::numeric_limits<amount_rep>::min ())
+    : atomic_primitive<amount_rep> (std::numeric_limits<amount_rep>::min ())
   {
     //
   }
 
   template <>
   max_atomic_statistic<floating_rep>::max_atomic_statistic (void)
-    : fetchable_atomic<floating_rep> (std::numeric_limits<floating_rep>::min ())
+    : atomic_primitive<floating_rep> (std::numeric_limits<floating_rep>::min ())
   {
     //
   }
 
   template <>
   max_atomic_statistic<time_rep>::max_atomic_statistic (void)
-    : fetchable_atomic<time_rep> (time_rep::min ())
+    : atomic_primitive<time_rep> (time_rep::min ())
   {
     //
   }
 
   template <>
   min_statistic<amount_rep>::min_statistic (void)
-    : fetchable<amount_rep> (std::numeric_limits<amount_rep>::max ())
+    : primitive<amount_rep> (std::numeric_limits<amount_rep>::max ())
   {
     //
   }
 
   template <>
   min_statistic<floating_rep>::min_statistic (void)
-    : fetchable<floating_rep> (std::numeric_limits<floating_rep>::max ())
+    : primitive<floating_rep> (std::numeric_limits<floating_rep>::max ())
   {
     //
   }
 
   template <>
   min_statistic<time_rep>::min_statistic (void)
-    : fetchable<time_rep> (time_rep::max ())
+    : primitive<time_rep> (time_rep::max ())
   {
     //
   }
 
   template <>
   min_atomic_statistic<amount_rep>::min_atomic_statistic (void)
-    : fetchable_atomic<amount_rep> (std::numeric_limits<amount_rep>::max ())
+    : atomic_primitive<amount_rep> (std::numeric_limits<amount_rep>::max ())
   {
     //
   }
 
   template <>
   min_atomic_statistic<floating_rep>::min_atomic_statistic (void)
-    : fetchable_atomic<floating_rep> (std::numeric_limits<floating_rep>::max ())
+    : atomic_primitive<floating_rep> (std::numeric_limits<floating_rep>::max ())
   {
     //
   }
 
   template <>
   min_atomic_statistic<time_rep>::min_atomic_statistic (void)
-    : fetchable_atomic<time_rep> (time_rep::max ())
+    : atomic_primitive<time_rep> (time_rep::max ())
   {
     //
   }
