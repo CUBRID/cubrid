@@ -2508,28 +2508,28 @@ lock_wakeup_deadlock_victim_aborted (int tran_index)
 static void
 lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 {
-  LK_ENTRY *prev_check;
-  LK_ENTRY *check, *i, *prev;
+  LK_ENTRY *prev_holder;
+  LK_ENTRY *holder, *h, *prev;
   LOCK mode;
   LOCK_COMPATIBILITY compat;
 
   /* The caller is holding a resource mutex */
 
-  prev_check = NULL;
-  check = res_ptr->holder;
-  while (check != NULL && check->blocked_mode != NULL_LOCK)
+  prev_holder = NULL;
+  holder = res_ptr->holder;
+  while (holder != NULL && holder->blocked_mode != NULL_LOCK)
     {
       /* there are some blocked holders */
       mode = NULL_LOCK;
-      for (i = check->next; i != NULL; i = i->next)
+      for (h = holder->next; h != NULL; h = h->next)
 	{
-	  assert (i->granted_mode >= NULL_LOCK && mode >= NULL_LOCK);
-	  mode = lock_Conv[i->granted_mode][mode];
+	  assert (h->granted_mode >= NULL_LOCK && mode >= NULL_LOCK);
+	  mode = lock_Conv[h->granted_mode][mode];
 	  assert (mode != NA_LOCK);
 	}
 
-      assert (check->blocked_mode >= NULL_LOCK);
-      compat = lock_Comp[check->blocked_mode][mode];
+      assert (holder->blocked_mode >= NULL_LOCK);
+      compat = lock_Comp[holder->blocked_mode][mode];
       assert (compat != LOCK_COMPAT_UNKNOWN);
 
       if (compat == LOCK_COMPAT_NO)
@@ -2540,45 +2540,43 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
       /* compatible: grant it */
 
       /* hold the thread entry mutex */
-      thread_lock_entry (check->thrd_entry);
+      thread_lock_entry (holder->thrd_entry);
 
       /* check if the thread is still waiting on a lock */
-      if (LK_IS_LOCKWAIT_THREAD (check->thrd_entry))
+      if (LK_IS_LOCKWAIT_THREAD (holder->thrd_entry))
 	{
 	  /* the thread is still waiting on a lock */
 
 	  /* reposition the lock entry according to UPR */
-	  for (prev = check, i = check->next; i != NULL;)
+	  for (prev = holder, h = holder->next; h != NULL; prev = h, h = h->next)
 	    {
-	      if (i->blocked_mode == NULL_LOCK)
+	      if (h->blocked_mode == NULL_LOCK)
 		{
 		  break;
 		}
-	      prev = i;
-	      i = i->next;
 	    }
-	  if (prev != check)
+	  if (prev != holder)
 	    {			/* reposition it */
 	      /* remove it */
-	      if (prev_check == NULL)
+	      if (prev_holder == NULL)
 		{
-		  res_ptr->holder = check->next;
+		  res_ptr->holder = holder->next;
 		}
 	      else
 		{
-		  prev_check->next = check->next;
+		  prev_holder->next = holder->next;
 		}
 	      /* insert it */
-	      check->next = prev->next;
-	      prev->next = check;
+	      holder->next = prev->next;
+	      prev->next = holder;
 	    }
 
 	  /* change granted_mode and blocked_mode */
-	  check->granted_mode = check->blocked_mode;
-	  check->blocked_mode = NULL_LOCK;
+	  holder->granted_mode = holder->blocked_mode;
+	  holder->blocked_mode = NULL_LOCK;
 
 	  /* reflect the granted lock in the non2pl list */
-	  lock_update_non2pl_list (thread_p, res_ptr, check->tran_index, check->granted_mode);
+	  lock_update_non2pl_list (thread_p, res_ptr, holder->tran_index, holder->granted_mode);
 
 	  /* Record number of acquired locks */
 	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
@@ -2586,31 +2584,31 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	  LK_MSG_LOCK_ACQUIRED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
 	  /* wake up the blocked holder */
-	  lock_resume (check, LOCK_RESUMED);
+	  lock_resume (holder, LOCK_RESUMED);
 	}
       else
 	{
-	  if (check->thrd_entry->lockwait != NULL || check->thrd_entry->lockwait_state == (int) LOCK_SUSPENDED)
+	  if (holder->thrd_entry->lockwait != NULL || holder->thrd_entry->lockwait_state == (int) LOCK_SUSPENDED)
 	    {
 	      /* some strange lock wait state.. */
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, check->thrd_entry->lockwait,
-		      check->thrd_entry->lockwait_state, check->thrd_entry->index, check->thrd_entry->get_posix_id (),
-		      check->thrd_entry->tran_index);
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, holder->thrd_entry->lockwait,
+		      holder->thrd_entry->lockwait_state, holder->thrd_entry->index,
+		      holder->thrd_entry->get_posix_id (), holder->thrd_entry->tran_index);
 	    }
 	  /* The thread is not waiting for a lock, currently. That is, the thread has already been waked up by timeout,
 	   * deadlock victim or interrupt. In this case, we have nothing to do since the thread itself will remove this
 	   * lock entry. */
-	  thread_unlock_entry (check->thrd_entry);
-	  prev_check = check;
+	  thread_unlock_entry (holder->thrd_entry);
+	  prev_holder = holder;
 	}
 
-      if (prev_check == NULL)
+      if (prev_holder == NULL)
 	{
-	  check = res_ptr->holder;
+	  holder = res_ptr->holder;
 	}
       else
 	{
-	  check = prev_check->next;
+	  holder = prev_holder->next;
 	}
     }
 
@@ -2629,8 +2627,8 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 static int
 lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 {
-  LK_ENTRY *prev_check;
-  LK_ENTRY *check, *i;
+  LK_ENTRY *prev_waiter;
+  LK_ENTRY *waiter, *w;
   LOCK mode;
   bool change_total_waiters_mode = false;
   int error_code = NO_ERROR;
@@ -2638,12 +2636,12 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 
   /* The caller is holding a resource mutex */
 
-  prev_check = NULL;
-  check = res_ptr->waiter;
-  while (check != NULL)
+  prev_waiter = NULL;
+  waiter = res_ptr->waiter;
+  while (waiter != NULL)
     {
-      assert (check->blocked_mode >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
-      compat = lock_Comp[check->blocked_mode][res_ptr->total_holders_mode];
+      assert (waiter->blocked_mode >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
+      compat = lock_Comp[waiter->blocked_mode][res_ptr->total_holders_mode];
       assert (compat != LOCK_COMPAT_UNKNOWN);
 
       if (compat == LOCK_COMPAT_NO)
@@ -2653,10 +2651,10 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 
       /* compatible: grant it */
       /* hold the thread entry mutex */
-      thread_lock_entry (check->thrd_entry);
+      thread_lock_entry (waiter->thrd_entry);
 
       /* check if the thread is still waiting for a lock */
-      if (LK_IS_LOCKWAIT_THREAD (check->thrd_entry))
+      if (LK_IS_LOCKWAIT_THREAD (waiter->thrd_entry))
 	{
 	  int owner_tran_index;
 
@@ -2664,33 +2662,33 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	  change_total_waiters_mode = true;
 
 	  /* remove the lock entry from the waiter */
-	  if (prev_check == NULL)
+	  if (prev_waiter == NULL)
 	    {
-	      res_ptr->waiter = check->next;
+	      res_ptr->waiter = waiter->next;
 	    }
 	  else
 	    {
-	      prev_check->next = check->next;
+	      prev_waiter->next = waiter->next;
 	    }
 
 	  /* change granted_mode and blocked_mode of the entry */
-	  check->granted_mode = check->blocked_mode;
-	  check->blocked_mode = NULL_LOCK;
+	  waiter->granted_mode = waiter->blocked_mode;
+	  waiter->blocked_mode = NULL_LOCK;
 
 	  /* position the lock entry in the holder list */
-	  lock_position_holder_entry (res_ptr, check);
+	  lock_position_holder_entry (res_ptr, waiter);
 
 	  /* change total_holders_mode */
-	  assert (check->granted_mode >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
-	  res_ptr->total_holders_mode = lock_Conv[check->granted_mode][res_ptr->total_holders_mode];
+	  assert (waiter->granted_mode >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
+	  res_ptr->total_holders_mode = lock_Conv[waiter->granted_mode][res_ptr->total_holders_mode];
 	  assert (res_ptr->total_holders_mode != NA_LOCK);
 
 	  /* insert the lock entry into transaction hold list. */
-	  owner_tran_index = LOG_FIND_THREAD_TRAN_INDEX (check->thrd_entry);
-	  lock_insert_into_tran_hold_list (check, owner_tran_index);
+	  owner_tran_index = LOG_FIND_THREAD_TRAN_INDEX (waiter->thrd_entry);
+	  lock_insert_into_tran_hold_list (waiter, owner_tran_index);
 
 	  /* reflect the granted lock in the non2pl list */
-	  lock_update_non2pl_list (thread_p, res_ptr, check->tran_index, check->granted_mode);
+	  lock_update_non2pl_list (thread_p, res_ptr, waiter->tran_index, waiter->granted_mode);
 
 	  /* Record number of acquired locks */
 	  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
@@ -2699,42 +2697,42 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 #endif /* LK_TRACE_OBJECT */
 
 	  /* wake up the blocked waiter */
-	  lock_resume (check, LOCK_RESUMED);
+	  lock_resume (waiter, LOCK_RESUMED);
 	}
       else
 	{
-	  if (check->thrd_entry->lockwait != NULL || check->thrd_entry->lockwait_state == (int) LOCK_SUSPENDED)
+	  if (waiter->thrd_entry->lockwait != NULL || waiter->thrd_entry->lockwait_state == (int) LOCK_SUSPENDED)
 	    {
 	      /* some strange lock wait state.. */
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, check->thrd_entry->lockwait,
-		      check->thrd_entry->lockwait_state, check->thrd_entry->index, check->thrd_entry->get_posix_id (),
-		      check->thrd_entry->tran_index);
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_STRANGE_LOCK_WAIT, 5, waiter->thrd_entry->lockwait,
+		      waiter->thrd_entry->lockwait_state, waiter->thrd_entry->index,
+		      waiter->thrd_entry->get_posix_id (), waiter->thrd_entry->tran_index);
 	      error_code = ER_LK_STRANGE_LOCK_WAIT;
 	    }
 	  /* The thread is not waiting on the lock, currently. That is, the thread has already been waken up by lock
 	   * timeout, deadlock victim or interrupt. In this case, we have nothing to do since the thread itself will
 	   * remove this lock entry. */
-	  thread_unlock_entry (check->thrd_entry);
-	  prev_check = check;
+	  thread_unlock_entry (waiter->thrd_entry);
+	  prev_waiter = waiter;
 	}
 
-      if (prev_check == NULL)
+      if (prev_waiter == NULL)
 	{
-	  check = res_ptr->waiter;
+	  waiter = res_ptr->waiter;
 	}
       else
 	{
-	  check = prev_check->next;
+	  waiter = prev_waiter->next;
 	}
     }
 
   if (change_total_waiters_mode == true)
     {
       mode = NULL_LOCK;
-      for (i = res_ptr->waiter; i != NULL; i = i->next)
+      for (w = res_ptr->waiter; w != NULL; w = w->next)
 	{
-	  assert (i->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
-	  mode = lock_Conv[i->blocked_mode][mode];
+	  assert (w->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
+	  mode = lock_Conv[w->blocked_mode][mode];
 	  assert (mode != NA_LOCK);
 	}
       res_ptr->total_waiters_mode = mode;
