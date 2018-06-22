@@ -36,7 +36,8 @@
 #include <winsock2.h>
 #endif
 
-namespace cubcomm {
+namespace cubcomm
+{
 
   /* TODO[arnia] this needs to be calculated a priori */
   const int MTU = 1500;
@@ -72,8 +73,8 @@ namespace cubcomm {
       css_error_code accept (SOCKET socket);
 
       /* this function waits for events such as EPOLLIN, EPOLLOUT,
-      * if (revents & EPOLLIN) != 0 it means that we have an "in" event
-      */
+       * if (revents & EPOLLIN) != 0 it means that we have an "in" event
+       */
       int wait_for (unsigned short int events, unsigned short int &revents);
 
       bool is_connection_alive ();

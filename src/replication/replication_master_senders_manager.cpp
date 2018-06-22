@@ -47,9 +47,10 @@ namespace cubreplication
 	if (is_initialized == false)
 	  {
 	    master_server_stream_senders.clear ();
-	    master_channels_supervisor_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (
-						  std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)),
-						new master_senders_supervisor_task (), "supervisor_daemon");
+	    master_channels_supervisor_daemon = cubthread::get_manager ()->create_daemon (
+		cubthread::looper (std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)),
+		new master_senders_supervisor_task (),
+		"supervisor_daemon");
 	    g_minimum_successful_stream_position = 0;
 	    g_stream = stream;
 	    is_initialized = true;
@@ -76,10 +77,10 @@ namespace cubreplication
 		cubthread::get_manager ()->destroy_daemon (master_channels_supervisor_daemon);
 		master_channels_supervisor_daemon = NULL;
 	      }
-            for (cubstream::transfer_sender *sender : master_server_stream_senders)
-              {
-                delete sender;
-              }
+	    for (cubstream::transfer_sender *sender : master_server_stream_senders)
+	      {
+		delete sender;
+	      }
 	    master_server_stream_senders.clear ();
 	    is_initialized = false;
 	  }
@@ -99,10 +100,10 @@ namespace cubreplication
 
     for (cubstream::transfer_sender *sender : master_server_stream_senders)
       {
-        if (sender->get_last_sent_position () < desired_position)
-          {
-            return false;
-          }
+	if (sender->get_last_sent_position () < desired_position)
+	  {
+	    return false;
+	  }
       }
 
     return true;

@@ -145,8 +145,8 @@ static int run ()
 	      sum += * ((int *) (slave->m_stream.write_buffer + i));
 	    }
 
-	  if (sum == ((slave->m_stream.last_position / sizeof (int)) * ((slave->m_stream.last_position / sizeof (
-			int)) - 1)) / 2)
+	  if (sum == ((slave->m_stream.last_position / sizeof (int))
+		      * ((slave->m_stream.last_position / sizeof (int)) - 1)) / 2)
 	    {
 	      return NO_ERROR;
 	    }

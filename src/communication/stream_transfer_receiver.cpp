@@ -48,20 +48,20 @@ namespace cubstream
 	css_error_code rc = NO_ERRORS;
 	std::size_t max_len = cubcomm::MTU;
 
-        if (m_first_loop)
-          {
+	if (m_first_loop)
+	  {
             UINT64 last_recv_pos = 0;
 
-            assert (this_consumer_channel.m_channel.is_connection_alive ());
+	    assert (this_consumer_channel.m_channel.is_connection_alive ());
             assert (sizeof (stream_position) == sizeof (UINT64));
 
             last_recv_pos = htoni64 (this_consumer_channel.m_last_received_position);
             rc = (css_error_code) this_consumer_channel.m_channel.send ((char *) &last_recv_pos,
                                                                         sizeof (UINT64));
-            assert (rc == NO_ERRORS);
+	    assert (rc == NO_ERRORS);
 
-            m_first_loop = false;
-          }
+	    m_first_loop = false;
+	  }
 
 	rc = (css_error_code) this_consumer_channel.m_channel.recv (this_consumer_channel.m_buffer, max_len);
 	if (rc != NO_ERRORS)
@@ -93,7 +93,7 @@ namespace cubstream
     m_receiver_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
 			new transfer_receiver_task (*this), "stream_transfer_receiver");
 
-     m_write_action_function = std::bind (&transfer_receiver::write_action,
+    m_write_action_function = std::bind (&transfer_receiver::write_action,
 					 std::ref (*this),
 					 std::placeholders::_1,
 					 std::placeholders::_2,

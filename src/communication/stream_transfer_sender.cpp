@@ -53,28 +53,28 @@ namespace cubstream
 	int rc = NO_ERRORS;
 	stream_position last_reported_ready_pos = this_producer_channel.m_stream.get_last_committed_pos ();
 
-        if (m_first_loop)
-          {
+	if (m_first_loop)
+	  {
             UINT64 last_sent_position = 0;
             std::size_t max_len = sizeof (UINT64);
 
-            assert (this_producer_channel.m_channel.is_connection_alive ());
+	    assert (this_producer_channel.m_channel.is_connection_alive ());
             assert (sizeof (stream_position) == sizeof (UINT64));
 
             rc = this_producer_channel.m_channel.recv ((char *) &last_sent_position,
-                                                       max_len);
+		 max_len);
             this_producer_channel.m_last_sent_position = last_sent_position;
 
             assert (max_len == sizeof (UINT64));
 
-            if (rc != NO_ERRORS)
-              {
-                this_producer_channel.m_channel.close_connection ();
-                return;
-              }
+	    if (rc != NO_ERRORS)
+	      {
+		this_producer_channel.m_channel.close_connection ();
+		return;
+	      }
 
             m_first_loop = false;
-          }
+	  }
 
 	while (rc == NO_ERRORS && this_producer_channel.m_last_sent_position < last_reported_ready_pos)
 	  {

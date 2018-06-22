@@ -93,7 +93,8 @@ namespace cub_master_mock
 	      }
 
 	    cubreplication::master_senders_manager::add_stream_sender (
-	      new cubstream::transfer_sender (std::move (listener_chn), cubreplication::master_senders_manager::get_stream ()));
+		    new cubstream::transfer_sender (std::move (listener_chn),
+						    cubreplication::master_senders_manager::get_stream ()));
 	  }
       }
   };
@@ -111,8 +112,9 @@ namespace cub_master_mock
     listen_poll_fd.fd = listen_fd[1];
     listen_poll_fd.events = POLLIN;
 
-    cub_master_daemon = cubthread::get_manager()->create_daemon (cubthread::looper (std::chrono::seconds (0)),
-			new cub_master_daemon_task (), "cub_master_daemon");
+    cub_master_daemon = cubthread::get_manager()->create_daemon (
+				cubthread::looper (std::chrono::seconds (0)), new cub_master_daemon_task (),
+				"cub_master_daemon");
 
     return NO_ERROR;
   }

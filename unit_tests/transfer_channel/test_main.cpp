@@ -116,8 +116,8 @@ static int init_thread_system ()
   error_code = css_init_conn_list ();
   if (error_code != NO_ERROR)
     {
-    assert (false);
-    return error_code;
+      assert (false);
+      return error_code;
     }
 
   cubthread::initialize (thread_p);

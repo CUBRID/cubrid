@@ -168,7 +168,7 @@ typedef struct ha_log_applier_state_table HA_LOG_APPLIER_STATE_TABLE;
 struct ha_log_applier_state_table
 {
   int client_id;
-    HA_LOG_APPLIER_STATE state;
+  HA_LOG_APPLIER_STATE state;
 };
 
 static HA_LOG_APPLIER_STATE_TABLE ha_Log_applier_state[HA_LOG_APPLIER_STATE_TABLE_MAX] = {
@@ -384,8 +384,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_enable_update() \n");
 	  logtb_enable_update (thread_p);
 	}
-      delete
-	g_slave_stream_receiver;
+      delete g_slave_stream_receiver;
       cubreplication::master_senders_manager::reset ();
       cubreplication::master_senders_manager::init (&temporary_stream);
       break;
@@ -454,8 +453,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 
       if (logtb_count_not_allowed_clients_in_maintenance_mode (thread_p) != 0)
 	{
-	  LOG_TDES *
-	    tdes;
+	  LOG_TDES *tdes;
 
 	  /* try to kill transaction. */
 	  TR_TABLE_CS_ENTER (thread_p);
@@ -1078,9 +1076,9 @@ css_process_new_connection_request (void)
   CSS_CONN_ENTRY new_conn;
   char *error_string;
 
-  NET_HEADER header =
-  {
-  0, 0, 0, 0, 0, 0, 0, 0, 0};
+  NET_HEADER header = {
+    0, 0, 0, 0, 0, 0, 0, 0, 0
+  };
 
   new_fd = css_server_accept (css_Server_connection_socket);
 
@@ -2728,8 +2726,10 @@ css_process_new_slave (SOCKET master_fd)
   rc = chn.accept (new_fd);
   assert (rc == NO_ERRORS);
 
-  cubreplication::master_senders_manager::
-    add_stream_sender (new cubstream::transfer_sender (std::move (chn), cubreplication::master_senders_manager::get_stream ()));
+  // *INDENT-OFF*
+  cubreplication::master_senders_manager::add_stream_sender
+    (new cubstream::transfer_sender (std::move (chn), cubreplication::master_senders_manager::get_stream ()));
+  // *INDENT-ON*
 }
 
 const char *
