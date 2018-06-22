@@ -73,12 +73,6 @@ namespace cubreplication
     return NO_ERROR;
   }
 
-  void log_generator::set_ready_to_pack (THREAD_ENTRY *th_entry)
-  {
-    replication_stream_entry *my_stream_entry = get_stream_entry (th_entry);
-    my_stream_entry->set_packable (true);
-  }
-
   replication_stream_entry *log_generator::get_stream_entry (THREAD_ENTRY *th_entry)
   {
     int stream_entry_idx;
@@ -98,9 +92,10 @@ namespace cubreplication
 
   int log_generator::pack_stream_entries (THREAD_ENTRY *th_entry)
   {
-    cubstream::entry<replication_object> *my_stream_entry = get_stream_entry (th_entry);
+    replication_stream_entry *my_stream_entry = get_stream_entry (th_entry);
     my_stream_entry->pack ();
     my_stream_entry->reset ();
+    my_stream_entry->set_commit_flag (false);
 
     return NO_ERROR;
   }

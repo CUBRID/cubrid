@@ -66,9 +66,6 @@ namespace cubreplication
 
       int append_repl_entry (THREAD_ENTRY *th_entry, replication_object *object);
 
-      void set_ready_to_pack (THREAD_ENTRY *th_entry);
-
-
       replication_stream_entry *get_stream_entry (THREAD_ENTRY *th_entry);
 
       int pack_stream_entries (THREAD_ENTRY *th_entry);

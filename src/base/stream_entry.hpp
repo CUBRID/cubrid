@@ -59,9 +59,6 @@ namespace cubstream
   template <typename PO>
   class entry
   {
-    private:
-      bool m_is_packable;
-
     protected:
       std::vector <PO *> m_packable_entries;
 
@@ -202,7 +199,6 @@ namespace cubstream
       {
 	m_stream = stream;
 	m_data_start_position = 0;
-	set_packable (false);
 
 	m_packing_func = std::bind (&entry::packing_func, std::ref (*this),
 				    std::placeholders::_1,
@@ -237,15 +233,9 @@ namespace cubstream
 	int err;
 	static size_t header_size = get_header_size ();
 
-	assert (m_is_packable == true);
-	if (m_packable_entries.size () == 0)
-	  {
-	    return NO_ERROR;
-	  }
-
 	assert (DB_WASTED_ALIGN (header_size, MAX_ALIGNMENT) == 0);
 
-	data_size = get_entries_size ();
+	data_size = (m_packable_entries.size () > 0) ? get_entries_size () : 0;
 	data_size = DB_ALIGN (data_size, MAX_ALIGNMENT);
 	total_stream_entry_size = header_size + data_size;
 
@@ -286,7 +276,6 @@ namespace cubstream
 
       void reset (void)
       {
-	set_packable (false);
 	destroy_objects ();
       };
 
@@ -311,11 +300,6 @@ namespace cubstream
 	m_packable_entries.push_back (entry);
 
 	return NO_ERROR;
-      };
-
-      void set_packable (const bool is_packable)
-      {
-	m_is_packable = is_packable;
       };
 
       PO *get_object_at (int pos)
