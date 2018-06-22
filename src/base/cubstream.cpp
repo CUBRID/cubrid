@@ -26,7 +26,6 @@
 
 #include "cubstream.hpp"
 #include "error_code.h"
-
 #include <algorithm>
 
 namespace cubstream

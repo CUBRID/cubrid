@@ -43,7 +43,8 @@ namespace cubstream
   {
     public:
       transfer_sender_task (cubstream::transfer_sender &producer_channel)
-	: this_producer_channel (producer_channel), m_first_loop (true)
+	: this_producer_channel (producer_channel),
+          m_first_loop (true)
       {
       }
 
@@ -54,21 +55,25 @@ namespace cubstream
 
         if (m_first_loop)
           {
-            std::size_t max_len = sizeof (cubstream::stream_position);
+            UINT64 last_sent_position = 0;
+            std::size_t max_len = sizeof (UINT64);
 
             assert (this_producer_channel.m_channel.is_connection_alive ());
+            assert (sizeof (stream_position) == sizeof (UINT64));
 
-            m_first_loop = false;
-
-            rc = this_producer_channel.m_channel.recv ((char *) &this_producer_channel.m_last_sent_position,
+            rc = this_producer_channel.m_channel.recv ((char *) &last_sent_position,
                                                        max_len);
-            assert (max_len == sizeof (cubstream::stream_position));
+            this_producer_channel.m_last_sent_position = last_sent_position;
+
+            assert (max_len == sizeof (UINT64));
 
             if (rc != NO_ERRORS)
               {
                 this_producer_channel.m_channel.close_connection ();
                 return;
               }
+
+            m_first_loop = false;
           }
 
 	while (rc == NO_ERRORS && this_producer_channel.m_last_sent_position < last_reported_ready_pos)
@@ -79,7 +84,7 @@ namespace cubstream
 	    rc = this_producer_channel.m_stream.read (this_producer_channel.m_last_sent_position, byte_count,
 		 this_producer_channel.m_read_action_function);
 
-	    if (rc != NO_ERRORS)
+	    if (rc != NO_ERROR)
 	      {
 		this_producer_channel.m_channel.close_connection ();
 	      }
@@ -130,9 +135,10 @@ namespace cubstream
     if (rc == NO_ERRORS)
       {
 	m_last_sent_position += byte_count;
+        return NO_ERROR;
       }
 
-    return rc;
+    return ER_FAILED;
   }
 
 } // namespace cubstream

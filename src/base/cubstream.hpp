@@ -27,14 +27,11 @@
 #ifndef _CUBSTREAM_HPP_
 #define _CUBSTREAM_HPP_
 
-#include "connection_defs.h"
-#include "error_code.h"
 #include <atomic>
 #include <cinttypes>
 #include <cstddef>
 #include <string>
 #include <functional>
-#include <assert.h>
 
 namespace cubstream
 {

@@ -11,6 +11,7 @@
 #include "lock_free.h"
 #include "connection_sr.h"
 #include "thread_manager.hpp"
+#include "mock_stream.hpp"
 
 #if !defined (WINDOWS)
 #include "tcp.h"
@@ -34,80 +35,18 @@
 #define MAX_SENT_BYTES 1024 * 1024 * 4 //4 MB
 #define MAX_CYCLES 10
 
-class stream_mock;
-
 static cubthread::entry *thread_p = NULL;
 
 static std::atomic_bool is_listening;
 static cubcomm::channel *producer_communication_channel, *consumer_communication_channel;
 static cubstream::transfer_sender *producer = NULL;
 static cubstream::transfer_receiver *consumer = NULL;
-static stream_mock *stream = NULL;
+static mock_stream *stream = NULL;
 
 static int init ();
 static int finish ();
 static int run ();
 static int init_thread_system ();
-
-class stream_mock : public cubstream::stream
-{
-  public:
-
-    stream_mock ()
-    {
-      write_buffer = (char *) malloc (MAX_SENT_BYTES * sizeof (int));
-      last_position = 0;
-    }
-
-    ~stream_mock()
-    {
-      free (write_buffer);
-    }
-
-    void produce (const size_t amount)
-    {
-      m_last_committed_pos += amount;
-    }
-
-    int write (const size_t byte_count, cubstream::stream::write_func_t &write_action) override
-    {
-      int err;
-
-      err = write_action (last_position, write_buffer, byte_count);
-      if (err == NO_ERRORS)
-	{
-	  last_position += byte_count;
-	}
-      return err;
-    }
-
-    int read (const cubstream::stream_position first_pos, const size_t byte_count,
-	      cubstream::stream::read_func_t &read_action) override
-    {
-      char *ptr = (char *) malloc (byte_count);
-      int err = NO_ERROR;
-
-      for (std::size_t i = 0; i < byte_count; i += sizeof (int))
-	{
-	  * ((int *) (ptr + i)) = (int) (first_pos / sizeof (int) + i / sizeof (int));
-	}
-
-      err = read_action (ptr, byte_count);
-      free (ptr);
-
-      return err;
-    }
-
-    int read_partial (const cubstream::stream_position first_pos, const size_t byte_count, size_t &actual_read_bytes,
-		      read_partial_func_t &read_partial_action) override
-    {
-      assert (false);
-      return NO_ERROR;
-    }
-
-    char *write_buffer;
-    cubstream::stream_position last_position;
-};
 
 void master_listening_thread_func ()
 {
@@ -230,7 +169,7 @@ static int init ()
   assert (producer_communication_channel->is_connection_alive () &&
 	  consumer_communication_channel->is_connection_alive ());
 
-  stream = new stream_mock ();
+  stream = new mock_stream ();
   producer = new cubstream::transfer_sender (std::move (*producer_communication_channel), *stream);
   consumer = new cubstream::transfer_receiver (std::move (*consumer_communication_channel), *stream);
 

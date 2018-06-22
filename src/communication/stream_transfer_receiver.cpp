@@ -24,6 +24,7 @@
 
 #include "stream_transfer_receiver.hpp"
 
+#include "byte_order.h"
 #include "thread_manager.hpp"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
@@ -37,7 +38,8 @@ namespace cubstream
   {
     public:
       transfer_receiver_task (cubstream::transfer_receiver &consumer_channel)
-	: this_consumer_channel (consumer_channel), m_first_loop (true)
+	: this_consumer_channel (consumer_channel),
+          m_first_loop (true)
       {
       }
 
@@ -48,10 +50,14 @@ namespace cubstream
 
         if (m_first_loop)
           {
-            assert (this_consumer_channel.m_channel.is_connection_alive ());
+            UINT64 last_recv_pos = 0;
 
-            rc = (css_error_code) this_consumer_channel.m_channel.send ((char *) &this_consumer_channel.m_last_received_position,
-                                                       sizeof (cubstream::stream_position));
+            assert (this_consumer_channel.m_channel.is_connection_alive ());
+            assert (sizeof (stream_position) == sizeof (UINT64));
+
+            last_recv_pos = htoni64 (this_consumer_channel.m_last_received_position);
+            rc = (css_error_code) this_consumer_channel.m_channel.send ((char *) &last_recv_pos,
+                                                                        sizeof (UINT64));
             assert (rc == NO_ERRORS);
 
             m_first_loop = false;
@@ -65,7 +71,7 @@ namespace cubstream
 	  }
 
 	rc = (css_error_code) this_consumer_channel.m_stream.write (max_len, this_consumer_channel.m_write_action_function);
-	if (rc != NO_ERRORS)
+	if (rc != NO_ERROR)
 	  {
 	    this_consumer_channel.m_channel.close_connection ();
 	    return;
@@ -102,7 +108,7 @@ namespace cubstream
   int transfer_receiver::write_action (const stream_position pos, char *ptr, const size_t byte_count)
   {
     std::size_t recv_bytes = byte_count;
-    int rc = NO_ERRORS;
+    int rc = NO_ERROR;
 
     std::memcpy (ptr + pos, m_buffer, recv_bytes);
     m_last_received_position += recv_bytes;
