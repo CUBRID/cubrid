@@ -321,7 +321,7 @@ namespace test_replication
   int test_log_generator2 (void)
   {
 #define GEN_THREAD_CNT 10
-#define TASKS_CNT 1000
+#define TASKS_CNT 100
 
     int res = 0;
 

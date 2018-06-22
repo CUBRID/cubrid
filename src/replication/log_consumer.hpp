@@ -106,7 +106,11 @@ namespace cubreplication
 
     public:
 
-      log_consumer () : m_use_daemons (false), m_started_tasks (0), m_is_stopped (false)
+      log_consumer () :
+	m_use_daemons (false),
+	m_started_tasks (0),
+	m_is_stopped (false),
+	m_applier_worker_threads_count (100)
       {
 	m_fetch_func = std::bind (&log_consumer::fetch_action, std::ref (*this),
 				  std::placeholders::_1,

@@ -28,6 +28,7 @@
 #include "master_replication_channel.hpp"
 #include "thread_entry.hpp"
 #include "packing_stream.hpp"
+#include "connection_globals.h"
 
 namespace cubreplication
 {
@@ -114,17 +115,18 @@ namespace cubreplication
     new_lg->m_start_append_position = start_position;
 
     /* create stream only for global instance */
-    /* TODO : sys params */
-    new_lg->m_stream = new cubstream::packing_stream (100 * 1024 * 1024, 1000);
+    INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_GENERATOR_BUFFER_SIZE);
+    int num_max_appenders = css_get_max_conn () + 1;
+
+    new_lg->m_stream = new cubstream::packing_stream (buffer_size, num_max_appenders);
     new_lg->m_stream->init (new_lg->m_start_append_position);
 
     /* this is the global instance */
     assert (global_log_generator == NULL);
     global_log_generator = new_lg;
 
-    /* TODO : actual number of transactions */
-    new_lg->m_stream_entries.resize (1000);
-    for (int i = 0; i < 1000; i++)
+    new_lg->m_stream_entries.resize (num_max_appenders);
+    for (int i = 0; i < num_max_appenders; i++)
       {
 	new_lg->m_stream_entries[i] = new replication_stream_entry (new_lg->m_stream);
       }

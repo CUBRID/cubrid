@@ -100,7 +100,7 @@ namespace cubreplication
 	return se->is_tran_commit ();
       }
 
-      bool get_entries_cnt (void)
+      size_t get_entries_cnt (void)
       {
 	return m_repl_stream_entries.size ();
       }
@@ -299,7 +299,6 @@ namespace cubreplication
 
     m_repl_applier_worker_context_manager = new repl_applier_worker_context_manager;
 
-    /* TODO : max tasks */
     m_applier_workers_pool = cubthread::get_manager ()->create_worker_pool (m_applier_worker_threads_count,
 			     m_applier_worker_threads_count, m_repl_applier_worker_context_manager, 1, 1);
 
@@ -321,8 +320,10 @@ namespace cubreplication
 
     new_lc->m_start_position = start_position;
 
-    /* TODO : sys params */
-    new_lc->m_stream = new cubstream::packing_stream (10 * 1024 * 1024, 2);
+    INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_CONSUMER_BUFFER_SIZE);
+
+    /* consumer needs only one stream appender */
+    new_lc->m_stream = new cubstream::packing_stream (buffer_size, 2);
     new_lc->m_stream->init (new_lc->m_start_position);
 
     /* this is the global instance */
