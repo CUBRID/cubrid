@@ -482,14 +482,14 @@ namespace cubmonitor
   void
   accumulator_statistic<Rep>::collect (const Rep &value)
   {
-    set_value (get_value () + value);
+    set_value (primitive<Rep>::get_value () + value);
   }
 
   template <typename Rep>
   void
   accumulator_atomic_statistic<Rep>::collect (const Rep &value)
   {
-    set_value (get_value () + value);
+    set_value (atomic_primitive<Rep>::get_value () + value);
   }
 
   template <typename Rep>
@@ -510,7 +510,7 @@ namespace cubmonitor
   void
   max_statistic<Rep>::collect (const Rep &value)
   {
-    if (value > get_value ())
+    if (value > primitive<Rep>::get_value ())
       {
 	set_value (value);
       }
@@ -528,7 +528,7 @@ namespace cubmonitor
 
     do
       {
-	loaded = get_value ();
+	loaded = atomic_primitive<Rep>::get_value ();
 	if (loaded >= value)
 	  {
 	    // not bigger
@@ -543,7 +543,7 @@ namespace cubmonitor
   void
   min_statistic<Rep>::collect (const Rep &value)
   {
-    if (value < get_value ())
+    if (value < primitive<Rep>::get_value ())
       {
 	set_value (value);
       }
@@ -561,7 +561,7 @@ namespace cubmonitor
 
     do
       {
-	loaded = get_value ();
+	loaded = atomic_primitive<Rep>::get_value ();
 	if (loaded <= value)
 	  {
 	    // not smaller
