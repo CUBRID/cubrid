@@ -81,7 +81,8 @@ std::vector<func_signature> func_signature::double_r_any = {//original code does
 };
 
 std::vector<func_signature> func_signature::ntile = {//why original code cast args to double instead int???
-  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
+  //{PT_TYPE_INTEGER, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_NUMBER}, {}},//argument value will be truuncated at execution
 };
 
 /*cannot define a clear signature because casting depends on actual value
