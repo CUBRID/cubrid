@@ -157,6 +157,7 @@ namespace cubmonitor
 	  }
       }
 
+    protected:
       // set new value
       void set_value (const Rep &value)
       {
@@ -199,11 +200,14 @@ namespace cubmonitor
 	  }
       }
 
+    protected:
       // set new value
       void set_value (const Rep &value)
       {
 	m_value = value;
       }
+
+      inline void fetch_add (const Rep &value);
 
       // atomic compare & exchange
       bool compare_exchange (Rep &compare_value, const Rep &replace_value)
@@ -249,10 +253,16 @@ namespace cubmonitor
 	  }
       }
 
+    protected:
       // set new value
       void set_value (const time_rep &value)
       {
 	m_value = value.count ();
+      }
+
+      void fetch_add (const time_rep &value)
+      {
+	(void) m_value.fetch_add (value.count ());
       }
 
       // atomic compare & exchange
@@ -390,7 +400,7 @@ namespace cubmonitor
 
   // atomic synchronization specializations
   using amount_accumulator_atomic_statistic = accumulator_atomic_statistic<amount_rep>;
-  using floating_accumulator_atomic_statistic = accumulator_atomic_statistic<floating_rep>;
+  //using floating_accumulator_atomic_statistic = accumulator_atomic_statistic<floating_rep>; // requires C++
   using time_accumulator_atomic_statistic = accumulator_atomic_statistic<time_rep>;
 
   using amount_gauge_atomic_statistic = gauge_atomic_statistic<amount_rep>;
@@ -413,40 +423,15 @@ namespace cubmonitor
   // class primitive
   //////////////////////////////////////////////////////////////////////////
 
-  template <>
+  template <typename Rep>
   void
-  primitive<amount_rep>::fetch (statistic_value *destination, fetch_mode mode /* = FETCH_GLOBAL */) const
+  primitive<Rep>::fetch (statistic_value *destination, fetch_mode mode /* = FETCH_GLOBAL */) const
   {
     if (mode == FETCH_TRANSACTION_SHEET)
       {
 	// no transaction sheet
 	return;
       }
-    *destination = statistic_value_cast (m_value);
-  }
-
-  template <>
-  void
-  primitive<floating_rep>::fetch (statistic_value *destination, fetch_mode mode /* = FETCH_GLOBAL */) const
-  {
-    if (mode == FETCH_TRANSACTION_SHEET)
-      {
-	// no transaction sheet
-	return;
-      }
-    *destination = statistic_value_cast (m_value);
-  }
-
-  template <>
-  void
-  primitive<time_rep>::fetch (statistic_value *destination, fetch_mode mode /* = FETCH_GLOBAL */) const
-  {
-    if (mode == FETCH_TRANSACTION_SHEET)
-      {
-	// no transaction sheet
-	return;
-      }
-    // convert from collect representation - nanoseconds - to monitor representation - microseconds.
     *destination = statistic_value_cast (m_value);
   }
 
@@ -460,6 +445,26 @@ namespace cubmonitor
 	return;
       }
     *destination = statistic_value_cast (get_value ());
+  }
+
+  template <>
+  void
+  atomic_primitive<floating_rep>::fetch_add (const floating_rep &value)
+  {
+    // fetch_add does not work for floating_rep
+    floating_rep crt_value;
+    do
+      {
+	crt_value = m_value;
+      }
+    while (!compare_exchange (crt_value, crt_value + value));
+  }
+
+  template <typename Rep>
+  void
+  atomic_primitive<Rep>::fetch_add (const Rep &value)
+  {
+    m_value.fetch_add (value);
   }
 
   void

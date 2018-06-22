@@ -34,8 +34,7 @@ namespace cubmonitor
   //////////////////////////////////////////////////////////////////////////
 
   monitor::registration::registration (void)
-    : m_offset (0)
-    , m_statistics_count (0)
+    : m_statistics_count (0)
     , m_fetch_func ()
   {
     //
@@ -110,7 +109,6 @@ namespace cubmonitor
     m_registrations.emplace_back ();
     registration &last = m_registrations.back ();
 
-    last.m_offset = m_total_statistics_count;
     last.m_statistics_count = count;
     m_total_statistics_count += count;
 

@@ -56,7 +56,8 @@ namespace cubmonitor
   //    monitor can register single or group of statistics by saving meta-information for the group and its statistics.
   //    info per group (registration):
   //
-  //      1.  fetch global statistics [and fetch transaction sheet statistics]
+  //      1. function to fetch statistics
+  //      2. statistics count
   //
   //    info per statistic:
   //
@@ -89,17 +90,15 @@ namespace cubmonitor
       void fetch_global_statistics (statistic_value *destination) const;
       // fetch current transaction statistics to buffer
       void fetch_transaction_statistics (statistic_value *destination) const;
-
-      // todo - add multi-statistics
+      // fetch complete set of statistics based on mode - global or transaction sheet
+      void fetch_statistics (statistic_value *destination, fetch_mode mode) const;
 
     private:
 
       // internal structure to hold information on registered statistics
       struct registration
       {
-	std::size_t m_offset;
 	std::size_t m_statistics_count;
-
 	fetch_function m_fetch_func;
 
 	registration (void);
@@ -111,9 +110,6 @@ namespace cubmonitor
       void add_registration (std::size_t count, const fetch_function &fetch_f);
       // debug function to verify the number of statistics match the number of names
       void check_name_count (void) const;
-
-      // fetch complete set of statistics based on mode - global or transaction sheet
-      void fetch_statistics (statistic_value *destination, fetch_mode mode) const;
 
       // total number of statistics
       std::size_t m_total_statistics_count;
