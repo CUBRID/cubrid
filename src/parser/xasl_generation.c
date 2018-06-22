@@ -24033,6 +24033,23 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
       goto cleanup;
     }
 
+  /* loop through classes and attribs to update the assigns */
+  for (p = from; p; p = p->next)
+    {
+      PT_NODE *default_expr_attrs = NULL;
+      PT_NODE *cl_name_node = p->info.spec.flat_entity_list;
+      DB_OBJECT *class_obj = cl_name_node->info.name.db_object;
+      /* make attrs be the attrs of the assigned */
+      error =
+	check_for_on_update_expr (parser, assigns, &default_expr_attrs, class_obj, cl_name_node->info.name.spec_id);
+      if (error != NO_ERROR)
+	{
+	  return NULL;
+	}
+
+      parser_append_node (default_expr_attrs, assigns);
+    }
+
   /* make a copy of assignment list to be able to iterate later */
   copy_assigns = parser_copy_tree_list (parser, info->update.assignment);
 
