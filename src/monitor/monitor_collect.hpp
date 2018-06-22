@@ -47,6 +47,13 @@ namespace cubmonitor
       time_point m_timept;
   };
 
+
+  //////////////////////////////////////////////////////////////////////////
+  // name array builder
+  //
+  // populate on basename and variadic list of prefixes.
+  //////////////////////////////////////////////////////////////////////////
+
   void
   build_name_vector (std::vector<std::string> &names, const char *basename, const char *prefix);
 
@@ -66,25 +73,29 @@ namespace cubmonitor
 
   //////////////////////////////////////////////////////////////////////////
   // Timer statistics - one statistic based on time_rep
+  //
+  // T is template for time_rep based accumulator statistic
+  //
   //////////////////////////////////////////////////////////////////////////
-
   template <typename T = time_accumulator_statistic>
   class timer_statistic
   {
     public:
       timer_statistic (void);
 
-      inline void time (const time_rep &d);
-      inline void time (void);
+      inline void time (const time_rep &d);     // add duration to timer
+      inline void time (void);                  // add duration since last time () call to timer
 
+      // fetching interface
       inline void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
       inline std::size_t get_statistics_count (void) const;
 
+      // get time
       time_rep get_time (fetch_mode mode = FETCH_GLOBAL) const;
 
     private:
-      timer m_timer;
-      T m_statistic;
+      timer m_timer;          // internal timer
+      T m_statistic;          // time statistic
   };
   // explicit instantiations as time_accumulator[_atomic]_statistic with or without transaction sheets
   template class timer_statistic<time_accumulator_statistic>;
@@ -94,30 +105,37 @@ namespace cubmonitor
 
   //////////////////////////////////////////////////////////////////////////
   // Counter/timer statistic - two statistics that count and time events
+  //
+  // A is template for amount_rep based accumulator statistic
+  // T is template for time_rep based accumulator statistic
+  //
   //////////////////////////////////////////////////////////////////////////
-
   template <class A = amount_accumulator_statistic, class T = time_accumulator_statistic>
   class counter_timer_statistic
   {
     public:
       counter_timer_statistic (void);
 
-      inline void time_and_increment (const time_rep &d, const amount_rep &a = 1);
-      inline void time_and_increment (const amount_rep &a = 1);
+      inline void time_and_increment (const time_rep &d, const amount_rep &a = 1);    // add time and amount
+      inline void time_and_increment (const amount_rep &a = 1);                       // add internal time and amount
 
+      // fetch interface
       inline std::size_t get_statistics_count (void) const;
       inline void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
 
+      // getters
       amount_rep get_count (fetch_mode mode = FETCH_GLOBAL) const;
       time_rep get_time (fetch_mode mode = FETCH_GLOBAL) const;
       time_rep get_average_time (fetch_mode mode = FETCH_GLOBAL) const;
 
+      // register statistic to monitor
+      // three statistics are registers: counter, total time and average time (total / count)
       void register_to_monitor (monitor &mon, const char *basename) const;
 
     private:
-      timer m_timer;
-      A m_amount_statistic;
-      T m_time_statistic;
+      timer m_timer;                      // internal timer
+      A m_amount_statistic;               // amount accumulator
+      T m_time_statistic;                 // time accumulator
   };
   // explicit instantiations of counter_timer_statistic with atomic/non-atomic, with/without transactions
   template class counter_timer_statistic<amount_accumulator_statistic, time_accumulator_statistic>;
@@ -130,25 +148,32 @@ namespace cubmonitor
 
   //////////////////////////////////////////////////////////////////////////
   // Counter/timer/max statistic - three statistics that count, time and save events longest duration
+  //
+  // A is template for amount_rep based accumulator statistic
+  // T is template for time_rep based accumulator statistic
+  // M is template for time_rep based max statistic
   //////////////////////////////////////////////////////////////////////////
   template <class A = amount_accumulator_statistic, class T = time_accumulator_statistic, class M = time_max_statistic>
   class counter_timer_max_statistic
   {
     public:
-
       counter_timer_max_statistic (void);
 
-      inline void time_and_increment (const time_rep &d, const amount_rep &a = 1);
-      inline void time_and_increment (const amount_rep &a = 1);
+      inline void time_and_increment (const time_rep &d, const amount_rep &a = 1);    // add time and amount
+      inline void time_and_increment (const amount_rep &a = 1);                       // add internal time and amount
 
+      // fetch interface
       inline std::size_t get_statistics_count (void) const;
       inline void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
 
+      // getters
       amount_rep get_count (fetch_mode mode = FETCH_GLOBAL) const;
       time_rep get_time (fetch_mode mode = FETCH_GLOBAL) const;
       time_rep get_average_time (fetch_mode mode = FETCH_GLOBAL) const;
       time_rep get_max_time (fetch_mode mode = FETCH_GLOBAL) const;
 
+      // register statistic to monitor
+      // three statistics are registers: counter, total time, max per unit time and average time (total / count)
       void register_to_monitor (monitor &mon, const char *basename) const;
 
     private:
@@ -194,7 +219,7 @@ namespace cubmonitor
   void
   timer_statistic<T>::time (void)
   {
-    m_statistic.collect (m_timer.time ());
+    m_statistic.collect (m_timer.time ());    // use internal timer
   }
 
   template <class T>
@@ -217,10 +242,6 @@ namespace cubmonitor
   {
     return m_statistic.get_value (mode);
   }
-
-  //////////////////////////////////////////////////////////////////////////
-  // building name vector
-  //////////////////////////////////////////////////////////////////////////
 
   //////////////////////////////////////////////////////////////////////////
   // counter_timer_statistic
@@ -247,8 +268,7 @@ namespace cubmonitor
   void
   counter_timer_statistic<A, T>::time_and_increment (const amount_rep &a /* = 1 */)
   {
-    m_amount_statistic.collect (a);
-    m_time_statistic.collect (m_timer.time ());
+    time_and_increment (m_timer.time (), a);      // use internal timer
   }
 
   template <class A, class T>
