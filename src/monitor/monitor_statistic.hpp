@@ -400,7 +400,7 @@ namespace cubmonitor
 
   // atomic synchronization specializations
   using amount_accumulator_atomic_statistic = accumulator_atomic_statistic<amount_rep>;
-  //using floating_accumulator_atomic_statistic = accumulator_atomic_statistic<floating_rep>; // requires C++
+  using floating_accumulator_atomic_statistic = accumulator_atomic_statistic<floating_rep>;
   using time_accumulator_atomic_statistic = accumulator_atomic_statistic<time_rep>;
 
   using amount_gauge_atomic_statistic = gauge_atomic_statistic<amount_rep>;
