@@ -44,7 +44,7 @@ namespace cubstream
     public:
       transfer_sender_task (cubstream::transfer_sender &producer_channel)
 	: this_producer_channel (producer_channel),
-          m_first_loop (true)
+	  m_first_loop (true)
       {
       }
 
@@ -55,17 +55,17 @@ namespace cubstream
 
 	if (m_first_loop)
 	  {
-            UINT64 last_sent_position = 0;
-            std::size_t max_len = sizeof (UINT64);
+	    UINT64 last_sent_position = 0;
+	    std::size_t max_len = sizeof (UINT64);
 
 	    assert (this_producer_channel.m_channel.is_connection_alive ());
-            assert (sizeof (stream_position) == sizeof (UINT64));
+	    assert (sizeof (stream_position) == sizeof (UINT64));
 
-            rc = this_producer_channel.m_channel.recv ((char *) &last_sent_position,
+	    rc = this_producer_channel.m_channel.recv ((char *) &last_sent_position,
 		 max_len);
-            this_producer_channel.m_last_sent_position = last_sent_position;
+	    this_producer_channel.m_last_sent_position = last_sent_position;
 
-            assert (max_len == sizeof (UINT64));
+	    assert (max_len == sizeof (UINT64));
 
 	    if (rc != NO_ERRORS)
 	      {
@@ -73,7 +73,7 @@ namespace cubstream
 		return;
 	      }
 
-            m_first_loop = false;
+	    m_first_loop = false;
 	  }
 
 	while (rc == NO_ERRORS && this_producer_channel.m_last_sent_position < last_reported_ready_pos)
@@ -108,8 +108,8 @@ namespace cubstream
 		      "stream_transfer_sender");
 
     m_read_action_function =
-	    std::bind (&transfer_sender::read_action, std::ref (*this), std::placeholders::_1,
-		       std::placeholders::_2);
+      std::bind (&transfer_sender::read_action, std::ref (*this), std::placeholders::_1,
+		 std::placeholders::_2);
   }
 
   transfer_sender::~transfer_sender ()
@@ -135,7 +135,7 @@ namespace cubstream
     if (rc == NO_ERRORS)
       {
 	m_last_sent_position += byte_count;
-        return NO_ERROR;
+	return NO_ERROR;
       }
 
     return ER_FAILED;

@@ -39,7 +39,7 @@ namespace cubstream
     public:
       transfer_receiver_task (cubstream::transfer_receiver &consumer_channel)
 	: this_consumer_channel (consumer_channel),
-          m_first_loop (true)
+	  m_first_loop (true)
       {
       }
 
@@ -50,14 +50,14 @@ namespace cubstream
 
 	if (m_first_loop)
 	  {
-            UINT64 last_recv_pos = 0;
+	    UINT64 last_recv_pos = 0;
 
 	    assert (this_consumer_channel.m_channel.is_connection_alive ());
-            assert (sizeof (stream_position) == sizeof (UINT64));
+	    assert (sizeof (stream_position) == sizeof (UINT64));
 
-            last_recv_pos = htoni64 (this_consumer_channel.m_last_received_position);
-            rc = (css_error_code) this_consumer_channel.m_channel.send ((char *) &last_recv_pos,
-                                                                        sizeof (UINT64));
+	    last_recv_pos = htoni64 (this_consumer_channel.m_last_received_position);
+	    rc = (css_error_code) this_consumer_channel.m_channel.send ((char *) &last_recv_pos,
+		 sizeof (UINT64));
 	    assert (rc == NO_ERRORS);
 
 	    m_first_loop = false;
