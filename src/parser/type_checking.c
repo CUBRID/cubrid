@@ -13193,7 +13193,6 @@ namespace Func
                 if(!matchEquivalent && !matchCastable) //current arg doesn' match => current signature doesn't match
                   {
                     sb.clear();
-                    //pt_frob_error(m_parser, arg, "Incompatible argument type %s; expected types are: %s", str(arg->type_enum), get_types(signatures, argIndex-1, sb));
                     pt_cat_error(m_parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_INCOMPATIBLE_TYPE, str(arg->type_enum), get_types(signatures, argIndex-1, sb));
                     break;
                   }
@@ -13202,7 +13201,6 @@ namespace Func
             if((matchEquivalent || matchCastable) && ((arg!=NULL && sig.rep.size()==0) || (arg==NULL && sig.rep.size()!=0)))//number of arguments don't match
               {
                 matchEquivalent = matchCastable = false;
-                //pt_frob_error(m_parser, m_node, "Number of arguments don't match");
                 pt_cat_error(m_parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_ARGS_COUNT);
               }
             if(!matchEquivalent && !matchCastable)
@@ -13560,7 +13558,6 @@ static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
           assert("ERR no function signature" && func_sigs != NULL);
           if(!func_sigs)
             {
-              //pt_frob_error(parser, node, "Could not find signatures for function %s()", str(fcode)/*, parser_print_tree_list(parser, arg_list)*/);
               pt_cat_error(parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_NO_SIGNATURES, str(fcode)/*, parser_print_tree_list(parser, arg_list)*/);
               return node;
            }
