@@ -29,7 +29,6 @@
 #include <string.h>
 #include <assert.h>
 
-#include "dbi.h"
 #include "utility.h"
 #include "dbtype.h"
 #include "language_support.h"
@@ -37,6 +36,9 @@
 #include "memory_alloc.h"
 #include "error_manager.h"
 #include "loader.h"
+
+#include "loader_grammar.h"
+#include "loader_lexer.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -58,13 +60,11 @@ do { \
 #define CONSTANT_POOL_SIZE (1024)
 
 extern bool loader_In_instance_line;
-extern FILE *loader_yyin;
 
-extern int loader_yylex(void);
-extern void loader_yyerror(const char* s);
+extern void loader_yyerror(yyscan_t yyscanner, const char *s);
 extern void loader_reset_string_pool (void);
 extern void loader_initialize_lexer (void);
-extern void do_loader_parse(FILE *fp);
+extern void do_loader_parse(void *data);
 
 static LDR_CONSTANT constant_Pool[CONSTANT_POOL_SIZE];
 static int constant_Pool_idx = 0;
@@ -78,15 +78,18 @@ static LDR_CONSTANT *loader_append_constant_list(LDR_CONSTANT *head, LDR_CONSTAN
 int loader_yyline = 1;
 %}
 
-%error_verbose
+%define parse.error verbose
+%define api.pure full
+%lex-param {void *scanner}
+%parse-param {void *scanner}
 
 %union {
-	int 	intval;
-	LDR_STRING	*string;
-	LDR_CLASS_COMMAND_SPEC *cmd_spec;
-	LDR_CONSTRUCTOR_SPEC *ctor_spec;
-	LDR_CONSTANT *constant;
-	LDR_OBJECT_REF *obj_ref;
+  int intval;
+  LDR_STRING *string;
+  LDR_CLASS_COMMAND_SPEC *cmd_spec;
+  LDR_CONSTRUCTOR_SPEC *ctor_spec;
+  LDR_CONSTANT *constant;
+  LDR_OBJECT_REF *obj_ref;
 }
 
 %token NL
@@ -292,13 +295,13 @@ class_command :
     class_name = $2;
     cmd_spec = $3;
 
-    ldr_act_set_skipCurrentclass (class_name->val, class_name->size);
+    ldr_act_set_skip_current_class (class_name->val, class_name->size);
     ldr_act_init_context (ldr_Current_context, class_name->val,
                           class_name->size);
 
     if (cmd_spec->qualifier != LDR_ATTRIBUTE_ANY)
       {
-        ldr_act_restrict_attributes (ldr_Current_context, cmd_spec->qualifier);
+        ldr_act_restrict_attributes (ldr_Current_context, (LDR_ATTRIBUTE_TYPE) cmd_spec->qualifier);
       }
 
     for (attr = cmd_spec->attr_list; attr; attr = attr->next)
@@ -1072,13 +1075,12 @@ loader_append_constant_list (LDR_CONSTANT * head, LDR_CONSTANT * tail)
   return head;
 }
 
-void do_loader_parse(FILE *fp)
+void do_loader_parse(void *data)
 {
   loader_In_instance_line = true;
 
-  loader_yyin = fp;
   loader_yyline = 1;
-  loader_yyparse();
+  loader_yyparse (data);
 }
 
 #ifdef PARSER_DEBUG

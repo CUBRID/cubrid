@@ -3327,7 +3327,7 @@ boot_check_db_at_num_shutdowns (bool force_nshutdowns)
 		       "Some inconsistencies were detected in your database.\n Please consult error_log file = %s"
 		       " for additional information\n", tmpname);
 	      fflush (stdout);
-	      /* 
+	      /*
 	       * The following is added so we can attach to the debugger on
 	       * a fatal error. It is of great help to stop execution when
 	       * running a set of sql scripts. (That is, find the script that

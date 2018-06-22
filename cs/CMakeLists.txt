@@ -17,8 +17,6 @@
 #
 
 set(EXECUTABLE_SOURCES
-  ${BISON_loader_grammar_OUTPUTS}
-  ${FLEX_loader_lexer_OUTPUTS}
   ${EXECUTABLES_DIR}/compactdb_cl.c
   ${EXECUTABLES_DIR}/csql.c
   ${EXECUTABLES_DIR}/csql_result.c
@@ -267,8 +265,6 @@ endif(UNIX)
 
 set_source_files_properties(${BISON_csql_grammar_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${FLEX_csql_lexer_OUTPUTS} PROPERTIES GENERATED true)
-set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED true)
-set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
 
 if(UNIX)
@@ -329,9 +325,7 @@ SET_SOURCE_FILES_PROPERTIES(
 SET_SOURCE_FILES_PROPERTIES(
   ${BASE_DIR}/md5.c
   ${CSQL_GRAMMAR_OUTPUT}
-  ${LOADER_GRAMMAR_OUTPUT}
   ${CSQL_LEXER_OUTPUT}
-  ${LOADER_LEXER_OUTPUT}
   ${ESQL_GRAMMAR_OUTPUT}
   ${ESQL_LEXER_OUTPUT} 
   ${COMPAT_SOURCES_C}
@@ -368,9 +362,7 @@ if(WIN32)
   set_source_files_properties(${HEAPLAYERS_DIR}/customheaps.cpp PROPERTIES COMPILE_FLAGS -Od)
   SET_SOURCE_FILES_PROPERTIES(
     ${CSQL_GRAMMAR_OUTPUT}
-    ${LOADER_GRAMMAR_OUTPUT}
     ${CSQL_LEXER_OUTPUT}
-    ${LOADER_LEXER_OUTPUT}
     ${ESQL_GRAMMAR_OUTPUT}
     ${ESQL_LEXER_OUTPUT}
     PROPERTIES COMPILE_FLAGS /WX-
@@ -391,7 +383,7 @@ else(UNIX)
   target_link_libraries(cubridcs LINK_PRIVATE cas ${EP_LIBS})
 endif(UNIX)
 
-add_dependencies(cubridcs gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
+add_dependencies(cubridcs gen_csql_grammar gen_csql_lexer)
 
 add_dependencies(cubridcs ${EP_TARGETS})
 

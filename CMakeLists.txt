@@ -317,6 +317,7 @@ set(LOADER_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/executables/loader_grammar.y)
 set(LOADER_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/loader_grammar.c)
 set(LOADER_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/executables/loader_lexer.l)
 set(LOADER_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/loader_lexer.c)
+set(LOADER_LEXER_HEADER_OUTPUT ${CMAKE_BINARY_DIR}/loader_lexer.h)
 set(ESQL_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y)
 set(ESQL_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/esql_grammar.c)
 set(ESQL_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.l)
@@ -383,7 +384,9 @@ add_custom_target(gen_csql_lexer DEPENDS ${FLEX_csql_lexer_OUTPUTS})
 bison_target(loader_grammar ${LOADER_GRAMMAR_INPUT} ${LOADER_GRAMMAR_OUTPUT}
   COMPILE_FLAGS "--no-lines --name-prefix=loader_yy -d -r all")
 flex_target(loader_lexer ${LOADER_LEXER_INPUT} ${LOADER_LEXER_OUTPUT}
-  COMPILE_FLAGS "--noline --never-interactive --prefix=loader_yy")
+  COMPILE_FLAGS "--noline --never-interactive --prefix=loader_yy"
+  DEFINES_FILE ${LOADER_LEXER_HEADER_OUTPUT}
+  )
 add_flex_bison_dependency(loader_lexer loader_grammar)
 add_custom_target(gen_loader_grammar DEPENDS ${BISON_loader_grammar_OUTPUTS})
 add_custom_target(gen_loader_lexer DEPENDS ${FLEX_loader_lexer_OUTPUTS})

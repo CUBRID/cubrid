@@ -63,7 +63,7 @@ extern int lo_count;
 #define PRINT_IDENTIFIER(s) "[", (s), "]"
 #define PRINT_FUNCTION_INDEX_NAME(s) "\"", (s), "\""
 
-extern int extractschema (const char *exec_name, int do_auth, EMIT_STORAGE_ORDER emit_storage_order);
-extern int extractobjects (const char *exec_name);
+extern int extract_schema (const char *exec_name, int do_auth, EMIT_STORAGE_ORDER emit_storage_order);
+extern int extract_objects (const char *exec_name);
 
 #endif /* _UNLOADDB_H_ */

@@ -58,7 +58,7 @@
 
 bool loader_In_instance_line = true;
 
-extern void loader_yyerror (const char *s);
+extern void loader_yyerror (yyscan_t yyscanner, const char *s);
 extern void loader_reset_string_pool (void);
 extern void loader_initialize_lexer (void);
 extern void loader_load_fail (void);
@@ -80,16 +80,18 @@ static bool use_Qstr_malloc_buffer = false;
 static char *qstr_Buf_p = NULL;
 static int qstr_Buf_idx = 0;
 
-static void loader_set_quoted_string_buffer (void);
-static void loader_append_string (char c);
-static LDR_STRING *loader_get_string_container (void);
-static LDR_STRING *loader_make_string_by_yytext (void);
-static LDR_STRING *loader_make_string_by_buffer (void);
+static void loader_set_quoted_string_buffer (yyscan_t yyscanner);
+static void loader_append_string (char c, yyscan_t yyscanner);
+static LDR_STRING *loader_get_string_container (yyscan_t yyscanner);
+static LDR_STRING *loader_make_string_by_yytext (yyscan_t yyscanner);
+static LDR_STRING *loader_make_string_by_buffer (yyscan_t yyscanner);
 
 static bool load_fail_flag = false;
 
 extern int loader_yyline;
 %}
+
+%option reentrant bison-bridge noyywrap
 
 %x BRACKET_ID DELIMITED_ID DQS SQS COMMENT
 
@@ -240,61 +242,61 @@ extern int loader_yyline;
 
 [\+\-]?(([0-9]+[Ee][\+\-]?[0-9]+[fFlL]?)|([0-9]*\.[0-9]+([Ee][\+\-]?[0-9]+)?[fFlL]?)|([0-9]+\.[0-9]*([Ee][\+\-]?[0-9]+)?[fFlL]?)) {
     PRINT ("REAL_LIT %s\n", yytext);
-    loader_yylval.string = loader_make_string_by_yytext ();
+    yylval_param->string = loader_make_string_by_yytext (yyscanner);
     return REAL_LIT;
 }
 
 [\+\-]?[0-9]+ {
     PRINT ("INT_LIT %s\n", yytext);
-    loader_yylval.string = loader_make_string_by_yytext ();
+    yylval_param->string = loader_make_string_by_yytext (yyscanner);
     return INT_LIT;
 }
 
 [0-9]+: {
     PRINT ("OID %s\n", yytext);
-    loader_yylval.intval = atoi (yytext);
+    yylval_param->intval = atoi (yytext);
     return OID_;
 }
 
 [0-9]+:[0-9]+:[0-9]+[\ \t]*[aApP][mM] {
     PRINT ("TIME_LIT4 %s\n", yytext);
-    loader_yylval.string = loader_make_string_by_yytext ();
+    yylval_param->string = loader_make_string_by_yytext (yyscanner);
     return TIME_LIT4;
 }
 
 [0-9]+:[0-9]+:[0-9]+[\ \t]* {
     PRINT ("TIME_LIT42 %s\n", yytext);
-    loader_yylval.string = loader_make_string_by_yytext ();
+    yylval_param->string = loader_make_string_by_yytext (yyscanner);
     return TIME_LIT42;
 }
 
 [0-9]+:[0-9]+[\ \t]*[aApP][mM] {
     PRINT ("TIME_LIT3 %s\n", yytext);
-    loader_yylval.string = loader_make_string_by_yytext ();
+    yylval_param->string = loader_make_string_by_yytext (yyscanner);
     return TIME_LIT3;
 }
 
 [0-9]+:[0-9]+[\ \t]* {
     PRINT ("TIME_LIT31 %s\n", yytext);
-    loader_yylval.string = loader_make_string_by_yytext ();
+    yylval_param->string = loader_make_string_by_yytext (yyscanner);
     return TIME_LIT31;
 }
 
 [0-9]+:[0-9]+:[0-9]+ {
     PRINT ("TIME_LIT2 %s\n", yytext);
-    loader_yylval.string = loader_make_string_by_yytext ();
+    yylval_param->string = loader_make_string_by_yytext (yyscanner);
     return TIME_LIT2;
 }
 
 [0-9]+:[0-9]+ {
     PRINT ("TIME_LIT1 %s\n", yytext);
-    loader_yylval.string = loader_make_string_by_yytext ();
+    yylval_param->string = loader_make_string_by_yytext (yyscanner);
     return TIME_LIT1;
 }
 
 [0-9]+\/[0-9]+\/[0-9]+ {
     PRINT ("DATE_LIT2 %s\n", yytext);
-    loader_yylval.string = loader_make_string_by_yytext ();
+    yylval_param->string = loader_make_string_by_yytext (yyscanner);
     return DATE_LIT2;
 }
 
@@ -445,40 +447,40 @@ extern int loader_yyline;
 
 ([a-zA-Z_%#]|(\xa1[\xa2-\xee\xf3-\xfe])|([\xa2-\xfe][\xa1-\xfe])|(\x8e[\xa1-\xfe]))([a-zA-Z_%#0-9]|(\xa1[\xa2-\xfe])|([\xa1-\xfe])|(\x8e[\xa1-\xfe]))* {
     PRINT ("IDENTIFIER %s\n", yytext);
-    loader_yylval.string = loader_make_string_by_yytext ();
+    yylval_param->string = loader_make_string_by_yytext (yyscanner);
     return IDENTIFIER;
 }
 
 [\'] {
     PRINT ("Quote %s\n", yytext);
     BEGIN SQS;
-    loader_set_quoted_string_buffer ();
+    loader_set_quoted_string_buffer (yyscanner);
     return Quote;
 }
 
 [nN][\'] {
     PRINT ("NQuote %s\n", yytext);
     BEGIN SQS;
-    loader_set_quoted_string_buffer ();
+    loader_set_quoted_string_buffer (yyscanner);
     return NQuote;
 }
 
 [bB][\'] {
     PRINT ("BQuote %s\n", yytext);
     BEGIN SQS;
-    loader_set_quoted_string_buffer ();
+    loader_set_quoted_string_buffer (yyscanner);
     return BQuote;
 }
 
 [xX][\'] {
     PRINT ("XQuote %s\n", yytext);
     BEGIN SQS;
-    loader_set_quoted_string_buffer ();
+    loader_set_quoted_string_buffer (yyscanner);
     return XQuote;
 }
 
 \" {
-    loader_set_quoted_string_buffer ();
+    loader_set_quoted_string_buffer (yyscanner);
     if (loader_In_instance_line == true)
       {
         BEGIN DQS;
@@ -491,13 +493,13 @@ extern int loader_yyline;
 }
 
 "[" {
-    loader_set_quoted_string_buffer ();
+    loader_set_quoted_string_buffer (yyscanner);
     BEGIN BRACKET_ID;
 }
 
 \\\n {
     yylineno = loader_yyline++;
-    /* continue line */ ; 
+    /* continue line */ ;
 }
 
 "," {
@@ -529,60 +531,60 @@ extern int loader_yyline;
 }
 
 <DELIMITED_ID>\"\" {
-    loader_append_string ('"');
+    loader_append_string ('"', yyscanner);
 }
 
 <DELIMITED_ID>[^\"] {
-    loader_append_string (yytext[0]);
+    loader_append_string (yytext[0], yyscanner);
 }
 
 <DELIMITED_ID>\" {
-    loader_append_string ('\0');
+    loader_append_string ('\0', yyscanner);
     PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
-    loader_yylval.string = loader_make_string_by_buffer ();
+    yylval_param->string = loader_make_string_by_buffer (yyscanner);
     BEGIN INITIAL;
     return IDENTIFIER;
 }
 
 
 <BRACKET_ID>[^\]] {
-    loader_append_string (yytext[0]);
+    loader_append_string (yytext[0], yyscanner);
 }
 
 <BRACKET_ID>"]" {
-    loader_append_string ('\0');
+    loader_append_string ('\0', yyscanner);
     PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
-    loader_yylval.string = loader_make_string_by_buffer ();
+    yylval_param->string = loader_make_string_by_buffer (yyscanner);
     BEGIN INITIAL;
     return IDENTIFIER;
 }
 
 <DQS>\\n {
-    loader_append_string ('\n');
+    loader_append_string ('\n', yyscanner);
 }
 
 <DQS>\\t {
-    loader_append_string ('\t');
+    loader_append_string ('\t', yyscanner);
 }
 
 <DQS>\\f {
-    loader_append_string ('\f');
+    loader_append_string ('\f', yyscanner);
 }
 
 <DQS>\\r {
-    loader_append_string ('\r');
+    loader_append_string ('\r', yyscanner);
 }
 
 <DQS>\\[0-7]([0-7][0-7]?)?  {
-    loader_append_string ((char) strtol (&yytext[1], NULL, 8));
+    loader_append_string ((char) strtol (&yytext[1], NULL, 8), yyscanner);
 }
 
 <DQS>\\x[0-9a-fA-F][0-9a-fA-F]?  {
-    loader_append_string ((char) strtol (&yytext[2], NULL, 16));
+    loader_append_string ((char) strtol (&yytext[2], NULL, 16), yyscanner);
 }
 
 <DQS>[^\"] {
-    loader_append_string (yytext[0]);
+    loader_append_string (yytext[0], yyscanner);
 }
 
 <DQS>\\ {
@@ -590,19 +592,19 @@ extern int loader_yyline;
 }
 
 <DQS>\" {
-    loader_append_string ('\0');
+    loader_append_string ('\0', yyscanner);
     PRINT ("DQS_String_Body %s\n", qstr_Buf_p);
-    loader_yylval.string = loader_make_string_by_buffer ();
+    yylval_param->string = loader_make_string_by_buffer (yyscanner);
     BEGIN INITIAL;
     return DQS_String_Body;
 }
 
 <SQS>\'\' {
-    loader_append_string ('\'');
+    loader_append_string ('\'', yyscanner);
 }
 
 <SQS>[^\'] {
-    loader_append_string (yytext[0]);
+    loader_append_string (yytext[0], yyscanner);
 }
 
 <SQS>\'\+[ \t]*\r?\n[ \t]*\' {
@@ -610,43 +612,33 @@ extern int loader_yyline;
 }
 
 <SQS>\'[ \t] {
-    loader_append_string ('\0');
+    loader_append_string ('\0', yyscanner);
     PRINT ("String_Completion %s\n", qstr_Buf_p);
-    loader_yylval.string = loader_make_string_by_buffer ();
+    yylval_param->string = loader_make_string_by_buffer (yyscanner);
     BEGIN INITIAL;
     return SQS_String_Body;
 }
 
 <SQS>\' {
-    loader_append_string ('\0');
+    loader_append_string ('\0', yyscanner);
     PRINT ("String_Completion2 %s\n", qstr_Buf_p);
-    loader_yylval.string = loader_make_string_by_buffer ();
+    yylval_param->string = loader_make_string_by_buffer (yyscanner);
     BEGIN INITIAL;
     return SQS_String_Body;
 }
 
 %%
 
-void loader_yyerror(const char *s)
+void loader_yyerror(yyscan_t yyscanner, const char *s)
 {
   ldr_increment_err_total(ldr_Current_context);
   fprintf(stderr, 
           msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
-                          LOADDB_MSG_SYNTAX_ERR),
-          yylineno, yytext);
-}
-
-int
-loader_yywrap ()
-{
-#ifdef LEXER_DEBUG
-  printf ("Parsing done.....\n");
-#endif
-  return 1;
+                          LOADDB_MSG_SYNTAX_ERR), yyget_lineno (yyscanner), yyget_text (yyscanner));
 }
 
 static void
-loader_set_quoted_string_buffer (void)
+loader_set_quoted_string_buffer (yyscan_t yyscanner)
 {
   if (qstr_Buf_pool_idx < QUOTED_STR_BUF_POOL_SIZE)
     {
@@ -659,7 +651,7 @@ loader_set_quoted_string_buffer (void)
       if (qstr_Malloc_buffer == NULL)
 	{
 	  qstr_Malloc_buffer_size = MAX_QUOTED_STR_BUF_SIZE;
-	  qstr_Malloc_buffer = malloc (qstr_Malloc_buffer_size);
+	  qstr_Malloc_buffer = (char*) malloc (qstr_Malloc_buffer_size);
 	  
 	  if (qstr_Malloc_buffer == NULL)
 	    {
@@ -679,15 +671,14 @@ loader_set_quoted_string_buffer (void)
 }
 
 static void
-loader_append_string (char c)
+loader_append_string (char c, yyscan_t yyscanner)
 {
   if (use_Qstr_malloc_buffer == true)
     {
       if (qstr_Buf_idx >= qstr_Malloc_buffer_size)
 	{
 	  qstr_Malloc_buffer_size *= 2;
-	  qstr_Malloc_buffer = realloc (qstr_Malloc_buffer,
-	                                qstr_Malloc_buffer_size);
+	  qstr_Malloc_buffer = (char*) realloc (qstr_Malloc_buffer, qstr_Malloc_buffer_size);
 	                                
 	  if (qstr_Malloc_buffer == NULL)
 	    {
@@ -715,7 +706,7 @@ loader_append_string (char c)
           if (qstr_Malloc_buffer == NULL)
             {
 	      qstr_Malloc_buffer_size = MAX_QUOTED_STR_BUF_SIZE * 2;
-	      qstr_Malloc_buffer = malloc (qstr_Malloc_buffer_size);
+	      qstr_Malloc_buffer = (char*) malloc (qstr_Malloc_buffer_size);
 	  
 	      if (qstr_Malloc_buffer == NULL)
 	        {
@@ -739,7 +730,7 @@ loader_append_string (char c)
 }
 
 static LDR_STRING *
-loader_get_string_container (void)
+loader_get_string_container (yyscan_t yyscanner)
 {
   LDR_STRING *str;
 
@@ -768,31 +759,31 @@ loader_get_string_container (void)
 }
 
 static LDR_STRING *
-loader_make_string_by_yytext (void)
+loader_make_string_by_yytext (yyscan_t yyscanner)
 {
   LDR_STRING *str;
   char *invalid_pos = NULL;
 
-  str = loader_get_string_container ();
+  str = loader_get_string_container (yyscanner);
   if (str == NULL)
     {
       return NULL;
     }
 
-  str->size = yyleng;
+  str->size = yyget_leng (yyscanner);
+  char *text = yyget_text (yyscanner);
 
-  if (copy_Buf_pool_idx < COPY_BUF_POOL_SIZE 
-      && str->size < MAX_COPY_BUF_SIZE)
+  if (copy_Buf_pool_idx < COPY_BUF_POOL_SIZE  && str->size < MAX_COPY_BUF_SIZE)
     {
       str->val = &(copy_Buf_pool[copy_Buf_pool_idx][0]);
-      memcpy (str->val, yytext, str->size);
+      memcpy (str->val, text, str->size);
       str->val[str->size] = '\0';
       str->need_free_val = false;
       copy_Buf_pool_idx++;
     }
   else
     {
-      str->val = malloc (str->size + 1);
+      str->val = (char*) malloc (str->size + 1);
       
       if (str->val == NULL)
         {
@@ -802,7 +793,7 @@ loader_make_string_by_yytext (void)
 	  return NULL;
         }
         
-      memcpy (str->val, yytext, str->size);
+      memcpy (str->val, text, str->size);
       str->val[str->size] = '\0';
       str->need_free_val = true;
     }
@@ -819,12 +810,12 @@ loader_make_string_by_yytext (void)
 }
 
 static LDR_STRING *
-loader_make_string_by_buffer (void)
+loader_make_string_by_buffer (yyscan_t yyscanner)
 {
   LDR_STRING *str;
   char *invalid_pos = NULL;
 
-  str = loader_get_string_container ();
+  str = loader_get_string_container (yyscanner);
   if (str == NULL)
     {
       return NULL;

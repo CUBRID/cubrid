@@ -92,12 +92,12 @@ long get_next()
 	return ((ldr_lang_fgetc)(input));
 }
 
-void do_loader_parse(FILE *fp)
+void do_loader_parse(void *data)
 {
 
   input = fp;
 
- init_loader_lang();
+  init_loader_lang();
 
   /*
    * Pretend that the first line we'll see is an instance line; if it
@@ -305,8 +305,8 @@ id_command : CMD_ID  IDENTIFIER <<
 
 /* class_command : CMD_CLASS IDENTIFIER <<act_set_class(zzlextext); >>  */
 class_command : CMD_CLASS IDENTIFIER <<
-        ldr_act_set_skipCurrentclass (zzlextext, strlen(zzlextext));
-        ldr_act_init_context(ldr_Current_context, zzlextext, strlen(zzlextext));
+        ldr_act_set_skip_current_class (zzlextext, strlen(zzlextext));
+        ldr_act_init_context (ldr_Current_context, zzlextext, strlen(zzlextext));
 	>>
                 attribute_list_qualifier attribute_list constructor_spec ;
 

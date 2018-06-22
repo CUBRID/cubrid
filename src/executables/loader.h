@@ -19,8 +19,7 @@
 
 
 /*
- * loader.h: Loader definitions. Updated using design from fast loaddb
- *             prototype
+ * loader.h: Loader definitions. Updated using design from fast loaddb prototype
  */
 
 #ifndef _LOADER_H_
@@ -83,8 +82,6 @@ typedef enum
 
 typedef void (*LDR_POST_COMMIT_HANDLER) (int);
 typedef void (*LDR_POST_INTERRUPT_HANDLER) (int);
-
-
 
 /*
  * LDR_ATTRIBUTE_TYPE
@@ -253,7 +250,7 @@ extern "C"
   extern void ldr_register_post_interrupt_handler (LDR_POST_INTERRUPT_HANDLER handler, void *ldr_jmp_buf);
   extern void ldr_interrupt_has_occurred (int type);
 
-  extern void ldr_act_set_skipCurrentclass (char *classname, size_t size);
+  extern void ldr_act_set_skip_current_class (char *classname, size_t size);
   extern bool ldr_is_ignore_class (const char *classname, size_t size);
 /* log functions */
   extern void print_log_msg (int verbose, const char *fmt, ...);
