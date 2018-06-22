@@ -205,73 +205,74 @@ namespace test_replication
   }
 
   void generate_rbr (cubthread::entry *thread_p, cubreplication::log_generator *lg)
-    {
-      cubreplication::REPL_ENTRY_TYPE rbr_type = (cubreplication::REPL_ENTRY_TYPE) (std::rand () % 3);
+  {
+    cubreplication::REPL_ENTRY_TYPE rbr_type = (cubreplication::REPL_ENTRY_TYPE) (std::rand () % 3);
 
-      cubreplication::single_row_repl_entry *rbr = new cubreplication::single_row_repl_entry (rbr_type, "t1");
+    cubreplication::single_row_repl_entry *rbr = new cubreplication::single_row_repl_entry (rbr_type, "t1");
 
-      DB_VALUE key_value;
-      DB_VALUE new_att1_value;
-      DB_VALUE new_att2_value;
-      DB_VALUE new_att3_value;
-      db_make_int (&key_value, 1 + thread_p->tran_index);
-      db_make_int (&new_att1_value, 10 + thread_p->tran_index);
-      db_make_int (&new_att2_value, 100 + thread_p->tran_index);
-      db_make_int (&new_att3_value, 1000 + thread_p->tran_index);
+    DB_VALUE key_value;
+    DB_VALUE new_att1_value;
+    DB_VALUE new_att2_value;
+    DB_VALUE new_att3_value;
+    db_make_int (&key_value, 1 + thread_p->tran_index);
+    db_make_int (&new_att1_value, 10 + thread_p->tran_index);
+    db_make_int (&new_att2_value, 100 + thread_p->tran_index);
+    db_make_int (&new_att3_value, 1000 + thread_p->tran_index);
 
-      rbr->set_key_value (&key_value);
-      rbr->add_changed_value (1, &new_att2_value);
-      rbr->add_changed_value (2, &new_att1_value);
-      rbr->add_changed_value (3, &new_att3_value);
+    rbr->set_key_value (&key_value);
+    rbr->add_changed_value (1, &new_att2_value);
+    rbr->add_changed_value (2, &new_att1_value);
+    rbr->add_changed_value (3, &new_att3_value);
 
-      lg->append_repl_entry (thread_p, rbr);
-    }
+    lg->append_repl_entry (thread_p, rbr);
+  }
 
   void generate_sbr (cubthread::entry *thread_p, cubreplication::log_generator *lg, int tran_chunk, int tran_obj)
-    {
-      std::string statement = std::string ("T") + std::to_string (thread_p->tran_index) + std::string ("P") + std::to_string (tran_chunk)
-         + std::string ("O") + std::to_string (tran_obj);
+  {
+    std::string statement = std::string ("T") + std::to_string (thread_p->tran_index) + std::string ("P") + std::to_string (
+				    tran_chunk)
+			    + std::string ("O") + std::to_string (tran_obj);
 
-      cubreplication::sbr_repl_entry *sbr = new cubreplication::sbr_repl_entry (statement);
+    cubreplication::sbr_repl_entry *sbr = new cubreplication::sbr_repl_entry (statement);
 
-      lg->append_repl_entry (thread_p, sbr);
-    }
+    lg->append_repl_entry (thread_p, sbr);
+  }
 
   void generate_tran_repl_data (cubthread::entry *thread_p, cubreplication::log_generator *lg)
-    {
-      int n_tran_chunks = std::rand () % 5;
+  {
+    int n_tran_chunks = std::rand () % 5;
 
-      cubreplication::replication_stream_entry *se = lg->get_stream_entry (thread_p);
+    cubreplication::replication_stream_entry *se = lg->get_stream_entry (thread_p);
 
-      se->set_mvccid (thread_p->tran_index + 1);
+    se->set_mvccid (thread_p->tran_index + 1);
 
-      for (int j = 0; j < n_tran_chunks; j++)
-        {
-          int n_objects = std::rand () % 5;
+    for (int j = 0; j < n_tran_chunks; j++)
+      {
+	int n_objects = std::rand () % 5;
 
-          for (int i = 0; i < n_objects; i++)
-            {
-              generate_sbr (thread_p, lg, j, i);
-              std::this_thread::sleep_for (std::chrono::microseconds (std::rand () % 100));
-            }
+	for (int i = 0; i < n_objects; i++)
+	  {
+	    generate_sbr (thread_p, lg, j, i);
+	    std::this_thread::sleep_for (std::chrono::microseconds (std::rand () % 100));
+	  }
 
-          if (j == n_tran_chunks - 1)
-            {
-              /* commit entry : last commit or random */
-              lg->set_commit_repl (thread_p, true);
-            }
-          lg->pack_stream_entries (thread_p);
-        }
+	if (j == n_tran_chunks - 1)
+	  {
+	    /* commit entry : last commit or random */
+	    lg->set_commit_repl (thread_p, true);
+	  }
+	lg->pack_stream_entries (thread_p);
+      }
 
-      if (std::rand () % 100 > 90)
-        {
-          lg->pack_group_commit_entry ();
-        }
-    }
+    if (std::rand () % 100 > 90)
+      {
+	lg->pack_group_commit_entry ();
+      }
+  }
 
   class gen_repl_context_manager : public cubthread::entry_manager
   {
-    
+
   };
 
   std::atomic<int> tasks_running = 0;
@@ -282,13 +283,13 @@ namespace test_replication
       gen_repl_task (cubreplication::log_generator *lg, int tran_id)
 	: m_lg (lg)
       {
-        m_thread_entry.tran_index = tran_id;
+	m_thread_entry.tran_index = tran_id;
       }
 
       void execute (cubthread::entry &thread_ref) override
       {
-        generate_tran_repl_data (&m_thread_entry, m_lg);
-        tasks_running--;
+	generate_tran_repl_data (&m_thread_entry, m_lg);
+	tasks_running--;
       }
 
       cubthread::entry m_thread_entry;
@@ -301,21 +302,21 @@ namespace test_replication
 
 
   void repl_object_sbr_apply_func (void)
-    {
+  {
 #if 0
-      static std::mutex mutex;
-      static std::vector<std::string> results;
-      std::string to_insert = m_statement + "\n";
+    static std::mutex mutex;
+    static std::vector<std::string> results;
+    std::string to_insert = m_statement + "\n";
 
-      mutex.lock ();
-      if (std::find (results.begin (), results.end (), to_insert) != results.end ())
-        {
-          mutex.unlock ();
-        }
-      results.push_back (to_insert);
-      mutex.unlock ();
+    mutex.lock ();
+    if (std::find (results.begin (), results.end (), to_insert) != results.end ())
+      {
+	mutex.unlock ();
+      }
+    results.push_back (to_insert);
+    mutex.unlock ();
 #endif
-    }
+  }
 
   int test_log_generator2 (void)
   {
@@ -341,17 +342,17 @@ namespace test_replication
     tasks_running = TASKS_CNT;
     for (int i = 0; i < TASKS_CNT; i++)
       {
-        gen_repl_task *task = new gen_repl_task (lg, i);
+	gen_repl_task *task = new gen_repl_task (lg, i);
 
-        //gen_worker_pool->push_task (entry, task);
-        cub_th_m->push_task (task->m_thread_entry, gen_worker_pool, task);
+	//gen_worker_pool->push_task (entry, task);
+	cub_th_m->push_task (task->m_thread_entry, gen_worker_pool, task);
       }
 
     lg->pack_group_commit_entry ();
 
     while (tasks_running > 0)
       {
-         std::this_thread::sleep_for (std::chrono::microseconds (1));
+	std::this_thread::sleep_for (std::chrono::microseconds (1));
       }
 
     std::cout << "Done" << std::endl;
@@ -367,7 +368,7 @@ namespace test_replication
     std::cout << "Done" << std::endl;
 
 
-     std::this_thread::sleep_for (std::chrono::microseconds (5 * 1000 * 1000));
+    std::this_thread::sleep_for (std::chrono::microseconds (5 * 1000 * 1000));
 
     /* workaround for seq read position : force read position to append position to avoid stream destructor
      * assertion failure */

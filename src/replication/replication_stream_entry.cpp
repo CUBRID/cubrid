@@ -80,17 +80,17 @@ namespace cubreplication
     serializator->pack_bigint ((DB_BIGINT *) &m_header.mvccid);
 
     assert ((m_header.count_replication_entries & replication_stream_entry_header::COUNT_VALUE_MASK)
-            == m_header.count_replication_entries);
+	    == m_header.count_replication_entries);
 
     count_and_flags = m_header.count_replication_entries;
     if (m_header.commit_flag)
       {
-        count_and_flags = count_and_flags | replication_stream_entry_header::COMMIT_FLAG;
+	count_and_flags = count_and_flags | replication_stream_entry_header::COMMIT_FLAG;
       }
 
     if (m_header.group_commit_flag)
       {
-        count_and_flags = count_and_flags | replication_stream_entry_header::GROUP_COMMIT_FLAG;
+	count_and_flags = count_and_flags | replication_stream_entry_header::GROUP_COMMIT_FLAG;
       }
 
     serializator->pack_int (count_and_flags);
@@ -109,11 +109,11 @@ namespace cubreplication
     serializator->unpack_int ((int *) &count_and_flags);
     if (count_and_flags & replication_stream_entry_header::COMMIT_FLAG)
       {
-        m_header.commit_flag = true;
+	m_header.commit_flag = true;
       }
     if (count_and_flags & replication_stream_entry_header::GROUP_COMMIT_FLAG)
       {
-        m_header.group_commit_flag = true;
+	m_header.group_commit_flag = true;
       }
     m_header.count_replication_entries = count_and_flags & replication_stream_entry_header::COUNT_VALUE_MASK;
     serializator->unpack_int (&m_header.data_size);
@@ -139,8 +139,8 @@ namespace cubreplication
     if (m_header.prev_record != other_t->m_header.prev_record
 	|| m_header.mvccid != other_t->m_header.mvccid
 	|| m_header.data_size != other_t->m_header.data_size
-        || m_header.commit_flag != other_t->m_header.commit_flag
-        || m_header.group_commit_flag != other_t->m_header.group_commit_flag
+	|| m_header.commit_flag != other_t->m_header.commit_flag
+	|| m_header.group_commit_flag != other_t->m_header.group_commit_flag
 	|| m_header.count_replication_entries != other_t->m_header.count_replication_entries
 	|| m_packable_entries.size () != other_t->m_packable_entries.size ())
       {

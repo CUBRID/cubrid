@@ -46,8 +46,8 @@ namespace cubreplication
 
   class log_consumer
   {
-    friend class prepare_stream_entry_task;
-    friend class apply_stream_entry_task;
+      friend class prepare_stream_entry_task;
+      friend class apply_stream_entry_task;
     private:
       std::queue<replication_stream_entry *> m_stream_entries;
 
@@ -89,31 +89,31 @@ namespace cubreplication
 
     protected:
       void wait_apply_ready (void)
-        {
-          std::unique_lock<std::mutex> local_lock (m_apply_task_mutex);
-          m_apply_task_ready = false;
-          m_apply_task_cv.wait_for (local_lock,
-                                    std::chrono::milliseconds (1000),
-                                    [this] { return m_apply_task_ready == true;});
-        }
+      {
+	std::unique_lock<std::mutex> local_lock (m_apply_task_mutex);
+	m_apply_task_ready = false;
+	m_apply_task_cv.wait_for (local_lock,
+				  std::chrono::milliseconds (1000),
+				  [this] { return m_apply_task_ready == true;});
+      }
 
       void signal_apply_ready (void)
-        {
-          std::lock_guard<std::mutex> local_lock (m_apply_task_mutex);
-          m_apply_task_ready = true;
-          m_apply_task_cv.notify_one ();
-        }
+      {
+	std::lock_guard<std::mutex> local_lock (m_apply_task_mutex);
+	m_apply_task_ready = true;
+	m_apply_task_cv.notify_one ();
+      }
 
     public:
 
       log_consumer () : m_use_daemons (false), m_started_tasks (0), m_is_stopped (false)
-        {
-          m_fetch_func = std::bind (&log_consumer::fetch_action, std::ref (*this),
+      {
+	m_fetch_func = std::bind (&log_consumer::fetch_action, std::ref (*this),
 				  std::placeholders::_1,
 				  std::placeholders::_2,
 				  std::placeholders::_3,
 				  std::placeholders::_4);
-        };
+      };
 
       ~log_consumer ();
 
@@ -124,7 +124,7 @@ namespace cubreplication
       int fetch_stream_entry (replication_stream_entry *&entry);
 
       int fetch_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count,
-                        size_t &processed_bytes);
+			size_t &processed_bytes);
 
       void start_daemons (void);
       void execute_task (cubthread::entry &thread, repl_applier_worker_task *task);
@@ -155,22 +155,22 @@ namespace cubreplication
       }
 
       void signal_prepare_ready (void)
-        {
-          std::lock_guard<std::mutex> local_lock (m_prepare_mutex);
-          m_prepare_ready = true;
-          m_prepare_cv.notify_one ();
-        }
+      {
+	std::lock_guard<std::mutex> local_lock (m_prepare_mutex);
+	m_prepare_ready = true;
+	m_prepare_cv.notify_one ();
+      }
 
       bool is_stopping (void)
-        {
-          return m_is_stopped;
-        }
+      {
+	return m_is_stopped;
+      }
 
       void set_stop (void)
-        {
-          m_is_stopped = true;
-        }
-       
+      {
+	m_is_stopped = true;
+      }
+
   };
 
 } /* namespace cubreplication */
