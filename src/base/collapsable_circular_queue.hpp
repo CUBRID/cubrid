@@ -94,7 +94,7 @@ namespace mem
 
 	m_buffer[pos].value = elem;
 
-	return &(m_buffer[pos].value);
+	return & (m_buffer[pos].value);
       };
 
       T *produce (void)
@@ -115,14 +115,14 @@ namespace mem
 
 	assert (m_head != m_tail);
 
-	return &(m_buffer[pos].value);
+	return & (m_buffer[pos].value);
       };
 
       T *peek_head (void)
       {
 	if (m_head != m_tail)
 	  {
-	    return &(m_buffer[m_head].value);
+	    return & (m_buffer[m_head].value);
 	  }
 	return NULL;
       };
@@ -200,7 +200,7 @@ namespace mem
 
 	    assert (m_head == m_tail || m_buffer[m_head].flags == CCQ_USED);
 
-	    last_used_elem = &(m_buffer[prev_used_pos].value);
+	    last_used_elem = & (m_buffer[prev_used_pos].value);
 
 	    return true;
 	  }

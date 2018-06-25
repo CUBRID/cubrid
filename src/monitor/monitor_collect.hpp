@@ -17,37 +17,42 @@
  *
  */
 
-#include "test_log_generator.hpp"
+//
+// monitor_collect.hpp - interface for collecting statistics
+//
 
-#include <iostream>
+#if !defined _MONITOR_COLLECT_HPP_
+#define _MONITOR_COLLECT_HPP_
 
-template <typename Func, typename ... Args>
-int
-test_module (int &global_error, Func &&f, Args &&... args)
+#include "monitor_statistic.hpp"
+#include "monitor_transaction.hpp"
+
+namespace cubmonitor
 {
-  std::cout << std::endl;
-  std::cout << "  start testing module ";
 
-  int err = f (std::forward <Args> (args)...);
-  if (err == 0)
-    {
-      std::cout << "  test completed successfully" << std::endl;
-    }
-  else
-    {
-      std::cout << "  test failed" << std::endl;
-      global_error = global_error == 0 ? err : global_error;
-    }
-  return err;
-}
+  //////////////////////////////////////////////////////////////////////////
+  // grouped statistics
+  //////////////////////////////////////////////////////////////////////////
 
-int main ()
-{
-  int global_error = 0;
+  class timer
+  {
+    public:
+      timer (void);
 
-  test_module (global_error, test_replication::test_log_generator1);
-  test_module (global_error, test_replication::test_log_generator2);
-  /* add more tests here */
+      void reset (void);
+      duration time (void);
 
-  return global_error;
-}
+    private:
+      time_point m_timept;
+  };
+
+
+  //////////////////////////////////////////////////////////////////////////
+  // template and inline implementation
+  //////////////////////////////////////////////////////////////////////////
+
+
+
+} // namespace cubmonitor
+
+#endif // _MONITOR_COLLECT_HPP_

@@ -567,7 +567,6 @@ namespace test_stream
       {
 	se.add_packable_entry (test_objects[i]);
       }
-    se.set_packable (true);
     res = se.pack ();
     if (res != 0)
       {
@@ -704,8 +703,6 @@ namespace test_stream
 	if (i < TEST_ENTRIES_CNT)
 	  {
 	    /* pack original entry */
-	    se_array[i]->set_packable (true);
-
 	    res = se_array[i]->pack ();
 	    if (res != 0)
 	      {
@@ -1021,8 +1018,8 @@ namespace test_stream
 			size_t &processed_bytes)
       {
 	int err = ER_FAILED;
-        /* for this test, hack processed_bytes as byte_count to avoid stream code assert */
-        processed_bytes = byte_count;
+	/* for this test, hack processed_bytes as byte_count to avoid stream code assert */
+	processed_bytes = byte_count;
 	if (pos >= m_prev_fetch_pos)
 	  {
 	    m_prev_fetch_pos = pos;
@@ -1132,7 +1129,6 @@ namespace test_stream
 		se_array[i]->add_packable_entry (obj);
 	      }
 	  }
-	se_array[i]->set_packable (true);
       }
     std::cout << "Done" << std::endl;
 

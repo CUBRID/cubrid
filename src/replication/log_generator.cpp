@@ -28,17 +28,112 @@
 #include "master_replication_channel.hpp"
 #include "thread_entry.hpp"
 #include "packing_stream.hpp"
+#include "connection_globals.h"
 
 namespace cubreplication
 {
 
-  /* global instances of log_generator template
-   * - log_generator<replication_stream_entry> : specialization for replication data stream
-   *
-   *
-   * - TODO : other possible specializations:
-   * - log_generator<data_copy_stream_entry> : specialization for copy database data stream (for replication purpose)
-   */
-  log_generator<replication_stream_entry> *log_generator<replication_stream_entry>::global_log_generator = NULL;
+  log_generator::~log_generator ()
+  {
+    assert (this == global_log_generator);
+
+    delete m_stream;
+    log_generator::global_log_generator = NULL;
+
+    for (int i = 0; i < m_stream_entries.size (); i++)
+      {
+	delete m_stream_entries[i];
+	m_stream_entries[i] = NULL;
+      }
+  }
+
+  int log_generator::start_tran_repl (THREAD_ENTRY *th_entry, MVCCID mvccid)
+  {
+    replication_stream_entry *my_stream_entry = get_stream_entry (th_entry);
+
+    my_stream_entry->set_mvccid (mvccid);
+
+    return NO_ERROR;
+  }
+
+  int log_generator::set_commit_repl (THREAD_ENTRY *th_entry, bool commit_tran_flag)
+  {
+    replication_stream_entry *my_stream_entry = get_stream_entry (th_entry);
+
+    my_stream_entry->set_commit_flag (commit_tran_flag);
+
+    return NO_ERROR;
+  }
+
+  int log_generator::append_repl_entry (THREAD_ENTRY *th_entry, replication_object *object)
+  {
+    replication_stream_entry *my_stream_entry = get_stream_entry (th_entry);
+
+    my_stream_entry->add_packable_entry (object);
+
+    return NO_ERROR;
+  }
+
+  replication_stream_entry *log_generator::get_stream_entry (THREAD_ENTRY *th_entry)
+  {
+    int stream_entry_idx;
+
+    if (th_entry == NULL)
+      {
+	stream_entry_idx = 0;
+      }
+    else
+      {
+	stream_entry_idx = th_entry->tran_index;
+      }
+
+    replication_stream_entry *my_stream_entry = m_stream_entries[stream_entry_idx];
+    return my_stream_entry;
+  }
+
+  int log_generator::pack_stream_entries (THREAD_ENTRY *th_entry)
+  {
+    replication_stream_entry *my_stream_entry = get_stream_entry (th_entry);
+    my_stream_entry->pack ();
+    my_stream_entry->reset ();
+    my_stream_entry->set_commit_flag (false);
+
+    return NO_ERROR;
+  }
+
+  int log_generator::pack_group_commit_entry (void)
+  {
+    static replication_stream_entry gc_stream_entry (m_stream, MVCCID_NULL, true, true);
+    gc_stream_entry.pack ();
+
+    return NO_ERROR;
+  }
+
+  log_generator *log_generator::new_instance (const cubstream::stream_position &start_position)
+  {
+    log_generator *new_lg = new log_generator ();
+    new_lg->m_start_append_position = start_position;
+
+    /* create stream only for global instance */
+    INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_GENERATOR_BUFFER_SIZE);
+    int num_max_appenders = css_get_max_conn () + 1;
+
+    new_lg->m_stream = new cubstream::packing_stream (buffer_size, num_max_appenders);
+    new_lg->m_stream->init (new_lg->m_start_append_position);
+
+    /* this is the global instance */
+    assert (global_log_generator == NULL);
+    global_log_generator = new_lg;
+
+    new_lg->m_stream_entries.resize (num_max_appenders);
+    for (int i = 0; i < num_max_appenders; i++)
+      {
+	new_lg->m_stream_entries[i] = new replication_stream_entry (new_lg->m_stream);
+      }
+
+    return new_lg;
+  }
+
+  log_generator *log_generator::global_log_generator = NULL;
 
 } /* namespace cubreplication */

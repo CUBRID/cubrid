@@ -150,7 +150,7 @@ namespace test_stream
     int data_size;
   };
 
-  class test_stream_entry : public cubstream::entry
+  class test_stream_entry : public cubstream::entry<cubpacking::packable_object>
   {
     private:
       test_stream_entry_header m_header;
@@ -237,7 +237,7 @@ namespace test_stream
 	return &m_serializator;
       };
 
-      bool is_equal (const cubstream::entry *other)
+      bool is_equal (const cubstream::entry<cubpacking::packable_object> *other)
       {
 	unsigned int i;
 	const test_stream_entry *other_t = dynamic_cast <const test_stream_entry *> (other);

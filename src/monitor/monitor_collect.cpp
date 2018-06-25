@@ -17,37 +17,29 @@
  *
  */
 
-#include "test_log_generator.hpp"
+#include "monitor_collect.hpp"
 
-#include <iostream>
-
-template <typename Func, typename ... Args>
-int
-test_module (int &global_error, Func &&f, Args &&... args)
+namespace cubmonitor
 {
-  std::cout << std::endl;
-  std::cout << "  start testing module ";
+  timer::timer (void)
+    : m_timept (clock_type::now ())
+  {
+    //
+  }
 
-  int err = f (std::forward <Args> (args)...);
-  if (err == 0)
-    {
-      std::cout << "  test completed successfully" << std::endl;
-    }
-  else
-    {
-      std::cout << "  test failed" << std::endl;
-      global_error = global_error == 0 ? err : global_error;
-    }
-  return err;
-}
+  void
+  timer::reset (void)
+  {
+    m_timept = clock_type::now ();
+  }
 
-int main ()
-{
-  int global_error = 0;
+  duration
+  timer::time (void)
+  {
+    time_point start_pt = m_timept;
+    m_timept = clock_type::now ();
+    return m_timept - start_pt;
+  }
 
-  test_module (global_error, test_replication::test_log_generator1);
-  test_module (global_error, test_replication::test_log_generator2);
-  /* add more tests here */
 
-  return global_error;
-}
+}  // namespace cubmonitor

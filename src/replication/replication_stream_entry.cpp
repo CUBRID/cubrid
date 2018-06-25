@@ -55,9 +55,9 @@ namespace cubreplication
     m_header.data_size = (int) data_size;
   }
 
-  cubstream::entry::packable_factory *replication_stream_entry::get_builder ()
+  cubstream::entry<replication_object>::packable_factory *replication_stream_entry::get_builder ()
   {
-    static cubstream::entry::packable_factory replication_factory_po;
+    static cubstream::entry<replication_object>::packable_factory replication_factory_po;
     static bool created = false;
 
     if (created == false)
@@ -73,11 +73,27 @@ namespace cubreplication
   int replication_stream_entry::pack_stream_entry_header ()
   {
     cubpacking::packer *serializator = get_packer ();
+    unsigned int count_and_flags;
 
     m_header.count_replication_entries = (int) m_packable_entries.size ();
     serializator->pack_bigint ((DB_BIGINT *) &m_header.prev_record);
     serializator->pack_bigint ((DB_BIGINT *) &m_header.mvccid);
-    serializator->pack_int (m_header.count_replication_entries);
+
+    assert ((m_header.count_replication_entries & replication_stream_entry_header::COUNT_VALUE_MASK)
+	    == m_header.count_replication_entries);
+
+    count_and_flags = m_header.count_replication_entries;
+    if (m_header.commit_flag)
+      {
+	count_and_flags = count_and_flags | replication_stream_entry_header::COMMIT_FLAG;
+      }
+
+    if (m_header.group_commit_flag)
+      {
+	count_and_flags = count_and_flags | replication_stream_entry_header::GROUP_COMMIT_FLAG;
+      }
+
+    serializator->pack_int (count_and_flags);
     serializator->pack_int (m_header.data_size);
 
     return NO_ERROR;
@@ -86,10 +102,20 @@ namespace cubreplication
   int replication_stream_entry::unpack_stream_entry_header ()
   {
     cubpacking::packer *serializator = get_packer ();
+    unsigned int count_and_flags;
 
     serializator->unpack_bigint ((DB_BIGINT *) &m_header.prev_record);
     serializator->unpack_bigint ((DB_BIGINT *) &m_header.mvccid);
-    serializator->unpack_int ((int *) &m_header.count_replication_entries);
+    serializator->unpack_int ((int *) &count_and_flags);
+    if (count_and_flags & replication_stream_entry_header::COMMIT_FLAG)
+      {
+	m_header.commit_flag = true;
+      }
+    if (count_and_flags & replication_stream_entry_header::GROUP_COMMIT_FLAG)
+      {
+	m_header.group_commit_flag = true;
+      }
+    m_header.count_replication_entries = count_and_flags & replication_stream_entry_header::COUNT_VALUE_MASK;
     serializator->unpack_int (&m_header.data_size);
 
     return NO_ERROR;
@@ -100,7 +126,7 @@ namespace cubreplication
     return m_header.count_replication_entries;
   }
 
-  bool replication_stream_entry::is_equal (const cubstream::entry *other)
+  bool replication_stream_entry::is_equal (const cubstream::entry<replication_object> *other)
   {
     int i;
     const replication_stream_entry *other_t = dynamic_cast <const replication_stream_entry *> (other);
@@ -113,6 +139,8 @@ namespace cubreplication
     if (m_header.prev_record != other_t->m_header.prev_record
 	|| m_header.mvccid != other_t->m_header.mvccid
 	|| m_header.data_size != other_t->m_header.data_size
+	|| m_header.commit_flag != other_t->m_header.commit_flag
+	|| m_header.group_commit_flag != other_t->m_header.group_commit_flag
 	|| m_header.count_replication_entries != other_t->m_header.count_replication_entries
 	|| m_packable_entries.size () != other_t->m_packable_entries.size ())
       {

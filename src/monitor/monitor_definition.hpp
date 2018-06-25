@@ -17,37 +17,27 @@
  *
  */
 
-#include "test_log_generator.hpp"
+//
+// monitor_definition.hpp - definition interface for monitor
+//
 
-#include <iostream>
+#if !defined _MONITOR_DEFINITION_HPP_
+#define _MONITOR_DEFINITION_HPP_
 
-template <typename Func, typename ... Args>
-int
-test_module (int &global_error, Func &&f, Args &&... args)
+#include <chrono>
+
+#include <cstdint>
+
+namespace cubmonitor
 {
-  std::cout << std::endl;
-  std::cout << "  start testing module ";
+  // statistic common representation used on monitor fetching its values
+  using statistic_value = std::uint64_t;
 
-  int err = f (std::forward <Args> (args)...);
-  if (err == 0)
-    {
-      std::cout << "  test completed successfully" << std::endl;
-    }
-  else
-    {
-      std::cout << "  test failed" << std::endl;
-      global_error = global_error == 0 ? err : global_error;
-    }
-  return err;
-}
+  // clocking
+  using clock_type = std::chrono::high_resolution_clock;
+  using time_point = clock_type::time_point;
+  using duration = clock_type::duration;
 
-int main ()
-{
-  int global_error = 0;
+} // namespace cubmonitor
 
-  test_module (global_error, test_replication::test_log_generator1);
-  test_module (global_error, test_replication::test_log_generator2);
-  /* add more tests here */
-
-  return global_error;
-}
+#endif // _MONITOR_DEFINITION_HPP_

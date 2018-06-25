@@ -27,22 +27,29 @@
 #define _LOG_CONSUMER_HPP_
 
 #include "packing_stream.hpp"
+#include "replication_stream_entry.hpp"
+#include "thread_daemon.hpp"
+#include "thread_task.hpp"
+#include "thread_manager.hpp"
+#include <chrono>
 #include <cstddef>
 #include <queue>
 
 namespace cubreplication
 {
-  class replication_stream_entry;
-
   /*
    * main class for consuming log packing stream entries;
    * it should be created only as a global instance
    */
-  template <typename SE>
+  class repl_applier_worker_context_manager;
+  class repl_applier_worker_task;
+
   class log_consumer
   {
+      friend class prepare_stream_entry_task;
+      friend class apply_stream_entry_task;
     private:
-      std::queue<SE *> m_stream_entries;
+      std::queue<replication_stream_entry *> m_stream_entries;
 
       cubstream::packing_stream *m_stream;
 
@@ -51,92 +58,123 @@ namespace cubreplication
 
       static log_consumer *global_log_consumer;
 
+      std::mutex m_queue_mutex;
+
+      cubthread::daemon *m_prepare_daemon;
+
+      cubthread::daemon *m_apply_daemon;
+
+      cubthread::entry_workpool *m_applier_workers_pool;
+
+      repl_applier_worker_context_manager *m_repl_applier_worker_context_manager;
+
+      int m_applier_worker_threads_count;
+
+      bool m_use_daemons;
+
+      std::atomic<int> m_started_tasks;
+
+      cubstream::stream::fetch_func_t m_fetch_func;
+
+      std::mutex m_prepare_mutex;
+      std::condition_variable m_prepare_cv;
+      bool m_prepare_ready;
+
+      std::mutex m_apply_task_mutex;
+      std::condition_variable m_apply_task_cv;
+      bool m_apply_task_ready;
+
+      bool m_is_stopped;
+
+
+    protected:
+      void wait_apply_ready (void)
+      {
+	std::unique_lock<std::mutex> local_lock (m_apply_task_mutex);
+	m_apply_task_ready = false;
+	m_apply_task_cv.wait_for (local_lock,
+				  std::chrono::milliseconds (1000),
+				  [this] { return m_apply_task_ready == true;});
+      }
+
+      void signal_apply_ready (void)
+      {
+	std::lock_guard<std::mutex> local_lock (m_apply_task_mutex);
+	m_apply_task_ready = true;
+	m_apply_task_cv.notify_one ();
+      }
+
     public:
 
-      log_consumer () {} ;
-
-      ~log_consumer ()
+      log_consumer () :
+	m_use_daemons (false),
+	m_started_tasks (0),
+	m_is_stopped (false),
+	m_applier_worker_threads_count (100)
       {
-	assert (this == global_log_consumer);
-
-	delete m_stream;
-	global_log_consumer = NULL;
+	m_fetch_func = std::bind (&log_consumer::fetch_action, std::ref (*this),
+				  std::placeholders::_1,
+				  std::placeholders::_2,
+				  std::placeholders::_3,
+				  std::placeholders::_4);
       };
 
+      ~log_consumer ();
 
-      int append_entry (SE *entry)
-      {
-	/* TODO : split list of entries by transaction */
-	m_stream_entries.push_back (entry);
+      int push_entry (replication_stream_entry *entry);
 
-	return NO_ERROR;
-      };
+      int pop_entry (replication_stream_entry *&entry);
 
-      int fetch_stream_entry (SE *&entry)
-      {
-	int err = NO_ERROR;
+      int fetch_stream_entry (replication_stream_entry *&entry);
 
-	SE *se = new SE (get_stream ());
+      int fetch_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count,
+			size_t &processed_bytes);
 
-	err = se->prepare ();
-	if (err != NO_ERROR)
-	  {
-	    return err;
-	  }
+      void start_daemons (void);
+      void execute_task (cubthread::entry &thread, repl_applier_worker_task *task);
 
-	entry = se;
-
-	return err;
-      };
-
-      int consume_thread (void)
-      {
-	int err = NO_ERROR;
-
-	for (;;)
-	  {
-	    replication_stream_entry *se = NULL;
-
-	    err = fetch_stream_entry (se);
-	    if (err != NO_ERROR)
-	      {
-		break;
-	      }
-
-	    append_entry (se);
-	  }
-
-	return NO_ERROR;
-      };
-
-      static log_consumer *new_instance (const cubstream::stream_position &start_position)
-      {
-	int error_code = NO_ERROR;
-
-	log_consumer *new_lc = new log_consumer ();
-
-	new_lc->m_start_position = start_position;
-
-	/* TODO : sys params */
-	new_lc->m_stream = new cubstream::packing_stream (10 * 1024 * 1024, 2);
-	new_lc->m_stream->init (new_lc->m_start_position);
-
-	/* this is the global instance */
-	assert (global_log_consumer == NULL);
-	global_log_consumer = new_lc;
-
-	return new_lc;
-      };
+      static log_consumer *new_instance (const cubstream::stream_position &start_position, bool use_daemons = false);
 
       cubstream::packing_stream *get_stream (void)
       {
 	return m_stream;
-      };
+      }
 
       cubstream::stream_position &get_start_position ()
       {
 	return m_start_position;
-      };
+      }
+
+      void end_one_task (void)
+      {
+	m_started_tasks--;
+      }
+
+      void wait_for_tasks (void)
+      {
+	while (m_started_tasks > 0)
+	  {
+	    thread_sleep (1);
+	  }
+      }
+
+      void signal_prepare_ready (void)
+      {
+	std::lock_guard<std::mutex> local_lock (m_prepare_mutex);
+	m_prepare_ready = true;
+	m_prepare_cv.notify_one ();
+      }
+
+      bool is_stopping (void)
+      {
+	return m_is_stopped;
+      }
+
+      void set_stop (void)
+      {
+	m_is_stopped = true;
+      }
+
   };
 
 } /* namespace cubreplication */

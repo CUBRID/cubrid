@@ -46,7 +46,13 @@ namespace cubreplication
   };
   typedef enum repl_entry_type REPL_ENTRY_TYPE;
 
-  class sbr_repl_entry : public cubpacking::packable_object
+  class replication_object : public cubpacking::packable_object
+  {
+    public:
+      virtual int apply (void) = 0;
+  };
+
+  class sbr_repl_entry : public replication_object
   {
     private:
       std::string m_statement;
@@ -67,6 +73,8 @@ namespace cubreplication
 	set_statement (str);
       };
 
+      int apply ();
+
       bool is_equal (const cubpacking::packable_object *other);
 
       void set_statement (const std::string &str)
@@ -80,7 +88,7 @@ namespace cubreplication
       size_t get_packed_size (cubpacking::packer *serializator);
   };
 
-  class single_row_repl_entry : public cubpacking::packable_object
+  class single_row_repl_entry : public replication_object
   {
     private:
       REPL_ENTRY_TYPE m_type;
@@ -99,6 +107,8 @@ namespace cubreplication
       ~single_row_repl_entry ();
 
       single_row_repl_entry (const REPL_ENTRY_TYPE m_type, const char *class_name);
+
+      int apply ();
 
       bool is_equal (const cubpacking::packable_object *other);
 

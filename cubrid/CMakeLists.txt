@@ -59,7 +59,6 @@ set(THREAD_HEADERS
 set(STREAM_SOURCES
   ${BASE_DIR}/cubstream.cpp
   ${BASE_DIR}/packing_stream.cpp
-  ${BASE_DIR}/stream_entry.cpp
   )
 set (STREAM_HEADERS
   ${BASE_DIR}/bip_buffer.hpp
@@ -104,9 +103,9 @@ set(BASE_SOURCES
   ${BASE_DIR}/packer.cpp
   ${BASE_DIR}/get_clockfreq.c
   ${BASE_DIR}/perf.cpp
-  ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/pinnable_buffer.cpp
   ${BASE_DIR}/pinning.cpp
+  ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/process_util.c
   ${BASE_DIR}/release_string.c
@@ -142,13 +141,6 @@ set (BASE_HEADERS
   ${BASE_DIR}/string_buffer.hpp
   )
 
-set (REPLICATION_HEADERS
-  ${REPLICATION_DIR}/log_consumer.hpp
-  ${REPLICATION_DIR}/log_generator.hpp
-  ${REPLICATION_DIR}/replication_entry.hpp
-  ${REPLICATION_DIR}/replication_stream_entry.hpp
-  )
-
 set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/util_common.c
   )
@@ -180,6 +172,20 @@ set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/stream_transfer_sender.hpp
   )
 
+set(MONITOR_SOURCES
+  ${MONITOR_DIR}/monitor_collect.cpp
+  ${MONITOR_DIR}/monitor_registration.cpp
+  ${MONITOR_DIR}/monitor_statistic.cpp
+  ${MONITOR_DIR}/monitor_transaction.cpp
+)
+set(MONITOR_HEADERS
+  ${MONITOR_DIR}/monitor_collect.hpp
+  ${MONITOR_DIR}/monitor_definition.hpp
+  ${MONITOR_DIR}/monitor_registration.hpp
+  ${MONITOR_DIR}/monitor_statistic.hpp
+  ${MONITOR_DIR}/monitor_transaction.hpp
+)
+
 set(QUERY_SOURCES
   ${QUERY_DIR}/arithmetic.c
   ${QUERY_DIR}/crypt_opfunc.c
@@ -204,15 +210,6 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/xasl_cache.c
   )
 
-set(REPLICATION_SOURCES
-  ${REPLICATION_DIR}/log_consumer.cpp
-  ${REPLICATION_DIR}/log_generator.cpp
-  ${REPLICATION_DIR}/master_replication_channel.cpp
-  ${REPLICATION_DIR}/replication_entry.cpp
-  ${REPLICATION_DIR}/replication_stream_entry.cpp
-  ${REPLICATION_DIR}/slave_replication_channel.cpp
-  )
-
 set(OBJECT_SOURCES
   ${OBJECT_DIR}/elo.c
   ${OBJECT_DIR}/object_print.c
@@ -222,6 +219,15 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/transform.c
   ${OBJECT_DIR}/object_domain.c
   )
+  
+set(REPLICATION_SOURCES
+  ${REPLICATION_DIR}/log_consumer.cpp
+  ${REPLICATION_DIR}/log_generator.cpp
+  ${REPLICATION_DIR}/master_replication_channel.cpp
+  ${REPLICATION_DIR}/replication_entry.cpp
+  ${REPLICATION_DIR}/replication_stream_entry.cpp
+  ${REPLICATION_DIR}/slave_replication_channel.cpp
+  )  
 
 set(JSP_SOURCES
   ${JSP_DIR}/jsp_sr.c
@@ -296,24 +302,26 @@ set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -
 endif(UNIX)
 
 SET_SOURCE_FILES_PROPERTIES(
-  ${COMPAT_SOURCES}
-  ${THREAD_SOURCES}
   ${BASE_SOURCES}
-  ${HEAPLAYER_SOURCES}
+  ${COMMUNICATION_SOURCES}
+  ${COMPAT_SOURCES}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
-  ${COMMUNICATION_SOURCES}
-  ${PARSER_SOURCES}
-  ${QUERY_SOURCES}
-  ${REPLICATION_SOURCES}
-  ${OBJECT_SOURCES}
-  ${JSP_SOURCES}
-  ${TRANSACTION_SOURCES}
-  ${STORAGE_SOURCES}
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
+  ${HEAPLAYER_SOURCES}
+  ${JSP_SOURCES}
+  ${MONITOR_SOURCES}
+  ${OBJECT_SOURCES}
+  ${PARSER_SOURCES}
+  ${PROBES_OBJECT}
+  ${QUERY_SOURCES}
+  ${REPLICATION_SOURCES}
   ${SESSION_SOURCES}
-  ${PROBES_OBJECT} PROPERTIES LANGUAGE CXX
+  ${STORAGE_SOURCES}
+  ${THREAD_SOURCES}
+  ${TRANSACTION_SOURCES}
+  PROPERTIES LANGUAGE CXX
   )
 
 SET_SOURCE_FILES_PROPERTIES(
@@ -322,32 +330,33 @@ SET_SOURCE_FILES_PROPERTIES(
   )
 
 set (CUBRID_LIB_SOURCES
-  ${COMPAT_SOURCES}
-  ${THREAD_SOURCES}
   ${BASE_SOURCES}
-  ${HEAPLAYER_SOURCES}
+  ${COMMUNICATION_SOURCES}
+  ${COMPAT_SOURCES}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
-  ${COMMUNICATION_SOURCES}
-  ${QUERY_SOURCES}
-  ${REPLICATION_SOURCES}
-  ${OBJECT_SOURCES}
-  ${JSP_SOURCES}
-  ${TRANSACTION_SOURCES}
-  ${STORAGE_SOURCES}
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
-  ${SESSION_SOURCES}
+  ${HEAPLAYER_SOURCES}
+  ${JSP_SOURCES}
+  ${MONITOR_SOURCES}
+  ${OBJECT_SOURCES}
   ${PROBES_OBJECT}
+  ${QUERY_SOURCES}
+  ${REPLICATION_SOURCES}  
+  ${SESSION_SOURCES}
+  ${STORAGE_SOURCES}
   ${STREAM_SOURCES}
+  ${THREAD_SOURCES}
+  ${TRANSACTION_SOURCES}
   )
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
   ${COMMUNICATION_HEADERS}
   ${COMPAT_HEADERS}
+  ${MONITOR_HEADERS}
   ${THREAD_HEADERS}
   ${STREAM_HEADERS}
-  ${REPLICATION_HEADERS}
   )
 
 add_library(cubrid SHARED

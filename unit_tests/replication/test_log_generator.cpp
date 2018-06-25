@@ -24,6 +24,8 @@
 #include "thread_compat.hpp"
 #include "test_log_generator.hpp"
 #include "thread_manager.hpp"
+#include "thread_entry_task.hpp"
+#include <iostream>
 
 namespace test_replication
 {
@@ -100,27 +102,39 @@ namespace test_replication
     return NO_ERROR;
   }
 
+  cubthread::manager *cub_th_m;
+
   int init_common_cubrid_modules (void)
   {
-    int res;
+    static bool initialized = false;
     THREAD_ENTRY *thread_p = NULL;
 
+    if (initialized)
+      {
+	return 0;
+      }
 
     lang_init ();
     tp_init ();
+    er_init ("unit_test", 1);
     lang_set_charset_lang ("en_US.iso88591");
+    //cub_th_m.set_max_thread_count (100);
 
+    //cubthread::set_manager (&cub_th_m);
     cubthread::initialize (thread_p);
-    res = cubthread::initialize_thread_entries ();
-    if (res != NO_ERROR)
-      {
-	ASSERT_ERROR ();
-	return res;
-      }
+    cub_th_m = cubthread::get_manager ();
+    cub_th_m->set_max_thread_count (100);
+
+    cub_th_m->alloc_entries ();
+    cub_th_m->init_entries (false);
+
+    initialized = true;
+
+
     return NO_ERROR;
   }
 
-  int test_stream_packing (void)
+  int test_log_generator1 (void)
   {
     int res = 0;
 
@@ -156,20 +170,16 @@ namespace test_replication
     rbr2->add_changed_value (2, &new_att2_value);
     rbr2->add_changed_value (3, &new_att3_value);
 
-    cubreplication::log_generator<cubreplication::replication_stream_entry> *lg =
-	    cubreplication::log_generator<cubreplication::replication_stream_entry>::new_instance (0);
+    cubreplication::log_generator *lg = cubreplication::log_generator::new_instance (0);
 
     lg->append_repl_entry (NULL, sbr1);
     lg->append_repl_entry (NULL, rbr1);
     lg->append_repl_entry (NULL, sbr2);
     lg->append_repl_entry (NULL, rbr2);
 
-    lg->set_ready_to_pack (NULL);
-
     lg->pack_stream_entries (NULL);
 
-    cubreplication::log_consumer<cubreplication::replication_stream_entry> *lc =
-      cubreplication::log_consumer<cubreplication::replication_stream_entry>::new_instance (0);
+    cubreplication::log_consumer *lc = cubreplication::log_consumer::new_instance (0);
 
     /* get stream from log_generator, get its buffer and attached it to log_consumer stream */
     cubstream::packing_stream *lg_stream = lg->get_stream ();
@@ -183,6 +193,182 @@ namespace test_replication
     se->unpack ();
 
     res = se->is_equal (lg->get_stream_entry (NULL));
+
+    /* workaround for seq read position : force read position to append position to avoid stream destructor
+     * assertion failure */
+    lg_stream->force_set_read_position (lg_stream->get_last_committed_pos ());
+
+    delete lg;
+    delete lc;
+
+    return res;
+  }
+
+  void generate_rbr (cubthread::entry *thread_p, cubreplication::log_generator *lg)
+  {
+    cubreplication::REPL_ENTRY_TYPE rbr_type = (cubreplication::REPL_ENTRY_TYPE) (std::rand () % 3);
+
+    cubreplication::single_row_repl_entry *rbr = new cubreplication::single_row_repl_entry (rbr_type, "t1");
+
+    DB_VALUE key_value;
+    DB_VALUE new_att1_value;
+    DB_VALUE new_att2_value;
+    DB_VALUE new_att3_value;
+    db_make_int (&key_value, 1 + thread_p->tran_index);
+    db_make_int (&new_att1_value, 10 + thread_p->tran_index);
+    db_make_int (&new_att2_value, 100 + thread_p->tran_index);
+    db_make_int (&new_att3_value, 1000 + thread_p->tran_index);
+
+    rbr->set_key_value (&key_value);
+    rbr->add_changed_value (1, &new_att2_value);
+    rbr->add_changed_value (2, &new_att1_value);
+    rbr->add_changed_value (3, &new_att3_value);
+
+    lg->append_repl_entry (thread_p, rbr);
+  }
+
+  void generate_sbr (cubthread::entry *thread_p, cubreplication::log_generator *lg, int tran_chunk, int tran_obj)
+  {
+    std::string statement = std::string ("T") + std::to_string (thread_p->tran_index) + std::string ("P") + std::to_string (
+				    tran_chunk)
+			    + std::string ("O") + std::to_string (tran_obj);
+
+    cubreplication::sbr_repl_entry *sbr = new cubreplication::sbr_repl_entry (statement);
+
+    lg->append_repl_entry (thread_p, sbr);
+  }
+
+  void generate_tran_repl_data (cubthread::entry *thread_p, cubreplication::log_generator *lg)
+  {
+    int n_tran_chunks = std::rand () % 5;
+
+    cubreplication::replication_stream_entry *se = lg->get_stream_entry (thread_p);
+
+    se->set_mvccid (thread_p->tran_index + 1);
+
+    for (int j = 0; j < n_tran_chunks; j++)
+      {
+	int n_objects = std::rand () % 5;
+
+	for (int i = 0; i < n_objects; i++)
+	  {
+	    generate_sbr (thread_p, lg, j, i);
+	    std::this_thread::sleep_for (std::chrono::microseconds (std::rand () % 100));
+	  }
+
+	if (j == n_tran_chunks - 1)
+	  {
+	    /* commit entry : last commit or random */
+	    lg->set_commit_repl (thread_p, true);
+	  }
+	lg->pack_stream_entries (thread_p);
+      }
+
+    if (std::rand () % 100 > 90)
+      {
+	lg->pack_group_commit_entry ();
+      }
+  }
+
+  class gen_repl_context_manager : public cubthread::entry_manager
+  {
+
+  };
+
+  std::atomic<int> tasks_running = 0;
+
+  class gen_repl_task : public cubthread::entry_task
+  {
+    public:
+      gen_repl_task (cubreplication::log_generator *lg, int tran_id)
+	: m_lg (lg)
+      {
+	m_thread_entry.tran_index = tran_id;
+      }
+
+      void execute (cubthread::entry &thread_ref) override
+      {
+	generate_tran_repl_data (&m_thread_entry, m_lg);
+	tasks_running--;
+      }
+
+      cubthread::entry m_thread_entry;
+
+    private:
+      cubreplication::log_generator *m_lg;
+
+
+  };
+
+
+  void repl_object_sbr_apply_func (void)
+  {
+#if 0
+    static std::mutex mutex;
+    static std::vector<std::string> results;
+    std::string to_insert = m_statement + "\n";
+
+    mutex.lock ();
+    if (std::find (results.begin (), results.end (), to_insert) != results.end ())
+      {
+	mutex.unlock ();
+      }
+    results.push_back (to_insert);
+    mutex.unlock ();
+#endif
+  }
+
+  int test_log_generator2 (void)
+  {
+#define GEN_THREAD_CNT 10
+#define TASKS_CNT 100
+
+    int res = 0;
+
+    init_common_cubrid_modules ();
+
+    cubreplication::log_generator *lg = cubreplication::log_generator::new_instance (0);
+
+    cubreplication::log_consumer *lc = cubreplication::log_consumer::new_instance (0, true);
+
+
+    std::cout << "Starting generating replication data .... ";
+
+    gen_repl_context_manager ctx_m1;
+    cubthread::entry_workpool *gen_worker_pool =
+	    cub_th_m->create_worker_pool (GEN_THREAD_CNT, GEN_THREAD_CNT, &ctx_m1,
+					  1,
+					  1);
+    tasks_running = TASKS_CNT;
+    for (int i = 0; i < TASKS_CNT; i++)
+      {
+	gen_repl_task *task = new gen_repl_task (lg, i);
+
+	//gen_worker_pool->push_task (entry, task);
+	cub_th_m->push_task (task->m_thread_entry, gen_worker_pool, task);
+      }
+
+    lg->pack_group_commit_entry ();
+
+    while (tasks_running > 0)
+      {
+	std::this_thread::sleep_for (std::chrono::microseconds (1));
+      }
+
+    std::cout << "Done" << std::endl;
+
+    /* get stream from log_generator, get its buffer and attached it to log_consumer stream */
+    std::cout << "Copying stream data from log_generator to log_consumer .... ";
+    cubstream::packing_stream *lg_stream = lg->get_stream ();
+    cubstream::packing_stream *lc_stream = lc->get_stream ();
+
+    move_buffers (lg_stream, lc_stream);
+
+    lc->signal_prepare_ready ();
+    std::cout << "Done" << std::endl;
+
+
+    std::this_thread::sleep_for (std::chrono::microseconds (5 * 1000 * 1000));
 
     /* workaround for seq read position : force read position to append position to avoid stream destructor
      * assertion failure */
