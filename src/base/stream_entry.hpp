@@ -149,7 +149,7 @@ namespace cubstream
        * 5. unpacks the object
        * 6. adds the object to entry
        */
-      int entry::unpack_func (char *ptr, const size_t data_size)
+      int unpack_func (char *ptr, const size_t data_size)
       {
 	unsigned int i;
 	int error_code = NO_ERROR;
