@@ -91,14 +91,14 @@ namespace cubstream
       /* oldest readable position : updated according to buffer availability:
        * oldest stream position available from bip_buffer
        * after reserve, this value is expected to increase, so if any reader needs to get a position
-       * older than this, there is no need to check the buffer or reserved queue 
+       * older than this, there is no need to check the buffer or reserved queue
        */
       stream_position m_oldest_readable_position;
 
       mem::collapsable_circular_queue<stream_reserve_context> m_reserved_positions;
 
       /* threshold size of unread stream content not read which triggers signaling "filled" event
-       * such event may be throttling the reserve calls on stream (the stream content needs to be saved to disk) 
+       * such event may be throttling the reserve calls on stream (the stream content needs to be saved to disk)
        */
       size_t m_trigger_flush_to_disk_size;
 

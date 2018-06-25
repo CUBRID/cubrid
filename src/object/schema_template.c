@@ -950,24 +950,42 @@ smt_quit (SM_TEMPLATE * template_)
  *   domain(in): domain
  *   default_value(in):
  *   name_space(in): attribute name_space (class, instance, or shared)
- *   add_first(in): the attribute should be added at the beginning of the
- *                  attributes list
+ *   add_first(in): the attribute should be added at the beginning of the attributes list
  *   add_after_attribute(in): the attribute should be added in the attributes
  *                            list after the attribute with the given name
  *   default_expr(in): default expression
+ *   on_update(in): on_update default expression
+ *   comment(in): attribute comment
  */
 int
 smt_add_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const char *domain_string, DB_DOMAIN * domain,
 				  DB_VALUE * default_value, const SM_NAME_SPACE name_space, const bool add_first,
-				  const char *add_after_attribute, DB_DEFAULT_EXPR * default_expr, const char *comment)
+				  const char *add_after_attribute, DB_DEFAULT_EXPR * default_expr,
+				  DB_DEFAULT_EXPR_TYPE * on_update, const char *comment)
 {
   int error = NO_ERROR;
+  int is_class_attr;
+
+  is_class_attr = (name_space == ID_CLASS_ATTRIBUTE);
 
   error = smt_add_attribute_any (def, name, domain_string, domain, name_space, add_first, add_after_attribute, comment);
-  if (error == NO_ERROR && default_value != NULL)
+  if (error != NO_ERROR)
     {
-      error =
-	smt_set_attribute_default (def, name, (name_space == ID_CLASS_ATTRIBUTE ? 1 : 0), default_value, default_expr);
+      return error;
+    }
+
+  if (default_value != NULL)
+    {
+      error = smt_set_attribute_default (def, name, is_class_attr, default_value, default_expr);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  if (on_update != NULL)
+    {
+      error = smt_set_attribute_on_update (def, name, is_class_attr, *on_update);
     }
 
   return error;
@@ -983,15 +1001,16 @@ smt_add_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const char *
  *   default_value(in):
  *   name_space(in): attribute name_space (class, instance, or shared)
  *   default_expr(in): default expression
+ *   on_update(in): on_update default expression
  *   comment(in): attribute comment
  */
 int
 smt_add_attribute_w_dflt (DB_CTMPL * def, const char *name, const char *domain_string, DB_DOMAIN * domain,
 			  DB_VALUE * default_value, const SM_NAME_SPACE name_space, DB_DEFAULT_EXPR * default_expr,
-			  const char *comment)
+			  DB_DEFAULT_EXPR_TYPE * on_update, const char *comment)
 {
   return smt_add_attribute_w_dflt_w_order (def, name, domain_string, domain, default_value, name_space, false, NULL,
-					   default_expr, comment);
+					   default_expr, on_update, comment);
 }
 
 /*
@@ -1441,6 +1460,7 @@ end:
  *	   The (current) default value is stored as att->value; the initial
  *	   default value is stored as att->original_value.
  */
+
 static int
 smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_value, DB_DEFAULT_EXPR * default_expr)
 {
@@ -1457,6 +1477,32 @@ smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_va
     }
 
   return classobj_copy_default_expr (&att->default_value.default_expr, default_expr);
+}
+
+/*
+ * smt_set_attribute_on_update() - Sets the on update default expr of an attribute.
+ *				   No domain checking is performed.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   template(in/out): schema template
+ *   name(in): attribute name
+ *   class_attribute(in): non-zero if looking at class attributes
+ *   on_update(in): on update default expression
+ */
+int
+smt_set_attribute_on_update (SM_TEMPLATE * template_, const char *name, int class_attribute,
+			     DB_DEFAULT_EXPR_TYPE on_update)
+{
+  int error = NO_ERROR;
+  SM_ATTRIBUTE *att;
+
+  error = smt_find_attribute (template_, name, class_attribute, &att);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  att->on_update_default_expr = on_update;
+  return NO_ERROR;
 }
 
 /*
@@ -4340,29 +4386,29 @@ error_exit:
  *   name_space(in): class, shared or normal attribute
  *   new_default_value(in): default value
  *   new_default_expr(in): default expression
- *   change_first(in): the attribute should be added at the beginning of the
- *                  attributes list
- *   change_after_attribute(in): the attribute should be added in the
- *                               attributes list after the attribute with the
- *                               given name
+ *   new_on_update_expr(in): on_update default expression
+ *   change_first(in): the attribute should be added at the beginning of the attributes list
+ *   change_after_attribute(in): the attribute should be added in the attributes list
+ *                               after the attribute with the given name
  *   found_att(out) : the new attribute if successfully changed
  */
 int
 smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const char *new_name,
 				     const char *new_domain_string, DB_DOMAIN * new_domain,
 				     const SM_NAME_SPACE name_space, DB_VALUE * new_default_value,
-				     DB_DEFAULT_EXPR * new_default_expr, const bool change_first,
-				     const char *change_after_attribute, SM_ATTRIBUTE ** found_att)
+				     DB_DEFAULT_EXPR * new_default_expr, DB_DEFAULT_EXPR_TYPE on_update_expr,
+				     const bool change_first, const char *change_after_attribute,
+				     SM_ATTRIBUTE ** found_att)
 {
   int error = NO_ERROR;
+  int is_class_attr;
   DB_VALUE *orig_value = NULL;
   DB_VALUE *new_orig_value = NULL;
   TP_DOMAIN_STATUS status;
 
   *found_att = NULL;
-  error =
-    smt_change_attribute (def, name, new_name, new_domain_string, new_domain, name_space, change_first,
-			  change_after_attribute, found_att);
+  error = smt_change_attribute (def, name, new_name, new_domain_string, new_domain, name_space, change_first,
+				change_after_attribute, found_att);
   if (error != NO_ERROR)
     {
       return error;
@@ -4374,16 +4420,22 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
       return error;
     }
 
+  is_class_attr = (name_space == ID_CLASS_ATTRIBUTE);
   if (new_default_value != NULL || (new_default_expr != NULL && new_default_expr->default_expr_type != DB_DEFAULT_NONE))
     {
       assert (((*found_att)->flags & SM_ATTFLAG_NEW) == 0);
-      error =
-	smt_set_attribute_default (def, ((new_name != NULL) ? new_name : name),
-				   name_space == (ID_CLASS_ATTRIBUTE) ? 1 : 0, new_default_value, new_default_expr);
+      error = smt_set_attribute_default (def, ((new_name != NULL) ? new_name : name), is_class_attr, new_default_value,
+					 new_default_expr);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
+    }
+
+  error = smt_set_attribute_on_update (def, ((new_name != NULL) ? new_name : name), is_class_attr, on_update_expr);
+  if (error != NO_ERROR)
+    {
+      return error;
     }
 
   /* change original default : continue only for normal attributes */

@@ -3033,8 +3033,14 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
       att->properties = get_property_list (buf, vars[ORC_ATT_PROPERTIES_INDEX].length);
 
       classobj_initialize_default_expr (&att->default_value.default_expr);
+      att->on_update_default_expr = DB_DEFAULT_NONE;
       if (att->properties)
 	{
+	  if (classobj_get_prop (att->properties, "update_default", &value) > 0)
+	    {
+	      att->on_update_default_expr = (DB_DEFAULT_EXPR_TYPE) db_get_int (&value);
+	    }
+
 	  if (classobj_get_prop (att->properties, "default_expr", &value) > 0)
 	    {
 	      /* We have two cases: simple and complex expressions. */
@@ -4631,6 +4637,29 @@ tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
 	{
 	  /* make sure property is unset for existing attributes */
 	  classobj_drop_prop (attr->properties, "default_expr");
+	}
+
+      DB_DEFAULT_EXPR_TYPE update_default = attr->on_update_default_expr;
+      if (update_default != DB_DEFAULT_NONE)
+	{
+	  if (attr->properties == NULL)
+	    {
+	      attr->properties = classobj_make_prop ();
+
+	      if (attr->properties == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, sizeof (DB_SEQ));
+		  return er_errid ();
+		}
+	    }
+
+	  db_make_int (&default_expr_value, update_default);
+	  classobj_put_prop (attr->properties, "update_default", &default_expr_value);
+	}
+      else if (attr->properties != NULL)
+	{
+	  /* make sure property is unset for existing attributes */
+	  classobj_drop_prop (attr->properties, "update_default");
 	}
     }
 

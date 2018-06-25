@@ -277,6 +277,8 @@ namespace cubthread
 
   // get current thread's entry
   entry &get_entry (void);
+  void set_thread_local_entry (entry &tl_entry);      // for unit test easy mock-ups
+  void clear_thread_local_entry (void);               // for unit test easy mock-ups
 
   void return_lock_free_transaction_entries (void);
 
