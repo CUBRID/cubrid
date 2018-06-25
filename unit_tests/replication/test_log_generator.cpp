@@ -275,7 +275,7 @@ namespace test_replication
 
   };
 
-  std::atomic<int> tasks_running = 0;
+  std::atomic<int> tasks_running(0);
 
   class gen_repl_task : public cubthread::entry_task
   {

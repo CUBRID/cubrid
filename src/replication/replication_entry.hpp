@@ -33,8 +33,6 @@
 #include <string>
 
 
-class cubpacking::packer;
-
 namespace cubreplication
 {
 
