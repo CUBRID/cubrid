@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -61,19 +61,19 @@ do { \
 
 extern bool loader_In_instance_line;
 
-extern void loader_yyerror(yyscan_t yyscanner, const char *s);
+extern void loader_yyerror (yyscan_t yyscanner, const char *s);
 extern void loader_reset_string_pool (void);
 extern void loader_initialize_lexer (void);
-extern void do_loader_parse(void *data);
+extern void do_loader_parse (void *data);
 
 static LDR_CONSTANT constant_Pool[CONSTANT_POOL_SIZE];
 static int constant_Pool_idx = 0;
 
-static LDR_STRING *loader_append_string_list(LDR_STRING *head, LDR_STRING *str);
-static LDR_CLASS_COMMAND_SPEC *loader_make_class_command_spec(int qualifier, LDR_STRING *attr_list, LDR_CONSTRUCTOR_SPEC *ctor_spec);
-static LDR_CONSTANT* loader_make_constant(int type, void *val);
+static LDR_STRING *loader_append_string_list (LDR_STRING *head, LDR_STRING *str);
+static LDR_CLASS_COMMAND_SPEC *loader_make_class_command_spec (int qualifier, LDR_STRING *attr_list, LDR_CONSTRUCTOR_SPEC *ctor_spec);
+static LDR_CONSTANT* loader_make_constant (int type, void *val);
 static LDR_MONETARY_VALUE* loader_make_monetary_value (int currency_type, LDR_STRING * amount);
-static LDR_CONSTANT *loader_append_constant_list(LDR_CONSTANT *head, LDR_CONSTANT *tail);
+static LDR_CONSTANT *loader_append_constant_list (LDR_CONSTANT *head, LDR_CONSTANT *tail);
 
 int loader_yyline = 1;
 %}
@@ -296,45 +296,43 @@ class_command :
     cmd_spec = $3;
 
     ldr_act_set_skip_current_class (class_name->val, class_name->size);
-    ldr_act_init_context (ldr_Current_context, class_name->val,
-                          class_name->size);
+    ldr_act_init_context (ldr_Current_context, class_name->val, class_name->size);
 
     if (cmd_spec->qualifier != LDR_ATTRIBUTE_ANY)
       {
-        ldr_act_restrict_attributes (ldr_Current_context, (LDR_ATTRIBUTE_TYPE) cmd_spec->qualifier);
+	ldr_act_restrict_attributes (ldr_Current_context, (LDR_ATTRIBUTE_TYPE) cmd_spec->qualifier);
       }
 
     for (attr = cmd_spec->attr_list; attr; attr = attr->next)
       {
-        ldr_act_add_attr (ldr_Current_context, attr->val, attr->size);
+	ldr_act_add_attr (ldr_Current_context, attr->val, attr->size);
       }
 
     ldr_act_check_missing_non_null_attrs (ldr_Current_context);
 
     if (cmd_spec->ctor_spec)
       {
-        ldr_act_set_constructor (ldr_Current_context,
-                                 cmd_spec->ctor_spec->idname->val);
+	ldr_act_set_constructor (ldr_Current_context, cmd_spec->ctor_spec->idname->val);
 
-        for (args = cmd_spec->ctor_spec->arg_list; args; args = args->next)
-          {
-            ldr_act_add_argument (ldr_Current_context, args->val);
-          }
+	for (args = cmd_spec->ctor_spec->arg_list; args; args = args->next)
+	  {
+	    ldr_act_add_argument (ldr_Current_context, args->val);
+	  }
 
-        for (args = cmd_spec->ctor_spec->arg_list; args; args = save)
-          {
-            save = args->next;
-            FREE_STRING (args);
-          }
+	for (args = cmd_spec->ctor_spec->arg_list; args; args = save)
+	  {
+	    save = args->next;
+	    FREE_STRING (args);
+	  }
 
-        FREE_STRING (cmd_spec->ctor_spec->idname);
-        free_and_init (cmd_spec->ctor_spec);
+	FREE_STRING (cmd_spec->ctor_spec->idname);
+	free_and_init (cmd_spec->ctor_spec);
       }
 
     for (attr = cmd_spec->attr_list; attr; attr = save)
       {
-        save = attr->next;
-        FREE_STRING (attr);
+	save = attr->next;
+	FREE_STRING (attr);
       }
 
     FREE_STRING (class_name);
@@ -435,8 +433,7 @@ constructor_spec :
     spec = (LDR_CONSTRUCTOR_SPEC *) malloc (sizeof (LDR_CONSTRUCTOR_SPEC));
     if (spec == NULL)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	        ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_CONSTRUCTOR_SPEC));
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_CONSTRUCTOR_SPEC));
 	YYABORT;
       }
 
@@ -536,39 +533,39 @@ constant :
   | sql2_date 		{ $$ = $1; }
   | sql2_time 		{ $$ = $1; }
   | sql2_timestamp 	{ $$ = $1; }
-  | sql2_timestampltz 	{ $$ = $1; }  
+  | sql2_timestampltz 	{ $$ = $1; }
   | sql2_timestamptz 	{ $$ = $1; }
   | utime 		{ $$ = $1; }
   | sql2_datetime 	{ $$ = $1; }
-  | sql2_datetimeltz 	{ $$ = $1; }  
+  | sql2_datetimeltz 	{ $$ = $1; }
   | sql2_datetimetz 	{ $$ = $1; }
-  | NULL_         	{ $$ = loader_make_constant(LDR_NULL, NULL); }
-  | TIME_LIT4     	{ $$ = loader_make_constant(LDR_TIME, $1); }
-  | TIME_LIT42    	{ $$ = loader_make_constant(LDR_TIME, $1); }
-  | TIME_LIT3     	{ $$ = loader_make_constant(LDR_TIME, $1); }
-  | TIME_LIT31    	{ $$ = loader_make_constant(LDR_TIME, $1); }
-  | TIME_LIT2     	{ $$ = loader_make_constant(LDR_TIME, $1); }
-  | TIME_LIT1     	{ $$ = loader_make_constant(LDR_TIME, $1); }
-  | INT_LIT       	{ $$ = loader_make_constant(LDR_INT, $1); }
+  | NULL_         	{ $$ = loader_make_constant (LDR_NULL, NULL); }
+  | TIME_LIT4     	{ $$ = loader_make_constant (LDR_TIME, $1); }
+  | TIME_LIT42    	{ $$ = loader_make_constant (LDR_TIME, $1); }
+  | TIME_LIT3     	{ $$ = loader_make_constant (LDR_TIME, $1); }
+  | TIME_LIT31    	{ $$ = loader_make_constant (LDR_TIME, $1); }
+  | TIME_LIT2     	{ $$ = loader_make_constant (LDR_TIME, $1); }
+  | TIME_LIT1     	{ $$ = loader_make_constant (LDR_TIME, $1); }
+  | INT_LIT       	{ $$ = loader_make_constant (LDR_INT, $1); }
   | REAL_LIT
   {
     if (strchr ($1->val, 'F') != NULL || strchr ($1->val, 'f') != NULL)
       {
-        $$ = loader_make_constant (LDR_FLOAT, $1);
+	$$ = loader_make_constant (LDR_FLOAT, $1);
       }
     else if (strchr ($1->val, 'E') != NULL || strchr ($1->val, 'e') != NULL)
       {
-        $$ = loader_make_constant (LDR_DOUBLE, $1);
+	$$ = loader_make_constant (LDR_DOUBLE, $1);
       }
     else
       {
-        $$ = loader_make_constant (LDR_NUMERIC, $1);
+	$$ = loader_make_constant (LDR_NUMERIC, $1);
       }
   }
-  | DATE_LIT2     	{ $$ = loader_make_constant(LDR_DATE, $1); }
-  | monetary		{ $$ = $1; }
-  | object_reference	{ $$ = $1; }
-  | set_constant	{ $$ = $1; }
+  | DATE_LIT2			{ $$ = loader_make_constant (LDR_DATE, $1); }
+  | monetary			{ $$ = $1; }
+  | object_reference		{ $$ = $1; }
+  | set_constant		{ $$ = $1; }
   | system_object_reference	{ $$ = $1; }
   ;
 
@@ -620,7 +617,7 @@ sql2_timestampltz :
     $$ = loader_make_constant (LDR_TIMESTAMPLTZ, $3);
   }
   ;
-  
+
 sql2_timestamptz :
   TIMESTAMPTZ Quote SQS_String_Body
   {
@@ -648,7 +645,7 @@ sql2_datetimeltz :
     $$ = loader_make_constant (LDR_DATETIMELTZ, $3);
   }
   ;
-  
+
 sql2_datetimetz :
   DATETIMETZ Quote SQS_String_Body
   {
@@ -690,15 +687,14 @@ class_identifier:
     ref = (LDR_OBJECT_REF *) malloc (sizeof (LDR_OBJECT_REF));
     if (ref == NULL)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	        ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_OBJECT_REF));
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_OBJECT_REF));
 	YYABORT;
       }
 
     ref->class_id = $1;
     ref->class_name = NULL;
     ref->instance_number = NULL;
-    
+
     $$ = ref;
   }
   |
@@ -709,15 +705,14 @@ class_identifier:
     ref = (LDR_OBJECT_REF *) malloc (sizeof (LDR_OBJECT_REF));
     if (ref == NULL)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	        ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_OBJECT_REF));
-      	YYABORT;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_OBJECT_REF));
+	YYABORT;
       }
 
     ref->class_id = NULL;
     ref->class_name = $1;
     ref->instance_number = NULL;
-    
+
     $$ = ref;
   }
   ;
@@ -794,175 +789,175 @@ monetary :
   DOLLAR_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_DOLLAR, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   YEN_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_YEN, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   WON_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_WON, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   TURKISH_LIRA_CURRENCY REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_TL, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
-  }  
+  }
   |
   BACKSLASH REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_WON, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   BRITISH_POUND_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_BRITISH_POUND, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   CAMBODIAN_RIEL_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_CAMBODIAN_RIEL, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   CHINESE_RENMINBI_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_CHINESE_RENMINBI, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   INDIAN_RUPEE_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_INDIAN_RUPEE, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   RUSSIAN_RUBLE_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_RUSSIAN_RUBLE, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   AUSTRALIAN_DOLLAR_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_AUSTRALIAN_DOLLAR, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   CANADIAN_DOLLAR_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_CANADIAN_DOLLAR, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   BRASILIAN_REAL_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_BRASILIAN_REAL, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   ROMANIAN_LEU_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_ROMANIAN_LEU, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   EURO_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_EURO, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   SWISS_FRANC_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_SWISS_FRANC, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   DANISH_KRONE_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_DANISH_KRONE, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   NORWEGIAN_KRONE_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_NORWEGIAN_KRONE, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   BULGARIAN_LEV_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_BULGARIAN_LEV, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   VIETNAMESE_DONG_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_VIETNAMESE_DONG, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   CZECH_KORUNA_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_CZECH_KORUNA, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   POLISH_ZLOTY_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_POLISH_ZLOTY, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   SWEDISH_KRONA_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_SWEDISH_KRONA, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   CROATIAN_KUNA_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_CROATIAN_KUNA, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   SERBIAN_DINAR_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_SERBIAN_DINAR, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   ;
@@ -988,16 +983,14 @@ loader_append_string_list (LDR_STRING * head, LDR_STRING * tail)
 }
 
 static LDR_CLASS_COMMAND_SPEC *
-loader_make_class_command_spec (int qualifier, LDR_STRING * attr_list,
-			        LDR_CONSTRUCTOR_SPEC * ctor_spec)
+loader_make_class_command_spec (int qualifier, LDR_STRING * attr_list, LDR_CONSTRUCTOR_SPEC * ctor_spec)
 {
   LDR_CLASS_COMMAND_SPEC *spec;
 
   spec = (LDR_CLASS_COMMAND_SPEC *) malloc (sizeof (LDR_CLASS_COMMAND_SPEC));
   if (spec == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_CLASS_COMMAND_SPEC));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_CLASS_COMMAND_SPEC));
       return NULL;
     }
 
@@ -1024,8 +1017,7 @@ loader_make_constant (int type, void *val)
       con = (LDR_CONSTANT *) malloc (sizeof (LDR_CONSTANT));
       if (con == NULL)
 	{
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	          ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_CONSTANT));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_CONSTANT));
 	  return NULL;
 	}
       con->need_free = true;
@@ -1045,8 +1037,7 @@ loader_make_monetary_value (int currency_type, LDR_STRING * amount)
   mon_value = (LDR_MONETARY_VALUE *) malloc (sizeof (LDR_MONETARY_VALUE));
   if (mon_value == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_MONETARY_VALUE));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_MONETARY_VALUE));
       return NULL;
     }
 
@@ -1075,7 +1066,7 @@ loader_append_constant_list (LDR_CONSTANT * head, LDR_CONSTANT * tail)
   return head;
 }
 
-void do_loader_parse(void *data)
+void do_loader_parse (void *data)
 {
   loader_In_instance_line = true;
 
@@ -1084,10 +1075,11 @@ void do_loader_parse(void *data)
 }
 
 #ifdef PARSER_DEBUG
-/*int main(int argc, char *argv[])
+/*
+int main(int argc, char *argv[])
 {
-	loader_yyparse();
-	return 0;
+  loader_yyparse();
+  return 0;
 }
 */
 #endif
