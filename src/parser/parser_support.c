@@ -12080,6 +12080,14 @@ pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *contin
 	}
       break;
 
+    case PT_DATA_TYPE:
+      if (node->type_enum == PT_TYPE_OBJECT)
+	{
+	  *has_name_oid = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+      break;
+
     default:
       break;
     }

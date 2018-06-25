@@ -4064,7 +4064,10 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
       /* Do not use optimization in case of delete execution on broker side */
       if (statement->info.delete_.execute_with_commit_allowed)
 	{
-	  statement->use_auto_commit = 1;
+	  if (statement->info.delete_.del_stmt_list == NULL)
+	    {
+	      statement->use_auto_commit = 1;
+	    }
 	}
       break;
 
