@@ -220,6 +220,15 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/transform.c
   ${OBJECT_DIR}/object_domain.c
   )
+  
+set(REPLICATION_SOURCES
+  ${REPLICATION_DIR}/log_consumer.cpp
+  ${REPLICATION_DIR}/log_generator.cpp
+  ${REPLICATION_DIR}/master_replication_channel.cpp
+  ${REPLICATION_DIR}/replication_entry.cpp
+  ${REPLICATION_DIR}/replication_stream_entry.cpp
+  ${REPLICATION_DIR}/slave_replication_channel.cpp
+  )  
 
 set(JSP_SOURCES
   ${JSP_DIR}/jsp_sr.c
@@ -308,6 +317,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${PARSER_SOURCES}
   ${PROBES_OBJECT}
   ${QUERY_SOURCES}
+  ${REPLICATION_SOURCES}
   ${SESSION_SOURCES}
   ${STORAGE_SOURCES}
   ${THREAD_SOURCES}
@@ -334,6 +344,7 @@ set (CUBRID_LIB_SOURCES
   ${OBJECT_SOURCES}
   ${PROBES_OBJECT}
   ${QUERY_SOURCES}
+  ${REPLICATION_SOURCES}  
   ${SESSION_SOURCES}
   ${STORAGE_SOURCES}
   ${STREAM_SOURCES}
