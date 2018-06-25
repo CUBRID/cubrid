@@ -8987,6 +8987,8 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  return ER_FAILED;
 		}
+	      //debug
+	      int nr = pt_length_of_list (default_expr_attrs);
 	      parser_append_node (default_expr_attrs, assigns);
 	    }
 
@@ -11038,8 +11040,8 @@ check_for_default_expr (PARSER_CONTEXT * parser, PT_NODE * specified_attrs, PT_N
 
 //TODO: description
 int
-check_for_on_update_expr (PARSER_CONTEXT * parser, PT_NODE * assigns,
-			  PT_NODE * *default_expr_attrs, DB_OBJECT * class_obj, UINTPTR spec_id)
+check_for_on_update_expr (PARSER_CONTEXT * parser, PT_NODE * assigns, PT_NODE ** default_expr_attrs,
+			  DB_OBJECT * class_obj, UINTPTR spec_id)
 {
   SM_CLASS *cls;
   SM_ATTRIBUTE *att;
@@ -11067,7 +11069,8 @@ check_for_on_update_expr (PARSER_CONTEXT * parser, PT_NODE * assigns,
 	  PT_NODE *att_name_node = NULL;
 	  while ((att_name_node = pt_get_next_assignment (&assign_helper)) != NULL)
 	    {
-	      if (!pt_str_compare (att_name_node->info.name.original, att->header.name, CASE_INSENSITIVE))
+	      if (!pt_str_compare (att_name_node->info.name.original, att->header.name, CASE_INSENSITIVE)
+		  && !pt_str_compare (att_name_node->info.name.resolved, cls->header.ch_name, CASE_INSENSITIVE))
 		{
 		  break;
 		}

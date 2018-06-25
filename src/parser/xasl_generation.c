@@ -19796,7 +19796,8 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 	{
 	  return NULL;
 	}
-
+      //debug
+      int nr = pt_length_of_list (default_expr_attrs);
       parser_append_node (default_expr_attrs, assigns);
     }
 
