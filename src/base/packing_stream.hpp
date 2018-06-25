@@ -131,7 +131,7 @@ namespace cubstream
 
     public:
       packing_stream (const size_t buffer_capacity, const int max_appenders);
-      ~packing_stream ();
+      virtual ~packing_stream ();
 
       int write (const size_t byte_count, write_func_t &write_action);
       int read_partial (const stream_position first_pos, const size_t byte_count, size_t &actual_read_bytes,
