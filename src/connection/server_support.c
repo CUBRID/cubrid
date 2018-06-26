@@ -78,6 +78,10 @@
 #include "heartbeat.h"
 #endif
 #include "dbtype.h"
+#include "lockfree_circular_queue.hpp"
+#include <mutex>
+#include <condition_variable>
+#include "thread_looper.hpp"
 
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"
@@ -130,6 +134,10 @@ static int ha_Log_applier_state_num = 0;
 // *INDENT-OFF*
 static cubthread::entry_workpool *css_Server_request_worker_pool = NULL;
 static cubthread::entry_workpool *css_Connection_worker_pool = NULL;
+static lockfree::circular_queue<CSS_CONN_ENTRY *> conn_queue (1000);
+static cubthread::daemon *conn_daemon = NULL;
+static std::mutex conn_queue_mutex;
+static std::condition_variable conn_queue_cv;
 
 class css_server_task : public cubthread::entry_task
 {
@@ -148,6 +156,42 @@ public:
 
 private:
   CSS_CONN_ENTRY &m_conn;
+};
+
+class conn_daemon_task : public cubthread::task_without_context
+{
+public:
+
+  conn_daemon_task ()
+  {
+
+  }
+
+  void execute (void) override final
+  {
+    {
+      std::unique_lock<std::mutex> lk (conn_queue_mutex);
+
+      conn_queue_cv.wait (lk, [] {return !conn_queue.is_empty ();});
+    }
+
+    CSS_CONN_ENTRY *head = NULL;
+
+    bool rc = conn_queue.consume (head);
+    assert (rc);
+
+    if (css_Connect_handler)
+      {
+        if ((*css_Connect_handler) (head) != NO_ERRORS)
+          {
+            assert_release (false);
+          }
+      }
+    else
+      {
+        assert_release (false);
+      }
+  }
 };
 
 // css_server_external_task - class used for legacy desgin; external modules may push tasks on css worker pool and we
@@ -675,17 +719,8 @@ css_process_new_client (SOCKET master_fd)
   reason = htonl (SERVER_CONNECTED);
   css_send_data (conn, rid, (char *) &reason, sizeof (int));
 
-  if (css_Connect_handler)
-    {
-      if ((*css_Connect_handler) (conn) != NO_ERRORS)
-	{
-	  assert_release (false);
-	}
-    }
-  else
-    {
-      assert_release (false);
-    }
+  conn_queue.produce (conn);
+  conn_queue_cv.notify_one ();
 }
 
 /*
@@ -1402,6 +1437,9 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
 
   css_Server_connection_socket = INVALID_SOCKET;
+  
+  conn_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::looper (std::chrono::milliseconds (0)),
+			new conn_daemon_task (), "conn_daemon");
 
   conn = css_connect_to_master_server (port_id, server_name, name_length);
   if (conn != NULL)
@@ -3018,6 +3056,8 @@ css_stop_all_workers (THREAD_ENTRY &thread_ref, css_thread_stop_type stop_phase)
 {
   bool is_not_stopped;
 
+  cubthread::get_manager ()->destroy_daemon_without_entry (conn_daemon);
+  
   if (css_Server_request_worker_pool == NULL)
     {
       // nothing to stop
