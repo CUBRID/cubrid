@@ -51,7 +51,7 @@ std::vector<func_signature> func_signature::bigint_discrete = {
 };
 
 std::vector<func_signature> func_signature::avg = {
-  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_SCALAR  }, {}},
+  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER  }, {}},
   {PT_TYPE_DOUBLE, {PT_TYPE_NA              }, {}},
 };
 
