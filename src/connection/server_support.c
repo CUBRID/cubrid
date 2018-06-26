@@ -523,6 +523,8 @@ static int
 css_process_master_request (SOCKET master_fd)
 {
   int request, r;
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  PERF_UTIME_TRACKER time_track;
 
   r = 1;
   request = (int) css_get_master_request (master_fd);
@@ -530,7 +532,9 @@ css_process_master_request (SOCKET master_fd)
   switch (request)
     {
     case SERVER_START_NEW_CLIENT:
+      PERF_UTIME_TRACKER_START (thread_p, &time_track);
       css_process_new_client (master_fd);
+      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_track, PSTAT_PROCESS_NEW_CLIENT);
       break;
 
     case SERVER_START_SHUTDOWN:
