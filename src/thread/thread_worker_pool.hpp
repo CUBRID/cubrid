@@ -173,6 +173,8 @@ namespace cubthread
       // get worker pool statistics
       // note: the statistics are collected from all cores and all their workers adding up all local statistics
       void get_stats (cubperf::stat_value *stats_out) const;
+      
+      inline bool get_log () {return m_log;}
 
       //////////////////////////////////////////////////////////////////////////
       // context management
@@ -844,6 +846,7 @@ namespace cubthread
         auto finish = std::chrono::high_resolution_clock::now();
         long long microseconds = std::chrono::duration_cast<std::chrono::microseconds>(finish-start).count();
         
+        if (m_parent_pool->get_log ())
         contention_us[contention_index++] = microseconds;
 
 	// start new thread
@@ -853,6 +856,7 @@ namespace cubthread
         auto finish2 = std::chrono::high_resolution_clock::now();
         long long microseconds2 = std::chrono::duration_cast<std::chrono::microseconds>(finish2-start2).count();
         
+        if (m_parent_pool->get_log ())
         thread_creation_us[thread_creation_index++] = microseconds2;
         
 	return; // worker found

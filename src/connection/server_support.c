@@ -1392,7 +1392,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
       goto shutdown;
     }
 
-  css_Connection_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_WORKERS, NULL, 1, false);
+  css_Connection_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_WORKERS, NULL, 1, true);
   if (css_Connection_worker_pool == NULL)
     {
       assert (false);
