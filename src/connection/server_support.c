@@ -158,7 +158,7 @@ private:
   CSS_CONN_ENTRY &m_conn;
 };
 
-class conn_daemon_task : public cubthread::task_without_context
+class conn_daemon_task : public cubthread::entry_task
 {
 public:
 
@@ -167,7 +167,7 @@ public:
 
   }
 
-  void execute (void) override final
+  void execute (context_type &thread_ref) override final
   {
     {
       std::unique_lock<std::mutex> lk (conn_queue_mutex);
@@ -1438,7 +1438,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
   css_Server_connection_socket = INVALID_SOCKET;
   
-  conn_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::looper (std::chrono::milliseconds (0)),
+  conn_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (std::chrono::milliseconds (0)),
 			new conn_daemon_task (), "conn_daemon");
 
   conn = css_connect_to_master_server (port_id, server_name, name_length);
