@@ -3153,7 +3153,6 @@ pt_length_of_list (const PT_NODE * list)
   int len;
   for (len = 0; list; len++)
     {
-      assert (len < 1000);
       list = list->next;
     }
   return len;
