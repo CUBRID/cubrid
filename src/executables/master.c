@@ -685,7 +685,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
                   send_fd_timer_counter_us += microseconds;
                   send_fd_times_called++;
 
-                  if (send_fd_times_called > 100)
+                  if (send_fd_times_called >= 100)
                     {
                       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "css_send_new_request_to_server avg time us: %lld.\n", send_fd_timer_counter_us / send_fd_times_called);
                       send_fd_times_called = 0;
