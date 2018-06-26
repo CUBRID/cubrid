@@ -489,7 +489,7 @@ namespace cubmonitor
   void
   accumulator_atomic_statistic<Rep>::collect (const Rep &value)
   {
-    this->set_value (this->get_value () + value);
+    this->fetch_add (value);
   }
 
   template <typename Rep>
