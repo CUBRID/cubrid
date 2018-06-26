@@ -8972,24 +8972,30 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  PT_NODE **links = NULL;
 	  int no_vals = 0, no_consts = 0;
 
-	  // inline for now:
 	  PT_NODE *assigns = statement->info.update.assignment;
 	  PT_NODE *from = statement->info.update.spec;
-	  PT_NODE *default_expr_attrs = NULL;
 	  for (PT_NODE * p = from; p; p = p->next)
 	    {
+	      PT_NODE *default_expr_attrs = NULL;
 	      PT_NODE *cl_name_node = p->info.spec.flat_entity_list;
 	      DB_OBJECT *class_obj = cl_name_node->info.name.db_object;
-	      /* make attrs be the attrs of the assigned */
-	      int error = check_for_on_update_expr (parser, assigns, &default_expr_attrs, class_obj,
-						    cl_name_node->info.name.spec_id);
-	      if (error != NO_ERROR)
+
+	      err = check_for_on_update_expr (parser, assigns, &default_expr_attrs, class_obj,
+					      cl_name_node->info.name.spec_id);
+	      if (err != NO_ERROR)
 		{
-		  return ER_FAILED;
+		  break;
 		}
-	      //debug
-	      int nr = pt_length_of_list (default_expr_attrs);
 	      parser_append_node (default_expr_attrs, assigns);
+	      if (default_expr_attrs != NULL)
+		{
+		  p->info.spec.flag = (PT_SPEC_FLAG) (p->info.spec.flag | PT_SPEC_FLAG_UPDATE);
+		}
+	    }
+	  if (err != NO_ERROR)
+	    {
+	      PT_INTERNAL_ERROR (parser, "update");
+	      break;		/* stop while loop if error */
 	    }
 
 	  err =
@@ -11038,7 +11044,17 @@ check_for_default_expr (PARSER_CONTEXT * parser, PT_NODE * specified_attrs, PT_N
   return NO_ERROR;
 }
 
-//TODO: description
+/*
+* check_for_on_update_expr() - Builds a list of attributes that have a default
+*			       on update expression and are not found in the 
+*			       specified attributes list
+*   return: Error code
+*   parser(in/out): Parser context
+*   specified_attrs(in): the list of attributes that are not to be considered
+*   default_expr_attrs(out):
+*   class_obj(in):
+*   spec_id(in):
+*/
 int
 check_for_on_update_expr (PARSER_CONTEXT * parser, PT_NODE * assigns, PT_NODE ** default_expr_attrs,
 			  DB_OBJECT * class_obj, UINTPTR spec_id)
@@ -11088,11 +11104,25 @@ check_for_on_update_expr (PARSER_CONTEXT * parser, PT_NODE * assigns, PT_NODE **
 	      return ER_FAILED;
 	    }
 	  new_->info.name.original = att->header.name;
+	  new_->info.name.resolved = cls->header.ch_name;
 	  new_->info.name.spec_id = spec_id;
 
 	  PT_OP_TYPE op = pt_op_type_from_default_expr_type (att->on_update_default_expr);
 	  PT_NODE *expr = parser_make_expression (parser, op, NULL, NULL, NULL);
+	  if (expr == NULL)
+	    {
+	      parser_free_node (parser, new_);
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return ER_FAILED;
+	    }
 	  PT_NODE *assign_expr = parser_make_expression (parser, PT_ASSIGN, new_, expr, NULL);
+	  if (assign_expr == NULL)
+	    {
+	      parser_free_node (parser, new_);
+	      parser_free_node (parser, expr);
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return ER_FAILED;
+	    }
 
 	  if (*default_expr_attrs != NULL)
 	    {
