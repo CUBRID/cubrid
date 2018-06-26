@@ -4001,18 +4001,6 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
     }
 
   /* Check whether statement can uses auto commit. */
-  if (session->dimension > 1)
-    {
-      /* Do not use the optimization if have more than one statement and at least one is SELECT. */
-      for (stmt_ndx = 0; stmt_ndx < session->dimension; stmt_ndx++)
-	{
-	  if ((session->statements[stmt_ndx]) && ((session->statements[stmt_ndx])->node_type == PT_SELECT))
-	    {
-	      return NO_ERROR;
-	    }
-	}
-    }
-
   if (tr_has_commit_triggers (TR_TIME_BEFORE))
     {
       /* Triggers must be excuted before commit. Disable optimization. */
@@ -4034,7 +4022,8 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
 	    PT_HINT_SELECT_BTREE_NODE_INFO;
 	  if ((statement->info.query.q.select.hint & info_hints) == 0)
 	    {
-	      (void) parser_walk_tree (session->parser, statement->info.query.q.select.list, pt_has_name_oid, &has_name_oid, NULL, NULL);
+	      (void) parser_walk_tree (session->parser, statement->info.query.q.select.list, pt_has_name_oid,
+				       &has_name_oid, NULL, NULL);
 	      if (!has_name_oid)
 		{
 		  statement->use_auto_commit = 1;
