@@ -4034,7 +4034,7 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
 	    PT_HINT_SELECT_BTREE_NODE_INFO;
 	  if ((statement->info.query.q.select.hint & info_hints) == 0)
 	    {
-	      (void) parser_walk_tree (session->parser, statement, pt_has_name_oid, &has_name_oid, NULL, NULL);
+	      (void) parser_walk_tree (session->parser, statement->info.query.q.select.list, pt_has_name_oid, &has_name_oid, NULL, NULL);
 	      if (!has_name_oid)
 		{
 		  statement->use_auto_commit = 1;
