@@ -50,9 +50,14 @@ std::vector<func_signature> func_signature::bigint_discrete = {
   {PT_TYPE_BIGINT, {PT_TYPE_NA                     }, {}},
 };
 
+std::vector<func_signature> func_signature::avg = {
+  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_SCALAR  }, {}},
+  {PT_TYPE_DOUBLE, {PT_TYPE_NA              }, {}},
+};
+
 std::vector<func_signature> func_signature::double_number = {
-  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER}, {}},
-  {PT_TYPE_DOUBLE, {PT_TYPE_NA}, {}},
+  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER  }, {}},
+  {PT_TYPE_DOUBLE, {PT_TYPE_NA              }, {}},
 };
 
 std::vector<func_signature> func_signature::count_star = {
@@ -205,6 +210,7 @@ std::vector<func_signature>* func_signature::get_signatures(FUNC_TYPE ft){
         case PT_SUM:
             return &sum;
         case PT_AVG:
+            return &avg;
         case PT_STDDEV:
         case PT_VARIANCE:
         case PT_STDDEV_POP:
