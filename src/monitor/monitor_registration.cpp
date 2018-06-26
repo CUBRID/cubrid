@@ -63,6 +63,24 @@ namespace cubmonitor
     return m_registrations.size ();
   }
 
+  const std::string &
+  monitor::get_statistic_name (std::size_t index) const
+  {
+    return m_all_names[index];
+  }
+
+  std::size_t
+  monitor::get_statistic_values_memsize (void) const
+  {
+    return get_statistics_count () * sizeof (statistic_value);
+  }
+
+  std::size_t
+  monitor::get_registrations_memsize (void) const
+  {
+    return get_registered_count () * sizeof (registration);
+  }
+
   statistic_value *
   monitor::allocate_statistics_buffer (void) const
   {

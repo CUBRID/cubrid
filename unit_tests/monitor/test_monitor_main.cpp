@@ -32,6 +32,7 @@ static void test_multithread_accumulation (void);
 static void test_transaction (void);
 static void test_registration (void);
 static void test_collect (void);
+static void test_boot_mockup (void);
 
 int
 main (int, char **)
@@ -41,6 +42,7 @@ main (int, char **)
   test_transaction ();
   test_registration ();
   test_collect ();
+  test_boot_mockup ();
 
   std::cout << "test successful" << std::endl;
 }
@@ -506,4 +508,163 @@ void
 test_collect (void)
 {
   test_counter_timer_max ();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// test_boot_mockup ()
+//////////////////////////////////////////////////////////////////////////
+
+cubmonitor::monitor::fetch_function
+peek_to_fetch_func (int &peek_value)
+{
+  using namespace cubmonitor;
+  return [&] (statistic_value * destination, fetch_mode mode)
+  {
+    *destination = static_cast<statistic_value> (peek_value);
+  };
+}
+
+void
+ostream_memsize (std::ostream &out, std::size_t memsize)
+{
+  if (memsize < 1024)
+    {
+      out << memsize << "B";
+    }
+  else if (memsize < 1024 * 1024)
+    {
+      out << memsize / 1024 << "KB";
+    }
+  else
+    {
+      out << memsize / 1024 / 1024 << "MB";
+    }
+}
+
+void
+test_boot_mockup (void)
+{
+  // this function should try to mock-up statistics registrations during boot and estimate the overhead
+  // note that this still may work faster than the actual registration
+  using namespace cubmonitor;
+
+  time_point start_timept = clock_type::now ();
+
+  monitor &global_monitor = get_global_monitor ();
+
+  //
+  // we have 168 amount or time accumulators; we'll break it into two groups of 84 statistics
+  //
+  const std::size_t AMOUNT_ACCUMULATOR_COUNT = 84;
+  transaction_statistic<amount_accumulator_atomic_statistic> *amnt_acc_stats =
+	  new transaction_statistic<amount_accumulator_atomic_statistic>[AMOUNT_ACCUMULATOR_COUNT];
+  for (std::size_t i = 0; i < AMOUNT_ACCUMULATOR_COUNT; i++)
+    {
+      std::string stat_name ("amount accumulator statistic");
+      std::vector<std::string> names = { stat_name };
+      global_monitor.register_statistics (amnt_acc_stats[i], names);
+    }
+
+  // use timer_statistic for time accumulators
+  const std::size_t TIME_ACCUMULATOR_COUNT = 84;
+  using timer_type = timer_statistic<transaction_statistic<time_accumulator_atomic_statistic>>;
+  timer_type *time_acc_stats = new timer_type[TIME_ACCUMULATOR_COUNT];
+  for (std::size_t i = 0; i < TIME_ACCUMULATOR_COUNT; i++)
+    {
+      std::string stat_name ("time accumulator statistic");
+      std::vector<std::string> names = { stat_name };
+      global_monitor.register_statistics (time_acc_stats[i], names);
+    }
+
+  //
+  // we have 20 peek statistics. we simulate them using a fetch function
+  //
+  const std::size_t PEEK_STAT_COUNT = 20;
+  int *peek_values = new int[PEEK_STAT_COUNT];
+  for (std::size_t i = 0; i < PEEK_STAT_COUNT; i++)
+    {
+      std::string stat_name ("peek statistic");
+      std::vector<std::string> names = { stat_name };
+      global_monitor.register_statistics (1, peek_to_fetch_func (peek_values[i]), names);
+    }
+
+  //
+  // we have 20 computed ratios. todo.
+  //
+
+  //
+  // we have 56 counter/timer/max statistics
+  //
+  const std::size_t CTM_STAT_COUNT = 56;
+  using ctm_type = counter_timer_max_statistic<transaction_statistic<amount_accumulator_atomic_statistic>,
+	transaction_statistic<time_accumulator_atomic_statistic>,
+	transaction_statistic<time_accumulator_atomic_statistic>>;
+  ctm_type *ctm_stats = new ctm_type[CTM_STAT_COUNT];
+
+  for (std::size_t i = 0; i < CTM_STAT_COUNT; i++)
+    {
+      ctm_stats[i].register_to_monitor (global_monitor, "counter_timer_max_statistic");
+    }
+
+  //
+  // todo: complex multi-dimensional statistics
+  //
+  //  page fix - 2430 statistics
+  //  page promote - 648 statistics
+  //  promote time - 648 statistics
+  //  page unfix - 648 statistics
+  //  page lock time - 2430 statistics
+  //  page hold time - 810 statistics
+  //  page fix time - 2430 statistics
+  //  snapshot - 80 statistics
+  //  lock time - 11 statistics
+  //  thread workers - 16 statistics
+  //  thread daemon - 13 statistics * 6 daemons
+  //
+
+  time_point end_timept = clock_type::now ();
+
+  duration register_time = end_timept - start_timept;   // this is nanoseconds
+  std::chrono::duration<double, std::milli> register_time_millis =
+	  std::chrono::duration_cast <std::chrono::duration<double, std::milli>> (register_time);
+
+  std::cout << "Monitor with " << global_monitor.get_registered_count () << " registrations and "
+	    << global_monitor.get_statistics_count () << " statistics." << std::endl;
+
+  std::cout << "Registration took " << register_time_millis.count () << " milliseconds" << std::endl;
+
+  std::cout << std::endl << "Memory usage: " << std::endl;
+
+  std::cout << std::endl;
+  std::cout << "  Statistic collectors: " << std::endl;
+  std::cout << "    " << AMOUNT_ACCUMULATOR_COUNT << " amount accumulators: ";
+  ostream_memsize (std::cout, AMOUNT_ACCUMULATOR_COUNT * sizeof (*amnt_acc_stats));
+  std::cout << std::endl;
+  std::cout << "    " << TIME_ACCUMULATOR_COUNT << " timer statistics: ";
+  ostream_memsize (std::cout, TIME_ACCUMULATOR_COUNT * sizeof (*time_acc_stats));
+  std::cout << std::endl;
+  std::cout << "    " << CTM_STAT_COUNT << " counter/timer/max statistics:";
+  ostream_memsize (std::cout, CTM_STAT_COUNT * sizeof (*ctm_stats));
+  std::cout << std::endl;
+
+  std::cout << std::endl;
+  std::size_t memsize = 0;
+  for (std::size_t i = 0; i < global_monitor.get_statistics_count (); i++)
+    {
+      const std::string &str = global_monitor.get_statistic_name (i);
+      memsize += sizeof (str) + str.size ();
+    }
+  std::cout << "  Statistic names: ";
+  ostream_memsize (std::cout, memsize);
+  std::cout << std::endl;
+
+  std::cout << std::endl;
+  std::cout << "  Registrations: ";
+  ostream_memsize (std::cout, global_monitor.get_registrations_memsize ());
+  std::cout << std::endl;
+
+  delete amnt_acc_stats;
+  delete time_acc_stats;
+  delete peek_values;
+  delete ctm_stats;
 }

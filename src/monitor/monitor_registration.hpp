@@ -80,9 +80,15 @@ namespace cubmonitor
       template <class S>
       void register_statistics (const S &statistics, std::vector<std::string> &names);
 
+      // getters
       // get the total count of registered statistics
       std::size_t get_statistics_count (void) const;
       std::size_t get_registered_count (void) const;
+      // get name
+      const std::string &get_statistic_name (std::size_t index) const;
+      // memory size
+      std::size_t get_statistic_values_memsize (void) const;
+      std::size_t get_registrations_memsize (void) const;
 
       // allocate a buffer to hold values for all statistics
       statistic_value *allocate_statistics_buffer (void) const;
