@@ -681,7 +681,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
                   rc = css_send_new_request_to_server (temp->fd, conn->fd, rid, request);
                   auto finish = std::chrono::high_resolution_clock::now();
 
-                  long long microseconds = std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
+                  long long microseconds = std::chrono::duration_cast<std::chrono::microseconds>(finish-start).count();
                   send_fd_timer_counter_us += microseconds;
                   send_fd_times_called++;
 

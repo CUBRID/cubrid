@@ -234,7 +234,7 @@ namespace cubthread
       // true to do debug logging
       bool m_log;
   };
-
+  
   // worker_pool<Context>::core
   //
   // description
@@ -248,6 +248,11 @@ namespace cubthread
       using context_type = Context;
       using task_type = task<Context>;
       using worker_pool_type = worker_pool<Context>;
+      
+      static long long contention_us[1000];
+      static long long thread_creation_us[1000];
+      static int contention_index;
+      static int thread_creation_index;
 
       // forward definition of nested class worker
       class worker;
@@ -305,6 +310,18 @@ namespace cubthread
       std::queue<task_type *> m_task_queue;           // list of tasks pushed while all workers were occupied
       std::mutex m_workers_mutex;                     // mutex to synchronize activity on worker lists
   };
+  
+  template <typename Context>
+  long long worker_pool<Context>::core::contention_us[1000];
+  
+  template <typename Context>
+  long long worker_pool<Context>::core::thread_creation_us[1000];
+  
+  template <typename Context>
+  int worker_pool<Context>::core::contention_index = 0;
+  
+  template <typename Context>
+  int worker_pool<Context>::core::thread_creation_index = 0;
 
   // worker_pool<Context>::worker
   //
@@ -792,6 +809,7 @@ namespace cubthread
     // 3. if no workers, reject task (returns false)
 
     cubperf::time_point push_time = cubperf::clock::now ();
+    auto start = std::chrono::high_resolution_clock::now();
     worker *refp = NULL;
 
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
@@ -822,9 +840,21 @@ namespace cubthread
 	m_inactive_list.pop_front ();
 
 	ulock.unlock ();
+        
+        auto finish = std::chrono::high_resolution_clock::now();
+        long long microseconds = std::chrono::duration_cast<std::chrono::microseconds>(finish-start).count();
+        
+        contention_us[contention_index++] = microseconds;
 
 	// start new thread
+        
+        auto start2 = std::chrono::high_resolution_clock::now();
 	refp->push_task_on_new_thread (task_p, push_time);
+        auto finish2 = std::chrono::high_resolution_clock::now();
+        long long microseconds2 = std::chrono::duration_cast<std::chrono::microseconds>(finish2-start2).count();
+        
+        thread_creation_us[thread_creation_index++] = microseconds2;
+        
 	return; // worker found
       }
 
