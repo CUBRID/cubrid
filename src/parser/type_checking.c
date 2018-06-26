@@ -5161,14 +5161,9 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
       return PT_TYPE_DATETIME;
 
     case PT_GENERIC_TYPE_SCALAR:
-      if(arg_type!=PT_TYPE_SET || arg_type!=PT_TYPE_MULTISET || arg_type!=PT_TYPE_SEQUENCE)
-        {
-          return arg_type;
-        }
-      else
-        {
-          return PT_TYPE_NONE;
-        }
+      return (arg_type==PT_TYPE_SET || arg_type==PT_TYPE_MULTISET || arg_type==PT_TYPE_SEQUENCE)
+          ? PT_TYPE_NONE
+          : arg_type;
 
     default:
       return PT_TYPE_NONE;
