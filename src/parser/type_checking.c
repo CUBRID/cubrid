@@ -12992,8 +12992,6 @@ namespace Func
               return (PT_IS_SIMPLE_CHAR_STRING_TYPE(type_enum) || PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum) || PT_IS_BIT_STRING_TYPE(type_enum) || type_enum == PT_TYPE_ENUMERATION || type_enum == PT_TYPE_MAYBE || type_enum == PT_TYPE_NULL);//monetary should be here???
             case PT_TYPE_VARNCHAR:
               return (PT_IS_NATIONAL_CHAR_STRING_TYPE(type_enum) || PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum) || PT_IS_BIT_STRING_TYPE(type_enum) || type_enum == PT_TYPE_ENUMERATION || type_enum == PT_TYPE_MAYBE || type_enum == PT_TYPE_NULL);//monetary should be here???
-            case PT_TYPE_DOUBLE:
-              return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum) || PT_IS_BIT_STRING_TYPE(type_enum) || type_enum == PT_TYPE_ENUMERATION || type_enum == PT_TYPE_MAYBE || type_enum == PT_TYPE_NULL);//monetary should be here???
             default:
               if (type.val.type == type_enum)
                 {
