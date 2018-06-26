@@ -5161,7 +5161,7 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
       return PT_TYPE_DATETIME;
 
     case PT_GENERIC_TYPE_SCALAR:
-        if(arg_type == PT_TYPE_ENUMERATION || PT_IS_NUMERIC_TYPE(arg_type) || PT_IS_STRING_TYPE(arg_type) || PT_IS_DATE_TIME_TYPE(arg_type))
+        if(arg_type == PT_TYPE_ENUMERATION || arg_type == PT_TYPE_MAYBE || PT_IS_NUMERIC_TYPE(arg_type) || PT_IS_STRING_TYPE(arg_type) || PT_IS_DATE_TIME_TYPE(arg_type))
           {
             return arg_type;
           }
