@@ -17,34 +17,27 @@
  *
  */
 
-/*
- * packable_object.hpp
- */
+//
+// monitor_definition.hpp - definition interface for monitor
+//
 
-#ifndef _PACKABLE_OBJECT_HPP_
-#define _PACKABLE_OBJECT_HPP_
+#if !defined _MONITOR_DEFINITION_HPP_
+#define _MONITOR_DEFINITION_HPP_
 
-#ident "$Id$"
+#include <chrono>
 
-#include "packer.hpp"
-#include <map>
+#include <cstdint>
 
-namespace cubpacking
+namespace cubmonitor
 {
+  // statistic common representation used on monitor fetching its values
+  using statistic_value = std::uint64_t;
 
-  class packable_object
-  {
-    public:
-      virtual ~packable_object () {};
-      virtual int pack (packer *serializator) = 0;
-      virtual int unpack (packer *serializator) = 0;
+  // clocking
+  using clock_type = std::chrono::high_resolution_clock;
+  using time_point = clock_type::time_point;
+  using duration = clock_type::duration;
 
-      virtual bool is_equal (const packable_object *other) = 0;
+} // namespace cubmonitor
 
-      /* used at packing to get info on how much memory to reserve */
-      virtual size_t get_packed_size (packer *serializator) = 0;
-  };
-
-} /* namespace cubpacking */
-
-#endif /* _PACKABLE_OBJECT_HPP_ */
+#endif // _MONITOR_DEFINITION_HPP_

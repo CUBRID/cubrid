@@ -56,6 +56,20 @@ set(THREAD_HEADERS
   ${THREAD_DIR}/thread_worker_pool.hpp
   )
 
+set(STREAM_SOURCES
+  ${BASE_DIR}/cubstream.cpp
+  ${BASE_DIR}/packing_stream.cpp
+  ${BASE_DIR}/stream_entry.cpp
+  )
+set (STREAM_HEADERS
+  ${BASE_DIR}/bip_buffer.hpp
+  ${BASE_DIR}/collapsable_circular_queue.hpp
+  ${BASE_DIR}/cubstream.hpp
+  ${BASE_DIR}/packing_stream.hpp
+  ${BASE_DIR}/stream_entry.hpp
+  ${BASE_DIR}/stream_io.hpp
+  )
+
 set(BASE_SOURCES
   ${BASE_DIR}/adjustable_array.c
   ${BASE_DIR}/area_alloc.c
@@ -107,7 +121,6 @@ set(BASE_SOURCES
   ${BASE_DIR}/unicode_support.c
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/xml_parser.c
-  ${BASE_DIR}/cubstream.cpp
   )
 set (BASE_HEADERS
   ${BASE_DIR}/contiguous_memory_buffer.hpp
@@ -127,7 +140,6 @@ set (BASE_HEADERS
   ${BASE_DIR}/process_util.h
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/string_buffer.hpp
-  ${BASE_DIR}/cubstream.hpp
   )
 
 set(EXECUTABLE_SOURCES
@@ -160,6 +172,20 @@ set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/stream_transfer_receiver.hpp
   ${COMMUNICATION_DIR}/stream_transfer_sender.hpp
   )
+
+set(MONITOR_SOURCES
+  ${MONITOR_DIR}/monitor_collect.cpp
+  ${MONITOR_DIR}/monitor_registration.cpp
+  ${MONITOR_DIR}/monitor_statistic.cpp
+  ${MONITOR_DIR}/monitor_transaction.cpp
+)
+set(MONITOR_HEADERS
+  ${MONITOR_DIR}/monitor_collect.hpp
+  ${MONITOR_DIR}/monitor_definition.hpp
+  ${MONITOR_DIR}/monitor_registration.hpp
+  ${MONITOR_DIR}/monitor_statistic.hpp
+  ${MONITOR_DIR}/monitor_transaction.hpp
+)
 
 set(QUERY_SOURCES
   ${QUERY_DIR}/arithmetic.c
@@ -268,23 +294,25 @@ set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -
 endif(UNIX)
 
 SET_SOURCE_FILES_PROPERTIES(
-  ${COMPAT_SOURCES}
-  ${THREAD_SOURCES}
   ${BASE_SOURCES}
-  ${HEAPLAYER_SOURCES}
+  ${COMMUNICATION_SOURCES}
+  ${COMPAT_SOURCES}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
-  ${COMMUNICATION_SOURCES}
-  ${PARSER_SOURCES}
-  ${QUERY_SOURCES}
-  ${OBJECT_SOURCES}
-  ${JSP_SOURCES}
-  ${TRANSACTION_SOURCES}
-  ${STORAGE_SOURCES}
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
+  ${HEAPLAYER_SOURCES}
+  ${JSP_SOURCES}
+  ${MONITOR_SOURCES}
+  ${OBJECT_SOURCES}
+  ${PARSER_SOURCES}
+  ${PROBES_OBJECT}
+  ${QUERY_SOURCES}
   ${SESSION_SOURCES}
-  ${PROBES_OBJECT} PROPERTIES LANGUAGE CXX
+  ${STORAGE_SOURCES}
+  ${THREAD_SOURCES}
+  ${TRANSACTION_SOURCES}
+  PROPERTIES LANGUAGE CXX
   )
 
 SET_SOURCE_FILES_PROPERTIES(
@@ -293,28 +321,32 @@ SET_SOURCE_FILES_PROPERTIES(
   )
 
 set (CUBRID_LIB_SOURCES
-  ${COMPAT_SOURCES}
-  ${THREAD_SOURCES}
   ${BASE_SOURCES}
-  ${HEAPLAYER_SOURCES}
+  ${COMMUNICATION_SOURCES}
+  ${COMPAT_SOURCES}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
-  ${COMMUNICATION_SOURCES}
-  ${QUERY_SOURCES}
-  ${OBJECT_SOURCES}
-  ${JSP_SOURCES}
-  ${TRANSACTION_SOURCES}
-  ${STORAGE_SOURCES}
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
-  ${SESSION_SOURCES}
+  ${HEAPLAYER_SOURCES}
+  ${JSP_SOURCES}
+  ${MONITOR_SOURCES}
+  ${OBJECT_SOURCES}
   ${PROBES_OBJECT}
+  ${QUERY_SOURCES}
+  ${SESSION_SOURCES}
+  ${STORAGE_SOURCES}
+  ${STREAM_SOURCES}
+  ${THREAD_SOURCES}
+  ${TRANSACTION_SOURCES}
   )
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
   ${COMMUNICATION_HEADERS}
   ${COMPAT_HEADERS}
+  ${MONITOR_HEADERS}
   ${THREAD_HEADERS}
+  ${STREAM_HEADERS}
   )
 
 add_library(cubrid SHARED

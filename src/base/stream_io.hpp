@@ -18,33 +18,25 @@
  */
 
 /*
- * packable_object.hpp
+ * stream_io.hpp
  */
 
-#ifndef _PACKABLE_OBJECT_HPP_
-#define _PACKABLE_OBJECT_HPP_
+#ifndef _STREAM_IO_HPP_
+#define _STREAM_IO_HPP_
 
 #ident "$Id$"
 
-#include "packer.hpp"
-#include <map>
-
-namespace cubpacking
+namespace cubstream
 {
 
-  class packable_object
+  class stream_io
   {
     public:
-      virtual ~packable_object () {};
-      virtual int pack (packer *serializator) = 0;
-      virtual int unpack (packer *serializator) = 0;
+      virtual int write (const stream_position &pos, const char *buf, const size_t amount) = 0;
 
-      virtual bool is_equal (const packable_object *other) = 0;
-
-      /* used at packing to get info on how much memory to reserve */
-      virtual size_t get_packed_size (packer *serializator) = 0;
+      virtual int read (const stream_position &pos, const char *buf, const size_t amount) = 0;
   };
 
-} /* namespace cubpacking */
+} /*  namespace cubstream */
 
-#endif /* _PACKABLE_OBJECT_HPP_ */
+#endif /* _STREAM_IO_HPP_ */
