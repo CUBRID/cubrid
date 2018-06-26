@@ -689,6 +689,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
                     {
                       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "css_send_new_request_to_server avg time us: %lld.\n", send_fd_timer_counter_us / send_fd_times_called);
                       send_fd_times_called = 0;
+                      send_fd_timer_counter_us = 0;
                     }
 		  if (rc)
 		    {
