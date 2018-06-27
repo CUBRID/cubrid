@@ -8976,6 +8976,12 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  PT_NODE *from = statement->info.update.spec;
 	  for (PT_NODE * p = from; p; p = p->next)
 	    {
+	      //Check where do views get their flat_entity_list
+	      if (p->info.spec.flat_entity_list == NULL)
+		{
+		  // This means that it was not flagged for update. We should ignore this
+		  continue;
+		}
 	      PT_NODE *default_expr_attrs = NULL;
 	      PT_NODE *cl_name_node = p->info.spec.flat_entity_list;
 	      DB_OBJECT *class_obj = cl_name_node->info.name.db_object;
@@ -8987,10 +8993,10 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  break;
 		}
 	      parser_append_node (default_expr_attrs, assigns);
-	      if (default_expr_attrs != NULL)
-		{
-		  p->info.spec.flag = (PT_SPEC_FLAG) (p->info.spec.flag | PT_SPEC_FLAG_UPDATE);
-		}
+	      /*if (default_expr_attrs != NULL)
+	         {
+	         p->info.spec.flag = (PT_SPEC_FLAG) (p->info.spec.flag | PT_SPEC_FLAG_UPDATE);
+	         } */
 	    }
 	  if (err != NO_ERROR)
 	    {
@@ -14102,6 +14108,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       XASL_NODE_HEADER xasl_header;
       stream.xasl_header = &xasl_header;
+
       err = prepare_query (contextp, &stream);
       if (err != NO_ERROR)
 	{

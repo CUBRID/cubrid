@@ -19786,6 +19786,10 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
   /* append on update defaults to the assignments list */
   for (p = from; p; p = p->next)
     {
+      if (p->info.spec.flat_entity_list == NULL)
+	{
+	  continue;
+	}
       PT_NODE *default_expr_attrs = NULL;
       PT_NODE *cl_name_node = p->info.spec.flat_entity_list;
       DB_OBJECT *class_obj = cl_name_node->info.name.db_object;
@@ -24040,6 +24044,10 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   /* append on update defaults to the assignments list */
   for (p = from; p; p = p->next)
     {
+      if (p->info.spec.flat_entity_list == NULL)
+	{
+	  continue;
+	}
       PT_NODE *default_expr_attrs = NULL;
       PT_NODE *cl_name_node = p->info.spec.flat_entity_list;
       DB_OBJECT *class_obj = cl_name_node->info.name.db_object;
