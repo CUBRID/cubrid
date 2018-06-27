@@ -177,19 +177,20 @@ public:
 
     CSS_CONN_ENTRY *head = NULL;
 
-    bool rc = conn_queue.consume (head);
-    assert (rc);
-
-    if (css_Connect_handler)
+    while (conn_queue.consume (head))
       {
-        if ((*css_Connect_handler) (head) != NO_ERRORS)
+
+        if (css_Connect_handler)
+          {
+            if ((*css_Connect_handler) (head) != NO_ERRORS)
+              {
+                assert_release (false);
+              }
+          }
+        else
           {
             assert_release (false);
           }
-      }
-    else
-      {
-        assert_release (false);
       }
   }
 };
@@ -719,7 +720,9 @@ css_process_new_client (SOCKET master_fd)
   reason = htonl (SERVER_CONNECTED);
   css_send_data (conn, rid, (char *) &reason, sizeof (int));
 
+  std::unique_lock<std::mutex> lk (conn_queue_mutex);
   conn_queue.produce (conn);
+  lk.unlock ();
   conn_queue_cv.notify_one ();
 }
 
