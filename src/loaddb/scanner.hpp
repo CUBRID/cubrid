@@ -18,7 +18,7 @@
  */
 
 /*
- * scanner.hpp - TODO
+ * scanner.hpp - TODO CBRD-21654
  */
 
 #ifndef _SCANNER_HPP_
@@ -29,10 +29,10 @@
 #endif
 
 #include "loader_parser.tab.hpp"
+#include "driver.hpp"
 
 namespace cubloaddb
 {
-
   class scanner : public yyFlexLexer
   {
     public:
@@ -46,7 +46,7 @@ namespace cubloaddb
       };
 
       virtual int yylex (cubloaddb::loader_yyparser::semantic_type *yylval,
-			 cubloaddb::loader_yyparser::location_type *yylloc);
+			 cubloaddb::loader_yyparser::location_type *yylloc, cubloaddb::driver &d);
   };
 } // namespace cubloaddb
 

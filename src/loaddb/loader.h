@@ -112,7 +112,7 @@ struct ldr_string
   LDR_STRING *next;
   LDR_STRING *last;
   char *val;
-  int size;
+    std::size_t size;
   bool need_free_val;
   bool need_free_self;
 };

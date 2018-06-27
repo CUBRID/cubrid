@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -29,11 +29,13 @@
 #undef YY_DECL
 #define YY_DECL                                                                     \
   int cubloaddb::scanner::yylex (cubloaddb::loader_yyparser::semantic_type* yylval, \
-				 cubloaddb::loader_yyparser::location_type* yylloc)
+				 cubloaddb::loader_yyparser::location_type* yylloc, \
+				 cubloaddb::driver &d)
 
+/* typedef to make the returns for the tokens shorter */
 using token = cubloaddb::loader_yyparser::token;
 
-#define LEXER_DEBUG
+//#define LEXER_DEBUG
 
 #ifdef LEXER_DEBUG
 #define PRINT printf("lex: ");printf
@@ -41,7 +43,6 @@ using token = cubloaddb::loader_yyparser::token;
 #define PRINT(a, b)
 #endif
 
-static char *qstr_Buf_p = NULL;
 bool loader_In_instance_line = true;
 %}
 
@@ -214,61 +215,61 @@ bool loader_In_instance_line = true;
 
 [\+\-]?(([0-9]+[Ee][\+\-]?[0-9]+[fFlL]?)|([0-9]*\.[0-9]+([Ee][\+\-]?[0-9]+)?[fFlL]?)|([0-9]+\.[0-9]*([Ee][\+\-]?[0-9]+)?[fFlL]?)) {
     PRINT ("REAL_LIT %s\n", yytext);
-    //yylval_param->string = loader_make_string_by_yytext (yyscanner);
+    yylval->string = d.make_string_by_yytext (yytext, yyleng);
     return token::REAL_LIT;
 }
 
 [\+\-]?[0-9]+ {
     PRINT ("INT_LIT %s\n", yytext);
-    //yylval_param->string = loader_make_string_by_yytext (yyscanner);
+    yylval->string = d.make_string_by_yytext (yytext, yyleng);
     return token::INT_LIT;
 }
 
 [0-9]+: {
     PRINT ("OID %s\n", yytext);
-    //yylval_param->intval = atoi (yytext);
+    yylval->intval = atoi (yytext);
     return token::OID_;
 }
 
 [0-9]+:[0-9]+:[0-9]+[\ \t]*[aApP][mM] {
     PRINT ("TIME_LIT4 %s\n", yytext);
-    //yylval_param->string = loader_make_string_by_yytext (yyscanner);
+    yylval->string = d.make_string_by_yytext (yytext, yyleng);
     return token::TIME_LIT4;
 }
 
 [0-9]+:[0-9]+:[0-9]+[\ \t]* {
     PRINT ("TIME_LIT42 %s\n", yytext);
-    //yylval_param->string = loader_make_string_by_yytext (yyscanner);
+    yylval->string = d.make_string_by_yytext (yytext, yyleng);
     return token::TIME_LIT42;
 }
 
 [0-9]+:[0-9]+[\ \t]*[aApP][mM] {
     PRINT ("TIME_LIT3 %s\n", yytext);
-    //yylval_param->string = loader_make_string_by_yytext (yyscanner);
+    yylval->string = d.make_string_by_yytext (yytext, yyleng);
     return token::TIME_LIT3;
 }
 
 [0-9]+:[0-9]+[\ \t]* {
     PRINT ("TIME_LIT31 %s\n", yytext);
-    //yylval_param->string = loader_make_string_by_yytext (yyscanner);
+    yylval->string = d.make_string_by_yytext (yytext, yyleng);
     return token::TIME_LIT31;
 }
 
 [0-9]+:[0-9]+:[0-9]+ {
     PRINT ("TIME_LIT2 %s\n", yytext);
-    //yylval_param->string = loader_make_string_by_yytext (yyscanner);
+    yylval->string = d.make_string_by_yytext (yytext, yyleng);
     return token::TIME_LIT2;
 }
 
 [0-9]+:[0-9]+ {
     PRINT ("TIME_LIT1 %s\n", yytext);
-    //yylval_param->string = loader_make_string_by_yytext (yyscanner);
+    yylval->string = d.make_string_by_yytext (yytext, yyleng);
     return token::TIME_LIT1;
 }
 
 [0-9]+\/[0-9]+\/[0-9]+ {
     PRINT ("DATE_LIT2 %s\n", yytext);
-    //yylval_param->string = loader_make_string_by_yytext (yyscanner);
+    yylval->string = d.make_string_by_yytext (yytext, yyleng);
     return token::DATE_LIT2;
 }
 
@@ -419,40 +420,40 @@ bool loader_In_instance_line = true;
 
 ([a-zA-Z_%#]|(\xa1[\xa2-\xee\xf3-\xfe])|([\xa2-\xfe][\xa1-\xfe])|(\x8e[\xa1-\xfe]))([a-zA-Z_%#0-9]|(\xa1[\xa2-\xfe])|([\xa1-\xfe])|(\x8e[\xa1-\xfe]))* {
     PRINT ("IDENTIFIER %s\n", yytext);
-    //yylval_param->string = loader_make_string_by_yytext (yyscanner);
+    yylval->string = d.make_string_by_yytext (yytext, yyleng);
     return token::IDENTIFIER;
 }
 
 [\'] {
     PRINT ("Quote %s\n", yytext);
     BEGIN SQS;
-    //loader_set_quoted_string_buffer (yyscanner);
+    d.set_quoted_string_buffer ();
     return token::Quote;
 }
 
 [nN][\'] {
     PRINT ("NQuote %s\n", yytext);
     BEGIN SQS;
-    //loader_set_quoted_string_buffer (yyscanner);
+    d.set_quoted_string_buffer ();
     return token::NQuote;
 }
 
 [bB][\'] {
     PRINT ("BQuote %s\n", yytext);
     BEGIN SQS;
-    //loader_set_quoted_string_buffer (yyscanner);
+    d.set_quoted_string_buffer ();
     return token::BQuote;
 }
 
 [xX][\'] {
     PRINT ("XQuote %s\n", yytext);
     BEGIN SQS;
-    //loader_set_quoted_string_buffer (yyscanner);
+    d.set_quoted_string_buffer ();
     return token::XQuote;
 }
 
 \" {
-    //loader_set_quoted_string_buffer (yyscanner);
+    d.set_quoted_string_buffer ();
     if (/*loader_In_instance_line == */true)
       {
 	BEGIN DQS;
@@ -465,7 +466,7 @@ bool loader_In_instance_line = true;
 }
 
 "[" {
-    //loader_set_quoted_string_buffer (yyscanner);
+    d.set_quoted_string_buffer ();
     BEGIN BRACKET_ID;
 }
 
@@ -493,7 +494,7 @@ bool loader_In_instance_line = true;
     BEGIN COMMENT;	/* C comments */
 }
 
-<COMMENT>.  |
+<COMMENT>. |
 <COMMENT>\n {
     //yylineno = loader_yyline++;
 }
@@ -503,59 +504,59 @@ bool loader_In_instance_line = true;
 }
 
 <DELIMITED_ID>\"\" {
-    //loader_append_string ('"', yyscanner);
+    d.append_string ('"');
 }
 
 <DELIMITED_ID>[^\"] {
-    //loader_append_string (yytext[0], yyscanner);
+    d.append_string (yytext[0]);
 }
 
 <DELIMITED_ID>\" {
-    //loader_append_string ('\0', yyscanner);
-    PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
-    //yylval_param->string = loader_make_string_by_buffer (yyscanner);
+    d.append_string ('\0');
+    // PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
+    yylval->string = d.make_string_by_buffer ();
     BEGIN INITIAL;
     return token::IDENTIFIER;
 }
 
 <BRACKET_ID>[^\]] {
-    //loader_append_string (yytext[0], yyscanner);
+    d.append_string (yytext[0]);
 }
 
 <BRACKET_ID>"]" {
-    //loader_append_string ('\0', yyscanner);
-    PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
-    //yylval_param->string = loader_make_string_by_buffer (yyscanner);
+    d.append_string ('\0');
+    // PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
+    yylval->string = d.make_string_by_buffer ();
     BEGIN INITIAL;
     return token::IDENTIFIER;
 }
 
 <DQS>\\n {
-    //loader_append_string ('\n', yyscanner);
+    d.append_string ('\n');
 }
 
 <DQS>\\t {
-    //loader_append_string ('\t', yyscanner);
+    d.append_string ('\t');
 }
 
 <DQS>\\f {
-    //loader_append_string ('\f', yyscanner);
+    d.append_string ('\f');
 }
 
 <DQS>\\r {
-    //loader_append_string ('\r', yyscanner);
+    d.append_string ('\r');
 }
 
-<DQS>\\[0-7]([0-7][0-7]?)?  {
-    //loader_append_string ((char) strtol (&yytext[1], NULL, 8), yyscanner);
+<DQS>\\[0-7]([0-7][0-7]?)? {
+    d.append_string ((char) strtol (&yytext[1], NULL, 8));
 }
 
-<DQS>\\x[0-9a-fA-F][0-9a-fA-F]?  {
-    //loader_append_string ((char) strtol (&yytext[2], NULL, 16), yyscanner);
+<DQS>\\x[0-9a-fA-F][0-9a-fA-F]? {
+    d.append_string ((char) strtol (&yytext[2], NULL, 16));
 }
 
 <DQS>[^\"] {
-    //loader_append_string (yytext[0], yyscanner);
+    d.append_string (yytext[0]);
 }
 
 <DQS>\\ {
@@ -563,19 +564,19 @@ bool loader_In_instance_line = true;
 }
 
 <DQS>\" {
-    //loader_append_string ('\0', yyscanner);
-    PRINT ("DQS_String_Body %s\n", qstr_Buf_p);
-    //yylval_param->string = loader_make_string_by_buffer (yyscanner);
+    d.append_string ('\0');
+    // PRINT ("DQS_String_Body %s\n", qstr_Buf_p);
+    yylval->string = d.make_string_by_buffer ();
     BEGIN INITIAL;
     return token::DQS_String_Body;
 }
 
 <SQS>\'\' {
-    //loader_append_string ('\'', yyscanner);
+    d.append_string ('\'');
 }
 
 <SQS>[^\'] {
-    //loader_append_string (yytext[0], yyscanner);
+    d.append_string (yytext[0]);
 }
 
 <SQS>\'\+[ \t]*\r?\n[ \t]*\' {
@@ -583,17 +584,17 @@ bool loader_In_instance_line = true;
 }
 
 <SQS>\'[ \t] {
-    //loader_append_string ('\0', yyscanner);
-    PRINT ("String_Completion %s\n", qstr_Buf_p);
-    //yylval_param->string = loader_make_string_by_buffer (yyscanner);
+    d.append_string ('\0');
+    // PRINT ("String_Completion %s\n", qstr_Buf_p);
+    yylval->string = d.make_string_by_buffer ();
     BEGIN INITIAL;
     return token::SQS_String_Body;
 }
 
 <SQS>\' {
-    //loader_append_string ('\0', yyscanner);
-    PRINT ("String_Completion2 %s\n", qstr_Buf_p);
-    //yylval_param->string = loader_make_string_by_buffer (yyscanner);
+    d.append_string ('\0');
+    // PRINT ("String_Completion2 %s\n", qstr_Buf_p);
+    yylval->string = d.make_string_by_buffer ();
     BEGIN INITIAL;
     return token::SQS_String_Body;
 }
@@ -601,13 +602,3 @@ bool loader_In_instance_line = true;
 %%
 
 /*** Additional Code ***/
-
-void
-loader_reset_string_pool (void)
-{
-}
-
-void
-loader_initialize_lexer (void)
-{
-}

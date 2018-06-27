@@ -575,6 +575,7 @@ ldr_act_set_skip_current_class (char *classname, size_t size)
 int
 ldr_act_add_argument (LDR_CONTEXT * context, const char *name)
 {
+  return NO_ERROR;
 }
 
 void

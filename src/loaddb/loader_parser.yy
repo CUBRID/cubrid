@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -22,16 +22,17 @@
  */
 
 %skeleton "lalr1.cc"
-%require  "3.0"
+%require "3.0"
 %debug
 %defines
-%define api.namespace {cubloaddb}
-%define parser_class_name {loader_yyparser}
+%define api.namespace { cubloaddb }
+%define parser_class_name { loader_yyparser }
 %locations
 %no-lines
 
-%parse-param { scanner  &s  }
-%parse-param { driver  &d  }
+%parse-param { scanner &s }
+%parse-param { driver &d }
+%lex-param { driver &d }
 
 %define parse.assert
 
@@ -62,7 +63,7 @@ namespace cubloaddb
 #undef yylex
 #define yylex s.yylex
 
-#define PARSER_DEBUG
+//#define PARSER_DEBUG
 
 #ifdef PARSER_DEBUG
 #define DBG_PRINT(s) printf("rule: %s\n", (s));
@@ -70,28 +71,7 @@ namespace cubloaddb
 #define DBG_PRINT(s)
 #endif
 
-#define FREE_STRING(s) \
-do { \
-  if ((s)->need_free_val) free_and_init ((s)->val); \
-  if ((s)->need_free_self) free_and_init ((s)); \
-} while (0)
-
-#define CONSTANT_POOL_SIZE (1024)
-
 extern bool loader_In_instance_line;
-
-extern void loader_reset_string_pool (void);
-extern void loader_initialize_lexer (void);
-extern void do_loader_parse (void *data);
-
-static LDR_CONSTANT constant_Pool[CONSTANT_POOL_SIZE];
-static int constant_Pool_idx = 0;
-
-static LDR_STRING *loader_append_string_list (LDR_STRING *head, LDR_STRING *str);
-static LDR_CLASS_COMMAND_SPEC *loader_make_class_command_spec (int qualifier, LDR_STRING *attr_list, LDR_CONSTRUCTOR_SPEC *ctor_spec);
-static LDR_CONSTANT* loader_make_constant (int type, void *val);
-static LDR_MONETARY_VALUE* loader_make_monetary_value (int currency_type, LDR_STRING * amount);
-static LDR_CONSTANT *loader_append_constant_list (LDR_CONSTANT *head, LDR_CONSTANT *tail);
 
 int loader_yyline = 1;
 }
@@ -211,8 +191,7 @@ int loader_yyline = 1;
 
 loader_start :
   {
-    loader_initialize_lexer ();
-    constant_Pool_idx = 0;
+    d.initialize_lexer ();
   }
   loader_lines
   {
@@ -249,16 +228,14 @@ one_line :
   command_line
   {
     DBG_PRINT ("command_line");
-    loader_reset_string_pool ();
-    constant_Pool_idx = 0;
+    d.reset_string_pool ();
   }
   |
   instance_line
   {
     DBG_PRINT ("instance_line");
     ldr_act_finish_line (ldr_Current_context);
-    loader_reset_string_pool ();
-    constant_Pool_idx = 0;
+    d.reset_string_pool ();
   }
   ;
 
@@ -282,8 +259,8 @@ id_command :
     ldr_act_start_id (ldr_Current_context, $2->val);
     ldr_act_set_id (ldr_Current_context, atoi ($3->val));
 
-    FREE_STRING ($2);
-    FREE_STRING ($3);
+    d.free_ldr_string (&$2);
+    d.free_ldr_string (&$3);
   }
   ;
 
@@ -326,20 +303,20 @@ class_command :
 	for (args = cmd_spec->ctor_spec->arg_list; args; args = save)
 	  {
 	    save = args->next;
-	    FREE_STRING (args);
+	    d.free_ldr_string (&args);
 	  }
 
-	FREE_STRING (cmd_spec->ctor_spec->idname);
+	d.free_ldr_string (&(cmd_spec->ctor_spec->idname));
 	free_and_init (cmd_spec->ctor_spec);
       }
 
     for (attr = cmd_spec->attr_list; attr; attr = save)
       {
 	save = attr->next;
-	FREE_STRING (attr);
+	d.free_ldr_string (&attr);
       }
 
-    FREE_STRING (class_name);
+    d.free_ldr_string (&class_name);
     free_and_init (cmd_spec);
   }
   ;
@@ -348,25 +325,25 @@ class_commamd_spec :
   attribute_list
   {
     DBG_PRINT ("attribute_list");
-    $$ = loader_make_class_command_spec (LDR_ATTRIBUTE_ANY, $1, NULL);
+    $$ = d.make_class_command_spec (LDR_ATTRIBUTE_ANY, $1, NULL);
   }
   |
   attribute_list constructor_spec
   {
     DBG_PRINT ("attribute_list constructor_spec");
-    $$ = loader_make_class_command_spec (LDR_ATTRIBUTE_ANY, $1, $2);
+    $$ = d.make_class_command_spec (LDR_ATTRIBUTE_ANY, $1, $2);
   }
   |
   attribute_list_qualifier attribute_list
   {
     DBG_PRINT ("attribute_list_qualifier attribute_list");
-    $$ = loader_make_class_command_spec ($1, $2, NULL);
+    $$ = d.make_class_command_spec ($1, $2, NULL);
   }
   |
   attribute_list_qualifier attribute_list constructor_spec
   {
     DBG_PRINT ("attribute_list_qualifier attribute_list constructor_spec");
-    $$ = loader_make_class_command_spec ($1, $2, $3);
+    $$ = d.make_class_command_spec ($1, $2, $3);
   }
   ;
 
@@ -406,19 +383,19 @@ attribute_names :
   attribute_name
   {
     DBG_PRINT ("attribute_name");
-    $$ = loader_append_string_list (NULL, $1);
+    $$ = d.append_string_list (NULL, $1);
   }
   |
   attribute_names attribute_name
   {
     DBG_PRINT ("attribute_names attribute_name");
-    $$ = loader_append_string_list ($1, $2);
+    $$ = d.append_string_list ($1, $2);
   }
   |
   attribute_names COMMA attribute_name
   {
     DBG_PRINT ("attribute_names COMMA attribute_name");
-    $$ = loader_append_string_list ($1, $3);
+    $$ = d.append_string_list ($1, $3);
   }
   ;
 
@@ -463,19 +440,19 @@ argument_names :
   argument_name
   {
     DBG_PRINT ("argument_name");
-    $$ = loader_append_string_list (NULL, $1);
+    $$ = d.append_string_list (NULL, $1);
   }
   |
   argument_names argument_name
   {
     DBG_PRINT ("argument_names argument_name");
-    $$ = loader_append_string_list ($1, $2);
+    $$ = d.append_string_list ($1, $2);
   }
   |
   argument_names COMMA argument_name
   {
     DBG_PRINT ("argument_names COMMA argument_name");
-    $$ = loader_append_string_list ($1, $3);
+    $$ = d.append_string_list ($1, $3);
   }
   ;
 
@@ -519,13 +496,13 @@ constant_list :
   constant
   {
     DBG_PRINT ("constant");
-    $$ = loader_append_constant_list (NULL, $1);
+    $$ = d.append_constant_list (NULL, $1);
   }
   |
   constant_list constant
   {
     DBG_PRINT ("constant_list constant");
-    $$ = loader_append_constant_list ($1, $2);
+    $$ = d.append_constant_list ($1, $2);
   }
   ;
 
@@ -543,30 +520,30 @@ constant :
   | sql2_datetime 	{ $$ = $1; }
   | sql2_datetimeltz 	{ $$ = $1; }
   | sql2_datetimetz 	{ $$ = $1; }
-  | NULL_         	{ $$ = loader_make_constant (LDR_NULL, NULL); }
-  | TIME_LIT4     	{ $$ = loader_make_constant (LDR_TIME, $1); }
-  | TIME_LIT42    	{ $$ = loader_make_constant (LDR_TIME, $1); }
-  | TIME_LIT3     	{ $$ = loader_make_constant (LDR_TIME, $1); }
-  | TIME_LIT31    	{ $$ = loader_make_constant (LDR_TIME, $1); }
-  | TIME_LIT2     	{ $$ = loader_make_constant (LDR_TIME, $1); }
-  | TIME_LIT1     	{ $$ = loader_make_constant (LDR_TIME, $1); }
-  | INT_LIT       	{ $$ = loader_make_constant (LDR_INT, $1); }
+  | NULL_  		{ $$ = d.make_constant (LDR_NULL, NULL); }
+  | TIME_LIT4 		{ $$ = d.make_constant (LDR_TIME, $1); }
+  | TIME_LIT42 		{ $$ = d.make_constant (LDR_TIME, $1); }
+  | TIME_LIT3 		{ $$ = d.make_constant (LDR_TIME, $1); }
+  | TIME_LIT31 		{ $$ = d.make_constant (LDR_TIME, $1); }
+  | TIME_LIT2 		{ $$ = d.make_constant (LDR_TIME, $1); }
+  | TIME_LIT1 		{ $$ = d.make_constant (LDR_TIME, $1); }
+  | INT_LIT 		{ $$ = d.make_constant (LDR_INT, $1); }
   | REAL_LIT
   {
     if (strchr ($1->val, 'F') != NULL || strchr ($1->val, 'f') != NULL)
       {
-	$$ = loader_make_constant (LDR_FLOAT, $1);
+	$$ = d.make_constant (LDR_FLOAT, $1);
       }
     else if (strchr ($1->val, 'E') != NULL || strchr ($1->val, 'e') != NULL)
       {
-	$$ = loader_make_constant (LDR_DOUBLE, $1);
+	$$ = d.make_constant (LDR_DOUBLE, $1);
       }
     else
       {
-	$$ = loader_make_constant (LDR_NUMERIC, $1);
+	$$ = d.make_constant (LDR_NUMERIC, $1);
       }
   }
-  | DATE_LIT2			{ $$ = loader_make_constant (LDR_DATE, $1); }
+  | DATE_LIT2			{ $$ = d.make_constant (LDR_DATE, $1); }
   | monetary			{ $$ = $1; }
   | object_reference		{ $$ = $1; }
   | set_constant		{ $$ = $1; }
@@ -576,147 +553,121 @@ constant :
 ansi_string :
   Quote SQS_String_Body
   {
-    $$ = loader_make_constant (LDR_STR, $2);
+    $$ = d.make_constant (LDR_STR, $2);
   }
   ;
 
 nchar_string :
   NQuote SQS_String_Body
   {
-    $$ = loader_make_constant (LDR_NSTR, $2);
+    $$ = d.make_constant (LDR_NSTR, $2);
   }
   ;
 
 dq_string
   :DQuote DQS_String_Body
   {
-    $$ = loader_make_constant (LDR_STR, $2);
+    $$ = d.make_constant (LDR_STR, $2);
   }
   ;
 
 sql2_date :
   DATE_ Quote SQS_String_Body
   {
-    $$ = loader_make_constant (LDR_DATE, $3);
+    $$ = d.make_constant (LDR_DATE, $3);
   }
   ;
 
 sql2_time :
   TIME Quote SQS_String_Body
   {
-    $$ = loader_make_constant (LDR_TIME, $3);
+    $$ = d.make_constant (LDR_TIME, $3);
   }
   ;
 
 sql2_timestamp :
   TIMESTAMP Quote SQS_String_Body
   {
-    $$ = loader_make_constant (LDR_TIMESTAMP, $3);
+    $$ = d.make_constant (LDR_TIMESTAMP, $3);
   }
   ;
 
 sql2_timestampltz :
   TIMESTAMPLTZ Quote SQS_String_Body
   {
-    $$ = loader_make_constant (LDR_TIMESTAMPLTZ, $3);
+    $$ = d.make_constant (LDR_TIMESTAMPLTZ, $3);
   }
   ;
 
 sql2_timestamptz :
   TIMESTAMPTZ Quote SQS_String_Body
   {
-    $$ = loader_make_constant (LDR_TIMESTAMPTZ, $3);
+    $$ = d.make_constant (LDR_TIMESTAMPTZ, $3);
   }
   ;
 
 utime :
   UTIME Quote SQS_String_Body
   {
-    $$ = loader_make_constant (LDR_TIMESTAMP, $3);
+    $$ = d.make_constant (LDR_TIMESTAMP, $3);
   }
   ;
 
 sql2_datetime :
   DATETIME Quote SQS_String_Body
   {
-    $$ = loader_make_constant (LDR_DATETIME, $3);
+    $$ = d.make_constant (LDR_DATETIME, $3);
   }
   ;
 
 sql2_datetimeltz :
   DATETIMELTZ Quote SQS_String_Body
   {
-    $$ = loader_make_constant (LDR_DATETIMELTZ, $3);
+    $$ = d.make_constant (LDR_DATETIMELTZ, $3);
   }
   ;
 
 sql2_datetimetz :
   DATETIMETZ Quote SQS_String_Body
   {
-    $$ = loader_make_constant (LDR_DATETIMETZ, $3);
+    $$ = d.make_constant (LDR_DATETIMETZ, $3);
   }
   ;
 
 bit_string :
   BQuote SQS_String_Body
   {
-    $$ = loader_make_constant (LDR_BSTR, $2);
+    $$ = d.make_constant (LDR_BSTR, $2);
   }
   |
   XQuote SQS_String_Body
   {
-    $$ = loader_make_constant (LDR_XSTR, $2);
+    $$ = d.make_constant (LDR_XSTR, $2);
   }
   ;
 
 object_reference :
   OBJECT_REFERENCE class_identifier
   {
-    $$ = loader_make_constant (LDR_CLASS_OID, $2);
+    $$ = d.make_constant (LDR_CLASS_OID, $2);
   }
   |
   OBJECT_REFERENCE class_identifier instance_number
   {
     $2->instance_number = $3;
-    $$ = loader_make_constant (LDR_OID, $2);
+    $$ = d.make_constant (LDR_OID, $2);
   }
   ;
 
 class_identifier:
   INT_LIT
   {
-    LDR_OBJECT_REF *ref;
-
-    ref = (LDR_OBJECT_REF *) malloc (sizeof (LDR_OBJECT_REF));
-    if (ref == NULL)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_OBJECT_REF));
-	YYABORT;
-      }
-
-    ref->class_id = $1;
-    ref->class_name = NULL;
-    ref->instance_number = NULL;
-
-    $$ = ref;
+    $$ = d.make_object_ref ($1);
   }
   |
   IDENTIFIER
   {
-    LDR_OBJECT_REF *ref;
-
-    ref = (LDR_OBJECT_REF *) malloc (sizeof (LDR_OBJECT_REF));
-    if (ref == NULL)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_OBJECT_REF));
-	YYABORT;
-      }
-
-    ref->class_id = NULL;
-    ref->class_name = $1;
-    ref->instance_number = NULL;
-
-    $$ = ref;
+    $$ = d.make_object_ref ($1);
   }
   ;
 
@@ -730,12 +681,12 @@ instance_number :
 set_constant :
   SET_START_BRACE SET_END_BRACE
   {
-    $$ = loader_make_constant (LDR_COLLECTION, NULL);
+    $$ = d.make_constant (LDR_COLLECTION, NULL);
   }
   |
   SET_START_BRACE set_elements SET_END_BRACE
   {
-    $$ = loader_make_constant (LDR_COLLECTION, $2);
+    $$ = d.make_constant (LDR_COLLECTION, $2);
   }
   ;
 
@@ -743,38 +694,38 @@ set_elements:
   constant
   {
     DBG_PRINT ("constant");
-    $$ = loader_append_constant_list (NULL, $1);
+    $$ = d.append_constant_list (NULL, $1);
   }
   |
   set_elements constant
   {
     DBG_PRINT ("set_elements constant");
-    $$ = loader_append_constant_list ($1, $2);
+    $$ = d.append_constant_list ($1, $2);
   }
   |
   set_elements COMMA constant
   {
     DBG_PRINT ("set_elements COMMA constant");
-    $$ = loader_append_constant_list ($1, $3);
+    $$ = d.append_constant_list ($1, $3);
   }
   |
   set_elements NL constant
   {
     DBG_PRINT ("set_elements NL constant");
-    $$ = loader_append_constant_list ($1, $3);
+    $$ = d.append_constant_list ($1, $3);
   }
   |
   set_elements COMMA NL constant
   {
     DBG_PRINT ("set_elements COMMA NL constant");
-    $$ = loader_append_constant_list ($1, $4);
+    $$ = d.append_constant_list ($1, $4);
   }
   ;
 
 system_object_reference :
   ref_type Quote SQS_String_Body
   {
-    $$ = loader_make_constant ($1, $3);
+    $$ = d.make_constant ($1, $3);
   }
   ;
 
@@ -791,177 +742,177 @@ ref_type :
 monetary :
   DOLLAR_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_DOLLAR, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_DOLLAR, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   YEN_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_YEN, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_YEN, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   WON_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_WON, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_WON, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   TURKISH_LIRA_CURRENCY REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_TL, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_TL, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   BACKSLASH REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_WON, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_WON, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   BRITISH_POUND_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_BRITISH_POUND, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_BRITISH_POUND, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   CAMBODIAN_RIEL_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_CAMBODIAN_RIEL, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_CAMBODIAN_RIEL, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   CHINESE_RENMINBI_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_CHINESE_RENMINBI, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_CHINESE_RENMINBI, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   INDIAN_RUPEE_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_INDIAN_RUPEE, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_INDIAN_RUPEE, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   RUSSIAN_RUBLE_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_RUSSIAN_RUBLE, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_RUSSIAN_RUBLE, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   AUSTRALIAN_DOLLAR_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_AUSTRALIAN_DOLLAR, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_AUSTRALIAN_DOLLAR, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   CANADIAN_DOLLAR_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_CANADIAN_DOLLAR, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_CANADIAN_DOLLAR, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   BRASILIAN_REAL_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_BRASILIAN_REAL, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_BRASILIAN_REAL, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   ROMANIAN_LEU_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_ROMANIAN_LEU, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_ROMANIAN_LEU, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   EURO_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_EURO, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_EURO, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   SWISS_FRANC_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_SWISS_FRANC, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_SWISS_FRANC, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   DANISH_KRONE_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_DANISH_KRONE, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_DANISH_KRONE, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   NORWEGIAN_KRONE_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_NORWEGIAN_KRONE, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_NORWEGIAN_KRONE, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   BULGARIAN_LEV_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_BULGARIAN_LEV, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_BULGARIAN_LEV, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   VIETNAMESE_DONG_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_VIETNAMESE_DONG, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_VIETNAMESE_DONG, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   CZECH_KORUNA_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_CZECH_KORUNA, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_CZECH_KORUNA, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   POLISH_ZLOTY_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_POLISH_ZLOTY, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_POLISH_ZLOTY, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   SWEDISH_KRONA_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_SWEDISH_KRONA, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_SWEDISH_KRONA, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   CROATIAN_KUNA_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_CROATIAN_KUNA, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_CROATIAN_KUNA, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   |
   SERBIAN_DINAR_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_SERBIAN_DINAR, $2);
+    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_SERBIAN_DINAR, $2);
 
-    $$ = loader_make_constant (LDR_MONETARY, mon_value);
+    $$ = d.make_constant (LDR_MONETARY, mon_value);
   }
   ;
 %%
@@ -971,128 +922,5 @@ monetary :
 void
 cubloaddb::loader_yyparser::error (const loader_yyparser::location_type& l, const std::string& m)
 {
-    d.error (l, m);
+  d.error (l, m);
 }
-
-static LDR_STRING *
-loader_append_string_list (LDR_STRING * head, LDR_STRING * tail)
-{
-  tail->next = NULL;
-  tail->last = NULL;
-
-  if (head)
-    {
-      head->last->next = tail;
-    }
-  else
-    {
-      head = tail;
-    }
-
-  head->last = tail;
-  return head;
-}
-
-static LDR_CLASS_COMMAND_SPEC *
-loader_make_class_command_spec (int qualifier, LDR_STRING * attr_list, LDR_CONSTRUCTOR_SPEC * ctor_spec)
-{
-  LDR_CLASS_COMMAND_SPEC *spec;
-
-  spec = (LDR_CLASS_COMMAND_SPEC *) malloc (sizeof (LDR_CLASS_COMMAND_SPEC));
-  if (spec == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_CLASS_COMMAND_SPEC));
-      return NULL;
-    }
-
-  spec->qualifier = qualifier;
-  spec->attr_list = attr_list;
-  spec->ctor_spec = ctor_spec;
-
-  return spec;
-}
-
-static LDR_CONSTANT *
-loader_make_constant (int type, void *val)
-{
-  LDR_CONSTANT *con;
-
-  //if (constant_Pool_idx < CONSTANT_POOL_SIZE)
-  //  {
-  //    con = &(constant_Pool[constant_Pool_idx]);
-  //    constant_Pool_idx++;
-  //    con->need_free = false;
-  //  }
-  //else
-  //  {
-      con = (LDR_CONSTANT *) malloc (sizeof (LDR_CONSTANT));
-      if (con == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_CONSTANT));
-	  return NULL;
-	}
-      con->need_free = true;
-  //  }
-
-  con->type = type;
-  con->val = val;
-
-  return con;
-}
-
-static LDR_MONETARY_VALUE *
-loader_make_monetary_value (int currency_type, LDR_STRING * amount)
-{
-  LDR_MONETARY_VALUE * mon_value = NULL;
-
-  mon_value = (LDR_MONETARY_VALUE *) malloc (sizeof (LDR_MONETARY_VALUE));
-  if (mon_value == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_MONETARY_VALUE));
-      return NULL;
-    }
-
-  mon_value->amount = amount;
-  mon_value->currency_type = currency_type;
-
-  return mon_value;
-}
-
-static LDR_CONSTANT *
-loader_append_constant_list (LDR_CONSTANT * head, LDR_CONSTANT * tail)
-{
-  tail->next = NULL;
-  tail->last = NULL;
-
-  if (head)
-    {
-      head->last->next = tail;
-    }
-  else
-    {
-      head = tail;
-    }
-
-  head->last = tail;
-  return head;
-}
-
-void do_loader_parse (void *data)
-{
-/*
-  loader_In_instance_line = true;
-
-  loader_yyline = 1;
-  loader_yyparse (data);
-*/
-}
-
-#ifdef PARSER_DEBUG
-/*
-int main(int argc, char *argv[])
-{
-  loader_yyparse();
-  return 0;
-}
-*/
-#endif
