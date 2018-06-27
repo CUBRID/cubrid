@@ -23,7 +23,7 @@
 
 #ident "$Id$"
 
-#include "replication_entry.hpp"
+#include "replication_object.hpp"
 #include "replication_stream_entry.hpp"
 #include "stream_entry.hpp"
 #include "error_code.h"
@@ -128,7 +128,7 @@ namespace cubreplication
 
   bool replication_stream_entry::is_equal (const cubstream::entry<replication_object> *other)
   {
-    int i;
+    size_t i;
     const replication_stream_entry *other_t = dynamic_cast <const replication_stream_entry *> (other);
 
     if (other_t == NULL)

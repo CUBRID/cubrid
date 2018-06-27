@@ -19,7 +19,7 @@
 
 #include "log_generator.hpp"
 #include "log_consumer.hpp"
-#include "replication_entry.hpp"
+#include "replication_object.hpp"
 #include "replication_stream_entry.hpp"
 #include "thread_compat.hpp"
 #include "test_log_generator.hpp"

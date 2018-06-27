@@ -26,8 +26,8 @@
 #ifndef _REPLICATION_STREAM_ENTRY_HPP_
 #define _REPLICATION_STREAM_ENTRY_HPP_
 
+#include "replication_object.hpp"
 #include "stream_entry.hpp"
-#include "replication_entry.hpp"
 #include "storage_common.h"
 #include <vector>
 

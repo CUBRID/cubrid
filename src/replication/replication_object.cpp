@@ -18,12 +18,12 @@
  */
 
 /*
- * replication_entry.cpp
+ * replication_object.cpp
  */
 
 #ident "$Id$"
 
-#include "replication_entry.hpp"
+#include "replication_object.hpp"
 #include "object_representation.h"
 
 namespace cubreplication
@@ -54,7 +54,7 @@ namespace cubreplication
 
   bool single_row_repl_entry::is_equal (const packable_object *other)
   {
-    int i;
+    size_t i;
     const single_row_repl_entry *other_t = dynamic_cast<const single_row_repl_entry *> (other);
 
     if (other_t == NULL
@@ -104,7 +104,7 @@ namespace cubreplication
 
   size_t single_row_repl_entry::get_packed_size (cubpacking::packer *serializator)
   {
-    int i;
+    size_t i;
     size_t entry_size = 0;
 
     /* we assume that offset start has already MAX_ALIGNMENT */
@@ -131,7 +131,7 @@ namespace cubreplication
 
   int single_row_repl_entry::pack (cubpacking::packer *serializator)
   {
-    int i;
+    size_t i;
 
     serializator->pack_int (single_row_repl_entry::ID);
 

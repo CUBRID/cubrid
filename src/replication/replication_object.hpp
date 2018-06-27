@@ -18,13 +18,13 @@
  */
 
 /*
- * replication_entry.hpp
+ * replication_object.hpp
  */
 
 #ident "$Id$"
 
-#ifndef _REPLICATION_ENTRY_HPP_
-#define _REPLICATION_ENTRY_HPP_
+#ifndef _REPLICATION_OBJECT_HPP_
+#define _REPLICATION_OBJECT_HPP_
 
 #include "packable_object.hpp"
 #include "dbtype.h"
@@ -124,4 +124,4 @@ namespace cubreplication
 
 } /* namespace cubreplication */
 
-#endif /* _REPLICATION_ENTRY_HPP_ */
+#endif /* _REPLICATION_OBJECT_HPP_ */

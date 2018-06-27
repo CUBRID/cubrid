@@ -40,7 +40,7 @@ namespace cubreplication
     delete m_stream;
     log_generator::global_log_generator = NULL;
 
-    for (int i = 0; i < m_stream_entries.size (); i++)
+    for (size_t i = 0; i < m_stream_entries.size (); i++)
       {
 	delete m_stream_entries[i];
 	m_stream_entries[i] = NULL;

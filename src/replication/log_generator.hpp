@@ -27,7 +27,7 @@
 #define _LOG_GENERATOR_HPP_
 
 
-#include "replication_entry.hpp"
+#include "replication_object.hpp"
 #include "replication_stream_entry.hpp"
 #include "packing_stream.hpp"
 #include "thread_compat.hpp"
