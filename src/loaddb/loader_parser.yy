@@ -191,7 +191,7 @@ int loader_yyline = 1;
 
 loader_start :
   {
-    d.initialize_lexer ();
+    // add here any initialization code
   }
   loader_lines
   {
@@ -215,12 +215,12 @@ line :
   one_line NL
   {
     DBG_PRINT ("one_line");
-    loader_In_instance_line = true;
+    d.set_in_instance_line (true);
   }
   |
   NL
   {
-    loader_In_instance_line = true;
+    d.set_in_instance_line (true);
   }
   ;
 
@@ -228,14 +228,14 @@ one_line :
   command_line
   {
     DBG_PRINT ("command_line");
-    d.reset_string_pool ();
+    d.reset_pool_indexes ();
   }
   |
   instance_line
   {
     DBG_PRINT ("instance_line");
     ldr_act_finish_line (ldr_Current_context);
-    d.reset_string_pool ();
+    d.reset_pool_indexes ();
   }
   ;
 
@@ -409,18 +409,7 @@ attribute_name :
 constructor_spec :
   CMD_CONSTRUCTOR IDENTIFIER constructor_argument_list
   {
-    LDR_CONSTRUCTOR_SPEC *spec;
-
-    spec = (LDR_CONSTRUCTOR_SPEC *) malloc (sizeof (LDR_CONSTRUCTOR_SPEC));
-    if (spec == NULL)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_CONSTRUCTOR_SPEC));
-	YYABORT;
-      }
-
-    spec->idname = $2;
-    spec->arg_list = $3;
-    $$ = spec;
+    $$ = d.make_constructor_spec ($2, $3);
   }
   ;
 

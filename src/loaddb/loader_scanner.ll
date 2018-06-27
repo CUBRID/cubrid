@@ -42,16 +42,11 @@ using token = cubloaddb::loader_yyparser::token;
 #else
 #define PRINT(a, b)
 #endif
-
-bool loader_In_instance_line = true;
 %}
 
 /*** Flex Declarations and Options ***/
 /* enable c++ scanner class generation */
 %option c++
-
-/* enable scanner to generate debug output. disable this for release versions. */
-%option debug
 
 /* the manual says "somewhat more optimized" */
 %option batch
@@ -148,13 +143,13 @@ bool loader_In_instance_line = true;
 
 \%[Ii][Dd] {
     PRINT ("CMD_ID %s\n", yytext);
-    //loader_In_instance_line = false;
+    d.set_in_instance_line (false);
     return token::CMD_ID;
 }
 
 \%[Cc][Ll][Aa][Ss][Ss] {
     PRINT ("CMD_CLASS %s\n", yytext);
-    //loader_In_instance_line = false;
+    d.set_in_instance_line (false);
     return token::CMD_CLASS;
 }
 
@@ -454,7 +449,7 @@ bool loader_In_instance_line = true;
 
 \" {
     d.set_quoted_string_buffer ();
-    if (/*loader_In_instance_line == */true)
+    if (d.in_instance_line ())
       {
 	BEGIN DQS;
 	return token::DQuote;
@@ -504,15 +499,15 @@ bool loader_In_instance_line = true;
 }
 
 <DELIMITED_ID>\"\" {
-    d.append_string ('"');
+    d.append_char ('"');
 }
 
 <DELIMITED_ID>[^\"] {
-    d.append_string (yytext[0]);
+    d.append_char (yytext[0]);
 }
 
 <DELIMITED_ID>\" {
-    d.append_string ('\0');
+    d.append_char ('\0');
     // PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
     yylval->string = d.make_string_by_buffer ();
     BEGIN INITIAL;
@@ -520,11 +515,11 @@ bool loader_In_instance_line = true;
 }
 
 <BRACKET_ID>[^\]] {
-    d.append_string (yytext[0]);
+    d.append_char (yytext[0]);
 }
 
 <BRACKET_ID>"]" {
-    d.append_string ('\0');
+    d.append_char ('\0');
     // PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
     yylval->string = d.make_string_by_buffer ();
     BEGIN INITIAL;
@@ -532,31 +527,31 @@ bool loader_In_instance_line = true;
 }
 
 <DQS>\\n {
-    d.append_string ('\n');
+    d.append_char ('\n');
 }
 
 <DQS>\\t {
-    d.append_string ('\t');
+    d.append_char ('\t');
 }
 
 <DQS>\\f {
-    d.append_string ('\f');
+    d.append_char ('\f');
 }
 
 <DQS>\\r {
-    d.append_string ('\r');
+    d.append_char ('\r');
 }
 
 <DQS>\\[0-7]([0-7][0-7]?)? {
-    d.append_string ((char) strtol (&yytext[1], NULL, 8));
+    d.append_char ((char) strtol (&yytext[1], NULL, 8));
 }
 
 <DQS>\\x[0-9a-fA-F][0-9a-fA-F]? {
-    d.append_string ((char) strtol (&yytext[2], NULL, 16));
+    d.append_char ((char) strtol (&yytext[2], NULL, 16));
 }
 
 <DQS>[^\"] {
-    d.append_string (yytext[0]);
+    d.append_char (yytext[0]);
 }
 
 <DQS>\\ {
@@ -564,7 +559,7 @@ bool loader_In_instance_line = true;
 }
 
 <DQS>\" {
-    d.append_string ('\0');
+    d.append_char ('\0');
     // PRINT ("DQS_String_Body %s\n", qstr_Buf_p);
     yylval->string = d.make_string_by_buffer ();
     BEGIN INITIAL;
@@ -572,11 +567,11 @@ bool loader_In_instance_line = true;
 }
 
 <SQS>\'\' {
-    d.append_string ('\'');
+    d.append_char ('\'');
 }
 
 <SQS>[^\'] {
-    d.append_string (yytext[0]);
+    d.append_char (yytext[0]);
 }
 
 <SQS>\'\+[ \t]*\r?\n[ \t]*\' {
@@ -584,7 +579,7 @@ bool loader_In_instance_line = true;
 }
 
 <SQS>\'[ \t] {
-    d.append_string ('\0');
+    d.append_char ('\0');
     // PRINT ("String_Completion %s\n", qstr_Buf_p);
     yylval->string = d.make_string_by_buffer ();
     BEGIN INITIAL;
@@ -592,7 +587,7 @@ bool loader_In_instance_line = true;
 }
 
 <SQS>\' {
-    d.append_string ('\0');
+    d.append_char ('\0');
     // PRINT ("String_Completion2 %s\n", qstr_Buf_p);
     yylval->string = d.make_string_by_buffer ();
     BEGIN INITIAL;

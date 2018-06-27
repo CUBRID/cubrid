@@ -8,7 +8,7 @@ static const int num_threads = 50;
 
 void parse ()
 {
-  cubloaddb::driver driver (0, 0);
+  cubloaddb::driver driver;
   std::string s = "1 '2' '3 4' 3.14159265F\n"
 		  "'a' 'aaa' 'bbb' 'c'\n"
 		  "1 1 1 1815 '2017-12-22 12:10:21' '2017-12-22' '12:10:21' 1\n";
