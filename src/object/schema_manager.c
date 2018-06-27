@@ -13341,6 +13341,8 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type, const char *co
 	      const int *asc_desc, const int *attrs_prefix_length, SM_PREDICATE_INFO * filter_index,
 	      SM_FUNCTION_INFO * function_index, const char *comment)
 {
+// TODO: leave it for reference. Remove it when we complete the task.
+#if 0
   int error = NO_ERROR;
   SM_CLASS *class_;
   BTID index;
@@ -13766,6 +13768,7 @@ severe_error:
   (void) tran_unilaterally_abort ();
 
   return error;
+#endif
 }
 
 /*
@@ -15413,9 +15416,9 @@ sm_truncate_class (MOP class_mop)
   /* Normal index must be created earlier than unique constraint or FK, because of shared btree case. */
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      error =
-	sm_add_index (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names, saved->asc_desc,
-		      saved->prefix_length, saved->filter_predicate, saved->func_index_info, saved->comment);
+      error = sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
+				 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
+				 saved->func_index_info, saved->comment);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -15425,10 +15428,9 @@ sm_truncate_class (MOP class_mop)
   /* PK must be created earlier than FK, because of self referencing case */
   for (saved = unique_save_info; saved != NULL; saved = saved->next)
     {
-      error =
-	sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
-			   saved->asc_desc, saved->prefix_length, 0, saved->filter_predicate, saved->func_index_info,
-			   saved->comment);
+      error = sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
+				 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
+				 saved->func_index_info, saved->comment);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -15446,10 +15448,9 @@ sm_truncate_class (MOP class_mop)
 
   for (saved = fk_save_info; saved != NULL; saved = saved->next)
     {
-      error =
-	dbt_add_foreign_key (ctmpl, saved->name, (const char **) saved->att_names, saved->ref_cls_name,
-			     (const char **) saved->ref_attrs, saved->fk_delete_action, saved->fk_update_action,
-			     saved->comment);
+      error = dbt_add_foreign_key (ctmpl, saved->name, (const char **) saved->att_names, saved->ref_cls_name,
+				   (const char **) saved->ref_attrs, saved->fk_delete_action, saved->fk_update_action,
+				   saved->comment);
 
       if (error != NO_ERROR)
 	{
