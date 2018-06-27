@@ -96,6 +96,8 @@
 #include "wintcp.h"
 #endif /* WINDOWS */
 
+#include <chrono>
+
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -1729,7 +1731,12 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 	}
 
       er_log_debug (ARG_FILE_LINE, "trying to connect '%s@%s'\n", db->name, hostlist[n]);
+      auto start = std::chrono::high_resolution_clock::now ();
       error = net_client_init (db->name, hostlist[n]);
+      auto finish = std::chrono::high_resolution_clock::now ();
+      long long microseconds = std::chrono::duration_cast<std::chrono::microseconds>(finish-start).count ();
+      
+      er_log_debug (ARG_FILE_LINE, "connect took %lld us \n", microseconds);
       if (error != NO_ERROR)
 	{
 	  if (error == ERR_CSS_TCP_CONNECT_TIMEDOUT)
@@ -1753,7 +1760,12 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 	  er_log_debug (ARG_FILE_LINE, "ping server with handshake\n");
 	  /* ping to validate availability and to check compatibility */
 	  er_clear ();
+          start = std::chrono::high_resolution_clock::now ();
 	  error = net_client_ping_server_with_handshake (client_type, check_capabilities, opt_cap);
+          finish = std::chrono::high_resolution_clock::now ();
+          microseconds = std::chrono::duration_cast<std::chrono::microseconds>(finish-start).count ();
+      
+          er_log_debug (ARG_FILE_LINE, "ping took %lld us \n", microseconds);
 	  if (error != NO_ERROR)
 	    {
 	      css_terminate (false);
