@@ -29,6 +29,7 @@
 #include "packable_object.hpp"
 #include "dbtype.h"
 #include "storage_common.h"
+#include "thread_compat.hpp"
 #include <vector>
 #include <string>
 
@@ -93,7 +94,7 @@ namespace cubreplication
       std::vector <int> changed_attributes;
       char m_class_name [SM_MAX_IDENTIFIER_LENGTH + 1];
       DB_VALUE m_key_value;
-      std::vector <DB_VALUE> new_values;
+      std::vector <DB_VALUE> m_new_values;
 
     public:
       static const int ID = 2;
@@ -112,9 +113,9 @@ namespace cubreplication
 
       void set_class_name (const char *class_name);
 
-      void set_key_value (DB_VALUE *db_val);
+      void set_key_value (cubthread::entry &thread_entry, DB_VALUE *db_val);
 
-      void add_changed_value (const int att_id, DB_VALUE *db_val);
+      void copy_and_add_changed_value (cubthread::entry &thread_entry, const int att_id, DB_VALUE *db_val);
 
       int pack (cubpacking::packer *serializator);
       int unpack (cubpacking::packer *serializator);

@@ -25,6 +25,8 @@
 
 #include "replication_object.hpp"
 #include "object_representation.h"
+#include "thread_manager.hpp"
+#include "memory_alloc.h"
 
 namespace cubreplication
 {
@@ -37,13 +39,18 @@ namespace cubreplication
 
   single_row_repl_entry::~single_row_repl_entry ()
   {
-    /* TODO : clear DB_VALUE ? */
+    cubthread::entry *my_thread = thread_get_thread_entry_info ();
+
+    HL_HEAPID save_heapid;
+    save_heapid = db_change_private_heap (my_thread, 0);
+
     pr_clear_value (&m_key_value);
 
-    for (std::vector <DB_VALUE>::iterator it = new_values.begin (); it != new_values.end (); it++)
+    for (std::vector <DB_VALUE>::iterator it = m_new_values.begin (); it != m_new_values.end (); it++)
       {
 	pr_clear_value (& (*it));
       }
+    (void) db_change_private_heap (my_thread, save_heapid);
   }
 
   int single_row_repl_entry::apply (void)
@@ -62,7 +69,7 @@ namespace cubreplication
 	|| strcmp (m_class_name, other_t->m_class_name) != 0
 	|| db_value_compare (&m_key_value, &other_t->m_key_value) != DB_EQ
 	|| changed_attributes.size () != other_t->changed_attributes.size ()
-	|| new_values.size () != other_t->new_values.size ())
+	|| m_new_values.size () != other_t->m_new_values.size ())
       {
 	return false;
       }
@@ -75,9 +82,9 @@ namespace cubreplication
 	  }
       }
 
-    for (i = 0; i < new_values.size (); i++)
+    for (i = 0; i < m_new_values.size (); i++)
       {
-	if (db_value_compare (&new_values[i], &other_t->new_values[i]) != DB_EQ)
+	if (db_value_compare (&m_new_values[i], &other_t->m_new_values[i]) != DB_EQ)
 	  {
 	    return false;
 	  }
@@ -91,15 +98,27 @@ namespace cubreplication
     strncpy (m_class_name, class_name, sizeof (m_class_name) - 1);
   }
 
-  void single_row_repl_entry::set_key_value (DB_VALUE *db_val)
+  void single_row_repl_entry::set_key_value (cubthread::entry &thread_entry, DB_VALUE *db_val)
   {
+    HL_HEAPID save_heapid;
+    save_heapid = db_change_private_heap (&thread_entry, 0);
     pr_clone_value (db_val, &m_key_value);
+    (void) db_change_private_heap (&thread_entry, save_heapid);
   }
 
-  void single_row_repl_entry::add_changed_value (const int att_id, DB_VALUE *db_val)
+  void single_row_repl_entry::copy_and_add_changed_value (cubthread::entry &thread_entry, const int att_id,
+                                                          DB_VALUE *db_val)
   {
+    HL_HEAPID save_heapid;
+
+    m_new_values.emplace_back ();
+    DB_VALUE &last_new_value = m_new_values.back ();
+
     changed_attributes.push_back (att_id);
-    new_values.push_back (*db_val);
+
+    save_heapid = db_change_private_heap (&thread_entry, 0);
+    pr_clone_value (db_val, &last_new_value);
+    (void) db_change_private_heap (&thread_entry, save_heapid);
   }
 
   size_t single_row_repl_entry::get_packed_size (cubpacking::packer *serializator)
@@ -121,9 +140,9 @@ namespace cubreplication
     /* count of new_values */
     entry_size += serializator->get_packed_int_size (entry_size);
 
-    for (i = 0; i < new_values.size (); i++)
+    for (i = 0; i < m_new_values.size (); i++)
       {
-	entry_size += serializator->get_packed_db_value_size (new_values[i], entry_size);
+	entry_size += serializator->get_packed_db_value_size (m_new_values[i], entry_size);
       }
 
     return entry_size;
@@ -143,11 +162,11 @@ namespace cubreplication
 
     serializator->pack_db_value (m_key_value);
 
-    serializator->pack_int ((int) new_values.size ());
+    serializator->pack_int ((int) m_new_values.size ());
 
-    for (i = 0; i < new_values.size (); i++)
+    for (i = 0; i < m_new_values.size (); i++)
       {
-	serializator->pack_db_value (new_values[i]);
+	serializator->pack_db_value (m_new_values[i]);
       }
 
     return NO_ERROR;
@@ -158,7 +177,9 @@ namespace cubreplication
     int count_new_values = 0;
     int i;
     int int_val;
+    HL_HEAPID save_heapid;
 
+    save_heapid = db_private_set_heapid_to_thread (NULL, 0);
     /* create id */
     serializator->unpack_int (&int_val);
 
@@ -179,9 +200,11 @@ namespace cubreplication
 	DB_VALUE val;
 
 	/* this copies the DB_VALUE to contain, should we avoid this ? */
-	new_values.push_back (val);
+	m_new_values.push_back (val);
 	serializator->unpack_db_value (&val);
       }
+
+    db_private_set_heapid_to_thread (NULL, save_heapid);
 
     return NO_ERROR;
   }

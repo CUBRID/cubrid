@@ -140,6 +140,8 @@ namespace test_replication
 
     init_common_cubrid_modules ();
 
+    cubthread::entry *my_thread = thread_get_thread_entry_info ();
+
     cubreplication::sbr_repl_entry *sbr1 = new cubreplication::sbr_repl_entry;
     cubreplication::sbr_repl_entry *sbr2 = new cubreplication::sbr_repl_entry;
     cubreplication::single_row_repl_entry *rbr1 =
@@ -160,15 +162,15 @@ namespace test_replication
     sbr1->set_statement ("CREATE TABLE t1 (i1 int)");
     sbr2->set_statement ("CREATE TABLE t2 (i1 int)");
 
-    rbr1->set_key_value (&key_value);
-    rbr1->add_changed_value (1, &new_att2_value);
-    rbr1->add_changed_value (2, &new_att1_value);
-    rbr1->add_changed_value (3, &new_att3_value);
+    rbr1->set_key_value (*my_thread, &key_value);
+    rbr1->copy_and_add_changed_value (*my_thread, 1, &new_att2_value);
+    rbr1->copy_and_add_changed_value (*my_thread, 2, &new_att1_value);
+    rbr1->copy_and_add_changed_value (*my_thread, 3, &new_att3_value);
 
-    rbr2->set_key_value (&key_value);
-    rbr2->add_changed_value (1, &new_att1_value);
-    rbr2->add_changed_value (2, &new_att2_value);
-    rbr2->add_changed_value (3, &new_att3_value);
+    rbr2->set_key_value (*my_thread, &key_value);
+    rbr2->copy_and_add_changed_value (*my_thread, 1, &new_att1_value);
+    rbr2->copy_and_add_changed_value (*my_thread, 2, &new_att2_value);
+    rbr2->copy_and_add_changed_value (*my_thread, 3, &new_att3_value);
 
     cubreplication::log_generator *lg = cubreplication::log_generator::new_instance (0);
 
@@ -219,10 +221,10 @@ namespace test_replication
     db_make_int (&new_att2_value, 100 + thread_p->tran_index);
     db_make_int (&new_att3_value, 1000 + thread_p->tran_index);
 
-    rbr->set_key_value (&key_value);
-    rbr->add_changed_value (1, &new_att2_value);
-    rbr->add_changed_value (2, &new_att1_value);
-    rbr->add_changed_value (3, &new_att3_value);
+    rbr->set_key_value (*thread_p, &key_value);
+    rbr->copy_and_add_changed_value (*thread_p, 1, &new_att2_value);
+    rbr->copy_and_add_changed_value (*thread_p, 2, &new_att1_value);
+    rbr->copy_and_add_changed_value (*thread_p, 3, &new_att3_value);
 
     lg->append_repl_entry (thread_p, rbr);
   }
