@@ -2785,6 +2785,7 @@ struct pt_query_info
   unsigned do_not_cache:1;	/* do not cache the query result */
   unsigned order_siblings:1;	/* flag ORDER SIBLINGS BY */
   unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
+  unsigned has_system_class:1;	/* do not cache the query result */
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
   PT_NODE *into_list;		/* PT_VALUE (list) */

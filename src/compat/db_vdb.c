@@ -3965,6 +3965,7 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
   PT_NODE *statement;
   int stmt_ndx;
   bool has_name_oid = false;
+  int info_hints;
 
   assert (session != NULL);
   /* check parameters */
@@ -4000,18 +4001,6 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
     }
 
   /* Check whether statement can uses auto commit. */
-  if (session->dimension > 1)
-    {
-      /* Do not use the optimization if have more than one statement and at least one is SELECT. */
-      for (stmt_ndx = 0; stmt_ndx < session->dimension; stmt_ndx++)
-	{
-	  if ((session->statements[stmt_ndx]) && ((session->statements[stmt_ndx])->node_type == PT_SELECT))
-	    {
-	      return NO_ERROR;
-	    }
-	}
-    }
-
   if (tr_has_commit_triggers (TR_TIME_BEFORE))
     {
       /* Triggers must be excuted before commit. Disable optimization. */
@@ -4024,13 +4013,17 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
   switch (statement->node_type)
     {
     case PT_SELECT:
-      /* Do not use the optimization if OIDs included */
-      if (!statement->info.query.oids_included)
+      /* Check whether the optimization can be used. */
+      if (!statement->info.query.oids_included && !statement->info.query.is_view_spec
+	  && !statement->info.query.has_system_class && statement->info.query.into_list == NULL)
 	{
-	  int info_hints = PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_PAGE_INFO | PT_HINT_SELECT_KEY_INFO;
+	  info_hints =
+	    PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_PAGE_INFO | PT_HINT_SELECT_KEY_INFO |
+	    PT_HINT_SELECT_BTREE_NODE_INFO;
 	  if ((statement->info.query.q.select.hint & info_hints) == 0)
 	    {
-	      (void) parser_walk_tree (session->parser, statement, pt_has_name_oid, &has_name_oid, NULL, NULL);
+	      (void) parser_walk_tree (session->parser, statement->info.query.q.select.list, pt_has_name_oid,
+				       &has_name_oid, NULL, NULL);
 	      if (!has_name_oid)
 		{
 		  statement->use_auto_commit = 1;
@@ -4060,7 +4053,10 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
       /* Do not use optimization in case of delete execution on broker side */
       if (statement->info.delete_.execute_with_commit_allowed)
 	{
-	  statement->use_auto_commit = 1;
+	  if (statement->info.delete_.del_stmt_list == NULL)
+	    {
+	      statement->use_auto_commit = 1;
+	    }
 	}
       break;
 

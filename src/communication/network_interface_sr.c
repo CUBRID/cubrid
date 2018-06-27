@@ -4861,7 +4861,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   /* result cache created time */
   OR_PACK_CACHE_TIME (ptr, &srv_cache_time);
 
-  if (IS_QUERY_EXECUTED_WITHOUT_DATA_BUFFERS (query_flag))
+  if (IS_QUERY_EXECUTE_WITH_COMMIT (query_flag))
     {
       /* pack end query result */
       if (end_query_allowed)
