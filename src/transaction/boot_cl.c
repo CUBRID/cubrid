@@ -1739,6 +1739,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
       er_log_debug (ARG_FILE_LINE, "connect took %lld us \n", microseconds);
       if (error != NO_ERROR)
 	{
+          er_log_debug (ARG_FILE_LINE, "connect error\n");
 	  if (error == ERR_CSS_TCP_CONNECT_TIMEDOUT)
 	    {
 	      db_set_host_status (hostlist[n], DB_HS_CONN_TIMEOUT | DB_HS_CONN_FAILURE);
@@ -1768,6 +1769,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
           er_log_debug (ARG_FILE_LINE, "ping took %lld us \n", microseconds);
 	  if (error != NO_ERROR)
 	    {
+              er_log_debug (ARG_FILE_LINE, "ping error\n");
 	      css_terminate (false);
 	    }
 	}
