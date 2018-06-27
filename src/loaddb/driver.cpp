@@ -24,21 +24,8 @@
 #include <sstream>
 
 #include "driver.hpp"
-#include "error_manager.h"
 #include "language_support.h"
 #include "memory_alloc.h"
-
-#define FREE_STRING(s)          \
-do {                            \
-  if ((s)->need_free_val)       \
-    {                           \
-      free_and_init ((s)->val); \
-    }                           \
-  if ((s)->need_free_self)      \
-    {                           \
-      free_and_init ((s));      \
-    }                           \
-} while (0)
 
 namespace cubloaddb
 {
@@ -92,111 +79,6 @@ namespace cubloaddb
     std::cout << "location: " << l << ", m: " << m << "\n";
   }
 
-  string_t *
-  driver::make_string_by_yytext (char *yytext, int yyleng)
-  {
-    string_t *str;
-    char *invalid_pos = NULL;
-
-    str = get_string_container ();
-    if (str == NULL)
-      {
-	return NULL;
-      }
-
-    str->size = yyleng;
-    char *text = yytext;
-
-    if (m_copy_buf_pool_idx < COPY_BUF_POOL_SIZE && str->size < MAX_COPY_BUF_SIZE)
-      {
-	str->val = & (m_copy_buf_pool[m_copy_buf_pool_idx++][0]);
-	memcpy (str->val, text, str->size);
-	str->val[str->size] = '\0';
-	str->need_free_val = false;
-      }
-    else
-      {
-	str->val = (char *) malloc (str->size + 1);
-
-	if (str->val == NULL)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (str->size + 1));
-	    //YY_FATAL_ERROR (er_msg());
-	    return NULL;
-	  }
-
-	memcpy (str->val, text, str->size);
-	str->val[str->size] = '\0';
-	str->need_free_val = true;
-      }
-
-    if (intl_check_string (str->val, str->size, &invalid_pos, LANG_SYS_CODESET) != INTL_UTF8_VALID)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1, invalid_pos - str->val);
-	//YY_FATAL_ERROR (er_msg());
-	return NULL;
-      }
-
-    return str;
-  }
-
-  string_t *
-  driver::get_string_container ()
-  {
-    string_t *str;
-
-    if (m_string_pool_idx < STRING_POOL_SIZE)
-      {
-	str = & (m_string_pool[m_string_pool_idx++]);
-	str->need_free_self = false;
-      }
-    else
-      {
-	str = (string_t *) malloc (sizeof (string_t));
-
-	if (str == NULL)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (string_t));
-	    //YY_FATAL_ERROR (er_msg());
-	    return NULL;
-	  }
-
-	str->need_free_self = true;
-      }
-
-    return str;
-  }
-
-  void
-  driver::set_quoted_string_buffer ()
-  {
-    if (m_qstr_buf_pool_idx < QUOTED_STR_BUF_POOL_SIZE)
-      {
-	m_qstr_buf_p = & (m_qstr_buf_pool[m_qstr_buf_pool_idx++][0]);
-	m_use_qstr_buffer = false;
-      }
-    else
-      {
-	if (m_qstr_buffer == NULL)
-	  {
-	    m_qstr_buffer_size = MAX_QUOTED_STR_BUF_SIZE;
-	    m_qstr_buffer = (char *) malloc (m_qstr_buffer_size);
-
-	    if (m_qstr_buffer == NULL)
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) m_qstr_buffer_size);
-		// YY_FATAL_ERROR (er_msg());
-		return;
-	      }
-	  }
-
-	m_qstr_buf_p = m_qstr_buffer;
-	m_use_qstr_buffer = true;
-      }
-
-    m_qstr_buf_idx = 0;
-  }
-
   void
   driver::append_char (char c)
   {
@@ -204,16 +86,7 @@ namespace cubloaddb
       {
 	if (m_qstr_buf_idx >= m_qstr_buffer_size)
 	  {
-	    m_qstr_buffer_size *= 2;
-	    m_qstr_buffer = (char *) realloc (m_qstr_buffer, m_qstr_buffer_size);
-
-	    if (m_qstr_buffer == NULL)
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) m_qstr_buffer_size);
-		//YY_FATAL_ERROR (er_msg());
-		return;
-	      }
-
+	    realloc_qstr_buffer (m_qstr_buffer_size * 2);
 	    m_qstr_buf_p = m_qstr_buffer;
 	  }
       }
@@ -229,15 +102,7 @@ namespace cubloaddb
 
 	    if (m_qstr_buffer == NULL)
 	      {
-		m_qstr_buffer_size = MAX_QUOTED_STR_BUF_SIZE * 2;
-		m_qstr_buffer = (char *) malloc (m_qstr_buffer_size);
-
-		if (m_qstr_buffer == NULL)
-		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) m_qstr_buffer_size);
-		    //YY_FATAL_ERROR (er_msg());
-		    return;
-		  }
+		alloc_qstr_buffer (MAX_QUOTED_STR_BUF_SIZE * 2);
 	      }
 
 	    memcpy (m_qstr_buffer, m_qstr_buf_p, m_qstr_buf_idx);
@@ -251,12 +116,45 @@ namespace cubloaddb
   }
 
   string_t *
+  driver::append_string_list (string_t *head, string_t *tail)
+  {
+    return append_list<string_t> (head, tail);
+  }
+
+  constant_t *
+  driver::append_constant_list (constant_t *head, constant_t *tail)
+  {
+    return append_list<constant_t> (head, tail);
+  }
+
+  void
+  driver::set_quoted_string_buffer ()
+  {
+    if (m_qstr_buf_pool_idx < QUOTED_STR_BUF_POOL_SIZE)
+      {
+	m_qstr_buf_p = & (m_qstr_buf_pool[m_qstr_buf_pool_idx++][0]);
+	m_use_qstr_buffer = false;
+      }
+    else
+      {
+	if (m_qstr_buffer == NULL)
+	  {
+	    alloc_qstr_buffer (MAX_QUOTED_STR_BUF_SIZE);
+	  }
+
+	m_qstr_buf_p = m_qstr_buffer;
+	m_use_qstr_buffer = true;
+      }
+
+    m_qstr_buf_idx = 0;
+  }
+
+  string_t *
   driver::make_string_by_buffer ()
   {
-    string_t *str;
     char *invalid_pos = NULL;
 
-    str = get_string_container ();
+    string_t *str = make_string ();
     if (str == NULL)
       {
 	return NULL;
@@ -288,7 +186,7 @@ namespace cubloaddb
 		    free_and_init (str);
 		  }
 
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) m_qstr_buf_idx);
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, m_qstr_buf_idx);
 		//YY_FATAL_ERROR (er_msg());
 		return NULL;
 	      }
@@ -308,43 +206,68 @@ namespace cubloaddb
     return str;
   }
 
-  void
-  driver::reset_pool_indexes ()
-  {
-    m_string_pool_idx = 0;
-    m_copy_buf_pool_idx = 0;
-    m_qstr_buf_pool_idx = 0;
-    m_constant_pool_idx = 0;
-  }
-
   string_t *
-  driver::append_string_list (string_t *head, string_t *tail)
+  driver::make_string_by_yytext (char *yytext, int yyleng)
   {
-    tail->next = NULL;
-    tail->last = NULL;
+    char *invalid_pos = NULL;
 
-    if (head)
+    string_t *str = make_string ();
+    if (str == NULL)
       {
-	head->last->next = tail;
+	return NULL;
+      }
+
+    str->size = yyleng;
+    char *text = yytext;
+
+    if (m_copy_buf_pool_idx < COPY_BUF_POOL_SIZE && str->size < MAX_COPY_BUF_SIZE)
+      {
+	str->val = & (m_copy_buf_pool[m_copy_buf_pool_idx++][0]);
+	memcpy (str->val, text, str->size);
+	str->val[str->size] = '\0';
+	str->need_free_val = false;
       }
     else
       {
-	head = tail;
+	str->val = (char *) malloc (str->size + 1);
+
+	if (str->val == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str->size + 1);
+	    //YY_FATAL_ERROR (er_msg());
+	    return NULL;
+	  }
+
+	memcpy (str->val, text, str->size);
+	str->val[str->size] = '\0';
+	str->need_free_val = true;
       }
 
-    head->last = tail;
-    return head;
+    if (intl_check_string (str->val, str->size, &invalid_pos, LANG_SYS_CODESET) != INTL_UTF8_VALID)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1, invalid_pos - str->val);
+	//YY_FATAL_ERROR (er_msg());
+	return NULL;
+      }
+
+    return str;
+  }
+
+  ctor_spec_t *
+  driver::make_constructor_spec (string_t *idname, string_t *arg_list)
+  {
+    ctor_spec_t *spec = alloc_ldr_type<ctor_spec_t> ();
+
+    spec->idname = idname;
+    spec->arg_list = arg_list;
+
+    return spec;
   }
 
   class_cmd_spec_t *
   driver::make_class_command_spec (int qualifier, string_t *attr_list, ctor_spec_t *ctor_spec)
   {
-    class_cmd_spec_t *spec = (class_cmd_spec_t *) malloc (sizeof (class_cmd_spec_t));
-    if (spec == NULL)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (class_cmd_spec_t));
-	return NULL;
-      }
+    class_cmd_spec_t *spec = alloc_ldr_type<class_cmd_spec_t> ();
 
     spec->qualifier = qualifier;
     spec->attr_list = attr_list;
@@ -353,27 +276,10 @@ namespace cubloaddb
     return spec;
   }
 
-  ctor_spec_t *
-  driver::make_constructor_spec (string_t *idname, string_t *arg_list)
-  {
-    ctor_spec_t *spec = (ctor_spec_t *) malloc (sizeof (ctor_spec_t));
-    if (spec == NULL)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (ctor_spec_t));
-	//YYABORT;
-	return NULL;
-      }
-
-    spec->idname = idname;
-    spec->arg_list = arg_list;
-
-    return spec;
-  }
-
   constant_t *
   driver::make_constant (int type, void *val)
   {
-    constant_t *con;
+    constant_t *con = NULL;
 
     if (m_constant_pool_idx < CONSTANT_POOL_SIZE)
       {
@@ -382,12 +288,7 @@ namespace cubloaddb
       }
     else
       {
-	con = (constant_t *) malloc (sizeof (constant_t));
-	if (con == NULL)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (constant_t));
-	    return NULL;
-	  }
+	con = alloc_ldr_type<constant_t> ();
 	con->need_free = true;
       }
 
@@ -397,32 +298,10 @@ namespace cubloaddb
     return con;
   }
 
-  monetary_t *
-  driver::make_monetary_value (int currency_type, string_t *amount)
-  {
-    monetary_t *mon_value = (monetary_t *) malloc (sizeof (monetary_t));
-    if (mon_value == NULL)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (monetary_t));
-	return NULL;
-      }
-
-    mon_value->amount = amount;
-    mon_value->currency_type = currency_type;
-
-    return mon_value;
-  }
-
   object_ref_t *
   driver::make_object_ref (string_t *class_name)
   {
-    object_ref_t *ref = (object_ref_t *) malloc (sizeof (object_ref_t));
-    if (ref == NULL)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (object_ref_t));
-	//YYABORT;
-	return NULL;
-      }
+    object_ref_t *ref = alloc_ldr_type<object_ref_t> ();
 
     ref->class_id = class_name;
     ref->class_name = NULL;
@@ -431,23 +310,24 @@ namespace cubloaddb
     return ref;
   }
 
-  constant_t *
-  driver::append_constant_list (constant_t *head, constant_t *tail)
+  monetary_t *
+  driver::make_monetary_value (int currency_type, string_t *amount)
   {
-    tail->next = NULL;
-    tail->last = NULL;
+    monetary_t *mon_value = alloc_ldr_type<monetary_t> ();
 
-    if (head)
-      {
-	head->last->next = tail;
-      }
-    else
-      {
-	head = tail;
-      }
+    mon_value->amount = amount;
+    mon_value->currency_type = currency_type;
 
-    head->last = tail;
-    return head;
+    return mon_value;
+  }
+
+  void
+  driver::reset_pool_indexes ()
+  {
+    m_string_pool_idx = 0;
+    m_copy_buf_pool_idx = 0;
+    m_qstr_buf_pool_idx = 0;
+    m_constant_pool_idx = 0;
   }
 
   void
@@ -456,15 +336,52 @@ namespace cubloaddb
     FREE_STRING (*string);
   }
 
+  bool
+  driver::in_instance_line ()
+  {
+    return m_in_instance_line;
+  }
+
   void
   driver::set_in_instance_line (bool in_instance_line)
   {
     m_in_instance_line = in_instance_line;
   }
 
-  bool
-  driver::in_instance_line ()
+  string_t *
+  driver::make_string ()
   {
-    return m_in_instance_line;
+    string_t *str = NULL;
+
+    if (m_string_pool_idx < STRING_POOL_SIZE)
+      {
+	str = & (m_string_pool[m_string_pool_idx++]);
+	str->need_free_self = false;
+      }
+    else
+      {
+	str = alloc_ldr_type<string_t> ();
+	str->need_free_self = true;
+      }
+
+    return str;
+  }
+
+  void
+  driver::alloc_qstr_buffer (std::size_t size)
+  {
+    m_qstr_buffer_size = size;
+    m_qstr_buffer = (char *) malloc (m_qstr_buffer_size);
+
+    assert (m_qstr_buffer != NULL);
+  }
+
+  void
+  driver::realloc_qstr_buffer (std::size_t new_size)
+  {
+    m_qstr_buffer_size = new_size;
+    m_qstr_buffer = (char *) realloc (m_qstr_buffer, m_qstr_buffer_size);
+
+    assert (m_qstr_buffer != NULL);
   }
 } // namespace cubloaddb

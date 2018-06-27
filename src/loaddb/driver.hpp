@@ -26,9 +26,22 @@
 
 #include <istream>
 
-#include "scanner.hpp"
+#include "error_manager.h"
 #include "loader.h"
 #include "loader_parser.tab.hpp"
+#include "scanner.hpp"
+
+#define FREE_STRING(s)          \
+do {                            \
+  if ((s)->need_free_val)       \
+    {                           \
+      free_and_init ((s)->val); \
+    }                           \
+  if ((s)->need_free_self)      \
+    {                           \
+      free_and_init ((s));      \
+    }                           \
+} while (0)
 
 namespace cubloaddb
 {
@@ -46,6 +59,7 @@ namespace cubloaddb
   using ctor_spec_t = LDR_CONSTRUCTOR_SPEC;
   using class_cmd_spec_t = LDR_CLASS_COMMAND_SPEC;
 
+  // TODO CBRD-21654 add class documentation
   class driver
   {
     public:
@@ -102,8 +116,50 @@ namespace cubloaddb
       char m_qstr_buf_pool[QUOTED_STR_BUF_POOL_SIZE][MAX_QUOTED_STR_BUF_SIZE];
 
       /* private functions */
-      string_t *get_string_container ();
+      string_t *make_string ();
+      void alloc_qstr_buffer (std::size_t size);
+      void realloc_qstr_buffer (std::size_t new_size);
+
+      template<typename T>
+      T *alloc_ldr_type ();
+
+      template<typename T>
+      T *append_list (T *head, T *tail);
   };
+} // namespace cubloaddb
+
+namespace cubloaddb
+{
+  template<typename T>
+  T *
+  driver::alloc_ldr_type ()
+  {
+    T *ptr = (T *) malloc (sizeof (T));
+
+    assert (ptr != NULL);
+
+    return ptr;
+  };
+
+  template<typename T>
+  T *
+  driver::append_list (T *head, T *tail)
+  {
+    tail->next = NULL;
+    tail->last = NULL;
+
+    if (head)
+      {
+	head->last->next = tail;
+      }
+    else
+      {
+	head = tail;
+      }
+
+    head->last = tail;
+    return head;
+  }
 } // namespace cubloaddb
 
 #endif // _DRIVER_HPP_
