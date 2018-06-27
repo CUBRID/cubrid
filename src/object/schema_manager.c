@@ -14416,7 +14416,9 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
       // Please notice that creating a secondary index acquired SIX. We may have a regression until completes the task.
       // 
       // TODO: AU_ALTER or AU_INDEX? any potential regression with a change?
-      // TODO: Do we need an interface to provide a lock mode to smt_ ?
+      //
+      // TODO: provide a lock mode to smt_ interface?
+      // Alternative is smt_edit_class_mop_for_online_schema_change. This will demote class lock after preparation.
       def = smt_edit_class_mop (classop, AU_ALTER);
       if (def == NULL)
 	{
