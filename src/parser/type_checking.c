@@ -8262,6 +8262,14 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
     {
     case PT_EXPR:
       node = pt_eval_expr_type (parser, node);
+#if 1 //original code but it doesn't check for errors
+      if (node == NULL)
+        {
+	      assert (false);
+	      PT_INTERNAL_ERROR (parser, "pt_eval_type");
+	      return NULL;
+        }
+#else //ToDo: checks for errors but generates regressions that should be analyzed
       if (pt_has_error(parser))
         {
           if(node == NULL)
@@ -8270,6 +8278,7 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
             }
 	      return NULL;
 	    }
+#endif
       break;
 
     case PT_FUNCTION:
