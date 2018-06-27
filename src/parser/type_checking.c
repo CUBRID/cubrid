@@ -8262,12 +8262,14 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
     {
     case PT_EXPR:
       node = pt_eval_expr_type (parser, node);
-      if (node == NULL)
-	{
-	  assert (false);
-	  PT_INTERNAL_ERROR (parser, "pt_eval_type");
-	  return NULL;
-	}
+      if (pt_has_error(parser))
+        {
+          if(node == NULL)
+            {
+              PT_INTERNAL_ERROR (parser, "pt_eval_type");
+            }
+	      return NULL;
+	    }
       break;
 
     case PT_FUNCTION:
@@ -13174,6 +13176,10 @@ namespace Func
 
     const func_signature* get_signature(const std::vector<func_signature>& signatures, string_buffer& sb)
     {
+        if(pt_has_error(m_parser)){
+            //printf("ERR in get_sigature() IT SHOULDN'T BE HERE!!!\n");
+            return nullptr;
+        }
         pt_reset_error(m_parser);
         const func_signature* signature = nullptr;
         int sigIndex = 0;
