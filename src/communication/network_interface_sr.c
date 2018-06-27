@@ -4811,6 +4811,9 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   reset_on_commit = false;
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
   tran_state = tdes->state;
+
+  // TODO - consider autorollback for some error cases.
+
   if (end_query_allowed)
     {
       p_net_Deferred_end_queries[n_query_ids++] = query_id;

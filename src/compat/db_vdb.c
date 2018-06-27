@@ -4064,6 +4064,7 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
 	}
       break;
 
+    // TODO - what else? for instance, merge, other dmls, ddls. 
     default:
       break;
     }
