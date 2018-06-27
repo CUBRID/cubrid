@@ -1261,7 +1261,7 @@ extern const int SM_MAX_STRING_LENGTH;
  */
 typedef enum
 {
-
+  SM_ATTFLAG_NONE = 0,
   SM_ATTFLAG_INDEX = 1,		/* attribute has an index 0x01 */
   SM_ATTFLAG_UNIQUE = 2,	/* attribute has UNIQUE constraint 0x02 */
   SM_ATTFLAG_NON_NULL = 4,	/* attribute has NON_NULL constraint 0x04 */

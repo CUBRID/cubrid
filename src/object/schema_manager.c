@@ -14407,47 +14407,60 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
     {
     case DB_CONSTRAINT_INDEX:
     case DB_CONSTRAINT_REVERSE_INDEX:
-      error =
-	sm_add_index (classop, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length, filter_index,
-		      function_index, comment);
-      break;
-
     case DB_CONSTRAINT_UNIQUE:
     case DB_CONSTRAINT_REVERSE_UNIQUE:
     case DB_CONSTRAINT_PRIMARY_KEY:
+      // 1. preparation phase
+
+      // TODO: lock mode for preparation phase. SIX allows reads, while SCH_M does not. SCH_M might be safer.
+      // Please notice that creating a secondary index acquired SIX. We may have a regression until completes the task.
+      // 
+      // TODO: AU_ALTER or AU_INDEX? any potential regression with a change?
+      // TODO: Do we need an interface to provide a lock mode to smt_ ?
       def = smt_edit_class_mop (classop, AU_ALTER);
       if (def == NULL)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
 	}
-      else
-	{
-	  error =
-	    smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes, NULL,
-				filter_index, function_index, comment);
-	  if (error == NO_ERROR)
-	    {
-	      error = sm_update_class (def, &newmop);
-	    }
 
-	  if (error == NO_ERROR)
-	    {
-	      error = sm_update_statistics (newmop, STATS_WITH_SAMPLING);
-	    }
-	  else
-	    {
-	      smt_quit (def);
-	    }
+      error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes, NULL,
+				  filter_index, function_index, comment);
+      if (error != NO_ERROR)
+	{
+	  smt_quit (def);
+	  return error;
 	}
+
+      error = sm_update_class (def, &newmop);
+      if (error != NO_ERROR)
+	{
+	  smt_quit (def);
+	  return error;
+	}
+
+      // 2. lock demotion
+      // 3. load index phase
+
+      error = sm_update_statistics (newmop, STATS_WITH_SAMPLING);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      // 4. lock promotion
+
+      // 5. registration phase
+      // make the index usuable
       break;
 
     case DB_CONSTRAINT_NOT_NULL:
+      // TODO - refactor me
       def = smt_edit_class_mop (classop, AU_ALTER);
       if (def == NULL)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
 	}
       else
 	{

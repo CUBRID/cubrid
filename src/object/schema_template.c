@@ -1530,7 +1530,7 @@ smt_drop_constraint_from_property (SM_TEMPLATE * template_, const char *constrai
   db_make_null (&oldval);
   db_make_null (&newval);
 
-  prop_type = SM_MAP_CONSTRAINT_ATTFAG_TO_PROPERTY (constraint);
+  prop_type = SM_MAP_CONSTRAINT_ATTFLAG_TO_PROPERTY (constraint);
 
   if (classobj_get_prop (template_->properties, prop_type, &oldval) > 0)
     {
@@ -2073,88 +2073,77 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
   /* 
    *  Process constraint
    */
-
-  if (SM_IS_ATTFLAG_UNIQUE_FAMILY (constraint))
+  if (SM_IS_ATTFLAG_INDEX_FAMILY (constraint))
     {
-      /* 
-       *  Check for possible errors
-       *
-       *    - We do not allow UNIQUE constraints on any attribute of
-       *      a virtual class.
-       *    - We do not allow UNIQUE constraints on shared attributes.
-       *    - We only allow unique constraints on indexable data types.
+      /* Check possible errors:
+       *   - We do not allow UNIQUE constraints/INDEXES on any attribute of a virtual class.
+       *   - We do not allow UNIQUE constraints/INDEXES on class|shared attributes.
+       *   - We only allow unique constraints on indexable data types.
        */
       if (template_->class_type != SM_CLASS_CT)
 	{
 	  ERROR0 (error, ER_SM_UNIQUE_ON_VCLASS);
+	  goto error_return;
 	}
 
-      for (i = 0; i < n_atts && error == NO_ERROR; i++)
+      for (i = 0; i < n_atts; i++)
 	{
 	  if (atts[i]->header.name_space == ID_SHARED_ATTRIBUTE || class_attribute)
 	    {
 	      ERROR1 (error, ER_SM_INDEX_ON_SHARED, att_names[i]);
+	      goto error_return;
 	    }
-	  else
+
+	  if (!tp_valid_indextype (atts[i]->type->id))
 	    {
-	      if (!tp_valid_indextype (atts[i]->type->id))
+	      if (SM_IS_ATTFLAG_UNIQUE_FAMILY (constraint))
 		{
 		  ERROR2 (error, ER_SM_INVALID_UNIQUE_TYPE, atts[i]->type->name,
 			  SM_GET_CONSTRAINT_STRING (constraint_type));
 		}
-	    }
-	}
-
-      /* 
-       * No errors were found, drop or add the unique constraint
-       */
-      if (error == NO_ERROR)
-	{
-	  /* 
-	   *  Add the unique constraint.  The drop case was taken care
-	   *  of at the beginning of this function.
-	   */
-	  error =
-	    smt_add_constraint_to_property (template_, SM_MAP_INDEX_ATTFLAG_TO_CONSTRAINT (constraint), constraint_name,
-					    atts, asc_desc, NULL, shared_cons_name, filter_index, function_index,
-					    comment);
-
-	  if (error == NO_ERROR && constraint == SM_ATTFLAG_PRIMARY_KEY)
-	    {
-	      for (i = 0; i < n_atts; i++)
+	      else
 		{
-		  atts[i]->flags |= SM_ATTFLAG_PRIMARY_KEY;
-		  atts[i]->flags |= SM_ATTFLAG_NON_NULL;
+		  assert (constraint == SM_ATTFLAG_INDEX || constraint == SM_ATTFLAG_REVERSE_INDEX
+			  || constraint == SM_ATTFLAG_FOREIGN_KEY);
+		  ERROR1 (error, ER_SM_INVALID_INDEX_TYPE, atts[i]->type->name);
 		}
+	      goto error_return;
 	    }
 	}
-    }
-  else if (constraint == SM_ATTFLAG_FOREIGN_KEY)
-    {
-      if (template_->class_type != SM_CLASS_CT)
-	{
-	  ERROR0 (error, ER_FK_CANT_ON_VCLASS);	/* TODO */
-	}
 
-      for (i = 0; i < n_atts && error == NO_ERROR; i++)
+      if (constraint == SM_ATTFLAG_FOREIGN_KEY)
 	{
-	  if (!tp_valid_indextype (atts[i]->type->id))
+	  error = smt_check_foreign_key (template_, constraint_name, atts, n_atts, fk_info);
+	  if (error != NO_ERROR)
 	    {
-	      ERROR1 (error, ER_SM_INVALID_INDEX_TYPE, atts[i]->type->name);
+	      goto error_return;
 	    }
 	}
-
-      error = smt_check_foreign_key (template_, constraint_name, atts, n_atts, fk_info);
-      if (error == NO_ERROR)
+      else
 	{
-	  error =
-	    smt_add_constraint_to_property (template_, SM_CONSTRAINT_FOREIGN_KEY, constraint_name, atts, asc_desc,
-					    fk_info, shared_cons_name, filter_index, function_index, comment);
+	  assert (fk_info == NULL);
+	}
+
+      /* Add the constraint. */
+      error = smt_add_constraint_to_property (template_, SM_MAP_INDEX_ATTFLAG_TO_CONSTRAINT (constraint),
+					      constraint_name, atts, asc_desc, fk_info, shared_cons_name,
+					      filter_index, function_index, comment);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+
+      if (constraint == SM_ATTFLAG_PRIMARY_KEY)
+	{
+	  for (i = 0; i < n_atts; i++)
+	    {
+	      atts[i]->flags |= SM_ATTFLAG_PRIMARY_KEY;
+	      atts[i]->flags |= SM_ATTFLAG_NON_NULL;
+	    }
 	}
     }
   else if (constraint == SM_ATTFLAG_NON_NULL)
     {
-
       /* 
        *  We do not support NOT NULL constraints for;
        *    - normal (not class and shared) attributes of virtual classes
