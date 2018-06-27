@@ -26,13 +26,13 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/util_cs.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/compactdb.c
-  ${EXECUTABLES_DIR}/loaddb.c
+  ${LOADDB_DIR}/loaddb.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/load_object.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
-  ${EXECUTABLES_DIR}/loader.c
+  ${LOADDB_DIR}/loader.c
   ${EXECUTABLES_DIR}/loader_object_table.c
   )
 
@@ -330,13 +330,13 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/util_cs.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/compactdb.c
-  ${EXECUTABLES_DIR}/loaddb.c
+  ${LOADDB_DIR}/loaddb.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/load_object.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
-  ${EXECUTABLES_DIR}/loader.c
+  ${LOADDB_DIR}/loader.c
   ${EXECUTABLES_DIR}/loader_object_table.c
   ${COMPAT_SOURCES}
   ${BASE_SOURCES}

@@ -313,11 +313,10 @@ set(CSQL_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y)
 set(CSQL_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/csql_grammar.c)
 set(CSQL_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/parser/csql_lexer.l)
 set(CSQL_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/csql_lexer.c)
-set(LOADER_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/executables/loader_grammar.y)
-set(LOADER_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/loader_grammar.c)
-set(LOADER_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/executables/loader_lexer.l)
-set(LOADER_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/loader_lexer.c)
-set(LOADER_LEXER_HEADER_OUTPUT ${CMAKE_BINARY_DIR}/loader_lexer.h)
+set(LOADER_PARSER_INPUT ${CMAKE_SOURCE_DIR}/src/loaddb/loader_parser.yy)
+set(LOADER_PARSER_OUTPUT ${CMAKE_BINARY_DIR}/loader_parser.tab.cpp)
+set(LOADER_SCANNER_INPUT ${CMAKE_SOURCE_DIR}/src/loaddb/loader_scanner.ll)
+set(LOADER_SCANNER_OUTPUT ${CMAKE_BINARY_DIR}/loader_scanner.cpp)
 set(ESQL_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y)
 set(ESQL_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/esql_grammar.c)
 set(ESQL_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.l)
@@ -381,15 +380,14 @@ add_flex_bison_dependency(csql_lexer csql_grammar)
 add_custom_target(gen_csql_grammar DEPENDS ${BISON_csql_grammar_OUTPUTS})
 add_custom_target(gen_csql_lexer DEPENDS ${FLEX_csql_lexer_OUTPUTS})
 
-bison_target(loader_grammar ${LOADER_GRAMMAR_INPUT} ${LOADER_GRAMMAR_OUTPUT}
-  COMPILE_FLAGS "--no-lines --name-prefix=loader_yy -d -r all")
-flex_target(loader_lexer ${LOADER_LEXER_INPUT} ${LOADER_LEXER_OUTPUT}
-  COMPILE_FLAGS "--noline --never-interactive --prefix=loader_yy"
-  DEFINES_FILE ${LOADER_LEXER_HEADER_OUTPUT}
+bison_target(loader_parser ${LOADER_PARSER_INPUT} ${LOADER_PARSER_OUTPUT}
+  COMPILE_FLAGS "-d -r all")
+flex_target(loader_scanner ${LOADER_SCANNER_INPUT} ${LOADER_SCANNER_OUTPUT}
+  COMPILE_FLAGS "--noline"
   )
-add_flex_bison_dependency(loader_lexer loader_grammar)
-add_custom_target(gen_loader_grammar DEPENDS ${BISON_loader_grammar_OUTPUTS})
-add_custom_target(gen_loader_lexer DEPENDS ${FLEX_loader_lexer_OUTPUTS})
+add_flex_bison_dependency(loader_scanner loader_parser)
+add_custom_target(gen_loader_parser DEPENDS ${BISON_loader_parser_OUTPUTS})
+add_custom_target(gen_loader_scanner DEPENDS ${FLEX_loader_scanner_OUTPUTS})
 
 if(USE_BISON_NEWDIRECTIVE)
   # replace old bison directives with new ones
@@ -476,6 +474,7 @@ set(EXECUTABLES_DIR          ${CMAKE_SOURCE_DIR}/src/executables)
 set(HEAPLAYERS_DIR           ${CMAKE_SOURCE_DIR}/src/heaplayers)
 set(JDBC_DIR                 ${CMAKE_SOURCE_DIR}/src/jdbc)
 set(JSP_DIR                  ${CMAKE_SOURCE_DIR}/src/jsp)
+set(LOADDB_DIR               ${CMAKE_SOURCE_DIR}/src/loaddb)
 set(OBJECT_DIR               ${CMAKE_SOURCE_DIR}/src/object)
 set(ODBC_DIR                 ${CMAKE_SOURCE_DIR}/src/odbc)
 set(OLEDB_DIR                ${CMAKE_SOURCE_DIR}/src/oledb)
@@ -503,6 +502,7 @@ include_directories(
   src/executables
   src/heaplayers
   src/jsp
+  src/loaddb
   src/object
   src/optimizer
   src/parser

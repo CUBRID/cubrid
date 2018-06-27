@@ -18,33 +18,52 @@
  */
 
 /*
- * loader_grammar.y - loader grammar file
+ * loader_parser.yy - loader grammar file
  */
 
-%{
-#ident "$Id$"
+%skeleton "lalr1.cc"
+%require  "3.0"
+%debug
+%defines
+%define api.namespace {cubloaddb}
+%define parser_class_name {loader_yyparser}
+%locations
+%no-lines
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
+%parse-param { scanner  &s  }
+%parse-param { driver  &d  }
 
-#include "utility.h"
-#include "dbtype.h"
-#include "language_support.h"
-#include "message_catalog.h"
-#include "memory_alloc.h"
-#include "error_manager.h"
+%define parse.assert
+
+%union {
+  int intval;
+  LDR_STRING *string;
+  LDR_CLASS_COMMAND_SPEC *cmd_spec;
+  LDR_CONSTRUCTOR_SPEC *ctor_spec;
+  LDR_CONSTANT *constant;
+  LDR_OBJECT_REF *obj_ref;
+};
+
+%code requires {
 #include "loader.h"
 
-#include "loader_grammar.h"
-#include "loader_lexer.h"
+namespace cubloaddb
+{
+  class driver;
+  class scanner;
+}
+}
 
-#if defined (SUPPRESS_STRLEN_WARNING)
-#define strlen(s1)  ((int) strlen(s1))
-#endif /* defined (SUPPRESS_STRLEN_WARNING) */
+%code {
+#include "driver.hpp"
+#include "error_manager.h"
+#include "memory_alloc.h"
 
-/*#define PARSER_DEBUG*/
+#undef yylex
+#define yylex s.yylex
+
+#define PARSER_DEBUG
+
 #ifdef PARSER_DEBUG
 #define DBG_PRINT(s) printf("rule: %s\n", (s));
 #else
@@ -61,7 +80,6 @@ do { \
 
 extern bool loader_In_instance_line;
 
-extern void loader_yyerror (yyscan_t yyscanner, const char *s);
 extern void loader_reset_string_pool (void);
 extern void loader_initialize_lexer (void);
 extern void do_loader_parse (void *data);
@@ -76,20 +94,6 @@ static LDR_MONETARY_VALUE* loader_make_monetary_value (int currency_type, LDR_ST
 static LDR_CONSTANT *loader_append_constant_list (LDR_CONSTANT *head, LDR_CONSTANT *tail);
 
 int loader_yyline = 1;
-%}
-
-%define parse.error verbose
-%define api.pure full
-%lex-param {void *scanner}
-%parse-param {void *scanner}
-
-%union {
-  int intval;
-  LDR_STRING *string;
-  LDR_CLASS_COMMAND_SPEC *cmd_spec;
-  LDR_CONSTRUCTOR_SPEC *ctor_spec;
-  LDR_CONSTANT *constant;
-  LDR_OBJECT_REF *obj_ref;
 }
 
 %token NL
@@ -653,7 +657,6 @@ sql2_datetimetz :
   }
   ;
 
-
 bit_string :
   BQuote SQS_String_Body
   {
@@ -963,6 +966,14 @@ monetary :
   ;
 %%
 
+/*** Additional Code ***/
+
+void
+cubloaddb::loader_yyparser::error (const loader_yyparser::location_type& l, const std::string& m)
+{
+    d.error (l, m);
+}
+
 static LDR_STRING *
 loader_append_string_list (LDR_STRING * head, LDR_STRING * tail)
 {
@@ -1006,14 +1017,14 @@ loader_make_constant (int type, void *val)
 {
   LDR_CONSTANT *con;
 
-  if (constant_Pool_idx < CONSTANT_POOL_SIZE)
-    {
-      con = &(constant_Pool[constant_Pool_idx]);
-      constant_Pool_idx++;
-      con->need_free = false;
-    }
-  else
-    {
+  //if (constant_Pool_idx < CONSTANT_POOL_SIZE)
+  //  {
+  //    con = &(constant_Pool[constant_Pool_idx]);
+  //    constant_Pool_idx++;
+  //    con->need_free = false;
+  //  }
+  //else
+  //  {
       con = (LDR_CONSTANT *) malloc (sizeof (LDR_CONSTANT));
       if (con == NULL)
 	{
@@ -1021,7 +1032,7 @@ loader_make_constant (int type, void *val)
 	  return NULL;
 	}
       con->need_free = true;
-    }
+  //  }
 
   con->type = type;
   con->val = val;
@@ -1068,10 +1079,12 @@ loader_append_constant_list (LDR_CONSTANT * head, LDR_CONSTANT * tail)
 
 void do_loader_parse (void *data)
 {
+/*
   loader_In_instance_line = true;
 
   loader_yyline = 1;
   loader_yyparse (data);
+*/
 }
 
 #ifdef PARSER_DEBUG

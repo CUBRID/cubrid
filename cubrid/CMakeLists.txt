@@ -262,13 +262,16 @@ set(SESSION_SOURCES
   )
 
 set(LOADER_SOURCES
-  ${BISON_loader_grammar_OUTPUT_SOURCE}
-  ${FLEX_loader_lexer_OUTPUTS}
-  ${EXECUTABLES_DIR}/loader.c
-  ${EXECUTABLES_DIR}/loaddb.c
+  ${BISON_loader_parser_OUTPUT_SOURCE}
+  ${FLEX_loader_scanner_OUTPUTS}
+  ${LOADDB_DIR}/driver.cpp
+  ${LOADDB_DIR}/loader.c
+  ${LOADDB_DIR}/loaddb.c
   )
 set(LOADER_HEADERS
-  ${EXECUTABLES_DIR}/loader.h
+  ${LOADDB_DIR}/loader.h
+  ${LOADDB_DIR}/driver.hpp
+  ${LOADDB_DIR}/scanner.hpp
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
@@ -284,8 +287,8 @@ else(UNIX)
 endif(UNIX)
 
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
-set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED true)
-set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
+set_source_files_properties(${BISON_loader_parser_OUTPUTS} PROPERTIES GENERATED true)
+set_source_files_properties(${FLEX_loader_scanner_OUTPUTS} PROPERTIES GENERATED true)
 
 if(UNIX)
 set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
@@ -319,7 +322,7 @@ SET_SOURCE_FILES_PROPERTIES(
   )
 
 if(WIN32)
-  SET_SOURCE_FILES_PROPERTIES(${LOADER_GRAMMAR_OUTPUT} ${LOADER_LEXER_OUTPUT} PROPERTIES COMPILE_FLAGS /WX-)
+  SET_SOURCE_FILES_PROPERTIES(${LOADER_PARSER_OUTPUT} ${LOADER_SCANNER_OUTPUT} PROPERTIES COMPILE_FLAGS /WX-)
 endif(WIN32)
 
 set (CUBRID_LIB_SOURCES
@@ -382,7 +385,7 @@ else(UNIX)
 endif(UNIX)
 
 add_dependencies(cubrid ${EP_TARGETS})
-add_dependencies(cubrid gen_loader_grammar gen_loader_lexer)
+add_dependencies(cubrid gen_loader_parser gen_loader_scanner)
 
 if(AT_LEAST_ONE_UNIT_TEST)
   if (WIN32)

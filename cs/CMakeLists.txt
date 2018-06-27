@@ -25,8 +25,8 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/csql_support.c
   ${EXECUTABLES_DIR}/file_hash.c
   ${EXECUTABLES_DIR}/load_object.c
-  ${EXECUTABLES_DIR}/loaddb.c
-  ${EXECUTABLES_DIR}/loader.c
+  ${LOADDB_DIR}/loaddb.c
+  ${LOADDB_DIR}/loader.c
   ${EXECUTABLES_DIR}/loader_object_table.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
@@ -280,8 +280,8 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/csql_support.c
   ${EXECUTABLES_DIR}/file_hash.c
   ${EXECUTABLES_DIR}/load_object.c
-  ${EXECUTABLES_DIR}/loaddb.c
-  ${EXECUTABLES_DIR}/loader.c
+  ${LOADDB_DIR}/loaddb.c
+  ${LOADDB_DIR}/loader.c
   ${EXECUTABLES_DIR}/loader_object_table.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c

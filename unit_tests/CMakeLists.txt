@@ -35,6 +35,7 @@ option (UNIT_TEST_COMM_CHN "Unit testing: communication channel module")
 option (UNIT_TEST_TRANS_CHN "Unit testing: transfer channel module")
 option (UNIT_TEST_DDL_CL "Unit testing: ddl proxy client module")
 option (UNIT_TEST_RESOURCE_TRACKER "Unit testing: resource tracker")
+option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
 
 message("  unit_tests/...")
 
@@ -97,3 +98,8 @@ if (UNIT_TESTS OR UNIT_TEST_STREAM)
   message("    stream")
   add_subdirectory(stream)
 endif(UNIT_TESTS OR UNIT_TEST_STREAM)
+
+if (UNIT_TESTS OR UNIT_TEST_LOADDB)
+  message("    loaddb")
+  add_subdirectory(loaddb)
+endif(UNIT_TESTS OR UNIT_TEST_LOADDB)
