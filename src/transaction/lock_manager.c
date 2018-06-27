@@ -497,7 +497,8 @@ static void lock_unlock_object_by_isolation (THREAD_ENTRY * thread_p, int tran_i
 					     const OID * class_oid, const OID * oid);
 static void lock_unlock_inst_locks_of_class_by_isolation (THREAD_ENTRY * thread_p, int tran_index,
 							  TRAN_ISOLATION isolation, const OID * class_oid);
-static int lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, LOCK to_be_lock);
+static int lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, LOCK to_be_lock,
+					    LOCK * ex_lock);
 static void lock_demote_all_shared_class_locks (THREAD_ENTRY * thread_p, int tran_index);
 static void lock_unlock_shared_inst_lock (THREAD_ENTRY * thread_p, int tran_index, const OID * inst_oid);
 static void lock_remove_all_class_locks (THREAD_ENTRY * thread_p, int tran_index, LOCK lock);
@@ -4170,13 +4171,13 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 }
 #endif /* SERVER_MODE */
 
-#if defined(SERVER_MODE)
 /*
  * lock_demote_class_lock - Demote the class lock to to_be_lock
  *
  * return: error code
  *   oid(in): class oid
  *   lock(in): lock mode to be set
+ *   ex_lock(out): ex-lock mode
  *
  * Note: This function demotes the lock mode of given class lock.
  *       After the demotion, this function grants the blocked requestors if the blocked lock mode is grantable.
@@ -4187,8 +4188,9 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
  *          the current function only supports demotion of a class lock.
  */
 int
-lock_demote_class_lock (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock)
+lock_demote_class_lock (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock, LOCK * ex_lock)
 {
+#if defined(SERVER_MODE)
   LK_ENTRY *entry_ptr;
   int tran_index;
 
@@ -4201,19 +4203,24 @@ lock_demote_class_lock (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock)
       return ER_FAILED;
     }
 
-  return lock_internal_demote_class_lock (thread_p, entry_ptr, lock);
+  return lock_internal_demote_class_lock (thread_p, entry_ptr, lock, ex_lock);
+#else // SERVER_MODE
+  return NO_ERROR;
+#endif // !SERVER_MODE = SA_MODE
 }
 
+#if defined (SERVER_MODE)
 /*
  * lock_internal_demote_class_lock - helper function to lock_demote_class_lock
  *
  * return: error code
  *   entry_ptr(in):
  *   to_be_lock(in):
+ *   ex_lock(out): ex-lock mode
  *
  */
 static int
-lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, LOCK to_be_lock)
+lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, LOCK to_be_lock, LOCK * ex_lock)
 {
   LK_RES *res_ptr;		/* lock resource entry pointer */
   LK_ENTRY *holder, *h;		/* lock entry pointer */
@@ -4262,6 +4269,8 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
 	       LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), LOCK_TO_LOCKMODE_STRING (to_be_lock));
     }
 #endif /* LK_DUMP */
+
+  *ex_lock = holder->granted_mode;
 
   /* demote the class lock(granted mode) of the lock entry */
   holder->granted_mode = to_be_lock;
@@ -4317,6 +4326,7 @@ void
 lock_demote_read_class_lock_for_checksumdb (THREAD_ENTRY * thread_p, int tran_index, const OID * class_oid)
 {
   LK_ENTRY *entry_ptr;
+  LOCK ex_lock;
 
   /* The caller is not holding any mutex */
 
@@ -4330,7 +4340,7 @@ lock_demote_read_class_lock_for_checksumdb (THREAD_ENTRY * thread_p, int tran_in
 
   if (entry_ptr->granted_mode == S_LOCK)
     {
-      (void) lock_internal_demote_class_lock (thread_p, entry_ptr, IS_LOCK);
+      (void) lock_internal_demote_class_lock (thread_p, entry_ptr, IS_LOCK, &ex_lock);
     }
 }
 #endif /* SERVER_MODE */
@@ -4351,6 +4361,7 @@ lock_demote_all_shared_class_locks (THREAD_ENTRY * thread_p, int tran_index)
 {
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *curr, *next;
+  LOCK ex_lock;
 
   /* When this function is called, only one thread is executing for the transaction. (transaction : thread = 1 : 1)
    * Therefore, there is no need to hold tran_lock->hold_mutex. */
@@ -4368,12 +4379,12 @@ lock_demote_all_shared_class_locks (THREAD_ENTRY * thread_p, int tran_index)
       if (curr->granted_mode == S_LOCK)
 	{
 	  // S -> IS
-	  (void) lock_internal_demote_class_lock (thread_p, curr, IS_LOCK);
+	  (void) lock_internal_demote_class_lock (thread_p, curr, IS_LOCK, &ex_lock);
 	}
       else if (curr->granted_mode == SIX_LOCK)
 	{
 	  // SIX -> IX
-	  (void) lock_internal_demote_class_lock (thread_p, curr, IX_LOCK);
+	  (void) lock_internal_demote_class_lock (thread_p, curr, IX_LOCK, &ex_lock);
 	}
 
       curr = next;
@@ -4388,12 +4399,12 @@ lock_demote_all_shared_class_locks (THREAD_ENTRY * thread_p, int tran_index)
       if (curr->granted_mode == S_LOCK)
 	{
 	  // S -> IS
-	  (void) lock_internal_demote_class_lock (thread_p, curr, IS_LOCK);
+	  (void) lock_internal_demote_class_lock (thread_p, curr, IS_LOCK, &ex_lock);
 	}
       else if (curr->granted_mode == SIX_LOCK)
 	{
 	  // SIX -> IX
-	  (void) lock_internal_demote_class_lock (thread_p, curr, IX_LOCK);
+	  (void) lock_internal_demote_class_lock (thread_p, curr, IX_LOCK, &ex_lock);
 	}
     }
 }
