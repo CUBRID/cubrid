@@ -6779,6 +6779,14 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
     }
 
+  if (p->info.attr_def.on_update != DB_DEFAULT_NONE)
+    {
+      const char *c = db_default_expression_string (p->info.attr_def.on_update);
+      q = pt_append_nulstring (parser, q, " on update ");
+      q = pt_append_nulstring (parser, q, c);
+      q = pt_append_nulstring (parser, q, " ");
+    }
+
   if (p->info.attr_def.auto_increment)
     {
       r1 = pt_print_bytes (parser, p->info.attr_def.auto_increment);
@@ -8485,7 +8493,6 @@ pt_init_data_default (PT_NODE * p)
   p->info.data_default.default_expr_type = DB_DEFAULT_NONE;
   return p;
 }
-
 
 /*
  * pt_print_data_default () -
