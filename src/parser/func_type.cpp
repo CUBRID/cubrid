@@ -27,7 +27,7 @@ std::vector<func_signature> func_signature::percentile_cont = {
   {0                , {PT_GENERIC_TYPE_DATETIME}, {}},
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_STRING  }, {}},
   {0                , {PT_TYPE_MAYBE           }, {}},
-//{0                , {PT_TYPE_NA              }, {}},
+//{0                , {PT_TYPE_NA              }, {}},//not needed???
 #else //use double as return type (as documentation says)... but tests are failing (adjust doc or tests)
   {PT_TYPE_DOUBLE   , {PT_GENERIC_TYPE_NUMBER  }, {}},
   {0                , {PT_GENERIC_TYPE_STRING  }, {}},
@@ -42,22 +42,22 @@ std::vector<func_signature> func_signature::percentile_disc = {
   {0                , {PT_GENERIC_TYPE_DATETIME}, {}},
   {PT_TYPE_MAYBE    , {PT_GENERIC_TYPE_STRING  }, {}},
   {0                , {PT_TYPE_MAYBE           }, {}},
-  {0                , {PT_TYPE_NA              }, {}},
+//{0                , {PT_TYPE_NA              }, {}},//not needed???
 };
 
 std::vector<func_signature> func_signature::bigint_discrete = {
   {PT_TYPE_BIGINT, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
-  {PT_TYPE_BIGINT, {PT_TYPE_NA                     }, {}},
+  {PT_TYPE_BIGINT, {PT_TYPE_NA                     }, {}},//not needed???
 };
 
 std::vector<func_signature> func_signature::avg = {
   {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER  }, {}},
-  {PT_TYPE_DOUBLE, {PT_TYPE_NA              }, {}},
+//{PT_TYPE_DOUBLE, {PT_TYPE_NA              }, {}},//not needed???
 };
 
 std::vector<func_signature> func_signature::double_number = {
   {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER  }, {}},
-  {PT_TYPE_DOUBLE, {PT_TYPE_NA              }, {}},
+//{PT_TYPE_DOUBLE, {PT_TYPE_NA              }, {}},//not needed???
 };
 
 std::vector<func_signature> func_signature::count_star = {
@@ -77,7 +77,7 @@ std::vector<func_signature> func_signature::sum = {
   {0, {PT_TYPE_SET              }, {}},
   {0, {PT_TYPE_MULTISET         }, {}},
   {0, {PT_TYPE_SEQUENCE         }, {}},
-  {0, {PT_TYPE_NA               }, {}},
+//{0, {PT_TYPE_NA               }, {}},//not needed???
 };
 
 std::vector<func_signature> func_signature::double_r_any = {//original code doesn't check arguments!!!
@@ -110,7 +110,7 @@ std::vector<func_signature> func_signature::type0_nr_or_str_discrete = {
   {0, {PT_GENERIC_TYPE_STRING   , PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
   {0, {PT_GENERIC_TYPE_BIT      , PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
   {0, {PT_TYPE_ENUMERATION      , PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
-  {0, {PT_TYPE_NA               , PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
+//{0, {PT_TYPE_NA               , PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},//not needed???
 };
 
 std::vector<func_signature> func_signature::group_concat = {
