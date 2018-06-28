@@ -285,10 +285,10 @@ namespace test_replication
   class gen_repl_task : public cubthread::entry_task
   {
     public:
-      gen_repl_task (cubreplication::log_generator *lg, int tran_id)
-	: m_lg (lg)
+      gen_repl_task (int tran_id)
       {
 	m_thread_entry.tran_index = tran_id;
+        m_lg = new cubreplication::log_generator (cubreplication::log_generator::get_stream ());
       }
 
       void execute (cubthread::entry &thread_ref) override
@@ -348,9 +348,8 @@ namespace test_replication
     tasks_running = TASKS_CNT;
     for (int i = 0; i < TASKS_CNT; i++)
       {
-	gen_repl_task *task = new gen_repl_task (lg, i);
+	gen_repl_task *task = new gen_repl_task (i);
 
-	//gen_worker_pool->push_task (entry, task);
 	cub_th_m->push_task (task->m_thread_entry, gen_worker_pool, task);
       }
 
