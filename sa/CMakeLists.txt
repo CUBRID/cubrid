@@ -26,13 +26,13 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/util_cs.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/compactdb.c
-  ${LOADDB_DIR}/loaddb.c
+  ${EXECUTABLES_DIR}/loaddb.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/load_object.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
-  ${LOADDB_DIR}/loader.c
+  ${EXECUTABLES_DIR}/loader.c
   ${EXECUTABLES_DIR}/loader_object_table.c
   )
 
@@ -304,6 +304,12 @@ set(SESSION_SOURCES
   ${SESSION_DIR}/session_sr.c
   )
 
+set(LOADER_SOURCES
+  ${BISON_loader_grammar_OUTPUT_SOURCE}
+  ${FLEX_loader_lexer_OUTPUTS}
+  ${LOADDB_DIR}/loader_driver.cpp
+  )
+
 if(UNIX)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/tcp.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/dynamic_load.c)
@@ -314,6 +320,8 @@ endif(UNIX)
 
 set_source_files_properties(${BISON_csql_grammar_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${FLEX_csql_lexer_OUTPUTS} PROPERTIES GENERATED true)
+set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED true)
+set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
 
 if(UNIX)
@@ -330,13 +338,13 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/util_cs.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/compactdb.c
-  ${LOADDB_DIR}/loaddb.c
+  ${EXECUTABLES_DIR}/loaddb.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/load_object.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
-  ${LOADDB_DIR}/loader.c
+  ${EXECUTABLES_DIR}/loader.c
   ${EXECUTABLES_DIR}/loader_object_table.c
   ${COMPAT_SOURCES}
   ${BASE_SOURCES}
@@ -372,6 +380,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${ES_SOURCES}
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
+  ${LOADER_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
@@ -406,6 +415,7 @@ add_library(cubridsa SHARED
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
   ${COMPAT_SOURCES_C}
+  ${LOADER_SOURCES}
   )
 set_target_properties(cubridsa PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
@@ -418,7 +428,9 @@ if(WIN32)
   set_source_files_properties(${HEAPLAYERS_DIR}/customheaps.cpp PROPERTIES COMPILE_FLAGS -Od)
   SET_SOURCE_FILES_PROPERTIES(
     ${CSQL_GRAMMAR_OUTPUT}
+    ${LOADER_GRAMMAR_OUTPUT}
     ${CSQL_LEXER_OUTPUT}
+    ${LOADER_LEXER_OUTPUT}
     ${ESQL_GRAMMAR_OUTPUT}
     ${ESQL_LEXER_OUTPUT}
     PROPERTIES COMPILE_FLAGS /WX-
@@ -458,7 +470,7 @@ if(UNIX)
   # target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridsa LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_DL_LIBS})
 endif(UNIX)
-add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer)
+add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
 #add_dependencies(cubridsa ${EP_TARGETS})
 
 if(ENABLE_SYSTEMTAP)

@@ -18,7 +18,7 @@
  */
 
 /*
- * loader_parser.yy - loader grammar file
+ * loader_parser.y - loader grammar file
  */
 
 %skeleton "lalr1.cc"

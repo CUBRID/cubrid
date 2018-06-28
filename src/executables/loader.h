@@ -19,7 +19,8 @@
 
 
 /*
- * loader.h: Loader definitions. Updated using design from fast loaddb prototype
+ * loader.h: Loader definitions. Updated using design from fast loaddb
+ *             prototype
  */
 
 #ifndef _LOADER_H_
@@ -83,6 +84,8 @@ typedef enum
 typedef void (*LDR_POST_COMMIT_HANDLER) (int);
 typedef void (*LDR_POST_INTERRUPT_HANDLER) (int);
 
+
+
 /*
  * LDR_ATTRIBUTE_TYPE
  *
@@ -112,9 +115,7 @@ struct ldr_string
   LDR_STRING *next;
   LDR_STRING *last;
   char *val;
-  /* *INDENT-OFF* */
-  std::size_t size;
-  /* *INDENT-ON* */
+  int size;
   bool need_free_val;
   bool need_free_self;
 };

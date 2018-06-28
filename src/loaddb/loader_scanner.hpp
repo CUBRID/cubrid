@@ -28,7 +28,7 @@
 #include <FlexLexer.h>
 #endif
 
-#include "loader_parser.tab.hpp"
+#include "loader_grammar.hpp"
 #include "loader_driver.hpp"
 
 namespace cubloader

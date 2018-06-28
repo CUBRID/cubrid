@@ -18,7 +18,7 @@
  */
 
 /*
- * loader_scanner.ll - loader lexer file
+ * loader_scanner.l - loader lexer file
  */
 
 /*** C/C++ Declarations ***/

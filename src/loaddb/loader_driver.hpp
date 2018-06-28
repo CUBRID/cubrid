@@ -28,7 +28,7 @@
 
 #include "error_manager.h"
 #include "loader.h"
-#include "loader_parser.tab.hpp"
+#include "loader_grammar.hpp"
 #include "loader_scanner.hpp"
 
 #define FREE_STRING(s)          \
