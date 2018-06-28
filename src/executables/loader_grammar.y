@@ -23,7 +23,6 @@
 
 %skeleton "lalr1.cc"
 %require "3.0"
-%debug
 %defines
 %define api.namespace { cubloader }
 %define parser_class_name { loader_parser }

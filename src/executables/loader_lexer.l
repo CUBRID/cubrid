@@ -53,6 +53,7 @@ using token = cubloader::loader_parser::token;
 /* current buffer is considered never-interactive */
 %option never-interactive
 
+%option yylineno
 %option nodefault
 %option noyywrap
 %option nounput
@@ -209,13 +210,13 @@ using token = cubloader::loader_parser::token;
 
 [\+\-]?(([0-9]+[Ee][\+\-]?[0-9]+[fFlL]?)|([0-9]*\.[0-9]+([Ee][\+\-]?[0-9]+)?[fFlL]?)|([0-9]+\.[0-9]*([Ee][\+\-]?[0-9]+)?[fFlL]?)) {
     PRINT ("REAL_LIT %s\n", yytext);
-    yylval->string = driver.make_string_by_yytext (yytext, yyleng);
+    yylval->string = driver.make_string_by_yytext ();
     return token::REAL_LIT;
 }
 
 [\+\-]?[0-9]+ {
     PRINT ("INT_LIT %s\n", yytext);
-    yylval->string = driver.make_string_by_yytext (yytext, yyleng);
+    yylval->string = driver.make_string_by_yytext ();
     return token::INT_LIT;
 }
 
@@ -227,43 +228,43 @@ using token = cubloader::loader_parser::token;
 
 [0-9]+:[0-9]+:[0-9]+[\ \t]*[aApP][mM] {
     PRINT ("TIME_LIT4 %s\n", yytext);
-    yylval->string = driver.make_string_by_yytext (yytext, yyleng);
+    yylval->string = driver.make_string_by_yytext ();
     return token::TIME_LIT4;
 }
 
 [0-9]+:[0-9]+:[0-9]+[\ \t]* {
     PRINT ("TIME_LIT42 %s\n", yytext);
-    yylval->string = driver.make_string_by_yytext (yytext, yyleng);
+    yylval->string = driver.make_string_by_yytext ();
     return token::TIME_LIT42;
 }
 
 [0-9]+:[0-9]+[\ \t]*[aApP][mM] {
     PRINT ("TIME_LIT3 %s\n", yytext);
-    yylval->string = driver.make_string_by_yytext (yytext, yyleng);
+    yylval->string = driver.make_string_by_yytext ();
     return token::TIME_LIT3;
 }
 
 [0-9]+:[0-9]+[\ \t]* {
     PRINT ("TIME_LIT31 %s\n", yytext);
-    yylval->string = driver.make_string_by_yytext (yytext, yyleng);
+    yylval->string = driver.make_string_by_yytext ();
     return token::TIME_LIT31;
 }
 
 [0-9]+:[0-9]+:[0-9]+ {
     PRINT ("TIME_LIT2 %s\n", yytext);
-    yylval->string = driver.make_string_by_yytext (yytext, yyleng);
+    yylval->string = driver.make_string_by_yytext ();
     return token::TIME_LIT2;
 }
 
 [0-9]+:[0-9]+ {
     PRINT ("TIME_LIT1 %s\n", yytext);
-    yylval->string = driver.make_string_by_yytext (yytext, yyleng);
+    yylval->string = driver.make_string_by_yytext ();
     return token::TIME_LIT1;
 }
 
 [0-9]+\/[0-9]+\/[0-9]+ {
     PRINT ("DATE_LIT2 %s\n", yytext);
-    yylval->string = driver.make_string_by_yytext (yytext, yyleng);
+    yylval->string = driver.make_string_by_yytext ();
     return token::DATE_LIT2;
 }
 
@@ -414,7 +415,7 @@ using token = cubloader::loader_parser::token;
 
 ([a-zA-Z_%#]|(\xa1[\xa2-\xee\xf3-\xfe])|([\xa2-\xfe][\xa1-\xfe])|(\x8e[\xa1-\xfe]))([a-zA-Z_%#0-9]|(\xa1[\xa2-\xfe])|([\xa1-\xfe])|(\x8e[\xa1-\xfe]))* {
     PRINT ("IDENTIFIER %s\n", yytext);
-    yylval->string = driver.make_string_by_yytext (yytext, yyleng);
+    yylval->string = driver.make_string_by_yytext ();
     return token::IDENTIFIER;
 }
 

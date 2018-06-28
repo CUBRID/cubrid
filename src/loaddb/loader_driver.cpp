@@ -41,14 +41,26 @@ namespace cubloader
     , m_qstr_buffer (NULL)
     , m_qstr_buf_p (NULL)
     , m_use_qstr_buffer (false)
+    , m_qstr_buf_pool {}
     , m_qstr_buf_idx (0)
     , m_qstr_buf_pool_idx (0)
     , m_qstr_buffer_size (0)
   {
+    m_qstr_buf_pool = new char *[QUOTED_STR_BUF_POOL_SIZE];
+    for (std::size_t i = 0; i < QUOTED_STR_BUF_POOL_SIZE; ++i)
+      {
+	m_qstr_buf_pool[i] = new char[MAX_QUOTED_STR_BUF_SIZE];
+      }
   }
 
   loader_driver::~loader_driver ()
   {
+    for (std::size_t i = 0; i < QUOTED_STR_BUF_POOL_SIZE; ++i)
+      {
+	delete [] m_qstr_buf_pool[i];
+      }
+    delete [] m_qstr_buf_pool;
+
     delete m_scanner;
     delete m_parser;
   }
@@ -72,8 +84,8 @@ namespace cubloader
   {
     assert (filename != NULL);
 
-    std::ifstream in_file (filename);
-    if (!in_file.good ())
+    std::ifstream in_file (filename, std::fstream::in);
+    if (!in_file)
       {
 	return -1;
       }
@@ -86,6 +98,13 @@ namespace cubloader
   {
     // TODO CBRD-21654 collect errors and report them to client
     std::cout << "location: " << l << ", m: " << m << "\n";
+  }
+
+  int loader_driver::lineno ()
+  {
+    assert (m_scanner != NULL);
+
+    return m_scanner->lineno ();
   }
 
   void
@@ -216,7 +235,7 @@ namespace cubloader
   }
 
   string_t *
-  loader_driver::make_string_by_yytext (char *yytext, int yyleng)
+  loader_driver::make_string_by_yytext ()
   {
     char *invalid_pos = NULL;
 
@@ -226,8 +245,10 @@ namespace cubloader
 	return NULL;
       }
 
-    str->size = yyleng;
-    char *text = yytext;
+    assert (m_scanner != NULL);
+
+    str->size = m_scanner->YYLeng ();
+    const char *text = m_scanner->YYText ();
 
     if (m_copy_buf_pool_idx < COPY_BUF_POOL_SIZE && str->size < MAX_COPY_BUF_SIZE)
       {

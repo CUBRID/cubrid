@@ -49,7 +49,7 @@ namespace cubloader
   const std::size_t COPY_BUF_POOL_SIZE = 512;
   const std::size_t CONSTANT_POOL_SIZE = 1024;
   const std::size_t QUOTED_STR_BUF_POOL_SIZE = 512;
-  const std::size_t MAX_QUOTED_STR_BUF_SIZE = 1024; // 32768; 32 * 1024; TODO CBRD-21654 allocate dynamically
+  const std::size_t MAX_QUOTED_STR_BUF_SIZE = 32 * 1024;
 
   using string_t = LDR_STRING;
   using constant_t = LDR_CONSTANT;
@@ -73,6 +73,7 @@ namespace cubloader
       int parse (const char *filename);
 
       void error (const location &l, const std::string &m);
+      int lineno ();
 
       void append_char (char c);
       string_t *append_string_list (string_t *head, string_t *tail);
@@ -80,7 +81,7 @@ namespace cubloader
 
       void set_quoted_string_buffer ();
       string_t *make_string_by_buffer ();
-      string_t *make_string_by_yytext (char *yytext, int yyleng);
+      string_t *make_string_by_yytext ();
 
       ctor_spec_t *make_constructor_spec (string_t *idname, string_t *arg_list);
       class_cmd_spec_t *make_class_command_spec (int qualifier, string_t *attr_list, ctor_spec_t *ctor_spec);
@@ -115,10 +116,10 @@ namespace cubloader
       char *m_qstr_buffer; /* using when pool overflow */
       char *m_qstr_buf_p;
       bool m_use_qstr_buffer;
+      char **m_qstr_buf_pool;
       std::size_t m_qstr_buf_idx;
       std::size_t m_qstr_buf_pool_idx;
       std::size_t m_qstr_buffer_size;
-      char m_qstr_buf_pool[QUOTED_STR_BUF_POOL_SIZE][MAX_QUOTED_STR_BUF_SIZE];
 
       /* private functions */
       string_t *make_string ();
