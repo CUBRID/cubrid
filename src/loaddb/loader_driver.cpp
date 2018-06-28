@@ -18,18 +18,18 @@
  */
 
 /*
- * driver.cpp - TODO CBRD-21654
+ * loader_driver.cpp - TODO CBRD-21654
  */
 
 #include <sstream>
 
-#include "driver.hpp"
+#include "loader_driver.hpp"
 #include "language_support.h"
 #include "memory_alloc.h"
 
-namespace cubloaddb
+namespace cubloader
 {
-  driver::driver ()
+  loader_driver::loader_driver ()
     : m_scanner (NULL)
     , m_parser (NULL)
     , m_in_instance_line (true)
@@ -45,42 +45,47 @@ namespace cubloaddb
   {
   }
 
-  driver::~driver ()
+  loader_driver::~loader_driver ()
   {
     delete m_scanner;
     delete m_parser;
   }
 
   int
-  driver::parse (std::istream &in)
+  loader_driver::parse (std::string &s)
   {
-    m_scanner = new scanner (in, std::cout);
-    m_parser = new loader_yyparser (*m_scanner, *this);
+    std::istringstream *iss  = new std::istringstream (s);
+
+    m_scanner = new loader_scanner (iss);
+    m_parser = new loader_parser (*m_scanner, *this);
 
     // TODO CBRD-21654 remove this
-    m_scanner->set_debug (1);
+    m_scanner->set_debug (0);
     m_parser->set_debug_level (1);
 
     int ret = m_parser->parse ();
 
+    delete m_parser;
+    m_parser = NULL;
+
     delete m_scanner;
     m_scanner = NULL;
 
-    delete m_parser;
-    m_parser = NULL;
+    delete iss;
+    iss = NULL;
 
     return ret;
   }
 
   void
-  driver::error (const location &l, const std::string &m)
+  loader_driver::error (const location &l, const std::string &m)
   {
     // TODO CBRD-21654 collect errors and report them to client
     std::cout << "location: " << l << ", m: " << m << "\n";
   }
 
   void
-  driver::append_char (char c)
+  loader_driver::append_char (char c)
   {
     if (m_use_qstr_buffer)
       {
@@ -116,19 +121,19 @@ namespace cubloaddb
   }
 
   string_t *
-  driver::append_string_list (string_t *head, string_t *tail)
+  loader_driver::append_string_list (string_t *head, string_t *tail)
   {
     return append_list<string_t> (head, tail);
   }
 
   constant_t *
-  driver::append_constant_list (constant_t *head, constant_t *tail)
+  loader_driver::append_constant_list (constant_t *head, constant_t *tail)
   {
     return append_list<constant_t> (head, tail);
   }
 
   void
-  driver::set_quoted_string_buffer ()
+  loader_driver::set_quoted_string_buffer ()
   {
     if (m_qstr_buf_pool_idx < QUOTED_STR_BUF_POOL_SIZE)
       {
@@ -150,7 +155,7 @@ namespace cubloaddb
   }
 
   string_t *
-  driver::make_string_by_buffer ()
+  loader_driver::make_string_by_buffer ()
   {
     char *invalid_pos = NULL;
 
@@ -207,7 +212,7 @@ namespace cubloaddb
   }
 
   string_t *
-  driver::make_string_by_yytext (char *yytext, int yyleng)
+  loader_driver::make_string_by_yytext (char *yytext, int yyleng)
   {
     char *invalid_pos = NULL;
 
@@ -254,7 +259,7 @@ namespace cubloaddb
   }
 
   ctor_spec_t *
-  driver::make_constructor_spec (string_t *idname, string_t *arg_list)
+  loader_driver::make_constructor_spec (string_t *idname, string_t *arg_list)
   {
     ctor_spec_t *spec = alloc_ldr_type<ctor_spec_t> ();
 
@@ -265,7 +270,7 @@ namespace cubloaddb
   }
 
   class_cmd_spec_t *
-  driver::make_class_command_spec (int qualifier, string_t *attr_list, ctor_spec_t *ctor_spec)
+  loader_driver::make_class_command_spec (int qualifier, string_t *attr_list, ctor_spec_t *ctor_spec)
   {
     class_cmd_spec_t *spec = alloc_ldr_type<class_cmd_spec_t> ();
 
@@ -277,7 +282,7 @@ namespace cubloaddb
   }
 
   constant_t *
-  driver::make_constant (int type, void *val)
+  loader_driver::make_constant (int type, void *val)
   {
     constant_t *con = NULL;
 
@@ -299,7 +304,7 @@ namespace cubloaddb
   }
 
   object_ref_t *
-  driver::make_object_ref (string_t *class_name)
+  loader_driver::make_object_ref (string_t *class_name)
   {
     object_ref_t *ref = alloc_ldr_type<object_ref_t> ();
 
@@ -311,7 +316,7 @@ namespace cubloaddb
   }
 
   monetary_t *
-  driver::make_monetary_value (int currency_type, string_t *amount)
+  loader_driver::make_monetary_value (int currency_type, string_t *amount)
   {
     monetary_t *mon_value = alloc_ldr_type<monetary_t> ();
 
@@ -322,7 +327,7 @@ namespace cubloaddb
   }
 
   void
-  driver::reset_pool_indexes ()
+  loader_driver::reset_pool_indexes ()
   {
     m_string_pool_idx = 0;
     m_copy_buf_pool_idx = 0;
@@ -331,25 +336,25 @@ namespace cubloaddb
   }
 
   void
-  driver::free_ldr_string (string_t **string)
+  loader_driver::free_ldr_string (string_t **string)
   {
     FREE_STRING (*string);
   }
 
   bool
-  driver::in_instance_line ()
+  loader_driver::in_instance_line ()
   {
     return m_in_instance_line;
   }
 
   void
-  driver::set_in_instance_line (bool in_instance_line)
+  loader_driver::set_in_instance_line (bool in_instance_line)
   {
     m_in_instance_line = in_instance_line;
   }
 
   string_t *
-  driver::make_string ()
+  loader_driver::make_string ()
   {
     string_t *str = NULL;
 
@@ -368,7 +373,7 @@ namespace cubloaddb
   }
 
   void
-  driver::alloc_qstr_buffer (std::size_t size)
+  loader_driver::alloc_qstr_buffer (std::size_t size)
   {
     m_qstr_buffer_size = size;
     m_qstr_buffer = (char *) malloc (m_qstr_buffer_size);
@@ -377,11 +382,11 @@ namespace cubloaddb
   }
 
   void
-  driver::realloc_qstr_buffer (std::size_t new_size)
+  loader_driver::realloc_qstr_buffer (std::size_t new_size)
   {
     m_qstr_buffer_size = new_size;
     m_qstr_buffer = (char *) realloc (m_qstr_buffer, m_qstr_buffer_size);
 
     assert (m_qstr_buffer != NULL);
   }
-} // namespace cubloaddb
+} // namespace cubloader

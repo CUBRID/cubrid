@@ -18,18 +18,18 @@
  */
 
 /*
- * driver.hpp - TODO CBRD-21654
+ * loader_driver.hpp - TODO CBRD-21654
  */
 
-#ifndef _DRIVER_HPP_
-#define _DRIVER_HPP_
+#ifndef _LOADER_DRIVER_HPP_
+#define _LOADER_DRIVER_HPP_
 
 #include <istream>
 
 #include "error_manager.h"
 #include "loader.h"
 #include "loader_parser.tab.hpp"
-#include "scanner.hpp"
+#include "loader_scanner.hpp"
 
 #define FREE_STRING(s)          \
 do {                            \
@@ -43,7 +43,7 @@ do {                            \
     }                           \
 } while (0)
 
-namespace cubloaddb
+namespace cubloader
 {
   const std::size_t STRING_POOL_SIZE = 1024;
   const std::size_t MAX_COPY_BUF_SIZE = 256;
@@ -60,13 +60,13 @@ namespace cubloaddb
   using class_cmd_spec_t = LDR_CLASS_COMMAND_SPEC;
 
   // TODO CBRD-21654 add class documentation
-  class driver
+  class loader_driver
   {
     public:
-      driver ();
-      virtual ~driver ();
+      loader_driver ();
+      virtual ~loader_driver ();
 
-      int parse (std::istream &in);
+      int parse (std::string &s);
       void error (const location &l, const std::string &m);
 
       void append_char (char c);
@@ -90,8 +90,8 @@ namespace cubloaddb
       void set_in_instance_line (bool in_instance_line);
 
     private:
-      cubloaddb::scanner *m_scanner;
-      cubloaddb::loader_yyparser *m_parser;
+      cubloader::loader_scanner *m_scanner;
+      cubloader::loader_parser *m_parser;
 
       bool m_in_instance_line;
 
@@ -126,13 +126,13 @@ namespace cubloaddb
       template<typename T>
       T *append_list (T *head, T *tail);
   };
-} // namespace cubloaddb
+} // namespace cubloader
 
-namespace cubloaddb
+namespace cubloader
 {
   template<typename T>
   T *
-  driver::alloc_ldr_type ()
+  loader_driver::alloc_ldr_type ()
   {
     T *ptr = (T *) malloc (sizeof (T));
 
@@ -143,7 +143,7 @@ namespace cubloaddb
 
   template<typename T>
   T *
-  driver::append_list (T *head, T *tail)
+  loader_driver::append_list (T *head, T *tail)
   {
     tail->next = NULL;
     tail->last = NULL;
@@ -160,6 +160,6 @@ namespace cubloaddb
     head->last = tail;
     return head;
   }
-} // namespace cubloaddb
+} // namespace cubloader
 
-#endif // _DRIVER_HPP_
+#endif // _LOADER_DRIVER_HPP_

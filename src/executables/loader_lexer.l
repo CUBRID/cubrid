@@ -24,16 +24,16 @@
 /*** C/C++ Declarations ***/
 %{
 #include "loader.h"
-#include "scanner.hpp"
+#include "loader_scanner.hpp"
 
 #undef YY_DECL
-#define YY_DECL                                                                     \
-  int cubloaddb::scanner::yylex (cubloaddb::loader_yyparser::semantic_type* yylval, \
-				 cubloaddb::loader_yyparser::location_type* yylloc, \
-				 cubloaddb::driver &d)
+#define YY_DECL                                                                          \
+  int cubloader::loader_scanner::yylex (cubloader::loader_parser::semantic_type* yylval, \
+				 cubloader::loader_parser::location_type* yylloc,        \
+				 cubloader::loader_driver &driver)
 
 /* typedef to make the returns for the tokens shorter */
-using token = cubloaddb::loader_yyparser::token;
+using token = cubloader::loader_parser::token;
 
 //#define LEXER_DEBUG
 
@@ -59,7 +59,7 @@ using token = cubloaddb::loader_yyparser::token;
 %option nounput
 %option noinput
 
-%option yyclass="cubloaddb::scanner"
+%option yyclass="cubloader::loader_scanner"
 
 %x BRACKET_ID DELIMITED_ID DQS SQS COMMENT
 
@@ -143,13 +143,13 @@ using token = cubloaddb::loader_yyparser::token;
 
 \%[Ii][Dd] {
     PRINT ("CMD_ID %s\n", yytext);
-    d.set_in_instance_line (false);
+    driver.set_in_instance_line (false);
     return token::CMD_ID;
 }
 
 \%[Cc][Ll][Aa][Ss][Ss] {
     PRINT ("CMD_CLASS %s\n", yytext);
-    d.set_in_instance_line (false);
+    driver.set_in_instance_line (false);
     return token::CMD_CLASS;
 }
 
@@ -210,13 +210,13 @@ using token = cubloaddb::loader_yyparser::token;
 
 [\+\-]?(([0-9]+[Ee][\+\-]?[0-9]+[fFlL]?)|([0-9]*\.[0-9]+([Ee][\+\-]?[0-9]+)?[fFlL]?)|([0-9]+\.[0-9]*([Ee][\+\-]?[0-9]+)?[fFlL]?)) {
     PRINT ("REAL_LIT %s\n", yytext);
-    yylval->string = d.make_string_by_yytext (yytext, yyleng);
+    yylval->string = driver.make_string_by_yytext (yytext, yyleng);
     return token::REAL_LIT;
 }
 
 [\+\-]?[0-9]+ {
     PRINT ("INT_LIT %s\n", yytext);
-    yylval->string = d.make_string_by_yytext (yytext, yyleng);
+    yylval->string = driver.make_string_by_yytext (yytext, yyleng);
     return token::INT_LIT;
 }
 
@@ -228,43 +228,43 @@ using token = cubloaddb::loader_yyparser::token;
 
 [0-9]+:[0-9]+:[0-9]+[\ \t]*[aApP][mM] {
     PRINT ("TIME_LIT4 %s\n", yytext);
-    yylval->string = d.make_string_by_yytext (yytext, yyleng);
+    yylval->string = driver.make_string_by_yytext (yytext, yyleng);
     return token::TIME_LIT4;
 }
 
 [0-9]+:[0-9]+:[0-9]+[\ \t]* {
     PRINT ("TIME_LIT42 %s\n", yytext);
-    yylval->string = d.make_string_by_yytext (yytext, yyleng);
+    yylval->string = driver.make_string_by_yytext (yytext, yyleng);
     return token::TIME_LIT42;
 }
 
 [0-9]+:[0-9]+[\ \t]*[aApP][mM] {
     PRINT ("TIME_LIT3 %s\n", yytext);
-    yylval->string = d.make_string_by_yytext (yytext, yyleng);
+    yylval->string = driver.make_string_by_yytext (yytext, yyleng);
     return token::TIME_LIT3;
 }
 
 [0-9]+:[0-9]+[\ \t]* {
     PRINT ("TIME_LIT31 %s\n", yytext);
-    yylval->string = d.make_string_by_yytext (yytext, yyleng);
+    yylval->string = driver.make_string_by_yytext (yytext, yyleng);
     return token::TIME_LIT31;
 }
 
 [0-9]+:[0-9]+:[0-9]+ {
     PRINT ("TIME_LIT2 %s\n", yytext);
-    yylval->string = d.make_string_by_yytext (yytext, yyleng);
+    yylval->string = driver.make_string_by_yytext (yytext, yyleng);
     return token::TIME_LIT2;
 }
 
 [0-9]+:[0-9]+ {
     PRINT ("TIME_LIT1 %s\n", yytext);
-    yylval->string = d.make_string_by_yytext (yytext, yyleng);
+    yylval->string = driver.make_string_by_yytext (yytext, yyleng);
     return token::TIME_LIT1;
 }
 
 [0-9]+\/[0-9]+\/[0-9]+ {
     PRINT ("DATE_LIT2 %s\n", yytext);
-    yylval->string = d.make_string_by_yytext (yytext, yyleng);
+    yylval->string = driver.make_string_by_yytext (yytext, yyleng);
     return token::DATE_LIT2;
 }
 
@@ -415,41 +415,41 @@ using token = cubloaddb::loader_yyparser::token;
 
 ([a-zA-Z_%#]|(\xa1[\xa2-\xee\xf3-\xfe])|([\xa2-\xfe][\xa1-\xfe])|(\x8e[\xa1-\xfe]))([a-zA-Z_%#0-9]|(\xa1[\xa2-\xfe])|([\xa1-\xfe])|(\x8e[\xa1-\xfe]))* {
     PRINT ("IDENTIFIER %s\n", yytext);
-    yylval->string = d.make_string_by_yytext (yytext, yyleng);
+    yylval->string = driver.make_string_by_yytext (yytext, yyleng);
     return token::IDENTIFIER;
 }
 
 [\'] {
     PRINT ("Quote %s\n", yytext);
     BEGIN SQS;
-    d.set_quoted_string_buffer ();
+    driver.set_quoted_string_buffer ();
     return token::Quote;
 }
 
 [nN][\'] {
     PRINT ("NQuote %s\n", yytext);
     BEGIN SQS;
-    d.set_quoted_string_buffer ();
+    driver.set_quoted_string_buffer ();
     return token::NQuote;
 }
 
 [bB][\'] {
     PRINT ("BQuote %s\n", yytext);
     BEGIN SQS;
-    d.set_quoted_string_buffer ();
+    driver.set_quoted_string_buffer ();
     return token::BQuote;
 }
 
 [xX][\'] {
     PRINT ("XQuote %s\n", yytext);
     BEGIN SQS;
-    d.set_quoted_string_buffer ();
+    driver.set_quoted_string_buffer ();
     return token::XQuote;
 }
 
 \" {
-    d.set_quoted_string_buffer ();
-    if (d.in_instance_line ())
+    driver.set_quoted_string_buffer ();
+    if (driver.in_instance_line ())
       {
 	BEGIN DQS;
 	return token::DQuote;
@@ -461,7 +461,7 @@ using token = cubloaddb::loader_yyparser::token;
 }
 
 "[" {
-    d.set_quoted_string_buffer ();
+    driver.set_quoted_string_buffer ();
     BEGIN BRACKET_ID;
 }
 
@@ -499,59 +499,59 @@ using token = cubloaddb::loader_yyparser::token;
 }
 
 <DELIMITED_ID>\"\" {
-    d.append_char ('"');
+    driver.append_char ('"');
 }
 
 <DELIMITED_ID>[^\"] {
-    d.append_char (yytext[0]);
+    driver.append_char (yytext[0]);
 }
 
 <DELIMITED_ID>\" {
-    d.append_char ('\0');
+    driver.append_char ('\0');
     // PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
-    yylval->string = d.make_string_by_buffer ();
+    yylval->string = driver.make_string_by_buffer ();
     BEGIN INITIAL;
     return token::IDENTIFIER;
 }
 
 <BRACKET_ID>[^\]] {
-    d.append_char (yytext[0]);
+    driver.append_char (yytext[0]);
 }
 
 <BRACKET_ID>"]" {
-    d.append_char ('\0');
+    driver.append_char ('\0');
     // PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
-    yylval->string = d.make_string_by_buffer ();
+    yylval->string = driver.make_string_by_buffer ();
     BEGIN INITIAL;
     return token::IDENTIFIER;
 }
 
 <DQS>\\n {
-    d.append_char ('\n');
+    driver.append_char ('\n');
 }
 
 <DQS>\\t {
-    d.append_char ('\t');
+    driver.append_char ('\t');
 }
 
 <DQS>\\f {
-    d.append_char ('\f');
+    driver.append_char ('\f');
 }
 
 <DQS>\\r {
-    d.append_char ('\r');
+    driver.append_char ('\r');
 }
 
 <DQS>\\[0-7]([0-7][0-7]?)? {
-    d.append_char ((char) strtol (&yytext[1], NULL, 8));
+    driver.append_char ((char) strtol (&yytext[1], NULL, 8));
 }
 
 <DQS>\\x[0-9a-fA-F][0-9a-fA-F]? {
-    d.append_char ((char) strtol (&yytext[2], NULL, 16));
+    driver.append_char ((char) strtol (&yytext[2], NULL, 16));
 }
 
 <DQS>[^\"] {
-    d.append_char (yytext[0]);
+    driver.append_char (yytext[0]);
 }
 
 <DQS>\\ {
@@ -559,19 +559,19 @@ using token = cubloaddb::loader_yyparser::token;
 }
 
 <DQS>\" {
-    d.append_char ('\0');
+    driver.append_char ('\0');
     // PRINT ("DQS_String_Body %s\n", qstr_Buf_p);
-    yylval->string = d.make_string_by_buffer ();
+    yylval->string = driver.make_string_by_buffer ();
     BEGIN INITIAL;
     return token::DQS_String_Body;
 }
 
 <SQS>\'\' {
-    d.append_char ('\'');
+    driver.append_char ('\'');
 }
 
 <SQS>[^\'] {
-    d.append_char (yytext[0]);
+    driver.append_char (yytext[0]);
 }
 
 <SQS>\'\+[ \t]*\r?\n[ \t]*\' {
@@ -579,17 +579,17 @@ using token = cubloaddb::loader_yyparser::token;
 }
 
 <SQS>\'[ \t] {
-    d.append_char ('\0');
+    driver.append_char ('\0');
     // PRINT ("String_Completion %s\n", qstr_Buf_p);
-    yylval->string = d.make_string_by_buffer ();
+    yylval->string = driver.make_string_by_buffer ();
     BEGIN INITIAL;
     return token::SQS_String_Body;
 }
 
 <SQS>\' {
-    d.append_char ('\0');
+    driver.append_char ('\0');
     // PRINT ("String_Completion2 %s\n", qstr_Buf_p);
-    yylval->string = d.make_string_by_buffer ();
+    yylval->string = driver.make_string_by_buffer ();
     BEGIN INITIAL;
     return token::SQS_String_Body;
 }

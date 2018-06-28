@@ -25,14 +25,14 @@
 %require "3.0"
 %debug
 %defines
-%define api.namespace { cubloaddb }
-%define parser_class_name { loader_yyparser }
+%define api.namespace { cubloader }
+%define parser_class_name { loader_parser }
 %locations
 %no-lines
 
-%parse-param { scanner &s }
-%parse-param { driver &d }
-%lex-param { driver &d }
+%parse-param { loader_scanner &scanner }
+%parse-param { loader_driver &driver }
+%lex-param { loader_driver &driver }
 
 %define parse.assert
 
@@ -48,20 +48,20 @@
 %code requires {
 #include "loader.h"
 
-namespace cubloaddb
+namespace cubloader
 {
-  class driver;
-  class scanner;
+  class loader_driver;
+  class loader_scanner;
 }
 }
 
 %code {
-#include "driver.hpp"
+#include "loader_driver.hpp"
 #include "error_manager.h"
 #include "memory_alloc.h"
 
 #undef yylex
-#define yylex s.yylex
+#define yylex scanner.yylex
 
 //#define PARSER_DEBUG
 
@@ -215,12 +215,12 @@ line :
   one_line NL
   {
     DBG_PRINT ("one_line");
-    d.set_in_instance_line (true);
+    driver.set_in_instance_line (true);
   }
   |
   NL
   {
-    d.set_in_instance_line (true);
+    driver.set_in_instance_line (true);
   }
   ;
 
@@ -228,14 +228,14 @@ one_line :
   command_line
   {
     DBG_PRINT ("command_line");
-    d.reset_pool_indexes ();
+    driver.reset_pool_indexes ();
   }
   |
   instance_line
   {
     DBG_PRINT ("instance_line");
     ldr_act_finish_line (ldr_Current_context);
-    d.reset_pool_indexes ();
+    driver.reset_pool_indexes ();
   }
   ;
 
@@ -259,8 +259,8 @@ id_command :
     ldr_act_start_id (ldr_Current_context, $2->val);
     ldr_act_set_id (ldr_Current_context, atoi ($3->val));
 
-    d.free_ldr_string (&$2);
-    d.free_ldr_string (&$3);
+    driver.free_ldr_string (&$2);
+    driver.free_ldr_string (&$3);
   }
   ;
 
@@ -303,20 +303,20 @@ class_command :
 	for (args = cmd_spec->ctor_spec->arg_list; args; args = save)
 	  {
 	    save = args->next;
-	    d.free_ldr_string (&args);
+	    driver.free_ldr_string (&args);
 	  }
 
-	d.free_ldr_string (&(cmd_spec->ctor_spec->idname));
+	driver.free_ldr_string (&(cmd_spec->ctor_spec->idname));
 	free_and_init (cmd_spec->ctor_spec);
       }
 
     for (attr = cmd_spec->attr_list; attr; attr = save)
       {
 	save = attr->next;
-	d.free_ldr_string (&attr);
+	driver.free_ldr_string (&attr);
       }
 
-    d.free_ldr_string (&class_name);
+    driver.free_ldr_string (&class_name);
     free_and_init (cmd_spec);
   }
   ;
@@ -325,25 +325,25 @@ class_commamd_spec :
   attribute_list
   {
     DBG_PRINT ("attribute_list");
-    $$ = d.make_class_command_spec (LDR_ATTRIBUTE_ANY, $1, NULL);
+    $$ = driver.make_class_command_spec (LDR_ATTRIBUTE_ANY, $1, NULL);
   }
   |
   attribute_list constructor_spec
   {
     DBG_PRINT ("attribute_list constructor_spec");
-    $$ = d.make_class_command_spec (LDR_ATTRIBUTE_ANY, $1, $2);
+    $$ = driver.make_class_command_spec (LDR_ATTRIBUTE_ANY, $1, $2);
   }
   |
   attribute_list_qualifier attribute_list
   {
     DBG_PRINT ("attribute_list_qualifier attribute_list");
-    $$ = d.make_class_command_spec ($1, $2, NULL);
+    $$ = driver.make_class_command_spec ($1, $2, NULL);
   }
   |
   attribute_list_qualifier attribute_list constructor_spec
   {
     DBG_PRINT ("attribute_list_qualifier attribute_list constructor_spec");
-    $$ = d.make_class_command_spec ($1, $2, $3);
+    $$ = driver.make_class_command_spec ($1, $2, $3);
   }
   ;
 
@@ -383,19 +383,19 @@ attribute_names :
   attribute_name
   {
     DBG_PRINT ("attribute_name");
-    $$ = d.append_string_list (NULL, $1);
+    $$ = driver.append_string_list (NULL, $1);
   }
   |
   attribute_names attribute_name
   {
     DBG_PRINT ("attribute_names attribute_name");
-    $$ = d.append_string_list ($1, $2);
+    $$ = driver.append_string_list ($1, $2);
   }
   |
   attribute_names COMMA attribute_name
   {
     DBG_PRINT ("attribute_names COMMA attribute_name");
-    $$ = d.append_string_list ($1, $3);
+    $$ = driver.append_string_list ($1, $3);
   }
   ;
 
@@ -409,7 +409,7 @@ attribute_name :
 constructor_spec :
   CMD_CONSTRUCTOR IDENTIFIER constructor_argument_list
   {
-    $$ = d.make_constructor_spec ($2, $3);
+    $$ = driver.make_constructor_spec ($2, $3);
   }
   ;
 
@@ -429,19 +429,19 @@ argument_names :
   argument_name
   {
     DBG_PRINT ("argument_name");
-    $$ = d.append_string_list (NULL, $1);
+    $$ = driver.append_string_list (NULL, $1);
   }
   |
   argument_names argument_name
   {
     DBG_PRINT ("argument_names argument_name");
-    $$ = d.append_string_list ($1, $2);
+    $$ = driver.append_string_list ($1, $2);
   }
   |
   argument_names COMMA argument_name
   {
     DBG_PRINT ("argument_names COMMA argument_name");
-    $$ = d.append_string_list ($1, $3);
+    $$ = driver.append_string_list ($1, $3);
   }
   ;
 
@@ -485,13 +485,13 @@ constant_list :
   constant
   {
     DBG_PRINT ("constant");
-    $$ = d.append_constant_list (NULL, $1);
+    $$ = driver.append_constant_list (NULL, $1);
   }
   |
   constant_list constant
   {
     DBG_PRINT ("constant_list constant");
-    $$ = d.append_constant_list ($1, $2);
+    $$ = driver.append_constant_list ($1, $2);
   }
   ;
 
@@ -509,30 +509,30 @@ constant :
   | sql2_datetime 	{ $$ = $1; }
   | sql2_datetimeltz 	{ $$ = $1; }
   | sql2_datetimetz 	{ $$ = $1; }
-  | NULL_  		{ $$ = d.make_constant (LDR_NULL, NULL); }
-  | TIME_LIT4 		{ $$ = d.make_constant (LDR_TIME, $1); }
-  | TIME_LIT42 		{ $$ = d.make_constant (LDR_TIME, $1); }
-  | TIME_LIT3 		{ $$ = d.make_constant (LDR_TIME, $1); }
-  | TIME_LIT31 		{ $$ = d.make_constant (LDR_TIME, $1); }
-  | TIME_LIT2 		{ $$ = d.make_constant (LDR_TIME, $1); }
-  | TIME_LIT1 		{ $$ = d.make_constant (LDR_TIME, $1); }
-  | INT_LIT 		{ $$ = d.make_constant (LDR_INT, $1); }
+  | NULL_  		{ $$ = driver.make_constant (LDR_NULL, NULL); }
+  | TIME_LIT4 		{ $$ = driver.make_constant (LDR_TIME, $1); }
+  | TIME_LIT42 		{ $$ = driver.make_constant (LDR_TIME, $1); }
+  | TIME_LIT3 		{ $$ = driver.make_constant (LDR_TIME, $1); }
+  | TIME_LIT31 		{ $$ = driver.make_constant (LDR_TIME, $1); }
+  | TIME_LIT2 		{ $$ = driver.make_constant (LDR_TIME, $1); }
+  | TIME_LIT1 		{ $$ = driver.make_constant (LDR_TIME, $1); }
+  | INT_LIT 		{ $$ = driver.make_constant (LDR_INT, $1); }
   | REAL_LIT
   {
     if (strchr ($1->val, 'F') != NULL || strchr ($1->val, 'f') != NULL)
       {
-	$$ = d.make_constant (LDR_FLOAT, $1);
+	$$ = driver.make_constant (LDR_FLOAT, $1);
       }
     else if (strchr ($1->val, 'E') != NULL || strchr ($1->val, 'e') != NULL)
       {
-	$$ = d.make_constant (LDR_DOUBLE, $1);
+	$$ = driver.make_constant (LDR_DOUBLE, $1);
       }
     else
       {
-	$$ = d.make_constant (LDR_NUMERIC, $1);
+	$$ = driver.make_constant (LDR_NUMERIC, $1);
       }
   }
-  | DATE_LIT2			{ $$ = d.make_constant (LDR_DATE, $1); }
+  | DATE_LIT2			{ $$ = driver.make_constant (LDR_DATE, $1); }
   | monetary			{ $$ = $1; }
   | object_reference		{ $$ = $1; }
   | set_constant		{ $$ = $1; }
@@ -542,121 +542,121 @@ constant :
 ansi_string :
   Quote SQS_String_Body
   {
-    $$ = d.make_constant (LDR_STR, $2);
+    $$ = driver.make_constant (LDR_STR, $2);
   }
   ;
 
 nchar_string :
   NQuote SQS_String_Body
   {
-    $$ = d.make_constant (LDR_NSTR, $2);
+    $$ = driver.make_constant (LDR_NSTR, $2);
   }
   ;
 
 dq_string
   :DQuote DQS_String_Body
   {
-    $$ = d.make_constant (LDR_STR, $2);
+    $$ = driver.make_constant (LDR_STR, $2);
   }
   ;
 
 sql2_date :
   DATE_ Quote SQS_String_Body
   {
-    $$ = d.make_constant (LDR_DATE, $3);
+    $$ = driver.make_constant (LDR_DATE, $3);
   }
   ;
 
 sql2_time :
   TIME Quote SQS_String_Body
   {
-    $$ = d.make_constant (LDR_TIME, $3);
+    $$ = driver.make_constant (LDR_TIME, $3);
   }
   ;
 
 sql2_timestamp :
   TIMESTAMP Quote SQS_String_Body
   {
-    $$ = d.make_constant (LDR_TIMESTAMP, $3);
+    $$ = driver.make_constant (LDR_TIMESTAMP, $3);
   }
   ;
 
 sql2_timestampltz :
   TIMESTAMPLTZ Quote SQS_String_Body
   {
-    $$ = d.make_constant (LDR_TIMESTAMPLTZ, $3);
+    $$ = driver.make_constant (LDR_TIMESTAMPLTZ, $3);
   }
   ;
 
 sql2_timestamptz :
   TIMESTAMPTZ Quote SQS_String_Body
   {
-    $$ = d.make_constant (LDR_TIMESTAMPTZ, $3);
+    $$ = driver.make_constant (LDR_TIMESTAMPTZ, $3);
   }
   ;
 
 utime :
   UTIME Quote SQS_String_Body
   {
-    $$ = d.make_constant (LDR_TIMESTAMP, $3);
+    $$ = driver.make_constant (LDR_TIMESTAMP, $3);
   }
   ;
 
 sql2_datetime :
   DATETIME Quote SQS_String_Body
   {
-    $$ = d.make_constant (LDR_DATETIME, $3);
+    $$ = driver.make_constant (LDR_DATETIME, $3);
   }
   ;
 
 sql2_datetimeltz :
   DATETIMELTZ Quote SQS_String_Body
   {
-    $$ = d.make_constant (LDR_DATETIMELTZ, $3);
+    $$ = driver.make_constant (LDR_DATETIMELTZ, $3);
   }
   ;
 
 sql2_datetimetz :
   DATETIMETZ Quote SQS_String_Body
   {
-    $$ = d.make_constant (LDR_DATETIMETZ, $3);
+    $$ = driver.make_constant (LDR_DATETIMETZ, $3);
   }
   ;
 
 bit_string :
   BQuote SQS_String_Body
   {
-    $$ = d.make_constant (LDR_BSTR, $2);
+    $$ = driver.make_constant (LDR_BSTR, $2);
   }
   |
   XQuote SQS_String_Body
   {
-    $$ = d.make_constant (LDR_XSTR, $2);
+    $$ = driver.make_constant (LDR_XSTR, $2);
   }
   ;
 
 object_reference :
   OBJECT_REFERENCE class_identifier
   {
-    $$ = d.make_constant (LDR_CLASS_OID, $2);
+    $$ = driver.make_constant (LDR_CLASS_OID, $2);
   }
   |
   OBJECT_REFERENCE class_identifier instance_number
   {
     $2->instance_number = $3;
-    $$ = d.make_constant (LDR_OID, $2);
+    $$ = driver.make_constant (LDR_OID, $2);
   }
   ;
 
 class_identifier:
   INT_LIT
   {
-    $$ = d.make_object_ref ($1);
+    $$ = driver.make_object_ref ($1);
   }
   |
   IDENTIFIER
   {
-    $$ = d.make_object_ref ($1);
+    $$ = driver.make_object_ref ($1);
   }
   ;
 
@@ -670,12 +670,12 @@ instance_number :
 set_constant :
   SET_START_BRACE SET_END_BRACE
   {
-    $$ = d.make_constant (LDR_COLLECTION, NULL);
+    $$ = driver.make_constant (LDR_COLLECTION, NULL);
   }
   |
   SET_START_BRACE set_elements SET_END_BRACE
   {
-    $$ = d.make_constant (LDR_COLLECTION, $2);
+    $$ = driver.make_constant (LDR_COLLECTION, $2);
   }
   ;
 
@@ -683,38 +683,38 @@ set_elements:
   constant
   {
     DBG_PRINT ("constant");
-    $$ = d.append_constant_list (NULL, $1);
+    $$ = driver.append_constant_list (NULL, $1);
   }
   |
   set_elements constant
   {
     DBG_PRINT ("set_elements constant");
-    $$ = d.append_constant_list ($1, $2);
+    $$ = driver.append_constant_list ($1, $2);
   }
   |
   set_elements COMMA constant
   {
     DBG_PRINT ("set_elements COMMA constant");
-    $$ = d.append_constant_list ($1, $3);
+    $$ = driver.append_constant_list ($1, $3);
   }
   |
   set_elements NL constant
   {
     DBG_PRINT ("set_elements NL constant");
-    $$ = d.append_constant_list ($1, $3);
+    $$ = driver.append_constant_list ($1, $3);
   }
   |
   set_elements COMMA NL constant
   {
     DBG_PRINT ("set_elements COMMA NL constant");
-    $$ = d.append_constant_list ($1, $4);
+    $$ = driver.append_constant_list ($1, $4);
   }
   ;
 
 system_object_reference :
   ref_type Quote SQS_String_Body
   {
-    $$ = d.make_constant ($1, $3);
+    $$ = driver.make_constant ($1, $3);
   }
   ;
 
@@ -731,177 +731,177 @@ ref_type :
 monetary :
   DOLLAR_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_DOLLAR, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_DOLLAR, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   YEN_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_YEN, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_YEN, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   WON_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_WON, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_WON, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   TURKISH_LIRA_CURRENCY REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_TL, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_TL, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   BACKSLASH REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_WON, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_WON, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   BRITISH_POUND_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_BRITISH_POUND, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_BRITISH_POUND, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   CAMBODIAN_RIEL_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_CAMBODIAN_RIEL, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_CAMBODIAN_RIEL, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   CHINESE_RENMINBI_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_CHINESE_RENMINBI, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_CHINESE_RENMINBI, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   INDIAN_RUPEE_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_INDIAN_RUPEE, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_INDIAN_RUPEE, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   RUSSIAN_RUBLE_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_RUSSIAN_RUBLE, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_RUSSIAN_RUBLE, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   AUSTRALIAN_DOLLAR_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_AUSTRALIAN_DOLLAR, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_AUSTRALIAN_DOLLAR, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   CANADIAN_DOLLAR_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_CANADIAN_DOLLAR, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_CANADIAN_DOLLAR, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   BRASILIAN_REAL_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_BRASILIAN_REAL, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_BRASILIAN_REAL, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   ROMANIAN_LEU_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_ROMANIAN_LEU, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_ROMANIAN_LEU, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   EURO_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_EURO, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_EURO, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   SWISS_FRANC_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_SWISS_FRANC, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_SWISS_FRANC, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   DANISH_KRONE_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_DANISH_KRONE, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_DANISH_KRONE, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   NORWEGIAN_KRONE_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_NORWEGIAN_KRONE, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_NORWEGIAN_KRONE, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   BULGARIAN_LEV_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_BULGARIAN_LEV, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_BULGARIAN_LEV, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   VIETNAMESE_DONG_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_VIETNAMESE_DONG, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_VIETNAMESE_DONG, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   CZECH_KORUNA_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_CZECH_KORUNA, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_CZECH_KORUNA, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   POLISH_ZLOTY_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_POLISH_ZLOTY, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_POLISH_ZLOTY, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   SWEDISH_KRONA_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_SWEDISH_KRONA, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_SWEDISH_KRONA, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   CROATIAN_KUNA_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_CROATIAN_KUNA, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_CROATIAN_KUNA, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   |
   SERBIAN_DINAR_SYMBOL REAL_LIT
   {
-    LDR_MONETARY_VALUE *mon_value = d.make_monetary_value (DB_CURRENCY_SERBIAN_DINAR, $2);
+    LDR_MONETARY_VALUE *mon_value = driver.make_monetary_value (DB_CURRENCY_SERBIAN_DINAR, $2);
 
-    $$ = d.make_constant (LDR_MONETARY, mon_value);
+    $$ = driver.make_constant (LDR_MONETARY, mon_value);
   }
   ;
 %%
@@ -909,7 +909,7 @@ monetary :
 /*** Additional Code ***/
 
 void
-cubloaddb::loader_yyparser::error (const loader_yyparser::location_type& l, const std::string& m)
+cubloader::loader_parser::error (const loader_parser::location_type& l, const std::string& m)
 {
-  d.error (l, m);
+  driver.error (l, m);
 }

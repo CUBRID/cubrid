@@ -264,14 +264,14 @@ set(SESSION_SOURCES
 set(LOADER_SOURCES
   ${BISON_loader_parser_OUTPUT_SOURCE}
   ${FLEX_loader_scanner_OUTPUTS}
-  ${LOADDB_DIR}/driver.cpp
+  ${LOADDB_DIR}/loader_driver.cpp
   ${LOADDB_DIR}/loader.c
   ${LOADDB_DIR}/loaddb.c
   )
 set(LOADER_HEADERS
   ${LOADDB_DIR}/loader.h
-  ${LOADDB_DIR}/driver.hpp
-  ${LOADDB_DIR}/scanner.hpp
+  ${LOADDB_DIR}/loader_driver.hpp
+  ${LOADDB_DIR}/loader_scanner.hpp
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
