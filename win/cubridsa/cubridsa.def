@@ -269,6 +269,7 @@ EXPORTS
     db_col_type
     db_commit_is_needed
     db_commit_transaction
+    db_commit_transaction_ex
     db_compile_statement
     db_constrain_non_null
     db_constrain_unique
@@ -339,9 +340,11 @@ EXPORTS
     db_error_init
     db_execute
     db_execute_and_keep_statement
+    db_execute_and_keep_statement_ex
     db_execute_deferred_activities
     db_execute_oid
     db_execute_statement
+    db_execute_statement_ex
     db_execute_with_values
     db_fetch_all_classes
     db_fetch_all_objects
@@ -367,6 +370,7 @@ EXPORTS
     db_free_domain_list
     db_free_method_descriptor
     db_free_query
+    db_free_query_ex
     db_free_query_format
     db_free_query_result
     db_freepgs
@@ -581,6 +585,7 @@ EXPORTS
     db_put
     db_query_column_count
     db_query_end
+    db_query_end_ex
     db_query_end_internal
     db_query_execute
     db_query_execute_immediate
@@ -786,6 +791,7 @@ EXPORTS
     lang_get_collation
     lang_init
     db_default_expression_string
+    db_init_statement_execution_end_type
 ; db private
 	db_private_alloc_debug
 	db_private_alloc_release

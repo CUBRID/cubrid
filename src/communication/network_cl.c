@@ -637,6 +637,7 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_LOCK_RR].name = "NET_SERVER_LOCK_RR";
   net_Req_buffer[NET_SERVER_TZ_GET_CHECKSUM].name = "NET_SERVER_TZ_GET_CHECKSUM";
   net_Req_buffer[NET_SERVER_SPACEDB].name = "NET_SERVER_SPACEDB";
+  net_Req_buffer[NET_SERVER_QM_QUERY_EXECUTE_AND_COMMIT].name = "NET_SERVER_QM_QUERY_EXECUTE_AND_COMMIT";
 }
 
 /*
@@ -1675,32 +1676,32 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		{
 		  if (0 < reply_datasize_listid)
 		    {
-		      if ((error == NO_ERROR) && (replydata = (char *) malloc (reply_datasize_listid)) != NULL)
-			{
-			  css_queue_receive_data_buffer (rc, replydata, reply_datasize_listid);
+		  if ((error == NO_ERROR) && (replydata = (char *) malloc (reply_datasize_listid)) != NULL)
+		    {
+		      css_queue_receive_data_buffer (rc, replydata, reply_datasize_listid);
 
-			  error = css_receive_data_from_server (rc, &reply, &size);
-			  if (error != NO_ERROR)
-			    {
-			      COMPARE_AND_FREE_BUFFER (replydata, reply);
-			      free_and_init (replydata);
-			      return set_server_error (error);
-			    }
+		      error = css_receive_data_from_server (rc, &reply, &size);
+		      if (error != NO_ERROR)
+			{
+			  COMPARE_AND_FREE_BUFFER (replydata, reply);
+			  free_and_init (replydata);
+			  return set_server_error (error);
+			}
 
 			  error = COMPARE_SIZE_AND_BUFFER (&reply_datasize_listid, size, &replydata, reply);
 
-			  *replydata_listid = reply;
-			  *replydatasize_listid = size;
+		      *replydata_listid = reply;
+		      *replydatasize_listid = size;
 
-			  reply = NULL;
-			}
-		      else
-			{
+		      reply = NULL;
+		    }
+		  else
+		    {
 			  error = net_set_alloc_err_if_not_set (error, ARG_FILE_LINE);
 
 			  net_consume_expected_packets (rc, 1);
-			}
 		    }
+		}
 		  else
 		    {
 		      // Even though its size is 0, it should also be consumed.
@@ -1718,32 +1719,32 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		{
 		  if (0 < reply_datasize_page)
 		    {
-		      if ((error == NO_ERROR) && (replydata = (char *) malloc (DB_PAGESIZE)) != NULL)
-			{
-			  css_queue_receive_data_buffer (rc, replydata, reply_datasize_page);
+		  if ((error == NO_ERROR) && (replydata = (char *) malloc (DB_PAGESIZE)) != NULL)
+		    {
+		      css_queue_receive_data_buffer (rc, replydata, reply_datasize_page);
 
-			  error = css_receive_data_from_server (rc, &reply, &size);
-			  if (error != NO_ERROR)
-			    {
-			      COMPARE_AND_FREE_BUFFER (replydata, reply);
-			      free_and_init (replydata);
-			      return set_server_error (error);
-			    }
+		      error = css_receive_data_from_server (rc, &reply, &size);
+		      if (error != NO_ERROR)
+			{
+			  COMPARE_AND_FREE_BUFFER (replydata, reply);
+			  free_and_init (replydata);
+			  return set_server_error (error);
+			}
 
 			  error = COMPARE_SIZE_AND_BUFFER (&reply_datasize_page, size, &replydata, reply);
 
-			  *replydata_page = reply;
-			  *replydatasize_page = size;
+		      *replydata_page = reply;
+		      *replydatasize_page = size;
 
-			  reply = NULL;
-			}
-		      else
-			{
+		      reply = NULL;
+		    }
+		  else
+		    {
 			  error = net_set_alloc_err_if_not_set (error, ARG_FILE_LINE);
 
 			  net_consume_expected_packets (rc, 1);
-			}
 		    }
+		}
 		  else
 		    {
 		      // Even though its size is 0, it should also be consumed.
@@ -1759,39 +1760,39 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		{
 		  if (0 < reply_datasize_plan)
 		    {
-		      if ((error == NO_ERROR) && (replydata = (char *) malloc (reply_datasize_plan + 1)) != NULL)
-			{
-			  css_queue_receive_data_buffer (rc, replydata, reply_datasize_plan);
+		  if ((error == NO_ERROR) && (replydata = (char *) malloc (reply_datasize_plan + 1)) != NULL)
+		    {
+		      css_queue_receive_data_buffer (rc, replydata, reply_datasize_plan);
 
-			  error = css_receive_data_from_server (rc, &reply, &size);
-			  if (error != NO_ERROR)
-			    {
-			      COMPARE_AND_FREE_BUFFER (replydata, reply);
-			      free_and_init (replydata);
-			      return set_server_error (error);
-			    }
+		      error = css_receive_data_from_server (rc, &reply, &size);
+		      if (error != NO_ERROR)
+			{
+			  COMPARE_AND_FREE_BUFFER (replydata, reply);
+			  free_and_init (replydata);
+			  return set_server_error (error);
+			}
 
 			  error = COMPARE_SIZE_AND_BUFFER (&reply_datasize_plan, size, &replydata, reply);
 
-			  if (replydata_plan != NULL)
-			    {
-			      *replydata_plan = reply;
-			    }
-
-			  if (replydatasize_plan != NULL)
-			    {
-			      *replydatasize_plan = size;
-			    }
-
-			  reply = NULL;
-			}
-		      else
+		      if (replydata_plan != NULL)
 			{
+			  *replydata_plan = reply;
+			}
+
+		      if (replydatasize_plan != NULL)
+			{
+			  *replydatasize_plan = size;
+			}
+
+		      reply = NULL;
+		    }
+		  else
+		    {
 			  error = net_set_alloc_err_if_not_set (error, ARG_FILE_LINE);
 
 			  net_consume_expected_packets (rc, 1);
-			}
 		    }
+		}
 		  else
 		    {
 		      // When you want to append a reply argument,
@@ -2586,145 +2587,145 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
     }
 
 #if defined(HISTO)
-  if (net_Histo_setup)
-    {
-      net_histo_add_entry (request, argsize);
-    }
+      if (net_Histo_setup)
+	{
+	  net_histo_add_entry (request, argsize);
+	}
 #endif /* HISTO */
 
-  rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize, NULL, 0, replybuf, replysize);
-  if (rc == 0)
-    {
-      return set_server_error (css_Errno);
-    }
+      rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize, NULL, 0, replybuf, replysize);
+      if (rc == 0)
+	{
+	  return set_server_error (css_Errno);
+	}
 
-  /* 
-   * Receive replybuf
-   */
+      /* 
+       * Receive replybuf
+       */
 
-  error = css_receive_data_from_server (rc, &reply, &size);
-  if (error != NO_ERROR || reply == NULL)
-    {
-      COMPARE_AND_FREE_BUFFER (replybuf, reply);
-      return set_server_error (error);
-    }
+      error = css_receive_data_from_server (rc, &reply, &size);
+      if (error != NO_ERROR || reply == NULL)
+	{
+	  COMPARE_AND_FREE_BUFFER (replybuf, reply);
+	  return set_server_error (error);
+	}
 
-  error = COMPARE_SIZE_AND_BUFFER (&replysize, size, &replybuf, reply);
+	  error = COMPARE_SIZE_AND_BUFFER (&replysize, size, &replybuf, reply);
 
-  /* 
-   * Receive copyarea
-   * Here assume that the next two integers in the reply are the lengths of
-   * the copy descriptor and content descriptor
-   */
+      /* 
+       * Receive copyarea
+       * Here assume that the next two integers in the reply are the lengths of
+       * the copy descriptor and content descriptor
+       */
 
-  reply = or_unpack_int (reply, &num_objs);
-  reply = or_unpack_int (reply, &packed_desc_size);
-  reply = or_unpack_int (reply, &content_size);
+      reply = or_unpack_int (reply, &num_objs);
+      reply = or_unpack_int (reply, &packed_desc_size);
+      reply = or_unpack_int (reply, &content_size);
 
   if (packed_desc_size == 0 && content_size == 0)
-    {
+	{
       return error;
     }
 
-  if (error == NO_ERROR && reply_copy_area != NULL)
-    {
-      *reply_copy_area = locator_recv_allocate_copyarea (num_objs, &packed_desc, packed_desc_size, &content_ptr,
-							 content_size);
-      if (*reply_copy_area != NULL)
-	{
-	  if (packed_desc != NULL && packed_desc_size > 0)
+	  if (error == NO_ERROR && reply_copy_area != NULL)
 	    {
-	      css_queue_receive_data_buffer (rc, packed_desc, packed_desc_size);
-	      error = css_receive_data_from_server (rc, &reply, &size);
-	      if (error != NO_ERROR)
+	      *reply_copy_area = locator_recv_allocate_copyarea (num_objs, &packed_desc, packed_desc_size, &content_ptr,
+								 content_size);
+	      if (*reply_copy_area != NULL)
 		{
-		  COMPARE_AND_FREE_BUFFER (packed_desc, reply);
-		  free_and_init (packed_desc);
-		  locator_free_copy_area (*reply_copy_area);
-		  *reply_copy_area = NULL;
-		  return set_server_error (error);
-		}
-	      else
-		{
-		  locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc);
-		  COMPARE_AND_FREE_BUFFER (packed_desc, reply);
-		  free_and_init (packed_desc);
-		}
-	    }
-
-	  if (content_size > 0)
-	    {
-	      error = css_queue_receive_data_buffer (rc, content_ptr, content_size);
-	      if (error != NO_ERROR)
-		{
-		  net_consume_expected_packets (rc, 1);
-		}
-	      else
-		{
-		  error = css_receive_data_from_server (rc, &reply, &size);
-		}
-
-	      COMPARE_AND_FREE_BUFFER (content_ptr, reply);
-
-	      if (error != NO_ERROR)
-		{
-		  if (packed_desc != NULL)
+		  if (packed_desc != NULL && packed_desc_size > 0)
 		    {
-		      free_and_init (packed_desc);
+		      css_queue_receive_data_buffer (rc, packed_desc, packed_desc_size);
+		      error = css_receive_data_from_server (rc, &reply, &size);
+		      if (error != NO_ERROR)
+			{
+			  COMPARE_AND_FREE_BUFFER (packed_desc, reply);
+			  free_and_init (packed_desc);
+			  locator_free_copy_area (*reply_copy_area);
+			  *reply_copy_area = NULL;
+			  return set_server_error (error);
+			}
+		      else
+			{
+			  locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc);
+			  COMPARE_AND_FREE_BUFFER (packed_desc, reply);
+			  free_and_init (packed_desc);
+			}
 		    }
-		  locator_free_copy_area (*reply_copy_area);
-		  *reply_copy_area = NULL;
-		  return set_server_error (error);
+
+		  if (content_size > 0)
+		    {
+		      error = css_queue_receive_data_buffer (rc, content_ptr, content_size);
+		      if (error != NO_ERROR)
+			{
+		  net_consume_expected_packets (rc, 1);
+			}
+		      else
+			{
+			  error = css_receive_data_from_server (rc, &reply, &size);
+			}
+
+		      COMPARE_AND_FREE_BUFFER (content_ptr, reply);
+
+		      if (error != NO_ERROR)
+			{
+			  if (packed_desc != NULL)
+			    {
+			      free_and_init (packed_desc);
+			    }
+			  locator_free_copy_area (*reply_copy_area);
+			  *reply_copy_area = NULL;
+			  return set_server_error (error);
+			}
+		    }
 		}
-	    }
-	}
-      else
-	{
-	  int num_packets = 0;
+	      else
+		{
+		  int num_packets = 0;
 
 	  ASSERT_ERROR_AND_SET (error);
 
-	  if (packed_desc_size > 0)
-	    {
-	      num_packets++;
-	    }
-	  if (content_size > 0)
-	    {
-	      num_packets++;
-	    }
+		  if (packed_desc_size > 0)
+		    {
+		      num_packets++;
+		    }
+		  if (content_size > 0)
+		    {
+		      num_packets++;
+		    }
 	  net_consume_expected_packets (rc, num_packets);
-	}
+		}
 
-      if (packed_desc != NULL)
-	{
-	  free_and_init (packed_desc);
-	}
-    }
-  else
-    {
-      int num_packets = 0;
+	      if (packed_desc != NULL)
+		{
+		  free_and_init (packed_desc);
+		}
+	    }
+	  else
+	    {
+	      int num_packets = 0;
 
       if (error == NO_ERROR)
 	{
 	  error = ER_FAILED;
 	}
 
-      if (packed_desc_size > 0)
-	{
-	  num_packets++;
-	}
-      if (content_size > 0)
-	{
-	  num_packets++;
-	}
+	      if (packed_desc_size > 0)
+		{
+		  num_packets++;
+		}
+	      if (content_size > 0)
+		{
+		  num_packets++;
+		}
       net_consume_expected_packets (rc, num_packets);
     }
 
 #if defined(HISTO)
-  if (net_Histo_setup)
-    {
-      net_histo_request_finished (request, replysize + content_size + packed_desc_size);
-    }
+      if (net_Histo_setup)
+	{
+	  net_histo_request_finished (request, replysize + content_size + packed_desc_size);
+	}
 #endif /* HISTO */
 
   return error;
@@ -2878,50 +2879,72 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
       return error;
     }
 
-  if (error == NO_ERROR)
-    {
-      *reply_copy_area = locator_recv_allocate_copyarea (num_objs, &packed_desc, packed_desc_size, &content_ptr,
-							 content_size);
-      if (*reply_copy_area != NULL)
+      if (error == NO_ERROR)
 	{
-	  if (packed_desc != NULL && packed_desc_size > 0)
+	  *reply_copy_area = locator_recv_allocate_copyarea (num_objs, &packed_desc, packed_desc_size, &content_ptr,
+							     content_size);
+	  if (*reply_copy_area != NULL)
 	    {
-	      css_queue_receive_data_buffer (rc, packed_desc, packed_desc_size);
-	      error = css_receive_data_from_server (rc, &reply, &size);
-	      if (error != NO_ERROR)
+	      if (packed_desc != NULL && packed_desc_size > 0)
 		{
-		  COMPARE_AND_FREE_BUFFER (packed_desc, reply);
-		  free_and_init (packed_desc);
-		  return set_server_error (error);
-		}
-	      else
-		{
-		  locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc);
-		  COMPARE_AND_FREE_BUFFER (packed_desc, reply);
-		  free_and_init (packed_desc);
-		}
-	    }
-
-	  if (content_size > 0)
-	    {
-	      css_queue_receive_data_buffer (rc, content_ptr, content_size);
-	      error = css_receive_data_from_server (rc, &reply, &size);
-	      COMPARE_AND_FREE_BUFFER (content_ptr, reply);
-	      if (error != NO_ERROR)
-		{
-		  if (packed_desc != NULL)
+		  css_queue_receive_data_buffer (rc, packed_desc, packed_desc_size);
+		  error = css_receive_data_from_server (rc, &reply, &size);
+		  if (error != NO_ERROR)
 		    {
+		      COMPARE_AND_FREE_BUFFER (packed_desc, reply);
+		      free_and_init (packed_desc);
+		      return set_server_error (error);
+		    }
+		  else
+		    {
+		      locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc);
+		      COMPARE_AND_FREE_BUFFER (packed_desc, reply);
 		      free_and_init (packed_desc);
 		    }
-		  return set_server_error (error);
 		}
+
+	      if (content_size > 0)
+		{
+		  css_queue_receive_data_buffer (rc, content_ptr, content_size);
+		  error = css_receive_data_from_server (rc, &reply, &size);
+		  COMPARE_AND_FREE_BUFFER (content_ptr, reply);
+		  if (error != NO_ERROR)
+		    {
+		      if (packed_desc != NULL)
+			{
+			  free_and_init (packed_desc);
+			}
+		      return set_server_error (error);
+		    }
+		}
+	    }
+	  else
+	    {
+	      int num_packets = 0;
+
+	  ASSERT_ERROR_AND_SET (error);
+
+	      if (packed_desc_size > 0)
+		{
+		  num_packets++;
+		}
+	      if (content_size > 0)
+		{
+		  num_packets++;
+		}
+	  net_consume_expected_packets (rc, num_packets);
+	    }
+
+	  if (packed_desc != NULL)
+	    {
+	      free_and_init (packed_desc);
 	    }
 	}
       else
 	{
 	  int num_packets = 0;
 
-	  ASSERT_ERROR_AND_SET (error);
+      assert (error != NO_ERROR);
 
 	  if (packed_desc_size > 0)
 	    {
@@ -2931,30 +2954,8 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
 	    {
 	      num_packets++;
 	    }
-	  net_consume_expected_packets (rc, num_packets);
-	}
-
-      if (packed_desc != NULL)
-	{
-	  free_and_init (packed_desc);
-	}
-    }
-  else
-    {
-      int num_packets = 0;
-
-      assert (error != NO_ERROR);
-
-      if (packed_desc_size > 0)
-	{
-	  num_packets++;
-	}
-      if (content_size > 0)
-	{
-	  num_packets++;
-	}
       net_consume_expected_packets (rc, num_packets);
-    }
+	}
 
 #if defined(HISTO)
   if (net_Histo_setup)
@@ -3046,50 +3047,72 @@ net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize,
       return error;
     }
 
-  if (error == NO_ERROR)
-    {
-      *reply_copy_area = locator_recv_allocate_copyarea (num_objs, &packed_desc, packed_desc_size, &content_ptr,
-							 content_size);
-      if (*reply_copy_area != NULL)
+      if (error == NO_ERROR)
 	{
-	  if (packed_desc != NULL && packed_desc_size > 0)
+	  *reply_copy_area = locator_recv_allocate_copyarea (num_objs, &packed_desc, packed_desc_size, &content_ptr,
+							     content_size);
+	  if (*reply_copy_area != NULL)
 	    {
-	      css_queue_receive_data_buffer (rid, packed_desc, packed_desc_size);
-	      error = css_receive_data_from_server (rid, &reply, &size);
-	      if (error != NO_ERROR)
+	      if (packed_desc != NULL && packed_desc_size > 0)
 		{
-		  COMPARE_AND_FREE_BUFFER (packed_desc, reply);
-		  free_and_init (packed_desc);
-		  return set_server_error (error);
-		}
-	      else
-		{
-		  locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc);
-		  COMPARE_AND_FREE_BUFFER (packed_desc, reply);
-		  free_and_init (packed_desc);
-		}
-	    }
-
-	  if (content_size > 0)
-	    {
-	      css_queue_receive_data_buffer (rid, content_ptr, content_size);
-	      error = css_receive_data_from_server (rid, &reply, &size);
-	      COMPARE_AND_FREE_BUFFER (content_ptr, reply);
-	      if (error != NO_ERROR)
-		{
-		  if (packed_desc != NULL)
+		  css_queue_receive_data_buffer (rid, packed_desc, packed_desc_size);
+		  error = css_receive_data_from_server (rid, &reply, &size);
+		  if (error != NO_ERROR)
 		    {
+		      COMPARE_AND_FREE_BUFFER (packed_desc, reply);
+		      free_and_init (packed_desc);
+		      return set_server_error (error);
+		    }
+		  else
+		    {
+		      locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc);
+		      COMPARE_AND_FREE_BUFFER (packed_desc, reply);
 		      free_and_init (packed_desc);
 		    }
-		  return set_server_error (error);
 		}
+
+	      if (content_size > 0)
+		{
+		  css_queue_receive_data_buffer (rid, content_ptr, content_size);
+		  error = css_receive_data_from_server (rid, &reply, &size);
+		  COMPARE_AND_FREE_BUFFER (content_ptr, reply);
+		  if (error != NO_ERROR)
+		    {
+		      if (packed_desc != NULL)
+			{
+			  free_and_init (packed_desc);
+			}
+		      return set_server_error (error);
+		    }
+		}
+	    }
+	  else
+	    {
+	      int num_packets = 0;
+
+	  ASSERT_ERROR_AND_SET (error);
+
+	      if (packed_desc_size > 0)
+		{
+		  num_packets++;
+		}
+	      if (content_size > 0)
+		{
+		  num_packets++;
+		}
+	  net_consume_expected_packets (rid, num_packets);
+	    }
+
+	  if (packed_desc != NULL)
+	    {
+	      free_and_init (packed_desc);
 	    }
 	}
       else
 	{
 	  int num_packets = 0;
 
-	  ASSERT_ERROR_AND_SET (error);
+      assert (error != NO_ERROR);
 
 	  if (packed_desc_size > 0)
 	    {
@@ -3099,30 +3122,8 @@ net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize,
 	    {
 	      num_packets++;
 	    }
-	  net_consume_expected_packets (rid, num_packets);
-	}
-
-      if (packed_desc != NULL)
-	{
-	  free_and_init (packed_desc);
-	}
-    }
-  else
-    {
-      int num_packets = 0;
-
-      assert (error != NO_ERROR);
-
-      if (packed_desc_size > 0)
-	{
-	  num_packets++;
-	}
-      if (content_size > 0)
-	{
-	  num_packets++;
-	}
       net_consume_expected_packets (rid, num_packets);
-    }
+	}
 
 #if defined(HISTO)
   if (net_Histo_setup)
@@ -3229,26 +3230,26 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
 	      return set_server_error (error);
 	    }
 
-	  if (recvbuffer_size < size)
-	    {
-	      /* we expect that the sizes won't match, but we must be sure that the we can accomodate the data in
-	       * our buffer. So, don't use COMPARE_SIZE_AND_BUFFER() here. */
-	      error = ER_NET_DATASIZE_MISMATCH;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, recvbuffer_size, size);
-	    }
-	  else
-	    {
-	      recvbuffer_size = size;
-	    }
+	      if (recvbuffer_size < size)
+		{
+		  /* we expect that the sizes won't match, but we must be sure that the we can accomodate the data in
+		   * our buffer. So, don't use COMPARE_SIZE_AND_BUFFER() here. */
+		  error = ER_NET_DATASIZE_MISMATCH;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, recvbuffer_size, size);
+		}
+	      else
+		{
+		  recvbuffer_size = size;
+		}
 
-	  if (reply != recvbuffer)
-	    {
-	      error = ER_NET_UNUSED_BUFFER;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	      free_and_init (reply);
+	      if (reply != recvbuffer)
+		{
+		  error = ER_NET_UNUSED_BUFFER;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		  free_and_init (reply);
+		}
 	    }
 	}
-    }
 
   /* 
    * Receive copyarea
@@ -3267,49 +3268,71 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
       return error;
     }
 
-  if (error == NO_ERROR)
-    {
-      *reply_copy_area =
-	locator_recv_allocate_copyarea (num_objs, &packed_desc, packed_desc_size, &content_ptr, content_size);
-      if (*reply_copy_area != NULL)
+      if (error == NO_ERROR)
 	{
-	  if (packed_desc != NULL && packed_desc_size > 0)
+	  *reply_copy_area =
+	    locator_recv_allocate_copyarea (num_objs, &packed_desc, packed_desc_size, &content_ptr, content_size);
+	  if (*reply_copy_area != NULL)
 	    {
-	      css_queue_receive_data_buffer (rc, packed_desc, packed_desc_size);
-
-	      error = css_receive_data_from_server (rc, &reply, &size);
-	      if (error != NO_ERROR)
+	      if (packed_desc != NULL && packed_desc_size > 0)
 		{
-		  COMPARE_AND_FREE_BUFFER (packed_desc, reply);
-		  free_and_init (packed_desc);
-		  return set_server_error (error);
-		}
+		  css_queue_receive_data_buffer (rc, packed_desc, packed_desc_size);
 
-	      locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc);
-	      COMPARE_AND_FREE_BUFFER (packed_desc, reply);
-	      free_and_init (packed_desc);
-	    }
-
-	  if (content_size > 0)
-	    {
-	      css_queue_receive_data_buffer (rc, content_ptr, content_size);
-	      error = css_receive_data_from_server (rc, &reply, &size);
-	      COMPARE_AND_FREE_BUFFER (content_ptr, reply);
-	      if (error != NO_ERROR)
-		{
-		  if (packed_desc != NULL)
+		  error = css_receive_data_from_server (rc, &reply, &size);
+		  if (error != NO_ERROR)
 		    {
+		      COMPARE_AND_FREE_BUFFER (packed_desc, reply);
+		      free_and_init (packed_desc);
+		      return set_server_error (error);
+		    }
+
+		      locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc);
+		      COMPARE_AND_FREE_BUFFER (packed_desc, reply);
 		      free_and_init (packed_desc);
 		    }
-		  return set_server_error (error);
+
+	      if (content_size > 0)
+		{
+		  css_queue_receive_data_buffer (rc, content_ptr, content_size);
+		  error = css_receive_data_from_server (rc, &reply, &size);
+		  COMPARE_AND_FREE_BUFFER (content_ptr, reply);
+		  if (error != NO_ERROR)
+		    {
+		      if (packed_desc != NULL)
+			{
+			  free_and_init (packed_desc);
+			}
+		      return set_server_error (error);
+		    }
 		}
+	    }
+	  else
+	    {
+	      int num_packets = 0;
+
+	  ASSERT_ERROR_AND_SET (error);
+
+	      if (packed_desc_size > 0)
+		{
+		  num_packets++;
+		}
+	      if (content_size > 0)
+		{
+		  num_packets++;
+		}
+	  net_consume_expected_packets (rc, num_packets);
+	    }
+
+	  if (packed_desc != NULL)
+	    {
+	      free_and_init (packed_desc);
 	    }
 	}
       else
 	{
 	  int num_packets = 0;
 
-	  ASSERT_ERROR_AND_SET (error);
+      assert (error != NO_ERROR);
 
 	  if (packed_desc_size > 0)
 	    {
@@ -3319,30 +3342,8 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
 	    {
 	      num_packets++;
 	    }
-	  net_consume_expected_packets (rc, num_packets);
-	}
-
-      if (packed_desc != NULL)
-	{
-	  free_and_init (packed_desc);
-	}
-    }
-  else
-    {
-      int num_packets = 0;
-
-      assert (error != NO_ERROR);
-
-      if (packed_desc_size > 0)
-	{
-	  num_packets++;
-	}
-      if (content_size > 0)
-	{
-	  num_packets++;
-	}
       net_consume_expected_packets (rc, num_packets);
-    }
+	}
 
 #if defined(HISTO)
   if (net_Histo_setup)
@@ -3481,65 +3482,65 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
       return error;
     }
 
-  if ((error == NO_ERROR)
+      if ((error == NO_ERROR)
       && ((*reply_copy_area = locator_recv_allocate_copyarea (num_objs, &packed_desc, packed_desc_size, &content_ptr,
-							      content_size)) != NULL))
-    {
-      if (packed_desc != NULL && packed_desc_size > 0)
+					    content_size)) != NULL))
 	{
-	  css_queue_receive_data_buffer (rc, packed_desc, packed_desc_size);
-	  error = css_receive_data_from_server (rc, &reply, &size);
-	  if (error != NO_ERROR)
+	  if (packed_desc != NULL && packed_desc_size > 0)
 	    {
-	      COMPARE_AND_FREE_BUFFER (packed_desc, reply);
-	      free_and_init (packed_desc);
-	      return set_server_error (error);
-	    }
-
-	  locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc);
-	  COMPARE_AND_FREE_BUFFER (packed_desc, reply);
-	  free_and_init (packed_desc);
-	}
-
-      if (content_size > 0)
-	{
-	  css_queue_receive_data_buffer (rc, content_ptr, content_size);
-	  error = css_receive_data_from_server (rc, &reply, &size);
-	  COMPARE_AND_FREE_BUFFER (content_ptr, reply);
-	  if (error != NO_ERROR)
-	    {
-	      if (packed_desc != NULL)
+	      css_queue_receive_data_buffer (rc, packed_desc, packed_desc_size);
+	      error = css_receive_data_from_server (rc, &reply, &size);
+	      if (error != NO_ERROR)
 		{
+		  COMPARE_AND_FREE_BUFFER (packed_desc, reply);
+		  free_and_init (packed_desc);
+		  return set_server_error (error);
+		}
+
+		  locator_unpack_copy_area_descriptor (num_objs, *reply_copy_area, packed_desc);
+		  COMPARE_AND_FREE_BUFFER (packed_desc, reply);
 		  free_and_init (packed_desc);
 		}
-	      return set_server_error (error);
+
+	  if (content_size > 0)
+	    {
+	      css_queue_receive_data_buffer (rc, content_ptr, content_size);
+	      error = css_receive_data_from_server (rc, &reply, &size);
+	      COMPARE_AND_FREE_BUFFER (content_ptr, reply);
+	      if (error != NO_ERROR)
+		{
+		  if (packed_desc != NULL)
+		    {
+		      free_and_init (packed_desc);
+		    }
+		  return set_server_error (error);
+		}
+	    }
+
+	  if (packed_desc != NULL)
+	    {
+	      free_and_init (packed_desc);
 	    }
 	}
-
-      if (packed_desc != NULL)
+      else
 	{
-	  free_and_init (packed_desc);
-	}
-    }
-  else
-    {
-      int num_packets = 0;
+	  int num_packets = 0;
 
       if (error == NO_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (error);
 	}
 
-      if (packed_desc_size > 0)
-	{
-	  num_packets++;
-	}
-      if (content_size > 0)
-	{
-	  num_packets++;
-	}
+	  if (packed_desc_size > 0)
+	    {
+	      num_packets++;
+	    }
+	  if (content_size > 0)
+	    {
+	      num_packets++;
+	    }
       net_consume_expected_packets (rc, num_packets);
-    }
+	}
 
 #if defined(HISTO)
   if (net_Histo_setup)
@@ -3637,62 +3638,62 @@ net_client_request_recv_stream (int request, char *argbuf, int argsize, char *re
       goto end;
     }
 
-  error = css_receive_data_from_server (rc, &reply, &size);
-  if (error != NO_ERROR)
-    {
-      COMPARE_AND_FREE_BUFFER (recv_replybuf, reply);
-      error = set_server_error (error);
-      goto end;
-    }
-  else
-    {
-      error = COMPARE_SIZE_AND_BUFFER (&recv_replybuf_size, size, &recv_replybuf, reply);
-    }
-
-  /* Get total size of file to transfered */
-  or_unpack_int (recv_replybuf, &file_size);
-
-  if (replybuf)
-    {
-      memcpy (replybuf, recv_replybuf + OR_INT_SIZE, recv_replybuf_size - OR_INT_SIZE);
-    }
-
-#if defined(HISTO)
-  if (net_Histo_setup)
-    {
-      net_histo_request_finished (request, recv_replybuf_size + file_size);
-    }
-#endif /* HISTO */
-
-  while (file_size > 0)
-    {
-      css_queue_receive_data_buffer (rc, reply_streamdata, reply_streamdata_size);
-
       error = css_receive_data_from_server (rc, &reply, &size);
       if (error != NO_ERROR)
 	{
-	  COMPARE_AND_FREE_BUFFER (reply_streamdata, reply);
+	  COMPARE_AND_FREE_BUFFER (recv_replybuf, reply);
 	  error = set_server_error (error);
 	  goto end;
 	}
-
-      if (reply != reply_streamdata)
+      else
 	{
-	  error = ER_NET_UNUSED_BUFFER;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	  COMPARE_AND_FREE_BUFFER (reply_streamdata, reply);
-	  break;
-	}
-      if (size > reply_streamdata_size)
-	{
-	  error = ER_NET_DATASIZE_MISMATCH;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, reply_streamdata_size, size);
-	  break;
+	  error = COMPARE_SIZE_AND_BUFFER (&recv_replybuf_size, size, &recv_replybuf, reply);
 	}
 
-      file_size -= size;
-      fwrite (reply_streamdata, 1, size, outfp);
-    }
+      /* Get total size of file to transfered */
+      or_unpack_int (recv_replybuf, &file_size);
+
+      if (replybuf)
+	{
+	  memcpy (replybuf, recv_replybuf + OR_INT_SIZE, recv_replybuf_size - OR_INT_SIZE);
+	}
+
+#if defined(HISTO)
+      if (net_Histo_setup)
+	{
+	  net_histo_request_finished (request, recv_replybuf_size + file_size);
+	}
+#endif /* HISTO */
+
+      while (file_size > 0)
+	{
+	  css_queue_receive_data_buffer (rc, reply_streamdata, reply_streamdata_size);
+
+	  error = css_receive_data_from_server (rc, &reply, &size);
+	  if (error != NO_ERROR)
+	    {
+	      COMPARE_AND_FREE_BUFFER (reply_streamdata, reply);
+	      error = set_server_error (error);
+	      goto end;
+	    }
+
+	      if (reply != reply_streamdata)
+		{
+		  error = ER_NET_UNUSED_BUFFER;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		  COMPARE_AND_FREE_BUFFER (reply_streamdata, reply);
+		  break;
+		}
+	      if (size > reply_streamdata_size)
+		{
+		  error = ER_NET_DATASIZE_MISMATCH;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, reply_streamdata_size, size);
+		  break;
+		}
+
+	      file_size -= size;
+	      fwrite (reply_streamdata, 1, size, outfp);
+	    }
 
 end:
   free_and_init (send_argbuffer);
@@ -4033,30 +4034,30 @@ net_client_receive_action (int rc, int *action)
       return ER_NET_SERVER_CRASHED;
     }
 
-  error = css_receive_data_from_server (rc, &reply, &size);
-  if (error != NO_ERROR || reply == NULL)
-    {
-      if (reply != NULL)
+      error = css_receive_data_from_server (rc, &reply, &size);
+      if (error != NO_ERROR || reply == NULL)
 	{
-	  free_and_init (reply);
+	  if (reply != NULL)
+	    {
+	      free_and_init (reply);
+	    }
+	  return set_server_error (error);
 	}
-      return set_server_error (error);
-    }
 
-  if (size != replysize)
-    {
-      error = ER_NET_DATASIZE_MISMATCH;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, replysize, size);
-      replysize = size;
-      if (reply != NULL)
+      if (size != replysize)
 	{
-	  free_and_init (reply);
+	  error = ER_NET_DATASIZE_MISMATCH;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, replysize, size);
+	  replysize = size;
+	  if (reply != NULL)
+	    {
+	      free_and_init (reply);
+	    }
+	  return set_server_error (error);
 	}
-      return set_server_error (error);
-    }
 
-  or_unpack_int (reply, action);
-  free_and_init (reply);
+      or_unpack_int (reply, action);
+      free_and_init (reply);
 
   return error;
 }

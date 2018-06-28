@@ -3354,11 +3354,42 @@ db_sqlx_debug_print_result (DB_QUERY_RESULT * result)
  * return : error code
  * result(in): Pointer to the query result structure
  *
+ * NOTE: This is a legacy version of db_query_end.
+ * Please consider using the new version, db_query_end_ex when you want to control query_end behavior.
  */
 int
 db_query_end (DB_QUERY_RESULT * result)
 {
   return db_query_end_internal (result, true);
+}
+
+/*
+ * db_query_end_ex() - This function must be called when the application is
+ *    finished with the query result descriptor that was returned by either
+ *    db_execute() or db_execute_oid() function. 
+ *    This frees the descriptor and all storage related to the query results. 
+ *    Since query results can be of considerable size, 
+ *    it is important that they be freed as soon as they are no longer necessary.
+ * return : error code
+ * result(in): Pointer to the query result structure
+ * query_execution_ending_type(in): query execution ending type
+ *
+ */
+int
+db_query_end_ex (DB_QUERY_RESULT * result, DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type)
+{
+  bool notify_server;
+
+  if (DB_IS_QUERY_EXECUTED_ENDED (query_execution_ending_type))
+    {
+      notify_server = false;
+    }
+  else
+    {
+      notify_server = true;
+    }
+
+  return db_query_end_internal (result, notify_server);
 }
 
 /*
@@ -3626,5 +3657,44 @@ db_free_execution_plan (void)
     {
       free_and_init (db_Execution_plan);
       db_Execution_plan_length = -1;
+    }
+}
+
+/*
+ * db_get_end_type_after_query_execution : get ending type after query execution
+ *   end_query_result(in): end query result
+ *   committed(in): true, if transaction was committed
+ *   reset_on_commit(in): true, if reset is needed
+ *
+ * return: query execution ending type
+ *
+ */
+DB_QUERY_EXECUTION_ENDING_TYPE
+db_get_end_type_after_query_execution (int end_query_result, bool committed, int reset_on_commit)
+{
+  if (end_query_result == NO_ERROR)
+    {
+      /* Query already ended */
+      if (committed)
+	{
+	  /* Transaction successfully committed */
+	  if (reset_on_commit == true)
+	    {
+	      return DB_QUERY_EXECUTED_ENDED_COMMITTED_WITH_RESET;
+	    }
+	  else
+	    {
+	      return DB_QUERY_EXECUTED_ENDED_COMMITTED;
+	    }
+	}
+      else
+	{
+	  /* Transaction successfully committed */
+	  return DB_QUERY_EXECUTED_ENDED_NOT_COMMITTED;
+	}
+    }
+  else
+    {
+      return DB_QUERY_EXECUTED_NOT_ENDED;
     }
 }

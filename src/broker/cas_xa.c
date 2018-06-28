@@ -52,7 +52,7 @@ static int compare_xid (XID * xid1, XID * xid2);
 static bool xa_prepare_flag = false;
 
 FN_RETURN
-fn_xa_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_xa_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
 #ifdef CAS_SUPPORT_XA
   XID xid;
@@ -94,6 +94,12 @@ fn_xa_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
   net_buf_cp_int (net_buf, 0, NULL);
 
   cas_log_write (0, true, "xa_prepare");
+
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
+
 #else /* CAS_SUPPORT_XA */
   ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
   NET_BUF_ERR_SET (net_buf);
@@ -102,7 +108,7 @@ fn_xa_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
 }
 
 FN_RETURN
-fn_xa_recover (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_xa_recover (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
 #ifdef CAS_SUPPORT_XA
   int count;
@@ -133,6 +139,11 @@ fn_xa_recover (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
     }
 
   cas_log_write (0, true, "xa_recover");
+
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
 #else /* CAS_SUPPORT_XA */
   ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
   NET_BUF_ERR_SET (net_buf);
@@ -141,7 +152,7 @@ fn_xa_recover (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
 }
 
 FN_RETURN
-fn_xa_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_xa_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, int *ret_srv_h_id)
 {
 #ifdef CAS_SUPPORT_XA
   int tran_type;
@@ -201,12 +212,18 @@ fn_xa_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
 	  return FN_KEEP_CONN;
 	}
 
-      ux_end_tran (tran_type, true);
+      ux_end_tran (tran_type, true, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
       set_xa_prepare_flag ();
     }
 
   net_buf_cp_int (net_buf, 0, NULL);
   cas_log_write (0, true, "xa_end_tran %d", tran_type);
+
+  if (ret_srv_h_id)
+    {
+      *ret_srv_h_id = -1;
+    }
+
 #else /* CAS_SUPPORT_XA */
   ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
   NET_BUF_ERR_SET (net_buf);

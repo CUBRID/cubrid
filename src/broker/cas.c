@@ -122,13 +122,13 @@ static int net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER * client_
 static void set_db_connection_info (void);
 static void clear_db_connection_info (void);
 static bool need_database_reconnect (void);
-
 #else /* !LIBCAS_FOR_JSP */
 extern int libcas_main (SOCKET jsp_sock_fd);
 extern void *libcas_get_db_result_set (int h_id);
 extern void libcas_srv_handle_free (int h_id);
 #endif /* !LIBCAS_FOR_JSP */
 
+static DB_QUERY_EXECUTION_ENDING_TYPE cas_get_query_execution_ending_type (int srv_h_id);
 static void set_cas_info_size (void);
 
 static char cas_db_name[MAX_HA_DBINFO_LENGTH];
@@ -705,7 +705,7 @@ conn_retry:
 
 	if (!is_xa_prepared ())
 	  {
-	    ux_end_tran (CCI_TRAN_ROLLBACK, false);
+	    ux_end_tran (CCI_TRAN_ROLLBACK, false, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	  }
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
@@ -1266,7 +1266,7 @@ cas_main (void)
 
 	    if (!is_xa_prepared ())
 	      {
-		if (ux_end_tran (CCI_TRAN_ROLLBACK, false) < 0)
+		if (ux_end_tran (CCI_TRAN_ROLLBACK, false, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED) < 0)
 		  {
 		    as_info->reset_flag = TRUE;
 		  }
@@ -1642,6 +1642,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #endif
   T_SERVER_FUNC server_fn;
   FN_RETURN fn_ret = FN_KEEP_CONN;
+  int srv_h_id, *p_srv_h_id = NULL;
+  DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
 
   error_info_clear ();
   init_msg_header (&client_msg_header);
@@ -1957,7 +1959,14 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
   net_buf->client_version = req_info->client_version;
   set_hang_check_time ();
-  fn_ret = (*server_fn) (sock_fd, argc, argv, net_buf, req_info);
+
+  if (server_fn == fn_execute || server_fn == fn_execute_array || server_fn == fn_prepare_and_execute)
+    {
+      /* When executes a command, we need srv_h_id to detect whether commit was executed with the command. */
+      p_srv_h_id = &srv_h_id;
+    }
+
+  fn_ret = (*server_fn) (sock_fd, argc, argv, net_buf, req_info, p_srv_h_id);
   set_hang_check_time ();
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
@@ -2005,8 +2014,17 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (fn_ret == FN_KEEP_CONN && net_buf->err_code == 0 && as_info->con_status == CON_STATUS_IN_TRAN
       && req_info->need_auto_commit != TRAN_NOT_AUTOCOMMIT && err_info.err_number != CAS_ER_STMT_POOLING)
     {
+      if (p_srv_h_id)
+	{
+	  query_execution_ending_type = cas_get_query_execution_ending_type (*p_srv_h_id);
+	}
+      else
+	{
+	  query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
+	}
+
       /* no communication error and auto commit is needed */
-      err_code = ux_auto_commit (net_buf, req_info);
+      err_code = ux_auto_commit (net_buf, req_info, query_execution_ending_type);
       if (err_code < 0)
 	{
 	  fn_ret = FN_CLOSE_CONN;
@@ -2859,4 +2877,47 @@ T_BROKER_VERSION
 cas_get_client_version (void)
 {
   return req_info.client_version;
+}
+
+/*
+ * cas_get_query_execution_ending_type () - Get query execution ending type.
+ *   return: query execution ending type
+ *   srv_h_id(in): server handle id
+ */
+static DB_QUERY_EXECUTION_ENDING_TYPE
+cas_get_query_execution_ending_type (int srv_h_id)
+{
+#if !defined (LIBCAS_FOR_JSP) && !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+  T_SRV_HANDLE *srv_handle = NULL;
+  DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
+  T_QUERY_RESULT *q_result = NULL;
+#if !defined(NDEBUG)
+  int i;
+#endif
+
+  srv_handle = hm_find_srv_handle (srv_h_id);
+  if (srv_handle)
+    {
+      if (srv_handle->q_result && srv_handle->num_q_result > 0)
+	{
+	  q_result = &(srv_handle->q_result[srv_handle->num_q_result - 1]);
+	  if (q_result)
+	    {
+	      query_execution_ending_type = q_result->query_execution_ending_type;
+	    }
+
+#if !defined(NDEBUG)
+	  for (i = 0; i < srv_handle->num_q_result - 1; i++)
+	    {
+	      q_result = &(srv_handle->q_result[i]);
+	      assert (!DB_IS_QUERY_EXECUTED_COMMITTED (q_result->query_execution_ending_type));
+	    }
+#endif
+	}
+    }
+
+  return query_execution_ending_type;
+#else
+  return DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
+#endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 }

@@ -506,6 +506,44 @@ extern "C"
   /* session state id */
   typedef unsigned int SESSION_ID;
 
+  /*
+   * The DB_QUERY_EXECUTION_ENDING_TYPE enumeration is used to reduce the number of message communication between
+   * client and server. Thus, when possible, "execute query", "end query" and "commit" can be executed using only one
+   * message. This optimization has a serious impact on performance. Check db_init_statement_execution_end_type function
+   * to see when the optimization can be used.
+   */
+  typedef enum db_query_execution_ending_type DB_QUERY_EXECUTION_ENDING_TYPE;
+  enum db_query_execution_ending_type
+  {
+    DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED = 0,	/* query execution with commit not allowed */
+    DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED,	/* query execution with commit allowed */
+    DB_QUERY_EXECUTED_NOT_ENDED,	/* query executed but not ended */
+    DB_QUERY_EXECUTED_ENDED_NOT_COMMITTED,	/* query executed, ended but not committed */
+    DB_QUERY_EXECUTED_ENDED_COMMITTED,	/* query executed, ended, committed without reset */
+    DB_QUERY_EXECUTED_ENDED_COMMITTED_WITH_RESET	/* query executed, ended, committed with reset */
+  };
+
+#define DB_IS_QUERY_EXECUTED(qet) \
+                                ((qet) == DB_QUERY_EXECUTED_NOT_ENDED ||  \
+                                 (qet) == DB_QUERY_EXECUTED_ENDED_NOT_COMMITTED ||  \
+                                 (qet) == DB_QUERY_EXECUTED_ENDED_COMMITTED ||  \
+                                 (qet) == DB_QUERY_EXECUTED_ENDED_COMMITTED_WITH_RESET)
+
+#define DB_IS_QUERY_EXECUTED_ENDED(qet) \
+				    ((qet) == DB_QUERY_EXECUTED_ENDED_NOT_COMMITTED ||  \
+				     (qet) == DB_QUERY_EXECUTED_ENDED_COMMITTED ||  \
+				     (qet) == DB_QUERY_EXECUTED_ENDED_COMMITTED_WITH_RESET)
+
+#define DB_IS_QUERY_EXECUTED_COMMITTED(qet) \
+				    ((qet) == DB_QUERY_EXECUTED_ENDED_COMMITTED ||  \
+				     (qet) == DB_QUERY_EXECUTED_ENDED_COMMITTED_WITH_RESET)
+
+#define DB_IS_QUERY_EXECUTED_COMMITTED_WITH_RESET(qet) \
+				    ((qet) == DB_QUERY_EXECUTED_ENDED_COMMITTED_WITH_RESET)
+
+#define DB_IS_QUERY_EXECUTE_WITH_COMMIT_ALLOWED(qret)  \
+				    ((qret) == DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED)
+
 /* uninitialized value for session id */
 #define DB_EMPTY_SESSION			0
 

@@ -70,7 +70,7 @@ extern void tran_cache_tran_settings (int tran_index, int lock_timeout, TRAN_ISO
 extern void tran_get_tran_settings (int *lock_timeout_in_msecs, TRAN_ISOLATION * tran_isolation, bool * async_ws);
 extern int tran_reset_wait_times (int wait_in_msecs);
 extern int tran_reset_isolation (TRAN_ISOLATION isolation, bool async_ws);
-extern int tran_commit (bool retain_lock);
+extern int tran_commit (bool retain_lock, DB_QUERY_EXECUTION_ENDING_TYPE latest_query_execution_ending_type);
 extern int tran_abort (void);
 extern int tran_unilaterally_abort (void);
 extern int tran_abort_only_client (bool is_server_down);

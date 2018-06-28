@@ -635,7 +635,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 		   * classes,
 		   */
 		  sm_mark_system_classes ();
-		  error_code = tran_commit (false);
+		  error_code = tran_commit (false, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 		}
 	    }
 	}
@@ -1310,7 +1310,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
     }
   /* Does not care if was committed/aborted .. */
-  (void) tran_commit (false);
+  (void) tran_commit (false, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 
   /* 
    * If there is a need to change the isolation level and the lock wait,
@@ -1462,7 +1462,7 @@ boot_shutdown_client (bool is_er_final)
 	{
 	  if (prm_get_bool_value (PRM_ID_COMMIT_ON_SHUTDOWN) != false)
 	    {
-	      (void) tran_commit (false);
+	      (void) tran_commit (false, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
 	    }
 	  else
 	    {

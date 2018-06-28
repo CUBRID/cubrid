@@ -267,6 +267,8 @@ extern int db_drop_attribute_internal (DB_OBJECT * classobj, const char *name);
 extern DB_SESSION *db_open_buffer_local (const char *buffer);
 extern int db_compile_statement_local (DB_SESSION * session);
 extern int db_execute_statement_local (DB_SESSION * session, int stmt, DB_QUERY_RESULT ** result);
+extern int db_execute_statement_local_ex (DB_SESSION * session, int stmt, DB_QUERY_RESULT ** result,
+					  DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type);
 extern int db_open_buffer_and_compile_first_statement (const char *CSQL_query, DB_QUERY_ERROR * query_error,
 						       int include_oid, DB_SESSION ** session, int *stmt_no);
 extern int db_compile_and_execute_local (const char *CSQL_query, void *result, DB_QUERY_ERROR * query_error);

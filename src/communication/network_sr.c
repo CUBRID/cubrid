@@ -839,6 +839,11 @@ net_server_init (void)
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slocator_redistribute_partition_data;
   req_p->name = "NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA";
+
+  req_p = &net_Requests[NET_SERVER_QM_QUERY_EXECUTE_AND_COMMIT];
+  req_p->action_attribute = (SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
+  req_p->processing_function = sqmgr_execute_query_with_commit;
+  req_p->name = "NET_SERVER_QM_QUERY_EXECUTE_AND_COMMIT";
 }
 
 #if defined(CUBRID_DEBUG)

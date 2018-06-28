@@ -2239,6 +2239,7 @@ parser_init_node (PT_NODE * node)
       node->is_alias_enabled_expr = 0;
       node->is_wrapped_res_for_coll = 0;
       node->is_system_generated_stmt = 0;
+      node->query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
       /* initialize node info field */
       memset (&(node->info), 0, sizeof (node->info));
 

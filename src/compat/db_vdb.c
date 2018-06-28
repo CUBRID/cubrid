@@ -72,7 +72,8 @@ static struct timeb base_client_timeb = { 0, 0, 0, 0 };
 static int get_dimension_of (PT_NODE ** array);
 static DB_SESSION *db_open_local (void);
 static DB_SESSION *initialize_session (DB_SESSION * session);
-static int db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result);
+static int db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result,
+						DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type);
 static DB_OBJLIST *db_get_all_chosen_classes (int (*p) (MOBJ o));
 static int is_vclass_object (MOBJ class_);
 static char *get_reasonable_predicate (DB_ATTRIBUTE * att);
@@ -1550,9 +1551,11 @@ db_get_lock_classes (DB_SESSION * session)
  * session(in) : contains the SQL query that has been compiled
  * stmt(in) : int returned by a successful compilation
  * result(out): query results descriptor
+ * query_execution_ending_type(out): query execution ending type
  */
 static int
-db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result)
+db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result,
+				     DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type)
 {
   PARSER_CONTEXT *parser;
   PT_NODE *statement;
@@ -1567,6 +1570,10 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
   if (result != NULL)
     {
       *result = NULL;
+    }
+  if (query_execution_ending_type)
+    {
+      *query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
     }
 
   /* obvious error checking - invalid parameter */
@@ -1965,6 +1972,10 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	}			/* else */
 
       *result = qres;
+      if (query_execution_ending_type)
+	{
+	  *query_execution_ending_type = statement->query_execution_ending_type;
+	}
     }				/* if (result) */
 
   /* Do not override original error id with */
@@ -2721,7 +2732,7 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
   new_session->parser->set_host_var = 1;
 
   new_session->parser->is_holdable = session->parser->is_holdable;
-  return db_execute_and_keep_statement_local (new_session, 1, result);
+  return db_execute_and_keep_statement_local (new_session, 1, result, NULL);
 }
 
 /*
@@ -2829,17 +2840,35 @@ db_has_modified_class (DB_SESSION * session, int stmt_id)
 }
 
 /*
- * db_execute_and_keep_statement() - Please refer to the
- *         db_execute_and_keep_statement_local() function
+ * db_execute_and_keep_statement() - Please refer to db_execute_and_keep_statement_local() function
  * return : error status, if execution failed
  *          number of affected objects, if a success & stmt is a SELECT,
  *          UPDATE, DELETE, or INSERT
  * session(in) : contains the SQL query that has been compiled
  * stmt(in) : int returned by a successful compilation
  * result(out): query results descriptor
+ *
+ * NOTE: This is a legacy version.
  */
 int
 db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result)
+{
+  return db_execute_and_keep_statement_ex (session, stmt_ndx, result, NULL);
+}
+
+/*
+ * db_execute_and_keep_statement_ex() - Please refer to db_execute_and_keep_statement_local() function
+ * return : error status, if execution failed
+ *          number of affected objects, if a success & stmt is a SELECT,
+ *          UPDATE, DELETE, or INSERT
+ * session(in) : contains the SQL query that has been compiled
+ * stmt(in) : int returned by a successful compilation
+ * result(out): query results descriptor
+ * query_execution_ending_type(out): query execution ending type
+ */
+int
+db_execute_and_keep_statement_ex (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result,
+				  DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type)
 {
   int err;
 
@@ -2847,7 +2876,7 @@ db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESU
 
   db_invalidate_mvcc_snapshot_before_statement ();
 
-  err = db_execute_and_keep_statement_local (session, stmt_ndx, result);
+  err = db_execute_and_keep_statement_local (session, stmt_ndx, result, query_execution_ending_type);
 
   db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
 
@@ -2870,9 +2899,35 @@ db_execute_and_keep_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESU
  *    db_query_end() function. The resources for the identified compiled
  *    statement (not its result) are freed. Consequently, the statement may
  *    not be executed again.
+ * NOTE: This is a legacy version.
  */
 int
 db_execute_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result)
+{
+  return db_execute_statement_local_ex (session, stmt_ndx, result, NULL);
+}
+
+/*
+ * db_execute_statement_local_ex() - This function executes the SQL statement
+ *    identified by the stmt argument and returns the result. The
+ *    statement ID must have already been returned by a previously successful
+ *    call to the db_compile_statement() function.
+ * returns  : error status, if execution failed
+ *            number of affected objects, if a success & stmt is a
+ *            SELECT, UPDATE, DELETE, or INSERT
+ * session(in) : contains the SQL query that has been compiled
+ * stmt(in) : int returned by a successful compilation
+ * result(out): query results descriptor
+ * query_execution_ending_type(out): query execution ending type
+ *
+ * note : You must free the results of calling this function by using the
+ *    db_query_end() function. The resources for the identified compiled
+ *    statement (not its result) are freed. Consequently, the statement may
+ *    not be executed again.
+ */
+int
+db_execute_statement_local_ex (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result,
+			       DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type)
 {
   int err;
   PT_NODE *statement;
@@ -2883,7 +2938,7 @@ db_execute_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT 
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  err = db_execute_and_keep_statement_local (session, stmt_ndx, result);
+  err = db_execute_and_keep_statement_local (session, stmt_ndx, result, query_execution_ending_type);
 
   statement = session->statements[stmt_ndx - 1];
   if (statement != NULL)
@@ -2898,8 +2953,7 @@ db_execute_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT 
 }
 
 /*
- * db_execute_statement() - Please refer to the
- *    db_execute_statement_local() function
+ * db_execute_statement() - Please refer to db_execute_statement_local() function
  * returns  : error status, if execution failed
  *            number of affected objects, if a success & stmt is a
  *            SELECT, UPDATE, DELETE, or INSERT
@@ -2909,17 +2963,41 @@ db_execute_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT 
  *
  * NOTE: db_execute_statement should be used only as entry point for statement
  *	 execution. Otherwise, db_execute_statement_local should be used.
+ * NOTE: This is a legacy version.
  */
 int
 db_execute_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result)
+{
+  return db_execute_statement_ex (session, stmt_ndx, result, NULL);
+}
+
+/*
+ * db_execute_statement_ex() - Please refer to db_execute_statement_local() function
+ * returns  : error status, if execution failed
+ *            number of affected objects, if a success & stmt is a
+ *            SELECT, UPDATE, DELETE, or INSERT
+ * session(in) : contains the SQL query that has been compiled
+ * stmt(in) : int returned by a successful compilation
+ * result(out): query results descriptor
+ * query_execution_ending_type(out): query execution ending type
+ *
+ * NOTE: db_execute_statement should be used only as entry point for statement
+ *	 execution. Otherwise, db_execute_statement_local should be used.
+ */
+int
+db_execute_statement_ex (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result,
+			 DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type)
 {
   int err;
 
   CHECK_CONNECT_MINUSONE ();
 
+  assert (query_execution_ending_type != NULL);
+  assert (*query_execution_ending_type == DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED
+	  || *query_execution_ending_type == DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
   db_invalidate_mvcc_snapshot_before_statement ();
 
-  err = db_execute_statement_local (session, stmt_ndx, result);
+  err = db_execute_statement_local_ex (session, stmt_ndx, result, query_execution_ending_type);
 
   db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
 
@@ -3615,8 +3693,7 @@ db_validate (DB_OBJECT * vc)
 }
 
 /*
- * db_free_query() - If an implicit query was executed, free the query on the
- *   server.
+ * db_free_query() - If an implicit query was executed, free the query on the server.
  * returns  : void
  * session(in) : session handle
  */
@@ -3624,6 +3701,24 @@ void
 db_free_query (DB_SESSION * session)
 {
   pt_end_query (session->parser, NULL_QUERY_ID);
+}
+
+/*
+ * db_free_query_ex() - If an implicit query was executed, free the query on the server.
+ * returns  : void
+ * session(in) : session handle
+ */
+void
+db_free_query_ex (DB_SESSION * session, DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type)
+{
+  if (DB_IS_QUERY_EXECUTED_ENDED (query_execution_ending_type))
+    {
+      session->parser->query_id = NULL_QUERY_ID;
+    }
+  else
+    {
+      pt_end_query (session->parser, NULL_QUERY_ID);
+    }
 }
 
 /*
@@ -3949,4 +4044,105 @@ pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
     }
 
   return node;
+}
+
+/*
+ * db_init_statement_execution_end_type () - Init statement execution end type.
+ *
+ * return : error code.
+ * session(in): compiled session
+ * auto_commit(in): true, if auto commit
+ * query_execution_ending_type(out): query execution ending type
+ */
+int
+db_init_statement_execution_end_type (DB_SESSION * session, bool auto_commit,
+				      DB_QUERY_EXECUTION_ENDING_TYPE * query_execution_ending_type)
+{
+  PT_NODE *statement;
+  int stmt_ndx;
+
+  /* check parameters */
+  if (session->dimension == 0 || !session->statements)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_EMPTY_STATEMENT, 0);
+      return er_errid ();
+    }
+
+  stmt_ndx = session->stmt_ndx - 1;
+  statement = session->statements[stmt_ndx];
+  if (stmt_ndx < 0 || stmt_ndx >= session->dimension || !statement)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return er_errid ();
+    }
+
+  /* check if the statement is compiled and prepared */
+  if (session->stage[stmt_ndx] < StatementPreparedStage)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_INVALID_SESSION, 0);
+      return er_errid ();
+    }
+
+  statement->query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED;
+  if (!(auto_commit && db_session_is_last_statement (session)))
+    {
+      goto end;
+    }
+
+  if (session->dimension > 1)
+    {
+      /* Do not use the optimization if have more than one statement and at least one is SELECT. */
+      for (stmt_ndx = 0; stmt_ndx < session->dimension; stmt_ndx++)
+	{
+	  if ((session->statements[stmt_ndx]) && ((session->statements[stmt_ndx])->node_type == PT_SELECT))
+	    {
+	      goto end;
+	    }
+	}
+    }
+
+  switch (statement->node_type)
+    {
+    case PT_SELECT:
+      /* Do not use the optimization if OIDs included */
+      if (!statement->info.query.oids_included)
+	{
+	  statement->query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED;
+	}
+      break;
+
+    case PT_INSERT:
+      /* Do not use optimization in case of insert execution on broker side */
+      if (statement->info.insert.server_allowed)
+	{
+	  statement->query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED;
+	}
+      break;
+
+    case PT_UPDATE:
+      /* Do not use optimization in case of update execution on broker side */
+      if (statement->info.update.server_update)
+	{
+	  statement->query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED;
+	}
+      break;
+
+    case PT_DELETE:
+      /* Do not use optimization in case of delete execution on broker side */
+      if (statement->info.delete_.server_delete)
+	{
+	  statement->query_execution_ending_type = DB_QUERY_EXECUTE_WITH_COMMIT_ALLOWED;
+	}
+      break;
+
+    default:
+      break;
+    }
+
+end:
+  if (query_execution_ending_type)
+    {
+      *query_execution_ending_type = statement->query_execution_ending_type;
+    }
+  return NO_ERROR;
 }

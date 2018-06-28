@@ -90,6 +90,7 @@ EXPORTS
     db_col_get
     db_col_size
     db_commit_transaction
+    db_commit_transaction_ex
     db_compile_statement
     db_constrain_non_null
     db_constrain_unique
@@ -136,7 +137,9 @@ EXPORTS
     db_error_string
     db_execute
     db_execute_and_keep_statement
+    db_execute_and_keep_statement_ex
     db_execute_statement
+    db_execute_statement_ex
     db_find_all_triggers
     db_find_class
     db_find_user
@@ -268,6 +271,7 @@ EXPORTS
     db_enum_put_cs_and_collation
     db_query_column_count
     db_query_end
+    db_query_end_ex
     db_query_first_tuple
     db_query_format_attr_name
     db_query_format_class_name
@@ -673,6 +677,7 @@ EXPORTS
     db_free_domain_list
     db_free_method_descriptor
     db_free_query
+    db_free_query_ex
     db_free_query_format
     db_free_query_result
     db_freepgs
@@ -910,6 +915,7 @@ EXPORTS
     db_get_execution_plan
     db_set_execution_plan
     db_default_expression_string
+    db_init_statement_execution_end_type
 ; elo
 	db_elo_copy_structure
 	db_elo_free_structure

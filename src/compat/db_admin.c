@@ -1076,6 +1076,8 @@ db_get_variable (DB_VALUE * name, DB_VALUE * value)
  *
  * note : If you call db_shutdown without calling this function,
  *    the transaction will be aborted and the changes lost.
+ * NOTE: This is a legacy version of db_commit_transaction.
+ * Please consider using the new version, db_commit_transaction_ex when you want to control commit behavior.
  */
 int
 db_commit_transaction (void)
@@ -1086,7 +1088,30 @@ db_commit_transaction (void)
   /* CHECK_MODIFICATION_ERROR (); */
 
   /* API does not support RETAIN LOCK */
-  retval = tran_commit (false);
+  retval = tran_commit (false, DB_QUERY_EXECUTE_WITH_COMMIT_NOT_ALLOWED);
+
+  return (retval);
+}
+
+/*
+ * db_commit_transaction_ex() - Commits the current transaction.
+ *    You must call this function if you want changes to be made permanent.
+ * return : error code.
+ * latest_query_execution_ending_type(in): latest query execution ending type
+ *
+ * note : If you call db_shutdown without calling this function,
+ *    the transaction will be aborted and the changes lost.
+ */
+int
+db_commit_transaction_ex (DB_QUERY_EXECUTION_ENDING_TYPE latest_query_execution_ending_type)
+{
+  int retval;
+
+  CHECK_CONNECT_ERROR ();
+  /* CHECK_MODIFICATION_ERROR (); */
+
+  /* API does not support RETAIN LOCK */
+  retval = tran_commit (false, latest_query_execution_ending_type);
 
   return (retval);
 }

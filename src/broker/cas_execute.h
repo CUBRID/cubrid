@@ -85,11 +85,13 @@ extern int ux_database_reconnect (void);
 extern int ux_is_database_connected (void);
 extern int ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * ne_buf, T_REQ_INFO * req_info,
 		       unsigned int query_seq_num);
-extern int ux_end_tran (int tran_type, bool reset_con_status);
+extern int ux_end_tran (int tran_type, bool reset_con_status,
+			DB_QUERY_EXECUTION_ENDING_TYPE latest_query_execution_ending_type);
 extern int ux_end_session (void);
 extern int ux_get_row_count (T_NET_BUF * net_buf);
 extern int ux_get_last_insert_id (T_NET_BUF * net_buf);
-extern int ux_auto_commit (T_NET_BUF * CAS_FN_ARG_NET_BUF, T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
+extern int ux_auto_commit (T_NET_BUF * CAS_FN_ARG_NET_BUF, T_REQ_INFO * CAS_FN_ARG_REQ_INFO,
+			   DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type);
 extern int ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
 		       T_NET_BUF *, T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time, int *clt_cache_reusable);
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
@@ -144,7 +146,7 @@ extern void ux_get_system_parameter (const char *param, bool * value);
 extern void ux_set_default_setting (void);
 extern int ux_check_object (DB_OBJECT * obj, T_NET_BUF * net_buf);
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-extern void ux_free_result (void *res);
+extern void ux_free_result (void *res, DB_QUERY_EXECUTION_ENDING_TYPE query_execution_ending_type);
 #if defined(CAS_FOR_MYSQL)
 extern char ux_db_type_to_cas_type (int db_type, unsigned int flags, T_BROKER_VERSION client_version);
 #else /* CAS_FOR_MYSQL */
