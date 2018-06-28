@@ -37,46 +37,45 @@ namespace cubreplication
 {
 
   /*
-   * main class for producing log stream entries
-   * it is a templatized class : stream entries depends on the actual stream contents
+   * class for producing log stream entries
    * only a global instance (per template class) is allowed
    */
 
   class log_generator
   {
     private:
-      std::vector<replication_stream_entry *> m_stream_entries;
+      replication_stream_entry m_stream_entry;
 
-      cubstream::packing_stream *m_stream;
+      static cubstream::packing_stream *g_stream;
 
       /* start append position of generator stream */
-      cubstream::stream_position m_start_append_position;
-
-      static log_generator *global_log_generator;
+      static cubstream::stream_position g_start_append_position;
 
     public:
 
-      log_generator () : m_stream (NULL) { };
+      log_generator () : m_stream_entry (NULL) { };
+
+      log_generator (cubstream::packing_stream *stream) : m_stream_entry (stream) { };
 
       ~log_generator ();
 
-      int start_tran_repl (THREAD_ENTRY *th_entry, MVCCID mvccid);
+      int start_tran_repl (MVCCID mvccid);
 
-      int set_commit_repl (THREAD_ENTRY *th_entry, bool commit_tran_flag);
+      int set_commit_repl (bool commit_tran_flag);
 
-      int append_repl_entry (THREAD_ENTRY *th_entry, replication_object *object);
+      int append_repl_object (replication_object *object);
 
-      replication_stream_entry *get_stream_entry (THREAD_ENTRY *th_entry);
+      replication_stream_entry *get_stream_entry (void);
 
-      int pack_stream_entries (THREAD_ENTRY *th_entry);
+      int pack_stream_entry (void);
 
-      int pack_group_commit_entry (void);
+      static int pack_group_commit_entry (void);
 
-      static log_generator *new_instance (const cubstream::stream_position &start_position);
+      static int create_stream (const cubstream::stream_position &start_position);
 
-      cubstream::packing_stream *get_stream (void)
+      static cubstream::packing_stream *get_stream (void)
       {
-	return m_stream;
+	return g_stream;
       };
   };
 

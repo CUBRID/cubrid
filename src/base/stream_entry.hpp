@@ -220,6 +220,11 @@ namespace cubstream
 	reset ();
       };
 
+      void set_stream (packing_stream *stream)
+      {
+	m_stream = stream;
+      }
+
       /*
        * pack method:
        *  1. compute header and data size

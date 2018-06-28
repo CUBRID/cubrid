@@ -172,14 +172,17 @@ namespace test_replication
     rbr2->copy_and_add_changed_value (*my_thread, 2, &new_att2_value);
     rbr2->copy_and_add_changed_value (*my_thread, 3, &new_att3_value);
 
-    cubreplication::log_generator *lg = cubreplication::log_generator::new_instance (0);
+    cubreplication::log_generator::create_stream (0);
 
-    lg->append_repl_entry (NULL, sbr1);
-    lg->append_repl_entry (NULL, rbr1);
-    lg->append_repl_entry (NULL, sbr2);
-    lg->append_repl_entry (NULL, rbr2);
+    cubreplication::log_generator *lg =
+      new cubreplication::log_generator (cubreplication::log_generator::get_stream ());
 
-    lg->pack_stream_entries (NULL);
+    lg->append_repl_object (sbr1);
+    lg->append_repl_object (rbr1);
+    lg->append_repl_object (sbr2);
+    lg->append_repl_object (rbr2);
+
+    lg->pack_stream_entry ();
 
     cubreplication::log_consumer *lc = cubreplication::log_consumer::new_instance (0);
 
@@ -194,7 +197,7 @@ namespace test_replication
     lc->fetch_stream_entry (se);
     se->unpack ();
 
-    res = se->is_equal (lg->get_stream_entry (NULL));
+    res = se->is_equal (lg->get_stream_entry ());
 
     /* workaround for seq read position : force read position to append position to avoid stream destructor
      * assertion failure */
@@ -226,7 +229,7 @@ namespace test_replication
     rbr->copy_and_add_changed_value (*thread_p, 2, &new_att1_value);
     rbr->copy_and_add_changed_value (*thread_p, 3, &new_att3_value);
 
-    lg->append_repl_entry (thread_p, rbr);
+    lg->append_repl_object (rbr);
   }
 
   void generate_sbr (cubthread::entry *thread_p, cubreplication::log_generator *lg, int tran_chunk, int tran_obj)
@@ -237,14 +240,14 @@ namespace test_replication
 
     cubreplication::sbr_repl_entry *sbr = new cubreplication::sbr_repl_entry (statement);
 
-    lg->append_repl_entry (thread_p, sbr);
+    lg->append_repl_object (sbr);
   }
 
   void generate_tran_repl_data (cubthread::entry *thread_p, cubreplication::log_generator *lg)
   {
     int n_tran_chunks = std::rand () % 5;
 
-    cubreplication::replication_stream_entry *se = lg->get_stream_entry (thread_p);
+    cubreplication::replication_stream_entry *se = lg->get_stream_entry ();
 
     se->set_mvccid (thread_p->tran_index + 1);
 
@@ -261,9 +264,9 @@ namespace test_replication
 	if (j == n_tran_chunks - 1)
 	  {
 	    /* commit entry : last commit or random */
-	    lg->set_commit_repl (thread_p, true);
+	    lg->set_commit_repl (true);
 	  }
-	lg->pack_stream_entries (thread_p);
+	lg->pack_stream_entry ();
       }
 
     if (std::rand () % 100 > 90)
@@ -328,8 +331,9 @@ namespace test_replication
     int res = 0;
 
     init_common_cubrid_modules ();
-
-    cubreplication::log_generator *lg = cubreplication::log_generator::new_instance (0);
+    
+    cubreplication::log_generator *lg = new cubreplication::log_generator;
+    cubreplication::log_generator::create_stream (0);
 
     cubreplication::log_consumer *lc = cubreplication::log_consumer::new_instance (0, true);
 
