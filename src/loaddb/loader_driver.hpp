@@ -63,6 +63,9 @@ namespace cubloader
   {
     public:
       loader_driver ();
+      loader_driver (const loader_driver &copy) = delete;
+      loader_driver &operator= (const loader_driver &other) = delete;
+
       virtual ~loader_driver ();
 
       int parse (std::string &s);
