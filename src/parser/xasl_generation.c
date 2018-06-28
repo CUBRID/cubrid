@@ -19790,21 +19790,14 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 	{
 	  continue;
 	}
-      PT_NODE *default_expr_attrs = NULL;
       PT_NODE *cl_name_node = p->info.spec.flat_entity_list;
       DB_OBJECT *class_obj = cl_name_node->info.name.db_object;
 
-      error =
-	check_for_on_update_expr (parser, assigns, &default_expr_attrs, class_obj, cl_name_node->info.name.spec_id);
+      error = check_for_on_update_expr (parser, assigns, class_obj, cl_name_node->info.name.spec_id);
       if (error != NO_ERROR)
 	{
 	  PT_INTERNAL_ERROR (parser, "update");
 	  goto cleanup;
-	}
-      parser_append_node (default_expr_attrs, assigns);
-      if (default_expr_attrs != NULL)
-	{
-	  p->info.spec.flag = (PT_SPEC_FLAG) (p->info.spec.flag | PT_SPEC_FLAG_UPDATE);
 	}
     }
 
@@ -24048,18 +24041,14 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	{
 	  continue;
 	}
-      PT_NODE *default_expr_attrs = NULL;
       PT_NODE *cl_name_node = p->info.spec.flat_entity_list;
       DB_OBJECT *class_obj = cl_name_node->info.name.db_object;
-      error =
-	check_for_on_update_expr (parser, assigns, &default_expr_attrs, class_obj, cl_name_node->info.name.spec_id);
+      error = check_for_on_update_expr (parser, assigns, class_obj, cl_name_node->info.name.spec_id);
       if (error != NO_ERROR)
 	{
 	  PT_INTERNAL_ERROR (parser, "merge update");
-	  parser_free_tree (parser, copy_assigns);
 	  goto cleanup;
 	}
-      parser_append_node (default_expr_attrs, assigns);
     }
 
   /* make a copy of assignment list to be able to iterate later */
