@@ -22,9 +22,11 @@
  */
 
 #include <sstream>
+#include <fstream>
 
-#include "loader_driver.hpp"
+#include "error_manager.h"
 #include "language_support.h"
+#include "loader_driver.hpp"
 #include "memory_alloc.h"
 
 namespace cubloader
@@ -54,27 +56,29 @@ namespace cubloader
   int
   loader_driver::parse (std::string &s)
   {
-    std::istringstream *iss  = new std::istringstream (s);
+    std::istringstream iss (s);
 
-    m_scanner = new loader_scanner (iss);
-    m_parser = new loader_parser (*m_scanner, *this);
+    return parse_internal (iss);
+  }
 
-    // TODO CBRD-21654 remove this
-    m_scanner->set_debug (0);
-    m_parser->set_debug_level (1);
+  int
+  loader_driver::parse (std::istream &iss)
+  {
+    return parse_internal (iss);
+  }
 
-    int ret = m_parser->parse ();
+  int
+  loader_driver::parse (const char *filename)
+  {
+    assert (filename != NULL);
 
-    delete m_parser;
-    m_parser = NULL;
+    std::ifstream in_file (filename);
+    if (!in_file.good ())
+      {
+	return -1;
+      }
 
-    delete m_scanner;
-    m_scanner = NULL;
-
-    delete iss;
-    iss = NULL;
-
-    return ret;
+    return parse_internal (in_file);
   }
 
   void
@@ -388,5 +392,26 @@ namespace cubloader
     m_qstr_buffer = (char *) realloc (m_qstr_buffer, m_qstr_buffer_size);
 
     assert (m_qstr_buffer != NULL);
+  }
+
+  int
+  loader_driver::parse_internal (std::istream &is)
+  {
+    m_scanner = new loader_scanner (&is);
+    m_parser = new loader_parser (*m_scanner, *this);
+
+    // TODO CBRD-21654 remove this
+    m_scanner->set_debug (0);
+    m_parser->set_debug_level (0);
+
+    int ret = m_parser->parse ();
+
+    delete m_parser;
+    m_parser = NULL;
+
+    delete m_scanner;
+    m_scanner = NULL;
+
+    return ret;
   }
 } // namespace cubloader

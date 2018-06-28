@@ -26,7 +26,6 @@
 
 #include <istream>
 
-#include "error_manager.h"
 #include "loader.h"
 #include "loader_grammar.hpp"
 #include "loader_scanner.hpp"
@@ -67,6 +66,9 @@ namespace cubloader
       virtual ~loader_driver ();
 
       int parse (std::string &s);
+      int parse (std::istream &iss);
+      int parse (const char *filename);
+
       void error (const location &l, const std::string &m);
 
       void append_char (char c);
@@ -119,6 +121,7 @@ namespace cubloader
       string_t *make_string ();
       void alloc_qstr_buffer (std::size_t size);
       void realloc_qstr_buffer (std::size_t new_size);
+      int parse_internal (std::istream &is);
 
       template<typename T>
       T *alloc_ldr_type ();

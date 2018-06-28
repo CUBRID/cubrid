@@ -18,12 +18,11 @@
  */
 
 /*
- * loader_scanner.l - loader lexer file
+ * loader_lexer.l - loader lexer file
  */
 
 /*** C/C++ Declarations ***/
 %{
-#include "loader.h"
 #include "loader_scanner.hpp"
 
 #undef YY_DECL
@@ -35,7 +34,7 @@
 /* typedef to make the returns for the tokens shorter */
 using token = cubloader::loader_parser::token;
 
-//#define LEXER_DEBUG
+/*#define LEXER_DEBUG*/
 
 #ifdef LEXER_DEBUG
 #define PRINT printf("lex: ");printf

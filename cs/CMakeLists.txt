@@ -251,11 +251,6 @@ set(LOADER_SOURCES
   ${LOADDB_DIR}/loader_driver.cpp
   )
 
-set(LOADER_HEADERS
-  ${LOADDB_DIR}/loader_driver.hpp
-  ${LOADDB_DIR}/loader_scanner.hpp
-  )
-
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
 if(UNIX)
   list(APPEND EXECUTABLE_SOURCES ${EXECUTABLES_DIR}/checksumdb.c)
@@ -366,7 +361,6 @@ add_library(cubridcs SHARED
   ${ES_SOURCES}
   ${PROBES_OBJECT}
   ${LOADER_SOURCES}
-  ${LOADER_HEADERS}
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 

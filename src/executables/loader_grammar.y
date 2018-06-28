@@ -18,7 +18,7 @@
  */
 
 /*
- * loader_parser.y - loader grammar file
+ * loader_grammar.y - loader grammar file
  */
 
 %skeleton "lalr1.cc"
@@ -57,23 +57,18 @@ namespace cubloader
 
 %code {
 #include "loader_driver.hpp"
-#include "error_manager.h"
 #include "memory_alloc.h"
 
 #undef yylex
 #define yylex scanner.yylex
 
-//#define PARSER_DEBUG
+/*#define PARSER_DEBUG*/
 
 #ifdef PARSER_DEBUG
 #define DBG_PRINT(s) printf("rule: %s\n", (s));
 #else
 #define DBG_PRINT(s)
 #endif
-
-extern bool loader_In_instance_line;
-
-int loader_yyline = 1;
 }
 
 %token NL

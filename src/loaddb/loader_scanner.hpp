@@ -21,14 +21,13 @@
  * loader_scanner.hpp - TODO CBRD-21654
  */
 
-#ifndef _SCANNER_HPP_
-#define _SCANNER_HPP_
+#ifndef _LOADER_SCANNER_HPP_
+#define _LOADER_SCANNER_HPP_
 
 #if !defined (yyFlexLexerOnce)
 #include <FlexLexer.h>
 #endif
 
-#include "loader_grammar.hpp"
 #include "loader_driver.hpp"
 
 namespace cubloader
@@ -36,8 +35,7 @@ namespace cubloader
   class loader_scanner : public yyFlexLexer
   {
     public:
-      loader_scanner (std::istream *arg_yyin = 0, std::ostream *arg_yyout = 0)
-	: yyFlexLexer (arg_yyin, arg_yyout)
+      loader_scanner (std::istream *arg_yyin) : yyFlexLexer (arg_yyin)
       {
       };
 
@@ -45,8 +43,9 @@ namespace cubloader
       {
       };
 
-      virtual int yylex (loader_parser::semantic_type *yylval, loader_parser::location_type *yylloc, loader_driver &driver);
+      virtual int yylex (loader_parser::semantic_type *yylval, loader_parser::location_type *yylloc,
+			 loader_driver &driver);
   };
 } // namespace cubloader
 
-#endif // _SCANNER_HPP_
+#endif // _LOADER_SCANNER_HPP_
