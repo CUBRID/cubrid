@@ -47,7 +47,6 @@ namespace cubreplication
 	if (err == NO_ERROR)
 	  {
 	    m_lc->push_entry (se);
-	    m_lc->signal_apply_ready ();
 	  }
       };
 
@@ -128,8 +127,13 @@ namespace cubreplication
 	  {
 	    int err = m_lc->pop_entry (se);
 
-	    if (err == NO_ERROR)
+	    if (err != NO_ERROR)
 	      {
+                break;
+              }
+
+            assert (err == NO_ERROR);
+
 		if (se->is_group_commit ())
 		  {
                     assert (se->get_data_packed_size () == 0);
@@ -189,16 +193,7 @@ namespace cubreplication
 		    /* stream entry is deleted by applier task thread */
 		  }
 	      }
-	    else
-	      {
-		if (m_lc->is_stopping ())
-		  {
-		    break;
-		  }
 
-		m_lc->wait_apply_ready ();
-	      }
-	  }
       }
 
     private:
@@ -224,8 +219,6 @@ namespace cubreplication
     if (m_use_daemons)
       {
 	cubthread::get_manager ()->destroy_daemon (m_prepare_daemon);
-
-	signal_apply_ready ();
 	cubthread::get_manager ()->destroy_daemon (m_apply_daemon);
 	cubthread::get_manager ()->destroy_worker_pool (m_applier_workers_pool);
       }
@@ -239,6 +232,8 @@ namespace cubreplication
   {
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     m_stream_entries.push (entry);
+    m_apply_task_ready = true;
+    m_apply_task_cv.notify_one ();
 
     return NO_ERROR;
   }
@@ -248,8 +243,22 @@ namespace cubreplication
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     if (m_stream_entries.empty ())
       {
-	return ER_FAILED;
+        while (m_is_stopped == false)
+          {
+	    m_apply_task_ready = false;
+	    m_apply_task_cv.wait_for (ulock,
+				      std::chrono::milliseconds (1000),
+				      [this] { return m_apply_task_ready == true;});
+          }
+
+        if (m_is_stopped)
+          {
+            return ER_FAILED;
+          }
       }
+
+    assert (m_stream_entries.empty () == false);
+
     entry = m_stream_entries.front ();
     m_stream_entries.pop ();
     return NO_ERROR;

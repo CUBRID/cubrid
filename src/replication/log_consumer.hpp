@@ -74,28 +74,10 @@ namespace cubreplication
 
       std::atomic<int> m_started_tasks;
 
-      std::mutex m_apply_task_mutex;
       std::condition_variable m_apply_task_cv;
       bool m_apply_task_ready;
 
       bool m_is_stopped;
-
-    protected:
-      void wait_apply_ready (void)
-      {
-	std::unique_lock<std::mutex> local_lock (m_apply_task_mutex);
-	m_apply_task_ready = false;
-	m_apply_task_cv.wait_for (local_lock,
-				  std::chrono::milliseconds (1000),
-				  [this] { return m_apply_task_ready == true;});
-      }
-
-      void signal_apply_ready (void)
-      {
-	std::lock_guard<std::mutex> local_lock (m_apply_task_mutex);
-	m_apply_task_ready = true;
-	m_apply_task_cv.notify_one ();
-      }
 
     public:
 
