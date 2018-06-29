@@ -307,6 +307,7 @@ namespace cubreplication
 
     /* consumer needs only one stream appender */
     new_lc->m_stream = new cubstream::packing_stream (buffer_size, 2);
+    new_lc->m_stream->set_trigger_min_to_read_size (replication_stream_entry::get_header_size_s ());
     new_lc->m_stream->init (new_lc->m_start_position);
 
     /* this is the global instance */

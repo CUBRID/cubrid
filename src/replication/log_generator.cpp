@@ -90,6 +90,7 @@ namespace cubreplication
     int num_max_appenders = log_Gl.trantable.num_total_indices + 1;
 
     log_generator::g_stream = new cubstream::packing_stream (buffer_size, num_max_appenders);
+    log_generator::g_stream->set_trigger_min_to_read_size (replication_stream_entry::get_header_size_s ());
     log_generator::g_stream->init (log_generator::g_start_append_position);
 
     for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
