@@ -78,7 +78,7 @@
 #include "heartbeat.h"
 #endif
 #include "dbtype.h"
-#include <forward_list>
+#include "lockfree_circular_queue.hpp"
 #include <mutex>
 #include <condition_variable>
 #include "thread_looper.hpp"
@@ -134,8 +134,7 @@ static int ha_Log_applier_state_num = 0;
 // *INDENT-OFF*
 static cubthread::entry_workpool *css_Server_request_worker_pool = NULL;
 static cubthread::entry_workpool *css_Connection_worker_pool = NULL;
-static std::forward_list<CSS_CONN_ENTRY *> conn_queue, conn_queue2;
-static std::forward_list<CSS_CONN_ENTRY *> *actual_queue = NULL;
+static lockfree::circular_queue<CSS_CONN_ENTRY *> conn_queue (1000);
 static cubthread::daemon *conn_daemon = NULL;
 static std::mutex conn_queue_mutex;
 static std::condition_variable conn_queue_cv;
@@ -170,33 +169,20 @@ public:
 
   void execute (context_type &thread_ref) override final
   {
-    CSS_CONN_ENTRY *elem = NULL;
-    std::forward_list<CSS_CONN_ENTRY *> *my_list;
-    
-    std::unique_lock<std::mutex> lk (conn_queue_mutex);
-    conn_queue_cv.wait (lk, [] {return !actual_queue->empty ();});
-    
-    if (actual_queue == &conn_queue)
-      {
-        actual_queue = &conn_queue2;
-        my_list = &conn_queue;
-      }
-    else if (actual_queue == &conn_queue2)
-      {
-        actual_queue = &conn_queue;
-        my_list = &conn_queue2;
-      }
+    {
+      std::unique_lock<std::mutex> lk (conn_queue_mutex);
 
-    lk.unlock ();
+      conn_queue_cv.wait (lk, [] {return !conn_queue.is_empty ();});
+    }
 
-    while (!my_list->empty ())
+    CSS_CONN_ENTRY *head = NULL;
+
+    while (conn_queue.consume (head))
       {
-        elem = my_list->front ();
-        my_list->pop_front ();
 
         if (css_Connect_handler)
           {
-            if ((*css_Connect_handler) (elem) != NO_ERRORS)
+            if ((*css_Connect_handler) (head) != NO_ERRORS)
               {
                 assert_release (false);
               }
@@ -735,7 +721,7 @@ css_process_new_client (SOCKET master_fd)
   css_send_data (conn, rid, (char *) &reason, sizeof (int));
 
   std::unique_lock<std::mutex> lk (conn_queue_mutex);
-  actual_queue->push_front (conn);
+  conn_queue.produce (conn);
   lk.unlock ();
   conn_queue_cv.notify_one ();
 }
@@ -1457,8 +1443,6 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   
   conn_daemon = cubthread::get_manager ()->create_daemon (cubthread::looper (std::chrono::milliseconds (0)),
 			new conn_daemon_task (), "conn_daemon");
-  
-  actual_queue = &conn_queue;
 
   conn = css_connect_to_master_server (port_id, server_name, name_length);
   if (conn != NULL)
