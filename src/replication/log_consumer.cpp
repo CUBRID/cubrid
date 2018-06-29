@@ -31,7 +31,7 @@
 
 namespace cubreplication
 {
-  class prepare_stream_entry_task : public cubthread::task_without_context
+  class prepare_stream_entry_task : public cubthread::entry_task
   {
     public:
       prepare_stream_entry_task (log_consumer *lc)
@@ -39,7 +39,7 @@ namespace cubreplication
       {
       };
 
-      void execute () override
+      void execute (cubthread::entry &thread_ref) override
       {
 	replication_stream_entry *se = NULL;
 
@@ -221,10 +221,7 @@ namespace cubreplication
 
     if (m_use_daemons)
       {
-	/* force condition variables wakeup */
-	signal_prepare_ready ();
-
-	cubthread::get_manager ()->destroy_daemon_without_entry (m_prepare_daemon);
+	cubthread::get_manager ()->destroy_daemon (m_prepare_daemon);
 
 	signal_apply_ready ();
 	cubthread::get_manager ()->destroy_daemon (m_apply_daemon);
@@ -273,23 +270,9 @@ namespace cubreplication
     return err;
   }
 
-  int log_consumer::fetch_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count,
-				  size_t &processed_bytes)
-  {
-    if (is_stopping ())
-      {
-	return NO_ERROR;
-      }
-
-    std::unique_lock<std::mutex> local_lock (m_prepare_mutex);
-    m_prepare_ready = false;
-    m_prepare_cv.wait_for (local_lock, std::chrono::milliseconds (1000), [this] { return m_prepare_ready; });
-    return NO_ERROR;
-  };
-
   void log_consumer::start_daemons (void)
   {
-    m_prepare_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
+    m_prepare_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
 		       new prepare_stream_entry_task (this),
 		       "prepare_stream_entry_daemon");
 
@@ -332,7 +315,6 @@ namespace cubreplication
 
     if (use_daemons)
       {
-	new_lc->m_stream->set_fetch_data_handler (new_lc->m_fetch_func);
 	new_lc->start_daemons ();
       }
 

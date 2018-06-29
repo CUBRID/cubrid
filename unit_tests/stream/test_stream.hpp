@@ -297,6 +297,8 @@ namespace test_stream
 
       static std::bitset<1024> g_running_packers;
       static std::bitset<1024> g_running_readers;
+
+      static void update_stream_drop_position (void);
   };
 
   class stream_pack_task : public cubthread::task<cubthread::entry>

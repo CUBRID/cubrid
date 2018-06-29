@@ -39,7 +39,7 @@ namespace cubstream
     /* TODO : system parameter */
     m_trigger_flush_to_disk_size = buffer_capacity / 2;
 
-    m_trigger_min_to_read_size = 1024;
+    m_trigger_min_to_read_size = 16;
 
     m_stat_reserve_queue_spins = 0;
     m_stat_reserve_buffer_spins = 0;
@@ -47,6 +47,8 @@ namespace cubstream
     m_stat_read_not_in_buffer_cnt = 0;
     m_stat_read_no_readable_pos_cnt = 0;
     m_stat_read_buffer_failed_cnt = 0;
+
+    m_is_stopped = false;
   }
 
   packing_stream::~packing_stream ()
@@ -322,17 +324,20 @@ namespace cubstream
     /* notify readers of the new completed position */
     if (new_completed_position > m_last_notified_committed_pos + m_trigger_min_to_read_size)
       {
+	stream_position save_last_notified_commited_pos = m_last_notified_committed_pos;
+	size_t committed_bytes = new_completed_position - m_last_notified_committed_pos;
+
+	signal_data_ready (new_completed_position);
+
 	if (m_ready_pos_handler)
 	  {
 	    int err;
-	    err = m_ready_pos_handler (m_last_notified_committed_pos,
-				       new_completed_position - m_last_notified_committed_pos);
+	    err = m_ready_pos_handler (save_last_notified_commited_pos, committed_bytes);
 	    if (err != NO_ERROR)
 	      {
 		return err;
 	      }
 	  }
-	m_last_notified_committed_pos = new_completed_position;
       }
 
     return NO_ERROR;
@@ -420,7 +425,6 @@ namespace cubstream
   int packing_stream::wait_for_data (const size_t amount, const STREAM_SKIP_MODE skip_mode)
   {
     int err = NO_ERROR;
-    size_t dummy;
 
     if (m_read_position + amount <= m_last_committed_pos)
       {
@@ -432,21 +436,23 @@ namespace cubstream
       }
 
     m_stat_read_not_enough_data_cnt++;
-    if (m_fetch_data_handler)
+
+    do
       {
-	err = m_fetch_data_handler (m_read_position, NULL, amount, dummy);
-	if (err != NO_ERROR)
+	std::unique_lock<std::mutex> local_lock (m_serial_read_mutex);
+	m_serial_read_cv.wait_for (local_lock, std::chrono::milliseconds (1000),
+				   [&] { return m_last_notified_committed_pos >= m_read_position + amount; });
+
+	if (m_is_stopped)
 	  {
+	    err = ER_STREAM_NO_MORE_DATA;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (), m_read_position,
+		    amount);
 	    return err;
 	  }
+
       }
-    else
-      {
-	err = ER_STREAM_NO_MORE_DATA;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (), m_read_position,
-		amount);
-	return err;
-      }
+    while (m_read_position + amount > m_last_committed_pos);
 
     if (skip_mode == STREAM_SKIP)
       {
@@ -479,26 +485,14 @@ namespace cubstream
     int err = NO_ERROR;
     char *ptr = NULL;
 
-    if (req_start_pos + amount > m_last_committed_pos && m_fetch_data_handler)
+    if (req_start_pos + amount > m_last_committed_pos)
       {
 	m_stat_read_not_enough_data_cnt++;
 	/* not yet produced */
-	/* try asking for more data : */
-
-	size_t actual_read_bytes;
-
-	err = m_fetch_data_handler (req_start_pos, ptr, amount, actual_read_bytes);
-	if (err != NO_ERROR)
-	  {
-	    return NULL;
-	  }
-
-	if (actual_read_bytes < amount)
-	  {
-	    /* force fetch handler to acquire at least the requested amount or return error (above code) */
-	    assert (false);
-	    return NULL;
-	  }
+	assert (false);
+	err = ER_STREAM_NO_MORE_DATA;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (), m_read_position,
+		amount);
 
 	return NULL;
       }
@@ -544,13 +538,13 @@ namespace cubstream
 	/* the area may be found in trail of region B
 	 * this includes case when B does not exit - from start of buffer) */
 	ptr = (char *) ptr_trail_b + amount_trail_b - (m_last_committed_pos - req_start_pos);
-        assert (ptr_trail_b + amount_trail_b > ptr);
+	assert (ptr_trail_b + amount_trail_b > ptr);
 	actual_read_bytes = MIN (amount, ptr_trail_b + amount_trail_b - ptr);
       }
     else
       {
 	ptr = (char *) ptr_trail_a + amount_trail_a - (m_last_committed_pos - req_start_pos - amount_trail_b);
-        assert (ptr_trail_a + amount_trail_a > ptr);
+	assert (ptr_trail_a + amount_trail_a > ptr);
 	actual_read_bytes = MIN (amount, ptr_trail_a + amount_trail_a - ptr);
       }
 

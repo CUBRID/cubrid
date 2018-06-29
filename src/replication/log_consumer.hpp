@@ -74,18 +74,11 @@ namespace cubreplication
 
       std::atomic<int> m_started_tasks;
 
-      cubstream::stream::fetch_func_t m_fetch_func;
-
-      std::mutex m_prepare_mutex;
-      std::condition_variable m_prepare_cv;
-      bool m_prepare_ready;
-
       std::mutex m_apply_task_mutex;
       std::condition_variable m_apply_task_cv;
       bool m_apply_task_ready;
 
       bool m_is_stopped;
-
 
     protected:
       void wait_apply_ready (void)
@@ -110,13 +103,8 @@ namespace cubreplication
 	m_applier_worker_threads_count (100),
 	m_use_daemons (false),
 	m_started_tasks (0),
-        m_is_stopped (false)
+	m_is_stopped (false)
       {
-	m_fetch_func = std::bind (&log_consumer::fetch_action, std::ref (*this),
-				  std::placeholders::_1,
-				  std::placeholders::_2,
-				  std::placeholders::_3,
-				  std::placeholders::_4);
       };
 
       ~log_consumer ();
@@ -126,9 +114,6 @@ namespace cubreplication
       int pop_entry (replication_stream_entry *&entry);
 
       int fetch_stream_entry (replication_stream_entry *&entry);
-
-      int fetch_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count,
-			size_t &processed_bytes);
 
       void start_daemons (void);
       void execute_task (cubthread::entry &thread, repl_applier_worker_task *task);
@@ -158,13 +143,6 @@ namespace cubreplication
 	  }
       }
 
-      void signal_prepare_ready (void)
-      {
-	std::lock_guard<std::mutex> local_lock (m_prepare_mutex);
-	m_prepare_ready = true;
-	m_prepare_cv.notify_one ();
-      }
-
       bool is_stopping (void)
       {
 	return m_is_stopped;
@@ -173,6 +151,7 @@ namespace cubreplication
       void set_stop (void)
       {
 	m_is_stopped = true;
+	log_consumer::get_stream ()->set_stop ();
       }
 
   };

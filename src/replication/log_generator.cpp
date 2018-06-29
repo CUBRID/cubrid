@@ -94,9 +94,9 @@ namespace cubreplication
 
     for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
       {
-        LOG_TDES *tdes = LOG_FIND_TDES (i);
+	LOG_TDES *tdes = LOG_FIND_TDES (i);
 
-        log_generator *lg = &(tdes->replication_log_generator);
+	log_generator *lg = & (tdes->replication_log_generator);
 
 	lg->m_stream_entry.set_stream (log_generator::g_stream);
       }
@@ -104,7 +104,7 @@ namespace cubreplication
     return NO_ERROR;
   }
 
-  cubstream::packing_stream* log_generator::g_stream = NULL;
+  cubstream::packing_stream *log_generator::g_stream = NULL;
 
   cubstream::stream_position log_generator::g_start_append_position = 0;
 

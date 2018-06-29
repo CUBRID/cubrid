@@ -369,7 +369,6 @@ namespace test_replication
 
     move_buffers (lg_stream, lc_stream);
 
-    lc->signal_prepare_ready ();
     std::cout << "Done" << std::endl;
 
 

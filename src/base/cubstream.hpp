@@ -53,7 +53,6 @@ namespace cubstream
       typedef std::function<int (const stream_position &, char *, const size_t, size_t &)> read_prepare_func_t;
       typedef std::function<int (const stream_position &, char *, const size_t)> write_func_t;
       typedef std::function<int (const stream_position &, const size_t)> notify_func_t;
-      typedef std::function<int (const stream_position &, char *, const size_t, size_t &)> fetch_func_t;
 
     protected:
       /* callback functions: */
@@ -61,10 +60,6 @@ namespace cubstream
        * readers; when the difference between append position and drop position exceeds threshold, this action
        * needs to be taken (usually saving to disk) */
       notify_func_t m_filled_stream_handler;
-
-      /* called when reader does not have enough data to read; usually it blocks in waiting for producing, but
-       * may be used as actively producing data */
-      fetch_func_t m_fetch_data_handler;
 
       /* called when commit position advances enough (delta above threshold); the usual action is notify readers
        */
@@ -132,11 +127,6 @@ namespace cubstream
       void set_filled_stream_handler (notify_func_t handler)
       {
 	m_filled_stream_handler = handler;
-      };
-
-      void set_fetch_data_handler (fetch_func_t handler)
-      {
-	m_fetch_data_handler = handler;
       };
 
       void set_ready_pos_handler (notify_func_t handler)

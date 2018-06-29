@@ -107,7 +107,7 @@ namespace cubreplication
   }
 
   void single_row_repl_entry::copy_and_add_changed_value (cubthread::entry &thread_entry, const int att_id,
-                                                          DB_VALUE *db_val)
+      DB_VALUE *db_val)
   {
     HL_HEAPID save_heapid;
 
