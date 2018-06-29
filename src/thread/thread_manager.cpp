@@ -141,7 +141,7 @@ namespace cubthread
 
   entry_workpool *
   manager::create_worker_pool (size_t pool_size, size_t task_max_count, entry_manager *context_manager,
-			       std::size_t core_count, bool debug_logging)
+			       std::size_t core_count, bool debug_logging, bool pool_threads, cubperf::duration transition_period)
   {
 #if defined (SERVER_MODE)
     if (is_single_thread ())
@@ -156,7 +156,7 @@ namespace cubthread
 	  }
 	// reserve pool_size entries and add to m_worker_pools
 	return create_and_track_resource (m_worker_pools, pool_size, pool_size, task_max_count, *context_manager,
-					  core_count, debug_logging);
+					  core_count, debug_logging, pool_threads, transition_period);
       }
 #else // not SERVER_MODE = SA_MODE
     return NULL;

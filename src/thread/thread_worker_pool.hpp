@@ -139,7 +139,8 @@ namespace cubthread
       class core;
 
       worker_pool (std::size_t pool_size, std::size_t task_max_count, context_manager_type &context_mgr,
-		   std::size_t core_count = 1, bool debug_logging = false);
+		   std::size_t core_count = 1, bool debug_logging = false, bool pool_threads = false,
+		   cubperf::duration transition_period = std::chrono::seconds (5));
       ~worker_pool ();
 
       // try to execute task; executes only if the maximum number of tasks is not reached.
@@ -173,8 +174,15 @@ namespace cubthread
       // get worker pool statistics
       // note: the statistics are collected from all cores and all their workers adding up all local statistics
       void get_stats (cubperf::stat_value *stats_out) const;
-      
-      inline bool get_log () {return m_log;}
+
+      inline bool is_pooling_threads () const
+      {
+	return m_pool_threads;
+      }
+      inline const cubperf::duration &get_transition_period () const
+      {
+	return m_transition_period;
+      }
 
       //////////////////////////////////////////////////////////////////////////
       // context management
@@ -235,8 +243,14 @@ namespace cubthread
 
       // true to do debug logging
       bool m_log;
+
+      // true to start threads at init
+      bool m_pool_threads;
+
+      // transition time period between active and inactive
+      cubperf::duration m_transition_period;
   };
-  
+
   // worker_pool<Context>::core
   //
   // description
@@ -250,11 +264,6 @@ namespace cubthread
       using context_type = Context;
       using task_type = task<Context>;
       using worker_pool_type = worker_pool<Context>;
-      
-      static long long contention_us[1000];
-      static long long thread_creation_us[1000];
-      static int contention_index;
-      static int thread_creation_index;
 
       // forward definition of nested class worker
       class worker;
@@ -295,6 +304,10 @@ namespace cubthread
 
       // getters
       std::size_t get_max_worker_count (void) const;
+      inline worker_pool_type *get_parent_pool (void) const
+      {
+	return m_parent_pool;
+      }
 
     private:
 
@@ -312,18 +325,6 @@ namespace cubthread
       std::queue<task_type *> m_task_queue;           // list of tasks pushed while all workers were occupied
       std::mutex m_workers_mutex;                     // mutex to synchronize activity on worker lists
   };
-  
-  template <typename Context>
-  long long worker_pool<Context>::core::contention_us[1000];
-  
-  template <typename Context>
-  long long worker_pool<Context>::core::thread_creation_us[1000];
-  
-  template <typename Context>
-  int worker_pool<Context>::core::contention_index = 0;
-  
-  template <typename Context>
-  int worker_pool<Context>::core::thread_creation_index = 0;
 
   // worker_pool<Context>::worker
   //
@@ -491,7 +492,8 @@ namespace cubthread
 
   template <typename Context>
   worker_pool<Context>::worker_pool (std::size_t pool_size, std::size_t task_max_count,
-				     context_manager_type &context_mgr, std::size_t core_count, bool debug_log)
+				     context_manager_type &context_mgr, std::size_t core_count, bool debug_log, bool pool_threads,
+				     cubperf::duration transition_period)
     : m_max_workers (pool_size)
     , m_task_max_count (task_max_count)
     , m_task_count (0)
@@ -501,6 +503,8 @@ namespace cubthread
     , m_round_robin_counter (0)
     , m_stopped (false)
     , m_log (debug_log)
+    , m_pool_threads (pool_threads)
+    , m_transition_period (transition_period)
   {
     // initialize cores; we'll try to distribute pool evenly to all cores. if core count is not fully contained in
     // pool size, some cores will have one additional worker
@@ -771,7 +775,6 @@ namespace cubthread
     m_worker_array = NULL;
   }
 
-#define MAX_POOL_THREADS 50
   template <typename Context>
   void
   worker_pool<Context>::core::init_pool_and_workers (worker_pool<Context> &parent, std::size_t worker_count)
@@ -784,22 +787,24 @@ namespace cubthread
     // allocate workers array
     m_worker_array = new worker[m_max_workers];
 
-/*
-    // all workers are inactive
-    for (std::size_t it = 0; it < m_max_workers; it++)
+    if (!m_parent_pool->m_pool_threads)
       {
-	m_worker_array[it].init_core (*this);
-	m_inactive_list.push_front (&m_worker_array[it]);
+	// all workers are inactive
+	for (std::size_t it = 0; it < m_max_workers; it++)
+	  {
+	    m_worker_array[it].init_core (*this);
+	    m_inactive_list.push_front (&m_worker_array[it]);
+	  }
       }
-*/
-    for (int i = 0; i < m_max_workers; i++)
+    else
       {
-        m_worker_array[i].init_core (*this);
-        m_worker_array[i].push_task_on_new_thread (NULL, cubperf::clock::now ());
-        m_free_active_list.push_front (&m_worker_array[i]);
+	for (std::size_t it = 0; it < m_max_workers; it++)
+	  {
+	    m_worker_array[it].init_core (*this);
+	    m_worker_array[it].push_task_on_new_thread (NULL, cubperf::clock::now ());
+	  }
       }
   }
-#undef MAX_POOL_THREADS
 
   template <typename Context>
   void
@@ -821,7 +826,6 @@ namespace cubthread
     // 3. if no workers, reject task (returns false)
 
     cubperf::time_point push_time = cubperf::clock::now ();
-    auto start = std::chrono::high_resolution_clock::now();
     worker *refp = NULL;
 
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
@@ -852,23 +856,9 @@ namespace cubthread
 	m_inactive_list.pop_front ();
 
 	ulock.unlock ();
-        
-        auto finish = std::chrono::high_resolution_clock::now();
-        long long microseconds = std::chrono::duration_cast<std::chrono::microseconds>(finish-start).count();
-        
-        if (m_parent_pool->get_log ())
-        contention_us[contention_index++] = microseconds;
 
 	// start new thread
-        
-        auto start2 = std::chrono::high_resolution_clock::now();
 	refp->push_task_on_new_thread (task_p, push_time);
-        auto finish2 = std::chrono::high_resolution_clock::now();
-        long long microseconds2 = std::chrono::duration_cast<std::chrono::microseconds>(finish2-start2).count();
-        
-        if (m_parent_pool->get_log ())
-        thread_creation_us[thread_creation_index++] = microseconds2;
-        
 	return; // worker found
       }
 
@@ -1057,30 +1047,26 @@ namespace cubthread
   void
   worker_pool<Context>::core::worker::push_task_on_new_thread (task<Context> *work_p, cubperf::time_point push_time)
   {
-
     if (work_p != NULL)
       {
-        // start new thread and run task
-        assert (work_p != NULL);
+	// make sure worker is in a valid state
+	assert (m_task_p == NULL);
+	assert (m_context_p == NULL);
 
-        // make sure worker is in a valid state
-        assert (m_task_p == NULL);
-        assert (m_context_p == NULL);
+	// save push time
+	m_push_time = push_time;
 
-        // save push time
-        m_push_time = push_time;
+	// save task
+	m_task_p = work_p;
 
-        // save task
-        m_task_p = work_p;
+	// start thread.
+	//
+	// the next code tries to help visualizing any system errors that can occur during create or detach in debug mode
+	//
+	// release will basically be reduced to:
+	// std::thread (&worker::run, this).detach ();
+	//
       }
-
-    // start thread.
-    //
-    // the next code tries to help visualizing any system errors that can occur during create or detach in debug mode
-    //
-    // release will basically be reduced to:
-    // std::thread (&worker::run, this).detach ();
-    //
 
     std::thread t;
 
@@ -1147,6 +1133,11 @@ namespace cubthread
     // a context is required
     m_context_p = &m_parent_core->get_context_manager ().create_context ();
     wp_worker_statset_time_and_increment (m_statistics, Wpstat_create_context);
+
+    if (m_task_p == NULL)
+      {
+	(void) get_new_task ();
+      }
   }
 
   template <typename Context>
@@ -1205,7 +1196,7 @@ namespace cubthread
       }
 
     // get a queued task or wait for one to come
-    const std::chrono::seconds WAIT_TIME = std::chrono::minutes (5);
+    const cubperf::duration &WAIT_TIME = m_parent_core->get_parent_pool ()->get_transition_period ();
 
     // either get a queued task or add to free active list
     // note: returned task cannot be saved directly to m_task_p. if worker is added to wait queue and NULL is returned,
@@ -1294,10 +1285,6 @@ namespace cubthread
     while (true)
       {
 	init_run ();    // do stuff at the beginning like creating context
-
-        std::unique_lock<std::mutex> ulock (m_task_mutex);
-        m_task_cv.wait (ulock, [this] { return m_task_p != NULL; });
-        ulock.unlock ();
 
 	// loop and execute as many tasks as possible
 	do

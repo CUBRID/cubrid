@@ -75,8 +75,6 @@
 #include "dbi.h"
 #include "util_func.h"
 
-#include <chrono>
-
 static void css_master_error (const char *error_string);
 static int css_master_timeout (void);
 static int css_master_init (int cport, SOCKET * clientfd);
@@ -132,9 +130,6 @@ pthread_mutex_t css_Master_socket_anchor_lock;
 pthread_mutex_t css_Master_er_log_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t css_Master_er_log_enable_lock = PTHREAD_MUTEX_INITIALIZER;
 bool css_Master_er_log_enabled = true;
-
-long long send_fd_timer_counter_us = 0;
-unsigned int send_fd_times_called = 0;
 
 /*
  * css_master_error() - print error message to syslog or console
@@ -677,21 +672,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 #endif
                   bool rc;
 
-                  auto start = std::chrono::high_resolution_clock::now();
-                  rc = css_send_new_request_to_server (temp->fd, conn->fd, rid, request);
-                  auto finish = std::chrono::high_resolution_clock::now();
-
-                  long long microseconds = std::chrono::duration_cast<std::chrono::microseconds>(finish-start).count();
-                  send_fd_timer_counter_us += microseconds;
-                  send_fd_times_called++;
-
-                  if (send_fd_times_called >= 100)
-                    {
-                      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "css_send_new_request_to_server avg time us: %lld.\n", send_fd_timer_counter_us / send_fd_times_called);
-                      send_fd_times_called = 0;
-                      send_fd_timer_counter_us = 0;
-                    }
-		  if (rc)
+		  if (css_send_new_request_to_server (temp->fd, conn->fd, rid, request))
 		    {
 		      free_and_init (server_name);
 		      css_free_conn (conn);
