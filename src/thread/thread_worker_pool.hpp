@@ -794,12 +794,9 @@ namespace cubthread
 */
     for (int i = 0; i < m_max_workers; i++)
       {
-        cubthread::worker_pool<Context>::core::worker *active_worker = new worker ();
-        active_worker->init_core (*this);
-
-        active_worker->push_task_on_new_thread (NULL, cubperf::clock::now ());
-
-        m_free_active_list.push_front (active_worker);
+        m_worker_array[i].init_core (*this);
+        m_worker_array[i].push_task_on_new_thread (NULL, cubperf::clock::now ());
+        m_free_active_list.push_front (&m_worker_array[i]);
       }
   }
 #undef MAX_POOL_THREADS
