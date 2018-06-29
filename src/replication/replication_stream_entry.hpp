@@ -100,9 +100,9 @@ namespace cubreplication
 
       size_t get_header_size ()
       {
-        static size_t header_size = replication_stream_entry_header::get_size ();
+	static size_t header_size = replication_stream_entry_header::get_size ();
 
-        return header_size;
+	return header_size;
       }
 
       size_t get_data_packed_size (void);
@@ -148,8 +148,8 @@ namespace cubreplication
 
       static size_t get_header_size_s (void)
       {
-        static replication_stream_entry_header e;
-        return e.get_size ();
+	static replication_stream_entry_header e;
+	return e.get_size ();
       }
   };
 

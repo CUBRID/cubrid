@@ -156,9 +156,9 @@ namespace cubstream
       };
 
       void set_trigger_min_to_read_size (const size_t min_read_size)
-        {
-          m_trigger_min_to_read_size = min_read_size;
-        }
+      {
+	m_trigger_min_to_read_size = min_read_size;
+      }
 
       /* fill factor : if < 1 : no need to flush or throttle the appenders ; if > 1 : need to flush and/or throttle */
       float stream_fill_factor (void)
