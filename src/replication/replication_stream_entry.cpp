@@ -32,19 +32,6 @@
 namespace cubreplication
 {
 
-  size_t replication_stream_entry::get_header_size ()
-  {
-    size_t header_size = 0;
-    cubpacking::packer *serializator = get_packer ();
-
-    header_size += serializator->get_packed_bigint_size (header_size);
-    header_size += serializator->get_packed_bigint_size (header_size);
-    header_size += serializator->get_packed_int_size (header_size);
-    header_size += serializator->get_packed_int_size (header_size);
-
-    return header_size;
-  }
-
   size_t replication_stream_entry::get_data_packed_size (void)
   {
     return m_header.data_size;
