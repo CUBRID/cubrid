@@ -28,6 +28,8 @@
 #include "language_support.h"
 #include "loader_driver.hpp"
 #include "memory_alloc.h"
+#include "message_catalog.h"
+#include "utility.h"
 
 namespace cubloader
 {
@@ -96,8 +98,12 @@ namespace cubloader
   void
   loader_driver::error (const location &l, const std::string &m)
   {
+    assert (m_scanner != NULL);
+
     // TODO CBRD-21654 collect errors and report them to client
-    std::cout << "location: " << l << ", m: " << m << "\n";
+    // TODO CBRD-21654 ldr_increment_err_total (ldr_Current_context);
+    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SYNTAX_ERR), lineno (),
+	     m_scanner->YYText ());
   }
 
   int loader_driver::lineno ()
@@ -131,6 +137,11 @@ namespace cubloader
 	    if (m_qstr_buffer == NULL)
 	      {
 		alloc_qstr_buffer (MAX_QUOTED_STR_BUF_SIZE * 2);
+
+		if (m_qstr_buffer == NULL)
+		  {
+		    return;
+		  }
 	      }
 
 	    memcpy (m_qstr_buffer, m_qstr_buf_p, m_qstr_buf_idx);
@@ -180,8 +191,6 @@ namespace cubloader
   string_t *
   loader_driver::make_string_by_buffer ()
   {
-    char *invalid_pos = NULL;
-
     string_t *str = make_string ();
     if (str == NULL)
       {
@@ -197,37 +206,28 @@ namespace cubloader
       }
     else
       {
-	if (m_copy_buf_pool_idx < COPY_BUF_POOL_SIZE && str->size < MAX_COPY_BUF_SIZE)
+	if (use_copy_buf_pool (str->size))
 	  {
 	    str->val = & (m_copy_buf_pool[m_copy_buf_pool_idx++][0]);
-	    memcpy (str->val, m_qstr_buf_p, m_qstr_buf_idx);
 	    str->need_free_val = false;
 	  }
 	else
 	  {
 	    str->val = (char *) malloc (m_qstr_buf_idx);
-
-	    if (str->val == NULL)
-	      {
-		if (str->need_free_self)
-		  {
-		    free_and_init (str);
-		  }
-
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, m_qstr_buf_idx);
-		//YY_FATAL_ERROR (er_msg());
-		return NULL;
-	      }
-
-	    memcpy (str->val, m_qstr_buf_p, m_qstr_buf_idx);
 	    str->need_free_val = true;
 	  }
       }
 
-    if (intl_check_string (str->val, str->size, &invalid_pos, LANG_SYS_CODESET) != INTL_UTF8_VALID)
+    if (str->val == NULL)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1, invalid_pos - str->val);
-	//YY_FATAL_ERROR (er_msg());
+	return NULL;
+      }
+
+    memcpy (str->val, m_qstr_buf_p, m_qstr_buf_idx);
+
+    if (!is_utf8_valid (str))
+      {
+	FREE_STRING (str);
 	return NULL;
       }
 
@@ -237,8 +237,6 @@ namespace cubloader
   string_t *
   loader_driver::make_string_by_yytext ()
   {
-    char *invalid_pos = NULL;
-
     string_t *str = make_string ();
     if (str == NULL)
       {
@@ -247,36 +245,31 @@ namespace cubloader
 
     assert (m_scanner != NULL);
 
-    str->size = m_scanner->YYLeng ();
+    str->size = (std::size_t) m_scanner->YYLeng ();
     const char *text = m_scanner->YYText ();
 
-    if (m_copy_buf_pool_idx < COPY_BUF_POOL_SIZE && str->size < MAX_COPY_BUF_SIZE)
+    if (use_copy_buf_pool (str->size))
       {
 	str->val = & (m_copy_buf_pool[m_copy_buf_pool_idx++][0]);
-	memcpy (str->val, text, str->size);
-	str->val[str->size] = '\0';
 	str->need_free_val = false;
       }
     else
       {
 	str->val = (char *) malloc (str->size + 1);
-
-	if (str->val == NULL)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str->size + 1);
-	    //YY_FATAL_ERROR (er_msg());
-	    return NULL;
-	  }
-
-	memcpy (str->val, text, str->size);
-	str->val[str->size] = '\0';
 	str->need_free_val = true;
       }
 
-    if (intl_check_string (str->val, str->size, &invalid_pos, LANG_SYS_CODESET) != INTL_UTF8_VALID)
+    if (str->val == NULL)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1, invalid_pos - str->val);
-	//YY_FATAL_ERROR (er_msg());
+	return NULL;
+      }
+
+    memcpy (str->val, text, str->size);
+    str->val[str->size] = '\0';
+
+    if (!is_utf8_valid (str))
+      {
+	FREE_STRING (str);
 	return NULL;
       }
 
@@ -329,13 +322,21 @@ namespace cubloader
   }
 
   object_ref_t *
-  loader_driver::make_object_ref (string_t *class_name)
+  loader_driver::make_object_ref_by_class_id (string_t *class_id)
   {
-    object_ref_t *ref = alloc_ldr_type<object_ref_t> ();
+    object_ref_t *ref = make_object_ref ();
 
-    ref->class_id = class_name;
-    ref->class_name = NULL;
-    ref->instance_number = NULL;
+    ref->class_id = class_id;
+
+    return ref;
+  }
+
+  object_ref_t *
+  loader_driver::make_object_ref_by_class_name (string_t *class_name)
+  {
+    object_ref_t *ref = make_object_ref ();
+
+    ref->class_name = class_name;
 
     return ref;
   }
@@ -397,12 +398,37 @@ namespace cubloader
     return str;
   }
 
+  object_ref_t *
+  loader_driver::make_object_ref ()
+  {
+    object_ref_t *ref = alloc_ldr_type<object_ref_t> ();
+
+    ref->class_id = NULL;
+    ref->class_name = NULL;
+    ref->instance_number = NULL;
+
+    return ref;
+  }
+
+  bool
+  loader_driver::is_utf8_valid (string_t *str)
+  {
+    char *invalid_pos = NULL;
+
+    if (intl_check_string (str->val, str->size, &invalid_pos, LANG_SYS_CODESET) != INTL_UTF8_VALID)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1, invalid_pos - str->val);
+	return false;
+      }
+
+    return true;
+  }
+
   void
   loader_driver::alloc_qstr_buffer (std::size_t size)
   {
     m_qstr_buffer_size = size;
-    m_qstr_buffer = (char *) malloc (m_qstr_buffer_size);
-
+    m_qstr_buffer = (char *) malloc (size);
     assert (m_qstr_buffer != NULL);
   }
 
@@ -411,7 +437,6 @@ namespace cubloader
   {
     m_qstr_buffer_size = new_size;
     m_qstr_buffer = (char *) realloc (m_qstr_buffer, m_qstr_buffer_size);
-
     assert (m_qstr_buffer != NULL);
   }
 
@@ -420,10 +445,6 @@ namespace cubloader
   {
     m_scanner = new loader_scanner (&is);
     m_parser = new loader_parser (*m_scanner, *this);
-
-    // TODO CBRD-21654 remove this
-    m_scanner->set_debug (0);
-    m_parser->set_debug_level (0);
 
     int ret = m_parser->parse ();
 
@@ -434,5 +455,11 @@ namespace cubloader
     m_scanner = NULL;
 
     return ret;
+  }
+
+  bool
+  loader_driver::use_copy_buf_pool (std::size_t str_size)
+  {
+    return m_copy_buf_pool_idx < COPY_BUF_POOL_SIZE && str_size < MAX_COPY_BUF_SIZE;
   }
 } // namespace cubloader

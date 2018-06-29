@@ -275,6 +275,13 @@ set(SESSION_SOURCES
   ${SESSION_DIR}/session_sr.c
   )
 
+set(LOADER_SOURCES
+  ${BISON_loader_grammar_OUTPUT_SOURCE}
+  ${FLEX_loader_lexer_OUTPUTS}
+  ${LOADDB_DIR}/loader_driver.cpp
+  ${LOADDB_DIR}/loader_server.c
+  )
+
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
 if(UNIX)
   list(APPEND BASE_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)
@@ -288,6 +295,8 @@ else(UNIX)
 endif(UNIX)
 
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
+set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED true)
+set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
 
 if(UNIX)
 set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
@@ -303,6 +312,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
   ${JSP_SOURCES}
+  ${LOADER_SOURCES}
   ${MONITOR_SOURCES}
   ${OBJECT_SOURCES}
   ${PARSER_SOURCES}
@@ -320,6 +330,10 @@ SET_SOURCE_FILES_PROPERTIES(
   PROPERTIES LANGUAGE C
   )
 
+if(WIN32)
+  SET_SOURCE_FILES_PROPERTIES(${LOADER_GRAMMAR_OUTPUT} ${LOADER_LEXER_OUTPUT} PROPERTIES COMPILE_FLAGS /WX-)
+endif(WIN32)
+
 set (CUBRID_LIB_SOURCES
   ${BASE_SOURCES}
   ${COMMUNICATION_SOURCES}
@@ -330,6 +344,7 @@ set (CUBRID_LIB_SOURCES
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
   ${JSP_SOURCES}
+  ${LOADER_SOURCES}
   ${MONITOR_SOURCES}
   ${OBJECT_SOURCES}
   ${PROBES_OBJECT}
@@ -378,7 +393,9 @@ if(UNIX)
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
+
 add_dependencies(cubrid ${EP_TARGETS})
+add_dependencies(cubrid gen_loader_grammar gen_loader_lexer)
 
 if(AT_LEAST_ONE_UNIT_TEST)
   if (WIN32)

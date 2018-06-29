@@ -26,7 +26,11 @@
 
 #include <istream>
 
+#if defined (SERVER_MODE)
+#include "loader_server.h"
+#else
 #include "loader.h"
+#endif
 #include "loader_grammar.hpp"
 #include "loader_scanner.hpp"
 
@@ -87,7 +91,8 @@ namespace cubloader
       class_cmd_spec_t *make_class_command_spec (int qualifier, string_t *attr_list, ctor_spec_t *ctor_spec);
 
       constant_t *make_constant (int type, void *val);
-      object_ref_t *make_object_ref (string_t *class_name);
+      object_ref_t *make_object_ref_by_class_id (string_t *class_id);
+      object_ref_t *make_object_ref_by_class_name (string_t *class_name);
       monetary_t *make_monetary_value (int currency_type, string_t *amount);
 
       void reset_pool_indexes ();
@@ -123,6 +128,9 @@ namespace cubloader
 
       /* private functions */
       string_t *make_string ();
+      object_ref_t *make_object_ref ();
+      bool is_utf8_valid (string_t *str);
+      bool use_copy_buf_pool (std::size_t str_size);
       void alloc_qstr_buffer (std::size_t size);
       void realloc_qstr_buffer (std::size_t new_size);
       int parse_internal (std::istream &is);

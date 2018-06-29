@@ -45,6 +45,13 @@ namespace cubloader
 
       virtual int yylex (loader_parser::semantic_type *yylval, loader_parser::location_type *yylloc,
 			 loader_driver &driver);
+
+      void
+      LexerError (const char *msg) override
+      {
+	// TODO CBRD-21654 collect lexer error
+	std::cerr << "Error in loader lexer: " << msg << std::endl;
+      }
   };
 } // namespace cubloader
 

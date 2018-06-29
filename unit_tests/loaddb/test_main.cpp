@@ -9,8 +9,11 @@ static const int num_threads = 50;
 void parse ()
 {
   cubloader::loader_driver driver;
-  std::string s = "1 '2' '3 4' 3.14159265F\n"
-		  "'a' 'aaa' 'bbb' 'c'\n"
+  std::string s = "%id [foo] 44\n"
+		  "%class [foo] ([id] [name])\n"
+		  "@44 1 @foo 2\n"
+		  "1 '2' '3 4' 3.14159265F\n"
+		  "'a' 'aaa' 'bbb' 'c' NULL 'NULL' $2.0F\n"
 		  "1 1 1 1815 '2017-12-22 12:10:21' '2017-12-22' '12:10:21' 1\n";
 
   driver.parse (s);

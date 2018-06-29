@@ -38,14 +38,18 @@
 %union {
   int intval;
   LDR_STRING *string;
-  LDR_CLASS_COMMAND_SPEC *cmd_spec;
-  LDR_CONSTRUCTOR_SPEC *ctor_spec;
   LDR_CONSTANT *constant;
   LDR_OBJECT_REF *obj_ref;
+  LDR_CONSTRUCTOR_SPEC *ctor_spec;
+  LDR_CLASS_COMMAND_SPEC *cmd_spec;
 };
 
 %code requires {
+#if defined (SERVER_MODE)
+#include "loader_server.h"
+#else
 #include "loader.h"
+#endif
 
 namespace cubloader
 {
@@ -645,12 +649,12 @@ object_reference :
 class_identifier:
   INT_LIT
   {
-    $$ = driver.make_object_ref ($1);
+    $$ = driver.make_object_ref_by_class_id ($1);
   }
   |
   IDENTIFIER
   {
-    $$ = driver.make_object_ref ($1);
+    $$ = driver.make_object_ref_by_class_name ($1);
   }
   ;
 
