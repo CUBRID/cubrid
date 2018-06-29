@@ -12487,7 +12487,7 @@ logpb_debug_check_log_page (THREAD_ENTRY * thread_p, void *log_pgptr_ptr)
       return;
     }
 
-  if (log_pgptr->hdr.logical_pageid == 0xff)
+  if (log_pgptr->hdr.logical_pageid == -1)
     {
       /* Skip checking for null logical pageid. */
       return;
