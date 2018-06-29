@@ -386,6 +386,22 @@ net_server_init (void)
   req_p->processing_function = slocator_upgrade_instances_domain;
   req_p->name = "NET_SERVER_LC_UPGRADE_INSTANCES_DOMAIN";
 
+  req_p = &net_Requests[NET_SERVER_LC_REPL_FORCE];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
+  req_p->processing_function = slocator_repl_force;
+  req_p->name = "NET_SERVER_LC_REPL_FORCE";
+
+  /* redistribute partition data */
+  req_p = &net_Requests[NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = slocator_redistribute_partition_data;
+  req_p->name = "NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA";
+
+  req_p = &net_Requests[NET_SERVER_LC_DEMOTE_CLASS_LOCK];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = slocator_demote_class_lock;
+  req_p->name = "NET_SERVER_LC_DEMOTE_CLASS_LOCK";
+
   /* heap */
   req_p = &net_Requests[NET_SERVER_HEAP_CREATE];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
@@ -817,11 +833,6 @@ net_server_init (void)
   req_p->processing_function = netsr_spacedb;
   req_p->name = "NET_SERVER_SPACEDB";
 
-  req_p = &net_Requests[NET_SERVER_LC_REPL_FORCE];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
-  req_p->processing_function = slocator_repl_force;
-  req_p->name = "NET_SERVER_LC_REPL_FORCE";
-
   /* checksumdb replication */
   req_p = &net_Requests[NET_SERVER_CHKSUM_REPL];
   req_p->action_attribute = IN_TRANSACTION;
@@ -834,11 +845,6 @@ net_server_init (void)
   req_p->processing_function = slogtb_does_active_user_exist;
   req_p->name = "NET_SERVER_AU_DOES_ACTIVE_USER_EXIST";
 
-  /* redistribute partition data */
-  req_p = &net_Requests[NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = slocator_redistribute_partition_data;
-  req_p->name = "NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA";
 }
 
 #if defined(CUBRID_DEBUG)
