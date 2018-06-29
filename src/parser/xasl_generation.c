@@ -24041,8 +24041,10 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	{
 	  continue;
 	}
+
       PT_NODE *cl_name_node = p->info.spec.flat_entity_list;
       DB_OBJECT *class_obj = cl_name_node->info.name.db_object;
+
       error = check_for_on_update_expr (parser, assigns, class_obj, cl_name_node->info.name.spec_id);
       if (error != NO_ERROR)
 	{

@@ -10971,9 +10971,8 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
- * check_for_default_expr() - Builds a list of attributes that have a default
- *			      expression and are not found in the specified
- *			      attributes list
+ * check_for_default_expr() - Builds a list of attributes that have a default expression and are not found
+ *                            in the specified attributes list
  *   return: Error code
  *   parser(in/out): Parser context
  *   specified_attrs(in): the list of attributes that are not to be considered
@@ -10987,11 +10986,11 @@ check_for_default_expr (PARSER_CONTEXT * parser, PT_NODE * specified_attrs, PT_N
   SM_CLASS *cls;
   SM_ATTRIBUTE *att;
   int error = NO_ERROR;
-  PT_NODE *new_ = NULL, *node = NULL;
+  PT_NODE *new_attr = NULL, *node = NULL;
 
-  assert (default_expr_attrs != NULL);
   if (default_expr_attrs == NULL)
     {
+      assert (default_expr_attrs != NULL);
       return ER_FAILED;
     }
 
@@ -11000,6 +10999,7 @@ check_for_default_expr (PARSER_CONTEXT * parser, PT_NODE * specified_attrs, PT_N
     {
       return error;
     }
+
   for (att = cls->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
       /* skip if attribute has auto_increment */
@@ -11007,6 +11007,7 @@ check_for_default_expr (PARSER_CONTEXT * parser, PT_NODE * specified_attrs, PT_N
 	{
 	  continue;
 	}
+
       /* skip if a value has already been specified for this attribute */
       for (node = specified_attrs; node != NULL; node = node->next)
 	{
@@ -11021,43 +11022,45 @@ check_for_default_expr (PARSER_CONTEXT * parser, PT_NODE * specified_attrs, PT_N
 	}
 
       /* add attribute to default_expr_attrs list */
-      new_ = parser_new_node (parser, PT_NAME);
-      if (new_ == NULL)
+      new_attr = parser_new_node (parser, PT_NAME);
+      if (new_attr == NULL)
 	{
 	  PT_INTERNAL_ERROR (parser, "allocate new node");
 	  return ER_FAILED;
 	}
-      new_->info.name.original = att->header.name;
+
+      new_attr->info.name.original = att->header.name;
+
       if (*default_expr_attrs != NULL)
 	{
-	  new_->next = *default_expr_attrs;
-	  *default_expr_attrs = new_;
+	  new_attr->next = *default_expr_attrs;
+	  *default_expr_attrs = new_attr;
 	}
       else
 	{
-	  *default_expr_attrs = new_;
+	  *default_expr_attrs = new_attr;
 	}
     }
+
   return NO_ERROR;
 }
 
 /*
-* check_for_on_update_expr() - Builds a list of attributes that have a default
-*			       on update expression and are not found in the 
-*			       specified attributes list
-*   return: Error code
-*   parser(in/out): Parser context
-*   specified_attrs(in): the list of attributes that are not to be considered
-*   class_obj(in):
-*   spec_id(in):
-*/
+ * check_for_on_update_expr() - Appends assignment expressions that have a default on update expression and are not found
+ *                              in the specified attributes list
+ *   return: Error code
+ *   parser(in/out): Parser context
+ *   assigns(in/out): assignment expr list
+ *   class_obj(in):
+ *   spec_id(in):
+ */
 int
 check_for_on_update_expr (PARSER_CONTEXT * parser, PT_NODE * assigns, DB_OBJECT * class_obj, UINTPTR spec_id)
 {
   SM_CLASS *cls;
   SM_ATTRIBUTE *att;
   int error = NO_ERROR;
-  PT_NODE *new_ = NULL;
+  PT_NODE *new_lhs_of_assign = NULL;
   PT_NODE *default_expr_attrs = NULL;
   PT_ASSIGNMENTS_HELPER assign_helper;
 
@@ -11066,95 +11069,100 @@ check_for_on_update_expr (PARSER_CONTEXT * parser, PT_NODE * assigns, DB_OBJECT 
     {
       return error;
     }
-  else
+
+  for (att = cls->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
-      for (att = cls->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+      if (att->on_update_default_expr == DB_DEFAULT_NONE)
 	{
-	  if (att->on_update_default_expr == DB_DEFAULT_NONE)
-	    {
-	      continue;
-	    }
-	  pt_init_assignments_helper (parser, &assign_helper, assigns);
-	  /* skip if already in the assign-list */
-	  PT_NODE *att_name_node = NULL;
-	  while ((att_name_node = pt_get_next_assignment (&assign_helper)) != NULL)
-	    {
-	      // TODO: solve this for views that inherit columns with on update
-	      // Problem arises When the on update column is in the assignments
-	      if (!pt_str_compare (att_name_node->info.name.original, att->header.name, CASE_INSENSITIVE)
-		  && !pt_str_compare (att_name_node->info.name.resolved, cls->header.ch_name, CASE_INSENSITIVE))
-		{
-		  break;
-		}
-	    }
-	  if (att_name_node != NULL)
-	    {
-	      continue;
-	    }
-
-	  /* add attribute to default_expr_attrs list */
-	  new_ = parser_new_node (parser, PT_NAME);
-	  if (new_ == NULL)
-	    {
-	      if (default_expr_attrs != NULL)
-		{
-		  parser_free_tree (parser, default_expr_attrs);
-		}
-	      PT_INTERNAL_ERROR (parser, "allocate new node");
-	      return ER_FAILED;
-	    }
-	  new_->info.name.original = att->header.name;
-	  new_->info.name.resolved = cls->header.ch_name;
-	  new_->info.name.spec_id = spec_id;
-
-	  PT_OP_TYPE op = pt_op_type_from_default_expr_type (att->on_update_default_expr);
-	  PT_NODE *expr = parser_make_expression (parser, op, NULL, NULL, NULL);
-	  if (expr == NULL)
-	    {
-	      if (new_ != NULL)
-		{
-		  parser_free_node (parser, new_);
-		}
-	      if (default_expr_attrs != NULL)
-		{
-		  parser_free_tree (parser, default_expr_attrs);
-		}
-	      PT_INTERNAL_ERROR (parser, "allocate new node");
-	      return ER_FAILED;
-	    }
-	  PT_NODE *assign_expr = parser_make_expression (parser, PT_ASSIGN, new_, expr, NULL);
-	  if (assign_expr == NULL)
-	    {
-	      if (new_ != NULL)
-		{
-		  parser_free_node (parser, new_);
-		}
-	      if (expr != NULL)
-		{
-		  parser_free_node (parser, expr);
-		}
-	      if (default_expr_attrs != NULL)
-		{
-		  parser_free_tree (parser, default_expr_attrs);
-		}
-	      PT_INTERNAL_ERROR (parser, "allocate new node");
-	      return ER_FAILED;
-	    }
-
-	  if (default_expr_attrs != NULL)
-	    {
-	      assign_expr->next = default_expr_attrs;
-	      default_expr_attrs = assign_expr;
-	    }
-	  else
-	    {
-	      default_expr_attrs = assign_expr;
-	    }
+	  continue;
 	}
 
-      parser_append_node (default_expr_attrs, assigns);
-      return NO_ERROR;
+      pt_init_assignments_helper (parser, &assign_helper, assigns);
+
+      /* skip if already in the assign-list */
+      PT_NODE *att_name_node = NULL;
+      while ((att_name_node = pt_get_next_assignment (&assign_helper)) != NULL)
+	{
+	  // TODO: solve this for views that inherit columns with on update
+	  // Problem arises When the on update column is in the assignments
+	  if (!pt_str_compare (att_name_node->info.name.original, att->header.name, CASE_INSENSITIVE)
+	      && !pt_str_compare (att_name_node->info.name.resolved, cls->header.ch_name, CASE_INSENSITIVE))
+	    {
+	      break;
+	    }
+	}
+      if (att_name_node != NULL)
+	{
+	  continue;
+	}
+
+      /* add attribute to default_expr_attrs list */
+      new_lhs_of_assign = parser_new_node (parser, PT_NAME);
+      if (new_lhs_of_assign == NULL)
+	{
+	  if (default_expr_attrs != NULL)
+	    {
+	      parser_free_tree (parser, default_expr_attrs);
+	    }
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return ER_FAILED;
+	}
+      new_lhs_of_assign->info.name.original = att->header.name;
+      new_lhs_of_assign->info.name.resolved = cls->header.ch_name;
+      new_lhs_of_assign->info.name.spec_id = spec_id;
+
+      PT_OP_TYPE op = pt_op_type_from_default_expr_type (att->on_update_default_expr);
+      PT_NODE *expr = parser_make_expression (parser, op, NULL, NULL, NULL);
+      if (expr == NULL)
+	{
+	  if (new_lhs_of_assign != NULL)
+	    {
+	      parser_free_node (parser, new_lhs_of_assign);
+	    }
+	  if (default_expr_attrs != NULL)
+	    {
+	      parser_free_tree (parser, default_expr_attrs);
+	    }
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return ER_FAILED;
+	}
+
+      PT_NODE *assign_expr = parser_make_expression (parser, PT_ASSIGN, new_lhs_of_assign, expr, NULL);
+      if (assign_expr == NULL)
+	{
+	  if (new_lhs_of_assign != NULL)
+	    {
+	      parser_free_node (parser, new_lhs_of_assign);
+	    }
+	  if (expr != NULL)
+	    {
+	      parser_free_node (parser, expr);
+	    }
+	  if (default_expr_attrs != NULL)
+	    {
+	      parser_free_tree (parser, default_expr_attrs);
+	    }
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return ER_FAILED;
+	}
+
+      if (default_expr_attrs != NULL)
+	{
+	  assign_expr->next = default_expr_attrs;
+	  default_expr_attrs = assign_expr;
+	}
+      else
+	{
+	  default_expr_attrs = assign_expr;
+	}
     }
+
+  if (default_expr_attrs != NULL)
+    {
+      parser_append_node (default_expr_attrs, assigns);
+    }
+
+  return NO_ERROR;
 }
 
 /*
