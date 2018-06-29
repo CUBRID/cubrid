@@ -53,43 +53,43 @@ namespace cubpacking
 
       int init (char *storage, const size_t amount);
 
-      size_t get_packed_int_size (size_t curr_offset);
+      static size_t get_packed_int_size (size_t curr_offset);
       int pack_int (const int value);
       int unpack_int (int *value);
       int peek_unpack_int (int *value);
 
-      size_t get_packed_short_size (size_t curr_offset);
+      static size_t get_packed_short_size (size_t curr_offset);
       int pack_short (short *value);
       int unpack_short (short *value);
 
-      size_t get_packed_bigint_size (size_t curr_offset);
+      static size_t get_packed_bigint_size (size_t curr_offset);
       int pack_bigint (std::int64_t *value);
       int unpack_bigint (std::int64_t *value);
 
       int pack_int_array (const int *array, const int count);
       int unpack_int_array (int *array, int &count);
 
-      size_t get_packed_int_vector_size (size_t curr_offset, const int count);
+      static size_t get_packed_int_vector_size (size_t curr_offset, const int count);
       int pack_int_vector (const std::vector<int> &array);
       int unpack_int_vector (std::vector <int> &array);
 
-      size_t get_packed_db_value_size (const DB_VALUE &value, size_t curr_offset);
+      static size_t get_packed_db_value_size (const DB_VALUE &value, size_t curr_offset);
       int pack_db_value (const DB_VALUE &value);
       int unpack_db_value (DB_VALUE *value);
 
-      size_t get_packed_small_string_size (const char *string, const size_t curr_offset);
+      static size_t get_packed_small_string_size (const char *string, const size_t curr_offset);
       int pack_small_string (const char *string);
       int unpack_small_string (char *string, const size_t max_size);
 
-      size_t get_packed_large_string_size (const std::string &str, const size_t curr_offset);
+      static size_t get_packed_large_string_size (const std::string &str, const size_t curr_offset);
       int pack_large_string (const std::string &str);
       int unpack_large_string (std::string &str);
 
-      size_t get_packed_string_size (const std::string &str, const size_t curr_offset);
+      static size_t get_packed_string_size (const std::string &str, const size_t curr_offset);
       int pack_string (const std::string &str);
       int unpack_string (std::string &str);
 
-      size_t get_packed_c_string_size (const char *str, const size_t str_size, const size_t curr_offset);
+      static size_t get_packed_c_string_size (const char *str, const size_t str_size, const size_t curr_offset);
       int pack_c_string (const char *str, const size_t str_size);
       int unpack_c_string (char *str, const size_t max_str_size);
 
