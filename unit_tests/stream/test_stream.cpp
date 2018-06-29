@@ -607,7 +607,7 @@ namespace test_stream
     size_t copy_chunk_size = test_stream_mover.get_buf_size ();
     int read_bytes, written_bytes;
 
-    for (curr_pos = 0; curr_pos <= last_pos;)
+    for (curr_pos = 0; curr_pos < last_pos;)
       {
 	copy_chunk_size = MIN (copy_chunk_size, last_pos - curr_pos);
 
@@ -772,7 +772,7 @@ namespace test_stream
 		std::this_thread::sleep_for (std::chrono::microseconds (100));
 
                 float stream_fill_factor = stream_context_manager::g_stream->stream_fill_factor ();
-	        if (stream_fill_factor < 0.9f && stream_context_manager::g_pause_packer)
+	        if (stream_fill_factor < 0.45f && stream_context_manager::g_pause_packer)
 	          {
 		    std::cout << "     stream_pack_task : need resume producing;  stream_fill_factor:  " << stream_fill_factor << std::endl;
 
@@ -900,7 +900,7 @@ namespace test_stream
 
     while (stream_context_manager::g_running_packers.any () && stream_context_manager::g_stop_packer == false)
       {
-	to_read = std::rand () % 1024;
+	to_read = 1 + std::rand () % 1024;
 
 	do
 	  {
@@ -1198,7 +1198,7 @@ namespace test_stream
 	read_byte_worker_pool->execute (read_byte_task);
       }
 
-    std::this_thread::sleep_for (std::chrono::seconds (15111));
+    std::this_thread::sleep_for (std::chrono::seconds (30));
     stream_context_manager::g_stop_packer = true;
     stream_context_manager::g_pause_unpacker = false;
     std::cout << "      Stopping packers" << std::endl;
