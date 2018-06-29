@@ -31,6 +31,7 @@
 #include "cubstream.hpp"
 #include "stream_io.hpp"
 
+#include <condition_variable>
 #include <mutex>
 #include <functional>
 #include <vector>
