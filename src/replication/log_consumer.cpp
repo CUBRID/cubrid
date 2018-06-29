@@ -129,70 +129,70 @@ namespace cubreplication
 
 	    if (err != NO_ERROR)
 	      {
-                break;
-              }
+		break;
+	      }
 
-            assert (err == NO_ERROR);
+	    assert (err == NO_ERROR);
 
-		if (se->is_group_commit ())
+	    if (se->is_group_commit ())
+	      {
+		assert (se->get_data_packed_size () == 0);
+
+		/* wait for all started tasks to finish */
+		m_lc->wait_for_tasks ();
+
+		for (std::unordered_map <MVCCID, repl_applier_worker_task *>::iterator it = repl_tasks.begin ();
+		     it != repl_tasks.end ();
+		     it++)
 		  {
-                    assert (se->get_data_packed_size () == 0);
-
-		    /* wait for all started tasks to finish */
-		    m_lc->wait_for_tasks ();
-
-		    for (std::unordered_map <MVCCID, repl_applier_worker_task *>::iterator it = repl_tasks.begin ();
-			 it != repl_tasks.end ();
-			 it++)
+		    /* check last stream entry of task */
+		    repl_applier_worker_task *my_repl_applier_worker_task = it->second;
+		    if (my_repl_applier_worker_task->has_commit ())
 		      {
-			/* check last stream entry of task */
-			repl_applier_worker_task *my_repl_applier_worker_task = it->second;
-			if (my_repl_applier_worker_task->has_commit ())
-			  {
-			    m_lc->execute_task (thread_ref, it->second);
-			  }
-			else
-			  {
-			    assert (it->second->get_entries_cnt () > 0);
-			    nonexecutable_repl_tasks.insert (std::make_pair (it->first, it->second));
-			  }
-		      }
-		    repl_tasks.clear ();
-		    if (nonexecutable_repl_tasks.size () > 0)
-		      {
-			repl_tasks = nonexecutable_repl_tasks;
-			nonexecutable_repl_tasks.clear ();
-		      }
-
-		    /* deleted the group commit stream entry */
-		    delete se;
-		  }
-		else
-		  {
-		    se->unpack ();
-
-		    MVCCID mvccid = se->get_mvccid ();
-		    auto it = repl_tasks.find (mvccid);
-
-		    if (it != repl_tasks.end ())
-		      {
-			/* already a task with same MVCCID, add it to existing task */
-			repl_applier_worker_task *my_repl_applier_worker_task = it->second;
-			my_repl_applier_worker_task->add_repl_stream_entry (se);
-
-			assert (my_repl_applier_worker_task->get_entries_cnt () > 0);
+			m_lc->execute_task (thread_ref, it->second);
 		      }
 		    else
 		      {
-			repl_applier_worker_task *my_repl_applier_worker_task = new repl_applier_worker_task (se, m_lc);
-			repl_tasks.insert (std::make_pair (mvccid, my_repl_applier_worker_task));
-
-			assert (my_repl_applier_worker_task->get_entries_cnt () > 0);
+			assert (it->second->get_entries_cnt () > 0);
+			nonexecutable_repl_tasks.insert (std::make_pair (it->first, it->second));
 		      }
-
-		    /* stream entry is deleted by applier task thread */
 		  }
+		repl_tasks.clear ();
+		if (nonexecutable_repl_tasks.size () > 0)
+		  {
+		    repl_tasks = nonexecutable_repl_tasks;
+		    nonexecutable_repl_tasks.clear ();
+		  }
+
+		/* deleted the group commit stream entry */
+		delete se;
 	      }
+	    else
+	      {
+		se->unpack ();
+
+		MVCCID mvccid = se->get_mvccid ();
+		auto it = repl_tasks.find (mvccid);
+
+		if (it != repl_tasks.end ())
+		  {
+		    /* already a task with same MVCCID, add it to existing task */
+		    repl_applier_worker_task *my_repl_applier_worker_task = it->second;
+		    my_repl_applier_worker_task->add_repl_stream_entry (se);
+
+		    assert (my_repl_applier_worker_task->get_entries_cnt () > 0);
+		  }
+		else
+		  {
+		    repl_applier_worker_task *my_repl_applier_worker_task = new repl_applier_worker_task (se, m_lc);
+		    repl_tasks.insert (std::make_pair (mvccid, my_repl_applier_worker_task));
+
+		    assert (my_repl_applier_worker_task->get_entries_cnt () > 0);
+		  }
+
+		/* stream entry is deleted by applier task thread */
+	      }
+	  }
 
       }
 
@@ -243,18 +243,18 @@ namespace cubreplication
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     if (m_stream_entries.empty ())
       {
-        while (m_is_stopped == false)
-          {
+	while (m_is_stopped == false)
+	  {
 	    m_apply_task_ready = false;
 	    m_apply_task_cv.wait_for (ulock,
 				      std::chrono::milliseconds (1000),
 				      [this] { return m_apply_task_ready == true;});
-          }
+	  }
 
-        if (m_is_stopped)
-          {
-            return ER_FAILED;
-          }
+	if (m_is_stopped)
+	  {
+	    return ER_FAILED;
+	  }
       }
 
     assert (m_stream_entries.empty () == false);
