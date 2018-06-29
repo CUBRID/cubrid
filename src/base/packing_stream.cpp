@@ -544,12 +544,14 @@ namespace cubstream
 	/* the area may be found in trail of region B
 	 * this includes case when B does not exit - from start of buffer) */
 	ptr = (char *) ptr_trail_b + amount_trail_b - (m_last_committed_pos - req_start_pos);
-	actual_read_bytes = MIN (amount, amount_trail_b);
+        assert (ptr_trail_b + amount_trail_b > ptr);
+	actual_read_bytes = MIN (amount, ptr_trail_b + amount_trail_b - ptr);
       }
     else
       {
 	ptr = (char *) ptr_trail_a + amount_trail_a - (m_last_committed_pos - req_start_pos - amount_trail_b);
-	actual_read_bytes = MIN (amount, amount_trail_a);
+        assert (ptr_trail_a + amount_trail_a > ptr);
+	actual_read_bytes = MIN (amount, ptr_trail_a + amount_trail_a - ptr);
       }
 
     err = m_bip_buffer.start_read (ptr, actual_read_bytes, read_latch_page_idx);
