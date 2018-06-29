@@ -79,7 +79,7 @@ namespace test_replication
     size_t copy_chunk_size = test_stream_mover.get_buf_size ();
     int read_bytes, written_bytes;
 
-    for (curr_pos = 0; curr_pos <= last_pos;)
+    for (curr_pos = 0; curr_pos < last_pos;)
       {
 	copy_chunk_size = MIN (copy_chunk_size, last_pos - curr_pos);
 

@@ -485,6 +485,8 @@ namespace cubstream
     int err = NO_ERROR;
     char *ptr = NULL;
 
+    assert (amount > 0);
+
     if (req_start_pos + amount > m_last_committed_pos)
       {
 	m_stat_read_not_enough_data_cnt++;

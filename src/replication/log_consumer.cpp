@@ -130,10 +130,10 @@ namespace cubreplication
 
 	    if (err == NO_ERROR)
 	      {
-		se->unpack ();
-
 		if (se->is_group_commit ())
 		  {
+                    assert (se->get_data_packed_size () == 0);
+
 		    /* wait for all started tasks to finish */
 		    m_lc->wait_for_tasks ();
 
@@ -165,6 +165,8 @@ namespace cubreplication
 		  }
 		else
 		  {
+		    se->unpack ();
+
 		    MVCCID mvccid = se->get_mvccid ();
 		    auto it = repl_tasks.find (mvccid);
 

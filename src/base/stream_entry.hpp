@@ -272,9 +272,13 @@ namespace cubstream
       int unpack (void)
       {
 	int err = NO_ERROR;
+        size_t data_size = get_data_packed_size ();
 
-	/* read the stream starting from data contents */
-	err = m_stream->read (m_data_start_position, get_data_packed_size (), m_unpack_func);
+        if (data_size > 0)
+        {
+	  /* read the stream starting from data contents */
+	  err = m_stream->read (m_data_start_position, data_size, m_unpack_func);
+        }
 
 	return (err < 0) ? err : NO_ERROR;
       };
