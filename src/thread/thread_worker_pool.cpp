@@ -114,5 +114,5 @@ namespace cubthread
     assert (false);
     throw e;
   }
-  
+
 } // namespace cubthread

@@ -2979,6 +2979,12 @@ css_stop_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper)
 static void
 css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop_mapper, bool is_log_writer, bool & found)
 {
+  if (thread_ref.tran_index == -1)
+    {
+      // no transaction, no stop
+      return;
+    }
+
   if (is_log_writer != css_is_log_writer (thread_ref))
     {
       // don't care

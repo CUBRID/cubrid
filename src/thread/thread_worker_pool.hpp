@@ -1133,11 +1133,6 @@ namespace cubthread
     // a context is required
     m_context_p = &m_parent_core->get_context_manager ().create_context ();
     wp_worker_statset_time_and_increment (m_statistics, Wpstat_create_context);
-
-    if (m_task_p == NULL)
-      {
-	(void) get_new_task ();
-      }
   }
 
   template <typename Context>
@@ -1286,12 +1281,27 @@ namespace cubthread
       {
 	init_run ();    // do stuff at the beginning like creating context
 
-	// loop and execute as many tasks as possible
-	do
+	if (m_task_p == NULL)
 	  {
-	    execute_current_task ();
+	    // started without task; get one
+	    if (get_new_task ())
+	      {
+		assert (m_task_p != NULL);
+	      }
 	  }
-	while (get_new_task ());
+	if (m_task_p != NULL)\
+	  {
+	    // loop and execute as many tasks as possible
+	    do
+	      {
+		execute_current_task ();
+	      }
+	    while (get_new_task ());
+	  }
+	else
+	  {
+	    // never got a task
+	  }
 
 	finish_run ();    // do stuff on end like retiring context
 
