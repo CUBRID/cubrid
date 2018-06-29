@@ -37,6 +37,7 @@
 #if defined(CS_MODE)
 #include "server_interface.h"
 #include "boot_cl.h"
+#include "schema_manager.h"
 #else /* !defined (CS_MODE) == defined (SA_MODE) */
 #include "xserver_interface.h"
 #include "boot_sr.h"
@@ -9948,6 +9949,17 @@ locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock)
     {
       ptr = or_unpack_int (reply, &rc);
       ptr = or_unpack_lock (ptr, ex_lock);
+    }
+
+  if (rc == NO_ERROR)
+    {
+      // demote cached lock
+      MOP class_mop = ws_mop (class_oid, sm_Root_class_mop);
+
+      if (class_mop != NULL)
+	{
+	  ws_set_lock (class_mop, lock);
+	}
     }
 
   return rc;
