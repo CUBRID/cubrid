@@ -14421,6 +14421,8 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
       // TODO: provide a lock mode to smt_ interface?
       // Alternative is smt_edit_class_mop_for_online_schema_change. This will demote class lock after preparation.
 
+      // TODO: introduce a flag to SM_CLASS_CONSTRAINT. We also need one for class representation.
+
       DB_AUTH auth;
 
       if (constraint_type == DB_CONSTRAINT_INDEX || constraint_type == DB_CONSTRAINT_REVERSE_INDEX)
@@ -14439,6 +14441,9 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  return error;
 	}
 
+      // TODO: Please imagine:
+      // if (is_online)
+      //   cons->status = INDEX_BUILD_IN_PROGRESS;
       error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes, NULL,
 				  filter_index, function_index, comment);
       if (error != NO_ERROR)
@@ -14447,6 +14452,12 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  return error;
 	}
 
+      // TODO: modify allocate_disk_structures_index not to populate objects to the index.
+      // please imagine:
+      // if (cons->status == INDEX_BUILD_IN_PROGRESS)
+      //   create an empty index file
+      // else
+      //   do as it did
       error = sm_update_class (def, &newmop);
       if (error != NO_ERROR)
 	{
@@ -14455,6 +14466,8 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	}
 
       // 2. lock demotion
+      // error = locator_demote_class_lock ();
+
       // 3. load index phase
 
       error = sm_update_statistics (newmop, STATS_WITH_SAMPLING);
@@ -14466,7 +14479,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
       // 4. lock promotion
 
       // 5. registration phase
-      // make the index usuable
+      // cons->status = INDEX_BUILD_COMPLETED;
       break;
 
     case DB_CONSTRAINT_NOT_NULL:
