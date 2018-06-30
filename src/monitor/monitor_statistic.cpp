@@ -25,39 +25,46 @@
 
 namespace cubmonitor
 {
-  statistic_value
-  fetch_statistic_representation (const time_rep &value)
-  {
-    return static_cast<statistic_value> (std::chrono::duration_cast<std::chrono::microseconds> (value).count ());
-  }
+  //////////////////////////////////////////////////////////////////////////
+  // statistic_value <-> statistic rep casts
+  //////////////////////////////////////////////////////////////////////////
 
   statistic_value
-  fetch_statistic_representation (const amount_rep &value)
+  statistic_value_cast (const amount_rep &rep)
   {
-    return static_cast<statistic_value> (value);
-  }
-
-  statistic_value
-  fetch_statistic_representation (const floating_rep &value)
-  {
-    return *reinterpret_cast<const statistic_value *> (&value);
+    return static_cast<statistic_value> (rep);
   }
 
   amount_rep
-  statistic_value_to_amount (statistic_value value)
+  amount_rep_cast (statistic_value value)
   {
     return static_cast<amount_rep> (value);
   }
 
-  floating_rep
-  statistic_value_to_floating (statistic_value value)
+  statistic_value
+  statistic_value_cast (const floating_rep &rep)
   {
-    return *reinterpret_cast<floating_rep *> (&value);
+    return *reinterpret_cast<const statistic_value *> (&rep);
+  }
+
+  floating_rep
+  floating_rep_cast (statistic_value value)
+  {
+    return *reinterpret_cast<const floating_rep *> (&value);
+  }
+
+  statistic_value
+  statistic_value_cast (const time_rep &rep)
+  {
+    // nanoseconds to microseconds
+    return static_cast<statistic_value> (std::chrono::duration_cast<std::chrono::microseconds> (rep).count ());
   }
 
   time_rep
-  statistic_value_to_time_rep (statistic_value value)
+  time_rep_cast (statistic_value value)
   {
+    // microseconds to nanoseconds
+    // careful: time_rep_cast (statistic_value_cast (stat)) != stat
     return std::chrono::duration_cast<time_rep> (std::chrono::microseconds (value));
   }
 
@@ -67,84 +74,84 @@ namespace cubmonitor
 
   template <>
   max_statistic<amount_rep>::max_statistic (void)
-    : m_value (std::numeric_limits<amount_rep>::min ())
+    : primitive<amount_rep> (std::numeric_limits<amount_rep>::min ())
   {
     //
   }
 
   template <>
   max_statistic<floating_rep>::max_statistic (void)
-    : m_value (std::numeric_limits<floating_rep>::min ())
+    : primitive<floating_rep> (std::numeric_limits<floating_rep>::min ())
   {
     //
   }
 
   template <>
   max_statistic<time_rep>::max_statistic (void)
-    : m_value (time_rep::min ())
+    : primitive<time_rep> (time_rep::min ())
   {
     //
   }
 
   template <>
   max_atomic_statistic<amount_rep>::max_atomic_statistic (void)
-    : m_value { std::numeric_limits<amount_rep>::min () }
+    : atomic_primitive<amount_rep> (std::numeric_limits<amount_rep>::min ())
   {
     //
   }
 
   template <>
   max_atomic_statistic<floating_rep>::max_atomic_statistic (void)
-    : m_value { std::numeric_limits<floating_rep>::min () }
+    : atomic_primitive<floating_rep> (std::numeric_limits<floating_rep>::min ())
   {
     //
   }
 
   template <>
   max_atomic_statistic<time_rep>::max_atomic_statistic (void)
-    : m_value { time_rep::min () }
+    : atomic_primitive<time_rep> (time_rep::min ())
   {
     //
   }
 
   template <>
   min_statistic<amount_rep>::min_statistic (void)
-    : m_value (std::numeric_limits<amount_rep>::max ())
+    : primitive<amount_rep> (std::numeric_limits<amount_rep>::max ())
   {
     //
   }
 
   template <>
   min_statistic<floating_rep>::min_statistic (void)
-    : m_value (std::numeric_limits<floating_rep>::max ())
+    : primitive<floating_rep> (std::numeric_limits<floating_rep>::max ())
   {
     //
   }
 
   template <>
   min_statistic<time_rep>::min_statistic (void)
-    : m_value (time_rep::max ())
+    : primitive<time_rep> (time_rep::max ())
   {
     //
   }
 
   template <>
   min_atomic_statistic<amount_rep>::min_atomic_statistic (void)
-    : m_value { std::numeric_limits<amount_rep>::max () }
+    : atomic_primitive<amount_rep> (std::numeric_limits<amount_rep>::max ())
   {
     //
   }
 
   template <>
   min_atomic_statistic<floating_rep>::min_atomic_statistic (void)
-    : m_value { std::numeric_limits<floating_rep>::max () }
+    : atomic_primitive<floating_rep> (std::numeric_limits<floating_rep>::max ())
   {
     //
   }
 
   template <>
   min_atomic_statistic<time_rep>::min_atomic_statistic (void)
-    : m_value { time_rep::max () }
+    : atomic_primitive<time_rep> (time_rep::max ())
   {
     //
   }

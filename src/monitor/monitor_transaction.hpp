@@ -105,8 +105,11 @@ namespace cubmonitor
       transaction_statistic (void);                                   // constructor
       ~transaction_statistic (void);                                  // destructor
 
-      statistic_value fetch (void) const;                             // fetch global statistic
-      statistic_value fetch_sheet (void) const;                       // fetch from transaction sheet (if open)
+      // fetchable concept
+      void fetch (statistic_value *destination, fetch_mode mode = FETCH_GLOBAL) const;
+      std::size_t get_statistics_count (void) const;
+
+      typename statistic_type::rep get_value (fetch_mode mode = FETCH_GLOBAL) const;
 
       void collect (const typename statistic_type::rep &value);       // collect to global statistic and to transaction
       // sheet (if open)
@@ -184,32 +187,68 @@ namespace cubmonitor
   }
 
   template <class S>
-  statistic_value
-  transaction_statistic<S>::fetch (void) const
+  void
+  transaction_statistic<S>::fetch (statistic_value *destination, fetch_mode mode /* = FETCH_GLOBAL */) const
   {
-    return m_global_stat.fetch ();
+    if (mode == FETCH_GLOBAL)
+      {
+	m_global_stat.fetch (destination);
+      }
+    else
+      {
+	transaction_sheet sheet = transaction_sheet_manager::get_sheet ();
+
+	if (sheet == transaction_sheet_manager::INVALID_TRANSACTION_SHEET)
+	  {
+	    // transaction is not watching
+	    return;
+	  }
+
+	if (m_sheet_stats_count <= sheet)
+	  {
+	    // nothing was collected
+	    return;
+	  }
+
+	// return collected value
+	m_sheet_stats[sheet].fetch (destination, FETCH_GLOBAL);
+      }
   }
 
   template <class S>
-  statistic_value
-  transaction_statistic<S>::fetch_sheet (void) const
+  typename S::rep
+  transaction_statistic<S>::get_value (fetch_mode mode /* = FETCH_GLOBAL */) const
   {
-    transaction_sheet sheet = transaction_sheet_manager::get_sheet ();
-
-    if (sheet == transaction_sheet_manager::INVALID_TRANSACTION_SHEET)
+    if (mode == FETCH_GLOBAL)
       {
-	// transaction is not watching; return 0
-	return 0;
+	return m_global_stat.get_value ();
       }
-
-    if (m_sheet_stats_count <= sheet)
+    else
       {
-	// nothing was collected; return 0
-	return 0;
-      }
+	transaction_sheet sheet = transaction_sheet_manager::get_sheet ();
 
-    // return collected value
-    return m_sheet_stats[sheet].fetch ();
+	if (sheet == transaction_sheet_manager::INVALID_TRANSACTION_SHEET)
+	  {
+	    // transaction is not watching
+	    return typename statistic_type::rep ();
+	  }
+
+	if (m_sheet_stats_count <= sheet)
+	  {
+	    // nothing was collected
+	    return typename statistic_type::rep ();
+	  }
+
+	// return collected value
+	return m_sheet_stats[sheet].get_value ();
+      }
+  }
+
+  template <class S>
+  std::size_t
+  transaction_statistic<S>::get_statistics_count (void) const
+  {
+    return 1;
   }
 
   template <class S>

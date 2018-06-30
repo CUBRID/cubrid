@@ -19,6 +19,7 @@
 
 #include "test_db_private_alloc.hpp"
 #include "test_extensible_array.hpp"
+#include "test_private_unique_ptr.hpp"
 
 #include <iostream>
 
@@ -48,6 +49,7 @@ int main ()
 
   test_module (global_error, test_memalloc::test_db_private_alloc);
   test_module (global_error, test_memalloc::test_extensible_array);
+  test_module (global_error, test_memalloc::test_private_unique_ptr);
   /* add more tests here */
 
   return global_error;

@@ -38,6 +38,11 @@ namespace cubmonitor
   using time_point = clock_type::time_point;
   using duration = clock_type::duration;
 
+  // fetching global & transaction sheet
+  using fetch_mode = bool;
+  const fetch_mode FETCH_GLOBAL = true;
+  const fetch_mode FETCH_TRANSACTION_SHEET = false;
+
 } // namespace cubmonitor
 
 #endif // _MONITOR_DEFINITION_HPP_
