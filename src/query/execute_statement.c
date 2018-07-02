@@ -8976,7 +8976,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  PT_NODE *from = statement->info.update.spec;
 	  for (PT_NODE * p = from; p; p = p->next)
 	    {
-	      if (p->info.spec.flat_entity_list == NULL)
+	      if (p->info.spec.flat_entity_list == NULL || !(p->info.spec.flag & PT_SPEC_FLAG_UPDATE))
 		{
 		  continue;
 		}
@@ -11083,8 +11083,6 @@ check_for_on_update_expr (PARSER_CONTEXT * parser, PT_NODE * assigns, DB_OBJECT 
       PT_NODE *att_name_node = NULL;
       while ((att_name_node = pt_get_next_assignment (&assign_helper)) != NULL)
 	{
-	  // TODO: solve this for views that inherit columns with on update
-	  // Problem arises When the on update column is in the assignments
 	  if (!pt_str_compare (att_name_node->info.name.original, att->header.name, CASE_INSENSITIVE)
 	      && !pt_str_compare (att_name_node->info.name.resolved, cls->header.ch_name, CASE_INSENSITIVE))
 	    {
