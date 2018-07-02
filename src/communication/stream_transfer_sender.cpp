@@ -50,7 +50,8 @@ namespace cubstream
 
       void execute () override
       {
-	int rc = NO_ERRORS;
+	css_error_code rc = NO_ERRORS;
+	int error_code = NO_ERROR;
 	stream_position last_reported_ready_pos = this_producer_channel.m_stream.get_last_committed_pos ();
 
 	if (m_first_loop)
@@ -61,8 +62,7 @@ namespace cubstream
 	    assert (this_producer_channel.m_channel.is_connection_alive ());
 	    assert (sizeof (stream_position) == sizeof (UINT64));
 
-	    rc = this_producer_channel.m_channel.recv ((char *) &last_sent_position,
-		 max_len);
+	    rc = this_producer_channel.m_channel.recv ((char *) &last_sent_position, max_len);
 	    this_producer_channel.m_last_sent_position = last_sent_position;
 
 	    assert (max_len == sizeof (UINT64));
@@ -76,15 +76,15 @@ namespace cubstream
 	    m_first_loop = false;
 	  }
 
-	while (rc == NO_ERRORS && this_producer_channel.m_last_sent_position < last_reported_ready_pos)
+	while (error_code == NO_ERROR && this_producer_channel.m_last_sent_position < last_reported_ready_pos)
 	  {
 	    std::size_t byte_count = std::min ((stream_position) cubcomm::MTU,
 					       last_reported_ready_pos - this_producer_channel.m_last_sent_position);
 
-	    rc = this_producer_channel.m_stream.read (this_producer_channel.m_last_sent_position, byte_count,
-		 this_producer_channel.m_read_action_function);
+	    error_code = this_producer_channel.m_stream.read (this_producer_channel.m_last_sent_position, byte_count,
+			 this_producer_channel.m_read_action_function);
 
-	    if (rc != NO_ERROR)
+	    if (error_code != NO_ERROR)
 	      {
 		this_producer_channel.m_channel.close_connection ();
 	      }
@@ -103,13 +103,14 @@ namespace cubstream
       m_last_sent_position (begin_sending_position)
   {
     cubthread::delta_time daemon_period = std::chrono::milliseconds (10);
-    m_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (daemon_period,
-		      new transfer_sender_task (*this),
-		      "stream_transfer_sender");
 
     m_read_action_function =
       std::bind (&transfer_sender::read_action, std::ref (*this), std::placeholders::_1,
 		 std::placeholders::_2);
+
+    m_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (daemon_period,
+		      new transfer_sender_task (*this),
+		      "stream_transfer_sender");
   }
 
   transfer_sender::~transfer_sender ()
@@ -130,9 +131,7 @@ namespace cubstream
 
   int transfer_sender::read_action (char *ptr, const size_t byte_count)
   {
-    int rc = m_channel.send (ptr, byte_count);
-
-    if (rc == NO_ERRORS)
+    if (m_channel.send (ptr, byte_count) == NO_ERRORS)
       {
 	m_last_sent_position += byte_count;
 	return NO_ERROR;

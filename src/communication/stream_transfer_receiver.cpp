@@ -76,8 +76,7 @@ namespace cubstream
 	    return;
 	  }
 
-	rc = (css_error_code) this_consumer_channel.m_stream.write (max_len, this_consumer_channel.m_write_action_function);
-	if (rc != NO_ERROR)
+	if (this_consumer_channel.m_stream.write (max_len, this_consumer_channel.m_write_action_function))
 	  {
 	    this_consumer_channel.m_channel.close_connection ();
 	    return;
@@ -96,14 +95,14 @@ namespace cubstream
       m_stream (stream),
       m_last_received_position (received_from_position)
   {
-    m_receiver_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
-			new transfer_receiver_task (*this), "stream_transfer_receiver");
-
     m_write_action_function = std::bind (&transfer_receiver::write_action,
 					 std::ref (*this),
 					 std::placeholders::_1,
 					 std::placeholders::_2,
 					 std::placeholders::_3);
+
+    m_receiver_daemon = cubthread::get_manager ()->create_daemon_without_entry (cubthread::delta_time (0),
+			new transfer_receiver_task (*this), "stream_transfer_receiver");
   }
 
   transfer_receiver::~transfer_receiver ()
@@ -114,12 +113,11 @@ namespace cubstream
   int transfer_receiver::write_action (const stream_position pos, char *ptr, const size_t byte_count)
   {
     std::size_t recv_bytes = byte_count;
-    int rc = NO_ERROR;
 
     std::memcpy (ptr + pos, m_buffer, recv_bytes);
     m_last_received_position += recv_bytes;
 
-    return rc;
+    return NO_ERROR;
   }
 
   stream_position transfer_receiver::get_last_received_position ()

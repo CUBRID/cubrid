@@ -40,7 +40,7 @@ namespace cubcomm
 {
 
   /* TODO[arnia] this needs to be calculated a priori */
-  const int MTU = 1500;
+  const std::size_t MTU = 1500;
 
   enum CHANNEL_TYPE
   {

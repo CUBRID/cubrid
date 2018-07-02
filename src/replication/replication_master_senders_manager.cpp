@@ -44,73 +44,65 @@ namespace cubreplication
 
   void master_senders_manager::init (cubstream::stream *stream)
   {
-    if (is_initialized == false)
+    int error_code = NO_ERROR;
+    std::lock_guard<std::mutex> guard (mutex_for_singleton);
+
+    if (is_initialized)
       {
-	std::lock_guard<std::mutex> guard (mutex_for_singleton);
-	if (is_initialized == false)
-	  {
-	    int error_code = NO_ERROR;
-
-	    master_server_stream_senders.clear ();
-	    master_channels_supervisor_daemon = cubthread::get_manager ()->create_daemon (
-						  cubthread::looper (std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)),
-						  new master_senders_supervisor_task (),
-						  "supervisor_daemon");
-	    g_minimum_successful_stream_position = 0;
-	    g_stream = stream;
-
-	    error_code = rwlock_initialize (&master_senders_lock, "MASTER_SENDERS_LOCK");
-	    assert (error_code == NO_ERROR);
-
-	    is_initialized = true;
-	  }
+	return;
       }
+
+    master_server_stream_senders.clear ();
+    master_channels_supervisor_daemon = cubthread::get_manager ()->create_daemon (
+					  cubthread::looper (std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)),
+					  new master_senders_supervisor_task (),
+					  "supervisor_daemon");
+    g_minimum_successful_stream_position = 0;
+    g_stream = stream;
+
+    error_code = rwlock_initialize (&master_senders_lock, "MASTER_SENDERS_LOCK");
+    assert (error_code == NO_ERROR);
+
+    is_initialized = true;
   }
 
   void master_senders_manager::add_stream_sender (cubstream::transfer_sender *sender)
   {
+    assert (is_initialized);
 
-    if (is_initialized)
-      {
-	std::lock_guard<std::mutex> guard (mutex_for_singleton);
-	if (is_initialized)
-	  {
-	    rwlock_write_lock (&master_senders_lock);
-	    master_server_stream_senders.push_back (sender);
-	    rwlock_write_unlock (&master_senders_lock);
-	  }
-      }
+    rwlock_write_lock (&master_senders_lock);
+    master_server_stream_senders.push_back (sender);
+    rwlock_write_unlock (&master_senders_lock);
   }
 
   void master_senders_manager::final ()
   {
-    if (is_initialized == true)
+    int error_code = NO_ERROR;
+    std::lock_guard<std::mutex> guard (mutex_for_singleton);
+
+    if (!is_initialized)
       {
-	std::lock_guard<std::mutex> guard (mutex_for_singleton);
-	if (is_initialized == true)
-	  {
-	    int error_code = NO_ERROR;
-
-	    if (master_channels_supervisor_daemon != NULL)
-	      {
-		cubthread::get_manager ()->destroy_daemon (master_channels_supervisor_daemon);
-		master_channels_supervisor_daemon = NULL;
-	      }
-
-	    rwlock_write_lock (&master_senders_lock);
-	    for (cubstream::transfer_sender *sender : master_server_stream_senders)
-	      {
-		delete sender;
-	      }
-	    master_server_stream_senders.clear ();
-	    rwlock_write_unlock (&master_senders_lock);
-
-	    error_code = rwlock_finalize (&master_senders_lock);
-	    assert (error_code == NO_ERROR);
-
-	    is_initialized = false;
-	  }
+	return;
       }
+
+    if (master_channels_supervisor_daemon != NULL)
+      {
+	cubthread::get_manager ()->destroy_daemon (master_channels_supervisor_daemon);
+	master_channels_supervisor_daemon = NULL;
+      }
+
+    rwlock_write_lock (&master_senders_lock);
+    for (cubstream::transfer_sender *sender : master_server_stream_senders)
+      {
+	delete sender;
+      }
+    master_server_stream_senders.clear ();
+    rwlock_write_unlock (&master_senders_lock);
+
+    error_code = rwlock_finalize (&master_senders_lock);
+    assert (error_code == NO_ERROR);
+
+    is_initialized = false;
   }
 
   std::size_t master_senders_manager::get_number_of_stream_senders ()

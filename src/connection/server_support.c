@@ -95,54 +95,6 @@
 #define RMUTEX_NAME_TEMP_CONN_ENTRY "TEMP_CONN_ENTRY"
 
 static HA_SERVER_STATE css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE req_state);
-static const size_t CSS_JOB_QUEUE_SCAN_COLUMN_COUNT = 4;
-
-static void css_setup_server_loop (void);
-static int css_check_conn (CSS_CONN_ENTRY * p);
-static void css_set_shutdown_timeout (int timeout);
-static int css_get_master_request (SOCKET master_fd);
-static int css_process_master_request (SOCKET master_fd);
-static void css_process_shutdown_request (SOCKET master_fd);
-static void css_process_new_client (SOCKET master_fd);
-static void css_process_get_server_ha_mode_request (SOCKET master_fd);
-static void css_process_change_server_ha_mode_request (SOCKET master_fd);
-static void css_process_get_eof_request (SOCKET master_fd);
-
-static void css_close_connection_to_master (void);
-static int css_reestablish_connection_to_master (void);
-static int css_connection_handler_thread (THREAD_ENTRY * thrd, CSS_CONN_ENTRY * conn);
-static css_error_code css_internal_connection_handler (CSS_CONN_ENTRY * conn);
-static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
-static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
-static int css_check_accessibility (SOCKET new_fd);
-
-#if defined(WINDOWS)
-static int css_process_new_connection_request (void);
-#endif /* WINDOWS */
-
-static bool css_check_ha_log_applier_done (void);
-static bool css_check_ha_log_applier_working (void);
-static void css_process_new_slave (SOCKET master_fd);
-
-static void css_push_server_task (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
-static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopper_thread_ref);
-static void css_stop_log_writer (THREAD_ENTRY & thread_ref, bool &);
-static void css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool is_log_writer, bool & found);
-static bool css_is_log_writer (const THREAD_ENTRY & thread_arg);
-static void css_stop_all_workers (THREAD_ENTRY & thread_ref, css_thread_stop_type stop_phase);
-static void css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapper, int &busy_count);
-// *INDENT-OFF*
-// cubthread::entry_workpool::core confuses indent
-static void css_wp_core_job_scan_mapper (const cubthread::entry_workpool::core & wp_core, bool & stop_mapper,
-                                         THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx, size_t & core_index,
-                                         int & error_code);
-// *INDENT-ON*
-static void
-css_is_any_thread_not_suspended_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, size_t & count, bool & found);
-static void
-css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
-					      THREAD_ENTRY * caller_thread, int tran_index, int client_id,
-					      size_t & count);
 
 static struct timeval css_Shutdown_timeout = { 0, 0 };
 
@@ -252,6 +204,53 @@ public:
 private:
   CSS_CONN_ENTRY &m_conn;
 };
+
+static const size_t CSS_JOB_QUEUE_SCAN_COLUMN_COUNT = 4;
+
+static void css_setup_server_loop (void);
+static int css_check_conn (CSS_CONN_ENTRY * p);
+static void css_set_shutdown_timeout (int timeout);
+static int css_get_master_request (SOCKET master_fd);
+static int css_process_master_request (SOCKET master_fd);
+static void css_process_shutdown_request (SOCKET master_fd);
+static void css_process_new_client (SOCKET master_fd);
+static void css_process_get_server_ha_mode_request (SOCKET master_fd);
+static void css_process_change_server_ha_mode_request (SOCKET master_fd);
+static void css_process_get_eof_request (SOCKET master_fd);
+
+static void css_close_connection_to_master (void);
+static int css_reestablish_connection_to_master (void);
+static int css_connection_handler_thread (THREAD_ENTRY * thrd, CSS_CONN_ENTRY * conn);
+static css_error_code css_internal_connection_handler (CSS_CONN_ENTRY * conn);
+static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
+static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
+static int css_check_accessibility (SOCKET new_fd);
+
+#if defined(WINDOWS)
+static int css_process_new_connection_request (void);
+#endif /* WINDOWS */
+
+static bool css_check_ha_log_applier_done (void);
+static bool css_check_ha_log_applier_working (void);
+static void css_process_new_slave (SOCKET master_fd);
+
+static void css_push_server_task (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
+static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopper_thread_ref);
+static void css_stop_log_writer (THREAD_ENTRY & thread_ref, bool &);
+static void css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool is_log_writer, bool & found);
+static bool css_is_log_writer (const THREAD_ENTRY & thread_arg);
+static void css_stop_all_workers (THREAD_ENTRY & thread_ref, css_thread_stop_type stop_phase);
+static void css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapper, int &busy_count);
+// cubthread::entry_workpool::core confuses indent
+static void css_wp_core_job_scan_mapper (const cubthread::entry_workpool::core & wp_core, bool & stop_mapper,
+                                         THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx, size_t & core_index,
+                                         int & error_code);
+static void
+css_is_any_thread_not_suspended_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, size_t & count, bool & found);
+static void
+css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
+					      THREAD_ENTRY * caller_thread, int tran_index, int client_id,
+					      size_t & count);
 
 static cubstream::transfer_receiver *g_slave_stream_receiver;
 static cubstream::packing_stream temporary_stream (10240, 0);
