@@ -161,9 +161,4 @@ extern int do_set_timezone (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_kill (PARSER_CONTEXT * parser, PT_NODE * statement);
-
-extern int check_for_default_expr (PARSER_CONTEXT * parser, PT_NODE * specified_attrs, PT_NODE ** default_expr_attrs,
-				   DB_OBJECT * class_obj);
-extern int check_for_on_update_expr (PARSER_CONTEXT * parser, PT_NODE * assigns, DB_OBJECT * class_obj,
-				     UINTPTR spec_id);
 #endif /* _EXECUTE_STATEMENT_H_ */

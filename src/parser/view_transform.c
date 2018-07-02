@@ -8816,8 +8816,8 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 		  spec->info.spec.entity_name = NULL;
 		}
 
-	      if (statement->node_type != PT_UPDATE)
-		{		/* debug */
+	      if (statement->node_type != PT_UPDATE || spec->info.spec.join_type != PT_JOIN_NONE)
+		{
 		  newspec->info.spec.range_var->info.name.original = spec->info.spec.range_var->info.name.original;
 		  newspec->info.spec.location = spec->info.spec.location;
 		}
@@ -8825,11 +8825,6 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 	      /* move join info */
 	      if (spec->info.spec.join_type != PT_JOIN_NONE)
 		{
-		  if (statement->node_type == PT_UPDATE)
-		    {
-		      newspec->info.spec.range_var->info.name.original = spec->info.spec.range_var->info.name.original;
-		      newspec->info.spec.location = spec->info.spec.location;
-		    }
 		  newspec->info.spec.join_type = spec->info.spec.join_type;
 		  newspec->info.spec.on_cond = spec->info.spec.on_cond;
 		  spec->info.spec.on_cond = NULL;
@@ -8892,14 +8887,10 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 
       if (newspec)
 	{
-	  if (!PT_IS_QUERY_NODE_TYPE (statement->node_type))
+	  if (!PT_IS_QUERY_NODE_TYPE (statement->node_type) && statement->node_type != PT_UPDATE)
 	    {
-	      /* PT_INSERT, PT_UPDATE, PT_DELETE */
-	      if (statement->node_type != PT_UPDATE)
-		{		/* debug */
-		  statement = mq_rename_resolved (parser, newspec, statement, newresolved);
-		  newspec = newspec->next;
-		}
+	      statement = mq_rename_resolved (parser, newspec, statement, newresolved);
+	      newspec = newspec->next;
 	    }
 	  for (spec = newspec; spec != NULL; spec = spec->next)
 	    {
