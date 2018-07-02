@@ -8816,8 +8816,12 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 		  spec->info.spec.entity_name = NULL;
 		}
 
-	      newspec->info.spec.range_var->info.name.original = spec->info.spec.range_var->info.name.original;
-	      newspec->info.spec.location = spec->info.spec.location;
+	      if (statement->node_type != PT_UPDATE)
+		{		/* debug */
+		  newspec->info.spec.range_var->info.name.original = spec->info.spec.range_var->info.name.original;
+		  newspec->info.spec.location = spec->info.spec.location;
+		}
+
 	      /* move join info */
 	      if (spec->info.spec.join_type != PT_JOIN_NONE)
 		{
@@ -8886,8 +8890,11 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 	  if (!PT_IS_QUERY_NODE_TYPE (statement->node_type))
 	    {
 	      /* PT_INSERT, PT_UPDATE, PT_DELETE */
-	      statement = mq_rename_resolved (parser, newspec, statement, newresolved);
-	      newspec = newspec->next;
+	      if (statement->node_type != PT_UPDATE)
+		{		/* debug */
+		  statement = mq_rename_resolved (parser, newspec, statement, newresolved);
+		  newspec = newspec->next;
+		}
 	    }
 	  for (spec = newspec; spec != NULL; spec = spec->next)
 	    {
