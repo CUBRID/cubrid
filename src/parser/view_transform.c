@@ -5578,7 +5578,7 @@ mq_invert_subqueries (PARSER_CONTEXT * parser, PT_NODE * select_statements, PT_N
   PT_NODE **column_prev;
   PT_NODE *inverted;
   PT_NODE **head;
-  PT_NODE *node_to_free = NULL;
+  PT_NODE *temp = NULL;
 
   while (select_statements)
     {
@@ -5599,21 +5599,24 @@ mq_invert_subqueries (PARSER_CONTEXT * parser, PT_NODE * select_statements, PT_N
 	  // to avoid creating a new "empty" node, we better delete the column from the list
 	  if (inverted == NULL)
 	    {
-	      node_to_free = *column;
+	      temp = *column;
 
 	      if (column_prev != NULL)
 		{
 		  // link the previous node to the next node
-		  (*column_prev)->next = (*column)->next;
+		  (*column_prev)->next = column_next;
 		}
 	      else
 		{
 		  // move head to the right
-		  head = &((*column)->next);
+		  head = &column_next;
 		}
 
 	      // move forward in list
 	      column = &((*column_prev)->next);
+
+	      // avoid a mem leak
+	      parser_free_tree (parser, temp);
 	    }
 	  else
 	    {
