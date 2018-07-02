@@ -655,7 +655,7 @@ _DEFUN (ulp, (_x), double _x)
 
   x.d = _x;
 
-  L = (word0 (x) & Exp_mask) - (P - 1) * Exp_msk1;
+  L = (word0 (x) & Exp_mask) - (PREC - 1) * Exp_msk1;
 #ifndef Sudden_Underflow
   if (L > 0)
     {
@@ -896,17 +896,17 @@ _DEFUN (d2b, (ptr, _d, e, bits), struct _reent * ptr _AND double _d _AND int *e 
     {
 #endif
 #ifdef IBM
-      *e = (de - Bias - (P - 1) << 2) + k;
-      *bits = 4 * P + 8 - k - hi0bits (word0 (d) & Frac_mask);
+      *e = (de - Bias - (PREC - 1) << 2) + k;
+      *bits = 4 * PREC + 8 - k - hi0bits (word0 (d) & Frac_mask);
 #else
-      *e = de - Bias - (P - 1) + k;
-      *bits = P - k;
+      *e = de - Bias - (PREC - 1) + k;
+      *bits = PREC - k;
 #endif
 #ifndef Sudden_Underflow
     }
   else
     {
-      *e = de - Bias - (P - 1) + 1 + k;
+      *e = de - Bias - (PREC - 1) + 1 + k;
 #ifdef Pack_32
       *bits = 32 * i - hi0bits (x[i - 1]);
 #else
