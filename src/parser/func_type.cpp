@@ -202,6 +202,10 @@ std::vector<func_signature> func_signature::sequence_r_any = {
   {PT_TYPE_SEQUENCE, {}, {PT_GENERIC_TYPE_ANY}},
 };
 
+std::vector<func_signature> func_signature::generic = {
+  {0, {PT_GENERIC_TYPE_ANY}, {}},
+};
+
 std::vector<func_signature>* func_signature::get_signatures(FUNC_TYPE ft){
     switch(ft){
         case PT_MIN:
@@ -242,7 +246,7 @@ std::vector<func_signature>* func_signature::get_signatures(FUNC_TYPE ft){
         case PT_LAG:
             return &lead_lag;
         case PT_GENERIC:
-            return nullptr;
+            return &generic;
         case F_SET:
         case F_TABLE_SET:
             return &set_r_any;

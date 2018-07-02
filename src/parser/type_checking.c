@@ -13050,6 +13050,10 @@ namespace Func
 
   class Node
   {
+    private:
+      parser_context* m_parser;
+      parser_node* m_node;
+
     public:
       Node(parser_context* parser, parser_node* node)
         : m_parser(parser)
@@ -13280,14 +13284,10 @@ namespace Func
                 assert(false);
                 break;
             case pt_arg_type::INDEX:
-                size_t index = 0;
-                for(auto p=arg_list; p; p=p->next, ++index)
+                parser_node* node = get_arg(signature.ret.val.index);
+                if(node)
                   {
-                    if(index == signature.ret.val.index)
-                      {
-                        m_node->type_enum = p->type_enum;
-                        break;
-                      }
+                    m_node->type_enum = node->type_enum;
                   }
                 break;
             }
@@ -13405,9 +13405,6 @@ namespace Func
     }
 
   private:
-    parser_context* m_parser;
-    parser_node* m_node;
-
     /*
     * get_signature () - get function signature using a function to compare types
     */
@@ -13512,7 +13509,6 @@ static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
     switch(fcode)
     {
       case PT_TOP_AGG_FUNC:
-      case PT_GENERIC:
       case F_MIDXKEY:
       case F_TOP_TABLE_FUNC:
       case F_VID:
