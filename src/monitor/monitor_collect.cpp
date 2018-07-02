@@ -41,5 +41,10 @@ namespace cubmonitor
     return m_timept - start_pt;
   }
 
+  void
+  build_name_vector (std::vector<std::string> &names, const char *basename, const char *prefix)
+  {
+    names.push_back (std::string (prefix) + basename);
+  }
 
 }  // namespace cubmonitor

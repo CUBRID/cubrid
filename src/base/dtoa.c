@@ -327,11 +327,11 @@ _DEFUN (_dtoa_r, (ptr, _d, mode, ndigits, decpt, sign, rve, float_type),
     {
       /* d is denormalized */
 
-      i = bbits + be + (Bias + (P - 1) - 1);
+      i = bbits + be + (Bias + (PREC - 1) - 1);
       x = i > 32 ? word0 (d) << (64 - i) | word1 (d) >> (i - 32) : word1 (d) << (32 - i);
       d2.d = x;
       word0 (d2) -= 31 * Exp_msk1;	/* adjust exponent */
-      i -= (Bias + (P - 1) - 1) + 1;
+      i -= (Bias + (PREC - 1) - 1) + 1;
       denorm = 1;
     }
 #endif
@@ -458,7 +458,7 @@ _DEFUN (_dtoa_r, (ptr, _d, mode, ndigits, decpt, sign, rve, float_type),
 	  ieps++;
 	}
       eps.d = ieps * d.d + 7.;
-      word0 (eps) -= (P - 1) * Exp_msk1;
+      word0 (eps) -= (PREC - 1) * Exp_msk1;
       if (ilim == 0)
 	{
 	  S = mhi = 0;
@@ -580,12 +580,12 @@ _DEFUN (_dtoa_r, (ptr, _d, mode, ndigits, decpt, sign, rve, float_type),
 	{
 	  i =
 #ifndef Sudden_Underflow
-	    denorm ? be + (Bias + (P - 1) - 1 + 1) :
+	    denorm ? be + (Bias + (PREC - 1) - 1 + 1) :
 #endif
 #ifdef IBM
-	    1 + 4 * P - 3 - bbits + ((bbits + be - 1) & 3);
+	    1 + 4 * PREC - 3 - bbits + ((bbits + be - 1) & 3);
 #else
-	    1 + P - bbits;
+	    1 + PREC - bbits;
 #endif
 	}
       else
