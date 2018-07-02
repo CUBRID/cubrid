@@ -8818,13 +8818,18 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 
 	      if (statement->node_type != PT_UPDATE)
 		{		/* debug */
+		  newspec->info.spec.range_var->info.name.original = spec->info.spec.range_var->info.name.original;
+		  newspec->info.spec.location = spec->info.spec.location;
 		}
 
 	      /* move join info */
 	      if (spec->info.spec.join_type != PT_JOIN_NONE)
 		{
-		  newspec->info.spec.range_var->info.name.original = spec->info.spec.range_var->info.name.original;
-		  newspec->info.spec.location = spec->info.spec.location;
+		  if (statement->node_type == PT_UPDATE)
+		    {
+		      newspec->info.spec.range_var->info.name.original = spec->info.spec.range_var->info.name.original;
+		      newspec->info.spec.location = spec->info.spec.location;
+		    }
 		  newspec->info.spec.join_type = spec->info.spec.join_type;
 		  newspec->info.spec.on_cond = spec->info.spec.on_cond;
 		  spec->info.spec.on_cond = NULL;
