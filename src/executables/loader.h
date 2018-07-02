@@ -17,10 +17,8 @@
  *
  */
 
-
 /*
- * loader.h: Loader definitions. Updated using design from fast loaddb
- *             prototype
+ * loader.h: Loader definitions. Updated using design from fast loaddb prototype
  */
 
 #ifndef _LOADER_H_
@@ -31,6 +29,12 @@
 #include <stdint.h>
 #include "porting.h"
 #include "dbdef.h"
+
+namespace cubloader
+{
+  // forward declaration
+  class loader_driver;
+};
 
 typedef struct LDR_CONTEXT LDR_CONTEXT;
 
@@ -83,8 +87,6 @@ typedef enum
 
 typedef void (*LDR_POST_COMMIT_HANDLER) (int);
 typedef void (*LDR_POST_INTERRUPT_HANDLER) (int);
-
-
 
 /*
  * LDR_ATTRIBUTE_TYPE
@@ -158,110 +160,91 @@ typedef struct loader_monetary_value
   int currency_type;
 } LDR_MONETARY_VALUE;
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
+/* *INDENT-OFF* */
+extern cubloader::loader_driver *ldr_driver;
+/* *INDENT-ON* */
 
-  extern char **ignore_class_list;
-  extern int ignore_class_num;
-  extern bool skip_current_class;
-  extern bool skip_current_instance;
+extern char **ignore_class_list;
+extern int ignore_class_num;
+extern bool skip_current_class;
+extern bool skip_current_instance;
 
-  extern LDR_CONTEXT *ldr_Current_context;
-
-
-
+extern LDR_CONTEXT *ldr_Current_context;
 
 /* Loader initialization and shutdown functions */
-
-  extern int ldr_init (bool verbose);
-  extern int ldr_start (int periodic_commit);
-  extern int ldr_final (void);
-  extern int ldr_finish (LDR_CONTEXT * context, int err);
+extern int ldr_init (bool verbose);
+extern int ldr_start (int periodic_commit);
+extern int ldr_final (void);
+extern int ldr_finish (LDR_CONTEXT * context, int err);
 
 /* Action to initialize the parser context to deal with a new class */
+extern void ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len);
+extern void ldr_increment_err_total (LDR_CONTEXT * context);
+extern void ldr_increment_fails (void);
+extern void ldr_load_failed_error (void);
 
-  extern void ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len);
-  extern void ldr_increment_err_total (LDR_CONTEXT * context);
-  extern void ldr_increment_fails (void);
-  extern void ldr_load_failed_error (void);
+extern void ldr_process_constants (LDR_CONSTANT * c);
 
-  extern void ldr_process_constants (LDR_CONSTANT * c);
-
-  extern int ldr_init_class_spec (const char *class_name);
+extern int ldr_init_class_spec (const char *class_name);
 /*
  * Action to deal with instance attributes, arguments for
  * constructors and set elements
  * ldr_act is set to appropriate function depending on the context.
  */
+extern void (*ldr_act) (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type);
 
-  extern void (*ldr_act) (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type);
-
-  extern void ldr_act_attr (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type);
+extern void ldr_act_attr (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type);
 
 /* Action to deal with attribute names and argument names */
+extern int ldr_act_check_missing_non_null_attrs (LDR_CONTEXT * context);
 
-  extern int ldr_act_check_missing_non_null_attrs (LDR_CONTEXT * context);
-
-  extern void ldr_act_add_attr (LDR_CONTEXT * context, const char *str, int len);
+extern void ldr_act_add_attr (LDR_CONTEXT * context, const char *str, int len);
 
 /*
  * Action to finish normal instances, constructor instances, and
  * updates to class/default/shared values.
  */
-
-  extern void ldr_act_finish_line (LDR_CONTEXT * context);
+extern void ldr_act_finish_line (LDR_CONTEXT * context);
 
 /* Actions for %ID command */
-
-  extern void ldr_act_start_id (LDR_CONTEXT * context, char *name);
-  extern void ldr_act_set_id (LDR_CONTEXT * context, int id);
+extern void ldr_act_start_id (LDR_CONTEXT * context, char *name);
+extern void ldr_act_set_id (LDR_CONTEXT * context, int id);
 
 /* Actions for object references */
-
-  extern void ldr_act_set_ref_class_id (LDR_CONTEXT * context, int id);
-  extern void ldr_act_set_ref_class (LDR_CONTEXT * context, char *name);
-  extern void ldr_act_set_instance_id (LDR_CONTEXT * context, int id);
-  extern DB_OBJECT *ldr_act_get_ref_class (LDR_CONTEXT * context);
+extern void ldr_act_set_ref_class_id (LDR_CONTEXT * context, int id);
+extern void ldr_act_set_ref_class (LDR_CONTEXT * context, char *name);
+extern void ldr_act_set_instance_id (LDR_CONTEXT * context, int id);
+extern DB_OBJECT *ldr_act_get_ref_class (LDR_CONTEXT * context);
 
 /* Special action for class, shared, default attributes */
-
-  extern void ldr_act_restrict_attributes (LDR_CONTEXT * context, LDR_ATTRIBUTE_TYPE type);
+extern void ldr_act_restrict_attributes (LDR_CONTEXT * context, LDR_ATTRIBUTE_TYPE type);
 
 /* Action for cleaning up and finish the parse phase */
-
-  extern void ldr_act_finish (LDR_CONTEXT * context, int parse_error);
+extern void ldr_act_finish (LDR_CONTEXT * context, int parse_error);
 
 /* Actions for constructor syntax */
-
-  extern int ldr_act_set_constructor (LDR_CONTEXT * context, const char *name);
-  extern int ldr_act_add_argument (LDR_CONTEXT * context, const char *name);
+extern int ldr_act_set_constructor (LDR_CONTEXT * context, const char *name);
+extern int ldr_act_add_argument (LDR_CONTEXT * context, const char *name);
 
 /* Action to start a new instance */
-
-  extern void ldr_act_start_instance (LDR_CONTEXT * context, int id, LDR_CONSTANT * cons);
+extern void ldr_act_start_instance (LDR_CONTEXT * context, int id, LDR_CONSTANT * cons);
 
 /* Statistics updating/retrieving functions */
-
-  extern void ldr_stats (int *errors, int *objects, int *defaults, int *lastcommit, int *fails);
-  extern int ldr_update_statistics (void);
+extern void ldr_stats (int *errors, int *objects, int *defaults, int *lastcommit, int *fails);
+extern int ldr_update_statistics (void);
 #if defined (ENABLE_UNUSED_FUNCTION)
-  extern void print_parser_lineno (FILE * fp);
+extern void print_parser_lineno (FILE * fp);
 #endif
+
 /* Callback functions  */
+extern void ldr_register_post_commit_handler (LDR_POST_COMMIT_HANDLER handler, void *arg);
+extern void ldr_register_post_interrupt_handler (LDR_POST_INTERRUPT_HANDLER handler, void *ldr_jmp_buf);
+extern void ldr_interrupt_has_occurred (int type);
 
-  extern void ldr_register_post_commit_handler (LDR_POST_COMMIT_HANDLER handler, void *arg);
-  extern void ldr_register_post_interrupt_handler (LDR_POST_INTERRUPT_HANDLER handler, void *ldr_jmp_buf);
-  extern void ldr_interrupt_has_occurred (int type);
+extern void ldr_act_set_skip_current_class (char *classname, size_t size);
+extern bool ldr_is_ignore_class (const char *classname, size_t size);
 
-  extern void ldr_act_set_skip_current_class (char *classname, size_t size);
-  extern bool ldr_is_ignore_class (const char *classname, size_t size);
 /* log functions */
-  extern void print_log_msg (int verbose, const char *fmt, ...);
+extern void print_log_msg (int verbose, const char *fmt, ...);
 
-
-#ifdef __cplusplus
-}
-#endif
-#endif				/* _LOADER_H_ */
+#endif /* _LOADER_H_ */

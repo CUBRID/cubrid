@@ -52,6 +52,7 @@
 #include "object_accessor.h"
 #include "db.h"
 #include "loader_object_table.h"
+#include "loader_driver.hpp"
 #include "load_object.h"
 #include "work_space.h"
 #include "message_catalog.h"
@@ -74,12 +75,6 @@
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 extern bool No_oid_hint;
-/*
-extern "C"
-{
-  extern int loader_yylineno;
-}
-*/
 
 #define LDR_MAX_ARGS 32
 
@@ -1269,7 +1264,7 @@ static void
 display_error_line (int adjust)
 {
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
-	   /*loader_yylineno + */ adjust);
+	   ldr_driver->lineno () + adjust);
 }
 
 /*
@@ -4321,7 +4316,7 @@ check_commit (LDR_CONTEXT * context)
 	    {
 	      CHECK_ERR (err, ldr_assign_all_perm_oids ());
 	      CHECK_ERR (err, db_commit_transaction ());
-	      Last_committed_line = /*loader_yylineno - */ 1;
+	      Last_committed_line = ldr_driver->lineno () - 1;
 	      committed_instances = Total_objects + 1;
 	      display_error_line (-1);
 	      fprintf (stderr,
@@ -4356,7 +4351,7 @@ check_commit (LDR_CONTEXT * context)
 			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_COMMITTING));
 	      CHECK_ERR (err, ldr_assign_all_perm_oids ());
 	      CHECK_ERR (err, db_commit_transaction ());
-	      Last_committed_line = /*loader_yylineno - */ 1;
+	      Last_committed_line = ldr_driver->lineno () - 1;
 	      context->commit_counter = context->periodic_commit;
 
 	      /* Invoke post commit callback function */

@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -23,7 +23,7 @@
 
 /*** C/C++ Declarations ***/
 %{
-#include "loader_scanner.hpp"
+#include "loader_driver.hpp"
 
 #undef YY_DECL
 #define YY_DECL                                                                          \
@@ -67,12 +67,6 @@ using token = cubloader::loader_parser::token;
 [ \t]+	;
 
 \r?\n {
-    //yylineno = loader_yyline++;
-    //if (load_fail_flag)
-    //  {
-	//load_fail_flag = false;
-	//loader_load_fail ();
-      //}
     return token::NL;
 }
 
@@ -143,13 +137,13 @@ using token = cubloader::loader_parser::token;
 
 \%[Ii][Dd] {
     PRINT ("CMD_ID %s\n", yytext);
-    driver.set_in_instance_line (false);
+    driver.get_semantic_helper ()->set_in_instance_line (false);
     return token::CMD_ID;
 }
 
 \%[Cc][Ll][Aa][Ss][Ss] {
     PRINT ("CMD_CLASS %s\n", yytext);
-    driver.set_in_instance_line (false);
+    driver.get_semantic_helper ()->set_in_instance_line (false);
     return token::CMD_CLASS;
 }
 
@@ -210,13 +204,13 @@ using token = cubloader::loader_parser::token;
 
 [\+\-]?(([0-9]+[Ee][\+\-]?[0-9]+[fFlL]?)|([0-9]*\.[0-9]+([Ee][\+\-]?[0-9]+)?[fFlL]?)|([0-9]+\.[0-9]*([Ee][\+\-]?[0-9]+)?[fFlL]?)) {
     PRINT ("REAL_LIT %s\n", yytext);
-    yylval->string = driver.make_string_by_yytext ();
+    yylval->string = driver.get_semantic_helper ()->make_string_by_yytext ();
     return token::REAL_LIT;
 }
 
 [\+\-]?[0-9]+ {
     PRINT ("INT_LIT %s\n", yytext);
-    yylval->string = driver.make_string_by_yytext ();
+    yylval->string = driver.get_semantic_helper ()->make_string_by_yytext ();
     return token::INT_LIT;
 }
 
@@ -228,43 +222,43 @@ using token = cubloader::loader_parser::token;
 
 [0-9]+:[0-9]+:[0-9]+[\ \t]*[aApP][mM] {
     PRINT ("TIME_LIT4 %s\n", yytext);
-    yylval->string = driver.make_string_by_yytext ();
+    yylval->string = driver.get_semantic_helper ()->make_string_by_yytext ();
     return token::TIME_LIT4;
 }
 
 [0-9]+:[0-9]+:[0-9]+[\ \t]* {
     PRINT ("TIME_LIT42 %s\n", yytext);
-    yylval->string = driver.make_string_by_yytext ();
+    yylval->string = driver.get_semantic_helper ()->make_string_by_yytext ();
     return token::TIME_LIT42;
 }
 
 [0-9]+:[0-9]+[\ \t]*[aApP][mM] {
     PRINT ("TIME_LIT3 %s\n", yytext);
-    yylval->string = driver.make_string_by_yytext ();
+    yylval->string = driver.get_semantic_helper ()->make_string_by_yytext ();
     return token::TIME_LIT3;
 }
 
 [0-9]+:[0-9]+[\ \t]* {
     PRINT ("TIME_LIT31 %s\n", yytext);
-    yylval->string = driver.make_string_by_yytext ();
+    yylval->string = driver.get_semantic_helper ()->make_string_by_yytext ();
     return token::TIME_LIT31;
 }
 
 [0-9]+:[0-9]+:[0-9]+ {
     PRINT ("TIME_LIT2 %s\n", yytext);
-    yylval->string = driver.make_string_by_yytext ();
+    yylval->string = driver.get_semantic_helper ()->make_string_by_yytext ();
     return token::TIME_LIT2;
 }
 
 [0-9]+:[0-9]+ {
     PRINT ("TIME_LIT1 %s\n", yytext);
-    yylval->string = driver.make_string_by_yytext ();
+    yylval->string = driver.get_semantic_helper ()->make_string_by_yytext ();
     return token::TIME_LIT1;
 }
 
 [0-9]+\/[0-9]+\/[0-9]+ {
     PRINT ("DATE_LIT2 %s\n", yytext);
-    yylval->string = driver.make_string_by_yytext ();
+    yylval->string = driver.get_semantic_helper ()->make_string_by_yytext ();
     return token::DATE_LIT2;
 }
 
@@ -415,41 +409,41 @@ using token = cubloader::loader_parser::token;
 
 ([a-zA-Z_%#]|(\xa1[\xa2-\xee\xf3-\xfe])|([\xa2-\xfe][\xa1-\xfe])|(\x8e[\xa1-\xfe]))([a-zA-Z_%#0-9]|(\xa1[\xa2-\xfe])|([\xa1-\xfe])|(\x8e[\xa1-\xfe]))* {
     PRINT ("IDENTIFIER %s\n", yytext);
-    yylval->string = driver.make_string_by_yytext ();
+    yylval->string = driver.get_semantic_helper ()->make_string_by_yytext ();
     return token::IDENTIFIER;
 }
 
 [\'] {
     PRINT ("Quote %s\n", yytext);
     BEGIN SQS;
-    driver.set_quoted_string_buffer ();
+    driver.get_semantic_helper ()->set_quoted_string_buffer ();
     return token::Quote;
 }
 
 [nN][\'] {
     PRINT ("NQuote %s\n", yytext);
     BEGIN SQS;
-    driver.set_quoted_string_buffer ();
+    driver.get_semantic_helper ()->set_quoted_string_buffer ();
     return token::NQuote;
 }
 
 [bB][\'] {
     PRINT ("BQuote %s\n", yytext);
     BEGIN SQS;
-    driver.set_quoted_string_buffer ();
+    driver.get_semantic_helper ()->set_quoted_string_buffer ();
     return token::BQuote;
 }
 
 [xX][\'] {
     PRINT ("XQuote %s\n", yytext);
     BEGIN SQS;
-    driver.set_quoted_string_buffer ();
+    driver.get_semantic_helper ()->set_quoted_string_buffer ();
     return token::XQuote;
 }
 
 \" {
-    driver.set_quoted_string_buffer ();
-    if (driver.in_instance_line ())
+    driver.get_semantic_helper ()->set_quoted_string_buffer ();
+    if (driver.get_semantic_helper ()->in_instance_line ())
       {
 	BEGIN DQS;
 	return token::DQuote;
@@ -461,12 +455,11 @@ using token = cubloader::loader_parser::token;
 }
 
 "[" {
-    driver.set_quoted_string_buffer ();
+    driver.get_semantic_helper ()->set_quoted_string_buffer ();
     BEGIN BRACKET_ID;
 }
 
 \\\n {
-    //yylineno = loader_yyline++;
     /* continue line */ ;
 }
 
@@ -476,12 +469,10 @@ using token = cubloader::loader_parser::token;
 }
 
 \/\/[^\r\n]*\r?\n {
-    //yylineno = loader_yyline++;
     /* C++ comments */
 }
 
 \-\-[^\r\n]*\r?\n {
-    //yylineno = loader_yyline++;
     /* SQL comments */
 }
 
@@ -491,7 +482,6 @@ using token = cubloader::loader_parser::token;
 
 <COMMENT>. |
 <COMMENT>\n {
-    //yylineno = loader_yyline++;
 }
 
 <COMMENT>"*/" {
@@ -499,59 +489,59 @@ using token = cubloader::loader_parser::token;
 }
 
 <DELIMITED_ID>\"\" {
-    driver.append_char ('"');
+    driver.get_semantic_helper ()->append_char ('"');
 }
 
 <DELIMITED_ID>[^\"] {
-    driver.append_char (yytext[0]);
+    driver.get_semantic_helper ()->append_char (yytext[0]);
 }
 
 <DELIMITED_ID>\" {
-    driver.append_char ('\0');
+    driver.get_semantic_helper ()->append_char ('\0');
     // PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
-    yylval->string = driver.make_string_by_buffer ();
+    yylval->string = driver.get_semantic_helper ()->make_string_by_buffer ();
     BEGIN INITIAL;
     return token::IDENTIFIER;
 }
 
 <BRACKET_ID>[^\]] {
-    driver.append_char (yytext[0]);
+    driver.get_semantic_helper ()->append_char (yytext[0]);
 }
 
 <BRACKET_ID>"]" {
-    driver.append_char ('\0');
+    driver.get_semantic_helper ()->append_char ('\0');
     // PRINT ("IDENTIFIER %s\n", qstr_Buf_p);
-    yylval->string = driver.make_string_by_buffer ();
+    yylval->string = driver.get_semantic_helper ()->make_string_by_buffer ();
     BEGIN INITIAL;
     return token::IDENTIFIER;
 }
 
 <DQS>\\n {
-    driver.append_char ('\n');
+    driver.get_semantic_helper ()->append_char ('\n');
 }
 
 <DQS>\\t {
-    driver.append_char ('\t');
+    driver.get_semantic_helper ()->append_char ('\t');
 }
 
 <DQS>\\f {
-    driver.append_char ('\f');
+    driver.get_semantic_helper ()->append_char ('\f');
 }
 
 <DQS>\\r {
-    driver.append_char ('\r');
+    driver.get_semantic_helper ()->append_char ('\r');
 }
 
 <DQS>\\[0-7]([0-7][0-7]?)? {
-    driver.append_char ((char) strtol (&yytext[1], NULL, 8));
+    driver.get_semantic_helper ()->append_char ((char) strtol (&yytext[1], NULL, 8));
 }
 
 <DQS>\\x[0-9a-fA-F][0-9a-fA-F]? {
-    driver.append_char ((char) strtol (&yytext[2], NULL, 16));
+    driver.get_semantic_helper ()->append_char ((char) strtol (&yytext[2], NULL, 16));
 }
 
 <DQS>[^\"] {
-    driver.append_char (yytext[0]);
+    driver.get_semantic_helper ()->append_char (yytext[0]);
 }
 
 <DQS>\\ {
@@ -559,37 +549,36 @@ using token = cubloader::loader_parser::token;
 }
 
 <DQS>\" {
-    driver.append_char ('\0');
+    driver.get_semantic_helper ()->append_char ('\0');
     // PRINT ("DQS_String_Body %s\n", qstr_Buf_p);
-    yylval->string = driver.make_string_by_buffer ();
+    yylval->string = driver.get_semantic_helper ()->make_string_by_buffer ();
     BEGIN INITIAL;
     return token::DQS_String_Body;
 }
 
 <SQS>\'\' {
-    driver.append_char ('\'');
+    driver.get_semantic_helper ()->append_char ('\'');
 }
 
 <SQS>[^\'] {
-    driver.append_char (yytext[0]);
+    driver.get_semantic_helper ()->append_char (yytext[0]);
 }
 
 <SQS>\'\+[ \t]*\r?\n[ \t]*\' {
-    //yylineno = loader_yyline++;
 }
 
 <SQS>\'[ \t] {
-    driver.append_char ('\0');
+    driver.get_semantic_helper ()->append_char ('\0');
     // PRINT ("String_Completion %s\n", qstr_Buf_p);
-    yylval->string = driver.make_string_by_buffer ();
+    yylval->string = driver.get_semantic_helper ()->make_string_by_buffer ();
     BEGIN INITIAL;
     return token::SQS_String_Body;
 }
 
 <SQS>\' {
-    driver.append_char ('\0');
+    driver.get_semantic_helper ()->append_char ('\0');
     // PRINT ("String_Completion2 %s\n", qstr_Buf_p);
-    yylval->string = driver.make_string_by_buffer ();
+    yylval->string = driver.get_semantic_helper ()->make_string_by_buffer ();
     BEGIN INITIAL;
     return token::SQS_String_Body;
 }

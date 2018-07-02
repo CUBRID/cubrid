@@ -105,7 +105,10 @@ if (UNIT_TESTS OR UNIT_TEST_MONITOR)
   add_subdirectory(monitor)
 endif(UNIT_TESTS OR UNIT_TEST_MONITOR)
 
+#[[
+TODO CBRD-21654 disable until loader lexer & grammar will be moved completely to server
 if (UNIT_TESTS OR UNIT_TEST_LOADDB)
   message("    loaddb")
   add_subdirectory(loaddb)
 endif(UNIT_TESTS OR UNIT_TEST_LOADDB)
+]]
