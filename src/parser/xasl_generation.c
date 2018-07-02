@@ -24037,298 +24037,439 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   /* append on update defaults to the assignments list */
   for (p = from; p; p = p->next)
     {
-      if (p->info.spec.flat_entity_list == NULL || !(p->info.spec.flag & PT_SPEC_FLAG_UPDATE)
-	  {
-	  continue;}
+      if (p->info.spec.flat_entity_list == NULL || !(p->info.spec.flag & PT_SPEC_FLAG_UPDATE))
+	{
+	  continue;
+	}
 
-	  PT_NODE * cl_name_node = p->info.spec.flat_entity_list;
-	  DB_OBJECT * class_obj = cl_name_node->info.name.db_object;
-	  error = check_for_on_update_expr (parser, assigns, class_obj, cl_name_node->info.name.spec_id);
-	  if (error != NO_ERROR)
-	  {
-	  PT_INTERNAL_ERROR (parser, "merge update"); goto cleanup;}
-	  }
+      PT_NODE *cl_name_node = p->info.spec.flat_entity_list;
+      DB_OBJECT *class_obj = cl_name_node->info.name.db_object;
+      error = check_for_on_update_expr (parser, assigns, class_obj, cl_name_node->info.name.spec_id);
+      if (error != NO_ERROR)
+	{
+	  PT_INTERNAL_ERROR (parser, "merge update");
+	  goto cleanup;
+	}
+    }
 
-	  /* make a copy of assignment list to be able to iterate later */
-	  copy_assigns = parser_copy_tree_list (parser, info->update.assignment);
-	  /* get assignments lists for select statement generation */
-	  error =
-	  pt_get_assignment_lists (parser, &select_names, &select_values, &const_names, &const_values, &num_vals,
-				   &num_consts, info->update.assignment, &links); if (error != NO_ERROR)
-	  {
-	  PT_INTERNAL_ERROR (parser, "merge update"); parser_free_tree (parser, copy_assigns); goto cleanup;}
+  /* make a copy of assignment list to be able to iterate later */
+  copy_assigns = parser_copy_tree_list (parser, info->update.assignment);
+  /* get assignments lists for select statement generation */
+  error =
+    pt_get_assignment_lists (parser, &select_names, &select_values, &const_names, &const_values, &num_vals,
+			     &num_consts, info->update.assignment, &links);
+  if (error != NO_ERROR)
+    {
+      PT_INTERNAL_ERROR (parser, "merge update");
+      parser_free_tree (parser, copy_assigns);
+      goto cleanup;
+    }
 
-	  /* save assignment list and replace within statement with the copy */
-	  save_assigns = info->update.assignment;
-	  info->update.assignment = copy_assigns;
-	  aptr_statement = pt_to_merge_update_query (parser, select_values, info);
-	  /* restore assignment list and destroy the copy */
-	  info->update.assignment = save_assigns; parser_free_tree (parser, copy_assigns);
-	  /* restore tree structure; pt_get_assignment_lists() */
-	  pt_restore_assignment_links (info->update.assignment, links, -1); if (aptr_statement == NULL)
-	  {
-	  assert (er_errid () != NO_ERROR); error = er_errid (); if (error == NO_ERROR && !pt_has_error (parser))
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);}
-	  goto cleanup;}
+  /* save assignment list and replace within statement with the copy */
+  save_assigns = info->update.assignment;
+  info->update.assignment = copy_assigns;
+  aptr_statement = pt_to_merge_update_query (parser, select_values, info);
+  /* restore assignment list and destroy the copy */
+  info->update.assignment = save_assigns;
+  parser_free_tree (parser, copy_assigns);
+  /* restore tree structure; pt_get_assignment_lists() */
+  pt_restore_assignment_links (info->update.assignment, links, -1);
+  if (aptr_statement == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      if (error == NO_ERROR && !pt_has_error (parser))
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
 
-	  aptr_statement = mq_translate (parser, aptr_statement); if (aptr_statement == NULL)
-	  {
+  aptr_statement = mq_translate (parser, aptr_statement);
+  if (aptr_statement == NULL)
+    {
 #if 0				/* TODO */
-	  assert (er_errid () != NO_ERROR);
+      assert (er_errid () != NO_ERROR);
 #endif
-	  error = er_errid (); if (error == NO_ERROR && !pt_has_error (parser))
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);}
-	  goto cleanup;}
+      error = er_errid ();
+      if (error == NO_ERROR && !pt_has_error (parser))
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
 
-	  xasl = pt_make_aptr_parent_node (parser, aptr_statement, UPDATE_PROC);
-	  if (xasl == NULL || xasl->aptr_list == NULL)
-	  {
-	  assert (er_errid () != NO_ERROR); error = er_errid (); if (error == NO_ERROR && !pt_has_error (parser))
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);}
-	  goto cleanup;}
+  xasl = pt_make_aptr_parent_node (parser, aptr_statement, UPDATE_PROC);
+  if (xasl == NULL || xasl->aptr_list == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      if (error == NO_ERROR && !pt_has_error (parser))
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
 
-	  /* flush all classes */
-	  p = from; while (p != NULL)
-	  {
-	  cl_name_node = p->info.spec.flat_entity_list; while (cl_name_node != NULL)
-	  {
-	  error = locator_flush_class (cl_name_node->info.name.db_object); if (error != NO_ERROR)
-	  {
-	  goto cleanup;}
-	  cl_name_node = cl_name_node->next;}
-	  p = p->next;}
+  /* flush all classes */
+  p = from;
+  while (p != NULL)
+    {
+      cl_name_node = p->info.spec.flat_entity_list;
+      while (cl_name_node != NULL)
+	{
+	  error = locator_flush_class (cl_name_node->info.name.db_object);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	  cl_name_node = cl_name_node->next;
+	}
+      p = p->next;
+    }
 
-	  update = &xasl->proc.update;
-	  update->num_classes = 1;
-	  update->num_assigns = num_vals;
-	  update->classes = regu_upddel_class_info_array_alloc (1); if (update->classes == NULL)
-	  {
-	  assert (er_errid () != NO_ERROR); error = er_errid (); if (error == NO_ERROR)
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);}
-	  goto cleanup;}
+  update = &xasl->proc.update;
+  update->num_classes = 1;
+  update->num_assigns = num_vals;
+  update->classes = regu_upddel_class_info_array_alloc (1);
+  if (update->classes == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
 
-	  update->assigns = regu_update_assignment_array_alloc (update->num_assigns); if (update->assigns == NULL)
-	  {
-	  assert (er_errid () != NO_ERROR); error = er_errid (); if (error == NO_ERROR)
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);}
-	  goto cleanup;}
+  update->assigns = regu_update_assignment_array_alloc (update->num_assigns);
+  if (update->assigns == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
 
-	  upd_cls = &update->classes[0]; upd_cls->has_uniques = (from->info.spec.flag & PT_SPEC_FLAG_HAS_UNIQUE);
-	  /* count subclasses of update class */
-	  num_subclasses = 0; cl_name_node = from->info.spec.flat_entity_list; while (cl_name_node)
-	  {
-	  num_subclasses++; cl_name_node = cl_name_node->next;}
-	  upd_cls->num_subclasses = num_subclasses;
-	  /* count class assignments */
-	  a = 0;
-	  pt_init_assignments_helper (parser, &assign_helper, assigns);
-	  while (pt_get_next_assignment (&assign_helper) != NULL)
-	  {
-	  if (assign_helper.lhs->info.name.spec_id == from->info.spec.id)
-	  {
-	  a++;}
-	  }
-	  upd_cls->num_attrs = a;
-	  /* allocate array for subclasses OIDs, hfids, attributes ids */
-	  upd_cls->class_oid = regu_oid_array_alloc (num_subclasses); if (upd_cls->class_oid == NULL)
-	  {
-	  assert (er_errid () != NO_ERROR); error = er_errid (); if (error == NO_ERROR)
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);}
-	  goto cleanup;}
+  upd_cls = &update->classes[0];
+  upd_cls->has_uniques = (from->info.spec.flag & PT_SPEC_FLAG_HAS_UNIQUE);
+  /* count subclasses of update class */
+  num_subclasses = 0;
+  cl_name_node = from->info.spec.flat_entity_list;
+  while (cl_name_node)
+    {
+      num_subclasses++;
+      cl_name_node = cl_name_node->next;
+    }
+  upd_cls->num_subclasses = num_subclasses;
+  /* count class assignments */
+  a = 0;
+  pt_init_assignments_helper (parser, &assign_helper, assigns);
+  while (pt_get_next_assignment (&assign_helper) != NULL)
+    {
+      if (assign_helper.lhs->info.name.spec_id == from->info.spec.id)
+	{
+	  a++;
+	}
+    }
+  upd_cls->num_attrs = a;
+  /* allocate array for subclasses OIDs, hfids, attributes ids */
+  upd_cls->class_oid = regu_oid_array_alloc (num_subclasses);
+  if (upd_cls->class_oid == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
 
-	  upd_cls->class_hfid = regu_hfid_array_alloc (num_subclasses); if (upd_cls->class_hfid == NULL)
-	  {
-	  assert (er_errid () != NO_ERROR); error = er_errid (); if (error == NO_ERROR)
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);}
-	  goto cleanup;}
+  upd_cls->class_hfid = regu_hfid_array_alloc (num_subclasses);
+  if (upd_cls->class_hfid == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
 
-	  upd_cls->att_id = regu_int_array_alloc (num_subclasses * upd_cls->num_attrs); if (upd_cls->att_id == NULL)
-	  {
-	  assert (er_errid () != NO_ERROR); error = er_errid (); if (error == NO_ERROR)
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);}
-	  goto cleanup;}
+  upd_cls->att_id = regu_int_array_alloc (num_subclasses * upd_cls->num_attrs);
+  if (upd_cls->att_id == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
 
-	  cl_name_node = from->info.spec.flat_entity_list;
-	  class_obj = cl_name_node->info.name.db_object;
-	  error = sm_partitioned_class_type (class_obj, &upd_cls->needs_pruning, NULL, NULL); if (error != NO_ERROR)
-	  {
-	  goto cleanup;}
+  cl_name_node = from->info.spec.flat_entity_list;
+  class_obj = cl_name_node->info.name.db_object;
+  error = sm_partitioned_class_type (class_obj, &upd_cls->needs_pruning, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
 
-	  /* iterate through subclasses */
-	  cl = 0; cl_name_node = from->info.spec.flat_entity_list; while (cl_name_node && error == NO_ERROR)
-	  {
-	  class_obj = cl_name_node->info.name.db_object;
-	  /* get class oid */
-	  class_oid = ws_identifier (class_obj); if (class_oid == NULL)
-	  {
+  /* iterate through subclasses */
+  cl = 0;
+  cl_name_node = from->info.spec.flat_entity_list;
+  while (cl_name_node && error == NO_ERROR)
+    {
+      class_obj = cl_name_node->info.name.db_object;
+      /* get class oid */
+      class_oid = ws_identifier (class_obj);
+      if (class_oid == NULL)
+	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, 0, 0, 0);
-	  error = ER_HEAP_UNKNOWN_OBJECT; goto cleanup;}
+	  error = ER_HEAP_UNKNOWN_OBJECT;
+	  goto cleanup;
+	}
 
-	  /* get hfid */
-	  hfid = sm_get_ch_heap (class_obj); if (hfid == NULL)
-	  {
-	  assert (er_errid () != NO_ERROR); error = er_errid (); if (error == NO_ERROR)
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);}
-	  goto cleanup;}
+      /* get hfid */
+      hfid = sm_get_ch_heap (class_obj);
+      if (hfid == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  if (error == NO_ERROR)
+	    {
+	      error = ER_GENERIC_ERROR;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	    }
+	  goto cleanup;
+	}
 
-	  upd_cls->class_oid[cl] = *class_oid; upd_cls->class_hfid[cl] = *hfid;
-	  /* Calculate attribute ids and link each assignment to classes and attributes */
-	  pt_init_assignments_helper (parser, &assign_helper, assigns);
-	  assign_idx = a = 0; while ((att_name_node = pt_get_next_assignment (&assign_helper)) != NULL)
-	  {
+      upd_cls->class_oid[cl] = *class_oid;
+      upd_cls->class_hfid[cl] = *hfid;
+      /* Calculate attribute ids and link each assignment to classes and attributes */
+      pt_init_assignments_helper (parser, &assign_helper, assigns);
+      assign_idx = a = 0;
+      while ((att_name_node = pt_get_next_assignment (&assign_helper)) != NULL)
+	{
 	  if (att_name_node->info.name.spec_id == cl_name_node->info.name.spec_id)
-	  {
-	  assign = &update->assigns[assign_idx];
-	  assign->cls_idx = 0;
-	  assign->att_idx = a;
-	  upd_cls->att_id[cl * upd_cls->num_attrs + a] = sm_att_id (class_obj, att_name_node->info.name.original);
-	  if (upd_cls->att_id[cl * upd_cls->num_attrs + a] < 0)
-	  {
-	  assert (er_errid () != NO_ERROR); error = er_errid (); if (error == NO_ERROR && !pt_has_error (parser))
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);}
-	  goto cleanup;}
-	  /* count attributes for current class */
-	  a++;}
+	    {
+	      assign = &update->assigns[assign_idx];
+	      assign->cls_idx = 0;
+	      assign->att_idx = a;
+	      upd_cls->att_id[cl * upd_cls->num_attrs + a] = sm_att_id (class_obj, att_name_node->info.name.original);
+	      if (upd_cls->att_id[cl * upd_cls->num_attrs + a] < 0)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		  if (error == NO_ERROR && !pt_has_error (parser))
+		    {
+		      error = ER_GENERIC_ERROR;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		    }
+		  goto cleanup;
+		}
+	      /* count attributes for current class */
+	      a++;
+	    }
 	  /* count assignments */
-	  assign_idx++;}
+	  assign_idx++;
+	}
 
-	  /* count subclasses */
-	  cl++; cl_name_node = cl_name_node->next;}
+      /* count subclasses */
+      cl++;
+      cl_name_node = cl_name_node->next;
+    }
 
-	  update->wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
-	  hint_arg = info->waitsecs_hint; if (info->hint & PT_HINT_LK_TIMEOUT && PT_IS_HINT_NODE (hint_arg))
-	  {
-	  float hint_wait_secs = (float)atof (hint_arg->info.name.original); if (hint_wait_secs > 0)
-	  {
-	  update->wait_msecs = (int) (hint_wait_secs * 1000);}
-	  else
-	  {
-	  update->wait_msecs = (int) hint_wait_secs;}
-	  }
-	  update->no_logging = (info->hint & PT_HINT_NO_LOGGING);
-	  /* check constants */
-	  class_obj = from->info.spec.flat_entity_list->info.name.db_object;
-	  pt_init_assignments_helper (parser, &assign_helper, assigns);
-	  a = 0; while ((att_name_node = pt_get_next_assignment (&assign_helper)) != NULL)
-	  {
-	  PT_NODE * node, *prev, *next;
-	  /* process only constants assigned to current class attributes */
-	  if (att_name_node->info.name.spec_id != from->info.spec.id || !assign_helper.is_rhs_const)
-	  {
+  update->wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
+  hint_arg = info->waitsecs_hint;
+  if (info->hint & PT_HINT_LK_TIMEOUT && PT_IS_HINT_NODE (hint_arg))
+    {
+      float hint_wait_secs = (float) atof (hint_arg->info.name.original);
+      if (hint_wait_secs > 0)
+	{
+	  update->wait_msecs = (int) (hint_wait_secs * 1000);
+	}
+      else
+	{
+	  update->wait_msecs = (int) hint_wait_secs;
+	}
+    }
+  update->no_logging = (info->hint & PT_HINT_NO_LOGGING);
+  /* check constants */
+  class_obj = from->info.spec.flat_entity_list->info.name.db_object;
+  pt_init_assignments_helper (parser, &assign_helper, assigns);
+  a = 0;
+  while ((att_name_node = pt_get_next_assignment (&assign_helper)) != NULL)
+    {
+      PT_NODE *node, *prev, *next;
+      /* process only constants assigned to current class attributes */
+      if (att_name_node->info.name.spec_id != from->info.spec.id || !assign_helper.is_rhs_const)
+	{
 	  /* this is a constant assignment */
-	  a++; continue;}
-	  /* get DB_VALUE of assignment's right argument */
-	  val = pt_value_to_db (parser, assign_helper.assignment->info.expr.arg2); if (val == NULL)
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0); goto cleanup;}
+	  a++;
+	  continue;
+	}
+      /* get DB_VALUE of assignment's right argument */
+      val = pt_value_to_db (parser, assign_helper.assignment->info.expr.arg2);
+      if (val == NULL)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  goto cleanup;
+	}
 
-	  prev = NULL; for (node = *non_null_attrs; node != NULL; node = next)
-	  {
+      prev = NULL;
+      for (node = *non_null_attrs; node != NULL; node = next)
+	{
 	  /* Check to see if this is a NON NULL attr */
-	  next = node->next; if (!pt_name_equal (parser, node, att_name_node))
-	  {
-	  prev = node; continue;}
+	  next = node->next;
+	  if (!pt_name_equal (parser, node, att_name_node))
+	    {
+	      prev = node;
+	      continue;
+	    }
 
 	  if (DB_IS_NULL (val))
-	  {
-	  /* assignment of a NULL value to a non null attribute */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1,
-		  att_name_node->info.name.original); error = ER_OBJ_ATTRIBUTE_CANT_BE_NULL; goto cleanup;}
+	    {
+	      /* assignment of a NULL value to a non null attribute */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1,
+		      att_name_node->info.name.original);
+	      error = ER_OBJ_ATTRIBUTE_CANT_BE_NULL;
+	      goto cleanup;
+	    }
 	  /* remove the node from the non_null_attrs list since we've already checked that the attr will be non-null
 	   * and the engine need not check again. */
 	  if (prev == NULL)
-	  {
-	  *non_null_attrs = (*non_null_attrs)->next;}
+	    {
+	      *non_null_attrs = (*non_null_attrs)->next;
+	    }
 	  else
-	  {
-	  prev->next = node->next;}
+	    {
+	      prev->next = node->next;
+	    }
 
 	  /* free the node */
 	  node->next = NULL;	/* cut-off link */
-	  parser_free_tree (parser, node); break;}
+	  parser_free_tree (parser, node);
+	  break;
+	}
 
-	  /* Coerce constant value to destination attribute type */
-	  update->assigns[a].constant = regu_dbval_alloc (); if (update->assigns[a].constant == NULL)
-	  {
-	  assert (er_errid () != NO_ERROR); error = er_errid (); if (error == NO_ERROR)
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);}
-	  goto cleanup;}
-	  attr = db_get_attribute (class_obj, att_name_node->info.name.original); if (attr == NULL)
-	  {
-	  assert (er_errid () != NO_ERROR); error = er_errid (); if (error == NO_ERROR)
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);}
-	  goto cleanup;}
-	  dom = db_attribute_domain (attr);
-	  error = tp_value_coerce (val, update->assigns[a].constant, dom); if (error != DOMAIN_COMPATIBLE)
-	  {
+      /* Coerce constant value to destination attribute type */
+      update->assigns[a].constant = regu_dbval_alloc ();
+      if (update->assigns[a].constant == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  if (error == NO_ERROR)
+	    {
+	      error = ER_GENERIC_ERROR;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	    }
+	  goto cleanup;
+	}
+      attr = db_get_attribute (class_obj, att_name_node->info.name.original);
+      if (attr == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  if (error == NO_ERROR)
+	    {
+	      error = ER_GENERIC_ERROR;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	    }
+	  goto cleanup;
+	}
+      dom = db_attribute_domain (attr);
+      error = tp_value_coerce (val, update->assigns[a].constant, dom);
+      if (error != DOMAIN_COMPATIBLE)
+	{
 	  error = ER_OBJ_DOMAIN_CONFLICT;
-	  er_set (ER_ERROR_SEVERITY, __FILE__, __LINE__, error, 1, att_name_node->info.name.original); goto cleanup;}
+	  er_set (ER_ERROR_SEVERITY, __FILE__, __LINE__, error, 1, att_name_node->info.name.original);
+	  goto cleanup;
+	}
 
-	  /* count assignments */
-	  a++;}
+      /* count assignments */
+      a++;
+    }
 
-	  /* generate xasl for non-null constraints predicates */
-	  error =
-	  pt_get_assignment_lists (parser, &select_names, &select_values, &const_names, &const_values, &num_vals,
-				   &num_consts, info->update.assignment, &links); if (error != NO_ERROR)
-	  {
-	  PT_INTERNAL_ERROR (parser, "merge update"); goto cleanup;}
+  /* generate xasl for non-null constraints predicates */
+  error =
+    pt_get_assignment_lists (parser, &select_names, &select_values, &const_names, &const_values, &num_vals,
+			     &num_consts, info->update.assignment, &links);
+  if (error != NO_ERROR)
+    {
+      PT_INTERNAL_ERROR (parser, "merge update");
+      goto cleanup;
+    }
 
-	  /* need to jump upd_del_class_cnt OID-CLASS OID pairs */
-	  attr_offset =
-	  ((aptr_statement->info.query.upd_del_class_cnt + aptr_statement->info.query.mvcc_reev_extra_cls_cnt) * 2 +
-	   (info->update.has_delete ? 1 : 0));
-	  error = pt_to_constraint_pred (parser, xasl, info->into, *non_null_attrs, select_names, attr_offset);
+  /* need to jump upd_del_class_cnt OID-CLASS OID pairs */
+  attr_offset =
+    ((aptr_statement->info.query.upd_del_class_cnt + aptr_statement->info.query.mvcc_reev_extra_cls_cnt) * 2 +
+     (info->update.has_delete ? 1 : 0));
+  error = pt_to_constraint_pred (parser, xasl, info->into, *non_null_attrs, select_names, attr_offset);
 #if 0
 /* disabled temporary in MVCC */
-	  attr_offset = aptr_statement->info.query.upd_del_class_cnt * 2 + (info->update.has_delete ? 1 : 0);
-	  error = pt_to_constraint_pred (parser, xasl, info->into, *non_null_attrs, select_names, attr_offset);
+  attr_offset = aptr_statement->info.query.upd_del_class_cnt * 2 + (info->update.has_delete ? 1 : 0);
+  error = pt_to_constraint_pred (parser, xasl, info->into, *non_null_attrs, select_names, attr_offset);
 #endif
-	  pt_restore_assignment_links (info->update.assignment, links, -1); if (error != NO_ERROR)
-	  {
-	  goto cleanup;}
+  pt_restore_assignment_links (info->update.assignment, links, -1);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
 
-	  aptr = xasl->aptr_list;
-	  xasl->n_oid_list = aptr->n_oid_list;
-	  aptr->n_oid_list = 0;
-	  xasl->class_oid_list = aptr->class_oid_list;
-	  aptr->class_oid_list = NULL;
-	  xasl->class_locks = aptr->class_locks;
-	  aptr->class_locks = NULL;
-	  xasl->tcard_list = aptr->tcard_list; aptr->tcard_list = NULL; xasl->dbval_cnt = aptr->dbval_cnt;
-	  /* fill in XASL cache related information */
-	  /* OID of the user who is creating this XASL */
-	  if ((oid = ws_identifier (db_get_user ())) != NULL)
-	  {
-	  COPY_OID (&xasl->creator_oid, oid);}
-	  else
-	  {
-	  OID_SET_NULL (&xasl->creator_oid);}
+  aptr = xasl->aptr_list;
+  xasl->n_oid_list = aptr->n_oid_list;
+  aptr->n_oid_list = 0;
+  xasl->class_oid_list = aptr->class_oid_list;
+  aptr->class_oid_list = NULL;
+  xasl->class_locks = aptr->class_locks;
+  aptr->class_locks = NULL;
+  xasl->tcard_list = aptr->tcard_list;
+  aptr->tcard_list = NULL;
+  xasl->dbval_cnt = aptr->dbval_cnt;
+  /* fill in XASL cache related information */
+  /* OID of the user who is creating this XASL */
+  if ((oid = ws_identifier (db_get_user ())) != NULL)
+    {
+      COPY_OID (&xasl->creator_oid, oid);
+    }
+  else
+    {
+      OID_SET_NULL (&xasl->creator_oid);
+    }
 
 cleanup:
-	  if (aptr_statement != NULL)
-	  {
-	  parser_free_tree (parser, aptr_statement);}
-	  if (from != NULL)
-	  {
-	  parser_free_tree (parser, from);}
-	  if (error != NO_ERROR)
-	  {
-	  xasl = NULL;}
+  if (aptr_statement != NULL)
+    {
+      parser_free_tree (parser, aptr_statement);
+    }
+  if (from != NULL)
+    {
+      parser_free_tree (parser, from);
+    }
+  if (error != NO_ERROR)
+    {
+      xasl = NULL;
+    }
 
-	  return xasl;}
+  return xasl;
+}
 
 /*
  * pt_to_merge_insert_xasl () - Generate XASL for INSERT part of MERGE
@@ -24338,170 +24479,245 @@ cleanup:
  *   non_null_attrs(in):
  *   default_expr_attrs(in):
  */
-	  static XASL_NODE *
-	  pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * non_null_attrs,
-				   PT_NODE * default_expr_attrs)
-	  {
-	  XASL_NODE * xasl = NULL, *aptr;
-	  INSERT_PROC_NODE * insert = NULL;
-	  PT_NODE * aptr_statement = NULL;
-	  PT_NODE * values_list;
-	  PT_NODE * attr, *attrs;
-	  MOBJ class_;
-	  OID * class_oid, *oid;
-	  DB_OBJECT * class_obj;
-	  HFID * hfid;
-	  int num_vals, num_default_expr, a;
-	  int error = NO_ERROR;
-	  PT_NODE * hint_arg; values_list = statement->info.merge.insert.value_clauses; if (values_list == NULL)
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0); return NULL;}
+static XASL_NODE *
+pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * non_null_attrs,
+			 PT_NODE * default_expr_attrs)
+{
+  XASL_NODE *xasl = NULL, *aptr;
+  INSERT_PROC_NODE *insert = NULL;
+  PT_NODE *aptr_statement = NULL;
+  PT_NODE *values_list;
+  PT_NODE *attr, *attrs;
+  MOBJ class_;
+  OID *class_oid, *oid;
+  DB_OBJECT *class_obj;
+  HFID *hfid;
+  int num_vals, num_default_expr, a;
+  int error = NO_ERROR;
+  PT_NODE *hint_arg;
+  values_list = statement->info.merge.insert.value_clauses;
+  if (values_list == NULL)
+    {
+      error = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return NULL;
+    }
 
-	  aptr_statement = pt_to_merge_insert_query (parser, values_list->info.node_list.list, &statement->info.merge);
-	  if (aptr_statement == NULL)
-	  {
-	  assert (er_errid () != NO_ERROR); error = er_errid (); if (error == NO_ERROR && !pt_has_error (parser))
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);}
-	  return NULL;}
-	  aptr_statement = mq_translate (parser, aptr_statement); if (aptr_statement == NULL)
-	  {
+  aptr_statement = pt_to_merge_insert_query (parser, values_list->info.node_list.list, &statement->info.merge);
+  if (aptr_statement == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      if (error == NO_ERROR && !pt_has_error (parser))
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      return NULL;
+    }
+  aptr_statement = mq_translate (parser, aptr_statement);
+  if (aptr_statement == NULL)
+    {
 #if 0				/* TODO */
-	  assert (er_errid () != NO_ERROR);
+      assert (er_errid () != NO_ERROR);
 #endif
-	  error = er_errid (); if (error == NO_ERROR && !pt_has_error (parser))
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);}
-	  return NULL;}
+      error = er_errid ();
+      if (error == NO_ERROR && !pt_has_error (parser))
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      return NULL;
+    }
 
-	  attrs = statement->info.merge.insert.attr_list;
-	  class_obj = statement->info.merge.into->info.spec.flat_entity_list->info.name.db_object;
-	  class_ = locator_create_heap_if_needed (class_obj, sm_is_reuse_oid_class (class_obj)); if (class_ == NULL)
-	  {
-	  assert (er_errid () != NO_ERROR); error = er_errid (); if (error == NO_ERROR)
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);}
-	  goto cleanup;}
+  attrs = statement->info.merge.insert.attr_list;
+  class_obj = statement->info.merge.into->info.spec.flat_entity_list->info.name.db_object;
+  class_ = locator_create_heap_if_needed (class_obj, sm_is_reuse_oid_class (class_obj));
+  if (class_ == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
 
-	  hfid = sm_ch_heap (class_); if (hfid == NULL)
-	  {
-	  assert (er_errid () != NO_ERROR); error = er_errid (); if (error == NO_ERROR)
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);}
-	  goto cleanup;}
+  hfid = sm_ch_heap (class_);
+  if (hfid == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
 
-	  if (locator_flush_class (class_obj) != NO_ERROR)
-	  {
-	  assert (er_errid () != NO_ERROR); error = er_errid (); if (error == NO_ERROR)
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);}
-	  goto cleanup;}
+  if (locator_flush_class (class_obj) != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
 
-	  num_default_expr = pt_length_of_list (default_expr_attrs);
-	  num_vals = pt_length_of_select_list (pt_get_select_list (parser, aptr_statement), EXCLUDE_HIDDEN_COLUMNS);
-	  xasl = pt_make_aptr_parent_node (parser, aptr_statement, INSERT_PROC);
-	  if (xasl == NULL || xasl->aptr_list == NULL)
-	  {
-	  assert (er_errid () != NO_ERROR); error = er_errid (); if (error == NO_ERROR && !pt_has_error (parser))
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);}
-	  goto cleanup;}
+  num_default_expr = pt_length_of_list (default_expr_attrs);
+  num_vals = pt_length_of_select_list (pt_get_select_list (parser, aptr_statement), EXCLUDE_HIDDEN_COLUMNS);
+  xasl = pt_make_aptr_parent_node (parser, aptr_statement, INSERT_PROC);
+  if (xasl == NULL || xasl->aptr_list == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      if (error == NO_ERROR && !pt_has_error (parser))
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
 
-	  insert = &xasl->proc.insert; insert->class_hfid = *hfid; class_oid = ws_identifier (class_obj); if (class_oid)
-	  {
-	  insert->class_oid = *class_oid;}
-	  else
-	  {
-	  error = ER_HEAP_UNKNOWN_OBJECT; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0); goto cleanup;}
+  insert = &xasl->proc.insert;
+  insert->class_hfid = *hfid;
+  class_oid = ws_identifier (class_obj);
+  if (class_oid)
+    {
+      insert->class_oid = *class_oid;
+    }
+  else
+    {
+      error = ER_HEAP_UNKNOWN_OBJECT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto cleanup;
+    }
 
-	  insert->has_uniques = (statement->info.merge.flags & PT_MERGE_INFO_HAS_UNIQUE);
-	  insert->wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
-	  hint_arg = statement->info.merge.waitsecs_hint;
-	  if (statement->info.merge.hint & PT_HINT_LK_TIMEOUT && PT_IS_HINT_NODE (hint_arg))
-	  {
-	  float hint_wait_secs = (float)atof (hint_arg->info.name.original); if (hint_wait_secs > 0)
-	  {
-	  insert->wait_msecs = (int) (hint_wait_secs * 1000);}
-	  else
-	  {
-	  insert->wait_msecs = (int) hint_wait_secs;}
-	  }
-	  insert->no_logging = (statement->info.merge.hint & PT_HINT_NO_LOGGING);
-	  insert->do_replace = 0; if (num_vals + num_default_expr > 0)
-	  {
-	  insert->att_id = regu_int_array_alloc (num_vals + num_default_expr); if (insert->att_id)
-	  {
+  insert->has_uniques = (statement->info.merge.flags & PT_MERGE_INFO_HAS_UNIQUE);
+  insert->wait_msecs = XASL_WAIT_MSECS_NOCHANGE;
+  hint_arg = statement->info.merge.waitsecs_hint;
+  if (statement->info.merge.hint & PT_HINT_LK_TIMEOUT && PT_IS_HINT_NODE (hint_arg))
+    {
+      float hint_wait_secs = (float) atof (hint_arg->info.name.original);
+      if (hint_wait_secs > 0)
+	{
+	  insert->wait_msecs = (int) (hint_wait_secs * 1000);
+	}
+      else
+	{
+	  insert->wait_msecs = (int) hint_wait_secs;
+	}
+    }
+  insert->no_logging = (statement->info.merge.hint & PT_HINT_NO_LOGGING);
+  insert->do_replace = 0;
+  if (num_vals + num_default_expr > 0)
+    {
+      insert->att_id = regu_int_array_alloc (num_vals + num_default_expr);
+      if (insert->att_id)
+	{
 	  /* the identifiers of the attributes that have a default expression are placed first */
 	  for (attr = default_expr_attrs, a = 0; error >= 0 && a < num_default_expr; attr = attr->next, ++a)
-	  {
-	  if ((insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original)) < 0)
-	  {
-	  assert (er_errid () != NO_ERROR); error = er_errid ();}
-	  }
+	    {
+	      if ((insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original)) < 0)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		}
+	    }
 	  for (attr = attrs, a = num_default_expr; error >= 0 && a < num_default_expr + num_vals;
 	       attr = attr->next, ++a)
-	  {
-	  if ((insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original)) < 0)
-	  {
-	  assert (er_errid () != NO_ERROR); error = er_errid ();}
-	  }
+	    {
+	      if ((insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original)) < 0)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  error = er_errid ();
+		}
+	    }
 	  insert->vals = NULL;
-	  insert->num_vals = num_vals + num_default_expr; insert->num_default_expr = num_default_expr;}
-	  else
-	  {
-	  assert (er_errid () != NO_ERROR); error = er_errid ();}
-	  if (error != NO_ERROR)
-	  {
-	  goto cleanup;}
-	  }
+	  insert->num_vals = num_vals + num_default_expr;
+	  insert->num_default_expr = num_default_expr;
+	}
+      else
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	}
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+    }
 
-	  error = sm_partitioned_class_type (class_obj, &insert->pruning_type, NULL, NULL); if (error != NO_ERROR)
-	  {
-	  goto cleanup;}
+  error = sm_partitioned_class_type (class_obj, &insert->pruning_type, NULL, NULL);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
 
-	  error = pt_to_constraint_pred (parser, xasl, statement->info.merge.into, non_null_attrs, attrs, 0);
-	  if (error != NO_ERROR)
-	  {
-	  goto cleanup;}
+  error = pt_to_constraint_pred (parser, xasl, statement->info.merge.into, non_null_attrs, attrs, 0);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
 
-	  /* fill in XASL cache related information */
-	  aptr = xasl->aptr_list;
-	  /* OID of the user who is creating this XASL */
-	  oid = ws_identifier (db_get_user ()); if (oid != NULL)
-	  {
-	  COPY_OID (&xasl->creator_oid, oid);}
-	  else
-	  {
-	  OID_SET_NULL (&xasl->creator_oid);}
+  /* fill in XASL cache related information */
+  aptr = xasl->aptr_list;
+  /* OID of the user who is creating this XASL */
+  oid = ws_identifier (db_get_user ());
+  if (oid != NULL)
+    {
+      COPY_OID (&xasl->creator_oid, oid);
+    }
+  else
+    {
+      OID_SET_NULL (&xasl->creator_oid);
+    }
 
-	  /* list of class OIDs used in this XASL */
-	  /* reserve spec oid space by 1+ */
-	  xasl->class_oid_list = regu_oid_array_alloc (1 + aptr->n_oid_list);
-	  xasl->class_locks = regu_int_array_alloc (1 + aptr->n_oid_list);
-	  xasl->tcard_list = regu_int_array_alloc (1 + aptr->n_oid_list);
-	  if (xasl->class_oid_list == NULL || xasl->class_locks == NULL || xasl->tcard_list == NULL)
-	  {
-	  assert (er_errid () != NO_ERROR); error = er_errid (); if (error == NO_ERROR)
-	  {
-	  error = ER_GENERIC_ERROR; er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);}
-	  goto cleanup;}
+  /* list of class OIDs used in this XASL */
+  /* reserve spec oid space by 1+ */
+  xasl->class_oid_list = regu_oid_array_alloc (1 + aptr->n_oid_list);
+  xasl->class_locks = regu_int_array_alloc (1 + aptr->n_oid_list);
+  xasl->tcard_list = regu_int_array_alloc (1 + aptr->n_oid_list);
+  if (xasl->class_oid_list == NULL || xasl->class_locks == NULL || xasl->tcard_list == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      goto cleanup;
+    }
 
-	  xasl->n_oid_list = 1 + aptr->n_oid_list;
-	  /* copy aptr oids to xasl */
-	  (void) memcpy (xasl->class_oid_list + 1, aptr->class_oid_list, sizeof (OID) * aptr->n_oid_list);
-	  (void) memcpy (xasl->class_locks + 1, aptr->class_locks, sizeof (int) * aptr->n_oid_list);
-	  (void) memcpy (xasl->tcard_list + 1, aptr->tcard_list, sizeof (int) * aptr->n_oid_list);
-	  /* set spec oid */
-	  xasl->class_oid_list[0] = insert->class_oid; xasl->class_locks[0] = (int) IX_LOCK; xasl->tcard_list[0] = XASL_CLASS_NO_TCARD;	/* init #pages */
-xasl->dbval_cnt = aptr->dbval_cnt; cleanup:
-	  if (aptr_statement != NULL)
-	  {
-	  parser_free_tree (parser, aptr_statement);}
-	  if (error != NO_ERROR)
-	  {
-	  xasl = NULL;}
+  xasl->n_oid_list = 1 + aptr->n_oid_list;
+  /* copy aptr oids to xasl */
+  (void) memcpy (xasl->class_oid_list + 1, aptr->class_oid_list, sizeof (OID) * aptr->n_oid_list);
+  (void) memcpy (xasl->class_locks + 1, aptr->class_locks, sizeof (int) * aptr->n_oid_list);
+  (void) memcpy (xasl->tcard_list + 1, aptr->tcard_list, sizeof (int) * aptr->n_oid_list);
+  /* set spec oid */
+  xasl->class_oid_list[0] = insert->class_oid;
+  xasl->class_locks[0] = (int) IX_LOCK;
+  xasl->tcard_list[0] = XASL_CLASS_NO_TCARD;	/* init #pages */
+  xasl->dbval_cnt = aptr->dbval_cnt;
+cleanup:
+  if (aptr_statement != NULL)
+    {
+      parser_free_tree (parser, aptr_statement);
+    }
+  if (error != NO_ERROR)
+    {
+      xasl = NULL;
+    }
 
-	  return xasl;}
+  return xasl;
+}
 
 /*
  * pt_substitute_assigned_name_node () - substitute name node with assigned
@@ -24512,20 +24728,27 @@ xasl->dbval_cnt = aptr->dbval_cnt; cleanup:
  *   arg(in/out):
  *   continue_walk(in):
  */
-	  PT_NODE *
-	  pt_substitute_assigned_name_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-	  {
-	  PT_NODE * assignments = (PT_NODE *) arg; PT_ASSIGNMENTS_HELPER ea; if (node->node_type == PT_NAME)
-	  {
-	  pt_init_assignments_helper (parser, &ea, assignments); while (pt_get_next_assignment (&ea) != NULL)
-	  {
+PT_NODE *
+pt_substitute_assigned_name_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *assignments = (PT_NODE *) arg;
+  PT_ASSIGNMENTS_HELPER ea;
+  if (node->node_type == PT_NAME)
+    {
+      pt_init_assignments_helper (parser, &ea, assignments);
+      while (pt_get_next_assignment (&ea) != NULL)
+	{
 	  if (pt_name_equal (parser, ea.lhs, node))
-	  {
-	  parser_free_tree (parser, node); node = parser_copy_tree_list (parser, ea.rhs); break;}
-	  }
-	  }
+	    {
+	      parser_free_tree (parser, node);
+	      node = parser_copy_tree_list (parser, ea.rhs);
+	      break;
+	    }
+	}
+    }
 
-	  return node;}
+  return node;
+}
 
 /*
  * pt_set_orderby_for_sort_limit_plan () - setup ORDER BY list to be applied
@@ -24538,89 +24761,121 @@ xasl->dbval_cnt = aptr->dbval_cnt; cleanup:
  * Note: if an ORDER BY spec is not a name, the node it references is added
  * to the nodes_list nodes.
  */
-	  PT_NODE *
-	  pt_set_orderby_for_sort_limit_plan (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * nodes_list)
-	  {
-	  PT_NODE * order_by = NULL, *select_list = NULL, *new_order_by = NULL;
-	  PT_NODE * sort_spec = NULL, *node = NULL, *name = NULL, *sort = NULL;
-	  PT_NODE * prev = NULL;
-	  int pos = 0, names_count = 0, added_count = 0;
-	  bool add_node = false;
-	  order_by = statement->info.query.order_by; select_list = pt_get_select_list (parser, statement);
-	  /* count nodes in name_list, we will add new nodes at the end of the list */
-	  node = nodes_list; names_count = 0; while (node)
-	  {
-	  prev = node; names_count++; node = node->next;}
+PT_NODE *
+pt_set_orderby_for_sort_limit_plan (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * nodes_list)
+{
+  PT_NODE *order_by = NULL, *select_list = NULL, *new_order_by = NULL;
+  PT_NODE *sort_spec = NULL, *node = NULL, *name = NULL, *sort = NULL;
+  PT_NODE *prev = NULL;
+  int pos = 0, names_count = 0, added_count = 0;
+  bool add_node = false;
+  order_by = statement->info.query.order_by;
+  select_list = pt_get_select_list (parser, statement);
+  /* count nodes in name_list, we will add new nodes at the end of the list */
+  node = nodes_list;
+  names_count = 0;
+  while (node)
+    {
+      prev = node;
+      names_count++;
+      node = node->next;
+    }
 
-	  /* create a new ORDER BY list which reflects positions of nodes in the nodes_list */
-	  for (sort_spec = order_by; sort_spec != NULL; sort_spec = sort_spec->next)
-	  {
-	  add_node = true; if (sort_spec->node_type != PT_SORT_SPEC)
-	  {
-	  assert_release (sort_spec->node_type == PT_SORT_SPEC); goto error_return;}
-	  /* find the node which is referenced by this sort_spec */
-	  for (pos = 1, node = select_list; node != NULL; pos++, node = node->next)
-	  {
+  /* create a new ORDER BY list which reflects positions of nodes in the nodes_list */
+  for (sort_spec = order_by; sort_spec != NULL; sort_spec = sort_spec->next)
+    {
+      add_node = true;
+      if (sort_spec->node_type != PT_SORT_SPEC)
+	{
+	  assert_release (sort_spec->node_type == PT_SORT_SPEC);
+	  goto error_return;
+	}
+      /* find the node which is referenced by this sort_spec */
+      for (pos = 1, node = select_list; node != NULL; pos++, node = node->next)
+	{
 	  if (pos == sort_spec->info.sort_spec.pos_descr.pos_no)
-	  {
-	  break;}
-	  }
+	    {
+	      break;
+	    }
+	}
 
-	  if (node == NULL)
-	  {
-	  assert_release (node != NULL); goto error_return;}
+      if (node == NULL)
+	{
+	  assert_release (node != NULL);
+	  goto error_return;
+	}
 
-	  CAST_POINTER_TO_NODE (node); if (node->node_type == PT_NAME)
-	  {
+      CAST_POINTER_TO_NODE (node);
+      if (node->node_type == PT_NAME)
+	{
 	  /* SORT-LIMIT plans are build over the subset of classes referenced in the ORDER BY clause. This means that
 	   * any name referenced in ORDER BY must also be a segment for one of the classes of this subplan. We just
 	   * need to update the sort_spec position. */
 	  for (pos = 1, name = nodes_list; name != NULL; pos++, name = name->next)
-	  {
-	  if (pt_name_equal (parser, name, node))
-	  {
-	  break;}
-	  }
+	    {
+	      if (pt_name_equal (parser, name, node))
+		{
+		  break;
+		}
+	    }
 
 	  if (name != NULL)
-	  {
-	  add_node = false;}
-	  }
+	    {
+	      add_node = false;
+	    }
+	}
 
-	  if (add_node)
-	  {
+      if (add_node)
+	{
 	  /* this node was not found in the node_list. In order to be able to execute the ORDER BY clause, we have to
 	   * add it to the list */
-	  pos = names_count + added_count + 1; name = pt_point (parser, node); if (name == NULL)
-	  {
-	  PT_INTERNAL_ERROR (parser, "allocate new node"); goto error_return;}
+	  pos = names_count + added_count + 1;
+	  name = pt_point (parser, node);
+	  if (name == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      goto error_return;
+	    }
 	  /* add node to the end of name_list */
-	  prev->next = name; prev = prev->next; added_count++;}
-	  else
-	  {
+	  prev->next = name;
+	  prev = prev->next;
+	  added_count++;
+	}
+      else
+	{
 	  /* just point to it */
-	  name = pt_point (parser, name); if (name == NULL)
-	  {
-	  PT_INTERNAL_ERROR (parser, "allocate new node"); goto error_return;}
-	  }
+	  name = pt_point (parser, name);
+	  if (name == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      goto error_return;
+	    }
+	}
 
-	  /* create a new sort_spec for the original one and add it to the list */
-	  sort = parser_new_node (parser, PT_SORT_SPEC); if (sort == NULL)
-	  {
-	  PT_INTERNAL_ERROR (parser, "allocate new node"); goto error_return;}
+      /* create a new sort_spec for the original one and add it to the list */
+      sort = parser_new_node (parser, PT_SORT_SPEC);
+      if (sort == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  goto error_return;
+	}
 
-	  sort->info.sort_spec.expr = name;
-	  sort->info.sort_spec.pos_descr.pos_no = pos;
-	  sort->info.sort_spec.asc_or_desc = sort_spec->info.sort_spec.asc_or_desc;
-	  CAST_POINTER_TO_NODE (name);
-	  sort->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser, name);
-	  new_order_by = parser_append_node (sort, new_order_by);}
+      sort->info.sort_spec.expr = name;
+      sort->info.sort_spec.pos_descr.pos_no = pos;
+      sort->info.sort_spec.asc_or_desc = sort_spec->info.sort_spec.asc_or_desc;
+      CAST_POINTER_TO_NODE (name);
+      sort->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser, name);
+      new_order_by = parser_append_node (sort, new_order_by);
+    }
 
-return new_order_by; error_return:
-	  if (new_order_by != NULL)
-	  {
-	  parser_free_tree (parser, new_order_by);}
-	  return NULL;}
+  return new_order_by;
+error_return:
+  if (new_order_by != NULL)
+    {
+      parser_free_tree (parser, new_order_by);
+    }
+  return NULL;
+}
 
 /*
  * pt_is_sort_list_covered () - same as qfile_is_sort_list_covered ()
@@ -24632,27 +24887,32 @@ return new_order_by; error_return:
  * Note: if covering_list covers covered_list returns true.
  *       otherwise, returns false.
  */
-	  static bool
-	  pt_is_sort_list_covered (PARSER_CONTEXT * parser, SORT_LIST * covering_list_p, SORT_LIST * covered_list_p)
-	  {
-	  SORT_LIST * s1, *s2; if (covered_list_p == NULL)
-	  {
-	  return false;}
+static bool
+pt_is_sort_list_covered (PARSER_CONTEXT * parser, SORT_LIST * covering_list_p, SORT_LIST * covered_list_p)
+{
+  SORT_LIST *s1, *s2;
+  if (covered_list_p == NULL)
+    {
+      return false;
+    }
 
-	  for (s1 = covering_list_p, s2 = covered_list_p; s1 && s2; s1 = s1->next, s2 = s2->next)
-	  {
-	  if (s1->s_order != s2->s_order || s1->s_nulls != s2->s_nulls || s1->pos_descr.pos_no != s2->pos_descr.pos_no)
-	  {
-	  return false;}
-	  }
+  for (s1 = covering_list_p, s2 = covered_list_p; s1 && s2; s1 = s1->next, s2 = s2->next)
+    {
+      if (s1->s_order != s2->s_order || s1->s_nulls != s2->s_nulls || s1->pos_descr.pos_no != s2->pos_descr.pos_no)
+	{
+	  return false;
+	}
+    }
 
-	  if (s1 == NULL && s2)
-	  {
-	  return false;}
-	  else
-	  {
-	  return true;}
-	  }
+  if (s1 == NULL && s2)
+    {
+      return false;
+    }
+  else
+    {
+      return true;
+    }
+}
 
 /*
  * pt_reserved_id_to_valuelist_index () - Generate the index of value for
@@ -24663,81 +24923,126 @@ return new_order_by; error_return:
  * parser (in)	    : Parser context.
  * reserved_id (in) : Reserved name id.
  */
-	  static int pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser, PT_RESERVED_NAME_ID reserved_id)
-	  {
-	  switch (reserved_id)
-	  {
-	  /* Record info names */
-case RESERVED_T_PAGEID:
-return HEAP_RECORD_INFO_T_PAGEID; case RESERVED_T_SLOTID:
-return HEAP_RECORD_INFO_T_SLOTID; case RESERVED_T_VOLUMEID:
-return HEAP_RECORD_INFO_T_VOLUMEID; case RESERVED_T_OFFSET:
-return HEAP_RECORD_INFO_T_OFFSET; case RESERVED_T_LENGTH:
-return HEAP_RECORD_INFO_T_LENGTH; case RESERVED_T_REC_TYPE:
-return HEAP_RECORD_INFO_T_REC_TYPE; case RESERVED_T_REPRID:
-return HEAP_RECORD_INFO_T_REPRID; case RESERVED_T_CHN:
-return HEAP_RECORD_INFO_T_CHN; case RESERVED_T_MVCC_INSID:
-return HEAP_RECORD_INFO_T_MVCC_INSID; case RESERVED_T_MVCC_DELID:
-return HEAP_RECORD_INFO_T_MVCC_DELID; case RESERVED_T_MVCC_FLAGS:
-return HEAP_RECORD_INFO_T_MVCC_FLAGS; case RESERVED_T_MVCC_PREV_VERSION_LSA:
-	  return HEAP_RECORD_INFO_T_MVCC_PREV_VERSION;
-	  /* Page info names */
-case RESERVED_P_CLASS_OID:
-return HEAP_PAGE_INFO_CLASS_OID; case RESERVED_P_PREV_PAGEID:
-return HEAP_PAGE_INFO_PREV_PAGE; case RESERVED_P_NEXT_PAGEID:
-return HEAP_PAGE_INFO_NEXT_PAGE; case RESERVED_P_NUM_SLOTS:
-return HEAP_PAGE_INFO_NUM_SLOTS; case RESERVED_P_NUM_RECORDS:
-return HEAP_PAGE_INFO_NUM_RECORDS; case RESERVED_P_ANCHOR_TYPE:
-return HEAP_PAGE_INFO_ANCHOR_TYPE; case RESERVED_P_ALIGNMENT:
-return HEAP_PAGE_INFO_ALIGNMENT; case RESERVED_P_TOTAL_FREE:
-return HEAP_PAGE_INFO_TOTAL_FREE; case RESERVED_P_CONT_FREE:
-return HEAP_PAGE_INFO_CONT_FREE; case RESERVED_P_OFFSET_TO_FREE_AREA:
-return HEAP_PAGE_INFO_OFFSET_TO_FREE_AREA; case RESERVED_P_IS_SAVING:
-return HEAP_PAGE_INFO_IS_SAVING; case RESERVED_P_UPDATE_BEST:
-	  return HEAP_PAGE_INFO_UPDATE_BEST;
-	  /* Key info names */
-case RESERVED_KEY_VOLUMEID:
-return BTREE_KEY_INFO_VOLUMEID; case RESERVED_KEY_PAGEID:
-return BTREE_KEY_INFO_PAGEID; case RESERVED_KEY_SLOTID:
-return BTREE_KEY_INFO_SLOTID; case RESERVED_KEY_KEY:
-return BTREE_KEY_INFO_KEY; case RESERVED_KEY_OID_COUNT:
-return BTREE_KEY_INFO_OID_COUNT; case RESERVED_KEY_FIRST_OID:
-return BTREE_KEY_INFO_FIRST_OID; case RESERVED_KEY_OVERFLOW_KEY:
-return BTREE_KEY_INFO_OVERFLOW_KEY; case RESERVED_KEY_OVERFLOW_OIDS:
-	  return BTREE_KEY_INFO_OVERFLOW_OIDS;
-	  /* B-tree node info names */
-case RESERVED_BT_NODE_VOLUMEID:
-return BTREE_NODE_INFO_VOLUMEID; case RESERVED_BT_NODE_PAGEID:
-return BTREE_NODE_INFO_PAGEID; case RESERVED_BT_NODE_TYPE:
-return BTREE_NODE_INFO_NODE_TYPE; case RESERVED_BT_NODE_KEY_COUNT:
-return BTREE_NODE_INFO_KEY_COUNT; case RESERVED_BT_NODE_FIRST_KEY:
-return BTREE_NODE_INFO_FIRST_KEY; case RESERVED_BT_NODE_LAST_KEY:
-return BTREE_NODE_INFO_LAST_KEY; default:
-	  /* unknown reserved id or not handled */
-	  assert (0); return RESERVED_NAME_INVALID;}
-	  }
+static int
+pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser, PT_RESERVED_NAME_ID reserved_id)
+{
+  switch (reserved_id)
+    {
+      /* Record info names */
+    case RESERVED_T_PAGEID:
+      return HEAP_RECORD_INFO_T_PAGEID;
+    case RESERVED_T_SLOTID:
+      return HEAP_RECORD_INFO_T_SLOTID;
+    case RESERVED_T_VOLUMEID:
+      return HEAP_RECORD_INFO_T_VOLUMEID;
+    case RESERVED_T_OFFSET:
+      return HEAP_RECORD_INFO_T_OFFSET;
+    case RESERVED_T_LENGTH:
+      return HEAP_RECORD_INFO_T_LENGTH;
+    case RESERVED_T_REC_TYPE:
+      return HEAP_RECORD_INFO_T_REC_TYPE;
+    case RESERVED_T_REPRID:
+      return HEAP_RECORD_INFO_T_REPRID;
+    case RESERVED_T_CHN:
+      return HEAP_RECORD_INFO_T_CHN;
+    case RESERVED_T_MVCC_INSID:
+      return HEAP_RECORD_INFO_T_MVCC_INSID;
+    case RESERVED_T_MVCC_DELID:
+      return HEAP_RECORD_INFO_T_MVCC_DELID;
+    case RESERVED_T_MVCC_FLAGS:
+      return HEAP_RECORD_INFO_T_MVCC_FLAGS;
+    case RESERVED_T_MVCC_PREV_VERSION_LSA:
+      return HEAP_RECORD_INFO_T_MVCC_PREV_VERSION;
+      /* Page info names */
+    case RESERVED_P_CLASS_OID:
+      return HEAP_PAGE_INFO_CLASS_OID;
+    case RESERVED_P_PREV_PAGEID:
+      return HEAP_PAGE_INFO_PREV_PAGE;
+    case RESERVED_P_NEXT_PAGEID:
+      return HEAP_PAGE_INFO_NEXT_PAGE;
+    case RESERVED_P_NUM_SLOTS:
+      return HEAP_PAGE_INFO_NUM_SLOTS;
+    case RESERVED_P_NUM_RECORDS:
+      return HEAP_PAGE_INFO_NUM_RECORDS;
+    case RESERVED_P_ANCHOR_TYPE:
+      return HEAP_PAGE_INFO_ANCHOR_TYPE;
+    case RESERVED_P_ALIGNMENT:
+      return HEAP_PAGE_INFO_ALIGNMENT;
+    case RESERVED_P_TOTAL_FREE:
+      return HEAP_PAGE_INFO_TOTAL_FREE;
+    case RESERVED_P_CONT_FREE:
+      return HEAP_PAGE_INFO_CONT_FREE;
+    case RESERVED_P_OFFSET_TO_FREE_AREA:
+      return HEAP_PAGE_INFO_OFFSET_TO_FREE_AREA;
+    case RESERVED_P_IS_SAVING:
+      return HEAP_PAGE_INFO_IS_SAVING;
+    case RESERVED_P_UPDATE_BEST:
+      return HEAP_PAGE_INFO_UPDATE_BEST;
+      /* Key info names */
+    case RESERVED_KEY_VOLUMEID:
+      return BTREE_KEY_INFO_VOLUMEID;
+    case RESERVED_KEY_PAGEID:
+      return BTREE_KEY_INFO_PAGEID;
+    case RESERVED_KEY_SLOTID:
+      return BTREE_KEY_INFO_SLOTID;
+    case RESERVED_KEY_KEY:
+      return BTREE_KEY_INFO_KEY;
+    case RESERVED_KEY_OID_COUNT:
+      return BTREE_KEY_INFO_OID_COUNT;
+    case RESERVED_KEY_FIRST_OID:
+      return BTREE_KEY_INFO_FIRST_OID;
+    case RESERVED_KEY_OVERFLOW_KEY:
+      return BTREE_KEY_INFO_OVERFLOW_KEY;
+    case RESERVED_KEY_OVERFLOW_OIDS:
+      return BTREE_KEY_INFO_OVERFLOW_OIDS;
+      /* B-tree node info names */
+    case RESERVED_BT_NODE_VOLUMEID:
+      return BTREE_NODE_INFO_VOLUMEID;
+    case RESERVED_BT_NODE_PAGEID:
+      return BTREE_NODE_INFO_PAGEID;
+    case RESERVED_BT_NODE_TYPE:
+      return BTREE_NODE_INFO_NODE_TYPE;
+    case RESERVED_BT_NODE_KEY_COUNT:
+      return BTREE_NODE_INFO_KEY_COUNT;
+    case RESERVED_BT_NODE_FIRST_KEY:
+      return BTREE_NODE_INFO_FIRST_KEY;
+    case RESERVED_BT_NODE_LAST_KEY:
+      return BTREE_NODE_INFO_LAST_KEY;
+    default:
+      /* unknown reserved id or not handled */
+      assert (0);
+      return RESERVED_NAME_INVALID;
+    }
+}
 
 /*
  * pt_to_null_ordering () - get null ordering from a sort spec
  * return : null ordering
  * sort_spec (in) : sort spec
  */
-	  SORT_NULLS pt_to_null_ordering (PT_NODE * sort_spec)
-	  {
-	  assert_release (sort_spec != NULL);
-	  assert_release (sort_spec->node_type == PT_SORT_SPEC); switch (sort_spec->info.sort_spec.nulls_first_or_last)
-	  {
-case PT_NULLS_FIRST:
-return S_NULLS_FIRST; case PT_NULLS_LAST:
-return S_NULLS_LAST; case PT_NULLS_DEFAULT:
-default:
-	  break;}
+SORT_NULLS
+pt_to_null_ordering (PT_NODE * sort_spec)
+{
+  assert_release (sort_spec != NULL);
+  assert_release (sort_spec->node_type == PT_SORT_SPEC);
+  switch (sort_spec->info.sort_spec.nulls_first_or_last)
+    {
+    case PT_NULLS_FIRST:
+      return S_NULLS_FIRST;
+    case PT_NULLS_LAST:
+      return S_NULLS_LAST;
+    case PT_NULLS_DEFAULT:
+    default:
+      break;
+    }
 
-	  if (sort_spec->info.sort_spec.asc_or_desc == PT_ASC)
-	  {
-	  return S_NULLS_FIRST;}
+  if (sort_spec->info.sort_spec.asc_or_desc == PT_ASC)
+    {
+      return S_NULLS_FIRST;
+    }
 
-	  return S_NULLS_LAST;}
+  return S_NULLS_LAST;
+}
 
 /*
  * pt_to_cume_dist_percent_rank_regu_variable () - generate regu_variable
@@ -24747,38 +25052,47 @@ default:
  *   tree(in):
  *   unbox(in):
  */
-	  static REGU_VARIABLE *
-	  pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser, PT_NODE * tree, UNBOX unbox)
-	  {
-	  REGU_VARIABLE * regu = NULL;
-	  PT_NODE * arg_list = NULL, *orderby_list = NULL, *node = NULL; REGU_VARIABLE_LIST regu_var_list, regu_var;
-	  /* set up regu var */
-	  regu = regu_var_alloc (); if (regu == NULL)
-	  {
-	  return NULL;}
+static REGU_VARIABLE *
+pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser, PT_NODE * tree, UNBOX unbox)
+{
+  REGU_VARIABLE *regu = NULL;
+  PT_NODE *arg_list = NULL, *orderby_list = NULL, *node = NULL;
+  REGU_VARIABLE_LIST regu_var_list, regu_var;
+  /* set up regu var */
+  regu = regu_var_alloc ();
+  if (regu == NULL)
+    {
+      return NULL;
+    }
 
-	  regu->type = TYPE_REGU_VAR_LIST; regu->domain = tp_domain_resolve_default (DB_TYPE_VARIABLE);
-	  /* for cume_dist and percent_rank, regu_variable should be hidden */
-	  REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_HIDDEN_COLUMN);
-	  arg_list = tree->info.function.arg_list;
-	  orderby_list = tree->info.function.order_by; assert (arg_list != NULL && orderby_list != NULL);
-	  /* first insert the first order by item */
-	  regu_var_list =
-	  pt_to_regu_variable_list (parser, orderby_list->info.sort_spec.expr, UNBOX_AS_VALUE, NULL, NULL);
-	  if (regu_var_list == NULL)
-	  {
-	  return NULL;}
+  regu->type = TYPE_REGU_VAR_LIST;
+  regu->domain = tp_domain_resolve_default (DB_TYPE_VARIABLE);
+  /* for cume_dist and percent_rank, regu_variable should be hidden */
+  REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_HIDDEN_COLUMN);
+  arg_list = tree->info.function.arg_list;
+  orderby_list = tree->info.function.order_by;
+  assert (arg_list != NULL && orderby_list != NULL);
+  /* first insert the first order by item */
+  regu_var_list = pt_to_regu_variable_list (parser, orderby_list->info.sort_spec.expr, UNBOX_AS_VALUE, NULL, NULL);
+  if (regu_var_list == NULL)
+    {
+      return NULL;
+    }
 
-	  /* insert order by items one by one */
-	  regu_var = regu_var_list; for (node = orderby_list->next; node != NULL; node = node->next)
-	  {
-	  regu_var->next = pt_to_regu_variable_list (parser, node->info.sort_spec.expr, UNBOX_AS_VALUE, NULL, NULL);
-	  regu_var = regu_var->next;}
+  /* insert order by items one by one */
+  regu_var = regu_var_list;
+  for (node = orderby_list->next; node != NULL; node = node->next)
+    {
+      regu_var->next = pt_to_regu_variable_list (parser, node->info.sort_spec.expr, UNBOX_AS_VALUE, NULL, NULL);
+      regu_var = regu_var->next;
+    }
 
-	  /* order by items have been attached, now the arguments */
-	  regu_var->next = pt_to_regu_variable_list (parser, arg_list, UNBOX_AS_VALUE, NULL, NULL);
-	  /* finally setup regu: */
-	  regu->value.regu_var_list = regu_var_list; return regu;}
+  /* order by items have been attached, now the arguments */
+  regu_var->next = pt_to_regu_variable_list (parser, arg_list, UNBOX_AS_VALUE, NULL, NULL);
+  /* finally setup regu: */
+  regu->value.regu_var_list = regu_var_list;
+  return regu;
+}
 
 /*
  * pt_set_limit_optimization_flags () - setup XASL flags according to
@@ -24789,49 +25103,62 @@ default:
  * qo_plan (in) : query plan
  * xasl (in)	: xasl node
  */
-	  static int pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XASL_NODE * xasl)
-	  {
-	  if (qo_plan == NULL)
-	  {
-	  return NO_ERROR;}
+static int
+pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XASL_NODE * xasl)
+{
+  if (qo_plan == NULL)
+    {
+      return NO_ERROR;
+    }
 
-	  /* Set SORT-LIMIT flags */
-	  if (qo_has_sort_limit_subplan (qo_plan))
-	  {
-	  xasl->header.xasl_flag |= SORT_LIMIT_USED; xasl->header.xasl_flag |= SORT_LIMIT_CANDIDATE;}
-	  else
-	  {
-	  switch (qo_plan->info->env->use_sort_limit)
-	  {
-case QO_SL_USE:
+  /* Set SORT-LIMIT flags */
+  if (qo_has_sort_limit_subplan (qo_plan))
+    {
+      xasl->header.xasl_flag |= SORT_LIMIT_USED;
+      xasl->header.xasl_flag |= SORT_LIMIT_CANDIDATE;
+    }
+  else
+    {
+      switch (qo_plan->info->env->use_sort_limit)
+	{
+	case QO_SL_USE:
 	  /* A SORT-LIMIT plan can be created but planner found a better plan. In this case, there is no point in
 	   * recompiling the plan a second time. There are cases in which suppling a smaller limit to the query will
 	   * cause planner to choose a SORT-LIMIT plan over the current one but, since there is no way to know if this
 	   * is the case, it is better to consider that this query will never use SORT-LIMIT. */
-break; case QO_SL_INVALID:
+	  break;
+	case QO_SL_INVALID:
 	  /* A SORT-LIMIT plan cannot be generated for this query */
-break; case QO_SL_POSSIBLE:
+	  break;
+	case QO_SL_POSSIBLE:
 	  /* The query might produce a SORT-LIMIT plan but the supplied limit. could not be evaluated. */
-	  xasl->header.xasl_flag |= SORT_LIMIT_CANDIDATE; break;}
-	  }
+	  xasl->header.xasl_flag |= SORT_LIMIT_CANDIDATE;
+	  break;
+	}
+    }
 
-	  /* Set MULTI-RANGE-OPTIMIZATION flags */
-	  if (qo_plan_multi_range_opt (qo_plan))
-	  {
-	  /* qo_plan->multi_range_opt_use == PLAN_MULTI_RANGE_OPT_USE */
-	  /* convert ordbynum to key limit if we have iscan with multiple key ranges */
-	  int err = pt_ordbynum_to_key_limit_multiple_ranges (parser, qo_plan, xasl); if (err != NO_ERROR)
-	  {
-	  return err;}
+  /* Set MULTI-RANGE-OPTIMIZATION flags */
+  if (qo_plan_multi_range_opt (qo_plan))
+    {
+      /* qo_plan->multi_range_opt_use == PLAN_MULTI_RANGE_OPT_USE */
+      /* convert ordbynum to key limit if we have iscan with multiple key ranges */
+      int err = pt_ordbynum_to_key_limit_multiple_ranges (parser, qo_plan, xasl);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
 
-	  xasl->header.xasl_flag |= MRO_CANDIDATE; xasl->header.xasl_flag |= MRO_IS_USED;}
-	  else
-	  if (qo_plan->multi_range_opt_use == PLAN_MULTI_RANGE_OPT_CAN_USE)
-	  {
-	  /* Query could use multi range optimization, but limit was too large */
-	  xasl->header.xasl_flag |= MRO_CANDIDATE;}
+      xasl->header.xasl_flag |= MRO_CANDIDATE;
+      xasl->header.xasl_flag |= MRO_IS_USED;
+    }
+  else if (qo_plan->multi_range_opt_use == PLAN_MULTI_RANGE_OPT_CAN_USE)
+    {
+      /* Query could use multi range optimization, but limit was too large */
+      xasl->header.xasl_flag |= MRO_CANDIDATE;
+    }
 
-	  return NO_ERROR;}
+  return NO_ERROR;
+}
 
 /*
  * update_value_list_out_list_regu_list () - 
@@ -24844,31 +25171,40 @@ break; case QO_SL_POSSIBLE:
  * regu_list (in)    :
  * regu (in)    :
  */
-	  static void
-	  update_value_list_out_list_regu_list (AGGREGATE_INFO * info, VAL_LIST * value_list,
-						REGU_VARIABLE_LIST out_list, REGU_VARIABLE_LIST regu_list,
-						REGU_VARIABLE * regu)
-	  {
-	  QPROC_DB_VALUE_LIST value_temp = NULL;
-	  REGU_VARIABLE_LIST regu_temp = NULL;
-	  assert (info != NULL && info->value_list != NULL && info->out_list != NULL && info->regu_list != NULL
-		  && value_list != NULL && out_list != NULL && regu_list != NULL && regu != NULL);
-	  /* append value holder to value_list */
-	  info->value_list->val_cnt++; value_temp = info->value_list->valp; while (value_temp->next)
-	  {
-	  value_temp = value_temp->next;}
-	  value_temp->next = value_list->valp;
-	  /* append out_list to info->out_list */
-	  info->out_list->valptr_cnt++;
-	  out_list->next = NULL; out_list->value = *regu; regu_temp = info->out_list->valptrp; while (regu_temp->next)
-	  {
-	  regu_temp = regu_temp->next;}
-	  regu_temp->next = out_list;
-	  /* append regu to info->regu_list */
-	  regu_temp = info->regu_list; while (regu_temp->next)
-	  {
-	  regu_temp = regu_temp->next;}
-	  regu_temp->next = regu_list;}
+static void
+update_value_list_out_list_regu_list (AGGREGATE_INFO * info, VAL_LIST * value_list,
+				      REGU_VARIABLE_LIST out_list, REGU_VARIABLE_LIST regu_list, REGU_VARIABLE * regu)
+{
+  QPROC_DB_VALUE_LIST value_temp = NULL;
+  REGU_VARIABLE_LIST regu_temp = NULL;
+  assert (info != NULL && info->value_list != NULL && info->out_list != NULL && info->regu_list != NULL
+	  && value_list != NULL && out_list != NULL && regu_list != NULL && regu != NULL);
+  /* append value holder to value_list */
+  info->value_list->val_cnt++;
+  value_temp = info->value_list->valp;
+  while (value_temp->next)
+    {
+      value_temp = value_temp->next;
+    }
+  value_temp->next = value_list->valp;
+  /* append out_list to info->out_list */
+  info->out_list->valptr_cnt++;
+  out_list->next = NULL;
+  out_list->value = *regu;
+  regu_temp = info->out_list->valptrp;
+  while (regu_temp->next)
+    {
+      regu_temp = regu_temp->next;
+    }
+  regu_temp->next = out_list;
+  /* append regu to info->regu_list */
+  regu_temp = info->regu_list;
+  while (regu_temp->next)
+    {
+      regu_temp = regu_temp->next;
+    }
+  regu_temp->next = regu_list;
+}
 
 /*
  * pt_alloc_value_list_out_list_regu_list () -
@@ -24878,43 +25214,57 @@ break; case QO_SL_POSSIBLE:
  * out_list (in/out)    :
  * regu_list (in/out)    :
  */
-	  static PT_NODE *
-	  pt_alloc_value_list_out_list_regu_list (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST ** value_list,
-						  REGU_VARIABLE_LIST * out_list, REGU_VARIABLE_LIST * regu_list)
-	  {
-	  int *attr_offsets = NULL;
-	  bool out_of_memory = false;
-	  assert (node != NULL && value_list != NULL && out_list != NULL && regu_list != NULL);
-	  /* begin alloc */
-	  attr_offsets = pt_make_identity_offsets (node); if (attr_offsets == NULL)
-	  {
-	  out_of_memory = true; goto end;}
+static PT_NODE *
+pt_alloc_value_list_out_list_regu_list (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST ** value_list,
+					REGU_VARIABLE_LIST * out_list, REGU_VARIABLE_LIST * regu_list)
+{
+  int *attr_offsets = NULL;
+  bool out_of_memory = false;
+  assert (node != NULL && value_list != NULL && out_list != NULL && regu_list != NULL);
+  /* begin alloc */
+  attr_offsets = pt_make_identity_offsets (node);
+  if (attr_offsets == NULL)
+    {
+      out_of_memory = true;
+      goto end;
+    }
 
-	  *value_list = pt_make_val_list (parser, node); if (*value_list == NULL)
-	  {
-	  out_of_memory = true; goto end;}
+  *value_list = pt_make_val_list (parser, node);
+  if (*value_list == NULL)
+    {
+      out_of_memory = true;
+      goto end;
+    }
 
-	  *regu_list = pt_to_position_regu_variable_list (parser, node, *value_list, attr_offsets);
-	  if (*regu_list == NULL)
-	  {
-	  out_of_memory = true; goto end;}
+  *regu_list = pt_to_position_regu_variable_list (parser, node, *value_list, attr_offsets);
+  if (*regu_list == NULL)
+    {
+      out_of_memory = true;
+      goto end;
+    }
 
-	  *out_list = regu_varlist_alloc (); if (*out_list == NULL)
-	  {
-	  out_of_memory = true; goto end;}
+  *out_list = regu_varlist_alloc ();
+  if (*out_list == NULL)
+    {
+      out_of_memory = true;
+      goto end;
+    }
 
 end:
 
-	  if (attr_offsets != NULL)
-	  {
-	  free_and_init (attr_offsets);}
+  if (attr_offsets != NULL)
+    {
+      free_and_init (attr_offsets);
+    }
 
-	  if (out_of_memory)
-	  {
-	  /* on error, return NULL The error should be reported by the caller */
-	  node = NULL;}
+  if (out_of_memory)
+    {
+      /* on error, return NULL The error should be reported by the caller */
+      node = NULL;
+    }
 
-	  return node;}
+  return node;
+}
 
 /*
  * pt_fix_interpolation_aggregate_function_order_by () -
@@ -24923,45 +25273,55 @@ end:
  * parser (in)  :
  * node (in) :
  */
-	  static PT_NODE * pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
-	  {
-	  PT_FUNCTION_INFO * func_info_p = NULL;
-	  PT_NODE * sort_spec = NULL;
-	  assert (parser != NULL && node != NULL && node->node_type == PT_FUNCTION);
-	  func_info_p = &node->info.function;
-	  assert (!func_info_p->analytic.is_analytic);
-	  if (func_info_p->function_type == PT_GROUP_CONCAT || func_info_p->function_type == PT_CUME_DIST
-	      || func_info_p->function_type == PT_PERCENT_RANK)
-	  {
-	  /* nothing to be done for these cases */
-	  return node;}
-	  else
-	  if ((func_info_p->function_type == PT_PERCENTILE_CONT || func_info_p->function_type == PT_PERCENTILE_DISC)
-	      && func_info_p->order_by != NULL && func_info_p->order_by->info.sort_spec.pos_descr.pos_no == 0)
-	  {
-	  func_info_p->order_by->info.sort_spec.pos_descr.pos_no = 1;
-	  func_info_p->order_by->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser, func_info_p->arg_list);}
-	  else
-	  if (func_info_p->function_type == PT_MEDIAN && func_info_p->arg_list != NULL
-	      && !PT_IS_CONST (func_info_p->arg_list) && func_info_p->order_by == NULL)
-	  {
+static PT_NODE *
+pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_FUNCTION_INFO *func_info_p = NULL;
+  PT_NODE *sort_spec = NULL;
+  assert (parser != NULL && node != NULL && node->node_type == PT_FUNCTION);
+  func_info_p = &node->info.function;
+  assert (!func_info_p->analytic.is_analytic);
+  if (func_info_p->function_type == PT_GROUP_CONCAT || func_info_p->function_type == PT_CUME_DIST
+      || func_info_p->function_type == PT_PERCENT_RANK)
+    {
+      /* nothing to be done for these cases */
+      return node;
+    }
+  else
+    if ((func_info_p->function_type == PT_PERCENTILE_CONT || func_info_p->function_type == PT_PERCENTILE_DISC)
+	&& func_info_p->order_by != NULL && func_info_p->order_by->info.sort_spec.pos_descr.pos_no == 0)
+    {
+      func_info_p->order_by->info.sort_spec.pos_descr.pos_no = 1;
+      func_info_p->order_by->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser, func_info_p->arg_list);
+    }
+  else
+    if (func_info_p->function_type == PT_MEDIAN && func_info_p->arg_list != NULL
+	&& !PT_IS_CONST (func_info_p->arg_list) && func_info_p->order_by == NULL)
+    {
       /* generate the sort spec for median */
-	  sort_spec = parser_new_node (parser, PT_SORT_SPEC); if (sort_spec == NULL)
-	  {
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY); return NULL;}
+      sort_spec = parser_new_node (parser, PT_SORT_SPEC);
+      if (sort_spec == NULL)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return NULL;
+	}
 
-	  sort_spec->info.sort_spec.asc_or_desc = PT_ASC;
-	  sort_spec->info.sort_spec.nulls_first_or_last = PT_NULLS_DEFAULT;
-	  sort_spec->info.sort_spec.expr = parser_copy_tree (parser, node->info.function.arg_list);
-	  if (sort_spec->info.sort_spec.expr == NULL)
-	  {
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY); return NULL;}
+      sort_spec->info.sort_spec.asc_or_desc = PT_ASC;
+      sort_spec->info.sort_spec.nulls_first_or_last = PT_NULLS_DEFAULT;
+      sort_spec->info.sort_spec.expr = parser_copy_tree (parser, node->info.function.arg_list);
+      if (sort_spec->info.sort_spec.expr == NULL)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return NULL;
+	}
 
-	  sort_spec->info.sort_spec.pos_descr.pos_no = 1;
-	  sort_spec->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser, func_info_p->arg_list);
-	  func_info_p->order_by = sort_spec;}
+      sort_spec->info.sort_spec.pos_descr.pos_no = 1;
+      sort_spec->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser, func_info_p->arg_list);
+      func_info_p->order_by = sort_spec;
+    }
 
-	  return node;}
+  return node;
+}
 
 
 /*
@@ -24977,128 +25337,178 @@ end:
  * info (in) :
  * regu (in) :
  */
-	  static int
-	  pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_NODE * node,
-							     AGGREGATE_INFO * info, REGU_VARIABLE * regu)
-	  {
-	  REGU_VARIABLE_LIST regu_list, regu_var, regu_const, new_regu, tail, scan_regu_list, out_list;
-	  REGU_VARIABLE * scan_regu;
-	  QPROC_DB_VALUE_LIST value_tmp;
-	  VAL_LIST * value_list;
-	  TP_DOMAIN * domain;
-	  PT_NODE * pnode, *order, *pname;
-	  int i;
-	  assert (parser != NULL && node != NULL && info != NULL && regu != NULL && regu->type == TYPE_REGU_VAR_LIST);
-	  /* initialize variables */
-	  order = node;
-	  regu_list = regu->value.regu_var_list; regu_var = regu_const = regu_list; tail = info->regu_list;
-	  /* find length and tail of regu_list */
-	  if (tail == NULL)
-	  {
-	  i = 0;}
-	  else
-	  {
-	  for (tail = info->regu_list, i = 1; tail->next != NULL; i++, tail = tail->next);}
+static int
+pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_NODE * node,
+						   AGGREGATE_INFO * info, REGU_VARIABLE * regu)
+{
+  REGU_VARIABLE_LIST regu_list, regu_var, regu_const, new_regu, tail, scan_regu_list, out_list;
+  REGU_VARIABLE *scan_regu;
+  QPROC_DB_VALUE_LIST value_tmp;
+  VAL_LIST *value_list;
+  TP_DOMAIN *domain;
+  PT_NODE *pnode, *order, *pname;
+  int i;
+  assert (parser != NULL && node != NULL && info != NULL && regu != NULL && regu->type == TYPE_REGU_VAR_LIST);
+  /* initialize variables */
+  order = node;
+  regu_list = regu->value.regu_var_list;
+  regu_var = regu_const = regu_list;
+  tail = info->regu_list;
+  /* find length and tail of regu_list */
+  if (tail == NULL)
+    {
+      i = 0;
+    }
+  else
+    {
+      for (tail = info->regu_list, i = 1; tail->next != NULL; i++, tail = tail->next);
+    }
 
-	  /* for order by regu, we need to link the value pointer */
-	  while (regu_const != NULL)
-	  {
-	  /* create a new regu for function order by clause */
-	  new_regu = regu_varlist_alloc (); if (new_regu == NULL)
-	  {
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY); return ER_FAILED;}
+  /* for order by regu, we need to link the value pointer */
+  while (regu_const != NULL)
+    {
+      /* create a new regu for function order by clause */
+      new_regu = regu_varlist_alloc ();
+      if (new_regu == NULL)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return ER_FAILED;
+	}
 
-	  domain = pt_xasl_node_to_domain (parser, order->info.sort_spec.expr); if (domain == NULL)
-	  {
-	  return ER_FAILED;}
+      domain = pt_xasl_node_to_domain (parser, order->info.sort_spec.expr);
+      if (domain == NULL)
+	{
+	  return ER_FAILED;
+	}
 
-	  /* regu list must be a position, and set the scan value to the regu_var which is used in the
-	   * CUME_DIST/PERCENT_RANK evaluation. */
-	  new_regu->value.type = TYPE_POSITION;
-	  new_regu->value.domain = domain;
-	  new_regu->value.value.pos_descr.pos_no = i++;
-	  new_regu->value.value.pos_descr.dom = domain;
-	  new_regu->value.vfetch_to = regu_var->value.value.dbvalptr; if (tail == NULL)
-	  {
-	  tail = new_regu;}
-	  else
-	  {
-	  tail->next = new_regu; tail = new_regu;}
+      /* regu list must be a position, and set the scan value to the regu_var which is used in the
+       * CUME_DIST/PERCENT_RANK evaluation. */
+      new_regu->value.type = TYPE_POSITION;
+      new_regu->value.domain = domain;
+      new_regu->value.value.pos_descr.pos_no = i++;
+      new_regu->value.value.pos_descr.dom = domain;
+      new_regu->value.vfetch_to = regu_var->value.value.dbvalptr;
+      if (tail == NULL)
+	{
+	  tail = new_regu;
+	}
+      else
+	{
+	  tail->next = new_regu;
+	  tail = new_regu;
+	}
 
-	  /* since the first half of regu_list are order by regu */
-	  order = order->next; regu_var = regu_var->next; regu_const = regu_const->next->next;}
+      /* since the first half of regu_list are order by regu */
+      order = order->next;
+      regu_var = regu_var->next;
+      regu_const = regu_const->next->next;
+    }
 
-	  /* append scan_regu_list, out_list and value_list */
-	  scan_regu_list = info->scan_regu_list;
-	  out_list = info->out_list->valptrp;
-	  value_tmp = info->value_list->valp;
-	  for (pnode = node, regu_var = regu_list; pnode != NULL; pnode = pnode->next, regu_var = regu_var->next)
-	  {
-	  /* append scan_list */
-	  scan_regu = pt_to_regu_variable (parser, pnode->info.sort_spec.expr, UNBOX_AS_VALUE); if (scan_regu == NULL)
-	  {
-	  return ER_FAILED;}
+  /* append scan_regu_list, out_list and value_list */
+  scan_regu_list = info->scan_regu_list;
+  out_list = info->out_list->valptrp;
+  value_tmp = info->value_list->valp;
+  for (pnode = node, regu_var = regu_list; pnode != NULL; pnode = pnode->next, regu_var = regu_var->next)
+    {
+      /* append scan_list */
+      scan_regu = pt_to_regu_variable (parser, pnode->info.sort_spec.expr, UNBOX_AS_VALUE);
+      if (scan_regu == NULL)
+	{
+	  return ER_FAILED;
+	}
 
-	  /* scan_regu->vfetch_to is also needed for domain checking */
-	  scan_regu->vfetch_to = regu_var->value.value.dbvalptr; if (scan_regu_list == NULL)
-	  {
-	  scan_regu_list = regu_varlist_alloc (); if (scan_regu_list == NULL)
-	  {
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY); return ER_FAILED;}
-	  }
-	  else
-	  {
+      /* scan_regu->vfetch_to is also needed for domain checking */
+      scan_regu->vfetch_to = regu_var->value.value.dbvalptr;
+      if (scan_regu_list == NULL)
+	{
+	  scan_regu_list = regu_varlist_alloc ();
+	  if (scan_regu_list == NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return ER_FAILED;
+	    }
+	}
+      else
+	{
 	  while (scan_regu_list->next != NULL)
-	  {
-	  scan_regu_list = scan_regu_list->next;}
-	  scan_regu_list->next = regu_varlist_alloc (); if (scan_regu_list->next == NULL)
-	  {
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY); return ER_FAILED;}
+	    {
+	      scan_regu_list = scan_regu_list->next;
+	    }
+	  scan_regu_list->next = regu_varlist_alloc ();
+	  if (scan_regu_list->next == NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return ER_FAILED;
+	    }
 
-	  scan_regu_list = scan_regu_list->next;}
+	  scan_regu_list = scan_regu_list->next;
+	}
 
-	  scan_regu_list->next = NULL; scan_regu_list->value = *scan_regu;
-	  /* appende out_list */
-	  pname = parser_new_node (parser, PT_VALUE); if (pname == NULL)
-	  {
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY); return ER_FAILED;}
+      scan_regu_list->next = NULL;
+      scan_regu_list->value = *scan_regu;
+      /* appende out_list */
+      pname = parser_new_node (parser, PT_VALUE);
+      if (pname == NULL)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return ER_FAILED;
+	}
 
-	  pname->type_enum = PT_TYPE_INTEGER;
-	  pname->info.value.data_value.i = 0; parser_append_node (pname, info->out_names); if (out_list == NULL)
-	  {
-	  out_list = regu_varlist_alloc (); if (out_list == NULL)
-	  {
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY); return ER_FAILED;}
-	  }
-	  else
-	  {
+      pname->type_enum = PT_TYPE_INTEGER;
+      pname->info.value.data_value.i = 0;
+      parser_append_node (pname, info->out_names);
+      if (out_list == NULL)
+	{
+	  out_list = regu_varlist_alloc ();
+	  if (out_list == NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return ER_FAILED;
+	    }
+	}
+      else
+	{
 	  while (out_list->next != NULL)
-	  {
-	  out_list = out_list->next;}
+	    {
+	      out_list = out_list->next;
+	    }
 
-	  out_list->next = regu_varlist_alloc (); if (out_list->next == NULL)
-	  {
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY); return ER_FAILED;}
+	  out_list->next = regu_varlist_alloc ();
+	  if (out_list->next == NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return ER_FAILED;
+	    }
 
-	  out_list = out_list->next;}
+	  out_list = out_list->next;
+	}
 
-	  out_list->next = NULL; out_list->value = *scan_regu; info->out_list->valptr_cnt++;
-	  /* append value list, although this value in the value_list are useless for further evaluation, it is needed to
-	   * reserve the corresponding positions, otherwise out_list will be messed up. */
-	  value_list = pt_make_val_list (parser, pnode->info.sort_spec.expr); if (value_list == NULL)
-	  {
-	  return ER_FAILED;}
+      out_list->next = NULL;
+      out_list->value = *scan_regu;
+      info->out_list->valptr_cnt++;
+      /* append value list, although this value in the value_list are useless for further evaluation, it is needed to
+       * reserve the corresponding positions, otherwise out_list will be messed up. */
+      value_list = pt_make_val_list (parser, pnode->info.sort_spec.expr);
+      if (value_list == NULL)
+	{
+	  return ER_FAILED;
+	}
 
-	  if (value_tmp == NULL)
-	  {
-	  value_tmp = value_list->valp;}
-	  else
-	  {
+      if (value_tmp == NULL)
+	{
+	  value_tmp = value_list->valp;
+	}
+      else
+	{
 	  while (value_tmp->next != NULL)
-	  {
-	  value_tmp = value_tmp->next;}
-	  value_tmp->next = value_list->valp;}
+	    {
+	      value_tmp = value_tmp->next;
+	    }
+	  value_tmp->next = value_list->valp;
+	}
 
-	  info->value_list->val_cnt++;}	/* for(pnode...) ends */
+      info->value_list->val_cnt++;
+    }				/* for(pnode...) ends */
 
-	  return NO_ERROR;}
+  return NO_ERROR;
+}
