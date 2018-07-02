@@ -324,13 +324,9 @@ set(ESQL_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/esql_lexer.c)
 
 # bison and flex check
 include(FindBISON)
-find_package(BISON)
+find_package(BISON 3.0.0)
 
-if(BISON_FOUND)
-  if(BISON_VERSION VERSION_GREATER 2.3)
-    set(USE_BISON_NEWDIRECTIVE 1) 
-  endif(BISON_VERSION VERSION_GREATER 2.3)
-else(BISON_FOUND)
+if(NOT BISON_FOUND)
   if(UNIX)
     message(FATAL_ERROR "Please install bison and flex.")
   else()
@@ -342,29 +338,19 @@ else(BISON_FOUND)
       " and retry running cmake."
     )
   endif()
-endif(BISON_FOUND)
+endif(NOT BISON_FOUND)
 
 include(FindFLEX)
 find_package(FLEX 2.5.34 REQUIRED)
 
-if(USE_BISON_NEWDIRECTIVE)
-  # replace old bison directives with new ones
-  # use add_custom_command because we want to regenerate csql_grammar.yy
-  # whenever csql_grammar.y is modified
-  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy
-    COMMAND ${CMAKE_COMMAND} -DGRAMMAR_INPUT_FILE=${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y -DGRAMMAR_OUTPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy -P ${CMAKE_SOURCE_DIR}/cmake/upgrade_bison_grammar.cmake
-    MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y
-  )
-else()
-  # using old bison - just copy the csql_grammar.y to csql_grammar.yy
-  # keeping the chain of dependencies
-  # use add_custom_command because we want to regenerate csql_grammar.yy
-  # whenever csql_grammar.y is modified
-  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy
-    MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y
-  )
-endif(USE_BISON_NEWDIRECTIVE)
+# CSQL FLEX/BISON targets
+# replace old bison directives with new ones
+# use add_custom_command because we want to regenerate csql_grammar.yy
+# whenever csql_grammar.y is modified
+add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy
+  COMMAND ${CMAKE_COMMAND} -DGRAMMAR_INPUT_FILE=${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y -DGRAMMAR_OUTPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy -P ${CMAKE_SOURCE_DIR}/cmake/upgrade_bison_grammar.cmake
+  MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y
+)
 
 set(CSQL_GRAMMAR_INPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy)
 
@@ -380,6 +366,7 @@ add_flex_bison_dependency(csql_lexer csql_grammar)
 add_custom_target(gen_csql_grammar DEPENDS ${BISON_csql_grammar_OUTPUTS})
 add_custom_target(gen_csql_lexer DEPENDS ${FLEX_csql_lexer_OUTPUTS})
 
+# Loader FLEX/BISON targets
 bison_target(loader_grammar ${LOADER_GRAMMAR_INPUT} ${LOADER_GRAMMAR_OUTPUT}
   COMPILE_FLAGS "-d -r all")
 flex_target(loader_lexer ${LOADER_LEXER_INPUT} ${LOADER_LEXER_OUTPUT}
@@ -388,27 +375,16 @@ add_flex_bison_dependency(loader_lexer loader_grammar)
 add_custom_target(gen_loader_grammar DEPENDS ${BISON_loader_grammar_OUTPUTS})
 add_custom_target(gen_loader_lexer DEPENDS ${FLEX_loader_lexer_OUTPUTS})
 
-if(USE_BISON_NEWDIRECTIVE)
-  # replace old bison directives with new ones
-  # use add_custom_command because we want to regenerate esql_grammar.yy
-  # whenever esql_grammar.y is modified
-  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy
-    COMMAND ${CMAKE_COMMAND} -DGRAMMAR_INPUT_FILE=${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y -DGRAMMAR_OUTPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy -P ${CMAKE_SOURCE_DIR}/cmake/upgrade_bison_grammar.cmake
-    MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y
-  )
-else()
-  # using old bison - just copy the esql_grammar.y to esql_grammar.yy
-  # keeping the chain of dependencies
-  # use add_custom_command because we want to regenerate esql_grammar.yy
-  # whenever esql_grammar.y is modified
-  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy
-    MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y
-  )
-endif(USE_BISON_NEWDIRECTIVE)
+# ESQL FLEX/BISON targets
+# replace old bison directives with new ones
+# use add_custom_command because we want to regenerate esql_grammar.yy
+# whenever esql_grammar.y is modified
+add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy
+  COMMAND ${CMAKE_COMMAND} -DGRAMMAR_INPUT_FILE=${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y -DGRAMMAR_OUTPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy -P ${CMAKE_SOURCE_DIR}/cmake/upgrade_bison_grammar.cmake
+  MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y
+)
 
 set(ESQL_GRAMMAR_INPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy)
-
 
 # because esql_grammar.yy are generated through a custom command 
 # whenever esql_grammar.y is modified, bison and flex will be 
@@ -653,7 +629,6 @@ if(GCRYPT_LIBRARIES)
 endif(GCRYPT_LIBRARIES)
 
 if(UNIX)
-
   include(FindThreads)
 endif(UNIX)
 
