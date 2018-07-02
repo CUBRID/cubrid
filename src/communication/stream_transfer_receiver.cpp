@@ -56,14 +56,20 @@ namespace cubstream
 	    assert (sizeof (stream_position) == sizeof (UINT64));
 
 	    last_recv_pos = htoni64 (this_consumer_channel.m_last_received_position);
-	    rc = (css_error_code) this_consumer_channel.m_channel.send ((char *) &last_recv_pos,
+	    rc = this_consumer_channel.m_channel.send ((char *) &last_recv_pos,
 		 sizeof (UINT64));
-	    assert (rc == NO_ERRORS);
+
+	    if (rc != NO_ERRORS)
+	      {
+		assert (false);
+		this_consumer_channel.m_channel.close_connection ();
+		return;
+	      }
 
 	    m_first_loop = false;
 	  }
 
-	rc = (css_error_code) this_consumer_channel.m_channel.recv (this_consumer_channel.m_buffer, max_len);
+	rc = this_consumer_channel.m_channel.recv (this_consumer_channel.m_buffer, max_len);
 	if (rc != NO_ERRORS)
 	  {
 	    this_consumer_channel.m_channel.close_connection ();

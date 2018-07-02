@@ -55,7 +55,7 @@ namespace cubreplication
       static void init (cubstream::stream *stream);
       static void add_stream_sender (cubstream::transfer_sender *sender);
       static std::size_t get_number_of_stream_senders ();
-      static void reset ();
+      static void final ();
       static void block_until_position_sent (cubstream::stream_position desired_position);
 
       static inline cubstream::stream &get_stream ()
@@ -78,6 +78,7 @@ namespace cubreplication
 	  void execute (cubthread::entry &context)
 	  {
 	    static unsigned int check_conn_delay_counter = 0;
+	    bool promoted_to_write = false;
 
 	    if (check_conn_delay_counter >
 		SUPERVISOR_DAEMON_CHECK_CONN_MS / SUPERVISOR_DAEMON_DELAY_MS)
@@ -89,40 +90,36 @@ namespace cubreplication
 		  {
 		    if (! (*it)->get_channel ().is_connection_alive ())
 		      {
-			rwlock_read_unlock (&master_senders_lock);
+			if (!promoted_to_write)
+			  {
+			    rwlock_read_unlock (&master_senders_lock);
 
-			rwlock_write_lock (&master_senders_lock);
-			it = master_server_stream_senders.erase (it);
-			rwlock_write_unlock (&master_senders_lock);
+			    rwlock_write_lock (&master_senders_lock);
+			    it = master_server_stream_senders.begin ();
 
-			rwlock_read_lock (&master_senders_lock);
+			    promoted_to_write = true;
+			  }
+			else
+			  {
+			    it = master_server_stream_senders.erase (it);
+			  }
 		      }
 		    else
 		      {
 			++it;
 		      }
 		  }
-		rwlock_read_unlock (&master_senders_lock);
-
+		if (!promoted_to_write)
+		  {
+		    rwlock_read_unlock (&master_senders_lock);
+		  }
+		else
+		  {
+		    rwlock_write_unlock (&master_senders_lock);
+		  }
 		check_conn_delay_counter = 0;
 	      }
 
-#if 0
-	    master_senders_manager::g_minimum_successful_stream_position =
-	      std::numeric_limits <cubstream::stream_position>::max();
-
-	    std::lock_guard<std::mutex> guard (master_senders_mutex);
-
-	    for (cubstream::transfer_sender *sender : master_channels)
-	      {
-		if (master_senders_manager::g_minimum_successful_stream_position >
-		    sender->get_last_sent_position ())
-		  {
-		    master_senders_manager::g_minimum_successful_stream_position =
-		      sender->get_last_sent_position ();
-		  }
-	      }
-#endif
 	    check_conn_delay_counter++;
 	  }
       };

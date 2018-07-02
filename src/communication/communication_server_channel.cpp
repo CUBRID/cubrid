@@ -32,14 +32,11 @@ namespace cubcomm
       m_server_name (server_name)
   {
     assert (server_name != NULL);
-
-    m_server_name_length = strlen (server_name);
   }
 
   server_channel::server_channel (server_channel &&comm)
     : channel (std::move (comm))
   {
-    m_server_name_length = comm.m_server_name_length;
   }
 
   server_channel &server_channel::operator= (server_channel &&comm)
@@ -54,30 +51,31 @@ namespace cubcomm
   css_error_code server_channel::connect (const char *hostname, int port)
   {
     unsigned short m_request_id;
+    css_error_code rc = NO_ERRORS;
 
-    css_error_code rc = channel::connect (hostname, port);
-    if (rc == NO_ERRORS)
+    rc = channel::connect (hostname, port);
+    if (rc != NO_ERRORS)
       {
-	/* send magic */
-	rc = (css_error_code) css_send_magic_with_socket (m_socket);
-	if (rc != NO_ERRORS)
-	  {
-	    /* if error, css_send_magic should have closed the connection */
-	    assert (!is_connection_alive ());
-	    return rc;
-	  }
+	return rc;
+      }
 
-	/* send request */
-	rc = (css_error_code) css_send_request_with_socket (m_socket, SERVER_REQUEST_CONNECT_NEW_SLAVE, &m_request_id,
-	     m_server_name.c_str (), m_server_name_length);
-	if (rc != NO_ERRORS)
-	  {
-	    /* if error, css_send_request should have closed the connection */
-	    assert (!is_connection_alive ());
-	    return rc;
-	  }
+    /* send magic */
+    rc = (css_error_code) css_send_magic_with_socket (m_socket);
+    if (rc != NO_ERRORS)
+      {
+	/* if error, css_send_magic should have closed the connection */
+	assert (!is_connection_alive ());
+	return rc;
+      }
 
-	return NO_ERRORS;
+    /* send request */
+    rc = (css_error_code) css_send_request_with_socket (m_socket, SERVER_REQUEST_CONNECT_NEW_SLAVE, &m_request_id,
+	 m_server_name.c_str (), m_server_name.size ());
+    if (rc != NO_ERRORS)
+      {
+	/* if error, css_send_request should have closed the connection */
+	assert (!is_connection_alive ());
+	return rc;
       }
 
     return rc;

@@ -294,7 +294,7 @@ css_process_master_hostname ()
       return error;
     }
 
-  cubreplication::master_senders_manager::reset ();
+  cubreplication::master_senders_manager::final ();
   delete g_slave_stream_receiver;
   g_slave_stream_receiver = new cubstream::transfer_receiver (std::move (chn), temporary_stream, 0);
 
@@ -385,7 +385,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  logtb_enable_update (thread_p);
 	}
       delete g_slave_stream_receiver;
-      cubreplication::master_senders_manager::reset ();
+      cubreplication::master_senders_manager::final ();
       cubreplication::master_senders_manager::init (&temporary_stream);
       break;
 

@@ -82,7 +82,7 @@ namespace cubreplication
       }
   }
 
-  void master_senders_manager::reset ()
+  void master_senders_manager::final ()
   {
     if (is_initialized == true)
       {
@@ -134,6 +134,7 @@ namespace cubreplication
   void master_senders_manager::block_until_position_sent (cubstream::stream_position desired_position)
   {
     bool is_position_sent = false;
+    const std::chrono::microseconds SLEEP_BETWEEN_SPINS (20);
 
     while (!is_position_sent)
       {
@@ -146,12 +147,11 @@ namespace cubreplication
 	      {
 		is_position_sent = false;
 		sender->get_daemon ()->wakeup ();
-		break;
 	      }
 	  }
 	rwlock_read_unlock (&master_senders_lock);
 
-	std::this_thread::sleep_for (std::chrono::microseconds (20));
+	std::this_thread::sleep_for (SLEEP_BETWEEN_SPINS);
       }
   }
 

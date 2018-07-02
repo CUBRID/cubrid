@@ -30,7 +30,7 @@ namespace master
 
   void finish ()
   {
-    cubreplication::master_senders_manager::reset ();
+    cubreplication::master_senders_manager::final ();
   }
 
   void stream_produce (unsigned int num_bytes)

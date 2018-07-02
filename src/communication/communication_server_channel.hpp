@@ -47,7 +47,6 @@ namespace cubcomm
 
     private:
       std::string m_server_name;
-      std::size_t m_server_name_length;
   };
 
 }; /* cubcomm namepace */
