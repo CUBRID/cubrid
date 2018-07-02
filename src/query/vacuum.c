@@ -4120,6 +4120,8 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 	   * In this case, we are updating the last_blockid of the vacuum to the last block that was logged.
 	   */
 	  vacuum_Data.last_blockid = logpb_last_complete_blockid ();
+	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "vacuum_data_load_and_recover Last Blockid = %lld\n",
+			 (long long int) vacuum_Data.last_blockid);
 	}
       else
 	{
@@ -4128,6 +4130,10 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 	   * be outdated. Instead, SA_MODE updates log_Gl.hdr.vacuum_last_blockid before removing old archives.
 	   */
 	  vacuum_Data.last_blockid = MAX (log_Gl.hdr.vacuum_last_blockid, vacuum_Data.last_page->data->blockid);
+	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
+			 "vacuum_data_load_and_recover Last Blockid = %lld, Hdr Last Blockid =%lld, Last Page Blockid =%lld\n",
+			 (long long int) vacuum_Data.last_blockid, (long long int) log_Gl.hdr.vacuum_last_blockid,
+			 (long long int) vacuum_Data.last_page->data->blockid);
 	}
     }
   else
@@ -4135,6 +4141,8 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
       /* Get last_blockid from last vacuum data entry. */
       vacuum_Data.last_blockid =
 	VACUUM_BLOCKID_WITHOUT_FLAGS ((vacuum_Data.last_page->data + vacuum_Data.last_page->index_free - 1)->blockid);
+      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "vacuum_data_load_and_recover Last Blockid = %lld\n",
+		     (long long int) vacuum_Data.last_blockid);
     }
 
   vacuum_Data.is_loaded = true;
@@ -5115,11 +5123,12 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 #endif /* !NDEBUG */
 
 	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-			     "Add block %lld, start_lsa=%lld|%d, oldest_mvccid=%llu, newest_mvccid=%llu.",
+			     "Add block %lld, start_lsa=%lld|%d, oldest_mvccid=%llu, newest_mvccid=%llu. Hdr last blockid = %lld\n",
 			     (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (page_free_data->blockid),
 			     (long long int) page_free_data->start_lsa.pageid, (int) page_free_data->start_lsa.offset,
 			     (unsigned long long int) page_free_data->oldest_mvccid,
-			     (unsigned long long int) page_free_data->newest_mvccid);
+			     (unsigned long long int) page_free_data->newest_mvccid,
+			     (long long int) log_Gl.hdr.vacuum_last_blockid);
 	    }
 	  else
 	    {
