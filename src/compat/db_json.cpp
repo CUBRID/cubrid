@@ -1492,14 +1492,11 @@ db_json_validate_json (const char *json_body)
 JSON_DOC *db_json_allocate_doc ()
 {
   JSON_DOC *doc = new JSON_DOC();
-  er_print_callstack (ARG_FILE_LINE, "Traced pointer=%p\n", doc);
-
   return doc;
 }
 
 void db_json_delete_doc (JSON_DOC *&doc)
 {
-  er_print_callstack (ARG_FILE_LINE, "Traced pointer=%p\n", doc);
   delete doc;
   doc = NULL;
 }
