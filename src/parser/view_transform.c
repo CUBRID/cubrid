@@ -236,7 +236,7 @@ static PT_NODE *mq_set_types (PARSER_CONTEXT * parser, PT_NODE * query_spec, PT_
 			      DB_OBJECT * vclass_object, int cascaded_check);
 static PT_NODE *mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_NODE * attributes,
 					 DB_AUTH * authorization);
-static PT_NODE *mq_invert_assign (PARSER_CONTEXT * parser, PT_NODE * attr, PT_NODE * expr);
+static void mq_invert_assign (PARSER_CONTEXT * parser, PT_NODE * attr, PT_NODE * &expr, PT_NODE * inverted);
 static void mq_invert_subqueries (PARSER_CONTEXT * parser, PT_NODE * select_statements, PT_NODE * attributes);
 static void mq_set_non_updatable_oid (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * virt_entity);
 static bool mq_check_cycle (DB_OBJECT * class_object);
@@ -5526,39 +5526,37 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
  *   attr(in):
  *   expr(in):
  */
-static PT_NODE *
-mq_invert_assign (PARSER_CONTEXT * parser, PT_NODE * attr, PT_NODE * expr)
+static void
+mq_invert_assign (PARSER_CONTEXT * parser, PT_NODE * attr, PT_NODE * &expr, PT_NODE * inverted)
 {
-  PT_NODE *result, *inverted;
+  PT_NODE *result;
   const char *attr_name;
 
-  inverted = pt_invert (parser, expr, attr);
+  assert (inverted != NULL);
 
   result = parser_new_node (parser, PT_EXPR);
 
   if (result == NULL)
     {
       PT_INTERNAL_ERROR (parser, "allocate new node");
-      return NULL;
+      return;
     }
 
   result->info.expr.op = PT_ASSIGN;
-  if (inverted)
-    {
-      result->etc = attr;
-      attr_name = attr->info.name.original;
-      /* need to convert attr to value holder */
-      attr->node_type = PT_VALUE;
-      /* make info.value set up properly */
-      memset (&(attr->info), 0, sizeof (attr->info));
-      attr->info.value.text = attr_name;
-      result->info.expr.arg1 = inverted->next;	/* name */
-      inverted->next = NULL;
-      attr->next = NULL;
-      result->info.expr.arg2 = inverted;	/* right hand side */
-    }
 
-  return result;
+  result->etc = attr;
+  attr_name = attr->info.name.original;
+  /* need to convert attr to value holder */
+  attr->node_type = PT_VALUE;
+  /* make info.value set up properly */
+  memset (&(attr->info), 0, sizeof (attr->info));
+  attr->info.value.text = attr_name;
+  result->info.expr.arg1 = inverted->next;	/* name */
+  inverted->next = NULL;
+  attr->next = NULL;
+  result->info.expr.arg2 = inverted;	/* right hand side */
+
+  expr = result;
 }
 
 
@@ -5577,26 +5575,67 @@ mq_invert_subqueries (PARSER_CONTEXT * parser, PT_NODE * select_statements, PT_N
   PT_NODE *attr;
   PT_NODE *column_next;
   PT_NODE *attr_next;
+  PT_NODE **column_prev;
+  PT_NODE *inverted;
+  PT_NODE **head;
+  PT_NODE *node_to_free = NULL;
 
   while (select_statements)
     {
       column = &select_statements->info.query.q.select.list;
       attr = parser_copy_tree_list (parser, attributes);
 
+      // save the head before deleting a node if necesserary
+      head = column;
+
       while (attr)
 	{
 	  column_next = (*column)->next;
 	  attr_next = attr->next;
-	  *column = mq_invert_assign (parser, attr, *column);
-	  if (*column == NULL)
+
+	  // try to invert the node
+	  inverted = pt_invert (parser, *column, attr);
+
+	  // to avoid creating a new "empty" node, we better delete the column from the list
+	  if (inverted == NULL)
 	    {
-	      break;
+	      node_to_free = *column;
+
+	      if (column_prev != NULL)
+		{
+		  // link the previous node to the next node
+		  (*column_prev)->next = (*column)->next;
+		}
+	      else
+		{
+		  // move head to the right
+		  head = &((*column)->next);
+		}
+
+	      // move forward in list
+	      column = &((*column_prev)->next);
 	    }
-	  (*column)->next = column_next;
-	  column = &((*column)->next);
+	  else
+	    {
+	      // we change the column with the assignment
+	      mq_invert_assign (parser, attr, *column, inverted);
+
+	      if (*column == NULL)
+		{
+		  break;
+		}
+
+	      // set the link of the new node to next
+	      (*column)->next = column_next;
+	      column_prev = column;
+	      // move forward in list
+	      column = &((*column)->next);
+	    }
+
 	  attr = attr_next;
 	}
 
+      select_statements->info.query.q.select.list = *head;
       select_statements = select_statements->next;
     }
 }

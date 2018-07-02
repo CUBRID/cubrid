@@ -3566,7 +3566,9 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 	  return (DB_VALUE *) NULL;
 	}
 
-      value->info.value.db_value_is_in_workspace = false;
+      er_print_callstack (ARG_FILE_LINE, "Traced pointer=%p\n", &db_value->data.json.document);
+
+      value->info.value.db_value_is_in_workspace = true;
       db_value->need_clear = true;
       if (value->info.data_type.json_schema)
 	{

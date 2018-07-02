@@ -2053,6 +2053,7 @@ pr_clear_value (DB_VALUE * value)
 	    }
 	  if (value->data.json.document != NULL)
 	    {
+	      er_print_callstack (ARG_FILE_LINE, "Traced pointer=%p\n", &value->data.json.document);
 	      db_json_delete_doc (value->data.json.document);
 	      value->data.json.document = NULL;
 	    }
