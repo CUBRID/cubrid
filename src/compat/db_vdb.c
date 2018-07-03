@@ -3953,14 +3953,14 @@ pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
 }
 
 /*
-* db_set_statement_auto_commit () - Init statement auto commit.
-*
-* return : error code.
-* session(in): compiled session
-* auto_commit(in): true, if auto commit
-*/
+ * db_set_statement_auto_commit () - Init statement auto commit.
+ *
+ * return : error code.
+ * session(in): compiled session
+ * auto_commit(in): true, if auto commit
+ */
 int
-db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
+db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
 {
   PT_NODE *statement;
   int stmt_ndx;
@@ -3968,8 +3968,9 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
   int info_hints;
 
   assert (session != NULL);
+
   /* check parameters */
-  if (session->dimension == 0 || !session->statements)
+  if (session->dimension == 0 || session->statements == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_EMPTY_STATEMENT, 0);
       return er_errid ();
@@ -3977,7 +3978,7 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
 
   stmt_ndx = session->stmt_ndx - 1;
   statement = session->statements[stmt_ndx];
-  if (stmt_ndx < 0 || stmt_ndx >= session->dimension || !statement)
+  if (stmt_ndx < 0 || stmt_ndx >= session->dimension || statement == NULL)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return er_errid ();
@@ -3995,7 +3996,8 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
 
   /* Init statement auto commit. */
   statement->use_auto_commit = 0;
-  if (!(auto_commit && db_session_is_last_statement (session)))
+
+  if (!auto_commit || !db_session_is_last_statement (session))
     {
       return NO_ERROR;
     }
@@ -4014,12 +4016,12 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
     {
     case PT_SELECT:
       /* Check whether the optimization can be used. */
+      // TODO - describe why allowed and not allowed.
       if (!statement->info.query.oids_included && !statement->info.query.is_view_spec
 	  && !statement->info.query.has_system_class && statement->info.query.into_list == NULL)
 	{
-	  info_hints =
-	    PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_PAGE_INFO | PT_HINT_SELECT_KEY_INFO |
-	    PT_HINT_SELECT_BTREE_NODE_INFO;
+	  info_hints = (PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_PAGE_INFO 
+			| PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_BTREE_NODE_INFO);
 	  if ((statement->info.query.q.select.hint & info_hints) == 0)
 	    {
 	      (void) parser_walk_tree (session->parser, statement->info.query.q.select.list, pt_has_name_oid,
@@ -4030,7 +4032,6 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
 		}
 	    }
 	}
-
       break;
 
     case PT_INSERT:
@@ -4053,6 +4054,7 @@ db_set_statement_auto_commit (DB_SESSION * session, char auto_commit)
       /* Do not use optimization in case of delete execution on broker side */
       if (statement->info.delete_.execute_with_commit_allowed)
 	{
+	  // TODO - describe why allowed and not allowed.
 	  if (statement->info.delete_.del_stmt_list == NULL)
 	    {
 	      statement->use_auto_commit = 1;
