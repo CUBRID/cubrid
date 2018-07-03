@@ -24249,10 +24249,11 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 
   /* make a copy of assignment list to be able to iterate later */
   copy_assigns = parser_copy_tree_list (parser, info->update.assignment);
+
   /* get assignments lists for select statement generation */
   error =
-    pt_get_assignment_lists (parser, &select_names, &select_values, &const_names, &const_values, &num_vals,
-			     &num_consts, info->update.assignment, &links);
+    pt_get_assignment_lists (parser, &select_names, &select_values, &const_names, &const_values, &num_vals, &num_consts,
+			     info->update.assignment, &links);
   if (error != NO_ERROR)
     {
       PT_INTERNAL_ERROR (parser, "merge update");
@@ -24263,12 +24264,16 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   /* save assignment list and replace within statement with the copy */
   save_assigns = info->update.assignment;
   info->update.assignment = copy_assigns;
+
   aptr_statement = pt_to_merge_update_query (parser, select_values, info);
+
   /* restore assignment list and destroy the copy */
   info->update.assignment = save_assigns;
   parser_free_tree (parser, copy_assigns);
+
   /* restore tree structure; pt_get_assignment_lists() */
   pt_restore_assignment_links (info->update.assignment, links, -1);
+
   if (aptr_statement == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -24327,8 +24332,10 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
     }
 
   update = &xasl->proc.update;
+
   update->num_classes = 1;
   update->num_assigns = num_vals;
+
   update->classes = regu_upddel_class_info_array_alloc (1);
   if (update->classes == NULL)
     {
@@ -24356,7 +24363,9 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
     }
 
   upd_cls = &update->classes[0];
+
   upd_cls->has_uniques = (from->info.spec.flag & PT_SPEC_FLAG_HAS_UNIQUE);
+
   /* count subclasses of update class */
   num_subclasses = 0;
   cl_name_node = from->info.spec.flat_entity_list;
@@ -24366,6 +24375,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
       cl_name_node = cl_name_node->next;
     }
   upd_cls->num_subclasses = num_subclasses;
+
   /* count class assignments */
   a = 0;
   pt_init_assignments_helper (parser, &assign_helper, assigns);
@@ -24377,6 +24387,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	}
     }
   upd_cls->num_attrs = a;
+
   /* allocate array for subclasses OIDs, hfids, attributes ids */
   upd_cls->class_oid = regu_oid_array_alloc (num_subclasses);
   if (upd_cls->class_oid == NULL)
@@ -24431,6 +24442,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   while (cl_name_node && error == NO_ERROR)
     {
       class_obj = cl_name_node->info.name.db_object;
+
       /* get class oid */
       class_oid = ws_identifier (class_obj);
       if (class_oid == NULL)
@@ -24456,6 +24468,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 
       upd_cls->class_oid[cl] = *class_oid;
       upd_cls->class_hfid[cl] = *hfid;
+
       /* Calculate attribute ids and link each assignment to classes and attributes */
       pt_init_assignments_helper (parser, &assign_helper, assigns);
       assign_idx = a = 0;
@@ -24467,6 +24480,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	      assign->cls_idx = 0;
 	      assign->att_idx = a;
 	      upd_cls->att_id[cl * upd_cls->num_attrs + a] = sm_att_id (class_obj, att_name_node->info.name.original);
+
 	      if (upd_cls->att_id[cl * upd_cls->num_attrs + a] < 0)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -24505,8 +24519,10 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	}
     }
   update->no_logging = (info->hint & PT_HINT_NO_LOGGING);
+
   /* check constants */
   class_obj = from->info.spec.flat_entity_list->info.name.db_object;
+
   pt_init_assignments_helper (parser, &assign_helper, assigns);
   a = 0;
   while ((att_name_node = pt_get_next_assignment (&assign_helper)) != NULL)
@@ -24533,6 +24549,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	{
 	  /* Check to see if this is a NON NULL attr */
 	  next = node->next;
+
 	  if (!pt_name_equal (parser, node, att_name_node))
 	    {
 	      prev = node;
@@ -24604,8 +24621,8 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 
   /* generate xasl for non-null constraints predicates */
   error =
-    pt_get_assignment_lists (parser, &select_names, &select_values, &const_names, &const_values, &num_vals,
-			     &num_consts, info->update.assignment, &links);
+    pt_get_assignment_lists (parser, &select_names, &select_values, &const_names, &const_values, &num_vals, &num_consts,
+			     info->update.assignment, &links);
   if (error != NO_ERROR)
     {
       PT_INTERNAL_ERROR (parser, "merge update");
@@ -24613,15 +24630,16 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
     }
 
   /* need to jump upd_del_class_cnt OID-CLASS OID pairs */
-  attr_offset =
-    ((aptr_statement->info.query.upd_del_class_cnt + aptr_statement->info.query.mvcc_reev_extra_cls_cnt) * 2 +
-     (info->update.has_delete ? 1 : 0));
+  attr_offset = ((aptr_statement->info.query.upd_del_class_cnt + aptr_statement->info.query.mvcc_reev_extra_cls_cnt) * 2
+		 + (info->update.has_delete ? 1 : 0));
+
   error = pt_to_constraint_pred (parser, xasl, info->into, *non_null_attrs, select_names, attr_offset);
 #if 0
 /* disabled temporary in MVCC */
   attr_offset = aptr_statement->info.query.upd_del_class_cnt * 2 + (info->update.has_delete ? 1 : 0);
   error = pt_to_constraint_pred (parser, xasl, info->into, *non_null_attrs, select_names, attr_offset);
 #endif
+
   pt_restore_assignment_links (info->update.assignment, links, -1);
   if (error != NO_ERROR)
     {
@@ -24629,6 +24647,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
     }
 
   aptr = xasl->aptr_list;
+
   xasl->n_oid_list = aptr->n_oid_list;
   aptr->n_oid_list = 0;
   xasl->class_oid_list = aptr->class_oid_list;
@@ -24638,6 +24657,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   xasl->tcard_list = aptr->tcard_list;
   aptr->tcard_list = NULL;
   xasl->dbval_cnt = aptr->dbval_cnt;
+
   /* fill in XASL cache related information */
   /* OID of the user who is creating this XASL */
   if ((oid = ws_identifier (db_get_user ())) != NULL)
@@ -24690,6 +24710,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   int num_vals, num_default_expr, a;
   int error = NO_ERROR;
   PT_NODE *hint_arg;
+
   values_list = statement->info.merge.insert.value_clauses;
   if (values_list == NULL)
     {
@@ -24727,6 +24748,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 
   attrs = statement->info.merge.insert.attr_list;
   class_obj = statement->info.merge.into->info.spec.flat_entity_list->info.name.db_object;
+
   class_ = locator_create_heap_if_needed (class_obj, sm_is_reuse_oid_class (class_obj));
   if (class_ == NULL)
     {
@@ -24767,6 +24789,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 
   num_default_expr = pt_length_of_list (default_expr_attrs);
   num_vals = pt_length_of_select_list (pt_get_select_list (parser, aptr_statement), EXCLUDE_HIDDEN_COLUMNS);
+
   xasl = pt_make_aptr_parent_node (parser, aptr_statement, INSERT_PROC);
   if (xasl == NULL || xasl->aptr_list == NULL)
     {
@@ -24811,6 +24834,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
     }
   insert->no_logging = (statement->info.merge.hint & PT_HINT_NO_LOGGING);
   insert->do_replace = 0;
+
   if (num_vals + num_default_expr > 0)
     {
       insert->att_id = regu_int_array_alloc (num_vals + num_default_expr);
@@ -24863,6 +24887,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 
   /* fill in XASL cache related information */
   aptr = xasl->aptr_list;
+
   /* OID of the user who is creating this XASL */
   oid = ws_identifier (db_get_user ());
   if (oid != NULL)
@@ -24892,15 +24917,18 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
     }
 
   xasl->n_oid_list = 1 + aptr->n_oid_list;
+
   /* copy aptr oids to xasl */
   (void) memcpy (xasl->class_oid_list + 1, aptr->class_oid_list, sizeof (OID) * aptr->n_oid_list);
   (void) memcpy (xasl->class_locks + 1, aptr->class_locks, sizeof (int) * aptr->n_oid_list);
   (void) memcpy (xasl->tcard_list + 1, aptr->tcard_list, sizeof (int) * aptr->n_oid_list);
+
   /* set spec oid */
   xasl->class_oid_list[0] = insert->class_oid;
   xasl->class_locks[0] = (int) IX_LOCK;
   xasl->tcard_list[0] = XASL_CLASS_NO_TCARD;	/* init #pages */
   xasl->dbval_cnt = aptr->dbval_cnt;
+
 cleanup:
   if (aptr_statement != NULL)
     {
@@ -24928,6 +24956,7 @@ pt_substitute_assigned_name_node (PARSER_CONTEXT * parser, PT_NODE * node, void 
 {
   PT_NODE *assignments = (PT_NODE *) arg;
   PT_ASSIGNMENTS_HELPER ea;
+
   if (node->node_type == PT_NAME)
     {
       pt_init_assignments_helper (parser, &ea, assignments);
@@ -24964,8 +24993,10 @@ pt_set_orderby_for_sort_limit_plan (PARSER_CONTEXT * parser, PT_NODE * statement
   PT_NODE *prev = NULL;
   int pos = 0, names_count = 0, added_count = 0;
   bool add_node = false;
+
   order_by = statement->info.query.order_by;
   select_list = pt_get_select_list (parser, statement);
+
   /* count nodes in name_list, we will add new nodes at the end of the list */
   node = nodes_list;
   names_count = 0;
@@ -24980,6 +25011,7 @@ pt_set_orderby_for_sort_limit_plan (PARSER_CONTEXT * parser, PT_NODE * statement
   for (sort_spec = order_by; sort_spec != NULL; sort_spec = sort_spec->next)
     {
       add_node = true;
+
       if (sort_spec->node_type != PT_SORT_SPEC)
 	{
 	  assert_release (sort_spec->node_type == PT_SORT_SPEC);
@@ -25001,6 +25033,7 @@ pt_set_orderby_for_sort_limit_plan (PARSER_CONTEXT * parser, PT_NODE * statement
 	}
 
       CAST_POINTER_TO_NODE (node);
+
       if (node->node_type == PT_NAME)
 	{
 	  /* SORT-LIMIT plans are build over the subset of classes referenced in the ORDER BY clause. This means that
@@ -25058,12 +25091,15 @@ pt_set_orderby_for_sort_limit_plan (PARSER_CONTEXT * parser, PT_NODE * statement
       sort->info.sort_spec.expr = name;
       sort->info.sort_spec.pos_descr.pos_no = pos;
       sort->info.sort_spec.asc_or_desc = sort_spec->info.sort_spec.asc_or_desc;
+
       CAST_POINTER_TO_NODE (name);
       sort->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser, name);
+
       new_order_by = parser_append_node (sort, new_order_by);
     }
 
   return new_order_by;
+
 error_return:
   if (new_order_by != NULL)
     {
@@ -25086,6 +25122,7 @@ static bool
 pt_is_sort_list_covered (PARSER_CONTEXT * parser, SORT_LIST * covering_list_p, SORT_LIST * covered_list_p)
 {
   SORT_LIST *s1, *s2;
+
   if (covered_list_p == NULL)
     {
       return false;
@@ -25148,6 +25185,7 @@ pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser, PT_RESERVED_NAME_ID 
       return HEAP_RECORD_INFO_T_MVCC_FLAGS;
     case RESERVED_T_MVCC_PREV_VERSION_LSA:
       return HEAP_RECORD_INFO_T_MVCC_PREV_VERSION;
+
       /* Page info names */
     case RESERVED_P_CLASS_OID:
       return HEAP_PAGE_INFO_CLASS_OID;
@@ -25173,6 +25211,7 @@ pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser, PT_RESERVED_NAME_ID 
       return HEAP_PAGE_INFO_IS_SAVING;
     case RESERVED_P_UPDATE_BEST:
       return HEAP_PAGE_INFO_UPDATE_BEST;
+
       /* Key info names */
     case RESERVED_KEY_VOLUMEID:
       return BTREE_KEY_INFO_VOLUMEID;
@@ -25190,6 +25229,7 @@ pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser, PT_RESERVED_NAME_ID 
       return BTREE_KEY_INFO_OVERFLOW_KEY;
     case RESERVED_KEY_OVERFLOW_OIDS:
       return BTREE_KEY_INFO_OVERFLOW_OIDS;
+
       /* B-tree node info names */
     case RESERVED_BT_NODE_VOLUMEID:
       return BTREE_NODE_INFO_VOLUMEID;
@@ -25203,6 +25243,7 @@ pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser, PT_RESERVED_NAME_ID 
       return BTREE_NODE_INFO_FIRST_KEY;
     case RESERVED_BT_NODE_LAST_KEY:
       return BTREE_NODE_INFO_LAST_KEY;
+
     default:
       /* unknown reserved id or not handled */
       assert (0);
@@ -25220,12 +25261,15 @@ pt_to_null_ordering (PT_NODE * sort_spec)
 {
   assert_release (sort_spec != NULL);
   assert_release (sort_spec->node_type == PT_SORT_SPEC);
+
   switch (sort_spec->info.sort_spec.nulls_first_or_last)
     {
     case PT_NULLS_FIRST:
       return S_NULLS_FIRST;
+
     case PT_NULLS_LAST:
       return S_NULLS_LAST;
+
     case PT_NULLS_DEFAULT:
     default:
       break;
@@ -25253,6 +25297,7 @@ pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser, PT_NODE * t
   REGU_VARIABLE *regu = NULL;
   PT_NODE *arg_list = NULL, *orderby_list = NULL, *node = NULL;
   REGU_VARIABLE_LIST regu_var_list, regu_var;
+
   /* set up regu var */
   regu = regu_var_alloc ();
   if (regu == NULL)
@@ -25267,6 +25312,7 @@ pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser, PT_NODE * t
   arg_list = tree->info.function.arg_list;
   orderby_list = tree->info.function.order_by;
   assert (arg_list != NULL && orderby_list != NULL);
+
   /* first insert the first order by item */
   regu_var_list = pt_to_regu_variable_list (parser, orderby_list->info.sort_spec.expr, UNBOX_AS_VALUE, NULL, NULL);
   if (regu_var_list == NULL)
@@ -25284,8 +25330,10 @@ pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser, PT_NODE * t
 
   /* order by items have been attached, now the arguments */
   regu_var->next = pt_to_regu_variable_list (parser, arg_list, UNBOX_AS_VALUE, NULL, NULL);
+
   /* finally setup regu: */
   regu->value.regu_var_list = regu_var_list;
+
   return regu;
 }
 
@@ -25322,9 +25370,11 @@ pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XAS
 	   * cause planner to choose a SORT-LIMIT plan over the current one but, since there is no way to know if this
 	   * is the case, it is better to consider that this query will never use SORT-LIMIT. */
 	  break;
+
 	case QO_SL_INVALID:
 	  /* A SORT-LIMIT plan cannot be generated for this query */
 	  break;
+
 	case QO_SL_POSSIBLE:
 	  /* The query might produce a SORT-LIMIT plan but the supplied limit. could not be evaluated. */
 	  xasl->header.xasl_flag |= SORT_LIMIT_CANDIDATE;
@@ -25337,7 +25387,8 @@ pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XAS
     {
       /* qo_plan->multi_range_opt_use == PLAN_MULTI_RANGE_OPT_USE */
       /* convert ordbynum to key limit if we have iscan with multiple key ranges */
-      int err = pt_ordbynum_to_key_limit_multiple_ranges (parser, qo_plan, xasl);
+      int err = pt_ordbynum_to_key_limit_multiple_ranges (parser, qo_plan,
+							  xasl);
       if (err != NO_ERROR)
 	{
 	  return err;
@@ -25367,31 +25418,37 @@ pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XAS
  * regu (in)    :
  */
 static void
-update_value_list_out_list_regu_list (AGGREGATE_INFO * info, VAL_LIST * value_list,
-				      REGU_VARIABLE_LIST out_list, REGU_VARIABLE_LIST regu_list, REGU_VARIABLE * regu)
+update_value_list_out_list_regu_list (AGGREGATE_INFO * info, VAL_LIST * value_list, REGU_VARIABLE_LIST out_list,
+				      REGU_VARIABLE_LIST regu_list, REGU_VARIABLE * regu)
 {
   QPROC_DB_VALUE_LIST value_temp = NULL;
   REGU_VARIABLE_LIST regu_temp = NULL;
+
   assert (info != NULL && info->value_list != NULL && info->out_list != NULL && info->regu_list != NULL
 	  && value_list != NULL && out_list != NULL && regu_list != NULL && regu != NULL);
+
   /* append value holder to value_list */
   info->value_list->val_cnt++;
+
   value_temp = info->value_list->valp;
   while (value_temp->next)
     {
       value_temp = value_temp->next;
     }
   value_temp->next = value_list->valp;
+
   /* append out_list to info->out_list */
   info->out_list->valptr_cnt++;
   out_list->next = NULL;
   out_list->value = *regu;
+
   regu_temp = info->out_list->valptrp;
   while (regu_temp->next)
     {
       regu_temp = regu_temp->next;
     }
   regu_temp->next = out_list;
+
   /* append regu to info->regu_list */
   regu_temp = info->regu_list;
   while (regu_temp->next)
@@ -25415,7 +25472,9 @@ pt_alloc_value_list_out_list_regu_list (PARSER_CONTEXT * parser, PT_NODE * node,
 {
   int *attr_offsets = NULL;
   bool out_of_memory = false;
+
   assert (node != NULL && value_list != NULL && out_list != NULL && regu_list != NULL);
+
   /* begin alloc */
   attr_offsets = pt_make_identity_offsets (node);
   if (attr_offsets == NULL)
@@ -25473,25 +25532,26 @@ pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser, PT_NO
 {
   PT_FUNCTION_INFO *func_info_p = NULL;
   PT_NODE *sort_spec = NULL;
+
   assert (parser != NULL && node != NULL && node->node_type == PT_FUNCTION);
+
   func_info_p = &node->info.function;
   assert (!func_info_p->analytic.is_analytic);
+
   if (func_info_p->function_type == PT_GROUP_CONCAT || func_info_p->function_type == PT_CUME_DIST
       || func_info_p->function_type == PT_PERCENT_RANK)
     {
       /* nothing to be done for these cases */
       return node;
     }
-  else
-    if ((func_info_p->function_type == PT_PERCENTILE_CONT || func_info_p->function_type == PT_PERCENTILE_DISC)
-	&& func_info_p->order_by != NULL && func_info_p->order_by->info.sort_spec.pos_descr.pos_no == 0)
+  else if ((func_info_p->function_type == PT_PERCENTILE_CONT || func_info_p->function_type == PT_PERCENTILE_DISC)
+	   && func_info_p->order_by != NULL && func_info_p->order_by->info.sort_spec.pos_descr.pos_no == 0)
     {
       func_info_p->order_by->info.sort_spec.pos_descr.pos_no = 1;
       func_info_p->order_by->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser, func_info_p->arg_list);
     }
-  else
-    if (func_info_p->function_type == PT_MEDIAN && func_info_p->arg_list != NULL
-	&& !PT_IS_CONST (func_info_p->arg_list) && func_info_p->order_by == NULL)
+  else if (func_info_p->function_type == PT_MEDIAN && func_info_p->arg_list != NULL
+	   && !PT_IS_CONST (func_info_p->arg_list) && func_info_p->order_by == NULL)
     {
       /* generate the sort spec for median */
       sort_spec = parser_new_node (parser, PT_SORT_SPEC);
@@ -25512,6 +25572,7 @@ pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser, PT_NO
 
       sort_spec->info.sort_spec.pos_descr.pos_no = 1;
       sort_spec->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser, func_info_p->arg_list);
+
       func_info_p->order_by = sort_spec;
     }
 
@@ -25533,8 +25594,8 @@ pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser, PT_NO
  * regu (in) :
  */
 static int
-pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_NODE * node,
-						   AGGREGATE_INFO * info, REGU_VARIABLE * regu)
+pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_NODE * node, AGGREGATE_INFO * info,
+						   REGU_VARIABLE * regu)
 {
   REGU_VARIABLE_LIST regu_list, regu_var, regu_const, new_regu, tail, scan_regu_list, out_list;
   REGU_VARIABLE *scan_regu;
@@ -25543,12 +25604,15 @@ pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_N
   TP_DOMAIN *domain;
   PT_NODE *pnode, *order, *pname;
   int i;
+
   assert (parser != NULL && node != NULL && info != NULL && regu != NULL && regu->type == TYPE_REGU_VAR_LIST);
+
   /* initialize variables */
   order = node;
   regu_list = regu->value.regu_var_list;
   regu_var = regu_const = regu_list;
   tail = info->regu_list;
+
   /* find length and tail of regu_list */
   if (tail == NULL)
     {
@@ -25583,6 +25647,7 @@ pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_N
       new_regu->value.value.pos_descr.pos_no = i++;
       new_regu->value.value.pos_descr.dom = domain;
       new_regu->value.vfetch_to = regu_var->value.value.dbvalptr;
+
       if (tail == NULL)
 	{
 	  tail = new_regu;
@@ -25603,6 +25668,7 @@ pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_N
   scan_regu_list = info->scan_regu_list;
   out_list = info->out_list->valptrp;
   value_tmp = info->value_list->valp;
+
   for (pnode = node, regu_var = regu_list; pnode != NULL; pnode = pnode->next, regu_var = regu_var->next)
     {
       /* append scan_list */
@@ -25614,6 +25680,7 @@ pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_N
 
       /* scan_regu->vfetch_to is also needed for domain checking */
       scan_regu->vfetch_to = regu_var->value.value.dbvalptr;
+
       if (scan_regu_list == NULL)
 	{
 	  scan_regu_list = regu_varlist_alloc ();
@@ -25641,8 +25708,10 @@ pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_N
 
       scan_regu_list->next = NULL;
       scan_regu_list->value = *scan_regu;
+
       /* appende out_list */
       pname = parser_new_node (parser, PT_VALUE);
+
       if (pname == NULL)
 	{
 	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
@@ -25652,6 +25721,7 @@ pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_N
       pname->type_enum = PT_TYPE_INTEGER;
       pname->info.value.data_value.i = 0;
       parser_append_node (pname, info->out_names);
+
       if (out_list == NULL)
 	{
 	  out_list = regu_varlist_alloc ();
@@ -25681,6 +25751,7 @@ pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_N
       out_list->next = NULL;
       out_list->value = *scan_regu;
       info->out_list->valptr_cnt++;
+
       /* append value list, although this value in the value_list are useless for further evaluation, it is needed to
        * reserve the corresponding positions, otherwise out_list will be messed up. */
       value_list = pt_make_val_list (parser, pnode->info.sort_spec.expr);
