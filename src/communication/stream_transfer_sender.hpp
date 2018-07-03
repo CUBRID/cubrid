@@ -50,7 +50,10 @@ namespace cubstream
       stream_position get_last_sent_position ();
       cubcomm::channel &get_channel ();
 
-      inline cubthread::daemon *get_daemon () { return m_sender_daemon; }
+      inline cubthread::daemon *get_daemon ()
+      {
+	return m_sender_daemon;
+      }
 
     private:
 

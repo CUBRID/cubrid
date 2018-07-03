@@ -94,8 +94,6 @@
 
 #define RMUTEX_NAME_TEMP_CONN_ENTRY "TEMP_CONN_ENTRY"
 
-static HA_SERVER_STATE css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE req_state);
-
 static struct timeval css_Shutdown_timeout = { 0, 0 };
 
 static char *css_Master_server_name = NULL;	/* database identifier */
@@ -251,6 +249,8 @@ static void
 css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
 					      THREAD_ENTRY * caller_thread, int tran_index, int client_id,
 					      size_t & count);
+
+static HA_SERVER_STATE css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE req_state);
 
 static cubstream::transfer_receiver *g_slave_stream_receiver;
 static cubstream::packing_stream temporary_stream (10240, 0);
