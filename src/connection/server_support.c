@@ -254,54 +254,6 @@ static HA_SERVER_STATE css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_
 
 static cubstream::transfer_receiver *g_slave_stream_receiver;
 static cubstream::packing_stream temporary_stream (10240, 0);
-
-int
-css_process_master_hostname ()
-{
-  int hostname_length, error;
-  cubcomm::server_channel chn (css_Master_server_name);
-
-  error = css_receive_heartbeat_data (css_Master_conn, (char *) &hostname_length, sizeof (int));
-  if (error != NO_ERRORS)
-    {
-      return error;
-    }
-
-  if (hostname_length == 0)
-    {
-      return NO_ERRORS;
-    }
-  else if (hostname_length < 0)
-    {
-      return ER_FAILED;
-    }
-
-  error = css_receive_heartbeat_data (css_Master_conn, ha_Server_master_hostname, hostname_length);
-  if (error != NO_ERRORS)
-    {
-      return error;
-    }
-  ha_Server_master_hostname[hostname_length] = '\0';
-
-  assert (hostname_length > 0 && ha_Server_state == HA_SERVER_STATE_STANDBY);
-
-  //create slave replication channel and connect to hostname
-  error = chn.connect (ha_Server_master_hostname, css_Master_port_id);
-  if (error != NO_ERRORS)
-    {
-      assert (false);
-      return error;
-    }
-
-  cubreplication::master_senders_manager::final ();
-  delete g_slave_stream_receiver;
-  g_slave_stream_receiver = new cubstream::transfer_receiver (std::move (chn), temporary_stream, 0);
-
-  er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
-		ha_Server_master_hostname);
-
-  return NO_ERRORS;
-}
 // *INDENT-ON*
 
 #if defined (SERVER_MODE)
@@ -832,6 +784,56 @@ css_process_get_eof_request (SOCKET master_fd)
   css_send_heartbeat_data (css_Master_conn, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 #endif
 }
+
+// *INDENT-OFF*
+int
+css_process_master_hostname ()
+{
+  int hostname_length, error;
+  cubcomm::server_channel chn (css_Master_server_name);
+
+  error = css_receive_heartbeat_data (css_Master_conn, (char *) &hostname_length, sizeof (int));
+  if (error != NO_ERRORS)
+    {
+      return error;
+    }
+
+  if (hostname_length == 0)
+    {
+      return NO_ERRORS;
+    }
+  else if (hostname_length < 0)
+    {
+      return ER_FAILED;
+    }
+
+  error = css_receive_heartbeat_data (css_Master_conn, ha_Server_master_hostname, hostname_length);
+  if (error != NO_ERRORS)
+    {
+      return error;
+    }
+  ha_Server_master_hostname[hostname_length] = '\0';
+
+  assert (hostname_length > 0 && ha_Server_state == HA_SERVER_STATE_STANDBY);
+
+  //create slave replication channel and connect to hostname
+  error = chn.connect (ha_Server_master_hostname, css_Master_port_id);
+  if (error != NO_ERRORS)
+    {
+      assert (false);
+      return error;
+    }
+
+  cubreplication::master_senders_manager::final ();
+  delete g_slave_stream_receiver;
+  g_slave_stream_receiver = new cubstream::transfer_receiver (std::move (chn), temporary_stream, 0);
+
+  er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
+		ha_Server_master_hostname);
+
+  return NO_ERRORS;
+}
+// *INDENT-ON*
 
 /*
  * css_close_connection_to_master() -
