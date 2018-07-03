@@ -4003,7 +4003,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
     }
 
   /* Check whether statement can uses auto commit. */
-  if (tr_has_commit_triggers (TR_TIME_BEFORE))
+  if (tr_has_user_trigger ())
     {
       /* Triggers must be excuted before commit. Disable optimization. */
       return NO_ERROR;
@@ -4020,7 +4020,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
       if (!statement->info.query.oids_included && !statement->info.query.is_view_spec
 	  && !statement->info.query.has_system_class && statement->info.query.into_list == NULL)
 	{
-	  info_hints = (PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_PAGE_INFO 
+	  info_hints = (PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_PAGE_INFO
 			| PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_BTREE_NODE_INFO);
 	  if ((statement->info.query.q.select.hint & info_hints) == 0)
 	    {
@@ -4062,7 +4062,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
 	}
       break;
 
-    // TODO - what else? for instance, merge, other dmls, ddls. 
+      // TODO - what else? for instance, merge, other dmls, ddls. 
     default:
       break;
     }

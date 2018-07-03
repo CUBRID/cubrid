@@ -5669,12 +5669,11 @@ tr_after (TR_STATE * state)
 }
 
 /*
-* tr_has_commit_triggers() - Check whether has triggers to execute at commit;
+* tr_has_user_trigger() - Check whether has a trigger to execute at commit|rollback;
 *    return: true, if has triggers to execute, otherwise false
-*    time(in): trigger execution time
 */
 bool
-tr_has_commit_triggers (DB_TRIGGER_TIME time)
+tr_has_user_trigger (void)
 {
   TR_TRIGLIST *t;
 
@@ -5699,7 +5698,7 @@ tr_has_commit_triggers (DB_TRIGGER_TIME time)
 
   for (t = tr_User_triggers; t != NULL; t = t->next)
     {
-      if (t->trigger->event == TR_EVENT_COMMIT && t->trigger->status == TR_STATUS_ACTIVE)
+      if (t->trigger->status == TR_STATUS_ACTIVE)
 	{
 	  return true;
 	}
