@@ -251,9 +251,6 @@ css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & 
 					      size_t & count);
 
 static HA_SERVER_STATE css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE req_state);
-
-static cubstream::transfer_receiver *g_slave_stream_receiver;
-static cubstream::packing_stream temporary_stream (10240, 0);
 // *INDENT-ON*
 
 #if defined (SERVER_MODE)
@@ -823,10 +820,6 @@ css_process_master_hostname ()
       assert (false);
       return error;
     }
-
-  cubreplication::master_senders_manager::final ();
-  delete g_slave_stream_receiver;
-  g_slave_stream_receiver = new cubstream::transfer_receiver (std::move (chn), temporary_stream, 0);
 
   er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
 		ha_Server_master_hostname);
@@ -2371,9 +2364,6 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_enable_update() \n");
 	  logtb_enable_update (thread_p);
 	}
-      delete g_slave_stream_receiver;
-      cubreplication::master_senders_manager::final ();
-      cubreplication::master_senders_manager::init (&temporary_stream);
       break;
 
     case HA_SERVER_STATE_STANDBY:
