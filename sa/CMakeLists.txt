@@ -443,7 +443,6 @@ if(WIN32)
   endif(TARGET_PLATFORM_BITS EQUAL 32)
   target_link_libraries(cubridsa LINK_PRIVATE ws2_32 ${JVM_LIBS})
   set_target_properties(cubridsa PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cubridsa/cubridsa.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
-  target_include_directories(cubridsa PRIVATE ${BISON_INCLUDE})
 endif(WIN32)
 if(UNIX)
 target_external_dependencies(cubridsa
@@ -462,6 +461,7 @@ target_external_dependencies(cubridsa
   )
 target_include_directories(cubridsa PRIVATE
   ${CMAKE_SOURCE_DIR}/src/heaplayers/util  # this looks ugly
+  ${FLEX_INCLUDE_DIRS}
   ${JAVA_INC}
   )
 target_link_libraries(cubridsa LINK_PRIVATE
