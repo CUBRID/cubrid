@@ -109,16 +109,11 @@ namespace cubreplication
   {
     std::size_t length = 0;
 
-    if (is_initialized)
-      {
-	std::lock_guard<std::mutex> guard (mutex_for_singleton);
-	if (is_initialized)
-	  {
-	    rwlock_read_lock (&master_senders_lock);
-	    length = master_server_stream_senders.size ();
-	    rwlock_read_unlock (&master_senders_lock);
-	  }
-      }
+    assert (is_initialized);
+
+    rwlock_read_lock (&master_senders_lock);
+    length = master_server_stream_senders.size ();
+    rwlock_read_unlock (&master_senders_lock);
 
     return length;
   }
