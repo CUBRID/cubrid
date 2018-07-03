@@ -51,7 +51,6 @@ namespace cubstream
       void execute () override
       {
 	css_error_code rc = NO_ERRORS;
-	int error_code = NO_ERROR;
 	stream_position last_reported_ready_pos = this_producer_channel.m_stream.get_last_committed_pos ();
 
 	if (m_first_loop)
@@ -76,10 +75,11 @@ namespace cubstream
 	    m_first_loop = false;
 	  }
 
-	while (error_code == NO_ERROR && this_producer_channel.m_last_sent_position < last_reported_ready_pos)
+	while (this_producer_channel.m_last_sent_position < last_reported_ready_pos)
 	  {
 	    std::size_t byte_count = std::min ((stream_position) cubcomm::MTU,
 					       last_reported_ready_pos - this_producer_channel.m_last_sent_position);
+	    int error_code = NO_ERROR;
 
 	    error_code = this_producer_channel.m_stream.read (this_producer_channel.m_last_sent_position, byte_count,
 			 this_producer_channel.m_read_action_function);
@@ -87,6 +87,7 @@ namespace cubstream
 	    if (error_code != NO_ERROR)
 	      {
 		this_producer_channel.m_channel.close_connection ();
+		break;
 	      }
 	  }
       }
