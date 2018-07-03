@@ -3677,13 +3677,37 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = do_scope (parser, statement);
       break;
     case PT_DELETE:
-      err = do_check_delete_trigger (parser, statement, do_execute_delete);
+      if (statement->use_auto_commit)
+        {
+	  // no active trigger is involved
+          err = do_execute_delete (parser, statement);
+	}
+      else
+	{
+          err = do_check_delete_trigger (parser, statement, do_execute_delete);
+	}
       break;
     case PT_INSERT:
-      err = do_check_insert_trigger (parser, statement, do_execute_insert);
+      if (statement->use_auto_commit)
+        {
+	  // no active trigger is involved
+          err = do_execute_insert (parser, statement);
+	}
+      else
+	{
+          err = do_check_insert_trigger (parser, statement, do_execute_insert);
+	}
       break;
     case PT_UPDATE:
-      err = do_check_update_trigger (parser, statement, do_execute_update);
+      if (statement->use_auto_commit)
+        {
+	  // no active trigger is involved
+          err = do_execute_update (parser, statement);
+	}
+      else
+	{
+          err = do_check_update_trigger (parser, statement, do_execute_update);
+	}
       break;
     case PT_MERGE:
       err = do_check_merge_trigger (parser, statement, do_execute_merge);
@@ -8766,7 +8790,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      /* the presence of a proxy trigger should force the update to be performed through the workspace */
 	      err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_UPDATE);
 
-	      if (err = NO_ERROR)
+	      if (err == NO_ERROR)
 		{
 		  if (has_trigger)
 		    {
@@ -17486,8 +17510,8 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
     }
 
   /* Check whether the statement can be executed with commit. */
-  if ((statement->info.insert.server_allowed == SERVER_INSERT_IS_ALLOWED)
-      && (statement->info.insert.odku_assignments == NULL))
+  if (statement->info.insert.server_allowed == SERVER_INSERT_IS_ALLOWED
+      && statement->info.insert.odku_assignments == NULL)
     {
       /* Check statement insert trigger. */
       error = sm_class_has_triggers ((*class_)->info.name.db_object, &trigger_involved, TR_EVENT_STATEMENT_INSERT);
@@ -17509,12 +17533,8 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
       has_default_values_list = true;
     }
 
-  error =
-    check_missing_non_null_attrs (parser, statement->info.insert.spec, statement->info.insert.attr_list,
-				  has_default_values_list);
-
-
-
+  error = check_missing_non_null_attrs (parser, statement->info.insert.spec, statement->info.insert.attr_list,
+				        has_default_values_list);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -17526,24 +17546,24 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
   if (statement->info.insert.odku_assignments != NULL)
     {
       *update = do_create_odku_stmt (parser, statement);
-
       if (*update == NULL)
 	{
 	  error = ER_FAILED;
 	  goto exit;
 	}
+
       if (statement->info.insert.server_allowed == SERVER_INSERT_IS_ALLOWED)
 	{
 	  int server_allowed = 0;
-	  error =
-	    is_server_update_allowed (parser, &statement->info.insert.odku_non_null_attrs, &upd_has_uniques,
-				      &server_allowed, *update);
 
+	  error = is_server_update_allowed (parser, &statement->info.insert.odku_non_null_attrs, &upd_has_uniques,
+				            &server_allowed, *update);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      goto exit;
 	    }
+
 	  if (!server_allowed)
 	    {
 	      statement->info.insert.server_allowed = SERVER_INSERT_IS_NOT_ALLOWED;
@@ -17561,7 +17581,6 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
       int allowed = 0;
 
       error = is_replace_or_odku_allowed ((*class_)->info.name.db_object, &allowed);
-
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -17576,7 +17595,7 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
 	}
     }
 
-  /* fetch the class for instance write purpose */
+  /* fetch the class for instance write purpose - IX_LOCK */
   if (!locator_fetch_class ((*class_)->info.name.db_object, DB_FETCH_CLREAD_INSTWRITE))
     {
       ASSERT_ERROR_AND_SET (error);
