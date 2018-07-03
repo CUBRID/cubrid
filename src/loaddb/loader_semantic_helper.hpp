@@ -29,6 +29,8 @@
 
 namespace cubloader
 {
+
+  // Constants sizes
   const std::size_t STRING_POOL_SIZE = 1024;
   const std::size_t MAX_COPY_BUF_SIZE = 256;
   const std::size_t COPY_BUF_POOL_SIZE = 512;
@@ -36,6 +38,7 @@ namespace cubloader
   const std::size_t QUOTED_STR_BUF_POOL_SIZE = 512;
   const std::size_t MAX_QUOTED_STR_BUF_SIZE = 32 * 1024;
 
+  // type aliases
   using string_t = LDR_STRING;
   using constant_t = LDR_CONSTANT;
   using object_ref_t = LDR_OBJECT_REF;
@@ -43,13 +46,32 @@ namespace cubloader
   using ctor_spec_t = LDR_CONSTRUCTOR_SPEC;
   using class_cmd_spec_t = LDR_CLASS_COMMAND_SPEC;
 
+  /*
+   * cubloader::loader_semantic_helper
+   *
+   * description
+   *    A helper class for building semantic types, see cubloader::loader_parser::semantic_type union for more details.
+   *    The class contains ported functionality from old C lexer & grammar. Be aware that copy constructor and
+   *    assignment operator are disable since class make use of buffers/pools which use almost 17 Megabytes of memory
+   *
+   * how to use
+   *    Interaction with loader_semantic_helper class is done through an instance of loader_driver e.g.
+   *
+   *    cubloader::loader_driver driver;
+   *    LDR_CONSTANT *null_const = driver.get_semantic_helper ()->make_constant (LDR_NULL, NULL);
+   */
   class loader_semantic_helper
   {
     public:
       loader_semantic_helper (const loader_scanner &scanner);
+
+      // Copy constructor (disabled).
       loader_semantic_helper (const loader_semantic_helper &copy) = delete;
+
+      // Copy assignment operator (disabled)
       loader_semantic_helper &operator= (const loader_semantic_helper &other) = delete;
 
+      // Destructor
       virtual ~loader_semantic_helper ();
 
       void append_char (char c);
@@ -66,7 +88,7 @@ namespace cubloader
       constant_t *make_constant (int type, void *val);
       object_ref_t *make_object_ref_by_class_id (string_t *class_id);
       object_ref_t *make_object_ref_by_class_name (string_t *class_name);
-      monetary_t *make_monetary_value (int currency_type, string_t *amount);
+      constant_t *make_monetary_constant (int currency_type, string_t *amount);
 
       void reset_pool_indexes ();
       void free_ldr_string (string_t **string);
@@ -81,16 +103,16 @@ namespace cubloader
       std::size_t m_string_pool_idx;
       string_t m_string_pool[STRING_POOL_SIZE];
 
-      /* buffer pool for copying yytext and qstr_buffer */
+      // buffer pool for copying yytext and qstr_buffer
       std::size_t m_copy_buf_pool_idx;
       char m_copy_buf_pool[COPY_BUF_POOL_SIZE][MAX_COPY_BUF_SIZE];
 
-      /* constant pool */
+      // constant pool
       std::size_t m_constant_pool_idx;
       constant_t m_constant_pool[CONSTANT_POOL_SIZE];
 
-      /* quoted string buffer pool */
-      char *m_qstr_buffer; /* using when pool overflow */
+      // quoted string buffer pool
+      char *m_qstr_buffer; // using when pool overflow
       char *m_qstr_buf_p;
       bool m_use_qstr_buffer;
       char **m_qstr_buf_pool;
@@ -101,11 +123,13 @@ namespace cubloader
       /* private functions */
       string_t *make_string ();
       object_ref_t *make_object_ref ();
+      monetary_t *make_monetary_value (int currency_type, string_t *amount);
       bool is_utf8_valid (string_t *str);
       bool use_copy_buf_pool (std::size_t str_size);
       void alloc_qstr_buffer (std::size_t size);
       void realloc_qstr_buffer (std::size_t new_size);
 
+      // template private functions
       template<typename T>
       T *alloc_ldr_type ();
 

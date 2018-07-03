@@ -42,6 +42,7 @@ do {                            \
 
 namespace cubloader
 {
+
   loader_semantic_helper::loader_semantic_helper (const loader_scanner &scanner)
     : m_scanner (scanner)
     , m_in_instance_line (true)
@@ -298,15 +299,11 @@ namespace cubloader
     return ref;
   }
 
-  monetary_t *
-  loader_semantic_helper::make_monetary_value (int currency_type, string_t *amount)
+  constant_t *
+  loader_semantic_helper::make_monetary_constant (int currency_type, string_t *amount)
   {
-    monetary_t *mon_value = alloc_ldr_type<monetary_t> ();
-
-    mon_value->amount = amount;
-    mon_value->currency_type = currency_type;
-
-    return mon_value;
+    monetary_t *mon_value =  make_monetary_value (currency_type, amount);
+    return make_constant (LDR_MONETARY, mon_value);
   }
 
   void
@@ -367,6 +364,17 @@ namespace cubloader
     return ref;
   }
 
+  monetary_t *
+  loader_semantic_helper::make_monetary_value (int currency_type, string_t *amount)
+  {
+    monetary_t *mon_value = alloc_ldr_type<monetary_t> ();
+
+    mon_value->amount = amount;
+    mon_value->currency_type = currency_type;
+
+    return mon_value;
+  }
+
   bool
   loader_semantic_helper::is_utf8_valid (string_t *str)
   {
@@ -379,6 +387,12 @@ namespace cubloader
       }
 
     return true;
+  }
+
+  bool
+  loader_semantic_helper::use_copy_buf_pool (std::size_t str_size)
+  {
+    return m_copy_buf_pool_idx < COPY_BUF_POOL_SIZE && str_size < MAX_COPY_BUF_SIZE;
   }
 
   void
@@ -395,12 +409,6 @@ namespace cubloader
     m_qstr_buffer_size = new_size;
     m_qstr_buffer = (char *) realloc (m_qstr_buffer, m_qstr_buffer_size);
     assert (m_qstr_buffer != NULL);
-  }
-
-  bool
-  loader_semantic_helper::use_copy_buf_pool (std::size_t str_size)
-  {
-    return m_copy_buf_pool_idx < COPY_BUF_POOL_SIZE && str_size < MAX_COPY_BUF_SIZE;
   }
 
   template<typename T>

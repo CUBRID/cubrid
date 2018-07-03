@@ -31,28 +31,37 @@
 
 namespace cubloader
 {
+
   // forward declaration
   class loader_driver;
 
   class loader_scanner : public yyFlexLexer
   {
     public:
+      /**
+       * Constructor (invokes constructor from parent class)
+       * @param arg_yyin input stream used for scanning
+       */
       loader_scanner (std::istream *arg_yyin) : yyFlexLexer (arg_yyin)
       {
       };
-
-      loader_scanner (const loader_scanner &copy) = delete;
-      loader_scanner &operator= (const loader_scanner &other) = delete;
 
       virtual ~loader_scanner ()
       {
       };
 
+      /*
+       * The main scanner function.
+       * See loader_lexer.l file for method declaration
+       */
       virtual int yylex (loader_parser::semantic_type *yylval, loader_parser::location_type *yylloc,
 			 loader_driver &driver);
 
-      void
-      LexerError (const char *msg) override
+      /**
+       * Lexer error function
+       * @param msg a description of the lexer error.
+       */
+      void LexerError (const char *msg) override
       {
 	ldr_load_failed_error ();
 	ldr_increment_fails ();

@@ -30,6 +30,7 @@
 
 namespace cubloader
 {
+
   loader_driver::loader_driver ()
     : m_parser (NULL)
     , m_scanner (NULL)
@@ -39,9 +40,7 @@ namespace cubloader
 
   loader_driver::~loader_driver ()
   {
-    delete m_scanner;
-    delete m_parser;
-    delete m_semantic_helper;
+    destroy ();
   }
 
   int
@@ -59,7 +58,7 @@ namespace cubloader
   }
 
   void
-  loader_driver::error (const location &l, const std::string &m)
+  loader_driver::error (const location &loc, const std::string &msg)
   {
     ldr_increment_err_total (ldr_Current_context);
     fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SYNTAX_ERR), lineno (),
@@ -80,11 +79,7 @@ namespace cubloader
 
     int ret = m_parser->parse ();
 
-    delete m_parser;
-    m_parser = NULL;
-
-    delete m_scanner;
-    m_scanner = NULL;
+    destroy ();
 
     return ret;
   }
@@ -101,5 +96,18 @@ namespace cubloader
   {
     assert (m_semantic_helper != NULL);
     return m_semantic_helper;
+  }
+
+  void
+  loader_driver::destroy ()
+  {
+    delete m_parser;
+    m_parser = NULL;
+
+    delete m_scanner;
+    m_scanner = NULL;
+
+    delete m_semantic_helper;
+    m_semantic_helper = NULL;
   }
 } // namespace cubloader
