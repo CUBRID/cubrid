@@ -13038,7 +13038,7 @@ namespace Func
         case PT_GENERIC_TYPE_CHAR:
           return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE);
         case PT_GENERIC_TYPE_NCHAR:
-          return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_NATIONAL_CHAR_STRING_TYPE(type_enum));
+          return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_NATIONAL_CHAR_STRING_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum));
         case PT_GENERIC_TYPE_SCALAR:
             return (type_enum == PT_TYPE_MAYBE);
 
