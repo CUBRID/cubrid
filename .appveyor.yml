@@ -10,7 +10,7 @@ matrix:
 
 install:
   - cinst ant -i
-  - cinst winflexbison -i
+  - cinst winflexbison -i --version=2.5.14
 
 build_script:
   - cmake -E make_directory build
