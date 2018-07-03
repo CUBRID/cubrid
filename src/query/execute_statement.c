@@ -3678,35 +3678,35 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_DELETE:
       if (statement->use_auto_commit)
-        {
+	{
 	  // no active trigger is involved
-          err = do_execute_delete (parser, statement);
+	  err = do_execute_delete (parser, statement);
 	}
       else
 	{
-          err = do_check_delete_trigger (parser, statement, do_execute_delete);
+	  err = do_check_delete_trigger (parser, statement, do_execute_delete);
 	}
       break;
     case PT_INSERT:
       if (statement->use_auto_commit)
-        {
+	{
 	  // no active trigger is involved
-          err = do_execute_insert (parser, statement);
+	  err = do_execute_insert (parser, statement);
 	}
       else
 	{
-          err = do_check_insert_trigger (parser, statement, do_execute_insert);
+	  err = do_check_insert_trigger (parser, statement, do_execute_insert);
 	}
       break;
     case PT_UPDATE:
       if (statement->use_auto_commit)
-        {
+	{
 	  // no active trigger is involved
-          err = do_execute_update (parser, statement);
+	  err = do_execute_update (parser, statement);
 	}
       else
 	{
-          err = do_check_update_trigger (parser, statement, do_execute_update);
+	  err = do_check_update_trigger (parser, statement, do_execute_update);
 	}
       break;
     case PT_MERGE:
@@ -9107,6 +9107,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *hint_arg;
   QUERY_ID query_id_self = parser->query_id;
   bool savepoint_started = false;
+  bool has_dirty_mop;
 
   assert (parser->query_id == NULL_QUERY_ID);
 
@@ -9150,6 +9151,8 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  continue;		/* continue to next UPDATE statement */
 	}
 
+      has_dirty_mop = ws_need_flush ();
+
       /* 
        * Server-side update or OID list update case:
        *  execute the prepared(stored) XASL (UPDATE_PROC or SELECT statement)
@@ -9163,23 +9166,26 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  int query_flag = DEFAULT_EXEC_MODE;
 
-	  /* flush necessary objects before execute */
-	  spec = statement->info.update.spec;
-	  while (spec)
+	  if (has_dirty_mop)
 	    {
-	      if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+	      /* flush necessary objects before execute */
+	      spec = statement->info.update.spec;
+	      while (spec)
 		{
-		  err = sm_flush_objects (spec->info.spec.flat_entity_list->info.name.db_object);
-		  if (err != NO_ERROR)
+		  if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
 		    {
-		      break;	/* stop while loop if error */
+		      err = sm_flush_objects (spec->info.spec.flat_entity_list->info.name.db_object);
+		      if (err != NO_ERROR)
+			{
+			  break;	/* stop while loop if error */
+			}
 		    }
+		  spec = spec->next;
 		}
-	      spec = spec->next;
-	    }
-	  if (err != NO_ERROR)
-	    {
-	      break;
+	      if (err != NO_ERROR)
+		{
+		  break;
+		}
 	    }
 
 	  query_flag |= NOT_FROM_RESULT_CACHE;
@@ -9194,8 +9200,9 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      query_flag |= EXECUTE_QUERY_WITH_COMMIT;
 
+	      // FIXME
 	      /* Flush all before commit. */
-	      if (ws_need_flush ())
+	      if (has_dirty_mop)
 		{
 		  if (tm_Use_OID_preflush)
 		    {
@@ -9290,7 +9297,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* free returned QFILE_LIST_ID */
 	  if (list_id)
 	    {
-	      if (list_id->tuple_cnt > 0 && statement->info.update.server_update)
+	      if (has_dirty_mop && list_id->tuple_cnt > 0 && statement->info.update.server_update)
 		{
 		  spec = statement->info.update.spec;
 		  while (spec && err == NO_ERROR)
@@ -10398,6 +10405,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
   int query_flag;
   QUERY_ID query_id_self = parser->query_id;
   bool savepoint_started = false;
+  bool has_dirty_mop;
 
   assert (parser->query_id == NULL_QUERY_ID);
 
@@ -10446,19 +10454,23 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       node = statement->info.delete_.spec;
 
-      while (node && err == NO_ERROR)
+      has_dirty_mop = ws_need_flush ();
+      if (has_dirty_mop)
 	{
-	  flat = node->info.spec.flat_entity_list;
-	  if (flat != NULL)
+	  while (node && err == NO_ERROR)
 	    {
-	      /* flush necessary objects before execute */
-	      err = sm_flush_objects (flat->info.name.db_object);
-	      if (err != NO_ERROR)
+	      flat = node->info.spec.flat_entity_list;
+	      if (flat != NULL)
 		{
-		  break;
+		  /* flush necessary objects before execute */
+		  err = sm_flush_objects (flat->info.name.db_object);
+		  if (err != NO_ERROR)
+		    {
+		      break;
+		    }
 		}
+	      node = node->next;
 	    }
-	  node = node->next;
 	}
 
       /* Request that the server executes the stored XASL, which is the execution plan of the prepared query, with the
@@ -10477,7 +10489,8 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  query_flag |= EXECUTE_QUERY_WITH_COMMIT;
 
-	  if (ws_need_flush ())
+	  // FIXME
+	  if (has_dirty_mop)
 	    {
 	      if (tm_Use_OID_preflush)
 		{
@@ -10555,7 +10568,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* free returned QFILE_LIST_ID */
       if (list_id)
 	{
-	  if (list_id->tuple_cnt > 0 && statement->info.delete_.server_delete)
+	  if (has_dirty_mop && list_id->tuple_cnt > 0 && statement->info.delete_.server_delete)
 	    {
 	      int err2 = NO_ERROR;
 	      node = statement->info.delete_.spec;
@@ -17534,7 +17547,7 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
     }
 
   error = check_missing_non_null_attrs (parser, statement->info.insert.spec, statement->info.insert.attr_list,
-				        has_default_values_list);
+					has_default_values_list);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -17557,7 +17570,7 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
 	  int server_allowed = 0;
 
 	  error = is_server_update_allowed (parser, &statement->info.insert.odku_non_null_attrs, &upd_has_uniques,
-				            &server_allowed, *update);
+					    &server_allowed, *update);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
