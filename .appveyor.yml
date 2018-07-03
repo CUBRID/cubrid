@@ -9,6 +9,11 @@ matrix:
   fast_finish: true
 
 install:
+  - ps: Set-Variable -Name "winflexbison3_install_dir" -Value $env:ChocolateyInstall\lib\winflexbison3\tools
+  - ps: New-Item -ItemType Directory -Force -Path $winflexbison3_install_dir | Out-Null
+  - ps: New-Item -Path $winflexbison3_install_dir -Name win_flex.exe.ignore -type file -force | Out-Null
+  - ps: New-Item -Path $winflexbison3_install_dir -Name win_bison.exe.ignore -type file -force | Out-Null
+  - ps: $env:Path += ";$winflexbison3_install_dir"
   - cinst ant -i
   - cinst winflexbison3 -i
 

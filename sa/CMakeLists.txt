@@ -459,7 +459,6 @@ target_external_dependencies(cubridsa
   LIBREGEX
   LIBEDIT
   )
-message(STATUS "Using FLEX include dir (SA): ${FLEX_INCLUDE_DIRS}")
 target_include_directories(cubridsa PRIVATE
   ${CMAKE_SOURCE_DIR}/src/heaplayers/util  # this looks ugly
   ${FLEX_INCLUDE_DIRS}
