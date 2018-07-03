@@ -5155,7 +5155,7 @@ run_user_triggers (DB_TRIGGER_EVENT event, DB_TRIGGER_TIME time)
   /* check the cache */
   if (!tr_User_triggers_valid)
     {
-      if (tr_update_user_cache ())
+      if (tr_update_user_cache () != NO_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (error);
 	  return error;
@@ -5677,6 +5677,7 @@ bool
 tr_has_commit_triggers (DB_TRIGGER_TIME time)
 {
   TR_TRIGLIST *t;
+
   if (!TR_EXECUTION_ENABLED)
     {
       return false;
@@ -5685,6 +5686,15 @@ tr_has_commit_triggers (DB_TRIGGER_TIME time)
   if (tr_Deferred_activities)
     {
       return true;
+    }
+
+  if (!tr_User_triggers_valid)
+    {
+      if (tr_update_user_cache () != NO_ERROR)
+	{
+	  // you don't know. Be conservative or handle the error.
+	  return true;
+	}
     }
 
   for (t = tr_User_triggers; t != NULL; t = t->next)
