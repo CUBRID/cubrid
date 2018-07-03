@@ -71,57 +71,9 @@ namespace cubreplication
       class master_senders_supervisor_task : public cubthread::entry_task
       {
 	public:
-	  master_senders_supervisor_task ()
-	  {
-	  }
+	  master_senders_supervisor_task ();
 
-	  void execute (cubthread::entry &context)
-	  {
-	    static unsigned int check_conn_delay_counter = 0;
-	    bool promoted_to_write = false;
-
-	    if (check_conn_delay_counter >
-		SUPERVISOR_DAEMON_CHECK_CONN_MS / SUPERVISOR_DAEMON_DELAY_MS)
-	      {
-		std::vector <cubstream::transfer_sender *>::iterator it;
-
-		rwlock_read_lock (&master_senders_lock);
-		for (it = master_server_stream_senders.begin (); it != master_server_stream_senders.end ();)
-		  {
-		    if (! (*it)->get_channel ().is_connection_alive ())
-		      {
-			if (!promoted_to_write)
-			  {
-			    rwlock_read_unlock (&master_senders_lock);
-
-			    rwlock_write_lock (&master_senders_lock);
-			    it = master_server_stream_senders.begin ();
-
-			    promoted_to_write = true;
-			  }
-			else
-			  {
-			    it = master_server_stream_senders.erase (it);
-			  }
-		      }
-		    else
-		      {
-			++it;
-		      }
-		  }
-		if (!promoted_to_write)
-		  {
-		    rwlock_read_unlock (&master_senders_lock);
-		  }
-		else
-		  {
-		    rwlock_write_unlock (&master_senders_lock);
-		  }
-		check_conn_delay_counter = 0;
-	      }
-
-	    check_conn_delay_counter++;
-	  }
+	  void execute (cubthread::entry &context);
       };
 
       friend class master_senders_supervisor_task;
