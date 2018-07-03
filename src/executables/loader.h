@@ -117,9 +117,7 @@ struct ldr_string
   LDR_STRING *next;
   LDR_STRING *last;
   char *val;
-  /* *INDENT-OFF* */
-  std::size_t size;
-  /* *INDENT-ON* */
+  size_t size;
   bool need_free_val;
   bool need_free_self;
 };
