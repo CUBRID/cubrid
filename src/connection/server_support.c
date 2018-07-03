@@ -302,188 +302,6 @@ css_process_master_hostname ()
 
   return NO_ERRORS;
 }
-
-/*
- * css_change_ha_server_state - change the server's HA state
- *   return: NO_ERROR or ER_FAILED
- *   state(in): new state for server to be
- *   force(in): force to change
- *   timeout(in): timeout (standby to maintenance)
- *   heartbeat(in): from heartbeat master
- */
-int
-css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool force, int timeout, bool heartbeat)
-{
-  HA_SERVER_STATE orig_state;
-  int i;
-
-  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: ha_Server_state %s " "state %s force %c heartbeat %c\n",
-		css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state), (force ? 't' : 'f'),
-		(heartbeat ? 't' : 'f'));
-
-  assert (state >= HA_SERVER_STATE_IDLE && state <= HA_SERVER_STATE_DEAD);
-
-  if (state == ha_Server_state
-      || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE && state == HA_SERVER_STATE_ACTIVE)
-      || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY && state == HA_SERVER_STATE_STANDBY))
-    {
-      return NO_ERROR;
-    }
-
-  if (heartbeat == false && !(ha_Server_state == HA_SERVER_STATE_STANDBY && state == HA_SERVER_STATE_MAINTENANCE)
-      && !(ha_Server_state == HA_SERVER_STATE_MAINTENANCE && state == HA_SERVER_STATE_STANDBY)
-      && !(force && ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE && state == HA_SERVER_STATE_ACTIVE))
-    {
-      return NO_ERROR;
-    }
-
-  csect_enter (thread_p, CSECT_HA_SERVER_STATE, INF_WAIT);
-
-  orig_state = ha_Server_state;
-
-  if (force)
-    {
-      if (ha_Server_state != state)
-	{
-	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state:" " set force from %s to state %s\n",
-			css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state));
-	  ha_Server_state = state;
-	  /* append a dummy log record for LFT to wake LWTs up */
-	  log_append_ha_server_state (thread_p, state);
-	  if (!HA_DISABLED ())
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_SERVER_HA_MODE_CHANGE, 2,
-		      css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state));
-	    }
-
-	  if (ha_Server_state == HA_SERVER_STATE_ACTIVE)
-	    {
-	      log_set_ha_promotion_time (thread_p, ((INT64) time (0)));
-	    }
-	}
-    }
-
-  switch (state)
-    {
-    case HA_SERVER_STATE_ACTIVE:
-      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
-      if (state == HA_SERVER_STATE_NA)
-	{
-	  break;
-	}
-      /* If log appliers have changed their state to done, go directly to active mode */
-      if (css_check_ha_log_applier_done ())
-	{
-	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "css_check_ha_log_applier_done ()\n");
-	  state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
-	  assert (state == HA_SERVER_STATE_ACTIVE);
-	}
-      if (state == HA_SERVER_STATE_ACTIVE)
-	{
-	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_enable_update() \n");
-	  logtb_enable_update (thread_p);
-	}
-      delete g_slave_stream_receiver;
-      cubreplication::master_senders_manager::final ();
-      cubreplication::master_senders_manager::init (&temporary_stream);
-      break;
-
-    case HA_SERVER_STATE_STANDBY:
-      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
-      if (state == HA_SERVER_STATE_NA)
-	{
-	  break;
-	}
-      if (orig_state == HA_SERVER_STATE_IDLE)
-	{
-	  /* If all log appliers have done their recovering actions, go directly to standby mode */
-	  if (css_check_ha_log_applier_working ())
-	    {
-	      er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "css_check_ha_log_applier_working ()\n");
-	      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
-	      assert (state == HA_SERVER_STATE_STANDBY);
-	    }
-	}
-      else
-	{
-	  /* If there's no active clients (except me), go directly to standby mode */
-	  if (logtb_count_clients (thread_p) == 0)
-	    {
-	      er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_count_clients () = 0\n");
-	      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
-	      assert (state == HA_SERVER_STATE_STANDBY);
-	    }
-	}
-      if (orig_state == HA_SERVER_STATE_MAINTENANCE)
-	{
-	  boot_server_status (BOOT_SERVER_UP);
-	}
-      if (state == HA_SERVER_STATE_STANDBY)
-	{
-	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_disable_update() \n");
-	  logtb_disable_update (thread_p);
-	}
-      break;
-
-    case HA_SERVER_STATE_MAINTENANCE:
-      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_MAINTENANCE);
-      if (state == HA_SERVER_STATE_NA)
-	{
-	  break;
-	}
-
-      if (state == HA_SERVER_STATE_MAINTENANCE)
-	{
-	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_enable_update() \n");
-	  logtb_enable_update (thread_p);
-
-	  boot_server_status (BOOT_SERVER_MAINTENANCE);
-	}
-
-      for (i = 0; i < timeout; i++)
-	{
-	  /* waiting timeout second while transaction terminated normally. */
-	  if (logtb_count_not_allowed_clients_in_maintenance_mode (thread_p) == 0)
-	    {
-	      break;
-	    }
-	  thread_sleep (1000);	/* 1000 msec */
-	}
-
-      if (logtb_count_not_allowed_clients_in_maintenance_mode (thread_p) != 0)
-	{
-	  LOG_TDES *tdes;
-
-	  /* try to kill transaction. */
-	  TR_TABLE_CS_ENTER (thread_p);
-	  // start from transaction index i = 1; system transaction cannot be killed
-	  for (i = 1; i < log_Gl.trantable.num_total_indices; i++)
-	    {
-	      tdes = log_Gl.trantable.all_tdes[i];
-	      if (tdes != NULL && tdes->trid != NULL_TRANID)
-		{
-		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.host_name, boot_Host_name,
-							       tdes->client.client_type))
-		    {
-		      logtb_slam_transaction (thread_p, tdes->tran_index);
-		    }
-		}
-	    }
-	  TR_TABLE_CS_EXIT (thread_p);
-
-	  thread_sleep (2000);	/* 2000 msec */
-	}
-      break;
-
-    default:
-      state = HA_SERVER_STATE_NA;
-      break;
-    }
-
-  csect_exit (thread_p, CSECT_HA_SERVER_STATE);
-
-  return (state != HA_SERVER_STATE_NA) ? NO_ERROR : ER_FAILED;
-}
 // *INDENT-ON*
 
 #if defined (SERVER_MODE)
@@ -2469,6 +2287,190 @@ css_check_ha_log_applier_working (void)
     }
   return false;
 }
+
+// *INDENT-OFF*
+/*
+ * css_change_ha_server_state - change the server's HA state
+ *   return: NO_ERROR or ER_FAILED
+ *   state(in): new state for server to be
+ *   force(in): force to change
+ *   timeout(in): timeout (standby to maintenance)
+ *   heartbeat(in): from heartbeat master
+ */
+int
+css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool force, int timeout, bool heartbeat)
+{
+  HA_SERVER_STATE orig_state;
+  int i;
+
+  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: ha_Server_state %s " "state %s force %c heartbeat %c\n",
+		css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state), (force ? 't' : 'f'),
+		(heartbeat ? 't' : 'f'));
+
+  assert (state >= HA_SERVER_STATE_IDLE && state <= HA_SERVER_STATE_DEAD);
+
+  if (state == ha_Server_state
+      || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE && state == HA_SERVER_STATE_ACTIVE)
+      || (!force && ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY && state == HA_SERVER_STATE_STANDBY))
+    {
+      return NO_ERROR;
+    }
+
+  if (heartbeat == false && !(ha_Server_state == HA_SERVER_STATE_STANDBY && state == HA_SERVER_STATE_MAINTENANCE)
+      && !(ha_Server_state == HA_SERVER_STATE_MAINTENANCE && state == HA_SERVER_STATE_STANDBY)
+      && !(force && ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE && state == HA_SERVER_STATE_ACTIVE))
+    {
+      return NO_ERROR;
+    }
+
+  csect_enter (thread_p, CSECT_HA_SERVER_STATE, INF_WAIT);
+
+  orig_state = ha_Server_state;
+
+  if (force)
+    {
+      if (ha_Server_state != state)
+	{
+	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state:" " set force from %s to state %s\n",
+			css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state));
+	  ha_Server_state = state;
+	  /* append a dummy log record for LFT to wake LWTs up */
+	  log_append_ha_server_state (thread_p, state);
+	  if (!HA_DISABLED ())
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_SERVER_HA_MODE_CHANGE, 2,
+		      css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state));
+	    }
+
+	  if (ha_Server_state == HA_SERVER_STATE_ACTIVE)
+	    {
+	      log_set_ha_promotion_time (thread_p, ((INT64) time (0)));
+	    }
+	}
+    }
+
+  switch (state)
+    {
+    case HA_SERVER_STATE_ACTIVE:
+      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
+      if (state == HA_SERVER_STATE_NA)
+	{
+	  break;
+	}
+      /* If log appliers have changed their state to done, go directly to active mode */
+      if (css_check_ha_log_applier_done ())
+	{
+	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "css_check_ha_log_applier_done ()\n");
+	  state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
+	  assert (state == HA_SERVER_STATE_ACTIVE);
+	}
+      if (state == HA_SERVER_STATE_ACTIVE)
+	{
+	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_enable_update() \n");
+	  logtb_enable_update (thread_p);
+	}
+      delete g_slave_stream_receiver;
+      cubreplication::master_senders_manager::final ();
+      cubreplication::master_senders_manager::init (&temporary_stream);
+      break;
+
+    case HA_SERVER_STATE_STANDBY:
+      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
+      if (state == HA_SERVER_STATE_NA)
+	{
+	  break;
+	}
+      if (orig_state == HA_SERVER_STATE_IDLE)
+	{
+	  /* If all log appliers have done their recovering actions, go directly to standby mode */
+	  if (css_check_ha_log_applier_working ())
+	    {
+	      er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "css_check_ha_log_applier_working ()\n");
+	      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
+	      assert (state == HA_SERVER_STATE_STANDBY);
+	    }
+	}
+      else
+	{
+	  /* If there's no active clients (except me), go directly to standby mode */
+	  if (logtb_count_clients (thread_p) == 0)
+	    {
+	      er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_count_clients () = 0\n");
+	      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_STANDBY);
+	      assert (state == HA_SERVER_STATE_STANDBY);
+	    }
+	}
+      if (orig_state == HA_SERVER_STATE_MAINTENANCE)
+	{
+	  boot_server_status (BOOT_SERVER_UP);
+	}
+      if (state == HA_SERVER_STATE_STANDBY)
+	{
+	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_disable_update() \n");
+	  logtb_disable_update (thread_p);
+	}
+      break;
+
+    case HA_SERVER_STATE_MAINTENANCE:
+      state = css_transit_ha_server_state (thread_p, HA_SERVER_STATE_MAINTENANCE);
+      if (state == HA_SERVER_STATE_NA)
+	{
+	  break;
+	}
+
+      if (state == HA_SERVER_STATE_MAINTENANCE)
+	{
+	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_enable_update() \n");
+	  logtb_enable_update (thread_p);
+
+	  boot_server_status (BOOT_SERVER_MAINTENANCE);
+	}
+
+      for (i = 0; i < timeout; i++)
+	{
+	  /* waiting timeout second while transaction terminated normally. */
+	  if (logtb_count_not_allowed_clients_in_maintenance_mode (thread_p) == 0)
+	    {
+	      break;
+	    }
+	  thread_sleep (1000);	/* 1000 msec */
+	}
+
+      if (logtb_count_not_allowed_clients_in_maintenance_mode (thread_p) != 0)
+	{
+	  LOG_TDES *tdes;
+
+	  /* try to kill transaction. */
+	  TR_TABLE_CS_ENTER (thread_p);
+	  // start from transaction index i = 1; system transaction cannot be killed
+	  for (i = 1; i < log_Gl.trantable.num_total_indices; i++)
+	    {
+	      tdes = log_Gl.trantable.all_tdes[i];
+	      if (tdes != NULL && tdes->trid != NULL_TRANID)
+		{
+		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.host_name, boot_Host_name,
+							       tdes->client.client_type))
+		    {
+		      logtb_slam_transaction (thread_p, tdes->tran_index);
+		    }
+		}
+	    }
+	  TR_TABLE_CS_EXIT (thread_p);
+
+	  thread_sleep (2000);	/* 2000 msec */
+	}
+      break;
+
+    default:
+      state = HA_SERVER_STATE_NA;
+      break;
+    }
+
+  csect_exit (thread_p, CSECT_HA_SERVER_STATE);
+
+  return (state != HA_SERVER_STATE_NA) ? NO_ERROR : ER_FAILED;
+}
+// *INDENT-ON*
 
 /*
  * css_notify_ha_server_mode - notify the log applier's HA state
