@@ -670,8 +670,6 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 		      return;
 		    }
 #endif
-                  bool rc;
-
 		  if (css_send_new_request_to_server (temp->fd, conn->fd, rid, request))
 		    {
 		      free_and_init (server_name);
