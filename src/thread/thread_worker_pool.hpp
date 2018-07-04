@@ -1289,7 +1289,7 @@ namespace cubthread
 		assert (m_task_p != NULL);
 	      }
 	  }
-	if (m_task_p != NULL)\
+	if (m_task_p != NULL)
 	  {
 	    // loop and execute as many tasks as possible
 	    do
