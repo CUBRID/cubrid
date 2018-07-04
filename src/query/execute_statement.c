@@ -9166,28 +9166,6 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  int query_flag = DEFAULT_EXEC_MODE;
 
-	  if (has_dirty_mop)
-	    {
-	      /* flush necessary objects before execute */
-	      spec = statement->info.update.spec;
-	      while (spec)
-		{
-		  if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
-		    {
-		      err = sm_flush_objects (spec->info.spec.flat_entity_list->info.name.db_object);
-		      if (err != NO_ERROR)
-			{
-			  break;	/* stop while loop if error */
-			}
-		    }
-		  spec = spec->next;
-		}
-	      if (err != NO_ERROR)
-		{
-		  break;
-		}
-	    }
-
 	  query_flag |= NOT_FROM_RESULT_CACHE;
 	  query_flag |= RESULT_CACHE_INHIBITED;
 
@@ -9199,24 +9177,6 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (statement->use_auto_commit)
 	    {
 	      query_flag |= EXECUTE_QUERY_WITH_COMMIT;
-
-	      // FIXME
-	      /* Flush all before commit. */
-	      if (has_dirty_mop)
-		{
-		  if (tm_Use_OID_preflush)
-		    {
-		      (void) locator_assign_all_permanent_oids ();
-		    }
-
-		  /* Flush all dirty objects */
-		  /* Flush virtual objects first so that locator_all_flush doesn't see any */
-		  err = locator_all_flush ();
-		  if (err != NO_ERROR)
-		    {
-		      break;
-		    }
-		}
 	    }
 
 	  if (parser->is_auto_commit)
@@ -9230,7 +9190,35 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      do_send_plan_trace_to_session (parser);
 	    }
 
+	  if (has_dirty_mop)
+	    {
+	      // When a transaction is under auto-commit mode, flush all dirty objects to server.
+	      // Otherwise, flush associated objects.
+	      if (statement->use_auto_commit)
+		{
+		  err = tran_flush_to_commit ();
+		}
+	      else
+		{
+		  /* flush necessary objects before execute */
+		  for (spec = statement->info.update.spec; spec != NULL && err == NO_ERROR; spec = spec->next)
+		    {
+		      if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+			{
+			  err = sm_flush_objects (spec->info.spec.flat_entity_list->info.name.db_object);
+			}
+		    }
+		}
+
+	      if (err != NO_ERROR)
+		{
+		  // flush error
+		  break;
+		}
+	    }
+
 	  AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
+
 	  assert (parser->query_id == NULL_QUERY_ID);
 	  list_id = NULL;
 
@@ -9243,9 +9231,10 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	      qo_do_auto_parameterize (parser, statement->info.update.orderby_for);
 	    }
-	  err =
-	    execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-			   parser->host_variables, &list_id, query_flag, NULL, NULL);
+
+	  err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
+			       parser->host_variables, &list_id, query_flag, NULL, NULL);
+
 	  AU_RESTORE (au_save);
 	  if (err != NO_ERROR)
 	    {
@@ -10452,34 +10441,17 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* Server-side deletion or OID list deletion case: execute the prepared(stored) XASL (DELETE_PROC or SELECT
        * statement) */
 
-      node = statement->info.delete_.spec;
-
       has_dirty_mop = ws_need_flush ();
-      if (has_dirty_mop)
-	{
-	  while (node && err == NO_ERROR)
-	    {
-	      flat = node->info.spec.flat_entity_list;
-	      if (flat != NULL)
-		{
-		  /* flush necessary objects before execute */
-		  err = sm_flush_objects (flat->info.name.db_object);
-		  if (err != NO_ERROR)
-		    {
-		      break;
-		    }
-		}
-	      node = node->next;
-	    }
-	}
 
       /* Request that the server executes the stored XASL, which is the execution plan of the prepared query, with the
        * host variables given by users as parameter values for the query. As a result, query id and result file id
        * (QFILE_LIST_ID) will be returned. do_prepare_delete() has saved the XASL file id (XASL_ID) in
        * 'statement->xasl_id' */
+
       query_flag = DEFAULT_EXEC_MODE;
       query_flag |= NOT_FROM_RESULT_CACHE;
       query_flag |= RESULT_CACHE_INHIBITED;
+
       if (parser->is_xasl_pinned_reference)
 	{
 	  query_flag |= XASL_CACHE_PINNED_REFERENCE;
@@ -10488,23 +10460,6 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (statement->use_auto_commit)
 	{
 	  query_flag |= EXECUTE_QUERY_WITH_COMMIT;
-
-	  // FIXME
-	  if (has_dirty_mop)
-	    {
-	      if (tm_Use_OID_preflush)
-		{
-		  (void) locator_assign_all_permanent_oids ();
-		}
-
-	      /* Flush all dirty objects */
-	      /* Flush virtual objects first so that locator_all_flush doesn't see any */
-	      err = locator_all_flush ();
-	      if (err != NO_ERROR)
-		{
-		  break;
-		}
-	    }
 	}
 
       if (parser->is_auto_commit)
@@ -10518,12 +10473,40 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  do_send_plan_trace_to_session (parser);
 	}
 
+      if (has_dirty_mop)
+	{
+	  // When a transaction is under auto-commit mode, flush all dirty objects to server.
+	  // Otherwise, flush associated objects.
+	  if (statement->use_auto_commit)
+	    {
+	      err = tran_flush_to_commit ();
+	    }
+	  else
+	    {
+	      for (node = statement->info.delete_.spec; node && err == NO_ERROR; node = node->next)
+		{
+		  flat = node->info.spec.flat_entity_list;
+		  if (flat != NULL)
+		    {
+		      /* flush necessary objects before execute */
+		      err = sm_flush_objects (flat->info.name.db_object);
+		    }
+		}
+	    }
+
+	  if (err != NO_ERROR)
+	    {
+	      // flush error
+	      break;
+	    }
+	}
+
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
+
       assert (parser->query_id == NULL_QUERY_ID);
       list_id = NULL;
-      err =
-	execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-		       parser->host_variables, &list_id, query_flag, NULL, NULL);
+      err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
+			   parser->host_variables, &list_id, query_flag, NULL, NULL);
 
       AU_RESTORE (au_save);
 
@@ -10592,6 +10575,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  regu_free_listid (list_id);
 	}
+
       /* end the query; reset query_id and call qmgr_end_query() */
       pt_end_query (parser, query_id_self);
 
@@ -13551,10 +13535,12 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   query_flag |= NOT_FROM_RESULT_CACHE;
   query_flag |= RESULT_CACHE_INHIBITED;
+
   if (parser->return_generated_keys)
     {
       query_flag |= RETURN_GENERATED_KEYS;
     }
+
   if (parser->is_xasl_pinned_reference)
     {
       query_flag |= XASL_CACHE_PINNED_REFERENCE;
@@ -13563,22 +13549,6 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement->use_auto_commit)
     {
       query_flag |= EXECUTE_QUERY_WITH_COMMIT;
-
-      if (ws_need_flush ())
-	{
-	  if (tm_Use_OID_preflush)
-	    {
-	      (void) locator_assign_all_permanent_oids ();
-	    }
-
-	  /* Flush all dirty objects */
-	  /* Flush virtual objects first so that locator_all_flush doesn't see any */
-	  err = locator_all_flush ();
-	  if (err != NO_ERROR)
-	    {
-	      return err;
-	    }
-	}
     }
 
   if (parser->is_auto_commit)
@@ -13592,12 +13562,29 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
       do_send_plan_trace_to_session (parser);
     }
 
+  if (ws_need_flush ())
+    {
+      if (statement->use_auto_commit)
+	{
+	  // When a transaction is under auto-commit mode, flush all dirty objects to server.
+	  err = tran_flush_to_commit ();
+	  if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
+	}
+      else
+	{
+	  // nothing to flush.
+	  assert (!ws_need_flush ());
+	}
+    }
+
   assert (parser->query_id == NULL_QUERY_ID);
   list_id = NULL;
 
-  err =
-    execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-		   parser->host_variables, &list_id, query_flag, NULL, NULL);
+  err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
+		       parser->host_variables, &list_id, query_flag, NULL, NULL);
 
   /* free returned QFILE_LIST_ID */
   if (list_id)
@@ -16202,13 +16189,6 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto exit;
 	}
 
-      /* flush necessary objects before execute */
-      err = sm_flush_objects (class_obj);
-      if (err != NO_ERROR)
-	{
-	  goto exit;
-	}
-
       if (parser->is_xasl_pinned_reference)
 	{
 	  query_flag |= XASL_CACHE_PINNED_REFERENCE;
@@ -16220,22 +16200,6 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (statement->use_auto_commit)
 	{
 	  query_flag |= EXECUTE_QUERY_WITH_COMMIT;
-
-	  if (ws_need_flush ())
-	    {
-	      if (tm_Use_OID_preflush)
-		{
-		  (void) locator_assign_all_permanent_oids ();
-		}
-
-	      /* Flush all dirty objects */
-	      /* Flush virtual objects first so that locator_all_flush doesn't see any */
-	      err = locator_all_flush ();
-	      if (err != NO_ERROR)
-		{
-		  goto exit;
-		}
-	    }
 	}
 
       if (parser->is_auto_commit)
@@ -16243,7 +16207,29 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  query_flag |= TRAN_AUTO_COMMIT;
 	}
 
+      if (ws_need_flush ())
+	{
+	  // When a transaction is under auto-commit mode, flush all dirty objects to server.
+	  // Otherwise, flush associated objects.
+
+	  if (statement->use_auto_commit)
+	    {
+	      err = tran_flush_to_commit ();
+	    }
+	  else
+	    {
+	      err = sm_flush_objects (class_obj);
+	    }
+
+	  if (err != NO_ERROR)
+	    {
+	      // flush error
+	      goto exit;
+	    }
+	}
+
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
+
       if (statement->info.merge.insert.value_clauses)
 	{
 	  obt_begin_insert_values ();
@@ -16252,9 +16238,9 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       assert (parser->query_id == NULL_QUERY_ID);
       list_id = NULL;
 
-      err =
-	execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-		       parser->host_variables, &list_id, query_flag, NULL, NULL);
+      err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
+			   parser->host_variables, &list_id, query_flag, NULL, NULL);
+
       AU_RESTORE (au_save);
       if (err != NO_ERROR)
 	{
@@ -16275,6 +16261,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  regu_free_listid (list_id);
 	  list_id = NULL;
 	}
+
       /* end the query; reset query_id and call qmgr_end_query() */
       pt_end_query (parser, query_id_self);
     }

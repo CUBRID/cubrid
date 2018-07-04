@@ -225,6 +225,28 @@ tran_reset_isolation (TRAN_ISOLATION isolation, bool async_ws)
 /* only loaddb changes this setting */
 bool tm_Use_OID_preflush = true;
 
+int
+tran_flush_to_commit (void)
+{
+  int err;
+
+  if (!ws_need_flush ())
+    {
+      return NO_ERROR;
+    }
+
+  if (tm_Use_OID_preflush)
+    {
+      (void) locator_assign_all_permanent_oids ();
+    }
+
+  /* Flush all dirty objects */
+  /* Flush virtual objects first so that locator_all_flush doesn't see any */
+  err = locator_all_flush ();
+
+  return err;
+}
+
 /*
  * tran_commit - COMMIT THE CURRENT TRANSACTION
  *
@@ -263,20 +285,10 @@ tran_commit (bool retain_lock)
   /* tell the schema manager to flush any transaction caches */
   sm_transaction_boundary ();
 
-  if (ws_need_flush ())
+  error_code = tran_flush_to_commit ();
+  if (error_code != NO_ERROR)
     {
-      if (tm_Use_OID_preflush)
-	{
-	  (void) locator_assign_all_permanent_oids ();
-	}
-
-      /* Flush all dirty objects */
-      /* Flush virtual objects first so that locator_all_flush doesn't see any */
-      error_code = locator_all_flush ();
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
+      return error_code;
     }
 
   if (TM_TRAN_IS_ENDED_LATEST_EXECUTED_QUERY ())
