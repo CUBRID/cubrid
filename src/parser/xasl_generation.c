@@ -19786,15 +19786,16 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
   /* append on update defaults to the assignments list */
   for (p = from; p; p = p->next)
     {
-      if (p->info.spec.flat_entity_list == NULL || !(p->info.spec.flag & PT_SPEC_FLAG_UPDATE))
+      if (p->info.spec.flat_entity_list == NULL || (p->info.spec.flag & PT_SPEC_FLAG_UPDATE) == 0)
 	{
 	  continue;
 	}
+
       PT_NODE *cl_name_node = p->info.spec.flat_entity_list;
       DB_OBJECT *class_obj = cl_name_node->info.name.db_object;
 
-      error =
-	pt_append_omitted_on_update_expr_assignments (parser, assigns, class_obj, cl_name_node->info.name.spec_id);
+      error = pt_append_omitted_on_update_expr_assignments (parser, assigns, class_obj,
+							    cl_name_node->info.name.spec_id);
       if (error != NO_ERROR)
 	{
 	  PT_INTERNAL_ERROR (parser, "update");
@@ -20432,14 +20433,14 @@ cleanup:
 }
 
 /*
-* pt_find_omitted_default_expr() - Builds a list of attributes that have a default expression and are not found
-*                                  in the specified attributes list
-*   return: Error code
-*   parser(in/out): Parser context
-*   specified_attrs(in): the list of attributes that are not to be considered
-*   default_expr_attrs(out):
-*   class_obj(in):
-*/
+ * pt_find_omitted_default_expr() - Builds a list of attributes that have a default expression and are not found
+ *                                  in the specified attributes list
+ *   return: Error code
+ *   parser(in/out): Parser context
+ *   specified_attrs(in): the list of attributes that are not to be considered
+ *   default_expr_attrs(out):
+ *   class_obj(in):
+ */
 int
 pt_find_omitted_default_expr (PARSER_CONTEXT * parser, PT_NODE * specified_attrs, PT_NODE ** default_expr_attrs,
 			      DB_OBJECT * class_obj)
@@ -20507,14 +20508,14 @@ pt_find_omitted_default_expr (PARSER_CONTEXT * parser, PT_NODE * specified_attrs
 }
 
 /*
-* pt_append_omitted_on_update_expr_assignments() - Appends assignment expressions that have a default on update expression and are not found
-*                                                  in the specified attributes list
-*   return: Error code
-*   parser(in/out): Parser context
-*   assigns(in/out): assignment expr list
-*   class_obj(in):
-*   spec_id(in):
-*/
+ * pt_append_omitted_on_update_expr_assignments() - Appends assignment expressions that have a default on update
+ *                                                  expression and are not found in the specified attributes list
+ *   return: Error code
+ *   parser(in/out): Parser context
+ *   assigns(in/out): assignment expr list
+ *   class_obj(in):
+ *   spec_id(in):
+ */
 int
 pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE * assigns, DB_OBJECT * class_obj,
 					      UINTPTR spec_id)
@@ -24231,15 +24232,16 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   /* append on update defaults to the assignments list */
   for (p = from; p; p = p->next)
     {
-      if (p->info.spec.flat_entity_list == NULL || !(p->info.spec.flag & PT_SPEC_FLAG_UPDATE))
+      if (p->info.spec.flat_entity_list == NULL || (p->info.spec.flag & PT_SPEC_FLAG_UPDATE) == 0)
 	{
 	  continue;
 	}
 
       PT_NODE *cl_name_node = p->info.spec.flat_entity_list;
       DB_OBJECT *class_obj = cl_name_node->info.name.db_object;
-      error =
-	pt_append_omitted_on_update_expr_assignments (parser, assigns, class_obj, cl_name_node->info.name.spec_id);
+
+      error = pt_append_omitted_on_update_expr_assignments (parser, assigns, class_obj,
+							    cl_name_node->info.name.spec_id);
       if (error != NO_ERROR)
 	{
 	  PT_INTERNAL_ERROR (parser, "merge update");

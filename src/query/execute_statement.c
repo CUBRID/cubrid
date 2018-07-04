@@ -8974,22 +8974,19 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  PT_NODE *assigns = statement->info.update.assignment;
 	  PT_NODE *from = statement->info.update.spec;
-	  for (PT_NODE * p = from; p; p = p->next)
+
+	  for (PT_NODE * p = from; p != NULL && err != NO_ERROR; p = p->next)
 	    {
-	      if (p->info.spec.flat_entity_list == NULL || !(p->info.spec.flag & PT_SPEC_FLAG_UPDATE))
+	      if (p->info.spec.flat_entity_list == NULL || (p->info.spec.flag & PT_SPEC_FLAG_UPDATE) == 0)
 		{
 		  continue;
 		}
+
 	      PT_NODE *cl_name_node = p->info.spec.flat_entity_list;
 	      DB_OBJECT *class_obj = cl_name_node->info.name.db_object;
 
-	      err =
-		pt_append_omitted_on_update_expr_assignments (parser, assigns, class_obj,
-							      cl_name_node->info.name.spec_id);
-	      if (err != NO_ERROR)
-		{
-		  break;
-		}
+	      err = pt_append_omitted_on_update_expr_assignments (parser, assigns, class_obj,
+								  cl_name_node->info.name.spec_id);
 	    }
 	  if (err != NO_ERROR)
 	    {
@@ -8997,10 +8994,8 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      break;		/* stop while loop if error */
 	    }
 
-	  err =
-	    pt_get_assignment_lists (parser, &select_names, &select_values, &const_names, &const_values, &no_vals,
-				     &no_consts, statement->info.update.assignment, &links);
-
+	  err = pt_get_assignment_lists (parser, &select_names, &select_values, &const_names, &const_values, &no_vals,
+					 &no_consts, statement->info.update.assignment, &links);
 	  if (err != NO_ERROR)
 	    {
 	      PT_INTERNAL_ERROR (parser, "update");
@@ -15674,9 +15669,8 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       parser->print_type_ambiguity = 0;
       PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER));
       contextp->sql_hash_text = (char *) statement->alias_print;
-      err =
-	SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
-		     &contextp->sha1);
+      err = SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
+			 &contextp->sha1);
       if (err != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -15712,9 +15706,8 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  if (statement->info.merge.insert.value_clauses)
 	    {
-	      err =
-		pt_find_omitted_default_expr (parser, statement->info.merge.insert.attr_list, &default_expr_attrs,
-					      flat->info.name.db_object);
+	      err = pt_find_omitted_default_expr (parser, statement->info.merge.insert.attr_list, &default_expr_attrs,
+						  flat->info.name.db_object);
 	      if (err != NO_ERROR)
 		{
 		  statement->use_plan_cache = 0;
