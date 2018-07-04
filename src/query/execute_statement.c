@@ -8975,18 +8975,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  PT_NODE *assigns = statement->info.update.assignment;
 	  PT_NODE *from = statement->info.update.spec;
 
-	  for (PT_NODE * p = from; p != NULL && err != NO_ERROR; p = p->next)
-	    {
-	      if ((p->info.spec.flag & PT_SPEC_FLAG_UPDATE) == 0)
-		{
-		  continue;
-		}
-
-	      PT_NODE *cl_name_node = p->info.spec.flat_entity_list;
-	      DB_OBJECT *class_obj = cl_name_node->info.name.db_object;
-
-	      err = pt_append_omitted_on_update_expr_assignments (parser, assigns, class_obj, p->info.spec.id);
-	    }
+	  err = pt_append_omitted_on_update_expr_assignments (parser, assigns, from);
 	  if (err != NO_ERROR)
 	    {
 	      PT_INTERNAL_ERROR (parser, "update");
