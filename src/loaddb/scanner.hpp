@@ -40,6 +40,11 @@ namespace cubload
   class scanner : public yyFlexLexer
   {
     public:
+      // Default constructor.
+      scanner () : yyFlexLexer ()
+      {
+      };
+
       /**
        * Constructor (invokes constructor from parent class)
        * @param arg_yyin input stream used for scanning

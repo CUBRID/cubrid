@@ -45,32 +45,14 @@ namespace cubload
 
   semantic_helper::semantic_helper (const scanner &scanner)
     : m_scanner (scanner)
-    , m_in_instance_line (true)
-    , m_string_pool_idx (0)
-    , m_copy_buf_pool_idx (0)
-    , m_constant_pool_idx (0)
-    , m_qstr_buffer (NULL)
-    , m_qstr_buf_p (NULL)
-    , m_use_qstr_buffer (false)
     , m_qstr_buf_pool {}
-    , m_qstr_buf_idx (0)
-    , m_qstr_buf_pool_idx (0)
-    , m_qstr_buffer_size (0)
   {
-    m_qstr_buf_pool = new char *[QUOTED_STR_BUF_POOL_SIZE];
-    for (std::size_t i = 0; i < QUOTED_STR_BUF_POOL_SIZE; ++i)
-      {
-	m_qstr_buf_pool[i] = new char[MAX_QUOTED_STR_BUF_SIZE];
-      }
+    initialize ();
   }
 
   semantic_helper::~semantic_helper ()
   {
-    for (std::size_t i = 0; i < QUOTED_STR_BUF_POOL_SIZE; ++i)
-      {
-	delete [] m_qstr_buf_pool[i];
-      }
-    delete [] m_qstr_buf_pool;
+    destroy ();
   }
 
   void
@@ -333,6 +315,19 @@ namespace cubload
     m_in_instance_line = in_instance_line;
   }
 
+  void
+  semantic_helper::reset ()
+  {
+    reset_pool_indexes ();
+
+    m_in_instance_line = true;
+    m_qstr_buffer = NULL;
+    m_qstr_buf_p = NULL;
+    m_use_qstr_buffer = false;
+    m_qstr_buf_idx = 0;
+    m_qstr_buffer_size = 0;
+  }
+
   string_t *
   semantic_helper::make_string ()
   {
@@ -409,6 +404,28 @@ namespace cubload
     m_qstr_buffer_size = new_size;
     m_qstr_buffer = (char *) realloc (m_qstr_buffer, m_qstr_buffer_size);
     assert (m_qstr_buffer != NULL);
+  }
+
+  void
+  semantic_helper::initialize ()
+  {
+    reset ();
+
+    m_qstr_buf_pool = new char *[QUOTED_STR_BUF_POOL_SIZE];
+    for (std::size_t i = 0; i < QUOTED_STR_BUF_POOL_SIZE; ++i)
+      {
+	m_qstr_buf_pool[i] = new char[MAX_QUOTED_STR_BUF_SIZE];
+      }
+  }
+
+  void
+  semantic_helper::destroy ()
+  {
+    for (std::size_t i = 0; i < QUOTED_STR_BUF_POOL_SIZE; ++i)
+      {
+	delete [] m_qstr_buf_pool[i];
+      }
+    delete [] m_qstr_buf_pool;
   }
 
   template<typename T>

@@ -86,16 +86,13 @@ namespace cubload
       int lineno ();
 
       // Access to private members functions
-      scanner *get_scanner ();
-      semantic_helper *get_semantic_helper ();
+      scanner &get_scanner ();
+      semantic_helper &get_semantic_helper ();
 
     private:
-      parser *m_parser;
-      scanner *m_scanner;
-      semantic_helper *m_semantic_helper;
-
-      // free dynamically allocated private members
-      void destroy ();
+      parser m_parser;
+      scanner m_scanner;
+      semantic_helper m_semantic_helper;
   };
 } // namespace cubload
 

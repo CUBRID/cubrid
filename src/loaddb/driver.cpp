@@ -31,29 +31,23 @@ namespace cubload
 {
 
   driver::driver ()
-    : m_parser (NULL)
-    , m_scanner (NULL)
-    , m_semantic_helper (NULL)
+    : m_parser (*this)
+    , m_scanner ()
+    , m_semantic_helper (m_scanner)
   {
   }
 
   driver::~driver ()
   {
-    destroy ();
   }
 
   int
   driver::parse (std::istream &iss)
   {
-    m_scanner = new scanner (&iss);
-    m_parser = new parser (*this);
-    m_semantic_helper = new semantic_helper (*m_scanner);
+    m_scanner.switch_streams (&iss);
+    m_semantic_helper.reset ();
 
-    int ret = m_parser->parse ();
-
-    destroy ();
-
-    return ret;
+    return m_parser.parse ();
   }
 
   void
@@ -61,38 +55,23 @@ namespace cubload
   {
     ldr_increment_err_total (ldr_Current_context);
     fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SYNTAX_ERR), lineno (),
-	     get_scanner ()->YYText ());
+	     get_scanner ().YYText ());
   }
 
   int driver::lineno ()
   {
-    return get_scanner ()->lineno ();
+    return get_scanner ().lineno ();
   }
 
-  scanner *
+  scanner &
   driver::get_scanner ()
   {
-    assert (m_scanner != NULL);
     return m_scanner;
   }
 
-  semantic_helper *
+  semantic_helper &
   driver::get_semantic_helper ()
   {
-    assert (m_semantic_helper != NULL);
     return m_semantic_helper;
-  }
-
-  void
-  driver::destroy ()
-  {
-    delete m_parser;
-    m_parser = NULL;
-
-    delete m_scanner;
-    m_scanner = NULL;
-
-    delete m_semantic_helper;
-    m_semantic_helper = NULL;
   }
 } // namespace cubload

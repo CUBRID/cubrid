@@ -95,6 +95,8 @@ namespace cubload
       bool in_instance_line ();
       void set_in_instance_line (bool in_instance_line);
 
+      void reset ();
+
     private:
       const scanner &m_scanner;
 
@@ -128,6 +130,9 @@ namespace cubload
       bool use_copy_buf_pool (std::size_t str_size);
       void alloc_qstr_buffer (std::size_t size);
       void realloc_qstr_buffer (std::size_t new_size);
+
+      void initialize ();
+      void destroy ();
 
       // template private functions
       template<typename T>
