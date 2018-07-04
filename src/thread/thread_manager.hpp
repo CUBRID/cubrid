@@ -28,7 +28,6 @@
 #error Wrong module
 #endif // not SERVER_MODE and not SA_MODE
 
-#include "perf_def.hpp"
 #include "thread_entry.hpp"
 #include "thread_task.hpp"
 
