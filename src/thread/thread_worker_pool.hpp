@@ -140,7 +140,7 @@ namespace cubthread
 
       worker_pool (std::size_t pool_size, std::size_t task_max_count, context_manager_type &context_mgr,
 		   std::size_t core_count = 1, bool debug_logging = false, bool pool_threads = false,
-		   cubperf::duration transition_period = std::chrono::seconds (5));
+		   std::chrono::seconds wait_for_task_time = std::chrono::seconds (5));
       ~worker_pool ();
 
       // try to execute task; executes only if the maximum number of tasks is not reached.
@@ -179,9 +179,9 @@ namespace cubthread
       {
 	return m_pool_threads;
       }
-      inline const cubperf::duration &get_transition_period () const
+      inline const std::chrono::seconds &get_wait_for_task_time () const
       {
-	return m_transition_period;
+	return m_wait_for_task_time;
       }
 
       //////////////////////////////////////////////////////////////////////////
@@ -248,7 +248,7 @@ namespace cubthread
       bool m_pool_threads;
 
       // transition time period between active and inactive
-      cubperf::duration m_transition_period;
+      std::chrono::seconds m_wait_for_task_time;
   };
 
   // worker_pool<Context>::core
@@ -404,7 +404,7 @@ namespace cubthread
       void init_core (core_type &parent);
 
       // start task execution on a new thread (push_time is provided by core)
-      void push_task_on_new_thread (task<Context> *work_p, cubperf::time_point push_time);
+      void start_new_thread (task<Context> *work_p, cubperf::time_point push_time);
       // run task on current thread (push_time is provided by core)
       void push_task_on_running_thread (task<Context> *work_p, cubperf::time_point push_time);
       // stop execution
@@ -493,7 +493,7 @@ namespace cubthread
   template <typename Context>
   worker_pool<Context>::worker_pool (std::size_t pool_size, std::size_t task_max_count,
 				     context_manager_type &context_mgr, std::size_t core_count, bool debug_log, bool pool_threads,
-				     cubperf::duration transition_period)
+				     std::chrono::seconds wait_for_task_time)
     : m_max_workers (pool_size)
     , m_task_max_count (task_max_count)
     , m_task_count (0)
@@ -504,7 +504,7 @@ namespace cubthread
     , m_stopped (false)
     , m_log (debug_log)
     , m_pool_threads (pool_threads)
-    , m_transition_period (transition_period)
+    , m_wait_for_task_time (wait_for_task_time)
   {
     // initialize cores; we'll try to distribute pool evenly to all cores. if core count is not fully contained in
     // pool size, some cores will have one additional worker
@@ -801,7 +801,7 @@ namespace cubthread
 	for (std::size_t it = 0; it < m_max_workers; it++)
 	  {
 	    m_worker_array[it].init_core (*this);
-	    m_worker_array[it].push_task_on_new_thread (NULL, cubperf::clock::now ());
+	    m_worker_array[it].start_new_thread (NULL, cubperf::clock::now ());
 	  }
       }
   }
@@ -858,7 +858,7 @@ namespace cubthread
 	ulock.unlock ();
 
 	// start new thread
-	refp->push_task_on_new_thread (task_p, push_time);
+	refp->start_new_thread (task_p, push_time);
 	return; // worker found
       }
 
@@ -1045,28 +1045,23 @@ namespace cubthread
 
   template <typename Context>
   void
-  worker_pool<Context>::core::worker::push_task_on_new_thread (task<Context> *work_p, cubperf::time_point push_time)
+  worker_pool<Context>::core::worker::start_new_thread (task<Context> *work_p, cubperf::time_point push_time)
   {
-    if (work_p != NULL)
-      {
-	// make sure worker is in a valid state
-	assert (m_task_p == NULL);
-	assert (m_context_p == NULL);
+    assert (m_context_p == NULL);
 
-	// save push time
-	m_push_time = push_time;
+    // save push time
+    m_push_time = push_time;
 
-	// save task
-	m_task_p = work_p;
+    // save task
+    m_task_p = work_p;
 
-	// start thread.
-	//
-	// the next code tries to help visualizing any system errors that can occur during create or detach in debug mode
-	//
-	// release will basically be reduced to:
-	// std::thread (&worker::run, this).detach ();
-	//
-      }
+    // start thread.
+    //
+    // the next code tries to help visualizing any system errors that can occur during create or detach in debug mode
+    //
+    // release will basically be reduced to:
+    // std::thread (&worker::run, this).detach ();
+    //
 
     std::thread t;
 
@@ -1191,7 +1186,7 @@ namespace cubthread
       }
 
     // get a queued task or wait for one to come
-    const cubperf::duration &WAIT_TIME = m_parent_core->get_parent_pool ()->get_transition_period ();
+    const cubperf::duration &WAIT_TIME = m_parent_core->get_parent_pool ()->get_wait_for_task_time ();
 
     // either get a queued task or add to free active list
     // note: returned task cannot be saved directly to m_task_p. if worker is added to wait queue and NULL is returned,

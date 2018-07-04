@@ -116,7 +116,7 @@ namespace cubthread
       //        signature emulates worker_pool constructor signature
       entry_workpool *create_worker_pool (std::size_t pool_size, std::size_t task_max_count,
 					  entry_manager *context_manager, std::size_t core_count,
-					  bool debug_logging, bool pool_threads = false, cubperf::duration transition_period = std::chrono::seconds (5));
+					  bool debug_logging, bool pool_threads = false, std::chrono::seconds wait_for_task_time = std::chrono::seconds (5));
 
       // destroy worker pool
       void destroy_worker_pool (entry_workpool *&worker_pool_arg);
