@@ -19786,7 +19786,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
   /* append on update defaults to the assignments list */
   for (p = from; p; p = p->next)
     {
-      if (p->info.spec.flat_entity_list == NULL || (p->info.spec.flag & PT_SPEC_FLAG_UPDATE) == 0)
+      if ((p->info.spec.flag & PT_SPEC_FLAG_UPDATE) == 0)
 	{
 	  continue;
 	}
@@ -19794,8 +19794,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
       PT_NODE *cl_name_node = p->info.spec.flat_entity_list;
       DB_OBJECT *class_obj = cl_name_node->info.name.db_object;
 
-      error = pt_append_omitted_on_update_expr_assignments (parser, assigns, class_obj,
-							    cl_name_node->info.name.spec_id);
+      error = pt_append_omitted_on_update_expr_assignments (parser, assigns, class_obj, p->info.spec.id);
       if (error != NO_ERROR)
 	{
 	  PT_INTERNAL_ERROR (parser, "update");
@@ -20547,7 +20546,7 @@ pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE *
       while ((att_name_node = pt_get_next_assignment (&assign_helper)) != NULL)
 	{
 	  if (!pt_str_compare (att_name_node->info.name.original, att->header.name, CASE_INSENSITIVE)
-	      && !pt_str_compare (att_name_node->info.name.resolved, cls->header.ch_name, CASE_INSENSITIVE))
+	      && att_name_node->info.name.spec_id == spec_id)
 	    {
 	      break;
 	    }
@@ -24232,7 +24231,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   /* append on update defaults to the assignments list */
   for (p = from; p; p = p->next)
     {
-      if (p->info.spec.flat_entity_list == NULL || (p->info.spec.flag & PT_SPEC_FLAG_UPDATE) == 0)
+      if ((p->info.spec.flag & PT_SPEC_FLAG_UPDATE) == 0)
 	{
 	  continue;
 	}
@@ -24240,8 +24239,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
       PT_NODE *cl_name_node = p->info.spec.flat_entity_list;
       DB_OBJECT *class_obj = cl_name_node->info.name.db_object;
 
-      error = pt_append_omitted_on_update_expr_assignments (parser, assigns, class_obj,
-							    cl_name_node->info.name.spec_id);
+      error = pt_append_omitted_on_update_expr_assignments (parser, assigns, class_obj, p->info.spec.id);
       if (error != NO_ERROR)
 	{
 	  PT_INTERNAL_ERROR (parser, "merge update");
