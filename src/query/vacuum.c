@@ -1320,7 +1320,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  /* Safe guard: this was possible if there was only one object to be vacuumed. */
 	  assert (n_heap_objects == 1);
 
-	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP, "Heap page %d|%d was deallocated during previous run\n",
+	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP, "Heap page %d|%d was deallocated during previous run",
 				 VPID_AS_ARGS (&helper.home_vpid));
 	  return NO_ERROR;
 	}
@@ -1333,7 +1333,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  assert (n_heap_objects == 1);
 
 	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP, "Heap page %d|%d was deallocated during previous run and reused as"
-				 " file table page\n", VPID_AS_ARGS (&helper.home_vpid));
+				 " file table page", VPID_AS_ARGS (&helper.home_vpid));
 
 	  pgbuf_unfix_and_init (thread_p, helper.home_page);
 	  return NO_ERROR;
@@ -4125,6 +4125,10 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 	   * In this case, we are updating the last_blockid of the vacuum to the last block that was logged.
 	   */
 	  vacuum_Data.set_last_blockid (logpb_last_complete_blockid ());
+
+	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+			 "vacuum_data_load_and_recover: set last_blockid = %lld to logpb_last_complete_blockid ()",
+			 (long long int) vacuum_Data.get_last_blockid ());
 	}
       else
 	{
@@ -4133,6 +4137,13 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 	   * be outdated. Instead, SA_MODE updates log_Gl.hdr.vacuum_last_blockid before removing old archives.
 	   */
 	  vacuum_Data.set_last_blockid (MAX (log_Gl.hdr.vacuum_last_blockid, vacuum_Data.last_page->data->blockid));
+
+	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+			 "vacuum_data_load_and_recover: set last_blockid = %lld to MAX("
+			 "log_Gl.hdr.vacuum_last_blockid=%lld, vacuum_Data.last_page->data->blockid=%lld)",
+			 (long long int) vacuum_Data.get_last_blockid (),
+			 (long long int) log_Gl.hdr.vacuum_last_blockid,
+			 (long long int) vacuum_Data.last_page->data->blockid);
 	}
     }
   else
@@ -4141,6 +4152,11 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
       assert (vacuum_Data.last_page->index_free > 0);
       INT16 last_block_index = (vacuum_Data.last_page->index_free <= 0) ? 0 : vacuum_Data.last_page->index_free - 1;
       vacuum_Data.set_last_blockid (vacuum_Data.last_page->data[last_block_index].blockid);
+
+      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+		     "vacuum_data_load_and_recover: set last_blockid = %lld to last data blockid = %lld",
+		     (long long int) vacuum_Data.get_last_blockid (),
+		     (long long int) vacuum_Data.last_page->data[last_block_index].blockid);
     }
 
   vacuum_Data.is_loaded = true;
@@ -4351,6 +4367,9 @@ vacuum_data_initialize_new_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * dat
   data_page->index_free = 0;
 
   pgbuf_set_page_ptype (thread_p, (PAGE_PTR) data_page, PAGE_VACUUM_DATA);
+
+  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA, "Initialized " PGBUF_PAGE_STATE_MSG ("vacuum data page"),
+		 PGBUF_PAGE_STATE_ARGS ((PAGE_PTR) data_page));
 }
 
 /*
@@ -5330,7 +5349,8 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
   bool is_last_block = false;
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
-		 "vacuum_recover_lost_block_data, lsa = %lld|%d n", LSA_AS_ARGS (&vacuum_Data.recovery_lsa));
+		 "vacuum_recover_lost_block_data, lsa = %lld|%d, global_oldest_mvccid = %llu",
+		 LSA_AS_ARGS (&vacuum_Data.recovery_lsa), (unsigned long long int) vacuum_Global_oldest_active_mvccid);
   if (LSA_ISNULL (&vacuum_Data.recovery_lsa))
     {
       /* No recovery was done. */
@@ -7150,7 +7170,7 @@ vacuum_fetch_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, LOG_PAGE 
       else
 	{
 	  vacuum_er_log (VACUUM_ER_LOG_WARNING | VACUUM_ER_LOG_LOGGING,
-			 "log page %lld is not in prefetched range %lld - %lld\n",
+			 "log page %lld is not in prefetched range %lld - %lld",
 			 log_pageid, worker->prefetch_first_pageid, worker->prefetch_last_pageid);
 	}
       // fall through
