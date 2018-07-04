@@ -8818,7 +8818,6 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 
 	      newspec->info.spec.range_var->info.name.original = spec->info.spec.range_var->info.name.original;
 	      newspec->info.spec.location = spec->info.spec.location;
-
 	      /* move join info */
 	      if (spec->info.spec.join_type != PT_JOIN_NONE)
 		{
