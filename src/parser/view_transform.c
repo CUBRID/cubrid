@@ -5599,6 +5599,8 @@ mq_invert_subqueries (PARSER_CONTEXT * parser, PT_NODE * select_statements, PT_N
 	  // to avoid creating a new "empty" node, we better delete the column from the list
 	  if (inverted == NULL)
 	    {
+	      assert (!pt_has_error (parser));
+
 	      temp = *column;
 
 	      if (column_prev != NULL)
