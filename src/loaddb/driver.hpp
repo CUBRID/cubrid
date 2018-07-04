@@ -18,23 +18,23 @@
  */
 
 /*
- * loader_driver.hpp - interface for loader lexer and parser
+ * driver.hpp - interface for loader lexer and parser
  */
 
-#ifndef _LOADER_DRIVER_HPP_
-#define _LOADER_DRIVER_HPP_
+#ifndef _DRIVER_HPP_
+#define _DRIVER_HPP_
 
 #include <istream>
 
 #include "loader_grammar.hpp"
-#include "loader_scanner.hpp"
-#include "loader_semantic_helper.hpp"
+#include "scanner.hpp"
+#include "semantic_helper.hpp"
 
-namespace cubloader
+namespace cubload
 {
 
   /*
-   * cubloader::loader_driver
+   * cubload::driver
    *
    * description
    *    A mediator class used by both lexer & grammar.
@@ -43,7 +43,7 @@ namespace cubloader
    *    Be aware that copy c-tor and assignment operator are disable since a reference is passed to scanner and parser
    *
    * how to use
-   *    cubloader::loader_driver driver;
+   *    cubload::driver driver;
    *    std::ifstream input (file_to_parse, std::fstream::in);
    *    // optionally input variable can be a string. e.g. std::string input = "";
    *
@@ -57,23 +57,22 @@ namespace cubloader
    *        // parsing was done successfully
    *      }
    */
-  class loader_driver
+  class driver
   {
     public:
       // Default constructor.
-      loader_driver ();
+      driver ();
 
       // Copy constructor (disabled).
-      loader_driver (const loader_driver &copy) = delete;
+      driver (const driver &copy) = delete;
 
       // Copy assignment operator (disabled)
-      loader_driver &operator= (const loader_driver &other) = delete;
+      driver &operator= (const driver &other) = delete;
 
       // Destructor
-      virtual ~loader_driver ();
+      virtual ~driver ();
 
       // Parse functions
-      int parse (std::string &s);
       int parse (std::istream &iss);
 
       /**
@@ -87,20 +86,17 @@ namespace cubloader
       int lineno ();
 
       // Access to private members functions
-      loader_scanner *get_scanner ();
-      loader_semantic_helper *get_semantic_helper ();
+      scanner *get_scanner ();
+      semantic_helper *get_semantic_helper ();
 
     private:
-      loader_parser *m_parser;
-      loader_scanner *m_scanner;
-      loader_semantic_helper *m_semantic_helper;
-
-      // private parse function used by both parse overloaded functions
-      int parse_internal (std::istream &is);
+      parser *m_parser;
+      scanner *m_scanner;
+      semantic_helper *m_semantic_helper;
 
       // free dynamically allocated private members
       void destroy ();
   };
-} // namespace cubloader
+} // namespace cubload
 
-#endif // _LOADER_DRIVER_HPP_
+#endif // _DRIVER_HPP_

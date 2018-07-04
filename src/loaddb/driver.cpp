@@ -18,64 +18,36 @@
  */
 
 /*
- * loader_driver.cpp - interface for loader lexer and parser
+ * driver.cpp - interface for loader lexer and parser
  */
 
-#include <sstream>
 #include <cassert>
 
-#include "loader_driver.hpp"
+#include "driver.hpp"
 #include "message_catalog.h"
 #include "utility.h"
 
-namespace cubloader
+namespace cubload
 {
 
-  loader_driver::loader_driver ()
+  driver::driver ()
     : m_parser (NULL)
     , m_scanner (NULL)
     , m_semantic_helper (NULL)
   {
   }
 
-  loader_driver::~loader_driver ()
+  driver::~driver ()
   {
     destroy ();
   }
 
   int
-  loader_driver::parse (std::string &s)
+  driver::parse (std::istream &iss)
   {
-    std::istringstream iss (s);
-
-    return parse_internal (iss);
-  }
-
-  int
-  loader_driver::parse (std::istream &iss)
-  {
-    return parse_internal (iss);
-  }
-
-  void
-  loader_driver::error (const location &loc, const std::string &msg)
-  {
-    ldr_increment_err_total (ldr_Current_context);
-    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SYNTAX_ERR), lineno (),
-	     get_scanner ()->YYText ());
-  }
-
-  int loader_driver::lineno ()
-  {
-    return get_scanner ()->lineno ();
-  }
-
-  int
-  loader_driver::parse_internal (std::istream &is)
-  {
-    m_scanner = new loader_scanner (&is);
-    m_parser = new loader_parser (*this);
-    m_semantic_helper = new loader_semantic_helper (*m_scanner);
+    m_scanner = new scanner (&iss);
+    m_parser = new parser (*this);
+    m_semantic_helper = new semantic_helper (*m_scanner);
 
     int ret = m_parser->parse ();
 
@@ -84,22 +56,35 @@ namespace cubloader
     return ret;
   }
 
-  loader_scanner *
-  loader_driver::get_scanner ()
+  void
+  driver::error (const location &loc, const std::string &msg)
+  {
+    ldr_increment_err_total (ldr_Current_context);
+    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SYNTAX_ERR), lineno (),
+	     get_scanner ()->YYText ());
+  }
+
+  int driver::lineno ()
+  {
+    return get_scanner ()->lineno ();
+  }
+
+  scanner *
+  driver::get_scanner ()
   {
     assert (m_scanner != NULL);
     return m_scanner;
   }
 
-  loader_semantic_helper *
-  loader_driver::get_semantic_helper ()
+  semantic_helper *
+  driver::get_semantic_helper ()
   {
     assert (m_semantic_helper != NULL);
     return m_semantic_helper;
   }
 
   void
-  loader_driver::destroy ()
+  driver::destroy ()
   {
     delete m_parser;
     m_parser = NULL;
@@ -110,4 +95,4 @@ namespace cubloader
     delete m_semantic_helper;
     m_semantic_helper = NULL;
   }
-} // namespace cubloader
+} // namespace cubload

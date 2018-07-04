@@ -18,15 +18,15 @@
  */
 
 /*
- * loader_semantic_helper.cpp - semantic helper for loader lexer & grammar
+ * semantic_helper.cpp - semantic helper for loader lexer & grammar
  */
 
 #include <cassert>
 
 #include "error_manager.h"
 #include "language_support.h"
-#include "loader_semantic_helper.hpp"
 #include "memory_alloc.h"
+#include "semantic_helper.hpp"
 
 #define FREE_STRING(s)          \
 do {                            \
@@ -40,10 +40,10 @@ do {                            \
     }                           \
 } while (0)
 
-namespace cubloader
+namespace cubload
 {
 
-  loader_semantic_helper::loader_semantic_helper (const loader_scanner &scanner)
+  semantic_helper::semantic_helper (const scanner &scanner)
     : m_scanner (scanner)
     , m_in_instance_line (true)
     , m_string_pool_idx (0)
@@ -64,7 +64,7 @@ namespace cubloader
       }
   }
 
-  loader_semantic_helper::~loader_semantic_helper ()
+  semantic_helper::~semantic_helper ()
   {
     for (std::size_t i = 0; i < QUOTED_STR_BUF_POOL_SIZE; ++i)
       {
@@ -74,7 +74,7 @@ namespace cubloader
   }
 
   void
-  loader_semantic_helper::append_char (char c)
+  semantic_helper::append_char (char c)
   {
     if (m_use_qstr_buffer)
       {
@@ -115,19 +115,19 @@ namespace cubloader
   }
 
   string_t *
-  loader_semantic_helper::append_string_list (string_t *head, string_t *tail)
+  semantic_helper::append_string_list (string_t *head, string_t *tail)
   {
     return append_list<string_t> (head, tail);
   }
 
   constant_t *
-  loader_semantic_helper::append_constant_list (constant_t *head, constant_t *tail)
+  semantic_helper::append_constant_list (constant_t *head, constant_t *tail)
   {
     return append_list<constant_t> (head, tail);
   }
 
   void
-  loader_semantic_helper::set_quoted_string_buffer ()
+  semantic_helper::set_quoted_string_buffer ()
   {
     if (m_qstr_buf_pool_idx < QUOTED_STR_BUF_POOL_SIZE)
       {
@@ -149,7 +149,7 @@ namespace cubloader
   }
 
   string_t *
-  loader_semantic_helper::make_string_by_buffer ()
+  semantic_helper::make_string_by_buffer ()
   {
     string_t *str = make_string ();
     if (str == NULL)
@@ -195,7 +195,7 @@ namespace cubloader
   }
 
   string_t *
-  loader_semantic_helper::make_string_by_yytext ()
+  semantic_helper::make_string_by_yytext ()
   {
     string_t *str = make_string ();
     if (str == NULL)
@@ -235,7 +235,7 @@ namespace cubloader
   }
 
   ctor_spec_t *
-  loader_semantic_helper::make_constructor_spec (string_t *idname, string_t *arg_list)
+  semantic_helper::make_constructor_spec (string_t *idname, string_t *arg_list)
   {
     ctor_spec_t *spec = alloc_ldr_type<ctor_spec_t> ();
 
@@ -246,7 +246,7 @@ namespace cubloader
   }
 
   class_cmd_spec_t *
-  loader_semantic_helper::make_class_command_spec (int qualifier, string_t *attr_list, ctor_spec_t *ctor_spec)
+  semantic_helper::make_class_command_spec (int qualifier, string_t *attr_list, ctor_spec_t *ctor_spec)
   {
     class_cmd_spec_t *spec = alloc_ldr_type<class_cmd_spec_t> ();
 
@@ -258,7 +258,7 @@ namespace cubloader
   }
 
   constant_t *
-  loader_semantic_helper::make_constant (int type, void *val)
+  semantic_helper::make_constant (int type, void *val)
   {
     constant_t *con = NULL;
 
@@ -280,7 +280,7 @@ namespace cubloader
   }
 
   object_ref_t *
-  loader_semantic_helper::make_object_ref_by_class_id (string_t *class_id)
+  semantic_helper::make_object_ref_by_class_id (string_t *class_id)
   {
     object_ref_t *ref = make_object_ref ();
 
@@ -290,7 +290,7 @@ namespace cubloader
   }
 
   object_ref_t *
-  loader_semantic_helper::make_object_ref_by_class_name (string_t *class_name)
+  semantic_helper::make_object_ref_by_class_name (string_t *class_name)
   {
     object_ref_t *ref = make_object_ref ();
 
@@ -300,14 +300,14 @@ namespace cubloader
   }
 
   constant_t *
-  loader_semantic_helper::make_monetary_constant (int currency_type, string_t *amount)
+  semantic_helper::make_monetary_constant (int currency_type, string_t *amount)
   {
     monetary_t *mon_value =  make_monetary_value (currency_type, amount);
     return make_constant (LDR_MONETARY, mon_value);
   }
 
   void
-  loader_semantic_helper::reset_pool_indexes ()
+  semantic_helper::reset_pool_indexes ()
   {
     m_string_pool_idx = 0;
     m_copy_buf_pool_idx = 0;
@@ -316,25 +316,25 @@ namespace cubloader
   }
 
   void
-  loader_semantic_helper::free_ldr_string (string_t **string)
+  semantic_helper::free_ldr_string (string_t **string)
   {
     FREE_STRING (*string);
   }
 
   bool
-  loader_semantic_helper::in_instance_line ()
+  semantic_helper::in_instance_line ()
   {
     return m_in_instance_line;
   }
 
   void
-  loader_semantic_helper::set_in_instance_line (bool in_instance_line)
+  semantic_helper::set_in_instance_line (bool in_instance_line)
   {
     m_in_instance_line = in_instance_line;
   }
 
   string_t *
-  loader_semantic_helper::make_string ()
+  semantic_helper::make_string ()
   {
     string_t *str = NULL;
 
@@ -353,7 +353,7 @@ namespace cubloader
   }
 
   object_ref_t *
-  loader_semantic_helper::make_object_ref ()
+  semantic_helper::make_object_ref ()
   {
     object_ref_t *ref = alloc_ldr_type<object_ref_t> ();
 
@@ -365,7 +365,7 @@ namespace cubloader
   }
 
   monetary_t *
-  loader_semantic_helper::make_monetary_value (int currency_type, string_t *amount)
+  semantic_helper::make_monetary_value (int currency_type, string_t *amount)
   {
     monetary_t *mon_value = alloc_ldr_type<monetary_t> ();
 
@@ -376,7 +376,7 @@ namespace cubloader
   }
 
   bool
-  loader_semantic_helper::is_utf8_valid (string_t *str)
+  semantic_helper::is_utf8_valid (string_t *str)
   {
     char *invalid_pos = NULL;
 
@@ -390,13 +390,13 @@ namespace cubloader
   }
 
   bool
-  loader_semantic_helper::use_copy_buf_pool (std::size_t str_size)
+  semantic_helper::use_copy_buf_pool (std::size_t str_size)
   {
     return m_copy_buf_pool_idx < COPY_BUF_POOL_SIZE && str_size < MAX_COPY_BUF_SIZE;
   }
 
   void
-  loader_semantic_helper::alloc_qstr_buffer (std::size_t size)
+  semantic_helper::alloc_qstr_buffer (std::size_t size)
   {
     m_qstr_buffer_size = size;
     m_qstr_buffer = (char *) malloc (size);
@@ -404,7 +404,7 @@ namespace cubloader
   }
 
   void
-  loader_semantic_helper::realloc_qstr_buffer (std::size_t new_size)
+  semantic_helper::realloc_qstr_buffer (std::size_t new_size)
   {
     m_qstr_buffer_size = new_size;
     m_qstr_buffer = (char *) realloc (m_qstr_buffer, m_qstr_buffer_size);
@@ -413,7 +413,7 @@ namespace cubloader
 
   template<typename T>
   T *
-  loader_semantic_helper::alloc_ldr_type ()
+  semantic_helper::alloc_ldr_type ()
   {
     T *ptr = (T *) malloc (sizeof (T));
 
@@ -424,7 +424,7 @@ namespace cubloader
 
   template<typename T>
   T *
-  loader_semantic_helper::append_list (T *head, T *tail)
+  semantic_helper::append_list (T *head, T *tail)
   {
     tail->next = NULL;
     tail->last = NULL;
@@ -441,4 +441,4 @@ namespace cubloader
     head->last = tail;
     return head;
   }
-} // namespace cubloader
+} // namespace cubload

@@ -18,35 +18,37 @@
  */
 
 /*
- * loader_scanner.hpp - subclass of yyFlexLexer, provides the main scanner function.
+ * scanner.hpp - subclass of yyFlexLexer, provides the main scanner function.
  */
 
-#ifndef _LOADER_SCANNER_HPP_
-#define _LOADER_SCANNER_HPP_
+#ifndef _SCANNER_HPP_
+#define _SCANNER_HPP_
 
 #if !defined (yyFlexLexerOnce)
 #include <FlexLexer.h>
 #endif
+#include <istream>
+
 #include "loader_grammar.hpp"
 
-namespace cubloader
+namespace cubload
 {
 
   // forward declaration
-  class loader_driver;
+  class driver;
 
-  class loader_scanner : public yyFlexLexer
+  class scanner : public yyFlexLexer
   {
     public:
       /**
        * Constructor (invokes constructor from parent class)
        * @param arg_yyin input stream used for scanning
        */
-      loader_scanner (std::istream *arg_yyin) : yyFlexLexer (arg_yyin)
+      scanner (std::istream *arg_yyin) : yyFlexLexer (arg_yyin)
       {
       };
 
-      virtual ~loader_scanner ()
+      virtual ~scanner ()
       {
       };
 
@@ -54,8 +56,7 @@ namespace cubloader
        * The main scanner function.
        * See loader_lexer.l file for method declaration
        */
-      virtual int yylex (loader_parser::semantic_type *yylval, loader_parser::location_type *yylloc,
-			 loader_driver &driver);
+      virtual int yylex (parser::semantic_type *yylval, parser::location_type *yylloc, driver &driver);
 
       /**
        * Lexer error function
@@ -67,6 +68,6 @@ namespace cubloader
 	ldr_increment_fails ();
       }
   };
-} // namespace cubloader
+} // namespace cubload
 
-#endif // _LOADER_SCANNER_HPP_
+#endif // _SCANNER_HPP_

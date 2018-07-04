@@ -1,14 +1,14 @@
 #include <sstream>
 #include <thread>
 
-#include "loader_driver.hpp"
+#include "driver.hpp"
 #include "language_support.h"
 
 static const int num_threads = 50;
 
 void parse ()
 {
-  cubloader::loader_driver driver;
+  cubload::driver driver;
   std::string s = "%id [foo] 44\n"
 		  "%class [foo] ([id] [name])\n"
 		  "@44 1 @foo 2\n"

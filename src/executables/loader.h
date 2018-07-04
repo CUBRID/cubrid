@@ -30,10 +30,10 @@
 #include "porting.h"
 #include "dbdef.h"
 
-namespace cubloader
+namespace cubload
 {
   // forward declaration
-  class loader_driver;
+  class driver;
 };
 
 typedef struct LDR_CONTEXT LDR_CONTEXT;
@@ -159,7 +159,7 @@ typedef struct loader_monetary_value
 } LDR_MONETARY_VALUE;
 
 /* *INDENT-OFF* */
-extern cubloader::loader_driver *ldr_driver;
+extern cubload::driver *ldr_driver;
 /* *INDENT-ON* */
 
 extern char **ignore_class_list;

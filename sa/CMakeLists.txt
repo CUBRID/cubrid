@@ -307,8 +307,8 @@ set(SESSION_SOURCES
 set(LOADER_SOURCES
   ${BISON_loader_grammar_OUTPUT_SOURCE}
   ${FLEX_loader_lexer_OUTPUTS}
-  ${LOADDB_DIR}/loader_driver.cpp
-  ${LOADDB_DIR}/loader_semantic_helper.cpp
+  ${LOADDB_DIR}/driver.cpp
+  ${LOADDB_DIR}/semantic_helper.cpp
   )
 
 if(UNIX)

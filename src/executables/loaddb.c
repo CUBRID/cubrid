@@ -38,11 +38,11 @@
 #endif
 #include "porting.h"
 #include "db.h"
+#include "driver.hpp"
 #include "utility.h"
 #include "misc_string.h"
 #include "loader.h"
 #include "load_object.h"
-#include "loader_driver.hpp"
 #include "environment_variable.h"
 #include "message_catalog.h"
 #include "chartype.h"
@@ -579,7 +579,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   static FILE *schema_file = NULL;
   static FILE *index_file = NULL;
   static std::ifstream object_file;
-  static cubloader::loader_driver driver;
+  static cubload::driver driver;
   FILE *error_file = NULL;
   int status = 0;
   int errors = 0;

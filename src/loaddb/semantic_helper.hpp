@@ -18,16 +18,16 @@
  */
 
 /*
- * loader_semantic_helper.hpp - semantic helper for loader lexer & grammar
+ * semantic_helper.hpp - semantic helper for loader lexer & grammar
  */
 
-#ifndef _LOADER_SEMANTIC_HELPER_HPP_
-#define _LOADER_SEMANTIC_HELPER_HPP_
+#ifndef _SEMANTIC_HELPER_HPP_
+#define _SEMANTIC_HELPER_HPP_
 
 #include "loader.h"
-#include "loader_scanner.hpp"
+#include "scanner.hpp"
 
-namespace cubloader
+namespace cubload
 {
 
   // Constants sizes
@@ -47,32 +47,32 @@ namespace cubloader
   using class_cmd_spec_t = LDR_CLASS_COMMAND_SPEC;
 
   /*
-   * cubloader::loader_semantic_helper
+   * cubload::semantic_helper
    *
    * description
-   *    A helper class for building semantic types, see cubloader::loader_parser::semantic_type union for more details.
+   *    A helper class for building semantic types, see cubload::parser::semantic_type union for more details.
    *    The class contains ported functionality from old C lexer & grammar. Be aware that copy constructor and
    *    assignment operator are disable since class make use of buffers/pools which use almost 17 Megabytes of memory
    *
    * how to use
-   *    Interaction with loader_semantic_helper class is done through an instance of loader_driver e.g.
+   *    Interaction with semantic_helper class is done through an instance of driver e.g.
    *
-   *    cubloader::loader_driver driver;
+   *    cubload::driver driver;
    *    LDR_CONSTANT *null_const = driver.get_semantic_helper ()->make_constant (LDR_NULL, NULL);
    */
-  class loader_semantic_helper
+  class semantic_helper
   {
     public:
-      loader_semantic_helper (const loader_scanner &scanner);
+      semantic_helper (const scanner &scanner);
 
       // Copy constructor (disabled).
-      loader_semantic_helper (const loader_semantic_helper &copy) = delete;
+      semantic_helper (const semantic_helper &copy) = delete;
 
       // Copy assignment operator (disabled)
-      loader_semantic_helper &operator= (const loader_semantic_helper &other) = delete;
+      semantic_helper &operator= (const semantic_helper &other) = delete;
 
       // Destructor
-      virtual ~loader_semantic_helper ();
+      virtual ~semantic_helper ();
 
       void append_char (char c);
       string_t *append_string_list (string_t *head, string_t *tail);
@@ -96,7 +96,7 @@ namespace cubloader
       void set_in_instance_line (bool in_instance_line);
 
     private:
-      const loader_scanner &m_scanner;
+      const scanner &m_scanner;
 
       bool m_in_instance_line;
 
@@ -136,6 +136,6 @@ namespace cubloader
       template<typename T>
       T *append_list (T *head, T *tail);
   };
-} // namespace cubloader
+} // namespace cubload
 
-#endif // _LOADER_SEMANTIC_HELPER_HPP_
+#endif // _SEMANTIC_HELPER_HPP_
