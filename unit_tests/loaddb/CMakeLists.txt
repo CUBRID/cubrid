@@ -16,17 +16,23 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-set(LOADER_SOURCES
+set(TEST_LOADDB_SOURCES
   test_main.cpp
+  test_loaddb.cpp
+  )
+
+set(TEST_LOADDB_HEADERS
+  test_loaddb.hpp
   )
 
 set_source_files_properties(
-  ${LOADER_SOURCES}
+  ${TEST_LOADDB_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
 add_executable(test_loadb
-  ${LOADER_SOURCES}
+  ${TEST_LOADDB_SOURCES}
+  ${TEST_LOADDB_HEADERS}
   )
   
 target_compile_definitions(test_loadb PRIVATE ${COMMON_DEFS})
@@ -34,7 +40,7 @@ target_include_directories(test_loadb PRIVATE ${TEST_INCLUDES})
 target_link_libraries(test_loadb LINK_PRIVATE test_common)
 
 if(UNIX)
-  target_link_libraries(test_loadb LINK_PRIVATE cubrid)
+  target_link_libraries(test_loadb LINK_PRIVATE cubridcs)
 elseif(WIN32)
   target_link_libraries(test_loadb LINK_PRIVATE cubrid-win-lib)
 else()

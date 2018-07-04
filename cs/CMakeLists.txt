@@ -249,7 +249,6 @@ set(LOADER_SOURCES
   ${BISON_loader_grammar_OUTPUT_SOURCE}
   ${FLEX_loader_lexer_OUTPUTS}
   ${LOADDB_DIR}/driver.cpp
-  ${LOADDB_DIR}/semantic_helper.cpp
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)

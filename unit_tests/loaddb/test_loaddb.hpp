@@ -17,13 +17,17 @@
  *
  */
 
-#include "test_loaddb.hpp"
+/*
+ * test_loaddb.hpp - implementation for loaddb parse tests
+ */
 
-int
-main (int, char **)
+#ifndef _TEST_LOADDB_PASRE_HPP_
+#define _TEST_LOADDB_PASRE_HPP_
+
+namespace test_loaddb
 {
-  test_loaddb::test_parse_with_multiple_threads ();
-  test_loaddb::test_parse_reusing_driver ();
+  void test_parse_with_multiple_threads ();
+  void test_parse_reusing_driver ();
+}; // namespace test_loaddb
 
-  return 0;
-}
+#endif //_TEST_LOADDB_PASRE_HPP_
