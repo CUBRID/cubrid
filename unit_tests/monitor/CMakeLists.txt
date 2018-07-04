@@ -19,53 +19,43 @@
 #
 #
 
-set (TEST_MEMORY_ALLOC_SOURCES
-  test_db_private_alloc.cpp
-  test_extensible_array.cpp
-  test_main.cpp
-  test_memory_alloc_helper.cpp
-  test_private_unique_ptr.cpp
+set (TEST_MONITOR_SOURCES
+  test_monitor_main.cpp
   )
-set (TEST_MEMORY_ALLOC_HEADERS
-  test_db_private_alloc.hpp
-  test_extensible_array.hpp
-  test_memory_alloc_helper.hpp
-  test_private_unique_ptr.hpp
+set (TEST_MONITOR_HEADERS
+  ${MONITOR_DIR}/monitor_collect.hpp
   )
 
 SET_SOURCE_FILES_PROPERTIES(
-    ${TEST_MEMORY_ALLOC_SOURCES}
-    PROPERTIES LANGUAGE CXX
+  ${TEST_MONITOR_SOURCES}
+  PROPERTIES LANGUAGE CXX
   )
 
-add_executable(test_memory_alloc
-  ${TEST_MEMORY_ALLOC_SOURCES}
-  ${TEST_MEMORY_ALLOC_HEADERS}
+add_executable(test_monitor
+  ${TEST_MONITOR_SOURCES}
+  ${TEST_MONITOR_HEADERS}
   )
 
-target_compile_definitions(test_memory_alloc PRIVATE
-  SERVER_MODE
+target_compile_definitions(test_monitor PRIVATE
   ${COMMON_DEFS}
+  SERVER_MODE
   )
 
-message (STATUS "test includes:  ${TEST_INCLUDES}")
-target_include_directories(test_memory_alloc PRIVATE
+target_include_directories(test_monitor PRIVATE
   ${TEST_INCLUDES}
-  ${EP_INCLUDES}
   )
 
-target_link_libraries(test_memory_alloc LINK_PRIVATE
+target_link_libraries(test_monitor PRIVATE
   test_common
   )
-
 if(UNIX)
-  target_link_libraries(test_memory_alloc LINK_PRIVATE
+  target_link_libraries(test_monitor PRIVATE
     cubrid
     )
 elseif(WIN32)
-  target_link_libraries(test_memory_alloc LINK_PRIVATE
+  target_link_libraries(test_monitor PRIVATE
     cubrid-win-lib
     )
 else()
-  message( SEND_ERROR "Memory alloc unit test is only for unix/windows")
+  message( SEND_ERROR "Transfer channel unit testing is for unix/windows")
 endif ()

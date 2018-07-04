@@ -37,14 +37,14 @@
  */
 /* #include "config-int.h" */
 #ifdef _MSC_VER
-# if _MSC_VER < 1600		/* Visual C++ versions previous to Visual Studio 2010 */
+#if _MSC_VER < 1600		/* Visual C++ versions previous to Visual Studio 2010 */
 typedef __int32 int32_t;
 typedef unsigned __int32 uint32_t;
-# else
-#  include <stdint.h>
-# endif
 #else
-# include <stdint.h>
+#include <stdint.h>
+#endif
+#else
+#include <stdint.h>
 #endif
 
 #include "ieeefp.h"
@@ -127,11 +127,11 @@ extern "C"
 ((unsigned short *)a)[1] = (unsigned short)c, a++)
 #endif
 
-/* #define P DBL_MANT_DIG */
-/* Ten_pmax = floor(P*log(2)/log(5)) */
+/* #define PREC DBL_MANT_DIG */
+/* Ten_pmax = floor(PREC*log(2)/log(5)) */
 /* Bletch = (highest power of 2 < DBL_MAX_10_EXP) / 16 */
-/* Quick_max = floor((P-1)*log(FLT_RADIX)/log(10) - 1) */
-/* Int_max = floor(P*log(FLT_RADIX)/log(10) - 1) */
+/* Quick_max = floor((PREC-1)*log(FLT_RADIX)/log(10) - 1) */
+/* Int_max = floor(PREC*log(FLT_RADIX)/log(10) - 1) */
 
 #if defined(IEEE_8087) + defined(IEEE_MC68k)
 #if defined (_DOUBLE_IS_32BITS)
@@ -140,7 +140,7 @@ extern "C"
 #define Exp_msk1    ((uint32_t)0x00800000L)
 #define Exp_msk11   ((uint32_t)0x00800000L)
 #define Exp_mask    ((uint32_t)0x7f800000L)
-#define P    	    24
+#define PREC        24
 #define Bias 	    127
 #if 0
 #define IEEE_Arith		/* it is, but the code doesn't handle IEEE singles yet */
@@ -177,7 +177,7 @@ extern "C"
 #define Exp_msk1    ((uint32_t)0x100000L)
 #define Exp_msk11   ((uint32_t)0x100000L)
 #define Exp_mask  ((uint32_t)0x7ff00000L)
-#define P 53
+#define PREC 53
 #define Bias 1023
 #define IEEE_Arith
 #define Emin (-1022)
@@ -209,7 +209,7 @@ extern "C"
 #define Exp_msk1   ((uint32_t)0x1000000L)
 #define Exp_msk11  ((uint32_t)0x1000000L)
 #define Exp_mask  ((uint32_t)0x7f000000L)
-#define P 14
+#define PREC 14
 #define Bias 65
 #define Exp_1  ((uint32_t)0x41000000L)
 #define Exp_11 ((uint32_t)0x41000000L)
@@ -233,7 +233,7 @@ extern "C"
 #define Exp_msk1    0x80
 #define Exp_msk11   ((uint32_t)0x800000L)
 #define Exp_mask  ((uint32_t)0x7f80L)
-#define P 56
+#define PREC 56
 #define Bias 129
 #define Exp_1  ((uint32_t)0x40800000L)
 #define Exp_11 ((uint32_t)0x4080L)

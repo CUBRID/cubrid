@@ -22773,6 +22773,47 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	    {
 	      db_make_string_by_const_str (out_values[idx_val], "auto_increment");
 	    }
+
+	  if (attrepr->on_update_expr != DB_DEFAULT_NONE)
+	    {
+	      char *saved = db_get_string (out_values[idx_val]);
+	      size_t len = strlen (saved);
+
+	      const char *default_expr_op_string = db_default_expression_string (attrepr->on_update_expr);
+	      if (default_expr_op_string == NULL)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      /* add whitespace character if saved is not an empty string */
+	      const char *on_update_string = "ON UPDATE ";
+	      size_t str_len = len + strlen (on_update_string) + strlen (default_expr_op_string) + 1;
+	      if (len != 0)
+		{
+		  str_len += 1;	// append space before
+		}
+	      char *str_val = (char *) db_private_alloc (thread_p, str_len);
+
+	      if (str_val == NULL)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      strcpy (str_val, saved);
+	      if (len != 0)
+		{
+		  strcat (str_val, " ");
+		}
+	      strcat (str_val, on_update_string);
+	      strcat (str_val, default_expr_op_string);
+
+	      if (default_expr_op_string)
+		{
+		  pr_clear_value (out_values[idx_val]);
+		  db_make_string (out_values[idx_val], str_val);
+		  out_values[idx_val]->need_clear = true;
+		}
+	    }
 	  idx_val++;
 
 	  /* attribute's comment */
