@@ -59,10 +59,11 @@ namespace cubload
    */
   class driver
   {
+
+    public:
       // forward declaration
       class semantic_helper;
 
-    public:
       // Default constructor.
       driver ();
 
