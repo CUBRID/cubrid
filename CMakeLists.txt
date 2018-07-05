@@ -480,6 +480,7 @@ set(OLEDB_DIR                ${CMAKE_SOURCE_DIR}/src/oledb)
 set(OPTIMIZER_DIR            ${CMAKE_SOURCE_DIR}/src/optimizer)
 set(PARSER_DIR               ${CMAKE_SOURCE_DIR}/src/parser)
 set(QUERY_DIR                ${CMAKE_SOURCE_DIR}/src/query)
+set(REPLICATION_DIR          ${CMAKE_SOURCE_DIR}/src/replication)
 set(SESSION_DIR              ${CMAKE_SOURCE_DIR}/src/session)
 set(STORAGE_DIR              ${CMAKE_SOURCE_DIR}/src/storage)
 set(THREAD_DIR               ${CMAKE_SOURCE_DIR}/src/thread)
@@ -505,6 +506,7 @@ include_directories(
   src/object
   src/optimizer
   src/parser
+  src/replication
   src/query
   src/session
   src/storage
