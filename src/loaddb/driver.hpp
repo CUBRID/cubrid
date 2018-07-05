@@ -33,6 +33,22 @@
 namespace cubload
 {
 
+  // Constants sizes
+  const std::size_t STRING_POOL_SIZE = 1024;
+  const std::size_t MAX_COPY_BUF_SIZE = 256;
+  const std::size_t COPY_BUF_POOL_SIZE = 512;
+  const std::size_t CONSTANT_POOL_SIZE = 1024;
+  const std::size_t QUOTED_STR_BUF_POOL_SIZE = 512;
+  const std::size_t MAX_QUOTED_STR_BUF_SIZE = 32 * 1024;
+
+  // type aliases
+  using string_t = LDR_STRING;
+  using constant_t = LDR_CONSTANT;
+  using object_ref_t = LDR_OBJECT_REF;
+  using monetary_t = LDR_MONETARY_VALUE;
+  using ctor_spec_t = LDR_CONSTRUCTOR_SPEC;
+  using class_cmd_spec_t = LDR_CLASS_COMMAND_SPEC;
+
   /*
    * cubload::driver
    *
@@ -59,11 +75,7 @@ namespace cubload
    */
   class driver
   {
-
     public:
-      // forward declaration
-      class semantic_helper;
-
       // Default constructor.
       driver ();
 
@@ -90,133 +102,122 @@ namespace cubload
       int lineno ();
 
       scanner &get_scanner ();
-      semantic_helper &get_semantic_helper ();
 
     private:
-      parser m_parser;
       scanner m_scanner;
-      semantic_helper *m_semantic_helper;
-  };
-
-  // Constants sizes
-  const std::size_t STRING_POOL_SIZE = 1024;
-  const std::size_t MAX_COPY_BUF_SIZE = 256;
-  const std::size_t COPY_BUF_POOL_SIZE = 512;
-  const std::size_t CONSTANT_POOL_SIZE = 1024;
-  const std::size_t QUOTED_STR_BUF_POOL_SIZE = 512;
-  const std::size_t MAX_QUOTED_STR_BUF_SIZE = 32 * 1024;
-
-  // type aliases
-  using string_t = LDR_STRING;
-  using constant_t = LDR_CONSTANT;
-  using object_ref_t = LDR_OBJECT_REF;
-  using monetary_t = LDR_MONETARY_VALUE;
-  using ctor_spec_t = LDR_CONSTRUCTOR_SPEC;
-  using class_cmd_spec_t = LDR_CLASS_COMMAND_SPEC;
-
-  /*
-   * cubload::driver::semantic_helper
-   *
-   * description
-   *    A helper class for building semantic types, see cubload::parser::semantic_type union for more details.
-   *    The class contains ported functionality from old C lexer & grammar. Be aware that copy constructor and
-   *    assignment operator are disable since class make use of buffers/pools which use almost 17 Megabytes of memory
-   *
-   *    semantic_helper class is inner class related to driver since it cannot be used independently. The class does
-   *    contain all legacy functions of the old C lexer & grammar implementation.
-   *
-   *    TODO
-   *    Normally all functionality from semantic_helper should be used only by grammar and not by both lexer & grammar,
-   *    Since it is used now by both (legacy behaviour) it is included into driver. Later as improvement we can add a
-   *    subclass of cubload::parser (see loader_grammar.hpp) and move functionality of this class into parser subclass.
-   *
-   * how to use
-   *    Interaction with semantic_helper class is done through an instance of driver e.g.
-   *
-   *    cubload::driver driver;
-   *    LDR_CONSTANT *null_const = driver.get_semantic_helper ()->make_constant (LDR_NULL, NULL);
-   */
-  class driver::semantic_helper
-  {
-    public:
-      semantic_helper (const driver &parent_driver);
-
-      // Copy constructor (disabled).
-      semantic_helper (const semantic_helper &copy) = delete;
-
-      // Copy assignment operator (disabled)
-      semantic_helper &operator= (const semantic_helper &other) = delete;
-
-      // Destructor
-      virtual ~semantic_helper ();
-
-      void append_char (char c);
-      string_t *append_string_list (string_t *head, string_t *tail);
-      constant_t *append_constant_list (constant_t *head, constant_t *tail);
-
-      void set_quoted_string_buffer ();
-      string_t *make_string_by_buffer ();
-      string_t *make_string_by_yytext ();
-
-      ctor_spec_t *make_constructor_spec (string_t *idname, string_t *arg_list);
-      class_cmd_spec_t *make_class_command_spec (int qualifier, string_t *attr_list, ctor_spec_t *ctor_spec);
-
-      constant_t *make_constant (int type, void *val);
-      object_ref_t *make_object_ref_by_class_id (string_t *class_id);
-      object_ref_t *make_object_ref_by_class_name (string_t *class_name);
-      constant_t *make_monetary_constant (int currency_type, string_t *amount);
-
-      void reset_pool_indexes ();
-      void free_ldr_string (string_t **string);
-      bool in_instance_line ();
-      void set_in_instance_line (bool in_instance_line);
-
-      void reset ();
+      parser m_parser;
 
     private:
-      const driver &m_parent_driver;
+      /*
+       * cubload::driver::semantic_helper
+       *
+       * description
+       *    A helper class for building semantic types, see cubload::parser::semantic_type union for more details.
+       *    The class contains ported functionality from old C lexer & grammar. Be aware that copy constructor and
+       *    assignment operator are disable since class make use of buffers/pools which use almost 17 Megabytes of memory
+       *
+       *    semantic_helper class is inner class related to driver since it cannot be used independently. The class does
+       *    contain all legacy functions of the old C lexer & grammar implementation.
+       *
+       *    TODO
+       *    Normally all functionality from semantic_helper should be used only by grammar and not by both lexer & grammar,
+       *    Since it is used now by both (legacy behaviour) it is included into driver. Later as improvement we can add a
+       *    subclass of cubload::parser (see loader_grammar.hpp) and move functionality of this class into parser subclass.
+       *
+       * how to use
+       *    Interaction with semantic_helper class is done through an instance of driver e.g.
+       *
+       *    cubload::driver driver;
+       *    LDR_CONSTANT *null_const = driver.get_semantic_helper ()->make_constant (LDR_NULL, NULL);
+       */
+      class semantic_helper
+      {
+	public:
+	  semantic_helper (const driver &parent_driver);
 
-      bool m_in_instance_line;
+	  // Copy constructor (disabled).
+	  semantic_helper (const semantic_helper &copy) = delete;
 
-      std::size_t m_string_pool_idx;
-      string_t m_string_pool[STRING_POOL_SIZE];
+	  // Copy assignment operator (disabled)
+	  semantic_helper &operator= (const semantic_helper &other) = delete;
 
-      // buffer pool for copying yytext and qstr_buffer
-      std::size_t m_copy_buf_pool_idx;
-      char m_copy_buf_pool[COPY_BUF_POOL_SIZE][MAX_COPY_BUF_SIZE];
+	  // Destructor
+	  virtual ~semantic_helper ();
 
-      // constant pool
-      std::size_t m_constant_pool_idx;
-      constant_t m_constant_pool[CONSTANT_POOL_SIZE];
+	  void append_char (char c);
+	  string_t *append_string_list (string_t *head, string_t *tail);
+	  constant_t *append_constant_list (constant_t *head, constant_t *tail);
 
-      // quoted string buffer pool
-      char *m_qstr_buffer; // using when pool overflow
-      char *m_qstr_buf_p;
-      bool m_use_qstr_buffer;
-      char **m_qstr_buf_pool;
-      std::size_t m_qstr_buf_idx;
-      std::size_t m_qstr_buf_pool_idx;
-      std::size_t m_qstr_buffer_size;
+	  void set_quoted_string_buffer ();
+	  string_t *make_string_by_buffer ();
+	  string_t *make_string_by_yytext ();
 
-      /* private functions */
-      string_t *make_string ();
-      object_ref_t *make_object_ref ();
-      monetary_t *make_monetary_value (int currency_type, string_t *amount);
-      bool is_utf8_valid (string_t *str);
-      bool use_copy_buf_pool (std::size_t str_size);
-      void alloc_qstr_buffer (std::size_t size);
-      void realloc_qstr_buffer (std::size_t new_size);
+	  ctor_spec_t *make_constructor_spec (string_t *idname, string_t *arg_list);
+	  class_cmd_spec_t *make_class_command_spec (int qualifier, string_t *attr_list, ctor_spec_t *ctor_spec);
 
-      void initialize ();
-      void destroy ();
+	  constant_t *make_constant (int type, void *val);
+	  object_ref_t *make_object_ref_by_class_id (string_t *class_id);
+	  object_ref_t *make_object_ref_by_class_name (string_t *class_name);
+	  constant_t *make_monetary_constant (int currency_type, string_t *amount);
 
-      // template private functions
-      template<typename T>
-      T *alloc_ldr_type ();
+	  void reset_pool_indexes ();
+	  void free_ldr_string (string_t **string);
+	  bool in_instance_line ();
+	  void set_in_instance_line (bool in_instance_line);
 
-      template<typename T>
-      T *append_list (T *head, T *tail);
-  };
+	  void reset ();
+
+	private:
+	  const driver &m_parent_driver;
+
+	  bool m_in_instance_line;
+
+	  std::size_t m_string_pool_idx;
+	  string_t m_string_pool[STRING_POOL_SIZE];
+
+	  // buffer pool for copying yytext and qstr_buffer
+	  std::size_t m_copy_buf_pool_idx;
+	  char m_copy_buf_pool[COPY_BUF_POOL_SIZE][MAX_COPY_BUF_SIZE];
+
+	  // constant pool
+	  std::size_t m_constant_pool_idx;
+	  constant_t m_constant_pool[CONSTANT_POOL_SIZE];
+
+	  // quoted string buffer pool
+	  char *m_qstr_buffer; // using when pool overflow
+	  char *m_qstr_buf_p;
+	  bool m_use_qstr_buffer;
+	  char **m_qstr_buf_pool;
+	  std::size_t m_qstr_buf_idx;
+	  std::size_t m_qstr_buf_pool_idx;
+	  std::size_t m_qstr_buffer_size;
+
+	  /* private functions */
+	  string_t *make_string ();
+	  object_ref_t *make_object_ref ();
+	  monetary_t *make_monetary_value (int currency_type, string_t *amount);
+	  bool is_utf8_valid (string_t *str);
+	  bool use_copy_buf_pool (std::size_t str_size);
+	  void alloc_qstr_buffer (std::size_t size);
+	  void realloc_qstr_buffer (std::size_t new_size);
+
+	  void initialize ();
+	  void destroy ();
+
+	  // template private functions
+	  template<typename T>
+	  T *alloc_ldr_type ();
+
+	  template<typename T>
+	  T *append_list (T *head, T *tail);
+      }; // class semantic_helper
+
+      semantic_helper m_semantic_helper;
+
+    public:
+      semantic_helper &get_semantic_helper ();
+  }; // class driver
+
 } // namespace cubload
 
 #endif // _DRIVER_HPP_

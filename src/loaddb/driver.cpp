@@ -46,16 +46,16 @@ namespace cubload
 {
 
   driver::driver ()
-    : m_parser (*this)
-    , m_scanner ()
-    , m_semantic_helper (NULL)
+    : m_scanner ()
+    , m_parser (*this)
+    , m_semantic_helper (*this)
   {
-    m_semantic_helper = new semantic_helper (*this);
+    //
   }
 
   driver::~driver ()
   {
-    delete m_semantic_helper;
+    //
   }
 
   int
@@ -63,7 +63,7 @@ namespace cubload
   {
     m_scanner.switch_streams (&iss);
 
-    m_semantic_helper->reset ();
+    m_semantic_helper.reset ();
 
     return m_parser.parse ();
   }
@@ -90,7 +90,7 @@ namespace cubload
   driver::semantic_helper &
   driver::get_semantic_helper ()
   {
-    return *m_semantic_helper;
+    return m_semantic_helper;
   }
 
   /*
