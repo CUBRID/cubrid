@@ -17477,7 +17477,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  error = pt_find_omitted_default_expr (parser, attrs, &default_expr_attrs, class_obj);
+  error = pt_find_omitted_default_expr (parser, class_obj, attrs, &default_expr_attrs);
   if (error != NO_ERROR)
     {
       return NULL;
@@ -20424,13 +20424,13 @@ cleanup:
  *                                  in the specified attributes list
  *   return: Error code
  *   parser(in/out): Parser context
+ *   class_obj(in):
  *   specified_attrs(in): the list of attributes that are not to be considered
  *   default_expr_attrs(out):
- *   class_obj(in):
  */
 int
-pt_find_omitted_default_expr (PARSER_CONTEXT * parser, PT_NODE * specified_attrs, PT_NODE ** default_expr_attrs,
-			      DB_OBJECT * class_obj)
+pt_find_omitted_default_expr (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, PT_NODE * specified_attrs,
+			      PT_NODE ** default_expr_attrs)
 {
   SM_CLASS *cls;
   SM_ATTRIBUTE *att;
@@ -20506,6 +20506,7 @@ int
 pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE * assigns, PT_NODE * from)
 {
   int error = NO_ERROR;
+
   for (PT_NODE * p = from; p != NULL && error != NO_ERROR; p = p->next)
     {
       if ((p->info.spec.flag & PT_SPEC_FLAG_UPDATE) == 0)
@@ -20539,6 +20540,7 @@ pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE *
 
 	  /* skip if already in the assign-list */
 	  PT_NODE *att_name_node = NULL;
+
 	  while ((att_name_node = pt_get_next_assignment (&assign_helper)) != NULL)
 	    {
 	      if (!pt_str_compare (att_name_node->info.name.original, att->header.name, CASE_INSENSITIVE)
@@ -20568,8 +20570,8 @@ pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE *
 	  new_lhs_of_assign->info.name.spec_id = spec_id;
 
 	  PT_OP_TYPE op = pt_op_type_from_default_expr_type (att->on_update_default_expr);
-	  PT_NODE *expr = parser_make_expression (parser, op, NULL, NULL, NULL);
-	  if (expr == NULL)
+	  PT_NODE *new_rhs_of_assign = parser_make_expression (parser, op, NULL, NULL, NULL);
+	  if (new_rhs_of_assign == NULL)
 	    {
 	      if (new_lhs_of_assign != NULL)
 		{
@@ -20583,16 +20585,16 @@ pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE *
 	      return ER_FAILED;
 	    }
 
-	  PT_NODE *assign_expr = parser_make_expression (parser, PT_ASSIGN, new_lhs_of_assign, expr, NULL);
+	  PT_NODE *assign_expr = parser_make_expression (parser, PT_ASSIGN, new_lhs_of_assign, new_rhs_of_assign, NULL);
 	  if (assign_expr == NULL)
 	    {
 	      if (new_lhs_of_assign != NULL)
 		{
 		  parser_free_node (parser, new_lhs_of_assign);
 		}
-	      if (expr != NULL)
+	      if (new_rhs_of_assign != NULL)
 		{
-		  parser_free_node (parser, expr);
+		  parser_free_node (parser, new_rhs_of_assign);
 		}
 	      if (default_expr_attrs != NULL)
 		{
@@ -20618,6 +20620,7 @@ pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE *
 	  parser_append_node (default_expr_attrs, assigns);
 	}
     }
+
   return NO_ERROR;
 }
 

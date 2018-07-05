@@ -15694,8 +15694,8 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  if (statement->info.merge.insert.value_clauses)
 	    {
-	      err = pt_find_omitted_default_expr (parser, statement->info.merge.insert.attr_list, &default_expr_attrs,
-						  flat->info.name.db_object);
+	      err = pt_find_omitted_default_expr (parser, flat->info.name.db_object,
+						  statement->info.merge.insert.attr_list, &default_expr_attrs);
 	      if (err != NO_ERROR)
 		{
 		  statement->use_plan_cache = 0;
