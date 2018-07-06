@@ -75,8 +75,7 @@ LOCK tm_Tran_rep_read_lock = NULL_LOCK;	/* used in RR transaction locking to not
  * must be set before each transaction command.
  */
 LC_FETCH_VERSION_TYPE tm_Tran_read_fetch_instance_version = LC_FETCH_MVCC_VERSION;
-TM_TRAN_LATEST_QUERY_EXECUTION_TYPE tm_Tran_latest_query_execution_type =
-  TM_TRAN_NO_QUERY_OR_LATEST_QUERY_EXECUTED_NOT_ENDED;
+int tm_Tran_latest_query_status;
 
 /* Timeout(milli seconds) for queries.
  *
@@ -103,6 +102,8 @@ static DB_NAMELIST *user_savepoint_list = NULL;
 
 static int tran_add_savepoint (const char *savept_name);
 static void tran_free_list_upto_savepoint (const char *savept_name);
+
+static void tran_reset_latest_query_status (void);
 
 /*
  * tran_cache_tran_settings - Cache transaction settings
@@ -291,7 +292,7 @@ tran_commit (bool retain_lock)
       return error_code;
     }
 
-  if (TM_TRAN_IS_ENDED_LATEST_EXECUTED_QUERY ())
+  if (tran_was_latest_query_ended ())
     {
       /* Query ended with latest executed query. No need to notify server. */
       query_end_notify_server = false;
@@ -307,7 +308,7 @@ tran_commit (bool retain_lock)
   /* if the commit fails or not, we should clear the clients savepoint list */
   tran_free_savepoint_list ();
 
-  if (!TM_TRAN_IS_COMMITTED_LATEST_EXECUTED_QUERY ())
+  if (!tran_was_latest_query_committed ())
     {
       /* Forward the commit the transaction manager in the server */
       state = tran_server_commit (retain_lock);
@@ -356,17 +357,14 @@ tran_commit (bool retain_lock)
 	  break;
 	}
     }
-  else
+  else if (tran_is_reset_required () && log_does_allow_replication ())
     {
-      if (TM_TRAN_IS_COMMITTED_WITH_RESET_LATEST_EXECUTED_QUERY () != 0 && log_does_allow_replication ())
-	{
-	  /*
-	   * fail-back action
-	   * make the client to reconnect to the active server
-	   */
-	  db_Connect_status = DB_CONNECTION_STATUS_RESET;
-	  er_log_debug (ARG_FILE_LINE, "tran_server_commit: DB_CONNECTION_STATUS_RESET\n");
-	}
+      /*
+       * fail-back action
+       * make the client to reconnect to the active server
+       */
+      db_Connect_status = DB_CONNECTION_STATUS_RESET;
+      er_log_debug (ARG_FILE_LINE, "tran_server_commit: DB_CONNECTION_STATUS_RESET\n");
     }
 
   /* Increment snapshot version in work space */
@@ -386,7 +384,8 @@ tran_commit (bool retain_lock)
     }
 
   tm_Tran_rep_read_lock = NULL_LOCK;
-  tm_Tran_latest_query_execution_type = TM_TRAN_NO_QUERY_OR_LATEST_QUERY_EXECUTED_NOT_ENDED;
+
+  tran_reset_latest_query_status ();
 
   return error_code;
 }
@@ -436,7 +435,7 @@ tran_abort (void)
   tran_free_savepoint_list ();
 
   /* Clear any query cursor */
-  assert (!TM_TRAN_IS_COMMITTED_LATEST_EXECUTED_QUERY ());
+  assert (!tran_was_latest_query_committed ());
   db_clear_client_query_result (true, true);
 
   /* Forward the abort the transaction manager in the server */
@@ -487,7 +486,7 @@ tran_abort (void)
 
   tm_Tran_rep_read_lock = NULL_LOCK;
 
-  tm_Tran_latest_query_execution_type = TM_TRAN_NO_QUERY_OR_LATEST_QUERY_EXECUTED_NOT_ENDED;
+  tran_reset_latest_query_status ();
 
   return error_cod;
 }
@@ -567,7 +566,7 @@ tran_abort_only_client (bool is_server_down)
   db_clear_client_query_result (false, true);
 
   tm_Tran_rep_read_lock = NULL_LOCK;
-  tm_Tran_latest_query_execution_type = TM_TRAN_NO_QUERY_OR_LATEST_QUERY_EXECUTED_NOT_ENDED;
+  tran_reset_latest_query_status ();
 
   if (is_server_down == false)
     {
@@ -1354,41 +1353,72 @@ tran_get_check_interrupt (void)
   return tm_Tran_check_interrupt;
 }
 
-/*
-* tran_set_latest_query_execution_type : set latest transaction query execution type
-*     return: nothing
-*   end_query_result(in): end query result
-*   committed(in): true, if transaction was committed
-*   reset_on_commit(in): non zero, is reset needed
-*/
-void
-tran_set_latest_query_execution_type (int end_query_result, bool committed, int reset_on_commit)
+enum LATEST_QUERY_STATUS
 {
-  assert (!TM_TRAN_IS_COMMITTED_LATEST_EXECUTED_QUERY ());
+  // 000: default, none
+  // 100: ended, not committed
+  // 110: ended, committed
+  // 111: ended, committed, reset required
+  NONE = 0,
+  QUERY_ENDED = 0x100,
+  COMMITTED = 0x10,
+  RESET_REQUIRED = 0x1
+};
 
-  if (end_query_result == NO_ERROR)
+/*
+ * tran_set_latest_query_status : set latest transaction query execution status
+ *   return: nothing
+ *   end_query_result(in): end query result
+ *   committed(in): true, if transaction was committed
+ *   reset_on_commit(in): non zero, is reset needed
+ */
+void
+tran_set_latest_query_status (int end_query_result, bool committed, int reset_on_commit)
+{
+  assert (!tran_was_latest_query_committed ());
+
+  tran_reset_latest_query_status ();
+
+  if (end_query_result != NO_ERROR)
     {
-      /* Query already ended */
-      if (committed)
-	{
-	  /* Transaction successfully committed */
-	  if (reset_on_commit)
-	    {
-	      tm_Tran_latest_query_execution_type = TM_TRAN_LATEST_QUERY_EXECUTED_ENDED_COMMITED_WITH_RESET;
-	    }
-	  else
-	    {
-	      tm_Tran_latest_query_execution_type = TM_TRAN_LATEST_QUERY_EXECUTED_ENDED_COMMITED;
-	    }
-	}
-      else
-	{
-	  /* Transaction successfully committed */
-	  tm_Tran_latest_query_execution_type = TM_TRAN_LATEST_QUERY_EXECUTED_ENDED_NOT_COMMITED;
-	}
+      return;
     }
-  else
+
+  tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::QUERY_ENDED;
+
+  if (committed)
     {
-      assert (tm_Tran_latest_query_execution_type == TM_TRAN_NO_QUERY_OR_LATEST_QUERY_EXECUTED_NOT_ENDED);
+      assert (end_query_result == NO_ERROR);
+      tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::COMMITTED;
     }
+
+  if (reset_on_commit)
+    {
+      assert (end_query_result == NO_ERROR && committed);
+      tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::RESET_REQUIRED;
+    }
+}
+
+static void
+tran_reset_latest_query_status (void)
+{
+  tm_Tran_latest_query_status = LATEST_QUERY_STATUS::NONE;
+}
+
+bool
+tran_was_latest_query_ended (void)
+{
+  return tm_Tran_latest_query_status & LATEST_QUERY_STATUS::QUERY_ENDED;
+}
+
+bool
+tran_was_latest_query_committed (void)
+{
+  return tm_Tran_latest_query_status & LATEST_QUERY_STATUS::COMMITTED;
+}
+
+bool
+tran_is_reset_required (void)
+{
+  return tm_Tran_latest_query_status & LATEST_QUERY_STATUS::RESET_REQUIRED;
 }

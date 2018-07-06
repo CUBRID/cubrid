@@ -6528,7 +6528,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	      net_cleanup_client_queues ();
 	    }
 
-	  tran_set_latest_query_execution_type (end_query_result, committed, reset_on_commit);
+	  tran_set_latest_query_status (end_query_result, committed, reset_on_commit);
 	}
 
       if (replydata_listid && replydata_size_listid)

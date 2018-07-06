@@ -3361,7 +3361,7 @@ db_query_end (DB_QUERY_RESULT * result)
 {
   bool notify_server;
 
-  if (TM_TRAN_IS_ENDED_LATEST_EXECUTED_QUERY ())
+  if (tran_was_latest_query_ended ())
     {
       /* Query ended with latest executed query. No need to notify server. */
       notify_server = false;

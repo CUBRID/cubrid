@@ -1172,7 +1172,7 @@ pt_end_query (PARSER_CONTEXT * parser, QUERY_ID query_id_self)
 
   if (parser->query_id > 0)
     {
-      if (!TM_TRAN_IS_ENDED_LATEST_EXECUTED_QUERY () && er_errid () != ER_LK_UNILATERALLY_ABORTED)
+      if (!tran_was_latest_query_ended () && er_errid () != ER_LK_UNILATERALLY_ABORTED)
 	{
 	  qmgr_end_query (parser->query_id);
 	}

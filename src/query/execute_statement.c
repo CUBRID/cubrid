@@ -15668,7 +15668,7 @@ exit:
   if (list_id != NULL)
     {
       regu_free_listid (list_id);
-      if (upd_query_id != NULL_QUERY_ID && !TM_TRAN_IS_ENDED_LATEST_EXECUTED_QUERY ())
+      if (upd_query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
 	{
 	  qmgr_end_query (upd_query_id);
 	}
@@ -15679,7 +15679,7 @@ exit:
       if (ins_select_stmt->etc != NULL)
 	{
 	  regu_free_listid ((QFILE_LIST_ID *) ins_select_stmt->etc);
-	  if (ins_query_id != NULL_QUERY_ID && !TM_TRAN_IS_ENDED_LATEST_EXECUTED_QUERY ())
+	  if (ins_query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
 	    {
 	      qmgr_end_query (ins_query_id);
 	    }
@@ -16476,7 +16476,7 @@ exit:
       if (ins_select_stmt->etc != NULL)
 	{
 	  regu_free_listid ((QFILE_LIST_ID *) ins_select_stmt->etc);
-	  if (ins_query_id != NULL_QUERY_ID && !TM_TRAN_IS_ENDED_LATEST_EXECUTED_QUERY ())
+	  if (ins_query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
 	    {
 	      qmgr_end_query (ins_query_id);
 	    }
