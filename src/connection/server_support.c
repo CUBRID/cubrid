@@ -813,6 +813,10 @@ css_process_master_hostname ()
 
   assert (hostname_length > 0 && ha_Server_state == HA_SERVER_STATE_STANDBY);
 
+#if 0
+  /* TODO[arnia] deactivate for now this new replication
+   * code and reactivate it later, when merging with razvan
+   */
   //create slave replication channel and connect to hostname
   error = chn.connect (ha_Server_master_hostname, css_Master_port_id);
   if (error != NO_ERRORS)
@@ -820,6 +824,7 @@ css_process_master_hostname ()
       assert (false);
       return error;
     }
+#endif
 
   er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
 		ha_Server_master_hostname);
@@ -2721,6 +2726,10 @@ css_process_new_slave (SOCKET master_fd)
 
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
+#if 0
+  /* TODO[arnia] deactivate for now this new replication
+   * code and reactivate it later, when merging with razvan
+   */
   rc = chn.accept (new_fd);
   assert (rc == NO_ERRORS);
 
@@ -2728,6 +2737,7 @@ css_process_new_slave (SOCKET master_fd)
   cubreplication::master_senders_manager::add_stream_sender
     (new cubstream::transfer_sender (std::move (chn), cubreplication::master_senders_manager::get_stream ()));
   // *INDENT-ON*
+#endif
 }
 
 const char *
