@@ -163,12 +163,14 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
   ${COMMUNICATION_DIR}/communication_channel.cpp
+  ${COMMUNICATION_DIR}/communication_server_channel.cpp
   ${COMMUNICATION_DIR}/stream_transfer_receiver.cpp
   ${COMMUNICATION_DIR}/stream_transfer_sender.cpp
   )
 
 set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/communication_channel.hpp
+  ${COMMUNICATION_DIR}/communication_server_channel.hpp
   ${COMMUNICATION_DIR}/stream_transfer_receiver.hpp
   ${COMMUNICATION_DIR}/stream_transfer_sender.hpp
   )
@@ -179,6 +181,7 @@ set(MONITOR_SOURCES
   ${MONITOR_DIR}/monitor_statistic.cpp
   ${MONITOR_DIR}/monitor_transaction.cpp
 )
+
 set(MONITOR_HEADERS
   ${MONITOR_DIR}/monitor_collect.hpp
   ${MONITOR_DIR}/monitor_definition.hpp
@@ -186,6 +189,14 @@ set(MONITOR_HEADERS
   ${MONITOR_DIR}/monitor_statistic.hpp
   ${MONITOR_DIR}/monitor_transaction.hpp
 )
+
+set (REPLICATION_SOURCES
+  ${REPLICATION_DIR}/replication_master_senders_manager.cpp
+  )
+
+set (REPLICATION_HEADERS
+  ${REPLICATION_DIR}/replication_master_senders_manager.hpp
+  )
 
 set(QUERY_SOURCES
   ${QUERY_DIR}/arithmetic.c
@@ -299,6 +310,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${COMPAT_SOURCES}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
+  ${REPLICATION_SOURCES}
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
@@ -326,6 +338,7 @@ set (CUBRID_LIB_SOURCES
   ${COMPAT_SOURCES}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
+  ${REPLICATION_SOURCES}
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
@@ -340,11 +353,13 @@ set (CUBRID_LIB_SOURCES
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
   )
+
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
   ${COMMUNICATION_HEADERS}
   ${COMPAT_HEADERS}
   ${MONITOR_HEADERS}
+  ${REPLICATION_HEADERS}
   ${THREAD_HEADERS}
   ${STREAM_HEADERS}
   )

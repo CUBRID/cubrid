@@ -1491,7 +1491,8 @@ db_json_validate_json (const char *json_body)
 
 JSON_DOC *db_json_allocate_doc ()
 {
-  return new JSON_DOC ();
+  JSON_DOC *doc = new JSON_DOC();
+  return doc;
 }
 
 void db_json_delete_doc (JSON_DOC *&doc)
