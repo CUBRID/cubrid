@@ -6192,7 +6192,6 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
       return LK_NOTGRANTED_DUE_ERROR;
     }
 
-
   if (lock == NULL_LOCK)
     {
       return LK_GRANTED;
@@ -6243,6 +6242,15 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 
   if (OID_IS_ROOTOID (class_oid))
     {
+      if (lock == old_class_lock && lock == new_class_lock)
+	{
+	  // try to acquire the same class lock again.
+	  // Since we release a class lock only at EOT, we don't really need to keep updating lock counter.
+
+	  granted = LK_GRANTED;
+	  goto end;
+	}
+
       if (old_class_lock < new_class_lock)
 	{
 	  granted = lock_internal_perform_lock_object (thread_p, tran_index, class_oid, NULL, new_class_lock,
