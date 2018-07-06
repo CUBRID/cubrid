@@ -1858,12 +1858,39 @@ stmt_
 		{ $$ = $1; }
 	| execute_stmt
 		{ $$ = $1; }
-	| insert_or_replace_stmt
-		{ $$ = $1; }
-	| update_stmt
-		{ $$ = $1; }
-	| delete_stmt
-		{ $$ = $1; }
+	| opt_with_clause
+	  insert_or_replace_stmt
+		{{
+			PT_NODE *with_clause = $1;
+			PT_NODE *stmt = $2;
+			if (stmt && with_clause)
+			  {
+			    stmt->info.insert.with = with_clause;
+			  }
+			$$ = stmt;
+		DBG_PRINT}}
+	| opt_with_clause
+		update_stmt
+		{{
+			PT_NODE *with_clause = $1;
+			PT_NODE *stmt = $2;
+			if (stmt && with_clause)
+			  {
+			    stmt->info.update.with = with_clause;
+			  }
+			$$ = stmt;
+		DBG_PRINT}}
+	|	opt_with_clause
+		delete_stmt
+		{{
+			PT_NODE *with_clause = $1;
+			PT_NODE *stmt = $2;
+			if (stmt && with_clause)
+			  {
+			    stmt->info.delete_.with = with_clause;
+			  }
+			$$ = stmt;
+		DBG_PRINT}}
 	| show_stmt
 		{ $$ = $1; }		
 	| call_stmt

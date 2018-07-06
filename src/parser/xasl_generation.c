@@ -13036,7 +13036,7 @@ pt_to_fetch_as_scan_proc (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * joi
   if (!xasl)
     {
       PT_ERROR (parser, spec,
-		msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		msgcat_message (MS GCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY));
       return NULL;
     }
 
@@ -18786,7 +18786,7 @@ pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statemen
  */
 PT_NODE *
 pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * select_list, PT_NODE * from,
-		     PT_NODE * class_specs, PT_NODE * where, PT_NODE * using_index, PT_NODE * order_by,
+		     PT_NODE * with, PT_NODE * class_specs, PT_NODE * where, PT_NODE * using_index, PT_NODE * order_by,
 		     PT_NODE * orderby_for, int server_op, SCAN_OPERATION_TYPE scan_op_type)
 {
   PT_NODE *statement = NULL, *from_temp = NULL, *node = NULL;
@@ -18801,6 +18801,7 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
       PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_IS_UPD_DEL_QUERY);
 
       statement->info.query.q.select.list = parser_copy_tree_list (parser, select_list);
+      statement->info.query.with = parser_copy_tree_list (parser, with);
 
       if (scan_op_type == S_UPDATE)
 	{
@@ -19122,6 +19123,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *aptr_statement = NULL;
   PT_NODE *from;
   PT_NODE *where;
+  PT_NODE *with;
   PT_NODE *using_index;
   PT_NODE *class_specs;
   PT_NODE *cl_name_node;
@@ -19140,6 +19142,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   where = statement->info.delete_.search_cond;
   using_index = statement->info.delete_.using_index;
   class_specs = statement->info.delete_.class_specs;
+  with = statement->info.delete_.with;
 
   if (from && from->node_type == PT_SPEC && from->info.spec.range_var)
     {
@@ -19229,7 +19232,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       if (((aptr_statement =
-	    pt_to_upd_del_query (parser, NULL, select_list, from, class_specs, where, using_index, NULL, NULL, 1,
+	    pt_to_upd_del_query (parser, NULL, select_list, from, with, class_specs, where, using_index, NULL, NULL, 1,
 				 S_DELETE)) == NULL)
 	  || pt_copy_upddel_hints_to_select (parser, statement, aptr_statement) != NO_ERROR
 	  || ((aptr_statement = mq_translate (parser, aptr_statement)) == NULL))
@@ -19713,6 +19716,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
   int num_cond_reev_classes = 0;
   PT_NODE *from = NULL;
   PT_NODE *where = NULL;
+  PT_NODE *with = NULL;
   PT_NODE *using_index = NULL;
   PT_NODE *class_specs = NULL;
   int cl = 0, cls_idx = 0, num_vals = 0, num_consts = 0;
@@ -19750,6 +19754,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
   class_specs = statement->info.update.class_specs;
   order_by = statement->info.update.order_by;
   orderby_for = statement->info.update.orderby_for;
+  with = statement->info.update.with;
 
   /* flush all classes */
   p = from;
@@ -19820,7 +19825,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
     }
 
   aptr_statement =
-    pt_to_upd_del_query (parser, select_names, select_values, from, class_specs, where, using_index, order_by,
+    pt_to_upd_del_query (parser, select_names, select_values, from, with, class_specs, where, using_index, order_by,
 			 orderby_for, 1, S_UPDATE);
   /* restore assignment list here because we need to iterate through assignments later */
   pt_restore_assignment_links (statement->info.update.assignment, links, -1);

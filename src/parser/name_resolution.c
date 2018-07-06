@@ -2569,6 +2569,18 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
     case PT_UPDATE:
       scopestack.specs = node->info.update.spec;
+      spec_frame.next = bind_arg->spec_frames;
+      spec_frame.extra_specs = NULL;
+
+      /* break links to current scopes to bind_names in the WITH_CLAUSE */
+      bind_arg->scopes = NULL;
+      bind_arg->spec_frames = NULL;
+      pt_bind_names_in_with_clause (parser, node, bind_arg);
+
+      /* restore links to current scopes */
+      //bind_arg->scopes = &scopestack;
+      //bind_arg->spec_frames = &spec_frame;
+
       bind_arg->scopes = &scopestack;
       spec_frame.next = bind_arg->spec_frames;
       spec_frame.extra_specs = NULL;
@@ -8116,6 +8128,10 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
     case PT_INTERSECTION:
       with = node->info.query.with;
       break;
+    case PT_UPDATE:
+      with = node->info.update.with;
+      break;
+
 
     default:
       return node;
@@ -9545,9 +9561,21 @@ pt_bind_names_in_with_clause (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_N
   PT_NODE *with;
   PT_NODE *curr_cte;
 
-  assert (PT_IS_QUERY_NODE_TYPE (node->node_type));
+  //assert (PT_IS_QUERY_NODE_TYPE (node->node_type));
 
-  with = node->info.query.with;
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      with = node->info.query.with;
+      break;
+    case PT_UPDATE:
+      with = node->info.update.with;
+      break;
+    default:
+      assert (false);
+    }
+
   if (with == NULL)
     {
       /* nothing to do */

@@ -12953,6 +12953,7 @@ pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void 
   p->info.insert.odku_assignments = g (parser, p->info.insert.odku_assignments, arg);
   p->info.insert.odku_non_null_attrs = g (parser, p->info.insert.odku_non_null_attrs, arg);
   p->info.insert.non_null_attrs = g (parser, p->info.insert.non_null_attrs, arg);
+  p->info.insert.with = g (parser, p->info.insert.non_null_attrs, arg);
   return p;
 }
 
@@ -15716,6 +15717,7 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_update (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
+  p->info.update.with = g(parser, p->info.update.with, arg);
   p->info.update.spec = g (parser, p->info.update.spec, arg);
   p->info.update.assignment = g (parser, p->info.update.assignment, arg);
   p->info.update.search_cond = g (parser, p->info.update.search_cond, arg);
