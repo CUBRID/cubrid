@@ -5669,9 +5669,9 @@ tr_after (TR_STATE * state)
 }
 
 /*
-* tr_has_user_trigger() - Check whether has a trigger to execute at commit|rollback;
-*    return: true, if has triggers to execute, otherwise false
-*/
+ * tr_has_user_trigger() - Check whether has a trigger to execute at commit|rollback;
+ *    return: true, if has triggers to execute, otherwise false
+ */
 bool
 tr_has_user_trigger (void)
 {
