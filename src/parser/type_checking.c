@@ -12993,278 +12993,306 @@ namespace Func
   bool cmp_types_equivalent(const pt_arg_type& type, pt_type_enum type_enum)
   {
     assert(type.type != pt_arg_type::INDEX);
-    return type_enum==PT_TYPE_NULL || pt_are_equivalent_types(type, type_enum);//PT_TYPE_NULL is equivalent to any type
+    return type_enum == PT_TYPE_NULL || pt_are_equivalent_types(type, type_enum);
   }
 
-  bool cmp_types_castable(const pt_arg_type& type, pt_type_enum type_enum)//is possible to cast type_enum -> type?
+  bool cmp_types_castable(const pt_arg_type& type, pt_type_enum type_enum) //is possible to cast type_enum -> type?
   {
     assert(type.type != pt_arg_type::INDEX);
-    if(type_enum == PT_TYPE_NULL)
+    if (type_enum == PT_TYPE_NULL)
       {
         return true; //PT_TYPE_NULL is castable to any type
       }
     if (type.type == pt_arg_type::NORMAL)
       {
-        switch(type.val.type)
+        switch (type.val.type)
           {
-            case PT_TYPE_INTEGER:
-              return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE);
-            case PT_TYPE_BIGINT:
-              return (PT_IS_DISCRETE_NUMBER_TYPE(type_enum) || type_enum==PT_TYPE_MAYBE);
-            case PT_TYPE_VARCHAR:
-              return (PT_IS_SIMPLE_CHAR_STRING_TYPE(type_enum) || PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum) || PT_IS_BIT_STRING_TYPE(type_enum) || type_enum == PT_TYPE_ENUMERATION || type_enum == PT_TYPE_MAYBE || type_enum == PT_TYPE_NULL);//monetary should be here???
-            case PT_TYPE_VARNCHAR:
-              return (PT_IS_NATIONAL_CHAR_STRING_TYPE(type_enum) || PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum) || PT_IS_BIT_STRING_TYPE(type_enum) || type_enum == PT_TYPE_ENUMERATION || type_enum == PT_TYPE_MAYBE || type_enum == PT_TYPE_NULL);//monetary should be here???
-            default:
-              if (type.val.type == type_enum)
-                {
-                  return (type_enum != PT_TYPE_NONE);//false if both arguments are of type none; true if both have the same type
-                }
-              /* if def_type is a PT_TYPE_ENUM and the conditions above did not hold then the two types are not equivalent. */
-              return false;
+          case PT_TYPE_INTEGER:
+            return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE);
+          case PT_TYPE_BIGINT:
+            return (PT_IS_DISCRETE_NUMBER_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE);
+          case PT_TYPE_VARCHAR:
+            return (PT_IS_SIMPLE_CHAR_STRING_TYPE(type_enum) || PT_IS_NUMERIC_TYPE(type_enum) ||
+              PT_IS_DATE_TIME_TYPE(type_enum) || PT_IS_BIT_STRING_TYPE(type_enum) || type_enum == PT_TYPE_ENUMERATION ||
+              type_enum == PT_TYPE_MAYBE || type_enum == PT_TYPE_NULL); //monetary should be here???
+          case PT_TYPE_VARNCHAR:
+            return (PT_IS_NATIONAL_CHAR_STRING_TYPE(type_enum) || PT_IS_NUMERIC_TYPE(type_enum) ||
+              PT_IS_DATE_TIME_TYPE(type_enum) || PT_IS_BIT_STRING_TYPE(type_enum) || type_enum == PT_TYPE_ENUMERATION ||
+              type_enum == PT_TYPE_MAYBE || type_enum == PT_TYPE_NULL); //monetary should be here???
+          default:
+            if (type.val.type == type_enum)
+              {
+                return (type_enum !=
+                  PT_TYPE_NONE); //false if both arguments are of type none; true if both have the same type
+              }
+            /* if def_type is a PT_TYPE_ENUM and the conditions above did not hold then the two types are not equivalent. */
+            return false;
           }
       }
 
     //type.type == pt_arg_type::GENERIC
-    switch(type.val.generic_type)
+    switch (type.val.generic_type)
       {
-        case PT_GENERIC_TYPE_NUMBER:
-          return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || type_enum==PT_TYPE_JSON || type_enum == PT_TYPE_MAYBE);
-        case PT_GENERIC_TYPE_DISCRETE_NUMBER:
-          return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE);
+      case PT_GENERIC_TYPE_NUMBER:
+        return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || type_enum == PT_TYPE_JSON ||
+          type_enum == PT_TYPE_MAYBE);
+      case PT_GENERIC_TYPE_DISCRETE_NUMBER:
+        return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE);
 
-        case PT_GENERIC_TYPE_STRING:
-          return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum));
-        case PT_GENERIC_TYPE_CHAR:
-          return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE);
-        case PT_GENERIC_TYPE_NCHAR:
-          return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_NATIONAL_CHAR_STRING_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum));
-        case PT_GENERIC_TYPE_SCALAR:
-            return (type_enum == PT_TYPE_MAYBE);
+      case PT_GENERIC_TYPE_STRING:
+        return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || PT_IS_DATE_TIME_TYPE(type_enum));
+      case PT_GENERIC_TYPE_CHAR:
+        return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE(type_enum) ||
+          PT_IS_DATE_TIME_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE);
+      case PT_GENERIC_TYPE_NCHAR:
+        return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_NATIONAL_CHAR_STRING_TYPE(type_enum) ||
+          PT_IS_DATE_TIME_TYPE(type_enum));
+      case PT_GENERIC_TYPE_SCALAR:
+        return (type_enum == PT_TYPE_MAYBE);
 
-        default:
-          return false;
+      default:
+        return false;
       }
     //see where the error is found in EXPR for: select concat('char', n'nchar');
   }
 
   class Node
   {
-    private:
-      parser_context* m_parser;
-      parser_node* m_node;
+  private:
+    parser_context* m_parser;
+    parser_node* m_node;
 
-    public:
-      Node(parser_context* parser, parser_node* node)
-        : m_parser(parser)
-        , m_node(node)
-      {
-      }
+  public:
+    Node(parser_context* parser, parser_node* node)
+      : m_parser(parser)
+      , m_node(node)
+    {
+    }
 
-      parser_node* get_arg(size_t index)
-      {
-        for(auto arg=m_node->info.function.arg_list; arg; arg=arg->next, --index)
-          {
-            if(index == 0)
-              {
-                return arg;
-              }
-          }
-        return NULL;
-      }
-
-      //cast given argument to specified type and re-link
-      parser_node* cast(parser_node* prev, parser_node* arg, pt_type_enum type, int p, int s, parser_node* dt)
-      {
-        if(type == arg->type_enum) //no cast needed
-          {
-            return arg;
-          }
-        arg = pt_wrap_with_cast_op(m_parser, arg, type, p, s, dt);
-        if(arg == NULL)//memory allocation failed
-          {
-            return NULL;
-          }
-        if(prev)
-          {
-            prev->next = arg;
-          }
-        else
-          {
-            m_node->info.function.arg_list = arg;
-          }
-        return arg;
-      }
-
-      //preprocess current function node type for special cases
-      bool preprocess()
-      {
-        auto arg_list = m_node->info.function.arg_list;
-        switch(m_node->info.function.function_type)
-          {
-          case F_GENERIC:
-          case F_CLASS_OF://move it to the beginning of pt_eval_function_type() ... not without complicating the code
-            m_node->type_enum = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
-            return false;//no need to continue with generic code
-          case F_INSERT_SUBSTRING:
+    parser_node* get_arg(size_t index)
+    {
+      for (auto arg = m_node->info.function.arg_list; arg; arg = arg->next, --index)
+        {
+          if (index == 0)
             {
-              std::vector<parser_node*> args;//preallocate!?
-              int i = 0;
-              for(auto arg = m_node->info.function.arg_list; arg; arg = arg->next)
-                {
-                  args.push_back(arg);
-                }
-              if(args[0] && args[0]->type_enum == PT_TYPE_MAYBE && args[3] && args[3]->type_enum == PT_TYPE_MAYBE)
+              return arg;
+            }
+        }
+      return NULL;
+    }
+
+    //cast given argument to specified type and re-link
+    parser_node* cast(parser_node* prev, parser_node* arg, pt_type_enum type, int p, int s, parser_node* dt)
+    {
+      if (type == arg->type_enum) //no cast needed
+        {
+          return arg;
+        }
+      arg = pt_wrap_with_cast_op(m_parser, arg, type, p, s, dt);
+      if (arg == NULL) //memory allocation failed
+        {
+          return NULL;
+        }
+      if (prev)
+        {
+          prev->next = arg;
+        }
+      else
+        {
+          m_node->info.function.arg_list = arg;
+        }
+      return arg;
+    }
+
+    //preprocess current function node type for special cases
+    bool preprocess()
+    {
+      auto arg_list = m_node->info.function.arg_list;
+      switch (m_node->info.function.function_type)
+        {
+        case F_GENERIC:
+        case F_CLASS_OF: //move it to the beginning of pt_eval_function_type() ... not without complicating the code
+          m_node->type_enum = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
+          return false; //no need to continue with generic code
+        case F_INSERT_SUBSTRING:
+          {
+            std::vector<parser_node*> args; //preallocate!?
+            int i = 0;
+            for (auto arg = m_node->info.function.arg_list; arg; arg = arg->next)
+              {
+                args.push_back(arg);
+              }
+            if (args[0] && args[0]->type_enum == PT_TYPE_MAYBE && args[3] && args[3]->type_enum == PT_TYPE_MAYBE)
               {
                 args[0] = cast(NULL, args[0], PT_TYPE_VARCHAR, 0, 0, NULL);
                 args[3] = cast(args[2], args[3], PT_TYPE_VARCHAR, 0, 0, NULL);
               }
-              break;
-            }
-          case PT_GROUP_CONCAT://ToDo: try withut this!
-            {
-              auto arg1 = m_node->info.function.arg_list;
-              if(arg1 != NULL)
-                {
-                  auto arg2 = arg1->next;
-                  if(arg2 != NULL)
-                    {
-                      if((PT_IS_SIMPLE_CHAR_STRING_TYPE(arg1->type_enum) && PT_IS_NATIONAL_CHAR_STRING_TYPE(arg2->type_enum)) ||
-                         (PT_IS_SIMPLE_CHAR_STRING_TYPE(arg2->type_enum) && PT_IS_NATIONAL_CHAR_STRING_TYPE(arg1->type_enum)))
-                        {
-                          pt_cat_error(m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
-                            pt_show_function (PT_GROUP_CONCAT),
-                            pt_show_type_enum (arg1->type_enum), pt_show_type_enum (arg2->type_enum));
-                          m_node->type_enum = PT_TYPE_VARCHAR;
-                          return false;
-                        }
-                    }
-                }
-              break;
-            }
-          default:
-            ;
+            break;
           }
-          return true;
-      }
+        case PT_GROUP_CONCAT: //ToDo: try withut this!
+          {
+            auto arg1 = m_node->info.function.arg_list;
+            if (arg1 != NULL)
+              {
+                auto arg2 = arg1->next;
+                if (arg2 != NULL)
+                  {
+                    if ((PT_IS_SIMPLE_CHAR_STRING_TYPE(arg1->type_enum) &&
+                          PT_IS_NATIONAL_CHAR_STRING_TYPE(arg2->type_enum)) ||
+                      (PT_IS_SIMPLE_CHAR_STRING_TYPE(arg2->type_enum) &&
+                        PT_IS_NATIONAL_CHAR_STRING_TYPE(arg1->type_enum)))
+                      {
+                        pt_cat_error(m_parser,
+                          m_node,
+                          MSGCAT_SET_PARSER_SEMANTIC,
+                          MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
+                          pt_show_function(PT_GROUP_CONCAT),
+                          pt_show_type_enum(arg1->type_enum),
+                          pt_show_type_enum(arg2->type_enum));
+                        m_node->type_enum = PT_TYPE_VARCHAR;
+                        return false;
+                      }
+                  }
+              }
+            break;
+          }
+        default:;
+        }
+      return true;
+    }
 
     /*
     * get_signature () - get matching function signature
     */
     const func_signature* get_signature_OLD(const std::vector<func_signature>& signatures, string_buffer& sb)
     {
-        sb("matching equivalent:\n");
-        const func_signature* signature = get_signature(signatures, &cmp_types_equivalent, sb);
-        if(signature == NULL)
+      sb("matching equivalent:\n");
+      const func_signature* signature = get_signature(signatures, &cmp_types_equivalent, sb);
+      if (signature == NULL)
         {
-            sb("matching castable:\n");
-            signature = get_signature(signatures, &cmp_types_castable, sb);
+          sb("matching castable:\n");
+          signature = get_signature(signatures, &cmp_types_castable, sb);
         }
-        return signature;
+      return signature;
     }
 
     const char* get_types(const std::vector<func_signature>& signatures, int index, string_buffer& sb)
     {
-        for(auto& signature: signatures)
-          {
-            int i = index;
-            if(index < signature.fix.size())
-              {
-                str(signature.fix[i], sb);
-                sb(", ");
-              }
-            else
-              {
-                i -= signature.fix.size();
-                if(signature.rep.size() > 0)
-                  {
-                    i %= signature.rep.size();
-                    str(signature.rep[i], sb);
-                    sb(", ");
-                  }
-              }
-          }
-        return sb.get_buffer();
+      for (auto& signature: signatures)
+        {
+          int i = index;
+          if (index < signature.fix.size())
+            {
+              str(signature.fix[i], sb);
+              sb(", ");
+            }
+          else
+            {
+              i -= signature.fix.size();
+              if (signature.rep.size() > 0)
+                {
+                  i %= signature.rep.size();
+                  str(signature.rep[i], sb);
+                  sb(", ");
+                }
+            }
+        }
+      return sb.get_buffer();
     }
 
     const func_signature* get_signature(const std::vector<func_signature>& signatures, string_buffer& sb)
     {
-        if(pt_has_error(m_parser)){
-            //printf("ERR in get_sigature() IT SHOULDN'T BE HERE!!!\n");
-            return nullptr;
+      if (pt_has_error(m_parser))
+        {
+          //printf("ERR in get_sigature() IT SHOULDN'T BE HERE!!!\n");
+          return nullptr;
         }
-        pt_reset_error(m_parser);
-        const func_signature* signature = nullptr;
-        int sigIndex = 0;
-        for(auto& sig: signatures)
-          {
-            ++sigIndex;
-            parser_node* arg = m_node->info.function.arg_list;
-            bool matchEquivalent = true;
-            bool matchCastable = true;
-            int argIndex = 0;
+      pt_reset_error(m_parser);
+      const func_signature* signature = nullptr;
+      int sigIndex = 0;
+      for (auto& sig: signatures)
+        {
+          ++sigIndex;
+          parser_node* arg = m_node->info.function.arg_list;
+          bool matchEquivalent = true;
+          bool matchCastable = true;
+          int argIndex = 0;
 
-            //check fix part of the signature
-            for(auto& fix: sig.fix){
-                if(arg == NULL)
-                  {
-                    //printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
-                    break;
-                  }
-                ++argIndex;
-                auto t = ((fix.type==pt_arg_type::INDEX) ? sig.fix[fix.val.index] : fix);
-                matchEquivalent &= cmp_types_equivalent(t, arg->type_enum);
-                matchCastable &= cmp_types_castable(t, arg->type_enum);
-                //... accumulate error messages
-                if(!matchEquivalent && !matchCastable) //current arg doesn' match => current signature doesn't match
-                  {
-                    sb.clear();
-                    pt_cat_error(m_parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_INCOMPATIBLE_TYPE, str(arg->type_enum), get_types(signatures, argIndex-1, sb));
-                    break;
-                  }
-                arg = arg->next;
+          //check fix part of the signature
+          for (auto& fix: sig.fix)
+            {
+              if (arg == NULL)
+                {
+                  //printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
+                  break;
+                }
+              ++argIndex;
+              auto t = ((fix.type == pt_arg_type::INDEX) ? sig.fix[fix.val.index] : fix);
+              matchEquivalent &= cmp_types_equivalent(t, arg->type_enum);
+              matchCastable &= cmp_types_castable(t, arg->type_enum);
+              //... accumulate error messages
+              if (!matchEquivalent && !matchCastable) //current arg doesn' match => current signature doesn't match
+                {
+                  sb.clear();
+                  pt_cat_error(m_parser,
+                    arg,
+                    MSGCAT_SET_PARSER_SEMANTIC,
+                    MSGCAT_SEMANTIC_FUNCTYPECHECK_INCOMPATIBLE_TYPE,
+                    str(arg->type_enum),
+                    get_types(signatures, argIndex - 1, sb));
+                  break;
+                }
+              arg = arg->next;
             }
-            if((matchEquivalent || matchCastable) && ((arg!=NULL && sig.rep.size()==0) || (arg==NULL && sig.rep.size()!=0)))//number of arguments don't match
-              {
-                matchEquivalent = matchCastable = false;
-                pt_cat_error(m_parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_ARGS_COUNT);
-              }
-            if(!matchEquivalent && !matchCastable)
-              {
-                continue;
-              }
+          if ((matchEquivalent || matchCastable) &&
+            ((arg != NULL && sig.rep.size() == 0) ||
+              (arg == NULL && sig.rep.size() != 0))) //number of arguments don't match
+            {
+              matchEquivalent = matchCastable = false;
+              pt_cat_error(m_parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_ARGS_COUNT);
+            }
+          if (!matchEquivalent && !matchCastable)
+            {
+              continue;
+            }
 
-            //check repetitive args
-            int index = 0;
-            for(; arg; arg=arg->next, index=(index+1)%sig.rep.size())
-              {
-                ++argIndex;
-                auto& rep = sig.rep[index];
-                auto t = ((rep.type==pt_arg_type::INDEX) ? sig.rep[rep.val.index] : rep);
-                matchEquivalent &= cmp_types_equivalent(t, arg->type_enum);
-                matchCastable &= cmp_types_castable(t, arg->type_enum);
-                //... accumulate error messages
-                if(!matchEquivalent && !matchCastable) //current arg doesn' match => current signature doesn't match
-                  {
-                    sb.clear();
-                    pt_cat_error(m_parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_INCOMPATIBLE_TYPE, pt_show_type_enum(arg->type_enum), get_types(signatures, argIndex-1, sb));
-                    break;
-                  }
-              }
-            if(matchEquivalent)
-              {
-                signature = &sig;
-                break;//stop at 1st equivalent signature
-              }
-            if(matchCastable && signature==nullptr){//don't stop, continue because it is possible to find an equivalent signature later
-                signature = &sig;
+          //check repetitive args
+          int index = 0;
+          for (; arg; arg = arg->next, index = (index + 1) % sig.rep.size())
+            {
+              ++argIndex;
+              auto& rep = sig.rep[index];
+              auto t = ((rep.type == pt_arg_type::INDEX) ? sig.rep[rep.val.index] : rep);
+              matchEquivalent &= cmp_types_equivalent(t, arg->type_enum);
+              matchCastable &= cmp_types_castable(t, arg->type_enum);
+              //... accumulate error messages
+              if (!matchEquivalent && !matchCastable) //current arg doesn' match => current signature doesn't match
+                {
+                  sb.clear();
+                  pt_cat_error(m_parser,
+                    arg,
+                    MSGCAT_SET_PARSER_SEMANTIC,
+                    MSGCAT_SEMANTIC_FUNCTYPECHECK_INCOMPATIBLE_TYPE,
+                    pt_show_type_enum(arg->type_enum),
+                    get_types(signatures, argIndex - 1, sb));
+                  break;
+                }
             }
-          }
-        if(signature)
-          {
-            pt_reset_error(m_parser);//signature found => clear error messages accumulated during signature checking
-          }
-        return signature;
+          if (matchEquivalent)
+            {
+              signature = &sig;
+              break; //stop at 1st equivalent signature
+            }
+          if (matchCastable && signature == nullptr)
+            { //don't stop, continue because it is possible to find an equivalent signature later
+              signature = &sig;
+            }
+        }
+      if (signature)
+        {
+          pt_reset_error(m_parser); //signature found => clear error messages accumulated during signature checking
+        }
+      return signature;
     }
 
     //set return type for current node in current context
@@ -13275,24 +13303,24 @@ namespace Func
       if (m_node->type_enum == PT_TYPE_NONE || m_node->data_type == NULL) //return type
         {
           //set node->type_enum
-          switch(signature.ret.type)
+          switch (signature.ret.type)
             {
             case pt_arg_type::NORMAL:
-                m_node->type_enum = signature.ret.val.type;
-                break;
+              m_node->type_enum = signature.ret.val.type;
+              break;
             case pt_arg_type::GENERIC:
-                assert(false);
-                break;
+              assert(false);
+              break;
             case pt_arg_type::INDEX:
-                parser_node* node = get_arg(signature.ret.val.index);
-                if(node)
-                  {
-                    m_node->type_enum = node->type_enum;
-                  }
-                break;
+              parser_node* node = get_arg(signature.ret.val.index);
+              if (node)
+                {
+                  m_node->type_enum = node->type_enum;
+                }
+              break;
             }
           //set node->data_type
-          switch(m_node->info.function.function_type)
+          switch (m_node->info.function.function_type)
             {
             case PT_MAX:
             case PT_MIN:
@@ -13301,27 +13329,28 @@ namespace Func
             case PT_FIRST_VALUE:
             case PT_LAST_VALUE:
             case PT_NTH_VALUE:
-              m_node->data_type = (arg_list ? parser_copy_tree_list (m_parser, arg_list->data_type) : NULL);
+              m_node->data_type = (arg_list ? parser_copy_tree_list(m_parser, arg_list->data_type) : NULL);
               break;
             case PT_SUM:
-              m_node->data_type = (arg_list ? parser_copy_tree_list (m_parser, arg_list->data_type) : NULL);
-              if(arg_list && arg_list->type_enum == PT_TYPE_NUMERIC && m_node->data_type)
+              m_node->data_type = (arg_list ? parser_copy_tree_list(m_parser, arg_list->data_type) : NULL);
+              if (arg_list && arg_list->type_enum == PT_TYPE_NUMERIC && m_node->data_type)
                 {
                   m_node->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
                 }
               break;
             case F_ELT:
-              m_node->data_type = pt_make_prim_data_type (m_parser, m_node->type_enum);
+              m_node->data_type = pt_make_prim_data_type(m_parser, m_node->type_enum);
               if (m_node->data_type)
                 {
-                  m_node->data_type->info.data_type.precision = m_node->type_enum == (PT_TYPE_VARNCHAR ? DB_MAX_VARNCHAR_PRECISION : DB_MAX_VARCHAR_PRECISION);
+                  m_node->data_type->info.data_type.precision =
+                    m_node->type_enum == (PT_TYPE_VARNCHAR ? DB_MAX_VARNCHAR_PRECISION : DB_MAX_VARCHAR_PRECISION);
                   m_node->data_type->info.data_type.dec_precision = 0;
                 }
               break;
             case PT_GROUP_CONCAT:
             case F_INSERT_SUBSTRING:
-              m_node->data_type = pt_make_prim_data_type (m_parser, m_node->type_enum);
-              if(m_node->data_type)
+              m_node->data_type = pt_make_prim_data_type(m_parser, m_node->type_enum);
+              if (m_node->data_type)
                 {
                   m_node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
                 }
@@ -13329,12 +13358,12 @@ namespace Func
             case F_SET:
             case F_MULTISET:
             case F_SEQUENCE:
-              pt_add_type_to_set (m_parser, arg_list, &m_node->data_type);
+              pt_add_type_to_set(m_parser, arg_list, &m_node->data_type);
               break;
             case F_TABLE_SET:
             case F_TABLE_MULTISET:
             case F_TABLE_SEQUENCE:
-              pt_add_type_to_set (m_parser, pt_get_select_list (m_parser, arg_list), &m_node->data_type);
+              pt_add_type_to_set(m_parser, pt_get_select_list(m_parser, arg_list), &m_node->data_type);
               break;
             default:
               m_node->data_type = NULL;
@@ -13353,31 +13382,31 @@ namespace Func
       parser_node* arg = m_node->info.function.arg_list;
       parser_node* prev = NULL;
       int arg_pos = 0;
-      for(auto type: signature.fix) //check fixed part of the function signature
+      for (auto type: signature.fix) //check fixed part of the function signature
         {
-          if(arg == NULL)
+          if (arg == NULL)
             {
               //printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
               break;
             }
-#if 1//get index type from signature
+#if 1 //get index type from signature
           auto t = (type.type == pt_arg_type::INDEX ? signature.fix[type.val.index] : type);
-#else//get index type from actual argument
+#else //get index type from actual argument
           auto t = (type.type == pt_arg_type::INDEX ? get_arg(type.val.index)->type_enum : type);
 #endif
           pt_type_enum equivalent_type = pt_get_equivalent_type(t, arg->type_enum);
           arg = cast(prev, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
-          if(arg == NULL)
+          if (arg == NULL)
             {
-                printf("ERR\n");
-                return false;
+              printf("ERR\n");
+              return false;
             }
           ++arg_pos;
           prev = arg;
           arg = arg->next;
         }
 
-      if(arg!=NULL && signature.rep.size()==0)
+      if (arg != NULL && signature.rep.size() == 0)
         {
           printf("ERR invalid number or arguments\n");
           return false;
@@ -13385,18 +13414,18 @@ namespace Func
 
       //check repetitive part of the function signature
       int index = 0;
-      for(; arg; prev=arg, arg=arg->next, index=(index+1)%signature.rep.size(), ++arg_pos)
+      for (; arg; prev = arg, arg = arg->next, index = (index + 1) % signature.rep.size(), ++arg_pos)
         {
           auto& type = signature.rep[index];
-#if 1//get index type from signature
+#if 1 //get index type from signature
           auto t = (type.type == pt_arg_type::INDEX ? signature.fix[type.val.index] : type);
-#else//get index type from actual argument
+#else //get index type from actual argument
           auto t = (type.type == pt_arg_type::INDEX ? get_arg(type.val.index)->type_enum : type);
 #endif
           pt_type_enum equivalent_type = pt_get_equivalent_type(t, arg->type_enum);
           arg = cast(prev, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
         }
-      if(index)
+      if (index)
         {
           printf("ERR invalid number of arguments (index=%d)\n", index);
           return false;
@@ -13408,92 +13437,91 @@ namespace Func
     /*
     * get_signature () - get function signature using a function to compare types
     */
-    const func_signature* get_signature(
-        const std::vector<func_signature>& signatures,
-        bool(*cmp_types)(const pt_arg_type&, pt_type_enum),
-        string_buffer& sb
-    )
+    const func_signature* get_signature(const std::vector<func_signature>& signatures,
+      bool (*cmp_types)(const pt_arg_type&, pt_type_enum),
+      string_buffer& sb)
     {
-        int sigIndex = 0;
-        for(auto& sig: signatures)
-          {
-            ++sigIndex;
-            parser_node* arg = m_node->info.function.arg_list;
-            bool match = true;
+      int sigIndex = 0;
+      for (auto& sig: signatures)
+        {
+          ++sigIndex;
+          parser_node* arg = m_node->info.function.arg_list;
+          bool match = true;
 
-            //check fixed part of the function signature
-            int argIndex = 0;
-            for(auto& fix: sig.fix)
-              {
-                ++argIndex;
-                if(arg == NULL)
-                  {
-                    //printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
-                    break;
-                  }
-                if(fix.type == pt_arg_type::NORMAL || fix.type == pt_arg_type::GENERIC)
-                  {
-                    if(!cmp_types(fix, arg->type_enum))
-                      {
-                        match = false;//current arg doesn't match coresponding type => try next signature
-                        sb("  signature#%02d ", sigIndex);
-                        str(sig, sb);
-                        sb(": arg#%02d, formal arg type ", argIndex);
-                        str(fix, sb);
-                        sb(", actual arg type %s\n", str(arg->type_enum));
-                        break;
-                      }
-                  }
-                else if(fix.type == pt_arg_type::INDEX)
+          //check fixed part of the function signature
+          int argIndex = 0;
+          for (auto& fix: sig.fix)
+            {
+              ++argIndex;
+              if (arg == NULL)
+                {
+                  //printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
+                  break;
+                }
+              if (fix.type == pt_arg_type::NORMAL || fix.type == pt_arg_type::GENERIC)
+                {
+                  if (!cmp_types(fix, arg->type_enum))
                     {
-                    //do nothing!?
+                      match = false; //current arg doesn't match coresponding type => try next signature
+                      sb("  signature#%02d ", sigIndex);
+                      str(sig, sb);
+                      sb(": arg#%02d, formal arg type ", argIndex);
+                      str(fix, sb);
+                      sb(", actual arg type %s\n", str(arg->type_enum));
+                      break;
                     }
-                arg = arg->next;
-              }
-            if(match && ((arg!=NULL && sig.rep.size()==0) || (arg==NULL && sig.rep.size()!=0)))//number of arguments don't match
-              {
-                match = false;
-                sb("  signature#%02d ", sigIndex);
-                str(sig, sb);
-                sb(": number of arguments don't match\n", sigIndex);
-              }
-            if(!match)
-              {
-                continue;
-              }
-            //check repetitive args
-            int index = 0;
-            for(; arg; arg=arg->next, index=(index+1)%sig.rep.size())
-              {
-                ++argIndex;
-                auto& type = sig.rep[index];
-                if(type.type == pt_arg_type::NORMAL || type.type == pt_arg_type::GENERIC)
-                  {
-                    if(!cmp_types(type, arg->type_enum))
-                      {
-                        match = false;//current arg doesn't match coresponding type => try next signature
-                        sb("  signature#%02d ", sigIndex);
-                        str(sig, sb);
-                        sb(", arg#%02d, formal arg type ", argIndex);
-                        str(type, sb);
-                        sb(", actual arg type %s\n", str(arg->type_enum));
-                        break;
-                      }
-                  }
-                else if(type.type == pt_arg_type::INDEX)
-                  {
-                    //do nothing!?
-                  }
-              }
-            if(match && index==0)
-              {
-                return &sig;
-              }
-          }
-        return NULL;
+                }
+              else if (fix.type == pt_arg_type::INDEX)
+                {
+                  //do nothing!?
+                }
+              arg = arg->next;
+            }
+          if (match &&
+            ((arg != NULL && sig.rep.size() == 0) ||
+              (arg == NULL && sig.rep.size() != 0))) //number of arguments don't match
+            {
+              match = false;
+              sb("  signature#%02d ", sigIndex);
+              str(sig, sb);
+              sb(": number of arguments don't match\n", sigIndex);
+            }
+          if (!match)
+            {
+              continue;
+            }
+          //check repetitive args
+          int index = 0;
+          for (; arg; arg = arg->next, index = (index + 1) % sig.rep.size())
+            {
+              ++argIndex;
+              auto& type = sig.rep[index];
+              if (type.type == pt_arg_type::NORMAL || type.type == pt_arg_type::GENERIC)
+                {
+                  if (!cmp_types(type, arg->type_enum))
+                    {
+                      match = false; //current arg doesn't match coresponding type => try next signature
+                      sb("  signature#%02d ", sigIndex);
+                      str(sig, sb);
+                      sb(", arg#%02d, formal arg type ", argIndex);
+                      str(type, sb);
+                      sb(", actual arg type %s\n", str(arg->type_enum));
+                      break;
+                    }
+                }
+              else if (type.type == pt_arg_type::INDEX)
+                {
+                  //do nothing!?
+                }
+            }
+          if (match && index == 0)
+            {
+              return &sig;
+            }
+        }
+      return NULL;
     }
   }; //class Node
-
 } //namespace Func
 
 /*
@@ -13506,91 +13534,98 @@ namespace Func
 static PT_NODE* pt_eval_function_type(PARSER_CONTEXT *parser, PT_NODE *node)
 {
   FUNC_TYPE fcode = node->info.function.function_type;
-    switch(fcode)
+  switch (fcode)
     {
-      case PT_TOP_AGG_FUNC:
-      case F_MIDXKEY:
-      case F_TOP_TABLE_FUNC:
-      case F_VID:
-        assert(false);
-        pt_frob_error(parser, node, "ERR unsupported function code: %d", fcode);
-        return NULL;
-      default:;
+    case PT_TOP_AGG_FUNC:
+    case F_MIDXKEY:
+    case F_TOP_TABLE_FUNC:
+    case F_VID:
+      assert(false);
+      pt_frob_error(parser, node, "ERR unsupported function code: %d", fcode);
+      return NULL;
+    default:;
     }
 
-  PT_NODE *arg_list = node->info.function.arg_list;
-  if (!arg_list &&
-      fcode != PT_COUNT_STAR &&
-      fcode != PT_GROUPBY_NUM &&
-      fcode != PT_ROW_NUMBER &&
-      fcode != PT_RANK &&
-      fcode != PT_DENSE_RANK &&
-      fcode != PT_CUME_DIST &&
-      fcode != PT_PERCENT_RANK)
+  PT_NODE* arg_list = node->info.function.arg_list;
+  if (!arg_list && fcode != PT_COUNT_STAR && fcode != PT_GROUPBY_NUM && fcode != PT_ROW_NUMBER && fcode != PT_RANK &&
+    fcode != PT_DENSE_RANK && fcode != PT_CUME_DIST && fcode != PT_PERCENT_RANK)
     {
-      pt_cat_error(parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_NO_ARGS,
-          pt_short_print (parser, node));
+      pt_cat_error(
+        parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_NO_ARGS, pt_short_print(parser, node));
       return node;
     }
 
-  PT_NODE *prev = NULL;
-  PT_NODE *arg = NULL;
+  PT_NODE* prev = NULL;
+  PT_NODE* arg = NULL;
   /* to avoid "node->next" ambiguities, wrap any logical node within the arg list with a cast to integer. This way, the
    * CNF trees do not mix up with the arg list. */
   for (arg = arg_list; arg != NULL; prev = arg, arg = arg->next)
     {
       if (arg->type_enum == PT_TYPE_LOGICAL)
-	    {
-	      arg = pt_wrap_with_cast_op (parser, arg, PT_TYPE_INTEGER, 0, 0, NULL);
-	      if (arg == NULL)
-	        {
-	          /* the error message is set by pt_wrap_with_cast_op */
-	          node->type_enum = PT_TYPE_NONE;
-	          return node;
-	        }
-	      if (prev != NULL)
-	        {
-	          prev->next = arg;
-	        }
-	      else
-	        {
-	          node->info.function.arg_list = arg_list = arg;
-	        }
-	    }
+        {
+          arg = pt_wrap_with_cast_op(parser, arg, PT_TYPE_INTEGER, 0, 0, NULL);
+          if (arg == NULL)
+            {
+              /* the error message is set by pt_wrap_with_cast_op */
+              node->type_enum = PT_TYPE_NONE;
+              return node;
+            }
+          if (prev != NULL)
+            {
+              prev->next = arg;
+            }
+          else
+            {
+              node->info.function.arg_list = arg_list = arg;
+            }
+        }
     }
 
-  if (pt_list_has_logical_nodes (arg_list))
+  if (pt_list_has_logical_nodes(arg_list))
     {
-      pt_cat_error(parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON, pt_show_function(fcode), "boolean");
+      pt_cat_error(parser,
+        node,
+        MSGCAT_SET_PARSER_SEMANTIC,
+        MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+        pt_show_function(fcode),
+        "boolean");
       return node;
     }
 
   Func::Node funcNode(parser, node);
-  if(funcNode.preprocess())
+  if (funcNode.preprocess())
     {
-      if(node->type_enum == PT_TYPE_NONE || node->data_type == NULL)
+      if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL)
         {
-          PT_NODE *arg = arg_list;
+          PT_NODE* arg = arg_list;
           //printf("1: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
           auto func_sigs = func_signature::get_signatures(fcode);
           assert("ERR no function signature" && func_sigs != NULL);
-          if(!func_sigs)
+          if (!func_sigs)
             {
-              pt_cat_error(parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_NO_SIGNATURES, str(fcode)/*, parser_print_tree_list(parser, arg_list)*/);
+              pt_cat_error(parser,
+                node,
+                MSGCAT_SET_PARSER_SEMANTIC,
+                MSGCAT_SEMANTIC_FUNCTYPECHECK_NO_SIGNATURES,
+                str(fcode) /*, parser_print_tree_list(parser, arg_list)*/);
               return node;
-           }
+            }
           string_buffer sb;
           const func_signature* func_sig = funcNode.get_signature(*func_sigs, sb);
-          if(func_sig != NULL)
+          if (func_sig != NULL)
             {
               funcNode.apply_signature(*func_sig);
               funcNode.set_return_type(*func_sig);
             }
           else
             {
-              node->type_enum = PT_TYPE_NA;//to avoid entering here 2nd time
+              node->type_enum = PT_TYPE_NA; //to avoid entering here 2nd time
               //arg_type = PT_TYPE_NONE;//unused!?
-              pt_cat_error(parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_NO_SIGNATURE, str(fcode)/*, parser_print_tree_list(parser, arg_list)*/);
+              pt_cat_error(parser,
+                node,
+                MSGCAT_SET_PARSER_SEMANTIC,
+                MSGCAT_SEMANTIC_FUNCTYPECHECK_NO_SIGNATURE,
+                str(fcode) /*, parser_print_tree_list(parser, arg_list)*/);
             }
         }
     }
