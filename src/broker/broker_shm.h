@@ -114,7 +114,7 @@
 
 #define		APPL_NAME_LENGTH	128
 
-#define		JOB_QUEUE_MAX_SIZE	511
+#define		JOB_QUEUE_MAX_SIZE	2048
 
 #define MAX_CRYPT_STR_LENGTH            32
 
