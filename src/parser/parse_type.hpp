@@ -9,33 +9,37 @@ class string_buffer;
 enum pt_generic_type_enum
 {
   PT_GENERIC_TYPE_NONE,
-  PT_GENERIC_TYPE_STRING,           // any type of string
-  PT_GENERIC_TYPE_STRING_VARYING,   // VARCHAR or VARNCHAR
-  PT_GENERIC_TYPE_CHAR,             // VARCHAR or CHAR
-  PT_GENERIC_TYPE_NCHAR,            // VARNCHAR or NCHAR
-  PT_GENERIC_TYPE_BIT,              // BIT OR VARBIT
-  PT_GENERIC_TYPE_DISCRETE_NUMBER,  // SMALLINT, INTEGER, BIGINTEGER
-  PT_GENERIC_TYPE_NUMBER,           // any number type
-  PT_GENERIC_TYPE_DATE,             // date, datetime or timestamp
-  PT_GENERIC_TYPE_DATETIME,         // any date or time type
-  PT_GENERIC_TYPE_SEQUENCE,         // any type of sequence
-  PT_GENERIC_TYPE_LOB,              // BLOB or CLOB
-  PT_GENERIC_TYPE_QUERY,            // Sub query (for range operators)
-  PT_GENERIC_TYPE_PRIMITIVE,        // primitive types
-  PT_GENERIC_TYPE_ANY,              // any type
-  PT_GENERIC_TYPE_JSON_VAL,         // PT_TYPE_VARCHAR, PT_TYPE_VARCHAR, PT_TYPE_CHAR, PT_TYPE_NCHAR, PT_TYPE_NUMERIC, PT_TYPE_INTEGER, PT_TYPE_LOGICAL, PT_TYPE_DOUBLE, PT_TYPE_NUMERIC, PT_TYPE_JSON, PT_TYPE_MAYBE, PT_TYPE_NULL
-  PT_GENERIC_TYPE_JSON_DOC,         // PT_TYPE_VARCHAR, PT_TYPE_VARNCHAR, PT_TYPE_CHAR, PT_TYPE_NCHAR, PT_TYPE_JSON, PT_TYPE_MAYBE, PT_TYPE_NULL
-  PT_GENERIC_TYPE_JSON_PATH,        // PT_TYPE_VARCHAR, PT_TYPE_VARNCHAR, PT_TYPE_CHAR, PT_TYPE_NCHAR, PT_TYPE_BIT, PT_TYPE_VARBIT, PT_TYPE_MAYBE, PT_TYPE_NULL
-  PT_GENERIC_TYPE_SCALAR,           // any type but set
+  PT_GENERIC_TYPE_STRING, // any type of string
+  PT_GENERIC_TYPE_STRING_VARYING, // VARCHAR or VARNCHAR
+  PT_GENERIC_TYPE_CHAR, // VARCHAR or CHAR
+  PT_GENERIC_TYPE_NCHAR, // VARNCHAR or NCHAR
+  PT_GENERIC_TYPE_BIT, // BIT OR VARBIT
+  PT_GENERIC_TYPE_DISCRETE_NUMBER, // SMALLINT, INTEGER, BIGINTEGER
+  PT_GENERIC_TYPE_NUMBER, // any number type
+  PT_GENERIC_TYPE_DATE, // date, datetime or timestamp
+  PT_GENERIC_TYPE_DATETIME, // any date or time type
+  PT_GENERIC_TYPE_SEQUENCE, // any type of sequence
+  PT_GENERIC_TYPE_LOB, // BLOB or CLOB
+  PT_GENERIC_TYPE_QUERY, // Sub query (for range operators)
+  PT_GENERIC_TYPE_PRIMITIVE, // primitive types
+  PT_GENERIC_TYPE_ANY, // any type
+  PT_GENERIC_TYPE_JSON_VAL, // PT_TYPE_VARCHAR, PT_TYPE_VARCHAR, PT_TYPE_CHAR, PT_TYPE_NCHAR, PT_TYPE_NUMERIC, PT_TYPE_INTEGER, PT_TYPE_LOGICAL, PT_TYPE_DOUBLE, PT_TYPE_NUMERIC, PT_TYPE_JSON, PT_TYPE_MAYBE, PT_TYPE_NULL
+  PT_GENERIC_TYPE_JSON_DOC, // PT_TYPE_VARCHAR, PT_TYPE_VARNCHAR, PT_TYPE_CHAR, PT_TYPE_NCHAR, PT_TYPE_JSON, PT_TYPE_MAYBE, PT_TYPE_NULL
+  PT_GENERIC_TYPE_JSON_PATH, // PT_TYPE_VARCHAR, PT_TYPE_VARNCHAR, PT_TYPE_CHAR, PT_TYPE_NCHAR, PT_TYPE_BIT, PT_TYPE_VARBIT, PT_TYPE_MAYBE, PT_TYPE_NULL
+  PT_GENERIC_TYPE_SCALAR, // any type but set
 };
 
 const char* str(pt_generic_type_enum type);
 
-
 /* expression argument type */
 struct pt_arg_type
 {
-  enum {NORMAL, GENERIC, INDEX} type;
+  enum
+  {
+    NORMAL,
+    GENERIC,
+    INDEX
+  } type;
 
   union pt_arg_type_val
   {
@@ -45,31 +49,37 @@ struct pt_arg_type
 
     pt_arg_type_val(pt_type_enum type)
       : type(type)
-    {}
+    {
+    }
 
     pt_arg_type_val(pt_generic_type_enum enum_val)
       : generic_type(enum_val)
-    {}
+    {
+    }
 
     pt_arg_type_val(size_t index)
       : index(index)
-    {}
+    {
+    }
   } val;
 
-  pt_arg_type(pt_type_enum type=PT_TYPE_NONE)
+  pt_arg_type(pt_type_enum type = PT_TYPE_NONE)
     : type(NORMAL)
     , val(type)
-  {}
+  {
+  }
 
   pt_arg_type(pt_generic_type_enum generic_type)
     : type(GENERIC)
     , val(generic_type)
-  {}
+  {
+  }
 
   pt_arg_type(size_t index)
     : type(INDEX)
     , val(index)
-  {}
+  {
+  }
 
   void operator()(pt_type_enum normal_type)
   {
@@ -91,7 +101,6 @@ struct pt_arg_type
 };
 typedef pt_arg_type PT_ARG_TYPE;
 
-const char* str(pt_type_enum type);
 const char* str(const pt_arg_type& type, string_buffer& sb);
 
 #endif // _PARSER_TYPE_HPP_

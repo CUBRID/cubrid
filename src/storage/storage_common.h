@@ -1101,7 +1101,7 @@ typedef enum
   PT_CUME_DIST,
   PT_PERCENT_RANK,
   PT_PERCENTILE_CONT,
-  PT_PERCENTILE_DISC,
+  PT_PERCENTILE_DISC
 } FUNC_TYPE;
 
 /************************************************************************/

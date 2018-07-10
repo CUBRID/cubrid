@@ -13161,21 +13161,6 @@ namespace Func
       return true;
     }
 
-    /*
-    * get_signature () - get matching function signature
-    */
-    const func_signature* get_signature_OLD(const std::vector<func_signature>& signatures, string_buffer& sb)
-    {
-      sb("matching equivalent:\n");
-      const func_signature* signature = get_signature(signatures, &cmp_types_equivalent, sb);
-      if (signature == NULL)
-        {
-          sb("matching castable:\n");
-          signature = get_signature(signatures, &cmp_types_castable, sb);
-        }
-      return signature;
-    }
-
     const char* get_types(const std::vector<func_signature>& signatures, int index, string_buffer& sb)
     {
       for (auto& signature: signatures)
@@ -13200,6 +13185,9 @@ namespace Func
       return sb.get_buffer();
     }
 
+    /*
+    * get_signature () - get matching function signature
+    */
     const func_signature* get_signature(const std::vector<func_signature>& signatures, string_buffer& sb)
     {
       if (pt_has_error(m_parser))
@@ -13238,7 +13226,7 @@ namespace Func
                     arg,
                     MSGCAT_SET_PARSER_SEMANTIC,
                     MSGCAT_SEMANTIC_FUNCTYPECHECK_INCOMPATIBLE_TYPE,
-                    str(arg->type_enum),
+                    pt_show_type_enum(arg->type_enum),
                     get_types(signatures, argIndex - 1, sb));
                   break;
                 }
@@ -13431,95 +13419,6 @@ namespace Func
           return false;
         }
       return true;
-    }
-
-  private:
-    /*
-    * get_signature () - get function signature using a function to compare types
-    */
-    const func_signature* get_signature(const std::vector<func_signature>& signatures,
-      bool (*cmp_types)(const pt_arg_type&, pt_type_enum),
-      string_buffer& sb)
-    {
-      int sigIndex = 0;
-      for (auto& sig: signatures)
-        {
-          ++sigIndex;
-          parser_node* arg = m_node->info.function.arg_list;
-          bool match = true;
-
-          //check fixed part of the function signature
-          int argIndex = 0;
-          for (auto& fix: sig.fix)
-            {
-              ++argIndex;
-              if (arg == NULL)
-                {
-                  //printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
-                  break;
-                }
-              if (fix.type == pt_arg_type::NORMAL || fix.type == pt_arg_type::GENERIC)
-                {
-                  if (!cmp_types(fix, arg->type_enum))
-                    {
-                      match = false; //current arg doesn't match coresponding type => try next signature
-                      sb("  signature#%02d ", sigIndex);
-                      str(sig, sb);
-                      sb(": arg#%02d, formal arg type ", argIndex);
-                      str(fix, sb);
-                      sb(", actual arg type %s\n", str(arg->type_enum));
-                      break;
-                    }
-                }
-              else if (fix.type == pt_arg_type::INDEX)
-                {
-                  //do nothing!?
-                }
-              arg = arg->next;
-            }
-          if (match &&
-            ((arg != NULL && sig.rep.size() == 0) ||
-              (arg == NULL && sig.rep.size() != 0))) //number of arguments don't match
-            {
-              match = false;
-              sb("  signature#%02d ", sigIndex);
-              str(sig, sb);
-              sb(": number of arguments don't match\n", sigIndex);
-            }
-          if (!match)
-            {
-              continue;
-            }
-          //check repetitive args
-          int index = 0;
-          for (; arg; arg = arg->next, index = (index + 1) % sig.rep.size())
-            {
-              ++argIndex;
-              auto& type = sig.rep[index];
-              if (type.type == pt_arg_type::NORMAL || type.type == pt_arg_type::GENERIC)
-                {
-                  if (!cmp_types(type, arg->type_enum))
-                    {
-                      match = false; //current arg doesn't match coresponding type => try next signature
-                      sb("  signature#%02d ", sigIndex);
-                      str(sig, sb);
-                      sb(", arg#%02d, formal arg type ", argIndex);
-                      str(type, sb);
-                      sb(", actual arg type %s\n", str(arg->type_enum));
-                      break;
-                    }
-                }
-              else if (type.type == pt_arg_type::INDEX)
-                {
-                  //do nothing!?
-                }
-            }
-          if (match && index == 0)
-            {
-              return &sig;
-            }
-        }
-      return NULL;
     }
   }; //class Node
 } //namespace Func
