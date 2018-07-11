@@ -376,7 +376,7 @@ static int pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NOD
 static int pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * serial, OID ** oid_listp,
 					     int **lock_listp, int **tcard_listp, int *nump, int *sizep);
 static PT_NODE *parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static XASL_NODE *pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type);
+static XASL_NODE *pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * with, PROC_TYPE type);
 static int pt_to_constraint_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * spec, PT_NODE * non_null_attrs,
 				  PT_NODE * attr_list, int attr_offset);
 static XASL_NODE *pt_to_fetch_as_scan_proc (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * join_term,
@@ -17147,13 +17147,24 @@ error:
  * NOTE: This function should not be used in the INSERT ... VALUES case.
  */
 static XASL_NODE *
-pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
+pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * with, PROC_TYPE type)
 {
   XASL_NODE *aptr = NULL;
   XASL_NODE *xasl = NULL;
+  XASL_NODE *cte = NULL;
   REGU_VARIABLE_LIST regu_attributes;
 
+  // TODO: What is the meaning of this? How does UPDATE_PROC differ from BUILDLIST_PROC that uses CTE
   xasl = regu_xasl_node_alloc (type);
+
+  assert (with == NULL || with->node_type == PT_WITH_CLAUSE);
+
+  if (with != NULL)
+    {
+      assert (with->info.with_clause.cte_definition_list != NULL);
+      cte = (XASL_NODE *) with->info.with_clause.cte_definition_list->info.cte.xasl;
+    }
+
   if (xasl != NULL && node != NULL)
     {
       if (PT_IS_QUERY_NODE_TYPE (node->node_type))
@@ -17189,9 +17200,18 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
 		  namelist = pt_get_select_list (parser, node);
 		}
 
+	      if (cte != NULL)
+		{
+		  xasl->aptr_list = cte;
+		  cte->next = aptr;
+		}
+	      else
+		{
+		  xasl->aptr_list = aptr;
+		}
 	      aptr->next = NULL;
-	      xasl->aptr_list = aptr;
 
+	      // TODO: What do these ceremonies do?
 	      xasl->val_list = pt_make_val_list (parser, namelist);
 	      if (xasl->val_list != NULL)
 		{
@@ -17514,7 +17534,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (value_clauses->info.node_list.list_type == PT_IS_SUBQUERY)
     {
-      xasl = pt_make_aptr_parent_node (parser, value_clauses->info.node_list.list, INSERT_PROC);
+      xasl = pt_make_aptr_parent_node (parser, value_clauses->info.node_list.list, NULL, INSERT_PROC);
     }
   else
     {
@@ -19323,7 +19343,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto error_return;
 	}
 
-      xasl = pt_make_aptr_parent_node (parser, aptr_statement, DELETE_PROC);
+      xasl = pt_make_aptr_parent_node (parser, aptr_statement, NULL, DELETE_PROC);
       if (xasl == NULL)
 	{
 	  goto error_return;
@@ -19948,7 +19968,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
       goto cleanup;
     }
 
-  xasl = pt_make_aptr_parent_node (parser, aptr_statement, UPDATE_PROC);
+  xasl = pt_make_aptr_parent_node (parser, aptr_statement, with, UPDATE_PROC);
   if (xasl == NULL || xasl->aptr_list == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -24313,7 +24333,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
       goto cleanup;
     }
 
-  xasl = pt_make_aptr_parent_node (parser, aptr_statement, UPDATE_PROC);
+  xasl = pt_make_aptr_parent_node (parser, aptr_statement, NULL, UPDATE_PROC);
   if (xasl == NULL || xasl->aptr_list == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -24802,7 +24822,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   num_default_expr = pt_length_of_list (default_expr_attrs);
   num_vals = pt_length_of_select_list (pt_get_select_list (parser, aptr_statement), EXCLUDE_HIDDEN_COLUMNS);
 
-  xasl = pt_make_aptr_parent_node (parser, aptr_statement, INSERT_PROC);
+  xasl = pt_make_aptr_parent_node (parser, aptr_statement, NULL, INSERT_PROC);
   if (xasl == NULL || xasl->aptr_list == NULL)
     {
       assert (er_errid () != NO_ERROR);

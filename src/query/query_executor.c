@@ -13322,24 +13322,28 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
   thread_inc_recursion_depth (thread_p);
 
   on_trace = thread_is_on_trace (thread_p);
-  if (on_trace)
+  for (XASL_NODE * crt = xasl; crt != NULL && error == NO_ERROR; crt = crt->next)
     {
-      tsc_getticks (&start_tick);
+      error = qexec_execute_mainblock_internal (thread_p, crt, xasl_state, p_class_instance_lock_info);
 
-      old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
-      old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
-    }
+      // TOOD: can these be shared?
+      if (on_trace)
+	{
+	  tsc_getticks (&start_tick);
 
-  error = qexec_execute_mainblock_internal (thread_p, xasl, xasl_state, p_class_instance_lock_info);
+	  old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
+	  old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+	}
 
-  if (on_trace)
-    {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      TSC_ADD_TIMEVAL (xasl->xasl_stats.elapsed_time, tv_diff);
+      if (on_trace)
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  TSC_ADD_TIMEVAL (crt->xasl_stats.elapsed_time, tv_diff);
 
-      xasl->xasl_stats.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
-      xasl->xasl_stats.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+	  crt->xasl_stats.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
+	  crt->xasl_stats.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+	}
     }
 
   thread_dec_recursion_depth (thread_p);
