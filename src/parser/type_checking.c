@@ -20437,32 +20437,20 @@ end:
 PT_NODE *
 pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * sc_info_ptr)
 {
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { tree, NULL, 0, 0, 0, false, false };
 
   if (pt_has_error (parser))
     {
       return NULL;
     }
-
-  if (sc_info_ptr)
+  if (sc_info_ptr == NULL)
     {
-      /* do type checking */
-      tree = parser_walk_tree (parser, tree, pt_eval_type_pre, sc_info_ptr, pt_eval_type, sc_info_ptr);
-
-      /* do constant folding */
-      tree = parser_walk_tree (parser, tree, NULL, NULL, pt_fold_constants, sc_info_ptr);
+      sc_info_ptr = &sc_info;
     }
-  else
-    {
-      sc_info.top_node = tree;
-      sc_info.donot_fold = false;
-      /* do type checking */
-      tree = parser_walk_tree (parser, tree, pt_eval_type_pre, &sc_info, pt_eval_type, &sc_info);
-
-      /* do constant folding */
-      tree = parser_walk_tree (parser, tree, NULL, NULL, pt_fold_constants, &sc_info);
-    }
-
+  /* do type checking */
+  tree = parser_walk_tree (parser, tree, pt_eval_type_pre, sc_info_ptr, pt_eval_type, sc_info_ptr);
+  /* do constant folding */
+  tree = parser_walk_tree (parser, tree, NULL, NULL, pt_fold_constants, sc_info_ptr);
   if (pt_has_error (parser))
     {
       tree = NULL;
