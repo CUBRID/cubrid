@@ -34,12 +34,13 @@ option (UNIT_TEST_THREAD "Unit testing: thread module")
 option (UNIT_TEST_REPLICATION "Unit testing: replication")
 option (UNIT_TEST_PACKING "Unit testing: packing")
 option (UNIT_TEST_STREAM "Unit testing: stream")
-option (UNIT_TEST_COMM_CHN "Unit testing: communication channel module")
+moption (UNIT_TEST_COMM_CHN "Unit testing: communication channel module")
 option (UNIT_TEST_TRANS_CHN "Unit testing: transfer channel module")
 option (UNIT_TEST_DDL_CL "Unit testing: ddl proxy client module")
 option (UNIT_TEST_REPLICATION "Unit testing: replication channels module")
 option (UNIT_TEST_RESOURCE_TRACKER "Unit testing: resource tracker")
 option (UNIT_TEST_MONITOR "Unit testing: monitor")
+option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
 
 
 message("  unit_tests/...")
@@ -118,3 +119,11 @@ if (UNIT_TESTS OR UNIT_TEST_REPLICATION)
   message("    replication")
   add_subdirectory(replication)
 endif(UNIT_TESTS OR UNIT_TEST_REPLICATION)
+
+#[[
+TODO CBRD-21654 disable until loader lexer & grammar will be moved completely to server
+if (UNIT_TESTS OR UNIT_TEST_LOADDB)
+  message("    loaddb")
+  add_subdirectory(loaddb)
+endif(UNIT_TESTS OR UNIT_TEST_LOADDB)
+]]

@@ -16,11 +16,7 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-message(STATUS "Flex loader outputs: ${FLEX_loader_lexer_OUTPUTS}")
-
 set(EXECUTABLE_SOURCES
-  ${BISON_loader_grammar_OUTPUTS}
-  ${FLEX_loader_lexer_OUTPUTS}
   ${EXECUTABLES_DIR}/csql.c
   ${EXECUTABLES_DIR}/csql_session.c
   ${EXECUTABLES_DIR}/csql_result.c
@@ -339,6 +335,12 @@ set(SESSION_SOURCES
   ${SESSION_DIR}/session_sr.c
   )
 
+set(LOADER_SOURCES
+  ${BISON_loader_grammar_OUTPUT_SOURCE}
+  ${FLEX_loader_lexer_OUTPUTS}
+  ${LOADDB_DIR}/driver.cpp
+  )
+
 if(UNIX)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/tcp.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/dynamic_load.c)
@@ -411,15 +413,14 @@ SET_SOURCE_FILES_PROPERTIES(
   ${ES_SOURCES}
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
+  ${LOADER_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
 SET_SOURCE_FILES_PROPERTIES(
   ${BASE_DIR}/md5.c
   ${CSQL_GRAMMAR_OUTPUT}
-  ${LOADER_GRAMMAR_OUTPUT}
   ${CSQL_LEXER_OUTPUT}
-  ${LOADER_LEXER_OUTPUT}
   ${ESQL_GRAMMAR_OUTPUT}
   ${ESQL_LEXER_OUTPUT}
   ${COMPAT_SOURCES_C}
@@ -451,6 +452,7 @@ add_library(cubridsa SHARED
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
   ${COMPAT_SOURCES_C}
+  ${LOADER_SOURCES}
   )
 set_target_properties(cubridsa PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
@@ -495,6 +497,7 @@ target_external_dependencies(cubridsa
   )
 target_include_directories(cubridsa PRIVATE
   ${CMAKE_SOURCE_DIR}/src/heaplayers/util  # this looks ugly
+  ${FLEX_INCLUDE_DIRS}
   ${JAVA_INC}
   )
 target_link_libraries(cubridsa LINK_PRIVATE

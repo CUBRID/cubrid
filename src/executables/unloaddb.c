@@ -46,6 +46,7 @@ const char *output_dirname = NULL;
 char *input_filename = NULL;
 FILE *output_file = NULL;
 TEXT_OUTPUT object_output = { NULL, NULL, 0, 0, NULL };
+
 TEXT_OUTPUT *obj_out = &object_output;
 int page_size = 4096;
 int cached_pages = 100;
@@ -274,8 +275,8 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 
   if (!status && (do_schema || !do_objects))
     {
-      /* do authorization as well in extractschema() */
-      if (extractschema (exec_name, 1, order))
+      /* do authorization as well in extract_schema() */
+      if (extract_schema (exec_name, 1, order))
 	{
 	  status = 1;
 	}
@@ -284,7 +285,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   AU_SAVE_AND_ENABLE (au_save);
   if (!status && (do_objects || !do_schema))
     {
-      if (extractobjects (exec_name))
+      if (extract_objects (exec_name))
 	{
 	  status = 1;
 	}

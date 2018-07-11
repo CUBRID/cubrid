@@ -7163,7 +7163,6 @@ sprm_server_get_force_parameters (THREAD_ENTRY * thread_p, unsigned int rid, cha
   int area_size;
   char *area = NULL, *ptr = NULL;
 
-
   change_values = xsysprm_get_force_server_parameters ();
   if (change_values == NULL)
     {

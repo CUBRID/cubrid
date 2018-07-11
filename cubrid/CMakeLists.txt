@@ -401,6 +401,7 @@ if(UNIX)
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)
+
 add_dependencies(cubrid ${EP_TARGETS})
 
 if(AT_LEAST_ONE_UNIT_TEST)

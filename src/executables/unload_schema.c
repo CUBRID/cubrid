@@ -801,7 +801,7 @@ err:
 }
 
 /*
- * extractschema - exports schema to file
+ * extract_schema - exports schema to file
  *    return: 0 if successful, error count otherwise
  *    exec_name(in): utility name
  *    do_auth(in): if set do authorization as well
@@ -809,7 +809,7 @@ err:
  *    Always output the entire schema.
  */
 int
-extractschema (const char *exec_name, int do_auth, EMIT_STORAGE_ORDER storage_order)
+extract_schema (const char *exec_name, int do_auth, EMIT_STORAGE_ORDER storage_order)
 {
   char output_filename[PATH_MAX * 2];
   DB_OBJLIST *classes = NULL;
