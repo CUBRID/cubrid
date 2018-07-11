@@ -8975,8 +8975,12 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  PT_NODE **links = NULL;
 	  int no_vals = 0, no_consts = 0;
 
-	  PT_NODE *assigns = statement->info.update.assignment;
-	  PT_NODE *from = statement->info.update.spec;
+	  // TODO: Solve client updates. They seem scary!
+	  assert (statement->info.update.with == NULL);
+
+	  err =
+	    pt_get_assignment_lists (parser, &select_names, &select_values, &const_names, &const_values, &no_vals,
+				     &no_consts, statement->info.update.assignment, &links);
 
 	  err = pt_append_omitted_on_update_expr_assignments (parser, assigns, from);
 	  if (err != NO_ERROR)

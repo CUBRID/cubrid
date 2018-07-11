@@ -13036,7 +13036,7 @@ pt_to_fetch_as_scan_proc (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * joi
   if (!xasl)
     {
       PT_ERROR (parser, spec,
-		msgcat_message (MS GCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY));
       return NULL;
     }
 
@@ -18797,11 +18797,31 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
   statement = parser_new_node (parser, PT_SELECT);
   if (statement != NULL)
     {
+      ///* TODO: take this outside of here*/
+      // Do the ceremonies with with clause
+      if (xasl_Supp_info.query_list)
+	{
+	  parser_free_tree (parser, xasl_Supp_info.query_list);
+	}
+      /* add dummy node at the head of list */
+      xasl_Supp_info.query_list = parser_new_node (parser, PT_SELECT);
+      xasl_Supp_info.query_list->info.query.xasl = NULL;
+
+      /* XASL cache related information */
+      // is this safe?
+      pt_init_xasl_supp_info ();
+
+      with =
+	parser_walk_tree (parser, with, parser_generate_xasl_pre, NULL, parser_generate_xasl_post, &xasl_Supp_info);
+
+      parser_free_tree (parser, xasl_Supp_info.query_list);
+      xasl_Supp_info.query_list = NULL;
+      // finished with ceremonies
+
       /* this is an internally built query */
       PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_IS_UPD_DEL_QUERY);
 
       statement->info.query.q.select.list = parser_copy_tree_list (parser, select_list);
-      statement->info.query.with = parser_copy_tree_list (parser, with);
 
       if (scan_op_type == S_UPDATE)
 	{
