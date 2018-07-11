@@ -4138,7 +4138,7 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 	    {
 	      /* this is likely the first restart after database copy */
 	      assert (vacuum_Data.get_last_blockid () == VACUUM_NULL_LOG_BLOCKID);
-	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY, "%s",
 			     "vacuum_data_load_and_recover: last blockid remains null");
 	    }
 	}
