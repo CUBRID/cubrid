@@ -182,12 +182,6 @@ extern bool No_oid_hint;
 	  strncasecmp ((class_name), "glo_name", MAX(strlen(class_name), 8)) == 0  || \
 	  strncasecmp ((class_name), "glo_holder", MAX(strlen(class_name), 10)) == 0)
 
-#define FREE_STRING(s) \
-do { \
-  if ((s)->need_free_val) free_and_init ((s)->val); \
-  if ((s)->need_free_self) free_and_init ((s)); \
-} while (0)
-
 typedef int (*LDR_SETTER) (LDR_CONTEXT *, const char *, int, SM_ATTRIBUTE *);
 typedef int (*LDR_ELEM) (LDR_CONTEXT *, const char *, int, DB_VALUE *);
 
@@ -6278,7 +6272,7 @@ ldr_process_constants (LDR_CONSTANT * cons)
 	    LDR_STRING *str = (LDR_STRING *) c->val;
 
 	    (*ldr_act) (ldr_Current_context, str->val, str->size, (LDR_TYPE) c->type);
-	    FREE_STRING (str);
+	    ldr_string_free (&str);
 	  }
 	  break;
 
@@ -6306,7 +6300,7 @@ ldr_process_constants (LDR_CONSTANT * cons)
 	      {
 		free_and_init (full_mon_str_p);
 	      }
-	    FREE_STRING (str);
+	    ldr_string_free (&str);
 	    free_and_init (mon);
 	  }
 	  break;
@@ -6321,7 +6315,7 @@ ldr_process_constants (LDR_CONSTANT * cons)
 	    LDR_STRING *str = (LDR_STRING *) c->val;
 
 	    (*ldr_act) (ldr_Current_context, str->val, strlen (str->val), (LDR_TYPE) c->type);
-	    FREE_STRING (str);
+	    ldr_string_free (&str);
 	  }
 	  break;
 
@@ -6402,17 +6396,17 @@ ldr_process_object_ref (LDR_OBJECT_REF * ref, int type)
 
   if (ref->class_id)
     {
-      FREE_STRING (ref->class_id);
+      ldr_string_free (&(ref->class_id));
     }
 
   if (ref->class_name)
     {
-      FREE_STRING (ref->class_name);
+      ldr_string_free (&(ref->class_name));
     }
 
   if (ref->instance_number)
     {
-      FREE_STRING (ref->instance_number);
+      ldr_string_free (&(ref->instance_number));
     }
 
   free_and_init (ref);
@@ -6509,4 +6503,29 @@ ldr_json_db_json (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE 
 
 error_exit:
   return err;
+}
+
+void
+ldr_string_free (LDR_STRING ** str)
+{
+  if (str == NULL)
+    {
+      return;
+    }
+
+  LDR_STRING *s = *str;
+  if (s == NULL)
+    {
+      return;
+    }
+
+  if (s->need_free_val)
+    {
+      free_and_init (s->val);
+    }
+  if (s->need_free_self)
+    {
+      free_and_init (s);
+      *str = NULL;
+    }
 }

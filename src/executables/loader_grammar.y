@@ -259,8 +259,8 @@ id_command :
     ldr_act_start_id (ldr_Current_context, $2->val);
     ldr_act_set_id (ldr_Current_context, atoi ($3->val));
 
-    driver_.get_semantic_helper ().free_ldr_string (&$2);
-    driver_.get_semantic_helper ().free_ldr_string (&$3);
+    ldr_string_free (&$2);
+    ldr_string_free (&$3);
   }
   ;
 
@@ -303,20 +303,20 @@ class_command :
 	for (args = cmd_spec->ctor_spec->arg_list; args; args = save)
 	  {
 	    save = args->next;
-	    driver_.get_semantic_helper ().free_ldr_string (&args);
+	    ldr_string_free (&args);
 	  }
 
-	driver_.get_semantic_helper ().free_ldr_string (&(cmd_spec->ctor_spec->idname));
+	ldr_string_free (&(cmd_spec->ctor_spec->idname));
 	free_and_init (cmd_spec->ctor_spec);
       }
 
     for (attr = cmd_spec->attr_list; attr; attr = save)
       {
 	save = attr->next;
-	driver_.get_semantic_helper ().free_ldr_string (&attr);
+	ldr_string_free (&attr);
       }
 
-    driver_.get_semantic_helper ().free_ldr_string (&class_name);
+    ldr_string_free (&class_name);
     free_and_init (cmd_spec);
   }
   ;

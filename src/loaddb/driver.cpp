@@ -30,18 +30,6 @@
 #include "message_catalog.h"
 #include "utility.h"
 
-#define FREE_STRING(s)          \
-do {                            \
-  if ((s)->need_free_val)       \
-    {                           \
-      free_and_init ((s)->val); \
-    }                           \
-  if ((s)->need_free_self)      \
-    {                           \
-      free_and_init ((s));      \
-    }                           \
-} while (0)
-
 namespace cubload
 {
 
@@ -222,7 +210,7 @@ namespace cubload
 
     if (!is_utf8_valid (str))
       {
-	FREE_STRING (str);
+	ldr_string_free (&str);
 	return NULL;
       }
 
@@ -262,7 +250,7 @@ namespace cubload
 
     if (!is_utf8_valid (str))
       {
-	FREE_STRING (str);
+	ldr_string_free (&str);
 	return NULL;
       }
 
@@ -348,12 +336,6 @@ namespace cubload
     m_copy_buf_pool_idx = 0;
     m_qstr_buf_pool_idx = 0;
     m_constant_pool_idx = 0;
-  }
-
-  void
-  driver::semantic_helper::free_ldr_string (string_t **string)
-  {
-    FREE_STRING (*string);
   }
 
   bool

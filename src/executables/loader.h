@@ -245,4 +245,7 @@ extern bool ldr_is_ignore_class (const char *classname, size_t size);
 /* log functions */
 extern void print_log_msg (int verbose, const char *fmt, ...);
 
+/* free memory functions */
+extern void ldr_string_free (LDR_STRING ** str);
+
 #endif /* _LOADER_H_ */

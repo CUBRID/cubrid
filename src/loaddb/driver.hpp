@@ -161,7 +161,6 @@ namespace cubload
 	  constant_t *make_monetary_constant (int currency_type, string_t *amount);
 
 	  void reset_pool_indexes ();
-	  void free_ldr_string (string_t **string);
 	  bool in_instance_line ();
 	  void set_in_instance_line (bool in_instance_line);
 
