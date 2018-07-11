@@ -1274,9 +1274,6 @@ net_server_start (const char *server_name)
       goto end;
     }
 
-  er_init_access_log ();
-  event_log_init (server_name);
-
   net_server_init ();
   css_initialize_server_interfaces (net_server_request, net_server_conn_down);
 

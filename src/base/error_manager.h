@@ -182,7 +182,6 @@ extern "C"
   extern const char *er_get_msglog_filename (void);
   extern int er_init (const char *msglog_filename, int exit_ask);
   extern bool er_is_initialized (void);
-  extern int er_init_access_log (void);
   extern void er_set_print_property (int print_console);
   extern void er_final (ER_FINAL_CODE do_global_final);
   extern void er_clear (void);
@@ -194,6 +193,9 @@ extern "C"
   typedef void (*er_log_handler_t) (unsigned int);
   extern er_log_handler_t er_register_log_handler (er_log_handler_t f);
 
+#if !defined (WINDOWS) && defined (SERVER_MODE)
+  extern void er_file_create_link_to_current_log_file (const char *er_file_path, const char *suffix);
+#endif				/* !WINDOWS && SERVER_MODE */
 
   extern int er_errid (void);
   extern int er_errid_if_has_error (void);
