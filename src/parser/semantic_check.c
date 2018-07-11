@@ -10743,23 +10743,21 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
       pt_check_kill (parser, node);
       break;
 
-    case PT_ALTER:
     case PT_ALTER_SERIAL:
     case PT_ALTER_TRIGGER:
     case PT_ALTER_USER:
-    case PT_CREATE_ENTITY:
     case PT_CREATE_SERIAL:
     case PT_CREATE_TRIGGER:
-    case PT_CREATE_USER:
     case PT_DROP_SERIAL:
     case PT_DROP_TRIGGER:
     case PT_DROP_USER:
     case PT_RENAME:
     case PT_RENAME_TRIGGER:
     case PT_UPDATE_STATS:
-      switch (node->node_type)
-	{
-	case PT_ALTER:
+      break;
+
+
+    case PT_ALTER:
 	  pt_check_alter (parser, node);
 
 	  if (node->info.alter.code == PT_ADD_ATTR_MTHD || node->info.alter.code == PT_ADD_INDEX_CLAUSE)
@@ -10820,17 +10818,12 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	    }
 	  break;
 
-	case PT_CREATE_ENTITY:
-	  pt_check_create_entity (parser, node);
-	  break;
+    case PT_CREATE_ENTITY:
+      pt_check_create_entity (parser, node);
+      break;
 
-	case PT_CREATE_USER:
-	  pt_check_create_user (parser, node);
-	  break;
-
-	default:
-	  break;
-	}
+    case PT_CREATE_USER:
+      pt_check_create_user (parser, node);
       break;
 
     default:
