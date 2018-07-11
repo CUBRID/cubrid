@@ -3987,6 +3987,25 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	  goto end;
 	}
 
+      data_default->info.data_default.default_value = default_value = pt_eval_const(parser, default_value, NULL);
+      if (default_value == NULL || pt_has_error(parser))
+        {
+          printf("ERR\n");
+          goto end;
+        }
+
+      node_ptr = NULL;
+      parser_walk_tree(parser, default_value, pt_find_aggregate_function, &node_ptr, NULL, NULL);
+      if (node_ptr != NULL)
+        {
+          PT_ERRORmf(parser,
+              node_ptr,
+              MSGCAT_SET_PARSER_SEMANTIC,
+              MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
+              pt_show_function(node_ptr->info.function.function_type));
+          goto end;
+        }
+
       result = pt_semantic_type (parser, data_default, NULL);
       if (result != NULL)
 	{
@@ -4041,14 +4060,6 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	    }
 	}
 
-      node_ptr = NULL;
-      (void) parser_walk_tree (parser, default_value, pt_find_aggregate_function, &node_ptr, NULL, NULL);
-      if (node_ptr != NULL)
-	{
-	  PT_ERRORmf (parser, node_ptr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
-		      pt_show_function (node_ptr->info.function.function_type));
-	  goto end;
-	}
     end:
       data_default->next = save_next;
       prev = data_default;
@@ -10756,67 +10767,66 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
     case PT_UPDATE_STATS:
       break;
 
-
     case PT_ALTER:
-	  pt_check_alter (parser, node);
+      pt_check_alter (parser, node);
 
-	  if (node->info.alter.code == PT_ADD_ATTR_MTHD || node->info.alter.code == PT_ADD_INDEX_CLAUSE)
-	    {
-	      if (parser->host_var_count)
-		{
-		  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_HOSTVAR_IN_DDL);
-		  break;
-		}
-	    }
+      if (node->info.alter.code == PT_ADD_ATTR_MTHD || node->info.alter.code == PT_ADD_INDEX_CLAUSE)
+        {
+          if (parser->host_var_count)
+            {
+              PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_HOSTVAR_IN_DDL);
+              break;
+            }
+        }
 
-	  if (node->info.alter.code == PT_ADD_INDEX_CLAUSE)
-	    {
-	      /* apply typechecking on ALTER TABLE ADD INDEX statements, to check the expression in the WHERE clause of 
+      if (node->info.alter.code == PT_ADD_INDEX_CLAUSE)
+        {
+          /* apply typechecking on ALTER TABLE ADD INDEX statements, to check the expression in the WHERE clause of 
 	       * a partial index */
-	      PT_NODE *p = node->info.alter.create_index;
-	      assert (p != NULL);
+          PT_NODE *p = node->info.alter.create_index;
+          assert (p != NULL);
 
-	      while (p)
-		{
-		  sc_info_ptr->system_class = false;
-		  p = pt_resolve_names (parser, p, sc_info_ptr);
-		  if (p && !pt_has_error (parser))
-		    {
-		      pt_check_create_index (parser, p);
-		    }
+          while (p)
+            {
+              sc_info_ptr->system_class = false;
+              p = pt_resolve_names (parser, p, sc_info_ptr);
+              if (p && !pt_has_error (parser))
+                {
+                  pt_check_create_index (parser, p);
+                }
 
-		  if (!pt_has_error (parser))
-		    {
-		      p = pt_semantic_type (parser, p, info);
-		    }
+              if (!pt_has_error (parser))
+                {
+                  p = pt_semantic_type (parser, p, info);
+                }
 
-		  if (p && !pt_has_error (parser))
-		    {
-		      p = parser_walk_tree (parser, p, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
+              if (p && !pt_has_error (parser))
+                {
+                  p = parser_walk_tree (parser, p, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
 
-		      if (p && !pt_has_error (parser))
-			{
-			  /* This must be done before CNF since we are adding disjuncts to the "IS NULL" expression. */
-			  p = parser_walk_tree (parser, p, pt_expand_isnull_preds, p, NULL, NULL);
-			}
-		    }
+                  if (p && !pt_has_error (parser))
+                    {
+                      /* This must be done before CNF since we are adding disjuncts to the "IS NULL" expression. */
+                      p = parser_walk_tree (parser, p, pt_expand_isnull_preds, p, NULL, NULL);
+                    }
+                }
 
-		  if (p != NULL && !pt_has_error (parser) && p->info.index.function_expr != NULL
-		      && !pt_is_function_index_expr (parser, p->info.index.function_expr->info.sort_spec.expr, true))
-		    {
-		      break;
-		    }
-		  if (p && !pt_has_error (parser))
-		    {
-		      p = p->next;
-		    }
-		  else
-		    {
-		      break;
-		    }
-		}
-	    }
-	  break;
+              if (p != NULL && !pt_has_error (parser) && p->info.index.function_expr != NULL
+                  && !pt_is_function_index_expr (parser, p->info.index.function_expr->info.sort_spec.expr, true))
+                {
+                  break;
+                }
+              if (p && !pt_has_error (parser))
+                {
+                  p = p->next;
+                }
+              else
+                {
+                  break;
+                }
+            }
+        }
+      break;
 
     case PT_CREATE_ENTITY:
       pt_check_create_entity (parser, node);

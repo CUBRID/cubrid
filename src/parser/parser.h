@@ -145,6 +145,7 @@ extern "C"
 
   extern PT_NODE *pt_compile (PARSER_CONTEXT * parser, PT_NODE * volatile statement);
 
+  extern PT_NODE *pt_eval_const (PARSER_CONTEXT* parser, PT_NODE* tree, SEMANTIC_CHK_INFO* sc_info); //implemented in type_checking.c
   extern PT_NODE *pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * sc_info);
 
   extern void pt_report_to_ersys (const PARSER_CONTEXT * parser, const PT_ERROR_TYPE error_type);

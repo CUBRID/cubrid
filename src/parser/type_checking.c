@@ -20226,6 +20226,18 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
     func->type_enum = PT_TYPE_INTEGER;
   }
 
+  if (func->info.function.function_type == PT_AVG)
+    {
+      parser_node* arg_list = func->info.function.arg_list;
+      if (pt_is_const(arg_list) && arg_list->next == NULL)
+        {
+          //AVG(constant) -> constant
+          func->info.function.arg_list = NULL;;
+          parser_free_tree (parser, func);
+          return arg_list;
+        }
+    }
+
   /* only functions wrapped with expressions are supported */
   if (!pt_is_expr_wrapped_function (parser, func))
     {
@@ -20423,6 +20435,26 @@ end:
     }
 
   return error;
+}
+
+PT_NODE* pt_eval_const(PARSER_CONTEXT* parser, PT_NODE* node, SEMANTIC_CHK_INFO* sc_info_ptr)
+{
+  SEMANTIC_CHK_INFO sc_info = {node, NULL, 0, 0, 0, false, false};
+  if (pt_has_error(parser))
+    {
+      return NULL;
+    }
+  if (sc_info_ptr == NULL)
+    {
+      sc_info_ptr = &sc_info;
+    }
+  //walk tree and do constant folding
+  node = parser_walk_tree(parser, node, NULL, NULL, pt_fold_constants, sc_info_ptr);
+  if (pt_has_error(parser))
+    {
+      node = NULL;
+    }
+  return node;
 }
 
 /*
