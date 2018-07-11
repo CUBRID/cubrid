@@ -20507,7 +20507,7 @@ pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE *
 {
   int error = NO_ERROR;
 
-  for (PT_NODE * p = from; p != NULL && error != NO_ERROR; p = p->next)
+  for (PT_NODE * p = from; p != NULL; p = p->next)
     {
       if ((p->info.spec.flag & PT_SPEC_FLAG_UPDATE) == 0)
 	{
