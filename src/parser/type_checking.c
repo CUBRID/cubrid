@@ -20439,26 +20439,6 @@ end:
   return error;
 }
 
-PT_NODE* pt_eval_const(PARSER_CONTEXT* parser, PT_NODE* node, SEMANTIC_CHK_INFO* sc_info_ptr)
-{
-  SEMANTIC_CHK_INFO sc_info = {node, NULL, 0, 0, 0, false, false};
-  if (pt_has_error(parser))
-    {
-      return NULL;
-    }
-  if (sc_info_ptr == NULL)
-    {
-      sc_info_ptr = &sc_info;
-    }
-  //walk tree and do constant folding
-  node = parser_walk_tree(parser, node, NULL, NULL, pt_fold_constants, sc_info_ptr);
-  if (pt_has_error(parser))
-    {
-      node = NULL;
-    }
-  return node;
-}
-
 /*
  * pt_semantic_type () - sets data types for all expressions in a parse tree
  * 			 and evaluates constant sub expressions
