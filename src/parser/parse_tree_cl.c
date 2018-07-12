@@ -8703,6 +8703,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_delete (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
+  p->info.delete_.with = g (parser, p->info.delete_.with, arg);
   p->info.delete_.target_classes = g (parser, p->info.delete_.target_classes, arg);
   p->info.delete_.spec = g (parser, p->info.delete_.spec, arg);
   p->info.delete_.search_cond = g (parser, p->info.delete_.search_cond, arg);
@@ -12943,6 +12944,7 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
+  p->info.insert.with = g (parser, p->info.insert.with, arg);
   p->info.insert.spec = g (parser, p->info.insert.spec, arg);
   p->info.insert.attr_list = g (parser, p->info.insert.attr_list, arg);
   p->info.insert.value_clauses = g (parser, p->info.insert.value_clauses, arg);
@@ -12953,7 +12955,6 @@ pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void 
   p->info.insert.odku_assignments = g (parser, p->info.insert.odku_assignments, arg);
   p->info.insert.odku_non_null_attrs = g (parser, p->info.insert.odku_non_null_attrs, arg);
   p->info.insert.non_null_attrs = g (parser, p->info.insert.non_null_attrs, arg);
-  p->info.insert.with = g (parser, p->info.insert.non_null_attrs, arg);
   return p;
 }
 
@@ -15717,7 +15718,7 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_update (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
-  p->info.update.with = g(parser, p->info.update.with, arg);
+  p->info.update.with = g (parser, p->info.update.with, arg);
   p->info.update.spec = g (parser, p->info.update.spec, arg);
   p->info.update.assignment = g (parser, p->info.update.assignment, arg);
   p->info.update.search_cond = g (parser, p->info.update.search_cond, arg);

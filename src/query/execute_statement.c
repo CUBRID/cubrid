@@ -9337,6 +9337,7 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p, PT_NODE 
   int ret = NO_ERROR;
 
   assert (parser->query_id == NULL_QUERY_ID);
+  assert (delete_stmt->info.delete_.with == NULL);
 
   statement = pt_to_upd_del_query (parser, NULL, NULL, delete_stmt->info.delete_.spec, delete_stmt->info.delete_.with, delete_stmt->info.delete_.class_specs, delete_stmt->info.delete_.search_cond, delete_stmt->info.delete_.using_index, NULL, NULL, 0	/* not 
 																																 * server 
@@ -10230,6 +10231,8 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 
 	  PT_NODE *select_statement;
 	  PT_DELETE_INFO *delete_info;
+
+	  assert (delete_info->with == NULL);
 
 	  delete_info = &statement->info.delete_;
 	  select_statement =
@@ -13252,6 +13255,7 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *values = NULL;
   PT_NODE *attr_list;
   PT_NODE *update = NULL;
+  PT_NODE *with = NULL;
   int save_au;
 
   if (statement == NULL || statement->node_type != PT_INSERT || statement->info.insert.spec == NULL
@@ -13273,6 +13277,9 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   statement->etc = NULL;
   class_ = statement->info.insert.spec->info.spec.flat_entity_list;
   values = statement->info.insert.value_clauses;
+  with = statement->info.insert.with;
+
+  xasl_with_insert (parser, with);
 
   error = do_insert_checks (parser, statement, &class_, &update, values);
   if (error != NO_ERROR)

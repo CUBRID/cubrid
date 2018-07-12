@@ -135,6 +135,7 @@ extern PT_NODE *pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_n
 				     PT_NODE * from, PT_NODE * with, PT_NODE * class_specs, PT_NODE * where,
 				     PT_NODE * using_index, PT_NODE * order_by, PT_NODE * orderby_for, int server_op,
 				     SCAN_OPERATION_TYPE scan_op_type);
+extern void xasl_with_insert (PARSER_CONTEXT * parser, PT_NODE * with);
 extern XASL_NODE *pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * node);
 extern PRED_EXPR_WITH_CONTEXT *pt_to_pred_with_context (PARSER_CONTEXT * parser, PT_NODE * filter_pred, PT_NODE * spec);
 extern XASL_NODE *pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);

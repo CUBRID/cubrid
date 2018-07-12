@@ -17455,6 +17455,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *value_clauses = NULL, *query = NULL, *val_list = NULL;
   PT_NODE *attr = NULL, *attrs = NULL;
   PT_NODE *non_null_attrs = NULL, *default_expr_attrs = NULL;
+  PT_NODE *with = NULL;
   MOBJ class_;
   OID *class_oid = NULL;
   DB_OBJECT *class_obj = NULL;
@@ -17479,6 +17480,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   attrs = statement->info.insert.attr_list;
 
   class_obj = statement->info.insert.spec->info.spec.flat_entity_list->info.name.db_object;
+  with = statement->info.insert.with;
 
   class_ = locator_create_heap_if_needed (class_obj, sm_is_reuse_oid_class (class_obj));
   if (class_ == NULL)
@@ -17534,7 +17536,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (value_clauses->info.node_list.list_type == PT_IS_SUBQUERY)
     {
-      xasl = pt_make_aptr_parent_node (parser, value_clauses->info.node_list.list, NULL, INSERT_PROC);
+      xasl = pt_make_aptr_parent_node (parser, value_clauses->info.node_list.list, with, INSERT_PROC);
     }
   else
     {
@@ -18782,6 +18784,28 @@ pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statemen
     }
 }
 
+void
+xasl_with_insert (PARSER_CONTEXT * parser, PT_NODE * with)
+{
+
+  // Do the ceremonies with with clause
+  PT_NODE *old = xasl_Supp_info.query_list;
+
+  /* add dummy node at the head of list */
+  xasl_Supp_info.query_list = parser_new_node (parser, PT_SELECT);
+  xasl_Supp_info.query_list->info.query.xasl = NULL;
+
+  /* XASL cache related information */
+  // is this safe?
+  pt_init_xasl_supp_info ();
+
+  parser_walk_tree (parser, with, parser_generate_xasl_pre, NULL, parser_generate_xasl_post, &xasl_Supp_info);
+
+  // This seems to cause a segfault. Why?
+  parser_free_tree (parser, xasl_Supp_info.query_list);
+  xasl_Supp_info.query_list = old;
+}
+
 /*
  * pt_to_upd_del_query () - Creates a query based on the given select list,
  * 	from list, and where clause
@@ -18821,6 +18845,7 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
       // Do the ceremonies with with clause
       if (xasl_Supp_info.query_list)
 	{
+	  // TODO: maybe should keep this ?
 	  parser_free_tree (parser, xasl_Supp_info.query_list);
 	}
       /* add dummy node at the head of list */
@@ -19343,7 +19368,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto error_return;
 	}
 
-      xasl = pt_make_aptr_parent_node (parser, aptr_statement, NULL, DELETE_PROC);
+      xasl = pt_make_aptr_parent_node (parser, aptr_statement, with, DELETE_PROC);
       if (xasl == NULL)
 	{
 	  goto error_return;
