@@ -20226,6 +20226,7 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
     func->type_enum = PT_TYPE_INTEGER;
   }
 
+#if 0
   if (func->info.function.function_type == PT_AVG)
     {
       parser_node* arg_list = func->info.function.arg_list;
@@ -20237,6 +20238,7 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
           return arg_list;
         }
     }
+#endif
 
   /* only functions wrapped with expressions are supported */
   if (!pt_is_expr_wrapped_function (parser, func))
