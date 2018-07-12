@@ -614,7 +614,7 @@ er_set_access_log_filename (void)
   char tmp[PATH_MAX];
   std::size_t len, suffix_len;
 
-  if (er_Msglog_filename != NULL)
+  if (er_Msglog_filename == NULL)
     {
       er_Accesslog_filename = NULL;
       return;
