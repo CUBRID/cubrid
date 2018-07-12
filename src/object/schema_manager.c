@@ -13341,6 +13341,8 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type, const char *co
 	      const int *asc_desc, const int *attrs_prefix_length, SM_PREDICATE_INFO * filter_index,
 	      SM_FUNCTION_INFO * function_index, const char *comment)
 {
+// TODO: leave it for reference. Remove it when we complete the task.
+#if 0
   int error = NO_ERROR;
   SM_CLASS *class_;
   BTID index;
@@ -13766,6 +13768,7 @@ severe_error:
   (void) tran_unilaterally_abort ();
 
   return error;
+#endif
 }
 
 /*
@@ -14407,47 +14410,85 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
     {
     case DB_CONSTRAINT_INDEX:
     case DB_CONSTRAINT_REVERSE_INDEX:
-      error =
-	sm_add_index (classop, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length, filter_index,
-		      function_index, comment);
-      break;
-
     case DB_CONSTRAINT_UNIQUE:
     case DB_CONSTRAINT_REVERSE_UNIQUE:
     case DB_CONSTRAINT_PRIMARY_KEY:
-      def = smt_edit_class_mop (classop, AU_ALTER);
-      if (def == NULL)
+      // 1. preparation phase
+
+      // TODO: lock mode for preparation phase. SIX allows reads, while SCH_M does not. SCH_M might be safer.
+      // Please notice that creating a secondary index acquired SIX. We may have a regression until completes the task.
+      // 
+      // TODO: provide a lock mode to smt_ interface?
+      // Alternative is smt_edit_class_mop_for_online_schema_change. This will demote class lock after preparation.
+
+      // TODO: introduce a flag to SM_CLASS_CONSTRAINT. We also need one for class representation.
+
+      DB_AUTH auth;
+
+      if (constraint_type == DB_CONSTRAINT_INDEX || constraint_type == DB_CONSTRAINT_REVERSE_INDEX)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
+	  auth = AU_INDEX;
 	}
       else
 	{
-	  error =
-	    smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes, NULL,
-				filter_index, function_index, comment);
-	  if (error == NO_ERROR)
-	    {
-	      error = sm_update_class (def, &newmop);
-	    }
-
-	  if (error == NO_ERROR)
-	    {
-	      error = sm_update_statistics (newmop, STATS_WITH_SAMPLING);
-	    }
-	  else
-	    {
-	      smt_quit (def);
-	    }
+	  auth = AU_ALTER;
 	}
+
+      def = smt_edit_class_mop (classop, auth);
+      if (def == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+
+      // TODO: Please imagine:
+      // if (is_online)
+      //   cons->status = INDEX_BUILD_IN_PROGRESS;
+      error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes, NULL,
+				  filter_index, function_index, comment);
+      if (error != NO_ERROR)
+	{
+	  smt_quit (def);
+	  return error;
+	}
+
+      // TODO: modify allocate_disk_structures_index not to populate objects to the index.
+      // please imagine:
+      // if (cons->status == INDEX_BUILD_IN_PROGRESS)
+      //   create an empty index file
+      // else
+      //   do as it did
+      error = sm_update_class (def, &newmop);
+      if (error != NO_ERROR)
+	{
+	  smt_quit (def);
+	  return error;
+	}
+
+      // 2. lock demotion
+      // error = locator_demote_class_lock ();
+
+      // 3. load index phase
+
+      error = sm_update_statistics (newmop, STATS_WITH_SAMPLING);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      // 4. lock promotion
+
+      // 5. registration phase
+      // cons->status = INDEX_BUILD_COMPLETED;
       break;
 
     case DB_CONSTRAINT_NOT_NULL:
+      // TODO - refactor me
       def = smt_edit_class_mop (classop, AU_ALTER);
       if (def == NULL)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
 	}
       else
 	{
@@ -15388,9 +15429,9 @@ sm_truncate_class (MOP class_mop)
   /* Normal index must be created earlier than unique constraint or FK, because of shared btree case. */
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      error =
-	sm_add_index (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names, saved->asc_desc,
-		      saved->prefix_length, saved->filter_predicate, saved->func_index_info, saved->comment);
+      error = sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
+				 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
+				 saved->func_index_info, saved->comment);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -15400,10 +15441,9 @@ sm_truncate_class (MOP class_mop)
   /* PK must be created earlier than FK, because of self referencing case */
   for (saved = unique_save_info; saved != NULL; saved = saved->next)
     {
-      error =
-	sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
-			   saved->asc_desc, saved->prefix_length, 0, saved->filter_predicate, saved->func_index_info,
-			   saved->comment);
+      error = sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
+				 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
+				 saved->func_index_info, saved->comment);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -15421,10 +15461,9 @@ sm_truncate_class (MOP class_mop)
 
   for (saved = fk_save_info; saved != NULL; saved = saved->next)
     {
-      error =
-	dbt_add_foreign_key (ctmpl, saved->name, (const char **) saved->att_names, saved->ref_cls_name,
-			     (const char **) saved->ref_attrs, saved->fk_delete_action, saved->fk_update_action,
-			     saved->comment);
+      error = dbt_add_foreign_key (ctmpl, saved->name, (const char **) saved->att_names, saved->ref_cls_name,
+				   (const char **) saved->ref_attrs, saved->fk_delete_action, saved->fk_update_action,
+				   saved->comment);
 
       if (error != NO_ERROR)
 	{
