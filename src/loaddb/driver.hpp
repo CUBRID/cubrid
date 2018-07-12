@@ -24,10 +24,16 @@
 #ifndef _DRIVER_HPP_
 #define _DRIVER_HPP_
 
+#ident "$Id$"
+
 #include <istream>
 
-#include "loader.h"
-#include "loader_grammar.hpp"
+#if !defined (SERVER_MODE)
+#include "loader_cl.h"
+#else
+#include "loader_sr.hpp"
+#endif
+#include "grammar.hpp"
 #include "scanner.hpp"
 
 namespace cubload
@@ -122,7 +128,7 @@ namespace cubload
        *    TODO
        *    Normally all functionality from semantic_helper should be used only by grammar and not by both lexer & grammar,
        *    Since it is used now by both (legacy behaviour) it is included into driver. Later as improvement we can add a
-       *    subclass of cubload::parser (see loader_grammar.hpp) and move functionality of this class into parser subclass.
+       *    subclass of cubload::parser (see grammar.hpp) and move functionality of this class into parser subclass.
        *
        * how to use
        *    Interaction with semantic_helper class is done through an instance of driver e.g.
@@ -133,7 +139,7 @@ namespace cubload
       class semantic_helper
       {
 	public:
-	  semantic_helper (const driver &parent_driver);
+	  explicit semantic_helper (const driver &parent_driver);
 
 	  // Copy constructor (disabled).
 	  semantic_helper (const semantic_helper &copy) = delete;
@@ -152,7 +158,7 @@ namespace cubload
 	  string_t *make_string_by_buffer ();
 	  string_t *make_string_by_yytext ();
 
-	  ctor_spec_t *make_constructor_spec (string_t *idname, string_t *arg_list);
+	  ctor_spec_t *make_constructor_spec (string_t *id_name, string_t *arg_list);
 	  class_cmd_spec_t *make_class_command_spec (int qualifier, string_t *attr_list, ctor_spec_t *ctor_spec);
 
 	  constant_t *make_constant (int type, void *val);

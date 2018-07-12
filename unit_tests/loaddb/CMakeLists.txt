@@ -30,19 +30,19 @@ set_source_files_properties(
   PROPERTIES LANGUAGE CXX
   )
 
-add_executable(test_loadb
+add_executable(test_loaddb
   ${TEST_LOADDB_SOURCES}
   ${TEST_LOADDB_HEADERS}
   )
   
-target_compile_definitions(test_loadb PRIVATE ${COMMON_DEFS})
-target_include_directories(test_loadb PRIVATE ${TEST_INCLUDES})
-target_link_libraries(test_loadb LINK_PRIVATE test_common)
+target_compile_definitions(test_loaddb PRIVATE ${COMMON_DEFS})
+target_include_directories(test_loaddb PRIVATE ${TEST_INCLUDES})
+target_link_libraries(test_loaddb LINK_PRIVATE test_common)
 
 if(UNIX)
-  target_link_libraries(test_loadb LINK_PRIVATE cubridcs)
+  target_link_libraries(test_loaddb LINK_PRIVATE cubrid)
 elseif(WIN32)
-  target_link_libraries(test_loadb LINK_PRIVATE cubrid-win-lib)
+  target_link_libraries(test_loaddb LINK_PRIVATE cubrid-win-lib)
 else()
-  message( SEND_ERROR "Loaddb unit testing is for unix/windows")
+  message(SEND_ERROR "Loaddb unit testing is for unix/windows")
 endif ()

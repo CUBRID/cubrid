@@ -24,10 +24,6 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/csql_session.c
   ${EXECUTABLES_DIR}/csql_support.c
   ${EXECUTABLES_DIR}/file_hash.c
-  ${EXECUTABLES_DIR}/load_object.c
-  ${EXECUTABLES_DIR}/loaddb.c
-  ${EXECUTABLES_DIR}/loader.c
-  ${EXECUTABLES_DIR}/loader_object_table.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/unloaddb.c
@@ -250,6 +246,10 @@ set(LOADER_SOURCES
   ${BISON_loader_grammar_OUTPUT_SOURCE}
   ${FLEX_loader_lexer_OUTPUTS}
   ${LOADDB_DIR}/driver.cpp
+  ${LOADDB_DIR}/loaddb.c
+  ${LOADDB_DIR}/loader_cl.c
+  ${LOADDB_DIR}/load_object.c
+  ${LOADDB_DIR}/loader_object_table.c
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
@@ -288,10 +288,6 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/csql_session.c
   ${EXECUTABLES_DIR}/csql_support.c
   ${EXECUTABLES_DIR}/file_hash.c
-  ${EXECUTABLES_DIR}/load_object.c
-  ${EXECUTABLES_DIR}/loaddb.c
-  ${EXECUTABLES_DIR}/loader.c
-  ${EXECUTABLES_DIR}/loader_object_table.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/unloaddb.c
@@ -397,7 +393,6 @@ else(UNIX)
 endif(UNIX)
 
 add_dependencies(cubridcs gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
-
 add_dependencies(cubridcs ${EP_TARGETS})
 
 if(ENABLE_SYSTEMTAP)
@@ -409,7 +404,6 @@ install(TARGETS cubridcs
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Library
   LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   )
-
 
 # install pdb files for debugging on windows
 if(WIN32)

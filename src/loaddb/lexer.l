@@ -18,7 +18,7 @@
  */
 
 /*
- * loader_lexer.l - loader lexer file
+ * lexer.l - loader lexer file
  */
 
 /*** C/C++ Declarations ***/
@@ -57,6 +57,7 @@ using token = cubload::parser::token;
 %option noyywrap
 %option nounput
 %option noinput
+%option nounistd
 
 %option yyclass="cubload::scanner"
 
@@ -215,7 +216,7 @@ using token = cubload::parser::token;
 
 [0-9]+: {
     PRINT ("OID %s\n", yytext);
-    yylval->intval = atoi (yytext);
+    yylval->int_val = atoi (yytext);
     return token::OID_;
 }
 

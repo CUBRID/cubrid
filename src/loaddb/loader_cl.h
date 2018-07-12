@@ -18,23 +18,17 @@
  */
 
 /*
- * loader.h: Loader definitions. Updated using design from fast loaddb prototype
+ * loader_cl.h: Loader definitions. Updated using design from fast loaddb prototype
  */
 
-#ifndef _LOADER_H_
-#define _LOADER_H_
+#ifndef _LOADER_CL_H_
+#define _LOADER_CL_H_
 
 #ident "$Id$"
 
 //#include <stdint.h>
 #include "porting.h"
 #include "dbdef.h"
-
-namespace cubload
-{
-  // forward declaration
-  class driver;
-};
 
 typedef struct LDR_CONTEXT LDR_CONTEXT;
 
@@ -122,7 +116,7 @@ struct ldr_string
 
 typedef struct ldr_constructor_spec
 {
-  LDR_STRING *idname;
+  LDR_STRING *id_name;
   LDR_STRING *arg_list;
 } LDR_CONSTRUCTOR_SPEC;
 
@@ -155,10 +149,6 @@ typedef struct loader_monetary_value
   LDR_STRING *amount;
   int currency_type;
 } LDR_MONETARY_VALUE;
-
-/* *INDENT-OFF* */
-extern cubload::driver *ldr_driver;
-/* *INDENT-ON* */
 
 extern char **ignore_class_list;
 extern int ignore_class_num;
@@ -246,4 +236,4 @@ extern void print_log_msg (int verbose, const char *fmt, ...);
 /* free memory functions */
 extern void ldr_string_free (LDR_STRING ** str);
 
-#endif /* _LOADER_H_ */
+#endif /* _LOADER_CL_H_ */

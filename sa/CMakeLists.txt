@@ -26,14 +26,10 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/util_cs.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/compactdb.c
-  ${EXECUTABLES_DIR}/loaddb.c
   ${EXECUTABLES_DIR}/unloaddb.c
-  ${EXECUTABLES_DIR}/load_object.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
-  ${EXECUTABLES_DIR}/loader.c
-  ${EXECUTABLES_DIR}/loader_object_table.c
   )
 
 set(COMPAT_SOURCES
@@ -339,6 +335,10 @@ set(LOADER_SOURCES
   ${BISON_loader_grammar_OUTPUT_SOURCE}
   ${FLEX_loader_lexer_OUTPUTS}
   ${LOADDB_DIR}/driver.cpp
+  ${LOADDB_DIR}/loaddb.c
+  ${LOADDB_DIR}/loader_cl.c
+  ${LOADDB_DIR}/load_object.c
+  ${LOADDB_DIR}/loader_object_table.c
   )
 
 if(UNIX)
@@ -369,14 +369,10 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/util_cs.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/compactdb.c
-  ${EXECUTABLES_DIR}/loaddb.c
   ${EXECUTABLES_DIR}/unloaddb.c
-  ${EXECUTABLES_DIR}/load_object.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
-  ${EXECUTABLES_DIR}/loader.c
-  ${EXECUTABLES_DIR}/loader_object_table.c
   ${COMPAT_SOURCES}
   ${BASE_SOURCES}
   ${HEAPLAYER_SOURCES}
@@ -508,6 +504,7 @@ if(UNIX)
   # target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridsa LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_DL_LIBS})
 endif(UNIX)
+
 add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
 #add_dependencies(cubridsa ${EP_TARGETS})
 
@@ -520,7 +517,6 @@ install(TARGETS cubridsa
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Library
   LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   )
-
 
 # install pdb files for debugging on windows
 if(WIN32)

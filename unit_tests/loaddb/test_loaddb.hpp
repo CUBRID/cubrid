@@ -28,6 +28,7 @@ namespace test_loaddb
 {
   void test_parse_with_multiple_threads ();
   void test_parse_reusing_driver ();
+  void test_read_object_file ();
 }; // namespace test_loaddb
 
 #endif //_TEST_LOADDB_PASRE_HPP_

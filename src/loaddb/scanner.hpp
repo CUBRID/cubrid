@@ -24,12 +24,14 @@
 #ifndef _SCANNER_HPP_
 #define _SCANNER_HPP_
 
+#ident "$Id$"
+
 #if !defined (yyFlexLexerOnce)
 #include <FlexLexer.h>
 #endif
 #include <istream>
 
-#include "loader_grammar.hpp"
+#include "grammar.hpp"
 
 namespace cubload
 {
@@ -59,7 +61,7 @@ namespace cubload
 
       /*
        * The main scanner function.
-       * See loader_lexer.l file for method declaration
+       * See lexer.l file for method declaration
        */
       virtual int yylex (parser::semantic_type *yylval, parser::location_type *yylloc, driver &driver);
 
@@ -69,8 +71,8 @@ namespace cubload
        */
       void LexerError (const char *msg) override
       {
-	ldr_load_failed_error ();
-	ldr_increment_fails ();
+	//ldr_load_failed_error ();
+	//ldr_increment_fails ();
       }
   };
 } // namespace cubload

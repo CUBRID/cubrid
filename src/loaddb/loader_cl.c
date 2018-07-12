@@ -18,7 +18,7 @@
  */
 
 /*
- * loader.c - Database loader (Optimized version)
+ * loader_cl.c - Database loader (Optimized version)
  */
 
 #ident "$Id$"
@@ -39,12 +39,11 @@
 #endif /* !WINDOWS */
 #include <errno.h>
 
-#include "loader.h"
+#include "loader_cl.h"
 
 #include "porting.h"
 #include "utility.h"
 #include "dbi.h"
-#include "driver.hpp"
 #include "memory_alloc.h"
 #include "system_parameter.h"
 #include "network.h"
@@ -448,7 +447,6 @@ static DB_VALUE ldr_blob_tmpl;
 static DB_VALUE ldr_clob_tmpl;
 static DB_VALUE ldr_bit_tmpl;
 static DB_VALUE ldr_json_tmpl;
-
 
 /* default for 64 bit signed big integers, i.e., 9223372036854775807 (0x7FFFFFFFFFFFFFFF) */
 #define MAX_DIGITS_FOR_BIGINT   19
@@ -907,7 +905,6 @@ idmap_init (void)
   Id_map_size = 0;
 }
 
-
 /*
  * idmap_final - free the class id map
  *    return: void
@@ -1252,7 +1249,7 @@ static void
 display_error_line (int adjust)
 {
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
-	   ldr_driver->lineno () + adjust);
+	   /*ldr_driver->lineno () + */ adjust);
 }
 
 /*
@@ -2146,7 +2143,6 @@ error_exit:
  *  point to fast (ASCII) or slow (e.g., S-JIS) versions.
  */
 
-
 /*
  * ldr_str_elem -
  *    return:
@@ -2539,7 +2535,6 @@ error_exit:
  *  the ldr_numeric_db_{float, double} functions below, but this one will
  *  catch assignments into actual numeric attributes.
  */
-
 
 /*
  * ldr_numeric_elem -
@@ -4202,7 +4197,7 @@ check_commit (LDR_CONTEXT * context)
 	    {
 	      CHECK_ERR (err, ldr_assign_all_perm_oids ());
 	      CHECK_ERR (err, db_commit_transaction ());
-	      Last_committed_line = ldr_driver->lineno () - 1;
+	      Last_committed_line = /*ldr_driver->lineno () - */ 1;
 	      committed_instances = Total_objects + 1;
 	      display_error_line (-1);
 	      fprintf (stderr,
@@ -4237,7 +4232,7 @@ check_commit (LDR_CONTEXT * context)
 			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_COMMITTING));
 	      CHECK_ERR (err, ldr_assign_all_perm_oids ());
 	      CHECK_ERR (err, db_commit_transaction ());
-	      Last_committed_line = ldr_driver->lineno () - 1;
+	      Last_committed_line = /*ldr_driver->lineno () - */ 1;
 	      context->commit_counter = context->periodic_commit;
 
 	      /* Invoke post commit callback function */
@@ -6096,7 +6091,6 @@ ldr_is_ignore_class (const char *classname, size_t size)
   return false;
 }
 
-
 void
 ldr_process_constants (LDR_CONSTANT * cons)
 {
@@ -6381,16 +6375,12 @@ error_exit:
 void
 ldr_string_free (LDR_STRING ** str)
 {
-  if (str == NULL)
+  if (str == NULL || *str == NULL)
     {
       return;
     }
 
   LDR_STRING *s = *str;
-  if (s == NULL)
-    {
-      return;
-    }
 
   if (s->need_free_val)
     {

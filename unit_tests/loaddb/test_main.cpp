@@ -22,8 +22,9 @@
 int
 main (int, char **)
 {
-  test_loaddb::test_parse_with_multiple_threads ();
-  test_loaddb::test_parse_reusing_driver ();
+  //test_loaddb::test_parse_with_multiple_threads ();
+  //test_loaddb::test_parse_reusing_driver ();
+  test_loaddb::test_read_object_file ();
 
   return 0;
 }

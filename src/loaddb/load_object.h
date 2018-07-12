@@ -17,9 +17,8 @@
  *
  */
 
-
 /*
- *      load_object.h: simplified object definitions
+ * load_object.h: simplified object definitions
  */
 
 #ifndef _LOAD_OBJECT_H_

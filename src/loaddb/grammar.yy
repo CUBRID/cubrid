@@ -18,7 +18,7 @@
  */
 
 /*
- * loader_grammar.y - loader grammar file
+ * grammar.yy - loader grammar file
  */
 
 %skeleton "lalr1.cc"
@@ -35,7 +35,7 @@
 %define parse.assert
 
 %union {
-  int intval;
+  int int_val;
   LDR_STRING *string;
   LDR_CONSTANT *constant;
   LDR_OBJECT_REF *obj_ref;
@@ -45,7 +45,11 @@
 
 %code requires {
 // This code will be copied into loader grammar header file
-#include "loader.h"
+#if !defined (SERVER_MODE)
+#include "loader_cl.h"
+#else
+#include "loader_sr.hpp"
+#endif
 
 namespace cubload
 {
@@ -56,8 +60,11 @@ namespace cubload
 
 %code {
 // This code will be copied into loader grammar source file
+#include <cstring>
+
+#include "dbtype_def.h"
 #include "driver.hpp"
-#include "memory_alloc.h"
+//#include "memory_alloc.h"
 
 #undef yylex
 #define yylex driver_.get_scanner ().yylex
@@ -69,10 +76,6 @@ namespace cubload
 #else
 #define DBG_PRINT(s)
 #endif
-
-// TODO CBRD-21654 - driver external variable, will be removed when lexer & grammar will be moved completely to server
-//                   check loader.h header file for ldr_driver declaration
-cubload::driver *ldr_driver = NULL;
 }
 
 %token NL
@@ -104,7 +107,7 @@ cubload::driver *ldr_driver = NULL;
 %token END_PAREN
 %token <string> REAL_LIT
 %token <string> INT_LIT
-%token <intval> OID_
+%token <int_val> OID_
 %token <string> TIME_LIT4
 %token <string> TIME_LIT42
 %token <string> TIME_LIT3
@@ -148,7 +151,7 @@ cubload::driver *ldr_driver = NULL;
 %token <string> DQS_String_Body
 %token COMMA
 
-%type <intval> attribute_list_qualifier
+%type <int_val> attribute_list_qualifier
 %type <cmd_spec> class_commamd_spec
 %type <ctor_spec> constructor_spec
 %type <string> attribute_name
@@ -180,8 +183,8 @@ cubload::driver *ldr_driver = NULL;
 
 %type <obj_ref> class_identifier
 %type <string> instance_number
-%type <intval> ref_type
-%type <intval> object_id
+%type <int_val> ref_type
+%type <int_val> object_id
 
 %type <constant> set_elements
 
@@ -191,11 +194,10 @@ cubload::driver *ldr_driver = NULL;
 loader_start :
   {
     // add here any initialization code
-    ldr_driver = &driver_;
   }
   loader_lines
   {
-    ldr_act_finish (ldr_Current_context, 0);
+    //ldr_act_finish (ldr_Current_context, 0);
   }
   ;
 
@@ -234,7 +236,7 @@ one_line :
   instance_line
   {
     DBG_PRINT ("instance_line");
-    ldr_act_finish_line (ldr_Current_context);
+    //ldr_act_finish_line (ldr_Current_context);
     driver_.get_semantic_helper ().reset_pool_indexes ();
   }
   ;
@@ -254,19 +256,20 @@ command_line :
 id_command :
   CMD_ID IDENTIFIER INT_LIT
   {
-    skip_current_class = false;
+    //skip_current_class = false;
 
-    ldr_act_start_id (ldr_Current_context, $2->val);
-    ldr_act_set_id (ldr_Current_context, atoi ($3->val));
+    //ldr_act_start_id (ldr_Current_context, $2->val);
+    //ldr_act_set_id (ldr_Current_context, atoi ($3->val));
 
-    ldr_string_free (&$2);
-    ldr_string_free (&$3);
+    //ldr_string_free (&$2);
+    //ldr_string_free (&$3);
   }
   ;
 
 class_command :
   CMD_CLASS IDENTIFIER class_commamd_spec
   {
+    /*
     LDR_CLASS_COMMAND_SPEC *cmd_spec;
     LDR_STRING *class_name;
     LDR_STRING *attr, *save, *args;
@@ -293,7 +296,7 @@ class_command :
 
     if (cmd_spec->ctor_spec)
       {
-	ldr_act_set_constructor (ldr_Current_context, cmd_spec->ctor_spec->idname->val);
+	ldr_act_set_constructor (ldr_Current_context, cmd_spec->ctor_spec->id_name->val);
 
 	for (args = cmd_spec->ctor_spec->arg_list; args; args = args->next)
 	  {
@@ -306,7 +309,7 @@ class_command :
 	    ldr_string_free (&args);
 	  }
 
-	ldr_string_free (&(cmd_spec->ctor_spec->idname));
+	ldr_string_free (&(cmd_spec->ctor_spec->id_name));
 	free_and_init (cmd_spec->ctor_spec);
       }
 
@@ -318,6 +321,7 @@ class_command :
 
     ldr_string_free (&class_name);
     free_and_init (cmd_spec);
+    */
   }
   ;
 
@@ -455,22 +459,22 @@ argument_name :
 instance_line :
   object_id
   {
-    skip_current_instance = false;
-    ldr_act_start_instance (ldr_Current_context, $1, NULL);
+    //skip_current_instance = false;
+    //ldr_act_start_instance (ldr_Current_context, $1, NULL);
   }
   |
   object_id constant_list
   {
-    skip_current_instance = false;
-    ldr_act_start_instance (ldr_Current_context, $1, $2);
-    ldr_process_constants ($2);
+    //skip_current_instance = false;
+    //ldr_act_start_instance (ldr_Current_context, $1, $2);
+    //ldr_process_constants ($2);
   }
   |
   constant_list
   {
-    skip_current_instance = false;
-    ldr_act_start_instance (ldr_Current_context, -1, $1);
-    ldr_process_constants ($1);
+    //skip_current_instance = false;
+    //ldr_act_start_instance (ldr_Current_context, -1, $1);
+    //ldr_process_constants ($1);
   }
   ;
 

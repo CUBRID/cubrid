@@ -21,6 +21,8 @@
  * driver.cpp - interface for loader lexer and parser
  */
 
+#ident "$Id$"
+
 #include <cassert>
 
 #include "driver.hpp"
@@ -59,7 +61,7 @@ namespace cubload
   void
   driver::error (const location &loc, const std::string &msg)
   {
-    ldr_increment_err_total (ldr_Current_context);
+    //ldr_increment_err_total (ldr_Current_context);
     fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SYNTAX_ERR), lineno (),
 	     m_scanner.YYText ());
   }
@@ -210,7 +212,7 @@ namespace cubload
 
     if (!is_utf8_valid (str))
       {
-	ldr_string_free (&str);
+	//ldr_string_free (&str);
 	return NULL;
       }
 
@@ -250,7 +252,7 @@ namespace cubload
 
     if (!is_utf8_valid (str))
       {
-	ldr_string_free (&str);
+	//ldr_string_free (&str);
 	return NULL;
       }
 
@@ -258,11 +260,11 @@ namespace cubload
   }
 
   ctor_spec_t *
-  driver::semantic_helper::make_constructor_spec (string_t *idname, string_t *arg_list)
+  driver::semantic_helper::make_constructor_spec (string_t *id_name, string_t *arg_list)
   {
     ctor_spec_t *spec = alloc_ldr_type<ctor_spec_t> ();
 
-    spec->idname = idname;
+    spec->id_name= id_name;
     spec->arg_list = arg_list;
 
     return spec;
