@@ -13035,7 +13035,7 @@ namespace Func
       {
       case PT_GENERIC_TYPE_NUMBER:
         return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || type_enum == PT_TYPE_JSON ||
-          type_enum == PT_TYPE_MAYBE);
+          type_enum == PT_TYPE_MAYBE || type_enum == PT_TYPE_NONE);
       case PT_GENERIC_TYPE_DISCRETE_NUMBER:
         return (PT_IS_NUMERIC_TYPE(type_enum) || PT_IS_STRING_TYPE(type_enum) || type_enum == PT_TYPE_MAYBE);
 

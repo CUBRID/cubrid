@@ -4009,6 +4009,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
         }
 #endif
 
+#if 0
       node_ptr = NULL;
       parser_walk_tree(parser, default_value, pt_find_aggregate_function, &node_ptr, NULL, NULL);
       if (node_ptr != NULL)
@@ -4020,6 +4021,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
               pt_show_function(node_ptr->info.function.function_type));
           goto end;
         }
+#endif
 
       result = pt_semantic_type (parser, data_default, NULL);
       if (result != NULL)
@@ -4074,6 +4076,18 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	      goto end;
 	    }
 	}
+
+      node_ptr = NULL;
+      parser_walk_tree(parser, default_value, pt_find_aggregate_function, &node_ptr, NULL, NULL);
+      if (node_ptr != NULL)
+        {
+          PT_ERRORmf(parser,
+              node_ptr,
+              MSGCAT_SET_PARSER_SEMANTIC,
+              MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
+              pt_show_function(node_ptr->info.function.function_type));
+          goto end;
+        }
 
     end:
       data_default->next = save_next;
