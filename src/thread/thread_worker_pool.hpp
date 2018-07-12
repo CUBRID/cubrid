@@ -863,7 +863,7 @@ namespace cubthread
 	return task_p;
       }
 
-    m_available_workers[++m_available_count] = &worker_arg;
+    m_available_workers[m_available_count++] = &worker_arg;
     assert (m_available_count <= m_max_workers);
     return NULL;
   }
