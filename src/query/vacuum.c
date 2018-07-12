@@ -4124,11 +4124,23 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 	  /* No recovery needed. This is used for 10.1 version to keep the functionality of the database.
 	   * In this case, we are updating the last_blockid of the vacuum to the last block that was logged.
 	   */
-	  vacuum_Data.set_last_blockid (logpb_last_complete_blockid ());
 
-	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
-			 "vacuum_data_load_and_recover: set last_blockid = %lld to logpb_last_complete_blockid ()",
-			 (long long int) vacuum_Data.get_last_blockid ());
+	  VACUUM_LOG_BLOCKID log_blockid = logpb_last_complete_blockid ();
+	  if (log_blockid != VACUUM_NULL_LOG_BLOCKID)
+	    {
+	      vacuum_Data.set_last_blockid (log_blockid);
+
+	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+			     "vacuum_data_load_and_recover: set last_blockid = %lld to logpb_last_complete_blockid ()",
+			     (long long int) vacuum_Data.get_last_blockid ());
+	    }
+	  else
+	    {
+	      /* this is likely the first restart after database copy */
+	      assert (vacuum_Data.get_last_blockid () == VACUUM_NULL_LOG_BLOCKID);
+	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY, "%s",
+			     "vacuum_data_load_and_recover: last blockid remains null");
+	    }
 	}
       else
 	{

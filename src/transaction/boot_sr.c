@@ -2238,8 +2238,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       error_code = ER_FAILED;
       goto error;
     }
-  er_init_access_log ();
   er_clear ();
+
+  event_log_init (db_name);
 
   /* initialize allocations areas for things we need, on the client, most of this is done inside ws_init(). */
   area_init ();
