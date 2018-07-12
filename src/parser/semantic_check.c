@@ -3987,12 +3987,27 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	  goto end;
 	}
 
-      data_default->info.data_default.default_value = default_value = pt_eval_const(parser, default_value, NULL);
-      if (default_value == NULL || pt_has_error(parser))
+#if 0
+      result = pt_eval_const(parser, data_default, NULL);
+      if (result == NULL || pt_has_error(parser))
         {
           printf("ERR\n");
           goto end;
         }
+      else
+        {
+	      /* change data_default */
+	      if (prev)
+	        {
+	          prev->next = result;
+	        }
+	      else
+	        {
+	          data_default_list = result;
+	        }
+	      data_default = result;
+        }
+#endif
 
       node_ptr = NULL;
       parser_walk_tree(parser, default_value, pt_find_aggregate_function, &node_ptr, NULL, NULL);
