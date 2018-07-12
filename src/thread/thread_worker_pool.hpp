@@ -992,8 +992,6 @@ namespace cubthread
   void
   worker_pool<Context>::core::worker::assign_task (task<Context> *work_p, cubperf::time_point push_time)
   {
-    assert (m_context_p == NULL);
-
     // save push time
     m_push_time = push_time;
 
@@ -1011,6 +1009,8 @@ namespace cubthread
     else
       {
         ulock.unlock ();
+
+        assert (m_context_p == NULL);
 
         // start thread.
         //
