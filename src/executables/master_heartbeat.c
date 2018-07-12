@@ -3577,25 +3577,25 @@ hb_resource_job_send_master_hostname (HB_JOB_ARG * arg)
   if (proc != NULL)
     {
       if (hostname == NULL)
-        {
-          proc->knows_master_hostname = false;
-          current_master_hostname = NULL;
-          return;
-        }
+	{
+	  proc->knows_master_hostname = false;
+	  current_master_hostname = NULL;
+	  return;
+	}
 
       if (current_master_hostname == NULL)
-        {
-          current_master_hostname = hostname;
-          proc->knows_master_hostname = false;
-        }
+	{
+	  current_master_hostname = hostname;
+	  proc->knows_master_hostname = false;
+	}
       else if (current_master_hostname == hostname && proc->knows_master_hostname == true)
-        {
-          return;
-        }
+	{
+	  return;
+	}
       else if (current_master_hostname != hostname)
-        {
-          proc->knows_master_hostname = false;
-        }
+	{
+	  proc->knows_master_hostname = false;
+	}
 
       error = css_send_to_my_server_the_master_hostname (hostname, proc, conn);
       assert (error == NO_ERROR);

@@ -102,7 +102,7 @@ namespace cubstream
       const stream_position &get_curr_read_position (void)
       {
 	return m_read_position;
-      };
+      }
 
       void force_set_read_position (const stream_position &pos)
       {
@@ -112,27 +112,27 @@ namespace cubstream
       const stream_position &get_last_committed_pos (void)
       {
 	return m_last_committed_pos;
-      };
+      }
 
       const stream_position &get_last_dropable_pos (void)
       {
 	return m_last_dropable_pos;
-      };
+      }
 
       void set_last_dropable_pos (const stream_position &last_dropable_pos)
       {
 	m_last_dropable_pos = last_dropable_pos;
-      };
+      }
 
       void set_filled_stream_handler (notify_func_t handler)
       {
 	m_filled_stream_handler = handler;
-      };
+      }
 
       void set_ready_pos_handler (notify_func_t handler)
       {
 	m_ready_pos_handler = handler;
-      };
+      }
 
       const std::string &name (void)
       {

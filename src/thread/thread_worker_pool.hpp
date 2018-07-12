@@ -139,7 +139,8 @@ namespace cubthread
       class core;
 
       worker_pool (std::size_t pool_size, std::size_t task_max_count, context_manager_type &context_mgr,
-		   std::size_t core_count = 1, bool debug_logging = false);
+		   std::size_t core_count = 1, bool debug_logging = false, bool pool_threads = false,
+		   std::chrono::seconds wait_for_task_time = std::chrono::seconds (5));
       ~worker_pool ();
 
       // try to execute task; executes only if the maximum number of tasks is not reached.
@@ -173,6 +174,15 @@ namespace cubthread
       // get worker pool statistics
       // note: the statistics are collected from all cores and all their workers adding up all local statistics
       void get_stats (cubperf::stat_value *stats_out) const;
+
+      inline bool is_pooling_threads () const
+      {
+	return m_pool_threads;
+      }
+      inline const std::chrono::seconds &get_wait_for_task_time () const
+      {
+	return m_wait_for_task_time;
+      }
 
       //////////////////////////////////////////////////////////////////////////
       // context management
@@ -233,6 +243,12 @@ namespace cubthread
 
       // true to do debug logging
       bool m_log;
+
+      // true to start threads at init
+      bool m_pool_threads;
+
+      // transition time period between active and inactive
+      std::chrono::seconds m_wait_for_task_time;
   };
 
   // worker_pool<Context>::core
@@ -288,6 +304,10 @@ namespace cubthread
 
       // getters
       std::size_t get_max_worker_count (void) const;
+      inline worker_pool_type *get_parent_pool (void) const
+      {
+	return m_parent_pool;
+      }
 
     private:
 
@@ -384,7 +404,7 @@ namespace cubthread
       void init_core (core_type &parent);
 
       // start task execution on a new thread (push_time is provided by core)
-      void push_task_on_new_thread (task<Context> *work_p, cubperf::time_point push_time);
+      void start_new_thread (task<Context> *work_p, cubperf::time_point push_time);
       // run task on current thread (push_time is provided by core)
       void push_task_on_running_thread (task<Context> *work_p, cubperf::time_point push_time);
       // stop execution
@@ -472,7 +492,8 @@ namespace cubthread
 
   template <typename Context>
   worker_pool<Context>::worker_pool (std::size_t pool_size, std::size_t task_max_count,
-				     context_manager_type &context_mgr, std::size_t core_count, bool debug_log)
+				     context_manager_type &context_mgr, std::size_t core_count, bool debug_log, bool pool_threads,
+				     std::chrono::seconds wait_for_task_time)
     : m_max_workers (pool_size)
     , m_task_max_count (task_max_count)
     , m_task_count (0)
@@ -482,6 +503,8 @@ namespace cubthread
     , m_round_robin_counter (0)
     , m_stopped (false)
     , m_log (debug_log)
+    , m_pool_threads (pool_threads)
+    , m_wait_for_task_time (wait_for_task_time)
   {
     // initialize cores; we'll try to distribute pool evenly to all cores. if core count is not fully contained in
     // pool size, some cores will have one additional worker
@@ -764,11 +787,22 @@ namespace cubthread
     // allocate workers array
     m_worker_array = new worker[m_max_workers];
 
-    // all workers are inactive
-    for (std::size_t it = 0; it < m_max_workers; it++)
+    if (!m_parent_pool->m_pool_threads)
       {
-	m_worker_array[it].init_core (*this);
-	m_inactive_list.push_front (&m_worker_array[it]);
+	// all workers are inactive
+	for (std::size_t it = 0; it < m_max_workers; it++)
+	  {
+	    m_worker_array[it].init_core (*this);
+	    m_inactive_list.push_front (&m_worker_array[it]);
+	  }
+      }
+    else
+      {
+	for (std::size_t it = 0; it < m_max_workers; it++)
+	  {
+	    m_worker_array[it].init_core (*this);
+	    m_worker_array[it].start_new_thread (NULL, cubperf::clock::now ());
+	  }
       }
   }
 
@@ -824,7 +858,7 @@ namespace cubthread
 	ulock.unlock ();
 
 	// start new thread
-	refp->push_task_on_new_thread (task_p, push_time);
+	refp->start_new_thread (task_p, push_time);
 	return; // worker found
       }
 
@@ -1011,13 +1045,8 @@ namespace cubthread
 
   template <typename Context>
   void
-  worker_pool<Context>::core::worker::push_task_on_new_thread (task<Context> *work_p, cubperf::time_point push_time)
+  worker_pool<Context>::core::worker::start_new_thread (task<Context> *work_p, cubperf::time_point push_time)
   {
-    // start new thread and run task
-    assert (work_p != NULL);
-
-    // make sure worker is in a valid state
-    assert (m_task_p == NULL);
     assert (m_context_p == NULL);
 
     // save push time
@@ -1157,7 +1186,7 @@ namespace cubthread
       }
 
     // get a queued task or wait for one to come
-    const std::chrono::seconds WAIT_TIME = std::chrono::seconds (5);
+    const cubperf::duration &WAIT_TIME = m_parent_core->get_parent_pool ()->get_wait_for_task_time ();
 
     // either get a queued task or add to free active list
     // note: returned task cannot be saved directly to m_task_p. if worker is added to wait queue and NULL is returned,
@@ -1247,12 +1276,27 @@ namespace cubthread
       {
 	init_run ();    // do stuff at the beginning like creating context
 
-	// loop and execute as many tasks as possible
-	do
+	if (m_task_p == NULL)
 	  {
-	    execute_current_task ();
+	    // started without task; get one
+	    if (get_new_task ())
+	      {
+		assert (m_task_p != NULL);
+	      }
 	  }
-	while (get_new_task ());
+	if (m_task_p != NULL)
+	  {
+	    // loop and execute as many tasks as possible
+	    do
+	      {
+		execute_current_task ();
+	      }
+	    while (get_new_task ());
+	  }
+	else
+	  {
+	    // never got a task
+	  }
 
 	finish_run ();    // do stuff on end like retiring context
 

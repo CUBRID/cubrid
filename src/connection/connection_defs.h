@@ -363,7 +363,7 @@ typedef enum ha_log_applier_state HA_LOG_APPLIER_STATE;
 /* TODO: 64Bit porting */
 #define HIGH16BITS(X) (((X) >> 16) & 0xffffL)
 #define LOW16BITS(X)  ((X) & 0xffffL)
-#define DEFAULT_HEADER_DATA {0,0,0,0,0,0,0,0,0}
+#define DEFAULT_HEADER_DATA {0,0,0,NULL_TRAN_INDEX,0,0,0,0,0}
 
 #define CSS_RID_FROM_EID(eid)           ((unsigned short) LOW16BITS(eid))
 #define CSS_ENTRYID_FROM_EID(eid)       ((unsigned short) HIGH16BITS(eid))

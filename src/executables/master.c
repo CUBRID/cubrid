@@ -75,7 +75,6 @@
 #include "dbi.h"
 #include "util_func.h"
 
-
 static void css_master_error (const char *error_string);
 static int css_master_timeout (void);
 static int css_master_init (int cport, SOCKET * clientfd);
