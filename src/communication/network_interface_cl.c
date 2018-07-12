@@ -6469,6 +6469,19 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
       net_Deferred_end_queries_count = 0;
     }
 
+  /* Add message in log in case of autocommit transactions. It helps to trace query execution. */
+  if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG) && IS_TRAN_AUTO_COMMIT (flag))
+    {
+      if (IS_QUERY_EXECUTE_WITH_COMMIT (flag))
+	{
+	  er_log_debug (ARG_FILE_LINE, "qmgr_execute_query requested: EXECUTION_WITH_AUTOCOMMIT\n");
+	}
+      else
+	{
+	  er_log_debug (ARG_FILE_LINE, "qmgr_execute_query requested: EXECUTION_WITHOUT_AUTOCOMMIT\n");
+	}
+    }
+
   if (IS_QUERY_EXECUTED_WITHOUT_DATA_BUFFERS (flag))
     {
       /* Execute without data buffers. The data has small size. Include the data in the argument buffer. */

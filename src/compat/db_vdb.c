@@ -3958,6 +3958,15 @@ pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
  * return : error code.
  * session(in): compiled session
  * auto_commit(in): true, if auto commit
+ *
+ *  Note: This function filters out the statements that can't be executed with commit. In order to execute statement
+ *      with commit, the following condition must be satisfied: autocommit mode, no other communication with server
+ *      is needed after executing query with commit. Thus, if query with commit is executed, the broker can't send
+ *      other fetch, flush or requests to server. However, the client can send various requests before executing
+ *      query with commit. Considering this, the optimization can't be applied for queries executed broker side
+ *      (triggers, views involved), queries having OID included, multi statements. Currently, the optimization
+ *      is used for SELECT/UPDATE/DELETE/INSERT. In future, we have to consider optimization for other query type.
+ *      Also, additional filters may be added later in this functions.
  */
 int
 db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
@@ -3966,6 +3975,8 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
   int stmt_ndx;
   bool has_name_oid = false;
   int info_hints;
+  int error_code;
+  bool has_user_trigger;
 
   assert (session != NULL);
 
@@ -4003,7 +4014,13 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
     }
 
   /* Check whether statement can uses auto commit. */
-  if (tr_has_user_trigger ())
+  error_code = tr_has_user_trigger (&has_user_trigger);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (has_user_trigger)
     {
       /* Triggers must be excuted before commit. Disable optimization. */
       return NO_ERROR;
@@ -4015,8 +4032,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
   switch (statement->node_type)
     {
     case PT_SELECT:
-      /* Check whether the optimization can be used. */
-      // TODO - describe why allowed and not allowed.
+      /* Check whether the optimization can be used. Disable it, if several broker/server requests are needed. */
       if (!statement->info.query.oids_included && !statement->info.query.is_view_spec
 	  && !statement->info.query.has_system_class && statement->info.query.into_list == NULL)
 	{
@@ -4054,7 +4070,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
       /* Do not use optimization in case of delete execution on broker side */
       if (statement->info.delete_.execute_with_commit_allowed)
 	{
-	  // TODO - describe why allowed and not allowed.
+	  /* If del_stmt_list is not null, we may need several broker/server requests */
 	  if (statement->info.delete_.del_stmt_list == NULL)
 	    {
 	      statement->use_auto_commit = 1;
@@ -4062,7 +4078,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
 	}
       break;
 
-      // TODO - what else? for instance, merge, other dmls, ddls. 
+      // TODO - what else? for instance, merge, other dmls, ddls.       
     default:
       break;
     }

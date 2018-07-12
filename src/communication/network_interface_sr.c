@@ -4885,6 +4885,19 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   memset (ptr, 0, OR_ALIGNED_BUF_SIZE (a_reply) - (ptr - reply));
 #endif
 
+  /* Add message in log in case of autocommit transactions. It helps to trace query execution. */
+  if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG) && is_tran_auto_commit)
+    {
+      if (tran_state == TRAN_UNACTIVE_COMMITTED || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+	{
+	  er_log_debug (ARG_FILE_LINE, "sqmgr_execute_query: QUERY_EXECUTION_WITH_AUTOCOMMIT\n");
+	}
+      else
+	{
+	  er_log_debug (ARG_FILE_LINE, "sqmgr_execute_query: QUERY_EXECUTION_WITHOUT_AUTOCOMMIT\n");
+	}
+    }
+
   css_send_reply_and_3_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), replydata,
 				       replydata_size, page_ptr, page_size, queryinfo_string, queryinfo_string_length);
 

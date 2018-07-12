@@ -3679,7 +3679,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DELETE:
       if (statement->use_auto_commit)
 	{
-	  // no active trigger is involved
+	  /* No active trigger is involved. Avoid lock and fetch request. */
 	  err = do_execute_delete (parser, statement);
 	}
       else
@@ -3690,7 +3690,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_INSERT:
       if (statement->use_auto_commit)
 	{
-	  // no active trigger is involved
+	  /* no active trigger is involved. Avoid lock and fetch request. */
 	  err = do_execute_insert (parser, statement);
 	}
       else
@@ -3701,7 +3701,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_UPDATE:
       if (statement->use_auto_commit)
 	{
-	  // no active trigger is involved
+	  /* no active trigger is involved. Avoid lock and fetch request. */
 	  err = do_execute_update (parser, statement);
 	}
       else
