@@ -836,9 +836,10 @@ namespace cubthread
 
     if (m_available_count > 0)
       {
-        refp = m_available_workers[m_available_count--];
+        refp = m_available_workers[--m_available_count];
         ulock.unlock ();
 
+        assert (refp != NULL);
         refp->assign_task (task_p, push_time);
       }
     else
