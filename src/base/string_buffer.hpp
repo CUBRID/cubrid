@@ -47,7 +47,14 @@ class string_buffer
     : public mem::block_ext
 {
   public:
-    string_buffer () = default; //default ctor
+#if 0//defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
+    string_buffer () = default;
+#else
+    string_buffer ()
+      : mem::block_ext ()
+      , m_len (0)
+    {}
+#endif
 
     ~string_buffer ()
     {
