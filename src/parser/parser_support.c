@@ -9088,7 +9088,7 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
   assert (table_name->node_type == PT_NAME);
 
 /* *INDENT-OFF* */
-#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
+#if 1 //defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
   string_buffer strbuf {
     [&parser] (mem::block& block, size_t len)
     {
