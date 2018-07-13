@@ -742,8 +742,6 @@ help_fprint_value (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value)
 {
 /* *INDENT-OFF* */
   db_private_allocator<char> private_allocator{thread_p};
-
-#if 1 //defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
   string_buffer sb{
     [&private_allocator] (mem::block& block, size_t len)
     {
@@ -758,9 +756,6 @@ help_fprint_value (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value)
       block = {};
     }
   };
-#else
-  string_buffer sb{&mem::private_realloc, &mem::private_dealloc};
-#endif
 /* *INDENT-ON* */
 
   db_value_printer printer (sb);

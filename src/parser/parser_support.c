@@ -9088,25 +9088,17 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
   assert (table_name->node_type == PT_NAME);
 
 /* *INDENT-OFF* */
-#if 1 //defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
   string_buffer strbuf {
     [&parser] (mem::block& block, size_t len)
     {
       size_t dim = block.dim ? block.dim : 1;
-
-      // calc next power of 2 >= b.dim
-      for (; dim < block.dim + len; dim *= 2)
-        ;
-
-      mem::block b{dim, (char *) parser_alloc (parser, block.dim + len)};
-      memcpy (b.ptr, block.ptr, block.dim);
+      for (; dim < block.dim + len; dim *= 2); // calc next power of 2 >= b.dim+len
+      mem::block b{dim, (char *) parser_alloc (parser, dim)};
+      memcpy (b.ptr, block.ptr, block.dim); // copy old content
       block = std::move (b);
     },
     [](mem::block& block){} //no need to deallocate for parser_context
   };
-#else
-  string_buffer strbuf;
-#endif
 /* *INDENT-ON* */
 
   pt_help_show_create_table (parser, table_name, strbuf);
@@ -9129,8 +9121,7 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
    */
   pt_add_string_col_to_sel_list (parser, select, table_name->info.name.original, "TABLE");
   pt_add_string_col_to_sel_list (parser, select, strbuf.get_buffer (), "CREATE TABLE");
-
-  (void) pt_add_table_name_to_from_list (parser, select, "db_root", NULL, DB_AUTH_SELECT);
+  pt_add_table_name_to_from_list (parser, select, "db_root", NULL, DB_AUTH_SELECT);
   return select;
 }
 
