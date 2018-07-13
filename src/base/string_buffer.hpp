@@ -43,17 +43,11 @@
 #include <stdio.h>
 #include <functional>
 
-class string_buffer: public mem::block_ext //collect formatted text (printf-like syntax)
+class string_buffer
+    : public mem::block_ext
 {
   public:
-#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
-    string_buffer () = default;                                    //default ctor
-#else
-    string_buffer ()
-      : mem::block_ext ()
-      , m_len (0)
-    {}
-#endif
+    string_buffer () = default; //default ctor
 
     ~string_buffer ()
     {
