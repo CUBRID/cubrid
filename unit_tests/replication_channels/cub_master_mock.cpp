@@ -81,7 +81,7 @@ namespace cub_master_mock
 
 	    if (css_check_magic (conn) != NO_ERRORS)
 	      {
-		css_free_conn (conn);
+		free_conn_entry_fp (conn);
 		return;
 	      }
 
@@ -93,7 +93,7 @@ namespace cub_master_mock
 
 	    if (function_code != SERVER_REQUEST_CONNECT_NEW_SLAVE)
 	      {
-		css_free_conn (conn);
+		free_conn_entry_fp (conn);
 		assert (false);
 		return;
 	      }
