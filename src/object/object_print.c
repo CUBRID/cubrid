@@ -743,7 +743,7 @@ help_fprint_value (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value)
 /* *INDENT-OFF* */
   db_private_allocator<char> private_allocator{thread_p};
 
-#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
+#if 1 //defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
   string_buffer sb{
     [&private_allocator] (mem::block& block, size_t len)
     {
