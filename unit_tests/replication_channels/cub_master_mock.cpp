@@ -6,7 +6,7 @@
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 #include "thread_looper.hpp"
-#if defined (WINDOWS)
+#if !defined (WINDOWS)
 #include "tcp.h"
 #else
 #include "wintcp.h"
@@ -17,7 +17,7 @@ namespace cub_master_mock
 {
 
   static cubthread::daemon *cub_master_daemon = NULL;
-  static int listen_fd[2];
+  static SOCKET listen_fd[2];
   static POLL_FD listen_poll_fd;
 
   class cub_master_daemon_task : public cubthread::entry_task
@@ -93,8 +93,8 @@ namespace cub_master_mock
 	      }
 
 	    cubreplication::master_senders_manager::add_stream_sender (
-		    new cubstream::transfer_sender (std::move (listener_chn),
-						    cubreplication::master_senders_manager::get_stream ()));
+	      new cubstream::transfer_sender (std::move (listener_chn),
+					      cubreplication::master_senders_manager::get_stream ()));
 	  }
       }
   };
@@ -109,12 +109,17 @@ namespace cub_master_mock
 	return rc;
       }
 
+#if !defined (WINDOWS)
     listen_poll_fd.fd = listen_fd[1];
+#else
+    listen_poll_fd.fd = listen_fd[0];
+#endif
+
     listen_poll_fd.events = POLLIN;
 
     cub_master_daemon = cubthread::get_manager()->create_daemon (
-				cubthread::looper (std::chrono::seconds (0)), new cub_master_daemon_task (),
-				"cub_master_daemon");
+			  cubthread::looper (std::chrono::seconds (0)), new cub_master_daemon_task (),
+			  "cub_master_daemon");
 
     return NO_ERROR;
   }
@@ -122,7 +127,12 @@ namespace cub_master_mock
   int finish ()
   {
     cubthread::get_manager ()->destroy_daemon (cub_master_daemon);
+#if !defined (WINDOWS)
     return close (listen_poll_fd.fd);
+#else
+    return closesocket (listen_poll_fd.fd);
+#endif
   }
 
 } /* namespace cub_master_mock */
+
