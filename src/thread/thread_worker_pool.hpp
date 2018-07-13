@@ -993,6 +993,8 @@ namespace cubthread
   void
   worker_pool<Context>::core::worker::assign_task (task<Context> *work_p, cubperf::time_point push_time)
   {
+    assert (m_task_p == NULL);
+
     // save push time
     m_push_time = push_time;
 
@@ -1190,10 +1192,11 @@ namespace cubthread
       {
         // no; this thread will stop. from this point forward, if a new task is assigned, a new thread must be spawned
         m_has_thread = false;
-        // unlock mutex
-        ulock.unlock ();
 
+        // finish_run; we neet to retire context before another thread uses this worker
         m_statistics.m_timept = cubperf::clock::now ();
+        finish_run ();
+
         return false;
       }
     else
@@ -1246,7 +1249,7 @@ namespace cubthread
 	// never got a task
       }
 
-    finish_run ();    // do stuff on end like retiring context
+    // finish_run ();    // do stuff on end like retiring context
   }
 
   template <typename Context>
