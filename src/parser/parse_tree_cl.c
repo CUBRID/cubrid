@@ -2524,7 +2524,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
   unsigned int save_custom = parser->custom_print;
 
 /* *INDENT-OFF* */
-#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
+#if 1 //defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
   string_buffer sb{
     [&parser] (mem::block& block, size_t len)
     {
