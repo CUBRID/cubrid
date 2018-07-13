@@ -51,21 +51,12 @@ target_link_libraries(test_replication_channels PRIVATE
   test_common
   )
 if(UNIX)
-	# the order should be 1.cubrid 2.cubridcs because
-	# they have common named functions and we need to
-	# use the ones in cubrid.so 
   target_link_libraries(test_replication_channels PRIVATE
     cubrid
-    )
-  target_link_libraries(test_replication_channels PRIVATE
-    cubridcs
     )
 elseif(WIN32)
 	target_link_libraries(test_replication_channels PRIVATE
     cubrid-win-lib
-    )
-  target_link_libraries(test_replication_channels PRIVATE
-    cubridcs
     )
 else()
   message( SEND_ERROR "Replication channel unit testing is for unix/windows")

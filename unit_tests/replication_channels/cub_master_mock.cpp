@@ -13,23 +13,7 @@
 #endif
 #include "connection_cl.h"
 
-
-#if defined (WINDOWS)
-#include <windows.h>
-#else
-#include <dlfcn.h>
-#endif
-
-typedef CSS_CONN_ENTRY * (*MAKE_CONN_ENTRY_FP) (SOCKET fd);
-typedef void (*FREE_CONN_ENTRY_FP) (CSS_CONN_ENTRY *conn);
-
-#if !defined (WINDOWS)
-static void *cubridcs_lib = NULL;
-#else
-static HINSTANCE cubridcs_lib;
-#endif
-static MAKE_CONN_ENTRY_FP make_conn_entry_fp = NULL;
-static FREE_CONN_ENTRY_FP free_conn_entry_fp = NULL;
+#include <netinet/in.h>
 
 namespace cub_master_mock
 {
@@ -58,11 +42,10 @@ namespace cub_master_mock
 	if ((listen_poll_fd.revents & POLLIN) != 0)
 	  {
 	    int new_sockfd;
-	    CSS_CONN_ENTRY *conn;
-	    int function_code;
 	    int buffer_size;
 	    unsigned short rid;
 	    css_error_code err = NO_ERRORS;
+	    NET_HEADER header;
 
 	    new_sockfd = css_master_accept (listen_poll_fd.fd);
 	    buffer_size = sizeof (NET_HEADER);
@@ -73,33 +56,24 @@ namespace cub_master_mock
 		return;
 	      }
 
-	    conn = make_conn_entry_fp (new_sockfd);
-	    if (conn == NULL)
+	    if (css_check_magic_with_socket (new_sockfd) != NO_ERRORS)
 	      {
-		return;
-	      }
-
-	    if (css_check_magic (conn) != NO_ERRORS)
-	      {
-		free_conn_entry_fp (conn);
-		return;
-	      }
-
-	    do
-	      {
-		rc = css_read_one_request (conn, &rid, &function_code, &buffer_size);
-	      }
-	    while (rc == WRONG_PACKET_TYPE);
-
-	    if (function_code != SERVER_REQUEST_CONNECT_NEW_SLAVE)
-	      {
-		free_conn_entry_fp (conn);
 		assert (false);
 		return;
 	      }
 
-	    conn->fd = INVALID_SOCKET;
-	    free_conn_entry_fp (conn);
+	    rc = css_net_read_header (new_sockfd, (char *) &header, &buffer_size, -1);
+	    if (rc != NO_ERRORS)
+	      {
+		assert (false);
+		return;
+	      }
+
+	    if ((int) (unsigned short) ntohs (header.function_code) != SERVER_REQUEST_CONNECT_NEW_SLAVE)
+	      {
+		assert (false);
+		return;
+	      }
 
 	    cubcomm::channel listener_chn;
 
@@ -120,36 +94,6 @@ namespace cub_master_mock
   int init ()
   {
     int rc;
-
-#if defined (WINDOWS)
-    cubridcs_lib = LoadLibrary ("cubridcs.dll");
-
-    if (cubridcs_lib != NULL)
-      {
-	make_conn_entry_fp = (MAKE_CONN_ENTRY_FP)GetProcAddress (cubridcs_lib, "css_make_conn");
-	free_conn_entry_fp = (FREE_CONN_ENTRY_FP)GetProcAddress (cubridcs_lib, "css_free_conn");
-
-	assert (make_conn_entry_fp != NULL && free_conn_entry_fp != NULL);
-      }
-    else
-      {
-	assert (false);
-      }
-#else
-    cubridcs_lib = dlopen ("libcubridcs.so", RTLD_NOW | RTLD_GLOBAL);
-
-    if (cubridcs_lib != NULL)
-      {
-	make_conn_entry_fp = (MAKE_CONN_ENTRY_FP)dlsym (cubridcs_lib, "_Z13css_make_conni");
-	free_conn_entry_fp = (FREE_CONN_ENTRY_FP)dlsym (cubridcs_lib, "_Z13css_free_connP14css_conn_entry");
-
-	assert (make_conn_entry_fp != NULL && free_conn_entry_fp != NULL);
-      }
-    else
-      {
-	assert (false);
-      }
-#endif
 
     rc = css_tcp_master_open (LISTENING_PORT, listen_fd);
     if (rc != NO_ERROR)
