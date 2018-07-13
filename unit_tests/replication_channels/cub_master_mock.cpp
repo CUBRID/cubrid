@@ -13,6 +13,24 @@
 #endif
 #include "connection_cl.h"
 
+
+#if defined (WINDOWS)
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
+typedef CSS_CONN_ENTRY * (*MAKE_CONN_ENTRY_FP) (SOCKET fd);
+typedef void (*FREE_CONN_ENTRY_FP) (CSS_CONN_ENTRY *conn);
+
+#if !defined (WINDOWS)
+static void *cubridcs_lib = NULL;
+#else
+static HINSTANCE cubridcs_lib;
+#endif
+static MAKE_CONN_ENTRY_FP make_conn_entry_fp = NULL;
+static FREE_CONN_ENTRY_FP free_conn_entry_fp = NULL;
+
 namespace cub_master_mock
 {
 
@@ -55,7 +73,7 @@ namespace cub_master_mock
 		return;
 	      }
 
-	    conn = css_make_conn (new_sockfd);
+	    conn = make_conn_entry_fp (new_sockfd);
 	    if (conn == NULL)
 	      {
 		return;
@@ -81,7 +99,7 @@ namespace cub_master_mock
 	      }
 
 	    conn->fd = INVALID_SOCKET;
-	    css_free_conn (conn);
+	    free_conn_entry_fp (conn);
 
 	    cubcomm::channel listener_chn;
 
@@ -102,6 +120,36 @@ namespace cub_master_mock
   int init ()
   {
     int rc;
+
+#if defined (WINDOWS)
+    cubridcs_lib = LoadLibrary ("cubridcs.dll");
+
+    if (cubridcs_lib != NULL)
+      {
+	make_conn_entry_fp = (MAKE_CONN_ENTRY_FP)GetProcAddress (cubridcs_lib, "css_make_conn");
+	free_conn_entry_fp = (FREE_CONN_ENTRY_FP)GetProcAddress (cubridcs_lib, "css_free_conn");
+
+	assert (make_conn_entry_fp != NULL && free_conn_entry_fp != NULL);
+      }
+    else
+      {
+	assert (false);
+      }
+#else
+    cubridcs_lib = dlopen ("libcubridcs.so", RTLD_NOW | RTLD_GLOBAL);
+
+    if (cubridcs_lib != NULL)
+      {
+	make_conn_entry_fp = (MAKE_CONN_ENTRY_FP)dlsym (cubridcs_lib, "_Z13css_make_conni");
+	free_conn_entry_fp = (FREE_CONN_ENTRY_FP)dlsym (cubridcs_lib, "_Z13css_free_connP14css_conn_entry");
+
+	assert (make_conn_entry_fp != NULL && free_conn_entry_fp != NULL);
+      }
+    else
+      {
+	assert (false);
+      }
+#endif
 
     rc = css_tcp_master_open (LISTENING_PORT, listen_fd);
     if (rc != NO_ERROR)
@@ -135,4 +183,5 @@ namespace cub_master_mock
   }
 
 } /* namespace cub_master_mock */
+
 
