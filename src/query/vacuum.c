@@ -4148,6 +4148,7 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
               log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) vacuum_Data.first_page, 0,
                                      sizeof (vacuum_Data.first_page->data->blockid),
                                      &vacuum_Data.first_page->data->blockid);
+              vacuum_set_dirty_data_page (thread_p, vacuum_Data.first_page, DONT_FREE);
 	    }
 	}
       else
