@@ -15,8 +15,6 @@
 #endif
 #include "connection_cl.h"
 
-#include <netinet/in.h>
-
 namespace cub_master_mock
 {
 
