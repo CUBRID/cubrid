@@ -4078,6 +4078,13 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
 	}
       break;
 
+    case PT_MERGE:
+      if (statement->info.merge.flags & PT_MERGE_INFO_SERVER_OP)
+	{
+	  statement->use_auto_commit = 1;
+	}
+      break;
+
       // TODO - what else? for instance, merge, other dmls, ddls.       
     default:
       break;
