@@ -772,6 +772,9 @@ namespace cubthread
   {
     delete [] m_worker_array;
     m_worker_array = NULL;
+
+    delete [] m_available_workers;
+    m_available_workers = NULL;
   }
 
   template <typename Context>
@@ -789,18 +792,18 @@ namespace cubthread
 
     for (std::size_t it = 0; it < m_max_workers; it++)
       {
-        m_worker_array[it].init_core (*this);
-        if (m_parent_pool->m_pool_threads)
-          {
-            // assign task / start thread
-            // it will add itself to available workers
-            m_worker_array[it].assign_task (NULL, cubperf::clock::now ());
-          }
-        else
-          {
-            // add to available workers
-            m_available_workers[m_available_count++] = &m_worker_array[it];
-          }
+	m_worker_array[it].init_core (*this);
+	if (m_parent_pool->m_pool_threads)
+	  {
+	    // assign task / start thread
+	    // it will add itself to available workers
+	    m_worker_array[it].assign_task (NULL, cubperf::clock::now ());
+	  }
+	else
+	  {
+	    // add to available workers
+	    m_available_workers[m_available_count++] = &m_worker_array[it];
+	  }
       }
   }
 
@@ -837,16 +840,16 @@ namespace cubthread
 
     if (m_available_count > 0)
       {
-        refp = m_available_workers[--m_available_count];
-        ulock.unlock ();
+	refp = m_available_workers[--m_available_count];
+	ulock.unlock ();
 
-        assert (refp != NULL);
-        refp->assign_task (task_p, push_time);
+	assert (refp != NULL);
+	refp->assign_task (task_p, push_time);
       }
     else
       {
-        // save to queue
-        m_task_queue.push (task_p);
+	// save to queue
+	m_task_queue.push (task_p);
       }
   }
 
@@ -887,7 +890,7 @@ namespace cubthread
 
     for (std::size_t idx = 0; idx < m_available_count; idx++)
       {
-        assert (m_available_workers[idx] != &worker_arg);
+	assert (m_available_workers[idx] != &worker_arg);
       }
 #endif // DEBUG
   }
@@ -1013,32 +1016,32 @@ namespace cubthread
 
     if (m_has_thread)
       {
-        // notify waiting thread
-        ulock.unlock (); // mutex is not needed for notify
-        m_task_cv.notify_one ();
+	// notify waiting thread
+	ulock.unlock (); // mutex is not needed for notify
+	m_task_cv.notify_one ();
       }
     else
       {
-        ulock.unlock ();
+	ulock.unlock ();
 
-        assert (m_context_p == NULL);
+	assert (m_context_p == NULL);
 
-        // start thread.
-        //
-        // the next code tries to help visualizing any system errors that can occur during create or detach in debug
-        // mode
-        //
-        // release will basically be reduced to:
-        // std::thread (&worker::run, this).detach ();
-        //
+	// start thread.
+	//
+	// the next code tries to help visualizing any system errors that can occur during create or detach in debug
+	// mode
+	//
+	// release will basically be reduced to:
+	// std::thread (&worker::run, this).detach ();
+	//
 
-        std::thread t;
+	std::thread t;
 
-        auto lambda_create = [&] (void) -> void { t = std::thread (&worker::run, this); };
-        auto lambda_detach = [&] (void) -> void { t.detach (); };
+	auto lambda_create = [&] (void) -> void { t = std::thread (&worker::run, this); };
+	auto lambda_detach = [&] (void) -> void { t.detach (); };
 
-        wp_call_func_throwing_system_error ("starting thread", lambda_create);
-        wp_call_func_throwing_system_error ("detaching thread", lambda_detach);
+	wp_call_func_throwing_system_error ("starting thread", lambda_create);
+	wp_call_func_throwing_system_error ("detaching thread", lambda_detach);
       }
   }
 
@@ -1159,15 +1162,15 @@ namespace cubthread
     // check stop condition
     if (!m_stop)
       {
-        // get a queued task or wait for one to come
+	// get a queued task or wait for one to come
 
-        // either get a queued task or add to free active list
-        // note: returned task cannot be saved directly to m_task_p. if worker is added to wait queue and NULL is returned,
-        //       current thread may be preempted. worker is then claimed from free active list and worker is assigned
-        //       a task. this changes expected behavior and can have unwanted consequences.
-        task_type *task_p = m_parent_core->get_task_or_become_available (*this);
-        if (task_p != NULL)
-          {
+	// either get a queued task or add to free active list
+	// note: returned task cannot be saved directly to m_task_p. if worker is added to wait queue and NULL is returned,
+	//       current thread may be preempted. worker is then claimed from free active list and worker is assigned
+	//       a task. this changes expected behavior and can have unwanted consequences.
+	task_type *task_p = m_parent_core->get_task_or_become_available (*this);
+	if (task_p != NULL)
+	  {
 	    wp_worker_statset_time_and_increment (m_statistics, Wpstat_found_in_queue);
 
 	    // it is safe to set here
@@ -1177,58 +1180,58 @@ namespace cubthread
 	    m_parent_core->get_context_manager ().recycle_context (*m_context_p);
 	    wp_worker_statset_time_and_increment (m_statistics, Wpstat_recycle_context);
 	    return true;
-          }
+	  }
 
-        // wait for task
-        ulock.lock ();
-        if (m_task_p == NULL && !m_stop)
-          {
+	// wait for task
+	ulock.lock ();
+	if (m_task_p == NULL && !m_stop)
+	  {
 	    // wait until a task is received or stopped ...
 	    // ... or time out
 	    m_task_cv.wait_for (ulock, m_parent_core->get_parent_pool ()->get_wait_for_task_time (),
-                                [this] { return m_task_p != NULL || m_stop; });
-          }
-        else
-          {
+				[this] { return m_task_p != NULL || m_stop; });
+	  }
+	else
+	  {
 	    // no need to wait
-          }
+	  }
       }
     else
       {
-        // we need to add to available list
-        m_parent_core->become_available (*this);
+	// we need to add to available list
+	m_parent_core->become_available (*this);
 
-        ulock.lock ();
+	ulock.lock ();
       }
 
     // did I get a task?
     if (m_task_p == NULL)
       {
-        // no; this thread will stop. from this point forward, if a new task is assigned, a new thread must be spawned
-        m_has_thread = false;
+	// no; this thread will stop. from this point forward, if a new task is assigned, a new thread must be spawned
+	m_has_thread = false;
 
-        // finish_run; we neet to retire context before another thread uses this worker
-        m_statistics.m_timept = cubperf::clock::now ();
-        finish_run ();
+	// finish_run; we neet to retire context before another thread uses this worker
+	m_statistics.m_timept = cubperf::clock::now ();
+	finish_run ();
 
-        return false;
+	return false;
       }
     else
       {
-        // unlock mutex
-        ulock.unlock ();
+	// unlock mutex
+	ulock.unlock ();
 
-        // safe-guard - threads should no longer be available
-        m_parent_core->check_worker_not_available (*this);
+	// safe-guard - threads should no longer be available
+	m_parent_core->check_worker_not_available (*this);
 
-        // found task
-        m_statistics.m_timept = m_push_time;
-        wp_worker_statset_time_and_increment (m_statistics, Wpstat_wakeup_with_task);
+	// found task
+	m_statistics.m_timept = m_push_time;
+	wp_worker_statset_time_and_increment (m_statistics, Wpstat_wakeup_with_task);
 
-        // we need to recycle context before reusing
-        m_parent_core->get_context_manager ().recycle_context (*m_context_p);
-        wp_worker_statset_time_and_increment (m_statistics, Wpstat_recycle_context);
-        return true;
+	// we need to recycle context before reusing
+	m_parent_core->get_context_manager ().recycle_context (*m_context_p);
+	wp_worker_statset_time_and_increment (m_statistics, Wpstat_recycle_context);
+	return true;
       }
   }
 
