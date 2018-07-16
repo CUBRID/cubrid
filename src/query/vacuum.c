@@ -4140,6 +4140,15 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 	      assert (vacuum_Data.get_last_blockid () == VACUUM_NULL_LOG_BLOCKID);
 	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY, "%s",
 			     "vacuum_data_load_and_recover: last blockid remains null");
+
+              /* and this is a hack to removed "last_blockid from vacuum data page" */
+              assert (vacuum_Data.first_page == vacuum_Data.last_page);
+              vacuum_data_initialize_new_page (thread_p, vacuum_Data.first_page);
+              vacuum_Data.first_page->data->blockid = VACUUM_NULL_LOG_BLOCKID;
+              log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) vacuum_Data.first_page, 0,
+                                     sizeof (vacuum_Data.first_page->data->blockid),
+                                     &vacuum_Data.first_page->data->blockid);
+              vacuum_set_dirty_data_page (thread_p, vacuum_Data.first_page, DONT_FREE);
 	    }
 	}
       else
