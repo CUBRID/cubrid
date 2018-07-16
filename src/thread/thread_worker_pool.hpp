@@ -1154,7 +1154,7 @@ namespace cubthread
   {
     assert (m_task_p == NULL);
 
-    std::unique_lock<std::mutex> ulock (m_task_mutex, std::defer_lock_t);
+    std::unique_lock<std::mutex> ulock (m_task_mutex, std::defer_lock);
 
     // check stop condition
     if (!m_stop)
