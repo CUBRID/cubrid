@@ -13277,9 +13277,6 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   statement->etc = NULL;
   class_ = statement->info.insert.spec->info.spec.flat_entity_list;
   values = statement->info.insert.value_clauses;
-  with = statement->info.insert.with;
-
-  xasl_with_insert (parser, with);
 
   error = do_insert_checks (parser, statement, &class_, &update, values);
   if (error != NO_ERROR)

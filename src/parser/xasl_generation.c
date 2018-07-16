@@ -17480,7 +17480,6 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   attrs = statement->info.insert.attr_list;
 
   class_obj = statement->info.insert.spec->info.spec.flat_entity_list->info.name.db_object;
-  with = statement->info.insert.with;
 
   class_ = locator_create_heap_if_needed (class_obj, sm_is_reuse_oid_class (class_obj));
   if (class_ == NULL)
@@ -17533,6 +17532,9 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       val_list = value_clauses->info.node_list.list;
       num_vals = pt_length_of_list (val_list);
     }
+
+  with = statement->info.insert.with;
+  generate_xasl_for_with_clause (parser, with);
 
   if (value_clauses->info.node_list.list_type == PT_IS_SUBQUERY)
     {
@@ -18785,9 +18787,8 @@ pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statemen
 }
 
 void
-xasl_with_insert (PARSER_CONTEXT * parser, PT_NODE * with)
+generate_xasl_for_with_clause (PARSER_CONTEXT * parser, PT_NODE * with)
 {
-
   // Do the ceremonies with with clause
   PT_NODE *old = xasl_Supp_info.query_list;
 
@@ -18799,9 +18800,9 @@ xasl_with_insert (PARSER_CONTEXT * parser, PT_NODE * with)
   // is this safe?
   pt_init_xasl_supp_info ();
 
+  // This seems to cause a segfault when hid is not initialized. It breaks when calling pt_symbol_info_alloc()
   parser_walk_tree (parser, with, parser_generate_xasl_pre, NULL, parser_generate_xasl_post, &xasl_Supp_info);
 
-  // This seems to cause a segfault. Why?
   parser_free_tree (parser, xasl_Supp_info.query_list);
   xasl_Supp_info.query_list = old;
 }
@@ -18841,27 +18842,7 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
   statement = parser_new_node (parser, PT_SELECT);
   if (statement != NULL)
     {
-      ///* TODO: take this outside of here*/
-      // Do the ceremonies with with clause
-      if (xasl_Supp_info.query_list)
-	{
-	  // TODO: maybe should keep this ?
-	  parser_free_tree (parser, xasl_Supp_info.query_list);
-	}
-      /* add dummy node at the head of list */
-      xasl_Supp_info.query_list = parser_new_node (parser, PT_SELECT);
-      xasl_Supp_info.query_list->info.query.xasl = NULL;
-
-      /* XASL cache related information */
-      // is this safe?
-      pt_init_xasl_supp_info ();
-
-      with =
-	parser_walk_tree (parser, with, parser_generate_xasl_pre, NULL, parser_generate_xasl_post, &xasl_Supp_info);
-
-      parser_free_tree (parser, xasl_Supp_info.query_list);
-      xasl_Supp_info.query_list = NULL;
-      // finished with ceremonies
+      generate_xasl_for_with_clause (parser, with);
 
       /* this is an internally built query */
       PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_IS_UPD_DEL_QUERY);

@@ -8653,9 +8653,12 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
       p_class_instance_lock_info = &class_instance_lock_info;
     }
 
-  if (qexec_execute_mainblock (thread_p, aptr, xasl_state, p_class_instance_lock_info) != NO_ERROR)
+  for (XASL_NODE * crt = aptr; crt != NULL && error == NO_ERROR; crt = crt->next)
     {
-      GOTO_EXIT_ON_ERROR;
+      if (qexec_execute_mainblock (thread_p, crt, xasl_state, p_class_instance_lock_info) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
     }
 
 
@@ -9591,9 +9594,12 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       p_class_instance_lock_info = &class_instance_lock_info;
     }
 
-  if (qexec_execute_mainblock (thread_p, aptr, xasl_state, p_class_instance_lock_info) != NO_ERROR)
+  for (XASL_NODE * crt = aptr; crt != NULL; crt = crt->next)
     {
-      GOTO_EXIT_ON_ERROR;
+      if (qexec_execute_mainblock (thread_p, crt, xasl_state, p_class_instance_lock_info) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
     }
 
   if (p_class_instance_lock_info && p_class_instance_lock_info->instances_locked)
@@ -10791,10 +10797,14 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   if (!skip_aptr)
     {
-      if (aptr && qexec_execute_mainblock (thread_p, aptr, xasl_state, NULL) != NO_ERROR)
+      /* TODO: When do we skip aptr? */
+      for (XASL_NODE * crt = aptr; crt != NULL; crt = crt->next)
 	{
-	  qexec_failure_line (__LINE__, xasl_state);
-	  return ER_FAILED;
+	  if (qexec_execute_mainblock (thread_p, crt, xasl_state, NULL) != NO_ERROR)
+	    {
+	      qexec_failure_line (__LINE__, xasl_state);
+	      return ER_FAILED;
+	    }
 	}
     }
 
@@ -13322,28 +13332,24 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
   thread_inc_recursion_depth (thread_p);
 
   on_trace = thread_is_on_trace (thread_p);
-  for (XASL_NODE * crt = xasl; crt != NULL && error == NO_ERROR; crt = crt->next)
+  if (on_trace)
     {
-      error = qexec_execute_mainblock_internal (thread_p, crt, xasl_state, p_class_instance_lock_info);
+      tsc_getticks (&start_tick);
 
-      // TOOD: can these be shared?
-      if (on_trace)
-	{
-	  tsc_getticks (&start_tick);
+      old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
+      old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+    }
 
-	  old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
-	  old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
-	}
+  error = qexec_execute_mainblock_internal (thread_p, xasl, xasl_state, p_class_instance_lock_info);
 
-      if (on_trace)
-	{
-	  tsc_getticks (&end_tick);
-	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-	  TSC_ADD_TIMEVAL (crt->xasl_stats.elapsed_time, tv_diff);
+  if (on_trace)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TSC_ADD_TIMEVAL (xasl->xasl_stats.elapsed_time, tv_diff);
 
-	  crt->xasl_stats.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
-	  crt->xasl_stats.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
-	}
+      xasl->xasl_stats.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
+      xasl->xasl_stats.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
     }
 
   thread_dec_recursion_depth (thread_p);
