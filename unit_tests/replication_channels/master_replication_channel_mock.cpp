@@ -2,13 +2,13 @@
 
 #define SERVER_MODE
 #include "replication_master_senders_manager.hpp"
-#if defined (WINDOWS)
+#if !defined (WINDOWS)
 #include "tcp.h"
+#include <sys/poll.h>
 #else
 #include "wintcp.h"
 #endif
 #include "error_code.h"
-#include <sys/poll.h>
 #include "thread_manager.hpp"
 #include <assert.h>
 #include "test_output.hpp"
@@ -39,3 +39,4 @@ namespace master
   }
 
 } /* namespace master */
+
