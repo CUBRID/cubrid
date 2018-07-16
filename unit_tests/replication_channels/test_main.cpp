@@ -65,8 +65,9 @@ static int init_thread_system ()
 static int init ()
 {
   int error_code = NO_ERROR;
+#if !defined (WINDOWS)
   signal (SIGPIPE, SIG_IGN);
-
+#endif
   error_code = er_init ("replication_channels.log", ER_EXIT_DONT_ASK);
   if (error_code != NO_ERROR)
     {
@@ -191,3 +192,4 @@ int main (int argc, char **argv)
 
   return 0;
 }
+
