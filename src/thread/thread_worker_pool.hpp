@@ -294,6 +294,7 @@ namespace cubthread
       // worker management
       // get a task or add worker to free active list (still running, but ready to execute another task)
       task_type *get_task_or_become_available (worker &worker_arg);
+      void become_available (worker &worker_arg);
       // is worker available?
       void check_worker_not_available (const worker &worker_arg);
       // context management
@@ -870,6 +871,15 @@ namespace cubthread
 
   template <typename Context>
   void
+  worker_pool<Context>::core::become_available (worker &worker_arg)
+  {
+    std::unique_lock<std::mutex> ulock (m_workers_mutex);
+    m_available_workers[m_available_count++] = &worker_arg;
+    assert (m_available_count <= m_max_workers);
+  }
+
+  template <typename Context>
+  void
   worker_pool<Context>::core::check_worker_not_available (const worker &worker_arg)
   {
 #if !defined (NDEBUG)
@@ -1144,45 +1154,51 @@ namespace cubthread
   {
     assert (m_task_p == NULL);
 
+    std::unique_lock<std::mutex> ulock (m_task_mutex, std::defer_lock_t);
+
     // check stop condition
-    if (m_stop)
+    if (!m_stop)
       {
-	// stop
-	return false;
-      }
+        // get a queued task or wait for one to come
 
-    // get a queued task or wait for one to come
+        // either get a queued task or add to free active list
+        // note: returned task cannot be saved directly to m_task_p. if worker is added to wait queue and NULL is returned,
+        //       current thread may be preempted. worker is then claimed from free active list and worker is assigned
+        //       a task. this changes expected behavior and can have unwanted consequences.
+        task_type *task_p = m_parent_core->get_task_or_become_available (*this);
+        if (task_p != NULL)
+          {
+	    wp_worker_statset_time_and_increment (m_statistics, Wpstat_found_in_queue);
 
-    // either get a queued task or add to free active list
-    // note: returned task cannot be saved directly to m_task_p. if worker is added to wait queue and NULL is returned,
-    //       current thread may be preempted. worker is then claimed from free active list and worker is assigned
-    //       a task. this changes expected behavior and can have unwanted consequences.
-    task_type *task_p = m_parent_core->get_task_or_become_available (*this);
-    if (task_p != NULL)
-      {
-	wp_worker_statset_time_and_increment (m_statistics, Wpstat_found_in_queue);
+	    // it is safe to set here
+	    m_task_p = task_p;
 
-	// it is safe to set here
-	m_task_p = task_p;
+	    // we need to recycle context before reusing
+	    m_parent_core->get_context_manager ().recycle_context (*m_context_p);
+	    wp_worker_statset_time_and_increment (m_statistics, Wpstat_recycle_context);
+	    return true;
+          }
 
-	// we need to recycle context before reusing
-	m_parent_core->get_context_manager ().recycle_context (*m_context_p);
-	wp_worker_statset_time_and_increment (m_statistics, Wpstat_recycle_context);
-	return true;
-      }
-
-    // wait for task
-    std::unique_lock<std::mutex> ulock (m_task_mutex);
-    if (m_task_p == NULL && !m_stop)
-      {
-	// wait until a task is received or stopped ...
-	// ... or time out
-	m_task_cv.wait_for (ulock, m_parent_core->get_parent_pool ()->get_wait_for_task_time (),
-                            [this] { return m_task_p != NULL || m_stop; });
+        // wait for task
+        ulock.lock ();
+        if (m_task_p == NULL && !m_stop)
+          {
+	    // wait until a task is received or stopped ...
+	    // ... or time out
+	    m_task_cv.wait_for (ulock, m_parent_core->get_parent_pool ()->get_wait_for_task_time (),
+                                [this] { return m_task_p != NULL || m_stop; });
+          }
+        else
+          {
+	    // no need to wait
+          }
       }
     else
       {
-	// no need to wait
+        // we need to add to available list
+        m_parent_core->become_available (*this);
+
+        ulock.lock ();
       }
 
     // did I get a task?
