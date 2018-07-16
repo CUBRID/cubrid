@@ -61,7 +61,7 @@ namespace cubload
   void
   driver::error (const location &loc, const std::string &msg)
   {
-    //ldr_increment_err_total (ldr_Current_context);
+    ldr_increment_err_total ();
     fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SYNTAX_ERR), lineno (),
 	     m_scanner.YYText ());
   }
@@ -212,7 +212,7 @@ namespace cubload
 
     if (!is_utf8_valid (str))
       {
-	//ldr_string_free (&str);
+	ldr_string_free (&str);
 	return NULL;
       }
 
@@ -252,7 +252,7 @@ namespace cubload
 
     if (!is_utf8_valid (str))
       {
-	//ldr_string_free (&str);
+	ldr_string_free (&str);
 	return NULL;
       }
 
@@ -329,6 +329,28 @@ namespace cubload
   {
     monetary_t *mon_value = make_monetary_value (currency_type, amount);
     return make_constant (LDR_MONETARY, mon_value);
+  }
+
+  constant_t *
+  driver::semantic_helper::make_real (string_t *str)
+  {
+    if (str == NULL || str->val == NULL)
+      {
+	return NULL;
+      }
+
+    if (strchr (str->val, 'F') != NULL || strchr (str->val, 'f') != NULL)
+      {
+	return make_constant (LDR_FLOAT, str);
+      }
+    else if (strchr (str->val, 'E') != NULL || strchr (str->val, 'e') != NULL)
+      {
+	return make_constant (LDR_DOUBLE, str);
+      }
+    else
+      {
+	return make_constant (LDR_NUMERIC, str);
+      }
   }
 
   void

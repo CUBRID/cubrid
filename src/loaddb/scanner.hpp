@@ -71,8 +71,8 @@ namespace cubload
        */
       void LexerError (const char *msg) override
       {
-	//ldr_load_failed_error ();
-	//ldr_increment_fails ();
+	ldr_load_failed_error ();
+	ldr_increment_fails ();
       }
   };
 } // namespace cubload

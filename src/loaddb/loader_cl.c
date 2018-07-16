@@ -77,7 +77,6 @@ extern bool No_oid_hint;
 
 #define LDR_MAX_ARGS 32
 
-#define LDR_INCREMENT_ERR_TOTAL(context) ldr_increment_err_total(context)
 #define LDR_INCREMENT_ERR_COUNT(context, i) \
                                            ldr_increment_err_count(context, i)
 #define LDR_CLEAR_ERR_TOTAL(context)     ldr_clear_err_total(context)
@@ -598,11 +597,11 @@ void (*ldr_act) (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
  *    context(out): context
  */
 void
-ldr_increment_err_total (LDR_CONTEXT * context)
+ldr_increment_err_total ()
 {
-  if (context)
+  if (ldr_Current_context)
     {
-      context->err_total += 1;
+      ldr_Current_context->err_total += 1;
     }
 }
 
@@ -990,18 +989,18 @@ ldr_assign_class_id (DB_OBJECT * class_, int id)
  *    id(in): class id
  */
 void
-ldr_act_set_id (LDR_CONTEXT * context, int id)
+ldr_act_set_id (int id)
 {
   int err = NO_ERROR;
 
-  if (context->id_class != NULL)
+  if (ldr_Current_context->id_class != NULL)
     {
-      context->inst_num = id;
-      CHECK_ERR (err, ldr_assign_class_id (context->id_class, id));
-      context->id_class = NULL;
+      ldr_Current_context->inst_num = id;
+      CHECK_ERR (err, ldr_assign_class_id (ldr_Current_context->id_class, id));
+      ldr_Current_context->id_class = NULL;
     }
 error_exit:
-  CHECK_CONTEXT_VALIDITY (context, err != NO_ERROR);
+  CHECK_CONTEXT_VALIDITY (ldr_Current_context, err != NO_ERROR);
 }
 
 /*
@@ -1071,17 +1070,20 @@ ldr_get_class_from_id (int id)
  *    name(in): class name
  */
 void
-ldr_act_start_id (LDR_CONTEXT * context, char *name)
+ldr_act_start_id (char *name)
 {
   DB_OBJECT *class_;
   bool is_ignore_class;
 
-  if (!context->validation_only)
+  // moved from grammar file;
+  skip_current_class = false;
+
+  if (!ldr_Current_context->validation_only)
     {
       class_ = ldr_find_class (name);
       if (class_ != NULL)
 	{
-	  context->id_class = class_;
+	  ldr_Current_context->id_class = class_;
 	}
       else
 	{
@@ -1089,7 +1091,7 @@ ldr_act_start_id (LDR_CONTEXT * context, char *name)
 	  if (!is_ignore_class)
 	    {
 	      display_error (0);
-	      CHECK_CONTEXT_VALIDITY (context, true);
+	      CHECK_CONTEXT_VALIDITY (ldr_Current_context, true);
 	    }
 	  else if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
 	    {
@@ -1304,7 +1306,7 @@ parse_error (LDR_CONTEXT * context, DB_TYPE token_type, const char *token)
 {
   display_error_line (0);
 
-  /* 
+  /*
    * This is called when we experience an error when performing a string to
    * DB_TYPE conversion. Called via CHECK_PARSE_ERR() macro.
    */
@@ -1430,7 +1432,7 @@ ldr_act_attr (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
     {
       switch (type)
 	{
-	  /* 
+	  /*
 	   * For validation only simply parse the set elements, by switching
 	   * to the element setter
 	   */
@@ -1503,7 +1505,7 @@ ldr_act_elem (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
     {
       switch (type)
 	{
-	  /* 
+	  /*
 	   * For validation only simply parse the set elements, by switching
 	   * to the element setter
 	   */
@@ -1575,7 +1577,7 @@ ldr_act_meth (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
 
   attdesc = &context->attrs[context->next_attr];
 
-  /* 
+  /*
    * Save the parser buffer and type information, this will be
    * used later to feed to the fast setters to populate the
    * constructor generated instance
@@ -1645,7 +1647,7 @@ error_exit:
 static int
 ldr_ignore (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
 {
-  /* 
+  /*
    * No need to set an error here, we've already issued a message when we were
    * studying the attribute in ldr_act_add_attr().  Just return an error code
    * so that the caller will increment context->err_count, causing us to
@@ -1891,7 +1893,7 @@ ldr_int_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
   int err = NO_ERROR;
   int result = 0;
 
-  /* 
+  /*
    * Watch out for really long digit strings that really are being
    * assigned into a DB_TYPE_NUMERIC attribute; they can hold more than a
    * standard integer can, and calling atol() on that string will lose
@@ -2182,7 +2184,7 @@ ldr_str_db_char (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE *
 
   if (char_count > precision)
     {
-      /* 
+      /*
        * May be a violation, but first we have to check for trailing pad
        * characters that might allow us to successfully truncate the
        * thing.
@@ -2205,7 +2207,7 @@ ldr_str_db_char (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE *
 	len = truncate_size;
       else
 	{
-	  /* 
+	  /*
 	   * It's a genuine violation; raise an error.
 	   */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_CHAR));
@@ -2252,7 +2254,7 @@ ldr_str_db_varchar (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUT
 
   if (char_count > precision)
     {
-      /* 
+      /*
        * May be a violation, but first we have to check for trailing pad
        * characters that might allow us to successfully truncate the
        * thing.
@@ -2274,7 +2276,7 @@ ldr_str_db_varchar (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUT
 	len = truncate_size;
       else
 	{
-	  /* 
+	  /*
 	   * It's a genuine violation; raise an error.
 	   */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_VARCHAR));
@@ -2294,7 +2296,7 @@ ldr_str_db_varchar (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUT
 
   mem = context->mobj + att->offset;
   CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
-  /* 
+  /*
    * No bound bit to be set for a variable length attribute.
    */
 
@@ -3172,7 +3174,7 @@ ldr_check_date_time_conversion (const char *str, LDR_TYPE type)
   DB_TYPE current_type = DB_TYPE_NULL;
   bool has_zone;
 
-  /* 
+  /*
    * Flag invalid date/time/timestamp strings as errors.
    * e.g., DATE '01///' should be an error, this is not detected by the lexical
    * analysis phase since DATE 'str' is valid.
@@ -3716,7 +3718,7 @@ find_instance (LDR_CONTEXT * context, DB_OBJECT * class_, OID * oid, int id)
 	{			/* Forward reference */
 	  if ((class_ == context->cls) && (context->inst_num == id))
 	    {
-	      /* 
+	      /*
 	       * We have a reference to the current object being processed.
 	       * Simply use the oid of the object.
 	       */
@@ -3737,7 +3739,7 @@ find_instance (LDR_CONTEXT * context, DB_OBJECT * class_, OID * oid, int id)
 		{
 		  MOP mop;
 		  INST_INFO *inst;
-		  /* 
+		  /*
 		   * Create object, this will be used used when the instance
 		   * is defined in the load file.
 		   * We do not mark the MOP as released yet. This will be done
@@ -3747,14 +3749,14 @@ find_instance (LDR_CONTEXT * context, DB_OBJECT * class_, OID * oid, int id)
 		  COPY_OID (oid, WS_REAL_OID (mop));
 		  CHECK_ERR (err, otable_reserve (table, oid, id));
 		  CHECK_PTR (err, inst = otable_find (table, id));
-		  /* 
+		  /*
 		   * Mark forward references to class attributes so that we do
 		   * not cull the objects they point to after we encounter them.
 		   */
 		  if (context->attribute_type != LDR_ATTRIBUTE_ANY)
 		    otable_class_att_ref (inst);
 
-		  /* 
+		  /*
 		   * Add to the list of mops for which we need a permanent oid
 		   * for
 		   */
@@ -3810,7 +3812,7 @@ ldr_class_oid_db_object (LDR_CONTEXT * context, const char *str, int len, SM_ATT
 
   CHECK_ERR (err, ldr_class_oid_elem (context, str, len, &val));
 
-  /* 
+  /*
    * We need to treat shared attributes in the generic way.
    * There is a problem when setting the bound bit for shared attributes.
    */
@@ -4012,7 +4014,7 @@ ldr_collection_db_collection (LDR_CONTEXT * context, const char *str, int len, S
 
   if (context->collection == NULL)
     {
-      /* 
+      /*
        * This kind of bites:  we need to avoid advancing the next_attr
        * counter until we actually hit the closing brace.  Since ldr_act_attr
        * (which has called this function) will increment the counter
@@ -4021,7 +4023,7 @@ ldr_collection_db_collection (LDR_CONTEXT * context, const char *str, int len, S
        */
       context->next_attr -= 1;
 
-      /* 
+      /*
        * We've just seen the leading brace of a collection, and we need to
        * create the "holding" collection.
        */
@@ -4039,7 +4041,7 @@ ldr_collection_db_collection (LDR_CONTEXT * context, const char *str, int len, S
     }
   else
     {
-      /* 
+      /*
        * We've seen the trailing brace that ends the collection, and it's
        * now time to assign the collection to the instance.
        */
@@ -4076,7 +4078,7 @@ ldr_reset_context (LDR_CONTEXT * context)
   int err = NO_ERROR;
   INST_INFO *inst = NULL;
 
-  /* 
+  /*
    * Check that we are not dealing with class attributes, use attribute_type
    * Do not create instances for class attributes.
    */
@@ -4089,7 +4091,7 @@ ldr_reset_context (LDR_CONTEXT * context)
 
       if (inst && (inst->flags & INST_FLAG_RESERVED))
 	{
-	  /* 
+	  /*
 	   * This instance was already referenced and a workspace MOP created.
 	   */
 	  context->obj = ws_mop (&(inst->oid), context->cls);
@@ -4099,7 +4101,7 @@ ldr_reset_context (LDR_CONTEXT * context)
 	      display_error (0);
 	      goto error_exit;
 	    }
-	  /* 
+	  /*
 	   * If this was a forward reference from a class attribute than we
 	   * do not want to mark it as releasable.
 	   */
@@ -4121,7 +4123,7 @@ ldr_reset_context (LDR_CONTEXT * context)
 	  /* set pruning type to be performed on this object */
 	  context->obj->pruning_type = context->class_type;
 
-	  /* 
+	  /*
 	   * Mark this mop as released so that we can cull it when we
 	   * complete inserting this instance.
 	   */
@@ -4241,7 +4243,7 @@ check_commit (LDR_CONTEXT * context)
 		  (*ldr_post_commit_handler) ((Total_objects + 1));
 		}
 
-	      /* After a commit we need to ensure that our attributes and attribute descriptors are updated. The commit 
+	      /* After a commit we need to ensure that our attributes and attribute descriptors are updated. The commit
 	       * process can pull these from under us if another client is also updating the class. */
 	      CHECK_ERR (err, ldr_refresh_attrs (context));
 	    }
@@ -4292,54 +4294,57 @@ ldr_restore_pin_and_drop_obj (LDR_CONTEXT * context, bool drop_obj)
  *   are flushed.
  */
 void
-ldr_act_finish_line (LDR_CONTEXT * context)
+ldr_act_finish_line ()
 {
   int err = NO_ERROR;
 
   CHECK_SKIP ();
-  if (context->valid)
+  if (ldr_Current_context->valid)
     {
-      if (context->next_attr < (context->num_attrs + context->arg_count))
+      if (ldr_Current_context->next_attr < (ldr_Current_context->num_attrs + ldr_Current_context->arg_count))
 	{
-	  if (context->arg_count && (context->next_attr >= context->arg_index))
+	  if (ldr_Current_context->arg_count && (ldr_Current_context->next_attr >= ldr_Current_context->arg_index))
 	    {
 	      err = ER_LDR_MISSING_ARGUMENT;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, context->arg_count,
-		      context->next_attr - context->arg_index);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, ldr_Current_context->arg_count,
+		      ldr_Current_context->next_attr - ldr_Current_context->arg_index);
 	    }
 	  else
 	    {
 	      err = ER_LDR_MISSING_ATTRIBUTES;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, context->num_attrs, context->next_attr);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, ldr_Current_context->num_attrs,
+		      ldr_Current_context->next_attr);
 	    }
-	  LDR_INCREMENT_ERR_COUNT (context, 1);
+	  LDR_INCREMENT_ERR_COUNT (ldr_Current_context, 1);
 	}
     }
 
-  ldr_restore_pin_and_drop_obj (context, ((context->err_count != 0) || (err != NO_ERROR)) || skip_current_instance);
+  ldr_restore_pin_and_drop_obj (ldr_Current_context, ((ldr_Current_context->err_count != 0) || (err != NO_ERROR))
+				|| skip_current_instance);
   CHECK_ERR (err, err);
 
-  if (context->valid && !context->err_count && !skip_current_instance)
+  if (ldr_Current_context->valid && !ldr_Current_context->err_count && !skip_current_instance)
     {
-      if (context->constructor)
+      if (ldr_Current_context->constructor)
 	{
-	  err = insert_meth_instance (context);
+	  err = insert_meth_instance (ldr_Current_context);
 	}
-      else if (context->attribute_type == LDR_ATTRIBUTE_ANY)
+      else if (ldr_Current_context->attribute_type == LDR_ATTRIBUTE_ANY)
 	{
-	  err = insert_instance (context);
+	  err = insert_instance (ldr_Current_context);
 	}
 
       if (err == NO_ERROR)
 	{
-	  if (context->flush_interval && context->inst_count >= context->flush_interval)
+	  if (ldr_Current_context->flush_interval
+	      && ldr_Current_context->inst_count >= ldr_Current_context->flush_interval)
 	    {
 	      err = ldr_assign_all_perm_oids ();
 	      if (err == NO_ERROR)
 		{
-		  if (!context->validation_only)
+		  if (!ldr_Current_context->validation_only)
 		    {
-		      ldr_flush (context);
+		      ldr_flush (ldr_Current_context);
 		      err = er_errid ();
 		      if (err != NO_ERROR)
 			{
@@ -4348,7 +4353,7 @@ ldr_act_finish_line (LDR_CONTEXT * context)
 			  if (err == NO_ERROR)
 			    {
 			      /* Flush error was ignored. Objects in workspace must be decached for later flush */
-			      ws_decache_all_instances (context->cls);
+			      ws_decache_all_instances (ldr_Current_context->cls);
 			    }
 			}
 		      CHECK_ERR (err, er_errid ());
@@ -4356,22 +4361,22 @@ ldr_act_finish_line (LDR_CONTEXT * context)
 		}
 	      else
 		{
-		  LDR_INCREMENT_ERR_COUNT (context, 1);
+		  LDR_INCREMENT_ERR_COUNT (ldr_Current_context, 1);
 		}
 	    }
 	}
       else
 	{
-	  LDR_INCREMENT_ERR_COUNT (context, 1);
+	  LDR_INCREMENT_ERR_COUNT (ldr_Current_context, 1);
 	}
     }
 
 error_exit:
-  if (context->err_count || (err != NO_ERROR))
+  if (ldr_Current_context->err_count || (err != NO_ERROR))
     {
       ldr_abort ();
     }
-  context->instance_started = 0;
+  ldr_Current_context->instance_started = 0;
   return;
 }
 
@@ -4393,7 +4398,7 @@ ldr_finish_context (LDR_CONTEXT * context)
     {
       if (!context->validation_only)
 	{
-	  /* 
+	  /*
 	   * Get permanent oids for the current class,
 	   * Note : we have to this even if the instance total is 0 since
 	   * we might have had forward object references, specified from
@@ -4505,7 +4510,7 @@ ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len)
       if (!context->validation_only)
 	{
 	  context->cls = class_mop;
-	  /* 
+	  /*
 	   * Cache the class name. This will be used if we have a periodic
 	   * commit and need to refresh the class
 	   * This is a temporary fix, we will have to cache all the class
@@ -4699,7 +4704,7 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
   attdesc->ref_class = NULL;
   attdesc->collection_domain = NULL;
 
-  /* 
+  /*
    * Initialize the setters to something that hopefully won't crash and
    * burn if either of the following initialization calls fails.
    */
@@ -4710,7 +4715,7 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
 
   if (context->constructor)
     {
-      /* 
+      /*
        * At this point the parser has seen the CONSTRUCTOR syntax.
        * We are dealing with arguments for the constructor.
        * There is no attribute descriptor for method arguments so a check
@@ -4736,14 +4741,14 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
 
   context->num_attrs += 1;
 
-  /* 
+  /*
    * When dealing with class attributes the normal setters are not used, since
    * they rely on the use of an empty instance.
    */
   if (context->attribute_type != LDR_ATTRIBUTE_ANY)
     {
       int invalid_attr = 0;
-      /* 
+      /*
        * Set elements need to be gathhers in a collection value bucket
        * We can use the existing setter for this.
        */
@@ -4771,7 +4776,7 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
       goto error_exit;
     }
 
-  /* 
+  /*
    * Now that we know we really have an attribute descriptor and a
    * SM_ATTRIBUTE, we can go ahead and initialize our setters to
    * something that can exploit them.
@@ -4787,7 +4792,7 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
   attdesc->setter[LDR_DOUBLE] = &ldr_real_db_generic;
   attdesc->setter[LDR_FLOAT] = &ldr_real_db_generic;
 
-  /* 
+  /*
    * These two system object setters are setup to return an
    * appropriate error message to the user.
    */
@@ -5031,7 +5036,7 @@ update_default_instances_stats (LDR_CONTEXT * context)
 
   context->default_count = 0;
 
-  /* 
+  /*
    * note that if we run out of space, the context->valid flag will get
    * turned off, insert_default_instance needs to check this
    */
@@ -5074,11 +5079,11 @@ ldr_finish (LDR_CONTEXT * context, int err)
  *    parse_error():
  */
 void
-ldr_act_finish (LDR_CONTEXT * context, int parse_error)
+ldr_act_finish (int parse_error)
 {
   /* do not display duplicate error msg */
   int err = er_filter_errid (false);
-  if (ldr_finish (context, parse_error) && err == NO_ERROR)
+  if (ldr_finish (ldr_Current_context, parse_error) && err == NO_ERROR)
     {
       display_error (-1);
     }
@@ -5108,7 +5113,7 @@ insert_instance (LDR_CONTEXT * context)
     {
       if (context->obj)
 	{
-	  /* 
+	  /*
 	   * Note : instances without ids are not inserted in the otable as
 	   * there can not be referenced from the load file.
 	   */
@@ -5182,24 +5187,27 @@ error_exit:
  *    This is called when a new instance if found by the parser.
  */
 void
-ldr_act_start_instance (LDR_CONTEXT * context, int id, LDR_CONSTANT * cons)
+ldr_act_start_instance (int id, LDR_CONSTANT * cons)
 {
+  // moved from grammar file;
+  skip_current_instance = false;
+
   CHECK_SKIP ();
-  if (context->valid)
+  if (ldr_Current_context->valid)
     {
 
-      context->inst_num = id;
+      ldr_Current_context->inst_num = id;
       if (cons)
 	{
-	  context->cons = cons;
+	  ldr_Current_context->cons = cons;
 	}
 
-      if (ldr_reset_context (context) != NO_ERROR)
+      if (ldr_reset_context (ldr_Current_context) != NO_ERROR)
 	{
 	  display_error (-1);
 	}
 
-      context->instance_started = 1;
+      ldr_Current_context->instance_started = 1;
     }
 }
 
@@ -5540,6 +5548,67 @@ error_exit:
   return err;
 }
 
+void
+ldr_act_setup_class_command_spec (LDR_STRING ** class_name_, LDR_CLASS_COMMAND_SPEC ** cmd_spec_)
+{
+  if (class_name_ == NULL || *class_name_ == NULL)
+    {
+      return;
+    }
+  if (cmd_spec_ == NULL || *cmd_spec_ == NULL)
+    {
+      return;
+    }
+
+  LDR_STRING *attr, *save, *args;
+  LDR_STRING *class_name = *class_name_;
+  LDR_CLASS_COMMAND_SPEC *cmd_spec = *cmd_spec_;
+
+  ldr_act_set_skip_current_class (class_name->val, class_name->size);
+  ldr_act_init_context (ldr_Current_context, class_name->val, class_name->size);
+
+  if (cmd_spec->qualifier != LDR_ATTRIBUTE_ANY)
+    {
+      ldr_act_restrict_attributes (ldr_Current_context, (LDR_ATTRIBUTE_TYPE) cmd_spec->qualifier);
+    }
+
+  for (attr = cmd_spec->attr_list; attr; attr = attr->next)
+    {
+      ldr_act_add_attr (ldr_Current_context, attr->val, attr->size);
+    }
+
+  ldr_act_check_missing_non_null_attrs (ldr_Current_context);
+
+  if (cmd_spec->ctor_spec)
+    {
+      ldr_act_set_constructor (ldr_Current_context, cmd_spec->ctor_spec->id_name->val);
+
+      for (args = cmd_spec->ctor_spec->arg_list; args; args = args->next)
+	{
+	  ldr_act_add_argument (ldr_Current_context, args->val);
+	}
+
+      for (args = cmd_spec->ctor_spec->arg_list; args; args = save)
+	{
+	  save = args->next;
+	  ldr_string_free (&args);
+	}
+
+      ldr_string_free (&(cmd_spec->ctor_spec->id_name));
+      free_and_init (cmd_spec->ctor_spec);
+    }
+
+  for (attr = cmd_spec->attr_list; attr; attr = save)
+    {
+      save = attr->next;
+      ldr_string_free (&attr);
+    }
+
+  ldr_string_free (class_name_);
+  free_and_init (cmd_spec);
+  *cmd_spec_ = NULL;
+}
+
 /*
  * invalid_class_id_error - called when invalid class id is met.
  *    return:
@@ -5670,7 +5739,7 @@ ldr_init_loader (LDR_CONTEXT * context)
   DB_TIMESTAMPTZ timestamptz;
   DB_ELO *null_elo = NULL;
 
-  /* 
+  /*
    * Definitely *don't* want to use oid preflushing in this app; it just
    * gives us some extra overhead that we don't care about.
    */
@@ -5680,7 +5749,7 @@ ldr_init_loader (LDR_CONTEXT * context)
 
   ldr_act = ldr_act_attr;
 
-  /* 
+  /*
    * Optimization to avoid calling db_value_domain_init all of the time
    * during loading; we can simply copy these templates much more cheaply.
    */
@@ -5709,7 +5778,7 @@ ldr_init_loader (LDR_CONTEXT * context)
   db_make_bit (&ldr_bit_tmpl, 1, "0", 1);
   db_make_json (&ldr_json_tmpl, NULL, false);
 
-  /* 
+  /*
    * Set up the conversion functions for collection elements.  These
    * don't need to be done on a per-attribute basis (well, I suppose they
    * could if we were really worried about it, but for now we let the
@@ -5841,7 +5910,7 @@ ldr_start (int periodic_commit)
 
   ldr_clear_context (context);
 
-  /* 
+  /*
    * Initialize the mop -> temporary_oid, table used to obtain a mapping
    * between permanent OID and workspace mop, when permanent OIDs are obtained.
    */

@@ -18,7 +18,7 @@
  */
 
 /*
- * loader_cl.h: Loader definitions. Updated using design from fast loaddb prototype
+ * loader_cl.h: Loader client definitions. Updated using design from fast loaddb prototype
  */
 
 #ifndef _LOADER_CL_H_
@@ -165,7 +165,7 @@ extern int ldr_finish (LDR_CONTEXT * context, int err);
 
 /* Action to initialize the parser context to deal with a new class */
 extern void ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len);
-extern void ldr_increment_err_total (LDR_CONTEXT * context);
+extern void ldr_increment_err_total ();
 extern void ldr_increment_fails (void);
 extern void ldr_load_failed_error (void);
 
@@ -190,11 +190,11 @@ extern void ldr_act_add_attr (LDR_CONTEXT * context, const char *str, int len);
  * Action to finish normal instances, constructor instances, and
  * updates to class/default/shared values.
  */
-extern void ldr_act_finish_line (LDR_CONTEXT * context);
+extern void ldr_act_finish_line ();
 
 /* Actions for %ID command */
-extern void ldr_act_start_id (LDR_CONTEXT * context, char *name);
-extern void ldr_act_set_id (LDR_CONTEXT * context, int id);
+extern void ldr_act_start_id (char *name);
+extern void ldr_act_set_id (int id);
 
 /* Actions for object references */
 extern void ldr_act_set_ref_class_id (LDR_CONTEXT * context, int id);
@@ -206,14 +206,16 @@ extern DB_OBJECT *ldr_act_get_ref_class (LDR_CONTEXT * context);
 extern void ldr_act_restrict_attributes (LDR_CONTEXT * context, LDR_ATTRIBUTE_TYPE type);
 
 /* Action for cleaning up and finish the parse phase */
-extern void ldr_act_finish (LDR_CONTEXT * context, int parse_error);
+extern void ldr_act_finish (int parse_error);
 
 /* Actions for constructor syntax */
 extern int ldr_act_set_constructor (LDR_CONTEXT * context, const char *name);
 extern int ldr_act_add_argument (LDR_CONTEXT * context, const char *name);
 
+extern void ldr_act_setup_class_command_spec (LDR_STRING ** class_name, LDR_CLASS_COMMAND_SPEC ** cmd_spec);
+
 /* Action to start a new instance */
-extern void ldr_act_start_instance (LDR_CONTEXT * context, int id, LDR_CONSTANT * cons);
+extern void ldr_act_start_instance (int id, LDR_CONSTANT * cons);
 
 /* Statistics updating/retrieving functions */
 extern void ldr_stats (int *errors, int *objects, int *defaults, int *lastcommit, int *fails);

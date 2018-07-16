@@ -165,6 +165,7 @@ namespace cubload
 	  object_ref_t *make_object_ref_by_class_id (string_t *class_id);
 	  object_ref_t *make_object_ref_by_class_name (string_t *class_name);
 	  constant_t *make_monetary_constant (int currency_type, string_t *amount);
+	  constant_t *make_real (string_t *str);
 
 	  void reset_pool_indexes ();
 	  bool in_instance_line ();

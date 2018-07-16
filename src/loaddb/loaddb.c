@@ -30,6 +30,7 @@
 #include <sys/stat.h>
 #include <stdarg.h>
 #include <assert.h>
+#include <fstream>
 
 #if !defined (WINDOWS)
 #include <unistd.h>
@@ -37,6 +38,7 @@
 #endif
 #include "porting.h"
 #include "db.h"
+#include "driver.hpp"
 #include "utility.h"
 #include "misc_string.h"
 #include "loader_cl.h"
@@ -575,8 +577,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   /* set to static to avoid copiler warning (clobbered by longjump) */
   static FILE *schema_file = NULL;
   static FILE *index_file = NULL;
-  //static std::ifstream object_file;
-  //static cubload::driver driver;
+  static std::ifstream object_file;
+  static cubload::driver driver;
   FILE *error_file = NULL;
   int status = 0;
   int errors = 0;
@@ -731,15 +733,15 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     }
   if (Object_file[0] != 0)
     {
-      /*object_file.open (Object_file, std::fstream::in | std::fstream::binary);
-         if (!object_file.is_open () || !object_file.good ())
-         {
-         msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_BAD_INFILE);
-         print_log_msg (1, msg_format, Object_file);
-         util_log_write_errstr (msg_format, Object_file);
-         status = 2;
-         goto error_return;
-         } */
+      object_file.open (Object_file, std::fstream::in | std::fstream::binary);
+      if (!object_file.is_open () || !object_file.good ())
+	{
+	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_BAD_INFILE);
+	  print_log_msg (1, msg_format, Object_file);
+	  util_log_write_errstr (msg_format, Object_file);
+	  status = 2;
+	  goto error_return;
+	}
     }
 
   if (Ignore_class_file)
@@ -857,7 +859,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
   /* if index file is specified, do index creation */
 
-  if (false /*object_file.is_open () */ )
+  if (object_file.is_open ())
     {
 #if defined (SA_MODE)
       locator_Dont_check_foreign_key = true;
@@ -892,7 +894,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	    {
 	      ldr_init_ret = ldr_init_class_spec (Table_name);
 	    }
-	  //driver.parse (object_file);
+	  driver.parse (object_file);
 	  ldr_stats (&errors, &objects, &defaults, &lastcommit, &fails);
 	}
       else
@@ -909,9 +911,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	{
 	  /* now do it for real if there were no errors and we aren't doing a simple syntax check */
 	  ldr_start (Periodic_commit);
-	  //object_file.close ();
-	  //object_file.open (Object_file, std::fstream::in | std::fstream::binary);
-	  if (false /*object_file.is_open () */ )
+	  object_file.close ();
+	  object_file.open (Object_file, std::fstream::in | std::fstream::binary);
+	  if (object_file.is_open ())
 	    {
 	      print_log_msg ((int) Verbose,
 			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSERTING));
@@ -949,7 +951,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 		    {
 		      ldr_init_class_spec (Table_name);
 		    }
-		  //driver.parse (object_file);
+		  driver.parse (object_file);
 		  ldr_stats (&errors, &objects, &defaults, &lastcommit, &fails);
 		  if (errors)
 		    {
@@ -1020,10 +1022,10 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	}
 
       ldr_final ();
-      /* if (object_file.is_open ())
-         {
-         object_file.close ();
-         } */
+      if (object_file.is_open ())
+	{
+	  object_file.close ();
+	}
     }
 
   /* create index */
@@ -1072,10 +1074,10 @@ error_return:
     {
       fclose (schema_file);
     }
-  /*if (object_file.is_open ())
-     {
-     object_file.close ();
-     } */
+  if (object_file.is_open ())
+    {
+      object_file.close ();
+    }
   if (index_file != NULL)
     {
       fclose (index_file);

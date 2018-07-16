@@ -18,7 +18,7 @@
  */
 
 /*
- * loader_sr.hpp: Loader definitions. Updated using design from fast loaddb prototype
+ * loader_sr.hpp: Loader server definitions. Updated using design from fast loaddb prototype
  */
 
 #ifndef _LOADER_SR_HPP_
@@ -39,7 +39,7 @@ namespace cubload
     LDR_NSTR,
     LDR_NUMERIC,                 /* Default real */
     LDR_DOUBLE,                  /* Reals specified with scientific notation, 'e', or 'E' */
-    LDR_FLOAT,                   /* Reals specified with C 'f' or 'F' notation */
+    LDR_FLOAT,                   /* Reals specified with 'f' or 'F' notation */
     LDR_OID,                     /* Object references */
     LDR_CLASS_OID,               /* Class object reference */
     LDR_DATE,
@@ -133,5 +133,21 @@ namespace cubload
     LDR_STRING *amount;
     int currency_type;
   };
-}
+
+  void ldr_load_failed_error ();
+  void ldr_increment_fails ();
+  void ldr_string_free (LDR_STRING **str);
+  void ldr_increment_err_total ();
+
+  void ldr_act_finish (int parse_error);
+  void ldr_act_finish_line ();
+
+  void ldr_act_start_id (char *name);
+  void ldr_act_set_id (int id);
+
+  void ldr_act_setup_class_command_spec (LDR_STRING **class_name, LDR_CLASS_COMMAND_SPEC **cmd_spec);
+
+  void ldr_act_start_instance (int id, LDR_CONSTANT *cons);
+  void ldr_process_constants (LDR_CONSTANT *c);
+} // namespace cubload
 #endif /* _LOADER_SR_HPP_ */

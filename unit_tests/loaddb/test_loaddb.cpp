@@ -32,14 +32,17 @@
 namespace test_loaddb
 {
   static const int num_threads = 50;
+  cubload::driver driver;
 
   void parse (cubload::driver &driver)
   {
     std::string s = "%id [foo] 44\n"
 		    "%class [foo] ([id] [name])\n"
+		    "%class bar (code \"name\" \"event\")\n"
 		    "@44 1 @foo 2\n"
-		    "1 '2' '3 4' 3.14159265F\n"
-		    "'aaaa' + \n"
+		    "1 '2' '3 4' 3.14159265F 1e10\n"
+		    "\"double quoted string in instance line\"\n"
+		    "'aaaa' + \n" // instance line spans over multiple lines
 		    "'bbbb'\n"
 		    "'a' 'aaa' 'bbb' 'c' NULL 'NULL' $2.0F\n"
 		    "1 1 1 1815 '2017-12-22 12:10:21' '2017-12-22' '12:10:21' 1\n";
@@ -104,7 +107,6 @@ namespace test_loaddb
   {
     if (!batch.empty ())
       {
-	cubload::driver driver;
 	std::istringstream iss (batch);
 	driver.parse (iss);
 
@@ -120,13 +122,13 @@ namespace test_loaddb
     lang_set_charset_lang ("en_US.iso88591");
 
     std::ifstream object_file ("/home/blackie/projects/CUBRID/cubrid/demo/demodb_objects", std::fstream::in);
-    int batch_size = 10;
+    int batch_size = 1024;
 
     std::string batch_buffer;
     int rows = 0;
 
     assert (batch_size > 0);
-    assert (object_file); // call bool operator
+    assert (object_file); // call ifstream bool operator
 
     for (std::string line; std::getline (object_file, line); )
       {
@@ -157,7 +159,7 @@ namespace test_loaddb
 	// this means that the row ends on the last line that does not end with '+' (plus) character
 	if (!ends_with (line, "+"))
 	  {
-	    // since std::getline eats endline character, add it back in order to make loaddb lexer happy
+	    // since std::getline eats end line character, add it back in order to make loaddb lexer happy
 	    batch_buffer.append ("\n");
 
 	    rows++;

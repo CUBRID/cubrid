@@ -64,7 +64,6 @@ namespace cubload
 
 #include "dbtype_def.h"
 #include "driver.hpp"
-//#include "memory_alloc.h"
 
 #undef yylex
 #define yylex driver_.get_scanner ().yylex
@@ -152,7 +151,7 @@ namespace cubload
 %token COMMA
 
 %type <int_val> attribute_list_qualifier
-%type <cmd_spec> class_commamd_spec
+%type <cmd_spec> class_command_spec
 %type <ctor_spec> constructor_spec
 %type <string> attribute_name
 %type <string> argument_name
@@ -197,7 +196,7 @@ loader_start :
   }
   loader_lines
   {
-    //ldr_act_finish (ldr_Current_context, 0);
+    ldr_act_finish (0);
   }
   ;
 
@@ -236,7 +235,7 @@ one_line :
   instance_line
   {
     DBG_PRINT ("instance_line");
-    //ldr_act_finish_line (ldr_Current_context);
+    ldr_act_finish_line ();
     driver_.get_semantic_helper ().reset_pool_indexes ();
   }
   ;
@@ -256,76 +255,22 @@ command_line :
 id_command :
   CMD_ID IDENTIFIER INT_LIT
   {
-    //skip_current_class = false;
+    ldr_act_start_id ($2->val);
+    ldr_act_set_id (atoi ($3->val));
 
-    //ldr_act_start_id (ldr_Current_context, $2->val);
-    //ldr_act_set_id (ldr_Current_context, atoi ($3->val));
-
-    //ldr_string_free (&$2);
-    //ldr_string_free (&$3);
+    ldr_string_free (&$2);
+    ldr_string_free (&$3);
   }
   ;
 
 class_command :
-  CMD_CLASS IDENTIFIER class_commamd_spec
+  CMD_CLASS IDENTIFIER class_command_spec
   {
-    /*
-    LDR_CLASS_COMMAND_SPEC *cmd_spec;
-    LDR_STRING *class_name;
-    LDR_STRING *attr, *save, *args;
-
-    DBG_PRINT ("class_commamd_spec");
-
-    class_name = $2;
-    cmd_spec = $3;
-
-    ldr_act_set_skip_current_class (class_name->val, class_name->size);
-    ldr_act_init_context (ldr_Current_context, class_name->val, class_name->size);
-
-    if (cmd_spec->qualifier != LDR_ATTRIBUTE_ANY)
-      {
-	ldr_act_restrict_attributes (ldr_Current_context, (LDR_ATTRIBUTE_TYPE) cmd_spec->qualifier);
-      }
-
-    for (attr = cmd_spec->attr_list; attr; attr = attr->next)
-      {
-	ldr_act_add_attr (ldr_Current_context, attr->val, attr->size);
-      }
-
-    ldr_act_check_missing_non_null_attrs (ldr_Current_context);
-
-    if (cmd_spec->ctor_spec)
-      {
-	ldr_act_set_constructor (ldr_Current_context, cmd_spec->ctor_spec->id_name->val);
-
-	for (args = cmd_spec->ctor_spec->arg_list; args; args = args->next)
-	  {
-	    ldr_act_add_argument (ldr_Current_context, args->val);
-	  }
-
-	for (args = cmd_spec->ctor_spec->arg_list; args; args = save)
-	  {
-	    save = args->next;
-	    ldr_string_free (&args);
-	  }
-
-	ldr_string_free (&(cmd_spec->ctor_spec->id_name));
-	free_and_init (cmd_spec->ctor_spec);
-      }
-
-    for (attr = cmd_spec->attr_list; attr; attr = save)
-      {
-	save = attr->next;
-	ldr_string_free (&attr);
-      }
-
-    ldr_string_free (&class_name);
-    free_and_init (cmd_spec);
-    */
+    ldr_act_setup_class_command_spec (&$2, &$3);
   }
   ;
 
-class_commamd_spec :
+class_command_spec :
   attribute_list
   {
     DBG_PRINT ("attribute_list");
@@ -459,22 +404,19 @@ argument_name :
 instance_line :
   object_id
   {
-    //skip_current_instance = false;
-    //ldr_act_start_instance (ldr_Current_context, $1, NULL);
+    ldr_act_start_instance ($1, NULL);
   }
   |
   object_id constant_list
   {
-    //skip_current_instance = false;
-    //ldr_act_start_instance (ldr_Current_context, $1, $2);
-    //ldr_process_constants ($2);
+    ldr_act_start_instance ($1, $2);
+    ldr_process_constants ($2);
   }
   |
   constant_list
   {
-    //skip_current_instance = false;
-    //ldr_act_start_instance (ldr_Current_context, -1, $1);
-    //ldr_process_constants ($1);
+    ldr_act_start_instance (-1, $1);
+    ldr_process_constants ($1);
   }
   ;
 
@@ -500,47 +442,33 @@ constant_list :
   ;
 
 constant :
-  ansi_string 		{ $$ = $1; }
-  | dq_string		{ $$ = $1; }
-  | nchar_string 	{ $$ = $1; }
-  | bit_string 		{ $$ = $1; }
-  | sql2_date 		{ $$ = $1; }
-  | sql2_time 		{ $$ = $1; }
-  | sql2_timestamp 	{ $$ = $1; }
-  | sql2_timestampltz 	{ $$ = $1; }
-  | sql2_timestamptz 	{ $$ = $1; }
-  | utime 		{ $$ = $1; }
-  | sql2_datetime 	{ $$ = $1; }
-  | sql2_datetimeltz 	{ $$ = $1; }
-  | sql2_datetimetz 	{ $$ = $1; }
-  | NULL_  		{ $$ = driver_.get_semantic_helper ().make_constant (LDR_NULL, NULL); }
-  | TIME_LIT4 		{ $$ = driver_.get_semantic_helper ().make_constant (LDR_TIME, $1); }
-  | TIME_LIT42 		{ $$ = driver_.get_semantic_helper ().make_constant (LDR_TIME, $1); }
-  | TIME_LIT3 		{ $$ = driver_.get_semantic_helper ().make_constant (LDR_TIME, $1); }
-  | TIME_LIT31 		{ $$ = driver_.get_semantic_helper ().make_constant (LDR_TIME, $1); }
-  | TIME_LIT2 		{ $$ = driver_.get_semantic_helper ().make_constant (LDR_TIME, $1); }
-  | TIME_LIT1 		{ $$ = driver_.get_semantic_helper ().make_constant (LDR_TIME, $1); }
-  | INT_LIT 		{ $$ = driver_.get_semantic_helper ().make_constant (LDR_INT, $1); }
-  | REAL_LIT
-  {
-    if (strchr ($1->val, 'F') != NULL || strchr ($1->val, 'f') != NULL)
-      {
-	$$ = driver_.get_semantic_helper ().make_constant (LDR_FLOAT, $1);
-      }
-    else if (strchr ($1->val, 'E') != NULL || strchr ($1->val, 'e') != NULL)
-      {
-	$$ = driver_.get_semantic_helper ().make_constant (LDR_DOUBLE, $1);
-      }
-    else
-      {
-	$$ = driver_.get_semantic_helper ().make_constant (LDR_NUMERIC, $1);
-      }
-  }
-  | DATE_LIT2			{ $$ = driver_.get_semantic_helper ().make_constant (LDR_DATE, $1); }
-  | monetary			{ $$ = $1; }
-  | object_reference		{ $$ = $1; }
-  | set_constant		{ $$ = $1; }
-  | system_object_reference	{ $$ = $1; }
+  ansi_string                { $$ = $1; }
+  | dq_string                { $$ = $1; }
+  | nchar_string             { $$ = $1; }
+  | bit_string               { $$ = $1; }
+  | sql2_date                { $$ = $1; }
+  | sql2_time                { $$ = $1; }
+  | sql2_timestamp           { $$ = $1; }
+  | sql2_timestampltz        { $$ = $1; }
+  | sql2_timestamptz         { $$ = $1; }
+  | utime                    { $$ = $1; }
+  | sql2_datetime            { $$ = $1; }
+  | sql2_datetimeltz         { $$ = $1; }
+  | sql2_datetimetz          { $$ = $1; }
+  | NULL_                    { $$ = driver_.get_semantic_helper ().make_constant (LDR_NULL, NULL); }
+  | TIME_LIT4                { $$ = driver_.get_semantic_helper ().make_constant (LDR_TIME, $1); }
+  | TIME_LIT42               { $$ = driver_.get_semantic_helper ().make_constant (LDR_TIME, $1); }
+  | TIME_LIT3                { $$ = driver_.get_semantic_helper ().make_constant (LDR_TIME, $1); }
+  | TIME_LIT31               { $$ = driver_.get_semantic_helper ().make_constant (LDR_TIME, $1); }
+  | TIME_LIT2                { $$ = driver_.get_semantic_helper ().make_constant (LDR_TIME, $1); }
+  | TIME_LIT1                { $$ = driver_.get_semantic_helper ().make_constant (LDR_TIME, $1); }
+  | INT_LIT                  { $$ = driver_.get_semantic_helper ().make_constant (LDR_INT, $1); }
+  | REAL_LIT                 { $$ = driver_.get_semantic_helper ().make_real ($1); }
+  | DATE_LIT2                { $$ = driver_.get_semantic_helper ().make_constant (LDR_DATE, $1); }
+  | monetary                 { $$ = $1; }
+  | object_reference         { $$ = $1; }
+  | set_constant             { $$ = $1; }
+  | system_object_reference  { $$ = $1; }
   ;
 
 ansi_string :
@@ -723,13 +651,10 @@ system_object_reference :
   ;
 
 ref_type :
-  REF_ELO_INT { $$ = LDR_ELO_INT; }
-  |
-  REF_ELO_EXT { $$ = LDR_ELO_EXT; }
-  |
-  REF_USER { $$ = LDR_SYS_USER; }
-  |
-  REF_CLASS { $$ = LDR_SYS_CLASS; }
+  REF_ELO_INT   { $$ = LDR_ELO_INT; }
+  | REF_ELO_EXT { $$ = LDR_ELO_EXT; }
+  | REF_USER    { $$ = LDR_SYS_USER; }
+  | REF_CLASS   { $$ = LDR_SYS_CLASS; }
   ;
 
 monetary :
