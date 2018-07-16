@@ -4079,7 +4079,6 @@ or_install_btids_online_index (DB_SEQ * online_seq, OR_INDEX * index)
   assert (online_seq != NULL);
   if (set_get_element_nocopy (online_seq, 0, &val) != NO_ERROR)
     {
-      free_and_init (index->attrs_prefix_length);
       return;
     }
 
