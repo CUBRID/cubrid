@@ -8,8 +8,10 @@
 #include "thread_looper.hpp"
 #if !defined (WINDOWS)
 #include "tcp.h"
+#include <netinet/in.h>
 #else
 #include "wintcp.h"
+#include <Winsock2.h>
 #endif
 #include "connection_cl.h"
 
