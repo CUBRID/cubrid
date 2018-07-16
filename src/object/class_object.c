@@ -155,6 +155,7 @@ static SM_CONSTRAINT_COMPATIBILITY classobj_check_index_compatibility (SM_CLASS_
 								       SM_CLASS_CONSTRAINT ** primary_con);
 static int classobj_check_function_constraint_info (DB_SEQ * constraint_seq, bool * has_function_constraint);
 static int classobj_partition_info_size (SM_PARTITION * partition_info);
+static SM_ONLINE_INDEX_STATUS classobj_make_online_index_info (DB_SEQ * online_seq);
 
 /*
  * classobj_area_init - Initialize the area for schema templates.
@@ -623,7 +624,8 @@ classobj_copy_props (DB_SEQ * properties, MOP filter_class, DB_SEQ ** new_proper
 	    {
 	      if (classobj_put_index_id (new_properties, c->type, c->name, c->attributes, c->asc_desc,
 					 c->attrs_prefix_length, &(c->index_btid), c->filter_predicate, c->fk_info,
-					 c->shared_cons_name, c->func_index_info, c->comment) == ER_FAILED)
+					 c->shared_cons_name, c->func_index_info, c->comment,
+					 c->online_index_status) == ER_FAILED)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -918,7 +920,7 @@ int
 classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name, SM_ATTRIBUTE ** atts,
 		    const int *asc_desc, const BTID * id, SM_PREDICATE_INFO * filter_index_info,
 		    SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name, SM_FUNCTION_INFO * func_index_info,
-		    const char *comment)
+		    const char *comment, SM_ONLINE_INDEX_STATUS online_index_status)
 {
   int i;
   const char *prop_name = classobj_map_constraint_to_property (type);
@@ -928,6 +930,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
   DB_SEQ *fk_container = NULL;
   DB_SEQ *seq = NULL;
   DB_SEQ *seq_child = NULL;
+  DB_SEQ *online_seq = NULL;
   int found = 0;
   bool is_new_created = false;	/* Is *properties new created or not */
 
@@ -1087,7 +1090,8 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 	}
       else
 	{
-	  if (filter_index_info == NULL && func_index_info == NULL)
+	  if (filter_index_info == NULL && func_index_info == NULL
+	      && online_index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	    {
 	      /* prefix length */
 	      prefix_seq = classobj_make_index_attr_prefix_seq (num_attrs, NULL);
@@ -1196,6 +1200,38 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 			  set_put_element (seq_child, 0, &value);
 
 			  db_make_sequence (&value, pred_seq);
+			  pred_seq = NULL;
+			  set_put_element (seq_child, 1, &value);
+			  pr_clear_value (&value);
+
+			  db_make_sequence (&value, seq_child);
+			  seq_child = NULL;
+			  set_put_element (seq, i++, &value);
+			  pr_clear_value (&value);
+			}
+		    }
+		}
+
+	      if (online_index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+		{
+		  seq_child = set_create_sequence (0);
+		  if (seq_child == NULL)
+		    {
+		      goto error;
+		    }
+		  else
+		    {
+		      online_seq = classobj_make_index_online_index_seq ();
+		      if (online_seq == NULL)
+			{
+			  goto error;
+			}
+		      else
+			{
+			  db_make_string (&value, SM_ONLINE_INDEX_ID);
+			  set_put_element (seq_child, 0, &value);
+
+			  db_make_sequence (&value, online_seq);
 			  pred_seq = NULL;
 			  set_put_element (seq_child, 1, &value);
 			  pr_clear_value (&value);
@@ -1346,7 +1382,8 @@ int
 classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name, SM_ATTRIBUTE ** atts,
 		       const int *asc_desc, const int *attrs_prefix_length, const BTID * id,
 		       SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name,
-		       SM_FUNCTION_INFO * func_index_info, const char *comment)
+		       SM_FUNCTION_INFO * func_index_info, const char *comment,
+		       SM_ONLINE_INDEX_STATUS online_index_status)
 {
   int i;
   const char *prop_name = classobj_map_constraint_to_property (type);
@@ -1356,6 +1393,7 @@ classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char
   DB_SEQ *fk_container = NULL;
   DB_SEQ *seq = NULL;
   DB_SEQ *seq_child = NULL;
+  DB_SEQ *online_seq = NULL;
   int found = 0;
   bool is_new_created = false;	/* Is *properties new created or not */
 
@@ -1522,7 +1560,8 @@ classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char
 	}
       else
 	{
-	  if (filter_index_info == NULL && func_index_info == NULL)
+	  if (filter_index_info == NULL && func_index_info == NULL
+	      && online_index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	    {
 	      /* prefix length */
 	      prefix_seq = classobj_make_index_attr_prefix_seq (num_attrs, attrs_prefix_length);
@@ -1631,6 +1670,38 @@ classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char
 			  set_put_element (seq_child, 0, &value);
 
 			  db_make_sequence (&value, pred_seq);
+			  pred_seq = NULL;
+			  set_put_element (seq_child, 1, &value);
+			  pr_clear_value (&value);
+
+			  db_make_sequence (&value, seq_child);
+			  seq_child = NULL;
+			  set_put_element (seq, i++, &value);
+			  pr_clear_value (&value);
+			}
+		    }
+		}
+
+	      if (online_index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+		{
+		  seq_child = set_create_sequence (0);
+		  if (seq_child == NULL)
+		    {
+		      goto error;
+		    }
+		  else
+		    {
+		      online_seq = classobj_make_index_online_index_seq ();
+		      if (online_seq == NULL)
+			{
+			  goto error;
+			}
+		      else
+			{
+			  db_make_string (&value, SM_ONLINE_INDEX_ID);
+			  set_put_element (seq_child, 0, &value);
+
+			  db_make_sequence (&value, online_seq);
 			  pred_seq = NULL;
 			  set_put_element (seq_child, 1, &value);
 			  pr_clear_value (&value);
@@ -3063,6 +3134,7 @@ classobj_make_class_constraint (const char *name, SM_CONSTRAINT_TYPE type)
   new_->func_index_info = NULL;
   new_->comment = NULL;
   new_->extra_status = SM_FLAG_NORMALLY_INITIALIZED;
+  new_->online_index_status = SM_NO_ONLINE_INDEX;
 
   return new_;
 }
@@ -3839,6 +3911,10 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 				{
 				  flag = 0x03;
 				}
+			      else if (strcmp (db_get_string (&avalue), SM_ONLINE_INDEX_ID) == 0)
+				{
+				  flag = 0x04;
+				}
 
 			      pr_clear_value (&avalue);
 
@@ -3866,6 +3942,9 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 				  new_->attrs_prefix_length =
 				    classobj_make_index_prefix_info (db_get_set (&avalue), att_cnt);
 				  break;
+
+				case 0x04:
+				  new_->online_index_status = classobj_make_online_index_info (db_get_set (&avalue));
 
 				default:
 				  break;
@@ -4605,7 +4684,7 @@ classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CONSTRAINT * 
 	}
       if (classobj_put_index_id (properties, type, con->name, con->attributes, con->asc_desc, con->attrs_prefix_length,
 				 &(con->index_btid), con->filter_predicate, con->fk_info, con->shared_cons_name,
-				 con->func_index_info, con->comment) == ER_FAILED)
+				 con->func_index_info, con->comment, con->online_index_status) == ER_FAILED)
 	{
 	  error = ER_SM_INVALID_PROPERTY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -6879,7 +6958,8 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate, SM_CLASS_CONSTRAINT * const
       error =
 	smt_add_constraint (ctemplate, constraint_type, new_cons_name, att_names,
 			    (constraint_type == DB_CONSTRAINT_UNIQUE) ? constraint->asc_desc : NULL, 0, NULL,
-			    constraint->filter_predicate, constraint->func_index_info, constraint->comment);
+			    constraint->filter_predicate, constraint->func_index_info, constraint->comment,
+			    SM_NO_ONLINE_INDEX);
     }
   else
     {
@@ -8931,4 +9011,45 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
     }
 
   return NO_ERROR;
+}
+
+static DB_SEQ *
+classobj_make_index_online_index_seq ()
+{
+  DB_SEQ *online_seq;
+  DB_VALUE v;
+
+  online_seq = set_create_sequence (1);
+
+  if (online_seq == NULL)
+    {
+      return NULL;
+    }
+  db_make_int (&v, 1);
+
+  set_put_element (online_seq, 0, &v);
+
+  return online_seq;
+}
+
+/*
+ * classobj_make_index_prefix_info() - Make array which contains
+ *                                     prefix length
+ *   return: array
+ *   prefix_seq(in): sequence which contains prefix length
+ *   num_attrs(in): key attribute count
+ */
+static SM_ONLINE_INDEX_STATUS
+classobj_make_online_index_info (DB_SEQ * online_seq)
+{
+  DB_VALUE v;
+
+  assert (online_seq != NULL && set_size (online_seq) == 1);
+
+  if (set_get_element_nocopy (online_seq, 0, &v) != NO_ERROR)
+    {
+      return SM_NO_ONLINE_INDEX;
+    }
+
+  return (db_get_int (&v) == 1 ? SM_ONLINE_INDEX_BUILDING_IN_PROGRESS : SM_NO_ONLINE_INDEX);
 }

@@ -111,7 +111,7 @@ extern char *sm_produce_constraint_name_tmpl (SM_TEMPLATE * tmpl, DB_CONSTRAINT_
 extern int sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
 			      const char **att_names, const int *asc_desc, const int *attrs_prefix_length,
 			      int class_attributes, SM_PREDICATE_INFO * predicate_info, SM_FUNCTION_INFO * fi_info,
-			      const char *comment);
+			      const char *comment, bool is_online_index);
 extern int sm_drop_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
 			       const char **att_names, bool class_attributes, bool mysql_index_name);
 extern int sm_drop_index (MOP classop, const char *constraint_name);

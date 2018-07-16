@@ -78,7 +78,7 @@ static int smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAIN
 					   const char *constraint_name, SM_ATTRIBUTE ** atts, const int *asc_desc,
 					   SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name,
 					   SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index,
-					   const char *comment);
+					   const char *comment, SM_ONLINE_INDEX_STATUS online_index_status);
 static int smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_value,
 						 DB_DEFAULT_EXPR * default_expr);
 static int smt_drop_constraint_from_property (SM_TEMPLATE * template_, const char *constraint_name,
@@ -1575,7 +1575,8 @@ static int
 smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type, const char *constraint_name,
 				SM_ATTRIBUTE ** atts, const int *asc_desc, SM_FOREIGN_KEY_INFO * fk_info,
 				char *shared_cons_name, SM_PREDICATE_INFO * filter_index,
-				SM_FUNCTION_INFO * function_index, const char *comment)
+				SM_FUNCTION_INFO * function_index, const char *comment,
+				SM_ONLINE_INDEX_STATUS online_index_status)
 {
   int error = NO_ERROR;
   DB_VALUE cnstr_val;
@@ -1584,17 +1585,20 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
   db_make_null (&cnstr_val);
 
   /* 
-   *  Check if the constraint already exists
+   *  Check if the constraint already exists. Skip it if we have an online index building done. 
    */
-  if (classobj_find_prop_constraint (template_->properties, constraint, constraint_name, &cnstr_val))
+  if (online_index_status != SM_ONLINE_INDEX_BUILDING_DONE)
     {
-      ERROR1 (error, ER_SM_CONSTRAINT_EXISTS, constraint_name);
+      if (classobj_find_prop_constraint (template_->properties, constraint, constraint_name, &cnstr_val))
+	{
+	  ERROR1 (error, ER_SM_CONSTRAINT_EXISTS, constraint_name);
+	}
     }
 
   if (error == NO_ERROR)
     {
       if (classobj_put_index (&(template_->properties), type, constraint_name, atts, asc_desc, NULL, filter_index,
-			      fk_info, shared_cons_name, function_index, comment) == ER_FAILED)
+			      fk_info, shared_cons_name, function_index, comment, online_index_status) == ER_FAILED)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
@@ -1964,7 +1968,8 @@ smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name, DB_
 int
 smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
 		    const char **att_names, const int *asc_desc, int class_attribute, SM_FOREIGN_KEY_INFO * fk_info,
-		    SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index, const char *comment)
+		    SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index, const char *comment,
+		    SM_ONLINE_INDEX_STATUS online_index_status)
 {
   int error = NO_ERROR;
   SM_ATTRIBUTE **atts = NULL;
@@ -1975,10 +1980,15 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 
   assert (template_ != NULL);
 
-  error = smt_check_index_exist (template_, &shared_cons_name, constraint_type, constraint_name, att_names, asc_desc);
-  if (error != NO_ERROR)
+  /* Skip this check if we have an online index building done. */
+  if (online_index_status != SM_ONLINE_INDEX_BUILDING_DONE)
     {
-      goto error_return;
+      error =
+	smt_check_index_exist (template_, &shared_cons_name, constraint_type, constraint_name, att_names, asc_desc);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
     }
 
   constraint = SM_MAP_CONSTRAINT_TO_ATTFLAG (constraint_type);
@@ -2127,7 +2137,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
       /* Add the constraint. */
       error = smt_add_constraint_to_property (template_, SM_MAP_INDEX_ATTFLAG_TO_CONSTRAINT (constraint),
 					      constraint_name, atts, asc_desc, fk_info, shared_cons_name,
-					      filter_index, function_index, comment);
+					      filter_index, function_index, comment, online_index_status);
       if (error != NO_ERROR)
 	{
 	  goto error_return;

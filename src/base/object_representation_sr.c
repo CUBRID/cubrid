@@ -91,6 +91,8 @@ static OR_CLASSREP *or_get_old_representation (RECDES * record, int repid, int d
 static const char *or_find_diskattr (RECDES * record, int attr_id);
 static int or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string, int *alloced_string);
 
+static void or_install_btids_online_index (DB_SEQ * online_seq, OR_INDEX * index);
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * orc_class_rep_dir () - Extracts the OID of representation
@@ -1858,6 +1860,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
   index->attrs_prefix_length = NULL;
   index->filter_predicate = NULL;
   index->func_index_info = NULL;
+  index->online_index_status = OR_NO_ONLINE_INDEX;
 
   /* 
    * For each attribute ID in the set,
@@ -1964,6 +1967,10 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 			    {
 			      flag = 0x03;
 			    }
+			  else if (strcmp (db_get_string (&avalue), SM_ONLINE_INDEX_ID) == 0)
+			    {
+			      flag = 0x04;
+			    }
 
 			  if (set_get_element_nocopy (child_seq, 1, &avalue) != NO_ERROR)
 			    {
@@ -1987,6 +1994,10 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 
 			    case 0x03:
 			      or_install_btids_prefix_length (db_get_set (&avalue), index, att_cnt);
+			      break;
+
+			    case 0x04:
+			      or_install_btids_online_index (db_get_set (&avalue), index);
 			      break;
 
 			    default:
@@ -4058,4 +4069,19 @@ error:
     }
 
   return;
+}
+
+void
+or_install_btids_online_index (DB_SEQ * online_seq, OR_INDEX * index)
+{
+  DB_VALUE val;
+
+  assert (online_seq != NULL);
+  if (set_get_element_nocopy (online_seq, 0, &val) != NO_ERROR)
+    {
+      free_and_init (index->attrs_prefix_length);
+      return;
+    }
+
+  index->online_index_status = (db_get_int (&val) ? OR_ONLINE_INDEX_BUILDING_IN_PROGRESS : OR_NO_ONLINE_INDEX);
 }

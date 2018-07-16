@@ -1793,7 +1793,8 @@ db_add_constraint (MOP classmop, DB_CONSTRAINT_TYPE constraint_type, const char 
   else
     {
       retval =
-	sm_add_constraint (classmop, constraint_type, name, att_names, NULL, NULL, class_attributes, NULL, NULL, NULL);
+	sm_add_constraint (classmop, constraint_type, name, att_names, NULL, NULL, class_attributes, NULL, NULL, NULL,
+			   false);
       free_and_init (name);
     }
 

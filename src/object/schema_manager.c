@@ -9103,7 +9103,8 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			    }
 			  if (classobj_put_index
 			      (&(flat->properties), c->type, c->name, attrs, c->asc_desc, &index_btid,
-			       c->filter_predicate, c->fk_info, NULL, c->func_index_info, c->comment) != NO_ERROR)
+			       c->filter_predicate, c->fk_info, NULL, c->func_index_info, c->comment,
+			       c->online_index_status) != NO_ERROR)
 			    {
 			      pr_clear_value (&cnstr_val);
 			      goto structure_error;
@@ -10181,7 +10182,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_ATTR
 
 	  /* If there are no instances, then call btree_add_index() to create an empty index, otherwise call
 	   * btree_load_index () to load all of the instances (including applicable subclasses) into a new B-tree */
-	  if (!has_instances)
+	  if (!has_instances || class_->constraints->online_index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	    {
 	      error = btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk);
 	    }
@@ -10800,7 +10801,7 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
    */
   if (classobj_put_index_id (&(class_->properties), con->type, con->name, con->attributes, con->asc_desc,
 			     con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, con->fk_info, NULL,
-			     con->func_index_info, con->comment) != NO_ERROR)
+			     con->func_index_info, con->comment, con->online_index_status) != NO_ERROR)
     {
       return error;
     }
@@ -11531,7 +11532,8 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	      error =
 		classobj_put_index_id (&(flat->properties), con->type, con->name, con->attributes, con->asc_desc,
 				       con->attrs_prefix_length, &(con->index_btid), con->filter_predicate,
-				       con->fk_info, con->shared_cons_name, con->func_index_info, con->comment);
+				       con->fk_info, con->shared_cons_name, con->func_index_info, con->comment,
+				       con->online_index_status);
 	      if (error != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
@@ -11543,7 +11545,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	      error =
 		classobj_put_index_id (&(flat->properties), con->type, con->name, con->attributes, con->asc_desc,
 				       con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, NULL, NULL,
-				       con->func_index_info, con->comment);
+				       con->func_index_info, con->comment, con->online_index_status);
 	      if (error != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
@@ -13769,6 +13771,7 @@ severe_error:
 
   return error;
 #endif
+  return NO_ERROR;
 }
 
 /*
@@ -14394,11 +14397,13 @@ sm_check_index_exist (MOP classop, char **out_shared_cons_name, DB_CONSTRAINT_TY
 int
 sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name, const char **att_names,
 		   const int *asc_desc, const int *attrs_prefix_length, int class_attributes,
-		   SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index, const char *comment)
+		   SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index, const char *comment,
+		   bool is_online_index)
 {
   int error = NO_ERROR;
   SM_TEMPLATE *def;
   MOP newmop = NULL;
+  LOCK ex_lock = SCH_M_LOCK;
 
   if (att_names == NULL)
     {
@@ -14413,15 +14418,6 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
     case DB_CONSTRAINT_UNIQUE:
     case DB_CONSTRAINT_REVERSE_UNIQUE:
     case DB_CONSTRAINT_PRIMARY_KEY:
-      // 1. preparation phase
-
-      // TODO: lock mode for preparation phase. SIX allows reads, while SCH_M does not. SCH_M might be safer.
-      // Please notice that creating a secondary index acquired SIX. We may have a regression until completes the task.
-      // 
-      // TODO: provide a lock mode to smt_ interface?
-      // Alternative is smt_edit_class_mop_for_online_schema_change. This will demote class lock after preparation.
-
-      // TODO: introduce a flag to SM_CLASS_CONSTRAINT. We also need one for class representation.
 
       DB_AUTH auth;
 
@@ -14441,23 +14437,25 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  return error;
 	}
 
-      // TODO: Please imagine:
-      // if (is_online)
-      //   cons->status = INDEX_BUILD_IN_PROGRESS;
-      error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes, NULL,
-				  filter_index, function_index, comment);
+      if (is_online_index)
+	{
+	  error =
+	    smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes, NULL,
+				filter_index, function_index, comment, SM_ONLINE_INDEX_BUILDING_IN_PROGRESS);
+	}
+      else
+	{
+	  error =
+	    smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes, NULL,
+				filter_index, function_index, comment, SM_NO_ONLINE_INDEX);
+	}
+
       if (error != NO_ERROR)
 	{
 	  smt_quit (def);
 	  return error;
 	}
 
-      // TODO: modify allocate_disk_structures_index not to populate objects to the index.
-      // please imagine:
-      // if (cons->status == INDEX_BUILD_IN_PROGRESS)
-      //   create an empty index file
-      // else
-      //   do as it did
       error = sm_update_class (def, &newmop);
       if (error != NO_ERROR)
 	{
@@ -14465,10 +14463,30 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  return error;
 	}
 
-      // 2. lock demotion
-      // error = locator_demote_class_lock ();
+      /* Demote lock for online index. */
+      if (is_online_index)
+	{
+	  error = locator_demote_class_lock (&newmop->oid_info.oid, IX_LOCK, &ex_lock);
+	  if (error != NO_ERROR)
+	    {
+	      smt_quit (def);
+	      return error;
+	    }
+	}
 
-      // 3. load index phase
+      // Load index phase.
+      /* TODO For now, the index will be empty. */
+
+      /* Promote the lock for online index.  */
+      if (is_online_index)
+	{
+	  def = smt_edit_class_mop (classop, auth);
+	  if (def == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      return error;
+	    }
+	}
 
       error = sm_update_statistics (newmop, STATS_WITH_SAMPLING);
       if (error != NO_ERROR)
@@ -14476,10 +14494,29 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  return error;
 	}
 
-      // 4. lock promotion
+      if (is_online_index)
+	{
+	  /*  If we have an online index, we need to change the constraint to SM_ONLINE_INDEX_BUILDING_DONE, and 
+	   *  add remove the old one from the property list. We also do not want to do some later checks.
+	   */
+	  error =
+	    smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes, NULL,
+				filter_index, function_index, comment, SM_ONLINE_INDEX_BUILDING_DONE);
 
-      // 5. registration phase
-      // cons->status = INDEX_BUILD_COMPLETED;
+	  if (error != NO_ERROR)
+	    {
+	      smt_quit (def);
+	      return error;
+	    }
+
+	  /* Update the class now. */
+	  error = sm_update_class (def, &newmop);
+	  if (error != NO_ERROR)
+	    {
+	      smt_quit (def);
+	      return error;
+	    }
+	}
       break;
 
     case DB_CONSTRAINT_NOT_NULL:
@@ -14494,7 +14531,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	{
 	  error =
 	    smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes, NULL,
-				filter_index, function_index, comment);
+				filter_index, function_index, comment, SM_NO_ONLINE_INDEX);
 	  if (error == NO_ERROR)
 	    {
 	      error = do_check_fk_constraints (def, NULL);
@@ -15431,7 +15468,7 @@ sm_truncate_class (MOP class_mop)
     {
       error = sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
 				 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
-				 saved->func_index_info, saved->comment);
+				 saved->func_index_info, saved->comment, false);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -15443,7 +15480,7 @@ sm_truncate_class (MOP class_mop)
     {
       error = sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
 				 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
-				 saved->func_index_info, saved->comment);
+				 saved->func_index_info, saved->comment, false);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;

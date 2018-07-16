@@ -1250,6 +1250,7 @@ extern const int SM_MAX_STRING_LENGTH;
 #define SM_FILTER_INDEX_ID "*FP*"
 #define SM_FUNCTION_INDEX_ID "*FI*"
 #define SM_PREFIX_INDEX_ID "*PLID*"
+#define SM_ONLINE_INDEX_ID "*OI*"
 
 /*
  *    Bit field identifiers for attribute flags.  These could be defined

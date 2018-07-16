@@ -561,6 +561,7 @@ int yybuffer_pos;
 										csql_yylval.cptr = pt_makename(yytext);
 										return OFFSET; }
 [oO][nN]								{ begin_token(yytext);   return ON_; }
+[oO][nN][lL][iI][nN][eE]						{ begin_token(yytext);   return ONLINE; }
 [oO][nN][lL][yY]							{ begin_token(yytext);   return ONLY; }
 [oO][pP][eE][nN]							{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);

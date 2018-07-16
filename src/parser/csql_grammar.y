@@ -649,6 +649,7 @@ int g_original_buffer_len;
 %type <number> datetime_field
 %type <number> opt_paren_plus
 %type <number> opt_with_fullscan
+%type <number> opt_with_online
 %type <number> comp_op
 %type <number> opt_of_all_some_any
 %type <number> set_op
@@ -1562,6 +1563,7 @@ int g_original_buffer_len;
 %token <cptr> NTILE
 %token <cptr> NULLS
 %token <cptr> OFFSET
+%token <cptr> ONLINE
 %token <cptr> OPEN
 %token <cptr> OWNER
 %token <cptr> PAGE
@@ -2626,6 +2628,7 @@ create_stmt
 	  index_column_name_list			/* 11 */
 	  opt_where_clause				/* 12 */
 	  opt_comment_spec				/* 13 */
+	  opt_with_online				/* 14 */
 	{{
 
 			PT_NODE *node = parser_pop_hint_node ();
@@ -2743,6 +2746,7 @@ create_stmt
 			     node->info.index.where = $12;
 			     node->info.index.column_names = col;
 			     node->info.index.comment = $13;
+			     node->info.index.online = $14;
 			  }
 		      $$ = node;
 
@@ -4181,6 +4185,21 @@ opt_with_fullscan
 
                 DBG_PRINT}}
         ;
+
+opt_with_online
+	: /* empty */
+		{{
+
+			$$ = 0;
+		
+		DBG_PRINT}}
+	| WITH ONLINE
+		{{
+		
+			$$ = 1;
+		
+		DBG_PRINT}}
+	;
 
 opt_of_to_eq
 	: /* empty */
@@ -21117,6 +21136,16 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| ONLINE
+               {{
+
+                       PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+                       if (p)
+                         p->info.name.original = $1;
+                       $$ = p;
+                       PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+               DBG_PRINT}}
 	| OPEN
 		{{
 

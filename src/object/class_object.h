@@ -506,6 +506,14 @@ struct sm_function_info
   int attr_index_start;
 };
 
+typedef enum sm_online_index_status SM_ONLINE_INDEX_STATUS;
+enum sm_online_index_status
+{
+  SM_NO_ONLINE_INDEX = 0,
+  SM_ONLINE_INDEX_BUILDING_IN_PROGRESS = 1,
+  SM_ONLINE_INDEX_BUILDING_DONE = 2
+};
+
 typedef struct sm_class_constraint SM_CLASS_CONSTRAINT;
 
 struct sm_class_constraint
@@ -524,6 +532,7 @@ struct sm_class_constraint
   SM_FUNCTION_INFO *func_index_info;
   const char *comment;
   SM_CONSTRAINT_EXTRA_FLAG extra_status;
+  SM_ONLINE_INDEX_STATUS online_index_status;
 };
 
 /*
@@ -926,11 +935,13 @@ extern int classobj_drop_prop (DB_SEQ * properties, const char *name);
 extern int classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name,
 			       SM_ATTRIBUTE ** atts, const int *asc_desc, const BTID * id,
 			       SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
-			       char *shared_cons_name, SM_FUNCTION_INFO * func_index_info, const char *comment);
+			       char *shared_cons_name, SM_FUNCTION_INFO * func_index_info, const char *comment,
+			       SM_ONLINE_INDEX_STATUS online_index_status);
 extern int classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name,
 				  SM_ATTRIBUTE ** atts, const int *asc_desc, const int *attrs_prefix_length,
 				  const BTID * id, SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
-				  char *shared_cons_name, SM_FUNCTION_INFO * func_index_info, const char *comment);
+				  char *shared_cons_name, SM_FUNCTION_INFO * func_index_info, const char *comment,
+				  SM_ONLINE_INDEX_STATUS online_index_status);
 extern int classobj_find_prop_constraint (DB_SEQ * properties, const char *prop_name, const char *cnstr_name,
 					  DB_VALUE * cnstr_val);
 
@@ -1093,4 +1104,6 @@ extern void classobj_initialize_methods (SM_METHOD * methods);
 extern SM_PARTITION *classobj_make_partition_info (void);
 extern void classobj_free_partition_info (SM_PARTITION * partition_info);
 extern SM_PARTITION *classobj_copy_partition_info (SM_PARTITION * partition_info);
+
+extern DB_SEQ *classobj_make_index_online_index_seq ();
 #endif /* _CLASS_OBJECT_H_ */

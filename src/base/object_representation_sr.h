@@ -123,6 +123,13 @@ struct or_function_index
 				 * atts member */
 };
 
+typedef enum or_online_index_status OR_ONLINE_INDEX_STATUS;
+enum or_online_index_status
+{
+  OR_NO_ONLINE_INDEX = 0,
+  OR_ONLINE_INDEX_BUILDING_IN_PROGRESS = 1,
+};
+
 typedef struct or_index OR_INDEX;
 struct or_index
 {
@@ -137,6 +144,7 @@ struct or_index
   BTREE_TYPE type;		/* btree type */
   int n_atts;			/* Number of associated attributes */
   BTID btid;			/* btree ID */
+  OR_ONLINE_INDEX_STATUS online_index_status;
 };
 
 typedef struct or_partition OR_PARTITION;
