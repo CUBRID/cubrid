@@ -155,7 +155,6 @@ static SM_CONSTRAINT_COMPATIBILITY classobj_check_index_compatibility (SM_CLASS_
 								       SM_CLASS_CONSTRAINT ** primary_con);
 static int classobj_check_function_constraint_info (DB_SEQ * constraint_seq, bool * has_function_constraint);
 static int classobj_partition_info_size (SM_PARTITION * partition_info);
-static SM_ONLINE_INDEX_STATUS classobj_make_online_index_info (DB_SEQ * online_seq);
 
 /*
  * classobj_area_init - Initialize the area for schema templates.
@@ -9013,7 +9012,7 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
   return NO_ERROR;
 }
 
-static DB_SEQ *
+DB_SEQ *
 classobj_make_index_online_index_seq ()
 {
   DB_SEQ *online_seq;
@@ -9039,7 +9038,7 @@ classobj_make_index_online_index_seq ()
  *   prefix_seq(in): sequence which contains prefix length
  *   num_attrs(in): key attribute count
  */
-static SM_ONLINE_INDEX_STATUS
+SM_ONLINE_INDEX_STATUS
 classobj_make_online_index_info (DB_SEQ * online_seq)
 {
   DB_VALUE v;
