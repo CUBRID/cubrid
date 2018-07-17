@@ -123,12 +123,11 @@ struct or_function_index
 				 * atts member */
 };
 
-typedef enum or_online_index_status OR_ONLINE_INDEX_STATUS;
-enum or_online_index_status
+typedef enum
 {
   OR_NO_ONLINE_INDEX = 0,
   OR_ONLINE_INDEX_BUILDING_IN_PROGRESS = 1,
-};
+} OR_ONLINE_INDEX_STATUS;
 
 typedef struct or_index OR_INDEX;
 struct or_index

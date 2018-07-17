@@ -506,13 +506,12 @@ struct sm_function_info
   int attr_index_start;
 };
 
-typedef enum sm_online_index_status SM_ONLINE_INDEX_STATUS;
-enum sm_online_index_status
+typedef enum
 {
   SM_NO_ONLINE_INDEX = 0,
   SM_ONLINE_INDEX_BUILDING_IN_PROGRESS = 1,
   SM_ONLINE_INDEX_BUILDING_DONE = 2
-};
+} SM_ONLINE_INDEX_STATUS;
 
 typedef struct sm_class_constraint SM_CLASS_CONSTRAINT;
 
