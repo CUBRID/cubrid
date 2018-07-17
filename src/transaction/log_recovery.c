@@ -2545,10 +2545,12 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		  LOG_LSA temp_log_lsa;
 		  LSA_COPY (&temp_log_lsa, &log_rec->forw_lsa);
 		  temp_log_lsa.offset--;
-		  assert (temp_log_lsa.offset > 0);
+		  assert (log_lsa.offset >= 0 && temp_log_lsa.offset > log_lsa.offset);
 
-		  start_record_block = (int) log_lsa.offset / block_size;
-		  end_record_block = (int) temp_log_lsa.offset / block_size;
+		  start_record_block = ((int) log_lsa.offset + sizeof (LOG_HDRPAGE)) / block_size;
+		  assert (start_record_block >= 0 && start_record_block < max_num_blocks);
+		  end_record_block = ((int) temp_log_lsa.offset + sizeof (LOG_HDRPAGE)) / block_size;
+		  assert (end_record_block >= 0 && end_record_block < max_num_blocks);
 
 		  if (start_record_block != end_record_block)
 		    {
