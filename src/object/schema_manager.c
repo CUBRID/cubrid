@@ -14488,10 +14488,6 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
       /* Promote the lock for online index.  */
       if (is_online_index)
 	{
-	  for (;;)
-	    {
-	      sleep (10);
-	    }
 	  def = smt_edit_class_mop (classop, auth);
 	  if (def == NULL)
 	    {
