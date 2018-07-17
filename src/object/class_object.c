@@ -9031,13 +9031,6 @@ classobj_make_index_online_index_seq ()
   return online_seq;
 }
 
-/*
- * classobj_make_index_prefix_info() - Make array which contains
- *                                     prefix length
- *   return: array
- *   prefix_seq(in): sequence which contains prefix length
- *   num_attrs(in): key attribute count
- */
 SM_ONLINE_INDEX_STATUS
 classobj_make_online_index_info (DB_SEQ * online_seq)
 {
