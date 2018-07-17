@@ -6441,14 +6441,10 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VA
       goto match_not_found;
     }
 
-  elem_start = stack_ptr = stack_str;
-
-  for (;;)
+  for (elem_start = stack_ptr = stack_str; stack_ptr <= stack_str+stack_size; ++stack_ptr)
     {
       if (*stack_ptr == ',' || stack_ptr >= stack_str + stack_size)
 	{
-	  assert (stack_ptr <= stack_str + stack_size);
-
 	  if (stack_ptr == elem_start)
 	    {
 	      if (needle_size == 0)
@@ -6473,18 +6469,8 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VA
 		    }
 		}
 	    }
-
-	  if (stack_ptr >= stack_str + stack_size)
-	    {
-	      break;
-	    }
-
 	  position++;
-	  elem_start = ++stack_ptr;
-	}
-      else
-	{
-	  stack_ptr++;
+	  elem_start = stack_ptr+1;
 	}
     }
 
