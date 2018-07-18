@@ -132,8 +132,12 @@ namespace cubreplication
 
       void set_stop (void)
       {
-	m_is_stopped = true;
 	log_consumer::get_stream ()->set_stop ();
+
+        std::unique_lock<std::mutex> ulock (m_queue_mutex);
+	m_is_stopped = true;
+        ulock.unlock ();
+        m_apply_task_cv.notify_one ();
       }
 
   };

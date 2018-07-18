@@ -233,6 +233,7 @@ namespace cubreplication
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     m_stream_entries.push (entry);
     m_apply_task_ready = true;
+    ulock.unlock ();
     m_apply_task_cv.notify_one ();
 
     return NO_ERROR;
@@ -243,18 +244,13 @@ namespace cubreplication
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     if (m_stream_entries.empty ())
       {
-	while (m_is_stopped == false)
-	  {
-	    m_apply_task_ready = false;
-	    m_apply_task_cv.wait_for (ulock,
-				      std::chrono::milliseconds (1000),
-				      [this] { return m_apply_task_ready == true;});
-	  }
+        m_apply_task_ready = false;
+	m_apply_task_cv.wait (ulock, [this] { return m_is_stopped || m_apply_task_ready;});
+      }
 
-	if (m_is_stopped)
-	  {
-	    return ER_FAILED;
-	  }
+    if (m_is_stopped)
+      {
+	return ER_FAILED;
       }
 
     assert (m_stream_entries.empty () == false);
