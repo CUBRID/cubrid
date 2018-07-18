@@ -93,7 +93,6 @@
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #include "network_interface_sr.h"
-#include "job_queue.h"
 #endif /* SERVER_MODE */
 
 #if !defined (CS_MODE)
@@ -103,6 +102,16 @@
 
 #include "intl_support.h"
 #include "tsc_timer.h"
+
+#if defined (SERVER_MODE)
+#include "server_support.h"
+#endif // SERVER_MODE
+#if defined (SERVER_MODE)
+#include "thread_entry_task.hpp"
+#endif // SERVER_MODE
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
+#endif // SERVER_MODE
 
 /************************************************************************/
 /* TODO: why is this in client module?                                  */
@@ -1897,7 +1906,7 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, D
 	  time_to_sleep = allowed_millis_for_a_sleep - previous_elapsed_millis;
 	  if (time_to_sleep > 0)
 	    {
-	      thread_sleep ((int) time_to_sleep);
+	      thread_sleep ((double) time_to_sleep);
 	    }
 
 	  tsc_getticks (&start_tick);
@@ -2534,8 +2543,10 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
 
   if (new_size <= current_size)
     {
-      /* this must be recovery. */
-      assert (!LOG_ISRESTARTED ());
+      /* this is possible in limited cases. we cannot link file expand to a page, so sometimes we may expand but volume
+       * header does not reflect this change. also, once expanded, we don't undo the expansion.
+       * however next time volume wants to expand (this case), it just notices file is already expanded and all is
+       * good. */
       er_log_debug (ARG_FILE_LINE, "skip extending volume %d with current size %zu to new size %zu\n",
 		    vol_id, current_size, new_size);
       return NO_ERROR;
@@ -6520,15 +6531,15 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
   session_p->bkup.buffer = NULL;
   session_p->bkup.bkuphdr = NULL;
   session_p->dbfile.area = NULL;
+
   /* Now find out the type of backup_destination and the best page I/O for the backup. The accepted types are either
    * file, directory, or raw device. */
   while (stat (backup_destination_p, &stbuf) == -1)
     {
       /* 
-       * Could not stat or backup_destination is a file or directory that does
-       * not exist.
-       * If the backup_destination does not exist, try to create it to make
-       * sure that we can write at this backup destination.
+       * Could not stat or backup_destination is a file or directory that does not exist.
+       * If the backup_destination does not exist, try to create it to make sure that we can write at this backup
+       * destination.
        */
       vol_fd = fileio_open (backup_destination_p, FILEIO_DISK_FORMAT_MODE, FILEIO_DISK_PROTECTION_MODE);
       if (vol_fd == NULL_VOLDES)
@@ -6542,11 +6553,10 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
 
   if (S_ISDIR (stbuf.st_mode))
     {
-      /* 
+      /*
        * This is a DIRECTORY where the backup is going to be sent.
-       * The name of the backup file in this directory is labeled as
-       * databasename.bkLvNNN (Unix). In this case, we may destroy any previous
-       * backup in this directory.
+       * The name of the backup file in this directory is labeled as databasename.bkLvNNN (Unix).
+       * In this case, we may destroy any previous backup in this directory.
        */
       session_p->bkup.dtype = FILEIO_BACKUP_VOL_DIRECTORY;
       db_nopath_name_p = fileio_get_base_file_name (db_full_name_p);
@@ -6561,11 +6571,9 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
     }
   else
     {
-      /* 
-       * ASSUME that everything else is a special file such as a
-       * raw device (character or block special file) which is
-       * not named for I/O purposes. That is, the name of the device or
-       * regular file is used as the backup.
+      /*
+       * ASSUME that everything else is a special file such as a FIFO file, a device(character or block special file)
+       * which is not named for I/O purposes. That is, the name of the device or regular file is used as the backup.
        */
       session_p->bkup.dtype = FILEIO_BACKUP_VOL_DEVICE;
     }
@@ -7932,14 +7940,34 @@ exit_on_error:
   goto exit_on_end;
 }
 
+// *INDENT-OFF*
+class fileio_read_backup_volume_task : public cubthread::entry_task
+{
+public:
+  fileio_read_backup_volume_task (void) = delete;
+
+  fileio_read_backup_volume_task (FILEIO_BACKUP_SESSION *session_p)
+  : m_backup_session (session_p)
+  {
+  }
+
+  void
+  execute (context_type &thread_ref) override final
+  {
+    fileio_read_backup_volume (&thread_ref, m_backup_session);
+  }
+
+private:
+  FILEIO_BACKUP_SESSION *m_backup_session;
+};
+// *INDENT-ON*
+
 static int
 fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
 			    FILEIO_THREAD_INFO * thread_info_p, int from_npages, bool is_only_updated_pages,
 			    int check_ratio, int check_npages, FILEIO_QUEUE * queue_p)
 {
   CSS_CONN_ENTRY *conn_p;
-  int conn_index;
-  CSS_JOB_ENTRY *job_entry_p;
   int i;
 
   /* Initialize global MT variables */
@@ -7953,22 +7981,10 @@ fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * ses
   thread_info_p->check_npages = check_npages;
   thread_info_p->tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   /* start read threads */
-  conn_p = thread_get_current_conn_entry ();
-  conn_index = (conn_p) ? conn_p->idx : 0;
+  conn_p = css_get_current_conn_entry ();
   for (i = 1; i <= thread_info_p->act_r_threads; i++)
     {
-      job_entry_p =
-	css_make_job_entry (conn_p, (CSS_THREAD_FN) fileio_read_backup_volume, (CSS_THREAD_ARG) session_p,
-			    conn_index + i
-			    /* explicit job queue index */
-	);
-
-      if (job_entry_p == NULL)
-	{
-	  return ER_FAILED;
-	}
-
-      css_add_to_job_queue (job_entry_p);
+      css_push_external_task (*thread_p, conn_p, new fileio_read_backup_volume_task (session_p));
     }
 
   /* work as write thread */
@@ -8728,8 +8744,7 @@ fileio_write_backup_header (FILEIO_BACKUP_SESSION * session_p)
 }
 
 /*
- * fileio_initialize_restore () - Initialize the restore session structure with the given
- *                      information
+ * fileio_initialize_restore () - Initialize the restore session structure with the given information
  *   return: session or NULL
  *   db_fullname(in): Name of the database to backup
  *   backup_src(in): Name of backup device (file or directory)
@@ -8769,8 +8784,8 @@ fileio_initialize_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, 
   session_p->type = FILEIO_BACKUP_READ;	/* access backup device for read */
   /* save database full-pathname specified in the database-loc-file */
   strncpy (session_p->bkup.loc_db_fullname, is_new_vol_path ? db_full_name_p : "", PATH_MAX);
-  return (fileio_initialize_backup (db_full_name_p, (const char *) backup_source_p, session_p, level, restore_verbose_file_path, 0,	/* no multi-thread */
-				    0 /* no sleep */ ));
+  return (fileio_initialize_backup (db_full_name_p, (const char *) backup_source_p, session_p, level,
+				    restore_verbose_file_path, 0 /* no multi-thread */ , 0 /* no sleep */ ));
 }
 
 /*

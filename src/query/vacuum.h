@@ -34,9 +34,6 @@
 #include "recovery.h"
 #include "storage_common.h"
 #include "system_parameter.h"
-#if defined (SA_MODE)
-#include "thread.h"		// for inline functions using thread_get_thread_entry_info ();
-#endif // SA_MODE
 #include "thread_entry.hpp"
 
 #include <assert.h>
@@ -81,12 +78,6 @@
 
 /* number of log pages in each vacuum block */
 #define VACUUM_LOG_BLOCK_PAGES_DEFAULT 31
-
-/* prefetch log modes :
- * 0 : vacuum master thread is performing prefetch in a shared buffer
- * 1 : each vacuum worker performs prefetch in its own buffer */
-#define VACUUM_PREFETCH_LOG_MODE_MASTER 0
-#define VACUUM_PREFETCH_LOG_MODE_WORKERS 1
 
 /* VACUUM_WORKER_STATE - State of vacuum workers */
 enum vacuum_worker_state
@@ -144,6 +135,9 @@ struct vacuum_worker
   char *undo_data_buffer;	/* Buffer to save log undo data */
   int undo_data_buffer_capacity;	/* Capacity of log undo data buffer */
 
+  // page buffer private lru list
+  int private_lru_index;
+
   /* Caches postpones to avoid reading them from log after commit top operation with postpone. Otherwise, log critical
    * section may be required which will slow the access on merged index nodes. */
   VACUUM_CACHE_POSTPONE_STATUS postpone_cache_status;
@@ -152,9 +146,9 @@ struct vacuum_worker
   VACUUM_CACHE_POSTPONE_ENTRY postpone_cached_entries[VACUUM_CACHE_POSTPONE_ENTRIES_MAX_COUNT];
   int postpone_cached_entries_count;
 
-#if defined (SERVER_MODE)
   char *prefetch_log_buffer;	/* buffer for prefetching log pages */
-#endif				/* SERVER_MODE */
+  LOG_PAGEID prefetch_first_pageid;	/* first prefetched log pageid */
+  LOG_PAGEID prefetch_last_pageid;	/* last prefetch log pageid */
 
   bool allocated_resources;
 };
@@ -189,36 +183,21 @@ vacuum_get_vacuum_worker (THREAD_ENTRY * thread_p)
 bool
 vacuum_is_thread_vacuum (THREAD_ENTRY * thread_p)
 {
-#if defined (SA_MODE)
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-#endif // SA_MODE
+  assert (thread_p != NULL);
   return thread_p != NULL && (thread_p->type == TT_VACUUM_MASTER || thread_p->type == TT_VACUUM_WORKER);
 }
 
 bool
 vacuum_is_thread_vacuum_worker (THREAD_ENTRY * thread_p)
 {
-#if defined (SA_MODE)
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-#endif // SA_MODE
+  assert (thread_p != NULL);
   return thread_p != NULL && thread_p->type == TT_VACUUM_WORKER;
 }
 
 bool
 vacuum_is_thread_vacuum_master (THREAD_ENTRY * thread_p)
 {
-#if defined (SA_MODE)
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-#endif // SA_MODE
+  assert (thread_p != NULL);
   return thread_p != NULL && thread_p->type == TT_VACUUM_MASTER;
 }
 
@@ -238,12 +217,6 @@ vacuum_is_skip_undo_allowed (THREAD_ENTRY * thread_p)
 LOG_TDES *
 vacuum_get_worker_tdes (THREAD_ENTRY * thread_p)
 {
-#if defined (SA_MODE)
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-#endif // SA_MODE
   return vacuum_get_vacuum_worker (thread_p)->tdes;
 }
 
@@ -251,12 +224,6 @@ vacuum_get_worker_tdes (THREAD_ENTRY * thread_p)
 VACUUM_WORKER_STATE
 vacuum_get_worker_state (THREAD_ENTRY * thread_p)
 {
-#if defined (SA_MODE)
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-#endif // SA_MODE
   return vacuum_get_vacuum_worker (thread_p)->state;
 }
 
@@ -264,12 +231,6 @@ vacuum_get_worker_state (THREAD_ENTRY * thread_p)
 void
 vacuum_set_worker_state (THREAD_ENTRY * thread_p, VACUUM_WORKER_STATE state)
 {
-#if defined (SA_MODE)
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-#endif // SA_MODE
   vacuum_get_vacuum_worker (thread_p)->state = state;
 }
 
@@ -378,8 +339,8 @@ extern int vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT
 
 extern void vacuum_log_last_blockid (THREAD_ENTRY * thread_p);
 
-extern void vacuum_rv_convert_thread_to_vacuum (THREAD_ENTRY * thread_p, TRANID trid, THREAD_TYPE & save_type);
-extern void vacuum_restore_thread (THREAD_ENTRY * thread_p, THREAD_TYPE save_type);
+extern void vacuum_rv_convert_thread_to_vacuum (THREAD_ENTRY * thread_p, TRANID trid, thread_type & save_type);
+extern void vacuum_restore_thread (THREAD_ENTRY * thread_p, thread_type save_type);
 
 extern int vacuum_rv_es_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 #if defined (SERVER_MODE)

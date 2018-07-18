@@ -83,8 +83,10 @@
 #include "utility.h"
 #include "tz_support.h"
 #include "perf_monitor.h"
-
 #include "fault_injection.h"
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#endif // SERVER_MODE
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -401,6 +403,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS "ha_check_disk_failure_interval"
 
+#define PRM_NAME_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSEC "ha_update_hostname_interval_in_msecs"
+
 #define PRM_NAME_JAVA_STORED_PROCEDURE "java_stored_procedure"
 
 #define PRM_NAME_COMPAT_PRIMARY_KEY "compat_primary_key"
@@ -633,6 +637,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_CONNECTION_LOGGING "connection_logging"
 
 #define PRM_NAME_THREAD_LOGGING_FLAG "thread_logging_flag"
+
+#define PRM_NAME_LOG_QUERY_LISTS "log_query_lists"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -1531,6 +1537,10 @@ static int prm_ha_check_disk_failure_interval_in_secs_upper = INT_MAX;
 static int prm_ha_check_disk_failure_interval_in_secs_lower = 0;
 static unsigned int prm_ha_check_disk_failure_interval_in_secs_flag = 0;
 
+int PRM_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS = HB_DEFAULT_UPDATE_HOSTNAME_INTERVAL_IN_MSECS;
+static int prm_ha_update_hostname_interval_in_msecs_default = HB_DEFAULT_UPDATE_HOSTNAME_INTERVAL_IN_MSECS;
+static unsigned int prm_ha_update_hostname_interval_in_msecs_flag = 0;
+
 bool PRM_JAVA_STORED_PROCEDURE = false;
 static bool prm_java_stored_procedure_default = false;
 static unsigned int prm_java_stored_procedure_flag = 0;
@@ -1975,25 +1985,8 @@ bool PRM_OPTIMIZER_ENABLE_AGGREGATE_OPTIMIZATION = true;
 static bool prm_optimizer_enable_aggregate_optimization_default = true;
 static unsigned int prm_optimizer_enable_aggregate_optimization_flag = 0;
 
-/* buffer for 2 x maximum vacuum workers, each prefetch buffer block having
- * (PRM_VACUUM_LOG_BLOCK_PAGES + 1) */
-int PRM_VACUUM_PREFETCH_LOG_NBUFFERS = 2 * VACUUM_MAX_WORKER_COUNT * (VACUUM_LOG_BLOCK_PAGES_DEFAULT + 1);
-static int prm_vacuum_prefetch_log_nbuffers_default =
-  2 * VACUUM_MAX_WORKER_COUNT * (VACUUM_LOG_BLOCK_PAGES_DEFAULT + 1);
 static unsigned int prm_vacuum_prefetch_log_nbuffers_flag = 0;
-/* buffers for all vacuum workers + 1 for job queue */
-static int prm_vacuum_prefetch_log_nbuffers_lower =
-  (VACUUM_MAX_WORKER_COUNT + 1) * (VACUUM_LOG_BLOCK_PAGES_DEFAULT + 1);
-
-#if !defined (SERVER_MODE) && !defined (SA_MODE)
-#define VACUUM_PREFETCH_LOG_MODE_MASTER 0
-#define VACUUM_PREFETCH_LOG_MODE_WORKERS 1
-#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
-int PRM_VACUUM_PREFETCH_LOG_MODE = VACUUM_PREFETCH_LOG_MODE_WORKERS;
-static int prm_vacuum_prefetch_log_mode_default = VACUUM_PREFETCH_LOG_MODE_WORKERS;
-static unsigned int prm_vacuum_prefetch_log_mode_flag = 0;
-static int prm_vacuum_prefetch_log_mode_lower = VACUUM_PREFETCH_LOG_MODE_MASTER;
-static int prm_vacuum_prefetch_log_mode_upper = VACUUM_PREFETCH_LOG_MODE_WORKERS;
+static unsigned int prm_vacuum_prefetch_log_mode_flag = 0;	// obsolete; not sure it is needed
 
 bool PRM_PB_NEIGHBOR_FLUSH_NONDIRTY = false;
 static unsigned int prm_pb_neighbor_flush_nondirty_flag = 0;
@@ -2064,7 +2057,7 @@ static unsigned int prm_force_restart_to_skip_recovery_flag = 0;
 int PRM_EXTENDED_STATISTICS = 15;
 static int prm_extended_statistics_default = 15;
 static int prm_extended_statistics_lower = 0;
-static int prm_extended_statistics_upper = PERFMON_ACTIVE_MAX_VALUE;
+static int prm_extended_statistics_upper = PERFMON_ACTIVATION_FLAG_MAX_VALUE;
 static unsigned int prm_extended_statistics_flag = 0;
 
 bool PRM_ENABLE_STRING_COMPRESSION = true;
@@ -2112,6 +2105,10 @@ static unsigned int prm_connection_logging_flag = 0;
 int PRM_THREAD_LOGGING_FLAG = 0;
 static int prm_thread_logging_flag_default = 0;
 static unsigned int prm_thread_logging_flag_flag = 0;
+
+bool PRM_LOG_QUERY_LISTS = false;
+static bool prm_log_query_lists_default = false;
+static unsigned int prm_log_query_lists_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -3852,6 +3849,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_msec_to_sec,
    (DUP_PRM_FUNC) prm_sec_to_msec},
+  {PRM_ID_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS,
+   PRM_NAME_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSEC,
+   (PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
+   PRM_INTEGER,
+   &prm_ha_update_hostname_interval_in_msecs_flag,
+   (void *) &prm_ha_update_hostname_interval_in_msecs_default,
+   (void *) &PRM_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_JAVA_STORED_PROCEDURE,
    PRM_NAME_JAVA_STORED_PROCEDURE,
    (PRM_FOR_SERVER),
@@ -5024,35 +5032,37 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_VACUUM_PREFETCH_LOG_NBUFFERS,
    PRM_NAME_VACUUM_PREFETCH_LOG_NBUFFERS,
-   (PRM_FOR_SERVER | PRM_DEPRECATED | PRM_RELOADABLE),
+   (PRM_FOR_SERVER | PRM_OBSOLETED),
    PRM_INTEGER,
    &prm_vacuum_prefetch_log_nbuffers_flag,
-   (void *) &prm_vacuum_prefetch_log_nbuffers_default,
-   (void *) &PRM_VACUUM_PREFETCH_LOG_NBUFFERS,
-   (void *) NULL, (void *) &prm_vacuum_prefetch_log_nbuffers_lower,
+   (void *) NULL,
+   (void *) NULL,
+   (void *) NULL,
+   (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_VACUUM_PREFETCH_LOG_BUFFER_SIZE,
    PRM_NAME_VACUUM_PREFETCH_LOG_BUFFER_SIZE,
-   (PRM_FOR_SERVER | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
+   (PRM_FOR_SERVER | PRM_OBSOLETED),
    PRM_INTEGER,
    &prm_vacuum_prefetch_log_nbuffers_flag,
-   (void *) &prm_vacuum_prefetch_log_nbuffers_default,
-   (void *) &PRM_VACUUM_PREFETCH_LOG_NBUFFERS,
-   (void *) NULL, (void *) &prm_vacuum_prefetch_log_nbuffers_lower,
+   (void *) NULL,
+   (void *) NULL,
+   (void *) NULL,
+   (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) prm_size_to_log_pages,
    (DUP_PRM_FUNC) prm_log_pages_to_size},
   {PRM_ID_VACUUM_PREFETCH_LOG_MODE,
    PRM_NAME_VACUUM_PREFETCH_LOG_MODE,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_OBSOLETED),
    PRM_INTEGER,
    &prm_vacuum_prefetch_log_mode_flag,
-   (void *) &prm_vacuum_prefetch_log_mode_default,
-   (void *) &PRM_VACUUM_PREFETCH_LOG_MODE,
-   (void *) &prm_vacuum_prefetch_log_mode_upper,
-   (void *) &prm_vacuum_prefetch_log_mode_lower,
+   (void *) NULL,
+   (void *) NULL,
+   (void *) NULL,
+   (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -5349,6 +5359,17 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_thread_logging_flag_flag,
    (void *) &prm_thread_logging_flag_default,
    (void *) &PRM_THREAD_LOGGING_FLAG,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_LOG_QUERY_LISTS,
+   PRM_NAME_LOG_QUERY_LISTS,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_log_query_lists_flag,
+   (void *) &prm_log_query_lists_default,
+   (void *) &PRM_LOG_QUERY_LISTS,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

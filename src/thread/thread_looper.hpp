@@ -24,52 +24,21 @@
 #ifndef _THREAD_LOOPER_HPP_
 #define _THREAD_LOOPER_HPP_
 
+#include "perf_def.hpp"
+
 #include <array>
 #include <atomic>
 #include <chrono>
-
-#include <cassert>
-#include <cstdint>
 #include <functional>
 
-// cubthread::looper
-//
-// description
-//    used for loops that require pausing.
-//    defines the wait pattern between each loop iteration
-//    should be used together with a waiter
-//
-// how to use
-//
-//    // define a loop pattern and then loop and put waiter to sleep on each iteration
-//
-//    // example using increasing wait patterns
-//
-//    // declare period type for this example
-//    typedef std::chrono::duration<std::uint64, std::chrono::milliseconds milli_period_type;
-//    // declare increasing waiting periods
-//    // wait first for 1 millisecond, then for 100, then for 1000, then infinite
-//    std::array<milli_period_type, THREE> periods = {{ 1, 100, 1000 }};
-//    // create looper
-//    looper_shared_variable = new loop_pattern (periods);
-//
-//    // declare waiter
-//    while (!looper.is_stopped ())
-//      {
-//        // do work
-//
-//        // now sleep until timeout or wakeup
-//        looper.put_to_sleep (waiter);
-//        // thread woke up
-//      }
-//    // loop is stopped calling looper_shared_variable->stop ();
-//
+#include <cassert>
+#include <cinttypes>
+#include <cstdint>
 
 namespace cubthread
 {
-
   // definitions
-  typedef std::chrono::duration<std::uint64_t, std::nano> delta_time;
+  typedef std::chrono::system_clock::duration delta_time;
   typedef std::function<void (bool &, delta_time &)> period_function;
 
   // for increasing period pattern
@@ -78,6 +47,38 @@ namespace cubthread
   // forward def
   class waiter;
 
+  // cubthread::looper
+  //
+  // description
+  //    used for loops that require pausing.
+  //    defines the wait pattern between each loop iteration
+  //    should be used together with a waiter
+  //
+  // how to use
+  //
+  //    // define a loop pattern and then loop and put waiter to sleep on each iteration
+  //
+  //    // example using increasing wait patterns
+  //
+  //    // declare period type for this example
+  //    typedef std::chrono::duration<std::uint64, std::chrono::milliseconds milli_period_type;
+  //    // declare increasing waiting periods
+  //    // wait first for 1 millisecond, then for 100, then for 1000, then infinite
+  //    std::array<milli_period_type, THREE> periods = {{ 1, 100, 1000 }};
+  //    // create looper
+  //    looper_shared_variable = new loop_pattern (periods);
+  //
+  //    // declare waiter
+  //    while (!looper.is_stopped ())
+  //      {
+  //        // do work
+  //
+  //        // now sleep until timeout or wakeup
+  //        looper.put_to_sleep (waiter);
+  //        // thread woke up
+  //      }
+  //    // loop is stopped calling looper_shared_variable->stop ();
+  //
   class looper
   {
     public:
@@ -94,15 +95,17 @@ namespace cubthread
       looper (const period_function &setup_period_function);
 
       // loop and wait for a fixed period of time
-      template<class Rep, class Period>
-      looper (const std::chrono::duration<Rep, Period> &fixed_period);
+      looper (const delta_time &fixed_period);
 
       // loop and wait for increasing periods of time
       //
       // the sleep time is increased according to periods for each sleep that times out
       // sleep timer is reset when sleep doesn't time out
-      template<class Rep, class Period, std::size_t Count>
-      looper (const std::array<std::chrono::duration<Rep, Period>, Count> periods);
+      template<std::size_t Count>
+      looper (const std::array<delta_time, Count> periods);
+
+      // dtor
+      ~looper (void);
 
       // put waiter to sleep according to loop pattern
       void put_to_sleep (waiter &waiter_arg);
@@ -119,7 +122,21 @@ namespace cubthread
       // return true if waiter was woken up before timeout, for more details see put_to_sleep (waiter &)
       bool was_woken_up (void) const;
 
+      // statistics
+      static std::size_t get_stats_value_count (void);
+      static const char *get_stat_name (std::size_t stat_index);
+
+      void get_stats (cubperf::stat_value *stats_out);
+
     private:
+
+      enum wait_type
+      {
+	INF_WAITS,
+	FIXED_WAITS,
+	INCREASING_WAITS,
+	CUSTOM_WAITS,
+      };
 
       void setup_fixed_waits (bool &is_timed_wait, delta_time &period);
       void setup_infinite_wait (bool &is_timed_wait, delta_time &period);
@@ -137,32 +154,21 @@ namespace cubthread
       // a time point that represents the start of task execution
       // used by put_to_sleep function in order to sleep for difference between period interval and task execution time
       std::chrono::system_clock::time_point m_start_execution_time;
+
+      // statistics
+      cubperf::statset &m_stats;
+
+      // my type
+      wait_type m_wait_type;
   };
 
   /************************************************************************/
   /* Template implementation                                              */
   /************************************************************************/
 
-  template<class Rep, class Period>
-  looper::looper (const std::chrono::duration<Rep, Period> &fixed_period)
-    : m_periods_count (0)
-    , m_periods {fixed_period}
-    , m_period_index (0)
-    , m_stop (false)
-    , m_was_woken_up (false)
-    , m_start_execution_time ()
-  {
-    m_setup_period = std::bind (&looper::setup_fixed_waits, *this, std::placeholders::_1, std::placeholders::_2);
-  }
-
-  template<class Rep, class Period, std::size_t Count>
-  looper::looper (const std::array<std::chrono::duration<Rep, Period>, Count> periods)
-    : m_periods_count (Count)
-    , m_periods {}
-    , m_period_index (0)
-    , m_stop (false)
-    , m_was_woken_up (false)
-    , m_start_execution_time ()
+  template<std::size_t Count>
+  looper::looper (const std::array<delta_time, Count> periods)
+    : looper ()
   {
     static_assert (Count <= MAX_LOOPER_PERIODS, "Count template cannot exceed MAX_LOOPER_PERIODS=3");
     m_periods_count = std::min (Count, MAX_LOOPER_PERIODS);
@@ -175,7 +181,10 @@ namespace cubthread
 	assert (i == 0 || m_periods[i - 1] < m_periods[i]);
       }
 
-    m_setup_period = std::bind (&looper::setup_increasing_waits, *this, std::placeholders::_1, std::placeholders::_2);
+    m_setup_period = std::bind (&looper::setup_increasing_waits, std::ref (*this), std::placeholders::_1,
+				std::placeholders::_2);
+
+    m_wait_type = INCREASING_WAITS;
   }
 
 } // namespace cubthread

@@ -16,8 +16,8 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-#set(BROKER_DEFS _BSD_SOURCE _XOPEN_SOURCE ASYNC_MODE DIAG_DEVEL CAS_BROKER)
-set(BROKER_DEFS _XOPEN_SOURCE ASYNC_MODE DIAG_DEVEL CAS_BROKER)
+#set(BROKER_DEFS _BSD_SOURCE _XOPEN_SOURCE ASYNC_MODE CAS_BROKER)
+set(BROKER_DEFS _XOPEN_SOURCE ASYNC_MODE CAS_BROKER)
 
 set(CUB_BROKER_SOURCES
   ${BROKER_DIR}/broker.c
@@ -472,7 +472,7 @@ if(WIN32)
 endif(WIN32)
 add_library(brokeradmin SHARED ${BROKERADMIN_SOURCES})
 set_target_properties(brokeradmin PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
-target_compile_definitions(brokeradmin PRIVATE ${BROKER_DEFS} _UC_ADMIN_SO_ DIAG_DEVEL)
+target_compile_definitions(brokeradmin PRIVATE ${BROKER_DEFS} _UC_ADMIN_SO_)
 target_link_libraries(brokeradmin LINK_PRIVATE cubridcs)
 if(WIN32)
   target_link_libraries(brokeradmin LINK_PRIVATE ws2_32)

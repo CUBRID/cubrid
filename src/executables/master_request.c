@@ -56,10 +56,7 @@
 #endif /* ! WINDOWS */
 #include "master_util.h"
 #include "master_request.h"
-
-#if !defined(WINDOWS)
 #include "master_heartbeat.h"
-#endif
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -2051,4 +2048,53 @@ css_process_heartbeat_request (CSS_CONN_ENTRY * conn)
 #endif
 
   return;
+}
+
+int
+css_send_to_my_server_the_master_hostname (const char *master_current_hostname, HB_PROC_ENTRY * proc,
+					   CSS_CONN_ENTRY * conn)
+{
+#if !defined (WINDOWS)
+  int rc = NO_ERROR, rv;
+  int master_hostname_length = master_current_hostname == NULL ? 0 : strlen (master_current_hostname);
+  char master_hostname[sizeof (int) + MAXHOSTNAMELEN];
+
+  if (proc == NULL || conn == NULL || IS_INVALID_SOCKET (conn->fd))
+    {
+      /* smth went terribly wrong */
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (master_current_hostname == NULL || strlen (master_current_hostname) == 0)
+    {
+      proc->knows_master_hostname = false;
+      return NO_ERROR;
+    }
+
+  rc = css_send_heartbeat_request (conn, SERVER_RECEIVE_MASTER_HOSTNAME);
+  if (rc != NO_ERRORS)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  assert (master_hostname_length != 0);
+
+  *((int *) master_hostname) = master_hostname_length;
+  memcpy (master_hostname + sizeof (int), master_current_hostname, master_hostname_length);
+
+  rc = css_send_heartbeat_data (conn, master_hostname, sizeof (int) + master_hostname_length);
+  if (rc != NO_ERRORS)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  proc->knows_master_hostname = true;
+
+  return NO_ERROR;
+#else
+  return ER_FAILED;
+#endif
 }

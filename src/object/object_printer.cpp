@@ -547,6 +547,15 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
 	      m_buf (")");
 	    }
 	}
+
+      if (attribute.on_update_default_expr != DB_DEFAULT_NONE)
+	{
+	  const char *default_expr_type_str;
+
+	  m_buf (" ON UPDATE ");
+	  default_expr_type_str = db_default_expression_string (attribute.on_update_default_expr);
+	  m_buf ("%s", default_expr_type_str);
+	}
     }
   else if (attribute.header.name_space == ID_CLASS_ATTRIBUTE)
     {

@@ -40,7 +40,11 @@
 #include "environment_variable.h"
 #include "heartbeat.h"
 #include "log_impl.h"
+#if defined (WINDOWS)
 #include "wintcp.h"
+#else
+#include "tcp.h"
+#endif
 
 typedef enum
 {

@@ -66,12 +66,9 @@
 #else /* WINDOWS */
 #include "tcp.h"
 #endif /* !WINDOWS */
-
+#include "log_impl.h"
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
-#if defined(WINDOWS)
-#include "log_impl.h"
-#endif
 #else
 #include "connection_list_cl.h"
 #include "connection_cl.h"
@@ -184,7 +181,7 @@ css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char *
 
   conn = css_find_conn_from_fd (fd);
 
-  if (conn != NULL && conn->transaction_id != -1)
+  if (conn != NULL && conn->get_tran_index () != -1)
     {
       if (getuserid (user_name, L_cuserid) == NULL)
 	{
@@ -201,7 +198,7 @@ css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char *
       *client_user_name = user_name;
       *client_host_name = host_name;
       *client_pid = pid;
-      tran_index = conn->transaction_id;
+      tran_index = conn->get_tran_index ();
     }
 
   return tran_index;
@@ -234,14 +231,14 @@ css_sprintf_conn_infoids (SOCKET fd, const char **client_user_name, const char *
 
   conn = css_find_conn_from_fd (fd);
 
-  if (conn != NULL && conn->transaction_id != -1)
+  if (conn != NULL && conn->get_tran_index () != -1)
     {
-      error = logtb_find_client_name_host_pid (conn->transaction_id, (char **) &client_prog_name,
+      error = logtb_find_client_name_host_pid (conn->get_tran_index (), (char **) &client_prog_name,
 					       (char **) client_user_name, (char **) client_host_name,
 					       (int *) client_pid);
       if (error == NO_ERROR)
 	{
-	  tran_index = conn->transaction_id;
+	  tran_index = conn->get_tran_index ();
 	}
     }
 
@@ -1524,7 +1521,7 @@ css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn, int request, unsigned 
     }
 
   *request_id = css_get_request_id (conn);
-  css_set_net_header (&local_header, COMMAND_TYPE, request, *request_id, arg_size, conn->transaction_id,
+  css_set_net_header (&local_header, COMMAND_TYPE, request, *request_id, arg_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
 
   if (reply_buffer && (reply_size > 0))
@@ -1534,7 +1531,7 @@ css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn, int request, unsigned 
 
   if (arg_size > 0 && arg_buffer != NULL)
     {
-      css_set_net_header (&data_header, DATA_TYPE, 0, *request_id, arg_size, conn->transaction_id,
+      css_set_net_header (&data_header, DATA_TYPE, 0, *request_id, arg_size, conn->get_tran_index (),
 			  conn->invalidate_snapshot, conn->db_error);
 
       return (css_net_send3 (conn, (char *) &local_header, sizeof (NET_HEADER), (char *) &data_header,
@@ -1576,10 +1573,10 @@ css_send_request_no_reply (CSS_CONN_ENTRY * conn, int request, unsigned short *r
     }
 
   *request_id = css_get_request_id (conn);
-  css_set_net_header (&req_header, COMMAND_TYPE, request, *request_id, arg_size, conn->transaction_id,
+  css_set_net_header (&req_header, COMMAND_TYPE, request, *request_id, arg_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
 
-  css_set_net_header (&data_header, DATA_TYPE, 0, *request_id, arg_size, conn->transaction_id,
+  css_set_net_header (&data_header, DATA_TYPE, 0, *request_id, arg_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
 
   return (css_net_send3 (conn, (char *) &req_header, sizeof (NET_HEADER), (char *) &data_header, sizeof (NET_HEADER),
@@ -1620,7 +1617,7 @@ css_send_req_with_2_buffers (CSS_CONN_ENTRY * conn, int request, unsigned short 
     }
 
   *request_id = css_get_request_id (conn);
-  css_set_net_header (&local_header, COMMAND_TYPE, request, *request_id, arg_size, conn->transaction_id,
+  css_set_net_header (&local_header, COMMAND_TYPE, request, *request_id, arg_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
 
   if (reply_buffer && reply_size > 0)
@@ -1628,10 +1625,10 @@ css_send_req_with_2_buffers (CSS_CONN_ENTRY * conn, int request, unsigned short 
       css_queue_user_data_buffer (conn, *request_id, reply_size, reply_buffer);
     }
 
-  css_set_net_header (&arg_header, DATA_TYPE, 0, *request_id, arg_size, conn->transaction_id, conn->invalidate_snapshot,
-		      conn->db_error);
+  css_set_net_header (&arg_header, DATA_TYPE, 0, *request_id, arg_size, conn->get_tran_index (),
+		      conn->invalidate_snapshot, conn->db_error);
 
-  css_set_net_header (&data_header, DATA_TYPE, 0, *request_id, data_size, conn->transaction_id,
+  css_set_net_header (&data_header, DATA_TYPE, 0, *request_id, data_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
 
   return (css_net_send5 (conn, (char *) &local_header, sizeof (NET_HEADER), (char *) &arg_header, sizeof (NET_HEADER),
@@ -1677,7 +1674,7 @@ css_send_req_with_3_buffers (CSS_CONN_ENTRY * conn, int request, unsigned short 
     }
 
   *request_id = css_get_request_id (conn);
-  css_set_net_header (&local_header, COMMAND_TYPE, request, *request_id, arg_size, conn->transaction_id,
+  css_set_net_header (&local_header, COMMAND_TYPE, request, *request_id, arg_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
 
   if (reply_buffer && reply_size > 0)
@@ -1685,13 +1682,13 @@ css_send_req_with_3_buffers (CSS_CONN_ENTRY * conn, int request, unsigned short 
       css_queue_user_data_buffer (conn, *request_id, reply_size, reply_buffer);
     }
 
-  css_set_net_header (&arg_header, DATA_TYPE, 0, *request_id, arg_size, conn->transaction_id, conn->invalidate_snapshot,
-		      conn->db_error);
-
-  css_set_net_header (&data1_header, DATA_TYPE, 0, *request_id, data1_size, conn->transaction_id,
+  css_set_net_header (&arg_header, DATA_TYPE, 0, *request_id, arg_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
 
-  css_set_net_header (&data2_header, DATA_TYPE, 0, *request_id, data2_size, conn->transaction_id,
+  css_set_net_header (&data1_header, DATA_TYPE, 0, *request_id, data1_size, conn->get_tran_index (),
+		      conn->invalidate_snapshot, conn->db_error);
+
+  css_set_net_header (&data2_header, DATA_TYPE, 0, *request_id, data2_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
 
   return (css_net_send7 (conn, (char *) &local_header, sizeof (NET_HEADER), (char *) &arg_header, sizeof (NET_HEADER),
@@ -1736,7 +1733,7 @@ css_send_req_with_large_buffer (CSS_CONN_ENTRY * conn, int request, unsigned sho
     }
 
   *request_id = css_get_request_id (conn);
-  css_set_net_header (&local_header, COMMAND_TYPE, request, *request_id, arg_size, conn->transaction_id,
+  css_set_net_header (&local_header, COMMAND_TYPE, request, *request_id, arg_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
 
   if (reply_buffer && reply_size > 0)
@@ -1759,8 +1756,8 @@ css_send_req_with_large_buffer (CSS_CONN_ENTRY * conn, int request, unsigned sho
       return CANT_ALLOC_BUFFER;
     }
 
-  css_set_net_header (&headers[0], DATA_TYPE, 0, *request_id, arg_size, conn->transaction_id, conn->invalidate_snapshot,
-		      conn->db_error);
+  css_set_net_header (&headers[0], DATA_TYPE, 0, *request_id, arg_size, conn->get_tran_index (),
+		      conn->invalidate_snapshot, conn->db_error);
   buffer_array[0] = arg_buffer;
 
   for (i = 1; i < num_array; i++)
@@ -1774,7 +1771,7 @@ css_send_req_with_large_buffer (CSS_CONN_ENTRY * conn, int request, unsigned sho
 	  send_data_size = (int) data_size;
 	}
 
-      css_set_net_header (&headers[i], DATA_TYPE, 0, *request_id, send_data_size, conn->transaction_id,
+      css_set_net_header (&headers[i], DATA_TYPE, 0, *request_id, send_data_size, conn->get_tran_index (),
 			  conn->invalidate_snapshot, conn->db_error);
       buffer_array[i] = data_buffer;
 
@@ -1824,11 +1821,11 @@ css_send_request_with_socket (SOCKET & socket, int command, unsigned short *requ
     }
 
   *request_id = -1;
-  css_set_net_header (&local_header, COMMAND_TYPE, command, *request_id, arg_buffer_size, 0, 0, 0);
+  css_set_net_header (&local_header, COMMAND_TYPE, command, *request_id, arg_buffer_size, NULL_TRAN_INDEX, 0, 0);
 
   if (arg_buffer_size > 0 && arg_buffer != NULL)
     {
-      css_set_net_header (&data_header, DATA_TYPE, 0, *request_id, arg_buffer_size, 0, 0, 0);
+      css_set_net_header (&data_header, DATA_TYPE, 0, *request_id, arg_buffer_size, NULL_TRAN_INDEX, 0, 0);
 
       return (css_net_send3_with_socket (socket, (char *) &local_header, sizeof (NET_HEADER), (char *) &data_header,
 					 sizeof (NET_HEADER), arg_buffer, arg_buffer_size));
@@ -1866,7 +1863,7 @@ css_send_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer, in
       return (CONNECTION_CLOSED);
     }
 
-  css_set_net_header (&header, DATA_TYPE, 0, rid, buffer_size, conn->transaction_id, conn->invalidate_snapshot,
+  css_set_net_header (&header, DATA_TYPE, 0, rid, buffer_size, conn->get_tran_index (), conn->invalidate_snapshot,
 		      conn->db_error);
 
   return (css_net_send2 (conn, (char *) &header, sizeof (NET_HEADER), buffer, buffer_size));
@@ -1895,10 +1892,10 @@ css_send_two_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer
       return (CONNECTION_CLOSED);
     }
 
-  css_set_net_header (&header1, DATA_TYPE, 0, rid, buffer1_size, conn->transaction_id, conn->invalidate_snapshot,
+  css_set_net_header (&header1, DATA_TYPE, 0, rid, buffer1_size, conn->get_tran_index (), conn->invalidate_snapshot,
 		      conn->db_error);
 
-  css_set_net_header (&header2, DATA_TYPE, 0, rid, buffer2_size, conn->transaction_id, conn->invalidate_snapshot,
+  css_set_net_header (&header2, DATA_TYPE, 0, rid, buffer2_size, conn->get_tran_index (), conn->invalidate_snapshot,
 		      conn->db_error);
 
   return (css_net_send4 (conn, (char *) &header1, sizeof (NET_HEADER), buffer1, buffer1_size, (char *) &header2,
@@ -1930,13 +1927,13 @@ css_send_three_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buff
       return (CONNECTION_CLOSED);
     }
 
-  css_set_net_header (&header1, DATA_TYPE, 0, rid, buffer1_size, conn->transaction_id, conn->invalidate_snapshot,
+  css_set_net_header (&header1, DATA_TYPE, 0, rid, buffer1_size, conn->get_tran_index (), conn->invalidate_snapshot,
 		      conn->db_error);
 
-  css_set_net_header (&header2, DATA_TYPE, 0, rid, buffer2_size, conn->transaction_id, conn->invalidate_snapshot,
+  css_set_net_header (&header2, DATA_TYPE, 0, rid, buffer2_size, conn->get_tran_index (), conn->invalidate_snapshot,
 		      conn->db_error);
 
-  css_set_net_header (&header3, DATA_TYPE, 0, rid, buffer3_size, conn->transaction_id, conn->invalidate_snapshot,
+  css_set_net_header (&header3, DATA_TYPE, 0, rid, buffer3_size, conn->get_tran_index (), conn->invalidate_snapshot,
 		      conn->db_error);
 
   return (css_net_send6 (conn, (char *) &header1, sizeof (NET_HEADER), buffer1, buffer1_size, (char *) &header2,
@@ -1974,16 +1971,16 @@ css_send_four_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffe
       return (CONNECTION_CLOSED);
     }
 
-  css_set_net_header (&header1, DATA_TYPE, 0, rid, buffer1_size, conn->transaction_id, conn->invalidate_snapshot,
+  css_set_net_header (&header1, DATA_TYPE, 0, rid, buffer1_size, conn->get_tran_index (), conn->invalidate_snapshot,
 		      conn->db_error);
 
-  css_set_net_header (&header2, DATA_TYPE, 0, rid, buffer2_size, conn->transaction_id, conn->invalidate_snapshot,
+  css_set_net_header (&header2, DATA_TYPE, 0, rid, buffer2_size, conn->get_tran_index (), conn->invalidate_snapshot,
 		      conn->db_error);
 
-  css_set_net_header (&header3, DATA_TYPE, 0, rid, buffer3_size, conn->transaction_id, conn->invalidate_snapshot,
+  css_set_net_header (&header3, DATA_TYPE, 0, rid, buffer3_size, conn->get_tran_index (), conn->invalidate_snapshot,
 		      conn->db_error);
 
-  css_set_net_header (&header4, DATA_TYPE, 0, rid, buffer4_size, conn->transaction_id, conn->invalidate_snapshot,
+  css_set_net_header (&header4, DATA_TYPE, 0, rid, buffer4_size, conn->get_tran_index (), conn->invalidate_snapshot,
 		      conn->db_error);
 
   return (css_net_send8 (conn, (char *) &header1, sizeof (NET_HEADER), buffer1, buffer1_size, (char *) &header2,
@@ -2022,7 +2019,7 @@ css_send_large_data (CSS_CONN_ENTRY * conn, unsigned short rid, const char **buf
 
   for (i = 0; i < num_buffers; i++)
     {
-      css_set_net_header (&headers[i], DATA_TYPE, 0, rid, buffers_size[i], conn->transaction_id,
+      css_set_net_header (&headers[i], DATA_TYPE, 0, rid, buffers_size[i], conn->get_tran_index (),
 			  conn->invalidate_snapshot, conn->db_error);
     }
 
@@ -2056,7 +2053,7 @@ css_send_error (CSS_CONN_ENTRY * conn, unsigned short rid, const char *buffer, i
       return (CONNECTION_CLOSED);
     }
 
-  css_set_net_header (&header, ERROR_TYPE, 0, rid, buffer_size, conn->transaction_id, conn->invalidate_snapshot,
+  css_set_net_header (&header, ERROR_TYPE, 0, rid, buffer_size, conn->get_tran_index (), conn->invalidate_snapshot,
 		      conn->db_error);
 
   return (css_net_send2 (conn, (char *) &header, sizeof (NET_HEADER), buffer, buffer_size));
@@ -2487,13 +2484,19 @@ css_send_magic_with_socket (SOCKET & socket)
 int
 css_check_magic (CSS_CONN_ENTRY * conn)
 {
+  return css_check_magic_with_socket (conn->fd);
+}
+
+int
+css_check_magic_with_socket (SOCKET fd)
+{
   int size, nbytes;
   unsigned int i;
   NET_HEADER header;
   char *p;
   int timeout = prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000;
 
-  nbytes = css_readn (conn->fd, (char *) &size, sizeof (int), timeout);
+  nbytes = css_readn (fd, (char *) &size, sizeof (int), timeout);
   if (nbytes != sizeof (int))
     {
       return ERROR_WHEN_READING_SIZE;
@@ -2505,7 +2508,7 @@ css_check_magic (CSS_CONN_ENTRY * conn)
     }
 
   p = (char *) &header;
-  nbytes = css_readn (conn->fd, p, size, timeout);
+  nbytes = css_readn (fd, p, size, timeout);
   if (nbytes != size)
     {
       return ERROR_ON_READ;
@@ -2901,3 +2904,24 @@ css_platform_independent_poll (POLL_FD * fds, int num_of_fds, int timeout)
 
   return rc;
 }
+
+// *INDENT-OFF*
+void
+css_conn_entry::set_tran_index (int tran_index)
+{
+  // can never be system transaction index
+  if (tran_index == LOG_SYSTEM_TRAN_INDEX)
+    {
+      assert (false);
+      tran_index = NULL_TRAN_INDEX;
+    }
+  transaction_id = tran_index;
+}
+
+int
+css_conn_entry::get_tran_index ()
+{
+  assert (transaction_id != LOG_SYSTEM_TRAN_INDEX);
+  return transaction_id;
+}
+// *INDENT-ON*

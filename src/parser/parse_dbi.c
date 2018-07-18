@@ -1253,6 +1253,73 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
   return (db_value);
 }
 
+// pt_data_type_init_value - initialize value according to node data type
+//
+// node      : PT_NODE for which value_out is initialized
+// value_out : DB_VALUE initialized according to node data type
+//
+void
+pt_data_type_init_value (const PT_NODE * node, DB_VALUE * value_out)
+{
+  // init as null
+  db_make_null (value_out);
+
+  // make sure we get rid of pointer
+  CAST_POINTER_TO_NODE (node);
+
+  if (node->data_type == NULL)
+    {
+      // init as node->type_enum
+      db_value_domain_init_default (value_out, pt_type_enum_to_db (node->type_enum));
+      return;
+    }
+  // node->data_type is not null
+
+  // get data type
+  PT_NODE *node_data_type = node->data_type;
+  DB_TYPE node_db_type = pt_type_enum_to_db (node_data_type->type_enum);
+
+  if (node_db_type == DB_TYPE_OBJECT && node->data_type->info.data_type.virt_object != NULL)
+    {
+      // virtual object
+      node_db_type = DB_TYPE_VOBJ;
+    }
+
+  db_value_domain_init_default (value_out, node_db_type);
+  switch (node_db_type)
+    {
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+      value_out->domain.char_info.length = node_data_type->info.data_type.precision;
+      break;
+
+    case DB_TYPE_NUMERIC:
+      value_out->domain.numeric_info.precision = node_data_type->info.data_type.precision;
+      value_out->domain.numeric_info.scale = node_data_type->info.data_type.dec_precision;
+      break;
+    case DB_TYPE_JSON:
+      // we should really move json_schema from value.data
+      if (node_data_type->info.data_type.json_schema != NULL)
+	{
+	  value_out->data.json.schema_raw =
+	    db_private_strdup (NULL, (const char *) node_data_type->info.data_type.json_schema->bytes);
+	  value_out->need_clear = true;
+	}
+      else
+	{
+	  value_out->data.json.schema_raw = NULL;
+	}
+      break;
+
+    default:
+      ;				/* Do nothing. This suppresses compiler's warnings. */
+    }
+}
+
 /*
  * pt_string_to_db_domain() - returns DB_DOMAIN * that matches the string
  *   return:  a DB_DOMAIN
@@ -3427,7 +3494,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 	  return (DB_VALUE *) NULL;
 	}
 
-      value->info.value.db_value_is_in_workspace = false;
+      value->info.value.db_value_is_in_workspace = true;
       db_value->need_clear = true;
       if (value->info.data_type.json_schema)
 	{

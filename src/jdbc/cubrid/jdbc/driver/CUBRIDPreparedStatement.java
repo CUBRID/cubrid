@@ -354,7 +354,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 
 	public void setUnicodeStream(int parameterIndex, InputStream x, int length)
 			throws SQLException {
-		throw new UnsupportedOperationException();
+		throw new SQLException(new UnsupportedOperationException());
 	}
 
 	public synchronized void setBinaryStream(int parameterIndex, InputStream x,
@@ -581,7 +581,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 	}
 
 	public void setRef(int i, Ref x) throws SQLException {
-		throw new UnsupportedOperationException();
+		throw new SQLException(new UnsupportedOperationException());
 	}
 
 	public void setBlob(int parameterIndex, Blob x) throws SQLException {
@@ -685,7 +685,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 	}
 
 	public void setArray(int i, Array x) throws SQLException {
-		throw new UnsupportedOperationException();
+		throw new SQLException(new UnsupportedOperationException());
 	}
 
 	public synchronized ResultSetMetaData getMetaData() throws SQLException {
@@ -816,7 +816,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 	// 3.0
 	public synchronized ParameterMetaData getParameterMetaData()
 			throws SQLException {
-		throw new UnsupportedOperationException();
+		throw new SQLException(new UnsupportedOperationException());
 		/*
 		 * checkIsOpen();
 		 * 
@@ -833,7 +833,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 	}
 
 	public synchronized void setURL(int index, URL x) throws SQLException {
-		throw new UnsupportedOperationException();
+		throw new SQLException(new UnsupportedOperationException());
 	}
 
 	// 3.0
@@ -982,7 +982,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 			throws SQLException {
 		// TODO: How to solve it? host variable bind problem
 		// setBlob(parameterIndex, x);
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
@@ -990,7 +990,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 			throws SQLException {
 		// TODO: How to solve it? host variable bind problem
 		// setBlob(parameterIndex, x, length);
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
@@ -998,7 +998,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 			throws SQLException {
 		// TODO: How to solve it? host variable bind problem
 		// setClob(parameterIndex, x);
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
@@ -1006,7 +1006,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 			throws SQLException {
 		// TODO: How to solve it? host variable bind problem
 		// setClob(parameterIndex, x, length);
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
@@ -1014,7 +1014,7 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 			throws SQLException {
 		// TODO: How to solve it? host variable bind problem
 		// setClob(parameterIndex, reader);
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
@@ -1022,52 +1022,52 @@ public class CUBRIDPreparedStatement extends CUBRIDStatement implements
 			long length) throws SQLException {
 		// TODO: How to solve it? host variable bind problem
 		// setClob(parameterIndex, reader, length);
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public void setNCharacterStream(int parameterIndex, Reader value)
 			throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public void setNCharacterStream(int parameterIndex, Reader value,
 			long length) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public void setNClob(int parameterIndex, NClob value) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public void setNClob(int parameterIndex, Reader reader) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public void setNClob(int parameterIndex, Reader reader, long length)
 			throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public void setNString(int parameterIndex, String value)
 			throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public void setRowId(int parameterIndex, RowId x) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public void setSQLXML(int parameterIndex, SQLXML xmlObject)
 			throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 }

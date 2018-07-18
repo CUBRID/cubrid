@@ -24,11 +24,13 @@ set (TEST_MEMORY_ALLOC_SOURCES
   test_extensible_array.cpp
   test_main.cpp
   test_memory_alloc_helper.cpp
+  test_private_unique_ptr.cpp
   )
 set (TEST_MEMORY_ALLOC_HEADERS
   test_db_private_alloc.hpp
   test_extensible_array.hpp
   test_memory_alloc_helper.hpp
+  test_private_unique_ptr.hpp
   )
 
 SET_SOURCE_FILES_PROPERTIES(
@@ -49,19 +51,19 @@ target_compile_definitions(test_memory_alloc PRIVATE
 message (STATUS "test includes:  ${TEST_INCLUDES}")
 target_include_directories(test_memory_alloc PRIVATE
   ${TEST_INCLUDES}
-#  ${EP_INCLUDES}
+  ${EP_INCLUDES}
   )
 
-target_link_libraries(test_memory_alloc PRIVATE
+target_link_libraries(test_memory_alloc LINK_PRIVATE
   test_common
   )
 
 if(UNIX)
-  target_link_libraries(test_memory_alloc PRIVATE
+  target_link_libraries(test_memory_alloc LINK_PRIVATE
     cubrid
     )
 elseif(WIN32)
-  target_link_libraries(test_memory_alloc PRIVATE
+  target_link_libraries(test_memory_alloc LINK_PRIVATE
     cubrid-win-lib
     )
 else()

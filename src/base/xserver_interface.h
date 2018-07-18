@@ -49,17 +49,16 @@
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
-extern int xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL * client_credential,
-				    BOOT_DB_PATH_INFO * db_path_info, bool db_overwrite, const char *file_addmore_vols,
-				    volatile DKNPAGES db_npages, PGLENGTH db_desired_pagesize,
-				    volatile DKNPAGES xlog_npages, PGLENGTH db_desired_log_page_size,
-				    OID * rootclass_oid, HFID * rootclass_hfid, int client_lock_wait,
-				    TRAN_ISOLATION client_isolation);
+extern int xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
+				    bool db_overwrite, const char *file_addmore_vols, volatile DKNPAGES db_npages,
+				    PGLENGTH db_desired_pagesize, volatile DKNPAGES xlog_npages,
+				    PGLENGTH db_desired_log_page_size, OID * rootclass_oid, HFID * rootclass_hfid,
+				    int client_lock_wait, TRAN_ISOLATION client_isolation);
 extern const char *xboot_get_server_session_key (void);
 extern int xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_credential,
 				  int client_lock_wait, TRAN_ISOLATION client_isolation, TRAN_STATE * tran_state,
 				  BOOT_SERVER_CREDENTIAL * server_credential);
-extern int xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index);
+extern int xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index);
 extern int xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
 			 bool delete_unneeded_logarchives, const char *backup_verbose_file, int num_threads,
 			 FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs);
@@ -271,4 +270,5 @@ extern int xsession_clear_query_entry_info (THREAD_ENTRY * thread_p, const QUERY
 extern int xchksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_p, REPL_INFO * repl_info,
 							  const OID * class_oidp);
 extern bool xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p, const char *user_name);
+extern int xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK lock, LOCK * ex_lock);
 #endif /* _XSERVER_INTERFACE_H_ */

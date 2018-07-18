@@ -47,12 +47,10 @@
 #endif /* ENABLE_SYSTEMTAP */
 #if defined(SERVER_MODE)
 #include "connection_error.h"
-#include "job_queue.h"
 #endif /* SERVER_MODE */
-#include "thread.h"
-#if !defined (SERVER_MODE)
-#include "transaction_cl.h"
-#endif
+#include "server_support.h"
+#include "thread_entry_task.hpp"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
 
 /* Estimate on number of pages in the multipage temporary file */
 #define SORT_MULTIPAGE_FILE_SIZE_ESTIMATE  20
@@ -1683,6 +1681,28 @@ px_sort_assign (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int px_id, cha
 }
 
 #if defined(SERVER_MODE)
+// *INDENT-OFF*
+class px_sort_myself_task : public cubthread::entry_task
+{
+public:
+  px_sort_myself_task (void) = delete;
+
+  px_sort_myself_task (PX_TREE_NODE *node)
+  : m_px_node (node)
+  {
+  }
+
+  void
+  execute (context_type &thread_ref) override final
+  {
+    (void) px_sort_myself (&thread_ref, m_px_node);
+  }
+
+private:
+  PX_TREE_NODE *m_px_node;
+};
+// *INDENT-ON*
+
 /*
  * px_sort_communicate() -
  *   return:
@@ -1694,11 +1714,7 @@ px_sort_assign (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int px_id, cha
 static int
 px_sort_communicate (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
 {
-  int ret = NO_ERROR;
   SORT_PARAM *sort_param;
-  CSS_CONN_ENTRY *conn_p;
-  int conn_index;
-  CSS_JOB_ENTRY *job_entry_p;
 
   assert_release (px_node != NULL);
   assert_release (px_node->px_arg != NULL);
@@ -1706,26 +1722,11 @@ px_sort_communicate (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
   sort_param = (SORT_PARAM *) (px_node->px_arg);
   assert_release (px_node->px_height <= sort_param->px_height_max);
   assert_release (px_node->px_id < sort_param->px_array_size);
-
   assert_release (px_node->px_vector_size > 1);
 
-  conn_p = thread_get_current_conn_entry ();
-  conn_index = (conn_p) ? conn_p->idx : 0;
+  css_push_external_task (*thread_p, css_get_current_conn_entry (), new px_sort_myself_task (px_node));
 
-  /* explicit job queue index */
-  conn_index += px_node->px_id;
-
-  job_entry_p = css_make_job_entry (conn_p, (CSS_THREAD_FN) px_sort_myself, (CSS_THREAD_ARG) px_node, conn_index);
-  if (job_entry_p == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  css_add_to_job_queue (job_entry_p);
-
-  assert (ret == NO_ERROR);
-
-  return ret;
+  return NO_ERROR;
 }
 #endif /* SERVER_MODE */
 
@@ -1801,7 +1802,7 @@ px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
 #endif
 #endif /* SERVER_MODE */
 
-  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
+  old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
 
   buff = px_node->px_buff;
   vector = px_node->px_vector;
@@ -2134,7 +2135,7 @@ exit_on_end:
     }
 #endif /* SERVER_MODE */
 
-  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+  (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
 
   return ret;
 

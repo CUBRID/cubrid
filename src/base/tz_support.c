@@ -46,6 +46,9 @@
 #endif /* !defined (SERVER_MODE) */
 #include "boot_sr.h"
 #include "dbtype.h"
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"
+#endif // SERVER_MODE
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -4671,7 +4674,7 @@ tz_get_server_tz_region_session (void)
     {
       if (thread_p->emulate_tid != thread_id_t ())
 	{
-	  worker_thread_p = thread_find_entry_by_tid (thread_p->emulate_tid);
+	  worker_thread_p = thread_get_manager ()->find_by_tid (thread_p->emulate_tid);
 	  if (worker_thread_p != NULL)
 	    {
 	      session_tz_region = session_get_session_tz_region (worker_thread_p);
@@ -4679,7 +4682,7 @@ tz_get_server_tz_region_session (void)
 	}
       else if (thread_p->type == TT_VACUUM_WORKER)
 	{
-	  /* just use sytem region */
+	  /* just use system region */
 	  session_tz_region = &tz_Region_system;
 	}
     }

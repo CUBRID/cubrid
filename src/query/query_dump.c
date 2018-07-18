@@ -30,6 +30,9 @@
 #include "object_primitive.h"
 #include "system_parameter.h"
 #include "dbtype.h"
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#endif // SERVER_MODE
 
 #define foutput stdout
 
@@ -2881,6 +2884,9 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
   json_t *scan = NULL, *scan_array = NULL;
   int num_spec = 0;
   char spec_name[1024];
+  THREAD_ENTRY *thread_p;
+
+  thread_p = thread_get_thread_entry_info ();
 
   for (spec = spec_list_p; spec != NULL; spec = spec->next)
     {
@@ -2900,7 +2906,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
       if (type == TARGET_CLASS)
 	{
 	  cls_node = &ACCESS_SPEC_CLS_SPEC (spec);
-	  if (heap_get_class_name (NULL, &(cls_node->cls_oid), &class_name) != NO_ERROR)
+	  if (heap_get_class_name (thread_p, &(cls_node->cls_oid), &class_name) != NO_ERROR)
 	    {
 	      /* ignore */
 	      er_clear ();
@@ -2921,8 +2927,8 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	    }
 	  else if (spec->access == ACCESS_METHOD_INDEX)
 	    {
-	      if (heap_get_indexinfo_of_btid (NULL, &cls_node->cls_oid, &spec->indexptr->btid, NULL, NULL, NULL, NULL,
-					      &index_name, NULL) == NO_ERROR)
+	      if (heap_get_indexinfo_of_btid (thread_p, &cls_node->cls_oid, &spec->indexptr->btid, NULL, NULL, NULL,
+					      NULL, &index_name, NULL) == NO_ERROR)
 		{
 		  if (class_name != NULL && index_name != NULL)
 		    {
@@ -3241,8 +3247,8 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 	    }
 	  else if (spec->access == ACCESS_METHOD_INDEX)
 	    {
-	      if (heap_get_indexinfo_of_btid (NULL, &cls_node->cls_oid, &spec->indexptr->btid, NULL, NULL, NULL, NULL,
-					      &index_name, NULL) == NO_ERROR)
+	      if (heap_get_indexinfo_of_btid (thread_p, &cls_node->cls_oid, &spec->indexptr->btid, NULL, NULL, NULL,
+					      NULL, &index_name, NULL) == NO_ERROR)
 		{
 		  if (class_name != NULL && index_name != NULL)
 		    {

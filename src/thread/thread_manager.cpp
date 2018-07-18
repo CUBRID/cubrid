@@ -24,7 +24,6 @@
 #include "thread_manager.hpp"
 
 // same module includes
-#include "thread.h"
 #if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
 #endif // SERVER_MODE
@@ -36,32 +35,28 @@
 
 // project includes
 #include "error_manager.h"
+#include "log_impl.h"
+#include "lock_free.h"
 #include "resource_shared_pool.hpp"
+#include "system_parameter.h"
 
 #include <cassert>
 
 namespace cubthread
 {
-
   thread_local entry *tl_Entry_p = NULL;
 
-  manager::manager (std::size_t max_threads)
-    : m_max_threads (max_threads)
+  manager::manager (void)
+    : m_max_threads (0)
     , m_entries_mutex ()
     , m_worker_pools ()
     , m_daemons ()
     , m_all_entries (NULL)
     , m_entry_dispatcher (NULL)
-    , m_available_entries_count (max_threads)
+    , m_available_entries_count (0)
     , m_entry_manager (NULL)
     , m_daemon_entry_manager (NULL)
   {
-    if (m_max_threads > 0)
-      {
-	m_all_entries = new entry[m_max_threads];
-	m_entry_dispatcher = new entry_dispatcher (m_all_entries, m_max_threads);
-      }
-
     m_entry_manager = new entry_manager ();
     m_daemon_entry_manager = new daemon_entry_manager();
   }
@@ -78,6 +73,35 @@ namespace cubthread
     delete [] m_all_entries;
     delete m_entry_manager;
     delete m_daemon_entry_manager;
+  }
+
+  void
+  manager::alloc_entries (void)
+  {
+#if defined (SA_MODE)
+    assert (false);
+    return;
+#else // not SA_MODE = SERVER_MODE
+
+    m_available_entries_count = m_max_threads;
+
+    m_all_entries = new entry[m_max_threads];
+    m_entry_dispatcher = new entry_dispatcher (m_all_entries, m_max_threads);
+#endif // not SA_MODE = SERVER_MODE
+  }
+
+  void
+  manager::init_entries (bool with_lock_free)
+  {
+    // initialize thread indexes and lock-free resources
+    for (std::size_t it = 0; it < m_max_threads; it++)
+      {
+	m_all_entries[it].index = (int) (it + 1);
+	if (with_lock_free)
+	  {
+	    m_all_entries[it].request_lock_free_transactions ();
+	  }
+      }
   }
 
   template<typename Res>
@@ -115,8 +139,8 @@ namespace cubthread
   }
 
   entry_workpool *
-  manager::create_worker_pool (size_t pool_size, size_t work_queue_size, entry_manager *context_manager,
-			       bool debug_logging)
+  manager::create_worker_pool (size_t pool_size, size_t task_max_count, entry_manager *context_manager,
+			       std::size_t core_count, bool debug_logging, bool pool_threads, std::chrono::seconds wait_for_task_time)
   {
 #if defined (SERVER_MODE)
     if (is_single_thread ())
@@ -129,8 +153,9 @@ namespace cubthread
 	  {
 	    context_manager = m_entry_manager;
 	  }
-	return create_and_track_resource (m_worker_pools, pool_size, pool_size, work_queue_size, context_manager,
-					  debug_logging);
+	// reserve pool_size entries and add to m_worker_pools
+	return create_and_track_resource (m_worker_pools, pool_size, pool_size, task_max_count, *context_manager,
+					  core_count, debug_logging, pool_threads, wait_for_task_time);
       }
 #else // not SERVER_MODE = SA_MODE
     return NULL;
@@ -138,7 +163,8 @@ namespace cubthread
   }
 
   daemon *
-  manager::create_daemon (const looper &looper_arg, entry_task *exec_p, entry_manager *context_manager)
+  manager::create_daemon (const looper &looper_arg, entry_task *exec_p, const char *daemon_name /* = "" */,
+			  entry_manager *context_manager /* = NULL */)
   {
 #if defined (SERVER_MODE)
     if (is_single_thread ())
@@ -152,7 +178,28 @@ namespace cubthread
 	  {
 	    context_manager = m_daemon_entry_manager;
 	  }
-	return create_and_track_resource (m_daemons, 1, looper_arg, context_manager, exec_p);
+	// reserve 1 entry and add to m_daemons
+	return create_and_track_resource (m_daemons, 1, looper_arg, context_manager, exec_p, daemon_name);
+      }
+#else // not SERVER_MODE = SA_MODE
+    assert (false);
+    return NULL;
+#endif // not SERVER_MODE = SA_MODE
+  }
+
+  daemon *
+  manager::create_daemon_without_entry (const looper &looper_arg, task_without_context *exec_p, const char *daemon_name)
+  {
+#if defined (SERVER_MODE)
+    if (is_single_thread ())
+      {
+	assert (false);
+	return NULL;
+      }
+    else
+      {
+	// reserve no entry and add to m_daemons_without_entries
+	return create_and_track_resource (m_daemons_without_entries, 0, looper_arg, exec_p, daemon_name);
       }
 #else // not SERVER_MODE = SA_MODE
     assert (false);
@@ -197,6 +244,7 @@ namespace cubthread
       {
 	return;
       }
+    // remove from m_worker_pools and free worker_pool_arg->get_max_count thread entries
     return destroy_and_untrack_resource (m_worker_pools, worker_pool_arg, worker_pool_arg->get_max_count ());
 #else // not SERVER_MODE = SA_MODE
     assert (worker_pool_arg == NULL);
@@ -209,22 +257,6 @@ namespace cubthread
     if (worker_pool_arg == NULL)
       {
 	// execute on this thread
-
-	// todo: think more about this case;
-	// take the example of vacuum. the server mode expected logic is:
-	// 1. claim thread entry (one is obtained from pool)
-	// 2. adjust thread entry for vacuum work (set worker context, no interrupt, so on)
-	// 3. execute job(s)
-	// 4. retire vacuum context
-	// 5. retire thread entry (returned to pool)
-	//
-	// it would be great if we could use a similar pattern on no work pool.
-	// 1. claim thread entry (use this thread)
-	// 2. adjust thread entry
-	// 3. execute job(s)
-	// 4. retire vacuum context
-	// 5. retire thread entry => restore previous state (e.g. check interrupt)
-
 	exec_p->execute (thread_p);
 	exec_p->retire ();
       }
@@ -233,6 +265,30 @@ namespace cubthread
 #if defined (SERVER_MODE)
 	check_not_single_thread ();
 	worker_pool_arg->execute (exec_p);
+#else // not SERVER_MODE = SA_MODE
+	assert (false);
+	// execute on this thread
+	exec_p->execute (thread_p);
+	exec_p->retire ();
+#endif // not SERVER_MODE = SA_MODE
+      }
+  }
+
+  void
+  manager::push_task_on_core (entry &thread_p, entry_workpool *worker_pool_arg, entry_task *exec_p,
+			      std::size_t core_hash)
+  {
+    if (worker_pool_arg == NULL)
+      {
+	// execute on this thread
+	exec_p->execute (thread_p);
+	exec_p->retire ();
+      }
+    else
+      {
+#if defined (SERVER_MODE)
+	check_not_single_thread ();
+	worker_pool_arg->execute_on_core (exec_p, core_hash);
 #else // not SERVER_MODE = SA_MODE
 	assert (false);
 	// execute on this thread
@@ -265,16 +321,6 @@ namespace cubthread
   }
 
   bool
-  manager::is_pool_busy (entry_workpool *worker_pool_arg)
-  {
-#if defined (SERVER_MODE)
-    return worker_pool_arg == NULL || worker_pool_arg->is_busy ();
-#else // not SERVER_MODE = SA_MODE
-    return false;
-#endif // not SERVER_MODE = SA_MODE
-  }
-
-  bool
   manager::is_pool_full (entry_workpool *worker_pool_arg)
   {
 #if defined (SERVER_MODE)
@@ -293,7 +339,23 @@ namespace cubthread
       {
 	return;
       }
+    // remove from m_daemons and free one thread entry
     return destroy_and_untrack_resource (m_daemons, daemon_arg, 1);
+#else // not SERVER_MODE = SA_MODE
+    assert (daemon_arg == NULL);
+#endif // not SERVER_MODE = SA_MODE
+  }
+
+  void
+  manager::destroy_daemon_without_entry (daemon *&daemon_arg)
+  {
+#if defined (SERVER_MODE)
+    if (daemon_arg == NULL)
+      {
+	return;
+      }
+    // remove from m_daemons_without_entries; no thread entries have been reserved
+    return destroy_and_untrack_resource (m_daemons_without_entries, daemon_arg, 0);
 #else // not SERVER_MODE = SA_MODE
     assert (daemon_arg == NULL);
 #endif // not SERVER_MODE = SA_MODE
@@ -316,49 +378,10 @@ namespace cubthread
     m_entry_dispatcher->retire (entry_p);
   }
 
-  entry &
-  manager::get_entry (void)
-  {
-    // shouldn't be called
-    // todo: add thread_p to error manager; or something
-    // er_print_callstack (ARG_FILE_LINE, "warning: manager::get_entry is called");
-    // todo
-    return *tl_Entry_p;
-  }
-
   std::size_t
   manager::get_max_thread_count (void) const
   {
     return m_max_threads;
-  }
-
-  std::size_t
-  manager::get_running_thread_count (void)
-  {
-#if defined (SERVER_MODE)
-    std::unique_lock<std::mutex> lock_guard (m_entries_mutex);
-    std::size_t running_count = 0;
-
-    for (auto wp_iter = m_worker_pools.cbegin (); wp_iter != m_worker_pools.cend (); ++wp_iter)
-      {
-	running_count += (*wp_iter)->get_running_count ();
-      }
-
-    for (auto daemon_iter = m_daemons.cbegin (); daemon_iter != m_daemons.cend (); ++daemon_iter)
-      {
-	++running_count;
-      }
-
-    return running_count;
-#else // not SERVER_MODE = SA_MODE
-    return 1;   // this
-#endif // not SERVER_MODE = SA_MODE
-  }
-
-  std::size_t
-  manager::get_free_thread_count (void)
-  {
-    return get_max_thread_count () - get_running_thread_count ();
   }
 
   void
@@ -367,6 +390,52 @@ namespace cubthread
     // check all thread resources are killed and freed
     destroy_and_untrack_all_resources (m_worker_pools);
     destroy_and_untrack_all_resources (m_daemons);
+    destroy_and_untrack_all_resources (m_daemons_without_entries);
+  }
+
+  void
+  manager::set_max_thread_count_from_config (void)
+  {
+    // todo: is there a better way to decide on the maximum number of thread entries?
+    std::size_t max_active_workers = NUM_NON_SYSTEM_TRANS;  // one per each connection
+    std::size_t max_conn_workers = NUM_NON_SYSTEM_TRANS;    // one per each connection
+    std::size_t max_vacuum_workers = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT);
+    std::size_t max_daemons = 128;  // magic number to cover predictable requirements; not cool
+
+    // note: thread entry initialization is slow, that is why we keep a static pool initialized from the beginning to
+    //       quickly claim entries. in my opinion, it would be better to have thread contexts that can be quickly
+    //       generated at "runtime" (after thread starts its task). however, with current thread entry design, that is
+    //       rather unlikely.
+
+    m_max_threads = max_active_workers + max_conn_workers + max_vacuum_workers + max_daemons;
+  }
+
+  void
+  manager::set_max_thread_count (std::size_t count)
+  {
+    m_max_threads = count;
+  }
+
+  void
+  manager::return_lock_free_transaction_entries (void)
+  {
+    for (std::size_t index = 0; index < m_max_threads; index++)
+      {
+	m_all_entries[index].return_lock_free_transaction_entries ();
+      }
+  }
+
+  entry *
+  manager::find_by_tid (thread_id_t tid)
+  {
+    for (std::size_t index = 0; index < m_max_threads; index++)
+      {
+	if (m_all_entries[index].get_id () == tid)
+	  {
+	    return &m_all_entries[index];
+	  }
+      }
+    return NULL;
   }
 
   //////////////////////////////////////////////////////////////////////////
@@ -382,28 +451,25 @@ namespace cubthread
   static manager *Manager = NULL;
   static entry *Main_entry_p = NULL;
 
-  // TODO: a configurable value
-  static const size_t MAX_THREADS = Is_single_thread ? 0 : 128;
-
   void
   initialize (entry *&my_entry)
   {
+    // note - currently it is designed to be called only once. if we want repeatable calls, code must be updated.
+
     assert (my_entry == NULL);
 
+    assert (Manager == NULL);
     if (Manager == NULL)
       {
-	Manager = new manager (MAX_THREADS);
+	Manager = new manager ();
       }
 
-#if defined (SERVER_MODE)
-    thread_initialize_key ();
-#endif
-
     // init main entry
+    assert (Main_entry_p == NULL);
     Main_entry_p = new entry ();
     Main_entry_p->index = 0;
     Main_entry_p->register_id ();
-    Main_entry_p->status = TS_RUN;
+    Main_entry_p->m_status = entry::status::TS_RUN;
     Main_entry_p->resume_status = THREAD_RESUME_NONE;
     Main_entry_p->tran_index = 0;	/* system transaction */
 #if defined (SERVER_MODE)
@@ -411,10 +477,7 @@ namespace cubthread
     Main_entry_p->get_error_context ().register_thread_local ();
 #endif // SERVER_MODE
 
-#if defined (SERVER_MODE)
-    thread_set_thread_entry_info (Main_entry_p);
-#endif // SERVER_MODE
-
+    assert (tl_Entry_p == NULL);
     tl_Entry_p = Main_entry_p;
 
     my_entry = Main_entry_p;
@@ -426,45 +489,53 @@ namespace cubthread
   finalize (void)
   {
 #if defined (SERVER_MODE)
-    Main_entry_p->get_error_context ().deregister_thread_local ();
+    if (Main_entry_p != NULL)
+      {
+	Main_entry_p->get_error_context ().deregister_thread_local ();
+      }
 #endif // SERVER_MODE
+
     delete Main_entry_p;
     Main_entry_p = NULL;
+    tl_Entry_p = NULL;
 
     delete Manager;
     Manager = NULL;
-
-#if defined (SERVER_MODE)
-    thread_final_manager ();
-#endif // SERVER_MODE
   }
 
   int
-  initialize_thread_entries (void)
+  initialize_thread_entries (bool with_lock_free /* = true*/)
   {
+    assert (Main_entry_p != NULL);
+
     int error_code = NO_ERROR;
 #if defined (SERVER_MODE)
     size_t old_manager_thread_count = 0;
 
-    error_code = thread_initialize_manager (old_manager_thread_count);
+    assert (Manager != NULL);
+
+    Manager->set_max_thread_count_from_config ();
+    Manager->alloc_entries ();
+#endif // SERVER_MODE
+
+    // note: even though SA_MODE does not really need to synchronize access on lock-free structures, it is better to
+    //       simulate using lock-free transaction in order to avoid managing separate code
+
+    error_code = lf_initialize_transaction_systems ((int) get_max_thread_count ());
     if (error_code != NO_ERROR)
       {
 	ASSERT_ERROR ();
 	return error_code;
       }
 
-    Main_entry_p->request_lock_free_transactions ();
-
-    // set indices
-    entry *entries = Manager->get_all_entries ();
-    for (std::size_t idx = 0; idx < Manager->get_max_thread_count (); idx++)
+    if (with_lock_free)
       {
-	entries[idx].index = (int) (idx + old_manager_thread_count + 1);
-	entries[idx].request_lock_free_transactions ();
+	Main_entry_p->request_lock_free_transactions ();
       }
 
-#endif // SERVER_MODE
-    return error_code;
+    Manager->init_entries (with_lock_free);
+
+    return NO_ERROR;
   }
 
   entry *
@@ -483,11 +554,43 @@ namespace cubthread
     return Manager;
   }
 
+  void set_manager (manager *manager)
+  {
+    assert (Manager == NULL);
+
+    Manager = manager;
+  }
+
   std::size_t
   get_max_thread_count (void)
   {
-    // MAX_THREADS + system thread
-    return MAX_THREADS + 1;
+    // system thread + managed threads
+    return 1 + (Manager != NULL ? Manager->get_max_thread_count() : 0);
+  }
+
+  entry &
+  get_entry (void)
+  {
+    // shouldn't be called
+    // todo: add thread_p to error manager; or something
+    // er_print_callstack (ARG_FILE_LINE, "warning: manager::get_entry is called");
+    // todo
+    assert (tl_Entry_p != NULL);
+    return *tl_Entry_p;
+  }
+
+  void
+  set_thread_local_entry (entry &tl_entry)
+  {
+    assert (tl_Entry_p == NULL);
+    tl_Entry_p = &tl_entry;
+  }
+
+  void
+  clear_thread_local_entry (void)
+  {
+    assert (tl_Entry_p != NULL);
+    tl_Entry_p = NULL;
   }
 
   bool
@@ -500,6 +603,19 @@ namespace cubthread
   check_not_single_thread (void)
   {
     assert (!Is_single_thread);
+  }
+
+  void
+  return_lock_free_transaction_entries (void)
+  {
+    if (Main_entry_p != NULL)
+      {
+	Main_entry_p->return_lock_free_transaction_entries ();
+      }
+    if (Manager != NULL)
+      {
+	Manager->return_lock_free_transaction_entries ();
+      }
   }
 
 } // namespace cubthread

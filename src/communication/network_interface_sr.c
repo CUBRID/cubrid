@@ -56,7 +56,6 @@
 #include "query_manager.h"
 #include "transaction_sr.h"
 #include "release_string.h"
-#include "thread.h"
 #include "critical_section.h"
 #include "statistics.h"
 #include "chartype.h"
@@ -75,6 +74,7 @@
 #include "object_primitive.h"
 #include "tz_support.h"
 #include "dbtype.h"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -3193,17 +3193,10 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   ptr = or_unpack_int (ptr, &xint);
   client_isolation = (TRAN_ISOLATION) xint;
 
-#if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-  perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_CONN_CONN_REQ, 1, DIAG_VAL_SETTYPE_INC, NULL);
-#endif
-
   tran_index = xboot_register_client (thread_p, &client_credential, client_lock_wait, client_isolation, &tran_state,
 				      &server_credential);
   if (tran_index == NULL_TRAN_INDEX)
     {
-#if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-      perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_CONN_CONN_REJECT, 1, DIAG_VAL_SETTYPE_INC, NULL);
-#endif
       return_error_to_client (thread_p, rid);
       area = NULL;
       area_size = 0;
@@ -4779,34 +4772,35 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       /* get the first page of the list file */
       if (VPID_ISNULL (&(list_id->first_vpid)))
 	{
+	  // Note that not all list files have a page, for instance, insert.
 	  page_ptr = NULL;
 	}
       else
 	{
 	  page_ptr = qmgr_get_old_page (thread_p, &(list_id->first_vpid), list_id->tfile_vfid);
-	}
 
-      if (page_ptr)
-	{
-	  /* calculate page size */
-	  if (QFILE_GET_TUPLE_COUNT (page_ptr) == -2 || QFILE_GET_OVERFLOW_PAGE_ID (page_ptr) != NULL_PAGEID)
+	  if (page_ptr)
 	    {
-	      page_size = DB_PAGESIZE;
+	      /* calculate page size */
+	      if (QFILE_GET_TUPLE_COUNT (page_ptr) == -2 || QFILE_GET_OVERFLOW_PAGE_ID (page_ptr) != NULL_PAGEID)
+		{
+		  page_size = DB_PAGESIZE;
+		}
+	      else
+		{
+		  int offset = QFILE_GET_LAST_TUPLE_OFFSET (page_ptr);
+
+		  page_size = (offset + QFILE_GET_TUPLE_LENGTH (page_ptr + offset));
+		}
+
+	      memcpy (aligned_page_buf, page_ptr, page_size);
+	      qmgr_free_old_page_and_init (thread_p, page_ptr, list_id->tfile_vfid);
+	      page_ptr = aligned_page_buf;
 	    }
 	  else
 	    {
-	      int offset = QFILE_GET_LAST_TUPLE_OFFSET (page_ptr);
-
-	      page_size = (offset + QFILE_GET_TUPLE_LENGTH (page_ptr + offset));
+	      return_error_to_client (thread_p, rid);
 	    }
-
-	  memcpy (aligned_page_buf, page_ptr, page_size);
-	  qmgr_free_old_page_and_init (thread_p, page_ptr, list_id->tfile_vfid);
-	  page_ptr = aligned_page_buf;
-	}
-      else
-	{
-	  return_error_to_client (thread_p, rid);
 	}
     }
 
@@ -5944,7 +5938,7 @@ xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lis
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  rid = thread_get_comm_request_id (thread_p);
+  rid = css_get_comm_request_id (thread_p);
   length = or_listid_length ((void *) list_id);
   length += or_method_sig_list_length ((void *) method_sig_list);
   ptr = or_pack_int (reply, (int) METHOD_CALL);
@@ -6006,7 +6000,7 @@ xs_receive_data_from_client_with_timeout (THREAD_ENTRY * thread_p, char **area, 
     {
       free_and_init (*area);
     }
-  rid = thread_get_comm_request_id (thread_p);
+  rid = css_get_comm_request_id (thread_p);
 
   rc = css_receive_data_from_client_with_timeout (thread_p->conn_entry, rid, area, (int *) datasize, timeout);
 
@@ -6053,7 +6047,7 @@ xs_send_action_to_client (THREAD_ENTRY * thread_p, VACOMM_BUFFER_CLIENT_ACTION a
       return ER_FAILED;
     }
 
-  rid = thread_get_comm_request_id (thread_p);
+  rid = css_get_comm_request_id (thread_p);
   (void) or_pack_int (reply, (int) action);
   if (css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_INT_SIZE))
     {
@@ -6423,7 +6417,7 @@ sthread_kill_tran_index (THREAD_ENTRY * thread_p, unsigned int rid, char *reques
   ptr = or_unpack_string_nocopy (ptr, &kill_host);
   ptr = or_unpack_int (ptr, &kill_pid);
 
-  success = (xthread_kill_tran_index (thread_p, kill_tran_index, kill_user, kill_host, kill_pid)
+  success = (xlogtb_kill_tran_index (thread_p, kill_tran_index, kill_user, kill_host, kill_pid)
 	     == NO_ERROR) ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
@@ -6466,8 +6460,7 @@ sthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, unsigned int rid, char 
   for (i = 0; i < num_tran_index; i++)
     {
       success =
-	xthread_kill_or_interrupt_tran (thread_p, tran_index_list[i], (bool) is_dba_group_member,
-					(bool) interrupt_only);
+	xlogtb_kill_or_interrupt_tran (thread_p, tran_index_list[i], (bool) is_dba_group_member, (bool) interrupt_only);
       if (success == NO_ERROR)
 	{
 	  num_killed_tran++;
@@ -6705,7 +6698,7 @@ xcallback_console_print (THREAD_ENTRY * thread_p, char *print_str)
   char *ptr;
   char *databuf;
 
-  rid = thread_get_comm_request_id (thread_p);
+  rid = css_get_comm_request_id (thread_p);
   data_len = or_packed_string_length (print_str, &print_len);
 
   ptr = or_pack_int (reply, (int) CONSOLE_OUTPUT);
@@ -6762,7 +6755,7 @@ xio_send_user_prompt_to_client (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TY
   char *ptr;
   char *databuf;
 
-  rid = thread_get_comm_request_id (thread_p);
+  rid = css_get_comm_request_id (thread_p);
   /* need to know length of prompt string we are sending */
   prompt_length = (or_packed_string_length (prompt, &strlen1) + or_packed_string_length (failure_prompt, &strlen2)
 		   + OR_INT_SIZE * 2 + or_packed_string_length (secondary_prompt, &strlen3) + OR_INT_SIZE);
@@ -6816,7 +6809,7 @@ xlog_send_log_pages_to_client (THREAD_ENTRY * thread_p, char *logpg_area, int ar
   unsigned int rid, rc;
   char *ptr;
 
-  rid = thread_get_comm_request_id (thread_p);
+  rid = css_get_comm_request_id (thread_p);
 
   /* 
    * Client side caller must be expecting a reply/callback followed
@@ -9450,4 +9443,29 @@ netsr_spacedb (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
     {
       db_private_free_and_init (thread_p, data_reply);
     }
+}
+
+void
+slocator_demote_class_lock (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error;
+  OID class_oid;
+  LOCK lock, ex_lock;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_unpack_oid (request, &class_oid);
+  ptr = or_unpack_lock (ptr, &lock);
+
+  error = xlocator_demote_class_lock (thread_p, &class_oid, lock, &ex_lock);
+
+  if (error != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_int (reply, error);
+  ptr = or_pack_lock (ptr, ex_lock);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }

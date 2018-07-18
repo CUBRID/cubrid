@@ -219,6 +219,7 @@ extern "C"
   extern DB_DOMAIN *pt_string_to_db_domain (const char *s, const char *class_name);
 
   extern DB_VALUE *pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value);
+  extern void pt_data_type_init_value (const PT_NODE * node, DB_VALUE * value_out);
 
   extern int pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
 			      PT_NODE * elem_type_list);

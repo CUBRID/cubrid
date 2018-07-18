@@ -516,8 +516,6 @@ static PRED_REGU_VARIABLE_P_LIST pt_get_var_regu_variable_p_list (const REGU_VAR
 
 static XASL_NODE *pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * xasl);
 
-static void pt_init_precision_and_scale (DB_VALUE * value, PT_NODE * node);
-
 static SORT_LIST *pt_to_order_siblings_by (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NODE * connect_by_xasl);
 static SORT_LIST *pt_agg_orderby_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * order_list, PT_NODE * agg_args_list);
 static PT_NODE *pt_substitute_assigned_name_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
@@ -3369,7 +3367,6 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
   return sig_list;
 }
 
-
 /*
  * pt_make_val_list () - Makes a val list with a DB_VALUE place holder
  *                       for every attribute on an attribute list
@@ -3396,21 +3393,16 @@ pt_make_val_list (PARSER_CONTEXT * parser, PT_NODE * attribute_list)
 
   for (attribute = attribute_list; attribute != NULL; attribute = attribute->next)
     {
+      // init regu
       dbval_list = regu_dbvallist_alloc ();
-      if (dbval_list && regu_dbval_type_init (dbval_list->val, pt_node_to_db_type (attribute)))
-	{
-	  pt_init_precision_and_scale (dbval_list->val, attribute);
-	  dbval_list->dom = pt_xasl_node_to_domain (parser, attribute);
+      // init value with expected type
+      pt_data_type_init_value (attribute, dbval_list->val);
+      dbval_list->dom = pt_xasl_node_to_domain (parser, attribute);
 
-	  value_list->val_cnt++;
-	  (*dbval_list_tail) = dbval_list;
-	  dbval_list_tail = &dbval_list->next;
-	  dbval_list->next = NULL;
-	}
-      else
-	{
-	  return NULL;
-	}
+      value_list->val_cnt++;
+      (*dbval_list_tail) = dbval_list;
+      dbval_list_tail = &dbval_list->next;
+      dbval_list->next = NULL;
     }
 
   return value_list;
@@ -17476,7 +17468,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  error = check_for_default_expr (parser, attrs, &default_expr_attrs, class_obj);
+  error = pt_find_omitted_default_expr (parser, class_obj, attrs, &default_expr_attrs);
   if (error != NO_ERROR)
     {
       return NULL;
@@ -19782,6 +19774,13 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
       goto cleanup;
     }
 
+  error = pt_append_omitted_on_update_expr_assignments (parser, assigns, from);
+  if (error != NO_ERROR)
+    {
+      PT_INTERNAL_ERROR (parser, "update");
+      goto cleanup;
+    }
+
   /* Skip reevaluation if MVCC is not enbaled or at least a class referenced in UPDATE statement is partitioned. The
    * case of partitioned classes referenced in UPDATE will be handled in future */
   if (!has_partitioned)
@@ -20411,6 +20410,210 @@ cleanup:
   return xasl;
 }
 
+/*
+ * pt_find_omitted_default_expr() - Builds a list of attributes that have a default expression and are not found
+ *                                  in the specified attributes list
+ *   return: Error code
+ *   parser(in/out): Parser context
+ *   class_obj(in):
+ *   specified_attrs(in): the list of attributes that are not to be considered
+ *   default_expr_attrs(out):
+ */
+int
+pt_find_omitted_default_expr (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, PT_NODE * specified_attrs,
+			      PT_NODE ** default_expr_attrs)
+{
+  SM_CLASS *cls;
+  SM_ATTRIBUTE *att;
+  int error = NO_ERROR;
+  PT_NODE *new_attr = NULL, *node = NULL;
+
+  if (default_expr_attrs == NULL)
+    {
+      assert (default_expr_attrs != NULL);
+      return ER_FAILED;
+    }
+
+  error = au_fetch_class_force (class_obj, &cls, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  for (att = cls->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      /* skip if attribute has auto_increment */
+      if (att->auto_increment != NULL)
+	{
+	  continue;
+	}
+
+      /* skip if a value has already been specified for this attribute */
+      for (node = specified_attrs; node != NULL; node = node->next)
+	{
+	  if (!pt_str_compare (pt_get_name (node), att->header.name, CASE_INSENSITIVE))
+	    {
+	      break;
+	    }
+	}
+      if (node != NULL)
+	{
+	  continue;
+	}
+
+      /* add attribute to default_expr_attrs list */
+      new_attr = parser_new_node (parser, PT_NAME);
+      if (new_attr == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return ER_FAILED;
+	}
+
+      new_attr->info.name.original = att->header.name;
+
+      if (*default_expr_attrs != NULL)
+	{
+	  new_attr->next = *default_expr_attrs;
+	  *default_expr_attrs = new_attr;
+	}
+      else
+	{
+	  *default_expr_attrs = new_attr;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_append_omitted_on_update_expr_assignments() - Appends assignment expressions that have a default on update
+ *                                                  expression and are not found in the specified attributes list
+ *   return: Error code
+ *   parser(in/out): Parser context
+ *   assigns(in/out): assignment expr list
+ *   from(in):
+ */
+int
+pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE * assigns, PT_NODE * from)
+{
+  int error = NO_ERROR;
+
+  for (PT_NODE * p = from; p != NULL; p = p->next)
+    {
+      if ((p->info.spec.flag & PT_SPEC_FLAG_UPDATE) == 0)
+	{
+	  continue;
+	}
+
+      UINTPTR spec_id = p->info.spec.id;
+      PT_NODE *cl_name_node = p->info.spec.flat_entity_list;
+      DB_OBJECT *class_obj = cl_name_node->info.name.db_object;
+      SM_CLASS *cls;
+      SM_ATTRIBUTE *att;
+      PT_NODE *new_lhs_of_assign = NULL;
+      PT_NODE *default_expr_attrs = NULL;
+      PT_ASSIGNMENTS_HELPER assign_helper;
+
+      error = au_fetch_class_force (class_obj, &cls, AU_FETCH_READ);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      for (att = cls->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+	{
+	  if (att->on_update_default_expr == DB_DEFAULT_NONE)
+	    {
+	      continue;
+	    }
+
+	  pt_init_assignments_helper (parser, &assign_helper, assigns);
+
+	  /* skip if already in the assign-list */
+	  PT_NODE *att_name_node = NULL;
+
+	  while ((att_name_node = pt_get_next_assignment (&assign_helper)) != NULL)
+	    {
+	      if (!pt_str_compare (att_name_node->info.name.original, att->header.name, CASE_INSENSITIVE)
+		  && att_name_node->info.name.spec_id == spec_id)
+		{
+		  break;
+		}
+	    }
+	  if (att_name_node != NULL)
+	    {
+	      continue;
+	    }
+
+	  /* add attribute to default_expr_attrs list */
+	  new_lhs_of_assign = parser_new_node (parser, PT_NAME);
+	  if (new_lhs_of_assign == NULL)
+	    {
+	      if (default_expr_attrs != NULL)
+		{
+		  parser_free_tree (parser, default_expr_attrs);
+		}
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return ER_FAILED;
+	    }
+	  new_lhs_of_assign->info.name.original = att->header.name;
+	  new_lhs_of_assign->info.name.resolved = cls->header.ch_name;
+	  new_lhs_of_assign->info.name.spec_id = spec_id;
+
+	  PT_OP_TYPE op = pt_op_type_from_default_expr_type (att->on_update_default_expr);
+	  PT_NODE *new_rhs_of_assign = parser_make_expression (parser, op, NULL, NULL, NULL);
+	  if (new_rhs_of_assign == NULL)
+	    {
+	      if (new_lhs_of_assign != NULL)
+		{
+		  parser_free_node (parser, new_lhs_of_assign);
+		}
+	      if (default_expr_attrs != NULL)
+		{
+		  parser_free_tree (parser, default_expr_attrs);
+		}
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return ER_FAILED;
+	    }
+
+	  PT_NODE *assign_expr = parser_make_expression (parser, PT_ASSIGN, new_lhs_of_assign, new_rhs_of_assign, NULL);
+	  if (assign_expr == NULL)
+	    {
+	      if (new_lhs_of_assign != NULL)
+		{
+		  parser_free_node (parser, new_lhs_of_assign);
+		}
+	      if (new_rhs_of_assign != NULL)
+		{
+		  parser_free_node (parser, new_rhs_of_assign);
+		}
+	      if (default_expr_attrs != NULL)
+		{
+		  parser_free_tree (parser, default_expr_attrs);
+		}
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return ER_FAILED;
+	    }
+
+	  if (default_expr_attrs != NULL)
+	    {
+	      assign_expr->next = default_expr_attrs;
+	      default_expr_attrs = assign_expr;
+	    }
+	  else
+	    {
+	      default_expr_attrs = assign_expr;
+	    }
+	}
+
+      if (default_expr_attrs != NULL)
+	{
+	  parser_append_node (default_expr_attrs, assigns);
+	}
+    }
+
+  return NO_ERROR;
+}
 
 /*
  * parser_generate_xasl_pre () - builds xasl for query nodes,
@@ -21827,65 +22030,6 @@ parser_generate_do_stmt_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   return xasl;
-}
-
-/*
- * pt_init_precision_and_scale () -
- *   return:
- *   value(in):
- *   node(in):
- */
-static void
-pt_init_precision_and_scale (DB_VALUE * value, PT_NODE * node)
-{
-  PT_NODE *dt;
-  DB_TYPE domain_type;
-
-  if (!value || !node)
-    {
-      return;
-    }
-
-  CAST_POINTER_TO_NODE (node);
-
-  if (node->data_type == NULL)
-    {
-      return;
-    }
-
-  dt = node->data_type;
-  domain_type = pt_type_enum_to_db (dt->type_enum);
-
-  switch (domain_type)
-    {
-    case DB_TYPE_VARCHAR:
-    case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_BIT:
-    case DB_TYPE_VARBIT:
-      value->domain.char_info.length = dt->info.data_type.precision;
-      break;
-
-    case DB_TYPE_NUMERIC:
-      value->domain.numeric_info.precision = dt->info.data_type.precision;
-      value->domain.numeric_info.scale = dt->info.data_type.dec_precision;
-      break;
-    case DB_TYPE_JSON:
-      if (dt->info.data_type.json_schema)
-	{
-	  value->data.json.schema_raw = db_private_strdup (NULL, (const char *) dt->info.data_type.json_schema->bytes);
-	  value->need_clear = true;
-	}
-      else
-	{
-	  value->data.json.schema_raw = NULL;
-	}
-      break;
-
-    default:
-      ;				/* Do nothing. This suppresses compiler's warnings. */
-    }
 }
 
 /*
@@ -24071,6 +24215,13 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   if (from == NULL || from->node_type != PT_SPEC || from->info.spec.range_var == NULL)
     {
       PT_INTERNAL_ERROR (parser, "invalid spec");
+      goto cleanup;
+    }
+
+  error = pt_append_omitted_on_update_expr_assignments (parser, assigns, from);
+  if (error != NO_ERROR)
+    {
+      PT_INTERNAL_ERROR (parser, "merge update");
       goto cleanup;
     }
 

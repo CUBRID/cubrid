@@ -24,9 +24,10 @@
 #ifndef _TEST_CQUEUE_FUNCTIONAL_HPP_
 #define _TEST_CQUEUE_FUNCTIONAL_HPP_
 
-namespace test_lockfree {
+namespace test_lockfree
+{
 
-int test_cqueue_functional (void);
+  int test_cqueue_functional (void);
 
 } // namespace test_lockfree
 

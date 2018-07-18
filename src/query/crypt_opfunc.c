@@ -46,8 +46,8 @@
 #include "memory_alloc.h"
 #include "crypt_opfunc.h"
 #if defined (SERVER_MODE)
-#include "thread.h"
-#endif
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#endif // SERVER_MODE
 
 #define GCRYPT_NO_MPI_MACROS
 #define GCRYPT_NO_DEPRECATED
@@ -94,10 +94,6 @@ static void aes_default_gen_key (const char *key, int key_len, char *dest_key, i
 static int
 init_gcrypt (void)
 {
-  /* if gcrypt init success, it doesn't return GPG_ERR_NO_ERROR. It's kind of weird! */
-#define GCRYPT_INIT_SUCCESS gcry_error(GPG_ERR_GENERAL)
-
-  gcry_error_t i_gcrypt_err;
   if (gcrypt_initialized == 0)
     {
 #if defined(SERVER_MODE)
@@ -111,8 +107,7 @@ init_gcrypt (void)
 	  return NO_ERROR;
 	}
 
-      i_gcrypt_err = gcry_control (GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
-      if (i_gcrypt_err != GPG_ERR_NO_ERROR)
+      if (gcry_control (GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread) != GPG_ERR_NO_ERROR)
 	{
 	  pthread_mutex_unlock (&gcrypt_init_mutex);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1,
@@ -126,11 +121,10 @@ init_gcrypt (void)
       gcry_control (GCRYCTL_SUSPEND_SECMEM_WARN);
       gcry_control (GCRYCTL_INIT_SECMEM, GCRYPT_SECURE_MEMORY_LEN, 0);
       gcry_control (GCRYCTL_RESUME_SECMEM_WARN);
-
+      // tell gcrypt that initialization has completed.
       gcry_control (GCRYCTL_INITIALIZATION_FINISHED, 0);
-
-      i_gcrypt_err = gcry_control (GCRYCTL_INITIALIZATION_FINISHED_P);
-      if (i_gcrypt_err != GCRYPT_INIT_SUCCESS)
+      // check indeed initialization was finished. it returns 1 on success, 0 on failure.
+      if (!gcry_control (GCRYCTL_INITIALIZATION_FINISHED_P))
 	{
 #if defined(SERVER_MODE)
 	  pthread_mutex_unlock (&gcrypt_init_mutex);
@@ -139,7 +133,8 @@ init_gcrypt (void)
 		  crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
 	  return ER_ENCRYPTION_LIB_FAILED;
 	}
-      gcrypt_initialized = (i_gcrypt_err == GCRYPT_INIT_SUCCESS) ? 1 : 0;
+      // init successful
+      gcrypt_initialized = 1;
 #if defined(SERVER_MODE)
       pthread_mutex_unlock (&gcrypt_init_mutex);
 #endif

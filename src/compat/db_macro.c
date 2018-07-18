@@ -145,7 +145,6 @@ db_value_put_null (DB_VALUE * value)
  *  scale(in)     : Scale.
  *
  */
-
 int
 db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision, const int scale)
 {
@@ -381,6 +380,18 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
     }
 
   return error;
+}
+
+// db_value_domain_init_default - default value initialization
+//
+// value - db_value to init
+// type - desired type of value
+//
+void
+db_value_domain_init_default (DB_VALUE * value, const DB_TYPE type)
+{
+  // default initialization should not fail
+  (void) db_value_domain_init (value, type, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 }
 
 /*

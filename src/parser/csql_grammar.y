@@ -134,6 +134,7 @@ extern int yybuffer_pos;
 #define COLUMN_CONSTRAINT_AUTO_INCREMENT	(0x40)
 #define COLUMN_CONSTRAINT_SHARED_DEFAULT_AI	(0x70)
 #define COLUMN_CONSTRAINT_COMMENT       (0x80)
+#define COLUMN_CONSTRAINT_ON_UPDATE     (0x100)
 
 #ifdef PARSER_DEBUG
 #define DBG_PRINT printf("rule matched at line: %d\n", __LINE__);
@@ -1158,6 +1159,7 @@ int g_original_buffer_len;
 %token DEALLOCATE
 %token DECLARE
 %token DEFAULT
+%token ON_UPDATE
 %token DEFERRABLE
 %token DEFERRED
 %token DELETE_
@@ -9722,9 +9724,9 @@ opt_constraint_list_and_opt_column_comment
 constraint_list_and_column_comment
 	: constraint_list_and_column_comment column_constraint_and_comment_def
 		{{
-			unsigned char mask = $1;
-			unsigned char new_bit = $2;
-			unsigned char merged = mask | new_bit;
+			unsigned int mask = $1;
+			unsigned int new_bit = $2;
+			unsigned int merged = mask | new_bit;
 
 			/* Check the constraints according to the following rules:
 			 *   1. A constraint should be specified once.
@@ -9792,6 +9794,10 @@ column_constraint_and_comment_def
 	| column_comment_def
 		{{
 			$$ = COLUMN_CONSTRAINT_COMMENT;
+		}}
+	| column_on_update_def
+		{{
+			$$ = COLUMN_CONSTRAINT_ON_UPDATE;
 		}}
 	;
 
@@ -10116,6 +10122,57 @@ column_shared_constraint_def
 			attr_node = parser_get_attr_def_one ();
 			attr_node->info.attr_def.data_default = node;
 			attr_node->info.attr_def.attr_type = PT_SHARED;
+
+		DBG_PRINT}}
+	;
+
+column_on_update_def
+	: ON_ UPDATE expression_
+		{{
+			DB_DEFAULT_EXPR_TYPE default_expr_type = DB_DEFAULT_NONE;
+			PT_NODE *attr_node = parser_get_attr_def_one ();
+			PT_NODE *on_update_default_value = $3;
+			PARSER_SAVE_ERR_CONTEXT (attr_node, @3.buffer_pos)
+
+			if (on_update_default_value && on_update_default_value->node_type == PT_EXPR)
+			  {
+			    switch (on_update_default_value->info.expr.op)
+			      {
+			      case PT_CURRENT_TIMESTAMP:
+			        default_expr_type = DB_DEFAULT_CURRENTTIMESTAMP;
+			        break;
+			      case PT_CURRENT_DATE:
+			        default_expr_type = DB_DEFAULT_CURRENTDATE;
+			        break;
+			      case PT_CURRENT_DATETIME:
+			        default_expr_type = DB_DEFAULT_CURRENTDATETIME;
+			        break;
+			      case PT_SYS_TIMESTAMP:
+			        default_expr_type = DB_DEFAULT_SYSTIMESTAMP;
+			        break;
+			      case PT_UNIX_TIMESTAMP:
+			        default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
+			        break;
+			      case PT_SYS_DATE:
+			        default_expr_type = DB_DEFAULT_SYSDATE;
+			        break;
+			      case PT_SYS_DATETIME:
+			        default_expr_type = DB_DEFAULT_SYSDATETIME;
+			        break;
+			      case PT_SYS_TIME:
+			        default_expr_type = DB_DEFAULT_SYSTIME;
+			        break;
+			      default:
+			        PT_ERROR (this_parser, attr_node, "invalid expression type");
+			        break;
+			      }
+			  }
+			else
+			  {
+			    PT_ERROR (this_parser, attr_node, "on update must be an expression");
+			  }
+			
+			attr_node->info.attr_def.on_update = default_expr_type;
 
 		DBG_PRINT}}
 	;

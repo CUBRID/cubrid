@@ -8706,6 +8706,16 @@ pt_make_query_showstmt (PARSER_CONTEXT * parser, unsigned int type, PT_NODE * ar
 
   /* get show column info */
   meta = showstmt_get_metadata ((SHOWSTMT_TYPE) type);
+
+  if (meta->only_for_dba)
+    {
+      if (!au_is_dba_group_member (Au_user))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, meta->alias_print);
+	  return NULL;
+	}
+    }
+
   orderby = meta->orderby;
   num_orderby = meta->num_orderby;
 
@@ -8928,7 +8938,7 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser, PT_NODE * original_cls_id, 
   sub_query->info.query.q.select.list = value_list;
   value_list = NULL;
 
-  from_item = pt_add_table_name_to_from_list (parser, sub_query, lower_table_name, NULL, DB_AUTH_SELECT);
+  from_item = pt_add_table_name_to_from_list (parser, sub_query, lower_table_name, NULL, DB_AUTH_NONE);
   if (from_item == NULL)
     {
       goto error;
@@ -9077,27 +9087,24 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
   assert (table_name != NULL);
   assert (table_name->node_type == PT_NAME);
 
-/* *INDENT-OFF* */
-#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
+  /* *INDENT-OFF* */
   string_buffer strbuf {
-    [&parser] (mem::block& block, size_t len)
+    [&parser] (mem::block &block, size_t len)
     {
       size_t dim = block.dim ? block.dim : 1;
 
-      // calc next power of 2 >= b.dim
-      for (; dim < block.dim + len; dim *= 2)
-        ;
+      for (; dim < block.dim + len; dim *= 2) // calc next power of 2 >= b.dim+len
+	;
 
-      mem::block b{dim, (char *) parser_alloc (parser, block.dim + len)};
-      memcpy (b.ptr, block.ptr, block.dim);
+      mem::block b{ dim, (char *) parser_alloc (parser, dim) };
+      memcpy (b.ptr, block.ptr, block.dim); // copy old content
       block = std::move (b);
     },
-    [](mem::block& block){} //no need to deallocate for parser_context
+    [](mem::block &block) //no need to deallocate for parser_context
+    {
+    }
   };
-#else
-  string_buffer strbuf;
-#endif
-/* *INDENT-ON* */
+  /* *INDENT-ON* */
 
   pt_help_show_create_table (parser, table_name, strbuf);
   if (strbuf.len () == 0)
@@ -9119,8 +9126,7 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
    */
   pt_add_string_col_to_sel_list (parser, select, table_name->info.name.original, "TABLE");
   pt_add_string_col_to_sel_list (parser, select, strbuf.get_buffer (), "CREATE TABLE");
-
-  (void) pt_add_table_name_to_from_list (parser, select, "db_root", NULL, DB_AUTH_SELECT);
+  pt_add_table_name_to_from_list (parser, select, "db_root", NULL, DB_AUTH_SELECT);
   return select;
 }
 
@@ -10103,7 +10109,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   query->info.query.q.select.list = value_list;
   value_list = NULL;
 
-  from_item = pt_add_table_name_to_from_list (parser, query, lower_table_name, NULL, DB_AUTH_SELECT);
+  from_item = pt_add_table_name_to_from_list (parser, query, lower_table_name, NULL, DB_AUTH_NONE);
   if (from_item == NULL)
     {
       goto error;
