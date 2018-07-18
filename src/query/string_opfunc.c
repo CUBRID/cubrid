@@ -6444,7 +6444,7 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VA
 
   for (elem_start = stack_ptr = stack_str, stack_end = stack_str + stack_size; stack_ptr <= stack_end; ++stack_ptr)
     {
-      if (*stack_ptr == ',' || stack_ptr == stack_end)
+      if (stack_ptr == stack_end || *stack_ptr == ',')
 	{
 	  if (stack_ptr == elem_start)
 	    {
