@@ -9592,6 +9592,9 @@ pt_bind_names_in_with_clause (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_N
   switch (node->node_type)
     {
     case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
       with = node->info.query.with;
       break;
     case PT_UPDATE:
