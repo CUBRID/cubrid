@@ -304,6 +304,7 @@ namespace cubstream
     char *ptr_commit;
     int err = NO_ERROR;
     stream_position new_completed_position = reserve_context->start_pos + reserve_context->reserved_amount;
+    bool signal_data_ready = false;
 
     std::unique_lock<std::mutex> ulock (m_buffer_mutex);
 
@@ -321,13 +322,17 @@ namespace cubstream
 	assert (new_completed_position > m_last_committed_pos);
 	m_last_committed_pos = new_completed_position;
       }
-
-    if (m_serial_read_wait_pos > 0)
+    if (m_last_committed_pos >= m_serial_read_wait_pos)
       {
-        m_serial_read_cv.notify_one ();
+        signal_data_ready = true;
       }
 
     ulock.unlock ();
+
+    if (signal_data_ready)
+      {
+        m_serial_read_cv.notify_one ();
+      }
 
     /* notify readers of the new completed position */
     if (m_ready_pos_handler && new_completed_position > m_last_notified_committed_pos + m_trigger_min_to_read_size)
@@ -439,7 +444,7 @@ namespace cubstream
     m_serial_read_wait_pos = m_read_position + amount;
     m_serial_read_cv.wait (local_lock,
 	                   [&] { return m_is_stopped || m_last_committed_pos >= m_serial_read_wait_pos; });
-    m_serial_read_wait_pos = 0;
+    m_serial_read_wait_pos = std::numeric_limits<stream_position>::max ();
     local_lock.unlock ();
 
     if (m_is_stopped)
