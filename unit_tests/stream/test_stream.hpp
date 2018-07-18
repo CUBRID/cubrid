@@ -162,7 +162,7 @@ namespace test_stream
 
       packable_factory *get_builder ();
 
-      size_t get_header_size ()
+      size_t get_packed_header_size ()
       {
 	size_t header_size = 0;
 	cubpacking::packer *serializator = get_packer ();
