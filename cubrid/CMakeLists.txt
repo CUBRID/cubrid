@@ -189,10 +189,6 @@ set(MONITOR_HEADERS
   ${MONITOR_DIR}/monitor_transaction.hpp
 )
 
-set (REPLICATION_SOURCES
-  ${REPLICATION_DIR}/replication_master_senders_manager.cpp
-  )
-
 set (REPLICATION_HEADERS
   ${REPLICATION_DIR}/replication_master_senders_manager.hpp
   )
@@ -236,6 +232,7 @@ set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_generator.cpp
   ${REPLICATION_DIR}/master_replication_channel.cpp
   ${REPLICATION_DIR}/replication_object.cpp
+  ${REPLICATION_DIR}/replication_master_senders_manager.cpp  
   ${REPLICATION_DIR}/replication_stream_entry.cpp
   ${REPLICATION_DIR}/slave_replication_channel.cpp
   )  
@@ -318,7 +315,6 @@ SET_SOURCE_FILES_PROPERTIES(
   ${COMPAT_SOURCES}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
-  ${REPLICATION_SOURCES}
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
@@ -347,7 +343,6 @@ set (CUBRID_LIB_SOURCES
   ${COMPAT_SOURCES}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
-  ${REPLICATION_SOURCES}
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
