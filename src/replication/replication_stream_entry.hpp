@@ -62,14 +62,14 @@ namespace cubreplication
     {
     };
 
-    static size_t get_size ()
+    static size_t get_size (cubpacking::packer &serializator)
     {
       size_t header_size = 0;
 
-      header_size += cubpacking::packer::get_packed_bigint_size (header_size);
-      header_size += cubpacking::packer::get_packed_bigint_size (header_size);
-      header_size += cubpacking::packer::get_packed_int_size (header_size);
-      header_size += cubpacking::packer::get_packed_int_size (header_size);
+      header_size += serializator.get_packed_bigint_size (header_size);
+      header_size += serializator.get_packed_bigint_size (header_size);
+      header_size += serializator.get_packed_int_size (header_size);
+      header_size += serializator.get_packed_int_size (header_size);
 
       return header_size;
     }
@@ -98,11 +98,9 @@ namespace cubreplication
 	m_header.group_commit_flag = arg_group_commit_flag;
       };
 
-      size_t get_header_size ()
+      size_t get_packed_header_size ()
       {
-	static size_t header_size = replication_stream_entry_header::get_size ();
-
-	return header_size;
+	return s_header_size;
       }
 
       size_t get_data_packed_size (void);
@@ -145,12 +143,9 @@ namespace cubreplication
       int get_packable_entry_count_from_header (void);
 
       bool is_equal (const cubstream::entry<replication_object> *other);
+      static size_t compute_header_size (void);
 
-      static size_t get_header_size_s (void)
-      {
-	static replication_stream_entry_header e;
-	return e.get_size ();
-      }
+      static size_t s_header_size;
   };
 
 } /* namespace cubreplication */

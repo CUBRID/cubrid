@@ -38,7 +38,7 @@ namespace cubstream
    * entry of a stream: this is an abstract class which encapsulates a collection of objects packable into a stream
    *
    * it has a mandatory header structure to be implemented by derived class along with associated methods:
-   *  - get_header_size,
+   *  - get_packed_header_size,
    *  - set_header_data_size,
    *  - pack_stream_entry_header
    *  - unpack_stream_entry_header
@@ -123,7 +123,7 @@ namespace cubstream
 	cubpacking::packer *serializator = get_packer ();
 	int error_code;
 
-	assert (header_size == get_header_size ());
+	assert (header_size == get_packed_header_size ());
 
 	serializator->init (ptr, header_size);
 
@@ -236,7 +236,7 @@ namespace cubstream
 	size_t total_stream_entry_size;
 	size_t data_size;
 	int err;
-	static size_t header_size = get_header_size ();
+	static size_t header_size = get_packed_header_size ();
 
 	assert (DB_WASTED_ALIGN (header_size, MAX_ALIGNMENT) == 0);
 
@@ -258,13 +258,10 @@ namespace cubstream
        */
       int prepare (void)
       {
-	static size_t stream_entry_header_size = get_header_size ();
-	size_t aligned_stream_entry_header_size;
+	static size_t stream_entry_header_size = get_packed_header_size ();
 	int err;
 
-	aligned_stream_entry_header_size = DB_ALIGN (stream_entry_header_size, MAX_ALIGNMENT);
-
-	err = m_stream->read_serial (aligned_stream_entry_header_size, m_prepare_func);
+	err = m_stream->read_serial (stream_entry_header_size, m_prepare_func);
 
 	return (err < 0) ? err : NO_ERROR;
       }
@@ -318,7 +315,7 @@ namespace cubstream
 
       /* stream entry header methods : header is implementation dependent, is not known here ! */
       virtual cubpacking::packer *get_packer () = 0;
-      virtual size_t get_header_size (void) = 0;
+      virtual size_t get_packed_header_size (void) = 0;
       virtual void set_header_data_size (const size_t &data_size) = 0;
       virtual size_t get_data_packed_size (void) = 0;
       virtual int pack_stream_entry_header (void) = 0;

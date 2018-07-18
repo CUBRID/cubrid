@@ -145,4 +145,17 @@ namespace cubreplication
     return true;
   }
 
+  size_t replication_stream_entry::compute_header_size (void)
+  {
+    replication_stream_entry_header e;
+    cubpacking::packer serializator;
+
+    size_t stream_entry_header_size = e.get_size (serializator);
+    size_t aligned_stream_entry_header_size = DB_ALIGN (stream_entry_header_size, MAX_ALIGNMENT);
+
+    return aligned_stream_entry_header_size;
+  }
+
+  size_t replication_stream_entry::s_header_size = replication_stream_entry::compute_header_size ();
+
 } /* namespace cubreplication */
