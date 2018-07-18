@@ -54,9 +54,9 @@ namespace cubreplication
 
     master_server_stream_senders.clear ();
     master_channels_supervisor_daemon = cubthread::get_manager ()->create_daemon (
-					  cubthread::looper (std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)),
-					  new master_senders_supervisor_task (),
-					  "supervisor_daemon");
+	cubthread::looper (std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)),
+	new master_senders_supervisor_task (),
+	"supervisor_daemon");
     g_minimum_successful_stream_position = 0;
     g_stream = stream;
 

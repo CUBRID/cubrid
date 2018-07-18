@@ -244,7 +244,7 @@ namespace cubreplication
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     if (m_stream_entries.empty ())
       {
-        m_apply_task_ready = false;
+	m_apply_task_ready = false;
 	m_apply_task_cv.wait (ulock, [this] { return m_is_stopped || m_apply_task_ready;});
       }
 
