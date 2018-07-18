@@ -13572,9 +13572,6 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      return err;
 	    }
-	}
-      else
-	{
 	  // nothing to flush.
 	  assert (!ws_need_flush ());
 	}
