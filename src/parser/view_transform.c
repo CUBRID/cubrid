@@ -5602,6 +5602,7 @@ mq_invert_subqueries (PARSER_CONTEXT * parser, PT_NODE * select_statements, PT_N
 	      assert (!pt_has_error (parser));
 
 	      temp = *column;
+	      temp->next = NULL;
 
 	      if (column_prev != NULL)
 		{
