@@ -38,8 +38,8 @@
 
 namespace cubstream
 {
-  /* stream with capability to pack/unpack objects concurrently
-   * the read, read_partial, read_serial, write require a function argument to perform the packing/unpacking;
+  /* stream with capability to write/read concurrently
+   * the read, read_partial, read_serial, write require a function argument to perform custom write/read operation;
    * Interface:
    *
    * write (amount, write_function):
@@ -110,7 +110,7 @@ namespace cubstream
 
       stream_io *m_io;
 
-      std::mutex m_serial_read_mutex;
+      /* serial read cv uses m_buffer_mutex */
       std::condition_variable m_serial_read_cv;
       bool m_is_stopped;
 
@@ -133,13 +133,6 @@ namespace cubstream
       int unlatch_read_data (const mem::buffer_latch_read_id &read_latch_page_idx);
 
       int wait_for_data (const size_t amount, const STREAM_SKIP_MODE skip_mode);
-
-      void signal_data_ready (const stream_position &ready_pos)
-      {
-	std::lock_guard<std::mutex> local_lock (m_serial_read_mutex);
-	m_last_notified_committed_pos = ready_pos;
-	m_serial_read_cv.notify_one ();
-      }
 
     public:
       packing_stream (const size_t buffer_capacity, const int max_appenders);
@@ -170,7 +163,7 @@ namespace cubstream
       void set_stop (void)
       {
 	m_is_stopped = true;
-	signal_data_ready (m_last_notified_committed_pos);
+        m_serial_read_cv.notify_one ();
       }
   };
 

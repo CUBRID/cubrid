@@ -302,6 +302,7 @@ namespace cubstream
     stream_reserve_context *last_used_context = NULL;
     bool collapsed_reserve;
     char *ptr_commit;
+    int err = NO_ERROR;
     stream_position new_completed_position = reserve_context->start_pos + reserve_context->reserved_amount;
 
     std::unique_lock<std::mutex> ulock (m_buffer_mutex);
@@ -321,26 +322,23 @@ namespace cubstream
 	m_last_committed_pos = new_completed_position;
       }
 
+    if (m_serial_read_wait_pos > 0)
+      {
+        m_serial_read_cv.notify_one ();
+      }
+
+    ulock.unlock ();
+
     /* notify readers of the new completed position */
-    if (new_completed_position > m_last_notified_committed_pos + m_trigger_min_to_read_size)
+    if (m_ready_pos_handler && new_completed_position > m_last_notified_committed_pos + m_trigger_min_to_read_size)
       {
 	stream_position save_last_notified_commited_pos = m_last_notified_committed_pos;
 	size_t committed_bytes = new_completed_position - m_last_notified_committed_pos;
 
-	signal_data_ready (new_completed_position);
-
-	if (m_ready_pos_handler)
-	  {
-	    int err;
-	    err = m_ready_pos_handler (save_last_notified_commited_pos, committed_bytes);
-	    if (err != NO_ERROR)
-	      {
-		return err;
-	      }
-	  }
+	err = m_ready_pos_handler (save_last_notified_commited_pos, committed_bytes);
       }
 
-    return NO_ERROR;
+    return err;
   }
 
   /*
@@ -437,22 +435,21 @@ namespace cubstream
 
     m_stat_read_not_enough_data_cnt++;
 
-    do
+    std::unique_lock<std::mutex> local_lock (m_buffer_mutex);
+    m_serial_read_wait_pos = m_read_position + amount;
+    m_serial_read_cv.wait (local_lock,
+	                   [&] { return m_is_stopped || m_last_committed_pos >= m_serial_read_wait_pos; });
+    m_serial_read_wait_pos = 0;
+    local_lock.unlock ();
+
+    if (m_is_stopped)
       {
-	std::unique_lock<std::mutex> local_lock (m_serial_read_mutex);
-	m_serial_read_cv.wait_for (local_lock, std::chrono::milliseconds (1000),
-				   [&] { return m_last_notified_committed_pos >= m_read_position + amount; });
-
-	if (m_is_stopped)
-	  {
-	    err = ER_STREAM_NO_MORE_DATA;
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (), m_read_position,
-		    amount);
-	    return err;
-	  }
-
+        err = ER_STREAM_NO_MORE_DATA;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (), m_read_position, amount);
+        return err;
       }
-    while (m_read_position + amount > m_last_committed_pos);
+
+    assert (m_read_position + amount <= m_last_committed_pos);
 
     if (skip_mode == STREAM_SKIP)
       {
