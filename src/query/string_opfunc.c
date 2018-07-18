@@ -6390,7 +6390,7 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VA
   const char *stack_str = NULL;
   const char *needle_str = NULL;
   int cmp, coll_id, matched_stack_size;
-  const char *stack_ptr, *elem_start;
+  const char *stack_ptr, *stack_end, *elem_start;
 
   if (DB_IS_NULL (needle) || DB_IS_NULL (stack))
     {
@@ -6432,6 +6432,7 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VA
 
   stack_str = db_get_string (stack);
   stack_size = db_get_string_size (stack);
+
   needle_str = db_get_string (needle);
   needle_size = db_get_string_size (needle);
 
@@ -6441,9 +6442,9 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VA
       goto match_not_found;
     }
 
-  for (elem_start = stack_ptr = stack_str; stack_ptr <= stack_str+stack_size; ++stack_ptr)
+  for (elem_start = stack_ptr = stack_str, stack_end = stack_str + stack_size; stack_ptr <= stack_end; ++stack_ptr)
     {
-      if (*stack_ptr == ',' || stack_ptr >= stack_str + stack_size)
+      if (*stack_ptr == ',' || stack_ptr == stack_end)
 	{
 	  if (stack_ptr == elem_start)
 	    {
@@ -6459,9 +6460,8 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VA
 	      /* check using collation */
 	      if (needle_size > 0)
 		{
-		  cmp =
-		    QSTR_MATCH (coll_id, (const unsigned char *) elem_start, CAST_BUFLEN (stack_ptr - elem_start),
-				(const unsigned char *) needle_str, needle_size, NULL, false, &matched_stack_size);
+		  cmp = QSTR_MATCH (coll_id, (const unsigned char *) elem_start, CAST_BUFLEN (stack_ptr - elem_start),
+				    (const unsigned char *) needle_str, needle_size, NULL, false, &matched_stack_size);
 		  if (cmp == 0 && matched_stack_size == CAST_BUFLEN (stack_ptr - elem_start))
 		    {
 		      db_make_int (result, position);
@@ -6469,8 +6469,9 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VA
 		    }
 		}
 	    }
+
 	  position++;
-	  elem_start = stack_ptr+1;
+	  elem_start = stack_ptr + 1;
 	}
     }
 
