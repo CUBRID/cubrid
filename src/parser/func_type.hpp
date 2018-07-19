@@ -54,4 +54,40 @@ struct func_signature
 const char* str(const func_signature& signature, string_buffer& sb);
 const char* str(FUNC_TYPE ft);
 
+
+bool pt_are_equivalent_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type);
+PT_TYPE_ENUM pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type);
+
+
+namespace Func
+{
+  bool cmp_types_equivalent(const pt_arg_type& type, pt_type_enum type_enum);
+  bool cmp_types_castable(const pt_arg_type& type, pt_type_enum type_enum);
+
+  class Node
+  {
+  private:
+    parser_context* m_parser;
+    parser_node* m_node;
+
+  public:
+    Node(parser_context* parser, parser_node* node)
+      : m_parser(parser)
+      , m_node(node)
+    {
+    }
+
+    parser_node* get_arg(size_t index);
+
+    //cast given argument to specified type and re-link
+    parser_node* cast(parser_node* prev, parser_node* arg, pt_type_enum type, int p, int s, parser_node* dt);
+
+    bool preprocess(); //preprocess current function node type for special cases
+    const char* get_types(const std::vector<func_signature>& signatures, int index, string_buffer& sb);
+    const func_signature* get_signature(const std::vector<func_signature>& signatures, string_buffer& sb);
+    void set_return_type(const func_signature& signature); //set return type for current node in current context
+    bool apply_signature(const func_signature& signature); //apply function signature with casts if necessary
+  }; //class Node
+} //namespace Func
+
 #endif
