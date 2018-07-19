@@ -1037,7 +1037,7 @@ vacuum_boot (THREAD_ENTRY * thread_p)
   // get logging flag for vacuum worker pool
   /* *INDENT-OFF* */
   bool log_vacuum_worker_pool =
-    flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_THREAD_LOGGING_FLAG), THREAD_LOG_WORKER_POOL_VACUUM)
+    cubthread::is_logging_configured (cubthread::LOG_WORKER_POOL_VACUUM)
     || flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_ER_LOG_VACUUM), VACUUM_ER_LOG_WORKER);
   /* *INDENT-ON* */
 

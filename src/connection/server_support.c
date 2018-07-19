@@ -3359,4 +3359,30 @@ css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, i
 
   return count;
 }
+
+static bool
+css_connection_thread_pooling (void)
+{
+  return prm_get_bool_value (PRM_ID_THREAD_CONNECTION_POOLING);
+}
+
+static std::chrono::seconds
+css_connection_thread_timeout (void)
+{
+  // todo: need infinite timeout
+  return std::chrono::seconds (prm_get_integer_value (PRM_ID_THREAD_CONNECTION_TIMEOUT_SECONDS));
+}
+
+static bool
+css_server_request_thread_pooling (void)
+{
+  return prm_get_bool_value (PRM_ID_THREAD_WORKER_POOLING);
+}
+
+static std::chrono::seconds
+css_server_request_thread_timeout (void)
+{
+  // todo: need infinite timeout
+  return std::chrono::seconds (prm_get_integer_value (PRM_ID_THREAD_WORKER_TIMEOUT_SECONDS));
+}
 // *INDENT-ON*

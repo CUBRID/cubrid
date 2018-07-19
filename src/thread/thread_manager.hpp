@@ -28,8 +28,12 @@
 #error Wrong module
 #endif // not SERVER_MODE and not SA_MODE
 
+// same module includes
 #include "thread_entry.hpp"
 #include "thread_task.hpp"
+
+// other module includes
+#include "base_flag.hpp"
 
 #include <mutex>
 #include <vector>
@@ -249,6 +253,29 @@ namespace cubthread
   };
 
   //////////////////////////////////////////////////////////////////////////
+  // thread logging flags
+  //
+  // TODO: complete thread logging for all modules
+  //
+  //////////////////////////////////////////////////////////////////////////
+  // system parameter flags for thread logging
+  // manager flags
+  const int LOG_MANAGER = 0x1;
+  const int LOG_MANAGER_ALL = 0xFF;          // reserved for thread manager
+
+  // worker pool flags
+  const int LOG_WORKER_POOL_VACUUM = 0x100;
+  const int LOG_WORKER_POOL_CONNECTIONS = 0x100;
+  const int LOG_WORKER_POOL_TRAN_WORKERS = 0x1000;
+  const int LOG_WORKER_POOL_ALL = 0xFF00;    // reserved for thread worker pools
+
+  // daemons flags
+  const int LOG_DAEMON_VACUUM = 0x10000;
+  const int LOG_DAEMON_ALL = 0xFFFF0000;     // reserved for thread daemons
+
+  inline bool is_logging_configured (const int logging_flag);
+
+  //////////////////////////////////////////////////////////////////////////
   // thread global functions
   //////////////////////////////////////////////////////////////////////////
 
@@ -301,6 +328,12 @@ namespace cubthread
 	    break;
 	  }
       }
+  }
+
+  bool
+  is_logging_configured (const int logging_flag)
+  {
+    return flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_THREAD_LOGGING_FLAG), logging_flag);
   }
 
 } // namespace cubthread
