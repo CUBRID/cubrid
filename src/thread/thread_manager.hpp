@@ -113,9 +113,10 @@ namespace cubthread
       // create a entry_workpool with pool_size number of threads
       // notes: if there are not pool_size number of entries available, worker pool is not created and NULL is returned
       //        signature emulates worker_pool constructor signature
-      entry_workpool *create_worker_pool (std::size_t pool_size, std::size_t task_max_count,
+      entry_workpool *create_worker_pool (std::size_t pool_size, std::size_t task_max_count, const char *name,
 					  entry_manager *context_manager, std::size_t core_count,
-					  bool debug_logging, bool pool_threads = false, std::chrono::seconds wait_for_task_time = std::chrono::seconds (5));
+					  bool debug_logging, bool pool_threads = false,
+					  std::chrono::seconds wait_for_task_time = std::chrono::seconds (5));
 
       // destroy worker pool
       void destroy_worker_pool (entry_workpool *&worker_pool_arg);
@@ -186,7 +187,7 @@ namespace cubthread
       {
 	return m_all_entries;
       }
-    
+
       void set_max_thread_count_from_config ();
       void set_max_thread_count (std::size_t count);
 

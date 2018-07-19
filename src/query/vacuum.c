@@ -1044,8 +1044,8 @@ vacuum_boot (THREAD_ENTRY * thread_p)
   // create thread pool
   vacuum_Worker_threads =
     thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT),
-					VACUUM_MAX_TASKS_IN_WORKER_POOL, vacuum_Worker_context_manager, 1,
-					log_vacuum_worker_pool);
+					VACUUM_MAX_TASKS_IN_WORKER_POOL, "vacuum workers",
+					vacuum_Worker_context_manager, 1, log_vacuum_worker_pool);
   assert (vacuum_Worker_threads != NULL);
 
   int vacuum_master_wakeup_interval_msec = prm_get_integer_value (PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL);
@@ -4141,14 +4141,14 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY, "%s",
 			     "vacuum_data_load_and_recover: last blockid remains null");
 
-              /* and this is a hack to removed "last_blockid from vacuum data page" */
-              assert (vacuum_Data.first_page == vacuum_Data.last_page);
-              vacuum_data_initialize_new_page (thread_p, vacuum_Data.first_page);
-              vacuum_Data.first_page->data->blockid = VACUUM_NULL_LOG_BLOCKID;
-              log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) vacuum_Data.first_page, 0,
-                                     sizeof (vacuum_Data.first_page->data->blockid),
-                                     &vacuum_Data.first_page->data->blockid);
-              vacuum_set_dirty_data_page (thread_p, vacuum_Data.first_page, DONT_FREE);
+	      /* and this is a hack to removed "last_blockid from vacuum data page" */
+	      assert (vacuum_Data.first_page == vacuum_Data.last_page);
+	      vacuum_data_initialize_new_page (thread_p, vacuum_Data.first_page);
+	      vacuum_Data.first_page->data->blockid = VACUUM_NULL_LOG_BLOCKID;
+	      log_append_redo_data2 (thread_p, RVVAC_DATA_INIT_NEW_PAGE, NULL, (PAGE_PTR) vacuum_Data.first_page, 0,
+				     sizeof (vacuum_Data.first_page->data->blockid),
+				     &vacuum_Data.first_page->data->blockid);
+	      vacuum_set_dirty_data_page (thread_p, vacuum_Data.first_page, DONT_FREE);
 	    }
 	}
       else

@@ -39,10 +39,12 @@
 #include <memory>
 #include <mutex>
 #include <queue>
+#include <string>
 #include <system_error>
 #include <thread>
 
 #include <cassert>
+#include <cstring>
 
 namespace cubthread
 {
@@ -139,7 +141,7 @@ namespace cubthread
       class core;
 
       worker_pool (std::size_t pool_size, std::size_t task_max_count, context_manager_type &context_mgr,
-		   std::size_t core_count = 1, bool debug_logging = false, bool pool_threads = false,
+		   const char *name, std::size_t core_count = 1, bool debug_logging = false, bool pool_threads = false,
 		   std::chrono::seconds wait_for_task_time = std::chrono::seconds (5));
       ~worker_pool ();
 
@@ -174,6 +176,9 @@ namespace cubthread
       // get worker pool statistics
       // note: the statistics are collected from all cores and all their workers adding up all local statistics
       void get_stats (cubperf::stat_value *stats_out) const;
+
+      // log stats to error log file
+      void er_log_stats (void) const;
 
       inline bool is_pooling_threads () const
       {
@@ -249,6 +254,8 @@ namespace cubthread
 
       // transition time period between active and inactive
       std::chrono::seconds m_wait_for_task_time;
+
+      std::string m_name;
   };
 
   // worker_pool<Context>::core
@@ -479,6 +486,9 @@ namespace cubthread
   template <typename Func>
   void wp_call_func_throwing_system_error (const char *message, Func &func);
 
+  // dump worker pool statistics to error log
+  void wp_er_log_stats (const char *header, cubperf::stat_value *statsp);
+
   /************************************************************************/
   /* Template/inline implementation                                       */
   /************************************************************************/
@@ -489,8 +499,8 @@ namespace cubthread
 
   template <typename Context>
   worker_pool<Context>::worker_pool (std::size_t pool_size, std::size_t task_max_count,
-				     context_manager_type &context_mgr, std::size_t core_count, bool debug_log, bool pool_threads,
-				     std::chrono::seconds wait_for_task_time)
+				     context_manager_type &context_mgr, const char *name, std::size_t core_count,
+				     bool debug_log, bool pool_threads, std::chrono::seconds wait_for_task_time)
     : m_max_workers (pool_size)
     , m_task_max_count (task_max_count)
     , m_task_count (0)
@@ -502,6 +512,7 @@ namespace cubthread
     , m_log (debug_log)
     , m_pool_threads (pool_threads)
     , m_wait_for_task_time (wait_for_task_time)
+    , m_name (name == NULL ? "" : name)
   {
     // initialize cores; we'll try to distribute pool evenly to all cores. if core count is not fully contained in
     // pool size, some cores will have one additional worker
@@ -666,6 +677,17 @@ namespace cubthread
       {
 	m_core_array[it].get_stats (stats_out);
       }
+  }
+
+  template<typename Context>
+  void
+  worker_pool<Context>::er_log_stats (void) const
+  {
+    const std::size_t MAX_SIZE = 32;
+    cubperf::stat_value stats[MAX_SIZE];
+    std::memset (stats, 0, sizeof (stats));
+    get_stats (stats);
+    wp_er_log_stats (m_name.c_str (), stats);
   }
 
   template <typename Context>
