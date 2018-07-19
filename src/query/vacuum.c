@@ -4119,28 +4119,26 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
   /* Get last_blockid. */
   if (vacuum_is_empty ())
     {
-      if (LSA_ISNULL (&vacuum_Data.recovery_lsa) && LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
+      VACUUM_LOG_BLOCKID log_blockid = logpb_last_complete_blockid ();
+
+      if (log_blockid < 0)
+	{
+	  // we can be here if log has not yet passed first block. one case may be soon after copydb.
+	  assert (log_blockid == VACUUM_NULL_LOG_BLOCKID);
+	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+			 "vacuum_data_load_and_recover: do not update last_blockid; prev_lsa = %lld|%d",
+			 LSA_AS_ARGS (&log_Gl.append.prev_lsa));
+	}
+      else if (LSA_ISNULL (&vacuum_Data.recovery_lsa) && LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
 	{
 	  /* No recovery needed. This is used for 10.1 version to keep the functionality of the database.
 	   * In this case, we are updating the last_blockid of the vacuum to the last block that was logged.
 	   */
+	  vacuum_Data.set_last_blockid (log_blockid);
 
-	  VACUUM_LOG_BLOCKID log_blockid = logpb_last_complete_blockid ();
-	  if (log_blockid != VACUUM_NULL_LOG_BLOCKID)
-	    {
-	      vacuum_Data.set_last_blockid (log_blockid);
-
-	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
-			     "vacuum_data_load_and_recover: set last_blockid = %lld to logpb_last_complete_blockid ()",
-			     (long long int) vacuum_Data.get_last_blockid ());
-	    }
-	  else
-	    {
-	      // we can be here if log has not yet passed first block. one case may be soon after copydb.
-	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
-			     "vacuum_data_load_and_recover: do not update last_blockid; prev_lsa = %lld|%d",
-			     LSA_AS_ARGS (&log_Gl.append.prev_lsa));
-	    }
+	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+			 "vacuum_data_load_and_recover: set last_blockid = %lld to logpb_last_complete_blockid ()",
+			 (long long int) vacuum_Data.get_last_blockid ());
 	}
       else
 	{
