@@ -13689,27 +13689,27 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type, const char *co
 
 fail_end:
   if (savepoint_index && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
-    {
-      (void) tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_INDEX);
-    }
+  {
+    (void)tran_abort_upto_system_savepoint(UNIQUE_PARTITION_SAVEPOINT_INDEX);
+  }
   if (sub_partitions)
-    {
-      free_and_init (sub_partitions);
-    }
+  {
+    free_and_init(sub_partitions);
+  }
   if (out_shared_cons_name)
-    {
-      free_and_init (out_shared_cons_name);
-    }
+  {
+    free_and_init(out_shared_cons_name);
+  }
   if (new_func_index_info)
-    {
-      sm_free_function_index_info (new_func_index_info);
-      free_and_init (new_func_index_info);
-    }
+  {
+    sm_free_function_index_info(new_func_index_info);
+    free_and_init(new_func_index_info);
+  }
   if (new_filter_index_info)
-    {
-      sm_free_filter_index_info (new_filter_index_info);
-      free_and_init (new_filter_index_info);
-    }
+  {
+    sm_free_filter_index_info(new_filter_index_info);
+    free_and_init(new_filter_index_info);
+  }
 
   return error;
 
@@ -14412,6 +14412,12 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
   SM_TEMPLATE *def;
   MOP newmop = NULL;
   LOCK ex_lock = SCH_M_LOCK;
+  MOP *sub_partitions = NULL;
+  int partition_type;
+  int n_attrs, i, use_prefix_length, savepoint_index = 0;
+  SM_FUNCTION_INFO *new_func_index_info = NULL;
+  SM_PREDICATE_INFO *new_filter_index_info = NULL;
+  const char *class_name, *partition_name;
 
   if (att_names == NULL)
     {
@@ -14448,6 +14454,180 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	}
 
       online_index_status = (is_online_index ? SM_ONLINE_INDEX_BUILDING_IN_PROGRESS : SM_NO_ONLINE_INDEX);
+
+      /* Check for partition info. */
+      error = sm_partitioned_class_type (classop, &partition_type, NULL, &sub_partitions);
+      if (error != NO_ERROR)
+	{
+	  smt_quit (def);
+	  goto end;
+	}
+
+      if (partition_type == DB_PARTITIONED_CLASS)
+	{
+          /*  TODO: This will not work for online indexes from the point of view of concurrent transactions since the 
+           *  global index will hold the lock until all the partitions finished loading.
+           *  We need to let the partition loading to also demote the global table as well.
+           */
+
+	  /* We found partitions on this class. Add their constraints accordingly. */
+	  if (attrs_prefix_length)
+	    {
+	      /* Count the number of attributes */
+	      n_attrs = 0;
+	      for (i = 0; att_names[i] != NULL; i++)
+		{
+		  n_attrs++;
+		}
+
+	      use_prefix_length = false;
+	      for (i = 0; i < n_attrs; i++)
+		{
+		  if (attrs_prefix_length[i] != -1)
+		    {
+		      use_prefix_length = true;
+		      break;
+		    }
+		}
+
+	      if (use_prefix_length)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INDEX_PREFIX_LENGTH_ON_PARTITIONED_CLASS, 0);
+		  error = ER_SM_INDEX_PREFIX_LENGTH_ON_PARTITIONED_CLASS;
+		  goto end;
+		}
+	    }
+	  error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_INDEX);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+
+	  savepoint_index = 1;
+	  if (function_index)
+	    {
+	      error = sm_save_function_index_info (&new_func_index_info, function_index);
+	      if (error != NO_ERROR)
+		{
+		  goto end;
+		}
+	    }
+	  if (filter_index)
+	    {
+	      error = sm_save_filter_index_info (&new_filter_index_info, filter_index);
+	      if (error != NO_ERROR)
+		{
+		  goto end;
+		}
+	    }
+	  for (i = 0; error == NO_ERROR && sub_partitions[i]; i++)
+	    {
+	      if (sm_exist_index (sub_partitions[i], constraint_name, NULL) == NO_ERROR)
+		{
+		  class_name = sm_get_ch_name (sub_partitions[i]);
+		  if (class_name)
+		    {
+		      error = ER_SM_INDEX_EXISTS;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, class_name, constraint_name);
+		    }
+		  else
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      error = er_errid ();
+		    }
+		  break;
+		}
+
+	      if (function_index)
+		{
+		  class_name = sm_get_ch_name (classop);
+		  if (class_name == NULL)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      error = er_errid ();
+		      break;
+		    }
+
+		  partition_name = sm_get_ch_name (sub_partitions[i]);
+		  if (partition_name == NULL)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      error = er_errid ();
+		      break;
+		    }
+
+		  /* make sure the expression is compiled using the appropriate name, the partition name */
+		  error =
+		    do_recreate_func_index_constr (NULL, NULL, new_func_index_info, NULL, class_name, partition_name);
+		  if (error != NO_ERROR)
+		    {
+		      goto end;
+		    }
+		}
+	      else
+		{
+		  new_func_index_info = NULL;
+		}
+
+	      if (filter_index)
+		{
+		  /* make sure the expression is compiled using the appropriate name, the partition name */
+		  if (new_filter_index_info->num_attrs > 0)
+		    {
+		      class_name = sm_get_ch_name (classop);
+		      if (class_name == NULL)
+			{
+			  assert (er_errid () != NO_ERROR);
+			  error = er_errid ();
+			  break;
+			}
+
+		      partition_name = sm_get_ch_name (sub_partitions[i]);
+		      if (partition_name == NULL)
+			{
+			  assert (er_errid () != NO_ERROR);
+			  error = er_errid ();
+			  break;
+			}
+
+		      error =
+			do_recreate_filter_index_constr (NULL, new_filter_index_info, NULL, class_name, partition_name);
+		      if (error != NO_ERROR)
+			{
+			  goto end;
+			}
+		    }
+		}
+	      else
+		{
+		  new_filter_index_info = NULL;
+		}
+	      error =
+		sm_add_constraint (sub_partitions[i], constraint_type, constraint_name, att_names, asc_desc, NULL,
+				   class_attributes, new_filter_index_info, new_func_index_info, comment,
+				   is_online_index);
+	    }
+	  if (new_func_index_info)
+	    {
+	      sm_free_function_index_info (new_func_index_info);
+	      free_and_init (new_func_index_info);
+	    }
+	  if (new_filter_index_info)
+	    {
+	      sm_free_filter_index_info (new_filter_index_info);
+	      free_and_init (new_filter_index_info);
+	    }
+
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	}
+
+      if (sub_partitions)
+	{
+	  free_and_init (sub_partitions);
+	}
 
       error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes, NULL,
 				  filter_index, function_index, comment, online_index_status);
@@ -14549,6 +14729,26 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 
     default:
       break;
+    }
+
+end:
+if (savepoint_index && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_INDEX);
+    }
+  if (sub_partitions)
+    {
+      free_and_init (sub_partitions);
+    }
+  if (new_func_index_info)
+    {
+      sm_free_function_index_info (new_func_index_info);
+      free_and_init (new_func_index_info);
+    }
+  if (new_filter_index_info)
+    {
+      sm_free_filter_index_info (new_filter_index_info);
+      free_and_init (new_filter_index_info);
     }
 
   return error;
