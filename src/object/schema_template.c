@@ -143,51 +143,50 @@ smt_find_attribute (SM_TEMPLATE * template_, const char *name, int class_attribu
 {
   int error = NO_ERROR;
   SM_ATTRIBUTE *att;
+  SM_ATTRIBUTE *attr_list;
+
+  *attp = NULL;
 
   if (!sm_check_name (name))
     {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  attr_list = class_attribute ? template_->class_attributes : template_->attributes;
+
+  att = (SM_ATTRIBUTE *) SM_FIND_NAME_IN_COMPONENT_LIST (attr_list, name);
+  *attp = att;
+
+  if (att != NULL)
+    {
+      // found local attr
+      *attp = att;
+      return NO_ERROR;
+    }
+
+  if (template_->current == NULL)
+    {
+      ERROR1 (error, ER_SM_ATTRIBUTE_NOT_FOUND, name);
+      return error;
+    }
+
+  /* check for mistaken references to inherited attributes and give a better message */
+  att = classobj_find_attribute (template_->current, name, class_attribute);
+  *attp = att;
+
+  if (att != NULL)
+    {
+      // found inherited attr
+      ERROR2 (error, ER_SM_INHERITED_ATTRIBUTE, name, sm_get_ch_name (att->class_mop));
+      return error;
     }
   else
     {
-      if (class_attribute)
-	{
-	  att = (SM_ATTRIBUTE *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->class_attributes, name);
-	}
-      else
-	{
-	  att = (SM_ATTRIBUTE *) SM_FIND_NAME_IN_COMPONENT_LIST (template_->attributes, name);
-	}
-
-      if (att != NULL)
-	{
-	  *attp = att;
-	}
-      else
-	{
-	  if (template_->current == NULL)
-	    {
-	      ERROR1 (error, ER_SM_ATTRIBUTE_NOT_FOUND, name);
-	    }
-	  else
-	    {
-	      /* check for mistaken references to inherited attributes and give a better message */
-	      att = classobj_find_attribute (template_->current, name, class_attribute);
-	      if (att == NULL)
-		{
-		  /* wasn't inherited, give the ususal message */
-		  ERROR1 (error, ER_SM_ATTRIBUTE_NOT_FOUND, name);
-		}
-	      else
-		{
-		  ERROR2 (error, ER_SM_INHERITED_ATTRIBUTE, name, sm_get_ch_name (att->class_mop));
-		}
-	    }
-	}
+      /* wasn't inherited, give the ususal message */
+      ERROR1 (error, ER_SM_ATTRIBUTE_NOT_FOUND, name);
+      return error;
     }
-
-  return error;
 }
 
 /*
@@ -2046,9 +2045,20 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
   for (i = 0; i < n_atts && error == NO_ERROR; i++)
     {
       error = smt_find_attribute (template_, att_names[i], class_attribute, &atts[i]);
-      if (error == NO_ERROR && SM_IS_ATTFLAG_INDEX_FAMILY (constraint))
+      if (error == ER_SM_INHERITED_ATTRIBUTE)
 	{
+	  if (constraint == SM_ATTFLAG_INDEX || constraint == SM_ATTFLAG_REVERSE_INDEX)
+	    {
+	      // secondary indexes are allowed on an inherited column
+	      assert (atts[i] != NULL);
+
+	      er_clear ();
+	      error = NO_ERROR;
+	    }
+	}
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
+      else if (error == NO_ERROR && SM_IS_ATTFLAG_INDEX_FAMILY (constraint))
+	{
 	  /* prevent to create index on TEXT attribute */
 	  if (sm_has_text_domain (atts[i], 0))
 	    {
@@ -2057,8 +2067,8 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 		  ERROR1 (error, ER_REGU_NOT_IMPLEMENTED, rel_major_release_string ());
 		}
 	    }
-#endif /* ENABLE_UNUSED_FUNCTION */
 	}
+#endif /* ENABLE_UNUSED_FUNCTION */
     }
   atts[i] = NULL;
 
