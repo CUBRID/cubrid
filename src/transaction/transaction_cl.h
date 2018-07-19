@@ -98,8 +98,9 @@ extern bool tran_is_in_libcas (void);
 extern bool tran_set_check_interrupt (bool flag);
 extern bool tran_get_check_interrupt (void);
 
-extern void tran_set_latest_query_status (int end_query_result, bool committed, int reset_on_commit);
+extern void tran_set_latest_query_status (int end_query_result, int tran_state, int reset_on_commit);
 extern bool tran_was_latest_query_ended (void);
 extern bool tran_was_latest_query_committed (void);
+extern bool tran_was_latest_query_aborted (void);
 extern bool tran_is_reset_required (void);
 #endif /* _TRANSACTION_CL_H_ */

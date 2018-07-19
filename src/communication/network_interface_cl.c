@@ -6529,19 +6529,17 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 
       if (IS_QUERY_EXECUTE_WITH_COMMIT (flag))
 	{
-	  bool committed = false;
 	  ptr = or_unpack_int (ptr, &end_query_result);
 	  ptr = or_unpack_int (ptr, &tran_state);
 	  ptr = or_unpack_int (ptr, &reset_on_commit);
 
-	  if (tran_state == TRAN_UNACTIVE_COMMITTED || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+	  if (tran_state == TRAN_UNACTIVE_COMMITTED || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS
+	      || tran_state == TRAN_UNACTIVE_ABORTED || tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
 	    {
-	      committed = true;
-
 	      net_cleanup_client_queues ();
 	    }
 
-	  tran_set_latest_query_status (end_query_result, committed, reset_on_commit);
+	  tran_set_latest_query_status (end_query_result, tran_state, reset_on_commit);
 	}
 
       if (replydata_listid && replydata_size_listid)

@@ -4617,8 +4617,6 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   CACHE_TIME_RESET (&srv_cache_time);
 
-  /* TO DO - check and update commit state on session state */
-
   /* call the server routine of query execute */
   list_id =
     xqmgr_execute_query (thread_p, &xasl_id, &query_id, dbval_cnt, data, &query_flag, &clt_cache_time, &srv_cache_time,
@@ -4664,10 +4662,10 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	    }
 	}
 
-      if (xasl_cache_entry_p)
+      if ((xasl_cache_entry_p != NULL) || IS_QUERY_EXECUTE_WITH_COMMIT (query_flag))
 	{
 	  tran_abort = need_to_abort_tran (thread_p, &error_code);
-	  if (tran_abort == true)
+	  if ((tran_abort == true) && (xasl_cache_entry_p != NULL))
 	    {
 	      /* Remove transaction id from xasl cache entry before return_error_to_client, where current transaction
 	       * may be aborted. Otherwise, another transaction may be resumed and xasl_cache_entry_p may be removed by 
@@ -4866,6 +4864,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       /* pack end query result */
       if (end_query_allowed)
 	{
+	  assert (tran_abort == false);
 	  /* query ended */
 	  ptr = or_pack_int (ptr, NO_ERROR);
 	}
@@ -4875,9 +4874,18 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	  ptr = or_pack_int (ptr, ER_FAILED);
 	}
 
-      /* pack commit result */
-      ptr = or_pack_int (ptr, (int) tran_state);
-      ptr = or_pack_int (ptr, (int) reset_on_commit);
+      if (tran_abort == false)
+	{
+	  /* pack commit result */
+	  ptr = or_pack_int (ptr, (int) tran_state);
+	  ptr = or_pack_int (ptr, (int) reset_on_commit);
+	}
+      else
+	{
+	  /* pack abort result - TO DO better handling */
+	  ptr = or_pack_int (ptr, (int) TRAN_UNACTIVE_ABORTED);
+	  ptr = or_pack_int (ptr, (int) false);
+	}
     }
 
 #if !defined(NDEBUG)

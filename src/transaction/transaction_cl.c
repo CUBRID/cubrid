@@ -438,42 +438,45 @@ tran_abort (void)
   assert (!tran_was_latest_query_committed ());
   db_clear_client_query_result (true, true);
 
-  /* Forward the abort the transaction manager in the server */
-  state = tran_server_abort ();
-
-  switch (state)
+  if (!tran_was_latest_query_aborted ())
     {
-      /* Successful abort */
-    case TRAN_UNACTIVE_ABORTED:
-    case TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS:
-      break;
+      /* Forward the abort the transaction manager in the server */
+      state = tran_server_abort ();
 
-    case TRAN_UNACTIVE_UNKNOWN:
-      if (!BOOT_IS_CLIENT_RESTARTED ())
+      switch (state)
 	{
+	  /* Successful abort */
+	case TRAN_UNACTIVE_ABORTED:
+	case TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS:
+	  break;
+
+	case TRAN_UNACTIVE_UNKNOWN:
+	  if (!BOOT_IS_CLIENT_RESTARTED ())
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error_cod = er_errid ();
+	      break;
+	    }
+	  /* Fall Thru */
+	case TRAN_RECOVERY:
+	case TRAN_ACTIVE:
+	case TRAN_UNACTIVE_COMMITTED:
+	case TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE:
+	case TRAN_UNACTIVE_UNILATERALLY_ABORTED:
+	case TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE:
+	case TRAN_UNACTIVE_2PC_PREPARE:
+	case TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES:
+	case TRAN_UNACTIVE_2PC_ABORT_DECISION:
+	case TRAN_UNACTIVE_2PC_COMMIT_DECISION:
+	case TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS:
+	default:
 	  assert (er_errid () != NO_ERROR);
 	  error_cod = er_errid ();
+#if defined(CUBRID_DEBUG)
+	  er_log_debug (ARG_FILE_LINE, "tm_abort: Unknown abort state = %s\n", log_state_string (state));
+#endif /* CUBRID_DEBUG */
 	  break;
 	}
-      /* Fall Thru */
-    case TRAN_RECOVERY:
-    case TRAN_ACTIVE:
-    case TRAN_UNACTIVE_COMMITTED:
-    case TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE:
-    case TRAN_UNACTIVE_UNILATERALLY_ABORTED:
-    case TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE:
-    case TRAN_UNACTIVE_2PC_PREPARE:
-    case TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES:
-    case TRAN_UNACTIVE_2PC_ABORT_DECISION:
-    case TRAN_UNACTIVE_2PC_COMMIT_DECISION:
-    case TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS:
-    default:
-      assert (er_errid () != NO_ERROR);
-      error_cod = er_errid ();
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "tm_abort: Unknown abort state = %s\n", log_state_string (state));
-#endif /* CUBRID_DEBUG */
-      break;
     }
 
   /* Increment snapshot version in work space */
@@ -566,7 +569,7 @@ tran_abort_only_client (bool is_server_down)
   db_clear_client_query_result (false, true);
 
   tm_Tran_rep_read_lock = NULL_LOCK;
-  tran_reset_latest_query_status ();
+  //tran_reset_latest_query_status ();
 
   if (is_server_down == false)
     {
@@ -1356,10 +1359,12 @@ tran_get_check_interrupt (void)
 enum LATEST_QUERY_STATUS
 {
   // 000: default, none
+  // 1000: aborted
   // 100: ended, not committed
   // 110: ended, committed
   // 111: ended, committed, reset required
   NONE = 0,
+  ABORTED = 0x1000,
   QUERY_ENDED = 0x100,
   COMMITTED = 0x10,
   RESET_REQUIRED = 0x1
@@ -1369,11 +1374,11 @@ enum LATEST_QUERY_STATUS
  * tran_set_latest_query_status : set latest transaction query execution status
  *   return: nothing
  *   end_query_result(in): end query result
- *   committed(in): true, if transaction was committed
+ *   tran_state(in): transaction state
  *   reset_on_commit(in): non zero, is reset needed
  */
 void
-tran_set_latest_query_status (int end_query_result, bool committed, int reset_on_commit)
+tran_set_latest_query_status (int end_query_result, int tran_state, int reset_on_commit)
 {
   assert (!tran_was_latest_query_committed ());
 
@@ -1381,12 +1386,16 @@ tran_set_latest_query_status (int end_query_result, bool committed, int reset_on
 
   if (end_query_result != NO_ERROR)
     {
+      if (tran_state == TRAN_UNACTIVE_ABORTED || tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
+	{
+	  tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::ABORTED;
+	}
       return;
     }
 
   tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::QUERY_ENDED;
 
-  if (committed)
+  if (tran_state == TRAN_UNACTIVE_COMMITTED || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
     {
       assert (end_query_result == NO_ERROR);
       tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::COMMITTED;
@@ -1394,7 +1403,9 @@ tran_set_latest_query_status (int end_query_result, bool committed, int reset_on
 
   if (reset_on_commit)
     {
-      assert (end_query_result == NO_ERROR && committed);
+      assert (end_query_result == NO_ERROR
+	      && (tran_state == TRAN_UNACTIVE_COMMITTED
+		  || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS));
       tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::RESET_REQUIRED;
     }
 }
@@ -1415,6 +1426,12 @@ bool
 tran_was_latest_query_committed (void)
 {
   return tm_Tran_latest_query_status & LATEST_QUERY_STATUS::COMMITTED;
+}
+
+bool
+tran_was_latest_query_aborted (void)
+{
+  return tm_Tran_latest_query_status & LATEST_QUERY_STATUS::ABORTED;
 }
 
 bool
