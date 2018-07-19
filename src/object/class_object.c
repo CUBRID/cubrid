@@ -9013,7 +9013,7 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
 }
 
 DB_SEQ *
-classobj_make_index_online_index_seq ()
+classobj_make_index_online_index_seq (void)
 {
   DB_SEQ *online_seq;
   DB_VALUE v;

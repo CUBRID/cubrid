@@ -450,8 +450,9 @@ static int flatten_partition_info (SM_TEMPLATE * def, SM_TEMPLATE * flat);
 static DB_OBJLIST *sm_fetch_all_objects_internal (DB_OBJECT * op, DB_FETCH_MODE purpose,
 						  LC_FETCH_VERSION_TYPE * force_fetch_version_type);
 
-static void stats_remove_bt_stats_at_position (ATTR_STATS * attr_stats, int position);
-static void stats_remove_online_index_stats (SM_CLASS * class_);
+static void sm_stats_remove_bt_stats_at_position (ATTR_STATS * attr_stats, int position);
+static void sm_stats_remove_online_index_stats (SM_CLASS * class_);
+
 /*
  * sc_set_current_schema()
  *      return: NO_ERROR if successful
@@ -3762,7 +3763,8 @@ sm_get_class_with_statistics (MOP classop)
     }
 
   /* Iterate through all constraints and check if there is any of them with online index build in progress. */
-  stats_remove_online_index_stats (class_);
+  // TODO - why not filter it in server?
+  sm_stats_remove_online_index_stats (class_);
 
   return class_;
 }
@@ -9107,10 +9109,9 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			      /* unique indexes are shared indexes */
 			      BTID_COPY (&index_btid, &c->index_btid);
 			    }
-			  if (classobj_put_index
-			      (&(flat->properties), c->type, c->name, attrs, c->asc_desc, &index_btid,
-			       c->filter_predicate, c->fk_info, NULL, c->func_index_info, c->comment,
-			       c->online_index_status) != NO_ERROR)
+			  if (classobj_put_index (&flat->properties, c->type, c->name, attrs, c->asc_desc,
+						  &index_btid, c->filter_predicate, c->fk_info, NULL,
+						  c->func_index_info, c->comment, c->online_index_status) != NO_ERROR)
 			    {
 			      pr_clear_value (&cnstr_val);
 			      goto structure_error;
@@ -10188,6 +10189,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_ATTR
 
 	  /* If there are no instances, then call btree_add_index() to create an empty index, otherwise call
 	   * btree_load_index () to load all of the instances (including applicable subclasses) into a new B-tree */
+	  // TODO: optimize has_instances case
 	  if (!has_instances || class_->constraints->online_index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	    {
 	      error = btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk);
@@ -14424,8 +14426,8 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
     case DB_CONSTRAINT_UNIQUE:
     case DB_CONSTRAINT_REVERSE_UNIQUE:
     case DB_CONSTRAINT_PRIMARY_KEY:
-
       DB_AUTH auth;
+      SM_ONLINE_INDEX_STATUS online_index_status;
 
       if (constraint_type == DB_CONSTRAINT_INDEX || constraint_type == DB_CONSTRAINT_REVERSE_INDEX)
 	{
@@ -14443,19 +14445,10 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  return error;
 	}
 
-      if (is_online_index)
-	{
-	  error =
-	    smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes, NULL,
-				filter_index, function_index, comment, SM_ONLINE_INDEX_BUILDING_IN_PROGRESS);
-	}
-      else
-	{
-	  error =
-	    smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes, NULL,
-				filter_index, function_index, comment, SM_NO_ONLINE_INDEX);
-	}
+      online_index_status = (is_online_index ? SM_ONLINE_INDEX_BUILDING_IN_PROGRESS : SM_NO_ONLINE_INDEX);
 
+      error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes, NULL,
+				  filter_index, function_index, comment, online_index_status);
       if (error != NO_ERROR)
 	{
 	  smt_quit (def);
@@ -14469,48 +14462,40 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  return error;
 	}
 
-
-
-      /* Demote lock for online index. */
       if (is_online_index)
 	{
+	  /* Demote lock for online index. */
 	  error = locator_demote_class_lock (&newmop->oid_info.oid, IX_LOCK, &ex_lock);
 	  if (error != NO_ERROR)
 	    {
 	      smt_quit (def);
 	      return error;
 	    }
-	}
 
-      // Load index phase.
-      /* TODO For now, the index will be empty. */
+	  // Load index phase.
+	  /* TODO For now, the index will be empty. */
 
-      /* Promote the lock for online index.  */
-      if (is_online_index)
-	{
+	  error = sm_update_statistics (newmop, STATS_WITH_SAMPLING);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  /* Promote the lock for online index. */
 	  def = smt_edit_class_mop (classop, auth);
 	  if (def == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
 	      return error;
 	    }
-	}
 
-      error = sm_update_statistics (newmop, STATS_WITH_SAMPLING);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-
-      if (is_online_index)
-	{
-	  /*  If we have an online index, we need to change the constraint to SM_ONLINE_INDEX_BUILDING_DONE, and 
-	   *  add remove the old one from the property list. We also do not want to do some later checks.
+	  /* If we have an online index, we need to change the constraint to SM_ONLINE_INDEX_BUILDING_DONE, and 
+	   * add remove the old one from the property list. We also do not want to do some later checks.
 	   */
-	  error =
-	    smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes, NULL,
-				filter_index, function_index, comment, SM_ONLINE_INDEX_BUILDING_DONE);
 
+	  // TODO: Why do we remove and add it rather than just change the property?
+	  error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes,
+				      NULL, filter_index, function_index, comment, SM_ONLINE_INDEX_BUILDING_DONE);
 	  if (error != NO_ERROR)
 	    {
 	      smt_quit (def);
@@ -16104,52 +16089,48 @@ flatten_partition_info (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 }
 
 /*
+ * sm_stats_remove_online_index_stats () - Removes the online index statistics from the statistics arrays.
+ * return        - void
+ * class_ (in)   - Class that requested the statistics.
  *
- *  stats_remove_online_index_stats () - Removes the online index statistics from the statistics arrays.
- *  return        - void
- *  class_ (in)   - Class that requested the statistics.
- *
- *  Here, we have to remove the stats regarding the possible btid that represents
- *  an online index build in progress.
+ * Here, we have to remove the stats regarding the possible btid that represents
+ * an online index build in progress.
  */
-
-void
-stats_remove_online_index_stats (SM_CLASS * class_)
+static void
+sm_stats_remove_online_index_stats (SM_CLASS * class_)
 {
-  SM_CLASS_CONSTRAINT *cons = class_->constraints;
+  SM_CLASS_CONSTRAINT *cons;
   int i;
   BTID online_index_btid = BTID_INITIALIZER;
 
-  while (cons != NULL)
+  for (cons = class_->constraints; cons != NULL; cons = cons->next)
     {
       /* Check if there is an online index currently being built. */
-      if (cons->online_index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+      if (cons->online_index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	{
-	  online_index_btid = cons->index_btid;
+	  continue;
+	}
 
-	  /* Iterate through all attributes. */
-	  for (i = 0; i < class_->stats->n_attrs; i++)
+      online_index_btid = cons->index_btid;
+
+      /* Iterate through all attributes. */
+      for (i = 0; i < class_->stats->n_attrs; i++)
+	{
+	  /* Iterate through all statistics for this attribute and find the one with the same BTID as the online index. */
+	  for (int j = 0; j < class_->stats->attr_stats[i].n_btstats; j++)
 	    {
-	      if (class_->stats->attr_stats[i].n_btstats != 0)
+	      if (BTID_IS_EQUAL (&class_->stats->attr_stats[i].bt_stats[j].btid, &online_index_btid) == 1)
 		{
-		  /* Iterate through all statistics for this attribute and find the one with the same BTID as the online index. */
-		  for (int j = 0; j < class_->stats->attr_stats[i].n_btstats; j++)
-		    {
-		      if (BTID_IS_EQUAL (&class_->stats->attr_stats[i].bt_stats[j].btid, &online_index_btid) == 1)
-			{
-			  stats_remove_bt_stats_at_position (&class_->stats->attr_stats[i], j);
-			  break;
-			}
-		    }
+		  sm_stats_remove_bt_stats_at_position (&class_->stats->attr_stats[i], j);
+		  break;
 		}
 	    }
 	}
-      cons = cons->next;
     }
 }
 
-void
-stats_remove_bt_stats_at_position (ATTR_STATS * attr_stats, int position)
+static void
+sm_stats_remove_bt_stats_at_position (ATTR_STATS * attr_stats, int position)
 {
   BTREE_STATS *to_be_moved;
   int i;
