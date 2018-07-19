@@ -4136,8 +4136,10 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 	    }
 	  else
 	    {
-	      // we should just not be here...
-	      assert (false);
+	      // we can be here if log has not yet passed first block. one case may be soon after copydb.
+	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+			     "vacuum_data_load_and_recover: do not update last_blockid; prev_lsa = %lld|%d",
+			     LSA_AS_ARGS (&log_Gl.append.prev_lsa));
 	    }
 	}
       else
