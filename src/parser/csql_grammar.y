@@ -1865,32 +1865,32 @@ stmt_
 			PT_NODE *stmt = $2;
 			if (stmt && with_clause)
 			  {
-			    stmt->info.insert.with = with_clause;
+				stmt->info.insert.with = with_clause;
 			  }
 			$$ = stmt;
 		DBG_PRINT}}
 	| opt_with_clause
-		update_stmt
+	  update_stmt
 		{{
 			PT_NODE *with_clause = $1;
 			PT_NODE *stmt = $2;
 			if (stmt && with_clause)
 			  {
-			    stmt->info.update.with = with_clause;
+				stmt->info.update.with = with_clause;
 			  }
 			$$ = stmt;
-		DBG_PRINT}}
-	|	opt_with_clause
-		delete_stmt
+	  DBG_PRINT}}
+	| opt_with_clause
+	  delete_stmt
 		{{
 			PT_NODE *with_clause = $1;
 			PT_NODE *stmt = $2;
 			if (stmt && with_clause)
 			  {
-			    stmt->info.delete_.with = with_clause;
+				stmt->info.delete_.with = with_clause;
 			  }
 			$$ = stmt;
-		DBG_PRINT}}
+	  DBG_PRINT}}
 	| show_stmt
 		{ $$ = $1; }		
 	| call_stmt

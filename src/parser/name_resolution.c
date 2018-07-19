@@ -2577,10 +2577,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       bind_arg->spec_frames = NULL;
       pt_bind_names_in_with_clause (parser, node, bind_arg);
 
-      /* restore links to current scopes */
-      //bind_arg->scopes = &scopestack;
-      //bind_arg->spec_frames = &spec_frame;
+      bind_arg->spec_frames = spec_frame.next;
 
+      /* restore links to current scopes */
       bind_arg->scopes = &scopestack;
       spec_frame.next = bind_arg->spec_frames;
       spec_frame.extra_specs = NULL;
@@ -2611,6 +2610,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       bind_arg->scopes = NULL;
       bind_arg->spec_frames = NULL;
       pt_bind_names_in_with_clause (parser, node, bind_arg);
+
+      bind_arg->spec_frames = spec_frame.next;
 
       bind_arg->scopes = &scopestack;
       spec_frame.next = bind_arg->spec_frames;
