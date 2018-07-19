@@ -2378,7 +2378,7 @@ smt_change_method_implementation (SM_TEMPLATE * template_, const char *name, int
   if (method->signatures->function_name == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-      return error;
+      // fall through
     }
   ws_free_string (current);
 
@@ -2387,7 +2387,7 @@ smt_change_method_implementation (SM_TEMPLATE * template_, const char *name, int
   method->function = NULL;
   method->signatures->function = NULL;
 
-  return NO_ERROR;
+  return error;
 }
 
 /*
