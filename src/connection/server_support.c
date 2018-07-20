@@ -251,6 +251,11 @@ css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & 
 					      size_t & count);
 
 static HA_SERVER_STATE css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE req_state);
+
+static bool css_connection_thread_pooling (void);
+static cubthread::wait_seconds css_connection_thread_timeout (void);
+static bool css_server_request_thread_pooling (void);
+static cubthread::wait_seconds css_server_request_thread_timeout (void);
 // *INDENT-ON*
 
 #if defined (SERVER_MODE)
@@ -1400,11 +1405,11 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   const std::size_t MAX_CONNECTIONS = css_get_max_conn ();
 
   // create request worker pool
-  css_Server_request_worker_pool = cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT,
-										  "transaction workers", NULL,
-										  cubthread::system_core_count (),
-										  false, true,
-										  std::chrono::minutes (5));
+  css_Server_request_worker_pool =
+    cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT, "transaction workers", NULL,
+						   cubthread::system_core_count (), false,
+						   css_server_request_thread_pooling (),
+						   css_server_request_thread_timeout ());
   if (css_Server_request_worker_pool == NULL)
     {
       assert (false);
@@ -1416,7 +1421,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   // create connection worker pool
   css_Connection_worker_pool =
     cubthread::get_manager ()->create_worker_pool (MAX_CONNECTIONS, MAX_CONNECTIONS, "connection threads", NULL, 1,
-						   false, true, std::chrono::minutes (5));
+						   false, css_connection_thread_pooling (),
+						   css_connection_thread_timeout ());
   if (css_Connection_worker_pool == NULL)
     {
       assert (false);
@@ -2716,7 +2722,6 @@ css_process_new_slave (SOCKET master_fd)
 
   SOCKET new_fd;
   unsigned short rid;
-  css_error_code rc;
   cubcomm::channel chn;
 
   /* receive new socket descriptor from the master */
@@ -2735,7 +2740,7 @@ css_process_new_slave (SOCKET master_fd)
   /* TODO[arnia] deactivate for now this new replication
    * code and reactivate it later, when merging with razvan
    */
-  rc = chn.accept (new_fd);
+  css_error_code rc = chn.accept (new_fd);
   assert (rc == NO_ERRORS);
 
   // *INDENT-OFF*
@@ -3366,11 +3371,12 @@ css_connection_thread_pooling (void)
   return prm_get_bool_value (PRM_ID_THREAD_CONNECTION_POOLING);
 }
 
-static std::chrono::seconds
+static cubthread::wait_seconds
 css_connection_thread_timeout (void)
 {
   // todo: need infinite timeout
-  return std::chrono::seconds (prm_get_integer_value (PRM_ID_THREAD_CONNECTION_TIMEOUT_SECONDS));
+  return
+    cubthread::wait_seconds (std::chrono::seconds (prm_get_integer_value (PRM_ID_THREAD_CONNECTION_TIMEOUT_SECONDS)));
 }
 
 static bool
@@ -3379,10 +3385,10 @@ css_server_request_thread_pooling (void)
   return prm_get_bool_value (PRM_ID_THREAD_WORKER_POOLING);
 }
 
-static std::chrono::seconds
+static cubthread::wait_seconds
 css_server_request_thread_timeout (void)
 {
   // todo: need infinite timeout
-  return std::chrono::seconds (prm_get_integer_value (PRM_ID_THREAD_WORKER_TIMEOUT_SECONDS));
+  return cubthread::wait_seconds (std::chrono::seconds (prm_get_integer_value (PRM_ID_THREAD_WORKER_TIMEOUT_SECONDS)));
 }
 // *INDENT-ON*

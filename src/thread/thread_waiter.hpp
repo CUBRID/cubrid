@@ -107,32 +107,33 @@ namespace cubthread
     bool m_infinite;
 
     wait_duration ()
-    : m_duration (0)
-    , m_infinite (true)
+      : m_duration (0)
+      , m_infinite (true)
     {
       //
     }
 
-    wait_duration (const D& duration)
-    : m_duration (duration)
-    , m_infinite (false)
+    wait_duration (const D &duration)
+      : m_duration (duration)
+      , m_infinite (false)
     {
       //
     }
 
-    const wait_duration& operator= (const D& duration)
+    const wait_duration &operator= (const D &duration)
     {
       m_duration = duration;
       m_infinite = false;
     }
   };
+  using wait_seconds = wait_duration<std::chrono::seconds>;
 
   template <typename D>
-  void condvar_wait (std::condition_variable & condvar, std::unique_lock<std::mutex> & lock,
-                     const wait_duration<D> & duration);
+  void condvar_wait (std::condition_variable &condvar, std::unique_lock<std::mutex> &lock,
+		     const wait_duration<D> &duration);
   template <typename D, typename P>
-  bool condvar_wait (std::condition_variable & condvar, std::unique_lock<std::mutex> & lock,
-                     const wait_duration<D> & duration, P pred);
+  bool condvar_wait (std::condition_variable &condvar, std::unique_lock<std::mutex> &lock,
+		     const wait_duration<D> &duration, P pred);
 
   //////////////////////////////////////////////////////////////////////////
   // template/inline implementation
@@ -140,32 +141,32 @@ namespace cubthread
 
   template <typename D>
   void
-  condvar_wait (std::condition_variable & condvar, std::unique_lock<std::mutex> & lock,
-                const wait_duration<D> & duration)
+  condvar_wait (std::condition_variable &condvar, std::unique_lock<std::mutex> &lock,
+		const wait_duration<D> &duration)
   {
     if (duration.m_infinite)
       {
-        condvar.wait (lock);
+	condvar.wait (lock);
       }
     else
       {
-        (void) condvar.wait_for (lock, duration.m_duration);
+	(void) condvar.wait_for (lock, duration.m_duration);
       }
   }
 
   template <typename D, typename P>
   bool
-  condvar_wait (std::condition_variable & condvar, std::unique_lock<std::mutex> & lock,
-                const wait_duration<D> & duration, P pred)
+  condvar_wait (std::condition_variable &condvar, std::unique_lock<std::mutex> &lock,
+		const wait_duration<D> &duration, P pred)
   {
     if (duration.m_infinite)
       {
-        condvar.wait (lock, pred);
-        return true;
+	condvar.wait (lock, pred);
+	return true;
       }
     else
       {
-        return condvar.wait_for (lock, duration.m_duration, pred);
+	return condvar.wait_for (lock, duration.m_duration, pred);
       }
   }
 } // namespace cubthread

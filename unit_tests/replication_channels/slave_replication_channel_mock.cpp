@@ -48,7 +48,7 @@ namespace slave
 
   int init ()
   {
-    workpool = cubthread::get_manager()->create_worker_pool (4, NUM_MOCK_SLAVES, NULL, 1, false);
+    workpool = cubthread::get_manager()->create_worker_pool (4, NUM_MOCK_SLAVES, NULL, NULL, 1, false);
 
     for (int i = 0; i < NUM_MOCK_SLAVES; i++)
       {

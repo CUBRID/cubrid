@@ -141,7 +141,7 @@ namespace cubthread
   entry_workpool *
   manager::create_worker_pool (size_t pool_size, size_t task_max_count, const char *name,
 			       entry_manager *context_manager, std::size_t core_count, bool debug_logging,
-			       bool pool_threads, wait_duration<std::chrono::seconds> wait_for_task_time)
+			       bool pool_threads, wait_seconds wait_for_task_time)
   {
 #if defined (SERVER_MODE)
     if (is_single_thread ())

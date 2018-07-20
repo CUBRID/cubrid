@@ -143,7 +143,7 @@ namespace cubthread
 
       worker_pool (std::size_t pool_size, std::size_t task_max_count, context_manager_type &context_mgr,
 		   const char *name, std::size_t core_count = 1, bool debug_logging = false, bool pool_threads = false,
-                   wait_duration<std::chrono::seconds> wait_for_task_time = std::chrono::seconds (5));
+		   wait_seconds wait_for_task_time = std::chrono::seconds (5));
       ~worker_pool ();
 
       // try to execute task; executes only if the maximum number of tasks is not reached.
@@ -185,7 +185,7 @@ namespace cubthread
       {
 	return m_pool_threads;
       }
-      inline const wait_duration<std::chrono::seconds> &get_wait_for_task_time () const
+      inline const wait_seconds &get_wait_for_task_time () const
       {
 	return m_wait_for_task_time;
       }
@@ -254,7 +254,7 @@ namespace cubthread
       bool m_pool_threads;
 
       // transition time period between active and inactive
-      wait_duration<std::chrono::seconds> m_wait_for_task_time;
+      wait_seconds m_wait_for_task_time;
 
       std::string m_name;
   };
@@ -501,8 +501,7 @@ namespace cubthread
   template <typename Context>
   worker_pool<Context>::worker_pool (std::size_t pool_size, std::size_t task_max_count,
 				     context_manager_type &context_mgr, const char *name, std::size_t core_count,
-				     bool debug_log, bool pool_threads,
-                                     wait_duration<std::chrono::seconds> wait_for_task_time)
+				     bool debug_log, bool pool_threads, wait_seconds wait_for_task_time)
     : m_max_workers (pool_size)
     , m_task_max_count (task_max_count)
     , m_task_count (0)
@@ -1203,8 +1202,8 @@ namespace cubthread
 	  {
 	    // wait until a task is received or stopped ...
 	    // ... or time out
-            condvar_wait (m_task_cv, ulock, m_parent_core->get_parent_pool ()->get_wait_for_task_time (),
-                          [this] () -> bool { return m_task_p != NULL || m_stop; });
+	    condvar_wait (m_task_cv, ulock, m_parent_core->get_parent_pool ()->get_wait_for_task_time (),
+			  [this] () -> bool { return m_task_p != NULL || m_stop; });
 	  }
 	else
 	  {
