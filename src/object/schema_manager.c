@@ -9110,8 +9110,9 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			      BTID_COPY (&index_btid, &c->index_btid);
 			    }
 			  if (classobj_put_index (&flat->properties, c->type, c->name, attrs, c->asc_desc,
-						  &index_btid, c->filter_predicate, c->fk_info, NULL,
-						  c->func_index_info, c->comment, c->online_index_status) != NO_ERROR)
+						  c->attrs_prefix_length, &index_btid, c->filter_predicate, c->fk_info,
+						  NULL, c->func_index_info, c->comment,
+						  c->online_index_status) != NO_ERROR)
 			    {
 			      pr_clear_value (&cnstr_val);
 			      goto structure_error;

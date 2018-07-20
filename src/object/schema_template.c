@@ -76,9 +76,10 @@ static int check_domain_class_type (SM_TEMPLATE * template_, DB_OBJECT * domain_
 static SM_TEMPLATE *def_class_internal (const char *name, int class_type);
 static int smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type,
 					   const char *constraint_name, SM_ATTRIBUTE ** atts, const int *asc_desc,
-					   SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name,
-					   SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index,
-					   const char *comment, SM_ONLINE_INDEX_STATUS online_index_status);
+					   const int *attr_prefix_length, SM_FOREIGN_KEY_INFO * fk_info,
+					   char *shared_cons_name, SM_PREDICATE_INFO * filter_index,
+					   SM_FUNCTION_INFO * function_index, const char *comment,
+					   SM_ONLINE_INDEX_STATUS online_index_status);
 static int smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_value,
 						 DB_DEFAULT_EXPR * default_expr);
 static int smt_drop_constraint_from_property (SM_TEMPLATE * template_, const char *constraint_name,
@@ -1533,17 +1534,17 @@ smt_drop_constraint_from_property (SM_TEMPLATE * template_, const char *constrai
  *   constraint_name(in): constraint name
  *   atts(in):
  *   asc_desc(in): asc/desc info list
+ *   attr_prefix_length(in):
  *   fk_info(in):
  *   shared_cons_name(in):
  *   filter_index(in):
  *   function_index(in)
  *   comment(in):
  */
-
 static int
 smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type, const char *constraint_name,
-				SM_ATTRIBUTE ** atts, const int *asc_desc, SM_FOREIGN_KEY_INFO * fk_info,
-				char *shared_cons_name, SM_PREDICATE_INFO * filter_index,
+				SM_ATTRIBUTE ** atts, const int *asc_desc, const int *attr_prefix_length,
+				SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name, SM_PREDICATE_INFO * filter_index,
 				SM_FUNCTION_INFO * function_index, const char *comment,
 				SM_ONLINE_INDEX_STATUS online_index_status)
 {
@@ -1561,19 +1562,18 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
       if (classobj_find_prop_constraint (template_->properties, constraint, constraint_name, &cnstr_val))
 	{
 	  ERROR1 (error, ER_SM_CONSTRAINT_EXISTS, constraint_name);
+	  goto end;
 	}
     }
 
-  if (error == NO_ERROR)
+  if (classobj_put_index (&template_->properties, type, constraint_name, atts, asc_desc, attr_prefix_length, NULL,
+			  filter_index, fk_info, shared_cons_name, function_index, comment,
+			  online_index_status) == ER_FAILED)
     {
-      if (classobj_put_index (&(template_->properties), type, constraint_name, atts, asc_desc, NULL, filter_index,
-			      fk_info, shared_cons_name, function_index, comment, online_index_status) == ER_FAILED)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	}
+      ASSERT_ERROR_AND_SET (error);
     }
 
+end:
   pr_clear_value (&cnstr_val);
 
   return error;
@@ -2164,8 +2164,9 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 
       /* Add the constraint. */
       error = smt_add_constraint_to_property (template_, SM_MAP_INDEX_ATTFLAG_TO_CONSTRAINT (constraint),
-					      constraint_name, atts, asc_desc, fk_info, shared_cons_name,
-					      filter_index, function_index, comment, online_index_status);
+					      constraint_name, atts, asc_desc, attrs_prefix_length, fk_info,
+					      shared_cons_name, filter_index, function_index, comment,
+					      online_index_status);
       if (error != NO_ERROR)
 	{
 	  goto error_return;

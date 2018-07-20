@@ -932,8 +932,8 @@ extern void classobj_free_prop (DB_SEQ * properties);
 extern int classobj_put_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue);
 extern int classobj_drop_prop (DB_SEQ * properties, const char *name);
 extern int classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name,
-			       SM_ATTRIBUTE ** atts, const int *asc_desc, const BTID * id,
-			       SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
+			       SM_ATTRIBUTE ** atts, const int *asc_desc, const int *attr_prefix_length,
+			       const BTID * id, SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
 			       char *shared_cons_name, SM_FUNCTION_INFO * func_index_info, const char *comment,
 			       SM_ONLINE_INDEX_STATUS online_index_status);
 extern int classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name,

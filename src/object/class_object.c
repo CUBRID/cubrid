@@ -907,6 +907,7 @@ classobj_make_index_filter_pred_seq (SM_PREDICATE_INFO * filter_index_info)
  *   constraint_name(in):
  *   atts(in): attribute list
  *   asc_desc: asc/desc info list
+ *   attr_prefix_length:
  *   id(in): new index value
  *   filter_index_info(in):
  *   fk_info(in):
@@ -917,9 +918,9 @@ classobj_make_index_filter_pred_seq (SM_PREDICATE_INFO * filter_index_info)
 
 int
 classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name, SM_ATTRIBUTE ** atts,
-		    const int *asc_desc, const BTID * id, SM_PREDICATE_INFO * filter_index_info,
-		    SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name, SM_FUNCTION_INFO * func_index_info,
-		    const char *comment, SM_ONLINE_INDEX_STATUS online_index_status)
+		    const int *asc_desc, const int *attr_prefix_length, const BTID * id,
+		    SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name,
+		    SM_FUNCTION_INFO * func_index_info, const char *comment, SM_ONLINE_INDEX_STATUS online_index_status)
 {
   int i;
   const char *prop_name = classobj_map_constraint_to_property (type);
@@ -1093,7 +1094,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 	      && online_index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	    {
 	      /* prefix length */
-	      prefix_seq = classobj_make_index_attr_prefix_seq (num_attrs, NULL);
+	      prefix_seq = classobj_make_index_attr_prefix_seq (num_attrs, attr_prefix_length);
 	      if (prefix_seq != NULL)
 		{
 		  db_make_sequence (&value, prefix_seq);
@@ -1156,7 +1157,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 		    }
 		  else
 		    {
-		      prefix_seq = classobj_make_index_attr_prefix_seq (num_attrs, NULL);
+		      prefix_seq = classobj_make_index_attr_prefix_seq (num_attrs, attr_prefix_length);
 		      if (prefix_seq == NULL)
 			{
 			  goto error;
