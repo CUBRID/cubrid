@@ -8975,12 +8975,15 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  PT_NODE **links = NULL;
 	  int no_vals = 0, no_consts = 0;
 
-	  // TODO: Solve client updates. They seem scary!
-	  assert (statement->info.update.with == NULL);
+	  PT_NODE *from = statement->info.update.spec;
+	  PT_NODE *assigns = statement->info.update.assignment;
 
-	  err =
-	    pt_get_assignment_lists (parser, &select_names, &select_values, &const_names, &const_values, &no_vals,
-				     &no_consts, statement->info.update.assignment, &links);
+	  if (statement->info.update.with == NULL)
+	    {
+	      /* client-side updates with CTEs are not supported for now */
+	      PT_INTERNAL_ERROR (parser, "update");
+	      break;
+	    }
 
 	  err = pt_append_omitted_on_update_expr_assignments (parser, assigns, from);
 	  if (err != NO_ERROR)

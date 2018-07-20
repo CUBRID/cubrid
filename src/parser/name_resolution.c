@@ -9589,9 +9589,6 @@ pt_bind_names_in_with_clause (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_N
   PT_NODE *with;
   PT_NODE *curr_cte;
 
-  //assert (PT_IS_QUERY_NODE_TYPE (node->node_type));
-
-
   switch (node->node_type)
     {
     case PT_SELECT:

@@ -17135,15 +17135,17 @@ error:
 
 /*
  * pt_make_aptr_parent_node () - Builds a BUILDLIST proc for the query node and
- *				 attaches it as the aptr to the xasl node.
+ *				 attaches it as the aptr to the xasl node after the
+ *				 CTE proc nodes.
  *				 A list scan spec from the aptr's list file is
  *				 attached to the xasl node.
  *
  * return      : XASL node.
  * parser (in) : Parser context.
  * node (in)   : Parser node containing sub-query.
+ * with (in)   : with clause with built cte proc
  * type (in)   : XASL proc type.
- *
+ * 
  * NOTE: This function should not be used in the INSERT ... VALUES case.
  */
 static XASL_NODE *
@@ -17151,10 +17153,9 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * wit
 {
   XASL_NODE *aptr = NULL;
   XASL_NODE *xasl = NULL;
-  XASL_NODE *cte = NULL;
+  PT_NODE *cte = NULL;
   REGU_VARIABLE_LIST regu_attributes;
 
-  // TODO: What is the meaning of this? How does UPDATE_PROC differ from BUILDLIST_PROC that uses CTE
   xasl = regu_xasl_node_alloc (type);
 
   assert (with == NULL || with->node_type == PT_WITH_CLAUSE);
@@ -17162,7 +17163,7 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * wit
   if (with != NULL)
     {
       assert (with->info.with_clause.cte_definition_list != NULL);
-      cte = (XASL_NODE *) with->info.with_clause.cte_definition_list->info.cte.xasl;
+      cte = with->info.with_clause.cte_definition_list;
     }
 
   if (xasl != NULL && node != NULL)
@@ -17200,10 +17201,23 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * wit
 		  namelist = pt_get_select_list (parser, node);
 		}
 
+	      /* append aptr after cte procs */
 	      if (cte != NULL)
 		{
-		  xasl->aptr_list = cte;
-		  cte->next = aptr;
+		  XASL_NODE *cte_xasl = (XASL_NODE *) cte->info.cte.xasl;
+		  XASL_NODE *last_aptr = cte_xasl;
+		  xasl->aptr_list = cte_xasl;
+
+		  cte = cte->next;
+		  while (cte != NULL)
+		    {
+		      cte_xasl = (XASL_NODE *) cte->info.cte.xasl;
+		      last_aptr->next = cte_xasl;
+		      cte = cte->next;
+		      last_aptr = last_aptr->next;
+		    }
+
+		  last_aptr->next = aptr;
 		}
 	      else
 		{
@@ -17211,7 +17225,6 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * wit
 		}
 	      aptr->next = NULL;
 
-	      // TODO: What do these ceremonies do?
 	      xasl->val_list = pt_make_val_list (parser, namelist);
 	      if (xasl->val_list != NULL)
 		{
@@ -17546,6 +17559,11 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       int n;
       TABLE_INFO *ti;
 
+      if (with != NULL)
+	{
+	  /* In this case a cte proc is to be built on regu_vars of insert proc */
+	  assert (false);
+	}
       xasl = regu_xasl_node_alloc (INSERT_PROC);
       if (xasl == NULL)
 	{
@@ -18786,25 +18804,38 @@ pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statemen
     }
 }
 
+ /*
+  * generate_xasl_for_with_clause () - Creates xasl for ctes nodes of the with clause
+  *                    
+  *   return:
+  *   parser(in): context
+  *   statement(in): select parse tree
+  *   spec_flag(in): spec flag: PT_SPEC_FLAG_UPDATE or PT_SPEC_FLAG_DELETE
+  */
 void
 generate_xasl_for_with_clause (PARSER_CONTEXT * parser, PT_NODE * with)
 {
-  // Do the ceremonies with with clause
-  PT_NODE *old = xasl_Supp_info.query_list;
+  if (xasl_Supp_info.query_list != NULL)
+    {
+      parser_free_tree (parser, xasl_Supp_info.query_list);
+    }
+
 
   /* add dummy node at the head of list */
   xasl_Supp_info.query_list = parser_new_node (parser, PT_SELECT);
+  if (xasl_Supp_info.query_list == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "out of memory");
+      return;
+    }
+
   xasl_Supp_info.query_list->info.query.xasl = NULL;
 
   /* XASL cache related information */
-  // is this safe?
   pt_init_xasl_supp_info ();
 
-  // This seems to cause a segfault when hid is not initialized. It breaks when calling pt_symbol_info_alloc()
   parser_walk_tree (parser, with, parser_generate_xasl_pre, NULL, parser_generate_xasl_post, &xasl_Supp_info);
-
   parser_free_tree (parser, xasl_Supp_info.query_list);
-  xasl_Supp_info.query_list = old;
 }
 
 /*

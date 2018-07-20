@@ -2097,7 +2097,7 @@ struct pt_delete_info
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *del_stmt_list;	/* list of DELETE statements after split */
   PT_HINT_ENUM hint;		/* hint flag */
-  PT_NODE *with;		/* cte node */
+  PT_NODE *with;		/* PT_WITH_CLAUSE */
   unsigned has_trigger:1;	/* whether it has triggers */
   unsigned server_delete:1;	/* whether it can be server-side deletion */
   unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
@@ -2361,7 +2361,7 @@ struct pt_insert_info
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *odku_assignments;	/* ON DUPLICATE KEY UPDATE assignments */
-  PT_NODE *with;		/* cte node */
+  PT_NODE *with;		/* PT_WITH_CLAUSE */
   bool do_replace;		/* REPLACE statement was given */
   PT_NODE *insert_mode;		/* insert execution mode */
   PT_NODE *non_null_attrs;	/* attributes with not null constraint */
@@ -2896,7 +2896,7 @@ struct pt_update_info
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR */
   PT_HINT_ENUM hint;		/* hint flag */
-  PT_NODE *with;		/* cte node */
+  PT_NODE *with;		/* PT_WITH_CLAUSE */
   unsigned has_trigger:1;	/* whether it has triggers */
   unsigned has_unique:1;	/* whether there's unique constraint */
   unsigned server_update:1;	/* whether it can be server-side update */
