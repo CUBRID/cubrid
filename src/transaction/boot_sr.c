@@ -5957,7 +5957,7 @@ boot_after_copydb (THREAD_ENTRY * thread_p)
   logpb_flush_header (thread_p);
   LOG_CS_EXIT (thread_p);
 
-  _er_log_debug (ARG_FILE_LINE, "Complete boot_after_copydb \n");
+  er_log_debug (ARG_FILE_LINE, "Complete boot_after_copydb \n");
 
   return NO_ERROR;
 }
