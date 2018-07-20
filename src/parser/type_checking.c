@@ -20416,6 +20416,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		  parser_free_tree (parser, result);
 		}
 	    }
+	  expr->next = expr_next;
 	  return expr;
 	}
 
