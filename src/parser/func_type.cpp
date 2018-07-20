@@ -1,8 +1,8 @@
 #include "func_type.hpp"
 #include "message_catalog.h"
-#include "parser_message.h"
 #include "parse_tree.h"
 #include "parser.h"
+#include "parser_message.h"
 
 #if 0 //PT_TYPE_MAYBE
 - for the moment I don't see how to eliminate PT_TYPE_MAYBE from functions with multiple signature
