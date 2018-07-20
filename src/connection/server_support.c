@@ -3401,6 +3401,12 @@ css_get_server_request_thread_timeout_configuration (void)
 static void
 css_start_all_threads (void)
 {
+  if (css_Connection_worker_pool == NULL || css_Server_request_worker_pool == NULL)
+    {
+      // not started yet
+      return;
+    }
+
   // start if pooling is configured
   using clock_type = std::chrono::system_clock;
   clock_type::time_point start_time = clock_type::now ();
