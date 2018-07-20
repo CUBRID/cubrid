@@ -31,6 +31,7 @@
 // same module includes
 #include "thread_entry.hpp"
 #include "thread_task.hpp"
+#include "thread_waiter.hpp"
 
 // other module includes
 #include "base_flag.hpp"
@@ -120,7 +121,7 @@ namespace cubthread
       entry_workpool *create_worker_pool (std::size_t pool_size, std::size_t task_max_count, const char *name,
 					  entry_manager *context_manager, std::size_t core_count,
 					  bool debug_logging, bool pool_threads = false,
-					  std::chrono::seconds wait_for_task_time = std::chrono::seconds (5));
+                                          wait_duration<std::chrono::seconds> wait_for_task_time = std::chrono::seconds (5));
 
       // destroy worker pool
       void destroy_worker_pool (entry_workpool *&worker_pool_arg);
@@ -273,7 +274,7 @@ namespace cubthread
   const int LOG_DAEMON_VACUUM = 0x10000;
   const int LOG_DAEMON_ALL = 0xFFFF0000;     // reserved for thread daemons
 
-  inline bool is_logging_configured (const int logging_flag);
+  bool is_logging_configured (const int logging_flag);
 
   //////////////////////////////////////////////////////////////////////////
   // thread global functions
@@ -328,12 +329,6 @@ namespace cubthread
 	    break;
 	  }
       }
-  }
-
-  bool
-  is_logging_configured (const int logging_flag)
-  {
-    return flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_THREAD_LOGGING_FLAG), logging_flag);
   }
 
 } // namespace cubthread
