@@ -172,24 +172,20 @@ tran_server_unilaterally_abort (THREAD_ENTRY * thread_p, int tran_index)
 /*
  * tran_server_unilaterally_abort_tran -
  *
- * return:
+ * return: state of operation
  *
  * NOTE:this function is used when pgbuf_fix() results in deadlock.
  * It is used by request handler functions to rollback gracefully,
  */
-void
+TRAN_STATE
 tran_server_unilaterally_abort_tran (THREAD_ENTRY * thread_p)
 {
-  TRAN_STATE state;
-  int tran_index;
-
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
 
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  state = xtran_server_abort (thread_p);
+  return xtran_server_abort (thread_p);
 }
 #endif /* SERVER_MODE */
 

@@ -436,6 +436,7 @@ tran_abort (void)
 
   /* Clear any query cursor */
   assert (!tran_was_latest_query_committed ());
+  /* TO DO - avoid end query if aborted */
   db_clear_client_query_result (true, true);
 
   if (!tran_was_latest_query_aborted ())
@@ -569,6 +570,7 @@ tran_abort_only_client (bool is_server_down)
   db_clear_client_query_result (false, true);
 
   tm_Tran_rep_read_lock = NULL_LOCK;
+  /* TO DO - fix me */
   //tran_reset_latest_query_status ();
 
   if (is_server_down == false)
@@ -1360,6 +1362,7 @@ enum LATEST_QUERY_STATUS
 {
   // 000: default, none
   // 1000: aborted
+  // 1001: aborted, reset required
   // 100: ended, not committed
   // 110: ended, committed
   // 111: ended, committed, reset required
@@ -1376,6 +1379,8 @@ enum LATEST_QUERY_STATUS
  *   end_query_result(in): end query result
  *   tran_state(in): transaction state
  *   reset_on_commit(in): non zero, is reset needed
+ *
+ *    Note : This function must be called after query execution with commit.
  */
 void
 tran_set_latest_query_status (int end_query_result, int tran_state, int reset_on_commit)
@@ -1384,28 +1389,28 @@ tran_set_latest_query_status (int end_query_result, int tran_state, int reset_on
 
   tran_reset_latest_query_status ();
 
-  if (end_query_result != NO_ERROR)
+  if (end_query_result == NO_ERROR)
     {
-      if (tran_state == TRAN_UNACTIVE_ABORTED || tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
+      tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::QUERY_ENDED;
+
+      if (tran_state == TRAN_UNACTIVE_COMMITTED || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
 	{
-	  tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::ABORTED;
+	  tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::COMMITTED;
 	}
-      return;
     }
-
-  tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::QUERY_ENDED;
-
-  if (tran_state == TRAN_UNACTIVE_COMMITTED || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+  else if (tran_state == TRAN_UNACTIVE_ABORTED || tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
     {
-      assert (end_query_result == NO_ERROR);
-      tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::COMMITTED;
+      tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::ABORTED;
     }
 
   if (reset_on_commit)
     {
-      assert (end_query_result == NO_ERROR
-	      && (tran_state == TRAN_UNACTIVE_COMMITTED
-		  || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS));
+      assert ((end_query_result == NO_ERROR
+	       && (tran_state == TRAN_UNACTIVE_COMMITTED
+		   || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS))
+	      || (end_query_result != NO_ERROR
+		  && (tran_state == TRAN_UNACTIVE_ABORTED
+		      || tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)));
       tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::RESET_REQUIRED;
     }
 }
