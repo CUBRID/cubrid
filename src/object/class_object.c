@@ -148,10 +148,10 @@ static int classobj_copy_constraint_like (DB_CTMPL * ctemplate, SM_CLASS_CONSTRA
 static SM_FUNCTION_INFO *classobj_make_function_index_info (DB_SEQ * func_seq);
 static DB_SEQ *classobj_make_function_index_info_seq (SM_FUNCTION_INFO * func_index_info);
 static SM_CONSTRAINT_COMPATIBILITY classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints,
-								       DB_CONSTRAINT_TYPE constraint_type,
-								       SM_PREDICATE_INFO * filter_predicate,
-								       SM_FUNCTION_INFO * func_index_info,
-								       SM_CLASS_CONSTRAINT * existing_con,
+								       const DB_CONSTRAINT_TYPE constraint_type,
+								       const SM_PREDICATE_INFO * filter_predicate,
+								       const SM_FUNCTION_INFO * func_index_info,
+								       const SM_CLASS_CONSTRAINT * existing_con,
 								       SM_CLASS_CONSTRAINT ** primary_con);
 static int classobj_check_function_constraint_info (DB_SEQ * constraint_seq, bool * has_function_constraint);
 static int classobj_partition_info_size (SM_PARTITION * partition_info);
@@ -4338,7 +4338,9 @@ classobj_find_cons_primary_key (SM_CLASS_CONSTRAINT * cons_list)
   for (cons = cons_list; cons; cons = cons->next)
     {
       if (cons->type == SM_CONSTRAINT_PRIMARY_KEY)
-	break;
+	{
+	  break;
+	}
     }
 
   return cons;
@@ -8412,9 +8414,10 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj, SM_COMPONENT * com
  * +---+-----------+----------+-----------+---------+----------+-----------+
  */
 static SM_CONSTRAINT_COMPATIBILITY
-classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints, DB_CONSTRAINT_TYPE constraint_type,
-				    SM_PREDICATE_INFO * filter_predicate, SM_FUNCTION_INFO * func_index_info,
-				    SM_CLASS_CONSTRAINT * existing_con, SM_CLASS_CONSTRAINT ** primary_con)
+classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints, const DB_CONSTRAINT_TYPE constraint_type,
+				    const SM_PREDICATE_INFO * filter_predicate,
+				    const SM_FUNCTION_INFO * func_index_info, const SM_CLASS_CONSTRAINT * existing_con,
+				    SM_CLASS_CONSTRAINT ** primary_con)
 {
   SM_CONSTRAINT_COMPATIBILITY ret;
 
@@ -8515,7 +8518,8 @@ check_filter_function:
 int
 classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char **out_shared_cons_name, const char *class_name,
 			    DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name, const char **att_names,
-			    const int *asc_desc, SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * func_index_info)
+			    const int *asc_desc, const SM_PREDICATE_INFO * filter_index,
+			    const SM_FUNCTION_INFO * func_index_info)
 {
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *existing_con, *prim_con = NULL;
@@ -8546,9 +8550,8 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char **out_shared
     }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-  compat_state =
-    classobj_check_index_compatibility (constraints, constraint_type, filter_index, func_index_info, existing_con,
-					&prim_con);
+  compat_state = classobj_check_index_compatibility (constraints, constraint_type, filter_index, func_index_info,
+						     existing_con, &prim_con);
   switch (compat_state)
     {
     case SM_CREATE_NEW_INDEX:

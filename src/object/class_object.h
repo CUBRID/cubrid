@@ -1096,7 +1096,8 @@ extern bool classobj_is_pk_referred (MOP clsop, SM_FOREIGN_KEY_INFO * fk_info, b
 extern int classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char **out_shared_cons_name,
 				       const char *class_name, DB_CONSTRAINT_TYPE constraint_type,
 				       const char *constraint_name, const char **att_names, const int *asc_desc,
-				       SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * func_index_info);
+				       const SM_PREDICATE_INFO * filter_index,
+				       const SM_FUNCTION_INFO * func_index_info);
 extern void classobj_initialize_attributes (SM_ATTRIBUTE * attributes);
 extern int classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src);
 extern void classobj_initialize_methods (SM_METHOD * methods);

@@ -96,7 +96,8 @@ static int smt_add_attribute_to_list (SM_ATTRIBUTE ** att_list, SM_ATTRIBUTE * a
 				      const char *add_after_attribute);
 static int smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name,
 				  DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
-				  const char **att_names, const int *asc_desc);
+				  const char **att_names, const int *asc_desc, const SM_PREDICATE_INFO * filter_index,
+				  const SM_FUNCTION_INFO * function_index);
 static int smt_change_attribute (SM_TEMPLATE * template_, const char *name, const char *new_name,
 				 const char *new_domain_string, DB_DOMAIN * new_domain, const SM_NAME_SPACE name_space,
 				 const bool change_first, const char *change_after_attribute,
@@ -1872,10 +1873,13 @@ smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names, const char
  *   constraint_name(in): Constraint name.
  *   att_names(in): array of attribute names
  *   asc_desc(in): asc/desc info list
+ *   filter_index(in): filter index info
+ *   function_index(in): function index info
  */
 static int
 smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name, DB_CONSTRAINT_TYPE constraint_type,
-		       const char *constraint_name, const char **att_names, const int *asc_desc)
+		       const char *constraint_name, const char **att_names, const int *asc_desc,
+		       const SM_PREDICATE_INFO * filter_index, const SM_FUNCTION_INFO * function_index)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -1910,7 +1914,7 @@ smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name, DB_
 
   error =
     classobj_check_index_exist (check_cons, out_shared_cons_name, template_->name, constraint_type, constraint_name,
-				att_names, asc_desc, NULL, NULL);
+				att_names, asc_desc, filter_index, function_index);
 
   if (temp_cons != NULL)
     {
@@ -1931,7 +1935,10 @@ smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name, DB_
  *   asc_desc(in): asc/desc info list
  *   class_attribute(in): non-zero if we're looking for class attributes
  *   fk_info(in): foreign key information
+ *   filter_index(in): filter index info
+ *   function_index(in): function index info
  *   comment(in): constraint comment
+ *   onlindex_index_status(in):
  */
 int
 smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
@@ -1952,8 +1959,8 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
   /* Skip this check if we have an online index building done. */
   if (online_index_status != SM_ONLINE_INDEX_BUILDING_DONE)
     {
-      error =
-	smt_check_index_exist (template_, &shared_cons_name, constraint_type, constraint_name, att_names, asc_desc);
+      error = smt_check_index_exist (template_, &shared_cons_name, constraint_type, constraint_name, att_names,
+				     asc_desc, filter_index, function_index);
       if (error != NO_ERROR)
 	{
 	  goto error_return;

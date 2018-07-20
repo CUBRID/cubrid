@@ -405,7 +405,7 @@ static void sm_method_final (void);
 
 static int sm_check_index_exist (MOP classop, char **out_shared_cons_name, DB_CONSTRAINT_TYPE constraint_type,
 				 const char *constraint_name, const char **att_names, const int *asc_desc,
-				 SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * func_info);
+				 const SM_PREDICATE_INFO * filter_index, const SM_FUNCTION_INFO * func_info);
 
 static void sm_reset_descriptors (MOP class_);
 
@@ -14362,7 +14362,7 @@ sm_produce_constraint_name_tmpl (SM_TEMPLATE * tmpl, DB_CONSTRAINT_TYPE constrai
 static int
 sm_check_index_exist (MOP classop, char **out_shared_cons_name, DB_CONSTRAINT_TYPE constraint_type,
 		      const char *constraint_name, const char **att_names, const int *asc_desc,
-		      SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * func_info)
+		      const SM_PREDICATE_INFO * filter_index, const SM_FUNCTION_INFO * func_info)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
