@@ -438,7 +438,7 @@ namespace cubthread
       }
       void set_push_time_now (void)
       {
-	m_push_time = cubperf::now ();
+	m_push_time = cubperf::clock::now ();
       }
 
     private:
@@ -1026,13 +1026,13 @@ namespace cubthread
 	  {
 	    break;
 	  }
-	refp = m_worker_array[--m_available_count];
+	refp = m_available_workers[--m_available_count];
 	core_lock.unlock ();
 
 	if (refp->has_thread ())
 	  {
 	    // stack to make available at the end
-	    available_stack.append (refp, 1);
+	    available_stack.append (&refp, 1);
 
 	    // note: this worker's thread may stop soon or may have stopped already. this case is accepted.
 	  }

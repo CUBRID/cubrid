@@ -43,6 +43,9 @@
 #endif /* SERVER_MODE */
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
+#if defined (SERVER_MODE)
+#include "thread_worker_pool.hpp"
+#endif // SERVER_MODE
 #include "util_func.h"
 
 #include <atomic>
@@ -1078,6 +1081,9 @@ vacuum_stop (THREAD_ENTRY * thread_p)
   // stop work pool
   if (vacuum_Worker_threads != NULL)
     {
+#if defined (SERVER_MODE)
+      vacuum_Worker_threads->er_log_stats ();
+#endif // SERVER_MODE
       thread_manager->destroy_worker_pool (vacuum_Worker_threads);
     }
 
