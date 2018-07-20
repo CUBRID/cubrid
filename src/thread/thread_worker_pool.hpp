@@ -716,6 +716,11 @@ namespace cubthread
   void
   worker_pool<Context>::er_log_stats (void) const
   {
+    if (!m_log)
+      {
+	return;
+      }
+
     const std::size_t MAX_SIZE = 32;
     cubperf::stat_value stats[MAX_SIZE];
     std::memset (stats, 0, sizeof (stats));

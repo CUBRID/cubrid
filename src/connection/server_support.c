@@ -1407,7 +1407,9 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   // create request worker pool
   css_Server_request_worker_pool =
     cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT, "transaction workers", NULL,
-						   cubthread::system_core_count (), false,
+						   cubthread::system_core_count (),
+						   cubthread::is_logging_configured
+						   (cubthread::LOG_WORKER_POOL_TRAN_WORKERS),
 						   css_get_server_request_thread_pooling_configuration (),
 						   css_get_server_request_thread_timeout_configuration ());
   if (css_Server_request_worker_pool == NULL)
@@ -1421,7 +1423,9 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   // create connection worker pool
   css_Connection_worker_pool =
     cubthread::get_manager ()->create_worker_pool (MAX_CONNECTIONS, MAX_CONNECTIONS, "connection threads", NULL, 1,
-						   false, css_get_connection_thread_pooling_configuration (),
+						   cubthread::is_logging_configured
+						   (cubthread::LOG_WORKER_POOL_CONNECTIONS),
+						   css_get_connection_thread_pooling_configuration (),
 						   css_get_connection_thread_timeout_configuration ());
   if (css_Connection_worker_pool == NULL)
     {
