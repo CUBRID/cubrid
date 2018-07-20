@@ -314,7 +314,12 @@ struct log_header
      0, 0, 0,					 \
      /* db_charset */				 \
      0,						 \
-     0, 0, 0, 0,				 \
+     /* was_copied */                            \
+     false,                                      \
+     /* dummy INT8 for align */                  \
+     0, 0,                                       \
+     /* fpageid */                               \
+     0,				                 \
      /* append_lsa */                            \
      {NULL_PAGEID, NULL_OFFSET},                 \
      /* chkpt_lsa */                             \
