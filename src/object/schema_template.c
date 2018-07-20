@@ -2128,7 +2128,14 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 	{
 	  if (atts[i]->header.name_space == ID_SHARED_ATTRIBUTE || class_attribute)
 	    {
-	      ERROR1 (error, ER_SM_INDEX_ON_SHARED, att_names[i]);
+	      if (constraint == SM_ATTFLAG_FOREIGN_KEY)
+		{
+		  ERROR2 (error, ER_FK_CANT_ON_SHARED_ATTRIBUTE, constraint_name, atts[i]->header.name);
+		}
+	      else
+		{
+		  ERROR1 (error, ER_SM_INDEX_ON_SHARED, att_names[i]);
+		}
 	      goto error_return;
 	    }
 
