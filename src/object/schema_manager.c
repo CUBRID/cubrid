@@ -391,7 +391,7 @@ static int flatten_subclasses (DB_OBJLIST * subclasses, MOP deleted_class);
 static void abort_subclasses (DB_OBJLIST * subclasses);
 static int update_subclasses (DB_OBJLIST * subclasses);
 static int lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_);
-static int update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res);
+static int update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH auth);
 static int remove_class_triggers (MOP classop, SM_CLASS * class_);
 static int sm_drop_cascade_foreign_key (SM_CLASS * class_);
 static char *sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, const char **att_names,
@@ -12509,7 +12509,7 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
  *   template(in): schema template
  *   classmop(in): MOP of existing class (NULL if new class)
  *   auto_res(in): non-zero to enable auto-resolution of conflicts
- *   verify_oid(in): whether to verify object id
+ *   auth(in): the given authorization mode to modify class
  */
 
 /* NOTE: There were some problems when the transaction was unilaterally
@@ -12531,7 +12531,7 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
  */
 
 static int
-update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
+update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH auth)
 {
   int error = NO_ERROR;
   int num_indexes;
@@ -12559,7 +12559,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
   if ((error == NO_ERROR) && (template_->op != NULL))
     {
       /* existing class, fetch it */
-      error = au_fetch_class (template_->op, &class_, AU_FETCH_UPDATE, AU_ALTER);
+      error = au_fetch_class (template_->op, &class_, AU_FETCH_UPDATE, auth);
     }
 
   if (error != NO_ERROR)
@@ -12800,7 +12800,7 @@ error_return:
 int
 sm_finish_class (SM_TEMPLATE * template_, MOP * classmop)
 {
-  return update_class (template_, classmop, 0);
+  return update_class (template_, classmop, 0, AU_ALTER);
 }
 
 /*
@@ -12814,7 +12814,13 @@ sm_finish_class (SM_TEMPLATE * template_, MOP * classmop)
 int
 sm_update_class (SM_TEMPLATE * template_, MOP * classmop)
 {
-  return update_class (template_, classmop, 0);
+  return update_class (template_, classmop, 0, AU_ALTER);
+}
+
+int
+sm_update_class_with_auth (SM_TEMPLATE * template_, MOP * classmop, DB_AUTH auth)
+{
+  return update_class (template_, classmop, 0, auth);
 }
 
 /*
@@ -12828,7 +12834,7 @@ sm_update_class (SM_TEMPLATE * template_, MOP * classmop)
 int
 sm_update_class_auto (SM_TEMPLATE * template_, MOP * classmop)
 {
-  return update_class (template_, classmop, 1);
+  return update_class (template_, classmop, 1, AU_ALTER);
 }
 
 /*
@@ -14650,7 +14656,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  return error;
 	}
 
-      error = sm_update_class (def, &newmop);
+      error = sm_update_class_with_auth (def, &newmop, auth);
       if (error != NO_ERROR)
 	{
 	  smt_quit (def);
@@ -14699,7 +14705,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	    }
 
 	  /* Update the class now. */
-	  error = sm_update_class (def, &newmop);
+	  error = sm_update_class_with_auth (def, &newmop, auth);
 	  if (error != NO_ERROR)
 	    {
 	      smt_quit (def);
