@@ -19668,8 +19668,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
   // in case of error this functions return the unmodified expr node
   // to avoid a memory leak we need to restore the link of expr->next to expr_next
   // this will be done in the goto end label
-  bool has_error_so_far = false;
-  bool print_pt_error = true;
+  bool has_error = false;
+  bool was_error_set = false;
 
   if (expr == NULL)
     {
@@ -19843,7 +19843,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       default_value = parser_copy_tree (parser, opd1->info.name.default_value);
       if (default_value == NULL)
 	{
-	  has_error_so_far = true;
+	  has_error = true;
+	  was_error_set = true;
 	  goto end;
 	}
 
@@ -19886,7 +19887,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  if (cast_expr == NULL)
 	    {
 	      parser_free_tree (parser, default_value);
-	      has_error_so_far = true;
+	      has_error = true;
+	      was_error_set = true;
 	      goto end;
 	    }
 
@@ -19905,7 +19907,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		  parser_free_tree (parser, default_value);
 		  parser_free_tree (parser, cast_expr);
 
-		  has_error_so_far = true;
+		  has_error = true;
+		  was_error_set = true;
 		  goto end;
 		}
 	    }
@@ -19917,7 +19920,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		  parser_free_tree (parser, default_value);
 		  parser_free_tree (parser, cast_expr);
 
-		  has_error_so_far = true;
+		  has_error = true;
+		  was_error_set = true;
 		  goto end;
 		}
 	      dt->type_enum = opd1->type_enum;
@@ -19937,7 +19941,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
       if (tmp_value == NULL)
 	{
-	  has_error_so_far = true;
+	  has_error = true;
+	  was_error_set = true;
 	  goto end;
 	}
 
@@ -19953,7 +19958,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	{
 	  parser_free_tree (parser, tmp_value);
 	  tmp_value = NULL;
-	  has_error_so_far = true;
+	  has_error = true;
+	  was_error_set = true;
 	  goto end;
 	}
       result = tmp_value;
@@ -19969,7 +19975,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
     {
       if (op == PT_EQ && expr->info.expr.qualifier == PT_EQ_TORDER)
 	{
-	  return result;
+	  goto end;
 	}
       db_make_null (&dummy);
       arg1 = &dummy;
@@ -20035,14 +20041,16 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		opd2 = pt_name (parser, "");
 		if (opd2 == NULL)
 		  {
-		    has_error_so_far = true;
+		    has_error = true;
+		    was_error_set = true;
 		    goto end;
 		  }
 
 		dtype = parser_new_node (parser, PT_DATA_TYPE);
 		if (dtype == NULL)
 		  {
-		    has_error_so_far = true;
+		    has_error = true;
+		    was_error_set = true;
 		    goto end;
 		  }
 
@@ -20060,7 +20068,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		    entity = pt_name (parser, opd1->info.name.resolved);
 		    if (entity == NULL)
 		      {
-			has_error_so_far = true;
+			has_error = true;
+			was_error_set = true;
 			goto end;
 		      }
 		    entity->info.name.db_object = db_find_class (entity->info.name.original);
@@ -20070,8 +20079,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		  {
 		    PT_ERRORf (parser, expr, "Attribute of derived class " "is not permitted in %s()",
 			       (op == PT_INCR ? "INCR" : "DECR"));
-		    has_error_so_far = true;
-		    print_pt_error = false;
+		    has_error = true;
 		    goto end;
 		  }
 		dtype->type_enum = PT_TYPE_OBJECT;
@@ -20085,7 +20093,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		opd2->info.name.resolved = pt_append_string (parser, NULL, opd1->info.name.resolved);
 		if (opd2->info.name.resolved == NULL)
 		  {
-		    has_error_so_far = true;
+		    has_error = true;
+		    was_error_set = true;
 		    goto end;
 		  }
 
@@ -20099,7 +20108,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		opd2 = parser_copy_tree_list (parser, arg1);
 		if (opd2 == NULL)
 		  {
-		    has_error_so_far = true;
+		    has_error = true;
+		    was_error_set = true;
 		    goto end;
 		  }
 
@@ -20119,8 +20129,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    else
 	      {
 		PT_ERRORf (parser, expr, "Invalid argument in %s()", (op == PT_INCR ? "INCR" : "DECR"));
-		print_pt_error = false;
-		has_error_so_far = true;
+
+		has_error = true;
 		goto end;
 	      }
 
@@ -20128,13 +20138,15 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    opd3 = parser_new_node (parser, PT_VALUE);
 	    if (opd3 == NULL)
 	      {
-		has_error_so_far = true;
+		has_error = true;
+		was_error_set = true;
 		goto end;
 	      }
 
 	    if (sm_att_info (entity->info.name.db_object, attr_name, &attrid, &dom, &shared, 0) < 0)
 	      {
-		has_error_so_far = true;
+		has_error = true;
+		was_error_set = true;
 		goto end;
 	      }
 
@@ -20167,7 +20179,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	      result = parser_copy_tree (parser, opd2);
 	      if (result == NULL)
 		{
-		  has_error_so_far = true;
+		  has_error = true;
+		  was_error_set = true;
 		  goto end;
 		}
 	    }
@@ -20177,7 +20190,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	      result = parser_copy_tree (parser, opd1);
 	      if (result == NULL)
 		{
-		  has_error_so_far = true;
+		  has_error = true;
+		  was_error_set = true;
 		  goto end;
 		}
 	    }
@@ -20253,7 +20267,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	      result = parser_copy_tree_list (parser, opd1);
 	      if (result == NULL)
 		{
-		  has_error_so_far = true;
+		  has_error = true;
+		  was_error_set = true;
 		  goto end;
 		}
 	    }
@@ -20264,7 +20279,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	      res = parser_new_node (parser, PT_EXPR);
 	      if (res == NULL)
 		{
-		  has_error_so_far = true;
+		  has_error = true;
+		  was_error_set = true;
 		  goto end;
 		}
 
@@ -20285,7 +20301,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		  if (sdt == NULL)
 		    {
 		      parser_free_tree (parser, res);
-		      has_error_so_far = true;
+		      has_error = true;
+		      was_error_set = true;
 		      goto end;
 		    }
 		  res->data_type = parser_copy_tree_list (parser, expr->data_type);
@@ -20307,7 +20324,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		  if (dt == NULL)
 		    {
 		      parser_free_tree (parser, res);
-		      has_error_so_far = true;
+		      has_error = true;
+		      was_error_set = true;
 		      goto end;
 		    }
 		  dt->type_enum = expr->type_enum;
@@ -20380,7 +20398,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       result = parser_copy_tree_list (parser, result);
       if (result == NULL)
 	{
-	  has_error_so_far = true;
+	  has_error = true;
+	  was_error_set = true;
 	  goto end;
 	}
     }
@@ -20429,7 +20448,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		}
 	    }
 
-	  has_error_so_far = true;
+	  has_error = true;
 	  goto end;
 	}
 
@@ -20473,7 +20492,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	      if (result == NULL)
 		{
 		  pr_clear_value (&dbval_res);
-		  has_error_so_far = true;
+		  has_error = true;
+		  was_error_set = true;
 		  goto end;
 		}
 	    }
@@ -20550,7 +20570,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
       if (result == NULL)
 	{
-	  has_error_so_far = true;
+	  has_error = true;
+	  was_error_set = true;
 	  goto end;
 	}
     }
@@ -20558,9 +20579,9 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 end:
   pr_clear_value (&dbval_res);
 
-  if (has_error_so_far)
+  if (has_error)
     {
-      if (print_pt_error)
+      if (was_error_set)
 	{
 	  PT_ERRORc (parser, expr, er_msg ());
 	}
