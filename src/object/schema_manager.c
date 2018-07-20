@@ -14449,7 +14449,6 @@ sm_add_secondary_index_on_partition (MOP classop, DB_CONSTRAINT_TYPE constraint_
 	  break;
 	}
 
-      new_func_index_info = NULL;
       if (function_index != NULL)
 	{
 	  class_name = sm_get_ch_name (classop);
@@ -14474,7 +14473,6 @@ sm_add_secondary_index_on_partition (MOP classop, DB_CONSTRAINT_TYPE constraint_
 	    }
 	}
 
-      new_filter_index_info = NULL;
       if (filter_index != NULL)
 	{
 	  /* make sure the expression is compiled using the appropriate name, the partition name */
