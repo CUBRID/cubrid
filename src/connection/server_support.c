@@ -252,10 +252,11 @@ css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & 
 
 static HA_SERVER_STATE css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE req_state);
 
-static bool css_connection_thread_pooling (void);
-static cubthread::wait_seconds css_connection_thread_timeout (void);
-static bool css_server_request_thread_pooling (void);
-static cubthread::wait_seconds css_server_request_thread_timeout (void);
+static bool css_get_connection_thread_pooling_configuration (void);
+static cubthread::wait_seconds css_get_connection_thread_timeout_configuration (void);
+static bool css_get_server_request_thread_pooling_configuration (void);
+static cubthread::wait_seconds css_get_server_request_thread_timeout_configuration (void);
+static void css_start_all_threads (void);
 // *INDENT-ON*
 
 #if defined (SERVER_MODE)
@@ -1407,8 +1408,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   css_Server_request_worker_pool =
     cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT, "transaction workers", NULL,
 						   cubthread::system_core_count (), false,
-						   css_server_request_thread_pooling (),
-						   css_server_request_thread_timeout ());
+						   css_get_server_request_thread_pooling_configuration (),
+						   css_get_server_request_thread_timeout_configuration ());
   if (css_Server_request_worker_pool == NULL)
     {
       assert (false);
@@ -1420,8 +1421,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   // create connection worker pool
   css_Connection_worker_pool =
     cubthread::get_manager ()->create_worker_pool (MAX_CONNECTIONS, MAX_CONNECTIONS, "connection threads", NULL, 1,
-						   false, css_connection_thread_pooling (),
-						   css_connection_thread_timeout ());
+						   false, css_get_connection_thread_pooling_configuration (),
+						   css_get_connection_thread_timeout_configuration ());
   if (css_Connection_worker_pool == NULL)
     {
       assert (false);
@@ -2378,6 +2379,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
       if (state == HA_SERVER_STATE_ACTIVE)
 	{
 	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_enable_update() \n");
+          css_start_all_threads ();
 	  logtb_enable_update (thread_p);
 	}
       break;
@@ -2533,6 +2535,7 @@ css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE s
       if (server_state == HA_SERVER_STATE_ACTIVE)
 	{
 	  er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: " "logtb_enable_update() \n");
+	  css_start_all_threads ();
 	  logtb_enable_update (thread_p);
 	}
     }
@@ -3365,13 +3368,13 @@ css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, i
 }
 
 static bool
-css_connection_thread_pooling (void)
+css_get_connection_thread_pooling_configuration (void)
 {
   return prm_get_bool_value (PRM_ID_THREAD_CONNECTION_POOLING);
 }
 
 static cubthread::wait_seconds
-css_connection_thread_timeout (void)
+css_get_connection_thread_timeout_configuration (void)
 {
   // todo: need infinite timeout
   return
@@ -3379,15 +3382,45 @@ css_connection_thread_timeout (void)
 }
 
 static bool
-css_server_request_thread_pooling (void)
+css_get_server_request_thread_pooling_configuration (void)
 {
   return prm_get_bool_value (PRM_ID_THREAD_WORKER_POOLING);
 }
 
 static cubthread::wait_seconds
-css_server_request_thread_timeout (void)
+css_get_server_request_thread_timeout_configuration (void)
 {
   // todo: need infinite timeout
   return cubthread::wait_seconds (std::chrono::seconds (prm_get_integer_value (PRM_ID_THREAD_WORKER_TIMEOUT_SECONDS)));
+}
+
+static void
+css_start_all_threads (void)
+{
+  // start if pooling is configured
+  using clock_type = std::chrono::system_clock;
+  clock_type::time_point start_time = clock_type::now ();
+
+  bool start_connections = css_get_connection_thread_pooling_configuration ();
+  bool start_workers = css_get_server_request_thread_pooling_configuration ();
+
+  if (start_connections)
+    {
+      css_Connection_worker_pool->start_all_workers ();
+    }
+  if (start_workers)
+    {
+      css_Server_request_worker_pool->start_all_workers ();
+    }
+
+  clock_type::time_point end_time = clock_type::now ();
+  er_log_debug (ARG_FILE_LINE,
+                "css_start_all_threads: \n"
+                "\tstarting connection threads: %s\n"
+                "\tstarting transaction workers: %s\n"
+                "\telapsed time: %lld microseconds",
+                start_connections ? "true" : "false",
+                start_workers ? "true" : "false",
+                std::chrono::duration_cast<std::chrono::microseconds> (end_time - start_time).count ());
 }
 // *INDENT-ON*
