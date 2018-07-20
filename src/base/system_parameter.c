@@ -641,9 +641,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_LOG_QUERY_LISTS "log_query_lists"
 
 #define PRM_NAME_THREAD_CONNECTION_POOLING            "thread_connection_pooling"
-#define PRM_NAME_THREAD_CONNECTION_TIMEOUT_SECONDS    "thread_connection_timeout"
+#define PRM_NAME_THREAD_CONNECTION_TIMEOUT_SECONDS    "thread_connection_timeout_seconds"
 #define PRM_NAME_THREAD_WORKER_POOLING                "thread_worker_pooling"
-#define PRM_NAME_THREAD_WORKER_TIMEOUT_SECONDS        "thread_worker_timeout"
+#define PRM_NAME_THREAD_WORKER_TIMEOUT_SECONDS        "thread_worker_timeout_seconds"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
