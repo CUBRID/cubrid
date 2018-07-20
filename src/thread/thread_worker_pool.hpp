@@ -30,6 +30,7 @@
 
 // cubrid includes
 #include "perf_def.hpp"
+#include "extensible_array.hpp"
 
 // system includes
 #include <atomic>
@@ -162,6 +163,9 @@ namespace cubthread
       // stop worker pool; stop all running threads; discard any tasks in queue
       void stop_execution (void);
 
+      // start all worker threads to be ready for future tasks
+      void start_all_workers (void);
+
       // is_running = is not stopped; when created, a worker pool starts running.
       // worker is stopped after stop_execution () is called
       bool is_running (void) const;
@@ -291,6 +295,9 @@ namespace cubthread
       // notify workers to stop; if any of core's workers are still running, outputs is_not_stopped = true
       void notify_stop (bool &is_not_stopped);
       void retire_queued_tasks (void);
+
+      void start_all_workers (void);
+
       // statistics
       void get_stats (cubperf::stat_value *sum_inout) const;
 
@@ -407,8 +414,10 @@ namespace cubthread
       // init
       void init_core (core_type &parent);
 
-      // start task execution on a new thread (push_time is provided by core)
+      // assign task (can be NULL) to running thread or start thread
       void assign_task (task<Context> *work_p, cubperf::time_point push_time);
+      // start thread for current worker
+      void start_thread (void);
       // run task on current thread (push_time is provided by core)
       void push_task_on_running_thread (task<Context> *work_p, cubperf::time_point push_time);
       // stop execution; if worker has a thread running, it outputs is_not_stopped = true
@@ -418,6 +427,19 @@ namespace cubthread
       void map_context (bool &stop, Func &&func, Args &&... args);
       // add own stats to given argument
       void get_stats (cubperf::stat_value *sum_inout) const;
+
+      std::mutex &get_mutex (void)
+      {
+	return m_task_mutex;
+      }
+      bool has_thread (void)
+      {
+	return m_has_thread;
+      }
+      void set_push_time_now (void)
+      {
+	m_push_time = cubperf::now ();
+      }
 
     private:
 
@@ -639,6 +661,16 @@ namespace cubthread
     for (std::size_t it = 0; it < m_core_count; it++)
       {
 	m_core_array[it].retire_queued_tasks ();
+      }
+  }
+
+  template <typename Context>
+  void
+  worker_pool<Context>::start_all_workers (void)
+  {
+    for (std::size_t it = 0; it < m_core_count; it++)
+      {
+	m_core_array[it].start_all_workers ();
       }
   }
 
@@ -956,6 +988,78 @@ namespace cubthread
 
   template <typename Context>
   void
+  worker_pool<Context>::core::start_all_workers (void)
+  {
+    worker *refp = NULL;
+    const std::size_t AVAILABLE_STACK_DEFAULT_SIZE = 1024;
+    extensible_array<worker *, AVAILABLE_STACK_DEFAULT_SIZE> available_stack;
+
+    // how this works:
+    //
+    // we need to start all workers, but we need to consider the fact that some may be already running. what we need
+    // to do is process the available workers and start threads for all those that don't have a thread started.
+    //
+    // workers that already have threads are saved and added back after processing all available workers.
+    //
+    // NOTE: this function does not guarantee that at the end all workers have threads. workers that stop their threads
+    //       during processing available workers are not restarted. however, we end up starting all or almost all
+    //       threads, which is good enough.
+    //
+
+    while (true)
+      {
+	// processing is done in two steps:
+	//
+	//    1. retrieve worker from available workers holding workers mutex
+	//    2. verify if worker has a thread started
+	//        2.1. if it doesn't have a thread, start one
+	//        2.2. if it does have thread, save it to available_stack.
+	//
+
+	std::unique_lock<std::mutex> core_lock (m_workers_mutex);
+	if (m_available_count == 0)
+	  {
+	    break;
+	  }
+	refp = m_worker_array[--m_available_count];
+	core_lock.unlock ();
+
+	if (refp->has_thread ())
+	  {
+	    // stack to make available at the end
+	    available_stack.append (refp, 1);
+
+	    // note: this worker's thread may stop soon or may have stopped already. this case is accepted.
+	  }
+	else
+	  {
+	    // this thread is already stopped and we can start its thread
+	    refp->set_push_time_now ();
+	    refp->start_thread ();
+	  }
+      }
+
+    // copy all workers having threads back to available array.
+    if (available_stack.get_size () > 0)
+      {
+	std::unique_lock<std::mutex> core_lock (m_workers_mutex);
+	if (m_available_count > 0)
+	  {
+	    // move current available to make room for older ones
+	    std::memmove (m_available_workers + available_stack.get_size (), m_available_workers,
+			  m_available_count * sizeof (worker *));
+	  }
+
+	// copy from stack at the beginning of m_available_workers
+	std::memcpy (m_available_workers, available_stack.get_array (), available_stack.get_memsize ());
+
+	// update available count
+	m_available_count += available_stack.get_size ();
+      }
+  }
+
+  template <typename Context>
+  void
   worker_pool<Context>::core::retire_queued_tasks (void)
   {
     std::unique_lock<std::mutex> ulock (m_workers_mutex);
@@ -1033,23 +1137,31 @@ namespace cubthread
 
 	assert (m_context_p == NULL);
 
-	// start thread.
-	//
-	// the next code tries to help visualizing any system errors that can occur during create or detach in debug
-	// mode
-	//
-	// release will basically be reduced to:
-	// std::thread (&worker::run, this).detach ();
-	//
-
-	std::thread t;
-
-	auto lambda_create = [&] (void) -> void { t = std::thread (&worker::run, this); };
-	auto lambda_detach = [&] (void) -> void { t.detach (); };
-
-	wp_call_func_throwing_system_error ("starting thread", lambda_create);
-	wp_call_func_throwing_system_error ("detaching thread", lambda_detach);
+	start_thread ();
       }
+  }
+
+  template <typename Context>
+  void
+  worker_pool<Context>::core::worker::start_thread (void)
+  {
+    assert (!m_has_thread);
+
+    //
+    // the next code tries to help visualizing any system errors that can occur during create or detach in debug
+    // mode
+    //
+    // release will basically be reduced to:
+    // std::thread (&worker::run, this).detach ();
+    //
+
+    std::thread t;
+
+    auto lambda_create = [&] (void) -> void { t = std::thread (&worker::run, this); };
+    auto lambda_detach = [&] (void) -> void { t.detach (); };
+
+    wp_call_func_throwing_system_error ("starting thread", lambda_create);
+    wp_call_func_throwing_system_error ("detaching thread", lambda_detach);
   }
 
   template <typename Context>

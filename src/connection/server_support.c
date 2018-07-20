@@ -330,7 +330,6 @@ css_setup_server_loop (void)
     {
       /* execute master thread. */
       css_master_thread ();
-
     }
   else
     {
