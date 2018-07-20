@@ -226,6 +226,7 @@ static int pt_create_iss_range (INDX_INFO * indx_infop, TP_DOMAIN * domain);
 static int pt_init_pred_expr_context (PARSER_CONTEXT * parser, PT_NODE * predicate, PT_NODE * spec,
 				      PRED_EXPR_WITH_CONTEXT * pred_expr);
 static bool validate_regu_key_function_index (REGU_VARIABLE * regu_var);
+static void pt_to_with_clause_xasl (PARSER_CONTEXT * parser, PT_NODE * with);
 static XASL_NODE *pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);
 static XASL_NODE *pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * non_null_attrs,
 					   PT_NODE * default_expr_attrs);
@@ -17547,7 +17548,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   with = statement->info.insert.with;
-  generate_xasl_for_with_clause (parser, with);
+  pt_to_with_clause_xasl (parser, with);
 
   if (value_clauses->info.node_list.list_type == PT_IS_SUBQUERY)
     {
@@ -18804,22 +18805,21 @@ pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statemen
     }
 }
 
- /*
-  * generate_xasl_for_with_clause () - Creates xasl for ctes nodes of the with clause
-  *                    
-  *   return:
-  *   parser(in): context
-  *   statement(in): select parse tree
-  *   spec_flag(in): spec flag: PT_SPEC_FLAG_UPDATE or PT_SPEC_FLAG_DELETE
-  */
+/*
+ * pt_to_with_clause_xasl () - Creates xasl for ctes nodes of the with clause
+ *                    
+ *   return:
+ *   parser(in): context
+ *   statement(in): select parse tree
+ *   spec_flag(in): spec flag: PT_SPEC_FLAG_UPDATE or PT_SPEC_FLAG_DELETE
+ */
 void
-generate_xasl_for_with_clause (PARSER_CONTEXT * parser, PT_NODE * with)
+pt_to_with_clause_xasl (PARSER_CONTEXT * parser, PT_NODE * with)
 {
   if (xasl_Supp_info.query_list != NULL)
     {
       parser_free_tree (parser, xasl_Supp_info.query_list);
     }
-
 
   /* add dummy node at the head of list */
   xasl_Supp_info.query_list = parser_new_node (parser, PT_SELECT);
@@ -18845,6 +18845,7 @@ generate_xasl_for_with_clause (PARSER_CONTEXT * parser, PT_NODE * with)
  *   parser(in):
  *   select_list(in):
  *   from(in):
+ *   with(in):
  *   class_specs(in):
  *   where(in):
  *   using_index(in):
@@ -18873,7 +18874,7 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
   statement = parser_new_node (parser, PT_SELECT);
   if (statement != NULL)
     {
-      generate_xasl_for_with_clause (parser, with);
+      pt_to_with_clause_xasl (parser, with);
 
       /* this is an internally built query */
       PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_IS_UPD_DEL_QUERY);

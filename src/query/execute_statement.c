@@ -6843,6 +6843,7 @@ unlink_list (PT_NODE * list)
  *   parser(in): Parser context
  *   from(in): Parse tree of an FROM class
  *   column_values(in): Column list in SELECT clause
+ *   with(in): WITH clause
  *   where(in): WHERE clause
  *   order_by(in): ORDER BY clause
  *   orderby_num(in): converted from ORDER BY with LIMIT
@@ -6863,10 +6864,9 @@ get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * co
   assert (parser->query_id == NULL_QUERY_ID);
 
   if (from && (from->node_type == PT_SPEC) && from->info.spec.range_var
-      &&
-      ((statement =
-	pt_to_upd_del_query (parser, column_names, column_values, from, with, class_specs, where, using_index, order_by,
-			     orderby_for, 0 /* not server update */ , S_UPDATE)) != NULL))
+      && ((statement =
+	   pt_to_upd_del_query (parser, column_names, column_values, from, with, class_specs, where, using_index,
+				order_by, orderby_for, 0 /* not server update */ , S_UPDATE)) != NULL))
     {
       err = pt_copy_upddel_hints_to_select (parser, update_stmt, statement);
       if (err != NO_ERROR)
@@ -8975,8 +8975,8 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  PT_NODE **links = NULL;
 	  int no_vals = 0, no_consts = 0;
 
-	  PT_NODE *from = statement->info.update.spec;
 	  PT_NODE *assigns = statement->info.update.assignment;
+	  PT_NODE *from = statement->info.update.spec;
 
 	  if (statement->info.update.with == NULL)
 	    {

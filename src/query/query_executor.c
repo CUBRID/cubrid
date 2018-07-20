@@ -10797,7 +10797,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   if (!skip_aptr)
     {
-      /* TODO: When do we skip aptr? */
       for (XASL_NODE * crt = aptr; crt != NULL; crt = crt->next)
 	{
 	  if (qexec_execute_mainblock (thread_p, crt, xasl_state, NULL) != NO_ERROR)
