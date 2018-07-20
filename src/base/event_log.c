@@ -31,8 +31,6 @@
 
 #include "event_log.h"
 
-
-
 #include "config.h"
 #include "critical_section.h"
 #include "dbtype.h"
@@ -55,6 +53,7 @@
 #endif /* WINDOWS */
 
 #define EVENT_LOG_FILE_DIR "server"
+#define EVENT_LOG_FILE_SUFFIX ".event"
 
 static FILE *event_Fp = NULL;
 static char event_log_file_path[PATH_MAX];
@@ -104,9 +103,9 @@ event_log_init (const char *db_name)
       return;
     }
 
-  snprintf (event_log_name, PATH_MAX - 1, "%s%c%s_%04d%02d%02d_%02d%02d.event", EVENT_LOG_FILE_DIR, PATH_SEPARATOR,
+  snprintf (event_log_name, PATH_MAX - 1, "%s%c%s_%04d%02d%02d_%02d%02d%s", EVENT_LOG_FILE_DIR, PATH_SEPARATOR,
 	    base_db_name, log_tm_p->tm_year + 1900, log_tm_p->tm_mon + 1, log_tm_p->tm_mday, log_tm_p->tm_hour,
-	    log_tm_p->tm_min);
+	    log_tm_p->tm_min, EVENT_LOG_FILE_SUFFIX);
 
   envvar_logdir_file (event_log_file_path, PATH_MAX, event_log_name);
   event_Fp = event_file_open (event_log_file_path);
@@ -169,6 +168,13 @@ event_file_open (const char *path)
     {
       fp = fopen (path, "w");
     }
+
+#if !defined (WINDOWS) && defined (SERVER_MODE)
+  if (fp != NULL)
+    {
+      er_file_create_link_to_current_log_file (path, EVENT_LOG_FILE_SUFFIX);
+    }
+#endif /* !WINDOWS && SERVER_MODE */
 
   return fp;
 }

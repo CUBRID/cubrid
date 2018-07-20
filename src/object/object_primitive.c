@@ -10460,7 +10460,6 @@ char *
 pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
 {
 /* *INDENT-OFF* */
-#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
   string_buffer sb {
     [&threade] (mem::block &block, size_t len)
     {
@@ -10473,9 +10472,6 @@ pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
       block = {};
     }
   };
-#else
-  string_buffer sb {&mem::private_realloc, &mem::private_dealloc};
-#endif
 /* *INDENT-ON* */
 
   if (val == NULL)
