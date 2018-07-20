@@ -12778,15 +12778,12 @@ error_return:
 
   classobj_free_template (flat);
   abort_subclasses (newsubs);
-  if (error == ER_BTREE_UNIQUE_FAILED || error == ER_FK_INVALID || error == ER_SM_PRIMARY_KEY_EXISTS
-      || error == ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE || error == ER_SM_INVALID_UNIQUE_IDX_PARTITION)
+
+  if (error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED && error != ER_LK_UNILATERALLY_ABORTED)
     {
       (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_NAME);
     }
-  else
-    {
-      (void) tran_unilaterally_abort ();
-    }
+
   goto end;
 }
 
