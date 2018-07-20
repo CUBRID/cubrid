@@ -6954,11 +6954,10 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate, SM_CLASS_CONSTRAINT * const
 
   if (constraint_type != DB_CONSTRAINT_FOREIGN_KEY)
     {
-      error =
-	smt_add_constraint (ctemplate, constraint_type, new_cons_name, att_names,
-			    (constraint_type == DB_CONSTRAINT_UNIQUE) ? constraint->asc_desc : NULL, 0, NULL,
-			    constraint->filter_predicate, constraint->func_index_info, constraint->comment,
-			    SM_NO_ONLINE_INDEX);
+      error = smt_add_constraint (ctemplate, constraint_type, new_cons_name, att_names,
+				  (constraint_type == DB_CONSTRAINT_UNIQUE) ? constraint->asc_desc : NULL, NULL, 0,
+				  NULL, constraint->filter_predicate, constraint->func_index_info, constraint->comment,
+				  SM_NO_ONLINE_INDEX);
     }
   else
     {

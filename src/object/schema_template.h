@@ -81,8 +81,8 @@ extern int smt_set_attribute_on_update (SM_TEMPLATE * template_, const char *nam
 					DB_DEFAULT_EXPR_TYPE on_update);
 
 extern int smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
-			       const char **att_names, const int *asc_desc, int class_attribute,
-			       SM_FOREIGN_KEY_INFO * fk_info, SM_PREDICATE_INFO * filter_index,
+			       const char **att_names, const int *asc_desc, const int *attr_prefix_length,
+			       int class_attribute, SM_FOREIGN_KEY_INFO * fk_info, SM_PREDICATE_INFO * filter_index,
 			       SM_FUNCTION_INFO * function_index, const char *comment,
 			       SM_ONLINE_INDEX_STATUS online_index_status);
 

@@ -14495,9 +14495,9 @@ sm_add_secondary_index_on_partition (MOP classop, DB_CONSTRAINT_TYPE constraint_
 	    }
 	}
 
-      error = sm_add_constraint (sub_partitions[i], constraint_type, constraint_name, att_names, asc_desc, NULL,
-				 class_attributes, new_filter_index_info, new_func_index_info, comment,
-				 is_online_index);
+      error = sm_add_constraint (sub_partitions[i], constraint_type, constraint_name, att_names, asc_desc,
+				 attrs_prefix_length, class_attributes, new_filter_index_info, new_func_index_info,
+				 comment, is_online_index);
     }
 
 end:
@@ -14622,8 +14622,9 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 		}
 
 	      error = sm_add_secondary_index_on_partition (classop, constraint_type, constraint_name, att_names,
-							   asc_desc, NULL, class_attributes, filter_index,
-							   function_index, comment, is_online_index, sub_partitions);
+							   asc_desc, attrs_prefix_length, class_attributes,
+							   filter_index, function_index, comment, is_online_index,
+							   sub_partitions);
 	      if (error != NO_ERROR)
 		{
 		  if (sub_partitions != NULL)
@@ -14641,8 +14642,8 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	    }
 	}
 
-      error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes, NULL,
-				  filter_index, function_index, comment, online_index_status);
+      error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length,
+				  class_attributes, NULL, filter_index, function_index, comment, online_index_status);
       if (error != NO_ERROR)
 	{
 	  smt_quit (def);
@@ -14688,8 +14689,9 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	   */
 
 	  // TODO: Why do we remove and add it rather than just change the property?
-	  error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes,
-				      NULL, filter_index, function_index, comment, SM_ONLINE_INDEX_BUILDING_DONE);
+	  error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length,
+				      class_attributes, NULL, filter_index, function_index, comment,
+				      SM_ONLINE_INDEX_BUILDING_DONE);
 	  if (error != NO_ERROR)
 	    {
 	      smt_quit (def);
@@ -14716,9 +14718,9 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	}
       else
 	{
-	  error =
-	    smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes, NULL,
-				filter_index, function_index, comment, SM_NO_ONLINE_INDEX);
+	  error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length,
+				      class_attributes, NULL, filter_index, function_index, comment,
+				      SM_NO_ONLINE_INDEX);
 	  if (error == NO_ERROR)
 	    {
 	      error = do_check_fk_constraints (def, NULL);

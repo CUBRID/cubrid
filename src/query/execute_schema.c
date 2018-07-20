@@ -7523,9 +7523,9 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		      comment = (char *) PT_VALUE_GET_BYTES (cnstr->info.constraint.comment);
 		    }
 
-		  error =
-		    smt_add_constraint (ctemplate, constraint_type, constraint_name, (const char **) att_names,
-					asc_desc, class_attributes, NULL, NULL, NULL, comment, SM_NO_ONLINE_INDEX);
+		  error = smt_add_constraint (ctemplate, constraint_type, constraint_name, (const char **) att_names,
+					      asc_desc, NULL, class_attributes, NULL, NULL, NULL, comment,
+					      SM_NO_ONLINE_INDEX);
 
 		  free_and_init (constraint_name);
 		  free_and_init (asc_desc);
@@ -7592,10 +7592,9 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		      comment = (char *) PT_VALUE_GET_BYTES (cnstr->info.constraint.comment);
 		    }
 
-		  error =
-		    smt_add_constraint (ctemplate, DB_CONSTRAINT_PRIMARY_KEY, constraint_name,
-					(const char **) att_names, asc_desc, class_attributes, NULL, NULL, NULL,
-					comment, SM_NO_ONLINE_INDEX);
+		  error = smt_add_constraint (ctemplate, DB_CONSTRAINT_PRIMARY_KEY, constraint_name,
+					      (const char **) att_names, asc_desc, NULL, class_attributes, NULL, NULL,
+					      NULL, comment, SM_NO_ONLINE_INDEX);
 
 		  free_and_init (constraint_name);
 		  free_and_init (asc_desc);

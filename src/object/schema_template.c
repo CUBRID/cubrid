@@ -1927,17 +1927,17 @@ smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name, DB_
  *   constraint_type(in): constraint type
  *   constraint_name(in): Constraint name.
  *   att_names(in): array of attribute names
+ *   attrs_prefix_length(in): prefix length for each of the index attributes
  *   asc_desc(in): asc/desc info list
  *   class_attribute(in): non-zero if we're looking for class attributes
  *   fk_info(in): foreign key information
  *   comment(in): constraint comment
  */
-
 int
 smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
-		    const char **att_names, const int *asc_desc, int class_attribute, SM_FOREIGN_KEY_INFO * fk_info,
-		    SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index, const char *comment,
-		    SM_ONLINE_INDEX_STATUS online_index_status)
+		    const char **att_names, const int *asc_desc, const int *attrs_prefix_length, int class_attribute,
+		    SM_FOREIGN_KEY_INFO * fk_info, SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index,
+		    const char *comment, SM_ONLINE_INDEX_STATUS online_index_status)
 {
   int error = NO_ERROR;
   SM_ATTRIBUTE **atts = NULL;
@@ -1945,6 +1945,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
   char *shared_cons_name = NULL;
   SM_ATTRIBUTE_FLAG constraint;
   bool has_nulls = false;
+  bool is_secondary_index = false;
 
   assert (template_ != NULL);
 
@@ -1960,6 +1961,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
     }
 
   constraint = SM_MAP_CONSTRAINT_TO_ATTFLAG (constraint_type);
+  is_secondary_index = (constraint_type == DB_CONSTRAINT_INDEX || constraint_type == DB_CONSTRAINT_REVERSE_INDEX);
 
   n_atts = 0;
   if (att_names != NULL)
@@ -2016,7 +2018,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
       error = smt_find_attribute (template_, att_names[i], class_attribute, &atts[i]);
       if (error == ER_SM_INHERITED_ATTRIBUTE)
 	{
-	  if (constraint == SM_ATTFLAG_INDEX || constraint == SM_ATTFLAG_REVERSE_INDEX)
+	  if (is_secondary_index)
 	    {
 	      // secondary indexes are allowed on an inherited column
 	      assert (atts[i] != NULL);
@@ -2041,6 +2043,11 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
     }
   atts[i] = NULL;
 
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+
   /* check that there are no duplicate attr defs in given list */
   for (i = 0; i < n_atts && error == NO_ERROR; i++)
     {
@@ -2050,6 +2057,41 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 	  if (intl_identifier_casecmp (atts[i]->header.name, atts[j]->header.name) == 0)
 	    {
 	      ERROR1 (error, ER_SM_INDEX_ATTR_DUPLICATED, atts[i]->header.name);
+	    }
+	}
+    }
+
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+
+  if (is_secondary_index)
+    {
+      for (i = 0; atts[i] != NULL; i++)
+	{
+	  DB_TYPE type = atts[i]->type->id;
+
+	  if (!tp_valid_indextype (type))
+	    {
+	      error = ER_SM_INVALID_INDEX_TYPE;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, pr_type_name (type));
+	      break;
+	    }
+	  else if (attrs_prefix_length && attrs_prefix_length[i] >= 0)
+	    {
+	      if (!TP_IS_CHAR_TYPE (type) && !TP_IS_BIT_TYPE (type))
+		{
+		  error = ER_SM_INVALID_INDEX_WITH_PREFIX_TYPE;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, pr_type_name (type));
+		  break;
+		}
+	      else if (((long) atts[i]->domain->precision) < attrs_prefix_length[i])
+		{
+		  error = ER_SM_INVALID_PREFIX_LENGTH;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PREFIX_LENGTH, 1, attrs_prefix_length[i]);
+		  break;
+		}
 	    }
 	}
     }
