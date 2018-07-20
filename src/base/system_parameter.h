@@ -414,7 +414,7 @@ enum param_id
   PRM_ID_THREAD_WORKER_TIMEOUT_SECONDS,
 
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_LOG_QUERY_LISTS
+  PRM_LAST_ID = PRM_ID_THREAD_WORKER_TIMEOUT_SECONDS
 };
 typedef enum param_id PARAM_ID;
 
