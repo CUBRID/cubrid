@@ -18816,16 +18816,14 @@ pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statemen
 void
 pt_to_with_clause_xasl (PARSER_CONTEXT * parser, PT_NODE * with)
 {
-  if (xasl_Supp_info.query_list != NULL)
-    {
-      parser_free_tree (parser, xasl_Supp_info.query_list);
-    }
+  PT_NODE *old_query_list = xasl_Supp_info.query_list;
 
   /* add dummy node at the head of list */
   xasl_Supp_info.query_list = parser_new_node (parser, PT_SELECT);
   if (xasl_Supp_info.query_list == NULL)
     {
       PT_INTERNAL_ERROR (parser, "out of memory");
+      xasl_Supp_info.query_list = old_query_list;
       return;
     }
 
@@ -18836,6 +18834,7 @@ pt_to_with_clause_xasl (PARSER_CONTEXT * parser, PT_NODE * with)
 
   parser_walk_tree (parser, with, parser_generate_xasl_pre, NULL, parser_generate_xasl_post, &xasl_Supp_info);
   parser_free_tree (parser, xasl_Supp_info.query_list);
+  xasl_Supp_info.query_list = old_query_list;
 }
 
 /*
