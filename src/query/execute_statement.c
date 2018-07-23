@@ -8978,7 +8978,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  PT_NODE *assigns = statement->info.update.assignment;
 	  PT_NODE *from = statement->info.update.spec;
 
-	  if (statement->info.update.with == NULL)
+	  if (statement->info.update.with != NULL)
 	    {
 	      /* client-side updates with CTEs are not supported for now */
 	      PT_INTERNAL_ERROR (parser, "update");
