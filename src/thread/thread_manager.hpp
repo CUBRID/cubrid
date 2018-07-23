@@ -258,6 +258,20 @@ namespace cubthread
   //
   // TODO: complete thread logging for all modules
   //
+  // How to use:
+  //
+  //    do_log = is_logging_configured (LOG_MANAGER);
+  //    if (do_log)
+  //      _er_log_debug (ARG_FILE_LINE, "something happens\n);
+  //
+  // Flags explained:
+  //
+  //    There are three types of flags to be used: manager, worker pool and daemons. For now, only worker pools are
+  //    actually logged, others are just declared for future extensions.
+  //
+  //    To activate a logging flag, should set the thread_logging_flag system parameter value to include flag.
+  //    For instance, to log connections, the bit for LOG_WORKER_POOL_CONNECTIONS should be set.
+  //
   //////////////////////////////////////////////////////////////////////////
   // system parameter flags for thread logging
   // manager flags
@@ -266,8 +280,8 @@ namespace cubthread
 
   // worker pool flags
   const int LOG_WORKER_POOL_VACUUM = 0x100;
-  const int LOG_WORKER_POOL_CONNECTIONS = 0x100;
-  const int LOG_WORKER_POOL_TRAN_WORKERS = 0x1000;
+  const int LOG_WORKER_POOL_CONNECTIONS = 0x1000;
+  const int LOG_WORKER_POOL_TRAN_WORKERS = 0x10000;
   const int LOG_WORKER_POOL_ALL = 0xFF00;    // reserved for thread worker pools
 
   // daemons flags
