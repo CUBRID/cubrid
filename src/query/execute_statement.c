@@ -9342,11 +9342,10 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p, PT_NODE 
   assert (parser->query_id == NULL_QUERY_ID);
   assert (delete_stmt->info.delete_.with == NULL);
 
-  statement = pt_to_upd_del_query (parser, NULL, NULL, delete_stmt->info.delete_.spec, delete_stmt->info.delete_.with, delete_stmt->info.delete_.class_specs, delete_stmt->info.delete_.search_cond, delete_stmt->info.delete_.using_index, NULL, NULL, 0	/* not 
-																																 * server 
-																																 * update 
-																																 */ ,
-				   S_DELETE);
+  statement = pt_to_upd_del_query (parser, NULL, NULL, delete_stmt->info.delete_.spec, delete_stmt->info.delete_.with,
+				   delete_stmt->info.delete_.class_specs, delete_stmt->info.delete_.search_cond,
+				   delete_stmt->info.delete_.using_index, NULL, NULL,
+				   0 /* not server update */ , S_DELETE);
   if (statement != NULL)
     {
       ret = pt_copy_upddel_hints_to_select (parser, delete_stmt, statement);

@@ -8661,7 +8661,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	}
     }
 
-
   if (p_class_instance_lock_info && p_class_instance_lock_info->instances_locked)
     {
       /* already locked in select phase. Avoid locking again the same instances at update phase */
