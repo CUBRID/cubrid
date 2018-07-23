@@ -3915,11 +3915,16 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
       num_dwb_pages = fileio_get_number_of_volume_pages (read_fd, IO_PAGESIZE);
       dwb_log ("dwb_load_and_recover_pages: The number of pages in DWB %d\n", num_dwb_pages);
 
-      /* If num_dwb_pages is zero or not a power of 2, DWB is corrupted - created but partially flushed. */
+      /* We are in recovery phase. The system may be restarted with DWB size different than parameter value.
+       * There may be one of the following two reasons:
+       *   - the user may intentionally modified the DWB size, before restarting.
+       *   - DWB size didn't changed, but the previous DWB was created, partially flushed and the system crashed.
+       * We know that a valid DWB size must be a power of 2. In this case we recover from DWB. Otherwise, skip
+       * recovering from DWB - the modifications are not reflected in data pages.
+       * Another approach would be to recover, even if the DWB size is not a power of 2 (DWB partially flushed).
+       */
       if ((num_dwb_pages > 0) && IS_POWER_OF_2 (num_dwb_pages))
 	{
-	  assert ((num_dwb_pages * IO_PAGESIZE) % (DWB_MIN_SIZE) == 0);
-
 	  /* Create DWB block for recovery purpose. */
 	  error_code = dwb_create_blocks (thread_p, 1, num_dwb_pages, &rcv_block);
 	  if (error_code != NO_ERROR)
