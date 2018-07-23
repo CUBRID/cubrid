@@ -2115,39 +2115,29 @@ css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE req_state)
     {HA_SERVER_STATE_IDLE, HA_SERVER_STATE_ACTIVE, HA_SERVER_STATE_ACTIVE},
 #if 0
     /* idle -> to-be-standby */
-    {HA_SERVER_STATE_IDLE, HA_SERVER_STATE_STANDBY,
-     HA_SERVER_STATE_TO_BE_STANDBY},
+    {HA_SERVER_STATE_IDLE, HA_SERVER_STATE_STANDBY, HA_SERVER_STATE_TO_BE_STANDBY},
 #else
     /* idle -> standby */
-    {HA_SERVER_STATE_IDLE, HA_SERVER_STATE_STANDBY,
-     HA_SERVER_STATE_STANDBY},
+    {HA_SERVER_STATE_IDLE, HA_SERVER_STATE_STANDBY, HA_SERVER_STATE_STANDBY},
 #endif
     /* idle -> maintenance */
-    {HA_SERVER_STATE_IDLE, HA_SERVER_STATE_MAINTENANCE,
-     HA_SERVER_STATE_MAINTENANCE},
+    {HA_SERVER_STATE_IDLE, HA_SERVER_STATE_MAINTENANCE, HA_SERVER_STATE_MAINTENANCE},
     /* active -> active */
     {HA_SERVER_STATE_ACTIVE, HA_SERVER_STATE_ACTIVE, HA_SERVER_STATE_ACTIVE},
     /* active -> to-be-standby */
-    {HA_SERVER_STATE_ACTIVE, HA_SERVER_STATE_STANDBY,
-     HA_SERVER_STATE_TO_BE_STANDBY},
+    {HA_SERVER_STATE_ACTIVE, HA_SERVER_STATE_STANDBY, HA_SERVER_STATE_TO_BE_STANDBY},
     /* to-be-active -> active */
-    {HA_SERVER_STATE_TO_BE_ACTIVE, HA_SERVER_STATE_ACTIVE,
-     HA_SERVER_STATE_ACTIVE},
+    {HA_SERVER_STATE_TO_BE_ACTIVE, HA_SERVER_STATE_ACTIVE, HA_SERVER_STATE_ACTIVE},
     /* standby -> standby */
-    {HA_SERVER_STATE_STANDBY, HA_SERVER_STATE_STANDBY,
-     HA_SERVER_STATE_STANDBY},
+    {HA_SERVER_STATE_STANDBY, HA_SERVER_STATE_STANDBY, HA_SERVER_STATE_STANDBY},
     /* standby -> to-be-active */
-    {HA_SERVER_STATE_STANDBY, HA_SERVER_STATE_ACTIVE,
-     HA_SERVER_STATE_TO_BE_ACTIVE},
+    {HA_SERVER_STATE_STANDBY, HA_SERVER_STATE_ACTIVE, HA_SERVER_STATE_TO_BE_ACTIVE},
     /* statndby -> maintenance */
-    {HA_SERVER_STATE_STANDBY, HA_SERVER_STATE_MAINTENANCE,
-     HA_SERVER_STATE_MAINTENANCE},
+    {HA_SERVER_STATE_STANDBY, HA_SERVER_STATE_MAINTENANCE, HA_SERVER_STATE_MAINTENANCE},
     /* to-be-standby -> standby */
-    {HA_SERVER_STATE_TO_BE_STANDBY, HA_SERVER_STATE_STANDBY,
-     HA_SERVER_STATE_STANDBY},
+    {HA_SERVER_STATE_TO_BE_STANDBY, HA_SERVER_STATE_STANDBY, HA_SERVER_STATE_STANDBY},
     /* maintenance -> standby */
-    {HA_SERVER_STATE_MAINTENANCE, HA_SERVER_STATE_STANDBY,
-     HA_SERVER_STATE_TO_BE_STANDBY},
+    {HA_SERVER_STATE_MAINTENANCE, HA_SERVER_STATE_STANDBY, HA_SERVER_STATE_TO_BE_STANDBY},
     /* end of table */
     {HA_SERVER_STATE_NA, HA_SERVER_STATE_NA, HA_SERVER_STATE_NA}
   };
@@ -2182,6 +2172,7 @@ css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE req_state)
 	  if (ha_Server_state == HA_SERVER_STATE_ACTIVE)
 	    {
 	      log_set_ha_promotion_time (thread_p, ((INT64) time (0)));
+	      css_start_all_threads ();
 	    }
 
 	  break;
@@ -2383,7 +2374,6 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
       if (state == HA_SERVER_STATE_ACTIVE)
 	{
 	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_enable_update() \n");
-          css_start_all_threads ();
 	  logtb_enable_update (thread_p);
 	}
       break;
@@ -2539,7 +2529,6 @@ css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE s
       if (server_state == HA_SERVER_STATE_ACTIVE)
 	{
 	  er_log_debug (ARG_FILE_LINE, "css_notify_ha_log_applier_state: " "logtb_enable_update() \n");
-	  css_start_all_threads ();
 	  logtb_enable_update (thread_p);
 	}
     }
