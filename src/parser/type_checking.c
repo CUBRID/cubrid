@@ -20622,14 +20622,14 @@ end:
 	{
 	  result->info.value.location = location;
 	}
+
+      return result;
     }
   else
     {
       expr->next = expr_next;
       return expr;
     }
-
-  return result;
 }
 
 /*
