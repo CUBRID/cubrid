@@ -5737,6 +5737,8 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
       return "SO_BROKER_REPLICA_ONLY";
     case BOOT_CLIENT_ADMIN_CSQL_WOS:
       return "ADMIN_CSQL_WOS";
+    case BOOT_CLIENT_DDL_PROXY:
+      return "DDL_PROXY";
     case BOOT_CLIENT_UNKNOWN:
     default:
       return "UNKNOWN";

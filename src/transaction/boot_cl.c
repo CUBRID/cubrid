@@ -1247,7 +1247,18 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 
   /* Initialize client modules for execution */
-  boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
+  if (db_get_override_tran_index () != NULL_TRAN_INDEX)
+    {
+      assert (client_credential->client_type == BOOT_CLIENT_DDL_PROXY);
+
+      boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
+      tran_save_tran_index ();
+      boot_client (db_get_override_tran_index (), tran_lock_wait_msecs, tran_isolation);
+    }
+  else
+    {
+      boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
+    }
 
   oid_set_root (&boot_Server_credential.root_class_oid);
   OID_INIT_TEMPID ();

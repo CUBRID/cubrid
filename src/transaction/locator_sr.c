@@ -56,6 +56,7 @@
 #endif /* DMALLOC */
 #include "dbtype.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#include "process_util.h"
 
 /* TODO : remove */
 extern bool catcls_Enable;
@@ -13683,6 +13684,7 @@ xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK
 }
 
 
+#if defined(SERVER_MODE)
 static int
 locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const int rbr_operation, OID *class_oid, OID *instance_oid,
                            RECDES * old_recdes, RECDES * recdes, DB_VALUE * key_value,
@@ -13963,3 +13965,62 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const int rbr_operation, OID
 
   return NO_ERROR;
 }
+
+int
+locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *statement)
+{
+  char path[PATH_MAX];
+  char *cubrid_env_var;
+  static const char *db_name = boot_db_name ();
+  int error = NO_ERROR;
+  int exit_status;
+
+  const char *ddl_argv[6] = {path,
+			     "-udba",
+			     db_name,
+			     "-c",
+			     statement,
+			     NULL
+			    };
+
+  cubrid_env_var = getenv ("CUBRID");
+  assert (cubrid_env_var != NULL);
+
+  strncpy (path, cubrid_env_var, PATH_MAX);
+  strncat (path, "/bin/ddl_proxy_client", PATH_MAX);
+
+  error = create_child_process (ddl_argv,
+			       1,
+			       NULL,
+			       NULL,
+			       NULL,
+			       &exit_status);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (exit_status != 0)
+    {
+      /* TODO : get error from ddl_proxy & set error */
+      error = ER_FAILED;
+    }
+
+  return error;
+}
+
+int
+locator_repl_start_tran (THREAD_ENTRY * thread_p)
+{
+  /* TODO */
+  return NO_ERROR;
+}
+
+int
+locator_repl_end_tran (THREAD_ENTRY * thread_p, bool commit)
+{
+  /* TODO */
+  return NO_ERROR;
+}
+
+#endif /* SERVER_MODE */
