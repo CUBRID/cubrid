@@ -280,13 +280,13 @@ namespace cubthread
 
   // worker pool flags
   const int LOG_WORKER_POOL_VACUUM = 0x100;
-  const int LOG_WORKER_POOL_CONNECTIONS = 0x1000;
-  const int LOG_WORKER_POOL_TRAN_WORKERS = 0x10000;
-  const int LOG_WORKER_POOL_ALL = 0xFFFF00;    // reserved for thread worker pools
+  const int LOG_WORKER_POOL_CONNECTIONS = 0x200;
+  const int LOG_WORKER_POOL_TRAN_WORKERS = 0x400;
+  const int LOG_WORKER_POOL_ALL = 0xFF00;    // reserved for thread worker pools
 
   // daemons flags
-  const int LOG_DAEMON_VACUUM = 0x1000000;
-  const int LOG_DAEMON_ALL = 0xFF000000;     // reserved for thread daemons
+  const int LOG_DAEMON_VACUUM = 0x10000;
+  const int LOG_DAEMON_ALL = 0xFFFF0000;     // reserved for thread daemons
 
   bool is_logging_configured (const int logging_flag);
 
