@@ -3487,7 +3487,8 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 	}
     }
 
-  dwb_log ("dwb_add_page: added page = (%d,%d)\n", vpid->volid, vpid->pageid);
+  dwb_log ("dwb_add_page: added page = (%d,%d) on block (%d) position (%d)\n", vpid->volid, vpid->pageid,
+	   dwb_slot->block_no, dwb_slot->position_in_block);
   /* Reset checksum. */
   dwb_slot->io_page->prv.checksum = 0;
 
@@ -4228,12 +4229,15 @@ dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync)
 
 start:
   initial_position_with_flags = ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL);
+  dwb_log ("dwb_flush_force: Started with intital position = %lld\n", initial_position_with_flags);
 
   if (DWB_NOT_CREATED_OR_MODIFYING (initial_position_with_flags))
     {
       if (!DWB_IS_CREATED (initial_position_with_flags))
 	{
 	  /* Nothing to do. Everything flushed. */
+	  assert (dwb_Global.helper_flush_block == NULL);
+	  dwb_log ("dwb_flush_force: Everything flushed\n");
 	  goto end;
 	}
 
@@ -4248,6 +4252,8 @@ start:
 		  /* timeout, try again */
 		  goto start;
 		}
+	      dwb_log_error ("dwb_flush_force : Error %d while waiting for structure modification=%lld\n",
+			     error_code, ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL));
 	      return error_code;
 	    }
 	}
@@ -4255,8 +4261,8 @@ start:
 
   if (DWB_GET_BLOCK_STATUS (initial_position_with_flags) == 0)
     {
-      /* Nothing to do. Everything flushed. */
-      goto end;
+      /* Check helper flush block. */
+      goto wait_for_helper_flush_block;
     }
 
   initial_block_no = DWB_GET_BLOCK_NO_FROM_POSITION (initial_position_with_flags);
@@ -4299,9 +4305,8 @@ check_flushed_blocks:
 	      goto check_flushed_blocks;
 	    }
 
-	  dwb_log_error ("Error %d while waiting for flushing block=%d having version %lld \n",
-			 error_code, initial_block_no, dwb_Global.blocks[initial_block_no].version);
-
+	  dwb_log_error ("dwb_flush_force : Error %d while waiting for block completion = %lld\n",
+			 error_code, ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL));
 	  return error_code;
 	}
 
@@ -4315,6 +4320,8 @@ check_flushed_blocks:
       if (!DWB_IS_CREATED (current_position_with_flags))
 	{
 	  /* Nothing to do. Everything flushed. */
+	  assert (dwb_Global.helper_flush_block == NULL);
+	  dwb_log ("dwb_flush_force: Everything flushed\n");
 	  goto end;
 	}
 
@@ -4329,6 +4336,9 @@ check_flushed_blocks:
 		  /* timeout, try again */
 		  goto check_flushed_blocks;
 		}
+
+	      dwb_log_error ("dwb_flush_force : Error %d while waiting for structure modification = %lld\n",
+			     error_code, ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL));
 	      return error_code;
 	    }
 	}
@@ -4336,8 +4346,8 @@ check_flushed_blocks:
 
   if (!DWB_IS_BLOCK_WRITE_STARTED (current_position_with_flags, initial_block_no))
     {
-      /* Nothing to do. Everything flushed. */
-      goto end;
+      /* Check helper flush block. */
+      goto wait_for_helper_flush_block;
     }
 
   /* Check whether initial block content was overwritten. */
@@ -4348,8 +4358,8 @@ check_flushed_blocks:
     {
       assert (current_block_version > initial_block_version);
 
-      /* Nothing to do. Everything flushed. */
-      goto end;
+      /* Check helper flush block. */
+      goto wait_for_helper_flush_block;
     }
 
   if (current_position_with_flags == prev_position_with_flags && count_added_pages < max_pages_to_add)
@@ -4360,11 +4370,16 @@ check_flushed_blocks:
       error_code = dwb_add_page (thread_p, iopage, &null_vpid, &dwb_slot);
       if (error_code != NO_ERROR)
 	{
+	  dwb_log_error ("dwb_flush_force : Error %d while adding page = %lld\n",
+			 error_code, ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL));
 	  return error_code;
 	}
       else if (dwb_slot == NULL)
 	{
 	  /* DWB disabled meanwhile, everything flushed. */
+	  assert (dwb_Global.helper_flush_block == NULL);
+	  assert (!DWB_IS_CREATED (ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL)));
+	  dwb_log ("dwb_flush_force: DWB disabled = %lld\n", ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL));
 	  goto end;
 	}
 
@@ -4374,6 +4389,8 @@ check_flushed_blocks:
   prev_position_with_flags = current_position_with_flags;
   goto check_flushed_blocks;
 
+wait_for_helper_flush_block:
+  dwb_log ("dwb_flush_force: Wait for helper flush = %lld\n", ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL));
   initial_block = &dwb_Global.blocks[initial_block_no];
 
 #if defined (SERVER_MODE)
@@ -4387,6 +4404,7 @@ check_flushed_blocks:
 end:
   *all_sync = true;
 
+  dwb_log ("dwb_flush_force: Ended with position = %lld\n", ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL));
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_track, PSTAT_DWB_FLUSH_FORCE_TIME_COUNTERS);
 
   return NO_ERROR;
