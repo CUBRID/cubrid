@@ -57,6 +57,7 @@ namespace cubreplication
       : prev_record (0),
 	mvccid (MVCCID_NULL),
 	count_replication_entries (0),
+	data_size (0),
 	commit_flag (false),
 	group_commit_flag (false)
     {
