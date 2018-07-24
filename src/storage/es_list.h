@@ -199,6 +199,10 @@ extern "C"
 	for (pos = (head)->next, n = pos->next; pos != (head); \
 		pos = n, n = pos->next)
 
+#if defined(WINDOWS)
+#undef inline
+#endif
+
 #ifdef  __cplusplus
 }
 #endif

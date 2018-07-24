@@ -55,10 +55,12 @@
 #include "storage_common.h"
 #if defined (SERVER_MODE)
 #include "thread_entry.hpp"
-#include "log_generator.hpp"
 #else // not SERVER_MODE = SA_MODE or CS_MODE
 #include "thread_compat.hpp"
 #endif // not SERVER_MODE = SA_MODE or CS_MODE
+#if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
+#include "log_generator.hpp"
+#endif // defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
 
 
 #include <assert.h>
@@ -1744,7 +1746,7 @@ struct log_tdes
 
   LOG_RCV_TDES rcv;
 
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
   cubreplication::log_generator replication_log_generator;
 #endif
 };

@@ -25,7 +25,6 @@
 
 #include "log_generator.hpp"
 #include "replication_stream_entry.hpp"
-#include "master_replication_channel.hpp"
 #include "thread_entry.hpp"
 #include "packing_stream.hpp"
 #include "connection_globals.h"
