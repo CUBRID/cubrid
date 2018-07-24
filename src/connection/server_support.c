@@ -3049,7 +3049,7 @@ static bool
 css_is_log_writer (const THREAD_ENTRY &thread_arg)
 {
   // note - access to thread entry is not exclusive and racing may occur
-  const css_conn_entry * connp = thread_arg.conn_entry;
+  volatile const css_conn_entry * connp = thread_arg.conn_entry;
   return connp != NULL && connp->stop_phase == THREAD_STOP_LOGWR;
 }
 
