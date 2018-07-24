@@ -87,7 +87,7 @@ namespace Func
       void set_return_type (const func_signature &signature); //set return type for current node in current context
       bool apply_signature (const func_signature &signature); //apply function signature with casts if necessary
     protected:
-      const char *get_types (const std::vector<func_signature> &signatures, int index, string_buffer &sb);
+      const char *get_types (const std::vector<func_signature> &signatures, size_t index, string_buffer &sb);
   }; //class Node
 } //namespace Func
 

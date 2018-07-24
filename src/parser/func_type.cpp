@@ -598,11 +598,11 @@ bool Func::Node::preprocess()
     return true;
 }
 
-const char* Func::Node::get_types(const std::vector<func_signature>& signatures, int index, string_buffer& sb)
+const char* Func::Node::get_types(const std::vector<func_signature>& signatures, size_t index, string_buffer& sb)
 {
     for (auto& signature: signatures)
     {
-        int i = index;
+        auto i = index;
         if (index < signature.fix.size())
         {
             str(signature.fix[i], sb);
@@ -638,7 +638,7 @@ const func_signature* Func::Node::get_signature(const std::vector<func_signature
         parser_node* arg = m_node->info.function.arg_list;
         bool matchEquivalent = true;
         bool matchCastable = true;
-        int argIndex = 0;
+        size_t argIndex = 0;
 
         //check fix part of the signature
         for (auto& fix: sig.fix)

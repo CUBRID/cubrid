@@ -9096,7 +9096,7 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
       for (; dim < block.dim + len; dim *= 2) // calc next power of 2 >= b.dim+len
 	;
 
-      mem::block b{ dim, (char *) parser_alloc (parser, dim) };
+      mem::block b{ dim, (char *) parser_alloc (parser, (int)dim) };
       memcpy (b.ptr, block.ptr, block.dim); // copy old content
       block = std::move (b);
     },
