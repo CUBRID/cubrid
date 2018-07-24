@@ -279,6 +279,7 @@ namespace cubreplication
 
   void log_consumer::start_daemons (void)
   {
+#if defined (SERVER_MODE)
     m_prepare_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
 		       new prepare_stream_entry_task (this),
 		       "prepare_stream_entry_daemon");
@@ -293,6 +294,7 @@ namespace cubreplication
 			     m_applier_worker_threads_count, m_repl_applier_worker_context_manager, 1, 1);
 
     m_use_daemons = true;
+#endif /* defined (SERVER_MODE) */
   }
 
   void log_consumer::execute_task (cubthread::entry &thread, repl_applier_worker_task *task)

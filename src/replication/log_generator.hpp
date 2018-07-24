@@ -30,7 +30,7 @@
 #include "replication_object.hpp"
 #include "replication_stream_entry.hpp"
 #include "packing_stream.hpp"
-#include "thread_compat.hpp"
+#include "thread_entry.hpp"
 #include <vector>
 
 namespace cubreplication

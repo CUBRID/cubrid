@@ -29,7 +29,7 @@
 #include "packable_object.hpp"
 #include "dbtype.h"
 #include "storage_common.h"
-#include "thread_compat.hpp"
+#include "thread_entry.hpp"
 #include <vector>
 #include <string>
 
