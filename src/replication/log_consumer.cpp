@@ -67,8 +67,8 @@ namespace cubreplication
       void execute (cubthread::entry &thread_ref) final
       {
 	for (std::vector<replication_stream_entry *>::iterator it = m_repl_stream_entries.begin();
-	it != m_repl_stream_entries.end ();
-	it++)
+	     it != m_repl_stream_entries.end ();
+	     it++)
 	  {
 	    replication_stream_entry *curr_stream_entry = *it;
 	    for (int i = 0; i < curr_stream_entry->get_packable_entry_count_from_header (); i++)
