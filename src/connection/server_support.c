@@ -2953,19 +2953,20 @@ css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_E
       // not log writer
       return;
     }
-  if (thread_ref.tran_index == -1)
+  int tran_index = thread_ref.tran_index;
+  if (tran_index == NULL_TRAN_INDEX)
     {
       // no transaction, no stop
       return;
     }
 
-  (void) logtb_set_tran_index_interrupt (&stopper_thread_ref, thread_ref.tran_index, true);
+  (void) logtb_set_tran_index_interrupt (&stopper_thread_ref, tran_index, true);
 
   if (thread_ref.m_status == cubthread::entry::status::TS_WAIT && logtb_is_current_active (&thread_ref))
     {
       thread_lock_entry (&thread_ref);
 
-      if (thread_ref.tran_index != -1 && thread_ref.m_status == cubthread::entry::status::TS_WAIT
+      if (thread_ref.tran_index != NULL_TRAN_INDEX && thread_ref.m_status == cubthread::entry::status::TS_WAIT
           && thread_ref.lockwait == NULL && thread_ref.check_interrupt)
         {
           thread_ref.interrupted = true;
@@ -3047,7 +3048,9 @@ css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop_mapper, bool is_log
 static bool
 css_is_log_writer (const THREAD_ENTRY &thread_arg)
 {
-  return thread_arg.conn_entry != NULL && thread_arg.conn_entry->stop_phase == THREAD_STOP_LOGWR;
+  // note - access to thread entry is not exclusive and racing may occur
+  const css_conn_entry * connp = thread_arg.conn_entry;
+  return connp != NULL && connp->stop_phase == THREAD_STOP_LOGWR;
 }
 
 //
