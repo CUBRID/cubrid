@@ -26,8 +26,8 @@
 #ifndef _REPLICATION_STREAM_ENTRY_HPP_
 #define _REPLICATION_STREAM_ENTRY_HPP_
 
+#include "replication_object.hpp"
 #include "stream_entry.hpp"
-#include "replication_entry.hpp"
 #include "storage_common.h"
 #include <vector>
 
@@ -62,6 +62,18 @@ namespace cubreplication
 	group_commit_flag (false)
     {
     };
+
+    static size_t get_size (cubpacking::packer &serializator)
+    {
+      size_t header_size = 0;
+
+      header_size += serializator.get_packed_bigint_size (header_size);
+      header_size += serializator.get_packed_bigint_size (header_size);
+      header_size += serializator.get_packed_int_size (header_size);
+      header_size += serializator.get_packed_int_size (header_size);
+
+      return header_size;
+    }
   };
 
   class replication_stream_entry : public cubstream::entry<replication_object>
@@ -87,7 +99,11 @@ namespace cubreplication
 	m_header.group_commit_flag = arg_group_commit_flag;
       };
 
-      size_t get_header_size ();
+      size_t get_packed_header_size ()
+      {
+	return s_header_size;
+      }
+
       size_t get_data_packed_size (void);
       void set_header_data_size (const size_t &data_size);
 
@@ -128,6 +144,9 @@ namespace cubreplication
       int get_packable_entry_count_from_header (void);
 
       bool is_equal (const cubstream::entry<replication_object> *other);
+      static size_t compute_header_size (void);
+
+      static size_t s_header_size;
   };
 
 } /* namespace cubreplication */

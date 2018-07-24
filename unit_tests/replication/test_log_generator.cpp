@@ -19,7 +19,7 @@
 
 #include "log_generator.hpp"
 #include "log_consumer.hpp"
-#include "replication_entry.hpp"
+#include "replication_object.hpp"
 #include "replication_stream_entry.hpp"
 #include "thread_compat.hpp"
 #include "test_log_generator.hpp"
@@ -79,7 +79,7 @@ namespace test_replication
     size_t copy_chunk_size = test_stream_mover.get_buf_size ();
     int read_bytes, written_bytes;
 
-    for (curr_pos = 0; curr_pos <= last_pos;)
+    for (curr_pos = 0; curr_pos < last_pos;)
       {
 	copy_chunk_size = MIN (copy_chunk_size, last_pos - curr_pos);
 
@@ -140,6 +140,8 @@ namespace test_replication
 
     init_common_cubrid_modules ();
 
+    cubthread::entry *my_thread = thread_get_thread_entry_info ();
+
     cubreplication::sbr_repl_entry *sbr1 = new cubreplication::sbr_repl_entry;
     cubreplication::sbr_repl_entry *sbr2 = new cubreplication::sbr_repl_entry;
     cubreplication::single_row_repl_entry *rbr1 =
@@ -160,24 +162,27 @@ namespace test_replication
     sbr1->set_statement ("CREATE TABLE t1 (i1 int)");
     sbr2->set_statement ("CREATE TABLE t2 (i1 int)");
 
-    rbr1->set_key_value (&key_value);
-    rbr1->add_changed_value (1, &new_att2_value);
-    rbr1->add_changed_value (2, &new_att1_value);
-    rbr1->add_changed_value (3, &new_att3_value);
+    rbr1->set_key_value (*my_thread, &key_value);
+    rbr1->copy_and_add_changed_value (*my_thread, 1, &new_att2_value);
+    rbr1->copy_and_add_changed_value (*my_thread, 2, &new_att1_value);
+    rbr1->copy_and_add_changed_value (*my_thread, 3, &new_att3_value);
 
-    rbr2->set_key_value (&key_value);
-    rbr2->add_changed_value (1, &new_att1_value);
-    rbr2->add_changed_value (2, &new_att2_value);
-    rbr2->add_changed_value (3, &new_att3_value);
+    rbr2->set_key_value (*my_thread, &key_value);
+    rbr2->copy_and_add_changed_value (*my_thread, 1, &new_att1_value);
+    rbr2->copy_and_add_changed_value (*my_thread, 2, &new_att2_value);
+    rbr2->copy_and_add_changed_value (*my_thread, 3, &new_att3_value);
 
-    cubreplication::log_generator *lg = cubreplication::log_generator::new_instance (0);
+    cubreplication::log_generator::create_stream (0);
 
-    lg->append_repl_entry (NULL, sbr1);
-    lg->append_repl_entry (NULL, rbr1);
-    lg->append_repl_entry (NULL, sbr2);
-    lg->append_repl_entry (NULL, rbr2);
+    cubreplication::log_generator *lg =
+      new cubreplication::log_generator (cubreplication::log_generator::get_stream ());
 
-    lg->pack_stream_entries (NULL);
+    lg->append_repl_object (sbr1);
+    lg->append_repl_object (rbr1);
+    lg->append_repl_object (sbr2);
+    lg->append_repl_object (rbr2);
+
+    lg->pack_stream_entry ();
 
     cubreplication::log_consumer *lc = cubreplication::log_consumer::new_instance (0);
 
@@ -192,7 +197,7 @@ namespace test_replication
     lc->fetch_stream_entry (se);
     se->unpack ();
 
-    res = se->is_equal (lg->get_stream_entry (NULL));
+    res = se->is_equal (lg->get_stream_entry ());
 
     /* workaround for seq read position : force read position to append position to avoid stream destructor
      * assertion failure */
@@ -219,12 +224,12 @@ namespace test_replication
     db_make_int (&new_att2_value, 100 + thread_p->tran_index);
     db_make_int (&new_att3_value, 1000 + thread_p->tran_index);
 
-    rbr->set_key_value (&key_value);
-    rbr->add_changed_value (1, &new_att2_value);
-    rbr->add_changed_value (2, &new_att1_value);
-    rbr->add_changed_value (3, &new_att3_value);
+    rbr->set_key_value (*thread_p, &key_value);
+    rbr->copy_and_add_changed_value (*thread_p, 1, &new_att2_value);
+    rbr->copy_and_add_changed_value (*thread_p, 2, &new_att1_value);
+    rbr->copy_and_add_changed_value (*thread_p, 3, &new_att3_value);
 
-    lg->append_repl_entry (thread_p, rbr);
+    lg->append_repl_object (rbr);
   }
 
   void generate_sbr (cubthread::entry *thread_p, cubreplication::log_generator *lg, int tran_chunk, int tran_obj)
@@ -235,14 +240,14 @@ namespace test_replication
 
     cubreplication::sbr_repl_entry *sbr = new cubreplication::sbr_repl_entry (statement);
 
-    lg->append_repl_entry (thread_p, sbr);
+    lg->append_repl_object (sbr);
   }
 
   void generate_tran_repl_data (cubthread::entry *thread_p, cubreplication::log_generator *lg)
   {
     int n_tran_chunks = std::rand () % 5;
 
-    cubreplication::replication_stream_entry *se = lg->get_stream_entry (thread_p);
+    cubreplication::replication_stream_entry *se = lg->get_stream_entry ();
 
     se->set_mvccid (thread_p->tran_index + 1);
 
@@ -259,9 +264,9 @@ namespace test_replication
 	if (j == n_tran_chunks - 1)
 	  {
 	    /* commit entry : last commit or random */
-	    lg->set_commit_repl (thread_p, true);
+	    lg->set_commit_repl (true);
 	  }
-	lg->pack_stream_entries (thread_p);
+	lg->pack_stream_entry ();
       }
 
     if (std::rand () % 100 > 90)
@@ -280,10 +285,10 @@ namespace test_replication
   class gen_repl_task : public cubthread::entry_task
   {
     public:
-      gen_repl_task (cubreplication::log_generator *lg, int tran_id)
-	: m_lg (lg)
+      gen_repl_task (int tran_id)
       {
 	m_thread_entry.tran_index = tran_id;
+        m_lg = new cubreplication::log_generator (cubreplication::log_generator::get_stream ());
       }
 
       void execute (cubthread::entry &thread_ref) override
@@ -326,8 +331,9 @@ namespace test_replication
     int res = 0;
 
     init_common_cubrid_modules ();
-
-    cubreplication::log_generator *lg = cubreplication::log_generator::new_instance (0);
+    
+    cubreplication::log_generator *lg = new cubreplication::log_generator;
+    cubreplication::log_generator::create_stream (0);
 
     cubreplication::log_consumer *lc = cubreplication::log_consumer::new_instance (0, true);
 
@@ -342,9 +348,8 @@ namespace test_replication
     tasks_running = TASKS_CNT;
     for (int i = 0; i < TASKS_CNT; i++)
       {
-	gen_repl_task *task = new gen_repl_task (lg, i);
+	gen_repl_task *task = new gen_repl_task (i);
 
-	//gen_worker_pool->push_task (entry, task);
 	cub_th_m->push_task (task->m_thread_entry, gen_worker_pool, task);
       }
 
@@ -364,7 +369,6 @@ namespace test_replication
 
     move_buffers (lg_stream, lc_stream);
 
-    lc->signal_prepare_ready ();
     std::cout << "Done" << std::endl;
 
 

@@ -237,6 +237,7 @@ extern void lock_abort_composite_lock (LK_COMPOSITE_LOCK * comp_lock);
 extern int lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int waiter_index, LK_RES * res);
 extern int lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index, LOCK lock);
 extern int lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock, int cond_flag);
+extern int lock_demote_class_lock (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock, LOCK * ex_lock);
 extern void lock_demote_read_class_lock_for_checksumdb (THREAD_ENTRY * thread_p, int tran_index, const OID * class_oid);
 extern const char *lock_wait_state_to_string (int state);
 extern void lock_force_thread_timeout_lock (THREAD_ENTRY * thread_p);

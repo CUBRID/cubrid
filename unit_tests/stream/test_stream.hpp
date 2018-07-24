@@ -162,7 +162,7 @@ namespace test_stream
 
       packable_factory *get_builder ();
 
-      size_t get_header_size ()
+      size_t get_packed_header_size ()
       {
 	size_t header_size = 0;
 	cubpacking::packer *serializator = get_packer ();
@@ -297,6 +297,8 @@ namespace test_stream
 
       static std::bitset<1024> g_running_packers;
       static std::bitset<1024> g_running_readers;
+
+      static void update_stream_drop_position (void);
   };
 
   class stream_pack_task : public cubthread::task<cubthread::entry>

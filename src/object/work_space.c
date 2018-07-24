@@ -166,7 +166,7 @@ static WS_REPL_FLUSH_ERR *ws_Repl_error_link = NULL;
 
 static WS_REPL_LIST ws_Repl_objs;
 
-static MOP ws_make_mop (OID * oid);
+static MOP ws_make_mop (const OID * oid);
 static void ws_free_mop (MOP op);
 static void emergency_remove_dirty (MOP op);
 static void ws_unlink_from_commit_mops_list (MOP op);
@@ -231,7 +231,7 @@ ws_abort_transaction (void)
  *    oid(in): oid for a new mop
  */
 static MOP
-ws_make_mop (OID * oid)
+ws_make_mop (const OID * oid)
 {
   MOP op;
 
@@ -611,7 +611,7 @@ ws_mop_if_exists (OID * oid)
  */
 
 MOP
-ws_mop (OID * oid, MOP class_mop)
+ws_mop (const OID * oid, MOP class_mop)
 {
   MOP mop, new_mop, prev;
   unsigned int slot;

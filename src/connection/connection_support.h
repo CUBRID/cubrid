@@ -114,6 +114,8 @@ extern void css_register_check_server_alive_fn (CSS_CHECK_SERVER_ALIVE_FN callba
 extern int css_send_magic (CSS_CONN_ENTRY * conn);
 extern int css_check_magic (CSS_CONN_ENTRY * conn);
 
+extern int css_check_magic_with_socket (SOCKET fd);
+
 extern int css_user_access_status_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt,
 					      void **ptr);
 extern int css_platform_independent_poll (POLL_FD * fds, int num_of_fds, int timeout);

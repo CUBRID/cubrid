@@ -213,14 +213,16 @@ namespace mem
 		return ER_FAILED;
 	      }
 	  }
-
-	if (is_range_overlap (ptr, amount, m_ptr_start_a, m_ptr_end_a - m_ptr_start_a))
+	else
 	  {
-	    return ER_FAILED;
+	    if (m_ptr_prev_gen_committed != NULL
+		&& is_range_overlap (ptr, amount, m_ptr_prev_gen_committed, m_buffer_end - m_ptr_prev_gen_committed))
+	      {
+		return ER_FAILED;
+	      }
 	  }
 
-	if (m_ptr_prev_gen_committed != NULL
-	    && is_range_overlap (ptr, amount, m_ptr_prev_gen_committed, m_buffer_end - m_ptr_prev_gen_committed))
+	if (is_range_overlap (ptr, amount, m_ptr_start_a, m_ptr_end_a - m_ptr_start_a))
 	  {
 	    return ER_FAILED;
 	  }

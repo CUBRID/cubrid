@@ -13653,11 +13653,11 @@ locator_decide_operation_type (LOCK lock_mode, LC_FETCH_VERSION_TYPE fetch_versi
 }
 
 /*
-* locator_get_lock_mode_from_op_type () - returns the lock mode that corresponds to the provided operation type.
-*
-* return	  : lock mode
-* lock_mode (in) : operation type
-*/
+ * locator_get_lock_mode_from_op_type () - returns the lock mode that corresponds to the provided operation type.
+ *
+ * return	  : lock mode
+ * lock_mode (in) : operation type
+ */
 LOCK
 locator_get_lock_mode_from_op_type (SCAN_OPERATION_TYPE op_type)
 {
@@ -13674,4 +13674,10 @@ locator_get_lock_mode_from_op_type (SCAN_OPERATION_TYPE op_type)
       assert (false);
       return NA_LOCK;
     }
+}
+
+int
+xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK lock, LOCK * ex_lock)
+{
+  return lock_demote_class_lock (thread_p, class_oid, lock, ex_lock);
 }

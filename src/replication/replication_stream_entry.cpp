@@ -23,7 +23,7 @@
 
 #ident "$Id$"
 
-#include "replication_entry.hpp"
+#include "replication_object.hpp"
 #include "replication_stream_entry.hpp"
 #include "stream_entry.hpp"
 #include "error_code.h"
@@ -31,19 +31,6 @@
 
 namespace cubreplication
 {
-
-  size_t replication_stream_entry::get_header_size ()
-  {
-    size_t header_size = 0;
-    cubpacking::packer *serializator = get_packer ();
-
-    header_size += serializator->get_packed_bigint_size (header_size);
-    header_size += serializator->get_packed_bigint_size (header_size);
-    header_size += serializator->get_packed_int_size (header_size);
-    header_size += serializator->get_packed_int_size (header_size);
-
-    return header_size;
-  }
 
   size_t replication_stream_entry::get_data_packed_size (void)
   {
@@ -128,7 +115,7 @@ namespace cubreplication
 
   bool replication_stream_entry::is_equal (const cubstream::entry<replication_object> *other)
   {
-    int i;
+    size_t i;
     const replication_stream_entry *other_t = dynamic_cast <const replication_stream_entry *> (other);
 
     if (other_t == NULL)
@@ -157,5 +144,18 @@ namespace cubreplication
 
     return true;
   }
+
+  size_t replication_stream_entry::compute_header_size (void)
+  {
+    replication_stream_entry_header e;
+    cubpacking::packer serializator;
+
+    size_t stream_entry_header_size = e.get_size (serializator);
+    size_t aligned_stream_entry_header_size = DB_ALIGN (stream_entry_header_size, MAX_ALIGNMENT);
+
+    return aligned_stream_entry_header_size;
+  }
+
+  size_t replication_stream_entry::s_header_size = replication_stream_entry::compute_header_size ();
 
 } /* namespace cubreplication */

@@ -26,11 +26,15 @@
 #include "server_support.h"
 
 #include "config.h"
+#include "packing_stream.hpp"
 #include "session.h"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
+#include "stream_transfer_receiver.hpp"
+#include "replication_master_senders_manager.hpp"
+#include "communication_server_channel.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -198,7 +202,6 @@ public:
 private:
   CSS_CONN_ENTRY &m_conn;
 };
-// *INDENT-ON*
 
 static const size_t CSS_JOB_QUEUE_SCAN_COLUMN_COUNT = 4;
 
@@ -236,17 +239,19 @@ static void css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool i
 static bool css_is_log_writer (const THREAD_ENTRY & thread_arg);
 static void css_stop_all_workers (THREAD_ENTRY & thread_ref, css_thread_stop_type stop_phase);
 static void css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapper, int &busy_count);
-// *INDENT-OFF*
 // cubthread::entry_workpool::core confuses indent
 static void css_wp_core_job_scan_mapper (const cubthread::entry_workpool::core & wp_core, bool & stop_mapper,
                                          THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx, size_t & core_index,
                                          int & error_code);
+static void
+css_is_any_thread_not_suspended_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, size_t & count, bool & found);
+static void
+css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
+					      THREAD_ENTRY * caller_thread, int tran_index, int client_id,
+					      size_t & count);
+
+static HA_SERVER_STATE css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE req_state);
 // *INDENT-ON*
-static void css_is_any_thread_not_suspended_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, size_t & count,
-						     bool & found);
-static void css_count_transaction_worker_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
-							  THREAD_ENTRY * caller_thread, int tran_index, int client_id,
-							  size_t & count);
 
 #if defined (SERVER_MODE)
 /*
@@ -777,10 +782,12 @@ css_process_get_eof_request (SOCKET master_fd)
 #endif
 }
 
+// *INDENT-OFF*
 int
 css_process_master_hostname ()
 {
   int hostname_length, error;
+  cubcomm::server_channel chn (css_Master_server_name);
 
   error = css_receive_heartbeat_data (css_Master_conn, (char *) &hostname_length, sizeof (int));
   if (error != NO_ERRORS)
@@ -806,13 +813,25 @@ css_process_master_hostname ()
 
   assert (hostname_length > 0 && ha_Server_state == HA_SERVER_STATE_STANDBY);
 
+#if 0
+  /* TODO[arnia] deactivate for now this new replication
+   * code and reactivate it later, when merging with razvan
+   */
   //create slave replication channel and connect to hostname
+  error = chn.connect (ha_Server_master_hostname, css_Master_port_id);
+  if (error != NO_ERRORS)
+    {
+      assert (false);
+      return error;
+    }
+#endif
 
   er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
 		ha_Server_master_hostname);
 
   return NO_ERRORS;
 }
+// *INDENT-ON*
 
 /*
  * css_close_connection_to_master() -
@@ -874,7 +893,9 @@ css_process_new_connection_request (void)
   CSS_CONN_ENTRY new_conn;
   char *error_string;
 
-  NET_HEADER header = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+  NET_HEADER header = {
+    0, 0, 0, 0, 0, 0, 0, 0, 0
+  };
 
   new_fd = css_server_accept (css_Server_connection_socket);
 
@@ -1392,7 +1413,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
   // create connection worker pool
   css_Connection_worker_pool =
-    cubthread::get_manager ()->create_worker_pool (MAX_CONNECTIONS, MAX_CONNECTIONS, NULL, 1, false);
+    cubthread::get_manager ()->create_worker_pool (MAX_CONNECTIONS, MAX_CONNECTIONS, NULL, 1, false, true,
+						   std::chrono::minutes (5));
   if (css_Connection_worker_pool == NULL)
     {
       assert (false);
@@ -2267,6 +2289,7 @@ css_check_ha_log_applier_working (void)
   return false;
 }
 
+// *INDENT-OFF*
 /*
  * css_change_ha_server_state - change the server's HA state
  *   return: NO_ERROR or ER_FAILED
@@ -2347,7 +2370,6 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: " "logtb_enable_update() \n");
 	  logtb_enable_update (thread_p);
 	}
-      // init master replication channel manager
       break;
 
     case HA_SERVER_STATE_STANDBY:
@@ -2446,6 +2468,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 
   return (state != HA_SERVER_STATE_NA) ? NO_ERROR : ER_FAILED;
 }
+// *INDENT-ON*
 
 /*
  * css_notify_ha_server_mode - notify the log applier's HA state
@@ -2688,6 +2711,8 @@ css_process_new_slave (SOCKET master_fd)
 
   SOCKET new_fd;
   unsigned short rid;
+  css_error_code rc;
+  cubcomm::channel chn;
 
   /* receive new socket descriptor from the master */
   new_fd = css_open_new_socket_from_master (master_fd, &rid);
@@ -2701,10 +2726,17 @@ css_process_new_slave (SOCKET master_fd)
 
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
-  // add slave to master replication channel manager
-#if 1
-  // remove this after master/slave repl chn impl
-  css_shutdown_socket (new_fd);
+#if 0
+  /* TODO[arnia] deactivate for now this new replication
+   * code and reactivate it later, when merging with razvan
+   */
+  rc = chn.accept (new_fd);
+  assert (rc == NO_ERRORS);
+
+  // *INDENT-OFF*
+  cubreplication::master_senders_manager::add_stream_sender
+    (new cubstream::transfer_sender (std::move (chn), cubreplication::master_senders_manager::get_stream ()));
+  // *INDENT-ON*
 #endif
 }
 
@@ -2983,6 +3015,12 @@ css_stop_log_writer (THREAD_ENTRY & thread_ref, bool & stop_mapper)
 static void
 css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop_mapper, bool is_log_writer, bool & found)
 {
+  if (thread_ref.conn_entry == NULL)
+    {
+      // no conn_entry => does not need stopping
+      return;
+    }
+
   if (is_log_writer != css_is_log_writer (thread_ref))
     {
       // don't care

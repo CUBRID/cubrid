@@ -102,7 +102,10 @@ inline
 contiguous_memory_buffer<T, Size, Allocator>::~contiguous_memory_buffer ()
 {
   // free dynamic buffer
-  m_alloc.deallocate (m_heap_membuf, m_capacity);
+  if (m_heap_membuf != NULL)
+    {
+      m_alloc.deallocate (m_heap_membuf, m_capacity);
+    }
 }
 
 template<typename T, size_t Size, typename Allocator>

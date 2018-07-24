@@ -31,14 +31,15 @@
 #include "cubstream.hpp"
 #include "stream_io.hpp"
 
+#include <condition_variable>
 #include <mutex>
 #include <functional>
 #include <vector>
 
 namespace cubstream
 {
-  /* stream with capability to pack/unpack objects concurrently
-   * the read, read_partial, read_serial, write require a function argument to perform the packing/unpacking;
+  /* stream with capability to write/read concurrently
+   * the read, read_partial, read_serial, write require a function argument to perform custom write/read operation;
    * Interface:
    *
    * write (amount, write_function):
@@ -109,6 +110,10 @@ namespace cubstream
 
       stream_io *m_io;
 
+      /* serial read cv uses m_buffer_mutex */
+      std::condition_variable m_serial_read_cv;
+      bool m_is_stopped;
+
       /* stats counters */
       std::uint64_t m_stat_reserve_queue_spins;
       std::uint64_t m_stat_reserve_buffer_spins;
@@ -144,11 +149,22 @@ namespace cubstream
 	m_bip_buffer.set_reserve_margin (margin);
       };
 
+      void set_trigger_min_to_read_size (const size_t min_read_size)
+      {
+	m_trigger_min_to_read_size = min_read_size;
+      }
+
       /* fill factor : if < 1 : no need to flush or throttle the appenders ; if > 1 : need to flush and/or throttle */
       float stream_fill_factor (void)
       {
 	return ((float) m_append_position - (float) m_last_dropable_pos) / (float) m_trigger_flush_to_disk_size;
       };
+
+      void set_stop (void)
+      {
+	m_is_stopped = true;
+        m_serial_read_cv.notify_one ();
+      }
   };
 
 } /* namespace cubstream */

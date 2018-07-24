@@ -53,7 +53,6 @@ namespace cubstream
       typedef std::function<int (const stream_position &, char *, const size_t, size_t &)> read_prepare_func_t;
       typedef std::function<int (const stream_position &, char *, const size_t)> write_func_t;
       typedef std::function<int (const stream_position &, const size_t)> notify_func_t;
-      typedef std::function<int (const stream_position &, char *, const size_t, size_t &)> fetch_func_t;
 
     protected:
       /* callback functions: */
@@ -61,10 +60,6 @@ namespace cubstream
        * readers; when the difference between append position and drop position exceeds threshold, this action
        * needs to be taken (usually saving to disk) */
       notify_func_t m_filled_stream_handler;
-
-      /* called when reader does not have enough data to read; usually it blocks in waiting for producing, but
-       * may be used as actively producing data */
-      fetch_func_t m_fetch_data_handler;
 
       /* called when commit position advances enough (delta above threshold); the usual action is notify readers
        */
@@ -84,6 +79,9 @@ namespace cubstream
 
       /* last position notified as committed; used to send notifications */
       stream_position m_last_notified_committed_pos;
+
+      /* position to wait for in serial read */
+      stream_position m_serial_read_wait_pos;
 
       /* last position which may be dropped (the underlying memory associated may be recycled)
        * is checked by stream notify (e.g. flush to disk), and set by external clients;
@@ -107,7 +105,7 @@ namespace cubstream
       const stream_position &get_curr_read_position (void)
       {
 	return m_read_position;
-      };
+      }
 
       void force_set_read_position (const stream_position &pos)
       {
@@ -117,32 +115,27 @@ namespace cubstream
       const stream_position &get_last_committed_pos (void)
       {
 	return m_last_committed_pos;
-      };
+      }
 
       const stream_position &get_last_dropable_pos (void)
       {
 	return m_last_dropable_pos;
-      };
+      }
 
       void set_last_dropable_pos (const stream_position &last_dropable_pos)
       {
 	m_last_dropable_pos = last_dropable_pos;
-      };
+      }
 
       void set_filled_stream_handler (notify_func_t handler)
       {
 	m_filled_stream_handler = handler;
-      };
-
-      void set_fetch_data_handler (fetch_func_t handler)
-      {
-	m_fetch_data_handler = handler;
-      };
+      }
 
       void set_ready_pos_handler (notify_func_t handler)
       {
 	m_ready_pos_handler = handler;
-      };
+      }
 
       const std::string &name (void)
       {

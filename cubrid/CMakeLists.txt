@@ -162,12 +162,14 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
   ${COMMUNICATION_DIR}/communication_channel.cpp
+  ${COMMUNICATION_DIR}/communication_server_channel.cpp
   ${COMMUNICATION_DIR}/stream_transfer_receiver.cpp
   ${COMMUNICATION_DIR}/stream_transfer_sender.cpp
   )
 
 set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/communication_channel.hpp
+  ${COMMUNICATION_DIR}/communication_server_channel.hpp
   ${COMMUNICATION_DIR}/stream_transfer_receiver.hpp
   ${COMMUNICATION_DIR}/stream_transfer_sender.hpp
   )
@@ -178,6 +180,7 @@ set(MONITOR_SOURCES
   ${MONITOR_DIR}/monitor_statistic.cpp
   ${MONITOR_DIR}/monitor_transaction.cpp
 )
+
 set(MONITOR_HEADERS
   ${MONITOR_DIR}/monitor_collect.hpp
   ${MONITOR_DIR}/monitor_definition.hpp
@@ -185,6 +188,10 @@ set(MONITOR_HEADERS
   ${MONITOR_DIR}/monitor_statistic.hpp
   ${MONITOR_DIR}/monitor_transaction.hpp
 )
+
+set (REPLICATION_HEADERS
+  ${REPLICATION_DIR}/replication_master_senders_manager.hpp
+  )
 
 set(QUERY_SOURCES
   ${QUERY_DIR}/arithmetic.c
@@ -224,7 +231,8 @@ set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_consumer.cpp
   ${REPLICATION_DIR}/log_generator.cpp
   ${REPLICATION_DIR}/master_replication_channel.cpp
-  ${REPLICATION_DIR}/replication_entry.cpp
+  ${REPLICATION_DIR}/replication_object.cpp
+  ${REPLICATION_DIR}/replication_master_senders_manager.cpp  
   ${REPLICATION_DIR}/replication_stream_entry.cpp
   ${REPLICATION_DIR}/slave_replication_channel.cpp
   )  
@@ -350,11 +358,13 @@ set (CUBRID_LIB_SOURCES
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
   )
+
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
   ${COMMUNICATION_HEADERS}
   ${COMPAT_HEADERS}
   ${MONITOR_HEADERS}
+  ${REPLICATION_HEADERS}
   ${THREAD_HEADERS}
   ${STREAM_HEADERS}
   )

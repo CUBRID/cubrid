@@ -55,9 +55,11 @@
 #include "storage_common.h"
 #if defined (SERVER_MODE)
 #include "thread_entry.hpp"
+#include "log_generator.hpp"
 #else // not SERVER_MODE = SA_MODE or CS_MODE
 #include "thread_compat.hpp"
 #endif // not SERVER_MODE = SA_MODE or CS_MODE
+
 
 #include <assert.h>
 #if defined(SOLARIS)
@@ -1741,6 +1743,10 @@ struct log_tdes
   bool block_global_oldest_active_until_commit;
 
   LOG_RCV_TDES rcv;
+
+#if defined (SERVER_MODE)
+  cubreplication::log_generator replication_log_generator;
+#endif
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;
