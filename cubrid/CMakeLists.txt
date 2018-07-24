@@ -230,11 +230,9 @@ set(OBJECT_SOURCES
 set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_consumer.cpp
   ${REPLICATION_DIR}/log_generator.cpp
-  ${REPLICATION_DIR}/master_replication_channel.cpp
   ${REPLICATION_DIR}/replication_object.cpp
   ${REPLICATION_DIR}/replication_master_senders_manager.cpp  
   ${REPLICATION_DIR}/replication_stream_entry.cpp
-  ${REPLICATION_DIR}/slave_replication_channel.cpp
   )  
 
 set(JSP_SOURCES
