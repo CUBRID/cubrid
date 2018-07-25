@@ -39,17 +39,6 @@ typedef cubthread::entry THREAD_ENTRY;
 typedef std::thread::id thread_id_t;
 #endif // _THREAD_ENTRY_HPP_
 
-// system parameter flags for thread logging
-// manager flags
-const int THREAD_LOG_MANAGER = 0x1;
-const int THREAD_LOG_MANAGER_ALL = 0xFF;          // reserved for thread manager
-
-const int THREAD_LOG_WORKER_POOL_VACUUM = 0x100;
-const int THREAD_LOG_WORKER_POOL_ALL = 0xFF00;    // reserved for thread worker pool
-
-const int THREAD_LOG_DAEMON_VACUUM = 0x10000;
-const int THREAD_LOG_DAEMON_ALL = 0xFFFF0000;     // reserved for thread daemons
-
 #else // not SERVER_MODE and not SA_MODE-C++
 // client or SA_MODE annoying grammars
 typedef void THREAD_ENTRY;

@@ -43,6 +43,9 @@
 #endif /* SERVER_MODE */
 #include "thread_looper.hpp"
 #include "thread_manager.hpp"
+#if defined (SERVER_MODE)
+#include "thread_worker_pool.hpp"
+#endif // SERVER_MODE
 #include "util_func.h"
 
 #include <atomic>
@@ -1037,15 +1040,15 @@ vacuum_boot (THREAD_ENTRY * thread_p)
   // get logging flag for vacuum worker pool
   /* *INDENT-OFF* */
   bool log_vacuum_worker_pool =
-    flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_THREAD_LOGGING_FLAG), THREAD_LOG_WORKER_POOL_VACUUM)
+    cubthread::is_logging_configured (cubthread::LOG_WORKER_POOL_VACUUM)
     || flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_ER_LOG_VACUUM), VACUUM_ER_LOG_WORKER);
   /* *INDENT-ON* */
 
   // create thread pool
   vacuum_Worker_threads =
     thread_manager->create_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT),
-					VACUUM_MAX_TASKS_IN_WORKER_POOL, vacuum_Worker_context_manager, 1,
-					log_vacuum_worker_pool);
+					VACUUM_MAX_TASKS_IN_WORKER_POOL, "vacuum workers",
+					vacuum_Worker_context_manager, 1, log_vacuum_worker_pool);
   assert (vacuum_Worker_threads != NULL);
 
   int vacuum_master_wakeup_interval_msec = prm_get_integer_value (PRM_ID_VACUUM_MASTER_WAKEUP_INTERVAL);
@@ -1078,6 +1081,9 @@ vacuum_stop (THREAD_ENTRY * thread_p)
   // stop work pool
   if (vacuum_Worker_threads != NULL)
     {
+#if defined (SERVER_MODE)
+      vacuum_Worker_threads->er_log_stats ();
+#endif // SERVER_MODE
       thread_manager->destroy_worker_pool (vacuum_Worker_threads);
     }
 

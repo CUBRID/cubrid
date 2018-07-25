@@ -110,7 +110,7 @@ namespace test_thread
   test_one_thread_pool (void)
   {
     test_context_manager ctx_mgr;
-    test_worker_pool_type pool (1, 1, ctx_mgr, 1, false);
+    test_worker_pool_type pool (1, 1, ctx_mgr, NULL, 1, false);
     pool.execute (new test_task ());
     pool.execute (new test_task ());
 
@@ -126,7 +126,7 @@ namespace test_thread
   test_two_threads_pool (void)
   {
     test_context_manager ctx_mgr;
-    test_worker_pool_type pool (2, 16, ctx_mgr, 1, false);
+    test_worker_pool_type pool (2, 16, ctx_mgr, NULL, 1, false);
 
     pool.execute (new start_end_task ());
     pool.execute (new start_end_task ());
@@ -145,7 +145,7 @@ namespace test_thread
 
     nthreads *= 4;
 
-    test_worker_pool_type workpool (nthreads, nthreads * 16, ctx_mgr, 1, false);
+    test_worker_pool_type workpool (nthreads, nthreads * 16, ctx_mgr, NULL, 1, false);
 
     auto start_time = std::chrono::high_resolution_clock::now ();
     for (int i = 0; i < 10000; i++)
