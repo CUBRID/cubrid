@@ -2643,13 +2643,13 @@ vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
   vacuum_convert_thread_to_worker (thread_p, worker_p, save_type);
   assert (save_type == thread_type::TT_VACUUM_MASTER);
 #endif // SA_MODE
+  (void) thread_p;    // not used
   if (vacuum_Data.shutdown_requested)
     {
       // stop pushing tasks; worker pool may be stopped already
       return;
     }
-  cubthread::get_manager ()->push_task (*thread_p, vacuum_Worker_threads,
-					new vacuum_worker_task (data_entry, is_partial_block));
+  cubthread::get_manager ()->push_task (vacuum_Worker_threads, new vacuum_worker_task (data_entry, is_partial_block));
 #if defined (SA_MODE)
   vacuum_convert_thread_to_master (thread_p, save_type);
   assert (save_type == thread_type::TT_VACUUM_WORKER);

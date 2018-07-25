@@ -350,7 +350,7 @@ namespace test_replication
       {
 	gen_repl_task *task = new gen_repl_task (i);
 
-	cub_th_m->push_task (task->m_thread_entry, gen_worker_pool, task);
+	cub_th_m->push_task (gen_worker_pool, task);
       }
 
     lg->pack_group_commit_entry ();

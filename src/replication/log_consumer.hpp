@@ -66,8 +66,6 @@ namespace cubreplication
 
       cubthread::entry_workpool *m_applier_workers_pool;
 
-      repl_applier_worker_context_manager *m_repl_applier_worker_context_manager;
-
       int m_applier_worker_threads_count;
 
       bool m_use_daemons;
@@ -98,7 +96,7 @@ namespace cubreplication
       int fetch_stream_entry (replication_stream_entry *&entry);
 
       void start_daemons (void);
-      void execute_task (cubthread::entry &thread, repl_applier_worker_task *task);
+      void execute_task (repl_applier_worker_task *task);
 
       static log_consumer *new_instance (const cubstream::stream_position &start_position, bool use_daemons = false);
 

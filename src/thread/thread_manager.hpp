@@ -90,7 +90,7 @@ namespace cubthread
   //
   //     2. entry_workpool -
   //          entry_workpool *my_workpool = cubthread::get_manager ()->create_worker_pool (MAX_THREADS, MAX_JOBS);
-  //          cubthread::get_manager ()->push_task (*thread_p, entry_workpool, entry_task_p);
+  //          cubthread::get_manager ()->push_task (entry_workpool, entry_task_p);
   //          cubthread::get_manager ()->destroy_worker_pool (my_workpool);
   //
   class manager
@@ -122,11 +122,10 @@ namespace cubthread
 
       // push task to worker pool created with this manager
       // if worker_pool_arg is NULL, the task is executed immediately
-      void push_task (entry &thread_p, entry_workpool *worker_pool_arg, entry_task *exec_p);
+      void push_task (entry_workpool *worker_pool_arg, entry_task *exec_p);
       // push task on the given core of entry worker pool.
       // read cubthread::worker_pool::execute_on_core for details.
-      void push_task_on_core (entry &thread_p, entry_workpool *worker_pool_arg, entry_task *exec_p,
-			      std::size_t core_hash);
+      void push_task_on_core (entry_workpool *worker_pool_arg, entry_task *exec_p, std::size_t core_hash);
 
       // try to execute task if there are available thread in worker pool
       // if worker_pool_arg is NULL, the task is executed immediately

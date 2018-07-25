@@ -149,7 +149,7 @@ namespace cubreplication
 		    repl_applier_worker_task *my_repl_applier_worker_task = it->second;
 		    if (my_repl_applier_worker_task->has_commit ())
 		      {
-			m_lc->execute_task (thread_ref, it->second);
+			m_lc->execute_task (it->second);
 		      }
 		    else
 		      {
@@ -198,14 +198,6 @@ namespace cubreplication
 
     private:
       log_consumer *m_lc;
-  };
-
-  class repl_applier_worker_context_manager : public cubthread::entry_manager
-  {
-    public:
-      repl_applier_worker_context_manager () : cubthread::entry_manager ()
-      {
-      }
   };
 
   log_consumer::~log_consumer ()
@@ -288,18 +280,17 @@ namespace cubreplication
 		     new apply_stream_entry_task (this),
 		     "apply_stream_entry_daemon");
 
-    m_repl_applier_worker_context_manager = new repl_applier_worker_context_manager;
-
     m_applier_workers_pool = cubthread::get_manager ()->create_worker_pool (m_applier_worker_threads_count,
-			     m_applier_worker_threads_count, m_repl_applier_worker_context_manager, 1, 1);
+                                                                            m_applier_worker_threads_count,
+                                                                            NULL, 1, 1);
 
     m_use_daemons = true;
 #endif /* defined (SERVER_MODE) */
   }
 
-  void log_consumer::execute_task (cubthread::entry &thread, repl_applier_worker_task *task)
+  void log_consumer::execute_task (repl_applier_worker_task *task)
   {
-    cubthread::get_manager ()->push_task (thread, m_applier_workers_pool, task);
+    cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
 
     m_started_tasks++;
   }

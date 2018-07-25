@@ -245,7 +245,7 @@ static PX_TREE_NODE *px_sort_assign (THREAD_ENTRY * thread_p, SORT_PARAM * sort_
 				     char **px_vector, long px_vector_size, int px_height, int px_myself);
 static int px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node);
 #if defined(SERVER_MODE)
-static int px_sort_communicate (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node);
+static int px_sort_communicate (PX_TREE_NODE * px_node);
 #endif
 
 static int sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FUNC * get_next,
@@ -1712,7 +1712,7 @@ private:
  * NOTE: support parallelism
  */
 static int
-px_sort_communicate (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
+px_sort_communicate (PX_TREE_NODE * px_node)
 {
   SORT_PARAM *sort_param;
 
@@ -1724,7 +1724,7 @@ px_sort_communicate (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
   assert_release (px_node->px_id < sort_param->px_array_size);
   assert_release (px_node->px_vector_size > 1);
 
-  css_push_external_task (*thread_p, css_get_current_conn_entry (), new px_sort_myself_task (px_node));
+  css_push_external_task (css_get_current_conn_entry (), new px_sort_myself_task (px_node));
 
   return NO_ERROR;
 }
@@ -1872,7 +1872,7 @@ px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
       if (right_vector_size > 1)
 	{
 	  /* launch new worker */
-	  if (px_sort_communicate (thread_p, right_px_node) != NO_ERROR)
+	  if (px_sort_communicate (right_px_node) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
