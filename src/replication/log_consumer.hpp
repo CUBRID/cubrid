@@ -46,8 +46,6 @@ namespace cubreplication
 
   class log_consumer
   {
-      friend class prepare_stream_entry_task;
-      friend class apply_stream_entry_task;
     private:
       std::queue<replication_stream_entry *> m_stream_entries;
 
