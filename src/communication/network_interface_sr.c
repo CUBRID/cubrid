@@ -92,13 +92,13 @@
 unsigned int db_on_server = 1;
 
 STATIC_INLINE TRAN_STATE stran_server_commit_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool retain_lock,
-						       bool * reset_on_commit) __attribute__ ((ALWAYS_INLINE));
+						       bool * should_conn_reset) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE TRAN_STATE stran_server_abort_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool retain_lock,
-						      bool * reset_on_commit) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void ends_transaction_after_query_execution (THREAD_ENTRY * thread_p, unsigned int rid,
-							   bool end_query_allowed, QUERY_ID * p_end_queries,
-							   int n_query_ids, bool need_abort, bool has_updated,
-							   TRAN_STATE * tran_state, bool * reset_on_commit)
+						      bool * should_conn_reset) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void stran_server_auto_commit_or_abort (THREAD_ENTRY * thread_p, unsigned int rid,
+						      bool end_query_allowed, QUERY_ID * p_end_queries,
+						      int n_query_ids, bool need_abort, bool has_updated,
+						      TRAN_STATE * tran_state, bool * should_conn_reset)
   __attribute__ ((ALWAYS_INLINE));
 
 static bool need_to_abort_tran (THREAD_ENTRY * thread_p, int *errid);
@@ -114,24 +114,24 @@ static void event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO
 
 
 /*
-* stran_server_commit_internal - commit transaction on server.
-*
-* return:
-*
-*   thread_p(in): thred entry.
-*   rid(in): request id.
-*   retain_lock(in): true, if retains lock.
-*   reset_on_commit(out): reset on commit.
-*
-* NOTE: This function must be called at transaction commit.
-*/
+ * stran_server_commit_internal - commit transaction on server.
+ *
+ * return:
+ *
+ *   thread_p(in): thred entry.
+ *   rid(in): request id.
+ *   retain_lock(in): true, if retains lock.
+ *   should_conn_reset(out): reset on commit.
+ *
+ * NOTE: This function must be called at transaction commit.
+ */
 STATIC_INLINE TRAN_STATE
-stran_server_commit_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool retain_lock, bool * reset_on_commit)
+stran_server_commit_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool retain_lock, bool * should_conn_reset)
 {
   bool has_updated;
   TRAN_STATE state;
 
-  assert (reset_on_commit != NULL);
+  assert (should_conn_reset != NULL);
   has_updated = logtb_has_updated (thread_p);
 
   state = xtran_server_commit (thread_p, retain_lock);
@@ -144,24 +144,24 @@ stran_server_commit_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool re
       (void) return_error_to_client (thread_p, rid);
     }
 
-  xtran_reset_on_commit (thread_p, has_updated, reset_on_commit);
+  *should_conn_reset = xtran_should_connection_reset (thread_p, has_updated);
 
   return state;
 }
 
 /*
-* stran_server_abort_internal - abort transaction on server.
-*
-* return:
-*
-*   thread_p(in): thred entry.
-*   rid(in): request id.
-*   reset_on_commit(out): reset on commit.
-*
-* NOTE: This function must be called at transaction abort.
-*/
+ * stran_server_abort_internal - abort transaction on server.
+ *
+ * return:
+ *
+ *   thread_p(in): thred entry.
+ *   rid(in): request id.
+ *   should_conn_reset(out): reset on commit.
+ *
+ * NOTE: This function must be called at transaction abort.
+ */
 STATIC_INLINE TRAN_STATE
-stran_server_abort_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool * reset_on_commit)
+stran_server_abort_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool * should_conn_reset)
 {
   TRAN_STATE state;
   bool has_updated;
@@ -178,36 +178,37 @@ stran_server_abort_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool * r
       (void) return_error_to_client (thread_p, rid);
     }
 
-  xtran_reset_on_commit (thread_p, has_updated, reset_on_commit);
+  *should_conn_reset = xtran_should_connection_reset (thread_p, has_updated);
 
   return state;
 }
 
 /*
-* ends_transaction_after_query_execution - Ends transaction after query execution.
-*
-* return: nothing
-*
-*   thread_p(in): thread entry
-*   rid(in): request id
-*   end_query_allowed(in): true, if end query is allowed
-*   p_end_queries(in): queries to end
-*   n_query_ids(in): the number of queries to end
-*   need_abort(in): true, if need to abort
-*   has_updated_before_abort(in):true, if has updated before abort
-*   tran_state(in/out): transaction state
-*   reset_on_commit(in/out): reset on commit
-*
-* Note: This function must be called only when the query is executed with commit, soon after query exectuion.
-*/
+ * stran_server_auto_commit_or_abort - do server-side auto-commit or abort
+ *
+ * return: nothing
+ *
+ *   thread_p(in): thread entry
+ *   rid(in): request id
+ *   end_query_allowed(in): true, if end query is allowed
+ *   p_end_queries(in): queries to end
+ *   n_query_ids(in): the number of queries to end
+ *   need_abort(in): true, if need to abort
+ *   has_updated(in):true, if has updated before abort
+ *   tran_state(in/out): transaction state
+ *   should_conn_reset(in/out): reset on commit
+ *
+ * Note: This function must be called only when the query is executed with commit, soon after query exectuion.
+ */
 STATIC_INLINE void
-ends_transaction_after_query_execution (THREAD_ENTRY * thread_p, unsigned int rid, bool end_query_allowed,
-					QUERY_ID * p_end_queries, int n_query_ids, bool need_abort,
-					bool has_updated_before_abort, TRAN_STATE * tran_state, bool * reset_on_commit)
+stran_server_auto_commit_or_abort (THREAD_ENTRY * thread_p, unsigned int rid, bool end_query_allowed,
+				   QUERY_ID * p_end_queries, int n_query_ids, bool need_abort,
+				   bool has_updated, TRAN_STATE * tran_state, bool * should_conn_reset)
 {
   int error_code = NO_ERROR, all_error_code = NO_ERROR, i;
 
-  assert (tran_state != NULL && reset_on_commit != NULL);
+  assert (tran_state != NULL && should_conn_reset != NULL);
+
   if (end_query_allowed)
     {
       for (i = 0; i < n_query_ids; i++)
@@ -229,7 +230,7 @@ ends_transaction_after_query_execution (THREAD_ENTRY * thread_p, unsigned int ri
 	}
       else
 	{
-	  *tran_state = stran_server_commit_internal (thread_p, rid, false, reset_on_commit);
+	  *tran_state = stran_server_commit_internal (thread_p, rid, false, should_conn_reset);
 	}
     }
   else if (need_abort)
@@ -239,12 +240,12 @@ ends_transaction_after_query_execution (THREAD_ENTRY * thread_p, unsigned int ri
 	  /* We have an error and the transaction was not aborted. Since is auto commit transaction, we can abort it.
 	   * In this way, we can avoid abort request.
 	   */
-	  *tran_state = stran_server_abort_internal (thread_p, rid, reset_on_commit);
+	  *tran_state = stran_server_abort_internal (thread_p, rid, should_conn_reset);
 	}
       else
 	{
 	  /* Transaction was already aborted. */
-	  xtran_reset_on_commit (thread_p, has_updated_before_abort, reset_on_commit);
+	  *should_conn_reset = xtran_should_connection_reset (thread_p, has_updated);
 	}
     }
 }
@@ -2487,7 +2488,7 @@ stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 {
   TRAN_STATE state;
   int xretain_lock;
-  bool retain_lock, reset_on_commit = false;
+  bool retain_lock, should_conn_reset = false;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
@@ -2514,10 +2515,10 @@ stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   /* set row count */
   xsession_set_row_count (thread_p, row_count);
 
-  state = stran_server_commit_internal (thread_p, rid, retain_lock, &reset_on_commit);
+  state = stran_server_commit_internal (thread_p, rid, retain_lock, &should_conn_reset);
 
   ptr = or_pack_int (reply, (int) state);
-  ptr = or_pack_int (ptr, (int) reset_on_commit);
+  ptr = or_pack_int (ptr, (int) should_conn_reset);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
@@ -2537,17 +2538,17 @@ void
 stran_server_abort (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   TRAN_STATE state;
-  bool reset_on_commit = false, has_updated;
+  bool should_conn_reset = false, has_updated;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
 
   has_updated = logtb_has_updated (thread_p);
 
-  state = stran_server_abort_internal (thread_p, rid, &reset_on_commit);
+  state = stran_server_abort_internal (thread_p, rid, &should_conn_reset);
 
   ptr = or_pack_int (reply, state);
-  ptr = or_pack_int (ptr, (int) reset_on_commit);
+  ptr = or_pack_int (ptr, (int) should_conn_reset);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
@@ -4654,7 +4655,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   EXECUTION_INFO info = { NULL, NULL, NULL };
   QUERY_ID net_Deferred_end_queries[NET_DEFER_END_QUERIES_MAX], *p_net_Deferred_end_queries = net_Deferred_end_queries;
   int n_query_ids = 0, i = 0;
-  bool end_query_allowed, reset_on_commit;
+  bool end_query_allowed, should_conn_reset;
   LOG_TDES *tdes;
   TRAN_STATE tran_state;
   bool is_tran_auto_commit;
@@ -4944,7 +4945,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       xasl_cache_entry_p = NULL;
     }
 
-  reset_on_commit = false;
+  should_conn_reset = false;
   if (IS_QUERY_EXECUTE_WITH_COMMIT (query_flag))
     {
       if (query_id > 0)
@@ -4952,8 +4953,8 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	  p_net_Deferred_end_queries[n_query_ids++] = query_id;
 	}
 
-      ends_transaction_after_query_execution (thread_p, rid, end_query_allowed, p_net_Deferred_end_queries, n_query_ids,
-					      error_code != NO_ERROR, has_updated, &tran_state, &reset_on_commit);
+      stran_server_auto_commit_or_abort (thread_p, rid, end_query_allowed, p_net_Deferred_end_queries, n_query_ids,
+					 error_code != NO_ERROR, has_updated, &tran_state, &should_conn_reset);
     }
 
   /* pack 'QUERY_END' as a first argument of the reply */
@@ -4986,7 +4987,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
       /* pack commit result */
       ptr = or_pack_int (ptr, (int) tran_state);
-      ptr = or_pack_int (ptr, (int) reset_on_commit);
+      ptr = or_pack_int (ptr, (int) should_conn_reset);
     }
 
 #if !defined(NDEBUG)

@@ -2453,7 +2453,7 @@ tran_server_commit (bool retain_lock)
 {
 #if defined(CS_MODE)
   TRAN_STATE tran_state = TRAN_UNACTIVE_UNKNOWN;
-  int req_error, tran_state_int, reset_on_commit;
+  int req_error, tran_state_int, should_conn_reset;
   int i = 0;
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE	/* retain_lock */
@@ -2492,8 +2492,8 @@ tran_server_commit (bool retain_lock)
     {
       ptr = or_unpack_int (reply, &tran_state_int);
       tran_state = (TRAN_STATE) tran_state_int;
-      ptr = or_unpack_int (ptr, &reset_on_commit);
-      if (reset_on_commit != 0 && log_does_allow_replication ())
+      ptr = or_unpack_int (ptr, &should_conn_reset);
+      if (should_conn_reset != 0 && log_does_allow_replication ())
 	{
 	  /* 
 	   * fail-back action
@@ -2532,7 +2532,7 @@ tran_server_abort (void)
 {
 #if defined(CS_MODE)
   TRAN_STATE tran_state = TRAN_UNACTIVE_UNKNOWN;
-  int req_error, tran_state_int, reset_on_commit;
+  int req_error, tran_state_int, should_conn_reset;
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply;
@@ -2548,8 +2548,8 @@ tran_server_abort (void)
     {
       ptr = or_unpack_int (reply, &tran_state_int);
       tran_state = (TRAN_STATE) tran_state_int;
-      ptr = or_unpack_int (ptr, &reset_on_commit);
-      if (reset_on_commit != 0 && log_does_allow_replication ())
+      ptr = or_unpack_int (ptr, &should_conn_reset);
+      if (should_conn_reset != 0 && log_does_allow_replication ())
 	{
 	  /* 
 	   * fail-back action
@@ -6411,7 +6411,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
   int i, request_len;
   const DB_VALUE *dbval;
   CACHE_TIME local_srv_cache_time;
-  int reset_on_commit, end_query_result, tran_state;
+  int should_conn_reset, end_query_result, tran_state;
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -6531,7 +6531,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	{
 	  ptr = or_unpack_int (ptr, &end_query_result);
 	  ptr = or_unpack_int (ptr, &tran_state);
-	  ptr = or_unpack_int (ptr, &reset_on_commit);
+	  ptr = or_unpack_int (ptr, &should_conn_reset);
 
 	  if (tran_state == TRAN_UNACTIVE_COMMITTED || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS
 	      || tran_state == TRAN_UNACTIVE_ABORTED || tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
@@ -6539,7 +6539,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	      net_cleanup_client_queues ();
 	    }
 
-	  tran_set_latest_query_status (end_query_result, tran_state, reset_on_commit);
+	  tran_set_latest_query_status (end_query_result, tran_state, should_conn_reset);
 	}
 
       if (replydata_listid && replydata_size_listid)
