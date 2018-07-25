@@ -8972,10 +8972,18 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  PT_NODE **links = NULL;
 	  int no_vals = 0, no_consts = 0;
 
-	  err =
-	    pt_get_assignment_lists (parser, &select_names, &select_values, &const_names, &const_values, &no_vals,
-				     &no_consts, statement->info.update.assignment, &links);
+	  PT_NODE *assigns = statement->info.update.assignment;
+	  PT_NODE *from = statement->info.update.spec;
 
+	  err = pt_append_omitted_on_update_expr_assignments (parser, assigns, from);
+	  if (err != NO_ERROR)
+	    {
+	      PT_INTERNAL_ERROR (parser, "update");
+	      break;		/* stop while loop if error */
+	    }
+
+	  err = pt_get_assignment_lists (parser, &select_names, &select_values, &const_names, &const_values, &no_vals,
+					 &no_consts, statement->info.update.assignment, &links);
 	  if (err != NO_ERROR)
 	    {
 	      PT_INTERNAL_ERROR (parser, "update");
@@ -10945,77 +10953,6 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       return error;
     }
-}
-
-/*
- * check_for_default_expr() - Builds a list of attributes that have a default
- *			      expression and are not found in the specified
- *			      attributes list
- *   return: Error code
- *   parser(in/out): Parser context
- *   specified_attrs(in): the list of attributes that are not to be considered
- *   default_expr_attrs(out):
- *   class_obj(in):
- */
-int
-check_for_default_expr (PARSER_CONTEXT * parser, PT_NODE * specified_attrs, PT_NODE ** default_expr_attrs,
-			DB_OBJECT * class_obj)
-{
-  SM_CLASS *cls;
-  SM_ATTRIBUTE *att;
-  int error = NO_ERROR;
-  PT_NODE *new_ = NULL, *node = NULL;
-
-  assert (default_expr_attrs != NULL);
-  if (default_expr_attrs == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  error = au_fetch_class_force (class_obj, &cls, AU_FETCH_READ);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-  for (att = cls->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
-    {
-      /* skip if attribute has auto_increment */
-      if (att->auto_increment != NULL)
-	{
-	  continue;
-	}
-      /* skip if a value has already been specified for this attribute */
-      for (node = specified_attrs; node != NULL; node = node->next)
-	{
-	  if (!pt_str_compare (pt_get_name (node), att->header.name, CASE_INSENSITIVE))
-	    {
-	      break;
-	    }
-	}
-      if (node != NULL)
-	{
-	  continue;
-	}
-
-      /* add attribute to default_expr_attrs list */
-      new_ = parser_new_node (parser, PT_NAME);
-      if (new_ == NULL)
-	{
-	  PT_INTERNAL_ERROR (parser, "allocate new node");
-	  return ER_FAILED;
-	}
-      new_->info.name.original = att->header.name;
-      if (*default_expr_attrs != NULL)
-	{
-	  new_->next = *default_expr_attrs;
-	  *default_expr_attrs = new_;
-	}
-      else
-	{
-	  *default_expr_attrs = new_;
-	}
-    }
-  return NO_ERROR;
 }
 
 /*
@@ -15720,9 +15657,8 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       parser->print_type_ambiguity = 0;
       PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER));
       contextp->sql_hash_text = (char *) statement->alias_print;
-      err =
-	SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
-		     &contextp->sha1);
+      err = SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
+			 &contextp->sha1);
       if (err != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -15758,9 +15694,8 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  if (statement->info.merge.insert.value_clauses)
 	    {
-	      err =
-		check_for_default_expr (parser, statement->info.merge.insert.attr_list, &default_expr_attrs,
-					flat->info.name.db_object);
+	      err = pt_find_omitted_default_expr (parser, flat->info.name.db_object,
+						  statement->info.merge.insert.attr_list, &default_expr_attrs);
 	      if (err != NO_ERROR)
 		{
 		  statement->use_plan_cache = 0;

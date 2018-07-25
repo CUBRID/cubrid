@@ -41,7 +41,6 @@
 #if !defined _MONITOR_REGISTRATION_HPP_
 #define _MONITOR_REGISTRATION_HPP_
 
-#include "monitor_collect.hpp"
 #include "monitor_definition.hpp"
 #include "monitor_transaction.hpp"
 
@@ -57,7 +56,8 @@ namespace cubmonitor
   //    monitor can register single or group of statistics by saving meta-information for the group and its statistics.
   //    info per group (registration):
   //
-  //      1.  fetch global statistics [and fetch transaction sheet statistics]
+  //      1. function to fetch statistics
+  //      2. statistics count
   //
   //    info per statistic:
   //
@@ -69,57 +69,53 @@ namespace cubmonitor
       // function format to fetch registered statistics. one such function is bound for each registration and should
       // fetch all registered statistics
       //
-      using fetch_function = std::function<void (statistic_value *)>;
+      using fetch_function = std::function<void (statistic_value *, fetch_mode)>;
 
       monitor ();
 
-      // register a single statistic (without transaction sheets)
-      template <typename S>
-      void register_single_statistic (const char *name, const S &statistic);
+      // register a statistics by providing fetch function
+      void register_statistics (std::size_t statistics_count, const fetch_function &fetch_f,
+				const std::vector<std::string> &names);
 
-      // register a single statistic with transactions sheets
-      template <typename S>
-      void register_single_transaction_statistic (const char *name, const S &statistic);
+      template <class S>
+      void register_statistics (const S &statistics, std::vector<std::string> &names);
 
+      // getters
       // get the total count of registered statistics
-      std::size_t get_statistics_count (void);
-      std::size_t get_registered_count (void);
+      std::size_t get_statistics_count (void) const;
+      std::size_t get_registered_count (void) const;
+      // get name
+      const std::string &get_statistic_name (std::size_t index) const;
+      // memory size
+      std::size_t get_statistic_values_memsize (void) const;
+      std::size_t get_registrations_memsize (void) const;
 
       // allocate a buffer to hold values for all statistics
-      statistic_value *allocate_statistics_buffer (void);
+      statistic_value *allocate_statistics_buffer (void) const;
       // fetch global statistics to buffer
-      void fetch_global_statistics (statistic_value *destination);
+      void fetch_global_statistics (statistic_value *destination) const;
       // fetch current transaction statistics to buffer
-      void fetch_transaction_statistics (statistic_value *destination);
-
-      // todo - add multi-statistics
+      void fetch_transaction_statistics (statistic_value *destination) const;
+      // fetch complete set of statistics based on mode - global or transaction sheet
+      void fetch_statistics (statistic_value *destination, fetch_mode mode) const;
 
     private:
 
       // internal structure to hold information on registered statistics
       struct registration
       {
-	std::size_t m_offset;
 	std::size_t m_statistics_count;
-
 	fetch_function m_fetch_func;
-	fetch_function m_tran_fetch_func;
 
 	registration (void);
 
-	// todo: add here more meta-information on each statistic
+	// todo: add here more meta-information on each registration
       };
 
-      // register a single statistics
-      void register_single_function (const char *name, const fetch_function &fetch_f);
-      // register a single statistics with transaction sheets
-      void register_single_function_with_transaction (const char *name, const fetch_function &fetch_func,
-	  const fetch_function &tran_fetch_func);
-      // register a number of statistics that can be fetched with fetch_func/tran_fetch_func
-      void register_statistics (std::size_t count, const fetch_function &fetch_func,
-				const fetch_function &tran_fetch_func);
+      // add one registration; there can be multiple statistics fetched using a single function
+      void add_registration (std::size_t count, const fetch_function &fetch_f);
       // debug function to verify the number of statistics match the number of names
-      void check_name_count (void);
+      void check_name_count (void) const;
 
       // total number of statistics
       std::size_t m_total_statistics_count;
@@ -129,36 +125,21 @@ namespace cubmonitor
       std::vector<registration> m_registrations;
   };
 
+  monitor &get_global_monitor (void);
+
   //////////////////////////////////////////////////////////////////////////
   // implementation
   //////////////////////////////////////////////////////////////////////////
 
-  template <typename S>
+  template <class S>
   void
-  monitor::register_single_statistic (const char *name, const S &statistic)
+  monitor::register_statistics (const S &statistics, std::vector<std::string> &names)
   {
-    // convert statistic::fetch to fetch_func format
-    fetch_function fetch_func = [&] (statistic_value * destination)
+    fetch_function fetch_f = [&] (statistic_value * destination, fetch_mode mode)
     {
-      *destination = statistic.fetch ();
+      statistics.fetch (destination, mode);
     };
-    register_single_function (name, fetch_func);
-  }
-
-  template <typename S>
-  void
-  monitor::register_single_transaction_statistic (const char *name, const S &statistic)
-  {
-    // convert statistic::fetch and statistic::fetch_sheet to fetch_func format
-    fetch_function fetch_func = [&] (statistic_value * destination)
-    {
-      *destination = statistic.fetch ();
-    };
-    fetch_function tran_fetch_func = [&] (statistic_value * destination)
-    {
-      *destination = statistic.fetch_sheet ();
-    };
-    register_single_function_with_transaction (name, fetch_func, tran_fetch_func);
+    register_statistics (statistics.get_statistics_count (), fetch_f, names);
   }
 
 } // namespace cubmonitor

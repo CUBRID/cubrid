@@ -647,6 +647,11 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_LOG_QUERY_LISTS "log_query_lists"
 
+#define PRM_NAME_THREAD_CONNECTION_POOLING            "thread_connection_pooling"
+#define PRM_NAME_THREAD_CONNECTION_TIMEOUT_SECONDS    "thread_connection_timeout_seconds"
+#define PRM_NAME_THREAD_WORKER_POOLING                "thread_worker_pooling"
+#define PRM_NAME_THREAD_WORKER_TIMEOUT_SECONDS        "thread_worker_timeout_seconds"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2116,6 +2121,26 @@ static unsigned int prm_thread_logging_flag_flag = 0;
 bool PRM_LOG_QUERY_LISTS = false;
 static bool prm_log_query_lists_default = false;
 static unsigned int prm_log_query_lists_flag = 0;
+
+bool PRM_THREAD_CONNECTION_POOLING = true;
+static bool prm_thread_connection_pooling_default = true;
+static unsigned int prm_thread_connection_pooling_flag = 0;
+
+int PRM_THREAD_CONNECTION_TIMEOUT_SECONDS = 300;
+static int prm_thread_connection_timeout_seconds_default = 300;
+static int prm_thread_connection_timeout_seconds_upper = 60 * 60;	// one hour
+static int prm_thread_connection_timeout_seconds_lower = -1;	// infinite
+static unsigned int prm_thread_connection_timeout_seconds_flag = 0;
+
+bool PRM_THREAD_WORKER_POOLING = true;
+static bool prm_thread_worker_pooling_default = true;
+static unsigned int prm_thread_worker_pooling_flag = 0;
+
+int PRM_THREAD_WORKER_TIMEOUT_SECONDS = 300;
+static int prm_thread_worker_timeout_seconds_default = 300;
+static int prm_thread_worker_timeout_seconds_upper = 60 * 60;	// one hour
+static int prm_thread_worker_timeout_seconds_lower = -1;	// infinite
+static unsigned int prm_thread_worker_timeout_seconds_flag = 0;
 
 unsigned int PRM_DWB_SIZE = 2 * 1024 * 1024;	/* 2M */
 static unsigned int prm_dwb_size_flag = 0;
@@ -5403,6 +5428,52 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_log_query_lists_default,
    (void *) &PRM_LOG_QUERY_LISTS,
    (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_THREAD_CONNECTION_POOLING,
+   PRM_NAME_THREAD_CONNECTION_POOLING,
+   (PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   &prm_thread_connection_pooling_flag,
+   (void *) &prm_thread_connection_pooling_default,
+   (void *) &PRM_THREAD_CONNECTION_POOLING,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_THREAD_CONNECTION_TIMEOUT_SECONDS,
+   PRM_NAME_THREAD_CONNECTION_TIMEOUT_SECONDS,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_thread_connection_timeout_seconds_flag,
+   (void *) &prm_thread_connection_timeout_seconds_default,
+   (void *) &PRM_THREAD_CONNECTION_TIMEOUT_SECONDS,
+   (void *) &prm_thread_connection_timeout_seconds_upper,
+   (void *) &prm_thread_connection_timeout_seconds_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_THREAD_WORKER_POOLING,
+   PRM_NAME_THREAD_WORKER_POOLING,
+   (PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   &prm_thread_worker_pooling_flag,
+   (void *) &prm_thread_worker_pooling_default,
+   (void *) &PRM_THREAD_WORKER_POOLING,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_THREAD_WORKER_TIMEOUT_SECONDS,
+   PRM_NAME_THREAD_WORKER_TIMEOUT_SECONDS,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_thread_worker_timeout_seconds_flag,
+   (void *) &prm_thread_worker_timeout_seconds_default,
+   (void *) &PRM_THREAD_WORKER_TIMEOUT_SECONDS,
+   (void *) &prm_thread_worker_timeout_seconds_upper,
+   (void *) &prm_thread_worker_timeout_seconds_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

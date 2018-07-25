@@ -230,6 +230,8 @@ enum net_server_request
   /* Followings are not grouped because they are appended after the above. It is necessary to rearrange with changing
    * network compatibility. */
 
+  NET_SERVER_LC_DEMOTE_CLASS_LOCK,
+
   /* 
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.

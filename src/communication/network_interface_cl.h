@@ -401,4 +401,6 @@ extern int chksum_insert_repl_log_and_demote_table_lock (REPL_INFO * repl_info, 
 extern int log_does_active_user_exist (const char *user_name, bool * existed);
 
 extern int netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILES * spacefiles);
+
+extern int locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

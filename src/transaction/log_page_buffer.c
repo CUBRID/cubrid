@@ -1518,6 +1518,8 @@ logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_H
   assert (to_hdr != NULL);
   assert (from_hdr != NULL);
 
+  to_hdr->was_copied = true;	// should be reset on first restart
+
   to_hdr->mvcc_next_id = from_hdr->mvcc_next_id;
 
   /* Add other attributes that need to be copied */

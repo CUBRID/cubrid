@@ -37,6 +37,7 @@
 #if defined(CS_MODE)
 #include "server_interface.h"
 #include "boot_cl.h"
+#include "schema_manager.h"
 #else /* !defined (CS_MODE) == defined (SA_MODE) */
 #include "xserver_interface.h"
 #include "boot_sr.h"
@@ -9936,4 +9937,47 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
 
   return error_code;
 #endif /* SA_MODE */
+}
+
+int
+locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  int req_error;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_OID_SIZE + OR_INT_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_oid (request, class_oid);
+  ptr = or_pack_lock (ptr, lock);
+
+  req_error = net_client_request (NET_SERVER_LC_DEMOTE_CLASS_LOCK, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &rc);
+      ptr = or_unpack_lock (ptr, ex_lock);
+    }
+
+  if (rc == NO_ERROR)
+    {
+      // demote cached lock
+      MOP class_mop = ws_mop (class_oid, sm_Root_class_mop);
+
+      if (class_mop != NULL)
+	{
+	  ws_set_lock (class_mop, lock);
+	}
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
 }

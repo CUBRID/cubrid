@@ -10,6 +10,8 @@
 #include "thread_looper.hpp"
 #include "lock_free.h"
 #include "connection_sr.h"
+#include "thread_manager.hpp"
+#include "mock_stream.hpp"
 
 #if !defined (WINDOWS)
 #include "tcp.h"
@@ -33,80 +35,18 @@
 #define MAX_SENT_BYTES 1024 * 1024 * 4 //4 MB
 #define MAX_CYCLES 10
 
-class stream_mock;
-
 static cubthread::entry *thread_p = NULL;
 
 static std::atomic_bool is_listening;
-static communication_channel *producer_communication_channel, *consumer_communication_channel;
+static cubcomm::channel *producer_communication_channel, *consumer_communication_channel;
 static cubstream::transfer_sender *producer = NULL;
 static cubstream::transfer_receiver *consumer = NULL;
-static stream_mock *stream = NULL;
+static mock_stream *stream = NULL;
 
 static int init ();
 static int finish ();
 static int run ();
 static int init_thread_system ();
-
-class stream_mock : public cubstream::stream
-{
-  public:
-
-    stream_mock ()
-    {
-      write_buffer = (char *) malloc (MAX_SENT_BYTES * sizeof (int));
-      last_position = 0;
-    }
-
-    ~stream_mock()
-    {
-      free (write_buffer);
-    }
-
-    void produce (const size_t amount)
-    {
-      m_last_committed_pos += amount;
-    }
-
-    int write (const size_t byte_count, cubstream::stream::write_func_t &write_action)
-    {
-      int err;
-
-      err = write_action (last_position, write_buffer, byte_count);
-      if (err == NO_ERRORS)
-	{
-	  last_position += byte_count;
-	}
-      return err;
-    }
-
-    int read (const cubstream::stream_position first_pos, const size_t byte_count,
-	      cubstream::stream::read_func_t &read_action)
-    {
-      char *ptr = (char *) malloc (byte_count);
-      int err = NO_ERROR;
-
-      for (std::size_t i = 0; i < byte_count; i += sizeof (int))
-	{
-	  * ((int *) (ptr + i)) = (int) (first_pos / sizeof (int) + i / sizeof (int));
-	}
-
-      err = read_action (ptr, byte_count);
-      free (ptr);
-
-      return err;
-    }
-
-    int read_partial (const cubstream::stream_position first_pos, const size_t byte_count, size_t &actual_read_bytes,
-		      read_partial_func_t &read_partial_action)
-    {
-      assert (false);
-      return NO_ERROR;
-    }
-
-    char *write_buffer;
-    cubstream::stream_position last_position;
-};
 
 void master_listening_thread_func ()
 {
@@ -129,7 +69,7 @@ void master_listening_thread_func ()
   listen_fd_platf_ind = listen_fd[0];
 #endif
 
-  communication_channel incom_conn (5000);
+  cubcomm::channel incom_conn (5000);
   rc = incom_conn.accept (listen_fd_platf_ind);
   if (rc != NO_ERRORS)
     {
@@ -148,20 +88,26 @@ void master_listening_thread_func ()
   if ((revents & POLLIN) != 0)
     {
       SOCKET new_sockfd = css_master_accept (listen_fd_platf_ind);
-      communication_channel cc (MAX_TIMEOUT_IN_MS);
+      cubcomm::channel cc (MAX_TIMEOUT_IN_MS);
       rc = cc.accept (new_sockfd);
       if (rc != NO_ERRORS)
 	{
 	  assert (false);
 	  return;
 	}
-      consumer_communication_channel = new communication_channel (std::move (cc));
+      consumer_communication_channel = new cubcomm::channel (std::move (cc));
     }
 }
 
 static int init_thread_system ()
 {
-  int error_code = csect_initialize_static_critical_sections ();
+  int error_code;
+  THREAD_ENTRY *thread_p = NULL;
+  cubthread::manager *cub_th_m;
+
+  lf_initialize_transaction_systems (MAX_THREADS);
+
+  error_code = csect_initialize_static_critical_sections ();
   if (error_code != NO_ERROR)
     {
       assert (false);
@@ -175,6 +121,13 @@ static int init_thread_system ()
       return error_code;
     }
 
+  cubthread::initialize (thread_p);
+  cub_th_m = cubthread::get_manager ();
+  cub_th_m->set_max_thread_count (100);
+
+  cub_th_m->alloc_entries ();
+  cub_th_m->init_entries (false);
+
   return NO_ERROR;
 }
 
@@ -184,7 +137,7 @@ static int init ()
 #if !defined (WINDOWS)
   signal (SIGPIPE, SIG_IGN);
 #endif
-  error_code = er_init ("communication_channel.log", ER_EXIT_DONT_ASK);
+  error_code = er_init ("channel.log", ER_EXIT_DONT_ASK);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -203,7 +156,7 @@ static int init ()
       std::this_thread::sleep_for (std::chrono::milliseconds (100));
     }
 
-  communication_channel chn (MAX_TIMEOUT_IN_MS);
+  cubcomm::channel chn (MAX_TIMEOUT_IN_MS);
 
   error_code = chn.connect ("127.0.0.1", LISTENING_PORT);
   if (error_code != NO_ERRORS)
@@ -211,15 +164,15 @@ static int init ()
       listening_thread.detach ();
       return error_code;
     }
-  producer_communication_channel = new communication_channel (std::move (chn));
+  producer_communication_channel = new cubcomm::channel (std::move (chn));
   listening_thread.join ();
 
   assert (producer_communication_channel->is_connection_alive () &&
 	  consumer_communication_channel->is_connection_alive ());
 
-  stream = new stream_mock ();
-  producer = new cubstream::transfer_sender (*producer_communication_channel, *stream);
-  consumer = new cubstream::transfer_receiver (*consumer_communication_channel, *stream);
+  stream = new mock_stream ();
+  producer = new cubstream::transfer_sender (std::move (*producer_communication_channel), *stream);
+  consumer = new cubstream::transfer_receiver (std::move (*consumer_communication_channel), *stream);
 
   return NO_ERROR;
 }
@@ -254,13 +207,13 @@ static int run ()
 
   do
     {
-      stream->produce (MTU);
+      stream->produce (cubcomm::MTU);
       std::this_thread::sleep_for (std::chrono::milliseconds (100));
       cycles++;
     }
   while (cycles < MAX_CYCLES);
 
-  if (stream->last_position == MTU * MAX_CYCLES)
+  if (stream->last_position == cubcomm::MTU * MAX_CYCLES)
     {
       unsigned int sum = 0;
 

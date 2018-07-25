@@ -1821,11 +1821,11 @@ css_send_request_with_socket (SOCKET & socket, int command, unsigned short *requ
     }
 
   *request_id = -1;
-  css_set_net_header (&local_header, COMMAND_TYPE, command, *request_id, arg_buffer_size, 0, 0, 0);
+  css_set_net_header (&local_header, COMMAND_TYPE, command, *request_id, arg_buffer_size, NULL_TRAN_INDEX, 0, 0);
 
   if (arg_buffer_size > 0 && arg_buffer != NULL)
     {
-      css_set_net_header (&data_header, DATA_TYPE, 0, *request_id, arg_buffer_size, 0, 0, 0);
+      css_set_net_header (&data_header, DATA_TYPE, 0, *request_id, arg_buffer_size, NULL_TRAN_INDEX, 0, 0);
 
       return (css_net_send3_with_socket (socket, (char *) &local_header, sizeof (NET_HEADER), (char *) &data_header,
 					 sizeof (NET_HEADER), arg_buffer, arg_buffer_size));
@@ -2484,13 +2484,19 @@ css_send_magic_with_socket (SOCKET & socket)
 int
 css_check_magic (CSS_CONN_ENTRY * conn)
 {
+  return css_check_magic_with_socket (conn->fd);
+}
+
+int
+css_check_magic_with_socket (SOCKET fd)
+{
   int size, nbytes;
   unsigned int i;
   NET_HEADER header;
   char *p;
   int timeout = prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000;
 
-  nbytes = css_readn (conn->fd, (char *) &size, sizeof (int), timeout);
+  nbytes = css_readn (fd, (char *) &size, sizeof (int), timeout);
   if (nbytes != sizeof (int))
     {
       return ERROR_WHEN_READING_SIZE;
@@ -2502,7 +2508,7 @@ css_check_magic (CSS_CONN_ENTRY * conn)
     }
 
   p = (char *) &header;
-  nbytes = css_readn (conn->fd, p, size, timeout);
+  nbytes = css_readn (fd, p, size, timeout);
   if (nbytes != size)
     {
       return ERROR_ON_READ;

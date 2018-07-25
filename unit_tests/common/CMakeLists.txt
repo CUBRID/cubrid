@@ -19,11 +19,13 @@
 #
 
 set (TEST_COMMON_SOURCES
+  mock_stream.cpp
   test_output.cpp
   test_perf_compare.cpp
   test_string_collection.cpp
   )
 set (TEST_COMMON_HEADERS
+  mock_stream.hpp
   test_debug.hpp
   test_output.hpp
   test_perf_compare.hpp
