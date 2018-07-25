@@ -624,7 +624,7 @@ classobj_copy_props (DB_SEQ * properties, MOP filter_class, DB_SEQ ** new_proper
 	      if (classobj_put_index_id (new_properties, c->type, c->name, c->attributes, c->asc_desc,
 					 c->attrs_prefix_length, &(c->index_btid), c->filter_predicate, c->fk_info,
 					 c->shared_cons_name, c->func_index_info, c->comment,
-					 c->online_index_status) == ER_FAILED)
+					 c->index_status) == ER_FAILED)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -920,7 +920,8 @@ int
 classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name, SM_ATTRIBUTE ** atts,
 		    const int *asc_desc, const int *attr_prefix_length, const BTID * id,
 		    SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name,
-		    SM_FUNCTION_INFO * func_index_info, const char *comment, SM_ONLINE_INDEX_STATUS online_index_status)
+		    SM_FUNCTION_INFO * func_index_info, const char *comment, SM_INDEX_STATUS index_status,
+		    OR_BUF ** properties_buffer)
 {
   int i;
   const char *prop_name = classobj_map_constraint_to_property (type);
@@ -930,12 +931,19 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
   DB_SEQ *fk_container = NULL;
   DB_SEQ *seq = NULL;
   DB_SEQ *seq_child = NULL;
-  DB_SEQ *online_seq = NULL;
+  DB_SEQ *status_seq = NULL;
   int found = 0;
   bool is_new_created = false;	/* Is *properties new created or not */
+  OR_BUF *local_buffer = NULL;
+  int local_size = 0;
 
   db_make_null (&pvalue);
   db_make_null (&value);
+
+  /*  local_size = classobj_get_buffer_of_new_property (type, constraint_name, atts, asc_desc, attr_prefix_length,
+   *  id, filter_index_info, fk_info, shared_cons_name, func_index_info,
+   *  comment, index_status, &local_buffer, 0);
+   */
 
   /* 
    *  If the property pointer is NULL, create an empty property sequence
@@ -948,6 +956,11 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 	  goto error;
 	}
 
+      is_new_created = true;
+    }
+
+  if (*properties_buffer == NULL)
+    {
       is_new_created = true;
     }
 
@@ -1090,8 +1103,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 	}
       else
 	{
-	  if (filter_index_info == NULL && func_index_info == NULL
-	      && online_index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	  if (filter_index_info == NULL && func_index_info == NULL && index_status == SM_NO_INDEX)
 	    {
 	      /* prefix length */
 	      prefix_seq = classobj_make_index_attr_prefix_seq (num_attrs, attr_prefix_length);
@@ -1212,37 +1224,35 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 		    }
 		}
 
-	      if (online_index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	      seq_child = set_create_sequence (0);
+	      if (seq_child == NULL)
 		{
-		  seq_child = set_create_sequence (0);
-		  if (seq_child == NULL)
+		  goto error;
+		}
+	      else
+		{
+		  status_seq = classobj_make_index_online_index_seq (index_status);
+		  if (status_seq == NULL)
 		    {
 		      goto error;
 		    }
 		  else
 		    {
-		      online_seq = classobj_make_index_online_index_seq ();
-		      if (online_seq == NULL)
-			{
-			  goto error;
-			}
-		      else
-			{
-			  db_make_string (&value, SM_ONLINE_INDEX_ID);
-			  set_put_element (seq_child, 0, &value);
+		      db_make_string (&value, SM_INDEX_STATUS_ID);
+		      set_put_element (seq_child, 0, &value);
 
-			  db_make_sequence (&value, online_seq);
-			  pred_seq = NULL;
-			  set_put_element (seq_child, 1, &value);
-			  pr_clear_value (&value);
+		      db_make_sequence (&value, status_seq);
+		      pred_seq = NULL;
+		      set_put_element (seq_child, 1, &value);
+		      pr_clear_value (&value);
 
-			  db_make_sequence (&value, seq_child);
-			  seq_child = NULL;
-			  set_put_element (seq, i++, &value);
-			  pr_clear_value (&value);
-			}
+		      db_make_sequence (&value, seq_child);
+		      seq_child = NULL;
+		      set_put_element (seq, i++, &value);
+		      pr_clear_value (&value);
 		    }
 		}
+
 
 	      db_make_sequence (&value, seq);
 	      seq = NULL;
@@ -1382,8 +1392,7 @@ int
 classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name, SM_ATTRIBUTE ** atts,
 		       const int *asc_desc, const int *attrs_prefix_length, const BTID * id,
 		       SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name,
-		       SM_FUNCTION_INFO * func_index_info, const char *comment,
-		       SM_ONLINE_INDEX_STATUS online_index_status)
+		       SM_FUNCTION_INFO * func_index_info, const char *comment, SM_INDEX_STATUS index_status)
 {
   int i;
   const char *prop_name = classobj_map_constraint_to_property (type);
@@ -1560,8 +1569,7 @@ classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char
 	}
       else
 	{
-	  if (filter_index_info == NULL && func_index_info == NULL
-	      && online_index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	  if (filter_index_info == NULL && func_index_info == NULL && index_status == SM_NO_INDEX)
 	    {
 	      /* prefix length */
 	      prefix_seq = classobj_make_index_attr_prefix_seq (num_attrs, attrs_prefix_length);
@@ -1682,35 +1690,32 @@ classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char
 		    }
 		}
 
-	      if (online_index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	      seq_child = set_create_sequence (0);
+	      if (seq_child == NULL)
 		{
-		  seq_child = set_create_sequence (0);
-		  if (seq_child == NULL)
+		  goto error;
+		}
+	      else
+		{
+		  online_seq = classobj_make_index_online_index_seq (index_status);
+		  if (online_seq == NULL)
 		    {
 		      goto error;
 		    }
 		  else
 		    {
-		      online_seq = classobj_make_index_online_index_seq ();
-		      if (online_seq == NULL)
-			{
-			  goto error;
-			}
-		      else
-			{
-			  db_make_string (&value, SM_ONLINE_INDEX_ID);
-			  set_put_element (seq_child, 0, &value);
+		      db_make_string (&value, SM_INDEX_STATUS_ID);
+		      set_put_element (seq_child, 0, &value);
 
-			  db_make_sequence (&value, online_seq);
-			  pred_seq = NULL;
-			  set_put_element (seq_child, 1, &value);
-			  pr_clear_value (&value);
+		      db_make_sequence (&value, online_seq);
+		      pred_seq = NULL;
+		      set_put_element (seq_child, 1, &value);
+		      pr_clear_value (&value);
 
-			  db_make_sequence (&value, seq_child);
-			  seq_child = NULL;
-			  set_put_element (seq, i++, &value);
-			  pr_clear_value (&value);
-			}
+		      db_make_sequence (&value, seq_child);
+		      seq_child = NULL;
+		      set_put_element (seq, i++, &value);
+		      pr_clear_value (&value);
 		    }
 		}
 
@@ -3134,7 +3139,7 @@ classobj_make_class_constraint (const char *name, SM_CONSTRAINT_TYPE type)
   new_->func_index_info = NULL;
   new_->comment = NULL;
   new_->extra_status = SM_FLAG_NORMALLY_INITIALIZED;
-  new_->online_index_status = SM_NO_ONLINE_INDEX;
+  new_->index_status = SM_NO_INDEX;
 
   return new_;
 }
@@ -3911,7 +3916,7 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 				{
 				  flag = 0x03;
 				}
-			      else if (strcmp (db_get_string (&avalue), SM_ONLINE_INDEX_ID) == 0)
+			      else if (strcmp (db_get_string (&avalue), SM_INDEX_STATUS_ID) == 0)
 				{
 				  flag = 0x04;
 				}
@@ -3944,7 +3949,8 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 				  break;
 
 				case 0x04:
-				  new_->online_index_status = classobj_make_online_index_info (db_get_set (&avalue));
+				  new_->index_status =
+				    (SM_INDEX_STATUS) (classobj_make_index_status_info (db_get_set (&avalue)));
 
 				default:
 				  break;
@@ -4686,7 +4692,7 @@ classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CONSTRAINT * 
 	}
       if (classobj_put_index_id (properties, type, con->name, con->attributes, con->asc_desc, con->attrs_prefix_length,
 				 &(con->index_btid), con->filter_predicate, con->fk_info, con->shared_cons_name,
-				 con->func_index_info, con->comment, con->online_index_status) == ER_FAILED)
+				 con->func_index_info, con->comment, con->index_status) == ER_FAILED)
 	{
 	  error = ER_SM_INVALID_PROPERTY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -6557,6 +6563,7 @@ classobj_make_template (const char *name, MOP op, SM_CLASS * class_)
   template_ptr->triggers = NULL;
   template_ptr->partition_parent_atts = NULL;
   template_ptr->partition = NULL;
+  template_ptr->new_properties = NULL;
 
   if (name != NULL)
     {
@@ -6960,7 +6967,7 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate, SM_CLASS_CONSTRAINT * const
       error = smt_add_constraint (ctemplate, constraint_type, new_cons_name, att_names,
 				  (constraint_type == DB_CONSTRAINT_UNIQUE) ? constraint->asc_desc : NULL, NULL, 0,
 				  NULL, constraint->filter_predicate, constraint->func_index_info, constraint->comment,
-				  SM_NO_ONLINE_INDEX);
+				  constraint->index_status);
     }
   else
     {
@@ -7784,6 +7791,7 @@ classobj_install_template (SM_CLASS * class_, SM_TEMPLATE * flat, int saverep)
   classobj_free_prop (class_->properties);
   class_->properties = flat->properties;
   flat->properties = NULL;
+  flat->new_properties = NULL;
 
   /* install resolution list, merge the res lists in the class for simplicity */
   ws_list_free ((DB_LIST *) class_->resolutions, (LFREEER) classobj_free_resolution);
@@ -9016,10 +9024,11 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
 }
 
 DB_SEQ *
-classobj_make_index_online_index_seq (void)
+classobj_make_index_online_index_seq (SM_INDEX_STATUS index_status)
 {
   DB_SEQ *online_seq;
   DB_VALUE v;
+  int status = ((index_status == SM_ONLINE_INDEX_BUILDING_DONE) ? SM_NORMAL_INDEX : index_status);
 
   online_seq = set_create_sequence (1);
 
@@ -9027,15 +9036,16 @@ classobj_make_index_online_index_seq (void)
     {
       return NULL;
     }
-  db_make_int (&v, 1);
+
+  db_make_int (&v, status);
 
   set_put_element (online_seq, 0, &v);
 
   return online_seq;
 }
 
-SM_ONLINE_INDEX_STATUS
-classobj_make_online_index_info (DB_SEQ * online_seq)
+int
+classobj_make_index_status_info (DB_SEQ * online_seq)
 {
   DB_VALUE v;
 
@@ -9043,8 +9053,536 @@ classobj_make_online_index_info (DB_SEQ * online_seq)
 
   if (set_get_element_nocopy (online_seq, 0, &v) != NO_ERROR)
     {
-      return SM_NO_ONLINE_INDEX;
+      return SM_NO_INDEX;
     }
 
-  return (db_get_int (&v) == 1 ? SM_ONLINE_INDEX_BUILDING_IN_PROGRESS : SM_NO_ONLINE_INDEX);
+  return (db_get_int (&v));
+}
+
+int
+classobj_get_buffer_of_new_property (SM_CONSTRAINT_TYPE type, const char *constraint_name, SM_ATTRIBUTE ** atts,
+				     const int *asc_desc, const int *attr_prefix_length, const BTID * id,
+				     SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
+				     char *shared_cons_name, SM_FUNCTION_INFO * func_index_info, const char *comment,
+				     SM_INDEX_STATUS index_status, OR_BUF ** new_property, int put_ids)
+{
+  OR_BUF buf;
+  char *local_data = NULL;
+  int disk_size = 0, i;
+  int constraint_name_size = 0;
+  char *pbuf = NULL;
+  int dummy_size = 0;
+  int num_attrs = 0;
+  int comment_size = 0;
+  DB_VALUE predicate_stream_value;
+  int predicate_stream_size = 0;
+  DB_VALUE function_index_stream_value;
+  DB_VALUE function_index_stream_domain;
+  int function_index_stream_size = 0, function_index_stream_domain_size = 0;
+  int fi_domain_size;
+  char *fi_domain_buf = NULL, *ptr = NULL;
+  int att_disk_size = 0;
+  int ret = NO_ERROR;
+
+  db_make_null (&predicate_stream_value);
+  db_make_null (&function_index_stream_value);
+  db_make_null (&function_index_stream_domain);
+
+  /* Compute number of attributes and their disk size. */
+  for (i = 0; atts[i] != NULL; i++)
+    {
+      num_attrs++;
+      if (put_ids == 1)
+	{
+	  /* tuple of <att_id, asc/desc, pref_length> */
+	  att_disk_size += OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE;
+	}
+      else
+	{
+	  /* tuple of <att_name_size, att_name, asc/desc, pref_length. */
+	  att_disk_size += (or_packed_string_length (atts[i]->header.name, &dummy_size) + OR_INT_SIZE + OR_INT_SIZE);
+	}
+    }
+
+  /* Compute disk size. */
+  /* The whole disk size of the property. */
+  disk_size += OR_INT_SIZE;
+
+  /* Type size. */
+  disk_size += OR_INT_SIZE;
+
+  /* The size of the constraint name followed by the name itself. */
+  disk_size += or_packed_string_length (constraint_name, &constraint_name_size);
+
+  /* Identifier if we have a BTID or a shared_cons_name. */
+  disk_size += OR_INT_SIZE;
+
+  /* Get size of BTID info */
+  if ((id == NULL || BTID_IS_NULL (id)) && shared_cons_name)
+    {
+      size_t len = strlen (shared_cons_name) + 10;
+
+      pbuf = (char *) malloc (len);
+      if (pbuf)
+	{
+	  sprintf (pbuf, "SHARED:%s", shared_cons_name);
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, len);
+	  goto error;
+	}
+
+      disk_size += or_packed_string_length (pbuf, &dummy_size);
+    }
+  else
+    {
+      disk_size += OR_BTID_ALIGNED_SIZE;
+    }
+
+  /* We put attribute ids or name. */
+  disk_size += OR_INT_SIZE;
+
+  /* Number of attributes. */
+  disk_size += OR_INT_SIZE;
+
+  /* Attributes disk size */
+  disk_size += att_disk_size;
+
+  /* The size of the comment followed by the comment itself. */
+  disk_size += or_packed_string_length (comment, &comment_size);
+
+  /* Status. */
+  disk_size += OR_INT_SIZE;
+
+  /* Reserved size for future expansions. */
+  disk_size += 2 * OR_BIGINT_SIZE;
+
+  /* Now follows information about each type of the constraint. */
+
+  if (type == SM_CONSTRAINT_FOREIGN_KEY)
+    {
+      /* ref_class_oid size */
+      disk_size += OR_OID_SIZE;
+
+      /* ref_class_pk_btid size */
+      disk_size += OR_BTID_ALIGNED_SIZE;
+
+      /* Delete action size. */
+      disk_size += OR_INT_SIZE;
+
+      /* Update action size. */
+      disk_size += OR_INT_SIZE;
+    }
+  else if (type == SM_CONSTRAINT_PRIMARY_KEY)
+    {
+      /* Foreign key info identifier. */
+      disk_size += OR_INT_SIZE;
+
+      if (fk_info)
+	{
+	  SM_FOREIGN_KEY_INFO *fk;
+	  for (i = 0, fk = fk_info; fk; fk = fk->next)
+	    {
+	      if (fk->is_dropped && put_ids)
+		{
+		  continue;
+		}
+
+	      /* fk->self_oid size */
+	      disk_size += OR_OID_SIZE;
+
+	      /* fk->self_btid size. */
+	      disk_size += OR_BTID_ALIGNED_SIZE;
+
+	      /* fk->delete_action size. */
+	      disk_size += OR_INT_SIZE;
+
+	      /* fk->update_action size. */
+	      disk_size += OR_INT_SIZE;
+
+	      /* fk->name size followed by the name. */
+	      disk_size += or_packed_string_length (fk->name, &dummy_size);
+
+	    }
+	}
+    }
+  else
+    {
+      /* Identifier if we have filter predicate info. */
+      disk_size += OR_INT_SIZE;
+      if (filter_index_info != NULL)
+	{
+	  /* Number of attributes. */
+	  disk_size += OR_INT_SIZE;
+
+	  /* Compute the size of all attributes. */
+	  disk_size += filter_index_info->num_attrs * OR_INT_SIZE;
+
+	  /* Predicate string size followed by the string itself. */
+	  disk_size += or_packed_string_length (filter_index_info->pred_string, &dummy_size);
+
+	  /* Predicate stream size followed by the stream itself. */
+	  if (filter_index_info->pred_stream)
+	    {
+	      db_make_char (&predicate_stream_value, filter_index_info->pred_stream_size,
+			    filter_index_info->pred_stream, filter_index_info->pred_stream_size, LANG_SYS_CODESET,
+			    LANG_SYS_COLLATION);
+
+	      predicate_stream_size = mr_extern_lengthval_char (&predicate_stream_value);
+
+	      disk_size += OR_INT_SIZE + predicate_stream_size;
+	    }
+	  else
+	    {
+	      /* No stream predicate, we store its size which is 0. */
+	      disk_size += OR_INT_SIZE;
+	    }
+	}
+
+      /* Identifier for function index info. */
+      disk_size += OR_INT_SIZE;
+
+      if (func_index_info)
+	{
+	  /* func_index_info->col_id size */
+	  disk_size += OR_INT_SIZE;
+
+	  /* func_index_info->attr_index_start size */
+	  disk_size += OR_INT_SIZE;
+
+	  /* func_index_info->expr_str size followed by the string. */
+	  disk_size += or_packed_string_length (func_index_info->expr_str, &dummy_size);
+
+	  /* func_index_info->expr_stream identifier followed by the stream packed as a db_value */
+	  if (func_index_info->expr_stream)
+	    {
+	      db_make_char (&function_index_stream_value, func_index_info->expr_stream_size,
+			    func_index_info->expr_stream, func_index_info->expr_stream_size, LANG_SYS_CODESET,
+			    LANG_SYS_COLLATION);
+
+	      function_index_stream_size = mr_extern_lengthval_char (&function_index_stream_value);
+
+	      disk_size += OR_INT_SIZE + function_index_stream_size;
+	    }
+	  else
+	    {
+	      disk_size += OR_INT_SIZE;
+	    }
+
+	  if (func_index_info->fi_domain)
+	    {
+	      fi_domain_size = or_packed_domain_size (func_index_info->fi_domain, 0);
+	      fi_domain_buf = (char *) malloc (fi_domain_size);
+	      if (fi_domain_buf == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) fi_domain_size);
+		  goto error;
+		}
+	      ptr = fi_domain_buf;
+	      ptr = or_pack_domain (ptr, func_index_info->fi_domain, 0, 0);
+
+	      db_make_char (&function_index_stream_domain, fi_domain_size, fi_domain_buf, fi_domain_size,
+			    LANG_SYS_CODESET, LANG_SYS_COLLATION);
+
+	      function_index_stream_domain_size = mr_extern_lengthval_char (&function_index_stream_domain);
+
+	      disk_size += OR_INT_SIZE + function_index_stream_domain_size;
+	    }
+	  else
+	    {
+	      disk_size += OR_INT_SIZE;
+	    }
+	}
+    }
+
+  /* ALignment safeguard. */
+  assert (disk_size % OR_INT_SIZE == 0);
+
+  /* Alloc the local data. */
+  local_data = (char *) malloc (disk_size);
+  if (local_data == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) disk_size);
+      goto error;
+    }
+
+  memset (local_data, 0, disk_size);
+
+  /* Init the buffer. */
+  or_init (&buf, local_data, disk_size);
+
+  /* Begin packing. */
+
+  /* Put the property size. */
+  or_put_int (&buf, disk_size);
+
+  /* Put the property type */
+  or_put_int (&buf, type);
+
+  /* Put the constraints size and its name. */
+  or_put_string_aligned_with_length (&buf, (char *) constraint_name);
+
+  if ((id == NULL || BTID_IS_NULL (id)) && shared_cons_name)
+    {
+      /* Shared cons identifier. */
+      or_put_int (&buf, 1);
+      or_put_string_aligned_with_length (&buf, pbuf);
+    }
+  else
+    {
+      /* BTID identifier. */
+      or_put_int (&buf, 0);
+      if (id == NULL)
+	{
+	  or_put_int (&buf, (int) NULL_PAGEID);
+	  or_put_int (&buf, (int) NULL_FILEID);
+	  or_put_int (&buf, (int) NULL_VOLID);
+	}
+      else
+	{
+	  or_put_int (&buf, (int) id->root_pageid);
+	  or_put_int (&buf, (int) id->vfid.fileid);
+	  or_put_int (&buf, (int) id->vfid.volid);
+	}
+    }
+
+  /* Attributes ids or names identifier. */
+  or_put_int (&buf, put_ids);
+
+  /* Number of attributes. */
+  or_put_int (&buf, num_attrs);
+
+  /* Attributes. */
+  for (i = 0; atts[i] != NULL; i++)
+    {
+      if (put_ids)
+	{
+	  /* att_id */
+	  or_put_int (&buf, atts[i]->id);
+	}
+      else
+	{
+	  /* att_name size and the name itself. */
+	  or_put_string_aligned_with_length (&buf, (char *) atts[i]->header.name);
+	}
+
+      /* asc/desc */
+      if (asc_desc != NULL)
+	{
+	  or_put_int (&buf, asc_desc[i]);
+	}
+      else
+	{
+	  or_put_int (&buf, 0);
+	}
+
+      /* prefix_length */
+      if (attr_prefix_length != NULL)
+	{
+	  or_put_int (&buf, attr_prefix_length[i]);
+	}
+      else
+	{
+	  or_put_int (&buf, -1);
+	}
+    }
+
+  /* Size of the comment and comment itself. */
+  or_put_string_aligned_with_length (&buf, (char *) comment);
+
+  /* Index status. */
+  or_put_int (&buf, index_status);
+
+  /* Reserved space of 2 * BIGINT_SIZE */
+  or_advance (&buf, 2 * OR_BIGINT_SIZE);
+
+  if (type == SM_CONSTRAINT_FOREIGN_KEY)
+    {
+      /* ref_class_oid */
+      or_put_int (&buf, (int) fk_info->ref_class_oid.pageid);
+      or_put_int (&buf, (int) fk_info->ref_class_oid.slotid);
+      or_put_int (&buf, (int) fk_info->ref_class_oid.volid);
+
+      /* ref_class_pk_btid */
+      or_put_int (&buf, (int) fk_info->ref_class_pk_btid.root_pageid);
+      or_put_int (&buf, (int) fk_info->ref_class_pk_btid.vfid.fileid);
+      or_put_int (&buf, (int) fk_info->ref_class_pk_btid.vfid.volid);
+
+      /* Delete action. */
+      or_put_int (&buf, (int) fk_info->delete_action);
+
+      /* Update action. */
+      or_put_int (&buf, (int) fk_info->update_action);
+    }
+  else if (type == SM_CONSTRAINT_PRIMARY_KEY)
+    {
+      if (fk_info)
+	{
+	  /* Put identifier. */
+	  or_put_int (&buf, 1);
+
+	  /* Put the FK info */
+	  SM_FOREIGN_KEY_INFO *fk;
+	  for (i = 0, fk = fk_info; fk; fk = fk->next)
+	    {
+	      if (fk->is_dropped && put_ids)
+		{
+		  continue;
+		}
+
+	      /* fk->self_oid  */
+	      or_put_int (&buf, (int) fk->self_oid.pageid);
+	      or_put_int (&buf, (int) fk->self_oid.slotid);
+	      or_put_int (&buf, (int) fk->self_oid.volid);
+
+	      /* fk->self_btid  */
+	      or_put_int (&buf, (int) fk->self_btid.root_pageid);
+	      or_put_int (&buf, (int) fk->self_btid.vfid.fileid);
+	      or_put_int (&buf, (int) fk->self_btid.vfid.volid);
+
+	      /* fk->delete_action. */
+	      or_put_int (&buf, (int) fk->delete_action);
+
+	      /* fk->update_action */
+	      or_put_int (&buf, (int) fk->update_action);
+
+	      /* fk->name size followed by the name. */
+	      or_put_string_aligned_with_length (&buf, fk->name);
+	    }
+	}
+      else
+	{
+	  or_put_int (&buf, 0);
+	}
+    }
+  else
+    {
+      /* Identifier for filter predicate. */
+      if (filter_index_info != NULL)
+	{
+	  or_put_int (&buf, 1);
+
+	  /* Put number of attributes. */
+	  or_put_int (&buf, filter_index_info->num_attrs);
+
+	  /* Put the attributes ids. */
+	  for (i = 0; i < filter_index_info->num_attrs; i++)
+	    {
+	      or_put_int (&buf, (int) filter_index_info->att_ids[i]);
+	    }
+
+	  /* Put the predicate string with its size. */
+	  or_put_string_aligned_with_length (&buf, filter_index_info->pred_string);
+
+	  /* Put the predicate stream. */
+	  if (filter_index_info->pred_stream)
+	    {
+	      /* Put the predicate stream size */
+	      or_put_int (&buf, 1);
+	      mr_writeval_char_external (&buf, &predicate_stream_value, INT_ALIGNMENT);
+	    }
+	  else
+	    {
+	      or_put_int (&buf, 0);
+	    }
+	}
+      else
+	{
+	  or_put_int (&buf, 0);
+	}
+
+      /* Identifier for function index info. */
+      if (func_index_info)
+	{
+	  or_put_int (&buf, 1);
+
+	  /* Write col_id. */
+	  or_put_int (&buf, func_index_info->col_id);
+
+	  /* Write attr_index_start. */
+	  or_put_int (&buf, func_index_info->attr_index_start);
+
+	  /* Write the expr_stream */
+	  or_put_string_aligned_with_length (&buf, func_index_info->expr_str);
+
+	  if (func_index_info->expr_stream)
+	    {
+	      /* Write identifier. */
+	      or_put_int (&buf, 1);
+	      mr_writeval_char_external (&buf, &function_index_stream_value, INT_ALIGNMENT);
+	    }
+	  else
+	    {
+	      or_put_int (&buf, 0);
+	    }
+
+	  if (func_index_info->fi_domain)
+	    {
+	      or_put_int (&buf, 1);
+	      mr_writeval_char_external (&buf, &function_index_stream_domain, INT_ALIGNMENT);
+	    }
+	  else
+	    {
+	      or_put_int (&buf, 0);
+	    }
+	}
+      else
+	{
+	  or_put_int (&buf, 0);
+	}
+    }
+
+  /* Safeguard. */
+  assert ((buf.ptr == buf.endptr) && ((buf.ptr - buf.buffer) == disk_size));
+
+
+
+
+
+
+  if (pbuf != NULL)
+    {
+      free_and_init (pbuf);
+    }
+
+  if (fi_domain_buf != NULL)
+    {
+      free_and_init (fi_domain_buf);
+    }
+
+  if (ptr)
+    {
+      free_and_init (ptr);
+    }
+
+  pr_clear_value (&predicate_stream_value);
+  pr_clear_value (&function_index_stream_value);
+  pr_clear_value (&function_index_stream_domain);
+
+  return disk_size;
+
+error:
+
+  disk_size = -1;
+  if (pbuf != NULL)
+    {
+      free_and_init (pbuf);
+    }
+
+  if (fi_domain_buf != NULL)
+    {
+      free_and_init (fi_domain_buf);
+    }
+
+  if (ptr)
+    {
+      free_and_init (ptr);
+    }
+
+  pr_clear_value (&predicate_stream_value);
+  pr_clear_value (&function_index_stream_value);
+  pr_clear_value (&function_index_stream_domain);
+
+  return disk_size;
 }

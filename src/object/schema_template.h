@@ -83,8 +83,7 @@ extern int smt_set_attribute_on_update (SM_TEMPLATE * template_, const char *nam
 extern int smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
 			       const char **att_names, const int *asc_desc, const int *attr_prefix_length,
 			       int class_attribute, SM_FOREIGN_KEY_INFO * fk_info, SM_PREDICATE_INFO * filter_index,
-			       SM_FUNCTION_INFO * function_index, const char *comment,
-			       SM_ONLINE_INDEX_STATUS online_index_status);
+			       SM_FUNCTION_INFO * function_index, const char *comment, SM_INDEX_STATUS index_status);
 
 extern int smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names, const char *constraint_name,
 				int class_attribute, SM_ATTRIBUTE_FLAG constraint);

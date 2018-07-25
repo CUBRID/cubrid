@@ -2680,6 +2680,13 @@ boot_define_index (MOP class_mop)
       return error_code;
     }
 
+  error_code = smt_add_attribute (def, "status", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+
   error_code = sm_update_class (def, NULL);
   if (error_code != NO_ERROR)
     {
@@ -4737,7 +4744,8 @@ boot_define_view_index (void)
     {"is_foreign_key", "varchar(3)"},
     {"filter_expression", "varchar(255)"},
     {"have_function", "varchar(3)"},
-    {"comment", "varchar(1024)"}
+    {"comment", "varchar(1024)"},
+    {"status", "varchar(255)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -4766,7 +4774,13 @@ boot_define_view_index (void)
 	   " CASE WHEN [i].[is_reverse] = 0 THEN 'NO' ELSE 'YES' END, [i].[class_of].[class_name], [i].[key_count],"
 	   " CASE WHEN [i].[is_primary_key] = 0 THEN 'NO' ELSE 'YES' END,"
 	   " CASE WHEN [i].[is_foreign_key] = 0 THEN 'NO' ELSE 'YES' END, [i].[filter_expression],"
-	   " CASE WHEN [i].[have_function] = 0 THEN 'NO' ELSE 'YES' END, [i].[comment] FROM [%s] [i]"
+	   " CASE WHEN [i].[have_function] = 0 THEN 'NO' ELSE 'YES' END, [i].[comment],"
+	   " CASE WHEN [i].[status] = 0 THEN 'NO_INDEX' "
+	   " WHEN [i].[status] = 1 THEN 'NORMAL INDEX' "
+	   " WHEN [i].[status] = 2 THEN 'INDEX IS IN ONLINE BUILDING' "
+	   " WHEN [i].[status] = 3 THEN 'INVISIBLE INDEX'"
+	   " ELSE 'NULL' END "
+	   " FROM [%s] [i]"
 	   " WHERE CURRENT_USER = 'DBA' OR {[i].[class_of].[owner].[name]} SUBSETEQ ("
 	   " SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
 	   " FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER) OR"

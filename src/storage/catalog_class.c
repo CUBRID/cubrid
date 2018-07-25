@@ -2218,8 +2218,8 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 				  int is_foreign_key)
 {
   int seq_size;
-  DB_VALUE keys, svalue, val, avalue, *pvalue = NULL;
-  DB_SEQ *key_seq_p = NULL, *seq = NULL, *pred_seq = NULL, *prefix_seq = NULL;
+  DB_VALUE keys, svalue, val, avalue, *pvalue = NULL, *status_value = NULL;
+  DB_SEQ *key_seq_p = NULL, *seq = NULL, *pred_seq = NULL, *prefix_seq = NULL, *status_seq = NULL;
   int key_size, att_cnt;
   OR_VALUE *attrs, *key_attrs;
   DB_VALUE *attr_val_p;
@@ -2354,6 +2354,10 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 		  else if (!intl_identifier_casecmp (db_get_string (&avalue), SM_PREFIX_INDEX_ID))
 		    {
 		      flag = 0x03;
+		    }
+		  else if (!intl_identifier_casecmp (db_get_string (&avalue), SM_INDEX_STATUS_ID))
+		    {
+		      flag = 0x04;
 		    }
 
 		  pr_clear_value (&avalue);
@@ -2495,6 +2499,11 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 		      prefix_seq = db_get_set (pvalue);
 		      break;
 
+		    case 0x04:
+		      status_value = db_value_copy (&avalue);
+		      status_seq = db_get_set (status_value);
+		      break;
+
 		    default:
 		      break;
 		    }
@@ -2608,6 +2617,29 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	  pvalue = NULL;
 	}
 
+      if (status_value)
+	{
+	  error = set_get_element_nocopy (status_seq, 0, attr_val_p);
+	  if (error != NO_ERROR)
+	    {
+	      goto error;
+	    }
+
+	  /* Add status. */
+	  db_make_int (&attrs[11].value, (db_get_int (attr_val_p)));
+
+	  if (status_value != NULL)
+	    {
+	      pr_free_ext_value (status_value);
+	      status_value = NULL;
+	    }
+
+	  if (attr_val_p != NULL)
+	    {
+	      pr_clear_value (attr_val_p);
+	    }
+	}
+
       /* is_reverse */
       db_make_int (&attrs[5].value, is_reverse);
 
@@ -2629,6 +2661,13 @@ error:
   pr_clear_value (&svalue);
   pr_clear_value (&val);
   pr_clear_value (&avalue);
+
+  if (status_value != NULL)
+    {
+      pr_free_ext_value (status_value);
+      status_value = NULL;
+    }
+
   if (pvalue)
     {
       pr_free_ext_value (pvalue);

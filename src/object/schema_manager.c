@@ -9112,7 +9112,7 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			  if (classobj_put_index (&flat->properties, c->type, c->name, attrs, c->asc_desc,
 						  c->attrs_prefix_length, &index_btid, c->filter_predicate, c->fk_info,
 						  NULL, c->func_index_info, c->comment,
-						  c->online_index_status) != NO_ERROR)
+						  c->index_status, &flat->new_properties) != NO_ERROR)
 			    {
 			      pr_clear_value (&cnstr_val);
 			      goto structure_error;
@@ -10191,7 +10191,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_ATTR
 	  /* If there are no instances, then call btree_add_index() to create an empty index, otherwise call
 	   * btree_load_index () to load all of the instances (including applicable subclasses) into a new B-tree */
 	  // TODO: optimize has_instances case
-	  if (!has_instances || class_->constraints->online_index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	  if (!has_instances || class_->constraints->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	    {
 	      error = btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk);
 	    }
@@ -10810,7 +10810,7 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
    */
   if (classobj_put_index_id (&(class_->properties), con->type, con->name, con->attributes, con->asc_desc,
 			     con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, con->fk_info, NULL,
-			     con->func_index_info, con->comment, con->online_index_status) != NO_ERROR)
+			     con->func_index_info, con->comment, con->index_status) != NO_ERROR)
     {
       return error;
     }
@@ -11542,7 +11542,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		classobj_put_index_id (&(flat->properties), con->type, con->name, con->attributes, con->asc_desc,
 				       con->attrs_prefix_length, &(con->index_btid), con->filter_predicate,
 				       con->fk_info, con->shared_cons_name, con->func_index_info, con->comment,
-				       con->online_index_status);
+				       con->index_status);
 	      if (error != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
@@ -11554,7 +11554,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	      error =
 		classobj_put_index_id (&(flat->properties), con->type, con->name, con->attributes, con->asc_desc,
 				       con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, NULL, NULL,
-				       con->func_index_info, con->comment, con->online_index_status);
+				       con->func_index_info, con->comment, con->index_status);
 	      if (error != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
@@ -14391,7 +14391,7 @@ sm_add_secondary_index_on_partition (MOP classop, DB_CONSTRAINT_TYPE constraint_
 				     const char *constraint_name, const char **att_names, const int *asc_desc,
 				     const int *attrs_prefix_length, int class_attributes,
 				     SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index,
-				     const char *comment, bool is_online_index, MOP * sub_partitions)
+				     const char *comment, SM_INDEX_STATUS index_status, MOP * sub_partitions)
 {
   int error, n_attrs, i;
   bool set_savept = false;
@@ -14499,7 +14499,7 @@ sm_add_secondary_index_on_partition (MOP classop, DB_CONSTRAINT_TYPE constraint_
 
       error = sm_add_constraint (sub_partitions[i], constraint_type, constraint_name, att_names, asc_desc,
 				 attrs_prefix_length, class_attributes, new_filter_index_info, new_func_index_info,
-				 comment, is_online_index);
+				 comment, index_status);
     }
 
 end:
@@ -14551,6 +14551,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
   SM_TEMPLATE *def;
   MOP newmop = NULL;
   LOCK ex_lock = SCH_M_LOCK;
+  SM_INDEX_STATUS index_status = SM_NO_INDEX;
 
   if (att_names == NULL)
     {
@@ -14566,7 +14567,6 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
     case DB_CONSTRAINT_REVERSE_UNIQUE:
     case DB_CONSTRAINT_PRIMARY_KEY:
       DB_AUTH auth;
-      SM_ONLINE_INDEX_STATUS online_index_status;
       bool is_secondary_index;
 
       is_secondary_index = (constraint_type == DB_CONSTRAINT_INDEX || constraint_type == DB_CONSTRAINT_REVERSE_INDEX);
@@ -14589,7 +14589,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  return error;
 	}
 
-      online_index_status = (is_online_index ? SM_ONLINE_INDEX_BUILDING_IN_PROGRESS : SM_NO_ONLINE_INDEX);
+      index_status = (is_online_index ? SM_ONLINE_INDEX_BUILDING_IN_PROGRESS : SM_NORMAL_INDEX);
 
       // create local indexes on partitions
       if (is_secondary_index)
@@ -14625,7 +14625,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 
 	      error = sm_add_secondary_index_on_partition (classop, constraint_type, constraint_name, att_names,
 							   asc_desc, attrs_prefix_length, class_attributes,
-							   filter_index, function_index, comment, is_online_index,
+							   filter_index, function_index, comment, index_status,
 							   sub_partitions);
 	      if (error != NO_ERROR)
 		{
@@ -14645,7 +14645,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	}
 
       error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length,
-				  class_attributes, NULL, filter_index, function_index, comment, online_index_status);
+				  class_attributes, NULL, filter_index, function_index, comment, index_status);
       if (error != NO_ERROR)
 	{
 	  smt_quit (def);
@@ -14721,8 +14721,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
       else
 	{
 	  error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length,
-				      class_attributes, NULL, filter_index, function_index, comment,
-				      SM_NO_ONLINE_INDEX);
+				      class_attributes, NULL, filter_index, function_index, comment, index_status);
 	  if (error == NO_ERROR)
 	    {
 	      error = do_check_fk_constraints (def, NULL);
@@ -16304,7 +16303,7 @@ sm_stats_remove_online_index_stats (SM_CLASS * class_)
   for (cons = class_->constraints; cons != NULL; cons = cons->next)
     {
       /* Check if there is an online index currently being built. */
-      if (cons->online_index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+      if (cons->index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	{
 	  continue;
 	}

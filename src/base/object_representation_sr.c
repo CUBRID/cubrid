@@ -1860,7 +1860,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
   index->attrs_prefix_length = NULL;
   index->filter_predicate = NULL;
   index->func_index_info = NULL;
-  index->online_index_status = OR_NO_ONLINE_INDEX;
+  index->index_status = OR_NO_INDEX;
 
   /* 
    * For each attribute ID in the set,
@@ -1967,7 +1967,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 			    {
 			      flag = 0x03;
 			    }
-			  else if (strcmp (db_get_string (&avalue), SM_ONLINE_INDEX_ID) == 0)
+			  else if (strcmp (db_get_string (&avalue), SM_INDEX_STATUS_ID) == 0)
 			    {
 			      flag = 0x04;
 			    }
@@ -4082,5 +4082,5 @@ or_install_btids_online_index (DB_SEQ * online_seq, OR_INDEX * index)
       return;
     }
 
-  index->online_index_status = (db_get_int (&val) ? OR_ONLINE_INDEX_BUILDING_IN_PROGRESS : OR_NO_ONLINE_INDEX);
+  index->index_status = OR_INDEX_STATUS (db_get_int (&val));
 }
