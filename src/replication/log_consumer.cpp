@@ -315,7 +315,7 @@ namespace cubreplication
     INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_CONSUMER_BUFFER_SIZE);
 
     /* consumer needs only one stream appender */
-    new_lc->m_stream = new cubstream::packing_stream (buffer_size, 2);
+    new_lc->m_stream = new cubstream::multi_thread_stream (buffer_size, 2);
     new_lc->m_stream->set_trigger_min_to_read_size (replication_stream_entry::compute_header_size ());
     new_lc->m_stream->init (new_lc->m_start_position);
 

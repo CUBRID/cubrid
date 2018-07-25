@@ -26,7 +26,7 @@
 #ifndef _LOG_CONSUMER_HPP_
 #define _LOG_CONSUMER_HPP_
 
-#include "packing_stream.hpp"
+#include "multi_thread_stream.hpp"
 #include "replication_stream_entry.hpp"
 #include "thread_daemon.hpp"
 #include "thread_task.hpp"
@@ -51,7 +51,7 @@ namespace cubreplication
     private:
       std::queue<replication_stream_entry *> m_stream_entries;
 
-      cubstream::packing_stream *m_stream;
+      cubstream::multi_thread_stream *m_stream;
 
       /* start append position */
       cubstream::stream_position m_start_position;
@@ -102,7 +102,7 @@ namespace cubreplication
 
       static log_consumer *new_instance (const cubstream::stream_position &start_position, bool use_daemons = false);
 
-      cubstream::packing_stream *get_stream (void)
+      cubstream::multi_thread_stream *get_stream (void)
       {
 	return m_stream;
       }

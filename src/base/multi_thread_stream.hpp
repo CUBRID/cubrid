@@ -18,13 +18,13 @@
  */
 
 /*
- * packing_stream.hpp
+ * multi_thread_stream.hpp
  */
 
 #ident "$Id$"
 
-#ifndef _PACKING_STREAM_HPP_
-#define _PACKING_STREAM_HPP_
+#ifndef _MULTI_THREAD_STREAM_HPP_
+#define _MULTI_THREAD_STREAM_HPP_
 
 #include "bip_buffer.hpp"
 #include "collapsable_circular_queue.hpp"
@@ -66,7 +66,7 @@ namespace cubstream
    *  get_data_from_pos/unlatch_read_data : internal methods used by read;
    *  wait_for_data : used by read when requested range is not yet produced
    */
-  class packing_stream : public stream
+  class multi_thread_stream : public stream
   {
     public:
       static const int BIP_BUFFER_READ_PAGES_COUNT = 64;
@@ -135,8 +135,8 @@ namespace cubstream
       int wait_for_data (const size_t amount, const STREAM_SKIP_MODE skip_mode);
 
     public:
-      packing_stream (const size_t buffer_capacity, const int max_appenders);
-      virtual ~packing_stream ();
+      multi_thread_stream (const size_t buffer_capacity, const int max_appenders);
+      virtual ~multi_thread_stream ();
 
       int write (const size_t byte_count, write_func_t &write_action);
       int read_partial (const stream_position first_pos, const size_t byte_count, size_t &actual_read_bytes,
@@ -169,4 +169,4 @@ namespace cubstream
 
 } /* namespace cubstream */
 
-#endif /* _PACKING_STREAM_HPP_ */
+#endif /* _MULTI_THREAD_STREAM_HPP_ */

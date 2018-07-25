@@ -82,12 +82,12 @@ namespace cubreplication
       cubpacking::packer m_serializator;
 
     public:
-      replication_stream_entry (cubstream::packing_stream *stream_p)
+      replication_stream_entry (cubstream::multi_thread_stream *stream_p)
 	: entry (stream_p)
       {
       };
 
-      replication_stream_entry (cubstream::packing_stream *stream_p,
+      replication_stream_entry (cubstream::multi_thread_stream *stream_p,
 				MVCCID arg_mvccid,
 				bool arg_commit_flag,
 				bool arg_group_commit_flag)

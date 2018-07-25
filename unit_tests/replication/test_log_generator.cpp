@@ -69,7 +69,7 @@ namespace test_replication
 
 
 
-  int move_buffers (cubstream::packing_stream *stream1, cubstream::packing_stream *stream2)
+  int move_buffers (cubstream::multi_thread_stream *stream1, cubstream::multi_thread_stream *stream2)
   {
     stream_mover test_stream_mover;
     cubstream::stream_position curr_pos;
@@ -187,8 +187,8 @@ namespace test_replication
     cubreplication::log_consumer *lc = cubreplication::log_consumer::new_instance (0);
 
     /* get stream from log_generator, get its buffer and attached it to log_consumer stream */
-    cubstream::packing_stream *lg_stream = lg->get_stream ();
-    cubstream::packing_stream *lc_stream = lc->get_stream ();
+    cubstream::multi_thread_stream *lg_stream = lg->get_stream ();
+    cubstream::multi_thread_stream *lc_stream = lc->get_stream ();
 
     move_buffers (lg_stream, lc_stream);
 
@@ -364,8 +364,8 @@ namespace test_replication
 
     /* get stream from log_generator, get its buffer and attached it to log_consumer stream */
     std::cout << "Copying stream data from log_generator to log_consumer .... ";
-    cubstream::packing_stream *lg_stream = lg->get_stream ();
-    cubstream::packing_stream *lc_stream = lc->get_stream ();
+    cubstream::multi_thread_stream *lg_stream = lg->get_stream ();
+    cubstream::multi_thread_stream *lc_stream = lc->get_stream ();
 
     move_buffers (lg_stream, lc_stream);
 

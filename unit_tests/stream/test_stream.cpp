@@ -19,7 +19,7 @@
 
 #include "test_stream.hpp"
 #include "object_representation.h"
-#include "packing_stream.hpp"
+#include "multi_thread_stream.hpp"
 #include "thread_compat.hpp"
 #include "thread_manager.hpp"
 #include "thread_task.hpp"
@@ -396,7 +396,7 @@ namespace test_stream
     long long rem_amount;
     int max_data_size = 500;
 
-    cubstream::packing_stream *my_stream = new cubstream::packing_stream (10 * 1024 * 1024, 100);
+    cubstream::multi_thread_stream *my_stream = new cubstream::multi_thread_stream (10 * 1024 * 1024, 100);
 
     cubstream::stream::write_func_t writer_func;
     writer_func = std::bind (&write_action, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
@@ -559,7 +559,7 @@ namespace test_stream
       }
 
     /* create a stream for packing and add pack objects to stream */
-    cubstream::packing_stream test_stream_for_pack (10 * 1024 * 1024, 10);
+    cubstream::multi_thread_stream test_stream_for_pack (10 * 1024 * 1024, 10);
 
     test_stream_entry se (&test_stream_for_pack);
 
@@ -598,7 +598,7 @@ namespace test_stream
 
     /* create a new stream and copy buffers */
     std::cout << "  Testing packing/unpacking of objects using different streams. Copying stream contents." << std::endl;
-    cubstream::packing_stream test_stream_for_unpack (10 * 1024 * 1024, 10);
+    cubstream::multi_thread_stream test_stream_for_unpack (10 * 1024 * 1024, 10);
 
     cubstream::stream_position last_pos = test_stream_for_pack.get_last_committed_pos ();
     cubstream::stream_position curr_pos;
@@ -668,7 +668,7 @@ namespace test_stream
     /* create objects */
     std::cout << "  Testing packing/unpacking of cubstream::entries with sub-objects using same stream" << std::endl;
     /* create a stream for packing and add pack objects to stream */
-    cubstream::packing_stream test_stream_for_pack (10 * 1024 * 1024, 10);
+    cubstream::multi_thread_stream test_stream_for_pack (10 * 1024 * 1024, 10);
     test_stream_for_pack.set_buffer_reserve_margin (100 * 1024);
 
     std::cout << "      Generating stream entries and objects...";
@@ -941,7 +941,7 @@ namespace test_stream
   test_stream_entry **stream_context_manager::g_unpacked_entries = NULL;
   int stream_context_manager::g_cnt_packing_entries_per_thread = 0;
   int stream_context_manager::g_cnt_unpacking_entries_per_thread = 0;
-  cubstream::packing_stream *stream_context_manager::g_stream = NULL;
+  cubstream::multi_thread_stream *stream_context_manager::g_stream = NULL;
 
   int stream_context_manager::g_pack_threads = 0;
   int stream_context_manager::g_unpack_threads = 0;
@@ -1109,7 +1109,7 @@ namespace test_stream
     stream_producer_throttling stream_producer_throttling_handler;
     stream_ready_notifier stream_ready_notify_handler;
 
-    cubstream::packing_stream test_stream_for_pack (10 * 1024 * 1024, TEST_PACK_THREADS);
+    cubstream::multi_thread_stream test_stream_for_pack (10 * 1024 * 1024, TEST_PACK_THREADS);
     test_stream_for_pack.set_buffer_reserve_margin (100 * 1024);
     test_stream_for_pack.set_filled_stream_handler (stream_producer_throttling_handler.m_notify_func);
     test_stream_for_pack.set_ready_pos_handler (stream_ready_notify_handler.m_notify_func);

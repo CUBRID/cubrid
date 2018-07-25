@@ -26,7 +26,7 @@
 #include "log_generator.hpp"
 #include "replication_stream_entry.hpp"
 #include "thread_entry.hpp"
-#include "packing_stream.hpp"
+#include "multi_thread_stream.hpp"
 #include "connection_globals.h"
 #include "log_impl.h"
 
@@ -88,7 +88,7 @@ namespace cubreplication
     INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_GENERATOR_BUFFER_SIZE);
     int num_max_appenders = log_Gl.trantable.num_total_indices + 1;
 
-    log_generator::g_stream = new cubstream::packing_stream (buffer_size, num_max_appenders);
+    log_generator::g_stream = new cubstream::multi_thread_stream (buffer_size, num_max_appenders);
     log_generator::g_stream->set_trigger_min_to_read_size (replication_stream_entry::compute_header_size ());
     log_generator::g_stream->init (log_generator::g_start_append_position);
 
@@ -104,7 +104,7 @@ namespace cubreplication
     return NO_ERROR;
   }
 
-  cubstream::packing_stream *log_generator::g_stream = NULL;
+  cubstream::multi_thread_stream *log_generator::g_stream = NULL;
 
   cubstream::stream_position log_generator::g_start_append_position = 0;
 
