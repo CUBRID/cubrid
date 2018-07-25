@@ -12434,7 +12434,7 @@ pt_uncorr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  // Enable walking. Seems it was set to prevent double walking during name resolving
+  /* Enable walking. Seems it was set to prevent double walking during name resolving */
   if (node->node_type == PT_NODE_POINTER && node->info.pointer.node->node_type == PT_CTE && !node->info.pointer.do_walk)
     {
       node->info.pointer.do_walk = true;
@@ -12463,11 +12463,6 @@ pt_uncorr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
     }
   /* increment level as we dive into subqueries */
   info->level++;
-
-  if (node->node_type == PT_NODE_POINTER && node->info.pointer.node->node_type == PT_CTE)
-    {
-      node->info.pointer.do_walk = false;
-    }
 
   return node;
 }
@@ -12543,6 +12538,12 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 
     default:
       break;
+    }
+
+  /* Cte pointers should not be walked by other tree walks after the xasl collecting */
+  if (node->node_type == PT_NODE_POINTER && node->info.pointer.node->node_type == PT_CTE)
+    {
+      node->info.pointer.do_walk = false;
     }
 
   return node;
