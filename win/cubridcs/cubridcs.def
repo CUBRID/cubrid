@@ -50,6 +50,7 @@ EXPORTS
     db_Connect_status
     db_abort_to_savepoint
     db_abort_transaction
+    db_reset_latest_query_status
     db_add_argument
     db_add_class_method
     db_add_class_resolution

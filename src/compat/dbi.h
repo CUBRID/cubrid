@@ -116,6 +116,7 @@ extern "C"
   extern int db_enable_modification (void);
   extern int db_commit_transaction (void);
   extern int db_abort_transaction (void);
+  extern int db_reset_latest_query_status (void);
   extern int db_commit_is_needed (void);
   extern int db_savepoint_transaction (const char *savepoint_name);
   extern int db_abort_to_savepoint (const char *savepoint_name);

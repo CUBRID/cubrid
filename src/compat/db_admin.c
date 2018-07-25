@@ -1114,6 +1114,21 @@ db_abort_transaction (void)
 }
 
 /*
+* db_reset_latest_query_status() - Reset latest query status.
+*
+* return : error code
+*/
+int
+db_reset_latest_query_status (void)
+{
+  CHECK_CONNECT_ERROR ();
+
+  tran_reset_latest_query_status ();
+
+  return NO_ERROR;
+}
+
+/*
  * db_commit_is_needed() - This function can be used to test to see if there
  *    are any dirty objects in the workspace that have not been flushed OR
  *    if there are any objects on the server that have been flushed but have

@@ -3347,7 +3347,7 @@ end:
       error = ER_LK_UNILATERALLY_ABORTED;
     }
 
-  if (error == ER_LK_UNILATERALLY_ABORTED)
+  if (error == ER_LK_UNILATERALLY_ABORTED || tran_was_latest_query_aborted ())
     {
       (void) tran_abort_only_client (false);
     }
@@ -3825,7 +3825,7 @@ end:
       err = ER_LK_UNILATERALLY_ABORTED;
     }
 
-  if (err == ER_LK_UNILATERALLY_ABORTED)
+  if (err == ER_LK_UNILATERALLY_ABORTED || tran_was_latest_query_aborted ())
     {
       (void) tran_abort_only_client (false);
     }

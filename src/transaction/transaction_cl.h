@@ -103,4 +103,5 @@ extern bool tran_was_latest_query_ended (void);
 extern bool tran_was_latest_query_committed (void);
 extern bool tran_was_latest_query_aborted (void);
 extern bool tran_is_reset_required (void);
+extern void tran_reset_latest_query_status (void);
 #endif /* _TRANSACTION_CL_H_ */

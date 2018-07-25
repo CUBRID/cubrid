@@ -2071,6 +2071,10 @@ error:
       db_abort_transaction ();
       do_abort_transaction = false;
     }
+  else
+    {
+      (void) db_reset_latest_query_status ();
+    }
 
   /* Finish... */
   snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),

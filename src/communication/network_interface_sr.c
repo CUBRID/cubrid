@@ -96,8 +96,8 @@ STATIC_INLINE TRAN_STATE stran_server_commit_internal (THREAD_ENTRY * thread_p, 
 STATIC_INLINE TRAN_STATE stran_server_abort_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool retain_lock,
 						      bool * reset_on_commit) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void ends_transaction_after_query_execution (THREAD_ENTRY * thread_p, unsigned int rid,
-							   bool end_query_allowed, QUERY_ID * p_end_queries,
-							   int n_query_ids, bool need_abort, bool has_updated,
+							   QUERY_ID * p_end_queries, int n_query_ids, bool need_abort,
+							   bool has_updated, bool * end_query_allowed,
 							   TRAN_STATE * tran_state, bool * reset_on_commit)
   __attribute__ ((ALWAYS_INLINE));
 
@@ -190,35 +190,45 @@ stran_server_abort_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool * r
 *
 *   thread_p(in): thread entry
 *   rid(in): request id
-*   end_query_allowed(in): true, if end query is allowed
 *   p_end_queries(in): queries to end
 *   n_query_ids(in): the number of queries to end
 *   need_abort(in): true, if need to abort
 *   has_updated_before_abort(in):true, if has updated before abort
+*   end_query_allowed(in/out): true, if end query is allowed
 *   tran_state(in/out): transaction state
-*   reset_on_commit(in/out): reset on commit
+*   reset_on_commit(out): reset on commit
 *
-* Note: This function must be called only when the query is executed with commit, soon after query exectuion.
+* Note: This function must be called only when the query is executed with commit, soon after query execution.
+*      When we call this function, it is possible that transaction was aborted.
 */
 STATIC_INLINE void
-ends_transaction_after_query_execution (THREAD_ENTRY * thread_p, unsigned int rid, bool end_query_allowed,
-					QUERY_ID * p_end_queries, int n_query_ids, bool need_abort,
-					bool has_updated_before_abort, TRAN_STATE * tran_state, bool * reset_on_commit)
+ends_transaction_after_query_execution (THREAD_ENTRY * thread_p, unsigned int rid, QUERY_ID * p_end_queries,
+					int n_query_ids, bool need_abort, bool has_updated_before_abort,
+					bool * end_query_allowed, TRAN_STATE * tran_state, bool * reset_on_commit)
 {
-  int error_code = NO_ERROR, all_error_code = NO_ERROR, i;
+  int error_code, all_error_code, i;
 
-  assert (tran_state != NULL && reset_on_commit != NULL);
-  if (end_query_allowed)
+  assert (tran_state != NULL && reset_on_commit != NULL && end_query_allowed != NULL);
+
+  *reset_on_commit = false;
+
+  /* We commit/abort transaction, after ending queries. */
+  if (*end_query_allowed)
     {
-      for (i = 0; i < n_query_ids; i++)
+      all_error_code = NO_ERROR;
+      if ((*tran_state != TRAN_UNACTIVE_ABORTED) && (*tran_state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS))
 	{
-	  if (p_end_queries[i] > 0)
+	  /* If not already aborted, ends the queries. */
+	  for (i = 0; i < n_query_ids; i++)
 	    {
-	      error_code = xqmgr_end_query (thread_p, p_end_queries[i]);
-	      if (error_code != NO_ERROR)
+	      if (p_end_queries[i] > 0)
 		{
-		  all_error_code = error_code;
-		  /* Continue to try to close as many queries as possible. */
+		  error_code = xqmgr_end_query (thread_p, p_end_queries[i]);
+		  if (error_code != NO_ERROR)
+		    {
+		      all_error_code = error_code;
+		      /* Continue to try to close as many queries as possible. */
+		    }
 		}
 	    }
 	}
@@ -226,26 +236,35 @@ ends_transaction_after_query_execution (THREAD_ENTRY * thread_p, unsigned int ri
       if (all_error_code != NO_ERROR)
 	{
 	  (void) return_error_to_client (thread_p, rid);
+	  *end_query_allowed = false;
+	}
+      else if (need_abort == false)
+	{
+	  /* Needs commit. */
+	  *tran_state = stran_server_commit_internal (thread_p, rid, false, reset_on_commit);
+	  er_log_debug (ARG_FILE_LINE, "ends_transaction_after_query_execution: transaction committed. \n");
 	}
       else
 	{
-	  *tran_state = stran_server_commit_internal (thread_p, rid, false, reset_on_commit);
+	  /* Needs abort. */
+	  if ((*tran_state != TRAN_UNACTIVE_ABORTED) && (*tran_state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS))
+	    {
+	      /* We have an error and the transaction was not aborted. Since is auto commit transaction, we can abort it.
+	       * In this way, we can avoid abort request.
+	       */
+	      *tran_state = stran_server_abort_internal (thread_p, rid, reset_on_commit);
+	      er_log_debug (ARG_FILE_LINE, "ends_transaction_after_query_execution: transaction aborted. \n");
+	    }
+	  else
+	    {
+	      /* Transaction was already aborted. */
+	      xtran_reset_on_commit (thread_p, has_updated_before_abort, reset_on_commit);
+	    }
 	}
     }
-  else if (need_abort)
+  else
     {
-      if ((*tran_state != TRAN_UNACTIVE_ABORTED) && (*tran_state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS))
-	{
-	  /* We have an error and the transaction was not aborted. Since is auto commit transaction, we can abort it.
-	   * In this way, we can avoid abort request.
-	   */
-	  *tran_state = stran_server_abort_internal (thread_p, rid, reset_on_commit);
-	}
-      else
-	{
-	  /* Transaction was already aborted. */
-	  xtran_reset_on_commit (thread_p, has_updated_before_abort, reset_on_commit);
-	}
+      er_log_debug (ARG_FILE_LINE, "ends_transaction_after_query_execution: active transaction.\n");
     }
 }
 
@@ -4805,15 +4824,14 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	      xcache_unfix (thread_p, xasl_cache_entry_p);
 	      xasl_cache_entry_p = NULL;
 	    }
-
-	  if (IS_QUERY_EXECUTE_WITH_COMMIT (query_flag))
-	    {
-	      /* Get has update before aborting transaction. */
-	      has_updated = logtb_has_updated (thread_p);
-	    }
 	}
 
-      end_query_allowed = false;
+      if (IS_QUERY_EXECUTE_WITH_COMMIT (query_flag))
+	{
+	  /* Get has update before aborting transaction. */
+	  has_updated = logtb_has_updated (thread_p);
+	}
+
       tran_state = return_error_to_client (thread_p, rid);
     }
 
@@ -4857,8 +4875,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	    }
 	  else
 	    {
-	      end_query_allowed = false;
-	      return_error_to_client (thread_p, rid);
+	      (void) return_error_to_client (thread_p, rid);
 	    }
 	}
     }
@@ -4875,8 +4892,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       else
 	{
 	  replydata_size = 0;
-	  end_query_allowed = false;
-	  (void) return_error_to_client (thread_p, rid);
+	  tran_state = return_error_to_client (thread_p, rid);
 	}
     }
 
@@ -4944,18 +4960,6 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       xasl_cache_entry_p = NULL;
     }
 
-  reset_on_commit = false;
-  if (IS_QUERY_EXECUTE_WITH_COMMIT (query_flag))
-    {
-      if (query_id > 0)
-	{
-	  p_net_Deferred_end_queries[n_query_ids++] = query_id;
-	}
-
-      ends_transaction_after_query_execution (thread_p, rid, end_query_allowed, p_net_Deferred_end_queries, n_query_ids,
-					      error_code != NO_ERROR, has_updated, &tran_state, &reset_on_commit);
-    }
-
   /* pack 'QUERY_END' as a first argument of the reply */
   ptr = or_pack_int (reply, QUERY_END);
   /* pack size of list file id to return as a second argument of the reply */
@@ -4971,10 +4975,20 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   if (IS_QUERY_EXECUTE_WITH_COMMIT (query_flag))
     {
+      /* Try to end transaction and pack the result. */
+      p_net_Deferred_end_queries[n_query_ids++] = query_id;
+      if (error_code != NO_ERROR)
+	{
+	  tran_abort = true;
+	  assert (end_query_allowed == true);
+	}
+
+      ends_transaction_after_query_execution (thread_p, rid, p_net_Deferred_end_queries, n_query_ids,
+					      tran_abort, has_updated, &end_query_allowed, &tran_state,
+					      &reset_on_commit);
       /* pack end query result */
       if (end_query_allowed)
 	{
-	  assert (tran_abort == false);
 	  /* query ended */
 	  ptr = or_pack_int (ptr, NO_ERROR);
 	}
@@ -4984,7 +4998,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	  ptr = or_pack_int (ptr, ER_FAILED);
 	}
 
-      /* pack commit result */
+      /* pack commit/abart/active result */
       ptr = or_pack_int (ptr, (int) tran_state);
       ptr = or_pack_int (ptr, (int) reset_on_commit);
     }
@@ -4993,19 +5007,6 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   /* suppress valgrind UMW error */
   memset (ptr, 0, OR_ALIGNED_BUF_SIZE (a_reply) - (ptr - reply));
 #endif
-
-  /* Add message in log in case of autocommit transactions. It helps to trace query execution. */
-  if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG) && is_tran_auto_commit)
-    {
-      if (tran_state == TRAN_UNACTIVE_COMMITTED || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
-	{
-	  er_log_debug (ARG_FILE_LINE, "sqmgr_execute_query: QUERY_EXECUTION_WITH_AUTOCOMMIT\n");
-	}
-      else
-	{
-	  er_log_debug (ARG_FILE_LINE, "sqmgr_execute_query: QUERY_EXECUTION_WITHOUT_AUTOCOMMIT\n");
-	}
-    }
 
   css_send_reply_and_3_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), replydata,
 				       replydata_size, page_ptr, page_size, queryinfo_string, queryinfo_string_length);
