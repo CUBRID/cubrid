@@ -1387,12 +1387,12 @@ enum LATEST_QUERY_STATUS
  *   return: nothing
  *   end_query_result(in): end query result
  *   tran_state(in): transaction state
- *   reset_on_commit(in): non zero, is reset needed
+ *   should_conn_reset(in): non zero, is reset needed
  *
  *    Note : This function must be called after query execution with commit.
  */
 void
-tran_set_latest_query_status (int end_query_result, int tran_state, int reset_on_commit)
+tran_set_latest_query_status (int end_query_result, int tran_state, int should_conn_reset)
 {
   assert (!tran_was_latest_query_committed ());
 
@@ -1411,7 +1411,7 @@ tran_set_latest_query_status (int end_query_result, int tran_state, int reset_on
 	  tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::ABORTED;
 	}
 
-      if (reset_on_commit)
+  if (should_conn_reset)
 	{
 	  assert (tran_state == TRAN_UNACTIVE_COMMITTED || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS
 		  || tran_state == TRAN_UNACTIVE_ABORTED || tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS);
