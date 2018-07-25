@@ -33,10 +33,10 @@
 
 namespace cubreplication
 {
-  class prepare_stream_entry_task : public cubthread::entry_task
+  class consumer_daemon_task : public cubthread::entry_task
   {
     public:
-      prepare_stream_entry_task (log_consumer *lc)
+      consumer_daemon_task (log_consumer *lc)
 	: m_lc (lc)
       {
       };
@@ -56,10 +56,10 @@ namespace cubreplication
       log_consumer *m_lc;
   };
 
-  class repl_applier_worker_task : public cubthread::entry_task
+  class applier_worker_task : public cubthread::entry_task
   {
     public:
-      repl_applier_worker_task (replication_stream_entry *repl_stream_entry, log_consumer *lc)
+      applier_worker_task (replication_stream_entry *repl_stream_entry, log_consumer *lc)
 	: m_lc (lc)
       {
 	add_repl_stream_entry (repl_stream_entry);
@@ -114,10 +114,10 @@ namespace cubreplication
       log_consumer *m_lc;
   };
 
-  class apply_stream_entry_task : public cubthread::entry_task
+  class dispatch_daemon_task : public cubthread::entry_task
   {
     public:
-      apply_stream_entry_task (log_consumer *lc)
+      dispatch_daemon_task (log_consumer *lc)
 	: m_lc (lc)
       {
       }
@@ -125,8 +125,8 @@ namespace cubreplication
       void execute (cubthread::entry &thread_ref) override
       {
 	replication_stream_entry *se = NULL;
-	std::unordered_map <MVCCID, repl_applier_worker_task *> repl_tasks;
-	std::unordered_map <MVCCID, repl_applier_worker_task *> nonexecutable_repl_tasks;
+	std::unordered_map <MVCCID, applier_worker_task *> repl_tasks;
+	std::unordered_map <MVCCID, applier_worker_task *> nonexecutable_repl_tasks;
 
 	while (true)
 	  {
@@ -146,12 +146,12 @@ namespace cubreplication
 		/* wait for all started tasks to finish */
 		m_lc->wait_for_tasks ();
 
-		for (std::unordered_map <MVCCID, repl_applier_worker_task *>::iterator it = repl_tasks.begin ();
+		for (std::unordered_map <MVCCID, applier_worker_task *>::iterator it = repl_tasks.begin ();
 		     it != repl_tasks.end ();
 		     it++)
 		  {
 		    /* check last stream entry of task */
-		    repl_applier_worker_task *my_repl_applier_worker_task = it->second;
+		    applier_worker_task *my_repl_applier_worker_task = it->second;
 		    if (my_repl_applier_worker_task->has_commit ())
 		      {
 			m_lc->execute_task (it->second);
@@ -180,14 +180,14 @@ namespace cubreplication
 		if (it != repl_tasks.end ())
 		  {
 		    /* already a task with same MVCCID, add it to existing task */
-		    repl_applier_worker_task *my_repl_applier_worker_task = it->second;
+		    applier_worker_task *my_repl_applier_worker_task = it->second;
 		    my_repl_applier_worker_task->add_repl_stream_entry (se);
 
 		    assert (my_repl_applier_worker_task->get_entries_cnt () > 0);
 		  }
 		else
 		  {
-		    repl_applier_worker_task *my_repl_applier_worker_task = new repl_applier_worker_task (se, m_lc);
+		    applier_worker_task *my_repl_applier_worker_task = new applier_worker_task (se, m_lc);
 		    repl_tasks.insert (std::make_pair (mvccid, my_repl_applier_worker_task));
 
 		    assert (my_repl_applier_worker_task->get_entries_cnt () > 0);
@@ -213,8 +213,8 @@ namespace cubreplication
 
     if (m_use_daemons)
       {
-	cubthread::get_manager ()->destroy_daemon (m_prepare_daemon);
-	cubthread::get_manager ()->destroy_daemon (m_apply_daemon);
+	cubthread::get_manager ()->destroy_daemon (m_consumer_daemon);
+	cubthread::get_manager ()->destroy_daemon (m_dispatch_daemon);
 	cubthread::get_manager ()->destroy_worker_pool (m_applier_workers_pool);
       }
 
@@ -275,12 +275,12 @@ namespace cubreplication
   void log_consumer::start_daemons (void)
   {
 #if defined (SERVER_MODE)
-    m_prepare_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
-		       new prepare_stream_entry_task (this),
+    m_consumer_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
+		       new consumer_daemon_task (this),
 		       "prepare_stream_entry_daemon");
 
-    m_apply_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
-		     new apply_stream_entry_task (this),
+    m_dispatch_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
+		     new dispatch_daemon_task (this),
 		     "apply_stream_entry_daemon");
 
     m_applier_workers_pool = cubthread::get_manager ()->create_worker_pool (m_applier_worker_threads_count,
@@ -291,7 +291,7 @@ namespace cubreplication
 #endif /* defined (SERVER_MODE) */
   }
 
-  void log_consumer::execute_task (repl_applier_worker_task *task)
+  void log_consumer::execute_task (applier_worker_task *task)
   {
     cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
 

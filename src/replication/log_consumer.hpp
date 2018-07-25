@@ -50,7 +50,7 @@ namespace cubreplication
    */
   class replication_stream_entry;
   class repl_applier_worker_context_manager;
-  class repl_applier_worker_task;
+  class applier_worker_task;
 
   class log_consumer
   {
@@ -66,9 +66,9 @@ namespace cubreplication
 
       std::mutex m_queue_mutex;
 
-      cubthread::daemon *m_prepare_daemon;
+      cubthread::daemon *m_consumer_daemon;
 
-      cubthread::daemon *m_apply_daemon;
+      cubthread::daemon *m_dispatch_daemon;
 
       cubthread::entry_workpool *m_applier_workers_pool;
 
@@ -86,8 +86,8 @@ namespace cubreplication
     private:
       log_consumer () :
         m_stream (NULL),
-        m_prepare_daemon (NULL),
-        m_apply_daemon (NULL),
+        m_consumer_daemon (NULL),
+        m_dispatch_daemon (NULL),
         m_applier_workers_pool (NULL),
 	m_applier_worker_threads_count (100),
 	m_use_daemons (false),
@@ -108,7 +108,7 @@ namespace cubreplication
       int fetch_stream_entry (replication_stream_entry *&entry);
 
       void start_daemons (void);
-      void execute_task (repl_applier_worker_task *task);
+      void execute_task (applier_worker_task *task);
 
       static log_consumer *new_instance (const cubstream::stream_position &start_position, bool use_daemons = false);
 
