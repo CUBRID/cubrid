@@ -29,7 +29,6 @@
 #include "packable_object.hpp"
 #include "dbtype.h"
 #include "storage_common.h"
-#include "thread_entry.hpp"
 #include <vector>
 #include <string>
 
@@ -117,9 +116,9 @@ namespace cubreplication
 
       void set_class_name (const char *class_name);
 
-      void set_key_value (cubthread::entry &thread_entry, DB_VALUE *db_val);
+      void set_key_value (DB_VALUE *db_val);
 
-      void copy_and_add_changed_value (cubthread::entry &thread_entry, const int att_id, DB_VALUE *db_val);
+      void copy_and_add_changed_value (const int att_id, DB_VALUE *db_val);
 
       int pack (cubpacking::packer *serializator);
       int unpack (cubpacking::packer *serializator);
