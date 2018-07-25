@@ -41,7 +41,9 @@ namespace cubreplication
   {
     REPL_UPDATE = 0,
     REPL_INSERT,
-    REPL_DELETE
+    REPL_DELETE,
+
+    REPL_UNKNOWN
   };
   typedef enum repl_entry_type REPL_ENTRY_TYPE;
 
@@ -57,7 +59,7 @@ namespace cubreplication
       std::string m_statement;
 
     public:
-      static const int ID = 1;
+      static const int PACKING_ID = 1;
 
       sbr_repl_entry ()
       {
@@ -97,10 +99,12 @@ namespace cubreplication
       std::vector <DB_VALUE> m_new_values;
 
     public:
-      static const int ID = 2;
+      static const int PACKING_ID = 2;
 
-      single_row_repl_entry ()
+      single_row_repl_entry () : m_type (REPL_UNKNOWN)
       {
+        m_class_name[0] = '\0';
+        db_value_clear (&m_key_value);
       };
 
       ~single_row_repl_entry ();

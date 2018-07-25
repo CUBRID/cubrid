@@ -152,7 +152,7 @@ namespace cubreplication
   {
     size_t i;
 
-    serializator->pack_int (single_row_repl_entry::ID);
+    serializator->pack_int (single_row_repl_entry::PACKING_ID);
 
     serializator->pack_int ((int) m_type);
 
@@ -246,7 +246,7 @@ namespace cubreplication
 
   int sbr_repl_entry::pack (cubpacking::packer *serializator)
   {
-    serializator->pack_int (sbr_repl_entry::ID);
+    serializator->pack_int (sbr_repl_entry::PACKING_ID);
     serializator->pack_large_string (m_statement);
 
     return NO_ERROR;
