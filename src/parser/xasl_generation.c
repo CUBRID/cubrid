@@ -12434,6 +12434,12 @@ pt_uncorr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
   *continue_walk = PT_CONTINUE_WALK;
 
+  // Enable walking. Seems it was set to prevent double walking during name resolving
+  if (node->node_type == PT_NODE_POINTER && node->info.pointer.node->node_type == PT_CTE && !node->info.pointer.do_walk)
+    {
+      node->info.pointer.do_walk = true;
+    }
+
   if (!PT_IS_QUERY_NODE_TYPE (node->node_type) && node->node_type != PT_CTE)
     {
       return node;
@@ -12457,6 +12463,11 @@ pt_uncorr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
     }
   /* increment level as we dive into subqueries */
   info->level++;
+
+  if (node->node_type == PT_NODE_POINTER && node->info.pointer.node->node_type == PT_CTE)
+    {
+      node->info.pointer.do_walk = false;
+    }
 
   return node;
 }
@@ -17560,11 +17571,6 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       int n;
       TABLE_INFO *ti;
 
-      if (with != NULL)
-	{
-	  /* In this case a cte proc is to be built on regu_vars of insert proc */
-	  assert (false);
-	}
       xasl = regu_xasl_node_alloc (INSERT_PROC);
       if (xasl == NULL)
 	{
@@ -18810,8 +18816,7 @@ pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statemen
  *                    
  *   return:
  *   parser(in): context
- *   statement(in): select parse tree
- *   spec_flag(in): spec flag: PT_SPEC_FLAG_UPDATE or PT_SPEC_FLAG_DELETE
+ *   with(in): with clause node
  */
 void
 pt_to_with_clause_xasl (PARSER_CONTEXT * parser, PT_NODE * with)
