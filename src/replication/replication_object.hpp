@@ -102,8 +102,8 @@ namespace cubreplication
 
       single_row_repl_entry () : m_type (REPL_UNKNOWN)
       {
-        m_class_name[0] = '\0';
-        db_value_clear (&m_key_value);
+	m_class_name[0] = '\0';
+	db_value_clear (&m_key_value);
       };
 
       ~single_row_repl_entry ();

@@ -71,7 +71,7 @@ namespace cubreplication
 	  {
 	    replication_stream_entry *curr_stream_entry = *it;
 
-            curr_stream_entry->unpack ();
+	    curr_stream_entry->unpack ();
 
 	    for (int i = 0; i < curr_stream_entry->get_packable_entry_count_from_header (); i++)
 	      {
@@ -282,8 +282,8 @@ namespace cubreplication
 		     "apply_stream_entry_daemon");
 
     m_applier_workers_pool = cubthread::get_manager ()->create_worker_pool (m_applier_worker_threads_count,
-                                                                            m_applier_worker_threads_count,
-                                                                            NULL, 1, 1);
+			     m_applier_worker_threads_count,
+			     NULL, 1, 1);
 
     m_use_daemons = true;
 #endif /* defined (SERVER_MODE) */
