@@ -85,9 +85,14 @@ namespace cubreplication
 
     private:
       log_consumer () :
+        m_stream (NULL),
+        m_prepare_daemon (NULL),
+        m_apply_daemon (NULL),
+        m_applier_workers_pool (NULL),
 	m_applier_worker_threads_count (100),
 	m_use_daemons (false),
 	m_started_tasks (0),
+        m_apply_task_ready (false),
 	m_is_stopped (false)
       {
       };
