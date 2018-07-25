@@ -24,9 +24,11 @@
 #ident "$Id$"
 
 #include "log_consumer.hpp"
+#include "multi_thread_stream.hpp"
 #include "replication_stream_entry.hpp"
+#include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
-#include "thread_manager.hpp"
+#include "thread_task.hpp"
 #include <unordered_map>
 
 namespace cubreplication
@@ -323,7 +325,25 @@ namespace cubreplication
       }
 
     return new_lc;
-  };
+  }
+
+  void log_consumer::wait_for_tasks (void)
+  {
+    while (m_started_tasks > 0)
+      {
+        thread_sleep (1);
+      }
+  }
+
+  void log_consumer::set_stop (void)
+      {
+	log_consumer::get_stream ()->set_stop ();
+
+	std::unique_lock<std::mutex> ulock (m_queue_mutex);
+	m_is_stopped = true;
+	ulock.unlock ();
+	m_apply_task_cv.notify_one ();
+      }
 
   log_consumer *log_consumer::global_log_consumer = NULL;
 } /* namespace cubreplication */

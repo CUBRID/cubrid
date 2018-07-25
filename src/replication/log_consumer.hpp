@@ -26,14 +26,21 @@
 #ifndef _LOG_CONSUMER_HPP_
 #define _LOG_CONSUMER_HPP_
 
-#include "multi_thread_stream.hpp"
-#include "replication_stream_entry.hpp"
-#include "thread_daemon.hpp"
-#include "thread_task.hpp"
+#include "cubstream.hpp"
 #include "thread_manager.hpp"
 #include <chrono>
 #include <cstddef>
 #include <queue>
+
+namespace cubthread
+{
+  class daemon;
+};
+
+namespace cubstream
+{
+  class multi_thread_stream;
+};
 
 namespace cubreplication
 {
@@ -41,6 +48,7 @@ namespace cubreplication
    * main class for consuming log packing stream entries;
    * it should be created only as a global instance
    */
+  class replication_stream_entry;
   class repl_applier_worker_context_manager;
   class repl_applier_worker_task;
 
@@ -114,28 +122,14 @@ namespace cubreplication
 	m_started_tasks--;
       }
 
-      void wait_for_tasks (void)
-      {
-	while (m_started_tasks > 0)
-	  {
-	    thread_sleep (1);
-	  }
-      }
+      void wait_for_tasks (void);
 
       bool is_stopping (void)
       {
 	return m_is_stopped;
       }
 
-      void set_stop (void)
-      {
-	log_consumer::get_stream ()->set_stop ();
-
-	std::unique_lock<std::mutex> ulock (m_queue_mutex);
-	m_is_stopped = true;
-	ulock.unlock ();
-	m_apply_task_cv.notify_one ();
-      }
+      void set_stop (void);
 
   };
 
