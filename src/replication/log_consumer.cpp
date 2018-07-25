@@ -70,6 +70,9 @@ namespace cubreplication
 	it++)
 	  {
 	    replication_stream_entry *curr_stream_entry = *it;
+
+            curr_stream_entry->unpack ();
+
 	    for (int i = 0; i < curr_stream_entry->get_packable_entry_count_from_header (); i++)
 	      {
 		replication_object *obj = curr_stream_entry->get_object_at (i);
@@ -169,8 +172,6 @@ namespace cubreplication
 	      }
 	    else
 	      {
-		se->unpack ();
-
 		MVCCID mvccid = se->get_mvccid ();
 		auto it = repl_tasks.find (mvccid);
 
