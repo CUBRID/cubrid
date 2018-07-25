@@ -301,6 +301,8 @@ namespace cubreplication
 
     log_consumer *new_lc = new log_consumer ();
 
+    /* TODO : initializing stream should be performed outside log_consumer (a higher level object which aggregates
+     * both stream and log_consumer ; in such case, stream_position is no longer an attribute of log_consumer */
     new_lc->m_start_position = start_position;
 
     INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_CONSUMER_BUFFER_SIZE);

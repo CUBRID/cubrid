@@ -77,8 +77,7 @@ namespace cubreplication
 
       bool m_is_stopped;
 
-    public:
-
+    private:
       log_consumer () :
 	m_applier_worker_threads_count (100),
 	m_use_daemons (false),
@@ -86,6 +85,8 @@ namespace cubreplication
 	m_is_stopped (false)
       {
       };
+
+    public:
 
       ~log_consumer ();
 
