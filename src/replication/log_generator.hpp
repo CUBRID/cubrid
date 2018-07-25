@@ -29,7 +29,7 @@
 
 #include "replication_object.hpp"
 #include "replication_stream_entry.hpp"
-#include "packing_stream.hpp"
+#include "multi_thread_stream.hpp"
 #include "thread_entry.hpp"
 #include <vector>
 
@@ -46,7 +46,7 @@ namespace cubreplication
     private:
       replication_stream_entry m_stream_entry;
 
-      static cubstream::packing_stream *g_stream;
+      static cubstream::multi_thread_stream *g_stream;
 
       /* start append position of generator stream */
       static cubstream::stream_position g_start_append_position;
@@ -55,7 +55,7 @@ namespace cubreplication
 
       log_generator () : m_stream_entry (NULL) { };
 
-      log_generator (cubstream::packing_stream *stream) : m_stream_entry (stream) { };
+      log_generator (cubstream::multi_thread_stream *stream) : m_stream_entry (stream) { };
 
       ~log_generator ();
 
@@ -73,7 +73,7 @@ namespace cubreplication
 
       static int create_stream (const cubstream::stream_position &start_position);
 
-      static cubstream::packing_stream *get_stream (void)
+      static cubstream::multi_thread_stream *get_stream (void)
       {
 	return g_stream;
       };

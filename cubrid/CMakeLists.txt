@@ -58,13 +58,13 @@ set(THREAD_HEADERS
 
 set(STREAM_SOURCES
   ${BASE_DIR}/cubstream.cpp
-  ${BASE_DIR}/packing_stream.cpp
+  ${BASE_DIR}/multi_thread_stream.cpp
   )
 set (STREAM_HEADERS
   ${BASE_DIR}/bip_buffer.hpp
   ${BASE_DIR}/collapsable_circular_queue.hpp
   ${BASE_DIR}/cubstream.hpp
-  ${BASE_DIR}/packing_stream.hpp
+  ${BASE_DIR}/multi_thread_stream.hpp
   ${BASE_DIR}/stream_entry.hpp
   ${BASE_DIR}/stream_io.hpp
   )

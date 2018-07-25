@@ -26,7 +26,7 @@
 #include "server_support.h"
 
 #include "config.h"
-#include "packing_stream.hpp"
+#include "multi_thread_stream.hpp"
 #include "session.h"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
