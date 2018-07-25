@@ -63,8 +63,8 @@ namespace cubreplication
     unsigned int count_and_flags;
 
     m_header.count_replication_entries = (int) m_packable_entries.size ();
-    serializator->pack_bigint ((DB_BIGINT *) &m_header.prev_record);
-    serializator->pack_bigint ((DB_BIGINT *) &m_header.mvccid);
+    serializator->pack_bigint (&m_header.prev_record);
+    serializator->pack_bigint (&m_header.mvccid);
 
     assert ((m_header.count_replication_entries & replication_stream_entry_header::COUNT_VALUE_MASK)
 	    == m_header.count_replication_entries);
@@ -91,8 +91,8 @@ namespace cubreplication
     cubpacking::packer *serializator = get_packer ();
     unsigned int count_and_flags;
 
-    serializator->unpack_bigint ((DB_BIGINT *) &m_header.prev_record);
-    serializator->unpack_bigint ((DB_BIGINT *) &m_header.mvccid);
+    serializator->unpack_bigint (&m_header.prev_record);
+    serializator->unpack_bigint (&m_header.mvccid);
     serializator->unpack_int ((int *) &count_and_flags);
     if (count_and_flags & replication_stream_entry_header::COMMIT_FLAG)
       {
