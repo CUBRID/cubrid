@@ -164,6 +164,11 @@
 #define SM_GET_FILTER_PRED_STREAM_SIZE(filter) \
 	((filter) == NULL ? 0 : (filter)->pred_stream_size)
 
+/* Property list types and defines. */
+#define SM_OFFSET_TO_PROPERTY_NAME (OR_INT_SIZE + OR_INT_SIZE)
+typedef char *SM_PROPERTY;
+typedef char *SM_PROPERTY_LIST;
+
 typedef void (*METHOD_FUNCTION) ();
 typedef void (*METHOD_FUNC_ARG4) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
 typedef void (*METHOD_FUNC_ARG5) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
@@ -804,7 +809,7 @@ struct sm_template
   DB_OBJLIST *ext_references;
 
   DB_SEQ *properties;
-  OR_BUF *new_properties;
+  SM_PROPERTY_LIST new_properties;
 
   int *super_id_map;		/* super class id mapping table */
 
@@ -947,7 +952,7 @@ extern int classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, co
 			       SM_ATTRIBUTE ** atts, const int *asc_desc, const int *attr_prefix_length,
 			       const BTID * id, SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
 			       char *shared_cons_name, SM_FUNCTION_INFO * func_index_info, const char *comment,
-			       SM_INDEX_STATUS index_status, OR_BUF ** properties_buffer);
+			       SM_INDEX_STATUS index_status, SM_PROPERTY_LIST * properties_buffer);
 extern int classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name,
 				  SM_ATTRIBUTE ** atts, const int *asc_desc, const int *attrs_prefix_length,
 				  const BTID * id, SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
@@ -1126,5 +1131,9 @@ extern int classobj_get_buffer_of_new_property (SM_CONSTRAINT_TYPE type, const c
 						SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
 						char *shared_cons_name, SM_FUNCTION_INFO * func_index_info,
 						const char *comment, SM_INDEX_STATUS index_status,
-						OR_BUF ** new_property, int put_ids);
+						char **new_property, int put_ids);
+
+extern int classobj_add_property_to_property_list (SM_PROPERTY_LIST * property_list, SM_PROPERTY new_property,
+						   char *new_property_name, int new_property_size);
+
 #endif /* _CLASS_OBJECT_H_ */

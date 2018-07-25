@@ -921,7 +921,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 		    const int *asc_desc, const int *attr_prefix_length, const BTID * id,
 		    SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name,
 		    SM_FUNCTION_INFO * func_index_info, const char *comment, SM_INDEX_STATUS index_status,
-		    OR_BUF ** properties_buffer)
+		    SM_PROPERTY_LIST * properties_list)
 {
   int i;
   const char *prop_name = classobj_map_constraint_to_property (type);
@@ -936,14 +936,12 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
   bool is_new_created = false;	/* Is *properties new created or not */
   OR_BUF *local_buffer = NULL;
   int local_size = 0;
+  SM_PROPERTY new_prop = NULL;
+  int prop_size = 0;
+  int ret = NO_ERROR;
 
   db_make_null (&pvalue);
   db_make_null (&value);
-
-  /*  local_size = classobj_get_buffer_of_new_property (type, constraint_name, atts, asc_desc, attr_prefix_length,
-   *  id, filter_index_info, fk_info, shared_cons_name, func_index_info,
-   *  comment, index_status, &local_buffer, 0);
-   */
 
   /* 
    *  If the property pointer is NULL, create an empty property sequence
@@ -957,12 +955,15 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 	}
 
       is_new_created = true;
+      /*prop_size = classobj_get_buffer_of_new_property (type, constraint_name, atts, asc_desc, attr_prefix_length,
+         id, filter_index_info, fk_info, shared_cons_name,
+         func_index_info, comment, index_status, &new_prop, 0);
+
+         ret = classobj_add_property_to_property_list (properties_list, new_prop, (char *) constraint_name, prop_size);
+       */
     }
 
-  if (*properties_buffer == NULL)
-    {
-      is_new_created = true;
-    }
+
 
   /* 
    *  Get a copy of the existing UNIQUE property value.  If one
@@ -1213,6 +1214,38 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 
 			  db_make_sequence (&value, pred_seq);
 			  pred_seq = NULL;
+			  set_put_element (seq_child, 1, &value);
+			  pr_clear_value (&value);
+
+			  db_make_sequence (&value, seq_child);
+			  seq_child = NULL;
+			  set_put_element (seq, i++, &value);
+			  pr_clear_value (&value);
+			}
+		    }
+		}
+	      else
+		{
+		  /* Add the prefix length. */
+		  seq_child = set_create_sequence (0);
+		  if (seq_child == NULL)
+		    {
+		      goto error;
+		    }
+		  else
+		    {
+		      prefix_seq = classobj_make_index_attr_prefix_seq (num_attrs, attr_prefix_length);
+		      if (prefix_seq == NULL)
+			{
+			  goto error;
+			}
+		      else
+			{
+			  db_make_string (&value, SM_PREFIX_INDEX_ID);
+			  set_put_element (seq_child, 0, &value);
+
+			  db_make_sequence (&value, prefix_seq);
+			  prefix_seq = NULL;
 			  set_put_element (seq_child, 1, &value);
 			  pr_clear_value (&value);
 
@@ -1679,6 +1712,38 @@ classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char
 
 			  db_make_sequence (&value, pred_seq);
 			  pred_seq = NULL;
+			  set_put_element (seq_child, 1, &value);
+			  pr_clear_value (&value);
+
+			  db_make_sequence (&value, seq_child);
+			  seq_child = NULL;
+			  set_put_element (seq, i++, &value);
+			  pr_clear_value (&value);
+			}
+		    }
+		}
+	      else
+		{
+		  /* Add the prefix length */
+		  seq_child = set_create_sequence (0);
+		  if (seq_child == NULL)
+		    {
+		      goto error;
+		    }
+		  else
+		    {
+		      prefix_seq = classobj_make_index_attr_prefix_seq (num_attrs, attrs_prefix_length);
+		      if (prefix_seq == NULL)
+			{
+			  goto error;
+			}
+		      else
+			{
+			  db_make_string (&value, SM_PREFIX_INDEX_ID);
+			  set_put_element (seq_child, 0, &value);
+
+			  db_make_sequence (&value, prefix_seq);
+			  prefix_seq = NULL;
 			  set_put_element (seq_child, 1, &value);
 			  pr_clear_value (&value);
 
@@ -9064,7 +9129,7 @@ classobj_get_buffer_of_new_property (SM_CONSTRAINT_TYPE type, const char *constr
 				     const int *asc_desc, const int *attr_prefix_length, const BTID * id,
 				     SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
 				     char *shared_cons_name, SM_FUNCTION_INFO * func_index_info, const char *comment,
-				     SM_INDEX_STATUS index_status, OR_BUF ** new_property, int put_ids)
+				     SM_INDEX_STATUS index_status, char **new_property, int put_ids)
 {
   OR_BUF buf;
   char *local_data = NULL;
@@ -9536,10 +9601,8 @@ classobj_get_buffer_of_new_property (SM_CONSTRAINT_TYPE type, const char *constr
   /* Safeguard. */
   assert ((buf.ptr == buf.endptr) && ((buf.ptr - buf.buffer) == disk_size));
 
-
-
-
-
+  /* Assign the new property. */
+  *new_property = local_data;
 
   if (pbuf != NULL)
     {
@@ -9585,4 +9648,440 @@ error:
   pr_clear_value (&function_index_stream_domain);
 
   return disk_size;
+}
+
+static int
+or_put_property (OR_BUF * buf, SM_PROPERTY prop, int property_size)
+{
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  if (buf->ptr + property_size > buf->endptr)
+    {
+      return (or_overflow (buf));
+    }
+  else
+    {
+      return (or_put_data (buf, prop, property_size));
+    }
+}
+
+static int
+or_get_property_size (OR_BUF buf, int *error)
+{
+  int val = 0;
+  val = or_get_int (&buf, error);
+  return val;
+}
+
+static int
+or_get_property_type (OR_BUF buf, int *error)
+{
+  int val = 0;
+  or_advance (&buf, OR_INT_SIZE);
+  val = or_get_int (&buf, error);
+  return val;
+}
+
+static int
+or_get_property (OR_BUF buf, SM_PROPERTY * prop, int property_size)
+{
+  memcpy ((*prop), buf.ptr, property_size);
+
+  return NO_ERROR;
+}
+
+static int
+or_get_property_name (OR_BUF buf, char **property_name)
+{
+  int name_size = 0, ret = NO_ERROR;
+  char *prop_name = NULL;
+
+  ret = or_advance (&buf, SM_OFFSET_TO_PROPERTY_NAME);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  /* Read name size. */
+  name_size = or_get_int (&buf, &ret);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  prop_name = (char *) malloc ((size_t) name_size);
+  if (prop_name == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, name_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  memset (prop_name, 0, (size_t) name_size);
+  ret = or_get_data (&buf, prop_name, name_size);
+
+  *property_name = prop_name;
+  return ret;
+}
+
+
+int
+classobj_add_property_to_property_list (SM_PROPERTY_LIST * property_list, SM_PROPERTY new_property,
+					char *new_property_name, int new_property_size, int new_property_type)
+{
+  OR_BUF buf;
+  SM_PROPERTY_LIST new_list = NULL, old_list = NULL;
+  int new_list_size = 0;
+  int ret = NO_ERROR;
+  bool found = false;
+  int list_size = 0;
+  int prop_size = 0;
+  char *prop_name = NULL;
+  int offset_to_property;
+  int prop_type = 0;
+
+  if (*property_list == NULL)
+    {
+      /* No property yet added. */
+      new_list_size = new_property_size + OR_INT_SIZE;
+      new_list = (SM_PROPERTY_LIST) malloc (new_list_size);
+      if (new_list == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_list_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      or_init (&buf, new_list, new_list_size);
+
+      /* Put the size at the beginning. */
+      ret = or_put_int (&buf, new_list_size);
+      if (ret != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      ret = or_put_property (&buf, new_property, new_property_size);
+      if (ret != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      assert (buf.ptr == buf.endptr);
+      *property_list = new_list;
+
+      return ret;
+    }
+
+  /* We must look for the constraint in the constraint list. */
+  or_init (&buf, *property_list, OR_INT_SIZE);
+
+  list_size = or_get_int (&buf, &ret);
+  if (ret != NO_ERROR)
+    {
+      goto error;
+    }
+
+  or_init (&buf, *property_list, list_size);
+
+  /* Skip the list size. */
+  or_advance (&buf, OR_INT_SIZE);
+  offset_to_property = OR_INT_SIZE;
+
+  while (buf.ptr != buf.endptr && found == false)
+    {
+      /* Get this property name and size. */
+      prop_size = or_get_property_size (buf, &ret);
+      if (ret != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      ret = or_get_property_name (buf, &prop_name);
+      if (ret != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      prop_type = or_get_property_type (buf, &ret);
+      if (ret != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      if (strcmp (prop_name, new_property_name) == 0 && prop_type == new_property_type)
+	{
+	  found = true;
+	  break;
+	}
+
+      if (prop_name)
+	{
+	  free_and_init (prop_name);
+	  prop_name = NULL;
+	}
+
+      or_advance (&buf, prop_size);
+      offset_to_property += prop_size;
+    }
+
+  if (found)
+    {
+      /* We found the property. */
+
+      /* Safe-guards */
+      assert (buf.ptr != buf.endptr);
+      assert ((buf.ptr - buf.buffer) == offset_to_property);
+
+      new_list_size = list_size - prop_size + new_property_size;
+      new_list = (SM_PROPERTY_LIST) malloc (new_list_size);
+      if (new_list == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_list_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      or_init (&buf, new_list, new_list_size);
+
+      /* Put the size at the beginning. */
+      ret = or_put_int (&buf, new_list_size);
+      if (ret != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      /* Copy the list up to this property. */
+      or_put_data (&buf, (*property_list) + OR_INT_SIZE, (offset_to_property - OR_INT_SIZE));
+
+      /* Safe-guard. */
+      assert ((buf.ptr - buf.buffer) == offset_to_property);
+
+      /* Put the properties after this current one. */
+      or_put_data (&buf, (*property_list) + offset_to_property + prop_size,
+		   (list_size - offset_to_property - prop_size));
+
+      /* Safe-guard */
+      assert ((buf.ptr - buf.buffer) == (list_size - prop_size));
+
+      /* Put the new property now. */
+      ret = or_put_property (&buf, new_property, new_property_size);
+      if (ret != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      /* Safeguard. */
+      assert (buf.ptr == buf.endptr);
+
+      old_list = *property_list;
+      *property_list = new_list;
+
+      if (old_list)
+	{
+	  free_and_init (old_list);
+	}
+
+      return ret;
+    }
+
+  /* The property was not found, we append the new one at the end. */
+  /* Safe-guards! */
+  assert (offset_to_property == list_size);
+  assert (buf.endptr == buf.ptr);
+
+  new_list_size = list_size + new_property_size;
+  new_list = (SM_PROPERTY_LIST) malloc (new_list_size);
+  if (new_list == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_list_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  or_init (&buf, new_list, new_list_size);
+
+  /* Put the size at the beginning. */
+  ret = or_put_int (&buf, new_list_size);
+  if (ret != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* Copy the old list. */
+  or_put_data (&buf, (*property_list) + OR_INT_SIZE, (list_size - OR_INT_SIZE));
+
+  /* Safe-guard */
+  assert ((buf.endptr - buf.ptr) == new_property_size);
+  assert ((buf.ptr - buf.buffer) == list_size);
+
+  /* Put the new property */
+  ret = or_put_property (&buf, new_property, new_property_size);
+  if (ret != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* Safe-guards. */
+  assert (buf.ptr == buf.endptr);
+
+  old_list = *property_list;
+  *property_list = new_list;
+
+  if (old_list != NULL)
+    {
+      free_and_init (old_list);
+    }
+
+  return ret;
+
+error:
+
+  if (new_list != NULL)
+    {
+      free_and_init (new_list);
+    }
+
+  if (prop_name != NULL)
+    {
+      free_and_init (prop_name);
+    }
+
+  if (new_list != NULL)
+    {
+      free_and_init (new_list);
+    }
+  return ret;
+}
+
+int
+classobj_drop_property_from_property_list (SM_PROPERTY_LIST * property_list, int property_type)
+{
+  SM_PROPERTY_LIST prop_list = NULL, old_property = NULL;
+  OR_BUF buf, buf2;
+  int disk_size;
+  int new_disk_size;
+  int ret = NO_ERROR;
+  int prop_size;
+  int prop_type;
+  int to_remove_size = 0;
+
+  if (*property_list)
+    {
+      return NO_ERROR;
+    }
+
+  or_init (&buf, *property_list, OR_INT_SIZE);
+
+  disk_size = or_get_int (&buf, &ret);
+  if (ret != NO_ERROR)
+    {
+      goto error;
+    }
+
+  or_init (&buf, *property_list, disk_size);
+
+  or_advance (&buf, OR_INT_SIZE);
+
+  while (buf.ptr != buf.endptr)
+    {
+      prop_size = or_get_property_size (buf, &ret);
+      if (ret != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      prop_type = or_get_property_type (buf, &ret);
+      if (ret != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      if (prop_type == property_type)
+	{
+	  to_remove_size += prop_size;
+	}
+
+      or_advance (&buf, prop_size);
+    }
+
+  if (to_remove_size == 0)
+    {
+      return ret;
+    }
+
+  new_disk_size = disk_size - to_remove_size;
+
+  if (new_disk_size == 0)
+    {
+      free_and_init (*property_list);
+      *property_list = NULL;
+      return ret;
+    }
+
+  prop_list = (SM_PROPERTY_LIST) malloc (new_disk_size);
+  if (prop_list == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_disk_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  /* Init destination buffer. */
+  or_init (&buf2, prop_list, new_disk_size);
+
+  /* Init copy buffer. */
+  or_init (&buf, *property_list, disk_size);
+  or_advance (&buf, OR_INT_SIZE);
+
+  /* Put new size. */
+  or_put_int (&buf2, new_disk_size);
+
+  /* Go through each property and put the ones that do not match the type. */
+  while (buf2.ptr != buf2.endptr)
+    {
+      /* Get type of property. */
+      prop_type = or_get_property_type (buf, &ret);
+      if (ret != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      prop_size = or_get_property_size (buf, &ret);
+      if (ret != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      if (prop_type == property_type)
+	{
+	  /* Go to next property. */
+	  or_advance (&buf, prop_size);
+	  continue;
+	}
+
+      /* Copy the property. */
+      or_put_data (&buf2, buf.ptr, prop_size);
+
+      /* Go to next property. */
+      or_advance (&buf, prop_size);
+    }
+
+  /* Safeguard */
+  assert (buf2.ptr == buf2.endptr);
+  assert (buf.ptr == buf2.endptr);
+
+  old_property = *property_list;
+  *property_list = prop_list;
+
+  if (old_property != NULL)
+    {
+      free_and_init (old_property);
+    }
+
+  return ret;
+
+error:
+
+  if (prop_list != NULL)
+    {
+      free_and_init (prop_list);
+    }
+
+  return ret;
 }
