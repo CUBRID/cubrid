@@ -422,9 +422,15 @@ namespace cubthread
       void push_task_on_running_thread (task<Context> *work_p, cubperf::time_point push_time);
       // stop execution; if worker has a thread running, it outputs is_not_stopped = true
       void stop_execution (bool &is_not_stopped);
-      // map function to context (if context is available)
+
+      // map function to context (if a task is running and if context is available)
+      //
+      // note - sometimes a thread has a context assigned, but it is waiting for tasks. if that's the case, the
+      //        function will not be applied, since it is not considered a "running" context.
+      //
       template <typename Func, typename ... Args>
-      void map_context (bool &stop, Func &&func, Args &&... args);
+      void map_context_if_running (bool &stop, Func &&func, Args &&... args);
+
       // add own stats to given argument
       void get_stats (cubperf::stat_value *sum_inout) const;
 
@@ -971,7 +977,7 @@ namespace cubthread
   {
     for (std::size_t it = 0; it < m_max_workers && !stop; it++)
       {
-	m_worker_array[it].map_context (stop, func, args...);
+	m_worker_array[it].map_context_if_running (stop, func, args...);
 	if (stop)
 	  {
 	    // stop mapping
@@ -1278,6 +1284,10 @@ namespace cubthread
     // and retire task
     retire_current_task ();
 
+    // and recycle context before getting another task
+    m_parent_core->get_context_manager ().recycle_context (*m_context_p);
+    wp_worker_statset_time_and_increment (m_statistics, Wpstat_recycle_context);
+
     // notify core one task was finished
     m_parent_core->finished_task_notification ();
   }
@@ -1306,10 +1316,6 @@ namespace cubthread
 
 	    // it is safe to set here
 	    m_task_p = task_p;
-
-	    // we need to recycle context before reusing
-	    m_parent_core->get_context_manager ().recycle_context (*m_context_p);
-	    wp_worker_statset_time_and_increment (m_statistics, Wpstat_recycle_context);
 	    return true;
 	  }
 
@@ -1358,10 +1364,6 @@ namespace cubthread
 	// found task
 	m_statistics.m_timept = m_push_time;
 	wp_worker_statset_time_and_increment (m_statistics, Wpstat_wakeup_with_task);
-
-	// we need to recycle context before reusing
-	m_parent_core->get_context_manager ().recycle_context (*m_context_p);
-	wp_worker_statset_time_and_increment (m_statistics, Wpstat_recycle_context);
 	return true;
       }
   }
@@ -1410,8 +1412,14 @@ namespace cubthread
   template <typename Context>
   template <typename Func, typename ... Args>
   void
-  worker_pool<Context>::core::worker::map_context (bool &stop, Func &&func, Args &&... args)
+  worker_pool<Context>::core::worker::map_context_if_running (bool &stop, Func &&func, Args &&... args)
   {
+    if (m_task_p == NULL)
+      {
+	// not running
+	return;
+      }
+
     Context *ctxp = m_context_p;
 
     if (ctxp != NULL)
