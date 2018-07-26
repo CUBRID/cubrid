@@ -125,8 +125,9 @@ namespace cubreplication
       void execute (cubthread::entry &thread_ref) override
       {
 	replication_stream_entry *se = NULL;
-	std::unordered_map <MVCCID, applier_worker_task *> repl_tasks;
-	std::unordered_map <MVCCID, applier_worker_task *> nonexecutable_repl_tasks;
+        using tasks_map = std::unordered_map <MVCCID, applier_worker_task *>;
+	tasks_map repl_tasks;
+	tasks_map nonexecutable_repl_tasks;
 
 	while (true)
 	  {
@@ -146,7 +147,7 @@ namespace cubreplication
 		/* wait for all started tasks to finish */
 		m_lc.wait_for_tasks ();
 
-		for (std::unordered_map <MVCCID, applier_worker_task *>::iterator it = repl_tasks.begin ();
+		for (tasks_map::iterator it = repl_tasks.begin ();
 		     it != repl_tasks.end ();
 		     it++)
 		  {
