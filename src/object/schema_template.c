@@ -79,7 +79,7 @@ static int smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAIN
 					   const int *attr_prefix_length, SM_FOREIGN_KEY_INFO * fk_info,
 					   char *shared_cons_name, SM_PREDICATE_INFO * filter_index,
 					   SM_FUNCTION_INFO * function_index, const char *comment,
-					   SM_ONLINE_INDEX_STATUS online_index_status);
+					   SM_INDEX_STATUS index_status);
 static int smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_value,
 						 DB_DEFAULT_EXPR * default_expr);
 static int smt_drop_constraint_from_property (SM_TEMPLATE * template_, const char *constraint_name,
@@ -1545,8 +1545,7 @@ static int
 smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type, const char *constraint_name,
 				SM_ATTRIBUTE ** atts, const int *asc_desc, const int *attr_prefix_length,
 				SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name, SM_PREDICATE_INFO * filter_index,
-				SM_FUNCTION_INFO * function_index, const char *comment,
-				SM_ONLINE_INDEX_STATUS online_index_status)
+				SM_FUNCTION_INFO * function_index, const char *comment, SM_INDEX_STATUS index_status)
 {
   int error = NO_ERROR;
   DB_VALUE cnstr_val;
@@ -1557,7 +1556,7 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
   /* 
    *  Check if the constraint already exists. Skip it if we have an online index building done. 
    */
-  if (online_index_status != SM_ONLINE_INDEX_BUILDING_DONE)
+  if (index_status != SM_ONLINE_INDEX_BUILDING_DONE)
     {
       if (classobj_find_prop_constraint (template_->properties, constraint, constraint_name, &cnstr_val))
 	{
@@ -1567,8 +1566,7 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
     }
 
   if (classobj_put_index (&template_->properties, type, constraint_name, atts, asc_desc, attr_prefix_length, NULL,
-			  filter_index, fk_info, shared_cons_name, function_index, comment,
-			  online_index_status) == ER_FAILED)
+			  filter_index, fk_info, shared_cons_name, function_index, comment, index_status) == ER_FAILED)
     {
       ASSERT_ERROR_AND_SET (error);
     }
@@ -1944,7 +1942,7 @@ int
 smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
 		    const char **att_names, const int *asc_desc, const int *attrs_prefix_length, int class_attribute,
 		    SM_FOREIGN_KEY_INFO * fk_info, SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index,
-		    const char *comment, SM_ONLINE_INDEX_STATUS online_index_status)
+		    const char *comment, SM_INDEX_STATUS index_status)
 {
   int error = NO_ERROR;
   SM_ATTRIBUTE **atts = NULL;
@@ -1957,7 +1955,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
   assert (template_ != NULL);
 
   /* Skip this check if we have an online index building done. */
-  if (online_index_status != SM_ONLINE_INDEX_BUILDING_DONE)
+  if (index_status != SM_ONLINE_INDEX_BUILDING_DONE)
     {
       error = smt_check_index_exist (template_, &shared_cons_name, constraint_type, constraint_name, att_names,
 				     asc_desc, filter_index, function_index);
@@ -2172,8 +2170,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
       /* Add the constraint. */
       error = smt_add_constraint_to_property (template_, SM_MAP_INDEX_ATTFLAG_TO_CONSTRAINT (constraint),
 					      constraint_name, atts, asc_desc, attrs_prefix_length, fk_info,
-					      shared_cons_name, filter_index, function_index, comment,
-					      online_index_status);
+					      shared_cons_name, filter_index, function_index, comment, index_status);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
