@@ -277,11 +277,11 @@ namespace cubreplication
   {
 #if defined (SERVER_MODE)
     m_consumer_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
-		       new consumer_daemon_task (this),
+		       new consumer_daemon_task (*this),
 		       "prepare_stream_entry_daemon");
 
     m_dispatch_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
-		     new dispatch_daemon_task (this),
+		     new dispatch_daemon_task (*this),
 		     "apply_stream_entry_daemon");
 
     m_applier_workers_pool = cubthread::get_manager ()->create_worker_pool (m_applier_worker_threads_count,
