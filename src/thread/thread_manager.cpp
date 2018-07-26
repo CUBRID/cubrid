@@ -44,7 +44,6 @@
 
 namespace cubthread
 {
-
   thread_local entry *tl_Entry_p = NULL;
 
   manager::manager (void)
@@ -140,8 +139,9 @@ namespace cubthread
   }
 
   entry_workpool *
-  manager::create_worker_pool (size_t pool_size, size_t task_max_count, entry_manager *context_manager,
-			       std::size_t core_count, bool debug_logging)
+  manager::create_worker_pool (size_t pool_size, size_t task_max_count, const char *name,
+			       entry_manager *context_manager, std::size_t core_count, bool debug_logging,
+			       bool pool_threads, wait_seconds wait_for_task_time)
   {
 #if defined (SERVER_MODE)
     if (is_single_thread ())
@@ -156,7 +156,7 @@ namespace cubthread
 	  }
 	// reserve pool_size entries and add to m_worker_pools
 	return create_and_track_resource (m_worker_pools, pool_size, pool_size, task_max_count, *context_manager,
-					  core_count, debug_logging);
+					  name, core_count, debug_logging, pool_threads, wait_for_task_time);
       }
 #else // not SERVER_MODE = SA_MODE
     return NULL;
@@ -580,6 +580,20 @@ namespace cubthread
     return *tl_Entry_p;
   }
 
+  void
+  set_thread_local_entry (entry &tl_entry)
+  {
+    assert (tl_Entry_p == NULL);
+    tl_Entry_p = &tl_entry;
+  }
+
+  void
+  clear_thread_local_entry (void)
+  {
+    assert (tl_Entry_p != NULL);
+    tl_Entry_p = NULL;
+  }
+
   bool
   is_single_thread (void)
   {
@@ -603,6 +617,13 @@ namespace cubthread
       {
 	Manager->return_lock_free_transaction_entries ();
       }
+  }
+
+
+  bool
+  is_logging_configured (const int logging_flag)
+  {
+    return flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_THREAD_LOGGING_FLAG), logging_flag);
   }
 
 } // namespace cubthread

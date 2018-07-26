@@ -42,6 +42,11 @@
 #include <stdint.h>
 #endif
 
+#if defined (__cplusplus)
+#include <memory>
+#include <functional>
+#endif
+
 /* Ceiling of positive division */
 #define CEIL_PTVDIV(dividend, divisor) \
         (((dividend) == 0) ? 0 : (((dividend) - 1) / (divisor)) + 1)
@@ -296,5 +301,81 @@ enum
 #define private_user2hl_ptr(ptr) \
   (PRIVATE_MALLOC_HEADER *)((char *)(ptr) - PRIVATE_MALLOC_HEADER_ALIGNED_SIZE)
 #endif /* SA_MODE */
+
+
+#if defined (__cplusplus)
+// *INDENT-OFF*
+template <class T> 
+class PRIVATE_UNIQUE_PTR_DELETER
+{
+  public:
+    PRIVATE_UNIQUE_PTR_DELETER ()
+      : thread_p (NULL) 
+      { 
+      }
+
+    PRIVATE_UNIQUE_PTR_DELETER (THREAD_ENTRY * thread_p)
+      : thread_p (thread_p)
+      {
+      }
+
+    void operator () (T * ptr) const
+      {
+        if (ptr != NULL)
+          {
+	    db_private_free (thread_p, ptr);
+          }
+      }
+
+  private:
+    THREAD_ENTRY * thread_p;
+};
+
+template <class T> 
+class PRIVATE_UNIQUE_PTR
+{
+  public:
+    PRIVATE_UNIQUE_PTR (T * ptr, THREAD_ENTRY * thread_p)
+      {
+        smart_ptr = std::unique_ptr<T, PRIVATE_UNIQUE_PTR_DELETER <T> >
+          (ptr, PRIVATE_UNIQUE_PTR_DELETER <T> (thread_p));
+      }
+
+    T *get ()
+      {
+        return smart_ptr.get ();
+      }
+
+    T *release ()
+      {
+        return smart_ptr.release ();
+      }
+
+    void swap (PRIVATE_UNIQUE_PTR <T> &other)
+      {
+        smart_ptr.swap (other.smart_ptr);
+      }
+
+    void reset (T *ptr)
+      {
+        smart_ptr.reset (ptr);
+      }
+
+    T *operator-> () const
+      {
+        return smart_ptr.get();
+      }
+
+    T &operator* () const
+      {
+        return *smart_ptr.get();
+      }
+
+  private:
+    std::unique_ptr <T, PRIVATE_UNIQUE_PTR_DELETER <T> >smart_ptr;
+};
+// *INDENT-ON*
+
+#endif /* cplusplus */
 
 #endif /* _MEMORY_ALLOC_H_ */

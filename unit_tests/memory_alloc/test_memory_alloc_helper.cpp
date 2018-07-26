@@ -38,8 +38,10 @@ namespace test_memalloc
   /************************************************************************/
 
   custom_thread_entry::custom_thread_entry ()
+    : m_thread_entry()
+    , m_rc_track_id (0)
   {
-    memset (&m_thread_entry, 0, sizeof (m_thread_entry));
+    cubthread::set_thread_local_entry (m_thread_entry);
 
     m_thread_entry.private_heap_id = db_create_private_heap ();
 
@@ -52,6 +54,8 @@ namespace test_memalloc
     check_resource_leaks ();
 
     db_clear_private_heap (&m_thread_entry, m_thread_entry.private_heap_id);
+
+    cubthread::clear_thread_local_entry();
   }
 
   THREAD_ENTRY *custom_thread_entry::get_thread_entry ()

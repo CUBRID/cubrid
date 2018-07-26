@@ -2524,23 +2524,24 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
   int error = NO_ERROR;
   unsigned int save_custom = parser->custom_print;
 
-/* *INDENT-OFF* */
-#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
-  string_buffer sb{
-    [&parser] (mem::block& block, size_t len)
+  /* *INDENT-OFF* */
+  string_buffer sb
+  {
+    [&parser] (mem::block &block, size_t len)
     {
       size_t dim = block.dim ? block.dim : 1;
-      for (; dim < block.dim + len; dim *= 2); //calc next power of 2 >= b.dim
-        mem::block b{dim, (char*) parser_alloc (parser, block.dim + len)};
+
+      for (; dim < block.dim + len; dim *= 2)	//calc next power of 2 >= b.dim+len
+	 ;
+
+      mem::block b { dim, (char *) parser_alloc (parser, dim) };
       memcpy (b.ptr, block.ptr, block.dim);
       block = std::move (b);
-    },
-    [](mem::block& block){} //no need to deallocate for parser_context
+    }, [](mem::block &block)
+    {
+    }				//no need to deallocate for parser_context
   };
-#else
-  string_buffer sb;
-#endif
-/* *INDENT-ON* */
+  /* *INDENT-ON* */
 
   db_value_printer printer (sb);
   if (val == NULL)
@@ -6780,6 +6781,14 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
     }
 
+  if (p->info.attr_def.on_update != DB_DEFAULT_NONE)
+    {
+      const char *c = db_default_expression_string (p->info.attr_def.on_update);
+      q = pt_append_nulstring (parser, q, " on update ");
+      q = pt_append_nulstring (parser, q, c);
+      q = pt_append_nulstring (parser, q, " ");
+    }
+
   if (p->info.attr_def.auto_increment)
     {
       r1 = pt_print_bytes (parser, p->info.attr_def.auto_increment);
@@ -8486,7 +8495,6 @@ pt_init_data_default (PT_NODE * p)
   p->info.data_default.default_expr_type = DB_DEFAULT_NONE;
   return p;
 }
-
 
 /*
  * pt_print_data_default () -

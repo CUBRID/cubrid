@@ -47,6 +47,10 @@
 #include "transaction_cl.h"
 #endif /* !SERVER_MODE */
 
+#if !defined (WINDOWS) && defined (SERVER_MODE)
+#include "boot_sr.h"
+#endif /* !WINDWS && SERVER_MODE */
+
 // c++ headers
 #include <cassert>
 #include <cstddef>
@@ -278,11 +282,13 @@ static char *er_Cached_msg[sizeof (er_Builtin_msg) / sizeof (const char *)];
 static bool er_Is_cached_msg = false;
 
 /* Error log message file related */
+#define ER_MSG_LOG_FILE_SUFFIX ".err"
 static char er_Msglog_filename_buff[PATH_MAX];
 static const char *er_Msglog_filename = NULL;
 static FILE *er_Msglog_fh = NULL;
 
 /* Error log message file related */
+#define ER_ACCESS_LOG_FILE_SUFFIX ".access"
 static char er_Accesslog_filename_buff[PATH_MAX];
 static const char *er_Accesslog_filename = NULL;
 static FILE *er_Accesslog_fh = NULL;
@@ -319,6 +325,10 @@ static void er_event_sigpipe_handler (int sig);
 static void er_event (void);
 static int er_event_init (void);
 static void er_event_final (void);
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+static void er_set_access_log_filename (void);
+#endif /* SERVER_MODE || SA_MODE */
 
 static FILE *er_file_open (const char *path);
 static bool er_file_isa_null_device (const char *path);
@@ -593,48 +603,48 @@ er_fname_free (const void *key, void *data, void *args)
   return NO_ERROR;
 }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
- * er_init_access_log - Initialize access log
- *   return: NO_ERROR
+ * er_set_access_log_filename - set er_Accesslog_filename_buff, er_Accesslog_filename
+ *   return: 
  */
-int
-er_init_access_log (void)
+static void
+er_set_access_log_filename (void)
 {
   char tmp[PATH_MAX];
-  std::size_t len;
+  std::size_t len, suffix_len;
 
-  if (er_Msglog_filename != NULL)
+  if (er_Msglog_filename == NULL)
     {
-      len = std::strlen (er_Msglog_filename);
+      er_Accesslog_filename = NULL;
+      return;
+    }
 
-      if (len < 4 || strncmp (&er_Msglog_filename[len - 4], ".err", 4) != 0)
-	{
-	  snprintf (er_Accesslog_filename_buff, PATH_MAX, "%s.access", er_Msglog_filename);
-	  /* ex) server.log => server.log.access */
-	}
-      else
-	{
-	  strncpy (tmp, er_Msglog_filename, PATH_MAX);
-	  tmp[len - 4] = '\0';
-	  snprintf (er_Accesslog_filename_buff, PATH_MAX, "%s.access", tmp);
-	  /* ex) server_log.err => server_log.access */
-	}
+  len = std::strlen (er_Msglog_filename);
+  suffix_len = std::strlen (ER_MSG_LOG_FILE_SUFFIX);
 
-      er_Accesslog_filename = er_Accesslog_filename_buff;
-
-      /* in case of strlen(er_Msglog_filename) > PATH_MAX - 7 */
-      if (strnlen (er_Accesslog_filename_buff, PATH_MAX) >= PATH_MAX)
-	{
-	  er_Accesslog_filename = NULL;
-	}
+  if (len < suffix_len || strncmp (&er_Msglog_filename[len - suffix_len], ER_MSG_LOG_FILE_SUFFIX, suffix_len) != 0)
+    {
+      snprintf (er_Accesslog_filename_buff, PATH_MAX, "%s%s", er_Msglog_filename, ER_ACCESS_LOG_FILE_SUFFIX);
+      /* ex) server.log => server.log.access */
     }
   else
     {
-      er_Accesslog_filename = NULL;
+      strncpy (tmp, er_Msglog_filename, PATH_MAX);
+      tmp[len - suffix_len] = '\0';
+      snprintf (er_Accesslog_filename_buff, PATH_MAX, "%s%s", tmp, ER_ACCESS_LOG_FILE_SUFFIX);
+      /* ex) server_log.err => server_log.access */
     }
 
-  return NO_ERROR;
+  er_Accesslog_filename = er_Accesslog_filename_buff;
+
+  /* in case of strlen(er_Msglog_filename) > PATH_MAX - 7 */
+  if (strnlen (er_Accesslog_filename_buff, PATH_MAX) >= PATH_MAX)
+    {
+      er_Accesslog_filename = NULL;
+    }
 }
+#endif /* SERVER_MODE || SA_MODE */
 
 /*
  * er_init - Initialize parameters for message module
@@ -788,6 +798,10 @@ er_init (const char *msglog_filename, int exit_ask)
       er_Msglog_filename = NULL;
     }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  er_set_access_log_filename ();
+#endif /* SERVER_MODE || SA_MODE */
+
   /* Define message log file */
   if (er_Logfile_opened == false)
     {
@@ -795,18 +809,35 @@ er_init (const char *msglog_filename, int exit_ask)
 	{
 	  er_Isa_null_device = er_file_isa_null_device (er_Msglog_filename);
 
-	  if (er_Isa_null_device || prm_get_bool_value (PRM_ID_ER_PRODUCTION_MODE))
+	  if (er_Isa_null_device)
 	    {
 	      er_Msglog_fh = er_file_open (er_Msglog_filename);
 	    }
 	  else
 	    {
-	      /* want to err on the side of doing production style error logs because this may be getting set at some
-	       * naive customer site. */
 	      char path[PATH_MAX];
+	      const char *er_file_path;
 
-	      sprintf (path, "%s.%d", er_Msglog_filename, getpid ());
-	      er_Msglog_fh = er_file_open (path);
+	      if (prm_get_bool_value (PRM_ID_ER_PRODUCTION_MODE))
+		{
+		  er_file_path = er_Msglog_filename;
+		}
+	      else
+		{
+		  /* want to err on the side of doing production style error logs because this may be getting set at some
+		   * naive customer site. */
+		  sprintf (path, "%s.%d", er_Msglog_filename, getpid ());
+		  er_file_path = path;
+		}
+
+	      er_Msglog_fh = er_file_open (er_file_path);
+
+#if !defined (WINDOWS) && defined (SERVER_MODE)
+	      if (er_Msglog_fh != NULL)
+		{
+		  er_file_create_link_to_current_log_file (er_file_path, ER_MSG_LOG_FILE_SUFFIX);
+		}
+#endif /* !WINDOWS && SERVER_MODE */
 	    }
 
 	  if (er_Msglog_fh == NULL)
@@ -824,18 +855,35 @@ er_init (const char *msglog_filename, int exit_ask)
 	{
 	  er_Isa_null_device = er_file_isa_null_device (er_Accesslog_filename);
 
-	  if (er_Isa_null_device || prm_get_bool_value (PRM_ID_ER_PRODUCTION_MODE))
+	  if (er_Isa_null_device)
 	    {
 	      er_Accesslog_fh = er_file_open (er_Accesslog_filename);
 	    }
 	  else
 	    {
-	      /* want to err on the side of doing production style error logs because this may be getting set at some
-	       * naive customer site. */
 	      char path[PATH_MAX];
+	      const char *ac_file_path;
 
-	      sprintf (path, "%s.%d", er_Accesslog_filename, getpid ());
-	      er_Accesslog_fh = er_file_open (path);
+	      if (prm_get_bool_value (PRM_ID_ER_PRODUCTION_MODE))
+		{
+		  ac_file_path = er_Accesslog_filename;
+		}
+	      else
+		{
+		  /* want to err on the side of doing production style error logs because this may be getting set at some
+		   * naive customer site. */
+		  sprintf (path, "%s.%d", er_Accesslog_filename, getpid ());
+		  ac_file_path = path;
+		}
+
+	      er_Accesslog_fh = er_file_open (ac_file_path);
+
+#if !defined (WINDOWS) && defined (SERVER_MODE)
+	      if (er_Accesslog_fh != NULL)
+		{
+		  er_file_create_link_to_current_log_file (ac_file_path, ER_ACCESS_LOG_FILE_SUFFIX);
+		}
+#endif /* !WINDOWS && SERVER_MODE */
 	    }
 
 	  if (er_Accesslog_fh == NULL)
@@ -1013,6 +1061,45 @@ er_file_backup (FILE * fp, const char *path)
 
   return fopen (path, "w");
 }
+
+#if !defined (WINDOWS) && defined (SERVER_MODE)
+/*
+ * er_file_create_link_to_current_log_file - creates a symbolic link to the current log file
+ *   return: none
+ *   log_file_path (in): path to the log file
+ *   suffix (in): file suffix
+ *
+ * The symbolic link is something like $CUBRID/log/server/{db_name}_latest{suffix}.
+ */
+void
+er_file_create_link_to_current_log_file (const char *log_file_path, const char *suffix)
+{
+  FILE *fp;
+  char link_path[PATH_MAX];
+  char link_dir_path[PATH_MAX];
+  const char *db_name;
+
+  assert (log_file_path != NULL);
+
+  db_name = boot_db_name ();
+  if (*db_name == '\0')
+    {
+      // boot in progress
+      return;
+    }
+
+  cub_dirname_r (log_file_path, link_dir_path, PATH_MAX);
+
+  if (snprintf (link_path, PATH_MAX, "%s%c%s_latest%s", link_dir_path, PATH_SEPARATOR, db_name, suffix) >= PATH_MAX)
+    {
+      // overflow
+      return;
+    }
+
+  (void) unlink (link_path);	// remove existing link file
+  symlink (log_file_path, link_path);
+}
+#endif /* !WINDOWS && SERVER_MODE */
 
 /*
  * er_final - Terminate the error message module
@@ -1503,16 +1590,19 @@ er_log (int err_id)
   int ret;
   char more_info[MAXHOSTNAMELEN + PATH_MAX + 64];
   const char *log_file_name;
+  const char *log_file_suffix;
   FILE **log_fh;
 
   if (er_Accesslog_filename != NULL && err_id == ER_BO_CLIENT_CONNECTED)
     {
       log_file_name = er_Accesslog_filename;
+      log_file_suffix = ER_ACCESS_LOG_FILE_SUFFIX;
       log_fh = &er_Accesslog_fh;
     }
   else
     {
       log_file_name = er_Msglog_filename;
+      log_file_suffix = ER_MSG_LOG_FILE_SUFFIX;
       log_fh = &er_Msglog_fh;
     }
 
@@ -1545,6 +1635,12 @@ er_log (int err_id)
 	      *log_fh = stderr;
 	      er_log_debug (ARG_FILE_LINE, er_Cached_msg[ER_LOG_MSGLOG_WARNING], log_file_name);
 	    }
+#if !defined (WINDOWS) && defined (SERVER_MODE)
+	  else
+	    {
+	      er_file_create_link_to_current_log_file (log_file_name, log_file_suffix);
+	    }
+#endif /* !WINDOWS && SERVER_MODE */
 	}
       else
 	{

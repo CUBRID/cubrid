@@ -270,6 +270,7 @@ extern int xsession_clear_query_entry_info (THREAD_ENTRY * thread_p, const QUERY
 extern int xchksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_p, REPL_INFO * repl_info,
 							  const OID * class_oidp);
 extern bool xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p, const char *user_name);
+extern int xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK lock, LOCK * ex_lock);
 extern bool xtran_should_connection_reset (THREAD_ENTRY * thread_p, bool has_updated);
 extern int xsession_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit);
 #endif /* _XSERVER_INTERFACE_H_ */

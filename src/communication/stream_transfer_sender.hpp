@@ -22,8 +22,8 @@
  *                                         see stream_transfer_sender.cpp commentary for more details
  */
 
-#ifndef _STREAM_TRANSFER_SENDER_HPP
-#define _STREAM_TRANSFER_SENDER_HPP
+#ifndef _STREAM_TRANSFER_SENDER_HPP_
+#define _STREAM_TRANSFER_SENDER_HPP_
 
 #include "communication_channel.hpp"
 #include "cubstream.hpp"
@@ -41,28 +41,33 @@ namespace cubstream
 
     public:
 
-      transfer_sender (communication_channel &chn,
+      transfer_sender (cubcomm::channel &&chn,
 		       cubstream::stream &stream,
 		       stream_position begin_sending_position = 0);
       virtual ~transfer_sender ();
       int read_action (char *ptr, const size_t byte_count);
 
       stream_position get_last_sent_position ();
-      communication_channel &get_communication_channel ();
+      cubcomm::channel &get_channel ();
+
+      inline cubthread::daemon *get_daemon ()
+      {
+	return m_sender_daemon;
+      }
 
     private:
 
       friend class transfer_sender_task;
 
-      communication_channel &m_channel;
+      cubcomm::channel m_channel;
       cubstream::stream &m_stream;
       stream_position m_last_sent_position;
       cubthread::daemon *m_sender_daemon;
-      char m_buffer[MTU];
+      char m_buffer[cubcomm::MTU];
 
     protected:
       cubstream::stream::read_func_t m_read_action_function;
   };
 
 } // namespace cubstream
-#endif /* _STREAM_TRANSFER_SENDER_HPP */
+#endif /* _STREAM_TRANSFER_SENDER_HPP_ */

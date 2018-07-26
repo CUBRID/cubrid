@@ -1883,6 +1883,7 @@ struct pt_attr_def_info
 {
   PT_NODE *attr_name;		/* PT_NAME */
   PT_NODE *data_default;	/* PT_DATA_DEFAULT */
+  DB_DEFAULT_EXPR_TYPE on_update;
   PT_NODE *auto_increment;	/* PT_AUTO_INCREMENT */
   PT_NODE *ordering_info;	/* PT_ATTR_ORDERING */
   PT_NODE *comment;		/* PT_VALUE */

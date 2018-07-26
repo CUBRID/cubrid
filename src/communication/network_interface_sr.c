@@ -9556,3 +9556,28 @@ netsr_spacedb (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
       db_private_free_and_init (thread_p, data_reply);
     }
 }
+
+void
+slocator_demote_class_lock (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error;
+  OID class_oid;
+  LOCK lock, ex_lock;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_unpack_oid (request, &class_oid);
+  ptr = or_unpack_lock (ptr, &lock);
+
+  error = xlocator_demote_class_lock (thread_p, &class_oid, lock, &ex_lock);
+
+  if (error != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_int (reply, error);
+  ptr = or_pack_lock (ptr, ex_lock);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
