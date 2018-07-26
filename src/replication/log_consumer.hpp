@@ -117,11 +117,6 @@ namespace cubreplication
 	return m_stream;
       }
 
-      cubstream::stream_position &get_start_position ()
-      {
-	return m_start_position;
-      }
-
       void end_one_task (void)
       {
 	m_started_tasks--;
