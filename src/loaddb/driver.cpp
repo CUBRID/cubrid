@@ -28,6 +28,12 @@
 #include "driver.hpp"
 #include "error_manager.h"
 #include "language_support.h"
+#if defined (SA_MODE)
+#include "loader_cl.h"
+#endif
+#if defined (SERVER_MODE)
+#include "loader_sr.hpp"
+#endif
 #include "memory_alloc.h"
 #include "message_catalog.h"
 #include "utility.h"
@@ -36,8 +42,14 @@ namespace cubload
 {
 
   driver::driver ()
-    : m_scanner ()
-    , m_parser (*this)
+#if defined (SERVER_MODE)
+    : m_loader (new server_loader ())
+#endif
+#if defined (SA_MODE)
+	: m_loader (new client_loader ())
+#endif
+    , m_scanner (*this, *m_loader)
+    , m_parser (*this, *m_loader)
     , m_semantic_helper (*this)
   {
     //
@@ -45,7 +57,7 @@ namespace cubload
 
   driver::~driver ()
   {
-    //
+    delete m_loader;
   }
 
   int
@@ -61,7 +73,7 @@ namespace cubload
   void
   driver::error (const location &loc, const std::string &msg)
   {
-    ldr_increment_err_total ();
+    m_loader->increment_err_total ();
     fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SYNTAX_ERR), lineno (),
 	     m_scanner.YYText ());
   }

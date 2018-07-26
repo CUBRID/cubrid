@@ -38,10 +38,14 @@
 #endif
 #include "porting.h"
 #include "db.h"
+#if defined (SA_MODE)
 #include "driver.hpp"
+#endif // SA_MODE
 #include "utility.h"
 #include "misc_string.h"
+#if defined (SA_MODE)
 #include "loader_cl.h"
+#endif // SA_MODE
 #include "load_object.h"
 #include "environment_variable.h"
 #include "message_catalog.h"
@@ -87,7 +91,9 @@ static bool obsolete_Disable_statistics = false;
 static int Periodic_commit = 0;
 /* Don't ignore logging */
 static int Ignore_logging = 0;
+#if defined (SA_MODE)
 static int Interrupt_type = LDR_NO_INTERRUPT;
+#endif // SA_MODE
 static int schema_file_start_line = 1;
 static int index_file_start_line = 1;
 static int compare_Storage_order = 0;
@@ -121,6 +127,7 @@ static int get_ignore_class_list (const char *filename);
 static void free_ignoreclasslist (void);
 static int ldr_compare_attribute_with_meta (char *table_name, char *meta, DB_ATTRIBUTE * attribute);
 static int ldr_compare_storage_order (FILE * schema_file);
+static bool ldr_load_on_server ();
 
 /*
  * print_log_msg - print log message
@@ -274,8 +281,10 @@ signal_handler (void)
 {
   LOADDB_DEBUG_PRINTF (("Signal caught : interrupt flag : %d\n", Interrupt_type));
 
+#if defined (SA_MODE)
   /* Flag the loader that that an interrupt has occurred. */
   ldr_interrupt_has_occurred (Interrupt_type);
+#endif // SA_MODE
 
   print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SIG1));
 }
@@ -578,7 +587,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   static FILE *schema_file = NULL;
   static FILE *index_file = NULL;
   static std::ifstream object_file;
+#if defined (SA_MODE)
   static cubload::driver driver;
+#endif // SA_MODE
   FILE *error_file = NULL;
   int status = 0;
   int errors = 0;
@@ -594,6 +605,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   int au_save = 0;
   extern bool obt_Enable_autoincrement;
   char log_file_name[PATH_MAX];
+  char object_file_abs_path[PATH_MAX];
   const char *msg_format;
 
   LOADDB_INIT_DEBUG ();
@@ -857,13 +869,19 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       schema_file = NULL;
     }
 
-  /* if index file is specified, do index creation */
-
-  if (object_file.is_open ())
+  //bool load_on_server = ldr_load_on_server ();
+  //if (load_on_server)
+  //{
+  if (realpath (Object_file, object_file_abs_path) != NULL)
     {
+      loaddb_load_object_file (object_file_abs_path);
+    }
+  //}
+
 #if defined (SA_MODE)
+  if (object_file.is_open () /*&& !load_on_server */ )
+    {
       locator_Dont_check_foreign_key = true;
-#endif
       print_log_msg (1, "\nStart object loading.\n");
       ldr_init (Verbose);
 
@@ -1027,8 +1045,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  object_file.close ();
 	}
     }
+#endif // SA_MODE
 
-  /* create index */
+  /* if index file is specified, do index creation */
   if (!interrupted && index_file != NULL)
     {
       print_log_msg (1, "\nStart index loading.\n");
@@ -1280,6 +1299,7 @@ end:
 static int
 get_ignore_class_list (const char *inputfile_name)
 {
+#if defined (SA_MODE)
   int inc_unit = 128;
   int list_size;
   FILE *input_file = NULL;
@@ -1356,11 +1376,15 @@ error:
   fclose (input_file);
 
   return -1;
+#else
+  return 0;
+#endif // SA_MODE
 }
 
 static void
 free_ignoreclasslist (void)
 {
+#if defined (SA_MODE)
   int i = 0;
 
   if (ignore_class_list != NULL)
@@ -1376,4 +1400,14 @@ free_ignoreclasslist (void)
       ignore_class_list = NULL;
     }
   ignore_class_num = 0;
+#else
+  return;
+#endif // #if defined (SA_MODE)
+}
+
+static bool
+ldr_load_on_server ()
+{
+  // TODO CBRD-21654 check if object file contains references
+  return true;
 }

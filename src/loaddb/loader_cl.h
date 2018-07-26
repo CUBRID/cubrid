@@ -27,129 +27,40 @@
 #ident "$Id$"
 
 //#include <stdint.h>
-#include "porting.h"
+
+#include "common.hpp"
 #include "dbdef.h"
+#include "porting.h"
 
-typedef struct LDR_CONTEXT LDR_CONTEXT;
+#define NUM_LDR_TYPES (LDR_TYPE_MAX + 1)
 
-/*
- * These are the "types" of strings that the lexer recognizes.  The
- * loader can specialize on each type.
- * These values are used to set up a vector of type setting functions, based
- * on information about each attribute parsed in the %CLASS line.
- * The setter functions are invoked using the enumerated type as an index into
- * the function vector. This gives us a significant saving when processing
- * values in the instance line, over the previous loader.
- */
+using namespace cubload;
 
-typedef enum
+/* *INDENT-OFF* */
+class client_loader : public loader
 {
-  LDR_NULL,
-  LDR_INT,
-  LDR_STR,
-  LDR_NSTR,
-  LDR_NUMERIC,			/* Default real */
-  LDR_DOUBLE,			/* Reals specified with scientific notation, 'e', or 'E' */
-  LDR_FLOAT,			/* Reals specified with C 'f' or 'F' notation */
-  LDR_OID,			/* Object references */
-  LDR_CLASS_OID,		/* Class object reference */
-  LDR_DATE,
-  LDR_TIME,
-  LDR_TIMESTAMP,
-  LDR_TIMESTAMPLTZ,
-  LDR_TIMESTAMPTZ,
-  LDR_COLLECTION,
-  LDR_ELO_INT,			/* Internal ELO's */
-  LDR_ELO_EXT,			/* External ELO's */
-  LDR_SYS_USER,
-  LDR_SYS_CLASS,		/* This type is not allowed currently. */
-  LDR_MONETARY,
-  LDR_BSTR,			/* Binary bit strings */
-  LDR_XSTR,			/* Hexidecimal bit strings */
-  LDR_BIGINT,
-  LDR_DATETIME,
-  LDR_DATETIMELTZ,
-  LDR_DATETIMETZ,
-  LDR_JSON,
+  public:
+    void act_setup_class_command_spec (string_t ** class_name, class_cmd_spec_t ** cmd_spec) override;
+    void act_start_id (char *name) override;
+    void act_set_id (int id) override;
+    void act_start_instance (int id, constant_t * cons) override;
+    void process_constants (constant_t * cons) override;
+    void act_finish_line () override;
+    void act_finish () override;
 
-  LDR_TYPE_MAX = LDR_JSON
-} LDR_TYPE;
+    void load_failed_error () override;
+    void increment_err_total () override;
+    void increment_fails () override;
+};
+/* *INDENT-ON* */
 
-#define NUM_LDR_TYPES   (LDR_TYPE_MAX + 1)
+/* Type aliases */
+typedef struct LDR_CONTEXT LDR_CONTEXT;
 
 typedef void (*LDR_POST_COMMIT_HANDLER) (int);
 typedef void (*LDR_POST_INTERRUPT_HANDLER) (int);
 
-/*
- * LDR_ATTRIBUTE_TYPE
- *
- * attribute type identifiers for ldr_act_restrict_attributes().
- * These attributes are handled specially since there modify the class object
- * directly.
- */
-
-typedef enum ldr_attr_types
-{
-  LDR_ATTRIBUTE_ANY = 0,
-  LDR_ATTRIBUTE_SHARED,
-  LDR_ATTRIBUTE_CLASS,
-  LDR_ATTRIBUTE_DEFAULT
-} LDR_ATTRIBUTE_TYPE;
-
-typedef enum ldr_interrupt_types
-{
-  LDR_NO_INTERRUPT,
-  LDR_STOP_AND_ABORT_INTERRUPT,
-  LDR_STOP_AND_COMMIT_INTERRUPT
-} LDR_INTERRUPT_TYPE;
-
-typedef struct ldr_string LDR_STRING;
-struct ldr_string
-{
-  LDR_STRING *next;
-  LDR_STRING *last;
-  char *val;
-  size_t size;
-  bool need_free_val;
-  bool need_free_self;
-};
-
-typedef struct ldr_constructor_spec
-{
-  LDR_STRING *id_name;
-  LDR_STRING *arg_list;
-} LDR_CONSTRUCTOR_SPEC;
-
-typedef struct ldr_class_command_spec
-{
-  int qualifier;
-  LDR_STRING *attr_list;
-  LDR_CONSTRUCTOR_SPEC *ctor_spec;
-} LDR_CLASS_COMMAND_SPEC;
-
-typedef struct loader_constant LDR_CONSTANT;
-struct loader_constant
-{
-  LDR_CONSTANT *next;
-  LDR_CONSTANT *last;
-  void *val;
-  int type;
-  bool need_free;
-};
-
-typedef struct ldr_object_ref
-{
-  LDR_STRING *class_id;
-  LDR_STRING *class_name;
-  LDR_STRING *instance_number;
-} LDR_OBJECT_REF;
-
-typedef struct loader_monetary_value
-{
-  LDR_STRING *amount;
-  int currency_type;
-} LDR_MONETARY_VALUE;
-
+/* Global variables */
 extern char **ignore_class_list;
 extern int ignore_class_num;
 extern bool skip_current_class;
@@ -157,6 +68,7 @@ extern bool skip_current_instance;
 
 extern LDR_CONTEXT *ldr_Current_context;
 
+/* Functions */
 /* Loader initialization and shutdown functions */
 extern int ldr_init (bool verbose);
 extern int ldr_start (int periodic_commit);
@@ -165,11 +77,6 @@ extern int ldr_finish (LDR_CONTEXT * context, int err);
 
 /* Action to initialize the parser context to deal with a new class */
 extern void ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len);
-extern void ldr_increment_err_total ();
-extern void ldr_increment_fails (void);
-extern void ldr_load_failed_error (void);
-
-extern void ldr_process_constants (LDR_CONSTANT * c);
 
 extern int ldr_init_class_spec (const char *class_name);
 /*
@@ -186,16 +93,6 @@ extern int ldr_act_check_missing_non_null_attrs (LDR_CONTEXT * context);
 
 extern void ldr_act_add_attr (LDR_CONTEXT * context, const char *str, int len);
 
-/*
- * Action to finish normal instances, constructor instances, and
- * updates to class/default/shared values.
- */
-extern void ldr_act_finish_line ();
-
-/* Actions for %ID command */
-extern void ldr_act_start_id (char *name);
-extern void ldr_act_set_id (int id);
-
 /* Actions for object references */
 extern void ldr_act_set_ref_class_id (LDR_CONTEXT * context, int id);
 extern void ldr_act_set_ref_class (LDR_CONTEXT * context, char *name);
@@ -205,17 +102,9 @@ extern DB_OBJECT *ldr_act_get_ref_class (LDR_CONTEXT * context);
 /* Special action for class, shared, default attributes */
 extern void ldr_act_restrict_attributes (LDR_CONTEXT * context, LDR_ATTRIBUTE_TYPE type);
 
-/* Action for cleaning up and finish the parse phase */
-extern void ldr_act_finish (int parse_error);
-
 /* Actions for constructor syntax */
 extern int ldr_act_set_constructor (LDR_CONTEXT * context, const char *name);
 extern int ldr_act_add_argument (LDR_CONTEXT * context, const char *name);
-
-extern void ldr_act_setup_class_command_spec (LDR_STRING ** class_name, LDR_CLASS_COMMAND_SPEC ** cmd_spec);
-
-/* Action to start a new instance */
-extern void ldr_act_start_instance (int id, LDR_CONSTANT * cons);
 
 /* Statistics updating/retrieving functions */
 extern void ldr_stats (int *errors, int *objects, int *defaults, int *lastcommit, int *fails);
@@ -234,8 +123,5 @@ extern bool ldr_is_ignore_class (const char *classname, size_t size);
 
 /* log functions */
 extern void print_log_msg (int verbose, const char *fmt, ...);
-
-/* free memory functions */
-extern void ldr_string_free (LDR_STRING ** str);
 
 #endif /* _LOADER_CL_H_ */

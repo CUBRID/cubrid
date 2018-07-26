@@ -9981,3 +9981,37 @@ locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock)
   return NO_ERROR;
 #endif /* !CS_MODE */
 }
+
+int
+loaddb_load_object_file (const char *file_name)
+{
+#if defined(CS_MODE)
+  int req_error;
+  int rc;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int request_size = length_const_string (file_name, NULL);
+  char *request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  pack_const_string (request, file_name);
+
+  req_error = net_client_request (NET_SERVER_LD_LOAD_OBJECT_FILE, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+
+  free_and_init (request);
+
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}

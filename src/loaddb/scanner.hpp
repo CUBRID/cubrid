@@ -31,39 +31,33 @@
 #endif
 #include <istream>
 
+#include "driver.hpp"
 #include "grammar.hpp"
 
 namespace cubload
 {
 
-  // forward declaration
-  class driver;
-
   class scanner : public yyFlexLexer
   {
     public:
-      // Default constructor.
-      scanner () : yyFlexLexer ()
+      explicit scanner (driver &driver, loader &loader)
+	: yyFlexLexer ()
+	, driver_ (driver)
+	, loader_ (loader)
       {
-      };
-
-      /**
-       * Constructor (invokes constructor from parent class)
-       * @param arg_yyin input stream used for scanning
-       */
-      scanner (std::istream *arg_yyin) : yyFlexLexer (arg_yyin)
-      {
+	//
       };
 
       virtual ~scanner ()
       {
+	//
       };
 
       /*
        * The main scanner function.
        * See lexer.l file for method declaration
        */
-      virtual int yylex (parser::semantic_type *yylval, parser::location_type *yylloc, driver &driver);
+      virtual int yylex (parser::semantic_type *yylval, parser::location_type *yylloc);
 
       /**
        * Lexer error function
@@ -71,9 +65,13 @@ namespace cubload
        */
       void LexerError (const char *msg) override
       {
-	ldr_load_failed_error ();
-	ldr_increment_fails ();
+	loader_.load_failed_error ();
+	loader_.increment_fails ();
       }
+
+    private:
+      driver &driver_;
+      loader &loader_;
   };
 } // namespace cubload
 

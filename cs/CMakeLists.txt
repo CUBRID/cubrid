@@ -243,13 +243,16 @@ set(STORAGE_SOURCES
   )
 
 set(LOADER_SOURCES
+  ${LOADDB_DIR}/common.cpp
+  ${LOADDB_DIR}/loaddb.c
+  ${LOADDB_DIR}/load_object.c
+#[[
   ${BISON_loader_grammar_OUTPUT_SOURCE}
   ${FLEX_loader_lexer_OUTPUTS}
   ${LOADDB_DIR}/driver.cpp
-  ${LOADDB_DIR}/loaddb.c
   ${LOADDB_DIR}/loader_cl.c
-  ${LOADDB_DIR}/load_object.c
   ${LOADDB_DIR}/loader_object_table.c
+]]
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)

@@ -1,0 +1,112 @@
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *
+ */
+
+/*
+ * manger.cpp - TODO CBRD-21654
+ */
+
+#ident "$Id$"
+
+#include <cassert>
+#include <sstream>
+
+#include "log_impl.h"
+#include "manager.hpp"
+#include "thread_worker_pool.hpp"
+#include "xserver_interface.h"
+
+namespace cubload
+{
+
+  manager::manager ()
+    : m_driver_pool (DRIVER_POOL_SIZE)
+  {
+    m_worker_pool = cubthread::get_manager ()->create_worker_pool (DRIVER_POOL_SIZE, DRIVER_POOL_SIZE, NULL, 1, false);
+  }
+
+  manager::~manager ()
+  {
+    cubthread::get_manager ()->destroy_worker_pool (m_worker_pool);
+  }
+
+  manager &
+  manager::get_instance ()
+  {
+    static manager instance;
+    return instance;
+  }
+
+  void
+  manager::parse_batch (cubthread::entry &thread_ref, std::string &batch)
+  {
+    if (batch.empty ())
+      {
+	return;
+      }
+
+    m_worker_pool->execute (new load_parse_task (*this, batch));
+
+    //cubthread::get_manager ()->push_task (thread_ref, m_worker_pool, new load_parse_task (*this, batch));
+
+    batch.clear ();
+  }
+
+  int
+  manager::parse_file (cubthread::entry &thread_ref, std::string &file_name)
+  {
+    object_file_splitter splitter (100000, file_name);
+
+    auto batch_handler = std::bind (&manager::parse_batch, std::ref (*this), std::ref (thread_ref),
+				    std::placeholders::_1);
+    struct timeval te;
+    gettimeofday (&te, NULL); // get current time
+    long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000;
+    std::cout << "started  at: " << milliseconds << "\n";
+
+    return splitter.split (batch_handler);
+  }
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+  void
+  load_parse_task::execute (cubthread::entry &thread_ref)
+  {
+    logtb_assign_tran_index (&thread_ref, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
+			     TRAN_DEFAULT_ISOLATION_LEVEL ());
+
+    driver *driver = m_manager.m_driver_pool.claim ();
+    assert (driver != NULL);
+
+    std::istringstream iss (m_batch);
+    driver->parse (iss);
+
+    if (xtran_server_commit (&thread_ref, false) != TRAN_UNACTIVE_COMMITTED)
+      {
+	return;
+      }
+
+    logtb_free_tran_index (&thread_ref, thread_ref.tran_index);
+    m_manager.m_driver_pool.retire (*driver);
+
+    struct timeval te;
+    gettimeofday (&te, NULL); // get current time
+    long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000;
+    std::cout << "finished at: " << milliseconds << "\n";
+  }
+} // namespace cubload

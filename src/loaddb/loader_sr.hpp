@@ -26,128 +26,42 @@
 
 #ident "$Id$"
 
-#include <cstddef>
+#include "common.hpp"
+#include "dbtype_def.h"
+#include "heap_file.h"
 
 namespace cubload
 {
 
-  enum LDR_TYPE
-  {
-    LDR_NULL,
-    LDR_INT,
-    LDR_STR,
-    LDR_NSTR,
-    LDR_NUMERIC,                 /* Default real */
-    LDR_DOUBLE,                  /* Reals specified with scientific notation, 'e', or 'E' */
-    LDR_FLOAT,                   /* Reals specified with 'f' or 'F' notation */
-    LDR_OID,                     /* Object references */
-    LDR_CLASS_OID,               /* Class object reference */
-    LDR_DATE,
-    LDR_TIME,
-    LDR_TIMELTZ,
-    LDR_TIMETZ,
-    LDR_TIMESTAMP,
-    LDR_TIMESTAMPLTZ,
-    LDR_TIMESTAMPTZ,
-    LDR_COLLECTION,
-    LDR_ELO_INT,                 /* Internal ELO's */
-    LDR_ELO_EXT,                 /* External ELO's */
-    LDR_SYS_USER,
-    LDR_SYS_CLASS,               /* This type is not allowed currently. */
-    LDR_MONETARY,
-    LDR_BSTR,                    /* Binary bit strings */
-    LDR_XSTR,                    /* Hexidecimal bit strings */
-    LDR_BIGINT,
-    LDR_DATETIME,
-    LDR_DATETIMELTZ,
-    LDR_DATETIMETZ,
-    LDR_JSON,
+  using oid_t = OID;
+  using attr_id_t = ATTR_ID;
+  using scan_cache_t = HEAP_SCANCACHE;
+  using attr_info_t = HEAP_CACHE_ATTRINFO;
 
-    LDR_TYPE_MAX = LDR_JSON
+  class server_loader : public loader
+  {
+    public:
+      server_loader ();
+      ~server_loader () override;
+
+      void act_setup_class_command_spec (string_t **class_name, class_cmd_spec_t **cmd_spec) override;
+      void act_start_id (char *name) override;
+      void act_set_id (int id) override;
+      void act_start_instance (int id, constant_t *cons) override;
+      void process_constants (constant_t *cons) override;
+      void act_finish_line () override;
+      void act_finish () override;
+
+      void load_failed_error () override;
+      void increment_err_total () override;
+      void increment_fails () override;
+
+    private:
+      oid_t m_class_oid;
+      attr_id_t *m_attr_id;
+
+      attr_info_t m_attr_info;
   };
 
-  /*
-   * LDR_ATTRIBUTE_TYPE
-   *
-   * attribute type identifiers for ldr_act_restrict_attributes().
-   * These attributes are handled specially since there modify the class object
-   * directly.
-   */
-
-  enum LDR_ATTRIBUTE_TYPE
-  {
-    LDR_ATTRIBUTE_ANY = 0,
-    LDR_ATTRIBUTE_SHARED,
-    LDR_ATTRIBUTE_CLASS,
-    LDR_ATTRIBUTE_DEFAULT
-  };
-
-  enum LDR_INTERRUPT_TYPE
-  {
-    LDR_NO_INTERRUPT,
-    LDR_STOP_AND_ABORT_INTERRUPT,
-    LDR_STOP_AND_COMMIT_INTERRUPT
-  };
-
-  struct LDR_STRING
-  {
-    LDR_STRING *next;
-    LDR_STRING *last;
-    char *val;
-    size_t size;
-    bool need_free_val;
-    bool need_free_self;
-  };
-
-  struct LDR_CONSTRUCTOR_SPEC
-  {
-    LDR_STRING *id_name;
-    LDR_STRING *arg_list;
-  };
-
-  struct LDR_CLASS_COMMAND_SPEC
-  {
-    int qualifier;
-    LDR_STRING *attr_list;
-    LDR_CONSTRUCTOR_SPEC *ctor_spec;
-  };
-
-  struct LDR_CONSTANT
-  {
-    LDR_CONSTANT *next;
-    LDR_CONSTANT *last;
-    void *val;
-    int type;
-    bool need_free;
-  };
-
-  struct LDR_OBJECT_REF
-  {
-    LDR_STRING *class_id;
-    LDR_STRING *class_name;
-    LDR_STRING *instance_number;
-  };
-
-  struct LDR_MONETARY_VALUE
-  {
-    LDR_STRING *amount;
-    int currency_type;
-  };
-
-  void ldr_load_failed_error ();
-  void ldr_increment_fails ();
-  void ldr_string_free (LDR_STRING **str);
-  void ldr_increment_err_total ();
-
-  void ldr_act_finish (int parse_error);
-  void ldr_act_finish_line ();
-
-  void ldr_act_start_id (char *name);
-  void ldr_act_set_id (int id);
-
-  void ldr_act_setup_class_command_spec (LDR_STRING **class_name, LDR_CLASS_COMMAND_SPEC **cmd_spec);
-
-  void ldr_act_start_instance (int id, LDR_CONSTANT *cons);
-  void ldr_process_constants (LDR_CONSTANT *c);
 } // namespace cubload
 #endif /* _LOADER_SR_HPP_ */

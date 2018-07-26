@@ -334,6 +334,7 @@ set(SESSION_SOURCES
 set(LOADER_SOURCES
   ${BISON_loader_grammar_OUTPUT_SOURCE}
   ${FLEX_loader_lexer_OUTPUTS}
+  ${LOADDB_DIR}/common.cpp
   ${LOADDB_DIR}/driver.cpp
   ${LOADDB_DIR}/loaddb.c
   ${LOADDB_DIR}/loader_cl.c

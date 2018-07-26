@@ -26,9 +26,8 @@
 #include "driver.hpp"
 
 #undef YY_DECL
-#define YY_DECL                                                                                                \
-  int cubload::scanner::yylex (cubload::parser::semantic_type* yylval, cubload::parser::location_type* yylloc, \
-			       cubload::driver &driver_)
+#define YY_DECL \
+  int cubload::scanner::yylex (cubload::parser::semantic_type* yylval, cubload::parser::location_type* yylloc)
 
 /* typedef to make the returns for the tokens shorter */
 using token = cubload::parser::token;

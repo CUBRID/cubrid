@@ -28,11 +28,7 @@
 
 #include <istream>
 
-#if !defined (SERVER_MODE)
-#include "loader_cl.h"
-#else
-#include "loader_sr.hpp"
-#endif
+#include "common.hpp"
 #include "grammar.hpp"
 #include "scanner.hpp"
 
@@ -40,20 +36,12 @@ namespace cubload
 {
 
   // Constants sizes
-  const std::size_t STRING_POOL_SIZE = 1024;
-  const std::size_t MAX_COPY_BUF_SIZE = 256;
-  const std::size_t COPY_BUF_POOL_SIZE = 512;
-  const std::size_t CONSTANT_POOL_SIZE = 1024;
-  const std::size_t QUOTED_STR_BUF_POOL_SIZE = 512;
-  const std::size_t MAX_QUOTED_STR_BUF_SIZE = 32 * 1024;
-
-  // type aliases
-  using string_t = LDR_STRING;
-  using constant_t = LDR_CONSTANT;
-  using object_ref_t = LDR_OBJECT_REF;
-  using monetary_t = LDR_MONETARY_VALUE;
-  using ctor_spec_t = LDR_CONSTRUCTOR_SPEC;
-  using class_cmd_spec_t = LDR_CLASS_COMMAND_SPEC;
+  static const std::size_t STRING_POOL_SIZE = 1024;
+  static const std::size_t MAX_COPY_BUF_SIZE = 256;
+  static const std::size_t COPY_BUF_POOL_SIZE = 512;
+  static const std::size_t CONSTANT_POOL_SIZE = 1024;
+  static const std::size_t QUOTED_STR_BUF_POOL_SIZE = 512;
+  static const std::size_t MAX_QUOTED_STR_BUF_SIZE = 32 * 1024;
 
   /*
    * cubload::driver
@@ -110,6 +98,7 @@ namespace cubload
       scanner &get_scanner ();
 
     private:
+      loader *m_loader;
       scanner m_scanner;
       parser m_parser;
 

@@ -75,6 +75,7 @@
 #include "tz_support.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#include "manager.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -9467,4 +9468,39 @@ slocator_demote_class_lock (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   ptr = or_pack_int (reply, error);
   ptr = or_pack_lock (ptr, ex_lock);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+void
+loaddb_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+}
+
+void
+loaddb_load_object_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *object_file_name;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  or_unpack_string (request, &object_file_name);
+
+  cubload::manager & loaddb_manager = cubload::manager::get_instance ();
+  std::string object_file_name_str (object_file_name);
+
+  int ret = loaddb_manager.parse_file (*thread_p, object_file_name_str);
+
+  db_private_free (thread_p, object_file_name);
+
+  or_pack_int (reply, ret);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+void
+loaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+}
+
+void
+loaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
 }

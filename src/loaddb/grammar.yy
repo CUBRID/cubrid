@@ -30,26 +30,22 @@
 %no-lines
 
 %parse-param { driver &driver_ }
-%lex-param { driver &driver_ }
+%parse-param { loader &loader_ }
 
 %define parse.assert
 
 %union {
   int int_val;
-  LDR_STRING *string;
-  LDR_CONSTANT *constant;
-  LDR_OBJECT_REF *obj_ref;
-  LDR_CONSTRUCTOR_SPEC *ctor_spec;
-  LDR_CLASS_COMMAND_SPEC *cmd_spec;
+  string_t *string;
+  constant_t *constant;
+  object_ref_t *obj_ref;
+  ctor_spec_t *ctor_spec;
+  class_cmd_spec_t *cmd_spec;
 };
 
 %code requires {
 // This code will be copied into loader grammar header file
-#if !defined (SERVER_MODE)
-#include "loader_cl.h"
-#else
-#include "loader_sr.hpp"
-#endif
+#include "common.hpp"
 
 namespace cubload
 {
@@ -196,7 +192,7 @@ loader_start :
   }
   loader_lines
   {
-    ldr_act_finish (0);
+    loader_.act_finish ();
   }
   ;
 
@@ -235,7 +231,7 @@ one_line :
   instance_line
   {
     DBG_PRINT ("instance_line");
-    ldr_act_finish_line ();
+    loader_.act_finish_line ();
     driver_.get_semantic_helper ().reset_pool_indexes ();
   }
   ;
@@ -255,8 +251,8 @@ command_line :
 id_command :
   CMD_ID IDENTIFIER INT_LIT
   {
-    ldr_act_start_id ($2->val);
-    ldr_act_set_id (atoi ($3->val));
+    loader_.act_start_id ($2->val);
+    loader_.act_set_id (atoi ($3->val));
 
     ldr_string_free (&$2);
     ldr_string_free (&$3);
@@ -266,7 +262,7 @@ id_command :
 class_command :
   CMD_CLASS IDENTIFIER class_command_spec
   {
-    ldr_act_setup_class_command_spec (&$2, &$3);
+    loader_.act_setup_class_command_spec (&$2, &$3);
   }
   ;
 
@@ -404,19 +400,19 @@ argument_name :
 instance_line :
   object_id
   {
-    ldr_act_start_instance ($1, NULL);
+    loader_.act_start_instance ($1, NULL);
   }
   |
   object_id constant_list
   {
-    ldr_act_start_instance ($1, $2);
-    ldr_process_constants ($2);
+    loader_.act_start_instance ($1, $2);
+    loader_.process_constants ($2);
   }
   |
   constant_list
   {
-    ldr_act_start_instance (-1, $1);
-    ldr_process_constants ($1);
+    loader_.act_start_instance (-1, $1);
+    loader_.process_constants ($1);
   }
   ;
 
