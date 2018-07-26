@@ -52,6 +52,34 @@ namespace cubreplication
   class repl_applier_worker_context_manager;
   class applier_worker_task;
 
+  /*
+   * log_consumer : class intended as singleton for slave server
+   * 
+   * Data members: 
+   *  - a pointer to slave stream (currently it also creates it, but future code should have a higher level
+   *    object which aggregates both log_consumer and stream)
+   *  - a queue of replication stream entry objects; the queue is protected by a mutex
+   *  - m_apply_task_cv : condition variable used with m_queue_mutex to signal between consume daemon and
+   *    dispatch daemon (when first adds a new stream entry in the queue)
+   *  - m_is_stopped : flag to signal stopping of log_consumer; currently, the stopping is performed
+   *    by destructor of log_consumer, but in future code, a higher level objects will handle stopping
+   *    and destroy in separate steps;
+   *    stopping process needs to wait for daemons and thread pool to stop; consume daemon needs to wait
+   *    for stream to unblock from reading (so, we first signal the stop command to stream)
+   *
+   * Methods/daemons/threads:
+   *  - a daemon which "consumes" replication stream entries : create a new replication_stream_entry object,
+   *    prepares it (uses stream to receive and unpacks its header), and pushes to the queue
+   *  - a dispatch daemon which extracts replication stream entry from queue and builds applier_worker_task
+   *    objects; each applier_worker_task contains a list of stream_entries belonging to the same transaction;
+   *    when a group commit special stream entry is encoutered by dispatch daemon, all gathered commited
+   *    applier_worker_task are pushed to a worker thread pool (m_applier_workers_pool);
+   *    the remainder of applier_worker_task objects (not having coommit), are copied to next cycle (until next
+   *    group commit) : see dispatch_daemon_task::execute;
+   *  - a thread pool for applying applier_worker_task; all replication stream entries are unpacked
+   *    (the consumer daemon task is unpacking only the header) and then each replication object from a stream entry
+   *    is applied
+   */
   class log_consumer
   {
     private:
