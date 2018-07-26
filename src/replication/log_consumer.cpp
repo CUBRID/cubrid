@@ -36,7 +36,7 @@ namespace cubreplication
   class consumer_daemon_task : public cubthread::entry_task
   {
     public:
-      consumer_daemon_task (log_consumer *lc)
+      consumer_daemon_task (log_consumer &lc)
 	: m_lc (lc)
       {
       };
@@ -45,21 +45,21 @@ namespace cubreplication
       {
 	replication_stream_entry *se = NULL;
 
-	int err = m_lc->fetch_stream_entry (se);
+	int err = m_lc.fetch_stream_entry (se);
 	if (err == NO_ERROR)
 	  {
-	    m_lc->push_entry (se);
+	    m_lc.push_entry (se);
 	  }
       };
 
     private:
-      log_consumer *m_lc;
+      log_consumer &m_lc;
   };
 
   class applier_worker_task : public cubthread::entry_task
   {
     public:
-      applier_worker_task (replication_stream_entry *repl_stream_entry, log_consumer *lc)
+      applier_worker_task (replication_stream_entry *repl_stream_entry, log_consumer &lc)
 	: m_lc (lc)
       {
 	add_repl_stream_entry (repl_stream_entry);
@@ -87,7 +87,7 @@ namespace cubreplication
 
 	    delete curr_stream_entry;
 
-	    m_lc->end_one_task ();
+	    m_lc.end_one_task ();
 	  }
       }
 
@@ -111,13 +111,13 @@ namespace cubreplication
 
     private:
       std::vector<replication_stream_entry *> m_repl_stream_entries;
-      log_consumer *m_lc;
+      log_consumer &m_lc;
   };
 
   class dispatch_daemon_task : public cubthread::entry_task
   {
     public:
-      dispatch_daemon_task (log_consumer *lc)
+      dispatch_daemon_task (log_consumer &lc)
 	: m_lc (lc)
       {
       }
@@ -130,7 +130,7 @@ namespace cubreplication
 
 	while (true)
 	  {
-	    int err = m_lc->pop_entry (se);
+	    int err = m_lc.pop_entry (se);
 
 	    if (err != NO_ERROR)
 	      {
@@ -144,7 +144,7 @@ namespace cubreplication
 		assert (se->get_data_packed_size () == 0);
 
 		/* wait for all started tasks to finish */
-		m_lc->wait_for_tasks ();
+		m_lc.wait_for_tasks ();
 
 		for (std::unordered_map <MVCCID, applier_worker_task *>::iterator it = repl_tasks.begin ();
 		     it != repl_tasks.end ();
@@ -154,7 +154,7 @@ namespace cubreplication
 		    applier_worker_task *my_repl_applier_worker_task = it->second;
 		    if (my_repl_applier_worker_task->has_commit ())
 		      {
-			m_lc->execute_task (it->second);
+			m_lc.execute_task (it->second);
 		      }
 		    else
 		      {
@@ -200,7 +200,7 @@ namespace cubreplication
       }
 
     private:
-      log_consumer *m_lc;
+      log_consumer &m_lc;
   };
 
   log_consumer::~log_consumer ()
