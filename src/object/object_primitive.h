@@ -398,9 +398,6 @@ extern int pr_data_compress_string (char *string, int str_length, char *compress
 extern int pr_clear_compressed_string (DB_VALUE * value);
 extern int pr_do_db_value_string_compression (DB_VALUE * value);
 
-extern int mr_extern_lengthval_char (DB_VALUE * value);
-extern int mr_writeval_char_external (OR_BUF * buf, DB_VALUE * value, int align);
-
 #define PRIM_TEMPORARY_DISK_SIZE 256
 #define PRIM_COMPRESSION_LENGTH_OFFSET 4
 

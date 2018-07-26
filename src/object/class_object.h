@@ -164,11 +164,6 @@
 #define SM_GET_FILTER_PRED_STREAM_SIZE(filter) \
 	((filter) == NULL ? 0 : (filter)->pred_stream_size)
 
-/* Property list types and defines. */
-#define SM_OFFSET_TO_PROPERTY_NAME (OR_INT_SIZE + OR_INT_SIZE)
-typedef char *SM_PROPERTY;
-typedef char *SM_PROPERTY_LIST;
-
 typedef void (*METHOD_FUNCTION) ();
 typedef void (*METHOD_FUNC_ARG4) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
 typedef void (*METHOD_FUNC_ARG5) (DB_OBJECT *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *, DB_VALUE *);
@@ -763,8 +758,6 @@ struct sm_class
   SM_CLASS_CONSTRAINT *fk_ref;	/* fk ref cache */
   SM_PARTITION *partition;	/* partition information */
 
-  OR_BUF *new_properties;	/* The new storage of the property list. */
-
   unsigned int flags;
   unsigned int virtual_cache_local_schema_id;
   unsigned int virtual_cache_global_schema_id;
@@ -809,7 +802,6 @@ struct sm_template
   DB_OBJLIST *ext_references;
 
   DB_SEQ *properties;
-  SM_PROPERTY_LIST new_properties;
 
   int *super_id_map;		/* super class id mapping table */
 
@@ -952,12 +944,12 @@ extern int classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, co
 			       SM_ATTRIBUTE ** atts, const int *asc_desc, const int *attr_prefix_length,
 			       const BTID * id, SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
 			       char *shared_cons_name, SM_FUNCTION_INFO * func_index_info, const char *comment,
-			       SM_INDEX_STATUS index_status, SM_PROPERTY_LIST * properties_buffer);
+			       SM_INDEX_STATUS index_status);
 extern int classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name,
 				  SM_ATTRIBUTE ** atts, const int *asc_desc, const int *attrs_prefix_length,
 				  const BTID * id, SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
 				  char *shared_cons_name, SM_FUNCTION_INFO * func_index_info, const char *comment,
-				  SM_INDEX_STATUS index_status, SM_PROPERTY_LIST * properties_buffer);
+				  SM_INDEX_STATUS index_status);
 extern int classobj_find_prop_constraint (DB_SEQ * properties, const char *prop_name, const char *cnstr_name,
 					  DB_VALUE * cnstr_val);
 
@@ -1000,7 +992,7 @@ extern TP_DOMAIN *classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT *
 extern void classobj_remove_class_constraint_node (SM_CLASS_CONSTRAINT ** constraints, SM_CLASS_CONSTRAINT * node);
 
 extern int classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CONSTRAINT * constraints,
-					       SM_CONSTRAINT_TYPE type, SM_PROPERTY_LIST * properties_list);
+					       SM_CONSTRAINT_TYPE type);
 
 extern bool classobj_class_has_indexes (SM_CLASS * class_);
 
@@ -1122,19 +1114,7 @@ extern SM_PARTITION *classobj_make_partition_info (void);
 extern void classobj_free_partition_info (SM_PARTITION * partition_info);
 extern SM_PARTITION *classobj_copy_partition_info (SM_PARTITION * partition_info);
 
-extern DB_SEQ *classobj_make_index_online_index_seq (SM_INDEX_STATUS index_status);
+extern DB_SEQ *classobj_make_index_status_seq (SM_INDEX_STATUS index_status);
 extern int classobj_make_index_status_info (DB_SEQ * online_seq);
-
-extern int classobj_get_buffer_of_new_property (SM_CONSTRAINT_TYPE type, const char *constraint_name,
-						SM_ATTRIBUTE ** atts, const int *asc_desc,
-						const int *attr_prefix_length, const BTID * id,
-						SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
-						char *shared_cons_name, SM_FUNCTION_INFO * func_index_info,
-						const char *comment, SM_INDEX_STATUS index_status,
-						char **new_property, int put_ids);
-
-extern int classobj_add_property_to_property_list (SM_PROPERTY_LIST * property_list, SM_PROPERTY new_property,
-						   char *new_property_name, int new_property_size,
-						   int new_property_type);
 
 #endif /* _CLASS_OBJECT_H_ */

@@ -91,7 +91,7 @@ static OR_CLASSREP *or_get_old_representation (RECDES * record, int repid, int d
 static const char *or_find_diskattr (RECDES * record, int attr_id);
 static int or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string, int *alloced_string);
 
-static void or_install_btids_online_index (DB_SEQ * online_seq, OR_INDEX * index);
+static void or_install_btids_index_status (DB_SEQ * index_status_seq, OR_INDEX * index);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
@@ -1997,7 +1997,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 			      break;
 
 			    case 0x04:
-			      or_install_btids_online_index (db_get_set (&avalue), index);
+			      or_install_btids_index_status (db_get_set (&avalue), index);
 			      break;
 
 			    default:
@@ -4072,7 +4072,7 @@ error:
 }
 
 void
-or_install_btids_online_index (DB_SEQ * online_seq, OR_INDEX * index)
+or_install_btids_index_status (DB_SEQ * online_seq, OR_INDEX * index)
 {
   DB_VALUE val;
 

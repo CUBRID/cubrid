@@ -920,8 +920,7 @@ int
 classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name, SM_ATTRIBUTE ** atts,
 		    const int *asc_desc, const int *attr_prefix_length, const BTID * id,
 		    SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name,
-		    SM_FUNCTION_INFO * func_index_info, const char *comment, SM_INDEX_STATUS index_status,
-		    SM_PROPERTY_LIST * properties_list)
+		    SM_FUNCTION_INFO * func_index_info, const char *comment, SM_INDEX_STATUS index_status)
 {
   int i;
   const char *prop_name = classobj_map_constraint_to_property (type);
@@ -934,22 +933,9 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
   DB_SEQ *status_seq = NULL;
   int found = 0;
   bool is_new_created = false;	/* Is *properties new created or not */
-  SM_PROPERTY new_prop = NULL;
-  int prop_size = 0;
-  int ret = NO_ERROR;
 
   db_make_null (&pvalue);
   db_make_null (&value);
-
-  prop_size = classobj_get_buffer_of_new_property (type, constraint_name, atts, asc_desc, attr_prefix_length,
-						   id, filter_index_info, fk_info, shared_cons_name,
-						   func_index_info, comment, index_status, &new_prop, 0);
-
-  ret = classobj_add_property_to_property_list (properties_list, new_prop, (char *) constraint_name, prop_size, type);
-  if (new_prop != NULL)
-    {
-      free_and_init (new_prop);
-    }
 
   /* 
    *  If the property pointer is NULL, create an empty property sequence
@@ -964,7 +950,6 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 
       is_new_created = true;
     }
-
 
 
   /* 
@@ -985,7 +970,6 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 	  goto error;
 	}
     }
-
 
   /* 
    *  Create a sequence that will hold a constraint instance
@@ -1226,7 +1210,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 			}
 		    }
 		}
-	      else
+	      else if (filter_index_info == NULL)
 		{
 		  /* Add the prefix length. */
 		  seq_child = set_create_sequence (0);
@@ -1266,7 +1250,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 		}
 	      else
 		{
-		  status_seq = classobj_make_index_online_index_seq (index_status);
+		  status_seq = classobj_make_index_status_seq (index_status);
 		  if (status_seq == NULL)
 		    {
 		      goto error;
@@ -1437,25 +1421,12 @@ classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char
   DB_SEQ *fk_container = NULL;
   DB_SEQ *seq = NULL;
   DB_SEQ *seq_child = NULL;
-  DB_SEQ *online_seq = NULL;
+  DB_SEQ *index_status_seq = NULL;
   int found = 0;
   bool is_new_created = false;	/* Is *properties new created or not */
-  SM_PROPERTY new_prop = NULL;
-  int prop_size = 0;
-  int ret = NO_ERROR;
 
   db_make_null (&pvalue);
   db_make_null (&value);
-
-  prop_size = classobj_get_buffer_of_new_property (type, constraint_name, atts, asc_desc, attrs_prefix_length,
-						   id, filter_index_info, fk_info, shared_cons_name,
-						   func_index_info, comment, index_status, &new_prop, 0);
-
-  ret = classobj_add_property_to_property_list (properties_list, new_prop, (char *) constraint_name, prop_size, type);
-  if (new_prop != NULL)
-    {
-      free_and_init (new_prop);
-    }
 
   /* 
    *  If the property pointer is NULL, create an empty property sequence
@@ -1737,7 +1708,7 @@ classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char
 			}
 		    }
 		}
-	      else
+	      else if (filter_index_info == NULL)
 		{
 		  /* Add the prefix length */
 		  seq_child = set_create_sequence (0);
@@ -1777,8 +1748,8 @@ classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char
 		}
 	      else
 		{
-		  online_seq = classobj_make_index_online_index_seq (index_status);
-		  if (online_seq == NULL)
+		  index_status_seq = classobj_make_index_status_seq (index_status);
+		  if (index_status_seq == NULL)
 		    {
 		      goto error;
 		    }
@@ -1787,7 +1758,7 @@ classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char
 		      db_make_string (&value, SM_INDEX_STATUS_ID);
 		      set_put_element (seq_child, 0, &value);
 
-		      db_make_sequence (&value, online_seq);
+		      db_make_sequence (&value, index_status_seq);
 		      pred_seq = NULL;
 		      set_put_element (seq_child, 1, &value);
 		      pr_clear_value (&value);
@@ -4741,8 +4712,7 @@ classobj_remove_class_constraint_node (SM_CLASS_CONSTRAINT ** constraints, SM_CL
  */
 
 int
-classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CONSTRAINT * constraints, SM_CONSTRAINT_TYPE type,
-				    SM_PROPERTY_LIST * properties_list)
+classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CONSTRAINT * constraints, SM_CONSTRAINT_TYPE type)
 {
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *con;
@@ -4773,7 +4743,7 @@ classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CONSTRAINT * 
 	}
       if (classobj_put_index_id (properties, type, con->name, con->attributes, con->asc_desc, con->attrs_prefix_length,
 				 &(con->index_btid), con->filter_predicate, con->fk_info, con->shared_cons_name,
-				 con->func_index_info, con->comment, con->index_status, properties_list) == ER_FAILED)
+				 con->func_index_info, con->comment, con->index_status) == ER_FAILED)
 	{
 	  error = ER_SM_INVALID_PROPERTY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -6644,7 +6614,6 @@ classobj_make_template (const char *name, MOP op, SM_CLASS * class_)
   template_ptr->triggers = NULL;
   template_ptr->partition_parent_atts = NULL;
   template_ptr->partition = NULL;
-  template_ptr->new_properties = NULL;
 
   if (name != NULL)
     {
@@ -7872,7 +7841,6 @@ classobj_install_template (SM_CLASS * class_, SM_TEMPLATE * flat, int saverep)
   classobj_free_prop (class_->properties);
   class_->properties = flat->properties;
   flat->properties = NULL;
-  flat->new_properties = NULL;
 
   /* install resolution list, merge the res lists in the class for simplicity */
   ws_list_free ((DB_LIST *) class_->resolutions, (LFREEER) classobj_free_resolution);
@@ -9105,7 +9073,7 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
 }
 
 DB_SEQ *
-classobj_make_index_online_index_seq (SM_INDEX_STATUS index_status)
+classobj_make_index_status_seq (SM_INDEX_STATUS index_status)
 {
   DB_SEQ *online_seq;
   DB_VALUE v;
@@ -9126,13 +9094,13 @@ classobj_make_index_online_index_seq (SM_INDEX_STATUS index_status)
 }
 
 int
-classobj_make_index_status_info (DB_SEQ * online_seq)
+classobj_make_index_status_info (DB_SEQ * index_status_seq)
 {
   DB_VALUE v;
 
-  assert (online_seq != NULL && set_size (online_seq) == 1);
+  assert (index_status_seq != NULL && set_size (index_status_seq) == 1);
 
-  if (set_get_element_nocopy (online_seq, 0, &v) != NO_ERROR)
+  if (set_get_element_nocopy (index_status_seq, 0, &v) != NO_ERROR)
     {
       return SM_NO_INDEX;
     }
@@ -9140,6 +9108,7 @@ classobj_make_index_status_info (DB_SEQ * online_seq)
   return (db_get_int (&v));
 }
 
+#if 0
 int
 classobj_get_buffer_of_new_property (SM_CONSTRAINT_TYPE type, const char *constraint_name, SM_ATTRIBUTE ** atts,
 				     const int *asc_desc, const int *attr_prefix_length, const BTID * id,
@@ -10101,3 +10070,5 @@ error:
 
   return ret;
 }
+
+#endif

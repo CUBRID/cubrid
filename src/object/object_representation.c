@@ -8632,7 +8632,6 @@ or_put_string_aligned_with_length (OR_BUF * buf, char *str)
 
   if (str == NULL)
     {
-      or_put_int (buf, -1);
       return rc;
     }
   len = (int) strlen (str) + 1;
