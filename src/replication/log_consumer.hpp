@@ -103,7 +103,7 @@ namespace cubreplication
 
       int push_entry (replication_stream_entry *entry);
 
-      int pop_entry (replication_stream_entry *&entry);
+      int pop_entry (replication_stream_entry *&entry, bool &should_stop);
 
       int fetch_stream_entry (replication_stream_entry *&entry);
 

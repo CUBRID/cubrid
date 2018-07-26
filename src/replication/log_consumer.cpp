@@ -131,9 +131,10 @@ namespace cubreplication
 
 	while (true)
 	  {
-	    int err = m_lc.pop_entry (se);
+            bool should_stop = false;
+	    int err = m_lc.pop_entry (se, should_stop);
 
-	    if (err != NO_ERROR)
+	    if (err != NO_ERROR || should_stop)
 	      {
 		break;
 	      }
@@ -210,6 +211,8 @@ namespace cubreplication
 
     global_log_consumer = NULL;
 
+    /* TODO : move to external code (a higher level object) stop & destroy of log_consumer and stream */
+
     set_stop ();
 
     if (m_use_daemons)
@@ -235,7 +238,7 @@ namespace cubreplication
     return NO_ERROR;
   }
 
-  int log_consumer::pop_entry (replication_stream_entry *&entry)
+  int log_consumer::pop_entry (replication_stream_entry *&entry, bool &should_stop)
   {
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     if (m_stream_entries.empty ())
@@ -246,7 +249,8 @@ namespace cubreplication
 
     if (m_is_stopped)
       {
-	return ER_FAILED;
+        should_stop = true;
+	return NO_ERROR;
       }
 
     assert (m_stream_entries.empty () == false);
@@ -337,14 +341,14 @@ namespace cubreplication
   }
 
   void log_consumer::set_stop (void)
-      {
-	log_consumer::get_stream ()->set_stop ();
+  {
+    log_consumer::get_stream ()->set_stop ();
 
-	std::unique_lock<std::mutex> ulock (m_queue_mutex);
-	m_is_stopped = true;
-	ulock.unlock ();
-	m_apply_task_cv.notify_one ();
-      }
+    std::unique_lock<std::mutex> ulock (m_queue_mutex);
+    m_is_stopped = true;
+    ulock.unlock ();
+    m_apply_task_cv.notify_one ();
+  }
 
   log_consumer *log_consumer::global_log_consumer = NULL;
 } /* namespace cubreplication */
