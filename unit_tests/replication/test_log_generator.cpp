@@ -192,7 +192,7 @@ namespace test_replication
 
     move_buffers (lg_stream, lc_stream);
 
-    cubreplication::replication_stream_entry *se = NULL;
+    cubreplication::stream_entry *se = NULL;
 
     lc->fetch_stream_entry (se);
     se->unpack ();
@@ -247,7 +247,7 @@ namespace test_replication
   {
     int n_tran_chunks = std::rand () % 5;
 
-    cubreplication::replication_stream_entry *se = lg->get_stream_entry ();
+    cubreplication::stream_entry *se = lg->get_stream_entry ();
 
     se->set_mvccid (thread_p->tran_index + 1);
 

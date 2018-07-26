@@ -58,7 +58,7 @@ namespace cubreplication
     return NO_ERROR;
   }
 
-  replication_stream_entry *log_generator::get_stream_entry (void)
+  stream_entry *log_generator::get_stream_entry (void)
   {
     return &m_stream_entry;
   }
@@ -74,7 +74,7 @@ namespace cubreplication
 
   int log_generator::pack_group_commit_entry (void)
   {
-    static replication_stream_entry gc_stream_entry (g_stream, MVCCID_NULL, true, true);
+    static stream_entry gc_stream_entry (g_stream, MVCCID_NULL, true, true);
     gc_stream_entry.pack ();
 
     return NO_ERROR;
@@ -89,7 +89,7 @@ namespace cubreplication
     int num_max_appenders = log_Gl.trantable.num_total_indices + 1;
 
     log_generator::g_stream = new cubstream::multi_thread_stream (buffer_size, num_max_appenders);
-    log_generator::g_stream->set_trigger_min_to_read_size (replication_stream_entry::compute_header_size ());
+    log_generator::g_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
     log_generator::g_stream->init (log_generator::g_start_append_position);
 
     for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)

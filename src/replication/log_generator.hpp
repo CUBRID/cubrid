@@ -43,7 +43,7 @@ namespace cubreplication
   class log_generator
   {
     private:
-      replication_stream_entry m_stream_entry;
+      stream_entry m_stream_entry;
 
       static cubstream::multi_thread_stream *g_stream;
 
@@ -64,7 +64,7 @@ namespace cubreplication
 
       int append_repl_object (replication_object *object);
 
-      replication_stream_entry *get_stream_entry (void);
+      stream_entry *get_stream_entry (void);
 
       int pack_stream_entry (void);
 

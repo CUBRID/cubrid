@@ -48,14 +48,14 @@ namespace cubreplication
    * main class for consuming log packing stream entries;
    * it should be created only as a global instance
    */
-  class replication_stream_entry;
+  class stream_entry;
   class repl_applier_worker_context_manager;
   class applier_worker_task;
 
   /*
    * log_consumer : class intended as singleton for slave server
-   * 
-   * Data members: 
+   *
+   * Data members:
    *  - a pointer to slave stream (currently it also creates it, but future code should have a higher level
    *    object which aggregates both log_consumer and stream)
    *  - a queue of replication stream entry objects; the queue is protected by a mutex
@@ -83,7 +83,7 @@ namespace cubreplication
   class log_consumer
   {
     private:
-      std::queue<replication_stream_entry *> m_stream_entries;
+      std::queue<stream_entry *> m_stream_entries;
 
       cubstream::multi_thread_stream *m_stream;
 
@@ -113,14 +113,14 @@ namespace cubreplication
 
     private:
       log_consumer () :
-        m_stream (NULL),
-        m_consumer_daemon (NULL),
-        m_dispatch_daemon (NULL),
-        m_applier_workers_pool (NULL),
+	m_stream (NULL),
+	m_consumer_daemon (NULL),
+	m_dispatch_daemon (NULL),
+	m_applier_workers_pool (NULL),
 	m_applier_worker_threads_count (100),
 	m_use_daemons (false),
 	m_started_tasks (0),
-        m_apply_task_ready (false),
+	m_apply_task_ready (false),
 	m_is_stopped (false)
       {
       };
@@ -129,11 +129,11 @@ namespace cubreplication
 
       ~log_consumer ();
 
-      int push_entry (replication_stream_entry *entry);
+      int push_entry (stream_entry *entry);
 
-      int pop_entry (replication_stream_entry *&entry, bool &should_stop);
+      int pop_entry (stream_entry *&entry, bool &should_stop);
 
-      int fetch_stream_entry (replication_stream_entry *&entry);
+      int fetch_stream_entry (stream_entry *&entry);
 
       void start_daemons (void);
       void execute_task (applier_worker_task *task);
