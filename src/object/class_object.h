@@ -957,7 +957,7 @@ extern int classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type,
 				  SM_ATTRIBUTE ** atts, const int *asc_desc, const int *attrs_prefix_length,
 				  const BTID * id, SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
 				  char *shared_cons_name, SM_FUNCTION_INFO * func_index_info, const char *comment,
-				  SM_INDEX_STATUS index_status);
+				  SM_INDEX_STATUS index_status, SM_PROPERTY_LIST * properties_buffer);
 extern int classobj_find_prop_constraint (DB_SEQ * properties, const char *prop_name, const char *cnstr_name,
 					  DB_VALUE * cnstr_val);
 
@@ -1000,7 +1000,7 @@ extern TP_DOMAIN *classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT *
 extern void classobj_remove_class_constraint_node (SM_CLASS_CONSTRAINT ** constraints, SM_CLASS_CONSTRAINT * node);
 
 extern int classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CONSTRAINT * constraints,
-					       SM_CONSTRAINT_TYPE type);
+					       SM_CONSTRAINT_TYPE type, SM_PROPERTY_LIST * properties_list);
 
 extern bool classobj_class_has_indexes (SM_CLASS * class_);
 
@@ -1134,6 +1134,7 @@ extern int classobj_get_buffer_of_new_property (SM_CONSTRAINT_TYPE type, const c
 						char **new_property, int put_ids);
 
 extern int classobj_add_property_to_property_list (SM_PROPERTY_LIST * property_list, SM_PROPERTY new_property,
-						   char *new_property_name, int new_property_size);
+						   char *new_property_name, int new_property_size,
+						   int new_property_type);
 
 #endif /* _CLASS_OBJECT_H_ */

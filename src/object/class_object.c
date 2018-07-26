@@ -934,14 +934,22 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
   DB_SEQ *status_seq = NULL;
   int found = 0;
   bool is_new_created = false;	/* Is *properties new created or not */
-  OR_BUF *local_buffer = NULL;
-  int local_size = 0;
   SM_PROPERTY new_prop = NULL;
   int prop_size = 0;
   int ret = NO_ERROR;
 
   db_make_null (&pvalue);
   db_make_null (&value);
+
+  prop_size = classobj_get_buffer_of_new_property (type, constraint_name, atts, asc_desc, attr_prefix_length,
+						   id, filter_index_info, fk_info, shared_cons_name,
+						   func_index_info, comment, index_status, &new_prop, 0);
+
+  ret = classobj_add_property_to_property_list (properties_list, new_prop, (char *) constraint_name, prop_size, type);
+  if (new_prop != NULL)
+    {
+      free_and_init (new_prop);
+    }
 
   /* 
    *  If the property pointer is NULL, create an empty property sequence
@@ -955,12 +963,6 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 	}
 
       is_new_created = true;
-      /*prop_size = classobj_get_buffer_of_new_property (type, constraint_name, atts, asc_desc, attr_prefix_length,
-         id, filter_index_info, fk_info, shared_cons_name,
-         func_index_info, comment, index_status, &new_prop, 0);
-
-         ret = classobj_add_property_to_property_list (properties_list, new_prop, (char *) constraint_name, prop_size);
-       */
     }
 
 
@@ -1438,9 +1440,22 @@ classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char
   DB_SEQ *online_seq = NULL;
   int found = 0;
   bool is_new_created = false;	/* Is *properties new created or not */
+  SM_PROPERTY new_prop = NULL;
+  int prop_size = 0;
+  int ret = NO_ERROR;
 
   db_make_null (&pvalue);
   db_make_null (&value);
+
+  prop_size = classobj_get_buffer_of_new_property (type, constraint_name, atts, asc_desc, attrs_prefix_length,
+						   id, filter_index_info, fk_info, shared_cons_name,
+						   func_index_info, comment, index_status, &new_prop, 0);
+
+  ret = classobj_add_property_to_property_list (properties_list, new_prop, (char *) constraint_name, prop_size, type);
+  if (new_prop != NULL)
+    {
+      free_and_init (new_prop);
+    }
 
   /* 
    *  If the property pointer is NULL, create an empty property sequence
@@ -4726,7 +4741,8 @@ classobj_remove_class_constraint_node (SM_CLASS_CONSTRAINT ** constraints, SM_CL
  */
 
 int
-classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CONSTRAINT * constraints, SM_CONSTRAINT_TYPE type)
+classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CONSTRAINT * constraints, SM_CONSTRAINT_TYPE type,
+				    SM_PROPERTY_LIST * properties_list)
 {
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *con;
@@ -4757,7 +4773,7 @@ classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CONSTRAINT * 
 	}
       if (classobj_put_index_id (properties, type, con->name, con->attributes, con->asc_desc, con->attrs_prefix_length,
 				 &(con->index_btid), con->filter_predicate, con->fk_info, con->shared_cons_name,
-				 con->func_index_info, con->comment, con->index_status) == ER_FAILED)
+				 con->func_index_info, con->comment, con->index_status, properties_list) == ER_FAILED)
 	{
 	  error = ER_SM_INVALID_PROPERTY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);

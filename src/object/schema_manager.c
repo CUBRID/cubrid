@@ -10810,7 +10810,8 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
    */
   if (classobj_put_index_id (&(class_->properties), con->type, con->name, con->attributes, con->asc_desc,
 			     con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, con->fk_info, NULL,
-			     con->func_index_info, con->comment, con->index_status) != NO_ERROR)
+			     con->func_index_info, con->comment, con->index_status,
+			     &(class_->new_properties)) != NO_ERROR)
     {
       return error;
     }
@@ -11542,7 +11543,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		classobj_put_index_id (&(flat->properties), con->type, con->name, con->attributes, con->asc_desc,
 				       con->attrs_prefix_length, &(con->index_btid), con->filter_predicate,
 				       con->fk_info, con->shared_cons_name, con->func_index_info, con->comment,
-				       con->index_status);
+				       con->index_status, &(flat->new_properties));
 	      if (error != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
@@ -11554,7 +11555,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	      error =
 		classobj_put_index_id (&(flat->properties), con->type, con->name, con->attributes, con->asc_desc,
 				       con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, NULL, NULL,
-				       con->func_index_info, con->comment, con->index_status);
+				       con->func_index_info, con->comment, con->index_status, &(flat->new_properties));
 	      if (error != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
@@ -13881,7 +13882,8 @@ sm_drop_index (MOP classop, const char *constraint_name)
       classobj_remove_class_constraint_node (&class_->constraints, found);
       classobj_free_class_constraints (found);
 
-      error = classobj_populate_class_properties (&class_->properties, class_->constraints, ctype);
+      error =
+	classobj_populate_class_properties (&class_->properties, class_->constraints, ctype, &class_->new_properties);
 
       if (classobj_cache_class_constraints (class_) != NO_ERROR)
 	{
