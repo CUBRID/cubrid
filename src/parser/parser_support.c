@@ -12053,13 +12053,13 @@ pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NO
 }
 
 /*
-* pt_has_name_oid () - Check whether the node is oid name
-*   return:
-*   parser(in):
-*   node(in):
-*   arg(in):
-*   continue_walk(in):
-*/
+ * pt_has_name_oid () - Check whether the node is oid name
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(in):
+ */
 PT_NODE *
 pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {

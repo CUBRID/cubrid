@@ -3136,12 +3136,12 @@ session_get_private_lru_idx (const void *session_p)
 }
 
 /*
-* session_set_tran_auto_commit () - set transaction auto commit state
-*
-*   return  : NO_ERROR or error code
-*   thread_p(in)     : thread
-*   auto_commit(in)  : auto commit
-*/
+ * session_set_tran_auto_commit () - set transaction auto commit state
+ *
+ *   return  : NO_ERROR or error code
+ *   thread_p(in)     : thread
+ *   auto_commit(in)  : auto commit
+ */
 int
 session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit)
 {

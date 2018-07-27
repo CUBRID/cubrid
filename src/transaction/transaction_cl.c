@@ -1464,9 +1464,9 @@ tran_was_latest_query_aborted (void)
 }
 
 /*
-* tran_is_reset_required : check whether reset is required
-*   return: true, if reset is required
-*/
+ * tran_is_reset_required : check whether reset is required
+ *   return: true, if reset is required
+ */
 bool
 tran_is_reset_required (void)
 {

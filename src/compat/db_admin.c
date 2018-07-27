@@ -1114,10 +1114,10 @@ db_abort_transaction (void)
 }
 
 /*
-* db_reset_latest_query_status() - Reset latest query status.
-*
-* return : error code
-*/
+ * db_reset_latest_query_status() - Reset latest query status.
+ *
+ * return : error code
+ */
 int
 db_reset_latest_query_status (void)
 {
