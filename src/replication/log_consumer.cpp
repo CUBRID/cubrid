@@ -104,6 +104,14 @@ namespace cubreplication
 	return se->is_tran_commit ();
       }
 
+      bool has_abort (void)
+      {
+	assert (get_entries_cnt () > 0);
+	stream_entry *se = m_repl_stream_entries.back ();
+
+	return se->is_tran_abort ();
+      }
+
       size_t get_entries_cnt (void)
       {
 	return m_repl_stream_entries.size ();
@@ -157,6 +165,10 @@ namespace cubreplication
 		    if (my_repl_applier_worker_task->has_commit ())
 		      {
 			m_lc.execute_task (it->second);
+		      }
+		    else if (my_repl_applier_worker_task->has_abort ())
+		      {
+			/* just drop task */
 		      }
 		    else
 		      {

@@ -68,7 +68,7 @@ namespace cubreplication
 
       int pack_stream_entry (void);
 
-      static int pack_group_commit_entry (void);
+      static void pack_group_commit_entry (void);
 
       static int create_stream (const cubstream::stream_position &start_position);
 

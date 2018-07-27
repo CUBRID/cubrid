@@ -38,9 +38,10 @@ namespace cubreplication
   struct stream_entry_header
   {
     const static unsigned int COMMIT_FLAG = 0x80000000;
-    const static unsigned int GROUP_COMMIT_FLAG = 0x40000000;
+    const static unsigned int ABORT_FLAG = 0x40000000;
+    const static unsigned int GROUP_COMMIT_FLAG = 0x20000000;
 
-    const static unsigned int COUNT_VALUE_MASK = ~ (COMMIT_FLAG | GROUP_COMMIT_FLAG);
+    const static unsigned int COUNT_VALUE_MASK = ~ (COMMIT_FLAG | ABORT_FLAG | GROUP_COMMIT_FLAG);
 
     cubstream::stream_position prev_record;
     MVCCID mvccid;
@@ -50,6 +51,9 @@ namespace cubreplication
     /* flags is packed into 'count_replication_entries' field */
     /* commit_flag : transaction is committed */
     bool commit_flag;
+    /* flags is packed into 'count_replication_entries' field */
+    /* abort_flag : transaction is aborted */
+    bool abort_flag;
     /* group_commit_flag : a group of transaction were committed */
     bool group_commit_flag;
 
@@ -59,6 +63,7 @@ namespace cubreplication
 	count_replication_entries (0),
 	data_size (0),
 	commit_flag (false),
+        abort_flag (false),
 	group_commit_flag (false)
     {
     };
@@ -131,6 +136,11 @@ namespace cubreplication
 	m_header.commit_flag = commit;
       }
 
+      void set_abort_flag (bool abort)
+      {
+	m_header.abort_flag = abort;
+      }
+
       bool is_group_commit (void)
       {
 	return m_header.group_commit_flag;
@@ -139,6 +149,11 @@ namespace cubreplication
       bool is_tran_commit (void)
       {
 	return m_header.commit_flag;
+      }
+
+      bool is_tran_abort (void)
+      {
+	return m_header.abort_flag;
       }
 
       int pack_stream_entry_header ();

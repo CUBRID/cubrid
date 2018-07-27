@@ -70,9 +70,24 @@ namespace cubreplication
 	    == m_header.count_replication_entries);
 
     count_and_flags = m_header.count_replication_entries;
+
+    if (m_header.commit_flag)
+      {
+        assert (m_header.abort_flag == false);
+      }
+    if (m_header.abort_flag)
+      {
+        assert (m_header.commit_flag == false);
+      }
+
     if (m_header.commit_flag)
       {
 	count_and_flags = count_and_flags | stream_entry_header::COMMIT_FLAG;
+      }
+
+    if (m_header.abort_flag)
+      {
+	count_and_flags = count_and_flags | stream_entry_header::ABORT_FLAG;
       }
 
     if (m_header.group_commit_flag)
@@ -98,6 +113,21 @@ namespace cubreplication
       {
 	m_header.commit_flag = true;
       }
+
+    if (count_and_flags & stream_entry_header::ABORT_FLAG)
+      {
+	m_header.abort_flag = true;
+      }
+
+    if (m_header.commit_flag)
+      {
+        assert (m_header.abort_flag == false);
+      }
+    if (m_header.abort_flag)
+      {
+        assert (m_header.commit_flag == false);
+      }
+
     if (count_and_flags & stream_entry_header::GROUP_COMMIT_FLAG)
       {
 	m_header.group_commit_flag = true;

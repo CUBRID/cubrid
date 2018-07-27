@@ -72,18 +72,17 @@ namespace cubreplication
     return NO_ERROR;
   }
 
-  int log_generator::pack_group_commit_entry (void)
+  void log_generator::pack_group_commit_entry (void)
   {
     static stream_entry gc_stream_entry (g_stream, MVCCID_NULL, true, true);
     gc_stream_entry.pack ();
-
-    return NO_ERROR;
   }
 
   int log_generator::create_stream (const cubstream::stream_position &start_position)
   {
     log_generator::g_start_append_position = start_position;
 
+    /* TODO : stream should be created by a high level object together with log_generator */
     /* create stream only for global instance */
     INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_GENERATOR_BUFFER_SIZE);
     int num_max_appenders = log_Gl.trantable.num_total_indices + 1;
