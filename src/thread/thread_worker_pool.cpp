@@ -26,6 +26,8 @@
 #include "error_manager.h"
 #include "perf.hpp"
 
+#include <sstream>
+
 #include <cstring>
 
 namespace cubthread
@@ -113,6 +115,22 @@ namespace cubthread
     er_print_callstack (ARG_FILE_LINE, "%s - throws err = %d: %s\n", message, e.code (), e.what ());
     assert (false);
     throw e;
+  }
+
+  void
+  wp_er_log_stats (const char *header, cubperf::stat_value *statsp)
+  {
+    std::stringstream ss;
+
+    ss << "Worker pool statistics: " << header << std::endl;
+
+    for (std::size_t index = 0; index < Worker_pool_statdef.get_value_count (); index++)
+      {
+	ss << "\t" << Worker_pool_statdef.get_value_name (index) << ": ";
+	ss << statsp[index] << std::endl;
+      }
+
+    _er_log_debug (ARG_FILE_LINE, ss.str ().c_str ());
   }
 
 } // namespace cubthread

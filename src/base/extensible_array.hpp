@@ -130,6 +130,7 @@ template <typename T, size_t Size, typename Allocator = std::allocator<T> >
 class extensible_array
 {
   public:
+    extensible_array (void);
     extensible_array (Allocator &allocator);                // Constructing with allocator is required
     ~extensible_array ();
 
@@ -167,7 +168,7 @@ class extensible_array
  */
 template <size_t Size, typename Allocator = std::allocator<char> >
 inline int xarr_char_append_string (extensible_array<char, Size, Allocator> &buffer, const char *str,
-                                    size_t length = 0);
+				    size_t length = 0);
 
 /* extensible_charbuf_append_object - append object data to extensible char buffer.
  *
@@ -196,9 +197,17 @@ inline int xarr_char_append_object (extensible_array<char, Size, Allocator> &buf
 #include <cstring>
 
 template<typename T, size_t Size, typename Allocator>
-inline extensible_array<T, Size, Allocator>::extensible_array (Allocator &allocator) :
-  m_membuf (allocator),
-  m_size (0)
+inline extensible_array<T, Size, Allocator>::extensible_array (void)
+  : m_membuf ()
+  , m_size (0)
+{
+  //
+}
+
+template<typename T, size_t Size, typename Allocator>
+inline extensible_array<T, Size, Allocator>::extensible_array (Allocator &allocator)
+  : m_membuf (allocator)
+  , m_size (0)
 {
   // empty
 }
