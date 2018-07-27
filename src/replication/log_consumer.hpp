@@ -129,9 +129,9 @@ namespace cubreplication
 
       ~log_consumer ();
 
-      int push_entry (stream_entry *entry);
+      void push_entry (stream_entry *entry);
 
-      int pop_entry (stream_entry *&entry, bool &should_stop);
+      void pop_entry (stream_entry *&entry, bool &should_stop);
 
       int fetch_stream_entry (stream_entry *&entry);
 

@@ -141,14 +141,12 @@ namespace cubreplication
 	while (true)
 	  {
 	    bool should_stop = false;
-	    int err = m_lc.pop_entry (se, should_stop);
+	    m_lc.pop_entry (se, should_stop);
 
-	    if (err != NO_ERROR || should_stop)
+	    if (should_stop)
 	      {
 		break;
 	      }
-
-	    assert (err == NO_ERROR);
 
 	    if (se->is_group_commit ())
 	      {
@@ -240,18 +238,16 @@ namespace cubreplication
     delete m_stream;
   }
 
-  int log_consumer::push_entry (stream_entry *entry)
+  void log_consumer::push_entry (stream_entry *entry)
   {
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     m_stream_entries.push (entry);
     m_apply_task_ready = true;
     ulock.unlock ();
     m_apply_task_cv.notify_one ();
-
-    return NO_ERROR;
   }
 
-  int log_consumer::pop_entry (stream_entry *&entry, bool &should_stop)
+  void log_consumer::pop_entry (stream_entry *&entry, bool &should_stop)
   {
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     if (m_stream_entries.empty ())
@@ -263,14 +259,13 @@ namespace cubreplication
     if (m_is_stopped)
       {
 	should_stop = true;
-	return NO_ERROR;
+	return;
       }
 
     assert (m_stream_entries.empty () == false);
 
     entry = m_stream_entries.front ();
     m_stream_entries.pop ();
-    return NO_ERROR;
   }
 
   int log_consumer::fetch_stream_entry (stream_entry *&entry)
