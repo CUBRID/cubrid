@@ -1566,7 +1566,8 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
     }
 
   if (classobj_put_index (&template_->properties, type, constraint_name, atts, asc_desc, attr_prefix_length, NULL,
-			  filter_index, fk_info, shared_cons_name, function_index, comment, index_status) == ER_FAILED)
+			  filter_index, fk_info, shared_cons_name, function_index, comment, index_status, true)
+      != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
     }

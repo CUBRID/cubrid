@@ -9111,7 +9111,8 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			    }
 			  if (classobj_put_index (&flat->properties, c->type, c->name, attrs, c->asc_desc,
 						  c->attrs_prefix_length, &index_btid, c->filter_predicate, c->fk_info,
-						  NULL, c->func_index_info, c->comment, c->index_status) != NO_ERROR)
+						  NULL, c->func_index_info, c->comment, c->index_status, true)
+                              != NO_ERROR)
 			    {
 			      pr_clear_value (&cnstr_val);
 			      goto structure_error;
@@ -10807,9 +10808,9 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
   /* Whether we allocated a BTID or not, always write the constraint info back out to the property list.  
    * This is where the promotion of attribute name references to ids references happens. 
    */
-  if (classobj_put_index_id (&(class_->properties), con->type, con->name, con->attributes, con->asc_desc,
-			     con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, con->fk_info, NULL,
-			     con->func_index_info, con->comment, con->index_status) != NO_ERROR)
+  if (classobj_put_index (&(class_->properties), con->type, con->name, con->attributes, con->asc_desc,
+                          con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, con->fk_info, NULL,
+                          con->func_index_info, con->comment, con->index_status, false) != NO_ERROR)
     {
       return error;
     }
@@ -11538,10 +11539,10 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		}
 
 	      error =
-		classobj_put_index_id (&(flat->properties), con->type, con->name, con->attributes, con->asc_desc,
-				       con->attrs_prefix_length, &(con->index_btid), con->filter_predicate,
-				       con->fk_info, con->shared_cons_name, con->func_index_info, con->comment,
-				       con->index_status);
+		classobj_put_index (&(flat->properties), con->type, con->name, con->attributes, con->asc_desc,
+                                    con->attrs_prefix_length, &(con->index_btid), con->filter_predicate,
+                                    con->fk_info, con->shared_cons_name, con->func_index_info, con->comment,
+                                    con->index_status, false);
 	      if (error != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
@@ -11551,9 +11552,9 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	  else if (con->type == SM_CONSTRAINT_INDEX || con->type == SM_CONSTRAINT_REVERSE_INDEX)
 	    {
 	      error =
-		classobj_put_index_id (&(flat->properties), con->type, con->name, con->attributes, con->asc_desc,
-				       con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, NULL, NULL,
-				       con->func_index_info, con->comment, con->index_status);
+		classobj_put_index (&(flat->properties), con->type, con->name, con->attributes, con->asc_desc,
+                                    con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, NULL, NULL,
+                                    con->func_index_info, con->comment, con->index_status, false);
 	      if (error != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
@@ -13645,9 +13646,9 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type, const char *co
 
       /* modify the class to point at the new index */
       error =
-	classobj_put_index_id (&(class_->properties), constraint_type, constraint_name, attrs, asc_desc,
-			       attrs_prefix_length, &index, filter_index, NULL, out_shared_cons_name, function_index,
-			       comment);
+	classobj_put_index (&(class_->properties), constraint_type, constraint_name, attrs, asc_desc,
+                            attrs_prefix_length, &index, filter_index, NULL, out_shared_cons_name, function_index,
+                            comment, false);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

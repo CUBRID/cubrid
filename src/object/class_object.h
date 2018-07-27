@@ -944,12 +944,7 @@ extern int classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, co
 			       SM_ATTRIBUTE ** atts, const int *asc_desc, const int *attr_prefix_length,
 			       const BTID * id, SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
 			       char *shared_cons_name, SM_FUNCTION_INFO * func_index_info, const char *comment,
-			       SM_INDEX_STATUS index_status);
-extern int classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name,
-				  SM_ATTRIBUTE ** atts, const int *asc_desc, const int *attrs_prefix_length,
-				  const BTID * id, SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
-				  char *shared_cons_name, SM_FUNCTION_INFO * func_index_info, const char *comment,
-				  SM_INDEX_STATUS index_status);
+			       SM_INDEX_STATUS index_status, bool attr_name_instead_of_id);
 extern int classobj_find_prop_constraint (DB_SEQ * properties, const char *prop_name, const char *cnstr_name,
 					  DB_VALUE * cnstr_val);
 
