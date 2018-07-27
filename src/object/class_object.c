@@ -1933,13 +1933,22 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
       /* retrieve the last element */
       DB_VALUE save_last;
       PRIM_SET_NULL (&save_last);
-      err = set_get_element (pk_seq, size - 2, &save_last);
+      err = set_get_element (pk_seq, size - 1, &save_last);
       if (err != NO_ERROR)
 	{
 	  pr_clear_value (&save_last);
 	  goto end;
 	}
 
+      /* Retrieve status. */
+      DB_VALUE save_status;
+      PRIM_SET_NULL (&save_status);
+      err = set_get_element (pk_seq, size - 2, &save_status);
+      if (err != NO_ERROR)
+	{
+	  pr_clear_value (&save_status);
+	  goto end;
+	}
       /* put fk_container */
       err = set_put_element (pk_seq, pk_seq_pos, &fk_container_val);
       if (err != NO_ERROR)
@@ -1948,8 +1957,16 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
 	  goto end;
 	}
 
+      /* Put the status now. */
+      err = set_put_element (pk_seq, pk_seq_pos + 1, &save_status);
+      if (err != NO_ERROR)
+	{
+	  pr_clear_value (&save_last);
+	  goto end;
+	}
+
       /* put the last element to the tail */
-      err = set_put_element (pk_seq, pk_seq_pos + 1, &save_last);
+      err = set_put_element (pk_seq, pk_seq_pos + 2, &save_last);
       if (err != NO_ERROR)
 	{
 	  pr_clear_value (&save_last);
@@ -2195,7 +2212,7 @@ classobj_drop_foreign_key_ref (DB_SEQ ** properties, const BTID * btid, const ch
     }
 
   pk_seq = db_get_set (&pk_val);
-  fk_container_pos = set_size (pk_seq) - 2;
+  fk_container_pos = set_size (pk_seq) - 3;
 
   err = set_get_element (pk_seq, fk_container_pos, &fk_container_val);
   if (err != NO_ERROR)
@@ -3939,37 +3956,22 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 
 	      /* Get the status. */
 	      set_get_element (info, info_len - 2, &statusval);
-	      if (db_value_type (&statusval) == DB_TYPE_INTEGER)
+	      new_->index_status = (SM_INDEX_STATUS) db_get_int (&statusval);
+
+	      if (set_get_element (info, info_len - 1, &cvalue))
 		{
-		  new_->index_status = (SM_INDEX_STATUS) db_get_int (&statusval);
-		  if (set_get_element (info, info_len - 1, &cvalue))
-		    {
-		      /* if not exists, set comment to null */
-		      new_->comment = NULL;
-		    }
-		  else if (DB_IS_NULL (&cvalue) || DB_VALUE_TYPE (&cvalue) == DB_TYPE_STRING)
-		    {
-		      /* take "cvalue == null" case into account */
-		      new_->comment = db_get_string (&cvalue);
-		    }
-		  else
-		    {
-		      goto structure_error;
-		    }
+		  /* if not exists, set comment to null */
+		  new_->comment = NULL;
+		}
+	      else if (DB_IS_NULL (&cvalue) || DB_VALUE_TYPE (&cvalue) == DB_TYPE_STRING)
+		{
+		  /* take "cvalue == null" case into account */
+		  new_->comment = db_get_string (&cvalue);
 		}
 	      else
 		{
-		  /*  This means the comment is inexistent, not even added to the sequence. This results in status
-		   *  is located in the last position instead.
-		   */
-		  set_get_element (info, info_len - 1, &statusval);
-		  new_->index_status = (SM_INDEX_STATUS) db_get_int (&statusval);
-		  new_->comment = NULL;
+		  goto structure_error;
 		}
-
-
-
-
 
 	      /* clear each unique info sequence value */
 	      pr_clear_value (&uvalue);
