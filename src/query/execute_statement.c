@@ -9115,7 +9115,6 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *hint_arg;
   QUERY_ID query_id_self = parser->query_id;
   bool savepoint_started = false;
-  bool has_dirty_mop;
 
   assert (parser->query_id == NULL_QUERY_ID);
 
@@ -9159,8 +9158,6 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  continue;		/* continue to next UPDATE statement */
 	}
 
-      has_dirty_mop = ws_need_flush ();
-
       /* 
        * Server-side update or OID list update case:
        *  execute the prepared(stored) XASL (UPDATE_PROC or SELECT statement)
@@ -9198,31 +9195,28 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      do_send_plan_trace_to_session (parser);
 	    }
 
-	  if (has_dirty_mop)
+	  // When a transaction is under auto-commit mode, flush all dirty objects to server.
+	  // Otherwise, flush associated objects.
+	  if (statement->use_auto_commit)
 	    {
-	      // When a transaction is under auto-commit mode, flush all dirty objects to server.
-	      // Otherwise, flush associated objects.
-	      if (statement->use_auto_commit)
+	      err = tran_flush_to_commit ();
+	    }
+	  else
+	    {
+	      /* flush necessary objects before execute */
+	      for (spec = statement->info.update.spec; spec != NULL && err == NO_ERROR; spec = spec->next)
 		{
-		  err = tran_flush_to_commit ();
-		}
-	      else
-		{
-		  /* flush necessary objects before execute */
-		  for (spec = statement->info.update.spec; spec != NULL && err == NO_ERROR; spec = spec->next)
+		  if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
 		    {
-		      if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
-			{
-			  err = sm_flush_objects (spec->info.spec.flat_entity_list->info.name.db_object);
-			}
+		      err = sm_flush_objects (spec->info.spec.flat_entity_list->info.name.db_object);
 		    }
 		}
+	    }
 
-	      if (err != NO_ERROR)
-		{
-		  // flush error
-		  break;
-		}
+	  if (err != NO_ERROR)
+	    {
+	      // flush error
+	      break;
 	    }
 
 	  AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
@@ -9294,7 +9288,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* free returned QFILE_LIST_ID */
 	  if (list_id)
 	    {
-	      if (has_dirty_mop && list_id->tuple_cnt > 0 && statement->info.update.server_update)
+	      if (list_id->tuple_cnt > 0 && statement->info.update.server_update)
 		{
 		  spec = statement->info.update.spec;
 		  while (spec && err == NO_ERROR)
@@ -10402,7 +10396,6 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
   int query_flag;
   QUERY_ID query_id_self = parser->query_id;
   bool savepoint_started = false;
-  bool has_dirty_mop;
 
   assert (parser->query_id == NULL_QUERY_ID);
 
@@ -10449,8 +10442,6 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* Server-side deletion or OID list deletion case: execute the prepared(stored) XASL (DELETE_PROC or SELECT
        * statement) */
 
-      has_dirty_mop = ws_need_flush ();
-
       /* Request that the server executes the stored XASL, which is the execution plan of the prepared query, with the
        * host variables given by users as parameter values for the query. As a result, query id and result file id
        * (QFILE_LIST_ID) will be returned. do_prepare_delete() has saved the XASL file id (XASL_ID) in
@@ -10481,32 +10472,29 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  do_send_plan_trace_to_session (parser);
 	}
 
-      if (has_dirty_mop)
+      // When a transaction is under auto-commit mode, flush all dirty objects to server.
+      // Otherwise, flush associated objects.
+      if (statement->use_auto_commit)
 	{
-	  // When a transaction is under auto-commit mode, flush all dirty objects to server.
-	  // Otherwise, flush associated objects.
-	  if (statement->use_auto_commit)
+	  err = tran_flush_to_commit ();
+	}
+      else
+	{
+	  for (node = statement->info.delete_.spec; node && err == NO_ERROR; node = node->next)
 	    {
-	      err = tran_flush_to_commit ();
-	    }
-	  else
-	    {
-	      for (node = statement->info.delete_.spec; node && err == NO_ERROR; node = node->next)
+	      flat = node->info.spec.flat_entity_list;
+	      if (flat != NULL)
 		{
-		  flat = node->info.spec.flat_entity_list;
-		  if (flat != NULL)
-		    {
-		      /* flush necessary objects before execute */
-		      err = sm_flush_objects (flat->info.name.db_object);
-		    }
+		  /* flush necessary objects before execute */
+		  err = sm_flush_objects (flat->info.name.db_object);
 		}
 	    }
+	}
 
-	  if (err != NO_ERROR)
-	    {
-	      // flush error
-	      break;
-	    }
+      if (err != NO_ERROR)
+	{
+	  // flush error
+	  break;
 	}
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
@@ -10559,7 +10547,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* free returned QFILE_LIST_ID */
       if (list_id)
 	{
-	  if (has_dirty_mop && list_id->tuple_cnt > 0 && statement->info.delete_.server_delete)
+	  if (list_id->tuple_cnt > 0 && statement->info.delete_.server_delete)
 	    {
 	      int err2 = NO_ERROR;
 	      node = statement->info.delete_.spec;
