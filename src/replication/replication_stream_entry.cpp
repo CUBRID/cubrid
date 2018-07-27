@@ -73,11 +73,11 @@ namespace cubreplication
 
     if (m_header.commit_flag)
       {
-        assert (m_header.abort_flag == false);
+	assert (m_header.abort_flag == false);
       }
     if (m_header.abort_flag)
       {
-        assert (m_header.commit_flag == false);
+	assert (m_header.commit_flag == false);
       }
 
     if (m_header.commit_flag)
@@ -121,11 +121,11 @@ namespace cubreplication
 
     if (m_header.commit_flag)
       {
-        assert (m_header.abort_flag == false);
+	assert (m_header.abort_flag == false);
       }
     if (m_header.abort_flag)
       {
-        assert (m_header.commit_flag == false);
+	assert (m_header.commit_flag == false);
       }
 
     if (count_and_flags & stream_entry_header::GROUP_COMMIT_FLAG)

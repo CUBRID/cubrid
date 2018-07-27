@@ -63,7 +63,7 @@ namespace cubreplication
 	count_replication_entries (0),
 	data_size (0),
 	commit_flag (false),
-        abort_flag (false),
+	abort_flag (false),
 	group_commit_flag (false)
     {
     };
