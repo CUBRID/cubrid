@@ -50,7 +50,6 @@ namespace cubreplication
    * it should be created only as a global instance
    */
   class stream_entry;
-  class repl_applier_worker_context_manager;
   class applier_worker_task;
 
   /*
