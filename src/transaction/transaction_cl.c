@@ -1398,25 +1398,28 @@ tran_set_latest_query_status (int end_query_result, int tran_state, int should_c
 
   tran_reset_latest_query_status ();
 
-  if (end_query_result == NO_ERROR)
+  if (end_query_result != NO_ERROR)
     {
-      tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::QUERY_ENDED;
+      // it is active
+      return;
+    }
 
-      if (tran_state == TRAN_UNACTIVE_COMMITTED || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
-	{
-	  tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::COMMITTED;
-	}
-      else if (tran_state == TRAN_UNACTIVE_ABORTED || tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
-	{
-	  tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::ABORTED;
-	}
+  tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::QUERY_ENDED;
 
-  if (should_conn_reset)
-	{
-	  assert (tran_state == TRAN_UNACTIVE_COMMITTED || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS
-		  || tran_state == TRAN_UNACTIVE_ABORTED || tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS);
-	  tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::RESET_REQUIRED;
-	}
+  if (tran_state == TRAN_UNACTIVE_COMMITTED || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+    {
+      tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::COMMITTED;
+    }
+  else if (tran_state == TRAN_UNACTIVE_ABORTED || tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
+    {
+      tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::ABORTED;
+    }
+
+  if (should_conn_reset == true)
+    {
+      assert (tran_state == TRAN_UNACTIVE_COMMITTED || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS
+	      || tran_state == TRAN_UNACTIVE_ABORTED || tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS);
+      tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::RESET_REQUIRED;
     }
 }
 

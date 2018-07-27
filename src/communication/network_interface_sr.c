@@ -212,59 +212,58 @@ stran_server_auto_commit_or_abort (THREAD_ENTRY * thread_p, unsigned int rid, QU
 
   *should_conn_reset = false;
 
-  /* We commit/abort transaction, after ending queries. */
-  if (*end_query_allowed)
+  if (*end_query_allowed == false)
     {
-      all_error_code = NO_ERROR;
-      if ((*tran_state != TRAN_UNACTIVE_ABORTED) && (*tran_state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS))
+      er_log_debug (ARG_FILE_LINE, "ends_transaction_after_query_execution: active transaction.\n");
+      return;
+    }
+
+  /* We commit/abort transaction, after ending queries. */
+  all_error_code = NO_ERROR;
+  if ((*tran_state != TRAN_UNACTIVE_ABORTED) && (*tran_state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS))
+    {
+      /* If not already aborted, ends the queries. */
+      for (i = 0; i < n_query_ids; i++)
 	{
-	  /* If not already aborted, ends the queries. */
-	  for (i = 0; i < n_query_ids; i++)
+	  if (p_end_queries[i] > 0)
 	    {
-	      if (p_end_queries[i] > 0)
+	      error_code = xqmgr_end_query (thread_p, p_end_queries[i]);
+	      if (error_code != NO_ERROR)
 		{
-		  error_code = xqmgr_end_query (thread_p, p_end_queries[i]);
-		  if (error_code != NO_ERROR)
-		    {
-		      all_error_code = error_code;
-		      /* Continue to try to close as many queries as possible. */
-		    }
+		  all_error_code = error_code;
+		  /* Continue to try to close as many queries as possible. */
 		}
 	    }
 	}
+    }
 
-      if (all_error_code != NO_ERROR)
-	{
-	  (void) return_error_to_client (thread_p, rid);
-	  *end_query_allowed = false;
-	}
-      else if (need_abort == false)
-	{
-	  /* Needs commit. */
-	  *tran_state = stran_server_commit_internal (thread_p, rid, false, should_conn_reset);
-	  er_log_debug (ARG_FILE_LINE, "ends_transaction_after_query_execution: transaction committed. \n");
-	}
-      else
-	{
-	  /* Needs abort. */
-	  if ((*tran_state != TRAN_UNACTIVE_ABORTED) && (*tran_state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS))
-	    {
-	      /* We have an error and the transaction was not aborted. Since is auto commit transaction, we can abort it.
-	       * In this way, we can avoid abort request.
-	       */
-	      *tran_state = stran_server_abort_internal (thread_p, rid, should_conn_reset);
-	      er_log_debug (ARG_FILE_LINE, "ends_transaction_after_query_execution: transaction aborted. \n");
-	    }
-	  else
-	    {
-	      /* Transaction was already aborted. */
-	      *should_conn_reset = xtran_should_connection_reset (thread_p, has_updated);
-	    }
-	}
+  if (all_error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      *end_query_allowed = false;
+    }
+  else if (need_abort == false)
+    {
+      /* Needs commit. */
+      *tran_state = stran_server_commit_internal (thread_p, rid, false, should_conn_reset);
+      er_log_debug (ARG_FILE_LINE, "ends_transaction_after_query_execution: transaction committed. \n");
     }
   else
     {
-      er_log_debug (ARG_FILE_LINE, "ends_transaction_after_query_execution: active transaction.\n");
+      /* Needs abort. */
+      if ((*tran_state != TRAN_UNACTIVE_ABORTED) && (*tran_state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS))
+	{
+	  /* We have an error and the transaction was not aborted. Since is auto commit transaction, we can abort it.
+	   * In this way, we can avoid abort request.
+	   */
+	  *tran_state = stran_server_abort_internal (thread_p, rid, should_conn_reset);
+	  er_log_debug (ARG_FILE_LINE, "ends_transaction_after_query_execution: transaction aborted. \n");
+	}
+      else
+	{
+	  /* Transaction was already aborted. */
+	  *should_conn_reset = xtran_should_connection_reset (thread_p, has_updated);
+	}
     }
 }
 
@@ -4765,16 +4764,15 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   CACHE_TIME_RESET (&srv_cache_time);
 
   /* call the server routine of query execute */
-  list_id =
-    xqmgr_execute_query (thread_p, &xasl_id, &query_id, dbval_cnt, data, &query_flag, &clt_cache_time, &srv_cache_time,
-			 query_timeout, &xasl_cache_entry_p);
+  list_id = xqmgr_execute_query (thread_p, &xasl_id, &query_id, dbval_cnt, data, &query_flag, &clt_cache_time,
+				 &srv_cache_time, query_timeout, &xasl_cache_entry_p);
 
-  if (data && data != aligned_data_buf)
+  if (data != NULL && data != aligned_data_buf)
     {
       free_and_init (data);
     }
 
-  if (xasl_cache_entry_p)
+  if (xasl_cache_entry_p != NULL)
     {
       info = xasl_cache_entry_p->sql_info;
     }
@@ -4790,8 +4788,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   if (list_id == NULL)
 #endif
     {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
+      ASSERT_ERROR_AND_SET (error_code);
 
       if (error_code != NO_ERROR)
 	{
@@ -4837,7 +4834,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   page_size = 0;
   page_ptr = NULL;
-  if (list_id)
+  if (list_id != NULL)
     {
       /* get the first page of the list file */
       if (VPID_ISNULL (&(list_id->first_vpid)))
@@ -4849,7 +4846,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	{
 	  page_ptr = qmgr_get_old_page (thread_p, &(list_id->first_vpid), list_id->tfile_vfid);
 
-	  if (page_ptr)
+	  if (page_ptr != NULL)
 	    {
 	      /* calculate page size */
 	      if (QFILE_GET_TUPLE_COUNT (page_ptr) == -2 || QFILE_GET_OVERFLOW_PAGE_ID (page_ptr) != NULL_PAGEID)
@@ -4868,8 +4865,9 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	      page_ptr = aligned_page_buf;
 
 	      /* for now, allow end query if there is only one page */
-	      if (!VPID_EQ (&list_id->first_vpid, &list_id->last_vpid))
+	      if (list_id->page_cnt != 1)
 		{
+		  // This execution request is followed by fetch.
 		  end_query_allowed = false;
 		}
 	    }
@@ -4881,11 +4879,11 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     }
 
   replydata_size = list_id ? or_listid_length (list_id) : 0;
-  if (replydata_size)
+  if (0 < replydata_size)
     {
       /* pack list file id as a reply data */
       replydata = (char *) db_private_alloc (thread_p, replydata_size);
-      if (replydata)
+      if (replydata != NULL)
 	{
 	  (void) or_pack_listid (replydata, list_id);
 	}
@@ -4954,7 +4952,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	}
     }
 
-  if (xasl_cache_entry_p)
+  if (xasl_cache_entry_p != NULL)
     {
       xcache_unfix (thread_p, xasl_cache_entry_p);
       xasl_cache_entry_p = NULL;
@@ -4986,7 +4984,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       stran_server_auto_commit_or_abort (thread_p, rid, p_net_Deferred_end_queries, n_query_ids,
 					 tran_abort, has_updated, &end_query_allowed, &tran_state, &should_conn_reset);
       /* pack end query result */
-      if (end_query_allowed)
+      if (end_query_allowed == true)
 	{
 	  /* query ended */
 	  ptr = or_pack_int (ptr, NO_ERROR);
@@ -4994,7 +4992,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       else
 	{
 	  /* query not ended */
-	  ptr = or_pack_int (ptr, ER_FAILED);
+	  ptr = or_pack_int (ptr, !NO_ERROR);
 	}
 
       /* pack commit/abart/active result */
@@ -5011,11 +5009,11 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 				       replydata_size, page_ptr, page_size, queryinfo_string, queryinfo_string_length);
 
   /* free QFILE_LIST_ID duplicated by xqmgr_execute_query() */
-  if (replydata)
+  if (replydata != NULL)
     {
       db_private_free_and_init (thread_p, replydata);
     }
-  if (list_id)
+  if (list_id != NULL)
     {
       QFILE_FREE_AND_INIT_LIST_ID (list_id);
     }
