@@ -2805,7 +2805,7 @@ classobj_cache_constraint_entry (const char *name, DB_SEQ * constraint_seq, SM_C
    *  encoded B-tree ID
    */
   info_len = set_size (constraint_seq);
-  att_cnt = (info_len - 2) / 2;	/* excludes BTID and comment */
+  att_cnt = (info_len - 3) / 2;	/* excludes BTID, status and comment */
   e = 0;
 
   /* get the btid */
@@ -3939,23 +3939,37 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 
 	      /* Get the status. */
 	      set_get_element (info, info_len - 2, &statusval);
-
-	      new_->index_status = (SM_INDEX_STATUS) db_get_int (&statusval);
-
-	      if (set_get_element (info, info_len - 1, &cvalue))
+	      if (db_value_type (&statusval) == DB_TYPE_INTEGER)
 		{
-		  /* if not exists, set comment to null */
-		  new_->comment = NULL;
-		}
-	      else if (DB_IS_NULL (&cvalue) || DB_VALUE_TYPE (&cvalue) == DB_TYPE_STRING)
-		{
-		  /* take "cvalue == null" case into account */
-		  new_->comment = db_get_string (&cvalue);
+		  new_->index_status = (SM_INDEX_STATUS) db_get_int (&statusval);
+		  if (set_get_element (info, info_len - 1, &cvalue))
+		    {
+		      /* if not exists, set comment to null */
+		      new_->comment = NULL;
+		    }
+		  else if (DB_IS_NULL (&cvalue) || DB_VALUE_TYPE (&cvalue) == DB_TYPE_STRING)
+		    {
+		      /* take "cvalue == null" case into account */
+		      new_->comment = db_get_string (&cvalue);
+		    }
+		  else
+		    {
+		      goto structure_error;
+		    }
 		}
 	      else
 		{
-		  goto structure_error;
+		  /*  This means the comment is inexistent, not even added to the sequence. This results in status
+		   *  is located in the last position instead.
+		   */
+		  set_get_element (info, info_len - 1, &statusval);
+		  new_->index_status = (SM_INDEX_STATUS) db_get_int (&statusval);
+		  new_->comment = NULL;
 		}
+
+
+
+
 
 	      /* clear each unique info sequence value */
 	      pr_clear_value (&uvalue);
