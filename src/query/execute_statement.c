@@ -13497,8 +13497,10 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      return err;
 	    }
-	  // nothing to flush.
-	  assert (!ws_need_flush ());
+	  /* Nothing to flush. However ws_Num_dirty_mop is not 0 sometimes. We may reset ws_Num_dirty_mop to 0,
+	   * if flushed without errors, but is not necessary. Before sending data to the server, we check that
+	   * the transaction was not finalized, in case of execution with commit.
+	   */
 	}
     }
 
