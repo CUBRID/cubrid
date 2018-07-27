@@ -26,14 +26,17 @@
 #ifndef _LOG_GENERATOR_HPP_
 #define _LOG_GENERATOR_HPP_
 
-
-#include "replication_object.hpp"
 #include "replication_stream_entry.hpp"
-#include "multi_thread_stream.hpp"
-#include <vector>
+
+namespace cubstream
+{
+  class multi_thread_stream;
+}
 
 namespace cubreplication
 {
+
+  class replication_object;
 
   /*
    * class for producing log stream entries

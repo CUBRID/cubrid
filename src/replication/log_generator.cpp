@@ -25,10 +25,9 @@
 
 #include "log_generator.hpp"
 #include "replication_stream_entry.hpp"
-#include "thread_entry.hpp"
 #include "multi_thread_stream.hpp"
-#include "connection_globals.h"
 #include "log_impl.h"
+#include "system_parameter.h"
 
 namespace cubreplication
 {

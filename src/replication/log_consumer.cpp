@@ -26,6 +26,7 @@
 #include "log_consumer.hpp"
 #include "multi_thread_stream.hpp"
 #include "replication_stream_entry.hpp"
+#include "system_parameter.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_task.hpp"
