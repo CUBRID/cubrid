@@ -14390,13 +14390,14 @@ sm_add_secondary_index_on_partition (MOP classop, DB_CONSTRAINT_TYPE constraint_
 				     const char *constraint_name, const char **att_names, const int *asc_desc,
 				     const int *attrs_prefix_length, int class_attributes,
 				     SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index,
-				     const char *comment, SM_INDEX_STATUS index_status, MOP * sub_partitions)
+				     const char *comment, bool is_online_index, MOP * sub_partitions)
 {
-  int error, n_attrs, i;
+  int error, i;
   bool set_savept = false;
   SM_FUNCTION_INFO *new_func_index_info = NULL;
   SM_PREDICATE_INFO *new_filter_index_info = NULL;
   const char *class_name, *partition_name;
+  SM_INDEX_STATUS index_status = (is_online_index) ? (SM_ONLINE_INDEX_BUILDING_IN_PROGRESS) : (SM_NORMAL_INDEX);
 
   /* TODO: This will not work for online indexes from the point of view of concurrent transactions since the 
    * global index will hold the lock until all the partitions finished loading.
@@ -14498,7 +14499,7 @@ sm_add_secondary_index_on_partition (MOP classop, DB_CONSTRAINT_TYPE constraint_
 
       error = sm_add_constraint (sub_partitions[i], constraint_type, constraint_name, att_names, asc_desc,
 				 attrs_prefix_length, class_attributes, new_filter_index_info, new_func_index_info,
-				 comment, index_status);
+				 comment, is_online_index);
     }
 
 end:
@@ -14624,7 +14625,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 
 	      error = sm_add_secondary_index_on_partition (classop, constraint_type, constraint_name, att_names,
 							   asc_desc, attrs_prefix_length, class_attributes,
-							   filter_index, function_index, comment, index_status,
+							   filter_index, function_index, comment, is_online_index,
 							   sub_partitions);
 	      if (error != NO_ERROR)
 		{
