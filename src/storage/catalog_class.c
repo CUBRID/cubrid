@@ -2278,7 +2278,10 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
       /* the sequence of keys also includes the B+tree ID and the filter predicate expression in the first two
        * positions (0 and 1) */
       key_size = set_size (key_seq_p);
-      att_cnt = (key_size - 2) / 2;
+      att_cnt = (key_size - 3) / 2;
+
+      /* Get status. */
+      error = set_get_element (key_seq_p, key_size - 2, &attrs[11].value);
 
       /* comment */
       error = set_get_element (key_seq_p, key_size - 1, &attrs[10].value);
@@ -2291,7 +2294,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
       if (!is_primary_key && !is_foreign_key)
 	{
 	  /* prefix_length or filter index */
-	  error = set_get_element (key_seq_p, key_size - 2, &svalue);
+	  error = set_get_element (key_seq_p, key_size - 3, &svalue);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
@@ -2354,10 +2357,6 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 		  else if (!intl_identifier_casecmp (db_get_string (&avalue), SM_PREFIX_INDEX_ID))
 		    {
 		      flag = 0x03;
-		    }
-		  else if (!intl_identifier_casecmp (db_get_string (&avalue), SM_INDEX_STATUS_ID))
-		    {
-		      flag = 0x04;
 		    }
 
 		  pr_clear_value (&avalue);
@@ -2499,11 +2498,6 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 		      prefix_seq = db_get_set (pvalue);
 		      break;
 
-		    case 0x04:
-		      status_value = db_value_copy (&avalue);
-		      status_seq = db_get_set (status_value);
-		      break;
-
 		    default:
 		      break;
 		    }
@@ -2617,29 +2611,6 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	  pvalue = NULL;
 	}
 
-      if (status_value)
-	{
-	  error = set_get_element_nocopy (status_seq, 0, attr_val_p);
-	  if (error != NO_ERROR)
-	    {
-	      goto error;
-	    }
-
-	  /* Add status. */
-	  db_make_int (&attrs[11].value, (db_get_int (attr_val_p)));
-
-	  if (status_value != NULL)
-	    {
-	      pr_free_ext_value (status_value);
-	      status_value = NULL;
-	    }
-
-	  if (attr_val_p != NULL)
-	    {
-	      pr_clear_value (attr_val_p);
-	    }
-	}
-
       /* is_reverse */
       db_make_int (&attrs[5].value, is_reverse);
 
@@ -2661,12 +2632,6 @@ error:
   pr_clear_value (&svalue);
   pr_clear_value (&val);
   pr_clear_value (&avalue);
-
-  if (status_value != NULL)
-    {
-      pr_free_ext_value (status_value);
-      status_value = NULL;
-    }
 
   if (pvalue)
     {
