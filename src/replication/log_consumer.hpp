@@ -29,6 +29,7 @@
 #include "cubstream.hpp"
 #include "thread_manager.hpp"
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <queue>
 
