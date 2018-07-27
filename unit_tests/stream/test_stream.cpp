@@ -1139,17 +1139,16 @@ namespace test_stream
     stream_context_manager::g_stream = &test_stream_for_pack;
 
     cubthread::entry_workpool *packing_worker_pool =
-	    cub_th_m->create_worker_pool (stream_context_manager::g_pack_threads, stream_context_manager::g_pack_threads, &ctx_m1,
-					  1,
-					  false);
+	    cub_th_m->create_worker_pool (stream_context_manager::g_pack_threads,
+					  stream_context_manager::g_pack_threads, NULL, &ctx_m1, 1, false);
 
     cubthread::entry_workpool *unpacking_worker_pool =
-	    cub_th_m->create_worker_pool (stream_context_manager::g_unpack_threads, stream_context_manager::g_unpack_threads,
-					  &ctx_m2, 1, false);
+	    cub_th_m->create_worker_pool (stream_context_manager::g_unpack_threads,
+					  stream_context_manager::g_unpack_threads, NULL, &ctx_m2, 1, false);
 
     cubthread::entry_workpool *read_byte_worker_pool =
-	    cub_th_m->create_worker_pool (stream_context_manager::g_read_byte_threads, stream_context_manager::g_read_byte_threads,
-					  &ctx_m3, 1, false);
+	    cub_th_m->create_worker_pool (stream_context_manager::g_read_byte_threads,
+					  stream_context_manager::g_read_byte_threads, NULL, &ctx_m3, 1, false);
 
     for (i = 0; i < stream_context_manager::g_pack_threads; i++)
       {
