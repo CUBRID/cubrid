@@ -190,7 +190,11 @@ set(MONITOR_HEADERS
 )
 
 set (REPLICATION_HEADERS
+  ${REPLICATION_DIR}/log_generator.hpp
+  ${REPLICATION_DIR}/log_consumer.hpp
   ${REPLICATION_DIR}/replication_master_senders_manager.hpp
+  ${REPLICATION_DIR}/replication_object.hpp
+  ${REPLICATION_DIR}/replication_stream_entry.hpp
   )
 
 set(QUERY_SOURCES
@@ -233,7 +237,7 @@ set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/replication_object.cpp
   ${REPLICATION_DIR}/replication_master_senders_manager.cpp  
   ${REPLICATION_DIR}/replication_stream_entry.cpp
-  )  
+  )
 
 set(JSP_SOURCES
   ${JSP_DIR}/jsp_sr.c

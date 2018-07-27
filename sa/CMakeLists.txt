@@ -235,6 +235,14 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/work_space.c
   )
 
+set (REPLICATION_HEADERS
+  ${REPLICATION_DIR}/log_generator.hpp
+  ${REPLICATION_DIR}/log_consumer.hpp
+  ${REPLICATION_DIR}/replication_master_senders_manager.hpp
+  ${REPLICATION_DIR}/replication_object.hpp
+  ${REPLICATION_DIR}/replication_stream_entry.hpp
+  )
+
 set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_consumer.cpp
   ${REPLICATION_DIR}/log_generator.cpp
@@ -430,6 +438,7 @@ add_library(cubridsa SHARED
   ${OPTIMIZER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
+  ${REPLICATION_HEADERS}
   ${REPLICATION_SOURCES}
   ${STREAM_HEADERS}  
   ${STREAM_SOURCES}
