@@ -342,7 +342,7 @@ namespace test_replication
 
     gen_repl_context_manager ctx_m1;
     cubthread::entry_workpool *gen_worker_pool =
-	    cub_th_m->create_worker_pool (GEN_THREAD_CNT, GEN_THREAD_CNT, &ctx_m1,
+	    cub_th_m->create_worker_pool (GEN_THREAD_CNT, GEN_THREAD_CNT, "test_pool", &ctx_m1,
 					  1,
 					  1);
     tasks_running = TASKS_CNT;

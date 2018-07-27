@@ -303,6 +303,7 @@ namespace cubreplication
 
     m_applier_workers_pool = cubthread::get_manager ()->create_worker_pool (m_applier_worker_threads_count,
 			     m_applier_worker_threads_count,
+			     "replication_apply_workers",
 			     NULL, 1, 1);
 
     m_use_daemons = true;
