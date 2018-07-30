@@ -1937,7 +1937,7 @@ smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name, DB_
  *   filter_index(in): filter index info
  *   function_index(in): function index info
  *   comment(in): constraint comment
- *   onlindex_index_status(in):
+ *   index_status(in):
  */
 int
 smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,

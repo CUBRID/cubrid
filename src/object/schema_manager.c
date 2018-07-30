@@ -9112,7 +9112,7 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			  if (classobj_put_index (&flat->properties, c->type, c->name, attrs, c->asc_desc,
 						  c->attrs_prefix_length, &index_btid, c->filter_predicate, c->fk_info,
 						  NULL, c->func_index_info, c->comment, c->index_status, true)
-                              != NO_ERROR)
+			      != NO_ERROR)
 			    {
 			      pr_clear_value (&cnstr_val);
 			      goto structure_error;
@@ -10809,8 +10809,8 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
    * This is where the promotion of attribute name references to ids references happens. 
    */
   if (classobj_put_index (&(class_->properties), con->type, con->name, con->attributes, con->asc_desc,
-                          con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, con->fk_info, NULL,
-                          con->func_index_info, con->comment, con->index_status, false) != NO_ERROR)
+			  con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, con->fk_info, NULL,
+			  con->func_index_info, con->comment, con->index_status, false) != NO_ERROR)
     {
       return error;
     }
@@ -11540,9 +11540,9 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 
 	      error =
 		classobj_put_index (&(flat->properties), con->type, con->name, con->attributes, con->asc_desc,
-                                    con->attrs_prefix_length, &(con->index_btid), con->filter_predicate,
-                                    con->fk_info, con->shared_cons_name, con->func_index_info, con->comment,
-                                    con->index_status, false);
+				    con->attrs_prefix_length, &(con->index_btid), con->filter_predicate,
+				    con->fk_info, con->shared_cons_name, con->func_index_info, con->comment,
+				    con->index_status, false);
 	      if (error != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
@@ -11553,8 +11553,8 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	    {
 	      error =
 		classobj_put_index (&(flat->properties), con->type, con->name, con->attributes, con->asc_desc,
-                                    con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, NULL, NULL,
-                                    con->func_index_info, con->comment, con->index_status, false);
+				    con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, NULL, NULL,
+				    con->func_index_info, con->comment, con->index_status, false);
 	      if (error != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
@@ -13647,8 +13647,8 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type, const char *co
       /* modify the class to point at the new index */
       error =
 	classobj_put_index (&(class_->properties), constraint_type, constraint_name, attrs, asc_desc,
-                            attrs_prefix_length, &index, filter_index, NULL, out_shared_cons_name, function_index,
-                            comment, false);
+			    attrs_prefix_length, &index, filter_index, NULL, out_shared_cons_name, function_index,
+			    comment, false);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -14537,6 +14537,7 @@ end:
  *     		class attributes. A false value indicates that the names
  *     		refer to instance attributes.
  *   comment(in): constraint comment
+ *   is_online_index(in):
  *
  *  Note: When adding NOT NULL constraint, this function doesn't check the
  *	  existing values of the attribute. To make sure NOT NULL constraint
@@ -14712,34 +14713,33 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
       break;
 
     case DB_CONSTRAINT_NOT_NULL:
-      // TODO - refactor me
       def = smt_edit_class_mop (classop, AU_ALTER);
       if (def == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
 	  return error;
 	}
-      else
-	{
-	  error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length,
-				      class_attributes, NULL, filter_index, function_index, comment, index_status);
-	  if (error == NO_ERROR)
-	    {
-	      error = do_check_fk_constraints (def, NULL);
-	    }
-	  if (error == NO_ERROR)
-	    {
-	      error = sm_update_class (def, NULL);
-	    }
 
-	  if (error == NO_ERROR)
-	    {
-	      /* don't have to update stats for NOT NULL */
-	    }
-	  else
-	    {
-	      smt_quit (def);
-	    }
+      error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length,
+				  class_attributes, NULL, filter_index, function_index, comment, index_status);
+      if (error != NO_ERROR)
+	{
+	  smt_quit (def);
+	  return error;
+	}
+
+      error = do_check_fk_constraints (def, NULL);
+      if (error != NO_ERROR)
+	{
+	  smt_quit (def);
+	  return error;
+	}
+
+      error = sm_update_class (def, NULL);
+      if (error != NO_ERROR)
+	{
+	  smt_quit (def);
+	  return error;
 	}
       break;
 
