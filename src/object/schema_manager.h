@@ -241,6 +241,8 @@ extern struct parser_context *sm_virtual_queries (struct parser_context *parser,
 
 
 extern int sm_flush_objects (MOP obj);
+extern int sm_decache_mop (MOP mop, void *info);
+extern int sm_decache_instances_after_query_executed_with_commit (MOP class_mop);
 extern int sm_flush_and_decache_objects (MOP obj, int decache);
 extern int sm_flush_for_multi_update (MOP class_mop);
 

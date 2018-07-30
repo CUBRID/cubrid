@@ -8190,7 +8190,16 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
 	      for (cl_name_node = spec->info.spec.flat_entity_list; cl_name_node && error == NO_ERROR;
 		   cl_name_node = cl_name_node->next)
 		{
-		  error = sm_flush_and_decache_objects (cl_name_node->info.name.db_object, true);
+		  if (statement->use_auto_commit && tran_was_latest_query_committed ())
+		    {
+		      /* Nothing to flush. Avoids flush, since may fetch the class.  */
+		      error = sm_decache_instances_after_query_executed_with_commit (cl_name_node->info.name.db_object);
+		    }
+		  else
+		    {
+		      error = sm_flush_and_decache_objects (cl_name_node->info.name.db_object, true);
+		    }
+
 		}
 	      spec = spec->next;
 	    }
@@ -9297,7 +9306,15 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 			{
 			  flat = spec->info.spec.flat_entity_list;
 			  class_obj = (flat) ? flat->info.name.db_object : NULL;
-			  err = sm_flush_and_decache_objects (class_obj, true);
+			  if (statement->use_auto_commit && tran_was_latest_query_committed ())
+			    {
+			      /* Nothing to flush. Avoids flush, since may fetch the class.  */
+			      err = sm_decache_instances_after_query_executed_with_commit (class_obj);
+			    }
+			  else
+			    {
+			      err = sm_flush_and_decache_objects (class_obj, true);
+			    }
 			}
 
 		      spec = spec->next;
@@ -9327,7 +9344,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      flat = spec->info.spec.flat_entity_list;
 	      class_obj = (flat) ? flat->info.name.db_object : NULL;
 
-	      if (class_obj)
+	      if (class_obj && (statement->use_auto_commit == false || !tran_was_latest_query_committed ()))
 		{
 		  err = db_is_vclass (class_obj);
 		  if (err > 0)
@@ -9807,7 +9824,15 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      if (node->info.spec.flag & PT_SPEC_FLAG_DELETE)
 		{
 		  class_obj = node->info.spec.flat_entity_list->info.name.db_object;
-		  error = sm_flush_and_decache_objects (class_obj, true);
+		  if (statement->use_auto_commit)
+		    {
+		      /* Nothing to flush. Avoids flush, since may fetch the class.  */
+		      error = sm_decache_instances_after_query_executed_with_commit (class_obj);
+		    }
+		  else
+		    {
+		      error = sm_flush_and_decache_objects (class_obj, true);
+		    }
 		}
 
 	      node = node->next;
@@ -10559,7 +10584,15 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      flat = node->info.spec.flat_entity_list;
 		      class_obj = (flat) ? flat->info.name.db_object : NULL;
 
-		      err2 = sm_flush_and_decache_objects (class_obj, true);
+		      if (statement->use_auto_commit && tran_was_latest_query_committed ())
+			{
+			  /* Nothing to flush. Avoids flush, since may fetch the class.  */
+			  err2 = sm_decache_instances_after_query_executed_with_commit (class_obj);
+			}
+		      else
+			{
+			  err2 = sm_flush_and_decache_objects (class_obj, true);
+			}
 		    }
 
 		  node = node->next;
@@ -10590,7 +10623,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      flat = node->info.spec.flat_entity_list;
 	      class_obj = (flat) ? flat->info.name.db_object : NULL;
 
-	      if (class_obj)
+	      if (class_obj && (statement->use_auto_commit == false || !tran_was_latest_query_committed ()))
 		{
 		  err = db_is_vclass (class_obj);
 		  if (err > 0)
@@ -11040,7 +11073,15 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  MOP class_obj = statement->info.insert.spec->info.spec.flat_entity_list->info.name.db_object;
 
-	  error = sm_flush_and_decache_objects (class_obj, true);
+	  if (statement->use_auto_commit && tran_was_latest_query_committed ())
+	    {
+	      /* Nothing to flush. Avoids flush, since may fetch the class.  */
+	      error = sm_decache_instances_after_query_executed_with_commit (class_obj);
+	    }
+	  else
+	    {
+	      error = sm_flush_and_decache_objects (class_obj, true);
+	    }
 	}
 
       if (parser->return_generated_keys)
@@ -16174,7 +16215,16 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  if (list_id->tuple_cnt > 0)
 	    {
-	      err = sm_flush_and_decache_objects (class_obj, true);
+	      if (statement->use_auto_commit && tran_was_latest_query_committed ())
+		{
+		  /* Nothing to flush. Avoids flush, since may fetch the class.  */
+		  err = sm_decache_instances_after_query_executed_with_commit (class_obj);
+		}
+	      else
+		{
+		  err = sm_flush_and_decache_objects (class_obj, true);
+		}
+
 	    }
 	  if (err >= NO_ERROR)
 	    {

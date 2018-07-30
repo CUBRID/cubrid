@@ -4528,14 +4528,7 @@ locator_mflush (MOP mop, void *mf)
     {
       if (mflush->decache)
 	{
-	  if (WS_ISVID (mop))
-	    {
-	      vid_decache_instance (mop);
-	    }
-	  else
-	    {
-	      ws_decache (mop);
-	    }
+	  (void) sm_decache_mop (mop, NULL);
 	}
 
       return WS_MAP_CONTINUE;

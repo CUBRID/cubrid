@@ -5907,6 +5907,77 @@ sm_flush_objects (MOP obj)
 }
 
 /*
+* sm_decache_mop() - Decache mop.
+*   return: error code.
+*   mop(in): mop
+*   info(in): additional information, currently not used.
+*/
+int
+sm_decache_mop (MOP mop, void *info)
+{
+  if (WS_ISVID (mop))
+    {
+      vid_decache_instance (mop);
+    }
+  else
+    {
+      ws_decache (mop);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+* sm_decache_instances_after_query_executed_with_commit() - Decache class instannces after
+*     query execution with commit.
+*   return: error code
+*   class_mop(in): class mop
+*/
+int
+sm_decache_instances_after_query_executed_with_commit (MOP class_mop)
+{
+  SM_CLASS *class_;
+  DB_OBJLIST class_list, *obj = NULL;
+  MOBJ class_obj;
+
+  assert (class_mop != NULL && !WS_ISDIRTY (class_mop) && !locator_is_root (class_mop));
+
+  class_list.op = class_mop;
+  class_list.next = NULL;
+
+  if (ws_find (class_mop, &class_obj) == WS_FIND_MOP_DELETED)
+    {
+      /* Should not happen. */
+      return ER_FAILED;
+    }
+
+  class_ = (SM_CLASS *) class_obj;
+  assert (class_ != NULL);
+  if (class_->partition != NULL && class_->users != NULL)
+    {
+      class_list.next = class_->users;
+    }
+
+  /* Decache instances. */
+  for (obj = &class_list; obj != NULL; obj = obj->next)
+    {
+      if (obj->op == NULL || obj->op->object == NULL || class_->flags & SM_CLASSFLAG_SYSTEM)
+	{
+	  continue;
+	}
+
+      (void) ws_map_class (obj->op, sm_decache_mop, NULL);
+    }
+
+  for (obj = &class_list; obj != NULL; obj = obj->next)
+    {
+      ws_disconnect_deleted_instances (obj->op);
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * sm_flush_and_decache_objects() - Flush all the instances of a particular
  *    class to the server. Optionally decache the instances of the class.
  *   return: NO_ERROR on success, non-zero for ERROR
