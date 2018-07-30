@@ -1113,7 +1113,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 	    }
 
 	  int fk_index = 0;
-	  for (SM_FOREIGN_KEY_INFO * fk = fk_info; fk; fk = fk->next, fk_index++)
+	  for (SM_FOREIGN_KEY_INFO * fk = fk_info; fk; fk = fk->next)
 	    {
 	      if (classobj_put_seq_and_iterate (fk_container, fk_index,
 						classobj_make_foreign_key_ref_seq (fk)) != NO_ERROR)
@@ -8480,4 +8480,3 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
 
   return NO_ERROR;
 }
-
