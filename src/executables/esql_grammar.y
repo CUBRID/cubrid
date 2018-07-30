@@ -287,10 +287,6 @@ void mm_free (void);
 
 #endif
 
-#if defined(WINDOWS)
-#define inline
-#endif
-
 #if !defined(yytext_ptr)
 extern char *esql_yytext;
 extern int esql_yylineno;

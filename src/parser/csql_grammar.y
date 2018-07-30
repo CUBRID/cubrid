@@ -367,10 +367,6 @@ static bool is_analytic_function = false;
 
 #define PT_EMPTY INT_MAX
 
-#if defined(WINDOWS)
-#define inline
-#endif
-
 
 #define TO_NUMBER(a)			((UINTPTR)(a))
 #define FROM_NUMBER(a)			((PT_NODE*)(UINTPTR)(a))
