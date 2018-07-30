@@ -91,8 +91,6 @@ static OR_CLASSREP *or_get_old_representation (RECDES * record, int repid, int d
 static const char *or_find_diskattr (RECDES * record, int attr_id);
 static int or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string, int *alloced_string);
 
-static void or_install_btids_index_status (DB_SEQ * index_status_seq, OR_INDEX * index);
-
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * orc_class_rep_dir () - Extracts the OID of representation
@@ -4070,16 +4068,3 @@ error:
   return;
 }
 
-void
-or_install_btids_index_status (DB_SEQ * online_seq, OR_INDEX * index)
-{
-  DB_VALUE val;
-
-  assert (online_seq != NULL);
-  if (set_get_element_nocopy (online_seq, 0, &val) != NO_ERROR)
-    {
-      return;
-    }
-
-  index->index_status = OR_INDEX_STATUS (db_get_int (&val));
-}
