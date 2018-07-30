@@ -90,6 +90,9 @@ static int db_Delayed_hosts_count = 0;
 /* a list of abnormal host status */
 static DB_HOST_STATUS_LIST db_Host_status_list;
 
+static int db_Override_tran_index = NULL_TRAN_INDEX;
+static int db_Saved_tran_index = NULL_TRAN_INDEX;
+
 static DB_HOST_STATUS *db_add_host_status (char *hostname, int status);
 static DB_HOST_STATUS *db_find_host_status (char *hostname);
 
@@ -2899,4 +2902,34 @@ void
 db_update_row_count_cache (const int row_count)
 {
   db_Row_count = row_count;
+}
+
+/*
+* db_get_override_tran_index () -
+* return : tran index
+*/
+int
+db_get_override_tran_index (void)
+{
+  return db_Override_tran_index;
+}
+
+/*
+* db_restore_tran_index () -
+* return : void
+*/
+void db_restore_tran_index (void)
+{
+  int saved_tran_index = tran_get_saved_tran_index ();
+  tran_set_tran_index (saved_tran_index);
+}
+
+/*
+* db_set_override_tran_index () -
+* return : void
+*/
+void
+db_set_override_tran_index (int tran_index)
+{
+  db_Override_tran_index = tran_index;
 }

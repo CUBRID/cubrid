@@ -1386,6 +1386,8 @@ typedef struct _ha_config
 #define DDL_PROXY_OUTPUT_FILE_S 'o'
 #define DDL_PROXY_COMMAND_L "command"
 #define DDL_PROXY_COMMAND_S 'c'
+#define DDL_PROXY_TRAN_INDEX_L "tran-index"
+#define DDL_PROXY_TRAN_INDEX_S 't'
 
 /* paramdump option list */
 #define PARAMDUMP_OUTPUT_FILE_S                 'o'

@@ -1213,6 +1213,12 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 
 #if defined(CS_MODE)
+  if (client_credential->client_type == DB_CLIENT_TYPE_DDL_PROXY)
+    {
+      tran_save_tran_index ();
+      tran_set_tran_index (db_get_override_tran_index ());
+    }
+
   if (lang_set_charset ((INTL_CODESET) boot_Server_credential.db_charset) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
@@ -1362,6 +1368,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   return error_code;
 
 error:
+
+  db_restore_tran_index ();
 
   /* free the thing get from au_user_name_dup() */
   if (is_db_user_alloced == true)

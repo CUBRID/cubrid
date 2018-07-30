@@ -41,6 +41,7 @@ typedef struct
   const char *passwd;
   const char *command;
   const char *out_file_name;
+  const char *tran_index;
 } DDL_CLIENT_ARGUMENT;
 
 static void
@@ -80,8 +81,12 @@ static int start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT
 {
   DB_SESSION *session = NULL;
   int rc = NO_ERROR;
+  int override_tran_index;
 
-  rc = db_restart_ex (program_name, args->db_name, args->user_name, args->passwd, NULL, DB_CLIENT_TYPE_ADMIN_CSQL);
+  override_tran_index = atoi (args->tran_index);
+  db_set_override_tran_index (override_tran_index);
+
+  rc = db_restart_ex (program_name, args->db_name, args->user_name, args->passwd, NULL, DB_CLIENT_TYPE_DDL_PROXY);
 
   if (rc != NO_ERROR)
     {
@@ -146,6 +151,8 @@ static int start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT
     }
 
 error:
+  db_restore_tran_index ();
+
   if (session != NULL)
     {
       db_close_session (session);
@@ -189,7 +196,7 @@ main (int argc, char *argv[])
 
       switch (option_key)
 	{
-	case CSQL_USER_S:
+	case DDL_PROXY_USER_S:
 	  if (arguments.user_name != NULL)
 	    {
 	      free ((void *) arguments.user_name);
@@ -197,7 +204,7 @@ main (int argc, char *argv[])
 	  arguments.user_name = strdup (optarg);
 	  break;
 
-	case CSQL_PASSWORD_S:
+	case DDL_PROXY_PASSWORD_S:
 	  if (arguments.passwd != NULL)
 	    {
 	      free ((void *) arguments.passwd);
@@ -206,7 +213,7 @@ main (int argc, char *argv[])
 	  util_hide_password (optarg);
 	  break;
 
-	case CSQL_OUTPUT_FILE_S:
+	case DDL_PROXY_OUTPUT_FILE_S:
 	  if (arguments.out_file_name != NULL)
 	    {
 	      free ((void *) arguments.out_file_name);
@@ -214,12 +221,20 @@ main (int argc, char *argv[])
 	  arguments.out_file_name = strdup (optarg);
 	  break;
 
-	case CSQL_COMMAND_S:
+	case DDL_PROXY_COMMAND_S:
 	  if (arguments.command != NULL)
 	    {
 	      free ((void *) arguments.command);
 	    }
 	  arguments.command = strdup (optarg);
+	  break;
+
+	case DDL_PROXY_TRAN_INDEX_S:
+	  if (arguments.tran_index != NULL)
+	    {
+	      free ((void *) arguments.tran_index);
+	    }
+	  arguments.tran_index = strdup (optarg);
 	  break;
 
 	case VERSION_S:
@@ -264,6 +279,10 @@ exit_on_end:
   if (arguments.command != NULL)
     {
       free ((void *) arguments.command);
+    }
+  if (arguments.tran_index != NULL)
+    {
+      free ((void *) arguments.tran_index);
     }
 
   return error;

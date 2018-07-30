@@ -39,7 +39,8 @@
 #define DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY   12
 #define DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY   13
 #define DB_CLIENT_TYPE_ADMIN_CSQL_WOS   14	/* admin csql that can write on standby */
-#define DB_CLIENT_TYPE_MAX              DB_CLIENT_TYPE_ADMIN_CSQL_WOS
+#define DB_CLIENT_TYPE_DDL_PROXY        15
+#define DB_CLIENT_TYPE_MAX              DB_CLIENT_TYPE_DDL_PROXY
 extern int db_Client_type;
 #endif
 
