@@ -98,6 +98,9 @@ static DB_SEQ *classobj_make_foreign_key_info_seq (SM_FOREIGN_KEY_INFO * fk_info
 static DB_SEQ *classobj_make_foreign_key_ref_seq (SM_FOREIGN_KEY_INFO * fk_info);
 static DB_SEQ *classobj_make_index_attr_prefix_seq (int num_attrs, const int *attrs_prefix_length);
 static DB_SEQ *classobj_make_index_filter_pred_seq (SM_PREDICATE_INFO * filter_index_info);
+static void classobj_put_value_and_iterate (DB_SEQ * destination, int &index, DB_VALUE & value);
+static int classobj_put_seq_and_iterate (DB_SEQ * destination, int &index, DB_SEQ * element);
+static int classobj_put_seq_with_name_and_iterate (DB_SEQ * destination, int &index, const char *name, DB_SEQ * seq);
 static SM_CONSTRAINT *classobj_make_constraint (const char *name, SM_CONSTRAINT_TYPE type, BTID * id,
 						bool has_function_constraint);
 static void classobj_free_constraint (SM_CONSTRAINT * constraint);
@@ -622,9 +625,9 @@ classobj_copy_props (DB_SEQ * properties, MOP filter_class, DB_SEQ ** new_proper
 	  if (is_global == 0)
 	    {
 	      if (classobj_put_index (new_properties, c->type, c->name, c->attributes, c->asc_desc,
-                                      c->attrs_prefix_length, &(c->index_btid), c->filter_predicate, c->fk_info,
-                                      c->shared_cons_name, c->func_index_info, c->comment, c->index_status, false)
-                  != NO_ERROR)
+				      c->attrs_prefix_length, &(c->index_btid), c->filter_predicate, c->fk_info,
+				      c->shared_cons_name, c->func_index_info, c->comment, c->index_status, false)
+		  != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -693,7 +696,6 @@ classobj_make_foreign_key_info_seq (SM_FOREIGN_KEY_INFO * fk_info)
 
 
   return fk_seq;
-
 }
 
 /*
@@ -875,7 +877,7 @@ classobj_make_index_filter_pred_seq (SM_PREDICATE_INFO * filter_index_info)
 }
 
 static void
-classobj_put_value_and_iterate (DB_SEQ * destination, int & index, DB_VALUE & value)
+classobj_put_value_and_iterate (DB_SEQ * destination, int &index, DB_VALUE & value)
 {
   set_put_element (destination, index, &value);
   pr_clear_value (&value);
@@ -885,7 +887,7 @@ classobj_put_value_and_iterate (DB_SEQ * destination, int & index, DB_VALUE & va
 }
 
 static int
-classobj_put_seq_and_iterate (DB_SEQ * destination, int & index, DB_SEQ * element)
+classobj_put_seq_and_iterate (DB_SEQ * destination, int &index, DB_SEQ * element)
 {
   if (element == NULL)
     {
@@ -896,16 +898,16 @@ classobj_put_seq_and_iterate (DB_SEQ * destination, int & index, DB_SEQ * elemen
   DB_VALUE elem_dbval;
   if (db_make_sequence (&elem_dbval, element) != NO_ERROR)
     {
-      assert (false);   // should not happen
+      assert (false);		// should not happen
       return ER_FAILED;
     }
-  
+
   classobj_put_value_and_iterate (destination, index, elem_dbval);
   return NO_ERROR;
 }
 
 static int
-classobj_put_seq_with_name_and_iterate (DB_SEQ * destination, int & index, char * name, DB_SEQ * seq)
+classobj_put_seq_with_name_and_iterate (DB_SEQ * destination, int &index, const char *name, DB_SEQ * seq)
 {
   // we make a sequence with name and seq and add that to destination
   DB_SEQ *subseq = set_create_sequence (0);
@@ -918,7 +920,7 @@ classobj_put_seq_with_name_and_iterate (DB_SEQ * destination, int & index, char 
   int subseq_index = 0;
   int error_code = NO_ERROR;
 
-  db_make_string (&value, name);
+  db_make_string_by_const_str (&value, name);
   classobj_put_value_and_iterate (subseq, subseq_index, value);
 
   error_code = classobj_put_seq_and_iterate (subseq, subseq_index, seq);
@@ -985,7 +987,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 		    const int *asc_desc, const int *attr_prefix_length, const BTID * id,
 		    SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name,
 		    SM_FUNCTION_INFO * func_index_info, const char *comment, SM_INDEX_STATUS index_status,
-                    bool attr_name_instead_of_id)
+		    bool attr_name_instead_of_id)
 {
   int i;
   const char *prop_name = classobj_map_constraint_to_property (type);
@@ -993,6 +995,9 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
   DB_SEQ *unique_property = NULL, *constraint = NULL;
   int found = 0;
   bool is_new_created = false;	/* Is *properties new created or not */
+  char buf[128], *pbuf;
+  int constraint_seq_index;
+  int num_attrs = 0;
 
   db_make_null (&pvalue);
   db_make_null (&value);
@@ -1038,11 +1043,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
       goto error;
     }
 
-  char buf[128], *pbuf;
-  int constraint_seq_index;
-  int num_attrs = 0;
-
-  constraint_seq_index = 0;			/* init */
+  constraint_seq_index = 0;	/* init */
 
   /* Fill the BTID into the sequence */
   if ((id == NULL || BTID_IS_NULL (id)) && shared_cons_name != NULL)
@@ -1085,15 +1086,15 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
   for (i = 0; atts[i] != NULL; i++)
     {
       if (attr_name_instead_of_id)
-        {
+	{
 	  /* name */
 	  db_make_string_by_const_str (&value, atts[i]->header.name);
-        }
+	}
       else
-        {
-          /* id */
-          db_make_int (&value, atts[i]->id);
-        }
+	{
+	  /* id */
+	  db_make_int (&value, atts[i]->id);
+	}
       classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
       /* asc_desc */
       db_make_int (&value, asc_desc ? asc_desc[i] : 0);
@@ -1104,40 +1105,39 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
   if (type == SM_CONSTRAINT_FOREIGN_KEY)
     {
       if (classobj_put_seq_and_iterate (constraint, constraint_seq_index, classobj_make_foreign_key_info_seq (fk_info))
-          != NO_ERROR)
-        {
-          goto error;
-        }
+	  != NO_ERROR)
+	{
+	  goto error;
+	}
     }
   else if (type == SM_CONSTRAINT_PRIMARY_KEY)
     {
       if (fk_info != NULL)
 	{
-          // create subset sequence for all foreign key references
+	  // create subset sequence for all foreign key references
 	  DB_SEQ *fk_container = set_create_sequence (1);
 	  if (fk_container == NULL)
 	    {
 	      goto error;
 	    }
 
-          int fk_index = 0;
-	  for (SM_FOREIGN_KEY_INFO *fk = fk_info; fk; fk = fk->next)
+	  int fk_index = 0;
+	  for (SM_FOREIGN_KEY_INFO * fk = fk_info; fk; fk = fk->next)
 	    {
-              if (classobj_put_seq_and_iterate (fk_container, i, classobj_make_foreign_key_ref_seq (fk))
-                  != NO_ERROR)
-                {
-                  set_free (fk_container);
-                  goto error;
-                }
+	      if (classobj_put_seq_and_iterate (fk_container, i, classobj_make_foreign_key_ref_seq (fk)) != NO_ERROR)
+		{
+		  set_free (fk_container);
+		  goto error;
+		}
 	    }
 
-          // put fk sequence into constraint sequence
-          if (classobj_put_seq_and_iterate (constraint, constraint_seq_index, fk_container) != NO_ERROR)
-            {
-              set_free (fk_container);
-              goto error;
-            }
-          fk_container = NULL;
+	  // put fk sequence into constraint sequence
+	  if (classobj_put_seq_and_iterate (constraint, constraint_seq_index, fk_container) != NO_ERROR)
+	    {
+	      set_free (fk_container);
+	      goto error;
+	    }
+	  fk_container = NULL;
 	}
     }
   else
@@ -1145,12 +1145,12 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
       if (filter_index_info == NULL && func_index_info == NULL)
 	{
 	  /* prefix length */
-          if (classobj_put_seq_and_iterate (constraint, constraint_seq_index,
-                                            classobj_make_index_attr_prefix_seq (num_attrs, attr_prefix_length))
-              != NO_ERROR)
-            {
-              goto error;
-            }
+	  if (classobj_put_seq_and_iterate (constraint, constraint_seq_index,
+					    classobj_make_index_attr_prefix_seq (num_attrs, attr_prefix_length))
+	      != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
       else
 	{
@@ -1163,43 +1163,43 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 
 	  if (filter_index_info != NULL)
 	    {
-              if (classobj_put_seq_with_name_and_iterate (seq, seq_index, SM_FILTER_INDEX_ID,
-                                                          classobj_make_index_filter_pred_seq (filter_index_info))
-                  != NO_ERROR)
-                {
-                  set_free (seq);
-                  goto error;
-                }
+	      if (classobj_put_seq_with_name_and_iterate (seq, seq_index, SM_FILTER_INDEX_ID,
+							  classobj_make_index_filter_pred_seq (filter_index_info))
+		  != NO_ERROR)
+		{
+		  set_free (seq);
+		  goto error;
+		}
 
-              if (classobj_put_seq_with_name_and_iterate (seq, seq_index, SM_PREFIX_INDEX_ID,
-                                                          classobj_make_index_attr_prefix_seq (num_attrs,
-                                                                                               attr_prefix_length))
-                  != NO_ERROR)
-                {
-                  set_free (seq);
-                  goto error;
-                }
+	      if (classobj_put_seq_with_name_and_iterate (seq, seq_index, SM_PREFIX_INDEX_ID,
+							  classobj_make_index_attr_prefix_seq (num_attrs,
+											       attr_prefix_length))
+		  != NO_ERROR)
+		{
+		  set_free (seq);
+		  goto error;
+		}
 	    }
 
 	  if (func_index_info != NULL)
 	    {
-              if (classobj_put_seq_with_name_and_iterate (seq, seq_index, SM_FUNCTION_INDEX_ID,
-                                                          classobj_make_function_index_info_seq (func_index_info))
-                  != NO_ERROR)
-                {
-                  set_free (seq);
-                  goto error;
-                }
+	      if (classobj_put_seq_with_name_and_iterate (seq, seq_index, SM_FUNCTION_INDEX_ID,
+							  classobj_make_function_index_info_seq (func_index_info))
+		  != NO_ERROR)
+		{
+		  set_free (seq);
+		  goto error;
+		}
 	    }
 
-          // now put seq into constraint
-          if (classobj_put_seq_and_iterate (constraint, constraint_seq_index, seq) != NO_ERROR)
-            {
-              set_free (seq);
-              goto error;
-            }
+	  // now put seq into constraint
+	  if (classobj_put_seq_and_iterate (constraint, constraint_seq_index, seq) != NO_ERROR)
+	    {
+	      set_free (seq);
+	      goto error;
+	    }
 
-          // ok
+	  // ok
 	}
     }
 
@@ -4158,8 +4158,8 @@ classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CONSTRAINT * 
 	  continue;
 	}
       if (classobj_put_index (properties, type, con->name, con->attributes, con->asc_desc, con->attrs_prefix_length,
-                              &(con->index_btid), con->filter_predicate, con->fk_info, con->shared_cons_name,
-                              con->func_index_info, con->comment, con->index_status, false) != NO_ERROR)
+			      &(con->index_btid), con->filter_predicate, con->fk_info, con->shared_cons_name,
+			      con->func_index_info, con->comment, con->index_status, false) != NO_ERROR)
 	{
 	  error = ER_SM_INVALID_PROPERTY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
