@@ -8481,38 +8481,3 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
   return NO_ERROR;
 }
 
-DB_SEQ *
-classobj_make_index_status_seq (SM_INDEX_STATUS index_status)
-{
-  DB_SEQ *online_seq;
-  DB_VALUE v;
-  int status = ((index_status == SM_ONLINE_INDEX_BUILDING_DONE) ? SM_NORMAL_INDEX : index_status);
-
-  online_seq = set_create_sequence (1);
-
-  if (online_seq == NULL)
-    {
-      return NULL;
-    }
-
-  db_make_int (&v, status);
-
-  set_put_element (online_seq, 0, &v);
-
-  return online_seq;
-}
-
-int
-classobj_make_index_status_info (DB_SEQ * index_status_seq)
-{
-  DB_VALUE v;
-
-  assert (index_status_seq != NULL && set_size (index_status_seq) == 1);
-
-  if (set_get_element_nocopy (index_status_seq, 0, &v) != NO_ERROR)
-    {
-      return SM_NO_INDEX;
-    }
-
-  return (db_get_int (&v));
-}

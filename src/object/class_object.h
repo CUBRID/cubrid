@@ -1109,7 +1109,4 @@ extern SM_PARTITION *classobj_make_partition_info (void);
 extern void classobj_free_partition_info (SM_PARTITION * partition_info);
 extern SM_PARTITION *classobj_copy_partition_info (SM_PARTITION * partition_info);
 
-extern DB_SEQ *classobj_make_index_status_seq (SM_INDEX_STATUS index_status);
-extern int classobj_make_index_status_info (DB_SEQ * online_seq);
-
 #endif /* _CLASS_OBJECT_H_ */
