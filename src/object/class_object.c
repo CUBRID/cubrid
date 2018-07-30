@@ -676,16 +676,15 @@ classobj_make_foreign_key_info_seq (SM_FOREIGN_KEY_INFO * fk_info)
     {
       return NULL;
     }
+
   sprintf (pbuf, "%d|%d|%d", (int) fk_info->ref_class_oid.pageid, (int) fk_info->ref_class_oid.slotid,
 	   (int) fk_info->ref_class_oid.volid);
-
   db_make_string (&value, pbuf);
   set_put_element (fk_seq, 0, &value);
 
   sprintf (pbuf, "%d|%d|%d", (int) fk_info->ref_class_pk_btid.vfid.volid, (int) fk_info->ref_class_pk_btid.vfid.fileid,
 	   (int) fk_info->ref_class_pk_btid.root_pageid);
   db_make_string (&value, pbuf);
-
   set_put_element (fk_seq, 1, &value);
 
   db_make_int (&value, fk_info->delete_action);
@@ -693,7 +692,6 @@ classobj_make_foreign_key_info_seq (SM_FOREIGN_KEY_INFO * fk_info)
 
   db_make_int (&value, fk_info->update_action);
   set_put_element (fk_seq, 3, &value);
-
 
   return fk_seq;
 }
@@ -720,15 +718,11 @@ classobj_make_foreign_key_ref_seq (SM_FOREIGN_KEY_INFO * fk_info)
 
   sprintf (pbuf, "%d|%d|%d", (int) fk_info->self_oid.pageid, (int) fk_info->self_oid.slotid,
 	   (int) fk_info->self_oid.volid);
-
-
   db_make_string (&value, pbuf);
   set_put_element (fk_seq, 0, &value);
 
   sprintf (pbuf, "%d|%d|%d", (int) fk_info->self_btid.vfid.volid, (int) fk_info->self_btid.vfid.fileid,
 	   (int) fk_info->self_btid.root_pageid);
-
-
   db_make_string (&value, pbuf);
   set_put_element (fk_seq, 1, &value);
 
@@ -741,10 +735,8 @@ classobj_make_foreign_key_ref_seq (SM_FOREIGN_KEY_INFO * fk_info)
   db_make_string (&value, fk_info->name);
   set_put_element (fk_seq, 4, &value);
 
-
   return fk_seq;
 }
-
 
 /*
  * classobj_describe_foreign_key_action()
@@ -771,8 +763,7 @@ classobj_describe_foreign_key_action (SM_FOREIGN_KEY_ACTION action)
 }
 
 /*
- * classobj_make_index_attr_prefix_seq() - Make sequence which contains
- *                                         prefix length
+ * classobj_make_index_attr_prefix_seq() - Make sequence which contains prefix length
  *   return: sequence
  *   num_attrs(in): key attribute count
  *   attrs_prefix_length(in): array which contains prefix length
@@ -810,8 +801,7 @@ classobj_make_index_attr_prefix_seq (int num_attrs, const int *attrs_prefix_leng
 }
 
 /*
- * classobj_make_index_attr_prefix_seq() - Make sequence which contains
- *                                         filter predicate
+ * classobj_make_index_attr_prefix_seq() - Make sequence which contains filter predicate
  *   return: sequence
  *   filter_index_info(in): filter predicate
  */
@@ -1083,7 +1073,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
     }
 
   /* Fill the indexed attributes into the sequence */
-  for (i = 0; atts[i] != NULL; i++)
+  for (i = 0, num_attrs = 0; atts[i] != NULL; i++, num_attrs++)
     {
       if (attr_name_instead_of_id)
 	{
@@ -1096,10 +1086,10 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 	  db_make_int (&value, atts[i]->id);
 	}
       classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
+
       /* asc_desc */
       db_make_int (&value, asc_desc ? asc_desc[i] : 0);
       classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
-      num_attrs++;
     }
 
   if (type == SM_CONSTRAINT_FOREIGN_KEY)
@@ -1116,15 +1106,17 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 	{
 	  // create subset sequence for all foreign key references
 	  DB_SEQ *fk_container = set_create_sequence (1);
+
 	  if (fk_container == NULL)
 	    {
 	      goto error;
 	    }
 
 	  int fk_index = 0;
-	  for (SM_FOREIGN_KEY_INFO * fk = fk_info; fk; fk = fk->next)
+	  for (SM_FOREIGN_KEY_INFO * fk = fk_info; fk; fk = fk->next, fk_index++)
 	    {
-	      if (classobj_put_seq_and_iterate (fk_container, i, classobj_make_foreign_key_ref_seq (fk)) != NO_ERROR)
+	      if (classobj_put_seq_and_iterate (fk_container, fk_index,
+						classobj_make_foreign_key_ref_seq (fk)) != NO_ERROR)
 		{
 		  set_free (fk_container);
 		  goto error;
@@ -1156,6 +1148,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 	{
 	  int seq_index = 0;
 	  DB_SEQ *seq = set_create_sequence (0);
+
 	  if (seq == NULL)
 	    {
 	      goto error;
