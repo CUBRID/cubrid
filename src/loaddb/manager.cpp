@@ -18,7 +18,7 @@
  */
 
 /*
- * manger.cpp - TODO CBRD-21654
+ * manger.cpp - entry point for server side loaddb
  */
 
 #ident "$Id$"
@@ -60,38 +60,35 @@ namespace cubload
 	return;
       }
 
-    m_worker_pool->execute (new load_parse_task (*this, batch));
-
-    //cubthread::get_manager ()->push_task (thread_ref, m_worker_pool, new load_parse_task (*this, batch));
-
-    batch.clear ();
+    m_worker_pool->execute (new load_parse_task (*this, batch, *thread_ref.conn_entry));
   }
 
   int
   manager::parse_file (cubthread::entry &thread_ref, std::string &file_name)
   {
-    object_file_splitter splitter (100000, file_name);
-
+    int batch_size = 100000; // TODO CBRD-21654 get batch size from cub_admin loaddb
     auto batch_handler = std::bind (&manager::parse_batch, std::ref (*this), std::ref (thread_ref),
 				    std::placeholders::_1);
-    struct timeval te;
-    gettimeofday (&te, NULL); // get current time
-    long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000;
-    std::cout << "started  at: " << milliseconds << "\n";
 
-    return splitter.split (batch_handler);
+    return split (batch_size, file_name, batch_handler);
   }
-
-  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   void
   load_parse_task::execute (cubthread::entry &thread_ref)
   {
+    driver *driver = m_manager.m_driver_pool.claim ();
+
+    if (driver == NULL)
+      {
+	assert (false);
+	return;
+      }
+
+    // save connection entry
+    thread_ref.conn_entry = &m_conn_entry;
+
     logtb_assign_tran_index (&thread_ref, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
 			     TRAN_DEFAULT_ISOLATION_LEVEL ());
-
-    driver *driver = m_manager.m_driver_pool.claim ();
-    assert (driver != NULL);
 
     std::istringstream iss (m_batch);
     driver->parse (iss);
@@ -101,12 +98,10 @@ namespace cubload
 	return;
       }
 
-    logtb_free_tran_index (&thread_ref, thread_ref.tran_index);
-    m_manager.m_driver_pool.retire (*driver);
+    //  TODO CBRD-21654 xtran_server_abort in case of error
 
-    struct timeval te;
-    gettimeofday (&te, NULL); // get current time
-    long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000;
-    std::cout << "finished at: " << milliseconds << "\n";
+    logtb_free_tran_index (&thread_ref, thread_ref.tran_index);
+
+    m_manager.m_driver_pool.retire (*driver);
   }
 } // namespace cubload

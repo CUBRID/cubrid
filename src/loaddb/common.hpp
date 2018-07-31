@@ -18,7 +18,7 @@
  */
 
 /*
- * common.hpp - TODO CBRD-21654
+ * common.hpp - common code used by loader
  */
 
 #ifndef _COMMON_HPP_
@@ -34,23 +34,6 @@
 
 namespace cubload
 {
-
-  class object_file_splitter
-  {
-    public:
-      object_file_splitter () = delete;
-      object_file_splitter (int batch_size, std::string &object_file_name);
-
-      template <typename Func>
-      int split (Func &&func);
-
-    private:
-      int m_batch_size;
-      std::string &m_object_file_name;
-
-      bool starts_with (const std::string &str, const std::string &prefix);
-      bool ends_with (const std::string &str, const std::string &suffix);
-  };
 
   /*
    * These are the "types" of strings that the lexer recognizes.  The
@@ -194,6 +177,13 @@ namespace cubload
   ///////////////////// common global functions /////////////////////
   void ldr_string_free (string_t **str);
   void ldr_class_command_spec_free (class_cmd_spec_t **class_cmd_spec);
+
+  template <typename Func>
+  int split (int batch_size, std::string &object_file_name, Func &&func);
+
+  bool starts_with (const std::string &str, const std::string &prefix);
+  bool ends_with (const std::string &str, const std::string &suffix);
+
 } // namespace cubload
 
 namespace cubload
@@ -201,12 +191,12 @@ namespace cubload
 
   template <typename Func>
   int
-  object_file_splitter::split (Func &&func)
+  split (int batch_size, std::string &object_file_name, Func &&func)
   {
     int rows = 0;
     std::string class_line;
     std::string batch_buffer;
-    std::ifstream object_file (m_object_file_name, std::fstream::in);
+    std::ifstream object_file (object_file_name, std::fstream::in);
 
     if (!object_file)
       {
@@ -214,40 +204,32 @@ namespace cubload
 	return ER_FAILED;
       }
 
-    assert (m_batch_size > 0);
+    assert (batch_size > 0);
 
     for (std::string line; std::getline (object_file, line);)
       {
 	if (starts_with (line, "%id"))
 	  {
 	    // do nothing for now
-	    //func (line);
 	    continue;
 	  }
 
 	if (starts_with (line, "%class"))
 	  {
+	    // store class line
+	    class_line = line;
+
 	    // close current batch
-	    if (!batch_buffer.empty ())
-	      {
-		std::string buf;
-		buf.append (class_line);
-		buf.append ("\n");
-
-		buf.append (batch_buffer);
-		//buf.append ("\n");
-
-		func (buf);
-
-		buf.clear ();
-		batch_buffer.clear ();
-	      }
+	    func (batch_buffer);
 
 	    // rewind forward rows counter until batch is full
-	    for (; (rows % m_batch_size) != 0; rows++);
+	    for (; (rows % batch_size) != 0; rows++)
+	      ;
 
-	    // start new batch for new class
-	    class_line = line;
+	    // start new batch for the class
+	    batch_buffer.clear ();
+	    batch_buffer.append (class_line);
+	    batch_buffer.append ("\n");
 	    continue;
 	  }
 
@@ -264,41 +246,21 @@ namespace cubload
 	    rows++;
 
 	    // check if we have a full batch
-	    if ((rows % m_batch_size) == 0)
+	    if ((rows % batch_size) == 0)
 	      {
-		if (!batch_buffer.empty ())
-		  {
-		    std::string buf;
-		    buf.append (class_line);
-		    buf.append ("\n");
+		func (batch_buffer);
 
-		    buf.append (batch_buffer);
-		    //buf.append ("\n");
-
-		    func (buf);
-
-		    buf.clear ();
-		    batch_buffer.clear ();
-		  }
+		// start new batch for the class
+		batch_buffer.clear ();
+		batch_buffer.append (class_line);
+		batch_buffer.append ("\n");
 	      }
 	  }
       }
 
     // collect remaining rows
-    if (!batch_buffer.empty ())
-      {
-	std::string buf;
-	buf.append (class_line);
-	buf.append ("\n");
-
-	buf.append (batch_buffer);
-	//buf.append ("\n");
-
-	func (buf);
-
-	buf.clear ();
-	batch_buffer.clear ();
-      }
+    func (batch_buffer);
+    batch_buffer.clear ();
 
     object_file.close ();
 

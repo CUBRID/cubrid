@@ -58,9 +58,11 @@ namespace cubload
 
     private:
       oid_t m_class_oid;
-      attr_id_t *m_attr_id;
-
+      attr_id_t *m_attr_ids;
       attr_info_t m_attr_info;
+
+      int m_err_total;
+      int m_total_fails;
   };
 
 } // namespace cubload

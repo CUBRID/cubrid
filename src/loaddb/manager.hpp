@@ -18,7 +18,7 @@
  */
 
 /*
- * manager.hpp - TODO CBRD-21654
+ * manager.hpp - entry point for server side loaddb
  */
 
 #ifndef _MANAGER_HPP_
@@ -30,11 +30,12 @@
 #include "resource_shared_pool.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
+#include "connection_defs.h"
 
 namespace cubload
 {
 
-  static const std::size_t DRIVER_POOL_SIZE = 32;
+  static const std::size_t DRIVER_POOL_SIZE = 1;
 
   class manager
   {
@@ -67,9 +68,10 @@ namespace cubload
     public:
       load_parse_task () = delete;
 
-      load_parse_task (manager &manager, std::string &batch)
+      load_parse_task (manager &manager, std::string &batch, CSS_CONN_ENTRY conn_entry)
 	: m_manager (manager)
 	, m_batch (batch)
+	, m_conn_entry (conn_entry)
       {
 	//
       }
@@ -79,6 +81,7 @@ namespace cubload
     private:
       manager &m_manager;
       std::string m_batch;
+      CSS_CONN_ENTRY m_conn_entry;
   };
 
 } // namespace cubload

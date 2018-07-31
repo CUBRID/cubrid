@@ -869,17 +869,19 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       schema_file = NULL;
     }
 
-  //bool load_on_server = ldr_load_on_server ();
-  //if (load_on_server)
-  //{
-  if (realpath (Object_file, object_file_abs_path) != NULL)
+/*
+  bool load_on_server = ldr_load_on_server ();
+  if (load_on_server)
     {
-      loaddb_load_object_file (object_file_abs_path);
+      if (realpath (Object_file, object_file_abs_path) != NULL)
+	{
+	  loaddb_load_object_file (object_file_abs_path);
+	}
     }
-  //}
+*/
 
 #if defined (SA_MODE)
-  if (object_file.is_open () /*&& !load_on_server */ )
+  if (object_file.is_open () /* && !load_on_server */ )
     {
       locator_Dont_check_foreign_key = true;
       print_log_msg (1, "\nStart object loading.\n");
@@ -1101,7 +1103,6 @@ error_return:
     {
       fclose (index_file);
     }
-
   if (loaddb_log_file != NULL)
     {
       fclose (loaddb_log_file);
@@ -1401,13 +1402,16 @@ free_ignoreclasslist (void)
     }
   ignore_class_num = 0;
 #else
-  return;
-#endif // #if defined (SA_MODE)
+#endif // SA_MODE
 }
 
 static bool
 ldr_load_on_server ()
 {
   // TODO CBRD-21654 check if object file contains references
+#if defined (SA_MODE)
+  return false;
+#else
   return true;
+#endif // SA_MODE
 }

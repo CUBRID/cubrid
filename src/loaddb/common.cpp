@@ -18,7 +18,7 @@
  */
 
 /*
- * common.cpp - TODO CBRD-21654
+ * common.cpp - common code used by loader
  */
 
 #ident "$Id$"
@@ -29,26 +29,17 @@
 namespace cubload
 {
 
-  object_file_splitter::object_file_splitter (int batch_size, std::string &object_file_name)
-    : m_batch_size (batch_size)
-    , m_object_file_name (object_file_name)
-  {
-    //
-  }
-
   bool
-  object_file_splitter::starts_with (const std::string &str, const std::string &prefix)
+  starts_with (const std::string &str, const std::string &prefix)
   {
     return str.size () >= prefix.size () && 0 == str.compare (0, prefix.size (), prefix);
   }
 
   bool
-  object_file_splitter::ends_with (const std::string &str, const std::string &suffix)
+  ends_with (const std::string &str, const std::string &suffix)
   {
     return str.size () >= suffix.size () && 0 == str.compare (str.size () - suffix.size (), suffix.size (), suffix);
   }
-
-  ///////////////////// common global functions /////////////////////
 
   void
   ldr_string_free (string_t **str)

@@ -6210,26 +6210,6 @@ ldr_abort (void)
     }
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * print_parser_lineno - print parse line number
- *    return: void
- *    fp(in): FILE *
- */
-void
-print_parser_lineno (FILE * fp)
-{
-  if (fp)
-    {
-      fprintf (fp, "%d\n", loader_yylineno);
-    }
-  else
-    {
-      printf ("%d\n", loader_yylineno);
-    }
-}
-#endif
-
 void
 ldr_act_set_skip_current_class (char *classname, size_t size)
 {

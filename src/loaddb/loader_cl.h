@@ -109,9 +109,6 @@ extern int ldr_act_add_argument (LDR_CONTEXT * context, const char *name);
 /* Statistics updating/retrieving functions */
 extern void ldr_stats (int *errors, int *objects, int *defaults, int *lastcommit, int *fails);
 extern int ldr_update_statistics (void);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern void print_parser_lineno (FILE * fp);
-#endif
 
 /* Callback functions  */
 extern void ldr_register_post_commit_handler (LDR_POST_COMMIT_HANDLER handler, void *arg);
