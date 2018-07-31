@@ -587,11 +587,6 @@ namespace cubthread
   bool
   worker_pool<Context>::try_execute (task_type *work_arg)
   {
-    if (is_full ())
-      {
-	return false;
-      }
-
     execute (work_arg);
     return true;
   }

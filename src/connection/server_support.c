@@ -702,10 +702,7 @@ css_process_new_client (SOCKET master_fd)
 
   if (css_Connect_handler)
     {
-      if ((*css_Connect_handler) (conn) != NO_ERRORS)
-	{
-	  assert_release (false);
-	}
+      (void) (*css_Connect_handler) (conn);
     }
   else
     {
@@ -974,10 +971,7 @@ css_process_new_connection_request (void)
 
 	  if (css_Connect_handler)
 	    {
-	      if ((*css_Connect_handler) (conn) != NO_ERRORS)
-		{
-		  assert_release (false);
-		}
+	      (void) (*css_Connect_handler) (conn);
 	    }
 	}
       else
@@ -1250,7 +1244,7 @@ css_internal_connection_handler (CSS_CONN_ENTRY * conn)
   if (!cubthread::get_manager ()->try_task (cubthread::get_entry (), css_Connection_worker_pool,
 					    new css_connection_task (*conn)))
     {
-      assert_release (false);
+      assert_release (false); // should never happen
       return REQUEST_REFUSED;
     }
 
