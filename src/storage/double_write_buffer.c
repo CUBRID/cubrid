@@ -4262,6 +4262,13 @@ start:
   if (DWB_GET_BLOCK_STATUS (initial_position_with_flags) == 0)
     {
       /* Check helper flush block. */
+      initial_block = dwb_Global.helper_flush_block;
+      if (initial_block == NULL)
+	{
+	  /* Nothing to flush. */
+	  goto end;
+	}
+
       goto wait_for_helper_flush_block;
     }
 
