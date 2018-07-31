@@ -14500,7 +14500,7 @@ sm_add_secondary_index_on_partition (MOP classop, DB_CONSTRAINT_TYPE constraint_
 
       error = sm_add_constraint (sub_partitions[i], constraint_type, constraint_name, att_names, asc_desc,
 				 attrs_prefix_length, class_attributes, new_filter_index_info, new_func_index_info,
-				 comment, is_online_index);
+				 comment, index_status);
     }
 
 end:
@@ -14547,13 +14547,12 @@ int
 sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name, const char **att_names,
 		   const int *asc_desc, const int *attrs_prefix_length, int class_attributes,
 		   SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index, const char *comment,
-		   bool is_online_index)
+		   SM_INDEX_STATUS index_status)
 {
   int error = NO_ERROR;
   SM_TEMPLATE *def;
   MOP newmop = NULL;
   LOCK ex_lock = SCH_M_LOCK;
-  SM_INDEX_STATUS index_status = SM_NO_INDEX;
 
   if (att_names == NULL)
     {
@@ -14591,8 +14590,6 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  return error;
 	}
 
-      index_status = (is_online_index ? SM_ONLINE_INDEX_BUILDING_IN_PROGRESS : SM_NORMAL_INDEX);
-
       // create local indexes on partitions
       if (is_secondary_index)
 	{
@@ -14627,7 +14624,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 
 	      error = sm_add_secondary_index_on_partition (classop, constraint_type, constraint_name, att_names,
 							   asc_desc, attrs_prefix_length, class_attributes,
-							   filter_index, function_index, comment, is_online_index,
+							   filter_index, function_index, comment, index_status,
 							   sub_partitions);
 	      if (error != NO_ERROR)
 		{
@@ -14661,7 +14658,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  return error;
 	}
 
-      if (is_online_index)
+      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	{
 	  /* Demote lock for online index. */
 	  error = locator_demote_class_lock (&newmop->oid_info.oid, IX_LOCK, &ex_lock);
@@ -15659,7 +15656,7 @@ sm_truncate_class (MOP class_mop)
     {
       error = sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
 				 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
-				 saved->func_index_info, saved->comment, false);
+				 saved->func_index_info, saved->comment, SM_NORMAL_INDEX);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -15671,7 +15668,7 @@ sm_truncate_class (MOP class_mop)
     {
       error = sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
 				 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
-				 saved->func_index_info, saved->comment, false);
+				 saved->func_index_info, saved->comment, SM_NORMAL_INDEX);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -16303,8 +16300,8 @@ sm_stats_remove_online_index_stats (SM_CLASS * class_)
 
   for (cons = class_->constraints; cons != NULL; cons = cons->next)
     {
-      /* Check if there is an online index currently being built. */
-      if (cons->index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+      /* Check if there is an online index currently being built or an invisible one. */
+      if (cons->index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && cons->index_status != SM_INVISIBLE_INDEX)
 	{
 	  continue;
 	}

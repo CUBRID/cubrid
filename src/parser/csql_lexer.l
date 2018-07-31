@@ -431,6 +431,7 @@ int yybuffer_pos;
 [iI][nN][vV][aA][lL][iI][dD][aA][tT][eE]				{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return INVALIDATE; }
+[iI][nN][vV][iI][sS][iI][bB][lL][eE]					{ begin_token(yytext);   return INVISIBLE; }
 [iI][sS]								{ begin_token(yytext);   return IS; }
 [iI][sS][oO][lL][aA][tT][iI][oO][nN]					{ begin_token(yytext);   return ISOLATION; }
 [iI][nN][tT]								{ begin_token(yytext);   return INTEGER; }

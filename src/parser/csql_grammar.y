@@ -643,6 +643,7 @@ int g_original_buffer_len;
 %type <number> of_avg_max_etc
 %type <number> of_leading_trailing_both
 %type <number> datetime_field
+%type <number> opt_invisible
 %type <number> opt_paren_plus
 %type <number> opt_with_fullscan
 %type <number> opt_with_online
@@ -1533,6 +1534,7 @@ int g_original_buffer_len;
 %token <cptr> INFINITE_
 %token <cptr> INSTANCES
 %token <cptr> INVALIDATE
+%token <cptr> INVISIBLE
 %token <cptr> ISNULL
 %token <cptr> KEYS
 %token <cptr> KILL
@@ -2625,6 +2627,7 @@ create_stmt
 	  opt_where_clause				/* 12 */
 	  opt_comment_spec				/* 13 */
 	  opt_with_online				/* 14 */
+	  opt_invisible					/* 15 */
 	{{
 
 			PT_NODE *node = parser_pop_hint_node ();
@@ -2742,7 +2745,27 @@ create_stmt
 			     node->info.index.where = $12;
 			     node->info.index.column_names = col;
 			     node->info.index.comment = $13;
-			     node->info.index.online = $14;
+
+			     if ($14 && $15)
+				     {
+					/* We do not allow invisible and online index at the same time. */
+					PT_ERRORm (this_parser, node, 
+						       MSGCAT_SET_PARSER_SYNTAX,
+						       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+				     }
+			     node->info.index.index_status = 1;
+			     if ($15)
+				     {
+					/* Invisible index. */
+					node->info.index.index_status = 2;
+				     }
+			     else if ($14)
+				     {
+					/* Online index. */
+					node->info.index.index_status = 3;
+				     }
+
+			     
 			  }
 		      $$ = node;
 
@@ -4166,6 +4189,21 @@ only_class_name_list
 
 		DBG_PRINT}}
 	;
+
+opt_invisible
+	: /* empty */
+		{{
+ 			$$ = 0;
+		
+		DBG_PRINT}}
+	| INVISIBLE
+		{{
+		
+			$$ = 1;
+		
+		DBG_PRINT}}
+	;
+
 
 opt_with_fullscan
         : /* empty */
@@ -20971,6 +21009,14 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| INVISIBLE
+               {{
+                        PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+                       if (p)
+                         p->info.name.original = $1;
+                       $$ = p;
+                       PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT}}
 	| JAVA
 		{{
 

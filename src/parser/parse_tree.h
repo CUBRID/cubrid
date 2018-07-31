@@ -1966,7 +1966,7 @@ struct pt_index_info
   int func_no_args;		/* number of arguments in the function index expression */
   bool reverse;			/* REVERSE */
   bool unique;			/* UNIQUE specified? */
-  bool online;			/* Is it an online index loading? */
+  int index_status;		/* Index status : NORMAL / ONLINE / INVISIBLE */
 };
 
 /* CREATE USER INFO */
