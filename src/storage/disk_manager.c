@@ -358,6 +358,7 @@ static void disk_vhdr_dump (FILE * fp, const DISK_VOLUME_HEADER * vhdr);
 
 STATIC_INLINE void disk_verify_volume_header (THREAD_ENTRY * thread_p, PAGE_PTR pgptr) __attribute__ ((ALWAYS_INLINE));
 static bool disk_check_volume_exist (THREAD_ENTRY * thread_p, VOLID volid, void *arg);
+static int disk_can_overwrite_data_volume (THREAD_ENTRY * thread_p, const char *vol_label_p, bool * can_overwrite);
 
 /************************************************************************/
 /* Disk sector table section                                            */
@@ -2093,6 +2094,7 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
   VOLID volid;
   DKNSECTS nsect_part_max;
   int error_code = NO_ERROR;
+  bool can_overwrite;
 
   /* how it works:
    *
@@ -2192,8 +2194,12 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
 
   if (!extinfo->overwrite && fileio_is_volume_exist (extinfo->name))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, extinfo->name);
-      return ER_BO_VOLUME_EXISTS;
+      if ((disk_can_overwrite_data_volume (thread_p, extinfo->name, &can_overwrite) != NO_ERROR)
+	  || (can_overwrite == false))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, extinfo->name);
+	  return ER_BO_VOLUME_EXISTS;
+	}
     }
 
   log_sysop_start (thread_p);
@@ -6100,6 +6106,92 @@ disk_check_volume_exist (THREAD_ENTRY * thread_p, VOLID volid, void *arg)
       vol_infop->exists = true;
     }
   return true;
+}
+
+/*
+ * disk_can_overwrite_data_volume() - check whether data volume can be overwritten
+ *
+ * return : error code
+ * thread_p(in) : thread entry
+ * vol_label_p(in) : volume label
+ * can_overwrite(out) : true, if the volume can be overwritten
+ */
+static int
+disk_can_overwrite_data_volume (THREAD_ENTRY * thread_p, const char *vol_label_p, bool * can_overwrite)
+{
+  char data_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *data;
+  DISK_VOLUME_HEADER *vhdr;
+  int vol_fd = NULL_VOLDES;
+  off_t read_size;
+  size_t page_reserver_area;
+  int error_code = NO_ERROR;
+  struct stat stat_buffer;
+
+  assert (vol_label_p != NULL && can_overwrite != NULL);
+
+  *can_overwrite = false;
+#if !defined(CS_MODE)
+  /* Is volume already mounted ? */
+  vol_fd = fileio_find_volume_descriptor_with_label (vol_label_p);
+  if (vol_fd != NULL_VOLDES)
+    {
+      /* Can't overwrite the mounted volume. */
+      return NO_ERROR;
+    }
+#endif /* !CS_MODE */
+
+  data = PTR_ALIGN (data_buf, MAX_ALIGNMENT);
+  page_reserver_area = offsetof (FILEIO_PAGE, page);
+  vhdr = (DISK_VOLUME_HEADER *) (data + page_reserver_area);
+
+  /* Check the existence of the file by opening the file */
+  vol_fd = fileio_open (vol_label_p, O_RDONLY, 0);
+  if (vol_fd == NULL_VOLDES)
+    {
+      /* Someone deleted the volume. It can be written. */
+      *can_overwrite = true;
+      return NO_ERROR;
+    }
+
+  /* Computes the number of bytes to read. */
+  read_size = offsetof (DISK_VOLUME_HEADER, db_creation) + sizeof (((DISK_VOLUME_HEADER *) 0)->db_creation);
+  assert (read_size > (offsetof (DISK_VOLUME_HEADER, magic) + CUBRID_MAGIC_MAX_LENGTH));
+  read_size += page_reserver_area;
+
+  if (fstat (vol_fd, &stat_buffer) != 0)
+    {
+      error_code = ER_FAILED;
+      goto end;
+    }
+
+  if (stat_buffer.st_size < read_size)
+    {
+      /* Is not a CUBRID file. It can't be  overwritten. */
+      goto end;
+    }
+
+  /* Read block flush size bytes at offset 0. */
+  if (fileio_read (thread_p, vol_fd, data, 0, read_size) == NULL)
+    {
+      error_code = ER_FAILED;
+      goto end;
+    }
+
+  /* Check whether the existing volume is leaked from previous database and can be overwritten. */
+  if ((strncmp (vhdr->magic, CUBRID_MAGIC_DATABASE_VOLUME, CUBRID_MAGIC_MAX_LENGTH) == 0)
+      && (log_Gl.hdr.db_creation > vhdr->db_creation))
+    {
+      /* Old CUBRID file. It can be overwritten. */
+      *can_overwrite = true;
+    }
+
+end:
+  if (vol_fd != NULL_VOLDES)
+    {
+      fileio_close (vol_fd);
+    }
+
+  return error_code;
 }
 
 /*
