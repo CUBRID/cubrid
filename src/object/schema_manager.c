@@ -449,6 +449,8 @@ static int update_fk_ref_partitioned_class (SM_TEMPLATE * ctemplate, SM_FOREIGN_
 static int flatten_partition_info (SM_TEMPLATE * def, SM_TEMPLATE * flat);
 static DB_OBJLIST *sm_fetch_all_objects_internal (DB_OBJECT * op, DB_FETCH_MODE purpose,
 						  LC_FETCH_VERSION_TYPE * force_fetch_version_type);
+static int sm_flush_and_decache_objects_internal (MOP obj, MOP obj_class_mop, int decache);
+
 /*
  * sc_set_current_schema()
  *      return: NO_ERROR if successful
@@ -5907,11 +5909,11 @@ sm_flush_objects (MOP obj)
 }
 
 /*
-* sm_decache_mop() - Decache mop.
-*   return: error code.
-*   mop(in): mop
-*   info(in): additional information, currently not used.
-*/
+ * sm_decache_mop() - Decache mop.
+ *   return: error code.
+ *   mop(in): mop
+ *   info(in): additional information, currently not used.
+ */
 int
 sm_decache_mop (MOP mop, void *info)
 {
@@ -5928,11 +5930,10 @@ sm_decache_mop (MOP mop, void *info)
 }
 
 /*
-* sm_decache_instances_after_query_executed_with_commit() - Decache class instannces after
-*     query execution with commit.
-*   return: error code
-*   class_mop(in): class mop
-*/
+ * sm_decache_instances_after_query_executed_with_commit() - Decache class instances after query execution with commit.
+ *   return: error code
+ *   class_mop(in): class mop
+ */
 int
 sm_decache_instances_after_query_executed_with_commit (MOP class_mop)
 {
@@ -5977,6 +5978,61 @@ sm_decache_instances_after_query_executed_with_commit (MOP class_mop)
   return NO_ERROR;
 }
 
+static int
+sm_flush_and_decache_objects_internal (MOP obj, MOP obj_class_mop, int decache)
+{
+  int error = NO_ERROR;
+  SM_CLASS *class_;
+
+  if (locator_flush_class (obj_class_mop) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  class_ = (SM_CLASS *) locator_fetch_class (obj, DB_FETCH_READ);
+  if (class_ == NULL)
+    {
+      ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
+      return error;
+    }
+
+  switch (class_->class_type)
+    {
+    case SM_CLASS_CT:
+      if (obj == obj_class_mop && (class_->flags & SM_CLASSFLAG_SYSTEM))
+	{
+	  /* if system class, flush all dirty class */
+	  if (locator_flush_all_instances (sm_Root_class_mop, DONT_DECACHE) != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      return error;
+	    }
+	}
+
+      if (locator_flush_all_instances (obj_class_mop, decache) != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+      break;
+
+    case SM_VCLASS_CT:
+      if (vid_flush_all_instances (obj, decache) != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+      break;
+
+    case SM_ADT_CT:
+      /* what to do here?? */
+      break;
+    }
+
+  return error;
+}
+
 /*
  * sm_flush_and_decache_objects() - Flush all the instances of a particular
  *    class to the server. Optionally decache the instances of the class.
@@ -5989,167 +6045,49 @@ int
 sm_flush_and_decache_objects (MOP obj, int decache)
 {
   int error = NO_ERROR, is_class = 0;
-  MOBJ mem;
   MOP obj_class_mop;
-  SM_CLASS *class_;
 
-  if (obj != NULL)
+  if (obj == NULL)
     {
-      is_class = locator_is_class (obj, DB_FETCH_READ);
-      if (is_class < 0)
-	{
-	  return is_class;
-	}
-      if (is_class)
-	{
-	  /* always make sure the class is flushed as well */
-	  if (locator_flush_class (obj) != NO_ERROR)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
-
-	  class_ = (SM_CLASS *) locator_fetch_class (obj, DB_FETCH_READ);
-	  if (class_ == NULL)
-	    {
-	      ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
-	    }
-	  else
-	    {
-	      switch (class_->class_type)
-		{
-		case SM_CLASS_CT:
-		  if (class_->flags & SM_CLASSFLAG_SYSTEM)
-		    {
-		      /* if system class, flush all dirty class */
-		      if (locator_flush_all_instances (sm_Root_class_mop, DONT_DECACHE) != NO_ERROR)
-			{
-			  assert (er_errid () != NO_ERROR);
-			  error = er_errid ();
-			  break;
-			}
-		    }
-
-		  if (locator_flush_all_instances (obj, decache) != NO_ERROR)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      error = er_errid ();
-		    }
-		  break;
-
-		case SM_VCLASS_CT:
-		  if (vid_flush_all_instances (obj, decache) != NO_ERROR)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      error = er_errid ();
-		    }
-		  break;
-
-		case SM_ADT_CT:
-		  /* what to do here?? */
-		  break;
-		}
-	    }
-	}
-      else
-	{
-	  obj_class_mop = ws_class_mop (obj);
-	  if (obj_class_mop != NULL)
-	    {
-	      if (locator_flush_class (obj_class_mop) != NO_ERROR)
-		{
-		  assert (er_errid () != NO_ERROR);
-		  return er_errid ();
-		}
-
-	      class_ = (SM_CLASS *) locator_fetch_class (obj, DB_FETCH_READ);
-	      if (class_ == NULL)
-		{
-		  ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
-		}
-	      else
-		{
-		  obj_class_mop = ws_class_mop (obj);
-		  switch (class_->class_type)
-		    {
-		    case SM_CLASS_CT:
-		      if (locator_flush_all_instances (obj_class_mop, decache) != NO_ERROR)
-			{
-			  assert (er_errid () != NO_ERROR);
-			  error = er_errid ();
-			}
-		      break;
-
-		    case SM_VCLASS_CT:
-		      if (vid_flush_all_instances (obj, decache) != NO_ERROR)
-			{
-			  assert (er_errid () != NO_ERROR);
-			  error = er_errid ();
-			}
-		      break;
-
-		    case SM_ADT_CT:
-		      /* what to do here?? */
-		      break;
-		    }
-		}
-	    }
-	  else
-	    {
-	      error = au_fetch_instance (obj, &mem, AU_FETCH_READ, TM_TRAN_READ_FETCH_VERSION (), AU_SELECT);
-	      if (error == NO_ERROR)
-		{
-		  /* don't need to pin here, we only wanted to check authorization */
-		  obj_class_mop = ws_class_mop (obj);
-		  if (obj_class_mop != NULL)
-		    {
-		      if (locator_flush_class (obj_class_mop) != NO_ERROR)
-			{
-			  assert (er_errid () != NO_ERROR);
-			  return er_errid ();
-			}
-
-		      class_ = (SM_CLASS *) locator_fetch_class (obj, DB_FETCH_READ);
-		      if (class_ == NULL)
-			{
-			  ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
-			}
-		      else
-			{
-			  switch (class_->class_type)
-			    {
-			    case SM_CLASS_CT:
-			      if (locator_flush_all_instances (obj_class_mop, decache) != NO_ERROR)
-				{
-				  assert (er_errid () != NO_ERROR);
-				  error = er_errid ();
-				}
-			      break;
-
-			    case SM_VCLASS_CT:
-			      if (vid_flush_all_instances (obj, decache) != NO_ERROR)
-				{
-				  assert (er_errid () != NO_ERROR);
-				  error = er_errid ();
-				}
-			      break;
-
-			    case SM_ADT_CT:
-			      /* what to do here?? */
-			      break;
-			    }
-			}
-		    }
-		  else
-		    {
-		      ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
-		    }
-		}
-	    }
-	}
+      return NO_ERROR;
     }
 
-  return error;
+  is_class = locator_is_class (obj, DB_FETCH_READ);
+  if (is_class < 0)
+    {
+      return is_class;
+    }
+
+  if (is_class)
+    {
+      // class
+      return sm_flush_and_decache_objects_internal (obj, obj, decache);
+    }
+  else
+    {
+      // instance
+      obj_class_mop = ws_class_mop (obj);
+      if (obj_class_mop == NULL)
+	{
+	  MOBJ mem;
+
+	  error = au_fetch_instance (obj, &mem, AU_FETCH_READ, TM_TRAN_READ_FETCH_VERSION (), AU_SELECT);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  /* don't need to pin here, we only wanted to check authorization */
+	  obj_class_mop = ws_class_mop (obj);
+	  if (obj_class_mop == NULL)
+	    {
+	      ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
+	      return error;
+	    }
+	}
+
+      return sm_flush_and_decache_objects_internal (obj, obj_class_mop, decache);
+    }
 }
 
 /*
