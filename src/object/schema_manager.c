@@ -10026,9 +10026,6 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses, const char *const
    (and probably the flattener as well) so we have all the information necessary
    to generate the disk structures before the call to
    install_new_representation and before the class is created.
-
-   allocate_index is also called directly by sm_add_index which for now
-   will be the only official way to add an index.
 */
 
 /*
@@ -12378,8 +12375,9 @@ sm_constraint_belongs_to_class (const SM_CLASS_CONSTRAINT * const con, MOP const
  *          SM_CONSTRAINT_REVERSE_UNIQUE,
  *          SM_CONSTRAINT_PRIMARY_KEY,
  *          SM_CONSTRAINT_FOREIGN_KEY
+ *          SM_CONSTRAINT_INDEX,
+ *          SM_CONSTRAINT_REVERSE_INDEX,
  *   sm_drop_index():
- *   sm_add_index():
  *          SM_CONSTRAINT_INDEX,
  *          SM_CONSTRAINT_REVERSE_INDEX,
  */
@@ -13336,6 +13334,8 @@ sm_exist_index (MOP classop, const char *idxname, BTID * btid)
   return ER_FAILED;
 }
 
+#if 0
+// TODO: leave it for reference. Remove it when we complete the task.
 /*
  * sm_add_index() - Adds an index to an attribute.
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -13355,8 +13355,6 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type, const char *co
 	      const int *asc_desc, const int *attrs_prefix_length, SM_PREDICATE_INFO * filter_index,
 	      SM_FUNCTION_INFO * function_index, const char *comment)
 {
-// TODO: leave it for reference. Remove it when we complete the task.
-#if 0
   int error = NO_ERROR;
   SM_CLASS *class_;
   BTID index;
@@ -13782,9 +13780,8 @@ severe_error:
   (void) tran_unilaterally_abort ();
 
   return error;
-#endif
-  return NO_ERROR;
 }
+#endif
 
 /*
  * sm_drop_index() - Removes an index for an attribute.
@@ -13792,9 +13789,7 @@ severe_error:
  *    index if one has been created.  !! This works now because
  *    sm_drop_index is the only way that we can remove indexes.  If
  *    index add/drop can ever be done during template processing, we'll
- *    have to make that code more aware of this.  I suspect that this
- *    will all get cleaned up during the migration to multi-column
- *    indexes.
+ *    have to make that code more aware of this.
  *   return: NO_ERROR on success, non-zero for ERROR
  *   classop(in): class object
  *   constraint_name(in): constraint name
