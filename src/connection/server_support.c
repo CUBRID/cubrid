@@ -911,87 +911,80 @@ css_process_new_connection_request (void)
   int reason, buffer_size, rc;
   CSS_CONN_ENTRY *conn;
   unsigned short rid;
-  OR_ALIGNED_BUF (1024) a_buffer;
-  char *buffer;
-  int length = 1024, r;
-  CSS_CONN_ENTRY new_conn;
-  char *error_string;
-
-  NET_HEADER header = {
-    0, 0, 0, 0, 0, 0, 0, 0, 0
-  };
+  NET_HEADER header = DEFAULT_HEADER_DATA;
+  int error;
 
   new_fd = css_server_accept (css_Server_connection_socket);
 
-  if (!IS_INVALID_SOCKET (new_fd))
+  if (IS_INVALID_SOCKET (new_fd))
     {
-      buffer = OR_ALIGNED_BUF_START (a_buffer);
+      return 1;
+    }
 
-      if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && css_check_accessibility (new_fd) != NO_ERROR)
+  if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && css_check_accessibility (new_fd) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      css_refuse_connection_request (new_fd, 0, SERVER_INACCESSIBLE_IP, error);
+      return -1;
+    }
+
+  conn = css_make_conn (new_fd);
+  if (conn == NULL)
+    {
+      error = ER_CSS_CLIENTS_EXCEEDED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, NUM_NORMAL_TRANS);
+      css_refuse_connection_request (new_fd, 0, SERVER_CLIENTS_EXCEEDED, error);
+      return -1;
+    }
+
+  buffer_size = sizeof (NET_HEADER);
+  do
+    {
+      /* css_receive_request */
+      if (!conn || conn->status != CONN_OPEN)
 	{
-	  ASSERT_ERROR_AND_SET (error);
-	  css_refuse_connection_request (new_fd, 0, SERVER_INACCESSIBLE_IP, error);
-          return -1;
+	  rc = CONNECTION_CLOSED;
+	  break;
 	}
 
-      conn = css_make_conn (new_fd);
-      if (conn == NULL)
-	{
-	  error = ER_CSS_CLIENTS_EXCEEDED;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, NUM_NORMAL_TRANS);
-	  css_refuse_connection_request (new_fd, 0, SERVER_CLIENTS_EXCEEDED, error);
-	  return -1;
-	}
-
-      buffer_size = sizeof (NET_HEADER);
-      do
-	{
-	  /* css_receive_request */
-	  if (!conn || conn->status != CONN_OPEN)
-	    {
-	      rc = CONNECTION_CLOSED;
-	      break;
-	    }
-
-	  rc = css_read_header (conn, &header);
-	  if (rc == NO_ERRORS)
-	    {
-	      rid = (unsigned short) ntohl (header.request_id);
-
-	      if (ntohl (header.type) != COMMAND_TYPE)
-		{
-		  buffer_size = reason = rid = 0;
-		  rc = WRONG_PACKET_TYPE;
-		}
-	      else
-		{
-		  reason = (int) (unsigned short) ntohs (header.function_code);
-		  buffer_size = (int) ntohl (header.buffer_size);
-		}
-	    }
-	}
-      while (rc == WRONG_PACKET_TYPE);
-
+      rc = css_read_header (conn, &header);
       if (rc == NO_ERRORS)
 	{
-	  if (reason == DATA_REQUEST)
-	    {
-	      css_send_reply_to_new_client_request (conn, rid, SERVER_CONNECTED);
+	  rid = (unsigned short) ntohl (header.request_id);
 
-	      if (css_Connect_handler)
-		{
-		  if ((*css_Connect_handler) (conn) != NO_ERRORS)
-		    {
-		      assert_release (false);
-		    }
-		}
+	  if (ntohl (header.type) != COMMAND_TYPE)
+	    {
+	      buffer_size = reason = rid = 0;
+	      rc = WRONG_PACKET_TYPE;
 	    }
 	  else
 	    {
-	      css_send_reply_to_new_client_request (conn, rid, SERVER_NOT_FOUND);
-
-	      css_free_conn (conn);
+	      reason = (int) (unsigned short) ntohs (header.function_code);
+	      buffer_size = (int) ntohl (header.buffer_size);
 	    }
+	}
+    }
+  while (rc == WRONG_PACKET_TYPE);
+
+  if (rc == NO_ERRORS)
+    {
+      if (reason == DATA_REQUEST)
+	{
+	  css_send_reply_to_new_client_request (conn, rid, SERVER_CONNECTED);
+
+	  if (css_Connect_handler)
+	    {
+	      if ((*css_Connect_handler) (conn) != NO_ERRORS)
+		{
+		  assert_release (false);
+		}
+	    }
+	}
+      else
+	{
+	  css_send_reply_to_new_client_request (conn, rid, SERVER_NOT_FOUND);
+
+	  css_free_conn (conn);
 	}
     }
 
