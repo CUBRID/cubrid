@@ -1241,12 +1241,8 @@ css_internal_connection_handler (CSS_CONN_ENTRY * conn)
   css_insert_into_active_conn_list (conn);
 
   // push connection handler task
-  if (!cubthread::get_manager ()->try_task (cubthread::get_entry (), css_Connection_worker_pool,
-					    new css_connection_task (*conn)))
-    {
-      assert_release (false); // should never happen
-      return REQUEST_REFUSED;
-    }
+  cubthread::get_manager ()->push_task (cubthread::get_entry (), css_Connection_worker_pool,
+					new css_connection_task (*conn));
 
   return NO_ERRORS;
 }
@@ -1374,7 +1370,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   // initialize worker pool for server requests
   const std::size_t MAX_WORKERS = css_get_max_conn () + 1;	// = css_Num_max_conn in connection_sr.c
   const std::size_t MAX_TASK_COUNT = 2 * MAX_WORKERS;	// not that it matters...
-  const std::size_t MAX_CONNECTIONS = css_get_max_conn ();
+  const std::size_t MAX_CONNECTIONS = css_get_max_conn () + 1;
 
   // create request worker pool
   css_Server_request_worker_pool =
