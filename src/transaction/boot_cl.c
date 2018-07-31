@@ -2686,7 +2686,6 @@ boot_define_index (MOP class_mop)
       return error_code;
     }
 
-
   error_code = sm_update_class (def, NULL);
   if (error_code != NO_ERROR)
     {

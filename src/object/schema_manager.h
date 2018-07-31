@@ -99,9 +99,11 @@ extern int sm_delete_class_mop (MOP op, bool is_cascade_constraints);
 extern int sm_delete_class (const char *name);
 #endif
 
+#if 0				// TODO - remove it
 extern int sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type, const char *constraint_name,
 			 const char **attnames, const int *asc_desc, const int *attrs_prefix_length,
 			 SM_PREDICATE_INFO * pred_info, SM_FUNCTION_INFO * fi_info, const char *comment);
+#endif
 extern int sm_get_index (MOP classop, const char *attname, BTID * index);
 extern char *sm_produce_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE constraint_type,
 					 const char **att_names, const int *asc_desc, const char *given_name);
