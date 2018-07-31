@@ -1617,6 +1617,7 @@ int g_original_buffer_len;
 %token <cptr> VAR_POP
 %token <cptr> VAR_SAMP
 %token <cptr> VARIANCE
+%token <cptr> VISIBLE
 %token <cptr> VOLUME
 %token <cptr> WEEK
 %token <cptr> WITHIN
@@ -3556,6 +3557,76 @@ alter_stmt
 			    node->info.index.code = PT_CHANGE_INDEX_COMMENT;
 			    node->info.index.index_name = $3;
 			    node->info.index.comment = $7;
+
+			    if (node->info.index.index_name)
+			      {
+			        node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+			      }
+			
+			    if ($5 != NULL)
+			      {
+			        PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
+			        ocs->info.spec.entity_name = $5;
+			        ocs->info.spec.only_all = PT_ONLY;
+			        ocs->info.spec.meta_class = PT_CLASS;
+			
+			        node->info.index.indexed_class = ocs;
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| ALTER				/* 1 */
+	  INDEX				/* 2 */
+	  identifier			/* 3 */
+	  ON_				/* 4 */
+	  class_name			/* 5 */
+	  INVISIBLE			/* 6 */
+		{{
+			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
+			
+			if (node)
+			  {
+			    node->info.index.code = PT_CHANGE_INDEX_STATUS;
+			    node->info.index.index_name = $3;
+			    node->info.index.index_status = 2;
+
+			    if (node->info.index.index_name)
+			      {
+			        node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+			      }
+			
+			    if ($5 != NULL)
+			      {
+			        PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
+			        ocs->info.spec.entity_name = $5;
+			        ocs->info.spec.only_all = PT_ONLY;
+			        ocs->info.spec.meta_class = PT_CLASS;
+			
+			        node->info.index.indexed_class = ocs;
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| ALTER				/* 1 */
+	  INDEX				/* 2 */
+	  identifier			/* 3 */
+	  ON_				/* 4 */
+	  class_name			/* 5 */
+	  VISIBLE			/* 6 */
+		{{
+			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
+			
+			if (node)
+			  {
+			    node->info.index.code = PT_CHANGE_INDEX_STATUS;
+			    node->info.index.index_name = $3;
+			    node->info.index.index_status = 1;
 
 			    if (node->info.index.index_name)
 			      {
@@ -21659,6 +21730,14 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| VISIBLE
+               {{
+                        PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+                       if (p)
+                         p->info.name.original = $1;
+                       $$ = p;
+                       PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT}}
 	| VOLUME
 		{{
 

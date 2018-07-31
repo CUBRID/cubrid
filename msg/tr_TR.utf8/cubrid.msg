@@ -1302,7 +1302,8 @@ $ LOADDB
 1233 Reserved error for stream/replication.
 1234 Reserved error for stream/replication.
 1235 Reserved error for stream/replication.
-1236 Last Error
+1236 Primary key "%2$s" already defined for class "%1$s". Changing index status is not allowed for primary keys.
+1237 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):

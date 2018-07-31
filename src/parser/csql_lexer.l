@@ -869,6 +869,7 @@ int yybuffer_pos;
 [vV][aA][rR][yY][iI][nN][gG]						{ begin_token(yytext);   return VARYING; }
 [vV][cC][lL][aA][sS][sS]						{ begin_token(yytext);   return VCLASS; }
 [vV][iI][eE][wW]							{ begin_token(yytext);   return VIEW; }
+[vV][iI][sS][iI][bB][lL][eE]						{ begin_token(yytext);   return VISIBLE; }
 [vV][oO][lL][uU][mM][eE]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return VOLUME; }

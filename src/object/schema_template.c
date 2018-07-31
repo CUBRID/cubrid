@@ -4674,3 +4674,160 @@ smt_find_owner_of_constraint (SM_TEMPLATE * ctemplate, const char *constraint_na
 
   return ctemplate->op;
 }
+
+static int
+change_constraint_status (SM_TEMPLATE * ctemplate, const char *index_name, SM_INDEX_STATUS index_status)
+{
+  int error = NO_ERROR;
+  SM_CLASS_CONSTRAINT *sm_constraint = NULL;
+  SM_CLASS_CONSTRAINT *sm_cons = NULL;
+  const char *property_type = NULL;
+
+  error = classobj_make_class_constraints (ctemplate->properties, ctemplate->attributes, &sm_cons);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+  if (sm_cons == NULL)
+    {
+      error = ER_SM_CONSTRAINT_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, index_name);
+      goto error_exit;
+    }
+
+  sm_constraint = classobj_find_constraint_by_name (sm_cons, index_name);
+  if (sm_constraint == NULL)
+    {
+      error = ER_SM_CONSTRAINT_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, index_name);
+      goto error_exit;
+    }
+
+  property_type = classobj_map_constraint_to_property (sm_constraint->type);
+
+  error = classobj_change_constraint_status (ctemplate->properties, property_type, index_name, index_status);
+
+end:
+  if (sm_cons)
+    {
+      classobj_free_class_constraints (sm_cons);
+    }
+  return error;
+
+error_exit:
+  goto end;
+}
+
+static int
+change_constraints_status_partitioned_class (MOP obj, const char *index_name, SM_INDEX_STATUS index_status)
+{
+  int error = NO_ERROR;
+  int i, is_partition = 0;
+  MOP *sub_partitions = NULL;
+  SM_TEMPLATE *ctemplate = NULL;
+
+  error = sm_partitioned_class_type (obj, &is_partition, NULL, &sub_partitions);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  if (is_partition == DB_PARTITION_CLASS)
+    {
+      error = ER_NOT_ALLOWED_ACCESS_TO_PARTITION;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto error_exit;
+    }
+  else if (is_partition == DB_NOT_PARTITIONED_CLASS)
+    {
+      goto end;
+    }
+
+  assert (is_partition == DB_PARTITIONED_CLASS);
+
+  for (i = 0; sub_partitions[i]; i++)
+    {
+      if (sm_exist_index (sub_partitions[i], index_name, NULL) != NO_ERROR)
+	{
+	  continue;
+	}
+
+      ctemplate = smt_edit_class_mop (sub_partitions[i], AU_INDEX);
+      if (ctemplate == NULL)
+	{
+	  error = er_errid ();
+	  assert (error != NO_ERROR);
+	  goto error_exit;
+	}
+
+      error = change_constraint_status (ctemplate, index_name, index_status);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      /* classobj_free_template() is included in sm_update_class() */
+      error = sm_update_class (ctemplate, NULL);
+      if (error != NO_ERROR)
+	{
+	  /* Even though sm_update() did not return NO_ERROR, ctemplate is already freed */
+	  ctemplate = NULL;
+	  goto error_exit;
+	}
+    }
+
+end:
+  if (sub_partitions != NULL)
+    {
+      free_and_init (sub_partitions);
+    }
+  return error;
+
+error_exit:
+  if (ctemplate != NULL)
+    {
+      /* smt_quit() always returns NO_ERROR */
+      smt_quit (ctemplate);
+    }
+  goto end;
+}
+
+
+
+int
+smt_change_constraint_status (SM_TEMPLATE * ctemplate, const char *index_name, SM_INDEX_STATUS index_status)
+{
+  int error = NO_ERROR;
+
+  assert (ctemplate != NULL);
+  SM_CLASS_CONSTRAINT *pk;
+
+  /* Check if the current class has a Primary Key. */
+  pk = classobj_find_cons_primary_key (ctemplate->current->constraints);
+
+  if (pk != NULL && (strcmp (index_name, pk->name) == 0))
+    {
+      error = ER_STATUS_CHANGE_NOT_ALLOWED_ON_PK;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, sm_ch_name ((MOBJ) ctemplate->current), pk->name);
+      return error;
+    }
+
+  error = change_constraints_status_partitioned_class (ctemplate->op, index_name, index_status);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = change_constraint_status (ctemplate, index_name, index_status);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+end:
+  return error;
+
+  /* in order to show explicitly the error */
+error_exit:
+  goto end;
+}

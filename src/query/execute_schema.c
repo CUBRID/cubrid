@@ -373,6 +373,8 @@ static int do_save_all_indexes (MOP classmop, SM_CONSTRAINT_INFO ** saved_index_
 static int do_drop_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info);
 static int do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info);
 
+static int do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement);
+
 /*
  * Function Group :
  * DO functions for alter statement
@@ -3616,6 +3618,10 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   else if (statement->info.index.code == PT_CHANGE_INDEX_COMMENT)
     {
       error = do_alter_index_comment (parser, statement);
+    }
+  else if (statement->info.index.code == PT_CHANGE_INDEX_STATUS)
+    {
+      error = do_alter_index_status (parser, statement);
     }
   else
     {
@@ -15073,4 +15079,96 @@ error_exit:
     }
 
   return error;
+}
+
+int
+do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement)
+{
+  int error = NO_ERROR;
+  DB_OBJECT *obj;
+  PT_NODE *cls = NULL;
+  SM_TEMPLATE *ctemplate = NULL;
+  const char *class_name = NULL;
+  const char *index_name = NULL;
+  SM_INDEX_STATUS index_status;
+  bool do_rollback = false;
+
+  index_name = statement->info.index.index_name ? statement->info.index.index_name->info.name.original : NULL;
+
+  if (index_name == NULL)
+    {
+      goto error_exit;
+    }
+
+  index_status = (SM_INDEX_STATUS) statement->info.index.index_status;
+
+  cls = statement->info.index.indexed_class ? statement->info.index.indexed_class->info.spec.flat_entity_list : NULL;
+
+  if (cls == NULL)
+    {
+      goto error_exit;
+    }
+
+  class_name = cls->info.name.resolved;
+  obj = db_find_class (class_name);
+
+  if (obj == NULL)
+    {
+      error = er_errid ();
+      assert (error != NO_ERROR);
+      goto error_exit;
+    }
+
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_ALTER_INDEX);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  do_rollback = true;
+
+  ctemplate = smt_edit_class_mop (obj, AU_INDEX);
+  if (ctemplate == NULL)
+    {
+      error = er_errid ();
+      assert (error != NO_ERROR);
+      goto error_exit;
+    }
+
+  error = smt_change_constraint_status (ctemplate, index_name, index_status);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  /* classobj_free_template() is included in sm_update_class() */
+  error = sm_update_class (ctemplate, NULL);
+  if (error != NO_ERROR)
+    {
+      /* Even though sm_update() did not return NO_ERROR, ctemplate is already freed */
+      ctemplate = NULL;
+      goto error_exit;
+    }
+
+end:
+
+  return error;
+
+error_exit:
+  if (ctemplate != NULL)
+    {
+      /* smt_quit() always returns NO_ERROR */
+      smt_quit (ctemplate);
+    }
+
+  if (do_rollback == true)
+    {
+      if (do_rollback && error != ER_LK_UNILATERALLY_ABORTED)
+	{
+	  tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ALTER_INDEX);
+	}
+    }
+  error = (error == NO_ERROR && (error = er_errid ()) == NO_ERROR) ? ER_FAILED : error;
+
+  goto end;
 }

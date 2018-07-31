@@ -8480,3 +8480,80 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
 
   return NO_ERROR;
 }
+
+int
+classobj_change_constraint_status (DB_SEQ * properties, const char *prop_type, const char *index_name,
+				   SM_INDEX_STATUS index_status)
+{
+  DB_VALUE prop_val, cnstr_val, cvalue, new_val;
+  DB_SEQ *prop_seq, *idx_seq;
+  int found = 0;
+  int error = NO_ERROR;
+  int len = 0;
+
+  db_make_null (&prop_val);
+  db_make_null (&cnstr_val);
+  db_make_null (&cvalue);
+  db_make_null (&new_val);
+
+  found = classobj_get_prop (properties, prop_type, &prop_val);
+  if (found == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
+      goto end;
+    }
+
+  prop_seq = db_get_set (&prop_val);
+  found = classobj_get_prop (prop_seq, index_name, &cnstr_val);
+  if (found == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
+      goto end;
+    }
+
+  idx_seq = db_get_set (&cnstr_val);
+  len = set_size (idx_seq);
+
+  /* status stands at the len - 2 of the seq */
+  set_get_element (idx_seq, len - 2, &cvalue);
+  if (!DB_IS_NULL (&cvalue) && DB_VALUE_TYPE (&cvalue) != DB_TYPE_INTEGER)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
+      goto end;
+    }
+
+  db_make_int (&new_val, index_status);
+  error = set_put_element (idx_seq, len - 2, &new_val);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  db_make_sequence (&cnstr_val, idx_seq);
+  found = classobj_put_prop (prop_seq, index_name, &cnstr_val);
+  if (found == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
+      goto end;
+    }
+
+  db_make_sequence (&prop_val, prop_seq);
+  found = classobj_put_prop (properties, prop_type, &prop_val);
+  if (found == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
+      error = ER_SM_INVALID_PROPERTY;
+      goto end;
+    }
+
+end:
+  pr_clear_value (&prop_val);
+  pr_clear_value (&cnstr_val);
+  pr_clear_value (&cvalue);
+  pr_clear_value (&new_val);
+  return error;
+}
