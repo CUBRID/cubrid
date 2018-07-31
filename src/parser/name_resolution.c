@@ -6781,6 +6781,7 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
   PT_NODE *spec, *range, *entity;
   DB_OBJECT *classop;
   SM_CLASS *class_;
+  SM_CLASS_CONSTRAINT *cons;
   int found = 0;
   int errid;
 

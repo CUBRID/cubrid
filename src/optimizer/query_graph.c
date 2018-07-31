@@ -6966,7 +6966,7 @@ qo_is_usable_index (SM_CLASS_CONSTRAINT * constraint, QO_NODE * nodep)
       return false;
     }
 
-  if (consp->filter_predicate != NULL && QO_NODE_USING_INDEX (nodep) == NULL)
+  if (constraint->filter_predicate != NULL && QO_NODE_USING_INDEX (nodep) == NULL)
     {
       return false;
     }
